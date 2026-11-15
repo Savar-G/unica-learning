@@ -640,3 +640,12 @@ describe("sixth check of #1006 (2026-11-15)", () => {
     expect(r.parts).not.toContain("Yes.");
   });
 });
+
+describe("a judgment that names the child's answer is judged (#1008)", () => {
+  it("refuses \"Your answer is right\" after a wrong answer, even beside a true equation", async () => {
+    const say = "Your answer is right: 12 − 8 = 4. What is 4 minus 2?";
+    const { session } = call(() => reply(say, "guide"));
+    await session.start();
+    expect((await session.child("It's 36.")).say).not.toEqual([say]);
+  });
+});

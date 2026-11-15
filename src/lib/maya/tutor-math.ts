@@ -90,7 +90,9 @@ const DETERMINERS = new Set(["this", "that", "each", "every", "which", "another"
  * Words a number may run on into that make it a count, not a claim of equality ("12 is 4 steps", "8 and 4 more make
  * 12", "12 is 4 bigger than 8"). Any other word after a claim leaves the claim checked (fail closed: "4 is 4 tens left").
  */
-const COUNT_WORDS = new Set(["steps", "step", "jumps", "jump", "fingers", "finger", "more", "less", "fewer", "bigger", "smaller", "greater", "larger", "away", "apart", "times", "blocks", "block", "sticks", "stick", "counts", "numbers", "after", "before", "up", "down", "from", "than"]);
+const COUNT_WORDS = new Set(["more", "less", "fewer", "bigger", "smaller", "greater", "larger", "away", "apart", "times", "counts", "numbers"]);
+/** Things a number may count, also after a place quantity ("4 tens is 4 sticks of ten"). */
+const OBJECT_WORDS = new Set(["steps", "step", "jumps", "jump", "fingers", "finger", "blocks", "block", "sticks", "stick", "bundles", "bundle", "rods", "rod", "cubes", "cube"]);
 
 /** One side of a relation: its value, whether any term is a place quantity, and its one place when it has one. */
 interface Side { value: number; units: boolean; place: number | null; next: number; ops: boolean; sums: boolean }
@@ -159,18 +161,20 @@ export function falseClaims(sentence: string, op?: "add" | "subtract", trades: r
   const trade = (a: Side, b: Side): boolean => {
     // Two digits with no place ("the 2 becomes 12", "the 5 becomes 4"): the ones gain 10 or the tens give 1.
     if (!a.units && !b.units) return b.value === a.value + 10 || b.value === a.value - 1;
-    // A number with no unit after a place quantity is in its place ("2 ones become 12", "5 tens become 4").
-    const place = a.place ?? (b.units ? null : null);
-    const bValue = b.units ? b.value : a.place !== null ? b.value * a.place : null;
-    if (place === null || bValue === null || (b.units && b.place !== place)) return false;
+    // A number with no unit beside a place quantity is in its place ("2 ones become 12", "5 tens become 4", "the 2
+    // becomes 12 ones").
+    const place = a.place ?? b.place;
+    if (place === null || (a.units && b.units && a.place !== b.place)) return false;
+    const aValue = a.units ? a.value : a.value * place;
+    const bValue = b.units ? b.value : b.value * place;
     const gainsTen = place === 1 ? op !== "add" : op === "add";
     const delta = place === 1 ? 10 : place;
     // A borrow across a zero (#1012): in a subtraction a place above the ones may also take 10 of its own units from
     // the left ("0 tens become 10 tens"), then give 1 to the right ("0 tens are now 9 tens").
     // Only a zero place borrows this way: "5 tens become 15 tens" is false (review of #1009).
-    if (place > 1 && op !== "add" && a.value === 0 && (bValue === 10 * place || bValue === 9 * place)) return true;
-    if (place > 1 && op !== "add" && trades.includes(bValue / place) && (bValue === a.value + 10 * place || bValue === a.value + 9 * place)) return true;
-    return gainsTen ? bValue === a.value + delta : bValue === a.value - delta;
+    if (place > 1 && op !== "add" && aValue === 0 && (bValue === 10 * place || bValue === 9 * place)) return true;
+    if (place > 1 && op !== "add" && trades.includes(bValue / place) && (bValue === aValue + 10 * place || bValue === aValue + 9 * place)) return true;
+    return gainsTen ? bValue === aValue + delta : bValue === aValue - delta;
   };
   while (i < items.length) {
     const left = side(i);
@@ -182,7 +186,8 @@ export function falseClaims(sentence: string, op?: "add" | "subtract", trades: r
       // "the" before a number word alone names a thing ("the 1 is the ten we carried"); before a digit or a place
       // quantity it is read through ("52 is the 4 tens and 2 ones").
       const article = items[at + 1]?.kind === "other" && (items[at + 1] as { word?: string }).word === "the";
-      const named = article && items[at + 2]?.kind === "term" && (items[at + 2] as Extract<Item, { kind: "term" }>).word === true && !(items[at + 2] as Extract<Item, { kind: "term" }>).unit;
+      // Only a lone number word with no operator after it ("4 tens is the twenty plus thirty" is read).
+      const named = article && items[at + 2]?.kind === "term" && (items[at + 2] as Extract<Item, { kind: "term" }>).word === true && !(items[at + 2] as Extract<Item, { kind: "term" }>).unit && items[at + 3]?.kind !== "op";
       const right = named ? null : side(at + (article ? 2 : 1));
       if (!right) break;
       rels.push(items[at] as Extract<Item, { kind: "rel" }>);
@@ -192,10 +197,24 @@ export function falseClaims(sentence: string, op?: "add" | "subtract", trades: r
     if (chain.length < 2) { i = left.next + 1; continue; }
     // Not a claim of equality: a counting list ("9, 10, 11, 12 is 4 steps") or a number that goes on into a word that
     // is not a place ("12 is 4 steps", "8 and 4 more make 12"). An "=" is always read.
-    const list = items[i - 1]?.kind === "term";
+    // A count ("12 is 4 steps", "12 is 4 more than 8"): only with a count word after it and no place unit on any
+    // side; a place-value claim is always read (#1008).
     const after = items[at];
-    const runsOn = after?.kind === "other" && !!after.word && COUNT_WORDS.has(after.word);
-    if ((list || runsOn) && !rels.some((r) => r.eq)) { i = at; continue; }
+    const word = after?.kind === "other" ? after.word ?? "" : "";
+    // "A is B more than C" ("12 is 4 more than 8", "4 tens is 1 ten more than 3 tens"): true when A = C + B or C - B
+    // (review of #1032).
+    const thanAt = items[at + 1]?.kind === "other" && (items[at + 1] as { word?: string }).word === "than" ? at + 2 : -1;
+    const base = thanAt > 0 && chain.length === 2 && !rels[0].negated && !rels[0].eq ? side(thanAt) : null;
+    const sign = ["more", "bigger", "greater", "larger"].includes(word) ? 1 : ["less", "fewer", "smaller"].includes(word) ? -1 : 0;
+    // Only a comparison that holds is skipped this way; any other one is read as before (a place quantity is read as a
+    // claim and refused, "15, one less than 16" is a count).
+    if (base && sign !== 0 && Math.abs(chain[0].value - (base.value + sign * chain[1].value)) < 1e-9) { i = base.next; continue; }
+    // An object count after a place quantity names the same number of that place ("4 tens is 4 sticks of ten"); any other
+    // count is read as a claim ("4 tens is 5 bundles of ten" is false, review of #1032).
+    const unitSide = chain.find((c) => c.units && c.place !== null);
+    const objects = OBJECT_WORDS.has(word) && (!chain.some((c) => c.units) || (!!unitSide && chain.every((c) => c === unitSide || (!c.units && c.value * unitSide.place! === unitSide.value))));
+    const runsOn = objects || (COUNT_WORDS.has(word) && !chain.some((c) => c.units));
+    if (runsOn && !rels.some((r) => r.eq)) { i = at; continue; }
     for (let k = 0; k < rels.length; k++) {
       const [a, b] = [chain[k], chain[k + 1]];
       const same = Math.abs(a.value - b.value) < 1e-9;
