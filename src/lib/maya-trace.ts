@@ -273,7 +273,8 @@ export function traceCounts(turns: readonly TraceTurn[]): TraceCounts {
     modelErrors: attempts.filter((a) => a.error !== undefined).length,
     silent: maya.filter((t) => t.output === null).length,
     sayRefusals: attempts.reduce<Record<string, number>>((n, a) => (a.refusal?.say ? { ...n, [a.refusal.say]: (n[a.refusal.say] ?? 0) + 1 } : n), {}),
-    overrides: maya.filter((t) => t.attempts.some((a) => a.source !== "controller" && (a.refusal !== null || a.source === "fallback" || (a.dropped?.length ?? 0) > 0))).length,
+    // Code's safety guidance replaces no model words: it is not an override.
+    overrides: maya.filter((t) => t.output?.act !== "safety" && t.attempts.some((a) => a.source !== "controller" && (a.refusal !== null || a.source === "fallback" || (a.dropped?.length ?? 0) > 0))).length,
     dropped: attempts.reduce((n, a) => n + (a.dropped?.length ?? 0), 0),
     longestMayaRun: longestMayaRun(turns),
   };
@@ -472,7 +473,12 @@ function checkTurn(t: unknown, path: string, version: number): Record<string, un
       }
       // A chat's close after the safety guidance is code's own: no model is asked for it (#589).
       // D-341, round 3: also a plain stop, closed in code's approved words with no model call.
-      if (attempts.length === 1 && attempts[0]?.source === "fallback") need((x.output as { act?: unknown } | null)?.act === "close", `${path}.attempts`, "a fallback with no model attempt is only a close: after safety guidance, or a plain stop");
+      // Review of #1002: also code's safety guidance itself, when the danger was known before any model call (it cuts in).
+      if (attempts.length === 1 && attempts[0]?.source === "fallback") {
+        const o = x.output as { act?: unknown; say?: unknown } | null;
+        const guidance = o?.act === "safety" && Array.isArray(o.say) && o.say.length > 0 && (o.say as unknown[]).every((t) => (Object.values(SAFETY_GUIDANCE) as unknown[]).includes(t));
+        need(o?.act === "close" || guidance, `${path}.attempts`, "a fallback with no model attempt is only a close (after safety guidance, or a plain stop) or code's exact safety guidance");
+      }
       attempts.forEach((a, i) => checkAttempt(a, `${path}.attempts[${i}]`));
       checkOrder(attempts, `${path}.attempts`);
       need("output" in x, `${path}.output`, "present (null when nothing was output)");

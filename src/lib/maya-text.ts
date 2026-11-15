@@ -671,6 +671,19 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         if (!folded.session.outcome) closeByCode();
         break;
       }
+      // Review of #1002: a known safety concern cuts in at once. Its guidance is code's own words, so no model call comes
+      // first: a request still running for an earlier input is dropped (its late answer changes nothing), and code's
+      // guidance goes out now. A model answer that already came is read first (a refused proposal needs no review).
+      if (folded.session.safety.flagged && !folded.session.safety.guided && !folded.candidate && !folded.attempts.length) {
+        if (folded.request) append({ kind: "recover", at: now() });
+        for (const proposal of read(() => fallbacks(folded.session))) {
+          append({ kind: "fallback", at: now(), proposal });
+          if (folded.session.safety.guided || folded.session.outcome) break;
+        }
+        if (!folded.session.safety.guided && !folded.session.outcome) append({ kind: "input", at: now(), event: { type: "technical", at: now(), detail: "Maya had no safe line to say" } });
+        sendGuidance();
+        continue;
+      }
       // D-345: on a tutor call, only a tutor teaching turn gets a repair (also in voice); any other turn is code's own line.
       const tutorTurn = folded.session.tutor ? read(() => tutorTeachingNow(folded.session)) : null;
       if (folded.candidate) await reviewCandidate(controller);
