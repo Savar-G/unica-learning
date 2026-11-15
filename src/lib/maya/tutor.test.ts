@@ -142,3 +142,21 @@ describe("falseClaims: real sentences of 2026-11-14", () => {
   ])("passes the true sentence %s", (x) => expect(checkTutorSay(x, none)).toMatchObject({ ok: true }));
   it.each(["12 is 4.", "12 − 8 = 4 apples = 5.", "1 ten is 100 ones.", "12 minus 8 is 5 so we write 5.", "4 is 4 tens.", "1 + 2 + 3 = 7 tens.", "The 1 is 10.", "5 tens are now 6 tens."])("refuses %s", (x) => expect(checkTutorSay(x, none)).toMatchObject({ ok: false }));
 });
+
+describe("falseClaims: trades and quantities, both directions (third check of #1002)", () => {
+  const sub = { stance: "none" as const, op: "subtract" as const };
+  const add = { stance: "none" as const, op: "add" as const };
+  it.each([
+    ["So we borrow: we trade 1 ten for 10 ones, and 52 becomes 4 tens and 12 ones.", sub],
+    ["2 ones become 12.", sub], ["The 2 becomes 12.", sub], ["The 5 becomes 4.", sub], ["5 tens become 4 tens.", sub],
+    ["52 is 5 tens 2 ones.", sub], ["Twelve minus eight is four.", sub], ["12 ones take away 8 ones is 4 ones.", sub],
+    ["We carry one ten, so one ten is now two tens.", add], ["The 16 ones are now 6 ones and 1 ten.", add],
+    ["In 27 + 39, 7 + 9 = 16 is 1 ten and 6 ones.", add], ["12 is 4 bigger than 8.", sub],
+  ])("passes %s", (x, ctx) => expect(checkTutorSay(x, ctx)).toMatchObject({ ok: true }));
+  it.each([
+    ["52 becomes 4 tens and 2 ones.", sub], ["2 ones become 13.", sub], ["5 tens become 6 tens.", sub], ["The 2 becomes 13.", sub],
+    ["12 ones take away 8 ones is 5 ones.", sub], ["52 is 5 tens 3 ones.", sub], ["Twelve minus eight is five.", sub],
+    ["4 is 4 tens left.", sub], ["5 tens are now 6 tens left.", sub], ["52 is the 4 tens and 2 ones.", sub], ["4 tens is the 5 tens.", sub],
+    ["One ten is now three tens.", add],
+  ])("refuses %s", (x, ctx) => expect(checkTutorSay(x, ctx)).toMatchObject({ ok: false }));
+});

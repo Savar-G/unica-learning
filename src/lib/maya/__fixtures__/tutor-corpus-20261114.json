@@ -1,0 +1,2062 @@
+[
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "2 minus 8 isn't 6 anyway, but 6 is a good number here."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "2 tens plus 3 tens plus 1 ten is 6 tens."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "56 would be right if we forgot the carried 1."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "6 tens and 6 ones is 66, so 27 + 39 = 66."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "6 tens and 6 ones make 66, so 27 + 39 = 66."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "7 + 9 = 16 is 1 ten and 6 ones, so you write 6 in the ones and carry the 1 ten to the tens."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "7 + 9 = 16, so you write 6 in the ones and carry 1 ten to the tens."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "But I asked 8 + 5, and that is 13: 8 + 2 makes 10, and 3 more is 13."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Careful: 7 + 8 is 15, not 16."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Careful: 7 + 8 is 15, one less than 7 + 9."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Careful: 8 + 7 is 15, but 16 is right for 7 + 9, so you got that one!"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Careful: this problem is adding, so no minus."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Count up 8 more from 7: 8, 9, 10..."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Good question, but this one is adding: 27 + 39."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "How did you get 66?"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "How did you get it?"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "In 27 + 39, 7 + 9 = 16 is 1 ten and 6 ones."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Keep going."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Let's do just the ones in 27 + 39: 7 ones and 9 ones."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Let's try the ones: 7 ones plus 9 ones."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Look at the tens: 6 tens is 60."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Maybe the 5 came from forgetting the carried ten?"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Maybe you remembered our 7 + 9 = 16."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Not 56, {name}."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Not quite, 56 isn't it."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Not quite, {name}."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Now add the tens: 1 + 2 + 3."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Now back to 27 + 39: 7 + 9 = 16 is 1 ten and 6 ones."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Now the tens: what is 1 + 2 + 3?"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Now try 7 + 8 again: count up 8 from 7, or start at 8 and count 7 more."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Now you try: what is 7 + 8?"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Now you try: what is 8 + 5?"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Now you try: what is 8 + 7?"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Or think 9 + 1 = 10, and 6 more is 16."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Or think 9 is 1 away from 10, so take 1 from the 7 to make 10, and 6 is left: 10 + 6 = 16."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Put the 6 tens next to the 6 ones: how many tens and how many ones is that?"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "So 7 + 9 = 16, which is 1 ten and 6 ones."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "So what is the whole answer to 27 + 39?"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "So write 6 in the tens place."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Start at 9 and count up 7 more: 10, 11, 12, 13, 14, 15, 16."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Start at 9 and count up 7 more: 10, 11, 12..."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Sure!"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "That 1 ten goes with the tens."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "That is why the tens made 6 and the answer is 66."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "That's the carried 1 ten plus 2 tens plus 3 tens: 6 tens."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "The 1 is the ten we carried, and 2 tens + 3 tens + 1 ten is 6 tens."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "The 6 tens and the 6 ones we wrote make a number."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "The carried 1 goes in the tens column, so it's 1 ten plus 2 tens plus 3 tens."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Then 1 + 2 + 3 made 6 tens."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Want to try a twin question: 38 + 27?"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Want to try a twin?"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "We start with the ones: 7 ones plus 9 ones."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "We write 6 in the ones and carry the 1 ten."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "What do we write in the ones place?"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "What do you get?"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "What is 1 + 2 + 3?"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "What is 28 + 35?"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "What is 38 + 25?"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "What is 60 + 6?"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "What is 7 + 9?"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "What is the whole answer to 27 + 39?"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "What number do you land on?"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "What number is 6 tens and 6 ones?"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "What number is it?"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Yes, 16 is right for 7 + 9!"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Yes, 2 + 3 + 1 is 6, so the tens digit is 6."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Yes, 2 + 3 + 1 is 6, so you add the carried ten too."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Yes, 2 + 3 + 1 is 6."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Yes, 66 is right, {name}!"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Yes, 66!"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Yes, you write 6 in the ones and carry the 1 ten, that's what you did."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Yes, {name}!"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Yes, {name}, 27 + 39 = 66!"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Yes, {name}, 66 is right!"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Yes, {name}, I'll help."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Yes, {name}, write 6 in the ones place and carry the 1, because 16 is 1 ten and 6 ones."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Yes, {name}, you carried the ten: 7 + 9 = 16 is 1 ten and 6 ones, and the 1 ten joined the tens."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Yes, {name}, you carried the ten: 7 + 9 is 16, so 1 ten went to the tens column."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Yes, {name}: 7 + 9 is 16, so you carried 1 ten."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "You carried the ten, and that fixed it."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "You carried the ten, and that was the tricky part."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "You did the 6 tens right, and 56 forgets the carried ten."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "You found 6 tens and 6 ones, so what number is 6 tens and 6 ones?"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "You have 6 tens and 6 ones, so the answer is not 56."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "You remembered the carried 1 ten, and that fixed it."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "You said 2 + 3 + 1 is 6, and that is right: it is 6 tens."
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "Your 16 is right for 7 + 9, the ones in our problem!"
+ },
+ {
+  "question": "27 + 39 = ?",
+  "sentence": "what number do you land on?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "12 is how many ones we have after the trade: 2 + 10."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "12 minus 8 isn't 5."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "12 ones minus 8 ones is 4 ones, so we write 4 in the ones place."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "2 minus 8 isn't 6; 6 is 8 minus 2."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "2 tens and 4 ones make 24."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "36 isn't right, {name}."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "4 bundles take away 2 bundles leaves 2 bundles."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "4 tens minus 2 tens is 2 tens, so we write 2 in the tens place."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "5 is the tens digit of 52, so it may have slipped in."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "52 is 5 tens and 2 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "6 is 8 minus 2, the other way around."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "After lending one ten, 4 tens are on top and 2 tens are below."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "After the trade, 5 tens became 4 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "After the trade, 52 has 4 tens, and we take away the 2 tens in 28."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "After the trade, the tens column has 4 tens, and we take away 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "After we borrowed, we have 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Back to 52 minus 28: what is 12 minus 8?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Can you take 8 from 3 ones, or do you need to borrow first?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Careful, 12 minus 8 is not 5."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Careful, 12 − 8 is not 5."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Careful, {name}: 12 minus 8 is 4, not 5."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Careful: 12 − 8 is not 5."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Count down 2 from 4: 4, 3, 2."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Count it: 4 tens, take away 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Count up from 8 to 12 to check: 9, 10, 11, 12 is 4 steps."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Count up from 8 to 12 to check: 9, 10, 11, 12."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Count up from 8 to 12: what is 12 − 8?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Count what is left: 4, then take away 1, 2."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Did you mean 5 this time, or 4?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Did you say 5?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Earlier you found 12 − 8 = 4, and 4 is already in the ones place."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Earlier you found it was 4, and that 4 is already in the ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Earlier you found it was 4, and that 4 is already written in the ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Earlier you got 12 − 8 = 4, and that's right: 4 is already in the ones place."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Earlier you got 4, and that is right."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Earlier you got 4, and that one was right, and it's already written in the ones place."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Earlier you got 4, and that was right."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Earlier you said 12 minus 8 is 4, and that's right."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Earlier you said 12 minus 8 is 4."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Earlier you said 4, and 4 is right."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Good question: in 52 − 28 the ones are 2 and 8, and 2 is too small to take 8 from."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Good question: in 52 − 28 the ones are 2 and 8, and you can't take 8 from 2."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Good question: in 52 − 28 we look at the ones, 2 − 8, and 2 is too small to take 8 from."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Good question: in 52 − 28, the ones are 2 and 8, and you can't take 8 from 2."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Good question: in 52 − 28, the ones are 2 minus 8, and 2 is too small to take 8 away."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Good question: in 52 − 28, the ones are 2 minus 8, and 2 ones is too small to take 8."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Good question: in 52 − 28, the ones column is 2 minus 8, and 2 ones is too small to take 8."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Good question: in 52 − 28, you can't take 8 from 2 ones, that's true."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Good question: in the ones, 2 is too small to take 8 from."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Good question: you can't take 8 from 2 ones, you're right."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Hmm, I heard 5."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Hmm, I heard something different from before."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Hmm, I may have heard that wrong."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Hold up 4 fingers and put 2 down: how many are left?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Hold up fingers: 9, 10, 11, 12."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "How did you get 24?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "How did you get your answer?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "How many are left?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "How many blocks are left?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "How many bundles are left?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "How many fingers are still up?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "How many fingers did you count?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "How many tens are left now?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "How many tens are left?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "How many tens is that?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "How much is 12 minus 8?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "How much is 4 tens minus 2 tens?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "I'll show you: 12 minus 8 is 4, because 8 and 4 more make 12."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "I'll write 2 in the tens place."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "I'll write 4 in the ones place."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "I'll write 4 in the ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "I'll write the 4 in the ones place."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "I'll write the 4 in the ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "I'm an AI, so I don't have a favorite animal, {name}."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "I'm an AI, so I don't have a favorite animal."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "If you have 4 tens and take away 2 tens, how many tens are left?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "In the ones we can't do 2 minus 8, so we use the 12 from our trade."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "In the ones we need 2 minus 8, and 2 is too small."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "In the tens, we have 4 tens left after the trade, and we take away 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "In the tens, we started with 5 tens, but we traded 1 ten away, so 4 tens are left."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's count it: start at 8 and count up to 12."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's do the tens together."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's finish our math."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's finish our problem, {name}."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's finish our question first, {name}."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's finish our question, {name}."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's finish our question."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's finish our subtraction."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's finish the tens: we have 4 tens and take away 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's finish this one, {name}."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's finish your problem, {name}."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's finish your question."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's get back to the bundles, {name}."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's get back to the tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's get back to the tens: the tens gave 1 to the ones, so 4 are on top and 2 below."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's go back to the tens: the tens gave 1 to the ones, so there are 4 on top and 2 below."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's go slowly."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's look at the tens now."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's try a new, easier problem first: 42 minus 7."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's try a new, easier problem first: 42 − 7."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's use a picture: 4 tens is 4 sticks of ten, and we take away 2 of those sticks."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's use fingers: hold up 4 fingers for the 4 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's use the tens: we have 4 tens, and we take away 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's write 4 in the ones place."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's write 4 in the ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Let's write the 4 in the ones place."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Maybe 5 is the tens digit from 52."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Maybe 5 is the tens digit of 52."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Maybe 5 is the tens digit, 5 − 8?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "No, 12 minus 8 is not 5."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "No, 12 minus 8 isn't 5."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "No, 12 − 8 is not 5, but you got it right a moment ago: it is 4, and the 4 is already in the ones place."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "No, 12 − 8 isn't 5."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "No, 6 is 8 minus 2, the other way around."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "No, 6 is not right: that is 8 minus 2, the other way around."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "No, 6 isn't it."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Not 5, {name}: 12 minus 8 is 4, like you said before."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Not 5, {name}: 12 − 8 is 4, like you said before."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Not 6, {name}: 6 comes from 8 minus 2, the other way around."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Not 6, {name}: 6 is 8 minus 2, the other way around."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Not quite, {name}."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Not quite, {name}: 12 minus 8 is 4, and we already wrote that 4 in the ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Not quite, {name}: 12 minus 8 is 4, and you got that right a moment ago."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Not quite, {name}: 12 minus 8 is 4, and you said that a moment ago."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Not quite, {name}: 12 minus 8 is 4, like you said before, and we already wrote that 4 in the ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Not quite, {name}: 12 minus 8 is not 5."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Not quite, {name}: 12 − 8 is 4, and we already wrote that 4 in the ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Not quite, {name}: 12 − 8 is 4, and we already wrote that 4."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Not quite, {name}: 12 − 8 is not 5."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Not quite, {name}: 6 is 8 minus 2, the other way around."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Not quite: 12 − 8 is 4, and we already wrote that 4 in the ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Not quite: 12 − 8 is 4, and you got that right a moment ago."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Not quite: 12 − 8 is 4, not 5."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Not quite: 12 − 8 is not 5."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Not quite: 6 is 8 minus 2, the other way around."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now 12 minus 8 is the next step."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now 12 ones is enough."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now 12 ones take away 8 ones: what is 12 − 8?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now 52 is 4 tens and 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now how much is 12 minus 8?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now how much is 12 − 8?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now look at the tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now look at the tens: 4 on top, 2 below."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now look at the tens: 4 tens minus 2 tens is how many tens?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now look at the tens: 4 tens minus 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now look at the tens: 5 tens became 4 tens after the trade."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now look at the tens: 5 tens became 4 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now look at the tens: we have 4 tens and take away 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now look at the tens: we traded 1 ten away, so 5 tens became 4 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now put down 2 of them, because we take away 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now read the whole answer: 2 tens and 4 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now take 2 tens away from those 4 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now take 2 tens from those 4 tens: what is 4 − 2?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now take 8 away from those 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now take 8 from those 12 ones: what is 12 − 8?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now take away 8 ones from the 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now take away the 2 tens from 28."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now take away the 2 tens from 28: what is 4 minus 2?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the example's answer: the tens are 3 and the ones are 5, so 42 − 7 = 35."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the number is still 52, just split a new way."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the ones are 12, so try 12 minus 8."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the ones are 12, so what is 12 − 8?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the ones are 12."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the ones are 4 and the tens are 2."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the ones digit is 4."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the tens are 4, since we took one ten."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the tens: 4 tens are left on top."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the tens: 4 tens minus 2 tens is how many tens?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the tens: 4 tens minus 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the tens: 5 tens became 4 after the trade."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the tens: 5 tens became 4 tens after the trade."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the tens: 5 tens became 4 tens, and 28 has 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the tens: after the trade, 5 tens became 4 tens, and we take away 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the tens: we have 4 tens and take away 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the tens: we have 4 tens and we take away 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the tens: we have 4 tens left and take away 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the tens: we have 4 tens left, and we take away 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the tens: we traded 1 of the 5 tens away, so how many tens are left?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the tens: we traded 1 ten away, so 5 tens are now 4 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the tens: we traded 1 ten away, so 5 tens became 4 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the tens: we traded 1 ten away, so how many tens are left from 5?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the tens: we traded 1 ten, so 5 tens became 4 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the tens: we traded one of the 5 tens, so how many tens are left, and what is that minus 2?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the tens: what is 4 minus 2?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now the tens: what is 4 tens minus 2 tens?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now think of 4 tens and take away 2 tens: if you have 4 apples and eat 2, how many are left?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now try 12 − 8."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now try 12 − 8: what do you get?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now try 12 − 8: what is it?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now try the tens: we have 4 tens and we take away 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now try the twin question: 63 minus 38."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now we can try the same move on 52 minus 28."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now we have 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now we need the tens, where 4 tens are left after the trade."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now we take 8 ones away from those 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now we write 4 in the ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now what is 12 minus 8?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now what is 12 − 8?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Now you try: what is 4 minus 2?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Of course, {name}."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Picture 4 blocks and take 2 away."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Picture 4 blocks and take 2 away: how many are left?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Picture 4 sticks of ten, and 2 of them go away."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Picture 4 sticks of ten, then remove 2 of them."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Picture 4 tens and cross out 2 of them."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Picture 4 tens and take away 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Picture 4 tens, like 4 bundles of ten sticks."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Put the 2 tens next to the 4 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Put them together: what is 52 − 28?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Regroup 1 ten as 10 ones, so 2 ones become 12."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Since 2 is smaller than 8, we take a ten and the 2 becomes 12."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Since 2 is smaller than 8, we take a ten, like in the easier one."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Since 2 is smaller than 8, we take a ten, like in the example."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "So 2 goes in the tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "So 4 tens minus 2 tens is 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "So 42 minus 7 is 35."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "So 52 minus 28 is 24."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "So 52 − 28 has 2 tens and 4 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "So we borrow: trade 1 ten for 10 ones, and 2 ones become 12."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "So we borrow: we trade 1 ten for 10 ones, and 2 ones become 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "So we borrow: we trade 1 ten for 10 ones, and 52 becomes 4 tens and 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "So we borrow: we trade 1 ten for 10 ones, and 52 is 4 tens and 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "So we borrow: we trade 1 ten for 10 ones, and the 2 ones become 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "So we borrow: we trade 1 ten for 10 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "So we write 4 in the ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Start at 12 and count back 8: what is 12 minus 8?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Start at 12 and count back 8: what is 12 − 8?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Start at 8 and count up to 12: how many steps is that?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Subtract the ones: 12 − 7 = 5."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Sure, let's go slowly."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Sure, {name}!"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Sure, {name}."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Take 2 away from 4: think of 4 fingers and put 2 down."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Take 2 tens from 4 tens: if you have 4 and take away 2, how many are left?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Take away 2 bundles."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Take away 2 tens from 4 tens: 4 − 2 = 2."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Take away the 2 tens from 28: 4 tens minus 2 tens is how many tens?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Take away the 2 tens from 28: 4 tens minus 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Take away the 2 tens from 28: what is 4 − 2?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "That 4 is already in the ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "That comes from taking the smaller digit from the bigger one in each column, with no trade."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "That finishes 42 minus 7."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "That finishes our easier example, 42 minus 7."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "That finishes the easier one: 42 minus 7 is 35."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "That is 4 steps."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "That is how you got the 4 in the ones place."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "That is the ones digit, so I'll write 4 there."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "That many tens is the answer for the tens place."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "That's 8 minus 2, the other way around, and we can't take 8 from 2 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "That's a great way to solve it."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "That's okay, {name}."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "That's the 2 + 10 part."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "That's the 2 plus 10, so you got the trade right."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "That's the ones digit, so I'll write 4 in the ones place."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "That's the ones digit, so we write 4 in the ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "That's the right number to start with."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "That's the whole idea of regrouping."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "The 1 ten we traded is gone, so 5 tens are now 4 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "The 4 is already written in the ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "The 5 is the tens digit of 52."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "The 5 tens become 4 tens, and the 2 ones become 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "The number 52 stayed the same."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "The number 52 stays the same."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "The number is still 52."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "The number stayed 52."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "The ones are 4 and the tens are 2."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "The ones are done, so let's look at the tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "The ones are done, so look at the tens: 4 tens take away 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "The ones are done, so now look at the tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "The ones are done, so now the tens: what is 4 tens minus 2 tens?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "The ones are done, so now we look at the tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "The ones are done: 12 minus 8 is 4."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "The ones are done: 4 is written."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "The ones are done: 4."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "The ten is traded away, so 5 tens are now 4 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "The tens are now 3, because we took one ten away."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "The tens are now 3, because we took one ten to regroup."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "The tens are now 3, since we took one ten to regroup."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "The tens column now has 4 tens, because we traded 1 ten away."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "The tens now show 4, because we traded one away."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Then 2 ones become 12 ones, and 52 is now 4 tens and 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Then 2 ones become 12 ones, and the number is still 52."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Then 2 ones become 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Then 2 sticks are left, and 2 tens is 20."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Then 52 is 4 tens and 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "There are 4 tens on top and 2 below."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Think of 4 blocks and take away 2 blocks."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Think of 4 blocks and take away 2 blocks: 4 − 2 = 2, so we write 2 in the tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Think of 4 sticks of ten and cover 2 of them."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Think of 4 tens as 4 bundles of ten, and take away 2 bundles."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Think of 4 tens as 4 sticks of ten, and we take away 2 sticks."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Think of 4 things, then 2 taken away."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Think of tens like bundles: we have 4 bundles of ten, and we take away 2 bundles."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Want to try a twin question, 63 minus 38?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Want to try a twin question, 63 − 38?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Want to try one like it?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Watch the board."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We already borrowed, so the ones are 12, not 2."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We already found it was 4, and the 4 is written in the ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We borrowed, so 5 tens became 4 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We borrowed, so the 5 tens are now 4 tens, and we take away the 2 tens from 28."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We can't do 2 minus 8, so we use the 12 ones from the trade."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We can't take 8 from 2 ones, but after we borrow we have 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We can't take 8 from 2 ones, so use the 12 ones we got from the trade."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We can't take 8 from 2 ones, so we borrow: trade 1 ten for 10 ones, and 2 ones become 12."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We can't take 8 from 2 ones, so we use the 12 ones after we borrowed."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We can't take 8 from 2 ones, which is why we traded."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We can't take 8 from 2, and that's why we traded."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We can't take 8 from 2, so we use the 12 from the trade."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We can't take 8 from 2, so we use the 12 ones we got from borrowing."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We can't take 8 from 2, so we use the 12 ones we got from the trade."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We had 5 tens, and we traded 1 ten away, so 4 tens are left."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We had 5 tens, but we traded 1 ten away, so 4 tens are left."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We have 2 tens left after taking 2 tens from 4 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We have 4 tens and take away 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We have 4 tens and we take away 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We have 4 tens left after the trade."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We have 4 tens left, and we take away 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We have 4 tens now, and we take away 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We have 4 tens, and we take away 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We take 2 tens from those 4 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We traded 1 ten away for ones, so 5 tens minus 1 ten leaves 4 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We traded 1 ten away, so 5 tens became 4 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We traded 1 ten away, so the 5 tens are now 4 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We traded 1 ten for ones, so 5 tens became 4 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We traded 1 ten for ones, so 5 tens minus 1 ten leaves 4 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We traded, so the tens are 4 now, and the ones answer is 4."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "We wrote 2 in the tens and 4 in the ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "What can you do with them?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "What can you do with those?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "What do you get?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "What is 12 minus 8?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "What is 12 − 8?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "What is 4 minus 2?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "What is 4 tens minus 2 tens?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "What is 4 tens − 2 tens?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "What is 4 − 2?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "What is 63 − 38?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "What is that?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "What is the whole answer to 52 − 28?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "What number do we write in the tens place?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "What number is 2 tens and 4 ones?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "What number is that?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "What number is the whole answer to 52 − 28?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "With 4 in the ones, what is the whole answer to 52 − 28?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "With only 2 ones we can't take 8, so we use the 12 ones we got from borrowing."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Write 3 in the tens place."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Write 3."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Write 4 in the ones place."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Write 4 in the ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Write 5."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, 12 minus 8 is 4, and you took a ten to get there."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, 12 minus 8 is 4, {name}."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, 12 minus 8 is 4."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, 12 − 8 = 4."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, 2 is right!"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, 2 is right: 4 tens minus 2 tens is 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, 24 is right!"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, 24 is right: 52 minus 28 is 24."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, 4 is right!"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, 4 is right: 12 minus 8 is 4."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, 4 tens minus 2 tens is 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, 4 tens − 2 tens = 2 tens, so we write 2 in the tens place."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, 52 − 28 = 24."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, after the trade there are 4 tens left."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, after the trade we have 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, after the trade you have 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, let's do it together."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, that is how it works: we borrow 1 ten, and 2 ones become 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, we borrow: we trade 1 ten for 10 ones, so 2 ones become 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, we do have 4 tens left after the trade."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, we have 4 tens left after the trade, and that was the right start."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, {name}, let's do it together."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, {name}, let's do the tens together."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, {name}, that's it: we borrow 1 ten, which is 10 ones, so 2 ones became 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "Yes, {name}."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You borrowed a ten and it worked."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You borrowed a ten to get 12 ones, and that was the hard part."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You borrowed a ten, and that was the hard part."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You borrowed the ten and got the ones right."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You can't take 8 from 2 ones, so we borrow: we trade 1 ten for 10 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You can't take 8 from 2 ones, so we use the 12 ones from our trade."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You can't take 8 from 2 ones, so we use the 12 ones from the trade."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You can't take 8 from 2 ones, so we use the 12 ones we got from borrowing."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You can't take 8 from 2 ones, which is why we traded: now it's 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You can't take 8 from 2, and that's why we borrowed: 2 ones became 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You can't take 8 from 2, so we borrowed: 2 ones became 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You can't take 8 from 2, so we use the 12 ones from the trade."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You can't take 8 from 2, so we use the 12 ones we got from borrowing."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You can't take 8 from 2, so we use the 12 we got from borrowing."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You can't take 8 from 2, so we use the borrowed ten: 2 ones became 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You can't take 8 from 2, which is why we borrowed and made 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You did the hard part."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You did the hard part: the borrowed ten gave you enough ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You got 4 a moment ago, and the 4 is already written in the ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You have 4 bundles of ten and take away 2 bundles."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You have 4 tens and take away 2 tens, like 4 apples and eating 2."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You have 4 tens and take away 2 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You said 4 a moment ago, and 4 is right."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You said it right before, and the 4 is already in the ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You said that right a moment ago, and 4 is already in the ones place."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You took 8 from the 12 ones, so we write 4 in the ones place."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You took 8 ones from the 12 ones, so we write 4 in the ones place."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You took a ten to make 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You took the traded ten into account, and that was the tricky part."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You traded 1 ten for 10 ones, then took away ones and tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You traded 1 ten for 10 ones, then took away the ones and the tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You traded a ten, took 8 ones from 12 ones, then 2 tens from 4 tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You traded the ten and took away the ones and then the tens."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You traded the ten to get more ones, and that was the hard part."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You used the 12 from the trade, and that was the hard part."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You used the 12 ones after the borrow, and that was the hard part."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You used the 12 ones after the trade, and that was the hard part."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You used the 12 ones from borrowing, and that was the hard part."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You used the 12 ones from the trade, and that was the hard part."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You used the 12 ones from the trade."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You used the borrowed ten to get 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You used the traded ones, and that was the hard part."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You used the traded ten to get 12 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You're right, we can't take 8 from 2 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You're right, you can't take 8 from 2 ones, so we borrow: we trade 1 ten for 10 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "You're right, you can't take 8 from 2 ones."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "{name}, 12 − 8 is not 5, but you said 4 a moment ago, and that was right."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "{name}, 12 − 8 is not 5."
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "{name}, how did you get 24?"
+ },
+ {
+  "question": "52 - 28 = ?",
+  "sentence": "{name}, that's the key move: you borrowed 1 ten and traded it for 10 ones, so 2 ones became 12."
+ }
+]

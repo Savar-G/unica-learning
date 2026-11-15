@@ -6,7 +6,7 @@ import { createTextSession } from "@/lib/maya-text";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
 import { checkTrace } from "@/lib/maya-trace";
 import type { TurnBrief } from "@/lib/maya-model";
-import type { OperationPackage } from "@/lib/question-package";
+import { workedSteps, type OperationPackage } from "@/lib/question-package";
 import type { TalkReviewInput, TalkReviewResult } from "@/lib/maya";
 
 // The tutor core (D-345) through the text adapter's public interface: one model call and one Maya message per child
@@ -272,5 +272,32 @@ describe("re-check of #1002 (2026-11-14): the remaining gaps", () => {
     await session.start();
     await session.child("It's 24.");
     expect((await session.child(child)).ended).toBeNull();
+  });
+});
+
+describe("third check of #1002 (2026-11-14)", () => {
+  it.each(["4 is 4 tens left.", "5 tens are now 6 tens left.", "4 tens is the 5 tens.", "52 is the 4 tens and 2 ones."])("refuses %s", async (bad) => {
+    const say = `${bad} What is 12 minus 8?`;
+    const { session } = call(() => reply(say, "guide"));
+    await session.start();
+    expect((await session.child("I need help")).say).not.toEqual([say]);
+  });
+  it("never says yes to a false equation that ends on the answer", async () => {
+    const say = "Yes, that's correct. Now write it.";
+    const { session } = call(() => reply(say, "guide"));
+    await session.start();
+    expect((await session.child("12 minus 8 is 24.")).say).not.toEqual([say]);
+  });
+  it("says a carry written in words, with no repair", async () => {
+    const pkg = structuredClone(SAMPLE_PACKAGES["add-27-39"]) as OperationPackage;
+    pkg.operation = { kind: "add", operands: [18, 15] };
+    pkg.steps = workedSteps(pkg.operation);
+    pkg.text = "18 + 15 = ?";
+    pkg.answer.value = { type: "number", value: 33 };
+    const say = "We carry one ten, so one ten is now two tens. What is two tens plus one ten?";
+    const { session, briefs } = call(() => reply(say, "guide"), { package: pkg });
+    await session.start();
+    expect((await session.child("I need help")).say).toEqual([say]);
+    expect(briefs).toHaveLength(1);
   });
 });

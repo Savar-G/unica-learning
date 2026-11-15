@@ -172,19 +172,6 @@ export type TutorVerdict =
   | { ok: true; needsReview: boolean }
   | { ok: false; reason: "empty" | "too_long" | "never_say" | "false_equation" | "affirms_wrong" | "wrong_stance"; detail: string };
 
-/** "N tens and M ones" said equal to a number, or "N (ones) become M": the place-value claims code can check. */
-function placeValueProblem(sentence: string): string | null {
-  const text = sentence.replace(/[−–]/g, "-").toLowerCase();
-  const word = String.raw`(\d+)`;
-  // Equalities ("52 is 4 tens and 12 ones", "1 ten is 10 ones") and "is now" are read by falseClaims (tutor-math.ts).
-  for (const m of text.matchAll(new RegExp(String.raw`${word}\s+(ones?\b|tens?\b)?\s*(?:becomes?|became|turns? into)\s+${word}(?:\s+(ones?\b|tens?\b))?`, "g"))) {
-    const [from, to] = [Number(m[1]), Number(m[3])];
-    const tens = /^ten/.test(m[2] ?? m[4] ?? "");
-    const fine = tens ? to === from - 1 : to === from + 10 || to === from - 1;
-    if (!fine) return `${from} ${m[2] ?? ""} does not become ${to} in a trade`.replace(/\s+/g, " ");
-  }
-  return null;
-}
 
 /**
  * The whole-message check (D-345), run once on the model's message. Refuses only: an empty or over-long message, a
@@ -208,8 +195,6 @@ export function checkTutorSay(text: string, ctx: TutorCheckContext): TutorVerdic
     }
     const claim = falseClaims(sentence, ctx.op)[0];
     if (claim) return { ok: false, reason: "false_equation", detail: `"${sentence}": ${claim}. Every equation and place-value statement must be true.` };
-    const place = placeValueProblem(sentence);
-    if (place) return { ok: false, reason: "false_equation", detail: `"${sentence}": ${place}. Every place-value statement must be true.` };
   }
   // No false judgment of the child's answer, in any sentence: a "yes" or "right" for a wrong answer, a "not quite" for
   // a right one. The first sentence is judged strictly. A later one is exempt only when it judges its own true equation
