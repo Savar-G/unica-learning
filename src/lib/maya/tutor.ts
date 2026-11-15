@@ -34,15 +34,20 @@ export function plainTeaching(sentence: string, _extra: ReadonlySet<string> = ne
   void _extra;
   const text = sentence.replace(/[’]/g, "'").replace(/[−–]/g, "-").trim();
   // Only the exact approved sentences skip the review as they are; an open frame never does (review of #1006).
-  if (exactSafe(text)) return true;
+  // Sixth check of #1006: only an approved sentence that means the same after any child turn ("I'm an AI helper").
+  // "That sounds fun", "Thanks for telling me" and the like depend on what the child said, so they are reviewed.
+  if (exactSafe(text)) return CONTEXT_FREE.test(text);
   // Review of #1006 (four rounds): no word list decides it. Each clause (split at ":", ";" and ","), after a short
   // spoken lead-in, must match one of a few complete math forms built only from numbers, places and operations
   // (PLAIN_FORMS). Every other sentence is reviewed, in parallel with the stream.
-  return text.replace(/[.!?]+\s*$/, "").split(/\s*[:;,]\s*/).every((raw) => {
+  // Sixth check of #1006: a sentence with no math clause left after its lead-in ("Yes.") is reviewed: a bare word can
+  // answer anything the child asked.
+  const clauses = text.replace(/[.!?]+\s*$/, "").split(/\s*[:;,]\s*/).map((raw) => {
     let clause = raw.trim();
     for (let k = 0; k < 4; k++) clause = clause.replace(LEAD_IN, "").trim();
-    return clause === "" || PLAIN_FORMS.some((re) => re.test(clause));
+    return clause;
   });
+  return clauses.some((c) => c !== "") && clauses.every((c) => c === "" || PLAIN_FORMS.some((re) => re.test(c)));
 }
 
 const N = String.raw`(?:\d{1,3}|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)`;
@@ -76,7 +81,11 @@ const PLAIN_FORMS: readonly RegExp[] = [
 ];
 
 /** A short spoken lead-in before the math of a clause: fixed words only. */
-const LEAD_IN = /^(?:\{name\}|(?:now|so|next|then|okay|ok|yes|no|right|good question|not quite|not yet|that's it)\b)[\s!.]*/i;
+// Sixth check of #1006: only lead-ins that answer nothing. "Yes", "no", "right", "okay", "not quite" and the like can
+// agree with or deny what the child said, so a sentence that starts with one is reviewed.
+const LEAD_IN = /^(?:\{name\}|(?:now|so|next|then)\b)[\s!.]*/i;
+/** The approved sentences that mean the same after any child turn: what Maya is. */
+const CONTEXT_FREE = /^i'm (?:an ai\b|not a real person\b)/i;
 
 type ColumnStep = Extract<WorkedStep, { kind: "add-column" | "subtract-column" }>;
 

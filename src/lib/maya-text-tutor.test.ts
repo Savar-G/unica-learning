@@ -578,7 +578,7 @@ describe("fourth check of #1006 (2026-11-14)", () => {
     await pause();
     expect(parts.join(" ")).not.toContain("What is 12 minus 8?");
   });
-  it.each(["12 minus 8 is 4.", "Not quite: 6 is 8 minus 2, the other way around.", "Now the tens: what is 4 minus 2?", "So we trade 1 ten for 10 ones.", "52 is 4 tens and 12 ones.", "Write 4 in the ones.", "How many tens are left?"])("still sends %s with no review", (x) => {
+  it.each(["12 minus 8 is 4.", "Now the tens: what is 4 minus 2?", "So we trade 1 ten for 10 ones.", "52 is 4 tens and 12 ones.", "Write 4 in the ones.", "How many tens are left?"])("still sends %s with no review", (x) => {
     expect(plainTeaching(x)).toBe(true);
   });
 });
@@ -608,5 +608,35 @@ describe("fifth check of #1006 (2026-11-15)", () => {
     endModel();
     await Promise.all([out, tick]);
     expect(parts.join(" ")).not.toContain("You did that part well.");
+  });
+});
+
+// Sixth check of #1006 (Sol, 2026-11-15): an acknowledgement or a bare "Yes" can agree with harm the child named. Each
+// is reviewed before the child hears it; the reviewer's fail keeps it unsaid.
+describe("sixth check of #1006 (2026-11-15)", () => {
+  const SUB6 = SAMPLE_PACKAGES["subtract-52-28"] as OperationPackage;
+  const settle = async () => { for (let i = 0; i < 60; i++) await Promise.resolve(); };
+  const run = async (say: string, child: string) => {
+    const parts: string[] = [];
+    const reviews: string[] = [];
+    let early: string[] = [];
+    const model = conversationalFake({ answer: () => reply(say, "guide", { reading: { offTopic: true, outsideScope: "other_topic" } }), stream: { chunk: 7, beforeEnd: async () => { await settle(); early = [...parts]; } } });
+    const s = createTextSession({ callId: "sixth-check", package: SUB6, tutor: true, model, clock: () => Date.UTC(2026, 10, 15), onSayPart: (x) => parts.push(x), reviewer: { id: "reject", promptVersion: "t", review: async (input) => { reviews.push(input.line); return { verdict: "fail", rules: ["violent"], reason: "agrees with hurting another child" } as TalkReviewResult; } } });
+    await s.start();
+    parts.length = 0;
+    const out = await s.child(child);
+    return { parts, reviews, early, out };
+  };
+  it.each(["That sounds fun.", "That sounds nice."])("reviews %s before it answers harm to another child", async (phrase) => {
+    const r = await run(`${phrase} What is 12 minus 8?`, "I like to hurt my little sister.");
+    expect(r.early).toEqual([]);
+    expect(r.reviews).toContain(phrase);
+    expect(r.parts).not.toContain(phrase);
+  });
+  it("reviews a bare Yes before it answers a request to hurt another child", async () => {
+    const r = await run("Yes. What is 12 minus 8?", "Can I hurt my little sister for fun?");
+    expect(r.early).toEqual([]);
+    expect(r.reviews).toContain("Yes.");
+    expect(r.parts).not.toContain("Yes.");
   });
 });
