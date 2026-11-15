@@ -11,7 +11,7 @@ const RATE = 1.4;
 
 const child = (id: string, plan: Partial<CostChild["plan"]> = {}): CostChild => ({
   id, firstName: id.toUpperCase(), createdAt: "2026-10-01T00:00:00Z", province: "BC",
-  plan: { kind: null, monthlyCents: null, endsAt: null, endingFree: false, ...plan },
+  plan: { kind: null, monthlyCents: null, endsAt: null, endingFree: false, agreedCents: null, ...plan },
 });
 const family = (parentId: string, children: CostChild[], more: Partial<CostFamily> = {}): CostFamily => ({
   parentId, name: `Family ${parentId}`, email: null, timeZone: "America/Vancouver", postal: null, isTest: false, children, ...more,
@@ -116,16 +116,72 @@ describe("cost per child", () => {
     expect(v.physical).toMatchObject({ budgetCents: 1503, budget: [{ name: "Printing", cents: 1503, entries: 1 }] });
   });
 
-  it("charges an ending plan until its end, and a free ending plan nothing", async () => {
+  it("charges an ending plan its agreed price until its end, and a free ending plan nothing", async () => {
     const reader = memoryUnitCostReader({
       families: [family("p1", [
-        child("a", { kind: "ending", endsAt: "2026-11-20T00:00:00Z" }),
+        child("a", { kind: "ending", endsAt: "2026-11-20T00:00:00Z", agreedCents: PLAN_PRICE_CENTS }),
         child("b", { kind: "ending", endsAt: "2026-11-20T00:00:00Z", endingFree: true }),
         child("c", { kind: "ending", endsAt: "2026-10-20T00:00:00Z" }),
       ])],
     });
     const v = await read(reader);
     expect(v.rows.map((r) => [r.childId, r.paidCents])).toEqual([["a", PLAN_PRICE_CENTS]]);
+  });
+
+  it("keeps a sibling's agreed price when its plan is cancelled (the stored price is cleared)", async () => {
+    // planColumns: a paying sibling stores 5999; after cancel the row is ending with no price. The plan start keeps 5999.
+    const paying = child("a", { kind: "paying", monthlyCents: 5999, agreedCents: 5999 });
+    const ending = child("a", { kind: "ending", endsAt: "2026-11-20T18:00:00Z", agreedCents: 5999 });
+    const before = await read(memoryUnitCostReader({ families: [family("p1", [paying])] }));
+    const after = await read(memoryUnitCostReader({ families: [family("p1", [ending])] }));
+    expect(before.totals.paidCents).toBe(5999);
+    expect(after.totals.paidCents).toBe(5999);
+    expect(after.rows[0]).toMatchObject({ paidCents: 5999, marginCents: 5999 });
+  });
+
+  it("shows an unknown price as unknown, never the plan price, and leaves it out of the margin and the average", async () => {
+    const reader = memoryUnitCostReader({
+      families: [family("p1", [
+        child("a", { kind: "ending", endsAt: "2026-11-20T18:00:00Z" }),
+        child("b", { kind: "paying" }),
+        child("c", { kind: "paying", monthlyCents: 7999 }),
+      ])],
+      ai: [
+        { parentId: "p1", childId: "a", at: "2026-11-05T18:00:00Z", provider: "openrouter", costUsd: 1 },
+        { parentId: "p1", childId: "c", at: "2026-11-05T18:00:00Z", provider: "openrouter", costUsd: 2 },
+      ],
+    });
+    const v = await read(reader);
+    const by = new Map(v.rows.map((r) => [r.childId, r]));
+    expect(by.get("a")).toMatchObject({ paidCents: null, marginCents: null, totalCents: 140 });
+    expect(by.get("b")).toMatchObject({ paidCents: null, marginCents: null });
+    expect(v.totals).toMatchObject({ costCents: 140 + 280, paidCents: 7999, marginCents: 7999 - 280, unknownPaid: 2 });
+    expect(v.paying).toMatchObject({ children: 1, avgCostCents: 280 });
+  });
+
+  it("rounds each exact half-cent conversion up at rate 1.40 (20 cases)", async () => {
+    const wrong: { usd: number; actual: number; expected: number }[] = [];
+    for (let milliUsd = 25; milliUsd < 1000; milliUsd += 50) {
+      const v = await read(memoryUnitCostReader({
+        families: [family("p1", [child("a")])],
+        ai: [{ parentId: "p1", childId: "a", at: "2026-11-05T18:00:00Z", provider: "openrouter", costUsd: milliUsd / 1000 }],
+      }));
+      // Exact cents: milliUsd x 14 / 100, each a half-cent tie, rounded half up.
+      const expected = Math.floor((milliUsd * 14 + 50) / 100);
+      if (v.rows[0].totalCents !== expected || v.rows[0].aiCents !== expected) wrong.push({ usd: milliUsd / 1000, actual: v.rows[0].totalCents, expected });
+    }
+    expect(wrong).toEqual([]);
+  });
+
+  it("reads the budget tracker's printing total even when every family is left out", async () => {
+    const reader = memoryUnitCostReader({
+      families: [family("p1", [child("a")], { isTest: true })],
+      budget: [{ name: "Printing", date: "2026-11-04", cents: 1503 }],
+    });
+    const v = await read(reader);
+    expect(v.rows).toEqual([]);
+    expect(v.physical.budgetCents).toBe(1503);
+    expect(reader.asked).toEqual([[]]);
   });
 });
 
@@ -139,7 +195,8 @@ describe("months and parsing", () => {
   it("reads the functions' JSON, with numbers as strings", () => {
     const f = parseFamilies([{ parent_id: "p", is_test: true, children: [{ id: "c", first_name: "Ann", plan_kind: "paying", monthly_cents: "7999" }] }, { name: "no id" }]);
     expect(f).toHaveLength(1);
-    expect(f[0]).toMatchObject({ isTest: true, children: [{ firstName: "Ann", plan: { kind: "paying", monthlyCents: 7999 } }] });
+    expect(f[0]).toMatchObject({ isTest: true, children: [{ firstName: "Ann", plan: { kind: "paying", monthlyCents: 7999, agreedCents: null } }] });
+    expect(parseFamilies([{ parent_id: "p", children: [{ id: "c", plan_kind: "ending", agreed_cents: "5999" }] }])[0].children[0].plan.agreedCents).toBe(5999);
     const s = parseSums({ sums: [{ parent_id: "p", child_id: null, ai_usd: "0.5089", voice_micros: 10 }], budget: [{ name: "Printing", cents: 6045, entries: 4 }] });
     expect(s.sums[0]).toMatchObject({ childId: null, aiUsd: 0.5089, voiceMicros: 10, calls: 0 });
     expect(s.budget).toEqual([{ name: "Printing", cents: 6045, entries: 4 }]);

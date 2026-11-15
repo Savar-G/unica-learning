@@ -12,6 +12,7 @@ import "./admin-pages.css";
 const SUBSCRIPTION_TEXT = "subscription, not in the total";
 const monthName = (month: string) => formatCalendarDate(`${month}-01`, { month: "long", year: "numeric" });
 const money = (cents: number) => (cents < 0 ? `-${cadCents(-cents)}` : cadCents(cents));
+const maybeMoney = (cents: number | null) => (cents === null ? "unknown" : money(cents));
 
 export function ChildUnitCostPage({ view, monthKey, error }: { view: UnitCostView | null; monthKey: MonthKey; error?: string | null }) {
   const pills = MONTHS.map((m) => ({ key: m.key, href: m.key === "0" ? CHILD_COST_PATH : `${CHILD_COST_PATH}?month=${m.key}`, label: m.label, current: m.key === monthKey }));
@@ -29,8 +30,8 @@ export function ChildUnitCostPage({ view, monthKey, error }: { view: UnitCostVie
       {top}
       <Tiles label="Totals" tiles={[
         { key: "cost", label: "Total cost", value: money(t.costCents), sub: `${monthName(view.month)}, each family's own month` },
-        { key: "paid", label: "Paid", value: money(t.paidCents), sub: "from the stored plan state" },
-        { key: "margin", label: "Margin", value: money(t.marginCents), sub: "paid minus total cost" },
+        { key: "paid", label: "Paid", value: money(t.paidCents), sub: t.unknownPaid ? `from the stored plan state; ${t.unknownPaid} with an unknown price left out` : "from the stored plan state" },
+        { key: "margin", label: "Margin", value: money(t.marginCents), sub: t.unknownPaid ? "paid minus total cost, without the unknown prices" : "paid minus total cost" },
         { key: "sub", label: "Subscription calls", value: t.subscriptionCalls.toLocaleString("en-CA"), sub: SUBSCRIPTION_TEXT },
       ]} />
       <p className="ai-note">
@@ -74,8 +75,8 @@ export function ChildUnitCostPage({ view, monthKey, error }: { view: UnitCostVie
               <td className="adm-num">{money(r.voiceCents)}</td>
               <td className="adm-num">{money(r.physicalCents)}{r.workbooks > 0 && <span className="ai-sub ai-block">{r.workbooks} shipped</span>}</td>
               <td className="adm-num"><b>{money(r.totalCents)}</b></td>
-              <td className="adm-num">{money(r.paidCents)}</td>
-              <td className="adm-num">{money(r.marginCents)}</td>
+              <td className="adm-num">{maybeMoney(r.paidCents)}</td>
+              <td className="adm-num">{maybeMoney(r.marginCents)}</td>
             </tr>
           ))}
         </Table>

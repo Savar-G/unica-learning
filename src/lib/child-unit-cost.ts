@@ -4,8 +4,8 @@
 //
 // Pure: no database, no clock (the caller passes `now`), no network. The reads go through the reader seam (`UnitCostReader`):
 // the Supabase reader in child-unit-cost-store.ts, the in-memory reader in child-unit-cost-memory.ts. Money is whole cents
-// in the view, as in budget.ts. The parts are added exactly (US dollars at the one rate MAYA_USD_TO_CAD, and CAD micros) and
-// each total is rounded once.
+// in the view, as in budget.ts. The parts are added exactly in integers (US dollars at the one rate MAYA_USD_TO_CAD, and CAD
+// micros) and each total is rounded once, half up.
 import { PACIFIC_ZONE, addMonths, familyProvince, familyZone, localDateTime, localMonth } from "@/lib/family-time";
 import { PLANS } from "@/lib/site";
 import { planTerms } from "@/lib/subscription-plan";
@@ -22,8 +22,6 @@ export const WORKBOOK_PHYSICAL_COST_CENTS = Math.round(WORKBOOK_PHYSICAL_COST_CA
 
 /** The plan's monthly price (CAD 79.99), in cents: the line the average cost per paying child is held against. */
 export const PLAN_PRICE_CENTS = planTerms(PLANS.one.price).monthlyCents;
-
-export const MICROS_PER_CENT = 10_000;
 
 export const MONTHS = [
   { key: "0", label: "This month" },
@@ -48,6 +46,11 @@ export interface CostPlan {
   monthlyCents: number | null;
   endsAt: string | null;
   endingFree: boolean;
+  /**
+   * The price the child's newest started plan was admitted at (plan_starts.monthly_cents), in cents, or null. A cancelled
+   * plan's stored row loses its price, and a sibling pays less than the plan price, so this keeps the agreed price.
+   */
+  agreedCents: number | null;
 }
 export interface CostChild { id: string; firstName: string; createdAt: string; province: string | null; plan: CostPlan }
 export interface CostFamily {
@@ -103,8 +106,9 @@ export interface ChildMonth {
   physicalCents: number;
   /** All of the above, rounded once. */
   totalCents: number;
-  paidCents: number;
-  marginCents: number;
+  /** Null: the plan charged, but its price is not known (no stored or agreed price). Left out of the totals and the average. */
+  paidCents: number | null;
+  marginCents: number | null;
   calls: number;
   subscriptionCalls: number;
   unpricedCalls: number;
@@ -113,7 +117,7 @@ export interface UnitCostView {
   month: string;
   rate: number;
   rows: ChildMonth[];
-  totals: { costCents: number; paidCents: number; marginCents: number; subscriptionCalls: number; unpricedCalls: number };
+  totals: { costCents: number; paidCents: number; marginCents: number; subscriptionCalls: number; unpricedCalls: number; unknownPaid: number };
   /** Children whose plan charged this month: their count and their average cost, against the plan price. */
   paying: { children: number; avgCostCents: number | null; priceCents: number };
   physical: { workbooks: number; estimateCents: number; budget: BudgetLine[]; budgetCents: number };
@@ -136,21 +140,33 @@ const PLAN_LABEL: Record<string, string> = {
 
 /**
  * What the child's plan charged in the month, in cents, from the stored plan state. A free month is 0. A plan that is ending
- * charged its price when the month started before its end and it was not a free month; the stored row of an ending plan has
- * no price, so the plan price is used. Every other state is 0.
+ * charged its price when the month started before its end and it was not a free month. The price is the stored monthly price,
+ * else the agreed price of the child's plan start (the stored row of an ending plan has no price, and a sibling pays less
+ * than the plan price). With neither, the price is not known: null, never the plan price. Every other state is 0.
  */
-export function paidInMonth(plan: CostPlan, monthFrom: string): number {
+export function paidInMonth(plan: CostPlan, monthFrom: string): number | null {
   switch (plan.kind) {
-    case "paying": return plan.monthlyCents ?? PLAN_PRICE_CENTS;
+    case "paying": return plan.monthlyCents ?? plan.agreedCents ?? null;
     case "ending":
       if (plan.endingFree || !plan.endsAt || Date.parse(plan.endsAt) <= Date.parse(monthFrom)) return 0;
-      return plan.monthlyCents ?? PLAN_PRICE_CENTS;
+      return plan.monthlyCents ?? plan.agreedCents ?? null;
     default: return 0;
   }
 }
 
-const roundMicros = (micros: number): number => Math.round(micros / MICROS_PER_CENT);
-const usdMicros = (usd: number, rate: number): number => usd * rate * 1_000_000;
+// Exact money: US dollars in nano-dollars, the rate in millionths, CAD micros; all BigInt. One CAD cent is 10^13 of the
+// product units (nano-USD x rate millionths = 10^-15 CAD). Each total is rounded once, half up (half away from zero).
+const UNITS_PER_CENT = BigInt(10) ** BigInt(13);
+const UNITS_PER_CAD_MICRO = BigInt(10) ** BigInt(9);
+const nanoUsd = (usd: number): bigint => BigInt(Math.round(usd * 1e9));
+const rateMillionths = (rate: number): bigint => BigInt(Math.round(rate * 1e6));
+const microsUnits = (micros: number): bigint => BigInt(Math.round(micros)) * UNITS_PER_CAD_MICRO;
+const roundUnits = (units: bigint): number => {
+  const neg = units < BigInt(0);
+  const abs = neg ? -units : units;
+  const cents = Number((abs + UNITS_PER_CENT / BigInt(2)) / UNITS_PER_CENT);
+  return neg ? -cents : cents;
+};
 
 /** The view of one month from the families, their sums and the budget lines. */
 export function buildView(input: {
@@ -168,17 +184,17 @@ export function buildView(input: {
     const paid = child ? paidInMonth(child.plan, from) : 0;
     const workbooks = s?.workbooksShipped ?? 0;
     const physical = workbooks * WORKBOOK_PHYSICAL_COST_CENTS;
-    const aiMicros = usdMicros(s?.aiUsd ?? 0, rate) + (s?.mayaModelMicros ?? 0);
-    const voiceMicros = (s?.speechMicros ?? 0) + (s?.voiceMicros ?? 0);
-    const total = roundMicros(aiMicros + voiceMicros) + physical;
+    const aiUnits = nanoUsd(s?.aiUsd ?? 0) * rateMillionths(rate) + microsUnits(s?.mayaModelMicros ?? 0);
+    const voiceUnits = microsUnits(s?.speechMicros ?? 0) + microsUnits(s?.voiceMicros ?? 0);
+    const total = roundUnits(aiUnits + voiceUnits) + physical;
     const calls = s?.calls ?? 0;
     if (!s && paid === 0 && child?.plan.kind !== "free_month") return null;
     if (s && total === 0 && calls === 0 && workbooks === 0 && paid === 0 && child?.plan.kind !== "free_month") return null;
     return {
       parentId: f.parentId, familyName: f.name || f.email || "Family", childId: child?.id ?? null, childName: child ? child.firstName : "No child named",
       plan: child ? (child.plan.kind ? PLAN_LABEL[child.plan.kind] ?? child.plan.kind : "no plan") : "-",
-      aiCents: roundMicros(aiMicros), voiceCents: roundMicros(voiceMicros), workbooks, physicalCents: physical,
-      totalCents: total, paidCents: paid, marginCents: paid - total,
+      aiCents: roundUnits(aiUnits), voiceCents: roundUnits(voiceUnits), workbooks, physicalCents: physical,
+      totalCents: total, paidCents: paid, marginCents: paid === null ? null : paid - total,
       calls, subscriptionCalls: s?.subscriptionCalls ?? 0, unpricedCalls: s?.unpricedCalls ?? 0,
     };
   };
@@ -193,26 +209,29 @@ export function buildView(input: {
       if (r) rows.push(r);
     }
   }
-  rows.sort((a, b) => b.totalCents - a.totalCents || a.marginCents - b.marginCents || a.familyName.localeCompare(b.familyName));
-  const sum = (pick: (r: ChildMonth) => number) => rows.reduce((t, r) => t + pick(r), 0);
-  const paying = rows.filter((r) => r.childId && r.paidCents > 0);
+  rows.sort((a, b) => b.totalCents - a.totalCents || (a.marginCents ?? 0) - (b.marginCents ?? 0) || a.familyName.localeCompare(b.familyName));
+  const sum = (pick: (r: ChildMonth) => number | null) => rows.reduce((t, r) => t + (pick(r) ?? 0), 0);
+  const paying = rows.filter((r) => r.childId && r.paidCents !== null && r.paidCents > 0);
   const budgetCents = input.budget.reduce((t, b) => t + b.cents, 0);
   const workbooks = sum((r) => r.workbooks);
   return {
     month: input.month, rate, rows,
-    totals: { costCents: sum((r) => r.totalCents), paidCents: sum((r) => r.paidCents), marginCents: sum((r) => r.marginCents), subscriptionCalls: sum((r) => r.subscriptionCalls), unpricedCalls: sum((r) => r.unpricedCalls) },
+    totals: { costCents: sum((r) => r.totalCents), paidCents: sum((r) => r.paidCents), marginCents: sum((r) => r.marginCents), subscriptionCalls: sum((r) => r.subscriptionCalls), unpricedCalls: sum((r) => r.unpricedCalls), unknownPaid: rows.filter((r) => r.paidCents === null).length },
     paying: { children: paying.length, avgCostCents: paying.length ? Math.round(paying.reduce((t, r) => t + r.totalCents, 0) / paying.length) : null, priceCents: PLAN_PRICE_CENTS },
     physical: { workbooks, estimateCents: workbooks * WORKBOOK_PHYSICAL_COST_CENTS, budget: [...input.budget], budgetCents },
     pastMonth: input.month !== localMonth(input.now, PACIFIC_ZONE),
   };
 }
 
-/** Reads one month through the seam: the families first (for their zones), then the sums inside each family's month. */
+/**
+ * Reads one month through the seam: the families first (for their zones), then the sums inside each family's month. The
+ * sums are read even with no family left, because the budget tracker's printing and postage total does not depend on them.
+ */
 export async function readChildUnitCost(reader: UnitCostReader, opts: { month: string; rate: number; withTests: boolean; now: number }): Promise<UnitCostView> {
   const all = await reader.families();
   const families = all.filter((f) => opts.withTests || !f.isTest);
   const bounds = familyBounds(families, opts.month);
-  const { sums, budget } = bounds.length ? await reader.sums(bounds, opts.month) : { sums: [], budget: [] };
+  const { sums, budget } = await reader.sums(bounds, opts.month);
   return buildView({ families, bounds, sums, budget, ...opts });
 }
 
@@ -237,7 +256,8 @@ export function parseFamilies(raw: unknown): CostFamily[] {
         if (!id) return [];
         return [{
           id, firstName: str(c.first_name) ?? "Child", createdAt: str(c.created_at) ?? "", province: str(c.province),
-          plan: { kind: str(c.plan_kind), monthlyCents: c.monthly_cents === null || c.monthly_cents === undefined ? null : num(c.monthly_cents), endsAt: str(c.ends_at), endingFree: c.ending_free === true },
+          plan: { kind: str(c.plan_kind), monthlyCents: c.monthly_cents === null || c.monthly_cents === undefined ? null : num(c.monthly_cents), endsAt: str(c.ends_at), endingFree: c.ending_free === true,
+            agreedCents: c.agreed_cents === null || c.agreed_cents === undefined ? null : num(c.agreed_cents) },
         }];
       }),
     }];

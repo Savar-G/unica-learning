@@ -5059,6 +5059,36 @@ export type Database = {
           },
         ]
       }
+      team_digest_days: {
+        Row: {
+          claimed_at: string
+          day: string
+          email_id: string | null
+          error: string | null
+          state: string
+          updated_at: string
+          weekly: boolean
+        }
+        Insert: {
+          claimed_at?: string
+          day: string
+          email_id?: string | null
+          error?: string | null
+          state?: string
+          updated_at?: string
+          weekly?: boolean
+        }
+        Update: {
+          claimed_at?: string
+          day?: string
+          email_id?: string | null
+          error?: string | null
+          state?: string
+          updated_at?: string
+          weekly?: boolean
+        }
+        Relationships: []
+      }
       test_accounts: {
         Row: {
           marked_at: string
