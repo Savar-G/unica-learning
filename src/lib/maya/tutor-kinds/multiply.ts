@@ -9,6 +9,7 @@ import { workedSteps, type MissingNumberStep, type OperationPackage, type Worked
 import { missingWork, readPrinted } from "../missing-number";
 import { sayNumbers } from "../say-check";
 import { plainTeaching } from "../tutor";
+import { exactValue, guardedProblems, type KindRead } from "../tutor-math";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, type TutorStepFact } from "../tutor-kind";
 import { clauseAt } from "./clauses";
 import { countedInText, finalQuestion, isGroup, THING } from "./asks";
@@ -546,7 +547,12 @@ const REL = String.raw`\s+(?:is|are|makes|make|equals|=|gives)\s+`;
  * (fail closed): "the missing number is sixty-seven" is read and refused; "2 goes into it a few times" is refused.
  */
 function claimProblems(pkg: OperationPackage, sentence: string): string[] {
-  const problems: string[] = [];
+  // Final check 12: every refusal passes the one full-read guard (tutor-math.ts guardedProblems).
+  return guardedProblems(claimReads(pkg, sentence));
+}
+
+function claimReads(pkg: OperationPackage, sentence: string): (string | KindRead)[] {
+  const problems: (string | KindRead)[] = [];
   const answer = answerOf(pkg);
   const text = digitsOf(sentence);
 
@@ -556,19 +562,27 @@ function claimProblems(pkg: OperationPackage, sentence: string): string[] {
   const missing = readAll(text, missingCue, /\b(?:the )?missing (?:number|factor)\s+(?:is|=|equals|must be|has to be)\s+(\d+)\b(?!\s*(?:[×x*÷/+\-]|times|divided|plus|minus))|\b(\d+)\s+is (?:the )?missing (?:number|factor)\b/g);
   for (const m of missing.matches) {
     const n = Number(m[1] ?? m[2]);
-    if (n !== answer) problems.push(`it says ${n} is the missing number, but it is ${answer}`);
+    if (n !== answer) problems.push({ problem: `it says ${n} is the missing number, but it is ${answer}`, text, at: m.index!, end: m.index! + m[0].length });
   }
   // Only a clause that asks claims nothing: "The missing number is definitely 671, shall we write it?" states it first
-  // (pre-launch review B, F11).
-  if (missing.unread.some((at) => !clauseAt(text, at).asks)) problems.push("it names the missing number in a form code cannot read");
+  // (pre-launch review B, F11). Final check 12: a form this reader does not match is not proof that the sentence is
+  // false: the cue alone is the span, so a number or an operator after it ("is 671 minus 1") leaves it to the review.
+  for (const at of missing.unread) {
+    if (clauseAt(text, at).asks) continue;
+    const cue = /missing (?:number|factor)/.exec(text.slice(at))!;
+    problems.push({ problem: "it names the missing number in a form code cannot read", text, at, end: at + cue[0].length });
+  }
 
   // Halves and doubles: "half of 1340 is 670", "double 670 is 1340", "twice 20 is 40", "670 is half of 1340".
   const halfCue = /\b(?:half|halves|double|doubles|twice)\b/g;
   const halves = readAll(text, halfCue, new RegExp(String.raw`\b(half|double|twice) of (\d+)${REL}(\d+)\b|\b(double|twice) (\d+)${REL}(\d+)\b|\b(\d+)${REL}(half|double|twice) (?:of )?(\d+)\b`, "g"));
   for (const m of halves.matches) {
     const [kind, x, z] = m[1] ? [m[1], Number(m[2]), Number(m[3])] : m[4] ? [m[4], Number(m[5]), Number(m[6])] : [m[8], Number(m[9]), Number(m[7])];
-    const want = kind === "half" ? x / 2 : x * 2;
-    if (want !== z) problems.push(`it says ${kind} of ${x} is ${z}, but it is ${want}`);
+    // Final check 12: the one shared evaluator, exact both ways: half of x is z when 2 × z is x ("half of 13 is 13" is
+    // false, with no fraction to compute); double x is z when 2 × x is z.
+    const holds = kind === "half" ? exactValue([z, 2], ["*"]) === x : exactValue([x, 2], ["*"]) === z;
+    const want = kind === "half" ? (x % 2 === 0 ? String(x / 2) : `${x} halves`) : String(exactValue([x, 2], ["*"]));
+    if (!holds) problems.push({ problem: `it says ${kind} of ${x} is ${z}, but it is ${want}`, text, at: m.index!, end: m.index! + m[0].length });
   }
   if (!halves.whole && /\b(?:half|halves|double|doubles|twice)\b\s*(?:of\s+)?[\d#]|[\d#]\s*(?:is|are)\s+(?:half|double|twice)\b/.test(text)) problems.push("it says half or double in a form code cannot read");
 
@@ -581,7 +595,7 @@ function claimProblems(pkg: OperationPackage, sentence: string): string[] {
     const r = m[4] ?? m[5] ?? m[6] ?? m[7];
     // What the sentence says after this claim, up to its end or the next "goes into".
     const after = text.slice(m.index! + m[0].length).split(/[.;!?]|\bgo(?:es)? into\b/)[0];
-    if (d === 0 || Math.floor(n / d) !== q) problems.push(`it says ${d} goes into ${n} ${q} times, but it is ${d === 0 ? "no" : Math.floor(n / d)} times`);
+    if (d === 0 || Math.floor(n / d) !== q) problems.push({ problem: `it says ${d} goes into ${n} ${q} times, but it is ${d === 0 ? "no" : Math.floor(n / d)} times`, text, at: m.index!, end: m.index! + m[0].length });
     else if (r !== undefined && Number(r) !== n % d) problems.push(`it says ${d} goes into ${n} with ${r} left, but ${n % d} is left`);
     // A remainder said in a form not read above ("and 2 left over" as "and there are 2 left over", "so the remainder
     // is 2", "with 2 more") is refused: the whole remainder clause is read or refused (pre-launch review B, F07).
@@ -590,7 +604,7 @@ function claimProblems(pkg: OperationPackage, sentence: string): string[] {
   if (!goes.whole) problems.push("it says \"goes into\" in a form code cannot read");
 
   // "? = 670" or "the ? is 670": the ? is the missing number.
-  for (const m of text.matchAll(/\?\s*(?:=|is)\s*(\d+)\b/g)) if (Number(m[1]) !== answer) problems.push(`it says the ? is ${m[1]}, but it is ${answer}`);
+  for (const m of text.matchAll(/\?\s*(?:=|is)\s*(\d+)\b/g)) if (Number(m[1]) !== answer) problems.push({ problem: `it says the ? is ${m[1]}, but it is ${answer}`, text, at: m.index!, end: m.index! + m[0].length });
 
   return problems;
 }

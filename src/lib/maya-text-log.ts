@@ -1,5 +1,6 @@
 // Persistent transition rules for the text adapter. No provider, clock, promise or abort signal enters this fold.
 import { applyBatch, createScene, type Batch, type Scene } from "@/lib/board";
+import { withEmittedHelp, type Assistance } from "@/lib/maya/session";
 import { BOARD_FATES, nextActs, speechKey, step, TIME_LIMITS, SAFETY_GUIDANCE, type Act, type BoardFate, type Effect, type MathReview, type Session, type SessionEvent, type TalkReview } from "@/lib/maya";
 import { type TraceAttempt, type TraceBoardBatch, type TraceError, type TraceObligation, type TraceTurn } from "@/lib/maya-trace";
 import type { TextOutput } from "@/lib/maya-text";
@@ -26,7 +27,12 @@ export type TextLogEvent =
   | { kind: "cancelled"; at: number }
   | { kind: "delivered"; at: number }
   /** B1: what the child's screen did with board batches Maya sent (boardFates), by transaction id. */
-  | { kind: "fates"; at: number; fates: { batchId: string; fate: BoardFate }[] };
+  | { kind: "fates"; at: number; fates: { batchId: string; fate: BoardFate }[] }
+  /**
+   * Final check 12 (2026-11-15): the help a sentence gave, written the moment it was emitted to the child (the help
+   * ledger). Cancellation, a deadline, a hang-up, a replacement turn and an error never take it back.
+   */
+  | { kind: "help"; at: number; assistance: Assistance };
 
 /** `ties` (B2): the sentence each batch is tied to, by transaction id; a batch not in it goes at the end of the turn. */
 type PendingOutput = { entry: Extract<TraceTurn, { kind: "maya" }>; act: Act; say: string[]; batches: Batch[]; ties?: Record<string, number>; obligations: number[]; control: number };
@@ -424,7 +430,12 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
       if (s.request?.id !== e.requestId) break;
       const source = s.request.source;
       const filler = s.request.filler ? { filler: s.request.filler } : {};
-      if (e.sent?.length) s.sent = [...(s.sent ?? []), ...e.sent];
+      if (e.sent?.length) {
+        s.sent = [...(s.sent ?? []), ...e.sent];
+        // Final check 11 (2026-11-15): the single point where streamed sentences are accepted. Their help is in the session
+        // now, before this response or any later input (an error, a priority reading, a stop, the end) builds an outcome.
+        s.session = withEmittedHelp(s.session, s.sent);
+      }
       if (e.error) {
         s.attempts.push({ source, proposal: null, refusal: null, error: e.error, ms: e.ms, ...(e.firstSayMs !== undefined ? { firstSayMs: e.firstSayMs } : {}), ...filler });
         s.request = null;
@@ -450,6 +461,8 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
     case "fallback": proposal(s, e.proposal, e.at, { source: "fallback", proposal: e.proposal, refusal: null }); break;
     case "recover": if (!s.candidate) s.request = null; break;
     case "cancelled": s.output.cancelled = false; break;
+    // A control, so a cancellation's replay keeps it.
+    case "help": s.session = controllerStep(s, { type: "help", at: e.at, assistance: e.assistance }).session; break;
     case "delivered": {
       const last = s.turns.at(-1);
       const terminalTurn = last && ["hang_up", "technical"].includes(last.kind) ? s.turns.pop() : undefined;

@@ -7,6 +7,7 @@
 import type { OperationPackage, WorkedStep } from "@/lib/question-package";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, type TutorStepFact } from "../tutor-kind";
 import { countedInText, finalQuestion, isGroup, sentencesIn, THING, WHO, WORD as FREE } from "./asks";
+import { exactValue } from "../tutor-math";
 
 type OperateStep = Extract<WorkedStep, { kind: "operate" }>;
 type Sign = OperateStep["op"];
@@ -16,10 +17,9 @@ const KEY: Record<Sign, string> = { "+": "+", "−": "-", "×": "*", "÷": "/" }
 
 /** One sign applied to two whole numbers, or null when it leaves the whole numbers. */
 function apply(a: number, sign: Sign, b: number): number | null {
-  if (sign === "+") return a + b;
-  if (sign === "−") return a - b >= 0 ? a - b : null;
-  if (sign === "×") return a * b;
-  return b !== 0 && a % b === 0 ? a / b : null;
+  // Final check 12: the one shared evaluator (safe whole numbers, exact division); a difference stays a whole number.
+  const v = exactValue([a, b], [sign === "+" ? "+" : sign === "−" ? "-" : sign === "×" ? "*" : "/"]);
+  return v === null || v < 0 ? null : v;
 }
 
 type Token = number | Sign | "(" | ")";

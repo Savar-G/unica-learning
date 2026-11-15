@@ -74,7 +74,7 @@ import { createHistory, inkLog, mayaWrites, readInkEvent, withChildInk, withInkL
 import { fitView, type PlayStep } from "@/lib/board-svg";
 import type { LearningEvents, NewLearningEvent } from "@/lib/learning-events";
 import type { NoteStep } from "@/lib/maya-call-note";
-import { clearStop, heardWordings, learningEvent, limitsOf, mayaPackageCheck, nextActs, SAFETY_GUIDANCE, sentenceCueWord, streamPlan, type Outcome, type Session, type Severity, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
+import { clearStop, heardWordings, learningEvent, limitsOf, mayaPackageCheck, nextActs, SAFETY_GUIDANCE, sentenceCueWord, streamPlan, type Assistance, type Outcome, type Session, type Severity, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
 import { createHandleDiagnosticIds } from "@/lib/maya-handle-diagnostic";
 import type { PrepareRecord } from "@/lib/maya-prepared";
 import { withRequestContext } from "@/lib/maya-request-trace";
@@ -82,7 +82,7 @@ import { modelInput, type MayaModel } from "@/lib/maya-model";
 import type { TalkReviewer } from "@/lib/maya-talk-review";
 import type { MathReviewer } from "@/lib/maya-math-review";
 import { snapshotFates } from "@/lib/board-fate";
-import { createTextSession, readFateReports, type BoardFateReport, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession, type TextSessionOptions } from "@/lib/maya-text";
+import { createTextSession, readFateReports, withHelpLedger, type BoardFateReport, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession, type TextSessionOptions } from "@/lib/maya-text";
 import { packageHash, type MayaTrace } from "@/lib/maya-trace";
 import { type QuestionPackage, type QuestionRef } from "@/lib/question-package";
 import { teachingPackage } from "@/lib/maya-teaching";
@@ -844,10 +844,11 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
    * leaves unread get one safety read; guidance due comes first, then code's closing line, and nothing else is said.
    * What reached the child before stays as it was. Null on a conflict.
    */
-  async function closeAtCap(record: CallRecord, state: Exclude<SpendState, "open">, childName: string | null, extra?: (endedAt: number) => Promise<CallChange>, childText?: string): Promise<{ record: CallRecord; say: string[]; safetyMessage: string | null; guidance?: string } | null> {
+  async function closeAtCap(record: CallRecord, state: Exclude<SpendState, "open">, childName: string | null, extra?: (endedAt: number) => Promise<CallChange>, childText?: string, help: readonly Assistance[] = []): Promise<{ record: CallRecord; say: string[]; safetyMessage: string | null; guidance?: string } | null> {
     const live = record.live!;
     const found = childText && !live.text.session.safety.flagged ? await safetyRead(record, childText) : null;
-    const session = textSession(record, live.package, found?.severity ? replay(record, found.proposal) : idleModel(record), childName, live.text);
+    // Final check 12: the help of every sentence the live session emitted (its ledger), also during the unsaved turn.
+    const session = textSession(record, live.package, found?.severity ? replay(record, found.proposal) : idleModel(record), childName, withHelpLedger(live.text, help));
     const before = session.session.safety;
     const owed = before.flagged && !before.guided && before.severity ? [SAFETY_GUIDANCE[before.severity]] : [];
     const heeded = found ? await heed(record, session, found, childText!) : { guidance: owed, change: {} };
@@ -1341,7 +1342,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           if (lost || record.status === "ended" || !record.live) return;
           // Close admission synchronously. A held settlement cannot delay the forced safety read or guidance.
           void stopBudget();
-          closed = await closeAtCap(record, state, name, connected, childText);
+          closed = await closeAtCap(record, state, name, connected, childText, session.helpLedger());
           if (!closed) { lose(true); }
           else record = closed.record;
         });
@@ -1557,7 +1558,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           later(async () => {
             if (lost || record.status === "ended" || !record.live) return;
             // Restore only accepted, saved work. An outstanding model answer cannot delay the deadline.
-            const final = textSession(record, pkg, idleModel(record), name, record.live.text);
+            // Final check 12: the help ledger of the live session, also for a turn whose model answer never came.
+            const final = textSession(record, pkg, idleModel(record), name, withHelpLedger(record.live.text, session.helpLedger()));
             await final.tick();
             const ended = await end(record, pkg, final, {}, connected, record.startedAt === null);
             if (!ended) { lose(true); }
@@ -1602,7 +1604,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           if (record.status === "live") {
             later(async () => {
               // A fatal close or hang-up must not wait for an unfinished model turn.
-              const final = textSession(record, pkg, idleModel(record), name, record.live!.text);
+              // Final check 12: the help ledger of the live session, also for a turn whose model answer never came.
+              const final = textSession(record, pkg, idleModel(record), name, withHelpLedger(record.live!.text, session.helpLedger()));
               const ended = await end(record, pkg, final, how, connected, record.startedAt === null);
               if (!ended) { lose(true); }
               else record = ended;

@@ -13,6 +13,7 @@
 // (e) Calm, no hype: a small list of hype words.
 // Each failure has a typed reason, which goes back to the model in the repair prompt.
 import { feelingClaim, plainLanguageProblem } from "./phrases";
+import { OPERATOR_PATTERN, RELATION_PATTERN, operatorOf, relationOf } from "./math-words";
 
 /** Why a reply was refused. */
 export const SAY_REASONS = [
@@ -157,6 +158,17 @@ const SCALES = new Set(["hundred", "thousand", "million", "billion", "trillion"]
  * (NaN): its clause stays unread, never read as another number. Never multiplies a value it read before by a scale.
  */
 function wordNumbers(text: string): WordNumber[] {
+  // Final check 11 (2026-11-15): a run never joins words across anything but spaces or a hyphen: an operator, a symbol,
+  // a comma or a clause mark between two groups ("two thousand × six hundred forty") makes two runs, never one value.
+  const found: WordNumber[] = [];
+  for (const piece of text.matchAll(/[a-z]+(?:[\s-]+[a-z]+)*/gi)) {
+    for (const w of wordRuns(piece[0])) found.push({ ...w, at: w.at + piece.index!, end: w.end + piece.index! });
+  }
+  return found;
+}
+
+/** The number-word runs of one stretch of words joined only by spaces or hyphens (wordNumbers). */
+function wordRuns(text: string): WordNumber[] {
   const found: WordNumber[] = [];
   const re = /[a-z]+/gi;
   const words: { w: string; at: number; end: number }[] = [];
@@ -236,6 +248,87 @@ function wordNumbers(text: string): WordNumber[] {
   return found;
 }
 
+/**
+ * Final check 10 (2026-11-15): the ONE standard number-word reader, for every path that turns number words into a value
+ * (Maya's sentences, the plain forms, the claim reader, the child's answer). The value of `words` when the whole text is
+ * one run of number words that makes one standard value ("seven thousand nine hundred ninety-nine", "a hundred"); null
+ * otherwise ("twenty hundred", "two thousand two thousand", "hundred", a word that is no number word).
+ */
+export function standardNumber(words: string): number | null {
+  const text = words.toLowerCase().trim().replace(/^an?(?=\s+(?:hundred|thousand)\b)/, "one");
+  if (!/^[a-z]+(?:[\s-]+[a-z]+)*$/.test(text)) return null;
+  const runs = wordNumbers(text);
+  if (runs.length !== 1 || Number.isNaN(runs[0].value)) return null;
+  const [run] = runs;
+  return run.at === 0 && run.end === text.length ? run.value : null;
+}
+
+/**
+ * Final check 10 (2026-11-15): the runs of number words in a text that make no one standard value ("twenty hundred",
+ * "two thousand two thousand"), with where they are. A clause that holds one is unread: Maya's words go to the math
+ * review, and the child's answer is "unknown".
+ */
+export function unreadNumberRuns(raw: string): { at: number; end: number; text: string }[] {
+  const text = raw.replace(/[−–]/g, "-");
+  return wordNumbers(text).filter((w) => Number.isNaN(w.value)).map((w) => ({ at: w.at, end: w.end, text: text.slice(w.at, w.end) }));
+}
+
+/**
+ * Final check 10 (2026-11-15): a sentence's key that ignores only its surface: case, quotes, dashes, spaces, every
+ * punctuation mark that is not inside a number, and number words against digits (each number token, read by the standard
+ * reader, is its value). Two sentences with the same key say the same thing: a terminal review result of one holds for
+ * the other.
+ */
+export function sentenceKey(raw: string): string {
+  const text = raw.replace(/[‘’ʼ]/g, "'").replace(/[−–]/g, "-").replace(/(\d),(?=\d{3}\b)/g, "$1").toLowerCase();
+  // Final check 12 (2026-11-15): the key is a function of the reader's tokens. Every number token of the standard reader
+  // (sayNumbers: digits, fractions, "a half", "6 halves", number words) is its exact value; a run of number words with no
+  // one standard value, and a number word the reader leaves without a value ("half" alone), are one shared UNREAD token;
+  // a lone "one" or "ten" the reader keeps as a count word is its value too. Operators and relations are one sign each.
+  const spans: { at: number; end: number; key: string }[] = [];
+  for (const t of sayNumbers(text)) spans.push({ at: t.at, end: t.end, key: t.q ? (t.q[1] === 1 ? String(t.q[0]) : `${t.q[0]}/${t.q[1]}`) : t.key.startsWith("?") ? UNREAD : t.key });
+  for (const w of wordNumbers(text)) {
+    if (spans.some((x) => w.at < x.end && w.end > x.at)) continue;
+    spans.push({ at: w.at, end: w.end, key: Number.isNaN(w.value) ? UNREAD : String(w.value) });
+  }
+  spans.sort((a, b) => a.at - b.at);
+  const parts: string[] = [];
+  const words = (piece: string) => {
+    for (const m of piece.matchAll(KEY_TOKEN)) {
+      // #1086: an operator or relation phrase of the reader's own table (math-words.ts) is one sign.
+      if (m[1] !== undefined) { const op = operatorOf(m[1]); parts.push(op === "*" ? "×" : op === "/" ? "÷" : op!); continue; }
+      if (m[2] !== undefined) { const rel = relationOf(m[2])!; parts.push(rel.negated ? "≠" : rel.now ? "→" : "="); continue; }
+      const w = m[0].replace(/'/g, "");
+      if (Object.hasOwn(DENOMINATORS, w) || SCALES.has(w)) parts.push(UNREAD);
+      else parts.push(w);
+    }
+  };
+  let at = 0;
+  for (const x of spans) {
+    words(text.slice(at, x.at));
+    parts.push(x.key);
+    at = x.end;
+  }
+  words(text.slice(at));
+  // #1086: the number reader reads "6 / 2" as one fraction (3); the same division in words ("6 divided by 2", "6 ÷ 2")
+  // is that fraction too, so every form of it has one key.
+  for (let k = 1; k + 1 < parts.length; k++) {
+    if (parts[k] !== "÷" || !/^-?\d+$/.test(parts[k - 1]) || !/^-?\d+$/.test(parts[k + 1]) || Number(parts[k + 1]) === 0) continue;
+    const [n, d] = rational(Number(parts[k - 1]), Number(parts[k + 1]));
+    parts.splice(k - 1, 3, d === 1 ? String(n) : `${n}/${d}`);
+    k--;
+  }
+  return parts.join(" ");
+}
+
+/** The one token of the key for every number word or run the reader cannot value. */
+const UNREAD = "?";
+/**
+ * #1086: the key's tokens: an operator phrase of the reader's table (group 1), a relation phrase of it (group 2), the
+ * longest phrase first and only as whole words, then any other word or mark.
+ */
+const KEY_TOKEN = new RegExp(String.raw`(?<![a-z'])(${OPERATOR_PATTERN})(?![a-z'])|(?<![a-z'])(${RELATION_PATTERN})(?![a-z'])|[a-z]+(?:'[a-z]+)*|[<>%]`, "gi");
+
 /** The numbers in a text: digits, decimals, fractions, clock times and number words, in order. */
 export function sayNumbers(raw: string): SayToken[] {
   const text = raw.replace(/[−–]/g, "-").replace(/(\d),(?=\d{3}\b)/g, "$1");
@@ -255,6 +348,14 @@ export function sayNumbers(raw: string): SayToken[] {
     const after = text.slice(end).trimStart().toLowerCase();
     // "10 ones", "1 ten": a place said as a count, never a value (the regroup is the same for every question).
     if ((m[0] === "10" && PLACE_PLURAL.test(after)) || (m[0] === "1" && PLACE_SINGULAR.test(after))) continue;
+    // Final check 12 (2026-11-15): a digit count of a denominator ("6 halves", "5 sixths") is one fraction, as "six
+    // halves" is: never its count alone.
+    const den = /^[\s-]+([a-z]+)/i.exec(text.slice(end));
+    if (den && Object.hasOwn(DENOMINATORS, den[1].toLowerCase())) {
+      const stop = end + den[0].length;
+      push({ ...fractionValue(Number(m[0]), DENOMINATORS[den[1].toLowerCase()]), at, end: stop, text: text.slice(at, stop) });
+      continue;
+    }
     push({ key: String(Number(m[0])), q: rational(Number(m[0]), 1), at, end, text: m[0] });
   }
   for (const w of wordNumbers(text)) {

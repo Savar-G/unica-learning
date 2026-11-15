@@ -6,6 +6,8 @@
 // Decimals (decimal-add, decimal-subtract) do not fit yet: the core's claim reader (tutor-math.ts) reads "2.5" as 2
 // and 5, so it refuses every true decimal equation, and the board's columns do not draw a decimal point.
 import type { OperationPackage, WorkedStep } from "@/lib/question-package";
+import { standardNumber } from "../say-check";
+import { exactValue, guardedProblems, type KindRead } from "../tutor-math";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, type TutorStepFact } from "../tutor-kind";
 import { clauseWith, countedInText, finalQuestion, isGroup, THING, WHO, WORD } from "./asks";
 
@@ -446,11 +448,8 @@ function wordNumber(word: string): number | null {
   const w = word.toLowerCase();
   if (/^\d+$/.test(w)) return Number(w);
   if (w === "a" || w === "an") return 1;
-  if (SMALL.includes(w)) return SMALL.indexOf(w);
-  const [t, u] = w.split(/[- ]/);
-  if (!TENS.includes(t)) return null;
-  const unit = u === undefined ? 0 : SMALL.indexOf(u);
-  return unit < 1 && u !== undefined ? null : (TENS.indexOf(t) + 2) * 10 + unit;
+  // Final check 10 (2026-11-15): number words go through the one standard reader.
+  return standardNumber(w);
 }
 
 const unitWorth = (unit: string) => {
@@ -458,7 +457,7 @@ const unitWorth = (unit: string) => {
   return u === "hundred thousand" ? 100000 : u === "ten thousand" ? 10000 : u === "thousand" ? 1000 : u === "hundred" ? 100 : u === "ten" ? 10 : 1;
 };
 
-type ClaimItem = { kind: "term"; value: number; place: number | null; unit: boolean } | { kind: "op"; sign: 1 | -1 } | { kind: "rel"; negated: boolean; now: boolean } | { kind: "and" } | { kind: "other" };
+type ClaimItem = { kind: "term"; value: number; place: number | null; unit: boolean } | { kind: "op"; sign: 1 | -1 } | { kind: "rel"; negated: boolean; now: boolean } | { kind: "and" } | { kind: "other"; word?: string };
 
 /**
  * The false claims of a sentence that names a thousands, ten thousands or hundred thousands place, read again here:
@@ -468,7 +467,8 @@ type ClaimItem = { kind: "term"; value: number; place: number | null; unit: bool
  * the carried 1, or both.
  */
 function claimProblems(pkg: OperationPackage, sentence: string): string[] {
-  return [...tradeProblems(sentence), ...relationProblems(pkg, sentence)];
+  // Final check 12: every refusal passes the one full-read guard (tutor-math.ts guardedProblems).
+  return guardedProblems([...tradeProblems(sentence), ...relationProblems(pkg, sentence)]);
 }
 
 /** A sentence that trades or swaps: each "Q for Q" in it is a trade, and its two quantities must be worth the same. */
@@ -484,25 +484,29 @@ const TRADE_PAIR = new RegExp(String.raw`(?:\b(?:${TRADE_VERB}|then|and)|,)\s+(?
  * The false trades of a sentence ("Trade 1 thousand for 100 hundreds", "trade 1 ten for 100 ones"): in a sentence with
  * a trade word, each pair of place quantities joined by "for", "into" or "as" must be worth the same. Every place.
  */
-function tradeProblems(sentence: string): string[] {
+function tradeProblems(sentence: string): KindRead[] {
   if (!TRADE_WORD.test(sentence)) return [];
   const text = sentence.replace(/(\d),(?=\d{3}\b)/g, "$1");
-  const problems: string[] = [];
+  const problems: KindRead[] = [];
   for (const m of text.matchAll(TRADE_PAIR)) {
     const [x, y] = [wordNumber(m[1]), wordNumber(m[3])];
     if (x === null || y === null) continue;
-    const [give, get] = [x * unitWorth(m[2]), y * unitWorth(m[4])];
-    if (give !== get) problems.push(`it trades ${give} for ${get}, which are not the same`);
+    const [give, get] = [exactValue([x, unitWorth(m[2])], ["*"]), exactValue([y, unitWorth(m[4])], ["*"])];
+    if (give === null || get === null) continue;
+    if (give !== get) problems.push({ problem: `it trades ${give} for ${get}, which are not the same`, text, at: m.index!, end: m.index! + m[0].length });
   }
   return problems;
 }
 
 /** The relations of a sentence that names a thousands or larger place (the kind's own second read). */
-function relationProblems(pkg: OperationPackage, sentence: string): string[] {
+function relationProblems(pkg: OperationPackage, sentence: string): KindRead[] {
   if (!BIG.test(sentence)) return [];
   const text = sentence.replace(/[−–]/g, "-").replace(/(\d),(?=\d{3}\b)/g, "$1");
   const items: ClaimItem[] = [];
+  /** Where each item is in `text`, for the full-read guard. */
+  const spans: [number, number][] = [];
   for (const m of text.matchAll(CLAIM_TOKEN)) {
+    const count = items.length;
     if (m[1] && /^(?:ten|hundred)$/i.test(m[1]) && /\bthe\s+$/i.test(text.slice(0, m.index))) {
       // "the ten thousands", "the hundred thousands": the name of a place, not a count of it.
       items.push({ kind: "other" });
@@ -512,13 +516,17 @@ function relationProblems(pkg: OperationPackage, sentence: string): string[] {
       // "and" between two place quantities joins them into one ("9 thousands and 10 hundreds").
       const prev = items.at(-1);
       const before = items.at(-2);
-      if (n !== null && prev?.kind === "and" && before?.kind === "term" && before.unit) {
+      // Final check 12: every product and sum through the one shared evaluator; a value it cannot hold is unread.
+      const worth = n === null ? null : exactValue([n, place], ["*"]);
+      if (worth !== null && prev?.kind === "and" && before?.kind === "term" && before.unit) {
         items.pop();
-        before.value += n * place;
+        const joined = exactValue([before.value, worth], ["+"]);
+        if (joined === null) { items.pop(); items.push({ kind: "other" }); continue; }
+        before.value = joined;
         before.place = null;
         continue;
       }
-      items.push(n === null ? { kind: "other" } : { kind: "term", value: n * place, place, unit: true });
+      items.push(worth === null ? { kind: "other" } : { kind: "term", value: worth, place, unit: true });
     } else if (m[3]) {
       const n = wordNumber(m[3]);
       items.push(n === null ? { kind: "other" } : { kind: "term", value: n, place: null, unit: false });
@@ -527,24 +535,32 @@ function relationProblems(pkg: OperationPackage, sentence: string): string[] {
       const r = m[5].toLowerCase();
       items.push({ kind: "rel", negated: /not|n't/.test(r), now: /\bnow\b|becom|became|turn/.test(r) });
     } else if (m[6]) items.push({ kind: "and" });
-    else if (!(m[7]?.toLowerCase() === "the")) items.push({ kind: "other" });
+    else if (!(m[7]?.toLowerCase() === "the")) items.push({ kind: "other", word: m[7]?.toLowerCase() });
+    // Keep the spans in step with the items: a pushed item gets its span; a joined quantity grows the span it joined.
+    const span: [number, number] = [m.index!, m.index! + m[0].length];
+    if (items.length > count) spans.push(span);
+    else if (items.length < count) { spans.length = items.length; if (items.length > 0) spans[items.length - 1] = [spans[items.length - 1][0], span[1]]; }
   }
   type Side = { value: number; place: number | null; unit: boolean; next: number };
   const side = (at: number): Side | null => {
     const first = items[at];
     if (first?.kind !== "term") return null;
-    let value = first.value;
+    const values = [first.value];
+    const ops: ("+" | "-")[] = [];
     let place = first.place;
     let unit = first.unit;
     let next = at + 1;
     while (items[next]?.kind === "op" && items[next + 1]?.kind === "term") {
       const t = items[next + 1] as Extract<ClaimItem, { kind: "term" }>;
-      value += (items[next] as Extract<ClaimItem, { kind: "op" }>).sign * t.value;
+      ops.push((items[next] as Extract<ClaimItem, { kind: "op" }>).sign > 0 ? "+" : "-");
+      values.push(t.value);
       unit ||= t.unit;
       place = null;
       next += 2;
     }
-    return { value, place, unit, next };
+    // Final check 12: the one shared evaluator; a side it cannot hold exactly is not read.
+    const value = exactValue(values, ops);
+    return value === null ? null : { value, place, unit, next };
   };
   const subtract = pkg.operation.kind === "subtract";
   const trade = (x: Side, y: Side) => {
@@ -554,7 +570,7 @@ function relationProblems(pkg: OperationPackage, sentence: string): string[] {
     const change = (after - x.value) / x.place;
     return subtract ? [10, -1, 9].includes(change) : [-10, 1, -9].includes(change);
   };
-  const problems: string[] = [];
+  const problems: KindRead[] = [];
   let i = 0;
   while (i < items.length) {
     const left = side(i);
@@ -562,11 +578,16 @@ function relationProblems(pkg: OperationPackage, sentence: string): string[] {
     const rel = items[left.next] as Extract<ClaimItem, { kind: "rel" }>;
     const right = side(left.next + 1);
     if (!right) { i = left.next + 1; continue; }
+    // Final check 12: a part of a longer number, an enclosing negation or scope and an unread continuation ("is seven
+    // thousand nine hundred ninety-nine", "It is not true that ...", "divided by 2") are left to the one full-read
+    // guard (claimProblems): such a claim is unread, never refused here.
+    const at = spans[i][0];
+    const end = spans[right.next - 1][1];
     // Only a claim that holds a place quantity: two plain numbers are the core's to read.
     if (left.unit || right.unit) {
       const equal = left.value === right.value || (rel.now && trade(left, right));
-      if (!rel.negated && !equal) problems.push(`it says ${left.value} and ${right.value} are the same`);
-      if (rel.negated && left.value === right.value) problems.push(`it says ${left.value} and ${right.value} are not the same`);
+      if (!rel.negated && !equal) problems.push({ problem: `it says ${left.value} and ${right.value} are the same`, text, at, end });
+      if (rel.negated && left.value === right.value) problems.push({ problem: `it says ${left.value} and ${right.value} are not the same`, text, at, end });
     }
     i = right.next;
   }

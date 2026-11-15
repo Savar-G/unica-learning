@@ -102,7 +102,13 @@ describe("F10: a carry that does not happen is not a value of the work", () => {
 
 describe("F11: a question at the end does not excuse an earlier statement", () => {
   it("refuses \"The answer is no, shall we circle it?\" when the answer is yes", () => refused(claim, "The answer is no, shall we circle it?", undefined, FIXTURES.CLAIM_GT));
-  it("refuses \"The missing number is definitely 671, shall we write it?\"", () => refused(div, "The missing number is definitely 671, shall we write it?"));
+  // Final check 12: a form the kind does not match is no proof that the sentence is false. It is refused, or it goes to
+  // the math review; never passed by code alone.
+  it("never passes \"The missing number is definitely 671, shall we write it?\" on code alone", () => {
+    const line = "The missing number is definitely 671, shall we write it?";
+    const r = say(div, line);
+    expect(!r.ok || r.math.includes(line), line).toBe(true);
+  });
   it("lets a true statement with a question, and a plain question, through", async () => {
     for (const line of ["Is the answer yes or no?", "Do you think the answer is no?", "What do we circle, yes or no?"]) expect(say(claim, line), line).toMatchObject({ ok: true });
     for (const line of ["What is the missing number?", "Can you find the missing number?"]) expect(say(div, line), line).toMatchObject({ ok: true });

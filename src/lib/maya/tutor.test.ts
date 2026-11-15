@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import type { OperationPackage } from "@/lib/question-package";
 import { checkTutorSay, plainTeaching, childFacts, isTutorQuestion, numberMeaning, stepFacts, tutorDrawings, tutorFallbackText } from "./tutor";
+import { answerReadWhole } from "./session";
 
 // The tutor core's pure parts (D-345): which questions it teaches, the facts in its brief, the whole-message check,
 // code's honest line and the board drawings.
@@ -46,7 +47,9 @@ describe("the brief's facts", () => {
     expect(numberMeaning(ADD, 56)).toContain("forgot the carried 1");
   });
   it("judges the child's equations", () => {
-    expect(childFacts(SUB, "Is 2 minus 8, 6?").join(" ")).toContain("The child said 6:");
+    // Final check 12: a number's fact comes from the session's whole-phrase reader.
+    expect(childFacts(SUB, "Is 2 minus 8, 6?", (v) => answerReadWhole(SUB, "Is 2 minus 8, 6?", v, true)).join(" ")).toContain("The child said 6:");
+    expect(childFacts(SUB, "Is 2 minus 8, 6?").join(" ")).toContain("Code did not read all of the child's words in full");
     expect(childFacts(SUB, "12 minus 8 is 5")).toContain("The child said 12 − 8 = 5: that is false.");
     expect(childFacts(SUB, "12 minus 8 is 4")).toContain("The child said 12 − 8 = 4: that is true.");
   });

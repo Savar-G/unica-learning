@@ -17,7 +17,7 @@ import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, typ
 import { tutorKindOf } from "./tutor-kinds";
 import { affirms, equationHolds, equationsOf, neverSayProblem, sayNumbers, sentencesOf, type SayEquation } from "./say-check";
 import { exactSafe } from "./math-vocab";
-import { answerClaims, answerProblems, falseClaims, readClaims, REMAINDER_SAID, unsafeNumberSaid, type ColumnSum } from "./tutor-math";
+import { answerClaims, answerProblems, falseClaims, guardedProblems, readClaims, REMAINDER_SAID, unsafeNumberSaid, type ColumnSum, type KindRead } from "./tutor-math";
 
 /** The hard ceiling of one Maya message, in words. Over it, the model gets one repair with the reason; code never trims. */
 export const TUTOR_WORD_LIMIT = 60;
@@ -288,14 +288,18 @@ export const numberMeaning = (pkg: OperationPackage, n: number): string => tutor
 
 /** The printed sign of each operator the equation reader reads. */
 const OP_SIGN: Record<SayEquation["ops"][number], string> = { "+": "+", "-": "−", "*": "×", "/": "÷" };
+/** The operator words and symbols that join two operands of an expression the child offers. */
+const EXPRESSION_OP: Record<string, string> = { plus: "+", "+": "+", minus: "−", "-": "−", "take away": "−", times: "×", "×": "×", x: "×", "*": "×", "multiplied by": "×", "divided by": "÷", "÷": "÷", "/": "÷" };
 
 /**
  * Code's verdict on every number and every equation in the child's turn, as sentences for the brief. Final check 8
  * (2026-11-15): an equation is printed only when code read every token of its clause (`equationsOf` with `whole`): "3
  * times 2 is 6 tens", "It is not true that 3 times 2 is 7" print no equation, never one of their parts.
  */
-export function childFacts(pkg: OperationPackage, text: string): string[] {
+export function childFacts(pkg: OperationPackage, text: string, readWhole: (value: number) => boolean = () => false): string[] {
   const facts: string[] = [];
+  /** Numbers an equation fact below already states. */
+  const inEquations = new Set<number>();
   for (const sentence of sentencesOf(text)) {
     for (const e of equationsOf(sentence, { whole: true })) {
       const holds = equationHolds(e);
@@ -304,14 +308,45 @@ export function childFacts(pkg: OperationPackage, text: string): string[] {
       // "8 − 2 + 4 = 10"), never the first operator for all of them.
       const said = `${e.operands.map((o, k) => (k === 0 ? o.key : `${OP_SIGN[e.ops[k - 1]]} ${o.key}`)).join(" ")} ${e.negated ? "≠" : "="} ${e.result.key}`;
       facts.push(`The child said ${said}: that is ${holds !== e.negated ? "true" : "false"}.`);
+      for (const v of [...e.operands, e.result]) if (v.q && v.q[1] === 1) inEquations.add(v.q[0]);
     }
   }
+  // An expression the child offers with no result ("teach me 2 minus 8", "two thousand × six hundred forty"): each
+  // operand read whole by the standard reader, joined only by an operator. Stated as it is, with no value and no verdict.
+  for (const sentence of sentencesOf(text)) {
+    const tokens = sayNumbers(sentence).filter((t) => t.q && t.q[1] === 1);
+    let k = 0;
+    while (k < tokens.length) {
+      const run = [tokens[k]];
+      const ops: string[] = [];
+      while (k + 1 < tokens.length) {
+        const gap = sentence.slice(run.at(-1)!.end, tokens[k + 1].at).trim().toLowerCase();
+        const op = EXPRESSION_OP[gap];
+        if (!op) break;
+        ops.push(op);
+        run.push(tokens[++k]);
+      }
+      k++;
+      if (run.length < 2) continue;
+      // An expression followed by a relation is an equation: the equation facts above read it, or it stays unread.
+      if (/^\s*(?:is|are|=|equals|makes|gives)\b/i.test(sentence.slice(run.at(-1)!.end))) continue;
+      facts.push(`The child said ${run.map((t, i) => (i === 0 ? t.q![0] : `${ops[i - 1]} ${t.q![0]}`)).join(" ")}: an expression with no result.`);
+      for (const t of run) inEquations.add(t.q![0]);
+    }
+  }
+  // Final check 12 (2026-11-15): a number's fact comes only from the whole-phrase reader (`readWhole`, the session's
+  // answerReadWhole): the number, at most the question's unit and answer words. Any other number, or a number form that
+  // is no whole number ("6 halves"), gets no value: one fact says code did not read it.
   const seen = new Set<number>();
+  let unread = false;
   for (const t of sayNumbers(text)) {
-    if (!t.q || t.q[1] !== 1 || seen.has(t.q[0])) continue;
+    if (!t.q || t.q[1] !== 1) { unread = true; continue; }
+    if (seen.has(t.q[0]) || inEquations.has(t.q[0])) continue;
     seen.add(t.q[0]);
+    if (!readWhole(t.q[0])) { unread = true; continue; }
     facts.push(`The child said ${t.q[0]}: ${numberMeaning(pkg, t.q[0])}.`);
   }
+  if (unread) facts.push("Code did not read all of the child's words in full: it cannot say which number the child gave, or whether it is right.");
   return facts;
 }
 
@@ -452,10 +487,9 @@ export function childAnswerCandidate(text: string): boolean {
  */
 export function tooSmallProblems(sentence: string): string[] {
   const text = sentence.replace(/[‘’ʼ]/g, "'").replace(/[−–]/g, "-");
-  const out: string[] = [];
+  const out: KindRead[] = [];
   for (const m of text.matchAll(TOO_SMALL)) {
-    const clauseStart = Math.max(...[",", ";", ":", "."].map((c) => text.lastIndexOf(c, m.index - 1))) + 1;
-    if (/\b(?:not|no|never|if|when|whether|suppose|imagine|pretend|unless|n't)\b|n't\b/i.test(text.slice(clauseStart, m.index))) continue;
+    // Final check 12: a negation or a scope before it in its clause is the one full-read guard's (guardedProblems below).
     // Review of #1074 (P2): refuse only when both complete quantities and their places are read in full. Nothing that
     // can join a quantity may stand right before the first number ("8 plus 12 is ...", "twenty three is ...", "2.5")
     // or right after the second ("take 8 plus 8 away", "take twenty three away"): the claim must end its clause there.
@@ -470,9 +504,9 @@ export function tooSmallProblems(sentence: string): string[] {
     if (a === null || b === null || !Number.isSafeInteger(a) || !Number.isSafeInteger(b) || (ua ?? null) !== (ub ?? null)) continue;
     // Equal numbers are not refused: code's own step text says the column's top before its trade ("2 tens is too
     // small to take 2" in 223 − 129, where the tens are 1 after the ones' trade).
-    if (a > b) out.push(`${a} is not too small to take ${b} away: ${a} is not less than ${b}`);
+    if (a > b) out.push({ problem: `${a} is not too small to take ${b} away: ${a} is not less than ${b}`, text, at: m.index, end: m.index + m[0].length });
   }
-  return out;
+  return guardedProblems(out);
 }
 /** Something right before a number that can join it into a larger quantity: a digit, a mark inside a number, a sign, an operator or a number word. */
 const QUANTITY_JOIN_BEFORE = new RegExp(String.raw`(?:[\d.,+\-×÷*/=x]|\b(?:plus|minus|times|by|of|over|point|negative|and|a|away|hundred|thousand|${N}))\s*$`, "i");
