@@ -139,3 +139,24 @@ describe("a place that lends and borrows (review of #1009)", () => {
     expect(checkTutorSay("5 tens become 15 tens.", { ...sub, trades: [12, 4, 2, 24] })).toMatchObject({ ok: false });
   });
 });
+
+describe("the next open step's result is right (review of #1018)", () => {
+  it("never lets 'Not quite' answer the open step's own result", async () => {
+    const pkg = FIXTURES.COMPARE_FRACTIONS as OperationPackage;
+    const kind: TutorKind = {
+      id: "open-step-review", fits: (p) => p.text === pkg.text,
+      steps: () => [{ id: pkg.steps[0].id, work: "Find the second term", result: 28 }],
+      numberMeaning: () => "a value of the work", workValues: () => [28],
+      streamScope: () => ({ numbers: [], expressions: [] }), stepQuestion: () => null,
+      drawings: () => [], draw: () => ({ commands: [], keys: [] }), claimProblems: () => [],
+    };
+    const undo = testKind(kind);
+    try {
+      let now = Date.UTC(2026, 10, 15);
+      const model = conversationalFake({ answer: () => reply("Not quite. What comes next?", "guide") });
+      const session = createTextSession({ callId: "open-step-review", package: pkg, model, clock: () => (now += 500), tutor: true, reviewer: fakeTalkReviewer() });
+      await session.start();
+      expect((await session.child("28")).say.join(" ")).not.toMatch(/not quite/i);
+    } finally { undo(); }
+  });
+});

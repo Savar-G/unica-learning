@@ -5062,6 +5062,9 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
       const fits = rightForQuestion(pkg, read.final) || (!asAnswer && tutorKind(pkg).workValues(pkg).includes(n));
       if (!fits) stance = "wrong";
       else if (stance === "none" && rightForQuestion(pkg, read.final)) stance = "right";
+      // The next open step's own result is right too: Maya never says "not quite" to it (review of #1018: "28" for a
+      // pattern's second term).
+      else if (stance === "none" && !asAnswer && stepFacts(pkg).find((st) => !base.done.includes(st.id))?.result === n) stance = "right";
     }
     for (const a of credited) if (a.value.type === "number" && !childValues.includes(a.value.value)) childValues.push(a.value.value);
   }
