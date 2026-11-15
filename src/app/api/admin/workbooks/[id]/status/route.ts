@@ -5,7 +5,7 @@ import { markWorkbook } from "@/lib/workbook-ship";
 import { workbookShipStore } from "@/lib/workbook-ship-store";
 
 // #314: mark a stored workbook printed (from approved) or shipped (from printed). Body { to }. Answers
-// { ok: true, at, firstShipped } (the child's first shipped workbook: the page leads to "Workbook shipped: start plan")
+// { ok: true, at, firstShipped } (the child's first shipped workbook: the page leads to "Workbook delivered: start plan")
 // or { ok: false, reason } (409). Admins only: everyone else gets 404.
 export async function POST(request: Request, ctx: RouteContext<"/api/admin/workbooks/[id]/status">) {
   const admin = await adminSession();

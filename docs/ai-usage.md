@@ -52,4 +52,5 @@ Admins only (others get the site's 404). In the sidebar under Quality as "AI usa
 - Cost by day, stacked by model: the six models with the most cost get fixed colours in cost order, the rest are grey "Other models". Subscription calls add no cost. A table view sits under the chart.
 - Cost by feature (groups in `FEATURE_GROUPS`) and cost by model (top 8, then one line for the rest).
 - Families by AI cost, largest first, with the family's plan price per month (CAD, from `child_plan_states`: paying, or ending until its end date; a free month shows "free month") and the AI cost as a percent of that price for the same number of days (a month counts as 30.44 days; both in CAD). One line, "No family", holds team tools, tests, sample runs and history without a family.
+- Cost per child per month, with the plan's charge and the margin: `/admin/ai/children` ("Cost per child" link at the top). See [Cost per child](child-unit-cost.md).
 - The sidebar's "Show test families" switch decides whether test families count (off by default). The page makes one or two database function calls and no other request; no polling, no prefetch.
