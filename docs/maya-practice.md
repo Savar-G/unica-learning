@@ -22,6 +22,7 @@ npm run maya:practice -- --report traces/maya-practice/<run>          # count a 
 |---|---|
 | `--channel <mode>` | Voice through the text adapter (default), or child chat with free talk off. |
 | `--generated` | Add real-generator U4/U16 Day 1 package cases with synthetic local inputs. |
+| `--tutor` | Run the tutor core cases (`TUTOR_CASES`, D-345) with Maya on the tutor core, and add the teaching judge T01 to T10 and the trace metrics to the report. See "The tutor judge" below. Cannot be used with `--generated`. Read a saved tutor run again with `--report <dir> --tutor`. |
 | `--fake` | Fake models only: the rule player as Maya, each case's scripted child, a fake judge. No key, no network. The rule player is not a teacher, so some fake runs fail or are invalid; that is expected. |
 | `--estimate` | Print the cost estimate and stop. |
 | `--max-usd <n>` | The spending cap. Default: twice the estimate, rounded up to a dollar. The run stops if the estimate is above the cap. |
@@ -41,6 +42,32 @@ npm run maya:practice -- --report traces/maya-practice/<run>          # count a 
 **The key.** `OPENROUTER_API_KEY` in the environment, or `OPENROUTER_API_KEY_FILE` (a file that holds only the key), or `.env.local`. It is a Vercel Secret variable, so `vercel env pull` gives an empty value. Use the Unica OpenRouter key only. The exit code is 0 only when every planned run passed.
 
 **The credit check's key.** The run's own key: OpenRouter's credits route answers an ordinary key (checked 2026-11-07). What is left is `total_credits` minus `total_usage`. See "Cost".
+
+## The tutor judge and the trace metrics (D-345)
+
+`npm run maya:practice -- --tutor` runs `TUTOR_CASES` (`src/lib/maya-practice/tutor-cases.ts`) with Maya on the tutor core (`createTextSession({ tutor: true })`, `docs/maya-tutor.md`). It is its own suite: the plan, the suite hash and the report carry `tutor`, and a report read without `--tutor` does not accept the plan. The older judge (J01 to J09) and the validity judge run as before. Three things are added. `--tutor --estimate` still prints the cost first (a second judge call for every run is in it); do not run the suite without the estimate.
+
+```sh
+npm run maya:practice -- --tutor --estimate                 # the cost, then stop
+npm run maya:practice -- --fake --tutor --runs 1            # plumbing only: fake tutor, fake judges, no cost
+npm run maya:practice -- --tutor --max-usd 12               # the real suite
+```
+
+**The cases.** K01 is Savar's call: the child's first words are exactly "Can you teach me how to do 2 minus 8? I don't get it." on 52 - 28. It passes only when, within Maya's first 2 teaching turns, the words say why 2 is too small to take 8 from, say that a ten becomes 10 ones, and ask for 12 minus 8 (code reads Maya's words with patterns, so wording may vary). K02 to K06 are simulated children with one set misconception each: smaller-from-larger (36), the lost traded ten (34), the lost carry (27 + 39 = 56), "I don't get it" twice, and a wrong answer (26) then a right one. A case's `tutor` field holds its misconception (the wrong numbers and the number that shows it fixed) and its code checks.
+
+**The teaching judge.** `teaching-judge.ts` scores each Maya teaching turn 0 to 3 on ten dimensions, with a short reason: T01 answers what the child said, T02 finds the stuck point, T03 explains when the child cannot start, T04 one clear next action, T05 chunk size, T06 the child gets a turn, T07 the child does the thinking, T08 checks understanding, T09 tone, T10 natural and non-repeating. T07 is not "never tells": the answer rule is lifted, so it asks whether the child still does or explains the next part after Maya tells. Code decides which dimensions apply (`teachingPlan`): T06 is scored by code from the run of Maya turns (1 is 3, 2 is 2, 3 or more is 0); T03 applies only after a child turn that asks for help or cannot start; T04 and T08 do not apply to a closing turn; T10 needs two teaching turns; code's own lines (the opening, a safety line) are not judged. The judge may mark only T02 "n/a" (the child had no stuck point). `readTeachingJudgement` refuses any answer outside the strict schema (a wrong turn id, a score outside 0 to 3, a score on a dimension that does not apply, a T06 from the judge, an extra key); an answer it refuses makes the run **unjudgeable**. The report keeps the worst and the median of each dimension per call. A run passes the judge when every dimension's median is 2 or more and no turn scores 0. The judge never sees a model name. Its model is the `--judge-model`, and it must be another family than Maya's: with OpenRouter a same-family choice stops the run; with `--anthropic` or `--subscription` every model is Claude, so the run goes on, prints a note and the report says "the teaching judge is the same model family as Maya". Its file is `runs/<run>.teaching.json` (raw output, model, prompt version `teaching-judge-1`, an error code or why it was skipped), sealed by the run record like the others.
+
+**The trace metrics** (`teaching-metrics.ts`; pure code, no AI, counted from the saved trace's turns):
+
+| Metric | How | Target |
+|---|---|---|
+| Override rate | `counts.overrides` over Maya's teaching turns (a refusal, a fallback or a dropped sentence; code's opening is not a teaching turn) | under 5% |
+| Longest run of Maya turns | `counts.longestMayaRun` | 1 |
+| Maya words per child word | all Maya words over all child words | none |
+| Turns and seconds until the child's first attempt | Maya turns that spoke before the first child turn that holds a number or a step and is not a request for help; the simulated clock's seconds | none |
+| Misconception fixed | the child said a wrong number of the case, then later the right one, and the call ended solved or the session credited the right answer | all (a child that never said the wrong number is not counted) |
+
+A run that passed everything else does not pass when a target above is missed, a case check fails, or the judge's pass rule fails. The scripted behaviour gate's checks on code-written lines (`unchecked_output`, `math_not_from_code` and the like) are not run on a tutor trace: the tutor core's messages are checked whole by `checkTutorSay`, and the trace must still pass `checkTrace`. The report's section "Tutor judge (T01 to T10) and trace metrics" shows each dimension's lowest turn and median of medians, each metric against its target, and each failed case check.
 
 ## Compare two turn models
 
@@ -83,13 +110,16 @@ When the subscription's usage limit is met, the run stops: the calls in flight e
 | `src/lib/maya-practice/simulator.ts` | The practice child: its prompt (`SIMULATOR_PROMPT_VERSION`), strict JSON schema, the OpenRouter simulator and the scripted one. |
 | `src/lib/maya-practice/validity-judge.ts` | The validity judge: its prompt (`VALIDITY_PROMPT_VERSION`), strict JSON schema, `readValidity` (the check), the OpenRouter validity judge and a scripted fake. |
 | `src/lib/maya-practice/judge.ts` | The judge: its prompt (`JUDGE_PROMPT_VERSION`), strict JSON schema, `readJudgement` (the check), the OpenRouter judge and a fake. |
+| `src/lib/maya-practice/teaching-judge.ts` | The teaching judge (`--tutor`): T01 to T10 with their levels, `teachingPlan` (what applies to each turn, T06 by code), the prompt (`TEACHING_JUDGE_PROMPT_VERSION`), the strict schema, `readTeachingJudgement`, the worst and the median per call, `judgeFamilyProblem`, the OpenRouter judge and a fake. |
+| `src/lib/maya-practice/teaching-metrics.ts` | The trace metrics: override rate, longest run, words per child word, first attempt, misconception fixed. |
+| `src/lib/maya-practice/tutor-cases.ts`, `tutor-run.ts`, `tutor-fake.ts` | `TUTOR_CASES` and Savar's call checks; the verdict of one tutor run (metrics, case checks, judge); the fake tutor model for `--fake --tutor` and the estimate's dry run. |
 | `src/lib/maya-practice/practice.ts` | `runPractice`, `runSuite`, `judgeRun` (one run from its saved files), `buildReport` and `reportMarkdown`. |
 | `src/lib/maya-practice/cost.ts` | The estimate (`estimateCost`) and the cap (`Spending`, `cappedClient`, `meteredFetch`). |
 | `src/lib/maya-practice/credits.ts` | The credit check before a paid run (`checkCredits`) and the default for `--concurrency`. |
 | `src/lib/ai-claude-cli-practice.ts` | The subscription client (`--subscription`): one `claude -p` call per request, behind a process seam its tests replace. |
 | `scripts/maya-practice-cli.ts` | The command line. |
 
-A run's folder: `plan.json` (the planned runs, every model and prompt version, the suite hash, the commit, the cap), then for each run `runs/<case>-r<n>.trace.json` (Maya's trace, with her model and prompt version and the question package hash), `.child.json` (each raw simulator turn, with the simulator's model and prompt version; errors keep only a code), `.validity.json` (the validity judge's raw output, its model and prompt version, an error code, or why it was skipped) and `.judge.json` (the judge's raw output, its model and prompt version, or an error code), and last `.record.json`: the sha256 of the exact text of each of those files and of `plan.json`. Then `report.md` and `report.json`, and `free-talk.md` and `free-talk.json`: every piece of Maya's own words in the required runs, what the code guards and the review made of it, what was said, the pieces the review failed after the code guards passed them, and each review error with the reason the trace saved (a failed call keeps the trace's fixed error code, such as "the review call failed (http_429)", #604). The free-talk file is not a gate result; the gate's `free_talk_unchecked` hard failure is. `turn-time.md` and `.json` give the real time of each model and review call; they are not hashed and are not a gate result.
+A run's folder: `plan.json` (the planned runs, every model and prompt version, the suite hash, the commit, the cap), then for each run `runs/<case>-r<n>.trace.json` (Maya's trace, with her model and prompt version and the question package hash), `.child.json` (each raw simulator turn, with the simulator's model and prompt version; errors keep only a code), `.validity.json` (the validity judge's raw output, its model and prompt version, an error code, or why it was skipped) and `.judge.json` (the judge's raw output, its model and prompt version, or an error code), with `--tutor` also `.teaching.json` (the teaching judge's), and last `.record.json`: the sha256 of the exact text of each of those files and of `plan.json`. Then `report.md` and `report.json`, and `free-talk.md` and `free-talk.json`: every piece of Maya's own words in the required runs, what the code guards and the review made of it, what was said, the pieces the review failed after the code guards passed them, and each review error with the reason the trace saved (a failed call keeps the trace's fixed error code, such as "the review call failed (http_429)", #604). The free-talk file is not a gate result; the gate's `free_talk_unchecked` hard failure is. `turn-time.md` and `.json` give the real time of each model and review call; they are not hashed and are not a gate result.
 
 ## How a run works
 

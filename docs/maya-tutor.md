@@ -74,4 +74,4 @@ The model asks by id; code builds every command from the checked steps (`tutorDr
 
 Phase 1: 2-digit whole-number addition and subtraction (`isTutorQuestion`), on admin test calls only (`tutor: record.kind === "admin_test"` in `src/lib/maya-call.ts`), in chat and voice. Family calls keep the controller. The family switches stay off.
 
-Phase 2 moves every Book 1 question type to the tutor core, and deletes the controller's teaching code as each type moves. Phase 3 rebuilds the practice judge (T01 to T10 plus the trace metrics) and continues the latency work on the single call.
+Phase 2 moves every Book 1 question type to the tutor core, and deletes the controller's teaching code as each type moves. Phase 3 rebuilt the practice judge (T01 to T10 plus the trace metrics, `npm run maya:practice -- --tutor`, `docs/maya-practice.md`) and continues the latency work on the single call.
