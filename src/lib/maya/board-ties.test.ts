@@ -3,6 +3,7 @@ import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { workedSteps, type Operation, type OperationPackage } from "@/lib/question-package";
 import { deriveDrawings, legacyDraw, sentenceCueWord } from "./board-ties";
 import { sentencesOf } from "./say-check";
+import { agreementClause } from "./tutor";
 
 // B2, "derive the drawing from the sentence": code reads each accepted sentence and draws what it says in full, with
 // the question's own computed values, only what is new, and only on earlier work the child's screen showed (or that an
@@ -30,8 +31,11 @@ describe("default on: 52 − 28 draws the trade and each digit as Maya says them
     expect(derive(SUB, "Watch, we trade 1 ten for 10 ones.").drawings).toHaveLength(1);
   });
   it("plain words the samples used keep the sentence read (closed forms, no number, place or negation)", () => {
-    expect(derive(SUB, "You're right, we can't take 8 from 2 ones, so we borrow: we trade 1 ten for 10 ones.").drawings).toHaveLength(1);
-    expect(derive(SUB, "Yes, let's show it: we trade 1 ten for 10 ones.").drawings).toHaveLength(1);
+    // A judgment opener counts only when the say check validated it (the session passes agreementClause then).
+    expect(deriveDrawings(SUB, sentencesOf("You're right, we can't take 8 from 2 ones, so we borrow: we trade 1 ten for 10 ones."), [], [], [], id, agreementClause).drawings).toHaveLength(1);
+    expect(deriveDrawings(SUB, sentencesOf("Yes, let's show it: we trade 1 ten for 10 ones."), [], [], [], id, agreementClause).drawings).toHaveLength(1);
+    expect(derive(SUB, "You're right, we can't take 8 from 2 ones, so we borrow: we trade 1 ten for 10 ones.").drawings).toEqual([]);
+    expect(derive(SUB, "Yes, let's show it: we trade 1 ten for 10 ones.").drawings).toEqual([]);
     expect(derive(SUB, "We trade 1 ten for 10 ones, so the ones are now 12.").drawings).toHaveLength(1);
     // Not a value a trade of this question gives: the sentence is unread.
     expect(derive(SUB, "We trade 1 ten for 10 ones, so the ones are now 13.").drawings).toEqual([]);
@@ -41,6 +45,26 @@ describe("default on: 52 − 28 draws the trade and each digit as Maya says them
   it("a sentence with several drawable clauses draws each, in clause order", () => {
     const r = derive(SUB, "We trade 1 ten for 10 ones, so write 4 in the ones.");
     expect(r.drawings.map((d) => ops(d.commands))).toEqual([["regroup", "put"]]);
+  });
+});
+
+describe("preview of 0e6cfeed0: the tens digit of 52 − 28 in Maya's own phrasing", () => {
+  const SAID = "Yes, 4 tens minus 2 tens is 2 tens, so write 2 in the tens.";
+  const shown = ["trade:ones", "digit:ones"];
+  it("draws the tens digit when the say check validated the \"Yes\" (code found the child right)", () => {
+    const r = deriveDrawings(SUB, sentencesOf(SAID), shown, [], [], id, agreementClause);
+    expect(r.drawings.map((d) => d.commands)).toMatchObject([[{ op: "put", value: "2", target: { column: "tens" } }]]);
+  });
+  it("an unvalidated \"Yes\" still draws nothing", () => {
+    expect(derive(SUB, SAID, shown).drawings).toEqual([]);
+    expect(reasons(derive(SUB, SAID, shown))).toEqual(["unread_sentence"]);
+  });
+  it("a place lead-in and a step equation with places keep the sentence read; a false one does not", () => {
+    expect(derive(SUB, "Now the tens: write 2 in the tens.", shown).drawings).toHaveLength(1);
+    expect(derive(SUB, "Start with the ones: we trade 1 ten for 10 ones.").drawings).toHaveLength(1);
+    expect(derive(SUB, "4 tens minus 2 tens is 2 tens, so write 2 in the tens.", shown).drawings).toHaveLength(1);
+    expect(derive(SUB, "4 tens minus 2 tens is 3 tens, so write 2 in the tens.", shown).drawings).toEqual([]);
+    expect(derive(SUB, "5 tens minus 2 tens is 3 tens, so write 2 in the tens.", shown).drawings).toEqual([]);
   });
 });
 

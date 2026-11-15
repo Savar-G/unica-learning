@@ -61,7 +61,7 @@ const noteKey = (text: string) => `note:${text}`;
  * (`TutorKind.boardNeeds`): each needed key is either shown on the child's board, or drawn by an earlier clause of
  * this message (then the batch names that batch in `after`), or the clause draws nothing.
  */
-export function deriveDrawings(pkg: OperationPackage, sentences: readonly string[], drawn: readonly string[], sent: readonly string[], noDraw: readonly number[] | "all", noteId: (batch: number, i: number) => string): { drawings: TiedDrawing[]; reads: BoardRead[] } {
+export function deriveDrawings(pkg: OperationPackage, sentences: readonly string[], drawn: readonly string[], sent: readonly string[], noDraw: readonly number[] | "all", noteId: (batch: number, i: number) => string, opener?: (sentence: string) => string | null): { drawings: TiedDrawing[]; reads: BoardRead[] } {
   const kind = tutorKind(pkg);
   const offers = new Set(kind.drawings(pkg).map((d) => d.id));
   const actions = kindActions(pkg);
@@ -69,7 +69,7 @@ export function deriveDrawings(pkg: OperationPackage, sentences: readonly string
   const noteNeeds = kind.noteNeeds?.(pkg) ?? [];
   const numbers = tutorBoardNumbers(pkg);
   const facts = problemFacts(pkg);
-  const steps = stepEquations(pkg);
+  const steps = facts.steps;
   const drawings: TiedDrawing[] = [];
   const reads: BoardRead[] = [];
   const mine: string[] = [];
@@ -78,7 +78,9 @@ export function deriveDrawings(pkg: OperationPackage, sentences: readonly string
   const confirmed = drawn.filter((k) => !sent.includes(k));
   const all = () => [...drawn, ...mine];
   sentences.forEach((sentence, at) => {
-    const parsed = parseSentence(sentence, facts);
+    // A judgment or agreement opener the say check validated for this sentence ("Yes, ..." when code found the child
+    // right) carries no action: the rest of the sentence is read. Any other opener stays part of the sentence.
+    const parsed = parseSentence(opener?.(sentence) ?? sentence, facts);
     const said = parsed.clauses.flatMap((c) => (c.read && (c.read.type === "action" || c.read.type === "equation") ? [{ text: c.text, action: c.read.action }] : []));
     if (said.length === 0) return;
     const skip = (reason: ReadReason) => said.forEach((c) => reads.push({ sentence: at, clause: c.text, drew: false, reason }));
@@ -302,6 +304,8 @@ export interface ProblemFacts {
   numbers: ReadonlySet<number>;
   /** "place|from|to": a place's value before and after a trade of the question ("ones|2|12", "tens|5|4"). */
   states: ReadonlySet<string>;
+  /** The equation keys of the question and of each of its steps ("equation|12−8=4"). */
+  steps: ReadonlySet<string>;
 }
 
 const PLACE_VALUE: Record<string, number> = { ones: 1, tens: 10, hundreds: 100, thousands: 1000, "ten thousands": 10000, "hundred thousands": 100000 };
@@ -335,7 +339,7 @@ export function problemFacts(pkg: OperationPackage): ProblemFacts {
       if (place) for (let a = 0; a < h.length; a++) for (let b = a + 1; b < h.length; b++) if (h[a] !== h[b]) states.add(`${place}|${h[a]}|${h[b]}`);
     });
   }
-  return { numbers: new Set(ops), states };
+  return { numbers: new Set(ops), states, steps: stepEquations(pkg) };
 }
 
 /**
@@ -361,6 +365,13 @@ const REASONS: { re: RegExp; holds: (m: RegExpMatchArray, f: ProblemFacts) => bo
     const n = toNumber(m[2]);
     return p !== null && n !== null && [...f.states].some((k) => k.startsWith(`${p}|`) && k.endsWith(`|${n}`));
   } },
+  // A step's own equation said with its place: "4 tens minus 2 tens is 2 tens" (one place, the step's own numbers).
+  { re: new RegExp(String.raw`^${N} ${PL} (${OP_WORDS}) ${N} ${PL} (?:is|equals|makes|leaves|gives) ${N} ${PL}$`), holds: (m, f) => {
+    const places = [m[2], m[5], m[7]].map(placeOf);
+    if (places.some((p) => p === null || p !== places[0])) return false;
+    const a = equationAction(`${m[1]} ${m[3]} ${m[4]}`, m[6]);
+    return a !== null && f.steps.has(a.key);
+  } },
   { re: new RegExp(String.raw`^${N} (?:is|equals|makes) ${N} ${PL} and ${N} ${PL}$`), holds: (m, f) => {
     const [n, a, b] = [toNumber(m[1]), toNumber(m[2]), toNumber(m[4])];
     const [p, q] = [placeOf(m[3]), placeOf(m[5])];
@@ -377,14 +388,16 @@ const lessThan = (a: string, b: string) => { const x = toNumber(a); const y = to
 const LEAD_INS = [
   /^(?:let's|let us) (?:show|draw|put|write) (?:it|this|that|them|the rows|the trade|the steps|the work)(?: on the board)?$/,
   /^(?:look|watch)$/,
-  // An agreement (the say check holds Maya to code's verdict on the child's answer) and a bare trade word with no
-  // amount or place ("so we borrow: we trade 1 ten for 10 ones"): neither draws anything.
-  /^(?:you're|you are) right$/,
+  // A bare trade word with no amount or place ("so we borrow: we trade 1 ten for 10 ones").
   /^(?:we|let's|let us) (?:borrow|trade|regroup)$/,
+  // A place to work next, with no number: "Now the tens:", "Start with the ones:".
+  /^(?:the|on to the|over to the) (?:hundred thousands|ten thousands|thousands|hundreds|tens|ones)(?: place| column)?$/,
+  /^(?:let's |let us |we )?(?:start|begin) with the (?:hundred thousands|ten thousands|thousands|hundreds|tens|ones)(?: place| column)?$/,
 ];
 
 /** Words that may open a clause and change nothing it says. */
-const LEAD = /^(?:(?:so|now|then|first|next|okay|ok|and|yes|great|good|right|alright|\{name\}),?\s+)+/;
+// No judgment word ("yes", "right", "good"): a judgment counts only when the say check validated it (`opener`).
+const LEAD = /^(?:(?:so|now|then|first|next|okay|ok|and|alright|\{name\}),?\s+)+/;
 
 /** One clause read whole, or null when code cannot read it. An equation is kept apart: it is a note's action, else a fact. */
 type Clause = { type: "action"; action: Action } | { type: "equation"; action: Action; holds: boolean } | { type: "reason" } | { type: "lead" };

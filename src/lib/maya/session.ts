@@ -5876,10 +5876,13 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   // B2 (derive the drawing from the sentence): code reads each accepted sentence and draws what it says in full, one
   // batch per sentence, in sentence order (board-ties.ts). Only a proposal stepped live since B2 (`drawMode`) derives:
   // a saved older message replays exactly as it was stepped (its own `draw` list, or nothing), so a restored call keeps
-  // its batches and ids. Code's own line never draws; on a fallback only the sentences already streamed to the child
-  // (accepted and heard) are read.
-  const heard = fallback ? sentencesOf(lead) : sentencesOf(text);
-  const ties = !derive || s.noBoard || (fallback && sent.length === 0) ? null : deriveDrawings(pkg, heard, tutor.drawn, (tutor.sent ?? []).flatMap((x) => x.keys), fallback ? [] : out.noDraw ?? [], (k, i) => `tutor-note-${s.batches + 1 + k}-${i}`);
+  // its batches and ids. #1103 (decided 2026-11-15): code's own fallback message draws too: its sentences are the ones
+  // already streamed to the child (accepted and heard) and code's own line, which is true by construction; a refused
+  // sentence is never in it.
+  // A judgment opener counts as no action only when the say check validated it: code found the child right (stance),
+  // and the say check's own agreement reader (agreementClause) gives the rest of the sentence.
+  const opener = stance === "right" ? (sentence: string) => agreementClause(sentence) : undefined;
+  const ties = !derive || s.noBoard ? null : deriveDrawings(pkg, sentencesOf(text), tutor.drawn, (tutor.sent ?? []).flatMap((x) => x.keys), fallback ? [] : out.noDraw ?? [], (k, i) => `tutor-note-${s.batches + 1 + k}-${i}`, opener);
   const legacy = s.noBoard || derive ? { commands: [], keys: [] } : tutorDrawings(pkg, out.draw ?? [], tutor.drawn, (i) => `tutor-note-${s.batches + 1}-${i}`);
   const batches: { commands: Record<string, unknown>[]; keys: string[]; sentence?: number; after?: number[] }[] = ties ? ties.drawings : legacy.commands.length ? [legacy] : [];
   const drawing = { commands: batches.flatMap((b) => b.commands), keys: batches.flatMap((b) => b.keys) };

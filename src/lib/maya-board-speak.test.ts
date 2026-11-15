@@ -308,6 +308,50 @@ describe("Sol review of the derived design (d76b6981e)", () => {
   });
 });
 
+describe("preview of 0e6cfeed0 (call fb9b7b10): the tens digit when Maya says it her way", () => {
+  const SAID = "Yes, 4 tens minus 2 tens is 2 tens, so write 2 in the tens.";
+  const first = reply("We trade 1 ten for 10 ones. Write 4 in the ones. What is 4 tens minus 2 tens?", "guide");
+  it("draws the tens digit after the child's right answer (the \"Yes\" is validated)", async () => {
+    const { session } = chat([first, reply(`${SAID} What is the whole answer?`, "guide"), ASK]);
+    await session.start();
+    const out = await session.child("12 minus 8 is 4.");
+    expect(out.board).toHaveLength(2);
+    session.boardFates(out.board.map((b) => ({ batchId: b.transactionId, fate: "shown" as const })));
+    const next = await session.child("2");
+    expect(next.say.join(" ")).toBe(`${SAID} What is the whole answer?`);
+    expect(next.board.map((b) => b.commands)).toMatchObject([[{ op: "put", value: "2", target: { column: "tens" } }]]);
+  });
+  it("an unvalidated \"Yes\" (no right answer from the child) draws nothing", async () => {
+    const { session } = chat([first, reply(`${SAID} What is the whole answer?`, "guide"), ASK]);
+    await session.start();
+    const out = await session.child("12 minus 8 is 4.");
+    session.boardFates(out.board.map((b) => ({ batchId: b.transactionId, fate: "shown" as const })));
+    const next = await session.child("I don't know.");
+    expect(next.say.join(" ")).toBe(`${SAID} What is the whole answer?`);
+    expect(next.board).toEqual([]);
+  });
+});
+
+describe("#1103: code's own fallback message draws (decided 2026-11-15)", () => {
+  it("a fallback turn draws the note of its streamed sentence, and the trace shows the fallback's reads", async () => {
+    const lead = "12 minus 8 is 4.";
+    const held = "The 12 ones come from the trade.";
+    const model = conversationalFake({ answer: () => reply(`${lead} ${held}`, "guide"), stream: { chunk: 7 } });
+    let now = T0;
+    const s = createTextSession({ callId: "fb-1", package: PKG, tutor: true, clock: () => (now += 50), model, reviewer: fakeTalkReviewer(), mathReviewer: fakeMathReviewer((i) => (i.sentence === held ? { verdict: "false", reason: "refused for the test" } : { verdict: "true", reason: "true" })), onSayPart: () => {} });
+    await s.start();
+    const out = await s.child("Please help with 52 minus 28.");
+    // Code's line after streamed words: the streamed sentence, then code's own question.
+    expect(out.say.join(" ")).toMatch(/^12 minus 8 is 4\. /);
+    expect(out.say.join(" ")).not.toContain(held);
+    expect(out.board.map((b) => b.commands)).toMatchObject([[{ op: "write", text: "12 − 8 = 4" }]]);
+    const trace = await s.finish({ reason: "child_stopped" });
+    const fallback = attempts(trace).find((a) => a.source === "fallback")!;
+    expect(fallback.drawMode).toBe("derive");
+    expect(fallback.boardReads).toEqual([{ sentence: 0, clause: "12 minus 8 is 4", drew: true }]);
+  });
+});
+
 describe("chat plays the batches in the order of the sentences (B2)", () => {
   it("the trade's strokes end before the digit's start, with the board's own gap between them", async () => {
     const { session } = chat([TRADE_AND_DIGIT, ASK]);
