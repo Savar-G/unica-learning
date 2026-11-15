@@ -65,8 +65,6 @@ const WHICH_FORM = new RegExp(String.raw`^(?:so\s+)?which is (?:bigger|greater|s
 const PLAIN_FORMS: readonly RegExp[] = [
   // "12 minus 8 is 4", "6 is 8 minus 2", "52 is 4 tens and 12 ones", "2 minus 8 isn't 6"
   new RegExp(String.raw`^(?:so\s+)?${E}\s+(?:is|equals|=|makes|is not|isn't)\s+${E}(?:\s+and\s+${Q})*$`, "i"),
-  // "6 is not right", "4 is right for the ones"
-  new RegExp(String.raw`^${E}\s+(?:is|isn't|is not)\s+(?:right|correct)(?:\s+for\s+${PLACE})?$`, "i"),
     // "What is 12 minus 8?", "What do you get for 4 minus 2?"
   new RegExp(String.raw`^(?:so\s+)?(?:what is|what's|what do you get for|what do we get for)\s+${E}$`, "i"),
   // "How many ones are left?", "How many tens do we have now?"
@@ -81,9 +79,9 @@ const PLAIN_FORMS: readonly RegExp[] = [
   new RegExp(String.raw`^(?:we\s+)?(?:trade|regroup)\s+(?:1|one|a)\s+ten\s+(?:for|into|as)\s+(?:10|ten)\s+ones$`, "i"),
   // "Subtract the ones", "Add the tens"
   new RegExp(String.raw`^(?:now\s+)?(?:subtract|add)\s+${PLACE}$`, "i"),
-  // "the tens", "in the ones column", "the other way around"
+  // "the tens", "in the ones column". Pre-launch review: "N is right" and "the other way around" can answer what the
+  // child asked ("How many punches ...? One is right."), so they are reviewed.
   new RegExp(String.raw`^(?:(?:in|for|on|to)\s+)?${PLACE}$`, "i"),
-  /^the other way around$/i,
   // "Is 7 the same as 6?" (F4 builder, 2026-11-15)
   new RegExp(String.raw`^is\s+${E}\s+the same as\s+${E}$`, "i"),
   // "Is 5220 greater than 5226?", "Is 6 times 870 less than 5226?"
@@ -160,6 +158,8 @@ export interface TutorCheckContext {
   claims?: (sentence: string) => string[];
   /** The question's work values (TutorKind.workValues): the results a place may reach in a trade across a borrow. */
   trades?: readonly number[];
+  /** The words of the child's name, which replaces each {name} before the child hears it (default 1). */
+  nameWords?: number;
 }
 
 /** "4 is the answer", "the whole answer is 24", "your answer 36 is right": a claim about which number is the answer. */
@@ -188,7 +188,8 @@ export type TutorVerdict =
 export function checkTutorSay(text: string, ctx: TutorCheckContext & { extra?: ReadonlySet<string> }): TutorVerdict {
   const say = text.trim();
   if (!say) return { ok: false, reason: "empty", detail: "The message is empty: say one short helpful thing and ask one small question." };
-  const words = say.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+  // The ceiling counts the child's name as it will be heard (pre-launch review: "Mary Jane" made a 60-word message 61).
+  const words = say.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length + ((ctx.nameWords ?? 1) - 1) * (say.match(/\{name\}/g)?.length ?? 0);
   if (words > TUTOR_WORD_LIMIT) return { ok: false, reason: "too_long", detail: `The message has ${words} words; the limit is ${TUTOR_WORD_LIMIT}. Say the same one idea in fewer words, then one small question.` };
   const never = neverSayProblem(say);
   if (never) return { ok: false, reason: "never_say", detail: never };
