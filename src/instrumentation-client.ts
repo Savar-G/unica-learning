@@ -35,6 +35,12 @@ const replay = replaySwitch({
       blockAllMedia: true,
       // No request or response details, headers or bodies (the default, kept explicit).
       networkDetailAllowUrls: [],
+      // Uncompressed, so the tunnel can clean every address in the recording before Sentry (src/lib/sentry-tunnel.ts).
+      useCompression: false,
+      // No replay session survives a page load: a stored one would come back as a whole-visit recording.
+      stickySession: false,
+      // An error in the first seconds still sends its buffer (the default waits 5 s, and the switch stops after sending).
+      minReplayDuration: 0,
       // Sentry would turn the buffer into a whole-visit recording on an error; the switch sends one minute itself.
       beforeErrorSampling: () => replay.onError(),
       // Page addresses inside the recording lose their query, tokens and element labels.

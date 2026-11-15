@@ -46,7 +46,10 @@ Children use this site, so Sentry gets no personal values and no child work. Two
 The browser sends to Sentry through `/monitoring` on our own site (`tunnelRoute` and `src/app/sentry-tunnel/route.ts`),
 so ad blockers do not drop error reports. Sentry's own tunnel handler forwards the visitor's IP address and the
 `Referer` (on the desk, an address with a QR token), so the route first rebuilds the request with the body, the content
-headers and the user agent only (`bareRequest` in `src/lib/sentry-tunnel.ts`).
+headers and the user agent only (`bareRequest` in `src/lib/sentry-tunnel.ts`). The tunnel is also where the replay
+address rules hold whatever the SDK does inside: every address in a replay's details (its page list) and in its recording
+loses its query, hash and tokens (`scrubEnvelope`). Recordings are sent uncompressed (`useCompression: false`) so the
+tunnel can read them; one it cannot read is dropped.
 
 Errors and traces from the browser set no cookie and hold no identifier, so they do not wait for the cookie choice.
 
@@ -63,7 +66,9 @@ Errors and traces from the browser set no cookie and hold no identifier, so they
 - Keeps only the last minute in the browser. On an error, half of the time (`REPLAY_ERROR_SAMPLE`), it sends that
   minute once and starts a new empty buffer. Sentry's own error path would turn the buffer into a recording of the
   rest of the visit, so `beforeErrorSampling` always declines and `src/lib/sentry-replay.ts` sends the buffer itself.
-  `replaysSessionSampleRate` is 0.
+  `replaysSessionSampleRate` is 0. `stickySession: false`: no replay session survives a page load, because the SDK
+  would bring a stored one back as a whole-visit recording. `minReplayDuration: 0`: an error in the first seconds
+  still sends its buffer.
 - Masks all text and inputs, and blocks images, video and canvas. No network details.
 - A move to a blocked page, or a withdrawn consent, stops it at once and sends nothing it held (`stop({ flush: false })`).
 
