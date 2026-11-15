@@ -81,15 +81,15 @@ describe("each drawing is tied to its sentence (B2)", () => {
   });
 
   it("a mismatch drops only the drawing: every sentence is still said", async () => {
-    // The ones digit (4) tied to the trade sentence: the sentence does not say it.
-    const { session } = chat([reply(SAY, "guide", { draw: [{ offer: "digit", place: "ones", sentence: 1 }] }), ASK]);
+    // The note 12 − 8 = 4 tied to the trade sentence: the sentence does not say it.
+    const { session } = chat([reply(SAY, "guide", { draw: [{ offer: "note", place: "12 - 8 = 4", sentence: 1 }] }), ASK]);
     await session.start();
     const out = await session.child("I don't get 2 minus 8.");
     expect(out.say.join(" ")).toBe(SAY);
     expect(out.board.filter((b) => isTrade(b) || isDigit(b))).toEqual([]);
     expect(session.session.tutor?.drawn).toEqual([]);
     const trace = await session.finish({ reason: "child_stopped" });
-    expect(attempts(trace).flatMap((a) => a.drawDrops ?? [])).toEqual([{ offer: "digit", sentence: 0, reason: "mismatch" }]);
+    expect(attempts(trace).flatMap((a) => a.drawDrops ?? [])).toEqual([{ offer: "note", sentence: 0, reason: "mismatch" }]);
     // No refusal and no repair: the words went out on the first attempt.
     expect(trace.counts.refusals).toBe(0);
     expect(checkTrace(trace)).toMatchObject({ ok: true });
@@ -163,7 +163,7 @@ describe("review of #1094: a drawing goes only with a positive statement of it",
 
 describe("review of #1094, round 2: the drawing's action equals one clause's action", () => {
   const cases: [string, string, { offer: string; place: string; sentence: number }][] = [
-    ["Write 4 in the tens, so write 5 in the ones.", "the ones digit (4) with another clause's value and place", { offer: "digit", place: "ones", sentence: 1 }],
+    ["Write 4 in the tens, so write 5 in the ones.", "the note 12 − 8 = 4 beside two other actions", { offer: "note", place: "12 - 8 = 4", sentence: 1 }],
     ["8 plus 4 is 12.", "the note 12 − 8 = 4 beside another true equation", { offer: "note", place: "12 - 8 = 4", sentence: 1 }],
     ["We trade 2 tens for 20 ones.", "the trade of 1 ten beside a trade of 2 tens", { offer: "trade", place: "", sentence: 1 }],
   ];
@@ -199,20 +199,32 @@ describe("review of #1094, round 3: the whole sentence is read, and the whole ba
     expect(out.board).toEqual([]);
     expect(session.session.tutor?.drawn).toEqual([]);
   });
-  it("the same batch is drawn whole when the sentence states the trade and the digit", async () => {
+  it("round 4: a digit is never drawn with an unstated trade; draw the trade first, then the digit", async () => {
     const said = "We trade 1 ten for 10 ones, so write 4 in the ones. What comes next?";
     const { session } = chat([reply(said, "guide", { draw: [{ offer: "digit", place: "ones", sentence: 1 }] }), ASK]);
     await session.start();
     const out = await session.child("Please help me.");
-    expect(out.board).toHaveLength(1);
-    expect(isTrade(out.board[0]) && isDigit(out.board[0])).toBe(true);
-    expect(session.session.tutor?.drawn).toEqual(["trade:ones", "digit:ones"]);
+    expect(out.board).toEqual([]);
+    const trace = await session.finish({ reason: "child_stopped" });
+    expect(attempts(trace).flatMap((a) => a.drawDrops ?? [])).toEqual([{ offer: "digit", sentence: 0, reason: "needs_earlier" }]);
+  });
+  it("round 4: the probe \"then write 5\" and a drawing lead-in through the session", async () => {
+    const extra = "We trade 1 ten for 10 ones, then write 4 in the ones, then write 5 in the ones.";
+    const lead = "Let's show it: we trade 1 ten for 10 ones, so 2 ones become 12 ones.";
+    const { session } = chat([reply(`${extra} ${lead} What comes next?`, "guide", { draw: [{ offer: "trade", place: "", sentence: 1 }, { offer: "trade", place: "", sentence: 2 }] }), ASK]);
+    await session.start();
+    const out = await session.child("Please help me.");
+    // The first sentence states more than its trade: dropped. The second, with its lead-in and true state, draws it.
+    expect(out.board.filter(isTrade)).toHaveLength(1);
+    const trace = await session.finish({ reason: "child_stopped" });
+    expect(attempts(trace).flatMap((a) => a.drawDrops ?? [])).toEqual([{ offer: "trade", sentence: 0, reason: "mismatch" }]);
+    expect(trace.board.find((b) => isTrade(b as unknown as Batch))?.sentence).toBe(1);
   });
 });
 
 describe("review of #1094: the server's board is rebuilt from the fates", () => {
   it("a skipped trade before a shown digit is off the server's board, so a later trade and a note both draw", async () => {
-    const retry = reply(`${S1} ${S2} How many ones are there now?`, "guide", { draw: [{ offer: "trade", place: "", sentence: 1 }, { offer: "note", place: "12 - 8 = 4", sentence: 2 }] });
+    const retry = reply(`${S1} 12 minus 8 is 4. How many ones are there now?`, "guide", { draw: [{ offer: "trade", place: "", sentence: 1 }, { offer: "note", place: "12 - 8 = 4", sentence: 2 }] });
     const { session } = chat([TRADE_AND_DIGIT, retry, ASK]);
     const opening = await session.start();
     const out = await session.child("Please help me.");

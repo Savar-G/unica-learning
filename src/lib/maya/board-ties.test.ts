@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import type { OperationPackage } from "@/lib/question-package";
-import { drawingMatches, sentenceCueWord, tieDrawings, tiesSentences } from "./board-ties";
+import { workedSteps, type Operation } from "@/lib/question-package";
+import { drawingMatches, problemFacts, sentenceCueWord, tieDrawings, tiesSentences } from "./board-ties";
 import { sentencesOf } from "./say-check";
 
 // B2 ("draw while speaking"), the pure part: each drawing is tied to one sentence, at most one per sentence, built in the
@@ -32,10 +33,30 @@ describe("tieDrawings", () => {
   });
 
   it("drops a drawing that does not match its sentence, and keeps the others", () => {
-    // The ones digit (4) on the trade sentence, which says 8, 2, 1 and 10: a mismatch.
-    const { drawings, drops } = tieDrawings(SUB, [{ offer: "digit", place: "ones", sentence: 1 }, { offer: "note", place: "12 - 8 = 4", sentence: 2 }], S, [], id);
-    expect(drops).toEqual([{ offer: "digit", sentence: 0, reason: "mismatch" }]);
-    expect(drawings.map((d) => [d.sentence, d.offer])).toEqual([[1, "note"]]);
+    // The note 12 − 8 = 4 on the digit sentence: "write 4 in the ones" is an action no note shows (round 4).
+    const { drawings, drops } = tieDrawings(SUB, [{ offer: "trade", place: "", sentence: 1 }, { offer: "note", place: "12 - 8 = 4", sentence: 2 }], S, [], id);
+    expect(drops).toEqual([{ offer: "note", sentence: 1, reason: "mismatch" }]);
+    expect(drawings.map((d) => [d.sentence, d.offer])).toEqual([[0, "trade"]]);
+  });
+
+  it("a drawing whose earlier work is not on the board is not drawn: its batch holds only its own action (round 4)", () => {
+    // The digit needs its trade first: alone, it is dropped (never a batch with an unstated trade).
+    const alone = tieDrawings(SUB, [{ offer: "digit", place: "ones", sentence: 2 }], S, [], id);
+    expect(alone.drawings).toEqual([]);
+    expect(alone.drops).toEqual([{ offer: "digit", sentence: 1, reason: "needs_earlier" }]);
+    // With the trade on the board (or drawn earlier in the same message), the digit's batch is one put.
+    const after = tieDrawings(SUB, [{ offer: "digit", place: "ones", sentence: 2 }], S, ["trade:ones"], id);
+    expect(after.drawings.map((d) => ops(d.commands))).toEqual([["put"]]);
+  });
+
+  it("34 × 12: the digit waits for its rows; each row is a drawing of its own (round 4)", () => {
+    const op: Operation = { kind: "multiply", operands: [34, 12] };
+    const pkg = { ...SUB, id: "multiply-34-12", text: "34 × 12 = ?", operation: op, steps: workedSteps(op), answer: { value: { type: "number", value: 408 }, accepted: [], unit: null } } as OperationPackage;
+    const say = sentencesOf("Write 68. Write 340. Write 8 in the ones.");
+    expect(tieDrawings(pkg, [{ offer: "digit", place: "ones", sentence: 3 }], say, [], id).drops).toEqual([{ offer: "digit", sentence: 2, reason: "needs_earlier" }]);
+    const all = tieDrawings(pkg, [{ offer: "row", place: "", sentence: 1 }, { offer: "row", place: "", sentence: 2 }, { offer: "digit", place: "ones", sentence: 3 }], say, [], id);
+    expect(all.drops).toEqual([]);
+    expect(all.drawings.map((d) => d.commands.map((c) => c.value))).toEqual([["68"], ["340"], ["8"]]);
   });
 
   it("drops a request with no valid sentence, and one with nothing new to draw", () => {
@@ -79,7 +100,8 @@ describe("drawingMatches: the drawing's action equals the action of one clause",
   });
   it("no field is taken from another clause (review of #1094, round 2)", () => {
     expect(drawingMatches("Write 4 in the tens, so write 5 in the ones.", "digit", put("ones", "4"))).toBe(false);
-    expect(drawingMatches("Write 5 in the tens, then write 4 in the ones.", "digit", put("ones", "4"))).toBe(true);
+    // One to one (round 4): a second action clause is an extra action, whatever its order.
+    expect(drawingMatches("Write 5 in the tens, then write 4 in the ones.", "digit", put("ones", "4"))).toBe(false);
   });
   it("a trade: both quantities and both places", () => {
     expect(drawingMatches("We trade 1 ten for 10 ones.", "trade", borrow)).toBe(true);
@@ -169,6 +191,54 @@ describe("drawingMatches fails closed: only a plain positive statement of the dr
     expect(drawingMatches("Some kids write 4 in the ones, but that is wrong.", "digit", ones4)).toBe(false);
     expect(drawingMatches("If we write 4 in the ones, it's wrong.", "digit", ones4)).toBe(false);
     expect(drawingMatches("We should not trade, so we trade 1 ten for 10 ones.", "trade", borrow)).toBe(false);
+  });
+});
+
+describe("round 4: one to one and in order, drawing lead-ins, true state facts", () => {
+  const ones4 = [{ op: "put", target: { objectId: "question", part: "cell", rowId: "answer", column: "ones" }, value: "4" }];
+  const borrow = [{ op: "regroup", id: "t", objectId: "question", rowId: "top", kind: "borrow", from: "tens", to: "ones" }];
+  const carry = [...ones4, { op: "regroup", id: "c", objectId: "question", rowId: "answer", kind: "carry", from: "ones", to: "tens" }];
+  const facts = problemFacts(SUB);
+  it("an extra action clause draws nothing", () => {
+    expect(drawingMatches("Write 4 in the ones, then write 5 in the ones.", "digit", ones4)).toBe(false);
+    expect(drawingMatches("We trade 1 ten for 10 ones, then write 4 in the ones, then write 5 in the ones.", "digit", [...borrow, ...ones4])).toBe(false);
+    expect(drawingMatches("Write 4 in the ones.", "digit", ones4)).toBe(true);
+  });
+  it("the clauses come in the order of the commands", () => {
+    expect(drawingMatches("Write 4 in the ones, then we trade 1 ten for 10 ones.", "digit", [...borrow, ...ones4])).toBe(false);
+    expect(drawingMatches("We trade 1 ten for 10 ones, then write 4 in the ones.", "digit", [...borrow, ...ones4])).toBe(true);
+    expect(drawingMatches("We trade 10 ones for 1 ten, then write 4 in the ones.", "digit", carry)).toBe(false);
+    expect(drawingMatches("Write 4 in the ones, then we trade 10 ones for 1 ten.", "digit", carry)).toBe(true);
+  });
+  it("an equation is a note's action; with no note it is a true reason", () => {
+    expect(drawingMatches("12 minus 8 is 4, so write 4 in the ones.", "digit", ones4)).toBe(true);
+    expect(drawingMatches("12 minus 8 is 5, so write 4 in the ones.", "digit", ones4)).toBe(false);
+    const note = [{ op: "write", id: "n", text: "12 − 8 = 4", place: { below: "question" } }];
+    expect(drawingMatches("12 minus 8 is 4.", "note", note)).toBe(true);
+    expect(drawingMatches("12 minus 8 is 4, so write 4 in the ones.", "note", note)).toBe(false);
+  });
+  it("a plain drawing lead-in is read: it is no action and no reason", () => {
+    expect(drawingMatches("Let's show it: we trade 1 ten for 10 ones.", "trade", borrow)).toBe(true);
+    expect(drawingMatches("Let's put it on the board: write 4 in the ones.", "digit", ones4)).toBe(true);
+    expect(drawingMatches("Look: write 4 in the ones.", "digit", ones4)).toBe(true);
+    expect(drawingMatches("Watch, we trade 1 ten for 10 ones.", "trade", borrow)).toBe(true);
+    const note = [{ op: "write", id: "n", text: "68 + 340 = 408", place: { below: "question" } }];
+    expect(drawingMatches("Let's draw the rows: 68 plus 340 is 408.", "note", note)).toBe(true);
+    // Any other lead-in stays unread.
+    expect(drawingMatches("Let's show 4: write 4 in the ones.", "digit", ones4)).toBe(false);
+    expect(drawingMatches("Let's not show it: write 4 in the ones.", "digit", ones4)).toBe(false);
+    expect(drawingMatches("Let's show it later: write 4 in the ones.", "digit", ones4)).toBe(false);
+  });
+  it("a state fact is a reason only when it is true for the active problem, with exact values", () => {
+    expect(drawingMatches("We trade 1 ten for 10 ones, so 2 ones become 12 ones.", "trade", borrow, facts)).toBe(true);
+    expect(drawingMatches("We trade 1 ten for 10 ones, so the 5 tens become 4 tens.", "trade", borrow, facts)).toBe(true);
+    expect(drawingMatches("52 is 4 tens and 12 ones, so we trade 1 ten for 10 ones.", "trade", borrow, facts)).toBe(true);
+    expect(drawingMatches("We trade 1 ten for 10 ones, so 2 ones become 13 ones.", "trade", borrow, facts)).toBe(false);
+    expect(drawingMatches("We trade 1 ten for 10 ones, so 2 tens become 12 tens.", "trade", borrow, facts)).toBe(false);
+    expect(drawingMatches("52 is 4 tens and 13 ones, so we trade 1 ten for 10 ones.", "trade", borrow, facts)).toBe(false);
+    expect(drawingMatches("61 is 5 tens and 11 ones, so we trade 1 ten for 10 ones.", "trade", borrow, facts)).toBe(false);
+    // Without the problem's facts, a state is unread.
+    expect(drawingMatches("We trade 1 ten for 10 ones, so 2 ones become 12 ones.", "trade", borrow)).toBe(false);
   });
 });
 
