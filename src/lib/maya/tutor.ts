@@ -269,7 +269,7 @@ export interface TutorStreamContext extends TutorCheckContext {
 }
 
 /** The stream's context for the child's turn `text`, from code's stance. */
-export function tutorStreamContext(pkg: OperationPackage, text: string, stance: TutorCheckContext["stance"], extra: ReadonlySet<string>, credited: readonly number[] = []): TutorStreamContext {
+export function tutorStreamContext(pkg: OperationPackage, text: string, stance: TutorCheckContext["stance"], extra: ReadonlySet<string>, credited: readonly number[] = [], wordQuestion = false): TutorStreamContext {
   const kind = tutorKind(pkg);
   // The child's candidate answers: the last number of each sentence ("Is 2 minus 8, 6?" offers 6, not 2 or 8).
   const said = sentencesOf(text).flatMap((x) => {
@@ -293,8 +293,9 @@ export function tutorStreamContext(pkg: OperationPackage, text: string, stance: 
     trades: kind.workValues(pkg),
     allowed,
     // A "yes" streams only when no reading can make it wrong: the child said no number, or only numbers code's own read
-    // credits as right (the final check keeps code's credit over the model's reading).
-    mayAffirm: said.length === 0 || (stance === "right" && said.every((n) => n === answer || credited.includes(n))),
+    // credits as right (the final check keeps code's credit over the model's reading). On a word question (a claim or a
+    // comparison) the child's answer is a word, not a number: only code's right word lets a "yes" stream.
+    mayAffirm: wordQuestion ? stance === "right" && said.every((n) => n === answer || credited.includes(n)) : said.length === 0 || (stance === "right" && said.every((n) => n === answer || credited.includes(n))),
     mayDeny: stance === "wrong" || (stance === "none" && !said.some((n) => right.has(n))),
   };
 }
