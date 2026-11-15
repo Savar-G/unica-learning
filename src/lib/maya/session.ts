@@ -69,7 +69,7 @@ import { ACTS, PART_LIMITS, PROPOSAL_VERSION, isModelOutput, readModelOutput, wi
 import { checkSay, checkSentence, columnSentenceTruth, equationHolds, heardColumnOf, revealsOpenStep, endsWithAsk, INSTRUCTION, MATH_WORD, PRAISE_WORDS, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
-import { checkTutorSay, childSaysFalse, isTutorQuestion, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, tutorSteps, TUTOR_REVIEW_IGNORED } from "./tutor";
+import { checkTutorSay, childSaysFalse, isTutorQuestion, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, TUTOR_REVIEW_IGNORED } from "./tutor";
 import { hideName as redactChildName } from "../child-name-redaction";
 
 /** Closing starts 9 minutes into the call; the call ends at 10 minutes. */
@@ -5011,7 +5011,16 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     // Code's own read wins: a model reading of a value code heard as a right answer is left out (review of #1006).
     const heard = heardAnswers(s);
     const heardRight = (a: ChildAnswer) => heard.some((h) => h.verdict === "right" && sameValue(h.value, a.value));
-    const candidates = [...heard, ...(reading.answers ?? []).filter((a) => (a.problem ?? "target") === "target" && !(a.verdict === "wrong" && heardRight(a)))];
+    // A word answer (yes/no, true/false, a comparison word) is code's own read only (claim.ts, comparison.ts): the
+    // model's reading of the final word is left out, and code's word counts, right or wrong (F4 builder, 2026-11-15).
+    const wordQuestion = !!sessionClaim(pkg) || !!comparisonOf(pkg);
+    const words = [
+      // The opening asks the question itself, so a bare word ("no", "false") answers the claim.
+      ...(sessionClaim(pkg) ? claimAnswers({ ...claimTurn(s), claimAsked: true }, [], false) ?? [] : []),
+      ...(comparisonOf(pkg) ? (comparisonAnswers(s, []) ?? []).filter((a) => a.step === "result") : []),
+    ];
+    credited.push(...words);
+    const candidates = [...heard, ...(reading.answers ?? []).filter((a) => (a.problem ?? "target") === "target" && !(a.verdict === "wrong" && heardRight(a)) && !(wordQuestion && a.step === "result"))];
     for (const a of candidates) {
       if (credited.some((c) => c.step === a.step && sameValue(c.value, a.value))) continue;
       if (checkAnswers(s, [a], []) === null) credited.push(a);
@@ -5050,17 +5059,34 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
       // A value of the work is no wrong answer: a step's result or digit, or a column's top after the trade (12, 4).
       // Not when the child names it as the answer ("My final answer for 52 minus 28 is 12"): then only the answer fits.
       const asAnswer = /\banswer\b/i.test(base.turn.text);
-      const fits = rightForQuestion(pkg, read.final) || (!asAnswer && tutorSteps(pkg).some((st) => st.write === n || st.total === n || st.operands[0] === n));
+      const fits = rightForQuestion(pkg, read.final) || (!asAnswer && tutorKind(pkg).workValues(pkg).includes(n));
       if (!fits) stance = "wrong";
       else if (stance === "none" && rightForQuestion(pkg, read.final)) stance = "right";
+      // The next open step's own result is right too: Maya never says "not quite" to it (review of #1018: "28" for a
+      // pattern's second term).
+      else if (stance === "none" && !asAnswer && stepFacts(pkg).find((st) => !base.done.includes(st.id))?.result === n) stance = "right";
     }
     for (const a of credited) if (a.value.type === "number" && !childValues.includes(a.value.value)) childValues.push(a.value.value);
   }
   // A false equation the child said is wrong, whatever step it is about and whatever number it ends on ("12 minus 8 is
   // 24"): Maya never says yes to it.
   if (base.turn && childSaysFalse(base.turn.text)) stance = "wrong";
+  // A bare word ("false", "no") is not committed, so it is not credited, but Maya never says "yes" to a wrong one or
+  // "not quite" to a right one (F4 builder, 2026-11-15).
+  if (base.turn && !credited.some((a) => a.step === "result")) {
+    const claim = sessionClaim(pkg);
+    const word = claim ? claimSaid({ ...claimTurn(base), claimAsked: true }) : null;
+    if (claim && word) stance = word === claim.word ? (stance === "none" ? "right" : stance) : "wrong";
+    const op = comparisonOf(pkg);
+    // The opening asks the comparison itself, so a bare word ("false") right after it sets the stance (F4 builder,
+    // 2026-11-15). After Maya asks another question ("Is 5 less than 3?") a bare word may answer that one, so it is not
+    // read against the printed claim (review of #1009).
+    const afterOpening = lastSaid(base) === (base.turns.find((t) => t.speaker === "maya")?.text ?? null);
+    const cw = op ? comparisonWord(afterOpening ? { ...base, claimAsked: true } : base) : null;
+    if (op && cw) stance = sameValue(comparisonAnswer(op, cw.word === comparisonWords(op)[0]), pkg.answer.value) ? (stance === "none" ? "right" : stance) : "wrong";
+  }
   // The next open step, for the prepared replies' expected turns (expectedTurns and fitsExpected read the ladder's step).
-  s.ladder = { ...s.ladder, step: tutorSteps(pkg).find((st) => !s.done.includes(st.id))?.id ?? "result" };
+  s.ladder = { ...s.ladder, step: stepFacts(pkg).find((st) => !s.done.includes(st.id))?.id ?? "result" };
   const act: Act = out.act === "close" ? "close" : "guide";
   if (act === "close" && s.solved === null) return no("act_not_allowed", "The child has not solved the question yet: never end the call on a child who is stuck. Teach the next small step and ask one small question.");
   // Review of #1002: a solved question does not end the call while the child asks for help now.
@@ -5074,11 +5100,13 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   const honest = tutorFallbackText(pkg, s.done, s.solved !== null);
   let text = fallback ? (sent.length ? `${lead} ${sentencesOf(honest).slice(1).join(" ")}` : honest) : out.say.trim();
   if (!fallback && sent.length && !text.startsWith(lead)) return no("invalid_proposal", "The message must start with the sentences already said.");
-  const op = pkg.operation.kind === "add" ? "add" as const : "subtract" as const;
+  const kind = tutorKind(pkg);
+  const op = kind.op?.(pkg);
+  const claims = (sentence: string) => kind.claimProblems(pkg, sentence);
   const answer = pkg.answer.value.type === "number" ? pkg.answer.value.value : undefined;
-  let verdict = checkTutorSay(text, { stance, extra, childValues, op, ...(answer === undefined ? {} : { answer }) });
+  let verdict = checkTutorSay(text, { stance, extra, childValues, claims, trades: tutorKind(pkg).workValues(pkg), ...(op ? { op } : {}), ...(answer === undefined ? {} : { answer }) });
   // Code's own line never fails its turn: after streamed words that leave no room, the turn is those words.
-  if (fallback && !verdict.ok && sent.length) { text = lead; verdict = checkTutorSay(text, { stance: "none", extra, op }); }
+  if (fallback && !verdict.ok && sent.length) { text = lead; verdict = checkTutorSay(text, { stance: "none", extra, claims, trades: tutorKind(pkg).workValues(pkg), ...(op ? { op } : {}) }); }
   if (!verdict.ok) return no("say_check", `Your message was refused (${verdict.reason}): ${verdict.detail}`, verdict.reason);
   if (act === "close" && /\?\s*$/.test(text)) return no("say_check", "A close ends the call, so it asks nothing: say a short goodbye with no question.", "close_asks");
   // Child safety: each sentence that is not plain teaching is reviewed before it is said (the adapter runs the reviews,
@@ -5094,8 +5122,8 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   // Help and assistance for the outcome: a message that tells an open step's result is a show (guided), else a hint.
   const tutor = { help: progress ? 0 : s.solved === null ? (s.tutor?.help ?? 0) + 1 : 0, drawn: [...(s.tutor?.drawn ?? [])] };
   if (s.solved === null && act === "guide") {
-    const open = tutorSteps(pkg).filter((st) => !base.done.includes(st.id));
-    const tells = sentencesOf(text).some((x) => equationsOf(x).some((e) => !e.negated && equationHolds(e) === true && open.some((st) => e.result.q?.[0] === st.total && e.result.q?.[1] === 1)));
+    const open = stepFacts(pkg).filter((st) => !base.done.includes(st.id));
+    const tells = sentencesOf(text).some((x) => equationsOf(x).some((e) => !e.negated && equationHolds(e) === true && e.result.q?.[1] === 1 && (open.some((st) => e.result.q?.[0] === st.result) || tutorKind(pkg).workValues(pkg).includes(e.result.q?.[0] ?? NaN))));
     const kind: Assistance = tells ? "guided" : "hint";
     if (!s.assistance.includes(kind)) s.assistance.push(kind);
   }

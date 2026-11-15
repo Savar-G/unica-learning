@@ -358,3 +358,12 @@ describe("the compare step's credit (A4, review of #737): a whole-turn allow-lis
   });
 });
 
+
+// A spot-the-error question asks the child to tick (F4 review of #1013, 2026-11-15): "I tick no" commits the word.
+describe("tick answers", () => {
+  const YES_NO = ["yes", "no"] as const;
+  it.each([["I tick yes", "yes"], ["I tick no.", "no"], ["I ticked no", "no"], ["Tick yes", "yes"]] as const)("reads %j as committed %s", (text, word) => {
+    expect(readClaimWord(text, YES_NO)).toEqual({ word, committed: true });
+  });
+  it("still asks which when both words are ticked", () => expect(readClaimWord("I tick yes or no", YES_NO)).toEqual({ unclear: true }));
+});

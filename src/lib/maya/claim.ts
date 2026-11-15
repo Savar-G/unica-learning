@@ -304,7 +304,7 @@ const HAS_WORD = new RegExp(ANY_WORD.source);
 const NO_ANSWER = /\bno (?:idea|clue)\b|\b(?:don'?t|do not|dunno) know\b|\bdunno\b|\bnot sure\b/;
 const HEDGE = /^(?:maybe|probably|perhaps|i think|i guess|i believe|is it|might be)\b/;
 /** Committed lead-ins: the child says which word is their answer. */
-const COMMIT = /^(?:it'?s|it is|that'?s|that is|(?:the |my )?answer is|i say|i'?d say|i circle|i circled|i'?ll circle|i will circle|i would circle|i pick|i picked|i choose|i chose|we circle|circle)\s+/;
+const COMMIT = /^(?:it'?s|it is|that'?s|that is|(?:the |my )?answer is|i say|i'?d say|i circle|i circled|i'?ll circle|i will circle|i would circle|i pick|i picked|i choose|i chose|we circle|circle|i tick|i ticked|i'?ll tick|i will tick|i would tick|we tick|tick)\s+/;
 const FILLER = /^(?:(?:um+|uh+|oh|okay|ok|so|well),?\s+)+/;
 /** An explanation after the word: a reason ("because ...") or a sentence with a number ("No, 5220 is less."). */
 const REASON = /^(?:because|since|cause|cuz|as)\b/;
