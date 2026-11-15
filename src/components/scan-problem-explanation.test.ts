@@ -9,9 +9,15 @@ vi.mock("@/lib/supabase-browser", () => ({ browserClient: () => ({ auth: { onAut
 vi.mock("@/lib/scan-track", () => ({ scanEventTicket: () => () => {} }));
 vi.mock("./scan-private-images", () => ({ ScanPrivateImages: () => null }));
 let root: Root, host: HTMLDivElement;
-const item = { number: 1, itemId: "question", version: 2, state: "scored" as const, result: "wrong" as const, readAnswerText: "41", canChange: true, actor: "system" as const, at: "saved", evidencePhoto: "photo", photoAvailable: true, label: "Wrong" };
+const item = { number: 1, itemId: "question", version: 2, state: "scored" as const, result: "wrong" as const, readAnswerText: "41", canChange: true, actor: "system" as const, at: "saved", evidencePhoto: "photo", photoAvailable: true, label: "Wrong", explainable: true };
 const base = { completion: { status: "complete" as const, total: 1, finished: 1, items: [] }, counts: { scored: 1, unscored: 0, teamChecks: 0, pending: 0 }, solutionsAvailable: true, photoAvailable: true, items: [item] };
 const ready = { status: "ready", context: "version", correctAnswer: "42", explanation: { steps: ["Add one more ten."], say: "Check the tens." } };
+it.each([false, undefined])("an explainable=%s wrong answer keeps the question and key without a dead control", async explainable => {
+  const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+  await render({ ...base, items: [{ ...item, explainable, questionText: "What is 40 plus 2?", correctAnswer: "42" }] });
+  expect(host.textContent).toContain("What is 40 plus 2?"); expect(host.textContent).toContain("Stored correct answer: 42");
+  expect(host.textContent).not.toContain("Explain this problem"); expect(fetch).not.toHaveBeenCalled();
+});
 const render = async (result: Parameters<typeof ScanMarkingResults>[0]["result"] = base, parent = "parent", photo = "photo") => { await act(async () => root.render(createElement(ScanMarkingResults, { result, parent, photo }))); };
 const press = async (label = "Explain this problem") => { const b = [...host.querySelectorAll("button")].find(b => b.textContent?.startsWith(label)); expect(b).toBeDefined(); await act(async () => b!.click()); };
 beforeEach(() => { context.auth = []; vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); host = document.createElement("div"); document.body.append(host); root = createRoot(host); });

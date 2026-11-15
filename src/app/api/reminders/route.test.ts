@@ -4,8 +4,10 @@ import type { Database } from "@/lib/database";
 import { memoryTransport } from "@/lib/email-delivery-memory";
 import { memoryMonthlyStore } from "@/lib/monthly-summary-email-memory";
 import type { MonthlyStore } from "@/lib/monthly-summary-email";
+import { reverifyParentExplanationPrice } from "@/lib/parent-explanation-price-server";
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/parent-explanation-price-server", () => ({ reverifyParentExplanationPrice: vi.fn(async () => "not_due") }));
 vi.mock("@/lib/referral-server", () => ({ recoverReferralsNow: async () => ({ checked: 0, failed: 0, emails: { sent: 0, deferred: 0 } }) }));
 
 // The reminder job's part of the monthly summary email (#563): the dry path sends nothing, a real run shares the spaced
@@ -152,6 +154,7 @@ import { POST } from "./route";
 const call = (query = "") => POST(new Request(`https://unicalearning.com/api/reminders${query}`, { method: "POST", headers: { authorization: "Bearer cron" } }));
 
 beforeEach(() => {
+  vi.mocked(reverifyParentExplanationPrice).mockReset().mockResolvedValue("not_due");
   vi.stubEnv("CRON_SECRET", "cron");
   vi.useFakeTimers({ toFake: ["Date"], now: Date.UTC(2026, 10, 1, 15) });
   h.mail = memoryTransport();
@@ -243,6 +246,17 @@ it("the dry path counts the email, sends nothing and claims nothing", async () =
   expect(await res.json()).toMatchObject({ ok: true, dry: true, monthly: 1 });
   expect(h.mail.delivered).toHaveLength(0);
   expect(h.store.rows()).toEqual([]);
+  expect(reverifyParentExplanationPrice).not.toHaveBeenCalled();
+});
+
+it("renews explanation prices beside the other sweeps and a price failure never stops reminders", async () => {
+  vi.mocked(reverifyParentExplanationPrice).mockResolvedValueOnce("verified");
+  expect(await (await call()).json()).toMatchObject({ ok: true, explanationPrice: "verified" });
+  expect(reverifyParentExplanationPrice).toHaveBeenCalledTimes(1);
+  vi.mocked(reverifyParentExplanationPrice).mockRejectedValueOnce(new Error("private diagnostic"));
+  const result = await (await call()).json();
+  expect(result).toMatchObject({ ok: true, explanationPrice: "failed" });
+  expect(JSON.stringify(result)).not.toContain("private diagnostic");
 });
 
 it("a run sends it once, and a second run does not", async () => {

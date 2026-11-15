@@ -7,6 +7,7 @@ import { SCOPE_REASONS } from "@/lib/maya/scope";
 //
 // Plain JSON. Pure TypeScript except `packageHash`, which uses node:crypto (server and scripts only).
 import { createHash } from "node:crypto";
+import { ACK_PHRASES } from "@/lib/maya-voice-ack";
 import { ACTS, SAFETY_GUIDANCE, ASSISTANCE, heldSentences, INTERRUPTS, MAIN_STATES, NEVER_SAY_IDS, PATIENT_LINES, PHRASES, type Act, type Outcome, type RefusalCode, type SessionState, type TalkCheck } from "@/lib/maya";
 
 /** Why a proposal was refused: the session's refusal, or "board_refused" when the board core refused a batch the session built. */
@@ -33,13 +34,15 @@ export interface TraceRefusal {
  * (hello, can't teach, another question); a version 9 trace with the old text is refused. Version 10 records the configured call limits. Version 11 adds the optional `diagnosticHandleId` (one short token, no
  * words) to a preparation record. Version 12 (two-layer true math, 2026-11-15) adds the tutor core's math-truth review: on
  * an attempt, `math` (each sentence code did not read whole, with the review's verdict and reason) and, on a tutor call,
- * `mathReviewer` (the review's model and prompt version, or null). Version 13 (B1, "shown means shown") adds, on a board
- * batch, `fate`: what the child's screen said it did with it (shown, skipped or cancelled; absent when it said nothing),
- * and `counts.boardFates`, the batches by fate. `checkTrace` reads all thirteen versions.
+ * `mathReviewer` (the review's model and prompt version, or null). Version 13 (2026-11-15, after #1072) adds `filler` on
+ * a voice repair attempt: the id of the thinking phrase (`ACK_PHRASES`) the voice worker said when the repair started,
+ * and the count `fillers`. Version 14 (B1, "shown means shown") adds, on a board batch, `fate`: what the child's screen
+ * said it did with it (shown, skipped or cancelled; absent when it said nothing), and `counts.boardFates`, the batches by
+ * fate. `checkTrace` reads all fourteen versions.
  */
-export const TRACE_VERSION = 13;
+export const TRACE_VERSION = 14;
 /** The trace versions `checkTrace` reads. */
-export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] as const;
+export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] as const;
 /**
  * The held turn as version 8 traces stored it, before D-327 (line sets 11 to 13). Frozen here: stored admin test
  * calls from preview deployments may hold it, and they stay readable.
@@ -170,6 +173,12 @@ export interface TraceAttempt {
    * ship practice at 6de7e777). Absent otherwise, and in traces from before. Counted by `fencedReplies`.
    */
   fenced?: true;
+  /**
+   * Version 13, on a repair attempt of a voice turn only: the id of the thinking phrase (`ACK_PHRASES` in
+   * src/lib/maya-voice-ack.ts) the voice worker queued when the repair started, before any word of the turn. Absent when
+   * no phrase was said (chat, a phrase already said in the turn, the bank used, the child talking), and before version 13.
+   */
+  filler?: string;
 }
 
 /** One piece of the model's own words in a trace (D-197): the session's TalkCheck. */
@@ -230,14 +239,14 @@ export interface TraceBoardBatch {
   transactionId: string;
   commands: readonly unknown[];
   /**
-   * Version 13 (B1): what the child's screen did with the batch: "shown" (on the board), "skipped" (the board refused it:
+   * Version 14 (B1): what the child's screen did with the batch: "shown" (on the board), "skipped" (the board refused it:
    * it would cover the child's ink) or "cancelled" (a voice call stopped it before its cue). Absent: the screen said
    * nothing, so the batch never counts as shown.
    */
   fate?: "shown" | "skipped" | "cancelled";
 }
 
-/** Version 13 (B1): the board batches by what the child's screen did with them; `unreported`: no word from the screen. */
+/** Version 14 (B1): the board batches by what the child's screen did with them; `unreported`: no word from the screen. */
 export interface TraceBoardFates {
   shown: number;
   skipped: number;
@@ -245,7 +254,7 @@ export interface TraceBoardFates {
   unreported: number;
 }
 
-/** The board batches of a trace by fate (version 13). */
+/** The board batches of a trace by fate (version 14). */
 export function boardFateCounts(board: readonly TraceBoardBatch[]): TraceBoardFates {
   const n = (fate: TraceBoardBatch["fate"]) => board.filter((b) => b.fate === fate).length;
   return { shown: n("shown"), skipped: n("skipped"), cancelled: n("cancelled"), unreported: n(undefined) };
@@ -311,7 +320,9 @@ export interface TraceCounts {
   mathRefusals?: number;
   /** Math-truth reviews the retry model answered after an "unsure" (math review version 3). */
   mathRetries?: number;
-  /** Version 13 (B1): the board batches by what the child's screen did with them (boardFateCounts). */
+  /** Version 13: thinking phrases the voice worker said when a repair started (`filler` on an attempt). */
+  fillers?: number;
+  /** Version 14 (B1): the board batches by what the child's screen did with them (boardFateCounts). */
   boardFates?: TraceBoardFates;
 }
 
@@ -335,6 +346,7 @@ export function traceCounts(turns: readonly TraceTurn[]): TraceCounts {
     mathReviews: attempts.reduce((n, a) => n + (a.math?.length ?? 0), 0),
     mathRefusals: attempts.filter((a) => a.refusal?.say === "math_review").length,
     mathRetries: attempts.reduce((n, a) => n + (a.math?.filter((m) => m.retried).length ?? 0), 0),
+    fillers: attempts.filter((a) => a.filler !== undefined).length,
   };
 }
 
@@ -434,6 +446,7 @@ function checkAttempt(a: unknown, path: string) {
   need(x.reviewMs === undefined || (isNum(x.reviewMs) && x.reviewMs >= 0), `${path}.reviewMs`, "a duration");
   need(x.gateDisagrees === undefined || (x.gateDisagrees === true && (x.source === "model" || x.source === "repair") && x.proposal !== null), `${path}.gateDisagrees`, "true on a model or repair proposal, or absent");
   need(x.fenced === undefined || (x.fenced === true && (x.source === "model" || x.source === "repair") && x.proposal !== null && x.error === undefined), `${path}.fenced`, "true on a model or repair proposal, or absent");
+  need(x.filler === undefined || (x.source === "repair" && ACK_PHRASES.some((p) => p.id === x.filler)), `${path}.filler`, "a thinking phrase id on a repair attempt, or absent");
   if (x.math !== undefined) {
     need(Array.isArray(x.math) && x.math.length > 0, `${path}.math`, "a list of math-truth reviews");
     (x.math as unknown[]).forEach((m, i) => {
@@ -641,6 +654,10 @@ function check(raw: unknown): MayaTrace {
     if (t.kind !== "maya" || (r.version as number) >= 12) return;
     (t.attempts as Record<string, unknown>[]).forEach((a, k) => need(a.math === undefined, `turns[${i}].attempts[${k}].math`, "absent before version 12"));
   });
+  turns.forEach((t, i) => {
+    if (t.kind !== "maya" || (r.version as number) >= 13) return;
+    (t.attempts as Record<string, unknown>[]).forEach((a, k) => need(a.filler === undefined, `turns[${i}].attempts[${k}].filler`, "absent before version 13"));
+  });
 
   need(Array.isArray(r.board), "board", "a list");
   const sent = new Set<string>();
@@ -654,7 +671,7 @@ function check(raw: unknown): MayaTrace {
     need(Array.isArray(x.commands) && x.commands.length > 0, `${path}.commands`, "a list of commands");
     const out = turns[x.turn as number].output as { board: string[] } | null;
     need(out !== null && out.board.includes(x.transactionId as string), `${path}.transactionId`, "sent by that turn's output");
-    // Version 13 writes it; a trace of an older version never holds it, so it is read the same in every version.
+    // Version 14 writes it; a trace of an older version never holds it, so it is read the same in every version.
     need(x.fate === undefined || ["shown", "skipped", "cancelled"].includes(x.fate as string), `${path}.fate`, "absent, shown, skipped or cancelled");
     sent.add(x.transactionId as string);
   });
@@ -729,7 +746,7 @@ function check(raw: unknown): MayaTrace {
   need(isObject(c) && COUNT_KEYS.every((k) => isCount(c[k])), "counts", "the trace counts");
   const want = traceCounts(turns as unknown as TraceTurn[]);
   for (const k of COUNT_KEYS) need((c as Record<string, unknown>)[k] === want[k], `counts.${k}`, `${want[k]}, counted from the turns`);
-  // Version 13: a quick read of the board's fates, like the other counts; boardFateCounts recounts them from `board`.
+  // Version 14: a quick read of the board's fates, like the other counts; boardFateCounts recounts them from `board`.
   const bf = (c as Record<string, unknown>).boardFates;
   need(bf === undefined || (isObject(bf) && Object.keys(bf).length === 4 && ["shown", "skipped", "cancelled", "unreported"].every((k) => isCount((bf as Record<string, unknown>)[k]))), "counts.boardFates", "absent, or four counts: shown, skipped, cancelled and unreported");
   return raw as unknown as MayaTrace;

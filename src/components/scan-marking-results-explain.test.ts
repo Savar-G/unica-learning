@@ -11,7 +11,7 @@ vi.mock("@/lib/scan-track", () => ({ scanEventTicket: (current: () => boolean = 
 vi.mock("./scan-private-images", () => ({ ScanPrivateImages: ({ photo }: { photo: string }) => createElement("span", { "data-evidence-photo": photo }, "Private crop") }));
 let host: HTMLDivElement, root: Root, calls: { path: string; init: RequestInit }[], answer: Response;
 const item = { number: 1, itemId: "original", version: 2, state: "scored" as const, result: "wrong" as const,
-  readAnswerText: "56", canChange: true, evidencePhoto: "photo", photoAvailable: false, actor: "system" as const, at: "2026-11-05T00:00:00Z", label: "Wrong" };
+  readAnswerText: "56", canChange: true, evidencePhoto: "photo", photoAvailable: false, actor: "system" as const, at: "2026-11-05T00:00:00Z", label: "Wrong", explainable: true };
 const page: ReturnType<typeof markingPageView> & { photoAvailable: boolean } = { items: [item], photoAvailable: false,
   completion: { status: "complete", total: 1, finished: 1, items: [] }, counts: { scored: 1, unscored: 0, teamChecks: 0, pending: 0 }, solutionsAvailable: true };
 const show = async (result = page, parent?: string) => { await act(async () => root.render(createElement(ScanMarkingResults, { result, photo: "photo", parent }))); };
@@ -40,7 +40,7 @@ it("an answer with no mark yet has no control and asks nothing (#715)", async ()
   await show({ ...page, items: [{ ...item, state: "unscored", result: null, canChange: false, label: "Not scored" }] });
   expect(host.querySelector("button")).toBeNull();
 });
-it("a Wrong mark of an answer the AI read, on a complete page, offers Explain; with no reading it offers nothing (#715)", async () => {
+it("an explainable Wrong mark of an answer the AI read, on a complete page, offers Explain; with no reading it offers nothing (#715)", async () => {
   const team = { ...item, state: "parent-checked" as const, actor: "admin" as const, result: "wrong" as const, label: "Wrong", readAnswerText: "56" };
   await show({ ...page, items: [team] });
   expect(host.textContent).toContain("Our team");
