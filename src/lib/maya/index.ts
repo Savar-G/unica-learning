@@ -7,6 +7,7 @@ export {
   fallbacks,
   tutorTeachingNow,
   tutorStream,
+  mathReviewInput,
   helpBrief,
   fillerTurn,
   PATIENT_LINES,
@@ -109,6 +110,7 @@ export {
   type TalkReviewInput,
   type TalkReviewResult,
 } from "./talk-review";
+export { MATH_REVIEW_PROMPT_VERSION, MATH_REVIEW_SCHEMA, MATH_REVIEW_SYSTEM, mathReviewsOf, readMathReview, type MathReview, type MathReviewInput, type MathReviewResult } from "./math-review";
 export { NAME_GAP, type WordingHistory, type WordingId } from "./variety";
 export { MAX_WORDINGS, memoryWordingHistoryStore, mergeHistory, type WordingHistoryStore } from "./wording-history";
 export { readAnswer, readNumbers, saysWritten, unreadableAnswer, valuesIn, writtenFractions, type AnswerRead, type NumbersRead, type ReadOptions } from "./numbers";
@@ -117,7 +119,7 @@ export { asksSimplest, isEqualForm, readOptionsFor, rightForQuestion, teachSteps
 export { scopeReason, scopeSkills, SCOPE_LABELS, SCOPE_REASONS, type MathRequest, type ScopeReading, type OutsideReason, type ScopeReason, type ScopeRefusal } from "./scope";
 export { exactSafe, mathOnly, EXACT_SAFE, MATH_VOCAB } from "./math-vocab";
 export { checkSay, checkSentence, numberValue, sentencesOf, sayNumbers, trimSay, valuesOf, SAY_REASONS, SAY_WORDS, type SayReason, type SayRules, type SayVerdict } from "./say-check";
-export { checkTutorSay, plainTeaching, tutorStreamSentence, tutorStreamContext, childSaysFalse, type TutorStreamContext, childFacts, isTutorQuestion, numberMeaning, stepFacts, tutorDrawings, tutorFallbackText, tutorSteps, tutorKind, expressionKey, TUTOR_REVIEW_IGNORED, TUTOR_WORD_LIMIT, type TutorVerdict } from "./tutor";
+export { checkTutorSay, plainTeaching, unreadMath, tutorStreamSentence, tutorStreamContext, childSaysFalse, type TutorStreamContext, childFacts, isTutorQuestion, numberMeaning, stepFacts, tutorDrawings, tutorFallbackText, tutorSteps, tutorKind, expressionKey, TUTOR_REVIEW_IGNORED, TUTOR_WORD_LIMIT, type TutorVerdict } from "./tutor";
 export { isTutorBrief, tutorBrief, tutorBriefParts, TUTOR_OUTPUT_SCHEMA, TUTOR_PROMPT, TUTOR_PROMPT_VERSION, type TutorBrief } from "./tutor-prompt";
 export { noteFromEquation, type TutorCommand, type TutorDrawing, type TutorKind, type TutorStepFact } from "./tutor-kind";
 export { TUTOR_KINDS, tutorKindOf } from "./tutor-kinds";

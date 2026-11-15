@@ -1,6 +1,6 @@
 // Persistent transition rules for the text adapter. No provider, clock, promise or abort signal enters this fold.
 import { applyBatch, createScene, type Batch, type Scene } from "@/lib/board";
-import { nextActs, speechKey, step, TIME_LIMITS, SAFETY_GUIDANCE, type Act, type Effect, type Session, type SessionEvent, type TalkReview } from "@/lib/maya";
+import { nextActs, speechKey, step, TIME_LIMITS, SAFETY_GUIDANCE, type Act, type Effect, type MathReview, type Session, type SessionEvent, type TalkReview } from "@/lib/maya";
 import { type TraceAttempt, type TraceBoardBatch, type TraceError, type TraceObligation, type TraceTurn } from "@/lib/maya-trace";
 import type { TextOutput } from "@/lib/maya-text";
 
@@ -18,7 +18,8 @@ export type TextLogEvent =
   | { kind: "input"; at: number; event: SessionEvent; error?: TraceError }
   | { kind: "request"; at: number; requestId: number; source: "model" | "repair" }
   | { kind: "response"; at: number; requestId: number; proposal?: unknown; error?: TraceError; ms: number; fenced?: true; sent?: string[]; firstSayMs?: number }
-  | { kind: "review"; at: number; requestId: number; reviews: TalkReview[]; reviewMs?: number }
+  /** `mathReviews`: two-layer true math (2026-11-15); absent in an event written before the math-truth review existed. */
+  | { kind: "review"; at: number; requestId: number; reviews: TalkReview[]; mathReviews?: MathReview[]; reviewMs?: number }
   | { kind: "fallback"; at: number; proposal: unknown }
   | { kind: "recover"; at: number }
   | { kind: "cancelled"; at: number }
@@ -257,9 +258,11 @@ function flushDeferred(s: TextFold) {
     if (child?.status !== "dropped") applyInput(s, entry.event, undefined, false);
   }
 }
-function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt, reviews?: TalkReview[]) {
+function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt, reviews?: TalkReview[], mathReviews?: MathReview[]) {
   const before = s.session.state;
-  const event: SessionEvent = { type: "proposal", at: Math.max(at, s.session.now ?? 0), proposal: value, talkReviews: reviews, ...(attempt.source === "fallback" ? { fallback: true } : {}), ...(s.sent?.length ? { sent: [...s.sent] } : {}) };
+  // Two-layer true math: every math-truth review of this attempt is kept in the trace, whatever the step decides.
+  if (mathReviews?.length) attempt.math = mathReviews.map((r) => ({ sentence: r.text, verdict: r.result.verdict, reason: r.result.reason }));
+  const event: SessionEvent = { type: "proposal", at: Math.max(at, s.session.now ?? 0), proposal: value, talkReviews: reviews, ...(mathReviews ? { mathReviews } : {}), ...(attempt.source === "fallback" ? { fallback: true } : {}), ...(s.sent?.length ? { sent: [...s.sent] } : {}) };
   let r = step(s.session, event);
   let controlEvent = event;
   let scene = s.scene;
@@ -382,7 +385,7 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
       if (s.request?.id !== e.requestId || s.candidate?.requestId !== e.requestId) break;
       const candidate = s.candidate;
       s.request = null; s.candidate = null;
-      proposal(s, candidate.proposal, e.at, { source: candidate.source, proposal: candidate.proposal, refusal: null, ms: candidate.ms, ...(candidate.fenced ? { fenced: true as const } : {}), ...(candidate.firstSayMs !== undefined ? { firstSayMs: candidate.firstSayMs } : {}), ...(e.reviewMs !== undefined ? { reviewMs: e.reviewMs } : {}) }, e.reviews);
+      proposal(s, candidate.proposal, e.at, { source: candidate.source, proposal: candidate.proposal, refusal: null, ms: candidate.ms, ...(candidate.fenced ? { fenced: true as const } : {}), ...(candidate.firstSayMs !== undefined ? { firstSayMs: candidate.firstSayMs } : {}), ...(e.reviewMs !== undefined ? { reviewMs: e.reviewMs } : {}) }, e.reviews, e.mathReviews);
       break;
     }
     case "fallback": proposal(s, e.proposal, e.at, { source: "fallback", proposal: e.proposal, refusal: null }); break;

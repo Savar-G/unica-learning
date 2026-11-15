@@ -69,7 +69,8 @@ import { ACTS, PART_LIMITS, PROPOSAL_VERSION, isModelOutput, readModelOutput, wi
 import { checkSay, checkSentence, columnSentenceTruth, equationHolds, heardColumnOf, revealsOpenStep, endsWithAsk, INSTRUCTION, MATH_WORD, PRAISE_WORDS, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
-import { checkTutorSay, childSaysFalse, isTutorQuestion, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, TUTOR_REVIEW_IGNORED } from "./tutor";
+import { checkTutorSay, childFacts, childSaysFalse, isTutorQuestion, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, TUTOR_REVIEW_IGNORED } from "./tutor";
+import { MATH_REVIEW_PROMPT_VERSION, mathReviewsOf, type MathReview, type MathReviewInput } from "./math-review";
 import { hideName as redactChildName } from "../child-name-redaction";
 
 /** Closing starts 9 minutes into the call; the call ends at 10 minutes. */
@@ -150,7 +151,11 @@ export type SessionEvent =
    * replaced by a bank phrase. `fallback`: code's own proposal after the model's were refused (`fallbacks`). The adapter
    * sets it, never the model. A fallback may raise help one level on a step the child is still stuck on (#605).
    */
-  | { type: "proposal"; at: number; proposal: unknown; talkReviews?: TalkReview[]; fallback?: boolean; sent?: string[] }
+  /**
+   * `mathReviews` (two-layer true math, 2026-11-15): the math-truth review of each tutor sentence code did not read whole,
+   * by its text. With `talkReviews` given and no `mathReviews`, the event was written before the review existed.
+   */
+  | { type: "proposal"; at: number; proposal: unknown; talkReviews?: TalkReview[]; mathReviews?: MathReview[]; fallback?: boolean; sent?: string[] }
   | { type: "tick"; at: number }
   /** The child starts or stops writing on the board. */
   | { type: "writing"; at: number; status: "started" | "done" }
@@ -217,7 +222,11 @@ export type Effect =
    * `talkReplaced`: how many pieces of the model's own warm words failed a check and were replaced (D-196 rule B).
    * `talk`: each piece, with both checks and what was said (D-197).
    */
-  | { kind: "say"; act: Act; text: string; talkReplaced?: number; talk?: TalkCheck[]; planned?: string; dropped?: { text: string; reason: string }[] }
+  /**
+   * `math` (two-layer true math): the tutor sentences code did not read whole, each with its math-truth review: "not_run"
+   * on the step before the reviews (the adapter reviews those), "true" when it passed.
+   */
+  | { kind: "say"; act: Act; text: string; talkReplaced?: number; talk?: TalkCheck[]; math?: { sentence: string; verdict: "not_run" | "true" }[]; planned?: string; dropped?: { text: string; reason: string }[] }
   | { kind: "board"; batch: Batch }
   /** Stop speaking and drop board batches not yet shown. */
   | { kind: "cancel_output" }
@@ -265,8 +274,8 @@ export type RefusalCode =
 export interface Refusal {
   code: RefusalCode;
   reason: string;
-  /** D-341: the say check's reason, or "review" for the review of a non-math turn. */
-  say?: SayReason | "review";
+  /** D-341: the say check's reason, or "review" for the review of a non-math turn, or "math_review" for the math-truth review. */
+  say?: SayReason | "review" | "math_review";
   /** The acts allowed now. */
   allowed: Act[];
 }
@@ -1625,7 +1634,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
       {
         // D-341: sentences already streamed to the child (onSayPart) stay said: the turn's words start with them.
         const sent = Array.isArray(event.sent) ? event.sent.filter((x): x is string => typeof x === "string" && x.trim() !== "") : [];
-        if (v3 && s.tutor) return proposeTutor(s, raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent, event.fallback === true);
+        if (v3 && s.tutor) return proposeTutor(s, raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent, event.fallback === true, event.mathReviews === undefined ? undefined : mathReviewsOf(event.mathReviews));
         if (v3) return proposeV3(s, raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent);
         return withSent(propose(s, raw as Proposal, effects, reviewsOf(event.talkReviews), event.fallback === true), sent, s);
       }
@@ -5010,6 +5019,32 @@ function wordVerdict(base: Session): "right" | "wrong" | null {
   return null;
 }
 
+/** The last turns of the call the math-truth review reads. */
+const MATH_REVIEW_TURNS = 4;
+/**
+ * What the math-truth review reads for one tutor sentence now (two-layer true math): the sentence, the message before it,
+ * code's facts of the question and of the child's turn, and the last turns. The child's name never reaches the review
+ * model. Built only from the question, the child's turn and the turns before it, so the stream and the whole-message
+ * check build the same input.
+ */
+export function mathReviewInput(s: Session, sentence: string, before: readonly string[] = []): MathReviewInput {
+  const hide = (text: string) => hideName(text, s.variety.name);
+  const pkg = s.package && isTutorQuestion(s.package) ? s.package : null;
+  const answer = pkg ? ((pkg.answer.value as { value?: unknown }).value as number | string | undefined) ?? null : null;
+  return {
+    promptVersion: MATH_REVIEW_PROMPT_VERSION,
+    sentence: hide(sentence),
+    before: before.map(hide),
+    question: pkg ? hide(pkg.text) : "",
+    steps: pkg ? stepFacts(pkg).map((st) => ({ work: st.work, result: st.result })) : [],
+    workValues: pkg ? tutorKind(pkg).workValues(pkg) : [],
+    answer: typeof answer === "number" || typeof answer === "string" ? answer : null,
+    childTurn: s.turn ? hide(s.turn.text) : null,
+    childFacts: pkg && s.turn ? childFacts(pkg, s.turn.text).map(hide) : [],
+    transcript: s.turns.slice(-MATH_REVIEW_TURNS).map((t) => ({ speaker: t.speaker, text: hide(t.text) })),
+  };
+}
+
 /** D-345: what the tutor's stream needs before the model writes: code's own stance and the question's words. Null: no stream. */
 export function tutorStream(s: Session): TutorStreamContext | null {
   if (!s.tutor || !s.turn || !s.package || !tutorTeachingNow(s)) return null;
@@ -5058,10 +5093,10 @@ function tellsAnswer(base: Session, pkg: OperationPackage, texts: readonly strin
  * step or the answer. Code keeps its own credit of the child's answers (D-340, checkAnswers), the safety review of any
  * sentence that is not plain math, and never ends the call on a child who has not solved the question.
  */
-function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], reviews: readonly TalkReview[] | undefined, sent: readonly string[], fallback: boolean): StepResult {
+function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], reviews: readonly TalkReview[] | undefined, sent: readonly string[], fallback: boolean, mathReviews?: readonly MathReview[]): StepResult {
   const reading = out.reading ?? {};
   if (!tutorTeachingNow(base, reading)) return proposeV3(base, out, effects, reviews, sent);
-  const no = (code: RefusalCode, reason: string, say?: SayReason | "review"): StepResult => ({ session: base, effects, refusal: { code, reason, allowed: ["guide", "close"], ...(say ? { say } : {}) } });
+  const no = (code: RefusalCode, reason: string, say?: SayReason | "review" | "math_review"): StepResult => ({ session: base, effects, refusal: { code, reason, allowed: ["guide", "close"], ...(say ? { say } : {}) } });
   const pkg = base.package!;
   const s: Session = structuredClone(base);
   // Code's credit: its own strict read of the child's turn, and each model reading code's checks agree with.
@@ -5187,6 +5222,17 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     if (!pass) return no("say_review", `The safety review refused "${sentence}": ${r?.verdict === "fail" ? `${r.reason} (${r.rules.join(", ")})` : r?.reason ?? "no review"}. Say it another way.`, "review");
     talk.push({ proposed: sentence, code: null, review: "pass", shown: sentence, ...(r?.verdict === "fail" ? { rules: [...r.rules] } : {}) });
   }
+  // Two-layer true math (2026-11-15): each sentence code did not read whole is said only when the math-truth review
+  // finds it true ("false", "unsure", an error or no review: one repair with the reason, then code's line). The adapter
+  // runs the reviews beside the safety reviews. A proposal event from before the review existed has talk reviews and no
+  // math reviews. Code's own line is not reviewed.
+  const math: { sentence: string; verdict: "not_run" | "true" }[] = [];
+  if (!fallback && !(reviews !== undefined && mathReviews === undefined)) for (const sentence of verdict.math) {
+    if (reviews === undefined) { math.push({ sentence, verdict: "not_run" }); continue; }
+    const r = mathReviews!.find((x) => x.text === sentence)?.result ?? null;
+    if (r?.verdict !== "true") return no("say_check", `The math review did not find "${sentence}" true (${r ? `${r.verdict}: ${r.reason}` : "no review"}). Every number and relation Maya says must be plainly true: say it with simple true math, such as one equation of the question's own numbers.`, "math_review");
+    math.push({ sentence, verdict: "true" });
+  }
   const tutor = { help: progress ? 0 : s.solved === null ? (s.tutor?.help ?? 0) + 1 : 0, drawn: [...(s.tutor?.drawn ?? [])] };
   const drawing = s.noBoard ? { commands: [], keys: [] } : tutorDrawings(pkg, out.draw ?? [], tutor.drawn, (i) => `tutor-note-${s.batches + 1}-${i}`);
   tutor.drawn.push(...drawing.keys);
@@ -5213,7 +5259,7 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     else if (!progress) s.stuckStep ??= open[0]?.id ?? "result";
   }
   const said = fillName(text, base);
-  effects.push({ kind: "say", act, text: said, ...(talk.length ? { talk } : {}) });
+  effects.push({ kind: "say", act, text: said, ...(talk.length ? { talk } : {}), ...(math.length ? { math } : {}) });
   s.turns.push({ at: s.now!, speaker: "maya", text: said, state: act === "close" ? "CLOSE" : s.state, act });
   if (drawing.commands.length) {
     s.batches += 1;

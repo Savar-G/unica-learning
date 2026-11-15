@@ -117,6 +117,7 @@ Agents create no accounts. Create these, then set the values below.
 | `MAYA_TTS_MODEL` | No | Optional | With `inference`: `cartesia/sonic-3.6` (default, D-338) or `inworld/inworld-tts-2`. With `inworld`: default `inworld-tts-2`; `inworld-tts-2-flash` is the cheaper option. |
 | `OPENROUTER_API_KEY`, `AI_MODEL` | Already set | Yes | Maya's model. Without the key the worker uses the fake rule player. |
 | `MAYA_REVIEW_MODEL` | Already optional | Optional | The free-talk review model. |
+| `MAYA_MATH_REVIEW_MODEL` | Optional | Optional | The tutor core's math-truth review model (default `anthropic/claude-haiku-5.5`, `docs/maya-tutor.md`). It uses `OPENROUTER_API_KEY`; without the key a tutor sentence code did not read whole is refused. |
 | `MAYA_USD_TO_CAD`, `MAYA_MONTHLY_ALERT_CAD`, `MAYA_STT_USD_PER_MINUTE`, `MAYA_VOICE_USD_PER_1K_CHARS` | Optional | Optional | Maya's spending cap (`docs/maya-spend.md`). Use the same values as the web app. |
 | `SUPABASE_URL` | No | Yes | `https://cdjobwsyzndtltzfpyqa.supabase.co`. |
 | `SUPABASE_SECRET_KEY` | Already set | Yes | The worker's own key `maya_voice_worker` (step 4), not the web app's. |

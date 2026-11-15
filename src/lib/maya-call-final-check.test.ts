@@ -8,6 +8,7 @@ import { callNotes, noteStep } from '@/lib/maya-call-note';
 import { memoryNoteStore } from '@/lib/maya-call-note-memory';
 import { conversationalFake, reply } from '@/lib/maya-model-fake';
 import { fakeTalkReviewer } from '@/lib/maya-talk-review';
+import {fakeMathReviewer} from '@/lib/maya-math-review';
 import { SAMPLE_PACKAGES } from '@/lib/maya-samples';
 import { FIXTURES } from '@/lib/maya-gate/fixtures';
 import type { OperationPackage } from '@/lib/question-package';
@@ -22,7 +23,7 @@ async function family(pkg: OperationPackage, script: unknown[], childTurns: stri
  const writer=callNotes({store:notes,ai:null,isTestFamily:async()=>false,childNames:async()=>({firstName:'Ava',formerNames:[]}),clock});
  const model=conversationalFake({id:'fake-v3',answer:(_: unknown, n: number) => script[Math.min(n, script.length - 1)] as never});
  const rebuilt: unknown[] = [];
- const calls=mayaCalls({tutorFamilies:true,store,connections:memoryConnectionLog(store,clock),history:memoryWordingHistoryStore(),events:learningEvents(events),rebuild:async()=>{rebuilt.push(await events.range(C,{from:'2026-11-14',to:'2026-11-16'}));return true},model:()=>model,reviewer:()=>fakeTalkReviewer(),isTestFamily:async()=>false,canChat:async()=>true,canCallVoice:async()=>true,note:async x=>noteStep(await writer.write(x),x.call.id),alerts:{send:async()=>{},list:async()=>[]},clock,newId:()=>`00000000-0000-4000-8000-${String(++id).padStart(12,'0')}`,seed:()=>3});
+ const calls=mayaCalls({tutorFamilies:true,store,connections:memoryConnectionLog(store,clock),history:memoryWordingHistoryStore(),events:learningEvents(events),rebuild:async()=>{rebuilt.push(await events.range(C,{from:'2026-11-14',to:'2026-11-16'}));return true},model:()=>model,reviewer:()=>fakeTalkReviewer(),mathReviewer:()=>fakeMathReviewer(),isTestFamily:async()=>false,canChat:async()=>true,canCallVoice:async()=>true,note:async x=>noteStep(await writer.write(x),x.call.id),alerts:{send:async()=>{},list:async()=>[]},clock,newId:()=>`00000000-0000-4000-8000-${String(++id).padStart(12,'0')}`,seed:()=>3});
  const input={kind:voice?'family' as const:'chat' as const,parentId:P,childId:C,childName:'Ava',grade:5,startedBy:P,package:{...pkg,ref:{source:'workbook' as const,workbookId:W,page:1,question:1}}};
  const start=voice?await calls.startVoice(input):await calls.start(input);
  if(!start.ok) throw Error(start.error);

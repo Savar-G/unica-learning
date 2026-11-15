@@ -91,10 +91,10 @@ describe("checkTutorSay: the whole-message check", () => {
     expect(checkTutorSay("Not quite. 6 is 8 minus 2, the other way around. Where could we get more ones?", { stance: "wrong" })).toMatchObject({ ok: true });
   });
   it("sends a plain math message without the talk review, and any other words to it", () => {
-    expect(checkTutorSay("What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: false, review: [] });
+    expect(checkTutorSay("What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: false, review: [], math: [] });
     // Sixth check of #1006: a lead-in that can answer the child ("Good question", "Yes") is reviewed.
-    expect(checkTutorSay("Good question. What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: true, review: ["Good question."] });
-    expect(checkTutorSay("You did well. What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: true, review: ["You did well."] });
+    expect(checkTutorSay("Good question. What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: true, review: ["Good question."], math: [] });
+    expect(checkTutorSay("You did well. What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: true, review: ["You did well."], math: [] });
     expect(checkTutorSay("I'm an AI, so I don't have a dog. What is 12 minus 8?", none)).toMatchObject({ review: [] });
     expect(checkTutorSay("Dogs are fun. What is 12 minus 8?", none)).toMatchObject({ review: ["Dogs are fun."] });
     expect(checkTutorSay("I'm an AI, so I don't have a dog. What is 12 minus 8?", none)).toMatchObject({ review: [] });

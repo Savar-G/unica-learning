@@ -17,7 +17,7 @@ import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, typ
 import { tutorKindOf } from "./tutor-kinds";
 import { affirms, equationHolds, equationsOf, neverSayProblem, sayNumbers, sentencesOf } from "./say-check";
 import { exactSafe } from "./math-vocab";
-import { answerProblems, falseClaims, REMAINDER_SAID } from "./tutor-math";
+import { answerClaims, answerProblems, falseClaims, readClaims, REMAINDER_SAID } from "./tutor-math";
 
 /** The hard ceiling of one Maya message, in words. Over it, the model gets one repair with the reason; code never trims. */
 export const TUTOR_WORD_LIMIT = 60;
@@ -61,11 +61,16 @@ const Q = String.raw`(?:${N}(?:\s+${U})?)`;
 const E = String.raw`(?:${Q}(?:\s+(?:plus|minus|take away|times|multiplied by|divided by|\+|-|×|÷|x)\s+(?:the\s+)?${Q})*)`;
 const PLACE = String.raw`(?:the\s+)?${U}(?:\s+(?:column|place))?`;
 const WHICH_FORM = new RegExp(String.raw`^(?:so\s+)?which is (?:bigger|greater|smaller|less|more),?\s+${E}\s+or\s+${E}$`, "i");
-/** The complete math forms a clause may take with no review. Nothing else: no person, no object, no feeling. */
-const PLAIN_FORMS: readonly RegExp[] = [
-  // "12 minus 8 is 4", "6 is 8 minus 2", "52 is 4 tens and 12 ones", "2 minus 8 isn't 6"
-  new RegExp(String.raw`^(?:so\s+)?${E}\s+(?:is|equals|=|makes|is not|isn't)\s+${E}(?:\s+and\s+${Q})*$`, "i"),
-    // "What is 12 minus 8?", "What do you get for 4 minus 2?"
+/** "12 minus 8 is 4", "6 is 8 minus 2", "52 is 4 tens and 12 ones", "2 minus 8 isn't 6": a claim the reader checks. */
+const ASSERT_FORM = new RegExp(String.raw`^(?:so\s+)?${E}\s+(?:is|equals|=|makes|is not|isn't)\s+${E}(?:\s+and\s+${Q})*$`, "i");
+/** "Write 4 in the ones", "Put 2 in the tens place": an instruction whose number no core claim reads. */
+const WRITE_FORM = new RegExp(String.raw`^(?:write|put) ${N} in ${PLACE}$`, "i");
+/**
+ * The closed forms that claim nothing about numbers: questions, the one fixed true trade and a place named alone. Their
+ * numbers are read as asked, not claimed (two-layer true math, 2026-11-15); a question form counts only in a question.
+ */
+const QUESTION_FORMS: readonly RegExp[] = [
+  // "What is 12 minus 8?", "What do you get for 4 minus 2?"
   new RegExp(String.raw`^(?:so\s+)?(?:what is|what's|what do you get for|what do we get for)\s+${E}$`, "i"),
   // "How many ones are left?", "How many tens do we have now?"
   new RegExp(String.raw`^how many ${U}(?:\s+(?:are left|are there|do we have(?: now)?|now))?$`, "i"),
@@ -73,15 +78,6 @@ const PLAIN_FORMS: readonly RegExp[] = [
   new RegExp(String.raw`^what (?:do we write|do you write|goes|do we put|do you put) in ${PLACE}$`, "i"),
   // "What is the whole answer?"
   /^what is the (?:whole |final )?answer$/i,
-  // "Write 4 in the ones", "Put 2 in the tens place"
-  new RegExp(String.raw`^(?:write|put) ${N} in ${PLACE}$`, "i"),
-  // "Trade 1 ten for 10 ones", "We trade one ten for ten ones"
-  new RegExp(String.raw`^(?:we\s+)?(?:trade|regroup)\s+(?:1|one|a)\s+ten\s+(?:for|into|as)\s+(?:10|ten)\s+ones$`, "i"),
-  // "Subtract the ones", "Add the tens"
-  new RegExp(String.raw`^(?:now\s+)?(?:subtract|add)\s+${PLACE}$`, "i"),
-  // "the tens", "in the ones column". Pre-launch review: "N is right" and "the other way around" can answer what the
-  // child asked ("How many punches ...? One is right."), so they are reviewed.
-  new RegExp(String.raw`^(?:(?:in|for|on|to)\s+)?${PLACE}$`, "i"),
   // "Is 7 the same as 6?" (F4 builder, 2026-11-15)
   new RegExp(String.raw`^is\s+${E}\s+the same as\s+${E}$`, "i"),
   // "Is 5220 greater than 5226?", "Is 6 times 870 less than 5226?"
@@ -92,7 +88,46 @@ const PLAIN_FORMS: readonly RegExp[] = [
   new RegExp(String.raw`^what is the value of (?:the\s+)?(?:${N}|digit in ${PLACE})(?:\s+in\s+${N})?$`, "i"),
   // "What is the missing number?"
   /^what is the missing number$/i,
+  WHICH_FORM,
 ];
+/** The closed forms that claim nothing in any sentence: the fixed true trade, an operation on a place, a place alone. */
+const NO_CLAIM_FORMS: readonly RegExp[] = [
+  // "Trade 1 ten for 10 ones", "We trade one ten for ten ones"
+  new RegExp(String.raw`^(?:we\s+)?(?:trade|regroup)\s+(?:1|one|a)\s+ten\s+(?:for|into|as)\s+(?:10|ten)\s+ones$`, "i"),
+  // "Subtract the ones", "Add the tens"
+  new RegExp(String.raw`^(?:now\s+)?(?:subtract|add)\s+${PLACE}$`, "i"),
+  // "the tens", "in the ones column". Pre-launch review: "N is right" and "the other way around" can answer what the
+  // child asked ("How many punches ...? One is right."), so they are reviewed.
+  new RegExp(String.raw`^(?:(?:in|for|on|to)\s+)?${PLACE}$`, "i"),
+];
+/** The complete math forms a clause may take with no review. Nothing else: no person, no object, no feeling. */
+const PLAIN_FORMS: readonly RegExp[] = [ASSERT_FORM, ...QUESTION_FORMS.filter((re) => re !== WHICH_FORM), WRITE_FORM, ...NO_CLAIM_FORMS];
+
+/**
+ * The words of a sentence's math that code did not read inside a claim it found true (two-layer true math, the CoS design
+ * of 2026-11-15): numbers (digits, number words, fractions, "and a half", a remainder), relation words (is, are, equals,
+ * makes, becomes, greater, less, more, than, same) and operators. Empty: the sentence passes on code alone. Else it goes
+ * to the math-truth review (src/lib/maya-math-review.ts). A closed question form asks and claims nothing (only in a
+ * question); the fixed true trade and a place named alone claim nothing; an answer claim read whole and true is read.
+ * The kinds' own checks (claimProblems) refuse, but read nothing here: a sentence only a kind reads goes to the review.
+ */
+export function unreadMath(sentence: string, ctx: Pick<TutorCheckContext, "op" | "trades" | "answer"> = {}): string[] {
+  let text = sentence.replace(/[’]/g, "'").replace(/[−–]/g, "-").trim();
+  const asks = /\?\s*$/.test(text);
+  // The clauses as plainTeaching splits them, with their separators kept, so the claim reader reads the rest as said.
+  const parts = text.replace(/[.!?]+\s*$/, "").split(/(\s*[:;]\s*|(?<!\d),\s*|,(?!\d{3}(?!\d))\s*)/);
+  text = parts.map((raw, k) => {
+    if (k % 2 === 1) return raw;
+    let clause = raw.trim();
+    for (let n = 0; n < 4; n++) clause = clause.replace(LEAD_IN, "").replace(/^(?:and|or|but)\s+/i, "").trim();
+    return NO_CLAIM_FORMS.some((re) => re.test(clause)) || (asks && QUESTION_FORMS.some((re) => re.test(clause))) ? " ; " : raw;
+  }).join("");
+  if (ctx.answer !== undefined) {
+    const spans = answerClaims(text, ctx.answer).read.sort((a, b) => b.index - a.index);
+    for (const { index, length } of spans) text = `${text.slice(0, index)} ; ${text.slice(index + length)}`;
+  }
+  return readClaims(text, ctx.op, ctx.trades).unread;
+}
 
 /** A short spoken lead-in before the math of a clause: fixed words only. */
 // Sixth check of #1006: only lead-ins that answer nothing. "Yes", "no", "right", "okay", "not quite" and the like can
@@ -171,8 +206,12 @@ const JUDGES_RIGHT = /^(?:yes|yep|yeah|right|correct|exactly)\b|\b(?:is|that'?s|
 const JUDGES_WRONG = /\b(?:not quite|not yet|not right|isn'?t right|incorrect|that'?s wrong|is wrong|try again)\b/i;
 
 export type TutorVerdict =
-  /** `review`: the sentences that are not plain teaching (plainTeaching): the safety review reads each before it is said. */
-  | { ok: true; needsReview: boolean; review: string[] }
+  /**
+   * `review`: the sentences that are not plain teaching (plainTeaching): the safety review reads each before it is said.
+   * `math`: the sentences with math code did not read whole (unreadMath): the math-truth review reads each before it is
+   * said. A sentence may be in both lists; both reviews must pass.
+   */
+  | { ok: true; needsReview: boolean; review: string[]; math: string[] }
   | { ok: false; reason: "empty" | "too_long" | "never_say" | "false_equation" | "affirms_wrong" | "wrong_stance"; detail: string };
 
 
@@ -221,16 +260,18 @@ export function checkTutorSay(text: string, ctx: TutorCheckContext & { extra?: R
     }
   }
   const review = sentences.filter((x) => !plainTeaching(x, ctx.extra));
-  return { ok: true, needsReview: review.length > 0, review };
+  const math = sentences.filter((x) => unreadMath(x, ctx).length > 0);
+  return { ok: true, needsReview: review.length > 0, review, math };
 }
 
 /**
- * How one tutor sentence goes out while the model still writes (D-345 streaming): "send" at once (plain teaching, and
- * every check passes on the words so far), "review" first (not plain teaching: held, alone, until its review passes),
+ * How one tutor sentence goes out while the model still writes (D-345 streaming): "send" at once (plain teaching with
+ * all its math read by code, and every check passes on the words so far), reviews first (`talk`: not plain teaching;
+ * `math`: math code did not read whole; held, alone, until each review passes),
  * or "stop" (a check fails, or the first sentence says right or wrong before code knows the stance): that sentence and
  * every later one wait for the whole message and its whole check.
  */
-export function tutorStreamSentence(sentence: string, previous: readonly string[], ctx: TutorStreamContext): "send" | "review" | "stop" {
+export function tutorStreamSentence(sentence: string, previous: readonly string[], ctx: TutorStreamContext): "send" | "stop" | { talk: boolean; math: boolean } {
   const verdict = checkTutorSay([...previous, sentence].join(" "), ctx);
   if (!verdict.ok) return "stop";
   // A judgment of the child's answer, in any sentence, waits unless the stream is sure of it: the final check may read
@@ -246,7 +287,11 @@ export function tutorStreamSentence(sentence: string, previous: readonly string[
   // 52 − 28): only the question, its steps, its trades and the child's own expressions stream.
   const outside = equationsOf(sentence).some((e) => !ctx.expressions.has(expressionKey(e.operands.map((o) => o.q?.[0] ?? NaN), e.ops)));
   if (outside) return "stop";
-  return plainTeaching(sentence, ctx.extra) ? "send" : "review";
+  // Two-layer true math: a sentence with math code did not read whole is held for the math-truth review, beside the
+  // safety review when it is not plain teaching.
+  const talk = !plainTeaching(sentence, ctx.extra);
+  const math = unreadMath(sentence, ctx).length > 0;
+  return talk || math ? { talk, math } : "send";
 }
 
 /**
@@ -307,7 +352,9 @@ export function tutorFallbackText(pkg: OperationPackage, done: readonly string[]
   const kind = tutorKind(pkg);
   const q = kind.stepQuestion(pkg, done);
   const op = kind.op?.(pkg);
-  const safe = q !== null && plainTeaching(q) && checkTutorSay(q, { stance: "none", claims: (x) => kind.claimProblems(pkg, x), trades: kind.workValues(pkg), ...(op ? { op } : {}) }).ok;
+  const verdict = q === null ? null : checkTutorSay(q, { stance: "none", claims: (x) => kind.claimProblems(pkg, x), trades: kind.workValues(pkg), ...(op ? { op } : {}) });
+  // Two-layer true math: code's own line has every number read by code (it gets no math review either).
+  const safe = q !== null && plainTeaching(q) && verdict?.ok === true && verdict.math.length === 0;
   return `Let me say that another way. ${safe ? q : "So what is the whole answer?"}`;
 }
 

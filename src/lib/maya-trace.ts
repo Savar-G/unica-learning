@@ -31,11 +31,13 @@ export interface TraceRefusal {
  * question Maya cannot teach, code's exact held lines at the start, with no model; in version 8 that is the text before
  * D-327 (`PRE_D314_HELD`). Version 9 (D-327) holds the held lines that say plainly Maya cannot teach the question yet
  * (hello, can't teach, another question); a version 9 trace with the old text is refused. Version 10 records the configured call limits. Version 11 adds the optional `diagnosticHandleId` (one short token, no
- * words) to a preparation record. `checkTrace` reads all eleven versions.
+ * words) to a preparation record. Version 12 (two-layer true math, 2026-11-15) adds the tutor core's math-truth review: on
+ * an attempt, `math` (each sentence code did not read whole, with the review's verdict and reason) and, on a tutor call,
+ * `mathReviewer` (the review's model and prompt version, or null). `checkTrace` reads all twelve versions.
  */
-export const TRACE_VERSION = 11;
+export const TRACE_VERSION = 12;
 /** The trace versions `checkTrace` reads. */
-export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const;
+export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
 /**
  * The held turn as version 8 traces stored it, before D-327 (line sets 11 to 13). Frozen here: stored admin test
  * calls from preview deployments may hold it, and they stay readable.
@@ -147,6 +149,11 @@ export interface TraceAttempt {
   talk?: TraceTalk[];
   /** Version 3: how long the free-talk reviews of this attempt took, by the passed-in clock. */
   reviewMs?: number;
+  /**
+   * Version 12: the math-truth reviews of this attempt (two-layer true math): each tutor sentence code did not read whole,
+   * with the review's verdict and reason. Kept on a refused attempt too; only "true" lets a sentence be said.
+   */
+  math?: TraceMath[];
   /** D-341: how long until the first sentence of this attempt was checked and streamed to the child, by the passed-in clock. */
   firstSayMs?: number;
   /** Round 4: sentences of the model's reply its review did not pass: never said. */
@@ -160,6 +167,13 @@ export interface TraceAttempt {
 
 /** One piece of the model's own words in a trace (D-197): the session's TalkCheck. */
 export type TraceTalk = TalkCheck;
+
+/** Version 12: one math-truth review of a tutor sentence. */
+export interface TraceMath {
+  sentence: string;
+  verdict: "true" | "false" | "unsure";
+  reason: string;
+}
 
 /** What reached the child in one Maya turn: only text and board batches the session accepted. */
 export interface TraceOutput {
@@ -227,6 +241,8 @@ export interface MayaTrace {
   freeTalk: boolean;
   /** Version 3: the free-talk review's model and prompt version, or null when the call had no reviewer. */
   reviewer?: { id: string; promptVersion: string } | null;
+  /** Version 12, on a tutor call: the math-truth review's model and prompt version, or null when the call had none. */
+  mathReviewer?: { id: string; promptVersion: string } | null;
   /** Version 7: reason codes only. No additional child text. */
   scopeRefusals?: import("@/lib/maya").ScopeRefusal[];
   turns: TraceTurn[];
@@ -258,6 +274,9 @@ export interface TraceCounts {
   dropped?: number;
   /** D-345: the longest run of Maya turns with no child turn between them (target 1). */
   longestMayaRun?: number;
+  /** Version 12: math-truth reviews of tutor sentences (two-layer true math), and attempts the review refused. */
+  mathReviews?: number;
+  mathRefusals?: number;
 }
 
 /** The counts of a trace's turns. */
@@ -277,6 +296,8 @@ export function traceCounts(turns: readonly TraceTurn[]): TraceCounts {
     overrides: maya.filter((t) => t.output?.act !== "safety" && t.attempts.some((a) => a.source !== "controller" && (a.refusal !== null || a.source === "fallback" || (a.dropped?.length ?? 0) > 0))).length,
     dropped: attempts.reduce((n, a) => n + (a.dropped?.length ?? 0), 0),
     longestMayaRun: longestMayaRun(turns),
+    mathReviews: attempts.reduce((n, a) => n + (a.math?.length ?? 0), 0),
+    mathRefusals: attempts.filter((a) => a.refusal?.say === "math_review").length,
   };
 }
 
@@ -375,6 +396,13 @@ function checkAttempt(a: unknown, path: string) {
   need(!(x.source === "fallback" && x.refusal !== null), `${path}`, "a fallback attempt is recorded only when it was accepted");
   need(x.reviewMs === undefined || (isNum(x.reviewMs) && x.reviewMs >= 0), `${path}.reviewMs`, "a duration");
   need(x.fenced === undefined || (x.fenced === true && (x.source === "model" || x.source === "repair") && x.proposal !== null && x.error === undefined), `${path}.fenced`, "true on a model or repair proposal, or absent");
+  if (x.math !== undefined) {
+    need(Array.isArray(x.math) && x.math.length > 0, `${path}.math`, "a list of math-truth reviews");
+    (x.math as unknown[]).forEach((m, i) => {
+      const y = m as Record<string, unknown>;
+      need(isObject(m) && Object.keys(y).every((k) => ["sentence", "verdict", "reason"].includes(k)) && isText(y.sentence) && oneOf(["true", "false", "unsure"], y.verdict) && typeof y.reason === "string", `${path}.math[${i}]`, "a sentence, a verdict (true, false or unsure) and a reason");
+    });
+  }
   if (x.talk !== undefined) {
     need(Array.isArray(x.talk) && x.talk.length > 0, `${path}.talk`, "a list of free-talk checks");
     need(x.refusal === null && x.error === undefined, `${path}.talk`, "only on an accepted attempt");
@@ -559,6 +587,10 @@ function check(raw: unknown): MayaTrace {
     const rv = r.reviewer;
     need(rv === null || (isObject(rv) && isName(rv.id) && isName(rv.promptVersion) && Object.keys(rv).length === 2), "reviewer", "null, or the review's model id and prompt version");
   } else need(r.reviewer === undefined, "reviewer", "absent before version 3");
+  if ((r.version as number) >= 12) {
+    const mr = r.mathReviewer;
+    need(mr === undefined || mr === null || (isObject(mr) && isName(mr.id) && isName(mr.promptVersion) && Object.keys(mr).length === 2), "mathReviewer", "absent, null, or the math review's model id and prompt version");
+  } else need(r.mathReviewer === undefined, "mathReviewer", "absent before version 12");
 
   need(Array.isArray(r.turns), "turns", "a list");
   const turns = (r.turns as unknown[]).map((t, i) => checkTurn(t, `turns[${i}]`, r.version as number));
@@ -566,6 +598,10 @@ function check(raw: unknown): MayaTrace {
   turns.forEach((t, i) => {
     if (t.kind !== "maya" || (r.version as number) >= 3) return;
     (t.attempts as Record<string, unknown>[]).forEach((a, k) => need(a.talk === undefined && a.reviewMs === undefined, `turns[${i}].attempts[${k}].talk`, "absent before version 3"));
+  });
+  turns.forEach((t, i) => {
+    if (t.kind !== "maya" || (r.version as number) >= 12) return;
+    (t.attempts as Record<string, unknown>[]).forEach((a, k) => need(a.math === undefined, `turns[${i}].attempts[${k}].math`, "absent before version 12"));
   });
 
   need(Array.isArray(r.board), "board", "a list");
@@ -752,6 +788,7 @@ export function redactTrace(trace: MayaTrace, childName: string | null): MayaTra
             proposal: redactDeep(a.proposal, childName),
             refusal: a.refusal ? { ...a.refusal, reason: redactText(a.refusal.reason, childName) } : null,
             ...(a.talk ? { talk: a.talk.map((x) => redactDeep(x, childName) as TraceTalk) } : {}),
+            ...(a.math ? { math: a.math.map((x) => ({ ...x, sentence: redactText(x.sentence, childName), reason: redactText(x.reason, childName) })) } : {}),
             // Errors are codes and fixed wording: nothing to redact.
           })),
           output: t.output ? { ...t.output, say: t.output.say.map((x) => redactText(x, childName, configuredSecrets(), keep)) } : null,

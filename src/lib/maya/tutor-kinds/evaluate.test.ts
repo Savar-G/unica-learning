@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { createTextSession } from "@/lib/maya-text";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
+import { fakeMathReviewer } from "@/lib/maya-math-review";
 import { operationResult, workedSteps, type Operation, type OperationPackage } from "@/lib/question-package";
 import { checkTutorSay, tutorFallbackText } from "../tutor";
 import { describeTutorKind } from "./contract";
@@ -135,7 +136,7 @@ describe("time-add kind (not registered for launch, run through testKind)", () =
 
 function session(pkg: OperationPackage, say: (i: number) => string) {
   let now = Date.UTC(2026, 10, 15);
-  return createTextSession({ callId: "evaluate-kind", package: pkg, tutor: true, clock: () => (now += 100), model: conversationalFake({ answer: (_, i) => reply(say(i), "guide") }), reviewer: fakeTalkReviewer() });
+  return createTextSession({ callId: "evaluate-kind", package: pkg, tutor: true, clock: () => (now += 100), model: conversationalFake({ answer: (_, i) => reply(say(i), "guide") }), mathReviewer: fakeMathReviewer(), reviewer: fakeTalkReviewer() });
 }
 
 describe("review of #1018", () => {

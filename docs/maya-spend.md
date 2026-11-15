@@ -22,6 +22,7 @@ Each provider attempt is reserved before it is sent, retries included, and settl
 
 - Maya's model (`AI_MODEL`), reserving USD 0.15 an attempt.
 - The free-talk review (`MAYA_REVIEW_MODEL`), USD 0.02.
+- The tutor core's math-truth review (`MAYA_MATH_REVIEW_MODEL`, two-layer true math, `docs/maya-tutor.md`), USD 0.02, as a review attempt (`what` `review`, usage feature `maya_review`), from the voice block like the free-talk review. One run of 86 reviews cost USD 0.014 (2026-11-15).
 - The call note's AI pick, USD 0.05.
 - The child profile's AI findings after a call, USD 0.30. The sweep of abandoned calls goes the same way.
 - A voice call's speech-to-text, a minute at a time. The worker asks every 10 seconds, whatever the child is doing, and the next block is reserved 20 seconds before the current one ends. A block settles at the time used.

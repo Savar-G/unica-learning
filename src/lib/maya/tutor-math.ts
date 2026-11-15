@@ -38,7 +38,7 @@ const TOKEN = new RegExp(String.raw`(${FRACTION})|(${COMPOUND})|(${QUANTITY})|($
 export const NUMBER_SAID = String.raw`(?:\d+(?:\.\d+)?|(?:${W99}|hundred\b|thousand\b)(?:[\s-]+(?:and\s+)?(?:${W99}|hundred\b|thousand\b))*)`;
 
 type Item =
-  | { kind: "term"; value: number; unit: boolean; place?: number; word?: true; fraction?: true }
+  | { kind: "term"; value: number; unit: boolean; place?: number; word?: true; fraction?: true; ambiguous?: true }
   | { kind: "op"; op: "+" | "-" | "*" | "/" }
   | { kind: "rel"; negated: boolean; eq: boolean; now: boolean }
   | { kind: "open" }
@@ -104,7 +104,10 @@ function itemsOf(sentence: string): Item[] {
       // The place of each part comes from its unit word only ("one ten" is 1 of place 10).
       const parts = quantityParts(m[3]);
       const places = [...new Set((parts ?? []).map((x) => x.place))];
-      items.push(parts === null ? { kind: "other" } : { kind: "term", value: parts.reduce((t, x) => t + x.n * x.place, 0), unit: true, ...(places.length === 1 && parts.length === 1 ? { place: places[0] } : {}) });
+      // "one hundred and two tens" is 120 or 102 tens (1,020): in words, a hundred or a thousand joined by "and" to a
+      // smaller place is never read as covered (two-layer true math); the review reads it.
+      const ambiguous = /\b(?:hundred|thousand)s?\s+and\s+[a-z]/i.test(m[3]) && !/^\d/.test(m[3].trim());
+      items.push(parts === null ? { kind: "other" } : { kind: "term", value: parts.reduce((t, x) => t + x.n * x.place, 0), unit: true, ...(places.length === 1 && parts.length === 1 ? { place: places[0] } : {}), ...(ambiguous ? { ambiguous: true as const } : {}) });
     } else if (m[4]) {
       const v = numberOf(m[4]);
       // "one" after a word such as "this" or "each" is a pronoun ("this one is tricky"), not the number 1.
@@ -256,6 +259,22 @@ function digitValue(items: readonly Item[], s: Side): number | null | undefined 
  * ("2 tens become 11 tens" in 223 − 129) is true only when its result is one of them (review of #1009).
  */
 export function falseClaims(sentence: string, op?: "add" | "subtract", trades: readonly number[] = []): string[] {
+  return readClaims(sentence, op, trades).problems;
+}
+
+/**
+ * Words that relate numbers ("4 is greater than 8", "12, so 4"): each must be inside a claim code read (two-layer true
+ * math, 2026-11-15). The relation items (is, are, equals, makes, becomes, =) count too, and every number.
+ */
+const RELATION_WORDS = new Set(["greater", "less", "more", "fewer", "bigger", "smaller", "larger", "higher", "lower", "than", "same", "equal", "twice", "double", "half"]);
+
+/**
+ * The claim reader with its coverage (two-layer true math, CoS design of 2026-11-15). `problems`: the claims that do not
+ * hold (falseClaims). `unread`: each number, relation and operator of the sentence that is not inside a claim code read
+ * and found true, as the word said ("8", "is", "greater"). A sentence passes on code alone only when nothing is unread;
+ * any other sentence with no problem goes to the math-truth review (src/lib/maya-math-review.ts).
+ */
+export function readClaims(sentence: string, op?: "add" | "subtract", trades: readonly number[] = []): { problems: string[]; unread: string[] } {
   const problems: string[] = [];
   // A division with a remainder ("15 ÷ 6 = 2 R 3", "thirteen divided by two is six remainder one") is read whole, then
   // left out.
@@ -269,6 +288,9 @@ export function falseClaims(sentence: string, op?: "add" | "subtract", trades: r
   sentence = sentence.replace(/,\s*(?:and\s+)?(?:which|that)\s+(?:is|are)\b/gi, " is").replace(/,\s*(?:and\s+)?that['’]s\b/gi, " is");
   const items = itemsOf(sentence);
   const { full, read } = sideReader(items);
+  /** The items inside a claim code read and found true. */
+  const used = new Set<number>();
+  const mark = (from: number, to: number) => { for (let k = from; k < to; k++) used.add(k); };
   let i = 0;
   let eqSeen = 0;
   let eqRead = 0;
@@ -334,6 +356,7 @@ export function falseClaims(sentence: string, op?: "add" | "subtract", trades: r
         if (a && b) {
           const holds = sign > 0 ? a.value > b.value + 1e-9 : a.value < b.value - 1e-9;
           if (holds === rel.negated) problems.push(`it says ${a.value} is ${rel.negated ? "not " : ""}${sign > 0 ? "more" : "less"} than ${b.value}`);
+          else mark(left.at, base.next);
           if (rel.eq) eqRead++;
         }
         i = base.next;
@@ -356,6 +379,7 @@ export function falseClaims(sentence: string, op?: "add" | "subtract", trades: r
       if (a && b && c) {
         const holds = near(a.value, c.value + sign * b.value);
         if (holds === rels[0].negated) problems.push(`it says ${a.value} is ${rels[0].negated ? "not " : ""}${b.value} ${sign > 0 ? "more" : "less"} than ${c.value}`);
+        else mark(chain[0].at, base.next);
         if (rels[0].eq) eqRead++;
       }
       i = base.next;
@@ -371,6 +395,7 @@ export function falseClaims(sentence: string, op?: "add" | "subtract", trades: r
     // An object word with "of" and a unit code could not read ("4 tens is 4 sticks of wood") leaves the count unread.
     if (OBJECT_WORDS.has(word) && wordAt(items, at + 1) === "of" && chain.some((c) => c.units)) problems.push(`it counts ${word} with a size code cannot read`);
     const sides = chain.map(valued);
+    const before = problems.length;
     for (let k = 0; k < rels.length; k++) {
       const [a, b] = [sides[k], sides[k + 1]];
       if (rels[k].eq) eqRead++;
@@ -381,6 +406,8 @@ export function falseClaims(sentence: string, op?: "add" | "subtract", trades: r
       if (!rels[k].negated && !equal) problems.push(`it says ${a.value} and ${b.value} are the same`);
       if (rels[k].negated && same) problems.push(`it says ${a.value} and ${b.value} are not the same`);
     }
+    // Read whole and true: every side code could value, and no problem found.
+    if (problems.length === before && sides.every((x) => x !== null)) mark(chain[0].at, at);
     i = at;
   }
   if (eqRead < eqSeen) problems.push("it has an \"=\" code cannot read");
@@ -389,7 +416,16 @@ export function falseClaims(sentence: string, op?: "add" | "subtract", trades: r
     if (it.kind === "open" && !read.has(k) && items[k - 1]?.kind === "op") problems.push("it has brackets code cannot read");
     if (it.kind === "close" && !read.has(k) && items[k + 1]?.kind === "op") problems.push("it has brackets code cannot read");
   }
-  return problems;
+  const unread: string[] = [];
+  let termSeen = false;
+  for (const [k, it] of items.entries()) {
+    const word = it.kind === "other" ? it.word ?? "" : "";
+    // "so" relates only after a number ("12 minus 8 is 4, so the tens are 2"); a lead-in "So" relates nothing.
+    const relates = it.kind === "term" || it.kind === "rel" || it.kind === "op" || RELATION_WORDS.has(word) || (word === "so" && termSeen);
+    if (it.kind === "term") termSeen = true;
+    if (relates && (!used.has(k) || (it.kind === "term" && it.ambiguous))) unread.push(it.kind === "term" ? String(Math.round(it.value * 1e6) / 1e6) : it.kind === "rel" ? (it.eq ? "=" : it.negated ? "is not" : "is") : it.kind === "op" ? it.op : word);
+  }
+  return { problems, unread };
 }
 
 /** Words that may stand between "the answer is" and its value ("the answer is still 24"). */
@@ -402,7 +438,17 @@ const ANSWER_FILLERS = new Set(["the", "just", "exactly", "still", "now", "reall
  * about 25"). A clause with no number ("the answer is right") is no claim.
  */
 export function answerProblems(sentence: string, answer: number): string[] {
+  return answerClaims(sentence, answer).problems;
+}
+
+/**
+ * The answer claims of a sentence (answerProblems), with the spans of those code read whole and found true (`read`:
+ * "the answer is 24", "24 is the answer"). "The answer is 24 and a half" is not read whole: its rest stays unread
+ * (two-layer true math, 2026-11-15).
+ */
+export function answerClaims(sentence: string, answer: number): { problems: string[]; read: { index: number; length: number }[] } {
   const problems: string[] = [];
+  const read: { index: number; length: number }[] = [];
   const text = sentence.replace(/[’]/g, "'");
   const after = /\b(?:the|your|our)\s+(?:whole\s+|final\s+|right\s+)?answer\s+(is not|isn't|is|equals|=|would be|will be|should be|must be)\s+([^,;:!?]*?)(?=[,;:!?]|\.(?!\d)|$)/gi;
   for (const m of text.matchAll(after)) {
@@ -418,6 +464,7 @@ export function answerProblems(sentence: string, answer: number): string[] {
     }
     const same = Math.abs(s.value - answer) < 1e-9;
     if (same === negated) problems.push(`${s.value} is ${negated ? "" : "not "}the answer to the question`);
+    else if (s.next === items.length) read.push({ index: m.index!, length: m[0].length });
   }
   const before = new RegExp(String.raw`(?:^|[^\w.])(${NUMBER_SAID})\s+(is not|isn't|is)\s+(?:the|your|our)\s+(?:whole\s+|final\s+|right\s+)?answer\b`, "gi");
   for (const m of text.matchAll(before)) {
@@ -427,6 +474,10 @@ export function answerProblems(sentence: string, answer: number): string[] {
     if (n === null) { problems.push(`"${m[0].trim()}" says an answer code cannot read`); continue; }
     const negated = /not|n't/.test(m[2]);
     if ((Math.abs(n - answer) < 1e-9) === negated) problems.push(`${n} is ${negated ? "" : "not "}the answer to the question`);
+    else {
+      const start = m.index! + m[0].indexOf(m[1]);
+      read.push({ index: start, length: m.index! + m[0].length - start });
+    }
   }
-  return problems;
+  return { problems, read };
 }

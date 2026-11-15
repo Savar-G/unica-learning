@@ -5,6 +5,7 @@ import { createTextSession } from "@/lib/maya-text";
 import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import type { TurnBrief } from "@/lib/maya-model";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
+import { fakeMathReviewer } from "@/lib/maya-math-review";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { FIXTURES, type FixtureId } from "@/lib/maya-gate/fixtures";
 import { learningEvent } from "@/lib/maya";
@@ -23,7 +24,7 @@ function session(pkg: QuestionPackage, answer: Answer, stream = false) {
     answer,
     ...(stream ? { stream: { chunk: 7, beforeEnd: async () => { await new Promise((r) => setTimeout(r, 30)); beforeEnd = [...parts]; } } } : {}),
   });
-  const s = createTextSession({ callId: "credit-c", package: pkg, model, clock: () => (now += 500), random: 3, tutor: true, reviewer: fakeTalkReviewer(), onSayPart: (x) => parts.push(x) });
+  const s = createTextSession({ callId: "credit-c", package: pkg, model, clock: () => (now += 500), random: 3, tutor: true, mathReviewer: fakeMathReviewer(), reviewer: fakeTalkReviewer(), onSayPart: (x) => parts.push(x) });
   return { s, parts, before: () => beforeEnd };
 }
 
