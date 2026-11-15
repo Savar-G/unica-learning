@@ -38,7 +38,7 @@ export function describeTutorKind(kind: TutorKind, packages: readonly OperationP
           for (const st of steps) if (typeof st.result === "number") expect([...kind.workValues(pkg), ...(answer === null ? [] : [answer])], `${st.id}: ${st.result}`).toContain(st.result);
         });
         it("writes only true math in its own words (the same check as Maya's)", () => {
-          const ctx = { stance: "none" as const, claims: (x: string) => kind.claimProblems(pkg, x), ...(kind.op?.(pkg) ? { op: kind.op(pkg)! } : {}) };
+          const ctx = { stance: "none" as const, claims: (x: string) => kind.claimProblems(pkg, x), trades: kind.workValues(pkg), ...(kind.op?.(pkg) ? { op: kind.op(pkg)! } : {}) };
           for (const st of kind.steps(pkg)) expect(checkTutorSay(`${st.work}.`, ctx), st.work).toMatchObject({ ok: true });
           // Code's honest line is said with no review: it must be a closed plain math form with true math.
           const q = kind.stepQuestion(pkg, []);

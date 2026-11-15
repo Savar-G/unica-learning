@@ -130,3 +130,12 @@ describe("review of #1009: core additions (2026-11-15)", () => {
     } finally { undo(); }
   });
 });
+
+describe("a place that lends and borrows (review of #1009)", () => {
+  const sub = { stance: "none" as const, op: "subtract" as const };
+  it("passes '2 tens become 11 tens' only when 11 is a work value of the question", () => {
+    expect(checkTutorSay("2 tens become 11 tens.", { ...sub, trades: [11, 9, 4] })).toMatchObject({ ok: true });
+    expect(checkTutorSay("2 tens become 11 tens.", sub)).toMatchObject({ ok: false });
+    expect(checkTutorSay("5 tens become 15 tens.", { ...sub, trades: [12, 4, 2, 24] })).toMatchObject({ ok: false });
+  });
+});

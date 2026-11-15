@@ -158,6 +158,8 @@ export interface TutorCheckContext {
   answer?: number;
   /** The question kind's own true-math checks of one sentence (TutorKind.claimProblems). */
   claims?: (sentence: string) => string[];
+  /** The question's work values (TutorKind.workValues): the results a place may reach in a trade across a borrow. */
+  trades?: readonly number[];
 }
 
 /** "4 is the answer", "the whole answer is 24", "your answer 36 is right": a claim about which number is the answer. */
@@ -198,7 +200,7 @@ export function checkTutorSay(text: string, ctx: TutorCheckContext & { extra?: R
       if (holds === null) continue;
       if (holds === e.negated) return { ok: false, reason: "false_equation", detail: `"${sentence}" ${e.negated ? "calls a true equation false" : "holds a false equation"}. Every equation Maya says must be true.` };
     }
-    const claim = falseClaims(sentence, ctx.op)[0] ?? ctx.claims?.(sentence)[0];
+    const claim = falseClaims(sentence, ctx.op, ctx.trades)[0] ?? ctx.claims?.(sentence)[0];
     if (claim) return { ok: false, reason: "false_equation", detail: `"${sentence}": ${claim}. Every equation and place-value statement must be true.` };
     if (ctx.answer !== undefined) for (const m of sentence.matchAll(ANSWER_CLAIM)) {
       const n = Number(m[1] ?? m[2]);
@@ -287,6 +289,7 @@ export function tutorStreamContext(pkg: OperationPackage, text: string, stance: 
     ...(op ? { op } : {}),
     ...(answer === null ? {} : { answer }),
     claims: (sentence: string) => kind.claimProblems(pkg, sentence),
+    trades: kind.workValues(pkg),
     allowed,
     // A "yes" streams only when no reading can make it wrong: the child said no number, or only numbers code's own read
     // credits as right (the final check keeps code's credit over the model's reading).
@@ -306,7 +309,7 @@ export function tutorFallbackText(pkg: OperationPackage, done: readonly string[]
   const kind = tutorKind(pkg);
   const q = kind.stepQuestion(pkg, done);
   const op = kind.op?.(pkg);
-  const safe = q !== null && plainTeaching(q) && checkTutorSay(q, { stance: "none", claims: (x) => kind.claimProblems(pkg, x), ...(op ? { op } : {}) }).ok;
+  const safe = q !== null && plainTeaching(q) && checkTutorSay(q, { stance: "none", claims: (x) => kind.claimProblems(pkg, x), trades: kind.workValues(pkg), ...(op ? { op } : {}) }).ok;
   return `Let me say that another way. ${safe ? q : "So what is the whole answer?"}`;
 }
 

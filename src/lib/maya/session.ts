@@ -5101,9 +5101,9 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   const op = kind.op?.(pkg);
   const claims = (sentence: string) => kind.claimProblems(pkg, sentence);
   const answer = pkg.answer.value.type === "number" ? pkg.answer.value.value : undefined;
-  let verdict = checkTutorSay(text, { stance, extra, childValues, claims, ...(op ? { op } : {}), ...(answer === undefined ? {} : { answer }) });
+  let verdict = checkTutorSay(text, { stance, extra, childValues, claims, trades: tutorKind(pkg).workValues(pkg), ...(op ? { op } : {}), ...(answer === undefined ? {} : { answer }) });
   // Code's own line never fails its turn: after streamed words that leave no room, the turn is those words.
-  if (fallback && !verdict.ok && sent.length) { text = lead; verdict = checkTutorSay(text, { stance: "none", extra, claims, ...(op ? { op } : {}) }); }
+  if (fallback && !verdict.ok && sent.length) { text = lead; verdict = checkTutorSay(text, { stance: "none", extra, claims, trades: tutorKind(pkg).workValues(pkg), ...(op ? { op } : {}) }); }
   if (!verdict.ok) return no("say_check", `Your message was refused (${verdict.reason}): ${verdict.detail}`, verdict.reason);
   if (act === "close" && /\?\s*$/.test(text)) return no("say_check", "A close ends the call, so it asks nothing: say a short goodbye with no question.", "close_asks");
   // Child safety: each sentence that is not plain teaching is reviewed before it is said (the adapter runs the reviews,

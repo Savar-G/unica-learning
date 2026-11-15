@@ -102,7 +102,11 @@ interface Side { value: number; units: boolean; place: number | null; next: numb
  * trade of the question's operation (`op`, a subtraction when not given): in a subtraction the ones gain 10 and the tens give 1 ten ("the 2 ones are
  * now 12 ones", "the 5 tens are now 4 tens"); in an addition the ones give 10 and the tens gain 1 ten.
  */
-export function falseClaims(sentence: string, op?: "add" | "subtract"): string[] {
+/**
+ * `trades`: the question's own work values (TutorKind.workValues). A place above the ones that both lends and borrows
+ * ("2 tens become 11 tens" in 223 − 129) is true only when its result is one of them (review of #1009).
+ */
+export function falseClaims(sentence: string, op?: "add" | "subtract", trades: readonly number[] = []): string[] {
   const problems: string[] = [];
   // A division with a remainder ("15 ÷ 6 = 2 R 3", "15 divided by 6 is 2 remainder 3") is read whole, then left out.
   sentence = sentence.replace(REMAINDER, (all, a: string, b: string, q: string, r: string) => {
@@ -165,6 +169,7 @@ export function falseClaims(sentence: string, op?: "add" | "subtract"): string[]
     // the left ("0 tens become 10 tens"), then give 1 to the right ("0 tens are now 9 tens").
     // Only a zero place borrows this way: "5 tens become 15 tens" is false (review of #1009).
     if (place > 1 && op !== "add" && a.value === 0 && (bValue === 10 * place || bValue === 9 * place)) return true;
+    if (place > 1 && op !== "add" && trades.includes(bValue / place) && (bValue === a.value + 10 * place || bValue === a.value + 9 * place)) return true;
     return gainsTen ? bValue === a.value + delta : bValue === a.value - delta;
   };
   while (i < items.length) {
