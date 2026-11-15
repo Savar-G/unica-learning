@@ -61,6 +61,17 @@ describe("scrubEnvelope", () => {
     expect(items(out).map(([h]) => h.type)).toEqual(["event"]);
   });
 
+  it("refuses a negative, fractional or unsafe item length at once (no endless loop)", () => {
+    expect(scrubEnvelope(enc.encode('{}\n{"type":"event","length":-31}\nx'))).toBeNull();
+    expect(scrubEnvelope(enc.encode('{}\n{"type":"event","length":1.5}\nxx'))).toBeNull();
+    expect(scrubEnvelope(enc.encode('{}\n{"type":"event","length":"2"}\nxx'))).toBeNull();
+    expect(scrubEnvelope(enc.encode(`{}\n{"type":"event","length":${Number.MAX_SAFE_INTEGER + 2}}\nx`))).toBeNull();
+  });
+
+  it("refuses a body with too many items", () => {
+    expect(scrubEnvelope(enc.encode("{}\n" + '{"type":"event","length":0}\n\n'.repeat(101)))).toBeNull();
+  });
+
   it("refuses an envelope it cannot read", () => {
     expect(scrubEnvelope(enc.encode("no newline"))).toBeNull();
     expect(scrubEnvelope(enc.encode(`{"dsn":"x"}\n{"type":"event","length":999}\nshort`))).toBeNull();

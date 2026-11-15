@@ -10,6 +10,8 @@ import { scrubUrl } from "@/lib/sentry-scrub";
 const KEEP = ["content-type", "user-agent"];
 /** A tunnel request larger than this is refused (Vercel takes 4.5 MB). */
 export const MAX_ENVELOPE_BYTES = 4_000_000;
+/** The most items one envelope may hold. */
+const MAX_ITEMS = 100;
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -67,7 +69,10 @@ export function scrubEnvelope(bytes: Uint8Array): Uint8Array | null {
   if (headerEnd < 0) return null;
   const parts: Uint8Array[] = [bytes.subarray(0, headerEnd + 1)];
   let at = headerEnd + 1;
+  let count = 0;
   while (at < bytes.length) {
+    // An envelope holds a few items; a body with more is not one the SDK sent.
+    if (++count > MAX_ITEMS) return null;
     const itemHeaderEnd = indexOfNewline(bytes, at);
     const headerBytes = bytes.subarray(at, itemHeaderEnd < 0 ? bytes.length : itemHeaderEnd);
     if (!headerBytes.length) { at += 1; continue; }
@@ -76,7 +81,9 @@ export function scrubEnvelope(bytes: Uint8Array): Uint8Array | null {
     if (itemHeaderEnd < 0) return null;
     const start = itemHeaderEnd + 1;
     let end: number;
-    if (typeof header.length === "number") {
+    if (header.length !== undefined) {
+      // Only a whole, non-negative length: a negative one would send the reader back to the same item for ever.
+      if (typeof header.length !== "number" || !Number.isSafeInteger(header.length) || header.length < 0) return null;
       end = start + header.length;
       if (end > bytes.length) return null;
     } else {
@@ -84,6 +91,8 @@ export function scrubEnvelope(bytes: Uint8Array): Uint8Array | null {
       end = newline < 0 ? bytes.length : newline;
     }
     const payload = scrubItem(typeof header.type === "string" ? header.type : "", bytes.subarray(start, end));
+    // The reader always moves forward.
+    if (end + 1 <= at) return null;
     at = end + 1;
     if (payload === null) continue;
     const nextHeader = typeof header.length === "number" ? { ...header, length: payload.length } : header;
