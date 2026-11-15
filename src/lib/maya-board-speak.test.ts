@@ -332,6 +332,32 @@ describe("preview of 0e6cfeed0 (call fb9b7b10): the tens digit when Maya says it
   });
 });
 
+describe("review of #1094 (f4c382735) through the session: each clause binds to the action's step", () => {
+  const first = reply("We trade 1 ten for 10 ones. Write 4 in the ones. What comes next?", "guide");
+  for (const said of ["Now the tens: write 4 in the ones. What comes next?", "4 ones minus 2 ones is 2 ones, so write 2 in the tens. What comes next?"]) {
+    it(`"${said}" draws nothing; the words go out`, async () => {
+      const { session } = chat([reply("We trade 1 ten for 10 ones. What comes next?", "guide"), reply(said, "guide"), ASK]);
+      await session.start();
+      const a = await session.child("Please help me.");
+      session.boardFates(a.board.map((b) => ({ batchId: b.transactionId, fate: "shown" as const })));
+      if (said.includes("tens.")) {
+        // The tens digit also needs the ones digit shown first: show it, so only the binding decides.
+        const { session: s2 } = chat([first, reply(said, "guide"), ASK]);
+        await s2.start();
+        const b = await s2.child("Please help me.");
+        s2.boardFates(b.board.map((x) => ({ batchId: x.transactionId, fate: "shown" as const })));
+        const out = await s2.child("Please continue.");
+        expect(out.say.join(" ")).toBe(said);
+        expect(out.board).toEqual([]);
+        return;
+      }
+      const out = await session.child("Please continue.");
+      expect(out.say.join(" ")).toBe(said);
+      expect(out.board).toEqual([]);
+    });
+  }
+});
+
 describe("#1103: code's own fallback message draws (decided 2026-11-15)", () => {
   it("a fallback turn draws the note of its streamed sentence, and the trace shows the fallback's reads", async () => {
     const lead = "12 minus 8 is 4.";

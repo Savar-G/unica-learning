@@ -68,6 +68,33 @@ describe("preview of 0e6cfeed0: the tens digit of 52 − 28 in Maya's own phrasi
   });
 });
 
+describe("review of #1094 (f4c382735): every clause binds to the action's step", () => {
+  const shown = ["trade:ones", "digit:ones"];
+  it("a place lead-in about another step draws nothing", () => {
+    const r = derive(SUB, "Now the tens: write 4 in the ones.", ["trade:ones"]);
+    expect(r.drawings).toEqual([]);
+    expect(reasons(r)).toEqual(["other_step"]);
+    // The same lead-in with its own step draws.
+    expect(derive(SUB, "Now the ones: write 4 in the ones.", ["trade:ones"]).drawings).toHaveLength(1);
+  });
+  it("a step equation with places binds to the step of its place, not to its numbers alone", () => {
+    expect(derive(SUB, "4 ones minus 2 ones is 2 ones, so write 2 in the tens.", shown).drawings).toEqual([]);
+    expect(derive(SUB, "4 tens minus 2 tens is 2 tens, so write 2 in the tens.", shown).drawings).toHaveLength(1);
+  });
+  it("a reason may be about an earlier step; an action about another step may not", () => {
+    // The borrow (ones step) is a reason for the tens digit: it came first.
+    expect(derive(SUB, "52 is 4 tens and 12 ones, so write 2 in the tens.", shown).drawings).toHaveLength(1);
+    // Two actions about two steps in one sentence: neither draws.
+    expect(derive(SUB, "Write 4 in the ones, then write 2 in the tens.", ["trade:ones"]).drawings).toEqual([]);
+    // A reason about a later step does not stand before an earlier action.
+    expect(derive(SUB, "4 tens minus 2 tens is 2 tens, so write 4 in the ones.", ["trade:ones"]).drawings).toEqual([]);
+  });
+  it("numbers of the easier example bind to no step of the question", () => {
+    expect(derive(SUB, "You can't take 9 from 3, so we trade 1 ten for 10 ones.").drawings).toEqual([]);
+    expect(derive(SUB, "You can't take 8 from 2, so we trade 1 ten for 10 ones.").drawings).toHaveLength(1);
+  });
+});
+
 describe("what never draws", () => {
   it("a negated, conditional, questioned or deferred clause", () => {
     for (const text of ["Do not trade yet.", "If you are stuck, we trade 1 ten for 10 ones.", "Should we trade 1 ten for 10 ones?", "We trade 1 ten for 10 ones, but not yet.", "Do not do this: we trade 1 ten for 10 ones."]) {

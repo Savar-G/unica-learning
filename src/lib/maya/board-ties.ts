@@ -15,7 +15,7 @@ import { tutorBoardNumbers, tutorKind, safeCommand } from "./tutor";
 import type { TutorCommand } from "./tutor-kind";
 
 /** Why a clause code read as a board action drew nothing (the trace's `boardReads`). */
-export const READ_REASONS = ["no_draw", "unread_sentence", "no_drawing", "not_a_step", "differs", "needs_earlier", "repeat", "unsafe"] as const;
+export const READ_REASONS = ["no_draw", "unread_sentence", "no_drawing", "not_a_step", "differs", "needs_earlier", "repeat", "unsafe", "other_step"] as const;
 export type ReadReason = (typeof READ_REASONS)[number];
 
 /** One clause code read as a board action: the sentence (0-based), the clause, and whether it drew (else why not). */
@@ -81,7 +81,7 @@ export function deriveDrawings(pkg: OperationPackage, sentences: readonly string
     // A judgment or agreement opener the say check validated for this sentence ("Yes, ..." when code found the child
     // right) carries no action: the rest of the sentence is read. Any other opener stays part of the sentence.
     const parsed = parseSentence(opener?.(sentence) ?? sentence, facts);
-    const said = parsed.clauses.flatMap((c) => (c.read && (c.read.type === "action" || c.read.type === "equation") ? [{ text: c.text, action: c.read.action }] : []));
+    const said = parsed.clauses.flatMap((c, k) => (c.read && (c.read.type === "action" || c.read.type === "equation") ? [{ k, text: c.text, action: c.read.action }] : []));
     if (said.length === 0) return;
     const skip = (reason: ReadReason) => said.forEach((c) => reads.push({ sentence: at, clause: c.text, drew: false, reason }));
     if (noDraw === "all" || noDraw.includes(at + 1)) return skip("no_draw");
@@ -90,6 +90,9 @@ export function deriveDrawings(pkg: OperationPackage, sentences: readonly string
     const keys: string[] = [];
     const after = new Set<number>();
     for (const c of said) {
+      // Review of #1094 (f4c382735): every other clause that carries a place or a value is about the same step of the
+      // active problem as this action (a reason may be about an earlier step); else the action draws nothing.
+      if (!together(c.k, c.action)) { reads.push({ sentence: at, clause: c.text, drew: false, reason: "other_step" }); continue; }
       const tried = drawClause(c.action);
       if ("reason" in tried) { reads.push({ sentence: at, clause: c.text, drew: false, reason: tried.reason }); continue; }
       reads.push({ sentence: at, clause: c.text, drew: true });
@@ -100,6 +103,19 @@ export function deriveDrawings(pkg: OperationPackage, sentences: readonly string
     }
     if (commands.length) drawings.push({ sentence: at, commands, keys, after: [...after].sort((x, y) => x - y) });
 
+    /** Whether every other clause of the sentence binds to this action's step (or, a reason, to an earlier one). */
+    function together(k: number, a: Action): boolean {
+      const S = stepsOf(a, facts);
+      return parsed.clauses.every((c, j) => {
+        if (j === k || !c.read) return true;
+        const r = c.read;
+        if (r.type === "lead") return r.binds === null || (S !== null && r.binds.some((b) => S.includes(b)));
+        if (r.type === "reason") return S !== null && S.length > 0 && r.binds.some((b) => b <= Math.max(...S));
+        const other = stepsOf(r.action, facts);
+        if (other === null || S === null) return other === S;
+        return other.some((b) => S.includes(b));
+      });
+    }
     /** What a needed key list allows: every key shown, or drawn earlier in this message (returned), else null. */
     function ready(needs: readonly string[]): string[] | null {
       const fromHere: string[] = [];
@@ -151,6 +167,31 @@ export function deriveDrawings(pkg: OperationPackage, sentences: readonly string
     }
   });
   return { drawings, reads };
+}
+
+/**
+ * The steps of the active problem an action is about, from code's steps (`ProblemFacts.stepInfo`): a digit by its
+ * place and value, a row by its value, a borrow by the place it goes to, a carry by the place it comes from, a note by
+ * the step whose work holds its equation (the question's own equation: the last step), a highlight by its place. Null:
+ * an action about no one step (the chart, a division layout).
+ */
+function stepsOf(a: Action, f: ProblemFacts): number[] | null {
+  const [type] = a.key.split("|");
+  const at = (p: string | null | undefined) => f.stepInfo.flatMap((st, i) => (p && st.place === p ? [i] : []));
+  if (type === "write") {
+    const [v] = a.values;
+    const p = a.places[0];
+    if (!p) return f.stepInfo.flatMap((st, i) => (st.result === v ? [i] : []));
+    const exact = at(p).filter((i) => f.stepInfo[i].result === v);
+    return exact.length ? exact : at(p);
+  }
+  if (type === "trade") return at(a.values[0] === 1 ? a.places[1] : a.places[0]);
+  if (type === "equation") {
+    const own = f.stepInfo.flatMap((st, i) => (st.equations.has(a.key) ? [i] : []));
+    return own.length ? own : f.steps.has(a.key) ? [f.stepInfo.length - 1] : [];
+  }
+  if (type === "place") return at(a.places[0]);
+  return null;
 }
 
 /** The places a kind's drawing may name, and none. */
@@ -306,6 +347,12 @@ export interface ProblemFacts {
   states: ReadonlySet<string>;
   /** The equation keys of the question and of each of its steps ("equation|12−8=4"). */
   steps: ReadonlySet<string>;
+  /**
+   * Review of #1094 (f4c382735): code's own steps of the active problem, in work order, for binding each clause of a
+   * sentence to a step: its place (null for a row or a step with no place), the numbers of its work and result, and
+   * the equation keys of its work. The question's own equation binds to the last step.
+   */
+  stepInfo: readonly { place: string | null; numbers: ReadonlySet<number>; equations: ReadonlySet<string>; result: number | null }[];
 }
 
 const PLACE_VALUE: Record<string, number> = { ones: 1, tens: 10, hundreds: 100, thousands: 1000, "ten thousands": 10000, "hundred thousands": 100000 };
@@ -339,7 +386,13 @@ export function problemFacts(pkg: OperationPackage): ProblemFacts {
       if (place) for (let a = 0; a < h.length; a++) for (let b = a + 1; b < h.length; b++) if (h[a] !== h[b]) states.add(`${place}|${h[a]}|${h[b]}`);
     });
   }
-  return { numbers: new Set(ops), states, steps: stepEquations(pkg) };
+  const stepInfo = tutorKind(pkg).steps(pkg).map((st) => ({
+    place: placeOf(st.place ?? null),
+    numbers: new Set<number>([...[...st.work.matchAll(/\d+/g)].map((m) => Number(m[0])), ...(typeof st.result === "number" ? [st.result] : [])]),
+    equations: new Set([...st.work.matchAll(/(\d+(?: [+−×÷] \d+)+) = (\d+)/g)].map((m) => `equation|${m[1].replace(/ /g, "")}=${m[2]}`)),
+    result: typeof st.result === "number" ? st.result : null,
+  }));
+  return { numbers: new Set(ops), states, steps: stepEquations(pkg), stepInfo };
 }
 
 /**
@@ -349,50 +402,67 @@ export function problemFacts(pkg: OperationPackage): ProblemFacts {
  * and 12 ones": one of the question's numbers, with exact values). Any clause that is neither a reason, an action form
  * nor a drawing lead-in leaves the sentence unread, and nothing is drawn with it.
  */
-const REASONS: { re: RegExp; holds: (m: RegExpMatchArray, f: ProblemFacts) => boolean }[] = [
-  { re: new RegExp(String.raw`^(?:you|we) (?:can't|cannot|can not) take ${N}(?: ${PL})? (?:away )?from ${N}(?: ${PL})?$`), holds: (m) => lessThan(m[3], m[1]) && (m[2] === undefined || m[4] === undefined || placeOf(m[2]) === placeOf(m[4])) },
-  { re: new RegExp(String.raw`^${N} is (?:smaller|less) than ${N}$`), holds: (m) => lessThan(m[1], m[2]) },
-  { re: new RegExp(String.raw`^${N} is (?:bigger|greater|more) than ${N}$`), holds: (m) => lessThan(m[2], m[1]) },
-  { re: new RegExp(String.raw`^(?:the )?${N} ${PL} (?:become|becomes|turn into|turns into|change to|changes to|are now|is now) ${N} ${PL}$`), holds: (m, f) => {
+const REASONS: { re: RegExp; holds: (m: RegExpMatchArray, f: ProblemFacts) => boolean; binds: (m: RegExpMatchArray, f: ProblemFacts) => number[] }[] = [
+  { re: new RegExp(String.raw`^(?:you|we) (?:can't|cannot|can not) take ${N}(?: ${PL})? (?:away )?from ${N}(?: ${PL})?$`), holds: (m) => lessThan(m[3], m[1]) && (m[2] === undefined || m[4] === undefined || placeOf(m[2]) === placeOf(m[4])), binds: (m, f) => withNumbers(f, [m[1], m[3]], m[2] ?? m[4]) },
+  { re: new RegExp(String.raw`^${N} is (?:smaller|less) than ${N}$`), holds: (m) => lessThan(m[1], m[2]), binds: (m, f) => withNumbers(f, [m[1], m[2]]) },
+  { re: new RegExp(String.raw`^${N} is (?:bigger|greater|more) than ${N}$`), holds: (m) => lessThan(m[2], m[1]), binds: (m, f) => withNumbers(f, [m[1], m[2]]) },
+  // A state after a trade binds to the step of its place, or of the place on its right (the column that borrowed).
+  { re: new RegExp(String.raw`^(?:the )?${N} ${PL} (?:become|becomes|turn into|turns into|change to|changes to|are now|is now) ${N} ${PL}$`), binds: (m, f) => atPlaces(f, [placeOf(m[2]), rightOf(placeOf(m[2]))]), holds: (m, f) => {
     const a = toNumber(m[1]);
     const b = toNumber(m[3]);
     const p = placeOf(m[2]);
     return a !== null && b !== null && p !== null && placeOf(m[4]) === p && f.states.has(`${p}|${a}|${b}`);
   } },
   // "the ones are now 12", "now the ones are 12": a value a trade of this question gives that place.
-  { re: new RegExp(String.raw`^(?:now )?the ${PL} (?:are|is)(?: now)? ${N}$`), holds: (m, f) => {
+  { re: new RegExp(String.raw`^(?:now )?the ${PL} (?:are|is)(?: now)? ${N}$`), binds: (m, f) => atPlaces(f, [placeOf(m[1]), rightOf(placeOf(m[1]))]), holds: (m, f) => {
     const p = placeOf(m[1]);
     const n = toNumber(m[2]);
     return p !== null && n !== null && [...f.states].some((k) => k.startsWith(`${p}|`) && k.endsWith(`|${n}`));
   } },
   // A step's own equation said with its place: "4 tens minus 2 tens is 2 tens" (one place, the step's own numbers).
-  { re: new RegExp(String.raw`^${N} ${PL} (${OP_WORDS}) ${N} ${PL} (?:is|equals|makes|leaves|gives) ${N} ${PL}$`), holds: (m, f) => {
+  // It binds to the step of that place whose work holds that equation: "4 ones minus 2 ones is 2 ones" binds to none.
+  { re: new RegExp(String.raw`^${N} ${PL} (${OP_WORDS}) ${N} ${PL} (?:is|equals|makes|leaves|gives) ${N} ${PL}$`), binds: (m, f) => {
+    const a = equationAction(`${m[1]} ${m[3]} ${m[4]}`, m[6]);
+    return a ? f.stepInfo.flatMap((st, i) => (st.place === placeOf(m[2]) && st.equations.has(a.key) ? [i] : [])) : [];
+  }, holds: (m, f) => {
     const places = [m[2], m[5], m[7]].map(placeOf);
     if (places.some((p) => p === null || p !== places[0])) return false;
     const a = equationAction(`${m[1]} ${m[3]} ${m[4]}`, m[6]);
     return a !== null && f.steps.has(a.key);
   } },
-  { re: new RegExp(String.raw`^${N} (?:is|equals|makes) ${N} ${PL} and ${N} ${PL}$`), holds: (m, f) => {
+  { re: new RegExp(String.raw`^${N} (?:is|equals|makes) ${N} ${PL} and ${N} ${PL}$`), binds: (m, f) => atPlaces(f, [placeOf(m[3]), placeOf(m[5])]), holds: (m, f) => {
     const [n, a, b] = [toNumber(m[1]), toNumber(m[2]), toNumber(m[4])];
     const [p, q] = [placeOf(m[3]), placeOf(m[5])];
     return n !== null && a !== null && b !== null && p !== null && q !== null && p !== q && f.numbers.has(n) && a * PLACE_VALUE[p] + b * PLACE_VALUE[q] === n;
   } },
 ];
 const lessThan = (a: string, b: string) => { const x = toNumber(a); const y = toNumber(b); return x !== null && y !== null && x < y; };
+const PLACE_ORDER = ["ones", "tens", "hundreds", "thousands", "ten thousands", "hundred thousands"];
+const rightOf = (p: string | null) => (p && PLACE_ORDER.indexOf(p) > 0 ? PLACE_ORDER[PLACE_ORDER.indexOf(p) - 1] : null);
+/** The steps of these places. */
+const atPlaces = (f: ProblemFacts, places: readonly (string | null)[]) => f.stepInfo.flatMap((st, i) => (st.place !== null && places.includes(st.place) ? [i] : []));
+/** The steps whose work holds all these numbers (and, when given, of this place). */
+const withNumbers = (f: ProblemFacts, nums: readonly string[], place?: string) => {
+  const ns = nums.map(toNumber);
+  const p = place === undefined ? null : placeOf(place);
+  return ns.some((n) => n === null) ? [] : f.stepInfo.flatMap((st, i) => (ns.every((n) => st.numbers.has(n!)) && (p === null || st.place === p) ? [i] : []));
+};
 
 /**
  * The plain drawing lead-ins (round 4): read in full, with no number, place, negation, condition or question. They
  * say that Maya draws now; they are neither an action nor a reason. "Let's show it", "let's put it on the board",
  * "let's draw the rows", "look", "watch".
  */
-const LEAD_INS = [
+const LEAD_INS: RegExp[] = [
   /^(?:let's|let us) (?:show|draw|put|write) (?:it|this|that|them|the rows|the trade|the steps|the work)(?: on the board)?$/,
   /^(?:look|watch)$/,
   // A bare trade word with no amount or place ("so we borrow: we trade 1 ten for 10 ones").
   /^(?:we|let's|let us) (?:borrow|trade|regroup)$/,
-  // A place to work next, with no number: "Now the tens:", "Start with the ones:".
-  /^(?:the|on to the|over to the) (?:hundred thousands|ten thousands|thousands|hundreds|tens|ones)(?: place| column)?$/,
-  /^(?:let's |let us |we )?(?:start|begin) with the (?:hundred thousands|ten thousands|thousands|hundreds|tens|ones)(?: place| column)?$/,
+];
+/** A place to work next, with no number: "Now the tens:", "Start with the ones:". It binds to the steps of that place. */
+const PLACE_LEAD_INS: RegExp[] = [
+  /^(?:the|on to the|over to the) (hundred thousands|ten thousands|thousands|hundreds|tens|ones)(?: place| column)?$/,
+  /^(?:let's |let us |we )?(?:start|begin) with the (hundred thousands|ten thousands|thousands|hundreds|tens|ones)(?: place| column)?$/,
 ];
 
 /** Words that may open a clause and change nothing it says. */
@@ -400,7 +470,11 @@ const LEAD_INS = [
 const LEAD = /^(?:(?:so|now|then|first|next|okay|ok|and|alright|\{name\}),?\s+)+/;
 
 /** One clause read whole, or null when code cannot read it. An equation is kept apart: it is a note's action, else a fact. */
-type Clause = { type: "action"; action: Action } | { type: "equation"; action: Action; holds: boolean } | { type: "reason" } | { type: "lead" };
+/**
+ * `binds` (review of #1094, f4c382735): the steps of the active problem a reason or a place lead-in is about (by its
+ * place and its values, from code's steps); a lead-in with no place binds to nothing (null).
+ */
+type Clause = { type: "action"; action: Action } | { type: "equation"; action: Action; holds: boolean } | { type: "reason"; binds: number[] } | { type: "lead"; binds: number[] | null };
 
 /** Whether an equation's action holds (left to right, products and quotients first, exact division). */
 function holds(key: string): boolean {
@@ -421,7 +495,11 @@ function holds(key: string): boolean {
 }
 
 function readClause(clause: string, facts: ProblemFacts): Clause | null {
-  if (LEAD_INS.some((r) => r.test(clause))) return { type: "lead" };
+  if (LEAD_INS.some((r) => r.test(clause))) return { type: "lead", binds: null };
+  for (const r of PLACE_LEAD_INS) {
+    const m = clause.match(r);
+    if (m) return { type: "lead", binds: atPlaces(facts, [placeOf(m[1])]) };
+  }
   for (const f of FORMS) {
     const m = clause.match(f.re);
     if (!m) continue;
@@ -431,7 +509,7 @@ function readClause(clause: string, facts: ProblemFacts): Clause | null {
   }
   for (const r of REASONS) {
     const m = clause.match(r.re);
-    if (m) return r.holds(m, facts) ? { type: "reason" } : null;
+    if (m) return r.holds(m, facts) ? { type: "reason", binds: r.binds(m, facts) } : null;
   }
   return null;
 }
