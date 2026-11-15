@@ -582,3 +582,31 @@ describe("fourth check of #1006 (2026-11-14)", () => {
     expect(plainTeaching(x)).toBe(true);
   });
 });
+
+describe("fifth check of #1006 (2026-11-15)", () => {
+  it("sends nothing past the call's end, even when a held review passes later", async () => {
+    let now = T0;
+    let passReview!: (v: TalkReviewResult) => void;
+    let reviewStarted!: () => void;
+    let endModel!: () => void;
+    const started = new Promise<void>((r) => { reviewStarted = r; });
+    const pendingReview = new Promise<TalkReviewResult>((r) => { passReview = r; });
+    const pendingModel = new Promise<void>((r) => { endModel = r; });
+    const parts: string[] = [];
+    const model = conversationalFake({ answer: () => reply("You did that part well. What is 12 minus 8?", "guide"), stream: { chunk: 7, beforeEnd: () => pendingModel } });
+    const session = createTextSession({ callId: "deadline-1006", package: PKG, tutor: true, model, clock: () => now, onSayPart: (s) => parts.push(s),
+      reviewer: { id: "held", promptVersion: "t", review: () => { reviewStarted(); return pendingReview; } } });
+    await session.start();
+    parts.length = 0;
+    const out = session.child("I need help");
+    await started;
+    now = T0 + 600_001;
+    const tick = session.tick();
+    passReview({ verdict: "pass" });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(parts).toEqual([]);
+    endModel();
+    await Promise.all([out, tick]);
+    expect(parts.join(" ")).not.toContain("You did that part well.");
+  });
+});
