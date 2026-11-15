@@ -48,7 +48,7 @@ Checked date for every row: 2026-11-14.
 | A parent can book a free 15-minute results call with a founder. unverified: flag state (`NEXT_PUBLIC_BOOKING_URL` can switch it off). | `src/lib/contact.ts:14` | 2026-11-14 |
 | A progress preview on the report says "We can help [Name] reach a grade [n] level by [Month Year]". Code works out the grade and the date from the child's test and the real plan pace. Agents may quote this sentence form for a named child only from the code's number. Agents do not write their own outcome promise. | `DESIGN.md:34` (D-323), `src/lib/progress-preview.ts` | 2026-11-14 |
 
-Do not say the assessment is "one sitting". The FAQ says one sitting and the assessment page says a child can pause and return. The two pages conflict. Say only that the child takes it alone.
+The child takes the assessment alone, in one sitting (Savar, 2026-11-14). If the child is interrupted, the saved answers wait for them; say "pick up where they left off" only for an interruption, never as a way to split the test.
 
 ## Workbooks mailed home
 
@@ -187,7 +187,7 @@ Each row below has a feature that exists in the repo and is off, held for approv
 
 These are places where the code, the site copy and the decision records disagree. A person must settle them. Agents use the safer reading until then.
 
-1. Voice: the FAQ, the home parent note and `/llms.txt` say a child can call Maya (D-343), but the voice release gate in `docs/maya-voice.md` and D-293 say voice follows chat. Safer reading: do not advertise voice.
-2. "One sitting": `src/lib/faq.ts:18` says one sitting. `src/app/(site)/math-assessment/page.tsx:21` says a child can pause and return. Safer reading: say neither.
+1. Voice: settled 2026-11-14. Savar keeps the existing voice copy on the FAQ, the home parent note, `/llms.txt` and `/terms`; do not remove it. Family voice is still not released (#992), so do not add voice to new copy until it is.
+2. "One sitting": settled 2026-11-14. Savar says the assessment is done in one sitting. The assessment page line "They can pause and return to their saved answers" describes what happens after an interruption.
 3. The free month ends Nov 30 (`OFFER_ENDS`). After that, the FAQ, the terms and every "first month free" line must change together with this file.
 4. The legal entity: Unica Learning Inc. exists, but the site still says "Unica Learning". Safer reading: use "Unica Learning".
