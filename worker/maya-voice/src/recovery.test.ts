@@ -166,6 +166,32 @@ it("keeps the origin across asynchronous SDK Close and a later participant leave
   expect(r.session.close).toHaveBeenCalledOnce();
 });
 
+it("a rejoin during the disconnect save leaves the later RPC as the close origin", async () => {
+  const f = await fixture(); await f.call.start(); const log = closeLog(f.id); const r = f.makeRun();
+  await r.run.agentJoined(); await r.run.childJoined();
+  const entered = barrier(), release = barrier();
+  const append = f.connections.append.bind(f.connections);
+  let held = false;
+  f.connections.append = async (...args) => {
+    if (!held && args[0].kind === "child_left") { held = true; entered.resolve(); await release.promise; }
+    return append(...args);
+  };
+  const leaving = r.run.childLeft("hang_up", 1);
+  await entered.promise;
+  try { await r.run.childJoined(); } finally { release.resolve(); }
+  await leaving;
+  expect(f.store.rows()[0].status).toBe("live");
+  expect(r.session.close).not.toHaveBeenCalled();
+  expect(log().filter(e => e.phase === "origin")).toEqual([]);
+  expect(log()[0]).toMatchObject({ entry: "participant_disconnect", phase: "observation", originId: null });
+  await r.run.hangUp();
+  expect(r.session.close).toHaveBeenCalledOnce();
+  expect(f.store.rows()[0].outcome?.reason).toBe("child_stopped");
+  const origins = log().filter(e => e.phase === "origin");
+  expect(origins.map(e => e.entry)).toEqual(["explicit_rpc"]);
+  expect(log().find(e => e.phase === "media_close")).toMatchObject({ entry: "explicit_rpc", originId: origins[0].closeId });
+});
+
 it("no input stays live through the recorded 13.551 second interval", async () => {
   const f = await fixture(); await f.call.start(); const log = closeLog(f.id); const r = f.makeRun();
   await r.run.agentJoined(); await r.run.childJoined();

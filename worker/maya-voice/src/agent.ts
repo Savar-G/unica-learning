@@ -1343,7 +1343,7 @@ export class VoiceCallRun {
 
   async childLeft(how: "hang_up" | "dropped", protocolReason?: unknown) {
     const reason = voiceDisconnectReason(protocolReason);
-    this.closeMark("participant_disconnect", reason, how === "hang_up" && !this.finishing ? "origin" : "observation");
+    this.closeMark("participant_disconnect", reason, "observation");
     if (this.finishing) return;
     const generation = ++this.generation;
     this.childHere = false;
@@ -1354,7 +1354,7 @@ export class VoiceCallRun {
     await this.call.connection("child_left");
     if (this.finishing || this.childHere || generation !== this.generation) return;
     if (this.call.lost) return this.finish({ detail: "the disconnect could not be saved" });
-    if (how === "hang_up") return this.finish({ reason: "child_stopped" });
+    if (how === "hang_up") return this.finish({ reason: "child_stopped" }, false, "participant_disconnect", reason);
     if (this.graceTimer === null) {
       this.graceTimer = this.timers.set(RECONNECT_GRACE_MS, () => {
         if (!this.childHere && generation === this.generation) void this.finish({ detail: "the child's connection dropped and did not come back" }, false, "participant_disconnect", reason);
