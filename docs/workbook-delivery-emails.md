@@ -32,6 +32,14 @@ The free-month email keeps the price, first charge date, monthly billing, remind
 
 The plain account routes in these emails always use the approved production addresses. Preview hosts and request origins cannot change those links. The first charge date still uses the family time module.
 
+### Getting-started video (#1075)
+
+Every newly composed plan-start email has a **Watch the getting-started video** button and a plain-text link to `https://unicalearning.com/getting-started`. It needs no environment change. The existing delivery confirmation and separate start-plan action still control when this email is sent. This release does not resend stored emails, send a separate video email, or change the billing, cancellation, support, grade or sibling variants. The optional `ONBOARDING_WALKTHROUGH_URL` still controls only the existing dispatch link; this release does not enable that earlier link.
+
+The watch page requires no sign-in, contains no family data, is noindex and stays out of the sitemap. It uses the existing support-page shell, native player controls, inline playback, metadata-only preload, no autoplay and a direct account link. English WebVTT captions are derived from the final render's `CUES`, inverse `MAP` and 0.5-second `LEAD`. They preserve its wording, including Maya, and are selectable rather than on by default because the approved movie already has burned-in captions. The poster is a still from the same movie.
+
+Hosting follows the existing `public/video` convention. The live storage inventory on 2026-11-15 contained only private `shown-work`, `workbook-pages` and `scan-photos` buckets, with image/PDF/JSON MIME limits; none is suitable for a public video. No bucket or paid service was created and no customer files or policies were changed. The approved 17,114,973-byte movie is stored unchanged at `/video/getting-started-2233b9cf6247.mp4`, SHA-256 `2233b9cf6247f1ee6752bbcaf497fee65a1bb617d1c95b5fb506a1a3e6a6d1d5`. Its content-addressed filename has a one-year immutable cache header and a noindex response header. Do not replace its bytes in place; publish a new hashed filename for a future approved revision. Production cache/range behavior must be checked after the normal main deployment; this task does not request a Vercel preview deployment.
+
 ## Send status
 
 Each welcome has one key per saved card. Each ready email has one key per saved card and workbook number. Each delivery email has a separate key per saved card and workbook number. The database locks the card while claiming that key. It records the recipient, message and tracking details before the provider call. A second click cannot change a claimed email or send another copy.
