@@ -7,7 +7,7 @@ const path = require('node:path');
 const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '../..');
 const sql = name => readFileSync(path.join(root, 'supabase/migrations', name), 'utf8');
-const command = (name, args) => execFileSync('/opt/homebrew/bin/' + name, args, { encoding: 'utf8' });
+const command = (name, args) => execFileSync(path.join(process.env.PG_BIN ?? '/opt/homebrew/bin', name), args, { encoding: 'utf8' });
 const clients = new Set();
 let directory, started = false, passed = 0;
 function cleanup() {
@@ -34,14 +34,14 @@ async function close(c) { await c.end(); clients.delete(c); }
 const rpc = async (c, name, args) => (await c.query(`select public.${name}(${args.map((_, i) => '$' + (i + 1)).join(',')}) value`, args)).rows[0].value;
 const outcome = p => p.then(value => ({ value }), error => ({ error }));
 const revision = '0123456789abcdef0123456789ab';
-// Bundle only the real exported clock functions. Do not copy their algorithms into this fixture.
+// Import the real clock functions and writer version. Do not copy their rules into this fixture.
 const { buildSync } = require('esbuild'); const { Module } = require('node:module');
-const output = buildSync({ stdin: { contents: 'export { deliveryDeadlines } from "./src/lib/workbook-delivery"; export { localDateTime } from "./src/lib/family-time";', resolveDir: root },
+const output = buildSync({ stdin: { contents: 'export { CALIBRATION_VERSION } from "./src/lib/scan-calibration"; export { deliveryDeadlines } from "./src/lib/workbook-delivery"; export { localDateTime } from "./src/lib/family-time";', resolveDir: root },
   bundle: true, platform: 'node', format: 'cjs', write: false, tsconfig: path.join(root, 'tsconfig.json') }).outputFiles[0].text;
 const loaded = new Module(path.join(root, 'unica475-family-time.cjs'));
 loaded.paths = module.paths;
 loaded._compile(output, path.join(root, 'unica475-family-time.cjs'));
-const { deliveryDeadlines, localDateTime } = loaded.exports;
+const { CALIBRATION_VERSION, deliveryDeadlines, localDateTime } = loaded.exports;
 const clockVersion = 'family-time/deliveryDeadlines:542e4a5b;node=' + process.version + ';tz=' + process.versions.tz;
 (async () => {
   console.log('FALSIFIER: invalid scans create receipts, retries move acceptance, or image cleanup erases history.');
@@ -175,6 +175,54 @@ const clockVersion = 'family-time/deliveryDeadlines:542e4a5b;node=' + process.ve
       assert.equal((await db.query('select sent_at from scan_photos where id=$1', [x.photo])).rows[0].sent_at, null);
       for (let i = 0; i < 2; i++) assert.equal(await rpc(service, 'change_scan_photo', [f.p, x.photo, 'save']), 'saved');
       assert.deepEqual(await receipts(f), [first]); assert.equal((await claims(f)).length, 0);
+    }
+  });
+  await test('version-2 backfill admits only eligible photos and is idempotent', async () => {
+    const eligible = [];
+    const calibration = { version: 2, revision, photo: { width: 1000, height: 1400 } };
+    for (const readyFirst of [false, true]) {
+      const f = await book();
+      const x = await photo(f, 2, service, { readyFirst, result: { calibration } });
+      assert.equal((await receipts(f)).length, 0, 'old rule reproduces the production failure');
+      eligible.push(x);
+    }
+    const ineligible = [];
+    for (const options of [{ save: false }, { derived: false }, { result: { sheetCheck: 0 } }]) {
+      const f = await book();
+      await photo(f, 2, service, { ...options, result: { calibration, ...options.result } });
+      ineligible.push(f);
+    }
+    const migration = sql('20261115174921_scan_receipt_calibration_v2.sql');
+    await db.query(migration);
+    const accepted = [];
+    for (const x of eligible) {
+      const rows = await receipts(x);
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].photo_revision, x.photo);
+      accepted.push(rows);
+    }
+    await db.query(migration);
+    for (let i = 0; i < eligible.length; i++) assert.deepEqual(await receipts(eligible[i]), accepted[i]);
+    for (const f of ineligible) assert.equal((await receipts(f)).length, 0);
+  });
+  await test('version 2 and the current TypeScript writer version admit once in either transition order', async () => {
+    for (const version of new Set([2, CALIBRATION_VERSION])) {
+      for (const readyFirst of [false, true]) {
+        const f = await book();
+        const x = await photo(f, 2, service, { readyFirst, result: { calibration: { version, revision } } });
+        const rows = await receipts(f);
+        assert.equal(rows.length, 1, `writer calibration version ${version} must be accepted by SQL`);
+        assert.equal(rows[0].photo_revision, x.photo);
+        assert.equal(await rpc(service, 'change_scan_photo', [f.p, x.photo, 'save']), 'saved');
+        assert.deepEqual(await receipts(f), rows);
+      }
+    }
+  });
+  await test('unknown, missing, null and string calibration versions still refuse receipts', async () => {
+    for (const version of [0, 3, null, undefined, '1', '2']) {
+      const f = await book();
+      await photo(f, 2, service, { result: { calibration: { version, revision } } });
+      assert.equal((await receipts(f)).length, 0, `unsupported version ${version}`);
     }
   });
   await test('S1, unsaved, running, stale sheet and missing source/derived bytes refuse acceptance', async () => {
