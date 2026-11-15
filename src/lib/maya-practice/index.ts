@@ -16,3 +16,11 @@ export { timedTurns, turnTimeMarkdown, type CallTimes, type TurnTimeReport } fro
 export { generatedPracticeSet, casesFromGeneratedBook, type GeneratedPracticeSet, type GeneratedPracticeBook } from "./generated";
 export { practicePackage } from "./packages";
 export { practiceExecution, suiteHash, type ExecutionOptions, type PracticeExecution } from "./practice";
+
+// D-345: the tutor core's teaching judge (T01 to T10), the trace metrics and the tutor cases.
+export { aiTeachingJudge, fakeTeachingJudge, judgeFamilyProblem, modelFamily, readTeachingJudgement, summarizeTeaching, teachingJudgeInput, teachingJudgeSchema, teachingPlan, teachingProblems, TEACHING_DIMENSIONS, TEACHING_IDS, TEACHING_JUDGE_PROMPT_VERSION, TEACHING_JUDGE_SYSTEM, type TeachingJudge, type TeachingJudgeInput, type TeachingJudgement } from "./teaching-judge";
+export { isAttempt, metricProblems, misconceptionFixed, teachingMetrics, LONGEST_RUN_TARGET, OVERRIDE_TARGET, type Misconception, type TeachingMetrics } from "./teaching-metrics";
+export { caseChecks, teachingVerdict, type TeachingLog, type TeachingVerdict } from "./tutor-run";
+export { SAVAR_CALL_CHECKS, TUTOR_CASES } from "./tutor-cases";
+export { fakeTutorModel } from "./tutor-fake";
+export { teachingFile, type TutorReport } from "./practice";
