@@ -203,8 +203,9 @@ describe("defaults and the trace contract", () => {
   it("writes the current version and still reads versions 9 to 11", async () => {
     const { session } = setup(); await session.start(); session.prepare("6"); await session.child("6");
     const trace = session.trace();
-    // Version 12 (two-layer true math, #1044) adds the math reviews; this file's own field came in version 11.
-    expect(TRACE_VERSION).toBe(12); expect(trace.version).toBe(12);
+    // Version 12 (two-layer true math, #1044) adds the math reviews, version 13 (B1) the board fates; this file's own
+    // field came in version 11.
+    expect(TRACE_VERSION).toBe(13); expect(trace.version).toBe(13);
     expect(checkTrace(trace).ok).toBe(true);
     for (const v of [9, 10, 11]) expect(checkTrace({ ...trace, version: v } as never).ok).toBe(true);
   });

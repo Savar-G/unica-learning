@@ -33,11 +33,13 @@ export interface TraceRefusal {
  * (hello, can't teach, another question); a version 9 trace with the old text is refused. Version 10 records the configured call limits. Version 11 adds the optional `diagnosticHandleId` (one short token, no
  * words) to a preparation record. Version 12 (two-layer true math, 2026-11-15) adds the tutor core's math-truth review: on
  * an attempt, `math` (each sentence code did not read whole, with the review's verdict and reason) and, on a tutor call,
- * `mathReviewer` (the review's model and prompt version, or null). `checkTrace` reads all twelve versions.
+ * `mathReviewer` (the review's model and prompt version, or null). Version 13 (B1, "shown means shown") adds, on a board
+ * batch, `fate`: what the child's screen said it did with it (shown, skipped or cancelled; absent when it said nothing),
+ * and `counts.boardFates`, the batches by fate. `checkTrace` reads all thirteen versions.
  */
-export const TRACE_VERSION = 12;
+export const TRACE_VERSION = 13;
 /** The trace versions `checkTrace` reads. */
-export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
+export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] as const;
 /**
  * The held turn as version 8 traces stored it, before D-327 (line sets 11 to 13). Frozen here: stored admin test
  * calls from preview deployments may hold it, and they stay readable.
@@ -227,6 +229,26 @@ export interface TraceBoardBatch {
   turn: number;
   transactionId: string;
   commands: readonly unknown[];
+  /**
+   * Version 13 (B1): what the child's screen did with the batch: "shown" (on the board), "skipped" (the board refused it:
+   * it would cover the child's ink) or "cancelled" (a voice call stopped it before its cue). Absent: the screen said
+   * nothing, so the batch never counts as shown.
+   */
+  fate?: "shown" | "skipped" | "cancelled";
+}
+
+/** Version 13 (B1): the board batches by what the child's screen did with them; `unreported`: no word from the screen. */
+export interface TraceBoardFates {
+  shown: number;
+  skipped: number;
+  cancelled: number;
+  unreported: number;
+}
+
+/** The board batches of a trace by fate (version 13). */
+export function boardFateCounts(board: readonly TraceBoardBatch[]): TraceBoardFates {
+  const n = (fate: TraceBoardBatch["fate"]) => board.filter((b) => b.fate === fate).length;
+  return { shown: n("shown"), skipped: n("skipped"), cancelled: n("cancelled"), unreported: n(undefined) };
 }
 
 export interface MayaTrace {
@@ -289,6 +311,8 @@ export interface TraceCounts {
   mathRefusals?: number;
   /** Math-truth reviews the retry model answered after an "unsure" (math review version 3). */
   mathRetries?: number;
+  /** Version 13 (B1): the board batches by what the child's screen did with them (boardFateCounts). */
+  boardFates?: TraceBoardFates;
 }
 
 /** The counts of a trace's turns. */
@@ -630,6 +654,8 @@ function check(raw: unknown): MayaTrace {
     need(Array.isArray(x.commands) && x.commands.length > 0, `${path}.commands`, "a list of commands");
     const out = turns[x.turn as number].output as { board: string[] } | null;
     need(out !== null && out.board.includes(x.transactionId as string), `${path}.transactionId`, "sent by that turn's output");
+    // Version 13 writes it; a trace of an older version never holds it, so it is read the same in every version.
+    need(x.fate === undefined || ["shown", "skipped", "cancelled"].includes(x.fate as string), `${path}.fate`, "absent, shown, skipped or cancelled");
     sent.add(x.transactionId as string);
   });
   turns.forEach((t, i) => {
@@ -703,6 +729,9 @@ function check(raw: unknown): MayaTrace {
   need(isObject(c) && COUNT_KEYS.every((k) => isCount(c[k])), "counts", "the trace counts");
   const want = traceCounts(turns as unknown as TraceTurn[]);
   for (const k of COUNT_KEYS) need((c as Record<string, unknown>)[k] === want[k], `counts.${k}`, `${want[k]}, counted from the turns`);
+  // Version 13: a quick read of the board's fates, like the other counts; boardFateCounts recounts them from `board`.
+  const bf = (c as Record<string, unknown>).boardFates;
+  need(bf === undefined || (isObject(bf) && Object.keys(bf).length === 4 && ["shown", "skipped", "cancelled", "unreported"].every((k) => isCount((bf as Record<string, unknown>)[k]))), "counts.boardFates", "absent, or four counts: shown, skipped, cancelled and unreported");
   return raw as unknown as MayaTrace;
 }
 

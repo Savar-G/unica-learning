@@ -10,7 +10,7 @@ Maya is the tutor, and code is the safety net. Savar approved this design on 202
    - the steps the child has done, and whether the right answer stands;
    - code's verdict on every number and equation in the child's turn, with the likely mistake (`childFacts`, `numberMeaning`);
    - the last turns, the grade, the `{name}` token and how much help Maya gave since the child's last progress;
-   - what the board already shows.
+   - what the board already shows (`drawn`), and what was sent with no word from the child's screen yet (`sent`, B1 below).
 3. ONE model call (`TUTOR_PROMPT`, `TUTOR_OUTPUT_SCHEMA`) returns ONE message, a reading and optional board requests.
 4. Code checks the whole message once (`checkTutorSay`, `src/lib/maya/tutor.ts`).
 5. The message is shown or spoken. Then Maya waits for the child. Always.
@@ -262,6 +262,19 @@ The model asks by id; code builds every command from the checked steps (`tutorDr
 - `trade`: the next trade (a borrow in the top row for subtraction, the carried 1 for addition);
 - `digit` with a place: an answer digit, after the trade it needs;
 - `note` with an equation: one true equation of numbers below the question. Code rebuilds the text from the values; a note with any other text is not drawn.
+
+### Shown means shown (B1)
+
+A drawing counts as on the board only when the child's screen says it showed it. Until then it is "sent".
+
+- When Maya sends a batch, the session keeps its drawing keys in `tutor.drawn` (so nothing is sent twice) and in `tutor.sent` under the batch's transaction id. The brief lists those keys in `sent`, not in `drawn`. The prompt (`maya-tutor-8`) tells the model not to ask for them again and not to say they are on the board.
+- The child's screen says what it did with each batch (`board_fate`): `shown`, `skipped` (the board refused it because it would cover the child's ink) or `cancelled` (a voice call stopped it before its cue because the child talked first). Shown: the keys stay in `drawn`. Skipped or cancelled: the keys leave `drawn` and `sent`, so the brief does not list them and the kind can offer them again. The text session also undoes the batch on its own board, so the next drawing is planned on the board the child sees.
+- No word means not shown: a batch with no word stays sent for the rest of the call. The first word for a batch stands; a second word, or a word for a batch Maya did not send, changes nothing.
+- Chat: the desk reads its board history (`chatBoardFates`, `src/lib/board-fate.ts`) and sends the fates of Maya's newest 16 batches with the child's next message (`fates` on the chat request, at most 32, read by `readFateReports`). The admin test call screen plays every batch, so it reports each one as shown.
+- Voice: the worker reads the board log that the child's screen already returns over the board connection (`snapshotFates`): a `batch` event is shown, a `cancelled` event is cancelled. A batch the board core refused at staging is reported as skipped (`boardRefused`). The session hears them at once; they are saved with the next turn.
+- Code's safety rules do not change: Maya's strokes never cover the child's ink, the board math is code-built, and the stream gate and Maya's words do not change.
+- Trace version 13 records each batch's `fate` and `counts.boardFates` (shown, skipped, cancelled, unreported).
+- Tests: `src/lib/maya-text-board-fate.test.ts` (session), `src/lib/board-fate.test.ts` (the desk and the worker), `src/lib/maya-chat-board-fate.test.ts` (a chat end to end with the in-memory seams).
 
 ## Trace
 

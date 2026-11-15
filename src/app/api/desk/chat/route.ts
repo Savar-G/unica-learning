@@ -2,6 +2,7 @@ import { runChat, type ChatAction } from "@/lib/maya-chat-server";
 import { deskChatContext } from "@/lib/desk-chat-request";
 import { isUuid } from "@/lib/workbook-content";
 import { MAX_CHILD_TEXT } from "@/lib/maya-call";
+import { readFateReports } from "@/lib/maya-text";
 
 export const maxDuration = 120;
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { "Cache-Control": "no-store" } });
@@ -21,6 +22,8 @@ export async function POST(request: Request) {
   }
   if ((action.type === "child" || action.type === "end") && (!Number.isSafeInteger(action.revision) || action.revision < 0)) return json({ error: "invalid" }, 400);
   if (action.type === "child" && (!isUuid(action.messageId) || typeof action.text !== "string" || !action.text.trim() || action.text.length > MAX_CHILD_TEXT)) return json({ error: "invalid" }, 400);
+  // B1: the board's word on Maya's batches, read strictly (at most 32, each a known fate).
+  if (action.type === "child" && action.fates !== undefined && readFateReports(action.fates) === null) return json({ error: "invalid" }, 400);
   try {
     const gate = await deskChatContext(request);
     if (!gate.ok) return json({ error: gate.error }, gate.status);
