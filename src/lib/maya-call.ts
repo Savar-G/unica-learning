@@ -81,7 +81,8 @@ import { withRequestContext } from "@/lib/maya-request-trace";
 import { modelInput, type MayaModel } from "@/lib/maya-model";
 import type { TalkReviewer } from "@/lib/maya-talk-review";
 import type { MathReviewer } from "@/lib/maya-math-review";
-import { createTextSession, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession, type TextSessionOptions } from "@/lib/maya-text";
+import { snapshotFates } from "@/lib/board-fate";
+import { createTextSession, readFateReports, type BoardFateReport, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession, type TextSessionOptions } from "@/lib/maya-text";
 import { packageHash, type MayaTrace } from "@/lib/maya-trace";
 import { type QuestionPackage, type QuestionRef } from "@/lib/question-package";
 import { teachingPackage } from "@/lib/maya-teaching";
@@ -324,7 +325,11 @@ export interface CallSeams {
  * One input to a live call. "end" hangs up on purpose (the call ends as child_stopped, unless safety, content or a
  * solved question comes first), or finishes an ended call's steps.
  */
-export type CallInput = { type: "child"; text: string } | { type: "tick" } | { type: "writing"; status: "started" | "done" } | { type: "end" };
+/**
+ * `fates` (B1, chat): what the child's screen did with Maya's board batches since the call last heard (src/lib/board-fate.ts).
+ * The session hears them before the child's words, so the brief for this turn counts only what the screen showed.
+ */
+export type CallInput = { type: "child"; text: string; fates?: BoardFateReport[] } | { type: "tick" } | { type: "writing"; status: "started" | "done" } | { type: "end" };
 
 /** The most characters of one typed child turn. */
 export const MAX_CHILD_TEXT = 500;
@@ -522,8 +527,13 @@ export interface VoiceCall {
    * like any other save. False: this handle no longer owns the call, so the phrase must not be said.
    */
   acknowledge(id: string): Promise<boolean>;
-  /** Persist receiver outcomes with their presentation times, under this worker's revision. */
+  /**
+   * Persist receiver outcomes with their presentation times, under this worker's revision. B1: the session hears what
+   * the child's screen did with each batch in it (shown or cancelled), saved with the next turn.
+   */
   observeBoard(snapshot: BoardSnapshot): Promise<void>;
+  /** B1: batches the board core refused at staging (board-speech `refused`): the session counts them as skipped. */
+  boardRefused?(batchIds: readonly string[]): void;
   /** `openingSpoken`: the worker speaks the opening itself, so the turn comes back with no say (D-341). */
   start(options?: { openingSpoken?: boolean }): Promise<VoiceTurn>;
   /** Prepares an interim reply without speech, credit or a saved input. */
@@ -733,7 +743,7 @@ const countsOf = (trace: MayaTrace): NonNullable<CallRecord["counts"]> => ({
 });
 
 function checkInput(input: CallInput): boolean {
-  if (input.type === "child") return typeof input.text === "string" && input.text.trim().length > 0 && input.text.length <= MAX_CHILD_TEXT;
+  if (input.type === "child") return typeof input.text === "string" && input.text.trim().length > 0 && input.text.length <= MAX_CHILD_TEXT && (input.fates === undefined || readFateReports(input.fates) !== null);
   if (input.type === "writing") return input.status === "started" || input.status === "done";
   return input.type === "tick" || input.type === "end";
 }
@@ -1514,6 +1524,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         },
         async observeBoard(snapshot) {
           const copy = structuredClone(snapshot);
+          // B1: the screen's word on each batch reaches the session at once (the next turn's brief reads it).
+          if (!inactive() && !session.ended) session.boardFates(snapshotFates(copy).slice(-32));
           later(async () => {
             if (lost || record.status === "ended") return;
             const boardHistory = voiceBoardHistory(copy, record.live?.text.session.startedAt ?? seams.clock(), seams.clock(), record.boardHistory);
@@ -1523,6 +1535,10 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           });
           await queue;
           if (lost) throw new Error("The observed board could not be saved.");
+        },
+        boardRefused(batchIds) {
+          if (inactive() || session.ended) return;
+          session.boardFates(batchIds.slice(-32).map((batchId) => ({ batchId, fate: "skipped" as const })));
         },
         start: (options) => turn(() => session.start(options)),
         child: (text, options, say) => turn(() => session.child(text.trim().slice(0, MAX_CHILD_TEXT), options), text.trim().slice(0, MAX_CHILD_TEXT), say),
@@ -1661,6 +1677,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         saved2 = await end(record, pkg, session, { reason: "child_stopped" });
       } else {
         try {
+          // B1: the screen's word on Maya's batches first, so this turn's brief counts only what the child saw.
+          if (input.type === "child" && input.fates?.length) session.boardFates(input.fates);
           out = input.type === "child" ? await session.child(input.text.trim()) : input.type === "tick" ? await session.tick() : await session.writing(input.status);
         } finally {
           saved2 = await save(record, pkg, session);

@@ -8,6 +8,7 @@ import { stripe } from "@/lib/stripe";
 import { readBookingCustomers } from "@/lib/retention-stripe";
 import { chatFamilyGate, chatGradeLine, chatPlanClosedLine, chatServesGrade, chatUsage, chatWindow, childChatView, type ChatUsage, type ChatReply } from "@/lib/maya-chat";
 import { mayaCalls, recordView, type CallRecord } from "@/lib/maya-call";
+import type { BoardFateReport } from "@/lib/maya-text";
 import { callSeams } from "@/lib/maya-call-seams";
 import { mayaCallStore } from "@/lib/maya-call-store";
 import { mayaNotice } from "@/lib/maya-notice";
@@ -148,7 +149,7 @@ export async function deskChat(session: DB, parent: string, child: { id: string;
 export interface ChatContext { db: DB; parent: string; child: string; name: string; grade?: number; zone: FamilyZone }
 export type ChatAction = { type: "start"; id: string; question: WorkbookQuestionRef; workbookId?: never; reference?: never } |
   { type: "start"; id: string; workbookId: string; reference: string; question?: never } | { type: "read"; id: string } |
-  { type: "child"; id: string; messageId: string; revision: number; text: string } | { type: "end"; id: string; revision: number };
+  { type: "child"; id: string; messageId: string; revision: number; text: string; fates?: BoardFateReport[] } | { type: "end"; id: string; revision: number };
 
 /**
  * The child's ink events of a chat from the desk (#534, #635): appended to the call's log at sequences `from`, `from + 1`,
@@ -259,7 +260,8 @@ export async function runChat(ctx: ChatContext, action: ChatAction): Promise<Cha
       childPending = claim.status === "busy" || claim.status === "recover";
       return reply(await store.get(record.id), claim.status, claim.admitted ? "accepted" : "refused");
     }
-    const result = await calls.input(record.id, claim.revision, { type: "child", text: action.text }, name);
+    // B1: what the desk's board did with Maya's batches goes in first (the call ignores words it already has).
+    const result = await calls.input(record.id, claim.revision, { type: "child", text: action.text, ...(action.fates?.length ? { fates: action.fates } : {}) }, name);
     record = await store.get(record.id);
     // At the cap, finish through the same path as a call, including learning, notes and alerts.
     if (result.ok && record?.status === "live" && (await usage()).left === 0) {
