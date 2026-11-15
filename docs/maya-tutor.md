@@ -28,6 +28,16 @@ Maya is the tutor, and code is the safety net. Savar approved this design on 202
 | A close only after the child solved the question, and never on a turn that asks for help (a stop and the time limit stay code's) | `proposeTutor` in `session.ts` | Refused |
 | Child safety of each sentence that is not plain teaching (`plainTeaching`): safety rules only (`TUTOR_REVIEW_SYSTEM`) | the talk review in the adapter, per sentence | Refused |
 
+## Credit, the learning event and the parent note
+
+Code's credit of the child decides the saved result, never the model's reading (part C of the pre-launch review, 2026-11-15; tests: `src/lib/maya-call-tutor-credit.test.ts`, `src/lib/maya/tutor-credit.test.ts`):
+
+- A spot-the-error word before its fix is known is no answer (`spotAnswers`): "I tick no." alone does not solve the question. The right word still sets the stance.
+- A clear new final answer that is not right ("My answer is 36.", or a one-sentence answer that is not a value of the work) replaces a right result that stood. A value of the work ("12 minus 8 is 4") keeps it.
+- The step the child needed help with is the step open on the first turn where Maya helped and the child made no progress (`stuckStep`), never a step the child had done before.
+- A message or board that gives the whole answer (a true equation with the answer as its result, the answer as a number the child has not said, or every answer digit on the board) records `answer_given` before step help is classified as `guided` or `hint`.
+- The stream and the whole message use the same word verdict (`wordVerdict`). On a word question (a claim or a comparison), a first "yes" streams only on code's right word.
+
 A refused message gets one repair with the reason, also in voice. A second refusal gets code's honest line with the step's question (`tutorFallbackText`), for example "Let me say that another way. What do you get for 12 minus 8?". A refused board drawing is never a reason to lose the words.
 
 Code still owns, unchanged: safety guidance and its close, the AI disclosure opening, the held close, the stop and time closes, confirmations of a number it could not hear, outside-work redirects, the spend block and the `{name}` token. Those turns go through the controller as before (`tutorTeachingNow` is false for them). Other-topic talk ("What is your favorite animal?") is the tutor's to answer, with the safety review; outside math work, another person's work and an unsafe request stay code's redirect. A turn a gate takes after the model's reading gets code's line at once, with no repair.

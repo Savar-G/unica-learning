@@ -4989,12 +4989,58 @@ function tutorGate(s: Session, reading: Reading): Allowed | null {
   return g;
 }
 
+/**
+ * Code's verdict on the word the child said for a word question (a claim's yes or no, true or false, or a comparison
+ * word), or null when the turn holds no such word or the question has none. The same verdict sets the stance of the
+ * stream and of the whole message, so a wrong word never streams a "yes" (part C review, 2026-11-15).
+ */
+function wordVerdict(base: Session): "right" | "wrong" | null {
+  const pkg = base.package;
+  if (!pkg || !base.turn) return null;
+  const claim = sessionClaim(pkg);
+  const word = claim ? claimSaid({ ...claimTurn(base), claimAsked: true }) : null;
+  if (claim && word) return word === claim.word ? "right" : "wrong";
+  const op = comparisonOf(pkg);
+  // The opening asks the comparison itself, so a bare word ("false") right after it sets the stance (F4 builder,
+  // 2026-11-15). After Maya asks another question ("Is 5 less than 3?") a bare word may answer that one, so it is not
+  // read against the printed claim (review of #1009).
+  const afterOpening = lastSaid(base) === (base.turns.find((t) => t.speaker === "maya")?.text ?? null);
+  const cw = op ? comparisonWord(afterOpening ? { ...base, claimAsked: true } : base) : null;
+  if (op && cw) return sameValue(comparisonAnswer(op, cw.word === comparisonWords(op)[0]), pkg.answer.value) ? "right" : "wrong";
+  return null;
+}
+
 /** D-345: what the tutor's stream needs before the model writes: code's own stance and the question's words. Null: no stream. */
 export function tutorStream(s: Session): TutorStreamContext | null {
   if (!s.tutor || !s.turn || !s.package || !tutorTeachingNow(s)) return null;
-  const stance = codeStance(s);
+  const word = wordVerdict(s);
+  const code = codeStance(s);
+  const stance = word === "wrong" || (code === "none" && childSaysFalse(s.turn.text)) ? "wrong" : code === "none" && word === "right" ? "right" : code;
   const credited = heardAnswers(s).flatMap((a) => (a.verdict === "right" && a.value.type === "number" ? [a.value.value] : []));
-  return { ...tutorStreamContext(s.package, s.turn.text, stance === "none" && childSaysFalse(s.turn.text) ? "wrong" : stance, vocabExtra(s), credited), nameWords: nameWordsOf(s) };
+  // A word question's "yes" streams only on code's right word: with no word code can read, the affirmation waits for
+  // the whole message and its check.
+  const wordQuestion = !!sessionClaim(s.package) || !!comparisonOf(s.package);
+  return { ...tutorStreamContext(s.package, s.turn.text, stance, vocabExtra(s), credited, wordQuestion), nameWords: nameWordsOf(s) };
+}
+
+/**
+ * Maya's words or board give the whole answer away (part C review, 2026-11-15): a true equation whose result is the
+ * answer, the answer as a number that is not a value of the work or an operand (and that the child has not said), or a
+ * board that now holds every digit of the answer.
+ */
+function tellsAnswer(base: Session, pkg: OperationPackage, texts: readonly string[], drawn: readonly string[]): boolean {
+  if (pkg.answer.value.type !== "number") return false;
+  const answer = pkg.answer.value.value;
+  const own = new Set<number>([...tutorKind(pkg).workValues(pkg), ...(pkg.operation.operands as unknown[]).filter((v): v is number => typeof v === "number")]);
+  const childSaid = base.turns.some((t) => t.speaker === "child" && valuesIn(t.text).some((v) => v.type === "number" && v.value === answer));
+  // Maya saying back the answer the child offered gives nothing away.
+  if (!childSaid) for (const x of texts) {
+    if (equationsOf(x).some((e) => !e.negated && equationHolds(e) === true && e.result.q?.[1] === 1 && e.result.q[0] === answer)) return true;
+    if (!own.has(answer) && valuesIn(x).some((v) => v.type === "number" && v.value === answer)) return true;
+  }
+  const digits = String(Math.trunc(Math.abs(answer))).length;
+  // The kinds name a place as the package does ("ten thousands"); the board names it with "_".
+  return Number.isInteger(answer) && answer >= 0 && digits <= PLACE_NAMES.length && PLACE_NAMES.slice(0, digits).every((place) => drawn.includes(`digit:${place}`) || drawn.includes(`digit:${place.replace(/_/g, " ")}`));
 }
 
 /**
@@ -5029,6 +5075,10 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
       if (credited.some((c) => c.step === a.step && sameValue(c.value, a.value))) continue;
       if (checkAnswers(s, [a], []) === null) credited.push(a);
     }
+    // A spot-the-error word before its fix is known is no answer yet (spot-error.ts): "I tick no." alone does not solve
+    // the question. The word still sets the stance below (part C review, 2026-11-15).
+    const fixed = spotAnswers(pkg, credited, s.done) ?? [];
+    credited.splice(0, credited.length, ...fixed);
   }
   let progress = false;
   let stance: "right" | "wrong" | "none" = "none";
@@ -5063,12 +5113,24 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
       // A value of the work is no wrong answer: a step's result or digit, or a column's top after the trade (12, 4).
       // Not when the child names it as the answer ("My final answer for 52 minus 28 is 12"): then only the answer fits.
       const asAnswer = /\banswer\b/i.test(base.turn.text);
-      const fits = rightForQuestion(pkg, read.final) || (!asAnswer && tutorKind(pkg).workValues(pkg).includes(n));
+      const workValue = tutorKind(pkg).workValues(pkg).includes(n);
+      const fits = rightForQuestion(pkg, read.final) || (!asAnswer && workValue);
       if (!fits) stance = "wrong";
       else if (stance === "none" && rightForQuestion(pkg, read.final)) stance = "right";
       // The next open step's own result is right too: Maya never says "not quite" to it (review of #1018: "28" for a
       // pattern's second term).
       else if (stance === "none" && !asAnswer && stepFacts(pkg).find((st) => !base.done.includes(st.id))?.result === n) stance = "right";
+      // A clear new final answer that is not right replaces a right result that stood ("It's 24." then "My answer is
+      // 36."), whatever the model's reading holds: the result waits for a new right answer (part C review, 2026-11-15).
+      // A value of the work the child does not name as the answer ("12") is no final answer.
+      const finalSaid = asAnswer || (!workValue && wholeTurn(base.turn.text) !== null && sentenceCount(base.turn.text) === 1);
+      if (!fits && finalSaid && read.sure && !hedgedTurn(base) && s.lastResult === "right") {
+        s.solved = null;
+        s.lastResult = "wrong";
+        s.wrote = false;
+        s.writeAsked = false;
+        s.paper = "unknown";
+      }
     }
     for (const a of credited) if (a.value.type === "number" && !childValues.includes(a.value.value)) childValues.push(a.value.value);
   }
@@ -5078,16 +5140,9 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   // A bare word ("false", "no") is not committed, so it is not credited, but Maya never says "yes" to a wrong one or
   // "not quite" to a right one (F4 builder, 2026-11-15).
   if (base.turn && !credited.some((a) => a.step === "result")) {
-    const claim = sessionClaim(pkg);
-    const word = claim ? claimSaid({ ...claimTurn(base), claimAsked: true }) : null;
-    if (claim && word) stance = word === claim.word ? (stance === "none" ? "right" : stance) : "wrong";
-    const op = comparisonOf(pkg);
-    // The opening asks the comparison itself, so a bare word ("false") right after it sets the stance (F4 builder,
-    // 2026-11-15). After Maya asks another question ("Is 5 less than 3?") a bare word may answer that one, so it is not
-    // read against the printed claim (review of #1009).
-    const afterOpening = lastSaid(base) === (base.turns.find((t) => t.speaker === "maya")?.text ?? null);
-    const cw = op ? comparisonWord(afterOpening ? { ...base, claimAsked: true } : base) : null;
-    if (op && cw) stance = sameValue(comparisonAnswer(op, cw.word === comparisonWords(op)[0]), pkg.answer.value) ? (stance === "none" ? "right" : stance) : "wrong";
+    const word = wordVerdict(base);
+    if (word === "wrong") stance = "wrong";
+    else if (word === "right" && stance === "none") stance = "right";
   }
   // The next open step, for the prepared replies' expected turns (expectedTurns and fitsExpected read the ladder's step).
   s.ladder = { ...s.ladder, step: stepFacts(pkg).find((st) => !s.done.includes(st.id))?.id ?? "result" };
@@ -5123,17 +5178,23 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     if (!pass) return no("say_review", `The safety review refused "${sentence}": ${r?.verdict === "fail" ? `${r.reason} (${r.rules.join(", ")})` : r?.reason ?? "no review"}. Say it another way.`, "review");
     talk.push({ proposed: sentence, code: null, review: "pass", shown: sentence, ...(r?.verdict === "fail" ? { rules: [...r.rules] } : {}) });
   }
-  // Help and assistance for the outcome: a message that tells an open step's result is a show (guided), else a hint.
   const tutor = { help: progress ? 0 : s.solved === null ? (s.tutor?.help ?? 0) + 1 : 0, drawn: [...(s.tutor?.drawn ?? [])] };
-  if (s.solved === null && act === "guide") {
-    const open = stepFacts(pkg).filter((st) => !base.done.includes(st.id));
-    const tells = sentencesOf(text).some((x) => equationsOf(x).some((e) => !e.negated && equationHolds(e) === true && e.result.q?.[1] === 1 && (open.some((st) => e.result.q?.[0] === st.result) || tutorKind(pkg).workValues(pkg).includes(e.result.q?.[0] ?? NaN))));
-    const kind: Assistance = tells ? "guided" : "hint";
-    if (!s.assistance.includes(kind)) s.assistance.push(kind);
-  }
   const drawing = s.noBoard ? { commands: [], keys: [] } : tutorDrawings(pkg, out.draw ?? [], tutor.drawn, (i) => `tutor-note-${s.batches + 1}-${i}`);
   tutor.drawn.push(...drawing.keys);
   s.tutor = tutor;
+  // Help and assistance for the outcome: a message or board that gives the whole answer is answer_given; else a
+  // message that tells an open step's result is a show (guided), else a hint (part C review, 2026-11-15: "52 minus 28
+  // is 24" is no small hint).
+  if (s.solved === null && act === "guide") {
+    const open = stepFacts(pkg).filter((st) => !base.done.includes(st.id));
+    const notes = drawing.commands.flatMap((c) => ((c as { op?: unknown; text?: unknown }).op === "write" && typeof (c as { text?: unknown }).text === "string" ? [(c as { text: string }).text] : []));
+    const kind: Assistance = tellsAnswer(base, pkg, [...sentencesOf(text), ...notes], tutor.drawn) ? "answer_given"
+      : sentencesOf(text).some((x) => equationsOf(x).some((e) => !e.negated && equationHolds(e) === true && e.result.q?.[1] === 1 && (open.some((st) => e.result.q?.[0] === st.result) || tutorKind(pkg).workValues(pkg).includes(e.result.q?.[0] ?? NaN)))) ? "guided" : "hint";
+    if (!s.assistance.includes(kind)) s.assistance.push(kind);
+    // The step the child needed help with: the step open when the child asked or made no progress, never a step the
+    // child had done before (part C review, 2026-11-15). The first such step stands.
+    if (!progress) s.stuckStep ??= open[0]?.id ?? "result";
+  }
   const said = fillName(text, base);
   effects.push({ kind: "say", act, text: said, ...(talk.length ? { talk } : {}) });
   s.turns.push({ at: s.now!, speaker: "maya", text: said, state: act === "close" ? "CLOSE" : s.state, act });
