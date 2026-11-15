@@ -15,7 +15,7 @@ import { withTimeLimit, type AiClient } from "@/lib/ai-client";
 import { stepText, valueText, type QuestionPackage } from "@/lib/question-package";
 import type { MayaTrace } from "@/lib/maya-trace";
 import { judgeTurns, type JudgeTurn } from "./judge";
-import { isAttempt } from "./teaching-metrics";
+import { isAttempt, isHelpRequest } from "./teaching-metrics";
 
 /** Raise it when the prompt, the rubric or the input changes; every run records it. */
 export const TEACHING_JUDGE_PROMPT_VERSION = "teaching-judge-1";
@@ -154,9 +154,8 @@ export interface TeachingJudge {
   judge(input: TeachingJudgeInput, signal: AbortSignal): Promise<unknown>;
 }
 
-/** A child turn that asks for help or says the child cannot start: T03 applies to the reply. */
-const CANNOT_START = /\b(?:don'?t|do not|didn'?t|can'?t|cannot)\s+(?:get|know|understand|see|do|start)\b|\bteach me\b|\bhelp\b|\bhow (?:do|to|can)\b|\bstuck\b|\bconfused\b|\bnot sure\b|\bno idea\b/i;
-export const cannotStart = (text: string) => CANNOT_START.test(text) && !isAttempt(text);
+/** A child turn that asks for help or says the child cannot start (the metrics' own help-request check): T03 applies to the reply. */
+export const cannotStart = (text: string) => isHelpRequest(text) && !isAttempt(text);
 
 const wordCount = (text: string) => text.match(/\S+/g)?.length ?? 0;
 
@@ -326,6 +325,10 @@ function readOne(id: JudgedId, d: unknown, p: TeachingTurnPlan, scores: Partial<
   const x = d as Record<string, unknown>;
   const odd = Object.keys(x).find((k) => !KEYS.includes(k));
   if (odd) return `${id}: unknown field ${odd}`;
+  // Every field is required, with its type, whatever the status: "n/a" has a null score and a string reason (empty is allowed).
+  if (typeof x.reason !== "string") return `${id}: the reason is missing or not a string`;
+  if (x.status !== "scored" && x.status !== "n/a") return `${id}: the status is ${JSON.stringify(x.status)}`;
+  if (!("score" in x)) return `${id}: the score is missing`;
   const applies = p.score.includes(id);
   if (x.status === "n/a") {
     if (x.score !== null) return `${id}: "n/a" must have a null score`;

@@ -7,6 +7,13 @@
 import { A_AFTER_HELP, A_EXAMPLE, B_EXAMPLE, B_WORK, TEACHING, type PracticeCase, type TutorCheck } from "./cases";
 
 /**
+ * A sentence of Maya's that asks the child to work out 12 minus 8: a request word right before it ("what is", "what do you get
+ * for", "how much is", "can you do", "try", "your turn"), in a sentence that does not say it is Maya doing it ("I'll do", "let me",
+ * "watch me") and does not give the result of 12 minus 8 in that sentence ("12 minus 8 is 4").
+ */
+export const ASKS_FOR_12_MINUS_8 = /(?:^|[.!?]\s+)(?![^.!?]*\b(?:I'll|I will|I'm going to|I can|let me|watch me|I'll show)\b)[^.!?]*\b(?:what(?:'s| is| do you get for| do you get with| does)|how much is|how many is|can you (?:do|work out|tell me|try|solve)|try|you (?:do|try)|your turn:?)\s+12\s*(?:minus|take away|−|-|–)\s*8\b(?![^.!?]*(?:\bis\b|=|\bequals\b|\bgives\b|\bmakes\b)\s*\d)/i;
+
+/**
  * Test case 1 (teaching design section 5): within 2 Maya turns the child hears why 2 is too small and that a ten
  * becomes 10 ones, and is asked for 12 minus 8. Each pattern reads Maya's words, so the model's wording may vary.
  */
@@ -22,9 +29,9 @@ export const SAVAR_CALL_CHECKS: readonly TutorCheck[] = [
     all: [/\b(?:1|one|a) ten\b[^.?!]*\b(?:10|ten) ones\b|\b(?:10|ten) ones\b[^.?!]*\b(?:1|one|a) ten\b/i],
   },
   {
-    what: "asks for 12 minus 8",
+    what: "asks the child for 12 minus 8",
     within: 2,
-    all: [/\b(?:what(?:'s| is)|how much is|how many is|can you (?:do|work out|tell me)|do|try)\s+12\s*(?:minus|take away|−|-|–)\s*8\b|\b12\s*(?:minus|take away|−|-|–)\s*8\b[^.!?]*\?/i],
+    all: [ASKS_FOR_12_MINUS_8],
   },
 ];
 

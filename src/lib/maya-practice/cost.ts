@@ -50,7 +50,7 @@ export interface CostEstimate {
 }
 
 /** Runs the suite with the fakes and measures every request: calls and input size per role. */
-export async function measureSuite(cases: readonly PracticeCase[], runs: number, execution: ExecutionOptions = {}): Promise<Record<Role, { calls: number; inputChars: number; largestChars: number }>> {
+export async function measureSuite(cases: readonly PracticeCase[], runs: number, execution: ExecutionOptions = {}, dry: { tutor?: MayaModel } = {}): Promise<Record<Role, { calls: number; inputChars: number; largestChars: number }>> {
   const m: Record<Role, { calls: number; inputChars: number; largestChars: number }> = { maya: { calls: 0, inputChars: 0, largestChars: 0 }, simulator: { calls: 0, inputChars: 0, largestChars: 0 }, validity: { calls: 0, inputChars: 0, largestChars: 0 }, judge: { calls: 0, inputChars: 0, largestChars: 0 }, reviewer: { calls: 0, inputChars: 0, largestChars: 0 } };
   const measure = (role: Role, chars: number) => {
     m[role].calls++;
@@ -65,7 +65,7 @@ export async function measureSuite(cases: readonly PracticeCase[], runs: number,
   };
   const validity0 = fakeValidityJudge();
   const validity: ValidityJudge = { id: "estimate", promptVersion: validity0.promptVersion, check: (input, s) => { measure("validity", fixed.validity + JSON.stringify(input).length); return validity0.check(input, s); } };
-  const rule = execution.tutor ? fakeTutorModel() : ruleConversationalModel();
+  const rule = execution.tutor ? dry.tutor ?? fakeTutorModel() : ruleConversationalModel();
   const maya: MayaModel = { id: "estimate", promptVersion: rule.promptVersion, ...(rule.output ? { output: rule.output } : {}), propose: (input, s) => { measure("maya", fixed.maya + JSON.stringify(input).length); return rule.propose(input, s); } };
   const judge0 = fakeJudge();
   const judge: AiJudge = { id: "estimate", promptVersion: judge0.promptVersion, judge: (input, s) => { measure("judge", fixed.judge + JSON.stringify(input).length); return judge0.judge(input, s); } };
@@ -73,12 +73,14 @@ export async function measureSuite(cases: readonly PracticeCase[], runs: number,
   const teach = { calls: 0, inputChars: 0, largestChars: 0 };
   const teachFixed = TEACHING_JUDGE_SYSTEM.length + JSON.stringify(teachingJudgeSchema()).length;
   const teaching0 = fakeTeachingJudge();
+  // The tutor core reviews every sentence about the child, so one Maya call can make several reviews: the dry run counts each request.
+  const reviewer = fakeTalkReviewer();
   const teachingJudge: TeachingJudge = { id: "estimate", promptVersion: teaching0.promptVersion, judge: (input, s) => { const chars = teachFixed + JSON.stringify(input).length; teach.calls++; teach.inputChars += chars; teach.largestChars = Math.max(teach.largestChars, chars); return teaching0.judge(input, s); } };
   for (const c of cases) {
     const sim0 = scriptedSimulator(c.fakeScript);
     const simulator: ChildSimulator = { id: "estimate", promptVersion: sim0.promptVersion, next: (input, s) => { measure("simulator", fixed.simulator + JSON.stringify(input).length); return sim0.next(input, s); } };
     const plan = planSuite([c], { maya: { model: "estimate", promptVersion: "" }, simulator: { model: "estimate", promptVersion: "" }, validity: { model: "estimate", promptVersion: "" }, judge: { model: "estimate", promptVersion: "" }, meta: {} }, { runs: 1, ...execution });
-    await runSuite([c], plan, { maya, simulator, validity, judge, ...(execution.tutor ? { teachingJudge, reviewer: fakeTalkReviewer() } : {}), store: memoryPracticeStore() });
+    await runSuite([c], plan, { maya, simulator, validity, judge, ...(execution.tutor ? { teachingJudge, reviewer } : {}), store: memoryPracticeStore() });
   }
   // Every run of a case sends about what its first run sends. Both judges are asked once for every run in a real
   // suite (the fakes skip the runs code finds invalid, so count them all).
@@ -101,7 +103,9 @@ export async function measureSuite(cases: readonly PracticeCase[], runs: number,
   }
   // The fake Maya says no free talk, so the review is counted at its upper bound: one review for every Maya call.
   const reviewChars = REVIEW_FIXED_CHARS();
-  m.reviewer = { calls: m.maya.calls, inputChars: m.maya.calls * reviewChars, largestChars: reviewChars };
+  // A tutor run: the reviews the dry run made, for every run; never fewer than one per Maya call.
+  const reviews = execution.tutor ? Math.max(m.maya.calls, reviewer.requests.length * runs) : m.maya.calls;
+  m.reviewer = { calls: reviews, inputChars: reviews * reviewChars, largestChars: reviewChars };
   return m;
 }
 

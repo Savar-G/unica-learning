@@ -2,6 +2,7 @@
 // for every call. Targets from the approved design: an override rate under 5% of Maya's teaching turns, and a longest
 // run of Maya turns of 1 (Maya speaks, then the child). The metrics are counted from the trace's turns, not from its
 // stored `counts`, so a trace edited after the run does not move them.
+import { valuesIn } from "@/lib/maya";
 import { traceCounts, type MayaTrace, type TraceTurn } from "@/lib/maya-trace";
 
 /** The design's targets. The override rate is a share of Maya's teaching turns; the run is a count of Maya turns. */
@@ -45,18 +46,24 @@ const wordCount = (text: string) => text.match(WORD)?.length ?? 0;
 
 const NUMBER_WORDS = /\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)\b/i;
 const STEP_WORDS = /\b(?:ones?|tens?|hundreds?|carry|carried|borrow|borrowed|trade|traded|regroup\w*|plus|minus|add|subtract|take away|times|multiply|divided)\b/i;
-/** A turn that asks for help or says the child is stuck is a request, not an attempt, even when it names the numbers. */
-const HELP_REQUEST = /\b(?:don'?t|do not|didn'?t|can'?t|cannot)\s+(?:get|know|understand|see|do)\b|\bteach me\b|\bhelp\b|\bhow (?:do|to|can)\b|\bstuck\b|\bconfused\b|\bnot sure\b|\bwhat (?:is|do|does|are)\b|\bwhy\b/i;
+/**
+ * A turn that asks for help or says the child is stuck or cannot start is a request, not an attempt, even when it names the
+ * numbers. The one help-request check: the first-attempt metric and the teaching judge's T03 (a child who cannot start) both use it.
+ */
+const HELP_REQUEST = /\b(?:don'?t|do not|didn'?t|can'?t|cannot)\s+(?:get|know|understand|see|do|start)\b|\bteach me\b|\bhelp\b|\bhow (?:do|to|can)\b|\bstuck\b|\bconfused\b|\bnot sure\b|\bno idea\b|\bwhat (?:is|do|does|are)\b|\bwhy\b/i;
+
+/** Whether a child turn asks for help or says the child cannot start. */
+export const isHelpRequest = (text: string) => HELP_REQUEST.test(text);
 
 /** Whether a child turn is an attempt: a number or a step, and not only a request for help. */
 export function isAttempt(text: string): boolean {
-  if (HELP_REQUEST.test(text) && !/\b\d+\s*(?:is|=)\s*\d+/.test(text)) return false;
+  if (isHelpRequest(text) && !/\b\d+\s*(?:is|=)\s*\d+/.test(text)) return false;
   return /\d/.test(text) || NUMBER_WORDS.test(text) || STEP_WORDS.test(text);
 }
 
-/** The whole numbers a child turn holds, in digits ("12 minus 8 is 4" gives 12, 8 and 4). */
+/** The numbers a child turn holds, in digits or words, read by the session's own number reader ("Twenty-four" gives 24). */
 export function numbersIn(text: string): number[] {
-  return (text.match(/\d+/g) ?? []).map(Number);
+  return valuesIn(text).flatMap((v) => (v.type === "number" ? [Math.abs(v.value)] : []));
 }
 
 /** Maya turns that said something. Code's own lines (the opening, a safety line: source "controller") are not teaching. */

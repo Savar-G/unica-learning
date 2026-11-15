@@ -53,7 +53,7 @@ describe("the tutor cases", () => {
   it("name Savar's call first, with the exact words and the three things Maya must say within 2 turns", () => {
     expect(TUTOR_CASES[0].id).toBe("K01");
     expect(K01.opener).toBe("Can you teach me how to do 2 minus 8? I don't get it.");
-    expect(K01.tutor?.checks?.map((c) => c.what)).toEqual(["says why 2 is too small to take 8 from", "says that a ten becomes 10 ones", "asks for 12 minus 8"]);
+    expect(K01.tutor?.checks?.map((c) => c.what)).toEqual(["says why 2 is too small to take 8 from", "says that a ten becomes 10 ones", "asks the child for 12 minus 8"]);
     expect(K01.tutor?.checks?.every((c) => c.within === 2)).toBe(true);
   });
   it("hold the misconceptions the design lists: smaller-from-larger, the lost ten, the lost carry, a wrong answer then a right one, \"I don't get it\" twice", () => {
@@ -78,7 +78,7 @@ describe("a tutor run: Savar's call", () => {
     expect(t.checks).toEqual([
       { what: "says why 2 is too small to take 8 from (within 2 Maya turns)", ok: true },
       { what: "says that a ten becomes 10 ones (within 2 Maya turns)", ok: true },
-      { what: "asks for 12 minus 8 (within 2 Maya turns)", ok: true },
+      { what: "asks the child for 12 minus 8 (within 2 Maya turns)", ok: true },
     ]);
     expect(t.metrics).toMatchObject({ overrides: 0, overrideRate: 0, longestMayaRun: 1 });
     expect(t.status).toBe("pass");
