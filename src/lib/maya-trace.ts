@@ -7,6 +7,7 @@ import { SCOPE_REASONS } from "@/lib/maya/scope";
 //
 // Plain JSON. Pure TypeScript except `packageHash`, which uses node:crypto (server and scripts only).
 import { createHash } from "node:crypto";
+import { ACK_PHRASES } from "@/lib/maya-voice-ack";
 import { ACTS, SAFETY_GUIDANCE, ASSISTANCE, heldSentences, INTERRUPTS, MAIN_STATES, NEVER_SAY_IDS, PATIENT_LINES, PHRASES, type Act, type Outcome, type RefusalCode, type SessionState, type TalkCheck } from "@/lib/maya";
 
 /** Why a proposal was refused: the session's refusal, or "board_refused" when the board core refused a batch the session built. */
@@ -33,11 +34,13 @@ export interface TraceRefusal {
  * (hello, can't teach, another question); a version 9 trace with the old text is refused. Version 10 records the configured call limits. Version 11 adds the optional `diagnosticHandleId` (one short token, no
  * words) to a preparation record. Version 12 (two-layer true math, 2026-11-15) adds the tutor core's math-truth review: on
  * an attempt, `math` (each sentence code did not read whole, with the review's verdict and reason) and, on a tutor call,
- * `mathReviewer` (the review's model and prompt version, or null). `checkTrace` reads all twelve versions.
+ * `mathReviewer` (the review's model and prompt version, or null). Version 13 (2026-11-15, after #1072) adds `filler` on
+ * a voice repair attempt: the id of the thinking phrase (`ACK_PHRASES`) the voice worker said when the repair started,
+ * and the count `fillers`. `checkTrace` reads all thirteen versions.
  */
-export const TRACE_VERSION = 12;
+export const TRACE_VERSION = 13;
 /** The trace versions `checkTrace` reads. */
-export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
+export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] as const;
 /**
  * The held turn as version 8 traces stored it, before D-327 (line sets 11 to 13). Frozen here: stored admin test
  * calls from preview deployments may hold it, and they stay readable.
@@ -168,6 +171,12 @@ export interface TraceAttempt {
    * ship practice at 6de7e777). Absent otherwise, and in traces from before. Counted by `fencedReplies`.
    */
   fenced?: true;
+  /**
+   * Version 13, on a repair attempt of a voice turn only: the id of the thinking phrase (`ACK_PHRASES` in
+   * src/lib/maya-voice-ack.ts) the voice worker queued when the repair started, before any word of the turn. Absent when
+   * no phrase was said (chat, a phrase already said in the turn, the bank used, the child talking), and before version 13.
+   */
+  filler?: string;
 }
 
 /** One piece of the model's own words in a trace (D-197): the session's TalkCheck. */
@@ -289,6 +298,8 @@ export interface TraceCounts {
   mathRefusals?: number;
   /** Math-truth reviews the retry model answered after an "unsure" (math review version 3). */
   mathRetries?: number;
+  /** Version 13: thinking phrases the voice worker said when a repair started (`filler` on an attempt). */
+  fillers?: number;
 }
 
 /** The counts of a trace's turns. */
@@ -311,6 +322,7 @@ export function traceCounts(turns: readonly TraceTurn[]): TraceCounts {
     mathReviews: attempts.reduce((n, a) => n + (a.math?.length ?? 0), 0),
     mathRefusals: attempts.filter((a) => a.refusal?.say === "math_review").length,
     mathRetries: attempts.reduce((n, a) => n + (a.math?.filter((m) => m.retried).length ?? 0), 0),
+    fillers: attempts.filter((a) => a.filler !== undefined).length,
   };
 }
 
@@ -410,6 +422,7 @@ function checkAttempt(a: unknown, path: string) {
   need(x.reviewMs === undefined || (isNum(x.reviewMs) && x.reviewMs >= 0), `${path}.reviewMs`, "a duration");
   need(x.gateDisagrees === undefined || (x.gateDisagrees === true && (x.source === "model" || x.source === "repair") && x.proposal !== null), `${path}.gateDisagrees`, "true on a model or repair proposal, or absent");
   need(x.fenced === undefined || (x.fenced === true && (x.source === "model" || x.source === "repair") && x.proposal !== null && x.error === undefined), `${path}.fenced`, "true on a model or repair proposal, or absent");
+  need(x.filler === undefined || (x.source === "repair" && ACK_PHRASES.some((p) => p.id === x.filler)), `${path}.filler`, "a thinking phrase id on a repair attempt, or absent");
   if (x.math !== undefined) {
     need(Array.isArray(x.math) && x.math.length > 0, `${path}.math`, "a list of math-truth reviews");
     (x.math as unknown[]).forEach((m, i) => {
@@ -616,6 +629,10 @@ function check(raw: unknown): MayaTrace {
   turns.forEach((t, i) => {
     if (t.kind !== "maya" || (r.version as number) >= 12) return;
     (t.attempts as Record<string, unknown>[]).forEach((a, k) => need(a.math === undefined, `turns[${i}].attempts[${k}].math`, "absent before version 12"));
+  });
+  turns.forEach((t, i) => {
+    if (t.kind !== "maya" || (r.version as number) >= 13) return;
+    (t.attempts as Record<string, unknown>[]).forEach((a, k) => need(a.filler === undefined, `turns[${i}].attempts[${k}].filler`, "absent before version 13"));
   });
 
   need(Array.isArray(r.board), "board", "a list");

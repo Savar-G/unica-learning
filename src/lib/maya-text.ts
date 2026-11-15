@@ -318,6 +318,7 @@ import { reviewInput, runReview, CONVERSATION_REVIEW_TIME_LIMIT_MS, REVIEW_TIME_
 import { runMathReview, type MathReviewer } from "@/lib/maya-math-review";
 import { mathReviewInput, type MathReview, type MathReviewInput, type MathReviewResult, type TalkReviewInput, type TalkReviewResult } from "@/lib/maya";
 import { readFromFence } from "@/lib/ai-fenced";
+import { ACK_PHRASES } from "@/lib/maya-voice-ack";
 import { classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceBoardBatch, type TraceTurn, type TraceObligation } from "@/lib/maya-trace";
 
 /** At most this many Maya turns in a row without the child (the easier example is up to four). */
@@ -329,6 +330,13 @@ export const TURN_BUDGET_MS = 6_000;
  * attempt and its reviews cannot spend it: the repair starts with this budget whatever time is left of the turn.
  */
 export const TUTOR_REPAIR_BUDGET_MS = 6_000;
+/**
+ * After #1072 (2026-11-15, Chief of Staff rule: a child must not sit in silence for up to 10 s): the time of the one
+ * repair on a voice turn (the session has `onSayPart`), in ms. It covers the repair's model call AND its reviews: a
+ * review that starts later gets only the time left, and a repair that runs over ends in code's line. Chat keeps
+ * TUTOR_REPAIR_BUDGET_MS for the model, with the review limit after it.
+ */
+export const VOICE_REPAIR_BUDGET_MS = 4_000;
 
 export interface TextSessionOptions {
   /** Budget owner refuses speculative takes when only two live attempts remain. No seam disables preparation. */
@@ -397,11 +405,18 @@ export interface TextSessionOptions {
    */
   turnBudgetMs?: number;
   /**
-   * #1072: the model time reserved for the repair of a refused tutor teaching message (default TUTOR_REPAIR_BUDGET_MS).
-   * The first attempt and its reviews never spend it. The repair's reviews keep the review time limit, so the turn is
-   * bounded by the turn budget, the repair budget and two review limits.
+   * #1072: the model time reserved for the repair of a refused tutor teaching message (default TUTOR_REPAIR_BUDGET_MS;
+   * VOICE_REPAIR_BUDGET_MS on a voice turn). The first attempt and its reviews never spend it. In chat the repair's
+   * reviews keep the review time limit, so the turn is bounded by the turn budget, the repair budget and two review
+   * limits. On a voice turn the repair's reviews end inside this budget too.
    */
   repairBudgetMs?: number;
+  /**
+   * After #1072: a voice turn's repair starts and nothing was said in the turn yet. The voice worker may say its thinking
+   * phrase now (`ACK_PHRASES`, its own choice rule) and returns the phrase's id, or null when it said none. The id is kept
+   * on the repair attempt in the trace (`filler`). Only a voice call sets it; it is called only when `onSayPart` is set.
+   */
+  onRepairStart?: () => string | null;
   /**
    * Whether a refused first proposal gets a second model request that fixes it (default true). A voice call sets false:
    * the repair costs two seconds of silence and failed in live practice (980571e0), so the first refusal goes straight
@@ -578,6 +593,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   let generation = 0;
   let queue: Promise<unknown> = Promise.resolve();
   let turnEndsAt = Number.POSITIVE_INFINITY;
+  // After #1072: on a voice repair the reviews end with the repair's budget (VOICE_REPAIR_BUDGET_MS); otherwise no end.
+  let reviewEndsAt = Number.POSITIVE_INFINITY;
+  /** A review's time limit: its own limit, or the time left of a voice repair when that is less. */
+  const reviewLimit = (ms: number) => Math.min(ms, Math.max(0, reviewEndsAt - Date.now()));
   let quietOpening = false;
   let scheduled = 0;
   let prepareCount = 0;
@@ -731,7 +750,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     }
     return run();
   }
-  async function request(source: "model" | "repair", controller: AbortController) {
+  async function request(source: "model" | "repair", controller: AbortController, filler: string | null = null) {
     const prepared = source === "model" ? preparedForTurn() : undefined;
     const requestId = nextRequestId++;
     const repair = source === "repair" && folded.attempts.at(-1)?.refusal ? {
@@ -742,7 +761,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       ? (folded.session.tutor ? tutorBrief(folded.session, repair ? { said: repair.proposal, refusal: repair.refusal } : null) : turnBrief(folded.session, repair ? { said: repair.proposal, refusal: repair.refusal } : null)) as unknown as ModelInput
       : modelInput(folded.session, repair));
     const at = Math.max(clock(), now());
-    append({ kind: "request", at, requestId, source });
+    append({ kind: "request", at, requestId, source, ...(filler ? { filler } : {}) });
     if (folded.session.outcome || folded.request?.id !== requestId) return;
     // D-341: the turn's time budget. When it is spent, the request counts as a time-out and code's line follows.
     const left = Math.max(0, turnEndsAt - Date.now());
@@ -833,13 +852,13 @@ export function createTextSession(options: TextSessionOptions): TextSession {
           const checks: Promise<boolean>[] = [];
           if (how.talk) {
             const input = reviewInput(session, sentence, tutor.stance);
-            const started = runReview(options.reviewer!, input, options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS);
+            const started = runReview(options.reviewer!, input, reviewLimit(options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS));
             streamReviews.set(reviewKey(input), { requestId, result: started });
             checks.push(started.then((r) => passes(r, sentence)));
           }
           if (how.math) {
             const input = read(() => mathReviewInput(session, sentence, before));
-            const started = reviewMath(input, session.turns.length, options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS);
+            const started = reviewMath(input, session.turns.length, reviewLimit(options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS));
             streamMathReviews.set(mathKey(input), { requestId, result: started });
             checks.push(started.then((r) => r.verdict === "true"));
           }
@@ -869,7 +888,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         queue.push(item);
         if (how === "review") {
           const input = reviewInput(session, sentence, plan.stance);
-          const started = runReview(options.reviewer!, input, options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS);
+          const started = runReview(options.reviewer!, input, reviewLimit(options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS));
           streamReviews.set(reviewKey(input), { requestId, result: started });
           void started.then((result) => {
             if (!live()) return;
@@ -952,7 +971,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const key = reviewKey(input);
       const streamed = streamReviews.get(key);
       if (streamed && streamed.requestId === requestId) used.push(key);
-      const result = streamed && streamed.requestId === requestId ? streamed.result : runReview(options.reviewer!, input, options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS), reviewError);
+      const result = streamed && streamed.requestId === requestId ? streamed.result : runReview(options.reviewer!, input, reviewLimit(options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS)), reviewError);
       return result.then((r) => ({ text, result: r }));
     })) : Promise.resolve([]);
     // The math-truth reviews run beside the safety reviews; one the stream started for the same input is used once.
@@ -968,7 +987,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const key = mathKey(input);
       const streamed = streamMathReviews.get(key);
       if (streamed && streamed.requestId === requestId) mathUsed.push(key);
-      const result = streamed && streamed.requestId === requestId ? streamed.result : reviewMath(input, before.turns.length, options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS), reviewError);
+      const result = streamed && streamed.requestId === requestId ? streamed.result : reviewMath(input, before.turns.length, reviewLimit(options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS)), reviewError);
       return result.then((r) => ({ text, result: r }));
     })).then((all) => mathTexts.map((text) => all.find((m) => m.text === text && m.result.verdict !== "true") ?? all.find((m) => m.text === text)!)) : Promise.resolve([]);
     const reviewed = Promise.all([reviews, mathReviews]).then(([results, maths]) => {
@@ -1043,8 +1062,20 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       // of model time that the first attempt and its reviews cannot spend. A message with streamed words still goes to
       // code's line (the repair's message is checked alone, not as a continuation of the words already said).
       if (refusedFirst && tutorTurn) {
-        turnEndsAt = Date.now() + (options.repairBudgetMs ?? TUTOR_REPAIR_BUDGET_MS);
-        await request("repair", controller);
+        // After #1072 (Chief of Staff rule: no silence of up to 10 s). On a voice turn the repair and its reviews end
+        // inside VOICE_REPAIR_BUDGET_MS, and the worker may say its thinking phrase at once, but only when nothing of this
+        // turn was said or waits to be said: no streamed sentence and no accepted turn before it in this output (the AI
+        // disclosure, safety guidance and a stop are code's own turns, and a repair never follows them).
+        const voice = options.onSayPart !== undefined;
+        turnEndsAt = Date.now() + (options.repairBudgetMs ?? (voice ? VOICE_REPAIR_BUDGET_MS : TUTOR_REPAIR_BUDGET_MS));
+        if (voice) reviewEndsAt = turnEndsAt;
+        const quiet = voice && folded.pending.length === 0 && streamedThisOutput.length === 0;
+        let filler: string | null = null;
+        if (quiet && options.onRepairStart) {
+          try { filler = options.onRepairStart(); } catch { /* the worker's ear never fails the turn */ }
+          if (!ACK_PHRASES.some((p) => p.id === filler)) filler = null;
+        }
+        try { await request("repair", controller, filler); } finally { reviewEndsAt = Number.POSITIVE_INFINITY; }
       } else if (refusedFirst && Date.now() < turnEndsAt) await request("repair", controller);
       if (controller.signal.aborted) break;
       if (folded.attempts.length && !folded.session.outcome) {
