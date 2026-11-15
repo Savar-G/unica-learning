@@ -14,7 +14,8 @@ mkdirSync(outdir, { recursive: true });
 await build({
   entryPoints: { cli: join(root, "scripts/maya-text-cli.ts") },
   outdir, bundle: true, format: "esm", platform: "node", target: "node22", outExtension: { ".js": ".mjs" },
-  alias: { "@": join(root, "src") }, external: ["@livekit/*"], logLevel: "warning",
+  // server-only: the CLI builds the math review as the site does (callMathReviewer in src/lib/maya-call-seams.ts).
+  alias: { "@": join(root, "src"), "server-only": join(root, "node_modules/server-only/empty.js") }, external: ["@livekit/*"], logLevel: "warning",
 });
 process.env.MAYA_ROOT ??= root;
 await import(pathToFileURL(join(outdir, "cli.mjs")).href);

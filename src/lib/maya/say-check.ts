@@ -432,7 +432,11 @@ export const equationKey = (e: Pick<SayEquation, "operands" | "ops" | "result">)
  * true nor false. Only a short lead word (so, now, next, then, and, okay, yes, well) and "the" or "a" may stand in it.
  * The same fail-closed coverage rule as Maya's layer 1.
  */
-export function equationsOf(sentence: string, options: { whole?: boolean } = {}): SayEquation[] {
+/**
+ * `guard` (with `whole`): the one full-read guard of the tutor core (tutor-math.ts fullRead), given the text as read and
+ * the span [at, end) of an equation in it. An equation it does not find read in full is left out (unread, never judged).
+ */
+export function equationsOf(sentence: string, options: { whole?: boolean; guard?: (text: string, at: number, end: number) => boolean } = {}): SayEquation[] {
   const whole = options.whole === true;
   const text = (whole ? sentence.replace(/(\d),(?=\d{3}\b)/g, "$1") : sentence).replace(/[−–]/g, "-").replace(/×/g, " x ").replace(/÷/g, " ÷ ");
   const tokens = sayNumbers(text).filter((t) => t.q !== null);
@@ -497,6 +501,7 @@ export function equationsOf(sentence: string, options: { whole?: boolean } = {})
       // Both whole sides: "12 minus 8 equals 2 plus 2" compares 4 with 2 + 2, never with the 2 alone (pre-launch review B).
       const right = expr(left.next + 1)!;
       if (signed(i - 1) || signed(right.next) || (whole && !wholeClause(i, right.next))) { i = right.next - 1; continue; }
+      if (whole && options.guard && !options.guard(text, left.operands[0].at, right.operands.at(-1)!.end)) { i = right.next - 1; continue; }
       const result = right.ops.length === 0 ? right.operands[0] : sideToken(text, right.operands, right.ops);
       found.push({ operands: left.operands, ops: left.ops, result, negated: (items[left.next] as { negated: boolean }).negated });
       i = right.next - 1;
@@ -506,6 +511,7 @@ export function equationsOf(sentence: string, options: { whole?: boolean } = {})
     if (items[i]?.kind === "n" && items[i + 1]?.kind === "rel") {
       const right = expr(i + 2);
       if (right && right.ops.length > 0 && (signed(i - 1) || signed(right.next) || (whole && !wholeClause(i, right.next)))) { i = right.next - 1; continue; }
+      if (right && right.ops.length > 0 && whole && options.guard && !options.guard(text, (items[i] as { t: SayToken }).t.at, right.operands.at(-1)!.end)) { i = right.next - 1; continue; }
       if (right && right.ops.length > 0) {
         found.push({ operands: right.operands, ops: right.ops, result: (items[i] as { t: SayToken }).t, negated: (items[i + 1] as { negated: boolean }).negated });
         i = right.next - 1;
