@@ -201,7 +201,19 @@ export function falseClaims(sentence: string, op?: "add" | "subtract", trades: r
     // side; a place-value claim is always read (#1008).
     const after = items[at];
     const word = after?.kind === "other" ? after.word ?? "" : "";
-    const runsOn = OBJECT_WORDS.has(word) || (COUNT_WORDS.has(word) && !chain.some((c) => c.units));
+    // "A is B more than C" ("12 is 4 more than 8", "4 tens is 1 ten more than 3 tens"): true when A = C + B or C - B
+    // (review of #1032).
+    const thanAt = items[at + 1]?.kind === "other" && (items[at + 1] as { word?: string }).word === "than" ? at + 2 : -1;
+    const base = thanAt > 0 && chain.length === 2 && !rels[0].negated && !rels[0].eq ? side(thanAt) : null;
+    const sign = ["more", "bigger", "greater", "larger"].includes(word) ? 1 : ["less", "fewer", "smaller"].includes(word) ? -1 : 0;
+    // Only a comparison that holds is skipped this way; any other one is read as before (a place quantity is read as a
+    // claim and refused, "15, one less than 16" is a count).
+    if (base && sign !== 0 && Math.abs(chain[0].value - (base.value + sign * chain[1].value)) < 1e-9) { i = base.next; continue; }
+    // An object count after a place quantity names the same number of that place ("4 tens is 4 sticks of ten"); any other
+    // count is read as a claim ("4 tens is 5 bundles of ten" is false, review of #1032).
+    const unitSide = chain.find((c) => c.units && c.place !== null);
+    const objects = OBJECT_WORDS.has(word) && (!chain.some((c) => c.units) || (!!unitSide && chain.every((c) => c === unitSide || (!c.units && c.value * unitSide.place! === unitSide.value))));
+    const runsOn = objects || (COUNT_WORDS.has(word) && !chain.some((c) => c.units));
     if (runsOn && !rels.some((r) => r.eq)) { i = at; continue; }
     for (let k = 0; k < rels.length; k++) {
       const [a, b] = [chain[k], chain[k + 1]];

@@ -190,3 +190,9 @@ describe("falseClaims: the open P2 findings of #1008", () => {
   it.each(["Now the tens: 5 tens became 6 tens after the trade.", "4 tens is the twenty plus thirty.", "5 tens became 6 tens before we subtract."])("refuses %s", (x) => expect(checkTutorSay(x, sub)).toMatchObject({ ok: false }));
   it.each(["After we trade a ten, the 2 becomes 12 ones.", "The 5 becomes 4 tens.", "Count up from 8 to 12: 9, 10, 11, 12 is 4 steps.", "12 is 4 more than 8."])("passes %s", (x) => expect(checkTutorSay(x, sub)).toMatchObject({ ok: true }));
 });
+
+describe("falseClaims: review of #1032 (2026-11-15)", () => {
+  const sub = { stance: "none" as const, op: "subtract" as const };
+  it.each(["4 tens is 5 bundles of ten.", "4 tens is 1 ten more than 2 tens.", "4 tens is 1 ten less than 6 tens."])("refuses %s", (x) => expect(checkTutorSay(x, sub)).toMatchObject({ ok: false }));
+  it.each(["4 tens is 4 sticks of ten.", "4 tens is 1 ten more than 3 tens.", "12 is 4 more than 8.", "12 is 4 less than 16.", "12 is 4 bigger than 8."])("passes %s", (x) => expect(checkTutorSay(x, sub)).toMatchObject({ ok: true }));
+});
