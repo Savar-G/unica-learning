@@ -17,9 +17,10 @@ const FIX = FIXTURES as Record<string, unknown>;
 /** The package a tutor session teaches from. */
 const held = (id: string) => createSession({ callId: `claim-${id}`, package: FIX[id], conversational: true, tutor: true }).package as OperationPackage;
 
-const FITS = ["CLAIM_TF", "CLAIM_GT", "CLAIM_DIV", "CLAIM_WIDE", "SCALE", "MARBLES", "AREA_TF", "COMPARE_FRACTIONS", "COMPARE_AREAS", "COMPARE_DIE"];
-/** Spot the error asks the child to tick: the core's word reader does not read "I tick no" yet (review of #1013). */
+const FITS_CIRCLE = ["CLAIM_TF", "CLAIM_GT", "CLAIM_DIV", "CLAIM_WIDE", "SCALE", "MARBLES", "AREA_TF", "COMPARE_FRACTIONS", "COMPARE_AREAS", "COMPARE_DIE"];
+/** Spot the error: the child ticks yes or no, and writes the fix. */
 const TICK = ["SPOT_MUL", "SPOT_MISS", "SPOT_PVV", "SPOT_PVD", "SPOT_RIGHT"];
+const FITS = [...FITS_CIRCLE, ...TICK];
 
 describeTutorKind(claimKind, FITS.map(held));
 
@@ -34,6 +35,7 @@ describe("the claim kind: fit", () => {
     const gt = claimKind.steps(held("CLAIM_GT")).at(-1)!;
     expect(gt.work).toBe("360 × 4 = 1440; 1440 is greater than 1436, so the claim is true: the answer is yes");
     expect(claimKind.steps(held("CLAIM_DIV")).at(-1)!.work).toContain("so Mia is not right: the answer is no");
+    expect(claimKind.steps(held("SPOT_MUL")).at(-1)!.work).toContain("the answer is no, and the fix is 4480");
     expect(claimKind.steps(held("COMPARE_FRACTIONS")).at(-1)!.work).toContain("5/6 is greater than 3/6");
   });
   it("asks each step's question in a closed plain form", () => {
@@ -41,6 +43,11 @@ describe("the claim kind: fit", () => {
     expect(claimKind.stepQuestion(held("CLAIM_GT"), ["r1-ones", "r1-tens", "r1-hundreds", "r1-thousands"])).toBe("Is 1440 greater than 1436?");
     expect(claimKind.stepQuestion(held("CLAIM_DIV"), ["tens", "ones"])).toBe("Is 7 the same as 6?");
     expect(claimKind.stepQuestion(held("COMPARE_AREAS"), ["left-area", "right-area"])).toBe("Which is bigger, 42 or 30?");
+  });
+  it("gives the missing number's frame as a note, not a step", () => {
+    const pkg = held("SPOT_MISS");
+    expect(claimKind.steps(pkg).map((s) => s.id)).not.toContain("frame");
+    expect(claimKind.notes!(pkg)[0]).toBe("To find the missing number, work out 680 ÷ 4.");
   });
   it("reads the claim's number as what the child checks against, and a lost zero as a mistake", () => {
     const pkg = held("CLAIM_GT");
@@ -79,6 +86,10 @@ describe("the claim kind: Maya's claims must be true", () => {
   it("who is right, the claim, the answer given", () => {
     ok("CLAIM_DIV", "Mia is not right.");
     no("CLAIM_DIV", "Mia is right.");
+    ok("SPOT_MUL", "The answer given is not right.");
+    no("SPOT_MUL", "The answer given is right.");
+    ok("SPOT_RIGHT", "The answer given is right.");
+    no("SPOT_RIGHT", "The answer given is wrong.");
     ok("CLAIM_GT", "The claim is true.");
     no("CLAIM_GT", "The claim is false.");
   });
@@ -163,14 +174,12 @@ describe("review of #1013", () => {
     expect(await speak("CLAIM_GT", "I'm stuck.", "The answer is yes.")).toBe("The answer is yes.");
     expect(await speak("CLAIM_GT", "I'm stuck.", "Circle yes or no.")).toBe("Circle yes or no.");
   });
-  it("P2-4: a tick question keeps the controller", () => {
-    for (const id of TICK) {
-      const s = createSession({ callId: `tick-${id}`, package: FIX[id], conversational: true, tutor: true });
-      expect(s.tutor, id).toBeUndefined();
-      expect(tutorKindOf(s.package as OperationPackage), id).toBeNull();
-    }
-    // Control: a circle question of the same claim shape is the kind's.
-    expect(tutorKindOf(held("CLAIM_DIV"))?.id).toBe("claim");
+  it("P2-4: a tick answer is read on spot the error (SPOT_MUL: the answer is no)", async () => {
+    expect(held("SPOT_MUL").answer.value).toEqual({ type: "choice", value: "no" });
+    expect(await speak("SPOT_MUL", "I tick yes.", "Yes, that's right! Well done.")).not.toContain("that's right");
+    expect(await speak("SPOT_MUL", "I tick no.", "Not quite. Try again.")).not.toContain("Not quite");
+    // Control: the true facts go through.
+    expect(await speak("SPOT_MUL", "I tick no.", "7 × 640 = 4480.")).toBe("7 × 640 = 4480.");
   });
   it("P2-5: the right bare rectangle label is no wrong answer", async () => {
     expect(await speak("COMPARE_AREAS", "7 by 6", "Not quite. Try again.")).not.toContain("Not quite");

@@ -362,9 +362,6 @@ function trueMath(pkg: OperationPackage, text: string): boolean {
 function fitsShape(pkg: OperationPackage): boolean {
   const word = answerWord(pkg);
   if (word === null) return false;
-  // Review of #1013: the core's word reader does not read "I tick yes", so a question the child answers with a tick
-  // (spot the error) keeps the controller until it does.
-  if (pkg.item?.regions.some((r) => r.kind === "choice" && r.mark === "tick")) return false;
   if (!pkg.steps.every((s) => s.kind === "result" || WORK_KINDS.has(s.kind) || FRAME_KINDS.has(s.kind))) return false;
   const claim = claimStepOf(pkg);
   const compare = compareStepOf(pkg);
