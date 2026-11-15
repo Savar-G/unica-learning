@@ -1,5 +1,6 @@
 import "server-only";
 import { photoCheckView } from "@/lib/scan-photo-check";
+import { photoCheckClient } from "@/lib/scan-photo-check-store";
 import { scanPhotoIsActive } from "@/lib/scan-photo-active";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
@@ -85,13 +86,14 @@ export async function readScanStack(db: SupabaseClient<Database>, parent: string
       }
     } catch { /* marks are optional on the stack */ }
   }
+  const photoCheckRequired = checks && Boolean(photoCheckClient());
   const photos: StackPhoto[] = live.map((p) => {
     const c = calibration.get(p.id);
     const check = stackCheck(c ?? null, p.printed_revision, checks);
     return {
       id: p.id, pageId: p.page_id!, workbookId: p.workbook_id!, book: number.get(p.workbook_id!) ?? 1, pageNumber: pageNumber.get(p.page_id!) ?? 0,
       state: p.state as StackPhoto["state"], check, reason: check === "refused" ? refusal(c?.reason) : null, sentAt: p.sent_at, createdAt: p.created_at,
-      ...(checks ? { photoCheck: photoCheckView(p.photo_check) } : {}),
+      ...(checks ? { photoCheck: photoCheckView(p.photo_check), photoCheckRequired } : {}),
       ...(p.sent_at ? { marks: marksOf.get(p.id) ?? null } : {}),
     };
   });

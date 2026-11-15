@@ -33,6 +33,7 @@ export interface StackPhoto {
   /** A sent page's marks so far (#915 scan flow), null until marking has read it. */
   marks?: PageMarks | null;
   photoCheck?: PhotoCheckView;
+  photoCheckRequired?: boolean;
   /** A failed preview request on this device; Retry asks the check again. */
   checkFailed?: boolean;
 }
@@ -267,15 +268,24 @@ export function replacementVerdict(upload: StackUpload, photos: readonly StackPh
   if (!photo) return null;
   if (!upload.target) return photo;
   if (photo.state === "pending" || photo.checkFailed) return null;
-  if (checks && (photo.check === "checking" || (photo.check === "ready" && photo.photoCheck?.state === "pending"))) return null;
+  if (checks && (photo.check === "checking" || photoCheckPending(photo))) return null;
   return photo;
 }
 
-/** Fast polling is for work that can finish automatically. Team-only waits and unfinished pages stop it. */
+export function photoCheckPending(photo: StackPhoto): boolean {
+  return photo.check === "ready" && !photo.sentAt && (photo.photoCheck?.state === "pending" || (photo.photoCheckRequired === true && !photo.photoCheck));
+}
+
+export function scanPollDelay(unchangedMs: number, automatic: boolean): number {
+  if (!automatic) return 30_000;
+  return unchangedMs < 10_000 ? 2000 : Math.min(30_000, 5000 * 2 ** Math.floor((unchangedMs - 10_000) / 10_000));
+}
+
+/** Team-only marking still needs refreshes, at a slower pace than automatic work. */
 export function scanWorkPending(o: { photos: readonly StackPhoto[]; uploads: readonly StackUpload[]; checks: boolean; marking: boolean }): boolean {
   return o.uploads.some((u) => u.status !== "refused" && !replacementVerdict(u, o.photos, o.checks) && !o.photos.some((p) => p.id === u.uploadedId && p.checkFailed)) || o.photos.some((p) =>
-    !p.checkFailed && (p.state === "pending" || (o.checks && (p.check === "checking" || p.photoCheck?.state === "pending")) ||
-      (o.marking && p.sentAt && !p.marks?.complete && !p.marks?.unfinished && (p.marks?.automaticPending ?? 1) > 0)));
+    !p.checkFailed && (p.state === "pending" || (o.checks && (p.check === "checking" || photoCheckPending(p))) ||
+      (o.marking && p.sentAt && !p.marks?.complete && !p.marks?.unfinished)));
 }
 
 /**
@@ -298,7 +308,7 @@ export function buildStack(o: { photos: readonly StackPhoto[]; uploads: readonly
     const base = { key: photo.id, photoId: photo.id, uploadKey: null, label: page ? `Page ${page.pageNumber}` : fullLabel(photo), title: fullLabel(photo), reason: null, refusal: null };
     if (photo.checkFailed) return { ...base, status: "refused", reason: "Not checked yet", refusal: "check-timeout" };
     if (photo.sentAt && photo.state === "saved" && o.checks && photo.check === "ready") return { ...base, label: fullLabel(photo), status: "sent" };
-    if (photo.state === "pending" || (o.checks && photo.check === "ready" && photo.photoCheck?.state === "pending")) return { ...base, status: "checking" };
+    if (photo.state === "pending" || (o.checks && photoCheckPending(photo))) return { ...base, status: "checking" };
     if (!o.checks || photo.check === "none") return { ...base, status: "saved" };
     if (photo.check === "refused") {
       const reason = photo.reason ?? "failed";

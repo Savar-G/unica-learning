@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildStack, type StackPhoto } from "@/lib/scan-stack";
 
 vi.mock("server-only", () => ({}));
@@ -61,7 +61,11 @@ describe("the stack before the first photo (#915 day strip)", () => {
 });
 
 describe("the stack's separate photo check", () => {
-  it("returns only the parent's bounded view, with no claim token or provider details", async () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it.each([true, false])("returns a bounded view and distinguishes unclaimed checks from disabled checks (%s)", async (required) => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("PHOTO_CHECK_FAKE", required ? "clear" : "");
+    vi.stubEnv("DECISIONS_OPENROUTER_API_KEY", undefined);
     const rows: Record<string, unknown[]> = {
       scan_photos: [{ id: "photo", page_id: "page", workbook_id: "book", state: "saved", created_at: "2026-11-15T10:00:00Z", expires_at: "2027-01-01T00:00:00Z", printed_revision: REVISION, sent_at: null, photo_check: { state: "pending", token: "private-claim", at: "2026-11-15T10:00:00Z" } }],
       workbooks: [{ id: "book", number: 1 }],
@@ -76,6 +80,8 @@ describe("the stack's separate photo check", () => {
     const read = await readScanStack(db, "parent", "child", true, Date.parse("2026-11-15T10:01:00Z"));
     expect(read.photos[0]).toMatchObject({ pageNumber: 23, check: "ready", photoCheck: { state: "pending" } });
     expect(read.photos[0].photoCheck).toEqual({ state: "pending" });
+    rows.scan_photos[0] = { ...rows.scan_photos[0] as object, photo_check: null };
+    expect((await readScanStack(db, "parent", "child", true, Date.parse("2026-11-15T10:01:00Z"))).photos[0]).toMatchObject({ photoCheck: null, photoCheckRequired: required });
     expect((await readScanStack(db, "parent", "child", false, Date.parse("2026-11-15T10:01:00Z"))).photos[0]).not.toHaveProperty("photoCheck");
   });
 });

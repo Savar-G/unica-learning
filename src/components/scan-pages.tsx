@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { browserClient } from "@/lib/supabase-browser";
 import { PHOTO_ENCODING, prepareScanPhoto, scanThumbnail, SMALLER_ENCODING } from "@/lib/scan-photo-browser";
-import { addingCount, buildStack, replacementVerdict, scanWorkPending, duplicateNote, refusalCopy, roomNote, sendLabel, spreadNote, waitingNote, type DayPage, type StackPhoto, type StackTile, type StackUpload, type UploadRefusal } from "@/lib/scan-stack";
+import { addingCount, buildStack, replacementVerdict, photoCheckPending, scanPollDelay, scanWorkPending, duplicateNote, refusalCopy, roomNote, sendLabel, spreadNote, waitingNote, type DayPage, type StackPhoto, type StackTile, type StackUpload, type UploadRefusal } from "@/lib/scan-stack";
 import { dayStrip, pageScore, retakeLine, scoreLine, todaysPages, type StripState, type StripTile } from "@/lib/scan-day-strip";
 import { PHOTO_PROBLEM_TEXT, type PhotoCheckView, type PhotoProblem } from "@/lib/scan-photo-check-text";
 import { SCANNING_COOKIE, SCANNING_SECONDS } from "@/lib/scan-tab";
@@ -51,6 +51,7 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const CHECK_ASK_MS = 6000, BUSY_ASK_MS = 1500, QUICK_BUSY_ASKS = 8;
 /** The stack is read this often while a page is being checked, so a finished check shows within about 2 s (#915). */
 const CHECKING_POLL_MS = 2000;
+const BLUR_WAIT_MS = 70_000;
 
 /** A refused request: its code, and the rest of the server's answer (a duplicate names its page, #4). */
 class ApiError extends Error {
@@ -285,8 +286,10 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const [tried, setTried] = useState<Set<string>>(() => new Set());
   const [retakeAt, setRetakeAt] = useState(0);
   const [online, setOnline] = useState(true);
+  const blurSince = useRef(new Map<string, number>());
+  const progress = useRef({ signature: "", at: Date.now(), readAt: Date.now() });
 
-  const putUploads = useCallback((next: Local[]) => { uploadsRef.current = next; setUploads(next); }, []);
+  const putUploads = useCallback((next: Local[]) => { progress.current.at = Date.now(); uploadsRef.current = next; setUploads(next); }, []);
   const patchUpload = useCallback((key: string, patch: Partial<Local>) => putUploads(uploadsRef.current.map((u) => (u.key === key ? { ...u, ...patch } : u))), [putUploads]);
   const keepUrl = useCallback((key: string, url: string) => {
     const old = urls.current.get(key);
@@ -304,6 +307,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   });
   const clearAll = useCallback(() => {
     epoch.current++;
+    blurSince.current.clear(); progress.current = { signature: "", at: Date.now(), readAt: Date.now() };
     listFlight.current = null; setFailedChecks(new Set());
     for (const url of urls.current.values()) URL.revokeObjectURL(url);
     urls.current.clear(); fetching.current.clear(); asked.current.clear(); savedAsked.current.clear();
@@ -342,9 +346,19 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
               setMessage({ text: `This photo is page ${photo.pageNumber}${day ? ` · ${day}` : ""}. It did not replace page ${u.target.pageNumber}${u.target.day ? ` · ${u.target.day}` : ""}. Take another photo of page ${u.target.pageNumber}.`, failed: false });
             }
           }
+          const signature = JSON.stringify(data);
+          if (signature !== progress.current.signature) progress.current = { signature, at: Date.now(), readAt: Date.now() };
+          else progress.current.readAt = Date.now();
           setListing(data); setLoadFailed(false);
-          const stillChecking = new Set(data.photos.filter((p) => p.check === "checking").map((p) => p.id));
-          setFailedChecks((s) => [...s].some((id) => !stillChecking.has(id)) ? new Set([...s].filter((id) => stillChecking.has(id))) : s);
+          const stillChecking = new Set(data.photos.filter((p) => p.check === "checking" || photoCheckPending(p)).map((p) => p.id));
+          const timedOut = new Set<string>();
+          for (const p of data.photos) {
+            if (!photoCheckPending(p)) { blurSince.current.delete(p.id); continue; }
+            const since = blurSince.current.get(p.id) ?? Date.now();
+            blurSince.current.set(p.id, since);
+            if (Date.now() - since >= BLUR_WAIT_MS) timedOut.add(p.id);
+          }
+          setFailedChecks((s) => new Set([...s].filter((id) => stillChecking.has(id)).concat([...timedOut])));
           if (resolved.length) putUploads(uploadsRef.current.filter((u) => !resolved.includes(u)));
           const found: Record<string, PhotoProblem> = {};
           for (const p of data.photos) if (p.photoCheck?.state === "done" && p.photoCheck.problem) found[p.id] = p.photoCheck.problem;
@@ -430,13 +444,13 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
 
   // Checks (test families and admins): one photo at a time, the oldest first. A busy check is asked again later.
   const runChecks = useCallback(async () => {
-    if (checking.current || !listing?.checks) return;
+    if (checking.current || !listing?.checks || !navigator.onLine || document.visibilityState !== "visible") return;
     checking.current = true;
     const version = epoch.current;
     try {
       for (;;) {
         const now = Date.now();
-        const next = listing.photos.filter((p) => p.state === "saved" && p.check === "checking" && !failedChecks.has(p.id) && !unavailable.has(p.id) && now - (asked.current.get(p.id) ?? 0) > CHECK_ASK_MS)
+        const next = listing.photos.filter((p) => p.state === "saved" && (p.check === "checking" || (photoCheckPending(p) && !p.photoCheck)) && !failedChecks.has(p.id) && !unavailable.has(p.id) && now - (asked.current.get(p.id) ?? 0) > CHECK_ASK_MS)
           .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
         if (!next || version !== epoch.current) return;
         asked.current.set(next.id, now);
@@ -462,18 +476,26 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
 
   const photos = useMemo(() => (listing?.photos ?? []).map((p) => (failedChecks.has(p.id) ? { ...p, checkFailed: true } : unavailable.has(p.id) && p.check === "checking" ? { ...p, check: "unavailable" as const } : p)), [listing, unavailable, failedChecks]);
 
-  // One list request at a time, every 2 s while automatic work remains. Team-only waits stop fast polling.
   const checkingNow = scanWorkPending({ photos, uploads, checks: Boolean(listing?.checks), marking: Boolean(listing?.marking) });
+  const automaticNow = scanWorkPending({ photos: photos.filter((p) => !p.sentAt || (p.marks?.automaticPending ?? 1) > 0), uploads, checks: Boolean(listing?.checks), marking: Boolean(listing?.marking) });
   const live = mode === "desktop" || checkingNow;
   useEffect(() => {
     if (!child) return;
-    const refresh = () => { if (document.visibilityState === "visible" && !listFlight.current) void load().catch(() => {}); };
-    const timer = live ? setInterval(refresh, checkingNow ? CHECKING_POLL_MS : 5000) : undefined;
+    const refresh = () => {
+      if (!navigator.onLine || document.visibilityState !== "visible" || listFlight.current) return;
+      const now = Date.now();
+      const delay = scanPollDelay(now - progress.current.at, automaticNow);
+      if (now - progress.current.readAt < delay) return;
+      progress.current.readAt = now;
+      void load().catch(() => {});
+    };
+    const timer = live ? setInterval(refresh, CHECKING_POLL_MS) : undefined;
     // Return from the camera or another tab: refresh even when fast polling had stopped.
-    const seen = () => { if (document.visibilityState === "visible") void load().catch(() => {}); };
+    const seen = () => { if (navigator.onLine && document.visibilityState === "visible") { progress.current.at = Date.now(); void load().catch(() => {}); } };
     document.addEventListener("visibilitychange", seen);
-    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", seen); };
-  }, [live, child, load, checkingNow]);
+    window.addEventListener("online", seen);
+    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", seen); window.removeEventListener("online", seen); };
+  }, [live, child, load, automaticNow]);
 
   async function uploadOne(u: Local, version: number): Promise<{ id: string; thumb: Blob } | UploadRefusal> {
     if (version !== epoch.current || !sessionCurrent.current) return "unavailable";
@@ -1068,9 +1090,11 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   /** What a page that needs another photo offers. A photo that never reached us is chosen again (or tried again); a saved one is retaken. */
   // A refusal not about the photo itself (#5) keeps the photo and offers Try again; a limit says to wait first.
   const retryCheck = (id: string) => {
+    blurSince.current.delete(id);
     asked.current.delete(id); busyAsked.current.delete(id);
     setFailedChecks((s) => { const next = new Set(s); next.delete(id); return next; });
     if (failedChecks.has(id) && listing?.photos.find((p) => p.id === id)?.check === "checking") return;
+    asked.current.set(id, Date.now());
     const version = epoch.current;
     void api(`/api/account/scans/${id}/preview`, { method: "POST", headers: { "Content-Type": "application/json" } })
       .then(() => { if (version === epoch.current) return load(); })
@@ -1289,8 +1313,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     {noBook && <p className="scan-empty">No workbook to scan yet. Pages show here when {name}&apos;s first workbook arrives.</p>}
     {/* A page that needs another photo comes first, above the day (F5): the one thing to do before more pages. */}
     {loadFailed && <p role="alert" className="acct-alert">We could not refresh the photos. <button type="button" className="scan-link" onClick={() => void load().catch(() => {})}>Retry</button></p>}
-    {fix && <section className="scan-need" aria-label="Pages that need another photo">
-      <div className="scan-need-h"><h2>{retakeLine(fixes.length)}</h2>{fixes.length > 1 && <button type="button" className="scan-link" onClick={() => setRetakeAt((n) => n + 1)}>Next ({(retakeAt % fixes.length) + 1} of {fixes.length})</button>}</div>
+    {fix && <section className="scan-need" aria-label={fix.status === "checking" ? "Checking your new photo" : "Pages that need another photo"}>
+      <div className="scan-need-h"><h2>{fix.status === "checking" ? `Checking your new photo of ${fix.label.toLowerCase()}…` : retakeLine(fixes.filter((t) => t.status !== "checking").length)}</h2>{fixes.length > 1 && <button type="button" className="scan-link" onClick={() => setRetakeAt((n) => n + 1)}>Next ({(retakeAt % fixes.length) + 1} of {fixes.length})</button>}</div>
       <p className="scan-need-title" role={fix.status === "checking" ? "status" : undefined}>{fix.status === "checking" ? <><span className="scan-spin" aria-hidden="true" /> <b>{fix.reason}</b></> : <b>{fix.title}</b>}{fix.reason && fix.status !== "checking" ? ` · ${fix.reason}` : ""}</p>
       <div className="scan-pair">
         <figure><button type="button" className="scan-pair-ph" onClick={() => setSheet({ kind: "tile", key: fix.key })} aria-label={`Open your photo of ${fix.title}`}>{thumbOf(fix) ? <Image unoptimized width={300} height={400} src={thumbOf(fix)} alt="" /> : <span className="scan-ph-empty" />}</button><figcaption>Your photo</figcaption></figure>

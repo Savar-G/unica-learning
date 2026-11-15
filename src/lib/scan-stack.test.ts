@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { scanWorkPending, spreadNote, addingCount, buildStack, dayPages, duplicateNote, refusalCopy, roomNote, sendLabel, stackSummary, waitingNote, type StackPhoto, type StackUpload } from "@/lib/scan-stack";
+import { replacementVerdict, scanPollDelay, scanWorkPending, spreadNote, addingCount, buildStack, dayPages, duplicateNote, refusalCopy, roomNote, sendLabel, stackSummary, waitingNote, type StackPhoto, type StackUpload } from "@/lib/scan-stack";
 
 const BOOK = "book-1";
 // Workbook 1: a cover, Day 4 with pages 10 to 13, Day 5 with pages 14 to 16.
@@ -349,13 +349,33 @@ describe("scan polling", () => {
     expect(pending([photo("p", 11, { sentAt: "2026-11-15T12:00:00Z", marks: null })])).toBe(true);
     expect(pending([photo("p", 11, { sentAt: "2026-11-15T12:00:00Z", marks: { right: 1, scored: 1, total: 2, waiting: 1, toPractise: 0, complete: false, automaticPending: 1 } })])).toBe(true);
   });
-  it("stops for complete marks, team-only waits, unfinished pages and failed checks", () => {
+  it("refreshes team-only waits, stopping only for terminal marks and failed checks", () => {
     const marks = { right: 1, scored: 1, total: 2, waiting: 1, toPractise: 0, complete: false, automaticPending: 0 };
-    for (const result of [marks, { ...marks, complete: true }, { ...marks, unfinished: true }]) expect(pending([photo("p", 11, { sentAt: "2026-11-15T12:00:00Z", marks: result })])).toBe(false);
+    expect(pending([photo("p", 11, { sentAt: "2026-11-15T12:00:00Z", marks })])).toBe(true);
+    for (const result of [{ ...marks, complete: true }, { ...marks, unfinished: true }]) expect(pending([photo("p", 11, { sentAt: "2026-11-15T12:00:00Z", marks: result })])).toBe(false);
     expect(pending([photo("p", 11, { check: "checking", checkFailed: true })])).toBe(false);
     expect(pending([], [{ key: "u", status: "refused", reason: "unavailable" }])).toBe(false);
     expect(pending([photo("p", 11, { sentAt: "2026-11-15T12:00:00Z" })], [], false)).toBe(false);
   });
+});
+
+it.each([null, "blurry"] as const)("waits across unclaimed and pending blur checks until the %s verdict", (problem) => {
+  const upload: StackUpload = { key: "new", status: "uploaded", uploadedId: "new", target: { photoId: "old", pageId: "p11", workbookId: BOOK, pageNumber: 11, day: "Day 4" } };
+  const replacement = photo("new", 11, { check: "ready", photoCheckRequired: true, photoCheck: null });
+  for (const photoCheck of [null, { state: "pending" as const }]) {
+    replacement.photoCheck = photoCheck;
+    expect(replacementVerdict(upload, [replacement], true)).toBeNull();
+    expect(buildStack({ photos: [replacement], uploads: [upload], pages, checks: true }).addingTiles[0].status).toBe("checking");
+  }
+  replacement.photoCheck = { state: "done", problem };
+  expect(replacementVerdict(upload, [replacement], true)).toBe(replacement);
+  replacement.photoCheck = null; replacement.photoCheckRequired = false;
+  expect(replacementVerdict(upload, [replacement], true)).toBe(replacement);
+});
+
+it("backs off unchanged automatic work after ten seconds and caps both polling lanes", () => {
+  expect([0, 9999, 10_000, 20_000, 30_000, 40_000, 3600_000].map((ms) => scanPollDelay(ms, true))).toEqual([2000, 2000, 5000, 10_000, 20_000, 30_000, 30_000]);
+  expect(scanPollDelay(0, false)).toBe(30_000);
 });
 
 it("names a duplicate retake by the server's page number, without assigning its verdict to the intended page", () => {

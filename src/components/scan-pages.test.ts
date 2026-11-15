@@ -438,7 +438,7 @@ it("asks to save again when a save fails after the upload, so the page reaches i
 });
 
 it("retries a failed save of a photo left pending on the next refresh, and not in a tight loop", async () => {
-  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
   try {
     seed("left", "p10", { state: "pending", check: "checking" });
     saveFailures = 2;
@@ -1400,6 +1400,9 @@ it("shows a retake checking on its tile and card without a gap from upload throu
     expect(tile!.querySelector(".scan-spin")).not.toBeNull();
     expect(host.querySelector(".scan-need .scan-spin")).not.toBeNull();
     expect(text()).not.toContain("Hold closer");
+    expect(host.querySelector(".scan-need h2")?.textContent).toBe("Checking your new photo of page 11…");
+    expect(host.querySelector('.scan-need[aria-label="Pages that need another photo"]')).toBeNull();
+    expect(text()).not.toContain("1 page needs another photo");
   };
   checking();
   await act(async () => releasePut()); await settle();
@@ -1453,10 +1456,10 @@ it("shows a failed retake check with Retry and recovers the same photo", async (
   expect(admitted).toHaveLength(admissions);
 });
 
-it.each(["done", "team"])("polls pending automatic marks every 2 s, then stops for %s and refreshes on visibility", async (end) => {
+it.each(["done", "team"])("polls automatic marks quickly, then stops or slows for %s", async (end) => {
   markingOn = true;
   seed("sent", "p11", { sentAt: new Date().toISOString(), marks: null });
-  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
   await render();
   const reads = () => calls.filter((c) => c.startsWith("GET /api/account/scans?child=")).length;
   try {
@@ -1468,15 +1471,24 @@ it.each(["done", "team"])("polls pending automatic marks every 2 s, then stops f
     const finished = reads();
     await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
     expect(reads()).toBe(finished);
+    if (end === "team") {
+      photos.get("sent")!.marks = { right: 5, scored: 5, total: 5, waiting: 0, toPractise: 0, complete: true, automaticPending: 0 };
+      await act(async () => { await vi.advanceTimersByTimeAsync(24_000); });
+      expect(reads()).toBe(finished + 1);
+      expect(text()).toContain("Day 4");
+      await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+      expect(reads()).toBe(finished + 1);
+    }
+    const beforeVisibility = reads();
     await act(async () => document.dispatchEvent(new Event("visibilitychange")));
-    expect(reads()).toBe(finished + 1);
+    expect(reads()).toBe(beforeVisibility + 1);
   } finally { vi.useRealTimers(); }
 });
 
 it("keeps only one polling read in flight when a listing takes longer than 2 s", async () => {
   markingOn = true;
   seed("sent", "p11", { sentAt: new Date().toISOString(), marks: null });
-  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
   await render();
   const server = global.fetch;
   let release!: () => void, reads = 0;
@@ -1495,16 +1507,16 @@ it("keeps only one polling read in flight when a listing takes longer than 2 s",
   } finally { release(); vi.useRealTimers(); }
 });
 
-it("keeps the retake card checking until the separate blur check has a verdict", async () => {
+it.each([null, "blurry"] as const)("keeps a retake checking through null, pending and the %s blur verdict", async (problem) => {
   seed("old", "p11", { check: "refused", reason: "marks-missing" });
   await render();
   const server = global.fetch;
-  let pending = true;
+  let phase: "unclaimed" | "pending" | "done" = "unclaimed";
   vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
     const response = await server(path, init);
     if (!path.startsWith("/api/account/scans?child=")) return response;
     const data = await response.json();
-    data.photos = data.photos.map((p: Photo) => ({ ...p, photoCheck: pending ? { state: "pending" } : { state: "done", problem: null } }));
+    data.photos = data.photos.map((p: Photo) => ({ ...p, photoCheckRequired: true, photoCheck: phase === "unclaimed" ? null : phase === "pending" ? { state: "pending" } : { state: "done", problem } }));
     return Response.json(data);
   });
   await act(async () => button("Retake page 11")!.click());
@@ -1512,8 +1524,18 @@ it("keeps the retake card checking until the separate blur check has a verdict",
   expect(host.querySelector(".scan-need")?.textContent).toContain("Checking page 11…");
   expect(button("Checking page 11…")).toBeDefined();
   expect(button("Undo")).toBeUndefined();
-  pending = false;
+  phase = "pending";
   await act(async () => document.dispatchEvent(new Event("visibilitychange"))); await settle();
+  expect(host.querySelector(".scan-need h2")?.textContent).toBe("Checking your new photo of page 11…");
+  expect(button("Undo")).toBeUndefined();
+  phase = "done";
+  await act(async () => document.dispatchEvent(new Event("visibilitychange"))); await settle();
+  if (problem) {
+    expect(text()).toContain("The photo is blurry.");
+    expect(button("Send anyway")).toBeDefined();
+    expect(calls).not.toContain("POST /api/account/scans/send");
+    return;
+  }
   expect(host.querySelector(".scan-need")).toBeNull();
   expect(button("Page 11, ready, not sent yet")).toBeDefined();
   expect(button("Undo")).toBeDefined();
@@ -1544,7 +1566,91 @@ it("keeps the card on the retake just picked when other refused pages still wait
   await choose("camera", "p11.jpg");
   expect(host.querySelector(".scan-need")?.textContent).toContain("Checking page 11…");
   expect(button("Checking page 11…")).toBeDefined();
+  expect(text()).not.toContain("2 pages need another photo");
+  await act(async () => button("Next (1 of 2)")!.click());
+  expect(host.querySelector(".scan-need h2")?.textContent).toBe("1 page needs another photo");
   await act(async () => release()); await settle();
+});
+
+it("bounds a stranded blur check, then retries the same photo with POST after its stale lease", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+  seed("old", "p11", { check: "refused", reason: "marks-missing" });
+  await render();
+  const server = global.fetch;
+  let done = false;
+  vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
+    const response = await server(path, init);
+    if (!path.startsWith("/api/account/scans?child=")) return response;
+    const data = await response.json();
+    data.photos = data.photos.map((p: Photo) => ({ ...p, photoCheckRequired: true, photoCheck: done ? { state: "done", problem: null } : { state: "pending" } }));
+    return Response.json(data);
+  });
+  await act(async () => button("Retake page 11")!.click());
+  await choose("camera", "p11.jpg");
+  const posts = () => calls.filter((c) => c.startsWith("POST ") && c.endsWith("/preview")).length;
+  const before = posts();
+  try {
+    await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
+    expect(host.querySelector(".scan-need")?.textContent).toContain("We couldn't check this page right now.");
+    expect(button("Retry")).toBeDefined();
+    expect(posts()).toBe(before);
+    expect(button("Undo")).toBeUndefined();
+    const savedIds = [...photos.keys()];
+    done = true;
+    await act(async () => button("Retry")!.click()); await settle();
+    expect(posts()).toBe(before + 1);
+    expect([...photos.keys()]).toEqual(savedIds);
+    expect(button("Page 11, ready, not sent yet")).toBeDefined();
+  } finally { vi.useRealTimers(); }
+});
+
+it("backs off unchanged marks, pauses hidden and offline reads, and resets on progress and return", async () => {
+  markingOn = true;
+  seed("sent", "p11", { sentAt: new Date().toISOString(), marks: null });
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+  await render();
+  const reads = () => calls.filter((c) => c.startsWith("GET /api/account/scans?child=")).length;
+  try {
+    const initial = reads();
+    await act(async () => { await vi.advanceTimersByTimeAsync(3600_000); });
+    expect(reads() - initial).toBeLessThan(140);
+    expect(reads() - initial).toBeGreaterThan(110);
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+    const hidden = reads();
+    await act(async () => { document.dispatchEvent(new Event("visibilitychange")); await vi.advanceTimersByTimeAsync(60_000); });
+    expect(reads()).toBe(hidden);
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+    await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+    expect(reads()).toBe(hidden + 1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(reads()).toBe(hidden + 2);
+    Object.defineProperty(navigator, "onLine", { configurable: true, get: () => false });
+    const offline = reads();
+    await act(async () => { window.dispatchEvent(new Event("offline")); await vi.advanceTimersByTimeAsync(60_000); });
+    expect(reads()).toBe(offline);
+    Object.defineProperty(navigator, "onLine", { configurable: true, get: () => true });
+    await act(async () => window.dispatchEvent(new Event("online")));
+    expect(reads()).toBe(offline + 1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    photos.get("sent")!.marks = { right: 1, scored: 1, total: 5, waiting: 4, toPractise: 0, complete: false, automaticPending: 4 };
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    const progressed = reads();
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(reads()).toBe(progressed + 1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    let release!: () => void;
+    putGate = new Promise<void>((resolve) => { release = resolve; });
+    onTestFinished(() => release());
+    await choose("library", "p12.jpg");
+    const uploading = reads();
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(reads()).toBe(uploading + 1);
+    await act(async () => release()); await settle();
+  } finally {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+    Object.defineProperty(navigator, "onLine", { configurable: true, get: () => true });
+    vi.useRealTimers();
+  }
 });
 
 it("shows a check timeout as a failure with Retry instead of checking forever", async () => {
