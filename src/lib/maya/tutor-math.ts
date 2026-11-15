@@ -521,6 +521,9 @@ export function answerClaims(sentence: string, answer: number): { problems: stri
   for (const m of text.matchAll(before)) {
     const lead = text.slice(0, m.index! + m[0].indexOf(m[1])).trim().split(/\s+/).at(-1)?.toLowerCase() ?? "";
     if (DETERMINERS.has(lead)) continue;
+    // Final check 3 (P2): a number after an operation ("52 minus 28 is the answer") is not the subject alone. Code
+    // cannot read the subject whole, so it neither refuses nor reads it: the sentence goes to the math review.
+    if (/^(?:minus|plus|times|by|away|over|x)$|[+\-−–×÷*/]$/i.test(lead)) continue;
     const n = numberOf(m[1]);
     if (n === null) { problems.push(`"${m[0].trim()}" says an answer code cannot read`); continue; }
     const negated = /not|n't/.test(m[2]);

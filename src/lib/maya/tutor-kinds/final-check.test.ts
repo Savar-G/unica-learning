@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
+import { fakeMathReviewer } from "@/lib/maya-math-review";
+import { judgment } from "@/lib/maya/tutor";
 import { teachingPackage } from "@/lib/maya-teaching";
 import { storedPlaceValue } from "@/lib/maya-teaching/place-value-samples";
 import { createTextSession } from "@/lib/maya-text";
@@ -23,7 +25,7 @@ const tutors = (pkg: OperationPackage) => !!createSession({ callId: `final-${pkg
 async function speak(pkg: OperationPackage, line: string) {
   let now = Date.UTC(2026, 10, 15);
   const model = conversationalFake({ answer: () => reply(line, "guide") });
-  const s = createTextSession({ callId: `final-${pkg.text}-${line}`, package: pkg, model, clock: () => (now += 100), random: 3, tutor: true, reviewer: fakeTalkReviewer(() => ({ verdict: "fail", rules: ["math"], reason: "The math is false." })) });
+  const s = createTextSession({ callId: `final-${pkg.text}-${line}`, package: pkg, model, clock: () => (now += 100), random: 3, tutor: true, mathReviewer: fakeMathReviewer(), reviewer: fakeTalkReviewer((input) => (judgment(input.line).any ? { verdict: "pass" } : { verdict: "fail", rules: ["math"], reason: "The math is false." })) });
   await s.start();
   const out = await s.child("Please help me.");
   await s.finish({ reason: "child_stopped" });

@@ -6,7 +6,7 @@ import { childFacts, tutorKind, stepFacts, TUTOR_WORD_LIMIT } from "./tutor";
 import type { TutorDrawing, TutorStepFact } from "./tutor-kind";
 import { valueText } from "@/lib/question-package";
 
-export const TUTOR_PROMPT_VERSION = "maya-tutor-4";
+export const TUTOR_PROMPT_VERSION = "maya-tutor-5";
 
 /** The turns of the call the brief holds. */
 const TUTOR_TRANSCRIPT_TURNS = 10;
@@ -84,7 +84,7 @@ How you teach:
 11. Praise the step or the effort, briefly and only when it is earned ("You traded the ten. That was the hard part."). No empty praise, no "amazing", never praise intelligence.
 12. Use the child's own word. If the child says "borrow", say "borrow" and tie it to the idea: "we borrow: we trade 1 ten for 10 ones".
 
-The first sentence: when your "kind" is "math" or "help", open the message with one short sentence that code can check on its own, so the child hears it at once while code checks the rest. Use only numbers, places and operations in it, in one of these forms:
+The first sentence: when your "kind" is "math" or "help", open the message with one short sentence that code can check on its own, so the child hears it at once while code checks the rest. Say it as the whole sentence in exactly one of these forms, with only numbers, places and operations in it, and no word before it (no "Now", "Okay" or {name}):
 - a true equation of this question's own numbers: "52 is 4 tens and 12 ones.", "12 minus 8 is 4."
 - when the child said a wrong number, that number back in a true sentence: "52 minus 28 isn't 36."
 - when the child's answer is right, the question with its answer: "52 minus 28 is 24."

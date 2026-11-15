@@ -11,6 +11,7 @@ import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { callSpend, createSpendLedger, spendConfig } from "@/lib/maya-spend";
 import { memorySpendStore } from "@/lib/maya-spend-memory";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
+import { fakeMathReviewer } from "@/lib/maya-math-review";
 
 vi.mock("server-only", () => ({}));
 
@@ -37,6 +38,7 @@ async function setup() {
       return conversationalFake({ answer: async () => { await Promise.resolve(); sent.push({ id, context: { ...requestContext() } }); return good(); } });
     },
     reviewer: () => fakeTalkReviewer(),
+    mathReviewer: () => fakeMathReviewer(),
     isTestFamily: async () => true, canChat: async () => true,
     alerts: { send: async () => {}, list: async () => [] },
     spend: callSpend(ledger, { clock: () => now, newId }), clock: () => now, newId, seed: () => 42,

@@ -53,10 +53,16 @@ function call(pkg: unknown, says: string[], math: MathAnswer | null, stream = fa
 }
 
 describe("layer 1: coverage accounting in the claim reader", () => {
-  it("passes a true sentence whose math code reads whole, with no review", () => {
-    for (const s of ["12 minus 8 is 4.", "So 12 minus 8 is 4.", "52 is 4 tens and 12 ones.", "4 tens minus 2 tens is 2 tens.", "The answer is 24.", "24 is the answer.", "What is 12 minus 8?", "Trade 1 ten for 10 ones.", "Now subtract the ones.", "2 ones become 12."]) {
+  it("passes a true sentence whose math code reads whole, with no review, only in an exact closed form", () => {
+    for (const s of ["12 minus 8 is 4.", "So 12 minus 8 is 4.", "52 is 4 tens and 12 ones.", "4 tens minus 2 tens is 2 tens.", "What is 12 minus 8?", "Trade 1 ten for 10 ones.", "Now subtract the ones."]) {
       expect(unreadMath(s, ctxOf(SUB)), s).toEqual([]);
       expect(checkTutorSay(s, ctxOf(SUB)), s).toMatchObject({ ok: true, math: [] });
+    }
+    // The exact-match rule (2026-11-15): code reads these whole and finds them true, but no closed form or step text is
+    // the whole sentence, so they go to the math review.
+    for (const s of ["The answer is 24.", "24 is the answer.", "2 ones become 12."]) {
+      expect(unreadMath(s, ctxOf(SUB)), s).toEqual([]);
+      expect(checkTutorSay(s, ctxOf(SUB)), s).toMatchObject({ ok: true, math: [s] });
     }
   });
   it("sends a sentence with any number or relation word code did not read to the review", () => {
