@@ -67,7 +67,30 @@ function fits(pkg: OperationPackage): boolean {
   const want: string[] = f.ask === "digit" ? [] : f.ask === "value" ? ["digit"] : f.ask === "sum" ? ["worth-1", "worth-2"]
     : ["digit-1", "digit-2", ...(f.parts[0].digit !== f.parts[1].digit ? ["bigger"] : [])];
   if (work.length !== want.length || work.some((s, i) => s.id !== want[i])) return false;
-  return work.every((s) => stepAgrees(s, f)) && printedAgrees(pkg.text, f);
+  return work.every((s) => stepAgrees(s, f)) && printedAgrees(pkg.text, f) && printedAsk(pkg.text) === f.ask;
+}
+
+/**
+ * Final check 2, N06: what the printed question asks, read from its words, or null when the words do not say one ask
+ * clearly. A printed "which digit" question stored as a value ask would teach 40000 for the digit 4, so the printed ask
+ * must be the stored one: digit ("which digit", no "value"), value (one "value", no "which digit"), sum (two "value"s
+ * and "plus") or compare ("true or false" and "bigger than" or "greater than", no "value"). Anything else keeps the
+ * controller.
+ */
+function printedAsk(text: string): Ask | null {
+  const t = text.toLowerCase();
+  const values = (t.match(/\bvalues?\b/g) ?? []).length;
+  const whichDigit = /\bwhich digit\b/.test(t);
+  const plus = /\bplus\b|\+|\bsum\b|\btotal\b|\badd\b/.test(t);
+  const trueFalse = /\btrue or false\b/.test(t);
+  const bigger = /\b(?:bigger|greater) than\b/.test(t);
+  const other = /\b(?:smaller|less|fewer|more|larger|equal|same|difference|minus|times|round|rounded|nearest|expanded|word form|then)\b|[−×÷*\/=-]/.test(t);
+  if (other) return null;
+  if (trueFalse) return bigger && values === 0 && !whichDigit && !plus ? "compare" : null;
+  if (bigger) return null;
+  if (plus) return values === 2 && !whichDigit ? "sum" : null;
+  if (whichDigit) return values === 0 ? "digit" : null;
+  return values === 1 ? "value" : null;
 }
 
 /** The place names a question prints, longest first so "ten thousands" is one place. */

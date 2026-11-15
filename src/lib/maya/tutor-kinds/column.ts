@@ -45,16 +45,36 @@ const SUBTRACT_WORDS = /\b(?:gives?|gave|given|away|sells?|sold|spends?|spent|us
  * away, what is left, or "how many more"), must not say the other one, and must print no third number.
  */
 function wordsAgree(text: string, kind: "add" | "subtract", a: number, b: number): boolean {
-  const t = text.replace(/(\d),(?=\d{3}\b)/g, "$1");
+  const t = text.replace(/(\d),(?=\d{3}\b)/g, "$1").trim();
   const signs = [...t.matchAll(/\d\s*([+\-−–×x÷*/=])\s*[\d?]/g)].map((m) => m[1]).filter((x) => x !== "=");
-  if (signs.length > 0) return signs.length === 1 && (kind === "add" ? signs[0] === "+" : /[-−–]/.test(signs[0]));
+  if (signs.length > 0) return printedEquation(t, kind, a, b);
   const words = t.replace(/\d+/g, " ");
   if (!/[a-z]{3,}/i.test(words)) return false;
   if (!printedNumbers(t).every((n) => n === a || n === b)) return false;
+  // Final check 2, N05: a story asks one question and ends with it ("... How many are left? Then add 28." is refused),
+  // and a subtraction story prints the number it takes from first.
+  if (!t.endsWith("?") || t.indexOf("?") !== t.length - 1) return false;
+  if (kind === "subtract" && !(firstAt(t, a) >= 0 && firstAt(t, a) < firstAt(t, b))) return false;
   // "How many more points does Mia score?" compares: a subtraction. Its "more" is not a gain.
   const gains = ADD_WORDS.test(words.replace(/\bhow (?:many|much) more\b|\bmore than\b/gi, " "));
   const takes = SUBTRACT_WORDS.test(words);
   return kind === "add" ? gains && !takes : takes && !gains;
+}
+
+/** Where the number `n` is first printed in `t` (commas taken out), as a whole number; -1 when it is not. */
+function firstAt(t: string, n: number): number {
+  const m = new RegExp(`(?<![\\d.])${n}(?![\\d.])`).exec(t);
+  return m ? m.index : -1;
+}
+
+/**
+ * Final check 2, N05: a printed equation is the whole question, and it is the stored one in its order: "52 − 28 = ?"
+ * for a stored 52 − 28 ("What is 52 − 28?" too). "28 − 52 = ?" and "52 − 28 = ? Then add 28." keep the controller.
+ */
+function printedEquation(t: string, kind: "add" | "subtract", a: number, b: number): boolean {
+  const sign = kind === "add" ? "\\+" : "[-−–]";
+  const eq = new RegExp(`^(?:${a}\\s*${sign}\\s*${b}\\s*=\\s*\\?|what is ${a}\\s*${sign}\\s*${b}\\s*\\?)\\s*\\.?$`, "i");
+  return eq.test(t);
 }
 
 /**
@@ -67,6 +87,7 @@ function fits(pkg: OperationPackage): boolean {
   if (op.kind !== "add" && op.kind !== "subtract") return false;
   const [a, b] = op.operands;
   if (![a, b].every((n) => Number.isInteger(n) && n >= 0 && n <= MAX_OPERAND)) return false;
+  if (op.kind === "subtract" && a < b) return false;
   if (pkg.answer.value.type !== "number" || pkg.answer.value.value !== (op.kind === "add" ? a + b : a - b)) return false;
   const work = pkg.steps.filter((s) => s.kind !== "result");
   const kind = op.kind === "add" ? "add-column" : "subtract-column";
