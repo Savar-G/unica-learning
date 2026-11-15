@@ -8301,6 +8301,11 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      admin_child_unit_cost: {
+        Args: { p_bounds: Json; p_month: string }
+        Returns: Json
+      }
+      admin_child_unit_cost_families: { Args: never; Returns: Json }
       admin_children: {
         Args: never
         Returns: {

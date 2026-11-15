@@ -8,6 +8,7 @@ import {
   ADMIN_AI_PATH, RANGES, buildStack, cad, cadCents, checkLine, costShare, featureGroupOf, groupFeatures, niceTop, usd,
   type OpenRouterCheck, type Period, type Stack, type UsageView,
 } from "@/lib/admin-ai-usage";
+import { CHILD_COST_PATH } from "@/lib/child-unit-cost";
 import { formatCalendarDate } from "@/lib/family-time";
 import "./admin-ai-usage.css";
 import "./admin-pages.css";
@@ -134,7 +135,11 @@ export function AiUsagePage({ view, period, rate, check, monthRecordedUsd, error
     <div className="adm-ai">
       <div className="ai-top">
         <Pills label="Period" pills={pills} />
-        <a className="ai-out" href={OPENROUTER_ACTIVITY_URL} target="_blank" rel="noreferrer">Open OpenRouter activity</a>
+        <span>
+          <Link className="ai-out" href={CHILD_COST_PATH} prefetch={false}>Cost per child</Link>
+          {" · "}
+          <a className="ai-out" href={OPENROUTER_ACTIVITY_URL} target="_blank" rel="noreferrer">Open OpenRouter activity</a>
+        </span>
       </div>
       <Tiles label="Totals" tiles={[
         { key: "cost", label: "Total cost", value: usd(t.costUsd), sub: `${cad(t.costUsd, rate)} CAD at ${rate.toFixed(2)}` },
