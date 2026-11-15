@@ -85,7 +85,7 @@ export interface PeriodSummary {
 export interface ProgressSummary {
   /** Skills mastered now, over every BC standard. */
   mastered: number;
-  /** Skills that need help now. */
+  /** Skills that need help now (`ProgressSeriesInput.needsHelp`). */
   needsHelp: number;
   week: PeriodSummary;
   month: PeriodSummary;
@@ -100,6 +100,12 @@ export interface ProgressSeriesInput {
   history: readonly StateChange[];
   /** The family-time day the child started (the day of their first finished test); null with none. */
   startDay: string | null;
+  /**
+   * The standards that count as Needs help now (`needsHelpStandards`, src/lib/needs-help.ts: the rule's needs_review, and a
+   * Learning skill the child is struggling with). Left out, it is the rule's needs_review alone. Only the Needs help tile reads
+   * it: gain and moved up stay on the rule's states and the history.
+   */
+  needsHelp?: ReadonlySet<string>;
 }
 
 /** A standard's state at an instant: the last recorded row before it, else Not started. */
@@ -123,7 +129,7 @@ function monthsBetween(first: string, last: string): string[] {
   return months;
 }
 
-export function progressSummary({ now, zone, current, history, startDay }: ProgressSeriesInput): ProgressSummary {
+export function progressSummary({ now, zone, current, history, startDay, needsHelp }: ProgressSeriesInput): ProgressSummary {
   const byStandard = new Map<string, (StateChange & { at: number })[]>();
   for (const row of history) {
     const at = Date.parse(row.changedAt);
@@ -185,7 +191,7 @@ export function progressSummary({ now, zone, current, history, startDay }: Progr
 
   return {
     mastered: standards.filter((s) => stateAt(s, now + 1) === "mastered").length,
-    needsHelp: standards.filter((s) => stateAt(s, now + 1) === "needs_review").length,
+    needsHelp: standards.filter((s) => (needsHelp ? needsHelp.has(s) : stateAt(s, now + 1) === "needs_review")).length,
     week: summary("week", thisMonday, startOf(thisMonday), weekPoints),
     month: summary("month", `${thisMonth}-01`, startOf(`${thisMonth}-01`), monthPoints(firstMonth < recent ? recent : firstMonth)),
     // All time begins at the child's start; the others never begin before it either, so Month cannot exceed All time.
