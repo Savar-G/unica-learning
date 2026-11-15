@@ -184,3 +184,9 @@ describe("plainTeaching (re-check of #1006)", () => {
   it.each(["Sure, {name}.", "Good question: in the ones, 2 ones is too small to take 8 away."])("reviews %s", (x) => expect(plainTeaching(x)).toBe(false));
   it.each(["No good at math, {name}, not even 2 plus 2.", "Not good at this at all, not even 2 plus 2.", "We are not good at math, not even 2 plus 2.", "You are no good at math, not even 2 plus 2.", "2 is too hard for you.", "Sure, you can't do this.", "That's a fun question.", "I'm proud of you."])("reviews %s", (x) => expect(plainTeaching(x)).toBe(false));
 });
+
+describe("falseClaims: the open P2 findings of #1008", () => {
+  const sub = { stance: "none" as const, op: "subtract" as const };
+  it.each(["Now the tens: 5 tens became 6 tens after the trade.", "4 tens is the twenty plus thirty.", "5 tens became 6 tens before we subtract."])("refuses %s", (x) => expect(checkTutorSay(x, sub)).toMatchObject({ ok: false }));
+  it.each(["After we trade a ten, the 2 becomes 12 ones.", "The 5 becomes 4 tens.", "Count up from 8 to 12: 9, 10, 11, 12 is 4 steps.", "12 is 4 more than 8."])("passes %s", (x) => expect(checkTutorSay(x, sub)).toMatchObject({ ok: true }));
+});
