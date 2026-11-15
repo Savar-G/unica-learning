@@ -90,7 +90,8 @@ describe("A: the first sentence streams as it arrives", () => {
     const { session, atEnd, parts } = streamed(() => reply("Let's look at the ones. The answer is 24. What is on top?", "guide", { step: "ones" }));
     await session.start();
     parts.length = 0;
-    const out = await session.child("Let's do it.");
+    // Final check 4: only a turn plainly about the math streams (here an operation word of the question).
+    const out = await session.child("Let's do the minus.");
     expect(atEnd[0].map(([x]) => x)).toEqual(["Let's look at the ones."]);
     // The failing middle sentence is never said; the closing question still follows what was sent.
     expect(out.say).toEqual(["Let's look at the ones. What is on top?"]);
@@ -99,7 +100,8 @@ describe("A: the first sentence streams as it arrives", () => {
     const { session, atEnd, parts } = streamed(() => reply("Let's look at the ones together.", "accept_answer"));
     await session.start();
     parts.length = 0;
-    const out = await session.child("Let's do it.");
+    // Final check 4: only a turn plainly about the math streams (here an operation word of the question).
+    const out = await session.child("Let's do the minus.");
     expect(atEnd[0].map(([x]) => x)).toEqual(["Let's look at the ones together."]);
     // What was sent already tells the child what to do about the step: code's line adds nothing after it.
     expect(out.say).toEqual(["Let's look at the ones together."]);
@@ -111,7 +113,8 @@ describe("A: the first sentence streams as it arrives", () => {
     await session.start();
     parts.length = 0;
     await session.child("I have a dog.");
-    expect(atEnd[0]).toEqual([]);
+    // Final check 4: a turn that is not plainly math does not stream at all, so nothing was sent before the end.
+    expect(atEnd.flat()).toEqual([]);
   });
 });
 

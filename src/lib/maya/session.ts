@@ -22,7 +22,7 @@
 // Pure TypeScript: no React, DOM, network, clock or randomness.
 import { MAX_COMMANDS, PLACE_NAMES, type Batch, type Command, type Place, type Target } from "@/lib/board";
 import { FRACTION_STRIP_LIMITS } from "@/lib/board/model-fraction-strip";
-import { asksIdentity } from "./identity";
+import { asksIdentity, mayAskIdentity } from "./identity";
 import { MAX_HINTS, MAX_TIME_MS, type NewLearningEvent } from "@/lib/learning-events";
 import {
   checkQuestionPackage,
@@ -70,8 +70,9 @@ import { ACTS, PART_LIMITS, PROPOSAL_VERSION, isModelOutput, readModelOutput, wi
 import { checkSay, checkSentence, columnSentenceTruth, equationHolds, heardColumnOf, revealsOpenStep, endsWithAsk, INSTRUCTION, MATH_WORD, PRAISE_WORDS, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
-import { checkTutorSay, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, TUTOR_REVIEW_IGNORED } from "./tutor";
+import { bindingReview, checkTutorSay, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, TUTOR_REVIEW_IGNORED } from "./tutor";
 import { MATH_REVIEW_PROMPT_VERSION, mathReviewsOf, type MathReview, type MathReviewInput } from "./math-review";
+import { reviewStart, reviewSteps } from "./math-review-steps";
 import { hideName as redactChildName } from "../child-name-redaction";
 
 /** Closing starts 9 minutes into the call; the call ends at 10 minutes. */
@@ -5075,6 +5076,9 @@ export function mathReviewInput(s: Session, sentence: string, before: readonly s
     // The step facts and their word results hide the name too: a story's person can be the child's name (pre-launch
     // check 2: "so Mia is not right").
     steps: pkg ? stepFacts(pkg).map((st) => ({ work: hide(st.work), result: typeof st.result === "string" ? hide(st.result) : st.result })) : [],
+    // Version 3: code's facts per step and the state after each one, and the numbers in places before any work.
+    stepStates: pkg ? stepStatesOf(pkg, hide) : [],
+    start: pkg ? reviewStart(pkg) : null,
     workValues: pkg ? tutorKind(pkg).workValues(pkg) : [],
     answer: typeof answer === "number" ? answer : typeof answer === "string" ? hide(answer) : null,
     childTurn: s.turn ? hide(s.turn.text) : null,
@@ -5085,6 +5089,12 @@ export function mathReviewInput(s: Session, sentence: string, before: readonly s
   };
 }
 
+/** Code's facts per step for the math-truth review (version 3), with any word a story's person shares with the name hidden. */
+function stepStatesOf(pkg: OperationPackage, hide: (text: string) => string): MathReviewInput["stepStates"] {
+  const text = (v: number | string) => (typeof v === "string" ? hide(v) : v);
+  return reviewSteps(pkg).map((st) => ({ step: st.step, ...(st.place ? { place: hide(st.place) } : {}), operation: hide(st.operation), operands: st.operands.map(text), value: text(st.value), after: hide(st.after) }));
+}
+
 /** Code's facts of the question's easier example for the math-truth review (version 2), or null. */
 function easierFacts(pkg: OperationPackage, hide: (text: string) => string): MathReviewInput["easierExample"] {
   const e = pkg.easierExample;
@@ -5092,7 +5102,7 @@ function easierFacts(pkg: OperationPackage, hide: (text: string) => string): Mat
   try {
     const twin = { ...pkg, text: e.text, operation: e.operation, answer: { ...pkg.answer, value: e.answer }, steps: e.steps } as OperationPackage;
     const value = (e.answer as { value?: unknown }).value;
-    return { question: hide(e.text), steps: stepFacts(twin).map((st) => ({ work: hide(st.work), result: typeof st.result === "string" ? hide(st.result) : st.result })), answer: typeof value === "number" ? value : typeof value === "string" ? hide(value) : null };
+    return { question: hide(e.text), steps: stepFacts(twin).map((st) => ({ work: hide(st.work), result: typeof st.result === "string" ? hide(st.result) : st.result })), stepStates: stepStatesOf(twin, hide), answer: typeof value === "number" ? value : typeof value === "string" ? hide(value) : null };
   } catch {
     return null;
   }
@@ -5109,9 +5119,38 @@ function lastTwoTurns(s: Session, hide: (text: string) => string): MathReviewInp
   return { maya: maya === null ? null : hide(maya), child: child === null ? null : hide(child) };
 }
 
+/** The operation words of a question's own operation: a turn that holds one is about the math. */
+const OPERATION_WORDS: Record<string, RegExp> = {
+  add: /\b(?:plus|add|adding|added|sum|carry|carried)\b|\+/i,
+  subtract: /\b(?:minus|subtract|subtracting|take\s+away|borrow|borrowed|regroup|regrouping)\b|\u2212/i,
+  multiply: /\b(?:times|multiply|multiplied|multiplying)\b|\u00d7/i,
+  divide: /\b(?:divided|divide|dividing|remainder)\b|\u00f7/i,
+};
+
+/**
+ * Final check 4 (2026-11-15): whether the child's turn is plainly about the math, so a model sentence may stream before
+ * the model's reading is known. No identity word list: the turn holds a number (digits or number words), an operation
+ * word of this question's own operation, or it is one of code's own reads: help, stuck or a word answer. Every
+ * other turn holds the whole stream until the reading is in, so a disclosure the reading asks for comes first;
+ * over-holding only costs speed. An identity word (mayAskIdentity) still holds the stream on any turn.
+ */
+function plainlyMathTurn(s: Session): boolean {
+  if (!s.turn || !s.package || mayAskIdentity(s.turn.text)) return false;
+  const text = s.turn.text;
+  if (/\d/.test(text) || valuesIn(text).length > 0) return true;
+  // Code's own reads: a help or stuck request, or a word answer of a word question ("true", "no", ">").
+  if (helpInWords(text) || saysStuck(text) || wordVerdict(s) !== null) return true;
+  const kind = s.package.operation.kind;
+  const words = OPERATION_WORDS[kind === "add" || kind === "subtract" || kind === "multiply" || kind === "divide" ? kind : ""];
+  return !!words && words.test(text);
+}
+
 /** D-345: what the tutor's stream needs before the model writes: code's own stance and the question's words. Null: no stream. */
 export function tutorStream(s: Session): TutorStreamContext | null {
   if (!s.tutor || !s.turn || !s.package || !tutorTeachingNow(s)) return null;
+  // Final check 4: only a turn plainly about the math streams before the model's reading is known; every other turn
+  // waits for the whole message, so a disclosure the reading asks for always comes first.
+  if (!plainlyMathTurn(s)) return null;
   const word = wordVerdict(s);
   const code = codeStance(s);
   const stance = word === "wrong" || (code === "none" && childSaysFalse(s.turn.text)) ? "wrong" : code === "none" && word === "right" ? "right" : code;
@@ -5119,7 +5158,9 @@ export function tutorStream(s: Session): TutorStreamContext | null {
   // A word question's "yes" streams only on code's right word: with no word code can read, the affirmation waits for
   // the whole message and its check.
   const wordQuestion = !!sessionClaim(s.package) || !!comparisonOf(s.package);
-  return { ...tutorStreamContext(s.package, s.turn.text, stance, vocabExtra(s), credited, wordQuestion), nameWords: nameWordsOf(s) };
+  // Final check 4: code's texts count only while the main question is the active problem (tutorTexts).
+  const texts = tutorTexts(s.package, [...s.turns.map((t) => t.text), s.turn.text]);
+  return { ...tutorStreamContext(s.package, s.turn.text, stance, vocabExtra(s), credited, wordQuestion), exact: texts.exact, nameWords: nameWordsOf(s) };
 }
 
 /**
@@ -5127,7 +5168,10 @@ export function tutorStream(s: Session): TutorStreamContext | null {
  * answer, the answer as a number that is not a value of the work or an operand (and that the child has not said), or a
  * board that now holds every digit of the answer.
  */
-function tellsAnswer(base: Session, pkg: OperationPackage, texts: readonly string[], drawn: readonly string[]): boolean {
+// Final check 3 (2026-11-15): only a right final answer the child COMMITTED to (`committedRight`: the committed read the
+// stance uses, or a result that stood) lets Maya say the answer back without giving it away. A number said in passing
+// ("I have 24 crayons. Help me."), a denial ("My answer is not 24.") or another question's answer is no such answer.
+function tellsAnswer(base: Session, pkg: OperationPackage, texts: readonly string[], drawn: readonly string[], committedRight: boolean): boolean {
   // A word answer ("true", "yes", ">"): a statement of Maya's (not a question, not a choice "A or B") that holds the word
   // the child has not said yet gives it away (final check 1, 2026-11-15: "The answer is true. Circle true.").
   const word = (pkg.answer.value as { value?: unknown }).value;
@@ -5135,14 +5179,12 @@ function tellsAnswer(base: Session, pkg: OperationPackage, texts: readonly strin
     if (typeof word !== "string" || word.trim() === "") return false;
     const w = word.trim().toLowerCase();
     const holds = (t: string) => new RegExp(`(^|[^a-z0-9])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^a-z0-9])`, "i").test(t);
-    const saidBefore = base.turns.some((t) => t.speaker === "child" && holds(t.text));
-    return !saidBefore && texts.some((x) => !/\?\s*$/.test(x) && !/\bor\b/i.test(x) && holds(x));
+    return !committedRight && texts.some((x) => !/\?\s*$/.test(x) && !/\bor\b/i.test(x) && holds(x));
   }
   const answer = pkg.answer.value.value;
   const own = new Set<number>([...tutorKind(pkg).workValues(pkg), ...(pkg.operation.operands as unknown[]).filter((v): v is number => typeof v === "number")]);
-  const childSaid = base.turns.some((t) => t.speaker === "child" && valuesIn(t.text).some((v) => v.type === "number" && v.value === answer));
-  // Maya saying back the answer the child offered gives nothing away.
-  if (!childSaid) for (const x of texts) {
+  // Maya saying back the answer the child committed to gives nothing away.
+  if (!committedRight) for (const x of texts) {
     if (equationsOf(x).some((e) => !e.negated && equationHolds(e) === true && e.result.q?.[1] === 1 && e.result.q[0] === answer)) return true;
     if (!own.has(answer) && valuesIn(x).some((v) => v.type === "number" && v.value === answer)) return true;
   }
@@ -5218,7 +5260,10 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     // own (pre-launch check 2, part 1).
     const explicitAnswer = sentencesOf(base.turn.text).some((x) => !/\?\s*$/.test(x) && /\d|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)\b/i.test(x) &&
       /^(?:(?:my|the)\s+(?:final\s+|whole\s+)?answer\s+is|i\s+got|it'?s|it\s+is)\b/i.test(x.trim()));
-    const committed = read.final?.type === "number" && !read.choice && (explicitAnswer || (!base.turn.text.includes("?") && !helpInWords(base.turn.text) && !saysStuck(base.turn.text)));
+    // Final check 3: any help word in the turn ("I have 24 crayons. Help me with this question.") commits nothing unless
+    // the child names their answer; the reader is broad on purpose (fail closed).
+    const helpWord = /\b(?:help|stuck|teach|explain|show me|don'?t (?:know|get|understand))\b/i.test(base.turn.text);
+    const committed = read.final?.type === "number" && !read.choice && (explicitAnswer || (!base.turn.text.includes("?") && !helpInWords(base.turn.text) && !saysStuck(base.turn.text) && !helpWord));
     if (committed && read.final?.type === "number") {
       const n = read.final.value;
       childValues.push(n);
@@ -5275,9 +5320,12 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   const op = kind.op?.(pkg);
   const claims = (sentence: string) => kind.claimProblems(pkg, sentence);
   const answer = pkg.answer.value.type === "number" ? pkg.answer.value.value : undefined;
-  let verdict = checkTutorSay(text, { stance, extra, childValues, claims, trades: tutorKind(pkg).workValues(pkg), columns: columnSums(pkg), nameWords: nameWordsOf(base), ...(op ? { op } : {}), ...(answer === undefined ? {} : { answer }) });
+  // Final check 4: code's texts only for the active problem (tutorTexts), with the question's own numbers.
+  const texts = tutorTexts(pkg, [...base.turns.map((t) => t.text), base.turn?.text ?? ""]);
+  const wordAnswer = !!sessionClaim(pkg) || !!comparisonOf(pkg);
+  let verdict = checkTutorSay(text, { stance, extra, childValues, claims, trades: tutorKind(pkg).workValues(pkg), columns: columnSums(pkg), ...texts, wordAnswer, nameWords: nameWordsOf(base), ...(op ? { op } : {}), ...(answer === undefined ? {} : { answer }) });
   // Code's own line never fails its turn: after streamed words that leave no room, the turn is those words.
-  if (fallback && !verdict.ok && sent.length) { text = lead; verdict = checkTutorSay(text, { stance: "none", extra, claims, trades: tutorKind(pkg).workValues(pkg), columns: columnSums(pkg), nameWords: nameWordsOf(base), ...(op ? { op } : {}) }); }
+  if (fallback && !verdict.ok && sent.length) { text = lead; verdict = checkTutorSay(text, { stance: "none", extra, claims, trades: tutorKind(pkg).workValues(pkg), columns: columnSums(pkg), ...texts, wordAnswer, nameWords: nameWordsOf(base), ...(op ? { op } : {}) }); }
   if (!verdict.ok) return no("say_check", `Your message was refused (${verdict.reason}): ${verdict.detail}`, verdict.reason);
   if (act === "close" && /\?\s*$/.test(text)) return no("say_check", "A close ends the call, so it asks nothing: say a short goodbye with no question.", "close_asks");
   // Child safety: each sentence that is not plain teaching is reviewed before it is said (the adapter runs the reviews,
@@ -5286,7 +5334,8 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   if (!fallback) for (const sentence of verdict.review) {
     if (reviews === undefined) { talk.push({ proposed: sentence, code: null, review: "not_run", shown: sentence }); continue; }
     const r = reviews.find((x) => x.text === sentence)?.result ?? null;
-    const pass = r?.verdict === "pass" || (r?.verdict === "fail" && r.rules.length > 0 && r.rules.every((id) => TUTOR_REVIEW_IGNORED.includes(id)));
+    // Final check 3: a refusal of a sentence that judges correctness is binding, whatever rules it names.
+    const pass = r?.verdict === "pass" || (r?.verdict === "fail" && r.rules.length > 0 && r.rules.every((id) => TUTOR_REVIEW_IGNORED.includes(id)) && !bindingReview(sentence, wordAnswer, stance));
     if (!pass) return no("say_review", `The safety review refused "${sentence}": ${r?.verdict === "fail" ? `${r.reason} (${r.rules.join(", ")})` : r?.reason ?? "no review"}. Say it another way.`, "review");
     // A pass on ignored rules only is stored as a plain pass: the trace check reads "rules" only on a fail (final check of #1044).
     talk.push({ proposed: sentence, code: null, review: "pass", shown: sentence });
@@ -5309,10 +5358,15 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   // Help and assistance for the outcome: a message or board that gives the whole answer is answer_given; else a
   // message that tells an open step's result is a show (guided), else a hint (part C review, 2026-11-15: "52 minus 28
   // is 24" is no small hint).
-  if (s.solved === null && act === "guide") {
+  // Final check 3: a result credited from words the child did not commit to ("I have 24 crayons. Help me.") does not
+  // make Maya's help the child's own work: her help is recorded unless the child committed to the right answer.
+  // Final check 4: only code's validated credit after this turn (the result that stands once any answer taken back this
+  // turn is cleared) lets Maya say the answer back without giving it away; never a number in the child's words.
+  const committedRight = s.solved === "child" && s.lastResult === "right";
+  if ((s.solved === null || !committedRight) && act === "guide") {
     const open = stepFacts(pkg).filter((st) => !base.done.includes(st.id));
     const notes = drawing.commands.flatMap((c) => ((c as { op?: unknown; text?: unknown }).op === "write" && typeof (c as { text?: unknown }).text === "string" ? [(c as { text: string }).text] : []));
-    const kind: Assistance = tellsAnswer(base, pkg, [...sentencesOf(text), ...notes], tutor.drawn) ? "answer_given"
+    const kind: Assistance = tellsAnswer(base, pkg, [...sentencesOf(text), ...notes], tutor.drawn, committedRight) ? "answer_given"
       : sentencesOf(text).some((x) => equationsOf(x).some((e) => !e.negated && equationHolds(e) === true && e.result.q?.[1] === 1 && (open.some((st) => e.result.q?.[0] === st.result) || tutorKind(pkg).workValues(pkg).includes(e.result.q?.[0] ?? NaN)))) ? "guided" : "hint";
     if (!s.assistance.includes(kind)) s.assistance.push(kind);
     // The step the child needed help with: the step open when the child asked or made no progress, never a step the
@@ -5544,14 +5598,19 @@ function withStreamed(base: Session, r: StepResult, at: number, planned: string,
  * a fixed reply due, or the content hold.
  */
 export function streamPlan(s: Session): { rules: SayRules; act: Act; stance: "wrong" | "right" | "none"; extra: ReadonlySet<string>; greeting: boolean; closed: (sentence: string) => boolean; confirmation: SayValue | null } | null {
-  if (!s.package || !s.turn || s.safety.flagged || s.stopRequested || s.replies?.length || !isTeaching(s.state) || s.scopeDue === "outside_work") return null;
+  // Final check 4: a redirect of a turn that did not stream leaves the call in REDIRECT; the next turn that is plainly
+  // about the math streams again, from the teaching state the call goes back to.
+  const teaching = isTeaching(s.state) || (s.state === "REDIRECT" && !!s.resume && isTeaching(s.resume));
+  if (!s.package || !s.turn || s.safety.flagged || s.stopRequested || s.replies?.length || !teaching || s.scopeDue === "outside_work") return null;
+  // Final check 4: only a turn plainly about the math streams before the model's reading is known (a plain hello too).
+  const greeting = /^(?:hi|hello|hey|hiya|good (?:morning|afternoon|evening))(?:,?\s+maya)?[\s!.,]*$/i.test(s.turn.text.trim());
+  if (!greeting && !plainlyMathTurn(s)) return null;
   const plan = codePlan(s);
   if (!plan || plan.codeWords) return null;
   // A request for help may turn into the easier example: it streams, but asks nothing before the act is known.
   const main = isTeaching(s.state) ? s.state : s.resume;
   const exampleLikely = main === "ASSESS" && s.done.length === 0 && (helpInWords(s.turn.text) || saysStuck(s.turn.text));
   // A plain hello ("Hi, Maya") answers the opening: it streams like a math turn, whatever kind the model names it.
-  const greeting = /^(?:hi|hello|hey|hiya|good (?:morning|afternoon|evening))(?:,?\s+maya)?[\s!.,]*$/i.test(s.turn.text.trim());
   return { rules: { ...plan.rules, ...(exampleLikely ? { noQuestion: true } : {}) }, act: plan.p.act, stance: codeStance(s), extra: vocabExtra(s), greeting, closed: (sentence) => closedMathSentence(sentence, s), confirmation: plan.rules.confirming ?? confirmAsk(s) };
 }
 

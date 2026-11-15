@@ -53,10 +53,16 @@ function call(pkg: unknown, says: string[], math: MathAnswer | null, stream = fa
 }
 
 describe("layer 1: coverage accounting in the claim reader", () => {
-  it("passes a true sentence whose math code reads whole, with no review", () => {
-    for (const s of ["12 minus 8 is 4.", "So 12 minus 8 is 4.", "52 is 4 tens and 12 ones.", "4 tens minus 2 tens is 2 tens.", "The answer is 24.", "24 is the answer.", "What is 12 minus 8?", "Trade 1 ten for 10 ones.", "Now subtract the ones.", "2 ones become 12."]) {
+  it("passes a true sentence whose math code reads whole, with no review, only in an exact closed form", () => {
+    for (const s of ["12 minus 8 is 4.", "So 12 minus 8 is 4.", "52 is 4 tens and 12 ones.", "4 tens minus 2 tens is 2 tens.", "What is 12 minus 8?", "Trade 1 ten for 10 ones.", "Now subtract the ones."]) {
       expect(unreadMath(s, ctxOf(SUB)), s).toEqual([]);
       expect(checkTutorSay(s, ctxOf(SUB)), s).toMatchObject({ ok: true, math: [] });
+    }
+    // The exact-match rule (2026-11-15): code reads these whole and finds them true, but no closed form or step text is
+    // the whole sentence, so they go to the math review.
+    for (const s of ["The answer is 24.", "24 is the answer.", "2 ones become 12."]) {
+      expect(unreadMath(s, ctxOf(SUB)), s).toEqual([]);
+      expect(checkTutorSay(s, ctxOf(SUB)), s).toMatchObject({ ok: true, math: [s] });
     }
   });
   it("sends a sentence with any number or relation word code did not read to the review", () => {
@@ -129,7 +135,7 @@ describe("layer 2: the math-truth review", () => {
     expect(input.lastTurns.child).toBe("{name} says 6 again.");
     expect(input.lastTurns.maya).not.toBeNull();
     expect(JSON.stringify(input)).not.toMatch(/Zoe/);
-    expect(input.promptVersion).toBe("maya-math-review-2");
+    expect(input.promptVersion).toBe("maya-math-review-3");
   });
 
   it("gives the review code's facts of the question and the child's turn, never the child's name", async () => {
@@ -169,7 +175,7 @@ describe("layer 2: the math-truth review", () => {
     const trace = await session.finish({ reason: "child_stopped" });
     expect(checkTrace(trace)).toMatchObject({ ok: true });
     expect(trace.counts).toMatchObject({ mathReviews: 1, mathRefusals: 0, refusals: 0 });
-    expect(trace.mathReviewer).toEqual({ id: "fake-math-review", promptVersion: "maya-math-review-2" });
+    expect(trace.mathReviewer).toEqual({ id: "fake-math-review", promptVersion: "maya-math-review-3" });
   });
 
   it.each([

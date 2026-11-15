@@ -93,8 +93,9 @@ describe("checkTutorSay: the whole-message check", () => {
   it("sends a plain math message without the talk review, and any other words to it", () => {
     expect(checkTutorSay("What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: false, review: [], math: [] });
     // Sixth check of #1006: a lead-in that can answer the child ("Good question", "Yes") is reviewed.
-    expect(checkTutorSay("Good question. What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: true, review: ["Good question."], math: [] });
-    expect(checkTutorSay("You did well. What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: true, review: ["You did well."], math: [] });
+    // The exact-match rule (2026-11-15): a sentence that is no exact match goes to the math review too.
+    expect(checkTutorSay("Good question. What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: true, review: ["Good question."], math: ["Good question."] });
+    expect(checkTutorSay("You did well. What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: true, review: ["You did well."], math: ["You did well."] });
     expect(checkTutorSay("I'm an AI, so I don't have a dog. What is 12 minus 8?", none)).toMatchObject({ review: [] });
     expect(checkTutorSay("Dogs are fun. What is 12 minus 8?", none)).toMatchObject({ review: ["Dogs are fun."] });
     expect(checkTutorSay("I'm an AI, so I don't have a dog. What is 12 minus 8?", none)).toMatchObject({ review: [] });

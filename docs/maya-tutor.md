@@ -25,18 +25,23 @@ Maya is the tutor, and code is the safety net. Savar approved this design on 202
 | Trades ("2 ones become 12", "5 tens became 4 tens") | `placeValueProblem` | Refused |
 | Comparisons ("12 is 4 more than 8", "4 is greater than 8"), brackets, compound number words ("one hundred and two"), spoken fractions ("five sixths"), objects with a stated size ("4 sticks of ten"), "which is" after a quantity and the value of a digit in a named number; a comparison or bracket code cannot read whole, and a decimal relation, are refused (pre-launch review B) | `falseClaims` (`tutor-math.ts`) | Refused |
 | "The answer is ...": the whole value (words, decimals, expressions) and its "not"; a value code cannot read | `answerProblems` (`tutor-math.ts`) | Refused |
-| No "yes" or "right" for a wrong answer (or for a false equation the child said), no "not quite" for a right one, in any sentence: the stance comes from code's own read of the child's committed answer and its credit (D-340), never only from the model's reading | `checkTutorSay` with the stance | Refused |
+| No correctness judgment against code's stance, in any sentence: any judgment word (right, correct, true, yes, exactly, perfect, great job, well done, nice, spot on, got it, nailed, and the negatives wrong, incorrect, false, not quite, nope) makes a sentence a judgment (`judgment` in `tutor.ts`). With stance "wrong" a positive one is refused, with stance "right" a negative one. The stance comes from code's own read of the child's committed answer and its credit (D-340), never only from the model's reading | `checkTutorSay` and the stream, with the stance | Refused |
 | At most 60 words (`TUTOR_WORD_LIMIT`) | `checkTutorSay` | Refused; code never trims |
 | A close only after the child solved the question, and never on a turn that asks for help (a stop and the time limit stay code's) | `proposeTutor` in `session.ts` | Refused |
-| Child safety of each sentence that is not plain teaching (`plainTeaching`): safety rules only (`TUTOR_REVIEW_SYSTEM`) | the talk review in the adapter, per sentence | Refused |
-| True math of each sentence whose math code did not read whole (`unreadMath`): the math-truth review with code's facts | the math review in the adapter, per sentence (below) | Refused |
+| Child safety of each sentence that is not plain teaching (`plainTeaching`): safety rules only (`TUTOR_REVIEW_SYSTEM`). A judgment is never plain teaching, and the review's refusal of a judgment is binding, whatever rules it names (`bindingReview`) | the talk review in the adapter, per sentence | Refused |
+| True math of each sentence that is no exact match (`codeAlone`, below): the math-truth review with code's facts | the math review in the adapter, per sentence (below) | Refused |
 
 ## Two-layer true math (2026-11-15)
 
 Each review round of the claim reader found new false sentences next to the last fix ("The answer is 24 and a half" read as 24; "4, which is greater than 8"; "One and a half is one half"). Patching phrasings does not end. The Chief of Staff's design has two layers:
 
-1. **Code alone.** A sentence passes on code alone only when the claim reader accounts for every number (digits, number words, fractions, "and a half", a remainder, mixed numbers) and every relation word (is, are, equals, makes, becomes, which is, that is, so after a number, greater, less, more, than, same) inside a claim it checked and found true (`readClaims` in `tutor-math.ts`, `unreadMath` in `tutor.ts`). A closed question form ("What is 12 minus 8?") claims nothing, but only in a question; the fixed true trade ("Trade 1 ten for 10 ones") and a place named alone claim nothing; an answer claim read whole and true is read. A word quantity such as "one hundred and two tens" (120 or 1,020) is never read as covered. A false claim code finds is refused as before: one repair, then code's honest line.
+1. **Code alone.** Replaced by the exact-match rule below (2026-11-15). Before it: a sentence passed on code alone when the claim reader accounted for every number (digits, number words, fractions, "and a half", a remainder, mixed numbers) and every relation word (is, are, equals, makes, becomes, which is, that is, so after a number, greater, less, more, than, same) inside a claim it checked and found true (`readClaims` in `tutor-math.ts`, `unreadMath` in `tutor.ts`). A closed question form ("What is 12 minus 8?") claims nothing, but only in a question; the fixed true trade ("Trade 1 ten for 10 ones") and a place named alone claim nothing; an answer claim read whole and true is read. A word quantity such as "one hundred and two tens" (120 or 1,020) is never read as covered. A false claim code finds is refused as before: one repair, then code's honest line.
 2. **The math-truth review.** A sentence with no found problem that code did not read whole is not refused. It goes to one small model call (`src/lib/maya-math-review.ts`, `MAYA_MATH_REVIEW_MODEL`, default `anthropic/claude-haiku-5.5`, Maya's OpenRouter key) with the sentence, Maya's sentences before it, the question, the steps with their results, the work values, the answer, code's verdicts on the child's numbers this turn and the last 4 turns (`mathReviewInput`, the child's name hidden; the contract is `src/lib/maya/math-review.ts`). It answers strict JSON `{verdict: "true" | "false" | "unsure", reason}`. Only "true" lets the sentence be said. "false", "unsure", an error, a time-out (the talk review's limit) or JSON outside the schema means one repair with the reason, then code's honest line. Without a math reviewer (no key) such a sentence is refused.
+
+   Version 3 of the review (`maya-math-review-3`, 2026-11-15). In real right-answer and "teach me" turns the review called true sentences "unsure" or "false" ("Now there are 12 ones.", "You traded a ten for 10 ones, I think."), and a streamed voice message gets no repair. Three changes:
+   - **Code's facts per step.** The input holds `stepStates` (`src/lib/maya/math-review-steps.ts`): for each step of the kind, its operation, operands, value and the state of the work after it, in plain words code writes from the package's computed steps only ("after the trade, 52 is 4 tens and 12 ones; ones done: 12 ones minus 8 ones is 4 ones; write 4 in the ones"; "tens: the carried 1 + 2 + 3 = 6 tens"; a product's rows; a digit and its value; a claim's comparison). `start` holds the printed numbers in places. The easier example has its own `stepStates`. Never the model's or the child's words, and the child's name is hidden.
+   - **One retry of "unsure".** An "unsure" answer of the first review goes once to `MAYA_MATH_REVIEW_RETRY_MODEL` (default `anthropic/claude-sonnet-5.5`, same key) with the same input, inside the same time limit. Only the retry's "true" passes; its "false", "unsure", an error or a time-out is final, and a late answer changes nothing. A verdict that its own reason contradicts ("true", then "labeling it as the tens step is wrong"; "false", then "re-check: this is true") is read as "unsure", so it goes to the retry. The second ask of an answer that is not JSON stays. The trace marks a retried review (`attempts[].math[].retried`, `counts.mathRetries`, `mathReviewer.retryId`); the retry counts in Maya's spend as a review attempt.
+   - **Strict output and more thinking.** The schema has no length bound (a bound turned off Claude's strict JSON, and Sonnet wrote its working before the JSON); the reader cuts a long reason. The first review runs at effort "medium": at "low" it judged 1 or 2 of #1056's 124 false sentences true in 3 of 5 runs.
 
 Pre-launch check 2 (2026-11-15) closed two gaps of layer 1. A column sum said in a place ("1 + 2 + 3 = 6 tens") is read whole only when it is one of the question's own column sums in that column's place (`columnSums` in `tutor.ts`); any other ("1 plus 2 plus 3 is 6 hundreds" in 52 − 28) goes to the review. And every word after a read claim, to the end of its clause, must be a plain link word: "12 minus 8 is 4 with a negative sign" and "12 minus 8 is 4 in the hundreds place" go to the review. The math review's step facts hide the child's name too, as its question does.
 
@@ -81,6 +86,49 @@ First sentence, real Maya model (`anthropic/claude-sonnet-5.5`), real talk and m
 | After | 12 of 15 (12 of 12 math and help turns, 0 of 3 off-topic) | 903 ms (math and help turns: 854 ms) |
 
 On every off-topic turn, before and after, the message starts with "I'm an AI". Before, 2 of 15 turns ended in code's fallback line; after, none.
+
+### The exact-match rule (2026-11-15)
+
+Every Sol round found new false sentences that the claim reader passed on code alone ("24 is the answer with a negative sign.", "12 minus 8 is 4, with a negative sign."). The Chief of Staff's decision: code alone grants a pass only to an exact match, never to coverage.
+
+- **Code alone** (`codeAlone` in `tutor.ts`) passes a sentence only when the whole sentence (`exactKey`: trimmed, one final ".", "!" or "?" removed, plain apostrophes and minus signs, lower case) is:
+  1. one of code's own texts for this question (`exactTexts`): each step's work text (`TutorKind.steps`) sentence by sentence, each part of it between ";" or ":" (each part is code's own true statement of this question, such as "write 4 in the ones"), and the step question after each number of done steps (`TutorKind.stepQuestion`); or
+  2. one closed plain form, as the whole sentence: an equation or place-value claim of numbers (`ASSERT_FORM`: "12 minus 8 is 4.", "52 is 4 tens and 12 ones.", "52 minus 28 isn't 36.") in which code read every number and relation inside a claim it found true; a closed question form ("What is 12 minus 8?"), only in a question; the fixed true trade ("Trade 1 ten for 10 ones."); a place named alone; or an operation on a place that is the question's own ("Subtract the ones." in a subtraction).
+
+  No lead-in ("Now", "Okay"), no `{name}` and no other word: no closed form allows one. The true-math checks of `checkTutorSay` still run on every sentence.
+- **The claim reader only refuses.** `falseClaims`, `answerProblems` and the kinds' `claimProblems` still refuse a claim they find false (one repair, then code's line). An empty `unreadMath` no longer grants a pass; it is only one more condition of a closed form. Every sentence that is no exact match goes to the math-truth review, also a sentence with no number ("Let's start with the ones."), beside the talk review when that runs.
+- "52 minus 28 is the answer." (final check 3, P2) was refused by `answerProblems`, which read it as "28 is the answer". A number after an operation word ("minus", "plus", "times", "by", "away", "over", "x") or a sign is now not read as the subject: code neither refuses nor reads it, so the sentence goes to the math review.
+- The prompt's first-sentence rule (`maya-tutor-5`) asks for the sentence as a whole closed form with no word before it. A test checks that every example in the rule passes on code alone.
+
+Measured on 2026-11-15 on base `16fde3a7a` with this change:
+
+| Set | Passes on code alone | Goes to the review | Refused by code |
+|---|---|---|---|
+| The 515 accepted real sentences of 2026-11-14 (`tutor-corpus-20261114.json`) | 21 (4.1%; was 133, 25.8%) | 494 (95.9%) | 0 (0%) |
+| Code's step texts of the Book 1 census (567 tutor questions, 1,573 sentences) | 1,573 (100%; was 49, 3.1%) | 0 | 0 |
+| Code's step questions of the census, after each number of done steps (1,589) | 1,589 (100%) | 0 | 0 |
+
+- False refusals of layer 1: 0 of 515 and 0 of 1,573.
+- The 124 distinct false sentences of the Sol rounds and the pre-launch checks (`src/lib/maya/__fixtures__/tutor-false-sentences-20261115.json`) pass on code alone in none of 7 tutor packages (52 − 28, 27 + 39, a claim, place value, fractions, 1340 ÷ 2, 6 × 440): each is refused or held for the review (`src/lib/maya-text-exact-match.test.ts`).
+
+First sentence, real Maya model (`anthropic/claude-sonnet-5.5`), real talk and math reviews (Haiku 5.5), the voice stream on (`onSayPart` in the text adapter, no speech-to-text or voice), 52 − 28, 3 runs of each turn:
+
+| Turn | Median first sentence | Median whole message | First sentence on code alone |
+|---|---|---|---|
+| Right answer ("It's 24.") | 1,119 ms | 3,263 ms | 3 of 3 |
+| Wrong answer ("It's 36.") | 864 ms | 4,916 ms | 3 of 3 |
+| "Can you teach me how to do this?" | 886 ms | 2,898 ms | 3 of 3 |
+| Off-topic ("What is your favorite animal?") | 2,774 ms | 2,774 ms | 0 of 3 (starts with "I'm an AI") |
+| Help request ("I need help.") | 899 ms | 3,266 ms | 3 of 3 |
+
+- Median of the 12 math and help turns: 893 ms (#1046: 854 ms). The off-topic turn's first sentence waits for its talk and math reviews.
+- More sentences now wait for the math review, so a "false" or "unsure" verdict on a true sentence happens more often. In the 15 turns above: no fallback on a math or help turn, and 1 repair on an off-topic turn (a talk review refusal). In 10 more right and teach turns (two trial runs and a check run), 4 ended in code's line after the first sentence. In the check run, each was a math review "unsure" or "false" on a true sentence about the child's work or the board ("You traded a ten for 10 ones, I think.", "Now there are 12 ones."). In voice a streamed message gets no repair, so code says its step question.
+
+### Final check 3 (2026-11-15)
+
+- **A turn with any identity word streams nothing.** "Am I speaking to somebody real?" and "Is your voice a real person?" are no `asksIdentity` form, so two math sentences streamed before the disclosure the model's reading asked for. Now any identity word in the child's turn (real, person, people, human, somebody, someone, AI, robot, bot, computer, machine, alive, live person, actual, who are you, what are you; `mayAskIdentity` in `identity.ts`) holds every sentence of the turn (`tutorStream` and `streamPlan` return null). When the reading or code's reader says identity, the exact `about.ai` line goes first; else the held sentences go out with the whole message. Over-holding costs only speed.
+- **Only a committed right answer keeps Maya's answer from counting as given.** "I have 24 crayons. Help me with this question." counted as the child having said 24, so Maya's "52 minus 28 is 24." was saved as a small hint. Now `tellsAnswer` takes `committedRight`: a right final answer the child committed to (the committed read the stance uses, or a result that stood), or code's right word on a word question. Any help word in the turn (help, stuck, teach, explain, show me, don't know, don't get, don't understand) commits nothing unless the child names the answer ("My answer is 24."), and Maya's help is recorded whenever the child has no committed right answer.
+- **Any judgment follows code's stance.** After "My answer is 36.", "You have the correct answer.", "Perfect!" and "You nailed it!" reached the child, and a talk review that refused one for "math" was ignored. Now the judgment reader refuses them, in the whole message and in the stream, and a judgment always goes to the talk review, whose refusal is binding.
 
 ## Credit, the learning event and the parent note
 

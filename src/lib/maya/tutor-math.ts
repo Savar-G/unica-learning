@@ -289,7 +289,21 @@ const RELATION_WORDS = new Set(["greater", "less", "more", "fewer", "bigger", "s
 /** One column sum of the question's own work: the numbers added in that column and the place's value (pre-launch check 2). */
 export interface ColumnSum { terms: readonly number[]; place: number }
 
+/**
+ * Final check 4 (2026-11-15): a number said with more digits than code reads exactly (more than 15 significant digits:
+ * Number() rounds "9999999999999999" to 10000000000000000). A sentence with one is never read by code, neither true nor
+ * false: it goes to the math review.
+ */
+export function unsafeNumberSaid(sentence: string): boolean {
+  return [...sentence.replace(/(\d),(?=\d{3}\b)/g, "$1").matchAll(/\d+(?:\.\d+)?/g)].some((m) => m[0].replace(".", "").replace(/^0+/, "").length > 15);
+}
+
+/** A value code computed that it cannot hold exactly: past the safe integers. */
+const unsafeValue = (v: number) => !Number.isFinite(v) || Math.abs(v) > Number.MAX_SAFE_INTEGER;
+
 export function readClaims(sentence: string, op?: "add" | "subtract", trades: readonly number[] = [], columns: readonly ColumnSum[] = []): { problems: string[]; unread: string[] } {
+  // Final check 4: an unsafe number is never read; every number of the sentence stays unread.
+  if (unsafeNumberSaid(sentence)) return { problems: [], unread: [...sentence.matchAll(/\d+(?:\.\d+)?/g)].map((m) => m[0]) };
   const problems: string[] = [];
   // A division with a remainder ("15 ÷ 6 = 2 R 3", "thirteen divided by two is six remainder one") is read whole, then
   // left out.
@@ -378,7 +392,7 @@ export function readClaims(sentence: string, op?: "add" | "subtract", trades: re
       const base = sign && !rel.now ? than(left.next + 2) : null;
       if (sign && base) {
         const [a, b] = [valued(left), valued(base)];
-        if (a && b) {
+        if (a && b && !unsafeValue(a.value) && !unsafeValue(b.value)) {
           const holds = sign > 0 ? a.value > b.value + 1e-9 : a.value < b.value - 1e-9;
           if (holds === rel.negated) problems.push(`it says ${a.value} is ${rel.negated ? "not " : ""}${sign > 0 ? "more" : "less"} than ${b.value}`);
           else mark(left.at, base.next);
@@ -401,7 +415,7 @@ export function readClaims(sentence: string, op?: "add" | "subtract", trades: re
     const base = sign && chain.length === 2 && !rels[0].now ? than(at + 1) : null;
     if (sign && base) {
       const [a, b, c] = [valued(chain[0]), valued(chain[1]), valued(base)];
-      if (a && b && c) {
+      if (a && b && c && ![a, b, c].some((x) => unsafeValue(x.value))) {
         const holds = near(a.value, c.value + sign * b.value);
         if (holds === rels[0].negated) problems.push(`it says ${a.value} is ${rels[0].negated ? "not " : ""}${b.value} ${sign > 0 ? "more" : "less"} than ${c.value}`);
         else mark(chain[0].at, base.next);
@@ -419,7 +433,8 @@ export function readClaims(sentence: string, op?: "add" | "subtract", trades: re
     if (runsOn && !rels.some((r) => r.eq)) { i = at; continue; }
     // An object word with "of" and a unit code could not read ("4 tens is 4 sticks of wood") leaves the count unread.
     if (OBJECT_WORDS.has(word) && wordAt(items, at + 1) === "of" && chain.some((c) => c.units)) problems.push(`it counts ${word} with a size code cannot read`);
-    const sides = chain.map(valued);
+    // Final check 4: a side code computed past the safe integers is not read, neither true nor false.
+    const sides = chain.map(valued).map((x) => (x && unsafeValue(x.value) ? null : x));
     const before = problems.length;
     let unbound = false;
     for (let k = 0; k < rels.length; k++) {
@@ -500,6 +515,8 @@ export function answerProblems(sentence: string, answer: number): string[] {
 export function answerClaims(sentence: string, answer: number): { problems: string[]; read: { index: number; length: number }[] } {
   const problems: string[] = [];
   const read: { index: number; length: number }[] = [];
+  // Final check 4: an unsafe number is never read; the sentence goes to the math review.
+  if (unsafeNumberSaid(sentence)) return { problems, read };
   const text = sentence.replace(/[’]/g, "'");
   const after = /\b(?:the|your|our)\s+(?:whole\s+|final\s+|right\s+)?answer\s+(is not|isn't|is|equals|=|would be|will be|should be|must be)\s+([^,;:!?]*?)(?=[,;:!?]|\.(?!\d)|$)/gi;
   for (const m of text.matchAll(after)) {
@@ -521,12 +538,21 @@ export function answerClaims(sentence: string, answer: number): { problems: stri
   for (const m of text.matchAll(before)) {
     const lead = text.slice(0, m.index! + m[0].indexOf(m[1])).trim().split(/\s+/).at(-1)?.toLowerCase() ?? "";
     if (DETERMINERS.has(lead)) continue;
+    // Final check 3 (P2): a number after an operation ("52 minus 28 is the answer") is not the subject alone. Code
+    // cannot read the subject whole, so it neither refuses nor reads it: the sentence goes to the math review.
+    if (/^(?:minus|plus|times|by|away|over|x)$|[+\-−–×÷*/]$/i.test(lead)) continue;
+    // Final check 4 (P2): code reads "N is the answer" only when N is the whole subject of its clause ("The difference
+    // between 52 and 28 is the answer" is not "28 is the answer"). Any other word before N, after a short lead-in, leaves
+    // the claim unread: no refusal, and the sentence goes to the math review.
+    const start = m.index! + m[0].indexOf(m[1]);
+    let subject = text.slice(0, start).split(/[,;:!?]|\.(?!\d)/).at(-1)!.trim();
+    for (let k = 0; k < 4; k++) subject = subject.replace(/^(?:\{name\}|(?:now|so|next|then)\b)[\s!.]*/i, "").trim();
+    if (subject !== "") continue;
     const n = numberOf(m[1]);
     if (n === null) { problems.push(`"${m[0].trim()}" says an answer code cannot read`); continue; }
     const negated = /not|n't/.test(m[2]);
     if ((Math.abs(n - answer) < 1e-9) === negated) problems.push(`${n} is ${negated ? "" : "not "}the answer to the question`);
     else {
-      const start = m.index! + m[0].indexOf(m[1]);
       read.push({ index: start, length: m.index! + m[0].length - start });
     }
   }
