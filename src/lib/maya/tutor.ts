@@ -17,7 +17,7 @@ import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, typ
 import { tutorKindOf } from "./tutor-kinds";
 import { affirms, equationHolds, equationsOf, neverSayProblem, sayNumbers, sentencesOf } from "./say-check";
 import { exactSafe } from "./math-vocab";
-import { answerClaims, answerProblems, falseClaims, readClaims, REMAINDER_SAID } from "./tutor-math";
+import { answerClaims, answerProblems, falseClaims, readClaims, REMAINDER_SAID, type ColumnSum } from "./tutor-math";
 
 /** The hard ceiling of one Maya message, in words. Over it, the model gets one repair with the reason; code never trims. */
 export const TUTOR_WORD_LIMIT = 60;
@@ -111,7 +111,7 @@ const PLAIN_FORMS: readonly RegExp[] = [ASSERT_FORM, ...QUESTION_FORMS.filter((r
  * question); the fixed true trade and a place named alone claim nothing; an answer claim read whole and true is read.
  * The kinds' own checks (claimProblems) refuse, but read nothing here: a sentence only a kind reads goes to the review.
  */
-export function unreadMath(sentence: string, ctx: Pick<TutorCheckContext, "op" | "trades" | "answer"> = {}): string[] {
+export function unreadMath(sentence: string, ctx: Pick<TutorCheckContext, "op" | "trades" | "answer" | "columns"> = {}): string[] {
   let text = sentence.replace(/[’]/g, "'").replace(/[−–]/g, "-").trim();
   const asks = /\?\s*$/.test(text);
   // The clauses as plainTeaching splits them, with their separators kept, so the claim reader reads the rest as said.
@@ -126,7 +126,14 @@ export function unreadMath(sentence: string, ctx: Pick<TutorCheckContext, "op" |
     const spans = answerClaims(text, ctx.answer).read.sort((a, b) => b.index - a.index);
     for (const { index, length } of spans) text = `${text.slice(0, index)} ; ${text.slice(index + length)}`;
   }
-  return readClaims(text, ctx.op, ctx.trades).unread;
+  return readClaims(text, ctx.op, ctx.trades, ctx.columns).unread;
+}
+
+const COLUMN_PLACES = ["ones", "tens", "hundreds", "thousands", "ten thousands", "hundred thousands", "millions"];
+
+/** The question's own column sums (each add-column step: its carry and digits, and its place), for unreadMath. */
+export function columnSums(pkg: OperationPackage): ColumnSum[] {
+  return pkg.steps.flatMap((s) => (s.kind === "add-column" && COLUMN_PLACES.includes(s.place) ? [{ terms: [...(s.carryIn > 0 ? [s.carryIn] : []), ...s.digits], place: 10 ** COLUMN_PLACES.indexOf(s.place) }] : []));
 }
 
 /** A short spoken lead-in before the math of a clause: fixed words only. */
@@ -195,6 +202,8 @@ export interface TutorCheckContext {
   trades?: readonly number[];
   /** The words of the child's name, which replaces each {name} before the child hears it (default 1). */
   nameWords?: number;
+  /** The question's own column sums (columnSums): only these read "1 + 2 + 3 = 6 tens" whole (pre-launch check 2). */
+  columns?: readonly ColumnSum[];
 }
 
 /** A division with a remainder ("15 ÷ 6 = 2 R 3", in digits or words): falseClaims reads it whole. */
@@ -332,6 +341,7 @@ export function tutorStreamContext(pkg: OperationPackage, text: string, stance: 
     ...(answer === null ? {} : { answer }),
     claims: (sentence: string) => kind.claimProblems(pkg, sentence),
     trades: kind.workValues(pkg),
+    columns: columnSums(pkg),
     allowed,
     // A "yes" streams only when no reading can make it wrong: the child said no number, or only numbers code's own read
     // credits as right (the final check keeps code's credit over the model's reading). On a word question (a claim or a

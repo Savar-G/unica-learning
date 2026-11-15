@@ -7,6 +7,7 @@
 // and 5, so it refuses every true decimal equation, and the board's columns do not draw a decimal point.
 import type { OperationPackage, WorkedStep } from "@/lib/question-package";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, type TutorStepFact } from "../tutor-kind";
+import { clauseWith, countedInText, finalQuestion, isGroup, THING, WHO, WORD } from "./asks";
 
 type ColumnStep = Extract<WorkedStep, { kind: "add-column" | "subtract-column" }>;
 
@@ -58,7 +59,54 @@ function wordsAgree(text: string, kind: "add" | "subtract", a: number, b: number
   // "How many more points does Mia score?" compares: a subtraction. Its "more" is not a gain.
   const gains = ADD_WORDS.test(words.replace(/\bhow (?:many|much) more\b|\bmore than\b/gi, " "));
   const takes = SUBTRACT_WORDS.test(words);
-  return kind === "add" ? gains && !takes : takes && !gains;
+  if (!(kind === "add" ? gains && !takes : takes && !gains)) return false;
+  return asksResult(t, kind, a, b);
+}
+
+/** The closed question forms of an addition story: a total, or what someone has now. */
+const ADD_ASKS = [
+  new RegExp(String.raw`^how many ${THING} (?:is that |are there |does ${WHO} have |do ${WHO} have )?(?:in all|altogether|in total|together)$`),
+  new RegExp(String.raw`^how many ${THING} (?:does|do) ${WHO} have now$`),
+  // "they" are both of the story's people: a total.
+  new RegExp(String.raw`^how many ${THING} did (?:they|both of them) ${WORD}(?: in all| altogether| together)?$`),
+];
+/** The closed question forms of a subtraction story: what is left, or what someone has now. */
+const LEFT_ASKS = [
+  new RegExp(String.raw`^how many ${THING} (?:are|is) left$`),
+  new RegExp(String.raw`^how many ${THING} (?:does|do) ${WHO} have (?:left|now)$`),
+];
+/** A subtraction story that compares: "How many more points does Ava score?". */
+const COMPARE_ASK = new RegExp(String.raw`^how many (?:more|fewer) ${THING} (?:does|do|did) ${WHO} ${WORD}$`);
+/** Words of a clause that say something was taken or given. */
+const TAKEN = /\b(?:gives?|gave|given|away|sells?|sold|spends?|spent|uses?|used|eats?|ate|eaten|loses?|lost|removes?|removed|breaks?|broke|broken|takes?|took|taken)\b/;
+/** Words of a clause that say a later or earlier moment, or the result itself. */
+const MOMENT = /\b(?:left|leftover|remains?|remaining|now|at first|before|in all|altogether|total|together)\b/;
+
+/**
+ * Pre-launch check 2: the story's final question asks for the stored operation's result, in a closed form, about the
+ * thing its first number counts. A subtraction's first number is what someone has (no take word and no "now" or "left"
+ * in its clause) and its second number is what is taken; a comparison asks how many more the first number's person has;
+ * an addition's first number is a start and its second is what is gained. "How many counters did she have at first?"
+ * and "How many boxes are left?" (a group, not the things it holds) keep the controller.
+ */
+function asksResult(t: string, kind: "add" | "subtract", a: number, b: number): boolean {
+  const q = finalQuestion(t);
+  if (q === null) return false;
+  const first = clauseWith(t, a);
+  const second = clauseWith(t, b);
+  if (first === null || second === null || first === second) return false;
+  const thingOf = (m: RegExpExecArray | null) => (m && countedInText(t, m[1]) && !isGroup(m[1]) ? m : null);
+  if (kind === "add") {
+    const m = thingOf(ADD_ASKS.map((re) => re.exec(q)).find(Boolean) ?? null);
+    return !!m && !MOMENT.test(first) && !TAKEN.test(first) && ADD_WORDS.test(second) && !TAKEN.test(second);
+  }
+  const left = thingOf(LEFT_ASKS.map((re) => re.exec(q)).find(Boolean) ?? null);
+  if (left) return !MOMENT.test(first) && !TAKEN.test(first) && TAKEN.test(second);
+  const more = thingOf(COMPARE_ASK.exec(q));
+  if (!more) return false;
+  // The person asked about is the person of the first number; neither clause takes anything.
+  const who = more[2].split(" ").at(-1)!;
+  return new RegExp(String.raw`\b${who}\b`).test(first) && !new RegExp(String.raw`\b${who}\b`).test(second) && !TAKEN.test(first) && !TAKEN.test(second) && !MOMENT.test(first);
 }
 
 /** Where the number `n` is first printed in `t` (commas taken out), as a whole number; -1 when it is not. */

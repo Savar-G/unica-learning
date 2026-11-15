@@ -203,7 +203,8 @@ describe("#1020 review fixes", () => {
   it("4. does not fit a story whose words are not its operation's", () => {
     expect(multiplyKind.fits(opPkg("A ribbon is 6 cm long. Each piece is 2 cm long. How many pieces can be cut?", mul(6, 2), mul(2, 2)))).toBe(false);
     expect(multiplyKind.fits(opPkg("Sam shares 12 apples equally with 3 friends. How many does each get?", div(12, 3), div(8, 2)))).toBe(false);
-    expect(multiplyKind.fits(opPkg("12 apples and 3 pears are in a bag. How many in all?", mul(12, 3), mul(2, 2)))).toBe(true);
+    // Pre-launch check 2: "How many in all?" of 12 apples and 3 pears asks for 15, not 12 × 3 (no closed product ask).
+    expect(multiplyKind.fits(opPkg("12 apples and 3 pears are in a bag. How many in all?", mul(12, 3), mul(2, 2)))).toBe(false);
     // Controls: product stories fit.
     expect(multiplyKind.fits(P.story)).toBe(true);
     expect(multiplyKind.fits(opPkg("A bus carries 60 people. How many people can 100 buses carry?", mul(60, 100), mul(20, 10)))).toBe(true);

@@ -6,6 +6,7 @@
 // controller.
 import type { OperationPackage, WorkedStep } from "@/lib/question-package";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, type TutorStepFact } from "../tutor-kind";
+import { countedInText, finalQuestion, isGroup, sentencesIn, THING, WHO, WORD as FREE } from "./asks";
 
 type OperateStep = Extract<WorkedStep, { kind: "operate" }>;
 type Sign = OperateStep["op"];
@@ -140,8 +141,50 @@ function fits(pkg: OperationPackage): boolean {
     known.add(st.value);
   }
   if (steps.at(-1)!.value !== pkg.answer.value.value) return false;
-  if (speaksOfPattern(pkg.text)) return patternOf(pkg) !== null;
-  return storyMatches(pkg.text, steps) && printedAgrees(pkg.text, tokens, pkg.answer.value.value);
+  if (speaksOfPattern(pkg.text)) return patternOf(pkg) !== null && patternAsks(pkg.text);
+  return storyMatches(pkg.text, steps) && printedAgrees(pkg.text, tokens, pkg.answer.value.value) && storyAsks(pkg.text);
+}
+
+/**
+ * Pre-launch check 2: a pattern question is its rule and one closed ask, nothing else: "A pattern starts at 13 and adds
+ * 5 each time. What is the 4th term?" or "... The 3rd term is 23.". "What is the 4th term minus 2?" keeps the controller.
+ */
+function patternAsks(text: string): boolean {
+  const s = sentencesIn(text).map((x) => x.toLowerCase());
+  return s.length === 2 && /^a pattern starts at \d+ and (?:adds|subtracts|takes away) (?:\d+|\?) each time\.$/.test(s[0]) &&
+    new RegExp(String.raw`^(?:what is (?:the|its) (?:${ORDINAL}) term\?|(?:the|its) (?:${ORDINAL}) term is \d+\.)$`).test(s[1]);
+}
+
+/** The closed question forms of a story whose expression gives what is there at the end, or the total. */
+const STORY_ASKS = [
+  new RegExp(String.raw`^how many ${THING} (?:does|do) ${WHO} have (?:now|left|after \d+ ${FREE})$`),
+  new RegExp(String.raw`^how many ${THING} (?:are|is) (?:left|still (?:at|in|on) (?:the )?${FREE})$`),
+  new RegExp(String.raw`^how many ${THING} (?:is that|are there) (?:in all|altogether|in total)$`),
+  new RegExp(String.raw`^how many ${THING} (?:live|are) (?:in (?:the )?${FREE}|there) now$`),
+  // "How many live there now?": the people the story counts.
+  /^how many live (?:there|here) now$/,
+];
+/** Closed asks that name no counted thing: a height after the growth, a new code, a perimeter. */
+const STORY_VALUE_ASKS = [
+  new RegExp(String.raw`^how tall is (?:it|the ${FREE}) (?:now|after \d+ ${FREE})$`),
+  /^what is the new (?:code|number|total)$/,
+  /^what is (?:its|the) perimeter(?: in [a-z]+)?$/,
+];
+
+/**
+ * Pre-launch check 2: a story's final question asks for the expression's result, in a closed form: what is there at the
+ * end ("How many buttons are left?"), the total, a height after the growth, a new code or a perimeter. A counted thing
+ * must be counted after a printed number and must not be a group. "How many buttons did it sell?" asks for a printed
+ * number, and keeps the controller. A bare printed expression is read by printedAgrees.
+ */
+function storyAsks(text: string): boolean {
+  const bare = text.replace(/\d[\d,]*/g, " ").replace(/[+−×÷\-x*/=?().:]/g, " ").replace(/\b(?:what is|find|work out|calculate)\b/gi, " ").trim();
+  if (bare === "") return true;
+  const q = finalQuestion(text);
+  if (q === null) return false;
+  if (STORY_VALUE_ASKS.some((re) => re.test(q))) return true;
+  const m = STORY_ASKS.map((re) => re.exec(q)).find(Boolean);
+  return !!m && (m[1] === undefined || (countedInText(text, m[1]) && !isGroup(m[1])));
 }
 
 /** The numbers of a token list, in order. */
