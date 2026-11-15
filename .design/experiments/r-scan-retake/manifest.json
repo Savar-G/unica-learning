@@ -1,0 +1,28 @@
+{
+  "round": "r-scan-retake",
+  "date": "2026-11-15",
+  "task": "Scan retake checking feedback and polling",
+  "browser": "Aside CLI --account u0",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "source": "npm run dev -- --port 3143; temporary /scan-retake-demo imported the real ScanPages, scan stack and day strip with fake data and local fetch responses. The fixture was removed before commit.",
+  "screenshots": [
+    {
+      "file": "checking-card-390.png",
+      "state": "Page 23 card immediately after a retake file was picked; spinner and Checking page 23…"
+    },
+    {
+      "file": "checking-tile-390.png",
+      "state": "Page 23 tile while the replacement is pending; spinner and Checking page 23…"
+    },
+    {
+      "file": "verdict-390.png",
+      "state": "Server verdict ready: the card leaves, page 23 is Ready, and auto-send offers Undo."
+    }
+  ],
+  "review": "Checked image layout and state copy at 390 px. No horizontal overflow (innerWidth and body.scrollWidth both 390). The demo tab was closed.",
+  "limits": "Synthetic page image and fake API states. No physical camera, real QR, hosted authentication, Storage or recognition was tested.",
+  "storage": "PNG files tracked with Git LFS."
+}

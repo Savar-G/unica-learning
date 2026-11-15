@@ -75,7 +75,7 @@
 .scan-flag.is-ready { background: var(--scan-leaf); color: #fff; box-shadow: 0 0 0 2px #fff; }
 .scan-flag.is-sent { background: var(--ink); color: #fff; box-shadow: 0 0 0 2px #fff; }
 .scan-flag.is-refused { background: var(--accent); color: #111; box-shadow: 0 0 0 2px #fff; }
-.scan-spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--ink); animation: scan-spin 1s linear infinite; }
+.scan-spin { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--ink); animation: scan-spin 1s linear infinite; }
 @keyframes scan-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .scan-spin { animation: none; border-top-color: var(--ink-2); } }
 

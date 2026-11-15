@@ -37,8 +37,8 @@ describe("a sent page's marks on the stack (#915)", () => {
     items: results.map((result) => ({ result })),
   });
   it("counts right answers, answers to practise and answers still waiting", () => {
-    expect(pageMarks(view(["right", "right", "wrong", "blank"]))).toEqual({ right: 2, scored: 4, total: 4, toPractise: 2, waiting: 0, complete: true });
-    expect(pageMarks(view(["right", null, null], "incomplete", 1, 1))).toEqual({ right: 1, scored: 1, total: 3, toPractise: 0, waiting: 2, complete: false });
+    expect(pageMarks(view(["right", "right", "wrong", "blank"]))).toEqual({ right: 2, scored: 4, total: 4, toPractise: 2, waiting: 0, automaticPending: 0, complete: true });
+    expect(pageMarks(view(["right", null, null], "incomplete", 1, 1))).toEqual({ right: 1, scored: 1, total: 3, toPractise: 0, waiting: 2, automaticPending: 1, complete: false });
   });
 });
 
@@ -57,5 +57,25 @@ describe("the stack before the first photo (#915 day strip)", () => {
     expect(read.photos).toEqual([]);
     expect(read.pages.map((p) => [p.pageNumber, p.day, p.pageOfDay, p.pagesInDay])).toEqual([[3, "Day 1", 1, 2], [4, "Day 1", 2, 2]]);
     expect(await readScanStack(fake([]), "parent", "child", true)).toEqual({ photos: [], pages: [] });
+  });
+});
+
+describe("the stack's separate photo check", () => {
+  it("returns only the parent's bounded view, with no claim token or provider details", async () => {
+    const rows: Record<string, unknown[]> = {
+      scan_photos: [{ id: "photo", page_id: "page", workbook_id: "book", state: "saved", created_at: "2026-11-15T10:00:00Z", expires_at: "2027-01-01T00:00:00Z", printed_revision: REVISION, sent_at: null, photo_check: { state: "pending", token: "private-claim", at: "2026-11-15T10:00:00Z" } }],
+      workbooks: [{ id: "book", number: 1 }],
+      workbook_pages: [{ id: "page", workbook_id: "book", page_number: 23, day_label: "Day 4", page_type: "practice" }],
+      scan_calibrations: [{ photo_id: "photo", state: "ready", printed_revision: REVISION, sheetCheck: 1 }],
+    };
+    const db = { from(table: string) {
+      const b = { select: () => b, eq: () => b, in: () => b, order: () => b, limit: () => b,
+        then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data: rows[table] ?? [], error: null }).then(resolve) };
+      return b;
+    } } as unknown as SupabaseClient<Database>;
+    const read = await readScanStack(db, "parent", "child", true, Date.parse("2026-11-15T10:01:00Z"));
+    expect(read.photos[0]).toMatchObject({ pageNumber: 23, check: "ready", photoCheck: { state: "pending" } });
+    expect(read.photos[0].photoCheck).toEqual({ state: "pending" });
+    expect((await readScanStack(db, "parent", "child", false, Date.parse("2026-11-15T10:01:00Z"))).photos[0]).not.toHaveProperty("photoCheck");
   });
 });

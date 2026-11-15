@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { spreadNote, addingCount, buildStack, dayPages, duplicateNote, refusalCopy, roomNote, sendLabel, stackSummary, waitingNote, type StackPhoto, type StackUpload } from "@/lib/scan-stack";
+import { scanWorkPending, spreadNote, addingCount, buildStack, dayPages, duplicateNote, refusalCopy, roomNote, sendLabel, stackSummary, waitingNote, type StackPhoto, type StackUpload } from "@/lib/scan-stack";
 
 const BOOK = "book-1";
 // Workbook 1: a cover, Day 4 with pages 10 to 13, Day 5 with pages 14 to 16.
@@ -305,4 +305,62 @@ describe("offline uploads (F3)", () => {
     expect(stack.refused.map((t) => [t.key, t.reason])).toEqual([["local:1", "Not sent"]]);
     expect(stack.addingTiles).toEqual([]);
   });
+});
+
+describe("retake hand-off", () => {
+  const target = { photoId: "old", pageId: "p11", workbookId: BOOK, pageNumber: 11, day: "Day 4" };
+  const upload: StackUpload = { key: "local:retake", status: "waiting", target };
+  const show = (uploads: StackUpload[], photos: StackPhoto[]) => buildStack({ uploads, photos, pages, checks: true });
+  it("keeps the target identity, hides the old refusal and keeps one tile through upload and listing", () => {
+    const old = photo("old", 11, { check: "refused", reason: "marks-missing" });
+    for (const photos of [[old], [], [photo("new", 11, { check: "checking" })]]) {
+      const stack = show([{ ...upload, status: "uploaded", uploadedId: "new" }], photos);
+      expect(stack.refused).toEqual([]);
+      expect(stack.counts).toMatchObject({ photos: 1, checking: 1 });
+      expect(stack.addingTiles).toMatchObject([{ label: "Page 11", title: "Page 11 · Day 4", status: "checking", reason: "Checking page 11…", pageId: "p11", retake: true }]);
+    }
+  });
+  it("uses the real page identity after the verdict, even if it is a different page", () => {
+    const stack = show([{ ...upload, status: "uploaded", uploadedId: "new" }], [photo("new", 12)]);
+    expect(stack.addingTiles).toEqual([]);
+    expect(stack.days[0].tiles).toMatchObject([{ photoId: "new", label: "Page 12", status: "ready" }]);
+    expect(stack.days[0].missing).toContain(11);
+  });
+  it("keeps upload and check failures explicit on the intended page", () => {
+    expect(show([{ ...upload, status: "refused", reason: "unavailable" }], []).refused).toMatchObject([{ title: "Page 11 · Day 4", refusal: "unavailable", status: "refused" }]);
+    expect(show([{ ...upload, status: "uploaded", uploadedId: "new" }], [photo("new", 11, { check: "checking", checkFailed: true })]).refused).toMatchObject([{ title: "Page 11 · Day 4", photoId: "new", refusal: "check-timeout" }]);
+  });
+  it("keeps checking until the blur check finishes too", () => {
+    const stack = show([{ ...upload, status: "uploaded", uploadedId: "new" }], [photo("new", 11, { photoCheck: { state: "pending" } })]);
+    expect(stack.addingTiles[0].status).toBe("checking");
+    expect(stack.readyIds).toEqual([]);
+  });
+});
+
+
+describe("scan polling", () => {
+  const pending = (photos: StackPhoto[], uploads: StackUpload[] = [], marking = true) => scanWorkPending({ photos, uploads, checks: true, marking });
+  it("polls for local work, placement, blur checks and automatic marks", () => {
+    expect(pending([], [{ key: "u", status: "waiting" }])).toBe(true);
+    expect(pending([], [{ key: "u", status: "uploaded", uploadedId: "new" }])).toBe(true);
+    expect(pending([photo("p", 11, { state: "pending" })])).toBe(true);
+    expect(pending([photo("p", 11, { check: "checking" })])).toBe(true);
+    expect(pending([photo("p", 11, { photoCheck: { state: "pending" } })])).toBe(true);
+    expect(pending([photo("p", 11, { sentAt: "2026-11-15T12:00:00Z", marks: null })])).toBe(true);
+    expect(pending([photo("p", 11, { sentAt: "2026-11-15T12:00:00Z", marks: { right: 1, scored: 1, total: 2, waiting: 1, toPractise: 0, complete: false, automaticPending: 1 } })])).toBe(true);
+  });
+  it("stops for complete marks, team-only waits, unfinished pages and failed checks", () => {
+    const marks = { right: 1, scored: 1, total: 2, waiting: 1, toPractise: 0, complete: false, automaticPending: 0 };
+    for (const result of [marks, { ...marks, complete: true }, { ...marks, unfinished: true }]) expect(pending([photo("p", 11, { sentAt: "2026-11-15T12:00:00Z", marks: result })])).toBe(false);
+    expect(pending([photo("p", 11, { check: "checking", checkFailed: true })])).toBe(false);
+    expect(pending([], [{ key: "u", status: "refused", reason: "unavailable" }])).toBe(false);
+    expect(pending([photo("p", 11, { sentAt: "2026-11-15T12:00:00Z" })], [], false)).toBe(false);
+  });
+});
+
+it("names a duplicate retake by the server's page number, without assigning its verdict to the intended page", () => {
+  const stack = buildStack({ photos: [photo("kept", 12)], pages, checks: true, uploads: [{ key: "local:retake", status: "refused", reason: "duplicate", page: 12, target: { photoId: "old", pageId: "p11", workbookId: BOOK, pageNumber: 11, day: "Day 4" } }] });
+  expect(stack.duplicates).toMatchObject([{ label: "Page 12" }]);
+  expect(stack.refused).toEqual([]);
+  expect(stack.days[0].missing).toContain(11);
 });

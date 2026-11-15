@@ -1,4 +1,5 @@
 import "server-only";
+import { photoCheckView } from "@/lib/scan-photo-check";
 import { scanPhotoIsActive } from "@/lib/scan-photo-active";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
@@ -35,13 +36,13 @@ export function stackCheck(c: { state: string; printed_revision: string; sheetCh
 export function pageMarks(view: { completion: { status: string; total: number }; counts: { scored: number; teamChecks: number; pending: number }; items: readonly { result: string | null }[] }): PageMarks {
   const right = view.items.filter((i) => i.result === "right").length;
   const toPractise = view.items.filter((i) => i.result === "wrong" || i.result === "blank").length;
-  return { right, scored: view.counts.scored, total: view.completion.total, toPractise, waiting: view.counts.pending + view.counts.teamChecks, complete: view.completion.status === "complete" };
+  return { right, scored: view.counts.scored, total: view.completion.total, toPractise, waiting: view.counts.pending + view.counts.teamChecks, automaticPending: view.counts.pending, complete: view.completion.status === "complete" };
 }
 
 export interface StackRead { photos: StackPhoto[]; pages: DayPage[] }
 
 export async function readScanStack(db: SupabaseClient<Database>, parent: string, child: string, checks: boolean, now = Date.now()): Promise<StackRead> {
-  const rows = await db.from("scan_photos").select("id,page_id,workbook_id,state,created_at,expires_at,printed_revision,sent_at")
+  const rows = await db.from("scan_photos").select("id,page_id,workbook_id,state,created_at,expires_at,printed_revision,sent_at,photo_check")
     .eq("parent_id", parent).eq("child_id", child).in("state", ["pending", "saved"]).order("created_at", { ascending: false }).limit(100);
   if (rows.error) throw new Error("scan_stack_read");
   const live = rows.data.filter((p) => p.page_id && p.workbook_id && scanPhotoIsActive(p, now));
@@ -90,6 +91,7 @@ export async function readScanStack(db: SupabaseClient<Database>, parent: string
     return {
       id: p.id, pageId: p.page_id!, workbookId: p.workbook_id!, book: number.get(p.workbook_id!) ?? 1, pageNumber: pageNumber.get(p.page_id!) ?? 0,
       state: p.state as StackPhoto["state"], check, reason: check === "refused" ? refusal(c?.reason) : null, sentAt: p.sent_at, createdAt: p.created_at,
+      ...(checks ? { photoCheck: photoCheckView(p.photo_check) } : {}),
       ...(p.sent_at ? { marks: marksOf.get(p.id) ?? null } : {}),
     };
   });
