@@ -965,7 +965,8 @@ function proposalProblem(p: unknown): string | null {
 function priorityOf(raw: unknown): Pick<Reading, "safety" | "stop" | "unclear" | "start" | "noBoard" | "shorter" | "aboutMaya"> {
   const r = isObject(raw) && isObject(raw.reading) ? raw.reading : {};
   return {
-    safety: SEVERITIES.includes(r.safety as Severity) ? (r.safety as Severity) : undefined,
+    // Pre-launch review: a proposal of kind "safety" is a safety signal even when its severity is missing ("none").
+    safety: SEVERITIES.includes(r.safety as Severity) ? (r.safety as Severity) : isObject(raw) && raw.kind === "safety" ? "concern" : undefined,
     stop: r.stop === true,
     noBoard: r.noBoard === true,
     shorter: r.shorter === true,
@@ -4941,6 +4942,9 @@ export function hideName(text: string, name: string | null | undefined): string 
 }
 
 /** The {name} the model wrote, filled with the child's name after the checks; left out right after a turn that said it. */
+/** How many words the child's name has as Maya says it (1 when there is none). */
+const nameWordsOf = (s: Session): number => Math.max(1, s.variety.name?.trim().split(/\s+/).length ?? 1);
+
 export function fillName(text: string, s: Session): string {
   const name = s.variety.name?.trim();
   if (!name || nameRecent(s)) return withoutName(text, "{name}");
@@ -4990,7 +4994,7 @@ export function tutorStream(s: Session): TutorStreamContext | null {
   if (!s.tutor || !s.turn || !s.package || !tutorTeachingNow(s)) return null;
   const stance = codeStance(s);
   const credited = heardAnswers(s).flatMap((a) => (a.verdict === "right" && a.value.type === "number" ? [a.value.value] : []));
-  return tutorStreamContext(s.package, s.turn.text, stance === "none" && childSaysFalse(s.turn.text) ? "wrong" : stance, vocabExtra(s), credited);
+  return { ...tutorStreamContext(s.package, s.turn.text, stance === "none" && childSaysFalse(s.turn.text) ? "wrong" : stance, vocabExtra(s), credited), nameWords: nameWordsOf(s) };
 }
 
 /**
@@ -5104,9 +5108,9 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   const op = kind.op?.(pkg);
   const claims = (sentence: string) => kind.claimProblems(pkg, sentence);
   const answer = pkg.answer.value.type === "number" ? pkg.answer.value.value : undefined;
-  let verdict = checkTutorSay(text, { stance, extra, childValues, claims, trades: tutorKind(pkg).workValues(pkg), ...(op ? { op } : {}), ...(answer === undefined ? {} : { answer }) });
+  let verdict = checkTutorSay(text, { stance, extra, childValues, claims, trades: tutorKind(pkg).workValues(pkg), nameWords: nameWordsOf(base), ...(op ? { op } : {}), ...(answer === undefined ? {} : { answer }) });
   // Code's own line never fails its turn: after streamed words that leave no room, the turn is those words.
-  if (fallback && !verdict.ok && sent.length) { text = lead; verdict = checkTutorSay(text, { stance: "none", extra, claims, trades: tutorKind(pkg).workValues(pkg), ...(op ? { op } : {}) }); }
+  if (fallback && !verdict.ok && sent.length) { text = lead; verdict = checkTutorSay(text, { stance: "none", extra, claims, trades: tutorKind(pkg).workValues(pkg), nameWords: nameWordsOf(base), ...(op ? { op } : {}) }); }
   if (!verdict.ok) return no("say_check", `Your message was refused (${verdict.reason}): ${verdict.detail}`, verdict.reason);
   if (act === "close" && /\?\s*$/.test(text)) return no("say_check", "A close ends the call, so it asks nothing: say a short goodbye with no question.", "close_asks");
   // Child safety: each sentence that is not plain teaching is reviewed before it is said (the adapter runs the reviews,
