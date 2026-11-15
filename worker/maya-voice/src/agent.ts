@@ -811,6 +811,17 @@ export class VoiceCallRun {
       },
       cancel: (fromIndex) => { early.waiting = early.waiting.filter(p => p.index < fromIndex); },
       end: () => { early.waiting.length = 0; early.closed = true; },
+      // After #1072 (a child must not sit in silence for up to 10 s): a refused tutor message gets its repair, which can
+      // take seconds. The thinking phrase comes now, not at the limit, with the same rules (`acknowledge`): one phrase per
+      // turn, none after a sentence, none while the child talks or a close or safety is due, never a repeat in the call.
+      // The phrase is queued synchronously (`acknowledge` does not wait before it writes), so its id is known here.
+      repairing: () => {
+        if (pace.ackLimitAt === null || pace.ack || early.closed) return null;
+        this.clearLimit(pace);
+        let queued: string | null = null;
+        pace.ack = this.acknowledge(pace, (id) => { queued = id; });
+        return queued;
+      },
     };
   }
 
@@ -1083,8 +1094,11 @@ export class VoiceCallRun {
   /** No newer turn replaced this one, and its speech can still play. */
   private ownsReply(pace: TurnPace) { return this.pace === pace && pace.writable && !pace.handle?.interrupted; }
 
-  /** Says the next phrase and waits for it to play. Never fails: the answer is what matters. */
-  private async acknowledge(pace: TurnPace) {
+  /**
+   * Says the next phrase and waits for it to play. Never fails: the answer is what matters. `queued` hears the phrase's id
+   * at the moment it is queued, before the first wait, so a caller learns synchronously whether a phrase was said.
+   */
+  private async acknowledge(pace: TurnPace, queued?: (id: string) => void) {
     const skip = (reason: AckSkip) => pace.clock.ackSkipped(reason);
     // The answer, the child, the call and the safety state can each change during an await below, so all of it is read
     // again after each one, and nothing awaits between the last reading and queuing the phrase.
@@ -1116,6 +1130,7 @@ export class VoiceCallRun {
     // same phrase once more. A refused save stops further phrases from this worker.
     void this.call.acknowledge(phrase.id).then(saved => { if (!saved) this.acksRefused = true; }, () => { this.acksRefused = true; });
     pace.clock.ackQueued(phrase.id);
+    queued?.(phrase.id);
     await new Promise<void>(resolve => {
       pace.ackOver = resolve;
       // A speech whose playback never ends holds LiveKit's queue, so the answer must not depend on it.
