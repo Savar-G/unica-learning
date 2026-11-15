@@ -478,7 +478,7 @@ function movesTo(text: string, places: readonly string[]): boolean {
 /** The child's whole expression, with number words normalized by the same number reader as the say checks. */
 export function heardColumnOf(text: string): NonNullable<SayRules["heardColumn"]> | null {
   let normalized = text.trim();
-  for (const token of [...sayNumbers(normalized)].reverse()) normalized = normalized.slice(0, token.at) + token.key + normalized.slice(token.end);
+  for (const token of [...literalValues(normalized)].reverse()) normalized = normalized.slice(0, token.at) + token.key + normalized.slice(token.end);
   const match = /^(\d+) (minus|plus) (\d+)(?: (?:is|equals) \d+)?[.!]?$/i.exec(normalized);
   return match ? { operands: [Number(match[1]), Number(match[3])], op: match[2].toLowerCase() as "minus" | "plus" } : null;
 }
@@ -492,7 +492,7 @@ export function columnSentenceTruth(sentence: string, rules: Pick<SayRules, "col
   let text = sentence.trim().replace(/[’]/g, "'");
   // Truth checks cover ordinary spoken numbers and statement punctuation. Review admission keeps the exact form.
   if (!how.exactForm) {
-    for (const token of [...sayNumbers(text)].reverse()) text = text.slice(0, token.at) + token.key + text.slice(token.end);
+    for (const token of [...literalValues(text)].reverse()) text = text.slice(0, token.at) + token.key + text.slice(token.end);
     text = text.replace(/[.!]+$/, "");
   }
   const role = STEP_ROLE.exec(text);
