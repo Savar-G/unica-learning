@@ -9,7 +9,7 @@ export const GETTING_STARTED_HABITS = [
 export const NEXT_WORKBOOK = "Your next workbook arrives two weeks after this one, on day 15. We build it from the pages you scan, so scan each day's finished pages to help us choose what comes next.";
 export const DISPATCH_PREVIEW = "When the workbook arrives, follow the schedule on page 2. Let your child try the day's pages, then scan the finished pages at https://unicalearning.com/account/scan. We use those scans to plan the next workbook.";
 
-/** Blank or unsafe configuration leaves the walkthrough out of every email. Read at send time. */
+/** Blank or unsafe configuration leaves the optional walkthrough out of dispatch emails. Read at send time. */
 export function walkthroughUrl(raw: string | undefined = process.env.ONBOARDING_WALKTHROUGH_URL): string {
   if (!raw?.trim()) return "";
   try {

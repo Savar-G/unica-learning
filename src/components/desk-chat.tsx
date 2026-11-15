@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState, useEffect, useCallback, useMemo, type FormEvent } from "react";
 import { growInkLog, historyFromLog, inkLog, readInkEvent, type BoardHistory, type InkEvent } from "@/lib/board-history";
+import { chatBoardFates, type ScreenFateReport } from "@/lib/board-fate";
 import { chatCapLine, chatSpendLine, type ChatUsage, type ChatView, type ChatReply } from "@/lib/maya-chat";
 import { OurBoard } from "@/components/our-board";
 import { Icon } from "@/components/desk-icons";
@@ -279,6 +280,16 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
    */
   const [callInk, setCallInk] = useState<{ id: string; log: InkEvent[] | "loading" } | null>(null);
   const board = useInkSaver(child);
+  /**
+   * B1: what this board did with each of Maya's batches (shown, or skipped because it would cover the child's ink), for
+   * the chat it belongs to. It goes with the child's next message, so Maya counts only what the child saw.
+   */
+  const fates = useRef<{ id: string; fates: ScreenFateReport[] } | null>(null);
+  const fatesFor = useCallback((id: string) => (fates.current?.id === id && fates.current.fates.length ? { fates: fates.current.fates } : {}), []);
+  const saveBoard = useCallback((id: string, history: BoardHistory) => {
+    fates.current = { id, fates: chatBoardFates(history) };
+    board.save(id, history);
+  }, [board]);
   const request = useCallback(async (action: { type: string; [field: string]: unknown }, generation = epoch.current) => {
     if (generation !== epoch.current) return null;
     const res = await fetch("/api/desk/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(action) });
@@ -306,13 +317,13 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
     requestBusy.current = true;
     try {
       const turn = pending.current;
-      await request(turn ? { type: "child", ...turn } : { type: "read", id }, generation);
+      await request(turn ? { type: "child", ...turn, ...fatesFor(turn.id) } : { type: "read", id }, generation);
       return true;
     } catch {
       if (generation === epoch.current) setError(ERROR);
       return false;
     } finally { requestBusy.current = false; }
-  }, [chat?.id, request]);
+  }, [chat?.id, request, fatesFor]);
   useEffect(() => {
     epoch.current++;
     const generation = epoch.current;
@@ -395,7 +406,7 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
       } else if (chat) {
         if (type === "child") {
           pending.current ??= { id: chat.id, messageId: crypto.randomUUID(), revision: chat.revision, text: text ?? "" };
-          await request({ type, ...pending.current }, generation);
+          await request({ type, ...pending.current, ...fatesFor(pending.current.id) }, generation);
         } else {
           // The child's ink goes with the call before it ends (#534); if it cannot, it stays on this device (R625-5).
           await board.finish(chat.id);
@@ -411,7 +422,7 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
       return false;
     } finally { requestBusy.current = false; if (generation === epoch.current) setBusy(false); }
   };
-  return { usage, chat: ownerKey === key ? chat : null, busy, error, act, retry: refresh, uncertain, saveBoard: board.save, callInk };
+  return { usage, chat: ownerKey === key ? chat : null, busy, error, act, retry: refresh, uncertain, saveBoard, callInk };
 }
 export type DeskChatState = ReturnType<typeof useDeskChat>;
 

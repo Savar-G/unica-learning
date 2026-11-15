@@ -4,6 +4,7 @@ import { emailDocument, emailFooterText, emailSignatureText } from "@/lib/email-
 import { PLAN_REMINDER_PARENT } from "@/lib/plan-reminder";
 import { cad } from "@/lib/site";
 import { DISPATCH_PREVIEW, GETTING_STARTED_HABITS, NEXT_WORKBOOK, walkthroughUrl } from "@/lib/getting-started";
+import { GETTING_STARTED_VIDEO_LABEL, GETTING_STARTED_VIDEO_URL } from "@/lib/getting-started-video";
 
 /** The emails an admin previews and sends from the card's panel. */
 export type WorkbookNoticeKind = "welcome" | "ready" | "dispatch";
@@ -56,6 +57,9 @@ const paragraphHtml = (s: string) => esc(s).replace(/https:\/\/unicalearning\.co
   (url) => `<a href="${url}" style="color:#0c0c0e">${url}</a>`).replaceAll("\n", "<br>");
 
 function onboardingParagraph(s: string, video: string, booking = ""): string {
+  if (s === `${GETTING_STARTED_VIDEO_LABEL}: ${GETTING_STARTED_VIDEO_URL}`) {
+    return `<a href="${GETTING_STARTED_VIDEO_URL}" style="display:inline-block;padding:14px 20px;border-radius:6px;background:#0c0c0e;color:#ffffff;font-weight:600;text-decoration:none">${GETTING_STARTED_VIDEO_LABEL}</a>`;
+  }
   if (video && s === `Watch the 3-minute walkthrough: ${video}`) {
     return `<a href="${esc(video)}" style="color:#0c0c0e">Watch the 3-minute walkthrough</a>`;
   }
@@ -110,7 +114,7 @@ export function workbookEmail(p: { parentName: string; childName: string; kind: 
  * (explanationAvailable); without it, step 3 keeps the marks and drops its Explain sentence.
  */
 export function planStartEmail(p: { parentName: string; childName: string; grade: number; price: number; firstCharge: string; marking: boolean; explain: boolean; sharedWindow?: boolean; free?: boolean; reminder?: boolean }) {
-  const video = walkthroughUrl();
+  const video = GETTING_STARTED_VIDEO_URL;
   const booking = safeBookingUrl(BOOKING_URL);
   const subject = p.sharedWindow ? w.emailSubject(p.childName) : `Welcome to Unica Learning: how ${p.childName}'s free month works`;
   const steps = [
@@ -126,7 +130,7 @@ export function planStartEmail(p: { parentName: string; childName: string; grade
   const paragraphs = [
     `Hi ${p.parentName},`,
     ...(p.sharedWindow ? [`Thanks for joining Unica Learning. ${w.planStarted(p.childName)}`, ...(p.free ? ["Nothing has been charged."] : [])] : [`Thanks for joining Unica Learning. ${p.childName}'s first workbook has arrived, so your free first month has started. Nothing has been charged.`]),
-    ...(video ? [`Watch the 3-minute walkthrough: ${video}`] : []),
+    `${GETTING_STARTED_VIDEO_LABEL}: ${video}`,
     "As a parent, here are your responsibilities:",
     steps.join("\n"),
     `What happens next: ${NEXT_WORKBOOK}`,

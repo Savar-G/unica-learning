@@ -1,12 +1,12 @@
 // The tutor core's prompt, output schema and brief (D-345). Savar approves the principles, not single lines: the 12
 // tutor rules below come from the approved teaching design (2026-11-14, section 3) and its research.
 import { MODEL_OUTPUT_SCHEMA, TUTOR_GATES } from "./proposal";
-import type { Session } from "./session";
+import { answerReadWhole, type Session } from "./session";
 import { childFacts, tutorKind, stepFacts, TUTOR_WORD_LIMIT } from "./tutor";
 import type { TutorDrawing, TutorStepFact } from "./tutor-kind";
 import { valueText } from "@/lib/question-package";
 
-export const TUTOR_PROMPT_VERSION = "maya-tutor-7";
+export const TUTOR_PROMPT_VERSION = "maya-tutor-8";
 
 /** The turns of the call the brief holds. */
 const TUTOR_TRANSCRIPT_TURNS = 10;
@@ -26,8 +26,13 @@ export interface TutorBrief {
   noBoard: boolean;
   /** The drawings the model may ask for on this question (TutorKind.drawings). */
   drawings: readonly TutorDrawing[];
-  /** What the board already shows (never drawn twice). */
+  /** What the board already shows: the child's screen said it showed it (never drawn twice). */
   drawn: string[];
+  /**
+   * B1: drawings sent to the board that the child's screen has not said it showed yet (never drawn twice either). Absent
+   * when there are none.
+   */
+  sent?: string[];
   notes: string[];
   repair: { said: unknown; refusal: unknown } | null;
 }
@@ -56,14 +61,22 @@ export function tutorBrief(s: Session, repair: TutorBrief["repair"] = null): Tut
       : null,
     progress: { done: [...done], solved: s.solved !== null, helpGiven: s.tutor?.help ?? 0 },
     childTurn: s.turn ? hide(s.turn.text, name) : null,
-    facts: pkg && s.turn ? childFacts(pkg, s.turn.text) : [],
+    facts: pkg && s.turn ? childFacts(pkg, s.turn.text, (v) => answerReadWhole(pkg, s.turn!.text, v, true)) : [],
     transcript: s.turns.slice(-TUTOR_TRANSCRIPT_TURNS).map((t) => ({ speaker: t.speaker, text: hide(t.text, name) })),
     noBoard: s.noBoard === true,
     drawings: pkg && s.tutor ? tutorKind(pkg).drawings(pkg) : [],
-    drawn: [...(s.tutor?.drawn ?? [])],
+    ...boardKeys(s),
     notes,
     repair,
   };
+}
+
+/** B1: the drawn keys the child's screen showed, and the keys sent with no word from the screen yet. */
+function boardKeys(s: Session): { drawn: string[]; sent?: string[] } {
+  const waiting = new Set((s.tutor?.sent ?? []).flatMap((x) => x.keys));
+  const drawn = (s.tutor?.drawn ?? []).filter((k) => !waiting.has(k));
+  const sent = (s.tutor?.drawn ?? []).filter((k) => waiting.has(k));
+  return sent.length ? { drawn, sent } : { drawn };
 }
 
 export const TUTOR_PROMPT = `You are Maya, an AI math tutor for one child (age 5 to 14) working on one math question. You are the tutor: you decide how to teach this child on this turn. Code gives you the facts in a brief (JSON) and checks your message. Return one JSON reply.
@@ -112,7 +125,7 @@ The reply, in this order (write each key in this order):
 - "say": your one message.
 - "act": "guide" for every teaching message. "close" only after the child solved the question and is done, or wants to stop: a short goodbye, with no question.
 - "reading" comes after "say". It is bookkeeping code reads; it is never said. It must agree with "gate". "answers": each number the child gave as an answer, with its step id ("result" for the whole question), "problem" "target", and your verdict by the question's steps; a question or a request for help is not an answer. Set the flags that fit (help "more" or "show", unclear when you cannot tell what number the child said, stop, writing, offTopic, mathClaim, safety "concern" or "immediate" for harm or danger, unsafeRequest for harmful content, aboutMaya "identity" or "secret_friend", start "no_start" when the child cannot start, paper "written" when they say they wrote it); else "none", false, "" and [].
-- "draw": [] or board requests, drawn with your message: {"offer": an id from "drawings", "place": what it says it needs, or ""}. "drawings" says what each one shows on this question. Draw what you explain. "drawn" lists what the board already shows.
+- "draw": [] or board requests, drawn with your message: {"offer": an id from "drawings", "place": what it says it needs, or ""}. "drawings" says what each one shows on this question. Draw what you explain. "drawn" lists what the board already shows. "sent" lists drawings sent with your last messages that the child's screen has not shown yet: do not ask for them again, and do not say they are on the board.
 - If "repair" is set, code refused your last message for the reason given: fix exactly that, and keep your teaching.`;
 
 /** The tutor's output schema: the conversational schema with only the tutor's acts and drawings. */

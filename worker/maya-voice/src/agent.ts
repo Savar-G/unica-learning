@@ -636,7 +636,11 @@ export class VoiceCallRun {
     const generation = this.generation;
     if (scope) {
       const done = await board.showWith(scope, batches);
-      if (done.refused.length) console.warn("[maya voice] board batch refused", this.call.id, done.refused);
+      if (done.refused.length) {
+        console.warn("[maya voice] board batch refused", this.call.id, done.refused);
+        // B1: a refused batch never showed: Maya's session must not count it as drawn.
+        this.call.boardRefused?.(done.refused.map(r => r.batchId));
+      }
       if (done.shown) return;
     }
     if (generation !== this.generation || !this.childHere || this.finishing) { this.owedBatches.push(...batches); return; }
@@ -1237,7 +1241,8 @@ export class VoiceCallRun {
     const owed = this.owedBatches.splice(0).map(batch => ({ batch, word: 1 }));
     const staging = this.options.board.stage(id, [...owed, ...(turn.boardCues ?? [])]);
     // A batch the board core refused is not drawn, and the call goes on (board-speech.ts `stage`). Ids and codes only.
-    void staging.then(r => { if (r.refused.length) console.warn("[maya voice] board batch refused", this.call.id, r.refused); }, () => {});
+    // B1: a refused batch never showed: Maya's session must not count it as drawn.
+    void staging.then(r => { if (r.refused.length) { console.warn("[maya voice] board batch refused", this.call.id, r.refused); this.call.boardRefused?.(r.refused.map(x => x.batchId)); } }, () => {});
     const scope = this.options.board.capture(id);
     this.boardScope = scope;
     if (wait) await staging;

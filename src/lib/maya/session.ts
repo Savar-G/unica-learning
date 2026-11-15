@@ -67,7 +67,7 @@ import { claimActs, claimAnswers, claimCommitted, claimConfirm, claimQuestionAsk
 import { closeParts, compareEquationSaid, currentPart, evaluateSteps, evaluateTeaching, partBoards, partCovered, partEquationSaid, partIdOf, stepsBeforeLastPart, withEvaluateExample } from "./evaluate";
 import { isSpot, spotAnswers, spotReveals, spotSessionPackage, spotStepHeard } from "./spot-error";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, TUTOR_GATES, isModelOutput, readModelOutput, withoutDefaults, withoutNulls, type Act, type ChildAnswer, type HintLevel, type ModelOutput, type Proposal, type Reading, type Severity } from "./proposal";
-import { checkSay, checkSentence, columnSentenceTruth, equationHolds, heardColumnOf, namesValue, revealsOpenStep, endsWithAsk, INSTRUCTION, MATH_WORD, PRAISE_WORDS, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
+import { checkSay, checkSentence, columnSentenceTruth, equationHolds, heardColumnOf, namesValue, revealsOpenStep, endsWithAsk, INSTRUCTION, MATH_WORD, PRAISE_WORDS, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, unreadNumberRuns, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
 import { agreementClause, bindingReview, checkTutorSay, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, TUTOR_REVIEW_IGNORED } from "./tutor";
@@ -160,6 +160,11 @@ export type SessionEvent =
    */
   | { type: "proposal"; at: number; proposal: unknown; talkReviews?: TalkReview[]; mathReviews?: MathReview[]; fallback?: boolean; sent?: string[] }
   | { type: "tick"; at: number }
+  /**
+   * Final check 12 (2026-11-15): the help a sentence Maya emitted to the child gave, recorded the moment it went out (the
+   * help ledger). A control like any other input, so a cancellation or a replay never takes it back. Help only rises.
+   */
+  | { type: "help"; at: number; assistance: Assistance }
   /** The child starts or stops writing on the board. */
   | { type: "writing"; at: number; status: "started" | "done" }
   /** A safety signal from outside the model (a classifier or a person). */
@@ -177,7 +182,17 @@ export type SessionEvent =
    * The child hung up on purpose (#323; in the admin demo, the team member playing the child): the call ends now as
    * child_stopped, after the outcome's priority (safety, content, solved). Only a failure is a technical issue.
    */
-  | { type: "hang_up"; at: number };
+  | { type: "hang_up"; at: number }
+  /**
+   * B1 ("shown means shown"): what the child's screen did with a board batch Maya sent (`batch`: its transaction id).
+   * "shown": it is on the board. "skipped": the board refused it (it would cover the child's ink). "cancelled": a voice
+   * call stopped it before its cue (the child talked first). It changes only what the tutor counts as drawn.
+   */
+  | { type: "board_fate"; at: number; batch: string; fate: BoardFate };
+
+/** What the child's screen did with one of Maya's board batches (B1). */
+export type BoardFate = "shown" | "skipped" | "cancelled";
+export const BOARD_FATES: readonly BoardFate[] = ["shown", "skipped", "cancelled"];
 
 export interface Outcome {
   /**
@@ -522,8 +537,12 @@ export interface Session {
   /**
    * D-345: the tutor core teaches this call (tutor.ts): one model message per child turn, checked as a whole. `help`
    * counts Maya's teaching messages since the child last made progress; `drawn` is what the tutor drew on the board.
+   * B1: a drawing counts as on the board only when the child's screen said it showed it. `sent` holds the keys of each
+   * batch sent with no word from the screen yet (by its transaction id): they stay in `drawn`, so nothing is sent twice,
+   * and the brief lists them as sent, not drawn. A batch the screen skipped or cancelled leaves `drawn` and `sent`, so
+   * the brief does not list it and the kind can offer it again. A batch with no word stays sent: never counted as shown.
    */
-  tutor?: { help: number; drawn: string[] };
+  tutor?: { help: number; drawn: string[]; sent?: { batch: string; keys: string[] }[] };
 }
 
 /**
@@ -1455,6 +1474,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
   if (session.now !== null && event.at < session.now) return refuse(session, "invalid_event", "The clock went back.");
   if (session.outcome) return refuse(session, "ended", "The call has ended.");
   if (event.type !== "start" && session.startedAt === null) return refuse(session, "invalid_event", "The call has not started.");
+  if (event.type === "board_fate") return boardFate(session, event);
 
   const s: Session = structuredClone(session);
   // Old saved sessions must not retain obsolete numeric context.
@@ -1587,6 +1607,20 @@ export function step(session: Session, event: SessionEvent): StepResult {
         if (s.state === "CHECK" || s.state === "WRITE_CLOSE") moveTo(s, "GUIDE_TARGET");
         if (s.resume === "CHECK" || s.resume === "WRITE_CLOSE") s.resume = "GUIDE_TARGET";
       }
+      // Final check 12 (2026-11-15), the answer state: on a tutor call, each child turn reconciles the result before any
+      // routing (identity, safety, a stop, scope, the end) or outcome reads it. A turn that holds an explicit answer
+      // attempt clears a standing success unless code's whole-phrase read (heardAnswers, checkAnswers) credits a right
+      // final answer in it now. Unread or wrong: no success. Every outcome builder reads only this state.
+      if (s.tutor && s.package && isTutorQuestion(s.package) && s.solved === "child" && answerAttempt(s) &&
+          !heardAnswers({ ...s, solved: null, lastResult: null }).some((a) => a.step === "result" && a.verdict === "right")) {
+        s.lastResult = null;
+        s.solved = null;
+        s.wrote = false;
+        s.writeAsked = false;
+        s.paper = "unknown";
+        if (s.state === "CHECK" || s.state === "WRITE_CLOSE") moveTo(s, "GUIDE_TARGET");
+        if (s.resume === "CHECK" || s.resume === "WRITE_CLOSE") s.resume = "GUIDE_TARGET";
+      }
       if (s.state === "OPEN" && s.opened) s.state = "ASSESS";
       s.expect = "maya";
       s.silence = "none";
@@ -1638,6 +1672,10 @@ export function step(session: Session, event: SessionEvent): StepResult {
       break;
     case "safety":
       break;
+    case "help":
+      if (!ASSISTANCE.includes(event.assistance)) return refuse(session, "invalid_event", "A help event needs a known help kind.");
+      if (!s.outcome && !s.assistance.includes(event.assistance)) s.assistance.push(event.assistance);
+      break;
     case "maya_said":
       // Nothing is repaired before the opening, after a safety concern or a content hold, or twice at once.
       // The adapter may identify the utterance being spoken in a batch. Without that index, use the last turn.
@@ -1675,7 +1713,8 @@ export function step(session: Session, event: SessionEvent): StepResult {
       {
         // D-341: sentences already streamed to the child (onSayPart) stay said: the turn's words start with them.
         const sent = Array.isArray(event.sent) ? event.sent.filter((x): x is string => typeof x === "string" && x.trim() !== "") : [];
-        if (v3 && s.tutor) return proposeTutor(s, raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent, event.fallback === true, event.mathReviews === undefined ? undefined : mathReviewsOf(event.mathReviews));
+        // Final check 11: the emitted help is in the session before any routing builds an outcome.
+        if (v3 && s.tutor) return proposeTutor(withEmittedHelp(s, sent), raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent, event.fallback === true, event.mathReviews === undefined ? undefined : mathReviewsOf(event.mathReviews));
         if (v3) return proposeV3(s, raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent);
         return withSent(propose(s, raw as Proposal, effects, reviewsOf(event.talkReviews), event.fallback === true), sent, s, disclosureDue(s));
       }
@@ -2779,6 +2818,9 @@ function checkAnswers(s: Session, given: ChildAnswer[], checked: Checked[], befo
     // These rules hold in the tutor core (D-345); the controller keeps its own commit rules.
     const tutorCredit = !!s.tutor && isTutorQuestion(pkg);
     if (tutorCredit && problem === "target" && mentionsExample(s.turn.text)) return { code: "answer_not_committed", reason: "The child named the easier example: their numbers are for the example, not for this question. Ask which problem they mean." };
+    // Final check 10 (2026-11-15): a run of number words the one standard reader cannot turn into one value ("two
+    // thousand two thousand") leaves the turn unread: no credit and no miss.
+    if (tutorCredit && unreadNumberRuns(s.turn.text).length > 0) return { code: "answer_not_committed", reason: "Code cannot read one of the child's numbers as one value: ask them to say their answer again." };
     if (tutorCredit && problem === "target" && a.verdict === "right" && a.value.type === "number") {
       // Final check 9, inverted: a number is final-answer credit only when the turn names no place, column, step, digit,
       // row or part at all; and any credit, of a step too, only when its clause is read whole (no unit the question
@@ -3418,6 +3460,81 @@ export function answerReadWhole(pkg: OperationPackage, text: string, value: numb
       const rest = joinCompounds(clause.toLowerCase()).replace(MATH_NUMBER_RUN, " ").replace(/[\d][\d,.]*/g, " ").replace(/[+\-×x÷*=/]/g, " ").split(/[^a-z']+/).filter(Boolean);
       if (rest.some((w) => !ANSWER_FRAME.has(w) && !unitWords.has(w) && !(step && STEP_FRAME.has(w)))) return false;
     }
+  }
+  return answerPhraseWhole(text, value, unitWords, step);
+}
+
+/** Operator words and symbols: a number next to one is an operand of an expression, not a whole answer. */
+const OPERATOR_TOKEN = /^(?:plus|minus|times|x|divided|by|multiplied|take|away|add|subtract|[+\-×÷*=/])$/;
+/** Relation words: a clause that holds one with a number after it states its own claim. */
+const RELATION_TOKEN = /^(?:is|are|was|were|equals|equal|makes|make|gives|give|=)$/;
+/** Where a clause can end inside a sentence: punctuation, or a word that joins two clauses. */
+const CLAUSE_JOIN = /^(?:[,;:]|and|so|then|because|'cause|cause|cuz|since|but)$/;
+
+/**
+ * Final check 11 (2026-11-15): the ONE whole-phrase reader for every value code credits: the final answer, a step, a
+ * column, a digit (`value`, a number) and a choice word (`value`, a word: "true", "yes", ">"). Each place the turn says
+ * the value is either an operand of another complete claim ("4 minus 2 is 2" holds the 4 of "12 minus 8 is 4"), which
+ * this phrase leaves to that claim, or the child's answer phrase, which must be whole: no operator just before it, and
+ * after it only the unit (each word once), answer words that are not operators and, for a step, place and carrying
+ * words, up to the end of its sentence or a joint that starts another clause of the child's own (one with a word before
+ * its first number, or with a relation and a number after it). A number, an operator or any other word or token in the
+ * phrase ("4 plus 1.", "4, with a negative sign.", "18, bags.", "24 plus.") leaves it unread: no credit, the verdict is
+ * "unknown". A later sentence that starts with an operator continues the phrase; a later sentence with no number may
+ * hold only the phrase's own words ("18. Bags."). A turn with no whole phrase for the value gives no credit.
+ */
+export function answerPhraseWhole(text: string, value: number | string, unitWords: ReadonlySet<string> = new Set(), step = false): boolean {
+  const tokensOf = (sentence: string) =>
+    digitWords(joinCompounds(sentence.replace(/[.!?]+$/, "").toLowerCase())).match(/\d+(?:\.\d+)?|[a-z']+|[<>]|[^\s\da-z']/g) ?? [];
+  const word = typeof value === "string" ? value.trim().toLowerCase() : null;
+  const isValue = (t: string) => (word !== null ? t === word : (/^\d/.test(t) ? Number(t) : /^[a-z]/.test(t) ? plainNumber(t) : null) === value);
+  const isNumber = (t: string) => /^\d/.test(t) || (/^[a-z]/.test(t) && plainNumber(t) !== null);
+  const isOperator = (t: string | undefined) => t !== undefined && OPERATOR_TOKEN.test(t);
+  const allowed = (t: string) => !isOperator(t) && (ANSWER_FRAME.has(t) || (step && STEP_FRAME.has(t)));
+  const sentences = text.replace(/[’‘]/g, "'").split(/(?<=[.!?])\s+|\n+/).map(tokensOf).filter((t) => t.length > 0);
+  // Whether the tokens from `k` on, to the end, are a complete claim's rest: (operator number)* relation number.
+  const claimRest = (tokens: readonly string[], k: number): boolean => {
+    while (isOperator(tokens[k]) && isNumber(tokens[k + 1] ?? "")) k += 2;
+    return RELATION_TOKEN.test(tokens[k] ?? "") && tokens.slice(k + 1).some(isNumber);
+  };
+  // Whether a joint at `k` starts another clause of the child's own: not an operator first, and a word before its first
+  // number or a relation with a number after it.
+  const newClause = (tokens: readonly string[], k: number): boolean => {
+    let at = k;
+    while (CLAUSE_JOIN.test(tokens[at] ?? "")) at++;
+    const rest = tokens.slice(at);
+    if (rest.length === 0 || isOperator(rest[0]) || !rest.some(isNumber)) return false;
+    return !isNumber(rest[0]) || rest.some((t, n) => RELATION_TOKEN.test(t) && rest.slice(n + 1).some(isNumber));
+  };
+  let last = -1;
+  let phrases = 0;
+  for (const [index, tokens] of sentences.entries()) {
+    for (const [i, t] of tokens.entries()) {
+      if (!isValue(t)) continue;
+      last = index;
+      // An operand of another complete claim ("4 minus 2 is 2", "28 plus 24 is 52"): that claim's, not this phrase.
+      if (isOperator(tokens[i - 1]) || isOperator(tokens[i + 1])) {
+        let start = i;
+        while (isOperator(tokens[start - 1]) && isNumber(tokens[start - 2] ?? "")) start -= 2;
+        if (!isOperator(tokens[start - 1]) && claimRest(tokens, i + 1)) continue;
+        return false;
+      }
+      phrases++;
+      const units = new Set<string>();
+      for (let k = i + 1; k < tokens.length; k++) {
+        const after = tokens[k];
+        if (CLAUSE_JOIN.test(after) && newClause(tokens, k)) break;
+        if (after === "," || after === ";" || after === ":") continue;
+        if (unitWords.has(after) && !units.has(after)) { units.add(after); continue; }
+        if (isNumber(after) || !allowed(after)) return false;
+      }
+    }
+  }
+  // No place code can find the value as a whole answer phrase: unread.
+  if (last === -1 || phrases === 0) return false;
+  for (const tokens of sentences.slice(last + 1)) {
+    if (isOperator(tokens[0])) return false;
+    if (!tokens.some(isNumber) && tokens.some((t) => t !== "," && !unitWords.has(t) && !allowed(t))) return false;
   }
   return true;
 }
@@ -5214,6 +5331,19 @@ function wordVerdict(base: Session): "right" | "wrong" | null {
  * the child named it as the answer, and whether it commits. A question, a choice or a help request commits nothing,
  * unless the child names the answer ("My answer is 36. I need help.").
  */
+/**
+ * Final check 12 (2026-11-15): whether the child's turn holds an explicit answer attempt: an answer sentence ("My answer
+ * is ...", "I got ...", "It's ..."), or a committed number that is not a value of the work ("36."; "12 minus 8 is 4." is
+ * work). Broad on purpose: it only decides that a standing success must be read again.
+ */
+function answerAttempt(s: Session): boolean {
+  if (!s.package || !s.turn) return false;
+  const { read, explicitAnswer, committed } = committedRead(s);
+  if (explicitAnswer) return true;
+  if (!committed || read.final?.type !== "number") return false;
+  return rightForQuestion(s.package, read.final) || !tutorKind(s.package).workValues(s.package).includes(read.final.value);
+}
+
 function committedRead(base: Session): { read: ReturnType<typeof turnRead>; explicitAnswer: boolean; committed: boolean } {
   const text = base.turn!.text;
   const read = turnRead(base);
@@ -5251,6 +5381,9 @@ function childAnswerOf(s: Session, hide: (text: string) => string): MathReviewIn
   // Final check 9 (2026-11-15): a turn that names the easier example (or another problem) is judged by no verdict of the
   // target: code cannot tell which problem its numbers answer.
   if (mentionsExample(text)) return valuesIn(text, readOptionsIn(s)).length > 0 ? { value: null, verdict: "unknown", right } : null;
+  // Final check 10 (2026-11-15): a run of number words with no one standard value ("two thousand two thousand") is a
+  // number code cannot read: "unknown", never a value another reader invents.
+  if (unreadNumberRuns(text).length > 0) return { value: null, verdict: "unknown", right };
   const credits = heardAnswers(s);
   const credited = credits.filter((a) => a.verdict === "right");
   const numOf = (v: AnswerValue | undefined) => (v?.type === "number" ? v.value : null);
@@ -5338,7 +5471,7 @@ export function mathReviewInput(s: Session, sentence: string, before: readonly s
     workValues: pkg ? tutorKind(pkg).workValues(pkg) : [],
     answer: typeof answer === "number" ? answer : typeof answer === "string" ? hide(answer) : null,
     childTurn: s.turn ? hide(s.turn.text) : null,
-    childFacts: pkg && s.turn ? childFacts(pkg, s.turn.text).map(hide) : [],
+    childFacts: pkg && s.turn ? childFacts(pkg, s.turn.text, (v) => answerReadWhole(pkg, s.turn!.text, v, true)).map(hide) : [],
     transcript: s.turns.slice(-MATH_REVIEW_TURNS).map((t) => ({ speaker: t.speaker, text: hide(t.text) })),
     lastTurns: lastTwoTurns(s, hide),
     easierExample: pkg ? easierFacts(pkg, hide) : null,
@@ -5480,7 +5613,8 @@ export function tutorStream(s: Session): TutorStreamContext | null {
   if (!plainlyMathTurn(s)) return null;
   const word = wordVerdict(s);
   const code = codeStance(s);
-  const stance = word === "wrong" || (code === "none" && childSaysFalse(s.turn.text)) ? "wrong" : code === "none" && word === "right" ? "right" : code;
+  // Final check 10: a number the standard reader cannot read gives no stance at all.
+  const stance = unreadNumberRuns(s.turn.text).length > 0 ? "none" : word === "wrong" || (code === "none" && childSaysFalse(s.turn.text)) ? "wrong" : code === "none" && word === "right" ? "right" : code;
   const credited = heardAnswers(s).flatMap((a) => (a.verdict === "right" && a.value.type === "number" ? [a.value.value] : []));
   // A word question's "yes" streams only on code's right word: with no word code can read, the affirmation waits for
   // the whole message and its check.
@@ -5576,7 +5710,17 @@ function boardTexts(cmd: unknown, key = ""): string[] {
  */
 function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], reviews: readonly TalkReview[] | undefined, sent: readonly string[], fallback: boolean, mathReviews?: readonly MathReview[]): StepResult {
   const reading = out.reading ?? {};
-  if (!tutorTeachingNow(base, reading)) return proposeV3(base, out, effects, reviews, sent);
+  if (!tutorTeachingNow(base, reading)) {
+    // Final check 10 (2026-11-15): the help in sentences already streamed is decided here, before the turn's priority
+    // routing (identity, scope, safety, a stop) commits. Routing can add help, never take it away.
+    const streamed = sent.length > 0 && base.tutor && base.package ? streamedHelp(base, sent) : null;
+    const r = proposeV3(base, out, effects, reviews, sent);
+    if (!streamed || r.refusal) return r;
+    const s = structuredClone(r.session);
+    if (!s.assistance.includes(streamed)) s.assistance.push(streamed);
+    s.stuckStep ??= stepFacts(base.package!).find((st) => !s.done.includes(st.id))?.id ?? "result";
+    return { ...r, session: s };
+  }
   const no = (code: RefusalCode, reason: string, say?: SayReason | "review" | "math_review"): StepResult => ({ session: base, effects, refusal: { code, reason, allowed: ["guide", "close"], ...(say ? { say } : {}) } });
   const pkg = base.package!;
   const s: Session = structuredClone(base);
@@ -5631,7 +5775,8 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   const childValues: number[] = [];
   if (base.turn) {
     const { read, explicitAnswer, committed } = committedRead(base);
-    if (committed && read.final?.type === "number") {
+    // Final check 10: a number the standard reader cannot read is no committed value.
+    if (committed && read.final?.type === "number" && unreadNumberRuns(base.turn.text).length === 0) {
       const n = read.final.value;
       childValues.push(n);
       // A value of the work is no wrong answer: a step's result or digit, or a column's top after the trade (12, 4).
@@ -5720,7 +5865,7 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     if (r?.verdict !== "true") return no("say_check", `The math review did not find "${sentence}" true (${r ? `${r.verdict}: ${r.reason}` : "no review"}). Every number and relation Maya says must be plainly true: say it with simple true math, such as one equation of the question's own numbers.`, "math_review");
     math.push({ sentence, verdict: "true" });
   }
-  const tutor = { help: progress ? 0 : s.solved === null ? (s.tutor?.help ?? 0) + 1 : 0, drawn: [...(s.tutor?.drawn ?? [])] };
+  const tutor: NonNullable<Session["tutor"]> = { help: progress ? 0 : s.solved === null ? (s.tutor?.help ?? 0) + 1 : 0, drawn: [...(s.tutor?.drawn ?? [])], ...(s.tutor?.sent?.length ? { sent: structuredClone(s.tutor.sent) } : {}) };
   const drawing = s.noBoard ? { commands: [], keys: [] } : tutorDrawings(pkg, out.draw ?? [], tutor.drawn, (i) => `tutor-note-${s.batches + 1}-${i}`);
   tutor.drawn.push(...drawing.keys);
   s.tutor = tutor;
@@ -5738,8 +5883,7 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     // it holds (a put's value, a write's text, a label, any field but its op and ids), so a board that shows the
     // answer value or a choice word gives the answer.
     const notes = drawing.commands.flatMap((c) => boardTexts(c));
-    const kind: Assistance = tellsAnswer(base, pkg, [...sentencesOf(text), ...notes], tutor.drawn, committedRight) ? "answer_given"
-      : sentencesOf(text).some((x) => equationsOf(x).some((e) => !e.negated && equationHolds(e) === true && e.result.q?.[1] === 1 && (open.some((st) => e.result.q?.[0] === st.result) || tutorKind(pkg).workValues(pkg).includes(e.result.q?.[0] ?? NaN)))) ? "guided" : "hint";
+    const kind = tutorHelpOf(base, sentencesOf(text), notes, tutor.drawn, committedRight);
     if (!s.assistance.includes(kind)) s.assistance.push(kind);
     // The step the child needed help with: the step open when the child asked or made no progress, never a step the
     // child had done before (part C review, 2026-11-15). The first such step stands.
@@ -5760,7 +5904,10 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   s.turns.push({ at: s.now!, speaker: "maya", text: said, state: act === "close" ? "CLOSE" : s.state, act });
   if (drawing.commands.length) {
     s.batches += 1;
-    effects.push({ kind: "board", batch: { transactionId: `${s.callId}-b${s.batches}`, commands: drawing.commands as unknown as Command[] } });
+    const transactionId = `${s.callId}-b${s.batches}`;
+    // B1: sent, not shown, until the child's screen says what it did with the batch (boardFate).
+    if (drawing.keys.length) s.tutor.sent = [...(s.tutor.sent ?? []), { batch: transactionId, keys: [...drawing.keys] }];
+    effects.push({ kind: "board", batch: { transactionId, commands: drawing.commands as unknown as Command[] } });
   }
   s.turn = null;
   delete s.mathClaim;
@@ -5769,6 +5916,70 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   if (act === "close") end(s, closeCause(base), effects, false);
   else waitForChild(s);
   return { session: s, effects, refusal: null };
+}
+
+/**
+ * The help a tutor message gives (part C review, 2026-11-15): a message or board that gives the whole answer is
+ * answer_given; else a message that tells an open step's result is a show (guided), else a hint.
+ */
+function tutorHelpOf(base: Session, sentences: readonly string[], notes: readonly string[], drawn: readonly string[], committedRight: boolean): Assistance {
+  const pkg = base.package!;
+  const open = stepFacts(pkg).filter((st) => !base.done.includes(st.id));
+  return tellsAnswer(base, pkg, [...sentences, ...notes], drawn, committedRight) ? "answer_given"
+    : sentences.some((x) => equationsOf(x).some((e) => !e.negated && equationHolds(e) === true && e.result.q?.[1] === 1 && (open.some((st) => e.result.q?.[0] === st.result) || tutorKind(pkg).workValues(pkg).includes(e.result.q?.[0] ?? NaN)))) ? "guided" : "hint";
+}
+
+/**
+ * Final check 12 (2026-11-15): the help that sentences Maya emitted this turn give, read at the moment they are emitted
+ * (the text adapter's onSayPart), with the turn they answer. Null when they give none to record.
+ */
+export function emittedHelpKind(session: Session, sent: readonly string[]): Assistance | null {
+  if (!session.tutor || !session.package || session.outcome || sent.length === 0) return null;
+  return streamedHelp(session, sent);
+}
+
+/** The session with one help kind in its ledger (`assistance`): help only rises, and an ended call keeps its outcome. */
+export function withHelp(session: Session, kind: Assistance): Session {
+  if (session.outcome || session.assistance.includes(kind)) return session;
+  return { ...session, assistance: [...session.assistance, kind] };
+}
+
+/** The session with the help in sentences Maya already emitted this turn recorded (final check 11). */
+export function withEmittedHelp(session: Session, sent: readonly string[]): Session {
+  // Final check 11 (2026-11-15): applied where each streamed sentence is accepted (the text adapter's response, and a
+  // proposal that carries them), before any routing (identity, scope, safety, a stop, the end) builds an outcome, so every
+  // outcome builder reads it. Help only rises. The step the child was stuck on is left to the turn (or its defaults).
+  const kind = emittedHelpKind(session, sent);
+  return kind ? withHelp(session, kind) : session;
+}
+
+/**
+ * Final check 10 (2026-11-15): the help in the sentences Maya already streamed this turn, read before any later routing.
+ * Only the right final answer that stood before this turn, or that code's own strict read credits in this turn, lets her
+ * say the answer back without giving it, and then nothing is recorded (as on the teaching path; never the model's
+ * reading).
+ */
+function streamedHelp(base: Session, sent: readonly string[]): Assistance | null {
+  if (base.outcome) return null;
+  const committedRight = (base.solved === "child" && base.lastResult === "right") || heardAnswers(base).some((a) => a.step === "result" && a.verdict === "right");
+  if (committedRight) return null;
+  return tutorHelpOf(base, sent.flatMap((x) => sentencesOf(x)), [], base.tutor?.drawn ?? [], false);
+}
+
+/**
+ * B1: the child's screen said what it did with a batch. Shown: its drawings are on the board. Skipped or cancelled: they
+ * are not, so they leave `drawn` and the kind can offer them again. Only a batch still waiting for its word changes:
+ * the first word wins, and a word for any other batch changes nothing. The clock, the state and the turn do not move.
+ */
+function boardFate(session: Session, e: Extract<SessionEvent, { type: "board_fate" }>): StepResult {
+  const s: Session = structuredClone(session);
+  const sent = s.tutor?.sent?.find((x) => x.batch === e.batch);
+  if (!s.tutor || !sent || !BOARD_FATES.includes(e.fate)) return { session: s, effects: [], refusal: null };
+  const rest = s.tutor.sent!.filter((x) => x !== sent);
+  if (rest.length) s.tutor.sent = rest;
+  else delete s.tutor.sent;
+  if (e.fate !== "shown") s.tutor.drawn = s.tutor.drawn.filter((k) => !sent.keys.includes(k));
+  return { session: s, effects: [], refusal: null };
 }
 
 function proposeV3(base: Session, out: ModelOutput, effects: Effect[], reviews: readonly TalkReview[] | undefined, sent: readonly string[] = []): StepResult {
