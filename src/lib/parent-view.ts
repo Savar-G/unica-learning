@@ -7,13 +7,14 @@ import {
 import { childStage, type StageView, type TabSwitches, type TestFact } from "@/lib/child-stage";
 import { addDays, addMonths, familyZone, formatCalendarDate, localDateTime, localDay, localMonth, weekStartFor, type FamilyZone } from "@/lib/family-time";
 import { homeStory } from "@/lib/home-highlights";
+import { capitalName, plainSkillName } from "@/lib/skill-name";
 import type { LearningRow } from "@/lib/learning-style";
 import { firstDeliveryMonth, offeredSummaryMonth } from "@/lib/monthly-summary-offer";
 import { needsHelpStandards, repeatedMistakes, type HelpMark } from "@/lib/needs-help";
 import { nextBook, type NextBook } from "@/lib/next-book";
 import type { ParentPlan } from "@/lib/parent-plan";
 import type { CurriculumId } from "@/lib/signup";
-import { WORKBOOK_DAYS, bookToday, dayNumber, doneStreak, weekCircles, weekProgress, workbookDay, type WeekDay } from "@/lib/parent-week";
+import { WORKBOOK_DAYS, bookToday, dayNumber, doneStreak, earliestOpenDay, weekCircles, weekProgress, workbookDay, type WeekDay } from "@/lib/parent-week";
 import { firstBatchAt, masteredSince, progressSummary, type ProgressSummary, type StateChange } from "@/lib/progress-series";
 import { skillMapView, topicBars, type TopicBarView } from "@/lib/skill-map-view";
 import { confirmedWorkbookDelivery } from "@/lib/workbook-delivery-access";
@@ -459,10 +460,10 @@ async function readBookDays(
   return { id: book.id, number: book.number, start: localDay(deliveredAt, zone), pages, saved, doneDays };
 }
 
-const capital = (text: string) => `${text.slice(0, 1).toUpperCase()}${text.slice(1)}`;
-const standardText = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, capital(s.text)]));
-/** The standard's own words, for a sentence ("mastered addition and subtraction to 1000"). */
-const standardPhrase = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s.text]));
+// One parent-facing name per standard (src/lib/skill-name.ts): the lists show it with a capital, the Home's sentences say it
+// as it is ("mastered addition and subtraction to 1000"), so a list and a sentence name a skill in the same words.
+const standardPhrase = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, plainSkillName(s.text)]));
+const standardText = new Map([...standardPhrase].map(([code, name]) => [code, capitalName(name)]));
 
 /** The standard most of a day's questions are on (the first on a tie, in page order); its text from the skill map. */
 function dayTopic(pageIds: readonly string[], questions: readonly { pageId: string; standard: string | null }[]): string | null {
@@ -581,13 +582,16 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
     }
   }
   const monday = weekStartFor(today);
+  const childBooks = new Set(workbooks.filter((w) => w.childId === child.id).map((w) => w.id));
   // The week line judges how scanning is going, so it needs the Scan tab: a family that cannot scan has no days to be on track
   // for. Before the family's first scan the prompt above already says what to do, so the line says nothing more.
   const scanning = child.tabs.includes("scan_pages") && scanPrompt === null;
   const story = homeStory({
     name: child.firstName,
     week: days && scanning ? weekProgress(today, days.start, days.doneDays, { ended: child.readOnly }) : null,
-    scansThisWeek: days ? scans.filter((s) => s.workbookId === days.id && Date.parse(s.expiresAt) > now && localDay(s.takenAt, zone) >= monday && localDay(s.takenAt, zone) <= today).length : 0,
+    // Every one of this child's books counts: a new book delivered mid-week must not hide the pages scanned earlier in the week.
+    scansThisWeek: scans.filter((s) => childBooks.has(s.workbookId) && Date.parse(s.expiresAt) > now && localDay(s.takenAt, zone) >= monday && localDay(s.takenAt, zone) <= today).length,
+    openDay: days ? earliestOpenDay(days.start, today, days.pages, days.saved, { ended: child.readOnly }) : null,
     newlyMastered, repeatedMistake,
     streak: days ? doneStreak(today, days.start, days.doneDays, { ended: child.readOnly }) : 0,
   });

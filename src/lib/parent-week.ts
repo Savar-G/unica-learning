@@ -138,7 +138,24 @@ export function weekProgress(today: string, start: string | null, doneDays: Read
 }
 
 /**
- * The days the child has done in a row, ending now: the run of done book days back from today's (when today's is not
+ * The earliest day of the book that has started and still has a page to scan: the one orange row of the Workbooks tab
+ * (src/lib/workbook-days.ts `bookDays`, its `gap`). A day has started when the calendar has reached it (`workbookDay`, a
+ * weekend counts up to Friday) or when any page of it has a saved photo. `pages`: the page ids of each book day;
+ * `saved`: the page ids with a saved photo. Null when no started day has a page left, and once the plan `ended`.
+ */
+export function earliestOpenDay(start: string, today: string, pages: ReadonlyMap<number, readonly string[]>, saved: ReadonlySet<string>, { days = WORKBOOK_DAYS, ended = false }: { days?: number; ended?: boolean } = {}): number | null {
+  if (ended) return null;
+  const reached = workbookDay(start, today, days);
+  for (const day of [...pages.keys()].sort((a, b) => a - b)) {
+    const ids = pages.get(day)!;
+    const started = (reached !== null && day <= reached) || ids.some((id) => saved.has(id));
+    if (started && ids.some((id) => !saved.has(id))) return day;
+  }
+  return null;
+}
+
+/**
+ * The workbook days the child has done in a row, ending now: the run of done book days back from today's (when today's is not
  * done yet, back from the day before, so an evening before the day's pages are scanned does not break it). 0 before the
  * book, after the plan `ended`, once the book finished in an earlier week, and when the day it ends on is not done. A weekend counts back from Friday's day.
  */

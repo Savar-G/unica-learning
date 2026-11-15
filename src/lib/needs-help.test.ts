@@ -156,29 +156,51 @@ describe("what counts as Needs help", () => {
 
 describe("a skill that keeps coming up wrong (#990)", () => {
   const help = new Set(["3.3", "3.4"]);
-  it("needs a wrong answer on at least 2 different days of the last 14", () => {
+  /** A wrong answer marked at `at`, on page "Day `bookDay`" of a book (null: a page with no day label). */
+  const wrongOn = (at: string, bookDay: number | null, standard = "3.3", book = "book-1"): HelpMark => ({ ...mark(false, at, standard), day: bookDay === null ? null : `${book}:${bookDay}` });
+  it("needs a wrong answer on at least 2 different workbook days, marked in the last 14 days", () => {
     expect(REPEATED_MISTAKE_DAYS).toBe(2);
-    expect(repeatedMistakes(help, [...on("2026-11-10", [false, false, false]), ...on("2026-11-11", [false])], NOW, zone)).toEqual([{ standard: "3.3", days: 2, lastAt: Date.parse("2026-11-11T19:00:00Z") }]);
+    const marks = [wrongOn("2026-11-10T19:00:00Z", 1), wrongOn("2026-11-10T19:00:00Z", 1), wrongOn("2026-11-11T19:00:00Z", 2)];
+    expect(repeatedMistakes(help, marks, NOW, zone)).toEqual([{ standard: "3.3", days: 2, lastAt: Date.parse("2026-11-11T19:00:00Z") }]);
   });
-  it("three wrong answers on one day are one day, not a repeat", () => {
-    expect(repeatedMistakes(help, on("2026-11-10", [false, false, false]), NOW, zone)).toEqual([]);
+  it("three wrong answers on one workbook day are one day, not a repeat", () => {
+    expect(repeatedMistakes(help, [1, 2, 3].map(() => wrongOn("2026-11-10T19:00:00Z", 4)), NOW, zone)).toEqual([]);
   });
-  it("counts only days, never the answers: right answers, blanks, other days and old days do not count", () => {
-    const marks = [...on("2026-11-10", [true, true]), blank("2026-11-11T19:00:00Z"), ...on("2026-11-12", [false]), ...on("2026-10-20", [false, false])];
+  it("counts workbook days, not marking days: one evening's marking that crosses midnight is one day", () => {
+    // 11:30 p.m. on 2026-11-10 and 12:30 a.m. on 2026-11-11 in Vancouver: two calendar days of marking, one page's Day 3.
+    const evening = [wrongOn("2026-11-11T07:30:00Z", 3), wrongOn("2026-11-11T08:30:00Z", 3)];
+    expect(repeatedMistakes(help, evening, NOW, zone)).toEqual([]);
+    // The same two marks on two different pages' days are a repeat, whatever the hour.
+    expect(repeatedMistakes(help, [wrongOn("2026-11-11T07:30:00Z", 3), wrongOn("2026-11-11T08:30:00Z", 4)], NOW, zone).map((m) => m.days)).toEqual([2]);
+  });
+  it("counts workbook days when a week of pages is scanned at once: one marking day, three workbook days", () => {
+    const together = [1, 2, 3].map((day) => wrongOn("2026-11-11T19:00:00Z", day));
+    expect(repeatedMistakes(help, together, NOW, zone).map((m) => m.days)).toEqual([3]);
+  });
+  it("the same Day number in two books is two workbook days", () => {
+    const books = [wrongOn("2026-11-02T19:00:00Z", 2, "3.3", "book-1"), wrongOn("2026-11-11T19:00:00Z", 2, "3.3", "book-2")];
+    expect(repeatedMistakes(help, books, NOW, zone).map((m) => m.days)).toEqual([2]);
+  });
+  it("counts only days, never the answers: right answers, blanks, old marks and pages with no day do not count", () => {
+    const marks = [
+      { ...mark(true, "2026-11-10T19:00:00Z"), day: "book-1:1" }, { ...blank("2026-11-11T19:00:00Z"), day: "book-1:2" },
+      wrongOn("2026-11-12T19:00:00Z", 3), wrongOn("2026-10-20T19:00:00Z", 4), wrongOn("2026-10-20T19:00:00Z", 5),
+      wrongOn("2026-11-11T19:00:00Z", null), ...on("2026-11-10", [false]),
+    ];
     expect(repeatedMistakes(help, marks, NOW, zone)).toEqual([]);
   });
   it("leaves out a skill that is not in Needs help, a mark after today and a mark with no readable time", () => {
-    expect(repeatedMistakes(new Set(["3.4"]), [...on("2026-11-10", [false], "3.3"), ...on("2026-11-11", [false], "3.3")], NOW, zone)).toEqual([]);
-    expect(repeatedMistakes(help, [...on("2026-11-12", [false]), ...on("2026-11-13", [false])], NOW, zone)).toEqual([]);
-    expect(repeatedMistakes(help, [mark(false, "soon"), ...on("2026-11-12", [false])], NOW, zone)).toEqual([]);
+    expect(repeatedMistakes(new Set(["3.4"]), [wrongOn("2026-11-10T19:00:00Z", 1), wrongOn("2026-11-11T19:00:00Z", 2)], NOW, zone)).toEqual([]);
+    expect(repeatedMistakes(help, [wrongOn("2026-11-12T19:00:00Z", 1), wrongOn("2026-11-13T19:00:00Z", 2)], NOW, zone)).toEqual([]);
+    expect(repeatedMistakes(help, [wrongOn("soon", 1), wrongOn("2026-11-12T19:00:00Z", 2)], NOW, zone)).toEqual([]);
   });
-  it("dates a mark by the family's own day: 11 p.m. in Vancouver is the next day in UTC but the same family day", () => {
-    const late = mark(false, "2026-11-11T06:30:00Z"); // 10:30 p.m. on 2026-11-10 in Vancouver
-    expect(repeatedMistakes(help, [late, ...on("2026-11-10", [false])], NOW, zone)).toEqual([]);
-    expect(repeatedMistakes(help, [late, ...on("2026-11-11", [false])], NOW, zone)).toHaveLength(1);
+  it("dates a mark's window by the family's own day: a mark in the 14 days counts, 15 days ago does not", () => {
+    // 2026-10-30 is the first family-time day of the window.
+    expect(repeatedMistakes(help, [wrongOn("2026-10-30T19:00:00Z", 1), wrongOn("2026-11-12T19:00:00Z", 2)], NOW, zone)).toHaveLength(1);
+    expect(repeatedMistakes(help, [wrongOn("2026-10-30T06:00:00Z", 1), wrongOn("2026-11-12T19:00:00Z", 2)], NOW, zone)).toEqual([]);
   });
   it("lists the skill with the most days first, then the most recent", () => {
-    const marks = [...on("2026-11-08", [false], "3.4"), ...on("2026-11-09", [false], "3.4"), ...on("2026-11-10", [false], "3.4"), ...on("2026-11-11", [false], "3.3"), ...on("2026-11-12", [false], "3.3")];
+    const marks = [wrongOn("2026-11-08T19:00:00Z", 1, "3.4"), wrongOn("2026-11-09T19:00:00Z", 2, "3.4"), wrongOn("2026-11-10T19:00:00Z", 3, "3.4"), wrongOn("2026-11-11T19:00:00Z", 1, "3.3"), wrongOn("2026-11-12T19:00:00Z", 2, "3.3")];
     expect(repeatedMistakes(help, marks, NOW, zone).map((m) => [m.standard, m.days])).toEqual([["3.4", 3], ["3.3", 2]]);
   });
 });

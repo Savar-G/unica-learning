@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookOver, bookToday, dayNumber, doneStreak, weekCircles, weekProgress, workbookDay } from "@/lib/parent-week";
+import { bookOver, bookToday, dayNumber, doneStreak, earliestOpenDay, weekCircles, weekProgress, workbookDay } from "@/lib/parent-week";
 
 // The Home week circles and the workbook day (#1003), through the module's public interface. 2026-11-02 is a Monday.
 
@@ -161,5 +161,38 @@ describe("days done in a row (#990)", () => {
     expect(streak("2026-11-05", [1, 2, 3], "2026-11-02", { ended: true })).toBe(0);
     expect(streak("2026-11-13", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])).toBe(10);
     expect(streak("2026-11-16", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])).toBe(0);
+  });
+});
+
+describe("the earliest open day of the book (#990)", () => {
+  // Ten days of two pages each: "1a", "1b" to "10a", "10b".
+  const pages = new Map(Array.from({ length: 10 }, (_, i) => [i + 1, [`${i + 1}a`, `${i + 1}b`]] as const));
+  const open = (today: string, saved: string[], opts: Parameters<typeof earliestOpenDay>[4] = {}) => earliestOpenDay("2026-11-02", today, pages, new Set(saved), opts);
+  const all = (...days: number[]) => days.flatMap((d) => [`${d}a`, `${d}b`]);
+
+  it("is the first day the calendar has reached that still has a page to scan", () => {
+    expect(open("2026-11-04", all(1))).toBe(2);
+    expect(open("2026-11-04", all(1, 2))).toBe(3);
+    // Day 2 has one page left: still open.
+    expect(open("2026-11-04", [...all(1), "2a"])).toBe(2);
+  });
+  it("names an earlier day than this week's first missed one: last week's Day 2 is still open", () => {
+    expect(open("2026-11-11", all(1, 3, 4, 5, 6))).toBe(2);
+  });
+  it("counts today's day as started, and none as open when every started day is done", () => {
+    expect(open("2026-11-04", all(1, 2, 3))).toBeNull();
+    expect(open("2026-11-04", all(1, 2))).toBe(3);
+  });
+  it("a day ahead of the calendar with a page scanned has started; one with none has not", () => {
+    expect(open("2026-11-03", [...all(1, 2), "4a"])).toBe(4);
+    expect(open("2026-11-03", all(1, 2))).toBeNull();
+  });
+  it("a weekend counts up to Friday's day, and the day before the book starts is none", () => {
+    expect(open("2026-11-08", all(1, 2, 3, 4))).toBe(5);
+    expect(open("2026-11-01", [])).toBeNull();
+  });
+  it("is null once the plan ended, and for a book with no day pages", () => {
+    expect(open("2026-11-04", [], { ended: true })).toBeNull();
+    expect(earliestOpenDay("2026-11-02", "2026-11-04", new Map(), new Set())).toBeNull();
   });
 });

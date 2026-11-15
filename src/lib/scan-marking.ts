@@ -588,11 +588,13 @@ export function effectiveSkillMarks(marks: readonly EffectiveMark[]): SkillMark[
 /**
  * The same marks as `effectiveSkillMarks`, each with whether the answer was blank. Only the parent dashboard's Needs help
  * rule reads it (`src/lib/needs-help.ts`): an unfinished page is not a struggling child. The skill state rule never does.
+ * `dayOf` names the workbook day of an item's page (`<workbook id>:<N>` from the page's "Day N" label), for the repeated-mistake count.
  */
-export function effectiveHelpMarks(marks: readonly EffectiveMark[]): HelpMark[] {
+export function effectiveHelpMarks(marks: readonly EffectiveMark[], dayOf?: (workbookId: string, pageId: string) => string | null): HelpMark[] {
   return marks.flatMap((m) => {
     const d = markingEvent(m.expected, m.observation);
-    return d.publish && m.originalEvent && m.eventId ? [{ standard: m.originalEvent.skill.standard, right: d.result === "right", review: ["friday-5", "mixed-set", "show-what-you-know"].includes(m.expected.teaching?.part ?? ""), at: m.originalEvent.occurredAt, blank: d.result === "blank" }] : [];
+    const id = m.expected.identity;
+    return d.publish && m.originalEvent && m.eventId ? [{ standard: m.originalEvent.skill.standard, right: d.result === "right", review: ["friday-5", "mixed-set", "show-what-you-know"].includes(m.expected.teaching?.part ?? ""), at: m.originalEvent.occurredAt, blank: d.result === "blank", day: dayOf?.(id.workbookId, id.pageId) ?? null }] : [];
   });
 }
 export { waitsForTeam };
