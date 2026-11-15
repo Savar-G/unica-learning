@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { BUSINESS_NAME, MAILING_ADDRESS, SUPPORT_EMAIL, WEBSITE } from "@/lib/contact";
 import { PAUSE_WEEKS_PER_YEAR } from "@/lib/plan-pause";
 import { ADDITIONAL_CHILD_PRICE, BRAND, OFFER_ENDS, PLANS, TRIAL_DAYS, cad } from "@/lib/site";
+import { PLAN_REMINDER_DAYS } from "@/lib/plan-reminder";
 import { planTerms } from "@/lib/subscription-plan";
 
 // docs/facts.md is the list of true claims that agents may use in customer words. These tests bind its numbers and
@@ -42,6 +43,9 @@ describe("docs/facts.md", () => {
     expect(planTerms(PLANS.one.price).trialDays).toBe(TRIAL_DAYS);
     expect(facts).toContain(`free for ${TRIAL_DAYS} days`);
     expect(facts).toContain(`On day ${TRIAL_DAYS}`);
+    expect(facts).toContain(`The ${TRIAL_DAYS} days start when the first workbook arrives`);
+    expect(facts).toContain(`emails the parent ${PLAN_REMINDER_DAYS} days before the first charge`);
+    expect(facts).toContain(`at least ${PLAN_REMINDER_DAYS} days of free time left`);
     expect(facts).toContain(`ends ${OFFER_ENDS}`);
   });
 

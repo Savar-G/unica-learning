@@ -18,7 +18,7 @@ Checked date for every row: 2026-11-14.
 |---|---|---|
 | Unica Learning is a personalized math learning program for children aged 5 to 14, Kindergarten to Grade 9, in Canada. | `src/lib/site.ts:48` (HERO), `src/lib/ai-summary.ts:41` | 2026-11-14 |
 | In headlines, kickers, ads and social posts, call it "a personalized math learning program". In a blog body, "workbook" may name the paper book that arrives in the mail. | `AGENTS.md` (marketing copy rule), `docs/blog-style.md` | 2026-11-14 |
-| Unica mails paper workbooks made for your child. You scan the finished pages with your phone, Unica marks them, and an AI Teaching Assistant helps when your child is stuck. | `src/lib/site.ts:48` (HERO.lead) | 2026-11-14 |
+| Unica mails paper workbooks made for your child. You scan the finished pages with your phone, Unica marks them, and an AI Teaching Assistant helps when your child is stuck. unverified: flag state (`SCAN_PAGES_ENABLED`, `SCAN_MARKING_ENABLED`, `MAYA_CHAT_ENABLED`); use the same conditions as the marking and Maya rows below. The home page already publishes this claim. | `src/lib/site.ts:48` (HERO.lead) | 2026-11-14 |
 | The program is for math. Reading is planned for later. | `src/lib/faq.ts:17`, `src/lib/site.ts:11` | 2026-11-14 |
 | Unica is made in Vancouver, BC. | `src/lib/ai-summary.ts:43` | 2026-11-14 |
 | Unica works alongside school. It does not replace school. | `DESIGN.md` (compare page note, D-114) | 2026-11-14 |
@@ -101,10 +101,10 @@ Voice calls with Maya are not released to families. See "Never say" below. Do no
 | Math is CAD 79.99 a month for the first child. | `src/lib/site.ts:14` (PLANS), `src/lib/subscription-plan.ts` | 2026-11-14 |
 | Each additional child is CAD 59.99 a month. | `src/lib/site.ts:19`, D-306, D-324 | 2026-11-14 |
 | Delivery is included in every plan. Prices are in Canadian dollars. | `src/app/(site)/pricing/page.tsx:20`, `src/app/(site)/terms/page.tsx:20` | 2026-11-14 |
-| The first month is free for 30 days. The 30 days start when the first workbook arrives at the family's home. | `src/lib/site.ts:28` (TRIAL_DAYS), `src/app/(site)/pricing/page.tsx:45`, D-144 | 2026-11-14 |
+| The first month is free for 30 days. The 30 days start when the first workbook arrives at the family's home. This is the family's one free window: a sibling who starts inside it shares its end date (fewer than 30 days), and a sibling who starts after it pays at once. | `src/lib/site.ts:28` (TRIAL_DAYS), `src/app/(site)/pricing/page.tsx:45`, D-144 | 2026-11-14 |
 | The free first month is a limited-time offer that ends Nov 30. After that date, do not write "first month free" unless `OFFER_ENDS` in `src/lib/site.ts` has moved and this file has moved with it. | `src/lib/site.ts:34` (OFFER_ENDS) | 2026-11-14 |
-| On day 30, Unica charges the monthly price. Charges then repeat each month until the parent cancels. | `src/app/(site)/pricing/page.tsx:46`, `src/app/(site)/terms/page.tsx:37` | 2026-11-14 |
-| Unica emails the parent 7 days before the first charge, with a link to manage or cancel the plan. | `src/app/(site)/terms/page.tsx:37`, D-222 | 2026-11-14 |
+| On day 30 of the family's free window, Unica charges the monthly price for each child on a plan (a sibling who joined after the window is charged at once). Charges then repeat each month until the parent cancels. | `src/app/(site)/pricing/page.tsx:46`, `src/app/(site)/terms/page.tsx:37` | 2026-11-14 |
+| Unica emails the parent 7 days before the first charge, with a link to manage or cancel the plan, when the plan starts with at least 7 days of free time left. | `src/app/(site)/terms/page.tsx:37`, `src/lib/plan-reminder.ts:6`, D-222 | 2026-11-14 |
 | Nothing is charged when the parent adds a card. A card is added after the report, only if the family wants to continue. | `src/app/(site)/pricing/page.tsx:45`, `src/lib/faq.ts:25` | 2026-11-14 |
 | A sibling who starts inside the family's free window gets only the time that is left in it. A sibling who starts after the window pays at once. | `docs/plan-controls.md` (Family admission, D-306), D-324 | 2026-11-14 |
 | Unica Learning costs less than a typical learning centre. BC learning centre pages list about CAD 170 to 220 per subject a month. | `src/lib/faq.ts:9`, `DESIGN.md:41` (D-114) | 2026-11-14 |
@@ -125,7 +125,7 @@ Do not write "money-back guarantee". The free month replaced it (`src/lib/site.t
 
 | Claim you may use | Source | Checked |
 |---|---|---|
-| A family can share its permanent referral code or link. A family that has never paid enters the code before its first payment. It keeps its free month and gets 50% off one paid month for each enrolled child. After that family's first successful payment, the referring family gets the same benefit. Separate referrals give separate discounted months. Rewards never expire. unverified: flag state (the Stripe webhook events and key permissions that referral payments need must be confirmed live; `docs/referrals.md` says to verify both before release). The pricing page and the FAQ already publish this claim. | `docs/referrals.md`, `src/app/(site)/pricing/page.tsx:28`, `src/lib/faq.ts:5`, `src/app/(site)/terms/page.tsx:39` | 2026-11-14 |
+| A family can share its permanent referral code or link. A family that has never paid enters the code before its first payment. It keeps its free month and gets 50% off one paid month for each enrolled child. After that family's first successful nonzero subscription payment, the referring family gets the same benefit. Separate referrals give separate discounted months. Rewards never expire. unverified: flag state (the Stripe webhook events and key permissions that referral payments need must be confirmed live; `docs/referrals.md` says to verify both before release). The pricing page and the FAQ already publish this claim. | `docs/referrals.md`, `src/app/(site)/pricing/page.tsx:28`, `src/lib/faq.ts:5`, `src/app/(site)/terms/page.tsx:39` | 2026-11-14 |
 
 Use the pricing page wording. Keep the full rules on `/terms#referrals`. Do not use referrals in an ad or in outreach until the payment path is confirmed live.
 
@@ -177,7 +177,6 @@ Each row below has a feature that exists in the repo and is off, held for approv
 | Progress tab in the parent dashboard | Off until the skill map review (#194). | `AGENTS.md` (`PROGRESS_TAB_ENABLED`) |
 | Parent dashboard for every family | The switch stays off until Savar approves. Today families with an open plan and test families get it. unverified: flag state (`PARENT_DASHBOARD_ENABLED`). | `AGENTS.md`, D-249 |
 | Monthly summary email | Off until Savar approves real-parent email. | `AGENTS.md` (`MONTHLY_SUMMARY_EMAIL_ENABLED`) |
-| First pages of Workbook 1 on the report and in a sample email | Off until Savar approves the test example, the cost and the email words. | `AGENTS.md` (`FIRST_PAGES_ENABLED`, `FIRST_PAGES_EMAIL_ENABLED`) |
 | Scan reminder emails | Test-only until the family launch. The privacy page says "when scan reminders become available". | `AGENTS.md` (`WORKBOOK_SCAN_REMINDERS_ENABLED`), `src/app/(site)/privacy/page.tsx:34` |
 | Fix mistakes with Maya after a marked page | Stays disabled until S9 and #337 are released. | `DESIGN.md:101` |
 | Reading program | Planned for later. Math only today. | `src/lib/faq.ts:17` |
