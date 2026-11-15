@@ -119,9 +119,9 @@ describe("a closed plain math reply to a wrong answer needs no external review",
 describe("strict negative controls: near-closed sentences keep their review", () => {
   // Each control sentence is outside the closed forms by its form or its truth. The outcome is pinned per mode: "reviewed"
   // (it went to the review, and with a passing review it may be said) or "refused" (code's checks kept it out, with no
-  // review). It is never said without a review. The same outcomes hold on the source before this repair.
+  // review). It is never said without a review. False column roles now fail code's truth check before a review.
   it.each([
-    ["12 minus 8 was the tens step.", "a false place", "reviewed"],
+    ["12 minus 8 was the tens step.", "a false place", "refused"],
     ["4 minus 2 is the tens step.", "a step that is not done", "refused"],
     ["Did you say 4?", "a number the child did not say", "reviewed"],
     ["Did you say 5 for the tens?", "a suffix outside the closed list", "reviewed"],

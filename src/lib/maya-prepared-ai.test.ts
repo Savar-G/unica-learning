@@ -13,14 +13,19 @@ import type { AiJsonRequest } from "@/lib/ai-client";
 const request: AiJsonRequest = { name: "test", system: "s", content: [{ type: "text", text: "t" }], schema: {} };
 const response = () => reply("Let's look at the ones. What is 12 minus 8?", "guide", { step: "ones", level: 2 });
 const signal = () => new AbortController().signal;
-function setup() {
+function setup(refill?: Promise<void>) {
   let id = 0;
   const reserved: number[] = [];
   const settled: number[] = [];
+  const settledIds: string[] = [];
   const budget = createBudget({ modelMicros: 50_000, reviewMicros: 10_000, clock: () => 1000, newId: () => String(++id),
-    usdToMicros: (usd) => Math.ceil(usd * 1_000_000), reserve: async (_id, micros) => { reserved.push(micros); return { ok: true }; },
-    settle: async (_id, micros) => { settled.push(micros); } });
-  return { budget, reserved, settled };
+    usdToMicros: (usd) => Math.ceil(usd * 1_000_000), reserve: async (_id, micros) => {
+      reserved.push(micros);
+      if (refill && reserved.length > 1) await refill;
+      return { ok: true };
+    },
+    settle: async (id, micros) => { settledIds.push(id); settled.push(micros); } });
+  return { budget, reserved, settled, settledIds };
 }
 const make = (hooks: Parameters<Parameters<typeof preparedAi>[0]>[0]) => openRouterClient({ apiKey: "fake", model: "anthropic/claude-sonnet-5.5", ...hooks });
 const stream = (usd: number) => {
@@ -61,19 +66,29 @@ describe("one prepared request uses one existing budget handle", () => {
     expect(t.settled).toEqual([0]);
   });
   it("keeps concurrent request handles separate", async () => {
-    const t = setup(); await t.budget.open();
+    const refill = Promise.withResolvers<void>();
+    const t = setup(refill.promise); await t.budget.open();
     const a = t.budget.seam.take("speculative")!;
     const b = t.budget.seam.take("speculative")!;
+    // Two speculative takes start one refill before either physical request. Its response stays held.
+    expect(t.reserved).toEqual([200_000, 200_000]);
+    expect(t.budget.attempts()).toBe(2);
     const seen: Handle[] = [];
     const client = (handle: Handle) => preparedAi(make, { canSend: (given) => { expect(given).toBe(handle); return t.budget.canSend(given); } }, handle,
       async () => { seen.push(handle); return stream(0.0042); });
     await Promise.all([client(a).json({ ...request, onText: () => {} }, signal()), client(b).json({ ...request, onText: () => {} }, signal())]);
     expect(seen).toEqual([a, b]);
-    expect(t.reserved).toHaveLength(1);
+    // Neither client starts another reservation or spends the protected room while refill waits.
+    expect(t.reserved).toEqual([200_000, 200_000]);
+    expect(t.budget.attempts()).toBe(2);
     expect(t.budget.seam.take("speculative")).toBeNull();
     t.budget.seam.settle(a, 0.0042, { used: true });
     t.budget.seam.settle(b, 0.0042, { used: false });
-    await t.budget.stop();
+    const stopping = t.budget.stop();
+    refill.resolve();
+    await stopping;
+    expect(t.settled.toSorted((a, b) => a - b)).toEqual([0, 8400]);
+    expect(new Set(t.settledIds).size).toBe(2);
     expect(t.budget.totals()).toMatchObject({ speculative: 8400, speculativeUsed: 4200, model: 0 });
   });
   it.each([true, false])("waits for the final use decision after stream completion, used=%s", async (used) => {

@@ -66,7 +66,7 @@ import { claimActs, claimAnswers, claimCommitted, claimConfirm, claimQuestionAsk
 import { closeParts, compareEquationSaid, currentPart, evaluateSteps, evaluateTeaching, partBoards, partCovered, partEquationSaid, partIdOf, stepsBeforeLastPart, withEvaluateExample } from "./evaluate";
 import { isSpot, spotAnswers, spotReveals, spotSessionPackage, spotStepHeard } from "./spot-error";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, isModelOutput, readModelOutput, withoutDefaults, withoutNulls, type Act, type ChildAnswer, type HintLevel, type ModelOutput, type Proposal, type Reading, type Severity } from "./proposal";
-import { checkSay, checkSentence, endsWithAsk, INSTRUCTION, MATH_WORD, PRAISE_WORDS, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
+import { checkSay, checkSentence, columnSentenceTruth, heardColumnOf, revealsOpenStep, endsWithAsk, INSTRUCTION, MATH_WORD, PRAISE_WORDS, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
 import { hideName as redactChildName } from "../child-name-redaction";
@@ -4793,6 +4793,7 @@ function sayRules(before: Session, after: Session, p: Proposal, planned: string)
     noIntro: before.conversational === true && before.opened && !p.reading?.aboutMaya,
     ...(pkg ? leakRules(before, after, planned, released) : {}),
     ...stanceRules(before, after, p, released, wrong.length > 0),
+    ...columnRules(before),
   };
 }
 
@@ -4865,12 +4866,25 @@ function reviewNeeded(sentence: string, s: Session, rules: Pick<SayRules, "stanc
   return !mathOnly(sentence, vocabExtra(s)) && !closedMathSentence(sentence, s);
 }
 
+/** Column facts from code's current step, with the child's own complete arithmetic expression. */
+function columnRules(s: Session): Pick<SayRules, "columnSteps" | "heardColumn"> {
+  if (!s.package) return {};
+  const columnSteps: NonNullable<SayRules["columnSteps"]>[number][] = [];
+  for (const st of workSteps(s.package)) {
+    const state = { current: st.id === s.ladder.step, done: s.done.includes(st.id) || (s.passed ?? []).includes(st.id) };
+    if (st.kind === "subtract-column" && st.bottom !== null) {
+      columnSteps.push({ ...state, operands: [st.top - (st.lent ? 1 : 0) + (st.regrouped ? 10 : 0), st.bottom], op: "minus", place: st.place });
+    } else if (st.kind === "add-column" && st.carryIn === 0 && st.digits.length === 2) {
+      columnSteps.push({ ...state, operands: [st.digits[0], st.digits[1]], op: "plus", place: st.place });
+    }
+  }
+  return { columnSteps, heardColumn: heardColumnOf(s.turn?.text ?? "") };
+}
+
 /** Hedges about hearing the child, exact (after case and a final "." are set aside). */
 const HEARD_HEDGES = new Set(["i'm not sure i heard that right", "hmm, i'm not sure i heard that right"]);
 /** "Did you say 5?" or "Did you say 5 for the answer?": a confirm of a number the child said. Digits only. */
 const SAID_CONFIRM = /^did you say (\d+)(?: for (?:the|that|this) answer)?\?$/i;
-/** "12 minus 8 was the ones step.": the operation of a column step that is done. Digits only. */
-const STEP_ROLE = /^(\d+) (minus|plus) (\d+) was the (ones|tens|hundreds|thousands) step\.?$/i;
 /** Whether the child's turn is plain math, read once per session state (plainMathTurn steps the session). */
 const plainTurnRead = new WeakMap<Session, boolean>();
 
@@ -4881,14 +4895,16 @@ const plainTurnRead = new WeakMap<Session, boolean>();
  *  - a hearing hedge from HEARD_HEDGES;
  *  - "Did you say N?" where N is a number in the child's turn;
  *  - "A minus B was the <place> step." where a done column step of that place has exactly those operands.
+ *  - "I heard A minus B, but for the <place> it's C minus D." where code reads A minus B in the child's whole
+ *    expression and C minus D is exactly the current effective column. No result or other suffix is allowed.
  * The say check (numbers, the answer, the step values, the stance) still runs on every sentence before this.
  */
 function closedMathSentence(sentence: string, s: Session): boolean {
   const text = sentence.trim().replace(/[’]/g, "'");
   const hedge = HEARD_HEDGES.has(text.replace(/[.!]+$/, "").toLowerCase());
   const confirm = SAID_CONFIRM.exec(text);
-  const role = STEP_ROLE.exec(text);
-  if (!hedge && !confirm && !role) return false;
+  const column = columnSentenceTruth(text, columnRules(s), { doneOnly: true, exactForm: true });
+  if (!hedge && !confirm && column !== true) return false;
   if (!s.turn) return false;
   let plain = plainTurnRead.get(s);
   // An "unclear" reading marks the turn uncertain (which numbers were said), not what it is about: the review reads the
@@ -4897,14 +4913,7 @@ function closedMathSentence(sentence: string, s: Session): boolean {
   if (!plain) return false;
   if (hedge) return true;
   if (confirm) return valuesOf(s.turn.text).some((v) => v.key === String(Number(confirm[1])));
-  if (!role || !s.package) return false;
-  const [a, op, b, place] = [Number(role[1]), role[2].toLowerCase(), Number(role[3]), role[4].toLowerCase()];
-  return workSteps(s.package).some((st) => {
-    if (!("place" in st) || st.place !== place || !(s.done.includes(st.id) || (s.passed ?? []).includes(st.id))) return false;
-    if (op === "minus" && st.kind === "subtract-column") return st.bottom !== null && st.top - (st.lent ? 1 : 0) + (st.regrouped ? 10 : 0) === a && st.bottom === b;
-    if (op === "plus" && st.kind === "add-column") return st.carryIn === 0 && st.digits.length === 2 && ((st.digits[0] === a && st.digits[1] === b) || (st.digits[0] === b && st.digits[1] === a));
-    return false;
-  });
+  return column === true;
 }
 
 /** The child's name hidden as {name}: no model reads it (round 4, P2-6). */
@@ -5132,7 +5141,7 @@ function withStreamed(base: Session, r: StepResult, at: number, planned: string,
  * before the call, and its say rules. Null when nothing may stream: no plan, a plan in code's own words, safety, a stop,
  * a fixed reply due, or the content hold.
  */
-export function streamPlan(s: Session): { rules: SayRules; act: Act; stance: "wrong" | "right" | "none"; extra: ReadonlySet<string>; greeting: boolean; closed: (sentence: string) => boolean } | null {
+export function streamPlan(s: Session): { rules: SayRules; act: Act; stance: "wrong" | "right" | "none"; extra: ReadonlySet<string>; greeting: boolean; closed: (sentence: string) => boolean; confirmation: SayValue | null } | null {
   if (!s.package || !s.turn || s.safety.flagged || s.stopRequested || s.replies?.length || !isTeaching(s.state) || s.scopeDue === "outside_work") return null;
   const plan = codePlan(s);
   if (!plan || plan.codeWords) return null;
@@ -5141,7 +5150,7 @@ export function streamPlan(s: Session): { rules: SayRules; act: Act; stance: "wr
   const exampleLikely = main === "ASSESS" && s.done.length === 0 && (helpInWords(s.turn.text) || saysStuck(s.turn.text));
   // A plain hello ("Hi, Maya") answers the opening: it streams like a math turn, whatever kind the model names it.
   const greeting = /^(?:hi|hello|hey|hiya|good (?:morning|afternoon|evening))(?:,?\s+maya)?[\s!.,]*$/i.test(s.turn.text.trim());
-  return { rules: { ...plan.rules, ...(exampleLikely ? { noQuestion: true } : {}) }, act: plan.p.act, stance: codeStance(s), extra: vocabExtra(s), greeting, closed: (sentence) => closedMathSentence(sentence, s) };
+  return { rules: { ...plan.rules, ...(exampleLikely ? { noQuestion: true } : {}) }, act: plan.p.act, stance: codeStance(s), extra: vocabExtra(s), greeting, closed: (sentence) => closedMathSentence(sentence, s), confirmation: plan.rules.confirming ?? confirmAsk(s) };
 }
 
 /**
@@ -5154,6 +5163,8 @@ export function streamSentence(sentence: string, plan: NonNullable<ReturnType<ty
   if (/\?\s*$/.test(sentence) && (plan.rules.noQuestion || !endsWithAsk(sentence))) return "stop";
   if (!checkSentence(sentence, plan.rules, index).ok) return "stop";
   if (!checkSay([...previous, sentence].join(" "), { ...plan.rules, needsSubstance: false, mustAsk: null }).ok) return "stop";
+  // A confirmation code permits may follow this prefix. Hold the prefix if that would disclose an open-step result.
+  if (plan.confirmation && revealsOpenStep([...previous, sentence, plan.confirmation.key].join(" "), plan.rules)) return "stop";
   if (exactSafe(sentence)) return "send";
   return reviewAll || !(mathOnly(sentence, plan.extra) || plan.closed(sentence)) || (plan.rules.stance === "wrong" && PRAISE_WORDS.test(sentence)) ? "review" : "send";
 }

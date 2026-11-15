@@ -11,8 +11,8 @@
 // - A turn is admitted before the session takes its input (`admit`, synchronous): one model attempt is taken for it, so
 //   turns that overlap each hold their own. A turn with no child words asks for 2 free attempts, so the last one stays
 //   for the child. The turn's first model attempt claims the admitted one; a turn that asked no model gives it back.
-// - Refill off the turn's path: when fewer than 2 attempts are free, or the newest block is BLOCK_RENEW_MS old, one new
-//   block is reserved in the background. One refill at a time. A refused refill is not tried again in the background;
+// - Refill off the turn's path: speculation and the timer refill at 2 free attempts; live takes still refill below 2.
+//   The newest block at BLOCK_RENEW_MS also starts a refill. One refill at a time. A refusal is not retried in the background;
 //   only a turn at an allowance of 0 tries once more (`ensure`), after the blocks it retired are settled.
 // - A block is retired (no new takes) at BLOCK_RETIRE_MS, below the 10-minute expiry of an unsettled reservation
 //   (RESERVATION_TTL_MS), when it has no whole attempt left and a newer block exists, and at the call's end (`stop`).
@@ -206,10 +206,11 @@ export function createBudget(seams: BudgetSeams): CallBudget {
     }
   }
 
-  function maybeRefill() {
+  function maybeRefill(keep = SPECULATIVE_KEEP) {
     if (stopped || refilling || refused) return;
     const newest = active().at(-1);
-    if (attempts() < 2 || !newest || seams.clock() - newest.at >= BLOCK_RENEW_MS) refilling = refill();
+    // Start while the protected attempts remain; speculation still cannot take either one before new room arrives.
+    if (attempts() <= keep || !newest || seams.clock() - newest.at >= BLOCK_RENEW_MS) refilling = refill();
   }
 
   function takeFrom(kind: BlockKind, micros: number): Ticket | null {
@@ -226,7 +227,8 @@ export function createBudget(seams: BudgetSeams): CallBudget {
     b.open++;
     const t: Ticket = { kind, micros, block: b, done: false };
     if (kind === "speculative") speculated++;
-    maybeRefill();
+    // Earlier refill belongs to preparation, not the path from live admission to dispatch.
+    maybeRefill(kind === "speculative" ? SPECULATIVE_KEEP : SPECULATIVE_KEEP - 1);
     return t;
   }
 
