@@ -5,9 +5,13 @@ import { BRAND } from "@/lib/site";
 import { CookieSettingsButton } from "@/components/cookie-consent";
 import { BUSINESS_NAME } from "@/lib/contact";
 
-/** `wide` uses the full nav width, for the assessment report (D-087); a page with no `label` shows no eyebrow. */
-/** `titleHidden` keeps the page's h1 for screen readers but hides it, where the page already shows the name (#1003). */
-export function SupportPage({ label, title, wide = false, titleHidden = false, children }: { label: string; title: string; wide?: boolean; titleHidden?: boolean; children: ReactNode }) {
+/**
+ * `wide` uses the full nav width, for the assessment report (D-087); a page with no `label` shows no eyebrow.
+ * `titleAction` makes the title the page's first line, the child's name on the Overview (#1024): the h1 on the left and the
+ * action (the desk button, or null for none) on its right. On a laptop the frame's top bar shows the name and the desk, so
+ * this row keeps the h1 for screen readers and hides the rest (parent-shell.css).
+ */
+export function SupportPage({ label, title, wide = false, titleAction, children }: { label: string; title: string; wide?: boolean; titleAction?: ReactNode; children: ReactNode }) {
   return (
     <div className="look-root support-root" data-look="warm">
       <header className="nav"><div className="in">
@@ -16,7 +20,7 @@ export function SupportPage({ label, title, wide = false, titleHidden = false, c
       </div></header>
       <main id="main" className={wide ? "support-page support-wide" : "support-page"}>
         {label && <p className="eyebrow">{label}</p>}
-        {title && <h1 className={titleHidden ? "sr-only" : undefined}>{title}</h1>}
+        {title && (titleAction === undefined ? <h1>{title}</h1> : <div className="pd-name-row"><h1>{title}</h1>{titleAction}</div>)}
         {children}
       </main>
       <footer className="support-footer" aria-label="Site information">

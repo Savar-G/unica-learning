@@ -4,7 +4,7 @@ import { notesPath } from "@/lib/parent-maya-notes";
 import { safeNext } from "@/lib/sign-in-link";
 import { reportPath } from "@/lib/report-view";
 import type { ChildView } from "@/lib/parent-view";
-import { activeTab, addressChild, lastChildCookie, phoneNav, pickChild, progressPath, signInPath, tabLinks, workbooksPath, type TabLink } from "@/lib/parent-shell";
+import { activeTab, addressChild, lastChildCookie, overviewDesk, phoneNav, pickChild, progressPath, signInPath, tabLinks, workbooksPath, type TabLink } from "@/lib/parent-shell";
 import { vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
@@ -156,5 +156,17 @@ describe("signInPath", () => {
   it("is plain sign-in with no child", () => {
     expect(signInPath(null)).toBe("/sign-in");
     expect(signInPath("")).toBe("/sign-in");
+  });
+});
+
+describe("overviewDesk (#1024)", () => {
+  it("is true only on the dashboard home, for a child whose page is not the test", () => {
+    expect(overviewDesk("/account", child("a", { opensOn: "overview" }))).toBe(true);
+    expect(overviewDesk("/account", child("a", { opensOn: "report_waitlist" }))).toBe(true);
+    expect(overviewDesk("/account", child("a", { opensOn: "start_test" }))).toBe(false);
+    expect(overviewDesk("/account", child("a", { opensOn: "continue_or_wait" }))).toBe(false);
+    expect(overviewDesk("/account/settings", child("a", { opensOn: "overview" }))).toBe(false);
+    expect(overviewDesk("/account/workbooks/a", child("a", { opensOn: "overview" }))).toBe(false);
+    expect(overviewDesk("/account", null)).toBe(false);
   });
 });
