@@ -123,3 +123,4 @@ export { checkTutorSay, plainTeaching, unreadMath, tutorStreamSentence, tutorStr
 export { isTutorBrief, tutorBrief, tutorBriefParts, TUTOR_OUTPUT_SCHEMA, TUTOR_PROMPT, TUTOR_PROMPT_VERSION, type TutorBrief } from "./tutor-prompt";
 export { noteFromEquation, type TutorCommand, type TutorDrawing, type TutorKind, type TutorStepFact } from "./tutor-kind";
 export { TUTOR_KINDS, tutorKindOf } from "./tutor-kinds";
+export { asksIdentity } from "./identity";
