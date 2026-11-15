@@ -26,9 +26,6 @@ export const TUTOR_REVIEW_IGNORED: readonly string[] = ["math", "plain_language"
 /** Words of a teaching sentence beyond the math vocabulary (MATH_VOCAB) that still name only the math or the work. */
 const TUTOR_MATH_WORDS: ReadonlySet<string> = new Set(["quite", "moment", "ago", "around", "back", "wait", "become", "becomes", "make", "makes", "borrow", "borrowed", "trade", "traded", "swap", "small", "big", "into", "fingers", "finger", "blocks", "block", "sticks", "stick", "picture", "board", "loose", "stayed", "name", "new", "after", "count", "up", "hold", "question", "good", "thinking"]);
 
-/** "I'm an AI, so I don't have a favorite animal.": the AI frame with one plain word for the favorite thing. */
-const AI_FRAME = /^I'm an AI,? so I don't have (?:a )?(?:favorite|favourite) [a-z]+(?: [a-z]+)?[.!]?$/i;
-
 /**
  * A sentence the child may hear with no safety review (D-345, the CoS rule of 2026-11-14: review only non-math or
  * personal content): every word is a math or plain teaching word (MATH_VOCAB and TUTOR_MATH_WORDS, or the question's
@@ -38,7 +35,9 @@ const AI_FRAME = /^I'm an AI,? so I don't have (?:a )?(?:favorite|favourite) [a-
  */
 export function plainTeaching(sentence: string, extra: ReadonlySet<string> = new Set()): boolean {
   const text = sentence.replace(/[’]/g, "'").trim();
-  if (exactSafe(text) || AI_FRAME.test(text)) return true;
+  // Only the exact approved sentences skip the review as they are; an open frame never does (review of #1006: "I'm an
+  // AI, so I don't have a favorite ..." took any words after it).
+  if (exactSafe(text)) return true;
   // Only plain letters, digits and math signs: other letters or symbols are read by the review.
   if (/[^a-z0-9\s.,?!:;()'"+*=<>%/\-×÷−–]/i.test(text.replace(/\{name\}/g, " "))) return false;
   // Review of #1006: only a concrete math form skips the review. Each clause, after a short spoken lead-in ("Now",

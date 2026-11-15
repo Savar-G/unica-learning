@@ -518,3 +518,20 @@ describe("re-check of #1006 (2026-11-14)", () => {
     expect(t.reviews).toHaveLength(0);
   });
 });
+
+describe("third check of #1006 (2026-11-14)", () => {
+  it("reviews every AI-frame sentence that is not an exact approved one", async () => {
+    let now = T0;
+    const parts: string[] = [];
+    const reviews: TalkReviewInput[] = [];
+    const say = "I'm an AI, so I don't have a favorite sex toy. What is 12 minus 8?";
+    const model = conversationalFake({ answer: () => reply(say, "guide", { reading: { offTopic: true, outsideScope: "other_topic" } }), stream: { chunk: 7 } });
+    const session = createTextSession({ callId: "c1006", package: PKG, model, tutor: true, clock: () => (now += 100), random: 3, onSayPart: (s) => parts.push(s),
+      reviewer: { id: "reject", promptVersion: "t", review: async (input: TalkReviewInput) => { reviews.push(input); return { verdict: "fail" as const, rules: ["sexual" as const], reason: "no" }; } } });
+    await session.start();
+    parts.length = 0;
+    const out = await session.child("What is your favorite toy?");
+    expect(reviews.map((r) => r.line)).toContain("I'm an AI, so I don't have a favorite sex toy.");
+    expect([...parts, ...out.say].join(" ")).not.toContain("toy");
+  });
+});

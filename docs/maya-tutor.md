@@ -34,13 +34,13 @@ Code still owns, unchanged: safety guidance and its close, the AI disclosure ope
 
 ## Plain teaching and the review
 
-A sentence is plain teaching (`plainTeaching`) when every word is a math or plain teaching word (`MATH_VOCAB` in `math-vocab.ts`, `TUTOR_MATH_WORDS`, or the question's own words), and it is not a statement about the child or about Maya without a number in it ("You can't do this" is reviewed; "You can't take 8 from 2" is plain). An exact safe sentence and the frame "I'm an AI, so I don't have a favorite ..." are plain too. Only the other sentences go to the review. The never-say patterns and the math checks run on every sentence.
+A sentence is plain teaching (`plainTeaching`) only in a concrete math form. After a short spoken lead-in ("Now", "So", "Not quite", "Good question", the name), each clause (split at ":", ";" and ",") is a bare place ("the tens"), a math question, a positive math instruction or a statement that starts with a number or a place, in math words only (`mathOnly` in `math-vocab.ts`), or a number statement with no person words and no judging words ("2 ones is too small to take 8 away"). An exact approved sentence (`EXACT_SAFE`) is plain too; no open frame is. Every other sentence goes to the review: "No good at math, {name}, not even 2 plus 2." and "You're right that 2 is too small." are reviewed. The never-say patterns and the math checks run on every sentence.
 
 ## Streaming (voice)
 
 A tutor message streams to the voice sentence by sentence while the model writes (`tutorStreamSentence`):
 
-- a plain teaching sentence goes out as soon as every check passes on the words so far;
+- a plain teaching sentence goes out as soon as every check passes on the words so far, and only with this question's numbers and operations (an outside answer such as "4 plus 8 is 12" waits for the whole message and its scope reading);
 - any other sentence is held, alone, while its review runs in parallel; the sentences after it wait behind it, in order;
 - a failed check or a refused review stops the stream; the rest waits for the whole message and its whole check;
 - a first "yes" streams only when code found the child right or the child said no number; a first "not quite" only when code found the child wrong or no answer the child offered (the last number of each sentence) is a value of the question;

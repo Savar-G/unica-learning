@@ -96,8 +96,10 @@ describe("checkTutorSay: the whole-message check", () => {
     expect(checkTutorSay("You did well. What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: true, review: ["You did well."] });
     expect(checkTutorSay("I'm an AI, so I don't have a dog. What is 12 minus 8?", none)).toMatchObject({ review: [] });
     expect(checkTutorSay("Dogs are fun. What is 12 minus 8?", none)).toMatchObject({ review: ["Dogs are fun."] });
-    expect(checkTutorSay("I'm an AI, so I don't have a favorite animal. What is 12 minus 8?", none)).toMatchObject({ review: [] });
-    expect(checkTutorSay("I'm an AI, so I don't have a favorite secret friend at home.", none)).toMatchObject({ review: ["I'm an AI, so I don't have a favorite secret friend at home."] });
+    expect(checkTutorSay("I'm an AI, so I don't have a dog. What is 12 minus 8?", none)).toMatchObject({ review: [] });
+    for (const x of ["I'm an AI, so I don't have a favorite animal.", "I'm an AI, so I don't have a favorite secret friend at home.", "I'm an AI, so I don't have a favorite sex toy."]) {
+      expect(checkTutorSay(`${x} What is 12 minus 8?`, none)).toMatchObject({ review: [x] });
+    }
   });
 });
 
