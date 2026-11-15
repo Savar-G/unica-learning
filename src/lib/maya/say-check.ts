@@ -280,26 +280,45 @@ export function unreadNumberRuns(raw: string): { at: number; end: number; text: 
  */
 export function sentenceKey(raw: string): string {
   const text = raw.replace(/[‘’ʼ]/g, "'").replace(/[−–]/g, "-").replace(/(\d),(?=\d{3}\b)/g, "$1").toLowerCase();
-  // Every run of number words, read by the standard reader (a lone "one" or "ten" too): its value, or "?" and its words.
-  const runs = new Map(wordNumbers(text).map((w) => [w.at, w]));
-  const parts: string[] = [];
-  const tokens = [...text.matchAll(/\d+\s*\/\s*\d+|\d{1,2}:\d{2}|\d+(?:\.\d+)?|[a-z]+(?:'[a-z]+)*/g)];
-  for (let k = 0; k < tokens.length; k++) {
-    const t = tokens[k];
-    const run = runs.get(t.index!);
-    let key: string;
-    if (run) {
-      key = Number.isNaN(run.value) ? `?${run.words.join(" ")}` : String(run.value);
-      while (k + 1 < tokens.length && tokens[k + 1].index! < run.end) k++;
-    } else if (/^\d/.test(t[0])) key = t[0].replace(/\s+/g, "").replace(/^(\d+)(?:\.0+)?$/, (_m, n: string) => String(Number(n)));
-    else { parts.push(t[0].replace(/'/g, "")); continue; }
-    // A count of a denominator ("five sixths", "5 sixths") is the fraction "5/6".
-    const den = tokens[k + 1]?.[0];
-    if (/^[\d.]+$|^\d/.test(key) && !key.includes("/") && !key.includes(":") && den !== undefined && Object.hasOwn(DENOMINATORS, den)) { key = `${key}/${DENOMINATORS[den]}`; k++; }
-    parts.push(key);
+  // Final check 12 (2026-11-15): the key is a function of the reader's tokens. Every number token of the standard reader
+  // (sayNumbers: digits, fractions, "a half", "6 halves", number words) is its exact value; a run of number words with no
+  // one standard value, and a number word the reader leaves without a value ("half" alone), are one shared UNREAD token;
+  // a lone "one" or "ten" the reader keeps as a count word is its value too. Operators and relations are one sign each.
+  const spans: { at: number; end: number; key: string }[] = [];
+  for (const t of sayNumbers(text)) spans.push({ at: t.at, end: t.end, key: t.q ? (t.q[1] === 1 ? String(t.q[0]) : `${t.q[0]}/${t.q[1]}`) : t.key.startsWith("?") ? UNREAD : t.key });
+  for (const w of wordNumbers(text)) {
+    if (spans.some((x) => w.at < x.end && w.end > x.at)) continue;
+    spans.push({ at: w.at, end: w.end, key: Number.isNaN(w.value) ? UNREAD : String(w.value) });
   }
+  spans.sort((a, b) => a.at - b.at);
+  const parts: string[] = [];
+  const words = (piece: string) => {
+    for (const m of piece.matchAll(/[a-z]+(?:'[a-z]+)*|[+\-×*÷/=<>x%]/g)) {
+      const w = m[0].replace(/'/g, "");
+      const sign = KEY_SIGNS[w];
+      if (sign === "") continue;
+      if (sign !== undefined) parts.push(sign);
+      else if (Object.hasOwn(DENOMINATORS, w) || SCALES.has(w)) parts.push(UNREAD);
+      else parts.push(w);
+    }
+  };
+  let at = 0;
+  for (const x of spans) {
+    words(text.slice(at, x.at));
+    parts.push(x.key);
+    at = x.end;
+  }
+  words(text.slice(at));
   return parts.join(" ");
 }
+
+/** The one token of the key for every number word or run the reader cannot value. */
+const UNREAD = "?";
+/** The key's one sign for each operator and relation word or symbol ("" drops a word that only joins one: "by"). */
+const KEY_SIGNS: Record<string, string> = {
+  plus: "+", "+": "+", minus: "-", "-": "-", times: "×", multiplied: "×", "×": "×", "*": "×", x: "×", divided: "÷", "÷": "÷", "/": "÷", by: "",
+  is: "=", are: "=", equals: "=", equal: "=", "=": "=", makes: "=", make: "=", gives: "=", "<": "<", ">": ">",
+};
 
 /** The numbers in a text: digits, decimals, fractions, clock times and number words, in order. */
 export function sayNumbers(raw: string): SayToken[] {

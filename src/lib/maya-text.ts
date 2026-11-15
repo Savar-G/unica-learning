@@ -702,13 +702,24 @@ export function createTextSession(options: TextSessionOptions): TextSession {
    * number words against digits), so a repair that changes only "." to "!" keeps the terminal result.
    */
   const finalMath = new Map<string, Promise<MathReviewResult>>();
-  const reviewMath = (input: MathReviewInput, turn: number, ms: number, onError?: (e: unknown) => void): Promise<MathReviewResult> => {
-    const key = `${turn}|${sentenceKey(input.sentence)}`;
+  /**
+   * Final check 12 (2026-11-15): the sentences refused by a terminal review in each child turn, with the reason: the
+   * review of every later sentence of that turn reads them (MathReviewInput.refused, version 8), so a repair that says
+   * the same math in another surface form is refused too.
+   */
+  const refusedMath = new Map<number, { sentence: string; reason: string }[]>();
+  const reviewMath = (given: MathReviewInput, turn: number, ms: number, onError?: (e: unknown) => void): Promise<MathReviewResult> => {
+    const key = `${turn}|${sentenceKey(given.sentence)}`;
     const held = finalMath.get(key);
     if (held) return held;
+    const earlier = (refusedMath.get(turn) ?? []).filter((x) => x.sentence !== given.sentence);
+    const input = earlier.length ? { ...given, refused: earlier } : given;
     const started = runMathReview(options.mathReviewer!, input, ms, onError);
     return started.then((r) => {
-      if (r.verdict !== "true" && !finalMath.has(key)) finalMath.set(key, Promise.resolve(r));
+      if (r.verdict !== "true" && !finalMath.has(key)) {
+        finalMath.set(key, Promise.resolve(r));
+        refusedMath.set(turn, [...(refusedMath.get(turn) ?? []), { sentence: given.sentence, reason: r.reason }]);
+      }
       return r;
     });
   };

@@ -350,10 +350,13 @@ export function fullRead(text: string, at: number, end: number): boolean {
   const tokens = (piece: string) => piece.match(/@\d|\d+(?:\.\d+)?|[a-z']+|[^\s\da-z']/g) ?? [];
   // Before: from the last clause mark (a comma that is not inside a number, or a sentence mark) to the claim.
   const marks = [...lower.slice(0, at).matchAll(/[;:!?]|\.(?!\d)|,(?!\d{3})/g)].map((m) => m.index! + 1);
+  if (/\d[.,]$/.test(lower.slice(0, at))) return false;
   const lead = tokens(lower.slice(marks.length ? Math.max(...marks) : 0, at));
   const last = lead.at(-1);
   if (last !== undefined && (numberish(last) || OPERATOR_WORD.test(last) || /^(?:negative|positive)$/.test(last))) return false;
-  if (lead.some((w) => ENCLOSING.test(w) || w === "not" || /n't$/.test(w) || w === "true" || w === "false")) return false;
+  // "that" alone is no enclosure ("You're right that 4 is too small ..."): an enclosing "that" comes with a negation or a
+  // scope word this check reads ("It is not true that", "false that", "suppose that").
+  if (lead.some((w) => (ENCLOSING.test(w) && w !== "that") || w === "not" || /n't$/.test(w) || w === "true" || w === "false")) return false;
   // After: a decimal or digit group that goes on ("40000.5", "8,0"), the rest of the clause, then the first words after
   // the mark or joining word that ends it.
   if (/^(?:\.\d|,\d)/.test(lower.slice(end))) return false;

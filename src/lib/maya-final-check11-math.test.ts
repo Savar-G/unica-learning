@@ -11,7 +11,7 @@ import { createTextSession } from '@/lib/maya-text';
 import { teachingPackage } from '@/lib/maya-teaching';
 import { storedPlaceValue } from '@/lib/maya-teaching/place-value-samples';
 import { workedSteps, type Operation, type OperationPackage } from '@/lib/question-package';
-import { createSession } from '@/lib/maya/session';
+import { answerReadWhole, createSession } from '@/lib/maya/session';
 import { childFacts, tutorKind } from '@/lib/maya/tutor';
 import { sayNumbers, sentenceKey, standardNumber } from '@/lib/maya/say-check';
 
@@ -149,7 +149,8 @@ describe('N2: the standard reader never joins number groups across an operator',
     });
   }
   it('control: the words of 2640 still read as 2640', () => {
-    expect(childFacts(product(6, 440), 'My answer is two thousand six hundred forty.').join(' ')).toContain('The child said 2640');
+    const text = 'My answer is two thousand six hundred forty.';
+    expect(childFacts(product(6, 440), text, (v) => answerReadWhole(product(6, 440), text, v, true)).join(' ')).toContain('The child said 2640');
   });
 });
 
