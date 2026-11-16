@@ -9,6 +9,9 @@ export function questionWorkSpace(p: QuestionPackage, place?: string | null): nu
   // Reading a digit, a place value, or a graph label needs no calculation space.
   if (/\b(?:which digit|value of (?:the )?(?:[a-z]+ )?digit|place value|digit in the|what value does the bar show)\b/i.test(p.text)) return 0;
   if (/\b(?:wholes? and|as a decimal|how many cents is|cents is how many dollars)\b/i.test(p.text)) return 0;
+  // A question that is only its calculation ("834 − 121 = ?") with no carrying or borrowing needs no space: the child
+  // would copy the question again (Cedric's printed pages, #1116). One that regroups keeps its space below.
+  if (bareCalculationWithoutRegrouping(p.text)) return 0;
   const moneyGroups = p.text.match(/\b(?:bills|loonies|toonies|quarters|dimes|nickels)\b/g)?.length ?? 0;
   if (moneyGroups >= 2) return moneyGroups >= 3 ? 96 : 64;
   if (reasoningSteps(p) >= 2) return 96;
@@ -31,4 +34,39 @@ export function questionWorkSpace(p: QuestionPackage, place?: string | null): nu
   // Some template equations have item checks without an operation adapter.
   if (largestNumber(p) >= 100 && /[+−×÷]|\b(?:sum|difference|total|how many.*(?:left|in all))\b/i.test(p.text)) return oneLine ? 32 : 64;
   return 0;
+}
+
+/** The digits of a number, ones first. */
+const digitsOf = (n: number) => [...String(n)].reverse().map(Number);
+
+/**
+ * A printed calculation and nothing else ("834 − 121 = ?", "9 × 110 = ?", "4.08 + 5.01 = ?") whose columns need no
+ * carrying or borrowing. Addition and subtraction may hold decimals with the same number of places (unequal places
+ * keep their space); a multiplication is whole numbers with one single-digit factor, the column method a child
+ * writes. Anything else is not one.
+ */
+export function bareCalculationWithoutRegrouping(text: string): boolean {
+  const m = /^\s*(\d[\d,]*(?:\.\d+)?)\s*([+\-−×])\s*(\d[\d,]*(?:\.\d+)?)\s*=\s*\?\s*$/.exec(text);
+  if (!m) return false;
+  const [a, b] = [m[1], m[3]].map(x => x.replaceAll(",", ""));
+  // Unequal decimal places ("12 + 0.5 = ?") keep their space: lining up the decimal point is the skill (#1116).
+  const [placesA, placesB] = [a, b].map(x => x.split(".")[1]?.length ?? 0);
+  if (placesA !== placesB) return false;
+  const places = placesA;
+  const scaled = (x: string) => Number(x.split(".")[0] + (x.split(".")[1] ?? "").padEnd(places, "0"));
+  const [x, y] = [scaled(a), scaled(b)];
+  if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y)) return false;
+  if (m[2] === "+") {
+    const [dx, dy] = [digitsOf(x), digitsOf(y)];
+    return dx.every((d, i) => d + (dy[i] ?? 0) < 10) && dy.every((d, i) => d + (dx[i] ?? 0) < 10);
+  }
+  if (m[2] === "-" || m[2] === "−") {
+    if (x < y) return false;
+    const [dx, dy] = [digitsOf(x), digitsOf(y)];
+    return dy.every((d, i) => d <= dx[i]);
+  }
+  if (places > 0) return false;
+  const [small, large] = x < 10 ? [x, y] : y < 10 ? [y, x] : [null, null];
+  if (small === null || large === null) return false;
+  return digitsOf(large).every(d => d * small < 10);
 }
