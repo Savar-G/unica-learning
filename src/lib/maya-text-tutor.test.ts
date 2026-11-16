@@ -199,12 +199,14 @@ describe("only tutor calls use the tutor core", () => {
 
 describe("the board never costs the child Maya's words", () => {
   it("draws what fits, in order, and keeps the message when a drawing does not fit", async () => {
-    // B2: the note draws; the tens digit needs the trade and the ones digit first, so it draws nothing; the words stay.
-    const { session } = call(() => reply("12 minus 8 is 4. Write 2 in the tens. What do you write in the ones?", "guide"));
+    // B2: the trade and its step's note draw (the note needs the trade); the tens digit needs the ones digit first, so it
+    // draws nothing; the words stay.
+    const say = "We trade 1 ten for 10 ones, so 12 minus 8 is 4. Write 2 in the tens. What do you write in the ones?";
+    const { session } = call(() => reply(say, "guide"));
     await session.start();
     const out = await session.child(SAVAR);
-    expect(out.say).toEqual(["12 minus 8 is 4. Write 2 in the tens. What do you write in the ones?"]);
-    expect(out.board.flatMap((b) => b.commands)).toMatchObject([{ op: "write", text: "12 − 8 = 4" }]);
+    expect(out.say).toEqual([say]);
+    expect(out.board.flatMap((b) => b.commands)).toMatchObject([{ op: "regroup" }, { op: "write", text: "12 − 8 = 4" }]);
     expect(session.session.expect).toBe("child");
     const trace = await session.finish({ reason: "child_stopped" });
     expect(trace.counts.refusals).toBe(0);
@@ -329,7 +331,7 @@ describe("code's stance and other-topic talk (D-345, real runs of 2026-11-14)", 
 describe("review of #1002: false math and false feedback never reach the child", () => {
   it("writes only a whole equation as a board note, never other text", async () => {
     // B2: a note is read from Maya's own step equation; the model's draw list (with other text) is ignored.
-    const { session } = call(() => reply("12 minus 8 is 4. What is 4 minus 2?", "guide", { draw: [{ offer: "note", place: "You are stupid. 1+1=2" }, { offer: "note", place: "12 - 8 = 4" }] }));
+    const { session } = call(() => reply("We trade 1 ten for 10 ones, so 12 minus 8 is 4. What is 4 minus 2?", "guide", { draw: [{ offer: "note", place: "You are stupid. 1+1=2" }, { offer: "note", place: "12 - 8 = 4" }] }));
     await session.start();
     const out = await session.child("I need help");
     const writes = out.board.flatMap((b) => b.commands).filter((c) => (c as { op?: string }).op === "write") as { text: string }[];

@@ -115,6 +115,10 @@ export function deriveDrawings(pkg: OperationPackage, sentences: readonly string
     // screen showed, this message's earlier batches and this batch).
     const conflict = reads.slice(readsFrom).some((r) => !r.drew && BLOCKING.includes(r.reason ?? ""));
     const board = [...confirmed, ...mine];
+    // A state the check reads from a batch of this same message: this batch names that batch in `after`.
+    for (const c of parsed.clauses) if (c.read?.type === "reason" && c.read.state) for (const st of c.read.state) {
+      for (const k of stateKeys(st.place)) { const d = drawings.findIndex((x) => x.keys.includes(k)); if (d >= 0 && !confirmed.includes(k)) after.add(d); }
+    }
     const stateOk = parsed.clauses.every((c) => c.read?.type !== "reason" || !c.read.state || c.read.state.every((st) => placeValue(facts, st.place, board) === st.value));
     if (commands.length && (conflict || !stateOk)) {
       mine.splice(mineFrom);
@@ -176,7 +180,9 @@ export function deriveDrawings(pkg: OperationPackage, sentences: readonly string
         if (cs.length !== 1 || commandAction(cs[0])?.key !== a.key || typeof cs[0].text !== "string") return { reason: "differs" };
         const note = noteKey(cs[0].text);
         if (all().includes(note)) return { reason: "repeat" };
-        const needs = ready(noteNeeds);
+        // A step's equation note needs what the kind declares for it (what that step's digit needs), else the kind's
+        // note needs.
+        const needs = ready(graph[note] ?? noteNeeds);
         if (!needs) return { reason: "needs_earlier" };
         if (!cs.every((x) => safeCommand(x, numbers))) return { reason: "unsafe" };
         return { commands: withIds(cs), keys: [note], needs };
@@ -383,6 +389,11 @@ export interface ProblemFacts {
  * when the borrow into it is drawn (`trade:<place>`), 1 less when the borrow it gave is drawn (`trade:<place on its
  * right>`). Null when code keeps no such state for the question (then a stated state is never true).
  */
+/** The drawing keys a place's top value depends on: the borrow into it and the borrow it gave. */
+const stateKeys = (place: string): string[] => {
+  const right = PLACES[PLACES.indexOf(place as (typeof PLACES)[number]) - 1];
+  return [`trade:${place}`, ...(right ? [`trade:${right}`] : [])];
+};
 export function placeValue(f: ProblemFacts, place: string, keys: readonly string[]): number | null {
   const printed = f.printed?.[place];
   if (printed === undefined) return null;

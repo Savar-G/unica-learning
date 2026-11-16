@@ -630,6 +630,9 @@ function boardNeeds(pkg: OperationPackage): Record<string, string[]> {
       if (st.trade) needs[`trade:${st.place}`] = [`digit:${st.place}`];
       if (!st.blank) needs[`digit:${st.place}`] = [...(right?.trade ? [`trade:${right.place}`] : []), ...digit(right)];
     }
+    // A step's equation note needs exactly what that step's digit needs (its trades and the earlier places).
+    const text = st.operands.length > 1 ? noteFromEquation(stepEquation(st)) : null;
+    if (text) needs[`note:${text}`] = [...(needs[`digit:${st.place}`] ?? [...(st.op === "-" && st.trade ? [`trade:${st.place}`] : []), ...digit(right)])];
   }
   return needs;
 }

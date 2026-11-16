@@ -622,6 +622,12 @@ function boardNeeds(pkg: OperationPackage): Record<string, string[]> {
     const rows = String(sh.b).length > 1 ? [...String(sh.b)].map((_, i) => `row:${i}`) : [];
     rows.forEach((r, i) => { needs[r] = i > 0 ? [rows[i - 1]] : []; });
     for (let i = 0; i < answer.length && i < PLACES.length; i++) needs[`digit:${PLACES[i]}`] = [...rows, ...(i > 0 ? [`digit:${PLACES[i - 1]}`] : [])];
+    // A step's equation note needs exactly what that step's digit needs (single-row steps: the digit on its right).
+    if (rows.length === 0) for (const st of steps(pkg)) {
+      const m = st.place ? /(\d+(?: [×+] \d+)+) = (\d+)/.exec(st.work) : null;
+      const text = m ? noteFromEquation(`${m[1]} = ${m[2]}`) : null;
+      if (text && needs[`digit:${st.place}`]) needs[`note:${text}`] = [...needs[`digit:${st.place}`]];
+    }
   } else if (sh.kind === "divide") {
     needs.division = [];
     divSteps(pkg).forEach((_, k) => { needs[`step:${k + 1}`] = ["division", ...(k > 0 ? [`step:${k}`] : [])]; });

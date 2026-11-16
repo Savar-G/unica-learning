@@ -107,13 +107,13 @@ describe("default on: the board draws what Maya says (B2)", () => {
 describe("what never draws (B2)", () => {
   it("a refused message draws nothing; its repair draws only what it says", async () => {
     const bad = reply(`${S1} 12 minus 8 is 5.`, "guide");
-    const good = reply("12 minus 8 is 4. How many ones are there now?", "guide");
+    // The repair says only the trade: the refused message's note (and its own trade) never draw.
+    const good = reply("We trade 1 ten for 10 ones. How many ones are there now?", "guide");
     const { session } = chat([bad, good, ASK]);
     await session.start();
     const out = await session.child("I don't get 2 minus 8.");
-    expect(out.say.join(" ")).toBe("12 minus 8 is 4. How many ones are there now?");
-    expect(out.board.filter(isTrade)).toEqual([]);
-    expect(out.board.map((b) => b.commands)).toMatchObject([[{ op: "write", text: "12 − 8 = 4" }]]);
+    expect(out.say.join(" ")).toBe("We trade 1 ten for 10 ones. How many ones are there now?");
+    expect(out.board.map((b) => b.commands.map((c) => (c as { op?: string }).op))).toEqual([["regroup"]]);
     const trace = await session.finish({ reason: "child_stopped" });
     expect(trace.counts.refusals).toBe(1);
     expect(checkTrace(trace)).toMatchObject({ ok: true });
@@ -153,8 +153,9 @@ describe("what never draws (B2)", () => {
     // The digit waits for the trade to be shown; the sentence draws as a whole or not at all, so its note waits too.
     expect(next.board).toEqual([]);
     const trace = await session.finish({ reason: "child_stopped" });
+    // The note of the ones step needs the trade too (the kind declares what that step's digit needs).
     expect(attempts(trace).flatMap((a) => a.boardReads ?? []).filter((r) => !r.drew)).toEqual([
-      { sentence: 0, clause: "12 minus 8 is 4", drew: false, reason: "sentence_conflict" },
+      { sentence: 0, clause: "12 minus 8 is 4", drew: false, reason: "needs_earlier" },
       { sentence: 0, clause: "write 4 in the ones", drew: false, reason: "needs_earlier" },
     ]);
   });
@@ -298,10 +299,13 @@ describe("Sol review of the derived design (d76b6981e)", () => {
     const held = "The 12 ones come from the trade.";
     const parts: string[] = [];
     let early: string[] = [];
-    const model = conversationalFake({ answer: () => reply(`${lead} ${held}`, "guide"), stream: { chunk: 7, beforeEnd: async () => { for (let i = 0; i < 100; i++) await Promise.resolve(); early = [...parts]; } } });
+    // The trade is shown first (the note of the ones step needs it).
+    const model = conversationalFake({ answer: (_b, n) => (n === 0 ? reply("We trade 1 ten for 10 ones. How many ones are there now?", "guide") : reply(`${lead} ${held}`, "guide")), stream: { chunk: 7, beforeEnd: async () => { for (let i = 0; i < 100; i++) await Promise.resolve(); early = [...parts]; } } });
     let now = T0;
     const s = createTextSession({ callId: "stream-1", package: PKG, tutor: true, clock: () => (now += 50), model, reviewer: fakeTalkReviewer(), mathReviewer: fakeMathReviewer((i) => (i.sentence === held ? { verdict: "false", reason: "refused for the test" } : { verdict: "true", reason: "true" })), onSayPart: (text) => parts.push(text) });
     await s.start();
+    const traded = await s.child("Please help me.");
+    s.boardFates(traded.board.map((b) => ({ batchId: b.transactionId, fate: "shown" as const })));
     parts.length = 0;
     const out = await s.child("Please help with 52 minus 28.");
     expect(early).toContain(lead);
@@ -404,14 +408,51 @@ describe("review of #1094 (65c39133f): the board-state check, and the sentence a
   });
 });
 
+describe("last re-check of b77c1db73: a step's note waits for that step's board work", () => {
+  it("\"12 minus 8 is 4.\" with no trade on the board draws nothing", async () => {
+    const { session } = chat([reply("12 minus 8 is 4. What comes next?", "guide"), ASK]);
+    await session.start();
+    expect((await session.child("Please help me.")).board).toEqual([]);
+  });
+  it("a note whose state needs a trade of the same message names it in `after`; ink that skips the trade skips the note", async () => {
+    const line = "We trade 1 ten for 10 ones. The ones are now 12, so 12 minus 8 is 4. What comes next?";
+    const { session } = chat([reply(line, "guide"), ASK]);
+    const opening = await session.start();
+    const out = await session.child("Please help me.");
+    expect(out.say.join(" ")).toBe(line);
+    expect(out.board).toHaveLength(2);
+    expect(out.board[1].after).toEqual([out.board[0].transactionId]);
+    let h = createHistory();
+    for (const b of opening.board) { const r = mayaWrites(h, b, 0); if (!r.ok) throw new Error("opening"); h = r.history; }
+    const trial = applyBatch(boardScene(h), out.board[0]);
+    if (!trial.ok) throw new Error("trade");
+    const prior = new Set(boardPaths(boardScene(h)).map((p) => p.id));
+    const point = boardPaths(trial.scene).filter((p) => !prior.has(p.id)).flatMap((p) => p.pts)[0] as [number, number];
+    let t = 10_000;
+    const desk = createBoardSession({ initial: h, restored: true, noStore: true, clock: () => t, wall: () => t });
+    desk.handBack();
+    expect(desk.penDown(point, false, 800)).toBe(true);
+    t += 100;
+    desk.penMove([[point[0] + 0.003, point[1] + 0.003]]);
+    desk.penUp();
+    desk.mayaReply(out.board);
+    const fates = chatBoardFates(desk.view().history);
+    expect(fates.find((f) => f.batchId === out.board[0].transactionId)?.fate).toBe("skipped");
+    expect(fates.find((f) => f.batchId === out.board[1].transactionId)?.fate).toBe("skipped");
+  });
+});
+
 describe("#1103: code's own fallback message draws (decided 2026-11-15)", () => {
   it("a fallback turn draws the note of its streamed sentence, and the trace shows the fallback's reads", async () => {
     const lead = "12 minus 8 is 4.";
     const held = "The 12 ones come from the trade.";
-    const model = conversationalFake({ answer: () => reply(`${lead} ${held}`, "guide"), stream: { chunk: 7 } });
+    // The trade is shown first (the note of the ones step needs it).
+    const model = conversationalFake({ answer: (_b, n) => (n === 0 ? reply("We trade 1 ten for 10 ones. How many ones are there now?", "guide") : reply(`${lead} ${held}`, "guide")), stream: { chunk: 7 } });
     let now = T0;
     const s = createTextSession({ callId: "fb-1", package: PKG, tutor: true, clock: () => (now += 50), model, reviewer: fakeTalkReviewer(), mathReviewer: fakeMathReviewer((i) => (i.sentence === held ? { verdict: "false", reason: "refused for the test" } : { verdict: "true", reason: "true" })), onSayPart: () => {} });
     await s.start();
+    const traded = await s.child("Please help me.");
+    s.boardFates(traded.board.map((b) => ({ batchId: b.transactionId, fate: "shown" as const })));
     const out = await s.child("Please help with 52 minus 28.");
     // Code's line after streamed words: the streamed sentence, then code's own question.
     expect(out.say.join(" ")).toMatch(/^12 minus 8 is 4\. /);

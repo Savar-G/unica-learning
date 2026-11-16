@@ -137,7 +137,7 @@ describe("what never draws", () => {
   it("repeats: what the board already shows or was sent, and a note said twice", () => {
     expect(reasons(derive(SUB, "We trade 1 ten for 10 ones.", ["trade:ones"]))).toEqual(["repeat"]);
     expect(reasons(derive(SUB, "We trade 1 ten for 10 ones.", ["trade:ones"], ["trade:ones"]))).toEqual(["repeat"]);
-    const twice = derive(SUB, "12 minus 8 is 4. 12 minus 8 is 4.");
+    const twice = derive(SUB, "12 minus 8 is 4. 12 minus 8 is 4.", ["trade:ones"]);
     expect(twice.drawings).toHaveLength(1);
     expect(reasons(twice)).toEqual(["repeat"]);
     expect(reasons(derive(SUB, "12 minus 8 is 4.", ["note:12 − 8 = 4"]))).toEqual(["repeat"]);
