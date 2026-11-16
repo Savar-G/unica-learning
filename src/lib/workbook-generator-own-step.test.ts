@@ -4,13 +4,58 @@ import { fakeWorkbookItems } from "./workbook-ai-fake";
 import { curriculumFor } from "./workbook-curriculum";
 import { generateWorkbook, prepareWorkbookCapacity, workbookCapacityPlan, type FitCheck, type GenerateInput, type GeneratedPage } from "./workbook-generator";
 import { planWorkbook } from "./workbook-plan";
-import { sampleChild, samplePlanInput } from "./workbook-sample-profiles";
+import { firstCustomerProfile, sampleChild, samplePlanInput } from "./workbook-sample-profiles";
+import { planNextWorkbook } from "./workbook-placement";
 import { stepAiItem, stepTemplateItem } from "./workbook-step-items";
 import { keySolver } from "./workbook-solve-check";
 import { pagePlan } from "./workbook-template";
 import { renderableDraft } from "./workbook-fit";
 import { workbookQuality } from "./workbook-quality";
 import { checkQuestionPackage, operationResult } from "./question-package";
+
+it("restores U19 LCM practice when complete review rows displaced its own-step minimum", async () => {
+  const curriculum = curriculumFor("bc")!;
+  const placed = planNextWorkbook({ curriculum, grade: 8, profile: firstCustomerProfile(), number: 1, workbooks: [],
+    instructions: { version: 1, startLevel: "U19", teachMore: ["6.4", "6.13"], teachLess: [], addReview: ["5.2", "5.7", "5.15"], difficulty: null } });
+  if (!placed.ok) throw new Error(placed.reason);
+  const full = workbookCapacityPlan(curriculum, placed.plan);
+  const day = full.days.find(d => d.day === 7)!;
+  const page = day.pages.find(p => p.type === "practice")!;
+  const part = page.parts[0];
+  expect(part.step).toMatchObject({ skill: "6.4-lcm", step: 2 });
+  const refs: [string, number, string][] = [
+    ["6.4-lcm", 2, "choose"], ["6.4-lcm", 2, "bare"],
+    ["6.4-prime-composite", 2, "missing"], ["6.4-prime-composite", 2, "missing"],
+    ["5.4-compare-decimals", 2, "compare"], ["5.4-compare-decimals", 2, "compare"],
+  ];
+  const itemContracts = Object.fromEntries(refs.map(([skill, step, format], i) => {
+    const slot = `1.${i + 1}`, place = i < 2 ? "finish-these" : "on-your-own";
+    const fill = Array.from({ length: 128 }, (_, attempt) => stepTemplateItem({ curriculum, skill, step, place, level: 19, day: 7, seed: (i + 1) * 71, attempt, ordinal: i + 1 })).find(f => f?.ref.format === format);
+    if (!fill) throw new Error(`No ${skill}#${step} ${format}`);
+    return [slot, { type: "template" as const, source: "code" as const, template: fill.ref, numbers: fill.numbers,
+      dayRange: { min: 0, max: 1000000, pictures: false, help: "none" as const }, item: stepAiItem(slot, fill.ref, fill.text) }];
+  }));
+  const input: GenerateInput = { workbookId: "00000000-0000-4000-8000-000000000719", childId: "00000000-0000-4000-8000-000000000071", number: 1,
+    profileBuild: null, curriculum, itemPolicy: "approved-v1", book: { child: "Alex" },
+    plan: { ...full, days: [{ ...day, pages: [{ ...page, parts: [{ ...part, items: 7 }], itemContracts,
+      capacity: [{ slot: "watch-one", part: 0, items: 0 }, { slot: "finish-these", part: 0, items: 2 }, { slot: "on-your-own", part: 0, items: 4 }] }] }] } };
+  const measured: number[] = [];
+  const fit: FitCheck = { fits: async p => {
+    const own = p.questions.filter(q => q.package.templateId?.startsWith("6.4-lcm#2.")).length;
+    measured.push(own);
+    // A single replacement leaves two odd sections. The repair must replace the review pair together.
+    return own !== 3 && p.questions.length <= 8 ? { ok: true } : { ok: false, problems: [{ question: null, reason: "test page capacity" }] };
+  } };
+  const capacity = await prepareWorkbookCapacity(input, fit);
+  expect(measured.some(own => own >= 4)).toBe(true);
+  let token = 0;
+  const result = await generateWorkbook({ ...input, plan: capacity }, { fit, ai: fakeAiClient({ answer: fakeWorkbookItems }), solver: keySolver(),
+    qrToken: () => `token-${String(++token).padStart(12, "0")}`, store: { save: async d => ({ status: "saved", draftId: d.id }), draft: async () => null } });
+  if (result.status !== "stored") throw new Error(result.status);
+  const printed = result.draft.pages.find(p => p.day === 7 && p.type === "practice")!;
+  expect(workbookQuality([printed]).issues.filter(i => i.kind === "step")).toEqual([]);
+  expect(pagePlan(renderableDraft(result.draft).pages.find(p => p.number === printed.number)!)?.incomplete).toEqual([]);
+}, 30_000);
 
 it("restores U16 own-step coverage without an incomplete own or review row, and keeps the saved contracts", async () => {
   const curriculum = curriculumFor("bc")!;

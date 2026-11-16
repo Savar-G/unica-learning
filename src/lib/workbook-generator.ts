@@ -3344,12 +3344,8 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         // (Room only: a layout problem is the template's, reported when the page is written.)
         const budgetPage = fitPage(w, "token-000000000001", questions, contentOf(input, w, questions, examples));
         const holes = pagePlan(budgetPage)?.incomplete ?? [];
-        // U16 page 22 can close its rows by dropping from three own questions to two. Keep the minimum binding.
-        if (input.plan.level === 16 && !holes.length && w.slots.some(s => s.contract?.template && s.part.step
-          && (s.contract.template.skill !== s.part.step.skill || s.contract.template.step !== s.part.step.step) && needsOwnPractice(input, w, s))) {
-          if (await restoreOwnPractice(input, w, work, fitCheck)) continue;
-          return `Page ${w.number}: cannot restore its own-step minimum in complete rows within the page and day limits`;
-        }
+        const shortOwnPractice = input.plan.level >= 10 && !holes.length && w.slots.some(s => s.contract?.template && s.part.step
+          && (s.contract.template.skill !== s.part.step.skill || s.contract.template.step !== s.part.step.step) && needsOwnPractice(input, w, s));
         const holeSlot = holes.length ? w.slots[holes[0] - 1] : undefined;
         const holeOwn = !!holeSlot?.part.step && !!holeSlot.contract && (holeSlot.contract.template ? holeSlot.contract.template.skill === holeSlot.part.step.skill && holeSlot.contract.template.step === holeSlot.part.step.step : holeSlot.contract.item.skill === holeSlot.part.step.skill);
         const reviewPartner = holes.length >= 2 && holeOwn
@@ -3374,6 +3370,12 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         // fullness, while its floor is 8, Savar's 8 to 10.)
         const counted = w.slots.filter((s) => !["spot-the-error", "solve-it-two-ways", "warm-up", "how-do-you-know"].includes(s.place ?? "")).length;
         const belowFloor = !w.page.extraPractice && counted < minimumFor(w, input.plan.level);
+        // Restore coverage before accepting a complete grid. An overfull or under-count page must first finish
+        // its normal capacity repair; a pair-only replacement cannot remove an extra question.
+        if (shortOwnPractice && !belowFloor && (fit.ok || fit.problems.every(p => p.kind === "fullness"))) {
+          if (await restoreOwnPractice(input, w, work, fitCheck)) continue;
+          return `Page ${w.number}: cannot restore its own-step minimum in complete rows within the page and day limits`;
+        }
         // Apply the short reminder before rejecting an added question that needs calculation space.
         if (!fit.ok && !fit.problems.every(p => p.kind === "fullness") && input.plan.level >= 10 && !w.page.compactPanel
           && ["practice", "practice-2"].includes(w.page.type) && w.panels.some(p => p.place === "watch-one")
@@ -3392,7 +3394,9 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
             continue;
           }
         }
-        if (holes.length >= 2 && !belowFloor && (fit.ok || fit.problems.every(p => p.kind === "fullness")) && await swapCompleteRows(input, w, work, fitCheck)) continue;
+        // Closing two odd sections can remove a row and its overflow. The exchange checks both resulting pages;
+        // requiring the broken grid to fit first would prevent that repair.
+        if (holes.length >= 2 && !belowFloor && await swapCompleteRows(input, w, work, fitCheck)) continue;
         const wanted = Math.max(minimum, w.slots.length + (belowFloor ? 1 : 0));
         const restoringFloor = belowFloor;
         const canRefill = restoringFloor ? round < 63 : (w.page.refills ?? 0) < 8 && round < 48;
