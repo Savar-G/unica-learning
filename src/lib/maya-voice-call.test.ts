@@ -309,7 +309,8 @@ describe("a voice call", () => {
     expect(await s.calls.input(stuck.id, current.revision, { type: "end" }, "Leah")).toEqual({ ok: false, error: "voice_call" });
     s.advance(TIME_LIMITS.endAtMs / 1000 + 61);
     const ended = ok(await s.calls.input(stuck.id, current.revision, { type: "end" }, "Leah"));
-    expect(ended.view).toMatchObject({ status: "ended", outcome: { reason: "time_limit" } });
+    expect(ended.view).toMatchObject({ status: "ended", outcome: { reason: "technical_issue", seconds: TIME_LIMITS.endAtMs / 1000 } });
+    expect(ended.view.technicalNotes).toContain("the voice call stopped without an end");
   });
 });
 

@@ -7,6 +7,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { isUuid } from "@/lib/workbook-content";
 import { publishMarkChange } from "@/lib/scan-marking-server";
+import { monitorProduct } from "@/lib/product-monitoring";
 
 export interface TeamMarkChoice { item: string; version: number; result: "right" | "wrong" | "blank" }
 export function teamMarkChoice(value: unknown): TeamMarkChoice | null {
@@ -31,14 +32,20 @@ export type TeamMarkResult =
   | { status: "refused" };
 /** Set the mark with the admin's session, then publish the event and rebuild the profile with the server's key. */
 export async function setScanTeamMark(adminDb: SupabaseClient<Database>, serviceDb: SupabaseClient<Database>, choice: TeamMarkChoice): Promise<TeamMarkResult> {
-  const r = await adminDb.rpc("admin_set_scan_mark", { p_item: choice.item, p_version: choice.version, p_result: choice.result });
-  if (r.error) throw new Error("team_mark_store");
+  const failure = (code: string) => { monitorProduct("scan.team_mark_failed"); return new Error(code); };
+  let r;
+  try { r = await adminDb.rpc("admin_set_scan_mark", { p_item: choice.item, p_version: choice.version, p_result: choice.result }); }
+  catch { throw failure("team_mark_store"); }
+  if (r.error) throw failure("team_mark_store");
   const v = r.data;
   if (v === "refused") return { status: "refused" };
-  if (!v || typeof v !== "object" || Array.isArray(v) || typeof v.version !== "number") throw new Error("team_mark_shape");
+  if (!v || typeof v !== "object" || Array.isArray(v) || typeof v.version !== "number") throw failure("team_mark_shape");
   if (v.status === "conflict" || v.status === "not_waiting" || v.status === "no_photo") return { status: v.status, version: v.version };
-  if (v.status !== "saved" || typeof v.parent !== "string" || typeof v.child !== "string") throw new Error("team_mark_shape");
-  return { status: "saved", version: v.version, recoveryPending: await publishMarkChange(serviceDb, v.parent, v.child) };
+  if (v.status !== "saved" || typeof v.parent !== "string" || typeof v.child !== "string") throw failure("team_mark_shape");
+  monitorProduct("scan.team_mark_saved", { count: 1 });
+  const recoveryPending = await publishMarkChange(serviceDb, v.parent, v.child);
+  if (recoveryPending) monitorProduct("scan.recovery_failed", { step: "profile" });
+  return { status: "saved", version: v.version, recoveryPending };
 }
 
 export interface TeamQueueItem {

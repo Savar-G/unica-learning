@@ -1,4 +1,5 @@
 import "server-only";
+import { monitorProduct } from "@/lib/product-monitoring";
 import { randomInt, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { aiClient } from "@/lib/ai-client";
@@ -16,6 +17,7 @@ import { callAlerts } from "@/lib/maya-call-alert";
 import { mayaAlertLedger } from "@/lib/maya-call-alert-store";
 import { writeNoteAfterCall } from "@/lib/maya-call-note-server";
 import { mayaCallStore, mayaConnectionLog } from "@/lib/maya-call-store";
+import { mayaChatStreamEnabled } from "@/lib/maya-chat-stream-activation";
 import { conversationalMayaModel, type MayaModel } from "@/lib/maya-model";
 import { ruleConversationalModel } from "@/lib/maya-model-fake";
 import { aiTalkReviewer, REVIEW_DEFAULT_MODEL, type TalkReviewer } from "@/lib/maya-talk-review";
@@ -98,8 +100,8 @@ async function rebuild(db: SupabaseClient<Database>, env: Env, ledger: SpendLedg
     const questions: QuestionReader = { question: (ref) => (ref.source === "workbook" ? workbooks.question(ref) : tests.question(ref)) };
     const result = await rebuildChildProfile(childId, { profiles: childProfileStore(db), events: learningEventStore(db), ai, keepFindings, questions });
     return result.built === true;
-  } catch (e) {
-    console.error("[maya call] profile rebuild failed", childId, e instanceof Error ? e.message : String(e));
+  } catch {
+    monitorProduct("maya.recovery_failed", { callId: options.call?.id, step: "profile" });
     return false;
   }
 }
@@ -112,8 +114,8 @@ export function callSeams(db: SupabaseClient<Database>, options: { env?: Env; or
   return {
     // D-345: only the exact value "on" lets the tutor core teach family calls (desk chat and family voice).
     tutorFamilies: env.MAYA_TUTOR_FAMILIES === "on",
-    // #1122 deploys readers first. A later reviewed release may enable writes after the old-reader window ends.
-    streamChat: false,
+    // Only server configuration and time can activate writes after the verified reader cutover.
+    streamChat: mayaChatStreamEnabled(env.MAYA_CHAT_STREAMING_ENABLED, Date.now()),
     alerts: callAlerts({ ledger: mayaAlertLedger(db), to: env.SIGNUP_NOTIFY_EMAIL || null, origin: options.origin ?? siteOrigin(env), transport: options.transport }),
     store: mayaCallStore(db),
     connections: mayaConnectionLog(db),

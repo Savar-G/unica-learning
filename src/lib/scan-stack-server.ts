@@ -1,4 +1,5 @@
 import "server-only";
+import { monitorProduct } from "@/lib/product-monitoring";
 import { photoCheckView } from "@/lib/scan-photo-check";
 import { photoCheckClient } from "@/lib/scan-photo-check-store";
 import { scanPhotoIsActive } from "@/lib/scan-photo-active";
@@ -54,8 +55,9 @@ export async function readScanStack(db: SupabaseClient<Database>, parent: string
   try {
     const newest = await db.from("workbooks").select("id").eq("parent_id", parent).eq("child_id", child).eq("status", "shipped")
       .order("number", { ascending: false }).limit(1);
+    if (newest.error) monitorProduct("dashboard.request_failed", { step: "stack" });
     if (!newest.error && newest.data) newestIds = newest.data.map((w) => w.id);
-  } catch { /* the strip waits for the first photo */ }
+  } catch { monitorProduct("dashboard.request_failed", { step: "stack" }); }
   const books = [...new Set([...live.map((p) => p.workbook_id!), ...newestIds])];
   if (!books.length) return { photos: [], pages: [] };
   const [workbooks, printed, calibrations] = await Promise.all([
@@ -84,7 +86,7 @@ export async function readScanStack(db: SupabaseClient<Database>, parent: string
         const view = own.length ? pageMarks(markingPageView(own)) : null;
         if (view) marksOf.set(p.id, unfinished.has(p.id) && view.scored === 0 ? { ...view, unfinished: true } : view);
       }
-    } catch { /* marks are optional on the stack */ }
+    } catch { monitorProduct("dashboard.request_failed", { step: "marking" }); }
   }
   const photoCheckRequired = checks && Boolean(photoCheckClient());
   const photos: StackPhoto[] = live.map((p) => {

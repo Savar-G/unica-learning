@@ -1,4 +1,5 @@
 import "server-only";
+import { monitorProduct } from "@/lib/product-monitoring";
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
@@ -16,6 +17,11 @@ export async function startPhotoCheck(admin: SupabaseClient<Database>, parent: s
     if (!client) return;
     const store = photoCheckStore(admin, { photo }), token = randomUUID();
     if (!await claimPhotoCheck(store, { parent, photo }, { client, token })) return;
-    await schedule(() => runPhotoCheck(store, { parent, photo }, { client, token }).then(() => undefined, () => undefined));
-  } catch { /* the check is optional */ }
+    await schedule(async () => {
+      try {
+        const result = await runPhotoCheck(store, { parent, photo }, { client, token });
+        if (result?.state === "unknown" && ["timeout", "malformed", "unavailable"].includes(result.error)) monitorProduct("scan.check_failed", { photoId: photo });
+      } catch { monitorProduct("scan.check_failed", { photoId: photo }); }
+    });
+  } catch { monitorProduct("scan.check_failed", { photoId: photo }); }
 }
