@@ -3041,7 +3041,8 @@ function exampleStandIn(input: GenerateInput, w: PageWork, p: Panel): QuestionPa
  * A panel's example that no question and no other example of the book asks (#811), in place of a repeated one: a
  * code-built example of the panel's skill first; else, for a whole-number +, - or × the writer built (Kai's estimation
  * pages have no code example at any attempt), the same sum with its first number moved on, to a number of as many
- * digits, so the method keeps its steps and the room measured for it. Code writes its words (D-231). Null when there is none.
+ * digits, so the method keeps its steps and the room measured for it. A closer-to-benchmark example keeps its
+ * benchmarks and changes only the compared whole number. Code writes its words (D-231). Null when there is none.
  */
 function unusedPanelExample(input: GenerateInput, w: PageWork, panel: Panel, repeated: QuestionPackage, taken: ReadonlySet<string>): QuestionPackage | null {
   const usable = (pkg: QuestionPackage | null): pkg is QuestionPackage => !!pkg && workableExample(pkg) && !taken.has(taskIdentity(pkg)) && !levelRange(pkg, input) && !dayProblem(input, pkg, w.day, panel.place);
@@ -3052,6 +3053,20 @@ function unusedPanelExample(input: GenerateInput, w: PageWork, panel: Panel, rep
     // (The page prints the example of this attempt from now on, as the capacity pass's panels do.)
     panel.attempt = attempt;
     return withoutSam(pkg, null);
+  }
+  const relation = repeated.item?.checks.find(c => c.kind === "relation");
+  if (relation?.kind === "relation" && relation.relation === "closer" && Number.isSafeInteger(relation.numbers[0])) {
+    const original = relation.numbers[0];
+    for (let offset = 1; offset <= PANEL_ATTEMPTS; offset++) for (const n of [original + offset, original - offset]) {
+      if (String(n).length !== String(original).length || n < Math.min(...relation.to) || n > Math.max(...relation.to)) continue;
+      const built = buildQuestion({
+        slot: panel.id, skill: panel.skill, difficulty: 2, text: "", format: "relation", figure: null,
+        numbers: [itemNumber(n)], places: null, direction: null, sequence: null, pattern: null,
+        relation: { kind: "closer", to: [...relation.to], labels: [] }, figureShows: null, name: null, thing: null,
+        operation: null, easier: null, wrongAnswers: [], shownWrong: null,
+      }, { id: repeated.id, workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [panel.skill] });
+      if (built.check.status !== "failed" && usable(built.package)) return withoutSam(built.package, null);
+    }
   }
   const op = repeated.operation;
   const sign = op ? SUM_SIGNS[op.kind] : undefined;

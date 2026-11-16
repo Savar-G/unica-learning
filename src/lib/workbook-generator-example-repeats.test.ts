@@ -5,6 +5,8 @@ import { fakeWorkbookItems } from "./workbook-ai-fake";
 import { generateWorkbook, prepareWorkbookCapacity, workbookCapacityPlan, type FitCheck } from "./workbook-generator";
 import { planNextWorkbook } from "./workbook-placement";
 import { keySolver } from "./workbook-solve-check";
+import { itemNumber } from "./workbook-item-plan";
+import { checkQuestionPackage } from "./question-package";
 
 // #811 (Kai's U10 book 2, run 31757327): a worked example printed its question twice ("Is 240 close to 30 or to 300?"
 // over "Is 240 close to 30 or 300?"), and page 77's worked example repeated page 64's, which failed the whole-book check
@@ -76,4 +78,34 @@ it("prints the replacement example after a repeated Watch one panel becomes a co
   }
   expect(checked.length).toBeGreaterThan(0);
   expect(mismatches).toEqual([]);
+}, 120_000);
+
+it.each([300, 499, 999])("replaces a repeated benchmark comparison of %i in first-book compact reminders", async original => {
+  const draft = await book(1, r => {
+    const out = fakeWorkbookItems(r);
+    const part = r.content[0];
+    if (part?.type !== "text") throw new Error("Expected the workbook request");
+    const request: { day?: number; examples?: { slot: string; contract?: unknown }[] } = JSON.parse(part.text);
+    if (request.day !== 10) return out;
+    const own = new Set((request.examples ?? []).filter(e => !e.contract).map(e => e.slot));
+    return { ...out, items: out.items.map(i => own.has(i.slot) ? {
+      ...i, skill: "3.1-estimate-quantity", text: `Is ${original} close to 0 or to 1000?`, format: "relation",
+      operation: null, numbers: [itemNumber(original)], relation: { kind: "closer", to: [0, 1000], labels: [] },
+      easier: null, wrongAnswers: [], shownWrong: null,
+    } : i) };
+  }, true);
+  const comparisons = draft.pages.filter(p => p.day === 10).flatMap(p => (p.panelExamples ?? [])
+    .flatMap(e => e?.item?.checks.some(c => c.kind === "relation" && c.relation === "closer") ? [e] : []));
+  expect(comparisons.length).toBeGreaterThanOrEqual(2);
+  expect(new Set(comparisons.map(e => e.text)).size).toBe(comparisons.length);
+  for (const example of comparisons) {
+    expect(checkQuestionPackage(example).status).toBe("checked");
+    const relation = example.item?.checks.find(c => c.kind === "relation");
+    expect(relation).toMatchObject({ relation: "closer", to: [0, 1000] });
+    if (relation?.kind !== "relation") throw new Error("Missing benchmark relation");
+    const page = draft.pages.find(p => p.panelExamples?.some(e => e?.id === example.id));
+    const lines = page?.content?.kind === "day" ? page.content.blocks.filter(b => b.slot === "reminder").flatMap(b => b.lines ?? []) : [];
+    expect(lines.some(line => line.startsWith(`${relation.numbers[0]} is `))).toBe(true);
+  }
+  expect(draft.quality?.issues.filter(i => /worked example repeats|teaching panel repeats/.test(i.reason))).toEqual([]);
 }, 120_000);
