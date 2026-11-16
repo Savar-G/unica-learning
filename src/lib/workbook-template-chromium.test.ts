@@ -60,6 +60,8 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
       boxes[i] = box;
     }
     expect(new Set(boxes.map(b => Math.round(b.height))).size).toBe(1);
+    // (At U4 the labels wrap to two lines, the printed case: the room is still 96 px under them.)
+    if (level === "U4") expect(Math.max(...labels.map(l => l.height))).toBeGreaterThan(30);
   });
 
   it.each(["U4", "U16"])("prints one whole-page Extra label and generated required minutes in %s", async level => {

@@ -912,7 +912,7 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
       const repeated = !!o.band.instructed?.has(q.number) && /^show your work$/i.test(r.label.trim());
       // A method box is its label and then its writing room: a label that wraps makes the box taller, never the room
       // smaller (Cedric's printed pages, #1116: two wrapped labels left about 0.7 in).
-      if (o.writingRoom !== undefined) return `<div class="wb room" ${at}><span class="lab" ${measureAttr(`worklabel-${q.number}-${r.id}`)}>${escape(r.label)}</span><i style="height:${o.writingRoom}px"></i></div>`;
+      if (o.writingRoom !== undefined && !repeated) return `<div class="wb room" ${at}><span class="lab" ${measureAttr(`worklabel-${q.number}-${r.id}`)}>${escape(r.label)}</span><i style="height:${o.writingRoom}px"></i></div>`;
       const h = o.minimumWork !== undefined ? `height:${o.minimumWork}px;--work-min:${o.minimumWork}px` : o.work === "fill" ? "" : `height:max(${o.work ?? 80}px,var(--work-min,64px))`;
       return `<div class="wb" ${at} style="${h}">${repeated ? "" : `<span class="lab">${escape(r.label)}</span>`}</div>`;
     }
