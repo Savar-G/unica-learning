@@ -81,7 +81,7 @@ export function callAlerts({ ledger, to, origin, transport }: { ledger: AlertLed
     async send(call) {
       const key: AlertKey = { callId: call.id, parentId: call.parentId, level: call.flag.level };
       try {
-        const outcome = await sendEmailOnce(ledger, key, { sender: { to: "savar" }, to: to ?? "", ...safetyAlertEmail(call, origin) }, { transport: to ? transport : noAddress });
+        const outcome = await sendEmailOnce(ledger, key, { sender: { to: "savar" }, to: to ?? "", ...safetyAlertEmail(call, origin), log: { kind: "maya_safety_alert", parentId: call.parentId } }, { transport: to ? transport : noAddress });
         if (outcome.status === "sent") console.info("[maya alert] sent", call.id, call.flag.level);
         else if (outcome.status !== "busy") console.error("[maya alert] not sent", call.id, call.flag.level, outcome.status, outcome.error);
       } catch (e) {

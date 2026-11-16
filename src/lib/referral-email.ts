@@ -26,7 +26,7 @@ export async function sendReferralRewards(store: ReferralStore, transport: MailT
       async keepCopy(handle, _key, copy) { await store.command({ action: "email_copy", ...handle, copy }); },
     };
     const result = await sendEmailOnce(ledger, email, {
-      sender: { to: "parent" }, to: email.email, subject: "You earned a referral reward",
+      sender: { to: "parent" }, to: email.email, subject: "You earned a referral reward", log: { kind: "referral_reward", parentId: email.parent },
       text: `You earned 50% off one paid month for your family. The discount covers each child enrolled when this reward starts, including the sibling price. Separate referrals give separate discounted months. Unused discounts wait through a pause or cancellation.\n\nSee your referral rewards: ${new URL("/account/referrals", origin).href}\n\nUnica Learning`,
     }, { transport, admit: async () => inTime() && claimed !== null && (await store.command({ action: "email_admit", ...expected, token: claimed })).admitted === true });
     if (result.status === "sent") sent++;

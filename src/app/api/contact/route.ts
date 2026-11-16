@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: "failed" } satisfies ContactResult, { status: 503 });
   }
 
-  const result = await sendEmail({ sender: { to: "savar" }, ...contactEmail(check.message, SUPPORT_EMAIL) });
+  const result = await sendEmail({ sender: { to: "savar" }, ...contactEmail(check.message, SUPPORT_EMAIL), log: { kind: "contact_message" } });
   if (result.status === "sent") return Response.json({ ok: true } satisfies ContactResult);
   console.error("[contact] email", result.status, result.error);
   return Response.json({ ok: false, error: result.status === "refused" ? "failed" : "unknown" } satisfies ContactResult, { status: 502 });

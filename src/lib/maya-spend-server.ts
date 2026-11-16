@@ -5,7 +5,7 @@ import { aiClient, type AiClient } from "@/lib/ai-client";
 import { mayaAiClient } from "@/lib/maya-ai-route";
 import type { AiUsageTag } from "@/lib/ai-usage";
 import { resendTransport } from "@/lib/email-resend";
-import type { MailTransport } from "@/lib/email-delivery";
+import { sendEmail, type MailTransport } from "@/lib/email-delivery";
 import { familyZone, formatInZone, type FamilyZone } from "@/lib/family-time";
 import { loadFamilyProvince } from "@/lib/family-time-server";
 import { callSpend, createSpendLedger, spendConfig, MICROS_PER_CAD, SPEND_MONTH_ZONE, type CallSpend, type Charge, type SpendLedger } from "@/lib/maya-spend";
@@ -69,7 +69,7 @@ export function mayaSpendLedger(db: SupabaseClient<Database>, options: { env?: E
     zone: familyZoneLookup(db),
     async alert(month) {
       if (!to) return console.error("[maya spend] the month's alert amount is reached; SIGNUP_NOTIFY_EMAIL is not set");
-      const sent = await (options.transport ?? resendTransport()).send({ sender: { to: "savar" }, to, ...spendAlertEmail(month, config.monthlyAlertMicros) });
+      const sent = await sendEmail({ sender: { to: "savar" }, to, ...spendAlertEmail(month, config.monthlyAlertMicros), log: { kind: "maya_spend_alert" } }, { transport: options.transport ?? resendTransport() });
       if (sent.status !== "sent") console.error("[maya spend] the monthly alert did not go", sent.status, sent.error);
     },
   });

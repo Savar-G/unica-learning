@@ -8,6 +8,7 @@ import { FAMILY_BUCKETS } from "@/lib/assessment/deletion";
 import { allowedValues } from "@/lib/database-checks";
 import { LEARNING_GOALS, MATH_FEELINGS, MATH_HELPS } from "@/lib/learning-style";
 import { LOG_KINDS, LOG_STATUSES } from "@/lib/email-log-kinds";
+import { SEND_KINDS, SEND_OUTCOMES } from "@/lib/email-send-kinds";
 import { FLAG_LEVELS } from "@/lib/maya-call";
 import { AI_FEATURES } from "@/lib/ai-usage";
 import { ASSISTANCE } from "@/lib/maya/session";
@@ -30,6 +31,8 @@ const LISTS: { name: string; list: readonly string[]; table: string; column: str
   { name: "FAMILY_BUCKETS", list: FAMILY_BUCKETS, table: "child_deleted_folders", column: "bucket" },
   { name: "LOG_KINDS", list: LOG_KINDS, table: "email_log", column: "kind" },
   { name: "LOG_STATUSES", list: LOG_STATUSES, table: "email_log", column: "status" },
+  { name: "SEND_KINDS", list: SEND_KINDS, table: "email_sends", column: "kind" },
+  { name: "SEND_OUTCOMES", list: SEND_OUTCOMES, table: "email_sends", column: "outcome" },
   { name: "ATTEMPT_STATUSES", list: ATTEMPT_STATUSES, table: "assessments", column: "status" },
   { name: "SCAN_PHOTO_STATES", list: SCAN_PHOTO_STATES, table: "scan_photos", column: "state" },
   { name: "SCAN_JOB_STATES", list: SCAN_JOB_STATES, table: "scan_marking_jobs", column: "state" },

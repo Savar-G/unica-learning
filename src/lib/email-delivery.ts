@@ -1,6 +1,8 @@
 import "server-only";
 import { admitted, NOT_ADMITTED } from "@/lib/email-admit";
 import { resendConfigProblem, resendFrom, resendTransport } from "@/lib/email-resend";
+import type { SendTag } from "@/lib/email-send-kinds";
+import { sendRow, supabaseSendRecorder, type SendRecorder } from "@/lib/email-sends";
 
 // The parent email delivery module (#149, spec #143): every email the site sends goes through here. A caller gives a
 // finished message and, when the email must go at most once, a send key. The module owns the "send once" protocol:
@@ -28,6 +30,11 @@ export interface EmailMessage {
   headers?: Record<string, string>;
   /** Files sent with the email (the first pages' PDF, docs/first-pages.md). The stored copy keeps only their description. */
   attachments?: EmailAttachment[];
+  /**
+   * The send log tag (public.email_sends, src/lib/email-sends.ts): set on every email that has no other durable row, so
+   * the admin Emails page shows it. Each attempt then writes one row. Never sent to the provider.
+   */
+  log?: SendTag;
 }
 
 /** A file sent with an email. */
@@ -230,12 +237,35 @@ async function recordOutcome<K, H>(ledger: SendLedger<K, H>, handle: H, key: K, 
       console.error("[email] copy not kept", result.status, e instanceof Error ? e.message : e);
     }
   }
+  await logAttempt(message, result);
   return result;
 }
 
 /** Sends one email that has its own guard or needs none (the sign-in link, alerts to Savar). Never answers busy. */
 export async function sendEmail(message: EmailMessage, { transport = resendTransport() }: { transport?: MailTransport } = {}): Promise<SendResult> {
-  return sendThrough(transport, message);
+  const result = await sendThrough(transport, message);
+  await logAttempt(message, result);
+  return result;
+}
+
+let recorder: SendRecorder = supabaseSendRecorder;
+
+/** Tests: writes the send log through `next` until the returned function puts the database recorder back. */
+export function recordSendsWith(next: SendRecorder): () => void {
+  recorder = next;
+  return () => { recorder = supabaseSendRecorder; };
+}
+
+/** Writes the send log row of a tagged message's attempt. A row that is not written never changes the email's outcome. */
+async function logAttempt(message: EmailMessage, result: SendResult): Promise<void> {
+  if (!message.log) return;
+  try {
+    await recorder(sendRow(message.log, message, {
+      outcome: result.status, emailId: result.status === "sent" ? result.emailId : null, error: result.status === "sent" ? null : result.error, from: resendFrom(message),
+    }));
+  } catch (e) {
+    console.error("[email] send log row not written", message.log.kind, e instanceof Error ? e.message : e);
+  }
 }
 
 /**
@@ -245,7 +275,14 @@ export async function sendEmail(message: EmailMessage, { transport = resendTrans
 export const emailConfigProblem = (): string | null => resendConfigProblem();
 
 /** A transport that throws anyway may have reached the provider, so its outcome is unknown. */
-async function sendThrough(transport: MailTransport, message: EmailMessage, options?: SendOptions): Promise<SendResult> {
+async function sendThrough(transport: MailTransport, tagged: EmailMessage, options?: SendOptions): Promise<SendResult> {
+  // The send log tag stays here: the transport gets the email only. An untagged message goes as it is (the scan reminder
+  // binds each message object it hands over).
+  let message = tagged;
+  if (tagged.log) {
+    message = { ...tagged };
+    delete message.log;
+  }
   try {
     return await (options ? transport.send(message, options) : transport.send(message));
   } catch (e) {

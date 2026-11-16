@@ -1295,6 +1295,72 @@ export type Database = {
           },
         ]
       }
+      email_sends: {
+        Row: {
+          child_id: string | null
+          created_at: string
+          email_id: string | null
+          error: string | null
+          from_address: string | null
+          html_body: string | null
+          id: string
+          kind: string
+          outcome: string
+          parent_id: string | null
+          reply_to: string | null
+          subject: string | null
+          text_body: string | null
+          to_address: string | null
+        }
+        Insert: {
+          child_id?: string | null
+          created_at?: string
+          email_id?: string | null
+          error?: string | null
+          from_address?: string | null
+          html_body?: string | null
+          id?: string
+          kind: string
+          outcome: string
+          parent_id?: string | null
+          reply_to?: string | null
+          subject?: string | null
+          text_body?: string | null
+          to_address?: string | null
+        }
+        Update: {
+          child_id?: string | null
+          created_at?: string
+          email_id?: string | null
+          error?: string | null
+          from_address?: string | null
+          html_body?: string | null
+          id?: string
+          kind?: string
+          outcome?: string
+          parent_id?: string | null
+          reply_to?: string | null
+          subject?: string | null
+          text_body?: string | null
+          to_address?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_sends_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_sends_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fact_answers: {
         Row: {
           assessment_id: string
