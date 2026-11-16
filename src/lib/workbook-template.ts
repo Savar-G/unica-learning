@@ -108,6 +108,8 @@ export const CARD_LINES = 3;
 const WORK_MIN = 64;
 /** The smallest answer box each way at any level (CONTEXT.md section 6). */
 export const ANSWER_MIN = 40;
+/** The writing room of each Use 2 ways method box under its label: about an inch, more for a longer calculation (#1116). */
+const twoWaysRoom = (p: QuestionPackage) => Math.max(96, questionWorkSpace(p));
 export const workMinimum = (level: number) => level <= 9 ? 120 : level <= 18 ? 140 : 160;
 export const questionNumber = (number: number): string => `${number}.`;
 
@@ -547,6 +549,8 @@ const CSS = `
 .pg.consistent[data-page-type="practice-2"] .q.seq-item{gap:4px}
 .pg.consistent .error-item .strip{min-height:48px}
 .pg.consistent .ways2 .wb{height:var(--work-min)}
+.pg.consistent .ways2{align-items:stretch}.pg.consistent .ways2>.rg{align-self:flex-end}
+.pg.consistent .ways2 .wb.room{height:auto;display:flex;flex-direction:column}.pg.consistent .ways2 .wb.room>i{display:block;flex:1 0 auto}
 /* Keep the writing region, but place it beside a single full-width numeric review task. */
 .pg.consistent .q.compact-wide{display:grid;grid-template-columns:22px minmax(100px,1fr) minmax(160px,1.3fr) auto;gap:12px;align-items:start}
 .pg.consistent .q.compact-wide>.n{grid-column:1;grid-row:1}.pg.consistent .q.compact-wide>.qb{grid-column:2;grid-row:1}
@@ -861,6 +865,8 @@ interface RegionOpts {
   /** Calculation space in a practice or review grid. */
   compactWork?: boolean;
   minimumWork?: number;
+  /** Writing room under the work box's label, whatever lines the label takes (Use 2 ways, #1116). */
+  writingRoom?: number;
   /** Show a box region's label before it ("ANSWER", "a)"). */
   labels?: boolean;
   /** Leave out the unit word after a box (a parent-led card has no room; its question names the unit). */
@@ -902,9 +908,12 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
     }
     case "work": {
       if (o.compactWork && o.band.consistentLayout) return `<div class="work-space" ${at} style="min-height:${Math.max(32, questionWorkSpace(q.package))}px"></div>`;
-      const h = o.minimumWork !== undefined ? `height:${o.minimumWork}px;--work-min:${o.minimumWork}px` : o.work === "fill" ? "" : `height:max(${o.work ?? 80}px,var(--work-min,64px))`;
       // The page's instruction names this question: its own "Show your work" says it again (Savar, book 1 review).
       const repeated = !!o.band.instructed?.has(q.number) && /^show your work$/i.test(r.label.trim());
+      // A method box is its label and then its writing room: a label that wraps makes the box taller, never the room
+      // smaller (Cedric's printed pages, #1116: two wrapped labels left about 0.7 in).
+      if (o.writingRoom !== undefined) return `<div class="wb room" ${at}><span class="lab" ${measureAttr(`worklabel-${q.number}-${r.id}`)}>${escape(r.label)}</span><i style="height:${o.writingRoom}px"></i></div>`;
+      const h = o.minimumWork !== undefined ? `height:${o.minimumWork}px;--work-min:${o.minimumWork}px` : o.work === "fill" ? "" : `height:max(${o.work ?? 80}px,var(--work-min,64px))`;
       return `<div class="wb" ${at} style="${h}">${repeated ? "" : `<span class="lab">${escape(r.label)}</span>`}</div>`;
     }
     case "lines": {
@@ -1245,7 +1254,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
         const names = regionNames(q);
         // Each work area names a way to do it (#482 review at db3b1a0: two methods asked, none shown).
         const ways = twoWays(q.package);
-        const works = names.filter((x) => x.region.kind === "work").map((x, k) => regionHtml(q, ways && x.region.kind === "work" ? { ...x.region, label: `Method ${k + 1}: ${ways[k] ?? ""}`.trim() } : x.region, x.name, { band, work: 110, ...(c.consistentLayout ? { minimumWork: Math.max(102, questionWorkSpace(q.package) + 38) } : {}) })).join("");
+        const works = names.filter((x) => x.region.kind === "work").map((x, k) => regionHtml(q, ways && x.region.kind === "work" ? { ...x.region, label: `Method ${k + 1}: ${ways[k] ?? ""}`.trim() } : x.region, x.name, { band, work: 110, ...(c.consistentLayout ? { writingRoom: twoWaysRoom(q.package) } : {}) })).join("");
         const boxes = names.filter((x) => x.region.kind === "box").map((x) => regionHtml(q, x.region, x.name, { band, labels: true })).join("");
         return `<div class="tw" ${mark.question(q.number)}><div class="q"><span class="n">${questionNumber(q.number)}</span><span class="lab" style="color:#0C0C0E">${c.consistentLayout ? "Use 2 ways" : "Solve it two ways"}</span><span class="qb">${qtext(q)}</span></div><div class="ways2">${works}${boxes}</div></div>`;
       }).join("");
@@ -1765,6 +1774,13 @@ export function fitProblems(page: DraftPage, measured: ReadonlyMap<string, Measu
         if (m.width < (c.consistentLayout ? 48 : ANSWER_MIN) - 0.5) small("answer box width", m.width, c.consistentLayout ? 48 : ANSWER_MIN);
       } else if (region.kind === "work") {
         const grid = ["remember-these", "now-you", "finish-these", "on-your-own", "practice-row", "unit-b-practice", "mixed-set", "friday-5"].includes(slotOf(q.number) ?? "");
+        const label = measured.get(`worklabel-${q.number}-${region.id}`);
+        if (c.consistentLayout && slotOf(q.number) === "solve-it-two-ways" && label) {
+          // The room under its label, measured: a wrapped label does not count as room (#1116).
+          const room = bottomOf(m) - bottomOf(label), minimum = twoWaysRoom(q.package);
+          if (room < minimum - .5) small("writing room under its label", room, minimum);
+          continue;
+        }
         const minimum = c.consistentLayout ? slotOf(q.number) === "solve-it-two-ways" ? Math.max(102, questionWorkSpace(q.package) + 38) : grid ? Math.max(32, questionWorkSpace(q.package)) : workMinimum(c.level) : WORK_MIN;
         if (m.height < minimum - .5) small("work box height", m.height, minimum);
       }
