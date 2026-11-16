@@ -463,6 +463,8 @@ export interface TextSessionOptions {
    * index order, one at a time, only after it passed the per-sentence checks; a sentence sent is never cancelled.
    * `onSayCancel(fromIndex)` is only for indexes not sent yet; `onSayEnd` ends the output. Today the hooks are called
    * once the whole reply is checked (no token streaming yet); the saved turn holds exactly the spoken sentences in order.
+   * #1107: desk chat (`channel` "chat") sets it too, so its checked sentences reach the desk as they pass; chat keeps its
+   * own review limits and repair budget (only a voice turn takes the voice ones).
    */
   onSayPart?: (sentence: string, index: number, boardCues: Batch[]) => void;
   onSayCancel?: (fromIndex: number) => void;
@@ -672,11 +674,16 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   let reviewEndsAt = Number.POSITIVE_INFINITY;
   /** A review's time limit: its own limit, or the time left of a voice repair when that is less. */
   const reviewLimit = (ms: number) => Math.min(ms, Math.max(0, reviewEndsAt - Date.now()));
+  /**
+   * #1107: a voice turn. Chat streams its checked sentences through the same hooks (`onSayPart`), but it keeps chat's
+   * own review limits, hedges and repair budget, and never asks for a thinking phrase: only these timings tell them apart.
+   */
+  const voice = options.onSayPart !== undefined && options.channel !== "chat";
   /** The math review's own limit: a voice turn's is the conversational limit, a chat or text turn's is longer. */
-  const mathLimit = (conversational: boolean) => options.reviewTimeLimitMs ?? (!conversational ? REVIEW_TIME_LIMIT_MS : options.onSayPart ? CONVERSATION_REVIEW_TIME_LIMIT_MS : CHAT_MATH_REVIEW_TIME_LIMIT_MS);
+  const mathLimit = (conversational: boolean) => options.reviewTimeLimitMs ?? (!conversational ? REVIEW_TIME_LIMIT_MS : voice ? CONVERSATION_REVIEW_TIME_LIMIT_MS : CHAT_MATH_REVIEW_TIME_LIMIT_MS);
   // Call 21665dc6 (2026-11-15): a voice review is sent once more at the voice p90; chat and text keep their delays (#1099).
-  const talkHedge = options.onSayPart ? VOICE_REVIEW_HEDGE_MS : REVIEW_HEDGE_MS;
-  const mathHedge = options.onSayPart ? VOICE_MATH_REVIEW_HEDGE_MS : MATH_REVIEW_HEDGE_MS;
+  const talkHedge = voice ? VOICE_REVIEW_HEDGE_MS : REVIEW_HEDGE_MS;
+  const mathHedge = voice ? VOICE_MATH_REVIEW_HEDGE_MS : MATH_REVIEW_HEDGE_MS;
   /** The own limit of a review started while the model still writes (only voice streams); a voice repair's end still caps it. */
   const earlyLimit = (ms: number) => reviewLimit(ms + VOICE_EARLY_REVIEW_EXTRA_MS);
   let quietOpening = false;
@@ -1021,7 +1028,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     // from here: the whole check finds the reviews running and reads them (no longer than a review it starts itself).
     // Which reviews a sentence needs is read as the stream reads it; a sentence that fails code's own check ends it.
     // A continuation's sentences start their reviews early too, each read after the fixed sentences (`lead`).
-    const early = model.output === 3 && options.onSayPart && folded.session.tutor && (!folded.sent?.length || lead.length > 0) && folded.pending.length === 0 ? read(() => tutorStream(session, true)) : null;
+    // #1107: voice only. A chat turn reviews what its stream holds, and the whole check the rest, as before.
+    const early = model.output === 3 && voice && folded.session.tutor && (!folded.sent?.length || lead.length > 0) && folded.pending.length === 0 ? read(() => tutorStream(session, true)) : null;
     const earlyStance = early && session.conversational ? read(() => codeStance(session)) : "none";
     let earlySeen = 0;
     let earlyDone = false;
@@ -1274,7 +1282,6 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         // inside VOICE_REPAIR_BUDGET_MS, and the worker may say its thinking phrase at once, but only when nothing of this
         // turn was said or waits to be said: no streamed sentence and no accepted turn before it in this output (the AI
         // disclosure, safety guidance and a stop are code's own turns, and a repair never follows them).
-        const voice = options.onSayPart !== undefined;
         // Review of #1099 (P2): on a voice turn REVIEW_FLOOR_MS of the budget is the reviews' alone: the model stops that
         // much before the cap, and the reviews end at it.
         const budget = options.repairBudgetMs ?? (voice ? VOICE_REPAIR_BUDGET_MS : TUTOR_REPAIR_BUDGET_MS);

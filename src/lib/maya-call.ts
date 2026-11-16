@@ -566,13 +566,22 @@ export interface VoiceCall {
 
 export type OpenVoiceResult = { ok: true; call: VoiceCall } | { ok: false; error: "not_found" | "not_voice" | "ended" | "conflict" | "model_unavailable" | "unavailable" };
 
+/**
+ * #1107: the desk's ear on one chat child turn while it runs (the streaming contract of src/lib/maya-text.ts, as a voice
+ * call's `VoiceSay.part`): each checked sentence, with the child's name filled, in index order and once; a sentence given
+ * is never taken back. The finished turn's reply holds the same sentences in the same order, then any that follow. A
+ * listener that throws changes nothing of the turn.
+ */
+export interface TextSay { part(sentence: string, index: number): void }
+
 export interface MayaCalls {
   start(input: StartInput): Promise<CallResult>;
   /** Makes a voice call's record, not started: Maya's worker starts it when the child joins. */
   startVoice(input: StartInput): Promise<CallResult>;
   /** Opens a live voice call in the worker, with the providers that carry it. */
   openVoice(id: string, providers: { speechToText: string; voice: string }, childName: string | null): Promise<OpenVoiceResult>;
-  input(id: string, revision: number, input: CallInput, childName: string | null): Promise<CallResult>;
+  /** `say` (#1107): hears a chat child turn's checked sentences while it runs; ignored for any other call or input. */
+  input(id: string, revision: number, input: CallInput, childName: string | null, say?: TextSay): Promise<CallResult>;
   /**
    * Appends the child's ink events of a chat (#635): `events` (plain data, read here) at sequences `from`, `from + 1`, …;
    * the call keeps each sequence once. For a chat of this parent and child, live or ended a few minutes ago; never
@@ -1626,7 +1635,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       return { ok: true, call };
     },
 
-    async input(id, revision, input, childName) {
+    async input(id, revision, input, childName, say) {
       if (!checkInput(input)) return { ok: false, error: "invalid_input" };
       const record = await store.get(id);
       if (!record) return { ok: false, error: "not_found" };
@@ -1684,7 +1693,11 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         const ended = await end(record, pkg, session, { detail: "the model this call started with is no longer available" });
         return ended ? result(ended, ended.trace!, null) : { ok: false, error: "conflict" };
       }
-      const session = textSession(record, pkg, model, name, saved);
+      // #1107: a chat child turn streams its checked sentences to the desk through the voice path's hooks.
+      const hear = say && record.kind === "chat" && input.type === "child"
+        ? { onSayPart: (sentence: string, index: number) => { try { say.part(sentence, index); } catch { /* the desk's ear never fails the turn */ } } }
+        : undefined;
+      const session = textSession(record, pkg, model, name, saved, undefined, undefined, undefined, undefined, undefined, undefined, hear);
       let out: TextOutput | null = null;
       let saved2: CallRecord | null = null;
       if (input.type === "end") {
