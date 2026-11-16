@@ -71,6 +71,7 @@ import { checkSay, checkSentence, columnSentenceTruth, equationHolds, heardColum
 import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
 import { askedStep, doneReply, firstTimeTurn, type AskedRead } from "./teaching-reads";
+import { deriveDrawings, type BoardRead } from "./board-ties";
 import { agreementClause, bindingReview, checkTutorSay, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, FINAL_ASK, TUTOR_FIRST_TIME_WORD_LIMIT, TUTOR_REVIEW_IGNORED } from "./tutor";
 import { placeDigitsSaid } from "./tutor-math";
 import { MATH_REVIEW_PROMPT_VERSION, mathReviewsOf, type MathReview, type MathReviewInput } from "./math-review";
@@ -159,7 +160,7 @@ export type SessionEvent =
    * `mathReviews` (two-layer true math, 2026-11-15): the math-truth review of each tutor sentence code did not read whole,
    * by its text. With `talkReviews` given and no `mathReviews`, the event was written before the review existed.
    */
-  | { type: "proposal"; at: number; proposal: unknown; talkReviews?: TalkReview[]; mathReviews?: MathReview[]; fallback?: boolean; sent?: string[] }
+  | { type: "proposal"; at: number; proposal: unknown; talkReviews?: TalkReview[]; mathReviews?: MathReview[]; fallback?: boolean; sent?: string[]; drawMode?: "derive" }
   | { type: "tick"; at: number }
   /**
    * Final check 12 (2026-11-15): the help a sentence Maya emitted to the child gave, recorded the moment it went out (the
@@ -245,8 +246,9 @@ export type Effect =
    * `math` (two-layer true math): the tutor sentences code did not read whole, each with its math-truth review: "not_run"
    * on the step before the reviews (the adapter reviews those), "true" when it passed.
    */
-  | { kind: "say"; act: Act; text: string; talkReplaced?: number; talk?: TalkCheck[]; math?: { sentence: string; verdict: "not_run" | "true" }[]; planned?: string; dropped?: { text: string; reason: string }[] }
-  | { kind: "board"; batch: Batch }
+  | { kind: "say"; act: Act; text: string; talkReplaced?: number; talk?: TalkCheck[]; math?: { sentence: string; verdict: "not_run" | "true" }[]; planned?: string; dropped?: { text: string; reason: string }[]; boardReads?: BoardRead[] }
+  /** `sentence` (B2): the 0-based sentence of the turn's words the batch is tied to; absent: the end of the turn. */
+  | { kind: "board"; batch: Batch; sentence?: number }
   /** Stop speaking and drop board batches not yet shown. */
   | { kind: "cancel_output" }
   /** Create the durable safety flag and alert (once per call, and again when the severity rises). */
@@ -961,8 +963,13 @@ function proposalProblem(p: unknown): string | null {
   if (p.level !== undefined && !HINTS.includes(p.level as number)) return "the level is 0 to 4";
   if (p.understanding !== undefined && p.understanding !== "evidence_observed" && p.understanding !== "uncertain") return "understanding is evidence_observed or uncertain";
   if (p.draw !== undefined && (!Array.isArray(p.draw) || p.draw.length === 0 || p.draw.length > 4 ||
-    !p.draw.every((d) => isObject(d) && typeof d.offer === "string" && (d.place === undefined || typeof d.place === "string") && Object.keys(d).every((k) => k === "offer" || k === "place")))) {
-    return "draw is a list of 1 to 4 board offers: { offer, place? }";
+    !p.draw.every((d) => isObject(d) && typeof d.offer === "string" && (d.place === undefined || typeof d.place === "string") && (d.sentence === undefined || typeof d.sentence === "number") && Object.keys(d).every((k) => k === "offer" || k === "place" || k === "sentence")))) {
+    // B2: `sentence` came from the first B2 shape; code now reads the drawings from the sentences, so it is a hint only.
+    return "draw is a list of 1 to 4 board offers: { offer, place?, sentence? }";
+  }
+  // B2: the sentences (1 for the first) that draw nothing, or "all" (code's retry after the board refused a batch).
+  if (p.noDraw !== undefined && p.noDraw !== "all" && !(Array.isArray(p.noDraw) && p.noDraw.length <= 20 && p.noDraw.every((n) => typeof n === "number"))) {
+    return "noDraw is a list of sentence numbers";
   }
   if (p.board !== undefined && (!Array.isArray(p.board) || p.board.length === 0 || p.board.length > MAX_COMMANDS || !p.board.every((c) => isObject(c) && typeof c.op === "string"))) {
     return `the board is a list of 1 to ${MAX_COMMANDS} commands, each with an op`;
@@ -1725,7 +1732,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
         // D-341: sentences already streamed to the child (onSayPart) stay said: the turn's words start with them.
         const sent = Array.isArray(event.sent) ? event.sent.filter((x): x is string => typeof x === "string" && x.trim() !== "") : [];
         // Final check 11: the emitted help is in the session before any routing builds an outcome.
-        if (v3 && s.tutor) return proposeTutor(withEmittedHelp(s, sent), raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent, event.fallback === true, event.mathReviews === undefined ? undefined : mathReviewsOf(event.mathReviews));
+        if (v3 && s.tutor) return proposeTutor(withEmittedHelp(s, sent), raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent, event.fallback === true, event.mathReviews === undefined ? undefined : mathReviewsOf(event.mathReviews), event.drawMode === "derive");
         if (v3) return proposeV3(s, raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent);
         return withSent(propose(s, raw as Proposal, effects, reviewsOf(event.talkReviews), event.fallback === true), sent, s, disclosureDue(s));
       }
@@ -5757,7 +5764,7 @@ function boardTexts(cmd: unknown, key = ""): string[] {
  * step or the answer. Code keeps its own credit of the child's answers (D-340, checkAnswers), the safety review of any
  * sentence that is not plain math, and never ends the call on a child who has not solved the question.
  */
-function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], reviews: readonly TalkReview[] | undefined, sent: readonly string[], fallback: boolean, mathReviews?: readonly MathReview[]): StepResult {
+function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], reviews: readonly TalkReview[] | undefined, sent: readonly string[], fallback: boolean, mathReviews?: readonly MathReview[], derive = false): StepResult {
   const reading = out.reading ?? {};
   if (!tutorTeachingNow(base, reading)) {
     // Final check 10 (2026-11-15): the help in sentences already streamed is decided here, before the turn's priority
@@ -5904,7 +5911,10 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   if (act === "close" && /\?\s*$/.test(text)) return no("say_check", "A close ends the call, so it asks nothing: say a short goodbye with no question.", "close_asks");
   // Savar's call 2 (2026-11-15): a message that corrects the child ends with one question, so the child knows what to do
   // next (turn 8 ended on "52 is 5 tens and 2 ones." with nothing to answer).
-  if (!fallback && act === "guide" && !!base.turn && !base.turn.text.includes("?") && childAnswerOf(base, (x) => x)?.verdict === "wrong" && !/\?\s*$/.test(text)) return no("say_check", "Your message corrects the child, so it must end with one small question about the same step, with the numbers the child needs.", "never_say");
+  // Final runs: for a first-time learner, after a right step answer too ("2." got only "4 minus 2 is 2."): while the
+  // question is not solved, a reply to a number the child committed ends with one question.
+  const committedVerdict = !!base.turn && !base.turn.text.includes("?") ? childAnswerOf(base, (x) => x)?.verdict : undefined;
+  if (!fallback && act === "guide" && s.solved === null && (committedVerdict === "wrong" || (committedVerdict === "right" && firstTimeLearner(base))) && !/\?\s*$/.test(text)) return no("say_check", committedVerdict === "wrong" ? "Your message corrects the child, so it must end with one small question about the same step, with the numbers the child needs." : "The child answered: end with one small question about the next step, with the numbers the child needs.", "never_say");
   // Savar's call 2 (final runs): the end question comes only after the child's right final answer, never in place of
   // asking the child for the whole answer ("So 52 minus 28 is 24. Do you want another question, or are we done?").
   if (!fallback && s.solved === null && /\banother question\b/i.test(text) && /\bare we done\b/i.test(text)) return no("say_check", `The child has not said the whole answer yet: ask them for it, for example "What is the whole answer?". Ask "${FINAL_ASK}" only after they say it.`, "never_say");
@@ -5934,13 +5944,29 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     math.push({ sentence, verdict: "true" });
   }
   const tutor: NonNullable<Session["tutor"]> = { help: progress ? 0 : s.solved === null ? (s.tutor?.help ?? 0) + 1 : 0, drawn: [...(s.tutor?.drawn ?? [])], ...(s.tutor?.sent?.length ? { sent: structuredClone(s.tutor.sent) } : {}) };
+  // B2 (derive the drawing from the sentence): code reads each accepted sentence and draws what it says in full, one
+  // batch per sentence, in sentence order (board-ties.ts). Only a proposal stepped live since B2 (`drawMode`) derives:
+  // a saved older message replays exactly as it was stepped (its own `draw` list, or nothing), so a restored call keeps
+  // its batches and ids. #1103 (decided 2026-11-15): code's own fallback message draws too: its sentences are the ones
+  // already streamed to the child (accepted and heard) and code's own line, which is true by construction; a refused
+  // sentence is never in it.
+  // A judgment opener counts as no action only when the say check validated it: code found the child right (stance),
+  // and the say check's own agreement reader (agreementClause) gives the rest of the sentence.
+  const opener = stance === "right" ? (sentence: string) => agreementClause(sentence) : undefined;
+  const ties = !derive || s.noBoard ? null : deriveDrawings(pkg, sentencesOf(text), tutor.drawn, (tutor.sent ?? []).flatMap((x) => x.keys), fallback ? [] : out.noDraw ?? [], (k, i) => `tutor-note-${s.batches + 1 + k}-${i}`, opener);
+  const legacy = s.noBoard || derive ? { commands: [], keys: [] } : tutorDrawings(pkg, out.draw ?? [], tutor.drawn, (i) => `tutor-note-${s.batches + 1}-${i}`);
+  const batches: { commands: Record<string, unknown>[]; keys: string[]; sentence?: number; after?: number[] }[] = ties ? ties.drawings : legacy.commands.length ? [legacy] : [];
   // Savar's call 2 and the Chief of Staff (2026-11-15): when the child's right final answer first stands, the board shows
-  // the whole answer: code asks for every answer digit not yet drawn, from its own values, with the good-job message.
+  // the whole answer: code draws every answer digit not yet drawn, from its own values, with the good-job message (its
+  // first sentence). Code's own line may draw (B2).
   const solvedNow = base.solved === null && s.solved === "child" && s.lastResult === "right";
-  const finalDigits = solvedNow && tutorKind(pkg).drawings(pkg).some((d) => d.id === "digit")
-    ? stepFacts(pkg).flatMap((st) => (st.place && !tutor.drawn.includes(`digit:${st.place}`) ? [{ offer: "digit", place: st.place }] : []))
-    : [];
-  const drawing = s.noBoard ? { commands: [], keys: [] } : tutorDrawings(pkg, [...(out.draw ?? []), ...finalDigits], tutor.drawn, (i) => `tutor-note-${s.batches + 1}-${i}`);
+  if (solvedNow && !s.noBoard && tutorKind(pkg).drawings(pkg).some((d) => d.id === "digit")) {
+    const drawnNow = [...tutor.drawn, ...batches.flatMap((b) => b.keys)];
+    const digits = stepFacts(pkg).flatMap((st) => (st.place && !drawnNow.includes(`digit:${st.place}`) ? [{ offer: "digit", place: st.place }] : []));
+    const final = digits.length ? tutorDrawings(pkg, digits, drawnNow, (i) => `tutor-note-final-${s.batches + 1}-${i}`) : null;
+    if (final?.commands.length) batches.push({ commands: final.commands, keys: final.keys, sentence: 0 });
+  }
+  const drawing = { commands: batches.flatMap((b) => b.commands), keys: batches.flatMap((b) => b.keys) };
   tutor.drawn.push(...drawing.keys);
   s.tutor = tutor;
   // Help and assistance for the outcome: a message or board that gives the whole answer is answer_given; else a
@@ -5974,14 +6000,17 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     else s.stuckStep ??= open[0]?.id ?? "result";
   }
   const said = fillName(text, base);
-  effects.push({ kind: "say", act, text: said, ...(talk.length ? { talk } : {}), ...(math.length ? { math } : {}) });
+  effects.push({ kind: "say", act, text: said, ...(talk.length ? { talk } : {}), ...(math.length ? { math } : {}), ...(ties?.reads.length ? { boardReads: ties.reads } : {}) });
   s.turns.push({ at: s.now!, speaker: "maya", text: said, state: act === "close" ? "CLOSE" : s.state, act });
-  if (drawing.commands.length) {
+  const first = s.batches + 1;
+  for (const b of batches) {
     s.batches += 1;
     const transactionId = `${s.callId}-b${s.batches}`;
     // B1: sent, not shown, until the child's screen says what it did with the batch (boardFate).
-    if (drawing.keys.length) s.tutor.sent = [...(s.tutor.sent ?? []), { batch: transactionId, keys: [...drawing.keys] }];
-    effects.push({ kind: "board", batch: { transactionId, commands: drawing.commands as unknown as Command[] } });
+    if (b.keys.length) s.tutor.sent = [...(s.tutor.sent ?? []), { batch: transactionId, keys: [...b.keys] }];
+    // B2: the earlier batches of this message it builds on (the desk skips it when it skipped one of them).
+    const after = (b.after ?? []).map((k) => `${s.callId}-b${first + k}`);
+    effects.push({ kind: "board", batch: { transactionId, commands: b.commands as unknown as Command[], ...(after.length ? { after } : {}) }, ...(b.sentence === undefined ? {} : { sentence: b.sentence }) });
   }
   s.turn = null;
   delete s.mathClaim;

@@ -473,6 +473,8 @@ export const evaluateKind: TutorKind = {
     return st ? [{ offer: "note", place: equation(st) }] : [];
   },
   draw,
+  // B2: notes only, which need nothing on the board first.
+  boardNeeds: () => ({}),
   // The core reads the equations; this kind reads the pattern's claims.
   claimProblems: patternClaimProblems,
   notes: (pkg) => {

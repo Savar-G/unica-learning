@@ -23,3 +23,7 @@ it("a read answer outside the prompt bound still shows the stored question and k
   expect(pageExplanationItem(item, { ...context, readAnswer: "x".repeat(201) }, true, true))
     .toEqual({ explainable: false, questionText: pkg.text, correctAnswer: "425" });
 });
+it("a finished blank answer has its stored key but cannot request an explanation", () => {
+  expect(pageExplanationItem({ ...item, result: "blank" }, { ...context, readAnswer: "" }, true, true))
+    .toEqual({ explainable: false, questionText: pkg.text, correctAnswer: "425" });
+});

@@ -56,6 +56,16 @@ export interface TutorKind {
    */
   draw(pkg: OperationPackage, requests: readonly { offer: string; place?: string }[], drawn: readonly string[], noteId: (i: number) => string): { commands: TutorCommand[]; keys: string[] };
   /**
+   * B2: the board's dependency graph, DECLARED by the kind: for every drawing key `draw` can give (never a note), the
+   * keys that must be on the board first (a trade before its digit, the ones digit before the tens digit, the rows
+   * before a long-multiplication digit, the chart before a chart digit, the layout before a division step). The board
+   * draws a key from Maya's sentence only when each of these is shown, or drawn earlier in the same message
+   * (src/lib/maya/board-ties.ts). The contract (contract.ts) checks it against `draw`.
+   */
+  boardNeeds(pkg: OperationPackage): Readonly<Record<string, readonly string[]>>;
+  /** B2: the keys a note needs on the board first (the chart, for a place value note). None when absent. */
+  noteNeeds?(pkg: OperationPackage): readonly string[];
+  /**
    * The kind's own true-math checks of one sentence of Maya's, beyond the core's equations, place quantities and
    * trades (tutor-math.ts): for example "the 9 is in the thousands place". Reasons for each false claim; empty when
    * every claim the kind reads is true. Fail closed: a claim form the kind cannot read is not proven true.

@@ -24,7 +24,7 @@ describe("code's credit sees a word answer (F4 builder)", () => {
   const claimKind = (id: string): TutorKind => ({
     id, fits: (p) => p.text === (FIXTURES.CLAIM_TF as OperationPackage).text || p.text === (FIXTURES.CLAIM_GT as OperationPackage).text, steps: (p) => p.steps.filter((x) => x.kind !== "result").map((x) => ({ id: x.id, work: "Check the claim", result: "?" })),
     numberMeaning: () => "not a value of this question", workValues: () => [], streamScope: () => ({ numbers: [], expressions: [] }), stepQuestion: () => "Is the claim true?",
-    drawings: () => [], draw: () => ({ commands: [], keys: [] }), claimProblems: () => [],
+    drawings: () => [], draw: () => ({ commands: [], keys: [] }), boardNeeds: () => ({}), claimProblems: () => [],
   });
   const wrongWord = (name: string) => (name === "CLAIM_TF" ? ["I circle false.", "It's false.", "false"] : ["I circle no.", "It's no.", "no"]);
   for (const name of ["CLAIM_TF", "CLAIM_GT"] as const) {
@@ -52,7 +52,7 @@ describe("review of #1009: a kind cannot bypass the core", () => {
   const liar = (over: Partial<TutorKind>): TutorKind => ({
     id: "liar", fits: (p) => p.text === SUB.text, steps: (p) => p.steps.filter((x) => x.kind !== "result").map((x) => ({ id: x.id, work: "Check it", result: "?" })),
     numberMeaning: () => "not a value of this question", workValues: () => [], streamScope: () => ({ numbers: [], expressions: [] }), stepQuestion: () => "What is 6 times 8?",
-    drawings: () => [{ id: "note", does: "a note" }], draw: () => ({ commands: [], keys: [] }), claimProblems: () => [], ...over,
+    drawings: () => [{ id: "note", does: "a note" }], draw: () => ({ commands: [], keys: [] }), boardNeeds: () => ({}), claimProblems: () => [], ...over,
   });
   it("never says a kind's unsafe step question as code's line", async () => {
     undo = testKind(liar({ stepQuestion: () => "You are no good at math, not even 2 plus 2." }));
@@ -115,7 +115,7 @@ describe("review of #1009: core additions (2026-11-15)", () => {
       steps: (p) => p.steps.filter((s) => s.kind !== "result").map((s) => ({ id: s.id, work: "Check the comparison", result: "?" })),
       numberMeaning: () => "not a value of this question", workValues: () => [],
       streamScope: () => ({ numbers: [], expressions: [] }), stepQuestion: () => "Which is bigger, 9 or 5?",
-      drawings: () => [], draw: () => ({ commands: [], keys: [] }), claimProblems: () => [],
+      drawings: () => [], draw: () => ({ commands: [], keys: [] }), boardNeeds: () => ({}), claimProblems: () => [],
     };
     const undo = testKind(kind);
     try {
@@ -149,7 +149,7 @@ describe("the next open step's result is right (review of #1018)", () => {
       steps: () => [{ id: pkg.steps[0].id, work: "Find the second term", result: 28 }],
       numberMeaning: () => "a value of the work", workValues: () => [28],
       streamScope: () => ({ numbers: [], expressions: [] }), stepQuestion: () => null,
-      drawings: () => [], draw: () => ({ commands: [], keys: [] }), claimProblems: () => [],
+      drawings: () => [], draw: () => ({ commands: [], keys: [] }), boardNeeds: () => ({}), claimProblems: () => [],
     };
     const undo = testKind(kind);
     try {

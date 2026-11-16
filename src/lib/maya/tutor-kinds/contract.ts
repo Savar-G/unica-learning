@@ -9,6 +9,7 @@ import type { OperationPackage } from "@/lib/question-package";
 import type { TutorKind } from "../tutor-kind";
 import { tutorKindOf } from "./index";
 import { checkTutorSay, plainTeaching, tutorDrawings } from "../tutor";
+import { kindActions } from "../board-ties";
 
 /** The work steps of a package (its steps without the result and framing steps). */
 const workIds = (pkg: OperationPackage) => {
@@ -55,6 +56,51 @@ export function describeTutorKind(kind: TutorKind, packages: readonly OperationP
         it("lets the stream use the question's own numbers", () => {
           const scope = kind.streamScope(pkg);
           for (const n of pkg.operation.operands as unknown[]) if (typeof n === "number") expect(scope.numbers).toContain(n);
+        });
+        it("declares the dependency graph of its board actions (B2): complete, closed, in method order, and the board takes it", async () => {
+          const actions = kindActions(pkg);
+          const graph = kind.boardNeeds(pkg);
+          const keys = [...actions.keys()];
+          // Every action is declared, and every needed key is an action of this question.
+          for (const k of keys) expect(Object.hasOwn(graph, k), `${k} has no declared needs`).toBe(true);
+          for (const [k, needs] of Object.entries(graph)) for (const n of needs) expect(keys, `${k} needs ${n}, which is no action`).toContain(n);
+          const closure = (k: string, seen = new Set<string>()): Set<string> => {
+            for (const n of graph[k] ?? []) if (!seen.has(n)) { seen.add(n); closure(n, seen); }
+            return seen;
+          };
+          // What draw puts first is declared: the work a request draws before the thing asked for is all needed by it.
+          for (const d of kind.drawings(pkg)) for (const place of ["", "ones", "tens", "hundreds", "thousands", "ten thousands", "hundred thousands"]) {
+            const r = kind.draw(pkg, [{ offer: d.id, place }], [], () => "x");
+            const own = r.keys.filter((k) => !k.startsWith("note:"));
+            const target = own.at(-1);
+            if (target) for (const before of own.slice(0, -1)) expect([...closure(target)], `${d.id} "${place}": ${target} is drawn after ${before}`).toContain(before);
+          }
+          // Answer digits go in place order, after every work row (the carry comes from the digit on the right).
+          const answerDigit = (k: string) => { const c = actions.get(k)?.[0] as { op?: string; target?: { rowId?: string; column?: string } } | undefined; return c?.op === "put" && c.target?.rowId === "answer" ? c.target.column ?? null : null; };
+          const order = ["ones", "tens", "hundreds", "thousands", "ten_thousands", "hundred_thousands", "millions"];
+          for (const k of keys) {
+            const col = answerDigit(k);
+            if (!col) continue;
+            const right = keys.find((x) => answerDigit(x) === order[order.indexOf(col) - 1]);
+            if (right) expect([...closure(k)], `${k} needs the digit on its right`).toContain(right);
+            for (const row of keys.filter((x) => x.startsWith("row:"))) expect([...closure(k)], `${k} needs ${row}`).toContain(row);
+          }
+          // Drawn in an order that follows the graph, every action applies on the question's board.
+          let now = Date.UTC(2026, 10, 15);
+          const session = createTextSession({ callId: `contract-graph-${kind.id}`, package: pkg, model: conversationalFake({ answer: () => { throw new Error("no model"); } }), clock: () => (now += 100), tutor: true });
+          let scene = createScene();
+          for (const b of (await session.start()).board as Batch[]) { const r = applyBatch(scene, b); if (r.ok) scene = r.scene; }
+          const done = new Set<string>();
+          for (let round = 0; round < keys.length + 1 && done.size < keys.length; round++) {
+            for (const k of keys) {
+              if (done.has(k) || !(graph[k] ?? []).every((n) => done.has(n))) continue;
+              const r = applyBatch(scene, { transactionId: `graph-${k}`, commands: actions.get(k) as never });
+              expect(r.ok, `${k}: ${r.ok ? "" : JSON.stringify(r.refusal)}`).toBe(true);
+              if (r.ok) scene = r.scene;
+              done.add(k);
+            }
+          }
+          expect(done.size, "the graph has a cycle").toBe(keys.length);
         });
         it("draws every drawing it offers, and the board takes it", async () => {
           let now = Date.UTC(2026, 10, 15);

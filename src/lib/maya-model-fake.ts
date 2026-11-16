@@ -124,7 +124,7 @@ function rulePropose(input: ModelInput): unknown {
  * (2026-11-15): the "gate" first, then "kind", "say", "act", the reading and the drawings. The gate follows the reading
  * unless `extra.gate` sets it; `gate: null` leaves it out (a model that skips it).
  */
-export function reply(say: string, act: Act, extra: { step?: string; level?: number; reading?: Record<string, unknown>; draw?: { offer: string; place: string }[]; gate?: string | null } = {}) {
+export function reply(say: string, act: Act, extra: { step?: string; level?: number; reading?: Record<string, unknown>; draw?: { offer: string; place: string; sentence?: number }[]; gate?: string | null } = {}) {
   const reading = {
     answers: [], help: "none", unclear: false, stop: false, safety: "none", writing: false, offTopic: false, mathClaim: false, mathRequests: [],
     outsideScope: "none", scopeSkill: "", unsafeRequest: false, noBoard: false, shorter: false, aboutMaya: "none", start: "none", paper: "none",

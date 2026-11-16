@@ -605,6 +605,38 @@ function notes(pkg: OperationPackage): string[] {
   return out;
 }
 
+/**
+ * B2: what each drawing needs on the board first. Subtraction: a borrow into a place needs the borrow into the place
+ * it comes from when that place had 0 (a trade across zeros), and the digit on its right unless it is part of that
+ * column's trade across zeros; a digit needs the borrow into its place, the borrow its
+ * place gave, and the digit on its right. Addition: a carry needs its column's digit; a digit needs the carry into its
+ * place and the digit on its right.
+ */
+function boardNeeds(pkg: OperationPackage): Record<string, string[]> {
+  const steps = tutorSteps(pkg);
+  const needs: Record<string, string[]> = {};
+  const at = (place: string | null) => (place ? steps.find((x) => x.place === place) : undefined);
+  const digit = (st: TutorStep | undefined) => (st && !st.blank ? [`digit:${st.place}`] : []);
+  for (const st of steps) {
+    const right = at(placeRight(st.place));
+    if (st.op === "-") {
+      const from = at(placeLeft(st.place));
+      // A 0 place traded through on the way to the column on its right (a trade across zeros) is part of that column's
+      // trade; any other borrow is its own column's work, after the digit on its right.
+      const chained = st.printedTop === 0 && !!right?.trade;
+      if (st.trade) needs[`trade:${st.place}`] = [...(from && from.trade && from.printedTop === 0 ? [`trade:${from.place}`] : []), ...(chained ? [] : digit(right))];
+      if (!st.blank) needs[`digit:${st.place}`] = [...(st.trade ? [`trade:${st.place}`] : []), ...(st.lent && right ? [`trade:${right.place}`] : []), ...digit(right)];
+    } else {
+      if (st.trade) needs[`trade:${st.place}`] = [`digit:${st.place}`];
+      if (!st.blank) needs[`digit:${st.place}`] = [...(right?.trade ? [`trade:${right.place}`] : []), ...digit(right)];
+    }
+    // A step's equation note needs exactly what that step's digit needs (its trades and the earlier places).
+    const text = st.operands.length > 1 ? noteFromEquation(stepEquation(st)) : null;
+    if (text) needs[`note:${text}`] = [...(needs[`digit:${st.place}`] ?? [...(st.op === "-" && st.trade ? [`trade:${st.place}`] : []), ...digit(right)])];
+  }
+  return needs;
+}
+
 export const columnKind: TutorKind = {
   id: "column",
   fits,
@@ -613,6 +645,7 @@ export const columnKind: TutorKind = {
   workValues,
   streamScope,
   stepQuestion,
+  boardNeeds,
   // A question with no trade (90 - 40) offers no trade drawing.
   drawings: (pkg) => DRAWINGS.filter((d) => d.id !== "trade" || tutorSteps(pkg).some((st) => st.trade)),
   drawingExamples: (pkg) => {

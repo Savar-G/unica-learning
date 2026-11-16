@@ -95,7 +95,7 @@ describe("3. the first-time learner", () => {
   it("the prompt holds the order and worked examples of this register", () => {
     expect(TUTOR_PROMPT).toContain(`in this order: what we have; the problem; the move; the result; then ONE easy question the child can answer`);
     // Examples, not scripts: the worked examples use other numbers than the practice question (52 − 28).
-    expect(TUTOR_PROMPT).toContain(`"71 is 7 tens and 1 one. We need to take away 6 ones, but we only have 1 one. So we trade 1 ten for 10 ones. Now we have 6 tens and 11 ones. What is 11 take away 6?"`);
+    expect(TUTOR_PROMPT).toContain(`"71 is 7 tens and 1 one. We need to take away 6 ones, but we only have 1 one. We trade 1 ten for 10 ones. Now we have 6 tens and 11 ones. What is 11 take away 6?"`);
     expect(TUTOR_PROMPT).toContain(`63 − 47`);
     expect(TUTOR_PROMPT).toContain(`38 + 45`);
   });
@@ -172,6 +172,16 @@ describe("5. a wrong step answer", () => {
     expect(exactSafe("Sorry, my last message was confusing.")).toBe(true);
     expect(exactSafe(FINAL_ASK)).toBe(true);
   });
+  it("talks to the child, never about \"the child\" (final runs: \"The child answered 2, which fits the tens step.\")", () => {
+    expect(checkTutorSay("4 minus 2 is 2. The child answered 2, which fits the tens step. How many tens now?", { stance: "none" })).toMatchObject({ ok: false, reason: "never_say" });
+    expect(checkTutorSay("4 minus 2 is 2. You answered the tens step. How many tens now?", { stance: "none" }).ok).toBe(true);
+  });
+  it("for a first-time learner, a reply to a right step answer ends with a question too (final runs: \"4 minus 2 is 2.\" alone)", async () => {
+    const t = session((n) => ["52 is 5 tens and 2 ones. We trade 1 ten for 10 ones. What is 12 minus 8?", "12 minus 8 is 4.", "12 minus 8 is 4. We had 5 tens and gave 1 away. How many tens now?"][n]);
+    await t.s.start();
+    await t.s.child(ASK);
+    expect((await t.s.child(FOUR)).say.join(" ")).toBe("12 minus 8 is 4. We had 5 tens and gave 1 away. How many tens now?");
+  });
   it("keeps \"Sorry, my last message was confusing.\" allowed", async () => {
     const line = "Sorry, my last message was confusing. We had 5 tens and gave 1 away. How many tens now?";
     expect(checkTutorSay(line, { stance: "none", childTurn: HUH }).ok).toBe(true);
@@ -193,6 +203,13 @@ describe("6. code's line asks the part the child is on, never a later one", () =
   it("the asked part comes first in code's honest line; without one, the open step", () => {
     expect(tutorFallbackText(SUB, ["ones"], false, "What is 5 minus 1?")).toBe("Let me say that another way. What is 5 minus 1?");
     expect(tutorFallbackText(SUB, ["ones"], false)).toBe("Let me say that another way. What do you get for 4 minus 2?");
+  });
+  it("streamed words that already end with a question get no second question (final runs: \"What is 4 minus 2? What is 5 minus 1?\")", async () => {
+    const t = session(() => "What is 12 minus 8? 3 tens, wait, 4 tens.", { stream: true });
+    await t.s.start();
+    const out = await t.s.child("I need help.");
+    expect(t.parts.join(" ")).toContain("What is 12 minus 8?");
+    expect(out.say.join(" ")).toBe("What is 12 minus 8?");
   });
   it("a stream that loses its later sentences ends with code's question, never a half-thought", async () => {
     const t = session(() => "52 is 5 tens and 2 ones. 3 tens, wait, 4 tens.", { stream: true });

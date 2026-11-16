@@ -283,14 +283,18 @@ describe("F1 (P1): any board command that holds the answer value gives the answe
       expect(isTutorQuestion(pkg)).toBe(true);
       expect(pkg.text).toBe("What is the value of the digit in the ten thousands place of 48942?");
       expect(pkg.answer.value).toEqual({ type: "number", value: 40000 });
-      const say = mode === "number" ? "The answer is 40000." : "Look at the place-value chart.";
+      // B2: the board draws only what Maya says, so a board value is always in her words too. The model's own draw list
+      // (the old way to put the answer on the board) is ignored: the answer is given by the words, and the board holds
+      // no value she did not say.
+      const say = mode === "number" ? "The answer is 40000." : mode === "answer" ? "Write 40000." : mode === "value" ? "Write 40000 in the ten thousands." : "Look at the place-value chart.";
       const draw = mode === "answer" ? [{ offer: "answer", place: "" }] : mode === "value" ? [{ offer: "value", place: "ten thousands" }] : [];
       const r = await family(pkg, [reply(say, "guide", { draw } as never), reply("Bye for now.", "close")], ["I need help.", "My answer is 40000."], voice);
       const n = r.notes[0];
       expect(n?.transcript.some((t) => t.speaker === "maya" && t.text === say)).toBe(true);
       if (mode === "answer" || mode === "value") {
+        // The chart is not on the board, so the value and the answer row (which need it) are not drawn.
         const shown = (r.record?.trace as { board: { commands: { op: string; value?: string }[] }[] } | undefined)?.board.flatMap((b) => b.commands).filter((c) => c.op === "put" && c.value === "40000") ?? [];
-        expect(shown.length).toBeGreaterThan(0);
+        expect(shown).toEqual([]);
         expect(n?.facts.help).toBe("answer_given");
         expect(n?.sentences.join(" ")).not.toContain("finished it after a small hint");
       } else if (mode === "number") expect(n?.facts.finished).toBe("answer_given");
