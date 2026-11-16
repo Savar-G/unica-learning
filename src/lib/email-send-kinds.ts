@@ -25,6 +25,12 @@ export const isSendKind = (v: unknown): v is SendKind => SEND_KINDS.includes(v a
  */
 export const SECRET_SEND_KINDS: readonly SendKind[] = ["sign_in_link", "phone_welcome", "family_delete_code", "child_delete_code", "contact_message"];
 export const isSecretSendKind = (kind: SendKind) => SECRET_SEND_KINDS.includes(kind);
+/**
+ * The kinds whose row keeps no copy, subject or address: the secret kinds, and the team digest, whose body names many
+ * families (ids, Maya safety flags) and so could not be deleted with each of them.
+ */
+export const NO_COPY_SEND_KINDS: readonly SendKind[] = [...SECRET_SEND_KINDS, "team_digest"];
+export const keepsNoSendCopy = (kind: SendKind) => NO_COPY_SEND_KINDS.includes(kind);
 export const isTeamSendKind = (kind: SendKind) => (TEAM_SEND_KINDS as readonly string[]).includes(kind);
 
 /** What a send attempt did, as the delivery module saw it (the column `outcome`). */

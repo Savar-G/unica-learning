@@ -116,7 +116,7 @@ describe("email kinds", () => {
     expect(isTeamEmail("team_digest")).toBe(true);
     expect(isTeamEmail("plan_start")).toBe(false);
     expect(isTeamEmail("workbook_dispatch")).toBe(false);
-    expect(EMAIL_KINDS.filter((k) => keepsNoCopy(k.kind)).map((k) => k.kind).sort()).toEqual(["child_delete_code", "contact_message", "family_delete_code", "phone_welcome", "sign_in_link"]);
+    expect(EMAIL_KINDS.filter((k) => keepsNoCopy(k.kind)).map((k) => k.kind).sort()).toEqual(["child_delete_code", "contact_message", "family_delete_code", "phone_welcome", "sign_in_link", "team_digest"]);
   });
 
   it("reads every kind of id in the email list, and nothing else", () => {

@@ -8,7 +8,7 @@ import type { AssessmentStatus } from "@/lib/test-api";
 import { canGetEmail, nextStartReminder, type StartKind } from "@/lib/reminder-schedule";
 import type { LogKind, LogStatus } from "@/lib/email-log-kinds";
 import { REMINDER_KINDS } from "@/lib/email-log-kinds";
-import { isSecretSendKind, isSendKind, type SendKind, type SendOutcome } from "@/lib/email-send-kinds";
+import { keepsNoSendCopy, isSendKind, type SendKind, type SendOutcome } from "@/lib/email-send-kinds";
 import type { WorkbookEmailKind, WorkbookEmailStatus } from "@/lib/workbook-email";
 import type { DeliveryType } from "@/lib/resend-webhook";
 import { DELIVERY_STATUS, logDeliveryState, reportAlertState, reportEmailState, type DeliveryState } from "@/lib/delivery-state";
@@ -194,7 +194,7 @@ export const EMAIL_LABEL = Object.fromEntries(EMAIL_KINDS.map((k) => [k.kind, k.
 /** An email to the team (SIGNUP_NOTIFY_EMAIL), not to a parent. */
 export const isTeamEmail = (kind: EmailKind) => EMAIL_KIND_INFO[kind].to === "You";
 /** An email whose copy the site never keeps: it holds a sign-in link or a code, or it is a message from the public. */
-export const keepsNoCopy = (kind: EmailKind) => isSendKind(kind) && isSecretSendKind(kind);
+export const keepsNoCopy = (kind: EmailKind) => isSendKind(kind) && keepsNoSendCopy(kind);
 
 /** What Resend said happened to an email after it took it (D-104). */
 export const DELIVERY_TEXT: Record<DeliveryType, string> = {

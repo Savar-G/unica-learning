@@ -99,6 +99,17 @@ describe("the emails with a secret", () => {
   });
 });
 
+describe("the team digest", () => {
+  it("keeps no copy, subject or address: its body names many families", async () => {
+    const mail = memoryTransport();
+    await sendEmail({ ...scanLink, subject: "Daily digest", text: "Family ee06 flagged", log: { kind: "team_digest" } }, { transport: mail.transport });
+    expect(rows).toEqual([{
+      kind: "team_digest", parent_id: null, child_id: null, outcome: "sent", email_id: "email-1", error: null, from_address: "Unica Learning <contact@unicalearning.com>",
+      to_address: null, reply_to: null, subject: null, text_body: null, html_body: null,
+    }]);
+  });
+});
+
 describe("a row", () => {
   it("keeps no stand-in id and cuts a long error", () => {
     const row = sendRow({ kind: "team_digest" }, { to: "t@example.com", subject: "s", text: "t" }, { outcome: "sent", emailId: "sent", error: null, from: null });

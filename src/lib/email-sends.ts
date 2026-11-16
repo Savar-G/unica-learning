@@ -2,7 +2,7 @@ import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database, TablesInsert } from "@/lib/database";
 import { hideTokens } from "@/lib/email-copies";
-import { isSecretSendKind, type SendTag } from "@/lib/email-send-kinds";
+import { keepsNoSendCopy, type SendTag } from "@/lib/email-send-kinds";
 import { SUPABASE_URL } from "@/lib/supabase-public";
 
 // The send log (public.email_sends, migration email_sends): one row per send attempt of every email that has no other
@@ -25,9 +25,9 @@ interface LoggedMessage { to: string; subject: string; text: string; html?: stri
 
 const cut = (s: string | null | undefined, n: number) => (s ? s.slice(0, n) : null);
 
-/** The public.email_sends row of one attempt. Secret kinds keep only the kind, the family, the outcome and Resend's id. */
+/** The public.email_sends row of one attempt. Secret kinds and the team digest keep only the kind, the family, the outcome and Resend's id. */
 export function sendRow(tag: SendTag, message: LoggedMessage, attempt: SendAttempt): TablesInsert<"email_sends"> {
-  const secret = isSecretSendKind(tag.kind);
+  const secret = keepsNoSendCopy(tag.kind);
   const sent = attempt.outcome === "sent";
   return {
     kind: tag.kind,
