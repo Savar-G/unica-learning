@@ -48,7 +48,7 @@ async function workerTurn(options: { provider?: string; home?: string; auth?: bo
       cwd: dir,
       env: {
         NODE_ENV: "test", PATH: `${bin}:/usr/bin:/bin`, HOME: dir, WORKBOOK_WORKER_ENV: join(dir, "absent.env"),
-        SUPABASE_SECRET_KEY: "synthetic", OPENROUTER_API_KEY: "synthetic", WORKBOOK_AI_PRIMARY: "api",
+        SUPABASE_SECRET_KEY: "synthetic", WORKBOOK_OPENROUTER_API_KEY: "synthetic", WORKBOOK_AI_PRIMARY: "api",
         WORKBOOK_SUBSCRIPTION_PROVIDER: options.provider ?? "codex", WORKBOOK_CODEX_HOME: options.home ?? account,
       }, stdio: ["ignore", "pipe", "pipe"],
     });

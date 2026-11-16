@@ -32,7 +32,7 @@ describe("R404-8 dispatched API request counts", () => {
       for (const c of calls) rows.set(c.id!, { ...c, requests: Math.max(rows.get(c.id!)?.requests ?? 0, c.requests ?? 1) });
       if (stop) throw new Error("save response lost before retry dispatch");
     });
-    const live = workbookAi({ OPENROUTER_API_KEY: "fixture" }, {
+    const live = workbookAi({ WORKBOOK_OPENROUTER_API_KEY: "fixture" }, {
       subscription: false, onStart: log.add, onCall: log.add,
       fetch: async () => { dispatched++; return busy(); },
     });
@@ -55,7 +55,7 @@ describe("R404-8 dispatched API request counts", () => {
       if (dispatched === 1 && calls.some((c) => c.outcome === "started")) { entered.resolve(); await release.promise; }
       for (const c of calls) rows.set(c.id!, { ...c, requests: Math.max(rows.get(c.id!)?.requests ?? 0, c.requests ?? 1) });
     });
-    const live = workbookAi({ OPENROUTER_API_KEY: "fixture" }, {
+    const live = workbookAi({ WORKBOOK_OPENROUTER_API_KEY: "fixture" }, {
       subscription: false, onStart: log.add, onCall: log.add,
       fetch: async () => { dispatched++; return dispatched === 1 ? busy() : answer(); },
     });

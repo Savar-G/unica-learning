@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+process.env.AI_USAGE_CONTEXT = "evaluation";
+process.env.AI_USAGE_RUN_ID = randomUUID();
 // Builds and runs scripts/photo-check-thresholds-cli.ts (#855). See docs/photo-check-thresholds.md.
 import { build } from "esbuild";
 import { spawnSync } from "node:child_process";

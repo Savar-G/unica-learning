@@ -13,7 +13,7 @@
 //   WORKBOOK_SUBSCRIPTION_PROVIDER (claude|codex), WORKBOOK_CODEX_HOME (explicit absolute account home for Codex),
 //   WORKBOOK_AI_PRIMARY (subscription|api), WORKBOOK_CLAUDE_MODEL, WORKBOOK_CLAUDE_SOLVE_MODEL, WORKBOOK_CLAUDE_CONFIG_DIR,
 //     WORKBOOK_CLAUDE_COMMAND, WORKBOOK_CLAUDE_TIMEOUT_MS: src/lib/workbook-ai.ts.
-//   OPENROUTER_API_KEY (the fallback; without it a subscription failure fails the call), AI_MODEL, AI_SOLVE_MODEL.
+//   WORKBOOK_OPENROUTER_API_KEY (the fallback; without it a subscription failure fails the call), AI_MODEL, AI_SOLVE_MODEL.
 //   WORKBOOK_WORKER_ID: the heartbeat's name (default this Mac's host name). CHROMIUM_PATH: else Google Chrome.
 //   Sentry: every 5 minutes the worker checks in with the Sentry monitor "workbook-worker" (docs/sentry.md), so Sentry
 //     tells the team when the worker has been offline for an hour. NEXT_PUBLIC_SENTRY_DSN set to "" turns it off.
@@ -105,7 +105,7 @@ const admin = createClient<Database>(url, serviceKey, { auth: { persistSession: 
 // The AI usage ledger (D-330) writes with this key too: the worker's key is not in process.env.
 configureAiUsage({ url, key: serviceKey });
 if (provider === "codex") log("Codex subscription only: API fallback is disabled.");
-else if (!process.env.OPENROUTER_API_KEY) log("OPENROUTER_API_KEY is not set: there is no API fallback, so a call the subscription cannot take fails.");
+else if (!process.env.WORKBOOK_OPENROUTER_API_KEY) log("WORKBOOK_OPENROUTER_API_KEY is not set: there is no API fallback, so a call the subscription cannot take fails.");
 log(`workbook worker ${id} on ${code.slice(0, 12)}: ${primary === "subscription" ? `the ${provider} subscription first` : "the API first"}; writer ${workbookModels().write}; solver ${workbookModels().solve}`);
 
 const worker = workbookWorker({

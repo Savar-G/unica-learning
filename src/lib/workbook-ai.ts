@@ -11,7 +11,7 @@
 // - WORKBOOK_SUBSCRIPTION_PROVIDER: "claude" (default) or "codex". Codex requires WORKBOOK_CODEX_HOME, an explicit
 //   absolute account directory. It fixes both models to gpt-6.1-sol with high effort and ChatGPT auth. It never uses
 //   the API, even with WORKBOOK_AI_PRIMARY=api or API keys present. The worker checks local availability before claims.
-// - The API (OpenRouter): OPENROUTER_API_KEY, AI_MODEL and AI_SOLVE_MODEL, as for every other AI feature.
+// - The API (OpenRouter): WORKBOOK_OPENROUTER_API_KEY only; AI_MODEL and AI_SOLVE_MODEL keep their model selection.
 // In Claude mode, the run's model name (the frame's model check and the draft's model) does not depend on which provider answers: it
 // is the API model id when the subscription model is the same model (the defaults), so a run can go on with the
 // fallback, or on the server, and still pass the check that its model did not change.
@@ -23,6 +23,7 @@ import { isAbsolute } from "node:path";
 import { fallbackAiClient, newGate, type AiCallRecord, type AiProvider, type ProviderGate } from "@/lib/ai-fallback";
 import { costingFetch, openRouterClient } from "@/lib/ai-openrouter";
 import type { AiFeature, AiUsageTag } from "@/lib/ai-usage";
+import { productKey } from "@/lib/ai-product-keys";
 import { aiSolver, type SolveLog, type Solver } from "@/lib/workbook-solve-check";
 
 type Env = Record<string, string | undefined>;
@@ -116,7 +117,7 @@ export function workbookAi(env: Env, o: WorkbookAiOptions): WorkbookAi {
   const models = workbookModels(env);
   const gate = o.gate ?? newGate();
   const primary = codex ? "subscription" : o.primary ?? workbookAiPrimary(env);
-  const apiKey = codex ? undefined : env.OPENROUTER_API_KEY?.trim();
+  const binding = codex ? null : productKey("workbook", env);
   const base = o.fetch ?? globalThis.fetch;
   const timeout = Number(env.WORKBOOK_CLAUDE_TIMEOUT_MS) > 0 ? Number(env.WORKBOOK_CLAUDE_TIMEOUT_MS) : CLAUDE_CLI_TIMEOUT_MS;
   const tagOf = (feature: AiFeature): AiUsageTag => ({ feature, parentId: o.usage?.parentId, childId: o.usage?.childId, source: o.usage ? { kind: o.usage.kind ?? "workbook_run", id: o.usage.runId } : null });
@@ -126,9 +127,9 @@ export function workbookAi(env: Env, o: WorkbookAiOptions): WorkbookAi {
       : claudeCliClient({ model, command: env.WORKBOOK_CLAUDE_COMMAND?.trim() || "claude", spawn: o.spawn, env, configDir: env.WORKBOOK_CLAUDE_CONFIG_DIR, timeout,
           usage: tagOf(feature) })
     : null;
-  const api = (model: string, ms: number, feature: AiFeature) => apiKey
-    ? (onCost: (usd: number) => void, onRequest: () => Promise<void>, onDispatch: () => void) => openRouterClient({ apiKey, model, feature, fetch: costingFetch(onCost, base), timeout: ms, maxRetries: o.singleDispatch ? 0 : 1, onRequest, onDispatch,
-        usage: tagOf(feature), keyLabel: "main" })
+  const api = (model: string, ms: number, feature: AiFeature) => binding
+    ? (onCost: (usd: number) => void, onRequest: () => Promise<void>, onDispatch: () => void) => openRouterClient({ ...binding, model, feature, fetch: costingFetch(onCost, base), timeout: ms, maxRetries: o.singleDispatch ? 0 : 1, onRequest, onDispatch,
+        usage: tagOf(feature) })
     : null;
   const writeCli = cli(models.cli, "workbook");
   const writeApi = api(models.api, API_TIMEOUT_MS, "workbook");

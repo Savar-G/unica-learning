@@ -15,7 +15,7 @@ npm run maya:text -- --anthropic --script scripts/maya-text/no-start.txt   # Cla
 | Option | Meaning |
 |---|---|
 | `--question <id\|file>` | A sample id (`--list`) or a question package JSON file. Default `add-27-39`. |
-| `--model fake\|openrouter` | `fake` (default): a rule player, no AI. `openrouter`: `AI_MODEL` through OpenRouter. It needs `OPENROUTER_API_KEY` in the environment or in `.env.local`. Without the key the AI is off and the command stops. |
+| `--model fake\|openrouter` | `fake` (default): a rule player, no AI. `openrouter`: `AI_MODEL` through OpenRouter. It needs `MAYA_OPENROUTER_API_KEY` in the environment or in `.env.local`. Without the key the AI is off and the command stops. |
 | `--model anthropic`, `--anthropic` | Maya on `claude-sonnet-5-5` and the free-talk review on `claude-haiku-5-5`, through the Claude API (`src/lib/ai-anthropic.ts`). The key is `ANTHROPIC_API_KEY` or the macOS Keychain item `anthropic-unica-tools`. A local tool only. |
 | `--no-free-talk` | Every word Maya says from code. Free talk is on by default here, as in the admin demo (D-197). |
 | `--script <file>` | Child turns, one per line. Without it, turns come from stdin. |
@@ -32,7 +32,7 @@ With `--model openrouter` the reviews are the site's own: Maya's route (`mayaAiC
 
 Script lines: a child turn, `/wait <seconds>` (the clock moves on and the pause policy runs), `/write start`, `/write done`, `/quit` (the child hangs up: the call ends as `child_stopped`). `#` starts a comment. A script or piped input uses a simulated clock (4 seconds a turn, plus each `/wait`). Typed input uses the real clock.
 
-`OPENROUTER_API_KEY` is a Vercel Secret variable, so `vercel env pull` cannot read its value. Put the key in your shell for a real-model run.
+`MAYA_OPENROUTER_API_KEY` is a Vercel Secret variable, so `vercel env pull` cannot read its value. Put the key in your shell for a real-model run.
 
 ## What reaches the child
 

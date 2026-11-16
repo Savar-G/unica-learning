@@ -1,7 +1,7 @@
 // The local comparison of the per-answer second opinion (#851): typesafe/jev-1.14 and google/gemini-decision-1 on the
 // fixed 40 synthetic photos, or (#853, --physical) on the real phone photos of the made-up Robin booklet. Run through scripts/decision-marking-comparison.mjs; docs/decision-marking-comparison.md.
 // Reads the set folder and never writes into it. Writes under .workbook-sample/decision-comparison/ (gitignored).
-// The key comes only from DECISIONS_OPENROUTER_API_KEY in the process environment; this script never prints it.
+// The key comes only from SCAN_MARKING_OPENROUTER_API_KEY in the process environment; this script never prints it.
 import { flushAiUsage } from "@/lib/ai-usage";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -125,8 +125,8 @@ async function main() {
 
   const clients: DecisionClient[] = models.map((model) => {
     if (fake) return openRouterDecisionClient({ apiKey: "fake", model, provider: "fake", fetch: fakeFetch() });
-    const client = decisionClient(process.env, model);
-    if (!client) throw new Error("DECISIONS_OPENROUTER_API_KEY is not set");
+    const client = decisionClient(process.env, model, { usage: { feature: "marking", context: "evaluation" } });
+    if (!client) throw new Error("SCAN_MARKING_OPENROUTER_API_KEY is not set");
     return client;
   });
 

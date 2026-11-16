@@ -10,7 +10,7 @@ This local tool compares two decision models as a second opinion on each marked 
 - The live price check (`src/lib/decision-price.ts`, #855): before a process sends its first request to a model, and again once a day, the client reads the live prices of the model's pinned endpoint from `GET https://openrouter.ai/api/v1/models/<id>/endpoints` (public, no key). It refuses the request (error kind `price`) when the prompt or completion price is above the pinned price, when the endpoint lists a price that the cost bound does not count (for example per request or per image; the web search price is left out, because no request asks for web search), when the endpoint is missing, or when the read fails. A failed read is tried again after one minute. So the cost bound holds while the client sends.
 - `beforeSend` (optional, per request, #855): the caller's last check. The client runs it after the price check and immediately before each attempt sends the input. False, or a throw, sends nothing and fails the request with kind `cancelled`. The photo check passes its membership check here.
 - `src/lib/decision-client-fake.ts`: a fake that answers from a script, for tests.
-- The client is on only when `DECISIONS_OPENROUTER_API_KEY` is set. `DECISION_MODEL` sets the model (default `typesafe/jev-1.14`). No decision code reads `OPENROUTER_API_KEY` or `SCAN_MARKING_OPENROUTER_API_KEY`.
+- This marking comparison uses only `SCAN_MARKING_OPENROUTER_API_KEY`. Photo checks use the same marking product key. Workbook gates use `WORKBOOK_OPENROUTER_API_KEY`. Every Decisions caller supplies its owning feature. `DECISION_MODEL` sets the model (default `typesafe/jev-1.14`). Neither shared key enables a decision call.
 
 ## What the comparison asks
 
@@ -43,9 +43,8 @@ node scripts/decision-marking-comparison.mjs --set "$SET" --estimate
 # 2. A fake HTTP run: the real adapter with a fake fetch. No key. The report is marked fake.
 node scripts/decision-marking-comparison.mjs --set "$SET" --fake-http --save-crops
 
-# 3. The real run. The key is in the macOS Keychain. Give it only to this one command.
-DECISIONS_OPENROUTER_API_KEY="$(security find-generic-password -s decisions-openrouter-unica -w)" \
-  node scripts/decision-marking-comparison.mjs --set "$SET" --max-usd 2
+# 3. The real run. Root supplies SCAN_MARKING_OPENROUTER_API_KEY in the environment.
+node scripts/decision-marking-comparison.mjs --set "$SET" --max-usd 2
 ```
 
 `--max-usd` (default 2) is the cost cap of the run, for both models together. If the estimate is above the cap, the run does not start. Each request reserves the most it can cost: the model's whole context at its pinned prompt price (plus its most output tokens at its completion price, when that price is above 0), times the most attempts of one request. For Jev with one retry, this is 2 x 262,144 x USD 0.042 per million = USD 0.0220. For Gemini Decision 1, it is USD 0.0524. The tool sends a request only when the money spent, plus the reservations of the requests in flight, plus this reservation, is at most the cap. So no request can take the spend past the cap while the provider bills at the pinned prices. The tool learns a request's real cost only after the provider charges it, so a charge above the pinned bound (for example after a price change) can pass the cap once; the tool then sends no new request. The hard limit is the credit limit of the OpenRouter key itself (USD 50 on 2026-11-11). When a request ends, its known cost replaces its reservation. Each attempt that gave no cost counts at its whole bound, and the report counts that request under missing cost. If a cost is above its bound (the pinned prices are out of date), the tool sends no new request, and the report says that the run stopped at the cost cap. A request that is not sent is recorded as `budget`, which is not confirmed. The estimate assumes one retry for each request, so a real run costs less. `--models` runs only the models you name. `--save-crops` writes each crop as it is sent, so you can check the crops by eye.

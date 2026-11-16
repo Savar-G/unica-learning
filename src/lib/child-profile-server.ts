@@ -25,7 +25,7 @@ export { WORKBOOK_LEARNER_DERIVED_VERSION } from "@/lib/workbook-profile-freshne
 // The child profile's rebuild (src/lib/child-profile.ts, #303) on the server, with the secret key. The report job
 // calls it last, after a finished test's profile and its AI parts are stored; the learning card's route calls it after
 // the test's profile is built again with the new answers. Later, the steps that write call and marking events call it.
-// #304: with the AI client's switch on (OPENROUTER_API_KEY), the rebuild adds the AI findings after the facts. The AI
+// #304: with the AI client's switch on (PROFILE_OPENROUTER_API_KEY), the rebuild adds the AI findings after the facts. The AI
 // reads each event's question from the trusted question data (R355-1): a workbook question from the workbook store, an
 // assessment question from the stored test through the assessment adapter.
 
@@ -77,7 +77,8 @@ export async function rebuildWorkbookLearnerProfile(assessmentId: string, db: {
   if (!db.ai) return facts;
   let written;
   try {
-    written = await writeProfileAi(db.ai, facts);
+    const ai = db.ai.withUsage?.({ parentId: a.parentId, childId: a.childId, source: { kind: "assessment", id: assessmentId } }) ?? db.ai;
+    written = await writeProfileAi(ai, facts);
   } catch (e) {
     console.error("[workbook profile] learner AI failed", assessmentId, e instanceof Error ? e.message : String(e));
     return facts;

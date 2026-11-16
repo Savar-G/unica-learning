@@ -9,12 +9,12 @@ import { aiWorkReviewer } from "@/lib/work-review-ai";
 
 afterEach(() => vi.restoreAllMocks());
 
-describe("the AI switch (#68, #183): on only with OPENROUTER_API_KEY", () => {
+describe("the AI switch (#68, #183): on only with ASSESSMENT_OPENROUTER_API_KEY", () => {
   it("is off without a key, so no AI call can happen", () => {
     expect(aiClient({})).toBeNull();
     expect(aiReviewer({})).toBeNull();
-    expect(aiReviewer({ OPENROUTER_API_KEY: "" })).toBeNull();
-    expect(aiReviewer({ OPENROUTER_API_KEY: "   " })).toBeNull();
+    expect(aiReviewer({ ASSESSMENT_OPENROUTER_API_KEY: "" })).toBeNull();
+    expect(aiReviewer({ ASSESSMENT_OPENROUTER_API_KEY: "   " })).toBeNull();
   });
 
   it("the old Anthropic key no longer turns the AI on", () => {
@@ -22,16 +22,16 @@ describe("the AI switch (#68, #183): on only with OPENROUTER_API_KEY", () => {
   });
 
   it("is on with a key, with the OpenRouter model id from AI_MODEL, or Claude Sonnet 5.5 on OpenRouter by default", () => {
-    expect(aiReviewer({ OPENROUTER_API_KEY: "sk-or-test" })?.model).toBe("anthropic/claude-sonnet-5.5");
-    expect(aiReviewer({ OPENROUTER_API_KEY: "sk-or-test", AI_MODEL: " google/gemini-4-argon " })?.model).toBe("google/gemini-4-argon");
-    expect(aiClient({ OPENROUTER_API_KEY: "sk-or-test", AI_MODEL: "openai/gpt-6.1-sol" })?.model).toBe("openai/gpt-6.1-sol");
+    expect(aiReviewer({ ASSESSMENT_OPENROUTER_API_KEY: "sk-or-test" })?.model).toBe("anthropic/claude-sonnet-5.5");
+    expect(aiReviewer({ ASSESSMENT_OPENROUTER_API_KEY: "sk-or-test", AI_MODEL: " google/gemini-4-argon " })?.model).toBe("google/gemini-4-argon");
+    expect(aiClient({ ASSESSMENT_OPENROUTER_API_KEY: "sk-or-test", AI_MODEL: "openai/gpt-6.1-sol" }, undefined, { usage: { feature: "work_review" } })?.model).toBe("openai/gpt-6.1-sol");
   });
 
   it("gives the dev fake only outside production, for screenshots of a report with comments", () => {
     expect(aiReviewer({ AI_REVIEW_FAKE: "sure", NODE_ENV: "development" })?.model).toBe("fake");
     expect(aiReviewer({ AI_REVIEW_FAKE: "unsure", NODE_ENV: "development" })?.model).toBe("fake");
     expect(aiReviewer({ AI_REVIEW_FAKE: "sure", NODE_ENV: "production" })).toBeNull();
-    expect(aiReviewer({ AI_REVIEW_FAKE: "sure", NODE_ENV: "production", OPENROUTER_API_KEY: "sk-or-test" })?.model).toBe("anthropic/claude-sonnet-5.5");
+    expect(aiReviewer({ AI_REVIEW_FAKE: "sure", NODE_ENV: "production", ASSESSMENT_OPENROUTER_API_KEY: "sk-or-test" })?.model).toBe("anthropic/claude-sonnet-5.5");
     expect(aiReviewer({ AI_REVIEW_FAKE: "yes", NODE_ENV: "development" })).toBeNull();
   });
 });

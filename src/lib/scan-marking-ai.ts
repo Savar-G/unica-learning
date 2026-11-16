@@ -1,6 +1,7 @@
 // Use the existing AiClient/OpenRouter path. One admission per transport attempt. No subscription queue.
 import { costingFetch, openRouterClient, type OpenRouterProvider } from "@/lib/ai-openrouter";
 import type { AiUsageTag } from "@/lib/ai-usage";
+import { productKey } from "@/lib/ai-product-keys";
 import { MARKING_ESCALATION_MODEL, MARKING_MODEL, type MarkingClientFactory, type MarkingFailure } from "@/lib/scan-marking";
 import { markingFailure } from "@/lib/scan-marking-failure";
 import models from "../../data/scan-marking-models.json";
@@ -16,7 +17,7 @@ function pinnedMarkingModel(env: MarkingEnv, route?: { model: string }) {
 /** Whether marking can call a model at all: a key and a pinned model, the same checks markingAiClient's factory makes (#706). */
 export function markingClientReady(env: MarkingEnv = process.env): boolean {
   const pinned = pinnedMarkingModel(env);
-  return !!env.SCAN_MARKING_OPENROUTER_API_KEY?.trim() && !!pinned && !!productionRoute(pinned);
+  return !!productKey("marking", env) && !!pinned && !!productionRoute(pinned);
 }
 
 /**
@@ -52,8 +53,9 @@ export function markingEscalationClient(env: MarkingEnv = process.env, fetch?: t
 
 export function markingAiClient(env: Readonly<Record<string, string | undefined>> = process.env, fetch?: typeof globalThis.fetch, route?: { model: string; provider: OpenRouterProvider; maxRetries?: number }, usage?: AiUsageTag): MarkingClientFactory {
   return (beforeAttempt) => {
-    const apiKey = env.SCAN_MARKING_OPENROUTER_API_KEY?.trim();
-    if (!apiKey) return null;
+    if (usage && usage.feature !== "marking") return null;
+    const binding = productKey("marking", env);
+    if (!binding) return null;
     const pinned = pinnedMarkingModel(env, route);
     if (!pinned) return null;
     const model = pinned.model;
@@ -61,14 +63,14 @@ export function markingAiClient(env: Readonly<Record<string, string | undefined>
     if (!provider) return null;
     let cost: number | null = null, failure: MarkingFailure | null = null;
     const client = openRouterClient({
-      apiKey, model, feature: (usage ?? { feature: "marking" }).feature,
+      ...binding, model, feature: "marking",
       provider, maxRetries: route?.maxRetries,
       fetch: costingFetch((usd) => { cost = Math.ceil(usd * 1_000_000); }, fetch),
       // #868: a clean 429, read from the error body the client already read. A request with no answer stays null.
       onErrorAnswer: (status, body, headers) => { failure = markingFailure(status, body, headers); },
       onRequest: async () => { await beforeAttempt(); cost = null; failure = null; },
       // The AI usage ledger (D-330) only reads the answer's usage; the admission and the cost above are untouched.
-      usage: usage ?? { feature: "marking" }, keyLabel: "marking",
+      usage: { ...usage, feature: "marking" },
     });
     return client ? { client, costMicros: () => cost, failure: () => failure } : null;
   };

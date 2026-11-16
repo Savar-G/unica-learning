@@ -20,8 +20,8 @@
 // Fast loop and review rules: docs/workbook-fast-loop.md; npm run workbook:fast -- --levels U16.
 // --family-only makes (or finds) the test family and its children, prints them, and stops: no AI, no books.
 // The AI (D-200): by default Savar's Claude subscription through `claude -p` (src/lib/workbook-ai.ts: WORKBOOK_CLAUDE_MODEL,
-// WORKBOOK_CLAUDE_SOLVE_MODEL, WORKBOOK_CLAUDE_CONFIG_DIR), with the API (OpenRouter: OPENROUTER_API_KEY or
-// OPENROUTER_API_KEY_FILE, AI_MODEL) as the fallback when the subscription cannot take a call; with no OpenRouter key
+// WORKBOOK_CLAUDE_SOLVE_MODEL, WORKBOOK_CLAUDE_CONFIG_DIR), with the API (OpenRouter: WORKBOOK_OPENROUTER_API_KEY or
+// WORKBOOK_OPENROUTER_API_KEY_FILE, AI_MODEL) as the fallback when the subscription cannot take a call; with no OpenRouter key
 // there is no fallback. WORKBOOK_AI_PRIMARY=api puts the API first. index.md counts the calls on each. --api uses the
 // API (OpenRouter) only, as before D-200. --anthropic uses the Claude API directly
 // (src/lib/ai-anthropic.ts) with ANTHROPIC_API_KEY, ANTHROPIC_API_KEY_FILE or the Keychain item "anthropic-unica-tools"
@@ -50,6 +50,7 @@ import { codexCliClient } from "@/lib/ai-codex-cli";
 import { workbookAi, workbookAiPrimary, type AiCallKind } from "@/lib/workbook-ai";
 import { ANTHROPIC_DEFAULT_MODEL, anthropicClient, type AnthropicUsage } from "@/lib/ai-anthropic";
 import { openRouterClient } from "@/lib/ai-openrouter";
+import { productKey } from "@/lib/ai-product-keys";
 import type { Database } from "@/lib/database";
 import { chromiumPrintEngine } from "@/lib/print-engine-chromium";
 import { BC_CURRICULUM, curriculumFor, curriculumFromData, curriculumProblems, curriculumVersion } from "@/lib/workbook-curriculum";
@@ -136,9 +137,10 @@ async function secretKey(): Promise<string> {
 }
 
 async function openRouterKey(): Promise<string | null> {
-  if (process.env.OPENROUTER_API_KEY) return process.env.OPENROUTER_API_KEY.trim();
-  if (process.env.OPENROUTER_API_KEY_FILE) return (await readFile(process.env.OPENROUTER_API_KEY_FILE, "utf8")).trim();
-  return null;
+  if (!process.env.WORKBOOK_OPENROUTER_API_KEY?.trim() && process.env.WORKBOOK_OPENROUTER_API_KEY_FILE) {
+    process.env.WORKBOOK_OPENROUTER_API_KEY = (await readFile(process.env.WORKBOOK_OPENROUTER_API_KEY_FILE, "utf8")).trim();
+  }
+  return productKey("workbook", process.env)?.apiKey ?? null;
 }
 
 async function anthropicKey(): Promise<string | null> {
@@ -554,16 +556,17 @@ if (values.fake) {
 } else if (!values.api) {
   // D-200: the subscription first (WORKBOOK_AI_PRIMARY), the API as the fallback when there is a key.
   const key = values["subscription-only"] ? null : await openRouterKey();
-  const live = workbookAi({ ...process.env, OPENROUTER_API_KEY: key ?? undefined, ...(values["subscription-only"] ? { WORKBOOK_AI_PRIMARY: "subscription" } : {}) }, { subscription: true, onCall: countCall });
+  const live = workbookAi({ ...process.env, WORKBOOK_OPENROUTER_API_KEY: key ?? undefined, ...(values["subscription-only"] ? { WORKBOOK_AI_PRIMARY: "subscription" } : {}) }, { subscription: true, onCall: countCall });
   if (!live.ai || !live.solve) throw new Error("no AI: neither the Claude subscription nor an OpenRouter key");
   ai = live.ai;
   solver = live.solve.solver;
   console.log(`AI: ${workbookAiPrimary() === "api" ? "the API first, then the Claude subscription" : "the Claude subscription (claude -p) first"}${key ? ", with the API as the fallback" : "; no OpenRouter key, so no API fallback"}.`);
 } else {
   const key = await openRouterKey();
-  if (!key) throw new Error("no OpenRouter key: set OPENROUTER_API_KEY or OPENROUTER_API_KEY_FILE (or pass --fake for a layout dry run)");
-  ai = openRouterClient({ apiKey: key, usage: { feature: "workbook" }, model: process.env.AI_MODEL || AI_DEFAULT_MODEL, fetch: costingFetch(), timeout: 200_000 });
-  solver = aiSolver(openRouterClient({ apiKey: key, usage: { feature: "solve_check" }, model: process.env.AI_SOLVE_MODEL || AI_SOLVE_DEFAULT_MODEL, fetch: costingFetch(solveCosts), timeout: 60_000 }));
+  if (!key) throw new Error("no OpenRouter key: set WORKBOOK_OPENROUTER_API_KEY or WORKBOOK_OPENROUTER_API_KEY_FILE (or pass --fake for a layout dry run)");
+  const binding = productKey("workbook", process.env)!;
+  ai = openRouterClient({ ...binding, usage: { feature: "workbook", context: "evaluation" }, model: process.env.AI_MODEL || AI_DEFAULT_MODEL, fetch: costingFetch(), timeout: 200_000 });
+  solver = aiSolver(openRouterClient({ ...binding, usage: { feature: "solve_check", context: "evaluation" }, model: process.env.AI_SOLVE_MODEL || AI_SOLVE_DEFAULT_MODEL, fetch: costingFetch(solveCosts), timeout: 60_000 }));
 }
 const db = store ? createClient<Database>(URL, await secretKey(), { auth: { persistSession: false, autoRefreshToken: false } }) : null;
 const family = db ? await testFamily(db) : null;

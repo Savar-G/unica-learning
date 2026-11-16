@@ -75,7 +75,8 @@ export function gateMark(row: StoredQuestionGate): QuestionGateMark | null {
  * are off or no gate is on. An errored request is `unknown`, not a throw, so the run can flag it and go on.
  */
 export function decisionGateChecker(env: Record<string, string | undefined>, usage?: AiUsageTag): QuestionGateChecker | null {
-  const client = decisionClient(env, undefined, { usage: usage ?? { feature: "workbook_gate" } });
+  if (usage && usage.feature !== "workbook_gate") return null;
+  const client = decisionClient(env, undefined, { usage: { ...usage, feature: "workbook_gate" } });
   if (!client) return null;
   const only = activeQuestionGates(client.model);
   if (!only.length) return null;

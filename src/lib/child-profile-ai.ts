@@ -9,7 +9,7 @@
 //   - its text is worded as a hypothesis ("may", "might", "seems", ...) and passes the AI text checks (checkAiText): no
 //     first person, no he or she, no markup, and every number from the facts the AI read.
 // Findings never change the facts: the secure and not yet secure standards are counted by code, and the findings sit
-// beside them (`ai`). Behind the AI client's switch: on only with OPENROUTER_API_KEY.
+// beside them (`ai`). Behind the AI client's switch: on only with PROFILE_OPENROUTER_API_KEY.
 // What it sends: the child's school grade, the profile's standards with their counts, and the child's newest events
 // (id, source, standard, result, hints, time spent, when, and the workbook page and question number), each with what the
 // trusted question data says about it (review R355-1). An event's stuck step and mistake are strings any event writer
@@ -291,13 +291,14 @@ function checkChildProfileAi(facts: ChildProfileAiFacts, output: unknown): { fin
 }
 
 /**
- * The client for the findings, or null when the AI is off (no OPENROUTER_API_KEY; the model comes from AI_MODEL). In
+ * The client for the findings, or null when the AI is off (no PROFILE_OPENROUTER_API_KEY; the model comes from AI_MODEL). In
  * development (never in a production build), AI_REVIEW_FAKE=sure or unsure gives the fake, for findings without a key.
  */
 export function childProfileAiClient(env: Record<string, string | undefined> = process.env, usage?: AiUsageTag): AiClient | null {
+  if (usage && usage.feature !== "child_profile") return null;
   const fake = env.AI_REVIEW_FAKE;
   if (env.NODE_ENV !== "production" && (fake === "sure" || fake === "unsure")) return fakeChildProfileAi(fake);
-  return aiClient(env, undefined, { usage: usage ?? { feature: "child_profile" } });
+  return aiClient(env, undefined, { usage: { ...usage, feature: "child_profile" } });
 }
 
 /**
