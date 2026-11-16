@@ -31,7 +31,7 @@
 // <label>-solve.jsonl and costed apart. With --fake the solve check answers from the key (free). --fake uses a fake AI for a dry run of the
 // layout: its books are marked FAKE in index.md and are never stored. The secret key: SUPABASE_SECRET_KEY, else the
 // Supabase Management API with SUPABASE_ACCESS_TOKEN or the Keychain item "supabase-pagewise". No key is printed.
-import { flushAiUsage } from "@/lib/ai-usage";
+import { flushAiUsage, type AiFeature, type AiUsageTag } from "@/lib/ai-usage";
 import { sampleAiCache } from "./workbook-sample-cache";
 import { renderSamplePages, samplePrintCache } from "./workbook-sample-render";
 import { samplePages, pagesMarkdown, writePageDiff, mayaCoverage, mayaCoverageMarkdown, masteryCoverageMarkdown } from "./workbook-sample-pages";
@@ -47,7 +47,7 @@ import { fakeWorkbookItems } from "@/lib/workbook-ai-fake";
 import { AI_DEFAULT_MODEL, AI_SOLVE_DEFAULT_MODEL, type AiClient } from "@/lib/ai-client";
 import { fallbackAiClient, newGate, type AiCallRecord } from "@/lib/ai-fallback";
 import { codexCliClient } from "@/lib/ai-codex-cli";
-import { workbookAi, workbookAiPrimary, type AiCallKind } from "@/lib/workbook-ai";
+import { workbookAi, workbookAiPrimary, type AiCallKind, type WorkbookAiOptions } from "@/lib/workbook-ai";
 import { ANTHROPIC_DEFAULT_MODEL, anthropicClient, type AnthropicUsage } from "@/lib/ai-anthropic";
 import { openRouterClient } from "@/lib/ai-openrouter";
 import { productKey } from "@/lib/ai-product-keys";
@@ -312,7 +312,7 @@ interface BookResult {
   omissions: number;
   usd: number;
   /** The solve checks (round 7): how many, how many did not agree with the key (or failed), and their cost. */
-  solve: { checks: number; disagreed: number; failed: number; usd: number };
+  solve: { model: string; checks: number; disagreed: number; failed: number; usd: number };
   calls: number;
   minutes: number;
   pageUse: PageUse[];
@@ -395,7 +395,7 @@ async function contactSheet(images: Uint8Array[], draft: GeneratedWorkbook, prob
     .composite(tiles.flat()).png().toFile(file);
 }
 
-async function oneBook(db: SupabaseClient<Database> | null, family: Family | null, level: string, kind: SampleBookKind, ai: AiClient, drafts: WorkbookDraftStore | null): Promise<BookResult> {
+async function oneBook(db: SupabaseClient<Database> | null, family: Family | null, level: string, kind: SampleBookKind, drafts: WorkbookDraftStore | null): Promise<BookResult> {
   for (const name of Object.keys(profile)) delete profile[name];
   for (const name of Object.keys(fitPages)) delete fitPages[name];
   for (const name of Object.keys(printPages)) delete printPages[name];
@@ -421,6 +421,10 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
       .catch(error => { if (error.code === "ENOENT") return undefined; throw error; });
   }
   const workbookId = process.env.WORKBOOK_SAMPLE_ID ?? prior?.id ?? randomUUID();
+  const storedChild = family?.children.get(level);
+  const { ai, solver } = await sampleClients(storedChild && family
+    ? { parentId: family.parentId, childId: storedChild.id, runId: workbookId, kind: "workbook" }
+    : undefined);
   const cache = await sampleAiCache(`${out}/${label}-ai-cache.jsonl`, values.replay);
   const writer = cache.client(ai);
   const reader = values.fake ? solver : cache.solver(solver);
@@ -515,7 +519,7 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
     draftId: workbookId, stored: !!drafts, pdf, sheet, draft, renderProblems,
     masteryCoverage: masteryCoverageMarkdown(draft, { curriculum: BC.key, curriculumVersion: curriculumVersion(BC.key)!, plan: reviewDays(planned.plan, values.days), units: skillUnits(BC) }),
     omissions: draft.pages.reduce((n, p) => n + (p.omissions?.length ?? 0), 0), usd: c?.usd ?? 0, calls: c?.calls ?? 0, minutes: (performance.now() - t0) / 60000,
-    solve: { checks: solveLogs.length, disagreed: solveLogs.filter(l => l.verdict.status === "disagreed").length,
+    solve: { model: solver.model, checks: solveLogs.length, disagreed: solveLogs.filter(l => l.verdict.status === "disagreed").length,
       failed: solveLogs.filter(l => l.verdict.status === "failed").length, usd: sc?.usd ?? 0 },
   };
 }
@@ -530,44 +534,54 @@ if (values["family-only"]) {
   process.exit(0);
 }
 
-let ai: AiClient;
-// The solve check goes through the same provider as the generator, on its cheapest model; the fake answers from the key.
-let solver: Solver;
-if (values.fake) {
-  ai = fakeAi();
-  solver = keySolver();
-} else if (values.codex) {
-  const cli = codexCliClient({ configDir: process.env.WORKBOOK_CODEX_HOME!.trim() });
-  const gate = newGate();
-  const client = (kind: AiCallKind) => fallbackAiClient({
-    primary: "subscription", subscription: cli, api: null, model: cli.model, gate,
-    onCall: record => countCall(kind, record),
+// Preserve provider exclusions across the sample run, while each book has its own receipt ownership.
+const sampleGate = newGate();
+async function sampleClients(usage?: WorkbookAiOptions["usage"]): Promise<{ ai: AiClient; solver: Solver }> {
+  const tag = (feature: AiFeature): AiUsageTag => ({
+    feature, context: "evaluation", parentId: usage?.parentId, childId: usage?.childId,
+    source: usage ? { kind: "workbook", id: usage.runId } : null,
   });
-  ai = client("write");
-  solver = aiSolver(client("solve"));
-  console.log(`AI: Codex ChatGPT subscription, ${cli.model}, high effort for writing and separate solve requests; no API fallback.`);
-} else if (values.anthropic) {
-  const key = await anthropicKey();
-  if (!key) throw new Error("no Anthropic key: set ANTHROPIC_API_KEY or ANTHROPIC_API_KEY_FILE, or add the Keychain item anthropic-unica-tools");
-  ai = anthropicClient({ apiKey: key, usage: { feature: "workbook" }, model: process.env.ANTHROPIC_MODEL || ANTHROPIC_DEFAULT_MODEL, timeout: 200_000, onUsage: (u) => countAnthropic(u) });
-  solver = aiSolver(anthropicClient({
-    apiKey: key, usage: { feature: "solve_check" }, model: process.env.ANTHROPIC_SOLVE_MODEL || "claude-haiku-5-5", timeout: 60_000, fallbacks: false, onUsage: (u) => countAnthropic(u, solveCosts),
-  }));
-} else if (!values.api) {
-  // D-200: the subscription first (WORKBOOK_AI_PRIMARY), the API as the fallback when there is a key.
-  const key = values["subscription-only"] ? null : await openRouterKey();
-  const live = workbookAi({ ...process.env, WORKBOOK_OPENROUTER_API_KEY: key ?? undefined, ...(values["subscription-only"] ? { WORKBOOK_AI_PRIMARY: "subscription" } : {}) }, { subscription: true, onCall: countCall });
-  if (!live.ai || !live.solve) throw new Error("no AI: neither the Claude subscription nor an OpenRouter key");
-  ai = live.ai;
-  solver = live.solve.solver;
-  console.log(`AI: ${workbookAiPrimary() === "api" ? "the API first, then the Claude subscription" : "the Claude subscription (claude -p) first"}${key ? ", with the API as the fallback" : "; no OpenRouter key, so no API fallback"}.`);
-} else {
-  const key = await openRouterKey();
-  if (!key) throw new Error("no OpenRouter key: set WORKBOOK_OPENROUTER_API_KEY or WORKBOOK_OPENROUTER_API_KEY_FILE (or pass --fake for a layout dry run)");
-  const binding = productKey("workbook", process.env)!;
-  ai = openRouterClient({ ...binding, usage: { feature: "workbook", context: "evaluation" }, model: process.env.AI_MODEL || AI_DEFAULT_MODEL, fetch: costingFetch(), timeout: 200_000 });
-  solver = aiSolver(openRouterClient({ ...binding, usage: { feature: "solve_check", context: "evaluation" }, model: process.env.AI_SOLVE_MODEL || AI_SOLVE_DEFAULT_MODEL, fetch: costingFetch(solveCosts), timeout: 60_000 }));
+  let ai: AiClient;
+  // The solve check goes through the same provider as the generator, on its cheapest model; the fake answers from the key.
+  let solver: Solver;
+  if (values.fake) {
+    ai = fakeAi();
+    solver = keySolver();
+  } else if (values.codex) {
+    const client = (kind: AiCallKind) => {
+      const cli = codexCliClient({ configDir: process.env.WORKBOOK_CODEX_HOME!.trim(), usage: tag(kind === "write" ? "workbook" : "solve_check") });
+      return fallbackAiClient({ primary: "subscription", subscription: cli, api: null, model: cli.model, gate: sampleGate,
+        onCall: record => countCall(kind, record) });
+    };
+    ai = client("write");
+    solver = aiSolver(client("solve"));
+    console.log(`AI: Codex ChatGPT subscription, ${ai.model}, high effort for writing and separate solve requests; no API fallback.`);
+  } else if (values.anthropic) {
+    const key = await anthropicKey();
+    if (!key) throw new Error("no Anthropic key: set ANTHROPIC_API_KEY or ANTHROPIC_API_KEY_FILE, or add the Keychain item anthropic-unica-tools");
+    ai = anthropicClient({ apiKey: key, usage: tag("workbook"), model: process.env.ANTHROPIC_MODEL || ANTHROPIC_DEFAULT_MODEL, timeout: 200_000, onUsage: (u) => countAnthropic(u) });
+    solver = aiSolver(anthropicClient({
+      apiKey: key, usage: tag("solve_check"), model: process.env.ANTHROPIC_SOLVE_MODEL || "claude-haiku-5-5", timeout: 60_000, fallbacks: false, onUsage: (u) => countAnthropic(u, solveCosts),
+    }));
+  } else if (!values.api) {
+    // D-200: the subscription first (WORKBOOK_AI_PRIMARY), the API as the fallback when there is a key.
+    const key = values["subscription-only"] ? null : await openRouterKey();
+    const live = workbookAi({ ...process.env, WORKBOOK_OPENROUTER_API_KEY: key ?? undefined, ...(values["subscription-only"] ? { WORKBOOK_AI_PRIMARY: "subscription" } : {}) }, { subscription: true, onCall: countCall, usage, gate: sampleGate });
+    if (!live.ai || !live.solve) throw new Error("no AI: neither the Claude subscription nor an OpenRouter key");
+    ai = live.ai;
+    solver = live.solve.solver;
+    console.log(`AI: ${workbookAiPrimary() === "api" ? "the API first, then the Claude subscription" : "the Claude subscription (claude -p) first"}${key ? ", with the API as the fallback" : "; no OpenRouter key, so no API fallback"}.`);
+  } else {
+    const key = await openRouterKey();
+    if (!key) throw new Error("no OpenRouter key: set WORKBOOK_OPENROUTER_API_KEY or WORKBOOK_OPENROUTER_API_KEY_FILE (or pass --fake for a layout dry run)");
+    const binding = productKey("workbook", process.env)!;
+    ai = openRouterClient({ ...binding, usage: tag("workbook"), model: process.env.AI_MODEL || AI_DEFAULT_MODEL, fetch: costingFetch(), timeout: 200_000 });
+    solver = aiSolver(openRouterClient({ ...binding, usage: tag("solve_check"), model: process.env.AI_SOLVE_MODEL || AI_SOLVE_DEFAULT_MODEL, fetch: costingFetch(solveCosts), timeout: 60_000 }));
+  }
+  return { ai, solver };
 }
+// Validate provider setup before creating stored sample families. Actual requests use each book's owned clients.
+const configuredClients = await sampleClients();
 const db = store ? createClient<Database>(URL, await secretKey(), { auth: { persistSession: false, autoRefreshToken: false } }) : null;
 const family = db ? await testFamily(db) : null;
 if (family) console.log(`test family ${family.parentId}: ${family.children.size} children`);
@@ -614,10 +628,10 @@ try {
 for (const job of jobs) {
   console.log(`${job.level} ${job.kind}: drafting`);
   try {
-    const r = await oneBook(db, family, job.level, job.kind, ai, drafts);
+    const r = await oneBook(db, family, job.level, job.kind, drafts);
     results.push(r);
     console.log(`  ${r.label}: ${r.draft.counts.pages} pages, ${r.draft.counts.questions} questions, ${r.draft.counts.failed} failed, ${r.draft.counts.failedPages} pages do not fit, ${r.draft.pages.reduce((n, p) => n + (p.leftOut?.length ?? 0), 0)} left out for room, ${r.renderProblems.length} render problems (strict), USD ${r.usd.toFixed(2)}, ${r.minutes.toFixed(1)} min`);
-    console.log(`  ${r.label}: ${r.solve.checks} solve checks (${solver.model}), ${r.solve.disagreed} read another way, ${r.solve.failed} failed or late, USD ${r.solve.usd.toFixed(4)}; log ${out}/${r.label}-solve.jsonl`);
+    console.log(`  ${r.label}: ${r.solve.checks} solve checks (${r.solve.model}), ${r.solve.disagreed} read another way, ${r.solve.failed} failed or late, USD ${r.solve.usd.toFixed(4)}; log ${out}/${r.label}-solve.jsonl`);
     if (providerCounts.has(r.label)) console.log(`  ${r.label}: ${providerLine(r.label)}`);
   } catch (e) {
     process.exitCode = 1;
@@ -644,7 +658,7 @@ async function writeIndex() {
   const md = [
     `# Sample workbooks (#363)${values.days ? `: review days ${values.days} only` : ""}${values.fake ? " - FAKE AI DRY RUN, NOT SAMPLES" : ""}`,
     "",
-    `Model: ${ai.model}; solve check: ${solver.model}. Books: ${ok.length}. Total AI cost (solve checks included): USD ${total.toFixed(2)}. Draft rows: public.workbook_drafts${store ? "" : " (not stored)"}.`,
+    `Model: ${configuredClients.ai.model}; solve check: ${configuredClients.solver.model}. Books: ${ok.length}. Total AI cost (solve checks included): USD ${total.toFixed(2)}. Draft rows: public.workbook_drafts${store ? "" : " (not stored)"}.`,
     values["check-only"] ? "Check only: no full-book PDF, review print or contact sheet." : "Nothing is sent to print or shipped. Failed pages are drawn with a red banner in the PDF and the page images.",
     "",
     "## Fast loop evidence",

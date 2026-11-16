@@ -268,6 +268,7 @@ export const DATABASE_CHECKS: readonly { table: string; name: string; definition
   {"table":"maya_calls","name":"maya_calls_workbook_question_check","definition":"CHECK (((workbook_question >= 1) AND (workbook_question <= 9999)))"},
   {"table":"maya_calls","name":"maya_chat_workbook","definition":"CHECK (((kind <> 'chat'::text) OR ((mode = 'text'::text) AND (question_source = 'workbook'::text) AND (NOT counts_minutes))))"},
   {"table":"maya_calls","name":"maya_family_voice","definition":"CHECK (((kind <> 'family'::text) OR ((mode = 'voice'::text) AND (question_source = 'workbook'::text) AND (NOT counts_minutes))))"},
+  {"table":"maya_chat_messages","name":"maya_chat_messages_board_fates_check","definition":"CHECK (((board_fates IS NULL) OR maya_chat_fates_valid(board_fates)))"},
   {"table":"maya_chat_messages","name":"maya_chat_messages_body_check","definition":"CHECK (((body IS NULL) OR ((length(body) >= 1) AND (length(body) <= 500))))"},
   {"table":"maya_chat_messages","name":"maya_chat_messages_fingerprint_check","definition":"CHECK ((length(fingerprint) = 64))"},
   {"table":"maya_chat_messages","name":"maya_chat_messages_input_revision_check","definition":"CHECK ((input_revision >= 0))"},

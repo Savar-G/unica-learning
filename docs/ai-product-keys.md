@@ -59,3 +59,14 @@ The workbook worker needs the workbook key only for its optional OpenRouter fall
 - Hosted migration `20261116215521 ai_product_key_aliases` matches local `20261116213019_ai_product_key_aliases.sql`. Generated types were refreshed and unchanged. Generated checks contain all 11 accepted current and historical labels. A service-role rollback probe accepted each label, refused an unknown label and left zero probe rows.
 - The root configuration and report-message fixes passed 144 focused tests. Independent combined reviews, full checks, worker release, web release and webhook activation remain required.
 - Six distinct product credentials are configured for Production. No model request or classifier ran. Historical unknown ownership remains unknown.
+
+
+## Combined review repairs (2026-11-16)
+
+Two independent reviews of 792763948 passed Standards and found four P2 specification defects. The root repaired the shared admin alias reader, parent-scoped photo child ownership, per-book sample ownership, and paid profile access in the subscription-only first-pages example.
+
+The photo owner read has a three-second limit. A failed read retains unknown ownership and preserves the optional check's existing admission. Stored samples carry verified parent/child IDs and the workbook source. No-store samples carry no invented family or child IDs. All sample modes retain the same shared provider exclusion gate.
+
+The two original acceptance checks failed before the repairs and passed after them. The root's 64 focused tests passed. A synthetic sample-factory probe checked 24 writer/solver requests across four modes, two book owners and no-store ownership. The repaired subscription guard and its control each sent zero fake profile requests. These checks used fake transports and prove no hosted model behavior.
+
+Generated types and 696 checks now include the separately applied additive #1084 board-fates migration, hosted version 20261116221027. This PR includes the generated schema refresh, not that issue's implementation. Final settlement, full checks and release remain pending.

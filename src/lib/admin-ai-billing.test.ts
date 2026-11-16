@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { accountCredits, parseUsage, periodFor, safeKeyLabel } from "@/lib/admin-ai-usage";
+import { accountCredits, parseDetails, parseUsage, periodFor, safeKeyLabel } from "@/lib/admin-ai-usage";
 import { OPENROUTER_CHECK_MS, OPENROUTER_CREDITS_URL, openRouterBilling, readAiUsage } from "@/lib/admin-ai-usage-store";
 import type { AdminSession } from "@/lib/admin-store";
 
@@ -91,4 +91,13 @@ it("retains missing dimension coverage as unknown and permits only safe key labe
   const bad = parseUsage({ dimensions_version: 1, dimensions: [{ cost_usd: "bad" }], lifetime_receipts: [{ key_id: "a".repeat(64), cost_usd: "bad" }] });
   expect(bad.details![0].costUsd).toBeNull();
   expect(bad.lifetimeReceipts).toBeNull();
+});
+
+
+it.each(["maya", "marking", "explanations", "workbook", "assessments", "profiles", "main", "decisions", "local", "anthropic", "unknown"])("retains the known %s key label in every admin report", (alias) => {
+  const keyId = "a".repeat(64);
+  const expected = alias + " (aaaaaaaaaaaa)";
+  expect(safeKeyLabel(alias, keyId)).toBe(expected);
+  expect(parseDetails([{ key_alias: alias, key_id: keyId }])[0].keyLabel).toBe(expected);
+  expect(parseUsage({ dimensions_version: 1, by_key: [{ key_alias: alias, key_id: keyId }] }).byKey?.[0].label).toBe(expected);
 });

@@ -17,7 +17,7 @@ Branch: `site/openrouter-usage-webhook`.
 This is independent, append-only provider evidence. It does not import or change the app
 ledger or the existing `/admin/ai` page. It does not depend on #1129's schema.
 The provider subtotal and app subtotal overlap. Never add them together.
-The account total still comes from `/api/v1/credits`, outside this component.
+The headline uses the Unica workspace analytics total. The active page makes no account-credits query.
 No legacy ledger cost is assigned to a provider generation by a time cutoff.
 
 ## Endpoint and configuration
@@ -27,7 +27,7 @@ No legacy ledger cost is assigned to a provider generation by a time cutoff.
 - `OPENROUTER_USAGE_WEBHOOK_SECRET`: a dedicated random secret, 32 to 512 characters.
   Do not use an OpenRouter API key or a Supabase key.
 - `OPENROUTER_USAGE_WORKSPACE_ID`: the actual provider workspace ID for the destination.
-  This is an ID, not the `unica-learning` URL slug. ROOT must obtain it from OpenRouter.
+  Use the fixed Unica UUID 2468d17e-b7eb-467f-b1ef-feec9e328d58, not the URL slug. The route and database refuse another workspace.
 - `SUPABASE_SECRET_KEY`: the existing server ingestion credential.
 - Header: `Authorization: Bearer <OPENROUTER_USAGE_WEBHOOK_SECRET>`.
 - Content type: `application/json`. Encoded/compressed bodies are rejected.
@@ -135,21 +135,20 @@ were verified first.
 
 - `readProviderReceipts(admin, { from, to })` from
   `src/lib/openrouter-provider-receipts-store.ts`.
-- `providerReceiptPeriod(query.providerRange, Date.now())` and
-  `PROVIDER_RECEIPT_RANGES` from `src/lib/openrouter-provider-receipts.ts`.
+- `periodFor(parseRange(query.range), Date.now())` and
+  `RANGES` from `src/lib/admin-ai-usage.ts`.
 - `<AdminProviderReceipts view={viewOrNull} periodLabel={period.label} ranges={pills} />`
   from `src/components/admin-provider-receipts.tsx`.
-- The component accepts the existing `Pill[]` type. Use `providerRange` links and preserve
+- The component accepts the existing `Pill[]` type. Use the shared `range` links and preserve
   the page's other query parameters. Supply `current` for the selected range.
 - Obtain `admin` through the existing `requireAdmin` boundary. Catch a read failure and
   pass null to show unknown, never an empty/zero view. The server read also rejects malformed data.
-- Period choices: 7 days, 30 days, or this month. They use the shared family-time functions
+- Period choices: 7 days, 30 days, this month, or this year. One selection controls the workspace, app and receipt reports. They use the shared family-time functions
   and the dated Vancouver overrides. SQL uses `[from,to)` and caps a read at 366 days.
 - The server RPC transport uses PostgREST directly to keep this patch buildable before
   the hosted migration and type generation. It does not invent or alter generated types.
 
-Mount the component beside the app subtotal only after #1129. Keep the account `/credits`
-check separate. Do not connect it to the app page's test-family exclusion.
+The page mounts the provider report beside the separate app subtotal. It does not read account credits. Do not connect provider totals to the app page's test-family exclusion.
 
 ## Local checks
 
@@ -213,7 +212,7 @@ after the last parser change.
     total charge, key ID, workspace, and root/attempt shape. Confirm an exact app match when
     the app records that generation. Confirm an unattributed tool generation stays unknown.
     ROOT owns any paid-call authorization and cost for this step. This worker made no paid call.
-11. Check period subtotals against provider activity and the separate `/credits` account check.
+11. Check period subtotals against the same Unica workspace and dates in provider activity. Do not query account-wide or Unify costs.
     Do not claim complete historical coverage: Broadcast is forward delivery, with possible
     sampling, outages, failed batches, or provider retry limits. This patch has no backfill.
 12. Record verified activation state and remaining limits in the Unica project vault notes.
@@ -228,7 +227,7 @@ session and the hosted read: the provider report was empty and the app/account t
 separate. These checks do not prove provider delivery or the deployed receiver.
 
 Production has the dedicated webhook secret and verified Unica workspace ID configured.
-All six Unica keys, including the development key, belong to that workspace. The separate
+The verified historical keys and all six dedicated product keys belong to that workspace. The separate
 Unify workspace is outside this destination's scope. Key values are never shown.
 
 Destination configuration, deployment, genuine delivery, provider-format verification and

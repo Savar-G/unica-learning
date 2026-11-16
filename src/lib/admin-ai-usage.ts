@@ -2,6 +2,7 @@
 // admin_ai_usage returns into what the page shows. Pure: no database, no clock (the caller passes `now`), no network.
 // Days are Vancouver days (the team's time, not a family's). Money is stored in US dollars; CAD uses MAYA_USD_TO_CAD.
 import { PACIFIC_ZONE, addDays, localDateTime, localDay } from "@/lib/family-time";
+import { AI_KEY_ALIASES } from "@/lib/ai-usage-context";
 
 export const ADMIN_AI_PATH = "/admin/ai";
 
@@ -130,9 +131,8 @@ export function parseUsage(raw: unknown): UsageView {
   };
 }
 
-const KEY_LABELS = ["main", "marking", "explanations", "decisions", "local", "anthropic", "unknown"];
 export function safeKeyLabel(alias: unknown, id: unknown): string {
-  const label = typeof alias === "string" && KEY_LABELS.includes(alias) ? alias : "unknown";
+  const label = typeof alias === "string" && (AI_KEY_ALIASES as readonly string[]).includes(alias) ? alias : "unknown";
   return `${label}${typeof id === "string" && /^[a-f0-9]{64}$/.test(id) ? ` (${id.slice(0, 12)})` : ""}`;
 }
 export function parseDetails(raw: unknown): UsageDetail[] {

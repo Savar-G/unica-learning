@@ -21,6 +21,8 @@ const key = process.env.SUPABASE_SECRET_KEY;
 if (!key) throw new Error("SUPABASE_SECRET_KEY is not set.");
 if (!process.env.WORKBOOK_AI_FAKE && !values.subscription) throw new Error("Set WORKBOOK_AI_FAKE=on, or pass --subscription: this script never uses the paid API.");
 if (values.subscription) { delete process.env.WORKBOOK_OPENROUTER_API_KEY; delete process.env.ANTHROPIC_API_KEY; }
+// Both supported modes keep profile preparation facts-only. Neither mode permits a paid profile request.
+delete process.env.PROFILE_OPENROUTER_API_KEY;
 const admin = createClient<Database>(SUPABASE_URL, key, { auth: { persistSession: false } });
 
 const test = await admin.from("assessments").select("parent_id, child_id").eq("id", values.test).maybeSingle();

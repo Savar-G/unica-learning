@@ -99,7 +99,7 @@ export interface WorkbookAiOptions {
   gate?: ProviderGate;
   now?: () => number;
   /** Whose run this is, for the AI usage ledger (D-330). Without it the calls are stored with no family. */
-  usage?: { parentId: string | null; childId: string | null; runId: string; kind?: "workbook_run" | "first_pages" };
+  usage?: { parentId: string | null; childId: string | null; runId: string; kind?: "workbook_run" | "first_pages" | "workbook" };
 }
 
 /** The API's time limit for one workbook call: the page writer's calls can be long. */
