@@ -33,7 +33,7 @@
 .pa-tag.is-a { background: var(--pa-as); color: var(--pa-a); }
 
 /* The orange Scan button: white text (2026-11-14). */
-.support-page .pa .pa-scanbtn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 6px; background: #b43d12; color: #fff; font-weight: 500; font-size: 15px; text-decoration: none; white-space: nowrap; }
+.support-page .pa .pa-scanbtn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 6px; background: var(--tang-ink); color: #fff; font-weight: 500; font-size: 15px; text-decoration: none; white-space: nowrap; }
 .pa-scanbtn svg { width: 18px; height: 18px; }
 
 .pa-vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
