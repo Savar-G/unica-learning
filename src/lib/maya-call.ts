@@ -154,6 +154,8 @@ export interface AlertCall {
   id: string;
   kind: CallKind;
   parentId: string;
+  /** The call's child, so the alert's send log row is deleted with the child. */
+  childId: string;
   flag: CallFlag;
 }
 
@@ -900,7 +902,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
 
   /** Sends the alert of a flagged call's flag when it has not gone (the seam sends each call and level once). */
   async function alert(record: CallRecord) {
-    if (record.flag) await seams.alerts.send({ id: record.id, kind: record.kind, parentId: record.parentId, flag: record.flag });
+    if (record.flag) await seams.alerts.send({ id: record.id, kind: record.kind, parentId: record.parentId, childId: record.childId, flag: record.flag });
   }
 
   /** A flagged call's alerts for the screen; none when they cannot be read (the call page reads them again). */

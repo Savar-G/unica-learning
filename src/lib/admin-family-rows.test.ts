@@ -76,6 +76,17 @@ const tables: Record<string, Row[]> = {
     { id: id(81), email_id: "re_1", type: "delivered", occurred_at: at(2), detail: null },
     { id: id(82), email_id: "re_r41", type: "bounced", occurred_at: at(3), detail: "full" },
     { id: id(83), email_id: "re_9", type: "delivered", occurred_at: at(3), detail: null },
+    { id: id(84), email_id: "re_s1", type: "bounced", occurred_at: at(4), detail: "no such user" },
+    { id: id(85), email_id: "re_w1", type: "delivered", occurred_at: at(5), detail: null },
+  ],
+  // The send log: A's scan link (with a bounce), B's sign-in link, and a team digest about no family.
+  email_sends: [
+    { id: id(91), created_at: at(4), kind: "scan_link", parent_id: A, child_id: id(11), outcome: "sent", email_id: "re_s1", error: null, subject: "Take pictures of Kid 11's workbook pages" },
+    { id: id(92), created_at: at(4), kind: "sign_in_link", parent_id: B, child_id: null, outcome: "sent", email_id: "re_s2", error: null, subject: null },
+    { id: id(93), created_at: at(5), kind: "team_digest", parent_id: null, child_id: null, outcome: "sent", email_id: "re_s3", error: null, subject: "Unica daily digest" },
+  ],
+  workbook_emails: [
+    { id: id(95), created_at: at(5), parent_id: A, child_id: id(11), kind: "dispatch", status: "sent", attempts: 1, sent_at: at(5), email_id: "re_w1", error: null, subject: "Kid 11's workbook is on its way" },
   ],
   test_accounts: [{ parent_id: C }],
 };
@@ -136,6 +147,19 @@ it("keeps the edge cases of the whole read: another family's report, test and co
   // the card found in Stripe and the family's subscriptions
   expect(f!.cards.map((c) => c.foundInStripe).sort()).toEqual([false, true]);
   expect(f!.subscriptions.map((x) => x.id)).toEqual(["sub_3", "sub_1"]);
+  // the send log and the workbook emails, each with its own Resend events
+  expect(f!.emails.find((e) => e.id === `${id(91)}:send`)).toMatchObject({ kind: "scan_link", childName: "Kid 11", delivery: { type: "bounced", detail: "no such user" } });
+  expect(f!.emails.find((e) => e.id === `${id(95)}:workbook`)).toMatchObject({ kind: "workbook_dispatch", subject: "Kid 11's workbook is on its way", delivery: { type: "delivered" } });
+});
+
+it("lists a team email about no family in the whole read, and in a family read only when asked for by id", async () => {
+  const team = `${id(93)}:send`;
+  expect(buildDashboard(await dashboardRows(server().admin), "7d", now).emails.some((e) => e.id === team)).toBe(true);
+  expect(buildDashboard(await familyDashboardRows(server().admin, [A]), "7d", now).emails.some((e) => e.id === team)).toBe(false);
+  const s = server();
+  const d = buildDashboard(await familyDashboardRows(s.admin, [], { sendIds: [id(93)] }), "7d", now);
+  expect(d.emails.find((e) => e.id === team)).toMatchObject({ kind: "team_digest", familyId: null, subject: "Unica daily digest" });
+  expect(s.requests.filter((r) => r.endsWith("?") && !r.startsWith("admin_team_ids") && !r.startsWith("test_accounts"))).toEqual([]);
 });
 
 it("filters every database read by the family or by id, and asks Stripe only about the family's cards", async () => {
@@ -158,5 +182,9 @@ it("finds the family of an email page's email, or none", async () => {
   expect(await emailParent(admin, id(61))).toBe(A);
   expect(await emailParent(admin, `${id(41)}:report`)).toBe(B);
   expect(await emailParent(admin, `${id(41)}:alert`)).toBe(B);
+  expect(await emailParent(admin, `${id(91)}:send`)).toBe(A);
+  expect(await emailParent(admin, `${id(95)}:workbook`)).toBe(A);
+  // a team email about no family has none
+  expect(await emailParent(admin, `${id(93)}:send`)).toBeNull();
   for (const bad of [id(99), `${id(41)}:other`, `${id(41)}:report:x`, "nope"]) expect(await emailParent(admin, bad)).toBeNull();
 });

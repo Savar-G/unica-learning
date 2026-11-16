@@ -24,7 +24,8 @@ import { findSavedCard } from "@/lib/saved-card";
 import { stripeCardProvider } from "@/lib/saved-card-server";
 import { stripe } from "@/lib/stripe";
 import type Stripe from "stripe";
-import type { DashboardRows, Delivery, EmailCopyView, RawCard, RawDelivery, RawChild, RawEmail, RawParent, RawReport, RawTest, RawWaitlist } from "@/lib/admin-dashboard";
+import type { DashboardRows, Delivery, EmailCopyView, RawCard, RawDelivery, RawChild, RawEmail, RawParent, RawReport, RawSend, RawTest, RawWaitlist, RawWorkbookEmail } from "@/lib/admin-dashboard";
+import { parseEmailId, sendEmailId, workbookEmailId } from "@/lib/admin-dashboard";
 import type { TemplateFilters, TemplateStat } from "@/lib/admin-templates";
 import type { ExportReader, ExportRow, PagedTable } from "@/lib/admin-export";
 import type { AnonymousTestRow } from "@/lib/anonymous-copy-export";
@@ -1405,7 +1406,9 @@ export function exportReader(a: AdminSession): ExportReader {
  */
 export async function dashboardRows(a: AdminSession): Promise<DashboardRows> {
   const cardRows = allRows<RawCard>(a.db.rpc("admin_card_setups").select(DASH_CARD_COLUMNS).order("id"), "card setups");
-  const [parents, children, tests, reports, cards, waitlist, emails, stripeRead, testIds, deliveries] = await Promise.all([
+  const sendRows = allRows<RawSend>(a.db.from("email_sends").select(DASH_SEND_COLUMNS).order("id"), "email sends");
+  const workbookEmailRows = allRows<RawWorkbookEmail>(a.db.from("workbook_emails").select(DASH_WORKBOOK_EMAIL_COLUMNS).order("id"), "workbook emails");
+  const [parents, children, tests, reports, cards, waitlist, emails, stripeRead, testIds, deliveries, sends, workbookEmails] = await Promise.all([
     allRows<RawParent>(a.db.rpc("admin_parents").select(PARENT_COLUMNS).order("id"), "parents"),
     allRows<RawChild>(a.db.rpc("admin_children").select(CHILD_COLUMNS).order("id"), "children"),
     allRows<DashTestRow>(a.db.rpc("admin_assessments").select(DASH_TEST_COLUMNS).order("id"), "tests"),
@@ -1416,10 +1419,12 @@ export async function dashboardRows(a: AdminSession): Promise<DashboardRows> {
     allRows<RawEmail>(a.db.from("email_log").select(DASH_EMAIL_COLUMNS).order("id"), "email log"),
     cardSubscriptions(cardRows),
     testAccountIds(a),
-    deliveryRows(a),
+    Promise.all([sendRows, workbookEmailRows]).then(([s, w]) => deliveryRows(a, emailRefs(s, w))),
+    sendRows,
+    workbookEmailRows,
   ]);
   return {
-    parents, children, reports, cards, waitlist, emails, deliveries, testIds, ...stripeRead,
+    parents, children, reports, cards, waitlist, emails, deliveries, sends, workbookEmails, testIds, ...stripeRead,
     tests: tests.map(({ answers, ...t }) => ({ ...t, answered: answers[0]?.count ?? 0 })),
   };
 }
@@ -1430,6 +1435,8 @@ const DASH_TEST_COLUMNS = "id, created_at, status, parent_id, child_id, grade, p
 const DASH_REPORT_COLUMNS = "id, created_at, assessment_id, parent_id, child_id, emailed_at, email_id, email_error, alerted_at, alert_error, email_clicks, email_first_clicked_at";
 const DASH_WAITLIST_COLUMNS = "id, created_at, parent_id, child_id, province";
 const DASH_EMAIL_COLUMNS = "id, created_at, parent_id, child_id, assessment_id, kind, status, attempts, sent_at, error, clicks, first_clicked_at";
+const DASH_SEND_COLUMNS = "id, created_at, kind, parent_id, child_id, outcome, email_id, error, subject";
+const DASH_WORKBOOK_EMAIL_COLUMNS = "id, created_at, parent_id, child_id, kind, status, attempts, sent_at, email_id, error, subject";
 type DashTestRow = Omit<RawTest, "answered"> & { answers: { count: number }[] };
 
 /** Rows in the database's id order (a uuid's text sorts as its bytes do), so rows read in chunks keep the whole read's order. */
@@ -1447,7 +1454,7 @@ const missing = (want: Iterable<string | null>, have: Iterable<string>) => {
  * first reads did not return. Stripe is asked only about the family's own cards: the saved card check for each unsaved
  * card, and the subscriptions of each card's customer. The admin dashboard itself keeps the whole read.
  */
-export async function familyDashboardRows(a: AdminSession, parentIds: readonly string[]): Promise<DashboardRows> {
+export async function familyDashboardRows(a: AdminSession, parentIds: readonly string[], { sendIds = [] }: { sendIds?: readonly string[] } = {}): Promise<DashboardRows> {
   const ids = [...new Set(parentIds.filter(isUuid))];
   const ofFamilies = <T extends { id: string }>(what: string, read: (chunk: string[]) => RangeRead<T>) => byIds<T>(ids, what, read).then(byIdOrder);
   const cardRows = ofFamilies<RawCard>("card setups", (chunk) => a.db.rpc("admin_card_setups").select(DASH_CARD_COLUMNS).in("parent_id", chunk));
@@ -1455,6 +1462,12 @@ export async function familyDashboardRows(a: AdminSession, parentIds: readonly s
   const testRows = ofFamilies<DashTestRow>("tests", (chunk) => a.db.rpc("admin_assessments").select(DASH_TEST_COLUMNS).in("parent_id", chunk));
   const reportRows = ofFamilies<RawReport>("reports", (chunk) => a.db.rpc("admin_reports").select(DASH_REPORT_COLUMNS).in("parent_id", chunk));
   const emailRows = ofFamilies<RawEmail>("email log", (chunk) => a.db.from("email_log").select(DASH_EMAIL_COLUMNS).in("parent_id", chunk));
+  // The send log of these families, and the send log rows asked for by id (a team email about no family, for its page).
+  const sendRows = Promise.all([
+    ofFamilies<RawSend>("email sends", (chunk) => a.db.from("email_sends").select(DASH_SEND_COLUMNS).in("parent_id", chunk)),
+    byIds<RawSend>([...new Set(sendIds.filter(isUuid))], "email sends", (chunk) => a.db.from("email_sends").select(DASH_SEND_COLUMNS).in("id", chunk)),
+  ]).then(([family, asked]) => byIdOrder([...family, ...asked.filter((s) => !family.some((f) => f.id === s.id))]));
+  const workbookEmailRows = ofFamilies<RawWorkbookEmail>("workbook emails", (chunk) => a.db.from("workbook_emails").select(DASH_WORKBOOK_EMAIL_COLUMNS).in("parent_id", chunk));
   // The lookups by id outside the families, read only when a family row names one the reads above did not return.
   const outside = Promise.all([childRows, testRows, reportRows, emailRows]).then(([children, tests, reports, emails]) => Promise.all([
     byIds<RawChild>(missing([...emails.map((e) => e.child_id), ...reports.map((r) => r.child_id), ...tests.map((t) => t.child_id)], children.map((c) => c.id)), "children",
@@ -1464,7 +1477,7 @@ export async function familyDashboardRows(a: AdminSession, parentIds: readonly s
     byIds<RawReport>(missing(tests.map((t) => t.id), reports.map((r) => r.assessment_id)), "reports",
       (chunk) => a.db.rpc("admin_reports").select(DASH_REPORT_COLUMNS).in("assessment_id", chunk)),
   ]));
-  const [parents, children, tests, reports, cards, waitlist, emails, stripeRead, testIds, deliveries, [otherChildren, otherTests, otherReports]] = await Promise.all([
+  const [parents, children, tests, reports, cards, waitlist, emails, stripeRead, testIds, deliveries, [otherChildren, otherTests, otherReports], sends, workbookEmails] = await Promise.all([
     ofFamilies<RawParent>("parents", (chunk) => a.db.rpc("admin_parents").select(PARENT_COLUMNS).in("id", chunk)),
     childRows,
     testRows,
@@ -1474,11 +1487,13 @@ export async function familyDashboardRows(a: AdminSession, parentIds: readonly s
     emailRows,
     customerSubscriptions(cardRows),
     testAccountIds(a),
-    Promise.all([emailRows, reportRows]).then(([e, r]) => familyDeliveryRows(a, e.map((x) => x.id), r.map((x) => x.id))),
+    Promise.all([emailRows, reportRows, sendRows, workbookEmailRows]).then(([e, r, s, w]) => familyDeliveryRows(a, e.map((x) => x.id), r.map((x) => x.id), emailRefs(s, w))),
     outside,
+    sendRows,
+    workbookEmailRows,
   ]);
   return {
-    parents, cards, waitlist, emails, deliveries, testIds, ...stripeRead,
+    parents, cards, waitlist, emails, deliveries, sends, workbookEmails, testIds, ...stripeRead,
     children: [...children, ...otherChildren], reports: [...reports, ...otherReports],
     tests: [...tests, ...otherTests].map(({ answers, ...t }) => ({ ...t, answered: answers[0]?.count ?? 0 })),
   };
@@ -1615,21 +1630,29 @@ export async function setTestAccount(a: AdminSession, parentId: string, test: bo
  * page reads only that family's rows. Null when no such email exists.
  */
 export async function emailParent(a: AdminSession, emailId: string): Promise<string | null> {
-  const [id, which, ...rest] = emailId.split(":");
-  if (!isUuid(id) || rest.length > 0 || (which !== undefined && which !== "report" && which !== "alert")) return null;
-  const row = which
-    ? await a.db.rpc("admin_reports").select("parent_id").eq("id", id).maybeSingle().then((r) => must<{ parent_id: string } | null>(r, "email report"))
-    : await a.db.from("email_log").select("parent_id").eq("id", id).maybeSingle().then((r) => must<{ parent_id: string } | null>(r, "email log row"));
+  const parsed = parseEmailId(emailId);
+  if (!parsed) return null;
+  const { id, which } = parsed;
+  const row = which === "send"
+    ? await a.db.from("email_sends").select("parent_id").eq("id", id).maybeSingle().then((r) => must<{ parent_id: string | null } | null>(r, "email send"))
+    : which === "workbook"
+      ? await a.db.from("workbook_emails").select("parent_id").eq("id", id).maybeSingle().then((r) => must<{ parent_id: string } | null>(r, "workbook email"))
+      : which
+        ? await a.db.rpc("admin_reports").select("parent_id").eq("id", id).maybeSingle().then((r) => must<{ parent_id: string } | null>(r, "email report"))
+        : await a.db.from("email_log").select("parent_id").eq("id", id).maybeSingle().then((r) => must<{ parent_id: string } | null>(r, "email log row"));
   return row?.parent_id ?? null;
 }
+
 
 /**
  * The kept copy of a logged email (D-103), by its id in the email list: a reminder's log id, or "<report id>:report" or
  * "<report id>:alert". Null when there is no copy: the email went before copies were kept, or its copy failed.
  */
 export async function getEmailCopy(a: AdminSession, emailId: string): Promise<EmailCopyView | null> {
-  const [id, which, ...rest] = emailId.split(":");
-  if (!isUuid(id) || rest.length > 0 || (which !== undefined && which !== "report" && which !== "alert")) return null;
+  const parsed = parseEmailId(emailId);
+  if (!parsed) return null;
+  const { id, which } = parsed;
+  if (which === "send" || which === "workbook") return ownCopy(a, id, which);
   const query = a.db.from("email_copies").select("outcome, email_id, from_address, to_address, reply_to, subject, text_body, html_body, updated_at");
   const row = await (which ? query.eq("report_id", id).eq("report_email", which === "report" ? "parent" : "alert") : query.eq("email_log_id", id)).maybeSingle()
     .then((r) => must<EmailCopyRow | null>(r, "email copy"));
@@ -1644,16 +1667,63 @@ export async function getEmailCopy(a: AdminSession, emailId: string): Promise<Em
 }
 type EmailCopyRow = { outcome: EmailCopyView["outcome"]; email_id: string | null; from_address: string | null; to_address: string; reply_to: string | null; subject: string; text_body: string; html_body: string | null; updated_at: string };
 
+type SendCopyRow = { outcome: EmailCopyView["outcome"]; email_id: string | null; from_address: string | null; to_address: string | null; reply_to: string | null; subject: string | null; text_body: string | null; html_body: string | null; created_at: string };
+type WorkbookCopyRow = { status: string; email_id: string | null; to_address: string | null; subject: string | null; text_body: string | null; html_body: string | null; updated_at: string };
+
+/** Resend's delivery events of one email, oldest first (D-104). */
+async function eventsOf(a: AdminSession, resendId: string | null): Promise<Delivery[]> {
+  if (!resendId) return [];
+  return must<{ type: Delivery["type"]; occurred_at: string; detail: string | null }[]>(
+    await a.db.from("email_events").select("type, occurred_at, detail").eq("email_id", resendId).order("occurred_at"),
+    "email events",
+  ).map((e) => ({ type: e.type, at: e.occurred_at, detail: e.detail }));
+}
+
+/**
+ * The copy an email keeps on its own row: a send log row (public.email_sends) or a workbook email (public.workbook_emails).
+ * Null when the row keeps no copy (a sign-in link, a delete code, the contact form) or does not exist.
+ */
+async function ownCopy(a: AdminSession, id: string, which: "send" | "workbook"): Promise<EmailCopyView | null> {
+  if (which === "send") {
+    const row = await a.db.from("email_sends").select("outcome, email_id, from_address, to_address, reply_to, subject, text_body, html_body, created_at").eq("id", id).maybeSingle()
+      .then((r) => must<SendCopyRow | null>(r, "email send"));
+    if (!row || row.text_body === null || row.subject === null || row.to_address === null) return null;
+    return { outcome: row.outcome, from: row.from_address, to: row.to_address, replyTo: row.reply_to, subject: row.subject, text: row.text_body, html: row.html_body, keptAt: row.created_at, events: await eventsOf(a, row.email_id) };
+  }
+  const row = await a.db.from("workbook_emails").select("status, email_id, to_address, subject, text_body, html_body, updated_at").eq("id", id).maybeSingle()
+    .then((r) => must<WorkbookCopyRow | null>(r, "workbook email"));
+  if (!row || row.text_body === null || row.subject === null || row.to_address === null) return null;
+  const outcome: EmailCopyView["outcome"] = row.status === "sent" ? "sent" : row.status === "failed" ? "refused" : "unknown";
+  return { outcome, from: null, to: row.to_address, replyTo: null, subject: row.subject, text: row.text_body, html: row.html_body, keptAt: row.updated_at, events: await eventsOf(a, row.email_id) };
+}
+
 /**
  * Resend's delivery events (D-104) of every email with a kept copy, each with the email it belongs to. Events of
  * emails without a copy (sign-in links, signup alerts) are left out.
  */
-async function deliveryRows(a: AdminSession): Promise<RawDelivery[]> {
+async function deliveryRows(a: AdminSession, refs: EmailRef[]): Promise<RawDelivery[]> {
   const [copies, events] = await Promise.all([
     allRows<DeliveryCopy>(a.db.from("email_copies").select("email_id, email_log_id, report_id, report_email").not("email_id", "is", null).order("id"), "email copies"),
     allRows<DeliveryEvent>(a.db.from("email_events").select("email_id, type, occurred_at, detail").order("id"), "email events"),
   ]);
-  return deliveriesOf(copies, events);
+  return [...deliveriesOf(copies, events), ...refDeliveries(refs, events)];
+}
+
+/** An email that keeps Resend's id on its own row (the send log, the workbook emails), with its id in the email list. */
+type EmailRef = { ref: string; email_id: string };
+function emailRefs(sends: RawSend[], workbookEmails: RawWorkbookEmail[]): EmailRef[] {
+  return [
+    ...sends.flatMap((s) => (s.email_id ? [{ ref: sendEmailId(s.id), email_id: s.email_id }] : [])),
+    ...workbookEmails.flatMap((w) => (w.email_id ? [{ ref: workbookEmailId(w.id), email_id: w.email_id }] : [])),
+  ];
+}
+/** Each event of an email that keeps Resend's id on its own row, by that email's id in the email list. */
+function refDeliveries(refs: EmailRef[], events: DeliveryEvent[]): RawDelivery[] {
+  const byEmail = new Map(refs.map((r) => [r.email_id, r.ref]));
+  return events.flatMap((e) => {
+    const ref = byEmail.get(e.email_id);
+    return ref ? [{ email_log_id: null, report_id: null, report_email: null, email_ref: ref, type: e.type, occurred_at: e.occurred_at, detail: e.detail }] : [];
+  });
 }
 
 type DeliveryCopy = { email_id: string | null; email_log_id: string | null; report_id: string | null; report_email: "parent" | "alert" | null };
@@ -1672,17 +1742,19 @@ function deliveriesOf(copies: DeliveryCopy[], events: DeliveryEvent[]): RawDeliv
  * deliveryRows for the emails of a few families: their copies give the Resend ids, then every copy and event with those
  * ids is read, in id order, so each event joins the same copy as in the whole read.
  */
-async function familyDeliveryRows(a: AdminSession, emailIds: string[], reportIds: string[]): Promise<RawDelivery[]> {
+async function familyDeliveryRows(a: AdminSession, emailIds: string[], reportIds: string[], refs: EmailRef[]): Promise<RawDelivery[]> {
   const [ofEmails, ofReports] = await Promise.all([
     inChunks(emailIds, (chunk) => allRows<{ id: string; email_id: string | null }>(a.db.from("email_copies").select("id, email_id").in("email_log_id", chunk).order("id"), "email copies")),
     inChunks(reportIds, (chunk) => allRows<{ id: string; email_id: string | null }>(a.db.from("email_copies").select("id, email_id").in("report_id", chunk).order("id"), "email copies")),
   ]);
   const resendIds = [...new Set([...ofEmails, ...ofReports].flatMap((c) => (c.email_id ? [c.email_id] : [])))];
-  const [copies, events] = await Promise.all([
+  const refIds = [...new Set(refs.map((r) => r.email_id))];
+  const [copies, events, refEvents] = await Promise.all([
     byIds<DeliveryCopy & { id: string }>(resendIds, "email copies", (chunk) => a.db.from("email_copies").select("id, email_id, email_log_id, report_id, report_email").in("email_id", chunk)),
     byIds<DeliveryEvent & { id: string }>(resendIds, "email events", (chunk) => a.db.from("email_events").select("id, email_id, type, occurred_at, detail").in("email_id", chunk)),
+    byIds<DeliveryEvent & { id: string }>(refIds, "email events", (chunk) => a.db.from("email_events").select("id, email_id, type, occurred_at, detail").in("email_id", chunk)),
   ]);
-  return deliveriesOf(byIdOrder(copies), byIdOrder(events));
+  return [...deliveriesOf(byIdOrder(copies), byIdOrder(events)), ...refDeliveries(refs, byIdOrder(refEvents))];
 }
 
 /**

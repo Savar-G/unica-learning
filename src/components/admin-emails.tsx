@@ -6,7 +6,7 @@ import { familyHref, href, TestMark, type Ctx } from "@/components/admin-dashboa
 import { Empty, SectionHead } from "@/components/admin-blocks";
 import { DELIVERY_WORDS } from "@/lib/delivery-state";
 import {
-  EMAIL_KINDS, EMAIL_LABEL, ago, at, clickable, clicksText, countsClicks, deliveryLine, emailFailed, isUnsubscribe,
+  EMAIL_KINDS, EMAIL_LABEL, ago, at, clickable, clicksText, countsClicks, deliveryLine, emailFailed, isTeamEmail, isUnsubscribe,
   type Dashboard, type EmailEvent, type EmailKind,
 } from "@/lib/admin-dashboard";
 import { emailBars } from "@/lib/admin-pages";
@@ -23,7 +23,7 @@ const pl = (n: number, one: string, many: string) => `${n.toLocaleString("en-CA"
 export function EmailKindBars({ d, ctx }: { d: Dashboard; ctx: Ctx }) {
   const bars = emailBars(d.emailSummary.filter((k) => !isUnsubscribe(k.kind)));
   const offs = d.real.emails.filter((e) => isUnsubscribe(e.kind)).length;
-  if (bars.length === 0) return <Empty>No email has gone out yet. Reminders, report emails and Maya emails show here once they send.</Empty>;
+  if (bars.length === 0) return <Empty>No email has gone out yet. Every email to a parent or to you shows here once it sends.</Empty>;
   return <>
     <ul className="ap-mail-bars" aria-label="Emails by kind, all time">
       {bars.map((b) => (
@@ -68,7 +68,7 @@ export function EmailLog({ d, ctx, filter, nav }: { d: Dashboard; ctx: Ctx; filt
   return (
     <section aria-labelledby="ap-mail-log">
       <SectionHead id="ap-mail-log" title={filter === "failed" ? "Failed emails" : info ? info.label : "All emails"} count={pl(d.real.emails.filter(match).length, "email", "emails")}
-        line={info ? <>Subject: &ldquo;{info.subject}&rdquo;. Goes to: {info.to.toLowerCase()}. Sends when: {info.trigger.toLowerCase()}.</> : "Newest first. Open an email to see it the way the parent got it."} />
+        line={info ? <>Subject: &ldquo;{info.subject}&rdquo;. Goes to: {info.to.toLowerCase()}. Sends when: {info.trigger.toLowerCase()}.</> : "Newest first, to parents and to you. Open an email to see it the way it went."} />
       {nav}
       {rows.length === 0 ? <Empty>{filter === "failed" ? "No failed emails are recorded." : "No emails here."}</Empty> : (
         <div className="adm-scroll" role="region" aria-label="Emails" tabIndex={0}>
@@ -79,7 +79,7 @@ export function EmailLog({ d, ctx, filter, nav }: { d: Dashboard; ctx: Ctx; filt
                 <tr key={e.id} className={emailFailed(e) ? "is-wrong" : undefined}>
                   <td className="adm-nowrap">{at(e.at)}<span className="adm-sub">{ago(e.at, d.now)}</span></td>
                   <td>{isUnsubscribe(e.kind) ? EMAIL_LABEL[e.kind] : <Link href={adminEmailPath(e.id, ctx.demo)}>{EMAIL_LABEL[e.kind]}</Link>}<span className="adm-sub">{isUnsubscribe(e.kind) ? "No email went" : e.subject}</span></td>
-                  <td><Link href={familyHref(ctx, e.familyId)}>{e.familyName}</Link><TestMark test={testIds.has(e.familyId)} />{e.childName && <span className="adm-sub">{e.childName}</span>}</td>
+                  <td>{e.familyId ? <><Link href={familyHref(ctx, e.familyId)}>{e.familyName}</Link><TestMark test={testIds.has(e.familyId)} /></> : <span className="ap-muted">No family</span>}{e.childName && <span className="adm-sub">{e.childName}</span>}{isTeamEmail(e.kind) && <span className="adm-sub">To you</span>}</td>
                   <td><Result e={e} />{clickable(e) && e.status === "sent" && <span className="adm-sub">{e.clicks ? <>{clicksText(e)}, first {at(e.clicks.first)}</> : "Not clicked yet"}</span>}</td>
                 </tr>
               ))}
@@ -88,7 +88,7 @@ export function EmailLog({ d, ctx, filter, nav }: { d: Dashboard; ctx: Ctx; filt
         </div>
       )}
       {rows.length > LOG_MAX && <p className="adm-note ap-foot">Showing the newest {LOG_MAX} emails only.</p>}
-      <p className="adm-note ap-foot">Not logged by the site: sign-in codes, sign-in links and password emails.</p>
+      <p className="adm-note ap-foot">Not logged by the site: the sign-up code and password reset emails, which Supabase sends. Sign-in links, delete codes and contact form messages show with no copy.</p>
     </section>
   );
 }

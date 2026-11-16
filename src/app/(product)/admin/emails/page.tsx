@@ -32,7 +32,7 @@ export default async function EmailsPage({ searchParams }: PageProps<"/admin/ema
       {demo && <p className="adm-note">Demo data: made-up families, not your database. Local development only.</p>}
       {failed > 0 && filter !== "failed" && (
         <p className="ab-needs" role="status">
-          <span><b>Needs you:</b> {failed === 1 ? "1 email did not reach the parent." : `${failed} emails did not reach the parent.`} Check the address with the family.</span>
+          <span><b>Needs you:</b> {failed === 1 ? "1 email did not go through." : `${failed} emails did not go through.`} Open each one to see why. For a parent&apos;s email, check the address with the family.</span>
           <Link className="btn adm-btn" href={href(ctx, { kind: "failed" })} prefetch={false}>See failed emails</Link>
         </p>
       )}

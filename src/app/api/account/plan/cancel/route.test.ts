@@ -14,7 +14,7 @@ const request = (body: unknown, headers: Record<string, string> = {}) => new Req
 beforeEach(() => {
   vi.resetAllMocks();
   f.parent.mockResolvedValue("parent-1");
-  f.cancel.mockResolvedValue({ ok: true, changed: true, endsAt: "2026-12-05T00:00:00.000Z", child: "Asha" });
+  f.cancel.mockResolvedValue({ ok: true, changed: true, endsAt: "2026-12-05T00:00:00.000Z", child: "Asha", childId: "child-1" });
 });
 
 it("refuses another site, a form post and a signed-out parent before any cancel", async () => {
@@ -42,8 +42,8 @@ it("tells the team once: on the change and not on a second press", async () => {
   await POST(request({ card }));
   expect(f.after).toHaveBeenCalledTimes(1);
   await f.after.mock.calls[0][0]();
-  expect(f.alert).toHaveBeenCalledWith(card, "Asha", "2026-12-05T00:00:00.000Z");
-  f.cancel.mockResolvedValue({ ok: true, changed: false, endsAt: null, child: "Asha" });
+  expect(f.alert).toHaveBeenCalledWith(card, "Asha", "2026-12-05T00:00:00.000Z", { parentId: "parent-1", childId: "child-1" });
+  f.cancel.mockResolvedValue({ ok: true, changed: false, endsAt: null, child: "Asha", childId: "child-1" });
   await POST(request({ card }));
   expect(f.after).toHaveBeenCalledTimes(1);
 });

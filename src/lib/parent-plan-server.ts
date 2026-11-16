@@ -70,7 +70,7 @@ export async function familyPlans(parent: string): Promise<ChildPlan[] | null> {
 }
 
 export type CancelFamilyPlan =
-  | (Extract<CancelPlanOutcome, { ok: true }> & { child: string })
+  | (Extract<CancelPlanOutcome, { ok: true }> & { child: string; childId: string })
   | Extract<CancelPlanOutcome, { ok: false }>
   | { ok: false; error: "not_found" | "unavailable" | "pending" };
 
@@ -79,14 +79,14 @@ export async function cancelFamilyPlan(parent: string, cardId: string): Promise<
   const db = adminClient();
   const s = stripe();
   if (!db || !s) return { ok: false, error: "unavailable" };
-  const { data, error } = await db.from("card_setups").select("stripe_customer_id, child:children!inner(first_name)")
+  const { data, error } = await db.from("card_setups").select("stripe_customer_id, child:children!inner(id, first_name)")
     .eq("id", cardId).eq("parent_id", parent).maybeSingle();
   if (error) return { ok: false, error: "unavailable" };
   if (!data?.stripe_customer_id) return { ok: false, error: "not_found" };
   const admission = await db.rpc("admit_plan_cancel", { p_parent: parent, p_card: cardId });
   if (admission.error) throw new Error(`plan cancel admission: ${admission.error.message}`);
   if (typeof admission.data !== "string" || !admission.data) return { ok: false, error: "pending" };
-  const operation = admission.data, child = data.child.first_name;
+  const operation = admission.data, child = data.child.first_name, childId = data.child.id;
   let attemptedWrite = false;
   let result: CancelPlanOutcome;
   try {
@@ -99,15 +99,15 @@ export async function cancelFamilyPlan(parent: string, cardId: string): Promise<
     throw e;
   }
   await finishOrAlert(db, parent, operation, result.ok ? "applied" : "refused");
-  return result.ok ? { ...result, child } : result;
+  return result.ok ? { ...result, child, childId } : result;
 }
 
 /** Tells the team, so that no further workbook is prepared for this child. Sends nothing without an address. */
-export async function planCancelledAlert(cardId: string, child: string, endsAt: string | null) {
+export async function planCancelledAlert(cardId: string, child: string, endsAt: string | null, family: { parentId: string; childId: string }) {
   const to = process.env.SIGNUP_NOTIFY_EMAIL;
   if (!to) return;
   const outcome = await sendEmail({
-    sender: { to: "savar" }, to, subject: `Plan cancelled: ${child}`,
+    sender: { to: "savar" }, to, subject: `Plan cancelled: ${child}`, log: { kind: "plan_cancelled_alert", ...family },
     text: [`A parent cancelled ${child}'s plan from their account.`, endsAt ? `The plan ends: ${endsAt}` : "The plan ended now, after a failed payment.", `Card setup: ${cardId}`, "Do not prepare another workbook for this child."].join("\n"),
   });
   if (outcome.status !== "sent") console.error("[plan] cancel alert failed", outcome.status);

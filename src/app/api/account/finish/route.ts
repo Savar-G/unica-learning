@@ -140,7 +140,7 @@ async function finishClaimed(
   // The founders' welcome (D-225), after the answer so the signup does not wait for it. On a phone the link email above
   // is the welcome, so the parent gets one email.
   if (!phone) {
-    const welcome = { name: details.name, email: user.email, childName: child.firstName, childId: family.child, origin: linkOrigin(request) };
+    const welcome = { name: details.name, email: user.email, childName: child.firstName, childId: family.child, origin: linkOrigin(request), parentId: user.id };
     after(() => sendWelcome(welcome));
   }
   return Response.json({ ok: true, linkSent } satisfies AccountResult);

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { AdminFrame } from "@/components/admin-frame";
 import { EmailView } from "@/components/admin-email";
 import { FamilyDrawer } from "@/components/admin-family";
-import { EMAIL_LABEL } from "@/lib/admin-dashboard";
+import { EMAIL_LABEL, isTeamEmail, isUnsubscribe, parseEmailId, type EmailEvent } from "@/lib/admin-dashboard";
 import { loadDashboard } from "@/lib/admin-dashboard-load";
 import { demoEmailCopy } from "@/lib/admin-demo";
 import { emailParent, getEmailCopy, requireAdmin } from "@/lib/admin-store";
@@ -21,17 +21,25 @@ export default async function EmailPage({ params, searchParams }: PageProps<"/ad
   const { who, d, progress, query, demo } = await loadDashboard(await searchParams, {
     withTests: true,
     families: async (admin, q) => [...(await emailParent(admin, id).then((p) => (p ? [p] : []))), ...(q.family ? [q.family] : [])],
+    // A team email about no family has no family to read it with: its send log row is read by id.
+    sendIds: parseEmailId(id)?.which === "send" ? [parseEmailId(id)!.id] : [],
   });
   const e = d.emails.find((x) => x.id === id);
-  if (!e || e.kind === "unsubscribe" || e.kind === "maya_unsubscribe") notFound();
+  if (!e || isUnsubscribe(e.kind)) notFound();
   const copy = demo ? demoEmailCopy(e, d.families.find((f) => f.id === e.familyId)) : await getEmailCopy(await requireAdmin(), id);
   const path = adminEmailPath(id);
   const ctx = { path, query, demo };
   return (
-    <AdminFrame email={who} title={copy?.subject ?? e.subject} lead={`${EMAIL_LABEL[e.kind]}${e.kind === "alert" ? ", sent to the team about " : " to "}${e.familyName}.`}
+    <AdminFrame email={who} title={copy?.subject ?? e.subject} lead={leadOf(e)}
       actions={<Link className="btn ghost adm-btn" href={`${ADMIN_PATH}/emails${demo ? "?demo=1" : ""}`} prefetch={false}>All emails</Link>}>
       <EmailView e={e} copy={copy} ctx={ctx} now={d.now} />
       {query.family && <FamilyDrawer ctx={ctx} d={d} id={query.family} progress={progress} />}
     </AdminFrame>
   );
+}
+
+/** "Report alert, sent to the team about the Lee family.", "Daily digest, sent to the team.", "Report email to Lee." */
+function leadOf(e: EmailEvent): string {
+  if (!isTeamEmail(e.kind)) return `${EMAIL_LABEL[e.kind]} to ${e.familyName ?? "a parent"}.`;
+  return e.familyName ? `${EMAIL_LABEL[e.kind]}, sent to the team about ${e.familyName}.` : `${EMAIL_LABEL[e.kind]}, sent to the team.`;
 }

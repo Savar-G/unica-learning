@@ -22,7 +22,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   if (!service) return reply(503, { ok: false, error: "unavailable" });
   try {
     const result = await requestDeleteCode(user.id.toLowerCase(), { email: user.email, confirmed: !!user.email_confirmed_at }, {
-      action: { child: id.toLowerCase() }, codes: supabaseDeleteCodes(service), store: childDeleteStore(service, id.toLowerCase()), send: message => sendEmail(message), configProblem: emailConfigProblem,
+      action: { child: id.toLowerCase() }, codes: supabaseDeleteCodes(service), store: childDeleteStore(service, id.toLowerCase()), send: message => sendEmail({ ...message, log: { kind: "child_delete_code", parentId: user.id.toLowerCase() } }), configProblem: emailConfigProblem,
     });
     if (result.ok) return reply(200, result);
     if (result.error === "locked" || result.error === "too_many") return reply(429, { ...result, ...await familyRetryTime(db, result.retryAt) });

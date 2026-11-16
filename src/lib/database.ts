@@ -7,6 +7,7 @@ import type { QuestionRef } from "@/lib/question-package";
 import type { AnonymousTestCopy, AttemptStatus, FactsTest, HelpAnswer, Placement, Province, ReportModel, Route, SkillEvidence, SkillState, SkillStateReason, Stage3Route, StoredTest } from "@/lib/assessment";
 import type { KnownPlan } from "@/lib/parent-plan";
 import type { LogKind, LogStatus } from "@/lib/reminders";
+import type { SendKind, SendOutcome } from "@/lib/email-send-kinds";
 import type { PlanId } from "@/lib/site";
 import type { ScanCalibrationResult } from "@/lib/scan-crops";
 import type { ScanBlockedReason, ScanCalibrationState, ScanJobState, ScanPhotoState } from "@/lib/scan-states";
@@ -51,6 +52,7 @@ type ColumnTypes = KnownColumns<{
   child_plan_states: { kind: KnownPlan["kind"] };
   children: { province: Province; math_help: MathHelp | null };
   email_log: { kind: LogKind; status: LogStatus | null };
+  email_sends: { kind: SendKind; outcome: SendOutcome };
   learning_events: { source: EventSource; question_source: QuestionRef["source"]; result: EventResult; evidence_kind: EvidenceKind | null };
   maya_calls: {
     kind: CallKind; mode: CallRecord["mode"]; question_source: QuestionRef["source"]; status: CallStatus; versions: CallRecord["versions"];

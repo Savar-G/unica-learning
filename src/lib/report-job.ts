@@ -298,7 +298,7 @@ async function alertFailure(transport: MailTransport | undefined, assessmentId: 
   const to = process.env.SIGNUP_NOTIFY_EMAIL;
   if (!to) return;
   const outcome = await sendEmail(
-    { sender: TO_SAVAR, to, subject: `Report FAILED for assessment ${assessmentId}`, text: `The report step failed: ${reason}\nAssessment id: ${assessmentId}` },
+    { sender: TO_SAVAR, to, subject: `Report FAILED for assessment ${assessmentId}`, text: `The report step failed: ${reason}\nAssessment id: ${assessmentId}`, log: { kind: "report_failure_alert" } },
     { transport },
   );
   if (outcome.status !== "sent") console.error("[report] failure alert failed", assessmentId, outcome.status, outcome.error);

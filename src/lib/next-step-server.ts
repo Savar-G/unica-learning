@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { gradeName, withFamilyCardOperation, type Province } from "@/lib/assessment";
 import { emailConfigProblem, sendEmail } from "@/lib/email-delivery";
+import type { SendTag } from "@/lib/email-send-kinds";
 import { SUPPORT_EMAIL, BOOKING_URL } from "@/lib/contact";
 import { waitlistEmail } from "@/lib/founder-emails";
 import type { CardCheckResult, CardResult, NextStepError, ReportSrc, WaitlistResult } from "@/lib/next-step";
@@ -136,7 +137,7 @@ async function startCardHeld(parentId: string, reportId: string, plan: PlanId, s
     origin,
     cancelPath: `${reportPath(report.id)}?card=cancelled#rpt-next`,
   };
-  const alert = (reason: string) => after(() => alertSavar(cardAlert(setup, report, option, src, reason, origin)));
+  const alert = (reason: string) => after(() => alertSavar(cardAlert(setup, report, option, src, reason, origin), { kind: "card_link_alert", parentId, childId: report.child_id }));
 
   if (!s) {
     alert("STRIPE_SECRET_KEY is not set");
@@ -200,7 +201,7 @@ export async function joinWaitlist(parentId: string, reportId: string, origin: s
     parentName: parent.name, childName: report.child!.first_name, curriculum: province === "other" ? null : CURRICULA[province],
     reportUrl: `${origin}${reportPath(report.id)}`, bookingUrl: BOOKING_URL || null,
   });
-  after(() => sendToParent(parent.email, note, "waitlist"));
+  after(() => sendToParent(parent.email, note, "waitlist", { kind: "waitlist_note", parentId, childId: report.child_id }));
   after(() => alertSavar({
     subject: `Waitlist from a report: ${parent.name} (${CURRICULA[province]})`,
     replyTo: parent.email,
@@ -210,13 +211,13 @@ export async function joinWaitlist(parentId: string, reportId: string, origin: s
       ...(parent.postal ? [`Postal code: ${parent.postal}`] : []),
       `Report: ${origin}${reportPath(report.id)}`,
     ].join("\n"),
-  }));
+  }, { kind: "waitlist_alert", parentId, childId: report.child_id }));
   return { ok: true, state: "joined" };
 }
 
 /** A founders' email to a parent, sent without a send key: its caller's row is the guard. Never throws. */
-async function sendToParent(to: string, email: { subject: string; text: string; html: string }, label: string) {
-  const outcome = await sendEmail({ sender: { to: "parent", from: "founders" }, to, replyTo: SUPPORT_EMAIL, ...email });
+async function sendToParent(to: string, email: { subject: string; text: string; html: string }, label: string, log: SendTag) {
+  const outcome = await sendEmail({ sender: { to: "parent", from: "founders" }, to, replyTo: SUPPORT_EMAIL, ...email, log });
   if (outcome.status !== "sent") console.error(`[next-step] ${label} email failed`, outcome.status, outcome.error);
 }
 
@@ -241,10 +242,10 @@ function cardAlert(setup: ReportCardSetup, report: ReportRow, option: PlanOption
  * Emails Savar from EMAIL_FROM (refused when it is not set). Sent
  * without a send key (spec #143): a second click on a plan can alert again, as before.
  */
-async function alertSavar(email: { subject: string; text: string; replyTo: string }) {
+async function alertSavar(email: { subject: string; text: string; replyTo: string }, log: SendTag) {
   const to = process.env.SIGNUP_NOTIFY_EMAIL;
   if (!to) return;
-  const outcome = await sendEmail({ sender: { to: "savar" }, to, replyTo: email.replyTo, subject: email.subject, text: email.text });
+  const outcome = await sendEmail({ sender: { to: "savar" }, to, replyTo: email.replyTo, subject: email.subject, text: email.text, log });
   if (outcome.status === "sent") console.info("[next-step] alert sent:", email.subject.split(":")[0]);
   else console.error("[next-step] alert failed", outcome.status, outcome.error);
 }

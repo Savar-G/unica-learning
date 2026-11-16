@@ -55,5 +55,5 @@ const noAddress: MailTransport = { send: async () => ({ status: "refused", error
 
 /** Sends the alert once. `to`: SIGNUP_NOTIFY_EMAIL, the address of the other internal alerts; with none, it is refused and tried again. */
 export function sendPlanStartAlert(rows: CardRows, row: CardRow, start: PlanStart, { to, origin, transport }: { to: string | null; origin: string; transport?: MailTransport }): Promise<SendOutcome> {
-  return sendEmailOnce(alertLedger(rows), { cardId: row.cardId, generation: start.generation }, { sender: { to: "savar" }, to: to ?? "", ...planStartAlertEmail(row.cardId, origin, row.deletionQueued) }, { transport: to ? transport : noAddress });
+  return sendEmailOnce(alertLedger(rows), { cardId: row.cardId, generation: start.generation }, { sender: { to: "savar" }, to: to ?? "", ...planStartAlertEmail(row.cardId, origin, row.deletionQueued), log: { kind: "plan_start_alert" } }, { transport: to ? transport : noAddress });
 }

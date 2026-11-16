@@ -155,6 +155,7 @@ async function giveUp<H>(run: ReportRetryRun<H>, test: DueRetry): Promise<boolea
     sender: { to: "savar" },
     to: run.alertTo,
     subject: `Report still not sent for assessment ${test.assessmentId}`,
+    log: { kind: "report_retry_alert" },
     text: [
       `The report step was retried ${test.attempts} times after the finish, and the test still has no report, or its parent email did not go.`,
       `No more retries run. The parent page says the result is taking longer than it should.`,

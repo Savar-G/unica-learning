@@ -36,7 +36,7 @@ function fixture() {
   }) });
   f.stripe = client;
   f.db = {
-    from: () => { const chain = { select: () => chain, eq: () => chain, maybeSingle: async () => ({ data: { stripe_customer_id: "cus", child: { first_name: "Iris" } }, error: null }) }; return chain; },
+    from: () => { const chain = { select: () => chain, eq: () => chain, maybeSingle: async () => ({ data: { stripe_customer_id: "cus", child: { id: "child", first_name: "Iris" } }, error: null }) }; return chain; },
     rpc: async (name: string, args: { p_state?: string; p_parent?: string }) => {
       if (name === "admit_plan_cancel") { if (open) return { data: null, error: null }; open = true; return lostAdmission ? { data: null, error: { message: "admission answer lost" } } : { data: "operation", error: null }; }
       if (name === "due_plan_cancel_alerts") return { data: open && !claimed ? [{ id: "operation", parent_id: "parent", created_at: createdAt }] : [], error: null };

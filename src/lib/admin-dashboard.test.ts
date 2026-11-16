@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { LOG_KINDS } from "@/lib/email-log-kinds";
+import { PARENT_SEND_KINDS, SEND_KINDS, TEAM_SEND_KINDS } from "@/lib/email-send-kinds";
 import { familyPlanWords } from "@/lib/family-plan-words";
 import { EMAIL_KINDS, STAGE_ACTION, activities, buildDashboard, buildFamilies, clickable, clicksText, deliveryLine, emailFailed, dayKey, monthlyAmount, pickRange, rangeDays, shiftDay, type DashboardRows, type RawEmail, type RawSubscription } from "@/lib/admin-dashboard";
 
@@ -438,8 +439,12 @@ describe("every email log kind (B1)", () => {
     expect(EMAIL_KINDS.map((k) => k.kind)).toEqual([
       "start", "start_followup", "continue", "come_back", "report", "alert", "unsubscribe", "maya_daily", "maya_weekly",
       "maya_unsubscribe", "monthly_summary", "monthly_summary_unsubscribe", "scan_inactivity", "first_pages",
+      ...PARENT_SEND_KINDS, "workbook_welcome", "workbook_ready", "workbook_dispatch", ...TEAM_SEND_KINDS,
     ]);
-    for (const kind of LOG_KINDS) expect(EMAIL_KINDS.some((k) => k.kind === kind)).toBe(true);
+    for (const kind of [...LOG_KINDS, ...SEND_KINDS]) expect(EMAIL_KINDS.some((k) => k.kind === kind)).toBe(true);
+    // Each kind says who gets it: a parent, the team, or nobody (an unsubscribe).
+    for (const kind of TEAM_SEND_KINDS) expect(EMAIL_KINDS.find((k) => k.kind === kind)?.to).toBe("You");
+    for (const kind of PARENT_SEND_KINDS) expect(EMAIL_KINDS.find((k) => k.kind === kind)?.to).toBe("Parent");
   });
 
   it.each(LOG_KINDS)("builds the dashboard with a %s row", (kind) => {
