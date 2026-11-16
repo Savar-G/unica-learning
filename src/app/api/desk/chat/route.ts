@@ -1,3 +1,4 @@
+import { monitorProduct } from "@/lib/product-monitoring";
 import { runChat, type ChatAction } from "@/lib/maya-chat-server";
 import { deskChatContext } from "@/lib/desk-chat-request";
 import { isUuid } from "@/lib/workbook-content";
@@ -26,6 +27,7 @@ export async function POST(request: Request) {
   if (action.type === "child" && (!isUuid(action.messageId) || typeof action.text !== "string" || !action.text.trim() || action.text.length > MAX_CHILD_TEXT)) return json({ error: "invalid" }, 400);
   // B1: the board's word on Maya's batches, read strictly (at most 32, each a known fate).
   if (action.type === "child" && action.fates !== undefined && readFateReports(action.fates) === null) return json({ error: "invalid" }, 400);
+  let failureObserved = false;
   try {
     const gate = await deskChatContext(request);
     if (!gate.ok) return json({ error: gate.error }, gate.status);
@@ -33,17 +35,20 @@ export async function POST(request: Request) {
     // Every answer before that (each refusal, busy, done, the cap, a failure) is the JSON reply, as for older desks.
     const ctx = gate.ctx;
     if (action.type === "child" && (request.headers.get("accept") ?? "").includes(CHAT_STREAM_TYPE)) {
-      const ran = await chatStream((say) => runChat(ctx, action, { say }), (work) => {
+      const ran = await chatStream(async (say) => {
+        try { return await runChat(ctx, action, { say }); }
+        catch (error) { failureObserved = true; monitorProduct("maya.failed", { callId: action.id, step: "stream" }); throw error; }
+      }, (work) => {
         // A reader that goes away never stops the turn: the function stays until the turn is saved.
-        try { after(work); } catch { /* Outside a request (tests): the turn runs on in this process. */ }
+        try { after(work); } catch { monitorProduct("maya.recovery_failed", { callId: action.id, step: "schedule" }); }
       });
       if ("failed" in ran) throw ran.failed;
       if ("reply" in ran) return json(ran.reply);
       return new Response(ran.stream, { status: 200, headers: { "Content-Type": `${CHAT_STREAM_TYPE}; charset=utf-8`, "Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no" } });
     }
     return json(await runChat(ctx, action));
-  } catch (error) {
-    console.error("[desk chat] request failed", error instanceof Error ? error.message : "unknown");
+  } catch {
+    if (!failureObserved) monitorProduct("maya.failed", { callId: action.id, step: "chat" });
     return json({ error: "unavailable" }, 503);
   }
 }

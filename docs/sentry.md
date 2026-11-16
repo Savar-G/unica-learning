@@ -106,3 +106,11 @@ still passes and the stack traces stay minified. The release is the commit SHA.
 - Use `Sentry.logger.*` or `console.warn`/`console.error` for a new log. Never put a child's work, a name or an email in
   a log line: the scrubber hides emails and tokens, not names.
 - New AI calls through `openRouterClient` get a span by themselves. Pass `feature` so the AI view groups them.
+
+## Handled product events
+
+The repository also defines fixed product events for scans, Maya, feedback, and handled dashboard failures.
+Success uses structured info logs. Unexpected failures create fixed-code issues.
+Optional Slack alerts send only codes, counts, and protected admin links from Vercel Production.
+See [product-monitoring.md](product-monitoring.md) for the event matrix, configuration, verification, and voice-worker limits.
+This section describes code. It does not confirm live configuration or delivery.

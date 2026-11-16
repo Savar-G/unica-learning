@@ -145,3 +145,9 @@ describe("scrubRecordingEvent", () => {
     expect(scrubRecordingEvent(snapshot)).toEqual({ type: 2, data: { node: { href: "/x?y=1" } } });
   });
 });
+
+it("removes Slack webhook credentials from URLs, span names, and free error text", () => {
+  const webhook = "https://hooks.slack.com/services/TEXAMPLE/BEXAMPLE/synthetic-secret";
+  expect(scrubUrl(webhook)).toBe("https://hooks.slack.com/services/[hidden]");
+  expect(scrubText(`request failed: ${webhook}`)).not.toContain("synthetic-secret");
+});

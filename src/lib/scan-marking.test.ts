@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { setProductObserver, type ProductEvent } from "@/lib/product-monitoring";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { expectedItems, firstObservation, itemKey, markingEvent, observationProblem, PHOTO_ISSUES, type Observation } from "@/lib/scan-observation";
 import { markingAiTimeout, MARKING_AI_TIMEOUT_MS, MARKING_MAX_DEFERRALS, MARKING_MAX_DISPATCHES, MARKING_MAX_TRANSPORT_DISPATCHES, MARKING_RETRY_WAIT_CAP_MS, MARKING_RETRY_WAIT_MS, type MarkingFailure, MARKING_MIN_AI_MS, TWO_WAYS_METHOD_MARKS, waitsForTeam, effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_ESCALATION_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, MARKING_ESCALATION_MODEL, MARKING_ESCALATION_PROMPT_VERSION, type MarkingEscalation, readMarkingOutput, runScanMarking, validMarkingOutput, unfinishedPage, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRunOptions, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
@@ -161,7 +162,7 @@ class Store implements MarkingStore {
   constructor(...frames: MarkingFrame[]) { for (const f of frames) this.frames.set(f.photo, f); }
   async frame(ref: MarkingRef) { return this.deleted ? null : this.frames.get(ref.photo) ?? null; }
   live(ref: MarkingRef, token: string) { const j = this.jobs.get(ref.photo); return !this.frozen && !this.deleted && !this.terminal.has(ref.photo) && j?.token === token && j.until > this.clock; }
-  async claim(ref: MarkingRef, token: string, f: MarkingFrame) {
+  async claim(ref: MarkingRef, token: string, f: MarkingFrame): ReturnType<MarkingStore["claim"]> {
     if (ref.parent !== f.parentId || this.terminal.has(ref.photo) || this.frozen || this.deleted) return "terminal" as const;
     if ([...this.jobs.values()].some((j) => !j.done && j.until > this.clock)) return "busy" as const;
     for (const e of expectedItems(f)) if (!this.items.has(itemKey(e.identity))) this.items.set(itemKey(e.identity), { expected: e, observation: firstObservation(e, ref.photo), originalEvent: null, eventId: null, at: new Date(this.clock).toISOString(), model: null, prompt: null });
@@ -348,6 +349,14 @@ describe("#868: a clean 429 waits, frees its hold and defers the photo; every ot
   }
   const answer = { answer: output(["0", "12", "9"]), cost: 2_000 };
 
+  it("logs a clean main-read deferral after the store confirms it", async () => {
+    const observer = vi.fn(); setProductObserver(observer);
+    const s = new Store(frame());
+    expect(await timedRun(s, "photo-a", scripted([{ failure: rateLimit(60_000) }]), "a")).toBe("pending");
+    expect(s.jobs.get("photo-a")!.deferrals).toBe(1);
+    expect(observer).toHaveBeenCalledExactlyOnceWith({ code: "scan.marking_deferred", attributes: { status: "pending" } });
+  });
+
   it("waits the Retry-After of a 429, retries, and frees the 429's hold", async () => {
     const s = new Store(frame()), waits: number[] = [], requests: AiJsonRequest[] = [];
     expect(await timedRun(s, "photo-a", scripted([{ failure: rateLimit(3_000) }, answer], requests), "a", waits)).toBe("finished");
@@ -491,8 +500,9 @@ describe("#868: a clean 429 waits, frees its hold and defers the photo; every ot
       // Every other dispatch was settled exactly once.
       for (const id of s.spend.keys()) if (id !== failing) expect(s.settles.filter((x) => x === id)).toHaveLength(1);
     }
-    // Each settle that failed twice is logged once, with no ids.
-    expect(log).toHaveBeenCalledTimes(2);
+    // Each settle that failed twice is logged once. The handled product failure has a separate fixed code.
+    expect(log.mock.calls.filter(([message]) => message === "scan.marking_failed")).toHaveLength(2);
+    expect(log.mock.calls.filter(([message]) => message !== "scan.marking_failed")).toHaveLength(2);
     expect(JSON.stringify(log.mock.calls)).not.toMatch(/d0|d1|photo-a/);
     log.mockRestore();
   });
@@ -1507,6 +1517,26 @@ describe("the second look: unsure answers are read once more by the escalation m
   const go = (s: Store, first: MarkingClientFactory, escalate?: MarkingClientFactory) => runScanMarking(s, { parent: P, photo: "photo-esc" }, "photo-esc", first, () => new Date(s.clock).toISOString(), { escalate });
   const item = (s: Store, n: number) => [...s.items.values()].find((m) => m.expected.number === n)!.observation;
 
+  it.each(["clean", "unconfirmed", "settlement-error", "unknown"] as const)("classifies a second-look failure only after settlement: %s", async kind => {
+    const observer = vi.fn<(event: ProductEvent) => void>(); setProductObserver(observer);
+    const s = withOpus(new Store(f()));
+    s.refuseClean = kind === "unconfirmed";
+    if (kind === "settlement-error") s.settleFails.add("d1");
+    const escalation: MarkingClientFactory = before => ({
+      client: { model: MARKING_ESCALATION_MODEL, async json() { await before(); throw Error("PRIVATE provider diagnostic"); } },
+      costMicros: () => null,
+      failure: () => kind === "unknown" ? null : rateLimit(60_000),
+    });
+    expect(await go(s, client(output(["0", null, "9"])), escalation)).toBe("finished");
+    expect(item(s, 2)).toMatchObject({ state: "pending", result: null });
+    const codes = observer.mock.calls.map(([event]) => event.code);
+    expect(codes.filter(code => code === "scan.marking_failed")).toHaveLength(kind === "clean" ? 0 : 1);
+    expect(codes.filter(code => code === "scan.marking_deferred")).toHaveLength(kind === "clean" ? 1 : 0);
+    expect(codes).toContain("scan.marking_team_pending");
+    expect(s.settles).toEqual(["d0", "d1"]);
+    expect(JSON.stringify(observer.mock.calls)).not.toContain("PRIVATE");
+  });
+
   it("sends only the unsure items, with the second-look rule, and its certain mark stands", async () => {
     const s = withOpus(new Store(f())), asked: AiJsonRequest[] = [];
     expect(await go(s, client(output(["0", null, "9"])), client(second("12"), asked, 3_000, MARKING_ESCALATION_MODEL))).toBe("finished");
@@ -1656,4 +1686,31 @@ describe("unfinished pages (scan edge sweep, 2026-11-14)", () => {
     expect(unfinishedPage(marks, all.map((o, n) => n === 2 ? { ...o, state: "pending" as const, result: null } : o))).toBe(false);
     expect(unfinishedPage(marks.map((m) => ({ ...m, observation: { ...m.observation, state: "scored" as const, result: "right" as const } })), all)).toBe(false);
   });
+});
+
+
+beforeEach(() => { vi.clearAllMocks(); setProductObserver(null); });
+afterEach(() => { setProductObserver(null); vi.restoreAllMocks(); });
+it("reports committed marking completion separately from team checks and emits no completion from reads or finished retries", async () => {
+  const events: ProductEvent[] = []; setProductObserver((event) => { events.push(event); });
+  for (const unsure of [false, true]) {
+    const photo = unsure ? "team-photo" : "complete-photo", s = new Store(frame(photo));
+    // Keep this test's fake claim consistent with the SQL's finished-job guard.
+    const claim = s.claim.bind(s);
+    s.claim = async (ref, token, f) => s.jobs.get(ref.photo)?.done ? "unavailable" : claim(ref, token, f);
+    expect(await run(s, photo, client(output(unsure ? ["0", null, "9"] : ["0", "12", "9"])))).toBe("finished");
+    expect(events.at(-1)?.code).toBe(unsure ? "scan.marking_team_pending" : "scan.marking_complete");
+    const count = events.length;
+    await s.effective(P, C);
+    expect(await run(s, photo, client(output(["0", "12", "9"])))).toBe("unavailable");
+    expect(events).toHaveLength(count);
+  }
+  expect(JSON.stringify(events)).not.toMatch(/SECRET|EXAMPLE|readAnswerText|private-item/);
+});
+it("reports an unexpected provider failure that becomes pending without a false completion", async () => {
+  const events: ProductEvent[] = []; setProductObserver((event) => { events.push(event); });
+  const s = new Store(frame());
+  expect(await run(s, "photo-a", client(async () => { throw Error("PRIVATE CHILD WORDS"); }))).toBe("pending");
+  expect(events.map((e) => e.code)).toEqual(["scan.marking_failed"]);
+  expect(JSON.stringify(events)).not.toContain("PRIVATE");
 });

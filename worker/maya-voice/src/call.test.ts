@@ -2,7 +2,8 @@ import { ReadableStream, type ReadableStreamDefaultController } from "node:strea
 import { EventEmitter } from "node:events";
 import { initializeLogger, llm, normalizeLanguage, stt, voice } from "@livekit/agents";
 import { AudioFrame, TrackPublishOptions } from "@livekit/rtc-node";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setProductObserver } from "@/lib/product-monitoring";
 import { createBoardReceiver, createBoardSender } from "@/lib/board-protocol";
 import { createMemoryTransport } from "@/lib/board-protocol-memory";
 import { createBoardSpeech, type CueMeasurement } from "@/lib/board-speech";
@@ -127,9 +128,12 @@ const waitFor = async (check: () => boolean, what: string, ms = 10_000) => {
 };
 
 let cleanup: (() => Promise<void>) | null = null;
+beforeEach(() => { vi.clearAllMocks(); setProductObserver(null); });
 afterEach(async () => {
   await cleanup?.();
   cleanup = null;
+  setProductObserver(null);
+  vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs();
 });
 
 async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["spend"]; speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel; board?: boolean; timestamps?: boolean; workbookReference?: string } = {}) {
@@ -417,6 +421,16 @@ async function controlledRun(c: Awaited<ReturnType<typeof voiceCall>>, call = c.
 }
 
 describe("R408 controlled probes through public interfaces", () => {
+  it.each([true, false])("records a provider failure without its private diagnostic, recoverable=%s", async recoverable => {
+    const c = await voiceCall(); const r = await controlledRun(c);
+    const observer = vi.fn(); setProductObserver(observer);
+    r.session.emit(voice.AgentSessionEventTypes.Error, voice.createErrorEvent({ type: "stt_error", timestamp: T0, label: "PRIVATE", error: Error("PRIVATE"), recoverable }));
+    expect(observer).toHaveBeenCalledWith({ code: recoverable ? "maya.voice_provider_retry" : "maya.voice_provider_failed", attributes: { callId: c.id, step: "voice" } });
+    expect(JSON.stringify(observer.mock.calls)).not.toContain("PRIVATE");
+    if (recoverable) expect(r.run.done).toBeNull();
+    else await r.run.done;
+    await r.run.hangUp();
+  });
   it("R408-1 preflight.ts: commits only the completed corrected child turn, once", async () => {
     const speech = new ProbeSTT();
     const c = await voiceCall({ speech });

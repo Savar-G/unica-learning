@@ -1,5 +1,6 @@
+import { setProductObserver } from "@/lib/product-monitoring";
 import { memoryWordingHistoryStore } from "@/lib/maya";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { templateSkills } from "@/lib/assessment";
 import { recordSendsWith } from "@/lib/email-delivery";
 import { memoryTransport } from "@/lib/email-delivery-memory";
@@ -270,4 +271,17 @@ describe("a request for harmful content (#383 C29)", () => {
     expect(r.view.alerts).toEqual([]);
     expect(s.mail.delivered).toHaveLength(0);
   });
+});
+
+
+beforeEach(() => { vi.clearAllMocks(); setProductObserver(null); });
+afterEach(() => { setProductObserver(null); vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+it("emits a saved safety flag once without child words, including on repeated end", async () => {
+  const observer = vi.fn(); setProductObserver(observer);
+  const s = setup(); await s.start();
+  const flagged = await s.say(HURT);
+  await s.end();
+  const safety = observer.mock.calls.filter(([e]) => e.code === "maya.safety_flagged");
+  expect(safety).toEqual([[{ code: "maya.safety_flagged", attributes: { callId: flagged.view.id, kind: "admin_test", mode: "text", flag: "safety_concern" } }]]);
+  expect(JSON.stringify(safety)).not.toContain(HURT);
 });

@@ -1,3 +1,4 @@
+import { monitorProduct } from "@/lib/product-monitoring";
 import { deskChatContext } from "@/lib/desk-chat-request";
 import { runVoice, voiceGate } from "@/lib/maya-voice-desk-server";
 import type { DeskVoiceReply, VoiceAction } from "@/lib/maya-voice-desk";
@@ -34,8 +35,8 @@ export async function POST(request: Request) {
     // A new call and a new ticket need voice open to this child. Reading and cancelling a call need only the desk.
     if ((action.type === "start" || action.type === "token") && await voiceGate(gate.ctx.db, gate.ctx.parent, gate.ctx.grade, gate.ctx.child) !== "open") return refused("unavailable", 403);
     return json(await runVoice(gate.ctx, action));
-  } catch (error) {
-    console.error("[desk voice] request failed", error instanceof Error ? error.message : "unknown");
+  } catch {
+    monitorProduct("maya.failed", { callId: action.id, step: "voice" });
     return refused("unavailable", 503);
   }
 }

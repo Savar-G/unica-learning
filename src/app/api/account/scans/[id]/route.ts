@@ -1,3 +1,4 @@
+import { monitorProduct, productAfter } from "@/lib/product-monitoring";
 import { randomUUID } from "node:crypto";
 import { after } from "next/server";
 import { isUuid } from "@/lib/workbook-content";
@@ -33,7 +34,7 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
   // "Use this new photo instead" (scan edge sweep #4): the page's ready photo, not sent, that this new photo replaces.
   const replace = new URL(request.url).searchParams.get("replace");
   const start = await admin.rpc("start_scan_photo", { p_parent: parent, p_id: id });
-  if (start.error) return scanJson({ error: "unavailable" }, 503);
+  if (start.error) { monitorProduct("scan.upload_failed", { photoId: id }); return scanJson({ error: "unavailable" }, 503); }
   if (["pending", "saved"].includes(start.data)) return scanJson({ photo: await scanView(admin, parent, id) });
   if (start.data !== "started") return scanJson({ error: start.data }, 409);
   // The page a duplicate refusal names, and the photo it may replace (#4): the parent is told "Page 27 is already scanned".
@@ -70,25 +71,26 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
     const page = pages[mine];
     const uploaded = await admin.storage.from(SCAN_BUCKET).upload(scanPath(parent, id), page.bytes, { contentType: "image/jpeg", upsert: false, cacheControl: "0" });
     // A lost Storage response is uncertain. Keep the reservation and reconcile on GET/retry/expiry.
-    if (uploaded.error) return scanJson({ error: "uncertain" }, 503);
+    if (uploaded.error) { monitorProduct("scan.upload_failed", { photoId: id }); return scanJson({ error: "uncertain" }, 503); }
     // The unfinished page's photo goes only now, in the same transaction that binds and stores this one.
     const finished = replaces
       ? await admin.rpc("replace_unfinished_scan_photo", { p_parent: parent, p_id: id, p_token: page.token, p_width: page.width, p_height: page.height, p_bytes: page.bytes.length })
       : await admin.rpc("finish_scan_photo", { p_parent: parent, p_id: id, p_bytes: page.bytes.length });
     // A lost answer (of the swap too) is reconciled by the GET: a swap that ran left this photo pending; one that did not
     // leaves the old photo, and this one (never bound to the page) is refused.
-    if (finished.error) return scanJson({ error: "uncertain" }, 503);
+    if (finished.error) { monitorProduct("scan.upload_failed", { photoId: id }); return scanJson({ error: "uncertain" }, 503); }
     if (finished.data !== "pending") throw new Error(finished.data);
+    monitorProduct("scan.upload_committed", { photoId: id, count: 1 });
     if (replaces) await cleanupScanPhoto(admin, parent, replaces);
     // Speed (#915): the page check starts here, as soon as the photo is stored, instead of waiting for the page to save
     // the photo, list the stack again and ask. The job is the same one the preview route runs, under the same lease: a
     // later ask gets its result, a busy family slot leaves it to that ask, and any error leaves the photo as it was.
     // Only when most of this request's time is left: the job shares the upload's time limit (maxDuration), and a job
     // cut off mid-run would hold the family's check slot until its lease ends. Otherwise the page's ask runs it.
-    if (Date.now() - received < UPLOAD_CHECK_BUDGET_MS) after(async () => {
+    if (Date.now() - received < UPLOAD_CHECK_BUDGET_MS) productAfter(after, async () => {
       try { if (await scanChecksAccess(admin, parent, process.env, { photo: id })) await runScanCrops(scanCropStore(admin), { parent, photo: id }, randomUUID()); }
-      catch { /* the page asks again */ }
-    });
+      catch { monitorProduct("scan.check_failed", { photoId: id }); }
+    }, "scan.check_failed", { photoId: id });
     const photo = await scanView(admin, parent, id);
     // The other page of a spread: only when this photo took the first page (a first page already scanned leaves nothing).
     let other = mine === 0 && pages.length === 2 && photo ? await spreadPhoto(admin, parent, photo.child_id, pages[1], received, session.childOpen) : null;
@@ -99,6 +101,7 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
     }
     return scanJson(other ? { photo, spread: other } : { photo });
   } catch (error) {
+    if (!(error instanceof Error) || !["qr", "size", "page", "duplicate", "flat", "image", "expired", "refused", "deleted"].includes(error.message)) monitorProduct("scan.upload_failed", { photoId: id });
     await admin.rpc("change_scan_photo", { p_parent: parent, p_id: id, p_action: "reject" });
     await cleanupScanPhoto(admin, parent, id);
     const code = error instanceof Error && ["qr", "size", "page", "duplicate", "flat"].includes(error.message) ? error.message : "image";
@@ -218,20 +221,21 @@ async function spreadPhoto(admin: SupabaseClient<Database>, parent: string, chil
     if (state === null) {
       const recovered = await admin.rpc("recover_scan_photo", { p_parent: parent, p_id: id });
       state = recovered.error ? null : recovered.data;
-      if (state === null || state === "waiting") return { id, state: "uncertain" };
+      if (state === null || state === "waiting") { monitorProduct("scan.upload_failed", { photoId: id }); return { id, state: "uncertain" }; }
     }
     if (state !== "pending") return fail(state);
+    monitorProduct("scan.upload_committed", { photoId: id, count: 1 });
     // Nobody else saves this photo, so it is saved here, as the page saves the photo it uploaded.
     const saved = await admin.rpc("change_scan_photo", { p_parent: parent, p_id: id, p_action: "save" });
     if (saved.error || saved.data !== "saved") return { id, state: "pending" };
-    if (Date.now() - received < UPLOAD_CHECK_BUDGET_MS) after(async () => {
+    if (Date.now() - received < UPLOAD_CHECK_BUDGET_MS) productAfter(after, async () => {
       try {
         if (!await scanChecksAccess(admin, parent, process.env, { photo: id })) return;
         if ((await runScanCrops(scanCropStore(admin), { parent, photo: id }, randomUUID())).status === "ready") await startPhotoCheck(admin, parent, id, (run) => run());
-      } catch { /* the page asks again */ }
-    });
+      } catch { monitorProduct("scan.check_failed", { photoId: id }); }
+    }, "scan.check_failed", { photoId: id });
     return { id, state: "saved" };
-  } catch { return fail("unavailable"); }
+  } catch { monitorProduct("scan.upload_failed", { photoId: id }); return fail("unavailable"); }
 }
 
 export async function POST(request: Request, { params }: RouteContext<"/api/account/scans/[id]">) {
@@ -244,13 +248,13 @@ export async function POST(request: Request, { params }: RouteContext<"/api/acco
   // #915 (Savar's review): a page check that finished at upload, before the page first listed the photo, leaves the
   // page nothing to ask, so the photo check starts here once the photo is saved. A claim is taken once per photo.
   const { admin, parent } = session;
-  after(async () => {
+  productAfter(after, async () => {
     try {
       if (!await scanChecksAccess(admin, parent, process.env, { photo: id })) return;
       if ((await readScanPreview(scanCropStore(admin), { parent, photo: id })).status !== "ready") return;
       await startPhotoCheck(admin, parent, id, (run) => run());
-    } catch { /* the page's preview ask starts it */ }
-  });
+    } catch { monitorProduct("scan.check_failed", { photoId: id }); }
+  }, "scan.check_failed", { photoId: id });
   return scanJson({ photo: await scanView(session.admin, session.parent, id) });
 }
 
