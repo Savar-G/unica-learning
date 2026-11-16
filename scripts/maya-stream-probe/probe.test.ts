@@ -97,22 +97,18 @@ it("refuses other tables, RPCs, IDs and family identities before transport", asy
   expect(send).not.toHaveBeenCalled();
 });
 
-it("proves six process controls and rejects the two existing sweep settlement failures", async () => {
+it("proves all eight process cases including late sweep settlement", async () => {
   // Falsifier: pending words or drawings survive, confirmed help disappears, recovery asks a model,
   // a child/event/note duplicates, a stale owner writes, or the new process does not see persisted rows.
   const fake = await fakeDatabase();
   const output: { timings: Timing[]; dispatches?: { index: number; afterOwnerResponseMs: number }[] }[] = [];
   const config = { url: PROJECT_URL, key: "local-fake", fakePort: fake.port };
   try {
-    const proof = await runProbe(config, (r: { timings?: Timing[]; dispatches?: { index: number; afterOwnerResponseMs: number }[] }) => { if (r.timings) output.push({ timings: r.timings, dispatches: r.dispatches }); }).then(() => { throw Error("The pinned core unexpectedly passed the known sweep blocker. Remove this characterization after its repair."); }, error => error as { failures: { index: number; error: string }[]; results: { writer: { pid: number; stopped: boolean }; reader: null | { pid: number; notes: number; appended: number; proposals: number; reviewCalls: number }; verified: { id: string; pid: number; stopped: boolean; proposals: number; reviewCalls: number; appended: number; notes: number; rebuilt: number } }[] });
-    // The runner keeps its required technical_issue assertion. A time_limit result never becomes a pass.
-    expect(proof.failures).toEqual([
-      { index: 2, error: expect.stringContaining("confirmed prefix only (time_limit)") },
-      { index: 5, error: expect.stringContaining("confirmed prefix only (time_limit)") },
-    ]);
-    expect(proof.results).toHaveLength(6);
+    const proof = await runProbe(config, (r: { timings?: Timing[]; dispatches?: { index: number; afterOwnerResponseMs: number }[] }) => { if (r.timings) output.push({ timings: r.timings, dispatches: r.dispatches }); });
+    // Every interrupted case must retain technical_issue, including a sweep after the call's time limit.
+    expect(proof.results).toHaveLength(8);
     expect(fake.rows.size).toBe(8);
-    expect(proof.results?.map(r => r.verified.id)).toEqual(IDS.filter((_, i) => i !== 2 && i !== 5));
+    expect(proof.results?.map(r => r.verified.id)).toEqual(IDS);
     expect(proof.results?.every(r => r.writer.stopped && r.verified.stopped && r.writer.pid !== r.verified.pid)).toBe(true);
     for (const row of proof.results ?? []) {
       expect(row.verified.proposals + row.verified.reviewCalls + row.verified.appended + row.verified.notes + row.verified.rebuilt).toBe(0);
@@ -131,7 +127,7 @@ it("proves six process controls and rejects the two existing sweep settlement fa
       expect(samples.every(t => t.status === 200 && t.rows === 1 && t.ms >= 0)).toBe(true);
     }
     for (const phase of ["old_owner_checkpoint", "old_owner_final_save"]) {
-      expect(timings.filter(t => t.phase === phase)).toHaveLength(4);
+      expect(timings.filter(t => t.phase === phase)).toHaveLength(6);
       expect(timings.filter(t => t.phase === phase).every(t => t.status === 200 && t.rows === 0)).toBe(true);
     }
     expect(fake.requests.every(r => r.path === `/rest/v1/${TABLE}` && r.ids.every(id => IDS.includes(id)))).toBe(true);

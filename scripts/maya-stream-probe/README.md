@@ -8,11 +8,11 @@ Default invocation sends no request and reads no key:
 node scripts/maya-stream-probe/run.mjs
 ```
 
-## Current release blocker
+## Late sweep settlement
 
 At source `6eb24aec76a789bc21f03be49be1f897356a2680`, an abandoned incomplete reply settles as `time_limit` when the public sweep runs after the call limit. The required result is an unknown-priority `technical_issue`. The clock branch in `src/lib/maya/session.ts` runs before its technical event branch. Both pending-only and confirmed-prefix sweep cases fail the runner's strict outcome assertion. Retry and direct end use the same source and pass below the limit.
 
-The runner does not accept `time_limit` in those cases. It records each case failure, continues the bounded remaining cases, and exits with failure. The local suite characterizes this existing defect and confirms that the runner rejects it. A passing local suite is not a passing eight-case probe. The lead must repair and review the shared reader rule before activation. Remove the local characterization after the repair and require all eight cases to pass. This child changes no actual-call protocol.
+The repair lets a recorded technical failure keep its cause after the clock limit. Safety, content and solved outcomes retain their priority, and recorded duration stays capped. Normal elapsed calls still end as `time_limit`. The public session checks fail on the earlier source at and after the time limit. The local transport suite now requires all eight process cases to pass, including both sweep cases. It does not accept `time_limit` for an incomplete stream with unknown final priority. Hosted proof and independent review remain required before activation.
 
 ## Scope and boundaries
 
@@ -29,7 +29,7 @@ This is a mapped-table persistence probe. It does not prove the production admis
 
 ## Lead procedure
 
-1. Review the SQL and runner. Repair the sweep blocker. Run the eight-case local transport proof with all cases required to pass. Complete independent review and CI.
+1. Review the SQL, runner and late-sweep repair. Run the eight-case local transport proof with all cases required to pass. Complete independent review and CI.
 2. Verify the hosted project `cdjobwsyzndtltzfpyqa` and current migration history. Check the new prefix against live history and current `origin/main`. The child checked the local and existing origin tree. The latest live version supplied by the lead was `20261116190648 scan_send_receipt`.
 3. Apply only `supabase/migrations/20261116192537_maya_stream_probe_calls.sql` through the lead's Supabase MCP. Verify the returned version, table columns, RLS, service privileges and lack of FKs, triggers and policies. Probe invalid identities, including NULL workbook IDs and a non-fake model, in a rolled-back transaction. Verify that browser roles cannot select or mutate the table. Do not add a grant to fix browser denial.
 4. Run `npm run db:types` and `npm run db:checks`. Commit both generated files in this PR. The child leaves both untouched. Do not hand-edit either file or bypass query types.
