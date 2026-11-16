@@ -3,30 +3,36 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import { AiUsagePage, UsageDetails } from "@/components/admin-ai-usage";
-import { parseUsage, periodFor, type OpenRouterBilling } from "@/lib/admin-ai-usage";
+import { parseUsage, periodFor } from "@/lib/admin-ai-usage";
+import { parseWorkspaceUsage, workspaceActivityUrl, type WorkspaceReading } from "@/lib/openrouter-workspace";
+import fixtures from "@/lib/openrouter-workspace.fixtures.json";
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
-const billing: OpenRouterBilling = { checkedAt: "2026-11-16T18:00:00Z", account: { source: "billing", keyId: "a".repeat(64), status: "ok", spentUsd: 64.63, creditsUsd: 65, balanceUsd: 0.37 }, month: { monthUsd: 4.28, asked: 1, answered: 1, keys: [{ label: "main (safe-id)", monthUsd: 4.28 }] } };
+const workspace: WorkspaceReading = { status: "ok", usage: parseWorkspaceUsage(fixtures.workspace.response, fixtures.model.response, fixtures.api_key_id.response)! };
+const period = periodFor("30d", Date.parse("2026-11-16T20:00:00Z"));
 const view = parseUsage({ totals: { cost_usd: 2.92, calls: 990 }, dimensions_version: 1, lifetime_receipts: [{ key_id: "a".repeat(64), cost_usd: 1 }], dimensions: [{ context: "practice", feature: "maya", provider: "openrouter", model: "m", key_alias: "local", key_id: "a".repeat(64), cost_usd: 1, calls: 1 }, { parent_id: "p", child_id: "c1", parent_name: "Parent", child_name: "Ada", context: "test-family", feature: "marking", provider: "subscription", model: "m", cost_usd: null, calls: 2 }] });
-const render = (v = view, b = billing) => renderToStaticMarkup(createElement(AiUsagePage, { view: v, billing: b, period: periodFor("30d", Date.parse(b.checkedAt)), rate: 1.4 }));
+const render = (v = view, w: WorkspaceReading = workspace) => renderToStaticMarkup(createElement(AiUsagePage, { view: v, workspace: w, period, rate: 1.4 }));
 
-it("shows large account spend, smaller key-month usage and a small recorded subtotal without asserting a false gap", () => {
+it("shows only Unica workspace charges, all native key/model groups and separate incomplete app data", () => {
   const html = render();
-  for (const text of ["Account lifetime spent", "USD 64.63", "USD 65.00", "USD 0.37", "USD 4.28", "Recorded app cost", "USD 2.92", "USD 63.63", "Unreconciled / unassigned", "2026-11-16T18:00:00Z", "practice", "test-family", "Ada", "No child assigned", "No per-call charge"]) expect(html).toContain(text);
-  expect(html).not.toContain("every paid call has a cost");
-  expect(html).not.toContain("Not recorded</dt>");
-  expect(html).not.toContain("Total cost</dt>");
+  for (const text of ["Workspace spend (USD)", "USD 56.741652", "20,281", "Recorded app cost", "USD 2.92", "practice", "test-family", "Ada", "No child assigned", "No per-call charge", "These recorded app data are incomplete", "not provider totals", "Do not add these subtotals", "These totals do not assign costs to a feature or child."]) expect(html).toContain(text);
+  for (const group of [...workspace.usage!.models, ...workspace.usage!.keys]) expect(html).toContain(group.label.replaceAll("&", "&amp;"));
+  for (const text of ["Account lifetime spent", "Total credits", "Credit balance", "Configured API keys", "USD 64.63", "Unreconciled / unassigned"]) expect(html).not.toContain(text);
+  const links = [...html.matchAll(/href="(https:\/\/openrouter.ai[^"]+)"/g)].map((m) => m[1].replaceAll("&amp;", "&"));
+  expect(links).toHaveLength(2);
+  expect(links.every((link) => link === workspaceActivityUrl(period))).toBe(true);
 });
-it("preserves account and key success when the app read fails", () => {
-  const html = renderToStaticMarkup(createElement(AiUsagePage, { view: null, billing, period: periodFor("7d", Date.now()), rate: 1.4, error: "Ledger unavailable" }));
-  expect(html).toContain("USD 64.63"); expect(html).toContain("USD 4.28"); expect(html).toContain("Ledger unavailable");
-  expect(html).not.toContain("USD 63.63");
+it("preserves workspace totals when the app read fails", () => {
+  const html = renderToStaticMarkup(createElement(AiUsagePage, { view: null, workspace, period, rate: 1.4, error: "Ledger unavailable" }));
+  expect(html).toContain("USD 56.741652"); expect(html).toContain("20,281"); expect(html).toContain("Ledger unavailable");
 });
-it("does not turn a failed account read into zero and still shows the app records", () => {
-  const html = render(view, { ...billing, account: { ...billing.account, status: "unavailable", spentUsd: null, creditsUsd: null, balanceUsd: null } });
-  expect(html).toContain("Account billing is unavailable"); expect(html).toContain("USD 2.92");
-  expect(html).toMatch(/Account lifetime spent<\/dt><dd><b>Unavailable/);
+it.each(["unavailable", "no-key"] as const)("keeps %s workspace costs unknown and still shows app records", (status) => {
+  const html = render(view, { status, usage: null });
+  expect(html).toContain("Unica workspace usage is unavailable"); expect(html).toContain("USD 2.92");
+  expect(html).toMatch(/Workspace spend \(USD\)<\/dt><dd><b>Unknown/);
+  expect(html).toMatch(/Workspace requests<\/dt><dd><b>Unknown/);
+  expect(html).not.toContain("USD 0.00");
 });
 it("keeps unknown detail costs and missing migration coverage visible", () => {
   expect(renderToStaticMarkup(createElement(UsageDetails, { rows: null }))).toContain("Detailed records are unavailable");

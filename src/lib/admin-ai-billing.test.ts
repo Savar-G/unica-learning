@@ -69,7 +69,7 @@ describe("independent OpenRouter billing scopes", () => {
 it("passes selected date bounds and the test filter to the public admin read; failed or empty reads remain unavailable", async () => {
   const rpc = vi.fn(async () => ({ data: { totals: { cost_usd: 2.92 } }, error: null }));
   const admin = { db: { rpc } } as unknown as AdminSession;
-  for (const range of ["7d", "30d", "month"] as const) {
+  for (const range of ["7d", "30d", "month", "year"] as const) {
     const period = periodFor(range, Date.parse("2026-11-16T20:00:00Z"));
     for (const withTests of [true, false]) {
       expect((await readAiUsage(admin, period, withTests, 1.4)).totals.costUsd).toBe(2.92);

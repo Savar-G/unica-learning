@@ -9,6 +9,7 @@ export const RANGES = [
   { key: "7d", label: "7 days" },
   { key: "30d", label: "30 days" },
   { key: "month", label: "This month" },
+  { key: "year", label: "This year" },
 ] as const;
 export type RangeKey = (typeof RANGES)[number]["key"];
 export const DEFAULT_RANGE: RangeKey = "30d";
@@ -30,7 +31,8 @@ export interface Period {
 /** The period of a range, ending with today in Vancouver. */
 export function periodFor(range: RangeKey, now: number): Period {
   const today = localDay(now, PACIFIC_ZONE);
-  const first = range === "7d" ? addDays(today, -6) : range === "30d" ? addDays(today, -29) : `${today.slice(0, 8)}01`;
+  // The app reader permits 400 days. A calendar year needs at most 366 days.
+  const first = range === "7d" ? addDays(today, -6) : range === "30d" ? addDays(today, -29) : range === "year" ? `${today.slice(0, 4)}-01-01` : `${today.slice(0, 8)}01`;
   const days: string[] = [];
   for (let d = first; d <= today; d = addDays(d, 1)) days.push(d);
   return { range, from: new Date(localDateTime(first, PACIFIC_ZONE)), to: new Date(localDateTime(addDays(today, 1), PACIFIC_ZONE)), days };
