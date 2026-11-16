@@ -73,7 +73,7 @@ it("replays the same receipt or generation at most once; a foreign-key conflict 
 });
 
 it("marks imported rows without changing receipt identity or the original timestamp", async () => {
-  const row = usageRow({ feature: "marking", context: "evaluation" }, { provider: "openrouter", model: "m", costUsd: 1 })!;
+  const row = usageRow({ feature: "maya", context: "evaluation" }, { provider: "openrouter", model: "m", costUsd: 1 })!;
   const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(null, { status: 201 }));
   await insertUsageRow(row, { url: "https://fake.invalid", key: "fake", fetch, imported: true });
   const saved = JSON.parse(String(fetch.mock.calls[0][1]?.body));
@@ -81,3 +81,19 @@ it("marks imported rows without changing receipt identity or the original timest
   expect(Number.isFinite(Date.parse(saved.imported_at))).toBe(true);
   expect(row).not.toHaveProperty("imported_at");
 });
+
+for (const feature of ["marking", "explain"] as const) {
+  for (const context of ["production", "unknown", "practice", "evaluation", "test"] as const) {
+    it(`holds ${feature}/${context} imports before any write, while live recording remains available`, async () => {
+      const row = usageRow({ feature, context }, { provider: "openrouter", model: "m", costUsd: 1 })!;
+      const original = JSON.stringify(row);
+      const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(null, { status: 201 }));
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      expect(await insertUsageRow(parseUsageReceipt(row), { url: "https://fake.invalid", key: "fake", fetch, imported: true })).toBe(false);
+      expect(fetch).not.toHaveBeenCalled();
+      expect(JSON.stringify(row)).toBe(original);
+      expect(await insertUsageRow(row, { url: "https://fake.invalid", key: "fake", fetch })).toBe(true);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+  }
+}

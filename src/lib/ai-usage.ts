@@ -115,7 +115,16 @@ export function usageRow(tag: AiUsageTag, reading: AiUsageReading): AiUsageRow |
  * worker and the voice worker, which must not pull in cookie-based auth or more packages. A repeated generation id (409,
  * unique index) is the same call again: nothing to say.
  */
+export function usageImportNeedsOverlapCheck(row: AiUsageRow): boolean {
+  // Both features also settle an older spend ledger. A context label does not prove a distinct charge.
+  return row.feature === "marking" || row.feature === "explain";
+}
+
 export async function insertUsageRow(row: AiUsageRow, o: { url: string; key: string; fetch?: typeof globalThis.fetch; imported?: boolean }): Promise<boolean> {
+  if (o.imported && usageImportNeedsOverlapCheck(row)) {
+    console.error("[ai-usage] import held: legacy spend overlap requires verification; retain the receipt");
+    return false;
+  }
   const res = await (o.fetch ?? globalThis.fetch)(`${o.url}/rest/v1/ai_usage_events`, {
     method: "POST",
     headers: { apikey: o.key, authorization: `Bearer ${o.key}`, "content-type": "application/json", prefer: "return=minimal" },
