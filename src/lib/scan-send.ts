@@ -19,6 +19,10 @@ const decideOf = (db: SupabaseClient<Database>, env: Env): SendDecide =>
   (parent, child) => scanChecksDecision(db, parent, env, { child }).catch(() => ({ open: false, reason: "read_failed" }));
 
 export interface ChildSend { child: string; sent: string[] }
+/** Each failed group already emitted its own event. Callers must not report that same failure again. */
+export class ReportedScanSendError extends Error {
+  constructor() { super("scan_send_failed"); }
+}
 export interface FamilySend {
   /** False when no child of these photos may send: the route answers as before, refused. */
   open: boolean;
@@ -58,7 +62,7 @@ export async function sendGroups(db: SupabaseClient<Database>, parent: string, g
     out.sent.push(...sent);
     if (sent.length) monitorProduct("scan.send_accepted", { count: sent.length });
   }
-  if (tried && failed === tried) throw new Error("scan_send_failed");
+  if (tried && failed === tried) throw new ReportedScanSendError();
   out.sent.sort();
   return out;
 }
@@ -118,7 +122,10 @@ export async function sendDuePhotos(db: SupabaseClient<Database>, o: { parent?: 
       }
       await defer(parent, [...result.closed.filter((c) => !SETTLED_CLOSED.has(c.reason)).flatMap((c) => c.ids), ...result.failed]);
       if (result.sent.length) out.push({ parent, byChild: result.byChild.filter((c) => c.sent.length) });
-    } catch { monitorProduct("scan.recovery_failed", { step: "send" }); await defer(parent, [...groups.values()].flat()); }
+    } catch (error) {
+      if (!(error instanceof ReportedScanSendError)) monitorProduct("scan.recovery_failed", { step: "send" });
+      await defer(parent, [...groups.values()].flat());
+    }
   }
   return out;
 }

@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { setProductObserver } from "@/lib/product-monitoring";
 
 vi.mock("server-only", () => ({}));
 const CHILD = "22222222-2222-4222-8222-222222222222", OTHER_CHILD = "33333333-3333-4333-8333-333333333333";
 const PHOTO = "44444444-4444-4444-8444-444444444444";
 const f = vi.hoisted(() => ({ marked: false, plan: { open: true, reason: "open" } as { open: boolean; reason: string }, asked: [] as unknown[], sent: [] as unknown[],
-  later: [] as (() => unknown)[], afterFails: false, rows: ["44444444-4444-4444-8444-444444444444"] as string[], siblingPlan: { open: false, reason: "no_plan" } as { open: boolean; reason: string } }));
+  later: [] as (() => unknown)[], afterFails: false, sendFails: false, readFails: false, rows: ["44444444-4444-4444-8444-444444444444"] as string[], siblingPlan: { open: false, reason: "no_plan" } as { open: boolean; reason: string } }));
 // The work after the answer is captured, not run: src/lib/scan-send-marking.test.ts runs it.
 vi.mock("next/server", () => ({ after: (task: () => unknown) => { if (f.afterFails) throw Error("no request scope"); f.later.push(task); } }));
 vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => null }));
@@ -32,11 +33,11 @@ const children = { from: (table: string) => ({ select: () => ({ eq: (_c: string,
     maybeSingle: async () => ({ data: table === "children" && owner === "family" && ["22222222-2222-4222-8222-222222222222", "55555555-5555-4555-8555-555555555555"].includes(id) ? { id } : null, error: null }),
   }),
   // scan_photos: this family's photos (parent_id "family"), with the child each is filed with.
-  in: async (_i: string, ids: string[]) => ({ data: id === "family" ? ids.filter((p) => filed.has(p)).map((p) => ({ id: p, child_id: filed.get(p)! })) : [], error: null }),
+  in: async (_i: string, ids: string[]) => ({ data: id === "family" ? ids.filter((p) => filed.has(p)).map((p) => ({ id: p, child_id: filed.get(p)! })) : [], error: f.readFails ? { message: "private diagnostic" } : null }),
 }) }) }) };
 vi.mock("@/lib/scan-photo-server", () => ({
   scanJson: (data: unknown, status = 200) => Response.json(data, { status }),
-  scanSession: async () => ({ parent: "family", admin: { ...children, rpc: async (name: string, args: { p_ids: string[] }) => { f.sent.push({ name, args }); return { data: f.rows.filter((r) => args.p_ids.includes(r)), error: null }; } } }),
+  scanSession: async () => ({ parent: "family", admin: { ...children, rpc: async (name: string, args: { p_ids: string[] }) => { f.sent.push({ name, args }); return { data: f.rows.filter((r) => args.p_ids.includes(r)), error: f.sendFails ? { message: "private diagnostic" } : null }; } } }),
 }));
 import { maxDuration, POST } from "./route";
 import { SEND_MARKING_LIMIT_MS } from "@/lib/scan-send-marking";
@@ -46,12 +47,26 @@ const send = (child = CHILD, ids = [PHOTO]) => POST(new Request("https://unicale
 }));
 
 beforeEach(() => {
-  Object.assign(f, { marked: false, plan: { open: true, reason: "open" }, siblingPlan: { open: false, reason: "no_plan" }, asked: [], sent: [], later: [], afterFails: false, rows: [PHOTO, SIBLING_PHOTO] });
+  vi.clearAllMocks(); setProductObserver(null);
+  Object.assign(f, { marked: false, plan: { open: true, reason: "open" }, siblingPlan: { open: false, reason: "no_plan" }, asked: [], sent: [], later: [], afterFails: false, sendFails: false, readFails: false, rows: [PHOTO, SIBLING_PHOTO] });
   filed.clear(); filed.set(PHOTO, CHILD); filed.set(SIBLING_PHOTO, SIBLING);
   runs.length = 0;
   vi.stubEnv("SCAN_MARKING_ENABLED", "families");
 });
-afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+afterEach(() => { setProductObserver(null); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+
+it("reports one failure for one failed Send write", async () => {
+  const observer = vi.fn(); setProductObserver(observer); f.sendFails = true;
+  const response = await send();
+  expect(response.status).toBe(503);
+  expect(observer).toHaveBeenCalledExactlyOnceWith({ code: "scan.send_failed", attributes: { count: 1 } });
+});
+
+it("still reports a photo read failure that no inner operation reported", async () => {
+  const observer = vi.fn(); setProductObserver(observer); f.readFails = true;
+  expect((await send()).status).toBe(503);
+  expect(observer).toHaveBeenCalledExactlyOnceWith({ code: "scan.send_failed", attributes: {} });
+});
 
 it.each(["open", "ending_until_end"])("families mode sends a real family's pages while the child's plan is %s", async (reason) => {
   f.plan = { open: true, reason };

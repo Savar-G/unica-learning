@@ -81,6 +81,13 @@ it("leaves the holds alone when marking is off for everyone, and defers pages it
 
 beforeEach(() => { vi.clearAllMocks(); setProductObserver(null); });
 afterEach(() => { setProductObserver(null); vi.restoreAllMocks(); });
+it("reports one failure for a failed due Send and still defers its pages", async () => {
+  const observer = vi.fn(); setProductObserver(observer);
+  const { db, calls } = fakeDb({ due: [{ id: "a", parent_id: "p1", child_id: "leah" }], failSend: ["leah"] });
+  expect(await sendDuePhotos(db, { decide: decide({ leah: "open" }) })).toEqual([]);
+  expect(observer).toHaveBeenCalledExactlyOnceWith({ code: "scan.send_failed", attributes: { count: 1 } });
+  expect(calls.filter(c => c.name === "defer_scan_sends")).toHaveLength(1);
+});
 it("emits Send only for the committed new rows, and reports a caught due-list error", async () => {
   const observer = vi.fn(); setProductObserver(observer);
   const { db } = fakeDb({ filed: { a: "leah" } });
