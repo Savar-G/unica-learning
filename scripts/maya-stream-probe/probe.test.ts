@@ -62,9 +62,9 @@ async function fakeDatabase(corruptPending = false) {
 
 it("default CLI sends no request and does not read a key file", () => {
   // Falsifier: a configured invalid key file causes a read, or a hosted option is not required.
-  const output = execFileSync(process.execPath, ["scripts/maya-stream-probe/run.mjs"], { env: { SUPABASE_SECRET_KEY_FILE: "/missing/do-not-read", SUPABASE_URL: "https://wrong.invalid" }, encoding: "utf8" });
+  const output = execFileSync(process.execPath, ["scripts/maya-stream-probe/run.mjs"], { env: { NODE_ENV: "test", SUPABASE_SECRET_KEY_FILE: "/missing/do-not-read", SUPABASE_URL: "https://wrong.invalid" }, encoding: "utf8" });
   expect(output).toContain("Dry run: no request or credential read");
-  expect(() => execFileSync(process.execPath, ["scripts/maya-stream-probe/run.mjs", "--cleanup"], { env: {}, stdio: "pipe" })).toThrow();
+  expect(() => execFileSync(process.execPath, ["scripts/maya-stream-probe/run.mjs", "--cleanup"], { env: { NODE_ENV: "test" }, stdio: "pipe" })).toThrow();
 });
 
 it("excludes real provider and service adapters from the worker", async () => {

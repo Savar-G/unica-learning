@@ -53,7 +53,7 @@ SUPABASE_URL=https://cdjobwsyzndtltzfpyqa.supabase.co node scripts/maya-stream-p
 
 Cleanup can delete only the eight listed IDs from the probe table. It cannot delete a family or a production call. Keep a failed run's rows until the lead has inspected them. Another run cannot adopt or overwrite occupied IDs.
 
-7. Verify the final readers on web, end and sweep workers. Verify the incompatible-server window has ended. After review, CI and hosted proof pass, the lead alone merges and sets exact `MAYA_CHAT_STREAMING_ENABLED=on`. The trusted gate still blocks time before `2026-11-17T06:31:27Z`. Keep the family switches and credit hold unchanged. Remove the stream flag or set `off` to stop new parts. Retain compatible readers and all pending records.
+7. Verify the final readers on web, end and sweep workers. Recheck the verified cutover conditions in `docs/maya-chat.md`: Vercel `skewProtectionMaxAge: 0`, zero active Maya calls and compatible production readers. Savar approved removal of the former 12-hour wait because Maya has no customer use. All 25 historical family calls belong to test families. After review, CI and hosted proof pass, the lead alone merges and sets exact `MAYA_CHAT_STREAMING_ENABLED=on`. The trusted gate blocks time before the verified cutover, `2026-11-16T20:33:36Z`. Reload old test pages. Keep the family switches and credit hold unchanged. Remove the stream flag or set `off` to stop new parts. Retain compatible readers and all pending records.
 
 ## Local checks
 

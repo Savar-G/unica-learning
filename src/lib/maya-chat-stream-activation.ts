@@ -1,6 +1,7 @@
-// Server configuration only. The final protocol readers became public at 2026-11-16T18:31:27Z.
-// The fixed deadline includes their full 12-hour old-server window. A record version is not a fence.
-export const MAYA_CHAT_STREAM_NOT_BEFORE = Date.parse("2026-11-17T06:31:27Z");
+// Server configuration only. At the verified cutover, production includes the final readers,
+// Vercel skewProtectionMaxAge is 0, and no Maya call is live. Savar approved activation without the old wait.
+// A record version alone is not a fence. Keep compatible readers on every rollback target.
+export const MAYA_CHAT_STREAM_NOT_BEFORE = Date.parse("2026-11-16T20:33:36Z");
 
 /** Both trusted server inputs must permit new sentence writes. Readers remain available when this returns false. */
 export function mayaChatStreamEnabled(value: string | undefined, now: number): boolean {
