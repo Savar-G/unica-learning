@@ -329,6 +329,26 @@ describe("review of #1113 (Sol, on c40496bad)", () => {
     return { s, model, parts };
   }
   for (const stream of [false, true]) {
+    it(`a model close cannot end on an upset child after the offer (stream=${stream})`, async () => {
+      const t = session((i) => (i === 0 ? `52 minus 28 is 24. ${FINAL_ASK}` : "Bye for now!"), { stream, act: (i) => (i === 0 ? "guide" : "close") });
+      await t.s.start();
+      await t.s.child("My answer is 24.");
+      const out = await t.s.child("No, I'm sad.");
+      expect(out.ended).toBeNull();
+      expect(out.say.join(" ")).not.toContain("Bye for now!");
+      expect(t.parts.join(" ")).not.toContain("Bye for now!");
+    });
+    for (const answer of ["No.", "Nope.", "No thanks.", "Yes."]) {
+      it(`a model close needs the pending offer after ${answer} (stream=${stream})`, async () => {
+        const t = session((i) => (i === 0 ? "52 minus 28 is 24. Do you understand?" : "Bye for now!"), { stream, act: (i) => (i === 0 ? "guide" : "close") });
+        await t.s.start();
+        await t.s.child("My answer is 24.");
+        const out = await t.s.child(answer);
+        expect(out.ended).toBeNull();
+        expect(out.say.join(" ")).not.toContain("Bye for now!");
+        expect(t.parts.join(" ")).not.toContain("Bye for now!");
+      });
+    }
     it(`BLOCKING: "No." to "Do you understand?" after the right answer stays open (stream=${stream})`, async () => {
       const question = "52 minus 28 is 24. Do you understand?";
       const t = make((i) => (i === 0 ? question : "Let us try it again. What is 12 minus 8?"), stream);

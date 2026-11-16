@@ -5898,8 +5898,13 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   const act: Act = out.act === "close" ? "close" : "guide";
   if (act === "close" && s.solved === null) return no("act_not_allowed", "The child has not solved the question yet: never end the call on a child who is stuck. Teach the next small step and ask one small question.");
   // Review of #1002: a solved question does not end the call while the child asks for help now.
-  if (act === "close" && base.turn && (base.turn.text.includes("?") || ASKS_TUTOR.test(base.turn.text) || helpInWords(base.turn.text) || saysStuck(base.turn.text) || reading.help !== undefined || reading.start === "no_start")) {
+  if (act === "close" && base.turn && (base.turn.text.includes("?") || ASKS_TUTOR.test(base.turn.text) || helpInWords(base.turn.text) || saysStuck(base.turn.text) || hardFeeling(base.turn.text) || reading.help !== undefined || reading.start === "no_start")) {
     return no("act_not_allowed", "The child is asking for help now: never end the call on a child who is stuck. Answer what they asked, then ask one small question.");
+  }
+  // Review of #1113: a short yes/no can answer an understanding question. The model's close needs the same pending
+  // offer as code's own goodbye, including on the early stream path before any sentence reaches the child.
+  if (act === "close" && base.turn && (doneReply(base.turn.text) || yesReply(base.turn.text)) && endReply(base) === null) {
+    return no("act_not_allowed", `The child's reply does not answer a pending "${FINAL_ASK}" offer: keep teaching instead of ending the call.`);
   }
   // Sentences already streamed to the child stay said: the turn's words start with them.
   const lead = sent.join(" ");
