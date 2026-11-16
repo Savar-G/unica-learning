@@ -321,6 +321,7 @@ export const DATABASE_CHECKS: readonly { table: string; name: string; definition
   {"table":"openrouter_provider_receipts","name":"openrouter_provider_receipts_occurred_at_check","definition":"CHECK (((occurred_at >= '2020-01-01 00:00:00+00'::timestamp with time zone) AND (occurred_at < '2100-01-01 00:00:00+00'::timestamp with time zone)))"},
   {"table":"openrouter_provider_receipts","name":"openrouter_provider_receipts_output_cost_usd_check","definition":"CHECK (((output_cost_usd >= (0)::numeric) AND (output_cost_usd < (1000000)::numeric)))"},
   {"table":"openrouter_provider_receipts","name":"openrouter_provider_receipts_output_tokens_check","definition":"CHECK ((output_tokens >= 0))"},
+  {"table":"openrouter_provider_receipts","name":"openrouter_provider_receipts_unica_workspace","definition":"CHECK ((workspace_id = '2468d17e-b7eb-467f-b1ef-feec9e328d58'::text))"},
   {"table":"openrouter_provider_receipts","name":"openrouter_provider_receipts_workspace_id_check","definition":"CHECK ((workspace_id ~ '^[a-zA-Z0-9_-]{1,128}$'::text))"},
   {"table":"parent_explanation_prices","name":"parent_explanation_prices_check","definition":"CHECK (((NOT enabled) OR ((maximum_micros IS NOT NULL) AND (verified_at IS NOT NULL) AND (length(evidence) > 0))))"},
   {"table":"parent_explanation_prices","name":"parent_explanation_prices_max_input_bytes_check","definition":"CHECK ((max_input_bytes = 16384))"},

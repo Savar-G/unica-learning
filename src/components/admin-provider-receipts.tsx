@@ -7,15 +7,15 @@ const usd = (n: number) => `USD ${n > 0 && n < 1e-8 ? n.toString() : n.toLocaleS
 const amount = (row: ReceiptGroup) => `${usd(row.known_cost_usd)}${row.unknown_cost_receipts ? ` + ${row.unknown_cost_receipts} unknown` : ""}`;
 
 /** Mount beside the application subtotal after #1129. Parent supplies period links and the server read result. */
-export function AdminProviderReceipts({ view, periodLabel, ranges }: {
+export function AdminProviderReceipts({ view, periodLabel, ranges = [] }: {
   view: ProviderReceiptView | null;
   periodLabel: string;
-  ranges: Pill[];
+  ranges?: Pill[];
 }) {
   return <section aria-label="OpenRouter provider receipts">
-    <SectionHead title="OpenRouter provider receipts" line={`${periodLabel}. All keys and all test and production costs are included.`} />
-    <Pills label="Provider receipt period" pills={ranges} />
-    <p>This provider subtotal is separate from the app subtotal. They can cover the same calls. Do not add them together. The account total comes from OpenRouter credits.</p>
+    <SectionHead title="OpenRouter provider receipts" line={`${periodLabel}. Unica Learning workspace keys, including test and production costs.`} />
+    {ranges.length > 0 && <Pills label="Provider receipt period" pills={ranges} />}
+    <p>This received subtotal and the app subtotal can cover the same calls. Do not add them together. The complete Unica workspace spend comes from OpenRouter analytics above.</p>
     {view === null ? <Empty>Provider receipts are unavailable. The cost is unknown.</Empty> : <>
       <Tiles label="Provider receipt totals" tiles={[
         { key: "cost", label: "Recorded provider charges", value: usd(view.totals.known_cost_usd), sub: `${view.totals.unknown_cost_receipts} receipts have an unknown cost` },

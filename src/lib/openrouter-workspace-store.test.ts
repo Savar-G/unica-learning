@@ -165,5 +165,5 @@ it.each(["headers", "body"])("starts all reads concurrently and bounds stalled %
 it("links to the Unica slug with the exact selected period and fixed workspace", () => {
   const url = new URL(workspaceActivityUrl(period));
   expect(url.pathname).toBe("/workspaces/unica-learning/activity");
-  expect(Object.fromEntries(url.searchParams)).toEqual({ workspace: UNICA_WORKSPACE_ID, startDate: "2026-10-18T07:00:00.000Z", endDate: "2026-11-17T07:00:00.000Z" });
+  expect(Object.fromEntries(url.searchParams)).toEqual({ workspace_id: UNICA_WORKSPACE_ID, from: "2026-10-18T07:00:00.000Z", to: "2026-11-17T06:59:59.999Z" });
 });

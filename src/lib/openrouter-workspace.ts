@@ -16,9 +16,9 @@ export type WorkspaceReading = { status: "ok"; usage: WorkspaceUsage } | { statu
 
 export function workspaceActivityUrl(period: WorkspacePeriod): string {
   const url = new URL(OPENROUTER_ACTIVITY_URL);
-  url.searchParams.set("workspace", UNICA_WORKSPACE_ID);
-  url.searchParams.set("startDate", period.from.toISOString());
-  url.searchParams.set("endDate", period.to.toISOString());
+  url.searchParams.set("workspace_id", UNICA_WORKSPACE_ID);
+  url.searchParams.set("from", period.from.toISOString());
+  url.searchParams.set("to", new Date(period.to.getTime() - 1).toISOString());
   return url.toString();
 }
 

@@ -41,6 +41,7 @@ it("defaults to all app records despite the global test-family filter, while the
     expect(html).not.toContain("USD 64.63");
     const selected = periodFor(range, Date.parse("2026-11-16T20:00:00Z"));
     expect(f.rpc).toHaveBeenLastCalledWith("admin_ai_usage", expect.objectContaining({ p_from: selected.from.toISOString(), p_to: selected.to.toISOString() }));
+    expect(f.receipts).toHaveBeenLastCalledWith(await f.admin.mock.results.at(-1)!.value, selected);
     const requests = vi.mocked(globalThis.fetch).mock.calls.slice(-3);
     expect(requests).toHaveLength(3);
     for (const [url, init] of requests) {
@@ -56,11 +57,11 @@ it("enforces the existing admin gate before provider and database reads", async 
   expect(globalThis.fetch).not.toHaveBeenCalled(); expect(f.rpc).not.toHaveBeenCalled();
   expect(f.receipts).not.toHaveBeenCalled();
 });
-it("reads provider receipts with the verified admin and preserves the app range in provider links", async () => {
+it("uses the app period for receipts even when an old independent receipt filter is present", async () => {
   const html = renderToStaticMarkup(await Page(props({ range: "7d", providerRange: "month" })));
-  expect(f.receipts).toHaveBeenCalledWith(await f.admin.mock.results[0].value, expect.objectContaining({ range: "month", from: new Date("2026-11-01T07:00:00Z") }));
+  expect(f.receipts).toHaveBeenCalledWith(await f.admin.mock.results[0].value, expect.objectContaining({ range: "7d", from: new Date("2026-11-10T07:00:00Z") }));
   expect(f.rpc).toHaveBeenCalledWith("admin_ai_usage", expect.objectContaining({ p_with_tests: true, p_from: "2026-11-10T07:00:00.000Z" }));
-  expect(html).toContain("range=7d&amp;providerRange=30d");
+  expect(html).not.toContain("providerRange=");
   expect(html).toContain("OpenRouter provider receipts");
   expect(html).toContain("Do not add them together");
 });

@@ -103,7 +103,7 @@ function Workspace({ reading, period }: { reading: WorkspaceReading; period: Per
       </div>
       <p className="ai-note">Each breakdown includes every provider group for this period. Key labels are provider names. These totals do not assign costs to a feature or child.</p>
     </>}
-    <p className="ai-note">Workspace totals, recorded app data and provider receipts can include the same calls. Do not add these subtotals. Provider receipts have their own selected period.</p>
+      <p className="ai-note">Workspace totals, recorded app data and provider receipts use the selected period and can include the same calls. Do not add these subtotals.</p>
     <a className="ai-out" href={workspaceActivityUrl(period)} target="_blank" rel="noreferrer">Open Unica workspace activity</a>
   </section>;
 }
