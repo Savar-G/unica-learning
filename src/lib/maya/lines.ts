@@ -992,9 +992,11 @@ export function openingLine(pkg: OperationPackage, workbook?: { page: number; nu
  * by Savar, 2026-11-12): a call on a workbook page names the page and the question number; any other call names the
  * question only. The child's answer to the question is the model's first turn.
  */
+// Savar's call 2 (2026-11-15, Savar confirmed): "your AI math helper", and the question asks what is confusing, so the
+// child starts with what they need. "AI" stays in the first sentence (D-251).
 export const OPENING_LINES = {
-  plain: "Hi there! I'm Maya, an AI math helper. We're doing {question} today. Where do you want to start?",
-  workbook: "Hi there! I'm Maya, an AI math helper. We're doing page {page}, number {number} today: {question}. Where do you want to start?",
+  plain: "Hi there! I'm Maya, your AI math helper. We're doing {question} today. What part is confusing, or where do you need help?",
+  workbook: "Hi there! I'm Maya, your AI math helper. We're doing page {page}, number {number} today: {question}. What part is confusing, or where do you need help?",
 } as const;
 
 /** The question as Maya names it: as the page prints it for a missing number or a missing-number evaluate, else its operation. */

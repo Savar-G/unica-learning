@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import type { AiClient } from "@/lib/ai-client";
+import { recordAiUsage, type AiUsageTag } from "@/lib/ai-usage";
 import { nodeSpawn, SubscriptionUnavailable, type Spawner } from "@/lib/ai-claude-cli";
 
 export const CODEX_SAMPLE_MODEL = "gpt-6.1-sol";
@@ -63,12 +64,13 @@ export async function codexCliPreflight({ configDir, env = process.env, spawn = 
 
 /** A text-only, schema-constrained request on an explicitly selected subscription. */
 export function codexCliClient({
-  configDir, env = process.env, spawn = nodeSpawn, timeout = 300_000,
+  configDir, env = process.env, spawn = nodeSpawn, timeout = 300_000, usage,
 }: {
   configDir: string;
   env?: Record<string, string | undefined>;
   spawn?: Spawner;
   timeout?: number;
+  usage?: AiUsageTag;
 }): AiClient {
   const childEnv = codexEnv(configDir, env);
   return {
@@ -117,6 +119,7 @@ export function codexCliClient({
         await rm(dir, { recursive: true, force: true });
       }
       signal.throwIfAborted();
+      recordAiUsage(usage ?? { feature: "other" }, { provider: "subscription", model: CODEX_SUBSCRIPTION_MODEL });
       return response;
     },
   };

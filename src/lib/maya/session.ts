@@ -70,8 +70,9 @@ import { ACTS, PART_LIMITS, PROPOSAL_VERSION, TUTOR_GATES, isModelOutput, readMo
 import { checkSay, checkSentence, columnSentenceTruth, equationHolds, heardColumnOf, namesValue, revealsOpenStep, endsWithAsk, INSTRUCTION, MATH_WORD, PRAISE_WORDS, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, unreadNumberRuns, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
-import { deriveDrawings, type BoardRead } from "./board-ties";
-import { agreementClause, bindingReview, checkTutorSay, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, TUTOR_REVIEW_IGNORED } from "./tutor";
+import { answersOwnQuestion, askedStep, doneReply, firstTimeTurn, yesReply, type AskedRead } from "./teaching-reads";
+import { deriveDrawings, type BoardRead, type TiedDrawing } from "./board-ties";
+import { agreementClause, askedStep as askedOperationStep, bindingReview, checkTutorSay, continuedSay, stepsStated, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, FINAL_ASK, TUTOR_FIRST_TIME_WORD_LIMIT, TUTOR_REVIEW_IGNORED } from "./tutor";
 import { placeDigitsSaid } from "./tutor-math";
 import { MATH_REVIEW_PROMPT_VERSION, mathReviewsOf, type MathReview, type MathReviewInput } from "./math-review";
 import { reviewStart, reviewSteps } from "./math-review-steps";
@@ -159,7 +160,21 @@ export type SessionEvent =
    * `mathReviews` (two-layer true math, 2026-11-15): the math-truth review of each tutor sentence code did not read whole,
    * by its text. With `talkReviews` given and no `mathReviews`, the event was written before the review existed.
    */
-  | { type: "proposal"; at: number; proposal: unknown; talkReviews?: TalkReview[]; mathReviews?: MathReview[]; fallback?: boolean; sent?: string[]; drawMode?: "derive" }
+  /**
+   * `continuation` (2026-11-15, voice fallbacks): the proposal is a repair that continues the sentences already said
+   * (`sent`): its `say` is only the rest of the message (continuedSay), and the fixed sentences are not reviewed again.
+   */
+  /**
+   * `streamed` (#1107, chat): the `sent` sentences were streamed to the desk one by one, each with its drawing fixed then
+   * (`drawings`, already counted by `streamed_board`): they are never drawn again, and a streamed sentence with no drawing
+   * never draws later. Absent: the sent sentences are read whole with the message (voice).
+   */
+  | { type: "proposal"; at: number; proposal: unknown; talkReviews?: TalkReview[]; mathReviews?: MathReview[]; fallback?: boolean; sent?: string[]; drawMode?: "derive"; continuation?: boolean; streamed?: { drawings: TiedDrawing[] } }
+  /**
+   * #1107: a drawing streamed to the desk with its sentence (chat), before the message's whole check. It is committed now:
+   * the batch count rises to its id, and its keys are drawn and sent (B1: counted shown only when the screen says so).
+   */
+  | { type: "streamed_board"; at: number; batch: { transactionId: string; commands: readonly unknown[]; after?: readonly string[] }; keys: string[] }
   | { type: "tick"; at: number }
   /**
    * Final check 12 (2026-11-15): the help a sentence Maya emitted to the child gave, recorded the moment it went out (the
@@ -544,7 +559,11 @@ export interface Session {
    * and the brief lists them as sent, not drawn. A batch the screen skipped or cancelled leaves `drawn` and `sent`, so
    * the brief does not list it and the kind can offer it again. A batch with no word stays sent: never counted as shown.
    */
-  tutor?: { help: number; drawn: string[]; sent?: { batch: string; keys: string[] }[] };
+  /**
+   * `offer` (review of #1113): Maya's last accepted message ended with code's own yes/no end offer (FINAL_ASK). Set by
+   * that message only; any other tutor message clears it (its tutor state is new).
+   */
+  tutor?: { help: number; drawn: string[]; sent?: { batch: string; keys: string[] }[]; offer?: true };
 }
 
 /**
@@ -1019,6 +1038,13 @@ function priorityOf(raw: unknown): Pick<Reading, "safety" | "stop" | "unclear" |
 
 // ---------- Allowed acts and priority ----------
 
+/** A model-only stop cannot turn an ambiguous reply or a request for help into a child's request to end. */
+function modelStopAllowed(s: Session): boolean {
+  if (!s.tutor || !s.turn || s.stopRequested || clearStop(s.turn.text) || endReply(s) !== null) return true;
+  const text = s.turn.text;
+  return !(doneReply(text) || yesReply(text) || hardFeeling(text) || helpInWords(text) || saysStuck(text));
+}
+
 interface Allowed {
   acts: Act[];
   code: RefusalCode;
@@ -1486,6 +1512,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
   if (session.outcome) return refuse(session, "ended", "The call has ended.");
   if (event.type !== "start" && session.startedAt === null) return refuse(session, "invalid_event", "The call has not started.");
   if (event.type === "board_fate") return boardFate(session, event);
+  if (event.type === "streamed_board") return streamedBoard(session, event);
 
   const s: Session = structuredClone(session);
   // Old saved sessions must not retain obsolete numeric context.
@@ -1508,6 +1535,11 @@ export function step(session: Session, event: SessionEvent): StepResult {
   if (severity) raiseSafety(s, severity, event.at, effects);
 
   // The child's turn as the model read it: a stop, an unclear number and a no-start hold even if the proposal fails.
+  // Refuse a model-only stop before it can persist, including from malformed output or a streamed priority field.
+  // A refusal records this override in the trace. Safety guidance still has priority over this refusal.
+  if (priority.stop && !modelStopAllowed(s) && !s.safety.flagged) {
+    return { session: s, effects, refusal: { code: "act_not_allowed", reason: `The child has not asked to stop. A short yes/no reply ends this tutor call only after the pending "${FINAL_ASK}" offer. Keep teaching when the child needs help.`, allowed: ["guide"] } };
+  }
   if (priority.stop) s.stopRequested = true;
   if (s.turn && s.package && event.type === "proposal") {
     // Scope inputs are read separately from proposal shape. A bad board or a later retry cannot remove this duty.
@@ -1536,7 +1568,9 @@ export function step(session: Session, event: SessionEvent): StepResult {
     s.replies = ["about.ai", ...(priority.aboutMaya === "secret_friend" || asksSecret(s.turn.text) ? ["about.no_secret" as const] : []), ...(s.scopeDue ? [] : ["question.problem" as const])];
   } else if (secretReplies(s)) {
     s.replies = secretReplies(s)!;
-  } else if (s.turn && !s.scopeDue && priority.shorter && !s.replies?.length) s.replies = ["shorter.prompt"];
+  // Savar's call 2 (2026-11-15): on a tutor call, "that didn't make sense" is the tutor's to answer ("Sorry, my last
+  // message was confusing." and a simpler message), not code's "What part should we try again?".
+  } else if (s.turn && !s.scopeDue && priority.shorter && !s.replies?.length && !s.tutor) s.replies = ["shorter.prompt"];
   // 2026-11-15 (fallback rate): on a tutor call, a request for help with an answer list the model left empty has no number
   // to confirm (gate: helpOnly). Only a missing or empty list counts: a malformed one still marks the turn unclear.
   const said = isObject(raw) && isObject(raw.reading) ? raw.reading : {};
@@ -1546,7 +1580,8 @@ export function step(session: Session, event: SessionEvent): StepResult {
   // done a step of their question (#389: practice run 9, F06, ran the easier example after the child did the ones).
   if (priority.start === "no_start" && (isTeaching(s.state) ? s.state : s.resume) === "ASSESS" && s.done.length === 0) s.noStart = true;
 
-  if (s.startedAt !== null) {
+  // A recorded failure keeps its cause when recovery runs after the clock. end() retains outcome priority and caps time.
+  if (s.startedAt !== null && event.type !== "technical") {
     const elapsed = event.at - s.startedAt;
     const limits = limitsOf(s);
     if (elapsed >= limits.endAtMs) {
@@ -1729,7 +1764,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
         // D-341: sentences already streamed to the child (onSayPart) stay said: the turn's words start with them.
         const sent = Array.isArray(event.sent) ? event.sent.filter((x): x is string => typeof x === "string" && x.trim() !== "") : [];
         // Final check 11: the emitted help is in the session before any routing builds an outcome.
-        if (v3 && s.tutor) return proposeTutor(withEmittedHelp(s, sent), raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent, event.fallback === true, event.mathReviews === undefined ? undefined : mathReviewsOf(event.mathReviews), event.drawMode === "derive");
+        if (v3 && s.tutor) return proposeTutor(withEmittedHelp(s, sent), raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent, event.fallback === true, event.mathReviews === undefined ? undefined : mathReviewsOf(event.mathReviews), event.drawMode === "derive", event.continuation === true, streamedOf(event.streamed, sent.length));
         if (v3) return proposeV3(s, raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent);
         return withSent(propose(s, raw as Proposal, effects, reviewsOf(event.talkReviews), event.fallback === true), sent, s, disclosureDue(s));
       }
@@ -3263,6 +3298,15 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue, earlier
       if (!written || !tied) return false;
     }
   }
+  // 2026-11-15 (voice fallbacks, turn 7): on a tutor call a step answer is judged against the step Maya asked. "Wait,
+  // that's wrong. It's seven." after "What do you get for 13 minus 6?" says the ones of 83 − 46 (13 − 6 = 7) as the
+  // child's own, though the turn holds a word that points back. One source: this read feeds every credit (heardAnswers,
+  // the model's reading through checkAnswers), so the stance, childAnswerOf (the brief and the math review), the safety
+  // review's verdict and code's own line all say "right". Never a copy of a step Maya showed.
+  if (s.tutor && !copy) {
+    const asked = askedStepOf(s);
+    if (asked?.step === step.id && saidAs(number(asked.value), value) && askedStepSaid(s, step, asked.value, earlier)) return true;
+  }
   return ownTurn(s, step, value, { earlier }) === null;
 }
 
@@ -4635,6 +4679,43 @@ function heardAnswers(session: Session): ChildAnswer[] {
   return heard;
 }
 
+/** The step Maya's last question asked (askedStep in tutor.ts), on a tutor question; null otherwise. */
+function askedStepOf(s: Session): { step: string; value: number } | null {
+  const pkg = s.package;
+  if (!pkg || !isTutorQuestion(pkg)) return null;
+  const maya = s.turns.findLast((t) => t.speaker === "maya");
+  const question = maya ? sentencesOf(maya.text).filter((x) => /\?\s*$/.test(x)).at(-1) : undefined;
+  return question ? askedOperationStep(pkg, question) : null;
+}
+
+/**
+ * The child committed to `value` as the answer to the step Maya asked (the #1073/#1104 rules for a committed answer): no
+ * question, help request, hedge or guess anywhere in the turn, no false equation, not named as the whole answer ("My
+ * answer is 7" is a final answer), and the value read in full and sure in the turn's last sentence, the only sentence
+ * that holds a number ("It's 7.", "7."). A sentence before it with no number that points back at Maya's last question or
+ * the child's own last answer ("Wait, that's wrong. It's seven.") is a correction, not a doubt about the 7.
+ */
+function askedStepSaid(s: Session, step: WorkedStep, value: number, earlier: readonly string[]): boolean {
+  if (!s.turn || s.turn.uncertain) return false;
+  const text = s.turn.text;
+  if (text.includes("?") || /\banswer\b/i.test(text) || helpInWords(text) || saysStuck(text) || unreadNumberRuns(text).length > 0 || childSaysFalse(text) || hedgedTurn(s) || saysGuess(text)) return false;
+  const opts = readOptionsIn(s);
+  const sentences = sentencesOf(text);
+  const holding = sentences.filter((x) => valuesIn(x, opts).length > 0 || /\d/.test(x));
+  if (holding.length !== 1 || holding[0] !== sentences.at(-1)) return false;
+  const values = valuesIn(holding[0], opts);
+  if (values.length !== 1 || values[0].type !== "number" || values[0].value !== value) return false;
+  const read = readAnswer(holding[0], opts);
+  if (!read.sure || read.final?.type !== "number" || read.final.value !== value) return false;
+  // Preserve the whole-turn ownership, scope and negation checks. Only this closed correction can remove a negation;
+  // the final answer sentence must still pass the same ownership check on its own.
+  const blocker = ownTurn(s, step, number(value), { earlier });
+  if (blocker === null) return true;
+  const correction = sentences.slice(0, -1).join(" ").replace(/[’‘]/g, "'").trim();
+  return blocker === "negation" && /^(?:wait[,!\s]+)?(?:that(?:'s| is) wrong|i (?:got|said) (?:it|that) wrong)[.!]?$/i.test(correction) &&
+    ownTurn(s, step, number(value), { earlier, text: holding[0] }) === null;
+}
+
 /**
  * What code keeps of the refused proposals' readings beside the answers (#605, F03: "Can you promise I will get an A?" lost
  * its off-topic reading and got a teaching step). Read field by field, the last reading that names a field wins. None of
@@ -4676,7 +4757,9 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
   // D-345: on a tutor teaching turn, code's honest line and the step's question (a version 3 output, checked by the
   // tutor's own whole-message check like any message).
   if (tutorTeachingNow(given)) {
-    const text = tutorFallbackText(given.package!, given.done, given.solved !== null);
+    const end = endReply(given);
+    if (end) return [{ kind: "math", say: end === "yes" ? TUTOR_GOODBYE_YES : TUTOR_GOODBYE, act: "close" } as unknown as Proposal];
+    const text = tutorFallbackText(given.package!, given.done, given.solved !== null, openAsked(given));
     return [{ kind: "math", say: text, act: "guide" } as unknown as Proposal];
   }
   return codeProposals(given, refused);
@@ -5460,6 +5543,16 @@ export function childAnswerOf(s: Session, hide: (text: string) => string): MathR
   return null;
 }
 
+/**
+ * Code's facts on the child's turn (childFacts), with code's verdict on the committed answer (childAnswerOf) inside the
+ * fact of that number: the one source the brief and the math review both read (2026-11-15, voice fallbacks, turn 7).
+ */
+export function childTurnFacts(s: Session, answer: MathReviewInput["childAnswer"] = s.package ? childAnswerOf(s, (t) => t) : null): string[] {
+  const pkg = s.package;
+  if (!pkg || !isTutorQuestion(pkg) || !s.turn) return [];
+  return childFacts(pkg, s.turn.text, (v) => answerReadWhole(pkg, s.turn!.text, v, true), answer);
+}
+
 /** The last turns of the call the math-truth review reads. */
 const MATH_REVIEW_TURNS = 4;
 /**
@@ -5472,6 +5565,7 @@ export function mathReviewInput(s: Session, sentence: string, before: readonly s
   const hide = (text: string) => hideName(text, s.variety.name);
   const pkg = s.package && isTutorQuestion(s.package) ? s.package : null;
   const answer = pkg ? ((pkg.answer.value as { value?: unknown }).value as number | string | undefined) ?? null : null;
+  const childAnswer = pkg ? childAnswerOf(s, hide) : null;
   return {
     promptVersion: MATH_REVIEW_PROMPT_VERSION,
     sentence: hide(sentence),
@@ -5486,11 +5580,11 @@ export function mathReviewInput(s: Session, sentence: string, before: readonly s
     workValues: pkg ? tutorKind(pkg).workValues(pkg) : [],
     answer: typeof answer === "number" ? answer : typeof answer === "string" ? hide(answer) : null,
     childTurn: s.turn ? hide(s.turn.text) : null,
-    childFacts: pkg && s.turn ? childFacts(pkg, s.turn.text, (v) => answerReadWhole(pkg, s.turn!.text, v, true)).map(hide) : [],
+    childFacts: pkg ? childTurnFacts(s, childAnswer).map(hide) : [],
     transcript: s.turns.slice(-MATH_REVIEW_TURNS).map((t) => ({ speaker: t.speaker, text: hide(t.text) })),
     lastTurns: lastTwoTurns(s, hide),
     easierExample: pkg ? easierFacts(pkg, hide) : null,
-    childAnswer: pkg ? childAnswerOf(s, hide) : null,
+    childAnswer,
     ...(pkg && agreesWithFact(s, sentence) ? { agreement: true as const } : {}),
   };
 }
@@ -5640,7 +5734,61 @@ export function tutorStream(s: Session, reviewsOnly = false): TutorStreamContext
   const wordQuestion = !!sessionClaim(s.package) || !!comparisonOf(s.package);
   // Final check 4: code's texts count only while the main question is the active problem (tutorTexts).
   const texts = tutorTexts(s.package, [...s.turns.map((t) => t.text), s.turn.text], s.exampleIntroduced === true || s.exampleShown > 0);
-  return { ...tutorStreamContext(s.package, s.turn.text, stance, vocabExtra(s), credited, wordQuestion), exact: texts.exact, nameWords: nameWordsOf(s) };
+  return { ...tutorStreamContext(s.package, s.turn.text, stance, vocabExtra(s), credited, wordQuestion), exact: texts.exact, nameWords: nameWordsOf(s), ...teachingChecks(s) };
+}
+
+/**
+ * Savar's call 2 (2026-11-15): code's closed reads of the child's turn for the tutor. `firstTime`: the child said they
+ * are new to the idea or lost (`firstTimeTurn`, on any of their turns), or asks for help before any answer or step.
+ */
+export function firstTimeLearner(s: Session): boolean {
+  if (!s.package || !s.tutor) return false;
+  if (s.turns.some((t) => t.speaker === "child" && firstTimeTurn(t.text))) return true;
+  const asks = !!s.turn && (helpInWords(s.turn.text) || ASKS_TUTOR.test(s.turn.text) || saysStuck(s.turn.text));
+  return asks && s.done.length === 0 && s.solved === null && (childAnswerOf(s, (x) => x)?.value ?? null) === null;
+}
+
+/** Savar's call 2: the question Maya asked last that is still open, and the child's number against it (`askedStep`). */
+export function askedRead(s: Session): AskedRead | null {
+  if (!s.package || !s.tutor || !s.turn || s.solved !== null) return null;
+  const answer = childAnswerOf(s, (x) => x);
+  const value = typeof answer?.value === "number" ? answer.value : null;
+  return askedStep(s.package, s.turns, value);
+}
+
+/** Code's goodbye when the child is done after the right answer (Savar's call 2): no question, the call ends. */
+export const TUTOR_GOODBYE = "Great work today. Bye for now!";
+/** Code's goodbye when the child says yes to another one: a call has one question (Chief of Staff, round 2). */
+export const TUTOR_GOODBYE_YES = "That was our question for today. Great work, and bye for now!";
+
+/**
+ * Round 2 (Chief of Staff, 2026-11-15): the child's answer to the end offer. Only after the right final answer stands
+ * and Maya's last message asked FINAL_ASK: "no" (doneReply) or "yes" (yesReply). Else null: a "no" before the offer
+ * ends nothing.
+ */
+export function endReply(s: Session): "no" | "yes" | null {
+  // Review of #1113 (BLOCKING): only an answer to code's own pending offer ends the call. Never while the question is not
+  // solved, a safety line is due, or the child sounds upset.
+  if (s.solved === null || s.lastResult !== "right" || !s.turn || s.tutor?.offer !== true) return null;
+  if (s.safety.flagged || hardFeeling(s.turn.text)) return null;
+  const last = [...s.turns].reverse().find((t) => t.speaker === "maya");
+  if (!last || sentencesOf(last.text).at(-1)?.trim() !== FINAL_ASK) return null;
+  return doneReply(s.turn.text) ? "no" : yesReply(s.turn.text) ? "yes" : null;
+}
+
+/** Code's own form of the open question the child did not answer, for code's honest line; null when none. */
+function openAsked(s: Session): string | null {
+  const asked = askedRead(s);
+  return asked && asked.fits !== "asked" ? asked.codeQuestion : null;
+}
+
+/** The checks of Savar's call 2 for one tutor message: no echo, the first-time word limit, the step-miss form. */
+function teachingChecks(s: Session): { childTurn?: string; wordLimit?: number; stepMiss?: { pkg: OperationPackage } } {
+  if (!s.package || !s.turn) return {};
+  const asked = askedRead(s);
+  const answer = s.package.answer.value.type === "number" ? s.package.answer.value.value : null;
+  const stepMiss = !!asked && asked.value !== answer && asked.childValue !== null && asked.fits !== "asked";
+  return { childTurn: s.turn.text, ...(firstTimeLearner(s) ? { wordLimit: TUTOR_FIRST_TIME_WORD_LIMIT } : {}), ...(stepMiss ? { stepMiss: { pkg: s.package } } : {}) };
 }
 
 /**
@@ -5727,7 +5875,7 @@ function boardTexts(cmd: unknown, key = ""): string[] {
  * step or the answer. Code keeps its own credit of the child's answers (D-340, checkAnswers), the safety review of any
  * sentence that is not plain math, and never ends the call on a child who has not solved the question.
  */
-function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], reviews: readonly TalkReview[] | undefined, sent: readonly string[], fallback: boolean, mathReviews?: readonly MathReview[], derive = false): StepResult {
+function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], reviews: readonly TalkReview[] | undefined, sent: readonly string[], fallback: boolean, mathReviews?: readonly MathReview[], derive = false, continuation = false, fixedDrawings: TiedDrawing[] | null = null): StepResult {
   const reading = out.reading ?? {};
   if (!tutorTeachingNow(base, reading)) {
     // Final check 10 (2026-11-15): the help in sentences already streamed is decided here, before the turn's priority
@@ -5839,15 +5987,31 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   const act: Act = out.act === "close" ? "close" : "guide";
   if (act === "close" && s.solved === null) return no("act_not_allowed", "The child has not solved the question yet: never end the call on a child who is stuck. Teach the next small step and ask one small question.");
   // Review of #1002: a solved question does not end the call while the child asks for help now.
-  if (act === "close" && base.turn && (base.turn.text.includes("?") || ASKS_TUTOR.test(base.turn.text) || helpInWords(base.turn.text) || saysStuck(base.turn.text) || reading.help !== undefined || reading.start === "no_start")) {
+  if (act === "close" && base.turn && (base.turn.text.includes("?") || ASKS_TUTOR.test(base.turn.text) || helpInWords(base.turn.text) || saysStuck(base.turn.text) || hardFeeling(base.turn.text) || reading.help !== undefined || reading.start === "no_start")) {
     return no("act_not_allowed", "The child is asking for help now: never end the call on a child who is stuck. Answer what they asked, then ask one small question.");
+  }
+  // Review of #1113: a short yes/no can answer an understanding question. The model's close needs the same pending
+  // offer as code's own goodbye, including on the early stream path before any sentence reaches the child.
+  if (act === "close" && base.turn && (doneReply(base.turn.text) || yesReply(base.turn.text)) && endReply(base) === null) {
+    return no("act_not_allowed", `The child's reply does not answer a pending "${FINAL_ASK}" offer: keep teaching instead of ending the call.`);
   }
   // Sentences already streamed to the child stay said: the turn's words start with them.
   const lead = sent.join(" ");
   const extra = vocabExtra(base);
   // Code's honest line asks about the step that is open after this turn's credit; after streamed words, only its question.
-  const honest = tutorFallbackText(pkg, s.done, s.solved !== null);
-  let text = fallback ? (sent.length ? `${lead} ${sentencesOf(honest).slice(1).join(" ")}` : honest) : out.say.trim();
+  // Savar's call 2: after the right answer, a child who says they are done gets a short goodbye, and the call ends.
+  const endNow = endReply(base);
+  const doneNow = endNow !== null;
+  // After streamed words tell a step, ask the next open step. Otherwise preserve the question the child missed.
+  const stated = sent.length ? stepsStated(pkg, sent) : [];
+  const done = [...new Set([...s.done, ...stated])];
+  const honest = endNow === "yes" ? TUTOR_GOODBYE_YES : endNow === "no" ? TUTOR_GOODBYE : tutorFallbackText(pkg, done, s.solved !== null, stated.length ? null : openAsked(base));
+  // A continuation supplies only the rest; its checks still read the fixed sentences and the rest together.
+  const continued = !fallback && continuation && sent.length > 0 ? continuedSay(sent, out.say) : null;
+  if (!fallback && continuation && sent.length > 0 && !continued) return no("say_check", `The child already heard: "${lead}". Say only the rest of the message, going on from those words, and never say one of them again.`);
+  // Savar's call 2: code's question follows streamed words only when they do not already end with a question (final runs:
+  // "What is 4 minus 2? What is 5 minus 1?").
+  let text = fallback ? (sent.length ? (/\?\s*$/.test(lead) ? lead : `${lead} ${sentencesOf(honest).slice(1).join(" ")}`) : honest) : continued ? continued.text : out.say.trim();
   if (!fallback && sent.length && !text.startsWith(lead)) return no("invalid_proposal", "The message must start with the sentences already said.");
   const kind = tutorKind(pkg);
   const op = kind.op?.(pkg);
@@ -5856,15 +6020,39 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   // Final check 4: code's texts only for the active problem (tutorTexts), with the question's own numbers.
   const texts = tutorTexts(pkg, [...base.turns.map((t) => t.text), base.turn?.text ?? ""], base.exampleIntroduced === true || base.exampleShown > 0);
   const wordAnswer = !!sessionClaim(pkg) || !!comparisonOf(pkg);
-  let verdict = checkTutorSay(text, { stance, extra, childValues, claims, trades: tutorKind(pkg).workValues(pkg), columns: columnSums(pkg), ...texts, wordAnswer, nameWords: nameWordsOf(base), ...(op ? { op } : {}), ...(answer === undefined ? {} : { answer }) });
+  let verdict = checkTutorSay(text, { stance, extra, childValues, claims, trades: tutorKind(pkg).workValues(pkg), columns: columnSums(pkg), ...texts, wordAnswer, nameWords: nameWordsOf(base), ...(op ? { op } : {}), ...(answer === undefined ? {} : { answer }), ...(fallback ? {} : teachingChecks(base)) });
   // Code's own line never fails its turn: after streamed words that leave no room, the turn is those words.
+  // Savar's call 2: a prefix that ends with no question gets code's step question when the open question does not fit.
+  if (fallback && !verdict.ok && sent.length && !doneNow && s.solved === null) {
+    const plain = tutorFallbackText(pkg, s.done, false);
+    const retry = `${lead} ${sentencesOf(plain).slice(1).join(" ")}`;
+    const again = checkTutorSay(retry, { stance, extra, childValues, claims, trades: tutorKind(pkg).workValues(pkg), columns: columnSums(pkg), ...texts, wordAnswer, nameWords: nameWordsOf(base), ...(op ? { op } : {}), ...(answer === undefined ? {} : { answer }) });
+    if (again.ok) { text = retry; verdict = again; }
+  }
   if (fallback && !verdict.ok && sent.length) { text = lead; verdict = checkTutorSay(text, { stance: "none", extra, claims, trades: tutorKind(pkg).workValues(pkg), columns: columnSums(pkg), ...texts, wordAnswer, nameWords: nameWordsOf(base), ...(op ? { op } : {}) }); }
   if (!verdict.ok) return no("say_check", `Your message was refused (${verdict.reason}): ${verdict.detail}`, verdict.reason);
   if (act === "close" && /\?\s*$/.test(text)) return no("say_check", "A close ends the call, so it asks nothing: say a short goodbye with no question.", "close_asks");
+  // Savar's call 2 (2026-11-15): a message that corrects the child ends with one question, so the child knows what to do
+  // next (turn 8 ended on "52 is 5 tens and 2 ones." with nothing to answer).
+  // Final runs: for a first-time learner, after a right step answer too ("2." got only "4 minus 2 is 2."): while the
+  // question is not solved, a reply to a number the child committed ends with one question.
+  const committedVerdict = !!base.turn && !base.turn.text.includes("?") ? childAnswerOf(base, (x) => x)?.verdict : undefined;
+  if (!fallback && act === "guide" && s.solved === null && (committedVerdict === "wrong" || (committedVerdict === "right" && firstTimeLearner(base))) && !/\?\s*$/.test(text)) return no("say_check", committedVerdict === "wrong" ? "Your message corrects the child, so it must end with one small question about the same step, with the numbers the child needs." : "The child answered: end with one small question about the next step, with the numbers the child needs.", "never_say");
+  // Savar's call 2 (final runs): the end question comes only after the child's right final answer, never in place of
+  // asking the child for the whole answer ("So 52 minus 28 is 24. Do you want another question, or are we done?", the first wording).
+  if (!fallback && s.solved === null && /\btry another one\b/i.test(text)) return no("say_check", `The child has not said the whole answer yet: ask them for it, for example "What is the whole answer?". Ask "${FINAL_ASK}" only after they say it.`, "never_say");
+  // The child said they are done after the right answer: a short goodbye that ends the call, never another question.
+  if (!fallback && doneNow && act !== "close") return no("act_not_allowed", endNow === "yes" ? "The child wants another one, but this call has one question: say warmly that this was today's question, with act \"close\" and no question." : "The child solved the question and says they are done: say one short warm goodbye with act \"close\" and no question.");
+  // Round 2 (Chief of Staff): the answer to a question is never in the same message as the question ("so 4 tens are
+  // left. 5 tens take away 1 ten is how many tens?").
+  const own = fallback ? null : answersOwnQuestion(text, pkg);
+  if (own) return no("say_check", `"${own}" already gives the answer to your question. Explain with a smaller picture, then ask, and let the child say the answer.`, "never_say");
   // Child safety: each sentence that is not plain teaching is reviewed before it is said (the adapter runs the reviews,
   // in parallel with the stream). Code's own line is not reviewed.
   const talk: TalkCheck[] = [];
-  if (!fallback) for (const sentence of verdict.review) {
+  // A continuation's fixed sentences were said after their own checks (the stream's): never reviewed again.
+  const fixed = new Set(continued ? sent : []);
+  if (!fallback) for (const sentence of verdict.review.filter((x) => !fixed.has(x))) {
     if (reviews === undefined) { talk.push({ proposed: sentence, code: null, review: "not_run", shown: sentence }); continue; }
     const r = reviews.find((x) => x.text === sentence)?.result ?? null;
     // Final check 3: a refusal of a sentence that judges correctness is binding, whatever rules it names.
@@ -5878,7 +6066,7 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   // runs the reviews beside the safety reviews. A proposal event from before the review existed has talk reviews and no
   // math reviews. Code's own line is not reviewed.
   const math: { sentence: string; verdict: "not_run" | "true" }[] = [];
-  if (!fallback && !(reviews !== undefined && mathReviews === undefined)) for (const sentence of verdict.math) {
+  if (!fallback && !(reviews !== undefined && mathReviews === undefined)) for (const sentence of verdict.math.filter((x) => !fixed.has(x))) {
     if (reviews === undefined) { math.push({ sentence, verdict: "not_run" }); continue; }
     const r = mathReviews!.find((x) => x.text === sentence)?.result ?? null;
     if (r?.verdict !== "true") return no("say_check", `The math review did not find "${sentence}" true (${r ? `${r.verdict}: ${r.reason}` : "no review"}). Every number and relation Maya says must be plainly true: say it with simple true math, such as one equation of the question's own numbers.`, "math_review");
@@ -5894,11 +6082,30 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   // A judgment opener counts as no action only when the say check validated it: code found the child right (stance),
   // and the say check's own agreement reader (agreementClause) gives the rest of the sentence.
   const opener = stance === "right" ? (sentence: string) => agreementClause(sentence) : undefined;
-  const ties = !derive || s.noBoard ? null : deriveDrawings(pkg, sentencesOf(text), tutor.drawn, (tutor.sent ?? []).flatMap((x) => x.keys), fallback ? [] : out.noDraw ?? [], (k, i) => `tutor-note-${s.batches + 1 + k}-${i}`, opener);
+  // A continuation's noDraw numbers count its own sentences: they move past the fixed sentences, which draw what they say
+  // (as code's own line after them does, #1103). "all" stays all: the board's retry draws nothing.
+  const noDraw = fallback ? [] : continued && out.noDraw !== "all" ? (out.noDraw ?? []).filter((n) => n > continued.echoed).map((n) => n - continued.echoed + sent.length) : out.noDraw ?? [];
+  // #1107: sentences streamed to the desk (chat) keep the drawing fixed when each went out (`streamed`, already counted);
+  // the batch numbers of this message start before them, so a message read whole and one streamed get the same ids.
+  const prior = fixedDrawings ?? [];
+  const base0 = s.batches - prior.length;
+  const ties = !derive || s.noBoard ? null : deriveDrawings(pkg, sentencesOf(text), tutor.drawn, (tutor.sent ?? []).flatMap((x) => x.keys), noDraw, (k, i) => `tutor-note-${base0 + 1 + k}-${i}`, opener, fixedDrawings ? { sentences: sent.length, drawings: prior } : undefined);
   const legacy = s.noBoard || derive ? { commands: [], keys: [] } : tutorDrawings(pkg, out.draw ?? [], tutor.drawn, (i) => `tutor-note-${s.batches + 1}-${i}`);
-  const batches: { commands: Record<string, unknown>[]; keys: string[]; sentence?: number; after?: number[] }[] = ties ? ties.drawings : legacy.commands.length ? [legacy] : [];
+  const batches: { commands: Record<string, unknown>[]; keys: string[]; sentence?: number; after?: number[] }[] = ties ? ties.drawings.slice(prior.length) : legacy.commands.length ? [legacy] : [];
+  // Savar's call 2 and the Chief of Staff (2026-11-15): when the child's right final answer first stands, the board shows
+  // the whole answer: code draws every answer digit not yet drawn, from its own values, with the good-job message (its
+  // first sentence). Code's own line may draw (B2).
+  const solvedNow = base.solved === null && s.solved === "child" && s.lastResult === "right";
+  if (solvedNow && !s.noBoard && tutorKind(pkg).drawings(pkg).some((d) => d.id === "digit")) {
+    const drawnNow = [...tutor.drawn, ...batches.flatMap((b) => b.keys)];
+    const digits = stepFacts(pkg).flatMap((st) => (st.place && !drawnNow.includes(`digit:${st.place}`) ? [{ offer: "digit", place: st.place }] : []));
+    const final = digits.length ? tutorDrawings(pkg, digits, drawnNow, (i) => `tutor-note-final-${s.batches + 1}-${i}`) : null;
+    if (final?.commands.length) batches.push({ commands: final.commands, keys: final.keys, sentence: 0 });
+  }
   const drawing = { commands: batches.flatMap((b) => b.commands), keys: batches.flatMap((b) => b.keys) };
   tutor.drawn.push(...drawing.keys);
+  // Review of #1113: the end offer is pending only when this message ends with it, while the right answer stands.
+  if (act === "guide" && s.solved !== null && s.lastResult === "right" && sentencesOf(text).at(-1)?.trim() === FINAL_ASK) tutor.offer = true;
   s.tutor = tutor;
   // Help and assistance for the outcome: a message or board that gives the whole answer is answer_given; else a
   // message that tells an open step's result is a show (guided), else a hint (part C review, 2026-11-15: "52 minus 28
@@ -5913,7 +6120,7 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     // Final check 9 (2026-11-15), inverted: every board command Maya sends is read as her words are: each text or value
     // it holds (a put's value, a write's text, a label, any field but its op and ids), so a board that shows the
     // answer value or a choice word gives the answer.
-    const notes = drawing.commands.flatMap((c) => boardTexts(c));
+    const notes = [...prior.flatMap((d) => d.commands), ...drawing.commands].flatMap((c) => boardTexts(c as Record<string, unknown>));
     const kind = tutorHelpOf(base, sentencesOf(text), notes, tutor.drawn, committedRight);
     if (!s.assistance.includes(kind)) s.assistance.push(kind);
     // The step the child needed help with: the step open when the child asked or made no progress, never a step the
@@ -5933,7 +6140,8 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   const said = fillName(text, base);
   effects.push({ kind: "say", act, text: said, ...(talk.length ? { talk } : {}), ...(math.length ? { math } : {}), ...(ties?.reads.length ? { boardReads: ties.reads } : {}) });
   s.turns.push({ at: s.now!, speaker: "maya", text: said, state: act === "close" ? "CLOSE" : s.state, act });
-  const first = s.batches + 1;
+  // #1107: `after` counts this message's batches from its first, the streamed ones included.
+  const first = s.batches + 1 - prior.length;
   for (const b of batches) {
     s.batches += 1;
     const transactionId = `${s.callId}-b${s.batches}`;
@@ -5998,6 +6206,51 @@ function streamedHelp(base: Session, sent: readonly string[]): Assistance | null
   const committedRight = (base.solved === "child" && base.lastResult === "right") || heardAnswers(base).some((a) => a.step === "result" && a.verdict === "right");
   if (committedRight) return null;
   return tutorHelpOf(base, sent.flatMap((x) => sentencesOf(x)), [], base.tutor?.drawn ?? [], false);
+}
+
+/** The streamed drawings of a proposal event (#1107), read strictly; null when the event has none (voice, older events). */
+function streamedOf(raw: unknown, sent: number): TiedDrawing[] | null {
+  if (!isObject(raw) || !Array.isArray(raw.drawings)) return null;
+  const drawings = raw.drawings.filter((d): d is TiedDrawing => isObject(d) && Number.isSafeInteger(d.sentence) && (d.sentence as number) >= 0 && (d.sentence as number) < sent &&
+    Array.isArray(d.commands) && Array.isArray(d.keys) && d.keys.every((k) => typeof k === "string") && Array.isArray(d.after) && d.after.every((a) => Number.isSafeInteger(a)));
+  return drawings.length === raw.drawings.length ? structuredClone(drawings) : null;
+}
+
+/**
+ * #1107: a drawing streamed with its sentence (chat). It is the next batch of the call (its id is the next one), so the
+ * batch count rises to it; its keys are drawn, and sent until the screen says what it did (B1). Anything else changes
+ * nothing. The clock does not move.
+ */
+function streamedBoard(session: Session, e: Extract<SessionEvent, { type: "streamed_board" }>): StepResult {
+  const s: Session = structuredClone(session);
+  if (!s.tutor || !isObject(e.batch) || e.batch.transactionId !== `${s.callId}-b${s.batches + 1}` || !Array.isArray(e.batch.commands) || e.batch.commands.length === 0 ||
+    !Array.isArray(e.keys) || !e.keys.every((k) => typeof k === "string")) return refuse(session, "invalid_event", "A streamed drawing needs the next batch id and its keys.");
+  s.batches += 1;
+  s.tutor.drawn = [...s.tutor.drawn, ...e.keys];
+  if (e.keys.length) s.tutor.sent = [...(s.tutor.sent ?? []), { batch: e.batch.transactionId, keys: [...e.keys] }];
+  const batch = { transactionId: e.batch.transactionId, commands: e.batch.commands as unknown as Command[], ...(e.batch.after?.length ? { after: [...e.batch.after] } : {}) };
+  return { session: s, effects: [{ kind: "board", batch }], refusal: null };
+}
+
+/**
+ * #1107: the drawing a sentence streamed to the desk takes with it (chat): the sentences streamed so far (`sentences`,
+ * this one last), the drawings fixed for the earlier ones (`prior`), and the model's "noDraw" written before "say". It is
+ * the batch the whole message would give this sentence (deriveDrawings reads each sentence after the earlier ones only),
+ * with its id. Null: no drawing, which stays fixed for this sentence. A sentence with an agreement opener draws nothing
+ * here (code's stance is known only from the whole message).
+ */
+export function streamedDrawing(session: Session, sentences: readonly string[], prior: readonly TiedDrawing[], noDraw: readonly number[]): { tied: TiedDrawing; batch: { transactionId: string; commands: Command[]; after?: string[] }; keys: string[] } | null {
+  const s = session;
+  const pkg = s.package;
+  const last = sentences.at(-1);
+  if (!s.tutor || !pkg || s.noBoard || s.outcome || !last || !isTutorQuestion(pkg) || agreementClause(last) !== null) return null;
+  const base0 = s.batches - prior.length;
+  const ties = deriveDrawings(pkg as Parameters<typeof deriveDrawings>[0], sentences, s.tutor.drawn, (s.tutor.sent ?? []).flatMap((x) => x.keys), noDraw, (k, i) => `tutor-note-${base0 + 1 + k}-${i}`, undefined, { sentences: sentences.length - 1, drawings: prior });
+  const made = ties.drawings.slice(prior.length);
+  if (made.length !== 1 || made[0].sentence !== sentences.length - 1) return null;
+  const tied = made[0];
+  const after = tied.after.map((k) => `${s.callId}-b${base0 + 1 + k}`);
+  return { tied, batch: { transactionId: `${s.callId}-b${s.batches + 1}`, commands: tied.commands as unknown as Command[], ...(after.length ? { after } : {}) }, keys: [...tied.keys] };
 }
 
 /**

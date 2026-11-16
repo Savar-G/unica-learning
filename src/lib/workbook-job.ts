@@ -41,6 +41,7 @@ import { WORKBOOK_COUNTS_CALL_EVENTS } from "@/lib/workbook-call-policy";
 // passed in).
 import { isGrade, type Grade } from "@/lib/assessment";
 import type { AiClient } from "@/lib/ai-client";
+import { WorkbookAiUnavailable } from "@/lib/workbook-ai-unavailable";
 import type { ChildLearnerProfile } from "@/lib/child-profile";
 import type { RenderedPage, WorkbookFiles } from "@/lib/workbook-content";
 import { curriculumFor, curriculumVersion } from "@/lib/workbook-curriculum";
@@ -51,6 +52,7 @@ import {
   generateWorkbook,
   pagesDigest,
   ResumeMismatch,
+  CapacityProblem,
   type AttemptLedger,
   type CallStore,
   type FitCheck,
@@ -689,7 +691,7 @@ export async function runWorkbookJob(runId: string, deps: WorkbookJobDeps, o: { 
         if (e instanceof Stopped || lost) return "stale";
         const error = e instanceof ResumeMismatch ? `The run cannot go on: ${e.message}. Start a new run.` : message(e);
         try {
-          if (e instanceof Refusal || e instanceof ResumeMismatch) return (await runs.fail(runId, lease, error)) ? "failed" : "stale";
+          if (e instanceof Refusal || e instanceof ResumeMismatch || e instanceof CapacityProblem || e instanceof WorkbookAiUnavailable) return (await runs.fail(runId, lease, error)) ? "failed" : "stale";
           console.error("[workbook job] attempt failed", runId, error);
           if (await runs.retry(runId, lease, error)) continue;
           return (await runs.fail(runId, lease, error)) ? "failed" : "stale";

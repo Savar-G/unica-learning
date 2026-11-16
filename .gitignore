@@ -67,3 +67,4 @@ supabase/.temp/
 
 # gstack browse tool logs
 .gstack/
+/.ai-usage/

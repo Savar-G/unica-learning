@@ -86,7 +86,8 @@ async function family(pkg: OperationPackage, script: unknown[], childTurns: stri
 }
 
 describe("F2: Maya saying the answer counts as given unless code credited the child's own answer", () => {
-  const told = '52 minus 28 is 24. Write 24 on your paper.';
+  // Savar's call 2: a message after a wrong answer ends with one question.
+  const told = '52 minus 28 is 24. Can you write 24 on your paper?';
   for (const voice of [false, true]) {
     it(`a right answer taken back, then told, is answer_given (voice=${voice})`, async () => {
       const r = await family(SUB, [reply('What did you write?', 'guide'), reply(told, 'guide'), reply('Bye for now.', 'close')], ["It's 24.", 'My answer is 36.', "It's 24."], voice);

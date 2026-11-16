@@ -53,6 +53,13 @@ export function memoryCallStore(options: { testFamilies: readonly string[]; cloc
       wrote(id);
       return true;
     },
+    async checkpoint(id, revision, live) {
+      const r = rows.get(id);
+      if (!r || r.revision !== revision || r.status !== "live") return false;
+      rows.set(id, { ...r, live: copy(live) });
+      wrote(id);
+      return true;
+    },
     async pendingNotes(childId, limit) {
       return [...rows.values()]
         .filter((r) => r.childId === childId && r.status === "ended" && r.notePending !== null)

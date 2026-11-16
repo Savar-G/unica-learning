@@ -462,8 +462,8 @@ describe("the speech-to-text's silence limit while Maya asks for a number", () =
     const log = patienceLog();
     const speech = new ProbeSTT();
     const c = await voiceCall({ patience: log.patience, speech, workerOpening: true, opening: false });
-    // The opening ends "Where do you want to start?": the child's first words are usually "Hi Maya", not a number.
-    expect(c.workerOpening!.trim().endsWith("Where do you want to start?")).toBe(true);
+    // The opening ends "What part is confusing, or where do you need help?": it asks for no number.
+    expect(c.workerOpening!.trim().endsWith("What part is confusing, or where do you need help?")).toBe(true);
     await waitFor(() => c.call.session.startedAt !== null && c.session.agentState === "listening" && c.said().length > 0, "the opening");
     await c.call.settled();
     await pause();

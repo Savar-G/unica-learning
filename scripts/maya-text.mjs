@@ -2,6 +2,9 @@
 // maps to src, as in vitest) and runs it. LiveKit stays outside the bundle: it loads a native module.
 // Usage: npm run maya:text -- --question add-27-39 [--model fake|openrouter] [--script file] [--runner livekit|plain]
 // See scripts/maya-text-cli.ts for every option.
+import { randomUUID } from "node:crypto";
+process.env.AI_USAGE_CONTEXT = "test";
+process.env.AI_USAGE_RUN_ID = randomUUID();
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";

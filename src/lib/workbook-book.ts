@@ -14,6 +14,7 @@
 // The words here are code's, never the AI's: headers, panel labels and explanations come from the plan and the
 // curriculum. Pure TypeScript: no Next.js, React, network, database, clock or randomness.
 import { verifiedWatchOut } from "@/lib/workbook-personal-items";
+import { stepTemplateOf } from "@/lib/workbook-step-items";
 import { templateAnswer, templateNumbers, type TemplateSource } from "@/lib/question-package-template";
 import { TITLE_WORDS_MAX, titleWords } from "@/lib/workbook-title-rules";
 import { likelihoodWord } from "@/lib/workbook-likelihood";
@@ -268,7 +269,7 @@ function exampleOf(p: QuestionPackage, level: number): PanelExample | null {
       const r = item.regions.find((x) => x.id === c.region);
       const answer = r?.kind === "box" && r.answer ? valueText(r.answer) : r?.kind === "choice" ? r.answer ?? "?" : "?";
       // The work, then the answer: a worked example shows its method, never an answer key alone (Codex at db3b1a0).
-      const how = templateMethod(c.source, p.text);
+      const how = templateMethod(c.source, p.text, stepTemplateOf(p) ?? undefined);
       if (!how) return null;
       // (The method and its answer on one line: "Work it out: 7 − 4 = 3. Answer: 3", a line less on a full page.)
       return { label: "Example", lines: [p.text, `${how} Answer: [${answer}]`], answered: `Answer: [${answer}]` };
@@ -338,11 +339,79 @@ const SYMBOL: Record<string, string> = { "+": "+", "-": "−", "*": "×", "//": 
  * "The thousands digit of 97531 is 7.", or for a true or false the sum it checks. Null when the expression is not one
  * code can word.
  */
-export function templateMethod(src: TemplateSource, text: string): string | null {
+export function templateMethod(src: TemplateSource, text: string, scope?: { skill: string; step: number; index?: number }): string | null {
+  // Classification examples compare openings, not an arithmetic stand-in supplied by the writer.
+  if (scope?.skill === "6.13-classify-angles" && [1, 2].includes(scope.step) && /\b(?:angle|acute|right|obtuse|straight|reflex)\b/i.test(text)) {
+    const result = templateAnswer(src);
+    if ("answer" in result) {
+      // The original description/object forms classify an opening. Turn-composition cards need a fuller method.
+      const description = scope.index === 0 || scope.index === 1;
+      if (description && result.answer === "acute") return "Compare with a square corner. A smaller opening is acute.";
+      if (description && result.answer === "right") return "Compare with a square corner. The same opening is a right angle.";
+      if (description && result.answer === "obtuse") return "Compare with a square corner. A wider opening, short of a straight line, is obtuse.";
+      if (description && result.answer === "straight") return "Half a turn makes a straight line: a straight angle.";
+      if (description && result.answer === "reflex") return "More than half a turn, short of a full turn, is a reflex angle.";
+      const values = templateNumbers(src);
+      if (values && scope.step === 1 && src.answer === "a" && /^Of \d+ acute and \d+ obtuse angles, how many are smaller than a square corner\?$/i.test(text))
+        return `Only acute angles are smaller than a square corner. Count the acute angles: ${values.a}.`;
+      if (values && scope.step === 2 && src.answer === "b" && /^Of \d+ straight and \d+ reflex angles, how many exceed half a turn\?$/i.test(text))
+        return `Only reflex angles exceed half a turn. Count the reflex angles: ${values.b}.`;
+    }
+    // Never teach a sampling expression such as a = k + 1 as the child's angle method.
+    return null;
+  }
   const v = templateNumbers(src);
   if (!v) return null;
   const n = (k: string) => (/^\d+$/.test(k) ? Number(k) : v[k]);
   const fmt = (x: number) => groupedNumber(x);
+  // These named skills teach factors and divisibility, not an unrelated arithmetic stand-in.
+  if (scope?.skill === "6.4-prime-composite" && [1, 2].includes(scope.step)) {
+    const result = templateAnswer(src);
+    if (!("answer" in result)) return null;
+    const number = v.n;
+    if (!Number.isInteger(number) || number < 2 || number > 100) return null;
+    const read = (value: string) => Number(value.replace(/[,\s\u00a0\u202f]/g, ""));
+    let divisor = 2;
+    while (divisor * divisor <= number && number % divisor !== 0) divisor++;
+    const prime = divisor * divisor > number;
+    const classification = text.match(/^Is ([\d,\s\u00a0\u202f]+) prime or composite\? Write prime or composite\.$/);
+    if (classification && read(classification[1]) === number && result.answer === (prime ? "prime" : "composite")) {
+      return prime ? number <= 3 ? `${number} has only the factors 1 and ${number}, so it is prime.`
+        : `Test factors 2 through ${Math.floor(Math.sqrt(number))}. None divides ${number} exactly, so it is prime.`
+        : `${number} = ${divisor} × ${number / divisor}. It has more than 2 factors, so it is composite.`;
+    }
+    return null;
+  }
+  if (scope?.skill === "6.4-divisibility" && [1, 2, 3].includes(scope.step)) {
+    const result = templateAnswer(src);
+    if (!("answer" in result)) return null;
+    const number = v.n;
+    if (!Number.isInteger(number) || number < 1 || number > 1_000_000_000) return null;
+    const read = (value: string) => Number(value.replace(/[,\s\u00a0\u202f]/g, ""));
+    const digits = String(number).split("").map(Number);
+    const sum = digits.reduce((total, digit) => total + digit, 0);
+    const question = text.match(/^Is ([\d,\s\u00a0\u202f]+) divisible by (2|3|4|5|6|8|9|10)\? (?:Write|Circle) yes or no\.$/);
+    if (!question || read(question[1]) !== number) return null;
+    const divisor = Number(question[2]);
+    const allowed = scope.step === 1 ? [2, 5, 10] : scope.step === 2 ? [3, 9] : [4, 6, 8];
+    const divides = number % divisor === 0;
+    if (!allowed.includes(divisor) || result.answer !== (divides ? "yes" : "no")) return null;
+    const verdict = `${fmt(number)} is${divides ? "" : " not"} divisible by ${divisor}.`;
+    if (divisor === 2) return `The last digit is ${number % 10}, which is ${divides ? "even" : "odd"}. ${verdict}`;
+    if (divisor === 5 || divisor === 10) return `The last digit is ${number % 10}. A multiple of ${divisor} ends in ${divisor === 5 ? "0 or 5" : "0"}. ${verdict}`;
+    if (divisor === 3 || divisor === 9) return `Digit sum: ${digits.join(" + ")} = ${sum}. ${sum} is${divides ? "" : " not"} a multiple of ${divisor}. ${verdict}`;
+    if (divisor === 6) return `The last digit ${number % 10} is ${number % 2 === 0 ? "even" : "odd"}; the digit sum ${sum} is${sum % 3 === 0 ? "" : " not"} a multiple of 3. Both tests must pass. ${verdict}`;
+    const tail = number % (divisor === 4 ? 100 : 1000);
+    return `The last ${divisor === 4 ? 2 : 3} digits form ${tail}. ${tail} is${divides ? "" : " not"} a multiple of ${divisor}. ${verdict}`;
+  }
+  if (scope?.skill === "6.4-lcm" && [1, 2].includes(scope.step) && src.answer === "lcm(a, b)" && Number.isInteger(v.a) && Number.isInteger(v.b) && v.a > 0 && v.b > 0) {
+    const common = Array.from({ length: v.b }, (_, i) => (i + 1) * v.a).find(n => n % v.b === 0)!;
+    const result = templateAnswer(src);
+    if ("answer" in result && Number(result.answer) === common) {
+      const list = (n: number) => Array.from({ length: common / n }, (_, i) => fmt((i + 1) * n)).join(", ");
+      return `Multiples of ${fmt(v.a)}: ${list(v.a)}. Of ${fmt(v.b)}: ${list(v.b)}. First shared: ${fmt(common)}.`;
+    }
+  }
   const binary = (e: string) => {
     const m = e.trim().match(/^(\w+) (\+|-|\*|\/\/) (\w+)$/);
     if (!m || n(m[1]) === undefined || n(m[3]) === undefined) return null;
@@ -1175,10 +1244,14 @@ export function dayPageContent(o: {
       }
       case "reminder": {
         const ex = panel();
+        const own = o.examples?.find((e) => e.slot === i)?.package;
+        const wordAnswer = own?.item?.checks.some(c => c.kind === "template" || c.kind === "template-choice")
+          && own.item.regions.some(r => r.kind === "choice" || r.kind === "box" && (r.answer?.type === "text" || r.answer?.type === "choice"));
         const step = part?.step ? curriculum.skillSteps(part.step.skill)?.[part.step.step - 1] : undefined;
         return {
           slot: s.slot, items: [], label: "Remember", note: "From before",
-          lines: ex ? [ex.answered] : [],
+          // A word answer alone ("yes") loses the example's question and repeats across distinct reminders.
+          lines: ex ? own && wordAnswer ? [own.text, ex.answered] : [ex.answered] : [],
           explain: step?.templates?.length ? `${step.name}.` : step?.change ?? "Do it the same way as before. Check each answer.",
         };
       }

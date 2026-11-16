@@ -9,6 +9,8 @@
 // fallbacks "default" (beta server-side-fallback-2026-07-01): a request the model declines is re-run on Anthropic's
 // recommended fallback model inside the same call.
 import Anthropic from "@anthropic-ai/sdk";
+import { recordAiUsage, type AiUsageTag } from "@/lib/ai-usage";
+import { keyIdentity } from "@/lib/ai-usage-context";
 import type { AiClient, AiJsonRequest, AiPart } from "@/lib/ai-client";
 
 /** The model when none is given: Claude Sonnet 5.5, the model the live site uses through OpenRouter. */
@@ -88,6 +90,7 @@ export function anthropicClient({
   timeout = 200_000,
   onUsage,
   fallbacks = true,
+  usage,
 }: {
   apiKey: string;
   model?: string;
@@ -100,6 +103,7 @@ export function anthropicClient({
   onUsage?: (usage: AnthropicUsage) => void;
   /** Ask for the server-side fallback on a decline (default). Off for a model that has none, such as Claude Haiku 5.5. */
   fallbacks?: boolean;
+  usage?: AiUsageTag;
 }): AiClient {
   const client = new Anthropic({ apiKey, maxRetries, timeout, ...(fetch ? { fetch } : {}) });
   /** Request names whose schema the API refused: they go with the schema in the instructions. */
@@ -141,6 +145,11 @@ export function anthropicClient({
         throw new Error(`Anthropic could not be reached: ${short(e instanceof Error ? e.message : e)}`);
       }
       const u = message.usage;
+      recordAiUsage(usage ?? { feature: "other" }, {
+        provider: "anthropic", model: message.model, generationId: message.id,
+        inputTokens: u?.input_tokens, outputTokens: u?.output_tokens,
+        keyAlias: "anthropic", keyId: keyIdentity(apiKey), costBasis: "unknown",
+      });
       onUsage?.({
         model: message.model,
         inputTokens: u?.input_tokens ?? 0,

@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { chromiumPrintEngine, findChromium } from "@/lib/print-engine-chromium";
 import { proofPages, renderWorkbook, type DraftPage, type MeasuredElement, type WorkbookDraft } from "@/lib/workbook-render";
-import type { AnswerRegion, ItemFormat } from "@/lib/question-package";
+import type { AnswerRegion, ItemCheck, ItemFormat } from "@/lib/question-package";
 import { WARM_UP_INSTRUCTION } from "@/lib/workbook-page-instructions";
 import { sampleBook } from "@/lib/workbook-sample-book";
 import { titleProblem, UNIT_TITLES } from "@/lib/workbook-titles";
@@ -25,6 +25,11 @@ const template = chromium ? workbookTemplate(await fixedTemplateFonts()) : workb
 const book = (level: string, n: number, testWorkbook = false, title?: string) =>
   sampleBook({ level, workbookId: `55555555-5555-4555-8555-00000000001${n}`, childId: CHILD, child: "Mateo", number: 2, testWorkbook, title }).draft;
 
+async function printPage(page: DraftPage, draft: WorkbookDraft) {
+  const html = `<!doctype html><html><head><style>@page{size:8.5in 11in;margin:0}html,body{margin:0}[data-sheet]{position:relative;width:816px;height:1056px;overflow:hidden}</style><style>${template.css}</style></head><body><section data-sheet="0" data-measure="sheet">${template.page(page, { qr: '<div data-measure="qr"></div>', qrUrl: "x" }, draft)}</section></body></html>`;
+  return engine.print({ html, sheets: 1, page: { width: 816, height: 1056 }, scale: 1 });
+}
+
 /** One page of each type (a parent-led page per first slot), with the book's own page numbers. */
 function oneOfEach(draft: WorkbookDraft): WorkbookDraft {
   const seen = new Set<string>();
@@ -39,6 +44,83 @@ function oneOfEach(draft: WorkbookDraft): WorkbookDraft {
 }
 
 describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
+  it.each([3, 5, 7].flatMap(reviewFrom => [0, 4, 12].map(extraGap => [reviewFrom, extraGap])))("keeps split practice labels consistent (review from %i, extra gap %i)", async (reviewFrom, extraGap) => {
+    const draft = book("U4", 1);
+    const page = structuredClone(draft.pages.find(p => p.type === "practice-2")!);
+    if (page.content?.kind !== "day") throw new Error("not a day page");
+    const base = page.questions[0];
+    const box = (id: string, value: number): Extract<AnswerRegion, { kind: "box" }> => ({ id, kind: "box", label: null, answer: { type: "number", value } });
+    const choice = (answer: string): Extract<AnswerRegion, { kind: "choice" }> => ({ id: "answer", kind: "choice", label: null, mark: "circle", choices: ["true", "false"], answer });
+    const ask = (number: number, text: string, regions: AnswerRegion[], format: ItemFormat, checks: ItemCheck[] = []) => ({
+      ...base, number, package: { ...base.package, text, answer: null, operation: null,
+        item: { scorable: true, parentChecked: false, error: null, format, regions, checks } },
+    });
+    const sequence = (number: number, start: number, step: number) => ask(number, step < 0 ? "Count back:" : "Count on:",
+      Array.from({ length: 4 }, (_, i) => box(`b${i + 1}`, start + (i + 1) * step)), "boxes",
+      [{ kind: "sequence", terms: [{ type: "number", value: start }, ...Array.from({ length: 4 }, (_, i) => ({ region: `b${i + 1}` }))], step: { type: "number", value: step } }]);
+    page.questions = [ask(1, "True or false: 2 and 8 make 9.", [choice("false")], "circle"),
+      ask(2, "True or false: 7 and 2 make 9.", [choice("true")], "circle"),
+      ask(3, "Arjun counts back: 16. What comes next?", [box("answer", 15)], "write-number"),
+      ask(4, "Before 9: 7 or 8?", [box("answer", 8)], "write-number"), sequence(5, 12, -1), sequence(6, 15, 1),
+      ask(7, "10 shells. 2 put away. 8 left out? Fix if wrong.", [{ ...choice("yes"), choices: ["yes", "no"] }], "circle"),
+      ask(8, "5 leaves. 1 put away. 5 left out? Fix if wrong.", [box("answer", 4)], "write-number"),
+      ask(9, "8 is 1 and ?", [{ id: "right", kind: "choice", mark: "tick", label: "Is it right?", choices: ["Yes", "No"], answer: "No" },
+        { ...box("fix", 7), label: "Fix it" }], "spot-the-error")];
+    page.content = { ...page.content, consistentLayout: true, fillingComplete: false, extraGap,
+      blocks: [{ slot: "practice-row", label: "Getting started", items: page.questions.slice(0, 8).map(q => q.number), reviewFrom },
+        { slot: "spot-the-error", items: [9], who: "Sam", lines: ["8 is 1 and ? Answer given: 8."] }] };
+    const { measured } = await printPage(page, draft);
+    if (!template.fit) throw new Error("the strict template has no fit check");
+    const problems = template.fit(page, new Map(measured.map(m => [m.name, m])), draft);
+    expect(problems.filter(p => /closer than.*between rows|belongs to the questions under it|gaps above the page.s labels/.test(p.reason))).toEqual([]);
+    const review = measured.find(m => m.name === "review-0")!;
+    const spot = measured.find(m => m.text.trim().toLowerCase() === "spot the error")!;
+    const bottom = (numbers: number[]) => Math.max(...numbers.map(n => {
+      const m = measured.find(m => m.name === `question-${n}`)!;
+      return m.y + m.height;
+    }));
+    const reviewGap = review.y - bottom(Array.from({ length: reviewFrom - 1 }, (_, i) => i + 1));
+    const spotGap = spot.y - bottom(Array.from({ length: 8 }, (_, i) => i + 1));
+    expect(Math.abs(reviewGap - spotGap)).toBeLessThanOrEqual(2);
+    expect(measured.filter(m => /^question-\d+$/.test(m.name))).toHaveLength(9);
+  }, 30_000);
+
+  it.each(["box", "choice"])("aligns a U19 Try this first %s with its question's first line", async kind => {
+    const draft = book("U19", 1);
+    const page = structuredClone(draft.pages.find(p => p.type === "new-idea")!);
+    if (page.content?.kind !== "day") throw new Error("not a day page");
+    const original = page.questions[0];
+    const region: AnswerRegion = kind === "choice"
+      ? { id: "answer", kind: "choice", mark: "circle", label: null, choices: ["prime", "composite"], answer: "composite" }
+      : { id: "answer", kind: "box", label: null, answer: { type: "number", value: 91 } };
+    page.questions = [{ ...original, number: 1, package: { ...original.package,
+      text: kind === "choice" ? "Is 14 prime or composite? Write prime or composite." : "Two angles on a straight line are 89 and x degrees. Find x.",
+      operation: null, answer: null,
+      item: { scorable: true, parentChecked: false, error: null, format: kind === "choice" ? "circle" : "write-number", regions: [region], checks: [] } } }];
+    page.content.consistentLayout = true;
+    page.content.blocks = [{ slot: "try-first", items: [1] }];
+    const { measured } = await printPage(page, draft);
+    const text = measured.find(m => m.name === "question-1-content")!.firstLine!;
+    const answer = measured.find(m => m.name === "question-1-answer")!;
+    if (kind === "choice") expect(Math.abs(answer.firstLine!.baseline - text.baseline)).toBeLessThanOrEqual(3);
+    else expect(Math.abs(answer.y - text.y)).toBeLessThanOrEqual(4);
+    expect(Math.abs(measured.find(m => m.name === "number-1")!.firstLine!.baseline - text.baseline)).toBeLessThanOrEqual(3);
+  }, 30_000);
+
+  it("keeps one number style on U19 pages combining review and Challenge cards", async () => {
+    const draft = book("U19", 1);
+    const page = structuredClone(draft.pages.find(p => p.type === "friday-5")!);
+    if (page.content?.kind !== "day") throw new Error("not a day page");
+    page.questions = page.questions.slice(0, 2).map((q, i) => ({ ...q, number: i + 1 }));
+    expect(page.questions).toHaveLength(2);
+    page.content.consistentLayout = true;
+    page.content.blocks = [{ slot: "friday-5", items: [1] }, { slot: "challenge", items: [2] }];
+    const { measured } = await printPage(page, draft);
+    const fonts = measured.filter(m => /^number-[12]$/.test(m.name)).map(m => m.font);
+    expect(fonts).toHaveLength(2);
+    expect(fonts[0]).toBe(fonts[1]);
+  }, 30_000);
+
   it.each(["U4", "U16"])("prints one whole-page Extra label and generated required minutes in %s", async level => {
     const draft = book(level, 1);
     for (const p of draft.pages) if (p.content?.kind === "day") {

@@ -750,10 +750,23 @@ describe("other events", () => {
     expect(said(effects)).toEqual(["Sorry, I can't teach this question yet. Want to pick another question on this page?"]);
   });
 
-  it("ends on a technical failure", () => {
+  it.each([30_000, 600_000, 1_200_000])("ends on a technical failure after %i ms", (elapsed) => {
     const c = afterExample();
-    const { effects } = c.send({ type: "technical", at: T0 + 30_000, detail: "the connection dropped" });
-    expect(ended(effects)).toMatchObject({ outcome: { reason: "technical_issue", seconds: 30 } });
+    const { effects } = c.send({ type: "technical", at: T0 + elapsed, detail: "the connection dropped" });
+    expect(ended(effects)).toMatchObject({ outcome: { reason: "technical_issue", seconds: Math.min(elapsed, 600_000) / 1000 } });
+  });
+
+  it("keeps safety priority over a late technical failure", () => {
+    const c = afterExample();
+    c.send({ type: "safety", at: T0 + 30_000, severity: "concern" });
+    const { effects } = c.send({ type: "technical", at: T0 + 1_200_000, detail: "the connection dropped" });
+    expect(ended(effects)).toMatchObject({ outcome: { reason: "safety", safetyFlag: true, seconds: 600 } });
+    expect(said(effects)).toEqual([SAFETY_GUIDANCE.concern]);
+  });
+
+  it("keeps an ordinary elapsed call as time_limit", () => {
+    const c = afterExample();
+    expect(ended(c.send({ type: "tick", at: T0 + 1_200_000 }).effects)).toMatchObject({ outcome: { reason: "time_limit", seconds: 600 } });
   });
 
   it("refuses events out of order", () => {

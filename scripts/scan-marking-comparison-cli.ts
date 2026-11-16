@@ -1,4 +1,5 @@
 // No keychain access, rendering, generator or implicit inference. --estimate is offline.
+import { flushAiUsage } from "@/lib/ai-usage";
 import { mkdir, open, readFile, readdir, rename } from "node:fs/promises";
 import { dirname, isAbsolute, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -244,4 +245,4 @@ export async function main() {
 
   console.log(resolve(out, "report.json"));
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main().catch(error => { console.error(`Comparison stopped: ${error instanceof Error ? error.message : "unknown error"}. Inspect the saved files. No alternate route was used.`); process.exitCode = 1; });
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main().finally(flushAiUsage).catch(error => { console.error(`Comparison stopped: ${error instanceof Error ? error.message : "unknown error"}. Inspect the saved files. No alternate route was used.`); process.exitCode = 1; });

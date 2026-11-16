@@ -17,6 +17,7 @@ import { workbookWorker } from "@/lib/workbook-worker";
 import { keySolver, type Solver } from "@/lib/workbook-solve-check";
 import { firstCustomerProfile } from "@/lib/workbook-sample-profiles";
 import { pageGateKey, type PageGateChecker } from "@/lib/workbook-page-gates";
+import { WorkbookAiUnavailable } from "@/lib/workbook-ai-unavailable";
 
 // "Prepare next workbook" (#312) through its public interface: the in-memory runs, drafts and files, the fake AI client
 // with fixed JSON, the fake print engine and the real page templates (#310). The clock is fake: each AI call takes
@@ -86,6 +87,55 @@ async function started(s: ReturnType<typeof setup>) {
 }
 
 describe("a run", () => {
+  it("preserves a planning capacity failure without retrying into a missing-plan refusal", async () => {
+    const state = setup({ itemPolicy: "approved-v1" });
+    const reason = "day 5 page 4 (practice): the on-your-own slot runs 25 px past the bottom of the content area";
+    state.deps.fit = () => ({ fits: async () => ({ ok: false, problems: [{ question: null, reason }] }) });
+    const runId = await started(state);
+    expect(await runWorkbookJob(runId, state.deps)).toBe("failed");
+    const run = (await state.runs.run(runId))!;
+    expect(run.error).toContain(reason);
+    expect(run.error).not.toContain("no stored plan");
+    expect(run.attempts).toBe(1);
+    expect(run.errors).toHaveLength(1);
+    expect(await state.runs.frame(runId)).toBeNull();
+    expect((state.ai as ReturnType<typeof fakeAiClient>).requests).toHaveLength(0);
+  });
+
+  it.each(["writer", "solve check"])("stops on an unavailable %s without making an incomplete draft", async (stage) => {
+    const reason = "The selected Codex subscription reached its usage limit; no fallback is enabled";
+    const state = setup({
+      ...(stage === "writer" ? { ai: fakeAiClient({ answer: () => { throw new WorkbookAiUnavailable(reason); } }) }
+        : { solver: { model: "unavailable-solver", solve: async () => { throw new WorkbookAiUnavailable(reason); } } }),
+    });
+    const print = vi.spyOn(state.deps.engine, "print");
+    const runId = await started(state);
+    expect(await runWorkbookJob(runId, state.deps)).toBe("failed");
+    const run = (await state.runs.run(runId))!;
+    expect(run.error).toBe(reason);
+    expect(run.attempts).toBe(1);
+    expect(run.draftId).toBeNull();
+    expect(await state.drafts.draft(run.draftKey)).toBeNull();
+    expect(print).not.toHaveBeenCalled();
+  });
+
+  it("stops when the writer becomes unavailable while retrying incomplete output", async () => {
+    let requests = 0;
+    const reason = "The selected subscription reached its usage limit";
+    const ai = fakeAiClient({ answer: () => {
+      if (++requests === 1) return { items: [] };
+      throw new WorkbookAiUnavailable(reason);
+    } });
+    const state = setup({ ai, concurrency: 1 });
+    const runId = await started(state);
+    expect(await runWorkbookJob(runId, state.deps)).toBe("failed");
+    const run = (await state.runs.run(runId))!;
+    expect(run.error).toBe(reason);
+    expect(run.attempts).toBe(1);
+    expect(requests).toBe(2);
+    expect(await state.drafts.draft(run.draftKey)).toBeNull();
+  });
+
   it("checks each rendered page with the page layout gate once, stores it at page:<page> and marks a flagged page (#859)", async () => {
     const asked: number[] = [];
     const pageGates: PageGateChecker = {

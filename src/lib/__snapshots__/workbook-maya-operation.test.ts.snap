@@ -82,7 +82,7 @@ exports[`generated Maya coverage by print band > pins all ten days of U4 and kee
     "kind": "bare",
     "level": "U4",
     "operations": 9,
-    "questions": 16,
+    "questions": 17,
   },
   {
     "accepted": 13,
@@ -124,7 +124,7 @@ exports[`generated Maya coverage by print band > pins all ten days of U4 and kee
     "kind": "story",
     "level": "U4",
     "operations": 63,
-    "questions": 156,
+    "questions": 155,
   },
   {
     "accepted": 0,

@@ -452,7 +452,8 @@ export function endsInOpenNumber(text: string): boolean {
 /** The states in which Maya's question can ask the child for a computed number (src/lib/maya/session.ts). */
 const NUMBER_STATES: readonly Session["state"][] = ["ASSESS", "MODEL_EXAMPLE", "TRY_TARGET", "GUIDE_TARGET", "CHECK"];
 /** A question for a number: "What is 27 + 39?", "How many tens?", "Can you add 7 + 9?". */
-const NUMBER_QUESTION = /\b(?:what|how many|how much|which number|work out|can you (?:add|subtract|multiply|divide|find|do|try|solve))\b/i;
+// "What part ..." asks for a part, not a number (the opening asks "What part is confusing, ...?", 2026-11-15).
+const NUMBER_QUESTION = /\b(?:what(?! part\b)|how many|how much|which number|work out|can you (?:add|subtract|multiply|divide|find|do|try|solve))\b/i;
 /** A request to compute, with no question mark: "Try 27 + 39 the same way.", "Now multiply 3 × 4.". */
 const NUMBER_REQUEST = /\b(?:try|work out|find|solve|add|subtract|multiply|divide)\b/i;
 
@@ -469,8 +470,8 @@ export function asksForNumber(say: string, state: Session["state"]): boolean {
 
 /**
  * The same rule on the worker's own opening (D-341: code's line, said while the session is in `OPEN`, where
- * `asksForNumber` is always false). Only the words decide. Today's opening ends "Where do you want to start?", which
- * asks for no number, so the child's first turn keeps the normal limits (2026-11-13).
+ * `asksForNumber` is always false). Only the words decide. Today's opening ends "What part is confusing, or where do
+ * you need help?", which asks for no number, so the child's first turn keeps the normal limits (2026-11-13, 2026-11-15).
  */
 export function openingAsksForNumber(say: string): boolean {
   return lastAsksForNumber(say);
@@ -585,9 +586,9 @@ export function callKeyterms(pkg: QuestionPackage | null): string[] {
 /** The id the greeting is saved under in the call's `live.acknowledged`, so it is said once per call (docs/maya-voice.md). */
 export const GREETING_ID = "greeting.hello";
 /**
- * The first words of a voice call, code-written, before Maya's first teaching line: that she can be wrong. Her own
- * opening already says her name and that she is an AI, so the greeting does not say it again (Chief of Staff, 2026-11-12). The worker says it with the same speech path as other code lines. It stages no
- * board batch and is not in the call's transcript.
+ * The old first words of a voice call, after the opening: that she can be wrong. Not said since 2026-11-15 (Savar's call
+ * 2): it came right after the opening's question, with no line in the transcript, and it is not a safety or consent
+ * line. The worker no longer passes it (`main.ts`); the greeting code path stays for a later decision.
  */
 export const GREETING_TEXT = "I can make mistakes, so tell me if something sounds wrong.";
 
