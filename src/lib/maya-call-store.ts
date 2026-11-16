@@ -177,6 +177,19 @@ export function mayaCallStore(admin: SupabaseClient<Database>): CallStore {
       throw new Error(`maya call append ink: unexpected answer ${JSON.stringify(data)}`);
     },
     readInk: (id) => readInkLog(admin, id),
+    async checkpoint(id, revision, live) {
+      if (!UUID.test(id)) return false;
+      // #1107: the chat's saved progress inside a turn, at the revision its claim holds; the revision stays (the claim's fence).
+      const { data, error } = await admin
+        .from("maya_calls")
+        .update({ live: live as unknown as Update["live"], updated_at: new Date().toISOString() })
+        .eq("id", id.toLowerCase())
+        .eq("revision", revision)
+        .eq("status", "live")
+        .select("id");
+      if (error) throw new Error(`maya call checkpoint: ${error.message}`);
+      return (data ?? []).length === 1;
+    },
     async clearNote(id) {
       if (!UUID.test(id)) return false;
       const { data, error } = await admin

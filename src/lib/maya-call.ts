@@ -236,6 +236,13 @@ export interface CallStore {
   get(id: string): Promise<CallRecord | null>;
   /** Writes the change and raises the revision by one, only when the stored revision is `revision`. False otherwise. */
   update(id: string, revision: number, change: CallChange): Promise<boolean>;
+  /**
+   * #1107: saves a live call's state inside a turn (a chat's streamed parts) only when the stored revision is `revision`
+   * and the call is live, WITHOUT raising the revision: a message's claim stays pending until the turn's own save, and a
+   * recovery that took the claim (a new revision) refuses every later checkpoint of the old turn. False otherwise.
+   * A store without it streams no chat.
+   */
+  checkpoint?(id: string, revision: number, live: NonNullable<CallRecord["live"]>): Promise<boolean>;
   /** The child's ended calls whose note is pending, oldest end first, at most `limit`. */
   pendingNotes(childId: string, limit: number): Promise<CallRecord[]>;
   /**
@@ -572,7 +579,7 @@ export type OpenVoiceResult = { ok: true; call: VoiceCall } | { ok: false; error
  * is never taken back. The finished turn's reply holds the same sentences in the same order, then any that follow. A
  * listener that throws changes nothing of the turn.
  */
-export interface TextSay { part(sentence: string, index: number): void }
+export interface TextSay { part(sentence: string, index: number, board?: Batch[]): void }
 
 export interface MayaCalls {
   start(input: StartInput): Promise<CallResult>;
@@ -926,7 +933,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   }
 
   /** A call's text session. Admin test calls have free talk on (D-197), with the model's review, and the tutor core (D-345); chat has free talk off; family calls get the tutor core behind `tutorFamilies`. A resumed call keeps its flags. */
-  function textSession(record: Pick<CallRecord, "id" | "parentId" | "childId"> & { kind: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void, sayHooks?: Pick<TextSessionOptions, "onSayPart" | "onSayCancel" | "onSayEnd" | "onRepairStart" | "modelRepair" | "onPreparation" | "withModelAttempt">, spend?: SpendCall, preparing?: Pick<TextSessionOptions, "spend" | "prepareModel" | "prepareHandleId">): TextSession {
+  function textSession(record: Pick<CallRecord, "id" | "parentId" | "childId"> & { kind: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void, sayHooks?: Pick<TextSessionOptions, "onSayPart" | "onSayCancel" | "onSayEnd" | "onRepairStart" | "modelRepair" | "onPreparation" | "withModelAttempt" | "persist">, spend?: SpendCall, preparing?: Pick<TextSessionOptions, "spend" | "prepareModel" | "prepareHandleId">): TextSession {
     return createTextSession({
       onGuidance, ...sayHooks, ...preparing,
       callId: record.id, channel: record.kind === "chat" ? "chat" : undefined, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved, limitMs, grade, confirmWorkbook,
@@ -1670,6 +1677,19 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       // The name the saved session holds hides itself in the stored trace when the caller gives none: the sweep and an
       // admin end pass no name, and the trace hid only the name it was given (a chat's trace kept the real name, 2026-11-13).
       const name = savedName(saved) ?? childName;
+      if (input.type === "child" && record.kind === "chat") {
+        // #1107: a chat turn whose request stopped after saved parts (its process went away): the recovered request for
+        // the same message ends it from the saved parts, with code's line and no model call, before any spend or clock
+        // path asks one. The child's words are not taken again. Other words while it waits are a conflict.
+        const stopped = textSession(record, pkg, idleModel(record), name, saved);
+        const was = stopped.interrupted;
+        if (was) {
+          if (was.text !== input.text.trim()) return { ok: false, error: "conflict" };
+          const out = await stopped.settleInterrupted();
+          const settled = await save(record, pkg, stopped);
+          return settled ? result(settled, settled.trace ?? stopped.trace(), out) : { ok: false, error: "conflict" };
+        }
+      }
       if (input.type !== "end") {
         // At the cap Maya teaches no more, and only the child's own words are read, for safety.
         const state = await spendState(record);
@@ -1693,10 +1713,13 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         const ended = await end(record, pkg, session, { detail: "the model this call started with is no longer available" });
         return ended ? result(ended, ended.trace!, null) : { ok: false, error: "conflict" };
       }
-      // #1107: a chat child turn streams its checked sentences to the desk through the voice path's hooks.
-      const hear = say && record.kind === "chat" && input.type === "child"
-        ? { onSayPart: (sentence: string, index: number) => { try { say.part(sentence, index); } catch { /* the desk's ear never fails the turn */ } } }
-        : undefined;
+      // #1107: a chat child turn streams its checked sentences to the desk through the voice path's hooks. Each one, with
+      // the drawing fixed for it, is saved in the call (at the claim's revision, which stays) before the desk gets it.
+      const checkpoint = store.checkpoint?.bind(store);
+      const hear = say && checkpoint && record.kind === "chat" && input.type === "child" ? {
+        onSayPart: (sentence: string, index: number, board: Batch[]) => { try { say.part(sentence, index, board.length ? board : undefined); } catch { /* the desk's ear never fails the turn */ } },
+        persist: async () => checkpoint(record.id, record.revision, { package: pkg, text: await session.saved() }),
+      } : undefined;
       const session = textSession(record, pkg, model, name, saved, undefined, undefined, undefined, undefined, undefined, undefined, hear);
       let out: TextOutput | null = null;
       let saved2: CallRecord | null = null;

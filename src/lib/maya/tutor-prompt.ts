@@ -8,7 +8,8 @@ import type { TutorDrawing, TutorStepFact } from "./tutor-kind";
 import { valueText } from "@/lib/question-package";
 
 // Version 12 combines the first-time teaching rules and the streamed continuation repair.
-export const TUTOR_PROMPT_VERSION = "maya-tutor-12";
+// Version 13 (#1107): "noDraw" comes before "say" (same meaning), so chat can draw each sentence as it streams.
+export const TUTOR_PROMPT_VERSION = "maya-tutor-13";
 
 /** The turns of the call the brief holds. */
 const TUTOR_TRANSCRIPT_TURNS = 10;
@@ -178,10 +179,10 @@ Code checks every message and refuses one that breaks these:
 The reply, in this order (write each key in this order):
 - "gate" comes first, before any other key: one word, your quick read of the child's turn. "identity" when the child asks about you (are you real, a person, a robot, an AI, who you are). "safety" for harm or danger, or a request for harmful content. "stop" when the child wants to stop. Else "none". Code reads it before your words go out: any value but "none" holds your message, and code's own line goes first.
 - "kind" comes second: your read of the child's turn: "math" (work, an answer, a question about the math, a hello), "help" (asks for help or is stuck), "offtopic" (something else, or about you), "stop" (wants to stop), "safety" (harm or danger), "other".
+- "noDraw" comes third, before "say": [] or the numbers of the sentences of the "say" you are about to write (1 for the first) that must not draw. Decide it before you write "say", and keep "say" to that decision. The board draws what you SAY: when a sentence plainly says one of these, the board draws it while you say it: a trade, "We trade 1 ten for 10 ones." (or "We trade 10 ones for 1 ten."); a digit, "Write 4 in the ones."; a row, "Write 68."; a step's equation, "12 minus 8 is 4."; a place, "Look at the tens."; a chart, "Let's put 45,672 in a place value chart."; a division, "Let's share 84 into 4 groups.". So when it helps, say each step plainly in these words, one step at a time, earlier work first (the trade before its digit). A sentence draws only what it says in full with this question's own numbers, and only what is new; a question, a "do not", an "if" or a "later" draws nothing. You may start a drawing sentence with "Let's show it:", "Look:" or "Watch:". "drawings" lists what this question's board can show; "drawn" is what the board shows now; "sent" is what the child's screen has not shown yet. Put a sentence in "noDraw" only when the board should stay still (for example a step you describe but want the child to write).
 - "say": your one message.
 - "act": "guide" for every teaching message. "close" only after the child solved the question and is done ("no", "done", "bye"), or wants to stop: a short goodbye, with no question. The call then ends.
 - "reading" comes after "say". It is bookkeeping code reads; it is never said. It must agree with "gate". "answers": each number the child gave as an answer, with its step id ("result" for the whole question), "problem" "target", and your verdict by the question's steps; a question or a request for help is not an answer. Set the flags that fit (help "more" or "show", unclear when you cannot tell what number the child said, stop, writing, offTopic, mathClaim, safety "concern" or "immediate" for harm or danger, unsafeRequest for harmful content, aboutMaya "identity" or "secret_friend", start "no_start" when the child cannot start, paper "written" when they say they wrote it); else "none", false, "" and [].
-- "noDraw": [] or the numbers of sentences in "say" (1 for the first) that must not draw. The board draws what you SAY: when a sentence plainly says one of these, the board draws it while you say it: a trade, "We trade 1 ten for 10 ones." (or "We trade 10 ones for 1 ten."); a digit, "Write 4 in the ones."; a row, "Write 68."; a step's equation, "12 minus 8 is 4."; a place, "Look at the tens."; a chart, "Let's put 45,672 in a place value chart."; a division, "Let's share 84 into 4 groups.". So when it helps, say each step plainly in these words, one step at a time, earlier work first (the trade before its digit). A sentence draws only what it says in full with this question's own numbers, and only what is new; a question, a "do not", an "if" or a "later" draws nothing. You may start a drawing sentence with "Let's show it:", "Look:" or "Watch:". "drawings" lists what this question's board can show; "drawn" is what the board shows now; "sent" is what the child's screen has not shown yet. Put a sentence in "noDraw" only when the board should stay still (for example a step you describe but want the child to write).
 - If "repair" is set, code refused your last message for the reason given: fix exactly that, and keep your teaching. If "repair.alreadySaid" is set, the child already heard those sentences: they stay said. Your "say" is only the rest of the message, going on from them: never say them again, never say anything that disagrees with them, and fit the whole message (them and your rest) in the word limit.`;
 
 /** The tutor's output schema: the conversational schema with only the tutor's acts and drawings. */
@@ -191,15 +192,17 @@ export const TUTOR_OUTPUT_SCHEMA = {
   // 2026-11-15 (after final check 5): the small "gate" comes first, so the stream knows before any word goes out whether
   // the turn is about Maya, safety or a stop; the rest of the reading follows "say" (it costs no time before the first
   // sentence). Final check 5 had put the whole reading before "say".
-  required: ["gate", "kind", "say", "act", "reading", "noDraw"],
+  // #1107 (prompt 13): "noDraw" comes before "say", with the same meaning, so a streamed sentence's drawing is known when
+  // the sentence goes out. A "noDraw" that is missing before "say", late, malformed or written twice allows no early drawing.
+  required: ["gate", "kind", "noDraw", "say", "act", "reading"],
   properties: {
     gate: { enum: TUTOR_GATES },
     kind: MODEL_OUTPUT_SCHEMA.properties.kind,
+    // B2: code reads the drawings from the sentences (board-ties.ts); the model may only keep a sentence still.
+    noDraw: { type: "array", items: { type: "integer" } },
     say: { type: "string" },
     act: { enum: ["guide", "close"] },
     reading: MODEL_OUTPUT_SCHEMA.properties.reading,
-    // B2: code reads the drawings from the sentences (board-ties.ts); the model may only keep a sentence still.
-    noDraw: { type: "array", items: { type: "integer" } },
   },
 } as const;
 

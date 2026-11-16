@@ -4,6 +4,7 @@ import { growInkLog, historyFromLog, inkLog, readInkEvent, type BoardHistory, ty
 import { chatBoardFates, type ScreenFateReport } from "@/lib/board-fate";
 import { chatCapLine, chatSpendLine, type ChatUsage, type ChatView, type ChatReply } from "@/lib/maya-chat";
 import { CHAT_STREAM_TYPE, isChatStream, readChatStream } from "@/lib/maya-chat-stream";
+import type { Batch } from "@/lib/board";
 import { OurBoard } from "@/components/our-board";
 import { Icon } from "@/components/desk-icons";
 
@@ -284,7 +285,7 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
    * once). Shown after the saved conversation until the final reply replaces it; a failed stream drops it, as a reply
    * that never came.
    */
-  const [live, setLive] = useState<{ id: string; child: string; parts: string[] } | null>(null);
+  const [live, setLive] = useState<{ id: string; child: string; parts: string[]; batches: Batch[] } | null>(null);
   /**
    * A chat picked up again (#635): the ink log the call holds for it, with the ink still on this device after it, which
    * the board starts from. "loading" until the call answers (the board waits, so no line is drawn on a board the call's
@@ -313,12 +314,16 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
     try {
       res = await fetch("/api/desk/chat", { method: "POST", headers: { "Content-Type": "application/json", ...(streams ? { Accept: `${CHAT_STREAM_TYPE}, application/json` } : {}) }, body: JSON.stringify(action), ...(streams ? { signal: stop.signal } : {}) });
       answer = streams && res.ok && res.body && isChatStream(res)
-        ? await readChatStream(res.body, (index, text) => {
+        ? await readChatStream(res.body, (index, text, board) => {
           if (generation !== epoch.current) return;
           setLive((now) => {
-            const parts = now && now.id === action.id ? [...now.parts] : [];
+            const same = now && now.id === action.id;
+            const parts = same ? [...now.parts] : [];
             parts[index] = text;
-            return { id: String(action.id), child: String(action.text ?? ""), parts };
+            // #1107: the drawing saved with the sentence goes on the board with it (the board takes each batch once).
+            const batches = same ? [...now.batches] : [];
+            for (const b of board) if (!batches.some((x) => x.transactionId === b.transactionId)) batches.push(b);
+            return { id: String(action.id), child: String(action.text ?? ""), parts, batches };
           });
         })
         : await res.json() as ChatReply;
@@ -461,7 +466,8 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
     if (!chat || !live || live.id !== chat.id) return chat;
     const second = chat.transcript.at(-1)?.second ?? 0;
     const said = live.parts.filter((p) => typeof p === "string").join(" ");
-    return { ...chat, transcript: [...chat.transcript, { speaker: "child" as const, text: live.child, second }, ...(said ? [{ speaker: "maya" as const, text: said, second }] : [])] };
+    const batches = [...chat.batches, ...live.batches.filter((b) => !chat.batches.some((x) => x.transactionId === b.transactionId))];
+    return { ...chat, batches, transcript: [...chat.transcript, { speaker: "child" as const, text: live.child, second }, ...(said ? [{ speaker: "maya" as const, text: said, second }] : [])] };
   }, [chat, live]);
   return { usage, chat: ownerKey === key ? shown : null, busy, error, act, retry: refresh, uncertain, saveBoard, callInk };
 }

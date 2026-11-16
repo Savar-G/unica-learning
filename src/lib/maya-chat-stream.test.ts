@@ -81,6 +81,24 @@ describe("chatStream: the route's answer for a child turn", () => {
   });
 });
 
+describe("a sentence's drawing in the stream (#1107)", () => {
+  const batch = { transactionId: "call-b3", commands: [{ op: "highlight", id: "h1" }] } as never;
+  it("carries the drawing saved with the sentence, and the desk reads it with the sentence", async () => {
+    const ran = await chatStream(async (say) => { say.part("We trade 1 ten for 10 ones.", 0, [batch]); return done("final"); });
+    if (!("stream" in ran)) throw Error("expected a stream");
+    const heard: unknown[] = [];
+    const r = await readChatStream(ran.stream, (i, t, board) => heard.push([i, t, board]));
+    expect(heard).toEqual([[0, "We trade 1 ten for 10 ones.", [batch]]]);
+    expect(r).toEqual(done("final"));
+  });
+  it.each([
+    ["a batch with no id", [{ commands: [] }]],
+    ["too many batches", [batch, batch, batch]],
+  ])("refuses a say event with %s", async (_, board) => {
+    await expect(readChatStream(body(`${JSON.stringify({ type: "say", index: 0, text: "One.", board })}\n`), () => {})).rejects.toThrow();
+  });
+});
+
 describe("readChatStream: the desk's read", () => {
   it("hears each sentence and returns the final reply", async () => {
     const heard: [number, string][] = [];
@@ -108,18 +126,33 @@ describe("runChat: admission before any streamed word", () => {
     f.books.setStatus(f.ids.workbook, "shipped");
     let held: (() => void) | null = null;
     let hold = false;
-    const model = conversationalFake({
-      answer: () => reply("7 ones and 9 ones make 16 ones. What do we write in the ones place?", "guide"),
-      stream: { chunk: 9, beforeEnd: () => (hold ? new Promise<void>((r) => { held = r; }) : Promise.resolve()) },
-    });
-    const seams: CallSeams = { ...f.seams, tutorFamilies: true, model: () => model, reviewer: () => fakeTalkReviewer(), mathReviewer: () => fakeMathReviewer(), canChat: async () => true };
-    local.books = f.books; local.seams = seams;
+    /** A process: its own model on the shared store (a fresh one after the first goes away). */
+    const process = () => {
+      const model = conversationalFake({
+        answer: () => reply("7 ones and 9 ones make 16 ones. What do we write in the ones place?", "guide"),
+        stream: { chunk: 9, beforeEnd: () => (hold ? new Promise<void>((r) => { held = r; }) : Promise.resolve()) },
+      });
+      local.seams = { ...f.seams, tutorFamilies: true, model: () => model, reviewer: () => fakeTalkReviewer(), mathReviewer: () => fakeMathReviewer(), canChat: async () => true } satisfies CallSeams;
+      return model;
+    };
+    const model = process();
+    local.books = f.books;
+    /** The message the claim holds, for its recovery (recover_maya_chat_message), once its lease ran out. */
+    let lapsed: { text: string } | null = null;
     const db = createClient<Database>("https://test.invalid", "test", { global: { fetch: async (input, init) => {
       const url = new URL(String(input)), table = url.pathname.split("/").pop()!;
       if (table === "maya_notice_acceptances") return Response.json([{ parent_id: f.ids.parent, notice_version: MAYA_NOTICE_VERSION, accepted_by: f.ids.parent, accepted_at: "2026-11-06T12:00:00Z" }]);
       if (table === "maya_chat_messages") return new Response(null, { status: 200, headers: { "content-range": "*/0" } });
       if (table === "workbook_pages") return Response.json({ id: "page-four" });
-      if (table === "recover_maya_chat_message") return Response.json({ status: "none" });
+      if (table === "recover_maya_chat_message") {
+        if (!lapsed) return Response.json({ status: "none" });
+        // As the database: a new revision for the claim, then the message's own words.
+        const old = (await f.store.get(ID))!;
+        await f.store.update(ID, old.revision, {});
+        const text = lapsed.text;
+        lapsed = null;
+        return Response.json({ status: "accepted", id: MSG, callId: ID, revision: old.revision + 1, text });
+      }
       if (table === "take_maya_chat_message") {
         const input = JSON.parse(String(init?.body));
         return Response.json(claim() ?? { status: "accepted", revision: input.p_revision });
@@ -129,7 +162,7 @@ describe("runChat: admission before any streamed word", () => {
     const ctx = { db, parent: f.ids.parent, child: f.ids.child, name: "Iris", grade: 4, zone: "America/Vancouver" as const };
     const started = await runChat(ctx, { type: "start", id: ID, question: { source: "workbook", workbookId: f.ids.workbook, page: 4, question: 3 } });
     if (!started.chat) throw Error(`no chat: ${started.error}`);
-    return { f, ctx, model, revision: started.chat.revision, hold: () => { hold = true; }, release: () => { hold = false; held?.(); } };
+    return { f, ctx, model, process, lapse: (text: string) => { lapsed = { text }; }, revision: started.chat.revision, hold: () => { hold = true; }, release: () => { hold = false; held?.(); } };
   }
 
   it.each([
@@ -173,5 +206,24 @@ describe("runChat: admission before any streamed word", () => {
     expect(r.admission).toBe("accepted");
     const maya = r.chat!.transcript.filter((t) => t.speaker === "maya").at(-1)!.text;
     expect(parts.join(" ")).toBe(maya);
+  });
+
+  it("a request after the first process went away recovers the admitted message from its saved parts: same words, no model call, the claim done", async () => {
+    // Falsifier: the recovery asks the model again (a second paid answer) or takes the child's words as a new turn.
+    const s = await setup(() => null);
+    s.hold();
+    const parts: string[] = [];
+    void runChat(s.ctx, { type: "child", id: ID, messageId: MSG, revision: s.revision, text: "Is it 56?" }, { say: { part: (t, i) => { parts[i] = t; } } });
+    await vi.waitFor(() => expect(parts.length).toBeGreaterThan(0), { timeout: 2000, interval: 5 });
+    const heard = [...parts];
+    // The first process goes away; its lease runs out; a fresh process answers the desk's next request.
+    const fresh = s.process();
+    s.lapse("Is it 56?");
+    const r = await runChat(s.ctx, { type: "read", id: ID });
+    expect(fresh.briefs).toHaveLength(0);
+    const maya = r.chat!.transcript.filter((t) => t.speaker === "maya").at(-1)!.text;
+    expect(maya.startsWith(heard.join(" "))).toBe(true);
+    expect(r.chat!.transcript.filter((t) => t.speaker === "child" && t.text === "Is it 56?")).toHaveLength(1);
+    expect(r.chat!.pending).toBe(false);
   });
 });

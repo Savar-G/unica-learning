@@ -1,3 +1,4 @@
+import type { Batch } from "@/lib/board";
 import type { ChatReply } from "@/lib/maya-chat";
 
 // #1107: desk chat says Maya's checked sentences as they pass, the way voice does. One child turn is still one Maya message:
@@ -12,9 +13,13 @@ export const CHAT_STREAM_TYPE = "application/x-ndjson";
 export const MAX_STREAM_SENTENCES = 64;
 /** The longest sentence text one `say` event carries. */
 export const MAX_STREAM_TEXT = 2_000;
+/** The most board batches one `say` event carries (a sentence draws at most one) and the most encoded bytes of them. */
+export const MAX_STREAM_BATCHES = 2;
+export const MAX_STREAM_BOARD_BYTES = 20_000;
 
 export type ChatStreamEvent =
-  | { type: "say"; index: number; text: string }
+  /** `board` (#1107): the drawing saved with this sentence, which the desk draws with it. */
+  | { type: "say"; index: number; text: string; board?: Batch[] }
   | { type: "final"; reply: ChatReply }
   | { type: "error"; error: "unavailable" };
 
@@ -30,14 +35,15 @@ export type ChatRun = { reply: ChatReply } | { failed: unknown } | { stream: Rea
  * Disconnect: a reader that goes away never stops the turn. `keep` gets the turn's promise so the platform keeps the
  * function alive until the turn is saved (`after` in the route); a retry of the same message then gets "busy" or "done".
  */
-export async function chatStream(run: (say: { part(sentence: string, index: number): void }) => Promise<ChatReply>, keep: (work: Promise<unknown>) => void = () => {}): Promise<ChatRun> {
+export async function chatStream(run: (say: { part(sentence: string, index: number, board?: Batch[]): void }) => Promise<ChatReply>, keep: (work: Promise<unknown>) => void = () => {}): Promise<ChatRun> {
   const queued: ChatStreamEvent[] = [];
   let sink: ((event: ChatStreamEvent) => void) | null = null;
   let begin!: () => void;
   const started = new Promise<"started">((resolve) => { begin = () => resolve("started"); });
-  const part = (sentence: string, index: number) => {
+  const part = (sentence: string, index: number, board?: Batch[]) => {
     if (typeof sentence !== "string" || !Number.isSafeInteger(index) || index < 0 || index >= MAX_STREAM_SENTENCES || sentence.length > MAX_STREAM_TEXT) return;
-    const event: ChatStreamEvent = { type: "say", index, text: sentence };
+    const drawn = board?.length && readBoard(board) ? { board: structuredClone(board) } : {};
+    const event: ChatStreamEvent = { type: "say", index, text: sentence, ...drawn };
     if (sink) sink(event);
     else { queued.push(event); begin(); }
   };
@@ -72,6 +78,14 @@ export async function chatStream(run: (say: { part(sentence: string, index: numb
 /** Whether a response is a chat stream (else it is the JSON reply). */
 export const isChatStream = (res: Response): boolean => (res.headers.get("content-type") ?? "").split(";")[0].trim() === CHAT_STREAM_TYPE;
 
+/** A `say` event's board, read strictly: at most MAX_STREAM_BATCHES batches, each an id and commands, within the size limit. */
+function readBoard(value: unknown): Batch[] | null {
+  if (!Array.isArray(value) || value.length > MAX_STREAM_BATCHES || JSON.stringify(value).length > MAX_STREAM_BOARD_BYTES) return null;
+  const ok = value.every((b) => typeof b === "object" && b !== null && typeof (b as Batch).transactionId === "string" && Array.isArray((b as Batch).commands) &&
+    ((b as Batch).after === undefined || (Array.isArray((b as Batch).after) && (b as Batch).after!.every((x) => typeof x === "string"))));
+  return ok ? (value as Batch[]) : null;
+}
+
 /** One line of a chat stream, read strictly; null when it is not one of the three events. */
 export function readChatEvent(line: string): ChatStreamEvent | null {
   let value: unknown;
@@ -79,8 +93,10 @@ export function readChatEvent(line: string): ChatStreamEvent | null {
   if (typeof value !== "object" || value === null) return null;
   const e = value as Record<string, unknown>;
   if (e.type === "say") {
+    const board = e.board === undefined ? undefined : readBoard(e.board);
+    if (board === null) return null;
     return Number.isSafeInteger(e.index) && (e.index as number) >= 0 && (e.index as number) < MAX_STREAM_SENTENCES && typeof e.text === "string" && e.text.length <= MAX_STREAM_TEXT
-      ? { type: "say", index: e.index as number, text: e.text } : null;
+      ? { type: "say", index: e.index as number, text: e.text, ...(board?.length ? { board } : {}) } : null;
   }
   if (e.type === "final") return typeof e.reply === "object" && e.reply !== null && typeof (e.reply as { usage?: unknown }).usage === "object" ? { type: "final", reply: e.reply as ChatReply } : null;
   if (e.type === "error") return { type: "error", error: "unavailable" };
@@ -92,7 +108,7 @@ export function readChatEvent(line: string): ChatStreamEvent | null {
  * without a `final`, carries an `error`, holds a line that is not an event, or is cut: partial words are never a
  * finished turn, so the desk keeps the message for its retry.
  */
-export async function readChatStream(body: ReadableStream<Uint8Array>, onSay: (index: number, text: string) => void): Promise<ChatReply> {
+export async function readChatStream(body: ReadableStream<Uint8Array>, onSay: (index: number, text: string, board: Batch[]) => void): Promise<ChatReply> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -108,7 +124,7 @@ export async function readChatStream(body: ReadableStream<Uint8Array>, onSay: (i
       const event = readChatEvent(line);
       if (!event || event.type === "error") { void reader.cancel().catch(() => {}); throw Error("the chat stream failed"); }
       if (event.type === "final") { void reader.cancel().catch(() => {}); return event.reply; }
-      onSay(event.index, event.text);
+      onSay(event.index, event.text, event.board ?? []);
     }
     if (done) throw Error("the chat stream ended without its reply");
   }

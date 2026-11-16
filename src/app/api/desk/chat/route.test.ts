@@ -44,12 +44,13 @@ const streaming = (body: unknown) => new Request("http://localhost/api/desk/chat
 const done = { usage: { used: 1, left: 59 }, chat: null, admission: "accepted" };
 it("streams an admitted turn's checked sentences, then its one final reply", async () => {
   // Falsifier: the JSON-only route answers one JSON body after the whole turn.
-  run.mockImplementation(async (_ctx, _action, options) => { options.say.part("12 minus 8 is 4.", 0); options.say.part("What is 4 minus 2?", 1); return done; });
+  const batch = { transactionId: "call-b2", commands: [{ op: "highlight", id: "h1" }] };
+  run.mockImplementation(async (_ctx, _action, options) => { options.say.part("12 minus 8 is 4.", 0, [batch]); options.say.part("What is 4 minus 2?", 1); return done; });
   const res = await POST(streaming(child));
   expect(res.status).toBe(200);
   expect(res.headers.get("content-type")).toMatch(/^application\/x-ndjson/);
   const events = (await res.text()).split("\n").filter(Boolean).map((l) => JSON.parse(l));
-  expect(events).toEqual([{ type: "say", index: 0, text: "12 minus 8 is 4." }, { type: "say", index: 1, text: "What is 4 minus 2?" }, { type: "final", reply: done }]);
+  expect(events).toEqual([{ type: "say", index: 0, text: "12 minus 8 is 4.", board: [batch] }, { type: "say", index: 1, text: "What is 4 minus 2?" }, { type: "final", reply: done }]);
 });
 it.each([
   ["a refusal", { usage: {}, chat: null, error: "conflict", admission: "refused" }],

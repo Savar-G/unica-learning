@@ -81,6 +81,22 @@ describe("a child turn's stream on the desk", () => {
     expect(state.busy).toBe(false); expect(state.uncertain).toBe(false);
   });
 
+  it("a sentence's drawing goes on the board with it, and the final reply holds it once", async () => {
+    // Falsifier: the drawing waits for the final reply, or shows twice after it.
+    await opened();
+    let finished: Promise<boolean> = Promise.resolve(false);
+    act(() => { finished = state.act("child", "I don't get 2 minus 8."); });
+    await flush();
+    const trade = { transactionId: `${id}-b2`, commands: [{ op: "regroup" }] } as never;
+    pipe!.push({ type: "say", index: 0, text: "We trade 1 ten for 10 ones.", board: [trade] });
+    await flush();
+    expect(state.chat!.batches).toEqual([trade]);
+    pipe!.push({ type: "final", reply: reply(3, { chat: { ...view(3), batches: [trade] }, admission: "accepted" }) });
+    pipe!.close();
+    await act(async () => { expect(await finished).toBe(true); });
+    expect(state.chat!.batches).toEqual([trade]);
+  });
+
   it("a stream cut before its final reply is a failed request: the words go, the message stays for the retry, the desk is free", async () => {
     // Falsifier: partial words kept as a finished turn, or the desk left busy.
     await opened();
