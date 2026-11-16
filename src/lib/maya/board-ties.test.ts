@@ -95,6 +95,21 @@ describe("review of #1094 (f4c382735): every clause binds to the action's step",
   });
 });
 
+describe("first-person board writing reads as the same action", () => {
+  it("\"I'll write\", \"I'll put\", \"I'll trade\" and \"Let's trade\" draw like the plain forms, under the same rules", () => {
+    expect(derive(SUB, "I'll trade 1 ten for 10 ones.").drawings.map((d) => ops(d.commands))).toEqual([["regroup"]]);
+    expect(derive(SUB, "Let's trade 1 ten for 10 ones.").drawings.map((d) => ops(d.commands))).toEqual([["regroup"]]);
+    expect(derive(SUB, "I will trade 1 ten for 10 ones, so the ones are now 12.").drawings).toHaveLength(1);
+    expect(derive(SUB, "I'll write 4 in the ones.", ["trade:ones"]).drawings.map((d) => d.commands)).toMatchObject([[{ op: "put", value: "4", target: { column: "ones" } }]]);
+    expect(derive(SUB, "I'll put 4 in the ones.", ["trade:ones"]).drawings).toHaveLength(1);
+    // The same rules: other values, earlier work missing, a false state, and "we will" (a later time) draw nothing.
+    expect(derive(SUB, "I'll write 5 in the ones.", ["trade:ones"]).drawings).toEqual([]);
+    expect(derive(SUB, "I'll write 4 in the ones.").drawings).toEqual([]);
+    expect(derive(SUB, "I'll trade 1 ten for 10 ones, so the ones are now 2.").drawings).toEqual([]);
+    expect(derive(SUB, "We will trade 1 ten for 10 ones.").drawings).toEqual([]);
+  });
+});
+
 describe("what never draws", () => {
   it("a negated, conditional, questioned or deferred clause", () => {
     for (const text of ["Do not trade yet.", "If you are stuck, we trade 1 ten for 10 ones.", "Should we trade 1 ten for 10 ones?", "We trade 1 ten for 10 ones, but not yet.", "Do not do this: we trade 1 ten for 10 ones."]) {

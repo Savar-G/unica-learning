@@ -150,10 +150,13 @@ describe("what never draws (B2)", () => {
     const first = await session.child("Please help me.");
     expect(first.board.filter(isTrade)).toHaveLength(1);
     const next = await session.child("Please continue.");
-    // The note is the step's own equation and draws; the digit waits for the trade to be shown.
-    expect(next.board.filter(isDigit)).toEqual([]);
+    // The digit waits for the trade to be shown; the sentence draws as a whole or not at all, so its note waits too.
+    expect(next.board).toEqual([]);
     const trace = await session.finish({ reason: "child_stopped" });
-    expect(attempts(trace).flatMap((a) => a.boardReads ?? []).filter((r) => !r.drew)).toEqual([{ sentence: 0, clause: "write 4 in the ones", drew: false, reason: "needs_earlier" }]);
+    expect(attempts(trace).flatMap((a) => a.boardReads ?? []).filter((r) => !r.drew)).toEqual([
+      { sentence: 0, clause: "12 minus 8 is 4", drew: false, reason: "sentence_conflict" },
+      { sentence: 0, clause: "write 4 in the ones", drew: false, reason: "needs_earlier" },
+    ]);
   });
 
   it("a repeat draws nothing: the trade said again after it was shown", async () => {
@@ -356,6 +359,49 @@ describe("review of #1094 (f4c382735) through the session: each clause binds to 
       expect(out.board).toEqual([]);
     });
   }
+});
+
+describe("review of #1094 (65c39133f): the board-state check, and the sentence as a whole", () => {
+  const sub = (a: number, b: number): OperationPackage => {
+    const operation = { kind: "subtract", operands: [a, b] } as Operation;
+    return { ...PKG, id: `subtract-${a}-${b}`, text: `${a} − ${b} = ?`, operation, steps: workedSteps(operation), answer: { value: { type: "number", value: a - b }, accepted: [], unit: null } } as OperationPackage;
+  };
+  const div = (a: number, b: number): OperationPackage => {
+    const operation = { kind: "divide", operands: [a, b] } as Operation;
+    return { ...PKG, id: `divide-${a}-${b}`, text: `${a} ÷ ${b} = ?`, level: 12, skill: { standard: "4.8", skills: ["4.8-division-facts"] }, operation, steps: workedSteps(operation), answer: { value: { type: "number", value: a / b }, accepted: [], unit: null }, wrongAnswers: [{ value: { type: "number", value: a / b + 1 }, cause: "careless", description: "One more than the answer.", step: null }], easierExample: { text: "8 ÷ 2 = ?", operation: { kind: "divide", operands: [8, 2] }, steps: workedSteps({ kind: "divide", operands: [8, 2] } as Operation), answer: { type: "number", value: 4 } } } as OperationPackage;
+  };
+  const one = async (pkg: OperationPackage, said: string) => {
+    let now = T0;
+    const s = createTextSession({ callId: "state-1", package: pkg, model: conversationalFake({ answer: () => reply(said, "guide") }), clock: () => (now += 500), random: 3, reviewer: fakeTalkReviewer(), mathReviewer: fakeMathReviewer(), tutor: true });
+    await s.start();
+    const out = await s.child("Please help me.");
+    expect(out.say.join(" ")).toBe(said);
+    return out;
+  };
+  it("1002 − 4: a state the board will not show after the batch stops the sentence", async () => {
+    expect((await one(sub(1002, 4), "The ones are now 12, so we trade 1 thousand for 10 hundreds. What comes next?")).board).toEqual([]);
+    expect((await one(sub(1002, 4), "We trade 1 thousand for 10 hundreds. What comes next?")).board.flatMap((b) => b.commands)).toMatchObject([{ op: "regroup", from: "thousands", to: "hundreds" }]);
+  });
+  it("52 − 28: a state the batch makes true draws; a later state does not", async () => {
+    expect((await one(PKG, "We trade 1 ten for 10 ones, so the ones are now 12. What comes next?")).board).toHaveLength(1);
+    expect((await one(PKG, "We trade 1 ten for 10 ones, so 5 tens became 4 tens. What comes next?")).board).toHaveLength(1);
+    expect((await one(PKG, "We trade 1 ten for 10 ones, so the ones are now 2. What comes next?")).board).toEqual([]);
+  });
+  it("first-person board writing through the session: \"I'll trade ...\", then \"I'll write ...\"", async () => {
+    let now = T0;
+    const lines = ["I'll trade 1 ten for 10 ones. What comes next?", "I'll write 4 in the ones. What comes next?"];
+    const s = createTextSession({ callId: "first-person", package: PKG, model: conversationalFake({ answer: (_b, n) => reply(lines[Math.min(n, 1)], "guide") }), clock: () => (now += 500), random: 3, reviewer: fakeTalkReviewer(), mathReviewer: fakeMathReviewer(), tutor: true });
+    await s.start();
+    const a = await s.child("Please help me.");
+    expect(a.board.flatMap((b) => b.commands)).toMatchObject([{ op: "regroup", from: "tens", to: "ones" }]);
+    s.boardFates(a.board.map((b) => ({ batchId: b.transactionId, fate: "shown" as const })));
+    const b = await s.child("Please continue.");
+    expect(b.board.flatMap((x) => x.commands)).toMatchObject([{ op: "put", value: "4", target: { column: "ones" } }]);
+  });
+  it("84 ÷ 4: a layout with other values stops the right one; the right one alone draws", async () => {
+    expect((await one(div(84, 4), "Share 84 into 5 groups, then share 84 into 4 groups. What comes next?")).board).toEqual([]);
+    expect((await one(div(84, 4), "Share 84 into 4 groups. What comes next?")).board.length).toBeGreaterThan(0);
+  });
 });
 
 describe("#1103: code's own fallback message draws (decided 2026-11-15)", () => {
