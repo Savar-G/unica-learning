@@ -798,7 +798,8 @@ describe("R374-5: the board, echo breaks, phrase picks and the bank's own rules"
 
   it("says the phrase the model picks, so a reply fits the child's question", () => {
     const c = call();
-    c.child("Are you a robot?");
+    // Not an identity question (#1051: code says the fixed disclosure to those): a question the robot phrase answers.
+    c.child("Do you have arms like a robot?");
     const robot = PHRASES.aboutmaya.findIndex((p) => p.includes("robot")) + 1;
     expect(c.say({ act: "clarify", parts: [{ warm: "aboutmaya", pick: robot }] }).text).toBe(PHRASES.aboutmaya[robot - 1]);
   });

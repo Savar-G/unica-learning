@@ -9,8 +9,10 @@ import { workedSteps, type MissingNumberStep, type OperationPackage, type Worked
 import { missingWork, readPrinted } from "../missing-number";
 import { sayNumbers } from "../say-check";
 import { plainTeaching } from "../tutor";
+import { exactValue, guardedProblems, type KindRead } from "../tutor-math";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, type TutorStepFact } from "../tutor-kind";
 import { clauseAt } from "./clauses";
+import { countedInText, finalQuestion, isGroup, THING } from "./asks";
 
 type MulStep = Extract<WorkedStep, { kind: "multiply-digit" }>;
 type PartialStep = Extract<WorkedStep, { kind: "partial-product" }>;
@@ -74,7 +76,33 @@ function story(pkg: OperationPackage): boolean {
   if (!/[a-z]{3,}/i.test(pkg.text) || !nums.includes(a) || !nums.includes(b)) return false;
   // Every clause of the story is part of the one product: no third number and no step of another operation (F13).
   if (!nums.every((n) => n === a || n === b) || /\d\.\d/.test(pkg.text) || OTHER_STEP.test(pkg.text)) return false;
-  return PRODUCT_STORY.test(pkg.text) && !DIVISION_STORY.test(pkg.text);
+  return PRODUCT_STORY.test(pkg.text) && !DIVISION_STORY.test(pkg.text) && asksProduct(pkg.text, a, b);
+}
+
+/** The closed question forms of a product story; a printed number in a form must be one of the two factors. */
+const PRODUCT_ASKS = [
+  new RegExp(String.raw`^how many ${THING} (?:are there )?(?:in all|altogether|in total)$`),
+  new RegExp(String.raw`^how many ${THING} is that(?: in all)?$`),
+  new RegExp(String.raw`^how many ${THING} (?:are )?in (\d+) ${THING}$`),
+  new RegExp(String.raw`^how many ${THING} can (\d+) ${THING} (?:carry|hold)$`),
+];
+
+/**
+ * Pre-launch check 2: a product story's final question asks for the product, in a closed form, about the things the
+ * groups hold (counted after a printed number, and not a group itself). "How many counters are in each box?" asks for
+ * a factor, and "How many boxes in all?" counts the groups: both keep the controller.
+ */
+function asksProduct(text: string, a: number, b: number): boolean {
+  const q = finalQuestion(text);
+  if (q === null) return false;
+  for (const re of PRODUCT_ASKS) {
+    const m = re.exec(q);
+    if (!m) continue;
+    const n = m[2] === undefined ? null : Number(m[2]);
+    // "in 5 bins", "can 140 buses carry": the number counts groups.
+    return countedInText(text, m[1]) && !isGroup(m[1]) && (n === null || ((n === a || n === b) && isGroup(m[3])));
+  }
+  return false;
 }
 
 /** What the question is: a product, a division, or a missing factor and how it is found. */
@@ -519,7 +547,12 @@ const REL = String.raw`\s+(?:is|are|makes|make|equals|=|gives)\s+`;
  * (fail closed): "the missing number is sixty-seven" is read and refused; "2 goes into it a few times" is refused.
  */
 function claimProblems(pkg: OperationPackage, sentence: string): string[] {
-  const problems: string[] = [];
+  // Final check 12: every refusal passes the one full-read guard (tutor-math.ts guardedProblems).
+  return guardedProblems(claimReads(pkg, sentence));
+}
+
+function claimReads(pkg: OperationPackage, sentence: string): (string | KindRead)[] {
+  const problems: (string | KindRead)[] = [];
   const answer = answerOf(pkg);
   const text = digitsOf(sentence);
 
@@ -529,19 +562,27 @@ function claimProblems(pkg: OperationPackage, sentence: string): string[] {
   const missing = readAll(text, missingCue, /\b(?:the )?missing (?:number|factor)\s+(?:is|=|equals|must be|has to be)\s+(\d+)\b(?!\s*(?:[×x*÷/+\-]|times|divided|plus|minus))|\b(\d+)\s+is (?:the )?missing (?:number|factor)\b/g);
   for (const m of missing.matches) {
     const n = Number(m[1] ?? m[2]);
-    if (n !== answer) problems.push(`it says ${n} is the missing number, but it is ${answer}`);
+    if (n !== answer) problems.push({ problem: `it says ${n} is the missing number, but it is ${answer}`, text, at: m.index!, end: m.index! + m[0].length });
   }
   // Only a clause that asks claims nothing: "The missing number is definitely 671, shall we write it?" states it first
-  // (pre-launch review B, F11).
-  if (missing.unread.some((at) => !clauseAt(text, at).asks)) problems.push("it names the missing number in a form code cannot read");
+  // (pre-launch review B, F11). Final check 12: a form this reader does not match is not proof that the sentence is
+  // false: the cue alone is the span, so a number or an operator after it ("is 671 minus 1") leaves it to the review.
+  for (const at of missing.unread) {
+    if (clauseAt(text, at).asks) continue;
+    const cue = /missing (?:number|factor)/.exec(text.slice(at))!;
+    problems.push({ problem: "it names the missing number in a form code cannot read", text, at, end: at + cue[0].length });
+  }
 
   // Halves and doubles: "half of 1340 is 670", "double 670 is 1340", "twice 20 is 40", "670 is half of 1340".
   const halfCue = /\b(?:half|halves|double|doubles|twice)\b/g;
   const halves = readAll(text, halfCue, new RegExp(String.raw`\b(half|double|twice) of (\d+)${REL}(\d+)\b|\b(double|twice) (\d+)${REL}(\d+)\b|\b(\d+)${REL}(half|double|twice) (?:of )?(\d+)\b`, "g"));
   for (const m of halves.matches) {
     const [kind, x, z] = m[1] ? [m[1], Number(m[2]), Number(m[3])] : m[4] ? [m[4], Number(m[5]), Number(m[6])] : [m[8], Number(m[9]), Number(m[7])];
-    const want = kind === "half" ? x / 2 : x * 2;
-    if (want !== z) problems.push(`it says ${kind} of ${x} is ${z}, but it is ${want}`);
+    // Final check 12: the one shared evaluator, exact both ways: half of x is z when 2 × z is x ("half of 13 is 13" is
+    // false, with no fraction to compute); double x is z when 2 × x is z.
+    const holds = kind === "half" ? exactValue([z, 2], ["*"]) === x : exactValue([x, 2], ["*"]) === z;
+    const want = kind === "half" ? (x % 2 === 0 ? String(x / 2) : `${x} halves`) : String(exactValue([x, 2], ["*"]));
+    if (!holds) problems.push({ problem: `it says ${kind} of ${x} is ${z}, but it is ${want}`, text, at: m.index!, end: m.index! + m[0].length });
   }
   if (!halves.whole && /\b(?:half|halves|double|doubles|twice)\b\s*(?:of\s+)?[\d#]|[\d#]\s*(?:is|are)\s+(?:half|double|twice)\b/.test(text)) problems.push("it says half or double in a form code cannot read");
 
@@ -554,7 +595,7 @@ function claimProblems(pkg: OperationPackage, sentence: string): string[] {
     const r = m[4] ?? m[5] ?? m[6] ?? m[7];
     // What the sentence says after this claim, up to its end or the next "goes into".
     const after = text.slice(m.index! + m[0].length).split(/[.;!?]|\bgo(?:es)? into\b/)[0];
-    if (d === 0 || Math.floor(n / d) !== q) problems.push(`it says ${d} goes into ${n} ${q} times, but it is ${d === 0 ? "no" : Math.floor(n / d)} times`);
+    if (d === 0 || Math.floor(n / d) !== q) problems.push({ problem: `it says ${d} goes into ${n} ${q} times, but it is ${d === 0 ? "no" : Math.floor(n / d)} times`, text, at: m.index!, end: m.index! + m[0].length });
     else if (r !== undefined && Number(r) !== n % d) problems.push(`it says ${d} goes into ${n} with ${r} left, but ${n % d} is left`);
     // A remainder said in a form not read above ("and 2 left over" as "and there are 2 left over", "so the remainder
     // is 2", "with 2 more") is refused: the whole remainder clause is read or refused (pre-launch review B, F07).
@@ -563,9 +604,35 @@ function claimProblems(pkg: OperationPackage, sentence: string): string[] {
   if (!goes.whole) problems.push("it says \"goes into\" in a form code cannot read");
 
   // "? = 670" or "the ? is 670": the ? is the missing number.
-  for (const m of text.matchAll(/\?\s*(?:=|is)\s*(\d+)\b/g)) if (Number(m[1]) !== answer) problems.push(`it says the ? is ${m[1]}, but it is ${answer}`);
+  for (const m of text.matchAll(/\?\s*(?:=|is)\s*(\d+)\b/g)) if (Number(m[1]) !== answer) problems.push({ problem: `it says the ? is ${m[1]}, but it is ${answer}`, text, at: m.index!, end: m.index! + m[0].length });
 
   return problems;
+}
+
+/**
+ * B2: what each drawing needs on the board first. A product: each row needs the row before it; each answer digit needs
+ * every row and the digit on its right (the carry comes from it). A division: each step needs the layout and the step
+ * before it. A try is a note of its own.
+ */
+function boardNeeds(pkg: OperationPackage): Record<string, string[]> {
+  const sh = shape(pkg);
+  const needs: Record<string, string[]> = {};
+  if (sh.kind === "multiply") {
+    const answer = String(answerOf(pkg));
+    const rows = String(sh.b).length > 1 ? [...String(sh.b)].map((_, i) => `row:${i}`) : [];
+    rows.forEach((r, i) => { needs[r] = i > 0 ? [rows[i - 1]] : []; });
+    for (let i = 0; i < answer.length && i < PLACES.length; i++) needs[`digit:${PLACES[i]}`] = [...rows, ...(i > 0 ? [`digit:${PLACES[i - 1]}`] : [])];
+    // A step's equation note needs exactly what that step's digit needs (single-row steps: the digit on its right).
+    if (rows.length === 0) for (const st of steps(pkg)) {
+      const m = st.place ? /(\d+(?: [×+] \d+)+) = (\d+)/.exec(st.work) : null;
+      const text = m ? noteFromEquation(`${m[1]} = ${m[2]}`) : null;
+      if (text && needs[`digit:${st.place}`]) needs[`note:${text}`] = [...needs[`digit:${st.place}`]];
+    }
+  } else if (sh.kind === "divide") {
+    needs.division = [];
+    divSteps(pkg).forEach((_, k) => { needs[`step:${k + 1}`] = ["division", ...(k > 0 ? [`step:${k}`] : [])]; });
+  } else for (const t of sh.trial.tries) needs[`try:${t.value}`] = [];
+  return needs;
 }
 
 export const multiplyKind: TutorKind = {
@@ -579,6 +646,7 @@ export const multiplyKind: TutorKind = {
   drawings,
   drawingExamples,
   draw,
+  boardNeeds,
   claimProblems,
   notes,
 };

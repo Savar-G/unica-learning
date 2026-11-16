@@ -101,50 +101,71 @@ export type Database = {
         Row: {
           calls: number
           child_id: string | null
+          cost_basis: string
           cost_usd: number | null
           created_at: string
           feature: string
           generation_id: string | null
           id: number
+          imported_at: string | null
           input_tokens: number | null
+          key_alias: string
+          key_id: string | null
           model: string
           output_tokens: number | null
           parent_id: string | null
           provider: string
+          receipt_id: string | null
+          run_id: string | null
           source_id: string | null
           source_kind: string | null
+          usage_context: string
         }
         Insert: {
           calls?: number
           child_id?: string | null
+          cost_basis?: string
           cost_usd?: number | null
           created_at?: string
           feature: string
           generation_id?: string | null
           id?: never
+          imported_at?: string | null
           input_tokens?: number | null
+          key_alias?: string
+          key_id?: string | null
           model: string
           output_tokens?: number | null
           parent_id?: string | null
           provider: string
+          receipt_id?: string | null
+          run_id?: string | null
           source_id?: string | null
           source_kind?: string | null
+          usage_context?: string
         }
         Update: {
           calls?: number
           child_id?: string | null
+          cost_basis?: string
           cost_usd?: number | null
           created_at?: string
           feature?: string
           generation_id?: string | null
           id?: never
+          imported_at?: string | null
           input_tokens?: number | null
+          key_alias?: string
+          key_id?: string | null
           model?: string
           output_tokens?: number | null
           parent_id?: string | null
           provider?: string
+          receipt_id?: string | null
+          run_id?: string | null
           source_id?: string | null
           source_kind?: string | null
+          usage_context?: string
         }
         Relationships: [
           {
@@ -1288,6 +1309,72 @@ export type Database = {
           },
           {
             foreignKeyName: "email_log_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_sends: {
+        Row: {
+          child_id: string | null
+          created_at: string
+          email_id: string | null
+          error: string | null
+          from_address: string | null
+          html_body: string | null
+          id: string
+          kind: string
+          outcome: string
+          parent_id: string | null
+          reply_to: string | null
+          subject: string | null
+          text_body: string | null
+          to_address: string | null
+        }
+        Insert: {
+          child_id?: string | null
+          created_at?: string
+          email_id?: string | null
+          error?: string | null
+          from_address?: string | null
+          html_body?: string | null
+          id?: string
+          kind: string
+          outcome: string
+          parent_id?: string | null
+          reply_to?: string | null
+          subject?: string | null
+          text_body?: string | null
+          to_address?: string | null
+        }
+        Update: {
+          child_id?: string | null
+          created_at?: string
+          email_id?: string | null
+          error?: string | null
+          from_address?: string | null
+          html_body?: string | null
+          id?: string
+          kind?: string
+          outcome?: string
+          parent_id?: string | null
+          reply_to?: string | null
+          subject?: string | null
+          text_body?: string | null
+          to_address?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_sends_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_sends_parent_id_fkey"
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "parents"
@@ -2612,6 +2699,174 @@ export type Database = {
         }
         Relationships: []
       }
+      maya_stream_probe_calls: {
+        Row: {
+          assessment_id: string | null
+          assessment_question_id: string | null
+          assistance: string | null
+          board_history: Json | null
+          call_seconds: number | null
+          channel: string | null
+          child_id: string
+          child_ink: Json | null
+          child_ink_at: string | null
+          child_turns: number | null
+          connected_seconds: number | null
+          counts_minutes: boolean
+          created_at: string
+          ended_at: string | null
+          fallbacks: number | null
+          flag: string | null
+          flagged_at: string | null
+          highest_hint: number | null
+          id: string
+          kind: string
+          learning_event_id: string | null
+          live: Json | null
+          maya_turns: number | null
+          mishearing_confirmations: number | null
+          mishearing_corrections: number | null
+          mode: string
+          model: string
+          note_pending: Json | null
+          outcome_reason: string | null
+          package_hash: string
+          package_id: string
+          paper_status: string | null
+          parent_id: string
+          profile_rebuilt_at: string | null
+          prompt_version: string
+          question_source: string
+          question_text: string | null
+          record_version: number
+          revision: number
+          safety_flag: boolean
+          safety_severity: string | null
+          speech_to_text: string | null
+          started_at: string | null
+          started_by: string | null
+          status: string
+          trace: Json | null
+          understanding: string | null
+          updated_at: string
+          versions: Json
+          voice: string | null
+          workbook_id: string | null
+          workbook_page: number | null
+          workbook_question: number | null
+        }
+        Insert: {
+          assessment_id?: string | null
+          assessment_question_id?: string | null
+          assistance?: string | null
+          board_history?: Json | null
+          call_seconds?: number | null
+          channel?: string | null
+          child_id: string
+          child_ink?: Json | null
+          child_ink_at?: string | null
+          child_turns?: number | null
+          connected_seconds?: number | null
+          counts_minutes?: boolean
+          created_at?: string
+          ended_at?: string | null
+          fallbacks?: number | null
+          flag?: string | null
+          flagged_at?: string | null
+          highest_hint?: number | null
+          id: string
+          kind: string
+          learning_event_id?: string | null
+          live?: Json | null
+          maya_turns?: number | null
+          mishearing_confirmations?: number | null
+          mishearing_corrections?: number | null
+          mode?: string
+          model: string
+          note_pending?: Json | null
+          outcome_reason?: string | null
+          package_hash: string
+          package_id: string
+          paper_status?: string | null
+          parent_id: string
+          profile_rebuilt_at?: string | null
+          prompt_version: string
+          question_source: string
+          question_text?: string | null
+          record_version?: number
+          revision?: number
+          safety_flag?: boolean
+          safety_severity?: string | null
+          speech_to_text?: string | null
+          started_at?: string | null
+          started_by?: string | null
+          status?: string
+          trace?: Json | null
+          understanding?: string | null
+          updated_at?: string
+          versions: Json
+          voice?: string | null
+          workbook_id?: string | null
+          workbook_page?: number | null
+          workbook_question?: number | null
+        }
+        Update: {
+          assessment_id?: string | null
+          assessment_question_id?: string | null
+          assistance?: string | null
+          board_history?: Json | null
+          call_seconds?: number | null
+          channel?: string | null
+          child_id?: string
+          child_ink?: Json | null
+          child_ink_at?: string | null
+          child_turns?: number | null
+          connected_seconds?: number | null
+          counts_minutes?: boolean
+          created_at?: string
+          ended_at?: string | null
+          fallbacks?: number | null
+          flag?: string | null
+          flagged_at?: string | null
+          highest_hint?: number | null
+          id?: string
+          kind?: string
+          learning_event_id?: string | null
+          live?: Json | null
+          maya_turns?: number | null
+          mishearing_confirmations?: number | null
+          mishearing_corrections?: number | null
+          mode?: string
+          model?: string
+          note_pending?: Json | null
+          outcome_reason?: string | null
+          package_hash?: string
+          package_id?: string
+          paper_status?: string | null
+          parent_id?: string
+          profile_rebuilt_at?: string | null
+          prompt_version?: string
+          question_source?: string
+          question_text?: string | null
+          record_version?: number
+          revision?: number
+          safety_flag?: boolean
+          safety_severity?: string | null
+          speech_to_text?: string | null
+          started_at?: string | null
+          started_by?: string | null
+          status?: string
+          trace?: Json | null
+          understanding?: string | null
+          updated_at?: string
+          versions?: Json
+          voice?: string | null
+          workbook_id?: string | null
+          workbook_page?: number | null
+          workbook_question?: number | null
+        }
+        Relationships: []
+      }
       maya_wording_history: {
         Row: {
           child_id: string
@@ -2828,6 +3083,48 @@ export type Database = {
           },
         ]
       }
+      openrouter_provider_receipts: {
+        Row: {
+          api_key_id: string | null
+          cost_usd: number | null
+          generation_id: string
+          input_cost_usd: number | null
+          input_tokens: number | null
+          model: string
+          occurred_at: string
+          output_cost_usd: number | null
+          output_tokens: number | null
+          received_at: string
+          workspace_id: string
+        }
+        Insert: {
+          api_key_id?: string | null
+          cost_usd?: number | null
+          generation_id: string
+          input_cost_usd?: number | null
+          input_tokens?: number | null
+          model: string
+          occurred_at: string
+          output_cost_usd?: number | null
+          output_tokens?: number | null
+          received_at?: string
+          workspace_id: string
+        }
+        Update: {
+          api_key_id?: string | null
+          cost_usd?: number | null
+          generation_id?: string
+          input_cost_usd?: number | null
+          input_tokens?: number | null
+          model?: string
+          occurred_at?: string
+          output_cost_usd?: number | null
+          output_tokens?: number | null
+          received_at?: string
+          workspace_id?: string
+        }
+        Relationships: []
+      }
       parent_explanation_dispatches: {
         Row: {
           child_id: string
@@ -2883,8 +3180,12 @@ export type Database = {
       }
       parent_explanation_prices: {
         Row: {
+          approved_metadata: Json | null
+          check_error: string | null
           enabled: boolean
           evidence: string | null
+          last_checked_at: string | null
+          last_observed_metadata: Json | null
           max_input_bytes: number
           max_tokens: number
           maximum_micros: number | null
@@ -2893,8 +3194,12 @@ export type Database = {
           verified_at: string | null
         }
         Insert: {
+          approved_metadata?: Json | null
+          check_error?: string | null
           enabled?: boolean
           evidence?: string | null
+          last_checked_at?: string | null
+          last_observed_metadata?: Json | null
           max_input_bytes?: number
           max_tokens?: number
           maximum_micros?: number | null
@@ -2903,8 +3208,12 @@ export type Database = {
           verified_at?: string | null
         }
         Update: {
+          approved_metadata?: Json | null
+          check_error?: string | null
           enabled?: boolean
           evidence?: string | null
+          last_checked_at?: string | null
+          last_observed_metadata?: Json | null
           max_input_bytes?: number
           max_tokens?: number
           maximum_micros?: number | null
@@ -8411,6 +8720,10 @@ export type Database = {
           id: string
         }[]
       }
+      admin_openrouter_provider_receipts: {
+        Args: { p_from: string; p_to: string }
+        Returns: Json
+      }
       admin_parents: {
         Args: never
         Returns: {
@@ -9755,6 +10068,10 @@ export type Database = {
         }
         Returns: string
       }
+      ingest_openrouter_provider_receipts: {
+        Args: { p_rows: Json }
+        Returns: undefined
+      }
       is_admin: { Args: never; Returns: boolean }
       issue_sign_in_link: {
         Args: {
@@ -10381,6 +10698,10 @@ export type Database = {
         Args: { p_error: string; p_lease: string; p_run: string }
         Returns: boolean
       }
+      reverify_parent_explanation_price: {
+        Args: { p_error?: string; p_metadata: Json }
+        Returns: string
+      }
       route_workbook_run: {
         Args: { p_run: string; p_runner: string; p_stale_seconds: number }
         Returns: string
@@ -10625,6 +10946,13 @@ export type Database = {
       send_scan_photos: {
         Args: { p_child: string; p_ids: string[]; p_parent: string }
         Returns: string[]
+      }
+      send_scan_photos_receipt: {
+        Args: { p_child: string; p_ids: string[]; p_parent: string }
+        Returns: {
+          newly_sent: string[]
+          sent: string[]
+        }[]
       }
       send_workbook_comments: {
         Args: {

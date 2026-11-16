@@ -91,7 +91,7 @@ export async function runScanTeamEmail(
     const waiting = await inTime((signal) => store.waitingCount(signal), time, SEND_ROOM_MS);
     if (!Number.isSafeInteger(waiting) || waiting < 1) return { status: "none_waiting" };
     if (!mayStart()) return { status: "out_of_time" };
-    const message = { sender: { to: "savar" } as const, to: address, ...scanTeamEmail(waiting, origin) };
+    const message = { sender: { to: "savar" } as const, to: address, ...scanTeamEmail(waiting, origin), log: { kind: "scan_team_daily" as const } };
     const controller = new AbortController();
     const timer = time ? setTimeout(() => controller.abort(), Math.max(0, time.endAt - time.now() - DATABASE_MS)) : undefined;
     try {

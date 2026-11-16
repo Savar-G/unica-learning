@@ -1,3 +1,4 @@
+import { monitored } from "@/lib/sentry-cron";
 import { timingSafeEqual } from "node:crypto";
 import { createNextBookStepServer } from "@/lib/next-book-step-server";
 
@@ -18,7 +19,7 @@ function authorized(header: string | null, secret: string): boolean {
   return given.length === expected.length && timingSafeEqual(given, expected);
 }
 
-export async function POST(request: Request) {
+async function run(request: Request) {
   // Never open: without a secret the step does not run at all.
   const secret = process.env.CRON_SECRET;
   if (!secret) return Response.json({ ok: false, error: "not_configured" }, { status: 503 });
@@ -39,3 +40,6 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: "run_failed" }, { status: 500 });
   }
 }
+
+// Each scheduled call checks in with Sentry (src/lib/sentry-cron.ts).
+export const POST = monitored("next-book-prepare", run);

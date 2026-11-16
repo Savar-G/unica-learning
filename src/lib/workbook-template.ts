@@ -554,6 +554,10 @@ const CSS = `
 .pg.consistent[data-page-type="practice-2"]:not(:has([data-slot="solve-it-two-ways"])) :is(.two,.cols){row-gap:calc(12px + var(--extra-gap,0px))}
 /* The next section needs the same base gap as these rows, including when its cells stretch (#908). */
 .pg.consistent[data-page-type="practice-2"]:not(:has([data-slot="solve-it-two-ways"])) .ct{gap:calc(12px + var(--extra-gap,0px))}
+/* Early split practice keeps its 12px row gap inside the block. Review adds a 4px label margin;
+   the 16px gap between blocks keeps Spot the error at the same distance from its preceding row. */
+.pg.consistent.early[data-page-type="practice-2"]:not(:has([data-slot="solve-it-two-ways"])) [data-slot="practice-row"]{gap:calc(12px + var(--extra-gap,0px))}
+.pg.consistent.early[data-page-type="practice-2"]:not(:has([data-slot="solve-it-two-ways"])) .ct{gap:calc(16px + var(--extra-gap,0px))}
 /* (Its block gap and its practice block's gap grow with the rows' gap, so a section label keeps at least a row gap above
    it when the page's gaps grow to fill it: issue #745, "SPOT THE ERROR" 6 px under rows 12 px apart.) */
 .pg.consistent[data-page-type="practice-2"]:has([data-slot="solve-it-two-ways"]) .ct{gap:calc(6px + var(--extra-gap,0px))}
@@ -607,6 +611,10 @@ const CSS = `
 /* Circle targets on the question's first line: true or false, yes or no, letters or numbers share its baseline (on a
    test card too, its number with them). */
 .pg.consistent :is(.two,.list)>.q>.rgs:has(.circ){align-self:baseline}
+.pg.consistent [data-slot="try-first"] .outl>.q{align-items:flex-start}
+.pg.consistent [data-slot="try-first"] .outl>.q>:is(.n,.qb,.rgs:has(.circ)){align-self:baseline}
+.pg.consistent .chc .badge{font-size:var(--num);font-weight:500;line-height:1.2}
+.pg.consistent .chc>.top>:is(.badge,.qb){align-self:baseline}
 .pg.consistent .tc>.q>:is(.badge,.qb,.rgs:has(.circ)){align-self:baseline}
 .pg.consistent .q .circ:not(.words){min-height:var(--box);padding:0 18px;align-items:baseline}
 .pg.consistent :is(.two,.list,.tc)>.q>.rgs .circ:not(.words) .co{font-size:var(--body)}
@@ -820,10 +828,13 @@ function answerChars(v: AnswerValue | null): number {
   return valueText(v).length;
 }
 
-/** An answer box's width by what goes in it (DESIGN.md section 4): 40 to 48 for 1 or 2 digits, up to 204 for words. */
+/**
+ * An answer box's width by what goes in it (DESIGN.md section 4): 40 to 48 for 1 or 2 digits, up to 204 for words. A
+ * 4-digit answer gets 96, not 64: a young child's four digits did not fit 64 px on a printed page (Cedric, 2026-11-13).
+ */
 function boxWidth(v: AnswerValue | null, band: Band): number {
   const n = answerChars(v);
-  const w = n <= 2 ? 48 : n <= 4 ? 64 : n <= 7 ? 96 : n <= 12 ? 140 : 204;
+  const w = n <= 2 ? 48 : n <= 3 ? 64 : n <= 7 ? 96 : n <= 12 ? 140 : 204;
   return Math.max(w, band.box);
 }
 

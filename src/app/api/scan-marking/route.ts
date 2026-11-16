@@ -1,3 +1,4 @@
+import { monitored } from "@/lib/sentry-cron";
 import { timingSafeEqual } from "node:crypto";
 import { adminClient } from "@/lib/supabase-auth";
 import { scanJson } from "@/lib/scan-photo-server";
@@ -10,7 +11,7 @@ const DUE_SENDS_PER_RUN = 100;
 // The database client below stops at 170 s; recoverScanMarking starts a photo only in the first 40 s and keeps each
 // model call short enough that its answer is saved before then (#726).
 export const maxDuration = 180;
-export async function POST(request: Request) {
+async function run(request: Request) {
   // The recovery run's start rule counts from here (RECOVERY_START_MS in scan-marking-server).
   const startedAt = Date.now();
   const secret = process.env.CRON_SECRET;
@@ -26,4 +27,5 @@ export async function POST(request: Request) {
   try { return scanJson({ ...await recoverScanMarking(db, process.env, undefined, { startedAt }), dueSent }); }
   catch { return scanJson({ error: "unavailable" }, 503); }
 }
+export const POST = monitored("scan-marking", run);
 export const GET = POST;

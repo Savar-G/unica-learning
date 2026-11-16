@@ -1,5 +1,5 @@
 /* Scan pages (round r565 picked): the start screen, the stack, the sheets. Every link and button is at least 44 px. */
-.scan-pages { --scan-leaf: #16a06a; --scan-leaf-ink: #0d6e48; --scan-accent-ink: #b43d12; display: grid; gap: 20px; }
+.scan-pages { --scan-leaf: #16a06a; --scan-leaf-ink: #0d6e48; --scan-accent-ink: var(--tang-ink); display: grid; gap: 20px; }
 .scan-pages .lead { margin: 0; }
 .scan-pages h2 { margin: 0; }
 /* Which child's pages show (F4): a small "Showing: Leah ▾" switch, not a form field. Photos need no choice of child. */
@@ -52,7 +52,7 @@
 .scan-dup { display: grid; gap: 8px; }
 .scan-group { display: grid; gap: 10px; }
 .scan-group-h { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.scan-group-h h2 { font-size: 17px; font-weight: 500; letter-spacing: -.01em; }
+.scan-group-h h2 { font-size: 17px; font-weight: 300; letter-spacing: -0.035em; }
 .scan-count { font: 400 12.5px/1 var(--mono); color: var(--ink-2); }
 .scan-gap { margin: 0; font-size: 15px; color: var(--ink-2); }
 .scan-empty { margin: 0; padding: 18px; background: var(--card); border-radius: 12px; color: var(--ink-2); }
@@ -75,13 +75,13 @@
 .scan-flag.is-ready { background: var(--scan-leaf); color: #fff; box-shadow: 0 0 0 2px #fff; }
 .scan-flag.is-sent { background: var(--ink); color: #fff; box-shadow: 0 0 0 2px #fff; }
 .scan-flag.is-refused { background: var(--accent); color: #111; box-shadow: 0 0 0 2px #fff; }
-.scan-spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--ink); animation: scan-spin 1s linear infinite; }
+.scan-spin { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--ink); animation: scan-spin 1s linear infinite; }
 @keyframes scan-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .scan-spin { animation: none; border-top-color: var(--ink-2); } }
 
 /* Refused pages first, in a soft tangerine card */
 .scan-need { display: grid; gap: 12px; padding: 14px; background: var(--accent-soft); border-radius: 12px; }
-.scan-need h2 { font-size: 17px; font-weight: 500; }
+.scan-need h2 { font-size: 17px; font-weight: 300; letter-spacing: -0.035em; }
 /* The retake is the main thing to do here (F5): a primary button. */
 .scan-need .btn { min-height: 48px; justify-content: center; }
 .scan-need .small { margin: 0; }
@@ -110,7 +110,7 @@
 .scan-sheet-bar { position: sticky; top: 0; height: 0; display: flex; justify-content: flex-end; z-index: 1; }
 .scan-sheet-x { width: 44px; height: 44px; margin: 8px 8px 0 0; padding: 0; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: #fff; color: var(--ink); font: 400 26px/1 var(--sans, inherit); cursor: pointer; }
 .scan-sheet-body h2 { padding-right: 44px; }
-.scan-sheet-body h2 { margin: 0; font-size: 21px; font-weight: 500; letter-spacing: -.01em; }
+.scan-sheet-body h2 { margin: 0; font-size: 21px; font-weight: 300; letter-spacing: -0.035em; }
 .scan-sheet-body p { margin: 0; font-size: 16px; line-height: 1.5; }
 .scan-sheet-body .btn { min-height: 52px; justify-content: center; }
 .scan-sheet-ph { border-radius: 8px; overflow: hidden; background: #b9ad99; }
@@ -177,7 +177,7 @@
 
 /* The new scan screen (#915, round r915-scan-flow). Text is --ink or --ink-2 on white or --card (4.5:1 or more); every
    state has a glyph and a word, never a colour alone; every control is at least 44 px. */
-.scan-pages .scan-start-h { font-size: 21px; font-weight: 500; letter-spacing: -.01em; }
+.scan-pages .scan-start-h { font-size: 21px; font-weight: 300; letter-spacing: -0.035em; }
 .scan-pages .scan-tips li span b { display: block; font-weight: 600; }
 .scan-pages .scan-tips li span { color: var(--ink-2); }
 .scan-pages .scan-tips li span b { color: var(--ink); }
@@ -188,7 +188,7 @@
 .scan-strip { display: grid; gap: 10px; }
 .scan-strip p { margin: 0; }
 .scan-strip-h { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
-.scan-strip-h h2 { display: inline-flex; align-items: center; gap: 8px; font-size: 19px; font-weight: 500; letter-spacing: -.01em; }
+.scan-strip-h h2 { display: inline-flex; align-items: center; gap: 8px; font-size: 19px; font-weight: 300; letter-spacing: -0.035em; }
 .scan-strip-count { font-size: 15px; color: var(--ink-2); }
 /* The strip's ‹ and › (2026-11-14): small, quiet, a 44px target, beside the day's name. */
 .scan-strip-day { display: inline-flex; align-items: center; gap: 2px; margin-left: -12px; }
@@ -228,7 +228,11 @@
 .scan-undo i svg { width: 14px; height: 14px; }
 .scan-undo .scan-link { padding: 0 12px; color: #fff; font-weight: 600; }
 .scan-undo .scan-link:focus-visible { outline-color: #fff; }
-@media (max-width: 699px) { .scan-pages > .scan-undo { position: sticky; z-index: 31; bottom: 170px; } }
+@media (max-width: 699px) {
+  .scan-pages > .scan-undo { position: sticky; z-index: 31; bottom: 170px; }
+  /* The dock also moves above the parent tab bar; Undo must clear that same extra height. */
+  .pd-has-bar .scan-pages > .scan-undo { bottom: calc(170px + 64px + env(safe-area-inset-bottom)); }
+}
 
 /* One retake at a time: your photo beside a good one */
 .scan-need-h { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; }

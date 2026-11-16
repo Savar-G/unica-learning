@@ -15,6 +15,8 @@
 //     WORKBOOK_CLAUDE_COMMAND, WORKBOOK_CLAUDE_TIMEOUT_MS: src/lib/workbook-ai.ts.
 //   OPENROUTER_API_KEY (the fallback; without it a subscription failure fails the call), AI_MODEL, AI_SOLVE_MODEL.
 //   WORKBOOK_WORKER_ID: the heartbeat's name (default this Mac's host name). CHROMIUM_PATH: else Google Chrome.
+//   Sentry: every 5 minutes the worker checks in with the Sentry monitor "workbook-worker" (docs/sentry.md), so Sentry
+//     tells the team when the worker has been offline for an hour. NEXT_PUBLIC_SENTRY_DSN set to "" turns it off.
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir, hostname } from "node:os";
@@ -28,12 +30,14 @@ import { configureAiUsage, flushAiUsage } from "@/lib/ai-usage";
 import { runWorkbookJobWith } from "@/lib/workbook-job-deps";
 import { workbookWorkerQueue } from "@/lib/workbook-job-store";
 import { workbookWorker } from "@/lib/workbook-worker";
+import { sentryCheckInUrl } from "@/lib/sentry-options";
 
 const PROJECT = "cdjobwsyzndtltzfpyqa";
 const { values } = parseArgs({ options: { once: { type: "boolean", default: false }, "follow-main": { type: "boolean", default: false } } });
 
 const envFile = process.env.WORKBOOK_WORKER_ENV || join(homedir(), ".config/unica/workbook-worker.env");
 if (existsSync(envFile)) process.loadEnvFile(envFile);
+process.env.AI_USAGE_CONTEXT = "production";
 // The worker never makes a run with the fakes: WORKBOOK_AI_FAKE is for the dev server.
 delete process.env.WORKBOOK_AI_FAKE;
 // `claude` must use its own login, never an API key (the adapter passes it no key either).
@@ -136,6 +140,17 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     stop.abort();
   });
 }
+// The Sentry heartbeat (docs/sentry.md): one check-in now and every 5 minutes while the process lives. A failed
+// check-in only logs; it never stops the worker.
+const checkIn = sentryCheckInUrl("workbook-worker");
+const sentryBeat = async () => {
+  if (!checkIn) return;
+  try { await fetch(`${checkIn}?status=ok`, { signal: AbortSignal.timeout(10_000) }); }
+  catch (e) { log(`sentry check-in failed: ${e instanceof Error ? e.message : String(e)}`); }
+};
+void sentryBeat();
+const sentryTimer = setInterval(() => { void sentryBeat(); }, 5 * 60_000);
 const ended = await worker.run({ stop: stop.signal, pollMs: 10_000, heartbeatMs: 30_000 });
+clearInterval(sentryTimer);
 log(ended === "exit" ? "origin/main moved: exiting so the launcher starts the new code" : "stopped");
 process.exit(0);

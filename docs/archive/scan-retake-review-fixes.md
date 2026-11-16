@@ -1,0 +1,50 @@
+# Scan retake review fixes — PR #1069
+
+Date: 2026-11-15. Scope: the five independent review findings on `7e1fae9ce88d2bcdc707926437f0ed6b999e6685`.
+
+## Fixes and regression coverage
+
+1. The stack read supplies `photoCheckRequired`, using the same configured client factory as the blur-check starter without making a model request. A null check now means “not started” when eligible, rather than a finished verdict. Public stack and mounted-component tests cover null → pending → clear/blurry, and server-reader tests distinguish enabled and disabled checks without exposing claim details.
+2. A placement-ready photo whose blur check has not finished waits 70 seconds, then offers Retry on the next poll. Retry posts preview for that saved photo after the existing 60-second stale lease; GET remains read-only for blur-check claims. A fake-clock test strands the worker, checks that waiting does not post repeatedly, and recovers the same photo with one explicit POST, without uploading again.
+3. Automatic work polls every two seconds for a short window, then backs off to a 30-second cap when the listing does not change. Public helper and mounted-component tests cover the delay schedule, fewer than 140 reads over an unchanged simulated hour, offline/hidden suspension, and resets on uploads, progress, visibility and reconnection. The existing single-flight and failed-save retry tests remain in place.
+4. Team-only marks refresh every 30 seconds until complete or unfinished, rather than stopping when `automaticPending` reaches zero. Tests replace the previous no-further-reads assertion, deliver a final team mark without reload or visibility events, and prove fully terminal marks stop phone polling.
+5. A replacement being checked has the heading “Checking your new photo of page 23…” and a neutral checking section label. Only actual failures count in the failure heading. Tests cover the checking-only card and a checking replacement beside another refused page.
+
+## Final superseding-retake regression
+
+The final review found that retaking a replacement after its blur check timed out left the replacement's retained local upload behind. The dock supplied the saved photo ID, but local cleanup matched only a `local:` key. Once the server deleted that photo, its orphaned placeholder could never reach a verdict.
+
+Picking another retake now retires only uploads associated with the replaced local key, uploaded photo ID or reservation ID. Other uploads remain queued, and the server-photo identity still determines which page is being retaken.
+
+The mounted-component regression fails before the fix and passes afterward: refuse page 11, upload a replacement, strand its blur check until Retry appears, choose Retake instead, and upload a passing photo. The superseded server photo disappears, page 11 becomes Ready, the checking card clears, and ten more simulated minutes cause no extra listing requests. The four focused suites passed with 170 tests; changed-file ESLint and `git diff --check` passed.
+
+The final full gate also passed (exit 0): 897 test files passed, 3 skipped; 28,961 tests passed, 36 skipped, 1 todo. Vitest used at most two workers and finished in 1,080 seconds. Full-source ESLint produced no output, and the production build and TypeScript check completed successfully. Logs: `/tmp/scan-retake-final-review-tests.log`, `/tmp/scan-retake-final-review-eslint.log`, `/tmp/scan-retake-final-review-build.log`. This final regression was verified in the mounted component; the earlier browser checks below were not repeated for this change.
+
+## Alternate duplicate-swap regression
+
+The next review found the same retained-upload lifecycle problem through “Use this new photo instead.” That handler bypassed the dock's cleanup when replacing a saved photo. Both paths now share identity-scoped retirement, and the duplicate-swap path explicitly preserves its incoming upload while retiring entries for the superseded photo.
+
+A lightweight probe executed the actual swap handler: before the fix its old placeholder remained; afterward the placeholder disappeared, the incoming and unrelated uploads stayed, and only the old reservation was released. A mounted regression covers a timed-out replacement followed by Scan pages, Done and Use this new photo instead, with another ready page kept and ten simulated minutes without further listing reads. It fails before the fix and passes afterward; all three focused suites passed with 161 tests. Logs: `/tmp/scan-retake-alternate-red.log` and `/tmp/scan-retake-alternate-focused.log`.
+
+The alternate-path full gate passed (exit 0): 897 test files passed, 3 skipped; 28,962 tests passed, 36 skipped, 1 todo. Vitest used at most two workers and finished in 1,039 seconds. Full-source ESLint produced no output, and the production build/typecheck passed. Logs: `/tmp/scan-retake-alternate-tests.log`, `/tmp/scan-retake-alternate-eslint.log`, `/tmp/scan-retake-alternate-build.log`.
+
+After that gate, Aside CLI (`--account u0`) exercised the actual component on a temporary local route with synthetic photos and fetch responses: retake refused page 11, advance the blur-check wait to Retry, add unrelated page 10, choose Scan pages, capture page 11 again, finish, and choose Use this new photo instead. Both pages became Ready; the retry/checking card and duplicate note cleared, the old photo disappeared, and the request trace contained only the old reservation's release. Screenshots were inspected at 390 and 1280 px; body width equalled viewport width at both sizes. Evidence is in the local Aside session `2026-11-15_nGM1ayLFVIZrontN/artifacts/` (`retake-alternate-390.png`, `retake-alternate-1280.png`, `retake-alternate-requests.json`). The tab was closed and the temporary route removed. No real customer data, paid calls, production changes or preview deployment were used; hosted workers and physical capture remain outside this synthetic check.
+
+## Browser QA
+
+Used the current higher-priority T3 browser tools against `npm run dev` on local port 3143. A temporary route mounted the real `ScanPages` component and intercepted its API requests with synthetic responses. The uploaded PNG was generated locally: a white page with simple printed lines, not a customer photo. The fixture and dev server were removed/stopped, and the browser tab was closed before the final gate.
+
+- At 390 × 844, the unclaimed and pending states kept the neutral heading, spinner and page-23 checking tile. There was no failure heading or Undo before the verdict.
+- A clear verdict removed the card and made page 23 Ready with Undo. Clicking Undo kept the page ready and unsent.
+- A synthetic blurry result showed the blur explanation with Take again and Send anyway.
+- No horizontal overflow at widths 390 and 1280. The checking and clear screenshots were visually inspected.
+
+No paid model calls, real customer uploads, production admin pages or preview deployments were used. Camera capture, real QR recognition, authentication, storage and hosted-worker recovery were not exercised; the worker recovery path is covered with fake API responses and clocks.
+
+## Validation
+
+- Focused scan suites: 3 files, 160 tests passed.
+- Upload-reset extension: the targeted backoff regression passed after extending its coverage.
+- Full gate passed: `npm test -- --maxWorkers=2 && npx eslint src && npm run build` (exit 0). Vitest: 897 files passed, 3 skipped; 28,960 tests passed, 36 skipped, 1 todo. Test duration: 1,185 seconds. ESLint produced no output; the production build completed successfully.
+- Local logs: `/tmp/scan-retake-full-test.log`, `/tmp/scan-retake-eslint.log`, `/tmp/scan-retake-build.log`. The prior build log was replaced only when this gate reached its build step.
+- Before the gate: load 4.74, 45% memory free, no other Vitest/build job. Only two Vitest workers were used. During the run, load reached 9.50 with 28% memory free; workers continued advancing and no active work was stopped for load.

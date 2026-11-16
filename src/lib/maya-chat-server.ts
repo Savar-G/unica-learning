@@ -1,4 +1,5 @@
 import "server-only";
+import { monitorProduct } from "@/lib/product-monitoring";
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
@@ -7,7 +8,8 @@ import { adminClient } from "@/lib/supabase-auth";
 import { stripe } from "@/lib/stripe";
 import { readBookingCustomers } from "@/lib/retention-stripe";
 import { chatFamilyGate, chatGradeLine, chatPlanClosedLine, chatServesGrade, chatUsage, chatWindow, childChatView, type ChatUsage, type ChatReply } from "@/lib/maya-chat";
-import { mayaCalls, recordView, type CallRecord } from "@/lib/maya-call";
+import { mayaCalls, recordView, type CallRecord, type TextSay } from "@/lib/maya-call";
+import type { BoardFateReport } from "@/lib/maya-text";
 import { callSeams } from "@/lib/maya-call-seams";
 import { mayaCallStore } from "@/lib/maya-call-store";
 import { mayaNotice } from "@/lib/maya-notice";
@@ -92,8 +94,8 @@ async function readChatSpend(parent: string, child: string, zone: FamilyZone, no
     if (!admin) throw Error("no secret key");
     const week = await mayaSpendLedger(admin).week({ parentId: parent, childId: child });
     return { state: week.state, notice: week.notice, resetsAt: week.resetsAt, zone: week.zone };
-  } catch (e) {
-    console.error("[desk chat] Maya spending could not be read", e instanceof Error ? e.message : "unknown");
+  } catch {
+    monitorProduct("maya.recovery_failed", { step: "usage" });
     return { state: "paused", notice: false, resetsAt: weekOf(now, zone).resetsAt, zone };
   }
 }
@@ -112,7 +114,7 @@ export async function parentChatUsage(session: DB, parent: string, children: rea
     const open = await parentChatChildren(admin, parent, children);
     return new Map(await Promise.all(children.filter((c) => open.has(c.id))
       .map(async (c) => [c.id, await readChatUsage(session, parent, c.id, zone)] as const)));
-  } catch { return new Map(); }
+  } catch { monitorProduct("dashboard.request_failed", { step: "usage" }); return new Map(); }
 }
 
 /** The children of this list who can chat now: chat is open to them, and their grade is served. Throws when the read fails. */
@@ -134,10 +136,10 @@ export async function parentChatChildren(db: DB, parent: string, children: reado
 export async function deskChat(session: DB, parent: string, child: { id: string; grade: number }, zone: FamilyZone, now = Date.now()): Promise<{ usage: ChatUsage | null; note: string | null; planClosed: boolean }> {
   const admin = adminClient();
   let gate: Awaited<ReturnType<typeof chatGate>> = "closed";
-  try { if (admin) gate = await chatGate(admin, parent, child.grade, child.id); } catch { /* Closed, as chat is when its check fails. */ }
+  try { if (admin) gate = await chatGate(admin, parent, child.grade, child.id); } catch { monitorProduct("dashboard.request_failed", { step: "chat" }); }
   if (gate === "too_young") return { usage: null, note: chatGradeLine(), planClosed: false };
   if (gate === "open") {
-    try { return { usage: await readChatUsage(session, parent, child.id, zone), note: null, planClosed: false }; } catch { /* Chat is open: no closed words. */ }
+    try { return { usage: await readChatUsage(session, parent, child.id, zone), note: null, planClosed: false }; } catch { monitorProduct("dashboard.request_failed", { step: "usage" }); }
     return { usage: null, note: null, planClosed: false };
   }
   const { access, resumesOn } = await childPlanRead({ parentId: parent, childId: child.id }, { db: admin, now: () => now });
@@ -148,7 +150,7 @@ export async function deskChat(session: DB, parent: string, child: { id: string;
 export interface ChatContext { db: DB; parent: string; child: string; name: string; grade?: number; zone: FamilyZone }
 export type ChatAction = { type: "start"; id: string; question: WorkbookQuestionRef; workbookId?: never; reference?: never } |
   { type: "start"; id: string; workbookId: string; reference: string; question?: never } | { type: "read"; id: string } |
-  { type: "child"; id: string; messageId: string; revision: number; text: string } | { type: "end"; id: string; revision: number };
+  { type: "child"; id: string; messageId: string; revision: number; text: string; fates?: BoardFateReport[] } | { type: "end"; id: string; revision: number };
 
 /**
  * The child's ink events of a chat from the desk (#534, #635): appended to the call's log at sequences `from`, `from + 1`,
@@ -166,8 +168,12 @@ export async function readChatInk(ctx: ChatContext, id: string): ReturnType<Retu
   return mayaCalls({ ...callSeams(db), canChat: async (p, c) => p === parent && c === child }).readInk(id, { parentId: parent, childId: child });
 }
 
-/** One authorized desk request. The database serializes message admission before the shared call module runs. */
-export async function runChat(ctx: ChatContext, action: ChatAction): Promise<ChatReply> {
+/**
+ * One authorized desk request. The database serializes message admission before the shared call module runs. `say`
+ * (#1107) hears the checked sentences of this request's own admitted child turn while it runs, and nothing else: no
+ * refusal, no recovered turn of an earlier request, no cap close.
+ */
+export async function runChat(ctx: ChatContext, action: ChatAction, options: { say?: TextSay } = {}): Promise<ChatReply> {
   const { db, parent, child, name, zone } = ctx;
   const store = mayaCallStore(db);
   const seams = callSeams(db);
@@ -259,7 +265,8 @@ export async function runChat(ctx: ChatContext, action: ChatAction): Promise<Cha
       childPending = claim.status === "busy" || claim.status === "recover";
       return reply(await store.get(record.id), claim.status, claim.admitted ? "accepted" : "refused");
     }
-    const result = await calls.input(record.id, claim.revision, { type: "child", text: action.text }, name);
+    // B1: what the desk's board did with Maya's batches goes in first (the call ignores words it already has).
+    const result = await calls.input(record.id, claim.revision, { type: "child", text: action.text, ...(action.fates?.length ? { fates: action.fates } : {}) }, name, options.say);
     record = await store.get(record.id);
     // At the cap, finish through the same path as a call, including learning, notes and alerts.
     if (result.ok && record?.status === "live" && (await usage()).left === 0) {

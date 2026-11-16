@@ -2,6 +2,9 @@
 // maps to src, as in vitest) and runs it. LiveKit stays outside the bundle: it loads a native module.
 // Usage: npm run maya:text -- --question add-27-39 [--model fake|openrouter] [--script file] [--runner livekit|plain]
 // See scripts/maya-text-cli.ts for every option.
+import { randomUUID } from "node:crypto";
+process.env.AI_USAGE_CONTEXT = "test";
+process.env.AI_USAGE_RUN_ID = randomUUID();
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -14,7 +17,8 @@ mkdirSync(outdir, { recursive: true });
 await build({
   entryPoints: { cli: join(root, "scripts/maya-text-cli.ts") },
   outdir, bundle: true, format: "esm", platform: "node", target: "node22", outExtension: { ".js": ".mjs" },
-  alias: { "@": join(root, "src") }, external: ["@livekit/*"], logLevel: "warning",
+  // server-only: the CLI builds the math review as the site does (callMathReviewer in src/lib/maya-call-seams.ts).
+  alias: { "@": join(root, "src"), "server-only": join(root, "node_modules/server-only/empty.js") }, external: ["@livekit/*"], logLevel: "warning",
 });
 process.env.MAYA_ROOT ??= root;
 await import(pathToFileURL(join(outdir, "cli.mjs")).href);

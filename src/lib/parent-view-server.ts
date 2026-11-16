@@ -7,6 +7,9 @@ import type { Database } from "@/lib/database";
 import { LEARNING_COLUMNS } from "@/lib/learning-style";
 import { chatFamilyGate } from "@/lib/maya-chat";
 import { childPauseMailing } from "@/lib/plan-controls-server";
+import { dayNumber } from "@/lib/parent-week";
+import { readScheduleTopics } from "@/lib/parent-schedule";
+import { parentScheduleStore } from "@/lib/parent-schedule-store";
 import type { ParentViewReader } from "@/lib/parent-view";
 import type { StateChange } from "@/lib/progress-series";
 import { pinIsSet } from "@/lib/parent-pin-server";
@@ -238,7 +241,20 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
           marks.push({ area: REPORTED_STRAND[standard.strand], level: standard.grade, correct: right });
         }
         if (await command("revision", parent, null, null, { child: childId }) !== revision) continue;
-        return { marks, skillMarks: effectiveSkillMarks(items), helpMarks: effectiveHelpMarks(items) };
+        // The workbook day of each marked page ("Day N"), for the repeated-mistake count. A failed read leaves the days out and
+        // nothing else: only the "one to watch" sentence then has nothing to count.
+        const labels = new Map<string, string | null>();
+        const markedBooks = [...new Set(items.map((item) => item.expected.identity.workbookId))];
+        const pageRows = await Promise.all(markedBooks.map((id) => session.from("workbook_pages").select("id, day_label").eq("workbook_id", id)));
+        pageRows.forEach((rows, i) => {
+          if (rows.error) console.error("[parent-view] page day labels read failed");
+          else for (const row of rows.data) labels.set(`${markedBooks[i]}:${row.id}`, row.day_label);
+        });
+        const dayOf = (workbookId: string, pageId: string) => {
+          const day = dayNumber(labels.get(`${workbookId}:${pageId}`) ?? null);
+          return day === null ? null : `${workbookId}:${day}`;
+        };
+        return { marks, skillMarks: effectiveSkillMarks(items), helpMarks: effectiveHelpMarks(items, dayOf) };
       }
       throw new Error("overview progress changed");
     },
@@ -253,6 +269,12 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
       if (error) throw new Error(`workbook questions read: ${error.message}`);
       return data.map((q) => ({ pageId: q.page_id, standard: q.standard }));
     },
+    async planTopics(childId, workbookId) {
+      // Share the Workbooks tab's frozen-plan validation, without its scan receipts or marks. One deadline covers
+      // every request, including ownership checks. Missing, invalid or slow plans leave Home's question fallback.
+      if (!admin) return null;
+      return readScheduleTopics(parentScheduleStore(session, admin, parent, AbortSignal.timeout(1500)), parent, childId, workbookId);
+    },
     async skillHistory(childId) {
       if (!admin) throw new Error("skill history read: no secret key");
       // Parents may not read this table: the secret key reads it, filtered on the parent and the child, and only the
@@ -266,6 +288,38 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
         rows.push(...data.filter((r) => known.has(r.state)).map((r) => ({ standard: r.standard, state: r.state as StateChange["state"], changedAt: r.changed_at })));
         if (data.length < 1000) return rows;
       }
+    },
+    async recentMistakes(childId, since) {
+      if (!admin) throw new Error("recent mistakes read: no secret key");
+      // Parents may not read this table: the secret key reads it, filtered on the parent and the child, and only the
+      // standard, the cause id and the time leave. Only a test's answers count (`source = 'assessment'`): a call or a
+      // marked page records no cause today, and a cause no one reviewed is never named. A wrong answer with no known
+      // cause is not selected.
+      const events: { standard: string; cause: string; at: string; assessmentId: string; questionId: string | null }[] = [];
+      for (let from = 0; from < 5000; from += 1000) {
+        const { data, error } = await admin.from("learning_events").select("skill_standard, mistake, occurred_at, assessment_id, assessment_question_id")
+          .eq("parent_id", parent).eq("child_id", childId).eq("source", "assessment").eq("result", "wrong").not("mistake", "is", null)
+          .gte("occurred_at", new Date(since).toISOString()).order("occurred_at").order("id").range(from, from + 999);
+        if (error) throw new Error(`recent mistakes read: ${error.message}`);
+        events.push(...data.flatMap((r) => (r.mistake && r.assessment_id ? [{ standard: r.skill_standard, cause: r.mistake, at: r.occurred_at, assessmentId: r.assessment_id, questionId: r.assessment_question_id }] : [])));
+        if (data.length < 1000) break;
+      }
+      if (events.length === 0) return [];
+      // The same tests the skill states count (src/lib/assessment/skill-state.ts): a test with no report yet has unknown
+      // reliability, a test the report calls unreliable (D-258) is no evidence, and a rushed wrong answer the placement
+      // left out of the score (#189, `placement.pace.leftOut`, by question id) is not a sign of what the child knows.
+      const ids = [...new Set(events.map((e) => e.assessmentId))];
+      const [reports, tests] = await Promise.all([
+        admin.from("reports").select("assessment_id, reliability:model->reliability").eq("parent_id", parent).eq("child_id", childId).in("assessment_id", ids),
+        admin.from("assessments").select("id, left_out:placement->pace->leftOut").eq("parent_id", parent).eq("child_id", childId).in("id", ids),
+      ]);
+      if (reports.error) throw new Error(`recent mistakes reports read: ${reports.error.message}`);
+      if (tests.error) throw new Error(`recent mistakes tests read: ${tests.error.message}`);
+      const reliable = new Set(reports.data.filter((r) => !reportCallsUnreliable(r)).map((r) => r.assessment_id));
+      const leftOut = new Map(tests.data.map((t) => [t.id, new Set(Array.isArray(t.left_out) ? t.left_out.filter((q): q is string => typeof q === "string") : [])]));
+      return events
+        .filter((e) => reliable.has(e.assessmentId) && !(e.questionId !== null && leftOut.get(e.assessmentId)?.has(e.questionId)))
+        .map(({ standard, cause, at }) => ({ standard, cause, at }));
     },
     async switches() {
       const [scanPages, scanPlanChildren, testFamily] = await Promise.all([

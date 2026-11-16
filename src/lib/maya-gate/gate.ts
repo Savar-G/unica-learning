@@ -476,7 +476,7 @@ function gateFinalRead(text: string, opts: ReturnType<typeof readOptionsFor>): R
   // A value explicitly labelled as the answer cannot become incidental working in a later equation.
   const labelled = new Set(reads.flatMap((r, i) => /\b(?:my|the)\s+(?:final\s+)?answer\b/.test(claims[i]) && r.final !== null ? [r.final] : []));
   let values = reads.flatMap(r => (r.final === null ? [] : [r.final]));
-  const equations = sentences.flatMap(equationsOf);
+  const equations = sentences.flatMap((x) => equationsOf(x));
   const operand = (v: AnswerValue, w: AnswerValue) => v.type === "number" && w.type === "number" && equations.some(e =>
     e.operands.some(o => sameSayValue(o, numberValue(v.value))) && sameSayValue(e.result, numberValue(w.value)));
   values = values.filter(v => labelled.has(v) || !values.some(w => !sameValue(v, w) && !equivalent(v, w) && operand(v, w)));

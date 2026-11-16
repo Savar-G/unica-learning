@@ -200,13 +200,14 @@ describe("defaults and the trace contract", () => {
     expect(out.prepared).toBe("hit");
     expect(session.trace().preparations![0]).not.toHaveProperty("diagnosticHandleId");
   });
-  it("writes the current version and still reads versions 9 to 11", async () => {
+  it("writes the current version and still reads versions 9 to 12", async () => {
     const { session } = setup(); await session.start(); session.prepare("6"); await session.child("6");
     const trace = session.trace();
-    // Version 12 (two-layer true math, #1044) adds the math reviews; this file's own field came in version 11.
-    expect(TRACE_VERSION).toBe(12); expect(trace.version).toBe(12);
+    // Version 12 (two-layer true math, #1044) adds the math reviews, version 13 the voice repair's thinking phrase,
+    // version 14 (B1) the board fates and version 15 (B2) the sentence ties; this file's own field came in version 11.
+    expect(TRACE_VERSION).toBe(15); expect(trace.version).toBe(15);
     expect(checkTrace(trace).ok).toBe(true);
-    for (const v of [9, 10, 11]) expect(checkTrace({ ...trace, version: v } as never).ok).toBe(true);
+    for (const v of [9, 10, 11, 12]) expect(checkTrace({ ...trace, version: v } as never).ok).toBe(true);
   });
   it("accepts diagnosticHandleId only as one short word-free token in version 11, and still refuses unknown fields", async () => {
     const idOf = idGetter(); const seen: { handle: SpendHandle; id: string }[] = [];

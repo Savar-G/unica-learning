@@ -5,7 +5,7 @@
 //
 // The live reviewer goes through the AI client (OpenRouter on the site, MAYA_REVIEW_MODEL, default Claude Haiku 5.5:
 // small and fast, and another model than Maya's). Tests use the fake below.
-import { withTimeLimit, type AiClient } from "@/lib/ai-client";
+import { hedged, withTimeLimit, type AiClient } from "@/lib/ai-client";
 import { CONVERSATION_REVIEW_SYSTEM, TUTOR_REVIEW_SYSTEM, hideName, readTalkReview, TALK_REVIEW_PROMPT_VERSION, TALK_REVIEW_SCHEMA, TALK_REVIEW_SYSTEM, type Session, type TalkReviewInput, type TalkReviewResult } from "@/lib/maya";
 import { classifyError } from "@/lib/maya-trace";
 
@@ -15,6 +15,22 @@ export const REVIEW_DEFAULT_MODEL = "anthropic/claude-haiku-5.5";
 export const REVIEW_TIME_LIMIT_MS = 8_000;
 /** D-341, round 3: the review of a conversational reply as a whole must answer within this, or it counts as a fail. */
 export const CONVERSATION_REVIEW_TIME_LIMIT_MS = 4_000;
+/**
+ * 2026-11-15 (fallback rate): a safety review with no answer after this many ms is sent once more, the same request
+ * beside the first (`hedged` in src/lib/ai-client.ts), and the first answer counts. Measured in 10 desk-chat sessions on
+ * the real reviewer: p50 0.9 s, p90 2.5 s, max 3.8 s, 3 of 166 with no answer at the 4 s limit. A time-out still never
+ * passes a sentence. The math review has its own delay (MATH_REVIEW_HEDGE_MS).
+ */
+export const REVIEW_HEDGE_MS = 2_500;
+/**
+ * The same on a voice turn (call 21665dc6, 2026-11-15): about the p90 of the safety review on the voice path (30 voice
+ * tutor turns on the real reviewer: p50 0.8 s, p90 1.9 s, max 2.5 s). A copy at 1.9 s keeps 2.1 s of a 4 s limit.
+ */
+export const VOICE_REVIEW_HEDGE_MS = 1_900;
+/** No second copy is sent when it would have less than this many ms before the time limit: it could not answer in time. */
+export const HEDGE_MIN_LEFT_MS = 1_000;
+/** The hedge delay for a review with time limit `ms`: `hedgeMs`, or none (Infinity) when the copy would have too little time. */
+export const hedgeDelay = (hedgeMs: number, ms: number): number => (hedgeMs <= ms - HEDGE_MIN_LEFT_MS ? hedgeMs : Number.POSITIVE_INFINITY);
 /**
  * D-341, round 3: the conversational review thinks as little as Haiku allows. Measured on the 88 OK_TALK, NOT_OK_TALK and
  * NEVER_SAY lines (2026-11-12): minimal with 400 tokens gave the same verdicts as low with 2,000 (86 of 88, the same two
@@ -68,10 +84,12 @@ export function aiTalkReviewer(client: AiClient, options: { effort?: "minimal" |
  * line). The error's own text is never kept (a provider's message can hold a key): only fixed wording, with the
  * trace's fixed error code for a failed call (`classifyError`: "the review call failed (http_429)", #604).
  */
-export async function runReview(reviewer: TalkReviewer, input: TalkReviewInput, ms: number = REVIEW_TIME_LIMIT_MS, onError?: (e: unknown) => void): Promise<TalkReviewResult> {
+export async function runReview(reviewer: TalkReviewer, input: TalkReviewInput, ms: number = REVIEW_TIME_LIMIT_MS, onError?: (e: unknown) => void, hedgeMs: number = REVIEW_HEDGE_MS, stop?: AbortSignal): Promise<TalkReviewResult> {
   try {
-    // A review that stops on the time limit's signal is a time-out too, whatever it throws.
-    return await withTimeLimit(ms, (signal) => reviewer.review(input, signal).catch((e: unknown) => {
+    // A review that stops on the time limit's signal is a time-out too, whatever it throws. One with no answer after
+    // `hedgeMs` is sent once more beside it (REVIEW_HEDGE_MS); the first answer counts. `stop` (review of #1109): no one
+    // will read the review any more, so both copies end and no copy starts after it (an error result, never read).
+    return await withTimeLimit(ms, (signal) => hedged(hedgeDelay(hedgeMs, ms), stop ? AbortSignal.any([signal, stop]) : signal, (copy) => reviewer.review(input, copy)).catch((e: unknown) => {
       throw signal.aborted ? new Error("time is up") : e;
     }));
   } catch (e) {

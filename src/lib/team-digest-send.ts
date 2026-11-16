@@ -80,7 +80,7 @@ export async function runTeamDigest(
     if (await inTime((signal) => store.dayTaken(day, signal), time, DATABASE_MS, SEND_ROOM_MS)) return { status: "already_sent" };
     const rows = await inTime((signal) => store.read(readFrom(period), period.to, signal), time, READ_MS, SEND_ROOM_MS);
     if (!mayStart()) return { status: "out_of_time" };
-    const message = { sender: { to: "savar" } as const, to: address, ...teamDigestEmail(buildTeamDigest(rows, period), origin) };
+    const message = { sender: { to: "savar" } as const, to: address, ...teamDigestEmail(buildTeamDigest(rows, period), origin), log: { kind: "team_digest" as const } };
     const controller = new AbortController();
     const timer = time ? setTimeout(() => controller.abort(), Math.max(0, time.endAt - time.now() - DATABASE_MS)) : undefined;
     try {

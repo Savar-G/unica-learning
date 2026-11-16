@@ -7,6 +7,9 @@ export {
   fallbacks,
   tutorTeachingNow,
   tutorStream,
+  tutorStreamReading,
+  streamedDrawing,
+  gateDisagrees,
   mathReviewInput,
   helpBrief,
   fillerTurn,
@@ -39,6 +42,7 @@ export {
   nextActs,
   step,
   ASSISTANCE,
+  BOARD_FATES,
   INTERRUPTS,
   MAIN_STATES,
   PAUSES,
@@ -49,6 +53,7 @@ export {
   limitsOf,
   turnWordLimit,
   type Assistance,
+  type BoardFate,
   type Effect,
   type Expect,
   type Interrupt,
@@ -92,6 +97,7 @@ export {
 } from "./proposal";
 export { allLineTexts, heldSentences, openingLine, spokenQuestion, LINE_IDS, LINES_VERSION, TEMPLATES, type LineChoice, type LineId, type LineOffer, type Slots, type TemplateKey } from "./lines";
 export { talkMath } from "./claims";
+export { deriveDrawings, legacyDraw, problemFacts, READ_REASONS, sentenceCueWord, type BoardRead, type DrawRequest, type ReadReason, type TiedDrawing } from "./board-ties";
 export { speechKey, speechWords } from "./speech";
 export { cheerful, FEELING_SMALLTALK, FREE_TALK_LIMITS, hardFeeling, NEUTRAL_SMALLTALK, replyFor, type ReplyPick, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, feelingClaim, freeTalkProblem, plainLanguageProblem, PLAIN_LANGUAGE_BANNED, workProblem, type PhraseGroup } from "./phrases";
 export {
@@ -119,7 +125,8 @@ export { asksSimplest, isEqualForm, readOptionsFor, rightForQuestion, teachSteps
 export { scopeReason, scopeSkills, SCOPE_LABELS, SCOPE_REASONS, type MathRequest, type ScopeReading, type OutsideReason, type ScopeReason, type ScopeRefusal } from "./scope";
 export { exactSafe, mathOnly, EXACT_SAFE, MATH_VOCAB } from "./math-vocab";
 export { checkSay, checkSentence, numberValue, sentencesOf, sayNumbers, trimSay, valuesOf, SAY_REASONS, SAY_WORDS, type SayReason, type SayRules, type SayVerdict } from "./say-check";
-export { checkTutorSay, plainTeaching, unreadMath, tutorStreamSentence, tutorStreamContext, childSaysFalse, type TutorStreamContext, childFacts, isTutorQuestion, numberMeaning, stepFacts, tutorDrawings, tutorFallbackText, tutorSteps, tutorKind, expressionKey, TUTOR_REVIEW_IGNORED, TUTOR_WORD_LIMIT, type TutorVerdict } from "./tutor";
+export { bindingReview, checkTutorSay, codeAlone, exactTexts, judgment, plainTeaching, unreadMath, tutorStreamSentence, tutorStreamContext, childSaysFalse, type TutorStreamContext, childFacts, isTutorQuestion, numberMeaning, stepFacts, tutorDrawings, tutorFallbackText, tutorSteps, tutorKind, expressionKey, TUTOR_REVIEW_IGNORED, TUTOR_WORD_LIMIT, type TutorVerdict } from "./tutor";
 export { isTutorBrief, tutorBrief, tutorBriefParts, TUTOR_OUTPUT_SCHEMA, TUTOR_PROMPT, TUTOR_PROMPT_VERSION, type TutorBrief } from "./tutor-prompt";
 export { noteFromEquation, type TutorCommand, type TutorDrawing, type TutorKind, type TutorStepFact } from "./tutor-kind";
 export { TUTOR_KINDS, tutorKindOf } from "./tutor-kinds";
+export { asksIdentity, mayAskIdentity } from "./identity";

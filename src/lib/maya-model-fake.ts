@@ -119,16 +119,29 @@ function rulePropose(input: ModelInput): unknown {
 
 // ---------- Version 3 (D-341) ----------
 
-/** A version 3 reply with every reading field at its default, for tests and scripted fakes. */
-export function reply(say: string, act: Act, extra: { step?: string; level?: number; reading?: Record<string, unknown>; draw?: { offer: string; place: string }[] } = {}) {
+/**
+ * A version 3 reply with every reading field at its default, for tests and scripted fakes, in the tutor's output order
+ * (prompt 13, #1107): the "gate" first, then "kind", "noDraw", "say", "act", the reading and the older drawings. The gate
+ * follows the reading unless `extra.gate` sets it; `gate: null` leaves it out (a model that skips it). `noDraw` is [] unless
+ * `extra.noDraw` sets it; `noDraw: null` leaves it out, and `lateNoDraw` writes it after the reading (the order of prompt 12).
+ */
+export function reply(say: string, act: Act, extra: { step?: string; level?: number; reading?: Record<string, unknown>; draw?: { offer: string; place: string; sentence?: number }[]; gate?: string | null; noDraw?: number[] | "all" | null; lateNoDraw?: boolean } = {}) {
+  const reading = {
+    answers: [], help: "none", unclear: false, stop: false, safety: "none", writing: false, offTopic: false, mathClaim: false, mathRequests: [],
+    outsideScope: "none", scopeSkill: "", unsafeRequest: false, noBoard: false, shorter: false, aboutMaya: "none", start: "none", paper: "none",
+    correctsHearing: false, ...(extra.reading ?? {}),
+  } as Record<string, unknown>;
+  const gate = extra.gate !== undefined ? extra.gate
+    : reading.aboutMaya !== "none" ? "identity" : reading.safety !== "none" || reading.unsafeRequest === true ? "safety" : reading.stop === true ? "stop" : "none";
+  const noDraw = extra.noDraw === null ? {} : { noDraw: extra.noDraw ?? [] };
   return {
-    kind: "math", say, act, step: extra.step ?? "", level: extra.level ?? 0,
-    reading: {
-      answers: [], help: "none", unclear: false, stop: false, safety: "none", writing: false, offTopic: false, mathClaim: false, mathRequests: [],
-      outsideScope: "none", scopeSkill: "", unsafeRequest: false, noBoard: false, shorter: false, aboutMaya: "none", start: "none", paper: "none",
-      correctsHearing: false, ...(extra.reading ?? {}),
-    },
+    ...(gate === null ? {} : { gate }),
+    kind: "math",
+    ...(extra.lateNoDraw ? {} : noDraw),
+    say, act, step: extra.step ?? "", level: extra.level ?? 0,
+    reading,
     draw: extra.draw ?? [],
+    ...(extra.lateNoDraw ? noDraw : {}),
   };
 }
 

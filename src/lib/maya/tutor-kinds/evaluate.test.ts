@@ -100,8 +100,8 @@ describe("evaluate kind: pattern claims", () => {
     expect(say(patternStep, "It starts at 20.")).toMatchObject({ ok: true });
     expect(say(patternStep, "It starts at 18.")).toMatchObject({ ok: false });
   });
-  it("refuses a term claim it cannot read, and any term claim on a question with no pattern", () => {
-    expect(say(patternStep, "The 3rd term is the start plus 16.")).toMatchObject({ ok: false });
+  it("sends a term claim it cannot read to the math review (final check 7), and refuses any term claim on a question with no pattern", () => {
+    expect(say(patternStep, "The 3rd term is the start plus 16.")).toMatchObject({ ok: true, math: ["The 3rd term is the start plus 16."] });
     expect(say(multiStep, "The 3rd term is 36.")).toMatchObject({ ok: false });
   });
 });
@@ -141,8 +141,13 @@ function session(pkg: OperationPackage, say: (i: number) => string) {
 
 describe("review of #1018", () => {
   it("P1: refuses a pattern claim with the wrong direction, a number in words or a remainder", () => {
-    for (const text of ["It subtracts 8 each time.", "The third term is twenty eight.", "The 3rd term is 36 remainder 5.", "It does not add 8 each time.", "The 3rd term is 28 and it adds 8 each time."]) {
+    for (const text of ["It subtracts 8 each time.", "The third term is twenty eight.", "The 3rd term is 28 and it adds 8 each time."]) {
       expect(say(patternStep, text), text).toMatchObject({ ok: false });
+    }
+    // Final check 7: a remainder or a negation the kind cannot read in full is no proved false claim: the math review
+    // reads it.
+    for (const text of ["The 3rd term is 36 remainder 5.", "It does not add 8 each time."]) {
+      expect(say(patternStep, text), text).toMatchObject({ ok: true, math: [text] });
     }
     // Control: the same claims, true.
     for (const text of ["It adds 8 each time.", "The third term is thirty six.", "The second term is twenty eight.", "So the 2nd term is 28, and the pattern adds 8 each time."]) {
@@ -188,8 +193,9 @@ describe("review of #1018", () => {
     await s.start();
     expect((await s.child("16")).say).not.toContain("Not quite.");
     // Control: a number that is no value of the question may still hear "Not quite".
-    const t = session(patternStep, () => "Not quite.");
+    // Savar's call 2 (2026-11-15): a message that corrects ends with one question.
+    const t = session(patternStep, () => "Not quite. Can you try again?");
     await t.start();
-    expect((await t.child("15")).say).toContain("Not quite.");
+    expect((await t.child("15")).say.join(" ")).toContain("Not quite.");
   });
 });

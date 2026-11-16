@@ -146,6 +146,8 @@ export const timeAddKind: TutorKind = {
   stepQuestion: () => null,
   drawings: () => [],
   draw: () => ({ commands: [], keys: [] }),
+  // B2: notes only, which need nothing on the board first.
+  boardNeeds: () => ({}),
   claimProblems: timeClaimProblems,
   notes: () => ["Count on to the next hour first, then the whole hours, then the minutes left. An hour has 60 minutes."],
 };

@@ -1,3 +1,4 @@
+import { fakeMathReviewer } from "@/lib/maya-math-review";
 import { describe, expect, it, vi } from "vitest";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
@@ -37,7 +38,7 @@ function setup(name: string) {
     store, history: memoryWordingHistoryStore(), events: learningEvents(eventStore), rebuild: vi.fn(async () => true),
     model: (id) => (id === null || id === "fake-v3" ? model : null),
     isTestFamily: async (parentId) => parentId === PARENT,
-    canChat: async () => true, note: async () => "done" as const, reviewer: () => fakeTalkReviewer(),
+    canChat: async () => true, note: async () => "done" as const, reviewer: () => fakeTalkReviewer(), mathReviewer: () => fakeMathReviewer(),
     alerts: { send: async () => {}, list: async () => [] }, clock: () => now,
     newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`, seed: () => 42,
   };

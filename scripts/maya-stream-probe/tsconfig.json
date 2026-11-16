@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": { "incremental": false, "plugins": [], "target": "ES2022" },
+  "include": [
+    "./*.ts", "./*.mts",
+    "../../src/lib/maya-call-seams.ts",
+    "../../src/lib/maya-call-seams.test.ts",
+    "../../src/lib/maya-chat-stream-activation.test.ts",
+    "../../src/lib/maya-chat-stream.test.ts",
+    "../../src/lib/maya-chat-streaming.test.ts"
+  ],
+  "exclude": []
+}

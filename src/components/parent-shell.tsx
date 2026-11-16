@@ -21,7 +21,6 @@ import "./parent-shell.css";
 // once per page load; the address picks the child when it names one, and otherwise the child stays the one in view.
 
 const ICONS: Record<ChildTab | "more", ReactNode> = {
-  schedule: <><rect x="4" y="5" width="16" height="16" rx="2" /><path d="M8 3v4m8-4v4M4 10h16M8 14h3m2 0h3M8 17h3" /></>,
   overview: <><rect x="3.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="3.5" y="13.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="13.5" width="7" height="7" rx="1.5" /></>,
   progress: <><path d="M3.5 19.5h17" /><path d="M5 15.5l4.5-4.5 3.5 3 6-6.5" /><path d="M15 7.5h4v4" /></>,
   scan_pages: <><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.8l1.4-2h4.6l1.4 2h1.8A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5z" /><circle cx="12" cy="12.5" r="3.5" /></>,
@@ -104,7 +103,6 @@ export function ParentShell({ kids, remembered, pinSet, timeZoneSaved, children 
 
 /** The child pill: the avatar and the name. With two or more children it opens the switcher, a plain list that works without JavaScript. */
 function ChildPill({ child, kids }: { child: ChildView; kids: ChildView[] }) {
-  const pathname = usePathname();
   const name = (
     <>
       <span className="pd-kid-av" aria-hidden="true">{child.firstName.slice(0, 1).toUpperCase()}</span>
@@ -121,7 +119,7 @@ function ChildPill({ child, kids }: { child: ChildView; kids: ChildView[] }) {
       </summary>
       <ul className="pd-switch-list">
         {kids.map((k) => (
-          <li key={k.id}><Link href={childSwitchPath(pathname, k.id)} aria-current={k.id === child.id ? "true" : undefined}>{k.firstName}<span>{gradeLabel(k.schoolGrade)}</span></Link></li>
+          <li key={k.id}><Link href={childSwitchPath(k.id)} aria-current={k.id === child.id ? "true" : undefined}>{k.firstName}<span>{gradeLabel(k.schoolGrade)}</span></Link></li>
         ))}
       </ul>
     </details>

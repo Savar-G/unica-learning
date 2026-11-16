@@ -1,8 +1,11 @@
 // The family and email pages read only their families' dashboard rows (familyDashboardRows): through a fake PostgREST
 // server and a fake Stripe, the family buildDashboard works out from them equals the one from the whole read
 // (dashboardRows), every database read filters by the family or by id, and Stripe is asked only about the family's cards.
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { EmailView } from "@/components/admin-email";
 import { createClient } from "@supabase/supabase-js";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { Database } from "@/lib/database";
 
 const fake = vi.hoisted(() => ({ subscriptionLists: [] as (string | null)[], cardChecks: [] as string[] }));
@@ -27,7 +30,7 @@ vi.mock("@/lib/stripe", () => ({
     },
   }),
 }));
-import { dashboardRows, emailParent, familyDashboardRows, type AdminSession } from "@/lib/admin-store";
+import { dashboardRows, emailParent, familyDashboardRows, getEmailCopy, type AdminSession } from "@/lib/admin-store";
 import { buildDashboard } from "@/lib/admin-dashboard";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -76,18 +79,35 @@ const tables: Record<string, Row[]> = {
     { id: id(81), email_id: "re_1", type: "delivered", occurred_at: at(2), detail: null },
     { id: id(82), email_id: "re_r41", type: "bounced", occurred_at: at(3), detail: "full" },
     { id: id(83), email_id: "re_9", type: "delivered", occurred_at: at(3), detail: null },
+    { id: id(84), email_id: "re_s1", type: "bounced", occurred_at: at(4), detail: "no such user" },
+    { id: id(85), email_id: "re_w1", type: "delivered", occurred_at: at(5), detail: null },
+    { id: id(86), email_id: "re_plan1", type: "delivered", occurred_at: at(6), detail: null },
+  ],
+  // The send log: A's scan link (with a bounce), B's sign-in link, and a team digest about no family.
+  email_sends: [
+    { id: id(91), created_at: at(4), kind: "scan_link", parent_id: A, child_id: id(11), outcome: "sent", email_id: "re_s1", error: null, subject: "Take pictures of Kid 11's workbook pages" },
+    { id: id(92), created_at: at(4), kind: "sign_in_link", parent_id: B, child_id: null, outcome: "sent", email_id: "re_s2", error: null, subject: null },
+    { id: id(93), created_at: at(5), kind: "team_digest", parent_id: null, child_id: null, outcome: "sent", email_id: "re_s3", error: null, subject: "Unica daily digest" },
+  ],
+  workbook_emails: [
+    { id: id(95), created_at: at(5), parent_id: A, child_id: id(11), kind: "dispatch", status: "sent", attempts: 1, sent_at: at(5), email_id: "re_w1", error: null, subject: "Kid 11's workbook is on its way" },
+  ],
+  plan_starts: [
+    { card_setup_id: CARD_A1, generation: 1, parent_id: A, started_at: at(4), email_send_status: "sent", email_attempts: 1, email_claimed_at: at(5), email_sent_at: at(6), email_provider_id: "re_plan1", email_error: null, email_to: "p1@example.invalid", email_subject: "Welcome to Unica Learning: Kid 11's plan", email_text: "Your free month has started.", email_html: "<p>Your free month has started.</p>" },
+    { card_setup_id: CARD_A1, generation: 2, parent_id: A, started_at: at(7), email_send_status: "unknown", email_attempts: 1, email_claimed_at: at(7), email_sent_at: null, email_provider_id: null, email_error: "No answer", email_to: "p1@example.invalid", email_subject: "Your plan restarted", email_text: "Your plan has restarted.", email_html: null },
+    { card_setup_id: CARD_A2, generation: 1, parent_id: A, started_at: at(4), email_send_status: null, email_attempts: 0, email_claimed_at: null, email_sent_at: null, email_provider_id: null, email_error: null },
   ],
   test_accounts: [{ parent_id: C }],
 };
 
-function server() {
+function server(planRows = tables.plan_starts) {
   const requests: string[] = [];
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input instanceof Request ? input.url : input));
     const name = url.pathname.split("/").at(-1)!;
     requests.push(`${name}?${[...url.searchParams].filter(([k]) => !["select", "order", "offset", "limit"].includes(k)).map(([k, v]) => `${k}=${v}`).join("&")}`);
     if (name === "admin_team_ids") return Response.json([]);
-    let rows = [...(tables[name] ?? [])];
+    let rows = [...(name === "plan_starts" ? planRows : tables[name] ?? [])];
     for (const [key, value] of url.searchParams) {
       if (["select", "order", "offset", "limit"].includes(key)) continue;
       if (value.startsWith("eq.")) rows = rows.filter((r) => String(r[key]) === value.slice(3));
@@ -112,10 +132,13 @@ const familyOf = (rows: Awaited<ReturnType<typeof dashboardRows>>, p: string) =>
 };
 
 beforeEach(() => {
-  process.env.STRIPE_SECRET_KEY = "sk_test_fake";
+  vi.clearAllMocks();
+  vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
   fake.subscriptionLists = [];
   fake.cardChecks = [];
 });
+
+afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 it.each([[A], [B], [C], [A, B]])("gives family %s what the whole read gives it", async (...families) => {
   const whole = await dashboardRows(server().admin);
@@ -136,6 +159,19 @@ it("keeps the edge cases of the whole read: another family's report, test and co
   // the card found in Stripe and the family's subscriptions
   expect(f!.cards.map((c) => c.foundInStripe).sort()).toEqual([false, true]);
   expect(f!.subscriptions.map((x) => x.id)).toEqual(["sub_3", "sub_1"]);
+  // the send log and the workbook emails, each with its own Resend events
+  expect(f!.emails.find((e) => e.id === `${id(91)}:send`)).toMatchObject({ kind: "scan_link", childName: "Kid 11", delivery: { type: "bounced", detail: "no such user" } });
+  expect(f!.emails.find((e) => e.id === `${id(95)}:workbook`)).toMatchObject({ kind: "workbook_dispatch", subject: "Kid 11's workbook is on its way", delivery: { type: "delivered" } });
+});
+
+it("lists a team email about no family in the whole read, and in a family read only when asked for by id", async () => {
+  const team = `${id(93)}:send`;
+  expect(buildDashboard(await dashboardRows(server().admin), "7d", now).emails.some((e) => e.id === team)).toBe(true);
+  expect(buildDashboard(await familyDashboardRows(server().admin, [A]), "7d", now).emails.some((e) => e.id === team)).toBe(false);
+  const s = server();
+  const d = buildDashboard(await familyDashboardRows(s.admin, [], { sendIds: [id(93)] }), "7d", now);
+  expect(d.emails.find((e) => e.id === team)).toMatchObject({ kind: "team_digest", familyId: null, subject: "Unica daily digest" });
+  expect(s.requests.filter((r) => r.endsWith("?") && !r.startsWith("admin_team_ids") && !r.startsWith("test_accounts"))).toEqual([]);
 });
 
 it("filters every database read by the family or by id, and asks Stripe only about the family's cards", async () => {
@@ -158,5 +194,45 @@ it("finds the family of an email page's email, or none", async () => {
   expect(await emailParent(admin, id(61))).toBe(A);
   expect(await emailParent(admin, `${id(41)}:report`)).toBe(B);
   expect(await emailParent(admin, `${id(41)}:alert`)).toBe(B);
+  expect(await emailParent(admin, `${id(91)}:send`)).toBe(A);
+  expect(await emailParent(admin, `${id(95)}:workbook`)).toBe(A);
+  // a team email about no family has none
+  expect(await emailParent(admin, `${id(93)}:send`)).toBeNull();
   for (const bad of [id(99), `${id(41)}:other`, `${id(41)}:report:x`, "nope"]) expect(await emailParent(admin, bad)).toBeNull();
+});
+
+it("shows the plan welcome, actual send time and delivery in the whole and family reads", async () => {
+  for (const loaded of [await dashboardRows(server().admin), await familyDashboardRows(server().admin, [A])]) {
+    const d = buildDashboard(loaded, "all", now);
+    const sent = d.emails.find((e) => e.id === `${CARD_A1}:1:plan`);
+    expect(sent).toMatchObject({ kind: "plan_start", subject: "Welcome to Unica Learning: Kid 11's plan", at: at(6), childName: "Kid 11", state: "sent", status: "sent", attempts: 1, delivery: { type: "delivered", at: at(6) } });
+    expect(d.families.find((f) => f.id === A)?.emails).toContainEqual(sent);
+    expect(d.emails.find((e) => e.id === `${CARD_A1}:2:plan`)).toMatchObject({ state: "unknown", status: "pending", error: "No answer" });
+    expect(d.emails.some((e) => e.id === `${CARD_A2}:1:plan`)).toBe(false);
+    expect(d.emailSummary.find((s) => s.kind === "plan_start")).toMatchObject({ sent: 1, failed: 0, pending: 1 });
+  }
+});
+
+it("opens the exact plan generation and its stored copy with delivery evidence", async () => {
+  const { admin } = server();
+  expect(await emailParent(admin, `${CARD_A1}:1:plan`)).toBe(A);
+  expect(await getEmailCopy(admin, `${CARD_A1}:1:plan`)).toMatchObject({ outcome: "sent", subject: "Welcome to Unica Learning: Kid 11's plan", to: "p1@example.invalid", text: "Your free month has started.", html: "<p>Your free month has started.</p>", events: [{ type: "delivered", at: at(6), detail: null }] });
+  expect(await getEmailCopy(admin, `${CARD_A1}:2:plan`)).toMatchObject({ outcome: "unknown", subject: "Your plan restarted", events: [] });
+  expect(await emailParent(admin, `${CARD_A1}:99:plan`)).toBeNull();
+  for (const bad of [`${CARD_A1}:0:plan`, `${CARD_A1}:-1:plan`, `${CARD_A1}:1.5:plan`, `${CARD_A1}:1e2:plan`, `${CARD_A1}:1:plan:x`]) expect(await emailParent(admin, bad)).toBeNull();
+});
+
+it.each(["sending", "unknown"])("keeps %s truthful on the plan email detail page", async (status) => {
+  const { admin } = server([{ ...tables.plan_starts[0], email_send_status: status, email_provider_id: null, email_sent_at: null }]);
+  const d = buildDashboard(await familyDashboardRows(admin, [A]), "all", now);
+  const e = d.emails.find((e) => e.id === `${CARD_A1}:1:plan`)!;
+  const copy = await getEmailCopy(admin, e.id);
+  const html = renderToStaticMarkup(createElement(EmailView, { e, copy, ctx: { path: "/admin/emails", query: {}, demo: false }, now: now.toISOString() }));
+  if (status === "sending") {
+    expect(html).toContain("Sending: no answer from Resend yet");
+    expect(html).not.toContain("Delivery unknown");
+  } else {
+    expect(html).toContain("Delivery unknown");
+    expect(html).not.toContain("Sending: no answer from Resend yet");
+  }
 });

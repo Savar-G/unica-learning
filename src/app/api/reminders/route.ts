@@ -1,4 +1,6 @@
+import { monitored } from "@/lib/sentry-cron";
 import { recoverReferralsNow } from "@/lib/referral-server";
+import { reverifyParentExplanationPrice } from "@/lib/parent-explanation-price-server";
 import { timingSafeEqual } from "node:crypto";
 import { linkOrigin } from "@/lib/account-server";
 import { sweepOpenCancelsNow } from "@/lib/plan-cancel-recovery-server";
@@ -69,7 +71,7 @@ function authorized(header: string | null, secret: string): boolean {
 
 const byKind = (due: DueReminder[]) => Object.fromEntries(REMINDER_KINDS.map((kind) => [kind, due.filter((r) => r.kind === kind).length]));
 
-export async function POST(request: Request) {
+async function run(request: Request) {
   // Never open: without a secret the job does not run at all.
   const secret = process.env.CRON_SECRET;
   if (!secret) {
@@ -89,6 +91,7 @@ export async function POST(request: Request) {
   const store = reminderStore(admin);
   const origin = linkOrigin(request);
   let sweep: Promise<unknown> | null = null;
+  let explanationPrice: Promise<unknown> | null = null;
   let cards: Promise<unknown> | null = null;
   let cancels: Promise<unknown> | null = null;
   let reports: Promise<unknown> | null = null;
@@ -116,6 +119,11 @@ export async function POST(request: Request) {
     }) : null;
     const transport = scan?.transport ?? pacedTransport(provider, SEND_GAP_MS);
     referrals = recoverReferralsNow(now, origin, transport);
+    const priceDb = adminClient(AbortSignal.timeout(20_000), { retry: false });
+    explanationPrice = priceDb ? reverifyParentExplanationPrice(priceDb, { now }).catch(() => {
+      console.error("[parent explanation price] refresh failed");
+      return "failed";
+    }) : Promise.resolve("failed");
     // Run beside the other work, with bounded database calls and time for one request and its ledger write.
     const teamDb = adminClient(AbortSignal.timeout(Math.max(1, now + 55_000 - Date.now())), { retry: false });
     scanTeam = teamDb ? runScanTeamEmail(scanTeamEmailStore(teamDb), now, {
@@ -211,12 +219,13 @@ export async function POST(request: Request) {
       console.error("[team digest] run failed", e instanceof Error ? e.message : e);
       return { status: "failed" as const };
     }) : Promise.resolve({ status: "off" as const });
-    return Response.json({ ok: true, ...result, maya, scanTeam: await scanTeam, teamDigest: await teamDigest, monthly, firstPages, referrals: await referrals, book1: await book1, sweep: await sweep, cards: await cards, cancels: await cancels, reports: await reports,
+    return Response.json({ ok: true, ...result, maya, scanTeam: await scanTeam, teamDigest: await teamDigest, monthly, firstPages, referrals: await referrals, book1: await book1, sweep: await sweep, explanationPrice: await explanationPrice, cards: await cards, cancels: await cancels, reports: await reports,
       ...(scans ? { scans } : {}) });
   } catch (e) {
     console.error("[reminders] run failed", e instanceof Error ? e.message : e);
     // The sweep finishes before the answer, so the function is not stopped in the middle of a call's end.
     await sweep;
+    await explanationPrice;
     await cards;
     await cancels;
     await reports;
@@ -227,3 +236,6 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: "run_failed" }, { status: 500 });
   }
 }
+
+// Each scheduled call checks in with Sentry (src/lib/sentry-cron.ts).
+export const POST = monitored("reminders", run);

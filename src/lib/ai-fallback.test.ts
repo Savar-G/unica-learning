@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SubscriptionUnavailable } from "@/lib/ai-claude-cli";
 import type { AiClient, AiJsonRequest } from "@/lib/ai-client";
 import { fallbackAiClient, newGate, type AiCallRecord } from "@/lib/ai-fallback";
+import { WorkbookAiUnavailable } from "@/lib/workbook-ai-unavailable";
 
 const request: AiJsonRequest = { name: "workbook_page", system: "s", content: [{ type: "text", text: "t" }], schema: { type: "object" } };
 const signal = () => new AbortController().signal;
@@ -38,6 +39,56 @@ function setup(o: { sub?: unknown[] | null; api?: unknown[] | null; primary?: "s
 const limit = () => new SubscriptionUnavailable("limit", "the Claude subscription hit its usage limit");
 
 describe("fallbackAiClient", () => {
+  it("signals a provider outage once and preserves it when the durable gate is restored", async () => {
+    const state = setup({ sub: [limit()], api: null });
+    await expect(state.client.json(request, signal())).rejects.toBeInstanceOf(WorkbookAiUnavailable);
+    expect(state.sub!.seen).toHaveLength(1);
+    expect(state.records).toMatchObject([{ outcome: "unavailable", note: "the Claude subscription hit its usage limit" }]);
+    const restored = fallbackAiClient({ primary: "subscription", subscription: state.sub!.client, api: null,
+      model: state.client.model, gate: structuredClone(state.gate) });
+    await expect(restored.json(request, signal())).rejects.toBeInstanceOf(WorkbookAiUnavailable);
+    await expect(restored.json(request, signal())).rejects.toThrow("the Claude subscription hit its usage limit");
+    expect(state.sub!.seen).toHaveLength(1);
+  });
+
+  it("keeps a temporary subscription failure retryable when there is no fallback", async () => {
+    const state = setup({ sub: [new SubscriptionUnavailable("crash", "the subscription process crashed"), { by: "subscription" }], api: null });
+    await expect(state.client.json(request, signal())).rejects.not.toBeInstanceOf(WorkbookAiUnavailable);
+    expect(state.gate.off.subscription).toBeUndefined();
+    expect(await state.client.json(request, signal())).toEqual({ by: "subscription" });
+  });
+
+  it.each(["subscription", "api"] as const)("keeps the %s retryable when its permanent fallback fails", async (primary) => {
+    const state = primary === "subscription"
+      ? setup({ sub: [new SubscriptionUnavailable("crash", "temporary crash"), { by: "recovered" }], api: [new Error("OpenRouter answered 402: no credits")] })
+      : setup({ primary, api: [new Error("OpenRouter answered 503: unavailable"), { by: "recovered" }], sub: [limit()] });
+    await expect(state.client.json(request, signal())).rejects.not.toBeInstanceOf(WorkbookAiUnavailable);
+    expect(state.gate.off[primary]).toBeUndefined();
+    expect(await state.client.json(request, signal())).toEqual({ by: "recovered" });
+  });
+
+  it("stops retrying when both configured providers are permanently unavailable", async () => {
+    const state = setup({ sub: [limit()], api: [new Error("OpenRouter answered 402: no credits")] });
+    await expect(state.client.json(request, signal())).rejects.toBeInstanceOf(WorkbookAiUnavailable);
+    await expect(state.client.json(request, signal())).rejects.toBeInstanceOf(WorkbookAiUnavailable);
+    expect(state.sub!.seen).toHaveLength(1);
+    expect(state.api!.seen).toHaveLength(1);
+  });
+
+  it.each(["subscription", "api"] as const)("rechecks the %s after a sibling excludes its fallback", async primary => {
+    let rejectPrimary!: (error: Error) => void;
+    const pending = new Promise<never>((_resolve, reject) => { rejectPrimary = reject; });
+    const state = primary === "subscription"
+      ? setup({ sub: [pending, { by: "recovered" }] })
+      : setup({ primary, api: [pending, { by: "recovered" }] });
+    const result = state.client.json(request, signal()).catch(error => error);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    state.gate.off[primary === "subscription" ? "api" : "subscription"] = "permanent failure in a sibling call";
+    rejectPrimary(primary === "subscription" ? new SubscriptionUnavailable("crash", "temporary crash") : new Error("OpenRouter answered 503: unavailable"));
+    expect(await result).not.toBeInstanceOf(WorkbookAiUnavailable);
+    expect(await state.client.json(request, signal())).toEqual({ by: "recovered" });
+  });
+
   it("answers from the subscription first, at no cost, under the run's model name", async () => {
     const s = setup({});
     expect(s.client.model).toBe("anthropic/claude-sonnet-5.5");

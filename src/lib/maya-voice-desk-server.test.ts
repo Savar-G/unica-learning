@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setProductObserver } from "@/lib/product-monitoring";
 import { createClient } from "@supabase/supabase-js";
 import { TokenVerifier } from "livekit-server-sdk";
 import type { Database } from "@/lib/database";
@@ -56,7 +57,8 @@ function fakeDb({ test = false, listed = false, broken = "", plans = [] as Row[]
   } } });
   return Object.assign(db, { requests });
 }
-afterEach(() => { vi.unstubAllEnvs(); state.statuses = []; state.customers = []; state.db = null; });
+beforeEach(() => { vi.clearAllMocks(); setProductObserver(null); });
+afterEach(() => { setProductObserver(null); vi.restoreAllMocks(); vi.unstubAllEnvs(); state.statuses = []; state.customers = []; state.db = null; });
 
 describe("the voice gate", () => {
   const open = { ...LIVEKIT, MAYA_VOICE_ENABLED: "on" };
@@ -315,11 +317,15 @@ describe("a desk voice request", () => {
     await s.run(start());
     const row = s.store.rows()[0];
     expect(await s.store.update(row.id, row.revision, { startedAt: new Date(Date.parse("2026-11-11T20:00:00Z")).toISOString() })).toBeTruthy();
-    s.deps.usedSeconds = async () => { throw Error("down"); };
+    const observer = vi.fn(); setProductObserver(observer);
+    s.deps.usedSeconds = async () => { throw Error("PRIVATE"); };
     const r = await s.run({ type: "token", id: ID });
     expect(r).toMatchObject({ error: "unavailable" });
     expect(r.ticket).toBeUndefined();
     expect(s.store.rows()[0].status).toBe("live");
+    expect(observer.mock.calls).toContainEqual([{ code: "maya.recovery_failed", attributes: { callId: ID, mode: "voice", step: "usage" } }]);
+    expect(observer.mock.calls).toContainEqual([{ code: "dashboard.request_failed", attributes: { step: "usage" } }]);
+    expect(JSON.stringify(observer.mock.calls)).not.toContain("PRIVATE");
   });
 
   it("ends a new call when the week cannot be read after its insert", async () => {

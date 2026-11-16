@@ -10,7 +10,9 @@
 import type { OperationPackage, Place, WorkedStep } from "@/lib/question-package";
 import { digitAt, placeIndex, WHOLE_PLACES, withCommas } from "@/lib/question-package-place-value";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorDrawing, type TutorKind, type TutorStepFact } from "../tutor-kind";
-import { splitClauses } from "../tutor-read";
+import { sentencesIn } from "./asks";
+import { standardNumber } from "../say-check";
+import { exactValue, guardedProblems, type KindRead } from "../tutor-math";
 
 type PlaceOp = Extract<OperationPackage["operation"], { kind: "place-value" }>;
 type Ask = "digit" | "value" | "compare" | "sum";
@@ -68,7 +70,53 @@ function fits(pkg: OperationPackage): boolean {
   const want: string[] = f.ask === "digit" ? [] : f.ask === "value" ? ["digit"] : f.ask === "sum" ? ["worth-1", "worth-2"]
     : ["digit-1", "digit-2", ...(f.parts[0].digit !== f.parts[1].digit ? ["bigger"] : [])];
   if (work.length !== want.length || work.some((s, i) => s.id !== want[i])) return false;
-  return work.every((s) => stepAgrees(s, f)) && printedAgrees(pkg.text, f);
+  return work.every((s) => stepAgrees(s, f)) && printedAgrees(pkg.text, f) && printedAsk(pkg.text) === f.ask && printedForm(pkg.text, f);
+}
+
+/**
+ * Pre-launch check 2: the printed question is one of the closed forms of its ask, with the stored number and places,
+ * and at most one plain sentence before it ("Zara saw the number 48942 on a sign at school."). "What is double the value
+ * of the digit in the ten thousands place of 48942?" asks for 80000, not the stored 40000: it keeps the controller.
+ */
+function printedForm(text: string, f: Facts): boolean {
+  const s = sentencesIn(text).map((x) => x.toLowerCase());
+  if (s.length === 0 || s.length > 2) return false;
+  const n = String(f.n);
+  const [p, q] = f.parts.map((x) => x.place);
+  const of = String.raw`(?: of ${n}| in ${n})?`;
+  const lead = String.raw`(?:in ${n}, )?`;
+  const forms: Record<Ask, string[]> = {
+    digit: [String.raw`${lead}which digit is in the ${p} place${of}\?`],
+    value: [String.raw`${lead}what is the value of the digit in the ${p} place${of}\?`, String.raw`${lead}what is the value of the ${p} digit${of}\?`, String.raw`${n}: value of the ${p} digit\?`],
+    sum: [String.raw`${lead}what is the value of the ${p} digit${of} plus the value of (?:the|its) ${q} digit\?`],
+    compare: [String.raw`true or false: in ${n}, the digit in the ${p} place is (?:bigger|greater) than the digit in the ${q} place\.`],
+  };
+  if (!forms[f.ask].some((x) => new RegExp(`^${x}$`).test(s.at(-1)!))) return false;
+  // One sentence before the question may only say where the number was seen.
+  return s.length === 1 || new RegExp(String.raw`^[a-z']+ saw the number ${n}(?: on a sign)?(?: at [a-z' ]+)?\.$`).test(s[0]);
+}
+
+/**
+ * Final check 2, N06: what the printed question asks, read from its words, or null when the words do not say one ask
+ * clearly. A printed "which digit" question stored as a value ask would teach 40000 for the digit 4, so the printed ask
+ * must be the stored one: digit ("which digit", no "value"), value (one "value", no "which digit"), sum (two "value"s
+ * and "plus") or compare ("true or false" and "bigger than" or "greater than", no "value"). Anything else keeps the
+ * controller.
+ */
+function printedAsk(text: string): Ask | null {
+  const t = text.toLowerCase();
+  const values = (t.match(/\bvalues?\b/g) ?? []).length;
+  const whichDigit = /\bwhich digit\b/.test(t);
+  const plus = /\bplus\b|\+|\bsum\b|\btotal\b|\badd\b/.test(t);
+  const trueFalse = /\btrue or false\b/.test(t);
+  const bigger = /\b(?:bigger|greater) than\b/.test(t);
+  const other = /\b(?:smaller|less|fewer|more|larger|equal|same|difference|minus|times|round|rounded|nearest|expanded|word form|then)\b|[−×÷*\/=-]/.test(t);
+  if (other) return null;
+  if (trueFalse) return bigger && values === 0 && !whichDigit && !plus ? "compare" : null;
+  if (bigger) return null;
+  if (plus) return values === 2 && !whichDigit ? "sum" : null;
+  if (whichDigit) return values === 0 ? "digit" : null;
+  return values === 1 ? "value" : null;
 }
 
 /** The place names a question prints, longest first so "ten thousands" is one place. */
@@ -355,35 +403,9 @@ const TENS = ["twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty"
 const WORD = new RegExp(String.raw`\b(?:${[...SMALL, ...TENS, "hundred", "thousand", "million"].join("|")})\b(?:(?:\s+|\s+and\s+)(?:${[...SMALL, ...TENS, "hundred", "thousand", "million"].join("|")})\b)*`, "g");
 
 /** A run of number words as a number ("forty thousand", "nine thousand and sixty"), or null when it does not parse. */
+/** Final check 10 (2026-11-15): a run of number words, read by the one standard reader (say-check.ts standardNumber). */
 function wordsValue(run: string): number | null {
-  let total = 0;
-  let group = 0;
-  let last: "unit" | "tens" | "scale" | null = null;
-  for (const w of run.split(/\s+/).filter((x) => x !== "and")) {
-    const small = SMALL.indexOf(w);
-    const tens = TENS.indexOf(w);
-    if (small >= 0) {
-      if (last === "unit") return null;
-      if (last === "tens" && small >= 10) return null;
-      group += small;
-      last = "unit";
-    } else if (tens >= 0) {
-      if (last === "unit" || last === "tens") return null;
-      group += (tens + 2) * 10;
-      last = "tens";
-    } else if (w === "hundred") {
-      if (group === 0 || group >= 100) return null;
-      group *= 100;
-      last = "scale";
-    } else {
-      const scale = w === "thousand" ? 1000 : 1_000_000;
-      if (group === 0) return null;
-      total += group * scale;
-      group = 0;
-      last = "scale";
-    }
-  }
-  return total + group;
+  return standardNumber(run);
 }
 
 /**
@@ -399,9 +421,14 @@ function normalized(sentence: string): string | null {
   const PLACES: [RegExp, number][] = [[/\bhundred thousands\b/g, 5], [/\bten thousands\b/g, 4], [/\bmillions\b/g, 6], [/\bthousands\b/g, 3], [/\bhundreds\b/g, 2], [/\btens\b/g, 1], [/\bones\b/g, 0]];
   for (const [re, k] of PLACES) t = t.replace(re, `@${k}`);
   // Digits before a scale word: "8 thousand" is 8000, "4 hundred thousand" is 400000.
-  t = t.replace(/\b(\d+) ((?:(?:hundred|thousand|million) )*(?:hundred|thousand|million))\b/g, (_, d: string, scales: string) => String(scales.split(" ").reduce((v, w) => v * (w === "hundred" ? 100 : w === "thousand" ? 1000 : 1_000_000), Number(d))));
+  // Final check 12: every product through the one shared evaluator; a value it cannot hold stays as said (unread).
+  t = t.replace(/\b(\d+) ((?:(?:hundred|thousand|million) )*(?:hundred|thousand|million))\b/g, (all: string, d: string, scales: string) => {
+    const words = scales.split(" ");
+    const v = exactValue([Number(d), ...words.map((w) => (w === "hundred" ? 100 : w === "thousand" ? 1000 : 1_000_000))], words.map(() => "*" as const));
+    return v === null ? all : String(v);
+  });
   let bad = false;
-  const products = (x: string) => x.replace(/\b(\d+) (?:times|×|x) (\d+)\b/g, (_, a: string, b: string) => String(Number(a) * Number(b)));
+  const products = (x: string) => x.replace(/\b(\d+) (?:times|×|x) (\d+)\b/g, (all: string, a: string, b: string) => String(exactValue([Number(a), Number(b)], ["*"]) ?? all));
   t = t.replace(WORD, (run) => {
     // A run that is two numbers joined by "and" ("six and four") is read as each number.
     const parts = run.trim().split(/ and /);
@@ -584,14 +611,26 @@ const READERS: readonly Reader[] = [
       return (a === b) === (m[4] === "is") ? null : `the ${m[1] ? "value of the " : ""}${placeName(ka)} digit is ${withCommas(a)} and the ${m[5] ? "value of the " : ""}${placeName(kb)} digit is ${withCommas(b)}`;
     },
   },
-  { re: new RegExp(String.raw`\b${D} ${NOT} ${BIG} than (?:the )?${D}\b(?! @)`, "g"), check: (m) => compare(Number(m[1]), m[3], Number(m[4]), m[2] !== "is") },
-  { re: /\b(\d+) ?([<>]) ?(\d+)\b/g, check: (m) => compare(Number(m[1]), m[2], Number(m[3])) },
+  // Final check 10 (2026-11-15): "the value of the 8 is greater than 1000": the digit's place value in the number, read in
+  // full, then compared. A digit the number does not hold once is a side code cannot read: refused (fail closed).
+  {
+    re: new RegExp(String.raw`\bthe (?:value|worth) of (?:the )?(\d) ${NOT} ${BIG} than ${D}\b(?! @)`, "g"),
+    check: (m, n) => {
+      const digits = String(n);
+      const d = m[1];
+      if (digits.split(d).length !== 2) return `${withCommas(n)} does not hold the digit ${d} once: name its place`;
+      const value = Number(d) * 10 ** (digits.length - 1 - digits.indexOf(d));
+      return compare(value, m[3], Number(m[4]), m[2] !== "is");
+    },
+  },
+  // Final check 10 (2026-11-15): a digit said as "the value of the 8" means its place value, not the digit: this bare-digit
+  // reader reads only part of such a side, so it leaves it (the core reads "the value of the 8" whole, or the review).
+  { re: new RegExp(String.raw`(?<!\b(?:value|worth) of (?:the )?)\b${D} ${NOT} ${BIG} than (?:the )?${D}\b(?! @)`, "g"), check: (m) => compare(Number(m[1]), m[3], Number(m[4]), m[2] !== "is") },
+  { re: /(?<!\b(?:value|worth) of (?:the )?)\b(\d+) ?([<>]) ?(\d+)\b/g, check: (m) => compare(Number(m[1]), m[2], Number(m[3])) },
 ];
 
 /** A sentence that only asks: "Which digit is in the thousands place?" (its claims are still read). */
 const ASKS = /^(?:so |now |ok |okay )?(?:which|what|how|where|can|could|is|are|do|does|did|will|would|why)\b[^.!]*\?$/;
-/** What may follow a read claim's last number and makes it a longer value: "plus 1", "+ 1", ".5", "times 10", "tens". */
-const CONTINUES = /^(?:\.\d|,\d|\s*(?:\+|-|×|÷|\*|\/)\s*\d|\s+(?:plus|minus|times|divided|over|point|and a half|@\d)\b)/;
 /** A word that says something about a number. */
 const CLAIM_VERB = /\b(?:is|are|was|were|has|have|holds|shows|means|stands|worth|equals|makes?|gives|tells)\b|=/;
 
@@ -609,18 +648,23 @@ function claimProblems(pkg: OperationPackage, sentence: string): string[] {
   if (referents.length > 1) return [`it talks about ${referents.map(withCommas).join(" and ")} in one sentence: say one number's claims per sentence`];
   const n = referents[0] ?? f.n;
   const answer = n === f.n ? f.answer : null;
-  const problems: string[] = [];
+  const reads: KindRead[] = [];
   // Each matched claim is blanked, by position, from what the fail-closed check reads.
   const mask = [...t];
   for (const r of READERS) {
     for (const m of t.matchAll(r.re)) {
+      // A claim is read whole: a number that goes on ("8000 plus 1", "9,000 minus 2,000", "40000.5"), a negation or a
+      // scope around it ("It is not true that the 8 is worth 1,000.") leaves it unread. Final check 12 (2026-11-15): the
+      // one full-read guard decides that (guardedProblems below), never this reader: such a claim is not refused here,
+      // and the core or the math review reads it.
+      const end = m.index! + m[0].length;
       const problem = r.check(m as RegExpExecArray, n, answer);
-      if (problem) problems.push(problem);
-      // A claim is read whole: a number that goes on ("8000 plus 1", "40000.5") is a value code did not read (#1017).
-      if (CONTINUES.test(t.slice(m.index! + m[0].length))) problems.push(`"${m[0]}" goes on in a way code cannot read`);
-      for (let i = m.index!; i < m.index! + m[0].length; i++) mask[i] = " ";
+      if (problem) reads.push({ problem, text: t, at: m.index!, end });
+      for (let i = m.index!; i < end; i++) mask[i] = " ";
     }
   }
+  // Final check 12: every refusal passes the one full-read guard (tutor-math.ts).
+  const problems = guardedProblems(reads);
   if (problems.length) return [...new Set(problems)];
   // Fail closed: what is left still says something about a place, a digit, a value or the answer.
   // A number Maya says is not the answer ("not 4 ones", "not 4,000") states nothing about the number.
@@ -637,41 +681,6 @@ function claimProblems(pkg: OperationPackage, sentence: string): string[] {
   return unread ? ["it says something about a place, a digit, a value or the answer that code cannot read: say it as \"the 9 is in the thousands place\" or \"the 9 is worth 9,000\""] : [];
 }
 
-/** Words that may be left in a clause around the claims the readers read, adding no claim of their own. */
-const PLAIN_REST = new Set(["so", "and", "now", "then", "yes", "ok", "okay", "the", "place", "column", "look", "at", "number"]);
-
-/**
- * The clauses of `sentence` this kind read whole and found true (TutorKind.coveredClaims; two-layer true math, coverage
- * round of 2026-11-15): each number of the clause is inside a claim a reader matched and checked against the
- * question's number ("the digit in the thousands place is 4"), with no problem, and only plain words are left. A clause
- * about another number, or with a word the readers did not read, is not named: it goes to the math-truth review.
- */
-function coveredClaims(pkg: OperationPackage, sentence: string): string[] {
-  const f = must(pkg);
-  const parts = splitClauses(sentence);
-  const out: string[] = [];
-  for (let k = 0; k < parts.length; k += 2) {
-    const t = normalized(parts[k].trim());
-    if (t === null || ASKS.test(t)) continue;
-    const referents = referentsOf(t);
-    if (referents.length > 1 || (referents.length === 1 && referents[0] !== f.n)) continue;
-    const mask = [...t];
-    let read = 0;
-    let bad = false;
-    for (const r of READERS) {
-      for (const m of t.matchAll(r.re)) {
-        if (r.check(m as RegExpExecArray, f.n, f.answer) || CONTINUES.test(t.slice(m.index! + m[0].length))) bad = true;
-        for (let i = m.index!; i < m.index! + m[0].length; i++) mask[i] = " ";
-        read++;
-      }
-    }
-    if (bad || read === 0) continue;
-    const rest = mask.join("").replace(REFERENT, " ").replace(/[,;:]/g, " ").trim().split(/\s+/).filter(Boolean);
-    if (rest.every((w) => PLAIN_REST.has(w))) out.push(parts[k]);
-  }
-  return out;
-}
-
 function notes(pkg: OperationPackage): string[] {
   const f = must(pkg);
   return [
@@ -679,6 +688,25 @@ function notes(pkg: OperationPackage): string[] {
     "Each place is worth 10 times the place to its right. A digit's value is the digit times its place: the digit 4 in the ten thousands place is worth 4 ten thousands, which is 40,000.",
     `Code checks each place claim against ${withCommas(f.n)}, unless the sentence names another number ("in 847"); a sentence names one number at most.`,
   ];
+}
+
+/**
+ * B2: what each drawing needs on the board first: everything goes on the chart, so the chart first; a value written
+ * under a blank chart needs its digit; the answer needs what `draw` writes before it (the asked digit, or each value).
+ */
+function boardNeeds(pkg: OperationPackage): Record<string, string[]> {
+  const f = must(pkg);
+  const blank = blankChart(f);
+  const needs: Record<string, string[]> = { chart: [] };
+  for (let k = 0; k < f.length && k < WHOLE_PLACES.length; k++) needs[`band:${WHOLE_PLACES[k]}`] = ["chart"];
+  for (const p of f.parts) {
+    if (blank) needs[`digit:${p.place}`] = ["chart"];
+    if (f.ask === "value" || f.ask === "sum") needs[`value:${p.place}`] = ["chart", ...(blank ? [`digit:${p.place}`] : [])];
+  }
+  if (f.ask !== "compare" && typeof f.answer === "number") {
+    needs.answer = ["chart", ...(f.ask === "digit" ? (blank ? [`digit:${f.parts[0].place}`] : []) : f.parts.map((p) => `value:${p.place}`))];
+  }
+  return needs;
 }
 
 export const placeValueKind: TutorKind = {
@@ -692,8 +720,9 @@ export const placeValueKind: TutorKind = {
   drawings,
   drawingExamples,
   draw,
+  boardNeeds,
+  // A note goes below the chart.
+  noteNeeds: () => ["chart"],
   claimProblems,
-  // The place claims of a clause, read whole against the question's number.
-  coveredClaims,
   notes,
 };

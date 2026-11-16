@@ -157,6 +157,7 @@ export async function sendPlanStartEmail(db: SupabaseClient<Database>, p: { card
   const message: EmailMessage = {
     sender: { to: "parent" }, to: parent.data.email, replyTo: SUPPORT_EMAIL,
     ...planStartEmail({ parentName: parent.data.name, childName: child.data.first_name, grade: child.data.grade, price, firstCharge, marking: marks, explain: explains, ...(terms.data?.family_terms ? { sharedWindow: true, free, reminder } : {}) }),
+    log: { kind: "plan_start", parentId: card.parent_id, childId: card.child_id },
   };
   return sendEmailOnceInTime(planStartEmailLedger(db, message), { cardId: p.cardId, generation: p.generation }, message, { transport, inTime });
 }

@@ -13,6 +13,7 @@
 // (e) Calm, no hype: a small list of hype words.
 // Each failure has a typed reason, which goes back to the model in the repair prompt.
 import { feelingClaim, plainLanguageProblem } from "./phrases";
+import { OPERATOR_PATTERN, RELATION_PATTERN, operatorOf, relationOf } from "./math-words";
 
 /** Why a reply was refused. */
 export const SAY_REASONS = [
@@ -140,10 +141,34 @@ export const timeValue = (h: number, m: number): SayValue => ({ key: `${h}:${Str
 export const sameSayValue = (a: SayValue, b: SayValue) => (a.q && b.q ? a.q[0] === b.q[0] && a.q[1] === b.q[1] : a.key === b.key);
 const within = (v: SayValue, list: readonly SayValue[]) => list.some((x) => sameSayValue(v, x));
 
-interface WordNumber { value: number; at: number; end: number; words: string[] }
+/**
+ * A run of number words. `value` is NaN when the run makes no one standard value (final check 9): "two thousand two
+ * thousand", "five hundred thousand thousand", "twenty hundred". `pieces`: the values its parts make, for namesValue.
+ */
+interface WordNumber { value: number; at: number; end: number; words: string[]; pieces: number[] }
 
-/** Number words in a row ("twenty four", "one hundred and five"), with where they are. */
+const SCALES = new Set(["hundred", "thousand", "million", "billion", "trillion"]);
+
+/**
+ * Number words in a row ("twenty four", "one hundred and five", "two thousand six hundred and forty"), with where they are.
+ *
+ * Final check 9 (2026-11-15): read by separate groups, as standard English names a number: [a group below 1000]
+ * "thousand" [and] [a group below 1000], where a group is [1-9 "hundred" [and]] [1-99]. A run of number words that does
+ * not make one such value (a scale after a complete value, a hundred of 10 or more, "and zero") is one run with no value
+ * (NaN): its clause stays unread, never read as another number. Never multiplies a value it read before by a scale.
+ */
 function wordNumbers(text: string): WordNumber[] {
+  // Final check 11 (2026-11-15): a run never joins words across anything but spaces or a hyphen: an operator, a symbol,
+  // a comma or a clause mark between two groups ("two thousand × six hundred forty") makes two runs, never one value.
+  const found: WordNumber[] = [];
+  for (const piece of text.matchAll(/[a-z]+(?:[\s-]+[a-z]+)*/gi)) {
+    for (const w of wordRuns(piece[0])) found.push({ ...w, at: w.at + piece.index!, end: w.end + piece.index! });
+  }
+  return found;
+}
+
+/** The number-word runs of one stretch of words joined only by spaces or hyphens (wordNumbers). */
+function wordRuns(text: string): WordNumber[] {
   const found: WordNumber[] = [];
   const re = /[a-z]+/gi;
   const words: { w: string; at: number; end: number }[] = [];
@@ -151,9 +176,11 @@ function wordNumbers(text: string): WordNumber[] {
   let i = 0;
   const unit = (w: string) => UNITS.indexOf(w);
   const ten = (w: string) => TENS.indexOf(w);
+  const numberWord = (w: string | undefined) => w !== undefined && (unit(w) >= 0 || ten(w) >= 2 || SCALES.has(w));
   while (i < words.length) {
     const start = i;
-    let value = -1;
+    let bad = false;
+    const pieces: number[] = [];
     const take = (): number => {
       // A number below 100: "twenty", "twenty four", "seven", "fifteen".
       const w = words[i]?.w;
@@ -175,28 +202,132 @@ function wordNumbers(text: string): WordNumber[] {
       }
       return -1;
     };
-    const first = take();
-    if (first < 0) {
+    // [rest]: after a scale and an optional "and", a number below `limit` or nothing. "and" with no number after it
+    // ("one hundred and the ones") is no part of the number.
+    const rest = (below: () => number): number => {
+      const after = i;
+      if (words[i]?.w === "and") i++;
+      const r = below();
+      if (r < 0) { i = after; return 0; }
+      if (r === 0) bad = true;
+      return r;
+    };
+    // A group below 1000: "six hundred and forty", "ninety-nine", "seven".
+    const group = (): number => {
+      const a = take();
+      if (a < 0) return -1;
+      pieces.push(a);
+      if (words[i]?.w !== "hundred") return a;
+      i++;
+      if (a < 1 || a > 9) bad = true;
+      const r = rest(take);
+      pieces.push(a * 100, r);
+      return a * 100 + r;
+    };
+    let value = group();
+    if (value < 0) {
       i++;
       continue;
     }
-    value = first;
-    // "one hundred and five", "three thousand two hundred".
-    while (words[i] && (words[i].w === "hundred" || words[i].w === "thousand")) {
-      const scale = words[i].w === "hundred" ? 100 : 1000;
-      // "a hundred" and "one hundred" said as a place ("trade one hundred for ten tens") stay a place word.
-      const save = i;
+    if (words[i]?.w === "thousand") {
       i++;
-      value *= scale;
-      if (words[i]?.w === "and") i++;
-      const rest = take();
-      if (rest >= 0) value += rest;
-      else if (words[save + 1]?.w === "and") i = save + 1;
+      if (value < 1) bad = true;
+      const r = rest(group);
+      pieces.push(value * 1000, r);
+      value = value * 1000 + r;
     }
-    found.push({ value, at: words[start].at, end: words[i - 1].end, words: words.slice(start, i).map((x) => x.w) });
+    // A scale after a complete value ("two thousand two thousand", "five hundred thousand thousand") makes no one value.
+    if (SCALES.has(words[i]?.w ?? "")) bad = true;
+    if (bad) {
+      // The whole run of number words (and "and" between them) is one unread run.
+      while (numberWord(words[i]?.w) || (words[i]?.w === "and" && numberWord(words[i + 1]?.w))) i++;
+      value = NaN;
+    }
+    found.push({ value, at: words[start].at, end: words[i - 1].end, words: words.slice(start, i).map((x) => x.w), pieces });
   }
   return found;
 }
+
+/**
+ * Final check 10 (2026-11-15): the ONE standard number-word reader, for every path that turns number words into a value
+ * (Maya's sentences, the plain forms, the claim reader, the child's answer). The value of `words` when the whole text is
+ * one run of number words that makes one standard value ("seven thousand nine hundred ninety-nine", "a hundred"); null
+ * otherwise ("twenty hundred", "two thousand two thousand", "hundred", a word that is no number word).
+ */
+export function standardNumber(words: string): number | null {
+  const text = words.toLowerCase().trim().replace(/^an?(?=\s+(?:hundred|thousand)\b)/, "one");
+  if (!/^[a-z]+(?:[\s-]+[a-z]+)*$/.test(text)) return null;
+  const runs = wordNumbers(text);
+  if (runs.length !== 1 || Number.isNaN(runs[0].value)) return null;
+  const [run] = runs;
+  return run.at === 0 && run.end === text.length ? run.value : null;
+}
+
+/**
+ * Final check 10 (2026-11-15): the runs of number words in a text that make no one standard value ("twenty hundred",
+ * "two thousand two thousand"), with where they are. A clause that holds one is unread: Maya's words go to the math
+ * review, and the child's answer is "unknown".
+ */
+export function unreadNumberRuns(raw: string): { at: number; end: number; text: string }[] {
+  const text = raw.replace(/[−–]/g, "-");
+  return wordNumbers(text).filter((w) => Number.isNaN(w.value)).map((w) => ({ at: w.at, end: w.end, text: text.slice(w.at, w.end) }));
+}
+
+/**
+ * Final check 10 (2026-11-15): a sentence's key that ignores only its surface: case, quotes, dashes, spaces, every
+ * punctuation mark that is not inside a number, and number words against digits (each number token, read by the standard
+ * reader, is its value). Two sentences with the same key say the same thing: a terminal review result of one holds for
+ * the other.
+ */
+export function sentenceKey(raw: string): string {
+  const text = raw.replace(/[‘’ʼ]/g, "'").replace(/[−–]/g, "-").replace(/(\d),(?=\d{3}\b)/g, "$1").toLowerCase();
+  // Final check 12 (2026-11-15): the key is a function of the reader's tokens. Every number token of the standard reader
+  // (sayNumbers: digits, fractions, "a half", "6 halves", number words) is its exact value; a run of number words with no
+  // one standard value, and a number word the reader leaves without a value ("half" alone), are one shared UNREAD token;
+  // a lone "one" or "ten" the reader keeps as a count word is its value too. Operators and relations are one sign each.
+  const spans: { at: number; end: number; key: string }[] = [];
+  for (const t of sayNumbers(text)) spans.push({ at: t.at, end: t.end, key: t.q ? (t.q[1] === 1 ? String(t.q[0]) : `${t.q[0]}/${t.q[1]}`) : t.key.startsWith("?") ? UNREAD : t.key });
+  for (const w of wordNumbers(text)) {
+    if (spans.some((x) => w.at < x.end && w.end > x.at)) continue;
+    spans.push({ at: w.at, end: w.end, key: Number.isNaN(w.value) ? UNREAD : String(w.value) });
+  }
+  spans.sort((a, b) => a.at - b.at);
+  const parts: string[] = [];
+  const words = (piece: string) => {
+    for (const m of piece.matchAll(KEY_TOKEN)) {
+      // #1086: an operator or relation phrase of the reader's own table (math-words.ts) is one sign.
+      if (m[1] !== undefined) { const op = operatorOf(m[1]); parts.push(op === "*" ? "×" : op === "/" ? "÷" : op!); continue; }
+      if (m[2] !== undefined) { const rel = relationOf(m[2])!; parts.push(rel.negated ? "≠" : rel.now ? "→" : "="); continue; }
+      const w = m[0].replace(/'/g, "");
+      if (Object.hasOwn(DENOMINATORS, w) || SCALES.has(w)) parts.push(UNREAD);
+      else parts.push(w);
+    }
+  };
+  let at = 0;
+  for (const x of spans) {
+    words(text.slice(at, x.at));
+    parts.push(x.key);
+    at = x.end;
+  }
+  words(text.slice(at));
+  // #1086: the number reader reads "6 / 2" as one fraction (3); the same division in words ("6 divided by 2", "6 ÷ 2")
+  // is that fraction too, so every form of it has one key.
+  for (let k = 1; k + 1 < parts.length; k++) {
+    if (parts[k] !== "÷" || !/^-?\d+$/.test(parts[k - 1]) || !/^-?\d+$/.test(parts[k + 1]) || Number(parts[k + 1]) === 0) continue;
+    const [n, d] = rational(Number(parts[k - 1]), Number(parts[k + 1]));
+    parts.splice(k - 1, 3, d === 1 ? String(n) : `${n}/${d}`);
+    k--;
+  }
+  return parts.join(" ");
+}
+
+/** The one token of the key for every number word or run the reader cannot value. */
+const UNREAD = "?";
+/**
+ * #1086: the key's tokens: an operator phrase of the reader's table (group 1), a relation phrase of it (group 2), the
+ * longest phrase first and only as whole words, then any other word or mark.
+ */
+const KEY_TOKEN = new RegExp(String.raw`(?<![a-z'])(${OPERATOR_PATTERN})(?![a-z'])|(?<![a-z'])(${RELATION_PATTERN})(?![a-z'])|[a-z]+(?:'[a-z]+)*|[<>%]`, "gi");
 
 /** The numbers in a text: digits, decimals, fractions, clock times and number words, in order. */
 export function sayNumbers(raw: string): SayToken[] {
@@ -217,10 +348,20 @@ export function sayNumbers(raw: string): SayToken[] {
     const after = text.slice(end).trimStart().toLowerCase();
     // "10 ones", "1 ten": a place said as a count, never a value (the regroup is the same for every question).
     if ((m[0] === "10" && PLACE_PLURAL.test(after)) || (m[0] === "1" && PLACE_SINGULAR.test(after))) continue;
+    // Final check 12 (2026-11-15): a digit count of a denominator ("6 halves", "5 sixths") is one fraction, as "six
+    // halves" is: never its count alone.
+    const den = /^[\s-]+([a-z]+)/i.exec(text.slice(end));
+    if (den && Object.hasOwn(DENOMINATORS, den[1].toLowerCase())) {
+      const stop = end + den[0].length;
+      push({ ...fractionValue(Number(m[0]), DENOMINATORS[den[1].toLowerCase()]), at, end: stop, text: text.slice(at, stop) });
+      continue;
+    }
     push({ key: String(Number(m[0])), q: rational(Number(m[0]), 1), at, end, text: m[0] });
   }
   for (const w of wordNumbers(text)) {
     if (!free(w.at, w.end)) continue;
+    // Final check 9: a run that makes no one standard value is a number token with no value (unread).
+    if (Number.isNaN(w.value)) { push({ key: `?${text.slice(w.at, w.end)}`, q: null, at: w.at, end: w.end, text: text.slice(w.at, w.end) }); continue; }
     const after = text.slice(w.end).toLowerCase();
     const den = /^[\s-]+([a-z]+)/.exec(after);
     const denominator = den && Object.hasOwn(DENOMINATORS, den[1]) ? DENOMINATORS[den[1]] : undefined;
@@ -241,6 +382,19 @@ export function sayNumbers(raw: string): SayToken[] {
     if (free(m.index!, m.index! + m[0].length)) push({ ...fractionValue(1, DENOMINATORS[m[1]]), at: m.index!, end: m.index! + m[0].length, text: m[0] });
   }
   return tokens.sort((a, b) => a.at - b.at);
+}
+
+/**
+ * Final check 8 (2026-11-15): whether a text names a whole number in any form, digits or words: every number token
+ * (sayNumbers), and also the counting words it sets aside ("one", "ten", "10 ones"), so a place said as a count never
+ * hides the value. Broad on purpose: it decides that a message gave the answer, and reading too much fails closed.
+ */
+export function namesValue(raw: string, value: number): boolean {
+  if (!Number.isFinite(value)) return false;
+  const text = raw.replace(/[−–]/g, "-").replace(/(\d),(?=\d{3}\b)/g, "$1");
+  if (sayNumbers(text).some((t) => (t.q ? t.q[1] !== 0 && t.q[0] === value * t.q[1] : t.key === String(value)))) return true;
+  if (Number.isInteger(value) && new RegExp(`(?<![\\d.])${Math.abs(value)}(?![\\d]|\\.\\d)`).test(text)) return true;
+  return wordNumbers(text).some((w) => w.value === Math.abs(value) || w.pieces.includes(Math.abs(value)));
 }
 
 /** The values in a text, to build an allowed set from code's own words. */
@@ -268,25 +422,50 @@ export interface SayEquation {
 export const equationKey = (e: Pick<SayEquation, "operands" | "ops" | "result">) =>
   `${e.operands.map((o) => o.key).join(` `)}|${e.ops.join("")}|${e.result.key}`;
 
-/** The equations in one sentence: "12 - 8 = 4", "2 minus 8 isn't 6", "6 is 8 minus 2". */
-export function equationsOf(sentence: string): SayEquation[] {
-  const text = sentence.replace(/[−–]/g, "-").replace(/×/g, " x ").replace(/÷/g, " ÷ ");
+/**
+ * The equations in one sentence: "12 - 8 = 4", "2 minus 8 isn't 6", "6 is 8 minus 2".
+ *
+ * Final check 8 (2026-11-15), `whole`: the reader of the CHILD's words (childFacts and the child's verdict for the
+ * review), and the refusal of Maya's words. It reads an equation only when it reads every token of its clause (a clause
+ * ends at "," ";" ":" "." or "!"): a unit ("6 tens"), a scope ("in the easier example"), an enclosing negation ("It is
+ * not true that ..."), a leading sign, a question mark or any other word left over leaves the clause unread, neither
+ * true nor false. Only a short lead word (so, now, next, then, and, okay, yes, well) and "the" or "a" may stand in it.
+ * The same fail-closed coverage rule as Maya's layer 1.
+ */
+/**
+ * `guard` (with `whole`): the one full-read guard of the tutor core (tutor-math.ts fullRead), given the text as read and
+ * the span [at, end) of an equation in it. An equation it does not find read in full is left out (unread, never judged).
+ */
+export function equationsOf(sentence: string, options: { whole?: boolean; guard?: (text: string, at: number, end: number) => boolean } = {}): SayEquation[] {
+  const whole = options.whole === true;
+  const text = (whole ? sentence.replace(/(\d),(?=\d{3}\b)/g, "$1") : sentence).replace(/[−–]/g, "-").replace(/×/g, " x ").replace(/÷/g, " ÷ ");
   const tokens = sayNumbers(text).filter((t) => t.q !== null);
   // The stream: numbers, operators and relations, with "the" and "a" skipped; anything else breaks it.
-  type Item = { kind: "n"; t: SayToken } | { kind: "op"; op: Op } | { kind: "rel"; negated: boolean } | { kind: "gap" };
+  type Item = { kind: "n"; t: SayToken } | { kind: "op"; op: Op } | { kind: "sign" } | { kind: "rel"; negated: boolean } | { kind: "gap" } | { kind: "cut" };
   const items: Item[] = [];
   let at = 0;
   const lower = text.toLowerCase();
   for (const t of [...tokens, null]) {
-    let between = lower.slice(at, t ? t.at : lower.length).replace(/[,]/g, " ");
+    let between = lower.slice(at, t ? t.at : lower.length);
+    if (!whole) between = between.replace(/[,]/g, " ");
     while (between.trim() !== "") {
       between = between.trimStart();
+      if (whole) {
+        // A word that starts a new clause ("because", "so", "since") ends the clause before it, as a comma does.
+        const cut = /^(?:[,;:.!]+|(?:because|'cause|cause|cuz|since|so)\b)/.exec(between);
+        if (cut) { items.push({ kind: "cut" }); between = between.slice(cut[0].length); continue; }
+        const lead = /^(?:now|next|then|and|okay|ok|yes|well)\b/.exec(between);
+        if (lead) { between = between.slice(lead[0].length); continue; }
+      }
       const op = OPS.find(([re]) => re.test(between));
       const neg = NOT_EQUAL.exec(between);
       const eq = EQUAL.exec(between);
       if (neg) { items.push({ kind: "rel", negated: true }); between = between.slice(neg[0].length); continue; }
       if (eq) { items.push({ kind: "rel", negated: false }); between = between.slice(eq[0].length); continue; }
       if (op) { items.push({ kind: "op", op: op[1] }); between = between.slice(op[0].exec(between)![0].length); continue; }
+      // Final check 7: a sign word ("negative 6") is part of the number after it, which this reader does not hold.
+      const sign = /^(?:negative|positive)\b/.exec(between);
+      if (sign) { items.push({ kind: "sign" }); between = between.slice(sign[0].length); continue; }
       const word = /^(?:the|a|an|so)\b/.exec(between);
       if (word) { between = between.slice(word[0].length); continue; }
       items.push({ kind: "gap" });
@@ -296,6 +475,13 @@ export function equationsOf(sentence: string): SayEquation[] {
     at = t ? t.end : lower.length;
   }
   const found: SayEquation[] = [];
+  // Final check 7 (2026-11-15): an expression is read only in full. A sign or an operator right before it ("Minus 6 plus
+  // 10 is 4", "negative 6 plus 10") or right after it ("12 minus 8 is 4 minus") is part of it, and this reader does not
+  // read that part: the whole equation stays unread (neither true nor false), never judged by its unsigned rest.
+  const signed = (k: number) => items[k]?.kind === "op" || items[k]?.kind === "sign";
+  // Final check 8: the equation from `from` to `to` is its whole clause: nothing but a cut (or the sentence's edge) on
+  // either side of it.
+  const wholeClause = (from: number, to: number) => (from === 0 || items[from - 1].kind === "cut") && (to === items.length || items[to].kind === "cut");
   for (let i = 0; i < items.length; i++) {
     // expr rel n
     const expr = (from: number): { operands: SayToken[]; ops: Op[]; next: number } | null => {
@@ -314,6 +500,8 @@ export function equationsOf(sentence: string): SayEquation[] {
     if (left && left.ops.length > 0 && items[left.next]?.kind === "rel" && items[left.next + 1]?.kind === "n") {
       // Both whole sides: "12 minus 8 equals 2 plus 2" compares 4 with 2 + 2, never with the 2 alone (pre-launch review B).
       const right = expr(left.next + 1)!;
+      if (signed(i - 1) || signed(right.next) || (whole && !wholeClause(i, right.next))) { i = right.next - 1; continue; }
+      if (whole && options.guard && !options.guard(text, left.operands[0].at, right.operands.at(-1)!.end)) { i = right.next - 1; continue; }
       const result = right.ops.length === 0 ? right.operands[0] : sideToken(text, right.operands, right.ops);
       found.push({ operands: left.operands, ops: left.ops, result, negated: (items[left.next] as { negated: boolean }).negated });
       i = right.next - 1;
@@ -322,6 +510,8 @@ export function equationsOf(sentence: string): SayEquation[] {
     // n rel expr ("6 is 8 minus 2")
     if (items[i]?.kind === "n" && items[i + 1]?.kind === "rel") {
       const right = expr(i + 2);
+      if (right && right.ops.length > 0 && (signed(i - 1) || signed(right.next) || (whole && !wholeClause(i, right.next)))) { i = right.next - 1; continue; }
+      if (right && right.ops.length > 0 && whole && options.guard && !options.guard(text, (items[i] as { t: SayToken }).t.at, right.operands.at(-1)!.end)) { i = right.next - 1; continue; }
       if (right && right.ops.length > 0) {
         found.push({ operands: right.operands, ops: right.ops, result: (items[i] as { t: SayToken }).t, negated: (items[i + 1] as { negated: boolean }).negated });
         i = right.next - 1;
@@ -340,17 +530,24 @@ function sideToken(text: string, operands: SayToken[], ops: Op[]): SayToken {
 }
 
 /** The exact value of an equation's left side, with × and ÷ before + and -; null when it divides by zero. */
+/** Final check 4 (2026-11-15): a rational code holds exactly, both parts safe integers. */
+const safeQ = (q: readonly [number, number] | null | undefined): boolean => !!q && Number.isSafeInteger(q[0]) && Number.isSafeInteger(q[1]);
+
 function evaluate(e: SayEquation): [number, number] | null {
   const vals = e.operands.map((o) => o.q!);
+  // Final check 4: an operand code cannot hold exactly is never computed (Number() rounds "9999999999999999").
+  if (!vals.every(safeQ)) return null;
   const ops = [...e.ops];
-  const mul = (a: [number, number], b: [number, number]) => rational(a[0] * b[0], a[1] * b[1]);
-  const div = (a: [number, number], b: [number, number]) => (b[0] === 0 ? null : rational(a[0] * b[1], a[1] * b[0]));
+  // A raw product past the safe integers is rounded before it is reduced: NaN marks it, and safeQ refuses it.
+  const exact = (n: number, d: number): [number, number] => (Number.isSafeInteger(n) && Number.isSafeInteger(d) ? rational(n, d) : [NaN, 1]);
+  const mul = (a: [number, number], b: [number, number]) => exact(a[0] * b[0], a[1] * b[1]);
+  const div = (a: [number, number], b: [number, number]) => (b[0] === 0 ? null : exact(a[0] * b[1], a[1] * b[0]));
   const terms: [number, number][] = [vals[0]];
   const signs: Op[] = [];
   for (let k = 0; k < ops.length; k++) {
     if (ops[k] === "*" || ops[k] === "/") {
       const r = ops[k] === "*" ? mul(terms[terms.length - 1], vals[k + 1]) : div(terms[terms.length - 1], vals[k + 1]);
-      if (!r) return null;
+      if (!r || !safeQ(r)) return null;
       terms[terms.length - 1] = r;
     } else {
       signs.push(ops[k]);
@@ -360,7 +557,8 @@ function evaluate(e: SayEquation): [number, number] | null {
   let acc = terms[0];
   for (let k = 0; k < signs.length; k++) {
     const b = terms[k + 1];
-    acc = rational(signs[k] === "+" ? acc[0] * b[1] + b[0] * acc[1] : acc[0] * b[1] - b[0] * acc[1], acc[1] * b[1]);
+    acc = exact(signs[k] === "+" ? acc[0] * b[1] + b[0] * acc[1] : acc[0] * b[1] - b[0] * acc[1], acc[1] * b[1]);
+    if (!safeQ(acc)) return null;
   }
   return acc;
 }
@@ -368,7 +566,7 @@ function evaluate(e: SayEquation): [number, number] | null {
 /** Whether an equation is true (its left side equals its result). */
 export function equationHolds(e: SayEquation): boolean | null {
   const v = evaluate(e);
-  if (!v || !e.result.q) return null;
+  if (!v || !e.result.q || !safeQ(e.result.q)) return null;
   return v[0] === e.result.q[0] && v[1] === e.result.q[1];
 }
 

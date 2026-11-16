@@ -16,9 +16,11 @@ import { workbookAnswerPages, type ParentWorkbookAnswers } from "@/lib/parent-wo
 import { sampleWorkbook } from "@/lib/workbook-sample";
 import { storedQuestion } from "@/lib/workbook-content";
 import { ParentWorkbooks } from "@/components/parent-workbooks";
-import { ScanHistoryView, type HistoryListing, type HistoryState } from "@/components/scan-history";
-import { HISTORY_LABELS, type HistoryStatus } from "@/lib/scan-history";
-import { ParentSchedule } from "@/components/parent-schedule";
+import type { HistoryState } from "@/components/scan-history";
+import { WorkbookDaysView } from "@/components/workbook-days";
+import { HISTORY_LABELS, type HistoryPage, type HistoryStatus } from "@/lib/scan-history";
+import type { ScheduleRow } from "@/lib/parent-schedule";
+import { bookDays, mainBook, type ReadySchedule } from "@/lib/workbook-days";
 import { ParentProgress } from "@/components/parent-progress";
 import { NoteCard, ParentSessionView } from "@/components/parent-maya-notes";
 import { MayaChatRow } from "@/components/parent-home-rows";
@@ -40,8 +42,12 @@ import { familyZone, startWhen } from "@/lib/family-time";
 import type { LearningRow } from "@/lib/learning-style";
 import type { ParentNoteSession } from "@/lib/parent-maya-notes";
 import type { ParentPlan } from "@/lib/parent-plan";
-import type { ChildView, OverviewView, ProgressNumbers, WorkbooksView } from "@/lib/parent-view";
+import type { ChildView, OverviewView, ProgressNumbers, SkillItemView, WorkbooksView } from "@/lib/parent-view";
+import type { HelpMark } from "@/lib/needs-help";
+import { skillSentence, type MistakeFact, type SkillGroup } from "@/lib/skill-sentences";
+import type { WeekDayState, WeekProgress } from "@/lib/parent-week";
 import { freeMonthWords } from "@/lib/parent-assessment";
+import { homeStory, type HomeStoryFacts } from "@/lib/home-highlights";
 import { overviewDesk, tabLinks } from "@/lib/parent-shell";
 import { nextStep } from "@/lib/report-view";
 import { PLANS } from "@/lib/site";
@@ -70,27 +76,118 @@ function sampleNote(child: ChildView, chat = false, missing = false): ParentNote
   };
 }
 
-const sampleSkills = (state: string): OverviewView["skills"] => state === "no_skills" || state === "first_book_coming" || state === "first_scan" ? null : {
-  mastered: [{ code: "2.4", name: "Multiplying by 10 and 100", masteredOn: "Thursday" }, { code: "2.2", name: "Comparing numbers to 1 000", masteredOn: "Wednesday" }, { code: "2.1", name: "Even and odd", masteredOn: "Nov 3" }],
-  learning: state === "empty" ? [] : [{ code: "2.5", name: "Rounding to the nearest hundred", masteredOn: null }, { code: "2.6", name: "Number patterns", masteredOn: null }],
-  needsHelp: state === "empty" ? [] : [{ code: "2.3", name: "Value of each digit in big numbers", masteredOn: null }, { code: "2.7", name: "Subtracting across a zero", masteredOn: null }],
-};
+const lowerFirst = (name: string) => `${name.slice(0, 1).toLowerCase()}${name.slice(1)}`;
+
+/**
+ * A sample row with its sentence written by the real module (src/lib/skill-sentences.ts) from facts of its own, so the
+ * sentence is exactly what a row with those facts would show. `now` is the sample Thursday, Nov 5; the sample marks and
+ * mistakes are dated the days before it.
+ */
+function sampleRow(code: string, name: string, group: SkillGroup, facts: { masteredOn?: string | null; startedOn?: string | null; marks?: HelpMark[]; mistakes?: MistakeFact[]; next?: boolean; reason?: "failed_review" | "needs_attention_on_test" | "in_workbook" | "secure_on_test" }): SkillItemView {
+  const masteredOn = facts.masteredOn ?? null;
+  // A reason the skill state rule can produce for the state: a Needs help row is `needs_review` from a weak test (or a slip),
+  // a Learning row is in the workbook, a Mastered row is from a test.
+  const state = group === "mastered" ? "mastered" : group === "learning" ? "working_on" : "needs_review";
+  const reason = facts.reason ?? (group === "mastered" ? "secure_on_test" : group === "learning" ? "in_workbook" : "needs_attention_on_test");
+  const sentence = skillSentence({
+    standard: code, group, state, reason, evidence: reason === "in_workbook" ? "workbook" : reason === "failed_review" ? "pages" : "test", evidenceAt: reason === "in_workbook" ? null : "2026-11-04T18:00:00Z",
+    marks: facts.marks ?? [], mistakes: facts.mistakes ?? [], masteredOn, startedOn: facts.startedOn ?? null, inNextWorkbook: facts.next ?? false, now: SAMPLE_NOW, zone,
+  });
+  return { code, name, masteredOn, sentence: sentence?.text ?? null };
+}
+const sampleMark = (standard: string, right: boolean, at: string): HelpMark => ({ standard, right, review: false, at, blank: false });
+
+/**
+ * One scenario's skill lists and the two facts the Home's sentences read from them, so the sentences and the lists agree:
+ * `newlyMastered` is exactly the Mastered rows dated this week, and `watch` is a row of the Needs help list (none when
+ * that list is empty). The sample Thursday is today, so "today" and "Wednesday" are this week and "Oct 28" is not.
+ */
+function sampleSkillFacts(state: string): { skills: OverviewView["skills"]; newlyMastered: string[]; watch: string | null } {
+  if (state === "no_skills" || state === "first_book_coming" || state === "first_scan") return { skills: null, newlyMastered: [], watch: null };
+  // "Nothing to say yet": every skill was mastered before this week and none needs help.
+  const quiet = state === "nothing_to_say";
+  const mastered = [
+    { code: "2.4", name: "Multiplying by 10 and 100", masteredOn: quiet ? "Oct 28" : "today", thisWeek: !quiet },
+    { code: "2.2", name: "Comparing numbers to 1 000", masteredOn: quiet ? "Oct 27" : "Wednesday", thisWeek: !quiet },
+    { code: "2.1", name: "Even and odd", masteredOn: quiet ? "Oct 21" : "Oct 28", thisWeek: false },
+  ];
+  // "Back in the next workbook" only where the next workbook is in the mail (the book_2_mailed and book_over scenarios).
+  const next = state === "book_2_mailed" || state === "book_over";
+  const needsHelp: SkillItemView[] = state === "empty" || quiet ? [] : [
+    // The same cause on two wrong answers lately: the reviewed parent text for N2 and O2.
+    sampleRow("2.3", "Value of each digit in big numbers", "needs_help", { next, mistakes: [{ cause: "N2", at: "2026-11-03T18:00:00Z" }, { cause: "N2", at: "2026-11-04T18:00:00Z" }] }),
+    sampleRow("2.7", "Subtracting across a zero", "needs_help", { next, mistakes: [{ cause: "O2", at: "2026-11-02T18:00:00Z" }, { cause: "O2", at: "2026-11-04T18:00:00Z" }] }),
+  ];
+  return {
+    skills: {
+      mastered: mastered.map(({ code, name, masteredOn }) => sampleRow(code, name, "mastered", { masteredOn })),
+      learning: state === "empty" ? [] : [
+        // A wrong answer, then three right ones in a row: steadier. Answered once on a page, then nothing steadier: when it started.
+        sampleRow("2.5", "Rounding to the nearest hundred", "learning", { marks: [sampleMark("2.5", false, "2026-11-02T18:00:00Z"), sampleMark("2.5", true, "2026-11-03T18:00:00Z"), sampleMark("2.5", true, "2026-11-04T18:00:00Z"), sampleMark("2.5", true, "2026-11-05T16:00:00Z")] }),
+        sampleRow("2.6", "Number patterns", "learning", { startedOn: "Tuesday", marks: [sampleMark("2.6", true, "2026-11-03T18:00:00Z")] }),
+      ],
+      needsHelp,
+    },
+    newlyMastered: mastered.filter((m) => m.thisWeek).map((m) => lowerFirst(m.name)),
+    watch: needsHelp.find((row) => row.code === "2.7")?.name ?? null,
+  };
+}
+
+/** The five circles of a scenario: Thursday is today. A plan that ended rings no day (src/lib/parent-week.ts `weekCircles`). */
+function sampleCircles(state: string, ended: boolean): readonly WeekDayState[] {
+  if (state === "first_scan") return ["open", "open", "open", "today", "open"];
+  if (state === "nothing_to_say") return ["today", "open", "open", "open", "open"];
+  if (state === "behind") return ["done", "done", "open", "today", "open"];
+  if (state === "book_over") return ["done", "done", "done", "done", "done"];
+  return ["done", "done", "done", ended ? "open" : state === "today_done" ? "today_done" : "today", "open"];
+}
+
+/** The pages of today's day scanned in a scenario. */
+const sampleTodayScanned = (state: string): number => state === "nothing_to_say" || state === "first_scan" || state === "day_not_started" ? 0 : state === "today_done" ? 8 : 6;
+
+/**
+ * The sample Home's week line and Highlights, written by the real module (src/lib/home-highlights.ts) from facts read off
+ * the scenario's own circles and skill lists, so the sentences never claim what the screen beside them does not show.
+ */
+function sampleStory(child: ChildView, state: string) {
+  const none: HomeStoryFacts = { name: child.firstName, week: null, scansThisWeek: 0, openDay: null, newlyMastered: [], repeatedMistake: null, streak: 0 };
+  if (state === "first_book_coming" || state === "first_scan" || state === "book_over" || state === "no_skills") return homeStory(none);
+  const ended = child.stage === "ended";
+  const circles = sampleCircles(state, ended);
+  const todayAt = circles.findIndex((c) => c === "today" || c === "today_done");
+  const isDone = (c: WeekDayState) => c === "done" || c === "today_done";
+  // The days behind today that are open, as workbook day numbers (Monday is Day 1 of the sample week).
+  const missed = circles.flatMap((c, i) => (i < todayAt && !isDone(c) ? [i + 1] : []));
+  const done = circles.filter(isDone).length;
+  const week: WeekProgress | null = ended || todayAt < 0 ? null : { done, due: todayAt, missed, catchingUp: missed.length > 0 && (circles[todayAt] === "today_done" || isDone(circles[todayAt - 1] ?? "open")) };
+  // The run of done days back from today's, or from the day before while today's is not done yet.
+  let streak = 0;
+  if (week) for (let i = circles[todayAt] === "today_done" ? todayAt : todayAt - 1; i >= 0 && isDone(circles[i]); i--) streak++;
+  const { newlyMastered, watch } = sampleSkillFacts(state);
+  return homeStory({
+    ...none, week, openDay: missed[0] ?? null, scansThisWeek: 8 * circles.filter((c) => c === "done").length + sampleTodayScanned(state), streak, newlyMastered,
+    repeatedMistake: watch ? { name: lowerFirst(watch), days: 3 } : null,
+  });
+}
 
 function overview(child: ChildView, state: string): OverviewView {
+  const story = sampleStory(child, state);
   const preparing = state === "preparing" || state === "late";
   const empty = state === "first_book_coming";
   const first = state === "first_scan";
-  const done = state === "today_done";
   const notStarted = state === "day_not_started";
   // Book 2 is in the mail: Book 1 is still the card. Over: Book 1's last day has passed, so there is no Today row.
   const mailed = state === "book_2_mailed" || state === "book_over";
   const over = state === "book_over";
-  const states = first ? ["open", "open", "open", "today", "open"] as const : over ? ["done", "done", "done", "done", "done"] as const : ["done", "done", "done", done ? "today_done" : "today", "open"] as const;
+  const behind = state === "behind";
+  const quiet = state === "nothing_to_say";
+  const states = sampleCircles(state, child.stage === "ended");
   const week: OverviewView["week"] = empty ? null : (["Mon", "Tue", "Wed", "Thu", "Fri"] as const).map((label, i) => ({ label, state: states[i] }));
   return { child, resultPreparing: preparing, resultLate: state === "late", week, onTheWay: mailed ? 2 : null,
     workbook: empty ? null : over ? { number: 1, day: 10, days: 10, percent: 90, today: null }
-      : { number: mailed ? 1 : 3, day: 4, days: 10, percent: first ? null : 38, today: { label: "Today", topic: "Hundreds, tens and ones", scanned: first || notStarted ? 0 : done ? 8 : 6, pages: 8 } },
-    scanPrompt: first ? { day: 1, pages: 8 } : null, skills: sampleSkills(state), summaryMonth: child.stage === "active" || child.stage === "ended" ? "2026-10" : null };
+      : quiet ? { number: 1, day: 1, days: 10, percent: null, today: { label: "Today", topic: "Hundreds, tens and ones", scanned: 0, pages: 8 } }
+      : { number: mailed ? 1 : 3, day: 4, days: 10, percent: first ? null : behind ? 20 : 38, today: { label: "Today", topic: "Hundreds, tens and ones", scanned: first || notStarted ? 0 : sampleTodayScanned(state), pages: 8 } },
+    scanPrompt: first ? { day: 1, pages: 8 } : null, skills: sampleSkillFacts(state).skills, weekLine: story.line, highlights: story.highlights, summaryMonth: child.stage === "active" || child.stage === "ended" ? "2026-10" : null };
 }
 
 /** Inert Progress numbers: a child in her first week, or one with months of marks. */
@@ -105,30 +202,59 @@ function sampleProgress(state: string): ProgressNumbers {
     topics: [{ name: "Number and operations", word: "Getting there", share: 0.4 }, { name: "Fractions and decimals", word: "Strong", share: 1 }, { name: "Patterns and algebra", word: "Needs help", share: 0 }, { name: "Shapes, measurement and data", word: "Getting there", share: 0.5 }] };
 }
 
+/** Wednesday of the sample week: a book delivered the Sunday before (Nov 1) is on Day 3 (src/lib/parent-week.ts); "not started" is its Monday, Day 1. */
+const SAMPLE_TODAY = "2026-11-04";
+const SAMPLE_TOPICS = ["Hundreds, tens and ones", "Comparing numbers", "Adding with regrouping", "Subtracting across a zero", "Review", "Rounding", "Word problems", "Patterns", "Even and odd", "Review"];
+
 function workbooks(child: ChildView, state: string): WorkbooksView {
   const mailed = state === "mail" || state === "hand";
-  return { child, current: state === "first_book_coming" ? null : { id: "sample-book", number: 3, shippedOn: "2026-10-28", deliveredOn: mailed ? null : "2026-11-01", delivery: state === "hand" ? { method: "hand" } : { method: "mail", carrier: "Canada Post", trackingNumber: "SAMPLE 000 000", trackingUrl: "https://example.invalid/track" } },
+  const deliveredOn = (number: number) => number === 3 ? "2026-11-01" : number === 2 ? "2026-10-18" : "2026-10-04";
+  return { child, today: state === "not_started" ? "2026-11-02" : SAMPLE_TODAY, current: state === "first_book_coming" ? null : { id: "sample-book-3", number: 3, shippedOn: "2026-10-28", deliveredOn: mailed ? null : "2026-11-01", delivery: state === "hand" ? { method: "hand" } : { method: "mail", carrier: "Canada Post", trackingNumber: "SAMPLE 000 000", trackingUrl: "https://example.invalid/track" } },
     next: child.readOnly || state === "first_book_coming" ? { kind: "none" } : state === "late" ? { kind: "past_estimate" } : { kind: "range", earliest: state === "paused" ? "2026-12-10" : "2026-11-26", latest: state === "paused" ? "2026-12-15" : "2026-12-01" },
-    books: state === "first_book_coming" ? [] : [3, 2, 1].map(number => ({ id: `sample-book-${number}`, number, shippedOn: "2026-10-28", deliveredOn: number === 3 && mailed ? null : "2026-11-01" })) };
+    books: state === "first_book_coming" ? [] : [3, 2, 1].map(number => ({ id: `sample-book-${number}`, number, shippedOn: "2026-10-28", deliveredOn: number === 3 && mailed ? null : deliveredOn(number) })), homeScan: null };
 }
 
-/** Inert canonical history for the selected child's current book. More pages keeps past books behind this book. */
-function workbookHistory(child: ChildView, state: string) {
+/** The printed plan of the sample's current book: 10 days of 8 pages, scanned as the scenario says. */
+function samplePlan(book: { id: string; number: number }, child: ChildView, state: string): ReadySchedule {
+  // A finished book (past plan, or the book before the one in the mail) is all scanned; "not started" has no scan; "partial_day"
+  // has Day 3 begun with five pages to go; every other scenario is midway: Days 1 and 2 scanned.
+  const all = ["all_scanned", "ended", "mail", "hand"].includes(state);
+  const scan = (day: number, first: number): ScheduleRow["scan"] => {
+    if (all || (state !== "not_started" && day <= 2)) return { kind: "known", accepted: 8, required: 8, missing: [] };
+    if (state === "partial_day" && day === 3) return { kind: "known", accepted: 3, required: 8, missing: Array.from({ length: 5 }, (_, k) => first + 3 + k) };
+    return { kind: "unknown" };
+  };
+  return { kind: "ready", child: { id: child.id, parentId: "sample-parent", firstName: child.firstName }, book, dailyTime: "about 19 minutes", minutes: { min: 19, max: 19 }, scansUnknown: state === "scans_unknown",
+    rows: SAMPLE_TOPICS.map((topic, i): ScheduleRow => {
+      const first = 3 + i * 8;
+      return { day: i + 1, topic, second: "", pages: [first, first + 7], requiredMinutes: 19, extra: false, requiredPages: Array.from({ length: 8 }, (_, k) => first + k), scan: scan(i + 1, first), marks: { kind: "none", marked: 0, total: 8 } };
+    }) };
+}
+
+/** The saved page results the day list shows once a day is opened: the history scenarios open Day 1. */
+function workbookHistory(child: ChildView, state: string): { state: HistoryState; pages: HistoryPage[] } {
   const status: HistoryState = state === "history_loading" ? "loading" : state === "history_error" ? "failed" : state === "history_unavailable" ? "unavailable" : "ready";
-  const states: HistoryStatus[] = state === "history_empty" || state === "first_book_coming" ? []
+  const states: HistoryStatus[] = state === "history_empty" || state === "first_book_coming" || !state.startsWith("history_") ? []
     : state === "history_review" ? ["review"] : state === "history_pending" ? ["pending"] : state === "history_failed" ? ["failed"]
       : state === "history_expired" || state === "history_missing_photo" ? ["ready"] : ["ready", "review", "pending", "failed", "blank", "unscored", "never-scanned"];
-  const pages: HistoryListing["pages"] = states.map((pageStatus, index) => ({
+  const pages: HistoryPage[] = states.map((pageStatus, index) => ({
     id: `${child.id}-page-${index}`, childId: child.id, childName: child.firstName, workbookId: "sample-book-3",
-    book: 3, revision: "synthetic-frozen", day: child.id === "sample-child-2" ? "Day 2" : "Day 1", pageNumber: index + 4,
+    book: 3, revision: "synthetic-frozen", day: "Day 1", pageNumber: index + 3,
     status: pageStatus, label: HISTORY_LABELS[pageStatus], photo: pageStatus === "never-scanned" || state === "history_missing_photo" ? null : `${child.id}-photo-${index}`,
     photoAvailable: state !== "history_expired", failedJob: pageStatus === "failed",
     counts: { scored: pageStatus === "ready" ? 3 : pageStatus === "blank" ? 1 : 0, unscored: pageStatus === "unscored" ? 1 : 0, teamChecks: pageStatus === "review" ? 1 : 0, pending: pageStatus === "pending" ? 1 : 0 },
     right: pageStatus === "ready" ? 2 : 0, wrong: pageStatus === "ready" ? 1 : 0, blank: pageStatus === "blank" ? 1 : 0,
   }));
-  const listing = { pages, counts: Object.fromEntries(states.map(value => [value, pages.filter(page => page.status === value).length])), after: null };
-  return <ScanHistoryView state={status} listing={listing} workbookScoped={state !== "first_book_coming"}
-    hasMore={status === "ready" && state !== "first_book_coming"} />;
+  return { state: status, pages };
+}
+
+function workbooksPage(child: ChildView, state: string) {
+  const view = workbooks(child, state);
+  const main = mainBook(view.books);
+  const days = main ? bookDays(samplePlan(main, child, state), main.deliveredOn ? { start: main.deliveredOn, today: view.today, ended: child.readOnly } : null) : null;
+  const history = workbookHistory(child, state);
+  const list = days && main && <WorkbookDaysView book={main.id} weeks={days.weeks} openDay={state.startsWith("history_") ? 1 : null} checking={history.pages.filter(p => p.status === "review").length} state={history.state} pages={history.pages.map(p => ({ ...p, workbookId: main.id }))} />;
+  return <ParentWorkbooks view={view} days={days} list={list} scanOpen />;
 }
 
 function answerKey(child: ChildView, state: string): ParentWorkbookAnswers {
@@ -217,16 +343,7 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
     }
     case "overview": return <SupportPage label="" title={child.firstName} titleAction={overviewDesk("/account", child) ? <DeskButton child={child} pinSet={selection.scenario !== "no_pin"} /> : null}><ParentOverview overview={overview(child, state)} /></SupportPage>;
     case "workbook_answers": return <ParentWorkbookAnswerKey answerKey={answerKey(child, state)} />;
-    case "workbooks": return <ParentWorkbooks {...workbooks(child, state)} history={workbookHistory(child, state)} />;
-    case "schedule": return <ParentSchedule schedule={state === "waiting" || state === "unavailable" ? { kind: state, child: { ...child, parentId: "sample-parent" } } : {
-      kind: "ready", child: { ...child, parentId: "sample-parent" }, book: { id: "sample-printed-book", number: child.id === "sample-child-2" ? 2 : 1 }, dailyTime: "about 20 minutes, plus Extra if there's time",
-      rows: Array.from({ length: 10 }, (_, i) => ({ day: i + 1, topic: child.id === "sample-child-2" ? "Multiplication" : "Addition", second: i === 6 ? "Level check" : "Number practice",
-        pages: [3 + i * 8, 10 + i * 8], requiredMinutes: 20, extra: true,
-        scan: state === "accepted" || state === "expired" ? { kind: "known", accepted: 8, required: 8, missing: [] } : state === "partial" && i === 0 ? { kind: "known", accepted: 3, required: 8, missing: [6, 7, 8, 9, 10] } : { kind: "unknown" },
-        marks: state === "accepted" || state === "expired" ? (i < 2 ? { kind: "all", marked: 8, total: 8 } : i === 2 ? { kind: "checking", marked: 6, total: 8 } : { kind: "none", marked: 0, total: 8 })
-          : state === "partial" && i === 0 ? { kind: "some", marked: 2, total: 8 } : { kind: "none", marked: 0, total: 8 },
-      })),
-    }} />;
+    case "workbooks": return workbooksPage(child, state);
     case "progress": return <ParentProgress child={child} progress={state === "empty" || state === "unavailable" ? null : sampleProgress(state)} unavailable={state === "unavailable"} />;
     case "maya": {
       const note = sampleNote(child, state === "chat", state === "missing");

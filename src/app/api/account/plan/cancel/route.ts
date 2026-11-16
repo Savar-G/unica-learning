@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   try {
     const result = await cancelFamilyPlan(parent, card);
     if (!result.ok) return fail(result.error, result.error === "unavailable" ? 503 : result.error === "not_found" ? 404 : 409);
-    if (result.changed) after(() => planCancelledAlert(card, result.child, result.endsAt));
+    if (result.changed) after(() => planCancelledAlert(card, result.child, result.endsAt, { parentId: parent, childId: result.childId }));
     return Response.json({ ok: true, endsAt: result.endsAt });
   } catch (e) {
     console.error("[plan] cancel failed", e instanceof Error ? e.message : "failed");

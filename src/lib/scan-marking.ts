@@ -1,5 +1,6 @@
 // S4. The store owns atomic leases, item versions, deletion fences, admission and budget reservations.
 // The AI owns readings only. No model identity, score, key or eligibility claim enters a result.
+import { monitorProduct } from "@/lib/product-monitoring";
 import { createHash } from "node:crypto";
 import type { AiClient, AiJsonRequest } from "@/lib/ai-client";
 import { expectedItems, firstObservation, waitsForTeam, itemKey, markingEvent, MAX_READ_TEXT, MODEL_READING_ISSUES, pageCompletion, PHOTO_ISSUES, readingIssueText, type ReadingIssue, type RegionReading, type ExpectedItem, type MarkResult, type Observation, type PageForObservation } from "@/lib/scan-observation";
@@ -483,7 +484,9 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
         if (e instanceof AdmissionRefusal) {
           // Only a dispatch-count refusal is caused by the rate limit; budget, price, lease and switch refusals are not.
           if (e.status === "attempts" && confirmedRetryAfter() !== undefined) options.onRateLimit?.(confirmedRetryAfter()!);
-          await store.pause(ref, token, e.status); return e.status;
+          await store.pause(ref, token, e.status);
+          monitorProduct("scan.marking_deferred", { photoId: ref.photo, status: e.status });
+          return e.status;
         }
         // #868: defer only on a clean 429 the store confirmed (the last attempt, or one whose wait did not fit). A
         // settle that fails, or any other failure, counts: the photo waits as `pending` as before.
@@ -493,8 +496,13 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
         }
         if (clean) {
           options.onRateLimit?.(confirmedRetryAfter()!);
-          try { return await store.defer(ref, token); } catch { /* An unreadable defer answer pauses as before. */ }
+          try {
+            const deferred = await store.defer(ref, token);
+            if (deferred !== "terminal") monitorProduct("scan.marking_deferred", { photoId: ref.photo, status: deferred });
+            return deferred;
+          } catch { monitorProduct("scan.recovery_failed", { photoId: ref.photo, step: "marking" }); }
         }
+        monitorProduct(clean ? "scan.marking_deferred" : "scan.marking_failed", { photoId: ref.photo, status: "pending" });
         // No provider output or exception text is logged or stored.
         await store.pause(ref, token, "pending");
         return "pending";
@@ -523,6 +531,13 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
   if (!await store.apply(ref, token, observations, originalEvents(frame, observations, at), at)) return "terminal";
   await store.publish(frame.parentId, frame.childId);
   if (!await store.finish(ref, token)) return "terminal";
+  // Only the lease holder that committed finish emits. A poll or finished-job retry never reaches this point.
+  try {
+    const marks = (await store.effective(frame.parentId, frame.childId)).filter((m) => m.expected.identity.workbookId === frame.workbookId && m.expected.identity.pageId === frame.pageId && m.expected.identity.printedRevision === frame.printedRevision);
+    const view = markingPageView(marks);
+    monitorProduct(view.completion.status === "complete" ? "scan.marking_complete" : "scan.marking_team_pending",
+      { photoId: ref.photo, total: view.completion.total, scored: view.counts.scored, pending: view.counts.pending + view.counts.teamChecks });
+  } catch { monitorProduct("scan.recovery_failed", { photoId: ref.photo, step: "marking" }); }
   return "finished";
 }
 /**
@@ -538,10 +553,10 @@ async function secondLook(store: MarkingStore, ref: MarkingRef, token: string, f
   let transport: MarkingTransport | null = null;
   let tries = 0;
   const settle = async () => {
-    if (!dispatch || !transport) return;
+    if (!dispatch || !transport) return false;
     const open = dispatch, cost = transport.costMicros(), failure = cost === null ? transport.failure?.() ?? null : null;
     dispatch = null;
-    await store.settle(open, cost, failure);
+    return (await store.settle(open, cost, failure)) === true && failure !== null;
   };
   const beforeAttempt = async () => {
     // One attempt only: a client retry is refused here, before any admission.
@@ -558,15 +573,21 @@ async function secondLook(store: MarkingStore, ref: MarkingRef, token: string, f
   transport = makeClient(beforeAttempt);
   if (!transport) return none;
   const signal = options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(timeout)]) : AbortSignal.timeout(timeout);
+  let failed = false, refusal: MarkingStatus | undefined;
   try {
     const output = await transport.client.json(markingRequestFor(frame, image, asked, true), signal);
     const merged = mergeSecondLook(first, readMarkingOutput(frame, output), asked);
     return { observations: merged.observations, escalation: merged.decided.length ? { model: transport.client.model, prompt: MARKING_ESCALATION_PROMPT_VERSION, items: merged.decided } : null };
-  } catch {
+  } catch (error) {
+    failed = true;
+    if (error instanceof AdmissionRefusal) refusal = error.status;
     return none;
   } finally {
-    // Counts only: no dispatch, family or photo id is logged.
-    await settle().catch(() => { console.error("[scan-marking] a second-look dispatch could not be settled; its full hold stays"); });
+    let clean = false;
+    try { clean = await settle(); }
+    catch { monitorProduct("scan.recovery_failed", { photoId: ref.photo, step: "marking" }); }
+    // Only the store can confirm a clean rate limit. An unconfirmed or charged failure remains an error.
+    if (failed) monitorProduct(clean || refusal ? "scan.marking_deferred" : "scan.marking_failed", { photoId: ref.photo, status: refusal ?? "pending" });
   }
 }
 /** One effective event per eligible canonical original. Raw events remain append-only. No reading text enters this set. */
@@ -588,11 +609,13 @@ export function effectiveSkillMarks(marks: readonly EffectiveMark[]): SkillMark[
 /**
  * The same marks as `effectiveSkillMarks`, each with whether the answer was blank. Only the parent dashboard's Needs help
  * rule reads it (`src/lib/needs-help.ts`): an unfinished page is not a struggling child. The skill state rule never does.
+ * `dayOf` names the workbook day of an item's page (`<workbook id>:<N>` from the page's "Day N" label), for the repeated-mistake count.
  */
-export function effectiveHelpMarks(marks: readonly EffectiveMark[]): HelpMark[] {
+export function effectiveHelpMarks(marks: readonly EffectiveMark[], dayOf?: (workbookId: string, pageId: string) => string | null): HelpMark[] {
   return marks.flatMap((m) => {
     const d = markingEvent(m.expected, m.observation);
-    return d.publish && m.originalEvent && m.eventId ? [{ standard: m.originalEvent.skill.standard, right: d.result === "right", review: ["friday-5", "mixed-set", "show-what-you-know"].includes(m.expected.teaching?.part ?? ""), at: m.originalEvent.occurredAt, blank: d.result === "blank" }] : [];
+    const id = m.expected.identity;
+    return d.publish && m.originalEvent && m.eventId ? [{ standard: m.originalEvent.skill.standard, right: d.result === "right", review: ["friday-5", "mixed-set", "show-what-you-know"].includes(m.expected.teaching?.part ?? ""), at: m.originalEvent.occurredAt, blank: d.result === "blank", day: dayOf?.(id.workbookId, id.pageId) ?? null }] : [];
   });
 }
 export { waitsForTeam };

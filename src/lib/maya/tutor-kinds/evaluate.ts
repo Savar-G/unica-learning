@@ -6,6 +6,8 @@
 // controller.
 import type { OperationPackage, WorkedStep } from "@/lib/question-package";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, type TutorStepFact } from "../tutor-kind";
+import { countedInText, finalQuestion, isGroup, sentencesIn, THING, WHO, WORD as FREE } from "./asks";
+import { exactValue } from "../tutor-math";
 
 type OperateStep = Extract<WorkedStep, { kind: "operate" }>;
 type Sign = OperateStep["op"];
@@ -15,10 +17,9 @@ const KEY: Record<Sign, string> = { "+": "+", "−": "-", "×": "*", "÷": "/" }
 
 /** One sign applied to two whole numbers, or null when it leaves the whole numbers. */
 function apply(a: number, sign: Sign, b: number): number | null {
-  if (sign === "+") return a + b;
-  if (sign === "−") return a - b >= 0 ? a - b : null;
-  if (sign === "×") return a * b;
-  return b !== 0 && a % b === 0 ? a / b : null;
+  // Final check 12: the one shared evaluator (safe whole numbers, exact division); a difference stays a whole number.
+  const v = exactValue([a, b], [sign === "+" ? "+" : sign === "−" ? "-" : sign === "×" ? "*" : "/"]);
+  return v === null || v < 0 ? null : v;
 }
 
 type Token = number | Sign | "(" | ")";
@@ -140,8 +141,50 @@ function fits(pkg: OperationPackage): boolean {
     known.add(st.value);
   }
   if (steps.at(-1)!.value !== pkg.answer.value.value) return false;
-  if (speaksOfPattern(pkg.text)) return patternOf(pkg) !== null;
-  return storyMatches(pkg.text, steps) && printedAgrees(pkg.text, tokens, pkg.answer.value.value);
+  if (speaksOfPattern(pkg.text)) return patternOf(pkg) !== null && patternAsks(pkg.text);
+  return storyMatches(pkg.text, steps) && printedAgrees(pkg.text, tokens, pkg.answer.value.value) && storyAsks(pkg.text);
+}
+
+/**
+ * Pre-launch check 2: a pattern question is its rule and one closed ask, nothing else: "A pattern starts at 13 and adds
+ * 5 each time. What is the 4th term?" or "... The 3rd term is 23.". "What is the 4th term minus 2?" keeps the controller.
+ */
+function patternAsks(text: string): boolean {
+  const s = sentencesIn(text).map((x) => x.toLowerCase());
+  return s.length === 2 && /^a pattern starts at \d+ and (?:adds|subtracts|takes away) (?:\d+|\?) each time\.$/.test(s[0]) &&
+    new RegExp(String.raw`^(?:what is (?:the|its) (?:${ORDINAL}) term\?|(?:the|its) (?:${ORDINAL}) term is \d+\.)$`).test(s[1]);
+}
+
+/** The closed question forms of a story whose expression gives what is there at the end, or the total. */
+const STORY_ASKS = [
+  new RegExp(String.raw`^how many ${THING} (?:does|do) ${WHO} have (?:now|left|after \d+ ${FREE})$`),
+  new RegExp(String.raw`^how many ${THING} (?:are|is) (?:left|still (?:at|in|on) (?:the )?${FREE})$`),
+  new RegExp(String.raw`^how many ${THING} (?:is that|are there) (?:in all|altogether|in total)$`),
+  new RegExp(String.raw`^how many ${THING} (?:live|are) (?:in (?:the )?${FREE}|there) now$`),
+  // "How many live there now?": the people the story counts.
+  /^how many live (?:there|here) now$/,
+];
+/** Closed asks that name no counted thing: a height after the growth, a new code, a perimeter. */
+const STORY_VALUE_ASKS = [
+  new RegExp(String.raw`^how tall is (?:it|the ${FREE}) (?:now|after \d+ ${FREE})$`),
+  /^what is the new (?:code|number|total)$/,
+  /^what is (?:its|the) perimeter(?: in [a-z]+)?$/,
+];
+
+/**
+ * Pre-launch check 2: a story's final question asks for the expression's result, in a closed form: what is there at the
+ * end ("How many buttons are left?"), the total, a height after the growth, a new code or a perimeter. A counted thing
+ * must be counted after a printed number and must not be a group. "How many buttons did it sell?" asks for a printed
+ * number, and keeps the controller. A bare printed expression is read by printedAgrees.
+ */
+function storyAsks(text: string): boolean {
+  const bare = text.replace(/\d[\d,]*/g, " ").replace(/[+−×÷\-x*/=?().:]/g, " ").replace(/\b(?:what is|find|work out|calculate)\b/gi, " ").trim();
+  if (bare === "") return true;
+  const q = finalQuestion(text);
+  if (q === null) return false;
+  if (STORY_VALUE_ASKS.some((re) => re.test(q))) return true;
+  const m = STORY_ASKS.map((re) => re.exec(q)).find(Boolean);
+  return !!m && (m[1] === undefined || (countedInText(text, m[1]) && !isGroup(m[1])));
 }
 
 /** The numbers of a token list, in order. */
@@ -375,8 +418,10 @@ const DOWN = /^(?:subtracts|subtract|takes away|take away|goes down by|shrinks b
  * - "it adds 8 each time", "it subtracts 3 each time" (the size and the direction of the change);
  * - "it starts at 20", "start at 20";
  * - "the change from the start to the 3rd term", "share the change into 2" (the kind's own step words).
- * Fail closed: any other clause about the pattern (a negation, a remainder, a sum, a word code cannot read) is
- * refused, and a question with no pattern refuses every clause about a term or a pattern.
+ * Only a clause in one of these forms that does not hold is refused (final check 7, 2026-11-15). Any other clause
+ * about the pattern (a question, a negation, a remainder, a sum, a word code cannot read) is no proved false claim: it
+ * is not refused, and the sentence goes to the math review. A question with no pattern still refuses every clause about
+ * a term or a pattern.
  */
 export function patternClaimProblems(pkg: OperationPackage, sentence: string): string[] {
   const p = fits(pkg) ? patternOf(pkg) : null;
@@ -390,7 +435,10 @@ export function patternClaimProblems(pkg: OperationPackage, sentence: string): s
     let clause = raw.trim();
     for (let k = 0; k < 4; k++) clause = clause.replace(LEAD, "").trim();
     const c = inDigits(clause)?.toLowerCase().replace(/\s+/g, " ").trim();
-    if (!c || /\bnot\b|n't\b|\bnever\b|\bno\b/.test(c)) { problems.push(`"${raw.trim()}" says something about the pattern in a form code cannot check`); continue; }
+    // Final check 7 (2026-11-15): a clause this kind cannot read in full (a question, a negation, any form below it does
+    // not match) is no proved false claim: it is not refused, and the sentence goes to the math review (no form here
+    // grants a pass on code alone).
+    if (!c || /\bnot\b|n't\b|\bnever\b|\bno\b/.test(c)) continue;
     let m: RegExpExecArray | null;
     if ((m = /^(?:the|its) (\d+)(?:st|nd|rd|th) term (?:is|=|equals|will be) (\d+)$/.exec(c))) {
       const n = Number(m[1]);
@@ -406,7 +454,7 @@ export function patternClaimProblems(pkg: OperationPackage, sentence: string): s
       if (Number(m[1]) !== p.term) problems.push(`the question names the ${ordinalText(p.term)} term, not the ${ordinalText(Number(m[1]))}`);
     } else if ((m = /^share (?:it|the change) into (\d+)(?: (?:equal )?(?:jumps|parts))?$/.exec(c))) {
       if (p.asks !== "step" || Number(m[1]) !== p.term - 1) problems.push(`the change is shared into ${p.term - 1} jumps, not ${m[1]}`);
-    } else problems.push(`"${raw.trim()}" says something about the pattern in a form code cannot check`);
+    }
   }
   return problems;
 }
@@ -425,6 +473,8 @@ export const evaluateKind: TutorKind = {
     return st ? [{ offer: "note", place: equation(st) }] : [];
   },
   draw,
+  // B2: notes only, which need nothing on the board first.
+  boardNeeds: () => ({}),
   // The core reads the equations; this kind reads the pattern's claims.
   claimProblems: patternClaimProblems,
   notes: (pkg) => {

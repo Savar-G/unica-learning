@@ -24,9 +24,11 @@ export interface DashboardLoad {
  * `families`: read only these families' rows (familyDashboardRows), for a page that shows only them; the dashboard and
  * its lists read every row.
  */
-export async function loadDashboard(raw: Record<string, string | string[] | undefined>, { withTests, families }: {
+export async function loadDashboard(raw: Record<string, string | string[] | undefined>, { withTests, families, sendIds }: {
   withTests?: boolean;
   families?: (admin: AdminSession, query: Record<string, string>) => Promise<string[]>;
+  /** With `families`: send log rows to read by id too (a team email about no family, for its own page). */
+  sendIds?: string[];
 } = {}): Promise<DashboardLoad> {
   await connection();
   const query = Object.fromEntries(Object.entries(raw).flatMap(([k, v]) => (typeof v === "string" && v ? [[k, v]] : []))) as Record<string, string>;
@@ -39,7 +41,7 @@ export async function loadDashboard(raw: Record<string, string | string[] | unde
     return { who: "demo data", d: buildDashboard(rows, pickRange(query.range), now, options), progress: demoProgress(rows, now), query, demo };
   }
   const admin = await requireAdmin();
-  const rows = families ? await familyDashboardRows(admin, await families(admin, query)) : await dashboardRows(admin);
+  const rows = families ? await familyDashboardRows(admin, await families(admin, query), { sendIds }) : await dashboardRows(admin);
   const d = buildDashboard(rows, pickRange(query.range), now, options);
   // The open tests of the families shown: one more small read, after the rows that say which they are.
   const progress = await progressRows(admin, progressTestIds(d.families, PROGRESS_MAX));

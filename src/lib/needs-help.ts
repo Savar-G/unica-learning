@@ -21,6 +21,11 @@ import { addDays, localDay, type FamilyZone } from "@/lib/family-time";
 export interface HelpMark extends SkillMark {
   /** The item was left blank. `right` is false for it, as the skill state rule reads it. */
   blank: boolean;
+  /**
+   * The workbook day the item's page is on, from the page's "Day N" label: `<workbook id>:<N>`. Absent or null when the
+   * page has no day label (a cover) or the label was not read. Only the repeated-mistake count reads it.
+   */
+  day?: string | null;
 }
 
 /** Fewer than this many percent right counts as struggling; exactly this many does not. */
@@ -67,4 +72,43 @@ export function needsHelpStandards(states: readonly StandardSkillState[], marks:
     else byStandard.set(mark.standard, [mark]);
   }
   return new Set(states.filter((s) => countsAsNeedsHelp(s.state, byStandard.get(s.standard) ?? [], now, zone)).map((s) => s.standard));
+}
+
+/** A Needs help skill that was wrong on several different workbook days lately (#990): `days` of them, the most recent wrong answer at `lastAt` (ms). */
+export interface RepeatedMistake {
+  standard: string;
+  days: number;
+  lastAt: number;
+}
+
+/** A repeated mistake needs wrong answers on at least this many different workbook days in the window. */
+export const REPEATED_MISTAKE_DAYS = 2;
+
+/**
+ * The skills in `help` (the Needs help set) with a wrong answer on at least REPEATED_MISTAKE_DAYS different workbook days,
+ * among the wrong answers marked in the last STRUGGLING_WINDOW_DAYS days of family time: the skills that keep coming up
+ * wrong. A workbook day is the page's own "Day N" (`HelpMark.day`), never the day of the marking: one evening's scans
+ * marked across midnight is one workbook day, and a week of pages scanned at once is five. Blank answers, marks with no
+ * readable time, marks after today and marks with no workbook day are left out. Most days first, then the most recent
+ * wrong answer, then the standard's code. Only a day count leaves: never a percent or a count of wrong answers.
+ */
+export function repeatedMistakes(help: ReadonlySet<string>, marks: readonly HelpMark[], now: number, zone: FamilyZone): RepeatedMistake[] {
+  const today = localDay(now, zone);
+  const first = addDays(today, -(STRUGGLING_WINDOW_DAYS - 1));
+  const byStandard = new Map<string, { days: Set<string>; lastAt: number }>();
+  for (const mark of marks) {
+    if (mark.blank || mark.right || !mark.day || !help.has(mark.standard)) continue;
+    const at = Date.parse(mark.at);
+    if (!Number.isFinite(at)) continue;
+    const day = localDay(at, zone);
+    if (day < first || day > today) continue;
+    const own = byStandard.get(mark.standard) ?? { days: new Set<string>(), lastAt: -Infinity };
+    own.days.add(mark.day);
+    own.lastAt = Math.max(own.lastAt, at);
+    byStandard.set(mark.standard, own);
+  }
+  return [...byStandard]
+    .map(([standard, { days, lastAt }]): RepeatedMistake => ({ standard, days: days.size, lastAt }))
+    .filter((m) => m.days >= REPEATED_MISTAKE_DAYS)
+    .sort((a, b) => b.days - a.days || b.lastAt - a.lastAt || a.standard.localeCompare(b.standard));
 }

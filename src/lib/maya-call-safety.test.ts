@@ -1,6 +1,8 @@
+import { setProductObserver } from "@/lib/product-monitoring";
 import { memoryWordingHistoryStore } from "@/lib/maya";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { templateSkills } from "@/lib/assessment";
+import { recordSendsWith } from "@/lib/email-delivery";
 import { memoryTransport } from "@/lib/email-delivery-memory";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
@@ -154,6 +156,17 @@ describe("the safety flag of a saved text call", () => {
     expect(s.stored()).toMatchObject({ status: "ended", flag: { level: "safety_concern" }, outcome: { reason: "safety", safetyFlag: true } });
   });
 
+  it("logs the alert's send row with the call's family and child, so it is deleted with the child", async () => {
+    const rows: { kind: string; parent_id?: string | null; child_id?: string | null }[] = [];
+    const restore = recordSendsWith(async (row) => { rows.push(row); });
+    try {
+      const s = setup();
+      await s.start();
+      await s.say(HURT);
+      expect(rows).toEqual([expect.objectContaining({ kind: "maya_safety_alert", parent_id: PARENT, child_id: CHILD })]);
+    } finally { restore(); }
+  });
+
   it("stores a refused alert as not sent, shows why, and sends it with the call's next request", async () => {
     const s = setup();
     await s.start();
@@ -258,4 +271,17 @@ describe("a request for harmful content (#383 C29)", () => {
     expect(r.view.alerts).toEqual([]);
     expect(s.mail.delivered).toHaveLength(0);
   });
+});
+
+
+beforeEach(() => { vi.clearAllMocks(); setProductObserver(null); });
+afterEach(() => { setProductObserver(null); vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+it("emits a saved safety flag once without child words, including on repeated end", async () => {
+  const observer = vi.fn(); setProductObserver(observer);
+  const s = setup(); await s.start();
+  const flagged = await s.say(HURT);
+  await s.end();
+  const safety = observer.mock.calls.filter(([e]) => e.code === "maya.safety_flagged");
+  expect(safety).toEqual([[{ code: "maya.safety_flagged", attributes: { callId: flagged.view.id, kind: "admin_test", mode: "text", flag: "safety_concern" } }]]);
+  expect(JSON.stringify(safety)).not.toContain(HURT);
 });

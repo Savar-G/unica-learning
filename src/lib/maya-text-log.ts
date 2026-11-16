@@ -1,6 +1,7 @@
 // Persistent transition rules for the text adapter. No provider, clock, promise or abort signal enters this fold.
 import { applyBatch, createScene, type Batch, type Scene } from "@/lib/board";
-import { nextActs, speechKey, step, TIME_LIMITS, SAFETY_GUIDANCE, type Act, type Effect, type MathReview, type Session, type SessionEvent, type TalkReview } from "@/lib/maya";
+import { withEmittedHelp, type Assistance } from "@/lib/maya/session";
+import { BOARD_FATES, nextActs, speechKey, step, TIME_LIMITS, SAFETY_GUIDANCE, type Act, type BoardFate, type Effect, type MathReview, type Session, type SessionEvent, type TalkReview, type TiedDrawing } from "@/lib/maya";
 import { type TraceAttempt, type TraceBoardBatch, type TraceError, type TraceObligation, type TraceTurn } from "@/lib/maya-trace";
 import type { TextOutput } from "@/lib/maya-text";
 
@@ -16,16 +17,47 @@ export interface TextLogInitial {
 }
 export type TextLogEvent =
   | { kind: "input"; at: number; event: SessionEvent; error?: TraceError }
-  | { kind: "request"; at: number; requestId: number; source: "model" | "repair" }
-  | { kind: "response"; at: number; requestId: number; proposal?: unknown; error?: TraceError; ms: number; fenced?: true; sent?: string[]; firstSayMs?: number }
+  /** `filler`: the voice worker's thinking phrase (an acknowledgement id) said when this repair started; absent otherwise. */
+  /**
+   * `continuation` (2026-11-15, voice fallbacks): a tutor repair that started after streamed sentences and continues them
+   * (continuedSay). Fixed when the repair starts: sentences a plain repair streams itself never make it one.
+   */
+  | { kind: "request"; at: number; requestId: number; source: "model" | "repair"; filler?: string; continuation?: true }
+  | { kind: "response"; at: number; requestId: number; proposal?: unknown; error?: TraceError; ms: number; fenced?: true; sent?: string[]; firstSayMs?: number; gateDisagrees?: true; priority?: Record<string, unknown> }
+  /**
+   * Legacy #1107 accepted progress. New writers use pending and confirmed events instead.
+   * Existing words, help and drawings retain their accepted meaning when these records are replayed.
+   */
+  | { kind: "part"; at: number; requestId: number; sentence: string; board?: StreamedBoard }
+  /** Pending is never accepted progress. Confirmation means server dispatch, not child receipt. */
+  | { kind: "part_pending"; at: number; requestId: number; sentence: string; board?: StreamedBoard }
+  | { kind: "part_confirmed"; at: number; requestId: number }
+  | { kind: "part_discarded"; at: number; requestId: number }
+  | { kind: "stream_interrupted"; at: number; requestId: number; detail: string }
+  /** A binding stream hold. Recovery must settle this admitted turn, even if no sentence went out. */
+  | { kind: "stream_hold"; at: number; requestId: number; priority?: Record<string, unknown> }
   /** `mathReviews`: two-layer true math (2026-11-15); absent in an event written before the math-truth review existed. */
-  | { kind: "review"; at: number; requestId: number; reviews: TalkReview[]; mathReviews?: MathReview[]; reviewMs?: number }
-  | { kind: "fallback"; at: number; proposal: unknown }
+  /**
+   * `drawMode` (B2): "derive" on a proposal stepped live since B2 derives drawings from Maya's sentences. A saved event
+   * without it is replayed exactly as it was stepped (no derived drawing), so a restored call keeps its batches and ids.
+   */
+  | { kind: "review"; at: number; requestId: number; reviews: TalkReview[]; mathReviews?: MathReview[]; reviewMs?: number; drawMode?: "derive" }
+  | { kind: "fallback"; at: number; proposal: unknown; drawMode?: "derive" }
   | { kind: "recover"; at: number }
   | { kind: "cancelled"; at: number }
-  | { kind: "delivered"; at: number };
+  | { kind: "delivered"; at: number }
+  /** B1: what the child's screen did with board batches Maya sent (boardFates), by transaction id. */
+  | { kind: "fates"; at: number; fates: { batchId: string; fate: BoardFate }[] }
+  /**
+   * Final check 12 (2026-11-15): the help a sentence gave, written the moment it was emitted to the child (the help
+   * ledger). Cancellation, a deadline, a hang-up, a replacement turn and an error never take it back.
+   */
+  | { kind: "help"; at: number; assistance: Assistance };
 
-type PendingOutput = { entry: Extract<TraceTurn, { kind: "maya" }>; act: Act; say: string[]; batches: Batch[]; obligations: number[]; control: number };
+/** #1107: a drawing streamed with its sentence: the batch, its keys, and its place in the message's drawings (`tied`). */
+export interface StreamedBoard { batch: Batch; keys: string[]; tied: TiedDrawing }
+/** `ties` (B2): the sentence each batch is tied to, by transaction id; a batch not in it goes at the end of the turn. */
+type PendingOutput = { entry: Extract<TraceTurn, { kind: "maya" }>; act: Act; say: string[]; batches: Batch[]; ties?: Record<string, number>; obligations: number[]; control: number };
 export interface TextFold {
   session: Session;
   /** Upper bound on persisted event content for one live call. */
@@ -42,34 +74,67 @@ export interface TextFold {
   controls: { event: SessionEvent; replaceTurn?: boolean; cancelled?: boolean }[];
   obligations: TraceObligation[];
   childState: "listening" | "child_speaking";
-  request: { id: number; source: "model" | "repair" } | null;
-  candidate: { requestId: number; proposal: unknown; ms: number; source: "model" | "repair"; fenced?: true; firstSayMs?: number } | null;
+  request: { id: number; source: "model" | "repair"; filler?: string; continuation?: true } | null;
+  candidate: { requestId: number; proposal: unknown; ms: number; source: "model" | "repair"; fenced?: true; firstSayMs?: number; gateDisagrees?: true; filler?: string; continuation?: true } | null;
   /** D-341: sentences of the current Maya turn already streamed to the child; every later attempt of the turn starts with them. */
   sent?: string[];
+  /**
+   * #1107 (chat): how many of `sent` came as saved parts, and the drawings committed with them, in order. The turn's
+   * output carries these batches first; its own drawings never draw those sentences again.
+   */
+  parts?: number;
+  streamBoard?: StreamedBoard[];
+  /** Present until the response resolves this request, including after a pending part is discarded. */
+  streamDelivery?: true;
+  pendingPart?: Extract<TextLogEvent, { kind: "part_pending" }>;
+  streamHold?: { requestId: number; priority?: Record<string, unknown> };
   attempts: TraceAttempt[];
   deferred: { event: SessionEvent; childId: number | null }[];
   pending: PendingOutput[];
   output: Pick<TextOutput, "say" | "board" | "cancelled">;
+  /**
+   * B1, before B2's review: the batches the child's screen skipped or cancelled, undone one by one. No longer written:
+   * the server's board is rebuilt from the batch fates (`shownScene`). Kept so an older checkpoint still reads.
+   */
+  undos?: { at: number; transactionId: string }[];
+  /** B1: words from the screen that came while an output was pending, applied once it is delivered. */
+  lateFates?: { at: number; batchId: string; fate: BoardFate }[];
 }
 export type TextCheckpoint = Omit<TextFold, "scene" | "initialScene" | "endedAt"> & { sceneBatches: Batch[]; initialSceneBatches: Batch[] };
 export function saveTextCheckpoint(s: TextFold): TextCheckpoint {
   const { scene: _scene, initialScene: _initialScene, endedAt: _endedAt, ...data } = s;
   void _scene; void _initialScene; void _endedAt;
   const committed = s.board.map((b) => ({ transactionId: b.transactionId, commands: b.commands }));
-  return structuredClone({ ...data, sceneBatches: [...committed, ...s.pending.flatMap((p) => p.batches)], initialSceneBatches: committed });
+  // #1107: streamed drawings are on the board after the pending outputs; with none pending, their controls are committed.
+  const streamed = (s.streamBoard ?? []).map((b) => b.batch);
+  return structuredClone({ ...data, sceneBatches: [...committed, ...s.pending.flatMap((p) => p.batches), ...streamed], initialSceneBatches: [...committed, ...(s.pending.length ? [] : streamed)] });
+}
+/**
+ * B1 and B2 (review of #1094): the server's board as the child's screen holds it, rebuilt from the batch fates: every
+ * batch Maya sent, in order, except the ones the screen skipped or cancelled, then `extra` (batches still pending). One
+ * undo cannot take a skipped batch off when a later shown batch builds on the board after it (per-sentence batches), so
+ * the board is rebuilt, never undone. A batch that no longer fits without a skipped one is left out (fail closed). A
+ * batch that does not fit while nothing was skipped means the saved board is broken: it throws.
+ */
+function shownScene(board: readonly { transactionId: string; commands: readonly unknown[]; fate?: BoardFate; after?: readonly string[] }[], extra: readonly Batch[] = []): Scene {
+  let scene = createScene();
+  let hidden = false;
+  const off = new Set<string>();
+  for (const b of [...board, ...extra.map((x) => ({ ...x, fate: undefined }))]) {
+    // B2: a batch that builds on one the screen did not show is off the board too.
+    if (b.fate === "skipped" || b.fate === "cancelled" || b.after?.some((id) => off.has(id))) { hidden = true; off.add(b.transactionId); continue; }
+    const applied = applyBatch(scene, { transactionId: b.transactionId, commands: b.commands as Batch["commands"] });
+    if (applied.ok) scene = applied.scene;
+    else if (!hidden) throw new Error(`maya text: the saved board batch ${b.transactionId} does not apply again`);
+  }
+  return scene;
 }
 export function restoreTextCheckpoint(checkpoint: TextCheckpoint): TextFold {
-  const { sceneBatches, initialSceneBatches, ...data } = structuredClone(checkpoint);
-  const restore = (batches: Batch[]) => {
-    let scene = createScene();
-    for (const batch of batches) {
-      const result = applyBatch(scene, batch);
-      if (!result.ok) throw new Error("maya text: checkpoint board does not apply");
-      scene = result.scene;
-    }
-    return scene;
-  };
-  return { ...data, endedAt: data.session.outcome ? data.session.now : null, scene: restore(sceneBatches), initialScene: restore(initialSceneBatches) };
+  const { sceneBatches: _sceneBatches, initialSceneBatches: _initialSceneBatches, ...data } = structuredClone(checkpoint);
+  void _sceneBatches; void _initialSceneBatches;
+  // The batches of the checkpoint are its committed board and its pending outputs, in that order (saveTextCheckpoint).
+  const streamed = (data.streamBoard ?? []).map((b) => b.batch);
+  return { ...data, endedAt: data.session.outcome ? data.session.now : null, scene: shownScene(data.board, [...data.pending.flatMap((p) => p.batches), ...streamed]), initialScene: shownScene(data.board, data.pending.length ? [] : streamed) };
 }
 export const MAX_TEXT_HISTORY_BYTES = 262144;
 const emptyOutput = (): TextFold["output"] => ({ say: [], board: [], cancelled: false });
@@ -110,6 +175,8 @@ function replayControls(s: TextFold, count = s.controls.length) {
       const applied = applyBatch(scene, e.batch);
       if (applied.ok) scene = applied.scene;
     }
+    // A fate is heard only with no output pending, so the board then is the committed board with its fates.
+    if (event.type === "board_fate" && event.fate !== "shown") scene = shownScene(s.board);
   }
   return { session, scene };
 }
@@ -137,7 +204,10 @@ function cancel(s: TextFold, reason: string, urgent = false, revoke = true) {
   s.request = null;
   s.candidate = null;
   s.attempts = [];
+  // #1107: saved parts are accepted progress, not speculative state: their sentences (and drawings) stay with the turn.
+  const kept = s.parts ? s.sent : undefined;
   delete s.sent;
+  if (kept?.length) s.sent = kept;
   // These controller outputs are debts, not speculative state. Cancellation never undoes them.
   const keep = urgent ? ["safety"] : ["open", "repair", "safety"];
   s.pending = s.pending.filter((p) => {
@@ -172,9 +242,9 @@ function syncSafety(s: TextFold, at: number) {
     else old.severity = severity;
   }
 }
-function receiveReading(s: TextFold, reading: unknown, at: number) {
+function receiveReading(s: TextFold, reading: unknown, at: number, gate?: unknown) {
   // Invalid shape applies only the controller's priority reading. It cannot score or speak.
-  const r = controllerStep(s, { type: "proposal", at, proposal: { reading } });
+  const r = controllerStep(s, { type: "proposal", at, proposal: { reading, ...(gate === undefined ? {} : { gate }) } });
   const previous = s.session.safety.severity;
   s.session = r.session;
   syncSafety(s, at);
@@ -193,13 +263,14 @@ function takeEffects(s: TextFold, effects: Effect[], at: number, attempts: Trace
   }
   const says = effects.filter((e) => e.kind === "say");
   const batches = effects.flatMap((e) => e.kind === "board" ? [e.batch] : []);
+  const ties = Object.fromEntries(effects.flatMap((e) => (e.kind === "board" && e.sentence !== undefined ? [[e.batch.transactionId, e.sentence] as const] : [])));
   if (says.length || attempts.length) {
     const act = says.at(-1)?.act ?? (attempts.at(-1)?.proposal as { act?: Act } | null)?.act ?? "close";
     const entry: Extract<TraceTurn, { kind: "maya" }> = { kind: "maya", at, state: stateBefore, stateAfter: s.session.state, finalMisses: s.session.finalMisses ?? 0, attempts: attempts.length ? attempts : [{ source: "controller", proposal: null, refusal: null }], output: null };
     if (says.length || (attempts.length && !attempts.at(-1)?.refusal && !attempts.at(-1)?.error)) {
       const kinds: TraceObligation["kind"][] = act === "open" ? ["opening_due"] : act === "repair" ? ["repair_due"] : act === "safety" ? ["safety_due"] : act === "close" ? ["child_turn_pending", "content_problem"] : s.session.turn === null ? ["child_turn_pending"] : [];
       const ids = s.obligations.filter((o) => o.status === "pending" && kinds.includes(o.kind) && !s.pending.some((p) => p.obligations.includes(o.id))).map((o) => o.id);
-      s.pending.push({ entry, act, say: says.map((e) => e.text), batches, obligations: ids, control: s.controls.length - 1 });
+      s.pending.push({ entry, act, say: says.map((e) => e.text), batches, ...(Object.keys(ties).length ? { ties } : {}), obligations: ids, control: s.controls.length - 1 });
     }
   }
   refreshOutput(s);
@@ -258,19 +329,26 @@ function flushDeferred(s: TextFold) {
     if (child?.status !== "dropped") applyInput(s, entry.event, undefined, false);
   }
 }
-function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt, reviews?: TalkReview[], mathReviews?: MathReview[]) {
+function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt, reviews?: TalkReview[], mathReviews?: MathReview[], drawMode?: "derive", continues = false) {
   const before = s.session.state;
   // Two-layer true math: every math-truth review of this attempt is kept in the trace, whatever the step decides.
-  if (mathReviews?.length) attempt.math = mathReviews.map((r) => ({ sentence: r.text, verdict: r.result.verdict, reason: r.result.reason }));
-  const event: SessionEvent = { type: "proposal", at: Math.max(at, s.session.now ?? 0), proposal: value, talkReviews: reviews, ...(mathReviews ? { mathReviews } : {}), ...(attempt.source === "fallback" ? { fallback: true } : {}), ...(s.sent?.length ? { sent: [...s.sent] } : {}) };
+  if (mathReviews?.length) attempt.math = mathReviews.map((r) => ({ sentence: r.text, verdict: r.result.verdict, reason: r.result.reason, ...(r.result.retried ? { retried: true as const } : {}) }));
+  // 2026-11-15 (voice fallbacks): a tutor repair that started after streamed sentences continues them (continuedSay).
+  const continuation = continues && attempt.source === "repair" && !!s.sent?.length && !!s.session.tutor;
+  // #1107: sentences streamed as saved parts keep the drawing fixed when each went out.
+  const streamed = s.parts ? { streamed: { drawings: (s.streamBoard ?? []).map((b) => structuredClone(b.tied)) } } : {};
+  const event: SessionEvent = { type: "proposal", at: Math.max(at, s.session.now ?? 0), proposal: value, talkReviews: reviews, ...(mathReviews ? { mathReviews } : {}), ...(attempt.source === "fallback" ? { fallback: true } : {}), ...(s.sent?.length ? { sent: [...s.sent] } : {}), ...(drawMode ? { drawMode } : {}), ...(continuation ? { continuation: true } : {}), ...streamed };
+  // B2: the trace says how this attempt's drawings were made.
+  if (drawMode && s.session.tutor) attempt.drawMode = drawMode;
   let r = step(s.session, event);
   let controlEvent = event;
   let scene = s.scene;
   if (!r.refusal) for (const e of r.effects) if (e.kind === "board") {
     const applied = applyBatch(scene, e.batch);
     // D-345: a tutor message the board cannot draw keeps its words: the same message is stepped again with no drawing.
-    if (!applied.ok && s.session.tutor && value && typeof value === "object" && Array.isArray((value as { draw?: unknown }).draw) && (value as { draw: unknown[] }).draw.length > 0) {
-      controlEvent = { ...event, proposal: { ...(value as Record<string, unknown>), draw: [] } };
+    // B2: the drawings are read from the sentences, so the retry also says "no draw" for every sentence.
+    if (!applied.ok && s.session.tutor && value && typeof value === "object") {
+      controlEvent = { ...event, proposal: { ...(value as Record<string, unknown>), draw: [], noDraw: "all" } };
       r = step(s.session, controlEvent);
       scene = s.scene;
       if (r.refusal) break;
@@ -294,21 +372,58 @@ function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt
   if (talk.length) attempt.talk = talk;
   const dropped = r.effects.flatMap((e) => e.kind === "say" ? e.dropped ?? [] : []);
   if (dropped.length) attempt.dropped = dropped;
+  // B2: each clause code read as a board action, drawn or why not (board-ties.ts), on the attempt whose words were said.
+  const boardReads = r.refusal ? [] : r.effects.flatMap((e) => e.kind === "say" ? e.boardReads ?? [] : []);
+  if (boardReads.length) attempt.boardReads = boardReads;
   if (attempt.source !== "fallback" || !r.refusal) s.attempts.push(attempt);
   if (r.refusal && !s.session.outcome) { takeEffects(s, r.effects, at); return; }
   s.scene = scene;
-  takeEffects(s, r.effects, at, s.attempts, before);
+  // #1107: the turn's words start with the streamed parts, so its output carries their drawings first (already on the
+  // board and counted), tied to their sentences, whatever line follows them (the message, a repair, code's line, safety).
+  const carried = s.parts && r.effects.some((e) => e.kind === "say") ? (s.streamBoard ?? []).map((b): Effect => ({ kind: "board", batch: structuredClone(b.batch), sentence: b.tied.sentence })) : [];
+  takeEffects(s, [...carried, ...r.effects], at, s.attempts, before);
   s.attempts = [];
   delete s.sent;
+  if (carried.length || s.parts) { delete s.parts; delete s.streamBoard; }
   flushDeferred(s);
+}
+/**
+ * B1: the child's screen said what it did with Maya's batches. The first word for a batch she sent stands and goes in the
+ * trace; any other word changes nothing. While the call is live, the session hears it (a skipped or cancelled drawing
+ * is no longer counted as drawn) and the server's board is rebuilt from the fates (`shownScene`), so it matches the
+ * child's screen. Words that come while an output is pending wait until it is delivered, so the board they rebuild is
+ * the committed board.
+ */
+function applyFates(s: TextFold, fates: readonly { at: number; batchId: string; fate: BoardFate }[]) {
+  if (s.pending.length) { s.lateFates = [...(s.lateFates ?? []), ...fates]; return; }
+  // Latest batch first: an earlier batch a later one builds on can then be undone too.
+  const order = (id: string) => s.board.findIndex((b) => b.transactionId === id);
+  for (const f of [...fates].sort((a, b) => order(b.batchId) - order(a.batchId))) {
+    const b = s.board.find((x) => x.transactionId === f.batchId);
+    if (!b || b.fate || !BOARD_FATES.includes(f.fate)) continue;
+    b.fate = f.fate;
+    if (s.session.outcome || s.session.startedAt === null) continue;
+    const at = Math.max(f.at, s.session.now ?? 0);
+    const r = controllerStep(s, { type: "board_fate", at, batch: f.batchId, fate: f.fate });
+    if (r.refusal) { s.controls.pop(); continue; }
+    s.session = r.session;
+    if (f.fate === "shown") continue;
+    s.scene = shownScene(s.board);
+  }
+  // B2: a batch that builds on one the screen skipped or cancelled is not on the screen either (the desk skips it); with
+  // no word of its own it counts as skipped, so the session does not count it as drawn.
+  for (const b of s.board) {
+    if (b.fate || !b.after?.some((id) => ["skipped", "cancelled"].includes(s.board.find((x) => x.transactionId === id)?.fate ?? ""))) continue;
+    b.fate = "skipped";
+    if (s.session.outcome || s.session.startedAt === null) continue;
+    const r = controllerStep(s, { type: "board_fate", at: s.session.now ?? 0, batch: b.transactionId, fate: "skipped" });
+    if (r.refusal) { s.controls.pop(); continue; }
+    s.session = r.session;
+  }
 }
 export function initialTextState(initial: TextLogInitial): TextFold {
   const s: TextFold = { ...structuredClone(initial), historyBytes: 0, scene: createScene(), initialSession: structuredClone(initial.session), initialScene: createScene(), controls: [], approvals: [], nextOutputId: 0, approved: structuredClone(initial.approved ?? initial.session.turns.filter((t) => t.speaker === "maya").slice(-1).map((t) => t.text)), obligations: structuredClone(initial.obligations ?? []), childState: initial.childState ?? "listening", request: null, candidate: null, attempts: [], deferred: [], pending: [], output: emptyOutput() };
-  for (const b of s.board) {
-    const applied = applyBatch(s.scene, { transactionId: b.transactionId, commands: b.commands });
-    if (!applied.ok) throw new Error(`maya text: the saved board batch ${b.transactionId} does not apply again`);
-    s.scene = applied.scene;
-  }
+  s.scene = shownScene(s.board);
   s.initialScene = s.scene;
   s.approvals = s.approved.map((text) => ({ outputId: 0, turn: s.session.turns.findLastIndex((t) => t.speaker === "maya" && t.text === text), text, cancelled: false, acknowledged: false }));
   if (!initial.childState) for (const t of s.turns) { if (t.kind === "partial") s.childState = "child_speaking"; if (t.kind === "child") s.childState = "listening"; }
@@ -366,18 +481,31 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
       flushDeferred(s);
       break;
     }
-    case "request": s.request = { id: e.requestId, source: e.source }; break;
+    case "request": delete s.pendingPart; delete s.streamDelivery; delete s.streamHold; s.request = { id: e.requestId, source: e.source, ...(e.filler ? { filler: e.filler } : {}), ...(e.continuation ? { continuation: true as const } : {}) }; break;
     case "response": {
       if (s.request?.id !== e.requestId) break;
+      delete s.streamHold; delete s.pendingPart; delete s.streamDelivery;
       const source = s.request.source;
-      if (e.sent?.length) s.sent = [...(s.sent ?? []), ...e.sent];
+      const filler = s.request.filler ? { filler: s.request.filler } : {};
+      const continuation = s.request.continuation ? { continuation: true as const } : {};
+      if (e.sent?.length) {
+        s.sent = [...(s.sent ?? []), ...e.sent];
+        // Final check 11 (2026-11-15): the single point where streamed sentences are accepted. Their help is in the session
+        // now, before this response or any later input (an error, a priority reading, a stop, the end) builds an outcome.
+        s.session = withEmittedHelp(s.session, s.sent);
+      }
       if (e.error) {
-        s.attempts.push({ source, proposal: null, refusal: null, error: e.error, ms: e.ms, ...(e.firstSayMs !== undefined ? { firstSayMs: e.firstSayMs } : {}) });
+        s.attempts.push({ source, proposal: null, refusal: null, error: e.error, ms: e.ms, ...(e.firstSayMs !== undefined ? { firstSayMs: e.firstSayMs } : {}), ...filler });
         s.request = null;
+        // Final check 6: a priority value the stream held before the model failed (a cut-off or malformed reply) still
+        // applies, through the same priority path as a reading: the guidance or the disclosure is due.
+        if (e.priority) receiveReading(s, e.priority, e.at);
       } else {
-        s.candidate = { requestId: e.requestId, proposal: e.proposal, ms: e.ms, source, ...(e.fenced ? { fenced: true as const } : {}), ...(e.firstSayMs !== undefined ? { firstSayMs: e.firstSayMs } : {}) };
+        s.candidate = { requestId: e.requestId, proposal: e.proposal, ms: e.ms, source, ...(e.fenced ? { fenced: true as const } : {}), ...(e.firstSayMs !== undefined ? { firstSayMs: e.firstSayMs } : {}), ...(e.gateDisagrees ? { gateDisagrees: true as const } : {}), ...filler, ...continuation };
         const reading = e.proposal && typeof e.proposal === "object" ? (e.proposal as { reading?: unknown }).reading : undefined;
-        receiveReading(s, reading, e.at);
+        // The tutor's gate (2026-11-15) is a priority reading too: a "safety" gate raises safety at once.
+        const gate = e.proposal && typeof e.proposal === "object" ? (e.proposal as { gate?: unknown }).gate : undefined;
+        receiveReading(s, reading, e.at, gate);
       }
       break;
     }
@@ -385,12 +513,66 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
       if (s.request?.id !== e.requestId || s.candidate?.requestId !== e.requestId) break;
       const candidate = s.candidate;
       s.request = null; s.candidate = null;
-      proposal(s, candidate.proposal, e.at, { source: candidate.source, proposal: candidate.proposal, refusal: null, ms: candidate.ms, ...(candidate.fenced ? { fenced: true as const } : {}), ...(candidate.firstSayMs !== undefined ? { firstSayMs: candidate.firstSayMs } : {}), ...(e.reviewMs !== undefined ? { reviewMs: e.reviewMs } : {}) }, e.reviews, e.mathReviews);
+      proposal(s, candidate.proposal, e.at, { source: candidate.source, proposal: candidate.proposal, refusal: null, ms: candidate.ms, ...(candidate.fenced ? { fenced: true as const } : {}), ...(candidate.firstSayMs !== undefined ? { firstSayMs: candidate.firstSayMs } : {}), ...(candidate.gateDisagrees ? { gateDisagrees: true as const } : {}), ...(e.reviewMs !== undefined ? { reviewMs: e.reviewMs } : {}), ...(candidate.filler ? { filler: candidate.filler } : {}) }, e.reviews, e.mathReviews, e.drawMode, candidate.continuation === true);
       break;
     }
-    case "fallback": proposal(s, e.proposal, e.at, { source: "fallback", proposal: e.proposal, refusal: null }); break;
+    case "fallback": proposal(s, e.proposal, e.at, { source: "fallback", proposal: e.proposal, refusal: null }, undefined, undefined, e.drawMode); break;
+    case "part_pending":
+      if (s.request?.id === e.requestId && !s.candidate && !s.session.outcome && !s.pendingPart) {
+        s.streamDelivery = true;
+        s.pendingPart = structuredClone(e);
+      }
+      break;
+    case "part_discarded":
+      if (s.pendingPart?.requestId === e.requestId) delete s.pendingPart;
+      break;
+    case "stream_interrupted": {
+      if (s.request?.id !== e.requestId || s.candidate) break;
+      // The model supplied checked streamed words but no complete proposal. Do not invent that proposal.
+      const attempts: TraceAttempt[] = [...s.attempts, { source: s.request.source, proposal: null, refusal: null }];
+      s.request = null; s.attempts = [];
+      delete s.pendingPart; delete s.streamDelivery; delete s.streamHold;
+      // Preserve only the confirmed prefix. No new teaching or inferred safety reading is added.
+      if (s.sent?.length) {
+        const boards: Effect[] = (s.streamBoard ?? []).map((b) => ({ kind: "board", batch: structuredClone(b.batch), sentence: b.tied.sentence }));
+        takeEffects(s, [...boards, { kind: "say", act: "guide", text: s.sent.join(" ") }], e.at, attempts);
+      }
+      delete s.sent; delete s.parts; delete s.streamBoard;
+      applyInput(s, { type: "technical", at: e.at, detail: e.detail });
+      break;
+    }
+    case "part_confirmed":
+    case "part": {
+      const part = e.kind === "part" ? e : s.pendingPart;
+      if (!part || part.requestId !== e.requestId) break;
+      if (e.kind === "part_confirmed") delete s.pendingPart;
+      if (s.request?.id !== e.requestId || s.candidate || s.session.outcome) break;
+      s.sent = [...(s.sent ?? []), part.sentence];
+      s.parts = (s.parts ?? 0) + 1;
+      // Final check 11: the single point where a streamed sentence is accepted; its help is in the session at once.
+      const helped = withEmittedHelp(s.session, s.sent);
+      for (const assistance of helped.assistance) if (!s.session.assistance.includes(assistance)) {
+        // A delivered prefix keeps its help when a priority cancels and replays the controller state.
+        s.session = controllerStep(s, { type: "help", at: e.at, assistance }).session;
+      }
+      if (part.board) {
+        const r = controllerStep(s, { type: "streamed_board", at: e.at, batch: part.board.batch, keys: part.board.keys });
+        if (r.refusal) { s.controls.pop(); break; }
+        const applied = applyBatch(s.scene, part.board.batch);
+        if (!applied.ok) { s.controls.pop(); break; }
+        s.session = r.session;
+        s.scene = applied.scene;
+        s.streamBoard = [...(s.streamBoard ?? []), structuredClone(part.board)];
+      }
+      break;
+    }
+    case "stream_hold":
+      if (s.request?.id === e.requestId && !s.candidate) s.streamHold = { requestId: e.requestId, ...(e.priority ? { priority: structuredClone(e.priority) } : {}) };
+      break;
     case "recover": if (!s.candidate) s.request = null; break;
     case "cancelled": s.output.cancelled = false; break;
+    // A control, so a cancellation's replay keeps it.
+    case "help": s.session = controllerStep(s, { type: "help", at: e.at, assistance: e.assistance }).session; break;
     case "delivered": {
       const last = s.turns.at(-1);
       const terminalTurn = last && ["hang_up", "technical"].includes(last.kind) ? s.turns.pop() : undefined;
@@ -404,7 +586,7 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
           const o = s.obligations.find((o) => o.id === id)!;
           if (o.status === "pending") { o.status = "served"; o.servedBy = index; }
         }
-        for (const b of p.batches) s.board.push({ at: turn.at, turn: index, transactionId: b.transactionId, commands: b.commands });
+        for (const b of p.batches) s.board.push({ at: turn.at, turn: index, transactionId: b.transactionId, commands: b.commands, ...(p.ties?.[b.transactionId] === undefined ? {} : { sentence: p.ties[b.transactionId] }), ...(b.after?.length ? { after: [...b.after] } : {}) });
       }
       if (terminalTurn) s.turns.push(terminalTurn);
       if (s.output.say.length) {
@@ -413,8 +595,10 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
         s.approved = [...s.output.say];
       }
       s.pending = []; s.output = emptyOutput(); terminal(s); flushDeferred(s);
+      if (s.lateFates?.length && !s.pending.length) { const late = s.lateFates; delete s.lateFates; applyFates(s, late); }
       break;
     }
+    case "fates": applyFates(s, e.fates.map((f) => ({ at: e.at, batchId: f.batchId, fate: f.fate }))); break;
   }
   commitControls(s);
   refreshOutput(s);

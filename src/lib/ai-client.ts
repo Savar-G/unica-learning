@@ -6,7 +6,8 @@
 // Behind a switch: on only when OPENROUTER_API_KEY is set. Off, there is no client, so no AI call can happen.
 // For the server only. No "server-only" import so that its tests can run, as src/lib/sign-in-link.ts.
 import { openRouterClient, type OpenRouterProvider } from "@/lib/ai-openrouter";
-import { recordAiUsage, type AiUsageTag } from "@/lib/ai-usage";
+import type { AiUsageTag } from "@/lib/ai-usage";
+import { keyAlias, type AiKeyAlias } from "@/lib/ai-usage-context";
 
 /** The model when AI_MODEL is not set: an OpenRouter model id with image input, structured output and reasoning. */
 export const AI_DEFAULT_MODEL = "anthropic/claude-sonnet-5.5";
@@ -79,14 +80,77 @@ export const NO_GOOGLE_PROVIDER: OpenRouterProvider = { ignore: ["google-vertex"
  * D-330); a call with no tag is stored as feature "other". Recording never fails or slows the call. `hooks.provider`: the
  * OpenRouter route; none gives NO_GOOGLE_PROVIDER (Maya sets a narrower route, src/lib/maya-ai-route.ts).
  */
-export function aiClient(env: Readonly<Record<string, string | undefined>> = process.env, model?: string, hooks?: { fetch?: typeof globalThis.fetch; onRequest?: () => Promise<void>; usage?: AiUsageTag; provider?: OpenRouterProvider }): AiClient | null {
+export function aiClient(env: Readonly<Record<string, string | undefined>> = process.env, model?: string, hooks?: { fetch?: typeof globalThis.fetch; onRequest?: () => Promise<void>; usage?: AiUsageTag; provider?: OpenRouterProvider; keyLabel?: AiKeyAlias }): AiClient | null {
   const apiKey = env.OPENROUTER_API_KEY?.trim();
   if (!apiKey) return null;
   const chosen = model?.trim() || env.AI_MODEL?.trim() || AI_DEFAULT_MODEL;
-  const { usage: tag, provider, ...rest } = hooks ?? {};
+  const { usage: tag, provider, keyLabel, ...rest } = hooks ?? {};
   return openRouterClient({
-    apiKey, model: chosen, ...rest, provider: provider ?? NO_GOOGLE_PROVIDER,
-    onUsage: (u) => recordAiUsage(tag, { provider: "openrouter", model: chosen, inputTokens: u.inputTokens, outputTokens: u.outputTokens, costUsd: u.costUsd, generationId: u.id }),
+    apiKey, model: chosen, ...rest, provider: provider ?? NO_GOOGLE_PROVIDER, feature: tag?.feature ?? "other",
+    usage: tag, keyLabel: keyLabel ?? keyAlias(apiKey, env),
+  });
+}
+
+/**
+ * A hedged request (2026-11-15, Maya's reviews): `request` runs once now and, when it has not settled after `delayMs`,
+ * once more beside it with the same input. The first answer of either copy is the result, and the other copy is aborted.
+ * The result is always one request's whole answer: a hedge never combines or chooses between answers. A copy that fails
+ * without an answer (a network or provider error) waits for the other copy when that one still runs; `isAnswer` names the
+ * errors that count as an answer (a malformed answer is final for the math review), and both copies failing gives the
+ * first error. Both copies end with `signal`: then the result rejects with "aborted".
+ */
+export function hedged<T>(delayMs: number, signal: AbortSignal, request: (signal: AbortSignal) => Promise<T>, isAnswer: (e: unknown) => boolean = () => false): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const copies: AbortController[] = [];
+    let settled = false;
+    let running = 0;
+    let firstError: { e: unknown } | null = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const end = () => {
+      settled = true;
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+      for (const c of copies) c.abort();
+    };
+    const onAbort = () => {
+      if (settled) return;
+      end();
+      reject(new Error("aborted"));
+    };
+    const start = () => {
+      const c = new AbortController();
+      copies.push(c);
+      running++;
+      let p: Promise<T>;
+      try { p = request(c.signal); } catch (e) { p = Promise.reject(e); }
+      p.then(
+        (v) => {
+          running--;
+          if (settled) return;
+          end();
+          resolve(v);
+        },
+        (e: unknown) => {
+          running--;
+          if (settled) return;
+          firstError ??= { e };
+          // A failure with no answer waits for the other copy while it runs. A first copy that fails before the delay
+          // ends the request at once: the hedge is no retry.
+          if (!isAnswer(e) && running > 0) return;
+          end();
+          reject(isAnswer(e) ? e : firstError.e);
+        },
+      );
+    };
+    if (signal.aborted) { reject(new Error("aborted")); return; }
+    signal.addEventListener("abort", onAbort, { once: true });
+    start();
+    if (Number.isFinite(delayMs) && !settled) {
+      timer = setTimeout(() => {
+        timer = undefined;
+        if (!settled) start();
+      }, delayMs);
+    }
   });
 }
 

@@ -265,6 +265,12 @@ export const MODEL_OUTPUT_VERSION = 3;
  * checks `say` against them (say-check.ts); the model picks no line.
  */
 export interface ModelOutput {
+  /**
+   * The tutor's gate (2026-11-15, after final check 5): the first key of a tutor reply, the model's quick read of the
+   * child's turn before its words: "none", or a question about Maya ("identity"), harm, danger or a harmful request
+   * ("safety"), or a stop. The stream sends no word before it is complete; a flag holds the whole turn.
+   */
+  gate?: TutorGate;
   /** Round 4, P2-7: the model's read of the child's turn: math, help, offtopic, stop, safety or other. */
   kind?: "math" | "help" | "offtopic" | "stop" | "safety" | "other";
   say: string;
@@ -272,8 +278,15 @@ export interface ModelOutput {
   step?: string;
   level?: HintLevel;
   reading?: Reading;
-  draw?: { offer: string; place?: string }[];
+  /** Before B2's derived drawings: board offers by id; with `sentence`, a hint only (board-ties.ts). */
+  draw?: { offer: string; place?: string; sentence?: number }[];
+  /** B2: the sentences of "say" (1 for the first) whose board actions code must not draw, or "all". */
+  noDraw?: number[] | "all";
 }
+
+/** The tutor's gate values (2026-11-15): "none" lets the stream start; any other holds the whole turn. */
+export const TUTOR_GATES = ["none", "identity", "safety", "stop"] as const;
+export type TutorGate = (typeof TUTOR_GATES)[number];
 
 const answerValueV3 = {
   anyOf: [
@@ -368,10 +381,12 @@ export function readModelOutput(raw: unknown): ModelOutput | null {
   if (!isModelOutput(raw)) return null;
   const out: Record<string, unknown> = { say: raw.say, act: raw.act };
   if (typeof raw.kind === "string") out.kind = raw.kind;
+  if (typeof raw.gate === "string" && raw.gate !== "none" && (TUTOR_GATES as readonly string[]).includes(raw.gate)) out.gate = raw.gate;
   if (typeof raw.step === "string" && raw.step !== "") out.step = raw.step;
   if (raw.level !== undefined && raw.level !== null) out.level = raw.level;
   const reading = withoutDefaults(withoutNulls(raw.reading));
   if (isRecord(reading) && Object.keys(reading).length > 0) out.reading = reading;
+  if ((Array.isArray(raw.noDraw) && raw.noDraw.length > 0) || raw.noDraw === "all") out.noDraw = raw.noDraw;
   if (Array.isArray(raw.draw) && raw.draw.length > 0) {
     out.draw = raw.draw.map((d) => (isRecord(d) ? Object.fromEntries(Object.entries(d).filter(([k, v]) => !(k === "place" && (v === "" || v === null)))) : d));
   }

@@ -6,8 +6,10 @@
 // Decimals (decimal-add, decimal-subtract) do not fit yet: the core's claim reader (tutor-math.ts) reads "2.5" as 2
 // and 5, so it refuses every true decimal equation, and the board's columns do not draw a decimal point.
 import type { OperationPackage, WorkedStep } from "@/lib/question-package";
+import { standardNumber } from "../say-check";
+import { exactValue, guardedProblems, type KindRead } from "../tutor-math";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, type TutorStepFact } from "../tutor-kind";
-import { columnCoveredClaims } from "./column-read";
+import { clauseWith, countedInText, finalQuestion, isGroup, THING, WHO, WORD } from "./asks";
 
 type ColumnStep = Extract<WorkedStep, { kind: "add-column" | "subtract-column" }>;
 
@@ -46,16 +48,83 @@ const SUBTRACT_WORDS = /\b(?:gives?|gave|given|away|sells?|sold|spends?|spent|us
  * away, what is left, or "how many more"), must not say the other one, and must print no third number.
  */
 function wordsAgree(text: string, kind: "add" | "subtract", a: number, b: number): boolean {
-  const t = text.replace(/(\d),(?=\d{3}\b)/g, "$1");
+  const t = text.replace(/(\d),(?=\d{3}\b)/g, "$1").trim();
   const signs = [...t.matchAll(/\d\s*([+\-−–×x÷*/=])\s*[\d?]/g)].map((m) => m[1]).filter((x) => x !== "=");
-  if (signs.length > 0) return signs.length === 1 && (kind === "add" ? signs[0] === "+" : /[-−–]/.test(signs[0]));
+  if (signs.length > 0) return printedEquation(t, kind, a, b);
   const words = t.replace(/\d+/g, " ");
   if (!/[a-z]{3,}/i.test(words)) return false;
   if (!printedNumbers(t).every((n) => n === a || n === b)) return false;
+  // Final check 2, N05: a story asks one question and ends with it ("... How many are left? Then add 28." is refused),
+  // and a subtraction story prints the number it takes from first.
+  if (!t.endsWith("?") || t.indexOf("?") !== t.length - 1) return false;
+  if (kind === "subtract" && !(firstAt(t, a) >= 0 && firstAt(t, a) < firstAt(t, b))) return false;
   // "How many more points does Mia score?" compares: a subtraction. Its "more" is not a gain.
   const gains = ADD_WORDS.test(words.replace(/\bhow (?:many|much) more\b|\bmore than\b/gi, " "));
   const takes = SUBTRACT_WORDS.test(words);
-  return kind === "add" ? gains && !takes : takes && !gains;
+  if (!(kind === "add" ? gains && !takes : takes && !gains)) return false;
+  return asksResult(t, kind, a, b);
+}
+
+/** The closed question forms of an addition story: a total, or what someone has now. */
+const ADD_ASKS = [
+  new RegExp(String.raw`^how many ${THING} (?:is that |are there |does ${WHO} have |do ${WHO} have )?(?:in all|altogether|in total|together)$`),
+  new RegExp(String.raw`^how many ${THING} (?:does|do) ${WHO} have now$`),
+  // "they" are both of the story's people: a total.
+  new RegExp(String.raw`^how many ${THING} did (?:they|both of them) ${WORD}(?: in all| altogether| together)?$`),
+];
+/** The closed question forms of a subtraction story: what is left, or what someone has now. */
+const LEFT_ASKS = [
+  new RegExp(String.raw`^how many ${THING} (?:are|is) left$`),
+  new RegExp(String.raw`^how many ${THING} (?:does|do) ${WHO} have (?:left|now)$`),
+];
+/** A subtraction story that compares: "How many more points does Ava score?". */
+const COMPARE_ASK = new RegExp(String.raw`^how many (?:more|fewer) ${THING} (?:does|do|did) ${WHO} ${WORD}$`);
+/** Words of a clause that say something was taken or given. */
+const TAKEN = /\b(?:gives?|gave|given|away|sells?|sold|spends?|spent|uses?|used|eats?|ate|eaten|loses?|lost|removes?|removed|breaks?|broke|broken|takes?|took|taken)\b/;
+/** Words of a clause that say a later or earlier moment, or the result itself. */
+const MOMENT = /\b(?:left|leftover|remains?|remaining|now|at first|before|in all|altogether|total|together)\b/;
+
+/**
+ * Pre-launch check 2: the story's final question asks for the stored operation's result, in a closed form, about the
+ * thing its first number counts. A subtraction's first number is what someone has (no take word and no "now" or "left"
+ * in its clause) and its second number is what is taken; a comparison asks how many more the first number's person has;
+ * an addition's first number is a start and its second is what is gained. "How many counters did she have at first?"
+ * and "How many boxes are left?" (a group, not the things it holds) keep the controller.
+ */
+function asksResult(t: string, kind: "add" | "subtract", a: number, b: number): boolean {
+  const q = finalQuestion(t);
+  if (q === null) return false;
+  const first = clauseWith(t, a);
+  const second = clauseWith(t, b);
+  if (first === null || second === null || first === second) return false;
+  const thingOf = (m: RegExpExecArray | null) => (m && countedInText(t, m[1]) && !isGroup(m[1]) ? m : null);
+  if (kind === "add") {
+    const m = thingOf(ADD_ASKS.map((re) => re.exec(q)).find(Boolean) ?? null);
+    return !!m && !MOMENT.test(first) && !TAKEN.test(first) && ADD_WORDS.test(second) && !TAKEN.test(second);
+  }
+  const left = thingOf(LEFT_ASKS.map((re) => re.exec(q)).find(Boolean) ?? null);
+  if (left) return !MOMENT.test(first) && !TAKEN.test(first) && TAKEN.test(second);
+  const more = thingOf(COMPARE_ASK.exec(q));
+  if (!more) return false;
+  // The person asked about is the person of the first number; neither clause takes anything.
+  const who = more[2].split(" ").at(-1)!;
+  return new RegExp(String.raw`\b${who}\b`).test(first) && !new RegExp(String.raw`\b${who}\b`).test(second) && !TAKEN.test(first) && !TAKEN.test(second) && !MOMENT.test(first);
+}
+
+/** Where the number `n` is first printed in `t` (commas taken out), as a whole number; -1 when it is not. */
+function firstAt(t: string, n: number): number {
+  const m = new RegExp(`(?<![\\d.])${n}(?![\\d.])`).exec(t);
+  return m ? m.index : -1;
+}
+
+/**
+ * Final check 2, N05: a printed equation is the whole question, and it is the stored one in its order: "52 − 28 = ?"
+ * for a stored 52 − 28 ("What is 52 − 28?" too). "28 − 52 = ?" and "52 − 28 = ? Then add 28." keep the controller.
+ */
+function printedEquation(t: string, kind: "add" | "subtract", a: number, b: number): boolean {
+  const sign = kind === "add" ? "\\+" : "[-−–]";
+  const eq = new RegExp(`^(?:${a}\\s*${sign}\\s*${b}\\s*=\\s*\\?|what is ${a}\\s*${sign}\\s*${b}\\s*\\?)\\s*\\.?$`, "i");
+  return eq.test(t);
 }
 
 /**
@@ -68,6 +137,7 @@ function fits(pkg: OperationPackage): boolean {
   if (op.kind !== "add" && op.kind !== "subtract") return false;
   const [a, b] = op.operands;
   if (![a, b].every((n) => Number.isInteger(n) && n >= 0 && n <= MAX_OPERAND)) return false;
+  if (op.kind === "subtract" && a < b) return false;
   if (pkg.answer.value.type !== "number" || pkg.answer.value.value !== (op.kind === "add" ? a + b : a - b)) return false;
   const work = pkg.steps.filter((s) => s.kind !== "result");
   const kind = op.kind === "add" ? "add-column" : "subtract-column";
@@ -378,11 +448,8 @@ function wordNumber(word: string): number | null {
   const w = word.toLowerCase();
   if (/^\d+$/.test(w)) return Number(w);
   if (w === "a" || w === "an") return 1;
-  if (SMALL.includes(w)) return SMALL.indexOf(w);
-  const [t, u] = w.split(/[- ]/);
-  if (!TENS.includes(t)) return null;
-  const unit = u === undefined ? 0 : SMALL.indexOf(u);
-  return unit < 1 && u !== undefined ? null : (TENS.indexOf(t) + 2) * 10 + unit;
+  // Final check 10 (2026-11-15): number words go through the one standard reader.
+  return standardNumber(w);
 }
 
 const unitWorth = (unit: string) => {
@@ -390,7 +457,7 @@ const unitWorth = (unit: string) => {
   return u === "hundred thousand" ? 100000 : u === "ten thousand" ? 10000 : u === "thousand" ? 1000 : u === "hundred" ? 100 : u === "ten" ? 10 : 1;
 };
 
-type ClaimItem = { kind: "term"; value: number; place: number | null; unit: boolean } | { kind: "op"; sign: 1 | -1 } | { kind: "rel"; negated: boolean; now: boolean } | { kind: "and" } | { kind: "other" };
+type ClaimItem = { kind: "term"; value: number; place: number | null; unit: boolean } | { kind: "op"; sign: 1 | -1 } | { kind: "rel"; negated: boolean; now: boolean } | { kind: "and" } | { kind: "other"; word?: string };
 
 /**
  * The false claims of a sentence that names a thousands, ten thousands or hundred thousands place, read again here:
@@ -400,7 +467,8 @@ type ClaimItem = { kind: "term"; value: number; place: number | null; unit: bool
  * the carried 1, or both.
  */
 function claimProblems(pkg: OperationPackage, sentence: string): string[] {
-  return [...tradeProblems(sentence), ...relationProblems(pkg, sentence)];
+  // Final check 12: every refusal passes the one full-read guard (tutor-math.ts guardedProblems).
+  return guardedProblems([...tradeProblems(sentence), ...relationProblems(pkg, sentence)]);
 }
 
 /** A sentence that trades or swaps: each "Q for Q" in it is a trade, and its two quantities must be worth the same. */
@@ -416,25 +484,29 @@ const TRADE_PAIR = new RegExp(String.raw`(?:\b(?:${TRADE_VERB}|then|and)|,)\s+(?
  * The false trades of a sentence ("Trade 1 thousand for 100 hundreds", "trade 1 ten for 100 ones"): in a sentence with
  * a trade word, each pair of place quantities joined by "for", "into" or "as" must be worth the same. Every place.
  */
-function tradeProblems(sentence: string): string[] {
+function tradeProblems(sentence: string): KindRead[] {
   if (!TRADE_WORD.test(sentence)) return [];
   const text = sentence.replace(/(\d),(?=\d{3}\b)/g, "$1");
-  const problems: string[] = [];
+  const problems: KindRead[] = [];
   for (const m of text.matchAll(TRADE_PAIR)) {
     const [x, y] = [wordNumber(m[1]), wordNumber(m[3])];
     if (x === null || y === null) continue;
-    const [give, get] = [x * unitWorth(m[2]), y * unitWorth(m[4])];
-    if (give !== get) problems.push(`it trades ${give} for ${get}, which are not the same`);
+    const [give, get] = [exactValue([x, unitWorth(m[2])], ["*"]), exactValue([y, unitWorth(m[4])], ["*"])];
+    if (give === null || get === null) continue;
+    if (give !== get) problems.push({ problem: `it trades ${give} for ${get}, which are not the same`, text, at: m.index!, end: m.index! + m[0].length });
   }
   return problems;
 }
 
 /** The relations of a sentence that names a thousands or larger place (the kind's own second read). */
-function relationProblems(pkg: OperationPackage, sentence: string): string[] {
+function relationProblems(pkg: OperationPackage, sentence: string): KindRead[] {
   if (!BIG.test(sentence)) return [];
   const text = sentence.replace(/[−–]/g, "-").replace(/(\d),(?=\d{3}\b)/g, "$1");
   const items: ClaimItem[] = [];
+  /** Where each item is in `text`, for the full-read guard. */
+  const spans: [number, number][] = [];
   for (const m of text.matchAll(CLAIM_TOKEN)) {
+    const count = items.length;
     if (m[1] && /^(?:ten|hundred)$/i.test(m[1]) && /\bthe\s+$/i.test(text.slice(0, m.index))) {
       // "the ten thousands", "the hundred thousands": the name of a place, not a count of it.
       items.push({ kind: "other" });
@@ -444,13 +516,17 @@ function relationProblems(pkg: OperationPackage, sentence: string): string[] {
       // "and" between two place quantities joins them into one ("9 thousands and 10 hundreds").
       const prev = items.at(-1);
       const before = items.at(-2);
-      if (n !== null && prev?.kind === "and" && before?.kind === "term" && before.unit) {
+      // Final check 12: every product and sum through the one shared evaluator; a value it cannot hold is unread.
+      const worth = n === null ? null : exactValue([n, place], ["*"]);
+      if (worth !== null && prev?.kind === "and" && before?.kind === "term" && before.unit) {
         items.pop();
-        before.value += n * place;
+        const joined = exactValue([before.value, worth], ["+"]);
+        if (joined === null) { items.pop(); items.push({ kind: "other" }); continue; }
+        before.value = joined;
         before.place = null;
         continue;
       }
-      items.push(n === null ? { kind: "other" } : { kind: "term", value: n * place, place, unit: true });
+      items.push(worth === null ? { kind: "other" } : { kind: "term", value: worth, place, unit: true });
     } else if (m[3]) {
       const n = wordNumber(m[3]);
       items.push(n === null ? { kind: "other" } : { kind: "term", value: n, place: null, unit: false });
@@ -459,24 +535,32 @@ function relationProblems(pkg: OperationPackage, sentence: string): string[] {
       const r = m[5].toLowerCase();
       items.push({ kind: "rel", negated: /not|n't/.test(r), now: /\bnow\b|becom|became|turn/.test(r) });
     } else if (m[6]) items.push({ kind: "and" });
-    else if (!(m[7]?.toLowerCase() === "the")) items.push({ kind: "other" });
+    else if (!(m[7]?.toLowerCase() === "the")) items.push({ kind: "other", word: m[7]?.toLowerCase() });
+    // Keep the spans in step with the items: a pushed item gets its span; a joined quantity grows the span it joined.
+    const span: [number, number] = [m.index!, m.index! + m[0].length];
+    if (items.length > count) spans.push(span);
+    else if (items.length < count) { spans.length = items.length; if (items.length > 0) spans[items.length - 1] = [spans[items.length - 1][0], span[1]]; }
   }
   type Side = { value: number; place: number | null; unit: boolean; next: number };
   const side = (at: number): Side | null => {
     const first = items[at];
     if (first?.kind !== "term") return null;
-    let value = first.value;
+    const values = [first.value];
+    const ops: ("+" | "-")[] = [];
     let place = first.place;
     let unit = first.unit;
     let next = at + 1;
     while (items[next]?.kind === "op" && items[next + 1]?.kind === "term") {
       const t = items[next + 1] as Extract<ClaimItem, { kind: "term" }>;
-      value += (items[next] as Extract<ClaimItem, { kind: "op" }>).sign * t.value;
+      ops.push((items[next] as Extract<ClaimItem, { kind: "op" }>).sign > 0 ? "+" : "-");
+      values.push(t.value);
       unit ||= t.unit;
       place = null;
       next += 2;
     }
-    return { value, place, unit, next };
+    // Final check 12: the one shared evaluator; a side it cannot hold exactly is not read.
+    const value = exactValue(values, ops);
+    return value === null ? null : { value, place, unit, next };
   };
   const subtract = pkg.operation.kind === "subtract";
   const trade = (x: Side, y: Side) => {
@@ -486,7 +570,7 @@ function relationProblems(pkg: OperationPackage, sentence: string): string[] {
     const change = (after - x.value) / x.place;
     return subtract ? [10, -1, 9].includes(change) : [-10, 1, -9].includes(change);
   };
-  const problems: string[] = [];
+  const problems: KindRead[] = [];
   let i = 0;
   while (i < items.length) {
     const left = side(i);
@@ -494,11 +578,16 @@ function relationProblems(pkg: OperationPackage, sentence: string): string[] {
     const rel = items[left.next] as Extract<ClaimItem, { kind: "rel" }>;
     const right = side(left.next + 1);
     if (!right) { i = left.next + 1; continue; }
+    // Final check 12: a part of a longer number, an enclosing negation or scope and an unread continuation ("is seven
+    // thousand nine hundred ninety-nine", "It is not true that ...", "divided by 2") are left to the one full-read
+    // guard (claimProblems): such a claim is unread, never refused here.
+    const at = spans[i][0];
+    const end = spans[right.next - 1][1];
     // Only a claim that holds a place quantity: two plain numbers are the core's to read.
     if (left.unit || right.unit) {
       const equal = left.value === right.value || (rel.now && trade(left, right));
-      if (!rel.negated && !equal) problems.push(`it says ${left.value} and ${right.value} are the same`);
-      if (rel.negated && left.value === right.value) problems.push(`it says ${left.value} and ${right.value} are not the same`);
+      if (!rel.negated && !equal) problems.push({ problem: `it says ${left.value} and ${right.value} are the same`, text, at, end });
+      if (rel.negated && left.value === right.value) problems.push({ problem: `it says ${left.value} and ${right.value} are not the same`, text, at, end });
     }
     i = right.next;
   }
@@ -516,6 +605,38 @@ function notes(pkg: OperationPackage): string[] {
   return out;
 }
 
+/**
+ * B2: what each drawing needs on the board first. Subtraction: a borrow into a place needs the borrow into the place
+ * it comes from when that place had 0 (a trade across zeros), and the digit on its right unless it is part of that
+ * column's trade across zeros; a digit needs the borrow into its place, the borrow its
+ * place gave, and the digit on its right. Addition: a carry needs its column's digit; a digit needs the carry into its
+ * place and the digit on its right.
+ */
+function boardNeeds(pkg: OperationPackage): Record<string, string[]> {
+  const steps = tutorSteps(pkg);
+  const needs: Record<string, string[]> = {};
+  const at = (place: string | null) => (place ? steps.find((x) => x.place === place) : undefined);
+  const digit = (st: TutorStep | undefined) => (st && !st.blank ? [`digit:${st.place}`] : []);
+  for (const st of steps) {
+    const right = at(placeRight(st.place));
+    if (st.op === "-") {
+      const from = at(placeLeft(st.place));
+      // A 0 place traded through on the way to the column on its right (a trade across zeros) is part of that column's
+      // trade; any other borrow is its own column's work, after the digit on its right.
+      const chained = st.printedTop === 0 && !!right?.trade;
+      if (st.trade) needs[`trade:${st.place}`] = [...(from && from.trade && from.printedTop === 0 ? [`trade:${from.place}`] : []), ...(chained ? [] : digit(right))];
+      if (!st.blank) needs[`digit:${st.place}`] = [...(st.trade ? [`trade:${st.place}`] : []), ...(st.lent && right ? [`trade:${right.place}`] : []), ...digit(right)];
+    } else {
+      if (st.trade) needs[`trade:${st.place}`] = [`digit:${st.place}`];
+      if (!st.blank) needs[`digit:${st.place}`] = [...(right?.trade ? [`trade:${right.place}`] : []), ...digit(right)];
+    }
+    // A step's equation note needs exactly what that step's digit needs (its trades and the earlier places).
+    const text = st.operands.length > 1 ? noteFromEquation(stepEquation(st)) : null;
+    if (text) needs[`note:${text}`] = [...(needs[`digit:${st.place}`] ?? [...(st.op === "-" && st.trade ? [`trade:${st.place}`] : []), ...digit(right)])];
+  }
+  return needs;
+}
+
 export const columnKind: TutorKind = {
   id: "column",
   fits,
@@ -524,6 +645,7 @@ export const columnKind: TutorKind = {
   workValues,
   streamScope,
   stepQuestion,
+  boardNeeds,
   // A question with no trade (90 - 40) offers no trade drawing.
   drawings: (pkg) => DRAWINGS.filter((d) => d.id !== "trade" || tutorSteps(pkg).some((st) => st.trade)),
   drawingExamples: (pkg) => {
@@ -539,8 +661,6 @@ export const columnKind: TutorKind = {
   // The core reads the equations, the place quantities and the trades (tutor-math.ts); this kind reads the thousands
   // and larger places again with its own trade rule (a place may get 10, give 1, or both).
   claimProblems,
-  // Maya's words about the column work, read whole against the column steps (column-read.ts).
-  coveredClaims: columnCoveredClaims,
   op: (pkg) => (pkg.operation.kind === "add" ? "add" : "subtract"),
   notes,
 };

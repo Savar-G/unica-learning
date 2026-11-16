@@ -134,6 +134,8 @@ describe("the free month confirmation", () => {
 
 Thanks for joining Unica Learning. Alex's first workbook has arrived, so your free first month has started. Nothing has been charged.
 
+Watch the getting-started video: https://unicalearning.com/getting-started
+
 As a parent, here are your responsibilities:
 
 1. Follow the schedule, 5 days a week. The workbook has 10 days, so it takes 2 weeks. Do one day on 5 days of each week, for example Monday to Friday with the weekend off. You can choose any 5 days, but do the days in order, Day 1 to Day 10. See which pages Alex does each day: https://unicalearning.com/account/schedule. The same schedule is on page 2 of the workbook.
@@ -161,7 +163,7 @@ To cancel, sign in and open https://unicalearning.com/account/plan, then press "
     expect(message.subject).toBe("Welcome to Unica Learning: how Alex's free month works");
     expect(message.text.split("\n\nThank you,")[0]).toBe(expected);
     const htmlText = message.html.replace(/<br>/g, "\n").replace(/<[^>]*>/g, "").replace(/&#39;/g, "'").replace(/&quot;/g, '"');
-    for (const paragraph of expected.split("\n\n")) expect(htmlText).toContain(paragraph);
+    for (const paragraph of expected.split("\n\n")) expect(htmlText).toContain(paragraph.replace("Watch the getting-started video: https://unicalearning.com/getting-started", "Watch the getting-started video"));
     expect(message.text).toContain("Thank you,\nThe Unica Learning team");
     expect(message.text).toContain("16557 87A Ave");
   });
@@ -227,20 +229,18 @@ describe("the plan start email's reminder words (PR #803 review)", () => {
 describe("onboarding instructions (#970)", () => {
   const input = { parentName: "Sam", childName: "Alex", grade: 3, price: 59.99, firstCharge: "December 15, 2026", marking: true, explain: true };
   const dispatch = () => workbookEmail({ ...parent, kind: "dispatch", delivery: { method: "hand" } });
-  it.each([undefined, "", "  ", "javascript:alert(1)", "http://video.invalid", "https://user:pass@video.invalid", "not a URL"])("omits an unconfigured or unsafe video %s", (url) => {
+  it.each([undefined, "", "  ", "javascript:alert(1)", "http://video.invalid", "https://user:pass@video.invalid", "not a URL"])("omits an unconfigured or unsafe dispatch video %s", (url) => {
     vi.stubEnv("ONBOARDING_WALKTHROUGH_URL", url);
-    for (const email of [planStartEmail(input), dispatch()]) {
-      expect(email.text).not.toContain("3-minute walkthrough");
-      expect(email.html).not.toContain("3-minute walkthrough");
-    }
+    const email = dispatch();
+    expect(email.text).not.toContain("3-minute walkthrough");
+    expect(email.html).not.toContain("3-minute walkthrough");
   });
-  it("links the configured video near the top in text and HTML, but not in welcome or ready notices", () => {
+  it("links the configured dispatch video near the top in text and HTML, but not in welcome or ready notices", () => {
     vi.stubEnv("ONBOARDING_WALKTHROUGH_URL", "https://video.invalid/watch?a=1&b=2");
-    for (const email of [planStartEmail(input), dispatch()]) {
-      expect(email.text).toContain("Watch the 3-minute walkthrough: https://video.invalid/watch?a=1&b=2");
-      expect(email.html).toContain('href="https://video.invalid/watch?a=1&amp;b=2"');
-      expect(email.text.indexOf("walkthrough")).toBeLessThan(email.text.indexOf("scan"));
-    }
+    const email = dispatch();
+    expect(email.text).toContain("Watch the 3-minute walkthrough: https://video.invalid/watch?a=1&b=2");
+    expect(email.html).toContain('href="https://video.invalid/watch?a=1&amp;b=2"');
+    expect(email.text.indexOf("walkthrough")).toBeLessThan(email.text.indexOf("scan"));
     for (const kind of ["welcome", "ready"] as const) expect(workbookEmail({ ...parent, kind, delivery: null }).text).not.toContain("walkthrough");
   });
   it("includes the next-book explanation, shared habits, help call and referral disclosures", async () => {

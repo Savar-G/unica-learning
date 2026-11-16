@@ -407,10 +407,12 @@ describe("a family the switch opens to", () => {
       onTheWay: null,
       scanPrompt: null,
       skills: {
-        mastered: [{ code: "2.4", name: "Multiplying by 10 and 100", masteredOn: "Thursday" }, { code: "2.1", name: "Even and odd", masteredOn: "Oct 20" }],
-        learning: [{ code: "2.5", name: "Rounding to the nearest hundred", masteredOn: null }],
-        needsHelp: [{ code: "2.3", name: "Value of each digit", masteredOn: null }, { code: "2.7", name: "Subtracting across a zero", masteredOn: null }],
+        mastered: [{ code: "2.4", name: "Multiplying by 10 and 100", masteredOn: "Thursday", sentence: "Mastered Thursday" }, { code: "2.1", name: "Even and odd", masteredOn: "Oct 20", sentence: "Mastered Oct 20" }],
+        learning: [{ code: "2.5", name: "Rounding to the nearest hundred", masteredOn: null, sentence: "Getting steadier: right the last 3 times" }],
+        needsHelp: [{ code: "2.3", name: "Value of each digit", masteredOn: null, sentence: "Forgets to carry when adding. Back in the next workbook." }, { code: "2.7", name: "Subtracting across a zero", masteredOn: null, sentence: null }],
       },
+      weekLine: null,
+      highlights: [],
       summaryMonth: null,
     });
     const render = async (value: Home | null, t?: readonly (typeof tabs)[number][]) => {
@@ -437,6 +439,9 @@ describe("a family the switch opens to", () => {
       expect(out).toMatch(/<b>2<\/b><span>Needs help<\/span>/);
       expect(out).toContain("Needs help with");
       expect(out).toContain("Subtracting across a zero");
+      // One short line under a skill that has a sentence (#989), and nothing under one that has none: no filler, no icon beside it.
+      expect(out).toContain("<small>Forgets to carry when adding. Back in the next workbook.</small>");
+      expect(out).toContain("Subtracting across a zero</b></span></li>");
       expect(out).not.toMatch(/\b(?:she|her|hers|he|his|him)\b/i);
       expect(out).not.toMatch(/streak|wrong|other children|percent right/i);
     });
@@ -446,11 +451,44 @@ describe("a family the switch opens to", () => {
       for (const gone of ["Level by area", "Working at", "po-bar", "po-maya", "Notes from Maya", "po-action", "Tell us how", "po-summary", "Monthly summary", "We can help", "pd-test", "On the desk"]) expect(out).not.toContain(gone);
     });
 
+    it("links the Today row to the Workbooks page at today's day (#1031), and leaves no link once the book's last day has passed", async () => {
+      const out = await render(full());
+      expect(out).toContain('<a class="po-today" href="/account/workbooks/c1?day=4#day-4">');
+      expect(out.match(/Hundreds, tens and ones[^]*6 of 8 scanned[^]*<\/a>/)).not.toBeNull();
+      expect(await render({ ...full(), workbook: { ...full().workbook!, day: 10, today: null } })).not.toContain("/account/workbooks/c1?day=");
+    });
+
     it("rings today when all of today's pages are scanned, as the circle says", async () => {
       const value = full();
       const out = await render({ ...value, week: value.week!.map((d) => (d.label === "Thu" ? { ...d, state: "today_done" as const } : d)) });
       expect(out).toContain('class="po-day is-today_done"');
       expect(out).toContain("Thu: today, done");
+    });
+
+    it("the week line is plain text with a bold lead under the workbook card, and Highlights is one card at the bottom, one blue dot a sentence (#990)", async () => {
+      const out = await render({ ...full(), weekLine: { lead: "On track this week.", text: "3 days done, and 3 new skills mastered since Monday." }, highlights: ["Asha mastered even and odd this week.", "Asha has done 3 days in a row."] });
+      expect(out).toContain('<p class="po-line"><b>On track this week.</b> 3 days done, and 3 new skills mastered since Monday.</p>');
+      expect(out.indexOf("po-book")).toBeLessThan(out.indexOf("po-line"));
+      expect(out).toContain('<div class="pa-sh"><h2>Highlights</h2></div>');
+      expect(out.match(/class="po-hl-dot"/g)).toHaveLength(2);
+      expect(out).toContain("Asha mastered even and odd this week.");
+      // After the skills list, so it is the last part of the Home.
+      expect(out.indexOf("po-skill-list")).toBeLessThan(out.indexOf("Highlights"));
+      // No icon, pill or extra section beside them.
+      const hl = out.slice(out.indexOf('class="pa-card po-hl"'));
+      expect(hl).not.toMatch(/<svg|pa-tag|pill|badge/);
+    });
+
+    it("with nothing to say there is no line and no Highlights section", async () => {
+      const out = await render(full());
+      expect(out).not.toContain("po-line");
+      expect(out).not.toContain("Highlights");
+    });
+
+    it("Highlights still show when the skills cannot be read", async () => {
+      const out = await render({ ...full(), skills: null, highlights: ["Asha has done 3 days in a row."] });
+      expect(out).toContain("Highlights");
+      expect(out).not.toContain("Since Asha started");
     });
 
     it("before the first scan: no ring, and one prompt to scan the first pages, with the Scan button", async () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import type { OperationPackage } from "@/lib/question-package";
 import { checkTutorSay, plainTeaching, childFacts, isTutorQuestion, numberMeaning, stepFacts, tutorDrawings, tutorFallbackText } from "./tutor";
+import { answerReadWhole } from "./session";
 
 // The tutor core's pure parts (D-345): which questions it teaches, the facts in its brief, the whole-message check,
 // code's honest line and the board drawings.
@@ -46,7 +47,9 @@ describe("the brief's facts", () => {
     expect(numberMeaning(ADD, 56)).toContain("forgot the carried 1");
   });
   it("judges the child's equations", () => {
-    expect(childFacts(SUB, "Is 2 minus 8, 6?").join(" ")).toContain("The child said 6:");
+    // Final check 12: a number's fact comes from the session's whole-phrase reader.
+    expect(childFacts(SUB, "Is 2 minus 8, 6?", (v) => answerReadWhole(SUB, "Is 2 minus 8, 6?", v, true)).join(" ")).toContain("The child said 6:");
+    expect(childFacts(SUB, "Is 2 minus 8, 6?").join(" ")).toContain("Code did not read all of the child's words in full");
     expect(childFacts(SUB, "12 minus 8 is 5")).toContain("The child said 12 − 8 = 5: that is false.");
     expect(childFacts(SUB, "12 minus 8 is 4")).toContain("The child said 12 − 8 = 4: that is true.");
   });
@@ -93,8 +96,10 @@ describe("checkTutorSay: the whole-message check", () => {
   it("sends a plain math message without the talk review, and any other words to it", () => {
     expect(checkTutorSay("What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: false, review: [], math: [] });
     // Sixth check of #1006: a lead-in that can answer the child ("Good question", "Yes") is reviewed.
-    expect(checkTutorSay("Good question. What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: true, review: ["Good question."], math: [] });
-    expect(checkTutorSay("You did well. What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: true, review: ["You did well."], math: [] });
+    // The exact-match rule (2026-11-15): a sentence that is no exact match goes to the math review too.
+    // Final check 6: after a sentence that needs the math review, every later sentence of the message needs it too.
+    expect(checkTutorSay("Good question. What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: true, review: ["Good question."], math: ["Good question.", "What is 12 minus 8?"] });
+    expect(checkTutorSay("You did well. What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: true, review: ["You did well."], math: ["You did well.", "What is 12 minus 8?"] });
     expect(checkTutorSay("I'm an AI, so I don't have a dog. What is 12 minus 8?", none)).toMatchObject({ review: [] });
     expect(checkTutorSay("Dogs are fun. What is 12 minus 8?", none)).toMatchObject({ review: ["Dogs are fun."] });
     expect(checkTutorSay("I'm an AI, so I don't have a dog. What is 12 minus 8?", none)).toMatchObject({ review: [] });
@@ -111,7 +116,8 @@ describe("code's honest line", () => {
     expect(checkTutorSay(text, { stance: "none" }).ok).toBe(true);
     expect(tutorFallbackText(SUB, ["ones"], false)).toBe("Let me say that another way. What do you get for 4 minus 2?");
     expect(tutorFallbackText(SUB, ["ones", "tens"], false)).toBe("Let me say that another way. So what is 52 minus 28?");
-    expect(tutorFallbackText(SUB, [], true)).toBe("Let me say that another way. How did you get your answer?");
+    // Savar's call 2 (2026-11-15): no explain-back after the right final answer.
+    expect(tutorFallbackText(SUB, [], true)).toBe("You solved this one. Do you want to try another one?");
   });
 });
 
@@ -154,7 +160,15 @@ describe("falseClaims: real sentences of 2026-11-14", () => {
     "12 minus the 8 is 4.",
     "The 2 ones are now 12 ones.",
   ])("passes the true sentence %s", (x) => expect(checkTutorSay(x, none)).toMatchObject({ ok: true }));
-  it.each(["12 is 4.", "12 − 8 = 4 apples = 5.", "1 ten is 100 ones.", "12 minus 8 is 5 so we write 5.", "4 is 4 tens.", "1 + 2 + 3 = 7 tens.", "The 1 is 10.", "5 tens are now 6 tens."])("refuses %s", (x) => expect(checkTutorSay(x, none)).toMatchObject({ ok: false }));
+  // Final check 9 (2026-11-15): an "=" code cannot read ("4 apples = 5") leaves its clause unread: the math review judges it.
+  it("sends 12 − 8 = 4 apples = 5. to the math review", () => {
+    const r = checkTutorSay("12 − 8 = 4 apples = 5.", none);
+    expect(r.ok === false || r.math.includes("12 − 8 = 4 apples = 5.")).toBe(true);
+  });
+  it.each(["12 is 4.", "1 ten is 100 ones.", "12 minus 8 is 5 so we write 5.", "4 is 4 tens.", "1 + 2 + 3 = 7 tens.", "5 tens are now 6 tens."])("refuses %s", (x) => expect(checkTutorSay(x, none)).toMatchObject({ ok: false }));
+  // 2026-11-15 (voice fallbacks, turn 4): a digit named with "the" says what it stands for ("The 1 is 10." is true of the
+  // 1 in 14): never read as 1 = 10. Code cannot tell which digit it names, so the math review reads it.
+  it("sends The 1 is 10. to the math review", () => expect(checkTutorSay("The 1 is 10.", none)).toMatchObject({ ok: true, math: ["The 1 is 10."] }));
 });
 
 describe("falseClaims: trades and quantities, both directions (third check of #1002)", () => {

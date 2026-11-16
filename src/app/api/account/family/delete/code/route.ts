@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   let result;
   try {
     result = await requestDeleteCode(user.id.toLowerCase(), { email: user.email, confirmed: Boolean(user.email_confirmed_at) }, {
-      codes: supabaseDeleteCodes(service), store: supabaseDeleteStore(service), send: (message) => sendEmail(message), configProblem: emailConfigProblem,
+      codes: supabaseDeleteCodes(service), store: supabaseDeleteStore(service), send: (message) => sendEmail({ ...message, log: { kind: "family_delete_code", parentId: user.id.toLowerCase() } }), configProblem: emailConfigProblem,
     });
   } catch (e) {
     console.error("[family-delete] code failed", e instanceof Error ? e.message : "failed");

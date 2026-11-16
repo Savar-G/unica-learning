@@ -1,4 +1,7 @@
 import "server-only";
+import { monitorProduct } from "@/lib/product-monitoring";
+import { photoCheckView } from "@/lib/scan-photo-check";
+import { photoCheckClient } from "@/lib/scan-photo-check-store";
 import { scanPhotoIsActive } from "@/lib/scan-photo-active";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
@@ -35,13 +38,13 @@ export function stackCheck(c: { state: string; printed_revision: string; sheetCh
 export function pageMarks(view: { completion: { status: string; total: number }; counts: { scored: number; teamChecks: number; pending: number }; items: readonly { result: string | null }[] }): PageMarks {
   const right = view.items.filter((i) => i.result === "right").length;
   const toPractise = view.items.filter((i) => i.result === "wrong" || i.result === "blank").length;
-  return { right, scored: view.counts.scored, total: view.completion.total, toPractise, waiting: view.counts.pending + view.counts.teamChecks, complete: view.completion.status === "complete" };
+  return { right, scored: view.counts.scored, total: view.completion.total, toPractise, waiting: view.counts.pending + view.counts.teamChecks, automaticPending: view.counts.pending, complete: view.completion.status === "complete" };
 }
 
 export interface StackRead { photos: StackPhoto[]; pages: DayPage[] }
 
 export async function readScanStack(db: SupabaseClient<Database>, parent: string, child: string, checks: boolean, now = Date.now()): Promise<StackRead> {
-  const rows = await db.from("scan_photos").select("id,page_id,workbook_id,state,created_at,expires_at,printed_revision,sent_at")
+  const rows = await db.from("scan_photos").select("id,page_id,workbook_id,state,created_at,expires_at,printed_revision,sent_at,photo_check")
     .eq("parent_id", parent).eq("child_id", child).in("state", ["pending", "saved"]).order("created_at", { ascending: false }).limit(100);
   if (rows.error) throw new Error("scan_stack_read");
   const live = rows.data.filter((p) => p.page_id && p.workbook_id && scanPhotoIsActive(p, now));
@@ -52,8 +55,9 @@ export async function readScanStack(db: SupabaseClient<Database>, parent: string
   try {
     const newest = await db.from("workbooks").select("id").eq("parent_id", parent).eq("child_id", child).eq("status", "shipped")
       .order("number", { ascending: false }).limit(1);
+    if (newest.error) monitorProduct("dashboard.request_failed", { step: "stack" });
     if (!newest.error && newest.data) newestIds = newest.data.map((w) => w.id);
-  } catch { /* the strip waits for the first photo */ }
+  } catch { monitorProduct("dashboard.request_failed", { step: "stack" }); }
   const books = [...new Set([...live.map((p) => p.workbook_id!), ...newestIds])];
   if (!books.length) return { photos: [], pages: [] };
   const [workbooks, printed, calibrations] = await Promise.all([
@@ -82,14 +86,16 @@ export async function readScanStack(db: SupabaseClient<Database>, parent: string
         const view = own.length ? pageMarks(markingPageView(own)) : null;
         if (view) marksOf.set(p.id, unfinished.has(p.id) && view.scored === 0 ? { ...view, unfinished: true } : view);
       }
-    } catch { /* marks are optional on the stack */ }
+    } catch { monitorProduct("dashboard.request_failed", { step: "marking" }); }
   }
+  const photoCheckRequired = checks && Boolean(photoCheckClient());
   const photos: StackPhoto[] = live.map((p) => {
     const c = calibration.get(p.id);
     const check = stackCheck(c ?? null, p.printed_revision, checks);
     return {
       id: p.id, pageId: p.page_id!, workbookId: p.workbook_id!, book: number.get(p.workbook_id!) ?? 1, pageNumber: pageNumber.get(p.page_id!) ?? 0,
       state: p.state as StackPhoto["state"], check, reason: check === "refused" ? refusal(c?.reason) : null, sentAt: p.sent_at, createdAt: p.created_at,
+      ...(checks ? { photoCheck: photoCheckView(p.photo_check), photoCheckRequired } : {}),
       ...(p.sent_at ? { marks: marksOf.get(p.id) ?? null } : {}),
     };
   });

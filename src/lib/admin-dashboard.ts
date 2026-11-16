@@ -7,6 +7,9 @@ import type { Province } from "@/lib/assessment";
 import type { AssessmentStatus } from "@/lib/test-api";
 import { canGetEmail, nextStartReminder, type StartKind } from "@/lib/reminder-schedule";
 import type { LogKind, LogStatus } from "@/lib/email-log-kinds";
+import { REMINDER_KINDS } from "@/lib/email-log-kinds";
+import { keepsNoSendCopy, isSendKind, type SendKind, type SendOutcome } from "@/lib/email-send-kinds";
+import type { WorkbookEmailKind, WorkbookEmailStatus } from "@/lib/workbook-email";
 import type { DeliveryType } from "@/lib/resend-webhook";
 import { DELIVERY_STATUS, logDeliveryState, reportAlertState, reportEmailState, type DeliveryState } from "@/lib/delivery-state";
 import { PLAN_REMINDER_ADMIN } from "@/lib/plan-reminder";
@@ -42,8 +45,27 @@ export interface RawSubscription {
   currency: string | null;
 }
 
-/** One delivery event from Resend's webhook (D-104), joined to its email through the kept copy. */
-export interface RawDelivery { email_log_id: string | null; report_id: string | null; report_email: "parent" | "alert" | null; type: DeliveryType; occurred_at: string; detail: string | null }
+/**
+ * One row of the send log (public.email_sends): one send attempt of an email with no other durable row. `parent_id` is
+ * null for a team email about no family. `subject` is null for the emails with a secret and the contact form.
+ */
+export interface RawSend { id: string; created_at: string; kind: SendKind; parent_id: string | null; child_id: string | null; outcome: SendOutcome; email_id: string | null; error: string | null; subject: string | null }
+/** One row of public.workbook_emails: the workbook welcome, ready and dispatch notices, and the old plan start emails. */
+export interface RawWorkbookEmail { id: string; created_at: string; parent_id: string; child_id: string; kind: WorkbookEmailKind; status: WorkbookEmailStatus; attempts: number; sent_at: string | null; email_id: string | null; error: string | null; subject: string | null }
+
+/** The confirmation email kept on one plan-start generation. Null send status means no send attempt. */
+export interface RawPlanStartEmail {
+  card_setup_id: string; generation: number; parent_id: string; started_at: string;
+  email_send_status: "sending" | "sent" | "failed" | "unknown" | null;
+  email_attempts: number; email_claimed_at: string | null; email_sent_at: string | null;
+  email_provider_id: string | null; email_error: string | null; email_subject: string | null;
+}
+
+/**
+ * One delivery event from Resend's webhook (D-104), joined to its email: through the kept copy (a reminder or a report
+ * email), or by `email_ref`, the email's id in the email list (a send log row or a workbook email).
+ */
+export interface RawDelivery { email_log_id: string | null; report_id: string | null; report_email: "parent" | "alert" | null; email_ref?: string | null; type: DeliveryType; occurred_at: string; detail: string | null }
 
 export interface DashboardRows {
   parents: RawParent[];
@@ -53,6 +75,12 @@ export interface DashboardRows {
   cards: RawCard[];
   waitlist: RawWaitlist[];
   emails: RawEmail[];
+  /** The send log (public.email_sends): the families' emails, and the team emails about no family. */
+  sends?: RawSend[];
+  /** The workbook emails (public.workbook_emails). */
+  workbookEmails?: RawWorkbookEmail[];
+  /** Plan confirmation emails kept on public.plan_starts. */
+  planStartEmails?: RawPlanStartEmail[];
   /** Resend's delivery events of the emails with a kept copy (D-104), each with the email it belongs to. */
   deliveries: RawDelivery[];
   subscriptions: RawSubscription[];
@@ -114,8 +142,13 @@ export function monthlyAmount(s: RawSubscription): number {
 
 // Emails
 
-/** Every email kind the admin shows: each kind of email log row, plus the two emails kept on the report row. */
-export type EmailKind = LogKind | "report" | "alert";
+/** The workbook emails' kinds in the admin's lists. A plan start row of public.workbook_emails is the kind "plan_start". */
+export type WorkbookListKind = "workbook_welcome" | "workbook_ready" | "workbook_dispatch";
+/**
+ * Every email kind the admin shows: each kind of email log row, the two emails kept on the report row, each kind of the
+ * send log (src/lib/email-send-kinds.ts) and the workbook emails.
+ */
+export type EmailKind = LogKind | "report" | "alert" | SendKind | WorkbookListKind;
 export interface EmailKindInfo { kind: EmailKind; label: string; subject: string; to: string; trigger: string }
 /**
  * What the admin says about each kind, keyed by kind so a new kind in the email log fails the build until it has words
@@ -137,12 +170,41 @@ const EMAIL_KIND_INFO: { readonly [K in EmailKind]: Omit<EmailKindInfo, "kind"> 
   monthly_summary_unsubscribe: { label: "Monthly summary unsubscribe", subject: "No email: the parent turned monthly summary emails off", to: "-", trigger: "Parent clicked unsubscribe in a monthly summary email" },
   scan_inactivity: { label: "Scan reminder", subject: "Ready to scan your next page?", to: "Parent", trigger: "Workbook delivered, then 4 days with no pages scanned" },
   first_pages: { label: "First pages email", subject: "The first pages of {child}'s Workbook 1", to: "Parent", trigger: "Test finished, first pages ready, no card saved (switched off until approved)" },
+  signup_welcome: { label: "Welcome email", subject: "Welcome to Unica Learning", to: "Parent", trigger: "Account made on a laptop or tablet" },
+  phone_welcome: { label: "Phone welcome with sign-in link", subject: "Welcome to Unica Learning: open this on a laptop or tablet", to: "Parent", trigger: "Account made on a phone (holds a sign-in link: no copy kept)" },
+  sign_in_link: { label: "Sign-in link", subject: "Open this on a laptop or tablet so {child} can start", to: "Parent", trigger: "Parent asked for the link again on a phone (no copy kept)" },
+  family_delete_code: { label: "Family delete code", subject: "Your code to delete your Unica Learning family account", to: "Parent", trigger: "Parent asked to delete the family (no copy kept)" },
+  child_delete_code: { label: "Child delete code", subject: "Your code to delete one child from Unica Learning", to: "Parent", trigger: "Parent asked to delete one child (no copy kept)" },
+  waitlist_note: { label: "Waitlist email", subject: "You're on the list for ... workbooks", to: "Parent", trigger: "Parent outside BC joined the waitlist from the report" },
+  scan_link: { label: "Scan pages link", subject: "Take pictures of {child}'s workbook pages", to: "Parent", trigger: "Parent pressed \"Email me the link\" on Scan pages" },
+  plan_start: { label: "Plan start email", subject: "Welcome to Unica Learning: how {child}'s free month works", to: "Parent", trigger: "You started the plan after the first workbook arrived" },
+  referral_reward: { label: "Referral reward email", subject: "You earned a referral reward", to: "Parent", trigger: "A family the parent referred paid its first month" },
+  workbook_welcome: { label: "Workbook welcome", subject: "Your first workbook with Unica Learning", to: "Parent", trigger: "Card saved: the first workbook is being made" },
+  workbook_ready: { label: "Workbook ready", subject: "{child}'s workbook is ready", to: "Parent", trigger: "A workbook is ready to go out" },
+  workbook_dispatch: { label: "Workbook on its way", subject: "{child}'s workbook is on its way", to: "Parent", trigger: "You marked a workbook as sent" },
+  contact_message: { label: "Contact form message", subject: "Contact form: name not kept", to: "You", trigger: "Someone sent the contact form (no copy kept)" },
+  waitlist_alert: { label: "Waitlist alert", subject: "Waitlist from a report: {parent}", to: "You", trigger: "Parent outside BC joined the waitlist" },
+  card_link_alert: { label: "Card link alert", subject: "Card link needed: {parent}", to: "You", trigger: "Plan chosen from the report, but the payment page could not open" },
+  report_failure_alert: { label: "Report failed alert", subject: "Report FAILED for assessment ...", to: "You", trigger: "The report step failed" },
+  report_retry_alert: { label: "Report retries stopped", subject: "Report still not sent for assessment ...", to: "You", trigger: "The report retries ran out" },
+  plan_start_alert: { label: "Plan start check", subject: "A plan start needs the team", to: "You", trigger: "A plan start got no answer from Stripe for 24 hours" },
+  plan_cancel_alert: { label: "Plan cancel check", subject: "A plan cancellation needs a check", to: "You", trigger: "A parent's cancel did not close" },
+  plan_cancelled_alert: { label: "Plan cancelled alert", subject: "Plan cancelled: {child}", to: "You", trigger: "A parent cancelled a plan from Account" },
+  family_delete_alert: { label: "Family delete alert", subject: "Family deleted from Account", to: "You", trigger: "A parent deleted the family, or the delete did not finish" },
+  maya_safety_alert: { label: "Maya safety alert", subject: "Maya safety flag: read the call today", to: "You", trigger: "A call with Maya was flagged" },
+  maya_spend_alert: { label: "Maya spending alert", subject: "Maya's spending this month reached the alert amount", to: "You", trigger: "Maya's month reached the alert amount" },
+  scan_team_daily: { label: "Daily scan email", subject: "... waiting for our team to mark", to: "You", trigger: "8 a.m. Pacific, when answers wait for a team mark" },
+  team_digest: { label: "Daily digest", subject: "Unica daily digest ...", to: "You", trigger: "7 a.m. Pacific, every day" },
 };
 /** Every email the site logs, in the admin's order. */
 export const EMAIL_KINDS: readonly EmailKindInfo[] = (Object.keys(EMAIL_KIND_INFO) as EmailKind[]).map((kind) => ({ kind, ...EMAIL_KIND_INFO[kind] }));
 /** An unsubscribe row: no email went. */
 export const isUnsubscribe = (kind: EmailKind) => kind === "unsubscribe" || kind === "maya_unsubscribe" || kind === "monthly_summary_unsubscribe";
 export const EMAIL_LABEL = Object.fromEntries(EMAIL_KINDS.map((k) => [k.kind, k.label])) as Record<EmailKind, string>;
+/** An email to the team (SIGNUP_NOTIFY_EMAIL), not to a parent. */
+export const isTeamEmail = (kind: EmailKind) => EMAIL_KIND_INFO[kind].to === "You";
+/** An email whose copy the site never keeps: it holds a sign-in link or a code, or it is a message from the public. */
+export const keepsNoCopy = (kind: EmailKind) => isSendKind(kind) && keepsNoSendCopy(kind);
 
 /** What Resend said happened to an email after it took it (D-104). */
 export const DELIVERY_TEXT: Record<DeliveryType, string> = {
@@ -161,8 +223,9 @@ export function deliveryLine(e: EmailEvent): { text: string; bad: boolean } | nu
 }
 /** "Clicked 2 times" for an email the parent clicked (D-105), else null. */
 export const clicksText = (e: EmailEvent) => (e.clicks ? `Clicked ${e.clicks.count === 1 ? "once" : `${e.clicks.count} times`}` : null);
-/** The kinds whose clicks are counted: every email to the parent with a counted button (not the alert to Savar, not an unsubscribe, not the Maya recap, which has no button, not the monthly summary, the scan reminder or the first pages email, whose links count no click). */
-export const countsClicks = (kind: EmailKind) => kind !== "alert" && kind !== "maya_daily" && kind !== "maya_weekly" && kind !== "monthly_summary" && kind !== "scan_inactivity" && kind !== "first_pages" && !isUnsubscribe(kind);
+/** The kinds whose clicks are counted (D-105): the four reminders and the report email. No other email counts a click. */
+const CLICK_KINDS: ReadonlySet<EmailKind> = new Set<EmailKind>([...REMINDER_KINDS, "report"]);
+export const countsClicks = (kind: EmailKind) => CLICK_KINDS.has(kind);
 /** The emails whose clicks are counted. */
 export const clickable = (e: EmailEvent) => countsClicks(e.kind);
 /** The dot of an email in the lists: failed when it did not reach the parent. */
@@ -184,6 +247,28 @@ export interface EmailCopyView {
 }
 /** The email list id of a report's emails: "<report id>:report" or "<report id>:alert". A reminder's id is its log id. */
 export const reportEmailId = (reportId: string, which: "report" | "alert") => `${reportId}:${which}`;
+/** The email list id of a send log row: "<row id>:send". */
+export const sendEmailId = (id: string) => `${id}:send`;
+/** The email list id of a workbook email: "<row id>:workbook". */
+export const workbookEmailId = (id: string) => `${id}:workbook`;
+/** A plan confirmation belongs to one card setup and one generation. */
+export const planStartEmailId = (cardId: string, generation: number) => `${cardId}:${generation}:plan`;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/**
+ * An id in the email list: a reminder's log id, "<report id>:report" or "<report id>:alert", "<row id>:send" (the send
+ * log), "<row id>:workbook" (a workbook email), or "<card id>:<generation>:plan". Null for anything else.
+ */
+export function parseEmailId(emailId: string): { id: string; which: "plan"; generation: number } | { id: string; which?: "report" | "alert" | "send" | "workbook"; generation?: never } | null {
+  const parts = emailId.split(":");
+  if (parts.length === 3 && UUID.test(parts[0]) && parts[2] === "plan" && /^[1-9][0-9]*$/.test(parts[1])) {
+    const generation = Number(parts[1]);
+    return Number.isSafeInteger(generation) && generation <= 2_147_483_647 ? { id: parts[0], which: "plan", generation } : null;
+  }
+  const [id, which, ...rest] = parts;
+  if (!UUID.test(id ?? "") || rest.length > 0) return null;
+  if (which === undefined) return { id };
+  return which === "report" || which === "alert" || which === "send" || which === "workbook" ? { id, which } : null;
+}
 
 export interface EmailEvent {
   id: string;
@@ -194,8 +279,9 @@ export interface EmailEvent {
   state: DeliveryState;
   /** The state as the admin counts it: DELIVERY_STATUS[state]. */
   status: "sent" | "failed" | "pending";
-  familyId: string;
-  familyName: string;
+  /** Null for a team email about no family (the daily digest, the contact form). */
+  familyId: string | null;
+  familyName: string | null;
   childName: string | null;
   subject: string;
   attempts: number;
@@ -273,18 +359,64 @@ function subjectFor(kind: EmailKind, child: string | null, grade: number | null)
   return EMAIL_KIND_INFO[kind].subject.replace("{child}", child ?? "Your child").replace("{grade}", grade === null ? "?" : String(grade));
 }
 
+/** The newest delivery event of each email, by its id in the email list. */
+function deliveriesByEmail(rows: readonly RawDelivery[]): Map<string, Delivery> {
+  const out = new Map<string, Delivery>();
+  for (const d of rows) {
+    const key = d.email_ref ?? d.email_log_id ?? (d.report_id && reportEmailId(d.report_id, d.report_email === "alert" ? "alert" : "report"));
+    const held = key ? out.get(key) : undefined;
+    if (key && (!held || held.at <= d.occurred_at)) out.set(key, { type: d.type, at: d.occurred_at, detail: d.detail });
+  }
+  return out;
+}
+
+const SEND_STATE: Record<SendOutcome, DeliveryState> = { sent: "sent", refused: "refused", unknown: "unknown" };
+
+/** A send log row as an email in the lists. `family`: null for a team email about no family. */
+export function sendEvent(r: RawSend, family: { id: string; name: string } | null, childName: string | null, delivery: Delivery | null): EmailEvent {
+  const state = SEND_STATE[r.outcome];
+  return {
+    id: sendEmailId(r.id), kind: r.kind, at: r.created_at, state, status: DELIVERY_STATUS[state],
+    familyId: family?.id ?? null, familyName: family?.name ?? null, childName,
+    subject: r.subject ?? subjectFor(r.kind, childName, null),
+    attempts: 1, error: r.error, delivery, clicks: null,
+  };
+}
+
+const WORKBOOK_LIST_KIND: Record<WorkbookEmailKind, WorkbookListKind | "plan_start"> = {
+  welcome: "workbook_welcome", ready: "workbook_ready", dispatch: "workbook_dispatch", plan_start: "plan_start",
+};
+const WORKBOOK_STATE: Record<Exclude<WorkbookEmailStatus, "skipped">, DeliveryState> = {
+  pending: "unsent", sending: "claimed", sent: "sent", failed: "refused", unknown: "unknown",
+};
+
+/** A workbook email as an email in the lists; null for a skipped one (a later email took its place; none went). */
+export function workbookEvent(r: RawWorkbookEmail, family: { id: string; name: string }, childName: string | null, delivery: Delivery | null): EmailEvent | null {
+  if (r.status === "skipped") return null;
+  const kind = WORKBOOK_LIST_KIND[r.kind];
+  const state = WORKBOOK_STATE[r.status];
+  return {
+    id: workbookEmailId(r.id), kind, at: r.sent_at ?? r.created_at, state, status: DELIVERY_STATUS[state],
+    familyId: family.id, familyName: family.name, childName,
+    subject: r.subject ?? subjectFor(kind, childName, null),
+    attempts: Math.max(1, r.attempts), error: r.error, delivery, clicks: null,
+  };
+}
+
+/** The team emails about no family, newest first. */
+export function teamEmails(rows: DashboardRows): EmailEvent[] {
+  const deliveryOf = deliveriesByEmail(rows.deliveries);
+  return (rows.sends ?? []).filter((s) => s.parent_id === null).map((s) => sendEvent(s, null, null, deliveryOf.get(sendEmailId(s.id)) ?? null)).sort(newestFirst);
+}
+
 export function buildFamilies(rows: DashboardRows, now = new Date()): Family[] {
   const testIds = new Set(rows.testIds);
   const childName = new Map(rows.children.map((c) => [c.id, c.first_name]));
   const testById = new Map(rows.tests.map((t) => [t.id, t]));
   const reportByTest = new Map(rows.reports.map((r) => [r.assessment_id, r.id]));
-  // The newest delivery event of each email, by its id in the email list.
-  const deliveryOf = new Map<string, Delivery>();
-  for (const d of rows.deliveries) {
-    const key = d.email_log_id ?? (d.report_id && reportEmailId(d.report_id, d.report_email === "alert" ? "alert" : "report"));
-    const held = key ? deliveryOf.get(key) : undefined;
-    if (key && (!held || held.at <= d.occurred_at)) deliveryOf.set(key, { type: d.type, at: d.occurred_at, detail: d.detail });
-  }
+  const deliveryOf = deliveriesByEmail(rows.deliveries);
+  const sends = (rows.sends ?? []).filter((s): s is RawSend & { parent_id: string } => s.parent_id !== null);
+  const workbookEmails = rows.workbookEmails ?? [];
   const subsOf = new Map<string, RawSubscription[]>();
   for (const s of rows.subscriptions) if (!NEVER_STARTED.has(s.status)) subsOf.set(s.customer, [...(subsOf.get(s.customer) ?? []), s]);
 
@@ -321,6 +453,25 @@ export function buildFamilies(rows: DashboardRows, now = new Date()): Family[] {
       const parentState = reportEmailState(r), alertState = reportAlertState(r);
       emails.push({ ...base, id: reportEmailId(r.id, "report"), kind: "report", at: r.emailed_at ?? r.created_at, error: r.email_error, state: parentState, status: DELIVERY_STATUS[parentState], subject: subjectFor("report", child, grade), delivery: delivered("report"), clicks: r.email_clicks > 0 && r.email_first_clicked_at ? { count: r.email_clicks, first: r.email_first_clicked_at } : null });
       emails.push({ ...base, id: reportEmailId(r.id, "alert"), kind: "alert", at: r.alerted_at ?? r.created_at, error: r.alert_error, state: alertState, status: DELIVERY_STATUS[alertState], subject: subjectFor("alert", child, grade), delivery: delivered("alert"), clicks: null });
+    }
+    const family = { id: p.id, name: p.name };
+    const nameOf = (id: string | null) => (id ? (childName.get(id) ?? null) : null);
+    for (const s of mine(sends)) emails.push(sendEvent(s, family, nameOf(s.child_id), deliveryOf.get(sendEmailId(s.id)) ?? null));
+    for (const w of mine(workbookEmails)) {
+      const e = workbookEvent(w, family, nameOf(w.child_id), deliveryOf.get(workbookEmailId(w.id)) ?? null);
+      if (e) emails.push(e);
+    }
+    for (const r of mine(rows.planStartEmails ?? [])) {
+      if (!r.email_send_status) continue;
+      const child = nameOf(cards.find((c) => c.id === r.card_setup_id)?.child_id ?? null);
+      const state = WORKBOOK_STATE[r.email_send_status];
+      const id = planStartEmailId(r.card_setup_id, r.generation);
+      emails.push({
+        id, kind: "plan_start", at: r.email_sent_at ?? r.email_claimed_at ?? r.started_at,
+        familyId: p.id, familyName: p.name, childName: child, state, status: DELIVERY_STATUS[state],
+        subject: r.email_subject ?? subjectFor("plan_start", child, null), attempts: r.email_attempts,
+        error: r.email_error, delivery: deliveryOf.get(id) ?? null, clicks: null,
+      });
     }
     emails.sort(newestFirst);
 
@@ -365,7 +516,7 @@ export function buildFamilies(rows: DashboardRows, now = new Date()): Family[] {
       subscription: shown ? { status: shown.status, since: shown.created, endedAt: shown.endedAt, monthly: (paying.length > 0 ? paying : trialing).reduce((n, s) => n + monthlyAmount(s), 0) } : null,
       subscriptions: subs,
       emails,
-      lastEmail: emails.find((e) => e.kind !== "alert" && !isUnsubscribe(e.kind)) ?? null,
+      lastEmail: emails.find((e) => !isTeamEmail(e.kind) && !isUnsubscribe(e.kind)) ?? null,
       unsubscribed,
       nextReminders,
       test: testIds.has(p.id),
@@ -474,7 +625,7 @@ const PICK: Record<Exclude<keyof DayCounts, "day">, Pick> = {
   started: (f) => f.tests.map((t) => t.startedAt),
   finished: (f) => f.tests.map((t) => t.completedAt),
   cards: (f) => f.cards.map((c) => c.savedAt),
-  emails: (f) => f.emails.filter((e) => e.status === "sent" && !isUnsubscribe(e.kind) && e.kind !== "alert").map((e) => e.at),
+  emails: (f) => f.emails.filter((e) => e.status === "sent" && !isUnsubscribe(e.kind) && !isTeamEmail(e.kind)).map((e) => e.at),
 };
 const pickSubscriptions: Pick = (f) => f.subscriptions.map((s) => s.created);
 const STUCK_DAYS = 2;
@@ -487,10 +638,12 @@ const DAY_MS = 86_400_000;
 export function buildDashboard(rows: DashboardRows, range: RangeKey, now: Date, { withTests = false } = {}): Dashboard {
   const everyone = buildFamilies(rows, now);
   const families = everyone.filter((f) => withTests || !f.test).sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
-  const emails = families.flatMap((f) => f.emails).sort(newestFirst);
+  // The team emails about no family are listed and counted with the real families' emails.
+  const team = teamEmails(rows);
+  const emails = [...families.flatMap((f) => f.emails), ...team].sort(newestFirst);
   // the real families: the only ones any number counts
   const counted = families.filter((f) => !f.test);
-  const countedEmails = counted.flatMap((f) => f.emails).sort(newestFirst);
+  const countedEmails = [...counted.flatMap((f) => f.emails), ...team].sort(newestFirst);
   const first = earliest(counted.map((f) => f.createdAt));
   const all = range === "all";
   const days = rangeDays(range, now, first);
@@ -533,7 +686,7 @@ export function buildDashboard(rows: DashboardRows, range: RangeKey, now: Date, 
     { key: "trial", label: "In free trial", hint: "Families in their free first month, before the first charge on day 30", value: counted.filter((f) => f.stage === "trial").length, prev: null, spark: [] },
     { key: "paying", label: "Paying now", hint: "Families with a Stripe subscription that is active or past due, right now (not in the free trial)", value: payingFamilies.length, prev: null, spark: [] },
     { key: "mrr", label: "Monthly revenue", format: "cad", hint: "The monthly price of every paying subscription", value: mrr, prev: null, spark: [] },
-    kpi("emails", "Emails to parents", PICK.emails, "Reminder and report emails sent"),
+    kpi("emails", "Emails to parents", PICK.emails, "Every email sent to a parent"),
   ];
 
   const series = days.map((day) => {
@@ -561,7 +714,7 @@ export function buildDashboard(rows: DashboardRows, range: RangeKey, now: Date, 
     { title: "Start a subscription", detail: "Card saved, and no Stripe subscription yet", tone: "warn" as const, families: counted.filter((f) => f.stage === "card_saved") },
     { title: "Left the payment page", detail: "Opened the payment page but did not save a card", tone: "info" as const, families: counted.filter((f) => f.stage === "card_started") },
     { title: "Stuck in the test", detail: `Test started more than ${STUCK_DAYS} days ago and not finished`, tone: "info" as const, families: counted.filter((f) => f.stage === "started" && ageDays(f.stageAt) > STUCK_DAYS) },
-    { title: "Email failed", detail: "An email to the parent did not send, bounced, or was marked as spam", tone: "bad" as const, families: counted.filter((f) => f.emails.some((e) => emailFailed(e) && e.kind !== "alert")) },
+    { title: "Email failed", detail: "An email to the parent did not send, bounced, or was marked as spam", tone: "bad" as const, families: counted.filter((f) => f.emails.some((e) => emailFailed(e) && !isTeamEmail(e.kind))) },
   ].filter((n) => n.families.length > 0);
 
   return {

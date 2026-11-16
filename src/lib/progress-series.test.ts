@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PACIFIC_ZONE } from "@/lib/family-time";
 import type { SkillState } from "@/lib/assessment/skill-state";
-import { firstBatchAt, movedUpBetween, progressSummary, type StateChange } from "@/lib/progress-series";
+import { firstBatchAt, masteredSince, movedUpBetween, progressSummary, type StateChange } from "@/lib/progress-series";
 
 // The Progress tab's tiles and line (#1004), through the module's public interface. The family is in Pacific time
 // (UTC-7 all year since March 2026, src/lib/family-time.ts). 2026-11-09 is a Monday; "now" is Thursday 2026-11-12, noon in Vancouver.
@@ -190,5 +190,44 @@ describe("history from before the table began (2026-11-04)", () => {
   it("finds the first batch: the earliest time, whatever the order, and none without rows", () => {
     expect(firstBatchAt([row("a", "mastered", "2026-11-11T18:00:00Z"), row("b", "mastered", batch)])).toBe(Date.parse(batch));
     expect(firstBatchAt([])).toBeNull();
+  });
+});
+
+describe("new skills mastered since a day (#990)", () => {
+  // 2026-11-09 is Monday; the child started on 2026-11-02, so the starting batch is well before this week.
+  const since = (over: Partial<Parameters<typeof masteredSince>[0]> = {}) =>
+    masteredSince({ now: NOW, zone, current: new Map(), history: [], startDay: "2026-11-02", since: "2026-11-09", ...over });
+  const early = row("3.9", "working_on", "2026-11-03T20:00:00Z");
+
+  it("lists the skills Mastered now that were not Mastered when the week began", () => {
+    const history = [early, row("3.1", "mastered", "2026-11-10T20:00:00Z"), row("3.2", "mastered", "2026-11-11T20:00:00Z")];
+    expect(since({ current: current({ "3.1": "mastered", "3.2": "mastered", "3.9": "working_on" }), history })).toEqual(["3.1", "3.2"]);
+  });
+  it("leaves out a skill mastered before Monday, and one that is no longer mastered", () => {
+    const history = [early, row("3.1", "mastered", "2026-11-05T20:00:00Z"), row("3.2", "mastered", "2026-11-10T20:00:00Z"), row("3.2", "needs_review", "2026-11-11T20:00:00Z")];
+    expect(since({ current: current({ "3.1": "mastered", "3.2": "needs_review" }), history })).toEqual([]);
+  });
+  it("counts a skill that lost mastery last week and has it again once", () => {
+    const history = [early, row("3.1", "mastered", "2026-11-04T20:00:00Z"), row("3.1", "needs_review", "2026-11-06T20:00:00Z"), row("3.1", "mastered", "2026-11-10T20:00:00Z")];
+    expect(since({ current: current({ "3.1": "mastered" }), history })).toEqual(["3.1"]);
+  });
+  it("the starting state is not new: rows in the first batch, and everything on or before the child's start day", () => {
+    const first = "2026-11-10T20:00:00Z";
+    expect(since({ current: current({ "3.1": "mastered" }), history: [row("3.1", "mastered", first)] })).toEqual([]);
+    expect(since({ current: current({ "3.1": "mastered" }), history: [early, row("3.1", "mastered", "2026-11-09T20:00:00Z")], startDay: "2026-11-09" })).toEqual([]);
+  });
+  it("with no recorded row for a skill, nothing is new: the rule's current state alone could be a skill mastered before the history began", () => {
+    expect(since({ current: current({ "3.1": "mastered" }) })).toEqual([]);
+    expect(since({ current: current({ "3.1": "mastered" }), history: [early] })).toEqual([]);
+  });
+  it("counts by the family's week: a row recorded Sunday night in Vancouver is last week's", () => {
+    const history = [early, row("3.1", "mastered", "2026-11-09T06:00:00Z")];
+    expect(since({ current: current({ "3.1": "mastered" }), history })).toEqual([]);
+    expect(since({ current: current({ "3.1": "mastered" }), history: [early, row("3.1", "mastered", "2026-11-09T09:00:00Z")] })).toEqual(["3.1"]);
+  });
+  it("agrees with the Progress tab's week gain when nothing is lost", () => {
+    const history = [early, row("3.1", "mastered", "2026-11-10T20:00:00Z"), row("3.2", "mastered", "2026-11-11T20:00:00Z")];
+    const now = current({ "3.1": "mastered", "3.2": "mastered", "3.9": "working_on" });
+    expect(since({ current: now, history })).toHaveLength(run({ current: now, history }).week.gain);
   });
 });

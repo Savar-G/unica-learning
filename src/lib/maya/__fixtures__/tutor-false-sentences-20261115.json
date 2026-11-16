@@ -1,0 +1,627 @@
+[
+ {
+  "line": "The answer is 24 and a half.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "The answer is twenty-four and one.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "The answer is 24 minus negative one.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "The answer is 24 ones and 1 ten.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "24 plus 1 is the answer.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "Twenty-four plus one is the answer.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "12 minus 8 is 4, which is greater than 8.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "12 minus 8 is 4, which is less than 2.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "12 is 4 more than 8, which is greater than 20.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "4 ones, which is 4 tens.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "12 minus 8 is 4, which is 4 sticks of ten.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "12 minus 8 is 4 ones, which is four tens.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "4 tens is 4 sticks of ten plus 2.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "4 tens is 4 sticks of ten minus 2.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "4 tens is 4 sticks of ten and 2 ones.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "4 tens is 4 sticks of ten, which is 50.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "Twelve is five more than eight.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "Twelve is more than thirteen.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "12 is 4 more than 8 and 5 is greater than 6.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "12 is 4 more than 8, and 5 is greater than 6.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "12 is 4 more than 8 is 9.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "The value of the 2 in 52 is greater than 8.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "Two times (three plus four) is seven.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "(3 plus 4) times (2 plus 1) is 20.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "2 times (3 plus 4) is 14 and 5 is greater than 6.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "2 times (3 plus 4) is 14, which is 15.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "One thousand and one hundred is 1001.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "One hundred and twenty-three is one hundred and twenty-four.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "One hundred and two tens is 1030.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "Five elevenths is three elevenths.",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "Five sixths is six fifths.",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "Two thirds of 6 is 2.",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "Two thirds of 6 plus 3 is 5.",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "One and a half is one half.",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "One and a half is 1.",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "Five sixths is greater than three sixths, which is greater than five sixths.",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "Five sixths is three fifths plus two fifths.",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "2 goes into 13 6 times with 1 left over and 2 left over.",
+  "kind": "multiply",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "2 goes into 13 6 times and 1 left over, which is 2.",
+  "kind": "multiply",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "2 goes into 13 6 times, with 1 left over, so the remainder is 2.",
+  "kind": "multiply",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "Thirteen divided by two is six remainder one, which is two.",
+  "kind": "multiply",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "Thirteen divided by two is six remainder one and the remainder is two.",
+  "kind": "multiply",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "13 divided by 2 is 6 remainder 1 plus 1.",
+  "kind": "multiply",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "13 divided by 2 is 6 remainder 1, which is 2.",
+  "kind": "multiply",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "13 divided by 2 is 6 remainder 1 and 2 plus 2 is 5.",
+  "kind": "multiply",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "In 48,942, the value of the 4 is greater than 50,000.",
+  "kind": "place-value",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "In 48,942, the value of the 4 is 4,000 plus 1.",
+  "kind": "place-value",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "In 48,942, the value of the 4 is 40,000, which is greater than 50,000.",
+  "kind": "place-value",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "In 48,942, the value of the 8 is 8,000, which is 800.",
+  "kind": "place-value",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "The thousands digit is greater than the value of the ten thousands digit and the answer is 40000.",
+  "kind": "place-value",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "The answer is no and shall we circle it?",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "What we write as the answer is no.",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "What we circle is no.",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "When we finish the answer is no.",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "The answer is no; shall we circle it?",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "The answer is no, is that clear?",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "When we compare, the answer is no.",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "The answer is yes, which means no.",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (survey.json)"
+ },
+ {
+  "line": "One hundred and one tens is 110.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "one and a half is one half.",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "12 minus 8 is 4, which is greater than 5.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "The answer is 24 and one halves.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "One hundred and two tens is 120.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "two and a half is one half.",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "12 minus 8 is 4, which is greater than 6.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "The answer is 24 and two halves.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "One hundred and three tens is 130.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "three and a half is one half.",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "12 minus 8 is 4, which is greater than 7.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "The answer is 24 and three halves.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "One hundred and four tens is 140.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "four and a half is one half.",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "The answer is 24 and four halves.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "One hundred and five tens is 150.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "five and a half is one half.",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "12 minus 8 is 4, which is greater than 9.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "The answer is 24 and five halves.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "One hundred and six tens is 160.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "six and a half is one half.",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "12 minus 8 is 4, which is greater than 10.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "The answer is 24 and six halves.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "One hundred and seven tens is 170.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "seven and a half is one half.",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "12 minus 8 is 4, which is greater than 11.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "The answer is 24 and seven halves.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "One hundred and eight tens is 180.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "eight and a half is one half.",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "12 minus 8 is 4, which is greater than 12.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "The answer is 24 and eight halves.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "One hundred and nine tens is 190.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "nine and a half is one half.",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "12 minus 8 is 4, which is greater than 13.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "The answer is 24 and nine halves.",
+  "kind": "column",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "2 goes into 13 6 times and 1 left over, so the remainder is 2.",
+  "kind": "multiply",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "2 goes into 13 6 times and 1 left over, so 2 is the remainder.",
+  "kind": "multiply",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "Thirteen divided by two is six remainder one plus one.",
+  "kind": "multiply",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "The answer is no - shall we circle it?",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "The answer is no: shall we circle it?",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "The answer is no, shall we circle it?",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "The answer is no?",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "Do you agree the answer is no?",
+  "kind": "claim",
+  "source": "final check 2 survey and matrix (matrix.json)"
+ },
+ {
+  "line": "The answer is twenty-five.",
+  "kind": "column",
+  "source": "pre-launch review B, final check 2 and final check 3 findings"
+ },
+ {
+  "line": "The answer is not 24.",
+  "kind": "column",
+  "source": "pre-launch review B, final check 2 and final check 3 findings"
+ },
+ {
+  "line": "The answer is 24 plus 1.",
+  "kind": "column",
+  "source": "pre-launch review B, final check 2 and final check 3 findings"
+ },
+ {
+  "line": "The answer is 24.5.",
+  "kind": "column",
+  "source": "pre-launch review B, final check 2 and final check 3 findings"
+ },
+ {
+  "line": "12 is 5 more than 8.",
+  "kind": "column",
+  "source": "pre-launch review B, final check 2 and final check 3 findings"
+ },
+ {
+  "line": "12 is 4 less than 8.",
+  "kind": "column",
+  "source": "pre-launch review B, final check 2 and final check 3 findings"
+ },
+ {
+  "line": "4 is greater than 8.",
+  "kind": "column",
+  "source": "pre-launch review B, final check 2 and final check 3 findings"
+ },
+ {
+  "line": "4 tens is 4 sticks of one.",
+  "kind": "column",
+  "source": "pre-launch review B, final check 2 and final check 3 findings"
+ },
+ {
+  "line": "12 minus 8 is 4 ones, which is 40.",
+  "kind": "column",
+  "source": "pre-launch review B, final check 2 and final check 3 findings"
+ },
+ {
+  "line": "2 times (3 plus 4) is 7.",
+  "kind": "column",
+  "source": "pre-launch review B, final check 2 and final check 3 findings"
+ },
+ {
+  "line": "When we carry, 16 becomes 26.",
+  "kind": "column",
+  "source": "pre-launch review B, final check 2 and final check 3 findings"
+ },
+ {
+  "line": "1 plus 2 plus 3 is 6 hundreds.",
+  "kind": "column",
+  "source": "pre-launch review B, final check 2 and final check 3 findings"
+ },
+ {
+  "line": "12 minus 8 is 4 with a negative sign.",
+  "kind": "column",
+  "source": "pre-launch review B, final check 2 and final check 3 findings"
+ },
+ {
+  "line": "12 minus 8 is 4 in the hundreds place.",
+  "kind": "column",
+  "source": "pre-launch review B, final check 2 and final check 3 findings"
+ },
+ {
+  "line": "24 is the answer with a negative sign.",
+  "kind": "column",
+  "source": "pre-launch review B, final check 2 and final check 3 findings"
+ },
+ {
+  "line": "The answer is 24, with a negative sign.",
+  "kind": "column",
+  "source": "pre-launch review B, final check 2 and final check 3 findings"
+ },
+ {
+  "line": "12 minus 8 is 4, with a negative sign.",
+  "kind": "column",
+  "source": "pre-launch review B, final check 2 and final check 3 findings"
+ },
+ {
+  "line": "12 minus 8 is 4 in the tens.",
+  "kind": "column",
+  "source": "pre-launch review B, final check 2 and final check 3 findings"
+ },
+ {
+  "line": "12 minus 8 is 4 for the tens.",
+  "kind": "column",
+  "source": "pre-launch review B, final check 2 and final check 3 findings"
+ },
+ {
+  "line": "12 minus 8 is 4 percent.",
+  "kind": "column",
+  "source": "pre-launch review B, final check 2 and final check 3 findings"
+ },
+ {
+  "line": "Five sixths is three sixths.",
+  "kind": "fraction",
+  "source": "pre-launch review B and final check 2 findings"
+ },
+ {
+  "line": "Five sixths is not five sixths.",
+  "kind": "fraction",
+  "source": "pre-launch review B and final check 2 findings"
+ },
+ {
+  "line": "2 goes into 13 6 times and 2 left over.",
+  "kind": "divide",
+  "source": "pre-launch review B and final check 2 findings"
+ },
+ {
+  "line": "The thousands digit is greater than the value of the ten thousands digit.",
+  "kind": "place-value",
+  "source": "PR #1047 original false corpus"
+ }
+]

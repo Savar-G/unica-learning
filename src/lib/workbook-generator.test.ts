@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { WorkbookAiUnavailable } from "@/lib/workbook-ai-unavailable";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { fakeAiClient } from "@/lib/ai-client-fake";
 import { keySolver, type SolveLog, type Solver, type SolveVerdict } from "@/lib/workbook-solve-check";
@@ -2257,6 +2258,32 @@ describe("quality gates (#858)", () => {
     const checker: QuestionGateChecker = { model: "script", check: decide };
     return { saved, run: openQuestionGateRun(checker, stored, async (row) => { saved.push(row); }) };
   }
+
+  it("waits for a sibling quality gate to save before propagating a solve outage", async () => {
+    let releaseGate!: () => void;
+    let gateStarted!: () => void;
+    const release = new Promise<void>(resolve => { releaseGate = resolve; });
+    const started = new Promise<void>(resolve => { gateStarted = resolve; });
+    let requested = 0;
+    const { run, saved } = gates(async gateInput => {
+      requested++;
+      gateStarted();
+      await release;
+      return { questionId: gateInput.question.id, model: "script", thresholdVersion: 2, outcome: "pass", flags: [], probabilities: {}, reason: null };
+    });
+    let completed = false;
+    const result = generate(deps({ concurrency: 1, questionGates: run,
+      solver: { model: "unavailable", solve: async () => { throw new WorkbookAiUnavailable("subscription limit"); } },
+    })).then(() => { completed = true; return null; }, error => { completed = true; return error; });
+    await started;
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const finishedBeforeGate = completed;
+    releaseGate();
+    expect(await result).toBeInstanceOf(WorkbookAiUnavailable);
+    expect(finishedBeforeGate).toBe(false);
+    expect(requested).toBeGreaterThan(0);
+    expect(saved).toHaveLength(requested);
+  });
 
   it("rewrites a flagged question once, then keeps it with the flag and does not use the fit rewrite", async () => {
     const asked: string[] = [];

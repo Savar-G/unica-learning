@@ -32,8 +32,12 @@ import {
   fallbacks,
   tutorTeachingNow,
   tutorStream,
+  tutorStreamReading,
+  gateDisagrees,
   tutorStreamSentence,
+  checkTutorSay,
   TUTOR_REVIEW_IGNORED,
+  bindingReview,
   nextActs,
   step,
   streamPlan,
@@ -44,6 +48,7 @@ import {
   codeStance,
   fillName,
   clearStop,
+  streamedDrawing,
   LINES_VERSION,
   PROPOSAL_VERSION,
   type Outcome,
@@ -54,49 +59,326 @@ import {
 } from "@/lib/maya";
 import { modelInput, turnBrief, type MayaModel, type ModelInput, type TurnBrief } from "@/lib/maya-model";
 import { tutorBrief } from "@/lib/maya/tutor-prompt";
+import { continuedSay } from "@/lib/maya/tutor";
 import { preparedReplies, preparedKey, preparedKeys, sameTurn, MAX_PREPARES_PER_TURN, type PrepareHypothesis, type PreparedReply, type PrepareRecord } from "@/lib/maya-prepared";
 import type { SpendHandle, SpendSeam } from "@/lib/maya-spend-seam";
 import { readReuse, withReadReuse } from "@/lib/maya/read-reuse";
-import { sentencesOf } from "@/lib/maya/say-check";
+import { sentenceKey, sentencesOf } from "@/lib/maya/say-check";
+
+/** The end of a JSON string that starts at `i` (its opening quote), or -1 before its closing quote has come. */
+function stringEnd(text: string, i: number): number {
+  for (let k = i + 1; k < text.length; k++) {
+    if (text[k] === "\\") { k++; continue; }
+    if (text[k] === '"') return k + 1;
+  }
+  return -1;
+}
+
+/** The end of the JSON value that starts at `i`, or -1 while it is not complete. */
+function valueEnd(text: string, i: number): number {
+  const c = text[i];
+  if (c === undefined) return -1;
+  if (c === '"') return stringEnd(text, i);
+  if (c === "{" || c === "[") {
+    let depth = 0;
+    for (let k = i; k < text.length; k++) {
+      const x = text[k];
+      if (x === '"') { const e = stringEnd(text, k); if (e < 0) return -1; k = e - 1; continue; }
+      if (x === "{" || x === "[") depth++;
+      else if (x === "}" || x === "]") { depth--; if (depth === 0) return k + 1; }
+    }
+    return -1;
+  }
+  // A literal (true, false, null, a number) ends at the next "," or "}" of the object.
+  const m = /^[^,}\s]+/.exec(text.slice(i));
+  return m && i + m[0].length < text.length ? i + m[0].length : -1;
+}
 
 /**
- * The `say` string at the start of a version 3 reply as it streams in (D-341: `say` is the first key): its text so far,
- * with JSON escapes read, and whether its closing quote has come. Null before the key.
+ * The complete key-value pairs of a JSON object as it streams in, from `i` (just after "{" when `first`, else just after
+ * a value), until the key `stop` or the first value that is not complete. `at` is the start of the value of `stop`, or
+ * -1 when `stop` has not come (or the text is not an object).
  */
-export function partialSay(soFar: string): { text: string; complete: boolean; kind: string | null } | null {
-  // Round 4, P2-7: "kind" may come first; "say" follows it.
-  const m = /^\s*\{\s*(?:"kind"\s*:\s*"([a-z]*)"\s*,\s*)?"say"\s*:\s*"/.exec(soFar);
-  if (!m) return null;
-  const kind = m[1] ?? (/^\s*\{\s*"say"/.test(soFar) ? "math" : null);
+function keysFrom(text: string, i: number, first: boolean, stop: string | null): { keys: Record<string, unknown>; at: number } {
+  const keys: Record<string, unknown> = {};
+  for (let n = 0; ; n++) {
+    if (n > 0 || !first) {
+      const sep = /^\s*,\s*/.exec(text.slice(i));
+      if (!sep) return { keys, at: -1 };
+      i += sep[0].length;
+    }
+    if (text[i] !== '"') return { keys, at: -1 };
+    const keyEnd = stringEnd(text, i);
+    if (keyEnd < 0) return { keys, at: -1 };
+    let key: unknown;
+    try { key = JSON.parse(text.slice(i, keyEnd)); } catch { return { keys, at: -1 }; }
+    const colon = /^\s*:\s*/.exec(text.slice(keyEnd));
+    if (!colon) return { keys, at: -1 };
+    i = keyEnd + colon[0].length;
+    if (key === stop) return { keys, at: i };
+    const end = valueEnd(text, i);
+    if (end < 0) return { keys, at: -1 };
+    try { keys[String(key)] = JSON.parse(text.slice(i, end)); } catch { return { keys, at: -1 }; }
+    i = end;
+  }
+}
+
+/**
+ * The `say` string of a version 3 reply as it streams in: its text so far, with JSON escapes read, and whether its
+ * closing quote has come. Null before the key. Final check 5 (2026-11-15): the keys before `say` are read whole, in any
+ * order: `kind` (round 4, P2-7; "math" when `say` is the first key), and the tutor's `gate` (2026-11-15, after final
+ * check 5): the value the model wrote before `say`, or null when `say` began before a complete gate (the tutor's stream
+ * then sends nothing on that turn). `reading` is the model's reading as it wrote it, before `say` or, once `say` is
+ * complete, after it; null while it is not complete.
+ */
+/**
+ * #1107 (prompt 13): `noDraw` is the model's "noDraw" when it came whole before "say" as a list of sentence numbers (each a
+ * whole number from 1, at most 20); null when it is missing there, malformed, or written after "say".
+ */
+export function partialSay(soFar: string): { text: string; complete: boolean; kind: string | null; gate: string | null; reading: Record<string, unknown> | null; before: string[]; noDraw: number[] | null } | null {
+  const open = /^\s*\{\s*/.exec(soFar);
+  if (!open) return null;
+  const head = keysFrom(soFar, open[0].length, true, "say");
+  if (head.at < 0) return null;
+  const before = head.keys;
+  const i = head.at;
+  if (soFar[i] !== '"') return null;
+  const kind = typeof before.kind === "string" ? before.kind : Object.keys(before).length === 0 ? "math" : null;
+  const gate = typeof before.gate === "string" ? before.gate : null;
+  const nd = before.noDraw;
+  const noDraw = Array.isArray(nd) && nd.length <= 20 && nd.every((n) => Number.isSafeInteger(n) && (n as number) >= 1) ? (nd as number[]) : null;
+  const readingOf = (r: unknown) => (typeof r === "object" && r !== null && !Array.isArray(r) ? (r as Record<string, unknown>) : null);
   let text = "";
-  for (let i = m[0].length; i < soFar.length; i++) {
-    const c = soFar[i];
-    if (c === '"') return { text, complete: true, kind };
+  for (let k = i + 1; k < soFar.length; k++) {
+    const c = soFar[k];
+    if (c === '"') {
+      // The keys after `say`: the tutor's reading comes there (2026-11-15).
+      const reading = readingOf(before.reading) ?? readingOf(keysFrom(soFar, k + 1, false, null).keys.reading);
+      return { text, complete: true, kind, gate, reading, before: Object.keys(before), noDraw };
+    }
     if (c !== "\\") { text += c; continue; }
-    const e = soFar[i + 1];
+    const e = soFar[k + 1];
     if (e === undefined) break;
     if (e === "u") {
-      const hex = soFar.slice(i + 2, i + 6);
+      const hex = soFar.slice(k + 2, k + 6);
       if (hex.length < 4) break;
       text += String.fromCharCode(parseInt(hex, 16));
-      i += 5;
+      k += 5;
       continue;
     }
     text += ({ n: "\n", t: "\t", r: "\r", b: "\b", f: "\f" } as Record<string, string>)[e] ?? e;
-    i += 1;
+    k += 1;
   }
-  return { text, complete: false, kind };
+  return { text, complete: false, kind, gate, reading: readingOf(before.reading), before: Object.keys(before), noDraw };
 }
-import { reviewInput, runReview, CONVERSATION_REVIEW_TIME_LIMIT_MS, REVIEW_TIME_LIMIT_MS, type TalkReviewer } from "@/lib/maya-talk-review";
-import { runMathReview, type MathReviewer } from "@/lib/maya-math-review";
-import { mathReviewInput, type MathReview, type MathReviewInput, type MathReviewResult, type TalkReviewInput, type TalkReviewResult } from "@/lib/maya";
+/**
+ * Final check 7 (2026-11-15): every member of every object in a reply's raw text as it streams in, at any depth, in the
+ * order written, each with its path from the top (["reading", "safety"]) and its value when it is a complete string,
+ * number, boolean or null. Repeated keys are kept, so a caller sees every copy; `repeated` is true when any one object
+ * holds a key twice, at any depth (a final parse keeps only the last copy). Stops at the first value that is not
+ * complete; the members before it stay.
+ */
+function deepMembers(text: string): { members: { path: string[]; value: unknown }[]; repeated: boolean } {
+  const members: { path: string[]; value: unknown }[] = [];
+  let repeated = false;
+  const ws = (i: number) => { while (i < text.length && /\s/.test(text[i])) i++; return i; };
+  /** The end of the value at `i` (after its last character), or -1 when it is not complete or not JSON. */
+  const value = (i: number, path: string[]): number => {
+    i = ws(i);
+    const c = text[i];
+    if (c === undefined) return -1;
+    if (c === "{") {
+      const keys = new Set<string>();
+      i = ws(i + 1);
+      if (text[i] === "}") return i + 1;
+      for (;;) {
+        if (text[i] !== '"') return -1;
+        const keyEnd = stringEnd(text, i);
+        if (keyEnd < 0) return -1;
+        let key: string;
+        try { key = String(JSON.parse(text.slice(i, keyEnd))); } catch { return -1; }
+        if (keys.has(key)) repeated = true;
+        keys.add(key);
+        i = ws(keyEnd);
+        if (text[i] !== ":") return -1;
+        const end = value(i + 1, [...path, key]);
+        if (end < 0) return -1;
+        i = ws(end);
+        if (text[i] === ",") { i = ws(i + 1); continue; }
+        if (text[i] === "}") return i + 1;
+        return -1;
+      }
+    }
+    if (c === "[") {
+      i = ws(i + 1);
+      if (text[i] === "]") return i + 1;
+      for (;;) {
+        const end = value(i, [...path, "[]"]);
+        if (end < 0) return -1;
+        i = ws(end);
+        if (text[i] === ",") { i = ws(i + 1); continue; }
+        if (text[i] === "]") return i + 1;
+        return -1;
+      }
+    }
+    const end = valueEnd(text, i);
+    if (end < 0) return -1;
+    let v: unknown;
+    try { v = JSON.parse(text.slice(i, end)); } catch { return -1; }
+    members.push({ path, value: v });
+    return end;
+  };
+  value(0, []);
+  return { members, repeated };
+}
+
+/** The fields whose values route a turn before any math (the gate and the priority readings). */
+const PRIORITY_KEYS = new Set(["gate", "kind", "aboutMaya", "safety", "stop", "unsafeRequest"]);
+
+/**
+ * Final check 8 (2026-11-15): every complete `"key": value` pair of a priority field in raw text, at any place, in the
+ * order written. A tolerant scan: JSON strings are read whole (with their escapes), and any other character that is no
+ * JSON token (a fence, "NaN", prose) only breaks the pair it stands in. A value is a string or true, false or null.
+ */
+export function rawPriorityMembers(raw: string): { key: string; value: unknown }[] {
+  type Tok = { t: "str"; v: string } | { t: "colon" } | { t: "lit"; v: unknown } | { t: "other" };
+  const toks: Tok[] = [];
+  for (let i = 0; i < raw.length;) {
+    const c = raw[i];
+    if (/\s/.test(c)) { i++; continue; }
+    if (c === '"') {
+      const end = stringEnd(raw, i);
+      if (end < 0) break;
+      let v: unknown;
+      try { v = JSON.parse(raw.slice(i, end)); } catch { v = null; }
+      toks.push(typeof v === "string" ? { t: "str", v } : { t: "other" });
+      i = end;
+      continue;
+    }
+    if (c === ":") { toks.push({ t: "colon" }); i++; continue; }
+    const lit = /^(?:true|false|null)\b/.exec(raw.slice(i, i + 6));
+    if (lit) { toks.push({ t: "lit", v: JSON.parse(lit[0]) }); i += lit[0].length; continue; }
+    toks.push({ t: "other" });
+    i++;
+  }
+  const out: { key: string; value: unknown }[] = [];
+  for (let k = 0; k + 2 < toks.length; k++) {
+    const a = toks[k], b = toks[k + 1], v = toks[k + 2];
+    if (a.t === "str" && PRIORITY_KEYS.has(a.v) && b.t === "colon" && (v.t === "str" || v.t === "lit")) out.push({ key: a.v, value: v.v });
+  }
+  return out;
+}
+
+/** Whether a parsed reading carries every priority value the raw text holds (a stronger or equal one counts). */
+export function priorityCovered(parsed: Record<string, unknown> | null, raw: Record<string, unknown> | null): boolean {
+  if (!raw) return true;
+  if (!parsed) return false;
+  const rank = (x: unknown) => (x === "immediate" ? 2 : x === "concern" ? 1 : 0);
+  if (rank(raw.safety) > rank(parsed.safety)) return false;
+  if (raw.aboutMaya && parsed.aboutMaya !== raw.aboutMaya && parsed.aboutMaya !== "secret_friend") return false;
+  if (raw.stop && !parsed.stop) return false;
+  if (raw.unsafeRequest && !parsed.unsafeRequest) return false;
+  return true;
+}
+
+/**
+ * Final check 6 (2026-11-15): what a reply's raw text, as streamed so far, says before any parse. `repeated`: a key comes
+ * twice in one object, at ANY depth (a second "gate", a second "reading", or a second "safety" inside the reading; final
+ * check 7), which makes the whole output malformed for routing, since a final parse keeps only the last value.
+ * `priority`: every priority value in the text, from any copy of any key, whole or cut off, as one reading: a question
+ * about Maya (the gate "identity" or aboutMaya), safety (the gate "safety", a severity, kind "safety"; the strongest
+ * severity in any copy wins), a harmful request, or a stop (the gate "stop", the reading's stop, kind "stop"); null when
+ * there is none. A complete priority value is never lost to a failed parse or to a later copy: it applies on its own
+ * (fail closed).
+ */
+export function streamedPriority(raw: string): { repeated: boolean; priority: Record<string, unknown> | null } {
+  const { repeated } = deepMembers(raw);
+  // Final check 8 (2026-11-15): the priority fields are read from the RAW text, never only from parsed JSON: every
+  // complete `"key": value` pair of a priority field wherever it stands, inside an outer Markdown fence, after an invalid
+  // value ("gate": NaN) or in a cut-off copy. Text inside a JSON string (the `say` text) is one token, so a key written in
+  // it is no member. Any non-"none" priority value seen anywhere applies; over-triggering only adds code's fixed line.
+  const members = rawPriorityMembers(raw);
+  const p: Record<string, unknown> = {};
+  const raise = (severity: unknown) => {
+    if (severity === "immediate") p.safety = "immediate";
+    else if (severity === "concern" && p.safety !== "immediate") p.safety = "concern";
+  };
+  let gateSafety = false;
+  for (const { key, value } of members) {
+    if (key === "gate") {
+      if (value === "identity") p.aboutMaya ??= "identity";
+      if (value === "safety") gateSafety = true;
+      if (value === "stop") p.stop = true;
+    } else if (key === "kind") {
+      if (value === "safety") raise("concern");
+      if (value === "stop") p.stop = true;
+    } else if (key === "aboutMaya") {
+      if (value === "identity" || value === "secret_friend") p.aboutMaya = p.aboutMaya === "secret_friend" ? "secret_friend" : value;
+    } else if (key === "safety") raise(value);
+    else if (key === "stop" && value === true) p.stop = true;
+    else if (key === "unsafeRequest" && value === true) p.unsafeRequest = true;
+  }
+  // A "safety" gate on a harmful request is the decline's (as priorityOf reads it); else it is a safety concern.
+  if (gateSafety && !p.unsafeRequest) raise("concern");
+  return { repeated, priority: Object.keys(p).length ? p : null };
+}
+
+import { reviewInput, runReview, CONVERSATION_REVIEW_TIME_LIMIT_MS, REVIEW_HEDGE_MS, REVIEW_TIME_LIMIT_MS, VOICE_REVIEW_HEDGE_MS, type TalkReviewer } from "@/lib/maya-talk-review";
+import { MATH_REVIEW_HEDGE_MS, runMathReview, VOICE_MATH_REVIEW_HEDGE_MS, type MathReviewer } from "@/lib/maya-math-review";
+import { BOARD_FATES, mathReviewInput, type BoardFate, type MathReview, type MathReviewInput, type MathReviewResult, type TalkReviewInput, type TalkReviewResult } from "@/lib/maya";
+import { emittedHelpKind, type Assistance } from "@/lib/maya/session";
 import { readFromFence } from "@/lib/ai-fenced";
-import { classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceBoardBatch, type TraceTurn, type TraceObligation } from "@/lib/maya-trace";
+import { ACK_PHRASES } from "@/lib/maya-voice-ack";
+import { boardFateCounts, classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceBoardBatch, type TraceTurn, type TraceObligation } from "@/lib/maya-trace";
 
 /** At most this many Maya turns in a row without the child (the easier example is up to four). */
 export const MAX_MAYA_TURNS = 8;
 /** D-341: the time one Maya turn may take in chat for the model and its repair, in ms. */
 export const TURN_BUDGET_MS = 6_000;
+/**
+ * #1072 (2026-11-15): the model time reserved for the one repair of a refused tutor teaching message, in ms. The first
+ * attempt and its reviews cannot spend it: the repair starts with this budget whatever time is left of the turn.
+ */
+export const TUTOR_REPAIR_BUDGET_MS = 6_000;
+/**
+ * After #1072 (2026-11-15, Chief of Staff rule: a child must not sit in silence for up to 10 s): the time of the one
+ * repair on a voice turn (the session has `onSayPart`), in ms. It covers the repair's model call AND its reviews: a
+ * review that starts later gets only the time left, and a repair that runs over ends in code's line. Chat keeps
+ * TUTOR_REPAIR_BUDGET_MS for the model, with the review limit after it.
+ */
+export const VOICE_REPAIR_BUDGET_MS = 4_000;
+/**
+ * 2026-11-15 (fallback rate): the review time reserved inside VOICE_REPAIR_BUDGET_MS, in ms. The repair's model may use
+ * the budget less this (2.5 s); its reviews end with the budget, so they always have at least this, and nothing of the
+ * repair goes past the 4 s cap (a sample saw a repair's reviews get 76 ms, so every sentence timed out). Review of #1099
+ * (P2): the floor is reserved inside the budget, never added after it.
+ */
+export const REVIEW_FLOOR_MS = 1_500;
+/**
+ * 2026-11-15 (fallback rate): the math-truth review's time limit on a tutor turn that is not voice (desk chat, admin text
+ * calls), in ms. Chat sends the whole message at once, so a held sentence costs no silence in the middle of speech. In 10
+ * desk-chat sessions the math review's p50 was 2.1 to 2.3 s and its p90 2.8 to 4.0 s: at 4 s, 7 of 58 teaching turns lost
+ * their first message to a time-out; at 6 s, none of 166 reviews in 10 sessions. A stalled request is sent once more at
+ * MATH_REVIEW_HEDGE_MS. Voice keeps CONVERSATION_REVIEW_TIME_LIMIT_MS.
+ */
+export const CHAT_MATH_REVIEW_TIME_LIMIT_MS = 6_000;
+/**
+ * Voice (call 21665dc6, 2026-11-15): a review that starts while the model still writes may run this much longer than its
+ * own limit. The whole-message check waits for it only as long as for a review it starts itself, so the child waits no
+ * longer than before; the early start gives the review the time the model still writes. On 30 voice tutor turns the math
+ * review's p90 was 3.2 s against its 4 s limit, and 12 of 91 timed out.
+ */
+export const VOICE_EARLY_REVIEW_EXTRA_MS = 3_000;
+
+/** A review started earlier, read for at most `ms` more; after that it counts as `late()` (a time-out never passes). */
+function within<T>(result: Promise<T>, ms: number, late: () => T): Promise<T> {
+  return new Promise<T>((resolve) => {
+    let done = false;
+    const end = (r: () => T) => { if (done) return; done = true; clearTimeout(timer); resolve(r()); };
+    const timer = setTimeout(() => end(late), ms);
+    result.then((r) => end(() => r), () => end(late));
+  });
+}
 
 export interface TextSessionOptions {
   /** Budget owner refuses speculative takes when only two live attempts remain. No seam disables preparation. */
@@ -165,6 +447,19 @@ export interface TextSessionOptions {
    */
   turnBudgetMs?: number;
   /**
+   * #1072: the model time reserved for the repair of a refused tutor teaching message (default TUTOR_REPAIR_BUDGET_MS;
+   * VOICE_REPAIR_BUDGET_MS on a voice turn). The first attempt and its reviews never spend it. In chat the repair's
+   * reviews keep the review time limit, so the turn is bounded by the turn budget, the repair budget and two review
+   * limits. On a voice turn the repair's reviews end inside this budget too.
+   */
+  repairBudgetMs?: number;
+  /**
+   * After #1072: a voice turn's repair starts and nothing was said in the turn yet. The voice worker may say its thinking
+   * phrase now (`ACK_PHRASES`, its own choice rule) and returns the phrase's id, or null when it said none. The id is kept
+   * on the repair attempt in the trace (`filler`). Only a voice call sets it; it is called only when `onSayPart` is set.
+   */
+  onRepairStart?: () => string | null;
+  /**
    * Whether a refused first proposal gets a second model request that fixes it (default true). A voice call sets false:
    * the repair costs two seconds of silence and failed in live practice (980571e0), so the first refusal goes straight
    * to code's own line. Chat and admin text calls keep the repair. Safety is code's guidance either way.
@@ -175,8 +470,19 @@ export interface TextSessionOptions {
    * index order, one at a time, only after it passed the per-sentence checks; a sentence sent is never cancelled.
    * `onSayCancel(fromIndex)` is only for indexes not sent yet; `onSayEnd` ends the output. Today the hooks are called
    * once the whole reply is checked (no token streaming yet); the saved turn holds exactly the spoken sentences in order.
+   * #1107: desk chat (`channel` "chat") sets it too, so its checked sentences reach the desk as they pass; chat keeps its
+   * own review limits and repair budget (only a voice turn takes the voice ones).
    */
   onSayPart?: (sentence: string, index: number, boardCues: Batch[]) => void;
+  /**
+   * #1107 (chat): saves the session as it is now (the caller writes `saved()` to the call's store) and answers whether the
+   * store took it. With it, each checked sentence is first pending with its drawing (`board`, given to
+   * `onSayPart` as its one cue), and goes out only after the save. Confirmation is saved after server dispatch;
+   * it does not prove child receipt. A refused or failed save stops successors. The rest of
+   * the message reaches the caller only in the turn's output (no `onSayPart` after the whole check). A saved session
+   * whose request stopped after its parts is `interrupted`; `settleInterrupted` ends that turn with no model call.
+   */
+  persist?: () => Promise<boolean>;
   onSayCancel?: (fromIndex: number) => void;
   onSayEnd?: () => void;
   /** The time limit of one review (default REVIEW_TIME_LIMIT_MS); a late review fails the line. */
@@ -284,6 +590,12 @@ export interface TextSession {
   contentProblem(detail: string): Promise<TextOutput>;
   /** The clock moved on with no input (the pause policy may make Maya check in). */
   tick(): Promise<TextOutput>;
+  /**
+   * B1 ("shown means shown"): what the child's screen did with Maya's board batches, by transaction id. Says nothing and
+   * draws nothing. The first word for a batch she sent stands; a word for another batch, or a second word, changes
+   * nothing. A skipped or cancelled drawing is no longer counted as drawn; a drawing with no word stays "sent".
+   */
+  boardFates(fates: readonly BoardFateReport[]): void;
   /** The child starts or stops writing. */
   writing(status: "started" | "done"): Promise<TextOutput>;
   /** The connection or a service failed: the call ends. */
@@ -303,8 +615,23 @@ export interface TextSession {
    * callers written against trace version 1 (the behaviour gate, #384) need no change.
    */
   finish(end?: FinishOptions | string, failed?: boolean): Promise<MayaTrace>;
+  /**
+   * #1107: a session saved in the middle of a child turn whose request stopped after saved parts (the process went away):
+   * the child's words of that turn. Null otherwise.
+   */
+  readonly interrupted: { text: string } | null;
+  /**
+   * #1107: ends an interrupted turn from its saved parts, with no model or review call and no new child turn: the request
+   * counts as stopped (an error), and code's own line follows the saved sentences, as after any request that fails once
+   * its sentences went out (no repair). Their help and drawings stay. Answers the turn's output; a session that is not
+   * interrupted answers an empty one.
+   */
+  settleInterrupted(): Promise<TextOutput>;
   /** The controller fold now (a copy of plain data). */
   readonly session: Session;
+  /** Final check 12: the help kinds of every sentence this text session emitted (the help ledger). */
+  helpLedger(): Assistance[];
+
   readonly ended: boolean;
   /** The trace so far, with the child's name as {name} and secrets removed: complete once the call has ended. */
   trace(): MayaTrace;
@@ -312,7 +639,38 @@ export interface TextSession {
   saved(): Promise<SavedTextSession>;
 }
 
+/** B1: one word from the child's screen about one of Maya's board batches. */
+export interface BoardFateReport { batchId: string; fate: BoardFate }
+/** The most words the session takes in one report. */
+export const MAX_FATE_REPORTS = 32;
+/** The words of a report the session can read: a transaction id it could have sent and a known fate, each batch once. */
+export function readFateReports(raw: unknown): BoardFateReport[] | null {
+  if (!Array.isArray(raw) || raw.length > MAX_FATE_REPORTS) return null;
+  const out: BoardFateReport[] = [];
+  for (const x of raw) {
+    if (typeof x !== "object" || x === null) return null;
+    const { batchId, fate } = x as { batchId?: unknown; fate?: unknown };
+    if (typeof batchId !== "string" || !batchId || batchId.length > 64 || !BOARD_FATES.includes(fate as BoardFate)) return null;
+    if (!out.some((f) => f.batchId === batchId)) out.push({ batchId, fate: fate as BoardFate });
+  }
+  return out;
+}
+
 const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
+
+/**
+ * Final check 12 (2026-11-15): a saved call with the help ledger of the live session added to its log, so a restore for
+ * the end (a hang-up, the deadline, the cap) folds that help in before anything else can end it. Only rises: a kind the
+ * saved session already holds adds nothing. A saved call with no log (version 1) is returned as it is.
+ */
+export function withHelpLedger(saved: SavedTextSession, kinds: readonly Assistance[]): SavedTextSession {
+  if (saved.v !== 6 || !saved.log) return saved;
+  const held = saved.session?.assistance ?? [];
+  const add = kinds.filter((k, i) => !held.includes(k) && kinds.indexOf(k) === i);
+  if (add.length === 0) return saved;
+  const at = Math.max(saved.log.at(-1)?.at ?? 0, saved.session?.now ?? 0);
+  return { ...saved, log: [...saved.log, ...add.map((assistance) => ({ kind: "help" as const, at, assistance }))] };
+}
 
 // The reducer owns all persistent state. The driver owns only promises and abort signals.
 import { foldTextEvent, initialTextState, matchesApproval, textOutput, saveTextCheckpoint, restoreTextCheckpoint, type TextCheckpoint, type TextLogEvent, type TextLogInitial, type TextFold } from "@/lib/maya-text-log";
@@ -336,10 +694,27 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   let folded: TextFold = checkpoint ? restoreTextCheckpoint(checkpoint) : initialTextState(initial);
   for (const e of log) folded = read(() => foldTextEvent(folded, e));
   let needsRecovery = folded.request !== null;
+  let settlingInterrupted = false;
   let active: AbortController | null = null;
   let generation = 0;
   let queue: Promise<unknown> = Promise.resolve();
   let turnEndsAt = Number.POSITIVE_INFINITY;
+  // After #1072: on a voice repair the reviews end with the repair's budget (VOICE_REPAIR_BUDGET_MS); otherwise no end.
+  let reviewEndsAt = Number.POSITIVE_INFINITY;
+  /** A review's time limit: its own limit, or the time left of a voice repair when that is less. */
+  const reviewLimit = (ms: number) => Math.min(ms, Math.max(0, reviewEndsAt - Date.now()));
+  /**
+   * #1107: a voice turn. Chat streams its checked sentences through the same hooks (`onSayPart`), but it keeps chat's
+   * own review limits, hedges and repair budget, and never asks for a thinking phrase: only these timings tell them apart.
+   */
+  const voice = options.onSayPart !== undefined && options.channel !== "chat";
+  /** The math review's own limit: a voice turn's is the conversational limit, a chat or text turn's is longer. */
+  const mathLimit = (conversational: boolean) => options.reviewTimeLimitMs ?? (!conversational ? REVIEW_TIME_LIMIT_MS : voice ? CONVERSATION_REVIEW_TIME_LIMIT_MS : CHAT_MATH_REVIEW_TIME_LIMIT_MS);
+  // Call 21665dc6 (2026-11-15): a voice review is sent once more at the voice p90; chat and text keep their delays (#1099).
+  const talkHedge = voice ? VOICE_REVIEW_HEDGE_MS : REVIEW_HEDGE_MS;
+  const mathHedge = voice ? VOICE_MATH_REVIEW_HEDGE_MS : MATH_REVIEW_HEDGE_MS;
+  /** The own limit of a review started while the model still writes (only voice streams); a voice repair's end still caps it. */
+  const earlyLimit = (ms: number) => reviewLimit(ms + VOICE_EARLY_REVIEW_EXTRA_MS);
   let quietOpening = false;
   let scheduled = 0;
   let prepareCount = 0;
@@ -417,14 +792,78 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   /** Sentences streamed for the output being built (D-341), in the order they were sent. */
   const streamedThisOutput: string[] = [];
   /**
+   * Final check 12 (2026-11-15), the help ledger: the help each emitted sentence gives is written to the log the moment
+   * it goes out, with the turn it answers, so a cancellation, a deadline, a hang-up, a replacement turn and every saved
+   * end read it. It only rises.
+   */
+  const ledger: Assistance[] = [];
+  const ledgerHelp = (sent: readonly string[]) => {
+    const kind = read(() => emittedHelpKind(folded.session, sent));
+    if (!kind) return;
+    if (!ledger.includes(kind)) ledger.push(kind);
+    if (!folded.session.assistance.includes(kind)) append({ kind: "help", at: now(), assistance: kind });
+  };
+  /**
    * Reviews the stream started for its sentences (round 4), by the review's whole input (the line, the child's turn, the
    * turns and the stance): the whole-reply review of the same request uses each once, and never one of another input.
    */
-  const streamReviews = new Map<string, { requestId: number; result: Promise<TalkReviewResult> }>();
+  const streamReviews = new Map<string, { requestId: number; result: Promise<TalkReviewResult>; stop?: AbortController }>();
   const reviewKey = (input: TalkReviewInput) => JSON.stringify(input);
   /** Math-truth reviews the stream started (two-layer true math), by their whole input, used once by the whole-reply check. */
-  const streamMathReviews = new Map<string, { requestId: number; result: Promise<MathReviewResult> }>();
+  const streamMathReviews = new Map<string, { requestId: number; result: Promise<MathReviewResult>; stop?: AbortController }>();
+  /**
+   * Review of #1109 (money): the reviews a model request started while it streamed end when no one will read them: the
+   * request was dropped, failed or ran out of time, the whole check stopped waiting for one, or the check is done. A
+   * review that ends sends no copy (its hedge timer stops with it). One controller per request, by its id.
+   */
+  const reviewStops = new Map<number, AbortController>();
+  /** The reviews of the turn that runs now (`schedule`); aborted with the turn's controller and when the turn is done. */
+  let turnReviews = new AbortController();
+  const stopReviews = (requestId?: number) => {
+    for (const [id, c] of reviewStops) if (requestId === undefined || id === requestId) { c.abort(); reviewStops.delete(id); }
+  };
   const mathKey = (input: MathReviewInput) => JSON.stringify(input);
+  /**
+   * Final check 9 (2026-11-15): every terminal math review result that is not "true" (false, unsure after its retry,
+   * malformed, an error, a time-out) is final for its sentence for the rest of the child turn: no second call of any
+   * kind, also when the repair says the sentence again, so the repaired message is refused and code's line follows.
+   * Keyed by the child turn and the sentence. A "true" is never kept: the next input is reviewed again.
+   * Final check 10 (2026-11-15): the sentence key ignores only the surface (sentenceKey: case, punctuation, spaces,
+   * number words against digits), so a repair that changes only "." to "!" keeps the terminal result.
+   */
+  const finalMath = new Map<string, Promise<MathReviewResult>>();
+  /**
+   * Final check 12 (2026-11-15): the sentences refused by a terminal review in each child turn, with the reason: the
+   * review of every later sentence of that turn reads them (MathReviewInput.refused, version 8), so a repair that says
+   * the same math in another surface form is refused too.
+   */
+  const refusedMath = new Map<number, { sentence: string; reason: string }[]>();
+  /** A math review read too late is a time-out, final for its sentence for the rest of the child turn (final check 9). */
+  const mathLate = (turn: number, sentence: string): MathReviewResult => {
+    const late: MathReviewResult = { verdict: "unsure", reason: "the math review did not answer in time" };
+    const key = `${turn}|${sentenceKey(sentence)}`;
+    if (!finalMath.has(key)) {
+      finalMath.set(key, Promise.resolve(late));
+      refusedMath.set(turn, [...(refusedMath.get(turn) ?? []), { sentence, reason: late.reason }]);
+    }
+    return late;
+  };
+  const reviewMath = (given: MathReviewInput, turn: number, ms: number, onError?: (e: unknown) => void, stop?: AbortSignal): Promise<MathReviewResult> => {
+    const key = `${turn}|${sentenceKey(given.sentence)}`;
+    const held = finalMath.get(key);
+    if (held) return held;
+    const earlier = (refusedMath.get(turn) ?? []).filter((x) => x.sentence !== given.sentence);
+    const input = earlier.length ? { ...given, refused: earlier } : given;
+    const started = runMathReview(options.mathReviewer!, input, ms, onError, mathHedge, stop);
+    return started.then((r) => {
+      // A stopped review was never read: it is no verdict on the sentence (review of #1109).
+      if (r.verdict !== "true" && !finalMath.has(key) && !stop?.aborted) {
+        finalMath.set(key, Promise.resolve(r));
+        refusedMath.set(turn, [...(refusedMath.get(turn) ?? []), { sentence: given.sentence, reason: r.reason }]);
+      }
+      return r;
+    });
+  };
   /** A review error goes to the observer; an observer that throws changes nothing. */
   const reviewError = (error: unknown) => {
     try { options.onError?.(error, { turn: folded.turns.length, source: "review" }); } catch { /* the observer is not the review */ }
@@ -435,19 +874,44 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     try { at = clock(); } catch { /* Keep the last known time when the clock fails. */ }
     return Math.max(Number.isFinite(at) ? at : 0, log.at(-1)?.at ?? 0, folded.session.now ?? 0);
   };
-  function append(e: TextLogEvent) {
-    log.push(structuredClone(e));
-    folded = read(() => foldTextEvent(folded, log.at(-1)!));
-    logBytes += new TextEncoder().encode(JSON.stringify(e)).byteLength + 1;
-    if (log.length >= 64 || logBytes >= 65536) {
+  // A save can overlap raw priority and concurrent input. Compact after its ordered delivery decision.
+  // Pending state is replayable and safe even when the process loses ownership before that decision.
+  let partSaves = 0;
+  function compact() {
+    if (!partSaves && (log.length >= 64 || logBytes >= 65536)) {
       checkpoint = saveTextCheckpoint(folded);
       log.length = 0; logBytes = 0;
     }
+  }
+  function append(e: TextLogEvent) {
+    const entry = structuredClone(e);
+    log.push(entry);
+    folded = read(() => foldTextEvent(folded, entry));
+    logBytes += new TextEncoder().encode(JSON.stringify(e)).byteLength + 1;
+    compact();
+    return entry;
   }
   function recover() {
     if (!needsRecovery) return;
     needsRecovery = false;
     append({ kind: "recover", at: now() });
+  }
+  /** #1107: the child's words of a turn whose request stopped after its saved parts (restored from the store). */
+  function interruptedTurn(): { text: string } | null {
+    return needsRecovery && folded.request && !folded.candidate && ((folded.parts ?? 0) > 0 || folded.streamDelivery || folded.streamHold?.requestId === folded.request.id) && folded.session.turn ? { text: folded.session.turn.text } : null;
+  }
+  /** #1107: ends an interrupted turn with code's line after its saved parts; no model call (the pump finds a failed attempt). */
+  async function settle(): Promise<TextOutput> {
+    if (!interruptedTurn()) return Promise.resolve(newOutput());
+    needsRecovery = false;
+    const priority = folded.streamHold?.priority;
+    if (folded.streamDelivery && !priority && !folded.session.safety.flagged) {
+      append({ kind: "stream_interrupted", at: now(), requestId: folded.request!.id, detail: "Stream delivery or final priority is unknown. Teaching stopped before reconciliation." });
+      return schedule(false);
+    }
+    append({ kind: "response", at: now(), requestId: folded.request!.id, error: classifyError(new Error("the request stopped before it finished"), "local"), ...(priority ? { priority } : {}), ms: 0 });
+    settlingInterrupted = true;
+    try { return await schedule(); } finally { settlingInterrupted = false; }
   }
   const stopped = Symbol("stopped");
   async function wait<T>(promise: Promise<T>, controller: AbortController): Promise<T | typeof stopped> {
@@ -476,18 +940,21 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     }
     return run();
   }
-  async function request(source: "model" | "repair", controller: AbortController) {
+  async function request(source: "model" | "repair", controller: AbortController, filler: string | null = null) {
     const prepared = source === "model" ? preparedForTurn() : undefined;
     const requestId = nextRequestId++;
     const repair = source === "repair" && folded.attempts.at(-1)?.refusal ? {
       proposal: folded.attempts.at(-1)!.proposal,
       refusal: folded.attempts.at(-1)!.refusal!,
     } : null;
+    // 2026-11-15 (voice fallbacks): a tutor repair after streamed sentences continues them. They are fixed: the brief names
+    // them (`alreadySaid`) and asks only for the rest; the whole message (them, then the rest) is checked as one.
+    const lead = source === "repair" && folded.session.tutor && folded.sent?.length ? [...folded.sent] : [];
     const input = read(() => model.output === 3
-      ? (folded.session.tutor ? tutorBrief(folded.session, repair ? { said: repair.proposal, refusal: repair.refusal } : null) : turnBrief(folded.session, repair ? { said: repair.proposal, refusal: repair.refusal } : null)) as unknown as ModelInput
+      ? (folded.session.tutor ? tutorBrief(folded.session, repair ? { said: repair.proposal, refusal: repair.refusal, ...(lead.length ? { alreadySaid: lead } : {}) } : null) : turnBrief(folded.session, repair ? { said: repair.proposal, refusal: repair.refusal } : null)) as unknown as ModelInput
       : modelInput(folded.session, repair));
     const at = Math.max(clock(), now());
-    append({ kind: "request", at, requestId, source });
+    append({ kind: "request", at, requestId, source, ...(filler ? { filler } : {}), ...(lead.length ? { continuation: true as const } : {}) });
     if (folded.session.outcome || folded.request?.id !== requestId) return;
     // D-341: the turn's time budget. When it is spent, the request counts as a time-out and code's line follows.
     const left = Math.max(0, turnEndsAt - Date.now());
@@ -498,6 +965,15 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     let firstSayMs: number | undefined;
     streamReviews.clear();
     streamMathReviews.clear();
+    // The reviews of an earlier request are out of the maps now, so no one reads them.
+    stopReviews();
+    const requestStop = new AbortController();
+    reviewStops.set(requestId, requestStop);
+    /** One review's own stop, which also ends with this request's and with the turn's controller. */
+    const reviewStop = () => {
+      const stop = new AbortController();
+      return { stop, signal: AbortSignal.any([controller.signal, turnReviews.signal, requestStop.signal, stop.signal]) };
+    };
     // Round 4: code's plan for the turn is settled before the call; the "kind" the model writes first decides how its
     // sentences go out: math or help stream (math-only sentences at once, others after their own review, started the
     // moment the sentence is complete); any other kind reviews every sentence first; safety streams nothing.
@@ -516,27 +992,84 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       folded.session.contentProblem === null && !folded.session.safety.flagged && !folded.session.outcome && folded.session.state !== "CONTENT_HOLD" &&
       // Review of #1006 (fifth check): never past the call's end, even while a tick waits behind the request.
       !(folded.session.startedAt !== null && now() - folded.session.startedAt >= (folded.session.limits?.endAtMs ?? 600000));
+    // Save pending, dispatch synchronously, then save confirmation. Only confirmation accepts words, drawing and help.
+    // A refused save stops successors. Recovery never infers dispatch or final priority from an incomplete request.
+    const persisting = options.persist !== undefined;
+    let streamHeld = false;
+    const holdStream = (priority?: Record<string, unknown> | null) => {
+      streamHeld = true;
+      streamDone = true;
+      queue.length = 0;
+      if (persisting && folded.request?.id === requestId && (!folded.streamHold || (priority && JSON.stringify(priority) !== JSON.stringify(folded.streamHold.priority)))) {
+        append({ kind: "stream_hold", at: now(), requestId, ...(priority ? { priority } : {}) });
+      }
+    };
+    let delivery: Promise<void> = Promise.resolve();
+    let persistFailed = false;
+    /** The model's "noDraw" when it came whole before "say" (prompt 13); null: no sentence of this request draws early. */
+    let earlyNoDraw: number[] | null = null;
+    /** Whether a saved part may still go to the desk: the request is this turn's own and nothing holds the turn. */
+    const deliverable = () => !streamHeld && !controller.signal.aborted && folded.request?.id === requestId && folded.candidate === null &&
+      folded.session.contentProblem === null && !folded.session.safety.flagged && !folded.session.outcome && folded.session.state !== "CONTENT_HOLD" &&
+      !(folded.session.startedAt !== null && now() - folded.session.startedAt >= (folded.session.limits?.endAtMs ?? 600000));
+    const emit = (sentence: string) => {
+      if (!persisting) {
+        firstSayMs ??= now() - at;
+        options.onSayPart!(fillName(sentence, session), sent.length, []);
+        sent.push(sentence);
+        ledgerHelp(sent);
+        return;
+      }
+      delivery = delivery.then(async () => {
+        if (persistFailed || !deliverable()) return;
+        const message = [...(folded.sent ?? []), sentence];
+        const drawing = earlyNoDraw ? read(() => streamedDrawing(folded.session, message, (folded.streamBoard ?? []).map((b) => b.tied), earlyNoDraw!)) : null;
+        partSaves++;
+        append({ kind: "part_pending", at: now(), requestId, sentence, ...(drawing ? { board: { batch: drawing.batch, keys: drawing.keys, tied: drawing.tied } } : {}) });
+        const persist = async () => { try { return await options.persist!(); } catch { return false; } };
+        try {
+          const saved = await persist();
+          if (!saved || !deliverable()) {
+            // The first durable snapshot is already safe if this correction fails or loses ownership.
+            if (!saved) { persistFailed = true; holdStream(); }
+            append({ kind: "part_discarded", at: now(), requestId });
+            await persist();
+            return;
+          }
+          // No await separates the ownership-fenced save, the hold check and server dispatch.
+          // This callback does not acknowledge child receipt. A lost confirmation remains pending on disk.
+          try { options.onSayPart!(fillName(sentence, session), message.length - 1, drawing ? [drawing.batch] : []); }
+          catch {
+            persistFailed = true; holdStream();
+            append({ kind: "part_discarded", at: now(), requestId });
+            await persist();
+            return;
+          }
+          firstSayMs ??= now() - at;
+          append({ kind: "part_confirmed", at: now(), requestId });
+          ledgerHelp(folded.sent ?? []);
+          if (!await persist()) { persistFailed = true; holdStream(); }
+        } finally { partSaves--; compact(); }
+      });
+    };
     const flush = () => {
       while (queue.length && queue[0].state !== "pending" && live()) {
         const next = queue.shift()!;
         if (next.state === "drop") continue;
-        firstSayMs ??= now() - at;
-        options.onSayPart!(fillName(next.sentence, session), sent.length, []);
-        sent.push(next.sentence);
+        emit(next.sentence);
       }
     };
     // D-345: a tutor message streams too. A plain teaching sentence goes out once every check passes on the words so
     // far; any other sentence is held, alone, while its safety review runs in parallel; a refused review or a failed
     // check stops the stream, and the rest waits for the whole message and its whole check.
     const tutor = model.output === 3 && options.onSayPart && !folded.sent?.length && folded.pending.length === 0 ? read(() => tutorStream(folded.session)) : null;
-    const passes = (r: TalkReviewResult) => r.verdict === "pass" || (r.verdict === "fail" && r.rules.length > 0 && r.rules.every((id) => TUTOR_REVIEW_IGNORED.includes(id)));
+    // Final check 3: a refusal of a sentence that judges correctness is binding, whatever rules it names.
+    const passes = (r: TalkReviewResult, sentence: string) => r.verdict === "pass" || (r.verdict === "fail" && r.rules.length > 0 && r.rules.every((id) => TUTOR_REVIEW_IGNORED.includes(id)) && !bindingReview(sentence, tutor?.wordAnswer, tutor?.stance));
     const flushTutor = () => {
       while (queue.length && queue[0].state !== "pending" && live()) {
         const next = queue.shift()!;
-        if (next.state === "drop") { streamDone = true; queue.length = 0; return; }
-        firstSayMs ??= now() - at;
-        options.onSayPart!(fillName(next.sentence, session), sent.length, []);
-        sent.push(next.sentence);
+        if (next.state === "drop") { holdStream(); return; }
+        emit(next.sentence);
       }
     };
     const onTutorText = tutor ? (soFar: string) => {
@@ -545,12 +1078,31 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       if (!said || !said.kind) return;
       // A safety or stop turn never streams (code's guidance and close come first); any other kind streams, and its
       // sentences that are not plain teaching wait for their own review.
-      if (said.kind === "safety" || said.kind === "stop") { streamDone = true; return; }
+      if (said.kind === "safety" || said.kind === "stop") { holdStream(); return; }
+      // 2026-11-15 (after final check 5): the small "gate" comes whole before "say". No word goes out before it: a "say"
+      // that began before a complete gate (a model that ignores the order) streams nothing on this turn, and a gate
+      // about Maya, safety or a stop holds the whole message, so code's own line goes first. Code's own read is the
+      // second guard: `tutor` is null (no stream at all) unless code read the turn as plainly math, with no identity
+      // word, no safety and no stop (tutorStream).
+      if (said.gate !== "none") { holdStream(); return; }
+      // Final check 6: the stream uses the same single gate and reading as final routing. Only "gate" then "kind" may
+      // come before "say" (the schema's order); a key written twice makes the whole output malformed, so nothing further
+      // streams; any priority value anywhere in the text (a copy of the reading, a cut-off reading) holds the rest.
+      const seenSoFar = streamedPriority(soFar);
+      if (seenSoFar.repeated || seenSoFar.priority) { holdStream(seenSoFar.priority); return; }
+      // #1107 (prompt 13): "noDraw" may come third, before "say"; nothing else may.
+      if (!["gate,kind", "gate,kind,noDraw"].includes(said.before.join(","))) { holdStream(); return; }
+      // A "noDraw" missing before "say" or malformed allows no early drawing; the words still stream.
+      if (seen === 0) earlyNoDraw = said.before.includes("noDraw") ? said.noDraw : null;
+      // The full reading, once complete (after "say", or before it from a model that still writes it first), decides
+      // as before: a reading about Maya, safety, a stop or any priority reading holds every sentence not yet sent, and
+      // code's line follows the words already said. A gate that disagrees with it is recorded in the trace.
+      if (said.reading && !read(() => tutorStreamReading(session, said.reading!))) { holdStream(); return; }
       const parts = sentencesOf(said.text);
       const complete = said.complete ? parts : parts.slice(0, -1);
       for (const sentence of complete.slice(seen)) {
         const how = read(() => tutorStreamSentence(sentence, complete.slice(0, seen), tutor));
-        if (how === "stop" || (how !== "send" && ((how.talk && !options.reviewer) || (how.math && !options.mathReviewer)))) { streamDone = true; return; }
+        if (how === "stop" || (how !== "send" && ((how.talk && !options.reviewer) || (how.math && !options.mathReviewer)))) { holdStream(); return; }
         const before = complete.slice(0, seen);
         seen++;
         const item: { sentence: string; state: "ready" | "pending" | "drop" } = { sentence, state: how === "send" ? "ready" : "pending" };
@@ -561,14 +1113,16 @@ export function createTextSession(options: TextSessionOptions): TextSession {
           const checks: Promise<boolean>[] = [];
           if (how.talk) {
             const input = reviewInput(session, sentence, tutor.stance);
-            const started = runReview(options.reviewer!, input, options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS);
-            streamReviews.set(reviewKey(input), { requestId, result: started });
-            checks.push(started.then(passes));
+            const own = reviewStop();
+            const started = runReview(options.reviewer!, input, earlyLimit(options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS), undefined, talkHedge, own.signal);
+            streamReviews.set(reviewKey(input), { requestId, result: started, stop: own.stop });
+            checks.push(started.then((r) => passes(r, sentence)));
           }
           if (how.math) {
             const input = read(() => mathReviewInput(session, sentence, before));
-            const started = runMathReview(options.mathReviewer!, input, options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS);
-            streamMathReviews.set(mathKey(input), { requestId, result: started });
+            const own = reviewStop();
+            const started = reviewMath(input, session.turns.length, earlyLimit(mathLimit(true)), undefined, own.signal);
+            streamMathReviews.set(mathKey(input), { requestId, result: started, stop: own.stop });
             checks.push(started.then((r) => r.verdict === "true"));
           }
           void Promise.all(checks).then((ok) => {
@@ -580,25 +1134,72 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       }
       flushTutor();
     } : undefined;
-    const onText = tutor ? onTutorText : plan ? (soFar: string) => {
+    // Call 21665dc6 (2026-11-15): on a voice tutor turn each sentence's reviews start, both at once, as soon as the
+    // sentence is complete, also when the turn cannot stream (not plainly math) or the stream stopped. Nothing is sent
+    // from here: the whole check finds the reviews running and reads them (no longer than a review it starts itself).
+    // Which reviews a sentence needs is read as the stream reads it; a sentence that fails code's own check ends it.
+    // A continuation's sentences start their reviews early too, each read after the fixed sentences (`lead`).
+    // #1107: voice only. A chat turn reviews what its stream holds, and the whole check the rest, as before.
+    const early = model.output === 3 && voice && folded.session.tutor && (!folded.sent?.length || lead.length > 0) && folded.pending.length === 0 ? read(() => tutorStream(session, true)) : null;
+    const earlyStance = early && session.conversational ? read(() => codeStance(session)) : "none";
+    let earlySeen = 0;
+    let earlyDone = false;
+    /** A continuation that starts by saying the fixed sentences again: those are left out (continuedSay). */
+    let echoed = 0;
+    const onEarlyText = early ? (soFar: string) => {
+      if (earlyDone || controller.signal.aborted || folded.request?.id !== requestId) return;
+      const said = partialSay(soFar);
+      if (!said || !said.kind) return;
+      if (said.kind === "safety" || said.kind === "stop" || said.gate !== "none") { earlyDone = true; return; }
+      const parts = sentencesOf(said.text);
+      const complete = said.complete ? parts : parts.slice(0, -1);
+      for (const sentence of complete.slice(earlySeen)) {
+        if (earlySeen === echoed && echoed < lead.length && sentenceKey(sentence) === sentenceKey(lead[echoed])) { earlySeen++; echoed++; continue; }
+        const before = [...lead, ...complete.slice(echoed, earlySeen)];
+        earlySeen++;
+        let how = read(() => tutorStreamSentence(sentence, before, early));
+        // A sentence the stream may not send (a judgment, another number) may still pass the whole check: both reviews.
+        if (how === "stop") {
+          if (!read(() => checkTutorSay([...before, sentence].join(" "), early)).ok) { earlyDone = true; return; }
+          how = { talk: true, math: true };
+        }
+        if (how === "send") continue;
+        if (how.talk && options.reviewer) {
+          const input = reviewInput(session, sentence, earlyStance);
+          if (!streamReviews.has(reviewKey(input))) {
+            const own = reviewStop();
+            streamReviews.set(reviewKey(input), { requestId, result: runReview(options.reviewer, input, earlyLimit(options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS), undefined, talkHedge, own.signal), stop: own.stop });
+          }
+        }
+        if (how.math && options.mathReviewer) {
+          const input = read(() => mathReviewInput(session, sentence, before));
+          if (!streamMathReviews.has(mathKey(input))) {
+            const own = reviewStop();
+            streamMathReviews.set(mathKey(input), { requestId, result: reviewMath(input, session.turns.length, earlyLimit(mathLimit(true)), undefined, own.signal), stop: own.stop });
+          }
+        }
+      }
+    } : undefined;
+    const onSentences = tutor ? onTutorText : plan ? (soFar: string) => {
       if (!live()) return;
       const said = partialSay(soFar);
       if (!said || !said.kind) return;
-      if (said.kind === "safety") { streamDone = true; return; }
+      if (said.kind === "safety") { holdStream(); return; }
       const reviewAll = said.kind !== "math" && said.kind !== "help" && !plan.greeting;
       const parts = sentencesOf(said.text);
       const complete = said.complete ? parts : parts.slice(0, -1);
       for (const sentence of complete.slice(seen)) {
         const how = read(() => streamSentence(sentence, plan, seen, words, reviewAll, complete.slice(0, seen)));
-        if (how === "stop" || (how === "review" && !options.reviewer)) { streamDone = true; return; }
+        if (how === "stop" || (how === "review" && !options.reviewer)) { holdStream(); return; }
         seen++;
         words += sentence.split(/\s+/).filter(Boolean).length;
         const item: { sentence: string; state: "ready" | "pending" | "drop" } = { sentence, state: how === "send" ? "ready" : "pending" };
         queue.push(item);
         if (how === "review") {
           const input = reviewInput(session, sentence, plan.stance);
-          const started = runReview(options.reviewer!, input, options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS);
-          streamReviews.set(reviewKey(input), { requestId, result: started });
+          const own = reviewStop();
+          const started = runReview(options.reviewer!, input, earlyLimit(options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS), undefined, talkHedge, own.signal);
+          streamReviews.set(reviewKey(input), { requestId, result: started, stop: own.stop });
           void started.then((result) => {
             if (!live()) return;
             item.state = result.verdict === "pass" ? "ready" : "drop";
@@ -608,32 +1209,75 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       }
       flush();
     } : undefined;
+    const onText = onSentences || onEarlyText ? (soFar: string) => { onSentences?.(soFar); onEarlyText?.(soFar); } : undefined;
     const streamed = () => {
       streamDone = true;
+      earlyDone = true;
       streamedThisOutput.push(...sent.map((x) => fillName(x, session)));
-      return sent.length ? { sent: [...sent], firstSayMs } : {};
+      return { ...(sent.length ? { sent: [...sent] } : {}), ...(firstSayMs !== undefined ? { firstSayMs } : {}) };
     };
     // The handler logs even a late response from a provider that ignores abort; a response after the budget is stale.
-    const answered = Promise.resolve().then(() => prepared ? prepared.use(onText, controller.signal) : attempt(source, () => model.propose(input, controller.signal, onText))).then((proposal) => ({ proposal }), (error: unknown) => ({ error }));
-    const response = Promise.race([answered, budget]).then((got) => {
+    // Final check 6: the raw text as it streamed in, so a priority value in it is kept even when the final parse fails,
+    // and a key written twice is seen (a final parse keeps only the last copy). Every version 3 request reads its raw
+    // text, also when no sentence may stream on this turn (then nothing is sent from it).
+    let raw = "";
+    const onRaw = onText || model.output === 3 ? (soFar: string) => {
+      raw = soFar;
+      // Read even after the parser stopped accepting sentences. Queued saves can still be in flight.
+      if (persisting) {
+        const scan = streamedPriority(soFar);
+        if (scan.repeated || scan.priority) holdStream(scan.priority);
+      }
+      onText?.(soFar);
+    } : undefined;
+    const rawScan = () => (raw ? streamedPriority(raw) : { repeated: false, priority: null });
+    const withPriority = (p: Record<string, unknown> | null) => (p ? { priority: p } : {});
+    const answered = Promise.resolve().then(() => prepared ? prepared.use(onRaw, controller.signal) : attempt(source, () => model.propose(input, controller.signal, onRaw))).then((proposal) => ({ proposal }), (error: unknown) => ({ error }));
+    const response = Promise.race([answered, budget]).then(async (got) => {
       clearTimeout(budgetTimer);
+      // Ordinary completion drains the checked queue. A binding hold also reconciles a save already in flight.
+      streamDone = true;
+      const finalScan = rawScan();
+      const finalPriority = got !== "budget" && "proposal" in got ? streamedPriority(JSON.stringify(got.proposal ?? null)).priority : null;
+      if (got === "budget" || finalScan.repeated || finalScan.priority || finalPriority) holdStream(finalScan.priority ?? finalPriority);
+      await delivery;
       if (got === "budget") {
         streamDone = true;
-        if (folded.request?.id === requestId) append({ kind: "response", at: now(), requestId, error: classifyError(new Error("the turn's time is up"), "model"), ms: now() - at, ...streamed() });
+        stopReviews(requestId);
+        // Final check 6: a priority value the stream already holds applies even though the model did not finish.
+        if (folded.request?.id === requestId) append({ kind: "response", at: now(), requestId, error: classifyError(new Error("the turn's time is up"), "model"), ...withPriority(rawScan().priority), ms: now() - at, ...streamed() });
+        return;
+      }
+      const scan = rawScan();
+      // Final check 8 (2026-11-15): a parsed proposal that does not carry every priority value of its raw text (one in a
+      // fenced copy the parse dropped, or after an invalid value) is malformed for routing too: the raw value applies.
+      const lost = "proposal" in got && !priorityCovered(streamedPriority(JSON.stringify(got.proposal ?? null)).priority, scan.priority);
+      if ("proposal" in got && (scan.repeated || lost)) {
+        // Final check 6: a key written twice makes the whole output malformed for routing: no part of it is used, and any
+        // priority value in any copy applies (fail closed). It counts as output that is not valid JSON.
+        streamDone = true;
+        stopReviews(requestId);
+        append({ kind: "response", at: now(), requestId, error: classifyError(new Error("the output repeats a key: not valid JSON"), "model"), ...withPriority(scan.priority), ms: now() - at, ...streamed() });
         return;
       }
       if ("proposal" in got) {
         // A proposal the client read from inside one code fence is counted in the trace (`fenced`), never told apart otherwise.
         streamDone = true;
-        append({ kind: "response", at: now(), requestId, proposal: got.proposal, ...(readFromFence(got.proposal) ? { fenced: true as const } : {}), ms: now() - at, ...streamed() });
+        // 2026-11-15: a tutor gate that disagrees with the full reading is recorded (`gateDisagrees`).
+        const disagrees = session.tutor && gateDisagrees(got.proposal);
+        append({ kind: "response", at: now(), requestId, proposal: got.proposal, ...(readFromFence(got.proposal) ? { fenced: true as const } : {}), ...(disagrees ? { gateDisagrees: true as const } : {}), ms: now() - at, ...streamed() });
         return;
       }
       streamDone = true;
+      stopReviews(requestId);
       const stale = folded.request?.id !== requestId;
-      append({ kind: "response", at: now(), requestId, error: classifyError(got.error, "model"), ms: now() - at, ...streamed() });
+      // Final check 6: a complete priority value seen in the stream is kept when the final parse fails (or the model
+      // fails after it): its guidance or the disclosure is due, never a return to math. A stale request changes nothing.
+      append({ kind: "response", at: now(), requestId, error: classifyError(got.error, "model"), ...withPriority(scan.priority), ms: now() - at, ...streamed() });
       if (!stale) options.onError?.(got.error, { turn: folded.turns.length, source });
     });
-    if (await wait(response, controller) === stopped || controller.signal.aborted) return;
+    if (await wait(response, controller) === stopped || controller.signal.aborted) { stopReviews(requestId); return; }
+    if (folded.candidate?.requestId !== requestId) stopReviews(requestId);
     await reviewCandidate(controller);
   }
   async function reviewCandidate(controller: AbortController) {
@@ -641,7 +1285,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     if (!candidate) return;
     const requestId = candidate.requestId;
     // Priority readings are already folded before any external free-talk review.
-    const first = read(() => step(folded.session, { type: "proposal", at: now(), proposal: candidate.proposal, ...(folded.sent?.length ? { sent: [...folded.sent] } : {}) }));
+    // 2026-11-15 (voice fallbacks): a tutor repair after streamed sentences continues them (as the fold steps it).
+    const continuation = candidate.continuation === true && candidate.source === "repair" && !!folded.sent?.length && !!folded.session.tutor;
+    const first = read(() => step(folded.session, { type: "proposal", at: now(), proposal: candidate.proposal, ...(folded.sent?.length ? { sent: [...folded.sent] } : {}), ...(continuation ? { continuation: true } : {}) }));
     const texts = [...new Set(first.refusal ? [] : first.effects.flatMap((e) => e.kind === "say" ? e.talk ?? [] : []).filter((t) => t.code === null && t.review === "not_run").map((t) => t.proposed))];
     // Two-layer true math: the tutor sentences code did not read whole, each with the sentences before it in the message.
     const said = first.refusal ? [] : first.effects.flatMap((e) => (e.kind === "say" ? [e] : []));
@@ -649,6 +1295,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const t0 = now();
     const before = folded.session;
     const stance = before.conversational ? read(() => codeStance(before)) : "none";
+    // Each review's time: its own limit, or the time left of a voice repair when that is less.
+    const turnSignal = AbortSignal.any([controller.signal, turnReviews.signal]);
+    const talkMs = reviewLimit(options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS));
+    const mathMs = reviewLimit(mathLimit(before.conversational === true));
     // A sentence the stream of this request already sent to the same review is not reviewed twice (round 4). Every other
     // review starts now, all at once.
     const used: string[] = [];
@@ -657,12 +1307,14 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const key = reviewKey(input);
       const streamed = streamReviews.get(key);
       if (streamed && streamed.requestId === requestId) used.push(key);
-      const result = streamed && streamed.requestId === requestId ? streamed.result : runReview(options.reviewer!, input, options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS), reviewError);
+      // Call 21665dc6: a review the stream started is read for no longer than a review started now would run.
+      const result = streamed && streamed.requestId === requestId ? within(streamed.result, talkMs, (): TalkReviewResult => { streamed.stop?.abort(); return { verdict: "error", reason: "the review did not answer in time" }; }) : runReview(options.reviewer!, input, talkMs, reviewError, talkHedge, turnSignal);
       return result.then((r) => ({ text, result: r }));
     })) : Promise.resolve([]);
     // The math-truth reviews run beside the safety reviews; one the stream started for the same input is used once.
     const say = candidate.proposal && typeof candidate.proposal === "object" ? (candidate.proposal as { say?: unknown }).say : undefined;
-    const message = typeof say === "string" ? sentencesOf(say.trim()) : [];
+    // A continuation's message is the fixed sentences, then its own: each sentence is reviewed after the ones before it.
+    const message = typeof say === "string" ? sentencesOf(continuation ? continuedSay(folded.sent!, say)?.text ?? say.trim() : say.trim()) : [];
     const mathUsed: string[] = [];
     // Each place a sentence stands in the message is reviewed with its own context, and a sentence passes only when every
     // place of it passes (final check of #1044: "The result we just computed is 4." said twice).
@@ -673,15 +1325,15 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const key = mathKey(input);
       const streamed = streamMathReviews.get(key);
       if (streamed && streamed.requestId === requestId) mathUsed.push(key);
-      const result = streamed && streamed.requestId === requestId ? streamed.result : runMathReview(options.mathReviewer!, input, options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS), reviewError);
+      const result = streamed && streamed.requestId === requestId ? within(streamed.result, mathMs, () => { streamed.stop?.abort(); return mathLate(before.turns.length, text); }) : reviewMath(input, before.turns.length, mathMs, reviewError, turnSignal);
       return result.then((r) => ({ text, result: r }));
     })).then((all) => mathTexts.map((text) => all.find((m) => m.text === text && m.result.verdict !== "true") ?? all.find((m) => m.text === text)!)) : Promise.resolve([]);
     const reviewed = Promise.all([reviews, mathReviews]).then(([results, maths]) => {
       for (const key of used) streamReviews.delete(key);
       for (const key of mathUsed) streamMathReviews.delete(key);
-      append({ kind: "review", at: now(), requestId, reviews: results, mathReviews: maths, ...((texts.length && options.reviewer) || (mathTexts.length && options.mathReviewer) ? { reviewMs: now() - t0 } : {}) });
+      append({ kind: "review", at: now(), requestId, reviews: results, mathReviews: maths, ...((texts.length && options.reviewer) || (mathTexts.length && options.mathReviewer) ? { reviewMs: now() - t0 } : {}), drawMode: "derive" });
     });
-    await wait(reviewed, controller);
+    try { await wait(reviewed, controller); } finally { stopReviews(requestId); }
   }
   /** Guidance the session accepted goes out now. A call that ended returns it with its outcome instead. */
   function sendGuidance() {
@@ -693,7 +1345,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   /** The close after the guidance, in code's words. Every fallback here is a close, which ends the call when accepted. */
   function closeByCode() {
     for (const proposal of read(() => fallbacks(folded.session))) {
-      append({ kind: "fallback", at: now(), proposal });
+      append({ kind: "fallback", at: now(), proposal, drawMode: "derive" });
       if (folded.session.outcome) return;
     }
     append({ kind: "input", at: now(), event: { type: "technical", at: now(), detail: "Maya had no safe line to say" } });
@@ -724,10 +1376,22 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       if (folded.session.safety.flagged && !folded.session.safety.guided && !folded.candidate && !folded.attempts.length) {
         if (folded.request) append({ kind: "recover", at: now() });
         for (const proposal of read(() => fallbacks(folded.session))) {
-          append({ kind: "fallback", at: now(), proposal });
+          append({ kind: "fallback", at: now(), proposal, drawMode: "derive" });
           if (folded.session.safety.guided || folded.session.outcome) break;
         }
         if (!folded.session.safety.guided && !folded.session.outcome) append({ kind: "input", at: now(), event: { type: "technical", at: now(), detail: "Maya had no safe line to say" } });
+        sendGuidance();
+        continue;
+      }
+      // A recovered priority may have consumed the failed attempt when it cancelled teaching. Recovery still
+      // finishes with code alone, including disclosure and safety; it never starts a replacement model request.
+      if (settlingInterrupted && !folded.candidate && !folded.attempts.length) {
+        const before = folded.pending.length;
+        for (const proposal of read(() => fallbacks(folded.session))) {
+          append({ kind: "fallback", at: now(), proposal, drawMode: "derive" });
+          if (folded.pending.length > before || folded.session.outcome) break;
+        }
+        if (folded.pending.length === before && !folded.session.outcome) append({ kind: "input", at: now(), event: { type: "technical", at: now(), detail: "the interrupted turn had no safe line" } });
         sendGuidance();
         continue;
       }
@@ -738,15 +1402,44 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       if (controller.signal.aborted) break;
       // With the danger known, a refused proposal gets code's guidance now, not a second model call.
       const safetyDue = folded.session.safety.flagged && !folded.session.safety.guided;
-      // Words already streamed cannot be taken back: a refusal then goes straight to code's line after them.
-      // A turn a priority gate took after the model's reading (a scope redirect, a confirmation) is code's own line.
+      // Words already streamed cannot be taken back: on a controller turn a refusal then goes straight to code's line after
+      // them; on a tutor teaching turn the repair continues them (below). A turn a priority gate took after the model's reading (a scope redirect, a confirmation) is code's own line.
       const repairs = tutorTurn === null ? options.modelRepair !== false : tutorTurn && read(() => tutorTeachingNow(folded.session));
-      if (repairs && folded.attempts.at(-1)?.source === "model" && folded.attempts.at(-1)?.refusal && !folded.session.outcome && !safetyDue && Date.now() < turnEndsAt && !folded.sent?.length) await request("repair", controller);
+      // 2026-11-15 (voice fallbacks): on a tutor teaching turn, words already streamed no longer end the turn in code's
+      // line: the repair continues them (continuedSay), and the whole message is checked as one. The controller's turns
+      // (and the AI disclosure, safety guidance and a stop, which are code's own and never stream) keep code's line.
+      const refusedFirst = repairs && folded.attempts.at(-1)?.source === "model" && folded.attempts.at(-1)?.refusal && !folded.session.outcome && !safetyDue && (!folded.sent?.length || tutorTurn === true);
+      // #1072 (2026-11-15): on a tutor teaching turn the repair has its own reserved budget. Production call 1b428d5b:
+      // the model took 3,128 ms and the math review 2,804 ms of the 6,000 ms turn, so no repair ran and code's plain line
+      // went out with no teaching. Now a refused tutor message always gets its one repair, with TUTOR_REPAIR_BUDGET_MS
+      // of model time that the first attempt and its reviews cannot spend. After streamed words the repair continues them,
+      // and its message is checked with them as one (continuedSay, 2026-11-15).
+      if (refusedFirst && tutorTurn) {
+        // After #1072 (Chief of Staff rule: no silence of up to 10 s). On a voice turn the repair and its reviews end
+        // inside VOICE_REPAIR_BUDGET_MS, and the worker may say its thinking phrase at once, but only when nothing of this
+        // turn was said or waits to be said: no streamed sentence and no accepted turn before it in this output (the AI
+        // disclosure, safety guidance and a stop are code's own turns, and a repair never follows them).
+        // Review of #1099 (P2): on a voice turn REVIEW_FLOOR_MS of the budget is the reviews' alone: the model stops that
+        // much before the cap, and the reviews end at it.
+        const budget = options.repairBudgetMs ?? (voice ? VOICE_REPAIR_BUDGET_MS : TUTOR_REPAIR_BUDGET_MS);
+        const repairAt = Date.now();
+        turnEndsAt = repairAt + (voice ? Math.max(0, budget - REVIEW_FLOOR_MS) : budget);
+        if (voice) reviewEndsAt = repairAt + budget;
+        // The phrase is asked for also after this message's own streamed sentences (a continuation); never after an
+        // accepted turn before it. The worker applies its own rules (no phrase while a sentence still plays).
+        const quiet = voice && folded.pending.length === 0 && streamedThisOutput.length === (folded.sent?.length ?? 0);
+        let filler: string | null = null;
+        if (quiet && options.onRepairStart) {
+          try { filler = options.onRepairStart(); } catch { /* the worker's ear never fails the turn */ }
+          if (!ACK_PHRASES.some((p) => p.id === filler)) filler = null;
+        }
+        try { await request("repair", controller, filler); } finally { reviewEndsAt = Number.POSITIVE_INFINITY; }
+      } else if (refusedFirst && Date.now() < turnEndsAt) await request("repair", controller);
       if (controller.signal.aborted) break;
       if (folded.attempts.length && !folded.session.outcome) {
         const refused = folded.attempts.filter((a) => a.refusal !== null).map((a) => a.proposal);
         for (const proposal of read(() => fallbacks(folded.session, refused))) {
-          append({ kind: "fallback", at: now(), proposal });
+          append({ kind: "fallback", at: now(), proposal, drawMode: "derive" });
           if (!folded.attempts.length) break;
         }
         if (folded.attempts.length) append({ kind: "input", at: now(), event: { type: "technical", at: now(), detail: "Maya had no safe line to say" } });
@@ -761,6 +1454,12 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       if (version !== generation) return { ...newOutput(), cancelled: true };
       const controller = new AbortController();
       active = controller;
+      // Review of #1109: the turn owns its reviews. Every review it starts (early, final, repair; math and safety; each
+      // hedge copy) takes this signal, so each ends, with its hedge timer, when the call ends or a new turn replaces this
+      // one (the turn's controller aborts) and when the turn is done (finally).
+      const reviews = new AbortController();
+      controller.signal.addEventListener("abort", () => reviews.abort(), { once: true });
+      turnReviews = reviews;
       try {
         if (respond) await pump(controller);
         if (controller.signal.aborted) return { ...newOutput(), cancelled: true };
@@ -781,7 +1480,11 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         options.onError?.(error, "session");
         append({ kind: "input", at: now(), event: { type: "technical", at: now(), detail: "the session failed" }, error: classifyError(error, "local") });
         throw error;
-      } finally { if (active === controller) active = null; }
+      } finally {
+        if (active === controller) active = null;
+        // The turn is done: a review still running is read by no one, so it ends and sends no copy.
+        reviews.abort();
+      }
     });
     const settled = next.finally(() => { scheduled--; });
     queue = settled.catch(() => undefined);
@@ -790,6 +1493,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   /** The streaming hooks (D-341): each sentence in order, once the whole reply passed its checks, then the end. */
   function sayParts(out: TextOutput, streamedSentences: readonly string[] = []) {
     if (quietOpening) { quietOpening = false; return; }
+    // #1107: a chat that saves its parts sends only saved parts; the rest reaches the desk with the saved reply.
+    if (options.persist) return;
     if (!options.onSayPart && !options.onSayEnd) return;
     // Sentences streamed while the reply came in were sent already, in order: the rest follow them.
     const queue = [...streamedSentences];
@@ -834,10 +1539,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       model: { id: model.id, promptVersion: model.promptVersion }, versions: { proposal: PROPOSAL_VERSION, lines: LINES_VERSION, session: session.version },
       question: { id: typeof raw.id === "string" ? raw.id : null, ref: raw.ref ?? null, text: typeof raw.text === "string" ? raw.text : null, hash: packageHash(options.package) },
       freeTalk: session.freeTalk, reviewer: options.reviewer ? { id: options.reviewer.id, promptVersion: options.reviewer.promptVersion } : null,
-      ...(session.tutor ? { mathReviewer: options.mathReviewer ? { id: options.mathReviewer.id, promptVersion: options.mathReviewer.promptVersion } : null } : {}),
+      ...(session.tutor ? { mathReviewer: options.mathReviewer ? { id: options.mathReviewer.id, promptVersion: options.mathReviewer.promptVersion, ...(options.mathReviewer.retry ? { retryId: options.mathReviewer.retry.id } : {}) } : null } : {}),
       scopeRefusals: structuredClone(session.scopeRefusals ?? []),
       ...(preparations.length ? { preparations: preparationRecords() } : {}),
-      obligations: structuredClone(obligations), turns: structuredClone(turns), board: structuredClone(board), outcome, counts: traceCounts(turns),
+      obligations: structuredClone(obligations), turns: structuredClone(turns), board: structuredClone(board), outcome, counts: { ...traceCounts(turns), boardFates: boardFateCounts(board) },
     }, options.childName ?? null);
   }
   return {
@@ -859,13 +1564,25 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     mayaSaid: (text) => receive({ type: "maya_said", at: now(), text }),
     contentProblem: (detail) => receive({ type: "content_problem", at: now(), detail: redactText(detail) }),
     tick: () => receive({ type: "tick", at: now() }),
+    boardFates: (fates) => {
+      const read = readFateReports(fates);
+      if (!read?.length) return;
+      // Only batches the call sent and has no word for yet (the fold checks again): no log entry for anything else.
+      const known = read.filter((f) => folded.board.some((b) => b.transactionId === f.batchId && !b.fate) || folded.pending.some((p) => p.batches.some((b) => b.transactionId === f.batchId)));
+      if (known.length) append({ kind: "fates", at: now(), fates: known });
+    },
     writing: (status) => receive({ type: "writing", at: now(), status }),
     technical: (detail) => receive({ type: "technical", at: now(), detail: redactText(detail) }, false),
     safety: (severity) => receive({ type: "safety", at: now(), severity }),
     get session() { return structuredClone(folded.session); },
+    helpLedger: () => [...ledger],
     get ended() { return folded.session.outcome !== null; },
+    get interrupted() { return interruptedTurn(); },
+    settleInterrupted: () => settle(),
     finish: async (end = {}, oldFailed) => {
       const { reason = "technical_issue", detail = "the session was closed before the call ended", failed = false }: FinishOptions = typeof end === "string" ? { detail: end, failed: oldFailed ?? false } : end;
+      // #1107: saved parts of a stopped request are said: their turn ends in code's line before the call ends.
+      if (interruptedTurn()) await settle();
       recover(); generation++; active?.abort(); clearPrepares("ended");
       if (folded.session.startedAt === null) append({ kind: "input", at: now(), event: { type: "start", at: now() } });
       append({ kind: "input", at: now(), event: reason === "child_stopped" ? { type: "hang_up", at: now() } : { type: "technical", at: now(), detail: redactText(detail) }, ...(failed ? { error: classifyError(null, "local") } : {}) });

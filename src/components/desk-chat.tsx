@@ -1,12 +1,20 @@
 "use client";
 import { useRef, useState, useEffect, useCallback, useMemo, type FormEvent } from "react";
 import { growInkLog, historyFromLog, inkLog, readInkEvent, type BoardHistory, type InkEvent } from "@/lib/board-history";
+import { chatBoardFates, type ScreenFateReport } from "@/lib/board-fate";
 import { chatCapLine, chatSpendLine, type ChatUsage, type ChatView, type ChatReply } from "@/lib/maya-chat";
+import { CHAT_STREAM_TYPE, isChatStream, readChatStream } from "@/lib/maya-chat-stream";
+import type { Batch } from "@/lib/board";
 import { OurBoard } from "@/components/our-board";
 import { Icon } from "@/components/desk-icons";
 
 const ERROR = "Your message could not be sent. Try again in a moment.";
 class ChatRefusal extends Error {}
+/**
+ * #1107: the longest a child turn's stream is read (the route's 120 s limit and a margin). A stream that stalls past it is
+ * a failed request: the message stays for its retry, and the desk is not busy any longer.
+ */
+const STREAM_LIMIT_MS = 125_000;
 /** How long the chat's ink waits after a change before it goes to the call (#534). */
 const BOARD_SAVE_MS = 1500;
 /** A browser sends a request after the page has gone (keepalive) only below about 64 KB. */
@@ -273,17 +281,59 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
   const key = `unica-chat:${at.book}:${at.page}:${at.question}`;
   const [uncertain, setUncertain] = useState(false);
   /**
+   * #1107: the child turn in flight while Maya's checked sentences stream in (by index, so a sentence sent twice is shown
+   * once). Shown after the saved conversation until the final reply replaces it; a failed stream drops it, as a reply
+   * that never came.
+   */
+  const [live, setLive] = useState<{ id: string; child: string; parts: string[]; batches: Batch[] } | null>(null);
+  /**
    * A chat picked up again (#635): the ink log the call holds for it, with the ink still on this device after it, which
    * the board starts from. "loading" until the call answers (the board waits, so no line is drawn on a board the call's
    * log would not match).
    */
   const [callInk, setCallInk] = useState<{ id: string; log: InkEvent[] | "loading" } | null>(null);
   const board = useInkSaver(child);
+  /**
+   * B1: what this board did with each of Maya's batches (shown, or skipped because it would cover the child's ink), for
+   * the chat it belongs to. It goes with the child's next message, so Maya counts only what the child saw.
+   */
+  const fates = useRef<{ id: string; fates: ScreenFateReport[] } | null>(null);
+  const fatesFor = useCallback((id: string) => (fates.current?.id === id && fates.current.fates.length ? { fates: fates.current.fates } : {}), []);
+  const saveBoard = useCallback((id: string, history: BoardHistory) => {
+    fates.current = { id, fates: chatBoardFates(history) };
+    board.save(id, history);
+  }, [board]);
   const request = useCallback(async (action: { type: string; [field: string]: unknown }, generation = epoch.current) => {
     if (generation !== epoch.current) return null;
-    const res = await fetch("/api/desk/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(action) });
-    const answer = await res.json() as ChatReply;
+    // #1107: a child turn asks for Maya's sentences as they pass; the route answers JSON when none streams.
+    const streams = action.type === "child";
+    const stop = new AbortController();
+    const timer = streams ? setTimeout(() => stop.abort(), STREAM_LIMIT_MS) : undefined;
+    let answer: ChatReply;
+    let res: Response;
+    try {
+      res = await fetch("/api/desk/chat", { method: "POST", headers: { "Content-Type": "application/json", ...(streams ? { Accept: `${CHAT_STREAM_TYPE}, application/json` } : {}) }, body: JSON.stringify(action), ...(streams ? { signal: stop.signal } : {}) });
+      answer = streams && res.ok && res.body && isChatStream(res)
+        ? await readChatStream(res.body, (index, text, board) => {
+          if (generation !== epoch.current) return;
+          setLive((now) => {
+            const same = now && now.id === action.id;
+            const parts = same ? [...now.parts] : [];
+            parts[index] = text;
+            // #1107: the drawing saved with the sentence goes on the board with it (the board takes each batch once).
+            const batches = same ? [...now.batches] : [];
+            for (const b of board) if (!batches.some((x) => x.transactionId === b.transactionId)) batches.push(b);
+            return { id: String(action.id), child: String(action.text ?? ""), parts, batches };
+          });
+        })
+        : await res.json() as ChatReply;
+    } catch (failure) {
+      // Partial words are never a finished turn: they go, and the message stays for its retry (the caller's catch).
+      if (generation === epoch.current) setLive(null);
+      throw failure;
+    } finally { clearTimeout(timer); }
     if (generation !== epoch.current) return null;
+    setLive(null);
     if (!res.ok || !answer.usage) throw Error(ERROR);
     setUsage(answer.usage);
     setChat(answer.chat);
@@ -306,13 +356,13 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
     requestBusy.current = true;
     try {
       const turn = pending.current;
-      await request(turn ? { type: "child", ...turn } : { type: "read", id }, generation);
+      await request(turn ? { type: "child", ...turn, ...fatesFor(turn.id) } : { type: "read", id }, generation);
       return true;
     } catch {
       if (generation === epoch.current) setError(ERROR);
       return false;
     } finally { requestBusy.current = false; }
-  }, [chat?.id, request]);
+  }, [chat?.id, request, fatesFor]);
   useEffect(() => {
     epoch.current++;
     const generation = epoch.current;
@@ -320,7 +370,7 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
     try { id = sessionStorage.getItem(key); } catch { /* Storage can be off. */ }
     queueMicrotask(() => {
       if (generation !== epoch.current) return;
-      setChat(null); setError(null); setBusy(false); setUncertain(false); setOwnerKey(key);
+      setChat(null); setError(null); setBusy(false); setUncertain(false); setOwnerKey(key); setLive(null);
       pending.current = null; startId.current = id; referenceStart.current = null;
       if (initial && id) {
         const chatId = id;
@@ -395,7 +445,7 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
       } else if (chat) {
         if (type === "child") {
           pending.current ??= { id: chat.id, messageId: crypto.randomUUID(), revision: chat.revision, text: text ?? "" };
-          await request({ type, ...pending.current }, generation);
+          await request({ type, ...pending.current, ...fatesFor(pending.current.id) }, generation);
         } else {
           // The child's ink goes with the call before it ends (#534); if it cannot, it stays on this device (R625-5).
           await board.finish(chat.id);
@@ -411,7 +461,15 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
       return false;
     } finally { requestBusy.current = false; if (generation === epoch.current) setBusy(false); }
   };
-  return { usage, chat: ownerKey === key ? chat : null, busy, error, act, retry: refresh, uncertain, saveBoard: board.save, callInk };
+  // #1107: the saved conversation, then the turn in flight: the child's words and Maya's one message as it grows.
+  const shown = useMemo(() => {
+    if (!chat || !live || live.id !== chat.id) return chat;
+    const second = chat.transcript.at(-1)?.second ?? 0;
+    const said = live.parts.filter((p) => typeof p === "string").join(" ");
+    const batches = [...chat.batches, ...live.batches.filter((b) => !chat.batches.some((x) => x.transactionId === b.transactionId))];
+    return { ...chat, batches, transcript: [...chat.transcript, { speaker: "child" as const, text: live.child, second }, ...(said ? [{ speaker: "maya" as const, text: said, second }] : [])] };
+  }, [chat, live]);
+  return { usage, chat: ownerKey === key ? shown : null, busy, error, act, retry: refresh, uncertain, saveBoard, callInk };
 }
 export type DeskChatState = ReturnType<typeof useDeskChat>;
 

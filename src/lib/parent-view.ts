@@ -2,18 +2,22 @@ import "server-only";
 import { resultLate } from "@/lib/report-late";
 import {
   BC_SKILL_MAP, REPORTED_STRAND_NAMES, areaLevels, attemptState, skillStates, storedLevelCertainty,
-  type AreaAnswer, type AreaLabel, type Attempt, type Grade, type Level, type ReportModel, type ReportedStrand, type SkillMark, type SkillState, type SkillTestResult, type StandardSkillState,
+  type AreaAnswer, type AreaLabel, type Attempt, type Grade, type Level, type ReportModel, type ReportedStrand, type SkillMark, type SkillTestResult, type StandardSkillState,
 } from "@/lib/assessment";
 import { childStage, type StageView, type TabSwitches, type TestFact } from "@/lib/child-stage";
-import { addDays, addMonths, familyZone, formatCalendarDate, localDateTime, localDay, localMonth, type FamilyZone } from "@/lib/family-time";
+import { addDays, addMonths, familyZone, formatCalendarDate, localDateTime, localDay, localMonth, weekStartFor, type FamilyZone } from "@/lib/family-time";
+import { homeStory } from "@/lib/home-highlights";
+import { capitalName, plainSkillName } from "@/lib/skill-name";
 import type { LearningRow } from "@/lib/learning-style";
 import { firstDeliveryMonth, offeredSummaryMonth } from "@/lib/monthly-summary-offer";
-import { needsHelpStandards, type HelpMark } from "@/lib/needs-help";
+import { STRUGGLING_WINDOW_DAYS, needsHelpStandards, repeatedMistakes, type HelpMark } from "@/lib/needs-help";
+import { firstAnswerAt, skillSentence, type MistakeFact } from "@/lib/skill-sentences";
 import { nextBook, type NextBook } from "@/lib/next-book";
 import type { ParentPlan } from "@/lib/parent-plan";
 import type { CurriculumId } from "@/lib/signup";
-import { WORKBOOK_DAYS, bookToday, dayNumber, weekCircles, workbookDay, type WeekDay } from "@/lib/parent-week";
-import { firstBatchAt, progressSummary, type ProgressSummary, type StateChange } from "@/lib/progress-series";
+import { planDayTopic } from "@/lib/workbook-days";
+import { WORKBOOK_DAYS, bookToday, dayNumber, doneStreak, earliestOpenDay, weekCircles, weekProgress, workbookDay, type WeekDay } from "@/lib/parent-week";
+import { firstBatchAt, masteredSince, progressSummary, type ProgressSummary, type StateChange } from "@/lib/progress-series";
 import { skillMapView, topicBars, type TopicBarView } from "@/lib/skill-map-view";
 import { confirmedWorkbookDelivery } from "@/lib/workbook-delivery-access";
 import { workbookDelivery } from "@/lib/workbook-email";
@@ -135,10 +139,27 @@ export interface ParentViewReader {
   /** The standard of each question of one of the family's shipped workbooks, with the page it is on (null: no standard). */
   workbookQuestions(workbookId: string): Promise<{ pageId: string; standard: string | null }[]>;
   /**
+   * The topic each day of one of the family's shipped workbooks has in its printed plan (the Workbooks tab's day names,
+   * src/lib/parent-schedule.ts); null when the plan cannot be read (not frozen yet, or a failed check). Home says these
+   * topics, so it names a day as the Workbooks tab does.
+   */
+  planTopics(childId: string, workbookId: string): Promise<{ day: number; topic: string }[] | null>;
+  /**
    * Each recorded change of a BC standard's state for one child (public.skill_state_history), by `changed_at`. Parents may
    * not read the table: the server reads it, filtered on the parent and the child, and only these three fields leave.
    */
   skillHistory(childId: string): Promise<StateChange[]>;
+  /**
+   * One child's wrong answers with a known cause (`learning_events`: result wrong, `mistake` set) from `since` (epoch ms) on,
+   * for the skill sentences. Parents may not read the table: the server reads it with the secret key, filtered on the parent
+   * and the child, and only the standard, the cause id and the time leave.
+   */
+  recentMistakes(childId: string, since: number): Promise<MistakeRecord[]>;
+}
+
+/** One wrong answer of a standard that matched a known wrong answer of its question (a cause id of `MISCONCEPTIONS`). */
+export interface MistakeRecord extends MistakeFact {
+  standard: string;
 }
 
 /** A finished test, as the report reads it. */
@@ -257,11 +278,18 @@ export interface ShippedBookView {
 
 export interface WorkbooksView {
   child: ChildView;
+  /** Today in family time (YYYY-MM-DD): the book's calendar day is counted from it (src/lib/parent-week.ts). */
+  today: string;
   /** The newest shipped book; null before the first one ships. */
   current: CurrentWorkbookView | null;
   next: NextBook;
   /** Every shipped book, newest first. */
   books: ShippedBookView[];
+  /**
+   * Home's count for the child's current book (the newest with a confirmed delivery), so the Workbooks cover says the same
+   * number: saved, unexpired photos over the book's day pages. Null when there is no such book or it cannot be read.
+   */
+  homeScan: { bookId: string; scanned: number; total: number } | null;
 }
 
 function deliveryView(value: unknown): WorkbookDeliveryView | null {
@@ -300,7 +328,20 @@ export async function readWorkbooks(reader: ParentViewReader, childId: string, n
   const next: NextBook = current && current.shippedOn === null && !child.readOnly
     ? { kind: "none" }
     : nextBook({ shippedOn: current?.shippedOn ?? null, deliveredOn: current?.deliveredOn ?? null, today: localDay(now, zone), ended: child.readOnly, pausedWeeks });
-  return { child, current, next, books: books.map((w) => ({ id: w.id, number: w.number, shippedOn: day(w.shippedAt), deliveredOn: day(confirmedWorkbookDelivery(deliveries, corrections, child.id, w.id, now)) })) };
+  const shown = books.map((w) => ({ id: w.id, number: w.number, shippedOn: day(w.shippedAt), deliveredOn: day(confirmedWorkbookDelivery(deliveries, corrections, child.id, w.id, now)) }));
+  // Home's book: the newest with a confirmed delivery. Its count is Home's: day pages (a page with a "Day N" label) that have
+  // a saved photo that has not expired.
+  const home = shown.find((b) => b.deliveredOn !== null);
+  let homeScan: WorkbooksView["homeScan"] = null;
+  if (home) {
+    try {
+      const [pages, scans] = await Promise.all([reader.workbookPages(home.id), reader.savedScans()]);
+      const saved = new Set(scans.filter((s) => s.workbookId === home.id && Date.parse(s.expiresAt) > now).map((s) => s.pageId));
+      const day = pages.filter((p) => dayNumber(p.dayLabel) !== null);
+      homeScan = { bookId: home.id, scanned: day.filter((p) => saved.has(p.id)).length, total: day.length };
+    } catch { homeScan = null; }
+  }
+  return { child, today: localDay(now, zone), current, next, books: shown, homeScan };
 }
 
 /** One reported area's bar (D-243). The school grade line is the child's `schoolGrade`. */
@@ -337,6 +378,11 @@ export interface SkillItemView {
   name: string;
   /** "today", a weekday ("Wednesday") within the last week, else a date ("Nov 3"), in family time; null with no recorded row. */
   masteredOn: string | null;
+  /**
+   * The one plain sentence under the skill (#989, src/lib/skill-sentences.ts), written by code from stored facts; null when
+   * they are not enough. Mastered: "Mastered Thursday". Learning: how it is going. Needs help: what goes wrong, then what we do next.
+   */
+  sentence: string | null;
 }
 
 /**
@@ -364,7 +410,7 @@ export interface WorkbookCardView {
   today: {
     /** "Today"; "Friday" on a weekend; "Day 1 · Monday" before the book's first weekday (a weekend delivery). */
     label: string;
-    /** The skill most of the day's questions are on; null when the book's questions cannot be read. */
+    /** The day's topic in the book's printed plan, as the Workbooks tab names it; else the skill most of the day's questions are on; null when neither can be read. */
     topic: string | null;
     scanned: number;
     pages: number;
@@ -387,6 +433,10 @@ export interface OverviewView {
   scanPrompt: { day: number; pages: number } | null;
   /** Null when the inputs are unavailable, or the Progress tab is off (the skill map is not released yet: #194). */
   skills: HomeSkillsView | null;
+  /** The one sentence about the week under the Workbook card (#990): a bold lead and the rest; null when the facts say nothing yet. */
+  weekLine: { lead: string; text: string } | null;
+  /** Up to two plain sentences at the bottom of Home (#990), by a fixed priority; empty when nothing qualifies. */
+  highlights: string[];
   /**
    * The monthly summary's month (YYYY-MM, family time) that the dashboard offers: the last finished month, from the month
    * after the child's first confirmed delivery (D-248). Home no longer shows it (#1003); the monthly email agrees with it.
@@ -434,8 +484,10 @@ async function readBookDays(
   return { id: book.id, number: book.number, start: localDay(deliveredAt, zone), pages, saved, doneDays };
 }
 
-const capital = (text: string) => `${text.slice(0, 1).toUpperCase()}${text.slice(1)}`;
-const standardText = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, capital(s.text)]));
+// One parent-facing name per standard (src/lib/skill-name.ts): the lists show it with a capital, the Home's sentences say it
+// as it is ("mastered addition and subtraction to 1000"), so a list and a sentence name a skill in the same words.
+const standardPhrase = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, plainSkillName(s.text)]));
+const standardText = new Map([...standardPhrase].map(([code, name]) => [code, capitalName(name)]));
 
 /** The standard most of a day's questions are on (the first on a tie, in page order); its text from the skill map. */
 function dayTopic(pageIds: readonly string[], questions: readonly { pageId: string; standard: string | null }[]): string | null {
@@ -482,6 +534,10 @@ async function readSkillStates(reader: ParentViewReader, child: ChildView, book:
  * The workbook day is a calendar rule (src/lib/parent-week.ts): Day 1 is the delivery day (or the next Monday-to-Friday
  * day), and each later Monday-to-Friday day is the next. Skills show whether or not the Progress tab is
  * on (Cedric, 2026-11-14); only the tab stays behind PROGRESS_TAB_ENABLED.
+ *
+ * `weekLine` and `highlights` (#990) are plain sentences written by src/lib/home-highlights.ts from the week's done days,
+ * `skill_state_history.changed_at` and the Needs help rule's marks. They hold no percent and no count of wrong answers,
+ * and are empty or null when no fact qualifies.
  */
 export async function readOverview(reader: ParentViewReader, childId: string, now: number): Promise<OverviewView | null> {
   const [child, children, family, tests, reports, workbooks, scans, deliveries, corrections] = await Promise.all([
@@ -511,14 +567,18 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
     // With no row (the book is over, or the plan ended) the card still shows the book at its last day.
     const day = row?.day ?? workbookDay(days.start, today) ?? 1;
     const dayPages = days.pages.get(day) ?? [];
-    const questions = row ? await reader.workbookQuestions(days.id).catch(() => []) : [];
+    // The printed plan's topic for the day, as the Workbooks tab names it. Only when the plan cannot be read does the topic
+    // come from the day's questions (the standard most of them are on).
+    const plan = row ? await reader.planTopics(child.id, days.id).catch(() => null) : null;
+    const planned = planDayTopic(plan, day);
+    const questions = row && planned === null ? await reader.workbookQuestions(days.id).catch(() => []) : [];
     const all = [...days.pages.values()].flat();
     const scanned = all.filter((id) => days.saved.has(id)).length;
     workbook = {
       number: days.number, day, days: WORKBOOK_DAYS,
       // Floor, never round: a ring never says "100% done" with a page left.
       percent: scanned > 0 && all.length > 0 ? Math.floor((scanned / all.length) * 100) : null,
-      today: row && { label: row.label, topic: dayTopic(dayPages, questions), scanned: dayPages.filter((id) => days.saved.has(id)).length, pages: dayPages.length },
+      today: row && { label: row.label, topic: planned ?? dayTopic(dayPages, questions), scanned: dayPages.filter((id) => days.saved.has(id)).length, pages: dayPages.length },
     };
     // The Scan tab covers scanning; only a family with no saved photo at all gets this prompt, and only where the tab is.
     if (row && scans.length === 0 && child.tabs.includes("scan_pages")) scanPrompt = { day, pages: dayPages.length };
@@ -526,20 +586,63 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
 
   // Home shows the skills whether or not the Progress tab is on (Cedric, 2026-11-14); only the tab stays behind its switch.
   let skills: OverviewView["skills"] = null;
+  // The facts the week line and Highlights read (#990); each stays empty when its input cannot be read.
+  let newlyMastered: string[] = [];
+  let repeatedMistake: { name: string; days: number } | null = null;
   {
     const progress = await reader.overviewProgress(child.id).catch(markingReadFailed);
     const book = workbooks.filter((w) => w.childId === child.id).sort((a, b) => b.number - a.number)[0];
     const read = progress ? await readSkillStates(reader, child, book, progress.skillMarks) : null;
     // A failed history read leaves the dates out and keeps the counts from the rule.
-    if (read) skills = homeSkills(read.states, progress!.helpMarks, read.historyFailed ? [] : read.history, now, zone);
+    // "Back in the next workbook" only when a next workbook exists, made and in the mail, with questions on the skill: the
+    // newest shipped book is that book exactly when it is newer than the delivered one (`onTheWay`), and `read` holds its
+    // standards. It is a "next" workbook only behind a delivered one: when Book 1 is the book in the mail (`days` is null),
+    // nothing comes before it. A plan that ended has no next workbook.
+    const nextStandards: ReadonlySet<string> = read && days !== null && onTheWay !== null && !child.readOnly ? new Set(read.workbookStandards) : new Set();
+    // A failed read of the causes leaves them out and nothing else: a sentence then names no mistake.
+    const mistakes = read ? await reader.recentMistakes(child.id, now - (STRUGGLING_WINDOW_DAYS + 1) * 86_400_000).catch((e) => {
+      console.error("[parent-view] recent mistakes read failed", e instanceof Error ? e.message : "failed");
+      return [] as MistakeRecord[];
+    }) : [];
+    if (read) skills = homeSkills(read.states, progress!.helpMarks, read.historyFailed ? [] : read.history, { now, zone, mistakes, nextStandards });
+    if (read && progress) {
+      // An empty history would call every skill new, so a failed read says nothing about mastery.
+      if (!read.historyFailed) {
+        const firstTest = tests.filter((t) => t.childId === child.id && t.status === "completed" && t.completedAt !== null).reduce<number | null>((best, t) => (best === null || t.completedAt! < best ? t.completedAt! : best), null);
+        newlyMastered = masteredSince({
+          now, zone, current: new Map(read.states.map((s) => [s.standard, s.state])), history: read.history,
+          startDay: firstTest === null ? null : localDay(firstTest, zone), since: weekStartFor(today),
+        }).flatMap((code) => standardPhrase.get(code) ?? []);
+      }
+      const worst = repeatedMistakes(needsHelpStandards(read.states, progress.helpMarks, now, zone), progress.helpMarks, now, zone)[0];
+      const phrase = worst && standardPhrase.get(worst.standard);
+      if (worst && phrase) repeatedMistake = { name: phrase, days: worst.days };
+    }
   }
+  const monday = weekStartFor(today);
+  const childBooks = new Set(workbooks.filter((w) => w.childId === child.id).map((w) => w.id));
+  // The week line judges how scanning is going, so it needs the Scan tab: a family that cannot scan has no days to be on track
+  // for. Before the family's first scan the prompt above already says what to do, so the line says nothing more.
+  const scanning = child.tabs.includes("scan_pages") && scanPrompt === null;
+  const story = homeStory({
+    name: child.firstName,
+    week: days && scanning ? weekProgress(today, days.start, days.doneDays, { ended: child.readOnly }) : null,
+    // Every one of this child's books counts: a new book delivered mid-week must not hide the pages scanned earlier in the week.
+    scansThisWeek: scans.filter((s) => childBooks.has(s.workbookId) && Date.parse(s.expiresAt) > now && localDay(s.takenAt, zone) >= monday && localDay(s.takenAt, zone) <= today).length,
+    openDay: days ? earliestOpenDay(days.start, today, days.pages, days.saved, { ended: child.readOnly }) : null,
+    newlyMastered, repeatedMistake,
+    streak: days ? doneStreak(today, days.start, days.doneDays, { ended: child.readOnly }) : 0,
+  });
 
   const summaryMonth = offeredSummaryMonth(await readFirstDeliveryMonth(reader, child.id, zone), now, zone);
-  return { child, resultPreparing, resultLate: late, week, workbook, onTheWay, scanPrompt, skills, summaryMonth };
+  return { child, resultPreparing, resultLate: late, week, workbook, onTheWay, scanPrompt, skills, weekLine: story.line, highlights: story.highlights, summaryMonth };
 }
 
 /** The three lists: every BC standard by its state now. Mastered newest first, the others in the skill map's order. */
-function homeSkills(states: readonly StandardSkillState[], marks: readonly HelpMark[], history: readonly StateChange[], now: number, zone: FamilyZone): HomeSkillsView {
+function homeSkills(
+  states: readonly StandardSkillState[], marks: readonly HelpMark[], history: readonly StateChange[],
+  { now, zone, mistakes, nextStandards }: { now: number; zone: FamilyZone; mistakes: readonly MistakeRecord[]; nextStandards: ReadonlySet<string> },
+): HomeSkillsView {
   const today = localDay(now, zone);
   // Needs help is the rule's needs_review plus a Learning skill the child is struggling with now; Learning is what is left.
   const help = needsHelpStandards(states, marks, now, zone);
@@ -552,17 +655,33 @@ function homeSkills(states: readonly StandardSkillState[], marks: readonly HelpM
     const at = Date.parse(row.changedAt);
     if (Number.isFinite(at) && at >= (lastRow.get(row.standard)?.at ?? -Infinity)) lastRow.set(row.standard, { ...row, at });
   }
-  const items = (state: SkillState, keep: (standard: string) => boolean = () => true): (SkillItemView & { at: number })[] => states.filter((s) => s.state === state && keep(s.standard)).map((s) => {
-    const row = state === "mastered" ? lastRow.get(s.standard) : undefined;
+  const marksOf = new Map<string, HelpMark[]>();
+  for (const mark of marks) marksOf.set(mark.standard, [...(marksOf.get(mark.standard) ?? []), mark]);
+  const mistakesOf = new Map<string, MistakeFact[]>();
+  for (const { standard, cause, at } of mistakes) mistakesOf.set(standard, [...(mistakesOf.get(standard) ?? []), { cause, at }]);
+  const sentenceOf = (s: StandardSkillState, group: "mastered" | "learning" | "needs_help", masteredOn: string | null): string | null => {
+    const marksOfStandard = marksOf.get(s.standard) ?? [];
+    // "Started <day>" is the day of the child's first marked answer on the skill: never when a book or a state row was recorded.
+    const startedAt = firstAnswerAt(marksOfStandard);
+    return skillSentence({
+      standard: s.standard, group, state: s.state, reason: s.reason, evidence: s.evidence, evidenceAt: s.evidenceAt,
+      marks: marksOfStandard, mistakes: mistakesOf.get(s.standard) ?? [],
+      masteredOn, startedOn: startedAt === null ? null : dayWords(localDay(startedAt, zone), today),
+      inNextWorkbook: nextStandards.has(s.standard), now, zone,
+    })?.text ?? null;
+  };
+  const item = (s: StandardSkillState, group: "mastered" | "learning" | "needs_help"): SkillItemView & { at: number } => {
+    const row = group === "mastered" ? lastRow.get(s.standard) : undefined;
     const recorded = row?.state === "mastered" && row.at !== first ? row : undefined;
-    return { code: s.standard, name: standardText.get(s.standard) ?? s.standard, masteredOn: recorded ? dayWords(localDay(recorded.at, zone), today) : null, at: recorded?.at ?? 0 };
-  });
-  const plain = ({ code, name, masteredOn }: SkillItemView): SkillItemView => ({ code, name, masteredOn });
+    const masteredOn = recorded ? dayWords(localDay(recorded.at, zone), today) : null;
+    return { code: s.standard, name: standardText.get(s.standard) ?? s.standard, masteredOn, sentence: sentenceOf(s, group, masteredOn), at: recorded?.at ?? 0 };
+  };
+  const plain = ({ code, name, masteredOn, sentence }: SkillItemView): SkillItemView => ({ code, name, masteredOn, sentence });
   return {
-    mastered: items("mastered").sort((a, b) => b.at - a.at).map(plain),
-    learning: items("working_on", (standard) => !help.has(standard)).map(plain),
+    mastered: states.filter((s) => s.state === "mastered").map((s) => item(s, "mastered")).sort((a, b) => b.at - a.at).map(plain),
+    learning: states.filter((s) => s.state === "working_on" && !help.has(s.standard)).map((s) => plain(item(s, "learning"))),
     // The skill map's order: the rule's needs_review and the struggling Learning skills in one list, as `states` orders them.
-    needsHelp: states.filter((s) => help.has(s.standard)).map((s) => plain({ code: s.standard, name: standardText.get(s.standard) ?? s.standard, masteredOn: null })),
+    needsHelp: states.filter((s) => help.has(s.standard)).map((s) => plain(item(s, "needs_help"))),
   };
 }
 

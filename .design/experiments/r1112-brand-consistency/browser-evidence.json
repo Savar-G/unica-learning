@@ -1,0 +1,1588 @@
+{
+  "date": "2026-11-16",
+  "browser": "T3 shared preview, incognito, required by runtime browser instructions",
+  "scope": "Local synthetic presentation and controller checks. No live family/auth/billing/backend or physical-photo proof. Fixture uses actual product components and a dummy localhost Supabase URL; temporary route removed.",
+  "viewports": [
+    375,
+    768,
+    1440
+  ],
+  "captures": [
+    {
+      "area": "account",
+      "scenario": "failed",
+      "blocked": 0,
+      "heading": "Account",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/account-failed.png",
+      "sha256": "d06beffdbf264b069300fcbb3a9f57fe600c286cfa916e15a2df67a1f2e412ac"
+    },
+    {
+      "area": "account",
+      "scenario": "normal",
+      "blocked": 0,
+      "eyebrow": {
+        "font": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, monospace",
+        "marker": "block"
+      },
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "text": "Account",
+        "weight": "300"
+      },
+      "height": 1100,
+      "overflow": false,
+      "scroll": 360,
+      "width": 375,
+      "screenshot": "evidence/375/account-normal.png",
+      "sha256": "396ddbbe2f3f9677dd42135fc2aa1c218d5477838597ea85941b6bafefa9d951"
+    },
+    {
+      "area": "account",
+      "scenario": "unavailable",
+      "blocked": 0,
+      "heading": "Account",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/account-unavailable.png",
+      "sha256": "81e50d592cfc6a3f4ee7229282dd50c8e27ddbe6b54c4bc7e5fbaeb1fe8ff159"
+    },
+    {
+      "area": "account",
+      "scenario": "unchanged",
+      "blocked": 0,
+      "heading": "Account",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/account-unchanged.png",
+      "sha256": "848f8e2e4ff958b7a33e89d6d6733a3816f4281b0c75b7e5e23463f5c27377b9"
+    },
+    {
+      "area": "account",
+      "scenario": "unconfirmed",
+      "blocked": 0,
+      "heading": "Account",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/account-unconfirmed.png",
+      "sha256": "768468827046287bbe99582e81be59382ced9b1b2ebfb8cb677cf857bcf4246b"
+    },
+    {
+      "area": "account",
+      "scenario": "updated",
+      "blocked": 0,
+      "heading": "Account",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/account-updated.png",
+      "sha256": "330764fd7980d57e024ed05897794323cae7d9a313c38adff41119152523be8b"
+    },
+    {
+      "area": "history",
+      "scenario": "empty",
+      "blocked": 0,
+      "heading": "Leah's page history",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/history-empty.png",
+      "sha256": "8c59dc7bc6af999e19998b75e8cb0e8aa2eb670929e876811525afd41642dbce"
+    },
+    {
+      "area": "history",
+      "scenario": "failed",
+      "blocked": 0,
+      "heading": "Leah's page history",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/history-failed.png",
+      "sha256": "f7b6e866c0180dfeb6d0f48ded65907760ce684018447b9f3caa5842e88fed04"
+    },
+    {
+      "area": "history",
+      "scenario": "loading",
+      "blocked": 0,
+      "heading": "Leah's page history",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/history-loading.png",
+      "sha256": "dde94fa1cc146abbfc42110b92355a66c785549759d2201f4a1088a36f2eed31"
+    },
+    {
+      "area": "history",
+      "scenario": "normal",
+      "blocked": 0,
+      "eyebrow": {
+        "font": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, monospace",
+        "marker": "block"
+      },
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "text": "Leah's page history",
+        "weight": "300"
+      },
+      "height": 1100,
+      "overflow": false,
+      "scroll": 360,
+      "width": 375,
+      "screenshot": "evidence/375/history-normal.png",
+      "sha256": "9218b9d841f631ed0e7fec87d7606e4563226a22b86517d1ac2bb2198ad58c33"
+    },
+    {
+      "area": "history",
+      "scenario": "photo-expired",
+      "blocked": 0,
+      "heading": "Leah's page history",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/history-photo-expired.png",
+      "sha256": "fdf59c6634590b80bab79cdb1e522cf374c2ca196dac33cd1154a6732a2267b6"
+    },
+    {
+      "area": "history",
+      "scenario": "unavailable",
+      "blocked": 0,
+      "heading": "Leah's page history",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/history-unavailable.png",
+      "sha256": "ce3353201563f2127778f09dc2c826c8abaaf33047f0422cfbc95f454f33d905"
+    },
+    {
+      "area": "notes",
+      "scenario": "empty",
+      "blocked": 0,
+      "heading": "Leah",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/notes-empty.png",
+      "sha256": "d5b1c4112d0293a632410a6fffa49404eeb647176aa091c76602b58c6e4fd6b1"
+    },
+    {
+      "area": "notes",
+      "scenario": "missing-transcript",
+      "blocked": 0,
+      "heading": "Leah \u00b7 Page 11, question 7",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/notes-missing-transcript.png",
+      "sha256": "2b24dbb16934d128b10fb6e1dc24c563515ef18c18e27efcbb251f6b876a9b21"
+    },
+    {
+      "area": "notes",
+      "scenario": "normal",
+      "blocked": 0,
+      "eyebrow": {
+        "font": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, monospace",
+        "marker": "block"
+      },
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "text": "Leah",
+        "weight": "300"
+      },
+      "height": 1100,
+      "overflow": false,
+      "scroll": 360,
+      "width": 375,
+      "screenshot": "evidence/375/notes-normal.png",
+      "sha256": "52f4f680ee2d97cf53f65a42ad4e94ea9d4fc8be4d1e40dc70a8c7f6f9f45023"
+    },
+    {
+      "area": "overview",
+      "scenario": "in-mail",
+      "blocked": 0,
+      "heading": "Leah",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/overview-in-mail.png",
+      "sha256": "1172676ec1550e72446540a6a00659039e49182437072b55515264e749c30691"
+    },
+    {
+      "area": "overview",
+      "scenario": "normal",
+      "blocked": 0,
+      "eyebrow": null,
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "text": "Leah",
+        "weight": "300"
+      },
+      "height": 1100,
+      "overflow": false,
+      "scroll": 360,
+      "width": 375,
+      "screenshot": "evidence/375/overview-normal.png",
+      "sha256": "3f952b3e3bfe52059d3252b82e07190bf009f3406045bdf9a921059fa59cde47"
+    },
+    {
+      "area": "overview",
+      "scenario": "preparing",
+      "blocked": 0,
+      "heading": "Leah",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/overview-preparing.png",
+      "sha256": "5ce24b294a155fa074304bfad654d058dcfde48f52eba71eab6f56cfe47c7efa"
+    },
+    {
+      "area": "overview",
+      "scenario": "unavailable",
+      "blocked": 0,
+      "heading": "Leah",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/overview-unavailable.png",
+      "sha256": "fe03fcfeb02df9235e5844d23ad153125a7dab0f305c708edc1c34009f6710d6"
+    },
+    {
+      "area": "progress",
+      "scenario": "empty",
+      "blocked": 0,
+      "heading": "Leah's progress",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/progress-empty.png",
+      "sha256": "212026fabdb9065084950173f078ef71fc34df76082dc255c68982845081de24"
+    },
+    {
+      "area": "progress",
+      "scenario": "normal",
+      "blocked": 0,
+      "eyebrow": {
+        "font": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, monospace",
+        "marker": "block"
+      },
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "text": "Leah's progress",
+        "weight": "300"
+      },
+      "height": 1100,
+      "overflow": false,
+      "scroll": 360,
+      "width": 375,
+      "screenshot": "evidence/375/progress-normal.png",
+      "sha256": "d91fe41890d14f652e1d5fc4fe684d17f11833f7eb7e7b89eb42b8e485d39b5d"
+    },
+    {
+      "area": "progress",
+      "scenario": "unavailable",
+      "blocked": 0,
+      "heading": "Leah's progress",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/progress-unavailable.png",
+      "sha256": "655836e6698731152392bb42b1b8eae40c764332a395c3c306fac7d8b6cd2592"
+    },
+    {
+      "area": "results",
+      "scenario": "all-done",
+      "blocked": 0,
+      "heading": "All done",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/results-all-done.png",
+      "sha256": "df64ab0225f479616fa7f9a437189f12280428fe65df80e649eb815d8d5dbec8"
+    },
+    {
+      "area": "results",
+      "scenario": "loading",
+      "blocked": 0,
+      "heading": "Go through it together",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/results-loading.png",
+      "sha256": "15af3a7169f03987c31aae68acf6dd44de652bdcc67636f8528ab53114a237b0"
+    },
+    {
+      "area": "results",
+      "scenario": "normal",
+      "blocked": 0,
+      "eyebrow": {
+        "font": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, monospace",
+        "marker": "block"
+      },
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "text": "Page results",
+        "weight": "300"
+      },
+      "height": 1100,
+      "overflow": false,
+      "scroll": 360,
+      "width": 375,
+      "screenshot": "evidence/375/results-normal.png",
+      "sha256": "707a51a27e0f3344f6a09746220c7103d50445ed0f3eeb2f5d8284f8ef7f6275"
+    },
+    {
+      "area": "results",
+      "scenario": "photo-expired",
+      "blocked": 0,
+      "heading": "Page results",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/results-photo-expired.png",
+      "sha256": "2add3c13717d9cd02c766f45ba1af35dd6a057b889ff831ef1992c94ca66fddb"
+    },
+    {
+      "area": "results",
+      "scenario": "retry",
+      "blocked": 0,
+      "heading": "Go through it together",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/results-retry.png",
+      "sha256": "3de31902061f392e15e144c2ac30eabff40ba44167f28da3c0524d780ef95bd6"
+    },
+    {
+      "area": "results",
+      "scenario": "stale",
+      "blocked": 0,
+      "heading": "Go through it together",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/results-stale.png",
+      "sha256": "bdf1b4e1f9ac4ecb775abfc7e4d9d6d83dbac67b0eab1fbe0c522678b545f139"
+    },
+    {
+      "area": "results",
+      "scenario": "team",
+      "blocked": 0,
+      "heading": "Page results",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/results-team.png",
+      "sha256": "f62b29b2869ed0aa6af9624b261ab7577e80a14a8edb61ab067a69bec15670f3"
+    },
+    {
+      "area": "results",
+      "scenario": "together",
+      "blocked": 0,
+      "heading": "Go through it together",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/results-together.png",
+      "sha256": "889e5314d0b6b241615af8507e5ccf23f5d46e0466b71a851838ce133ee46333"
+    },
+    {
+      "area": "results",
+      "scenario": "unaligned",
+      "blocked": 0,
+      "heading": "Page results",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/results-unaligned.png",
+      "sha256": "7360404a79dd718dea650c46588d5d6a30e72ffebdc5e315c9c48547ba1a4791"
+    },
+    {
+      "area": "results",
+      "scenario": "unsupported",
+      "blocked": 0,
+      "heading": "Go through it together",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/results-unsupported.png",
+      "sha256": "6800b0ea9493d20a56766d4f424f65e1737bb3136dee7fae625959a0857b5d4a"
+    },
+    {
+      "area": "scan",
+      "scenario": "checking",
+      "blocked": 0,
+      "heading": "Scan pages",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/scan-checking.png",
+      "sha256": "da22730e2bab8e01446959f713675e4d88b7131e02495a9a0c16c85cad2fc532"
+    },
+    {
+      "area": "scan",
+      "scenario": "completed",
+      "blocked": 0,
+      "heading": "Scan pages",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/scan-completed.png",
+      "sha256": "c8d7e5f6e2a34367e9ba6267f759396b95c634d0d674a19974a5cd5a83f1c2c2"
+    },
+    {
+      "area": "scan",
+      "scenario": "empty",
+      "blocked": 0,
+      "eyebrow": {
+        "font": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, monospace",
+        "marker": "block"
+      },
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "text": "Scan pages",
+        "weight": "300"
+      },
+      "height": 1100,
+      "overflow": false,
+      "scroll": 375,
+      "width": 375,
+      "screenshot": "evidence/375/scan-empty.png",
+      "sha256": "13e9016a11c21a8af90d0687ed4ab1ff37f23d70d799daec20c19ca26284b557"
+    },
+    {
+      "area": "scan",
+      "scenario": "refused",
+      "blocked": 0,
+      "height": 1100,
+      "overflow": false,
+      "undoClearance": 39,
+      "width": 375,
+      "screenshot": "evidence/375/scan-refused.png",
+      "afterUndoOffsetRepair": true,
+      "sha256": "f5b1ba29ec2aefad1565e7684bf62c1095c9fc7677684eacc99df9d13345c764"
+    },
+    {
+      "area": "scan",
+      "scenario": "retake",
+      "blocked": 0,
+      "height": 1100,
+      "overflow": false,
+      "undoClearance": 39,
+      "width": 375,
+      "screenshot": "evidence/375/scan-retake.png",
+      "afterUndoOffsetRepair": true,
+      "sha256": "22d8e483d14e839a3950473ea738526148d56c7424dae4b8344eb9b43c7a3a8a"
+    },
+    {
+      "area": "scan",
+      "scenario": "team",
+      "blocked": 0,
+      "heading": "Scan pages",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/scan-team.png",
+      "sha256": "b3a3c4da373dabf49b6b49b4ae7b9684647cc205cce04e59274c77c7473c076f"
+    },
+    {
+      "area": "scan",
+      "scenario": "unavailable",
+      "blocked": 0,
+      "heading": "Scan pages",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/scan-unavailable.png",
+      "sha256": "33750aa02c7869d14bf29bbf0a78cb449e10b673d964759f17581d1f7898de7e"
+    },
+    {
+      "area": "scan",
+      "scenario": "undo",
+      "blocked": 0,
+      "height": 1100,
+      "overflow": false,
+      "undoClearance": 459.3984375,
+      "width": 375,
+      "screenshot": "evidence/375/scan-undo.png",
+      "afterUndoOffsetRepair": true,
+      "sha256": "7bddb63f81cbf1ae3312e7f9f70d1e91d05d2c9d54e07f57302120353358f402"
+    },
+    {
+      "area": "shell",
+      "scenario": "empty",
+      "blocked": 0,
+      "heading": "Your account",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/shell-empty.png",
+      "sha256": "aa106e5f404f4746103dccfa61d0d6a3b2917ed8c1cca8c7dd4182d3100f5fe3"
+    },
+    {
+      "area": "shell",
+      "scenario": "long-name",
+      "blocked": 0,
+      "eyebrow": {
+        "font": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, monospace",
+        "marker": "block"
+      },
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "text": "Alexandria-Charlotte Mar\u00eda",
+        "weight": "300"
+      },
+      "height": 1100,
+      "overflow": false,
+      "scroll": 375,
+      "width": 375,
+      "screenshot": "evidence/375/shell-long-name.png",
+      "sha256": "7d4cfbea014693a5a931954f8ea837892b8bdbcf31e5606d02da837aa7da33d8"
+    },
+    {
+      "area": "shell",
+      "scenario": "more",
+      "blocked": 0,
+      "dialog": "MayaAssessmentAccount",
+      "heading": "Leah",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/shell-more.png",
+      "sha256": "7f93f5130b3fd299a5380a463f081e1551c4c9664195f3b6407460f6789642ef"
+    },
+    {
+      "area": "shell",
+      "scenario": "pretest",
+      "blocked": 0,
+      "heading": "Leah",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/shell-pretest.png",
+      "sha256": "7714610d1585d1490e5a042f88c006ce9673e2ccadd57cfd11dbf3fc82d7b764"
+    },
+    {
+      "area": "workbooks",
+      "scenario": "completed",
+      "blocked": 0,
+      "heading": "Leah's workbooks",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/workbooks-completed.png",
+      "sha256": "3b2889e2548a7620d72ac251749db330845047d40aad3878ee754bee6be955bb"
+    },
+    {
+      "area": "workbooks",
+      "scenario": "empty",
+      "blocked": 0,
+      "heading": "Leah's workbooks",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/workbooks-empty.png",
+      "sha256": "34f08d2ef1e84b1bc5b73a2322583873ae077516e0d94b51131ecb84a0407cf2"
+    },
+    {
+      "area": "workbooks",
+      "scenario": "in-mail",
+      "blocked": 0,
+      "heading": "Leah's workbooks",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/workbooks-in-mail.png",
+      "sha256": "9b7fa63d66c88f267c2ecbe2ce03b514c633ce98c0f927d1f1cc58f34f340615"
+    },
+    {
+      "area": "workbooks",
+      "scenario": "normal",
+      "blocked": 0,
+      "eyebrow": {
+        "font": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, monospace",
+        "marker": "block"
+      },
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "text": "Leah's workbooks",
+        "weight": "300"
+      },
+      "height": 1100,
+      "overflow": false,
+      "scroll": 360,
+      "width": 375,
+      "screenshot": "evidence/375/workbooks-normal.png",
+      "sha256": "c85d658858e0454c8b449031c5282257603b2c16226087a4ef1cc58471a647ba"
+    },
+    {
+      "area": "workbooks",
+      "scenario": "unknown",
+      "blocked": 0,
+      "heading": "Leah's workbooks",
+      "height": 1100,
+      "overflow": false,
+      "undo": false,
+      "width": 375,
+      "screenshot": "evidence/375/workbooks-unknown.png",
+      "sha256": "499c93b56dec8749eb52eb6a9d9cf58d59d755d96f8558452943d7fde1538ece"
+    },
+    {
+      "area": "account",
+      "scenario": "normal",
+      "blocked": 0,
+      "eyebrow": {
+        "font": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, monospace",
+        "marker": "block"
+      },
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "weight": "300"
+      },
+      "height": 1100,
+      "overflow": false,
+      "width": 768,
+      "screenshot": "evidence/768/account-normal.png",
+      "sha256": "b675152400235ae1c98328a14f39aea996a90480b952f291577d816d628abfb6"
+    },
+    {
+      "area": "history",
+      "scenario": "normal",
+      "blocked": 0,
+      "eyebrow": {
+        "font": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, monospace",
+        "marker": "block"
+      },
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "weight": "300"
+      },
+      "height": 1100,
+      "overflow": false,
+      "width": 768,
+      "screenshot": "evidence/768/history-normal.png",
+      "sha256": "e68bcf5b9e103f5c03bffbb92eed87d29e3c39887be5b56c52b6200f390f8209"
+    },
+    {
+      "area": "notes",
+      "scenario": "session",
+      "blocked": 0,
+      "eyebrow": {
+        "font": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, monospace",
+        "marker": "block"
+      },
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "weight": "300"
+      },
+      "height": 1100,
+      "overflow": false,
+      "width": 768,
+      "screenshot": "evidence/768/notes-session.png",
+      "sha256": "c15a7214540c2d3e039f2da6952675fea59db22bdad177434b5f2b4f5bc17c6b"
+    },
+    {
+      "area": "overview",
+      "scenario": "normal",
+      "blocked": 0,
+      "eyebrow": null,
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "weight": "300"
+      },
+      "height": 1100,
+      "overflow": false,
+      "width": 768,
+      "screenshot": "evidence/768/overview-normal.png",
+      "sha256": "972ca2ae2832e3173faf57f3101c43d256c9d446676b44a273666a0da3069dbb"
+    },
+    {
+      "area": "progress",
+      "scenario": "normal",
+      "blocked": 0,
+      "eyebrow": {
+        "font": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, monospace",
+        "marker": "block"
+      },
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "weight": "300"
+      },
+      "height": 1100,
+      "overflow": false,
+      "width": 768,
+      "screenshot": "evidence/768/progress-normal.png",
+      "sha256": "009e210a2ce912739b07c89b69107c8290929c121b9a1bde39062d8a3404369e"
+    },
+    {
+      "area": "results",
+      "scenario": "normal",
+      "blocked": 0,
+      "eyebrow": {
+        "font": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, monospace",
+        "marker": "block"
+      },
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "weight": "300"
+      },
+      "height": 1100,
+      "overflow": false,
+      "width": 768,
+      "screenshot": "evidence/768/results-normal.png",
+      "sha256": "120d6d2a473816b07c5567158c4c60cb1364643f3ae3ab84d208c822e6ec10c0"
+    },
+    {
+      "area": "scan",
+      "scenario": "checking",
+      "blocked": 0,
+      "eyebrow": {
+        "font": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, monospace",
+        "marker": "block"
+      },
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "weight": "300"
+      },
+      "height": 1100,
+      "overflow": false,
+      "width": 768,
+      "screenshot": "evidence/768/scan-checking.png",
+      "sha256": "fa6eaf1730683c150cf14aa90d151b606fe17fae2dad9f2300951c38211578cb"
+    },
+    {
+      "area": "shell",
+      "scenario": "long-name",
+      "blocked": 0,
+      "eyebrow": {
+        "font": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, monospace",
+        "marker": "block"
+      },
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "weight": "300"
+      },
+      "height": 1100,
+      "overflow": false,
+      "width": 768,
+      "screenshot": "evidence/768/shell-long-name.png",
+      "sha256": "80de9f200822822f2407606adf15a5bec3055e409c7cd435d441fe20d0a46457"
+    },
+    {
+      "area": "workbooks",
+      "scenario": "normal",
+      "blocked": 0,
+      "eyebrow": {
+        "font": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, monospace",
+        "marker": "block"
+      },
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "weight": "300"
+      },
+      "height": 1100,
+      "overflow": false,
+      "width": 768,
+      "screenshot": "evidence/768/workbooks-normal.png",
+      "sha256": "0d5ac5ee4bfb9364831adf60383f6a9910252eee1a9a9066aac7178687ad2aef"
+    },
+    {
+      "area": "account",
+      "scenario": "failed",
+      "blocked": 0,
+      "heading": "Account",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/account-failed.png",
+      "sha256": "dd253205943f17f827a2cc369c5475dd2ea1eff8f988e741ee4d52d46a69bb37"
+    },
+    {
+      "area": "account",
+      "scenario": "normal",
+      "blocked": 0,
+      "eyebrow": {
+        "font": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, monospace",
+        "marker": "block"
+      },
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "weight": "300"
+      },
+      "height": 1000,
+      "overflow": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/account-normal.png",
+      "sha256": "0632c06a3bb22684e7d6d3e09690a2afe68a9bed4ebcbaaf550e99d47968ac61"
+    },
+    {
+      "area": "account",
+      "scenario": "unavailable",
+      "blocked": 0,
+      "heading": "Account",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/account-unavailable.png",
+      "sha256": "266a2b98006e34837267d3ff94da3f6528b909e601f3e3f8a405725b8478943a"
+    },
+    {
+      "area": "account",
+      "scenario": "unchanged",
+      "blocked": 0,
+      "heading": "Account",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/account-unchanged.png",
+      "sha256": "6d3c77b0ef136cb50ce5dbe6bbc27f8863533b22fd711cdcc26c0597224b23b4"
+    },
+    {
+      "area": "account",
+      "scenario": "unconfirmed",
+      "blocked": 0,
+      "heading": "Account",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/account-unconfirmed.png",
+      "sha256": "5c1a44cb388ab52435a3e54900d6058be27e7c70182726cd8d73859888ad1718"
+    },
+    {
+      "area": "account",
+      "scenario": "updated",
+      "blocked": 0,
+      "heading": "Account",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/account-updated.png",
+      "sha256": "a1546d8ce29ee0187e7ce442e6cfa0b56deed84128f632c8458efa2c1f01a522"
+    },
+    {
+      "area": "history",
+      "scenario": "empty",
+      "blocked": 0,
+      "heading": "Leah's page history",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/history-empty.png",
+      "sha256": "3c66e7af45e82fd90867804ea34b4b3b674de38ad26f3d9d98b3e658368c4b19"
+    },
+    {
+      "area": "history",
+      "scenario": "failed",
+      "blocked": 0,
+      "heading": "Leah's page history",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/history-failed.png",
+      "sha256": "d3ff8be10b4993c7f93b00cf657b9628170717b40c00215a050a797c93febf62"
+    },
+    {
+      "area": "history",
+      "scenario": "loading",
+      "blocked": 0,
+      "heading": "Leah's page history",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/history-loading.png",
+      "sha256": "c1e1e73acb24e6cb4abcae3f27faf8495c4d8ab9314a89251a430ef2d03bd87a"
+    },
+    {
+      "area": "history",
+      "scenario": "normal",
+      "blocked": 0,
+      "eyebrow": {
+        "font": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, monospace",
+        "marker": "block"
+      },
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "weight": "300"
+      },
+      "height": 1000,
+      "overflow": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/history-normal.png",
+      "sha256": "3e95805b17bf880b26c50ce5694c435a9ac2ec0befc34bcd2289cc5998434e70"
+    },
+    {
+      "area": "history",
+      "scenario": "photo-expired",
+      "blocked": 0,
+      "heading": "Leah's page history",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/history-photo-expired.png",
+      "sha256": "5198be11a271011753d205595a01745d57c32161bc0d5c9d3dd9104c3a4540df"
+    },
+    {
+      "area": "history",
+      "scenario": "unavailable",
+      "blocked": 0,
+      "heading": "Leah's page history",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/history-unavailable.png",
+      "sha256": "21c50bdcb1a1a7f20cdf6b1d0468b478fb2e2599c8a89fd08e8bfa546d5ca512"
+    },
+    {
+      "area": "notes",
+      "scenario": "empty",
+      "blocked": 0,
+      "heading": "Leah",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/notes-empty.png",
+      "sha256": "bd6da59e0af3941a5b582bee5dd03160a0f98e48e88053e96214b93ab672f0dd"
+    },
+    {
+      "area": "notes",
+      "scenario": "missing-transcript",
+      "blocked": 0,
+      "heading": "Leah \u00b7 Page 11, question 7",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/notes-missing-transcript.png",
+      "sha256": "e66e9135e1aef36ec931d0a20ef0fc570a394a29f1ad9a3d055d18b05cec4538"
+    },
+    {
+      "area": "notes",
+      "scenario": "session",
+      "blocked": 0,
+      "eyebrow": {
+        "font": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, monospace",
+        "marker": "block"
+      },
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "weight": "300"
+      },
+      "height": 1000,
+      "overflow": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/notes-session.png",
+      "sha256": "8d135ff402de371e35bc1d619b0629dd4e137967c286f9674e571a417273910d"
+    },
+    {
+      "area": "overview",
+      "scenario": "in-mail",
+      "blocked": 0,
+      "heading": "Leah",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/overview-in-mail.png",
+      "sha256": "76ede7c9908d4003b2156ae3ce45e4703e1846917bd778d87c3b3c222b89141b"
+    },
+    {
+      "area": "overview",
+      "scenario": "normal",
+      "blocked": 0,
+      "eyebrow": null,
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "weight": "300"
+      },
+      "height": 1000,
+      "overflow": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/overview-normal.png",
+      "sha256": "82ba111f822ed206a2d242564d67115c0ff6aec05fd722facd09adf25237e6fc"
+    },
+    {
+      "area": "overview",
+      "scenario": "preparing",
+      "blocked": 0,
+      "heading": "Leah",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/overview-preparing.png",
+      "sha256": "4ca0beb7b3ed0fbc671e9755ee87fbba210b634ec8002aac6660911e62d4d3ac"
+    },
+    {
+      "area": "overview",
+      "scenario": "unavailable",
+      "blocked": 0,
+      "heading": "Leah",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/overview-unavailable.png",
+      "sha256": "07d08849febf8456ff6b3af834955f5dc5da4394d804f3aec0b9c94f4d67708a"
+    },
+    {
+      "area": "progress",
+      "scenario": "empty",
+      "blocked": 0,
+      "heading": "Leah's progress",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/progress-empty.png",
+      "sha256": "c360c90381fc7e0d752472f0cdb5b37efa4d9dbb5b77d371ef9527a81d947c66"
+    },
+    {
+      "area": "progress",
+      "scenario": "normal",
+      "blocked": 0,
+      "eyebrow": {
+        "font": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, monospace",
+        "marker": "block"
+      },
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "weight": "300"
+      },
+      "height": 1000,
+      "overflow": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/progress-normal.png",
+      "sha256": "95eff59beebb5a1363b7cb006679a03102bf904059ebec4849183ee8d3b6e6e1"
+    },
+    {
+      "area": "progress",
+      "scenario": "unavailable",
+      "blocked": 0,
+      "heading": "Leah's progress",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/progress-unavailable.png",
+      "sha256": "8a5a0646d079e30645976ba06d81a8e0bc54d040215d4a6c69de7d90516d25cc"
+    },
+    {
+      "area": "results",
+      "scenario": "all-done",
+      "blocked": 0,
+      "heading": "All done",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/results-all-done.png",
+      "sha256": "b57a26e5e04a1bbfbc2dbb7889d8ab9277bb07dadc196bc0cd6efbb3c35ba9c3"
+    },
+    {
+      "area": "results",
+      "scenario": "loading",
+      "blocked": 0,
+      "heading": "Go through it together",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/results-loading.png",
+      "sha256": "ca5736070a8b28d2169651a1b7db83a4a7a437e59d317a731299e1ac4a762208"
+    },
+    {
+      "area": "results",
+      "scenario": "normal",
+      "blocked": 0,
+      "eyebrow": {
+        "font": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, monospace",
+        "marker": "block"
+      },
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "weight": "300"
+      },
+      "height": 1000,
+      "overflow": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/results-normal.png",
+      "sha256": "41de90f971923ee25c419feb4c989e575c1f380acae23601399fe2e334fe7c19"
+    },
+    {
+      "area": "results",
+      "scenario": "photo-expired",
+      "blocked": 0,
+      "heading": "Page results",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/results-photo-expired.png",
+      "sha256": "b96cd0595394ea6bbd5200aa0cfac4ecbcec9996b6bdba4a3480d99c5b27f157"
+    },
+    {
+      "area": "results",
+      "scenario": "retry",
+      "blocked": 0,
+      "heading": "Go through it together",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/results-retry.png",
+      "sha256": "de1aa87355b6a4a6d39b65235bd7ad7c6a74c00c9b4ef7dbc54250b8df93147d"
+    },
+    {
+      "area": "results",
+      "scenario": "stale",
+      "blocked": 0,
+      "heading": "Go through it together",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/results-stale.png",
+      "sha256": "f2247f7ef3f8645d285fe445e8fe18c91617d7841f7d03e089e6fdffcef2e586"
+    },
+    {
+      "area": "results",
+      "scenario": "team",
+      "blocked": 0,
+      "heading": "Page results",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/results-team.png",
+      "sha256": "7aa26f78248f7248916f4d17f1445a9d0bf24f69dc2c74e82e5f5bce77cdc4bb"
+    },
+    {
+      "area": "results",
+      "scenario": "together",
+      "blocked": 0,
+      "heading": "Go through it together",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/results-together.png",
+      "sha256": "e78e81d281475dd3951c5734580bf44b1edcf18ca66a1e2282d12db3b679da05"
+    },
+    {
+      "area": "results",
+      "scenario": "unaligned",
+      "blocked": 0,
+      "heading": "Page results",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/results-unaligned.png",
+      "sha256": "17b423b56d09353030a119a0322212fb580c807bfb909b17455df0d92f49863a"
+    },
+    {
+      "area": "results",
+      "scenario": "unsupported",
+      "blocked": 0,
+      "heading": "Go through it together",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/results-unsupported.png",
+      "sha256": "9b063f38466dbbf5c088f042c284b04bfc471a7f9219f02fbdc37d7a5ed5632f"
+    },
+    {
+      "area": "scan",
+      "scenario": "checking",
+      "blocked": 0,
+      "heading": "Scan pages",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/scan-checking.png",
+      "sha256": "2eca31605ee13847290f3c7bac72440f9f77e08d7b7c48ba7e8cea87766e1488"
+    },
+    {
+      "area": "scan",
+      "scenario": "completed",
+      "blocked": 0,
+      "heading": "Scan pages",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/scan-completed.png",
+      "sha256": "345a75045c38ffbb9a462e8ac2960ccfdeb0d7775a6dc586945f8ff5aacadf13"
+    },
+    {
+      "area": "scan",
+      "scenario": "refused",
+      "blocked": 0,
+      "heading": "Scan pages",
+      "height": 1400,
+      "overflow": false,
+      "undo": true,
+      "width": 1440,
+      "screenshot": "evidence/1440/scan-refused.png",
+      "sha256": "5eeb2fc9486d6132054f704ce72ab9faee2bbe932f311e4f04e84b07500718c9"
+    },
+    {
+      "area": "scan",
+      "scenario": "retake",
+      "blocked": 0,
+      "heading": "Scan pages",
+      "height": 1400,
+      "overflow": false,
+      "undo": true,
+      "width": 1440,
+      "screenshot": "evidence/1440/scan-retake.png",
+      "sha256": "db1cacaeac12c5beb5930e3523ee9ec031fc1698892d8048aa38a5b4017d2b98"
+    },
+    {
+      "area": "scan",
+      "scenario": "team",
+      "blocked": 0,
+      "heading": "Scan pages",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/scan-team.png",
+      "sha256": "aa38084485d232fb092ce82c75f32b94bb9a05e66b25a8c6758fb87fb3ac4159"
+    },
+    {
+      "area": "scan",
+      "scenario": "unavailable",
+      "blocked": 0,
+      "heading": "Scan pages",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/scan-unavailable.png",
+      "sha256": "e116190dd4830cd5e207036a049697d34271d3734249939c88d57206d98909ae"
+    },
+    {
+      "area": "scan",
+      "scenario": "undo",
+      "blocked": 0,
+      "heading": "Scan pages",
+      "height": 1400,
+      "overflow": false,
+      "undo": true,
+      "width": 1440,
+      "screenshot": "evidence/1440/scan-undo.png",
+      "sha256": "a9704d17ad63ca6614480e2e56e72ab23fb238bb62d4471aebd2e9926449608b"
+    },
+    {
+      "area": "shell",
+      "scenario": "empty",
+      "blocked": 0,
+      "heading": "Your account",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/shell-empty.png",
+      "sha256": "3b0333be1934375db390bb97c4f6cefb92e292f0319fa9a793f8f22dffb18fc6"
+    },
+    {
+      "area": "shell",
+      "scenario": "long-name",
+      "blocked": 0,
+      "eyebrow": {
+        "font": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, monospace",
+        "marker": "block"
+      },
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "weight": "300"
+      },
+      "height": 1000,
+      "overflow": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/shell-long-name.png",
+      "sha256": "3cbfdf3a703536bd1d17a6f01dbc17743e8eea66a587c6f329464808293ebcaa"
+    },
+    {
+      "area": "shell",
+      "scenario": "more",
+      "blocked": 0,
+      "heading": "Leah",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/shell-more.png",
+      "sha256": "fe4970384cb210164f4e5ffdbbebb1191966251fcbf04ca9b3b0e686dc4bdb03"
+    },
+    {
+      "area": "shell",
+      "scenario": "pretest",
+      "blocked": 0,
+      "heading": "Leah",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/shell-pretest.png",
+      "sha256": "8e1126748c7d0eb44ae106b8adbc601e9dd91bb35c386f56ec051433a6d57ccc"
+    },
+    {
+      "area": "workbooks",
+      "scenario": "completed",
+      "blocked": 0,
+      "heading": "Leah's workbooks",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/workbooks-completed.png",
+      "sha256": "37aa9c77ce91ca6d835ff39a11e710ebfd98ab331d2bc3f5d2fbb3d5191004a6"
+    },
+    {
+      "area": "workbooks",
+      "scenario": "empty",
+      "blocked": 0,
+      "heading": "Leah's workbooks",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/workbooks-empty.png",
+      "sha256": "1dac472e067f58ea7a01dc5d1500e420addd0c63fa94b860a0975ab73653370b"
+    },
+    {
+      "area": "workbooks",
+      "scenario": "in-mail",
+      "blocked": 0,
+      "heading": "Leah's workbooks",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/workbooks-in-mail.png",
+      "sha256": "07953784ed48b0ea42215b1c8fee3cdcd7ee11d321cbde547b913843da84bff9"
+    },
+    {
+      "area": "workbooks",
+      "scenario": "normal",
+      "blocked": 0,
+      "eyebrow": {
+        "font": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, monospace",
+        "marker": "block"
+      },
+      "h1": {
+        "font": "Geist, \"Geist Fallback\", ui-sans-serif, system-ui, sans-serif",
+        "weight": "300"
+      },
+      "height": 1000,
+      "overflow": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/workbooks-normal.png",
+      "sha256": "197df72ead414212e6d0890ed412215e00ce682bff0311dec07bf6f3cc209ce0"
+    },
+    {
+      "area": "workbooks",
+      "scenario": "unknown",
+      "blocked": 0,
+      "heading": "Leah's workbooks",
+      "height": 1400,
+      "overflow": false,
+      "undo": false,
+      "width": 1440,
+      "screenshot": "evidence/1440/workbooks-unknown.png",
+      "sha256": "ceaf399e6ca724659d592336d8dd20fbe34ae95449162b5d7997af0f2aac8486"
+    }
+  ],
+  "interactions": {
+    "keyboard": [
+      {
+        "key": "Tab",
+        "focus": "See whole page",
+        "outline": "solid",
+        "outlineWidth": "3px",
+        "steps": 0,
+        "toggle": [
+          "See whole page"
+        ]
+      },
+      {
+        "key": "Enter",
+        "focus": "Zoom to question",
+        "outline": "solid",
+        "outlineWidth": "3px",
+        "steps": 0,
+        "toggle": [
+          "Zoom to question"
+        ]
+      },
+      {
+        "key": "Enter",
+        "focus": "See whole page",
+        "outline": "solid",
+        "outlineWidth": "3px",
+        "steps": 0,
+        "toggle": [
+          "See whole page"
+        ]
+      },
+      {
+        "key": "Tab",
+        "focus": "Step by step",
+        "outline": "solid",
+        "outlineWidth": "3px",
+        "steps": 0,
+        "toggle": [
+          "See whole page"
+        ]
+      },
+      {
+        "key": "Tab",
+        "focus": "Show all",
+        "outline": "solid",
+        "outlineWidth": "3px",
+        "steps": 0,
+        "toggle": [
+          "See whole page"
+        ]
+      },
+      {
+        "key": "Tab",
+        "focus": "Show next step",
+        "outline": "solid",
+        "outlineWidth": "3px",
+        "steps": 0,
+        "toggle": [
+          "See whole page"
+        ]
+      },
+      {
+        "key": "Enter",
+        "focus": "Show next step",
+        "outline": "solid",
+        "outlineWidth": "3px",
+        "steps": 1,
+        "toggle": [
+          "See whole page"
+        ]
+      }
+    ],
+    "navigation": {
+      "next": {
+        "focus": "H1",
+        "heading": "Go through it together",
+        "question": "Question 14",
+        "steps": 0
+      },
+      "back": {
+        "focus": "H1",
+        "question": "Question 7",
+        "steps": 1
+      },
+      "all": {
+        "overflow": false,
+        "showAllPressed": "true",
+        "steps": 3
+      }
+    },
+    "moreKeyboard": [
+      {
+        "key": "Tab",
+        "shift": false,
+        "focus": "Assessment"
+      },
+      {
+        "key": "Tab",
+        "shift": false,
+        "focus": "Account"
+      },
+      {
+        "key": "Tab",
+        "shift": false
+      },
+      {
+        "key": "Tab",
+        "shift": true,
+        "focus": "Account"
+      },
+      {
+        "key": "Escape",
+        "shift": false,
+        "focus": "More"
+      }
+    ],
+    "moreEscape": {
+      "dialog": false,
+      "focus": "More"
+    },
+    "undo": {
+      "blocked": "0",
+      "copy": "\u2039Day 3\u203a0 of 4 pages marked11Ready12Ready13Ready14ReadyAny order is fine.Not sent. The pages wait here. Open one to send it.See all pagesScan pagesSend 4 pages for markingHow to scan",
+      "undoVisible": false
+    },
+    "contrast": {
+      "foreground": "#ffffff",
+      "background": "#b43d12",
+      "ratio": 5.806090542977998
+    }
+  },
+  "limitations": [
+    "Navigation fixture uses a local Next context seam and reloads between surfaces. CSS imports are all present; actual account route/RSC transitions are covered by regressions, not this fixture.",
+    "Scan Undo delay is stretched to 10 minutes for capture; timer correctness is not proved here.",
+    "Compact header controls are unchanged. Changed action/mode/photo/navigation controls are at least 44px high."
+  ],
+  "reducedMotion": "reduced-motion.json"
+}

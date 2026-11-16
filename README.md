@@ -1,40 +1,83 @@
-# Unica Learning landing page
+# Unica Learning
 
-The Unica Learning site and product: a personalized math learning program with mailed workbooks (ages 5 to 14, Kindergarten to Grade 9).
-Working conventions, services and every environment variable: `AGENTS.md` (the source of truth; this file is a short start). Design truth: `DESIGN.md`. History: `.design/decisions.md`. Mockups: `.design/experiments/` (option A is parked in `drafts/`).
+A personalized math learning program with mailed workbooks for children ages 5 to 14.
 
-## Run
+The site supports families from the initial assessment through their learning plan. Visit [unicalearning.com](https://unicalearning.com) to learn more.
 
-```bash
-npm install
-npm run dev        # http://localhost:3000
-npm run build && npm run start
+## What the product does
+
+- Gives children an online math assessment and provides a report for their parents.
+- Creates personalized workbooks and supports the delivery of printed books.
+- Lets children work with Maya, an AI tutor, by chat or voice.
+- Lets families submit workbook pages for marking and track learning progress.
+- Gives the team tools to manage assessments, workbooks and support.
+
+```mermaid
+flowchart LR
+    A[Online assessment] --> B[Parent report]
+    B --> C[Learning plan]
+    C --> D[Printed workbooks]
+    C --> E[Maya tutor]
+    D --> F[Page marking and progress]
 ```
 
-## Environment
+## Use the program
+
+Visit [unicalearning.com](https://unicalearning.com) to get started. A parent creates an account and a child takes the assessment online. Availability of a learning plan depends on the family's curriculum.
+
+## Contributing
+
+This is a private application repository. Report problems and propose changes through the repository's GitHub issues and pull requests. Read [AGENTS.md](AGENTS.md) for project rules, services and the full environment reference before making changes.
+
+### Local setup
+
+Use Node.js 22.23.1, the version used in CI, and npm. You also need access to this private repository. Some product flows require credentials for external services.
+
+```bash
+git clone https://github.com/Savar-G/unica-learning.git
+cd unica-learning
+npm ci
+cp .env.example .env.local
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). Fill in the values needed for the flows you test. Supabase settings default to the production project unless overridden. Configure a separate test project before testing account or data flows. Do not commit credentials.
+
+### Configuration
+
+The example file lists common settings. [AGENTS.md](AGENTS.md) has the full list and defaults. Features that use external services need the applicable credentials.
 
 | Variable | Purpose |
-|---|---|
-| `NEXT_PUBLIC_POSTHOG_KEY` | PostHog project key. Analytics loads only after the visitor accepts it. |
-| `NEXT_PUBLIC_POSTHOG_INGEST` | PostHog ingest host (default `https://us.i.posthog.com`; EU: `https://eu.i.posthog.com`). |
-| `NEXT_PUBLIC_SITE_URL` | Public URL: canonical links, the sitemap and structured data (`src/lib/metadata.ts`). |
-| `NEXT_PUBLIC_ALLOW_INDEX` | Set to `true` only when the site can appear in search. Vercel preview deployments remain noindex. |
-| `STRIPE_SECRET_KEY` | Stripe key (server only) for saved cards and plans. |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Override the default Supabase project for browser and account access. |
+| `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY` | Configure server access to Supabase. The secret key is server-only. |
+| `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_ALLOW_INDEX` | Set the public URL and control search indexing. Keep indexing off for local work. |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Enable Stripe card setup, plans and webhook verification. |
+| `RESEND_API_KEY`, `EMAIL_FROM` | Configure outgoing email. |
+| `OPENROUTER_API_KEY` | Enable AI features that use OpenRouter. |
+| `NEXT_PUBLIC_POSTHOG_KEY` | Enable optional analytics after visitor consent. |
 
-The full list is the "Environment variables" table in `AGENTS.md`. Analytics event names are in `src/lib/track.ts`. Events before analytics consent are discarded, and no event identifies a parent.
+### Checks
 
-## Supporting pages
+Run the project checks before opening a pull request:
 
-- `/privacy` and `/terms` use plain language and identify Unica Learning. Public support is `contact@unicalearning.com`, defined in `src/lib/contact.ts`. The first month is free (`TRIAL_DAYS` in `src/lib/site.ts`); it replaced the 30-day money-back guarantee. Both pages are indexable (D-319).
-- `/thank-you` is where Stripe returns after a parent saves a card from the report. A direct visit confirms nothing. Stripe returns with a Checkout session ID; the server confirms a saved card only for a completed setup session with a successful SetupIntent and a matching Unica Learning reference. This page never charges a card.
-- A missing route returns the custom 404 page. `robots.txt` and `sitemap.xml` follow the indexing switch. The sitemap (`src/app/sitemap.ts`) lists the marketing pages, the Resources guides and the Blog posts. Product and receipt pages stay noindex.
-- Cookie settings in the footer allow a visitor to change the optional analytics choice. The mobile assessment button hides while the banner or a dialog is open.
+```bash
+npm test
+npx eslint src
+npm run build
+```
 
-The screenshot checklist and open items are recorded in `.design/research/site-checklist-2026-10-08.md`.
+For a production-mode local run, use `npm run build` followed by `npm run start`. See [AGENTS.md](AGENTS.md) for browser checks and additional checks for specific areas.
 
-## Notes
+## Project documentation
 
-- Signup path: a parent makes an account at `/start`, the child takes the free assessment, and the report offers the next step: a BC-curriculum family saves a card on Stripe (nothing is charged; the free month starts after the first workbook is delivered), and every other curriculum joins the waitlist.
-- Brand name and prices live in `src/lib/site.ts`. Canadian postal-code validation lives in `src/lib/signup.ts`.
-- Fonts: Zodiak and Switzer are self-hosted under the ITF Free Font License (`src/fonts/FFL-Fontshare.txt`). The licence forbids redistributing the font files, so keep this repository private.
-- Photos: Unsplash licence only; see `.design/assets/stock/CREDITS.md`. The hero lineup in draft A is AI-generated.
+- [Design system and copy rules](DESIGN.md)
+- [Product and service conventions](AGENTS.md)
+- [Workbook generation](docs/workbook-fast-loop.md)
+- [Maya tutor](docs/maya-tutor.md) and [voice](docs/maya-voice.md)
+- [Parent dashboard](docs/parent-dashboard.md)
+- [Design decisions](.design/decisions.md)
+
+## License and assets
+
+This repository has no stated project license. The self-hosted fonts have separate terms in [src/fonts/FFL-Fontshare.txt](src/fonts/FFL-Fontshare.txt), which restrict redistribution. Keep this repository private. Photo credits are in [.design/assets/stock/CREDITS.md](.design/assets/stock/CREDITS.md).

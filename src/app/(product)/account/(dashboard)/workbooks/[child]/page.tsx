@@ -1,26 +1,19 @@
-import { notFound, redirect } from "next/navigation";
+import { WorkbookBookList } from "@/components/workbook-book-list";
 import { ParentWorkbooks } from "@/components/parent-workbooks";
-import { ScanHistory, ScanHistoryView } from "@/components/scan-history";
 import { pageMetadata } from "@/lib/metadata";
-import { parentDashboard } from "@/lib/parent-dashboard-server";
-import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
-import { workbooksPage } from "@/lib/workbooks-page-server";
+import { mainBook } from "@/lib/workbook-days";
+import { bookChecking, loadWorkbooksPage, openDayOf, workbookDaysFor } from "@/lib/workbooks-page-server";
 
 export const metadata = pageMetadata({ path: "/account/workbooks", title: "Workbooks", description: "Your child's workbooks.", index: false });
 
-/** Whole answer keys follow delivery. Saved page history follows the independent scan and marking gates. */
-async function load(childId: string) {
-  const session = await sessionClient(), parent = await parentId(session);
-  if (!parent) redirect("/sign-in");
-  // The scan screen's "See all pages" link asks this same read (src/lib/workbooks-page-server.ts).
-  const page = await workbooksPage(session, parent, adminClient(), childId, { dashboard: Boolean(await parentDashboard()) });
-  if (!page) notFound();
-  return { ...page, parent };
-}
-
-export default async function Workbooks({ params }: PageProps<"/account/workbooks/[child]">) {
-  const { view, parent, historyAvailable } = await load((await params).child);
-  return <ParentWorkbooks {...view} history={historyAvailable
-    ? <ScanHistory parent={parent} child={view.child.id} books={view.books.map(book => book.id)} />
-    : <ScanHistoryView state="unavailable" />} />;
+/** The child's current workbook with its 10 days, then the next workbook, answer keys and older books (#1031). Whole answer
+ * keys follow delivery. The saved page results in each day follow the independent scan and marking gates. */
+export default async function Workbooks({ params, searchParams }: PageProps<"/account/workbooks/[child]">) {
+  const { view, parent, historyAvailable } = await loadWorkbooksPage((await params).child);
+  const main = mainBook(view.books);
+  const days = main ? await workbookDaysFor(parent, view, main) : null;
+  const openDay = openDayOf((await searchParams).day);
+  const checking = main ? await bookChecking(parent, view.child.id, main.id, days, historyAvailable) : 0;
+  return <ParentWorkbooks view={view} days={days} scanOpen={view.child.tabs.includes("scan_pages")}
+    list={main && <WorkbookBookList parent={parent} child={view.child.id} book={main.id} days={days} open={historyAvailable} openDay={openDay} checking={checking} />} />;
 }

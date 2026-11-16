@@ -90,3 +90,11 @@ it("steps back to an earlier day of the same book with its own states and marks,
   expect([at(5).day, at(5).back]).toEqual(["Day 1", 1]);
   expect([at(-2).day, at(-2).back]).toEqual(["Day 2", 0]);
 });
+
+it("keeps a retake on its original day even after its old photo leaves the listing", () => {
+  const uploads = [{ key: "local:retake", status: "uploading" as const, target: { photoId: "old", pageId: "p7", pageNumber: 7, workbookId: "book", day: "Day 2" } }];
+  const stack = buildStack({ photos: [photo("p3")], uploads, pages, checks: true });
+  const result = dayStrip({ photos: [photo("p3")], pages, tiles: [...stack.addingTiles, ...stack.days.flatMap((d) => d.tiles)], marking: true })!;
+  expect(result.day).toBe("Day 2");
+  expect(result.tiles.find((t) => t.pageId === "p7")).toMatchObject({ state: "checking", tileKey: "local:retake", label: "Checking page 7…" });
+});

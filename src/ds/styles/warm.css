@@ -19,6 +19,8 @@
 [data-look="warm"] {
   --accent: #ff6a3d; --accent-soft: #fff1ea;
   --sun: #ffc93c; --sky: #5b8def; --tang: #ff6a3d; --leaf: #2fb37a;
+  /* Dark tangerine for white text on orange actions: 5.8:1 on white (#1112). */
+  --tang-ink: #b43d12;
   --g1: #ffc93c; --g2: #ff9466; --g3: #8fb4ff; --g4: #a6e8cb;
   --base: #ffd9b8;
   --card: #f5f4f2; --soft: #faf9f7;

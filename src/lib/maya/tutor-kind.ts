@@ -56,18 +56,21 @@ export interface TutorKind {
    */
   draw(pkg: OperationPackage, requests: readonly { offer: string; place?: string }[], drawn: readonly string[], noteId: (i: number) => string): { commands: TutorCommand[]; keys: string[] };
   /**
+   * B2: the board's dependency graph, DECLARED by the kind: for every drawing key `draw` can give (never a note), the
+   * keys that must be on the board first (a trade before its digit, the ones digit before the tens digit, the rows
+   * before a long-multiplication digit, the chart before a chart digit, the layout before a division step). The board
+   * draws a key from Maya's sentence only when each of these is shown, or drawn earlier in the same message
+   * (src/lib/maya/board-ties.ts). The contract (contract.ts) checks it against `draw`.
+   */
+  boardNeeds(pkg: OperationPackage): Readonly<Record<string, readonly string[]>>;
+  /** B2: the keys a note needs on the board first (the chart, for a place value note). None when absent. */
+  noteNeeds?(pkg: OperationPackage): readonly string[];
+  /**
    * The kind's own true-math checks of one sentence of Maya's, beyond the core's equations, place quantities and
    * trades (tutor-math.ts): for example "the 9 is in the thousands place". Reasons for each false claim; empty when
    * every claim the kind reads is true. Fail closed: a claim form the kind cannot read is not proven true.
    */
   claimProblems(pkg: OperationPackage, sentence: string): string[];
-  /**
-   * Optional (two-layer true math, 2026-11-15): the clauses of the sentence (as the core splits it, at ":", ";" and ","
-   * outside a number) that the kind read whole and found true, each as said. The core counts them as read by code, so
-   * they need no math-truth review. Name only a clause every number and relation word of which the kind checked; a
-   * clause it did not read whole is left out, and goes to the review.
-   */
-  coveredClaims?(pkg: OperationPackage, sentence: string): string[];
   /** The direction of a trade in an "is now" / "becomes" claim, for kinds with column trades. */
   op?(pkg: OperationPackage): "add" | "subtract" | undefined;
   /** Short facts about how this kind's idea is worked, for the brief (never teaching rules). */

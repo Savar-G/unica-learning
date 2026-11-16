@@ -5,7 +5,7 @@ import Link from "next/link";
 import { EmailFrame } from "@/components/admin-email-frame";
 import { familyHref, type Ctx } from "@/components/admin-dashboard-parts";
 import { DELIVERY_WORDS } from "@/lib/delivery-state";
-import { DELIVERY_TEXT, EMAIL_LABEL, at, ago, clickable, clicksText, deliveryProblem, type Delivery, type EmailCopyView, type EmailEvent } from "@/lib/admin-dashboard";
+import { DELIVERY_TEXT, EMAIL_LABEL, at, ago, clickable, clicksText, deliveryProblem, isTeamEmail, keepsNoCopy, type Delivery, type EmailCopyView, type EmailEvent } from "@/lib/admin-dashboard";
 import "./admin-blocks.css";
 import "./admin-pages.css";
 
@@ -29,14 +29,14 @@ function splitAddress(from: string): { name: string; address: string | null } {
 function resultText(e: EmailEvent, copy: EmailCopyView | null): { text: string; bad: boolean } {
   if (e.status === "failed") return { text: `Not sent: Resend refused it after ${e.attempts} ${e.attempts === 1 ? "try" : "tries"}. ${e.error ?? ""}`.trim(), bad: true };
   if (e.status === "pending") {
-    return e.state === "unknown" || copy?.outcome === "unknown"
+    return e.state === "unknown" || (e.state !== "claimed" && copy?.outcome === "unknown")
       ? { text: `${DELIVERY_WORDS.unknown}. ${e.error ?? ""}`.trim(), bad: true }
       : { text: `${DELIVERY_WORDS[e.state === "claimed" ? "claimed" : "unsent"]}.`, bad: false };
   }
   // After the send: Resend's newest delivery event (D-104).
   const last = copy?.events.at(-1) ?? e.delivery;
   if (last) return { text: `${DELIVERY_TEXT[last.type]}. ${DELIVERY_MEANS[last.type]}`, bad: deliveryProblem(last.type) || last.type === "delivery_delayed" };
-  return { text: `${e.kind === "alert" ? "Sent to you" : "Sent to the parent"}. Resend took it; no delivery report from Resend yet.`, bad: false };
+  return { text: `${isTeamEmail(e.kind) ? "Sent to you" : "Sent to the parent"}. Resend took it; no delivery report from Resend yet.`, bad: false };
 }
 
 /** The email in a framed preview (the envelope, then the body as the parent saw it) with its facts on the side. */
@@ -65,7 +65,9 @@ export function EmailView({ e, copy, ctx, now }: { e: EmailEvent; copy: EmailCop
             )}
           </>
         ) : (
-          <p className="ab-empty ap-mail-none">No copy of this email. The site keeps a copy of each reminder and report email from the day this view went live. This email went before that, or its copy could not be saved.</p>
+          <p className="ab-empty ap-mail-none">{keepsNoCopy(e.kind)
+            ? "The site keeps no copy of this kind of email: it holds a sign-in link or a code, or a message from the contact form."
+            : "No copy of this email. The site keeps a copy of each email from the day it was logged. This email went before that, or its copy could not be saved."}</p>
         )}
       </section>
       <aside className="ap-mail-side" aria-label="About this email">
@@ -73,7 +75,7 @@ export function EmailView({ e, copy, ctx, now }: { e: EmailEvent; copy: EmailCop
         <dl className="ap-mail-facts">
           <div><dt>Kind</dt><dd>{EMAIL_LABEL[e.kind]}</dd></div>
           <div><dt>Sent (Pacific)</dt><dd>{at(e.at)}<span className="adm-sub">{ago(e.at, now)}</span></dd></div>
-          <div><dt>Family</dt><dd><Link href={familyHref(ctx, e.familyId)}>{e.familyName}</Link>{e.childName && <span className="adm-sub">{e.childName}</span>}</dd></div>
+          <div><dt>Family</dt><dd>{e.familyId ? <Link href={familyHref(ctx, e.familyId)}>{e.familyName}</Link> : "No family: an email to the team"}{e.childName && <span className="adm-sub">{e.childName}</span>}</dd></div>
           {clickable(e) && e.status === "sent" && (
             <div><dt>Clicks</dt><dd>{e.clicks ? <><b>{clicksText(e)}</b><span className="adm-sub">First click {at(e.clicks.first)}</span></> : "Not clicked yet."}
               <span className="adm-sub">Counted when the parent opens our page from the email&apos;s button, signed in.</span></dd></div>

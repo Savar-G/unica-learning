@@ -360,6 +360,24 @@ describe("a card update before the plan starts", () => {
     expect(b.subscriptions.map((s) => s.defaultCard)).toEqual(["pm_card"]);
   });
 
+  it("starts on a saved Link method when the customer has no card", async () => {
+    const b = memoryBilling({ children: [leah], paymentMethods: { cus_1: [{ id: "pm_link", type: "link" }] } });
+    expect((await start(b)).ok).toBe(true);
+    expect(b.subscriptions.map((s) => s.defaultCard)).toEqual(["pm_link"]);
+  });
+
+  it("prefers a card over a Link method", async () => {
+    const b = memoryBilling({ children: [leah], paymentMethods: { cus_1: [{ id: "pm_link", type: "link" }, { id: "pm_card", type: "card" }] } });
+    expect((await start(b)).ok).toBe(true);
+    expect(b.subscriptions.map((s) => s.defaultCard)).toEqual(["pm_card"]);
+  });
+
+  it("charges a Link default the parent chose", async () => {
+    const b = memoryBilling({ children: [leah], paymentMethods: { cus_1: [{ id: "pm_card", type: "card" }, { id: "pm_link", type: "link" }] }, customerDefaults: { cus_1: "pm_link" } });
+    expect((await start(b)).ok).toBe(true);
+    expect(b.subscriptions.map((s) => s.defaultCard)).toEqual(["pm_link"]);
+  });
+
   it("answers no_card when the customer has no card at all", async () => {
     const b = memoryBilling({ children: [leah] });
     expect(await start(b)).toEqual({ ok: false, error: "no_card" });

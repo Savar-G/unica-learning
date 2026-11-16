@@ -19,7 +19,13 @@ it.each(PARENT_PREVIEW_VIEWS.filter(view => view.id === "overview" || view.id ==
     for (const child of ["first", "second"]) {
       const output = dom(renderParentPreview(previewSelection({ view, scenario, family: "two", child, size }), styles));
       expect(output.body.textContent).not.toMatch(/of 30 minutes|minutes left|minutes start again|weekly minutes|Try Maya|Start (?:a )?call/i);
-      expect(output.querySelector(".po")?.textContent ?? "").not.toMatch(/minutes|messages|this week/i);
+      // The week line and Highlights (#990) say "this week" on purpose: the guard reads the rest of the Home, and the two
+      // parts are held to the allowance words alone.
+      const home = output.querySelector(".po")?.cloneNode(true) as Element | undefined;
+      const story = [...(home?.querySelectorAll(".po-line, .po-hl") ?? [])];
+      story.forEach((part) => part.remove());
+      expect(home?.textContent ?? "").not.toMatch(/minutes|messages|this week/i);
+      expect(story.map((part) => part.textContent).join(" ")).not.toMatch(/minutes|messages/i);
       const name = child === "first" ? "Leah" : "Kai";
       if (view === "overview" && scenario === "active") {
         // Option A (#1003): the Home holds no Maya tile; the Maya tab holds the notes.
@@ -45,32 +51,93 @@ it.each(PARENT_PREVIEW_VIEWS.filter(view => view.id === "overview" || view.id ==
     }
   });
 
-it.each(["desktop", "phone"].flatMap(size => ["first", "second"].map(child => ({ size, child }))))(
-  "keeps the Schedule field labels in the $size preview for the $child child",
-  ({ size, child }) => {
-    const output = dom(renderParentPreview(previewSelection({ view: "schedule", scenario: "partial", family: "two", child, size }), styles));
-    const rows = [...output.querySelectorAll(".ps-table tbody tr")];
-    expect(rows).toHaveLength(10);
-    for (const row of rows) {
-      expect([...row.querySelectorAll("td")].map(cell => cell.getAttribute("data-label")))
-        .toEqual(["Topic", "Pages", "Required time", "Scanned", "Marks"]);
-    }
-  },
-);
+it.each(PARENT_PREVIEW_VIEWS.find(view => view.id === "overview")!.scenarios.map(scenario => scenario.id))
+  ("keeps the Home's sentences true to the circles and skill counts of its own scenario (#990): %s", scenario => {
+    for (const child of ["first", "second"]) {
+      const out = dom(renderParentPreview(previewSelection({ view: "overview", scenario, family: "two", child, size: "desktop" }), styles));
+      const line = out.querySelector(".po-line")?.textContent ?? "";
+      const hl = [...out.querySelectorAll(".po-hl p")].map(p => p.textContent ?? "");
+      const all = [line, ...hl].join(" ");
+      const days = [...out.querySelectorAll(".po-day")].map(li => /is-(\w+)/.exec(li.className)![1]);
+      const isDone = (state: string) => state === "done" || state === "today_done";
+      const todayAt = days.findIndex(state => state.startsWith("today"));
+      const counts = Object.fromEntries([...out.querySelectorAll(".po-count")].map(b => [b.querySelector("span")!.textContent!, Number(b.querySelector("b")!.textContent)]));
+      const ended = sampleChildren(previewSelection({ view: "overview", scenario, family: "two", child })).at(child === "first" ? 0 : 1)!.stage === "ended";
 
-it("shows the real Schedule table on both sizes with each child's rows and honest unknown or waiting states", () => {
-  for (const size of ["desktop", "phone"]) {
-    const selection = previewSelection({ view: "schedule", scenario: "partial", family: "two", child: "second", size });
-    const output = dom(renderParentPreview(selection, styles));
-    expect(output.querySelector("h1")?.textContent).toBe("Kai's schedule");
-    expect(output.querySelectorAll(".ps-table tbody tr")).toHaveLength(10);
-    expect(output.querySelector(".ps-table")?.textContent).toContain("Multiplication");
-    expect(output.querySelector(".ps-table")?.textContent).toContain("3 of 8 scanned");
+      // The days done say the days the circles show done.
+      const doneSaid = /(\d+) days? done/.exec(line);
+      if (doneSaid) expect(Number(doneSaid[1])).toBe(days.filter(isDone).length);
+      // "Day N is ready" names an open circle before today's.
+      const ready = /Day (\d+) is ready/.exec(line);
+      if (ready) { const at = Number(ready[1]) - 1; expect(days[at]).toBe("open"); expect(at).toBeLessThan(todayAt); }
+      // A streak is the run of done circles ending at today's, and an ended plan has none and no line.
+      const streak = /done (\d+) workbook days in a row/.exec(all);
+      if (streak) {
+        expect(ended).toBe(false);
+        let run = 0;
+        for (let i = days[todayAt] === "today_done" ? todayAt : todayAt - 1; i >= 0 && isDone(days[i]); i--) run++;
+        expect(Number(streak[1])).toBe(run);
+      }
+      if (ended) { expect(line).toBe(""); expect(all).not.toMatch(/in a row/); }
+      // "One to watch" only with a Needs help list; new skills only with Mastered skills, as many as the dated rows say.
+      if (/one to watch/.test(all)) expect(counts["Needs help"]).toBeGreaterThan(0);
+      const fromLine = /(\d+) new skills? mastered/.exec(line), fromHl = /mastered (\d+) skills|mastered (?!1 new)[^.]+ this week/.exec(hl.join(" "));
+      const said = fromLine ? Number(fromLine[1]) : fromHl ? (fromHl[1] ? Number(fromHl[1]) : 1) : 0;
+      expect(said).toBeLessThanOrEqual(counts["Mastered"] ?? 0);
+      if (fromLine && fromHl) expect(Number(fromLine[1])).toBe(fromHl[1] ? Number(fromHl[1]) : 1);
+      // When the Mastered list is the one shown, the rows dated this week are the new skills the sentences count.
+      const thisWeek = [...out.querySelectorAll(".po-skill small")].filter(row => /Mastered (today|Monday|Tuesday|Wednesday|Thursday|Friday)/.test(row.textContent ?? "")).length;
+      if ([...out.querySelectorAll(".pa-sh h2")].some(h => h.textContent === "Mastered")) expect(thisWeek).toBe(said);
+      // Nothing to say, and a plan with nothing mastered, says nothing of the kind.
+      if (scenario === "nothing_to_say") { expect(line).toBe(""); expect(hl).toEqual([]); }
+    }
+  });
+
+it("shows the sentence under each skill, written by the real module from facts of its own scenario (#989)", () => {
+  const rows = (scenario: string, child = "first") => [...dom(renderParentPreview(previewSelection({ view: "overview", scenario, family: "two", child, size: "desktop" }), styles)).querySelectorAll(".po-skill")]
+    .map(row => [row.querySelector("b")?.textContent, row.querySelector("small")?.textContent ?? null]);
+  // Needs help is the list that opens: a mistake in its reviewed parent words, and no next-workbook clause with no next workbook.
+  expect(rows("active")).toEqual([
+    ["Value of each digit in big numbers", "Mixes up which place each digit is in, such as tens and hundreds."],
+    ["Subtracting across a zero", "Subtracts the wrong way across a zero."],
+  ]);
+  // With the next workbook in the mail, and only then, the sentence says what comes next.
+  for (const scenario of ["book_2_mailed", "book_over"]) {
+    for (const [, sentence] of rows(scenario)) expect(sentence).toMatch(/\. Back in the next workbook\.$/);
   }
-  expect(rendered("schedule", "unknown")).toContain("Scan status unavailable");
-  expect(rendered("schedule", "waiting")).toContain("No printed workbook yet");
-  expect(rendered("schedule", "expired")).toContain("8 of 8 scanned");
-  expect(rendered("schedule", "unavailable")).not.toContain("ps-table");
+  for (const scenario of ["active", "today_done", "behind", "ended"]) for (const [, sentence] of rows(scenario)) expect(sentence).not.toContain("next workbook");
+  // No Needs help skill: the list that opens is Learning. One steady run, one recorded start; no percent and no count of wrong answers.
+  expect(rows("nothing_to_say")).toEqual([
+    ["Rounding to the nearest hundred", "Getting steadier: right the last 3 times"],
+    ["Number patterns", "Started Tuesday"],
+  ]);
+  for (const scenario of ["active", "nothing_to_say", "book_2_mailed"]) expect(rows(scenario).map(([, s]) => s).join(" ")).not.toMatch(/%|percent|of the last/);
+});
+
+it("shows the real Workbooks tab for each book state on both sizes, with the Schedule folded in (#1031)", () => {
+  for (const size of ["desktop", "phone"]) {
+    const midway = dom(renderParentPreview(previewSelection({ view: "workbooks", scenario: "delivered", family: "two", child: "second", size }), styles));
+    expect(midway.querySelector("h1")?.textContent).toBe("Kai's workbooks");
+    expect(midway.querySelectorAll(".wd-row")).toHaveLength(10);
+    expect(midway.querySelectorAll(".wd-row.is-ok")).toHaveLength(2);
+    expect(midway.querySelector(".wb-cover")?.textContent).toContain("Day 3 of 10 · Adding with regrouping");
+    // Day 3 is today, nothing of it scanned yet: the one orange row.
+    expect(midway.querySelectorAll(".wb-scan")).toHaveLength(1);
+    expect(midway.querySelector(".wb-scan")?.textContent).toContain("Day 3 still to scan");
+    expect(midway.querySelector(".wb-scan")?.textContent).toContain("Pages 19–26");
+  }
+  expect(dom(rendered("workbooks", "partial_day")).querySelector(".wb-scan")?.textContent).toContain("Day 3 still to scan");
+  expect(dom(rendered("workbooks", "partial_day")).querySelector(".wb-scan")?.textContent).toContain("Pages 22–26");
+  expect(dom(rendered("workbooks", "not_started")).body.textContent).toContain("0 of 80 pages scanned");
+  expect(dom(rendered("workbooks", "not_started")).querySelector(".wb-scan")?.textContent).toContain("Day 1 still to scan");
+  const unknown = dom(rendered("workbooks", "scans_unknown"));
+  expect(unknown.body.textContent).toContain("Scan status unavailable right now.");
+  expect(unknown.querySelector(".wb-scan")).toBeNull();
+  expect(unknown.querySelector(".wd-st")).toBeNull();
+  const all = dom(rendered("workbooks", "all_scanned"));
+  expect(all.querySelectorAll(".wd-row.is-ok")).toHaveLength(10);
+  expect(all.body.textContent).toContain("80 of 80 pages scanned");
+  expect(rendered("schedule", "partial")).not.toContain("ps-table");
 });
 
 beforeEach(() => { vi.clearAllMocks(); vi.stubGlobal("fetch", calls.fetch); });
@@ -229,6 +296,7 @@ it("removes active HTML even if a future component adds it and restricts style s
 it("keeps parent PDFs out of Workbooks previews and shows the real answer-only component for each key scenario", () => {
   const listing = dom(rendered("workbooks", "delivered"));
   expect(listing.body.textContent).toContain("Answer keys");
+  expect(listing.body.textContent).toContain("Older workbooks");
   expect(listing.body.textContent).not.toMatch(/Download PDF|Print a page again/);
   const full = dom(rendered("workbook_answers", "complete"));
   expect(full.querySelectorAll(".pw-answers > li")).toHaveLength(8);
@@ -266,25 +334,22 @@ it("shows every parent explanation state in the inert preview without network or
 });
 
 it.each(["desktop", "phone"].flatMap(size => ["first", "second"].map(child => ({ size, child }))))(
-  "renders the selected child's real history states in the inert $size preview for $child",
+  "renders the selected child's real history states in the opened day of the inert $size preview for $child",
   ({ size, child }) => {
     const output = dom(renderParentPreview(previewSelection({ view: "workbooks", scenario: "history_populated", family: "two", child, size }), styles));
-    const history = output.querySelector('.pw-history .scan-history')!;
+    const day = output.querySelector("details#day-1[open]")!;
     expect(output.querySelector("h1")?.textContent).toBe(`${child === "first" ? "Leah" : "Kai"}'s workbooks`);
-    expect(history.textContent).toContain(`Workbook 3 · Day ${child === "first" ? 1 : 2}`);
-    expect(history.textContent).not.toContain("Workbook 2");
-    expect(history.textContent).toContain("More pages");
-    for (const text of ["Results ready", "2 of 3 right", "Our team is checking", "Not marked yet", "Could not mark", "All answers blank", "Not scored", "No saved results"]) expect(history.textContent).toContain(text);
-    expect(history.textContent).not.toContain("Loading page history");
-    expect(history.querySelectorAll('a[role="link"]')).toHaveLength(6);
-    expect(history.querySelectorAll('[href]')).toHaveLength(0);
+    for (const text of ["Results ready", "2 of 3 right", "answer for our team to check", "Not marked yet", "Could not mark", "All answers blank", "Not scored", "No saved results"]) expect(day.textContent).toContain(text);
+    expect(day.textContent).not.toContain("Loading page history");
+    expect(day.querySelectorAll('a[role="link"]')).toHaveLength(6);
+    expect(output.querySelectorAll("details[open]")).toHaveLength(1);
     expect(calls.fetch).not.toHaveBeenCalled(); expect(calls.client).not.toHaveBeenCalled();
   },
 );
 it("has real empty, expired, missing-photo, loading, error and closed history states in the Admin sandbox", () => {
-  const history = (state: string) => dom(rendered("workbooks", state)).querySelector(".scan-history")!;
-  expect(history("history_empty").textContent).toContain("No saved page results");
-  expect(history("history_review").textContent).toContain("Our team is checking");
+  const history = (state: string) => dom(rendered("workbooks", state)).querySelector("details#day-1")!;
+  expect(history("history_empty").textContent).toContain("No photo yet");
+  expect(history("history_review").textContent).toContain("1 answer for our team to check");
   expect(history("history_review").textContent).not.toMatch(/continue checking|parent check|answers to check/i);
   expect(history("history_pending").textContent).toContain("Not marked yet");
   expect(history("history_failed").textContent).toContain("Could not mark");

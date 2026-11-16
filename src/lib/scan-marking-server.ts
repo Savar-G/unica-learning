@@ -1,4 +1,5 @@
 import "server-only";
+import { monitorProduct } from "@/lib/product-monitoring";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { childPlanAccess, markingDecision, markingMode, type ChildPlanAccess, type Env } from "@/lib/scan-marking-access";
@@ -9,6 +10,7 @@ import { SCAN_MARKING_LAUNCH_EVIDENCE, scanMarkingLaunchReadiness } from "@/lib/
 import { rebuildChildProfile } from "@/lib/child-profile";
 import { childProfileStore } from "@/lib/child-profile-store";
 import { learningEventStore } from "@/lib/learning-events-store";
+import { readPageExplanations } from "@/lib/parent-problem-explanation-page-server";
 
 export { markingAccess, markingDecision, type ChildPlanAccess, type ChildPlanAccessDeps, type ChildPlanReason, type MarkingDecision, type MarkingScope } from "@/lib/scan-marking-access";
 
@@ -102,7 +104,7 @@ export async function readScanMarking(db: SupabaseClient<Database>, parent: stri
   const evidence = evidenceIds.length ? await db.from("scan_photos").select("id,state,expires_at").eq("parent_id", parent).in("id", evidenceIds) : { data: [], error: null };
   if (evidence.error) throw new Error("marking_evidence_state");
   const activeEvidence = new Set((evidence.data ?? []).filter((p) => p.state === "saved" && Date.parse(p.expires_at) > Date.now()).map((p) => p.id));
-  const items = view.items.map((i) => ({ ...i, photoAvailable: i.evidencePhoto !== null && activeEvidence.has(i.evidencePhoto) }));
+  const items = (await readPageExplanations(db, parent, p, view)).map((i) => ({ ...i, photoAvailable: i.evidencePhoto !== null && activeEvidence.has(i.evidencePhoto) }));
   return { ...view, items, budgetHeld: held === "budget", unfinished: held === "unfinished", photoAvailable: p.state === "saved" && Date.parse(p.expires_at) > Date.now(), marks, detail };
 }
 /**
@@ -197,7 +199,7 @@ export async function recoverScanMarking(db: SupabaseClient<Database>, env: Env 
     if (seen.has(ref.photo)) break;
     seen.add(ref.photo);
     try { results.push(await mark(db, ref.parent, ref.photo, env, plan, options)); }
-    catch { results.push("error"); }
+    catch { monitorProduct("scan.recovery_failed", { photoId: ref.photo, step: "marking" }); results.push("error"); }
   }
   // One profile rebuild per child, after its photos. A failure stays in the list for a later run.
   let profilesPending = 0;
@@ -205,7 +207,7 @@ export async function recoverScanMarking(db: SupabaseClient<Database>, env: Env 
     // Too close to the database deadline: leave this rebuild and the rest to a later run.
     if (startedAt + RECOVERY_DB_LIMIT_MS - now() < RECOVERY_REBUILD_MARGIN_MS) { profilesPending++; continue; }
     try { await (deps.rebuild ?? ((c: string) => rebuildChildNow(db, c)))(child); }
-    catch { profilesPending++; }
+    catch { monitorProduct("scan.recovery_failed", { step: "profile" }); profilesPending++; }
   }
   const counts: Record<string, number> = {};
   for (const r of results) counts[r] = (counts[r] ?? 0) + 1;

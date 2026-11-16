@@ -31,7 +31,7 @@ const DIV = make("1340 ÷ 2 = ?", { kind: "divide", operands: [1340, 2] });
 const FRACTION = createSession({ callId: "fraction", package: FIXTURES.COMPARE_FRACTIONS, conversational: true, tutor: true }).package as OperationPackage;
 const settle = async () => { for (let i = 0; i < 60; i++) await Promise.resolve(); };
 
-type MathAnswer = (input: MathReviewInput, n: number) => MathReviewResult | "throw" | "hang";
+type MathAnswer = (input: MathReviewInput, n: number) => MathReviewResult | "throw" | "bad_json" | "hang";
 function call(pkg: unknown, says: string[], math: MathAnswer | null, stream = false) {
   let now = T0;
   const parts: string[] = [];
@@ -53,22 +53,40 @@ function call(pkg: unknown, says: string[], math: MathAnswer | null, stream = fa
 }
 
 describe("layer 1: coverage accounting in the claim reader", () => {
-  it("passes a true sentence whose math code reads whole, with no review", () => {
-    for (const s of ["12 minus 8 is 4.", "So 12 minus 8 is 4.", "52 is 4 tens and 12 ones.", "4 tens minus 2 tens is 2 tens.", "The answer is 24.", "24 is the answer.", "What is 12 minus 8?", "Trade 1 ten for 10 ones.", "Now subtract the ones.", "2 ones become 12."]) {
+  it("passes a true sentence whose math code reads whole, with no review, only in an exact closed form", () => {
+    for (const s of ["12 minus 8 is 4.", "So 12 minus 8 is 4.", "52 is 4 tens and 12 ones.", "4 tens minus 2 tens is 2 tens.", "What is 12 minus 8?"]) {
       expect(unreadMath(s, ctxOf(SUB)), s).toEqual([]);
       expect(checkTutorSay(s, ctxOf(SUB)), s).toMatchObject({ ok: true, math: [] });
     }
+    // Final check 5: an instruction is code alone only as an exact step text: code reads these whole, and they go to the
+    // math review.
+    for (const s of ["Trade 1 ten for 10 ones.", "Now subtract the ones."]) {
+      expect(unreadMath(s, ctxOf(SUB)), s).toEqual([]);
+      expect(checkTutorSay(s, ctxOf(SUB)), s).toMatchObject({ ok: true, math: [s] });
+    }
+    // The exact-match rule (2026-11-15): code reads these whole and finds them true, but no closed form or step text is
+    // the whole sentence, so they go to the math review.
+    for (const s of ["The answer is 24.", "24 is the answer."]) {
+      expect(unreadMath(s, ctxOf(SUB)), s).toEqual([]);
+      expect(checkTutorSay(s, ctxOf(SUB)), s).toMatchObject({ ok: true, math: [s] });
+    }
+    // Final check 7: a trade holds only for one problem's work, so code no longer reads it (no literal equality); it
+    // goes to the math review as before.
+    expect(unreadMath("2 ones become 12.", ctxOf(SUB))).not.toEqual([]);
+    expect(checkTutorSay("2 ones become 12.", ctxOf(SUB))).toMatchObject({ ok: true, math: ["2 ones become 12."] });
   });
   it("sends a sentence with any number or relation word code did not read to the review", () => {
     expect(unreadMath("The answer is 24 and a half.", ctxOf(SUB))).toEqual(["is", "24", "0.5"]);
     expect(unreadMath("12 minus 8 is 4, which is greater than 8.", ctxOf(SUB))).toEqual(["is", "greater", "than", "8"]);
     expect(unreadMath("Write 4 in the ones.", ctxOf(SUB))).toEqual(["4"]);
     expect(unreadMath("12 is 4 steps.", ctxOf(SUB))).toEqual(["12", "is", "4"]);
-    expect(unreadMath("One and a half is one half.", ctxOf(FRACTION))).toEqual(["1"]);
+    // Final check 10: "a half is one half" is only part of the mixed number "one and a half": nothing of it is read.
+    expect(unreadMath("One and a half is one half.", ctxOf(FRACTION))).toEqual(["1", "0.5", "is", "0.5"]);
     expect(unreadMath("Thirteen divided by two is six remainder one, which is two.", ctxOf(DIV))).toEqual(["is", "2"]);
     // A question form claims nothing only in a question: said as a statement, its numbers are not read.
     expect(unreadMath("What is 12 minus 8.", ctxOf(SUB))).not.toEqual([]);
-    expect(checkTutorSay("That is a good try. 12 minus 8 is 4.", ctxOf(SUB))).toMatchObject({ ok: true, math: ["That is a good try."] });
+    // Final check 6: after a sentence that needs the review, every later sentence of the message needs it too.
+    expect(checkTutorSay("That is a good try. 12 minus 8 is 4.", ctxOf(SUB))).toMatchObject({ ok: true, math: ["That is a good try.", "12 minus 8 is 4."] });
   });
   it("still refuses a false claim code finds, before any review", () => {
     for (const s of ["12 minus 8 is 5.", "4 is greater than 8.", "The answer is 25.", "Five sixths is three sixths."]) expect(checkTutorSay(s, ctxOf(s.startsWith("Five") ? FRACTION : SUB)), s).toMatchObject({ ok: false, reason: "false_equation" });
@@ -83,23 +101,69 @@ describe("layer 2: the math-truth review", () => {
     expect(r2).toEqual({ verdict: "unsure", reason: "the math review did not answer in time" });
   });
 
+  it("final check 8: an answer that is not JSON is final unsure, never asked again", async () => {
+    const once = fakeMathReviewer((_, n) => (n === 0 ? "bad_json" : { verdict: "true", reason: "all true" }));
+    expect(await runMathReview(once, {} as MathReviewInput, 50)).toEqual({ verdict: "unsure", reason: "the math review call failed (bad_json)" });
+    expect(once.requests).toHaveLength(1);
+  });
+
+  it("never asks again after a time-out or another error", async () => {
+    const hang = fakeMathReviewer(() => "hang");
+    expect(await runMathReview(hang, {} as MathReviewInput, 20)).toEqual({ verdict: "unsure", reason: "the math review did not answer in time" });
+    expect(hang.requests).toHaveLength(1);
+    const thrown = fakeMathReviewer(() => "throw");
+    expect((await runMathReview(thrown, {} as MathReviewInput, 50)).verdict).toBe("unsure");
+    expect(thrown.requests).toHaveLength(1);
+  });
+
+  it("final check 8: a sentence after an answer that is not JSON is not said, and its repair is not reviewed again", async () => {
+    const line = "That 4 is already in the ones.";
+    const { session, mathReviewer } = call(SUB, [line], (_, n) => (n === 0 ? "bad_json" : { verdict: "true", reason: "all true" }));
+    await session.start();
+    const out = await session.child("Help me please.");
+    expect(out.say.join(" ")).not.toContain(line);
+    expect(mathReviewer!.requests.map((r) => r.sentence)).toEqual([line]);
+  });
+
+  it("gives the review the last 2 turns as code holds them, with the child's name as {name}", async () => {
+    let n = 0;
+    const says = ["Hi Zoe! What is 2 minus 8 in the ones?", "That's 8 minus 2, the other way around. What is 12 minus 8?"];
+    const model = conversationalFake({ answer: () => reply(says[Math.min(n++, says.length - 1)], "guide") });
+    const mathReviewer = fakeMathReviewer();
+    let now = T0;
+    const session = createTextSession({ callId: "math-review-turns", package: SUB, model, clock: () => (now += 100), random: 3, tutor: true, reviewTimeLimitMs: 50, reviewer: fakeTalkReviewer(), mathReviewer, childName: "Zoe" });
+    await session.start();
+    await session.child("Zoe thinks it is 6.");
+    await session.child("Zoe says 6 again.");
+    const input = mathReviewer.requests.find((r) => r.sentence === "That's 8 minus 2, the other way around.")!;
+    expect(input.lastTurns.child).toBe("{name} says 6 again.");
+    expect(input.lastTurns.maya).not.toBeNull();
+    expect(JSON.stringify(input)).not.toMatch(/Zoe/);
+    expect(input.promptVersion).toBe("maya-math-review-8");
+  });
+
   it("gives the review code's facts of the question and the child's turn, never the child's name", async () => {
-    const { session, mathReviewer } = call(SUB, ["The 12 ones are the 2 + 10 part of the trade."], () => ({ verdict: "true", reason: "all true" }));
+    const { session, mathReviewer } = call(SUB, ["You can't take 8 from 2, so we use the 12 ones from the trade here. What is 12 minus 8?"], () => ({ verdict: "true", reason: "all true" }));
     await session.start();
     await session.child("I got 36.");
     const input = mathReviewer!.requests[0];
-    expect(input.sentence).toBe("The 12 ones are the 2 + 10 part of the trade.");
+    expect(input.sentence).toBe("You can't take 8 from 2, so we use the 12 ones from the trade here.");
     expect(input.question).toBe(SUB.text);
     expect(input.answer).toBe(24);
     expect(input.steps.map((s) => s.result)).toEqual([4, 2]);
     expect(input.workValues).toContain(12);
     expect(input.childFacts.join(" ")).toContain("The child said 36:");
+    expect(input.lastTurns.child).toBe("I got 36.");
+    // The easier example Maya may teach first, with code's own steps and answer.
+    expect(input.easierExample?.question).toBe(SUB.easierExample.text);
+    expect(input.easierExample?.answer).toBe((SUB.easierExample.answer as { value: number }).value);
+    expect(input.easierExample?.steps.length).toBeGreaterThan(0);
   });
 
   it("holds an uncovered sentence in the stream and sends it when the review says true; a covered sentence goes first with no review", async () => {
     let release: (r: MathReviewResult) => void = () => {};
     const held = new Promise<MathReviewResult>((r) => { release = r; });
-    const { session, parts, early, mathReviewer } = call(SUB, ["12 minus 8 is 4. The 4 comes from 12 minus 8. What is 4 minus 2?"], () => "hang", true);
+    const { session, parts, early, mathReviewer } = call(SUB, ["12 minus 8 is 4. That 4 is already in the ones. What is 4 minus 2?"], () => "hang", true);
     // The fake answers when released, well inside the limit.
     (mathReviewer as { review: (i: MathReviewInput, s: AbortSignal) => Promise<MathReviewResult> }).review = (input) => { mathReviewer!.requests.push(input); return held; };
     await session.start();
@@ -110,12 +174,13 @@ describe("layer 2: the math-truth review", () => {
     release({ verdict: "true", reason: "all true" });
     const got = await out;
     expect(early()).toContain("12 minus 8 is 4.");
-    expect(got.say.join(" ")).toBe("12 minus 8 is 4. The 4 comes from 12 minus 8. What is 4 minus 2?");
-    expect(mathReviewer!.requests.map((r) => r.sentence)).toEqual(["The 4 comes from 12 minus 8."]);
+    expect(got.say.join(" ")).toBe("12 minus 8 is 4. That 4 is already in the ones. What is 4 minus 2?");
+    // Final check 6: the sentence after a reviewed one is reviewed too.
+    expect(mathReviewer!.requests.map((r) => r.sentence)).toEqual(["That 4 is already in the ones.", "What is 4 minus 2?"]);
     const trace = await session.finish({ reason: "child_stopped" });
     expect(checkTrace(trace)).toMatchObject({ ok: true });
-    expect(trace.counts).toMatchObject({ mathReviews: 1, mathRefusals: 0, refusals: 0 });
-    expect(trace.mathReviewer).toEqual({ id: "fake-math-review", promptVersion: "maya-math-review-1" });
+    expect(trace.counts).toMatchObject({ mathReviews: 2, mathRefusals: 0, refusals: 0 });
+    expect(trace.mathReviewer).toEqual({ id: "fake-math-review", promptVersion: "maya-math-review-8" });
   });
 
   it.each([

@@ -7,6 +7,7 @@ import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import type { TurnBrief } from "@/lib/maya-model";
 import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
+import { fakeMathReviewer } from "@/lib/maya-math-review";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 
 // D-345: the tutor core on the family desk path (desk chat, kind "chat", and family voice, kind "family") behind the
@@ -38,6 +39,7 @@ function setup(store = memoryCallStore({ testFamilies: [PARENT] })) {
     rebuild: vi.fn(async () => true),
     model: (id) => (id === null || id === "fake-v3" ? model : null),
     reviewer,
+    mathReviewer: () => fakeMathReviewer(),
     isTestFamily: async (parentId) => parentId === PARENT,
     canChat: async () => true,
     canCallVoice: async () => true,

@@ -44,6 +44,7 @@
 // Before a paid OpenRouter run, the credit check (src/lib/maya-practice/credits.ts) reads what is left on the account and
 // refuses the run when it is below the estimate plus the need of the runs in flight, or when it cannot be read. It uses the
 // run's own key (an ordinary key reads the credits route).
+import { flushAiUsage } from "@/lib/ai-usage";
 import { aiMathReviewer, fakeMathReviewer, type MathReviewer } from "@/lib/maya-math-review";
 import { execFileSync, execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -471,7 +472,7 @@ async function main() {
       const credit = await checkCredits({ fetch: globalThis.fetch, key, ...need });
       if (!credit.ok) throw new Error(credit.message);
       console.log(`-- ${credit.message}`);
-      client = (role) => cappedClient(openRouterClient({ apiKey: key, model: models[role], fetch: meteredFetch(globalThis.fetch, spending, price[role]) }), spending, price[role]);
+      client = (role) => cappedClient(openRouterClient({ apiKey: key, model: models[role], usage: { feature: role === "maya" ? "maya" : "other", context: "practice" }, fetch: meteredFetch(globalThis.fetch, spending, price[role]) }), spending, price[role]);
     }
     maya = conversationalMayaModel(client("maya"));
     simulator = aiChildSimulator(client("simulator"));
@@ -488,7 +489,8 @@ async function main() {
     console.log(`-- provider: ${o.provider}; ${spent(o, spending)}`);
     await countMonthly(o, spending);
     if (usageLimit !== null) console.log("-- the Claude subscription's usage limit was reached: the check is incomplete. Run it again after the limit resets.");
-    process.exit(ok ? 0 : 1);
+    process.exitCode = ok ? 0 : 1;
+    return;
   }
 
   const dir = resolve(o.out ?? join(root, "traces/maya-practice", new Date().toISOString().replace(/[:.]/g, "-")));
@@ -533,10 +535,10 @@ async function main() {
   const passed = writeReport(cases, o.runs, dir, execution);
   console.log(`-- provider: ${o.fake ? "fake" : o.provider}; ${spent(o, spending)}`);
   await countMonthly(o, spending);
-  process.exit(passed ? 0 : 1);
+  process.exitCode = passed ? 0 : 1;
 }
 
-main().catch((e) => {
+main().finally(flushAiUsage).catch((e) => {
   console.error(redactText(e instanceof Error ? e.message : String(e)));
-  process.exit(1);
+  process.exitCode = 1;
 });

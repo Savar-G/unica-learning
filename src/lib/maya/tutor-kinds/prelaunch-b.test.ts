@@ -5,6 +5,7 @@ import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
+import { judgment } from "@/lib/maya/tutor";
 import { fakeMathReviewer } from "@/lib/maya-math-review";
 import { teachingPackage } from "@/lib/maya-teaching";
 import { storedPlaceValue } from "@/lib/maya-teaching/place-value-samples";
@@ -42,7 +43,7 @@ function say(pkg: OperationPackage, line: string) {
 async function speak(pkg: unknown, line: string, child = "Please help me.") {
   let now = Date.UTC(2026, 10, 15);
   const model = conversationalFake({ answer: () => reply(line, "guide") });
-  const s = createTextSession({ callId: `prelaunch-${line}`, package: pkg as OperationPackage, model, clock: () => (now += 100), random: 3, tutor: true, mathReviewer: fakeMathReviewer(), reviewer: fakeTalkReviewer(() => ({ verdict: "fail", rules: ["math"], reason: "The math is false." })) });
+  const s = createTextSession({ callId: `prelaunch-${line}`, package: pkg as OperationPackage, model, clock: () => (now += 100), random: 3, tutor: true, mathReviewer: fakeMathReviewer(), reviewer: fakeTalkReviewer((input) => (judgment(input.line).any ? { verdict: "pass" } : { verdict: "fail", rules: ["math"], reason: "The math is false." })) });
   await s.start();
   const out = await s.child(child);
   const trace = await s.finish({ reason: "child_stopped" });
@@ -101,7 +102,13 @@ describe("F10: a carry that does not happen is not a value of the work", () => {
 
 describe("F11: a question at the end does not excuse an earlier statement", () => {
   it("refuses \"The answer is no, shall we circle it?\" when the answer is yes", () => refused(claim, "The answer is no, shall we circle it?", undefined, FIXTURES.CLAIM_GT));
-  it("refuses \"The missing number is definitely 671, shall we write it?\"", () => refused(div, "The missing number is definitely 671, shall we write it?"));
+  // Final check 12: a form the kind does not match is no proof that the sentence is false. It is refused, or it goes to
+  // the math review; never passed by code alone.
+  it("never passes \"The missing number is definitely 671, shall we write it?\" on code alone", () => {
+    const line = "The missing number is definitely 671, shall we write it?";
+    const r = say(div, line);
+    expect(!r.ok || r.math.includes(line), line).toBe(true);
+  });
   it("lets a true statement with a question, and a plain question, through", async () => {
     for (const line of ["Is the answer yes or no?", "Do you think the answer is no?", "What do we circle, yes or no?"]) expect(say(claim, line), line).toMatchObject({ ok: true });
     for (const line of ["What is the missing number?", "Can you find the missing number?"]) expect(say(div, line), line).toMatchObject({ ok: true });
