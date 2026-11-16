@@ -6,6 +6,7 @@ import { Empty, Pills, SectionHead, Tiles } from "@/components/admin-blocks";
 import { ADMIN_AI_PATH, cadCents } from "@/lib/admin-ai-usage";
 import { CHILD_COST_PATH, MONTHS, WORKBOOK_PHYSICAL_COST_CENTS, type MonthKey, type UnitCostView } from "@/lib/child-unit-cost";
 import { formatCalendarDate } from "@/lib/family-time";
+import { UsageDetails } from "@/components/admin-ai-usage";
 import "./admin-ai-usage.css";
 import "./admin-pages.css";
 
@@ -29,7 +30,7 @@ export function ChildUnitCostPage({ view, monthKey, error }: { view: UnitCostVie
     <div className="adm-ai">
       {top}
       <Tiles label="Totals" tiles={[
-        { key: "cost", label: "Total cost", value: money(t.costCents), sub: `${monthName(view.month)}, each family's own month` },
+        { key: "cost", label: "Recorded cost and estimates", value: money(t.costCents), sub: `${monthName(view.month)}, each family's own month` },
         { key: "paid", label: "Paid", value: money(t.paidCents), sub: t.unknownPaid ? `from the stored plan state; ${t.unknownPaid} with an unknown price left out` : "from the stored plan state" },
         { key: "margin", label: "Margin", value: money(t.marginCents), sub: t.unknownPaid ? "paid minus total cost, without the unknown prices" : "paid minus total cost" },
         { key: "sub", label: "Subscription calls", value: t.subscriptionCalls.toLocaleString("en-CA"), sub: SUBSCRIPTION_TEXT },
@@ -81,6 +82,8 @@ export function ChildUnitCostPage({ view, monthKey, error }: { view: UnitCostVie
           ))}
         </Table>
       </section>
+      <p className="ai-note">All families, including testing, are included. Detail below covers identified app ledger records in each family&apos;s own month. Older history, Maya speech and voice estimates, and physical costs remain in the summary above. They have no invented feature or model allocation. Account spend and local receipts that have not been imported are not assigned to children.</p>
+      <UsageDetails rows={view.rows.some((r) => r.details != null) ? view.rows.flatMap((r) => r.details ?? []) : null} />
     </div>
   );
 }

@@ -5,8 +5,8 @@ import Link from "next/link";
 import { Table } from "@/components/admin";
 import { BarList, Empty, Pills, SectionHead, Tiles, type Bar } from "@/components/admin-blocks";
 import {
-  ADMIN_AI_PATH, RANGES, buildStack, cad, cadCents, checkLine, costShare, featureGroupOf, groupFeatures, niceTop, usd,
-  type OpenRouterCheck, type Period, type Stack, type UsageView,
+  ADMIN_AI_PATH, RANGES, buildStack, cad, cadCents, costShare, featureGroupOf, groupFeatures, niceTop, usd,
+  type OpenRouterBilling, type Period, type Stack, type UsageView, type UsageDetail,
 } from "@/lib/admin-ai-usage";
 import { CHILD_COST_PATH } from "@/lib/child-unit-cost";
 import { formatCalendarDate } from "@/lib/family-time";
@@ -85,29 +85,70 @@ function DailyChart({ view, period }: { view: UsageView; period: Period }) {
   );
 }
 
-function Check({ check, recordedUsd, rate }: { check: OpenRouterCheck | "no-key" | null; recordedUsd: number | null; rate: number }) {
-  if (check === "no-key") return <p className="ai-check-none">No OpenRouter key is set on this server, so there is nothing to check against.</p>;
-  if (check === null) return <p className="ai-check-none">OpenRouter did not answer.</p>;
-  if (recordedUsd === null) return <p className="ai-check-none">The recorded cost for this month could not be read.</p>;
-  const c = checkLine(check, recordedUsd);
-  return (
-    <>
+const maybeUsd = (v: number | null) => v === null ? "Unavailable" : usd(v);
+
+function Billing({ billing, view }: { billing: OpenRouterBilling; view: UsageView | null }) {
+  const a = billing.account;
+  const m = billing.month;
+  const covered = view?.lifetimeReceipts == null ? null : view.lifetimeReceipts.filter((r) => r.keyId === a.keyId).reduce((s, r) => s + r.costUsd, 0);
+  const remainder = covered !== null && a.spentUsd !== null && covered <= a.spentUsd ? a.spentUsd - covered : null;
+  return <>
+    <section className="ap-card" aria-labelledby="ai-account">
+      <SectionHead id="ai-account" title="OpenRouter account" line="Lifetime account totals. All keys and all work billed to this one account, including testing. These amounts overlap the key and app records below. Do not add them." />
+      <Tiles label="Account billing" tiles={[
+        { key: "spent", label: "Account lifetime spent", value: maybeUsd(a.spentUsd) },
+        { key: "credits", label: "Total credits", value: maybeUsd(a.creditsUsd) },
+        { key: "balance", label: "Credit balance", value: maybeUsd(a.balanceUsd) },
+      ]} />
+      <p className="ai-note">Checked at {billing.checkedAt} (UTC). Account selected by {a.source === "billing" ? "the dedicated billing key" : a.source === "main" ? "the main server key" : "no key"}. Other accounts and providers are not included.</p>
+      {a.status !== "ok" && <p className="ai-check-none">{a.status === "no-key" ? "No account billing key is configured." : a.status === "partial" ? "The account response is partial. Missing fields remain unavailable." : "Account billing is unavailable. The request failed or returned no valid totals."}</p>}
       <dl className="ai-check">
-        <div><dt>OpenRouter says</dt><dd>{usd(c.openRouterUsd)}</dd></div>
-        <div><dt>We recorded</dt><dd>{usd(c.recordedUsd)}</dd></div>
-        <div className={c.notRecordedUsd > 0.005 ? "is-gap" : undefined}><dt>Not recorded</dt><dd>{usd(Math.max(0, c.notRecordedUsd))}</dd></div>
+        <div><dt>Identified account receipts, lifetime</dt><dd>{maybeUsd(covered)}</dd></div>
+        <div><dt>Unreconciled / unassigned account spend</dt><dd>{maybeUsd(remainder)}</dd></div>
       </dl>
-      <p className="ai-note">
-        This month, all families, test families included. OpenRouter says {cad(c.openRouterUsd, rate)} CAD at {rate.toFixed(2)}.
-        {check.answered < check.asked && <> Only {check.answered} of {check.asked} keys answered, so OpenRouter&apos;s number is partial.</>}
-        {c.notRecordedUsd < -0.005 && <> We recorded more than OpenRouter says: history from older ledgers is in our number, and OpenRouter counts the calendar month in UTC.</>}
-      </p>
-    </>
-  );
+      <p className="ai-note">Coverage uses provider receipts with the exact billing key identity only, across all dates and all families. Receipts for other keys have no verified account link. The remainder includes testing, other keys and work with no detailed records. It has no assigned feature, model, family or child. It is not proof of lost records. The provider and app are separate snapshots.</p>
+    </section>
+    <section className="ap-card" aria-labelledby="ai-keys">
+      <SectionHead id="ai-keys" title="Configured API keys: this month" line={`OpenRouter calendar month in UTC, from ${billing.checkedAt.slice(0, 7)}-01 through the check time. All work on each configured server key. Independent of the app date range and family filter.`} />
+      {typeof m !== "object" || m === null ? <p className="ai-check-none">{m === "no-key" ? "No server usage keys are configured." : "Key usage is unavailable."}</p> : <>
+        <p>{m.answered < m.asked ? "Partial key subtotal" : "Configured key subtotal"}: <b>{usd(m.monthUsd)}</b>. {m.answered} of {m.asked} keys answered.</p>
+        <Table label="Key month usage" head={["API key label / identity", "Month usage (USD)"]} empty="No key readings.">
+          {(m.keys ?? []).map((k) => <tr key={k.label}><td>{k.label}</td><td>{maybeUsd(k.monthUsd)}</td></tr>)}
+        </Table>
+      </>}
+      <p className="ai-note">Each distinct key counts once. Account totals already include these charges. Keys may belong to different accounts. App records also contain other providers, historical cost and estimates, with different date and family scopes. No difference is treated as proven missing usage.</p>
+    </section>
+  </>;
 }
 
-export function AiUsagePage({ view, period, rate, check, monthRecordedUsd, error }: {
-  view: UsageView | null; period: Period; rate: number; check: OpenRouterCheck | "no-key" | null; monthRecordedUsd: number | null; error?: string | null;
+export function UsageDetails({ rows, more = false }: { rows: readonly UsageDetail[] | null; more?: boolean }) {
+  if (rows === null) return <Empty>Detailed records are unavailable. Apply the reporting migration before using these breakdowns.</Empty>;
+  const children = new Map<string, UsageDetail[]>();
+  for (const row of rows) {
+    const key = `${row.parentId ?? ""}:${row.childId ?? ""}`;
+    children.set(key, [...children.get(key) ?? [], row]);
+  }
+  return <section className="ap-card" aria-labelledby="ai-details">
+    <SectionHead id="ai-details" title="Recorded detail by family and child" line="USD. Expand a child to see context, feature, model and API key. An unknown child stays unassigned. Subscription calls have no per-call charge. Estimates and unknown prices stay separate." />
+    {more && <p className="ai-note">Only the first 5,000 grouped detail rows are shown. The overall summary includes all records.</p>}
+    {!rows.length && <Empty>No detailed records in this scope. This does not mean no account spend.</Empty>}
+    {[...children.entries()].map(([key, items]) => <details key={key} className="ai-table">
+      <summary>{items[0].parentName} / {items[0].childName} ({items.reduce((s, r) => s + r.calls, 0)} recorded calls)</summary>
+      <Table label={`${items[0].childName} usage`} head={["Context", "Feature", "Provider / model", "API key", "Cost basis", "Known cost", "Calls"]} empty="No records.">
+        {items.map((r, i) => <tr key={i}><td>{r.context}</td><td>{featureGroupOf(r.feature).label} / {r.feature}</td><td>{r.provider} / {r.model}</td><td>{r.keyLabel}</td><td>{r.provider === "subscription" ? SUBSCRIPTION_TEXT : r.basis}</td><td>{r.provider === "subscription" ? "No per-call charge" : r.costUsd === null ? "Unknown" : usd(r.costUsd)}{r.unpricedCalls > 0 && <span className="ai-sub ai-block">{r.unpricedCalls} calls with unknown cost</span>}</td><td>{r.calls}</td></tr>)}
+      </Table>
+    </details>)}
+  </section>;
+}
+
+export function AiUsagePage({ billing, ...props }: {
+  view: UsageView | null; period: Period; rate: number; billing: OpenRouterBilling; error?: string | null;
+}) {
+  return <div className="adm-ai"><Billing billing={billing} view={props.view} /><RecordedUsagePage {...props} /></div>;
+}
+
+function RecordedUsagePage({ view, period, rate, error }: {
+  view: UsageView | null; period: Period; rate: number; error?: string | null;
 }) {
   const pills = RANGES.map((r) => ({ key: r.key, href: r.key === "30d" ? ADMIN_AI_PATH : `${ADMIN_AI_PATH}?range=${r.key}`, label: r.label, current: r.key === period.range }));
   if (!view) return (
@@ -142,18 +183,21 @@ export function AiUsagePage({ view, period, rate, check, monthRecordedUsd, error
         </span>
       </div>
       <Tiles label="Totals" tiles={[
-        { key: "cost", label: "Total cost", value: usd(t.costUsd), sub: `${cad(t.costUsd, rate)} CAD at ${rate.toFixed(2)}` },
-        { key: "calls", label: "AI calls", value: t.calls.toLocaleString("en-CA"), sub: t.unpricedCalls > 0 ? `${t.unpricedCalls.toLocaleString("en-CA")} with no cost reported` : "every paid call has a cost" },
+        { key: "cost", label: "Recorded app cost", value: usd(t.costUsd), sub: `${cad(t.costUsd, rate)} CAD at ${rate.toFixed(2)}` },
+        { key: "calls", label: "Recorded AI calls", value: t.calls.toLocaleString("en-CA"), sub: t.unpricedCalls > 0 ? `${t.unpricedCalls.toLocaleString("en-CA")} with no cost reported` : "costs known for these recorded calls only" },
         { key: "sub", label: "Subscription calls", value: t.subscriptionCalls.toLocaleString("en-CA"), sub: SUBSCRIPTION_TEXT },
       ]} />
       {t.historyUsd > 0 && (
         <p className="ai-note">{usd(t.historyUsd)} of this comes from older ledgers, from before the AI usage ledger started on 12 Nov 2026. Marking and explanations from that time have no family, so they show on the &ldquo;no family&rdquo; line.</p>
       )}
 
-      <section className="ap-card" aria-labelledby="ai-month">
-        <SectionHead id="ai-month" title="OpenRouter against our ledger" line="A check, not a report: the difference is cost the ledger did not record." />
-        <Check check={check} recordedUsd={monthRecordedUsd} rate={rate} />
-      </section>
+      <p className="ai-note">Recorded app scope: {period.days[0]} to {period.days.at(-1)}, Vancouver days. All families, including test and admin families. The global Show test families switch does not change this page. These records are incomplete. Local receipts must be imported before they appear. Historical estimates are included only in the recorded app subtotal.</p>
+      <div className="ai-pair">
+        <section className="ap-card"><SectionHead title="Recorded work context" /><BarList label="Context" bars={(view.byContext ?? []).map((r) => ({ key: r.label, label: r.label, value: r.costUsd, text: `${usd(r.costUsd)} / ${calls(r.calls)}` }))} /></section>
+        <section className="ap-card"><SectionHead title="Recorded cost basis" /><BarList label="Cost basis" bars={(view.byBasis ?? []).map((r) => ({ key: r.label, label: r.label, value: r.costUsd, text: `${usd(r.costUsd)} / ${calls(r.calls)}` }))} /></section>
+      </div>
+      <section className="ap-card"><SectionHead title="Recorded cost by API key" line="Safe labels and one-way identities only. Historical key identities remain unknown." /><BarList label="Recorded keys" bars={(view.byKey ?? []).map((r) => ({ key: r.label, label: r.label, value: r.costUsd, text: `${usd(r.costUsd)} / ${calls(r.calls)}` }))} /></section>
+      <UsageDetails rows={view.details ?? null} more={view.detailsMore} />
 
       <section className="ap-card" aria-labelledby="ai-daily">
         <SectionHead id="ai-daily" title="Cost by day" count={`${days} days`} line="USD, Vancouver days, stacked by model." />

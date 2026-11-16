@@ -1,9 +1,8 @@
 import { AdminFrame } from "@/components/admin-frame";
 import { AiUsagePage } from "@/components/admin-ai-usage";
 import { requireAdmin } from "@/lib/admin-store";
-import { ADMIN_AI_PATH, monthPeriod, parseRange, periodFor, type UsageView } from "@/lib/admin-ai-usage";
-import { openRouterMonthCheck, readAiUsage } from "@/lib/admin-ai-usage-store";
-import { showTestFamilies } from "@/lib/admin-test-families-server";
+import { ADMIN_AI_PATH, parseRange, periodFor, type UsageView } from "@/lib/admin-ai-usage";
+import { openRouterBilling, readAiUsage } from "@/lib/admin-ai-usage-store";
 import { spendConfig } from "@/lib/maya-spend";
 import { pageMetadata } from "@/lib/metadata";
 
@@ -17,21 +16,15 @@ export default async function AiUsageRoute({ searchParams }: PageProps<"/admin/a
   const admin = await requireAdmin();
   const now = new Date().getTime();
   const period = periodFor(parseRange(query.range), now);
-  const withTests = await showTestFamilies();
   const rate = spendConfig().usdToCad;
-  // The check compares OpenRouter's month with the month we recorded, test families included, because OpenRouter bills them too.
-  const month = monthPeriod(now);
-  const sameAsMonth = period.range === "month" && withTests;
-  const [usage, monthUsage, check] = await Promise.all([
-    readAiUsage(admin, period, withTests, rate).then((v): { view: UsageView } | { error: string } => ({ view: v }), () => ({ error: "AI usage could not be read. Try again in a moment." })),
-    sameAsMonth ? Promise.resolve(null) : readAiUsage(admin, month, true, rate).catch(() => null),
-    openRouterMonthCheck(),
+  const [usage, billing] = await Promise.all([
+    readAiUsage(admin, period, true, rate).then((v): { view: UsageView } | { error: string } => ({ view: v }), () => ({ error: "AI usage could not be read. Try again in a moment." })),
+    openRouterBilling(),
   ]);
   const view = "view" in usage ? usage.view : null;
-  const monthRecordedUsd = sameAsMonth ? view?.totals.costUsd ?? null : monthUsage?.totals.costUsd ?? null;
   return (
-    <AdminFrame email={admin.email} title="AI usage" lead="Where the AI cost comes from: which features, which models, which families." testNote={withTests && "Test families are showing, and on this page they are counted in the numbers."}>
-      <AiUsagePage view={view} period={period} rate={rate} check={check} monthRecordedUsd={monthRecordedUsd} error={"error" in usage ? usage.error : null} />
+    <AdminFrame email={admin.email} title="AI usage" lead="Account billing and recorded app costs, including testing." testNote="All families are included on this page, regardless of the global test-family switch.">
+      <AiUsagePage view={view} period={period} rate={rate} billing={billing} error={"error" in usage ? usage.error : null} />
     </AdminFrame>
   );
 }

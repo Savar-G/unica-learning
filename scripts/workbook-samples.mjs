@@ -1,4 +1,7 @@
 // Builds scripts/workbook-samples.ts and runs it with the same arguments (#363). See that file for usage.
+import { randomUUID } from "node:crypto";
+process.env.AI_USAGE_CONTEXT = "evaluation";
+process.env.AI_USAGE_RUN_ID = randomUUID();
 import { build } from "esbuild";
 import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";

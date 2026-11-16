@@ -2,6 +2,9 @@
 // alias maps to src, as in vitest) and runs it.
 // Usage: npm run maya:practice -- [--fake] [--estimate] [--max-usd n] [--cases C01,C02] [--runs 3]
 // See scripts/maya-practice-cli.ts for every option.
+import { randomUUID } from "node:crypto";
+process.env.AI_USAGE_CONTEXT = "practice";
+process.env.AI_USAGE_RUN_ID = randomUUID();
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";

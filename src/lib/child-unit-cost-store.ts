@@ -8,11 +8,13 @@ export function supabaseUnitCostReader(a: AdminSession): UnitCostReader {
     async families() {
       const { data, error } = await a.db.rpc("admin_child_unit_cost_families");
       if (error) throw new Error(`cost per child families: ${error.message}`);
+      if (!Array.isArray(data)) throw new Error("cost per child families: no data returned");
       return parseFamilies(data);
     },
     async sums(bounds, month) {
       const { data, error } = await a.db.rpc("admin_child_unit_cost", { p_bounds: bounds.map((b) => ({ parent_id: b.parentId, from: b.from, to: b.to })), p_month: month });
       if (error) throw new Error(`cost per child: ${error.message}`);
+      if (!data || typeof data !== "object" || !("sums" in data) || !Array.isArray(data.sums)) throw new Error("cost per child: no data returned");
       return parseSums(data);
     },
   };

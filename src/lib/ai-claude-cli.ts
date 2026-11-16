@@ -18,6 +18,7 @@
 import { spawn as nodeSpawnProcess } from "node:child_process";
 import { tmpdir } from "node:os";
 import type { AiClient, AiJsonRequest } from "@/lib/ai-client";
+import { recordAiUsage, type AiUsageTag } from "@/lib/ai-usage";
 
 /** The page writer's model on the subscription: Claude Sonnet 5.5, the model of the API path (AI_MODEL's default). */
 export const CLAUDE_CLI_DEFAULT_MODEL = "claude-sonnet-5-5";
@@ -166,6 +167,7 @@ export function claudeCliClient({
   configDir,
   timeout = CLAUDE_CLI_TIMEOUT_MS,
   onUsage,
+  usage,
 }: {
   model?: string;
   /** The `claude` command: a name on PATH or a full path. */
@@ -179,6 +181,7 @@ export function claudeCliClient({
   timeout?: number;
   /** Called once for each call that answered with an envelope, a refused or failed output included. No cost: the subscription has no per-call charge. */
   onUsage?: (usage: CliUsage) => void;
+  usage?: AiUsageTag;
 } = {}): AiClient {
   const childEnv = claudeCliEnv(env, configDir);
   return {
@@ -205,10 +208,11 @@ export function claudeCliClient({
         const words = `${run.stderr} ${out}`;
         throw unavailable(words, null) ?? new SubscriptionUnavailable("crash", `claude -p ${out ? "answered with something that is not JSON" : "returned no output"} (exit ${run.code ?? "by signal"}): ${short(words)}`);
       }
-      const used = onUsage ? usageOf(envelope) : null;
+      const used = usageOf(envelope);
       // A call that failed and used nothing (a usage limit answer) is not a call: the fallback's own call is the one.
       if (used && !(envelope.is_error && !used.inputTokens && !used.outputTokens)) {
-        try { onUsage!(used); } catch { /* recording never fails a call */ }
+        recordAiUsage(usage ?? { feature: "other" }, { provider: "subscription", model, inputTokens: used.inputTokens, outputTokens: used.outputTokens });
+        try { onUsage?.(used); } catch { /* recording never fails a call */ }
       }
       if (envelope.is_error || (envelope.subtype && envelope.subtype !== "success")) {
         const words = [envelope.result, ...(Array.isArray(envelope.errors) ? envelope.errors : []), envelope.startup_failure_reason, run.stderr].join(" ");

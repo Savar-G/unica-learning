@@ -2,13 +2,17 @@
 // each call that came back (the provider, the model, the tokens, the cost in US dollars when the provider gave one, the
 // generation id); the caller's tag says which feature made the call and for whom. `recordAiUsage` stores the reading.
 //
-// Rules: it never throws and never waits. It starts the write and returns, so a failed or slow write never reaches the
+// Rules: it never throws and never waits for the database. It starts the write and returns, so a failed or slow write never reaches the
 // caller (a child's request included). Nothing about a child but the ids goes in: no name, no prompt, no answer.
 // A call with no family has no parent id (team tools, sample runs). A write that fails is logged without data.
 // The ledger is for the admin overview (/admin/ai); the older ledgers keep their own jobs (Maya's cap, marking's cap).
 // For the server and the workers. No "server-only" import and no Supabase client, so that its tests can run and the
 // workers stay small.
 import { SUPABASE_URL } from "@/lib/supabase-public";
+import { randomUUID } from "node:crypto";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { AI_KEY_ALIASES, AI_USAGE_CONTEXTS, usageContext, type AiKeyAlias, type AiUsageContext } from "@/lib/ai-usage-context";
 /** What made the call. Matches the check on ai_usage_events.feature. */
 export const AI_FEATURES = [
   "workbook", "solve_check", "workbook_gate", "maya", "maya_review", "maya_note", "maya_speech", "child_profile",
@@ -21,6 +25,7 @@ export type AiProviderKind = "openrouter" | "anthropic" | "subscription";
 /** Who and what a call is for. Ids only. */
 export interface AiUsageTag {
   feature: AiFeature;
+  context?: AiUsageContext;
   parentId?: string | null;
   childId?: string | null;
   /** The thing that made the call, such as "workbook_run" and its id, or "maya_call" and its id. */
@@ -38,10 +43,20 @@ export interface AiUsageReading {
   generationId?: string | null;
   /** More than one provider request in one reading (a decision call with retries). Default 1. */
   calls?: number;
+  keyAlias?: AiKeyAlias;
+  keyId?: string;
+  costBasis?: "provider" | "estimate" | "unknown";
 }
 
 /** One row of the ledger, as the sink gets it. */
 export interface AiUsageRow {
+  receipt_id: string;
+  created_at: string;
+  usage_context: AiUsageContext;
+  run_id: string | null;
+  key_alias: AiKeyAlias;
+  key_id: string | null;
+  cost_basis: "provider" | "estimate" | "unknown";
   feature: AiFeature;
   provider: AiProviderKind;
   model: string;
@@ -72,6 +87,13 @@ export function usageRow(tag: AiUsageTag, reading: AiUsageReading): AiUsageRow |
   const parentId = text(tag.parentId, 64);
   const source = tag.source && text(tag.source.kind, 60) && text(tag.source.id, 200) ? tag.source : null;
   return {
+    receipt_id: randomUUID(),
+    created_at: new Date().toISOString(),
+    usage_context: tag.context && AI_USAGE_CONTEXTS.includes(tag.context) ? tag.context : usageContext(),
+    run_id: /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(process.env.AI_USAGE_RUN_ID ?? "") ? process.env.AI_USAGE_RUN_ID! : null,
+    key_alias: AI_KEY_ALIASES.includes(reading.keyAlias!) ? reading.keyAlias! : "unknown",
+    key_id: /^[0-9a-f]{64}$/.test(reading.keyId ?? "") ? reading.keyId! : null,
+    cost_basis: reading.provider === "subscription" ? "unknown" : reading.costBasis === "provider" || reading.costBasis === "estimate" ? reading.costBasis : "unknown",
     feature: (AI_FEATURES as readonly string[]).includes(tag.feature) ? tag.feature : "other",
     provider: reading.provider,
     model,
@@ -93,16 +115,24 @@ export function usageRow(tag: AiUsageTag, reading: AiUsageReading): AiUsageRow |
  * worker and the voice worker, which must not pull in cookie-based auth or more packages. A repeated generation id (409,
  * unique index) is the same call again: nothing to say.
  */
-export async function insertUsageRow(row: AiUsageRow, o: { url: string; key: string; fetch?: typeof globalThis.fetch }): Promise<void> {
+export async function insertUsageRow(row: AiUsageRow, o: { url: string; key: string; fetch?: typeof globalThis.fetch }): Promise<boolean> {
   const res = await (o.fetch ?? globalThis.fetch)(`${o.url}/rest/v1/ai_usage_events`, {
     method: "POST",
     headers: { apikey: o.key, authorization: `Bearer ${o.key}`, "content-type": "application/json", prefer: "return=minimal" },
     body: JSON.stringify(row),
     signal: AbortSignal.timeout(WRITE_LIMIT_MS),
   });
-  // 409 is a repeated generation id (the same call again), and also a foreign key that does not hold (a wrong tag, a
-  // family deleted meanwhile): only a row with a generation id can be the first, so only then is it quiet.
-  if (!res.ok && !(res.status === 409 && row.generation_id)) console.error(`[ai-usage] write failed: ${res.status}`);
+  if (res.ok) return true;
+  // A foreign-key failure can also return 409. Only an identified unique receipt or generation is a safe repeat.
+  if (res.status === 409) {
+    try {
+      const body = await res.json();
+      if (body.code === "23505" && typeof body.message === "string" &&
+        ((row.generation_id && body.message.includes("ai_usage_events_generation_key")) || body.message.includes("ai_usage_receipt_key"))) return true;
+    } catch { /* Unknown conflicts remain failures. */ }
+  }
+  console.error(`[ai-usage] write failed: ${res.status}`);
+  return false;
 }
 
 let configured: { url: string; key: string } | null = null;
@@ -123,20 +153,35 @@ const supabaseSink: AiUsageSink = async (row) => {
 };
 
 const pending = new Set<Promise<void>>();
+let retainWrite: ((write: Promise<void>) => void) | null = null;
+/** The web host retains each write after its response. Workers and scripts use flushAiUsage instead. */
+export function configureAiUsageLifetime(retain: ((write: Promise<void>) => void) | null): void {
+  retainWrite = retain;
+}
 
 /**
- * Stores one reading and returns at once. Never throws. `sink` is for tests.
- * With no SUPABASE_SECRET_KEY the live sink writes nothing (and logs nothing more than adminClient does).
+ * Stores one reading without waiting for the database. Never throws. `sink` is for tests.
+ * Local processes retain a synchronous file receipt. With no SUPABASE_SECRET_KEY the hosted sink writes nothing.
  */
 export function recordAiUsage(tag: AiUsageTag | null | undefined, reading: AiUsageReading, sink: AiUsageSink = supabaseSink): void {
   try {
     const row = usageRow(tag ?? { feature: "other" }, reading);
     if (!row) return;
+    // Local scripts retain a receipt before they can exit. This does not enable a hosted write. Production uses its
+    // existing sink. Local receipts contain only the same bounded metadata as the ledger, with no credentials or text.
+    if (sink === supabaseSink && !process.env.VITEST && !process.env.VERCEL) {
+      try {
+        const path = resolve(process.env.AI_USAGE_RECEIPT_FILE?.trim() || ".ai-usage/receipts.jsonl");
+        mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+        appendFileSync(path, `${JSON.stringify(row)}\n`, { mode: 0o600 });
+      } catch { console.error("[ai-usage] local receipt write failed"); }
+    }
     const write: Promise<void> = Promise.resolve()
       .then(() => sink(row))
       .catch(() => { console.error("[ai-usage] write failed"); })
       .finally(() => { pending.delete(write); });
     pending.add(write);
+    try { retainWrite?.(write); } catch { /* A process without a request still keeps its pending write. */ }
   } catch {
     // Recording is never the caller's problem.
   }

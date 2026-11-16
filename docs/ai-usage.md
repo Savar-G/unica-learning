@@ -1,6 +1,8 @@
 # AI usage and cost (D-330)
 
-The team sees every AI call and its cost on `/admin/ai`: total cost, calls, cost by feature and by model, and one line for each family. OpenRouter's activity page is the deep dive.
+`/admin/ai` separates provider billing from incomplete app records. Account lifetime spend includes testing on every key billed to that selected OpenRouter account. Key-month usage and recorded app costs overlap that spend. Never add the three scopes. Neither page claims that every paid call has a stored record.
+
+Both `/admin/ai` and `/admin/ai/children` include test and admin families by default. The global Show test families switch does not reduce their totals. Detailed records identify production, practice, evaluation, test, test-family, or unknown work where evidence permits. Unknown work stays unknown.
 
 ## The ledger
 
@@ -14,17 +16,28 @@ The team sees every AI call and its cost on `/admin/ai`: total cost, calls, cost
 
 ## Writing
 
-`recordAiUsage(tag, reading)` in `src/lib/ai-usage.ts`. It never throws and never waits: it starts the insert (5 s limit) and returns. A failed write logs one line with no data. No child name, prompt or answer goes in: ids only.
+`recordAiUsage(tag, reading)` in `src/lib/ai-usage.ts`. It never throws or waits for the database: it starts the insert (5 s limit) and returns. Local processes first retain a synchronous file receipt. A failed write logs one status with no response data. Only a unique receipt or generation conflict is a duplicate; foreign-key conflicts remain failures. No child name, prompt or answer goes in: ids only.
 
-Where readings come from:
+Provider adapters record answers directly. Wrappers pass feature and family tags into the adapter, rather than writing a second row. Missing provider prices remain null. Subscription calls have no per-call charge. Speech and voice remain estimates from `maya_spend` and are not treated as OpenRouter receipts.
 
-| Adapter | Reads | Cost |
+| Producer | Coverage and context | Completion |
 |---|---|---|
-| OpenRouter (`src/lib/ai-openrouter.ts`, `onUsage`) | `usage.prompt_tokens`, `usage.completion_tokens`, `usage.cost`, the response `id`. Every request now sends `usage: { include: true }`. | USD from OpenRouter |
-| `claude -p` (`src/lib/ai-claude-cli.ts`, `onUsage`) | the envelope's `usage` (cache reads and writes count as input) | none: "subscription, no per-call charge" |
-| Decision client (`src/lib/decision-client.ts`) | the `usd` and `id` it already computes for each request, a charged failed request included | USD |
+| Shared OpenRouter client (`ai-client.ts`) | Feature, model, known family/child, provider cost and generation id, safe key label and SHA-256 identity | Next instrumentation registers each pending write with `after`; provider failure before usage remains unpriced/unrecorded |
+| Direct OpenRouter client (`ai-openrouter.ts`) | Same adapter-level recording for direct local calls, including refused/cut-off answers that report usage | Local receipt is written before the call returns |
+| Marking / explanations / decisions | Dedicated labels: marking, explanations, decisions. Decisions retain their existing per-request charge aggregation | Same ledger; no reservation/admission changes |
+| `maya:practice` | Practice context and a run UUID. Tutor calls are Maya; simulator and judges are other. Model and key identity remain known | Flush before exit; local receipt file persists even without database credentials |
+| `maya:text` | Test context and a run UUID | Flush before exit |
+| Workbook samples / marking comparisons / decision comparisons | Evaluation context and a run UUID. Writer and solve calls keep their feature | Flush at completion; local receipts persist |
+| Workbook worker | Production context, workbook run and known family/child; test-family status comes from stored family flags | Existing configured sink and per-job flush remain |
+| Voice worker | Production context; stored admin-test calls and test families are classified separately by the read | Flush after worker shutdown. Speech/voice remain estimates, not actual provider bills |
+| Direct Anthropic client | Answer/model/token receipt and key identity; cost remains unknown because the response does not give a charge | Same local receipt and flush path; no invented USD price |
+| Claude and Codex CLI adapters | Subscription usage, no per-call charge; workbook tags where known | Same local receipts and caller flush |
 
-The caller gives the tag: `aiClient(env, model, { usage: { feature, parentId, childId, source } })`. A call with no tag is stored as feature `other`. Callers that do not know the family (the child profile rebuild outside a Maya call, the learner profile outside the report job) store no family: those rows count as team cost even with test families left out. Model comparison runs (`scan-marking-comparison-run.ts`) are stored as feature `other`, not `marking`. The workbook worker on the Mac gets its key from the Keychain, so it passes it with `configureAiUsage` and flushes the writes after each job. Not recorded: the Codex sample client, a `claude -p` call that failed and used nothing, the local tools on the Anthropic API key (`maya:text`, `maya:practice`, the sample scripts' direct clients), and Maya's speech and voice (estimates in `maya_spend`). Work done in a Vercel request is started before the answer is sent; a process that stops at once can lose the last write.
+The recorder stores only bounded metadata, ids, and usage. It stores no prompt, answer, name, audio, or raw key. Allowed key labels are an enumerated list. A SHA-256 key identity distinguishes rotations and identifies shared credentials without exposing them. Local wrappers set the run context and a UUID. Unidentified legacy keys remain unknown. The database also classifies `maya_calls.kind = admin_test` from the retained call id. Test-family flags do not prove that every historical call was testing at the time; the read uses current family flags.
+
+On a local process, `.ai-usage/receipts.jsonl` retains each receipt before asynchronous recording starts. The directory is gitignored. `AI_USAGE_RECEIPT_FILE` can select another local file. It contains ids, so handle it as private operational data and remove copies after a verified import when no longer needed. A missing `SUPABASE_SECRET_KEY` does not enable a hosted write. Local receipts do not appear in the hosted panel until an authorized operator imports them. A failed local file write emits a generic error. A process killed before a provider supplies usage can still leave no receipt.
+
+Next.js instrumentation retains web writes with `after`, independently of Sentry being enabled. Workers/scripts flush their writes. This reduces exit loss; it does not prove complete provider coverage. The database can reject or time out, providers can omit prices, and not all external tools use these adapters.
 
 Maya's spending cap is not changed: `maya_spend` still decides the stop. Marking's and the explanations' spend rows are not changed either. The new ledger only reads the answer's usage.
 
@@ -47,10 +60,47 @@ Rows with no model name show as "not recorded".
 Admins only (others get the site's 404). In the sidebar under Quality as "AI usage". A glance, not a deep tool.
 
 - Period pills: 7 days, 30 days (default), this month. Days are Vancouver days (`PACIFIC_ZONE`, `src/lib/family-time.ts`), not a family's. The page sends the start of each day to the function (`p_day_starts`), so the daily chart uses the same day rules as the period.
-- Tiles: total cost in USD with CAD at `MAYA_USD_TO_CAD` (default 1.40), AI calls, subscription calls.
-- OpenRouter against our ledger, for this month: "OpenRouter says" (the sum of `GET /api/v1/key` `data.usage_monthly` for each distinct server key: the main key and the keys of marking, explanations and decisions), "We recorded" (test families included, because OpenRouter bills them too) and "Not recorded". One request for each key, once for each page load, server side, 5 s limit. No key set: the card says so. No key answers: "OpenRouter did not answer." Some keys answer: the card says the number is partial. OpenRouter counts the calendar month in UTC.
+- Account card: GET `/api/v1/credits`, once, on the server, with a 5-second abort limit and `cache: no-store`. `data.total_usage` is lifetime spent; `data.total_credits` is total credit; balance is credit minus spend. Fields are independent and strict numeric values. Missing or failed reads show unavailable, never zero. A partial response shows valid fields with a partial label. The card gives the completed check time in UTC.
+- Account selection: optional `OPENROUTER_BILLING_API_KEY`, else `OPENROUTER_API_KEY`. Only that one account is read. No summing credit balances across keys. Root must configure a key for the authoritative Maya account. This does not change any model-call credential. Other OpenRouter accounts, Anthropic charges and voice-provider bills need their own billing evidence; this account card does not claim to cover them.
+- Key card: GET `/api/v1/key` once for each distinct configured server credential (main, marking, explanations, decisions). It shows the UTC calendar month through the check time, safe labels/identities, and failed or partial readings. The billing-only credential does not add an extra usage key. This scope is independent of the app date range.
+- Recorded app tiles: known costs plus explicitly separated estimates/history, recorded calls, and subscription calls. This is a subtotal of retained records, not total provider spend. The selected 7-day/30-day/month period uses Vancouver days. Test/admin families are always included on these pages.
+- Breakdown: work context, cost basis (provider, estimate, unknown), safe key label/identity, feature, model, and a family/child disclosure table. Unassigned calls do not inherit a family from account totals. The first 5,000 grouped detail rows are shown with an explicit truncation state; the independent summary aggregates include all records.
+- Coverage: identified lifetime provider receipts whose exact key identity matches the billing credential, across all dates and families. Account lifetime spend minus that verified subset is shown as unreconciled/unassigned. Other keys have no verified account link and are not subtracted. Missing detail reads show unavailable coverage; account spend never depends on the app read succeeding. An over-coverage or changed provider snapshot gives unavailable remainder, not a clamped zero. This is a conservative coverage measure, not proof that the difference is missing usage.
 - Cost by day, stacked by model: the six models with the most cost get fixed colours in cost order, the rest are grey "Other models". Subscription calls add no cost. A table view sits under the chart.
 - Cost by feature (groups in `FEATURE_GROUPS`) and cost by model (top 8, then one line for the rest).
 - Families by AI cost, largest first, with the family's plan price per month (CAD, from `child_plan_states`: paying, or ending until its end date; a free month shows "free month") and the AI cost as a percent of that price for the same number of days (a month counts as 30.44 days; both in CAD). One line, "No family", holds team tools, tests, sample runs and history without a family.
 - Cost per child per month, with the plan's charge and the margin: `/admin/ai/children` ("Cost per child" link at the top). See [Cost per child](child-unit-cost.md).
-- The sidebar's "Show test families" switch decides whether test families count (off by default). The page makes one or two database function calls and no other request; no polling, no prefetch.
+- The page uses one admin database read plus independent provider reads. It has no polling or prefetch. The database read uses the admin session. The account and key reads run only after the existing admin gate succeeds.
+
+## Per-child scope
+
+`/admin/ai/children` retains its existing cost/margin summary, each family-local month, and separate speech/voice and printing estimates. It now includes all families. Each child has a disclosure of attributable app ledger rows by context, feature, provider/model and safe key identity. Older records without those dimensions remain in the summary with their existing limits. They are not distributed across invented models or keys. Family-only rows remain “No child assigned”. Account-only costs and local receipts awaiting import never become child costs.
+
+## Retained receipts and historical recovery
+
+`node scripts/import-ai-usage.mjs --file PATH` validates a recorder JSONL file and performs a dry run. Add `--apply` only for an authorized import after the migration is verified, with `SUPABASE_URL` and `SUPABASE_SECRET_KEY` configured in the operator's environment. No credential or receipt data is printed. Invalid receipts stop the import. The original receipt UUID and timestamp stay fixed. Unique receipt and generation indexes make repeated imports idempotent. Foreign-key failures stop the import; they are not treated as successful duplicates.
+
+This importer handles retained recorder receipts only. Earlier practice traces with no provider id, price or trustworthy attribution cannot recover a detailed history. A provider receipt with no known child remains unassigned. Account balances alone cannot supply a historical model, feature, test/production or family split. Do not automatically import old aggregate cost estimates as exact provider receipts. No historical recovery has been run by this implementation task.
+
+## Required hosted steps before shipping
+
+`AI_USAGE_HOSTED_STEPS_PENDING`
+
+1. Root checks live migration history and timestamp uniqueness. Apply `20261116183028_ai_usage_scope_and_receipts.sql` additively. This keeps the existing RPC names and arguments and extends their JSON output. It retains the existing admin gate, grants, append-only rule, family/child fences and deletion relationships.
+2. Root verifies the applied migration, new check constraints, duplicate receipt/generation behavior, non-admin refusal, and actual admin JSON output on the hosted platform. Local synthetic PostgreSQL is not hosted RLS proof.
+3. Root runs `npm run db:types` and `npm run db:checks`. Commit both generated files in this PR. Add the new context/key/basis lists to `state-lists.test.ts` when the live constraints are available. Do not hand-edit generated files. No new typed RPC signature is needed; the existing functions return JSON.
+4. Root configures the authoritative `OPENROUTER_BILLING_API_KEY` securely and verifies the account/card scope. Do not put a credential in the PR, browser props, console output or errors. A dedicated key needs access to account credits. Do not substitute another account after a failure.
+5. Root finds reliable retained local receipts, runs the importer dry run, and authorizes any import. No aggregate backfill is permitted. Restart/rebuild long-lived workers with the new adapter and flush code after the migration is present.
+6. Root completes two independent Sol reviews and settlement, green CI, browser validation, guarded merge and live verification. The implementation agent does not merge or deploy.
+
+Root changes the marker to `AI_USAGE_HOSTED_STEPS_DONE` only after the required hosted work is complete.
+
+## Offline validation for this candidate
+
+- Final focused provider/report/recorder/child suite: 190 tests in 17 files, randomized with seed 1615.
+- Wider focused run, including the Maya text and local CLI regressions: 1,021 tests in 40 files, randomized with seed 1613.
+- Voice worker: 350 tests in 21 files. `npm run voice:typecheck` passed.
+- `npm run typecheck` passed. Source ESLint (`npx eslint src`) and `git diff --check` passed.
+- `node supabase/tests/ai_usage_scope.cjs` passed in a temporary synthetic PostgreSQL cluster. It checks full dimension sums, date/test scopes, sibling attribution, admin-test evidence, estimates, missing prices, legacy deduplication, duplicate ids, the 5,000-detail cap and the admin refusal. It does not verify hosted RLS or service credentials.
+- The receipt importer dry run validated two repeated synthetic receipts as one distinct receipt. It performed no database request.
+- Provider tests use fake bounded requests. No paid model calls, hosted writes, deployment, merge or browser checks ran in the implementation task. The full gate is left to CI and root.

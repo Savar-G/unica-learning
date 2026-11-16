@@ -1,6 +1,6 @@
 // Use the existing AiClient/OpenRouter path. One admission per transport attempt. No subscription queue.
 import { costingFetch, openRouterClient, type OpenRouterProvider } from "@/lib/ai-openrouter";
-import { recordAiUsage, type AiUsageTag } from "@/lib/ai-usage";
+import type { AiUsageTag } from "@/lib/ai-usage";
 import { MARKING_ESCALATION_MODEL, MARKING_MODEL, type MarkingClientFactory, type MarkingFailure } from "@/lib/scan-marking";
 import { markingFailure } from "@/lib/scan-marking-failure";
 import models from "../../data/scan-marking-models.json";
@@ -68,7 +68,7 @@ export function markingAiClient(env: Readonly<Record<string, string | undefined>
       onErrorAnswer: (status, body, headers) => { failure = markingFailure(status, body, headers); },
       onRequest: async () => { await beforeAttempt(); cost = null; failure = null; },
       // The AI usage ledger (D-330) only reads the answer's usage; the admission and the cost above are untouched.
-      onUsage: (u) => recordAiUsage(usage ?? { feature: "marking" }, { provider: "openrouter", model, inputTokens: u.inputTokens, outputTokens: u.outputTokens, costUsd: u.costUsd, generationId: u.id }),
+      usage: usage ?? { feature: "marking" }, keyLabel: "marking",
     });
     return client ? { client, costMicros: () => cost, failure: () => failure } : null;
   };
