@@ -1024,6 +1024,13 @@ function priorityOf(raw: unknown): Pick<Reading, "safety" | "stop" | "unclear" |
 
 // ---------- Allowed acts and priority ----------
 
+/** A model-only stop cannot turn an ambiguous reply or a request for help into a child's request to end. */
+function modelStopAllowed(s: Session): boolean {
+  if (!s.tutor || !s.turn || s.stopRequested || clearStop(s.turn.text) || endReply(s) !== null) return true;
+  const text = s.turn.text;
+  return !(doneReply(text) || yesReply(text) || hardFeeling(text) || helpInWords(text) || saysStuck(text));
+}
+
 interface Allowed {
   acts: Act[];
   code: RefusalCode;
@@ -1513,6 +1520,11 @@ export function step(session: Session, event: SessionEvent): StepResult {
   if (severity) raiseSafety(s, severity, event.at, effects);
 
   // The child's turn as the model read it: a stop, an unclear number and a no-start hold even if the proposal fails.
+  // Refuse a model-only stop before it can persist, including from malformed output or a streamed priority field.
+  // A refusal records this override in the trace. Safety guidance still has priority over this refusal.
+  if (priority.stop && !modelStopAllowed(s) && !s.safety.flagged) {
+    return { session: s, effects, refusal: { code: "act_not_allowed", reason: `The child has not asked to stop. A short yes/no reply ends this tutor call only after the pending "${FINAL_ASK}" offer. Keep teaching when the child needs help.`, allowed: ["guide"] } };
+  }
   if (priority.stop) s.stopRequested = true;
   if (s.turn && s.package && event.type === "proposal") {
     // Scope inputs are read separately from proposal shape. A bad board or a later retry cannot remove this duty.

@@ -19,10 +19,10 @@ import type { OperationPackage } from "@/lib/question-package";
 const SUB = SAMPLE_PACKAGES["subtract-52-28"] as OperationPackage;
 const [ASK, FOUR, THREE, HUH] = SAVAR_CALL_2_TURNS;
 
-function session(says: (n: number) => string, opts: { stream?: boolean; act?: (n: number) => "guide" | "close"; reading?: (n: number) => Record<string, unknown> } = {}) {
+function session(says: (n: number) => string, opts: { stream?: boolean; act?: (n: number) => "guide" | "close"; reading?: (n: number) => Record<string, unknown>; gate?: (n: number) => string } = {}) {
   let n = 0;
   const parts: string[] = [];
-  const model = conversationalFake({ answer: () => { const i = n++; return reply(says(i), opts.act?.(i) ?? "guide", { reading: opts.reading?.(i) ?? {} }); }, ...(opts.stream ? { stream: { chunk: 7 } } : {}) });
+  const model = conversationalFake({ answer: () => { const i = n++; return reply(says(i), opts.act?.(i) ?? "guide", { reading: opts.reading?.(i) ?? {}, gate: opts.gate?.(i) }); }, ...(opts.stream ? { stream: { chunk: 7 } } : {}) });
   let now = Date.UTC(2026, 10, 15);
   const s = createTextSession({ callId: "first-time", package: SUB, model, clock: () => (now += 100), random: 3, tutor: true, reviewer: fakeTalkReviewer(), mathReviewer: fakeMathReviewer(), reviewTimeLimitMs: 50, ...(opts.stream ? { onSayPart: (x: string) => parts.push(x) } : { channel: "chat" as const }) });
   return { s, model, parts, brief: () => model.briefs.at(-1) as unknown as TutorBrief };
@@ -329,6 +329,42 @@ describe("review of #1113 (Sol, on c40496bad)", () => {
     return { s, model, parts };
   }
   for (const stream of [false, true]) {
+    for (const priority of ["reading", "gate"] as const) {
+      it(`a priority stop cannot end an ambiguous no, including after restore (${priority}, stream=${stream})`, async () => {
+        const t = session((i) => (i === 0 ? "52 minus 28 is 24. Do you understand?" : "Bye for now!"), {
+          stream, act: (i) => (i === 0 ? "guide" : "close"),
+          reading: (i) => (i > 0 && priority === "reading" ? { stop: true } : {}),
+          gate: (i) => (i > 0 && priority === "gate" ? "stop" : "none"),
+        });
+        await t.s.start();
+        await t.s.child("My answer is 24.");
+        const out = await t.s.child("No.");
+        expect(out.ended).toBeNull();
+        expect(t.s.session.stopRequested).toBe(false);
+        expect(t.s.trace().counts.refusals).toBeGreaterThan(0);
+        expect(out.say.join(" ")).not.toContain("Bye for now!");
+        expect(t.parts.join(" ")).not.toContain("Bye for now!");
+        const restored = createTextSession({ callId: "first-time", package: SUB, model: t.model, clock: () => t.s.session.now! + 1, random: 3, tutor: true, channel: "chat", reviewer: fakeTalkReviewer(), mathReviewer: fakeMathReviewer(), resume: await t.s.saved() });
+        expect(restored.ended).toBe(false);
+        expect(restored.session.stopRequested).toBe(false);
+      });
+    }
+    for (const child of ["No, I'm sad.", "No, I'm stuck."]) {
+      it(`a priority stop cannot end a child who needs help (${child}, stream=${stream})`, async () => {
+        const t = session((i) => (i === 0 ? `52 minus 28 is 24. ${FINAL_ASK}` : "Bye for now!"), { stream, act: (i) => (i === 0 ? "guide" : "close"), reading: (i) => (i > 0 ? { stop: true } : {}) });
+        await t.s.start();
+        await t.s.child("My answer is 24.");
+        const out = await t.s.child(child);
+        expect(out.ended).toBeNull();
+        expect(t.s.session.stopRequested).toBe(false);
+        expect(t.parts.join(" ")).not.toContain("Bye for now!");
+      });
+    }
+    it(`a priority stop preserves an explicit stop (${stream})`, async () => {
+      const t = session(() => "Bye for now!", { stream, act: () => "close", reading: () => ({ stop: true }) });
+      await t.s.start();
+      expect((await t.s.child("Stop.")).ended?.reason).toBe("child_stopped");
+    });
     it(`a model close cannot end on an upset child after the offer (stream=${stream})`, async () => {
       const t = session((i) => (i === 0 ? `52 minus 28 is 24. ${FINAL_ASK}` : "Bye for now!"), { stream, act: (i) => (i === 0 ? "guide" : "close") });
       await t.s.start();
