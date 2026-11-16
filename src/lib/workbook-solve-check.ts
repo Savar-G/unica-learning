@@ -12,6 +12,7 @@
 // from the key (keySolver), so dry runs stay free.
 // Pure TypeScript: no Next.js, React, network, database, clock or randomness.
 import { withTimeLimit, type AiClient } from "@/lib/ai-client";
+import { WorkbookAiUnavailable } from "@/lib/workbook-ai-unavailable";
 import { valueText, type Figure, type QuestionPackage } from "@/lib/question-package";
 import { isCodeWorded } from "@/lib/workbook-generator-items";
 
@@ -306,6 +307,7 @@ export async function solveCheck(solver: Solver, p: QuestionPackage, ms: number,
     answers = await withTimeLimit(ms, (signal) => solver.solve(request, signal));
     verdict = judge(answers, request);
   } catch (e) {
+    if (e instanceof WorkbookAiUnavailable) throw e;
     const message = e instanceof Error ? e.message : String(e);
     verdict = { status: "failed", reason: message === "time is up" ? "the solve check was late" : `the solve check failed: ${message.slice(0, 200)}` };
   }

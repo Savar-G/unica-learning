@@ -1,5 +1,5 @@
-// Unica's own Challenge templates: hard templates with a number answer and more than one step, for
-// the U10 and U16 day steps with too few hard templates. A Challenge prints 3 cards a day on the day's step
+// Unica's own Challenge templates: hard numeric work with more than one step, or named qualitative reasoning, for
+// the U10, U16 and selected U19 day steps with too few hard templates. A Challenge prints 3 cards a day on the day's step
 // (D-228), each harder than that day's practice (Codex at 24751f16, B3), so these steps needed 3 hard ones. They are
 // appended to Cedric's templates of the step when the curriculum loads; his data stays as he wrote it. Each is logged in
 // data/curriculum/author-changes.md ("Unica Challenge templates"). The step's name is checked, so a renumbered step
@@ -21,6 +21,8 @@ export interface HouseTemplates {
   routes?: boolean;
   /** Extra normal practice forms, separate from this step's Challenge-only templates. */
   practice?: readonly StepTemplate[];
+  /** Qualitative reasoning may use checked choices; other Challenge additions require a numeric result. */
+  answerKind?: "number" | "choice";
   templates: readonly StepTemplate[];
 }
 
@@ -44,6 +46,129 @@ const medium = (text: string, answer: string, slots: Record<string, string>, der
   ({ format: "story", difficulty: "medium", text, answer, slots, derived, check });
 
 export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
+  {
+    skill: "6.13-classify-angles", step: 1, name: "Acute, right and obtuse",
+    answerKind: "choice",
+    // Extra teaching needs distinct definition checks after its examples and first practice use the original tasks.
+    practice: [
+      { format: "true-false", difficulty: "medium", text: "True or false: the {obj} makes {claim} angle.",
+        answer: "'true' if f == 0 else 'false'", slots: { k: "template_k_2", f: "flip" },
+        derived: { obj: "['corner of a book', 'corner of a door', 'tip of a thin pizza slice', 'tip of a sharp pencil', 'opening of a laptop tilted far back', 'opening of a book lying almost flat'][k]",
+          kind: "['right', 'right', 'acute', 'acute', 'obtuse', 'obtuse'][k]", other: "'obtuse' if kind == 'acute' else 'acute'", chosen: "kind if f == 0 else other",
+          claim: "'an acute' if chosen == 'acute' else ('an obtuse' if chosen == 'obtuse' else 'a right')" } },
+      { format: "bare", difficulty: "medium", text: "Of {a} acute and {b} obtuse angles, how many are smaller than a square corner?",
+        answer: "a", slots: { k: "template_k", f: "flip" }, derived: { a: "k + 1", b: "1 + (k + 1 + f) % 5" } },
+    ],
+    templates: [
+      hard("bare", "Same opening, longer arms. Same angle size? Yes or no?", "'yes'", {}, {}, "True"),
+      hard("compare", "A) long arms B) opens wider than A. Which is larger?", "'B'", {}, {}, "True"),
+      hard("story", "{name} says longer arms make angles bigger. Yes or no?", "'no'", {}, {}, "True"),
+    ],
+  },
+  {
+    skill: "6.4-prime-composite", step: 1, name: "Primes and composites to 30",
+    templates: [
+      hard("bare", "Add the prime numbers: {p}, {c}, {q}.", "p + q", { i: "template_i", j: "template_j" },
+        { p: "[11, 13, 17, 19, 23, 29][j]", q: "[2, 3, 5, 7, 11][i]", c: "[9, 15, 21, 25, 27][i]" }, "p != q and p + q <= 30"),
+      hard("missing", "Find the prime in {p} and {c}. Subtract 2: __.", "p - 2", { i: "template_i", j: "template_j" },
+        { p: "[11, 13, 17, 19, 23, 29][j]", c: "[9, 15, 21, 25, 27][i]" }, "p - 2 >= 2"),
+      hard("story", "Cards: {p}, {c}, {q}. {name} adds only the primes. Total?", "p + q", { i: "template_i", j: "template_j" },
+        { p: "[11, 13, 17, 19, 23, 29][j]", q: "[2, 3, 5, 7, 11][i]", c: "[9, 15, 21, 25, 27][i]" }, "p != q and p + q <= 30"),
+    ],
+  },
+  {
+    skill: "6.4-divisibility", step: 1, name: "Last-digit rules: 2, 5, 10",
+    templates: [
+      hard("bare", "Smallest multiple of both 2 and 5 above {n}?", "n - n % 10 + 10", { n: "template_n0" }, {}, "n - n % 10 + 10 <= 9999"),
+      hard("missing", "Count back from {n} to a multiple of 10. First smaller number: __.", "((n - 1) // 10) * 10", { n: "template_n0" }, {}, "((n - 1) // 10) * 10 >= 10"),
+      hard("story", "{name}'s score: {lo} < ? < {top}. Divisible by 2 and 5. Find it.", "n - n % 10 + 10", { n: "template_n0" },
+        { lo: "n - n % 10 + 1", top: "n - n % 10 + 11" }, "top <= 9999"),
+    ],
+  },
+  {
+    skill: "6.4-divisibility", step: 2, name: "Digit-sum rules: 3 and 9",
+    templates: [
+      hard("bare", "Increase {n} to the next number divisible by 9. What is it?", "n - n % 9 + 9", { n: "template_n" }, {}, "n - n % 9 + 9 <= 9999"),
+      hard("missing", "First multiple of 3 but not 9 after {n}: __.", "r if r % 9 != 0 else r + 3", { n: "template_n" },
+        { r: "n - n % 3 + 3" }, "r + 3 <= 9999"),
+      hard("story", "Lock code: {lo} < ? < {top}. Divisible by 9. Find it.", "n - n % 9 + 9", { n: "template_n" },
+        { lo: "n - n % 9 + 1", top: "n - n % 9 + 10" }, "top <= 9999"),
+    ],
+  },
+  {
+    skill: "6.4-divisibility", step: 3, name: "Rules for 4, 6 and 8",
+    templates: [
+      hard("bare", "Smallest multiple of both 4 and 6 above {n}?", "n - n % 12 + 12", { n: "template_n" }, {}, "n - n % 12 + 12 <= 99999"),
+      hard("missing", "The first multiple of both 6 and 8 after {n} is __.", "n - n % 24 + 24", { n: "template_n" }, {}, "n - n % 24 + 24 <= 99999"),
+      hard("story", "Score divisible by 4 and 8: {lo} < ? < {top}. Find it.", "n - n % 8 + 8", { n: "template_n" },
+        { lo: "n - n % 8 + 1", top: "n - n % 8 + 9" }, "top <= 99999"),
+      // This step is the hardest on two consecutive days: its second set keeps the card-frame rule.
+      hard("bare", "How many positive multiples of both 4 and 6 are below {n}?", "(n - 1) // 12", { n: "template_n" }, {}, "n > 12"),
+      hard("missing", "Largest number below {n} divisible by both 6 and 8: __.", "((n - 1) // 24) * 24", { n: "template_n" }, {}, "n > 24"),
+      hard("story", "{name}'s score is below {n}, divisible by 4 and 6, not 8. Greatest?", "r if r % 8 != 0 else r - 12", { n: "template_n" },
+        { r: "((n - 1) // 12) * 12" }, "r > 12"),
+    ],
+  },
+  {
+    skill: "6.4-prime-composite", step: 2, name: "Numbers to 100",
+    templates: [
+      hard("bare", "Add only the primes: {p}, {c}, {q}.", "p + q", { i: "template_i", j: "template_j" },
+        { p: "[31, 37, 41, 43, 47][j % 5]", q: "[31, 37, 41, 43, 47][i % 5]", c: "[51, 57, 77, 87, 91][i % 5]" }, "p != q and p + q <= 100"),
+      hard("missing", "Pick the prime from {p}, {c}. Add 31: __.", "p + 31", { i: "template_i", j: "template_j" },
+        { p: "[31, 37, 41, 43, 47, 53, 59, 61, 67][i]", c: "[51, 57, 77, 87, 91][j % 5]" }, "p + 31 <= 100"),
+      hard("story", "{name}'s cards: {p}, {c}, {q}. Add the primes, then subtract 31.", "p + q - 31", { i: "template_i", j: "template_j" },
+        { p: "[31, 37, 41, 43, 47][j % 5]", q: "[31, 37, 41, 43, 47][i % 5]", c: "[51, 57, 77, 87, 91][i % 5]" }, "p != q and p + q - 31 <= 100"),
+    ],
+  },
+  {
+    skill: "6.4-lcm", step: 1, name: "List multiples",
+    practice: [
+      { format: "bare", difficulty: "medium", text: "Smallest positive multiple shared by {a} and {b}?", answer: "lcm(a, b)",
+        slots: { a: "number1", b: "number2" }, derived: {}, check: "a != b and lcm(a, b) <= 24" },
+      { format: "missing", difficulty: "medium", text: "First shared multiple of {a} and {b}: {a} × __.", answer: "lcm(a, b) // a",
+        slots: { a: "number1", b: "number2" }, derived: {}, check: "a != b and lcm(a, b) <= 24" },
+      { format: "true-false", difficulty: "medium", text: "True or false: the LCM of {a} and {b} is {c}.", answer: "'true' if f == 0 else 'false'",
+        slots: { a: "number1", b: "number2", f: "flip" }, derived: { c: "lcm(a, b) if f == 0 else 2 * lcm(a, b)" },
+        check: "a != b and c <= 24" },
+      { format: "bare", difficulty: "medium", text: "Find the shared number: {a}, {aa}, {aaa}; {b}, {bb}, {bbb}.", answer: "lcm(a, b)",
+        slots: { a: "number1", b: "number2" }, derived: { aa: "2 * a", aaa: "3 * a", bb: "2 * b", bbb: "3 * b" },
+        check: "a != b and aaa <= 24 and bbb <= 24 and lcm(a, b) <= min(aaa, bbb) and 2 * lcm(a, b) > min(aaa, bbb)" },
+    ],
+    templates: [
+      hard("bare", "Add the first two common multiples of {a} and {b}.", "3 * lcm(a, b)", { i: "template_i" },
+        { a: "[2, 2, 3, 4, 2][i % 5]", b: "[3, 4, 6, 8, 6][i % 5]" }, "3 * lcm(a, b) <= 24"),
+      hard("missing", "LCM of {a} and {b}, minus {a}: __.", "lcm(a, b) - a", { i: "template_i" },
+        { a: "[3, 4, 6, 6, 4][i % 5]", b: "[4, 6, 8, 9, 10][i % 5]" }, "lcm(a, b) - a > 0"),
+      hard("story", "Two bells: every {a}s and {b}s, together now. Second repeat: __s.", "2 * lcm(a, b)", { i: "template_i" },
+        { a: "[2, 3, 4, 2, 3][i % 5]", b: "[3, 4, 6, 6, 6][i % 5]" }, "2 * lcm(a, b) <= 24"),
+    ],
+  },
+  {
+    skill: "6.4-lcm", step: 2, name: "Two-digit numbers",
+    templates: [
+      hard("bare", "Second common multiple of {a} and {b}, minus {a}?", "2 * lcm(a, b) - a", { i: "template_g0" },
+        { a: "[9, 12, 12, 15, 18][i % 5]", b: "[12, 18, 16, 20, 24][i % 5]" }, "2 * lcm(a, b) - a <= 72"),
+      hard("missing", "Count positive multiples of {a} below the LCM of {a} and {b}: __.", "lcm(a, b) // a - 1", { i: "template_g0" },
+        { a: "[9, 12, 12, 15, 18][i % 5]", b: "[12, 18, 16, 20, 24][i % 5]" }, "lcm(a, b) // a > 1"),
+      hard("story", "Bells: every {a}min and {b}min, both at minute {start}. Next together?", "start + lcm(a, b)", { i: "template_g0" },
+        { a: "[9, 12, 12, 15, 18][i % 5]", b: "[12, 18, 16, 20, 24][i % 5]", start: "i" }, "start + lcm(a, b) <= 72"),
+    ],
+  },
+  {
+    skill: "6.13-classify-angles", step: 2, name: "Straight and reflex", answerKind: "choice",
+    practice: [
+      { format: "true-false", difficulty: "medium", text: "True or false: {claim}.", answer: "'true' if f == 0 else 'false'",
+        slots: { k: "template_k", f: "flip" }, derived: {
+          claim: "['half a turn makes a straight angle', 'a reflex angle is less than one full turn', 'a straight angle is exactly half a turn', 'a reflex angle is more than half a turn'][k] if f == 0 else ['half a turn makes a reflex angle', 'a reflex angle is more than one full turn', 'a straight angle is more than half a turn', 'a reflex angle is less than half a turn'][k]" } },
+      { format: "bare", difficulty: "medium", text: "Of {a} straight and {b} reflex angles, how many exceed half a turn?", answer: "b",
+        slots: { k: "template_k", f: "flip" }, derived: { a: "k + 1", b: "1 + (k + 1 + f) % 4" } },
+    ],
+    templates: [
+      hard("bare", "Two quarter turns the same way. Is it straight or reflex?", "'straight'", {}, {}, "True"),
+      hard("compare", "Half a turn plus a quarter turn. Is it straight or reflex?", "'reflex'", {}, {}, "True"),
+      hard("story", "{name} makes two half turns. Full turn? Yes or no?", "'yes'", {}, {}, "True"),
+    ],
+  },
   {
     skill: "3.1-place-value-1000", step: 1, name: "Hundreds, tens and ones",
     templates: [
@@ -279,6 +404,9 @@ export function withHouseTemplates(data: CurriculumData, house: readonly HouseTe
 export interface LevelRewrite { level: number; skill: string; step: number; template: number; from: string; to: string }
 
 export const LEVEL_REWRITES: readonly LevelRewrite[] = [
+  { level: 19, skill: "6.13-classify-angles", step: 1, template: 1, from: "{name} looks at an angle that is {desc}. What kind of angle is it? Write acute, right or obtuse.", to: "{name}'s angle is {desc}. Is it acute, right or obtuse?" },
+  { level: 19, skill: "6.13-classify-angles", step: 1, template: 2, from: "What kind of angle is the {obj}? Write acute, right or obtuse.", to: "Classify the {obj}: acute, right or obtuse." },
+  { level: 19, skill: "6.13-classify-angles", step: 1, template: 3, from: "Which angle is obtuse? A) {oa}  B) {ob}  Write A or B.", to: "Which is obtuse? A) {oa}  B) {ob}" },
   { level: 10, skill: "2.5-increasing-pattern", step: 3, template: 2, from: "{name} saves {things} in a pattern. Day 1 {name} has {a}. Each day {name} adds {s} more. How many on day 2?", to: "Day 1: {name} has {a} {things}. Add {s} each day. How many on day 2?" },
   { level: 10, skill: "3.6-decreasing-pattern", step: 1, template: 2, from: "{name} starts with {a} {things} and gives away {d} each day. How many {things} are there the next day?", to: "{name} has {a} {things} and gives away {d}. How many now?" },
   { level: 10, skill: "3.6-decreasing-pattern", step: 1, template: 3, from: "Number 1 is {a}. Take away {d} each time. Number {n} is __.", to: "Number 1 is {a}. Take {d} off each time. Number {n}: __." },

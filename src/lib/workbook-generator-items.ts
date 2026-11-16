@@ -804,11 +804,19 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
   const asks = !worded && typeof raw.text === "string" ? choiceAsked(raw.text) : null;
   if (asks) return fail(`the question asks ${asks}, but its answer is the operation's number: ask for a number (How far is 8 from 10?), or use draw`);
   const answer = operationResult(op);
-  const stepIds = workedSteps(op).map((s) => s.id);
+  const steps = workedSteps(op);
+  const stepIds = steps.map((s) => s.id);
 
   // A missing part has one worked step (the count): a wrong answer that names another is not one step (null, #380).
   // Up to U6 sums are counted on and back, not worked in columns: a step the sum does not have is not one step either.
-  const stepOf = (step: unknown) => ((op.kind === "missing-addend" || place.level <= 6) && step !== null && !stepIds.includes(step as string) ? null : (step ?? null) as string | null);
+  const stepOf = (step: unknown) => {
+    // Whole-number multiplication ids also encode the row. A unique column place resolves it; decimal scaling does not.
+    if (op.kind === "multiply" && typeof step === "string" && !stepIds.includes(step)) {
+      const matching = steps.filter(s => "place" in s && s.place === step);
+      if (matching.length === 1) return matching[0].id;
+    }
+    return (op.kind === "missing-addend" || place.level <= 6) && step !== null && !stepIds.includes(step as string) ? null : (step ?? null) as string | null;
+  };
   const wrongAnswers: WrongAnswer[] = Array.isArray(raw.wrongAnswers)
     ? raw.wrongAnswers.filter(isObject).map((w) => ({
       value: valueFrom(w.value) as AnswerValue, cause: w.cause as string, description: w.description as string, step: stepOf(w.step),
