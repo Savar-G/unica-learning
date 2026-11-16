@@ -39,6 +39,31 @@ function oneOfEach(draft: WorkbookDraft): WorkbookDraft {
 }
 
 describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
+  // Cedric's printed pages (#1116): a Use 2 ways method label that wrapped to two lines left about 0.7 in to write in.
+  // Each method box now has at least 96 px under its label, and the two boxes of a question are the same height.
+  it.each(["U4", "U16"])("leaves 96 px to write under each Use 2 ways method label in %s", async level => {
+    const draft = book(level, 1);
+    const page = draft.pages.find(p => p.content?.kind === "day" && p.content.blocks.some(b => b.slot === "solve-it-two-ways"));
+    if (page?.content?.kind !== "day") throw new Error("no Use 2 ways page");
+    page.content.consistentLayout = true;
+    let measured: MeasuredElement[] = [];
+    const result = await renderWorkbook({ draft: { ...draft, pages: [page] }, parentId: PARENT,
+      template: { ...template, page: (p, parts) => template.page(p, parts, draft) },
+      engine: { print: async job => { const output = await engine.print(job); measured = output.measured; return output; } } });
+    expect(result.status === "failed" ? result.problems : []).toEqual([]);
+    const labels = measured.filter(m => m.name.startsWith("worklabel-"));
+    expect(labels.length).toBeGreaterThanOrEqual(2);
+    const boxes: MeasuredElement[] = [];
+    for (const [i, label] of labels.entries()) {
+      const box = measured.find(m => m.name === `region-${label.name.slice("worklabel-".length)}`)!;
+      expect(box.y + box.height - (label.y + label.height), label.name).toBeGreaterThanOrEqual(95.5);
+      boxes[i] = box;
+    }
+    expect(new Set(boxes.map(b => Math.round(b.height))).size).toBe(1);
+    // (At U4 the labels wrap to two lines, the printed case: the room is still 96 px under them.)
+    if (level === "U4") expect(Math.max(...labels.map(l => l.height))).toBeGreaterThan(30);
+  });
+
   it.each(["U4", "U16"])("prints one whole-page Extra label and generated required minutes in %s", async level => {
     const draft = book(level, 1);
     for (const p of draft.pages) if (p.content?.kind === "day") {
