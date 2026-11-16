@@ -113,6 +113,17 @@ it("sends a sibling's page in the same Send, grouped by the child each photo is 
   ]);
 });
 
+it("checks each photo's child scope instead of the displayed child", async () => {
+  f.siblingPlan = { open: true, reason: "open" };
+  const response = await send(OTHER_CHILD, [SIBLING_PHOTO, PHOTO]);
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ sent: [PHOTO, SIBLING_PHOTO].sort(), marking: 2 });
+  expect(f.asked).toEqual([
+    { parentId: "family", childId: CHILD }, { parentId: "family", childId: SIBLING },
+    { parentId: "family", childId: CHILD }, { parentId: "family", childId: SIBLING },
+  ]);
+});
+
 it("never sends a page of a sibling whose plan is closed, and still sends this child's (#1)", async () => {
   const r = await send(CHILD, [PHOTO, SIBLING_PHOTO]);
   expect(r.status).toBe(200); expect(await r.json()).toEqual({ sent: [PHOTO], marking: 1 });

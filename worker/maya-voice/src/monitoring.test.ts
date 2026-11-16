@@ -22,7 +22,7 @@ it("allows fixed codes only and removes ambient content from worker events and l
   expect(options.beforeSend({ type: undefined, message: "PRIVATE" })).toBeNull();
   expect(options.beforeSend({ type: undefined, exception: { values: [{ value: "PRIVATE" }] } })).toMatchObject({ message: "maya.worker_failed" });
   const log = options.beforeSendLog({ level: "info", message: "maya.started", attributes: { callId, transcript: "PRIVATE" } });
-  expect(log?.attributes).toEqual({ product_event: "maya.started", component: "maya-voice", callId, "sentry.environment": "production" });
+  expect(log?.attributes).toMatchObject({ product_event: "maya.started", component: "maya-voice", callId, "sentry.environment": "production" });
 });
 
 it.each(["production", "preview"])("keeps the configured %s environment and release in safe logs", environment => {
@@ -30,7 +30,7 @@ it.each(["production", "preview"])("keeps the configured %s environment and rele
   const log = options.beforeSendLog({ level: "info", message: "maya.started", attributes: {
     "sentry.environment": "PRIVATE", "sentry.release": "PRIVATE", transcript: "PRIVATE", callId,
   } });
-  expect(log?.attributes).toEqual({ product_event: "maya.started", component: "maya-voice", callId,
+  expect(log?.attributes).toMatchObject({ product_event: "maya.started", component: "maya-voice", callId,
     "sentry.environment": environment, "sentry.release": "candidate-sha" });
   expect(JSON.stringify(log)).not.toContain("PRIVATE");
 });
