@@ -48,8 +48,8 @@ export interface ProviderGate {
 export const newGate = (): ProviderGate => ({ off: {} });
 
 /** The API's failures that mean it cannot take the call (from the OpenRouter adapter's messages). */
-const API_DOWN = /OpenRouter answered (401|402|403|408|429|5\d\d)|OpenRouter could not be reached/;
-const API_LASTING = /OpenRouter answered (401|402|403)/;
+const API_DOWN = /(?:OpenRouter|Anthropic) answered (401|402|403|408|429|5\d\d)|(?:OpenRouter|Anthropic) could not be reached/;
+const API_LASTING = /(?:OpenRouter|Anthropic) answered (401|402|403)/;
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const note = (e: unknown) => message(e).slice(0, 300);

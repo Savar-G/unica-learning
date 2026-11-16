@@ -155,6 +155,9 @@ jobs:
       - name: Retention worker loads
         run: node scripts/build-retention-worker.mjs && node --conditions=react-server .retention/worker.mjs --help
         timeout-minutes: 2
+      - name: Workbook API spending guard and runner load
+        run: node --test --test-timeout=10000 scripts/workbook-anthropic-budget.test.mjs && node scripts/workbook-anthropic-live.mjs --help
+        timeout-minutes: 2
 
   # The required check. Keep this name exactly `test`: Vercel's Deployment Check and branch rules use it.
   test:

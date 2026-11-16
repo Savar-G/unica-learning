@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,6 +17,9 @@ async function workerTurn(options: { provider?: string; home?: string; auth?: bo
   await writeFile(eventsFile, "");
   const eventCode = `import { appendFileSync } from "node:fs"; const event = s => appendFileSync(${JSON.stringify(eventsFile)}, s + "\\n");`;
   try {
+    // The real bundle lives beneath the repo's node_modules. Give this external temporary bundle the same
+    // installed dependencies, including the direct Anthropic SDK, while keeping service access synthetic.
+    await symlink(fileURLToPath(new URL("../../node_modules", import.meta.url)), join(dir, "node_modules"), "dir");
     if (options.auth !== false) await writeFile(join(account, "auth.json"), JSON.stringify({ auth_mode: "chatgpt", tokens: { access_token: "synthetic" } }));
     const help = "--ignore-user-config --ephemeral --skip-git-repo-check --sandbox --model --config --disable --json --output-schema --output-last-message";
     if (options.unavailable !== "missing") await writeFile(join(bin, "codex"), `#!${process.execPath}
@@ -64,7 +67,7 @@ async function workerTurn(options: { provider?: string; home?: string; auth?: bo
 describe("worker subscription checks before claims", () => {
   it.each([false, true])("checks startup and the selected account again before a job (resume=%s)", async resume => {
     const result = await workerTurn({ resume });
-    expect(result.code).toBe(0);
+    expect(result.code, result.output).toBe(0);
     expect(result.events).toEqual(["codex exec --help", "codex login status", "client", "queue", "codex exec --help", "codex login status", `claim synthetic-run ${resume}`]);
     expect(result.output).toContain("Codex subscription only: API fallback is disabled");
     expect(result.output).toContain("writer codex/gpt-6.1-sol;reasoning=high;auth=chatgpt; solver codex/gpt-6.1-sol;reasoning=high;auth=chatgpt");
@@ -88,7 +91,7 @@ describe("worker subscription checks before claims", () => {
 
   it("preserves the default Claude path and API-first setting", async () => {
     const result = await workerTurn({ provider: "claude", home: "", auth: false });
-    expect(result.code).toBe(0);
+    expect(result.code, result.output).toBe(0);
     expect(result.events).toEqual(["client", "queue", "claim synthetic-run false"]);
     expect(result.output).toContain("the API first");
   });

@@ -29,6 +29,8 @@ const qrToken = () => randomBytes(16).toString("base64url");
 export interface RunPlace {
   /** Whether `claude -p` may run here (the Mac). */
   subscription: boolean;
+  /** Direct Anthropic live runs carry a per-child spending guard. */
+  anthropicFetchWrapper?: WorkbookAiOptions["anthropicFetchWrapper"];
   /** Overrides WORKBOOK_AI_PRIMARY. */
   primary?: WorkbookAiOptions["primary"];
   /** The code's version: a run goes on only on the code it started on (R379-8-2). */
@@ -68,7 +70,7 @@ export async function runWorkbookJobWith(admin: SupabaseClient<Database>, runId:
   const fake = workbookFakeAi();
   const log = runAiCallLog(saveRunAiCalls(admin, runId));
   const usage = await runUsage(admin, runId);
-  const live = fake ? null : workbookAi(env, { subscription: place.subscription, primary: place.primary, onCall: log.add, onStart: log.add,
+  const live = fake ? null : workbookAi(env, { subscription: place.subscription, primary: place.primary, anthropicFetchWrapper: place.anthropicFetchWrapper, onCall: log.add, onStart: log.add,
     usage,
     gate: await loadRunProviderGate(admin, runId),
     onExclude: (provider, reason) => excludeRunProvider(admin, runId, provider, reason) });
