@@ -68,6 +68,16 @@ function markup(detail: RunDetail) {
 }
 const visible = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&#x27;|&apos;/g, "'").replace(/&quot;/g, "\"").replace(/\s+/g, " ");
 
+it("shows an unavailable subscription instead of claiming no calls were logged", () => {
+  const detail = runDetail("agreed");
+  detail.aiCalls.unavailable = { subscription: 1, api: 0, last: "The selected Codex subscription reached its usage limit" };
+  const text = visible(markup(detail));
+  expect(text).not.toContain("No AI calls logged yet");
+  expect(text).toContain("AI unavailable");
+  expect(text).toContain("The selected Codex subscription reached its usage limit");
+  expect(text).not.toContain("calls on the Claude subscription");
+});
+
 // All four labels must agree in the actual component, through its public interface.
 describe("admin workbook check labels (R379-1)", () => {
   it.each([

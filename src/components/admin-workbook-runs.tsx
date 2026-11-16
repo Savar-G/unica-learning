@@ -135,7 +135,7 @@ export function ChildRunsTable({ runs, now, worker }: { runs: RunListRow[]; now:
 export function WorkerLine({ worker }: { worker: WorkerStatus | null }) {
   if (!worker) return <span className="adm-wb-worker"><Chip tone="warn">Workbook computer offline</Chip><span className="adm-sub">It has never run.</span></span>;
   return worker.online
-    ? <span className="adm-wb-worker"><Chip tone="ok">Workbook computer online</Chip><span className="adm-sub">Seen {when(worker.seenAt)}{worker.runId ? " · making a workbook" : " · ready"} · {worker.primaryAi === "api" ? "API first" : "Claude subscription first"}</span></span>
+    ? <span className="adm-wb-worker"><Chip tone="ok">Workbook computer online</Chip><span className="adm-sub">Seen {when(worker.seenAt)}{worker.runId ? " · making a workbook" : " · ready"} · {worker.primaryAi === "api" ? "API first" : "Subscription first"}</span></span>
     : <span className="adm-wb-worker"><Chip tone="warn">Workbook computer offline</Chip><span className="adm-sub">Not seen since {when(worker.seenAt)}</span></span>;
 }
 
@@ -147,7 +147,7 @@ export function aiCallsFact(s: AiCallSummary): ReactNode {
   if (total === 0 && s.incomplete === 0 && s.unavailable.subscription + s.unavailable.api === 0) return "No AI calls logged yet";
   const failed = (n: number) => (n > 0 ? ` (${n} failed)` : "");
   return <span className="adm-wb-calls">
-    <span><b>{s.subscription.calls}</b> calls on the Claude subscription{failed(s.subscription.failed)} · USD 0</span>
+    <span><b>{s.subscription.calls}</b> calls on the subscription{failed(s.subscription.failed)} · USD 0</span>
     <span><b>{s.api.calls}</b> calls on the API{failed(s.api.failed)} · {usd(s.api.usd)}{s.api.noCost > 0 ? ` (${s.api.noCost} with no cost given)` : ""}</span>
     <span className="adm-sub">A call counts once, however many times it was sent. API retries: {s.retries}.</span>
     {s.incomplete > 0 && <span className="adm-sub">{s.incomplete} {s.incomplete === 1 ? "call has" : "calls have"} no saved result. Their costs are unknown.</span>}
@@ -599,6 +599,8 @@ export function AdminWorkbookRun({ email, detail, now, only, worker, why, book1 
 /** The closed AI section's one line: how many calls, and the API's cost. */
 function aiCallsHint(s: AiCallSummary): string {
   const total = s.subscription.calls + s.api.calls;
+  if (total === 0 && s.unavailable.subscription + s.unavailable.api > 0) return `AI unavailable${s.unavailable.last ? ` · ${s.unavailable.last}` : ""}`;
+  if (total === 0 && s.incomplete > 0) return `${many(s.incomplete, "call", "calls")} without a saved result`;
   if (total === 0) return "No AI calls logged yet";
   return `${many(total, "call", "calls")} · API ${usd(s.api.usd)}${s.api.noCost > 0 || s.incomplete > 0 ? " (some costs unknown)" : ""}`;
 }

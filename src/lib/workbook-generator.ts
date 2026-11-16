@@ -59,6 +59,7 @@ import { choiceInstruction } from "@/lib/workbook-layout-check";
 // Pure TypeScript: no Next.js, React, network, database, clock or randomness (the caller passes the QR token maker).
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { withTimeLimit, type AiClient } from "@/lib/ai-client";
+import { WorkbookAiUnavailable } from "@/lib/workbook-ai-unavailable";
 import { checkQuestionPackage, type QuestionPackage } from "@/lib/question-package";
 import { isQrToken, isUuid } from "@/lib/workbook-content";
 import type { Curriculum } from "@/lib/workbook-curriculum";
@@ -1561,15 +1562,15 @@ async function callAi(deps: GenerateDeps, name: string, request: unknown, ids: s
   };
   try {
     let resent = false;
-    const out = await ask().catch((error) => { if (error instanceof WriterPersistenceError) throw error; resent = true; return ask(); });
+    const out = await ask().catch((error) => { if (error instanceof WriterPersistenceError || error instanceof WorkbookAiUnavailable) throw error; resent = true; return ask(); });
     const items = new Map<string, unknown>();
     read(out, items);
     // An answer that leaves out slots it was asked for is incomplete, like one that is not JSON: sent once more (if it
     // was not already), and the slots it gave are kept.
-    if (!resent && ids.some((id) => !items.has(id))) read(await ask().catch((error) => { if (error instanceof WriterPersistenceError) throw error; return null; }), items);
+    if (!resent && ids.some((id) => !items.has(id))) read(await ask().catch((error) => { if (error instanceof WriterPersistenceError || error instanceof WorkbookAiUnavailable) throw error; return null; }), items);
     return { items, error: null };
   } catch (e) {
-    if (e instanceof WriterPersistenceError) throw e;
+    if (e instanceof WriterPersistenceError || e instanceof WorkbookAiUnavailable) throw e;
     return { items: new Map(), error: e instanceof Error ? e.message : String(e) };
   }
 }

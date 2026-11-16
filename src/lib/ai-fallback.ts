@@ -14,6 +14,7 @@
 // the two clients are passed in.
 import type { AiClient } from "@/lib/ai-client";
 import { SubscriptionUnavailable } from "@/lib/ai-claude-cli";
+import { WorkbookAiUnavailable } from "@/lib/workbook-ai-unavailable";
 
 export type AiProvider = "subscription" | "api";
 export const AI_PROVIDERS: readonly AiProvider[] = ["subscription", "api"];
@@ -84,7 +85,7 @@ export function fallbackAiClient(o: FallbackOptions): AiClient {
       const usable = order.filter((p) => (p === "subscription" ? !!o.subscription : !!o.api) && !gate.off[p]);
       if (usable.length === 0) {
         const why = AI_PROVIDERS.flatMap((p) => (gate.off[p] ? [`${p === "subscription" ? "the subscription" : "the API"}: ${gate.off[p]}`] : []));
-        throw new Error(`No AI provider can take the call${why.length ? ` (${why.join("; ")})` : ""}.`);
+        throw new WorkbookAiUnavailable(`No AI provider can take the call${why.length ? ` (${why.join("; ")})` : ""}.`);
       }
       for (let i = 0; i < usable.length; i++) {
         const provider = usable[i];
@@ -134,10 +135,12 @@ export function fallbackAiClient(o: FallbackOptions): AiClient {
         if (!down || o.singleDispatch) throw error;
         if (last) {
           const other = provider === "subscription" ? "the API (no API key, or it is off for this run)" : "the subscription (none here, or it is off for this run)";
-          throw new Error(`${message(error)}; no fallback: ${other}`);
+          const reason = `${message(error)}; no fallback: ${other}`;
+          if (lasting) throw new WorkbookAiUnavailable(reason);
+          throw new Error(reason);
         }
       }
-      throw new Error("No AI provider answered.");
+      throw new WorkbookAiUnavailable("No AI provider answered.");
     },
   };
 }
