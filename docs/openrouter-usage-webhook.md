@@ -2,9 +2,10 @@
 
 OPENROUTER_COST_WEBHOOK_V1: DONE
 
-Implementation only. ROOT owns hosted migration, generated types, credential configuration,
-Aside destination setup, integration after #1129, independent review, merge, and deployment.
-The destination is not enabled by this PR. No model, browser, or hosted database calls were made.
+Release setup is in progress. The implementation passed two independent reviews and a final
+settlement at `738390873818247413b73fa3e498cdb65b4455e2`. ROOT applied the hosted migration,
+generated the schema files, and mounted the report after #1129. Destination setup, deployment,
+and genuine provider delivery verification remain pending. No paid model call has run.
 
 ## Scope
 
@@ -103,7 +104,10 @@ custom metadata. The receiver still drops those fields.
 ## Database and attribution
 
 Migration: `supabase/migrations/20261116192429_openrouter_provider_receipts.sql`.
-ROOT must verify timestamp uniqueness against live history and `origin/main` before apply.
+Applied through Supabase MCP on 2026-11-16 as version `20261116204257`, name
+`openrouter_provider_receipts`. The local timestamp was unique in local files, `origin/main`
+and hosted history before application. Hosted schema dependencies and generation uniqueness
+were verified first.
 
 - Primary key: `(workspace_id, generation_id)`.
 - One service-only RPC transaction ingests a complete batch in identity order.
@@ -216,7 +220,17 @@ after the last parser change.
 
 ## Remaining limits
 
-The migration is not hosted. Destination configuration, credentials, deployment, live delivery,
-provider-format verification, browser checks, generated database types/checks, and admin-page
-mounting remain with ROOT. Conflicting provider revisions require review; append-only ingestion
-will return 503 instead of silently replacing an earlier receipt. No estimate fills a gap.
+Hosted rollback probes passed identical retries, conflicting-batch rollback, update refusal,
+admin totals, non-admin function refusal, populated-table RLS, explicit service privileges,
+and empty function search paths. No synthetic receipt remains. Schema types and checks were
+generated from the hosted schema. Aside verified the mounted local page using the admin's
+session and the hosted read: the provider report was empty and the app/account totals remained
+separate. These checks do not prove provider delivery or the deployed receiver.
+
+Production has the dedicated webhook secret and verified Unica workspace ID configured.
+All six Unica keys, including the development key, belong to that workspace. The separate
+Unify workspace is outside this destination's scope. Key values are never shown.
+
+Destination configuration, deployment, genuine delivery, provider-format verification and
+the production page check remain pending. Conflicting provider revisions require review;
+append-only ingestion returns 503 instead of replacing earlier evidence. No estimate fills a gap.

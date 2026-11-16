@@ -2915,6 +2915,48 @@ export type Database = {
           },
         ]
       }
+      openrouter_provider_receipts: {
+        Row: {
+          api_key_id: string | null
+          cost_usd: number | null
+          generation_id: string
+          input_cost_usd: number | null
+          input_tokens: number | null
+          model: string
+          occurred_at: string
+          output_cost_usd: number | null
+          output_tokens: number | null
+          received_at: string
+          workspace_id: string
+        }
+        Insert: {
+          api_key_id?: string | null
+          cost_usd?: number | null
+          generation_id: string
+          input_cost_usd?: number | null
+          input_tokens?: number | null
+          model: string
+          occurred_at: string
+          output_cost_usd?: number | null
+          output_tokens?: number | null
+          received_at?: string
+          workspace_id: string
+        }
+        Update: {
+          api_key_id?: string | null
+          cost_usd?: number | null
+          generation_id?: string
+          input_cost_usd?: number | null
+          input_tokens?: number | null
+          model?: string
+          occurred_at?: string
+          output_cost_usd?: number | null
+          output_tokens?: number | null
+          received_at?: string
+          workspace_id?: string
+        }
+        Relationships: []
+      }
       parent_explanation_dispatches: {
         Row: {
           child_id: string
@@ -8510,6 +8552,10 @@ export type Database = {
           id: string
         }[]
       }
+      admin_openrouter_provider_receipts: {
+        Args: { p_from: string; p_to: string }
+        Returns: Json
+      }
       admin_parents: {
         Args: never
         Returns: {
@@ -9853,6 +9899,10 @@ export type Database = {
           p_width: number
         }
         Returns: string
+      }
+      ingest_openrouter_provider_receipts: {
+        Args: { p_rows: Json }
+        Returns: undefined
       }
       is_admin: { Args: never; Returns: boolean }
       issue_sign_in_link: {
