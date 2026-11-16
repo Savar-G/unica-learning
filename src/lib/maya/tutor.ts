@@ -318,8 +318,12 @@ export function questionExpressions(sentence: string): { operands: number[]; ops
     }
     k++;
     if (run.length < 2) continue;
-    const after = sentence.slice(run.at(-1)!.end).replace(PLACE_AFTER, "");
-    if (/^\s*(?:is|are|=|equals|makes|gives)\b/i.test(after) || /^\s*[\d.,]*\d/.test(after)) continue;
+    // Both boundaries must be complete: an unread operation, fraction or relation cannot leave a prefix to credit.
+    // A colon can separate the teaching lead-in from the question ("Take away the 6 ones: what is 13 minus 6?").
+    const before = sentence.slice(0, run[0].at).split(":").at(-1)!.trim();
+    if (!/^(?:(?:now|so)[,\s]+)?(?:what(?:'s| is| are)|what do you get (?:for|from)|how much is|calculate|work out)?$/i.test(before)) continue;
+    const after = sentence.slice(run.at(-1)!.end).trimStart().replace(PLACE_AFTER, "").trim();
+    if (!/^(?:(?:in all|altogether|now)\s*)?\?$/i.test(after)) continue;
     out.push({ operands: run.map((t) => t.q![0]), ops });
   }
   return out;

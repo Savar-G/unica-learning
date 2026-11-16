@@ -3274,7 +3274,7 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue, earlier
   // review's verdict and code's own line all say "right". Never a copy of a step Maya showed.
   if (s.tutor && !copy) {
     const asked = askedStepOf(s);
-    if (asked?.step === step.id && saidAs(number(asked.value), value) && askedStepSaid(s, asked.value)) return true;
+    if (asked?.step === step.id && saidAs(number(asked.value), value) && askedStepSaid(s, step, asked.value, earlier)) return true;
   }
   return ownTurn(s, step, value, { earlier }) === null;
 }
@@ -4664,7 +4664,7 @@ function askedStepOf(s: Session): { step: string; value: number } | null {
  * that holds a number ("It's 7.", "7."). A sentence before it with no number that points back at Maya's last question or
  * the child's own last answer ("Wait, that's wrong. It's seven.") is a correction, not a doubt about the 7.
  */
-function askedStepSaid(s: Session, value: number): boolean {
+function askedStepSaid(s: Session, step: WorkedStep, value: number, earlier: readonly string[]): boolean {
   if (!s.turn || s.turn.uncertain) return false;
   const text = s.turn.text;
   if (text.includes("?") || /\banswer\b/i.test(text) || helpInWords(text) || saysStuck(text) || unreadNumberRuns(text).length > 0 || childSaysFalse(text) || hedgedTurn(s) || saysGuess(text)) return false;
@@ -4675,7 +4675,14 @@ function askedStepSaid(s: Session, value: number): boolean {
   const values = valuesIn(holding[0], opts);
   if (values.length !== 1 || values[0].type !== "number" || values[0].value !== value) return false;
   const read = readAnswer(holding[0], opts);
-  return read.sure && read.final?.type === "number" && read.final.value === value;
+  if (!read.sure || read.final?.type !== "number" || read.final.value !== value) return false;
+  // Preserve the whole-turn ownership, scope and negation checks. Only this closed correction can remove a negation;
+  // the final answer sentence must still pass the same ownership check on its own.
+  const blocker = ownTurn(s, step, number(value), { earlier });
+  if (blocker === null) return true;
+  const correction = sentences.slice(0, -1).join(" ").replace(/[’‘]/g, "'").trim();
+  return blocker === "negation" && /^(?:wait[,!\s]+)?(?:that(?:'s| is) wrong|i (?:got|said) (?:it|that) wrong)[.!]?$/i.test(correction) &&
+    ownTurn(s, step, number(value), { earlier, text: holding[0] }) === null;
 }
 
 /**

@@ -276,6 +276,31 @@ describe("one verdict for a step answer: the step Maya asked", () => {
     expect(askedStep(SUB83, "How many tens are left?")).toBeNull();
   });
 
+  it.each(["My friend told me. It's seven.", "I don't mean the ones. It's seven.", "I copied it. It's seven."])("never credits another source or a denied step: %s", async (child) => {
+    const { brief, review, done } = await inputs(child);
+    expect(done).not.toContain("ones");
+    expect(brief.childAnswer?.verdict).not.toBe("right");
+    expect(review.childAnswer?.verdict).not.toBe("right");
+  });
+
+  it.each([
+    "What is 13 minus 6, then add 2?",
+    "What is 13 minus 6 plus a half?",
+    "What is 13 minus 6 times one half?",
+    "What is half of 13 minus 6?",
+  ])("leaves the complete asked calculation unread when it has more work: %s", async (question) => {
+    expect(askedStep(SUB83, question)).toBeNull();
+    const child = "Wait, that's wrong. It's seven.";
+    const steps: Step[] = [
+      ["Three minus six, I can't do that.", `3 ones is too small to take 6 ones. So we trade 1 ten for 10 ones. ${question}`],
+      [child, "Let's look at the ones together. Which number is on top in the ones?"],
+    ];
+    const c = session(SUB83, steps);
+    await play(c, steps);
+    expect(c.s.session.done).not.toContain("ones");
+    expect(c.briefs().findLast((b) => b.childTurn === child && !b.repair)?.childAnswer?.verdict).not.toBe("right");
+  });
+
   it("the review input built straight from a session agrees with the brief (one source)", async () => {
     const steps: Step[] = [...asked83, ["It's seven.", "Let's look at the ones together. Which number is on top in the ones?"]];
     const c = session(SUB83, steps, { voice: false });
