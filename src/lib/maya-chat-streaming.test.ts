@@ -127,7 +127,7 @@ async function stored(store: CallStore, id: string) {
 }
 
 describe("#1107: a chat child turn streams its checked sentences, each saved first", () => {
-  it.each([null, false])("reader-first release (streamChat=%s) never saves parts, even with a streaming listener", async (streamChat) => {
+  it.each([null, false])("a writer without server permission (streamChat=%s) never saves parts, even with a streaming listener", async (streamChat) => {
     // Falsifier: enabling writes by a header or a listener creates a checkpoint a supported old reader cannot read.
     const checkpoint = vi.fn(async () => true);
     const s = setup({ [STUCK]: [`${TRADE} ${FIRST} ${NEXT}`] }, { streamChat, store: (base) => ({ ...base, checkpoint }) });

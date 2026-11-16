@@ -1580,7 +1580,8 @@ export function step(session: Session, event: SessionEvent): StepResult {
   // done a step of their question (#389: practice run 9, F06, ran the easier example after the child did the ones).
   if (priority.start === "no_start" && (isTeaching(s.state) ? s.state : s.resume) === "ASSESS" && s.done.length === 0) s.noStart = true;
 
-  if (s.startedAt !== null) {
+  // A recorded failure keeps its cause when recovery runs after the clock. end() retains outcome priority and caps time.
+  if (s.startedAt !== null && event.type !== "technical") {
     const elapsed = event.at - s.startedAt;
     const limits = limitsOf(s);
     if (elapsed >= limits.endAtMs) {
