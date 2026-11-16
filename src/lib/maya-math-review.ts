@@ -30,6 +30,12 @@ export const MATH_REVIEW_REQUEST = { effort: "medium" as const, maxTokens: 1_500
  * for a stalled request only. On a 4 s voice limit no copy is sent (HEDGE_MIN_LEFT_MS).
  */
 export const MATH_REVIEW_HEDGE_MS = 3_500;
+/**
+ * The same on a voice turn (call 21665dc6, 2026-11-15): about the p90 of the math review on the voice path (30 voice
+ * tutor turns on the real reviewer: p50 2.4 s, p90 3.2 s). On a plain 4 s limit no copy is sent (HEDGE_MIN_LEFT_MS); a
+ * review that started while the model still wrote has the longer limit of VOICE_EARLY_REVIEW_EXTRA_MS, and a copy then.
+ */
+export const VOICE_MATH_REVIEW_HEDGE_MS = 3_200;
 /** The retry's request: it must answer inside what is left of the same time limit. */
 export const MATH_REVIEW_RETRY_REQUEST = { effort: "low" as const, maxTokens: 1_500 };
 
