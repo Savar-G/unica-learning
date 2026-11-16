@@ -562,8 +562,10 @@ export interface Session {
   /**
    * `offer` (review of #1113): Maya's last accepted message ended with code's own yes/no end offer (FINAL_ASK). Set by
    * that message only; any other tutor message clears it (its tutor state is new).
+   * `childFirst` holds step ids whose numeric result code validated before Maya supplied it. Only those step digits
+   * are exempt from answer help when Maya repeats them. Earlier Maya help remains in the ledger.
    */
-  tutor?: { help: number; drawn: string[]; sent?: { batch: string; keys: string[] }[]; offer?: true };
+  tutor?: { help: number; drawn: string[]; sent?: { batch: string; keys: string[] }[]; offer?: true; childFirst?: string[] };
 }
 
 /**
@@ -1672,6 +1674,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
         if (s.resume === "CHECK" || s.resume === "WRITE_CLOSE") s.resume = "GUIDE_TARGET";
       }
       if (s.state === "OPEN" && s.opened) s.state = "ASSESS";
+      rememberChildFirst(s);
       s.expect = "maya";
       s.silence = "none";
       // D-341, round 2: a child who is thinking ("um", "wait", "I'm thinking") gets one short patient line from code, at
@@ -5866,17 +5869,50 @@ function tellsAnswer(base: Session, pkg: OperationPackage, texts: readonly strin
   // that makes up another number of the question ("28 is 2 tens and 8 ones") names no digit of the answer.
   if (!committedRight && Number.isInteger(answer) && answer >= 0) {
     const named = new Map<number, Set<number>>();
-    for (const group of texts.flatMap((x) => placeDigitsSaid(x))) {
+    // A component Maya gave on an earlier turn still counts. A later child answer never erases that help.
+    const all = [...base.turns.filter(t => t.speaker === "maya").map(t => t.text), ...texts];
+    for (const group of all.flatMap((x) => placeDigitsSaid(x))) {
       const total = group.reduce((t, p) => t + p.n * p.place, 0);
       if (group.length > 1 && total !== answer && own.has(total)) continue;
-      for (const p of group) named.set(p.place, (named.get(p.place) ?? new Set()).add(p.n));
+      for (const p of group) if (!childOwnsDigit(base, p.place, p.n)) named.set(p.place, (named.get(p.place) ?? new Set()).add(p.n));
     }
     const digitsOf = String(answer).split("").reverse().map(Number);
     if (digitsOf.every((d, k) => named.get(10 ** k)?.has(d))) return true;
   }
   const digits = String(Math.trunc(Math.abs(answer))).length;
   // The kinds name a place as the package does ("ten thousands"); the board names it with "_".
-  return Number.isInteger(answer) && answer >= 0 && digits <= PLACE_NAMES.length && PLACE_NAMES.slice(0, digits).every((place) => drawn.includes(`digit:${place}`) || drawn.includes(`digit:${place.replace(/_/g, " ")}`));
+  return Number.isInteger(answer) && answer >= 0 && digits <= PLACE_NAMES.length && PLACE_NAMES.slice(0, digits).every((place, k) => !childOwnsDigit(base, 10 ** k, Math.floor(answer / 10 ** k) % 10) && (drawn.includes(`digit:${place}`) || drawn.includes(`digit:${place.replace(/_/g, " ")}`)));
+}
+
+/** Only a step value that code read as right, before Maya supplied it, belongs to the child. */
+function rememberChildFirst(s: Session): void {
+  if (!s.tutor || !s.package || !s.turn) return;
+  const facts = stepFacts(s.package);
+  const maya = s.turns.filter(t => t.speaker === "maya").map(t => t.text);
+  const keys = [...s.tutor.drawn, ...(s.tutor.sent ?? []).flatMap(x => x.keys)];
+  const notes = keys.filter(k => k.startsWith("note:")).map(k => k.slice(5));
+  const answer = s.package.answer.value;
+  for (const a of heardAnswers(s)) {
+    if (a.verdict !== "right" || a.value.type !== "number" || a.step === "result") continue;
+    const st = facts.find(f => f.id === a.step);
+    if (!st?.place || st.result !== a.value.value) continue;
+    const k = PLACE_NAMES.findIndex(p => p.replace(/_/g, " ") === st.place);
+    if (k < 0) continue;
+    const place = 10 ** k;
+    const value = a.value.value;
+    const given = keys.includes(`digit:${st.place}`) || keys.includes(`digit:${st.place.replace(/ /g, "_")}`) ||
+      [...maya, ...notes].some(t => placeDigitsSaid(t).flat().some(p => p.place === place && p.n === value) ||
+        equationsOf(t).some(e => !e.negated && equationHolds(e) === true && e.result.q?.[1] === 1 && e.result.q[0] === value) ||
+        wholeValue(t.replace(/[.!]+$/, "")) === value || (answer.type === "number" && namesValue(t, answer.value)));
+    if (!given && !s.tutor.childFirst?.includes(st.id)) (s.tutor.childFirst ??= []).push(st.id);
+  }
+}
+
+/** The exemption is tied to the validated step and place, never to all occurrences of a work number. */
+function childOwnsDigit(s: Session, place: number, value: number): boolean {
+  if (!s.package || !s.tutor?.childFirst?.length) return false;
+  const p = PLACE_NAMES[Math.log10(place)];
+  return stepFacts(s.package).some(st => s.tutor!.childFirst!.includes(st.id) && st.place === p?.replace(/_/g, " ") && st.result === value);
 }
 
 /** Final check 9: the structural fields of a board command (its op and ids), which a child never sees. */
@@ -6096,7 +6132,7 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     if (r?.verdict !== "true") return no("say_check", `The math review did not find "${sentence}" true (${r ? `${r.verdict}: ${r.reason}` : "no review"}). Every number and relation Maya says must be plainly true: say it with simple true math, such as one equation of the question's own numbers.`, "math_review");
     math.push({ sentence, verdict: "true" });
   }
-  const tutor: NonNullable<Session["tutor"]> = { help: progress ? 0 : s.solved === null ? (s.tutor?.help ?? 0) + 1 : 0, drawn: [...(s.tutor?.drawn ?? [])], ...(s.tutor?.sent?.length ? { sent: structuredClone(s.tutor.sent) } : {}) };
+  const tutor: NonNullable<Session["tutor"]> = { help: progress ? 0 : s.solved === null ? (s.tutor?.help ?? 0) + 1 : 0, drawn: [...(s.tutor?.drawn ?? [])], ...(s.tutor?.sent?.length ? { sent: structuredClone(s.tutor.sent) } : {}), ...(s.tutor?.childFirst?.length ? { childFirst: [...s.tutor.childFirst] } : {}) };
   // B2 (derive the drawing from the sentence): code reads each accepted sentence and draws what it says in full, one
   // batch per sentence, in sentence order (board-ties.ts). Only a proposal stepped live since B2 (`drawMode`) derives:
   // a saved older message replays exactly as it was stepped (its own `draw` list, or nothing), so a restored call keeps

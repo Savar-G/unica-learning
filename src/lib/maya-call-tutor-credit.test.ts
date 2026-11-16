@@ -15,6 +15,8 @@ import { fakeMathReviewer } from "@/lib/maya-math-review";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
 
+const isPut = (c: unknown) => typeof c === "object" && c !== null && "op" in c && c.op === "put";
+
 const PARENT = "11111111-1111-4111-8111-111111111111";
 const CHILD = "22222222-2222-4222-8222-222222222222";
 const WORKBOOK = "44444444-4444-4444-8444-444444444444";
@@ -22,7 +24,7 @@ const RANGE = { from: "2026-11-14", to: "2026-11-16" };
 const SUBTRACT = SAMPLE_PACKAGES["subtract-52-28"];
 
 /** One family call: the model answers each turn with the next reply of `script` (the last one again after the end). */
-async function family(pkg: QuestionPackage, script: unknown[], childTurns: string[], voice = false) {
+async function family(pkg: QuestionPackage, script: unknown[], childTurns: string[], voice = false, stream = false) {
   let now = Date.UTC(2026, 10, 15);
   let id = 0;
   const clock = () => now;
@@ -30,8 +32,9 @@ async function family(pkg: QuestionPackage, script: unknown[], childTurns: strin
   const events = memoryLearningEventStore({ children: [{ id: CHILD, parentId: PARENT }] });
   const notes = memoryNoteStore({ calls: () => store.rows(), testFamilies: [] });
   const writer = callNotes({ store: notes, ai: null, isTestFamily: async () => false, childNames: async () => ({ firstName: "Ava", formerNames: [] }), clock });
-  const model = conversationalFake({ id: "fake-v3", answer: (_brief, n) => script[Math.min(n, script.length - 1)] });
+  const model = conversationalFake({ id: "fake-v3", answer: (_brief, n) => script[Math.min(n, script.length - 1)], ...(stream ? { stream: { chunk: 7, beforeEnd: async () => { await new Promise(r => setTimeout(r, 30)); } } } : {}) });
   const rebuilt: LearningEvent[][] = [];
+  const spoken: string[] = [];
   const calls = mayaCalls({
     tutorFamilies: true,
     store,
@@ -70,7 +73,7 @@ async function family(pkg: QuestionPackage, script: unknown[], childTurns: strin
     await open.call.start();
     for (const text of childTurns) {
       now += 5000;
-      await open.call.child(text);
+      await open.call.child(text, {}, { part: text => spoken.push(text) });
       await open.call.settled();
     }
     await open.call.end({ reason: "child_stopped" });
@@ -88,7 +91,7 @@ async function family(pkg: QuestionPackage, script: unknown[], childTurns: strin
       if (!r.ok) throw Error(r.error);
     }
   }
-  return { record: await store.get(start.view.id), events: await events.range(CHILD, RANGE), notes: notes.rows(), rebuilt };
+  return { record: await store.get(start.view.id), events: await events.range(CHILD, RANGE), notes: notes.rows(), rebuilt, spoken };
 }
 
 describe("tutor core credit on family calls (part C)", () => {
@@ -172,3 +175,73 @@ describe("tutor core credit on family calls (part C)", () => {
     });
   }
 });
+
+for (const voice of [false, true]) {
+  it(`#1106: restating earlier code-validated child step results does not give the answer (voice ${voice})`, async () => {
+    const r = await family(SUBTRACT, [
+      reply("What do you get for the tens?", "guide"),
+      reply("What do you want to write?", "guide"),
+      reply("Write 4 in the ones and 2 in the tens. What do you get?", "guide"),
+      reply("Bye for now.", "close"),
+    ], ["12 minus 8 is 4.", "4 minus 2 is 2.", "Help me write it.", "It's 24."], voice, voice);
+    expect(r.notes[0]?.transcript.some(t => t.text.includes("Write 4 in the ones and 2 in the tens"))).toBe(true);
+    if (voice) expect(r.spoken.join(" ")).toContain("Write 4 in the ones and 2 in the tens");
+    expect(r.record?.outcome?.assistance).not.toBe("answer_given");
+    expect(r.notes[0]?.facts.help).not.toBe("answer_given");
+    expect(r.notes[0]?.facts.finished).not.toBe("answer_given");
+    expect(r.events[0]?.result).toBe("right_with_help");
+  });
+}
+
+for (const voice of [false, true]) {
+  it(`#1106: Maya-first digits on separate turns remain answer help after the child repeats them (voice ${voice})`, async () => {
+    const r = await family(SUBTRACT, [
+      reply("Write 4 in the ones. What do you want to do next?", "guide", { noDraw: "all" }),
+      reply("Write 2 in the tens. What do you want to do next?", "guide", { noDraw: "all" }),
+      reply("What is the whole answer?", "guide"),
+      reply("Bye for now.", "close"),
+    ], ["Help me.", "12 minus 8 is 4.", "4 minus 2 is 2.", "It's 24."], voice, voice);
+    expect(r.notes[0]?.transcript.some(t => t.text.includes("Write 4 in the ones"))).toBe(true);
+    expect(r.notes[0]?.transcript.some(t => t.text.includes("Write 2 in the tens"))).toBe(true);
+    expect(r.record?.outcome?.assistance).toBe("answer_given");
+    expect(r.notes[0]?.facts.finished).toBe("answer_given");
+  });
+  for (const turns of [
+    ["12 minus 8 is 2.", "4 minus 2 is 4."],
+    ["I got four with a negative sign.", "I got two with a negative sign."],
+    ["My answer is 4.", "My answer is 2."],
+  ]) {
+    it(`#1106: wrong or unread earlier values do not reduce help (${turns[0]}, voice ${voice})`, async () => {
+      const r = await family(SUBTRACT, [
+        reply("What do you want to do next?", "guide"),
+        reply("What do you want to do next?", "guide"),
+        reply("Write 4 in the ones and 2 in the tens. What do you get?", "guide"),
+        reply("Bye for now.", "close"),
+      ], [...turns, "Help me write it.", "It's 24."], voice, voice);
+      expect(r.notes[0]?.transcript.some(t => t.text.includes("Write 4 in the ones and 2 in the tens"))).toBe(true);
+      expect(r.record?.outcome?.assistance).toBe("answer_given");
+      expect(r.notes[0]?.facts.finished).toBe("answer_given");
+    });
+  }
+  it(`#1106: computed step digits do not exempt a new whole answer from Maya (voice ${voice})`, async () => {
+    const r = await family(SUBTRACT, [reply("What do you get for the tens?", "guide"), reply("What do you want to write?", "guide"), reply("Write 24 on your paper. What do you get?", "guide"), reply("Bye for now.", "close")],
+      ["12 minus 8 is 4.", "4 minus 2 is 2.", "Help me write it.", "It's 24."], voice, voice);
+    expect(r.notes[0]?.transcript.some(t => t.text.includes("Write 24 on your paper"))).toBe(true);
+    expect(r.record?.outcome?.assistance).toBe("answer_given");
+  });
+}
+
+for (const voice of [false, true]) {
+  it(`#1106: the board can restate the child's computed digits without giving the answer (voice ${voice})`, async () => {
+    const r = await family(SUBTRACT, [
+      reply("We trade 1 ten for 10 ones. What do you get for the tens?", "guide"),
+      reply("Write 4 in the ones. What do you want to do next?", "guide"),
+      reply("Write 2 in the tens. What do you get?", "guide"),
+      reply("Bye for now.", "close"),
+    ], ["12 minus 8 is 4.", "4 minus 2 is 2.", "Help me write it.", "It's 24."], voice, voice);
+    const puts = r.record!.trace!.board.flatMap(b => b.commands).filter(isPut);
+    expect(puts).toEqual(expect.arrayContaining([expect.objectContaining({ value: "4" }), expect.objectContaining({ value: "2" })]));
+    expect(r.record?.outcome?.assistance).not.toBe("answer_given");
+    expect(r.notes[0]?.facts.finished).not.toBe("answer_given");
+  });
+}
