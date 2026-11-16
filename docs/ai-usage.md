@@ -109,3 +109,7 @@ Root changes the marker to `AI_USAGE_HOSTED_STEPS_DONE` only after the required 
 
 - `node scripts/check-ai-usage-lifetime.mjs` builds a temporary production Next app and checks that the request recorder registers its write with `after`. It makes no hosted or provider request. `--source-ref c50772c234185b49a4c44c2b405c3cffc3d637d3` is the rejected-source control.
 - `node supabase/tests/ai_usage_scope.cjs` includes earlier test imports followed by unrelated legacy production charges, unknown-context imports, and the existing live transition overlap. The expected total retains distinct charges without adding the known live overlap twice.
+
+## Hosted verification, 2026-11-16
+
+The reviewed migration was applied as live version `20261116192404`, name `ai_usage_scope_and_receipts` (local file prefix `20261116183028`). Generated types and checks come from that hosted schema. A rollback-only hosted probe passed admin overview and child reads, non-admin refusal, and duplicate receipt rejection. No probe charge remains. The import-hold recheck at `a3041dab8` passed Standards and Spec with no blockers or P2 findings. Historical marking/explanation import remains held pending exact overlap evidence. Production configuration, deployment and browser proof are still pending.

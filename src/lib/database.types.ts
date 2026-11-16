@@ -101,50 +101,71 @@ export type Database = {
         Row: {
           calls: number
           child_id: string | null
+          cost_basis: string
           cost_usd: number | null
           created_at: string
           feature: string
           generation_id: string | null
           id: number
+          imported_at: string | null
           input_tokens: number | null
+          key_alias: string
+          key_id: string | null
           model: string
           output_tokens: number | null
           parent_id: string | null
           provider: string
+          receipt_id: string | null
+          run_id: string | null
           source_id: string | null
           source_kind: string | null
+          usage_context: string
         }
         Insert: {
           calls?: number
           child_id?: string | null
+          cost_basis?: string
           cost_usd?: number | null
           created_at?: string
           feature: string
           generation_id?: string | null
           id?: never
+          imported_at?: string | null
           input_tokens?: number | null
+          key_alias?: string
+          key_id?: string | null
           model: string
           output_tokens?: number | null
           parent_id?: string | null
           provider: string
+          receipt_id?: string | null
+          run_id?: string | null
           source_id?: string | null
           source_kind?: string | null
+          usage_context?: string
         }
         Update: {
           calls?: number
           child_id?: string | null
+          cost_basis?: string
           cost_usd?: number | null
           created_at?: string
           feature?: string
           generation_id?: string | null
           id?: never
+          imported_at?: string | null
           input_tokens?: number | null
+          key_alias?: string
+          key_id?: string | null
           model?: string
           output_tokens?: number | null
           parent_id?: string | null
           provider?: string
+          receipt_id?: string | null
+          run_id?: string | null
           source_id?: string | null
           source_kind?: string | null
+          usage_context?: string
         }
         Relationships: [
           {
@@ -10707,6 +10728,13 @@ export type Database = {
       send_scan_photos: {
         Args: { p_child: string; p_ids: string[]; p_parent: string }
         Returns: string[]
+      }
+      send_scan_photos_receipt: {
+        Args: { p_child: string; p_ids: string[]; p_parent: string }
+        Returns: {
+          newly_sent: string[]
+          sent: string[]
+        }[]
       }
       send_workbook_comments: {
         Args: {
