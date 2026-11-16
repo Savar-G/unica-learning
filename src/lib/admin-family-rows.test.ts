@@ -1,6 +1,9 @@
 // The family and email pages read only their families' dashboard rows (familyDashboardRows): through a fake PostgREST
 // server and a fake Stripe, the family buildDashboard works out from them equals the one from the whole read
 // (dashboardRows), every database read filters by the family or by id, and Stripe is asked only about the family's cards.
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { EmailView } from "@/components/admin-email";
 import { createClient } from "@supabase/supabase-js";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { Database } from "@/lib/database";
@@ -97,14 +100,14 @@ const tables: Record<string, Row[]> = {
   test_accounts: [{ parent_id: C }],
 };
 
-function server() {
+function server(planRows = tables.plan_starts) {
   const requests: string[] = [];
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input instanceof Request ? input.url : input));
     const name = url.pathname.split("/").at(-1)!;
     requests.push(`${name}?${[...url.searchParams].filter(([k]) => !["select", "order", "offset", "limit"].includes(k)).map(([k, v]) => `${k}=${v}`).join("&")}`);
     if (name === "admin_team_ids") return Response.json([]);
-    let rows = [...(tables[name] ?? [])];
+    let rows = [...(name === "plan_starts" ? planRows : tables[name] ?? [])];
     for (const [key, value] of url.searchParams) {
       if (["select", "order", "offset", "limit"].includes(key)) continue;
       if (value.startsWith("eq.")) rows = rows.filter((r) => String(r[key]) === value.slice(3));
@@ -217,4 +220,19 @@ it("opens the exact plan generation and its stored copy with delivery evidence",
   expect(await getEmailCopy(admin, `${CARD_A1}:2:plan`)).toMatchObject({ outcome: "unknown", subject: "Your plan restarted", events: [] });
   expect(await emailParent(admin, `${CARD_A1}:99:plan`)).toBeNull();
   for (const bad of [`${CARD_A1}:0:plan`, `${CARD_A1}:-1:plan`, `${CARD_A1}:1.5:plan`, `${CARD_A1}:1e2:plan`, `${CARD_A1}:1:plan:x`]) expect(await emailParent(admin, bad)).toBeNull();
+});
+
+it.each(["sending", "unknown"])("keeps %s truthful on the plan email detail page", async (status) => {
+  const { admin } = server([{ ...tables.plan_starts[0], email_send_status: status, email_provider_id: null, email_sent_at: null }]);
+  const d = buildDashboard(await familyDashboardRows(admin, [A]), "all", now);
+  const e = d.emails.find((e) => e.id === `${CARD_A1}:1:plan`)!;
+  const copy = await getEmailCopy(admin, e.id);
+  const html = renderToStaticMarkup(createElement(EmailView, { e, copy, ctx: { path: "/admin/emails", query: {}, demo: false }, now: now.toISOString() }));
+  if (status === "sending") {
+    expect(html).toContain("Sending: no answer from Resend yet");
+    expect(html).not.toContain("Delivery unknown");
+  } else {
+    expect(html).toContain("Delivery unknown");
+    expect(html).not.toContain("Sending: no answer from Resend yet");
+  }
 });
