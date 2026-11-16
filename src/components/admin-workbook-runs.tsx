@@ -168,7 +168,7 @@ function MacWait({ run, state, worker }: { run: WorkbookRun; state: RunState; wo
   }
   return <div className="adm-wb-wait" role="status">
     <b>{stalled ? "No progress for 6 minutes. The workbook computer is offline." : "Waiting for the workbook computer."}</b>
-    <p>The workbook computer {worker ? `was last seen ${when(worker.seenAt)}` : "has never run"}. The run starts when it is back, on the Claude subscription. To make it now instead, run it on the server with the paid API.</p>
+    <p>The workbook computer {worker ? `was last seen ${when(worker.seenAt)}` : "has never run"}. The run starts when it is back, on the selected subscription. To make it now instead, run it on the server with the paid API.</p>
     <RunOnServer runId={run.id} />
   </div>;
 }

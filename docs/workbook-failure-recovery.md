@@ -19,9 +19,11 @@ The admin's collapsed AI section shows unavailable attempts and missing results 
 ## Regression evidence
 
 - Five new cases first failed on the previous behavior: capacity error masking, unavailable writer, unavailable solver, restored provider outage, and the misleading admin summary.
-- The focused job/fallback/workbook-AI/solve-check/admin suites pass 155 tests, including temporary-crash recovery and outage during an incomplete-response retry.
+- The focused job/generator/fallback/workbook-AI/solve-check/admin suites pass 303 tests, including temporary-crash recovery, mixed temporary/permanent provider failures, outage during an incomplete-response retry, and waiting for sibling quality-gate persistence before an outage escapes.
 - Tests use public interfaces, synthetic data, in-memory stores and fake providers. No customer generation was restarted and no paid request was made for these tests.
 - Local logs: `/tmp/workbook-failure-red.log`, `/tmp/workbook-failure-focused.log`.
+
+Independent review found two P2 edge cases: the last fallback's lasting failure could hide a still-retryable primary, and a solver rejection could escape before a sibling quality gate saved. Both now have regressions that failed before their repair (`/tmp/workbook-failure-review-red.log`) and pass afterward (`/tmp/workbook-failure-review-focused.log`). The initial full-suite attempt was stopped as obsolete after these findings; it is incomplete, not a pass.
 
 ## Layout work still required
 

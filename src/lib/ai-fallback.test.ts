@@ -58,6 +58,23 @@ describe("fallbackAiClient", () => {
     expect(await state.client.json(request, signal())).toEqual({ by: "subscription" });
   });
 
+  it.each(["subscription", "api"] as const)("keeps the %s retryable when its permanent fallback fails", async (primary) => {
+    const state = primary === "subscription"
+      ? setup({ sub: [new SubscriptionUnavailable("crash", "temporary crash"), { by: "recovered" }], api: [new Error("OpenRouter answered 402: no credits")] })
+      : setup({ primary, api: [new Error("OpenRouter answered 503: unavailable"), { by: "recovered" }], sub: [limit()] });
+    await expect(state.client.json(request, signal())).rejects.not.toBeInstanceOf(WorkbookAiUnavailable);
+    expect(state.gate.off[primary]).toBeUndefined();
+    expect(await state.client.json(request, signal())).toEqual({ by: "recovered" });
+  });
+
+  it("stops retrying when both configured providers are permanently unavailable", async () => {
+    const state = setup({ sub: [limit()], api: [new Error("OpenRouter answered 402: no credits")] });
+    await expect(state.client.json(request, signal())).rejects.toBeInstanceOf(WorkbookAiUnavailable);
+    await expect(state.client.json(request, signal())).rejects.toBeInstanceOf(WorkbookAiUnavailable);
+    expect(state.sub!.seen).toHaveLength(1);
+    expect(state.api!.seen).toHaveLength(1);
+  });
+
   it("answers from the subscription first, at no cost, under the run's model name", async () => {
     const s = setup({});
     expect(s.client.model).toBe("anthropic/claude-sonnet-5.5");

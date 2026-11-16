@@ -1885,7 +1885,7 @@ async function solveChecks(input: GenerateInput, deps: GenerateDeps, w: PageWork
     if (b.check.status === "failed" || !b.package) return;
     const key = solveKey(w.number, seq, id);
     const pkg = b.package;
-    const [verdict, gate] = await Promise.all([
+    const [solveResult, gateResult] = await Promise.allSettled([
       (async () => {
         let kept = w.solves.get(key);
         if (!kept) {
@@ -1899,6 +1899,10 @@ async function solveChecks(input: GenerateInput, deps: GenerateDeps, w: PageWork
       })(),
       askGate(input, deps, w, id, key, pkg),
     ]);
+    if (solveResult.status === "rejected") throw solveResult.reason;
+    if (gateResult.status === "rejected") throw gateResult.reason;
+    const verdict = solveResult.value;
+    const gate = gateResult.value;
     const reasons: string[] = [];
     if (verdict && verdict.status !== "agreed") {
       // A step template story the reader could not answer as reworded keeps the template's own checked words: the

@@ -79,10 +79,11 @@ export function fallbackAiClient(o: FallbackOptions): AiClient {
   const now = o.now ?? (() => Date.now());
   const order: AiProvider[] = o.primary === "subscription" ? ["subscription", "api"] : ["api", "subscription"];
   const subscriptionModel = o.subscription?.model ?? o.model;
+  const canUse = (provider: AiProvider) => (provider === "subscription" ? !!o.subscription : !!o.api) && !gate.off[provider];
   return {
     model: o.model,
     async json(request, signal) {
-      const usable = order.filter((p) => (p === "subscription" ? !!o.subscription : !!o.api) && !gate.off[p]);
+      const usable = order.filter(canUse);
       if (usable.length === 0) {
         const why = AI_PROVIDERS.flatMap((p) => (gate.off[p] ? [`${p === "subscription" ? "the subscription" : "the API"}: ${gate.off[p]}`] : []));
         throw new WorkbookAiUnavailable(`No AI provider can take the call${why.length ? ` (${why.join("; ")})` : ""}.`);
@@ -135,8 +136,9 @@ export function fallbackAiClient(o: FallbackOptions): AiClient {
         if (!down || o.singleDispatch) throw error;
         if (last) {
           const other = provider === "subscription" ? "the API (no API key, or it is off for this run)" : "the subscription (none here, or it is off for this run)";
-          const reason = `${message(error)}; no fallback: ${other}`;
-          if (lasting) throw new WorkbookAiUnavailable(reason);
+          const retryable = order.some(canUse);
+          const reason = `${message(error)}; ${retryable ? "a configured provider can be retried" : `no fallback: ${other}`}`;
+          if (!retryable) throw new WorkbookAiUnavailable(reason);
           throw new Error(reason);
         }
       }

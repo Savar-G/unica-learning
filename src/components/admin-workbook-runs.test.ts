@@ -78,6 +78,14 @@ it("shows an unavailable subscription instead of claiming no calls were logged",
   expect(text).not.toContain("calls on the Claude subscription");
 });
 
+it("shows an incomplete provider call instead of claiming no calls were logged", () => {
+  const detail = runDetail("agreed");
+  detail.aiCalls.incomplete = 1;
+  const text = visible(markup(detail));
+  expect(text).not.toContain("No AI calls logged yet");
+  expect(text).toContain("1 call without a saved result");
+});
+
 // All four labels must agree in the actual component, through its public interface.
 describe("admin workbook check labels (R379-1)", () => {
   it.each([
