@@ -40,7 +40,8 @@ export const NOTE_PROMPT_VERSION = "call-note-3";
 /** The AI stops after this long; then the note is code only. */
 export const NOTE_AI_MS = 15_000;
 /** The token for the child's first name in a stored sentence. */
-export const CHILD = "{child}";
+import { CHILD } from "@/lib/maya-call-note-display";
+export { CHILD, noteSentences, noteTranscriptLines } from "@/lib/maya-call-note-display";
 /** The token for the child's name in a call's trace (src/lib/maya-trace.ts). */
 const TRACE_NAME = "{name}";
 
@@ -409,19 +410,6 @@ export function noteTranscript(trace: MayaTrace, childName: string | readonly st
 function heldDelivered(trace: MayaTrace): boolean {
   const held = heldSentences(false).join(" ");
   return trace.turns.some((t) => t.kind === "maya" && !!t.output && t.output.say.some((said) => said.includes(held)));
-}
-
-/** Puts the child's first name in place of {child}. */
-const fillName = (s: string, childName: string) => s.split(CHILD).join(childName.trim() || "Your child");
-
-/** The note's sentences for the screen, with the child's first name in place of {child}. */
-export function noteSentences(note: Pick<CallNote, "sentences" | "warm">, childName: string): string[] {
-  return [...note.sentences, ...(note.warm ? [note.warm] : [])].map((s) => fillName(s, childName));
-}
-
-/** The note's transcript for the screen, with the child's first name in place of {child}. */
-export function noteTranscriptLines(note: Pick<CallNote, "transcript">, childName: string): NoteTranscriptLine[] {
-  return note.transcript.map((l) => ({ ...l, text: fillName(l.text, childName) }));
 }
 
 /**
