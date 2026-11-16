@@ -10,3 +10,11 @@ Branch: `site/maya-chat-stream-activation`.
 4. Run focused randomized tests through the shared gate, a relevant type check and lint. Open and link a draft PR. Write the completion report.
 
 The lead applies SQL, regenerates types and checks, runs hosted proof, merges and sets production configuration. This child makes no hosted, credential, live model, browser or vault operation. Keep the credit hold and the local server at port 43125.
+
+## Hosted schema verification (2026-11-16)
+
+The lead applied `20261116192537_maya_stream_probe_calls.sql` through Supabase MCP. The live history records version `20261116204408`, name `maya_stream_probe_calls`. Column types and NOT NULL match the source table. RLS is enabled. There are no policies, user triggers or foreign keys. The service role can select, insert, update and delete. Both browser roles were refused for each operation. All 14 invalid identity cases were rejected in a rolled-back transaction. The probe table was empty after rollback.
+
+`npm run db:types` and `npm run db:checks` generated the schema files from the live project. The output also includes concurrent additive AI usage and receipt schema already applied by other work. The application type check and 26 state-list checks passed. Hosted process recovery remains a separate required check.
+
+Review A found that the former rollback pins omit the late technical-outcome repair. The corrected off procedure keeps the repaired release and all pending records. No rollback target may remove that repair while an incomplete streamed call remains unsettled.
