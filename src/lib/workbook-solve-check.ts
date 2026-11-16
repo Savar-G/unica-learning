@@ -13,7 +13,7 @@
 // Pure TypeScript: no Next.js, React, network, database, clock or randomness.
 import { withTimeLimit, type AiClient } from "@/lib/ai-client";
 import { WorkbookAiUnavailable } from "@/lib/workbook-ai-unavailable";
-import { valueText, type Figure, type QuestionPackage } from "@/lib/question-package";
+import { valueText, type AnswerValue, type Figure, type QuestionPackage } from "@/lib/question-package";
 import { isCodeWorded } from "@/lib/workbook-generator-items";
 
 /** One answer region as the child sees it: its id and what it asks for. */
@@ -110,6 +110,15 @@ function shownWords(p: QuestionPackage): string | null {
   return parts.length ? parts.join(" ") : null;
 }
 
+/** A whole-number quotient may also be written with an explicit zero remainder. Derive this from code's operation,
+ * never by parsing the solver's answer; a different quotient or remainder still fails the comparison. */
+function zeroRemainderForm(operation: QuestionPackage["operation"], answer: AnswerValue): string[] {
+  if (operation?.kind !== "divide" || answer.type !== "number" || !Number.isInteger(answer.value)) return [];
+  const [dividend, divisor] = operation.operands;
+  return Number.isSafeInteger(dividend) && Number.isSafeInteger(divisor) && divisor > 0
+    && dividend % divisor === 0 && dividend / divisor === answer.value ? [`${answer.value} R 0`] : [];
+}
+
 /** The printed question and its key, or null when it has no box or choice with an answer (nothing to check). */
 export function printedQuestion(p: QuestionPackage): { question: PrintedQuestion; key: KeyedBox[] } | null {
   const regions = p.item?.regions ?? [];
@@ -120,7 +129,7 @@ export function printedQuestion(p: QuestionPackage): { question: PrintedQuestion
     if (r.kind === "box" && r.answer) {
       boxes.push({ id: r.id, asks: r.label ? `a box labelled "${r.label}"` : "a box for the answer", ...(r.answer.type === "number" ? { numberOnly: true as const } : {}) });
       const accepted = operationBoxes.has(r.id) ? p.answer?.accepted ?? [] : [];
-      key.push({ question: "question", box: r.id, right: [r.answer, ...accepted].map(valueText), choice: false });
+      key.push({ question: "question", box: r.id, right: [...[r.answer, ...accepted].map(valueText), ...(operationBoxes.has(r.id) ? zeroRemainderForm(p.operation, r.answer) : [])], choice: false });
     }
     if (r.kind === "choice" && r.answer) {
       boxes.push({ id: r.id, asks: `${r.mark} one of: ${r.choices.join(" | ")}${r.label ? ` (${r.label})` : ""}` });
@@ -143,7 +152,7 @@ export function toSolve(p: QuestionPackage): SolveRequest {
   const e = p.easierExample;
   if (e) {
     questions.push({ id: "easier", text: e.text, picture: null, shown: null, boxes: [{ id: "answer", asks: "a box for the answer", ...(e.answer.type === "number" ? { numberOnly: true as const } : {}) }] });
-    key.push({ question: "easier", box: "answer", right: [valueText(e.answer)], choice: false });
+    key.push({ question: "easier", box: "answer", right: [valueText(e.answer), ...zeroRemainderForm(e.operation, e.answer)], choice: false });
   }
   return { questions, key };
 }

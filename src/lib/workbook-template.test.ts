@@ -4,7 +4,10 @@ import { packageItem } from "@/lib/question-package";
 import { workbookProblem } from "@/lib/workbook-content";
 import { renderWorkbook, type DraftPage, type PrintEngine, type WorkbookDraft } from "@/lib/workbook-render";
 import { sampleBook } from "@/lib/workbook-sample-book";
-import { bandOf, COVER_FOR_CHARS, coverForLine, pagePlan, reviewLayout, workbookTemplate } from "@/lib/workbook-template";
+import { bandOf, COVER_FOR_CHARS, coverForLine, FOUR_DIGIT_LEVEL, pagePlan, reviewLayout, textRoom, workbookTemplate } from "@/lib/workbook-template";
+import { levelRange } from "@/lib/workbook-book";
+import { buildStepItem, stepTemplateItem } from "@/lib/workbook-step-items";
+import { bcStepProgressions } from "@/lib/workbook-curriculum";
 import { generatedDayTime } from "@/lib/workbook-feedback-check";
 import { Window } from "happy-dom";
 import type { Block, DayContent } from "@/lib/workbook-page";
@@ -33,6 +36,52 @@ const parsedPage = (html: string) => {
 };
 
 describe("the workbook templates", () => {
+  // Cedric's printed pages (2026-11-13, #1116): a child's four digits did not fit a 64 px box. A 4-digit answer prints
+  // in a 96 px box; a 3-digit answer keeps its 64 px box.
+  // (#1116) The writer's text budget beside an answer box assumes the box it will print: 96 px from the level whose
+  // numbers reach 10,000, 64 px before it. The level is the curriculum's, not a guess.
+  it("budgets question text beside a 96 px box from the level where numbers reach 10,000", () => {
+    const curriculum = bcStepProgressions();
+    expect(levelRange(curriculum, FOUR_DIGIT_LEVEL).max).toBeGreaterThanOrEqual(10_000);
+    expect(levelRange(curriculum, FOUR_DIGIT_LEVEL - 1).max).toBeLessThan(10_000);
+    for (const slot of ["on-your-own", "practice-row", "remember-these"] as const) {
+      const before = textRoom(slot, FOUR_DIGIT_LEVEL - 1, 8, true)!, at = textRoom(slot, FOUR_DIGIT_LEVEL, 8, true)!;
+      // The same band (mid) at both levels: the only difference is the 32 px more box.
+      // 32 px of 15 px text at half an em a character: 4 or 5 characters a line fewer.
+      expect(before.perLine - at.perLine, slot).toBeGreaterThanOrEqual(4);
+      expect(before.perLine - at.perLine, slot).toBeLessThanOrEqual(5);
+    }
+  });
+
+  it("prints a 4-digit answer box 96 px wide and keeps a 3-digit one at 64 px", () => {
+    const draft = book("U16"), p = first(draft, "practice");
+    const answer = (value: number) => (q: DraftPage["questions"][number]) => {
+      const item = packageItem(q.package);
+      return { ...q, package: { ...q.package, item: { ...item, regions: item.regions.map(r => r.kind === "box" ? { ...r, answer: { type: "number" as const, value } } : r) } } };
+    };
+    const page = { ...p, questions: p.questions.map((q, i) => i === 0 ? answer(7896)(q) : i === 1 ? answer(459)(q) : q) };
+    const root = parsedPage(workbookTemplate().page(page, { qr: "", qrUrl: "" }, draft)!);
+    const width = (n: number) => Number(/width:(\d+)px/.exec(root.querySelector(`.ab[data-measure="question-${n}-answer"]`)?.getAttribute("style") ?? "")?.[1]);
+    expect(width(page.questions[0].number)).toBe(96);
+    expect(width(page.questions[1].number)).toBe(64);
+  });
+
+  it("names two LCM methods from the declared skill when its text includes multiplication", () => {
+    const draft = book("U19"), page = first(draft, "practice");
+    if (page.content?.kind !== "day") throw new Error("not a day");
+    const fill = stepTemplateItem({ curriculum: bcStepProgressions(), skill: "6.4-lcm", step: 1,
+      place: "solve-it-two-ways", level: 19, day: 3, seed: 7, attempt: 0, ordinal: 0 })!;
+    expect(fill).not.toBeNull();
+    const built = buildStepItem(fill.ref, fill.text, { id: "q1", workbookId: draft.id, page: page.number, question: 1, level: 19, skills: ["6.4-lcm"] }, "code");
+    if (!built.package) throw new Error("no package");
+    built.package.text = "Find the first shared multiple in 6 × 1, 6 × 2, 6 × 3 and 9 × 1, 9 × 2.";
+    const p = { ...page, questions: [{ number: 1, package: built.package }], content: { ...page.content,
+      blocks: [{ slot: "solve-it-two-ways" as const, items: [1] }] } };
+    const root = parsedPage(workbookTemplate().page(p, { qr: "", qrUrl: "" }, draft)!);
+    const labels = [...root.querySelectorAll(".ways2 .lab")].map(n => n.textContent);
+    expect(labels).toEqual(["Method 1: list both sets of multiples", "Method 2: test multiples of the larger number"]);
+  });
+
   // Savar's print review (2026-11-09): "Remember these" reads "Review", never twice on a page, and "Remember" once.
   describe("Review and Remember, said once", () => {
     const review = (title: string, blocks: (n: number[]) => Block[]) => {
@@ -184,6 +233,18 @@ describe("the workbook templates", () => {
     const html = template.page({ ...p, content: { ...p.content, blocks: p.content.blocks.map(b => ({ ...b, extra: false })) } }, { qr: "", qrUrl: "" }, draft)!;
     expect(html).toBe(original);
     expect(parsedPage(html).querySelectorAll('[data-measure^="chipbadge-extra-"], .optional-block')).toHaveLength(0);
+  });
+
+  it("prints the four parent instructions and the work reminder for a first book", () => {
+    const draft = book("U10"), plan = first(draft, "how-plan");
+    if (plan.content?.kind !== "how-plan") throw new Error("not the plan");
+    plan.content.workbook = 1;
+    const root = parsedPage(workbookTemplate().page(plan, { qr: "", qrUrl: "" }, draft)!);
+    expect([...root.querySelectorAll(".hw .chip span")].map(n => n.textContent)).toEqual(["5 days a week", "Scan", "Stuck?", "Fix it"]);
+    expect(root.querySelector('[data-measure="slot-how-1"]')?.textContent).toBe("Sign in at unicalearning.com/account, then choose Scan pages.");
+    expect(root.querySelector('[data-measure="slot-how-2"]')?.textContent).toBe("Ask for help using Maya, the AI Teaching Assistant.");
+    expect(root.querySelector('[data-measure="slot-how-3"]')?.textContent).toBe("Questions your child needs to practise can return in the next workbook.");
+    expect(root.querySelector(".how mark")?.textContent).toBe("Show your work when the question asks.");
   });
 
   it("prints required minutes from the draft in How it works and each plan row", () => {

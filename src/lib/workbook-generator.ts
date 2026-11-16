@@ -4177,31 +4177,43 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
         const forms=()=>new Set(current.flatMap(o=>o.package && o.place!=="warm-up" ? [printedForm(o.package)] : []));
         const fewForms=issues.some(i=>/contexts? or formats?/.test(i.reason)) && forms().size<3 && !!q.package && q.place!=="warm-up" && current.filter(o=>o.package && printedForm(o.package)===printedForm(q.package!)).length>=2;
         const frameAgain=issues.some(i=>i.reason.startsWith(`question ${q.number} uses the sentence frame`) || /sentence frame/.test(i.reason) && i.reason.includes("times") && !!q.package && i.reason.includes(`"${sentenceFrameOf(q.package)}"`));
-        if(fixable.every(i=>i.kind==="variety") && q.package && (counts.get(kindOf(q)) ?? 0)<=limit && !fewForms && !frameAgain) return q;
+        // Different sentence frames can still be the same story kind, such as two equal-groups stories.
+        const stories = current.filter(o => o.package && ["word-problems", "solve-it-two-ways"].includes(o.place ?? ""));
+        const currentStory = q.package ? storyKind(q.package.text) : null;
+        const storyKinds = new Set(stories.flatMap(o => storyKind(o.package!.text) ?? []));
+        const repeatedStory = issues.some(i => i.reason.startsWith("the stories page")) && stories.includes(q)
+          && !!currentStory && storyKinds.size < Math.min(input.plan.level >= 10 ? 3 : 2, stories.length)
+          && stories.filter(o => storyKind(o.package!.text) === currentStory).length > 1;
+        if(fixable.every(i=>i.kind==="variety") && q.package && (counts.get(kindOf(q)) ?? 0)<=limit && !fewForms && !frameAgain && !repeatedStory) return q;
         const others=pages.flatMap(p=>p.questions.filter(other=>p.number!==page.number || other.number!==q.number)).concat(current.slice(0,index));
         const keys=new Set([...others.flatMap(other=>other.package && other.place!=="warm-up" ? [keyOf(other.package)] : []), ...pages.flatMap(p=>(p.panelExamples ?? []).flatMap(e=>e ? [keyOf(e)] : []))]);
         const frames=new Set(others.flatMap(other=>other.package && wordedTask(other.package) ? [storyFrame(other.package.text)] : []));
         // Its own step first, then (late attempts) an earlier step the book taught or the day reviews.
         for(const attempt of [...Array.from({length:128},(_,k)=>k+2), ...Array.from({length:96},(_,k)=>LATE_ATTEMPT+k)]) {
           const c=contractFor(input,w,slot,attempt);
-          if(!c || c.source!=="code") continue;
+          if(!c || c.source!=="code" && !(repeatedStory && c.source==="story")) continue;
           const b=buildPlannedItem(c,c.item,{id:q.package?.id ?? `${input.workbookId}:${page.number}:${q.slot}`,workbookId:input.workbookId,page:page.number,question:q.number,level:input.plan.level,skills:[c.item.skill]});
           if(!b.package || b.check.status==="failed" || levelRange(b.package, input) || dayProblem(input, b.package, w.day,slot.place ?? "")) continue;
           if(keys.has(keyOf(b.package)) || repairKeys.has(keyOf(b.package)) || wordedTask(b.package) && !c.template && (frames.has(storyFrame(b.package.text)) || repairFrames.has(storyFrame(b.package.text)))) continue;
           const type=kindOf({itemPlan:c,package:b.package}),old=q.package ? kindOf(q) : "";
           if(current.length>=3 && (counts.get(type) ?? 0)-(type===old ? 1 : 0)>=limit) continue;
           if(fewForms && forms().has(printedForm(b.package))) continue;
+          if (repeatedStory) {
+            const kind = storyKind(b.package.text);
+            if (!kind || stories.some(o => o !== q && storyKind(o.package!.text) === kind)) continue;
+          }
           const sentence=sentenceFrameOf(b.package);
           if(sentence && current.some((o,k)=>k!==index && o.package && sentenceFrameOf(o.package)===sentence)) continue;
           // A stem twice a page; a story too easy for the level; a Challenge template once (as the planner).
           const stem=stemOf(b.package);
           if(stem && current.filter((o,k)=>k!==index && o.package && o.place!=="warm-up" && stemOf(o.package)===stem).length>=2) continue;
-          if(tooEasyStory(input,slot,c,b.package)) continue;
+          if(tooEasyStory(input,slot,c,b.package) || notAStory(input,slot,c,b.package,w.page.type)) continue;
           if(c.template && slot.place!=="challenge" && slot.place!=="warm-up" && current.filter((o,k)=>k!==index && o.place!=="warm-up" && o.place!=="challenge" && o.itemPlan?.template && o.itemPlan.template.skill===c.template!.skill && o.itemPlan.template.step===c.template!.step && o.itemPlan.template.index===c.template!.index).length>=2) continue;
           if(slot.place==="challenge" && c.template && current.some((o,k)=>k!==index && o.itemPlan?.template && o.itemPlan.template.skill===c.template!.skill && o.itemPlan.template.step===c.template!.step && o.itemPlan.template.index===c.template!.index)) continue;
           // At most twice a day: the day's other pages count too.
           if(sentence && pages.filter(p=>p.day===page.day && p.number!==page.number).flatMap(p=>p.questions).filter(o=>o.package && o.place!=="warm-up" && sentenceFrameOf(o.package)===sentence).length + current.filter((o,k)=>k!==index && o.package && sentenceFrameOf(o.package)===sentence).length>=2) continue;
-          const fresh={...q,check:b.check,package:b.package,itemPlan:c};
+          const fresh={...q,check:b.check,package:b.package,itemPlan:c, itemStep: b.itemStep ?? null,
+            stepDeclaration: b.stepDeclaration, itemStepReason: b.itemStepReason ?? null};
           slot.contract = c;
           current[index]=fresh;
           repairKeys.add(keyOf(b.package));

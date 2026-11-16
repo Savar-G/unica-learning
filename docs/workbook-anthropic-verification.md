@@ -32,3 +32,15 @@ The final U4/U16 replay pair exited 0 with no new API requests. U4 retained 28 p
 The full follow-up test run passed 942 files and 30,092 tests. One generated-workbook integration fixture still used the old page positions of five missing-factor equations. It found all five questions but failed when a question moved. The fixture now finds the same five exact factor/product equations by their printed text, retaining all operation, answer, tutor and printed-operand checks. The isolated real-fit CLI test passed in 92 seconds. The full suite was not repeated for that test-only repair.
 
 The follow-up `npx eslint src` and `npm run build` both exited0. Logs use `/tmp/workbook-live-layout-full-*` and `/tmp/workbook-live-layout-integration-fixed.log`.
+
+## Printed workbook feedback and live content checks
+
+The three feedback PRs, #1118, #1119 and draft #1120, were still open when the authorized direct-API run finished. This round imports their source changes into the recovery branch: wider four-digit answer boxes and the matching writer budget, no calculation space for bare equations without carrying or borrowing, and 96 px below each two-method label. The held page-spacing changes from #1116 remain held. The larger method boxes are conditional on the combined full-book checks preserving required practice and physical fit.
+
+The How it works footer follows Cedric's reference: four centered instruction columns, the sign-in address kept on one line, and a yellow-highlighted reminder to show work when asked. Required minutes still come from the generated book, and Extra remains conditional on the plan.
+
+The first direct-API U19 draft completed at a recorded budget cost of $1.9637755. It was not ready to print: three failed questions affected four pages, and its PDF contained 60 of 64 planned pages. The writer and independent solver both ran. The failures were two unsupported generic division mistakes in Spot the error, an exact quotient rejected for including a zero remainder, and repeated story kinds.
+
+Normal numeric interval forms now keep divisibility Spot the error on its declared step. The solve check accepts an explicit zero remainder only when code's whole-number division and quotient establish it. The whole-book repair recognizes repeated story kinds across different sentence frames, keeps code-owned story text, and carries the replacement's provenance. LCM method labels now use the declared LCM template instead of treating its multiplication sign as a generic multiplication task.
+
+Focused print checks passed 131 tests in three files, including physical measurements under wrapped method labels and complete footer text at U4, U10 and U19. The step, solve-check, work-space and house-template checks passed 60 tests in four files. The story-repair and LCM-label regressions failed before their fixes and passed afterward. Independent standards and requirements reviews found no actionable defects in the pinned candidate patch. Complete combined samples, the final replay pair, the full gate and valid live PDFs remain pending at this checkpoint.

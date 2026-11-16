@@ -44,6 +44,31 @@ function oneOfEach(draft: WorkbookDraft): WorkbookDraft {
 }
 
 describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
+  // Cedric's printed pages (#1116): a Use 2 ways method label that wrapped to two lines left about 0.7 in to write in.
+  // Each method box now has at least 96 px under its label, and the two boxes of a question are the same height.
+  it.each(["U4", "U16"])("leaves 96 px to write under each Use 2 ways method label in %s", async level => {
+    const draft = book(level, 1);
+    const page = draft.pages.find(p => p.content?.kind === "day" && p.content.blocks.some(b => b.slot === "solve-it-two-ways"));
+    if (page?.content?.kind !== "day") throw new Error("no Use 2 ways page");
+    page.content.consistentLayout = true;
+    let measured: MeasuredElement[] = [];
+    const result = await renderWorkbook({ draft: { ...draft, pages: [page] }, parentId: PARENT,
+      template: { ...template, page: (p, parts) => template.page(p, parts, draft) },
+      engine: { print: async job => { const output = await engine.print(job); measured = output.measured; return output; } } });
+    expect(result.status === "failed" ? result.problems : []).toEqual([]);
+    const labels = measured.filter(m => m.name.startsWith("worklabel-"));
+    expect(labels.length).toBeGreaterThanOrEqual(2);
+    const boxes: MeasuredElement[] = [];
+    for (const [i, label] of labels.entries()) {
+      const box = measured.find(m => m.name === `region-${label.name.slice("worklabel-".length)}`)!;
+      expect(box.y + box.height - (label.y + label.height), label.name).toBeGreaterThanOrEqual(95.5);
+      boxes[i] = box;
+    }
+    expect(new Set(boxes.map(b => Math.round(b.height))).size).toBe(1);
+    // (At U4 the labels wrap to two lines, the printed case: the room is still 96 px under them.)
+    if (level === "U4") expect(Math.max(...labels.map(l => l.height))).toBeGreaterThan(30);
+  });
+
   it.each([3, 5, 7].flatMap(reviewFrom => [0, 4, 12].map(extraGap => [reviewFrom, extraGap])))("keeps split practice labels consistent (review from %i, extra gap %i)", async (reviewFrom, extraGap) => {
     const draft = book("U4", 1);
     const page = structuredClone(draft.pages.find(p => p.type === "practice-2")!);
@@ -119,6 +144,24 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
     const fonts = measured.filter(m => /^number-[12]$/.test(m.name)).map(m => m.font);
     expect(fonts).toHaveLength(2);
     expect(fonts[0]).toBe(fonts[1]);
+  }, 30_000);
+
+  it.each(["U4", "U10", "U19"])("prints the How it works instructions and highlighted work reminder in full in %s", async level => {
+    const draft = book(level, 1);
+    const page = draft.pages.find(p => p.type === "how-plan")!;
+    const { measured } = await printPage(page, draft);
+    const byName = new Map(measured.map(m => [m.name, m]));
+    expect(template.fit!(page, byName, draft)).toEqual([]);
+    const reminder = byName.get("slot-how-work")!;
+    expect(reminder.text).toBe("Show your work when the question asks.");
+    expect(reminder.visible && reminder.textPrinted).toBe(true);
+    const area = byName.get("slot-page")!;
+    expect(reminder.y + reminder.height).toBeLessThanOrEqual(area.y + area.height);
+    for (let i = 0; i < 4; i++) {
+      const instruction = byName.get(`slot-how-${i}`)!;
+      expect(instruction.visible && instruction.textPrinted).toBe(true);
+      expect(instruction.y + instruction.height).toBeLessThan(reminder.y);
+    }
   }, 30_000);
 
   it.each(["U4", "U16"])("prints one whole-page Extra label and generated required minutes in %s", async level => {

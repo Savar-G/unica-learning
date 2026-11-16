@@ -108,6 +108,8 @@ export const CARD_LINES = 3;
 const WORK_MIN = 64;
 /** The smallest answer box each way at any level (CONTEXT.md section 6). */
 export const ANSWER_MIN = 40;
+/** The writing room of each Use 2 ways method box under its label: about an inch, more for a longer calculation (#1116). */
+const twoWaysRoom = (p: QuestionPackage) => Math.max(96, questionWorkSpace(p));
 export const workMinimum = (level: number) => level <= 9 ? 120 : level <= 18 ? 140 : 160;
 export const questionNumber = (number: number): string => `${number}.`;
 
@@ -183,12 +185,17 @@ const textRoomOf = (width: number, font: number, lines: number, em = SANS_EM): T
  * - stories, How do you know?, the Mixed set, Challenge, Math in the world, Solve it two ways and test cards by their
  *   own blocks. Null for a panel (no question).
  */
+/** The first level whose numbers reach 10,000 (LEVEL_MAX, src/lib/workbook-book.ts): 4-digit answers are common from here. */
+export const FOUR_DIGIT_LEVEL = 13;
+
 export function textRoom(slot: SlotName, level: number, pages = 8, consistent = false): TextRoom | null {
   const band = bandOf(level);
   const six = pages <= 6 && band.name === "mid";
   const parent = band.name === "parent";
   const badge = band.name === "mid" ? 24 : 30;
-  const box = Math.max(64, band.box);
+  // From U13 the numbers reach 10,000 (LEVEL_MAX, src/lib/workbook-book.ts), so a 4-digit answer is common and prints
+  // in a 96 px box (boxWidth): the text beside it is budgeted for that box, not for 64 px (#1116).
+  const box = Math.max(level >= FOUR_DIGIT_LEVEL ? 96 : 64, band.box);
   // .pcard: (688 - 12) / 2, less its border (2) and padding (28), badge and one 10 px gap (no read-aloud mark, D-201).
   const cardWidth = (CONTENT_W - (consistent ? 32 : 12)) / 2 - 2 - 28 - badge - 10;
   const card = textRoomOf(cardWidth, band.body, CARD_LINES);
@@ -477,6 +484,9 @@ const CSS = `
 .hp .dn{width:56px;text-align:right}
 .hp .how{margin-top:auto;border-top:1px solid #0C0C0E;padding-top:14px;display:flex;flex-direction:column;gap:12px}
 .hp .hw{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.2fr) minmax(0,1fr) minmax(0,.9fr);gap:16px}
+.hp .hw>div{text-align:center}
+.hp .how-work{align-self:center;margin:12px 0 0;font-size:14px;line-height:1.4;font-weight:600;text-align:center}
+.hp .how-work mark{background:#FFD23F;color:#0C0C0E;padding:0 5px;box-decoration-break:clone}
 .hp .hw p{margin:8px 0 0;font-size:14px;overflow-wrap:normal}
 .hp .scan-address{display:inline-block;white-space:nowrap}
 .hp .chip{font-size:13px}
@@ -547,6 +557,8 @@ const CSS = `
 .pg.consistent[data-page-type="practice-2"] .q.seq-item{gap:4px}
 .pg.consistent .error-item .strip{min-height:48px}
 .pg.consistent .ways2 .wb{height:var(--work-min)}
+.pg.consistent .ways2{align-items:stretch}.pg.consistent .ways2>.rg{align-self:flex-end}
+.pg.consistent .ways2 .wb.room{height:auto;display:flex;flex-direction:column}.pg.consistent .ways2 .wb.room>i{display:block;flex:1 0 auto}
 /* Keep the writing region, but place it beside a single full-width numeric review task. */
 .pg.consistent .q.compact-wide{display:grid;grid-template-columns:22px minmax(100px,1fr) minmax(160px,1.3fr) auto;gap:12px;align-items:start}
 .pg.consistent .q.compact-wide>.n{grid-column:1;grid-row:1}.pg.consistent .q.compact-wide>.qb{grid-column:2;grid-row:1}
@@ -828,16 +840,20 @@ function answerChars(v: AnswerValue | null): number {
   return valueText(v).length;
 }
 
-/** An answer box's width by what goes in it (DESIGN.md section 4): 40 to 48 for 1 or 2 digits, up to 204 for words. */
+/**
+ * An answer box's width by what goes in it (DESIGN.md section 4): 40 to 48 for 1 or 2 digits, up to 204 for words. A
+ * 4-digit answer gets 96, not 64: a young child's four digits did not fit 64 px on a printed page (Cedric, 2026-11-13).
+ */
 function boxWidth(v: AnswerValue | null, band: Band): number {
   const n = answerChars(v);
-  const w = n <= 2 ? 48 : n <= 4 ? 64 : n <= 7 ? 96 : n <= 12 ? 140 : 204;
+  const w = n <= 2 ? 48 : n <= 3 ? 64 : n <= 7 ? 96 : n <= 12 ? 140 : 204;
   return Math.max(w, band.box);
 }
 
 /** The unit word after an answer box ("tiles", "cm"), or "". */
 /** Two ways to work a question, by what it asks: add, take away, multiply, share, or null. */
 function twoWays(p: QuestionPackage): [string, string] | null {
+  if (p.templateId?.startsWith("6.4-lcm#")) return ["list both sets of multiples", "test multiples of the larger number"];
   const t = `${p.operation?.kind ?? ""} ${p.text}`.toLowerCase();
   const small = Math.max(0, ...(p.text.match(/\d+/g) ?? []).map(Number)) < 20;
   if (small && /subtract|−|\s-\s|left|take|eats|gives|fewer|less|the rest/.test(t)) return ["count back", "count up from the smaller number"];
@@ -869,6 +885,8 @@ interface RegionOpts {
   /** Calculation space in a practice or review grid. */
   compactWork?: boolean;
   minimumWork?: number;
+  /** Writing room under the work box's label, whatever lines the label takes (Use 2 ways, #1116). */
+  writingRoom?: number;
   /** Show a box region's label before it ("ANSWER", "a)"). */
   labels?: boolean;
   /** Leave out the unit word after a box (a parent-led card has no room; its question names the unit). */
@@ -910,9 +928,12 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
     }
     case "work": {
       if (o.compactWork && o.band.consistentLayout) return `<div class="work-space" ${at} style="min-height:${Math.max(32, questionWorkSpace(q.package))}px"></div>`;
-      const h = o.minimumWork !== undefined ? `height:${o.minimumWork}px;--work-min:${o.minimumWork}px` : o.work === "fill" ? "" : `height:max(${o.work ?? 80}px,var(--work-min,64px))`;
       // The page's instruction names this question: its own "Show your work" says it again (Savar, book 1 review).
       const repeated = !!o.band.instructed?.has(q.number) && /^show your work$/i.test(r.label.trim());
+      // A method box is its label and then its writing room: a label that wraps makes the box taller, never the room
+      // smaller (Cedric's printed pages, #1116: two wrapped labels left about 0.7 in).
+      if (o.writingRoom !== undefined && !repeated) return `<div class="wb room" ${at}><span class="lab" ${measureAttr(`worklabel-${q.number}-${r.id}`)}>${escape(r.label)}</span><i style="height:${o.writingRoom}px"></i></div>`;
+      const h = o.minimumWork !== undefined ? `height:${o.minimumWork}px;--work-min:${o.minimumWork}px` : o.work === "fill" ? "" : `height:max(${o.work ?? 80}px,var(--work-min,64px))`;
       return `<div class="wb" ${at} style="${h}">${repeated ? "" : `<span class="lab">${escape(r.label)}</span>`}</div>`;
     }
     case "lines": {
@@ -1253,7 +1274,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
         const names = regionNames(q);
         // Each work area names a way to do it (#482 review at db3b1a0: two methods asked, none shown).
         const ways = twoWays(q.package);
-        const works = names.filter((x) => x.region.kind === "work").map((x, k) => regionHtml(q, ways && x.region.kind === "work" ? { ...x.region, label: `Method ${k + 1}: ${ways[k] ?? ""}`.trim() } : x.region, x.name, { band, work: 110, ...(c.consistentLayout ? { minimumWork: Math.max(102, questionWorkSpace(q.package) + 38) } : {}) })).join("");
+        const works = names.filter((x) => x.region.kind === "work").map((x, k) => regionHtml(q, ways && x.region.kind === "work" ? { ...x.region, label: `Method ${k + 1}: ${ways[k] ?? ""}`.trim() } : x.region, x.name, { band, work: 110, ...(c.consistentLayout ? { writingRoom: twoWaysRoom(q.package) } : {}) })).join("");
         const boxes = names.filter((x) => x.region.kind === "box").map((x) => regionHtml(q, x.region, x.name, { band, labels: true })).join("");
         return `<div class="tw" ${mark.question(q.number)}><div class="q"><span class="n">${questionNumber(q.number)}</span><span class="lab" style="color:#0C0C0E">${c.consistentLayout ? "Use 2 ways" : "Solve it two ways"}</span><span class="qb">${qtext(q)}</span></div><div class="ways2">${works}${boxes}</div></div>`;
       }).join("");
@@ -1619,11 +1640,11 @@ function howPlanPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, 
     { chip: { label: "5 days a week", cls: "c-pr", icon: ICONS.target }, text: times.size ? `Do the days in order, 5 days a week. About ${roundedMinutes(Math.max(...[...times.values()].map(t => t.requiredMinutes)))} minutes a day${extra ? ", plus Extra if there's time" : ""}.` : `Do the days in order, 5 days a week. ${c.minutes.min === c.minutes.max ? `About ${c.minutes.max}` : `${c.minutes.min} to ${c.minutes.max}`} minutes a day.` },
     { chip: { label: "Scan", cls: "c-mx", icon: ICONS.search }, text: "Sign in at unicalearning.com/account, then choose Scan pages." },
     { chip: { label: "Stuck?", cls: "c-ni", icon: ICONS.book }, text: "Ask for help using Maya, the AI Teaching Assistant." },
-    { chip: { label: "Fix it", cls: "c-fx", icon: ICONS.wrench }, text: c.workbook === 1 ? "Scan finished pages. Questions your child needs to practise can return in the next workbook." : "Anything your child got wrong in the previous workbook comes back as new questions." },
+    { chip: { label: "Fix it", cls: "c-fx", icon: ICONS.wrench }, text: c.workbook === 1 ? "Questions your child needs to practise can return in the next workbook." : "Anything your child got wrong in the previous workbook comes back as new questions." },
   ];
   return `<div class="pg mid">${scanMarks}<div class="hp" ${mark.slot("page")}><div class="top"><span>HOW IT WORKS · ${escape(c.child.toUpperCase())}'S PLAN</span><span>WORKBOOK ${c.workbook}</span></div>`
     + `<table><thead><tr><th style="width:96px">DAY</th><th>TOPIC</th><th style="width:96px">PAGES${times.size ? "<br>REQUIRED TIME" : ""}</th><th style="width:56px;text-align:right">DONE</th></tr></thead><tbody>${rows}</tbody></table>`
-    + `<div class="how"><span class="lab">How it works</span><div class="hw">${how.map((h, i) => `<div>${chipHtml(h.chip)}<p ${mark.slot(`how-${i}`)}>${escape(h.text).replace("unicalearning.com/account", `<span class="scan-address" ${mark.slot("scan-address")}>unicalearning.com/account</span>`)}</p></div>`).join("")}</div></div>`
+    + `<div class="how"><span class="lab">How it works</span><div class="hw">${how.map((h, i) => `<div>${chipHtml(h.chip)}<p ${mark.slot(`how-${i}`)}>${escape(h.text).replace("unicalearning.com/account", `<span class="scan-address" ${mark.slot("scan-address")}>unicalearning.com/account</span>`)}</p></div>`).join("")}</div><p class="how-work" ${mark.slot("how-work")}><mark>Show your work when the question asks.</mark></p></div>`
     + `</div>${footer(page, parts, c.id)}</div>`;
 }
 
@@ -1773,6 +1794,13 @@ export function fitProblems(page: DraftPage, measured: ReadonlyMap<string, Measu
         if (m.width < (c.consistentLayout ? 48 : ANSWER_MIN) - 0.5) small("answer box width", m.width, c.consistentLayout ? 48 : ANSWER_MIN);
       } else if (region.kind === "work") {
         const grid = ["remember-these", "now-you", "finish-these", "on-your-own", "practice-row", "unit-b-practice", "mixed-set", "friday-5"].includes(slotOf(q.number) ?? "");
+        const label = measured.get(`worklabel-${q.number}-${region.id}`);
+        if (c.consistentLayout && slotOf(q.number) === "solve-it-two-ways" && label) {
+          // The room under its label, measured: a wrapped label does not count as room (#1116).
+          const room = bottomOf(m) - bottomOf(label), minimum = twoWaysRoom(q.package);
+          if (room < minimum - .5) small("writing room under its label", room, minimum);
+          continue;
+        }
         const minimum = c.consistentLayout ? slotOf(q.number) === "solve-it-two-ways" ? Math.max(102, questionWorkSpace(q.package) + 38) : grid ? Math.max(32, questionWorkSpace(q.package)) : workMinimum(c.level) : WORK_MIN;
         if (m.height < minimum - .5) small("work box height", m.height, minimum);
       }

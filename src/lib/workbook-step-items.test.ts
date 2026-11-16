@@ -256,3 +256,24 @@ describe("step template items (#489)", () => {
     expect(seen.size).toBeGreaterThan(1);
   });
 });
+
+// A real U19 first book sent divisibility Spot the error to the generic operation writer.
+// Its division sums had no mistake code could show. Keep those slots on their declared step.
+it.each([1, 2, 3])("builds a checked own-step divisibility Spot the error for step %i", step => {
+  for (const seed of [2, 17, 83]) {
+    const filled = item("6.4-divisibility", step, "spot-the-error", seed, 0, 19);
+    expect(filled).not.toBeNull();
+    if (!filled) continue;
+    const built = buildStepItem(filled.ref, filled.text, place(19, filled.ref.skill), "code");
+    expect(built.check.status).toBe("checked");
+    expect(built.itemStep).toMatchObject({ skill: "6.4-divisibility", step });
+    expect(filled.ref.shown).not.toBe(filled.ref.answer);
+    if (!filled.text.startsWith("Write the multiple")) continue;
+    const numbers = filled.text.match(/\d+/g)!.map(Number);
+    const divisor = [10, 9, 8][step - 1];
+    const [lo, hi] = numbers.slice(-2);
+    const candidates = Array.from({ length: hi - lo - 1 }, (_, i) => lo + i + 1);
+    expect(candidates.length).toBeGreaterThan(1);
+    expect(candidates.filter(n => n % divisor === 0)).toEqual([Number(filled.ref.answer)]);
+  }
+});

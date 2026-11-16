@@ -78,6 +78,12 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
   },
   {
     skill: "6.4-divisibility", step: 1, name: "Last-digit rules: 2, 5, 10",
+    // Numeric normal practice keeps Spot the error on this step, without a generic division sum.
+    practice: [
+      { format: "bare", difficulty: "medium", text: "Write the multiple of 10 between {lo} and {hi}.",
+        answer: "lo + 10", slots: { n: "template_n0" },
+        derived: { lo: "n - n % 10", hi: "lo + 20" }, check: "hi <= 9999" },
+    ],
     templates: [
       hard("bare", "Smallest multiple of both 2 and 5 above {n}?", "n - n % 10 + 10", { n: "template_n0" }, {}, "n - n % 10 + 10 <= 9999"),
       hard("missing", "Count back from {n} to a multiple of 10. First smaller number: __.", "((n - 1) // 10) * 10", { n: "template_n0" }, {}, "((n - 1) // 10) * 10 >= 10"),
@@ -87,6 +93,12 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
   },
   {
     skill: "6.4-divisibility", step: 2, name: "Digit-sum rules: 3 and 9",
+    // Numeric normal practice keeps Spot the error on this step, without a generic division sum.
+    practice: [
+      { format: "bare", difficulty: "medium", text: "Write the multiple of 9 between {lo} and {hi}.",
+        answer: "lo + 9", slots: { n: "template_n" },
+        derived: { lo: "n - n % 9", hi: "lo + 18" }, check: "hi <= 9999" },
+    ],
     templates: [
       hard("bare", "Increase {n} to the next number divisible by 9. What is it?", "n - n % 9 + 9", { n: "template_n" }, {}, "n - n % 9 + 9 <= 9999"),
       hard("missing", "First multiple of 3 but not 9 after {n}: __.", "r if r % 9 != 0 else r + 3", { n: "template_n" },
@@ -97,6 +109,12 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
   },
   {
     skill: "6.4-divisibility", step: 3, name: "Rules for 4, 6 and 8",
+    // Numeric normal practice keeps Spot the error on this step, without a generic division sum.
+    practice: [
+      { format: "bare", difficulty: "medium", text: "Write the multiple of 8 between {lo} and {hi}.",
+        answer: "lo + 8", slots: { n: "template_n" },
+        derived: { lo: "n - n % 8", hi: "lo + 16" }, check: "hi <= 99999" },
+    ],
     templates: [
       hard("bare", "Smallest multiple of both 4 and 6 above {n}?", "n - n % 12 + 12", { n: "template_n" }, {}, "n - n % 12 + 12 <= 99999"),
       hard("missing", "The first multiple of both 6 and 8 after {n} is __.", "n - n % 24 + 24", { n: "template_n" }, {}, "n - n % 24 + 24 <= 99999"),
