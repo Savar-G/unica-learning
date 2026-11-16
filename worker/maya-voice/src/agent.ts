@@ -331,6 +331,8 @@ interface TurnPace {
   hold: unknown;
   ack: Promise<void> | null;
   ackOver: (() => void) | null;
+  /** The repair's own phrase was asked for in this turn (`VoiceSay.repairing`): never a second one. */
+  repairAsked: boolean;
   write(chunk: string | FlushSentinel): void;
   /** Ends the reply's stream. Nothing more can be written to it. */
   end(): void;
@@ -698,7 +700,7 @@ export class VoiceCallRun {
     const pace: TurnPace = {
       turnId,
       clock: new TurnClock(this.timers.now, speechEndedAt, heardAt, heard, { prepare: mark?.prepare ?? null, onMark: name => telemetry().turnMark(turnId, name) }), generation: this.generation,
-      writable: true, ready: false, closed: false, handle: this.speech, guided: false, ackStopped: false, ackWritten: false, ownSpeech: false, limit: null, hold: null, ack: null, ackOver: null, write: () => {}, end: () => {},
+      writable: true, ready: false, closed: false, handle: this.speech, guided: false, ackStopped: false, ackWritten: false, ownSpeech: false, limit: null, hold: null, ack: null, ackOver: null, repairAsked: false, write: () => {}, end: () => {},
       early: noEarly(), measured: false, plan: null, ackLimitAt: null,
     };
     this.pace = pace;
@@ -766,8 +768,9 @@ export class VoiceCallRun {
     // A new plan takes the audio from the old one, so the answer's board waits until the acknowledgement has played.
     if (pace.ack) await pace.ack;
     // Its end never came: its speech was stopped at the limit, so a word in this reply could not be read. A phrase that
-    // played has an ended voice stream, so the answer goes out as speech of its own, with a new stream.
-    if (pace.ackStopped || pace.ackWritten) return this.sayFirst(pace, turns);
+    // played has an ended voice stream, so the answer goes out as speech of its own, with a new stream. A repair phrase
+    // ended the reply's stream itself (`repairPhrase`): the answer is a speech of its own then too.
+    if (pace.ackStopped || pace.ackWritten || pace.ownSpeech) return this.sayFirst(pace, turns);
     pace.clock.held();
     const said: string[] = [];
     // A dropped turn must not stage: its speech cannot play, and its plan would take the board from the turn that
@@ -820,7 +823,12 @@ export class VoiceCallRun {
       // turn, none after a sentence, none while the child talks or a close or safety is due, never a repeat in the call.
       // The phrase is queued synchronously (`acknowledge` does not wait before it writes), so its id is known here.
       repairing: () => {
-        if (pace.ackLimitAt === null || pace.ack || early.closed) return null;
+        if (pace.ackLimitAt === null || early.closed || pace.repairAsked) return null;
+        pace.repairAsked = true;
+        // Call 21665dc6 (2026-11-15): a reply that cannot stream said its phrase at once, and the refused message's
+        // repair started 6.6 s later. "One phrase per turn" then left the child in silence until 10.6 s. A phrase that
+        // is over (or that was never said) no longer stops the repair's own phrase; one still playing does.
+        if (pace.ack) return pace.ackOver === null ? this.repairPhrase(pace) : null;
         this.clearLimit(pace);
         let queued: string | null = null;
         pace.ack = this.acknowledge(pace, (id) => { queued = id; });
@@ -1097,6 +1105,37 @@ export class VoiceCallRun {
 
   /** No newer turn replaced this one, and its speech can still play. */
   private ownsReply(pace: TurnPace) { return this.pace === pace && pace.writable && !pace.handle?.interrupted; }
+
+  /**
+   * The repair's own phrase after the turn's first phrase is over (call 21665dc6): the same rules as `acknowledge` (none
+   * after a sentence, while the child talks, or when a close or safety is due; never a repeat in the call), as a speech
+   * of its own. The reply's stream ends first: the voice closed it after the first phrase, so words written into it now
+   * are lost, and an open stream would hold this speech in the queue. The answer waits for this phrase as for the first.
+   * Returns the phrase's id, or null when none was said.
+   */
+  private repairPhrase(pace: TurnPace): string | null {
+    if (pace.guided || pace.early.waiting.length || pace.early.said.length || pace.ready || this.pace !== pace) return null;
+    const state = this.call.session;
+    if (!this.childHere || this.finishing || pace.generation !== this.generation || this.childTalking(pace)) return null;
+    if (state.safety.flagged || state.contentProblem !== null || state.outcome !== null || state.state === "TIME_CLOSE") return null;
+    if (this.acksRefused || this.call.lost) return null;
+    const phrase = nextAcknowledgement(this.call.id, this.call.acknowledged);
+    if (!phrase) return null;
+    pace.ownSpeech = true;
+    pace.end();
+    void this.stageBoard({}, false).catch(() => {});
+    this.agent.ungatedNext = true;
+    void this.call.acknowledge(phrase.id).then(saved => { if (!saved) this.acksRefused = true; }, () => { this.acksRefused = true; });
+    pace.clock.ackQueued(phrase.id);
+    const speech = this.sayAs(phrase.text, { addToChatCtx: false }, { turnId: pace.turnId, kind: "ack" });
+    pace.ack = new Promise<void>(resolve => {
+      pace.ackOver = resolve;
+      // A speech whose playback never ends must not hold the answer (ACK_HOLD_LIMIT_MS, as for the first phrase).
+      pace.hold = this.timers.set(ACK_HOLD_LIMIT_MS, () => { speech.interrupt(true); this.cutAck(pace); });
+      void speech.waitForPlayout().then(() => this.cutAck(pace), () => this.cutAck(pace));
+    });
+    return phrase.id;
+  }
 
   /**
    * Says the next phrase and waits for it to play. Never fails: the answer is what matters. `queued` hears the phrase's id

@@ -22,6 +22,11 @@ export const CONVERSATION_REVIEW_TIME_LIMIT_MS = 4_000;
  * passes a sentence. The math review has its own delay (MATH_REVIEW_HEDGE_MS).
  */
 export const REVIEW_HEDGE_MS = 2_500;
+/**
+ * The same on a voice turn (call 21665dc6, 2026-11-15): about the p90 of the safety review on the voice path (30 voice
+ * tutor turns on the real reviewer: p50 0.8 s, p90 1.9 s, max 2.5 s). A copy at 1.9 s keeps 2.1 s of a 4 s limit.
+ */
+export const VOICE_REVIEW_HEDGE_MS = 1_900;
 /** No second copy is sent when it would have less than this many ms before the time limit: it could not answer in time. */
 export const HEDGE_MIN_LEFT_MS = 1_000;
 /** The hedge delay for a review with time limit `ms`: `hedgeMs`, or none (Infinity) when the copy would have too little time. */
@@ -79,11 +84,12 @@ export function aiTalkReviewer(client: AiClient, options: { effort?: "minimal" |
  * line). The error's own text is never kept (a provider's message can hold a key): only fixed wording, with the
  * trace's fixed error code for a failed call (`classifyError`: "the review call failed (http_429)", #604).
  */
-export async function runReview(reviewer: TalkReviewer, input: TalkReviewInput, ms: number = REVIEW_TIME_LIMIT_MS, onError?: (e: unknown) => void, hedgeMs: number = REVIEW_HEDGE_MS): Promise<TalkReviewResult> {
+export async function runReview(reviewer: TalkReviewer, input: TalkReviewInput, ms: number = REVIEW_TIME_LIMIT_MS, onError?: (e: unknown) => void, hedgeMs: number = REVIEW_HEDGE_MS, stop?: AbortSignal): Promise<TalkReviewResult> {
   try {
     // A review that stops on the time limit's signal is a time-out too, whatever it throws. One with no answer after
-    // `hedgeMs` is sent once more beside it (REVIEW_HEDGE_MS); the first answer counts.
-    return await withTimeLimit(ms, (signal) => hedged(hedgeDelay(hedgeMs, ms), signal, (copy) => reviewer.review(input, copy)).catch((e: unknown) => {
+    // `hedgeMs` is sent once more beside it (REVIEW_HEDGE_MS); the first answer counts. `stop` (review of #1109): no one
+    // will read the review any more, so both copies end and no copy starts after it (an error result, never read).
+    return await withTimeLimit(ms, (signal) => hedged(hedgeDelay(hedgeMs, ms), stop ? AbortSignal.any([signal, stop]) : signal, (copy) => reviewer.review(input, copy)).catch((e: unknown) => {
       throw signal.aborted ? new Error("time is up") : e;
     }));
   } catch (e) {

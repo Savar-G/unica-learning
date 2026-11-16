@@ -35,6 +35,7 @@ import {
   tutorStreamReading,
   gateDisagrees,
   tutorStreamSentence,
+  checkTutorSay,
   TUTOR_REVIEW_IGNORED,
   bindingReview,
   nextActs,
@@ -314,8 +315,8 @@ export function streamedPriority(raw: string): { repeated: boolean; priority: Re
   return { repeated, priority: Object.keys(p).length ? p : null };
 }
 
-import { reviewInput, runReview, CONVERSATION_REVIEW_TIME_LIMIT_MS, REVIEW_TIME_LIMIT_MS, type TalkReviewer } from "@/lib/maya-talk-review";
-import { runMathReview, type MathReviewer } from "@/lib/maya-math-review";
+import { reviewInput, runReview, CONVERSATION_REVIEW_TIME_LIMIT_MS, REVIEW_HEDGE_MS, REVIEW_TIME_LIMIT_MS, VOICE_REVIEW_HEDGE_MS, type TalkReviewer } from "@/lib/maya-talk-review";
+import { MATH_REVIEW_HEDGE_MS, runMathReview, VOICE_MATH_REVIEW_HEDGE_MS, type MathReviewer } from "@/lib/maya-math-review";
 import { BOARD_FATES, mathReviewInput, type BoardFate, type MathReview, type MathReviewInput, type MathReviewResult, type TalkReviewInput, type TalkReviewResult } from "@/lib/maya";
 import { emittedHelpKind, type Assistance } from "@/lib/maya/session";
 import { readFromFence } from "@/lib/ai-fenced";
@@ -353,6 +354,23 @@ export const REVIEW_FLOOR_MS = 1_500;
  * MATH_REVIEW_HEDGE_MS. Voice keeps CONVERSATION_REVIEW_TIME_LIMIT_MS.
  */
 export const CHAT_MATH_REVIEW_TIME_LIMIT_MS = 6_000;
+/**
+ * Voice (call 21665dc6, 2026-11-15): a review that starts while the model still writes may run this much longer than its
+ * own limit. The whole-message check waits for it only as long as for a review it starts itself, so the child waits no
+ * longer than before; the early start gives the review the time the model still writes. On 30 voice tutor turns the math
+ * review's p90 was 3.2 s against its 4 s limit, and 12 of 91 timed out.
+ */
+export const VOICE_EARLY_REVIEW_EXTRA_MS = 3_000;
+
+/** A review started earlier, read for at most `ms` more; after that it counts as `late()` (a time-out never passes). */
+function within<T>(result: Promise<T>, ms: number, late: () => T): Promise<T> {
+  return new Promise<T>((resolve) => {
+    let done = false;
+    const end = (r: () => T) => { if (done) return; done = true; clearTimeout(timer); resolve(r()); };
+    const timer = setTimeout(() => end(late), ms);
+    result.then((r) => end(() => r), () => end(late));
+  });
+}
 
 export interface TextSessionOptions {
   /** Budget owner refuses speculative takes when only two live attempts remain. No seam disables preparation. */
@@ -655,6 +673,11 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   const reviewLimit = (ms: number) => Math.min(ms, Math.max(0, reviewEndsAt - Date.now()));
   /** The math review's own limit: a voice turn's is the conversational limit, a chat or text turn's is longer. */
   const mathLimit = (conversational: boolean) => options.reviewTimeLimitMs ?? (!conversational ? REVIEW_TIME_LIMIT_MS : options.onSayPart ? CONVERSATION_REVIEW_TIME_LIMIT_MS : CHAT_MATH_REVIEW_TIME_LIMIT_MS);
+  // Call 21665dc6 (2026-11-15): a voice review is sent once more at the voice p90; chat and text keep their delays (#1099).
+  const talkHedge = options.onSayPart ? VOICE_REVIEW_HEDGE_MS : REVIEW_HEDGE_MS;
+  const mathHedge = options.onSayPart ? VOICE_MATH_REVIEW_HEDGE_MS : MATH_REVIEW_HEDGE_MS;
+  /** The own limit of a review started while the model still writes (only voice streams); a voice repair's end still caps it. */
+  const earlyLimit = (ms: number) => reviewLimit(ms + VOICE_EARLY_REVIEW_EXTRA_MS);
   let quietOpening = false;
   let scheduled = 0;
   let prepareCount = 0;
@@ -747,10 +770,21 @@ export function createTextSession(options: TextSessionOptions): TextSession {
    * Reviews the stream started for its sentences (round 4), by the review's whole input (the line, the child's turn, the
    * turns and the stance): the whole-reply review of the same request uses each once, and never one of another input.
    */
-  const streamReviews = new Map<string, { requestId: number; result: Promise<TalkReviewResult> }>();
+  const streamReviews = new Map<string, { requestId: number; result: Promise<TalkReviewResult>; stop?: AbortController }>();
   const reviewKey = (input: TalkReviewInput) => JSON.stringify(input);
   /** Math-truth reviews the stream started (two-layer true math), by their whole input, used once by the whole-reply check. */
-  const streamMathReviews = new Map<string, { requestId: number; result: Promise<MathReviewResult> }>();
+  const streamMathReviews = new Map<string, { requestId: number; result: Promise<MathReviewResult>; stop?: AbortController }>();
+  /**
+   * Review of #1109 (money): the reviews a model request started while it streamed end when no one will read them: the
+   * request was dropped, failed or ran out of time, the whole check stopped waiting for one, or the check is done. A
+   * review that ends sends no copy (its hedge timer stops with it). One controller per request, by its id.
+   */
+  const reviewStops = new Map<number, AbortController>();
+  /** The reviews of the turn that runs now (`schedule`); aborted with the turn's controller and when the turn is done. */
+  let turnReviews = new AbortController();
+  const stopReviews = (requestId?: number) => {
+    for (const [id, c] of reviewStops) if (requestId === undefined || id === requestId) { c.abort(); reviewStops.delete(id); }
+  };
   const mathKey = (input: MathReviewInput) => JSON.stringify(input);
   /**
    * Final check 9 (2026-11-15): every terminal math review result that is not "true" (false, unsure after its retry,
@@ -767,15 +801,26 @@ export function createTextSession(options: TextSessionOptions): TextSession {
    * the same math in another surface form is refused too.
    */
   const refusedMath = new Map<number, { sentence: string; reason: string }[]>();
-  const reviewMath = (given: MathReviewInput, turn: number, ms: number, onError?: (e: unknown) => void): Promise<MathReviewResult> => {
+  /** A math review read too late is a time-out, final for its sentence for the rest of the child turn (final check 9). */
+  const mathLate = (turn: number, sentence: string): MathReviewResult => {
+    const late: MathReviewResult = { verdict: "unsure", reason: "the math review did not answer in time" };
+    const key = `${turn}|${sentenceKey(sentence)}`;
+    if (!finalMath.has(key)) {
+      finalMath.set(key, Promise.resolve(late));
+      refusedMath.set(turn, [...(refusedMath.get(turn) ?? []), { sentence, reason: late.reason }]);
+    }
+    return late;
+  };
+  const reviewMath = (given: MathReviewInput, turn: number, ms: number, onError?: (e: unknown) => void, stop?: AbortSignal): Promise<MathReviewResult> => {
     const key = `${turn}|${sentenceKey(given.sentence)}`;
     const held = finalMath.get(key);
     if (held) return held;
     const earlier = (refusedMath.get(turn) ?? []).filter((x) => x.sentence !== given.sentence);
     const input = earlier.length ? { ...given, refused: earlier } : given;
-    const started = runMathReview(options.mathReviewer!, input, ms, onError);
+    const started = runMathReview(options.mathReviewer!, input, ms, onError, mathHedge, stop);
     return started.then((r) => {
-      if (r.verdict !== "true" && !finalMath.has(key)) {
+      // A stopped review was never read: it is no verdict on the sentence (review of #1109).
+      if (r.verdict !== "true" && !finalMath.has(key) && !stop?.aborted) {
         finalMath.set(key, Promise.resolve(r));
         refusedMath.set(turn, [...(refusedMath.get(turn) ?? []), { sentence: given.sentence, reason: r.reason }]);
       }
@@ -855,6 +900,15 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     let firstSayMs: number | undefined;
     streamReviews.clear();
     streamMathReviews.clear();
+    // The reviews of an earlier request are out of the maps now, so no one reads them.
+    stopReviews();
+    const requestStop = new AbortController();
+    reviewStops.set(requestId, requestStop);
+    /** One review's own stop, which also ends with this request's and with the turn's controller. */
+    const reviewStop = () => {
+      const stop = new AbortController();
+      return { stop, signal: AbortSignal.any([controller.signal, turnReviews.signal, requestStop.signal, stop.signal]) };
+    };
     // Round 4: code's plan for the turn is settled before the call; the "kind" the model writes first decides how its
     // sentences go out: math or help stream (math-only sentences at once, others after their own review, started the
     // moment the sentence is complete); any other kind reviews every sentence first; safety streams nothing.
@@ -937,14 +991,16 @@ export function createTextSession(options: TextSessionOptions): TextSession {
           const checks: Promise<boolean>[] = [];
           if (how.talk) {
             const input = reviewInput(session, sentence, tutor.stance);
-            const started = runReview(options.reviewer!, input, reviewLimit(options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS));
-            streamReviews.set(reviewKey(input), { requestId, result: started });
+            const own = reviewStop();
+            const started = runReview(options.reviewer!, input, earlyLimit(options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS), undefined, talkHedge, own.signal);
+            streamReviews.set(reviewKey(input), { requestId, result: started, stop: own.stop });
             checks.push(started.then((r) => passes(r, sentence)));
           }
           if (how.math) {
             const input = read(() => mathReviewInput(session, sentence, before));
-            const started = reviewMath(input, session.turns.length, reviewLimit(mathLimit(true)));
-            streamMathReviews.set(mathKey(input), { requestId, result: started });
+            const own = reviewStop();
+            const started = reviewMath(input, session.turns.length, earlyLimit(mathLimit(true)), undefined, own.signal);
+            streamMathReviews.set(mathKey(input), { requestId, result: started, stop: own.stop });
             checks.push(started.then((r) => r.verdict === "true"));
           }
           void Promise.all(checks).then((ok) => {
@@ -956,7 +1012,48 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       }
       flushTutor();
     } : undefined;
-    const onText = tutor ? onTutorText : plan ? (soFar: string) => {
+    // Call 21665dc6 (2026-11-15): on a voice tutor turn each sentence's reviews start, both at once, as soon as the
+    // sentence is complete, also when the turn cannot stream (not plainly math) or the stream stopped. Nothing is sent
+    // from here: the whole check finds the reviews running and reads them (no longer than a review it starts itself).
+    // Which reviews a sentence needs is read as the stream reads it; a sentence that fails code's own check ends it.
+    const early = model.output === 3 && options.onSayPart && folded.session.tutor && !folded.sent?.length && folded.pending.length === 0 ? read(() => tutorStream(session, true)) : null;
+    const earlyStance = early && session.conversational ? read(() => codeStance(session)) : "none";
+    let earlySeen = 0;
+    let earlyDone = false;
+    const onEarlyText = early ? (soFar: string) => {
+      if (earlyDone || controller.signal.aborted || folded.request?.id !== requestId) return;
+      const said = partialSay(soFar);
+      if (!said || !said.kind) return;
+      if (said.kind === "safety" || said.kind === "stop" || said.gate !== "none") { earlyDone = true; return; }
+      const parts = sentencesOf(said.text);
+      const complete = said.complete ? parts : parts.slice(0, -1);
+      for (const sentence of complete.slice(earlySeen)) {
+        const before = complete.slice(0, earlySeen);
+        earlySeen++;
+        let how = read(() => tutorStreamSentence(sentence, before, early));
+        // A sentence the stream may not send (a judgment, another number) may still pass the whole check: both reviews.
+        if (how === "stop") {
+          if (!read(() => checkTutorSay([...before, sentence].join(" "), early)).ok) { earlyDone = true; return; }
+          how = { talk: true, math: true };
+        }
+        if (how === "send") continue;
+        if (how.talk && options.reviewer) {
+          const input = reviewInput(session, sentence, earlyStance);
+          if (!streamReviews.has(reviewKey(input))) {
+            const own = reviewStop();
+            streamReviews.set(reviewKey(input), { requestId, result: runReview(options.reviewer, input, earlyLimit(options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS), undefined, talkHedge, own.signal), stop: own.stop });
+          }
+        }
+        if (how.math && options.mathReviewer) {
+          const input = read(() => mathReviewInput(session, sentence, before));
+          if (!streamMathReviews.has(mathKey(input))) {
+            const own = reviewStop();
+            streamMathReviews.set(mathKey(input), { requestId, result: reviewMath(input, session.turns.length, earlyLimit(mathLimit(true)), undefined, own.signal), stop: own.stop });
+          }
+        }
+      }
+    } : undefined;
+    const onSentences = tutor ? onTutorText : plan ? (soFar: string) => {
       if (!live()) return;
       const said = partialSay(soFar);
       if (!said || !said.kind) return;
@@ -973,8 +1070,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         queue.push(item);
         if (how === "review") {
           const input = reviewInput(session, sentence, plan.stance);
-          const started = runReview(options.reviewer!, input, reviewLimit(options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS));
-          streamReviews.set(reviewKey(input), { requestId, result: started });
+          const own = reviewStop();
+          const started = runReview(options.reviewer!, input, earlyLimit(options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS), undefined, talkHedge, own.signal);
+          streamReviews.set(reviewKey(input), { requestId, result: started, stop: own.stop });
           void started.then((result) => {
             if (!live()) return;
             item.state = result.verdict === "pass" ? "ready" : "drop";
@@ -984,8 +1082,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       }
       flush();
     } : undefined;
+    const onText = onSentences || onEarlyText ? (soFar: string) => { onSentences?.(soFar); onEarlyText?.(soFar); } : undefined;
     const streamed = () => {
       streamDone = true;
+      earlyDone = true;
       streamedThisOutput.push(...sent.map((x) => fillName(x, session)));
       return sent.length ? { sent: [...sent], firstSayMs } : {};
     };
@@ -1002,6 +1102,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       clearTimeout(budgetTimer);
       if (got === "budget") {
         streamDone = true;
+        stopReviews(requestId);
         // Final check 6: a priority value the stream already holds applies even though the model did not finish.
         if (folded.request?.id === requestId) append({ kind: "response", at: now(), requestId, error: classifyError(new Error("the turn's time is up"), "model"), ...withPriority(rawScan().priority), ms: now() - at, ...streamed() });
         return;
@@ -1014,6 +1115,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         // Final check 6: a key written twice makes the whole output malformed for routing: no part of it is used, and any
         // priority value in any copy applies (fail closed). It counts as output that is not valid JSON.
         streamDone = true;
+        stopReviews(requestId);
         append({ kind: "response", at: now(), requestId, error: classifyError(new Error("the output repeats a key: not valid JSON"), "model"), ...withPriority(scan.priority), ms: now() - at, ...streamed() });
         return;
       }
@@ -1026,13 +1128,15 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         return;
       }
       streamDone = true;
+      stopReviews(requestId);
       const stale = folded.request?.id !== requestId;
       // Final check 6: a complete priority value seen in the stream is kept when the final parse fails (or the model
       // fails after it): its guidance or the disclosure is due, never a return to math. A stale request changes nothing.
       append({ kind: "response", at: now(), requestId, error: classifyError(got.error, "model"), ...withPriority(scan.priority), ms: now() - at, ...streamed() });
       if (!stale) options.onError?.(got.error, { turn: folded.turns.length, source });
     });
-    if (await wait(response, controller) === stopped || controller.signal.aborted) return;
+    if (await wait(response, controller) === stopped || controller.signal.aborted) { stopReviews(requestId); return; }
+    if (folded.candidate?.requestId !== requestId) stopReviews(requestId);
     await reviewCandidate(controller);
   }
   async function reviewCandidate(controller: AbortController) {
@@ -1048,6 +1152,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const t0 = now();
     const before = folded.session;
     const stance = before.conversational ? read(() => codeStance(before)) : "none";
+    // Each review's time: its own limit, or the time left of a voice repair when that is less.
+    const turnSignal = AbortSignal.any([controller.signal, turnReviews.signal]);
+    const talkMs = reviewLimit(options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS));
+    const mathMs = reviewLimit(mathLimit(before.conversational === true));
     // A sentence the stream of this request already sent to the same review is not reviewed twice (round 4). Every other
     // review starts now, all at once.
     const used: string[] = [];
@@ -1056,7 +1164,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const key = reviewKey(input);
       const streamed = streamReviews.get(key);
       if (streamed && streamed.requestId === requestId) used.push(key);
-      const result = streamed && streamed.requestId === requestId ? streamed.result : runReview(options.reviewer!, input, reviewLimit(options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS)), reviewError);
+      // Call 21665dc6: a review the stream started is read for no longer than a review started now would run.
+      const result = streamed && streamed.requestId === requestId ? within(streamed.result, talkMs, (): TalkReviewResult => { streamed.stop?.abort(); return { verdict: "error", reason: "the review did not answer in time" }; }) : runReview(options.reviewer!, input, talkMs, reviewError, talkHedge, turnSignal);
       return result.then((r) => ({ text, result: r }));
     })) : Promise.resolve([]);
     // The math-truth reviews run beside the safety reviews; one the stream started for the same input is used once.
@@ -1072,7 +1181,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const key = mathKey(input);
       const streamed = streamMathReviews.get(key);
       if (streamed && streamed.requestId === requestId) mathUsed.push(key);
-      const result = streamed && streamed.requestId === requestId ? streamed.result : reviewMath(input, before.turns.length, reviewLimit(mathLimit(before.conversational === true)), reviewError);
+      const result = streamed && streamed.requestId === requestId ? within(streamed.result, mathMs, () => { streamed.stop?.abort(); return mathLate(before.turns.length, text); }) : reviewMath(input, before.turns.length, mathMs, reviewError, turnSignal);
       return result.then((r) => ({ text, result: r }));
     })).then((all) => mathTexts.map((text) => all.find((m) => m.text === text && m.result.verdict !== "true") ?? all.find((m) => m.text === text)!)) : Promise.resolve([]);
     const reviewed = Promise.all([reviews, mathReviews]).then(([results, maths]) => {
@@ -1080,7 +1189,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       for (const key of mathUsed) streamMathReviews.delete(key);
       append({ kind: "review", at: now(), requestId, reviews: results, mathReviews: maths, ...((texts.length && options.reviewer) || (mathTexts.length && options.mathReviewer) ? { reviewMs: now() - t0 } : {}), drawMode: "derive" });
     });
-    await wait(reviewed, controller);
+    try { await wait(reviewed, controller); } finally { stopReviews(requestId); }
   }
   /** Guidance the session accepted goes out now. A call that ended returns it with its outcome instead. */
   function sendGuidance() {
@@ -1185,6 +1294,12 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       if (version !== generation) return { ...newOutput(), cancelled: true };
       const controller = new AbortController();
       active = controller;
+      // Review of #1109: the turn owns its reviews. Every review it starts (early, final, repair; math and safety; each
+      // hedge copy) takes this signal, so each ends, with its hedge timer, when the call ends or a new turn replaces this
+      // one (the turn's controller aborts) and when the turn is done (finally).
+      const reviews = new AbortController();
+      controller.signal.addEventListener("abort", () => reviews.abort(), { once: true });
+      turnReviews = reviews;
       try {
         if (respond) await pump(controller);
         if (controller.signal.aborted) return { ...newOutput(), cancelled: true };
@@ -1205,7 +1320,11 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         options.onError?.(error, "session");
         append({ kind: "input", at: now(), event: { type: "technical", at: now(), detail: "the session failed" }, error: classifyError(error, "local") });
         throw error;
-      } finally { if (active === controller) active = null; }
+      } finally {
+        if (active === controller) active = null;
+        // The turn is done: a review still running is read by no one, so it ends and sends no copy.
+        reviews.abort();
+      }
     });
     const settled = next.finally(() => { scheduled--; });
     queue = settled.catch(() => undefined);

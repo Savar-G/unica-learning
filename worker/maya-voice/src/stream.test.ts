@@ -583,11 +583,11 @@ describe("when the thinking phrase comes (D-341)", () => {
   // comes at once, not at the limit, by the same rules: one per turn, none after a sentence, no repeat in the call.
   describe("when the turn's repair starts (VoiceSay.repairing)", () => {
     /** The call's child turn played by the test: `play` runs with the turn's ear, then the turn waits for `finish`. */
-    function playedRepair(c: Awaited<ReturnType<typeof voiceCall>>, play: (say: VoiceSay) => Promise<void> | void) {
+    function playedRepair(c: Awaited<ReturnType<typeof voiceCall>>, play: (say: VoiceSay) => Promise<void> | void, streams = true) {
       let finish = () => {};
       const done = new Promise<void>((resolve) => { finish = resolve; });
       vi.spyOn(c.call, "child").mockImplementation(async (_text, _options, say) => {
-        say?.begun?.({ model: true, conversational: true, streams: true });
+        say?.begun?.({ model: true, conversational: true, streams });
         await play(say!);
         await done;
         return { say: [FIRST], newBatches: 0, boardCues: [], safetyMessage: null, ended: false };
@@ -617,7 +617,7 @@ describe("when the thinking phrase comes (D-341)", () => {
       expect(c.said().slice(before)).toEqual([ACK_PHRASES.find((p) => p.id === ids[0])!.text, FIRST]);
     });
 
-    it("says none when a sentence of the turn came first, or a phrase already played, or phrases are off", async () => {
+    it("says none when a sentence of the turn came first, or a phrase is still playing, or phrases are off", async () => {
       const endCall = async () => { await cleanup?.(); cleanup = null; };
       // A sentence came first.
       const a = await voiceCall({ model: ruleConversationalModel(), ackLimitMs: ACK_LIMIT_MS });
@@ -633,13 +633,14 @@ describe("when the thinking phrase comes (D-341)", () => {
       expect(a.said().slice(beforeA).filter((t) => ACKS.has(t))).toEqual([]);
       await endCall();
 
-      // The limit's phrase already played in this turn.
+      // The limit's phrase is still playing when the repair starts: the child is not in silence, so no second phrase.
       const b = await voiceCall({ model: ruleConversationalModel(), ackLimitMs: 500 });
       let later: string | null = "unset";
       let repairNow = () => {};
       const repairing = new Promise<void>((resolve) => { repairNow = resolve; });
       const finishB = playedRepair(b, async (say) => { await repairing; later = say.repairing!(); });
       const beforeB = b.said().length;
+      b.speaker.held = true;
       b.say("I got 56.");
       await pause();
       await b.clock.advance(500);
@@ -647,6 +648,7 @@ describe("when the thinking phrase comes (D-341)", () => {
       repairNow();
       await waitFor(() => later !== "unset", "the repair");
       expect(later).toBeNull();
+      b.speaker.release();
       finishB();
       await waitFor(() => b.samples.length === 1, "the sample");
       await pause();
@@ -662,6 +664,43 @@ describe("when the thinking phrase comes (D-341)", () => {
       expect(off).toBeNull();
       finishD();
       await waitFor(() => d.samples.length === 1, "the sample");
+    });
+
+    // Call 21665dc6 (production, 2026-11-15 23:47 UTC), turn 10: a reply that cannot stream said its phrase at once
+    // (0.2 s); the model took 2.6 s and a math review timed out at 4 s, so the repair started at 6.6 s and code's line
+    // came at 10.6 s. "One phrase per turn" gave the repair no phrase (trace: counts.fillers 0, no `filler`), so the
+    // child heard 10 s of silence. A phrase that is over no longer stops the repair's own phrase.
+    it("says a second, different phrase at the repair start when the turn's first phrase is over (call 21665dc6)", async () => {
+      const c = await voiceCall({ model: ruleConversationalModel(), ackLimitMs: ACK_LIMIT_MS });
+      let id: string | null = "unset";
+      let again: string | null = "unset";
+      let repairNow = () => {};
+      const repairing = new Promise<void>((resolve) => { repairNow = resolve; });
+      const finish = playedRepair(c, async (say) => { await repairing; id = say.repairing!(); again = say.repairing!(); }, false);
+      const before = c.said().length;
+      c.say("Huh, that didn't make sense.");
+      await pause();
+      await c.clock.advance(1);
+      // The first phrase at once, played to its end (the model and its reviews still run).
+      await waitFor(() => c.said().slice(before).some((t) => ACKS.has(t)), "the phrase at once");
+      await pause();
+      await c.clock.advance(6_600);
+      repairNow();
+      await waitFor(() => id !== "unset", "the repair");
+      expect(id).not.toBeNull();
+      expect(again).toBeNull();
+      const second = ACK_PHRASES.find((p) => p.id === id)!.text;
+      await waitFor(() => c.said().slice(before).includes(second), "the repair's phrase");
+      expect(c.call.acknowledged).toContain(id);
+      finish();
+      await waitFor(() => c.said().slice(before).includes(FIRST), "the answer");
+      await waitFor(() => c.samples.length === 1, "the sample");
+      await pause();
+      const heard = c.said().slice(before);
+      expect(heard).toHaveLength(3);
+      expect(ACKS.has(heard[0])).toBe(true);
+      expect(heard[0]).not.toBe(second);
+      expect(heard.slice(1)).toEqual([second, FIRST]);
     });
   });
 

@@ -5620,12 +5620,16 @@ export function gateDisagrees(raw: unknown): boolean {
   return raw.gate === "none" ? implied.size > 0 : !implied.has(String(raw.gate));
 }
 
-/** D-345: what the tutor's stream needs before the model writes: code's own stance and the question's words. Null: no stream. */
-export function tutorStream(s: Session): TutorStreamContext | null {
+/**
+ * D-345: what the tutor's stream needs before the model writes: code's own stance and the question's words. Null: no stream.
+ * `reviewsOnly` (voice, call 21665dc6): the context for a turn that is not plainly math too. It only tells which reviews
+ * a sentence will need, so they start while the model writes; such a turn still sends no word before its whole check.
+ */
+export function tutorStream(s: Session, reviewsOnly = false): TutorStreamContext | null {
   if (!s.tutor || !s.turn || !s.package || !tutorTeachingNow(s)) return null;
   // Final check 4: only a turn plainly about the math streams before the model's reading is known; every other turn
   // waits for the whole message, so a disclosure the reading asks for always comes first.
-  if (!plainlyMathTurn(s)) return null;
+  if (!reviewsOnly && !plainlyMathTurn(s)) return null;
   const word = wordVerdict(s);
   const code = codeStance(s);
   // Final check 10: a number the standard reader cannot read gives no stance at all.
