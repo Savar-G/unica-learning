@@ -33,6 +33,21 @@ const parsedPage = (html: string) => {
 };
 
 describe("the workbook templates", () => {
+  // Cedric's printed pages (2026-11-13, #1116): a child's four digits did not fit a 64 px box. A 4-digit answer prints
+  // in a 96 px box; a 3-digit answer keeps its 64 px box.
+  it("prints a 4-digit answer box 96 px wide and keeps a 3-digit one at 64 px", () => {
+    const draft = book("U16"), p = first(draft, "practice");
+    const answer = (value: number) => (q: DraftPage["questions"][number]) => {
+      const item = packageItem(q.package);
+      return { ...q, package: { ...q.package, item: { ...item, regions: item.regions.map(r => r.kind === "box" ? { ...r, answer: { type: "number" as const, value } } : r) } } };
+    };
+    const page = { ...p, questions: p.questions.map((q, i) => i === 0 ? answer(7896)(q) : i === 1 ? answer(459)(q) : q) };
+    const root = parsedPage(workbookTemplate().page(page, { qr: "", qrUrl: "" }, draft)!);
+    const width = (n: number) => Number(/width:(\d+)px/.exec(root.querySelector(`.ab[data-measure="question-${n}-answer"]`)?.getAttribute("style") ?? "")?.[1]);
+    expect(width(page.questions[0].number)).toBe(96);
+    expect(width(page.questions[1].number)).toBe(64);
+  });
+
   // Savar's print review (2026-11-09): "Remember these" reads "Review", never twice on a page, and "Remember" once.
   describe("Review and Remember, said once", () => {
     const review = (title: string, blocks: (n: number[]) => Block[]) => {

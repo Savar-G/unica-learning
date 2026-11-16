@@ -820,10 +820,13 @@ function answerChars(v: AnswerValue | null): number {
   return valueText(v).length;
 }
 
-/** An answer box's width by what goes in it (DESIGN.md section 4): 40 to 48 for 1 or 2 digits, up to 204 for words. */
+/**
+ * An answer box's width by what goes in it (DESIGN.md section 4): 40 to 48 for 1 or 2 digits, up to 204 for words. A
+ * 4-digit answer gets 96, not 64: a young child's four digits did not fit 64 px on a printed page (Cedric, 2026-11-13).
+ */
 function boxWidth(v: AnswerValue | null, band: Band): number {
   const n = answerChars(v);
-  const w = n <= 2 ? 48 : n <= 4 ? 64 : n <= 7 ? 96 : n <= 12 ? 140 : 204;
+  const w = n <= 2 ? 48 : n <= 3 ? 64 : n <= 7 ? 96 : n <= 12 ? 140 : 204;
   return Math.max(w, band.box);
 }
 
