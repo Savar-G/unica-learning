@@ -3,6 +3,7 @@ import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { createTextSession } from "@/lib/maya-text";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
 import { fakeMathReviewer } from "@/lib/maya-math-review";
+import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { operationResult, workedSteps, type Operation, type OperationPackage } from "@/lib/question-package";
 import { checkTutorSay, tutorFallbackText } from "../tutor";
 import { describeTutorKind } from "./contract";
@@ -184,10 +185,55 @@ describe("review of #1018", () => {
     expect(evaluateKind.fits(evaluate("lv", "Ava has 50 leaves and gets 11 more each day. How many leaves does she have after 8 days?", "50 + 8 × 11"))).toBe(true);
     expect(evaluateKind.fits(evaluate("lw", "Ava has 50 leaves and loses 11 each day. How many leaves does she have after 4 days?", "50 + 4 × 11"))).toBe(false);
   });
-  // P2 "28 for the second term got Not quite": the core fix of 2bddd9950 credits only the next open step's result (16
-  // here), which the core credited before it too. A pattern's term (28) or a later step's result is a work value with
-  // stance "none", so "Not quite" still passes on both heads. That needs a core change; this kind cannot give it.
-  it.todo("core: no \"not quite\" to a pattern term the child names (28 for the 2nd term of 20, 28, 36)");
+  for (const stream of [false, true]) {
+    for (const [pkg, ask, right, wrong] of [
+      [patternStep, "What is the second term?", "28.", "36."],
+      [multiStep, "What is 9 times 40?", "360.", "7920."],
+    ] as const) {
+      async function run(child: string, response: string, question: string = ask) {
+        let now = Date.UTC(2026, 10, 15);
+        const parts: string[] = [];
+        let before: string[] = [];
+        const model = conversationalFake({ answer: (_, i) => reply(i === 0 ? question : response, "guide"), ...(stream ? { stream: { chunk: 7, beforeEnd: async () => { await new Promise(r => setTimeout(r, 30)); before = [...parts]; } } } : {}) });
+        const s = createTextSession({ callId: "asked-work", package: pkg, tutor: true, clock: () => (now += 100), model, mathReviewer: fakeMathReviewer(), reviewer: fakeTalkReviewer(), onSayPart: x => parts.push(x) });
+        await s.start();
+        expect((await s.child("Help me.")).say.join(" ")).toContain(question);
+        parts.length = 0;
+        const out = await s.child(child);
+        return { s, out, parts, before };
+      }
+      it(`#1026: ${right} answers ${ask} without Not quite (stream ${stream})`, async () => {
+        const r = await run(right, "Not quite. Can you try again?");
+        expect(r.out.say.join(" ")).not.toContain("Not quite");
+        expect(r.parts.join(" ")).not.toContain("Not quite");
+        expect(r.s.session.solved).toBeNull();
+        const yes = await run(right, "Yes, that's right. What do you get next?");
+        expect(yes.out.say.join(" ")).toContain("Yes, that's right");
+        if (stream) expect(yes.before.join(" ")).toContain("Yes, that's right");
+        expect(yes.s.session.solved).toBeNull();
+      });
+      it(`#1026: another work value ${wrong} is wrong for ${ask} (stream ${stream})`, async () => {
+        const r = await run(wrong, "Yes, that's right. What do you get next?");
+        expect(r.out.say.join(" ")).not.toContain("Yes, that's right");
+        expect(r.parts.join(" ")).not.toContain("Yes, that's right");
+        const no = await run(wrong, "Not quite. Can you try again?");
+        expect(no.out.say.join(" ")).toContain("Not quite");
+      });
+      it(`#1026: with no read question ${right} has no invented stance (stream ${stream})`, async () => {
+        const r = await run(right, "Not quite. Can you try again?", "Can you tell me more?");
+        expect(r.out.say.join(" ")).toContain("Not quite");
+      });
+    }
+    it(`#1026: 12 is wrong for the ones result, although it is a work value (stream ${stream})`, async () => {
+      let now = Date.UTC(2026, 10, 15);
+      const model = conversationalFake({ answer: (_, i) => reply(i === 0 ? "What is 12 minus 8?" : "Yes, that's right. What do you get next?", "guide"), ...(stream ? { stream: { chunk: 7 } } : {}) });
+      const s = createTextSession({ callId: "wrong-ones", package: SAMPLE_PACKAGES["subtract-52-28"], tutor: true, clock: () => (now += 100), model, mathReviewer: fakeMathReviewer(), reviewer: fakeTalkReviewer() });
+      await s.start();
+      await s.child("Help me.");
+      expect((await s.child("12.")).say.join(" ")).not.toContain("Yes, that's right");
+      expect(s.session.solved).toBeNull();
+    });
+  }
   it("no \"not quite\" to the next open step's own result", async () => {
     const s = session(patternStep, () => "Not quite.");
     await s.start();

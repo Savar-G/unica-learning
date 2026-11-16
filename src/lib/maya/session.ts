@@ -562,8 +562,10 @@ export interface Session {
   /**
    * `offer` (review of #1113): Maya's last accepted message ended with code's own yes/no end offer (FINAL_ASK). Set by
    * that message only; any other tutor message clears it (its tutor state is new).
+   * `childFirst` holds step ids whose numeric result code validated before Maya supplied it. Only those step digits
+   * are exempt from answer help when Maya repeats them. Earlier Maya help remains in the ledger.
    */
-  tutor?: { help: number; drawn: string[]; sent?: { batch: string; keys: string[] }[]; offer?: true };
+  tutor?: { help: number; drawn: string[]; sent?: { batch: string; keys: string[] }[]; offer?: true; childFirst?: string[] };
 }
 
 /**
@@ -1672,6 +1674,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
         if (s.resume === "CHECK" || s.resume === "WRITE_CLOSE") s.resume = "GUIDE_TARGET";
       }
       if (s.state === "OPEN" && s.opened) s.state = "ASSESS";
+      rememberChildFirst(s);
       s.expect = "maya";
       s.silence = "none";
       // D-341, round 2: a child who is thinking ("um", "wait", "I'm thinking") gets one short patient line from code, at
@@ -5278,8 +5281,23 @@ export function codeStance(s: Session): "wrong" | "right" | "none" {
   if (!s.package || !s.turn) return "none";
   // Final check 8: a number bound to a place that its step does not make is wrong for that step.
   if (scopedMiss(s)) return "wrong";
+  const asked = askedStance(s);
+  if (asked) return asked;
   if (heardAnswers(s).some((a) => a.verdict === "right")) return "right";
   return turnFacts(s).some((f) => f.wrong) ? "wrong" : "none";
+}
+
+/** A single committed number answers Maya's last checked question, not every value of the work. */
+function askedStance(s: Session): "right" | "wrong" | null {
+  if (!s.tutor || !s.package || !s.turn || s.turn.uncertain || s.solved !== null) return null;
+  const text = s.turn.text;
+  if (/\banswer\b/i.test(text) || text.includes("?") || helpInWords(text) || saysStuck(text) || hedgedTurn(s) || saysGuess(text) || childSaysFalse(text) || mentionsExample(text) || unreadNumberRuns(text).length) return null;
+  const { read, committed } = committedRead(s);
+  if (!committed || !read.sure || read.final?.type !== "number" || sentenceCount(text) !== 1 || valuesIn(text, readOptionsIn(s)).length !== 1 || wholeTurn(text) === null) return null;
+  const maya = s.turns.findLast(t => t.speaker === "maya");
+  if (!maya || mentionsExample(maya.text)) return null;
+  const value = askedStepOf(s)?.value ?? askedStep(s.package, s.turns, read.final.value)?.value;
+  return value === undefined ? null : read.final.value === value ? "right" : "wrong";
 }
 
 /** The words of the question and its easier example: a math-only sentence may use them too. */
@@ -5490,6 +5508,8 @@ export function childAnswerOf(s: Session, hide: (text: string) => string): MathR
   // the ones.": one credited step, one value, no final answer).
   const miss = scopedMiss(s);
   if (miss) return { value: miss.value, verdict: "wrong", right };
+  const asked = askedStance(s);
+  if (asked) return { value: numOf(committedRead(s).read.final ?? undefined), verdict: asked, right };
   const stepValues = [...new Set(credited.map((a) => numOf(a.value)))];
   if (credited.length === 1 && credited[0].step !== "result" && stepValues[0] !== null && !childSaysFalse(text, { whole: true })) return { value: stepValues[0], verdict: "right", right };
   if (childSaysFalse(text, { whole: true })) return { value: null, verdict: "wrong", right };
@@ -5729,6 +5749,11 @@ export function tutorStream(s: Session, reviewsOnly = false): TutorStreamContext
   // Final check 10: a number the standard reader cannot read gives no stance at all.
   const stance = unreadNumberRuns(s.turn.text).length > 0 ? "none" : word === "wrong" || (code === "none" && childSaysFalse(s.turn.text)) ? "wrong" : code === "none" && word === "right" ? "right" : code;
   const credited = heardAnswers(s).flatMap((a) => (a.verdict === "right" && a.value.type === "number" ? [a.value.value] : []));
+  // This is permission for a streamed judgment only. A later work value earns no final-answer credit.
+  if (askedStance(s) === "right") {
+    const value = committedRead(s).read.final;
+    if (value?.type === "number") credited.push(value.value);
+  }
   // A word question's "yes" streams only on code's right word: with no word code can read, the affirmation waits for
   // the whole message and its check.
   const wordQuestion = !!sessionClaim(s.package) || !!comparisonOf(s.package);
@@ -5844,17 +5869,49 @@ function tellsAnswer(base: Session, pkg: OperationPackage, texts: readonly strin
   // that makes up another number of the question ("28 is 2 tens and 8 ones") names no digit of the answer.
   if (!committedRight && Number.isInteger(answer) && answer >= 0) {
     const named = new Map<number, Set<number>>();
-    for (const group of texts.flatMap((x) => placeDigitsSaid(x))) {
+    // A component Maya gave on an earlier turn still counts. A later child answer never erases that help.
+    const all = [...base.turns.filter(t => t.speaker === "maya").map(t => t.text), ...texts];
+    for (const group of all.flatMap((x) => placeDigitsSaid(x))) {
       const total = group.reduce((t, p) => t + p.n * p.place, 0);
       if (group.length > 1 && total !== answer && own.has(total)) continue;
-      for (const p of group) named.set(p.place, (named.get(p.place) ?? new Set()).add(p.n));
+      for (const p of group) if (!childOwnsDigit(base, p.place, p.n)) named.set(p.place, (named.get(p.place) ?? new Set()).add(p.n));
     }
     const digitsOf = String(answer).split("").reverse().map(Number);
     if (digitsOf.every((d, k) => named.get(10 ** k)?.has(d))) return true;
   }
   const digits = String(Math.trunc(Math.abs(answer))).length;
   // The kinds name a place as the package does ("ten thousands"); the board names it with "_".
-  return Number.isInteger(answer) && answer >= 0 && digits <= PLACE_NAMES.length && PLACE_NAMES.slice(0, digits).every((place) => drawn.includes(`digit:${place}`) || drawn.includes(`digit:${place.replace(/_/g, " ")}`));
+  return Number.isInteger(answer) && answer >= 0 && digits <= PLACE_NAMES.length && PLACE_NAMES.slice(0, digits).every((place, k) => !childOwnsDigit(base, 10 ** k, Math.floor(answer / 10 ** k) % 10) && (drawn.includes(`digit:${place}`) || drawn.includes(`digit:${place.replace(/_/g, " ")}`)));
+}
+
+/** Only a step value that code read as right, before Maya supplied it, belongs to the child. */
+function rememberChildFirst(s: Session): void {
+  if (!s.tutor || !s.package || !s.turn) return;
+  const facts = stepFacts(s.package);
+  const maya = s.turns.filter(t => t.speaker === "maya").map(t => t.text);
+  const keys = [...s.tutor.drawn, ...(s.tutor.sent ?? []).flatMap(x => x.keys)];
+  const notes = keys.filter(k => k.startsWith("note:")).map(k => k.slice(5));
+  const answer = s.package.answer.value;
+  for (const a of heardAnswers(s)) {
+    if (a.verdict !== "right" || a.value.type !== "number" || a.step === "result") continue;
+    const st = facts.find(f => f.id === a.step);
+    if (!st?.place || st.result !== a.value.value) continue;
+    const k = PLACE_NAMES.findIndex(p => p.replace(/_/g, " ") === st.place);
+    if (k < 0) continue;
+    const value = a.value.value;
+    // #1106 review: no grammar can prove that an earlier mention supplied nothing. Hold the exemption whenever
+    // Maya's words or a board note already named the value, including a short result before another sentence.
+    const given = keys.includes(`digit:${st.place}`) || keys.includes(`digit:${st.place.replace(/ /g, "_")}`) ||
+      [...maya, ...notes].some(t => namesValue(t, value) || (answer.type === "number" && namesValue(t, answer.value)));
+    if (!given && !s.tutor.childFirst?.includes(st.id)) (s.tutor.childFirst ??= []).push(st.id);
+  }
+}
+
+/** The exemption is tied to the validated step and place, never to all occurrences of a work number. */
+function childOwnsDigit(s: Session, place: number, value: number): boolean {
+  if (!s.package || !s.tutor?.childFirst?.length) return false;
+  const p = PLACE_NAMES[Math.log10(place)];
+  return stepFacts(s.package).some(st => s.tutor!.childFirst!.includes(st.id) && st.place === p?.replace(/_/g, " ") && st.result === value);
 }
 
 /** Final check 9: the structural fields of a board command (its op and ids), which a child never sees. */
@@ -5975,6 +6032,8 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   if (base.turn && childSaysFalse(base.turn.text)) stance = "wrong";
   // Final check 8: a number bound to a place its step does not make ("I got 24 for the tens.") is wrong for that step.
   if (base.turn && scopedMiss(base)) stance = "wrong";
+  const asked = askedStance(base);
+  if (asked && !(base.turn && (childSaysFalse(base.turn.text) || scopedMiss(base)))) stance = asked;
   // A bare word ("false", "no") is not committed, so it is not credited, but Maya never says "yes" to a wrong one or
   // "not quite" to a right one (F4 builder, 2026-11-15).
   if (base.turn && !credited.some((a) => a.step === "result")) {
@@ -6072,7 +6131,7 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     if (r?.verdict !== "true") return no("say_check", `The math review did not find "${sentence}" true (${r ? `${r.verdict}: ${r.reason}` : "no review"}). Every number and relation Maya says must be plainly true: say it with simple true math, such as one equation of the question's own numbers.`, "math_review");
     math.push({ sentence, verdict: "true" });
   }
-  const tutor: NonNullable<Session["tutor"]> = { help: progress ? 0 : s.solved === null ? (s.tutor?.help ?? 0) + 1 : 0, drawn: [...(s.tutor?.drawn ?? [])], ...(s.tutor?.sent?.length ? { sent: structuredClone(s.tutor.sent) } : {}) };
+  const tutor: NonNullable<Session["tutor"]> = { help: progress ? 0 : s.solved === null ? (s.tutor?.help ?? 0) + 1 : 0, drawn: [...(s.tutor?.drawn ?? [])], ...(s.tutor?.sent?.length ? { sent: structuredClone(s.tutor.sent) } : {}), ...(s.tutor?.childFirst?.length ? { childFirst: [...s.tutor.childFirst] } : {}) };
   // B2 (derive the drawing from the sentence): code reads each accepted sentence and draws what it says in full, one
   // batch per sentence, in sentence order (board-ties.ts). Only a proposal stepped live since B2 (`drawMode`) derives:
   // a saved older message replays exactly as it was stepped (its own `draw` list, or nothing), so a restored call keeps

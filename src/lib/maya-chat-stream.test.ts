@@ -156,7 +156,7 @@ describe("runChat: admission before any streamed word", () => {
       }
       if (table === "take_maya_chat_message") {
         const input = JSON.parse(String(init?.body));
-        return Response.json(claim() ?? { status: "accepted", revision: input.p_revision });
+        return Response.json(claim() ?? { status: "accepted", revision: input.p_revision, text: input.p_text, fates: input.p_fates });
       }
       throw Error(`Unexpected database access: ${table}`);
     } } });
