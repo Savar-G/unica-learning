@@ -97,9 +97,10 @@ describe('A1: an answer claim is refused only when code read its whole subject',
 
 describe('D1: a direction word is no judgment', () => {
   for (const stream of [false, true]) {
+    // Savar's call 2 (2026-11-15): a message that corrects ends with one question.
     it(`"Start with the ones on the right." after "My answer is 36." waits for the reviews and is said (stream=${stream})`, async () => {
-      const r = await call('Start with the ones on the right.', 'My answer is 36.', stream, 'true');
-      expect(r.said).toBe('Start with the ones on the right.');
+      const r = await call('Start with the ones on the right. What is 12 minus 8?', 'My answer is 36.', stream, 'true');
+      expect(r.said).toBe('Start with the ones on the right. What is 12 minus 8?');
       expect(r.model.briefs).toHaveLength(1);
       expect(r.math.requests.length).toBeGreaterThan(0);
     });

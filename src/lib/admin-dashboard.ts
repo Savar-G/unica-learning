@@ -53,6 +53,14 @@ export interface RawSend { id: string; created_at: string; kind: SendKind; paren
 /** One row of public.workbook_emails: the workbook welcome, ready and dispatch notices, and the old plan start emails. */
 export interface RawWorkbookEmail { id: string; created_at: string; parent_id: string; child_id: string; kind: WorkbookEmailKind; status: WorkbookEmailStatus; attempts: number; sent_at: string | null; email_id: string | null; error: string | null; subject: string | null }
 
+/** The confirmation email kept on one plan-start generation. Null send status means no send attempt. */
+export interface RawPlanStartEmail {
+  card_setup_id: string; generation: number; parent_id: string; started_at: string;
+  email_send_status: "sending" | "sent" | "failed" | "unknown" | null;
+  email_attempts: number; email_claimed_at: string | null; email_sent_at: string | null;
+  email_provider_id: string | null; email_error: string | null; email_subject: string | null;
+}
+
 /**
  * One delivery event from Resend's webhook (D-104), joined to its email: through the kept copy (a reminder or a report
  * email), or by `email_ref`, the email's id in the email list (a send log row or a workbook email).
@@ -71,6 +79,8 @@ export interface DashboardRows {
   sends?: RawSend[];
   /** The workbook emails (public.workbook_emails). */
   workbookEmails?: RawWorkbookEmail[];
+  /** Plan confirmation emails kept on public.plan_starts. */
+  planStartEmails?: RawPlanStartEmail[];
   /** Resend's delivery events of the emails with a kept copy (D-104), each with the email it belongs to. */
   deliveries: RawDelivery[];
   subscriptions: RawSubscription[];
@@ -241,13 +251,20 @@ export const reportEmailId = (reportId: string, which: "report" | "alert") => `$
 export const sendEmailId = (id: string) => `${id}:send`;
 /** The email list id of a workbook email: "<row id>:workbook". */
 export const workbookEmailId = (id: string) => `${id}:workbook`;
+/** A plan confirmation belongs to one card setup and one generation. */
+export const planStartEmailId = (cardId: string, generation: number) => `${cardId}:${generation}:plan`;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /**
  * An id in the email list: a reminder's log id, "<report id>:report" or "<report id>:alert", "<row id>:send" (the send
- * log) or "<row id>:workbook" (a workbook email). Null for anything else.
+ * log), "<row id>:workbook" (a workbook email), or "<card id>:<generation>:plan". Null for anything else.
  */
-export function parseEmailId(emailId: string): { id: string; which?: "report" | "alert" | "send" | "workbook" } | null {
-  const [id, which, ...rest] = emailId.split(":");
+export function parseEmailId(emailId: string): { id: string; which: "plan"; generation: number } | { id: string; which?: "report" | "alert" | "send" | "workbook"; generation?: never } | null {
+  const parts = emailId.split(":");
+  if (parts.length === 3 && UUID.test(parts[0]) && parts[2] === "plan" && /^[1-9][0-9]*$/.test(parts[1])) {
+    const generation = Number(parts[1]);
+    return Number.isSafeInteger(generation) && generation <= 2_147_483_647 ? { id: parts[0], which: "plan", generation } : null;
+  }
+  const [id, which, ...rest] = parts;
   if (!UUID.test(id ?? "") || rest.length > 0) return null;
   if (which === undefined) return { id };
   return which === "report" || which === "alert" || which === "send" || which === "workbook" ? { id, which } : null;
@@ -443,6 +460,18 @@ export function buildFamilies(rows: DashboardRows, now = new Date()): Family[] {
     for (const w of mine(workbookEmails)) {
       const e = workbookEvent(w, family, nameOf(w.child_id), deliveryOf.get(workbookEmailId(w.id)) ?? null);
       if (e) emails.push(e);
+    }
+    for (const r of mine(rows.planStartEmails ?? [])) {
+      if (!r.email_send_status) continue;
+      const child = nameOf(cards.find((c) => c.id === r.card_setup_id)?.child_id ?? null);
+      const state = WORKBOOK_STATE[r.email_send_status];
+      const id = planStartEmailId(r.card_setup_id, r.generation);
+      emails.push({
+        id, kind: "plan_start", at: r.email_sent_at ?? r.email_claimed_at ?? r.started_at,
+        familyId: p.id, familyName: p.name, childName: child, state, status: DELIVERY_STATUS[state],
+        subject: r.email_subject ?? subjectFor("plan_start", child, null), attempts: r.email_attempts,
+        error: r.email_error, delivery: deliveryOf.get(id) ?? null, clicks: null,
+      });
     }
     emails.sort(newestFirst);
 

@@ -24,8 +24,8 @@ import { findSavedCard } from "@/lib/saved-card";
 import { stripeCardProvider } from "@/lib/saved-card-server";
 import { stripe } from "@/lib/stripe";
 import type Stripe from "stripe";
-import type { DashboardRows, Delivery, EmailCopyView, RawCard, RawDelivery, RawChild, RawEmail, RawParent, RawReport, RawSend, RawTest, RawWaitlist, RawWorkbookEmail } from "@/lib/admin-dashboard";
-import { parseEmailId, sendEmailId, workbookEmailId } from "@/lib/admin-dashboard";
+import type { DashboardRows, Delivery, EmailCopyView, RawCard, RawDelivery, RawChild, RawEmail, RawParent, RawReport, RawSend, RawTest, RawWaitlist, RawWorkbookEmail, RawPlanStartEmail } from "@/lib/admin-dashboard";
+import { parseEmailId, sendEmailId, workbookEmailId, planStartEmailId } from "@/lib/admin-dashboard";
 import type { TemplateFilters, TemplateStat } from "@/lib/admin-templates";
 import type { ExportReader, ExportRow, PagedTable } from "@/lib/admin-export";
 import type { AnonymousTestRow } from "@/lib/anonymous-copy-export";
@@ -1408,7 +1408,8 @@ export async function dashboardRows(a: AdminSession): Promise<DashboardRows> {
   const cardRows = allRows<RawCard>(a.db.rpc("admin_card_setups").select(DASH_CARD_COLUMNS).order("id"), "card setups");
   const sendRows = allRows<RawSend>(a.db.from("email_sends").select(DASH_SEND_COLUMNS).order("id"), "email sends");
   const workbookEmailRows = allRows<RawWorkbookEmail>(a.db.from("workbook_emails").select(DASH_WORKBOOK_EMAIL_COLUMNS).order("id"), "workbook emails");
-  const [parents, children, tests, reports, cards, waitlist, emails, stripeRead, testIds, deliveries, sends, workbookEmails] = await Promise.all([
+  const planEmailRows = allRows<RawPlanStartEmail>(a.db.from("plan_starts").select(DASH_PLAN_EMAIL_COLUMNS).not("email_send_status", "is", null).order("card_setup_id").order("generation"), "plan start emails");
+  const [parents, children, tests, reports, cards, waitlist, emails, stripeRead, testIds, deliveries, sends, workbookEmails, planStartEmails] = await Promise.all([
     allRows<RawParent>(a.db.rpc("admin_parents").select(PARENT_COLUMNS).order("id"), "parents"),
     allRows<RawChild>(a.db.rpc("admin_children").select(CHILD_COLUMNS).order("id"), "children"),
     allRows<DashTestRow>(a.db.rpc("admin_assessments").select(DASH_TEST_COLUMNS).order("id"), "tests"),
@@ -1419,12 +1420,13 @@ export async function dashboardRows(a: AdminSession): Promise<DashboardRows> {
     allRows<RawEmail>(a.db.from("email_log").select(DASH_EMAIL_COLUMNS).order("id"), "email log"),
     cardSubscriptions(cardRows),
     testAccountIds(a),
-    Promise.all([sendRows, workbookEmailRows]).then(([s, w]) => deliveryRows(a, emailRefs(s, w))),
+    Promise.all([sendRows, workbookEmailRows, planEmailRows]).then(([s, w, p]) => deliveryRows(a, emailRefs(s, w, p))),
     sendRows,
     workbookEmailRows,
+    planEmailRows,
   ]);
   return {
-    parents, children, reports, cards, waitlist, emails, deliveries, sends, workbookEmails, testIds, ...stripeRead,
+    parents, children, reports, cards, waitlist, emails, deliveries, sends, workbookEmails, planStartEmails, testIds, ...stripeRead,
     tests: tests.map(({ answers, ...t }) => ({ ...t, answered: answers[0]?.count ?? 0 })),
   };
 }
@@ -1437,6 +1439,7 @@ const DASH_WAITLIST_COLUMNS = "id, created_at, parent_id, child_id, province";
 const DASH_EMAIL_COLUMNS = "id, created_at, parent_id, child_id, assessment_id, kind, status, attempts, sent_at, error, clicks, first_clicked_at";
 const DASH_SEND_COLUMNS = "id, created_at, kind, parent_id, child_id, outcome, email_id, error, subject";
 const DASH_WORKBOOK_EMAIL_COLUMNS = "id, created_at, parent_id, child_id, kind, status, attempts, sent_at, email_id, error, subject";
+const DASH_PLAN_EMAIL_COLUMNS = "card_setup_id, generation, parent_id, started_at, email_send_status, email_attempts, email_claimed_at, email_sent_at, email_provider_id, email_error, email_subject";
 type DashTestRow = Omit<RawTest, "answered"> & { answers: { count: number }[] };
 
 /** Rows in the database's id order (a uuid's text sorts as its bytes do), so rows read in chunks keep the whole read's order. */
@@ -1468,6 +1471,7 @@ export async function familyDashboardRows(a: AdminSession, parentIds: readonly s
     byIds<RawSend>([...new Set(sendIds.filter(isUuid))], "email sends", (chunk) => a.db.from("email_sends").select(DASH_SEND_COLUMNS).in("id", chunk)),
   ]).then(([family, asked]) => byIdOrder([...family, ...asked.filter((s) => !family.some((f) => f.id === s.id))]));
   const workbookEmailRows = ofFamilies<RawWorkbookEmail>("workbook emails", (chunk) => a.db.from("workbook_emails").select(DASH_WORKBOOK_EMAIL_COLUMNS).in("parent_id", chunk));
+  const planEmailRows = inChunks(ids, (chunk) => allRows<RawPlanStartEmail>(a.db.from("plan_starts").select(DASH_PLAN_EMAIL_COLUMNS).in("parent_id", chunk).not("email_send_status", "is", null).order("card_setup_id").order("generation"), "plan start emails"));
   // The lookups by id outside the families, read only when a family row names one the reads above did not return.
   const outside = Promise.all([childRows, testRows, reportRows, emailRows]).then(([children, tests, reports, emails]) => Promise.all([
     byIds<RawChild>(missing([...emails.map((e) => e.child_id), ...reports.map((r) => r.child_id), ...tests.map((t) => t.child_id)], children.map((c) => c.id)), "children",
@@ -1477,7 +1481,7 @@ export async function familyDashboardRows(a: AdminSession, parentIds: readonly s
     byIds<RawReport>(missing(tests.map((t) => t.id), reports.map((r) => r.assessment_id)), "reports",
       (chunk) => a.db.rpc("admin_reports").select(DASH_REPORT_COLUMNS).in("assessment_id", chunk)),
   ]));
-  const [parents, children, tests, reports, cards, waitlist, emails, stripeRead, testIds, deliveries, [otherChildren, otherTests, otherReports], sends, workbookEmails] = await Promise.all([
+  const [parents, children, tests, reports, cards, waitlist, emails, stripeRead, testIds, deliveries, [otherChildren, otherTests, otherReports], sends, workbookEmails, planStartEmails] = await Promise.all([
     ofFamilies<RawParent>("parents", (chunk) => a.db.rpc("admin_parents").select(PARENT_COLUMNS).in("id", chunk)),
     childRows,
     testRows,
@@ -1487,13 +1491,14 @@ export async function familyDashboardRows(a: AdminSession, parentIds: readonly s
     emailRows,
     customerSubscriptions(cardRows),
     testAccountIds(a),
-    Promise.all([emailRows, reportRows, sendRows, workbookEmailRows]).then(([e, r, s, w]) => familyDeliveryRows(a, e.map((x) => x.id), r.map((x) => x.id), emailRefs(s, w))),
+    Promise.all([emailRows, reportRows, sendRows, workbookEmailRows, planEmailRows]).then(([e, r, s, w, p]) => familyDeliveryRows(a, e.map((x) => x.id), r.map((x) => x.id), emailRefs(s, w, p))),
     outside,
     sendRows,
     workbookEmailRows,
+    planEmailRows,
   ]);
   return {
-    parents, cards, waitlist, emails, deliveries, sends, workbookEmails, testIds, ...stripeRead,
+    parents, cards, waitlist, emails, deliveries, sends, workbookEmails, planStartEmails, testIds, ...stripeRead,
     children: [...children, ...otherChildren], reports: [...reports, ...otherReports],
     tests: [...tests, ...otherTests].map(({ answers, ...t }) => ({ ...t, answered: answers[0]?.count ?? 0 })),
   };
@@ -1633,6 +1638,11 @@ export async function emailParent(a: AdminSession, emailId: string): Promise<str
   const parsed = parseEmailId(emailId);
   if (!parsed) return null;
   const { id, which } = parsed;
+  if (which === "plan") {
+    const row = await a.db.from("plan_starts").select("parent_id").eq("card_setup_id", id).eq("generation", parsed.generation).maybeSingle()
+      .then((r) => must<{ parent_id: string } | null>(r, "plan start email"));
+    return row?.parent_id ?? null;
+  }
   const row = which === "send"
     ? await a.db.from("email_sends").select("parent_id").eq("id", id).maybeSingle().then((r) => must<{ parent_id: string | null } | null>(r, "email send"))
     : which === "workbook"
@@ -1652,6 +1662,14 @@ export async function getEmailCopy(a: AdminSession, emailId: string): Promise<Em
   const parsed = parseEmailId(emailId);
   if (!parsed) return null;
   const { id, which } = parsed;
+  if (which === "plan") {
+    const row = await a.db.from("plan_starts").select("email_send_status, email_provider_id, email_to, email_subject, email_text, email_html, email_claimed_at, email_sent_at, started_at")
+      .eq("card_setup_id", id).eq("generation", parsed.generation).maybeSingle().then((r) => must<PlanStartCopyRow | null>(r, "plan start email copy"));
+    if (!row || !row.email_send_status || row.email_text === null || row.email_subject === null || row.email_to === null) return null;
+    const outcome: EmailCopyView["outcome"] = row.email_send_status === "sent" ? "sent" : row.email_send_status === "failed" ? "refused" : "unknown";
+    return { outcome, from: null, to: row.email_to, replyTo: null, subject: row.email_subject, text: row.email_text, html: row.email_html,
+      keptAt: row.email_sent_at ?? row.email_claimed_at ?? row.started_at, events: await eventsOf(a, row.email_provider_id) };
+  }
   if (which === "send" || which === "workbook") return ownCopy(a, id, which);
   const query = a.db.from("email_copies").select("outcome, email_id, from_address, to_address, reply_to, subject, text_body, html_body, updated_at");
   const row = await (which ? query.eq("report_id", id).eq("report_email", which === "report" ? "parent" : "alert") : query.eq("email_log_id", id)).maybeSingle()
@@ -1666,6 +1684,9 @@ export async function getEmailCopy(a: AdminSession, emailId: string): Promise<Em
   return { outcome: row.outcome, from: row.from_address, to: row.to_address, replyTo: row.reply_to, subject: row.subject, text: row.text_body, html: row.html_body, keptAt: row.updated_at, events };
 }
 type EmailCopyRow = { outcome: EmailCopyView["outcome"]; email_id: string | null; from_address: string | null; to_address: string; reply_to: string | null; subject: string; text_body: string; html_body: string | null; updated_at: string };
+
+type PlanStartCopyRow = Pick<Database["public"]["Tables"]["plan_starts"]["Row"],
+  "email_send_status" | "email_provider_id" | "email_to" | "email_subject" | "email_text" | "email_html" | "email_claimed_at" | "email_sent_at" | "started_at">;
 
 type SendCopyRow = { outcome: EmailCopyView["outcome"]; email_id: string | null; from_address: string | null; to_address: string | null; reply_to: string | null; subject: string | null; text_body: string | null; html_body: string | null; created_at: string };
 type WorkbookCopyRow = { status: string; email_id: string | null; to_address: string | null; subject: string | null; text_body: string | null; html_body: string | null; updated_at: string };
@@ -1711,10 +1732,11 @@ async function deliveryRows(a: AdminSession, refs: EmailRef[]): Promise<RawDeliv
 
 /** An email that keeps Resend's id on its own row (the send log, the workbook emails), with its id in the email list. */
 type EmailRef = { ref: string; email_id: string };
-function emailRefs(sends: RawSend[], workbookEmails: RawWorkbookEmail[]): EmailRef[] {
+function emailRefs(sends: RawSend[], workbookEmails: RawWorkbookEmail[], planEmails: RawPlanStartEmail[]): EmailRef[] {
   return [
     ...sends.flatMap((s) => (s.email_id ? [{ ref: sendEmailId(s.id), email_id: s.email_id }] : [])),
     ...workbookEmails.flatMap((w) => (w.email_id ? [{ ref: workbookEmailId(w.id), email_id: w.email_id }] : [])),
+    ...planEmails.flatMap((p) => (p.email_provider_id ? [{ ref: planStartEmailId(p.card_setup_id, p.generation), email_id: p.email_provider_id }] : [])),
   ];
 }
 /** Each event of an email that keeps Resend's id on its own row, by that email's id in the email list. */

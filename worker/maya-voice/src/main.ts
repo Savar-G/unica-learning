@@ -28,7 +28,7 @@ import { callSeams } from "@/lib/maya-call-seams";
 import { mayaCalls } from "@/lib/maya-call";
 import { voiceOpening } from "./opening";
 import { mayaCallStore } from "@/lib/maya-call-store";
-import { asksWordTimings, callKeyterms, callOfRoom, childIdentity, GREETING_TEXT, turnSilences, VOICE_AGENT_NAME, voiceProviders, type TurnSilence, type VoiceCallFacts } from "@/lib/maya-voice";
+import { asksWordTimings, callKeyterms, callOfRoom, childIdentity, turnSilences, VOICE_AGENT_NAME, voiceProviders, type TurnSilence, type VoiceCallFacts } from "@/lib/maya-voice";
 import { VoiceCallRun, voiceSession, type CallUpdate } from "./agent";
 import { CallTelemetry, markedFetch, telemetry, setTelemetry } from "./telemetry";
 import { presenceOf, waitForChild } from "./child-wait";
@@ -149,7 +149,7 @@ export default defineAgent({
     } });
     const turnSamples: VoiceTurnSample[] = [];
     const ackLimit = Number(process.env.MAYA_ACK_LIMIT_MS);
-    const run = new VoiceCallRun(session, opened.call, { board, notify, greeting: GREETING_TEXT, ...(openingText ? { opening: openingText, openingMark: mark } : {}),
+    const run = new VoiceCallRun(session, opened.call, { board, notify, ...(openingText ? { opening: openingText, openingMark: mark } : {}),
       ...(made.fake ? {} : { numberContinueMs: tuning.numberContinueMs, dropSilentPeakDbfs: tuning.dropSilentPeakDbfs, detectorMinSilenceMs: tuning.detectorMinSilenceMs }),
       ...(patience ? { patience: { ...turnSilences(tuning), set: (limits: TurnSilence) => patience.setSilence(limits) } } : {}),
       ...(process.env.MAYA_ACK_LIMIT_MS?.trim() && Number.isFinite(ackLimit) && ackLimit >= 0 ? { ackLimitMs: ackLimit } : {}),
