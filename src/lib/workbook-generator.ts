@@ -76,7 +76,7 @@ import {
 } from "@/lib/workbook-book";
 import { pageId, type Omission, type PageContent, type SlotName } from "@/lib/workbook-page";
 import { dayDifficulty, type PageType, type PlannedPage, type PlannedPart, type WorkbookPlan } from "@/lib/workbook-plan";
-import { estimatedDayMinutes, scheduledItemProblem } from "@/lib/workbook-feedback-check";
+import { estimatedDayMinutes, generatedDayTime, scheduledItemProblem } from "@/lib/workbook-feedback-check";
 import { workbookEditItem } from "@/lib/workbook-edit-item";
 import type { DraftPage } from "@/lib/workbook-render";
 import { textRoom, slotMax, pagePlan } from "@/lib/workbook-template";
@@ -518,6 +518,13 @@ function withInterestNoun(input: GenerateInput, w: PageWork, slot: Slot, c: Item
   const singular = old.replace(/(?:es|s)$/, "");
   if (text === c.item.text || singular && new RegExp(`\\b${singular.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text)) return c;
   return { ...c, item: { ...c.item, text, thing } };
+}
+
+/** Fitting adds and replaces stories after the first selection pass. Count the retained contracts afresh. */
+function capacityInterest(input: GenerateInput, work: PageWork[], except?: Slot): boolean {
+  if (!interestWords(input.plan).things.length) return false;
+  const eligible = work.flatMap(w => w.slots.flatMap(s => s !== except && s.contract && interestEligible(input.curriculum, s.contract) ? [s.contract] : []));
+  return eligible.filter(c => printsInterest(input.plan, c.item.text)).length < INTEREST_SHARE.target * (eligible.length + 1);
 }
 /** The day's number and picture check (scheduledItemProblem): with no signals exactly today's. */
 const NEW_IDEA_PICTURES: ReadonlySet<string> = new Set(["worked-example", "now-you", "try-first"]);
@@ -3422,7 +3429,7 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
             if (w.slots.length >= ceiling) w.page.refills = (w.page.refills ?? 0) + 1;
             const layoutSlot=target.layoutSlot;
             const ordinal=w.slots.filter(s=>s.layoutSlot===layoutSlot).length+1;
-            const slot={...target,id:`${Number(target.id.split(".")[0])}.${target.place === "challenge" ? ordinal : 99+ordinal}`,contract:null,
+            const slot={...target,id:`${Number(target.id.split(".")[0])}.${target.place === "challenge" ? ordinal : 99+ordinal}`,contract:null,interest:capacityInterest(input,work,repairPartner),
               refillOwnStep: !holes.length && restoringFloor && input.plan.level === 4 || !preferReview && holeOwn,
               ...(preferReview && repairPartner ? { part: { ...target.part, step: null, reviewSteps: w.slots.flatMap(s => s.layoutSlot === target.layoutSlot && s.contract?.template && (s.contract.template.skill !== s.part.step?.skill || s.contract.template.step !== s.part.step?.step) ? [{ skill: s.contract.template.skill, step: s.contract.template.step }] : []) } } : {})
               };
@@ -3445,6 +3452,7 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
               }
               const built=buildPlannedItem(c,c.item,{id:"capacity",workbookId:input.workbookId,page:w.number,question:w.slots.length+1,level:input.plan.level,skills:[c.item.skill]});
               if (!built.package || built.check.status === "failed" || dayProblem(input, built.package, w.day,slot.place ?? "")) continue;
+              if (attempt < 64 && slot.interest && interestEligible(input.curriculum,c) && !printsInterest(input.plan,built.package.text)) continue;
               // Replace a question of the same printed form where possible. Replacing only the last review
               // can block a valid own-step question when the page is already half bare numbers.
               const form = typeKey(w.page, { itemPlan: c, package: built.package });
@@ -3565,12 +3573,14 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
           const planned=(p:PageWork)=>p.slots.flatMap(s=>{ const pkg=s.contract && s!==wideSlot ? contractPackage(input,p,s.contract) : null; return pkg && s.place!=="warm-up" ? [pkg] : []; });
           const taken=new Set([...work.flatMap(p=>planned(p).map(taskIdentity)), ...work.flatMap(p=>panelTasks(input,p))]);
           const was = wideSlot.contract ? contractPackage(input, w, wideSlot.contract) : null;
+          const trial = { ...wideSlot, contract: undefined, interest: capacityInterest(input, work, wideSlot) };
           let other: ItemPlan | null = null;
           for (let attempt = 1 + 16 * (wideSlot.refits - 1); attempt < 16 * wideSlot.refits + 1 && !other; attempt++) {
-            const c = contractFor(input, w, { ...wideSlot, contract: undefined }, attempt);
+            const c = contractFor(input, w, trial, attempt);
             if (!c) continue;
             const b = buildPlannedItem(c, c.item, { id: "capacity", workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [c.item.skill] });
             if (!b.package || b.check.status === "failed" || dayProblem(input, b.package, w.day, wideSlot.place ?? "") || taken.has(taskIdentity(b.package))) continue;
+            if (attempt < 64 && trial.interest && interestEligible(input.curriculum,c) && !printsInterest(input.plan,b.package.text)) continue;
             if (was && taskIdentity(b.package) === taskIdentity(was)) continue;
             // (Too many lines on its card: a shorter text.)
             if (was && fit.problems.some(p => p.reason.includes(`question ${wide}'s text takes`)) && b.package.text.length >= was.text.length) continue;
@@ -3592,6 +3602,7 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
           // (A question with a printed figure, a ten-frame to colour, is taller than any line of text: it counts as 200
           // characters, and any question with no figure is shorter, the U4 sample's Day 5.)
           const was = plannedTallness(longest, input.plan.level);
+          const trial = { ...longest, contract: undefined, interest: capacityInterest(input, work, longest) };
           let shorter: ItemPlan | null = null;
           // Never a task the book already plans, nor a sentence frame this page or day has used up.
           const planned=(p:PageWork)=>p.slots.flatMap(s=>{ const pkg=s.contract && s!==longest ? contractPackage(input,p,s.contract) : null; return pkg && s.place!=="warm-up" ? [pkg] : []; });
@@ -3605,11 +3616,12 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
           // (Its own step first, then an earlier step the book taught, when the page's own stems are used up.)
           for (const attempt of [...Array.from({ length: 95 }, (_, k) => k + 1), ...Array.from({ length: 48 }, (_, k) => LATE_ATTEMPT + k)]) {
             if (shorter) break;
-            const c = contractFor(input, w, { ...longest, contract: undefined }, attempt);
+            const c = contractFor(input, w, trial, attempt);
             // (A template question takes another template: a hand-built fallback is easier, "Write the digits in 700000".)
             if (!c || plannedTallness({ contract: c }, input.plan.level) >= was - 4 || longest.contract!.template && !c.template) continue;
             const b = buildPlannedItem(c, c.item, { id: "capacity", workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [c.item.skill] });
             if (!b.package || b.check.status === "failed" || dayProblem(input, b.package, w.day, longest.place ?? "") || taken.has(taskIdentity(b.package))) continue;
+            if (attempt < 64 && trial.interest && interestEligible(input.curriculum,c) && !printsInterest(input.plan,b.package.text)) continue;
             const form=printedForm(b.package);
             if (longest.place !== "challenge" && longest.place !== "show-what-you-know" && reachesChallenge(work, w.day, c)) continue;
             if (longest.place!=="challenge" && (new Set([...others, form]).size < Math.min(3, before) || others.length>=2 && others.filter(f=>f===form).length+1>Math.ceil((others.length+1)/2))) continue;
@@ -3821,10 +3833,29 @@ async function repairFinalRows(input: GenerateInput, w: PageWork, work: PageWork
 /** The planned book does not fit its pages: the same plan and workbook id give the same answer every time. */
 export class CapacityProblem extends Error {}
 
+/** Capacity fill changes the estimate. Keep whole optional blocks in the plan before its frame is frozen. */
+function requiredTimeExtras(input: GenerateInput, work: PageWork[]): void {
+  if (input.plan.personal?.adjustments.requiredMinutes == null) return;
+  for (const day of input.plan.days) {
+    const target = day.time?.target;
+    if (target === undefined) continue;
+    const pages = work.filter(w => w.day === day.day && !w.page.extraPractice);
+    const minutes = () => generatedDayTime(pages.map(w => budgetPage(input, w))).requiredMinutes;
+    const challenges = pages.flatMap(w => w.page.parts.flatMap((part, index) => part.kind === "challenge" ? [{ w, indices: [index] }] : []));
+    const practice = [...pages].reverse().filter(w => w.page.parts.some(part => part.kind === "practice"))
+      .map(w => ({ w, indices: w.page.parts.map((_, index) => index) }));
+    for (const { w, indices } of [...challenges, ...practice]) {
+      if (minutes() <= target + 1e-9) break;
+      w.page = { ...w.page, parts: w.page.parts.map((part, index) => indices.includes(index) ? { ...part, extra: true } : part) };
+    }
+  }
+}
+
 export async function prepareWorkbookCapacity(input: GenerateInput, fitCheck: FitCheck): Promise<WorkbookPlan> {
   const { work } = layOut(input);
   const problem = await fitWorkBudget(input, fitCheck, work);
   if (problem) throw new CapacityProblem(problem);
+  requiredTimeExtras(input, work);
   // (Each panel's measured attempt goes with its page, as its slots' contracts do, #746.)
   const withPanelAttempts = (w: PageWork) => {
     const attempts = w.panels.filter((p) => p.attempt !== undefined).map((p) => [p.id, p.attempt!] as const);
@@ -3874,6 +3905,7 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
   const { work, backCover, total } = layOut(input);
   const capacityProblem = await fitWorkBudget(input, deps.fit, work);
   if (capacityProblem) return { status: "refused", reason: capacityProblem };
+  requiredTimeExtras(input, work);
   const byNumber = new Map(work.map((w) => [w.number, w]));
   if (only) {
     for (const n of only) {

@@ -11,6 +11,39 @@ const place = (level: number, skill: string) => ({ id: "q1", workbookId: "000000
 const item = (skill: string, step: number, slot: Parameters<typeof stepTemplateItem>[0]["place"], seed = 1, attempt = 0, level = 4) =>
   stepTemplateItem({ curriculum: BC, skill, step, place: slot, level, day: 1, seed, attempt, ordinal: 0 });
 
+it("keeps approved interest nouns in unpriced container stories", () => {
+  const base = BC.skillSteps("5.6-multiply-2-digit")![0];
+  const template = base.templates!.find(t => t.format === "story" && t.text.includes("{container}"))!;
+  expect(template).toBeTruthy();
+  const curriculum = curriculumFromData({ ...BC_CURRICULUM, steps: BC_CURRICULUM.steps.map(s =>
+    s.skill === base.skill && s.number === base.number ? { ...s, templates: [template] } : s) });
+  const filled = Array.from({ length: 40 }, (_, i) => stepTemplateItem({ curriculum, skill: base.skill, step: base.number,
+    place: "word-problems", level: 17, day: 1, seed: i + 1, attempt: 0, ordinal: 0,
+    interests: { things: ["shakers"], places: [] } })).filter(x => x !== null);
+  expect(filled.length).toBeGreaterThan(0);
+  for (const q of filled) {
+    expect(q.text).toContain("shakers");
+    expect(buildStepItem(q.ref, q.text, place(17, base.skill), "code").check.status).toBe("checked");
+  }
+});
+
+it("keeps purchased objects in price stories when an interest supplies natural objects", () => {
+  const base = BC.skillSteps("5.6-multiply-2-digit")![0];
+  const template = base.templates!.find(t => t.format === "story" && t.text.includes("{container}"))!;
+  const priced = { ...template, text: "{name} buys {a} {things} at ${b} each. How much is paid?", answer: "a * b" };
+  const curriculum = curriculumFromData({ ...BC_CURRICULUM, steps: BC_CURRICULUM.steps.map(s =>
+    s.skill === base.skill && s.number === base.number ? { ...s, templates: [priced] } : s) });
+  const filled = Array.from({ length: 40 }, (_, i) => stepTemplateItem({ curriculum, skill: base.skill, step: base.number,
+    place: "word-problems", level: 17, day: 1, seed: i + 1, attempt: 0, ordinal: 0,
+    interests: { things: ["shells"], places: [] } })).filter(x => x !== null);
+  expect(filled.length).toBeGreaterThan(0);
+  for (const q of filled) {
+    expect(q.text).not.toContain("shells");
+    expect(q.text).toMatch(/books|notebooks|tickets|toy cars/);
+    expect(buildStepItem(q.ref, q.text, place(17, base.skill), "code").check.status).toBe("checked");
+  }
+});
+
 describe("step declarations (#597)", () => {
   const fact = (skill: string, kind: "add" | "subtract", a: number, b: number, text: string): AiItem => ({
     ...planItem({ skill: "4.8-multiplication-facts", slot: "1.1", level: 16, day: 1, ordinal: 1, range: { min: 2, max: 100, pictures: false, help: "none" } })!.item,

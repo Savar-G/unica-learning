@@ -4,20 +4,89 @@ import { firstCustomerProfile } from "./workbook-sample-profiles";
 import { planNextWorkbook } from "./workbook-placement";
 import { generateWorkbook, prepareWorkbookCapacity, workbookCapacityPlan, type FitCheck, type GenerateInput } from "./workbook-generator";
 import { buildPlannedItem } from "./workbook-item-plan";
-import { taskIdentity } from "./workbook-task-identity";
+import { storyKind, taskIdentity } from "./workbook-task-identity";
 import { fakeAiClient } from "./ai-client-fake";
 import { fakeWorkbookItems } from "./workbook-ai-fake";
 import { keySolver } from "./workbook-solve-check";
 import { workbookQuality } from "./workbook-quality";
+import { generatedDayTime } from "./workbook-feedback-check";
 import { reviewMasteryStep } from "./workbook-review-level";
+import { interestEligible, interestShareProblems } from "./workbook-personal-items";
 
 // A bounded counting seam isolates contract selection. Real seeded samples prove the physical fit separately.
 const capacityFit: FitCheck = { fits: async page => page.questions.length <= (page.type === "warm-up" ? 12 : 10)
   ? { ok: true } : { ok: false, problems: [{ question: null, reason: "test page capacity" }] } };
 
-function customInput(addReview: string[], days = [1, 5, 10]): GenerateInput {
+it("recalculates whole Extra blocks after capacity fill without dropping the weekly-time work", async () => {
+  const profile = firstCustomerProfile();
+  profile.parent = { goal: "get_ahead", feeling: "okay", weeklyTime: "1_to_2h" };
+  const input = customInput(["5.2", "5.7", "5.15", "5.19"]);
+  const placed = planNextWorkbook({ curriculum: input.curriculum, grade: 8, profile, workbooks: [], number: 1,
+    instructions: { version: 1, startLevel: "U19", teachMore: ["6.4", "6.13"], teachLess: [], addReview: ["5.2", "5.7", "5.15", "5.19"], difficulty: null } });
+  if (!placed.ok) throw new Error(placed.reason);
+  const plan = { ...placed.plan, days: placed.plan.days.filter(d => [1, 4, 5, 9].includes(d.day)) };
+  const fit: FitCheck = { fits: async page => page.questions.length <= 14 ? { ok: true }
+    : { ok: false, problems: [{ question: null, reason: "test page capacity" }] } };
+  const prepared = await prepareWorkbookCapacity({ ...input, plan, schoolGrade: 8 }, fit);
+  const frozen = structuredClone(prepared);
+  let token = 0;
+  const generated = await generateWorkbook({ ...input, plan: prepared, schoolGrade: 8 }, { fit,
+    ai: fakeAiClient({ answer: fakeWorkbookItems }), solver: keySolver(), qrToken: () => `token-${String(++token).padStart(12, "0")}`,
+    store: { save: async draft => ({ status: "saved", draftId: draft.id }), draft: async () => null } });
+  if (generated.status !== "stored") throw new Error(generated.status);
+  for (const day of plan.days) {
+    const pages = generated.draft.pages.filter(p => p.day === day.day && !(p.content?.kind === "day" && p.content.extraPractice));
+    const time = generatedDayTime(pages);
+    expect(time.requiredMinutes, `Day ${day.day}`).toBeLessThanOrEqual(day.time!.target + 1e-9);
+    const challenge = pages.flatMap(p => p.questions.filter(q => q.place === "challenge"));
+    expect(challenge, `Day ${day.day}`).toHaveLength(3);
+    for (const page of pages) if (page.content?.kind === "day") {
+      expect(page.content.requiredTimeTarget).toBe(day.time!.target);
+      for (const block of page.content.blocks.filter(b => b.extra)) expect(block.items.every(n => page.questions.some(q => q.number === n))).toBe(true);
+    }
+  }
+  expect(generated.draft.quality?.issues.filter(i => i.kind === "time")).toEqual([]);
+  expect(prepared).toEqual(frozen);
+});
+
+it("keeps different story kinds on a personalized U19 review page", async () => {
+  const input = customInput(["5.2", "5.7", "5.15"], [7], 8);
+  if (!input.plan.personal) throw new Error("missing personal plan");
+  input.plan.personal.preferences.styles = ["stories", "pictures"];
+  let token = 0;
+  const generated = await generateWorkbook(input, { fit: capacityFit, ai: fakeAiClient({ answer: fakeWorkbookItems }),
+    solver: keySolver(), qrToken: () => `token-${String(++token).padStart(12, "0")}`,
+    store: { save: async draft => ({ status: "saved", draftId: draft.id }), draft: async () => null } });
+  if (generated.status !== "stored") throw new Error(generated.status);
+  const pages = generated.draft.pages.filter(p => p.type === "word-problems");
+  expect(pages.length).toBeGreaterThan(0);
+  for (const page of pages) {
+    const kinds = page.questions.flatMap(q => q.package && ["word-problems", "solve-it-two-ways"].includes(q.place ?? "") ? [storyKind(q.package.text)] : []).filter(Boolean);
+    expect(kinds.length, JSON.stringify(page.questions.map(q => [q.place, q.package?.text]))).toBeGreaterThanOrEqual(2);
+    expect(new Set(kinds).size).toBeGreaterThanOrEqual(Math.min(3, kinds.length));
+  }
+});
+
+it("keeps the interest share when capacity adds and replaces story questions", async () => {
+  const profile = firstCustomerProfile();
+  profile.preferences = { styles: ["stories", "pictures"], interests: ["nature", "games", "music", "cooking", "art"] };
+  const input = customInput(["5.2", "5.7", "5.15", "5.19"]);
+  const placed = planNextWorkbook({ curriculum: input.curriculum, grade: 8, profile, workbooks: [], number: 1,
+    instructions: { version: 1, startLevel: "U19", teachMore: ["6.4", "6.13"], teachLess: [], addReview: ["5.2", "5.7", "5.15", "5.19"], difficulty: null } });
+  if (!placed.ok) throw new Error(placed.reason);
+  let token = 0;
+  const generated = await generateWorkbook({ ...input, plan: placed.plan }, { fit: capacityFit,
+    ai: fakeAiClient({ answer: fakeWorkbookItems }), solver: keySolver(), qrToken: () => `token-${String(++token).padStart(12, "0")}`,
+    store: { save: async draft => ({ status: "saved", draftId: draft.id }), draft: async () => null } });
+  if (generated.status !== "stored") throw new Error(generated.status);
+  const pages = generated.draft.pages;
+  expect(pages.flatMap(p => p.questions.filter(q => q.package && interestEligible(input.curriculum, q.itemPlan))).length).toBeGreaterThanOrEqual(6);
+  expect(interestShareProblems(input.curriculum, placed.plan, pages)).toEqual([]);
+});
+
+function customInput(addReview: string[], days = [1, 5, 10], grade: 4 | 8 = 4): GenerateInput {
   const curriculum = curriculumFor("bc")!;
-  const placed = planNextWorkbook({ curriculum, grade: 4, profile: firstCustomerProfile(), workbooks: [], number: 1,
+  const placed = planNextWorkbook({ curriculum, grade, profile: firstCustomerProfile(), workbooks: [], number: 1,
     instructions: { version: 1, startLevel: "U19", teachMore: ["6.4", "6.13"], teachLess: [],
       addReview, difficulty: null } });
   if (!placed.ok) throw new Error(placed.reason);

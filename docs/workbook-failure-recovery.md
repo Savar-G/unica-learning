@@ -1,10 +1,46 @@
 # Workbook failure recovery (#1114)
 
-This change preserves actionable run failures and repairs missing content, teaching methods and page fit in synthetic U10/U19 books. It uses the saved provider choice and keeps the existing instructions, quality limits and approval rules. Branding #1112 has a separate audit PR.
+This change preserves actionable run failures and repairs missing content, teaching methods and page fit in synthetic U10/U19 books. It uses the saved provider choice and keeps the existing instructions, quality limits and approval rules. Branding #1112 has a separate implementation PR.
 
 ## Current verification
 
 The local full-book probes use fixed seed `17fc5da1-2442-488a-a450-611a471e73e6`, fake AI and `--no-store`. The older failed trials below explain the repairs; they are not the latest status.
+
+### Saved-profile follow-up, Nov 16
+
+Read-only snapshots cover the actual saved school grades, assessment-derived profiles, report/device inputs and instructions. The local probes keep those snapshots outside git, use synthetic display names and the fixed seed, and write no family rows. They do not rebuild a historical print contract or start a customer run.
+
+| Current full local sample | Strict result | Evidence folder |
+|---|---|---|
+| Saved U19, school grade 8 | 64 pages / 507 questions, ready; zero failed questions, fit failures, omissions or render problems | `/tmp/ui-review/workbook-saved-profile-u19-semantic-final` |
+| Saved U10, school grade 5 | 84 pages / 633 questions, ready; zero failed questions, fit failures, omissions or render problems | `/tmp/ui-review/workbook-saved-profile-u10-semantic-final` |
+| Standard U4 | 84 pages / 625 questions, ready; zero failures or omissions | `/tmp/ui-review/workbook-semantic-baselines-final` |
+| Standard U16 | 84 pages / 597 questions, ready; zero failures or omissions | `/tmp/ui-review/workbook-semantic-baselines-final` |
+
+These full samples use fake AI. They prove local content construction and strict print fit, not live model wording. The U19 diff has 20 changed pages; U10 has none. Printed text, teaching methods and the changed-page sheet were reviewed. Under Cedric's delegated sample-approval authority, the passing local U10/U19 print samples are accepted for this scoped repair. That accepts neither the failed real Haiku trial nor any live customer draft.
+
+The saved U19 start replaces automatic U18. Extra teaching 6.4 and 6.13 applies. Reviews 5.2, 5.7 and 5.15 apply; the fourth stored choice, 5.19, is explicitly deferred because the plan holds three review topics. U10 review 2.4 applies; teach-more 3.3 is explicitly deferred for prerequisites and room. The source settings remain unchanged. A controlled probe with the same grade/profile inputs and the custom instruction omitted places at U18. It exits 1 before generation on Page 10 because the retained grid leaves 200 px empty at the bottom. Evidence: `/tmp/workbook-saved-profile-auto-final.log`. Automatic placement is therefore not a workaround for this family. This comparison does not invalidate the passing requested U19 layout or establish that all U18 plans fit.
+
+Capacity filling changes the work estimate after the planner's first Extra decision. `requiredTimeExtras` recalculates from the retained questions and panels before the frame is frozen, marking whole Challenge parts first and then the last practice pages. It preserves each saved required-time target and every question. Reloading prepared capacity is deterministic and leaves the supplied plan unchanged. Unpriced container templates retain offered interest nouns. Refills and shorter replacements recalculate the share from retained contracts; the final half-to-two-thirds check stays unchanged. Public regressions reproduced a 24.05-minute day against a 23-minute target and a 23/47 interest share before repair.
+
+Whole-number multiplication can resolve the writer's column place only when it names one computed step. Exact ids and null remain valid; nonexistent, ambiguous and decimal-place aliases still fail. Prime classification and divisibility methods derive reasoning from the selected template's own numbers and checked key. Native word-answer reminders retain their question, preventing different examples from collapsing to the same answer-only panel. Unsupported missing-answer method branches were removed after review found that blank normalization made them unreachable. Real template-selection tests cover the supported methods.
+
+The last focused run passed 72 tests across five public-interface suites. Both independent review axes found no P0/P1 in HEAD `92085ba` plus supplement SHA256 `55035dd3399a8f3127b7aa28bb2136e2cc02c49fc57a46e123637c863ebf864d`. The sole P2 was the unreachable method branches, removed afterward with a red/green boundary regression. Their removal changes no generated sample content. The final U4/U16 pair ran in parallel on the final source with exact replay and network calls disabled. Both exit 0 with unchanged 28-page manifests: U4 248 questions; U16 203 questions. U16 replays all six writer and 37 independent solver responses; no new requests or charges. Evidence: `/tmp/ui-review/workbook-final-offline-u4`, `/tmp/ui-review/workbook-final-offline-u16`. The final gate exits 0 throughout: `npm test -- --maxWorkers=2` reports 934 passed files, 3 skipped, with 29,878 passed tests, 36 skipped and one todo in 1,126.23 seconds; `npx eslint src` and `npm run build` both pass. Logs: `/tmp/workbook-final-full-test.log`, `/tmp/workbook-final-eslint.log`, `/tmp/workbook-final-build.log`.
+
+Cedric authorized local sample approval and merge after verification, stopping before either live child book is generated. Savar's Mac is not reachable from this session; its last recorded worker state is stopped on the previous main build. Cedric separately authorized direct Anthropic verification up to $5 total and supplied the key through secure entry. The private verifier disables provider fallbacks and SDK retries, reserves each request before dispatch, and retains reservations when billing is unknown. No production key, provider configuration or family records changed.
+
+The real U4/U16 API pair completed with exit 0. U4 has 28 pages / 248 questions and needed no model requests. U16 has 28 pages / 203 questions, six Sonnet writer responses and 37 independent Haiku solves. Both have zero failed questions, fit failures, omissions or render problems. The U16 contact sheet and printed text were reviewed. Evidence: `/tmp/ui-review/workbook-api-real-u4` and `/tmp/ui-review/workbook-api-real-u16`.
+
+Additional full real U19 trials are **not approved**. Earlier Sonnet probes hit the private spending guard and exposed the column alias and repeated teaching defects repaired above. A subsequent local Haiku writer trial, `/tmp/ui-review/workbook-api-u19-haiku-final`, retained 64 pages / 507 questions but exited 1 with 11 failed warm-up questions and five incomplete pages. Its 113 independent solves passed. Remaining failures include fabricated step ids, unsupported number typography and an easier example that is not easier. The existing validators reject these responses; this trial does not establish full-book real-model readiness. Haiku was an explicit local verification choice on the authorized account, not a production model change. Further paid calls stop at the conservative ledger allowance. The ledger records $2.496513 in confirmed upper-bound usage and $2.439792 in unresolved reservations, a combined maximum below $5.
+
+### Starting the two live books after release
+
+1. Confirm PR #1124 is merged, production is on that commit, and Savar's Mac worker has restarted on the same code. On Savar's Mac, the installed worker restarts with `launchctl kickstart -k gui/$(id -u)/com.unicalearning.workbook-worker`. Its launcher pulls main. This command belongs on that Mac, not Cedric's checkout.
+2. Confirm the admin worker indicator is online and the selected Codex account can take requests. The local API verification does not change or replenish that subscription.
+3. Keep both children's saved instructions. Use **Prepare next workbook** for a fresh Book 1 run; do not resume or approve the historical incomplete drafts. Start one child first, inspect the result, then start the other.
+4. Review the complete PDF and quality results before approval. A run must have all required questions, no omitted pages and passing strict checks. If it fails, retain the run's selected-provider error and page diagnostics for the next repair.
+
+These are operator steps after release. This session has not queued either live book. The full Haiku trial above is not a customer workbook or an approved sample.
 
 | Check | Latest result | Evidence folder |
 |---|---|---|

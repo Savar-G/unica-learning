@@ -364,6 +364,46 @@ export function templateMethod(src: TemplateSource, text: string, scope?: { skil
   if (!v) return null;
   const n = (k: string) => (/^\d+$/.test(k) ? Number(k) : v[k]);
   const fmt = (x: number) => groupedNumber(x);
+  // These named skills teach factors and divisibility, not an unrelated arithmetic stand-in.
+  if (scope?.skill === "6.4-prime-composite" && [1, 2].includes(scope.step)) {
+    const result = templateAnswer(src);
+    if (!("answer" in result)) return null;
+    const number = v.n;
+    if (!Number.isInteger(number) || number < 2 || number > 100) return null;
+    const read = (value: string) => Number(value.replace(/[,\s\u00a0\u202f]/g, ""));
+    let divisor = 2;
+    while (divisor * divisor <= number && number % divisor !== 0) divisor++;
+    const prime = divisor * divisor > number;
+    const classification = text.match(/^Is ([\d,\s\u00a0\u202f]+) prime or composite\? Write prime or composite\.$/);
+    if (classification && read(classification[1]) === number && result.answer === (prime ? "prime" : "composite")) {
+      return prime ? number <= 3 ? `${number} has only the factors 1 and ${number}, so it is prime.`
+        : `Test factors 2 through ${Math.floor(Math.sqrt(number))}. None divides ${number} exactly, so it is prime.`
+        : `${number} = ${divisor} × ${number / divisor}. It has more than 2 factors, so it is composite.`;
+    }
+    return null;
+  }
+  if (scope?.skill === "6.4-divisibility" && [1, 2, 3].includes(scope.step)) {
+    const result = templateAnswer(src);
+    if (!("answer" in result)) return null;
+    const number = v.n;
+    if (!Number.isInteger(number) || number < 1 || number > 1_000_000_000) return null;
+    const read = (value: string) => Number(value.replace(/[,\s\u00a0\u202f]/g, ""));
+    const digits = String(number).split("").map(Number);
+    const sum = digits.reduce((total, digit) => total + digit, 0);
+    const question = text.match(/^Is ([\d,\s\u00a0\u202f]+) divisible by (2|3|4|5|6|8|9|10)\? (?:Write|Circle) yes or no\.$/);
+    if (!question || read(question[1]) !== number) return null;
+    const divisor = Number(question[2]);
+    const allowed = scope.step === 1 ? [2, 5, 10] : scope.step === 2 ? [3, 9] : [4, 6, 8];
+    const divides = number % divisor === 0;
+    if (!allowed.includes(divisor) || result.answer !== (divides ? "yes" : "no")) return null;
+    const verdict = `${fmt(number)} is${divides ? "" : " not"} divisible by ${divisor}.`;
+    if (divisor === 2) return `The last digit is ${number % 10}, which is ${divides ? "even" : "odd"}. ${verdict}`;
+    if (divisor === 5 || divisor === 10) return `The last digit is ${number % 10}. A multiple of ${divisor} ends in ${divisor === 5 ? "0 or 5" : "0"}. ${verdict}`;
+    if (divisor === 3 || divisor === 9) return `Digit sum: ${digits.join(" + ")} = ${sum}. ${sum} is${divides ? "" : " not"} a multiple of ${divisor}. ${verdict}`;
+    if (divisor === 6) return `The last digit ${number % 10} is ${number % 2 === 0 ? "even" : "odd"}; the digit sum ${sum} is${sum % 3 === 0 ? "" : " not"} a multiple of 3. Both tests must pass. ${verdict}`;
+    const tail = number % (divisor === 4 ? 100 : 1000);
+    return `The last ${divisor === 4 ? 2 : 3} digits form ${tail}. ${tail} is${divides ? "" : " not"} a multiple of ${divisor}. ${verdict}`;
+  }
   if (scope?.skill === "6.4-lcm" && [1, 2].includes(scope.step) && src.answer === "lcm(a, b)" && Number.isInteger(v.a) && Number.isInteger(v.b) && v.a > 0 && v.b > 0) {
     const common = Array.from({ length: v.b }, (_, i) => (i + 1) * v.a).find(n => n % v.b === 0)!;
     const result = templateAnswer(src);
@@ -1204,10 +1244,14 @@ export function dayPageContent(o: {
       }
       case "reminder": {
         const ex = panel();
+        const own = o.examples?.find((e) => e.slot === i)?.package;
+        const wordAnswer = own?.item?.checks.some(c => c.kind === "template" || c.kind === "template-choice")
+          && own.item.regions.some(r => r.kind === "choice" || r.kind === "box" && (r.answer?.type === "text" || r.answer?.type === "choice"));
         const step = part?.step ? curriculum.skillSteps(part.step.skill)?.[part.step.step - 1] : undefined;
         return {
           slot: s.slot, items: [], label: "Remember", note: "From before",
-          lines: ex ? [ex.answered] : [],
+          // A word answer alone ("yes") loses the example's question and repeats across distinct reminders.
+          lines: ex ? own && wordAnswer ? [own.text, ex.answered] : [ex.answered] : [],
           explain: step?.templates?.length ? `${step.name}.` : step?.change ?? "Do it the same way as before. Check each answer.",
         };
       }
