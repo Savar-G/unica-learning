@@ -3,7 +3,7 @@
    ring for today. A row opens in place to show its pages. */
 #page-history { scroll-margin-top: 72px; }
 .wd { display: grid; gap: 14px; min-width: 0; }
-.support-page .pa .wd-wk { margin: 0 0 -6px 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--pa-tx3); }
+.support-page .pa .wd-wk { margin: 0 0 -6px 4px; font: 400 12px/1.4 var(--mono); letter-spacing: 0.02em; text-transform: uppercase; color: var(--pa-tx3); }
 .support-page .pa .wd-check { margin: 0 0 -4px 4px; font-size: 13px; line-height: 1.4; color: var(--pa-tx2); }
 .pa .wd-card { padding: 4px 14px; }
 

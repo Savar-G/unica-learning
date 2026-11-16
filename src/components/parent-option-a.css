@@ -6,7 +6,7 @@
   --pa-g: #16a06a; --pa-gs: #e7f6ee; --pa-gt: #0f7a50;
   --pa-a: #d9770b; --pa-as: #fdf1e2; --pa-at: #a85600;
   --pa-s: #3366f0; --pa-ss: #ebf0fe; --pa-st: #2a55d6;
-  --pa-tang: #ff6430; --pa-sun: #ffd23f; --pa-stone: #b8b3aa;
+  --pa-sun: #ffd23f; --pa-stone: #b8b3aa;
   --pa-tx: #111; --pa-tx2: #50505a; --pa-tx3: #6b6b73;
   --pa-line: #efeee9; --pa-soft: #f5f4f1; --pa-ring: #dedbd4;
   --pa-shadow: 0 1px 2px rgba(17, 17, 17, 0.04), 0 6px 20px rgba(17, 17, 17, 0.06);
@@ -14,7 +14,7 @@
 }
 /* The wrapper is the container the laptop layouts ask about (a container cannot restyle itself): about 1040 px at most. */
 .pa-wrap { container-type: inline-size; max-width: 1040px; margin: 24px 0 8px; min-width: 0; }
-.support-page .pa h2 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; }
+.support-page .pa h2 { margin: 0; font-size: 18px; font-weight: 300; letter-spacing: -0.035em; line-height: 1.25; }
 .support-page .pa p { margin: 0; }
 .support-page .pa ul, .support-page .pa ol { margin: 0; padding: 0; list-style: none; }
 .support-page .pa li + li { margin-top: 0; }
@@ -33,7 +33,7 @@
 .pa-tag.is-a { background: var(--pa-as); color: var(--pa-a); }
 
 /* The orange Scan button: white text (2026-11-14). */
-.support-page .pa .pa-scanbtn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 12px; background: var(--pa-tang); color: #fff; font-weight: 700; font-size: 15px; text-decoration: none; white-space: nowrap; }
+.support-page .pa .pa-scanbtn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 6px; background: var(--tang-ink); color: #fff; font-weight: 500; font-size: 15px; text-decoration: none; white-space: nowrap; }
 .pa-scanbtn svg { width: 18px; height: 18px; }
 
 .pa-vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
