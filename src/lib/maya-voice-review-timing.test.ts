@@ -31,7 +31,7 @@ const MESSAGE = `52 is 4 tens and 12 ones. ${SLOW} ${ASK}`;
 const REPAIR = `52 is 4 tens and 12 ones. ${ASK}`;
 
 type Answer<T> = T | "hang" | { after: number; result: T };
-interface Request { kind: "safety" | "math"; sentence: string; at: number; copy: number }
+interface Request { kind: "safety" | "math"; sentence: string; at: number; copy: number; abortedAt?: number }
 
 /** A reviewer pair that logs each request (each copy) with its time, and answers per sentence and copy. */
 function reviewers(math: (sentence: string, copy: number) => Answer<MathReviewResult>, talk: (line: string, copy: number) => Answer<TalkReviewResult> = () => ({ verdict: "pass" })) {
@@ -41,10 +41,11 @@ function reviewers(math: (sentence: string, copy: number) => Answer<MathReviewRe
     const key = `${kind}|${sentence}`;
     const copy = copies.get(key) ?? 0;
     copies.set(key, copy + 1);
-    requests.push({ kind, sentence, at: Date.now(), copy });
+    const request: Request = { kind, sentence, at: Date.now(), copy };
+    requests.push(request);
     const a = how(sentence, copy);
     return new Promise<T>((resolve, reject) => {
-      signal.addEventListener("abort", () => reject(new Error("aborted")));
+      signal.addEventListener("abort", () => { request.abortedAt = Date.now(); reject(new Error("aborted")); });
       if (a === "hang") return;
       if (typeof a === "object" && a !== null && "after" in a) setTimeout(() => resolve(a.result), a.after);
       else resolve(a as T);
@@ -59,7 +60,7 @@ function reviewers(math: (sentence: string, copy: number) => Answer<MathReviewRe
  * One voice tutor turn on the fake clock. The model streams its whole JSON at once, then holds it for `modelMs` before it
  * answers (the time a real model still writes after its sentences came). `voice` false runs the same turn as chat.
  */
-async function turn(opts: { says: string[]; modelMs: number[]; revs: ReturnType<typeof reviewers>; voice?: boolean; child?: string; reviewTimeLimitMs?: number; onRepairStart?: () => string | null }) {
+async function turn(opts: { says: string[]; modelMs: number[]; revs: ReturnType<typeof reviewers>; voice?: boolean; child?: string; reviewTimeLimitMs?: number; onRepairStart?: () => string | null; firstWordsMs?: number }) {
   vi.useFakeTimers({ now: 100_000 });
   const voice = opts.voice ?? true;
   const parts: { text: string; at: number }[] = [];
@@ -67,7 +68,12 @@ async function turn(opts: { says: string[]; modelMs: number[]; revs: ReturnType<
   const modelStarts: number[] = [];
   let n = 0;
   const model = conversationalFake({
-    answer: (_brief, call) => { modelStarts.push(Date.now()); n = call; return reply(opts.says[call] ?? opts.says.at(-1)!, "guide"); },
+    answer: async (_brief, call) => {
+      modelStarts.push(Date.now()); n = call;
+      // The time before the model's first words (its JSON then streams at once).
+      if (call === 0 && opts.firstWordsMs) await sleep(opts.firstWordsMs);
+      return reply(opts.says[call] ?? opts.says.at(-1)!, "guide");
+    },
     stream: { beforeEnd: async () => { await sleep(opts.modelMs[n] ?? opts.modelMs.at(-1)!); modelEnds.push(Date.now()); } },
   });
   const session = createTextSession({
@@ -195,5 +201,35 @@ describe("the 4 s voice repair cap holds with early and hedged reviews (#1104)",
     const t = await turn({ says: ["12 minus 8 is 5.", MESSAGE], modelMs: [200, 2_000], revs, child: "I don't get 2 minus 8", onRepairStart: () => { repairAt = Date.now(); return null; } });
     expect(t.said).toBe(MESSAGE);
     expect(t.parts[0].at - repairAt).toBeLessThanOrEqual(VOICE_REPAIR_BUDGET_MS);
+  });
+});
+
+// Review of #1109 (Terra, money): an early review had no signal tied to its model request. With the voice limits, a
+// safety review started at 5.5 s, the turn's 6 s budget ended the model request, and the review's copy was still sent at
+// 7.4 s (5.5 + VOICE_REVIEW_HEDGE_MS): paid, and read by no one. Now every review a request started ends, with its hedge
+// timer, when the request is dropped, fails or runs out of time, when the whole check stops waiting for it, or after the
+// check; a review that ended sends no copy.
+describe("an early review ends when no one will read it (review of #1109)", () => {
+  it("a review started at 5.5 s ends at the 6 s turn end: no copy at 7.4 s, no request after the turn", async () => {
+    expect(VOICE_REVIEW_HEDGE_MS).toBe(1_900);
+    const revs = reviewers(() => "hang", () => "hang");
+    const t = await turn({ says: [MESSAGE], firstWordsMs: 5_500, modelMs: [60_000], revs });
+    const early = revs.requests.filter((r) => r.sentence === SLOW);
+    expect(early.map((r) => [r.kind, r.at - t.childAt]).sort()).toEqual([["math", 5_500], ["safety", 5_500]]);
+    // Each ended at the turn's end, and no request (no copy at 7.4 s or 8.7 s) came after it.
+    expect(early.every((r) => r.abortedAt !== undefined && r.abortedAt - t.childAt <= 6_000)).toBe(true);
+    expect(revs.requests.every((r) => r.at - t.childAt <= 6_000)).toBe(true);
+    expect(t.attempts.at(-1)?.source).toBe("fallback");
+  });
+
+  it("a review the whole check stopped waiting for ends then: its copy is never sent", async () => {
+    // A 1 s limit: the early review's own limit is 4 s, so its copy would go at 1.9 s; the check reads it until 1.8 s.
+    const revs = reviewers(() => TRUE, (line) => (line === SLOW ? "hang" : { verdict: "pass" }));
+    const t = await turn({ says: [MESSAGE, REPAIR], modelMs: [800, 100], revs, reviewTimeLimitMs: 1_000 });
+    const slow = revs.requests.filter((r) => r.sentence === SLOW && r.kind === "safety");
+    expect(slow).toHaveLength(1);
+    expect(slow[0].abortedAt! - t.childAt).toBe(1_800);
+    expect(t.attempts[0].refusal?.reason).toContain("did not answer in time");
+    expect(t.said).toBe(REPAIR);
   });
 });

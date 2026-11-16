@@ -84,11 +84,12 @@ export function aiTalkReviewer(client: AiClient, options: { effort?: "minimal" |
  * line). The error's own text is never kept (a provider's message can hold a key): only fixed wording, with the
  * trace's fixed error code for a failed call (`classifyError`: "the review call failed (http_429)", #604).
  */
-export async function runReview(reviewer: TalkReviewer, input: TalkReviewInput, ms: number = REVIEW_TIME_LIMIT_MS, onError?: (e: unknown) => void, hedgeMs: number = REVIEW_HEDGE_MS): Promise<TalkReviewResult> {
+export async function runReview(reviewer: TalkReviewer, input: TalkReviewInput, ms: number = REVIEW_TIME_LIMIT_MS, onError?: (e: unknown) => void, hedgeMs: number = REVIEW_HEDGE_MS, stop?: AbortSignal): Promise<TalkReviewResult> {
   try {
     // A review that stops on the time limit's signal is a time-out too, whatever it throws. One with no answer after
-    // `hedgeMs` is sent once more beside it (REVIEW_HEDGE_MS); the first answer counts.
-    return await withTimeLimit(ms, (signal) => hedged(hedgeDelay(hedgeMs, ms), signal, (copy) => reviewer.review(input, copy)).catch((e: unknown) => {
+    // `hedgeMs` is sent once more beside it (REVIEW_HEDGE_MS); the first answer counts. `stop` (review of #1109): no one
+    // will read the review any more, so both copies end and no copy starts after it (an error result, never read).
+    return await withTimeLimit(ms, (signal) => hedged(hedgeDelay(hedgeMs, ms), stop ? AbortSignal.any([signal, stop]) : signal, (copy) => reviewer.review(input, copy)).catch((e: unknown) => {
       throw signal.aborted ? new Error("time is up") : e;
     }));
   } catch (e) {
