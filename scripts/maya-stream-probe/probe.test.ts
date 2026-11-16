@@ -19,7 +19,10 @@ async function fakeDatabase(corruptPending = false) {
       const method = request.method!;
       const chunks: Buffer[] = [];
       for await (const chunk of request) chunks.push(Buffer.from(chunk));
-      const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : null;
+      // JSONB orders object keys by length and bytes. Array order and every value must stay unchanged.
+      const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString(), (_key: string, value: unknown) =>
+        value && typeof value === "object" && !Array.isArray(value)
+          ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.length - b.length || (a < b ? -1 : a > b ? 1 : 0))) : value) : null;
       const matches = (row: Record<string, unknown>) => [...url.searchParams].every(([key, value]) => {
         if (["select", "limit", "order"].includes(key)) return true;
         if (value.startsWith("eq.")) return String(row[key]) === value.slice(3);

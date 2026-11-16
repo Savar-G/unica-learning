@@ -14,6 +14,7 @@ import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { checkTrace } from "@/lib/maya-trace";
 import type { OperationPackage } from "@/lib/question-package";
 import type { Batch } from "@/lib/board";
+import { canonical } from "@/lib/workbook-digest";
 import { BOOK, CHILD, IDS, PARENT, PROJECT_URL, probeClient, type Timing } from "./adapter";
 
 export type Config = { url: string; key: string; role: "inspect" | "writer" | "reader" | "verify" | "cleanup"; index: number; fakePort?: number };
@@ -23,7 +24,7 @@ const FIRST = "12 minus 8 is 4.";
 const NEXT = "What do you get for 4 minus 2 in the tens?";
 const pkg = { ...(SAMPLE_PACKAGES["subtract-52-28"] as OperationPackage), ref: { source: "workbook" as const, workbookId: BOOK, page: 1, question: 1 } };
 const names = ["pending-retry", "pending-end", "pending-sweep", "confirmed-retry", "confirmed-end", "confirmed-sweep", "normal", "json"];
-const hash = (batches: Batch[]) => createHash("sha256").update(JSON.stringify(batches)).digest("hex");
+const hash = (batches: Batch[]) => createHash("sha256").update(JSON.stringify(canonical(batches))).digest("hex");
 const ok = (r: CallResult) => { assert(r.ok, "Public call refused"); return r; };
 const never = () => new Promise<void>(() => {});
 const send = (message: unknown) => process.send?.(message);
