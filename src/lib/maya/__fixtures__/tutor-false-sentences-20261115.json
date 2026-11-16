@@ -618,5 +618,10 @@
   "line": "2 goes into 13 6 times and 2 left over.",
   "kind": "divide",
   "source": "pre-launch review B and final check 2 findings"
+ },
+ {
+  "line": "The thousands digit is greater than the value of the ten thousands digit.",
+  "kind": "place-value",
+  "source": "PR #1047 original false corpus"
  }
 ]

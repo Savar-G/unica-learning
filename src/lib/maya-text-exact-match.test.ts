@@ -3,7 +3,7 @@
 // question or one closed plain form with true math; the claim reader only refuses. A fake model, fake reviews and a
 // passed-in clock. The math review answers "false" wherever a test needs to prove that a sentence the child heard was
 // passed by code alone.
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { codeAlone, checkTutorSay, exactTexts, isTutorQuestion, judgment, tutorKind, tutorStreamContext } from "@/lib/maya";
 import { sentencesOf } from "@/lib/maya/say-check";
@@ -22,6 +22,8 @@ import { operationResult, workedSteps, type Operation, type OperationPackage } f
 
 const SUB = SAMPLE_PACKAGES["subtract-52-28"] as OperationPackage;
 const ADD = SAMPLE_PACKAGES["add-27-39"] as OperationPackage;
+beforeEach(() => { vi.clearAllMocks(); });
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 const tutored = (pkg: unknown) => createSession({ callId: "pkg", package: pkg, conversational: true, tutor: true }).package as OperationPackage;
 function make(text: string, operation: Operation): OperationPackage {
   const easy: Operation = { kind: "divide", operands: [8, 2] };
@@ -39,7 +41,7 @@ const PACKAGES: [string, OperationPackage, boolean][] = ([
 ] as [string, OperationPackage, boolean][]).filter(([, pkg]) => isTutorQuestion(pkg));
 const ctxOf = (pkg: OperationPackage, word = false) => tutorStreamContext(pkg, "", "none", new Set(), [], word);
 
-/** Every false sentence of the Sol rounds and of the pre-launch checks (src/lib/maya/__fixtures__, 124 distinct). */
+/** Every false sentence of the Sol rounds and of the pre-launch checks (src/lib/maya/__fixtures__, 125 distinct). */
 const FALSE: { line: string; kind: string }[] = JSON.parse(readFileSync(new URL("./maya/__fixtures__/tutor-false-sentences-20261115.json", import.meta.url), "utf8"));
 const settle = async () => { for (let i = 0; i < 60; i++) await Promise.resolve(); };
 
@@ -63,8 +65,42 @@ function call(say: string | string[], opts: { stream?: boolean; math?: "true" | 
 }
 
 describe("layer 1: only an exact match passes on code alone", () => {
+  it.each([false, true])("says a complete computed phrase with no math request (stream %s)", async (stream) => {
+    const line = "After the trade, we have 4 tens. Write 4 in the ones place.";
+    const { session, math, parts } = call(line, { stream });
+    await session.start();
+    parts.length = 0;
+    const out = await session.child("Help me please.");
+    expect(out.say.join(" ")).toBe(line);
+    expect(math.requests).toEqual([]);
+    if (stream) expect(parts.join(" ")).toBe(line);
+  });
+
+  it.each([false, true])("holds temporal false counts and added clauses for math review (stream %s)", async (stream) => {
+    for (const line of ["After the trade, we had 5 tens.", "Write 4 in the ones place, with a negative sign.", "So we write 2 in the tens place."]) {
+      const { session, math, parts } = call(line, { stream });
+      await session.start();
+      parts.length = 0;
+      const out = await session.child("Help me please.");
+      expect(math.requests.map(r => r.sentence), line).toContain(line);
+      expect(out.say, line).not.toContain(line);
+      expect(parts, line).not.toContain(line);
+    }
+  });
+
+  it.each([false, true])("keeps the main question's new phrases under review after an easier example (stream %s)", async (stream) => {
+    const line = "Write 4 in the ones place.";
+    const { session, math, parts } = call(["For the easier example, what is 42 minus 7?", line], { stream, math: "true" });
+    await session.start();
+    await session.child("Help me please.");
+    math.requests.length = 0;
+    parts.length = 0;
+    await session.child("Help me please.");
+    expect(math.requests.map(r => r.sentence)).toContain(line);
+  });
+
   it("never passes a false sentence of the earlier rounds on code alone, in any tutor package", () => {
-    expect(FALSE.length).toBe(124);
+    expect(FALSE.length).toBe(125);
     for (const { line } of FALSE) for (const [name, pkg, word] of PACKAGES) {
       const v = checkTutorSay(line, ctxOf(pkg, word));
       const held = !v.ok || sentencesOf(line).some((x) => v.math.includes(x));
@@ -109,8 +145,9 @@ describe("layer 1: only an exact match passes on code alone", () => {
     for (const line of ["12 minus 8 is 4.", "52 is 4 tens and 12 ones.", "52 minus 28 isn't 36.", "What is 12 minus 8?", "What do you get for 4 minus 2?"]) {
       expect(checkTutorSay(line, ctxOf(SUB)), line).toMatchObject({ ok: true, math: [] });
     }
-    // Final check 5: an instruction is code alone only as an exact step text; these go to the math review.
-    for (const line of ["Trade 1 ten for 10 ones.", "Subtract the ones."]) expect(checkTutorSay(line, ctxOf(SUB)), line).toMatchObject({ ok: true, math: [line] });
+    // An instruction is code alone only as a complete exact text. #1047 adds this computed trade to that bank.
+    expect(checkTutorSay("Trade 1 ten for 10 ones.", ctxOf(SUB))).toMatchObject({ ok: true, math: [] });
+    expect(checkTutorSay("Subtract the ones.", ctxOf(SUB))).toMatchObject({ ok: true, math: ["Subtract the ones."] });
     for (const line of ["Now 12 minus 8 is 4.", "{name}, 12 minus 8 is 4.", "The answer is 24.", "Write 3 in the ones.", "Add the ones.", "12 minus 8 is 4 too.", "What is 12 minus 8.", "The tens.", "What is the value of the 8 in 52?"]) {
       expect(codeAlone(line, ctxOf(SUB)), line).toBe(false);
     }

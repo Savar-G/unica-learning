@@ -143,11 +143,11 @@ describe("layer 2: the math-truth review", () => {
   });
 
   it("gives the review code's facts of the question and the child's turn, never the child's name", async () => {
-    const { session, mathReviewer } = call(SUB, ["You can't take 8 from 2, so we use the 12 ones from the trade. What is 12 minus 8?"], () => ({ verdict: "true", reason: "all true" }));
+    const { session, mathReviewer } = call(SUB, ["You can't take 8 from 2, so we use the 12 ones from the trade here. What is 12 minus 8?"], () => ({ verdict: "true", reason: "all true" }));
     await session.start();
     await session.child("I got 36.");
     const input = mathReviewer!.requests[0];
-    expect(input.sentence).toBe("You can't take 8 from 2, so we use the 12 ones from the trade.");
+    expect(input.sentence).toBe("You can't take 8 from 2, so we use the 12 ones from the trade here.");
     expect(input.question).toBe(SUB.text);
     expect(input.answer).toBe(24);
     expect(input.steps.map((s) => s.result)).toEqual([4, 2]);
