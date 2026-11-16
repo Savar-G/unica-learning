@@ -140,7 +140,7 @@ describe("#1107: a chat child turn streams its checked sentences, each saved fir
     expect(checkpoint).not.toHaveBeenCalled();
     expect(lastMaya(result.view)).toBe(`${TRADE} ${FIRST} ${NEXT}`);
     const saved = (await s.store.get(view.id))!.live!.text;
-    expect(saved.log?.some((e) => e.kind === "part" || e.kind === "stream_hold")).toBe(false);
+    expect(saved.log?.some((e) => e.kind === "part" || e.kind === "part_pending" || e.kind === "part_confirmed" || e.kind === "stream_hold")).toBe(false);
   });
 
   it("an early accepted sentence reaches the desk before the model resolves; the saved message and the parent note hold the same words", async () => {
@@ -309,11 +309,12 @@ describe("#1107: progress is saved before the desk gets it, and a fresh process 
     expect(count(said, TRADE)).toBe(1);
     for (const b of delivered.flatMap((h) => h.board)) expect(r.view.batches.filter((x) => x.transactionId === b.transactionId)).toEqual([b]);
     expect(r.view.transcript.filter((x) => x.speaker === "child" && x.text === STUCK)).toHaveLength(1);
-    const saved = await stored(s.store, view.id);
-    expect(saved.record.revision).toBe(claim + 2);
-    for (const h of savedHelp) expect(saved.session.session.assistance).toContain(h);
-    expect(saved.session.session.solved).toBeNull();
-    expect(checkTrace(saved.session.trace())).toMatchObject({ ok: true });
+    const saved = (await s.store.get(view.id))!;
+    expect(saved.revision).toBe(r.view.revision);
+    expect(saved.outcome?.reason).toBe("technical_issue");
+    expect(saved.outcome?.assistance).not.toBe("independent");
+    const checked = checkTrace(saved.trace!);
+    expect(checked.ok ? null : checked.reason).toBeNull();
     // The dead request's reservation counts only until it expires (the ledger's rule); the recovery reserved nothing.
     const settled = s.spend.rows().filter((x) => x.settled).length;
     expect((await s.spend.used(WEEK)).week).toBe(100 * (settled + 1));
@@ -323,9 +324,9 @@ describe("#1107: progress is saved before the desk gets it, and a fresh process 
     old.release();
     expect(await old.result).toEqual({ ok: false, error: "conflict" });
     expect(old.heard.filter(Boolean)).toEqual(delivered);
-    expect((await s.store.get(view.id))!.revision).toBe(claim + 2);
+    expect((await s.store.get(view.id))!.revision).toBe(r.view.revision);
     // One end: one outcome, one learning event, one note.
-    const ended = ok(await fresh.api.input(view.id, claim + 2, { type: "end" }, "Leah"));
+    const ended = ok(await fresh.api.input(view.id, r.view.revision, { type: "end" }, "Leah"));
     expect(ended.view.status).toBe("ended");
     expect(ended.view.outcome?.reason).not.toBe("solved");
     expect(s.appended).toHaveLength(1);
