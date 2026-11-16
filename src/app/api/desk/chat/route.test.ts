@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const { gate, run } = vi.hoisted(() => ({ gate: vi.fn(), run: vi.fn() }));
 vi.mock("@/lib/desk-chat-request", () => ({ deskChatContext: gate }));
 vi.mock("@/lib/maya-chat-server", () => ({ runChat: run }));
@@ -10,6 +10,7 @@ const typed = { type: "start", id, workbookId: book, reference: "page 3, number 
 const request = (body: unknown, origin = "http://localhost") => new Request("http://localhost/api/desk/chat", {
   method: "POST", headers: { origin }, body: JSON.stringify(body),
 });
+afterEach(() => { vi.restoreAllMocks(); });
 beforeEach(() => { vi.clearAllMocks(); gate.mockResolvedValue({ ok: true, ctx: { child: "selected-child" } }); run.mockResolvedValue({ chat: null }); });
 
 it("passes the typed reference under the server's selected-child context", async () => {
@@ -32,4 +33,51 @@ it.each(["signed_out", "forbidden", "unavailable"])("preserves the %s desk refus
   gate.mockResolvedValue({ ok: false, error, status: 403 });
   expect((await POST(request(typed))).status).toBe(403);
   expect(run).not.toHaveBeenCalled();
+});
+
+// #1107: a child turn streams only when the desk asks and the admitted turn has a checked sentence; else JSON as before.
+const MSG = "33333333-3333-4333-8333-333333333333";
+const child = { type: "child", id, messageId: MSG, revision: 2, text: "Is it 36?" };
+const streaming = (body: unknown) => new Request("http://localhost/api/desk/chat", {
+  method: "POST", headers: { origin: "http://localhost", accept: "application/x-ndjson, application/json" }, body: JSON.stringify(body),
+});
+const done = { usage: { used: 1, left: 59 }, chat: null, admission: "accepted" };
+it("streams an admitted turn's checked sentences, then its one final reply", async () => {
+  // Falsifier: the JSON-only route answers one JSON body after the whole turn.
+  const batch = { transactionId: "call-b2", commands: [{ op: "highlight", id: "h1" }] };
+  run.mockImplementation(async (_ctx, _action, options) => { options.say.part("12 minus 8 is 4.", 0, [batch]); options.say.part("What is 4 minus 2?", 1); return done; });
+  const res = await POST(streaming(child));
+  expect(res.status).toBe(200);
+  expect(res.headers.get("content-type")).toMatch(/^application\/x-ndjson/);
+  const events = (await res.text()).split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  expect(events).toEqual([{ type: "say", index: 0, text: "12 minus 8 is 4.", board: [batch] }, { type: "say", index: 1, text: "What is 4 minus 2?" }, { type: "final", reply: done }]);
+});
+it.each([
+  ["a refusal", { usage: {}, chat: null, error: "conflict", admission: "refused" }],
+  ["busy", { usage: {}, chat: null, error: "busy", admission: "accepted" }],
+])("answers %s with no sentence as the JSON reply, even to a desk that asked for a stream", async (_, reply) => {
+  run.mockResolvedValue(reply);
+  const res = await POST(streaming(child));
+  expect(res.headers.get("content-type")).toMatch(/^application\/json/);
+  expect(await res.json()).toEqual(reply);
+});
+it("answers a failure before any sentence with the JSON 503, not a 200 stream", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  run.mockRejectedValue(Error("db down"));
+  const res = await POST(streaming(child));
+  expect(res.status).toBe(503);
+  expect(await res.json()).toEqual({ error: "unavailable" });
+});
+it("keeps the desk check before any stream", async () => {
+  gate.mockResolvedValue({ ok: false, error: "forbidden", status: 403 });
+  const res = await POST(streaming(child));
+  expect(res.status).toBe(403);
+  expect(run).not.toHaveBeenCalled();
+});
+it("keeps older desks and other actions on JSON with no ear", async () => {
+  run.mockResolvedValue(done);
+  await POST(request(child));
+  expect(run).toHaveBeenLastCalledWith({ child: "selected-child" }, child);
+  await POST(streaming({ type: "read", id }));
+  expect(run).toHaveBeenLastCalledWith({ child: "selected-child" }, { type: "read", id });
 });

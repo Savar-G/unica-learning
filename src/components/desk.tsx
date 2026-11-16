@@ -141,9 +141,11 @@ export function Desk(props: DeskProps) {
   }, []);
 
   // A new card goes to the end of the conversation: show it there (the column scrolls on a laptop or tablet only).
+  // #1107: also as Maya's streamed message grows.
+  const lastLine = chat.chat?.transcript.at(-1)?.text.length;
   useEffect(() => {
     if (picked !== null && talk.current) talk.current.scrollTop = talk.current.scrollHeight;
-  }, [picked, chat.chat?.transcript.length, voice.call?.transcript.length]);
+  }, [picked, chat.chat?.transcript.length, lastLine, voice.call?.transcript.length]);
 
   const ref = chat.chat?.question;
   const card = ref && ref.page !== ready?.page.number ? null : ready?.questions.find((q) => q.number === (ref?.question ?? picked)) ?? null;

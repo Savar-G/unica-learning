@@ -68,7 +68,14 @@ const noteKey = (text: string) => `note:${text}`;
  * (`TutorKind.boardNeeds`): each needed key is either shown on the child's board, or drawn by an earlier clause of
  * this message (then the batch names that batch in `after`), or the clause draws nothing.
  */
-export function deriveDrawings(pkg: OperationPackage, sentences: readonly string[], drawn: readonly string[], sent: readonly string[], noDraw: readonly number[] | "all", noteId: (batch: number, i: number) => string, opener?: (sentence: string) => string | null): { drawings: TiedDrawing[]; reads: BoardRead[] } {
+/**
+ * `prior` (#1107): the first `sentences` sentences of this message were already streamed to the desk, each with its
+ * drawing fixed then (`drawings`, in order: a streamed sentence with none never draws). They are read no more; later
+ * sentences build on their drawings as on this message's own earlier batches (`after` names their index). The result
+ * starts with the prior drawings, so batch indexes (and note ids) are the ones a message read whole would give.
+ */
+export interface PriorDrawings { sentences: number; drawings: readonly TiedDrawing[] }
+export function deriveDrawings(pkg: OperationPackage, sentences: readonly string[], drawn: readonly string[], sent: readonly string[], noDraw: readonly number[] | "all", noteId: (batch: number, i: number) => string, opener?: (sentence: string) => string | null, prior?: PriorDrawings): { drawings: TiedDrawing[]; reads: BoardRead[] } {
   const kind = tutorKind(pkg);
   const offers = new Set(kind.drawings(pkg).map((d) => d.id));
   const actions = kindActions(pkg);
@@ -77,14 +84,15 @@ export function deriveDrawings(pkg: OperationPackage, sentences: readonly string
   const numbers = tutorBoardNumbers(pkg);
   const facts = problemFacts(pkg);
   const steps = facts.steps;
-  const drawings: TiedDrawing[] = [];
+  const drawings: TiedDrawing[] = structuredClone([...(prior?.drawings ?? [])]);
   const reads: BoardRead[] = [];
-  const mine: string[] = [];
+  const mine: string[] = drawings.flatMap((d) => d.keys);
   // Earlier work counts only when the child's screen CONFIRMED it shown (B1), or when an earlier clause of this same
   // message draws it. A batch sent with no word yet does not count.
   const confirmed = drawn.filter((k) => !sent.includes(k));
   const all = () => [...drawn, ...mine];
   sentences.forEach((sentence, at) => {
+    if (prior && at < prior.sentences) return;
     // A judgment or agreement opener the say check validated for this sentence ("Yes, ..." when code found the child
     // right) carries no action: the rest of the sentence is read. Any other opener stays part of the sentence.
     const parsed = parseSentence(opener?.(sentence) ?? sentence, facts);

@@ -71,7 +71,7 @@ import { checkSay, checkSentence, columnSentenceTruth, equationHolds, heardColum
 import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
 import { answersOwnQuestion, askedStep, doneReply, firstTimeTurn, yesReply, type AskedRead } from "./teaching-reads";
-import { deriveDrawings, type BoardRead } from "./board-ties";
+import { deriveDrawings, type BoardRead, type TiedDrawing } from "./board-ties";
 import { agreementClause, askedStep as askedOperationStep, bindingReview, checkTutorSay, continuedSay, stepsStated, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, FINAL_ASK, TUTOR_FIRST_TIME_WORD_LIMIT, TUTOR_REVIEW_IGNORED } from "./tutor";
 import { placeDigitsSaid } from "./tutor-math";
 import { MATH_REVIEW_PROMPT_VERSION, mathReviewsOf, type MathReview, type MathReviewInput } from "./math-review";
@@ -164,7 +164,17 @@ export type SessionEvent =
    * `continuation` (2026-11-15, voice fallbacks): the proposal is a repair that continues the sentences already said
    * (`sent`): its `say` is only the rest of the message (continuedSay), and the fixed sentences are not reviewed again.
    */
-  | { type: "proposal"; at: number; proposal: unknown; talkReviews?: TalkReview[]; mathReviews?: MathReview[]; fallback?: boolean; sent?: string[]; drawMode?: "derive"; continuation?: boolean }
+  /**
+   * `streamed` (#1107, chat): the `sent` sentences were streamed to the desk one by one, each with its drawing fixed then
+   * (`drawings`, already counted by `streamed_board`): they are never drawn again, and a streamed sentence with no drawing
+   * never draws later. Absent: the sent sentences are read whole with the message (voice).
+   */
+  | { type: "proposal"; at: number; proposal: unknown; talkReviews?: TalkReview[]; mathReviews?: MathReview[]; fallback?: boolean; sent?: string[]; drawMode?: "derive"; continuation?: boolean; streamed?: { drawings: TiedDrawing[] } }
+  /**
+   * #1107: a drawing streamed to the desk with its sentence (chat), before the message's whole check. It is committed now:
+   * the batch count rises to its id, and its keys are drawn and sent (B1: counted shown only when the screen says so).
+   */
+  | { type: "streamed_board"; at: number; batch: { transactionId: string; commands: readonly unknown[]; after?: readonly string[] }; keys: string[] }
   | { type: "tick"; at: number }
   /**
    * Final check 12 (2026-11-15): the help a sentence Maya emitted to the child gave, recorded the moment it went out (the
@@ -1502,6 +1512,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
   if (session.outcome) return refuse(session, "ended", "The call has ended.");
   if (event.type !== "start" && session.startedAt === null) return refuse(session, "invalid_event", "The call has not started.");
   if (event.type === "board_fate") return boardFate(session, event);
+  if (event.type === "streamed_board") return streamedBoard(session, event);
 
   const s: Session = structuredClone(session);
   // Old saved sessions must not retain obsolete numeric context.
@@ -1752,7 +1763,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
         // D-341: sentences already streamed to the child (onSayPart) stay said: the turn's words start with them.
         const sent = Array.isArray(event.sent) ? event.sent.filter((x): x is string => typeof x === "string" && x.trim() !== "") : [];
         // Final check 11: the emitted help is in the session before any routing builds an outcome.
-        if (v3 && s.tutor) return proposeTutor(withEmittedHelp(s, sent), raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent, event.fallback === true, event.mathReviews === undefined ? undefined : mathReviewsOf(event.mathReviews), event.drawMode === "derive", event.continuation === true);
+        if (v3 && s.tutor) return proposeTutor(withEmittedHelp(s, sent), raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent, event.fallback === true, event.mathReviews === undefined ? undefined : mathReviewsOf(event.mathReviews), event.drawMode === "derive", event.continuation === true, streamedOf(event.streamed, sent.length));
         if (v3) return proposeV3(s, raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent);
         return withSent(propose(s, raw as Proposal, effects, reviewsOf(event.talkReviews), event.fallback === true), sent, s, disclosureDue(s));
       }
@@ -5863,7 +5874,7 @@ function boardTexts(cmd: unknown, key = ""): string[] {
  * step or the answer. Code keeps its own credit of the child's answers (D-340, checkAnswers), the safety review of any
  * sentence that is not plain math, and never ends the call on a child who has not solved the question.
  */
-function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], reviews: readonly TalkReview[] | undefined, sent: readonly string[], fallback: boolean, mathReviews?: readonly MathReview[], derive = false, continuation = false): StepResult {
+function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], reviews: readonly TalkReview[] | undefined, sent: readonly string[], fallback: boolean, mathReviews?: readonly MathReview[], derive = false, continuation = false, fixedDrawings: TiedDrawing[] | null = null): StepResult {
   const reading = out.reading ?? {};
   if (!tutorTeachingNow(base, reading)) {
     // Final check 10 (2026-11-15): the help in sentences already streamed is decided here, before the turn's priority
@@ -6073,9 +6084,13 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   // A continuation's noDraw numbers count its own sentences: they move past the fixed sentences, which draw what they say
   // (as code's own line after them does, #1103). "all" stays all: the board's retry draws nothing.
   const noDraw = fallback ? [] : continued && out.noDraw !== "all" ? (out.noDraw ?? []).filter((n) => n > continued.echoed).map((n) => n - continued.echoed + sent.length) : out.noDraw ?? [];
-  const ties = !derive || s.noBoard ? null : deriveDrawings(pkg, sentencesOf(text), tutor.drawn, (tutor.sent ?? []).flatMap((x) => x.keys), noDraw, (k, i) => `tutor-note-${s.batches + 1 + k}-${i}`, opener);
+  // #1107: sentences streamed to the desk (chat) keep the drawing fixed when each went out (`streamed`, already counted);
+  // the batch numbers of this message start before them, so a message read whole and one streamed get the same ids.
+  const prior = fixedDrawings ?? [];
+  const base0 = s.batches - prior.length;
+  const ties = !derive || s.noBoard ? null : deriveDrawings(pkg, sentencesOf(text), tutor.drawn, (tutor.sent ?? []).flatMap((x) => x.keys), noDraw, (k, i) => `tutor-note-${base0 + 1 + k}-${i}`, opener, fixedDrawings ? { sentences: sent.length, drawings: prior } : undefined);
   const legacy = s.noBoard || derive ? { commands: [], keys: [] } : tutorDrawings(pkg, out.draw ?? [], tutor.drawn, (i) => `tutor-note-${s.batches + 1}-${i}`);
-  const batches: { commands: Record<string, unknown>[]; keys: string[]; sentence?: number; after?: number[] }[] = ties ? ties.drawings : legacy.commands.length ? [legacy] : [];
+  const batches: { commands: Record<string, unknown>[]; keys: string[]; sentence?: number; after?: number[] }[] = ties ? ties.drawings.slice(prior.length) : legacy.commands.length ? [legacy] : [];
   // Savar's call 2 and the Chief of Staff (2026-11-15): when the child's right final answer first stands, the board shows
   // the whole answer: code draws every answer digit not yet drawn, from its own values, with the good-job message (its
   // first sentence). Code's own line may draw (B2).
@@ -6104,7 +6119,7 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     // Final check 9 (2026-11-15), inverted: every board command Maya sends is read as her words are: each text or value
     // it holds (a put's value, a write's text, a label, any field but its op and ids), so a board that shows the
     // answer value or a choice word gives the answer.
-    const notes = drawing.commands.flatMap((c) => boardTexts(c));
+    const notes = [...prior.flatMap((d) => d.commands), ...drawing.commands].flatMap((c) => boardTexts(c as Record<string, unknown>));
     const kind = tutorHelpOf(base, sentencesOf(text), notes, tutor.drawn, committedRight);
     if (!s.assistance.includes(kind)) s.assistance.push(kind);
     // The step the child needed help with: the step open when the child asked or made no progress, never a step the
@@ -6124,7 +6139,8 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   const said = fillName(text, base);
   effects.push({ kind: "say", act, text: said, ...(talk.length ? { talk } : {}), ...(math.length ? { math } : {}), ...(ties?.reads.length ? { boardReads: ties.reads } : {}) });
   s.turns.push({ at: s.now!, speaker: "maya", text: said, state: act === "close" ? "CLOSE" : s.state, act });
-  const first = s.batches + 1;
+  // #1107: `after` counts this message's batches from its first, the streamed ones included.
+  const first = s.batches + 1 - prior.length;
   for (const b of batches) {
     s.batches += 1;
     const transactionId = `${s.callId}-b${s.batches}`;
@@ -6189,6 +6205,51 @@ function streamedHelp(base: Session, sent: readonly string[]): Assistance | null
   const committedRight = (base.solved === "child" && base.lastResult === "right") || heardAnswers(base).some((a) => a.step === "result" && a.verdict === "right");
   if (committedRight) return null;
   return tutorHelpOf(base, sent.flatMap((x) => sentencesOf(x)), [], base.tutor?.drawn ?? [], false);
+}
+
+/** The streamed drawings of a proposal event (#1107), read strictly; null when the event has none (voice, older events). */
+function streamedOf(raw: unknown, sent: number): TiedDrawing[] | null {
+  if (!isObject(raw) || !Array.isArray(raw.drawings)) return null;
+  const drawings = raw.drawings.filter((d): d is TiedDrawing => isObject(d) && Number.isSafeInteger(d.sentence) && (d.sentence as number) >= 0 && (d.sentence as number) < sent &&
+    Array.isArray(d.commands) && Array.isArray(d.keys) && d.keys.every((k) => typeof k === "string") && Array.isArray(d.after) && d.after.every((a) => Number.isSafeInteger(a)));
+  return drawings.length === raw.drawings.length ? structuredClone(drawings) : null;
+}
+
+/**
+ * #1107: a drawing streamed with its sentence (chat). It is the next batch of the call (its id is the next one), so the
+ * batch count rises to it; its keys are drawn, and sent until the screen says what it did (B1). Anything else changes
+ * nothing. The clock does not move.
+ */
+function streamedBoard(session: Session, e: Extract<SessionEvent, { type: "streamed_board" }>): StepResult {
+  const s: Session = structuredClone(session);
+  if (!s.tutor || !isObject(e.batch) || e.batch.transactionId !== `${s.callId}-b${s.batches + 1}` || !Array.isArray(e.batch.commands) || e.batch.commands.length === 0 ||
+    !Array.isArray(e.keys) || !e.keys.every((k) => typeof k === "string")) return refuse(session, "invalid_event", "A streamed drawing needs the next batch id and its keys.");
+  s.batches += 1;
+  s.tutor.drawn = [...s.tutor.drawn, ...e.keys];
+  if (e.keys.length) s.tutor.sent = [...(s.tutor.sent ?? []), { batch: e.batch.transactionId, keys: [...e.keys] }];
+  const batch = { transactionId: e.batch.transactionId, commands: e.batch.commands as unknown as Command[], ...(e.batch.after?.length ? { after: [...e.batch.after] } : {}) };
+  return { session: s, effects: [{ kind: "board", batch }], refusal: null };
+}
+
+/**
+ * #1107: the drawing a sentence streamed to the desk takes with it (chat): the sentences streamed so far (`sentences`,
+ * this one last), the drawings fixed for the earlier ones (`prior`), and the model's "noDraw" written before "say". It is
+ * the batch the whole message would give this sentence (deriveDrawings reads each sentence after the earlier ones only),
+ * with its id. Null: no drawing, which stays fixed for this sentence. A sentence with an agreement opener draws nothing
+ * here (code's stance is known only from the whole message).
+ */
+export function streamedDrawing(session: Session, sentences: readonly string[], prior: readonly TiedDrawing[], noDraw: readonly number[]): { tied: TiedDrawing; batch: { transactionId: string; commands: Command[]; after?: string[] }; keys: string[] } | null {
+  const s = session;
+  const pkg = s.package;
+  const last = sentences.at(-1);
+  if (!s.tutor || !pkg || s.noBoard || s.outcome || !last || !isTutorQuestion(pkg) || agreementClause(last) !== null) return null;
+  const base0 = s.batches - prior.length;
+  const ties = deriveDrawings(pkg as Parameters<typeof deriveDrawings>[0], sentences, s.tutor.drawn, (s.tutor.sent ?? []).flatMap((x) => x.keys), noDraw, (k, i) => `tutor-note-${base0 + 1 + k}-${i}`, undefined, { sentences: sentences.length - 1, drawings: prior });
+  const made = ties.drawings.slice(prior.length);
+  if (made.length !== 1 || made[0].sentence !== sentences.length - 1) return null;
+  const tied = made[0];
+  const after = tied.after.map((k) => `${s.callId}-b${base0 + 1 + k}`);
+  return { tied, batch: { transactionId: `${s.callId}-b${s.batches + 1}`, commands: tied.commands as unknown as Command[], ...(after.length ? { after } : {}) }, keys: [...tied.keys] };
 }
 
 /**

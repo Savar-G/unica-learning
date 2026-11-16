@@ -3,6 +3,8 @@ import { deskChatContext } from "@/lib/desk-chat-request";
 import { isUuid } from "@/lib/workbook-content";
 import { MAX_CHILD_TEXT } from "@/lib/maya-call";
 import { readFateReports } from "@/lib/maya-text";
+import { after } from "next/server";
+import { CHAT_STREAM_TYPE, chatStream } from "@/lib/maya-chat-stream";
 
 export const maxDuration = 120;
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { "Cache-Control": "no-store" } });
@@ -27,7 +29,19 @@ export async function POST(request: Request) {
   try {
     const gate = await deskChatContext(request);
     if (!gate.ok) return json({ error: gate.error }, gate.status);
-    return json(await runChat(gate.ctx, action));
+    // #1107: a desk that asks for a stream gets one for an admitted child turn once its first checked sentence exists.
+    // Every answer before that (each refusal, busy, done, the cap, a failure) is the JSON reply, as for older desks.
+    const ctx = gate.ctx;
+    if (action.type === "child" && (request.headers.get("accept") ?? "").includes(CHAT_STREAM_TYPE)) {
+      const ran = await chatStream((say) => runChat(ctx, action, { say }), (work) => {
+        // A reader that goes away never stops the turn: the function stays until the turn is saved.
+        try { after(work); } catch { /* Outside a request (tests): the turn runs on in this process. */ }
+      });
+      if ("failed" in ran) throw ran.failed;
+      if ("reply" in ran) return json(ran.reply);
+      return new Response(ran.stream, { status: 200, headers: { "Content-Type": `${CHAT_STREAM_TYPE}; charset=utf-8`, "Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no" } });
+    }
+    return json(await runChat(ctx, action));
   } catch (error) {
     console.error("[desk chat] request failed", error instanceof Error ? error.message : "unknown");
     return json({ error: "unavailable" }, 503);

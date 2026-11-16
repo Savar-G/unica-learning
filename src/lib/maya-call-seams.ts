@@ -112,6 +112,8 @@ export function callSeams(db: SupabaseClient<Database>, options: { env?: Env; or
   return {
     // D-345: only the exact value "on" lets the tutor core teach family calls (desk chat and family voice).
     tutorFamilies: env.MAYA_TUTOR_FAMILIES === "on",
+    // #1122 deploys readers first. A later reviewed release may enable writes after the old-reader window ends.
+    streamChat: false,
     alerts: callAlerts({ ledger: mayaAlertLedger(db), to: env.SIGNUP_NOTIFY_EMAIL || null, origin: options.origin ?? siteOrigin(env), transport: options.transport }),
     store: mayaCallStore(db),
     connections: mayaConnectionLog(db),

@@ -7,7 +7,7 @@ import { adminClient } from "@/lib/supabase-auth";
 import { stripe } from "@/lib/stripe";
 import { readBookingCustomers } from "@/lib/retention-stripe";
 import { chatFamilyGate, chatGradeLine, chatPlanClosedLine, chatServesGrade, chatUsage, chatWindow, childChatView, type ChatUsage, type ChatReply } from "@/lib/maya-chat";
-import { mayaCalls, recordView, type CallRecord } from "@/lib/maya-call";
+import { mayaCalls, recordView, type CallRecord, type TextSay } from "@/lib/maya-call";
 import type { BoardFateReport } from "@/lib/maya-text";
 import { callSeams } from "@/lib/maya-call-seams";
 import { mayaCallStore } from "@/lib/maya-call-store";
@@ -167,8 +167,12 @@ export async function readChatInk(ctx: ChatContext, id: string): ReturnType<Retu
   return mayaCalls({ ...callSeams(db), canChat: async (p, c) => p === parent && c === child }).readInk(id, { parentId: parent, childId: child });
 }
 
-/** One authorized desk request. The database serializes message admission before the shared call module runs. */
-export async function runChat(ctx: ChatContext, action: ChatAction): Promise<ChatReply> {
+/**
+ * One authorized desk request. The database serializes message admission before the shared call module runs. `say`
+ * (#1107) hears the checked sentences of this request's own admitted child turn while it runs, and nothing else: no
+ * refusal, no recovered turn of an earlier request, no cap close.
+ */
+export async function runChat(ctx: ChatContext, action: ChatAction, options: { say?: TextSay } = {}): Promise<ChatReply> {
   const { db, parent, child, name, zone } = ctx;
   const store = mayaCallStore(db);
   const seams = callSeams(db);
@@ -261,7 +265,7 @@ export async function runChat(ctx: ChatContext, action: ChatAction): Promise<Cha
       return reply(await store.get(record.id), claim.status, claim.admitted ? "accepted" : "refused");
     }
     // B1: what the desk's board did with Maya's batches goes in first (the call ignores words it already has).
-    const result = await calls.input(record.id, claim.revision, { type: "child", text: action.text, ...(action.fates?.length ? { fates: action.fates } : {}) }, name);
+    const result = await calls.input(record.id, claim.revision, { type: "child", text: action.text, ...(action.fates?.length ? { fates: action.fates } : {}) }, name, options.say);
     record = await store.get(record.id);
     // At the cap, finish through the same path as a call, including learning, notes and alerts.
     if (result.ok && record?.status === "live" && (await usage()).left === 0) {
