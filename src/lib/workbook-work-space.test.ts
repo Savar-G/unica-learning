@@ -23,13 +23,15 @@ function bare(skill: string, step: number, want: (text: string) => boolean): Que
 }
 
 it("finds a bare calculation with no carrying or borrowing", () => {
-  for (const text of ["834 − 121 = ?", "834 - 121 = ?", "550 − 120 = ?", "3,412 + 5,231 = ?", "9 × 110 = ?", "110 × 9 = ?", "4.08 + 5.0 = ?", "7.95 − 2.4 = ?"])
+  for (const text of ["834 − 121 = ?", "834 - 121 = ?", "550 − 120 = ?", "3,412 + 5,231 = ?", "9 × 110 = ?", "110 × 9 = ?", "4.08 + 5.01 = ?", "7.95 − 2.40 = ?"])
     expect(bareCalculationWithoutRegrouping(text), text).toBe(true);
 });
 
 it("leaves a calculation that regroups, or one that is not bare, alone", () => {
   for (const text of [
     "3527 + 2436 = ?", "834 − 129 = ?", "1,000 − 1 = ?", "9 × 120 = ?", "10 × 40 = ?", "23 × 12 = ?", "1.8 + 2.9 = ?", "1.2 × 3 = ?",
+    // Unequal decimal places keep their space: lining up the decimal point is the skill (#1116).
+    "4.08 + 5.0 = ?", "7.95 − 2.4 = ?", "12 + 0.5 = ?", "3 + 4.25 = ?",
     "120 ÷ 4 = ?", "? + 7 = 15", "4 × ? = 1,040", "121 − 834 = ?", "Mia has 834 tickets and gives 121 away. How many are left?", "−3 + 5 = ?",
   ]) expect(bareCalculationWithoutRegrouping(text), text).toBe(false);
 });
