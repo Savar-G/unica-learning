@@ -40,7 +40,7 @@ const WEEK = { childId: CHILD, week: "2026-11-09", month: "2026-11-01" };
 type Script = Record<string, (string | Record<string, unknown>)[]>;
 type Heard = { text: string; board: Batch[] };
 
-function setup(script: Script, opts: { kind?: "chat" | "admin_test"; math?: (i: MathReviewInput) => MathReviewResult; talk?: (i: TalkReviewInput) => TalkReviewResult; store?: (base: CallStore) => CallStore; extra?: Parameters<typeof reply>[2] } = {}) {
+function setup(script: Script, opts: { kind?: "chat" | "admin_test"; streamChat?: boolean | null; math?: (i: MathReviewInput) => MathReviewResult; talk?: (i: TalkReviewInput) => TalkReviewResult; store?: (base: CallStore) => CallStore; extra?: Parameters<typeof reply>[2] } = {}) {
   let now = Date.UTC(2026, 10, 15, 16);
   let n = 0;
   const base = memoryCallStore({ testFamilies: [PARENT] });
@@ -70,14 +70,21 @@ function setup(script: Script, opts: { kind?: "chat" | "admin_test"; math?: (i: 
     model.propose = async (input, signal, onText, onCost) => {
       const id = `reservation-${++reservation}`;
       await spend.reserve({ id, charge: "child", parentId: PARENT, childId: CHILD, callId: null, what: "model", micros: 100, week: WEEK.week, weekMicros: 10_000_000, month: WEEK.month, force: false });
-      const out = await send(input, signal, onText, onCost);
+      // Let each network chunk arrive after the preceding chunk's saves and review callbacks. Separate tests hold
+      // a save and deliver later metadata before releasing it, so both possible orders are covered.
+      let chunks = Promise.resolve();
+      const out = await send(input, signal, onText ? (text) => {
+        chunks = chunks.then(async () => { onText(text); await new Promise<void>((resolve) => setImmediate(resolve)); });
+      } : undefined, onCost);
+      await chunks;
       await spend.settle(id, 100);
       return out;
     };
     const talk = fakeTalkReviewer((i) => (opts.talk ?? (() => PASS))(i));
     const math = fakeMathReviewer((i) => (opts.math ?? (() => TRUE))(i));
     const seams: CallSeams = {
-      tutorFamilies: true, store, history: memoryWordingHistoryStore(),
+      // Positive feature cases opt in. Null exercises the production default, which has no writer permission.
+      tutorFamilies: true, ...(opts.streamChat === null ? {} : { streamChat: opts.streamChat ?? true }), store, history: memoryWordingHistoryStore(),
       events: { ...events, append: async (e) => { appended.push(e); return events.append(e); } } as typeof events,
       rebuild: vi.fn(async () => true), model: () => model,
       reviewer: () => talk, mathReviewer: () => math,
@@ -120,6 +127,22 @@ async function stored(store: CallStore, id: string) {
 }
 
 describe("#1107: a chat child turn streams its checked sentences, each saved first", () => {
+  it.each([null, false])("reader-first release (streamChat=%s) never saves parts, even with a streaming listener", async (streamChat) => {
+    // Falsifier: enabling writes by a header or a listener creates a checkpoint a supported old reader cannot read.
+    const checkpoint = vi.fn(async () => true);
+    const s = setup({ [STUCK]: [`${TRADE} ${FIRST} ${NEXT}`] }, { streamChat, store: (base) => ({ ...base, checkpoint }) });
+    const view = await s.begin();
+    const turn = s.first.turn(view, STUCK);
+    await vi.waitFor(() => expect(s.first.briefs().length).toBe(1));
+    turn.release();
+    const result = ok(await turn.result);
+    expect(turn.heard).toEqual([]);
+    expect(checkpoint).not.toHaveBeenCalled();
+    expect(lastMaya(result.view)).toBe(`${TRADE} ${FIRST} ${NEXT}`);
+    const saved = (await s.store.get(view.id))!.live!.text;
+    expect(saved.log?.some((e) => e.kind === "part" || e.kind === "stream_hold")).toBe(false);
+  });
+
   it("an early accepted sentence reaches the desk before the model resolves; the saved message and the parent note hold the same words", async () => {
     // Falsifier: with no hooks for chat (the JSON-only path), nothing reaches the desk while the model is held.
     const s = setup({ "Is it 36?": [`${FIRST} ${NEXT}`] });

@@ -30,6 +30,8 @@ export type TextLogEvent =
    * and its batch is committed (`streamed_board`). A later response, repair, fallback or code line keeps both.
    */
   | { kind: "part"; at: number; requestId: number; sentence: string; board?: StreamedBoard }
+  /** A binding stream hold. Recovery must settle this admitted turn, even if no sentence went out. */
+  | { kind: "stream_hold"; at: number; requestId: number; priority?: Record<string, unknown> }
   /** `mathReviews`: two-layer true math (2026-11-15); absent in an event written before the math-truth review existed. */
   /**
    * `drawMode` (B2): "derive" on a proposal stepped live since B2 derives drawings from Maya's sentences. A saved event
@@ -78,6 +80,7 @@ export interface TextFold {
    */
   parts?: number;
   streamBoard?: StreamedBoard[];
+  streamHold?: { requestId: number; priority?: Record<string, unknown> };
   attempts: TraceAttempt[];
   deferred: { event: SessionEvent; childId: number | null }[];
   pending: PendingOutput[];
@@ -471,9 +474,10 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
       flushDeferred(s);
       break;
     }
-    case "request": s.request = { id: e.requestId, source: e.source, ...(e.filler ? { filler: e.filler } : {}), ...(e.continuation ? { continuation: true as const } : {}) }; break;
+    case "request": delete s.streamHold; s.request = { id: e.requestId, source: e.source, ...(e.filler ? { filler: e.filler } : {}), ...(e.continuation ? { continuation: true as const } : {}) }; break;
     case "response": {
       if (s.request?.id !== e.requestId) break;
+      delete s.streamHold;
       const source = s.request.source;
       const filler = s.request.filler ? { filler: s.request.filler } : {};
       const continuation = s.request.continuation ? { continuation: true as const } : {};
@@ -511,7 +515,11 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
       s.sent = [...(s.sent ?? []), e.sentence];
       s.parts = (s.parts ?? 0) + 1;
       // Final check 11: the single point where a streamed sentence is accepted; its help is in the session at once.
-      s.session = withEmittedHelp(s.session, s.sent);
+      const helped = withEmittedHelp(s.session, s.sent);
+      for (const assistance of helped.assistance) if (!s.session.assistance.includes(assistance)) {
+        // A delivered prefix keeps its help when a priority cancels and replays the controller state.
+        s.session = controllerStep(s, { type: "help", at: e.at, assistance }).session;
+      }
       if (e.board) {
         const r = controllerStep(s, { type: "streamed_board", at: e.at, batch: e.board.batch, keys: e.board.keys });
         if (r.refusal) { s.controls.pop(); break; }
@@ -523,6 +531,9 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
       }
       break;
     }
+    case "stream_hold":
+      if (s.request?.id === e.requestId && !s.candidate) s.streamHold = { requestId: e.requestId, ...(e.priority ? { priority: structuredClone(e.priority) } : {}) };
+      break;
     case "recover": if (!s.candidate) s.request = null; break;
     case "cancelled": s.output.cancelled = false; break;
     // A control, so a cancellation's replay keeps it.

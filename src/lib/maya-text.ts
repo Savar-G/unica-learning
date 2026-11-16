@@ -693,6 +693,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   let folded: TextFold = checkpoint ? restoreTextCheckpoint(checkpoint) : initialTextState(initial);
   for (const e of log) folded = read(() => foldTextEvent(folded, e));
   let needsRecovery = folded.request !== null;
+  let settlingInterrupted = false;
   let active: AbortController | null = null;
   let generation = 0;
   let queue: Promise<unknown> = Promise.resolve();
@@ -872,14 +873,30 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     try { at = clock(); } catch { /* Keep the last known time when the clock fails. */ }
     return Math.max(Number.isFinite(at) ? at : 0, log.at(-1)?.at ?? 0, folded.session.now ?? 0);
   };
-  function append(e: TextLogEvent) {
-    log.push(structuredClone(e));
-    folded = read(() => foldTextEvent(folded, log.at(-1)!));
-    logBytes += new TextEncoder().encode(JSON.stringify(e)).byteLength + 1;
-    if (log.length >= 64 || logBytes >= 65536) {
+  // A save can overlap a raw priority reading or a cancelled turn. Keep its part in the replayable tail until
+  // delivery is decided, so an unsent part can be removed without undoing any intervening input or priority.
+  let partSaves = 0;
+  function compact() {
+    if (!partSaves && (log.length >= 64 || logBytes >= 65536)) {
       checkpoint = saveTextCheckpoint(folded);
       log.length = 0; logBytes = 0;
     }
+  }
+  function append(e: TextLogEvent) {
+    const entry = structuredClone(e);
+    log.push(entry);
+    folded = read(() => foldTextEvent(folded, entry));
+    logBytes += new TextEncoder().encode(JSON.stringify(e)).byteLength + 1;
+    compact();
+    return entry;
+  }
+  function removeUnsent(part: TextLogEvent) {
+    const index = log.indexOf(part);
+    if (index < 0) throw new Error("maya text: the unsent part left the event log");
+    log.splice(index, 1);
+    folded = checkpoint ? restoreTextCheckpoint(checkpoint) : initialTextState(initial);
+    for (const event of log) folded = read(() => foldTextEvent(folded, event));
+    logBytes = new TextEncoder().encode(JSON.stringify(log)).byteLength;
   }
   function recover() {
     if (!needsRecovery) return;
@@ -888,14 +905,16 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   }
   /** #1107: the child's words of a turn whose request stopped after its saved parts (restored from the store). */
   function interruptedTurn(): { text: string } | null {
-    return needsRecovery && folded.request && !folded.candidate && (folded.parts ?? 0) > 0 && folded.session.turn ? { text: folded.session.turn.text } : null;
+    return needsRecovery && folded.request && !folded.candidate && ((folded.parts ?? 0) > 0 || folded.streamHold?.requestId === folded.request.id) && folded.session.turn ? { text: folded.session.turn.text } : null;
   }
   /** #1107: ends an interrupted turn with code's line after its saved parts; no model call (the pump finds a failed attempt). */
-  function settle(): Promise<TextOutput> {
+  async function settle(): Promise<TextOutput> {
     if (!interruptedTurn()) return Promise.resolve(newOutput());
     needsRecovery = false;
-    append({ kind: "response", at: now(), requestId: folded.request!.id, error: classifyError(new Error("the request stopped before it finished"), "local"), ms: 0 });
-    return schedule();
+    const priority = folded.streamHold?.priority;
+    append({ kind: "response", at: now(), requestId: folded.request!.id, error: classifyError(new Error("the request stopped before it finished"), "local"), ...(priority ? { priority } : {}), ms: 0 });
+    settlingInterrupted = true;
+    try { return await schedule(); } finally { settlingInterrupted = false; }
   }
   const stopped = Symbol("stopped");
   async function wait<T>(promise: Promise<T>, controller: AbortController): Promise<T | typeof stopped> {
@@ -980,12 +999,21 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     // goes to the desk with that drawing. One part at a time, in order. A save that is refused or fails stops the stream:
     // that part and every later one wait for the whole message (the final snapshot), as when the stream is off.
     const persisting = options.persist !== undefined;
+    let streamHeld = false;
+    const holdStream = (priority?: Record<string, unknown> | null) => {
+      streamHeld = true;
+      streamDone = true;
+      queue.length = 0;
+      if (persisting && folded.request?.id === requestId && (!folded.streamHold || (priority && JSON.stringify(priority) !== JSON.stringify(folded.streamHold.priority)))) {
+        append({ kind: "stream_hold", at: now(), requestId, ...(priority ? { priority } : {}) });
+      }
+    };
     let delivery: Promise<void> = Promise.resolve();
     let persistFailed = false;
     /** The model's "noDraw" when it came whole before "say" (prompt 13); null: no sentence of this request draws early. */
     let earlyNoDraw: number[] | null = null;
     /** Whether a saved part may still go to the desk: the request is this turn's own and nothing holds the turn. */
-    const deliverable = () => !controller.signal.aborted && folded.request?.id === requestId && folded.candidate === null &&
+    const deliverable = () => !streamHeld && !controller.signal.aborted && folded.request?.id === requestId && folded.candidate === null &&
       folded.session.contentProblem === null && !folded.session.safety.flagged && !folded.session.outcome && folded.session.state !== "CONTENT_HOLD" &&
       !(folded.session.startedAt !== null && now() - folded.session.startedAt >= (folded.session.limits?.endAtMs ?? 600000));
     const emit = (sentence: string) => {
@@ -1001,16 +1029,25 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         const message = [...(folded.sent ?? []), sentence];
         const drawing = earlyNoDraw ? read(() => streamedDrawing(folded.session, message, (folded.streamBoard ?? []).map((b) => b.tied), earlyNoDraw!)) : null;
         const partsBefore = folded.parts ?? 0;
-        append({ kind: "part", at: now(), requestId, sentence, ...(drawing ? { board: { batch: drawing.batch, keys: drawing.keys, tied: drawing.tied } } : {}) });
-        if ((folded.parts ?? 0) !== partsBefore + 1) { persistFailed = true; streamDone = true; return; }
-        ledgerHelp(folded.sent ?? []);
-        let saved = false;
-        try { saved = await options.persist!(); } catch { saved = false; }
-        if (!saved) { persistFailed = true; streamDone = true; return; }
-        if (!deliverable()) return;
-        firstSayMs ??= now() - at;
-        const committed = drawing && folded.streamBoard?.some((b) => b.batch.transactionId === drawing.batch.transactionId);
-        options.onSayPart!(fillName(sentence, session), message.length - 1, committed ? [drawing.batch] : []);
+        partSaves++;
+        const part = append({ kind: "part", at: now(), requestId, sentence, ...(drawing ? { board: { batch: drawing.batch, keys: drawing.keys, tied: drawing.tied } } : {}) });
+        try {
+          if ((folded.parts ?? 0) !== partsBefore + 1) { removeUnsent(part); persistFailed = true; holdStream(); return; }
+          let saved = false;
+          try { saved = await options.persist!(); } catch { saved = false; }
+          if (!saved || !deliverable()) {
+            removeUnsent(part);
+            // Save the reconciliation too. A fresh reader must see the hold and the actual delivered prefix,
+            // including its drawings and help, rather than the part whose save overlapped the hold.
+            try { await options.persist!(); } catch { /* The final call save retries under the same revision fence. */ }
+            if (!saved) { persistFailed = true; holdStream(); }
+            return;
+          }
+          firstSayMs ??= now() - at;
+          const committed = drawing && folded.streamBoard?.some((b) => b.batch.transactionId === drawing.batch.transactionId);
+          options.onSayPart!(fillName(sentence, session), message.length - 1, committed ? [drawing.batch] : []);
+          ledgerHelp(folded.sent ?? []);
+        } finally { partSaves--; compact(); }
       });
     };
     const flush = () => {
@@ -1029,7 +1066,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const flushTutor = () => {
       while (queue.length && queue[0].state !== "pending" && live()) {
         const next = queue.shift()!;
-        if (next.state === "drop") { streamDone = true; queue.length = 0; return; }
+        if (next.state === "drop") { holdStream(); return; }
         emit(next.sentence);
       }
     };
@@ -1039,31 +1076,31 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       if (!said || !said.kind) return;
       // A safety or stop turn never streams (code's guidance and close come first); any other kind streams, and its
       // sentences that are not plain teaching wait for their own review.
-      if (said.kind === "safety" || said.kind === "stop") { streamDone = true; return; }
+      if (said.kind === "safety" || said.kind === "stop") { holdStream(); return; }
       // 2026-11-15 (after final check 5): the small "gate" comes whole before "say". No word goes out before it: a "say"
       // that began before a complete gate (a model that ignores the order) streams nothing on this turn, and a gate
       // about Maya, safety or a stop holds the whole message, so code's own line goes first. Code's own read is the
       // second guard: `tutor` is null (no stream at all) unless code read the turn as plainly math, with no identity
       // word, no safety and no stop (tutorStream).
-      if (said.gate !== "none") { streamDone = true; return; }
+      if (said.gate !== "none") { holdStream(); return; }
       // Final check 6: the stream uses the same single gate and reading as final routing. Only "gate" then "kind" may
       // come before "say" (the schema's order); a key written twice makes the whole output malformed, so nothing further
       // streams; any priority value anywhere in the text (a copy of the reading, a cut-off reading) holds the rest.
       const seenSoFar = streamedPriority(soFar);
-      if (seenSoFar.repeated || seenSoFar.priority) { streamDone = true; return; }
+      if (seenSoFar.repeated || seenSoFar.priority) { holdStream(seenSoFar.priority); return; }
       // #1107 (prompt 13): "noDraw" may come third, before "say"; nothing else may.
-      if (!["gate,kind", "gate,kind,noDraw"].includes(said.before.join(","))) { streamDone = true; return; }
+      if (!["gate,kind", "gate,kind,noDraw"].includes(said.before.join(","))) { holdStream(); return; }
       // A "noDraw" missing before "say" or malformed allows no early drawing; the words still stream.
       if (seen === 0) earlyNoDraw = said.before.includes("noDraw") ? said.noDraw : null;
       // The full reading, once complete (after "say", or before it from a model that still writes it first), decides
       // as before: a reading about Maya, safety, a stop or any priority reading holds every sentence not yet sent, and
       // code's line follows the words already said. A gate that disagrees with it is recorded in the trace.
-      if (said.reading && !read(() => tutorStreamReading(session, said.reading!))) { streamDone = true; return; }
+      if (said.reading && !read(() => tutorStreamReading(session, said.reading!))) { holdStream(); return; }
       const parts = sentencesOf(said.text);
       const complete = said.complete ? parts : parts.slice(0, -1);
       for (const sentence of complete.slice(seen)) {
         const how = read(() => tutorStreamSentence(sentence, complete.slice(0, seen), tutor));
-        if (how === "stop" || (how !== "send" && ((how.talk && !options.reviewer) || (how.math && !options.mathReviewer)))) { streamDone = true; return; }
+        if (how === "stop" || (how !== "send" && ((how.talk && !options.reviewer) || (how.math && !options.mathReviewer)))) { holdStream(); return; }
         const before = complete.slice(0, seen);
         seen++;
         const item: { sentence: string; state: "ready" | "pending" | "drop" } = { sentence, state: how === "send" ? "ready" : "pending" };
@@ -1145,13 +1182,13 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       if (!live()) return;
       const said = partialSay(soFar);
       if (!said || !said.kind) return;
-      if (said.kind === "safety") { streamDone = true; return; }
+      if (said.kind === "safety") { holdStream(); return; }
       const reviewAll = said.kind !== "math" && said.kind !== "help" && !plan.greeting;
       const parts = sentencesOf(said.text);
       const complete = said.complete ? parts : parts.slice(0, -1);
       for (const sentence of complete.slice(seen)) {
         const how = read(() => streamSentence(sentence, plan, seen, words, reviewAll, complete.slice(0, seen)));
-        if (how === "stop" || (how === "review" && !options.reviewer)) { streamDone = true; return; }
+        if (how === "stop" || (how === "review" && !options.reviewer)) { holdStream(); return; }
         seen++;
         words += sentence.split(/\s+/).filter(Boolean).length;
         const item: { sentence: string; state: "ready" | "pending" | "drop" } = { sentence, state: how === "send" ? "ready" : "pending" };
@@ -1182,14 +1219,25 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     // and a key written twice is seen (a final parse keeps only the last copy). Every version 3 request reads its raw
     // text, also when no sentence may stream on this turn (then nothing is sent from it).
     let raw = "";
-    const onRaw = onText || model.output === 3 ? (soFar: string) => { raw = soFar; onText?.(soFar); } : undefined;
+    const onRaw = onText || model.output === 3 ? (soFar: string) => {
+      raw = soFar;
+      // Read even after the parser stopped accepting sentences. Queued saves can still be in flight.
+      if (persisting) {
+        const scan = streamedPriority(soFar);
+        if (scan.repeated || scan.priority) holdStream(scan.priority);
+      }
+      onText?.(soFar);
+    } : undefined;
     const rawScan = () => (raw ? streamedPriority(raw) : { repeated: false, priority: null });
     const withPriority = (p: Record<string, unknown> | null) => (p ? { priority: p } : {});
     const answered = Promise.resolve().then(() => prepared ? prepared.use(onRaw, controller.signal) : attempt(source, () => model.propose(input, controller.signal, onRaw))).then((proposal) => ({ proposal }), (error: unknown) => ({ error }));
     const response = Promise.race([answered, budget]).then(async (got) => {
       clearTimeout(budgetTimer);
-      // #1107: no sentence starts after this; a part already saving finishes (and goes out) before the response is written.
+      // Ordinary completion drains the checked queue. A binding hold also reconciles a save already in flight.
       streamDone = true;
+      const finalScan = rawScan();
+      const finalPriority = got !== "budget" && "proposal" in got ? streamedPriority(JSON.stringify(got.proposal ?? null)).priority : null;
+      if (got === "budget" || finalScan.repeated || finalScan.priority || finalPriority) holdStream(finalScan.priority ?? finalPriority);
       await delivery;
       if (got === "budget") {
         streamDone = true;
@@ -1330,6 +1378,18 @@ export function createTextSession(options: TextSessionOptions): TextSession {
           if (folded.session.safety.guided || folded.session.outcome) break;
         }
         if (!folded.session.safety.guided && !folded.session.outcome) append({ kind: "input", at: now(), event: { type: "technical", at: now(), detail: "Maya had no safe line to say" } });
+        sendGuidance();
+        continue;
+      }
+      // A recovered priority may have consumed the failed attempt when it cancelled teaching. Recovery still
+      // finishes with code alone, including disclosure and safety; it never starts a replacement model request.
+      if (settlingInterrupted && !folded.candidate && !folded.attempts.length) {
+        const before = folded.pending.length;
+        for (const proposal of read(() => fallbacks(folded.session))) {
+          append({ kind: "fallback", at: now(), proposal, drawMode: "derive" });
+          if (folded.pending.length > before || folded.session.outcome) break;
+        }
+        if (folded.pending.length === before && !folded.session.outcome) append({ kind: "input", at: now(), event: { type: "technical", at: now(), detail: "the interrupted turn had no safe line" } });
         sendGuidance();
         continue;
       }

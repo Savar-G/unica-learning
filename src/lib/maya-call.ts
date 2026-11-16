@@ -279,6 +279,11 @@ export interface CallSeams {
    * The server's MAYA_TUTOR_FAMILIES switch (callSeams); only true turns it on. A resumed call keeps what it started with.
    */
   tutorFamilies?: boolean;
+  /**
+   * #1107 reader-first release: saved sentence writes are off unless explicitly enabled by the server.
+   * Enable only after all supported readers and end workers can restore parts and interrupted turns.
+   */
+  streamChat?: boolean;
   store: CallStore;
   /** The children's wording history: read before a call, added to when it ends. */
   history: WordingHistoryStore;
@@ -1716,7 +1721,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       // #1107: a chat child turn streams its checked sentences to the desk through the voice path's hooks. Each one, with
       // the drawing fixed for it, is saved in the call (at the claim's revision, which stays) before the desk gets it.
       const checkpoint = store.checkpoint?.bind(store);
-      const hear = say && checkpoint && record.kind === "chat" && input.type === "child" ? {
+      const hear = seams.streamChat === true && say && checkpoint && record.kind === "chat" && input.type === "child" ? {
         onSayPart: (sentence: string, index: number, board: Batch[]) => { try { say.part(sentence, index, board.length ? board : undefined); } catch { /* the desk's ear never fails the turn */ } },
         persist: async () => checkpoint(record.id, record.revision, { package: pkg, text: await session.saved() }),
       } : undefined;

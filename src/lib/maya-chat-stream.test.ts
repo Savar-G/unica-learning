@@ -132,7 +132,7 @@ describe("runChat: admission before any streamed word", () => {
         answer: () => reply("7 ones and 9 ones make 16 ones. What do we write in the ones place?", "guide"),
         stream: { chunk: 9, beforeEnd: () => (hold ? new Promise<void>((r) => { held = r; }) : Promise.resolve()) },
       });
-      local.seams = { ...f.seams, tutorFamilies: true, model: () => model, reviewer: () => fakeTalkReviewer(), mathReviewer: () => fakeMathReviewer(), canChat: async () => true } satisfies CallSeams;
+      local.seams = { ...f.seams, tutorFamilies: true, streamChat: true, model: () => model, reviewer: () => fakeTalkReviewer(), mathReviewer: () => fakeMathReviewer(), canChat: async () => true } satisfies CallSeams;
       return model;
     };
     const model = process();
