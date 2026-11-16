@@ -102,7 +102,7 @@ function failure(status: number, message: string, usd: number | null): DecisionE
 }
 
 /** One try. Error messages hold codes and OpenRouter's words, never the input. */
-async function once(fetch: typeof globalThis.fetch, init: RequestInit, request: DecisionRequest, timeout: number): Promise<Omit<DecisionResult, "unpricedAttempts" | "costKnown">> {
+async function once(fetch: typeof globalThis.fetch, init: RequestInit, request: DecisionRequest, timeout: number, onUsage?: (usage: { costUsd: number | null; generationId: string | null }) => void): Promise<Omit<DecisionResult, "unpricedAttempts" | "costKnown">> {
   let res: Response;
   try {
     res = await fetch(DECISIONS_URL, { ...init, signal: AbortSignal.any([request.signal, AbortSignal.timeout(timeout)]) });
@@ -127,6 +127,9 @@ async function once(fetch: typeof globalThis.fetch, init: RequestInit, request: 
     body = null;
   }
   const usd = costOf(body);
+  if (body && (usd !== null || typeof body.id === "string")) {
+    try { onUsage?.({ costUsd: usd, generationId: typeof body.id === "string" ? body.id : null }); } catch { /* Recording never changes a decision. */ }
+  }
   if (!res.ok) throw failure(res.status, body?.error?.message ?? text, usd);
   if (!body || typeof body !== "object") throw new DecisionError("malformed", "OpenRouter answered 200 with a body that is not JSON");
   if (body.error) {
@@ -146,6 +149,7 @@ export function openRouterDecisionClient({
   fetch = globalThis.fetch,
   maxRetries = 1,
   timeout = DECISION_REQUEST_TIMEOUT_MS,
+  onUsage,
 }: {
   apiKey: string;
   model: string;
@@ -155,6 +159,8 @@ export function openRouterDecisionClient({
   fetch?: typeof globalThis.fetch;
   maxRetries?: number;
   timeout?: number;
+  /** One reading per provider response, before validation or retry. Never an aggregate under the last generation id. */
+  onUsage?: (usage: { costUsd: number | null; generationId: string | null }) => void;
 }): DecisionClient {
   return {
     model,
@@ -183,7 +189,7 @@ export function openRouterDecisionClient({
           if (request.signal.aborted) throw new DecisionError("timeout", "time is up", charged, unpriced);
         }
         try {
-          const result = await once(fetch, init, request, timeout);
+          const result = await once(fetch, init, request, timeout, onUsage);
           count(result.usd);
           return { ...result, usd: charged, unpricedAttempts: unpriced, costKnown: unpriced === 0 };
         } catch (e) {

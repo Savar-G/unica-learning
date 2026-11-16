@@ -6,7 +6,6 @@
 
 .pa .wb-cover { display: flex; align-items: center; gap: 14px; padding: 14px; }
 .wb-cover-text { flex: 1; min-width: 0; }
-.support-page .pa .wb-cover h2 { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
 .support-page .pa .wb-sub { margin: 0; font-size: 13px; line-height: 1.4; color: var(--pa-tx2); }
 .support-page .pa .wb-cover .wb-sub + .wb-sub { margin-top: 6px; }
 .wb-bar { height: 8px; border-radius: 4px; background: var(--pa-soft); overflow: hidden; margin: 10px 0 0; }
@@ -49,10 +48,10 @@
 .support-page .pa .wb-keys ul { margin-top: 4px; }
 .support-page .pa .wb-keys li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; border-top: 1px solid var(--pa-line); margin: 0; }
 .wb-keys li b { font-size: 14.5px; font-weight: 600; }
-.support-page .pa .wb-view { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; border-radius: 12px; background: var(--pa-soft); color: var(--pa-tx); font-size: 14px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.support-page .pa .wb-view { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; border-radius: 6px; background: var(--pa-soft); color: var(--pa-tx); font-size: 14px; font-weight: 500; text-decoration: none; white-space: nowrap; }
 
 /* Older workbooks: one row each, opening that book's page */
-.support-page .pa .wb-label { margin: 0 0 8px 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--pa-tx3); }
+.support-page .pa .wb-label { margin: 0 0 8px 4px; font: 400 12px/1.4 var(--mono); letter-spacing: 0.02em; text-transform: uppercase; color: var(--pa-tx3); }
 /* Beats `.support-page .pa ul { padding: 0 }`, which has more weight than `.pa .wb-older`. */
 .support-page .pa .wb-older { padding: 4px 14px; }
 .support-page .pa .wb-older li { margin: 0; }
@@ -81,7 +80,7 @@
 .pw-answer-label { color: var(--ink-2); font-size: 14px; }
 .pw-card { padding: 20px 22px; border: 1px solid var(--line); border-radius: 14px; background: #fff; min-width: 0; }
 .pw-section { margin-top: 14px; }
-.support-page .pw-card h2 { margin: 0 0 14px; font-size: 19px; font-weight: 500; letter-spacing: -0.01em; }
+.support-page .pw-card h2 { margin: 0 0 14px; font-size: 19px; font-weight: 300; letter-spacing: -0.035em; }
 .support-page .pw-sub { margin: 8px 0 0; font-size: 15px; line-height: 1.45; color: var(--ink-2); }
 
 /* A laptop: the book on the left, the keys and older books on the right (the Home's container query). */

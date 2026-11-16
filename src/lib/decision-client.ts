@@ -1,14 +1,15 @@
 // The decision client (spec #850, #851): one interface for closed-question AI calls. A decision model reads text and
 // images and answers typed questions (yes/no, choice, score) with probabilities and a confidence, not with text. The live
 // adapter is OpenRouter's Decisions API (src/lib/decision-openrouter.ts); tests use the fake (src/lib/decision-client-fake.ts).
-// Behind a switch: on only when DECISIONS_OPENROUTER_API_KEY is set. Off, there is no client, so no decision call can
-// happen. This module never reads OPENROUTER_API_KEY or SCAN_MARKING_OPENROUTER_API_KEY: decisions have their own key.
+// Each caller supplies its owning feature. The central product map selects that product's dedicated key.
+// Neither generic OPENROUTER_API_KEY nor DECISIONS_OPENROUTER_API_KEY enables a decision call.
 // An error, a time-out or a safety block is never a pass. Each caller states what it does instead (spec #850).
 // For the server and local scripts only. No "server-only" import so that its tests can run, as src/lib/ai-client.ts.
 import { openRouterDecisionClient } from "@/lib/decision-openrouter";
 import { livePriceGuard, withPriceGuard, type PriceGuard } from "@/lib/decision-price";
 import { recordAiUsage, type AiUsageTag } from "@/lib/ai-usage";
 import { keyIdentity } from "@/lib/ai-usage-context";
+import { productKey } from "@/lib/ai-product-keys";
 
 /** The model when DECISION_MODEL is not set, until the comparison (#851) picks one. */
 export const DECISION_DEFAULT_MODEL = "typesafe/jev-1.14";
@@ -155,7 +156,7 @@ export interface DecisionClient {
 }
 
 /**
- * The client, or null when decisions are off (no DECISIONS_OPENROUTER_API_KEY). The model comes from `model`, else
+ * The client, or null without an assigned feature and its unique product key. The model comes from `model`, else
  * DECISION_MODEL, else the default. A model that is not in DECISION_MODELS throws: it is never sent on an open route
  * or without a cost bound. Each request first passes the live price check (src/lib/decision-price.ts): once per process
  * and model, and again once a day. `priceGuard` replaces that check (tests).
@@ -165,25 +166,13 @@ export function decisionClient(
   model?: string,
   hooks?: { fetch?: typeof globalThis.fetch; timeout?: number; maxRetries?: number; priceGuard?: PriceGuard; usage?: AiUsageTag },
 ): DecisionClient | null {
-  const apiKey = env.DECISIONS_OPENROUTER_API_KEY?.trim();
-  if (!apiKey) return null;
+  const binding = productKey(hooks?.usage?.feature, env);
+  if (!binding) return null;
   const id = model?.trim() || env.DECISION_MODEL?.trim() || DECISION_DEFAULT_MODEL;
   const { provider } = decisionModelTerms(id);
   const { priceGuard, usage, ...rest } = hooks ?? {};
-  const inner = withPriceGuard(openRouterDecisionClient({ apiKey, model: id, provider, ...rest }), priceGuard ?? livePriceGuard);
-  // The usd each request already computes also goes to the AI usage ledger (D-330), a failed one that was charged included.
-  // One reading for a request: `calls` is not known here, so it counts one.
-  return {
-    ...inner,
-    async decide(request) {
-      try {
-        const result = await inner.decide(request);
-        recordAiUsage(usage ?? { feature: "other" }, { provider: "openrouter", model: id, costUsd: result.usd, generationId: result.id, keyAlias: "decisions", keyId: keyIdentity(apiKey), costBasis: "provider" });
-        return result;
-      } catch (e) {
-        if (e instanceof DecisionError && e.usd !== null) recordAiUsage(usage ?? { feature: "other" }, { provider: "openrouter", model: id, costUsd: e.usd, keyAlias: "decisions", keyId: keyIdentity(apiKey), costBasis: "provider" });
-        throw e;
-      }
-    },
-  };
+  return withPriceGuard(openRouterDecisionClient({ ...binding, model: id, provider, ...rest,
+    onUsage: (reading) => recordAiUsage(usage!, { provider: "openrouter", model: id, ...reading,
+      keyAlias: binding.keyLabel, keyId: keyIdentity(binding.apiKey), costBasis: reading.costUsd === null ? "unknown" : "provider" }),
+  }), priceGuard ?? livePriceGuard);
 }

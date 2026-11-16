@@ -18,6 +18,7 @@ import { tutorKindOf } from "./tutor-kinds";
 import { patternOf } from "./tutor-kinds/evaluate";
 import { affirms, equationHolds, equationsOf, neverSayProblem, sayNumbers, sentenceKey, sentencesOf, type SayEquation } from "./say-check";
 import { exactSafe } from "./math-vocab";
+import { exactColumnPhrases } from "./tutor-exact-phrases";
 import { deniesWholeQuestion, echoesChild, selfCorrection } from "./teaching-reads";
 import { answerClaims, answerProblems, falseClaims, fullRead, guardedProblems, readClaims, REMAINDER_SAID, unsafeNumberSaid, type ColumnSum, type KindRead } from "./tutor-math";
 
@@ -121,12 +122,14 @@ export function exactKey(sentence: string): string {
 /**
  * Code's own texts for this question, as exact keys (exact-match rule, the CoS decision of 2026-11-15): each step's work
  * text (TutorKind.steps) sentence by sentence, and each of its parts between ";" or ":" (each part is code's own true
- * statement of this question), and the kind's step question after each number of done steps (TutorKind.stepQuestion).
+ * statement of this question), the kind's step question after each number of done steps (TutorKind.stepQuestion),
+ * and a finite bank of complete phrases generated from recomputed column facts (exactColumnPhrases).
  */
 export function exactTexts(pkg: OperationPackage): ReadonlySet<string> {
   const kind = tutorKind(pkg);
   const steps = kind.steps(pkg);
   const keys = new Set<string>();
+  for (const phrase of exactColumnPhrases(pkg)) keys.add(exactKey(phrase));
   for (const st of steps) for (const sentence of sentencesOf(st.work)) {
     keys.add(exactKey(sentence));
     for (const part of sentence.split(/\s*[;:]\s*/)) if (part.trim()) keys.add(exactKey(part));

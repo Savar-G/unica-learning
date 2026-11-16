@@ -10,7 +10,7 @@ import { SWEEP_START_MS, SWEEP_TIME_LIMIT_MS, sweepAbandonedCalls, sweepSeams, t
 
 // The sweep of abandoned Maya chats and calls (#528, src/lib/maya-call-sweep.ts) with the secret key, for the reminder
 // job. The parent notes it writes are code only (no AI warm sentence), and Maya's model is never asked. The child profile
-// rebuild runs as at every call end, so it makes its paid AI call when OPENROUTER_API_KEY is set and the child has events.
+// rebuild runs as at every call end, so it makes its paid AI call when PROFILE_OPENROUTER_API_KEY is set and the child has events.
 
 /**
  * Ends the abandoned calls and finishes unfinished ones. It starts no new end after SWEEP_START_MS from `startedAt` and

@@ -34,10 +34,10 @@ it("records a direct local practice call before exit with no database key; retai
   await flushAiUsage(); expect(globalThis.fetch).not.toHaveBeenCalled();
 });
 it("records the shared client once, rather than once in each adapter layer", async () => {
-  await aiClient({ OPENROUTER_API_KEY: "k" }, "m", { fetch: async () => response("gen-one"), usage: { feature: "marking", parentId: "parent", childId: "child" } })!.json(request, new AbortController().signal);
+  await aiClient({ SCAN_MARKING_OPENROUTER_API_KEY: "k" }, "m", { fetch: async () => response("gen-one"), usage: { feature: "marking", parentId: "parent", childId: "child" } })!.json(request, new AbortController().signal);
   const rows = readFileSync(join(dir, "receipts.jsonl"), "utf8").trim().split("\n");
   expect(rows).toHaveLength(1);
-  expect(JSON.parse(rows[0])).toMatchObject({ feature: "marking", parent_id: "parent", child_id: "child", key_alias: "main" });
+  expect(JSON.parse(rows[0])).toMatchObject({ feature: "marking", parent_id: "parent", child_id: "child", key_alias: "marking" });
 });
 it("retains each in-flight write through the host callback and flushes concurrent writes before exit", async () => {
   let release!: () => void;

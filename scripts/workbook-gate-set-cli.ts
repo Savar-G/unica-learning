@@ -32,8 +32,8 @@ if (!values.estimate) {
     console.log("Reusing stored answers; no model requests.");
   } else {
     if (Object.values(estimate).reduce((a, b) => a + b, 0) > max) throw new Error("estimate exceeds cap");
-    const clients = new Map(askModels.map((m) => [m, decisionClient(process.env, m, { maxRetries: 0 })]));
-    if ([...clients.values()].some((c) => c === null)) throw new Error("DECISIONS_OPENROUTER_API_KEY is required");
+    const clients = new Map(askModels.map((m) => [m, decisionClient(process.env, m, { maxRetries: 0, usage: { feature: "workbook_gate", context: "evaluation" } })]));
+    if ([...clients.values()].some((c) => c === null)) throw new Error("WORKBOOK_OPENROUTER_API_KEY is required");
     let exposure = 0, knownSpend = 0, unpriced = 0;
     const rows: GateRow[] = [];
     const failures: string[] = [];

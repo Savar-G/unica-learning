@@ -2,6 +2,7 @@
 // admin_ai_usage returns into what the page shows. Pure: no database, no clock (the caller passes `now`), no network.
 // Days are Vancouver days (the team's time, not a family's). Money is stored in US dollars; CAD uses MAYA_USD_TO_CAD.
 import { PACIFIC_ZONE, addDays, localDateTime, localDay } from "@/lib/family-time";
+import { AI_KEY_ALIASES } from "@/lib/ai-usage-context";
 
 export const ADMIN_AI_PATH = "/admin/ai";
 
@@ -9,6 +10,7 @@ export const RANGES = [
   { key: "7d", label: "7 days" },
   { key: "30d", label: "30 days" },
   { key: "month", label: "This month" },
+  { key: "year", label: "This year" },
 ] as const;
 export type RangeKey = (typeof RANGES)[number]["key"];
 export const DEFAULT_RANGE: RangeKey = "30d";
@@ -30,7 +32,8 @@ export interface Period {
 /** The period of a range, ending with today in Vancouver. */
 export function periodFor(range: RangeKey, now: number): Period {
   const today = localDay(now, PACIFIC_ZONE);
-  const first = range === "7d" ? addDays(today, -6) : range === "30d" ? addDays(today, -29) : `${today.slice(0, 8)}01`;
+  // The app reader permits 400 days. A calendar year needs at most 366 days.
+  const first = range === "7d" ? addDays(today, -6) : range === "30d" ? addDays(today, -29) : range === "year" ? `${today.slice(0, 4)}-01-01` : `${today.slice(0, 8)}01`;
   const days: string[] = [];
   for (let d = first; d <= today; d = addDays(d, 1)) days.push(d);
   return { range, from: new Date(localDateTime(first, PACIFIC_ZONE)), to: new Date(localDateTime(addDays(today, 1), PACIFIC_ZONE)), days };
@@ -128,9 +131,8 @@ export function parseUsage(raw: unknown): UsageView {
   };
 }
 
-const KEY_LABELS = ["main", "marking", "explanations", "decisions", "local", "anthropic", "unknown"];
 export function safeKeyLabel(alias: unknown, id: unknown): string {
-  const label = typeof alias === "string" && KEY_LABELS.includes(alias) ? alias : "unknown";
+  const label = typeof alias === "string" && (AI_KEY_ALIASES as readonly string[]).includes(alias) ? alias : "unknown";
   return `${label}${typeof id === "string" && /^[a-f0-9]{64}$/.test(id) ? ` (${id.slice(0, 12)})` : ""}`;
 }
 export function parseDetails(raw: unknown): UsageDetail[] {

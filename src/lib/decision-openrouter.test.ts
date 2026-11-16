@@ -189,21 +189,21 @@ describe("the OpenRouter decision client (#851), fetch faked", () => {
     expect([error.kind, error.usd, asks, retry.sent.length]).toEqual(["cancelled", 0.04, 2, 1]);
   });
 
-  it("is on only with DECISIONS_OPENROUTER_API_KEY, takes DECISION_MODEL, refuses a model that is not in the pinned table, and bounds a request by its pinned prices", async () => {
+  it("requires an owning feature and its product key, takes DECISION_MODEL, refuses a model that is not in the pinned table, and bounds a request by its pinned prices", async () => {
     expect(decisionClient({})).toBeNull();
     expect(decisionClient({ OPENROUTER_API_KEY: "sk-or-other", SCAN_MARKING_OPENROUTER_API_KEY: "sk-or-scan" })).toBeNull();
-    expect(decisionClient({ DECISIONS_OPENROUTER_API_KEY: "sk-or-d" })?.model).toBe("typesafe/jev-1.14");
+    expect(decisionClient({ SCAN_MARKING_OPENROUTER_API_KEY: "sk-or-d" }, undefined, { usage: { feature: "photo_check" } })?.model).toBe("typesafe/jev-1.14");
     // One retry: two attempts, each at most the whole context of 262,144 tokens at the prompt price.
-    expect(decisionClient({ DECISIONS_OPENROUTER_API_KEY: "sk-or-d" })!.maxAttempts).toBe(2);
-    expect(requestCostBound(decisionClient({ DECISIONS_OPENROUTER_API_KEY: "sk-or-d" })!)).toBeCloseTo(2 * 262_144 * 0.042 / 1e6, 12);
-    expect(requestCostBound(decisionClient({ DECISIONS_OPENROUTER_API_KEY: "sk-or-d", DECISION_MODEL: "google/gemini-decision-1" })!)).toBeCloseTo(2 * 262_144 * 0.1 / 1e6, 12);
+    expect(decisionClient({ SCAN_MARKING_OPENROUTER_API_KEY: "sk-or-d" }, undefined, { usage: { feature: "photo_check" } })!.maxAttempts).toBe(2);
+    expect(requestCostBound(decisionClient({ SCAN_MARKING_OPENROUTER_API_KEY: "sk-or-d" }, undefined, { usage: { feature: "photo_check" } })!)).toBeCloseTo(2 * 262_144 * 0.042 / 1e6, 12);
+    expect(requestCostBound(decisionClient({ SCAN_MARKING_OPENROUTER_API_KEY: "sk-or-d", DECISION_MODEL: "google/gemini-decision-1" }, undefined, { usage: { feature: "photo_check" } })!)).toBeCloseTo(2 * 262_144 * 0.1 / 1e6, 12);
     const { fetch, sent } = fakeFetch(decided(ALL));
-    const gemini = decisionClient({ DECISIONS_OPENROUTER_API_KEY: "sk-or-d", DECISION_MODEL: "google/gemini-decision-1" }, undefined, { fetch, priceGuard: async () => {} });
+    const gemini = decisionClient({ SCAN_MARKING_OPENROUTER_API_KEY: "sk-or-d", DECISION_MODEL: "google/gemini-decision-1" }, undefined, { fetch, priceGuard: async () => {}, usage: { feature: "photo_check" } });
     await gemini!.decide(request());
     expect(sent[0].body.model).toBe("google/gemini-decision-1");
     expect(sent[0].body.provider).toEqual({ only: ["google-ai-studio"], order: ["google-ai-studio"], allow_fallbacks: false, data_collection: "deny", zdr: true });
     expect(sent[0].headers.get("authorization")).toBe("Bearer sk-or-d");
-    expect(() => decisionClient({ DECISIONS_OPENROUTER_API_KEY: "sk-or-d", DECISION_MODEL: "someone/other-model" })).toThrow(/not in the pinned model table/);
+    expect(() => decisionClient({ SCAN_MARKING_OPENROUTER_API_KEY: "sk-or-d", DECISION_MODEL: "someone/other-model" }, undefined, { usage: { feature: "photo_check" } })).toThrow(/not in the pinned model table/);
   });
 
   it("malformed: a choice or score answer without a probability from 0 to 1 for every option or level, or a yes/no answer without one; nothing is filled in (review finding 2)", async () => {

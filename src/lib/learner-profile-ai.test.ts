@@ -32,13 +32,13 @@ function struggling(): LearnerProfile {
 }
 
 describe("the switch", () => {
-  it("is off without OPENROUTER_API_KEY: no client, so no AI call can happen", () => {
+  it("is off without PROFILE_OPENROUTER_API_KEY: no client, so no AI call can happen", () => {
     expect(profileAiClient({})).toBeNull();
-    expect(profileAiClient({ OPENROUTER_API_KEY: "  " })).toBeNull();
+    expect(profileAiClient({ PROFILE_OPENROUTER_API_KEY: "  " })).toBeNull();
   });
 
   it("is on with the key, with the model from AI_MODEL", () => {
-    expect(profileAiClient({ OPENROUTER_API_KEY: "sk-or-test", AI_MODEL: "google/gemini-3-pro" })?.model).toBe("google/gemini-3-pro");
+    expect(profileAiClient({ PROFILE_OPENROUTER_API_KEY: "sk-or-test", AI_MODEL: "google/gemini-3-pro" })?.model).toBe("google/gemini-3-pro");
   });
 
   it("gives the fake for AI_REVIEW_FAKE in development only, never in a production build", () => {

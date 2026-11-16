@@ -3,7 +3,7 @@
 // core gives what the AI reads (profileAiFacts: the profile facts, the skill-map neighbours, the misconception
 // descriptions) and checks what it writes (checkProfileAi): the output schema, the AI text checks of the report text,
 // and the prerequisite rule of a next challenge. Only the parts that pass are kept, each with the model id.
-// Behind the AI client's switch: on only with OPENROUTER_API_KEY. For the server only: the profile build
+// Behind the AI client's switch: on only with PROFILE_OPENROUTER_API_KEY. For the server only: the profile build
 // (src/lib/learner-profile.ts) calls it. No "server-only" import so that its tests can run, as src/lib/work-review-ai.ts.
 // What it sends: the profile facts, which hold no name, no family or account id, no drawing and no typed working.
 import { aiClient, withTimeLimit, type AiClient } from "@/lib/ai-client";
@@ -50,14 +50,15 @@ Rules for likely_cause and how_to_help:
 - Never invent a strength or a weakness. Do not compare the child with other children. Do not mention prices, the company, how the test works, AI or yourself. Do not write "I". Do not use dashes as punctuation.`;
 
 /**
- * The client for the profile's AI parts, or null when the AI is off (no OPENROUTER_API_KEY; the model comes from
+ * The client for the profile's AI parts, or null when the AI is off (no PROFILE_OPENROUTER_API_KEY; the model comes from
  * AI_MODEL, as for the work review). In development (never in a production build), AI_REVIEW_FAKE=sure or unsure gives
  * the fake, for a profile with AI parts without a key.
  */
 export function profileAiClient(env: Record<string, string | undefined> = process.env, usage?: AiUsageTag): AiClient | null {
+  if (usage && usage.feature !== "learner_profile") return null;
   const fake = env.AI_REVIEW_FAKE;
   if (env.NODE_ENV !== "production" && (fake === "sure" || fake === "unsure")) return fakeProfileAi(fake);
-  return aiClient(env, undefined, { usage: usage ?? { feature: "learner_profile" } });
+  return aiClient(env, undefined, { usage: { ...usage, feature: "learner_profile" } });
 }
 
 /**

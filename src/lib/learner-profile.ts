@@ -92,7 +92,8 @@ export async function addProfileAi(store: LearnerProfileStore, build: ProfileBui
   if (!ai) return facts;
   let written;
   try {
-    written = await writeProfileAi(ai, facts, aiMs);
+    const ownedAi = ai.withUsage?.({ parentId: owner.parentId, childId: owner.childId, source: { kind: "assessment", id: owner.assessmentId } }) ?? ai;
+    written = await writeProfileAi(ownedAi, facts, aiMs);
   } catch (e) {
     console.error("[profile] AI failed", owner.assessmentId, message(e));
     return facts;

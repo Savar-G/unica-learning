@@ -168,8 +168,8 @@ describe("the photo check (#855)", () => {
       sent.push(String(url));
       return Response.json({ answers: { blurry: { type: "noul", noul: 0.9 } }, usage: { cost: 0.0002 } });
     }) as unknown as typeof globalThis.fetch;
-    const client = decisionClient({ DECISIONS_OPENROUTER_API_KEY: "sk-or-test" }, undefined, {
-      fetch: decisionFetch, maxRetries: 0, priceGuard: priceGuard({ fetch: priceFetch, now: () => clock }),
+    const client = decisionClient({ SCAN_MARKING_OPENROUTER_API_KEY: "sk-or-test" }, undefined, {
+      fetch: decisionFetch, maxRetries: 0, priceGuard: priceGuard({ fetch: priceFetch, now: () => clock }), usage: { feature: "photo_check" },
     })!;
     // The membership read is slow: the price cache expires while it runs, and the family is still a member at its end.
     const store = { ...mem.store, eligible: async (p: string) => { clock += PRICE_CHECK_TTL_MS + 1; return mem.store.eligible(p); } };

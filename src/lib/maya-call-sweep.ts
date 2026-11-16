@@ -51,7 +51,7 @@
 // No paid model for the end: ending a call never asks Maya's model (the session's finish closes it without a turn), and
 // the server sweep gives the call module a model that refuses to answer, no free-talk review, and code-only parent notes
 // (the AI's warm sentence is optional, src/lib/maya-call-note.ts). The child profile rebuild runs as at every call end,
-// and so, when OPENROUTER_API_KEY is set and the child has events, it makes the profile's paid AI call (its findings
+// and so, when PROFILE_OPENROUTER_API_KEY is set and the child has events, it makes the profile's paid AI call (its findings
 // would otherwise be dropped, src/lib/child-profile.ts).
 //
 // Seams: the call module, the call source (Supabase: `sweepCallSource` in src/lib/maya-call-store.ts; memory:

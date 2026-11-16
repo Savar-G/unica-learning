@@ -38,7 +38,7 @@
 //   --review-check           run only the review over every NEVER_SAY and NOT_OK_TALK example (each must fail) and every OK_TALK
 //                            line (each must pass), and save review-check.md and .json
 //
-// The key: OPENROUTER_API_KEY in the environment, or OPENROUTER_API_KEY_FILE (a file that holds only the key), or
+// The key: MAYA_OPENROUTER_API_KEY in the environment, or MAYA_OPENROUTER_API_KEY_FILE (a file that holds only the key), or
 // .env.local. The exit code is 0 only when every planned run passed.
 //
 // Before a paid OpenRouter run, the credit check (src/lib/maya-practice/credits.ts) reads what is left on the account and
@@ -53,6 +53,7 @@ import { AI_DEFAULT_MODEL, type AiClient } from "@/lib/ai-client";
 import { anthropicClient } from "@/lib/ai-anthropic";
 import { claudeCliClient } from "@/lib/ai-claude-cli-practice";
 import { openRouterClient } from "@/lib/ai-openrouter";
+import { AI_PRODUCTS, productKey } from "@/lib/ai-product-keys";
 import { freeTalkProblem, NEVER_SAY, NOT_OK_TALK, OK_TALK, TALK_REVIEW_PROMPT_VERSION } from "@/lib/maya";
 import { conversationalMayaModel, type MayaModel } from "@/lib/maya-model";
 import { ruleConversationalModel } from "@/lib/maya-model-fake";
@@ -179,15 +180,23 @@ function readEnvFile(path: string): Record<string, string> {
 
 /** The OpenRouter key, put in process.env so every saved file and log line redacts it. */
 function apiKey(root: string): string {
-  let key = process.env.OPENROUTER_API_KEY?.trim();
-  const file = process.env.OPENROUTER_API_KEY_FILE;
+  let key = process.env.MAYA_OPENROUTER_API_KEY?.trim();
+  const file = process.env.MAYA_OPENROUTER_API_KEY_FILE;
   if (!key && file) key = readFileSync(resolve(file), "utf8").trim();
   const envLocal = join(root, ".env.local");
-  if (!key && existsSync(envLocal)) key = readEnvFile(envLocal).OPENROUTER_API_KEY?.trim();
+  if (!key && existsSync(envLocal)) {
+    const fromFile = readEnvFile(envLocal);
+    for (const name of Object.values(AI_PRODUCTS)) {
+      if (!process.env[name]?.trim() && fromFile[name]?.trim()) process.env[name] = fromFile[name];
+    }
+    key = process.env.MAYA_OPENROUTER_API_KEY?.trim();
+  }
   // vercel env pull writes an empty value for a Secret variable.
-  if (!key) throw new Error("No OpenRouter key. Set OPENROUTER_API_KEY, or OPENROUTER_API_KEY_FILE=<file with the key>. Or run with --fake.");
-  process.env.OPENROUTER_API_KEY = key;
-  return key;
+  if (!key) throw new Error("No OpenRouter key. Set MAYA_OPENROUTER_API_KEY, or MAYA_OPENROUTER_API_KEY_FILE=<file with the key>. Or run with --fake.");
+  process.env.MAYA_OPENROUTER_API_KEY = key;
+  const binding = productKey("maya", process.env);
+  if (!binding) throw new Error("Maya's product key is missing or conflicts with another product key.");
+  return binding.apiKey;
 }
 
 
@@ -472,7 +481,8 @@ async function main() {
       const credit = await checkCredits({ fetch: globalThis.fetch, key, ...need });
       if (!credit.ok) throw new Error(credit.message);
       console.log(`-- ${credit.message}`);
-      client = (role) => cappedClient(openRouterClient({ apiKey: key, model: models[role], usage: { feature: role === "maya" ? "maya" : "other", context: "practice" }, fetch: meteredFetch(globalThis.fetch, spending, price[role]) }), spending, price[role]);
+      const binding = productKey("maya", process.env)!;
+      client = (role) => cappedClient(openRouterClient({ ...binding, model: models[role], usage: { feature: role === "maya" || role === "simulator" ? "maya" : "maya_review", context: "practice", source: { kind: "maya_practice_role", id: role } }, fetch: meteredFetch(globalThis.fetch, spending, price[role]) }), spending, price[role]);
     }
     maya = conversationalMayaModel(client("maya"));
     simulator = aiChildSimulator(client("simulator"));

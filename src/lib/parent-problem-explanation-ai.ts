@@ -6,6 +6,7 @@ import { EXPLANATION_MAX_BYTES, EXPLANATION_MAX_TOKENS, EXPLANATION_MODEL, type 
 export function explanationAiClient(env: Readonly<Record<string, string | undefined>> = process.env,
   base: typeof globalThis.fetch = globalThis.fetch, usage?: AiUsageTag): ExplanationClientFactory {
   return beforeAttempt => {
+    if (usage && usage.feature !== "explain") return null;
     let cost: number | null = null;
     const fetch: typeof globalThis.fetch = async (url, init) => {
       if (typeof init?.body !== "string") throw new Error("explanation_body");
@@ -32,7 +33,7 @@ export function explanationAiClient(env: Readonly<Record<string, string | undefi
       return response;
     };
     // This feature uses only its dedicated key and model. Global or other feature credentials cannot enable it.
-    const client = aiClient({ OPENROUTER_API_KEY: env.PARENT_EXPLANATION_API_KEY }, EXPLANATION_MODEL, { fetch, usage, keyLabel: "explanations", onRequest: async () => { try { await beforeAttempt(); } finally { cost = null; } } });
+    const client = aiClient(env, EXPLANATION_MODEL, { fetch, usage: { ...usage, feature: "explain" }, onRequest: async () => { try { await beforeAttempt(); } finally { cost = null; } } });
     return client ? { client, costMicros: () => cost } : null;
   };
 }

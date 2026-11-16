@@ -26,7 +26,7 @@ it.skipIf(!chromium)("completes the U4 review command for days 1 and 5 with real
   const out=await mkdtemp(join(tmpdir(),"workbook-u4-review-"));
   // This seed lost final fullness after a template changed between capacity and output.
   const env:NodeJS.ProcessEnv={...process.env,WORKBOOK_SAMPLE_ID:"67126ea6-8ac8-4065-8036-5ae4da161812"};
-  for(const key of ["OPENROUTER_API_KEY","OPENROUTER_API_KEY_FILE","ANTHROPIC_API_KEY","ANTHROPIC_API_KEY_FILE"]) delete env[key];
+  for(const key of ["WORKBOOK_OPENROUTER_API_KEY","WORKBOOK_OPENROUTER_API_KEY_FILE","ANTHROPIC_API_KEY","ANTHROPIC_API_KEY_FILE"]) delete env[key];
   // A zero exit without a book used to hide the capacity failure. Require the
   // actual draft, PDF, measured fullness, coverage and printed review summary.
   const result=await run(process.execPath,["scripts/workbook-samples.mjs","--fake","--no-store","--levels","U4","--days","1,5","--concurrency","2","--out",out],{cwd:process.cwd(),env,timeout:600_000,maxBuffer:2_000_000});

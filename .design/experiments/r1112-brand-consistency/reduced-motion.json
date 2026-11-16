@@ -1,0 +1,94 @@
+{
+  "browser": "Aside CLI REPL, account u0, emulateMedia reducedMotion=reduce",
+  "result": "pass",
+  "checks": [
+    {
+      "area": "scan",
+      "scenario": "checking",
+      "reduce": true,
+      "activeMotion": [],
+      "spinner": [
+        "none",
+        "none",
+        "none",
+        "none"
+      ],
+      "overflow": false,
+      "blocked": "0"
+    },
+    {
+      "area": "overview",
+      "scenario": "normal",
+      "reduce": true,
+      "activeMotion": [],
+      "spinner": [],
+      "overflow": false,
+      "blocked": "0"
+    },
+    {
+      "area": "progress",
+      "scenario": "normal",
+      "reduce": true,
+      "activeMotion": [],
+      "spinner": [],
+      "overflow": false,
+      "blocked": "0"
+    },
+    {
+      "area": "workbooks",
+      "scenario": "normal",
+      "reduce": true,
+      "activeMotion": [],
+      "spinner": [],
+      "overflow": false,
+      "blocked": "0"
+    },
+    {
+      "area": "results",
+      "scenario": "together",
+      "reduce": true,
+      "activeMotion": [],
+      "spinner": [],
+      "overflow": false,
+      "blocked": "0"
+    },
+    {
+      "area": "notes",
+      "scenario": "session",
+      "reduce": true,
+      "activeMotion": [],
+      "spinner": [],
+      "overflow": false,
+      "blocked": "0"
+    },
+    {
+      "area": "account",
+      "scenario": "normal",
+      "reduce": true,
+      "activeMotion": [],
+      "spinner": [],
+      "overflow": false,
+      "blocked": "0"
+    },
+    {
+      "area": "history",
+      "scenario": "normal",
+      "reduce": true,
+      "activeMotion": [],
+      "spinner": [],
+      "overflow": false,
+      "blocked": "0"
+    },
+    {
+      "area": "shell",
+      "scenario": "more",
+      "reduce": true,
+      "activeMotion": [],
+      "spinner": [],
+      "overflow": false,
+      "blocked": "0"
+    }
+  ],
+  "ownedTabClosed": true,
+  "proofLimit": "Local synthetic presentation; no family or provider actions."
+}

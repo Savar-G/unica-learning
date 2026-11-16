@@ -3,11 +3,11 @@
 // src/lib/child-profile-ai.ts). Text and images go in; JSON that matches a schema comes out. The live adapter is OpenRouter
 // (src/lib/ai-openrouter.ts), so any model on OpenRouter works with one setting; tests use the fake
 // (src/lib/ai-client-fake.ts).
-// Behind a switch: on only when OPENROUTER_API_KEY is set. Off, there is no client, so no AI call can happen.
+// Behind a switch: on only with the feature's dedicated product key. Missing or conflicting bindings make no client.
 // For the server only. No "server-only" import so that its tests can run, as src/lib/sign-in-link.ts.
 import { openRouterClient, type OpenRouterProvider } from "@/lib/ai-openrouter";
 import type { AiUsageTag } from "@/lib/ai-usage";
-import { keyAlias, type AiKeyAlias } from "@/lib/ai-usage-context";
+import { productKey } from "@/lib/ai-product-keys";
 
 /** The model when AI_MODEL is not set: an OpenRouter model id with image input, structured output and reasoning. */
 export const AI_DEFAULT_MODEL = "anthropic/claude-sonnet-5.5";
@@ -54,6 +54,8 @@ export interface AiJsonRequest {
 export interface AiClient {
   /** The model id, stored with each result ("fake" for the fake). */
   readonly model: string;
+  /** Bind known ownership after loading the source. This cannot change the feature, product key or work context. */
+  withUsage?(owner: Pick<AiUsageTag, "parentId" | "childId" | "source">): AiClient;
   /**
    * The parsed JSON output. Throws when there is none: a time-out, an HTTP error, a refusal, a cut-off answer or output
    * that is not JSON. The caller checks the output's shape.
@@ -73,22 +75,23 @@ export interface AiClient {
 export const NO_GOOGLE_PROVIDER: OpenRouterProvider = { ignore: ["google-vertex", "google-ai-studio"], require_parameters: true };
 
 /**
- * The client, or null when the AI is off (no OPENROUTER_API_KEY). The model comes from AI_MODEL, or `model` when a
+ * The client, or null without a known feature and its unique product key. The model comes from AI_MODEL, or `model` when a
  * feature uses its own (Maya's free-talk review, MAYA_REVIEW_MODEL). `hooks`: the fetch to send with and a step before
  * each attempt (Maya's spending ledger reserves and settles each attempt through them, src/lib/maya-spend-ai.ts).
  * `hooks.usage`: what the call is for. Each answer's usage goes to the AI usage ledger with this tag (src/lib/ai-usage.ts,
- * D-330); a call with no tag is stored as feature "other". Recording never fails or slows the call. `hooks.provider`: the
+ * D-330); a call with no assigned feature has no client. Recording never fails or slows the call. `hooks.provider`: the
  * OpenRouter route; none gives NO_GOOGLE_PROVIDER (Maya sets a narrower route, src/lib/maya-ai-route.ts).
  */
-export function aiClient(env: Readonly<Record<string, string | undefined>> = process.env, model?: string, hooks?: { fetch?: typeof globalThis.fetch; onRequest?: () => Promise<void>; usage?: AiUsageTag; provider?: OpenRouterProvider; keyLabel?: AiKeyAlias }): AiClient | null {
-  const apiKey = env.OPENROUTER_API_KEY?.trim();
-  if (!apiKey) return null;
+export function aiClient(env: Readonly<Record<string, string | undefined>> = process.env, model?: string, hooks?: { fetch?: typeof globalThis.fetch; onRequest?: () => Promise<void>; usage?: AiUsageTag; provider?: OpenRouterProvider }): AiClient | null {
+  const binding = productKey(hooks?.usage?.feature, env);
+  if (!binding) return null;
   const chosen = model?.trim() || env.AI_MODEL?.trim() || AI_DEFAULT_MODEL;
-  const { usage: tag, provider, keyLabel, ...rest } = hooks ?? {};
-  return openRouterClient({
-    apiKey, model: chosen, ...rest, provider: provider ?? NO_GOOGLE_PROVIDER, feature: tag?.feature ?? "other",
-    usage: tag, keyLabel: keyLabel ?? keyAlias(apiKey, env),
+  const { usage: tag, provider, ...rest } = hooks ?? {};
+  const make = (usage: AiUsageTag): AiClient => ({
+    ...openRouterClient({ ...binding, model: chosen, ...rest, provider: provider ?? NO_GOOGLE_PROVIDER, feature: usage.feature, usage }),
+    withUsage: (owner) => make({ ...usage, parentId: owner.parentId, childId: owner.childId, source: usage.source ?? owner.source }),
   });
+  return make(tag!);
 }
 
 /**
