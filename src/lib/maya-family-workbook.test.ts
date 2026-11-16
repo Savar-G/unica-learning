@@ -42,7 +42,7 @@ async function setup() {
     if (table === "take_maya_chat_message") {
       const input = JSON.parse(String(init?.body));
       const revision = f.store.rows()[0].revision;
-      return Response.json(input.p_revision === revision ? { status: "accepted", revision } : { status: "conflict", admitted: false });
+      return Response.json(input.p_revision === revision ? { status: "accepted", revision, text: input.p_text, fates: input.p_fates } : { status: "conflict", admitted: false });
     }
     throw Error(`Unexpected database access: ${table}`);
   } } });

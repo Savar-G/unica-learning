@@ -9,7 +9,7 @@ import { stripe } from "@/lib/stripe";
 import { readBookingCustomers } from "@/lib/retention-stripe";
 import { chatFamilyGate, chatGradeLine, chatPlanClosedLine, chatServesGrade, chatUsage, chatWindow, childChatView, type ChatUsage, type ChatReply } from "@/lib/maya-chat";
 import { mayaCalls, recordView, type CallRecord, type TextSay } from "@/lib/maya-call";
-import type { BoardFateReport } from "@/lib/maya-text";
+import { readFateReports, type BoardFateReport } from "@/lib/maya-text";
 import { callSeams } from "@/lib/maya-call-seams";
 import { mayaCallStore } from "@/lib/maya-call-store";
 import { mayaNotice } from "@/lib/maya-notice";
@@ -22,6 +22,15 @@ import type { WorkbookQuestionRef } from "@/lib/question-package";
 import { familyWorkbookIsShipped, selectFamilyWorkbookQuestion, type FamilyWorkbookReader } from "@/lib/maya-workbook-question";
 
 type DB = SupabaseClient<Database>;
+
+/** The admitted payload is authoritative on both first use and recovery. Null fates are legacy messages. */
+function admittedChild(raw: { text?: unknown; fates?: unknown }): { type: "child"; text: string; fates: BoardFateReport[] } {
+  const fates = raw.fates == null ? [] : readFateReports(raw.fates);
+  if (typeof raw.text !== "string" || raw.text.length > 500 || raw.text.trim().length === 0 || fates === null) {
+    throw Error("Chat payload cannot be read");
+  }
+  return { type: "child", text: raw.text, fates };
+}
 /**
  * The family part of the chat check (#530), read once for all of a family's children: a test family; a child with an open
  * plan in child_plan_states (src/lib/plan-access.ts), with no list row and no switch; or a family on the admin list with the
@@ -193,9 +202,10 @@ export async function runChat(ctx: ChatContext, action: ChatAction, options: { s
   const recoverChild = async () => {
     const { data, error } = await db.rpc("recover_maya_chat_message", { p_parent: parent, p_child: child });
     if (error) throw Error(error.message);
-    const recovered = data as { status: string; id?: string; callId?: string; revision?: number; text?: string };
+    const recovered = data as { status: string; id?: string; callId?: string; revision?: number; text?: unknown; fates?: unknown };
     childPending = recovered.status !== "none";
-    if (recovered.status !== "accepted" || !recovered.callId || recovered.revision === undefined || !recovered.text) return;
+    if (recovered.status !== "accepted" || !recovered.callId || recovered.revision === undefined) return;
+    const input = admittedChild(recovered);
     const original = await store.get(recovered.callId);
     if (!owned(original)) throw Error("Chat recovery is no longer available");
     if (!await shipped(original)) {
@@ -204,7 +214,7 @@ export async function runChat(ctx: ChatContext, action: ChatAction, options: { s
       childPending = false;
       return;
     }
-    const result = await calls.input(recovered.callId, recovered.revision, { type: "child", text: recovered.text }, name);
+    const result = await calls.input(recovered.callId, recovered.revision, input, name);
     if (!result.ok) throw Error(`Chat recovery: ${result.error}`);
     const saved = await store.get(recovered.callId);
     if (saved?.status === "live" && (await usage()).left === 0) await calls.input(saved.id, saved.revision, { type: "end" }, name);
@@ -253,20 +263,23 @@ export async function runChat(ctx: ChatContext, action: ChatAction, options: { s
   if (action.type !== "end" && !await shipped(record)) return reply(null, "not_found", "refused");
   if (action.type === "read") return reply(record);
   if (action.type === "child") {
+    const fates = action.fates === undefined ? [] : readFateReports(action.fates);
+    if (fates === null) return reply(record, "invalid", "refused");
     const now = Date.now(), window = chatWindow(now, zone);
     const { data, error } = await db.rpc("take_maya_chat_message", {
       p_id: action.messageId, p_parent: parent, p_child: child, p_call: record.id, p_revision: action.revision,
       p_text: action.text, p_fingerprint: createHash("sha256").update(action.text).digest("hex"), p_start: new Date(window.start).toISOString(), p_end: new Date(window.end).toISOString(),
+      p_fates: fates,
     });
     if (error) throw Error(error.message);
-    const claim = data as { status: string; revision?: number; admitted?: boolean };
+    const claim = data as { status: string; revision?: number; admitted?: boolean; text?: unknown; fates?: unknown };
     if (claim.status === "done") return reply(await store.get(record.id), undefined, "accepted");
     if (claim.status !== "accepted" || claim.revision === undefined) {
       childPending = claim.status === "busy" || claim.status === "recover";
       return reply(await store.get(record.id), claim.status, claim.admitted ? "accepted" : "refused");
     }
     // B1: what the desk's board did with Maya's batches goes in first (the call ignores words it already has).
-    const result = await calls.input(record.id, claim.revision, { type: "child", text: action.text, ...(action.fates?.length ? { fates: action.fates } : {}) }, name, options.say);
+    const result = await calls.input(record.id, claim.revision, admittedChild(claim), name, options.say);
     record = await store.get(record.id);
     // At the cap, finish through the same path as a call, including learning, notes and alerts.
     if (result.ok && record?.status === "live" && (await usage()).left === 0) {
