@@ -71,3 +71,13 @@ it("replays the same receipt or generation at most once; a foreign-key conflict 
   expect(await insertUsageRow(row, { url: "https://fake.invalid", key: "fake", fetch: async () => new Response(JSON.stringify({ code: "23503", message: "secret child data" }), { status: 409 }) })).toBe(false);
   expect(console.error).toHaveBeenCalledWith("[ai-usage] write failed: 409");
 });
+
+it("marks imported rows without changing receipt identity or the original timestamp", async () => {
+  const row = usageRow({ feature: "marking", context: "evaluation" }, { provider: "openrouter", model: "m", costUsd: 1 })!;
+  const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(null, { status: 201 }));
+  await insertUsageRow(row, { url: "https://fake.invalid", key: "fake", fetch, imported: true });
+  const saved = JSON.parse(String(fetch.mock.calls[0][1]?.body));
+  expect(saved).toMatchObject(row);
+  expect(Number.isFinite(Date.parse(saved.imported_at))).toBe(true);
+  expect(row).not.toHaveProperty("imported_at");
+});

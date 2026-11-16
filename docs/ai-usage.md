@@ -37,7 +37,7 @@ The recorder stores only bounded metadata, ids, and usage. It stores no prompt, 
 
 On a local process, `.ai-usage/receipts.jsonl` retains each receipt before asynchronous recording starts. The directory is gitignored. `AI_USAGE_RECEIPT_FILE` can select another local file. It contains ids, so handle it as private operational data and remove copies after a verified import when no longer needed. A missing `SUPABASE_SECRET_KEY` does not enable a hosted write. Local receipts do not appear in the hosted panel until an authorized operator imports them. A failed local file write emits a generic error. A process killed before a provider supplies usage can still leave no receipt.
 
-Next.js instrumentation retains web writes with `after`, independently of Sentry being enabled. Workers/scripts flush their writes. This reduces exit loss; it does not prove complete provider coverage. The database can reject or time out, providers can omit prices, and not all external tools use these adapters.
+Next.js instrumentation registers a process-global host callback for `after`, independently of Sentry being enabled. The callback is shared across the separate instrumentation and request bundles; it contains no credentials or request state. Workers/scripts flush their writes. This reduces exit loss; it does not prove complete provider coverage. The database can reject or time out, providers can omit prices, and not all external tools use these adapters.
 
 Maya's spending cap is not changed: `maya_spend` still decides the stop. Marking's and the explanations' spend rows are not changed either. The new ledger only reads the answer's usage.
 
@@ -78,7 +78,7 @@ Admins only (others get the site's 404). In the sidebar under Quality as "AI usa
 
 ## Retained receipts and historical recovery
 
-`node scripts/import-ai-usage.mjs --file PATH` validates a recorder JSONL file and performs a dry run. Add `--apply` only for an authorized import after the migration is verified, with `SUPABASE_URL` and `SUPABASE_SECRET_KEY` configured in the operator's environment. No credential or receipt data is printed. Invalid receipts stop the import. The original receipt UUID and timestamp stay fixed. Unique receipt and generation indexes make repeated imports idempotent. Foreign-key failures stop the import; they are not treated as successful duplicates.
+`node scripts/import-ai-usage.mjs --file PATH` validates a recorder JSONL file and performs a dry run. Add `--apply` only for an authorized import after the migration is verified, with `SUPABASE_URL` and `SUPABASE_SECRET_KEY` configured in the operator's environment. No credential or receipt data is printed. Invalid receipts stop the import. The original receipt UUID and timestamp stay fixed. The import adds `imported_at`; imported records cannot move the legacy production cut-off. Independent practice, evaluation and test rows cannot establish that cut-off either. Unique receipt and generation indexes make repeated imports idempotent. Foreign-key failures stop the import; they are not treated as successful duplicates.
 
 This importer handles retained recorder receipts only. Earlier practice traces with no provider id, price or trustworthy attribution cannot recover a detailed history. A provider receipt with no known child remains unassigned. Account balances alone cannot supply a historical model, feature, test/production or family split. Do not automatically import old aggregate cost estimates as exact provider receipts. No historical recovery has been run by this implementation task.
 
@@ -104,3 +104,8 @@ Root changes the marker to `AI_USAGE_HOSTED_STEPS_DONE` only after the required 
 - `node supabase/tests/ai_usage_scope.cjs` passed in a temporary synthetic PostgreSQL cluster. It checks full dimension sums, date/test scopes, sibling attribution, admin-test evidence, estimates, missing prices, legacy deduplication, duplicate ids, the 5,000-detail cap and the admin refusal. It does not verify hosted RLS or service credentials.
 - The receipt importer dry run validated two repeated synthetic receipts as one distinct receipt. It performed no database request.
 - Provider tests use fake bounded requests. No paid model calls, hosted writes, deployment, merge or browser checks ran in the implementation task. The full gate is left to CI and root.
+
+## Review repair checks
+
+- `node scripts/check-ai-usage-lifetime.mjs` builds a temporary production Next app and checks that the request recorder registers its write with `after`. It makes no hosted or provider request. `--source-ref c50772c234185b49a4c44c2b405c3cffc3d637d3` is the rejected-source control.
+- `node supabase/tests/ai_usage_scope.cjs` includes earlier test imports followed by unrelated legacy production charges, unknown-context imports, and the existing live transition overlap. The expected total retains distinct charges without adding the known live overlap twice.

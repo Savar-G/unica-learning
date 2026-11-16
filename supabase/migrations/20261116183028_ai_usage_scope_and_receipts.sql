@@ -1,6 +1,7 @@
 -- Additive metadata only. Old rows remain unknown. Root applies this migration before the application ships.
 alter table public.ai_usage_events
   add column receipt_id uuid,
+  add column imported_at timestamptz,
   add column usage_context text not null default 'unknown' check (usage_context in ('production', 'practice', 'evaluation', 'test', 'unknown')),
   add column run_id uuid,
   add column key_alias text not null default 'unknown' check (key_alias in ('main', 'marking', 'explanations', 'decisions', 'local', 'anthropic', 'unknown')),
@@ -19,8 +20,10 @@ begin
   end if;
   if p_cad_per_usd is null or p_cad_per_usd <= 0 then p_cad_per_usd := 1.40; end if;
   if p_day_starts is not null and cardinality(p_day_starts) = 0 then raise exception 'p_day_starts is empty'; end if;
-  select min(created_at) into cut_marking from public.ai_usage_events where feature = 'marking';
-  select min(created_at) into cut_explain from public.ai_usage_events where feature = 'explain';
+  -- Only live production receipts can establish the existing legacy transition.
+  -- Backdated imports and independent tests do not replace unrelated production charges.
+  select min(created_at) into cut_marking from public.ai_usage_events where feature = 'marking' and imported_at is null and usage_context not in ('practice', 'evaluation', 'test');
+  select min(created_at) into cut_explain from public.ai_usage_events where feature = 'explain' and imported_at is null and usage_context not in ('practice', 'evaluation', 'test');
 
   with leftout as (
     select parent_id from public.test_accounts union select user_id from public.admin_users

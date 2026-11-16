@@ -86,6 +86,20 @@ const run = (bin, args) => execFileSync(bin, args, { encoding: 'utf8', stdio: 'p
     assert.equal(capped.dimensions.length,5000); assert.equal(capped.dimensions_more,true);
     assert.equal(Number(capped.totals.cost_usd),23.5);
     assert.equal(capped.by_context.reduce((s,r)=>s+Number(r.calls),0),Number(capped.totals.calls));
+    // Independent local receipts must never move the production-history transition backwards.
+    await db.query("begin");
+    await db.query("insert into scan_marking_spend values ('2026-11-10T18:00Z','legacy',5000000); insert into parent_explanation_spend values ('2026-11-10T18:00Z','legacy',3000000)");
+    const historical = async () => (await db.query("select admin_ai_usage('2026-11-09T00:00Z','2026-11-11T00:00Z',true,1.4,null) as v")).rows[0].v;
+    assert.equal(Number((await historical()).totals.cost_usd), 8);
+    await db.query("insert into ai_usage_events(created_at,feature,provider,model,cost_usd,usage_context) values ('2026-11-09T18:00Z','marking','openrouter','independent-test',1,'evaluation'),('2026-11-09T18:00Z','explain','openrouter','independent-test',2,'test')");
+    assert.equal(Number((await historical()).totals.cost_usd), 11, 'Independent tests must preserve unrelated production costs');
+    // Even an unknown-context backdated import cannot establish a production transition.
+    await db.query("insert into ai_usage_events(created_at,feature,provider,model,cost_usd,usage_context,imported_at) values ('2026-11-09T17:00Z','marking','openrouter','import-unknown',4,'unknown',now())");
+    assert.equal(Number((await historical()).totals.cost_usd), 15);
+    // A known live transition still excludes its legacy overlap. Imports do not disable deduplication.
+    await db.query("insert into ai_usage_events(created_at,feature,provider,model,cost_usd,usage_context) values ('2026-11-10T12:00Z','marking','openrouter','live',5,'production'),('2026-11-10T12:00Z','explain','openrouter','live',3,'production')");
+    assert.equal(Number((await historical()).totals.cost_usd), 15);
+    await db.query("rollback");
     await db.query("set test.admin = 'off'");
     await assert.rejects(report(true),e=>e.code==='42501');
     console.log('PASS: account-independent scope, complete dimension sums, sibling attribution, family-local bounds, estimates, unpriced/subscription calls, legacy deduplication and admin refusal. Synthetic PostgreSQL only.');

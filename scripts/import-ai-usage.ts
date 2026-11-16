@@ -13,6 +13,6 @@ console.log(`${values.apply ? "Import" : "Dry run"}: ${rows.length} distinct rec
 if (values.apply) {
   const url = process.env.SUPABASE_URL?.trim(), key = process.env.SUPABASE_SECRET_KEY?.trim();
   if (!url || !key) throw new Error("SUPABASE_URL and SUPABASE_SECRET_KEY are required for import.");
-  for (const row of rows) if (!await insertUsageRow(row, { url, key })) throw new Error("Receipt import failed. It is safe to retry the same file.");
+  for (const row of rows) if (!await insertUsageRow(row, { url, key, imported: true })) throw new Error("Receipt import failed. It is safe to retry the same file.");
   console.log(`Imported ${rows.length} receipts. Previously stored receipts count once.`);
 }

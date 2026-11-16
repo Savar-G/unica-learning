@@ -115,11 +115,11 @@ export function usageRow(tag: AiUsageTag, reading: AiUsageReading): AiUsageRow |
  * worker and the voice worker, which must not pull in cookie-based auth or more packages. A repeated generation id (409,
  * unique index) is the same call again: nothing to say.
  */
-export async function insertUsageRow(row: AiUsageRow, o: { url: string; key: string; fetch?: typeof globalThis.fetch }): Promise<boolean> {
+export async function insertUsageRow(row: AiUsageRow, o: { url: string; key: string; fetch?: typeof globalThis.fetch; imported?: boolean }): Promise<boolean> {
   const res = await (o.fetch ?? globalThis.fetch)(`${o.url}/rest/v1/ai_usage_events`, {
     method: "POST",
     headers: { apikey: o.key, authorization: `Bearer ${o.key}`, "content-type": "application/json", prefer: "return=minimal" },
-    body: JSON.stringify(row),
+    body: JSON.stringify(o.imported ? { ...row, imported_at: new Date().toISOString() } : row),
     signal: AbortSignal.timeout(WRITE_LIMIT_MS),
   });
   if (res.ok) return true;
@@ -153,10 +153,13 @@ const supabaseSink: AiUsageSink = async (row) => {
 };
 
 const pending = new Set<Promise<void>>();
-let retainWrite: ((write: Promise<void>) => void) | null = null;
+// Next bundles instrumentation and request handlers separately. Share only the host callback,
+// not credentials or request state, across those module instances in the same process.
+const lifetimeKey = Symbol.for("unica.ai-usage.lifetime.v1");
+const host = globalThis as typeof globalThis & { [lifetimeKey]?: ((write: Promise<void>) => void) | null };
 /** The web host retains each write after its response. Workers and scripts use flushAiUsage instead. */
 export function configureAiUsageLifetime(retain: ((write: Promise<void>) => void) | null): void {
-  retainWrite = retain;
+  host[lifetimeKey] = retain;
 }
 
 /**
@@ -181,7 +184,7 @@ export function recordAiUsage(tag: AiUsageTag | null | undefined, reading: AiUsa
       .catch(() => { console.error("[ai-usage] write failed"); })
       .finally(() => { pending.delete(write); });
     pending.add(write);
-    try { retainWrite?.(write); } catch { /* A process without a request still keeps its pending write. */ }
+    try { host[lifetimeKey]?.(write); } catch { /* A process without a request still keeps its pending write. */ }
   } catch {
     // Recording is never the caller's problem.
   }
