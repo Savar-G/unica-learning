@@ -496,7 +496,11 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
         }
         if (clean) {
           options.onRateLimit?.(confirmedRetryAfter()!);
-          try { return await store.defer(ref, token); } catch { /* An unreadable defer answer pauses as before. */ }
+          try {
+            const deferred = await store.defer(ref, token);
+            if (deferred !== "terminal") monitorProduct("scan.marking_deferred", { photoId: ref.photo, status: deferred });
+            return deferred;
+          } catch { monitorProduct("scan.recovery_failed", { photoId: ref.photo, step: "marking" }); }
         }
         monitorProduct(clean ? "scan.marking_deferred" : "scan.marking_failed", { photoId: ref.photo, status: "pending" });
         // No provider output or exception text is logged or stored.
@@ -549,10 +553,10 @@ async function secondLook(store: MarkingStore, ref: MarkingRef, token: string, f
   let transport: MarkingTransport | null = null;
   let tries = 0;
   const settle = async () => {
-    if (!dispatch || !transport) return;
+    if (!dispatch || !transport) return false;
     const open = dispatch, cost = transport.costMicros(), failure = cost === null ? transport.failure?.() ?? null : null;
     dispatch = null;
-    await store.settle(open, cost, failure);
+    return (await store.settle(open, cost, failure)) === true && failure !== null;
   };
   const beforeAttempt = async () => {
     // One attempt only: a client retry is refused here, before any admission.
@@ -569,16 +573,21 @@ async function secondLook(store: MarkingStore, ref: MarkingRef, token: string, f
   transport = makeClient(beforeAttempt);
   if (!transport) return none;
   const signal = options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(timeout)]) : AbortSignal.timeout(timeout);
+  let failed = false, refusal: MarkingStatus | undefined;
   try {
     const output = await transport.client.json(markingRequestFor(frame, image, asked, true), signal);
     const merged = mergeSecondLook(first, readMarkingOutput(frame, output), asked);
     return { observations: merged.observations, escalation: merged.decided.length ? { model: transport.client.model, prompt: MARKING_ESCALATION_PROMPT_VERSION, items: merged.decided } : null };
   } catch (error) {
-    if (!(error instanceof AdmissionRefusal)) monitorProduct("scan.marking_failed", { photoId: ref.photo });
+    failed = true;
+    if (error instanceof AdmissionRefusal) refusal = error.status;
     return none;
   } finally {
-    // Counts only: no dispatch, family or photo id is logged.
-    await settle().catch(() => { monitorProduct("scan.recovery_failed", { photoId: ref.photo, step: "marking" }); });
+    let clean = false;
+    try { clean = await settle(); }
+    catch { monitorProduct("scan.recovery_failed", { photoId: ref.photo, step: "marking" }); }
+    // Only the store can confirm a clean rate limit. An unconfirmed or charged failure remains an error.
+    if (failed) monitorProduct(clean || refusal ? "scan.marking_deferred" : "scan.marking_failed", { photoId: ref.photo, status: refusal ?? "pending" });
   }
 }
 /** One effective event per eligible canonical original. Raw events remain append-only. No reading text enters this set. */

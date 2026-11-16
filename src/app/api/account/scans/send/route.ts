@@ -2,7 +2,6 @@ import { monitorProduct, productAfter } from "@/lib/product-monitoring";
 import { after } from "next/server";
 import { isUuid } from "@/lib/workbook-content";
 import { scanSession, scanJson } from "@/lib/scan-photo-server";
-import { scanChecksAccess } from "@/lib/scan-marking-access";
 import { markSentPhotos, sendMarkingStart, SEND_MARKING_MAX_PHOTOS } from "@/lib/scan-send-marking";
 import { ReportedScanSendError, sendFamilyPhotos } from "@/lib/scan-send";
 
@@ -29,8 +28,7 @@ export async function POST(request: Request) {
   const { admin, parent } = session;
   let result;
   try {
-    result = await sendFamilyPhotos(admin, parent, ids as string[], process.env,
-      async (p, c) => ({ open: await scanChecksAccess(admin, p, process.env, { child: c }), reason: "send" }));
+    result = await sendFamilyPhotos(admin, parent, ids as string[], process.env);
   } catch (error) {
     if (!(error instanceof ReportedScanSendError)) monitorProduct("scan.send_failed");
     return scanJson({ error: "unavailable" }, 503);

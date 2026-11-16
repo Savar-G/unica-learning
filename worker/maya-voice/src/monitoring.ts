@@ -35,7 +35,9 @@ export function voiceMonitoringOptions(env: Env) {
     },
     beforeSendLog(log: Sentry.Log): Sentry.Log | null {
       const safe = safeRecord(log.message, log.attributes);
-      return safe ? { ...log, message: safe.code, attributes: { product_event: safe.code, component: "maya-voice", ...safe.attributes } } : null;
+      return safe ? { ...log, message: safe.code, attributes: { product_event: safe.code, component: "maya-voice", ...safe.attributes,
+        ...(env.MAYA_VOICE_MONITORING ? { "sentry.environment": env.MAYA_VOICE_MONITORING } : {}),
+        ...(env.MAYA_MONITORING_RELEASE ? { "sentry.release": env.MAYA_MONITORING_RELEASE } : {}) } } : null;
     },
   };
 }

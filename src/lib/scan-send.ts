@@ -61,12 +61,17 @@ export async function sendGroups(db: SupabaseClient<Database>, parent: string, g
     const decision = await decide(parent, child);
     if (!decision.open) { out.closed.push({ child, ids: [...ids], reason: decision.reason }); continue; }
     out.open = true; tried++;
-    const { data, error } = await db.rpc(send, { p_parent: parent, p_child: child, p_ids: [...new Set(ids)] });
+    const args = { p_parent: parent, p_child: child, p_ids: [...new Set(ids)] };
+    const { data, error } = send === "send_scan_photos"
+      ? await db.rpc("send_scan_photos_receipt", args)
+      : await db.rpc(send, args);
     if (error) { monitorProduct("scan.send_failed", { count: ids.length }); failed++; out.failed.push(...ids); continue; }
-    const sent = Array.isArray(data) ? data : [];
+    const receipt = send === "send_scan_photos" && Array.isArray(data) && typeof data[0] === "object" ? data[0] : null;
+    const sent = receipt ? receipt.sent : send === "send_due_scan_photos" && Array.isArray(data) ? data as string[] : [];
+    const newlySent = receipt ? receipt.newly_sent : send === "send_due_scan_photos" ? sent : [];
     out.byChild.push({ child, sent });
     out.sent.push(...sent);
-    if (sent.length) monitorProduct("scan.send_accepted", { count: sent.length });
+    if (newlySent.length) monitorProduct("scan.send_accepted", { count: newlySent.length });
   }
   if (tried && failed === tried) throw new ReportedScanSendError();
   out.sent.sort();

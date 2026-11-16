@@ -61,7 +61,7 @@ Other events create info logs. `scan.marking_deferred` and `maya.voice_provider_
 ## Configuration and verification
 
 1. Keep the existing Sentry configuration in [sentry.md](sentry.md).
-2. Set the server-only `SLACK_PRODUCT_ALERTS_WEBHOOK_URL` in Vercel Production to the webhook for `#unica-product-alerts`.
+2. Set the server-only `SLACK_PRODUCT_ALERTS_WEBHOOK_URL` in Vercel Production to the webhook for `#product-alerts`.
 3. Do not put the secret in a `NEXT_PUBLIC_` variable, source file, command output, issue, or PR.
 4. Verify that the running deployment has `VERCEL_ENV=production`. `NODE_ENV=production` alone does not permit Slack delivery.
 5. Verify Sentry issue routing and structured log availability. Sentry must be enabled for its events to arrive. Slack is independent of the DSN switch.
@@ -83,6 +83,8 @@ npm test
 npx eslint src
 npm run build
 ```
+
+Run `node supabase/tests/scan_send_receipt.cjs` for the local SQL Send/retry concurrency probe. Family and active-photo checks are synthetic in that probe. The hosted function is service-only and preserves the existing family write fence.
 
 The focused tests verify privacy, the production gate, timeout, refusal, scheduler failure, recovery, and event wiring.
 Fake stores and transports do not prove hosted database behavior or provider delivery.
@@ -109,6 +111,10 @@ Check the deployed worker version and environment before a test call. Verify one
 
 ## Live configuration evidence, 2026-11-16
 
-Sentry issue rule 6351733 routes errors and monitor issues to `#unica-product-alerts` in the Unica Learning Slack workspace. Existing email delivery remains. A labeled synthetic Sentry notification arrived in that channel. The minimal Unica Product Alerts app has only `incoming-webhook` permission for this channel. A second labeled direct webhook test returned HTTP 200 and appeared in the channel. The webhook is stored as a secret in Vercel Production. This proves the two delivery connections. It does not prove a deployed product action.
+Sentry issue rule 6351733 routes errors and monitor issues to `#product-alerts` in the Unica Learning Slack workspace. Existing email delivery remains. A labeled synthetic Sentry notification arrived in that channel. The minimal Unica Product Alerts app has only `incoming-webhook` permission for this channel. A second labeled direct webhook test returned HTTP 200 and appeared in the channel. The webhook is stored as a secret in Vercel Production. This proves the two delivery connections. It does not prove a deployed product action.
 
 The source-map upload token is present in Vercel Production. Sentry lists artifacts for production release `45222b0be65b`. The retained traces and logs are arriving. Two initial monitor-not-found records preceded creation of `scan-cleanup` and `scan-progress`; both have later successful check-ins. `family-retention` awaits its first scheduled check-in with the new workflow code. Its last completed pre-instrumentation workflow passed. No synthetic retention-success check-in was sent.
+
+The `scan_send_receipt` migration adds `send_scan_photos_receipt`. It holds the existing scan advisory lock and row locks while it records which requested pages were unsent, calls the existing Send function, and returns both recovery IDs and newly sent IDs. Only newly sent IDs produce a Send receipt. The old function stays available. Hosted migration version: `20261116190648`; local filename: `20261116190600_scan_send_receipt.sql`. Generated database types include the new RPC. Hosted permission checks confirm no anonymous or authenticated access. A nonexistent-family probe failed closed with `family_unavailable`.
+
+Sentry metric monitor [Production warning and error logs](https://unica-learning.sentry.io/monitors/10975234/) is enabled for production logs. Its query is `severity:[warn,error,fatal] -has:product_event`, count above zero over five minutes. The existing project Slack alert applies. This closes the standalone warning/error log alert gap. The saved rule is verified; a monitor-triggered delivery remains unverified. The channel was renamed to `#product-alerts` with its ID unchanged.

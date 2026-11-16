@@ -349,6 +349,14 @@ describe("#868: a clean 429 waits, frees its hold and defers the photo; every ot
   }
   const answer = { answer: output(["0", "12", "9"]), cost: 2_000 };
 
+  it("logs a clean main-read deferral after the store confirms it", async () => {
+    const observer = vi.fn(); setProductObserver(observer);
+    const s = new Store(frame());
+    expect(await timedRun(s, "photo-a", scripted([{ failure: rateLimit(60_000) }]), "a")).toBe("pending");
+    expect(s.jobs.get("photo-a")!.deferrals).toBe(1);
+    expect(observer).toHaveBeenCalledExactlyOnceWith({ code: "scan.marking_deferred", attributes: { status: "pending" } });
+  });
+
   it("waits the Retry-After of a 429, retries, and frees the 429's hold", async () => {
     const s = new Store(frame()), waits: number[] = [], requests: AiJsonRequest[] = [];
     expect(await timedRun(s, "photo-a", scripted([{ failure: rateLimit(3_000) }, answer], requests), "a", waits)).toBe("finished");
@@ -1508,6 +1516,26 @@ describe("the second look: unsure answers are read once more by the escalation m
   const withOpus = (s: Store) => { s.prices.set(MARKING_ESCALATION_MODEL, 20_000); return s; };
   const go = (s: Store, first: MarkingClientFactory, escalate?: MarkingClientFactory) => runScanMarking(s, { parent: P, photo: "photo-esc" }, "photo-esc", first, () => new Date(s.clock).toISOString(), { escalate });
   const item = (s: Store, n: number) => [...s.items.values()].find((m) => m.expected.number === n)!.observation;
+
+  it.each(["clean", "unconfirmed", "settlement-error", "unknown"] as const)("classifies a second-look failure only after settlement: %s", async kind => {
+    const observer = vi.fn<(event: ProductEvent) => void>(); setProductObserver(observer);
+    const s = withOpus(new Store(f()));
+    s.refuseClean = kind === "unconfirmed";
+    if (kind === "settlement-error") s.settleFails.add("d1");
+    const escalation: MarkingClientFactory = before => ({
+      client: { model: MARKING_ESCALATION_MODEL, async json() { await before(); throw Error("PRIVATE provider diagnostic"); } },
+      costMicros: () => null,
+      failure: () => kind === "unknown" ? null : rateLimit(60_000),
+    });
+    expect(await go(s, client(output(["0", null, "9"])), escalation)).toBe("finished");
+    expect(item(s, 2)).toMatchObject({ state: "pending", result: null });
+    const codes = observer.mock.calls.map(([event]) => event.code);
+    expect(codes.filter(code => code === "scan.marking_failed")).toHaveLength(kind === "clean" ? 0 : 1);
+    expect(codes.filter(code => code === "scan.marking_deferred")).toHaveLength(kind === "clean" ? 1 : 0);
+    expect(codes).toContain("scan.marking_team_pending");
+    expect(s.settles).toEqual(["d0", "d1"]);
+    expect(JSON.stringify(observer.mock.calls)).not.toContain("PRIVATE");
+  });
 
   it("sends only the unsure items, with the second-look rule, and its certain mark stands", async () => {
     const s = withOpus(new Store(f())), asked: AiJsonRequest[] = [];

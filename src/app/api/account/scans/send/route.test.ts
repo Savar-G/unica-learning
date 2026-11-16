@@ -23,7 +23,7 @@ vi.mock("@/lib/scan-marking-access", async (importOriginal) => {
     f.asked.push(input);
     return input.childId === "22222222-2222-4222-8222-222222222222" ? f.plan as never : input.childId === "55555555-5555-4555-8555-555555555555" ? f.siblingPlan as never : { open: false, reason: "no_plan" } as const;
   };
-  return { ...actual, childPlanAccess: gate, scanChecksAccess: (...args: Parameters<typeof actual.scanChecksAccess>) => actual.scanChecksAccess(args[0], args[1], args[2], args[3], gate) };
+  return { ...actual, childPlanAccess: gate, scanChecksDecision: (...args: Parameters<typeof actual.scanChecksDecision>) => actual.scanChecksDecision(args[0], args[1], args[2], args[3], gate), scanChecksAccess: (...args: Parameters<typeof actual.scanChecksAccess>) => actual.scanChecksAccess(args[0], args[1], args[2], args[3], gate) };
 });
 // The family's children: CHILD and SIBLING are this family's (only CHILD's plan is open); each photo is filed with a child.
 const SIBLING = "55555555-5555-4555-8555-555555555555", SIBLING_PHOTO = "66666666-6666-4666-8666-666666666666";
@@ -37,7 +37,7 @@ const children = { from: (table: string) => ({ select: () => ({ eq: (_c: string,
 }) }) }) };
 vi.mock("@/lib/scan-photo-server", () => ({
   scanJson: (data: unknown, status = 200) => Response.json(data, { status }),
-  scanSession: async () => ({ parent: "family", admin: { ...children, rpc: async (name: string, args: { p_ids: string[] }) => { f.sent.push({ name, args }); return { data: f.rows.filter((r) => args.p_ids.includes(r)), error: f.sendFails ? { message: "private diagnostic" } : null }; } } }),
+  scanSession: async () => ({ parent: "family", admin: { ...children, rpc: async (name: string, args: { p_ids: string[] }) => { f.sent.push({ name, args }); return { data: name === "send_scan_photos_receipt" ? [{ sent: f.rows.filter((r) => args.p_ids.includes(r)), newly_sent: f.rows.filter((r) => args.p_ids.includes(r)) }] : f.rows.filter((r) => args.p_ids.includes(r)), error: f.sendFails ? { message: "private diagnostic" } : null }; } } }),
 }));
 import { maxDuration, POST } from "./route";
 import { SEND_MARKING_LIMIT_MS } from "@/lib/scan-send-marking";
@@ -68,11 +68,21 @@ it("still reports a photo read failure that no inner operation reported", async 
   expect(observer).toHaveBeenCalledExactlyOnceWith({ code: "scan.send_failed", attributes: {} });
 });
 
+it("reports an unreadable plan without reporting ordinary access refusals", async () => {
+  const observer = vi.fn(); setProductObserver(observer);
+  f.plan = { open: false, reason: "read_failed" };
+  expect((await send()).status).toBe(404);
+  expect(observer).toHaveBeenCalledExactlyOnceWith({ code: "scan.recovery_failed", attributes: { step: "send" } });
+  observer.mockClear(); f.plan = { open: false, reason: "no_plan" };
+  expect((await send()).status).toBe(404);
+  expect(observer).not.toHaveBeenCalled();
+});
+
 it.each(["open", "ending_until_end"])("families mode sends a real family's pages while the child's plan is %s", async (reason) => {
   f.plan = { open: true, reason };
   const r = await send();
   expect(r.status).toBe(200); expect(await r.json()).toEqual({ sent: [PHOTO], marking: 1 });
-  expect(f.sent).toEqual([{ name: "send_scan_photos", args: { p_parent: "family", p_child: CHILD, p_ids: [PHOTO] } }]);
+  expect(f.sent).toEqual([{ name: "send_scan_photos_receipt", args: { p_parent: "family", p_child: CHILD, p_ids: [PHOTO] } }]);
   // Send asks the plan gate, then the marking rule asks it again for the same child.
   expect(f.asked).toEqual([{ parentId: "family", childId: CHILD }, { parentId: "family", childId: CHILD }]);
   expect(f.later).toHaveLength(1);
@@ -98,15 +108,15 @@ it("sends a sibling's page in the same Send, grouped by the child each photo is 
   const r = await send(CHILD, [PHOTO, SIBLING_PHOTO]);
   expect(r.status).toBe(200); expect(await r.json()).toEqual({ sent: [PHOTO, SIBLING_PHOTO].sort(), marking: 2 });
   expect(f.sent).toEqual([
-    { name: "send_scan_photos", args: { p_parent: "family", p_child: CHILD, p_ids: [PHOTO] } },
-    { name: "send_scan_photos", args: { p_parent: "family", p_child: SIBLING, p_ids: [SIBLING_PHOTO] } },
+    { name: "send_scan_photos_receipt", args: { p_parent: "family", p_child: CHILD, p_ids: [PHOTO] } },
+    { name: "send_scan_photos_receipt", args: { p_parent: "family", p_child: SIBLING, p_ids: [SIBLING_PHOTO] } },
   ]);
 });
 
 it("never sends a page of a sibling whose plan is closed, and still sends this child's (#1)", async () => {
   const r = await send(CHILD, [PHOTO, SIBLING_PHOTO]);
   expect(r.status).toBe(200); expect(await r.json()).toEqual({ sent: [PHOTO], marking: 1 });
-  expect(f.sent).toEqual([{ name: "send_scan_photos", args: { p_parent: "family", p_child: CHILD, p_ids: [PHOTO] } }]);
+  expect(f.sent).toEqual([{ name: "send_scan_photos_receipt", args: { p_parent: "family", p_child: CHILD, p_ids: [PHOTO] } }]);
 });
 
 it("still takes Send without the child, as the photos name it", async () => {

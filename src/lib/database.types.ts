@@ -10708,6 +10708,13 @@ export type Database = {
         Args: { p_child: string; p_ids: string[]; p_parent: string }
         Returns: string[]
       }
+      send_scan_photos_receipt: {
+        Args: { p_child: string; p_ids: string[]; p_parent: string }
+        Returns: {
+          newly_sent: string[]
+          sent: string[]
+        }[]
+      }
       send_workbook_comments: {
         Args: {
           p_by: string
