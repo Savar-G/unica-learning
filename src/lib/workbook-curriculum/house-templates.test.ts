@@ -3,11 +3,14 @@ import { BC_CURRICULUM, bcStepProgressions } from "@/lib/workbook-curriculum";
 import { HOUSE_TEMPLATES, isChallengeOnly, isTwoStep, withHouseTemplates } from "./house-templates";
 import { stepFieldProblems } from "./step-source";
 import { prepareTemplate, seededRandom } from "./template";
-import { sequenceOf, stepRangeProblem } from "@/lib/workbook-step-items";
+import { challengeTemplateCount, choicesFor, sequenceOf, stepRangeProblem } from "@/lib/workbook-step-items";
 import { takeAwayProblem } from "@/lib/workbook-wording";
 
 describe("Unica Challenge templates", () => {
   const c = bcStepProgressions();
+  it.each([1, 2, 3])("provides three distinct hard contracts for U19 divisibility step %i", step => {
+    expect(challengeTemplateCount(c, "6.4-divisibility", step, 19)).toBeGreaterThanOrEqual(3);
+  });
   it("are appended after Cedric's templates of their named steps", () => {
     for (const h of HOUSE_TEMPLATES) {
       const step = c.skillSteps(h.skill)![h.step - 1];
@@ -23,16 +26,16 @@ describe("Unica Challenge templates", () => {
     expect(() => withHouseTemplates(BC_CURRICULUM, [{ ...HOUSE_TEMPLATES[0], name: "Another step" }])).toThrow(/written for/);
     expect(() => withHouseTemplates(BC_CURRICULUM, [{ ...HOUSE_TEMPLATES[0], skill: "no-such-skill" }])).toThrow(/does not have/);
   });
-  it("give every Challenge step three hard numeric templates, with Cedric's v2 ones, and repeat none of his", () => {
+  it("give every Challenge step three hard templates with its answer kind, and repeat none of the source templates", () => {
     const numeric = (t: { format: string; answer: string }) => ["bare", "missing", "story"].includes(t.format) && !/['"]/.test(t.answer);
     for (const h of HOUSE_TEMPLATES) {
       const step = c.skillSteps(h.skill)![h.step - 1];
-      if (!h.stories) expect(step.templates!.filter((t) => t.difficulty === "hard" && numeric(t)).length, `${h.skill}#${h.step}`).toBeGreaterThanOrEqual(3);
+      if (!h.stories && h.templates.length) expect(step.templates!.filter((t) => t.difficulty === "hard" && (h.answerKind === "choice" || numeric(t))).length, `${h.skill}#${h.step}`).toBeGreaterThanOrEqual(3);
       const own = BC_CURRICULUM.steps.find((s) => s.skill === h.skill && s.number === h.step)!.templates ?? [];
       for (const t of h.templates) expect(own.some((o) => o.text === t.text || o.answer === t.answer && o.format === t.format && o.difficulty === "hard")).toBe(false);
     }
   });
-  it("fill 200 times each: valid fields, a whole-number answer above 0, numbers in the step's range, more than one step", () => {
+  it("fill 200 times each with valid fields, checked answer kinds and numbers in the step's range", () => {
     for (const h of HOUSE_TEMPLATES) {
       const step = c.skillSteps(h.skill)![h.step - 1];
       // (Cedric's source rule of four to six templates a step is his files' shape; Unica's are added after them.)
@@ -44,7 +47,8 @@ describe("Unica Challenge templates", () => {
           let item;
           try { item = prepared.fill(seededRandom(seed)); } catch { continue; }
           filled++;
-          expect(item.answer, `${h.skill}#${h.step}: ${item.text}`).toMatch(/^[1-9]\d*$/);
+          if (h.answerKind === "choice") expect(choicesFor(item.text, item.answer)).toContain(item.answer);
+          else expect(item.answer, `${h.skill}#${h.step}: ${item.text}`).toMatch(/^[1-9]\d*$/);
           expect(stepRangeProblem(step, item.text), item.text).toBeNull();
           expect(stepRangeProblem(step, item.answer), item.text).toBeNull();
           expect(takeAwayProblem(item.text, Number(item.answer)), item.text).toBeNull();
@@ -52,6 +56,125 @@ describe("Unica Challenge templates", () => {
           if (item.text.includes("=") || /^What is \d/.test(item.text)) expect((item.text.match(/[+×-]/g) ?? []).length, item.text).toBeGreaterThanOrEqual(2);
         }
         expect(filled, `${h.skill}#${h.step}: ${t.text}`).toBeGreaterThan(100);
+      }
+    }
+  });
+  it("checks the extra angle-practice definitions and counts across 200 seeds", () => {
+    const h = HOUSE_TEMPLATES.find(h => h.skill === "6.13-classify-angles" && h.step === 1)!;
+    const step = c.skillSteps(h.skill)![0];
+    const kinds = ["right", "right", "acute", "acute", "obtuse", "obtuse"];
+    const seen = new Set<string>();
+    for (const t of h.practice!) {
+      const prepared = prepareTemplate(step, t, c.contexts);
+      for (let seed = 1; seed <= 200; seed++) {
+        const filled = prepared.fill(seededRandom(seed));
+        seen.add(filled.text);
+        if (t.format === "true-false") {
+          const kind = kinds[Number(filled.values.k)];
+          const claim = String(filled.values.claim);
+          expect(filled.answer).toBe(claim.endsWith(kind) ? "true" : "false");
+        } else {
+          expect(filled.text).toMatch(/Of \d acute and \d obtuse angles/);
+          expect(Number(filled.answer)).toBe(Number(filled.values.a));
+          expect(Number(filled.values.a)).toBeGreaterThan(0);
+          expect(Number(filled.values.b)).toBeGreaterThan(0);
+        }
+        expect(stepRangeProblem(step, filled.text)).toBeNull();
+        expect(stepRangeProblem(step, filled.answer)).toBeNull();
+      }
+    }
+    expect(seen.size).toBeGreaterThan(15);
+  });
+  it("checks straight/reflex practice definitions and counts across 200 seeds", () => {
+    const h = HOUSE_TEMPLATES.find(h => h.skill === "6.13-classify-angles" && h.step === 2)!;
+    const step = c.skillSteps(h.skill)![1];
+    const trueClaims = new Set(["half a turn makes a straight angle", "a reflex angle is less than one full turn",
+      "a straight angle is exactly half a turn", "a reflex angle is more than half a turn"]);
+    for (const t of h.practice!) for (let seed = 1; seed <= 200; seed++) {
+      const item = prepareTemplate(step, t, c.contexts).fill(seededRandom(seed));
+      if (t.format === "true-false") expect(item.answer).toBe(trueClaims.has(String(item.values.claim)) ? "true" : "false");
+      else expect(Number(item.answer)).toBe(Number(item.values.b));
+      expect(stepRangeProblem(step, item.text)).toBeNull();
+      expect(stepRangeProblem(step, item.answer)).toBeNull();
+    }
+  });
+  it("checks the added common-multiple practice independently across 200 seeds", () => {
+    const h = HOUSE_TEMPLATES.find(h => h.skill === "6.4-lcm" && h.step === 1)!;
+    const step = c.skillSteps(h.skill)![0];
+    for (const [index, t] of h.practice!.entries()) {
+      const prepared = prepareTemplate(step, t, c.contexts);
+      for (let seed = 1; seed <= 200; seed++) {
+        const item = prepared.fill(seededRandom(seed));
+        const a = Number(item.values.a), b = Number(item.values.b);
+        const shared = Array.from({ length: 24 }, (_, i) => i + 1).find(x => x % a === 0 && x % b === 0)!;
+        if (index === 2) expect(item.answer).toBe(Number(item.values.c) === shared ? "true" : "false");
+        else expect(Number(item.answer)).toBe(index === 1 ? shared / a : shared);
+        if (index === 3) expect([a, 2 * a, 3 * a].filter(n => [b, 2 * b, 3 * b].includes(n))).toEqual([shared]);
+        expect(stepRangeProblem(step, item.text)).toBeNull();
+        expect(stepRangeProblem(step, item.answer)).toBeNull();
+      }
+    }
+  });
+  it("checks U19 Challenge keys independently across 200 seeds", () => {
+    const prime = (n: number) => n >= 2 && !Array.from({ length: Math.max(0, Math.floor(Math.sqrt(n)) - 1) }, (_, i) => i + 2).some(d => n % d === 0);
+    for (const h of HOUSE_TEMPLATES.filter(h => ["6.13-classify-angles", "6.4-prime-composite", "6.4-divisibility", "6.4-lcm"].includes(h.skill))) {
+      const step = c.skillSteps(h.skill)![h.step - 1];
+      for (const [templateIndex, t] of h.templates.entries()) {
+        const prepared = prepareTemplate(step, t, c.contexts);
+        for (let seed = 1; seed <= 200; seed++) {
+          const item = prepared.fill(seededRandom(seed));
+          const n = (key: string) => Number(item.values[key]);
+          const answer = Number(item.answer);
+          if (h.skill === "6.4-prime-composite") {
+            expect(prime(n("p"))).toBe(true);
+            expect(prime(n("c"))).toBe(false);
+            if (t.format !== "missing") expect(prime(n("q"))).toBe(true);
+            expect(answer).toBe(h.step === 1 ? t.format === "missing" ? n("p") - 2 : n("p") + n("q")
+              : t.format === "missing" ? n("p") + 31 : n("p") + n("q") - (t.format === "story" ? 31 : 0));
+          } else if (h.skill === "6.4-divisibility") {
+            const multiple = h.step === 1 ? 10 : h.step === 2 ? 9 : t.format === "bare" ? 12 : t.format === "missing" ? 24 : 8;
+            if (h.step === 3 && templateIndex >= 3) {
+              const candidates = Array.from({ length: n("n") - 1 }, (_, i) => i + 1);
+              if (templateIndex === 3) expect(answer).toBe(candidates.filter(x => x % 4 === 0 && x % 6 === 0).length);
+              if (templateIndex === 4) expect(answer).toBe(candidates.filter(x => x % 6 === 0 && x % 8 === 0).at(-1));
+              if (templateIndex === 5) expect(answer).toBe(candidates.filter(x => x % 4 === 0 && x % 6 === 0 && x % 8 !== 0).at(-1));
+            } else if (t.format === "missing" && h.step === 1) {
+              expect(answer).toBeLessThan(n("n"));
+              expect(answer % 10).toBe(0);
+              expect(answer + 10).toBeGreaterThanOrEqual(n("n"));
+            } else if (t.format === "missing" && h.step === 2) {
+              expect(answer).toBeGreaterThan(n("n"));
+              expect(answer % 3).toBe(0);
+              expect(answer % 9).not.toBe(0);
+              expect(Array.from({ length: answer - n("n") - 1 }, (_, i) => n("n") + i + 1).some(x => x % 3 === 0 && x % 9 !== 0)).toBe(false);
+            } else {
+              expect(answer).toBe(Math.ceil((n("n") + 1) / multiple) * multiple);
+              expect(answer).toBeGreaterThan(n("n"));
+            }
+            if (t.format === "story" && templateIndex < 3) {
+              const interval = item.text.match(/(\d+) < \? < (\d+)/)!;
+              const low = Number(interval[1]), top = Number(interval[2]);
+              const candidates = Array.from({ length: top - low - 1 }, (_, i) => low + i + 1);
+              expect(candidates.length).toBeGreaterThan(1);
+              const divisors = h.step === 1 ? [2, 5] : h.step === 2 ? [3, 9] : [4, 8];
+              expect(candidates.filter(x => divisors.every(d => x % d === 0))).toEqual([answer]);
+            }
+          } else if (h.skill === "6.4-lcm") {
+            const common = Array.from({ length: 72 }, (_, i) => i + 1).find(x => x % n("a") === 0 && x % n("b") === 0)!;
+            expect(common).toBeGreaterThan(0);
+            const expected = h.step === 1 ? t.format === "bare" ? 3 * common : t.format === "missing" ? common - n("a") : 2 * common
+              : t.format === "bare" ? 2 * common - n("a") : t.format === "missing" ? common / n("a") - 1 : common + n("start");
+            expect(answer).toBe(expected);
+            if (h.step === 2 && t.format === "missing") expect(item.text).toMatch(/^Count positive multiples/);
+          } else {
+            expect(item.answer).toBe(h.step === 1 ? t.format === "bare" ? "yes" : t.format === "compare" ? "B" : "no"
+              : t.format === "bare" ? "straight" : t.format === "compare" ? "reflex" : "yes");
+            expect(item.text).toMatch(h.step === 1 ? /arms|opening/ : /angles|turn/);
+            expect(choicesFor(item.text, item.answer)).toContain(item.answer);
+          }
+          expect(stepRangeProblem(step, item.text)).toBeNull();
+          expect(stepRangeProblem(step, item.answer)).toBeNull();
+        }
       }
     }
   });

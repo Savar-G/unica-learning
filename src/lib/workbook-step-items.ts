@@ -343,7 +343,7 @@ const difficultyRank = (d: TemplateDifficulty) => ["easy", "medium", "hard"].ind
 
 /**
  * How many templates a step keeps for its Challenge: its hardest with a number to work out (as `stepTemplateItem`).
- * A Challenge asks each once; with fewer than 3, its other cards come from steps taught or reviewed before (U16 review).
+ * The Challenge stays on its own step. With three or more eligible forms, it asks each at most once.
  */
 export function challengeTemplateCount(curriculum: Curriculum, skill: string, step: number | null, level: number): number {
   const printable = (stepOf(curriculum, skill, step)?.templates ?? []).filter((t) => !templateProblem(t, level));

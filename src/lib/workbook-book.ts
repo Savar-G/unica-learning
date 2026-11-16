@@ -14,6 +14,7 @@
 // The words here are code's, never the AI's: headers, panel labels and explanations come from the plan and the
 // curriculum. Pure TypeScript: no Next.js, React, network, database, clock or randomness.
 import { verifiedWatchOut } from "@/lib/workbook-personal-items";
+import { stepTemplateOf } from "@/lib/workbook-step-items";
 import { templateAnswer, templateNumbers, type TemplateSource } from "@/lib/question-package-template";
 import { TITLE_WORDS_MAX, titleWords } from "@/lib/workbook-title-rules";
 import { likelihoodWord } from "@/lib/workbook-likelihood";
@@ -268,7 +269,7 @@ function exampleOf(p: QuestionPackage, level: number): PanelExample | null {
       const r = item.regions.find((x) => x.id === c.region);
       const answer = r?.kind === "box" && r.answer ? valueText(r.answer) : r?.kind === "choice" ? r.answer ?? "?" : "?";
       // The work, then the answer: a worked example shows its method, never an answer key alone (Codex at db3b1a0).
-      const how = templateMethod(c.source, p.text);
+      const how = templateMethod(c.source, p.text, stepTemplateOf(p) ?? undefined);
       if (!how) return null;
       // (The method and its answer on one line: "Work it out: 7 − 4 = 3. Answer: 3", a line less on a full page.)
       return { label: "Example", lines: [p.text, `${how} Answer: [${answer}]`], answered: `Answer: [${answer}]` };
@@ -338,11 +339,39 @@ const SYMBOL: Record<string, string> = { "+": "+", "-": "−", "*": "×", "//": 
  * "The thousands digit of 97531 is 7.", or for a true or false the sum it checks. Null when the expression is not one
  * code can word.
  */
-export function templateMethod(src: TemplateSource, text: string): string | null {
+export function templateMethod(src: TemplateSource, text: string, scope?: { skill: string; step: number; index?: number }): string | null {
+  // Classification examples compare openings, not an arithmetic stand-in supplied by the writer.
+  if (scope?.skill === "6.13-classify-angles" && [1, 2].includes(scope.step) && /\b(?:angle|acute|right|obtuse|straight|reflex)\b/i.test(text)) {
+    const result = templateAnswer(src);
+    if ("answer" in result) {
+      // The original description/object forms classify an opening. Turn-composition cards need a fuller method.
+      const description = scope.index === 0 || scope.index === 1;
+      if (description && result.answer === "acute") return "Compare with a square corner. A smaller opening is acute.";
+      if (description && result.answer === "right") return "Compare with a square corner. The same opening is a right angle.";
+      if (description && result.answer === "obtuse") return "Compare with a square corner. A wider opening, short of a straight line, is obtuse.";
+      if (description && result.answer === "straight") return "Half a turn makes a straight line: a straight angle.";
+      if (description && result.answer === "reflex") return "More than half a turn, short of a full turn, is a reflex angle.";
+      const values = templateNumbers(src);
+      if (values && scope.step === 1 && src.answer === "a" && /^Of \d+ acute and \d+ obtuse angles, how many are smaller than a square corner\?$/i.test(text))
+        return `Only acute angles are smaller than a square corner. Count the acute angles: ${values.a}.`;
+      if (values && scope.step === 2 && src.answer === "b" && /^Of \d+ straight and \d+ reflex angles, how many exceed half a turn\?$/i.test(text))
+        return `Only reflex angles exceed half a turn. Count the reflex angles: ${values.b}.`;
+    }
+    // Never teach a sampling expression such as a = k + 1 as the child's angle method.
+    return null;
+  }
   const v = templateNumbers(src);
   if (!v) return null;
   const n = (k: string) => (/^\d+$/.test(k) ? Number(k) : v[k]);
   const fmt = (x: number) => groupedNumber(x);
+  if (scope?.skill === "6.4-lcm" && [1, 2].includes(scope.step) && src.answer === "lcm(a, b)" && Number.isInteger(v.a) && Number.isInteger(v.b) && v.a > 0 && v.b > 0) {
+    const common = Array.from({ length: v.b }, (_, i) => (i + 1) * v.a).find(n => n % v.b === 0)!;
+    const result = templateAnswer(src);
+    if ("answer" in result && Number(result.answer) === common) {
+      const list = (n: number) => Array.from({ length: common / n }, (_, i) => fmt((i + 1) * n)).join(", ");
+      return `Multiples of ${fmt(v.a)}: ${list(v.a)}. Of ${fmt(v.b)}: ${list(v.b)}. First shared: ${fmt(common)}.`;
+    }
+  }
   const binary = (e: string) => {
     const m = e.trim().match(/^(\w+) (\+|-|\*|\/\/) (\w+)$/);
     if (!m || n(m[1]) === undefined || n(m[3]) === undefined) return null;

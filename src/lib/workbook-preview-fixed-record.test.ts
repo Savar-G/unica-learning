@@ -25,7 +25,7 @@ describe("fixed saved preview records", () => {
   });
   it("replays a fixed version 2 result made with the current curriculum", async () => {
     const f = fixture("workbook-preview-v2-current.json.gz");
-    expect(f.record.hash).toBe("f1da2444365d862d0cb0c0bdf7896f89d5e1927a6e60686efc0f81fa2e2847d3");
+    expect(f.record.hash).toBe("650b328a5d4992b7d6777a009804cff6f29d88432142a8be91b5cc9f9f15632b");
     const result = await replayWorkbookPreviewAny(f.record, f.actor, f.request);
     expect(result).toMatchObject({ version: 2, outcome: { availability: "complete", decision: { action: "advance" } } });
     expect(result?.outcome.consumedVersions).toHaveLength(52);
