@@ -1,7 +1,6 @@
 import { AdminFrame } from "@/components/admin-frame";
 import { ChildUnitCostPage } from "@/components/admin-child-unit-cost";
 import { requireAdmin } from "@/lib/admin-store";
-import { showTestFamilies } from "@/lib/admin-test-families-server";
 import { CHILD_COST_PATH, monthFor, parseMonthKey, readChildUnitCost, type UnitCostView } from "@/lib/child-unit-cost";
 import { supabaseUnitCostReader } from "@/lib/child-unit-cost-store";
 import { spendConfig } from "@/lib/maya-spend";
@@ -16,11 +15,10 @@ export default async function ChildUnitCostRoute({ searchParams }: PageProps<"/a
   const admin = await requireAdmin();
   const now = new Date().getTime();
   const monthKey = parseMonthKey(query.month);
-  const withTests = await showTestFamilies();
-  const read = await readChildUnitCost(supabaseUnitCostReader(admin), { month: monthFor(monthKey, now), rate: spendConfig().usdToCad, withTests, now })
+  const read = await readChildUnitCost(supabaseUnitCostReader(admin), { month: monthFor(monthKey, now), rate: spendConfig().usdToCad, withTests: true, now })
     .then((v): { view: UnitCostView } | { error: string } => ({ view: v }), () => ({ error: "The cost per child could not be read. Try again in a moment." }));
   return (
-    <AdminFrame email={admin.email} title="Cost per child" lead="Does each family make money? Each child's cost in the family's own month, against what the plan charged." testNote={withTests && "Test families are showing, and on this page they are counted in the numbers."}>
+    <AdminFrame email={admin.email} title="Cost per child" lead="Each child's recorded cost in the family's own month, against what the plan charged." testNote="All families, including test and admin families, are included regardless of the global test-family switch.">
       <ChildUnitCostPage view={"view" in read ? read.view : null} monthKey={monthKey} error={"error" in read ? read.error : null} />
     </AdminFrame>
   );

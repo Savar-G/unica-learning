@@ -31,6 +31,7 @@
 // <label>-solve.jsonl and costed apart. With --fake the solve check answers from the key (free). --fake uses a fake AI for a dry run of the
 // layout: its books are marked FAKE in index.md and are never stored. The secret key: SUPABASE_SECRET_KEY, else the
 // Supabase Management API with SUPABASE_ACCESS_TOKEN or the Keychain item "supabase-pagewise". No key is printed.
+import { flushAiUsage } from "@/lib/ai-usage";
 import { sampleAiCache } from "./workbook-sample-cache";
 import { renderSamplePages, samplePrintCache } from "./workbook-sample-render";
 import { samplePages, pagesMarkdown, writePageDiff, mayaCoverage, mayaCoverageMarkdown, masteryCoverageMarkdown } from "./workbook-sample-pages";
@@ -546,9 +547,9 @@ if (values.fake) {
 } else if (values.anthropic) {
   const key = await anthropicKey();
   if (!key) throw new Error("no Anthropic key: set ANTHROPIC_API_KEY or ANTHROPIC_API_KEY_FILE, or add the Keychain item anthropic-unica-tools");
-  ai = anthropicClient({ apiKey: key, model: process.env.ANTHROPIC_MODEL || ANTHROPIC_DEFAULT_MODEL, timeout: 200_000, onUsage: (u) => countAnthropic(u) });
+  ai = anthropicClient({ apiKey: key, usage: { feature: "workbook" }, model: process.env.ANTHROPIC_MODEL || ANTHROPIC_DEFAULT_MODEL, timeout: 200_000, onUsage: (u) => countAnthropic(u) });
   solver = aiSolver(anthropicClient({
-    apiKey: key, model: process.env.ANTHROPIC_SOLVE_MODEL || "claude-haiku-5-5", timeout: 60_000, fallbacks: false, onUsage: (u) => countAnthropic(u, solveCosts),
+    apiKey: key, usage: { feature: "solve_check" }, model: process.env.ANTHROPIC_SOLVE_MODEL || "claude-haiku-5-5", timeout: 60_000, fallbacks: false, onUsage: (u) => countAnthropic(u, solveCosts),
   }));
 } else if (!values.api) {
   // D-200: the subscription first (WORKBOOK_AI_PRIMARY), the API as the fallback when there is a key.
@@ -561,8 +562,8 @@ if (values.fake) {
 } else {
   const key = await openRouterKey();
   if (!key) throw new Error("no OpenRouter key: set OPENROUTER_API_KEY or OPENROUTER_API_KEY_FILE (or pass --fake for a layout dry run)");
-  ai = openRouterClient({ apiKey: key, model: process.env.AI_MODEL || AI_DEFAULT_MODEL, fetch: costingFetch(), timeout: 200_000 });
-  solver = aiSolver(openRouterClient({ apiKey: key, model: process.env.AI_SOLVE_MODEL || AI_SOLVE_DEFAULT_MODEL, fetch: costingFetch(solveCosts), timeout: 60_000 }));
+  ai = openRouterClient({ apiKey: key, usage: { feature: "workbook" }, model: process.env.AI_MODEL || AI_DEFAULT_MODEL, fetch: costingFetch(), timeout: 200_000 });
+  solver = aiSolver(openRouterClient({ apiKey: key, usage: { feature: "solve_check" }, model: process.env.AI_SOLVE_MODEL || AI_SOLVE_DEFAULT_MODEL, fetch: costingFetch(solveCosts), timeout: 60_000 }));
 }
 const db = store ? createClient<Database>(URL, await secretKey(), { auth: { persistSession: false, autoRefreshToken: false } }) : null;
 const family = db ? await testFamily(db) : null;
@@ -622,7 +623,7 @@ for (const job of jobs) {
   }
   await writeIndex();
 }
-} finally { await closeSampleBrowser(); }
+} finally { await closeSampleBrowser(); await flushAiUsage(); }
 
 async function writeIndex() {
   const ok = results.filter((r) => !r.error);
@@ -707,3 +708,5 @@ async function writeIndex() {
 }
 console.log(`done: ${results.filter((r) => !r.error).length} books, USD ${results.reduce((n, r) => n + (r.usd ?? 0) + (r.solve?.usd ?? 0), 0).toFixed(2)}; ${out}/index.md`);
 if (results.some(r=>r.error)) process.exitCode=1;
+
+await flushAiUsage();
