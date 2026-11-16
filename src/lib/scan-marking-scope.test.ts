@@ -5,7 +5,7 @@ import { expect, it } from "vitest";
 // In families mode a real family is admitted only for the child of the page or the photo. A call to the access
 // rule without that scope would close for every real family (or, worse, be read later as "no child needed").
 // Each caller must pass the scope it serves.
-const callers: [file: string, rule: "markingAccess" | "scanChecksAccess", scope: RegExp, calls: number][] = [
+const callers: [file: string, rule: "markingAccess" | "scanChecksAccess" | "scanChecksDecision", scope: RegExp, calls: number][] = [
   ["src/app/(product)/account/(dashboard)/scan/results/[id]/page.tsx", "markingAccess", /\{ photo: id \}/, 1],
   ["src/lib/workbooks-page-server.ts", "markingAccess", /\{ child: view\.child\.id \}/, 1],
   // (2: the closed-plan answer before scanSession, #710, and the admission check.)
@@ -14,7 +14,7 @@ const callers: [file: string, rule: "markingAccess" | "scanChecksAccess", scope:
   ["src/app/api/account/scans/history/route.ts", "markingAccess", /\{ child \}/, 1],
   ["src/app/api/account/scans/route.ts", "markingAccess", /\{ child \}/, 1],
   ["src/app/api/account/scans/route.ts", "scanChecksAccess", /\{ child \}/, 1],
-  ["src/app/api/account/scans/send/route.ts", "scanChecksAccess", /\{ child: c \}/, 1],
+  ["src/lib/scan-send.ts", "scanChecksDecision", /\{ child \}/, 1],
   ["src/app/api/account/scans/[id]/preview/route.ts", "scanChecksAccess", /\{ photo: id \}/, 1],
   ["src/app/api/account/scans/[id]/preview/[part]/route.ts", "scanChecksAccess", /\{ photo: id \}/, 1],
 ];
@@ -24,5 +24,6 @@ it.each(callers)("%s passes its scope to %s", (file, rule, scope, calls) => {
   const found = [...source.matchAll(new RegExp(`\\b${rule}\\(([^\\n]*)`, "g"))].map((m) => m[1]);
   expect(found).toHaveLength(calls);
   // The scan stack poll also passes its request's shared reads (scanAccessReads) after the scope.
-  for (const args of found) expect(args).toMatch(new RegExp(`^[^)]*process\\.env, ${scope.source}(, undefined, session\\.reads)?\\)`));
+  const environment = file === "src/lib/scan-send.ts" ? "env" : "process\\.env";
+  for (const args of found) expect(args).toMatch(new RegExp(`^[^)]*${environment}, ${scope.source}(, undefined, session\\.reads)?\\)`));
 });
