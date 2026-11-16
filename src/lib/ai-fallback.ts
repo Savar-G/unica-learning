@@ -142,6 +142,7 @@ export function fallbackAiClient(o: FallbackOptions): AiClient {
           throw new Error(reason);
         }
       }
+      if (order.some(canUse)) throw new Error("No AI provider answered; a configured provider can be retried.");
       throw new WorkbookAiUnavailable("No AI provider answered.");
     },
   };

@@ -75,6 +75,20 @@ describe("fallbackAiClient", () => {
     expect(state.api!.seen).toHaveLength(1);
   });
 
+  it.each(["subscription", "api"] as const)("rechecks the %s after a sibling excludes its fallback", async primary => {
+    let rejectPrimary!: (error: Error) => void;
+    const pending = new Promise<never>((_resolve, reject) => { rejectPrimary = reject; });
+    const state = primary === "subscription"
+      ? setup({ sub: [pending, { by: "recovered" }] })
+      : setup({ primary, api: [pending, { by: "recovered" }] });
+    const result = state.client.json(request, signal()).catch(error => error);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    state.gate.off[primary === "subscription" ? "api" : "subscription"] = "permanent failure in a sibling call";
+    rejectPrimary(primary === "subscription" ? new SubscriptionUnavailable("crash", "temporary crash") : new Error("OpenRouter answered 503: unavailable"));
+    expect(await result).not.toBeInstanceOf(WorkbookAiUnavailable);
+    expect(await state.client.json(request, signal())).toEqual({ by: "recovered" });
+  });
+
   it("answers from the subscription first, at no cost, under the run's model name", async () => {
     const s = setup({});
     expect(s.client.model).toBe("anthropic/claude-sonnet-5.5");
