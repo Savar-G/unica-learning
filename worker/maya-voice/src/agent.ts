@@ -615,7 +615,7 @@ export class VoiceCallRun {
       await this.openingBoard(openingScope, turn);
       await this.after({ ...turn, say: [] }, speech, () => false);
       // `after` cannot see the opening's words, as the start gives none: the rule reads the worker's own line
-      // (`openingAsksForNumber`, as the session is in OPEN). The opening ends "Where do you want to start?" and the
+      // (`openingAsksForNumber`, as the session is in OPEN). The opening ends "What part is confusing, or where do you need help?" and the
       // child's first words are usually "Hi Maya", so the normal limits stay (on real calls of 2026-11-13 the number
       // limits held that turn 2.5 to 4.5 s). An opening that asks for a number gets the number limits. A child turn
       // already under way (it waits for this start) keeps its own.

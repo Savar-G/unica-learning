@@ -15,10 +15,10 @@ for (const form of ["missing3", "missing9", "term4", "plant3", "pair", "days8"] 
       if (!pkg) throw new Error("pattern was not admitted");
       const output = await session.start();
       const say = output.say.join(" ");
-      expect(say).toContain("I'm Maya, an AI math helper.");
+      expect(say).toContain("I'm Maya, your AI math helper.");
       expect(say).toContain("the pattern");
       expect(say).not.toContain(spokenQuestion(operationText(pkg.operation!)));
-      expect(say).toContain("Where do you want to start?");
+      expect(say).toContain("What part is confusing, or where do you need help?");
       if (confirmWorkbook && pkg.ref.source === "workbook") expect(say).toContain(`page ${pkg.ref.page}, number ${pkg.ref.question}`);
       expect(session.session.done).toEqual([]);
       expect(session.session.solved).toBeNull();

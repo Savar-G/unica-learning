@@ -17,10 +17,16 @@ import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, typ
 import { tutorKindOf } from "./tutor-kinds";
 import { affirms, equationHolds, equationsOf, neverSayProblem, sayNumbers, sentencesOf, type SayEquation } from "./say-check";
 import { exactSafe } from "./math-vocab";
+import { deniesWholeQuestion, echoesChild, selfCorrection } from "./teaching-reads";
 import { answerClaims, answerProblems, falseClaims, fullRead, guardedProblems, readClaims, REMAINDER_SAID, unsafeNumberSaid, type ColumnSum, type KindRead } from "./tutor-math";
 
 /** The hard ceiling of one Maya message, in words. Over it, the model gets one repair with the reason; code never trims. */
 export const TUTOR_WORD_LIMIT = 60;
+/**
+ * The word limit while the child is a first-time learner (Savar's call 2, 2026-11-15): the slow, concrete explanation
+ * (what we have, the problem, the move, the result, one easy question) takes more short sentences.
+ */
+export const TUTOR_FIRST_TIME_WORD_LIMIT = 80;
 
 /** Review rules that only shape talk: the tutor review ignores them (D-345). The math rule: code checks the math. */
 export const TUTOR_REVIEW_IGNORED: readonly string[] = ["math", "plain_language", "held_limit"];
@@ -389,6 +395,15 @@ export interface TutorCheckContext {
   exampleOnly?: ReadonlySet<number>;
   /** The question's answer is a word ("true", "false", a comparison): "true" and "false" are its content, not a judgment. */
   wordAnswer?: boolean;
+  /** The child's turn this message answers (Savar's call 2): the first sentence never says the child's question back. */
+  childTurn?: string;
+  /** The word limit of this message (TUTOR_FIRST_TIME_WORD_LIMIT for a first-time learner); default TUTOR_WORD_LIMIT. */
+  wordLimit?: number;
+  /**
+   * Savar's call 2: the child's wrong number answered a step, not the whole question. The whole question's "isn't" form
+   * ("52 minus 28 isn't 3.") is then refused: it is the form for a wrong final answer only.
+   */
+  stepMiss?: { pkg: OperationPackage };
 }
 
 /** Negative judgment words and phrases (final check 3, 2026-11-15). */
@@ -543,10 +558,27 @@ export function checkTutorSay(text: string, ctx: TutorCheckContext & { extra?: R
   if (!say) return { ok: false, reason: "empty", detail: "The message is empty: say one short helpful thing and ask one small question." };
   // The ceiling counts the child's name as it will be heard (pre-launch review: "Mary Jane" made a 60-word message 61).
   const words = say.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length + ((ctx.nameWords ?? 1) - 1) * (say.match(/\{name\}/g)?.length ?? 0);
-  if (words > TUTOR_WORD_LIMIT) return { ok: false, reason: "too_long", detail: `The message has ${words} words; the limit is ${TUTOR_WORD_LIMIT}. Say the same one idea in fewer words, then one small question.` };
+  const limit = ctx.wordLimit ?? TUTOR_WORD_LIMIT;
+  if (words > limit) return { ok: false, reason: "too_long", detail: `The message has ${words} words; the limit is ${limit}. Say the same one idea in fewer words, then one small question.` };
   const never = neverSayProblem(say);
   if (never) return { ok: false, reason: "never_say", detail: never };
   const sentences = sentencesOf(say);
+  // Savar's call 2 (2026-11-15): no self-correction inside a message ("3 tens... wait, 3 isn't it.").
+  const fix = selfCorrection(say);
+  if (fix) return { ok: false, reason: "never_say", detail: `The message corrects itself ("${fix}"). Say only what is true, once, with no "wait" or "I mean", and end with one question.` };
+  // Savar's call 2 (final runs): Maya talks to the child, never about "the child" ("The child answered 2, which fits ...").
+  const third = sentences.find((x) => /\bthe child(?:'s)?\b/i.test(x));
+  if (third) return { ok: false, reason: "never_say", detail: `"${third}" talks about "the child". Talk to the child: say "you".` };
+  // #1105: the first sentence never says the child's own question back ("What is 2 minus 8?"): start with the explanation.
+  if (ctx.childTurn && sentences.length > 0 && echoesChild(sentences[0], ctx.childTurn)) {
+    return { ok: false, reason: "never_say", detail: `"${sentences[0]}" says the child's own question back. Start with the explanation of what they asked, then ask one small question about the next step.` };
+  }
+  // Savar's call 2: the whole question's "isn't" form is for a wrong final answer only; a wrong step answer gets "Not
+  // quite." or the step's own true fact.
+  if (ctx.stepMiss) {
+    const deny = sentences.find((x) => deniesWholeQuestion(x, ctx.stepMiss!.pkg));
+    if (deny) return { ok: false, reason: "never_say", detail: `"${deny}" denies the whole question, but the child's number answered a step. Start with "Not quite." or the step's own true fact, then ask the step's question again with its numbers.` };
+  }
   for (const sentence of sentences) {
     // A division with a remainder is read by falseClaims; the plain equation reader would read "2 R 3" as 2.
     // Final check 8 (2026-11-15): only an equation read in its whole clause is refused. An enclosing negation, a scope,
@@ -685,18 +717,31 @@ export function tutorStreamContext(pkg: OperationPackage, text: string, stance: 
 const DENIES = /^\s*(?:not quite|not yet|not right|no\b|nope|that'?s not|that isn'?t|incorrect|close)/i;
 
 /** Code's honest line when the model's message failed twice (D-345): one short line and the step's question. */
-export function tutorFallbackText(pkg: OperationPackage, done: readonly string[], solved: boolean): string {
-  if (solved) return "Let me say that another way. How did you get your answer?";
+export function tutorFallbackText(pkg: OperationPackage, done: readonly string[], solved: boolean, asked?: string | null): string {
+  // Savar's call 2 (2026-11-15): no explain-back after the right final answer; ask whether the child wants another.
+  if (solved) return `You solved this one. ${FINAL_ASK}`;
   // Review of #1009: a kind's question is code's line only in a closed plain math form with true math; else the core's
   // own question (the child hears this line with no review).
   const kind = tutorKind(pkg);
-  const q = kind.stepQuestion(pkg, done);
   const op = kind.op?.(pkg);
-  const verdict = q === null ? null : checkTutorSay(q, { stance: "none", claims: (x) => kind.claimProblems(pkg, x), trades: kind.workValues(pkg), exact: exactTexts(pkg), ...(op ? { op } : {}) });
-  // Two-layer true math: code's own line has every number read by code (it gets no math review either).
-  const safe = q !== null && plainTeaching(q) && verdict?.ok === true && verdict.math.length === 0;
-  return `Let me say that another way. ${safe ? q : "So what is the whole answer?"}`;
+  const safe = (q: string | null | undefined): q is string => {
+    if (!q) return false;
+    const verdict = checkTutorSay(q, { stance: "none", claims: (x) => kind.claimProblems(pkg, x), trades: kind.workValues(pkg), exact: exactTexts(pkg), ...(op ? { op } : {}) });
+    // Two-layer true math: code's own line has every number read by code (it gets no math review either).
+    return plainTeaching(q) && verdict.ok && verdict.math.length === 0;
+  };
+  // Savar's call 2: the question Maya asked that the child has not answered (code's own form of it) comes first, so
+  // code's line never jumps past the part the child is on ("5 tens take away 1" before "4 minus 2").
+  if (safe(asked)) return `Let me say that another way. ${asked}`;
+  const q = kind.stepQuestion(pkg, done);
+  return `Let me say that another way. ${safe(q) ? q : "So what is the whole answer?"}`;
 }
+
+/**
+ * Savar's call 2 and the Chief of Staff (2026-11-15, round 2): Maya's ONE yes/no question after the right final answer.
+ * A "no" or a "yes" ends the call only after this offer (a call has one question, so "yes" ends warmly too).
+ */
+export const FINAL_ASK = "Do you want to try another one?";
 
 /** The commands for the model's drawing requests (the question's kind builds them from its checked steps). */
 export function tutorDrawings(pkg: OperationPackage, draw: readonly { offer: string; place?: string; sentence?: number }[], drawn: readonly string[], noteId: (i: number) => string): { commands: TutorCommand[]; keys: string[] } {

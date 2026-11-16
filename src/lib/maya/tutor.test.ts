@@ -116,7 +116,8 @@ describe("code's honest line", () => {
     expect(checkTutorSay(text, { stance: "none" }).ok).toBe(true);
     expect(tutorFallbackText(SUB, ["ones"], false)).toBe("Let me say that another way. What do you get for 4 minus 2?");
     expect(tutorFallbackText(SUB, ["ones", "tens"], false)).toBe("Let me say that another way. So what is 52 minus 28?");
-    expect(tutorFallbackText(SUB, [], true)).toBe("Let me say that another way. How did you get your answer?");
+    // Savar's call 2 (2026-11-15): no explain-back after the right final answer.
+    expect(tutorFallbackText(SUB, [], true)).toBe("You solved this one. Do you want to try another one?");
   });
 });
 
