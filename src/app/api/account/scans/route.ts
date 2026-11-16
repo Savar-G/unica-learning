@@ -1,3 +1,4 @@
+import { monitorProduct, productAfter } from "@/lib/product-monitoring";
 import { markingAccess } from "@/lib/scan-marking-server";
 import { isUuid } from "@/lib/workbook-content";
 import { scanSession, scanJson } from "@/lib/scan-photo-server";
@@ -18,8 +19,8 @@ async function sendDue(session: Awaited<ReturnType<typeof scanSession>>, started
     for (const c of due.flatMap((d) => d.byChild)) start.push(...await sendMarkingStart(session.admin, session.parent, c.child, c.sent));
     start = start.slice(0, SEND_MARKING_MAX_PHOTOS);
     const parent = session.parent;
-    if (start.length) after(() => markSentPhotos(parent, start, startedAt).then(() => undefined, () => undefined));
-  } catch { /* the recovery run sends them */ }
+    if (start.length) productAfter(after, () => markSentPhotos(parent, start, startedAt), "scan.recovery_failed", { step: "marking" });
+  } catch { monitorProduct("scan.recovery_failed", { step: "send" }); }
 }
 
 export async function POST(request: Request) {
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
     if (!await session.childOpen(child)) return scanJson({ error: "refused" }, 404);
     // v2 tells the 10-minute limit (`frequency`) from the day's (`daily`); the old function answers `frequency` for both.
     const { data, error } = await session.admin.rpc("admit_scan_photo_v2", { p_parent: session.parent, p_child: child, p_id: id, p_bytes: bytes });
-    if (error) return scanJson({ error: "unavailable" }, 503);
+    if (error) { monitorProduct("scan.upload_failed"); return scanJson({ error: "unavailable" }, 503); }
     if (!["reserved", "processing", "pending", "saved"].includes(data)) return scanJson({ error: data }, 429);
     return scanJson({ state: data, id });
   } catch { return scanJson({ error: "refused" }, 400); }
@@ -54,5 +55,5 @@ export async function GET(request: Request) {
   try {
     const checks = await scanChecksAccess(session.admin, session.parent, process.env, { child }, undefined, session.reads);
     return scanJson({ checks, marking: await markingAccess(session.admin, session.parent, process.env, { child }, undefined, session.reads), ...await readScanStack(session.admin, session.parent, child, checks) });
-  } catch { return scanJson({ error: "unavailable" }, 503); }
+  } catch { monitorProduct("dashboard.request_failed", { step: "stack" }); return scanJson({ error: "unavailable" }, 503); }
 }

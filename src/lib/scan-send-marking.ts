@@ -1,4 +1,5 @@
 import "server-only";
+import { monitorProduct } from "@/lib/product-monitoring";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { adminClient } from "@/lib/supabase-auth";
@@ -107,7 +108,7 @@ export async function markSentPhotos(parent: string, photos: readonly string[], 
   for (const photo of photos) {
     if (!await slotFree()) break;
     try { results[photo] = await mark(db, parent, photo, env, plan); }
-    catch { results[photo] = "error"; }
+    catch { monitorProduct("scan.marking_failed", { photoId: photo }); results[photo] = "error"; }
   }
   const counts: Record<string, number> = {};
   for (const r of Object.values(results)) counts[r] = (counts[r] ?? 0) + 1;

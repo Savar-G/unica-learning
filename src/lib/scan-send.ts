@@ -1,4 +1,5 @@
 import "server-only";
+import { monitorProduct } from "@/lib/product-monitoring";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { scanChecksDecision, type Env } from "@/lib/scan-marking-access";
@@ -51,10 +52,11 @@ export async function sendGroups(db: SupabaseClient<Database>, parent: string, g
     if (!decision.open) { out.closed.push({ child, ids: [...ids], reason: decision.reason }); continue; }
     out.open = true; tried++;
     const { data, error } = await db.rpc(send, { p_parent: parent, p_child: child, p_ids: [...new Set(ids)] });
-    if (error) { failed++; out.failed.push(...ids); continue; }
+    if (error) { monitorProduct("scan.send_failed", { count: ids.length }); failed++; out.failed.push(...ids); continue; }
     const sent = Array.isArray(data) ? data : [];
     out.byChild.push({ child, sent });
     out.sent.push(...sent);
+    if (sent.length) monitorProduct("scan.send_accepted", { count: sent.length });
   }
   if (tried && failed === tried) throw new Error("scan_send_failed");
   out.sent.sort();
@@ -89,9 +91,9 @@ export async function sendDuePhotos(db: SupabaseClient<Database>, o: { parent?: 
   let rows: { id: string; parent_id: string; child_id: string }[];
   try {
     const due = await db.rpc("due_scan_sends", { p_parent: o.parent ?? null, p_limit: o.limit ?? 100 });
-    if (due.error || !Array.isArray(due.data)) return [];
+    if (due.error || !Array.isArray(due.data)) { monitorProduct("scan.recovery_failed", { step: "send" }); return []; }
     rows = due.data;
-  } catch { return []; }
+  } catch { monitorProduct("scan.recovery_failed", { step: "send" }); return []; }
   const families = new Map<string, Map<string, string[]>>();
   for (const r of rows) {
     const children = families.get(r.parent_id) ?? new Map<string, string[]>();
@@ -101,16 +103,22 @@ export async function sendDuePhotos(db: SupabaseClient<Database>, o: { parent?: 
   const out: DueSend[] = [];
   const defer = async (parent: string, ids: string[]) => {
     if (!ids.length) return;
-    try { await db.rpc("defer_scan_sends", { p_parent: parent, p_ids: ids, p_seconds: DEFER_SECONDS }); } catch { /* the next run tries again */ }
+    try {
+      const result = await db.rpc("defer_scan_sends", { p_parent: parent, p_ids: ids, p_seconds: DEFER_SECONDS });
+      if (result.error) monitorProduct("scan.recovery_failed", { step: "send" });
+    } catch { monitorProduct("scan.recovery_failed", { step: "send" }); }
   };
   for (const [parent, groups] of families) {
     try {
       const result = await sendGroups(db, parent, groups, decide, "send_due_scan_photos");
       const settled = result.closed.filter((c) => SETTLED_CLOSED.has(c.reason)).flatMap((c) => c.ids);
-      if (settled.length) await db.rpc("release_scan_holds", { p_parent: parent, p_ids: settled });
+      if (settled.length) {
+        const released = await db.rpc("release_scan_holds", { p_parent: parent, p_ids: settled });
+        if (released.error) monitorProduct("scan.recovery_failed", { step: "send" });
+      }
       await defer(parent, [...result.closed.filter((c) => !SETTLED_CLOSED.has(c.reason)).flatMap((c) => c.ids), ...result.failed]);
       if (result.sent.length) out.push({ parent, byChild: result.byChild.filter((c) => c.sent.length) });
-    } catch { await defer(parent, [...groups.values()].flat()); }
+    } catch { monitorProduct("scan.recovery_failed", { step: "send" }); await defer(parent, [...groups.values()].flat()); }
   }
   return out;
 }

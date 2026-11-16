@@ -1,3 +1,4 @@
+import { monitorProduct, productAfter } from "@/lib/product-monitoring";
 import { after } from "next/server";
 import { isUuid } from "@/lib/workbook-content";
 import { scanSession, scanJson } from "@/lib/scan-photo-server";
@@ -30,15 +31,14 @@ export async function POST(request: Request) {
   try {
     result = await sendFamilyPhotos(admin, parent, ids as string[], process.env,
       async (p, c) => ({ open: await scanChecksAccess(admin, p, process.env, { child: c }), reason: "send" }));
-  } catch { return scanJson({ error: "unavailable" }, 503); }
+  } catch { monitorProduct("scan.send_failed"); return scanJson({ error: "unavailable" }, 503); }
   if (!result.open) return scanJson({ error: "refused" }, 404);
   let start: string[] = [];
   for (const c of result.byChild) start.push(...await sendMarkingStart(admin, parent, c.child, c.sent));
   start = start.slice(0, SEND_MARKING_MAX_PHOTOS);
   if (start.length) {
     const photos = start;
-    try { after(() => markSentPhotos(parent, photos, startedAt).then(() => undefined, () => undefined)); }
-    catch { start = []; }
+    if (!productAfter(after, () => markSentPhotos(parent, photos, startedAt), "scan.recovery_failed", { step: "marking" })) start = [];
   }
   return scanJson({ sent: result.sent, marking: start.length });
 }

@@ -6,6 +6,10 @@ import { sharedOptions } from "@/lib/sentry-options";
 
 export async function register() {
   const runtime = process.env.NEXT_RUNTIME === "edge" ? "edge" : "server";
+  if (runtime === "server") {
+    const [{ setProductObserver }, { productObserver }] = await Promise.all([import("@/lib/product-monitoring"), import("@/lib/product-monitoring-server")]);
+    setProductObserver(productObserver());
+  }
   const options = sharedOptions(process.env, runtime);
   if (!options.enabled) return;
   Sentry.init({

@@ -1,4 +1,5 @@
-import { expect, it, vi } from "vitest";
+import { setProductObserver } from "@/lib/product-monitoring";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
@@ -75,4 +76,19 @@ it("leaves the holds alone when marking is off for everyone, and defers pages it
   const failing = fakeDb({ due: [{ id: "a", parent_id: "p1", child_id: "leah" }], failSend: ["leah"] });
   await sendDuePhotos(failing.db, { decide: decide({ leah: "open" }) });
   expect(failing.calls.filter((c) => c.name === "defer_scan_sends")).toEqual([{ name: "defer_scan_sends", args: { p_parent: "p1", p_ids: ["a"], p_seconds: 3600 } }]);
+});
+
+
+beforeEach(() => { vi.clearAllMocks(); setProductObserver(null); });
+afterEach(() => { setProductObserver(null); vi.restoreAllMocks(); });
+it("emits Send only for the committed new rows, and reports a caught due-list error", async () => {
+  const observer = vi.fn(); setProductObserver(observer);
+  const { db } = fakeDb({ filed: { a: "leah" } });
+  const rpc = vi.spyOn(db, "rpc").mockResolvedValueOnce({ data: ["a"], error: null } as never).mockResolvedValueOnce({ data: [], error: null } as never);
+  await sendFamilyPhotos(db, "family", ["a"], {}, decide({ leah: "open" }));
+  await sendFamilyPhotos(db, "family", ["a"], {}, decide({ leah: "open" }));
+  expect(observer).toHaveBeenCalledExactlyOnceWith({ code: "scan.send_accepted", attributes: { count: 1 } });
+  expect(rpc).toHaveBeenCalledTimes(2);
+  await sendDuePhotos(fakeDb({ failDue: true }).db);
+  expect(observer.mock.calls.at(-1)).toEqual([{ code: "scan.recovery_failed", attributes: { step: "send" } }]);
 });

@@ -66,6 +66,7 @@
 // history (Supabase: src/lib/maya-wording-history-store.ts; memory: memoryWordingHistoryStore), the learning events, the
 // profile rebuild, the alerts, the parent's note (#331), the model by id, the clock, ids and the seed. Pure otherwise: no Next.js, React,
 // network or database; node:crypto through the trace's package hash.
+import { monitorProduct } from "@/lib/product-monitoring";
 import { voiceBoardHistory } from "@/lib/voice-board-history";
 import type { BoardSnapshot } from "@/lib/board-protocol";
 import { speechWords, type BoardCue } from "@/lib/board-speech";
@@ -214,6 +215,19 @@ export interface CallRecord {
 
 /** The fields an update may change. */
 export type CallChange = Partial<Pick<CallRecord, "status" | "startedAt" | "endedAt" | "outcome" | "counts" | "live" | "trace" | "boardHistory" | "learningEventId" | "profileRebuiltAt" | "speechToText" | "voice" | "connectedSeconds" | "flag" | "notePending">>;
+
+/** Emit only after the revision write succeeds. Recovery updates have no lifecycle transition. */
+function monitorCallChange(record: CallRecord, change: CallChange): void {
+  const attributes = { callId: record.id, kind: record.kind, mode: record.mode };
+  const cancelledBeforeStart = record.startedAt === null && change.live?.cancelled === true;
+  if (!cancelledBeforeStart && record.startedAt === null && change.startedAt != null) monitorProduct("maya.started", attributes);
+  if (change.flag && change.flag.level !== record.flag?.level) monitorProduct("maya.safety_flagged", { ...attributes, flag: change.flag.level });
+  if (record.status === "live" && change.status === "ended") {
+    // Cancelling a voice ticket before Maya joins uses a technical outcome in the record. It is not a failed conversation.
+    const started = !cancelledBeforeStart && (record.startedAt !== null || change.startedAt != null);
+    monitorProduct(started && change.outcome?.reason === "technical_issue" ? "maya.failed" : "maya.ended", { ...attributes, count: change.counts?.childTurns });
+  }
+}
 
 /** One connection event of a voice call, as stored. */
 export interface CallConnection extends ConnectionEvent {
@@ -832,8 +846,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       // A proposal of kind "safety" with no severity is a concern (final check 1, 2026-11-15; as priorityOf in session.ts).
       const kindSafety = (proposal as { kind?: unknown } | null)?.kind === "safety";
       return { proposal, severity: safety === "concern" || safety === "immediate" ? safety : kindSafety ? "concern" : null, unsafe: readsUnsafe(proposal) };
-    } catch (e) {
-      console.error("[maya call] the safety read failed", record.id, e instanceof Error ? e.message : String(e));
+    } catch {
+      monitorProduct("maya.recovery_failed", { callId: record.id, step: "safety" });
       return null;
     }
   }
@@ -931,8 +945,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     if (!record.flag) return [];
     try {
       return await seams.alerts.list(record.id);
-    } catch (e) {
-      console.error("[maya call] alerts not read", record.id, e instanceof Error ? e.message : String(e));
+    } catch {
+      monitorProduct("maya.recovery_failed", { callId: record.id, step: "safety" });
       return [];
     }
   }
@@ -941,7 +955,14 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   function textSession(record: Pick<CallRecord, "id" | "parentId" | "childId"> & { kind: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void, sayHooks?: Pick<TextSessionOptions, "onSayPart" | "onSayCancel" | "onSayEnd" | "onRepairStart" | "modelRepair" | "onPreparation" | "withModelAttempt" | "persist">, spend?: SpendCall, preparing?: Pick<TextSessionOptions, "spend" | "prepareModel" | "prepareHandleId">): TextSession {
     return createTextSession({
       onGuidance, ...sayHooks, ...preparing,
-      callId: record.id, channel: record.kind === "chat" ? "chat" : undefined, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved, limitMs, grade, confirmWorkbook,
+      callId: record.id, channel: record.kind === "chat" ? "chat" : undefined, package: pkg,
+      model: { ...model, propose: async (...args) => {
+        try { return await model.propose(...args); }
+        catch (error) {
+          if (!(error instanceof SpendRefused)) monitorProduct("maya.failed", { callId: record.id, kind: record.kind, step: "model" });
+          throw error;
+        }
+      } }, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved, limitMs, grade, confirmWorkbook,
       // D-345: the tutor core teaches admin test calls, and family calls (desk chat and family voice) only when the
       // MAYA_TUTOR_FAMILIES switch is on. The core still decides per question (isTutorQuestion).
       tutor: seams.tutor !== false && (record.kind === "admin_test" || (seams.tutorFamilies === true && (record.kind === "chat" || record.kind === "family"))),
@@ -954,8 +975,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   async function readHistory(childId: string): Promise<WordingHistory> {
     try {
       return await seams.history.read(childId);
-    } catch (e) {
-      console.error("[maya call] wording history read failed", childId, e instanceof Error ? e.message : String(e));
+    } catch {
+      monitorProduct("maya.recovery_failed", { step: "history" });
       return {};
     }
   }
@@ -966,8 +987,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     if (Object.keys(heard).length === 0) return;
     try {
       await seams.history.record(record.childId, heard);
-    } catch (e) {
-      console.error("[maya call] wording history record failed", record.id, e instanceof Error ? e.message : String(e));
+    } catch {
+      monitorProduct("maya.recovery_failed", { callId: record.id, step: "history" });
     }
   }
 
@@ -993,8 +1014,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             console.error("[maya call] learning event refused", current.id, appended.error, "reason" in appended ? appended.reason : "");
             done = true;
           }
-        } catch (e) {
-          console.error("[maya call] learning event failed", current.id, e instanceof Error ? e.message : String(e));
+        } catch {
+          monitorProduct("maya.recovery_failed", { callId: current.id, step: "learning" });
         }
       }
       if (done) {
@@ -1027,8 +1048,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       let step: NoteStep = "pending";
       try {
         step = await note({ call: r, package: r.notePending.package, event: r.notePending.event });
-      } catch (e) {
-        console.error("[maya call] note failed", r.id, e instanceof Error ? e.message : String(e));
+      } catch {
+        monitorProduct("maya.recovery_failed", { callId: r.id, step: "note" });
       }
       if (step !== "done" || late || !(await store.clearNote(r.id))) return r;
       return { ...r, notePending: null };
@@ -1049,10 +1070,10 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     try {
       if ((await Promise.race([work.then(() => "done" as const), timeUp])) === "late") {
         late = true;
-        console.error("[maya call] note step ran out of time", record.id);
+        monitorProduct("maya.recovery_failed", { callId: record.id, step: "note" });
       }
-    } catch (e) {
-      console.error("[maya call] note step failed", record.id, e instanceof Error ? e.message : String(e));
+    } catch {
+      monitorProduct("maya.recovery_failed", { callId: record.id, step: "note" });
     } finally {
       clearTimeout(timer);
     }
@@ -1085,6 +1106,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       endedAt,
     };
     if (!(await store.update(record.id, record.revision, change))) return null;
+    monitorCallChange(record, change);
     const ended = { ...record, ...change, revision: record.revision + 1 };
     // Safety first: the alert goes before the learning record.
     await alert(ended);
@@ -1097,6 +1119,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     const flag = risen(record.flag, flagOf(session, unsafe));
     const change: CallChange = { live: { package: pkg, text: await session.saved() }, startedAt: session.trace().startedAt, ...(flag && { flag }) };
     if (!(await store.update(record.id, record.revision, change))) return null;
+    monitorCallChange(record, change);
     const saved = { ...record, ...change, revision: record.revision + 1 };
     await alert(saved);
     return saved;
@@ -1260,9 +1283,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const lose = (confirmed = false) => { lost = true; if (confirmed) replaced = true; void stopBudget(); };
       let queue: Promise<void> = Promise.resolve();
       const later = (work: () => Promise<void>) => {
-        queue = queue.then(work).catch((e) => {
+        queue = queue.then(work).catch(() => {
           lose();
-          console.error("[maya voice] save failed", record.id, e instanceof Error ? e.message : String(e));
+          monitorProduct("maya.recovery_failed", { callId: record.id, step: "voice" });
         });
       };
       /**
@@ -1287,6 +1310,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             console.error("[maya voice] the call changed elsewhere; this worker stops writing", record.id);
             return;
           }
+          monitorCallChange(record, change);
           record = saved;
         });
       const none: VoiceTurn = { say: [], newBatches: 0, safetyMessage: null, ended: false };
@@ -1469,6 +1493,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
               const flag = risen(record.flag, { level, at: iso(seams.clock()) });
               if (lost || record.status === "ended" || !flag) return;
               if (!(await store.update(record.id, record.revision, { flag }))) { lose(true); return; }
+              monitorCallChange(record, { flag });
               record = { ...record, flag, revision: record.revision + 1 };
               await alert(record);
             });

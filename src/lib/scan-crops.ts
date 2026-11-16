@@ -2,6 +2,7 @@
 // The store's `put` and `finish` carry the terminal-state rules: each needs an active, unexpired photo revision and this
 // job's current lease (fence_scan_object and finish_scan_calibration on the database). A job that lost either stops, and it
 // cannot bring a photo back. No AI runs here, and no mark or learning event is written.
+import { monitorProduct } from "@/lib/product-monitoring";
 import sharp from "sharp";
 import {
   calibratePhoto,
@@ -262,7 +263,10 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
   if (lease.status !== "started") return readScanPreview(store, ref);
   const previous = lease.previous, leased = Date.now();
   // No result or files are stored on timeout. The lease expires and a later call checks the photo again.
-  const timedOut = (): ScanPreview => ({ status: "refused", reason: "check-timeout", retryInMs: Math.max(0, leased + SCAN_LEASE_MS + LEASE_MARGIN_MS - Date.now()) });
+  const timedOut = (): ScanPreview => {
+    monitorProduct("scan.check_failed", { photoId: ref.photo });
+    return { status: "refused", reason: "check-timeout", retryInMs: Math.max(0, leased + SCAN_LEASE_MS + LEASE_MARGIN_MS - Date.now()) };
+  };
 
   const finished = async (state: "ready" | "refused", result: ScanCalibrationResult, bytes: number): Promise<ScanPreview> => {
     // A refusal leaves no file: not of this job, nor of the lease it replaced (a reopened ready result's files).

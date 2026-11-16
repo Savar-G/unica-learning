@@ -1,5 +1,6 @@
 // S4. The store owns atomic leases, item versions, deletion fences, admission and budget reservations.
 // The AI owns readings only. No model identity, score, key or eligibility claim enters a result.
+import { monitorProduct } from "@/lib/product-monitoring";
 import { createHash } from "node:crypto";
 import type { AiClient, AiJsonRequest } from "@/lib/ai-client";
 import { expectedItems, firstObservation, waitsForTeam, itemKey, markingEvent, MAX_READ_TEXT, MODEL_READING_ISSUES, pageCompletion, PHOTO_ISSUES, readingIssueText, type ReadingIssue, type RegionReading, type ExpectedItem, type MarkResult, type Observation, type PageForObservation } from "@/lib/scan-observation";
@@ -483,7 +484,9 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
         if (e instanceof AdmissionRefusal) {
           // Only a dispatch-count refusal is caused by the rate limit; budget, price, lease and switch refusals are not.
           if (e.status === "attempts" && confirmedRetryAfter() !== undefined) options.onRateLimit?.(confirmedRetryAfter()!);
-          await store.pause(ref, token, e.status); return e.status;
+          await store.pause(ref, token, e.status);
+          monitorProduct("scan.marking_deferred", { photoId: ref.photo, status: e.status });
+          return e.status;
         }
         // #868: defer only on a clean 429 the store confirmed (the last attempt, or one whose wait did not fit). A
         // settle that fails, or any other failure, counts: the photo waits as `pending` as before.
@@ -495,6 +498,7 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
           options.onRateLimit?.(confirmedRetryAfter()!);
           try { return await store.defer(ref, token); } catch { /* An unreadable defer answer pauses as before. */ }
         }
+        monitorProduct(clean ? "scan.marking_deferred" : "scan.marking_failed", { photoId: ref.photo, status: "pending" });
         // No provider output or exception text is logged or stored.
         await store.pause(ref, token, "pending");
         return "pending";
@@ -523,6 +527,13 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
   if (!await store.apply(ref, token, observations, originalEvents(frame, observations, at), at)) return "terminal";
   await store.publish(frame.parentId, frame.childId);
   if (!await store.finish(ref, token)) return "terminal";
+  // Only the lease holder that committed finish emits. A poll or finished-job retry never reaches this point.
+  try {
+    const marks = (await store.effective(frame.parentId, frame.childId)).filter((m) => m.expected.identity.workbookId === frame.workbookId && m.expected.identity.pageId === frame.pageId && m.expected.identity.printedRevision === frame.printedRevision);
+    const view = markingPageView(marks);
+    monitorProduct(view.completion.status === "complete" ? "scan.marking_complete" : "scan.marking_team_pending",
+      { photoId: ref.photo, total: view.completion.total, scored: view.counts.scored, pending: view.counts.pending + view.counts.teamChecks });
+  } catch { monitorProduct("scan.recovery_failed", { photoId: ref.photo, step: "marking" }); }
   return "finished";
 }
 /**
@@ -562,11 +573,12 @@ async function secondLook(store: MarkingStore, ref: MarkingRef, token: string, f
     const output = await transport.client.json(markingRequestFor(frame, image, asked, true), signal);
     const merged = mergeSecondLook(first, readMarkingOutput(frame, output), asked);
     return { observations: merged.observations, escalation: merged.decided.length ? { model: transport.client.model, prompt: MARKING_ESCALATION_PROMPT_VERSION, items: merged.decided } : null };
-  } catch {
+  } catch (error) {
+    if (!(error instanceof AdmissionRefusal)) monitorProduct("scan.marking_failed", { photoId: ref.photo });
     return none;
   } finally {
     // Counts only: no dispatch, family or photo id is logged.
-    await settle().catch(() => { console.error("[scan-marking] a second-look dispatch could not be settled; its full hold stays"); });
+    await settle().catch(() => { monitorProduct("scan.recovery_failed", { photoId: ref.photo, step: "marking" }); });
   }
 }
 /** One effective event per eligible canonical original. Raw events remain append-only. No reading text enters this set. */
