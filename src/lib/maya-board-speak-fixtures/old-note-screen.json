@@ -1,0 +1,38 @@
+[
+  {
+    "transactionId": "probe-b1",
+    "commands": [
+      {
+        "op": "columns",
+        "id": "question",
+        "operation": "subtract",
+        "operands": [
+          {
+            "id": "top",
+            "value": "52"
+          },
+          {
+            "id": "bottom",
+            "value": "28"
+          }
+        ],
+        "place": {
+          "region": "main"
+        }
+      }
+    ]
+  },
+  {
+    "transactionId": "probe-b2",
+    "commands": [
+      {
+        "op": "write",
+        "id": "tutor-note-2-0",
+        "text": "12 − 8 = 4",
+        "place": {
+          "below": "question"
+        }
+      }
+    ]
+  }
+]

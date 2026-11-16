@@ -699,14 +699,20 @@ export function tutorFallbackText(pkg: OperationPackage, done: readonly string[]
 }
 
 /** The commands for the model's drawing requests (the question's kind builds them from its checked steps). */
-export function tutorDrawings(pkg: OperationPackage, draw: readonly { offer: string; place?: string }[], drawn: readonly string[], noteId: (i: number) => string): { commands: TutorCommand[]; keys: string[] } {
+export function tutorDrawings(pkg: OperationPackage, draw: readonly { offer: string; place?: string; sentence?: number }[], drawn: readonly string[], noteId: (i: number) => string): { commands: TutorCommand[]; keys: string[] } {
   const kind = tutorKind(pkg);
   const { commands, keys } = kind.draw(pkg, draw, drawn, noteId);
   // Review of #1009: the core checks every kind command before the board gets it. A batch with any command that fails
   // is not drawn at all (the words still go out).
-  const answer = pkg.answer.value.type === "number" ? [pkg.answer.value.value] : [];
-  const numbers = new Set<string>([...kind.streamScope(pkg).numbers, ...kind.workValues(pkg), ...answer].map(String));
+  const numbers = tutorBoardNumbers(pkg);
   return commands.every((c) => safeCommand(c, numbers)) ? { commands, keys } : { commands: [], keys: [] };
+}
+
+/** The numbers a tutor drawing may show (safeCommand): the question's own, its work's and the answer. */
+export function tutorBoardNumbers(pkg: OperationPackage): ReadonlySet<string> {
+  const kind = tutorKind(pkg);
+  const answer = pkg.answer.value.type === "number" ? [pkg.answer.value.value] : [];
+  return new Set<string>([...kind.streamScope(pkg).numbers, ...kind.workValues(pkg), ...answer].map(String));
 }
 
 /** Fields of a board command that carry text a child sees. */

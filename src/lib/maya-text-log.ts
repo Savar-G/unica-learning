@@ -21,8 +21,12 @@ export type TextLogEvent =
   | { kind: "request"; at: number; requestId: number; source: "model" | "repair"; filler?: string }
   | { kind: "response"; at: number; requestId: number; proposal?: unknown; error?: TraceError; ms: number; fenced?: true; sent?: string[]; firstSayMs?: number; gateDisagrees?: true; priority?: Record<string, unknown> }
   /** `mathReviews`: two-layer true math (2026-11-15); absent in an event written before the math-truth review existed. */
-  | { kind: "review"; at: number; requestId: number; reviews: TalkReview[]; mathReviews?: MathReview[]; reviewMs?: number }
-  | { kind: "fallback"; at: number; proposal: unknown }
+  /**
+   * `drawMode` (B2): "derive" on a proposal stepped live since B2 derives drawings from Maya's sentences. A saved event
+   * without it is replayed exactly as it was stepped (no derived drawing), so a restored call keeps its batches and ids.
+   */
+  | { kind: "review"; at: number; requestId: number; reviews: TalkReview[]; mathReviews?: MathReview[]; reviewMs?: number; drawMode?: "derive" }
+  | { kind: "fallback"; at: number; proposal: unknown; drawMode?: "derive" }
   | { kind: "recover"; at: number }
   | { kind: "cancelled"; at: number }
   | { kind: "delivered"; at: number }
@@ -34,7 +38,8 @@ export type TextLogEvent =
    */
   | { kind: "help"; at: number; assistance: Assistance };
 
-type PendingOutput = { entry: Extract<TraceTurn, { kind: "maya" }>; act: Act; say: string[]; batches: Batch[]; obligations: number[]; control: number };
+/** `ties` (B2): the sentence each batch is tied to, by transaction id; a batch not in it goes at the end of the turn. */
+type PendingOutput = { entry: Extract<TraceTurn, { kind: "maya" }>; act: Act; say: string[]; batches: Batch[]; ties?: Record<string, number>; obligations: number[]; control: number };
 export interface TextFold {
   session: Session;
   /** Upper bound on persisted event content for one live call. */
@@ -60,8 +65,8 @@ export interface TextFold {
   pending: PendingOutput[];
   output: Pick<TextOutput, "say" | "board" | "cancelled">;
   /**
-   * B1: the batches the child's screen skipped or cancelled, undone on the server's board so it matches the child's
-   * screen (and a drawing can be sent again). `at`: how many of `board` came before the undo. Absent when none.
+   * B1, before B2's review: the batches the child's screen skipped or cancelled, undone one by one. No longer written:
+   * the server's board is rebuilt from the batch fates (`shownScene`). Kept so an older checkpoint still reads.
    */
   undos?: { at: number; transactionId: string }[];
   /** B1: words from the screen that came while an output was pending, applied once it is delivered. */
@@ -74,29 +79,31 @@ export function saveTextCheckpoint(s: TextFold): TextCheckpoint {
   const committed = s.board.map((b) => ({ transactionId: b.transactionId, commands: b.commands }));
   return structuredClone({ ...data, sceneBatches: [...committed, ...s.pending.flatMap((p) => p.batches)], initialSceneBatches: committed });
 }
-/** B1: the batch that takes a batch the child's screen did not show off the server's board. */
-const undoBatch = (transactionId: string): Batch => ({ transactionId: `${transactionId}-undo`, commands: [{ op: "undo", transactionId }] });
-/** B1: the scene with that batch undone, or the same scene when the core cannot undo it (fail closed: nothing else changes). */
-function undoOn(scene: Scene, transactionId: string): Scene {
-  const applied = applyBatch(scene, undoBatch(transactionId));
-  return applied.ok ? applied.scene : scene;
+/**
+ * B1 and B2 (review of #1094): the server's board as the child's screen holds it, rebuilt from the batch fates: every
+ * batch Maya sent, in order, except the ones the screen skipped or cancelled, then `extra` (batches still pending). One
+ * undo cannot take a skipped batch off when a later shown batch builds on the board after it (per-sentence batches), so
+ * the board is rebuilt, never undone. A batch that no longer fits without a skipped one is left out (fail closed). A
+ * batch that does not fit while nothing was skipped means the saved board is broken: it throws.
+ */
+function shownScene(board: readonly { transactionId: string; commands: readonly unknown[]; fate?: BoardFate; after?: readonly string[] }[], extra: readonly Batch[] = []): Scene {
+  let scene = createScene();
+  let hidden = false;
+  const off = new Set<string>();
+  for (const b of [...board, ...extra.map((x) => ({ ...x, fate: undefined }))]) {
+    // B2: a batch that builds on one the screen did not show is off the board too.
+    if (b.fate === "skipped" || b.fate === "cancelled" || b.after?.some((id) => off.has(id))) { hidden = true; off.add(b.transactionId); continue; }
+    const applied = applyBatch(scene, { transactionId: b.transactionId, commands: b.commands as Batch["commands"] });
+    if (applied.ok) scene = applied.scene;
+    else if (!hidden) throw new Error(`maya text: the saved board batch ${b.transactionId} does not apply again`);
+  }
+  return scene;
 }
 export function restoreTextCheckpoint(checkpoint: TextCheckpoint): TextFold {
-  const { sceneBatches, initialSceneBatches, ...data } = structuredClone(checkpoint);
-  const restore = (batches: Batch[]) => {
-    let scene = createScene();
-    // B1: each undo goes back where it was made, after the batches before it.
-    const undos = (n: number) => { for (const u of data.undos ?? []) if (u.at === n) scene = undoOn(scene, u.transactionId); };
-    undos(0);
-    for (const [i, batch] of batches.entries()) {
-      const result = applyBatch(scene, batch);
-      if (!result.ok) throw new Error("maya text: checkpoint board does not apply");
-      scene = result.scene;
-      undos(i + 1);
-    }
-    return scene;
-  };
-  return { ...data, endedAt: data.session.outcome ? data.session.now : null, scene: restore(sceneBatches), initialScene: restore(initialSceneBatches) };
+  const { sceneBatches: _sceneBatches, initialSceneBatches: _initialSceneBatches, ...data } = structuredClone(checkpoint);
+  void _sceneBatches; void _initialSceneBatches;
+  // The batches of the checkpoint are its committed board and its pending outputs, in that order (saveTextCheckpoint).
+  return { ...data, endedAt: data.session.outcome ? data.session.now : null, scene: shownScene(data.board, data.pending.flatMap((p) => p.batches)), initialScene: shownScene(data.board) };
 }
 export const MAX_TEXT_HISTORY_BYTES = 262144;
 const emptyOutput = (): TextFold["output"] => ({ say: [], board: [], cancelled: false });
@@ -137,7 +144,8 @@ function replayControls(s: TextFold, count = s.controls.length) {
       const applied = applyBatch(scene, e.batch);
       if (applied.ok) scene = applied.scene;
     }
-    if (event.type === "board_fate" && event.fate !== "shown") scene = undoOn(scene, event.batch);
+    // A fate is heard only with no output pending, so the board then is the committed board with its fates.
+    if (event.type === "board_fate" && event.fate !== "shown") scene = shownScene(s.board);
   }
   return { session, scene };
 }
@@ -221,13 +229,14 @@ function takeEffects(s: TextFold, effects: Effect[], at: number, attempts: Trace
   }
   const says = effects.filter((e) => e.kind === "say");
   const batches = effects.flatMap((e) => e.kind === "board" ? [e.batch] : []);
+  const ties = Object.fromEntries(effects.flatMap((e) => (e.kind === "board" && e.sentence !== undefined ? [[e.batch.transactionId, e.sentence] as const] : [])));
   if (says.length || attempts.length) {
     const act = says.at(-1)?.act ?? (attempts.at(-1)?.proposal as { act?: Act } | null)?.act ?? "close";
     const entry: Extract<TraceTurn, { kind: "maya" }> = { kind: "maya", at, state: stateBefore, stateAfter: s.session.state, finalMisses: s.session.finalMisses ?? 0, attempts: attempts.length ? attempts : [{ source: "controller", proposal: null, refusal: null }], output: null };
     if (says.length || (attempts.length && !attempts.at(-1)?.refusal && !attempts.at(-1)?.error)) {
       const kinds: TraceObligation["kind"][] = act === "open" ? ["opening_due"] : act === "repair" ? ["repair_due"] : act === "safety" ? ["safety_due"] : act === "close" ? ["child_turn_pending", "content_problem"] : s.session.turn === null ? ["child_turn_pending"] : [];
       const ids = s.obligations.filter((o) => o.status === "pending" && kinds.includes(o.kind) && !s.pending.some((p) => p.obligations.includes(o.id))).map((o) => o.id);
-      s.pending.push({ entry, act, say: says.map((e) => e.text), batches, obligations: ids, control: s.controls.length - 1 });
+      s.pending.push({ entry, act, say: says.map((e) => e.text), batches, ...(Object.keys(ties).length ? { ties } : {}), obligations: ids, control: s.controls.length - 1 });
     }
   }
   refreshOutput(s);
@@ -286,19 +295,22 @@ function flushDeferred(s: TextFold) {
     if (child?.status !== "dropped") applyInput(s, entry.event, undefined, false);
   }
 }
-function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt, reviews?: TalkReview[], mathReviews?: MathReview[]) {
+function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt, reviews?: TalkReview[], mathReviews?: MathReview[], drawMode?: "derive") {
   const before = s.session.state;
   // Two-layer true math: every math-truth review of this attempt is kept in the trace, whatever the step decides.
   if (mathReviews?.length) attempt.math = mathReviews.map((r) => ({ sentence: r.text, verdict: r.result.verdict, reason: r.result.reason, ...(r.result.retried ? { retried: true as const } : {}) }));
-  const event: SessionEvent = { type: "proposal", at: Math.max(at, s.session.now ?? 0), proposal: value, talkReviews: reviews, ...(mathReviews ? { mathReviews } : {}), ...(attempt.source === "fallback" ? { fallback: true } : {}), ...(s.sent?.length ? { sent: [...s.sent] } : {}) };
+  const event: SessionEvent = { type: "proposal", at: Math.max(at, s.session.now ?? 0), proposal: value, talkReviews: reviews, ...(mathReviews ? { mathReviews } : {}), ...(attempt.source === "fallback" ? { fallback: true } : {}), ...(s.sent?.length ? { sent: [...s.sent] } : {}), ...(drawMode ? { drawMode } : {}) };
+  // B2: the trace says how this attempt's drawings were made.
+  if (drawMode && s.session.tutor) attempt.drawMode = drawMode;
   let r = step(s.session, event);
   let controlEvent = event;
   let scene = s.scene;
   if (!r.refusal) for (const e of r.effects) if (e.kind === "board") {
     const applied = applyBatch(scene, e.batch);
     // D-345: a tutor message the board cannot draw keeps its words: the same message is stepped again with no drawing.
-    if (!applied.ok && s.session.tutor && value && typeof value === "object" && Array.isArray((value as { draw?: unknown }).draw) && (value as { draw: unknown[] }).draw.length > 0) {
-      controlEvent = { ...event, proposal: { ...(value as Record<string, unknown>), draw: [] } };
+    // B2: the drawings are read from the sentences, so the retry also says "no draw" for every sentence.
+    if (!applied.ok && s.session.tutor && value && typeof value === "object") {
+      controlEvent = { ...event, proposal: { ...(value as Record<string, unknown>), draw: [], noDraw: "all" } };
       r = step(s.session, controlEvent);
       scene = s.scene;
       if (r.refusal) break;
@@ -322,6 +334,9 @@ function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt
   if (talk.length) attempt.talk = talk;
   const dropped = r.effects.flatMap((e) => e.kind === "say" ? e.dropped ?? [] : []);
   if (dropped.length) attempt.dropped = dropped;
+  // B2: each clause code read as a board action, drawn or why not (board-ties.ts), on the attempt whose words were said.
+  const boardReads = r.refusal ? [] : r.effects.flatMap((e) => e.kind === "say" ? e.boardReads ?? [] : []);
+  if (boardReads.length) attempt.boardReads = boardReads;
   if (attempt.source !== "fallback" || !r.refusal) s.attempts.push(attempt);
   if (r.refusal && !s.session.outcome) { takeEffects(s, r.effects, at); return; }
   s.scene = scene;
@@ -333,8 +348,9 @@ function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt
 /**
  * B1: the child's screen said what it did with Maya's batches. The first word for a batch she sent stands and goes in the
  * trace; any other word changes nothing. While the call is live, the session hears it (a skipped or cancelled drawing
- * is no longer counted as drawn) and the server's board undoes the batch, so it matches the child's screen. Words that
- * come while an output is pending wait until it is delivered, so the undo has one place among the batches.
+ * is no longer counted as drawn) and the server's board is rebuilt from the fates (`shownScene`), so it matches the
+ * child's screen. Words that come while an output is pending wait until it is delivered, so the board they rebuild is
+ * the committed board.
  */
 function applyFates(s: TextFold, fates: readonly { at: number; batchId: string; fate: BoardFate }[]) {
   if (s.pending.length) { s.lateFates = [...(s.lateFates ?? []), ...fates]; return; }
@@ -350,19 +366,22 @@ function applyFates(s: TextFold, fates: readonly { at: number; batchId: string; 
     if (r.refusal) { s.controls.pop(); continue; }
     s.session = r.session;
     if (f.fate === "shown") continue;
-    const undone = undoOn(s.scene, f.batchId);
-    if (undone === s.scene) continue;
-    s.scene = undone;
-    s.undos = [...(s.undos ?? []), { at: s.board.length, transactionId: f.batchId }];
+    s.scene = shownScene(s.board);
+  }
+  // B2: a batch that builds on one the screen skipped or cancelled is not on the screen either (the desk skips it); with
+  // no word of its own it counts as skipped, so the session does not count it as drawn.
+  for (const b of s.board) {
+    if (b.fate || !b.after?.some((id) => ["skipped", "cancelled"].includes(s.board.find((x) => x.transactionId === id)?.fate ?? ""))) continue;
+    b.fate = "skipped";
+    if (s.session.outcome || s.session.startedAt === null) continue;
+    const r = controllerStep(s, { type: "board_fate", at: s.session.now ?? 0, batch: b.transactionId, fate: "skipped" });
+    if (r.refusal) { s.controls.pop(); continue; }
+    s.session = r.session;
   }
 }
 export function initialTextState(initial: TextLogInitial): TextFold {
   const s: TextFold = { ...structuredClone(initial), historyBytes: 0, scene: createScene(), initialSession: structuredClone(initial.session), initialScene: createScene(), controls: [], approvals: [], nextOutputId: 0, approved: structuredClone(initial.approved ?? initial.session.turns.filter((t) => t.speaker === "maya").slice(-1).map((t) => t.text)), obligations: structuredClone(initial.obligations ?? []), childState: initial.childState ?? "listening", request: null, candidate: null, attempts: [], deferred: [], pending: [], output: emptyOutput() };
-  for (const b of s.board) {
-    const applied = applyBatch(s.scene, { transactionId: b.transactionId, commands: b.commands });
-    if (!applied.ok) throw new Error(`maya text: the saved board batch ${b.transactionId} does not apply again`);
-    s.scene = applied.scene;
-  }
+  s.scene = shownScene(s.board);
   s.initialScene = s.scene;
   s.approvals = s.approved.map((text) => ({ outputId: 0, turn: s.session.turns.findLastIndex((t) => t.speaker === "maya" && t.text === text), text, cancelled: false, acknowledged: false }));
   if (!initial.childState) for (const t of s.turns) { if (t.kind === "partial") s.childState = "child_speaking"; if (t.kind === "child") s.childState = "listening"; }
@@ -450,10 +469,10 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
       if (s.request?.id !== e.requestId || s.candidate?.requestId !== e.requestId) break;
       const candidate = s.candidate;
       s.request = null; s.candidate = null;
-      proposal(s, candidate.proposal, e.at, { source: candidate.source, proposal: candidate.proposal, refusal: null, ms: candidate.ms, ...(candidate.fenced ? { fenced: true as const } : {}), ...(candidate.firstSayMs !== undefined ? { firstSayMs: candidate.firstSayMs } : {}), ...(candidate.gateDisagrees ? { gateDisagrees: true as const } : {}), ...(e.reviewMs !== undefined ? { reviewMs: e.reviewMs } : {}), ...(candidate.filler ? { filler: candidate.filler } : {}) }, e.reviews, e.mathReviews);
+      proposal(s, candidate.proposal, e.at, { source: candidate.source, proposal: candidate.proposal, refusal: null, ms: candidate.ms, ...(candidate.fenced ? { fenced: true as const } : {}), ...(candidate.firstSayMs !== undefined ? { firstSayMs: candidate.firstSayMs } : {}), ...(candidate.gateDisagrees ? { gateDisagrees: true as const } : {}), ...(e.reviewMs !== undefined ? { reviewMs: e.reviewMs } : {}), ...(candidate.filler ? { filler: candidate.filler } : {}) }, e.reviews, e.mathReviews, e.drawMode);
       break;
     }
-    case "fallback": proposal(s, e.proposal, e.at, { source: "fallback", proposal: e.proposal, refusal: null }); break;
+    case "fallback": proposal(s, e.proposal, e.at, { source: "fallback", proposal: e.proposal, refusal: null }, undefined, undefined, e.drawMode); break;
     case "recover": if (!s.candidate) s.request = null; break;
     case "cancelled": s.output.cancelled = false; break;
     // A control, so a cancellation's replay keeps it.
@@ -471,7 +490,7 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
           const o = s.obligations.find((o) => o.id === id)!;
           if (o.status === "pending") { o.status = "served"; o.servedBy = index; }
         }
-        for (const b of p.batches) s.board.push({ at: turn.at, turn: index, transactionId: b.transactionId, commands: b.commands });
+        for (const b of p.batches) s.board.push({ at: turn.at, turn: index, transactionId: b.transactionId, commands: b.commands, ...(p.ties?.[b.transactionId] === undefined ? {} : { sentence: p.ties[b.transactionId] }), ...(b.after?.length ? { after: [...b.after] } : {}) });
       }
       if (terminalTurn) s.turns.push(terminalTurn);
       if (s.output.say.length) {

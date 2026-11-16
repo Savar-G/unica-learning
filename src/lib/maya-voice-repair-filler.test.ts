@@ -95,7 +95,7 @@ describe("the thinking phrase when a voice repair starts", () => {
     const trace = await c.session.finish({ reason: "child_stopped" });
     expect(checkTrace(trace)).toMatchObject({ ok: true });
     expect(trace.version).toBe(TRACE_VERSION);
-    expect(TRACE_VERSION).toBe(14);
+    expect(TRACE_VERSION).toBe(15);
     const repair = attempts(trace).find((a) => a.source === "repair")!;
     expect(repair.filler).toBe(ACK_PHRASES.find((p) => p.text === c.heard[0].text)!.id);
     expect(attempts(trace).filter((a) => a.filler)).toHaveLength(1);

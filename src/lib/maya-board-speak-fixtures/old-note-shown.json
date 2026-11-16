@@ -1,0 +1,895 @@
+{
+  "v": 6,
+  "initial": {
+    "session": {
+      "version": 4,
+      "callId": "probe",
+      "variety": {
+        "rng": 2112007601,
+        "seq": 0,
+        "heard": {},
+        "history": {},
+        "name": null,
+        "nameAt": null
+      },
+      "freeTalk": false,
+      "conversational": true,
+      "state": "READY",
+      "resume": null,
+      "package": {
+        "id": "subtract-52-28",
+        "ref": {
+          "source": "workbook",
+          "workbookId": "sample",
+          "page": 1,
+          "question": 1
+        },
+        "templateId": null,
+        "text": "52 - 28 = ?",
+        "answer": {
+          "value": {
+            "type": "number",
+            "value": 24
+          },
+          "accepted": [],
+          "unit": null
+        },
+        "operation": {
+          "kind": "subtract",
+          "operands": [
+            52,
+            28
+          ]
+        },
+        "steps": [
+          {
+            "id": "ones",
+            "kind": "subtract-column",
+            "place": "ones",
+            "top": 2,
+            "bottom": 8,
+            "lent": false,
+            "regrouped": true,
+            "write": 4
+          },
+          {
+            "id": "tens",
+            "kind": "subtract-column",
+            "place": "tens",
+            "top": 5,
+            "bottom": 2,
+            "lent": true,
+            "regrouped": false,
+            "write": 2
+          },
+          {
+            "id": "result",
+            "kind": "result",
+            "value": {
+              "type": "number",
+              "value": 24
+            }
+          }
+        ],
+        "skill": {
+          "standard": "2.4",
+          "skills": [
+            "2.4-subtract-within-100"
+          ]
+        },
+        "level": 9,
+        "difficulty": 2,
+        "wrongAnswers": [
+          {
+            "value": {
+              "type": "number",
+              "value": 36
+            },
+            "cause": "O1",
+            "description": "Takes the smaller ones digit from the larger",
+            "step": "ones"
+          },
+          {
+            "value": {
+              "type": "number",
+              "value": 34
+            },
+            "cause": "regroup-forget",
+            "description": "Does not take the ten from the tens",
+            "step": "tens"
+          }
+        ],
+        "easierExample": {
+          "text": "42 - 7 = ?",
+          "operation": {
+            "kind": "subtract",
+            "operands": [
+              42,
+              7
+            ]
+          },
+          "answer": {
+            "type": "number",
+            "value": 35
+          },
+          "steps": [
+            {
+              "id": "ones",
+              "kind": "subtract-column",
+              "place": "ones",
+              "top": 2,
+              "bottom": 7,
+              "lent": false,
+              "regrouped": true,
+              "write": 5
+            },
+            {
+              "id": "tens",
+              "kind": "subtract-column",
+              "place": "tens",
+              "top": 4,
+              "bottom": null,
+              "lent": true,
+              "regrouped": false,
+              "write": 3
+            },
+            {
+              "id": "result",
+              "kind": "result",
+              "value": {
+                "type": "number",
+                "value": 35
+              }
+            }
+          ]
+        }
+      },
+      "contentProblem": null,
+      "startedAt": null,
+      "now": null,
+      "expect": "nothing",
+      "waitingSince": null,
+      "silence": "none",
+      "turn": null,
+      "stopRequested": false,
+      "opened": false,
+      "clarified": false,
+      "noStart": false,
+      "exampleShown": 0,
+      "retried": false,
+      "done": [],
+      "ladder": {
+        "step": "ones",
+        "hint": -1,
+        "unlocked": 0,
+        "failures": 0
+      },
+      "highestHint": null,
+      "hints": 0,
+      "assistance": [],
+      "solved": null,
+      "lastResult": null,
+      "answerGivenFirst": false,
+      "understanding": "uncertain",
+      "paper": "unknown",
+      "wrote": false,
+      "finalMisses": 0,
+      "writeAsked": false,
+      "confirmTries": 0,
+      "offeredOtherInput": false,
+      "redirects": 0,
+      "safety": {
+        "flagged": false,
+        "severity": null,
+        "at": null,
+        "guided": false
+      },
+      "mishearing": {
+        "confirmations": 0,
+        "corrections": 0
+      },
+      "stuckStep": null,
+      "boardRoles": {},
+      "batches": 0,
+      "turns": [],
+      "outcome": null,
+      "tutor": {
+        "help": 0,
+        "drawn": []
+      }
+    },
+    "endedAt": null,
+    "turns": [],
+    "board": []
+  },
+  "nextRequestId": 2,
+  "log": [
+    {
+      "kind": "input",
+      "at": 10050,
+      "event": {
+        "type": "start",
+        "at": 10050
+      }
+    },
+    {
+      "kind": "delivered",
+      "at": 10100
+    },
+    {
+      "kind": "input",
+      "at": 10150,
+      "event": {
+        "type": "child_turn",
+        "at": 10150,
+        "text": "Please help me."
+      }
+    },
+    {
+      "kind": "request",
+      "at": 10250,
+      "requestId": 0,
+      "source": "model"
+    },
+    {
+      "kind": "response",
+      "at": 10300,
+      "requestId": 0,
+      "proposal": {
+        "gate": "none",
+        "kind": "math",
+        "say": "We trade 1 ten for 10 ones. How many ones are there now?",
+        "act": "guide",
+        "step": "",
+        "level": 0,
+        "reading": {
+          "answers": [],
+          "help": "none",
+          "unclear": false,
+          "stop": false,
+          "safety": "none",
+          "writing": false,
+          "offTopic": false,
+          "mathClaim": false,
+          "mathRequests": [],
+          "outsideScope": "none",
+          "scopeSkill": "",
+          "unsafeRequest": false,
+          "noBoard": false,
+          "shorter": false,
+          "aboutMaya": "none",
+          "start": "none",
+          "paper": "none",
+          "correctsHearing": false
+        },
+        "draw": []
+      },
+      "ms": 100
+    },
+    {
+      "kind": "review",
+      "at": 10500,
+      "requestId": 0,
+      "reviews": [
+        {
+          "text": "How many ones are there now?",
+          "result": {
+            "verdict": "pass"
+          }
+        }
+      ],
+      "mathReviews": [
+        {
+          "text": "We trade 1 ten for 10 ones.",
+          "result": {
+            "verdict": "true",
+            "reason": "all true"
+          }
+        },
+        {
+          "text": "How many ones are there now?",
+          "result": {
+            "verdict": "true",
+            "reason": "all true"
+          }
+        }
+      ],
+      "reviewMs": 100
+    },
+    {
+      "kind": "delivered",
+      "at": 10600
+    },
+    {
+      "kind": "input",
+      "at": 10650,
+      "event": {
+        "type": "child_turn",
+        "at": 10650,
+        "text": "Please show me the ones equation."
+      }
+    },
+    {
+      "kind": "request",
+      "at": 10750,
+      "requestId": 1,
+      "source": "model"
+    },
+    {
+      "kind": "response",
+      "at": 10800,
+      "requestId": 1,
+      "proposal": {
+        "gate": "none",
+        "kind": "math",
+        "say": "12 minus 8 is 4. What comes next?",
+        "act": "guide",
+        "step": "",
+        "level": 0,
+        "reading": {
+          "answers": [],
+          "help": "none",
+          "unclear": false,
+          "stop": false,
+          "safety": "none",
+          "writing": false,
+          "offTopic": false,
+          "mathClaim": false,
+          "mathRequests": [],
+          "outsideScope": "none",
+          "scopeSkill": "",
+          "unsafeRequest": false,
+          "noBoard": false,
+          "shorter": false,
+          "aboutMaya": "none",
+          "start": "none",
+          "paper": "none",
+          "correctsHearing": false
+        },
+        "draw": [
+          {
+            "offer": "note",
+            "place": "12 - 8 = 4"
+          }
+        ]
+      },
+      "ms": 100
+    },
+    {
+      "kind": "review",
+      "at": 11000,
+      "requestId": 1,
+      "reviews": [
+        {
+          "text": "What comes next?",
+          "result": {
+            "verdict": "pass"
+          }
+        }
+      ],
+      "mathReviews": [
+        {
+          "text": "What comes next?",
+          "result": {
+            "verdict": "true",
+            "reason": "all true"
+          }
+        }
+      ],
+      "reviewMs": 100
+    },
+    {
+      "kind": "delivered",
+      "at": 11100
+    },
+    {
+      "kind": "fates",
+      "at": 11150,
+      "fates": [
+        {
+          "batchId": "probe-b2",
+          "fate": "shown"
+        }
+      ]
+    }
+  ],
+  "session": {
+    "version": 4,
+    "callId": "probe",
+    "variety": {
+      "rng": 2112007601,
+      "seq": 0,
+      "heard": {},
+      "history": {},
+      "name": null,
+      "nameAt": null
+    },
+    "freeTalk": false,
+    "conversational": true,
+    "state": "ASSESS",
+    "resume": null,
+    "package": {
+      "id": "subtract-52-28",
+      "ref": {
+        "source": "workbook",
+        "workbookId": "sample",
+        "page": 1,
+        "question": 1
+      },
+      "templateId": null,
+      "text": "52 - 28 = ?",
+      "answer": {
+        "value": {
+          "type": "number",
+          "value": 24
+        },
+        "accepted": [],
+        "unit": null
+      },
+      "operation": {
+        "kind": "subtract",
+        "operands": [
+          52,
+          28
+        ]
+      },
+      "steps": [
+        {
+          "id": "ones",
+          "kind": "subtract-column",
+          "place": "ones",
+          "top": 2,
+          "bottom": 8,
+          "lent": false,
+          "regrouped": true,
+          "write": 4
+        },
+        {
+          "id": "tens",
+          "kind": "subtract-column",
+          "place": "tens",
+          "top": 5,
+          "bottom": 2,
+          "lent": true,
+          "regrouped": false,
+          "write": 2
+        },
+        {
+          "id": "result",
+          "kind": "result",
+          "value": {
+            "type": "number",
+            "value": 24
+          }
+        }
+      ],
+      "skill": {
+        "standard": "2.4",
+        "skills": [
+          "2.4-subtract-within-100"
+        ]
+      },
+      "level": 9,
+      "difficulty": 2,
+      "wrongAnswers": [
+        {
+          "value": {
+            "type": "number",
+            "value": 36
+          },
+          "cause": "O1",
+          "description": "Takes the smaller ones digit from the larger",
+          "step": "ones"
+        },
+        {
+          "value": {
+            "type": "number",
+            "value": 34
+          },
+          "cause": "regroup-forget",
+          "description": "Does not take the ten from the tens",
+          "step": "tens"
+        }
+      ],
+      "easierExample": {
+        "text": "42 - 7 = ?",
+        "operation": {
+          "kind": "subtract",
+          "operands": [
+            42,
+            7
+          ]
+        },
+        "answer": {
+          "type": "number",
+          "value": 35
+        },
+        "steps": [
+          {
+            "id": "ones",
+            "kind": "subtract-column",
+            "place": "ones",
+            "top": 2,
+            "bottom": 7,
+            "lent": false,
+            "regrouped": true,
+            "write": 5
+          },
+          {
+            "id": "tens",
+            "kind": "subtract-column",
+            "place": "tens",
+            "top": 4,
+            "bottom": null,
+            "lent": true,
+            "regrouped": false,
+            "write": 3
+          },
+          {
+            "id": "result",
+            "kind": "result",
+            "value": {
+              "type": "number",
+              "value": 35
+            }
+          }
+        ]
+      }
+    },
+    "contentProblem": null,
+    "startedAt": 10050,
+    "now": 11000,
+    "expect": "child",
+    "waitingSince": 11000,
+    "silence": "none",
+    "turn": null,
+    "stopRequested": false,
+    "opened": true,
+    "clarified": false,
+    "noStart": false,
+    "exampleShown": 0,
+    "retried": false,
+    "done": [],
+    "ladder": {
+      "step": "ones",
+      "hint": -1,
+      "unlocked": 0,
+      "failures": 0
+    },
+    "highestHint": null,
+    "hints": 0,
+    "assistance": [
+      "hint",
+      "guided"
+    ],
+    "solved": null,
+    "lastResult": null,
+    "answerGivenFirst": false,
+    "understanding": "uncertain",
+    "paper": "unknown",
+    "wrote": false,
+    "finalMisses": 0,
+    "writeAsked": false,
+    "confirmTries": 0,
+    "offeredOtherInput": false,
+    "redirects": 0,
+    "safety": {
+      "flagged": false,
+      "severity": null,
+      "at": null,
+      "guided": false
+    },
+    "mishearing": {
+      "confirmations": 0,
+      "corrections": 0
+    },
+    "stuckStep": "ones",
+    "boardRoles": {
+      "question": "target"
+    },
+    "batches": 2,
+    "turns": [
+      {
+        "at": 10050,
+        "speaker": "maya",
+        "text": "Hi there! I'm Maya, an AI math helper. We're doing 52 minus 28 today. Where do you want to start?",
+        "state": "OPEN",
+        "act": "open"
+      },
+      {
+        "at": 10150,
+        "speaker": "child",
+        "text": "Please help me.",
+        "state": "OPEN"
+      },
+      {
+        "at": 10500,
+        "speaker": "maya",
+        "text": "We trade 1 ten for 10 ones. How many ones are there now?",
+        "state": "ASSESS",
+        "act": "guide"
+      },
+      {
+        "at": 10650,
+        "speaker": "child",
+        "text": "Please show me the ones equation.",
+        "state": "ASSESS"
+      },
+      {
+        "at": 11000,
+        "speaker": "maya",
+        "text": "12 minus 8 is 4. What comes next?",
+        "state": "ASSESS",
+        "act": "guide"
+      }
+    ],
+    "outcome": null,
+    "tutor": {
+      "help": 2,
+      "drawn": []
+    }
+  },
+  "turns": [
+    {
+      "kind": "start",
+      "at": 10050
+    },
+    {
+      "kind": "maya",
+      "at": 10050,
+      "state": "READY",
+      "stateAfter": "OPEN",
+      "finalMisses": 0,
+      "attempts": [
+        {
+          "source": "controller",
+          "proposal": null,
+          "refusal": null
+        }
+      ],
+      "output": {
+        "act": "open",
+        "say": [
+          "Hi there! I'm Maya, an AI math helper. We're doing 52 minus 28 today. Where do you want to start?"
+        ],
+        "board": [
+          "probe-b1"
+        ]
+      }
+    },
+    {
+      "kind": "child",
+      "at": 10150,
+      "text": "Please help me."
+    },
+    {
+      "kind": "maya",
+      "at": 10500,
+      "state": "ASSESS",
+      "stateAfter": "ASSESS",
+      "finalMisses": 0,
+      "attempts": [
+        {
+          "source": "model",
+          "proposal": {
+            "gate": "none",
+            "kind": "math",
+            "say": "We trade 1 ten for 10 ones. How many ones are there now?",
+            "act": "guide",
+            "step": "",
+            "level": 0,
+            "reading": {
+              "answers": [],
+              "help": "none",
+              "unclear": false,
+              "stop": false,
+              "safety": "none",
+              "writing": false,
+              "offTopic": false,
+              "mathClaim": false,
+              "mathRequests": [],
+              "outsideScope": "none",
+              "scopeSkill": "",
+              "unsafeRequest": false,
+              "noBoard": false,
+              "shorter": false,
+              "aboutMaya": "none",
+              "start": "none",
+              "paper": "none",
+              "correctsHearing": false
+            },
+            "draw": []
+          },
+          "refusal": null,
+          "ms": 100,
+          "reviewMs": 100,
+          "math": [
+            {
+              "sentence": "We trade 1 ten for 10 ones.",
+              "verdict": "true",
+              "reason": "all true"
+            },
+            {
+              "sentence": "How many ones are there now?",
+              "verdict": "true",
+              "reason": "all true"
+            }
+          ],
+          "talk": [
+            {
+              "proposed": "How many ones are there now?",
+              "code": null,
+              "review": "pass",
+              "shown": "How many ones are there now?"
+            }
+          ]
+        }
+      ],
+      "output": {
+        "act": "guide",
+        "say": [
+          "We trade 1 ten for 10 ones. How many ones are there now?"
+        ],
+        "board": []
+      }
+    },
+    {
+      "kind": "child",
+      "at": 10650,
+      "text": "Please show me the ones equation."
+    },
+    {
+      "kind": "maya",
+      "at": 11000,
+      "state": "ASSESS",
+      "stateAfter": "ASSESS",
+      "finalMisses": 0,
+      "attempts": [
+        {
+          "source": "model",
+          "proposal": {
+            "gate": "none",
+            "kind": "math",
+            "say": "12 minus 8 is 4. What comes next?",
+            "act": "guide",
+            "step": "",
+            "level": 0,
+            "reading": {
+              "answers": [],
+              "help": "none",
+              "unclear": false,
+              "stop": false,
+              "safety": "none",
+              "writing": false,
+              "offTopic": false,
+              "mathClaim": false,
+              "mathRequests": [],
+              "outsideScope": "none",
+              "scopeSkill": "",
+              "unsafeRequest": false,
+              "noBoard": false,
+              "shorter": false,
+              "aboutMaya": "none",
+              "start": "none",
+              "paper": "none",
+              "correctsHearing": false
+            },
+            "draw": [
+              {
+                "offer": "note",
+                "place": "12 - 8 = 4"
+              }
+            ]
+          },
+          "refusal": null,
+          "ms": 100,
+          "reviewMs": 100,
+          "math": [
+            {
+              "sentence": "What comes next?",
+              "verdict": "true",
+              "reason": "all true"
+            }
+          ],
+          "talk": [
+            {
+              "proposed": "What comes next?",
+              "code": null,
+              "review": "pass",
+              "shown": "What comes next?"
+            }
+          ]
+        }
+      ],
+      "output": {
+        "act": "guide",
+        "say": [
+          "12 minus 8 is 4. What comes next?"
+        ],
+        "board": [
+          "probe-b2"
+        ]
+      }
+    }
+  ],
+  "board": [
+    {
+      "at": 10050,
+      "turn": 1,
+      "transactionId": "probe-b1",
+      "commands": [
+        {
+          "op": "columns",
+          "id": "question",
+          "operation": "subtract",
+          "operands": [
+            {
+              "id": "top",
+              "value": "52"
+            },
+            {
+              "id": "bottom",
+              "value": "28"
+            }
+          ],
+          "place": {
+            "region": "main"
+          }
+        }
+      ]
+    },
+    {
+      "at": 11000,
+      "turn": 5,
+      "transactionId": "probe-b2",
+      "commands": [
+        {
+          "op": "write",
+          "id": "tutor-note-2-0",
+          "text": "12 − 8 = 4",
+          "place": {
+            "below": "question"
+          }
+        }
+      ],
+      "fate": "shown"
+    }
+  ],
+  "endedAt": null,
+  "approved": [
+    "12 minus 8 is 4. What comes next?"
+  ],
+  "obligations": [
+    {
+      "id": 0,
+      "kind": "start_pending",
+      "at": 10050,
+      "status": "served",
+      "servedBy": 0
+    },
+    {
+      "id": 1,
+      "kind": "opening_due",
+      "at": 10050,
+      "status": "served",
+      "servedBy": 1
+    },
+    {
+      "id": 2,
+      "kind": "child_turn_pending",
+      "at": 10150,
+      "status": "served",
+      "text": "Please help me.",
+      "servedBy": 3
+    },
+    {
+      "id": 3,
+      "kind": "child_turn_pending",
+      "at": 10650,
+      "status": "served",
+      "text": "Please show me the ones equation.",
+      "servedBy": 5
+    }
+  ],
+  "childState": "listening"
+}

@@ -398,7 +398,10 @@ export function createBoardSession(o: SessionOptions): BoardSession {
       let count = 0;
       const skipped = new Set<string>();
       let trial = toMaya(history);
+      // B2: a batch that builds on one this board skipped (now or before) is skipped too, and reported skipped.
+      const skippedBefore = new Set(history.events.flatMap((e) => (e.kind === "skipped" ? [e.batchId] : [])));
       for (const b of missing) {
+        if (b.after?.some((id) => skipped.has(id) || skippedBefore.has(id))) { skipped.add(b.transactionId); continue; }
         const r = mayaWrites(trial, b, now());
         if (r.ok) {
           trial = r.history;

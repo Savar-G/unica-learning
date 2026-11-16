@@ -6,7 +6,7 @@ import { childFacts, tutorKind, stepFacts, TUTOR_WORD_LIMIT } from "./tutor";
 import type { TutorDrawing, TutorStepFact } from "./tutor-kind";
 import { valueText } from "@/lib/question-package";
 
-export const TUTOR_PROMPT_VERSION = "maya-tutor-9";
+export const TUTOR_PROMPT_VERSION = "maya-tutor-10";
 
 /** The turns of the call the brief holds. */
 const TUTOR_TRANSCRIPT_TURNS = 10;
@@ -98,7 +98,7 @@ Each turn you write ONE message, then the child answers. You never get a second 
 How you teach:
 1. Answer what the child asked first, on the child's own question and numbers ("question"), with the reason. Speech-to-text can drop digits: "2 minus 8" in 52 − 28 is the ones column. When the child says "I don't get it", "teach me", or cannot start, explain the idea directly in this message.
 2. One idea per message. End with one small thing for the child to say or do, such as a question they can answer with a number.
-3. Give the reason with the move: the idea behind the step, from "question.steps" and "question.notes" (for regrouping: 1 ten is 10 ones, and the number stays the same, 52 is 5 tens and 2 ones or 4 tens and 12 ones). Draw it when it helps ("draw"). Say each place with its number: "4 tens minus 2 tens is 2 tens", not "is 2".
+3. Give the reason with the move: the idea behind the step, from "question.steps" and "question.notes" (for regrouping: 1 ten is 10 ones, and the number stays the same, 52 is 5 tens and 2 ones or 4 tens and 12 ones). Say the step plainly when it helps: the board draws what you say ("noDraw"). Say each place with its number: "4 tens minus 2 tens is 2 tens", not "is 2".
 4. Take the child's words seriously. "You can't take 8 from 2" is true for the ones: say so, then show how to get more ones.
 5. When the child is wrong, say so at once in one short, kind sentence, say where, and name the likely mistake from "facts" (for example: 6 is 8 minus 2, the other way around). Let the child fix it.
 6. Hints grow: a question, then a pointer, then show the step. After you show or tell a step, the child does the next step, or a twin question.
@@ -137,7 +137,7 @@ The reply, in this order (write each key in this order):
 - "say": your one message.
 - "act": "guide" for every teaching message. "close" only after the child solved the question and is done, or wants to stop: a short goodbye, with no question.
 - "reading" comes after "say". It is bookkeeping code reads; it is never said. It must agree with "gate". "answers": each number the child gave as an answer, with its step id ("result" for the whole question), "problem" "target", and your verdict by the question's steps; a question or a request for help is not an answer. Set the flags that fit (help "more" or "show", unclear when you cannot tell what number the child said, stop, writing, offTopic, mathClaim, safety "concern" or "immediate" for harm or danger, unsafeRequest for harmful content, aboutMaya "identity" or "secret_friend", start "no_start" when the child cannot start, paper "written" when they say they wrote it); else "none", false, "" and [].
-- "draw": [] or board requests, drawn with your message: {"offer": an id from "drawings", "place": what it says it needs, or ""}. "drawings" says what each one shows on this question. Draw what you explain. "drawn" lists what the board already shows. "sent" lists drawings sent with your last messages that the child's screen has not shown yet: do not ask for them again, and do not say they are on the board.
+- "noDraw": [] or the numbers of sentences in "say" (1 for the first) that must not draw. The board draws what you SAY: when a sentence plainly says one of these, the board draws it while you say it: a trade, "We trade 1 ten for 10 ones." (or "We trade 10 ones for 1 ten."); a digit, "Write 4 in the ones."; a row, "Write 68."; a step's equation, "12 minus 8 is 4."; a place, "Look at the tens."; a chart, "Let's put 45,672 in a place value chart."; a division, "Let's share 84 into 4 groups.". So when it helps, say each step plainly in these words, one step at a time, earlier work first (the trade before its digit). A sentence draws only what it says in full with this question's own numbers, and only what is new; a question, a "do not", an "if" or a "later" draws nothing. You may start a drawing sentence with "Let's show it:", "Look:" or "Watch:". "drawings" lists what this question's board can show; "drawn" is what the board shows now; "sent" is what the child's screen has not shown yet. Put a sentence in "noDraw" only when the board should stay still (for example a step you describe but want the child to write).
 - If "repair" is set, code refused your last message for the reason given: fix exactly that, and keep your teaching.`;
 
 /** The tutor's output schema: the conversational schema with only the tutor's acts and drawings. */
@@ -147,17 +147,15 @@ export const TUTOR_OUTPUT_SCHEMA = {
   // 2026-11-15 (after final check 5): the small "gate" comes first, so the stream knows before any word goes out whether
   // the turn is about Maya, safety or a stop; the rest of the reading follows "say" (it costs no time before the first
   // sentence). Final check 5 had put the whole reading before "say".
-  required: ["gate", "kind", "say", "act", "reading", "draw"],
+  required: ["gate", "kind", "say", "act", "reading", "noDraw"],
   properties: {
     gate: { enum: TUTOR_GATES },
     kind: MODEL_OUTPUT_SCHEMA.properties.kind,
     say: { type: "string" },
     act: { enum: ["guide", "close"] },
     reading: MODEL_OUTPUT_SCHEMA.properties.reading,
-    draw: {
-      type: "array",
-      items: { type: "object", additionalProperties: false, required: ["offer", "place"], properties: { offer: { type: "string" }, place: { type: "string" } } },
-    },
+    // B2: code reads the drawings from the sentences (board-ties.ts); the model may only keep a sentence still.
+    noDraw: { type: "array", items: { type: "integer" } },
   },
 } as const;
 

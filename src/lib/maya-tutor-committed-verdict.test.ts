@@ -35,7 +35,7 @@ describe("the tutor brief holds code's verdict on the committed answer", () => {
     ["I don't get 2 minus 8", "unknown"],
   ] as const)("%s: %s, the same verdict the math review judges by", async (child, verdict) => {
     const { brief, review } = await turn(child);
-    expect(brief.promptVersion).toBe("maya-tutor-9");
+    expect(brief.promptVersion).toBe("maya-tutor-10");
     expect(brief.childAnswer?.verdict).toBe(verdict);
     expect(review?.childAnswer?.verdict).toBe(verdict);
     expect(brief.childAnswer?.value).toBe(review?.childAnswer?.value);
@@ -55,7 +55,7 @@ describe("the tutor brief holds code's verdict on the committed answer", () => {
 
 describe("the tutor prompt (version 9)", () => {
   it("judges the child's answer only by childAnswer, and allows facts, agreement and a request to commit", () => {
-    expect(TUTOR_PROMPT_VERSION).toBe("maya-tutor-9");
+    expect(TUTOR_PROMPT_VERSION).toBe("maya-tutor-10");
     expect(TUTOR_PROMPT).toContain(`Judge the child's answer only by "childAnswer"`);
     expect(TUTOR_PROMPT).toContain(`"unknown" (a tentative "is it 24?", or a number among others) or null: say nothing that judges the child's answer or work as right or wrong`);
     expect(TUTOR_PROMPT).toContain(`no "You got it", "That's right", "Yes", "Close" or "that part is right"`);

@@ -8,7 +8,7 @@ import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 // hears it at once while the reviews of the next sentences run. The rule never comes before safety or the AI disclosure.
 describe("the tutor prompt's first sentence", () => {
   it("asks for a first sentence code can check alone, and raises the version", () => {
-    expect(TUTOR_PROMPT_VERSION).toBe("maya-tutor-9");
+    expect(TUTOR_PROMPT_VERSION).toBe("maya-tutor-10");
     expect(TUTOR_PROMPT).toContain('when your "kind" is "math" or "help", open the message with one short sentence that code can check on its own');
     expect(TUTOR_PROMPT).toContain("This sentence never comes before safety or the AI disclosure");
     expect(TUTOR_PROMPT).toContain('when your "kind" is "offtopic", "stop", "safety" or "other", or the child asks about you, do not use this rule');
