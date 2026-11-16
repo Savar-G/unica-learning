@@ -367,7 +367,8 @@ const numberish = (w: string) => /^(?:\d|@\d)/.test(w) || NUMBER_WORDS.test(w);
  * added to the tens before, not 10), before a number said in words any word that is not a plain link word ("the
  * carried ten makes 9 tens": the ten we carried, a thing, not the number 10). A result word ("makes", "gives") after
  * "and" in its clause, with a number before that clause, can also sum the earlier number into it ("8 tens, and the
- * carried 1 ten makes 9 tens"). "The 1 is 10" stays read in full: a digit named with "the" is a kind's own read.
+ * carried 1 ten makes 9 tens"). A digit named with "the" ("The 1 is 10", "The carried 1 is a ten") is a place-value
+ * statement: readClaims leaves it unread (2026-11-15, voice fallbacks), never an equation of the bare numbers.
  */
 export function fullRead(text: string, at: number, end: number): boolean {
   const lower = text.toLowerCase().replace(/[’]/g, "'");
@@ -519,6 +520,24 @@ function readClaimsOnce(sentence: string, op?: "add" | "subtract", trades: reado
   const valued = (s: Side): Side | null => {
     const v = digitValue(items, s);
     return v === undefined ? s : v === null ? null : { ...s, value: v, units: true, place: null };
+  };
+  /**
+   * 2026-11-15 (voice fallbacks, turn 4): a side that names a digit with "the" ("the 1", "the carried 1", "the top 4"):
+   * a lone digit, no unit, no operator, and "the" before it with at most two other words between. "The carried 1 is a
+   * ten" and "the 4 is 4 tens" say what the digit STANDS FOR (its place value), not that 1 equals 10. A "value of the 8"
+   * side is the digit-value reader's own (digitValue).
+   */
+  const namedDigit = (s: Side): boolean => {
+    const it = items[s.at];
+    if (s.ops || it?.kind !== "term" || it.unit || it.fraction || !Number.isInteger(it.value) || it.value < 0 || it.value > 9) return false;
+    if (digitValue(items, s) !== undefined) return false;
+    for (let k = s.at - 1; k >= 0 && k >= s.at - 3; k--) {
+      const w = items[k];
+      if (w?.kind !== "other" || !w.word || /^[;:.!?]$/.test(w.word) || cuts.has(k + 1)) return false;
+      if (w.word === "the") return true;
+      if (LINK_WORDS.has(w.word)) return false;
+    }
+    return false;
   };
   /** "than C" at `at` (with an optional "the"): the side C. */
   const than = (at: number): Side | null => (wordAt(items, at) !== "than" ? null : full(wordAt(items, at + 1) === "the" ? at + 2 : at + 1));
@@ -677,6 +696,11 @@ function readClaimsOnce(sentence: string, op?: "add" | "subtract", trades: reado
       if (rels[k].eq) eqRead++;
       // A "value of the 4" side code cannot tie to one digit: the kind's own check reads it.
       if (!a || !b) continue;
+      // 2026-11-15 (voice fallbacks, turn 4): a digit named with "the" beside "is" says what the digit stands for, a
+      // place-value statement ("The carried 1 is a ten."). Code cannot tell which digit of which number "the 1" is, so it
+      // never reads the claim as an equation of the bare numbers: the claim stays unread, and the math review reads it.
+      // A trade ("the 2 becomes 12") is still read as a trade.
+      if (!rels[k].now && (namedDigit(chain[k]) || namedDigit(chain[k + 1]))) { literal = false; continue; }
       const same = near(a.value, b.value);
       const traded = rels[k].now && trade(a, b);
       if (!same && !traded && inPlace(a, b) && !boundInPlace(a, b)) unbound = true;

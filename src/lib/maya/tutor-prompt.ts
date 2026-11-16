@@ -1,15 +1,14 @@
 // The tutor core's prompt, output schema and brief (D-345). Savar approves the principles, not single lines: the 12
 // tutor rules below come from the approved teaching design (2026-11-14, section 3) and its research.
 import { MODEL_OUTPUT_SCHEMA, TUTOR_GATES } from "./proposal";
-import { answerReadWhole, askedRead, childAnswerOf, firstTimeLearner, type Session } from "./session";
+import { askedRead, childAnswerOf, childTurnFacts, firstTimeLearner, type Session } from "./session";
 import { saysGuess } from "./numbers";
-import { FINAL_ASK, TUTOR_FIRST_TIME_WORD_LIMIT } from "./tutor";
-import { childFacts, tutorKind, stepFacts, TUTOR_WORD_LIMIT } from "./tutor";
+import { FINAL_ASK, TUTOR_FIRST_TIME_WORD_LIMIT, tutorKind, stepFacts, TUTOR_WORD_LIMIT } from "./tutor";
 import type { TutorDrawing, TutorStepFact } from "./tutor-kind";
 import { valueText } from "@/lib/question-package";
 
-// Version 11 (Savar's call 2, 2026-11-15): version 10 is the board PR #1094 (B2).
-export const TUTOR_PROMPT_VERSION = "maya-tutor-11";
+// Version 12 combines the first-time teaching rules and the streamed continuation repair.
+export const TUTOR_PROMPT_VERSION = "maya-tutor-12";
 
 /** The turns of the call the brief holds. */
 const TUTOR_TRANSCRIPT_TURNS = 10;
@@ -53,7 +52,11 @@ export interface TutorBrief {
    */
   sent?: string[];
   notes: string[];
-  repair: { said: unknown; refusal: unknown } | null;
+  /**
+   * The refused message and why. `alreadySaid` (version 11, 2026-11-15): the sentences of it the child already heard
+   * (streamed); the repair continues after them and says only the rest.
+   */
+  repair: { said: unknown; refusal: unknown; alreadySaid?: string[] } | null;
 }
 
 const hide = (text: string, name: string | null | undefined) => {
@@ -89,7 +92,7 @@ export function tutorBrief(s: Session, repair: TutorBrief["repair"] = null): Tut
       : null,
     progress: { done: [...done], solved: s.solved !== null, helpGiven: s.tutor?.help ?? 0 },
     childTurn: s.turn ? hide(s.turn.text, name) : null,
-    facts: pkg && s.turn ? childFacts(pkg, s.turn.text, (v) => answerReadWhole(pkg, s.turn!.text, v, true)) : [],
+    facts: childTurnFacts(s),
     childAnswer: committed(s, (t) => hide(t, name)),
     learner: firstTimeLearner(s) ? "first_time" : null,
     asked: askedOf(s, (t) => hide(t, name)),
@@ -179,7 +182,7 @@ The reply, in this order (write each key in this order):
 - "act": "guide" for every teaching message. "close" only after the child solved the question and is done ("no", "done", "bye"), or wants to stop: a short goodbye, with no question. The call then ends.
 - "reading" comes after "say". It is bookkeeping code reads; it is never said. It must agree with "gate". "answers": each number the child gave as an answer, with its step id ("result" for the whole question), "problem" "target", and your verdict by the question's steps; a question or a request for help is not an answer. Set the flags that fit (help "more" or "show", unclear when you cannot tell what number the child said, stop, writing, offTopic, mathClaim, safety "concern" or "immediate" for harm or danger, unsafeRequest for harmful content, aboutMaya "identity" or "secret_friend", start "no_start" when the child cannot start, paper "written" when they say they wrote it); else "none", false, "" and [].
 - "noDraw": [] or the numbers of sentences in "say" (1 for the first) that must not draw. The board draws what you SAY: when a sentence plainly says one of these, the board draws it while you say it: a trade, "We trade 1 ten for 10 ones." (or "We trade 10 ones for 1 ten."); a digit, "Write 4 in the ones."; a row, "Write 68."; a step's equation, "12 minus 8 is 4."; a place, "Look at the tens."; a chart, "Let's put 45,672 in a place value chart."; a division, "Let's share 84 into 4 groups.". So when it helps, say each step plainly in these words, one step at a time, earlier work first (the trade before its digit). A sentence draws only what it says in full with this question's own numbers, and only what is new; a question, a "do not", an "if" or a "later" draws nothing. You may start a drawing sentence with "Let's show it:", "Look:" or "Watch:". "drawings" lists what this question's board can show; "drawn" is what the board shows now; "sent" is what the child's screen has not shown yet. Put a sentence in "noDraw" only when the board should stay still (for example a step you describe but want the child to write).
-- If "repair" is set, code refused your last message for the reason given: fix exactly that, and keep your teaching.`;
+- If "repair" is set, code refused your last message for the reason given: fix exactly that, and keep your teaching. If "repair.alreadySaid" is set, the child already heard those sentences: they stay said. Your "say" is only the rest of the message, going on from them: never say them again, never say anything that disagrees with them, and fit the whole message (them and your rest) in the word limit.`;
 
 /** The tutor's output schema: the conversational schema with only the tutor's acts and drawings. */
 export const TUTOR_OUTPUT_SCHEMA = {

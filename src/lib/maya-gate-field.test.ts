@@ -47,7 +47,7 @@ describe('the gate field comes first', () => {
     expect([...TUTOR_OUTPUT_SCHEMA.properties.gate.enum]).toEqual(['none', 'identity', 'safety', 'stop']);
     expect(TUTOR_PROMPT).toMatch(/"gate" comes first/);
     expect(TUTOR_PROMPT).toMatch(/"reading" comes after "say"/);
-    expect(TUTOR_PROMPT_VERSION).toBe('maya-tutor-11');
+    expect(TUTOR_PROMPT_VERSION).toBe('maya-tutor-12');
   });
   it('partialSay reads the gate before "say" and the reading after it', () => {
     const text = JSON.stringify(reply(MODEL_SAY, 'guide', { reading: { safety: 'concern' }, gate: 'none' }));

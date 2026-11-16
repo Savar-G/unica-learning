@@ -18,7 +18,11 @@ export interface TextLogInitial {
 export type TextLogEvent =
   | { kind: "input"; at: number; event: SessionEvent; error?: TraceError }
   /** `filler`: the voice worker's thinking phrase (an acknowledgement id) said when this repair started; absent otherwise. */
-  | { kind: "request"; at: number; requestId: number; source: "model" | "repair"; filler?: string }
+  /**
+   * `continuation` (2026-11-15, voice fallbacks): a tutor repair that started after streamed sentences and continues them
+   * (continuedSay). Fixed when the repair starts: sentences a plain repair streams itself never make it one.
+   */
+  | { kind: "request"; at: number; requestId: number; source: "model" | "repair"; filler?: string; continuation?: true }
   | { kind: "response"; at: number; requestId: number; proposal?: unknown; error?: TraceError; ms: number; fenced?: true; sent?: string[]; firstSayMs?: number; gateDisagrees?: true; priority?: Record<string, unknown> }
   /** `mathReviews`: two-layer true math (2026-11-15); absent in an event written before the math-truth review existed. */
   /**
@@ -56,8 +60,8 @@ export interface TextFold {
   controls: { event: SessionEvent; replaceTurn?: boolean; cancelled?: boolean }[];
   obligations: TraceObligation[];
   childState: "listening" | "child_speaking";
-  request: { id: number; source: "model" | "repair"; filler?: string } | null;
-  candidate: { requestId: number; proposal: unknown; ms: number; source: "model" | "repair"; fenced?: true; firstSayMs?: number; gateDisagrees?: true; filler?: string } | null;
+  request: { id: number; source: "model" | "repair"; filler?: string; continuation?: true } | null;
+  candidate: { requestId: number; proposal: unknown; ms: number; source: "model" | "repair"; fenced?: true; firstSayMs?: number; gateDisagrees?: true; filler?: string; continuation?: true } | null;
   /** D-341: sentences of the current Maya turn already streamed to the child; every later attempt of the turn starts with them. */
   sent?: string[];
   attempts: TraceAttempt[];
@@ -295,11 +299,13 @@ function flushDeferred(s: TextFold) {
     if (child?.status !== "dropped") applyInput(s, entry.event, undefined, false);
   }
 }
-function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt, reviews?: TalkReview[], mathReviews?: MathReview[], drawMode?: "derive") {
+function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt, reviews?: TalkReview[], mathReviews?: MathReview[], drawMode?: "derive", continues = false) {
   const before = s.session.state;
   // Two-layer true math: every math-truth review of this attempt is kept in the trace, whatever the step decides.
   if (mathReviews?.length) attempt.math = mathReviews.map((r) => ({ sentence: r.text, verdict: r.result.verdict, reason: r.result.reason, ...(r.result.retried ? { retried: true as const } : {}) }));
-  const event: SessionEvent = { type: "proposal", at: Math.max(at, s.session.now ?? 0), proposal: value, talkReviews: reviews, ...(mathReviews ? { mathReviews } : {}), ...(attempt.source === "fallback" ? { fallback: true } : {}), ...(s.sent?.length ? { sent: [...s.sent] } : {}), ...(drawMode ? { drawMode } : {}) };
+  // 2026-11-15 (voice fallbacks): a tutor repair that started after streamed sentences continues them (continuedSay).
+  const continuation = continues && attempt.source === "repair" && !!s.sent?.length && !!s.session.tutor;
+  const event: SessionEvent = { type: "proposal", at: Math.max(at, s.session.now ?? 0), proposal: value, talkReviews: reviews, ...(mathReviews ? { mathReviews } : {}), ...(attempt.source === "fallback" ? { fallback: true } : {}), ...(s.sent?.length ? { sent: [...s.sent] } : {}), ...(drawMode ? { drawMode } : {}), ...(continuation ? { continuation: true } : {}) };
   // B2: the trace says how this attempt's drawings were made.
   if (drawMode && s.session.tutor) attempt.drawMode = drawMode;
   let r = step(s.session, event);
@@ -439,11 +445,12 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
       flushDeferred(s);
       break;
     }
-    case "request": s.request = { id: e.requestId, source: e.source, ...(e.filler ? { filler: e.filler } : {}) }; break;
+    case "request": s.request = { id: e.requestId, source: e.source, ...(e.filler ? { filler: e.filler } : {}), ...(e.continuation ? { continuation: true as const } : {}) }; break;
     case "response": {
       if (s.request?.id !== e.requestId) break;
       const source = s.request.source;
       const filler = s.request.filler ? { filler: s.request.filler } : {};
+      const continuation = s.request.continuation ? { continuation: true as const } : {};
       if (e.sent?.length) {
         s.sent = [...(s.sent ?? []), ...e.sent];
         // Final check 11 (2026-11-15): the single point where streamed sentences are accepted. Their help is in the session
@@ -457,7 +464,7 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
         // applies, through the same priority path as a reading: the guidance or the disclosure is due.
         if (e.priority) receiveReading(s, e.priority, e.at);
       } else {
-        s.candidate = { requestId: e.requestId, proposal: e.proposal, ms: e.ms, source, ...(e.fenced ? { fenced: true as const } : {}), ...(e.firstSayMs !== undefined ? { firstSayMs: e.firstSayMs } : {}), ...(e.gateDisagrees ? { gateDisagrees: true as const } : {}), ...filler };
+        s.candidate = { requestId: e.requestId, proposal: e.proposal, ms: e.ms, source, ...(e.fenced ? { fenced: true as const } : {}), ...(e.firstSayMs !== undefined ? { firstSayMs: e.firstSayMs } : {}), ...(e.gateDisagrees ? { gateDisagrees: true as const } : {}), ...filler, ...continuation };
         const reading = e.proposal && typeof e.proposal === "object" ? (e.proposal as { reading?: unknown }).reading : undefined;
         // The tutor's gate (2026-11-15) is a priority reading too: a "safety" gate raises safety at once.
         const gate = e.proposal && typeof e.proposal === "object" ? (e.proposal as { gate?: unknown }).gate : undefined;
@@ -469,7 +476,7 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
       if (s.request?.id !== e.requestId || s.candidate?.requestId !== e.requestId) break;
       const candidate = s.candidate;
       s.request = null; s.candidate = null;
-      proposal(s, candidate.proposal, e.at, { source: candidate.source, proposal: candidate.proposal, refusal: null, ms: candidate.ms, ...(candidate.fenced ? { fenced: true as const } : {}), ...(candidate.firstSayMs !== undefined ? { firstSayMs: candidate.firstSayMs } : {}), ...(candidate.gateDisagrees ? { gateDisagrees: true as const } : {}), ...(e.reviewMs !== undefined ? { reviewMs: e.reviewMs } : {}), ...(candidate.filler ? { filler: candidate.filler } : {}) }, e.reviews, e.mathReviews, e.drawMode);
+      proposal(s, candidate.proposal, e.at, { source: candidate.source, proposal: candidate.proposal, refusal: null, ms: candidate.ms, ...(candidate.fenced ? { fenced: true as const } : {}), ...(candidate.firstSayMs !== undefined ? { firstSayMs: candidate.firstSayMs } : {}), ...(candidate.gateDisagrees ? { gateDisagrees: true as const } : {}), ...(e.reviewMs !== undefined ? { reviewMs: e.reviewMs } : {}), ...(candidate.filler ? { filler: candidate.filler } : {}) }, e.reviews, e.mathReviews, e.drawMode, candidate.continuation === true);
       break;
     }
     case "fallback": proposal(s, e.proposal, e.at, { source: "fallback", proposal: e.proposal, refusal: null }, undefined, undefined, e.drawMode); break;

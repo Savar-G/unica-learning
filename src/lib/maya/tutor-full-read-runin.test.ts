@@ -34,7 +34,7 @@ describe("the full-read guard: a word before the claim that makes its first numb
     ["We trade, and 2 ones become 12 ones.", "2 ones become 12 ones"],
     ["The 34 is 3 tens and 4 ones.", "34 is 3 tens and 4 ones"],
     ["And 8 plus 4 makes 12.", "8 plus 4 makes 12"],
-    // A digit named with "the" is a kind's own read (2026-11-14: "The 1 is 10." is refused).
+    // fullRead reads the span in full; readClaims then leaves a digit named with "the" unread (2026-11-15, voice fallbacks).
     ["The 1 is 10.", "1 is 10"],
   ])("%s: still read in full", (text, claim) => {
     expect(fullRead(text, ...span(text, claim))).toBe(true);

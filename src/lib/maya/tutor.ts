@@ -15,7 +15,7 @@
 import type { OperationPackage } from "@/lib/question-package";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, type TutorStepFact } from "./tutor-kind";
 import { tutorKindOf } from "./tutor-kinds";
-import { affirms, equationHolds, equationsOf, neverSayProblem, sayNumbers, sentencesOf, type SayEquation } from "./say-check";
+import { affirms, equationHolds, equationsOf, neverSayProblem, sayNumbers, sentenceKey, sentencesOf, type SayEquation } from "./say-check";
 import { exactSafe } from "./math-vocab";
 import { deniesWholeQuestion, echoesChild, selfCorrection } from "./teaching-reads";
 import { answerClaims, answerProblems, falseClaims, fullRead, guardedProblems, readClaims, REMAINDER_SAID, unsafeNumberSaid, type ColumnSum, type KindRead } from "./tutor-math";
@@ -297,12 +297,68 @@ const OP_SIGN: Record<SayEquation["ops"][number], string> = { "+": "+", "-": "�
 /** The operator words and symbols that join two operands of an expression the child offers. */
 const EXPRESSION_OP: Record<string, string> = { plus: "+", "+": "+", minus: "−", "-": "−", "take away": "−", times: "×", "×": "×", x: "×", "*": "×", "multiplied by": "×", "divided by": "÷", "÷": "÷", "/": "÷" };
 
+/** The operator signs of EXPRESSION_OP as the equation reader writes them (expressionKey). */
+const KEY_OP: Record<string, string> = { "+": "+", "−": "-", "×": "*", "÷": "/" };
+/** A place word a question may say after an operand ("4 tens minus 2 tens"). */
+const PLACE_AFTER = /^(?:ones?|tens?|hundreds?|thousands?)\b\s*/i;
+
+/**
+ * The expressions a question of Maya's asks for, each read in full: two or more whole numbers joined only by operator
+ * words, each operand with an optional place word after it ("What is 13 minus 6?", "What is 4 tens minus 2 tens?"). An
+ * expression followed by a relation ("13 minus 6 is 7") is a statement, not one the question asks for.
+ */
+export function questionExpressions(sentence: string): { operands: number[]; ops: string[] }[] {
+  const out: { operands: number[]; ops: string[] }[] = [];
+  const tokens = sayNumbers(sentence);
+  let k = 0;
+  while (k < tokens.length) {
+    if (!tokens[k].q || tokens[k].q![1] !== 1) { k++; continue; }
+    const run = [tokens[k]];
+    const ops: string[] = [];
+    while (k + 1 < tokens.length && tokens[k + 1].q && tokens[k + 1].q![1] === 1) {
+      const gap = sentence.slice(run.at(-1)!.end, tokens[k + 1].at).trim().toLowerCase().replace(PLACE_AFTER, "").trim();
+      const op = EXPRESSION_OP[gap];
+      if (!op) break;
+      ops.push(KEY_OP[op]);
+      run.push(tokens[++k]);
+    }
+    k++;
+    if (run.length < 2) continue;
+    // Both boundaries must be complete: an unread operation, fraction or relation cannot leave a prefix to credit.
+    // A colon can separate the teaching lead-in from the question ("Take away the 6 ones: what is 13 minus 6?").
+    const before = sentence.slice(0, run[0].at).split(":").at(-1)!.trim();
+    if (!/^(?:(?:now|so)[,\s]+)?(?:what(?:'s| is| are)|what do you get (?:for|from)|how much is|calculate|work out)?$/i.test(before)) continue;
+    const after = sentence.slice(run.at(-1)!.end).trimStart().replace(PLACE_AFTER, "").trim();
+    if (!/^(?:(?:in all|altogether|now)\s*)?\?$/i.test(after)) continue;
+    out.push({ operands: run.map((t) => t.q![0]), ops });
+  }
+  return out;
+}
+
+/**
+ * 2026-11-15 (voice fallbacks, turn 7): the step that Maya's question asks, read only in full: the question holds one
+ * expression (questionExpressions), and it is the expression of one equation in exactly one step's work ("What do you get
+ * for 13 minus 6?" asks the ones of 83 − 46, where 13 − 6 = 7). `value` is that equation's result: the number the child
+ * says for the step ("What is 7 plus 9?" is 16 for the ones of 27 + 39). Null for any other question.
+ */
+export function askedStep(pkg: OperationPackage, question: string): { step: string; value: number } | null {
+  if (!/\?\s*$/.test(question)) return null;
+  const asked = questionExpressions(question);
+  if (asked.length !== 1) return null;
+  const key = expressionKey(asked[0].operands, asked[0].ops);
+  const hits = stepFacts(pkg).flatMap((st) => equationsOf(st.work).flatMap((e) => {
+    const whole = [...e.operands, e.result].every((o) => o.q !== null && o.q[1] === 1);
+    return !e.negated && whole && equationHolds(e) === true && expressionKey(e.operands.map((o) => o.q![0]), e.ops) === key ? [{ step: st.id, value: e.result.q![0] }] : [];
+  }));
+  return hits.length > 0 && hits.every((h) => h.step === hits[0].step && h.value === hits[0].value) ? hits[0] : null;
+}
+
 /**
  * Code's verdict on every number and every equation in the child's turn, as sentences for the brief. Final check 8
  * (2026-11-15): an equation is printed only when code read every token of its clause (`equationsOf` with `whole`): "3
  * times 2 is 6 tens", "It is not true that 3 times 2 is 7" print no equation, never one of their parts.
  */
-export function childFacts(pkg: OperationPackage, text: string, readWhole: (value: number) => boolean = () => false): string[] {
+export function childFacts(pkg: OperationPackage, text: string, readWhole: (value: number) => boolean = () => false, answer: { value: number | string | null; verdict: "right" | "wrong" | "unknown" } | null = null): string[] {
   const facts: string[] = [];
   /** Numbers an equation fact below already states. */
   const inEquations = new Set<number>();
@@ -350,7 +406,13 @@ export function childFacts(pkg: OperationPackage, text: string, readWhole: (valu
     if (seen.has(t.q[0]) || inEquations.has(t.q[0])) continue;
     seen.add(t.q[0]);
     if (!readWhole(t.q[0])) { unread = true; continue; }
-    facts.push(`The child said ${t.q[0]}: ${numberMeaning(pkg, t.q[0])}.`);
+    // 2026-11-15 (voice fallbacks, turn 7): one verdict. The number the child committed to (code's childAnswer) carries
+    // that verdict in its own fact, so a fact never says "right for the ones" beside an "unknown" or "wrong" answer.
+    // An "unknown" with no value (a tentative "is it 7?") is about every number of the turn.
+    const judged = answer && (answer.value === t.q[0] || (answer.value === null && answer.verdict === "unknown")) && answer.verdict !== "right"
+      ? answer.verdict === "wrong" ? ` As the child's answer this turn it is wrong (childAnswer "wrong").` : ` Code does not judge it: it cannot tell whether the child gave ${t.q[0]} as their answer (childAnswer "unknown").`
+      : "";
+    facts.push(`The child said ${t.q[0]}: ${numberMeaning(pkg, t.q[0])}.${judged}`);
   }
   if (unread) facts.push("Code did not read all of the child's words in full: it cannot say which number the child gave, or whether it is right.");
   return facts;
@@ -715,6 +777,32 @@ export function tutorStreamContext(pkg: OperationPackage, text: string, stance: 
 
 /** A sentence that starts by saying an answer is not right. */
 const DENIES = /^\s*(?:not quite|not yet|not right|no\b|nope|that'?s not|that isn'?t|incorrect|close)/i;
+
+/**
+ * 2026-11-15 (voice fallbacks): a repair that CONTINUES a message whose first sentences were already said (streamed). The
+ * sentences said are fixed: the message is them, then the repair's own sentences. A repair that starts by saying the
+ * fixed sentences again, in order, has them left out once (`echoed`, how many). Null when nothing is left after them, or
+ * when the rest says a fixed sentence again (by sentenceKey): a continuation never repeats what the child heard.
+ * Pure: the voice turn and a streaming chat turn use it the same way.
+ */
+export function continuedSay(sent: readonly string[], say: string): { text: string; echoed: number } | null {
+  const rest = sentencesOf(say.trim());
+  let echoed = 0;
+  while (echoed < sent.length && echoed < rest.length && sentenceKey(rest[echoed]) === sentenceKey(sent[echoed])) echoed++;
+  const tail = rest.slice(echoed);
+  const fixed = new Set(sent.map(sentenceKey));
+  if (tail.length === 0 || tail.some((x) => fixed.has(sentenceKey(x)))) return null;
+  return { text: [...sent, ...tail].join(" "), echoed };
+}
+
+/**
+ * The steps whose own equation the sentences say as a true equation ("13 minus 6 is 7." tells the ones of 83 − 46): after
+ * those sentences code's line asks the next step, never one the child just heard told or got right.
+ */
+export function stepsStated(pkg: OperationPackage, sentences: readonly string[]): string[] {
+  const said = new Set(sentences.flatMap((x) => equationsOf(x).filter((e) => !e.negated && equationHolds(e) === true && [...e.operands, e.result].every((o) => o.q?.[1] === 1)).map((e) => expressionKey(e.operands.map((o) => o.q![0]), e.ops))));
+  return stepFacts(pkg).filter((st) => equationsOf(st.work).some((e) => [...e.operands, e.result].every((o) => o.q?.[1] === 1) && said.has(expressionKey(e.operands.map((o) => o.q![0]), e.ops)))).map((st) => st.id);
+}
 
 /** Code's honest line when the model's message failed twice (D-345): one short line and the step's question. */
 export function tutorFallbackText(pkg: OperationPackage, done: readonly string[], solved: boolean, asked?: string | null): string {

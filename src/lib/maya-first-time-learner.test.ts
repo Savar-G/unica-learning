@@ -55,7 +55,7 @@ describe("2. never the child's own question back (#1105)", () => {
     expect((await s.child(ASK)).say.join(" ")).toBe("52 is 5 tens and 2 ones. What is 12 minus 8?");
   });
   it("the prompt says so, and its first-sentence examples hold no echo", () => {
-    expect(TUTOR_PROMPT_VERSION).toBe("maya-tutor-11");
+    expect(TUTOR_PROMPT_VERSION).toBe("maya-tutor-12");
     expect(TUTOR_PROMPT).toContain(`Never say the child's own question back to them ("What is 2 minus 8?" after "Can you explain 2 minus 8?"): start with the explanation.`);
     expect(TUTOR_PROMPT).toContain(`one plain question about the next step, never the child's own question: "What is 12 minus 8?"`);
   });
