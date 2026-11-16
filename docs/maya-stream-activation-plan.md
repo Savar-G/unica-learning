@@ -18,3 +18,13 @@ The lead applied `20261116192537_maya_stream_probe_calls.sql` through Supabase M
 `npm run db:types` and `npm run db:checks` generated the schema files from the live project. The output also includes concurrent additive AI usage and receipt schema already applied by other work. The application type check and 26 state-list checks passed. Hosted process recovery remains a separate required check.
 
 Review A found that the former rollback pins omit the late technical-outcome repair. The corrected off procedure keeps the repaired release and all pending records. No rollback target may remove that repair while an incomplete streamed call remains unsettled.
+
+## Hosted process proof (2026-11-16)
+
+All eight cases passed at clean source `cfe42c997752434c57beb67f8bb22ff18ad77e3e`. The 225-file worker source hash is `50a4db929428cb51d24c96b71c0b45c0a10017e3b0b685c11966a4b117e82a4b`. The cases cover pending-only and confirmed-prefix loss through retry, end and late sweep, plus completed streaming and whole JSON. Each case used separate owned processes and the isolated hosted table. All six interrupted calls ended as `technical_issue`. A third process asked no model or reviewer and created no new effects in all eight cases.
+
+The first hosted run exposed a probe defect: raw JSON fingerprints differed after JSONB changed object-key order. Deep comparisons matched all three drawings and their command order. The local transport now stores keys in JSONB order. That test failed three cases before the comparison repair and passed all five tests after it. Fingerprints now use the existing `canonical` helper and retain every value and array order. Production recovery code did not change for this probe correction.
+
+All 12 pending writes, 6 confirmation writes and 12 ownership reads returned HTTP 200 with one row. All 6 old-owner checkpoints and 6 old-owner final saves returned HTTP 200 with zero rows. Pending-write times ranged from 48 to 115 ms. The six measured dispatch intervals after the ownership response ranged from 0.10 to 0.30 ms. These include client parsing; they do not prove atomic database-to-dispatch behavior or browser receipt.
+
+The lead inspected the exact eight ended fake rows, then removed only those IDs through the constrained cleanup command. Cleanup returned HTTP 200 and eight rows. A separate hosted count confirmed zero probe rows. No production call or family row changed. Models and external effects were fake or in memory. This proof does not establish hosted event/note idempotency across crashes, production admission RPCs, full sweep discovery, browser receipt or paid-provider behavior. Independent settlement, exact-head CI and deployment still gate activation.
