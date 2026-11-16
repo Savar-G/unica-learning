@@ -233,3 +233,52 @@ describe("an early review ends when no one will read it (review of #1109)", () =
     expect(t.said).toBe(REPAIR);
   });
 });
+
+// Re-check of #1109 (also on main since #1099): the final safety and math reviews took no signal of the turn. In a chat
+// probe the call ended while a safety review waited; its hedge sent a second request after the end, and the first stayed
+// open to its time limit. Now one controller owned by the turn ends every review the turn started (early, final, repair,
+// hedge copies; math and safety; chat and voice) at the call's end, at a new turn, and when the turn is done.
+describe("the call's end stops every review of the turn (re-check of #1109)", () => {
+  /** A turn whose model answers at once with no stream (so only final reviews run); the call ends `endAt` ms later. */
+  async function endDuring(voice: boolean, revs: ReturnType<typeof reviewers>, endAt: number, reviewTimeLimitMs?: number) {
+    vi.useFakeTimers({ now: 100_000 });
+    const session = createTextSession({
+      callId: "end-during-review", package: SUB, tutor: true, random: 3, clock: () => Date.now(),
+      model: conversationalFake({ answer: () => reply(MESSAGE, "guide") }),
+      reviewer: revs.reviewer, mathReviewer: revs.mathReviewer,
+      ...(reviewTimeLimitMs ? { reviewTimeLimitMs } : {}),
+      ...(voice ? { modelRepair: false, onSayPart: () => {} } : { channel: "chat" as const }),
+    });
+    await session.start();
+    revs.requests.length = 0;
+    const childAt = Date.now();
+    const pending = session.child(LOST);
+    await vi.advanceTimersByTimeAsync(endAt);
+    const endedAt = Date.now();
+    const finished = session.finish({ reason: "child_stopped" });
+    await vi.advanceTimersByTimeAsync(20_000);
+    await pending;
+    await finished;
+    return { childAt, endedAt };
+  }
+
+  it("chat: a final safety review that waits when the call ends is stopped then; its copy is never sent", async () => {
+    const revs = reviewers(() => TRUE, (line) => (line === SLOW ? "hang" : { verdict: "pass" }));
+    const t = await endDuring(false, revs, 1_000);
+    const slow = revs.requests.filter((r) => r.sentence === SLOW && r.kind === "safety");
+    // Started after the model's answer, so it is the final check's own review.
+    expect(slow).toHaveLength(1);
+    expect(slow[0].abortedAt).toBe(t.endedAt);
+    expect(revs.requests.every((r) => r.at <= t.endedAt)).toBe(true);
+  });
+
+  it("voice: a final math review that waits when the call ends is stopped then; its copy is never sent", async () => {
+    // A 5 s limit, so the copy would go at VOICE_MATH_REVIEW_HEDGE_MS (3.2 s), after the end at 1 s.
+    const revs = reviewers((s) => (s === SLOW ? "hang" : TRUE));
+    const t = await endDuring(true, revs, 1_000, 5_000);
+    const slow = revs.requests.filter((r) => r.sentence === SLOW && r.kind === "math");
+    expect(slow).toHaveLength(1);
+    expect(slow[0].abortedAt).toBe(t.endedAt);
+    expect(revs.requests.every((r) => r.at <= t.endedAt)).toBe(true);
+  });
+});

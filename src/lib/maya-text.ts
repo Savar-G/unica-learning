@@ -780,6 +780,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
    * review that ends sends no copy (its hedge timer stops with it). One controller per request, by its id.
    */
   const reviewStops = new Map<number, AbortController>();
+  /** The reviews of the turn that runs now (`schedule`); aborted with the turn's controller and when the turn is done. */
+  let turnReviews = new AbortController();
   const stopReviews = (requestId?: number) => {
     for (const [id, c] of reviewStops) if (requestId === undefined || id === requestId) { c.abort(); reviewStops.delete(id); }
   };
@@ -905,7 +907,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     /** One review's own stop, which also ends with this request's and with the turn's controller. */
     const reviewStop = () => {
       const stop = new AbortController();
-      return { stop, signal: AbortSignal.any([controller.signal, requestStop.signal, stop.signal]) };
+      return { stop, signal: AbortSignal.any([controller.signal, turnReviews.signal, requestStop.signal, stop.signal]) };
     };
     // Round 4: code's plan for the turn is settled before the call; the "kind" the model writes first decides how its
     // sentences go out: math or help stream (math-only sentences at once, others after their own review, started the
@@ -1151,6 +1153,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const before = folded.session;
     const stance = before.conversational ? read(() => codeStance(before)) : "none";
     // Each review's time: its own limit, or the time left of a voice repair when that is less.
+    const turnSignal = AbortSignal.any([controller.signal, turnReviews.signal]);
     const talkMs = reviewLimit(options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS));
     const mathMs = reviewLimit(mathLimit(before.conversational === true));
     // A sentence the stream of this request already sent to the same review is not reviewed twice (round 4). Every other
@@ -1162,7 +1165,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const streamed = streamReviews.get(key);
       if (streamed && streamed.requestId === requestId) used.push(key);
       // Call 21665dc6: a review the stream started is read for no longer than a review started now would run.
-      const result = streamed && streamed.requestId === requestId ? within(streamed.result, talkMs, (): TalkReviewResult => { streamed.stop?.abort(); return { verdict: "error", reason: "the review did not answer in time" }; }) : runReview(options.reviewer!, input, talkMs, reviewError, talkHedge);
+      const result = streamed && streamed.requestId === requestId ? within(streamed.result, talkMs, (): TalkReviewResult => { streamed.stop?.abort(); return { verdict: "error", reason: "the review did not answer in time" }; }) : runReview(options.reviewer!, input, talkMs, reviewError, talkHedge, turnSignal);
       return result.then((r) => ({ text, result: r }));
     })) : Promise.resolve([]);
     // The math-truth reviews run beside the safety reviews; one the stream started for the same input is used once.
@@ -1178,7 +1181,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const key = mathKey(input);
       const streamed = streamMathReviews.get(key);
       if (streamed && streamed.requestId === requestId) mathUsed.push(key);
-      const result = streamed && streamed.requestId === requestId ? within(streamed.result, mathMs, () => { streamed.stop?.abort(); return mathLate(before.turns.length, text); }) : reviewMath(input, before.turns.length, mathMs, reviewError);
+      const result = streamed && streamed.requestId === requestId ? within(streamed.result, mathMs, () => { streamed.stop?.abort(); return mathLate(before.turns.length, text); }) : reviewMath(input, before.turns.length, mathMs, reviewError, turnSignal);
       return result.then((r) => ({ text, result: r }));
     })).then((all) => mathTexts.map((text) => all.find((m) => m.text === text && m.result.verdict !== "true") ?? all.find((m) => m.text === text)!)) : Promise.resolve([]);
     const reviewed = Promise.all([reviews, mathReviews]).then(([results, maths]) => {
@@ -1291,6 +1294,12 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       if (version !== generation) return { ...newOutput(), cancelled: true };
       const controller = new AbortController();
       active = controller;
+      // Review of #1109: the turn owns its reviews. Every review it starts (early, final, repair; math and safety; each
+      // hedge copy) takes this signal, so each ends, with its hedge timer, when the call ends or a new turn replaces this
+      // one (the turn's controller aborts) and when the turn is done (finally).
+      const reviews = new AbortController();
+      controller.signal.addEventListener("abort", () => reviews.abort(), { once: true });
+      turnReviews = reviews;
       try {
         if (respond) await pump(controller);
         if (controller.signal.aborted) return { ...newOutput(), cancelled: true };
@@ -1311,7 +1320,11 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         options.onError?.(error, "session");
         append({ kind: "input", at: now(), event: { type: "technical", at: now(), detail: "the session failed" }, error: classifyError(error, "local") });
         throw error;
-      } finally { if (active === controller) active = null; }
+      } finally {
+        if (active === controller) active = null;
+        // The turn is done: a review still running is read by no one, so it ends and sends no copy.
+        reviews.abort();
+      }
     });
     const settled = next.finally(() => { scheduled--; });
     queue = settled.catch(() => undefined);
