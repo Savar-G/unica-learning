@@ -1,5 +1,5 @@
 /* Scan pages (round r565 picked): the start screen, the stack, the sheets. Every link and button is at least 44 px. */
-.scan-pages { --scan-leaf: #16a06a; --scan-leaf-ink: #0d6e48; --scan-accent-ink: #b43d12; display: grid; gap: 20px; }
+.scan-pages { --scan-leaf: #16a06a; --scan-leaf-ink: #0d6e48; --scan-accent-ink: var(--tang-ink); display: grid; gap: 20px; }
 .scan-pages .lead { margin: 0; }
 .scan-pages h2 { margin: 0; }
 /* Which child's pages show (F4): a small "Showing: Leah ▾" switch, not a form field. Photos need no choice of child. */
