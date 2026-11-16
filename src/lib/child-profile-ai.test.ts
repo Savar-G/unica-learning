@@ -363,9 +363,9 @@ describe("the findings deadline", () => {
 });
 
 describe("the switch", () => {
-  it("is off without OPENROUTER_API_KEY, on with it, and the fake only in development", () => {
+  it("is off without PROFILE_OPENROUTER_API_KEY, on with it, and the fake only in development", () => {
     expect(childProfileAiClient({})).toBeNull();
-    expect(childProfileAiClient({ OPENROUTER_API_KEY: "sk-or-test", AI_MODEL: "google/gemini-3-pro" })?.model).toBe("google/gemini-3-pro");
+    expect(childProfileAiClient({ PROFILE_OPENROUTER_API_KEY: "sk-or-test", AI_MODEL: "google/gemini-3-pro" })?.model).toBe("google/gemini-3-pro");
     expect(childProfileAiClient({ NODE_ENV: "development", AI_REVIEW_FAKE: "sure" })?.model).toBe("fake");
     expect(childProfileAiClient({ NODE_ENV: "production", AI_REVIEW_FAKE: "sure" })).toBeNull();
   });

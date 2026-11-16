@@ -35,7 +35,8 @@ Savar creates the LiveKit Cloud project (see [Accounts and settings](maya-voice.
    ```sh
    SUPABASE_URL=https://cdjobwsyzndtltzfpyqa.supabase.co
    SUPABASE_SECRET_KEY=sb_secret_...        # the worker's own key, maya_voice_worker
-   OPENROUTER_API_KEY=...
+   MAYA_OPENROUTER_API_KEY=...
+   PROFILE_OPENROUTER_API_KEY=...          # optional profile findings, a different product key
    AI_MODEL=anthropic/claude-sonnet-5.5
    MAYA_STT=fake                            # inference only after the privacy gate
    MAYA_TTS=fake                            # inference only after the privacy gate

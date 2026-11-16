@@ -24,7 +24,7 @@ describe("the page layout gate", () => {
     expect(activePageGates(pageGateTerms("some/other-model"))).toEqual([]);
     const other = fakeDecisionClient({ model: "some/other-model", answer: () => { throw new Error("must not be asked"); } });
     expect(pageGateChecker(other)).toBeNull();
-    expect(decisionPageGateChecker({ DECISIONS_OPENROUTER_API_KEY: "synthetic" })?.model).toBe("typesafe/jev-1.14");
+    expect(decisionPageGateChecker({ WORKBOOK_OPENROUTER_API_KEY: "synthetic" })?.model).toBe("typesafe/jev-1.14");
   });
 
   it("sends one scaled page image and only the gates that are on, and flags a page at or above a threshold", async () => {

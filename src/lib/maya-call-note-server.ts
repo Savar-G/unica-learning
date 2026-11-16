@@ -16,7 +16,7 @@ import type { QuestionPackage } from "@/lib/question-package";
 // The parent's call notes on the server (#331): the note module (src/lib/maya-call-note.ts) with its seams. The call
 // module runs `writeNoteAfterCall` when a call ends (the `note` seam of src/lib/maya-call.ts); it writes with the secret
 // key. The parent home reads with the parent's own session (`parentCallNotes`), so row-level security gives only that
-// family's notes. The AI: OpenRouter with OPENROUTER_API_KEY, the fake in development with AI_REVIEW_FAKE, else none
+// family's notes. The AI: OpenRouter with MAYA_OPENROUTER_API_KEY, the fake in development with AI_REVIEW_FAKE, else none
 // (then every note is code only). With the spending ledger (D-290), the note's AI request is reserved and settled for
 // the call's child; a refused or failed request leaves the note code only.
 

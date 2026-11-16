@@ -78,14 +78,16 @@ if [ ! -f "$ENV_FILE" ]; then
 # Codex requires an explicit absolute account home with a stored ChatGPT login.
 # WORKBOOK_CODEX_HOME=/absolute/path/to/selected-codex-home
 # The API fallback (OpenRouter), used only with the Claude selection.
-# OPENROUTER_API_KEY=
+# WORKBOOK_OPENROUTER_API_KEY=
+# Optional profile findings use their own product key, never the workbook key.
+# PROFILE_OPENROUTER_API_KEY=
 # subscription (default) or api: which goes first.
 # WORKBOOK_AI_PRIMARY=subscription
 # Which Claude account runs `claude -p`: a Claude config folder. Default: the normal ~/.claude login.
 # WORKBOOK_CLAUDE_CONFIG_DIR=
 ENV
   chmod 600 "$ENV_FILE"
-  echo "Wrote $ENV_FILE: add OPENROUTER_API_KEY there for the API fallback."
+  echo "Wrote $ENV_FILE: add WORKBOOK_OPENROUTER_API_KEY there for the API fallback."
 fi
 
 cat > "$PLIST" <<PLIST

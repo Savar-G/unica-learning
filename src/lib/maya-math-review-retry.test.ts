@@ -291,7 +291,7 @@ describe("the retry in a call", () => {
 });
 
 describe("the retry in Maya's spend and route", () => {
-  const env = { OPENROUTER_API_KEY: "test-key", AI_MODEL: "anthropic/claude-sonnet-5.5", NODE_ENV: "test" };
+  const env = { MAYA_OPENROUTER_API_KEY: "test-key", AI_MODEL: "anthropic/claude-sonnet-5.5", NODE_ENV: "test" };
   const P = "00000000-0000-4000-8000-0000000000a1", C = "00000000-0000-4000-8000-0000000000c1";
   const callRow = { id: "00000000-0000-4000-8000-0000000000f1", kind: "chat", parentId: P, childId: C };
   afterEach(() => vi.unstubAllGlobals());
@@ -326,7 +326,7 @@ describe("the retry in Maya's spend and route", () => {
       return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: '{"verdict":"true","reason":"all true"}' } }], usage: { cost: 0.001 } }), { status: 200 });
     }));
     const { aiClient } = await import("@/lib/ai-client");
-    await aiMathReviewer(aiClient(env, "anthropic/claude-haiku-5.5")!).review(mathReviewInput(sessionOf(SUB), "Now there are 12 ones."), new AbortController().signal);
+    await aiMathReviewer(aiClient(env, "anthropic/claude-haiku-5.5", { usage: { feature: "maya_review" } })!).review(mathReviewInput(sessionOf(SUB), "Now there are 12 ones."), new AbortController().signal);
     expect(formats[0]).toMatchObject({ type: "json_schema", json_schema: { strict: true } });
   });
 });

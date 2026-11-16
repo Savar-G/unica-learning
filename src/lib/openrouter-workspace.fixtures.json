@@ -1,0 +1,257 @@
+{
+  "workspace": {
+    "request": {
+      "metrics": [
+        "total_usage",
+        "request_count"
+      ],
+      "dimensions": [
+        "workspace"
+      ],
+      "filters": [
+        {
+          "field": "workspace",
+          "operator": "eq",
+          "value": "2468d17e-b7eb-467f-b1ef-feec9e328d58"
+        }
+      ],
+      "time_range": {
+        "start": "2026-10-18T07:00:00.000Z",
+        "end": "2026-11-17T07:00:00.000Z"
+      },
+      "limit": 1000,
+      "order_by": {
+        "field": "total_usage",
+        "direction": "desc"
+      }
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "data": [
+          {
+            "workspace": "Unica Learning",
+            "total_usage": 56.741652,
+            "request_count": 20281
+          }
+        ],
+        "metadata": {
+          "query_time_ms": 50,
+          "row_count": 1,
+          "truncated": false
+        },
+        "cachedAt": 1794863736375
+      }
+    }
+  },
+  "model": {
+    "request": {
+      "metrics": [
+        "total_usage",
+        "request_count"
+      ],
+      "dimensions": [
+        "model"
+      ],
+      "filters": [
+        {
+          "field": "workspace",
+          "operator": "eq",
+          "value": "2468d17e-b7eb-467f-b1ef-feec9e328d58"
+        }
+      ],
+      "time_range": {
+        "start": "2026-10-18T07:00:00.000Z",
+        "end": "2026-11-17T07:00:00.000Z"
+      },
+      "limit": 1000,
+      "order_by": {
+        "field": "total_usage",
+        "direction": "desc"
+      }
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "data": [
+          {
+            "model": "anthropic/claude-sonnet-5.5-20260928",
+            "total_usage": 48.710758,
+            "request_count": 4220
+          },
+          {
+            "model": "anthropic/claude-haiku-5.5-20261007",
+            "total_usage": 4.811096,
+            "request_count": 12696
+          },
+          {
+            "model": "anthropic/claude-opus-5.5-20260921",
+            "total_usage": 1.575368,
+            "request_count": 65
+          },
+          {
+            "model": "openai/gpt-5.4-20260305",
+            "total_usage": 0.451203,
+            "request_count": 21
+          },
+          {
+            "model": "openai/gpt-6.1-terra-20261026",
+            "total_usage": 0.439341,
+            "request_count": 80
+          },
+          {
+            "model": "google/gemini-3.8-flash-20260902",
+            "total_usage": 0.209164,
+            "request_count": 82
+          },
+          {
+            "model": "google/gemini-decision-1-20261111",
+            "total_usage": 0.121059,
+            "request_count": 1105
+          },
+          {
+            "model": "typesafe/jev-1.14-20261014",
+            "total_usage": 0.112501,
+            "request_count": 1618
+          },
+          {
+            "model": "google/gemini-3.5-flash-lite-20260721",
+            "total_usage": 0.05996,
+            "request_count": 42
+          },
+          {
+            "model": "google/gemini-3.1-flash-lite-20260507",
+            "total_usage": 0.046107,
+            "request_count": 42
+          },
+          {
+            "model": "mistralai/mistral-small-2603",
+            "total_usage": 0.042937,
+            "request_count": 42
+          },
+          {
+            "model": "deepseek/deepseek-v4.1-flash-20261017",
+            "total_usage": 0.036525,
+            "request_count": 44
+          },
+          {
+            "model": "minimax/minimax-m3.1-flash-20261019",
+            "total_usage": 0.033588,
+            "request_count": 42
+          },
+          {
+            "model": "openai/gpt-5.4-mini-20260317",
+            "total_usage": 0.030637,
+            "request_count": 41
+          },
+          {
+            "model": "openai/gpt-6-luna-20260922",
+            "total_usage": 0.025418,
+            "request_count": 43
+          },
+          {
+            "model": "bytedance-seed/seed-1.6-flash-20250625",
+            "total_usage": 0.020612,
+            "request_count": 44
+          },
+          {
+            "model": "z-ai/glm-5.3-flash-20260826",
+            "total_usage": 0.007869,
+            "request_count": 44
+          },
+          {
+            "model": "xiaomi/mimo-v2.6-flash-20260921",
+            "total_usage": 0.005684,
+            "request_count": 7
+          },
+          {
+            "model": "openai/gpt-4o-mini-transcribe",
+            "total_usage": 0.001825,
+            "request_count": 3
+          }
+        ],
+        "metadata": {
+          "query_time_ms": 63,
+          "row_count": 19,
+          "truncated": false
+        },
+        "cachedAt": 1794863737068
+      }
+    }
+  },
+  "api_key_id": {
+    "request": {
+      "metrics": [
+        "total_usage",
+        "request_count"
+      ],
+      "dimensions": [
+        "api_key_id"
+      ],
+      "filters": [
+        {
+          "field": "workspace",
+          "operator": "eq",
+          "value": "2468d17e-b7eb-467f-b1ef-feec9e328d58"
+        }
+      ],
+      "time_range": {
+        "start": "2026-10-18T07:00:00.000Z",
+        "end": "2026-11-17T07:00:00.000Z"
+      },
+      "limit": 1000,
+      "order_by": {
+        "field": "total_usage",
+        "direction": "desc"
+      }
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "data": [
+          {
+            "api_key_id": "Maya AI Teaching Assistant Key",
+            "total_usage": 49.239462,
+            "request_count": 16473
+          },
+          {
+            "api_key_id": "cedric-scan-marking-dev",
+            "total_usage": 3.582337,
+            "request_count": 1069
+          },
+          {
+            "api_key_id": "Unica Learning AI Marking",
+            "total_usage": 2.830139,
+            "request_count": 750
+          },
+          {
+            "api_key_id": "Unica Learning Assessment Key",
+            "total_usage": 0.897868,
+            "request_count": 101
+          },
+          {
+            "api_key_id": "Decisions Model Key",
+            "total_usage": 0.162606,
+            "request_count": 1880
+          },
+          {
+            "api_key_id": "MCP: OpenRouter MCP: Claude Code (openrouter)",
+            "total_usage": 0.028946,
+            "request_count": 6
+          },
+          {
+            "api_key_id": "Unica Learning Parent Explanations",
+            "total_usage": 0.000294,
+            "request_count": 2
+          }
+        ],
+        "metadata": {
+          "query_time_ms": 13,
+          "row_count": 7,
+          "truncated": false
+        },
+        "cachedAt": 1794863736804
+      }
+    }
+  }
+}

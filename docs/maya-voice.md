@@ -98,7 +98,7 @@ Agents create no accounts. Create these, then set the values below.
 | 3 | **Inworld** (inworld.ai) | Only for the direct route: an API key (Base64 "Basic" key from the Inworld Portal) | The key. |
 | - | **ElevenLabs** (elevenlabs.io) | Only for the listening test: an API key | `ELEVEN_API_KEY`. The worker does not use it. |
 | 4 | **Supabase** key for the worker | Project `pagewise` → Settings → API keys → new secret key named `maya_voice_worker` | The `sb_secret_...` value. The worker reads and writes calls, connection events, learning events and the child profile with it. |
-| - | OpenRouter | Already exists | `OPENROUTER_API_KEY` (Maya's model, `AI_MODEL`). |
+| - | OpenRouter | Already exists | `MAYA_OPENROUTER_API_KEY` (Maya's model, `AI_MODEL`). Root must configure the dedicated key before release. |
 
 ### Where each value goes
 
@@ -115,9 +115,10 @@ Agents create no accounts. Create these, then set the values below.
 | `INWORLD_API_KEY` | No | Yes | Needed when `MAYA_TTS=inworld`. |
 | `MAYA_VOICE` | No | Optional | The voice id. Maya's voice is Cartesia "Katie", `f786b574-daa5-4673-aa0c-cbe3e8534c02` (D-338), the default with the default model. Needed with another Inference model or with `inworld`. |
 | `MAYA_TTS_MODEL` | No | Optional | With `inference`: `cartesia/sonic-3.6` (default, D-338) or `inworld/inworld-tts-2`. With `inworld`: default `inworld-tts-2`; `inworld-tts-2-flash` is the cheaper option. |
-| `OPENROUTER_API_KEY`, `AI_MODEL` | Already set | Yes | Maya's model. Without the key the worker uses the fake rule player. |
+| `MAYA_OPENROUTER_API_KEY`, `AI_MODEL` | Root configures before release | Yes | Maya's model. Without the key the worker uses the fake rule player. |
+| `PROFILE_OPENROUTER_API_KEY` | Optional | Optional | Child profile findings after calls. Use a credential distinct from Maya's. The receipt retains the call, family and child IDs. |
 | `MAYA_REVIEW_MODEL` | Already optional | Optional | The free-talk review model. |
-| `MAYA_MATH_REVIEW_MODEL` | Optional | Optional | The tutor core's math-truth review model (default `anthropic/claude-haiku-5.5`, `docs/maya-tutor.md`). It uses `OPENROUTER_API_KEY`; without the key a tutor sentence code did not read whole is refused. |
+| `MAYA_MATH_REVIEW_MODEL` | Optional | Optional | The tutor core's math-truth review model (default `anthropic/claude-haiku-5.5`, `docs/maya-tutor.md`). It uses `MAYA_OPENROUTER_API_KEY`; without the key a tutor sentence code did not read whole is refused. |
 | `MAYA_MATH_REVIEW_RETRY_MODEL` | Optional | Optional | The model asked once when the math review is "unsure" (default `anthropic/claude-sonnet-5.5`, `docs/maya-tutor.md`). Same key. |
 | `MAYA_USD_TO_CAD`, `MAYA_MONTHLY_ALERT_CAD`, `MAYA_STT_USD_PER_MINUTE`, `MAYA_VOICE_USD_PER_1K_CHARS` | Optional | Optional | Maya's spending cap (`docs/maya-spend.md`). Use the same values as the web app. |
 | `SUPABASE_URL` | No | Yes | `https://cdjobwsyzndtltzfpyqa.supabase.co`. |
@@ -162,7 +163,7 @@ The site's `npm test`, `npx eslint src` and `npm run build` do not include the w
 brew install livekit                     # the open-source LiveKit server, once
 livekit-server --dev --bind 127.0.0.1    # keys devkey / secret
 
-# the worker, with the fakes (and the fake model unless OPENROUTER_API_KEY is set)
+# the worker, with the fakes (and the fake model unless MAYA_OPENROUTER_API_KEY is set)
 SUPABASE_URL=https://cdjobwsyzndtltzfpyqa.supabase.co SUPABASE_SECRET_KEY=... \
 LIVEKIT_URL=ws://127.0.0.1:7880 LIVEKIT_API_KEY=devkey LIVEKIT_API_SECRET=secret \
 npm run voice:dev

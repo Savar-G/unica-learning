@@ -1,5 +1,5 @@
 // The AI step of the report job (#68, D-084): the AI reads each piece of the child's shown work, and writes the report
-// text from the report model. Behind a switch: on only when OPENROUTER_API_KEY is set (the AI client, #183). Off,
+// text from the report model. Behind a switch: on only when ASSESSMENT_OPENROUTER_API_KEY is set (the AI client, #183). Off,
 // nothing here calls the AI, and the report has no AI comments and no AI text.
 // For the server only: the background job (src/lib/report-job.ts) runs it before the report email. It has no
 // "server-only" import so that its tests can run, as src/lib/sign-in-link.ts. The live site uses only an OpenRouter API
@@ -114,15 +114,16 @@ export type AiOutcome =
     };
 
 /**
- * The reviewer, or null when the AI is off. On only when OPENROUTER_API_KEY is set; the model (an OpenRouter model id)
+ * The reviewer, or null when the AI is off. On only when ASSESSMENT_OPENROUTER_API_KEY is set; the model (an OpenRouter model id)
  * comes from AI_MODEL (aiClient).
  * In development (never in a production build), AI_REVIEW_FAKE=sure or unsure gives the fake, for a report with
  * comments without a key.
  */
 export function aiReviewer(env: Record<string, string | undefined> = process.env, usage?: AiUsageTag): WorkReviewer | null {
+  if (usage && usage.feature !== "report" && usage.feature !== "work_review") return null;
   const fake = env.AI_REVIEW_FAKE;
   if (env.NODE_ENV !== "production" && (fake === "sure" || fake === "unsure")) return fakeReviewer({ mode: fake });
-  const client = aiClient(env, undefined, { usage: usage ?? { feature: "work_review" } });
+  const client = aiClient(env, undefined, { usage: { ...usage, feature: usage?.feature === "report" ? "report" : "work_review" } });
   return client ? aiWorkReviewer(client) : null;
 }
 

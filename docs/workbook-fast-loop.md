@@ -45,9 +45,9 @@ The diff uses `<label>-pages.json`. It compares text, answers, warnings, templat
 At the end of a round, run exactly one U4 and U16 pair in parallel. Replay the previous real samples. Use the subscription only. Keep both output folders separate:
 
 ```sh
-env -u OPENROUTER_API_KEY -u OPENROUTER_API_KEY_FILE -u ANTHROPIC_API_KEY -u ANTHROPIC_API_KEY_FILE WORKBOOK_CLAUDE_CONFIG_DIR=/Users/savargupta/.claude_second node scripts/workbook-samples.mjs --subscription-only --no-store --levels U4 --days 1,5,10 --concurrency 3 --replay /tmp/ui-review/last-real-u4 --diff /tmp/ui-review/last-real-u4 --out /tmp/ui-review/round-real-u4 > /tmp/round-real-u4.log 2>&1 &
+env -u WORKBOOK_OPENROUTER_API_KEY -u WORKBOOK_OPENROUTER_API_KEY_FILE -u ANTHROPIC_API_KEY -u ANTHROPIC_API_KEY_FILE WORKBOOK_CLAUDE_CONFIG_DIR=/Users/savargupta/.claude_second node scripts/workbook-samples.mjs --subscription-only --no-store --levels U4 --days 1,5,10 --concurrency 3 --replay /tmp/ui-review/last-real-u4 --diff /tmp/ui-review/last-real-u4 --out /tmp/ui-review/round-real-u4 > /tmp/round-real-u4.log 2>&1 &
 u4_pid=$!
-env -u OPENROUTER_API_KEY -u OPENROUTER_API_KEY_FILE -u ANTHROPIC_API_KEY -u ANTHROPIC_API_KEY_FILE WORKBOOK_CLAUDE_CONFIG_DIR=/Users/savargupta/.claude_second node scripts/workbook-samples.mjs --subscription-only --no-store --levels U16 --days 1,5,10 --concurrency 3 --replay /tmp/ui-review/last-real-u16 --diff /tmp/ui-review/last-real-u16 --out /tmp/ui-review/round-real-u16 > /tmp/round-real-u16.log 2>&1 &
+env -u WORKBOOK_OPENROUTER_API_KEY -u WORKBOOK_OPENROUTER_API_KEY_FILE -u ANTHROPIC_API_KEY -u ANTHROPIC_API_KEY_FILE WORKBOOK_CLAUDE_CONFIG_DIR=/Users/savargupta/.claude_second node scripts/workbook-samples.mjs --subscription-only --no-store --levels U16 --days 1,5,10 --concurrency 3 --replay /tmp/ui-review/last-real-u16 --diff /tmp/ui-review/last-real-u16 --out /tmp/ui-review/round-real-u16 > /tmp/round-real-u16.log 2>&1 &
 u16_pid=$!
 wait "$u4_pid"
 u4_exit=$?

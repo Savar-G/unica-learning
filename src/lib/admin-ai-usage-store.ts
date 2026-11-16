@@ -5,6 +5,7 @@ import { PACIFIC_ZONE, localDateTime } from "@/lib/family-time";
 import type { AdminSession } from "@/lib/admin-store";
 import { accountCredits, keyMonthUsage, parseUsage, safeKeyLabel, type OpenRouterAccount, type OpenRouterBilling, type OpenRouterCheck, type Period, type UsageView } from "@/lib/admin-ai-usage";
 import { keyAlias, keyIdentity } from "@/lib/ai-usage-context";
+import { AI_PRODUCTS } from "@/lib/ai-product-keys";
 
 /** The usage of a period. Throws with the database's message when the function fails. */
 export async function readAiUsage(a: AdminSession, period: Pick<Period, "from" | "to" | "days">, withTests: boolean, usdToCad: number): Promise<UsageView> {
@@ -43,9 +44,9 @@ export async function openRouterBilling(env: Readonly<Record<string, string | un
   return { checkedAt: new Date().toISOString(), account, month };
 }
 
-/** The server's OpenRouter keys that make AI calls: the main key and the keys of marking, explanations and decisions. */
+/** The six product credentials. Historical shared credentials are excluded. */
 export function openRouterKeys(env: Readonly<Record<string, string | undefined>> = process.env): string[] {
-  const names = ["OPENROUTER_API_KEY", "SCAN_MARKING_OPENROUTER_API_KEY", "PARENT_EXPLANATION_API_KEY", "DECISIONS_OPENROUTER_API_KEY"];
+  const names = Object.values(AI_PRODUCTS);
   return [...new Set(names.map((n) => env[n]?.trim()).filter((k): k is string => !!k))];
 }
 

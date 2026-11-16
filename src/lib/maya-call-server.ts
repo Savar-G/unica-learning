@@ -20,7 +20,7 @@ import type { CallStatRow } from "@/lib/admin-pages";
 // Maya's admin test calls on the server (#323): the call module (src/lib/maya-call.ts) with its seams
 // (src/lib/maya-call-seams.ts, shared with the voice worker). Writes use the secret key; the admin pages read with the
 // admin's own session (row-level security: admins read public.maya_calls). The model: Maya's model through OpenRouter
-// when the server has OPENROUTER_API_KEY, else the fake rule player (src/lib/maya-model-fake.ts). A call keeps the
+// when the server has MAYA_OPENROUTER_API_KEY, else the fake rule player (src/lib/maya-model-fake.ts). A call keeps the
 // model it started with. Free talk is on (D-197), with its review (callReviewer). Voice calls (#326) start here; Maya's
 // voice worker runs them (worker/maya-voice). A flagged call's internal alert (#333) goes to SIGNUP_NOTIFY_EMAIL through
 // Resend, with a link to the admin call page on the request's own site.

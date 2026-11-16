@@ -2443,6 +2443,7 @@ export type Database = {
       }
       maya_chat_messages: {
         Row: {
+          board_fates: Json | null
           body: string | null
           call_id: string
           child_id: string
@@ -2455,6 +2456,7 @@ export type Database = {
           received_at: string
         }
         Insert: {
+          board_fates?: Json | null
           body?: string | null
           call_id: string
           child_id: string
@@ -2467,6 +2469,7 @@ export type Database = {
           received_at?: string
         }
         Update: {
+          board_fates?: Json | null
           body?: string | null
           call_id?: string
           child_id?: string
@@ -10130,6 +10133,7 @@ export type Database = {
         }
         Returns: Json
       }
+      maya_chat_fates_valid: { Args: { p_fates: Json }; Returns: boolean }
       maya_minutes_used:
         | {
             Args: {
@@ -11024,20 +11028,36 @@ export type Database = {
         }
         Returns: Json
       }
-      take_maya_chat_message: {
-        Args: {
-          p_call: string
-          p_child: string
-          p_end: string
-          p_fingerprint: string
-          p_id: string
-          p_parent: string
-          p_revision: number
-          p_start: string
-          p_text: string
-        }
-        Returns: Json
-      }
+      take_maya_chat_message:
+        | {
+            Args: {
+              p_call: string
+              p_child: string
+              p_end: string
+              p_fingerprint: string
+              p_id: string
+              p_parent: string
+              p_revision: number
+              p_start: string
+              p_text: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_call: string
+              p_child: string
+              p_end: string
+              p_fates: Json
+              p_fingerprint: string
+              p_id: string
+              p_parent: string
+              p_revision: number
+              p_start: string
+              p_text: string
+            }
+            Returns: Json
+          }
       take_plan_read_order: { Args: never; Returns: number }
       team_end_plan_start: {
         Args: { p_admin: string; p_card: string; p_generation: number }

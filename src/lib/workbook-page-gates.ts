@@ -133,7 +133,8 @@ export function pageGateChecker(client: DecisionClient, terms: PageGateTerms | u
 
 /** The live checker: null when decisions are off or no page gate is on, so the run asks nothing. */
 export function decisionPageGateChecker(env: Record<string, string | undefined>, usage?: AiUsageTag): PageGateChecker | null {
-  const client = decisionClient(env, undefined, { usage: usage ?? { feature: "workbook_gate" } });
+  if (usage && usage.feature !== "workbook_gate") return null;
+  const client = decisionClient(env, undefined, { usage: { ...usage, feature: "workbook_gate" } });
   return client ? pageGateChecker(client) : null;
 }
 

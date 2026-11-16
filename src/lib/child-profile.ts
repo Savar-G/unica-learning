@@ -438,7 +438,8 @@ export async function rebuildChildProfile(childId: string, seams: ChildProfileSe
     const facts = { built: true as const, revision: saved.revision, profile: storing, skillStates: states };
     if (!ai) return { ...facts, findings: { outcome: "off" } };
     if (read.length === 0) return { ...facts, findings: { outcome: "no_events" } };
-    return { ...(await addFindings({ ...seams, ai }, { ...row, profile, skillStatesPending: states.outcome === "failed" }, saved, read, earlier)), skillStates: states };
+    const ownedAi = ai.withUsage?.({ parentId: source.parentId, childId: id, source: { kind: "child_profile", id } }) ?? ai;
+    return { ...(await addFindings({ ...seams, ai: ownedAi }, { ...row, profile, skillStatesPending: states.outcome === "failed" }, saved, read, earlier)), skillStates: states };
   }
   return { built: false, reason: "busy" };
 }

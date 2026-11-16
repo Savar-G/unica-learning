@@ -54,13 +54,13 @@ describe("the OpenRouter adapter's usage", () => {
 
   it("asks for usage accounting and reports the answer's tokens, cost and generation id", async () => {
     const { sent, fetch } = make(answer({ prompt_tokens: 10, completion_tokens: 4, cost: 0.002 }));
-    const client = aiClient({ OPENROUTER_API_KEY: "k" }, "m/x", { fetch });
+    const client = aiClient({ MAYA_OPENROUTER_API_KEY: "k" }, "m/x", { fetch, usage: { feature: "maya" } });
     await expect(client!.json(request, new AbortController().signal)).resolves.toEqual({ a: 1 });
     expect(sent[0].body.usage).toEqual({ include: true });
   });
   it("does not fail the call when the answer has no usage", async () => {
     const { fetch } = make(answer(undefined));
-    await expect(aiClient({ OPENROUTER_API_KEY: "k" }, "m/x", { fetch })!.json(request, new AbortController().signal)).resolves.toEqual({ a: 1 });
+    await expect(aiClient({ MAYA_OPENROUTER_API_KEY: "k" }, "m/x", { fetch, usage: { feature: "maya" } })!.json(request, new AbortController().signal)).resolves.toEqual({ a: 1 });
   });
 });
 

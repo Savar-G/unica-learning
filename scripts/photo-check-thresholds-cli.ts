@@ -2,7 +2,7 @@
 // synthetic photos (10 blurry, 30 clear) and prints each photo's P(yes) and the threshold rule's result. Run through
 // scripts/photo-check-thresholds.mjs; docs/photo-check-thresholds.md. Reads the set folder and never writes into it.
 // Writes the raw answers under .workbook-sample/photo-check/ (gitignored). The key comes only from
-// DECISIONS_OPENROUTER_API_KEY in the process environment; this script never prints it.
+// SCAN_MARKING_OPENROUTER_API_KEY in the process environment; this script never prints it.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -22,8 +22,8 @@ if (!PHOTO_CHECK_QUESTIONS[question]) throw new Error(`unknown question ${questi
 // Checked before the key is read or anything is sent.
 const maxUsd = parseMaxUsd(v["max-usd"]), runs = Number(v.runs);
 if (!Number.isInteger(runs) || runs < 1) throw new Error("--runs must be a whole number of at least 1");
-const client = decisionClient(process.env, v.model, { timeout: 20_000, maxRetries: 0 });
-if (!client) throw new Error("DECISIONS_OPENROUTER_API_KEY is not set");
+const client = decisionClient(process.env, v.model, { timeout: 20_000, maxRetries: 0, usage: { feature: "photo_check", context: "evaluation" } });
+if (!client) throw new Error("SCAN_MARKING_OPENROUTER_API_KEY is not set");
 const manifest = JSON.parse(await readFile(resolve(v.set, "manifest.json"), "utf8")) as { photos: { id: string; clear: boolean; image: { path: string } }[] };
 const { rows, cap } = await runThresholdSet({
   client, question, maxUsd, runs,
@@ -66,8 +66,8 @@ async function physical(dir: string) {
     console.log(JSON.stringify({ requests: photos.length * runs, kinds, refusedBeforeTheCheck: refused.length, boundPerAttemptUsd: attemptCostBound(v.model ?? "typesafe/jev-1.14"), maxUsd }, null, 2));
     return;
   }
-  const client = decisionClient(process.env, v.model, { timeout: 20_000, maxRetries: 0 });
-  if (!client) throw new Error("DECISIONS_OPENROUTER_API_KEY is not set");
+  const client = decisionClient(process.env, v.model, { timeout: 20_000, maxRetries: 0, usage: { feature: "photo_check", context: "evaluation" } });
+  if (!client) throw new Error("SCAN_MARKING_OPENROUTER_API_KEY is not set");
   const { rows, cap } = await runKindSet({ client, maxUsd, runs, photos });
   const thresholds = PHOTO_PROBLEMS.map((p) => kindThreshold(rows, p));
   const ms = rows.flatMap((r) => (r.ms === null ? [] : [r.ms])).sort((a, b) => a - b);
