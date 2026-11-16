@@ -6,6 +6,7 @@
 // (D-270); every other page stays in the stack. Pages group by day, in page order, and a page of a day with no photo is
 // named ("No photo yet: page 2"). The reasons are the ones the server already returns: the upload's refusals and the
 // calibration's refusals (S2b). No new reason is made up here.
+import type { PhotoCheckView } from "@/lib/scan-photo-check-text";
 import type { ScanRefusal } from "@/lib/scan-crops";
 
 /** What the server's checks say about one saved photo. "none": this family has no checks (D-252). */
@@ -31,6 +32,10 @@ export interface StackPhoto {
   createdAt: string;
   /** A sent page's marks so far (#915 scan flow), null until marking has read it. */
   marks?: PageMarks | null;
+  photoCheck?: PhotoCheckView;
+  photoCheckRequired?: boolean;
+  /** A failed preview request on this device; Retry asks the check again. */
+  checkFailed?: boolean;
 }
 
 /**
@@ -39,12 +44,20 @@ export interface StackPhoto {
  */
 export interface PageMarks { right: number; scored: number; total: number; toPractise: number; waiting: number; complete: boolean;
   /** Every answer read blank (scan edge sweep, 2026-11-14): nothing was marked, and a new photo of the page replaces this one. */
-  unfinished?: boolean }
+  unfinished?: boolean;
+  /** Answers still waiting for automatic marking; team-only waits do not need fast polling. */
+  automaticPending?: number }
 
 /** A photo the parent took or chose on this device that has no saved photo yet. */
 export interface StackUpload {
   key: string;
-  status: "waiting" | "uploading" | "refused";
+  status: "waiting" | "uploading" | "uploaded" | "refused";
+  /** The intended page is guidance only. The server alone identifies the new photo. */
+  target?: { photoId: string; pageId: string; workbookId: string; pageNumber: number; day: string | null };
+  /** The saved photo id, retained until its listing and verdict arrive. */
+  uploadedId?: string;
+  /** Admission id while the upload is in flight; a poll can see it before PUT answers. */
+  reservation?: string;
   reason?: UploadRefusal;
   /** The server had no room for it for a while (#915): it keeps its place and asks again. */
   held?: boolean;
@@ -106,6 +119,9 @@ export interface StackGuide {
 export type TileStatus = "adding" | "waiting" | "checking" | "ready" | "saved" | "refused" | "unavailable" | "sent";
 
 export interface StackTile {
+  /** A replacement keeps its place in the day strip before the server identifies it. */
+  pageId?: string;
+  retake?: boolean;
   key: string;
   photoId: string | null;
   uploadKey: string | null;
@@ -246,6 +262,32 @@ function guideOf(o: { photos: readonly StackPhoto[]; pages: readonly DayPage[] }
   return { day, stillText, next: pages.find((p) => p.status === "todo") ?? null, pages };
 }
 
+/** The server verdict for an uploaded replacement, including the separate blur check. */
+export function replacementVerdict(upload: StackUpload, photos: readonly StackPhoto[], checks: boolean): StackPhoto | null {
+  const photo = upload.uploadedId ? photos.find((p) => p.id === upload.uploadedId) : undefined;
+  if (!photo) return null;
+  if (!upload.target) return photo;
+  if (photo.state === "pending" || photo.checkFailed) return null;
+  if (checks && (photo.check === "checking" || photoCheckPending(photo))) return null;
+  return photo;
+}
+
+export function photoCheckPending(photo: StackPhoto): boolean {
+  return photo.check === "ready" && !photo.sentAt && (photo.photoCheck?.state === "pending" || (photo.photoCheckRequired === true && !photo.photoCheck));
+}
+
+export function scanPollDelay(unchangedMs: number, automatic: boolean): number {
+  if (!automatic) return 30_000;
+  return unchangedMs < 10_000 ? 2000 : Math.min(30_000, 5000 * 2 ** Math.floor((unchangedMs - 10_000) / 10_000));
+}
+
+/** Team-only marking still needs refreshes, at a slower pace than automatic work. */
+export function scanWorkPending(o: { photos: readonly StackPhoto[]; uploads: readonly StackUpload[]; checks: boolean; marking: boolean }): boolean {
+  return o.uploads.some((u) => u.status !== "refused" && !replacementVerdict(u, o.photos, o.checks) && !o.photos.some((p) => p.id === u.uploadedId && p.checkFailed)) || o.photos.some((p) =>
+    !p.checkFailed && (p.state === "pending" || (o.checks && (p.check === "checking" || photoCheckPending(p))) ||
+      (o.marking && p.sentAt && !p.marks?.complete && !p.marks?.unfinished)));
+}
+
 /**
  * `offline`: the phone is offline now. A photo that failed only for the connection ("unavailable") is then not a bad photo:
  * it shows with the new photos as waiting for the connection, and the page sends it again when the phone is back online.
@@ -264,8 +306,9 @@ export function buildStack(o: { photos: readonly StackPhoto[]; uploads: readonly
   const tileOf = (photo: StackPhoto): StackTile => {
     const page = pageById.get(photo.pageId);
     const base = { key: photo.id, photoId: photo.id, uploadKey: null, label: page ? `Page ${page.pageNumber}` : fullLabel(photo), title: fullLabel(photo), reason: null, refusal: null };
+    if (photo.checkFailed) return { ...base, status: "refused", reason: "Not checked yet", refusal: "check-timeout" };
     if (photo.sentAt && photo.state === "saved" && o.checks && photo.check === "ready") return { ...base, label: fullLabel(photo), status: "sent" };
-    if (photo.state === "pending") return { ...base, status: "checking" };
+    if (photo.state === "pending" || (o.checks && photoCheckPending(photo))) return { ...base, status: "checking" };
     if (!o.checks || photo.check === "none") return { ...base, status: "saved" };
     if (photo.check === "refused") {
       const reason = photo.reason ?? "failed";
@@ -276,34 +319,51 @@ export function buildStack(o: { photos: readonly StackPhoto[]; uploads: readonly
     return { ...base, status: photo.check === "ready" ? "ready" : "checking" };
   };
 
-  const ordered = [...o.photos].sort((a, b) => a.book - b.book || a.pageNumber - b.pageNumber);
+  const activeUploads = o.uploads.filter((u) => !replacementVerdict(u, o.photos, o.checks));
+  const replacements = activeUploads.filter((u) => u.target && !(u.status === "refused" && u.reason === "duplicate"));
+  const hidden = new Set(replacements.flatMap((u) => [u.target!.photoId, u.uploadedId ?? u.reservation].filter(Boolean)));
+  const visiblePhotos = o.photos.filter((p) => !hidden.has(p.id));
+  const replacementTile = (u: StackUpload): StackTile => {
+    const target = u.target!;
+    const actual = o.photos.find((p) => p.id === (u.uploadedId ?? u.reservation));
+    const failed = u.status === "refused" || actual?.checkFailed;
+    const refusal = actual?.checkFailed ? "check-timeout" : failed ? u.reason ?? "unavailable" : null;
+    const label = `Page ${target.pageNumber}`;
+    return { key: u.key, photoId: actual?.checkFailed ? actual.id : null, uploadKey: u.key, pageId: target.pageId, retake: true,
+      label, title: `${label}${target.day ? ` · ${target.day}` : ""}`, status: failed ? "refused" : "checking",
+      reason: refusal ? refusalCopy(refusal).short : `Checking page ${target.pageNumber}…`, refusal };
+  };
+  const ordered = [...visiblePhotos].sort((a, b) => a.book - b.book || a.pageNumber - b.pageNumber);
   const tiles = ordered.map((photo) => ({ photo, tile: tileOf(photo) }));
 
   const waitsForConnection = (u: StackUpload) => Boolean(o.offline) && u.status === "refused" && (u.reason ?? "unavailable") === "unavailable";
   const isDuplicate = (u: StackUpload) => u.status === "refused" && u.reason === "duplicate";
-  const duplicates: StackTile[] = o.uploads.filter(isDuplicate).map((u) => {
+  const duplicates: StackTile[] = activeUploads.filter(isDuplicate).map((u) => {
     const label = u.page ? `Page ${u.page}` : "This page";
     return { key: u.key, photoId: null, uploadKey: u.key, label, title: label, status: "refused", reason: refusalCopy("duplicate").short, refusal: "duplicate", ...(u.replaceable ? { replaceable: u.replaceable } : {}) };
   });
-  const refusedUploads: StackTile[] = o.uploads.filter((u) => u.status === "refused" && !waitsForConnection(u) && !isDuplicate(u)).map((u) => {
+  const refusedUploads: StackTile[] = activeUploads.filter((u) => !u.target && u.status === "refused" && !waitsForConnection(u) && !isDuplicate(u)).map((u) => {
     const reason = u.reason ?? "unavailable";
     return { key: u.key, photoId: null, uploadKey: u.key, label: "Unknown page", title: "Unknown page", status: "refused", reason: refusalCopy(reason).short, refusal: reason };
   });
-  const addingTiles: StackTile[] = o.uploads.filter((u) => u.status !== "refused" || waitsForConnection(u))
+  const addingTiles: StackTile[] = activeUploads.filter((u) => !u.target && (u.status !== "refused" || waitsForConnection(u)))
     .map((u): StackTile => waitsForConnection(u)
       ? { key: u.key, photoId: null, uploadKey: u.key, label: "New photo", title: "New photo", status: "waiting", reason: "Waiting for connection", refusal: null, hint: "offline" }
       : { key: u.key, photoId: null, uploadKey: u.key, label: "New photo", title: "New photo", status: u.status === "uploading" && !u.held ? "adding" : "waiting",
         // A new photo in progress names no reason (2026-11-14): the server reads the page code and alone decides.
         reason: null, refusal: null, ...(u.held ? { hint: "room" as const } : {}) });
 
+  addingTiles.push(...replacements.filter((u) => u.status !== "refused" && !o.photos.find((p) => p.id === (u.uploadedId ?? u.reservation))?.checkFailed).map(replacementTile));
+
   // Refused photos, oldest first, then refused uploads, whose page is not known.
   const refused = [
     ...tiles.filter((t) => t.tile.status === "refused").sort((a, b) => a.photo.createdAt.localeCompare(b.photo.createdAt)).map((t) => t.tile),
     ...refusedUploads,
+    ...replacements.filter((u) => u.status === "refused" || o.photos.find((p) => p.id === (u.uploadedId ?? u.reservation))?.checkFailed).map(replacementTile),
   ];
 
   // Every page with an active photo (any status) is not a gap.
-  const photographed = new Set(o.photos.map((p) => p.pageId));
+  const photographed = new Set([...visiblePhotos.map((p) => p.pageId), ...replacements.map((u) => u.target!.pageId)]);
   const days: StackDay[] = [];
   const dayOf = new Map<string, StackDay>();
   for (const { photo, tile } of tiles) {
@@ -330,7 +390,7 @@ export function buildStack(o: { photos: readonly StackPhoto[]; uploads: readonly
     held: o.uploads.filter((u) => u.status !== "refused" && u.held).length,
     readyIds: ready.map((t) => t.photo.id),
     // The photos of this batch: a photo already sent for marking is not counted again (#915).
-    counts: { photos: o.photos.length - sent.length + o.uploads.length - duplicates.length, ready: ready.length, refused: refused.length, checking },
+    counts: { photos: visiblePhotos.length - sent.length + activeUploads.length - duplicates.length, ready: ready.length, refused: refused.length, checking },
     // A refused page keeps its card and its retake, even alone.
     guide: guideOf(o, tiles, dayLabel, pageLabel),
     one: open.length === 1 && open[0].photoId && open[0].status !== "refused" ? open[0] : null,

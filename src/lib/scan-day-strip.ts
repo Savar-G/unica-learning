@@ -49,8 +49,8 @@ const STATE_WORDS: Record<StripState, string> = {
 export const stripWords = (state: StripState) => STATE_WORDS[state];
 
 function stateOf(tile: StackTile | undefined, photo: StackPhoto | undefined, marking: boolean): StripState {
-  if (!tile || !photo) return "todo";
-  if (tile.status === "sent") return !marking ? "sent" : photo.marks?.complete ? "marked" : "marking";
+  if (!tile) return "todo";
+  if (tile.status === "sent") return !marking ? "sent" : photo?.marks?.complete ? "marked" : "marking";
   if (tile.status === "refused") return "retake";
   if (tile.status === "ready") return "ready";
   if (tile.status === "saved" || tile.status === "unavailable") return "saved";
@@ -67,10 +67,14 @@ export function dayStrip(o: { photos: readonly StackPhoto[]; pages: readonly Day
   if (!o.pages.length) return null;
   const order = new Map(o.pages.map((p, i) => [p.id, i]));
   const known = o.photos.filter((p) => order.has(p.pageId));
+  const located = [...known, ...o.tiles.filter((t) => t.retake && t.pageId && order.has(t.pageId)).map((t) => {
+    const page = o.pages[order.get(t.pageId!)!];
+    return { pageId: page.id, workbookId: page.workbookId, book: page.book };
+  })];
   const books = o.pages.map((p) => ({ id: p.workbookId, book: p.book }));
-  const newestBook = (known.length ? known.map((p) => ({ id: p.workbookId, book: p.book })) : books).sort((a, b) => b.book - a.book)[0].id;
+  const newestBook = (located.length ? located.map((p) => ({ id: p.workbookId, book: p.book })) : books).sort((a, b) => b.book - a.book)[0].id;
   const inBook = o.pages.filter((p) => p.workbookId === newestBook);
-  const latest = known.filter((p) => p.workbookId === newestBook).sort((a, b) => order.get(b.pageId)! - order.get(a.pageId)!)[0];
+  const latest = located.filter((p) => p.workbookId === newestBook).sort((a, b) => order.get(b.pageId)! - order.get(a.pageId)!)[0];
   const current = latest ? o.pages[order.get(latest.pageId)!] : inBook[0];
   if (!current) return null;
   const days = [...new Set(inBook.map((p) => p.day))];
@@ -83,9 +87,9 @@ export function dayStrip(o: { photos: readonly StackPhoto[]; pages: readonly Day
   for (const p of [...known].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) photoOf.set(p.pageId, p);
   const tiles = inBook.filter((p) => p.day === anchor.day).map((p): StripTile => {
     const photo = photoOf.get(p.id);
-    const tile = photo ? tileOf.get(photo.id) : undefined;
+    const tile = o.tiles.find((t) => t.retake && t.pageId === p.id) ?? (photo ? tileOf.get(photo.id) : undefined);
     const state = stateOf(tile, photo, o.marking);
-    return { pageId: p.id, pageNumber: p.pageNumber, name: p.name, state, tileKey: tile?.key ?? null, photoId: photo?.id ?? null, marks: photo?.marks ?? null, label: `Page ${p.pageNumber}, ${STATE_WORDS[state]}` };
+    return { pageId: p.id, pageNumber: p.pageNumber, name: p.name, state, tileKey: tile?.key ?? null, photoId: photo?.id ?? null, marks: photo?.marks ?? null, label: tile?.retake && state === "checking" ? `Checking page ${p.pageNumber}…` : `Page ${p.pageNumber}, ${STATE_WORDS[state]}` };
   });
   const done = tiles.filter((t) => (o.marking ? t.state === "marked" : t.state !== "todo" && t.state !== "retake")).length;
   const complete = done === tiles.length;

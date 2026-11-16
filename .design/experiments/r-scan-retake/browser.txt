@@ -1,0 +1,82 @@
+✔︎ Opened a new tab and set it active: tabs[0], page → Unica Learning: Personalized math learning program (http://localhost:3143/scan-retake-demo)
+- title: "Unica Learning: Personalized math learning program" [url=http://localhost:3143/scan-retake-demo]
+- main:
+  - heading "Scan pages" [level=1]
+  - region "Pages that need another photo" [ref=e1]:
+    - heading "1 page needs another photo" [level=2]
+    - text: "Page 23 · Day 4 · Hold closer"
+    - button "Open your photo of Page 23 · Day 4" [ref=e2]
+    - text: "Your photo"
+    - img "A good photo: the whole page fills the photo, with all four corners and the small code in view"
+    - text: "Like this We could not line up this photo with the page. Hold the phone closer so the page fills the photo, and tilt it away from the light."
+    - button "Retake page 23" [ref=e3]
+  - region "Day 4 pages" [ref=e4]:
+    - button "Previous day" [ref=e5] [disabled]
+    - heading "Day 4" [level=2]
+    - button "Next day" [ref=e6] [disabled]
+    - text: "0 of 4 pages marked"
+    - list:
+      - listitem "Page 21, still to scan" [ref=e7]:
+        - button "Page 21, still to scan" [ref=e8]: "21"
+      - listitem "Page 22, still to scan" [ref=e9]:
+        - button "Page 22, still to scan" [ref=e10]: "22"
+      - listitem "Page 23, needs another photo" [ref=e11]:
+        - button "Page 23, needs another photo" [ref=e12]: "23"
+      - listitem "Page 24, still to scan" [ref=e13]:
+        - button "Page 24, still to scan" [ref=e14]: "24"
+    - text: "Any order is fine."
+  - button "Retake page 23" [ref=e15]
+  - button "Scan pages" [ref=e16]
+  - button "How to scan" [ref=e17]
+@@ -5 +5 @@
+-    - text: "Page 23 · Day 4 · Hold closer"
++    - status: "Checking page 23…"
+@@ -9,2 +9 @@
+-    - text: "Like this We could not line up this photo with the page. Hold the phone closer so the page fills the photo, and tilt it away from the light."
+-    - button "Retake page 23" [ref=e3]
++    - text: "Like this"
+@@ -21,2 +20,2 @@
+-      - listitem "Page 23, needs another photo" [ref=e11]:
+-        - button "Page 23, needs another photo" [ref=e12]: "23"
++      - listitem "Checking page 23…" [ref=e18]:
++        - button "Checking page 23…" [ref=e19]: "23"
+@@ -26 +25,7 @@
+-  - button "Retake page 23" [ref=e15]
++  - status: "Keep this page open, 1 photo  still sending."
++  - region "New photos" [ref=e20]:
++    - heading "New photos" [level=2]
++    - text: "Sending 1 photo"
++    - list:
++      - listitem "Page 23: Checking page 23…" [ref=e21]:
++        - button "Page 23: Checking page 23…" [ref=e22]: "Page 23 Checking page 23…"
+
+- title: "Unica Learning: Personalized math learning program" [url=http://localhost:3143/scan-retake-demo]
+- main:
+  - heading "Scan pages" [level=1]
+  - region "Day 4 pages" [ref=e4]:
+    - button "Previous day" [ref=e5] [disabled]
+    - heading "Day 4" [level=2]
+    - button "Next day" [ref=e6] [disabled]
+    - text: "0 of 4 pages marked"
+    - list:
+      - listitem "Page 21, still to scan" [ref=e7]:
+        - button "Page 21, still to scan" [ref=e8]: "21"
+      - listitem "Page 22, still to scan" [ref=e9]:
+        - button "Page 22, still to scan" [ref=e10]: "22"
+      - listitem "Page 23, ready, not sent yet" [ref=e23]:
+        - button "Page 23, ready, not sent yet" [ref=e24]: "23"
+      - listitem "Page 24, still to scan" [ref=e13]:
+        - button "Page 24, still to scan" [ref=e14]: "24"
+    - text: "Any order is fine."
+  - status:
+    - text: "1 page sends for marking in a moment"
+    - button "Undo" [ref=e25]
+  - button "Scan pages" [ref=e16]
+  - button "How to scan" [ref=e17]
+{ viewport: 390, body: 390, checkingCards: 0 }
+[PNG saved beside this record]
+[PNG saved beside this record]
+[PNG saved beside this record]
+[system] last tab closed. `page` is now null. call openTab(url) to open a new one.
+[system] no current open tabs in this session.
+[ok | 1387ms]
