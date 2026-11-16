@@ -48,7 +48,7 @@ function teachingWords(trace: MayaTrace, within: number): string {
 export function caseChecks(c: PracticeCase, trace: MayaTrace): { what: string; ok: boolean }[] {
   return (c.tutor?.checks ?? []).map((check) => {
     const words = teachingWords(trace, check.within);
-    return { what: `${check.what} (within ${check.within} Maya turns)`, ok: check.all.every((p) => p.test(words)) };
+    return { what: `${check.what} (within ${check.within} Maya turns)`, ok: check.all.every((p) => p.test(words)) && !(check.none ?? []).some((p) => p.test(words)) };
   });
 }
 

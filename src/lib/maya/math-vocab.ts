@@ -86,6 +86,10 @@ export const EXACT_SAFE: readonly string[] = [
   "Thanks for telling me",
   "That sounds fun",
   "That sounds nice",
+  // Savar's call 2 (2026-11-15): code's own end question after the right answer (FINAL_ASK in tutor.ts) and the
+  // apology for a confusing message. Neither holds math or anything about the child.
+  "Do you want another question, or are we done?",
+  "Sorry, my last message was confusing",
 ];
 
 const key = (sentence: string) => sentence.trim().replace(/[’]/g, "'").replace(/[.!]+$/, "").toLowerCase();

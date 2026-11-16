@@ -35,6 +35,46 @@ export const SAVAR_CALL_CHECKS: readonly TutorCheck[] = [
   },
 ];
 
+/** Savar's call 2 (21665dc6, 2026-11-15): his exact words, in order. */
+export const SAVAR_CALL_2_TURNS = [
+  "Can you explain 2 minus 8 to me? I don't understand how to do subtraction when like the top number is bigger- smaller than the bottom number.",
+  "Four.",
+  "Three.",
+  "Huh, that didn't make sense.",
+  "2.",
+  "Twenty-four.",
+] as const;
+
+/**
+ * Test case 2 (Savar's call 2): a first-time learner. Points 1 to 7 of the fix, as code reads Maya's words (the opening
+ * is code's own line and has its own test). Each pattern reads Maya's teaching turns, so the wording may vary.
+ */
+export const SAVAR_CALL_2_CHECKS: readonly TutorCheck[] = [
+  {
+    what: "explains slowly in the first message: what we have, the trade, the new ones, then asks for 12 take away 8",
+    within: 1,
+    all: [/\b5 tens and 2 ones\b|\bfive tens and two ones\b/i, /\b(?:1|one|a) ten\b[^.?!]*\b(?:10|ten) ones\b/i, /\b(?:4|four) tens and (?:12|twelve) ones\b/i, ASKS_FOR_12_MINUS_8],
+  },
+  {
+    what: "never says the child's own question back",
+    within: 12,
+    all: [],
+    none: [/\bwhat(?:'s| is) 2 (?:minus|take away|−|-) 8\?/i],
+  },
+  {
+    what: "never corrects itself in a message",
+    within: 12,
+    all: [],
+    none: [/\bwait\b\s*[,.!\u2026\u2014-]|\bI mean\b/i],
+  },
+  {
+    what: "after the right answer, asks for another question or done, and no explain-back",
+    within: 12,
+    all: [/\banother (?:question|one)\b/i],
+    none: [/\bhow did you (?:get|find|work)/i],
+  },
+];
+
 /** The first answer of a child who has seen the trade: the ones, then the ones' difference, then the tens. */
 const AFTER_HELP = { name: "after help", opens: "help", numbers: [...B_WORK, 24] } as const;
 
@@ -51,6 +91,19 @@ export const TUTOR_CASES: PracticeCase[] = [
     validity: { stages: [{ name: "first try", opens: "start", numbers: [] }, B_EXAMPLE, AFTER_HELP], mustSay: [{ pattern: /2 minus 8/i, within: 1, what: "asks about 2 minus 8" }] },
     fakeScript: ["Can you teach me how to do 2 minus 8? I don't get it.", "12.", "4.", "4 minus 2 is 2, so 24.", "Because I traded a ten.", "I wrote it."],
     tutor: { checks: SAVAR_CALL_CHECKS },
+  },
+  {
+    id: "K07",
+    title: "Savar's call 2: a first-time learner",
+    fixture: "B",
+    persona: { name: "Theo", age: 8, question: "52 - 28", knows: "You meet borrowing for the first time. You do not know what to do when the top digit is smaller. You often answer with the first number you think of, and you mix up which part Maya asks for: you say 4 when she asks how many ones there are after the trade, and 3 when she asks how many tens are left. After a clear, simple explanation you can say 2 for the tens and 24 for the answer.", behaviour: "Your words are exactly these, one turn each, in this order: \"Can you explain 2 minus 8 to me? I don't understand how to do subtraction when like the top number is bigger- smaller than the bottom number.\", then \"Four.\", then \"Three.\", then \"Huh, that didn't make sense.\" (say this only if Maya's last message was confusing; else skip it), then \"2.\", then \"Twenty-four.\". After that, say that you are done." },
+    expected: "1. Maya never says the child's question back; she starts with a slow, concrete explanation: 52 is 5 tens and 2 ones, we need to take away 8 ones but only have 2, we trade 1 ten for 10 ones, now we have 4 tens and 12 ones, then one easy question (12 take away 8). 2. Every question says the numbers the child needs. 3. When \"Four\" does not answer her question (how many ones after the trade, 12), she says kindly that 4 is the answer to 12 take away 8 and asks her question again. 4. A wrong step answer (\"Three\") gets one short correction (\"Not quite. We had 5 tens and traded 1 away. 5 take away 1 is?\"), never \"52 minus 28 isn't 3\" and never a \"wait\" in the message; a message that corrects ends with one question. 5. Praise is in the child's words and tied to the math. 6. After 24: one short, specific good-job sentence, then \"Do you want another question, or are we done?\", with no \"how did you get it\". 7. When the child is done, a short goodbye that ends the call.",
+    dimensions: TEACHING,
+    reasons: ["solved"],
+    opener: SAVAR_CALL_2_TURNS[0],
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [2, 8] }, B_EXAMPLE, { name: "after help", opens: "help", numbers: [...B_WORK, 4, 3, 2, 24] }], mustSay: [{ pattern: /2 minus 8/i, within: 1, what: "asks about 2 minus 8" }] },
+    fakeScript: [...SAVAR_CALL_2_TURNS, "No, I'm done."],
+    tutor: { checks: SAVAR_CALL_2_CHECKS },
   },
   {
     id: "K02",
