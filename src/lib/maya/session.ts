@@ -70,7 +70,7 @@ import { ACTS, PART_LIMITS, PROPOSAL_VERSION, TUTOR_GATES, isModelOutput, readMo
 import { checkSay, checkSentence, columnSentenceTruth, equationHolds, heardColumnOf, namesValue, revealsOpenStep, endsWithAsk, INSTRUCTION, MATH_WORD, PRAISE_WORDS, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, unreadNumberRuns, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
-import { askedStep, doneReply, firstTimeTurn, type AskedRead } from "./teaching-reads";
+import { answersOwnQuestion, askedStep, doneReply, firstTimeTurn, yesReply, type AskedRead } from "./teaching-reads";
 import { deriveDrawings, type BoardRead } from "./board-ties";
 import { agreementClause, bindingReview, checkTutorSay, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, FINAL_ASK, TUTOR_FIRST_TIME_WORD_LIMIT, TUTOR_REVIEW_IGNORED } from "./tutor";
 import { placeDigitsSaid } from "./tutor-math";
@@ -545,7 +545,11 @@ export interface Session {
    * and the brief lists them as sent, not drawn. A batch the screen skipped or cancelled leaves `drawn` and `sent`, so
    * the brief does not list it and the kind can offer it again. A batch with no word stays sent: never counted as shown.
    */
-  tutor?: { help: number; drawn: string[]; sent?: { batch: string; keys: string[] }[] };
+  /**
+   * `offer` (review of #1113): Maya's last accepted message ended with code's own yes/no end offer (FINAL_ASK). Set by
+   * that message only; any other tutor message clears it (its tutor state is new).
+   */
+  tutor?: { help: number; drawn: string[]; sent?: { batch: string; keys: string[] }[]; offer?: true };
 }
 
 /**
@@ -4679,7 +4683,8 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
   // D-345: on a tutor teaching turn, code's honest line and the step's question (a version 3 output, checked by the
   // tutor's own whole-message check like any message).
   if (tutorTeachingNow(given)) {
-    if (given.solved !== null && given.lastResult === "right" && given.turn && doneReply(given.turn.text)) return [{ kind: "math", say: TUTOR_GOODBYE, act: "close" } as unknown as Proposal];
+    const end = endReply(given);
+    if (end) return [{ kind: "math", say: end === "yes" ? TUTOR_GOODBYE_YES : TUTOR_GOODBYE, act: "close" } as unknown as Proposal];
     const text = tutorFallbackText(given.package!, given.done, given.solved !== null, openAsked(given));
     return [{ kind: "math", say: text, act: "guide" } as unknown as Proposal];
   }
@@ -5664,6 +5669,23 @@ export function askedRead(s: Session): AskedRead | null {
 
 /** Code's goodbye when the child is done after the right answer (Savar's call 2): no question, the call ends. */
 export const TUTOR_GOODBYE = "Great work today. Bye for now!";
+/** Code's goodbye when the child says yes to another one: a call has one question (Chief of Staff, round 2). */
+export const TUTOR_GOODBYE_YES = "That was our question for today. Great work, and bye for now!";
+
+/**
+ * Round 2 (Chief of Staff, 2026-11-15): the child's answer to the end offer. Only after the right final answer stands
+ * and Maya's last message asked FINAL_ASK: "no" (doneReply) or "yes" (yesReply). Else null: a "no" before the offer
+ * ends nothing.
+ */
+export function endReply(s: Session): "no" | "yes" | null {
+  // Review of #1113 (BLOCKING): only an answer to code's own pending offer ends the call. Never while the question is not
+  // solved, a safety line is due, or the child sounds upset.
+  if (s.solved === null || s.lastResult !== "right" || !s.turn || s.tutor?.offer !== true) return null;
+  if (s.safety.flagged || hardFeeling(s.turn.text)) return null;
+  const last = [...s.turns].reverse().find((t) => t.speaker === "maya");
+  if (!last || sentencesOf(last.text).at(-1)?.trim() !== FINAL_ASK) return null;
+  return doneReply(s.turn.text) ? "no" : yesReply(s.turn.text) ? "yes" : null;
+}
 
 /** Code's own form of the open question the child did not answer, for code's honest line; null when none. */
 function openAsked(s: Session): string | null {
@@ -5884,8 +5906,9 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   const extra = vocabExtra(base);
   // Code's honest line asks about the step that is open after this turn's credit; after streamed words, only its question.
   // Savar's call 2: after the right answer, a child who says they are done gets a short goodbye, and the call ends.
-  const doneNow = base.solved !== null && base.lastResult === "right" && !!base.turn && doneReply(base.turn.text);
-  const honest = doneNow ? TUTOR_GOODBYE : tutorFallbackText(pkg, s.done, s.solved !== null, openAsked(base));
+  const endNow = endReply(base);
+  const doneNow = endNow !== null;
+  const honest = endNow === "yes" ? TUTOR_GOODBYE_YES : endNow === "no" ? TUTOR_GOODBYE : tutorFallbackText(pkg, s.done, s.solved !== null, openAsked(base));
   // Savar's call 2: code's question follows streamed words only when they do not already end with a question (final runs:
   // "What is 4 minus 2? What is 5 minus 1?").
   let text = fallback ? (sent.length ? (/\?\s*$/.test(lead) ? lead : `${lead} ${sentencesOf(honest).slice(1).join(" ")}`) : honest) : out.say.trim();
@@ -5916,10 +5939,14 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   const committedVerdict = !!base.turn && !base.turn.text.includes("?") ? childAnswerOf(base, (x) => x)?.verdict : undefined;
   if (!fallback && act === "guide" && s.solved === null && (committedVerdict === "wrong" || (committedVerdict === "right" && firstTimeLearner(base))) && !/\?\s*$/.test(text)) return no("say_check", committedVerdict === "wrong" ? "Your message corrects the child, so it must end with one small question about the same step, with the numbers the child needs." : "The child answered: end with one small question about the next step, with the numbers the child needs.", "never_say");
   // Savar's call 2 (final runs): the end question comes only after the child's right final answer, never in place of
-  // asking the child for the whole answer ("So 52 minus 28 is 24. Do you want another question, or are we done?").
-  if (!fallback && s.solved === null && /\banother question\b/i.test(text) && /\bare we done\b/i.test(text)) return no("say_check", `The child has not said the whole answer yet: ask them for it, for example "What is the whole answer?". Ask "${FINAL_ASK}" only after they say it.`, "never_say");
+  // asking the child for the whole answer ("So 52 minus 28 is 24. Do you want another question, or are we done?", the first wording).
+  if (!fallback && s.solved === null && /\btry another one\b/i.test(text)) return no("say_check", `The child has not said the whole answer yet: ask them for it, for example "What is the whole answer?". Ask "${FINAL_ASK}" only after they say it.`, "never_say");
   // The child said they are done after the right answer: a short goodbye that ends the call, never another question.
-  if (!fallback && doneNow && act !== "close") return no("act_not_allowed", "The child solved the question and says they are done: say one short warm goodbye with act \"close\" and no question.");
+  if (!fallback && doneNow && act !== "close") return no("act_not_allowed", endNow === "yes" ? "The child wants another one, but this call has one question: say warmly that this was today's question, with act \"close\" and no question." : "The child solved the question and says they are done: say one short warm goodbye with act \"close\" and no question.");
+  // Round 2 (Chief of Staff): the answer to a question is never in the same message as the question ("so 4 tens are
+  // left. 5 tens take away 1 ten is how many tens?").
+  const own = fallback ? null : answersOwnQuestion(text, pkg);
+  if (own) return no("say_check", `"${own}" already gives the answer to your question. Explain with a smaller picture, then ask, and let the child say the answer.`, "never_say");
   // Child safety: each sentence that is not plain teaching is reviewed before it is said (the adapter runs the reviews,
   // in parallel with the stream). Code's own line is not reviewed.
   const talk: TalkCheck[] = [];
@@ -5968,6 +5995,8 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   }
   const drawing = { commands: batches.flatMap((b) => b.commands), keys: batches.flatMap((b) => b.keys) };
   tutor.drawn.push(...drawing.keys);
+  // Review of #1113: the end offer is pending only when this message ends with it, while the right answer stands.
+  if (act === "guide" && s.solved !== null && s.lastResult === "right" && sentencesOf(text).at(-1)?.trim() === FINAL_ASK) tutor.offer = true;
   s.tutor = tutor;
   // Help and assistance for the outcome: a message or board that gives the whole answer is answer_given; else a
   // message that tells an open step's result is a show (guided), else a hint (part C review, 2026-11-15: "52 minus 28

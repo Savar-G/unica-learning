@@ -737,8 +737,11 @@ export function tutorFallbackText(pkg: OperationPackage, done: readonly string[]
   return `Let me say that another way. ${safe(q) ? q : "So what is the whole answer?"}`;
 }
 
-/** Savar's call 2 and the Chief of Staff (2026-11-15): Maya's question after the right final answer. */
-export const FINAL_ASK = "Do you want another question, or are we done?";
+/**
+ * Savar's call 2 and the Chief of Staff (2026-11-15, round 2): Maya's ONE yes/no question after the right final answer.
+ * A "no" or a "yes" ends the call only after this offer (a call has one question, so "yes" ends warmly too).
+ */
+export const FINAL_ASK = "Do you want to try another one?";
 
 /** The commands for the model's drawing requests (the question's kind builds them from its checked steps). */
 export function tutorDrawings(pkg: OperationPackage, draw: readonly { offer: string; place?: string; sentence?: number }[], drawn: readonly string[], noteId: (i: number) => string): { commands: TutorCommand[]; keys: string[] } {

@@ -88,7 +88,7 @@ export const EXACT_SAFE: readonly string[] = [
   "That sounds nice",
   // Savar's call 2 (2026-11-15): code's own end question after the right answer (FINAL_ASK in tutor.ts) and the
   // apology for a confusing message. Neither holds math or anything about the child.
-  "Do you want another question, or are we done?",
+  "Do you want to try another one?",
   "Sorry, my last message was confusing",
 ];
 

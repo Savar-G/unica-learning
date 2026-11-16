@@ -7,7 +7,7 @@ import { fakeTalkReviewer } from "@/lib/maya-talk-review";
 import { createTextSession } from "@/lib/maya-text";
 import { openingLine } from "@/lib/maya/lines";
 import { exactSafe } from "@/lib/maya/math-vocab";
-import { askedStep, askedValue, doneReply, echoesChild, firstTimeTurn, selfCorrection } from "@/lib/maya/teaching-reads";
+import { answersOwnQuestion, askedStep, askedValue, doneReply, echoesChild, firstTimeTurn, selfCorrection, yesReply } from "@/lib/maya/teaching-reads";
 import { checkTutorSay, FINAL_ASK, tutorFallbackText, TUTOR_FIRST_TIME_WORD_LIMIT, TUTOR_WORD_LIMIT } from "@/lib/maya/tutor";
 import { TUTOR_PROMPT, TUTOR_PROMPT_VERSION, type TutorBrief } from "@/lib/maya/tutor-prompt";
 import { SAVAR_CALL_2_TURNS, TUTOR_CASES } from "@/lib/maya-practice/tutor-cases";
@@ -103,9 +103,9 @@ describe("3. the first-time learner", () => {
 
 describe("4. the question asked", () => {
   it("reads what Maya's question asks, in closed forms", () => {
-    expect(askedValue("How many ones do we have now?", SUB)?.value).toBe(12);
+    expect(askedValue("How many ones do we have now?", SUB, "We trade 1 ten for 10 ones.")?.value).toBe(12);
     expect(askedValue("We traded 1 ten away, so how many tens are left in 52?", SUB)?.value).toBe(4);
-    expect(askedValue("We had 5 tens and gave 1 away. How many tens now?", SUB)?.value).toBe(4);
+    expect(askedValue("How many tens now?", SUB, "We had 5 tens and gave 1 away.")?.value).toBe(4);
     expect(askedValue("5 take away 1 is?", SUB)?.value).toBe(4);
     expect(askedValue("What is 12 take away 8?", SUB)?.value).toBe(4);
     expect(askedValue("What do we write in the tens?", SUB)?.value).toBe(2);
@@ -157,6 +157,18 @@ describe("5. a wrong step answer", () => {
   it("a message that corrects a wrong answer ends with one question", async () => {
     const { out } = await upToThree((n) => [...first, "Not quite. We had 5 tens and traded 1 away.", "Not quite. We had 5 tens and traded 1 away. What is 5 minus 1?"][n]);
     expect(out.say.join(" ")).toBe("Not quite. We had 5 tens and traded 1 away. What is 5 minus 1?");
+  });
+  it("never the answer in the same message as its question (round 2)", async () => {
+    const giving = "Sorry, my last message was confusing. We traded 1 ten away, so 4 tens are left. 5 tens take away 1 ten is how many tens?";
+    expect(answersOwnQuestion(giving, SUB)).toBe("We traded 1 ten away, so 4 tens are left.");
+    expect(answersOwnQuestion("5 minus 1 is 4. What is 5 minus 1?", SUB)).toBe("5 minus 1 is 4.");
+    expect(answersOwnQuestion("52 is 5 tens and 2 ones. We trade 1 ten for 10 ones. Now we have 4 tens and 12 ones. What is 12 take away 8?", SUB)).toBeNull();
+    expect(answersOwnQuestion("Sorry, my last message was confusing. We had 5 tens. Take 1 ten away. How many tens now?", SUB)).toBeNull();
+    const smaller = "Sorry, my last message was confusing. We had 5 tens. Take 1 ten away. How many tens now?";
+    const t = session((n) => ["52 is 5 tens and 2 ones. We had 5 tens and gave 1 away. How many tens now?", giving, smaller][Math.min(n, 2)]);
+    await t.s.start();
+    await t.s.child(ASK);
+    expect((await t.s.child(HUH)).say.join(" ")).toBe(smaller);
   });
   it("\"that didn't make sense\" goes to the tutor, never code's \"What part should we try again?\" (chat run 1)", async () => {
     const line = "Sorry, my last message was confusing. We had 5 tens and gave 1 away. How many tens now?";
@@ -223,9 +235,9 @@ describe("6. code's line asks the part the child is on, never a later one", () =
 });
 
 describe("7. the right final answer", () => {
-  const solve = async (end: string, after?: string) => {
+  const solve = async (end: string, after?: string, closeAt = 3) => {
     const says = ["52 is 5 tens and 2 ones. What is 12 minus 8?", "Yes! 12 take away 8 is 4. What is 4 minus 2?", end, after ?? "Bye for now!"];
-    const t = session((n) => says[Math.min(n, says.length - 1)], { act: (n) => (n >= 3 ? "close" : "guide") });
+    const t = session((n) => says[Math.min(n, says.length - 1)], { act: (n) => (n >= closeAt ? "close" : "guide") });
     await t.s.start();
     await t.s.child(ASK);
     await t.s.child("4.");
@@ -259,6 +271,24 @@ describe("7. the right final answer", () => {
     const puts = out.board.flatMap((b) => b.commands).filter((c) => (c as { op?: string }).op === "put").map((c) => (c as { value?: string }).value);
     expect(puts).toEqual(expect.arrayContaining(["4", "2"]));
   });
+  it("the end question is one yes/no question", () => {
+    expect(FINAL_ASK).toBe("Do you want to try another one?");
+    expect(exactSafe(FINAL_ASK)).toBe(true);
+  });
+  it("\"yes\" after the offer ends the call warmly (a call has one question)", async () => {
+    const t = await solve(`52 minus 28 is 24. You traded the ten and took away both places. ${FINAL_ASK}`, "Sure, here is 63 minus 38. What is 3 minus 8?");
+    expect(yesReply("Yes!")).toBe(true);
+    expect(yesReply("Yes, I got 24.")).toBe(false);
+    const end = await t.s.child("Yes!");
+    expect(end.ended?.reason).toBe("solved");
+    expect(end.say.join(" ")).toBe("That was our question for today. Great work, and bye for now!");
+  });
+  it("a \"no\" before the offer ends nothing", async () => {
+    // The model keeps teaching; code does not force an end on a "no" before the offer.
+    const t = await solve("52 minus 28 is 24. You traded the ten and took away both places. Is 24 on your paper?", "Okay. What did you write in the tens?", 99);
+    const out = await t.s.child("No.");
+    expect(out.ended).toBeNull();
+  });
   it("\"no\" after the end question ends the call with a goodbye", async () => {
     const t = await solve(`52 minus 28 is 24. You traded the ten and took away both places. ${FINAL_ASK}`, "Do you want to try 63 minus 38?");
     expect(doneReply("No.")).toBe(true);
@@ -285,6 +315,76 @@ describe("practice case 2", () => {
     expect(k07.opener).toBe(SAVAR_CALL_2_TURNS[0]);
     expect(k07.fakeScript.slice(0, 6)).toEqual([...SAVAR_CALL_2_TURNS]);
     expect(k07.tutor?.checks?.length).toBeGreaterThanOrEqual(4);
-    for (const point of ["never says the child's question back", "4 is the answer to 12 take away 8", "Not quite. We had 5 tens and traded 1 away. 5 take away 1 is?", "never a \"wait\"", FINAL_ASK, "a short goodbye that ends the call"]) expect(k07.expected).toContain(point);
+    for (const point of ["never says the child's question back", "Good thinking, but that's a later step", "Not quite. We had 5 tens and traded 1 away. 5 take away 1 is?", "never a \"wait\"", FINAL_ASK, "a short goodbye that ends the call"]) expect(k07.expected).toContain(point);
+  });
+});
+
+describe("review of #1113 (Sol, on c40496bad)", () => {
+  function make(says: (i: number) => string, stream = false, question: OperationPackage = SUB) {
+    let n = 0;
+    let now = Date.UTC(2026, 10, 15);
+    const model = conversationalFake({ answer: () => reply(says(n++), "guide", { reading: {} }), ...(stream ? { stream: { chunk: 7 } } : {}) });
+    const parts: string[] = [];
+    const s = createTextSession({ callId: "review1113", package: question, model, clock: () => (now += 100), random: 3, tutor: true, reviewer: fakeTalkReviewer(), mathReviewer: fakeMathReviewer(), reviewTimeLimitMs: 50, ...(stream ? { onSayPart: (x: string) => parts.push(x) } : { channel: "chat" as const }) });
+    return { s, model, parts };
+  }
+  for (const stream of [false, true]) {
+    it(`BLOCKING: "No." to "Do you understand?" after the right answer stays open (stream=${stream})`, async () => {
+      const question = "52 minus 28 is 24. Do you understand?";
+      const t = make((i) => (i === 0 ? question : "Let us try it again. What is 12 minus 8?"), stream);
+      await t.s.start();
+      expect((await t.s.child("My answer is 24.")).say.join(" ")).toBe(question);
+      const no = await t.s.child("No.");
+      expect(no.ended).toBeNull();
+      expect(no.say.join(" ")).toBe("Let us try it again. What is 12 minus 8?");
+    });
+  }
+  it("BLOCKING: an offer followed by another question is no longer pending", async () => {
+    const t = make((i) => [`52 minus 28 is 24. You traded the ten. ${FINAL_ASK}`, "Okay. Do you understand the trade?", "Let us look again. What is 12 minus 8?"][Math.min(i, 2)]);
+    await t.s.start();
+    await t.s.child("My answer is 24.");
+    await t.s.child("Hmm.");
+    expect((await t.s.child("No.")).ended).toBeNull();
+  });
+  it("BLOCKING: an upset child is never ended on, even after the offer", async () => {
+    const t = make((i) => [`52 minus 28 is 24. You traded the ten. ${FINAL_ASK}`, "I'm sorry you feel sad. Do you want to tell me more?"][Math.min(i, 1)]);
+    await t.s.start();
+    await t.s.child("My answer is 24.");
+    expect((await t.s.child("No, I'm sad.")).ended).toBeNull();
+  });
+  it("control: a \"no\" mid-problem stays open", async () => {
+    const t = make(() => "Bye for now!");
+    await t.s.start();
+    expect((await t.s.child("No.")).ended).toBeNull();
+  });
+  it("control: safety guidance comes before any end after solving", async () => {
+    let now = Date.UTC(2026, 10, 15);
+    let n = 0;
+    const model = conversationalFake({ answer: () => (n++ === 0 ? reply(`52 minus 28 is 24. ${FINAL_ASK}`, "guide", { reading: {} }) : reply("Bye for now!", "close", { reading: { safety: "concern", stop: true } })) });
+    const s = createTextSession({ callId: "safety", package: SUB, model, clock: () => (now += 100), random: 3, tutor: true, channel: "chat", reviewer: fakeTalkReviewer(), mathReviewer: fakeMathReviewer(), reviewTimeLimitMs: 50 });
+    await s.start();
+    await s.child("My answer is 24.");
+    const out = await s.child("I'm done. Someone hurts me.");
+    expect(out.say.join(" ")).toMatch(/grown-up/);
+    expect(out.ended?.safetyFlag).toBe(true);
+  });
+  it("P2: during the easier example, code's line never asks the target's trade (no \"3 plus 10\")", async () => {
+    const first = "Let us try the easier example, 42 minus 7. We trade 1 ten for 10 ones. How many ones do we have now?";
+    const t = make((i) => (i === 0 ? first : "3 tens, wait, 4 tens."), false, SAMPLE_PACKAGES["subtract-83-46"] as OperationPackage);
+    await t.s.start();
+    expect((await t.s.child("Can you explain?")).say.join(" ")).toBe(first);
+    const out = await t.s.child("I do not know.");
+    expect(out.say.join(" ")).not.toContain("3 plus 10");
+    expect(askedStep(SAMPLE_PACKAGES["subtract-83-46"] as OperationPackage, [{ speaker: "maya", text: first }, { speaker: "child", text: "I do not know." }], null)).toBeNull();
+  });
+  it("P2: after \"12 minus 8 is 4.\", \"How many ones are left?\" asks the 4 ones, never the trade (no \"2 plus 10\")", async () => {
+    const first = "12 minus 8 is 4. How many ones are left?";
+    expect(askedValue("How many ones are left?", SUB, "12 minus 8 is 4.")?.value).toBe(4);
+    expect(askedValue("How many ones are left?", SUB)).toBeNull();
+    const t = make((i) => (i === 0 ? first : "3 tens, wait, 4 tens."));
+    await t.s.start();
+    expect((await t.s.child("Can you explain?")).say.join(" ")).toBe(first);
+    const out = await t.s.child("I do not know.");
+    expect(out.say.join(" ")).not.toContain("2 plus 10");
   });
 });
