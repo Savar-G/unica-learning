@@ -34,7 +34,7 @@ export async function alertOpenCancel(db: SupabaseClient<Database>, operation: s
 }) {
   if (!options.to) { console.error("[plan] cancel alert has no team address", operation); return { status: "not_configured" as const }; }
   return sendEmailOnceInTime(alertLedger(db), operation, {
-    sender: { to: "savar" }, to: options.to, subject: "A plan cancellation needs a check",
+    sender: { to: "savar" }, to: options.to, subject: "A plan cancellation needs a check", log: { kind: "plan_cancel_alert", parentId: parent },
     text: ["A Cancel is still open. The family cannot change its plan or complete deletion until it is checked.",
       `Operation: ${operation}`, `Open the family: ${options.origin}/admin/parents/${parent}`,
       'Use "Check Stripe and close this cancel" on that page.'].join("\n"),

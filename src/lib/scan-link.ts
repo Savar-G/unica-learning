@@ -73,7 +73,7 @@ export async function sendScanLink(
     unknown: (id, error) => store.unknown(id, error),
   };
   const email = scanLinkEmail({ parentName: to.parentName, childName: to.childName, url: scanPageUrl(origin) });
-  const outcome = await sendEmailOnce(ledger, null, { sender: { to: "parent" }, to: to.email, replyTo: SUPPORT_EMAIL, ...email }, transport ? { transport } : {});
+  const outcome = await sendEmailOnce(ledger, null, { sender: { to: "parent" }, to: to.email, replyTo: SUPPORT_EMAIL, ...email, log: { kind: "scan_link", parentId: parent, childId: child } }, transport ? { transport } : {});
   if (outcome.status === "busy") return "too_many";
   if (outcome.status === "sent") return "sent";
   console.error("[scan-link] email not sent", outcome.status, outcome.error);

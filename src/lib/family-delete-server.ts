@@ -111,7 +111,8 @@ export async function familyDeleteAlert(parent: string, { plansStopped, state }:
   }[state];
   try {
     const outcome = await sendEmail({
-      sender: { to: "savar" }, to, subject: state === "not_queued" || state === "plan_start" ? "Family delete not finished" : "Family deleted from Account",
+      // No family on the send log row: the family is deleted, or its deletion fence refuses new rows.
+      sender: { to: "savar" }, to, subject: state === "not_queued" || state === "plan_start" ? "Family delete not finished" : "Family deleted from Account", log: { kind: "family_delete_alert" },
       text: [`A parent asked to delete their family from Account.`, `Plans stopped: ${plansStopped}`, stateLine, "Do not prepare or mail another workbook for this family.",
         ...(state === "deleted" ? [] : [`Family: ${parent}`])].join("\n"),
     });

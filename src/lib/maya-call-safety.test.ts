@@ -1,6 +1,7 @@
 import { memoryWordingHistoryStore } from "@/lib/maya";
 import { describe, expect, it, vi } from "vitest";
 import { templateSkills } from "@/lib/assessment";
+import { recordSendsWith } from "@/lib/email-delivery";
 import { memoryTransport } from "@/lib/email-delivery-memory";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
@@ -152,6 +153,17 @@ describe("the safety flag of a saved text call", () => {
     await s.end();
     expect(s.mail.delivered).toHaveLength(1);
     expect(s.stored()).toMatchObject({ status: "ended", flag: { level: "safety_concern" }, outcome: { reason: "safety", safetyFlag: true } });
+  });
+
+  it("logs the alert's send row with the call's family and child, so it is deleted with the child", async () => {
+    const rows: { kind: string; parent_id?: string | null; child_id?: string | null }[] = [];
+    const restore = recordSendsWith(async (row) => { rows.push(row); });
+    try {
+      const s = setup();
+      await s.start();
+      await s.say(HURT);
+      expect(rows).toEqual([expect.objectContaining({ kind: "maya_safety_alert", parent_id: PARENT, child_id: CHILD })]);
+    } finally { restore(); }
   });
 
   it("stores a refused alert as not sent, shows why, and sends it with the call's next request", async () => {

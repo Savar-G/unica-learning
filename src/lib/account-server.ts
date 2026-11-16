@@ -95,9 +95,9 @@ export const isPhone = (headers: Headers) => userAgent({ headers }).device.type 
  * The founders' welcome (D-225), once: the caller sends it only when create_family made the family. A phone signup gets
  * the sign-in link email instead. Never throws; a welcome that does not go is logged and not tried again.
  */
-export async function sendWelcome(p: { name: string; email: string; childName: string; childId: string; origin: string }): Promise<void> {
+export async function sendWelcome(p: { name: string; email: string; childName: string; childId: string; origin: string; parentId?: string }): Promise<void> {
   const email = welcomeEmail({ parentName: p.name, childName: p.childName, url: `${p.origin}${startPath(p.childId)}` });
-  const outcome = await sendEmail({ sender: { to: "parent", from: "founders" }, to: p.email, replyTo: SUPPORT_EMAIL, ...email });
+  const outcome = await sendEmail({ sender: { to: "parent", from: "founders" }, to: p.email, replyTo: SUPPORT_EMAIL, ...email, log: { kind: "signup_welcome", parentId: p.parentId ?? null, childId: p.childId } });
   if (outcome.status !== "sent") console.error("[account] welcome email failed", outcome.status, outcome.error);
 }
 
@@ -145,7 +145,8 @@ export async function sendSignInLink(admin: SupabaseClient<Database>, parentId: 
   const email = welcome ? phoneWelcomeEmail(link) : linkEmail(link);
   // The link row is its own guard (the rate limit above), so the email needs no send key.
   const sender = welcome ? { to: "parent" as const, from: "founders" as const } : { to: "parent" as const };
-  const outcome = await sendEmail({ sender, to: parent.email, replyTo: SUPPORT_EMAIL, ...email });
+  // The send log keeps no copy of either: both hold the sign-in link.
+  const outcome = await sendEmail({ sender, to: parent.email, replyTo: SUPPORT_EMAIL, ...email, log: { kind: welcome ? "phone_welcome" : "sign_in_link", parentId } });
   if (outcome.status !== "sent") {
     console.error("[account] link email failed", outcome.status, outcome.error);
     return "failed";

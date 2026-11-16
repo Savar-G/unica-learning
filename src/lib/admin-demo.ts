@@ -3,7 +3,7 @@
 // real person is in here, and nothing here reads the database.
 import { bandFor, type Grade, type Province } from "@/lib/assessment";
 import { progressSnapshot, type ProgressInput, type ProgressSnapshot } from "@/lib/admin-progress";
-import type { DashboardRows, EmailCopyView, EmailEvent, Family, RawCard, RawDelivery, RawChild, RawEmail, RawParent, RawReport, RawSubscription, RawTest, RawWaitlist } from "@/lib/admin-dashboard";
+import { sendEmailId, workbookEmailId, type DashboardRows, type EmailCopyView, type EmailEvent, type Family, type RawCard, type RawDelivery, type RawChild, type RawEmail, type RawParent, type RawReport, type RawSend, type RawSubscription, type RawTest, type RawWaitlist, type RawWorkbookEmail } from "@/lib/admin-dashboard";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { reminderEmail } from "@/lib/reminder-email";
 
@@ -28,10 +28,13 @@ export function demoRows(now: Date): DashboardRows {
   const pick = <T,>(xs: T[]) => xs[Math.floor(r() * xs.length)];
   const iso = (ms: number) => new Date(Math.min(ms, now.getTime() - 60_000)).toISOString();
   const H = 3_600_000;
-  const out: DashboardRows = { parents: [], children: [], tests: [], reports: [], cards: [], waitlist: [], emails: [], deliveries: [], subscriptions: [], testIds: [], stripeNote: null, stripeMode: "test" };
+  const sends: RawSend[] = [];
+  const workbookEmails: RawWorkbookEmail[] = [];
+  const out: DashboardRows = { parents: [], children: [], tests: [], reports: [], cards: [], waitlist: [], emails: [], deliveries: [], subscriptions: [], testIds: [], stripeNote: null, stripeMode: "test", sends, workbookEmails };
   // Delivery events (D-104) draw from their own sequence, so the rest of the demo stays the same.
   const rd = rng(7);
-  const deliver = (to: Pick<RawDelivery, "email_log_id" | "report_id" | "report_email">, sentMs: number) => {
+  const rs = rng(11);
+  const deliver = (to: Pick<RawDelivery, "email_log_id" | "report_id" | "report_email" | "email_ref">, sentMs: number) => {
     const x = rd();
     const type: RawDelivery["type"] = x < 0.04 ? "bounced" : x < 0.05 ? "complained" : "delivered";
     const detail = type === "bounced" ? "Permanent, General: 550 5.1.1 <[address]>: Recipient address rejected" : null;
@@ -58,6 +61,16 @@ export function demoRows(now: Date): DashboardRows {
       out.children.push(c);
     }
     const kid = kids[0];
+    // The send log and the workbook emails (every email the site sends) draw from their own sequence too.
+    const logSend = (kind: RawSend["kind"], atMs: number, subject: string | null, child: string | null = kid.id) => {
+      if (atMs > now.getTime()) return;
+      const refused = rs() < 0.03;
+      const row: RawSend = { id: id("demo-send"), created_at: iso(atMs), kind, parent_id: pid, child_id: child, outcome: refused ? "refused" : "sent", email_id: refused ? null : `re_${n}`, error: refused ? "Resend answered 422: invalid address" : null, subject };
+      sends.push(row);
+      if (!refused) deliver({ email_log_id: null, report_id: null, report_email: null, email_ref: sendEmailId(row.id) }, atMs);
+    };
+    if (rs() < 0.8) logSend("signup_welcome", created + 60_000, "Welcome to Unica Learning");
+    else logSend("phone_welcome", created + 60_000, null, null);
     const email = (kind: RawEmail["kind"], atMs: number, assessment: string | null, fail = r() < 0.05): void => {
       if (atMs > now.getTime()) return;
       const row: RawEmail = { id: id("demo-email"), created_at: iso(atMs), parent_id: pid, child_id: kid.id, assessment_id: assessment, kind, status: kind === "unsubscribe" ? null : fail ? "failed" : "sent", attempts: fail ? 3 : 1, sent_at: fail || kind === "unsubscribe" ? null : iso(atMs + 60_000), error: fail ? "Resend: rate limit (429)" : null, clicks: 0, first_clicked_at: null };
@@ -111,6 +124,17 @@ export function demoRows(now: Date): DashboardRows {
     const plan = r() < 0.7 ? "one" : "both";
     const card: RawCard = { id: id("demo-card"), created_at: iso(cardMs), updated_at: iso(saved ? savedMs : cardMs), parent_id: pid, child_id: kid.id, plan, price: plan === "one" ? 99 : 179, stripe_customer_id: `cus_demo${i}`, card_saved_at: saved ? iso(savedMs) : null };
     out.cards.push(card);
+    if (saved) {
+      const notice = (kind: RawWorkbookEmail["kind"], atMs: number, subject: string) => {
+        if (atMs > now.getTime()) return;
+        const row: RawWorkbookEmail = { id: id("demo-wbmail"), created_at: iso(atMs), parent_id: pid, child_id: kid.id, kind, status: "sent", attempts: 1, sent_at: iso(atMs + 60_000), email_id: `re_${n}`, error: null, subject };
+        workbookEmails.push(row);
+        deliver({ email_log_id: null, report_id: null, report_email: null, email_ref: workbookEmailId(row.id) }, atMs + 60_000);
+      };
+      notice("welcome", savedMs + 0.1 * H, "Your first workbook with Unica Learning");
+      if (rs() < 0.6) notice("dispatch", savedMs + (3 + rs() * 4) * 24 * H, `${kid.first_name}'s workbook is on its way`);
+      if (rs() < 0.3) logSend("scan_link", savedMs + 9 * 24 * H, `Take pictures of ${kid.first_name}'s workbook pages`);
+    }
     if (saved && r() < 0.5) {
       const payMs = savedMs + (2 + r() * 6) * 24 * H;
       if (payMs < now.getTime()) out.subscriptions.push({
@@ -120,6 +144,15 @@ export function demoRows(now: Date): DashboardRows {
       const sub = out.subscriptions.at(-1)!;
       if (sub.status === "canceled") sub.endedAt = iso(payMs + 5 * 24 * H);
     }
+  }
+  // The team emails about no family: the daily digest, and a contact form message now and then.
+  for (let d = 13; d >= 0; d--) {
+    const atMs = now.getTime() - d * 24 * H - 5 * H;
+    const day = new Date(atMs).toISOString().slice(0, 10);
+    const row: RawSend = { id: id("demo-send"), created_at: iso(atMs), kind: "team_digest", parent_id: null, child_id: null, outcome: "sent", email_id: `re_${n}`, error: null, subject: `Unica daily digest ${day}: ${1 + Math.floor(rs() * 5)} sections` };
+    sends.push(row);
+    deliver({ email_log_id: null, report_id: null, report_email: null, email_ref: sendEmailId(row.id) }, atMs);
+    if (rs() < 0.3) sends.push({ id: id("demo-send"), created_at: iso(atMs + 2 * H), kind: "contact_message", parent_id: null, child_id: null, outcome: "sent", email_id: null, error: null, subject: null });
   }
   // two made-up test families, so the "hidden" note and its toggle show
   out.testIds = out.parents.slice(0, 2).map((p) => p.id);
