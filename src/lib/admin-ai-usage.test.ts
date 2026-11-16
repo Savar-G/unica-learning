@@ -144,8 +144,10 @@ describe("OpenRouter check", () => {
       seen.push({ key, limited: !!init?.signal });
       return new Response(JSON.stringify({ data: { usage_monthly: key.endsWith("b") ? 2 : 3 } }), { status: 200 });
     }) as unknown as typeof globalThis.fetch;
-    const env = { OPENROUTER_API_KEY: "a", SCAN_MARKING_OPENROUTER_API_KEY: "b", PARENT_EXPLANATION_API_KEY: "a" };
+    const env = { MAYA_OPENROUTER_API_KEY: "a", SCAN_MARKING_OPENROUTER_API_KEY: "b", PARENT_EXPLANATION_API_KEY: "a" };
     expect(openRouterKeys(env)).toEqual(["a", "b"]);
+    expect(openRouterKeys({ OPENROUTER_API_KEY: "shared", DECISIONS_OPENROUTER_API_KEY: "shared" })).toEqual([]);
+    expect(openRouterKeys({ MAYA_OPENROUTER_API_KEY: "m", SCAN_MARKING_OPENROUTER_API_KEY: "s", PARENT_EXPLANATION_API_KEY: "e", WORKBOOK_OPENROUTER_API_KEY: "w", ASSESSMENT_OPENROUTER_API_KEY: "a", PROFILE_OPENROUTER_API_KEY: "p" })).toEqual(["m", "s", "e", "w", "a", "p"]);
     await expect(openRouterMonthCheck(env, fetch)).resolves.toMatchObject({ monthUsd: 5, asked: 2, answered: 2 });
     expect(seen).toHaveLength(2);
     expect(seen.every((s) => s.limited)).toBe(true);
@@ -154,9 +156,9 @@ describe("OpenRouter check", () => {
   it("says partial when one key fails, null when none answers, and no-key when no key is set", async () => {
     const half = (async (_u: string, init?: RequestInit) => String((init?.headers as Record<string, string>).authorization).endsWith("b")
       ? new Response("no", { status: 401 }) : new Response(JSON.stringify({ data: { usage_monthly: 4 } }), { status: 200 })) as unknown as typeof globalThis.fetch;
-    await expect(openRouterMonthCheck({ OPENROUTER_API_KEY: "a", DECISIONS_OPENROUTER_API_KEY: "b" }, half)).resolves.toMatchObject({ monthUsd: 4, asked: 2, answered: 1 });
+    await expect(openRouterMonthCheck({ MAYA_OPENROUTER_API_KEY: "a", WORKBOOK_OPENROUTER_API_KEY: "b" }, half)).resolves.toMatchObject({ monthUsd: 4, asked: 2, answered: 1 });
     const down = (async () => { throw new Error("offline"); }) as unknown as typeof globalThis.fetch;
-    await expect(openRouterMonthCheck({ OPENROUTER_API_KEY: "a" }, down)).resolves.toBeNull();
+    await expect(openRouterMonthCheck({ MAYA_OPENROUTER_API_KEY: "a" }, down)).resolves.toBeNull();
     await expect(openRouterMonthCheck({}, down)).resolves.toBe("no-key");
   });
 });

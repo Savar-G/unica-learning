@@ -6,7 +6,7 @@ import type { AdminSession } from "@/lib/admin-store";
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 const json = (data: unknown) => new Response(JSON.stringify({ data }));
-const env = { OPENROUTER_BILLING_API_KEY: "billing-private", OPENROUTER_API_KEY: "main-private", SCAN_MARKING_OPENROUTER_API_KEY: "scan-private", PARENT_EXPLANATION_API_KEY: " main-private " };
+const env = { OPENROUTER_BILLING_API_KEY: "billing-private", MAYA_OPENROUTER_API_KEY: "main-private", SCAN_MARKING_OPENROUTER_API_KEY: "scan-private", PARENT_EXPLANATION_API_KEY: " main-private " };
 
 describe("independent OpenRouter billing scopes", () => {
   it("keeps account credits, lifetime usage and key month usage distinct; asks one account and each unique server key once", async () => {
@@ -29,7 +29,7 @@ describe("independent OpenRouter billing scopes", () => {
     const fetch = vi.fn(async () => json({ total_credits: 10, total_usage: 7, usage_monthly: 1 }));
     expect((await openRouterBilling({ OPENROUTER_API_KEY: "main" }, fetch)).account.source).toBe("main");
     const none = await openRouterBilling({}, fetch);
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(1);
     expect(none.account).toMatchObject({ status: "no-key", spentUsd: null, creditsUsd: null, balanceUsd: null });
     expect(none.month).toBe("no-key");
   });

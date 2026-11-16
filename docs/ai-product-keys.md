@@ -45,10 +45,17 @@ The workbook worker needs the workbook key only for its optional OpenRouter fall
 
 `AI_PRODUCT_KEYS_ROOT_STEPS_PENDING`
 
-1. Integrate the implementation commit into PR #1131 with the separate admin report change. Extend the admin key-month reader to include all six product variables. Retain historical aliases and unknown attribution. Update the global environment table and the old report-off message to use the new names.
+1. Integrate the implementation commit into PR #1131 with the separate admin report change. Extend the admin key-month reader to include all six product variables. Retain historical aliases and unknown attribution. Update the project environment table and the old report-off message to use the new names.
 2. Create or adopt one dedicated credential for each product. Configure the variables securely on Vercel and on each worker that needs them. Do not reuse a credential across products. Existing marking and explanation credentials may stay when they serve only their listed product. No credentials were read, created or configured by this implementation task.
 3. Check live migration history and the unique UTC filename. Apply `20261116213019_ai_product_key_aliases.sql` before code release. It only expands `ai_usage_events.key_alias` to accept `maya`, `workbook`, `assessments` and `profiles`. All existing values remain accepted. The existing `AI_KEY_ALIASES` state-list registration covers the expanded list.
 4. Run `npm run db:types` and `npm run db:checks`. Commit the generated output. The implementation task leaves generated files unchanged. Until regeneration, `state-lists.test.ts` must detect the difference from the old hosted constraint.
 5. Verify the applied constraint and each dedicated binding on the hosted platform. Complete independent review and the full test, lint and build checks. Local fake requests prove routing and receipts; they do not prove hosted credentials or permissions.
 6. Coordinate the voice worker release only after the current Maya owner finishes #1130. Never deploy to the same worker in parallel. Rebuild and restart long-lived processes with the new bindings after the migration and secrets are ready.
 7. Update the project vault with the verified result and pending release state. Change this marker to `AI_PRODUCT_KEYS_ROOT_STEPS_DONE` only after the required work is complete.
+
+## Root verification record (2026-11-16)
+
+- Product routing is integrated into PR #1131. The key-month compatibility reader lists all six product variables. The active admin page reads only the Unica workspace analytics.
+- Hosted migration `20261116215521 ai_product_key_aliases` matches local `20261116213019_ai_product_key_aliases.sql`. Generated types were refreshed and unchanged. Generated checks contain all 11 accepted current and historical labels. A service-role rollback probe accepted each label, refused an unknown label and left zero probe rows.
+- The root configuration and report-message fixes passed 144 focused tests. Independent combined reviews, full checks, worker release, web release and webhook activation remain required.
+- Six distinct product credentials are configured for Production. No model request or classifier ran. Historical unknown ownership remains unknown.
