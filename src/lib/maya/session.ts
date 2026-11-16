@@ -5278,8 +5278,23 @@ export function codeStance(s: Session): "wrong" | "right" | "none" {
   if (!s.package || !s.turn) return "none";
   // Final check 8: a number bound to a place that its step does not make is wrong for that step.
   if (scopedMiss(s)) return "wrong";
+  const asked = askedStance(s);
+  if (asked) return asked;
   if (heardAnswers(s).some((a) => a.verdict === "right")) return "right";
   return turnFacts(s).some((f) => f.wrong) ? "wrong" : "none";
+}
+
+/** A single committed number answers Maya's last checked question, not every value of the work. */
+function askedStance(s: Session): "right" | "wrong" | null {
+  if (!s.tutor || !s.package || !s.turn || s.turn.uncertain || s.solved !== null) return null;
+  const text = s.turn.text;
+  if (/\banswer\b/i.test(text) || text.includes("?") || helpInWords(text) || saysStuck(text) || hedgedTurn(s) || saysGuess(text) || childSaysFalse(text) || mentionsExample(text) || unreadNumberRuns(text).length) return null;
+  const { read, committed } = committedRead(s);
+  if (!committed || !read.sure || read.final?.type !== "number" || sentenceCount(text) !== 1 || valuesIn(text, readOptionsIn(s)).length !== 1 || wholeTurn(text) === null) return null;
+  const maya = s.turns.findLast(t => t.speaker === "maya");
+  if (!maya || mentionsExample(maya.text)) return null;
+  const value = askedStepOf(s)?.value ?? askedStep(s.package, s.turns, read.final.value)?.value;
+  return value === undefined ? null : read.final.value === value ? "right" : "wrong";
 }
 
 /** The words of the question and its easier example: a math-only sentence may use them too. */
@@ -5490,6 +5505,8 @@ export function childAnswerOf(s: Session, hide: (text: string) => string): MathR
   // the ones.": one credited step, one value, no final answer).
   const miss = scopedMiss(s);
   if (miss) return { value: miss.value, verdict: "wrong", right };
+  const asked = askedStance(s);
+  if (asked) return { value: numOf(committedRead(s).read.final ?? undefined), verdict: asked, right };
   const stepValues = [...new Set(credited.map((a) => numOf(a.value)))];
   if (credited.length === 1 && credited[0].step !== "result" && stepValues[0] !== null && !childSaysFalse(text, { whole: true })) return { value: stepValues[0], verdict: "right", right };
   if (childSaysFalse(text, { whole: true })) return { value: null, verdict: "wrong", right };
@@ -5729,6 +5746,11 @@ export function tutorStream(s: Session, reviewsOnly = false): TutorStreamContext
   // Final check 10: a number the standard reader cannot read gives no stance at all.
   const stance = unreadNumberRuns(s.turn.text).length > 0 ? "none" : word === "wrong" || (code === "none" && childSaysFalse(s.turn.text)) ? "wrong" : code === "none" && word === "right" ? "right" : code;
   const credited = heardAnswers(s).flatMap((a) => (a.verdict === "right" && a.value.type === "number" ? [a.value.value] : []));
+  // This is permission for a streamed judgment only. A later work value earns no final-answer credit.
+  if (askedStance(s) === "right") {
+    const value = committedRead(s).read.final;
+    if (value?.type === "number") credited.push(value.value);
+  }
   // A word question's "yes" streams only on code's right word: with no word code can read, the affirmation waits for
   // the whole message and its check.
   const wordQuestion = !!sessionClaim(s.package) || !!comparisonOf(s.package);
@@ -5975,6 +5997,8 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   if (base.turn && childSaysFalse(base.turn.text)) stance = "wrong";
   // Final check 8: a number bound to a place its step does not make ("I got 24 for the tens.") is wrong for that step.
   if (base.turn && scopedMiss(base)) stance = "wrong";
+  const asked = askedStance(base);
+  if (asked && !(base.turn && (childSaysFalse(base.turn.text) || scopedMiss(base)))) stance = asked;
   // A bare word ("false", "no") is not committed, so it is not credited, but Maya never says "yes" to a wrong one or
   // "not quite" to a right one (F4 builder, 2026-11-15).
   if (base.turn && !credited.some((a) => a.step === "result")) {

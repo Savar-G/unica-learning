@@ -15,6 +15,7 @@
 import type { OperationPackage } from "@/lib/question-package";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, type TutorStepFact } from "./tutor-kind";
 import { tutorKindOf } from "./tutor-kinds";
+import { patternOf } from "./tutor-kinds/evaluate";
 import { affirms, equationHolds, equationsOf, neverSayProblem, sayNumbers, sentenceKey, sentencesOf, type SayEquation } from "./say-check";
 import { exactSafe } from "./math-vocab";
 import { deniesWholeQuestion, echoesChild, selfCorrection } from "./teaching-reads";
@@ -343,6 +344,13 @@ export function questionExpressions(sentence: string): { operands: number[]; ops
  */
 export function askedStep(pkg: OperationPackage, question: string): { step: string; value: number } | null {
   if (!/\?\s*$/.test(question)) return null;
+  // A pattern term is a computed work value, even when it has no package step of its own.
+  const term = /^what is the (?:(\d+)(?:st|nd|rd|th)|(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)) term\?$/i.exec(question.trim());
+  const pattern = term && tutorKind(pkg).id === "evaluate" ? patternOf(pkg) : null;
+  if (term && pattern) {
+    const n = term[1] ? Number(term[1]) : ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"].indexOf(term[2].toLowerCase()) + 1;
+    if (n >= 1 && n <= pattern.term) return { step: `pattern-term:${n}`, value: pattern.start + (n - 1) * pattern.step };
+  }
   const asked = questionExpressions(question);
   if (asked.length !== 1) return null;
   const key = expressionKey(asked[0].operands, asked[0].ops);
