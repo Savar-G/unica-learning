@@ -75,13 +75,15 @@ it("keeps the interest share when capacity adds and replaces story questions", a
     instructions: { version: 1, startLevel: "U19", teachMore: ["6.4", "6.13"], teachLess: [], addReview: ["5.2", "5.7", "5.15", "5.19"], difficulty: null } });
   if (!placed.ok) throw new Error(placed.reason);
   let token = 0;
-  const generated = await generateWorkbook({ ...input, plan: placed.plan }, { fit: capacityFit,
+  // Five days retain the original 11/24 interest-share failure; later contracts have their own ten-day check.
+  const plan = { ...placed.plan, days: placed.plan.days.filter(d => [1, 2, 3, 4, 5].includes(d.day)) };
+  const generated = await generateWorkbook({ ...input, plan }, { fit: capacityFit,
     ai: fakeAiClient({ answer: fakeWorkbookItems }), solver: keySolver(), qrToken: () => `token-${String(++token).padStart(12, "0")}`,
     store: { save: async draft => ({ status: "saved", draftId: draft.id }), draft: async () => null } });
   if (generated.status !== "stored") throw new Error(generated.status);
   const pages = generated.draft.pages;
   expect(pages.flatMap(p => p.questions.filter(q => q.package && interestEligible(input.curriculum, q.itemPlan))).length).toBeGreaterThanOrEqual(6);
-  expect(interestShareProblems(input.curriculum, placed.plan, pages)).toEqual([]);
+  expect(interestShareProblems(input.curriculum, plan, pages)).toEqual([]);
 });
 
 function customInput(addReview: string[], days = [1, 5, 10], grade: 4 | 8 = 4): GenerateInput {
@@ -157,7 +159,8 @@ it("fills all ten U19 days with approved contracts and distinct own-step Challen
 });
 
 it("keeps the distinct angle task beside its method when practice uses compact reminders", async () => {
-  const source = customInput(["5.2", "5.7", "5.15"], Array.from({ length: 10 }, (_, i) => i + 1));
+  // Earlier examples must consume the description forms so Day 5 exercises a numeric angle example.
+  const source = customInput(["5.2", "5.7", "5.15"], [1, 2, 3, 4, 5]);
   const input = { ...source, plan: { ...source.plan, days: source.plan.days.map(d => ({ ...d,
     pages: d.pages.map(p => d.day === 5 && p.type === "practice" ? { ...p, compactPanel: true } : p) })) } };
   const fit = capacityFit;
