@@ -16,7 +16,13 @@ export const MAX_HOLD_SECONDS = 600;
 
 export type SendDecide = (parent: string, child: string) => Promise<{ open: boolean; reason: string }>;
 const decideOf = (db: SupabaseClient<Database>, env: Env): SendDecide =>
-  (parent, child) => scanChecksDecision(db, parent, env, { child }).catch(() => ({ open: false, reason: "read_failed" }));
+  async (parent, child) => {
+    try {
+      const decision = await scanChecksDecision(db, parent, env, { child });
+      if (decision.reason === "read_failed") monitorProduct("scan.recovery_failed", { step: "send" });
+      return decision;
+    } catch { monitorProduct("scan.recovery_failed", { step: "send" }); return { open: false, reason: "read_failed" }; }
+  };
 
 export interface ChildSend { child: string; sent: string[] }
 /** Each failed group already emitted its own event. Callers must not report that same failure again. */

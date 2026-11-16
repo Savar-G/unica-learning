@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { setProductObserver } from "@/lib/product-monitoring";
 import type { Database } from "@/lib/database";
 import { readScanTeamQueue, setScanTeamMark, teamMarkChoice, teamMarkNeedsPhoto } from "./scan-team-marks";
 
@@ -19,7 +20,20 @@ const client = (label: string) => createClient<Database>("https://team.example.t
     return Response.json(typeof state.answer === "function" ? state.answer(body) : state.answer, { status: state.status });
   } } });
 const adminDb = client("admin-session"), serviceDb = client("service-key");
-beforeEach(() => { Object.assign(state, { rpc: [], answer: null, status: 200 }); Object.assign(after, { calls: [], pending: false }); });
+beforeEach(() => { vi.clearAllMocks(); setProductObserver(null); Object.assign(state, { rpc: [], answer: null, status: 200 }); Object.assign(after, { calls: [], pending: false }); });
+afterEach(() => { setProductObserver(null); vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+
+it("reports a committed team mark once and leaves a conflicting retry without a success event", async () => {
+  const observer = vi.fn(); setProductObserver(observer);
+  state.answer = { status: "saved", version: 3, parent: P, child: C };
+  await setScanTeamMark(adminDb, serviceDb, { item: ITEM, version: 2, result: "wrong" });
+  state.answer = { status: "conflict", version: 3 };
+  await setScanTeamMark(adminDb, serviceDb, { item: ITEM, version: 2, result: "wrong" });
+  expect(observer).toHaveBeenCalledExactlyOnceWith({ code: "scan.team_mark_saved", attributes: { count: 1 } });
+  observer.mockClear(); state.answer = { message: "PRIVATE", code: "42501" }; state.status = 403;
+  await expect(setScanTeamMark(adminDb, serviceDb, { item: ITEM, version: 2, result: "wrong" })).rejects.toThrow();
+  expect(observer).toHaveBeenCalledExactlyOnceWith({ code: "scan.team_mark_failed", attributes: {} });
+});
 
 it("accepts only an item row, a version and right, wrong or blank", () => {
   expect(teamMarkChoice({ item: ITEM, version: 2, result: "wrong" })).toEqual({ item: ITEM, version: 2, result: "wrong" });

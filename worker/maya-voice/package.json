@@ -11,6 +11,7 @@
     "@livekit/agents-plugin-assemblyai": "1.9.5",
     "@livekit/agents-plugin-inworld": "1.9.5",
     "@livekit/rtc-node": "1.2.1",
+    "@sentry/node": "11.12.0",
     "@supabase/supabase-js": "2.117.2",
     "server-only": "0.0.1"
   },
