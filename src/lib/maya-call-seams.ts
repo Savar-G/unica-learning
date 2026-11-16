@@ -1,4 +1,5 @@
 import "server-only";
+import { monitorProduct } from "@/lib/product-monitoring";
 import { randomInt, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { aiClient } from "@/lib/ai-client";
@@ -98,8 +99,8 @@ async function rebuild(db: SupabaseClient<Database>, env: Env, ledger: SpendLedg
     const questions: QuestionReader = { question: (ref) => (ref.source === "workbook" ? workbooks.question(ref) : tests.question(ref)) };
     const result = await rebuildChildProfile(childId, { profiles: childProfileStore(db), events: learningEventStore(db), ai, keepFindings, questions });
     return result.built === true;
-  } catch (e) {
-    console.error("[maya call] profile rebuild failed", childId, e instanceof Error ? e.message : String(e));
+  } catch {
+    monitorProduct("maya.recovery_failed", { callId: options.call?.id, step: "profile" });
     return false;
   }
 }
@@ -112,6 +113,8 @@ export function callSeams(db: SupabaseClient<Database>, options: { env?: Env; or
   return {
     // D-345: only the exact value "on" lets the tutor core teach family calls (desk chat and family voice).
     tutorFamilies: env.MAYA_TUTOR_FAMILIES === "on",
+    // #1122 deploys readers first. A later reviewed release may enable writes after the old-reader window ends.
+    streamChat: false,
     alerts: callAlerts({ ledger: mayaAlertLedger(db), to: env.SIGNUP_NOTIFY_EMAIL || null, origin: options.origin ?? siteOrigin(env), transport: options.transport }),
     store: mayaCallStore(db),
     connections: mayaConnectionLog(db),

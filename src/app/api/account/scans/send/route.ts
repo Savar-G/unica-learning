@@ -1,9 +1,9 @@
+import { monitorProduct, productAfter } from "@/lib/product-monitoring";
 import { after } from "next/server";
 import { isUuid } from "@/lib/workbook-content";
 import { scanSession, scanJson } from "@/lib/scan-photo-server";
-import { scanChecksAccess } from "@/lib/scan-marking-access";
 import { markSentPhotos, sendMarkingStart, SEND_MARKING_MAX_PHOTOS } from "@/lib/scan-send-marking";
-import { sendFamilyPhotos } from "@/lib/scan-send";
+import { ReportedScanSendError, sendFamilyPhotos } from "@/lib/scan-send";
 
 /** Shares the time limit with the marking `after()` starts: 300 s is the Vercel Hobby maximum (src/lib/scan-send-marking.ts). */
 export const maxDuration = 300;
@@ -28,17 +28,18 @@ export async function POST(request: Request) {
   const { admin, parent } = session;
   let result;
   try {
-    result = await sendFamilyPhotos(admin, parent, ids as string[], process.env,
-      async (p, c) => ({ open: await scanChecksAccess(admin, p, process.env, { child: c }), reason: "send" }));
-  } catch { return scanJson({ error: "unavailable" }, 503); }
+    result = await sendFamilyPhotos(admin, parent, ids as string[], process.env);
+  } catch (error) {
+    if (!(error instanceof ReportedScanSendError)) monitorProduct("scan.send_failed");
+    return scanJson({ error: "unavailable" }, 503);
+  }
   if (!result.open) return scanJson({ error: "refused" }, 404);
   let start: string[] = [];
   for (const c of result.byChild) start.push(...await sendMarkingStart(admin, parent, c.child, c.sent));
   start = start.slice(0, SEND_MARKING_MAX_PHOTOS);
   if (start.length) {
     const photos = start;
-    try { after(() => markSentPhotos(parent, photos, startedAt).then(() => undefined, () => undefined)); }
-    catch { start = []; }
+    if (!productAfter(after, () => markSentPhotos(parent, photos, startedAt), "scan.recovery_failed", { step: "marking" })) start = [];
   }
   return scanJson({ sent: result.sent, marking: start.length });
 }

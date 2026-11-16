@@ -32,6 +32,7 @@
 // Script lines: a child turn, or "/wait <seconds>" (the clock moves on and the pause policy runs), "/write start",
 // "/write done", "/quit" (the child hangs up: child_stopped). "#" starts a comment. With --script or piped input the
 // clock is simulated (4 seconds a turn, plus each /wait); typed input uses the real clock.
+import { flushAiUsage } from "@/lib/ai-usage";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
@@ -296,7 +297,7 @@ async function main() {
   if (error) throw error;
 }
 
-main().then(
+main().finally(flushAiUsage).then(
   () => process.exit(0),
   (e) => {
     console.error(redactText(e instanceof Error ? e.message : String(e)));

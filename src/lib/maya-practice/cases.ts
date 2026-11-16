@@ -234,6 +234,8 @@ export interface TutorCheck {
   what: string;
   within: number;
   all: readonly RegExp[];
+  /** Savar's call 2 (2026-11-15): patterns that must NOT be in Maya's words within the same turns. */
+  none?: readonly RegExp[];
 }
 
 export const TEACHING: Dimension[] = ["J01", "J02", "J03", "J04", "J05", "J06"];

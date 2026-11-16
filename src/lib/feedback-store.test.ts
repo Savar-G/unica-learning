@@ -1,4 +1,5 @@
-import { expect, it, vi } from "vitest";
+import { setProductObserver } from "@/lib/product-monitoring";
+import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 vi.mock("server-only",()=>({}));
@@ -18,4 +19,19 @@ it("filters in the database and reads a stable newest-first bounded page with a 
   expect(order.mock.calls).toEqual([["created_at",{ascending:false}],["id",{ascending:false}]]);expect(range).toHaveBeenCalledWith(50,100);expect(result.rows).toHaveLength(50);expect(result.more).toBe(true);
   eq.mockClear();await listFeedback(db,null,1);expect(eq).not.toHaveBeenCalled();
   range.mockResolvedValueOnce({data:null,error:{code:"read_failed"}});await expect(listFeedback(db,null,1)).rejects.toThrow("read_failed");
+});
+
+
+beforeEach(() => { vi.clearAllMocks(); setProductObserver(null); });
+afterEach(() => { setProductObserver(null); vi.restoreAllMocks(); });
+it("alerts only on a new receipt, not an exact retry, and reports a swallowed store failure without feedback text", async () => {
+  const observer = vi.fn(); setProductObserver(observer);
+  const rpc = vi.fn().mockResolvedValueOnce({ data: "saved" }).mockResolvedValueOnce({ data: "duplicate" }).mockRejectedValueOnce(Error("PRIVATE FEEDBACK"));
+  const store = feedbackStore({ rpc } as unknown as SupabaseClient<Database>);
+  const input = { requestId: "request", childId: null, product: "other" as const, text: "PRIVATE FEEDBACK", source: "/account" };
+  await store.submit("parent", input); await store.submit("parent", input);
+  expect(observer).toHaveBeenCalledExactlyOnceWith({ code: "feedback.received", attributes: { count: 1, product: "other" } });
+  await expect(store.submit("parent", input)).rejects.toThrow("PRIVATE");
+  expect(observer.mock.calls[1]).toEqual([{ code: "feedback.failed", attributes: {} }]);
+  expect(JSON.stringify(observer.mock.calls)).not.toContain("PRIVATE");
 });

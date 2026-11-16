@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { setProductObserver } from "@/lib/product-monitoring";
 import type { Database } from "@/lib/database";
 import {
   familySlotFree, markSentPhotos, sendMarkingStart, SEND_MARKING_SLOT_WAITS_MS, SEND_MARKING_LIMIT_MS, SEND_MARKING_MARGIN_MS, SEND_MARKING_MAX_PHOTOS, SEND_MARKING_LEASE_MS,
@@ -50,9 +51,9 @@ const db = createClient<Database>("https://send-marking.example.test", "syntheti
 const plan = async () => state.plan as never;
 const clock = (start = 0) => { let t = start; return { now: () => t, advance: (ms: number) => { t += ms; } }; };
 
-beforeEach(() => { Object.assign(state, { test: false, plan: { open: true, reason: "open" }, requests: [], commands: [], taken: [], slotDown: false, slotQueries: [] }); ai.transports = 0; });
+beforeEach(() => { vi.clearAllMocks(); setProductObserver(null); Object.assign(state, { test: false, plan: { open: true, reason: "open" }, requests: [], commands: [], taken: [], slotDown: false, slotQueries: [] }); ai.transports = 0; });
 const free = async () => true;
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => { setProductObserver(null); vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 it.each([
   ["off", { SCAN_MARKING_ENABLED: "off" }],
@@ -182,6 +183,7 @@ it("never calls the lane twice for a photo in one run, even when its claim answe
 });
 
 it("reads the slot as the claim counts it: an upload, a photo check or a marking job with a live lease takes it", async () => {
+  const observer = vi.fn(); setProductObserver(observer);
   const at = "2026-11-07T20:00:00.000Z";
   expect(await familySlotFree(db, parent, at)).toBe(true);
   for (const holder of ["upload", "check", "job"]) {
@@ -189,7 +191,9 @@ it("reads the slot as the claim counts it: an upload, a photo check or a marking
     expect(await familySlotFree(db, parent, at)).toBe(false);
   }
   state.taken = []; state.slotDown = true;
+  expect(observer).not.toHaveBeenCalled();
   expect(await familySlotFree(db, parent, at)).toBe(false);
+  expect(observer).toHaveBeenCalledExactlyOnceWith({ code: "scan.recovery_failed", attributes: { step: "marking" } });
   // Read only, the family's own rows, live leases only, in the states the claim counts.
   for (const q of state.slotQueries) {
     expect(q.searchParams.get("parent_id")).toBe(`eq.${parent}`);

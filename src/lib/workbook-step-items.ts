@@ -343,7 +343,7 @@ const difficultyRank = (d: TemplateDifficulty) => ["easy", "medium", "hard"].ind
 
 /**
  * How many templates a step keeps for its Challenge: its hardest with a number to work out (as `stepTemplateItem`).
- * A Challenge asks each once; with fewer than 3, its other cards come from steps taught or reviewed before (U16 review).
+ * The Challenge stays on its own step. With three or more eligible forms, it asks each at most once.
  */
 export function challengeTemplateCount(curriculum: Curriculum, skill: string, step: number | null, level: number): number {
   const printable = (stepOf(curriculum, skill, step)?.templates ?? []).filter((t) => !templateProblem(t, level));
@@ -477,7 +477,8 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
     try {
       // Priced objects need a purchase context. The shared counting list also has
       // leaves and acorns, which do not fit these price questions.
-      const purchase = t.text.includes("{things}") && /\$|\bdollars?\b|\b(?:buys?|bought)\b|Each \{container\} holds|puts .* in each \{container\}/.test(t.text);
+      const purchase = t.text.includes("{things}") && (/\$|\bdollars?\b|\b(?:buys?|bought)\b/.test(t.text)
+        || !r.interests?.things.length && /Each \{container\} holds|puts .* in each \{container\}/.test(t.text));
       // (Sam is Spot the error's child: no other story names Sam, so code's text prints unchanged, B1.)
       const people = r.place === "spot-the-error" ? contexts.people : contexts.people.filter((x) => x.name !== "Sam");
       const interest = r.interests ? { ...(r.interests.things.length ? { things: r.interests.things } : {}), ...(r.interests.places.length ? { places: r.interests.places } : {}) } : {};

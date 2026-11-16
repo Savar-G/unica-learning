@@ -29,7 +29,7 @@ function splitAddress(from: string): { name: string; address: string | null } {
 function resultText(e: EmailEvent, copy: EmailCopyView | null): { text: string; bad: boolean } {
   if (e.status === "failed") return { text: `Not sent: Resend refused it after ${e.attempts} ${e.attempts === 1 ? "try" : "tries"}. ${e.error ?? ""}`.trim(), bad: true };
   if (e.status === "pending") {
-    return e.state === "unknown" || copy?.outcome === "unknown"
+    return e.state === "unknown" || (e.state !== "claimed" && copy?.outcome === "unknown")
       ? { text: `${DELIVERY_WORDS.unknown}. ${e.error ?? ""}`.trim(), bad: true }
       : { text: `${DELIVERY_WORDS[e.state === "claimed" ? "claimed" : "unsent"]}.`, bad: false };
   }

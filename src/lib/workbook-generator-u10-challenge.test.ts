@@ -4,6 +4,7 @@ import { fakeAiClient } from "./ai-client-fake";
 import { fakeWorkbookItems } from "./workbook-ai-fake";
 import { buildPlannedItem } from "./workbook-item-plan";
 import { generateWorkbook, prepareWorkbookCapacity, workbookCapacityPlan } from "./workbook-generator";
+import { firstCustomerProfile } from "./workbook-sample-profiles";
 import { planNextWorkbook } from "./workbook-placement";
 import { keySolver } from "./workbook-solve-check";
 import { renderableDraft } from "./workbook-fit";
@@ -57,3 +58,16 @@ it.each([2, 3])("plans three checked Challenge cards on every teaching step of U
   }).toEqual({ failed: [], issues: [] });
   expect(generated.draft.quality?.ready).toBe(true);
 }, 60_000);
+
+it("reserves complete estimate-practice pairs before the day time pass", () => {
+  const curriculum = curriculumFor("bc")!;
+  const placed = planNextWorkbook({ curriculum, grade: 4, profile: firstCustomerProfile(), workbooks: [], number: 1,
+    instructions: { version: 1, startLevel: "U10", teachMore: ["3.3"], teachLess: [], addReview: ["2.4"], difficulty: null } });
+  if (!placed.ok) throw new Error(placed.reason);
+  const plan = workbookCapacityPlan(curriculum, placed.plan);
+  for (const step of [2, 3]) {
+    const page = plan.days.flatMap(d => d.pages).find(p => p.type === "new-idea" && p.parts.some(part =>
+      part.step?.skill === "3.1-estimate-quantity" && part.step.step === step))!;
+    expect(page.capacity?.find(s => s.slot === "now-you")?.items, `Estimate step ${step}`).toBe(4);
+  }
+});

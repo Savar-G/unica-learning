@@ -1,4 +1,5 @@
 import "server-only";
+import { monitorProduct } from "@/lib/product-monitoring";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { adminClient } from "@/lib/supabase-auth";
@@ -49,9 +50,9 @@ export async function familySlotFree(db: SupabaseClient<Database>, parent: strin
       db.from("scan_calibrations").select("photo_id").eq("parent_id", parent).eq("state", "running").gt("lease_until", at).limit(1),
       db.from("scan_marking_jobs").select("photo_id").eq("parent_id", parent).in("state", ["running", "extracted"]).gt("lease_until", at).limit(1),
     ]);
-    if (uploads.error || checks.error || jobs.error) return false;
+    if (uploads.error || checks.error || jobs.error) { monitorProduct("scan.recovery_failed", { step: "marking" }); return false; }
     return !uploads.data.length && !checks.data.length && !jobs.data.length;
-  } catch { return false; }
+  } catch { monitorProduct("scan.recovery_failed", { step: "marking" }); return false; }
 }
 
 /**
@@ -62,8 +63,10 @@ export async function sendMarkingStart(db: SupabaseClient<Database>, parent: str
   env: Env = process.env, plan: ChildPlanAccess = childPlanAccess): Promise<string[]> {
   if (!sent.length) return [];
   try {
-    if (!(await markingDecision(db, parent, env, { child }, plan)).open) return [];
-  } catch { return []; }
+    const decision = await markingDecision(db, parent, env, { child }, plan);
+    if (decision.reason === "read_failed") monitorProduct("scan.recovery_failed", { step: "marking" });
+    if (!decision.open) return [];
+  } catch { monitorProduct("scan.recovery_failed", { step: "marking" }); return []; }
   return [...new Set(sent)].sort().slice(0, SEND_MARKING_MAX_PHOTOS);
 }
 
@@ -107,7 +110,7 @@ export async function markSentPhotos(parent: string, photos: readonly string[], 
   for (const photo of photos) {
     if (!await slotFree()) break;
     try { results[photo] = await mark(db, parent, photo, env, plan); }
-    catch { results[photo] = "error"; }
+    catch { monitorProduct("scan.marking_failed", { photoId: photo }); results[photo] = "error"; }
   }
   const counts: Record<string, number> = {};
   for (const r of Object.values(results)) counts[r] = (counts[r] ?? 0) + 1;

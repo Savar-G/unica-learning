@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { noteSentences, noteTranscriptLines, type Finished } from "@/lib/maya-call-note";
+import type { Finished } from "@/lib/maya-call-note";
+import { noteSentences, noteTranscriptLines } from "@/lib/maya-call-note-display";
 import { notePath, notesPath, notePlace, sessionKind, sessionWhen, type ParentNote, type ParentNoteSession } from "@/lib/parent-maya-notes";
 import type { FamilyZone } from "@/lib/family-time";
 import { SupportPage } from "@/components/support-page";

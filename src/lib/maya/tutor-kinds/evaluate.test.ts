@@ -193,8 +193,9 @@ describe("review of #1018", () => {
     await s.start();
     expect((await s.child("16")).say).not.toContain("Not quite.");
     // Control: a number that is no value of the question may still hear "Not quite".
-    const t = session(patternStep, () => "Not quite.");
+    // Savar's call 2 (2026-11-15): a message that corrects ends with one question.
+    const t = session(patternStep, () => "Not quite. Can you try again?");
     await t.start();
-    expect((await t.child("15")).say).toContain("Not quite.");
+    expect((await t.child("15")).say.join(" ")).toContain("Not quite.");
   });
 });

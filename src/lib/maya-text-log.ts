@@ -1,7 +1,7 @@
 // Persistent transition rules for the text adapter. No provider, clock, promise or abort signal enters this fold.
 import { applyBatch, createScene, type Batch, type Scene } from "@/lib/board";
 import { withEmittedHelp, type Assistance } from "@/lib/maya/session";
-import { BOARD_FATES, nextActs, speechKey, step, TIME_LIMITS, SAFETY_GUIDANCE, type Act, type BoardFate, type Effect, type MathReview, type Session, type SessionEvent, type TalkReview } from "@/lib/maya";
+import { BOARD_FATES, nextActs, speechKey, step, TIME_LIMITS, SAFETY_GUIDANCE, type Act, type BoardFate, type Effect, type MathReview, type Session, type SessionEvent, type TalkReview, type TiedDrawing } from "@/lib/maya";
 import { type TraceAttempt, type TraceBoardBatch, type TraceError, type TraceObligation, type TraceTurn } from "@/lib/maya-trace";
 import type { TextOutput } from "@/lib/maya-text";
 
@@ -18,8 +18,24 @@ export interface TextLogInitial {
 export type TextLogEvent =
   | { kind: "input"; at: number; event: SessionEvent; error?: TraceError }
   /** `filler`: the voice worker's thinking phrase (an acknowledgement id) said when this repair started; absent otherwise. */
-  | { kind: "request"; at: number; requestId: number; source: "model" | "repair"; filler?: string }
+  /**
+   * `continuation` (2026-11-15, voice fallbacks): a tutor repair that started after streamed sentences and continues them
+   * (continuedSay). Fixed when the repair starts: sentences a plain repair streams itself never make it one.
+   */
+  | { kind: "request"; at: number; requestId: number; source: "model" | "repair"; filler?: string; continuation?: true }
   | { kind: "response"; at: number; requestId: number; proposal?: unknown; error?: TraceError; ms: number; fenced?: true; sent?: string[]; firstSayMs?: number; gateDisagrees?: true; priority?: Record<string, unknown> }
+  /**
+   * Legacy #1107 accepted progress. New writers use pending and confirmed events instead.
+   * Existing words, help and drawings retain their accepted meaning when these records are replayed.
+   */
+  | { kind: "part"; at: number; requestId: number; sentence: string; board?: StreamedBoard }
+  /** Pending is never accepted progress. Confirmation means server dispatch, not child receipt. */
+  | { kind: "part_pending"; at: number; requestId: number; sentence: string; board?: StreamedBoard }
+  | { kind: "part_confirmed"; at: number; requestId: number }
+  | { kind: "part_discarded"; at: number; requestId: number }
+  | { kind: "stream_interrupted"; at: number; requestId: number; detail: string }
+  /** A binding stream hold. Recovery must settle this admitted turn, even if no sentence went out. */
+  | { kind: "stream_hold"; at: number; requestId: number; priority?: Record<string, unknown> }
   /** `mathReviews`: two-layer true math (2026-11-15); absent in an event written before the math-truth review existed. */
   /**
    * `drawMode` (B2): "derive" on a proposal stepped live since B2 derives drawings from Maya's sentences. A saved event
@@ -38,6 +54,8 @@ export type TextLogEvent =
    */
   | { kind: "help"; at: number; assistance: Assistance };
 
+/** #1107: a drawing streamed with its sentence: the batch, its keys, and its place in the message's drawings (`tied`). */
+export interface StreamedBoard { batch: Batch; keys: string[]; tied: TiedDrawing }
 /** `ties` (B2): the sentence each batch is tied to, by transaction id; a batch not in it goes at the end of the turn. */
 type PendingOutput = { entry: Extract<TraceTurn, { kind: "maya" }>; act: Act; say: string[]; batches: Batch[]; ties?: Record<string, number>; obligations: number[]; control: number };
 export interface TextFold {
@@ -56,10 +74,20 @@ export interface TextFold {
   controls: { event: SessionEvent; replaceTurn?: boolean; cancelled?: boolean }[];
   obligations: TraceObligation[];
   childState: "listening" | "child_speaking";
-  request: { id: number; source: "model" | "repair"; filler?: string } | null;
-  candidate: { requestId: number; proposal: unknown; ms: number; source: "model" | "repair"; fenced?: true; firstSayMs?: number; gateDisagrees?: true; filler?: string } | null;
+  request: { id: number; source: "model" | "repair"; filler?: string; continuation?: true } | null;
+  candidate: { requestId: number; proposal: unknown; ms: number; source: "model" | "repair"; fenced?: true; firstSayMs?: number; gateDisagrees?: true; filler?: string; continuation?: true } | null;
   /** D-341: sentences of the current Maya turn already streamed to the child; every later attempt of the turn starts with them. */
   sent?: string[];
+  /**
+   * #1107 (chat): how many of `sent` came as saved parts, and the drawings committed with them, in order. The turn's
+   * output carries these batches first; its own drawings never draw those sentences again.
+   */
+  parts?: number;
+  streamBoard?: StreamedBoard[];
+  /** Present until the response resolves this request, including after a pending part is discarded. */
+  streamDelivery?: true;
+  pendingPart?: Extract<TextLogEvent, { kind: "part_pending" }>;
+  streamHold?: { requestId: number; priority?: Record<string, unknown> };
   attempts: TraceAttempt[];
   deferred: { event: SessionEvent; childId: number | null }[];
   pending: PendingOutput[];
@@ -77,7 +105,9 @@ export function saveTextCheckpoint(s: TextFold): TextCheckpoint {
   const { scene: _scene, initialScene: _initialScene, endedAt: _endedAt, ...data } = s;
   void _scene; void _initialScene; void _endedAt;
   const committed = s.board.map((b) => ({ transactionId: b.transactionId, commands: b.commands }));
-  return structuredClone({ ...data, sceneBatches: [...committed, ...s.pending.flatMap((p) => p.batches)], initialSceneBatches: committed });
+  // #1107: streamed drawings are on the board after the pending outputs; with none pending, their controls are committed.
+  const streamed = (s.streamBoard ?? []).map((b) => b.batch);
+  return structuredClone({ ...data, sceneBatches: [...committed, ...s.pending.flatMap((p) => p.batches), ...streamed], initialSceneBatches: [...committed, ...(s.pending.length ? [] : streamed)] });
 }
 /**
  * B1 and B2 (review of #1094): the server's board as the child's screen holds it, rebuilt from the batch fates: every
@@ -103,7 +133,8 @@ export function restoreTextCheckpoint(checkpoint: TextCheckpoint): TextFold {
   const { sceneBatches: _sceneBatches, initialSceneBatches: _initialSceneBatches, ...data } = structuredClone(checkpoint);
   void _sceneBatches; void _initialSceneBatches;
   // The batches of the checkpoint are its committed board and its pending outputs, in that order (saveTextCheckpoint).
-  return { ...data, endedAt: data.session.outcome ? data.session.now : null, scene: shownScene(data.board, data.pending.flatMap((p) => p.batches)), initialScene: shownScene(data.board) };
+  const streamed = (data.streamBoard ?? []).map((b) => b.batch);
+  return { ...data, endedAt: data.session.outcome ? data.session.now : null, scene: shownScene(data.board, [...data.pending.flatMap((p) => p.batches), ...streamed]), initialScene: shownScene(data.board, data.pending.length ? [] : streamed) };
 }
 export const MAX_TEXT_HISTORY_BYTES = 262144;
 const emptyOutput = (): TextFold["output"] => ({ say: [], board: [], cancelled: false });
@@ -173,7 +204,10 @@ function cancel(s: TextFold, reason: string, urgent = false, revoke = true) {
   s.request = null;
   s.candidate = null;
   s.attempts = [];
+  // #1107: saved parts are accepted progress, not speculative state: their sentences (and drawings) stay with the turn.
+  const kept = s.parts ? s.sent : undefined;
   delete s.sent;
+  if (kept?.length) s.sent = kept;
   // These controller outputs are debts, not speculative state. Cancellation never undoes them.
   const keep = urgent ? ["safety"] : ["open", "repair", "safety"];
   s.pending = s.pending.filter((p) => {
@@ -295,11 +329,15 @@ function flushDeferred(s: TextFold) {
     if (child?.status !== "dropped") applyInput(s, entry.event, undefined, false);
   }
 }
-function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt, reviews?: TalkReview[], mathReviews?: MathReview[], drawMode?: "derive") {
+function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt, reviews?: TalkReview[], mathReviews?: MathReview[], drawMode?: "derive", continues = false) {
   const before = s.session.state;
   // Two-layer true math: every math-truth review of this attempt is kept in the trace, whatever the step decides.
   if (mathReviews?.length) attempt.math = mathReviews.map((r) => ({ sentence: r.text, verdict: r.result.verdict, reason: r.result.reason, ...(r.result.retried ? { retried: true as const } : {}) }));
-  const event: SessionEvent = { type: "proposal", at: Math.max(at, s.session.now ?? 0), proposal: value, talkReviews: reviews, ...(mathReviews ? { mathReviews } : {}), ...(attempt.source === "fallback" ? { fallback: true } : {}), ...(s.sent?.length ? { sent: [...s.sent] } : {}), ...(drawMode ? { drawMode } : {}) };
+  // 2026-11-15 (voice fallbacks): a tutor repair that started after streamed sentences continues them (continuedSay).
+  const continuation = continues && attempt.source === "repair" && !!s.sent?.length && !!s.session.tutor;
+  // #1107: sentences streamed as saved parts keep the drawing fixed when each went out.
+  const streamed = s.parts ? { streamed: { drawings: (s.streamBoard ?? []).map((b) => structuredClone(b.tied)) } } : {};
+  const event: SessionEvent = { type: "proposal", at: Math.max(at, s.session.now ?? 0), proposal: value, talkReviews: reviews, ...(mathReviews ? { mathReviews } : {}), ...(attempt.source === "fallback" ? { fallback: true } : {}), ...(s.sent?.length ? { sent: [...s.sent] } : {}), ...(drawMode ? { drawMode } : {}), ...(continuation ? { continuation: true } : {}), ...streamed };
   // B2: the trace says how this attempt's drawings were made.
   if (drawMode && s.session.tutor) attempt.drawMode = drawMode;
   let r = step(s.session, event);
@@ -340,9 +378,13 @@ function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt
   if (attempt.source !== "fallback" || !r.refusal) s.attempts.push(attempt);
   if (r.refusal && !s.session.outcome) { takeEffects(s, r.effects, at); return; }
   s.scene = scene;
-  takeEffects(s, r.effects, at, s.attempts, before);
+  // #1107: the turn's words start with the streamed parts, so its output carries their drawings first (already on the
+  // board and counted), tied to their sentences, whatever line follows them (the message, a repair, code's line, safety).
+  const carried = s.parts && r.effects.some((e) => e.kind === "say") ? (s.streamBoard ?? []).map((b): Effect => ({ kind: "board", batch: structuredClone(b.batch), sentence: b.tied.sentence })) : [];
+  takeEffects(s, [...carried, ...r.effects], at, s.attempts, before);
   s.attempts = [];
   delete s.sent;
+  if (carried.length || s.parts) { delete s.parts; delete s.streamBoard; }
   flushDeferred(s);
 }
 /**
@@ -439,11 +481,13 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
       flushDeferred(s);
       break;
     }
-    case "request": s.request = { id: e.requestId, source: e.source, ...(e.filler ? { filler: e.filler } : {}) }; break;
+    case "request": delete s.pendingPart; delete s.streamDelivery; delete s.streamHold; s.request = { id: e.requestId, source: e.source, ...(e.filler ? { filler: e.filler } : {}), ...(e.continuation ? { continuation: true as const } : {}) }; break;
     case "response": {
       if (s.request?.id !== e.requestId) break;
+      delete s.streamHold; delete s.pendingPart; delete s.streamDelivery;
       const source = s.request.source;
       const filler = s.request.filler ? { filler: s.request.filler } : {};
+      const continuation = s.request.continuation ? { continuation: true as const } : {};
       if (e.sent?.length) {
         s.sent = [...(s.sent ?? []), ...e.sent];
         // Final check 11 (2026-11-15): the single point where streamed sentences are accepted. Their help is in the session
@@ -457,7 +501,7 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
         // applies, through the same priority path as a reading: the guidance or the disclosure is due.
         if (e.priority) receiveReading(s, e.priority, e.at);
       } else {
-        s.candidate = { requestId: e.requestId, proposal: e.proposal, ms: e.ms, source, ...(e.fenced ? { fenced: true as const } : {}), ...(e.firstSayMs !== undefined ? { firstSayMs: e.firstSayMs } : {}), ...(e.gateDisagrees ? { gateDisagrees: true as const } : {}), ...filler };
+        s.candidate = { requestId: e.requestId, proposal: e.proposal, ms: e.ms, source, ...(e.fenced ? { fenced: true as const } : {}), ...(e.firstSayMs !== undefined ? { firstSayMs: e.firstSayMs } : {}), ...(e.gateDisagrees ? { gateDisagrees: true as const } : {}), ...filler, ...continuation };
         const reading = e.proposal && typeof e.proposal === "object" ? (e.proposal as { reading?: unknown }).reading : undefined;
         // The tutor's gate (2026-11-15) is a priority reading too: a "safety" gate raises safety at once.
         const gate = e.proposal && typeof e.proposal === "object" ? (e.proposal as { gate?: unknown }).gate : undefined;
@@ -469,10 +513,62 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
       if (s.request?.id !== e.requestId || s.candidate?.requestId !== e.requestId) break;
       const candidate = s.candidate;
       s.request = null; s.candidate = null;
-      proposal(s, candidate.proposal, e.at, { source: candidate.source, proposal: candidate.proposal, refusal: null, ms: candidate.ms, ...(candidate.fenced ? { fenced: true as const } : {}), ...(candidate.firstSayMs !== undefined ? { firstSayMs: candidate.firstSayMs } : {}), ...(candidate.gateDisagrees ? { gateDisagrees: true as const } : {}), ...(e.reviewMs !== undefined ? { reviewMs: e.reviewMs } : {}), ...(candidate.filler ? { filler: candidate.filler } : {}) }, e.reviews, e.mathReviews, e.drawMode);
+      proposal(s, candidate.proposal, e.at, { source: candidate.source, proposal: candidate.proposal, refusal: null, ms: candidate.ms, ...(candidate.fenced ? { fenced: true as const } : {}), ...(candidate.firstSayMs !== undefined ? { firstSayMs: candidate.firstSayMs } : {}), ...(candidate.gateDisagrees ? { gateDisagrees: true as const } : {}), ...(e.reviewMs !== undefined ? { reviewMs: e.reviewMs } : {}), ...(candidate.filler ? { filler: candidate.filler } : {}) }, e.reviews, e.mathReviews, e.drawMode, candidate.continuation === true);
       break;
     }
     case "fallback": proposal(s, e.proposal, e.at, { source: "fallback", proposal: e.proposal, refusal: null }, undefined, undefined, e.drawMode); break;
+    case "part_pending":
+      if (s.request?.id === e.requestId && !s.candidate && !s.session.outcome && !s.pendingPart) {
+        s.streamDelivery = true;
+        s.pendingPart = structuredClone(e);
+      }
+      break;
+    case "part_discarded":
+      if (s.pendingPart?.requestId === e.requestId) delete s.pendingPart;
+      break;
+    case "stream_interrupted": {
+      if (s.request?.id !== e.requestId || s.candidate) break;
+      // The model supplied checked streamed words but no complete proposal. Do not invent that proposal.
+      const attempts: TraceAttempt[] = [...s.attempts, { source: s.request.source, proposal: null, refusal: null }];
+      s.request = null; s.attempts = [];
+      delete s.pendingPart; delete s.streamDelivery; delete s.streamHold;
+      // Preserve only the confirmed prefix. No new teaching or inferred safety reading is added.
+      if (s.sent?.length) {
+        const boards: Effect[] = (s.streamBoard ?? []).map((b) => ({ kind: "board", batch: structuredClone(b.batch), sentence: b.tied.sentence }));
+        takeEffects(s, [...boards, { kind: "say", act: "guide", text: s.sent.join(" ") }], e.at, attempts);
+      }
+      delete s.sent; delete s.parts; delete s.streamBoard;
+      applyInput(s, { type: "technical", at: e.at, detail: e.detail });
+      break;
+    }
+    case "part_confirmed":
+    case "part": {
+      const part = e.kind === "part" ? e : s.pendingPart;
+      if (!part || part.requestId !== e.requestId) break;
+      if (e.kind === "part_confirmed") delete s.pendingPart;
+      if (s.request?.id !== e.requestId || s.candidate || s.session.outcome) break;
+      s.sent = [...(s.sent ?? []), part.sentence];
+      s.parts = (s.parts ?? 0) + 1;
+      // Final check 11: the single point where a streamed sentence is accepted; its help is in the session at once.
+      const helped = withEmittedHelp(s.session, s.sent);
+      for (const assistance of helped.assistance) if (!s.session.assistance.includes(assistance)) {
+        // A delivered prefix keeps its help when a priority cancels and replays the controller state.
+        s.session = controllerStep(s, { type: "help", at: e.at, assistance }).session;
+      }
+      if (part.board) {
+        const r = controllerStep(s, { type: "streamed_board", at: e.at, batch: part.board.batch, keys: part.board.keys });
+        if (r.refusal) { s.controls.pop(); break; }
+        const applied = applyBatch(s.scene, part.board.batch);
+        if (!applied.ok) { s.controls.pop(); break; }
+        s.session = r.session;
+        s.scene = applied.scene;
+        s.streamBoard = [...(s.streamBoard ?? []), structuredClone(part.board)];
+      }
+      break;
+    }
+    case "stream_hold":
+      if (s.request?.id === e.requestId && !s.candidate) s.streamHold = { requestId: e.requestId, ...(e.priority ? { priority: structuredClone(e.priority) } : {}) };
+      break;
     case "recover": if (!s.candidate) s.request = null; break;
     case "cancelled": s.output.cancelled = false; break;
     // A control, so a cancellation's replay keeps it.

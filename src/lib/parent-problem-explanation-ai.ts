@@ -32,7 +32,7 @@ export function explanationAiClient(env: Readonly<Record<string, string | undefi
       return response;
     };
     // This feature uses only its dedicated key and model. Global or other feature credentials cannot enable it.
-    const client = aiClient({ OPENROUTER_API_KEY: env.PARENT_EXPLANATION_API_KEY }, EXPLANATION_MODEL, { fetch, usage, onRequest: async () => { try { await beforeAttempt(); } finally { cost = null; } } });
+    const client = aiClient({ OPENROUTER_API_KEY: env.PARENT_EXPLANATION_API_KEY }, EXPLANATION_MODEL, { fetch, usage, keyLabel: "explanations", onRequest: async () => { try { await beforeAttempt(); } finally { cost = null; } } });
     return client ? { client, costMicros: () => cost } : null;
   };
 }

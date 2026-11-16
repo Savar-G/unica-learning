@@ -127,7 +127,7 @@ describe("layer 2: the math-truth review", () => {
 
   it("gives the review the last 2 turns as code holds them, with the child's name as {name}", async () => {
     let n = 0;
-    const says = ["Hi Zoe! What is 2 minus 8 in the ones?", "That's 8 minus 2, the other way around."];
+    const says = ["Hi Zoe! What is 2 minus 8 in the ones?", "That's 8 minus 2, the other way around. What is 12 minus 8?"];
     const model = conversationalFake({ answer: () => reply(says[Math.min(n++, says.length - 1)], "guide") });
     const mathReviewer = fakeMathReviewer();
     let now = T0;
@@ -143,7 +143,7 @@ describe("layer 2: the math-truth review", () => {
   });
 
   it("gives the review code's facts of the question and the child's turn, never the child's name", async () => {
-    const { session, mathReviewer } = call(SUB, ["You can't take 8 from 2, so we use the 12 ones from the trade."], () => ({ verdict: "true", reason: "all true" }));
+    const { session, mathReviewer } = call(SUB, ["You can't take 8 from 2, so we use the 12 ones from the trade. What is 12 minus 8?"], () => ({ verdict: "true", reason: "all true" }));
     await session.start();
     await session.child("I got 36.");
     const input = mathReviewer!.requests[0];

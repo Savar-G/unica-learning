@@ -320,7 +320,8 @@ describe("F2 (P1): a number in a turn that names a place, column, step, digit or
   for (const child of ["The tens answer is 24.", "The tens are 24.", "The answer is 24 in the tens row.", "24, that is the digit."]) for (const stream of [false, true]) {
     it(`${child.includes("row") ? "control" : "binding"}: code's verdict and praise for "${child}" (stream=${stream})`, async () => {
       const v = verdictReader();
-      const r = await turn(SUB, "Your answer checks out.", child, stream, v.reviewer);
+      // Savar's call 2: a message after a wrong answer ends with one question, so the fixture asks one.
+      const r = await turn(SUB, "Your answer checks out. What is 4 minus 2?", child, stream, v.reviewer);
       expect(v.inputs.length).toBeGreaterThan(0);
       expect(v.inputs[0].childAnswer?.verdict).not.toBe("right");
       expect(r.out.say).not.toContain("Your answer checks out.");

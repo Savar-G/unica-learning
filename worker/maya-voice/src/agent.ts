@@ -34,6 +34,7 @@ import { telemetry, type CloseEntry, type CloseProbe, type UtteranceKind, type U
 import { withRequestContext } from "@/lib/maya-request-trace";
 import { boardAudio, countedSynthesis, type SilentSpeech } from "./speech-audio";
 import { VOICE_METER_TICK_MS } from "@/lib/maya-spend";
+import { monitorProduct } from "@/lib/product-monitoring";
 import { limitsOf, sentencesOf } from "@/lib/maya";
 import { asksForNumber, CONNECTION_RENEW_MS, childTurnFrom, endsInOpenNumber, GREETING_ID, GREETING_TEXT, nextTickAt, openingAsksForNumber, RECONNECT_GRACE_MS, REJOIN_AFTER_LEAVE_MS, type Heard, type TurnSilence, type VoiceTuning } from "@/lib/maya-voice";
 import { ACK_HOLD_LIMIT_MS, ACK_LIMIT_MS, ACK_NOT_STREAMED_MS, ACK_PHRASES, nextAcknowledgement } from "@/lib/maya-voice-ack";
@@ -507,6 +508,7 @@ export class VoiceCallRun {
     session.on(voice.AgentSessionEventTypes.SpeechCreated, ev => { this.speech = ev.speechHandle; });
     session.on(voice.AgentSessionEventTypes.Close, ev => { void this.finish({ detail: "the voice session closed unexpectedly" }, false, "sdk_close", ev?.reason); });
     session.on(voice.AgentSessionEventTypes.Error, ev => {
+      monitorProduct(ev.error.recoverable ? "maya.voice_provider_retry" : "maya.voice_provider_failed", { callId: this.call.id, step: "voice" });
       if (!ev.error.recoverable) void this.finish({ detail: "the voice provider failed" }, false, "sdk_error", "fatal");
       else this.closeMark("sdk_error", "recoverable", "observation");
     });
@@ -615,7 +617,7 @@ export class VoiceCallRun {
       await this.openingBoard(openingScope, turn);
       await this.after({ ...turn, say: [] }, speech, () => false);
       // `after` cannot see the opening's words, as the start gives none: the rule reads the worker's own line
-      // (`openingAsksForNumber`, as the session is in OPEN). The opening ends "Where do you want to start?" and the
+      // (`openingAsksForNumber`, as the session is in OPEN). The opening ends "What part is confusing, or where do you need help?" and the
       // child's first words are usually "Hi Maya", so the normal limits stay (on real calls of 2026-11-13 the number
       // limits held that turn 2.5 to 4.5 s). An opening that asks for a number gets the number limits. A child turn
       // already under way (it waits for this start) keeps its own.

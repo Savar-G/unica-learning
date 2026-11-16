@@ -16,6 +16,7 @@
 // ({ text }: what the child "says"). Maya tells the screen on the "maya.call" data topic ({ revision, ended }) after
 // each saved turn; the screen reads the call from the web server then.
 import { randomUUID } from "node:crypto";
+import { flushAiUsage } from "@/lib/ai-usage";
 import { createBoardSender } from "@/lib/board-protocol";
 import { boardRpcTransport } from "@/lib/board-rpc";
 import { createBoardSpeech, cueReport, type CueMeasurement } from "@/lib/board-speech";
@@ -28,7 +29,7 @@ import { callSeams } from "@/lib/maya-call-seams";
 import { mayaCalls } from "@/lib/maya-call";
 import { voiceOpening } from "./opening";
 import { mayaCallStore } from "@/lib/maya-call-store";
-import { asksWordTimings, callKeyterms, callOfRoom, childIdentity, GREETING_TEXT, turnSilences, VOICE_AGENT_NAME, voiceProviders, type TurnSilence, type VoiceCallFacts } from "@/lib/maya-voice";
+import { asksWordTimings, callKeyterms, callOfRoom, childIdentity, turnSilences, VOICE_AGENT_NAME, voiceProviders, type TurnSilence, type VoiceCallFacts } from "@/lib/maya-voice";
 import { VoiceCallRun, voiceSession, type CallUpdate } from "./agent";
 import { CallTelemetry, markedFetch, telemetry, setTelemetry } from "./telemetry";
 import { presenceOf, waitForChild } from "./child-wait";
@@ -37,6 +38,8 @@ import { makeProviders } from "./providers";
 import { configureDelivery } from "./voice-delivery";
 import { referenceJob, referenceRoomName } from "@/lib/maya-workbook-speech";
 import { runWorkbookReference } from "./workbook-reference";
+import { monitoredVoiceJob } from "./monitoring";
+import { monitorProduct } from "@/lib/product-monitoring";
 
 const log = (...a: unknown[]) => console.log("[maya voice]", ...a);
 
@@ -60,7 +63,8 @@ function database() {
 }
 
 export default defineAgent({
-  entry: async (ctx: JobContext) => {
+  entry: (ctx: JobContext) => monitoredVoiceJob(ctx, async (monitoring) => {
+    process.env.AI_USAGE_CONTEXT = "production";
     const jobAt = Date.now();
     // Marks on the model provider's requests, for the turn's clock times (./marks.ts).
     globalThis.fetch = markedFetch(globalThis.fetch);
@@ -87,6 +91,7 @@ export default defineAgent({
     setTelemetry(new CallTelemetry({ callId, scopeId: ctx.job.id }));
     const providers = voiceProviders(process.env);
     if (!providers.ok) {
+      monitorProduct("maya.worker_failed", { callId, step: "voice" });
       log("the speech-to-text or voice is not set up:", providers.problems.join("; "));
       return ctx.shutdown("providers not set up");
     }
@@ -149,7 +154,7 @@ export default defineAgent({
     } });
     const turnSamples: VoiceTurnSample[] = [];
     const ackLimit = Number(process.env.MAYA_ACK_LIMIT_MS);
-    const run = new VoiceCallRun(session, opened.call, { board, notify, greeting: GREETING_TEXT, ...(openingText ? { opening: openingText, openingMark: mark } : {}),
+    const run = new VoiceCallRun(session, opened.call, { board, notify, ...(openingText ? { opening: openingText, openingMark: mark } : {}),
       ...(made.fake ? {} : { numberContinueMs: tuning.numberContinueMs, dropSilentPeakDbfs: tuning.dropSilentPeakDbfs, detectorMinSilenceMs: tuning.detectorMinSilenceMs }),
       ...(patience ? { patience: { ...turnSilences(tuning), set: (limits: TurnSilence) => patience.setSilence(limits) } } : {}),
       ...(process.env.MAYA_ACK_LIMIT_MS?.trim() && Number.isFinite(ackLimit) && ackLimit >= 0 ? { ackLimitMs: ackLimit } : {}),
@@ -160,6 +165,7 @@ export default defineAgent({
       closed: async () => {
         log("board cue report", { callId, fakeAudio: made.tts.provider === "fake", groups: cueReport(samples) });
         log("voice turn report", { callId, fakeProviders: { speechToText: made.stt.provider === "fake", voice: made.tts.provider === "fake" }, ...voiceTurnReport(turnSamples) });
+        await monitoring.flush();
         await ctx.shutdown("call ended");
       } });
 
@@ -238,7 +244,7 @@ export default defineAgent({
     // The child is here: their microphone is published. `sinceChildMs` in "opening first sound" counts from now.
     childAt = Date.now();
     marks.readyBeforeChild = childAt - readyAt;
-    ctx.addShutdownCallback(() => run.workerShutdown());
+    ctx.addShutdownCallback(async () => { try { await run.workerShutdown(); } finally { await Promise.all([flushAiUsage(), monitoring.flush()]); } });
     // The connection rows and the session start do not wait for each other.
     const joined = run.agentJoined().then(() => mark("agentJoined"));
     live = true;
@@ -248,7 +254,7 @@ export default defineAgent({
     if (run.done) { await run.done; return; }
     // Word timings are asked for, not known to arrive: the "board cue" lines show `word` or `sentence` for each batch.
     log("call running", callId, providers.ids.speechToText, providers.ids.voice, { wordTimings: asksWordTimings(providers.voice) ? "requested" : "sentence ends only", tuning: made.fake ? "fake providers: LiveKit defaults" : tuning });
-  },
+  }),
 });
 
 // Run as the worker (`node dist/main.mjs start` or `dev`); a job's process imports this file for the agent above.

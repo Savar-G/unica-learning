@@ -1,0 +1,12 @@
+/* Only the harness frame. The desk and board retain their production CSS. */
+:root { --tang:#c34f20; --sky:#426bce; --ink:#222; --ink-2:#444; --ink-3:#666; --line:#ddd; --line-soft:#eee; --accent-soft:#fff1e9; --sans:Arial,sans-serif; font-family:Arial,sans-serif; color:#222; }
+* { box-sizing:border-box; }
+body { margin:0; }
+button, select { font:inherit; min-height:36px; }
+.local-controls { padding:12px 18px; border-bottom:1px solid #ddd; }
+.local-controls p { margin:8px 0; }
+.local-controls div { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.local-controls pre { max-height:180px; overflow:auto; font-size:12px; }
+.desk-root { grid-template-columns:minmax(300px,400px) minmax(0,1fr); grid-template-rows:minmax(0,1fr); grid-template-areas:"maya main"; height:72dvh; min-height:540px; }
+.sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
+@media(max-width:700px) { .desk-root { display:block; height:auto; } .desk-main { min-height:500px; } }

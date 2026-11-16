@@ -1,4 +1,5 @@
 import "server-only";
+import { monitorProduct } from "@/lib/product-monitoring";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { localDateTime, weekOf, type FamilyZone } from "@/lib/family-time";
@@ -69,8 +70,8 @@ export async function deskVoice(session: DB, parent: string, child: { id: string
     const admin = adminClient();
     if (!admin || await voiceGate(admin, parent, child.grade, child.id) !== "open") return null;
     return { usage: voiceUsage(await readVoiceUsedSeconds(admin, parent, child.id, zone, now), now, zone) };
-  } catch (e) {
-    console.error("[desk voice] state could not be read", e instanceof Error ? e.message : "unknown");
+  } catch {
+    monitorProduct("dashboard.request_failed", { step: "voice" });
     return null;
   }
 }
@@ -102,8 +103,8 @@ export async function runVoice(ctx: ChatContext, action: VoiceAction, deps: Voic
   const { parent, child, name, zone } = ctx;
   const owned = (r: CallRecord | null): r is CallRecord => !!r && r.kind === "family" && r.mode === "voice" && r.parentId === parent && r.childId === child;
   const usage = async (): Promise<VoiceUsage | null> => {
-    try { return voiceUsage(await deps.usedSeconds(), deps.now(), zone); } catch (e) {
-      console.error("[desk voice] usage could not be read", e instanceof Error ? e.message : "unknown");
+    try { return voiceUsage(await deps.usedSeconds(), deps.now(), zone); } catch {
+      monitorProduct("dashboard.request_failed", { step: "usage" });
       return null;
     }
   };
@@ -125,8 +126,8 @@ export async function runVoice(ctx: ChatContext, action: VoiceAction, deps: Voic
    */
   const admit = async (r: CallRecord): Promise<"busy" | "unavailable" | null> => {
     let used: number;
-    try { used = await deps.usedSeconds(); } catch (e) {
-      console.error("[desk voice] usage could not be read for a ticket", e instanceof Error ? e.message : "unknown");
+    try { used = await deps.usedSeconds(); } catch {
+      monitorProduct("maya.recovery_failed", { callId: r.id, mode: "voice", step: "usage" });
       if (r.startedAt === null) await end(r).catch(() => undefined);
       return "unavailable";
     }
