@@ -73,11 +73,27 @@ export interface UsageView {
   byFeature: FeatureLine[];
   byModel: ModelLine[];
   families: FamilyLine[];
+  details?: UsageDetail[] | null;
+  detailsMore?: boolean;
+  byContext?: { label: string; costUsd: number; calls: number }[];
+  byKey?: { label: string; costUsd: number; calls: number }[];
+  byBasis?: { label: string; costUsd: number; calls: number }[];
+  lifetimeReceipts?: { keyId: string; costUsd: number }[] | null;
+}
+
+export interface UsageDetail {
+  parentId: string | null; childId: string | null; parentName: string; childName: string;
+  context: string; feature: string; model: string; provider: string; keyLabel: string; basis: string;
+  costUsd: number | null; calls: number; unpricedCalls: number;
 }
 
 const num = (v: unknown): number => {
   const n = typeof v === "string" ? Number(v) : v;
   return typeof n === "number" && Number.isFinite(n) ? n : 0;
+};
+const knownCost = (v: unknown): number | null => {
+  const n = typeof v === "string" && v.trim() ? Number(v) : v;
+  return typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : null;
 };
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
 const rows = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.filter((r): r is Record<string, unknown> => !!r && typeof r === "object") : []);
@@ -89,6 +105,12 @@ export function parseUsage(raw: unknown): UsageView {
   const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const t = (o.totals && typeof o.totals === "object" ? o.totals : {}) as Record<string, unknown>;
   return {
+    details: o.dimensions_version === 1 ? parseDetails(o.dimensions) : null,
+    detailsMore: o.dimensions_more === true,
+    byContext: rows(o.by_context).map((r) => ({ label: str(r.context) ?? "unknown", costUsd: num(r.cost_usd), calls: num(r.calls) })),
+    byKey: rows(o.by_key).map((r) => ({ label: safeKeyLabel(r.key_alias, r.key_id), costUsd: num(r.cost_usd), calls: num(r.calls) })),
+    byBasis: rows(o.by_basis).map((r) => ({ label: str(r.cost_basis) ?? "unknown", costUsd: num(r.cost_usd), calls: num(r.calls) })),
+    lifetimeReceipts: o.dimensions_version === 1 && Array.isArray(o.lifetime_receipts) && rows(o.lifetime_receipts).every((r) => knownCost(r.cost_usd) !== null) ? rows(o.lifetime_receipts).flatMap((r) => typeof r.key_id === "string" && /^[a-f0-9]{64}$/.test(r.key_id) ? [{ keyId: r.key_id, costUsd: knownCost(r.cost_usd)! }] : []) : null,
     totals: {
       costUsd: num(t.cost_usd), ledgerUsd: num(t.cost_ledger_usd), historyUsd: num(t.cost_history_usd),
       calls: num(t.calls), subscriptionCalls: num(t.subscription_calls), unpricedCalls: num(t.unpriced_calls),
@@ -104,6 +126,20 @@ export function parseUsage(raw: unknown): UsageView {
       freeMonth: r.free_month === true,
     })),
   };
+}
+
+const KEY_LABELS = ["main", "marking", "explanations", "decisions", "local", "anthropic", "unknown"];
+export function safeKeyLabel(alias: unknown, id: unknown): string {
+  const label = typeof alias === "string" && KEY_LABELS.includes(alias) ? alias : "unknown";
+  return `${label}${typeof id === "string" && /^[a-f0-9]{64}$/.test(id) ? ` (${id.slice(0, 12)})` : ""}`;
+}
+export function parseDetails(raw: unknown): UsageDetail[] {
+  return rows(raw).map((r) => ({
+    parentId: str(r.parent_id), childId: str(r.child_id), parentName: str(r.parent_name) ?? str(r.parent_email) ?? "No family",
+    childName: str(r.child_name) ?? "No child assigned", context: str(r.context) ?? "unknown", feature: str(r.feature) ?? "other",
+    model: str(r.model) ?? "not recorded", provider: str(r.provider) ?? "unknown", keyLabel: safeKeyLabel(r.key_alias, r.key_id),
+    basis: str(r.cost_basis) ?? "unknown", costUsd: knownCost(r.cost_usd), calls: num(r.calls), unpricedCalls: num(r.unpriced_calls),
+  }));
 }
 
 // ---------- features ----------
@@ -216,6 +252,30 @@ export interface OpenRouterCheck {
   /** How many keys were asked, and how many answered. */
   asked: number;
   answered: number;
+  keys?: { label: string; monthUsd: number | null }[];
+}
+
+export interface OpenRouterAccount {
+  source: "billing" | "main" | null;
+  keyId: string | null;
+  status: "ok" | "partial" | "unavailable" | "no-key";
+  spentUsd: number | null;
+  creditsUsd: number | null;
+  balanceUsd: number | null;
+}
+export interface OpenRouterBilling {
+  checkedAt: string;
+  account: OpenRouterAccount;
+  month: OpenRouterCheck | "no-key" | null;
+}
+
+/** Account lifetime totals. A missing field stays unknown; credits are not spend. */
+export function accountCredits(body: unknown): Pick<OpenRouterAccount, "spentUsd" | "creditsUsd" | "balanceUsd"> {
+  const data = body && typeof body === "object" ? (body as { data?: unknown }).data : null;
+  const d = data && typeof data === "object" ? data as Record<string, unknown> : {};
+  const amount = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
+  const spentUsd = amount(d.total_usage), creditsUsd = amount(d.total_credits);
+  return { spentUsd, creditsUsd, balanceUsd: spentUsd !== null && creditsUsd !== null ? creditsUsd - spentUsd : null };
 }
 
 /** The monthly usage of one OpenRouter answer to GET /api/v1/key (`data.usage_monthly`), or null when it has none. */

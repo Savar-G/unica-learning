@@ -53,6 +53,14 @@ describe("the workbook templates", () => {
     }
   });
 
+  it("budgets a checked template for its known answer while keeping the writer's wider default", () => {
+    const short = textRoom("on-your-own", 19, 6, true, { type: "number", value: 4 })!;
+    const long = textRoom("on-your-own", 19, 6, true, { type: "number", value: 7896 })!;
+    const unknown = textRoom("on-your-own", 19, 6, true)!;
+    expect(short.perLine).toBeGreaterThan(long.perLine);
+    expect(long).toEqual(unknown);
+  });
+
   it("prints a 4-digit answer box 96 px wide and keeps a 3-digit one at 64 px", () => {
     const draft = book("U16"), p = first(draft, "practice");
     const answer = (value: number) => (q: DraftPage["questions"][number]) => {

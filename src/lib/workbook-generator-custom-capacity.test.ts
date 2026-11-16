@@ -221,7 +221,20 @@ it("repairs a stories page whose different sentence frames still repeat a story 
   }
   expect(replacement).toBe(true);
   expect(workbookQuality([page]).issues.some(i => i.reason.startsWith("the stories page"))).toBe(true);
-  const resumed = await generateWorkbook({ ...input, plan }, { ...deps, pages: { load: async () => pages, save: async () => {} } });
+  let tooTall: string | null = null;
+  const fit: FitCheck = { fits: async (candidate, book) => {
+    if (candidate.type === "word-problems") {
+      const kinds = candidate.questions.map(q => storyKind(q.package.text)).filter(Boolean);
+      if (new Set(kinds).size === 3) {
+        const text = candidate.questions.map(q => q.package.text).join("\n");
+        tooTall ??= text;
+        if (text === tooTall) return { ok: false, problems: [{ question: null, reason: "the first replacement runs 10 px past the content area" }] };
+      }
+    }
+    return capacityFit.fits(candidate, book);
+  } };
+  const resumed = await generateWorkbook({ ...input, plan }, { ...deps, fit, pages: { load: async () => pages, save: async () => {} } });
   if (resumed.status !== "stored") throw new Error(resumed.status);
+  expect(tooTall).not.toBeNull();
   expect(resumed.draft.quality?.issues.filter(i => i.reason.startsWith("the stories page"))).toEqual([]);
 });

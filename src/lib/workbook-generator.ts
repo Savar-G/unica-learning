@@ -60,6 +60,7 @@ import { choiceInstruction } from "@/lib/workbook-layout-check";
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { withTimeLimit, type AiClient } from "@/lib/ai-client";
 import { WorkbookAiUnavailable } from "@/lib/workbook-ai-unavailable";
+import { templateAnswerValue } from "@/lib/question-package-template";
 import { checkQuestionPackage, type QuestionPackage } from "@/lib/question-package";
 import { isQrToken, isUuid } from "@/lib/workbook-content";
 import type { Curriculum } from "@/lib/workbook-curriculum";
@@ -79,7 +80,7 @@ import { dayDifficulty, type PageType, type PlannedPage, type PlannedPart, type 
 import { estimatedDayMinutes, generatedDayTime, scheduledItemProblem } from "@/lib/workbook-feedback-check";
 import { workbookEditItem } from "@/lib/workbook-edit-item";
 import type { DraftPage } from "@/lib/workbook-render";
-import { textRoom, slotMax, pagePlan } from "@/lib/workbook-template";
+import { textRoom, slotMax, pagePlan, FOUR_DIGIT_LEVEL } from "@/lib/workbook-template";
 
 import { checkWholeBook, workbookQuality, pageMinimum, questionMinutes, typeKey, type BookQuality } from "@/lib/workbook-quality";
 import { extraPracticeRepeats, twoWaysCountsAsStory } from "@/lib/workbook-early-levels";
@@ -205,11 +206,18 @@ function templateContractFor(input: GenerateInput, w: PageWork, slot: Slot, atte
   // Later attempts take longer templates too (U16: a page of only the short ones prints one form); the measured fit
   // then plans the page.
   // (A Show what you know card holds 3 lines, D-201: its room is 3 of its lines, not twice its 2-line room.)
-  const card = slot.place === "show-what-you-know" || slot.place === "level-test";
-  const room = drill && slot.place !== "spot-the-error" ? (card ? drill.perLine * 3 : Math.round(Math.max(drill.characters * 2, drill.perLine * 3) * (attempt >= 128 && LONGER_PLACES.has(slot.place!) ? 1.6 : 1))) : undefined;
+  const place = slot.place;
+  const card = place === "show-what-you-know" || place === "level-test";
+  const textLimit = (size: ReturnType<typeof textRoom>) => size && place && place !== "spot-the-error"
+    ? card ? size.perLine * 3 : Math.round(Math.max(size.characters * 2, size.perLine * 3) * (attempt >= 128 && LONGER_PLACES.has(place) ? 1.6 : 1))
+    : undefined;
+  const room = textLimit(drill);
   const fill = stepTemplateItem({
     curriculum: input.curriculum, skill: at.skill, step: at.step, place: panel ? "worked-example" : slot.place, level, day: difficultyDay(input.plan, w.day),
-    seed: hashOf(`${input.workbookId}:${w.number}:${slot.id}`) % 1_000_000_007, attempt, ordinal, usedOnPage: used, room, avoid: input.book?.child || null,
+    seed: hashOf(`${input.workbookId}:${w.number}:${slot.id}`) % 1_000_000_007, attempt, ordinal, usedOnPage: used, room,
+    // The writer's unknown key reserves the wider box. A checked template budgets for its actual key.
+    ...(level >= FOUR_DIGIT_LEVEL && place ? { roomForAnswer: (answer: string) =>
+      textLimit(textRoom(place, level, input.plan.days.find(d => d.day === w.day)?.pages.length ?? 8, true, templateAnswerValue(answer))) } : {}), avoid: input.book?.child || null,
     ...(slot.interest ? { interests: interestWords(input.plan) } : {}),
   });
   if (!fill) return null;
@@ -2409,6 +2417,10 @@ async function pool<T>(items: T[], limit: number, run: (item: T) => Promise<void
  * day page with its layout, slots and panels, and each slot planned (#380). The same input always gives the same.
  */
 /** Apply the template capacity before assigning an item or asking the writer. */
+const needsTwoPracticeRows = (step: PlannedPart["step"]) => !!step
+  && (step.skill === "3.1-estimate-quantity" && [2, 3].includes(step.step)
+    || step.skill === "5.1-place-value-million" && step.step === 3);
+
 export function workbookCapacityPlan(curriculum: Curriculum, plan: WorkbookPlan): WorkbookPlan {
   const taught = new Set<string>();
   return { ...plan, days: plan.days.map(day => ({ ...day, pages: day.pages.map(page => {
@@ -2434,7 +2446,7 @@ export function workbookCapacityPlan(curriculum: Curriculum, plan: WorkbookPlan)
       if (s.slot === "now-you") {
         const step = page.parts[s.part].step;
         // This step's short choices need two complete pairs. Reserve its page minimum before the day's time pass.
-        s.items = target(page.type === "new-idea" && step?.skill === "3.1-estimate-quantity" && [2, 3].includes(step.step) ? 4 : 3);
+        s.items = target(page.type === "new-idea" && needsTwoPracticeRows(step) ? 4 : 3);
       }
       if (s.slot === "finish-these") s.items = target(2);
       if (s.slot === "on-your-own") s.items = target(6);
@@ -2922,7 +2934,7 @@ const HOLE_ROUNDS = 12;
 function minimumFor(w: PageWork, level: number): number {
   const working = w.slots.some(s => s.place !== "warm-up" && !NUMBER_PLACES.has(s.place ?? "") && plannedWorkHeight(s.contract, level) > 0);
   const minimum = pageMinimum(w.slots.every(s => s.place === "mini-test") ? "mini-test" : w.page.type, level, !!w.page.extraPractice, working, w.slots.filter(s => NUMBER_PLACES.has(s.place ?? "")).length);
-  const paired = w.page.type === "new-idea" && w.slots.some(s => s.place === "now-you" && s.part.step?.skill === "3.1-estimate-quantity" && [2, 3].includes(s.part.step.step));
+  const paired = w.page.type === "new-idea" && w.slots.some(s => s.place === "now-you" && needsTwoPracticeRows(s.part.step));
   return paired ? Math.max(4, minimum) : minimum;
 }
 
@@ -4133,7 +4145,7 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
   let quality: BookQuality | undefined;
   if (input.itemPolicy === "approved-v1") {
     const repairKeys=new Set<string>(), repairFrames=new Set<string>();
-    const reviewed = await checkWholeBook(pages, async (page, issues) => {
+    const reviewed = await checkWholeBook(pages, async (page, issues, currentPages) => {
       const w = byNumber.get(page.number);
       // The first pages a parent saw stay as they were; their issues stay on them.
       if (!w || pinned.has(page.number)) return null;
@@ -4144,9 +4156,9 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
       const swapped = new Set<number>();
       if (issues.some((i) => i.kind === "repeat" && /^the worked example repeats/.test(i.reason))) {
         const keysOf = (ps: GeneratedPage[]) => ps.flatMap((p) => (p.panelExamples ?? []).flatMap((e) => (e ? [taskIdentity(e)] : [])));
-        const earlier = new Set(keysOf(pages.filter((p) => p.number < page.number)));
-        const taken = new Set([...keysOf(pages), ...repairKeys,
-          ...pages.flatMap((p) => p.questions.flatMap((q) => (q.package && q.place !== "warm-up" ? [taskIdentity(q.package)] : [])))]);
+        const earlier = new Set(keysOf(currentPages.filter((p) => p.number < page.number)));
+        const taken = new Set([...keysOf([...currentPages]), ...repairKeys,
+          ...currentPages.flatMap((p) => p.questions.flatMap((q) => (q.package && q.place !== "warm-up" ? [taskIdentity(q.package)] : [])))]);
         examples = examples.map((e, k) => {
           const panel = w.panels[k];
           if (!e || !panel || !earlier.has(taskIdentity(e))) return e;
@@ -4160,7 +4172,7 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
       }
       const keyOf=(pkg:QuestionPackage)=>taskIdentity(pkg);
       const current=[...page.questions];
-      const questions = page.questions.map((q,index) => {
+      const repairQuestion = async (q: GeneratedQuestion, index: number): Promise<GeneratedQuestion> => {
         // Issues that each name their question change only those questions (a repeat, a Challenge card, a story too easy).
         // (A day's time estimate names no question, and a new question does not fix it.)
         const named=(i:{reason:string})=>/\bquestion \d+ /.test(i.reason);
@@ -4184,14 +4196,24 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
         const repeatedStory = issues.some(i => i.reason.startsWith("the stories page")) && stories.includes(q)
           && !!currentStory && storyKinds.size < Math.min(input.plan.level >= 10 ? 3 : 2, stories.length)
           && stories.filter(o => storyKind(o.package!.text) === currentStory).length > 1;
-        if(fixable.every(i=>i.kind==="variety") && q.package && (counts.get(kindOf(q)) ?? 0)<=limit && !fewForms && !frameAgain && !repeatedStory) return q;
-        const others=pages.flatMap(p=>p.questions.filter(other=>p.number!==page.number || other.number!==q.number)).concat(current.slice(0,index));
-        const keys=new Set([...others.flatMap(other=>other.package && other.place!=="warm-up" ? [keyOf(other.package)] : []), ...pages.flatMap(p=>(p.panelExamples ?? []).flatMap(e=>e ? [keyOf(e)] : []))]);
+        const interestIssue = issues.some(i => /stories with a thing or place name an interest/.test(i.reason));
+        const eligible = currentPages.flatMap(p => (p.number === page.number ? current : p.questions)
+          .filter(other => other.package && interestEligible(input.curriculum, other.itemPlan)));
+        const namedInterests = eligible.filter(other => printsInterest(input.plan, other.package!.text)).length;
+        const wantedInterest = eligible.length && namedInterests / eligible.length < INTEREST_SHARE.min ? true
+          : eligible.length && namedInterests / eligible.length > INTEREST_SHARE.max ? false : null;
+        const interestRepair = interestIssue && wantedInterest !== null && !!q.package
+          && interestEligible(input.curriculum, q.itemPlan) && printsInterest(input.plan, q.package.text) !== wantedInterest;
+        if (interestRepair && wantedInterest !== null) slot.interest = wantedInterest;
+        else if (repeatedStory && q.package && interestEligible(input.curriculum, q.itemPlan)) slot.interest = printsInterest(input.plan, q.package.text);
+        if(fixable.every(i=>i.kind==="variety") && q.package && (counts.get(kindOf(q)) ?? 0)<=limit && !fewForms && !frameAgain && !repeatedStory && !interestRepair) return q;
+        const others=currentPages.flatMap(p=>p.questions.filter(other=>p.number!==page.number || other.number!==q.number)).concat(current.slice(0,index));
+        const keys=new Set([...others.flatMap(other=>other.package && other.place!=="warm-up" ? [keyOf(other.package)] : []), ...currentPages.flatMap(p=>(p.panelExamples ?? []).flatMap(e=>e ? [keyOf(e)] : []))]);
         const frames=new Set(others.flatMap(other=>other.package && wordedTask(other.package) ? [storyFrame(other.package.text)] : []));
         // Its own step first, then (late attempts) an earlier step the book taught or the day reviews.
         for(const attempt of [...Array.from({length:128},(_,k)=>k+2), ...Array.from({length:96},(_,k)=>LATE_ATTEMPT+k)]) {
           const c=contractFor(input,w,slot,attempt);
-          if(!c || c.source!=="code" && !(repeatedStory && c.source==="story")) continue;
+          if(!c || c.source!=="code" && !((repeatedStory || interestRepair) && c.source==="story")) continue;
           const b=buildPlannedItem(c,c.item,{id:q.package?.id ?? `${input.workbookId}:${page.number}:${q.slot}`,workbookId:input.workbookId,page:page.number,question:q.number,level:input.plan.level,skills:[c.item.skill]});
           if(!b.package || b.check.status==="failed" || levelRange(b.package, input) || dayProblem(input, b.package, w.day,slot.place ?? "")) continue;
           if(keys.has(keyOf(b.package)) || repairKeys.has(keyOf(b.package)) || wordedTask(b.package) && !c.template && (frames.has(storyFrame(b.package.text)) || repairFrames.has(storyFrame(b.package.text)))) continue;
@@ -4202,6 +4224,7 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
             const kind = storyKind(b.package.text);
             if (!kind || stories.some(o => o !== q && storyKind(o.package!.text) === kind)) continue;
           }
+          if (interestRepair && (!interestEligible(input.curriculum, c) || printsInterest(input.plan, b.package.text) !== wantedInterest)) continue;
           const sentence=sentenceFrameOf(b.package);
           if(sentence && current.some((o,k)=>k!==index && o.package && sentenceFrameOf(o.package)===sentence)) continue;
           // A stem twice a page; a story too easy for the level; a Challenge template once (as the planner).
@@ -4211,9 +4234,17 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
           if(c.template && slot.place!=="challenge" && slot.place!=="warm-up" && current.filter((o,k)=>k!==index && o.place!=="warm-up" && o.place!=="challenge" && o.itemPlan?.template && o.itemPlan.template.skill===c.template!.skill && o.itemPlan.template.step===c.template!.step && o.itemPlan.template.index===c.template!.index).length>=2) continue;
           if(slot.place==="challenge" && c.template && current.some((o,k)=>k!==index && o.itemPlan?.template && o.itemPlan.template.skill===c.template!.skill && o.itemPlan.template.step===c.template!.step && o.itemPlan.template.index===c.template!.index)) continue;
           // At most twice a day: the day's other pages count too.
-          if(sentence && pages.filter(p=>p.day===page.day && p.number!==page.number).flatMap(p=>p.questions).filter(o=>o.package && o.place!=="warm-up" && sentenceFrameOf(o.package)===sentence).length + current.filter((o,k)=>k!==index && o.package && sentenceFrameOf(o.package)===sentence).length>=2) continue;
+          if(sentence && currentPages.filter(p=>p.day===page.day && p.number!==page.number).flatMap(p=>p.questions).filter(o=>o.package && o.place!=="warm-up" && sentenceFrameOf(o.package)===sentence).length + current.filter((o,k)=>k!==index && o.package && sentenceFrameOf(o.package)===sentence).length>=2) continue;
           const fresh={...q,check:b.check,package:b.package,itemPlan:c, itemStep: b.itemStep ?? null,
             stepDeclaration: b.stepDeclaration, itemStepReason: b.itemStepReason ?? null};
+          if (repeatedStory || interestRepair) {
+            const trial = current.map((other, k) => k === index ? fresh : other);
+            const content = contentOf(input, w, trial, examples);
+            const trialPages = currentPages.map(p => p.number === page.number ? { ...page, questions: trial } : p);
+            if (!interestShareProblems(input.curriculum, input.plan, currentPages).length
+              && interestShareProblems(input.curriculum, input.plan, trialPages).length) continue;
+            if (!(await deps.fit.fits(fitPage(w, page.qrToken, trial, content), book)).ok) continue;
+          }
           slot.contract = c;
           current[index]=fresh;
           repairKeys.add(keyOf(b.package));
@@ -4221,7 +4252,9 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
           return fresh;
         }
         return q;
-      });
+      };
+      const questions: GeneratedQuestion[] = [];
+      for (const [index, q] of page.questions.entries()) questions.push(await repairQuestion(q, index));
       const finalQuestions = await repairFinalRows(input, w, work, questions, examples, deps.fit, book);
       const content = contentOf(input, w, finalQuestions, examples);
       // Older checkpoints keep the checked teaching blocks, even if their
@@ -4236,11 +4269,8 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
       }
       const fit = await deps.fit.fits(fitPage(w, page.qrToken, finalQuestions, content), book);
       return { ...page, questions: finalQuestions, ...(swapped.size ? { panelExamples: examples } : {}), ...(content ? { content } : {}), fit: fit.ok ? { status: "fits" } : { status: "failed", problems: fit.problems } };
-    });
+    }, candidate => personalBookIssues(input, candidate));
     quality = reviewed.quality;
-    // G1: the personal book checks read the printed book: the warm-up's fact families (item 4) and the interest share
-    // (item 5). A failure is a whole-book issue on its page; with no signals there are none.
-    quality = withPersonalIssues(input, reviewed.pages, quality);
     pages = reviewed.pages.map(p => {
       const issues = quality!.issues.filter(i => i.page === p.number);
       return issues.length ? { ...p, fit: { status: "failed" as const, problems: [...(p.fit.status === "failed" ? p.fit.problems : []), ...issues.map(i => ({ question: null, reason: `whole-book check: ${i.reason}` }))] } } : p;

@@ -188,14 +188,14 @@ const textRoomOf = (width: number, font: number, lines: number, em = SANS_EM): T
 /** The first level whose numbers reach 10,000 (LEVEL_MAX, src/lib/workbook-book.ts): 4-digit answers are common from here. */
 export const FOUR_DIGIT_LEVEL = 13;
 
-export function textRoom(slot: SlotName, level: number, pages = 8, consistent = false): TextRoom | null {
+export function textRoom(slot: SlotName, level: number, pages = 8, consistent = false, answer?: AnswerValue): TextRoom | null {
   const band = bandOf(level);
   const six = pages <= 6 && band.name === "mid";
   const parent = band.name === "parent";
   const badge = band.name === "mid" ? 24 : 30;
   // From U13 the numbers reach 10,000 (LEVEL_MAX, src/lib/workbook-book.ts), so a 4-digit answer is common and prints
   // in a 96 px box (boxWidth): the text beside it is budgeted for that box, not for 64 px (#1116).
-  const box = Math.max(level >= FOUR_DIGIT_LEVEL ? 96 : 64, band.box);
+  const box = answer ? boxWidth(answer, band) : Math.max(level >= FOUR_DIGIT_LEVEL ? 96 : 64, band.box);
   // .pcard: (688 - 12) / 2, less its border (2) and padding (28), badge and one 10 px gap (no read-aloud mark, D-201).
   const cardWidth = (CONTENT_W - (consistent ? 32 : 12)) / 2 - 2 - 28 - badge - 10;
   const card = textRoomOf(cardWidth, band.body, CARD_LINES);

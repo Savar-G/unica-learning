@@ -16,6 +16,7 @@
 // ({ text }: what the child "says"). Maya tells the screen on the "maya.call" data topic ({ revision, ended }) after
 // each saved turn; the screen reads the call from the web server then.
 import { randomUUID } from "node:crypto";
+import { flushAiUsage } from "@/lib/ai-usage";
 import { createBoardSender } from "@/lib/board-protocol";
 import { boardRpcTransport } from "@/lib/board-rpc";
 import { createBoardSpeech, cueReport, type CueMeasurement } from "@/lib/board-speech";
@@ -61,6 +62,7 @@ function database() {
 
 export default defineAgent({
   entry: async (ctx: JobContext) => {
+    process.env.AI_USAGE_CONTEXT = "production";
     const jobAt = Date.now();
     // Marks on the model provider's requests, for the turn's clock times (./marks.ts).
     globalThis.fetch = markedFetch(globalThis.fetch);
@@ -238,7 +240,7 @@ export default defineAgent({
     // The child is here: their microphone is published. `sinceChildMs` in "opening first sound" counts from now.
     childAt = Date.now();
     marks.readyBeforeChild = childAt - readyAt;
-    ctx.addShutdownCallback(() => run.workerShutdown());
+    ctx.addShutdownCallback(async () => { try { await run.workerShutdown(); } finally { await flushAiUsage(); } });
     // The connection rows and the session start do not wait for each other.
     const joined = run.agentJoined().then(() => mark("agentJoined"));
     live = true;

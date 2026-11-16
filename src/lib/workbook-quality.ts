@@ -499,20 +499,25 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
 
 /** At most one whole-book repair per weak page. A bad repair never replaces a
  * sound page. The caller owns the fit check and the durable page store. */
-export async function checkWholeBook(pages: GeneratedPage[], rewrite: (page: GeneratedPage, issues: BookIssue[]) => Promise<GeneratedPage | null>): Promise<{ pages: GeneratedPage[]; quality: BookQuality }> {
-  const first = workbookQuality(pages);
+export async function checkWholeBook(pages: GeneratedPage[], rewrite: (page: GeneratedPage, issues: BookIssue[], current: readonly GeneratedPage[]) => Promise<GeneratedPage | null>, extraIssues: (pages: readonly GeneratedPage[]) => readonly BookIssue[] = () => []): Promise<{ pages: GeneratedPage[]; quality: BookQuality }> {
+  // Family-specific checks participate in every admission; they cannot replace the ordinary book checks.
+  const assess = (candidate: readonly GeneratedPage[]): BookQuality => {
+    const base = workbookQuality(candidate), extra = extraIssues(candidate);
+    return extra.length ? { ...base, ready: false, issues: [...extra, ...base.issues] } : base;
+  };
+  const first = assess(pages);
   const result = [...pages];
   for (const number of [...new Set(first.issues.map(i => i.page))]) {
     const index = result.findIndex(p => p.number === number);
-    const fresh = await rewrite(result[index], first.issues.filter(i => i.page === number));
+    const fresh = await rewrite(result[index], first.issues.filter(i => i.page === number), result);
     if (!fresh || fresh.fit.status === "failed" || fresh.questions.length !== result[index].questions.length || fresh.questions.some((q, i) => q.slot !== result[index].questions[i].slot)) continue;
     const candidate = result.map((p, i) => i === index ? fresh : p);
-    const next = workbookQuality(candidate);
+    const next = assess(candidate);
     const oldFailures = result[index].questions.filter(q => q.check.status === "failed").length;
     if (fresh.questions.filter(q => q.check.status === "failed").length > oldFailures) continue;
-    if (next.issues.length < workbookQuality(result).issues.length) result[index] = fresh;
+    if (next.issues.length < assess(result).issues.length) result[index] = fresh;
   }
-  const quality = workbookQuality(result);
+  const quality = assess(result);
   // Keep the generated estimate on the plan row too: sample output and reprints can render this page alone.
   const required = new Map(quality.days.filter(d => d.requiredMinutes !== undefined).map(d => [d.day, d.requiredMinutes!]));
   const withMinutes = result.map(p => p.content?.kind === "how-plan" && required.size ? { ...p, content: {

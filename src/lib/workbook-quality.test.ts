@@ -376,3 +376,18 @@ it("keeps a task by its printed maths, not its distractors", () => {
   expect(taskIdentity(chosen as never)).toBe(taskIdentity(missing as never));
 });
 
+
+it.each(["fixed", "new failure"])("keeps additional book checks binding and supplies accepted earlier repairs: %s", async label => {
+  const first = { ...page(3, 1), dayLabel: "needs interest" };
+  const second = page(4, 2);
+  let observed: string | null = "";
+  const result = await checkWholeBook([first, second], async (p, _issues, current) => {
+    if (p.number === 3) return { ...p, dayLabel: label };
+    observed = current[0].dayLabel;
+    return null;
+  }, current => current.flatMap(p => p.number === 4 || p.dayLabel !== "fixed"
+    ? [{ page: p.number, kind: "variety" as const, reason: "additional family check" }] : []));
+  expect(result.pages[0].dayLabel).toBe(label === "fixed" ? "fixed" : "needs interest");
+  expect(observed).toBe(result.pages[0].dayLabel);
+  expect(result.quality.issues.filter(i => i.reason === "additional family check")).toHaveLength(label === "fixed" ? 1 : 2);
+});

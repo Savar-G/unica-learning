@@ -476,8 +476,9 @@ export interface TextSessionOptions {
   onSayPart?: (sentence: string, index: number, boardCues: Batch[]) => void;
   /**
    * #1107 (chat): saves the session as it is now (the caller writes `saved()` to the call's store) and answers whether the
-   * store took it. With it, each checked sentence is first a saved part with the drawing fixed for it (`board`, given to
-   * `onSayPart` as its one cue), and goes out only after the save; a refused or failed save stops the stream. The rest of
+   * store took it. With it, each checked sentence is first pending with its drawing (`board`, given to
+   * `onSayPart` as its one cue), and goes out only after the save. Confirmation is saved after server dispatch;
+   * it does not prove child receipt. A refused or failed save stops successors. The rest of
    * the message reaches the caller only in the turn's output (no `onSayPart` after the whole check). A saved session
    * whose request stopped after its parts is `interrupted`; `settleInterrupted` ends that turn with no model call.
    */
@@ -873,8 +874,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     try { at = clock(); } catch { /* Keep the last known time when the clock fails. */ }
     return Math.max(Number.isFinite(at) ? at : 0, log.at(-1)?.at ?? 0, folded.session.now ?? 0);
   };
-  // A save can overlap a raw priority reading or a cancelled turn. Keep its part in the replayable tail until
-  // delivery is decided, so an unsent part can be removed without undoing any intervening input or priority.
+  // A save can overlap raw priority and concurrent input. Compact after its ordered delivery decision.
+  // Pending state is replayable and safe even when the process loses ownership before that decision.
   let partSaves = 0;
   function compact() {
     if (!partSaves && (log.length >= 64 || logBytes >= 65536)) {
@@ -890,14 +891,6 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     compact();
     return entry;
   }
-  function removeUnsent(part: TextLogEvent) {
-    const index = log.indexOf(part);
-    if (index < 0) throw new Error("maya text: the unsent part left the event log");
-    log.splice(index, 1);
-    folded = checkpoint ? restoreTextCheckpoint(checkpoint) : initialTextState(initial);
-    for (const event of log) folded = read(() => foldTextEvent(folded, event));
-    logBytes = new TextEncoder().encode(JSON.stringify(log)).byteLength;
-  }
   function recover() {
     if (!needsRecovery) return;
     needsRecovery = false;
@@ -905,13 +898,17 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   }
   /** #1107: the child's words of a turn whose request stopped after its saved parts (restored from the store). */
   function interruptedTurn(): { text: string } | null {
-    return needsRecovery && folded.request && !folded.candidate && ((folded.parts ?? 0) > 0 || folded.streamHold?.requestId === folded.request.id) && folded.session.turn ? { text: folded.session.turn.text } : null;
+    return needsRecovery && folded.request && !folded.candidate && ((folded.parts ?? 0) > 0 || folded.streamDelivery || folded.streamHold?.requestId === folded.request.id) && folded.session.turn ? { text: folded.session.turn.text } : null;
   }
   /** #1107: ends an interrupted turn with code's line after its saved parts; no model call (the pump finds a failed attempt). */
   async function settle(): Promise<TextOutput> {
     if (!interruptedTurn()) return Promise.resolve(newOutput());
     needsRecovery = false;
     const priority = folded.streamHold?.priority;
+    if (folded.streamDelivery && !priority && !folded.session.safety.flagged) {
+      append({ kind: "stream_interrupted", at: now(), requestId: folded.request!.id, detail: "Stream delivery or final priority is unknown. Teaching stopped before reconciliation." });
+      return schedule(false);
+    }
     append({ kind: "response", at: now(), requestId: folded.request!.id, error: classifyError(new Error("the request stopped before it finished"), "local"), ...(priority ? { priority } : {}), ms: 0 });
     settlingInterrupted = true;
     try { return await schedule(); } finally { settlingInterrupted = false; }
@@ -995,9 +992,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       folded.session.contentProblem === null && !folded.session.safety.flagged && !folded.session.outcome && folded.session.state !== "CONTENT_HOLD" &&
       // Review of #1006 (fifth check): never past the call's end, even while a tick waits behind the request.
       !(folded.session.startedAt !== null && now() - folded.session.startedAt >= (folded.session.limits?.endAtMs ?? 600000));
-    // #1107 (chat, `persist`): each checked sentence is first a saved part, with the drawing fixed for it, and only then
-    // goes to the desk with that drawing. One part at a time, in order. A save that is refused or fails stops the stream:
-    // that part and every later one wait for the whole message (the final snapshot), as when the stream is off.
+    // Save pending, dispatch synchronously, then save confirmation. Only confirmation accepts words, drawing and help.
+    // A refused save stops successors. Recovery never infers dispatch or final priority from an incomplete request.
     const persisting = options.persist !== undefined;
     let streamHeld = false;
     const holdStream = (priority?: Record<string, unknown> | null) => {
@@ -1028,25 +1024,31 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         if (persistFailed || !deliverable()) return;
         const message = [...(folded.sent ?? []), sentence];
         const drawing = earlyNoDraw ? read(() => streamedDrawing(folded.session, message, (folded.streamBoard ?? []).map((b) => b.tied), earlyNoDraw!)) : null;
-        const partsBefore = folded.parts ?? 0;
         partSaves++;
-        const part = append({ kind: "part", at: now(), requestId, sentence, ...(drawing ? { board: { batch: drawing.batch, keys: drawing.keys, tied: drawing.tied } } : {}) });
+        append({ kind: "part_pending", at: now(), requestId, sentence, ...(drawing ? { board: { batch: drawing.batch, keys: drawing.keys, tied: drawing.tied } } : {}) });
+        const persist = async () => { try { return await options.persist!(); } catch { return false; } };
         try {
-          if ((folded.parts ?? 0) !== partsBefore + 1) { removeUnsent(part); persistFailed = true; holdStream(); return; }
-          let saved = false;
-          try { saved = await options.persist!(); } catch { saved = false; }
+          const saved = await persist();
           if (!saved || !deliverable()) {
-            removeUnsent(part);
-            // Save the reconciliation too. A fresh reader must see the hold and the actual delivered prefix,
-            // including its drawings and help, rather than the part whose save overlapped the hold.
-            try { await options.persist!(); } catch { /* The final call save retries under the same revision fence. */ }
+            // The first durable snapshot is already safe if this correction fails or loses ownership.
             if (!saved) { persistFailed = true; holdStream(); }
+            append({ kind: "part_discarded", at: now(), requestId });
+            await persist();
+            return;
+          }
+          // No await separates the ownership-fenced save, the hold check and server dispatch.
+          // This callback does not acknowledge child receipt. A lost confirmation remains pending on disk.
+          try { options.onSayPart!(fillName(sentence, session), message.length - 1, drawing ? [drawing.batch] : []); }
+          catch {
+            persistFailed = true; holdStream();
+            append({ kind: "part_discarded", at: now(), requestId });
+            await persist();
             return;
           }
           firstSayMs ??= now() - at;
-          const committed = drawing && folded.streamBoard?.some((b) => b.batch.transactionId === drawing.batch.transactionId);
-          options.onSayPart!(fillName(sentence, session), message.length - 1, committed ? [drawing.batch] : []);
+          append({ kind: "part_confirmed", at: now(), requestId });
           ledgerHelp(folded.sent ?? []);
+          if (!await persist()) { persistFailed = true; holdStream(); }
         } finally { partSaves--; compact(); }
       });
     };

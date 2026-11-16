@@ -41,7 +41,7 @@ it("keeps the practice page's own step when capacity replaces a long question", 
     store: { save: async draft => ({ status: "saved", draftId: draft.id }), draft: async () => null },
     qrToken: () => `token-${String(++tokens).padStart(12, "0")}`,
   });
-  expect(result.status).toBe("stored");
+  expect(result.status, result.status === "refused" ? result.reason : result.status).toBe("stored");
   if (result.status !== "stored") return;
   expect(rejected).toBeGreaterThan(0);
   const page = result.draft.pages.find(p => p.number === 62)!;

@@ -5,6 +5,10 @@ import * as Sentry from "@sentry/nextjs";
 import { sharedOptions } from "@/lib/sentry-options";
 
 export async function register() {
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    const [{ after }, { configureAiUsageLifetime }] = await Promise.all([import("next/server"), import("@/lib/ai-usage")]);
+    configureAiUsageLifetime((write) => after(() => write));
+  }
   const runtime = process.env.NEXT_RUNTIME === "edge" ? "edge" : "server";
   const options = sharedOptions(process.env, runtime);
   if (!options.enabled) return;

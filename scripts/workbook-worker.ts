@@ -37,6 +37,7 @@ const { values } = parseArgs({ options: { once: { type: "boolean", default: fals
 
 const envFile = process.env.WORKBOOK_WORKER_ENV || join(homedir(), ".config/unica/workbook-worker.env");
 if (existsSync(envFile)) process.loadEnvFile(envFile);
+process.env.AI_USAGE_CONTEXT = "production";
 // The worker never makes a run with the fakes: WORKBOOK_AI_FAKE is for the dev server.
 delete process.env.WORKBOOK_AI_FAKE;
 // `claude` must use its own login, never an API key (the adapter passes it no key either).

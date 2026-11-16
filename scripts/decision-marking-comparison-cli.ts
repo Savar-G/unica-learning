@@ -2,6 +2,7 @@
 // fixed 40 synthetic photos, or (#853, --physical) on the real phone photos of the made-up Robin booklet. Run through scripts/decision-marking-comparison.mjs; docs/decision-marking-comparison.md.
 // Reads the set folder and never writes into it. Writes under .workbook-sample/decision-comparison/ (gitignored).
 // The key comes only from DECISIONS_OPENROUTER_API_KEY in the process environment; this script never prints it.
+import { flushAiUsage } from "@/lib/ai-usage";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -189,7 +190,7 @@ async function main() {
   console.log(`Report: ${resolve(out, "report.md")}`);
 }
 
-main().catch((e: unknown) => {
+main().finally(flushAiUsage).catch((e: unknown) => {
   console.error(e instanceof Error ? e.message : String(e));
   process.exitCode = 1;
 });

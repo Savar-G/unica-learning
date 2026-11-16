@@ -1,3 +1,4 @@
+import { isSpotOnly } from "@/lib/workbook-curriculum/house-templates";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { checkQuestionPackage, type ItemCheck } from "@/lib/question-package";
@@ -276,4 +277,12 @@ it.each([1, 2, 3])("builds a checked own-step divisibility Spot the error for st
     expect(candidates.length).toBeGreaterThan(1);
     expect(candidates.filter(n => n % divisor === 0)).toEqual([Number(filled.ref.answer)]);
   }
+});
+
+it("keeps divisibility error examples out of ordinary practice, stories and Challenge", () => {
+  for (const step of [1, 2, 3]) for (const slot of ["on-your-own", "try-first", "worked-example", "word-problems", "challenge"] as const)
+    for (const seed of [2, 17, 83]) {
+      const fill = item("6.4-divisibility", step, slot, seed, 0, 19);
+      if (fill) expect(isSpotOnly(BC.skillSteps(fill.ref.skill)![fill.ref.step - 1].templates![fill.ref.index])).toBe(false);
+    }
 });
