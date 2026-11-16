@@ -224,6 +224,8 @@ describe("runChat: admission before any streamed word", () => {
     const maya = r.chat!.transcript.filter((t) => t.speaker === "maya").at(-1)!.text;
     expect(maya.startsWith(heard.join(" "))).toBe(true);
     expect(r.chat!.transcript.filter((t) => t.speaker === "child" && t.text === "Is it 56?")).toHaveLength(1);
-    expect(r.chat!.pending).toBe(false);
+    expect(r.chat!.ended).toBe(true);
+    expect(r.chat!.pending).toBeUndefined(); // Ended replies have no pending field.
+    expect((await s.f.store.get(ID))!.outcome?.reason).toBe("technical_issue");
   });
 });

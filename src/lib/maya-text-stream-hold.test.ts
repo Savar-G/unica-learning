@@ -124,7 +124,7 @@ it("a late hold preserves a delivered prefix and removes only the part still sav
     onSayPart: (text) => { heard.push(text); },
     persist: async () => {
       snapshots.push(await session.saved());
-      if (snapshots.length === 2) { entered.resolve(); await release.promise; }
+      if (snapshots.length === 3) { entered.resolve(); await release.promise; }
       return true;
     },
   });
@@ -134,7 +134,8 @@ it("a late hold preserves a delivered prefix and removes only the part still sav
   expect(output.say.join(" ")).toMatch(/^We trade 1 ten for 10 ones\. Thank you for telling me\./);
   expect(output.say.join(" ")).not.toContain(SECOND);
   expect(output.board.filter((b) => b.commands.some((c) => (c as { op?: string }).op === "regroup"))).toHaveLength(1);
-  const deliveredHelp = snapshots[0].session.assistance;
+  expect(snapshots[0].session.assistance).toEqual([]);
+  const deliveredHelp = snapshots[1].session.assistance;
   expect(deliveredHelp.length).toBeGreaterThan(0);
   expect(session.helpLedger()).toEqual(deliveredHelp);
   const idle = conversationalFake({ answer: () => { throw Error("no replacement request"); } });

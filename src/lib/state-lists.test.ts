@@ -11,6 +11,7 @@ import { LOG_KINDS, LOG_STATUSES } from "@/lib/email-log-kinds";
 import { SEND_KINDS, SEND_OUTCOMES } from "@/lib/email-send-kinds";
 import { FLAG_LEVELS } from "@/lib/maya-call";
 import { AI_FEATURES } from "@/lib/ai-usage";
+import { AI_USAGE_CONTEXTS, AI_KEY_ALIASES } from "@/lib/ai-usage-context";
 import { ASSISTANCE } from "@/lib/maya/session";
 import { DELIVERY_TYPES } from "@/lib/resend-webhook";
 import { SCAN_BLOCKED_REASONS, SCAN_CALIBRATION_STATES, SCAN_CLEAN_FAILURES, SCAN_JOB_STATES, SCAN_PHOTO_STATES } from "@/lib/scan-states";
@@ -45,6 +46,8 @@ const LISTS: { name: string; list: readonly string[]; table: string; column: str
   { name: "MATH_FEELINGS", list: MATH_FEELINGS.map((f) => f.id), table: "children", column: "math_feeling" },
   { name: "MATH_HELPS", list: MATH_HELPS.map((h) => h.id), table: "children", column: "math_help" },
   { name: "GATE_OUTCOMES", list: GATE_OUTCOMES, table: "workbook_run_gates", column: "outcome" },
+  { name: "AI_USAGE_CONTEXTS", list: AI_USAGE_CONTEXTS, table: "ai_usage_events", column: "usage_context" },
+  { name: "AI_KEY_ALIASES", list: AI_KEY_ALIASES, table: "ai_usage_events", column: "key_alias" },
   // D-330: what made an AI call.
   { name: "AI_FEATURES", list: AI_FEATURES, table: "ai_usage_events", column: "feature" },
 ];

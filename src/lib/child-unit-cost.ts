@@ -9,6 +9,7 @@
 import { PACIFIC_ZONE, addMonths, familyProvince, familyZone, localDateTime, localMonth } from "@/lib/family-time";
 import { PLANS } from "@/lib/site";
 import { planTerms } from "@/lib/subscription-plan";
+import { parseDetails, type UsageDetail } from "@/lib/admin-ai-usage";
 
 export const CHILD_COST_PATH = "/admin/ai/children";
 
@@ -67,6 +68,7 @@ export interface CostFamily {
 /** One family's month, by its own zone: [from, to), ISO instants. */
 export interface FamilyBounds { parentId: string; from: string; to: string }
 export interface CostSums {
+  details?: UsageDetail[] | null;
   parentId: string;
   /** Null: calls the family made with no child named (for example a photo check). */
   childId: string | null;
@@ -93,6 +95,7 @@ export interface UnitCostReader {
 // ---------- the view ----------
 
 export interface ChildMonth {
+  details?: UsageDetail[] | null;
   parentId: string;
   familyName: string;
   childId: string | null;
@@ -192,6 +195,7 @@ export function buildView(input: {
     if (!s && paid === 0 && child?.plan.kind !== "free_month") return null;
     if (s && total === 0 && calls === 0 && workbooks === 0 && paid === 0 && child?.plan.kind !== "free_month") return null;
     return {
+      details: s?.details?.map((d) => ({ ...d, parentName: f.name || f.email || "Family", childName: child?.firstName ?? "No child assigned" })) ?? null,
       parentId: f.parentId, familyName: f.name || f.email || "Family", childId: child?.id ?? null, childName: child ? child.firstName : "No child named",
       plan: child ? (child.plan.kind ? PLAN_LABEL[child.plan.kind] ?? child.plan.kind : "no plan") : "-",
       aiCents: roundUnits(aiUnits), voiceCents: roundUnits(voiceUnits), workbooks, physicalCents: physical,
@@ -273,6 +277,7 @@ export function parseSums(raw: unknown): { sums: CostSums[]; budget: BudgetLine[
       const parentId = str(s.parent_id);
       if (!parentId) return [];
       return [{
+        details: Array.isArray(s.details) ? parseDetails(s.details) : null,
         parentId, childId: str(s.child_id), aiUsd: num(s.ai_usd), mayaModelMicros: num(s.maya_model_micros), speechMicros: num(s.speech_micros), voiceMicros: num(s.voice_micros),
         calls: num(s.calls), subscriptionCalls: num(s.subscription_calls), unpricedCalls: num(s.unpriced_calls), workbooksShipped: num(s.workbooks_shipped),
       }];

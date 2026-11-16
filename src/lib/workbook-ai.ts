@@ -22,7 +22,7 @@ import { CODEX_SUBSCRIPTION_MODEL, codexCliClient, codexCliPreflight } from "@/l
 import { isAbsolute } from "node:path";
 import { fallbackAiClient, newGate, type AiCallRecord, type AiProvider, type ProviderGate } from "@/lib/ai-fallback";
 import { costingFetch, openRouterClient } from "@/lib/ai-openrouter";
-import { recordAiUsage, type AiFeature, type AiUsageTag } from "@/lib/ai-usage";
+import type { AiFeature, AiUsageTag } from "@/lib/ai-usage";
 import { aiSolver, type SolveLog, type Solver } from "@/lib/workbook-solve-check";
 
 type Env = Record<string, string | undefined>;
@@ -122,13 +122,13 @@ export function workbookAi(env: Env, o: WorkbookAiOptions): WorkbookAi {
   const tagOf = (feature: AiFeature): AiUsageTag => ({ feature, parentId: o.usage?.parentId, childId: o.usage?.childId, source: o.usage ? { kind: o.usage.kind ?? "workbook_run", id: o.usage.runId } : null });
   const cli = (model: string, feature: AiFeature) => o.subscription
     ? codex
-      ? codexCliClient({ configDir: env.WORKBOOK_CODEX_HOME!.trim(), spawn: o.spawn, env })
+      ? codexCliClient({ configDir: env.WORKBOOK_CODEX_HOME!.trim(), spawn: o.spawn, env, usage: tagOf(feature) })
       : claudeCliClient({ model, command: env.WORKBOOK_CLAUDE_COMMAND?.trim() || "claude", spawn: o.spawn, env, configDir: env.WORKBOOK_CLAUDE_CONFIG_DIR, timeout,
-          onUsage: (u) => recordAiUsage(tagOf(feature), { provider: "subscription", model, inputTokens: u.inputTokens, outputTokens: u.outputTokens }) })
+          usage: tagOf(feature) })
     : null;
   const api = (model: string, ms: number, feature: AiFeature) => apiKey
     ? (onCost: (usd: number) => void, onRequest: () => Promise<void>, onDispatch: () => void) => openRouterClient({ apiKey, model, feature, fetch: costingFetch(onCost, base), timeout: ms, maxRetries: o.singleDispatch ? 0 : 1, onRequest, onDispatch,
-        onUsage: (u) => recordAiUsage(tagOf(feature), { provider: "openrouter", model, inputTokens: u.inputTokens, outputTokens: u.outputTokens, costUsd: u.costUsd, generationId: u.id }) })
+        usage: tagOf(feature), keyLabel: "main" })
     : null;
   const writeCli = cli(models.cli, "workbook");
   const writeApi = api(models.api, API_TIMEOUT_MS, "workbook");

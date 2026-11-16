@@ -119,7 +119,7 @@ describe("OpenRouter check", () => {
     }) as unknown as typeof globalThis.fetch;
     const env = { OPENROUTER_API_KEY: "a", SCAN_MARKING_OPENROUTER_API_KEY: "b", PARENT_EXPLANATION_API_KEY: "a" };
     expect(openRouterKeys(env)).toEqual(["a", "b"]);
-    await expect(openRouterMonthCheck(env, fetch)).resolves.toEqual({ monthUsd: 5, asked: 2, answered: 2 });
+    await expect(openRouterMonthCheck(env, fetch)).resolves.toMatchObject({ monthUsd: 5, asked: 2, answered: 2 });
     expect(seen).toHaveLength(2);
     expect(seen.every((s) => s.limited)).toBe(true);
     expect(OPENROUTER_CHECK_MS).toBe(5000);
@@ -127,7 +127,7 @@ describe("OpenRouter check", () => {
   it("says partial when one key fails, null when none answers, and no-key when no key is set", async () => {
     const half = (async (_u: string, init?: RequestInit) => String((init?.headers as Record<string, string>).authorization).endsWith("b")
       ? new Response("no", { status: 401 }) : new Response(JSON.stringify({ data: { usage_monthly: 4 } }), { status: 200 })) as unknown as typeof globalThis.fetch;
-    await expect(openRouterMonthCheck({ OPENROUTER_API_KEY: "a", DECISIONS_OPENROUTER_API_KEY: "b" }, half)).resolves.toEqual({ monthUsd: 4, asked: 2, answered: 1 });
+    await expect(openRouterMonthCheck({ OPENROUTER_API_KEY: "a", DECISIONS_OPENROUTER_API_KEY: "b" }, half)).resolves.toMatchObject({ monthUsd: 4, asked: 2, answered: 1 });
     const down = (async () => { throw new Error("offline"); }) as unknown as typeof globalThis.fetch;
     await expect(openRouterMonthCheck({ OPENROUTER_API_KEY: "a" }, down)).resolves.toBeNull();
     await expect(openRouterMonthCheck({}, down)).resolves.toBe("no-key");

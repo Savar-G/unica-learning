@@ -1747,8 +1747,13 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       // the drawing fixed for it, is saved in the call (at the claim's revision, which stays) before the desk gets it.
       const checkpoint = store.checkpoint?.bind(store);
       const hear = seams.streamChat === true && say && checkpoint && record.kind === "chat" && input.type === "child" ? {
-        onSayPart: (sentence: string, index: number, board: Batch[]) => { try { say.part(sentence, index, board.length ? board : undefined); } catch { /* the desk's ear never fails the turn */ } },
-        persist: async () => checkpoint(record.id, record.revision, { package: pkg, text: await session.saved() }),
+        onSayPart: (sentence: string, index: number, board: Batch[]) => say.part(sentence, index, board.length ? board : undefined),
+        persist: async () => {
+          if (!await checkpoint(record.id, record.revision, { package: pkg, text: await session.saved() })) return false;
+          // A checkpoint acknowledgement can arrive after a replacement claim. Recheck before dispatch/successors.
+          const owner = await store.get(record.id);
+          return owner?.revision === record.revision && owner.status === "live";
+        },
       } : undefined;
       const session = textSession(record, pkg, model, name, saved, undefined, undefined, undefined, undefined, undefined, undefined, hear);
       let out: TextOutput | null = null;
