@@ -1,9 +1,7 @@
 /* The parent dashboard's frame (#551, #1024): a white sidebar with only the logo and the tabs, one header (the top bar on a
-   laptop; the sticky top of the page on a phone), and the page centred at about 1040 px. Geist for every label (no monospace:
-   --mono is Geist here), white cards with a soft shadow and a 20 px radius, and colour only where it means something: orange
+   laptop; the sticky top of the page on a phone), and the page centred at about 1040 px. Type follows DESIGN.md: light
+   Geist headings and Geist Mono labels. White cards keep a soft shadow and a 20 px radius, with colour for meaning: orange
    for scan actions, green for done, blue for learning, amber for needs help. Below 900 px the tabs are a bottom bar. */
-/* A page's own root is a second [data-look="warm"], which would bring the monospace back. */
-.pd-shell.look-root, .pd-shell [data-look="warm"] { --mono: var(--sans); }
 .pd-shell.look-root { --pd-side: 248px; --pd-col: 1040px; --pd-shadow: 0 1px 2px rgba(17, 17, 17, 0.04), 0 6px 20px rgba(17, 17, 17, 0.06); display: grid; grid-template-columns: var(--pd-side) minmax(0, 1fr); min-height: 100dvh; background: #fff; }
 .pd-side { position: sticky; top: 0; align-self: start; height: 100dvh; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding: 22px 16px; border-right: 1px solid var(--line); background: #fff; }
 .pd-side .logo, .pd-top .logo { font: 600 19px/1 var(--sans); letter-spacing: -0.03em; text-decoration: none; display: inline-flex; align-items: baseline; gap: 1px; color: var(--ink); }
@@ -14,7 +12,7 @@
 .pd-top { width: min(100%, var(--pd-col)); margin: 0 auto; padding: 28px clamp(24px, 3.5vw, 56px) 0; }
 .pd-top-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .pd-top .logo, .pd-top-feedback { display: none; }
-.pd-top-name { margin: 0; min-width: 0; font: 700 32px/1.1 var(--sans); letter-spacing: -0.03em; color: var(--ink); overflow-wrap: anywhere; }
+.pd-top-name { margin: 0; min-width: 0; font: 300 32px/1.1 var(--sans); letter-spacing: -0.035em; color: var(--ink); overflow-wrap: anywhere; }
 .pd-top-acts { display: flex; align-items: center; gap: 10px; margin-left: auto; flex: none; }
 .pd-top-empty { display: none; }
 /* The phone's tab links (a child whose tabs are only Assessment and Account): the sidebar holds those tabs on a laptop. */
@@ -47,7 +45,7 @@
    clipped for screen readers, and its desk is not shown at all (display: none, so it is not focusable either): one desk
    button per page at every width. */
 .pd-name-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-[data-look="warm"] .pd-main .support-page .pd-name-row h1 { margin: 0; min-width: 0; font: 700 30px/1.1 var(--sans); letter-spacing: -0.03em; overflow-wrap: anywhere; }
+[data-look="warm"] .pd-main .support-page .pd-name-row h1 { margin: 0; min-width: 0; font: 300 30px/1.1 var(--sans); letter-spacing: -0.035em; overflow-wrap: anywhere; }
 @media (min-width: 900px) {
   .pd-name-row :is(.pd-desk-form, a.pd-desk) { display: none; }
   [data-look="warm"] .pd-main .support-page .pd-name-row h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -67,9 +65,6 @@
 .pd-main .support-page { width: min(100%, var(--pd-col)); margin: 0 auto; padding: 20px clamp(24px, 3.5vw, 56px) 72px; }
 .pd-main .support-page.support-wide { width: min(100%, var(--pd-col)); }
 [data-look="warm"] .pd-main .support-page h1 { font-size: clamp(30px, 3.4vw, 44px); font-weight: 300; letter-spacing: -0.035em; }
-/* Labels in the frame: Geist, with no orange square. */
-[data-look="warm"] .pd-main .support-page .eyebrow { font: 600 12.5px/1.2 var(--sans); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); }
-[data-look="warm"] .pd-main .support-page .eyebrow::before { display: none; }
 .pd-main .acct-alert + .acct-kids, .pd-main h1 + .acct-kids { margin-top: 28px; }
 /* Cards in the frame: white, a soft shadow and a 20 px radius, never a grey bordered box. */
 .pd-shell .pd-main .support-page :is(.pw-card, .acct-card, .acct-kid.acct-plan, .acd-child, .ps-table-wrap, .rpt-call):not(.acct-goal, .acct-phone) { border: 0; border-radius: 20px; background: #fff; box-shadow: var(--pd-shadow); }
@@ -104,10 +99,10 @@
 .pd-test-go .acct-done, .pd-test-go .acct-start .small { display: block; max-width: none; text-align: left; }
 .pd-test-go a.btn:not(.ghost), .pd-test-go a.btn:not(.ghost):hover { color: #fff; }
 .pd-go-short, .pd-go-status { display: none; }
-.pd-k { font: 400 12px/1.3 var(--sans); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); }
+.pd-k { font: 400 12px/1.3 var(--mono); letter-spacing: 0.02em; text-transform: uppercase; color: var(--ink-2); }
 .pd-after { display: grid; gap: 14px; padding: 0 4px; }
 .pd-card { border-radius: 20px; background: #fff; box-shadow: var(--pd-shadow); padding: clamp(20px, 2.2vw, 28px); }
-[data-look="warm"] .pd-card h2 { margin: 0 0 14px; font: 500 19px/1.3 var(--sans); letter-spacing: -0.015em; }
+[data-look="warm"] .pd-card h2 { margin: 0 0 14px; font: 300 19px/1.3 var(--sans); letter-spacing: -0.035em; }
 .support-page .pd-card p { margin: 0; color: var(--ink-2); }
 .support-page .pd-card p.small { margin-top: 16px; }
 .support-page .pd-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; counter-reset: s; }

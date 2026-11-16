@@ -2,12 +2,12 @@
 
 Issue: https://github.com/Savar-G/unica-learning/issues/1112
 
-Status: audit and implementation plan complete; visual implementation blocked by missing required `/design` workflow. This is the explicitly authorized fallback, not completion of #1112.
+Status: implementation verified locally; CI and release review pending. Cedric explicitly authorized proceeding directly from `DESIGN.md` on 2026-11-16. The missing `/design` workflow no longer blocks this issue. See `implementation.json` for the scoped changes and pending validation.
 
 ## Baseline and ownership
 
 Fresh `origin/main` at preparation: `4426ab082b3366679070166bcf50fc631c2efb92`.
-This existing delegated checkout was clean before switching to `site/product-brand-consistency` from that commit. No other checkout was switched or created. Issue assignment remains `cedrictanafranca`.
+This existing delegated checkout was clean before switching to `site/product-brand-consistency` from that commit. No other checkout was switched or created. Issue #1112 is now assigned to Luis Tanafranca, `ltanafranca1004`, as Cedric requested.
 
 The open PR list on 2026-11-15 Pacific contained #1120, #1119, #1118, #1047, #995, #928, #828, #760 and #667; none owns this consistency pass. Old dashboard and page-results worktrees still exist, but no matching PR is open. Related page-results #1100 and scan-retake #1069 are merged. This is a Git/PR ownership check, not proof that another agent has no uncommitted work.
 
@@ -27,7 +27,7 @@ Searched tracked current-main paths plus local project `.claude`, `.agents`, `.c
 
 Global skills include `design-consultation`, `design-html`, `design-review`, `design-shotgun`, `design-taste-frontend`, `frontend-design`, `high-end-visual-design` and `emil-design-eng`. None is the project's `/design` workflow. `gstack/design/` contains a CLI implementation (`src`, `dist`, tests), not a `/design` SKILL.md; its callers use gstack's own artifact system. These are not silently substituted. Existing `.design/state.json` records earlier project gates and artifacts, not the missing command's instructions.
 
-No visual proposal, CSS, component or product behavior changed. Resume by locating the original workflow source, reading it, then executing the scoped plan below. No new design system or flow is proposed.
+The original audit changed no product files. Cedric subsequently authorized implementation directly from `DESIGN.md`; the CSS changes now implement the scoped plan below. No new flow is proposed.
 
 ## Route and state inventory
 
@@ -48,7 +48,7 @@ All routes below are under `src/app/(product)/account/(dashboard)` except the sh
 
 ## Reviewable implementation sequence
 
-1. Restore the required `/design` source and read its gates. Record its exact path in the manifest. Read installed Next docs before any route/component implementation and apply TypeScript skill. Recheck ownership and current-main drift before resuming.
+1. Proceed directly from `DESIGN.md` under Cedric's explicit authorization. Read installed Next docs before code changes. Recheck ownership and current-main drift.
 2. Shell slice: remove the `--mono: var(--sans)` override instead of adding compensating page rules. Set child-name/page headings to the DS light weight while preserving name layout, wrapping, responsive navigation and focus order. Verify shell and layout regressions.
 3. Shared dashboard slice: revise `parent-option-a.css` at the shared heading/button/card definitions. Reuse warm tokens instead of spreading new literal colours. Avoid global h1/h2 rules outside the parent product. Check Overview and Progress normal/empty/unavailable together. Do not change report styles.
 4. Scan slice: align existing stack/sheet/history headings and labels; retain semantic messages and orange scan affordances. Exercise retake/retry/Undo with synthetic uploads and fake endpoints. Keep timer and send logic untouched.
@@ -57,7 +57,7 @@ All routes below are under `src/app/(product)/account/(dashboard)` except the sh
 7. Add a minimal direct `DESIGN.md` reference only if new component instructions lack one; current `CLAUDE.md` already imports `AGENTS.md` and the latter identifies the source. Do not replace instructions.
 8. Self-review standards and #1112 separately; independent review remains with parent. Ship no change until the validation and evidence matrix below is complete. Open/update an implementation PR, leave merge to Savar.
 
-## Validation queued for implementation
+## Original audit validation plan, Nov 15
 
 The workbook lane owns the machine-wide heavy-job slot. No tests/build were run by this audit. No node_modules is installed in this checkout; resolve dependencies locally before implementation without changing the lockfile or production configuration. Parent's separate workbook build result is not evidence for this branch.
 
@@ -67,10 +67,20 @@ Browser work is pending. Current runtime instructions require shared T3 preview 
 
 Capture 375, 768 and 1440 px evidence for each surface, including empty/unavailable states; Scan upload/checking/refused/retake/Undo/team/completed; results overview/together/loading/retry/unsupported/stale/photo-expired/team/all-done; Account return notices without an external billing action. Check keyboard traversal, visible focus, dialogs/sheets, heading hierarchy, 44 px targets, long names, reduced motion and contrast. Orange white-text actions need measured contrast review against the specific approved treatment; no contrast pass is claimed from hex inspection alone. Record screenshots, actual assertions and failures in manifest. Reuse existing synthetic fixtures in `r-page-results` only after validating they match current main, and never commit a temporary QA route.
 
-## Checks actually performed
+## Original audit checks, Nov 15
 
 - Fresh fetch, clean initial checkout, scoped branch based on pinned main; issue/PR ownership inspection.
 - Read source/design history, route links, states and actual CSS declarations. No computed-style claims.
 - Reproducible static evidence collection across 59 pinned source files; deterministic rerun and source-path validation.
 - Documentation-only diff review. Independent review pending parent.
 - No screenshot, keyboard, responsive, contrast, runtime, regression, lint or build pass is claimed. No product files changed; no tabs or servers opened; no deployments or paid calls.
+
+## Implementation round, 2026-11-16
+
+The scoped CSS patch restores Geist Mono labels and orange eyebrow markers, uses light product headings, and aligns results with shared font and neutral tokens. Interaction code is unchanged. The Scan and results white-text orange actions use the existing Scan dark orange `#b43d12`, which gives white text a 5.81:1 contrast ratio. The original `#ff6430` gave 2.95:1. Numeric emphasis and semantic amber/green results remain. Local validation and independent review are complete. Required CI and release review remain.
+
+The mobile Undo bar also clears the same 64px bottom navigation offset as the Scan dock. The captured 25px overlap is gone; refused and retake states have 39px clearance. No controller, timer, navigation, billing or generation code changed.
+
+Local checks: 935 test files and 29,940 tests passed before the final Undo CSS repair; the 220 relevant regressions passed after it. ESLint and the clean production build pass. `browser-evidence.json` indexes 106 synthetic captures at 375, 768 and 1440 pixels. Keyboard checks cover photo toggling, step reveal, independent question navigation, saved partial progress, More/Escape and child-switcher layout. White on the existing dark Scan orange measures 5.8061:1. Aside reduced-motion emulation passes for nine main areas; all four Scan checking spinners stop.
+
+Browser tests use guarded local synthetic data and request substitutes. They do not prove live authentication, billing, delivery, backend timers or physical photo alignment. The temporary QA route was removed, owned browser tabs closed and local server stopped. Required CI is pending; production merge remains with Savar.

@@ -1,0 +1,147 @@
+{
+  "issue": 1112,
+  "date": "2026-11-16",
+  "base": "d1f7c409021a21b4ac4486f8275921bb484d9b33",
+  "auditHead": "faabe56a4578823b8a135b4f1e4eb309027abe49",
+  "kind": "Product brand consistency implementation",
+  "status": "Implementation verified locally; CI and release review pending",
+  "owner": "ltanafranca1004",
+  "workflow": "User authorized proceeding directly from current DESIGN.md and existing src/ds tokens because project /design is unavailable.",
+  "designReferences": {
+    "DESIGN.md": "5f5107597ea153c7fed644c7d50d7c58d61fa2a8beb492d38af491ddffdaa4dc",
+    ".design/decisions.md": "012fd467889b6db52db9e7004b183ff24684ca61348cee11f11498290c1701db",
+    "src/ds/styles/warm.css": "536a994b139b75aefe5006ea07b600eabee2d09965056266c78ce8f3546374ff",
+    "src/ds/styles/support.css": "04eaa0b0cdc72220fcdd4e032f0c1c057c71c7f39e0e832a3b161c78793480ef",
+    "src/ds/basics.tsx": "89c430eb6edf45af2041ff1ef008ee6619824ae61c258db24aa514a6bd8ac10f"
+  },
+  "productFiles": [
+    {
+      "path": "src/components/parent-shell.css",
+      "baseSha256": "498dcd17f28ddd99c9ab56601a756730de1d5ee5ec2df39ef834ae0b0c510489",
+      "proposedSha256": "788a3ff190623d2004aadf3e6c230eff2d21ac452614967e447f5d7882ad5e1e"
+    },
+    {
+      "path": "src/components/parent-option-a.css",
+      "baseSha256": "3afeded434fa5eaf555c448e00967c7f83fd25487c34579717b3f53288806fa7",
+      "proposedSha256": "b4630137f44bfbc369b987b95f5c432c43e0f1b6bcf19899dd6aa79fce31b8c0"
+    },
+    {
+      "path": "src/components/parent-overview.css",
+      "baseSha256": "fca16581d597b6c16d2af845d0643994f6492f40e076a6d14a6d764f46e326fd",
+      "proposedSha256": "555a5b80e2e6a0b25eec62e709d361c6e3e943c57272d7a61c4ec074d99fb6e5"
+    },
+    {
+      "path": "src/components/parent-progress.css",
+      "baseSha256": "3fe26bffd715f68c06222df8c8637e4b644f5776c515cba4039d5f26f6c517d2",
+      "proposedSha256": "59d908373bb8f354afedd10e8be9a582193fe6ac23a3655419c965d55aa1f412"
+    },
+    {
+      "path": "src/components/parent-workbooks.css",
+      "baseSha256": "a6efe1b2c28df025eeccc1fa45a4f27abec2006c55fe96ddc3fb2d5adb871db0",
+      "proposedSha256": "80d5d762ae445c18cf82c918fc1284c3b7c1f0b959a0fca4dccb949a36c70f5c"
+    },
+    {
+      "path": "src/components/workbook-days.css",
+      "baseSha256": "a1730f9c680f3cbc5a1dd3de6ecf98cf739b1c1b5aec0850713bb719389df4aa",
+      "proposedSha256": "665fd60a61836b5713c62047fff17c0d9caeac25eed1c5d4ce61a7b93f343441"
+    },
+    {
+      "path": "src/components/scan-pages.css",
+      "baseSha256": "56350f67d69fbcf03b400ddc7ce5fdb3c4ebf4985796a1bbbbaced5aad768cd9",
+      "proposedSha256": "cae13ca2bd9a1bccd669f04b3d5e103b79d3fdcf279cd0c9b8cecc47a45493dd"
+    },
+    {
+      "path": "src/components/scan-tab.css",
+      "baseSha256": "f153afd56882393aa4df2292d621602fa3e9a00a6542890dfd6ae2e2cb7fcdf7",
+      "proposedSha256": "91a88685f36471fa96b123a6e76a8595833e238e4fee3ff0685c793f01a26c6a"
+    },
+    {
+      "path": "src/components/scan-page-results.css",
+      "baseSha256": "14890f655e7793ab520357d1fdcd270c73c9833d448afcd00cf8a2d68beb1336",
+      "proposedSha256": "d096db99814675896f7f0beb7760bad20b4dfab50a58ab34ff717e454fee8de4"
+    }
+  ],
+  "routeStateCoverage": [
+    {
+      "area": "Shell",
+      "change": "Restore shared Mono and orange-square eyebrows, light child-name headings, mono metadata.",
+      "review": "Desktop sidebar; phone header/bottom navigation/More; long names; pretest/no child; one desk control."
+    },
+    {
+      "area": "Overview",
+      "change": "Shared light section headings and mono workbook label; shared 500-weight, 6 px Scan control.",
+      "review": "Pretest/continue; preparing/in mail/current; today; scans/highlights; empty/unavailable; closed plan."
+    },
+    {
+      "area": "Progress",
+      "change": "Remove bold h1 override; inherit shared light section headings.",
+      "review": "Week/month; chart/topics; no marks/unavailable; numeric metric emphasis retained."
+    },
+    {
+      "area": "Scan / retake / Undo / history",
+      "change": "Light stack/sheet/day/start/handoff headings; restore existing mono counters and sheet labels through shell inheritance.",
+      "review": "Camera/file; checking/refused; mismatch/cut-off; retake; send hold/Undo; recovery/retry; marking/team/completed; history loading/error/filter/pagination."
+    },
+    {
+      "area": "Page results / together",
+      "change": "Use shared sans/mono, ink/line/soft/focus tokens and light headings; 500-weight, 6 px action controls.",
+      "review": "Overview/photo expired/unaligned; team/pending/unscored; together loading/retry/cap/closed/stale/unsupported; independent Previous/Next; saved progress; whole-photo; all done."
+    },
+    {
+      "area": "Workbooks / history / answers",
+      "change": "Inherit shared light cover headings, mono older-book/week labels and 500-weight, 6 px View controls.",
+      "review": "No book/preparing/in mail/delivered/tracking; today/older book/day; answer keys; photo history."
+    },
+    {
+      "area": "Maya notes",
+      "change": "Existing shared headings retained; existing Mono facts/speakers/question labels restored through shell inheritance.",
+      "review": "No notes/week summary/list/session; chat/call; pagination/transcript/missing note."
+    },
+    {
+      "area": "Account",
+      "change": "Existing support-page hierarchy retained; shared eyebrow Mono and orange square restored.",
+      "review": "Return notices/errors; family/child editing; invoices/plans; closed-family management; no live billing actions."
+    }
+  ],
+  "preserved": [
+    "Approved orange white-text results action and semantic amber/green markers",
+    "Existing layouts, card dimensions/radii, numeric emphasis and responsive breakpoints",
+    "All TS/TSX behavior, accessibility attributes, authentication, billing, scoring and workbook generation"
+  ],
+  "validation": {
+    "fullTest": "exit0;935passed/3skippedfiles,29940passed/36skipped/1todo tests;1113.26s;before one CSS Undo offset repair",
+    "eslint": "Exit 0, including the final source.",
+    "build": "exit0 after replacing invalid local node_modules symlink with clone",
+    "fixtureTypecheck": "exit0;temporary guarded QA route removed",
+    "browser": "106captures,375/768/1440;nohorizontaloverflow;0blockedproductrequests",
+    "keyboard": "resultsphoto/mode/revealEnter activation,3pxvisiblefocus;Next/Previouspartialprogress;Morelinks/Escape/childswitcher",
+    "contrast": "whiteon#b43d12:5.8061:1,computedinbrowser",
+    "postQaFocused": "Exit 0; 9 suites and 220 tests passed after the Undo CSS repair.",
+    "postQaBuild": "Exit 0; clean production build after removing temporary QA route and generated dev types.",
+    "reducedMotion": "Aside CLI account u0 emulation passed on nine main areas. No active animations or transitions; four Scan spinners have animation none. No overflow or blocked product requests."
+  },
+  "screenshots": 106,
+  "review": {
+    "standards": "No actionable findings on final product patch 1931ce4d5e9c0417820649e1042550f0a518fe67278e1f8edd4b967c1b9b9a66.",
+    "requirements": "No introduced defects. Requested reduced-motion and final build checks now pass. CI remains pending."
+  },
+  "productionChanges": false,
+  "contrastRepair": {
+    "shade": "#b43d12",
+    "source": "existing --scan-accent-ink in src/components/scan-pages.css",
+    "foreground": "#ffffff",
+    "ratio": 5.8061,
+    "scope": [
+      ".pa-scanbtn",
+      ".spr-primary"
+    ],
+    "renderedValidation": "Computed in browser: white on #b43d12 gives 5.8061:1; action height 52px."
+  },
+  "browserEvidence": "browser-evidence.json",
+  "undoDockRepair": {
+    "before": "Undo overlapped the Scan dock by 25px at 375px width.",
+    "after": "39px clearance in refused and retake states.",
+    "selector": ".pd-has-bar .scan-pages > .scan-undo",
+    "scope": "same extra bottom navigation height as dock"
+  }
+}

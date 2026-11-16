@@ -43,8 +43,6 @@
 .support-page .pa .pp-empty p { color: var(--pa-tx2); }
 .pp-empty .pa-scanbtn { margin-top: 6px; }
 
-[data-look="warm"] .pd-main .support-page:has(.pp) h1 { font-weight: 700; letter-spacing: -0.02em; }
-
 /* The laptop: the four tiles in one row, the line wide, the topics in two columns. */
 @container (min-width: 760px) {
   .pp-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
