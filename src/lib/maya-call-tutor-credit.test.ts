@@ -1,6 +1,6 @@
 // Part C of the pre-launch review of the tutor core (2026-11-15): what a family call saves as the learning event and
 // the parent note. Each case runs a whole family call (desk chat, or the family voice call) through the call module.
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { learningEvents, type LearningEvent } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { memoryWordingHistoryStore } from "@/lib/maya";
@@ -22,6 +22,8 @@ const CHILD = "22222222-2222-4222-8222-222222222222";
 const WORKBOOK = "44444444-4444-4444-8444-444444444444";
 const RANGE = { from: "2026-11-14", to: "2026-11-16" };
 const SUBTRACT = SAMPLE_PACKAGES["subtract-52-28"];
+beforeEach(() => { vi.clearAllMocks(); });
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 /** One family call: the model answers each turn with the next reply of `script` (the last one again after the end). */
 async function family(pkg: QuestionPackage, script: unknown[], childTurns: string[], voice = false, stream = false) {
@@ -194,6 +196,25 @@ for (const voice of [false, true]) {
 }
 
 for (const voice of [false, true]) {
+  for (const given of ["The ones result is 4.", "We get 4.", "4.", "It's 4.", "The ones digit is four."]) {
+    it(`#1106: every earlier supplied value keeps its help record (${given}, voice ${voice})`, async () => {
+      const r = await family(SUBTRACT, [
+        reply(`${given} What do you want to do next?`, "guide", { noDraw: "all" }),
+        reply("What do you want to do next?", "guide", { noDraw: "all" }),
+        reply("Write 2 in the tens. What do you want to do next?", "guide", { noDraw: "all" }),
+        reply("Write 4 in the ones and 2 in the tens. What do you get?", "guide", { noDraw: "all" }),
+        reply("Bye for now.", "close"),
+      ], ["Help me.", "12 minus 8 is 4.", "Help me with the tens.", "Help me write it.", "It's 24."], voice, voice);
+      expect(r.notes[0]?.transcript.some(t => t.text.includes(given))).toBe(true);
+      expect(r.notes[0]?.transcript.some(t => t.text.includes("Write 4 in the ones and 2 in the tens"))).toBe(true);
+      if (voice) expect(r.spoken.join(" ")).toContain(given);
+      expect(r.record?.outcome?.assistance).toBe("answer_given");
+      expect(r.notes[0]?.facts.help).toBe("answer_given");
+      expect(r.notes[0]?.facts.finished).toBe("answer_given");
+      expect(r.notes[0]?.sentences.join(" ")).not.toContain("small hint");
+      expect(r.events[0]?.result).toBe("right_with_help");
+    });
+  }
   it(`#1106: Maya-first digits on separate turns remain answer help after the child repeats them (voice ${voice})`, async () => {
     const r = await family(SUBTRACT, [
       reply("Write 4 in the ones. What do you want to do next?", "guide", { noDraw: "all" }),

@@ -5898,12 +5898,11 @@ function rememberChildFirst(s: Session): void {
     if (!st?.place || st.result !== a.value.value) continue;
     const k = PLACE_NAMES.findIndex(p => p.replace(/_/g, " ") === st.place);
     if (k < 0) continue;
-    const place = 10 ** k;
     const value = a.value.value;
+    // #1106 review: no grammar can prove that an earlier mention supplied nothing. Hold the exemption whenever
+    // Maya's words or a board note already named the value, including a short result before another sentence.
     const given = keys.includes(`digit:${st.place}`) || keys.includes(`digit:${st.place.replace(/ /g, "_")}`) ||
-      [...maya, ...notes].some(t => placeDigitsSaid(t).flat().some(p => p.place === place && p.n === value) ||
-        equationsOf(t).some(e => !e.negated && equationHolds(e) === true && e.result.q?.[1] === 1 && e.result.q[0] === value) ||
-        wholeValue(t.replace(/[.!]+$/, "")) === value || (answer.type === "number" && namesValue(t, answer.value)));
+      [...maya, ...notes].some(t => namesValue(t, value) || (answer.type === "number" && namesValue(t, answer.value)));
     if (!given && !s.tutor.childFirst?.includes(st.id)) (s.tutor.childFirst ??= []).push(st.id);
   }
 }
