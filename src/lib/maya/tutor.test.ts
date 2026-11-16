@@ -164,7 +164,10 @@ describe("falseClaims: real sentences of 2026-11-14", () => {
     const r = checkTutorSay("12 − 8 = 4 apples = 5.", none);
     expect(r.ok === false || r.math.includes("12 − 8 = 4 apples = 5.")).toBe(true);
   });
-  it.each(["12 is 4.", "1 ten is 100 ones.", "12 minus 8 is 5 so we write 5.", "4 is 4 tens.", "1 + 2 + 3 = 7 tens.", "The 1 is 10.", "5 tens are now 6 tens."])("refuses %s", (x) => expect(checkTutorSay(x, none)).toMatchObject({ ok: false }));
+  it.each(["12 is 4.", "1 ten is 100 ones.", "12 minus 8 is 5 so we write 5.", "4 is 4 tens.", "1 + 2 + 3 = 7 tens.", "5 tens are now 6 tens."])("refuses %s", (x) => expect(checkTutorSay(x, none)).toMatchObject({ ok: false }));
+  // 2026-11-15 (voice fallbacks, turn 4): a digit named with "the" says what it stands for ("The 1 is 10." is true of the
+  // 1 in 14): never read as 1 = 10. Code cannot tell which digit it names, so the math review reads it.
+  it("sends The 1 is 10. to the math review", () => expect(checkTutorSay("The 1 is 10.", none)).toMatchObject({ ok: true, math: ["The 1 is 10."] }));
 });
 
 describe("falseClaims: trades and quantities, both directions (third check of #1002)", () => {

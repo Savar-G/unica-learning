@@ -58,6 +58,7 @@ import {
 } from "@/lib/maya";
 import { modelInput, turnBrief, type MayaModel, type ModelInput, type TurnBrief } from "@/lib/maya-model";
 import { tutorBrief } from "@/lib/maya/tutor-prompt";
+import { continuedSay } from "@/lib/maya/tutor";
 import { preparedReplies, preparedKey, preparedKeys, sameTurn, MAX_PREPARES_PER_TURN, type PrepareHypothesis, type PreparedReply, type PrepareRecord } from "@/lib/maya-prepared";
 import type { SpendHandle, SpendSeam } from "@/lib/maya-spend-seam";
 import { readReuse, withReadReuse } from "@/lib/maya/read-reuse";
@@ -885,11 +886,14 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       proposal: folded.attempts.at(-1)!.proposal,
       refusal: folded.attempts.at(-1)!.refusal!,
     } : null;
+    // 2026-11-15 (voice fallbacks): a tutor repair after streamed sentences continues them. They are fixed: the brief names
+    // them (`alreadySaid`) and asks only for the rest; the whole message (them, then the rest) is checked as one.
+    const lead = source === "repair" && folded.session.tutor && folded.sent?.length ? [...folded.sent] : [];
     const input = read(() => model.output === 3
-      ? (folded.session.tutor ? tutorBrief(folded.session, repair ? { said: repair.proposal, refusal: repair.refusal } : null) : turnBrief(folded.session, repair ? { said: repair.proposal, refusal: repair.refusal } : null)) as unknown as ModelInput
+      ? (folded.session.tutor ? tutorBrief(folded.session, repair ? { said: repair.proposal, refusal: repair.refusal, ...(lead.length ? { alreadySaid: lead } : {}) } : null) : turnBrief(folded.session, repair ? { said: repair.proposal, refusal: repair.refusal } : null)) as unknown as ModelInput
       : modelInput(folded.session, repair));
     const at = Math.max(clock(), now());
-    append({ kind: "request", at, requestId, source, ...(filler ? { filler } : {}) });
+    append({ kind: "request", at, requestId, source, ...(filler ? { filler } : {}), ...(lead.length ? { continuation: true as const } : {}) });
     if (folded.session.outcome || folded.request?.id !== requestId) return;
     // D-341: the turn's time budget. When it is spent, the request counts as a time-out and code's line follows.
     const left = Math.max(0, turnEndsAt - Date.now());
@@ -1016,10 +1020,13 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     // sentence is complete, also when the turn cannot stream (not plainly math) or the stream stopped. Nothing is sent
     // from here: the whole check finds the reviews running and reads them (no longer than a review it starts itself).
     // Which reviews a sentence needs is read as the stream reads it; a sentence that fails code's own check ends it.
-    const early = model.output === 3 && options.onSayPart && folded.session.tutor && !folded.sent?.length && folded.pending.length === 0 ? read(() => tutorStream(session, true)) : null;
+    // A continuation's sentences start their reviews early too, each read after the fixed sentences (`lead`).
+    const early = model.output === 3 && options.onSayPart && folded.session.tutor && (!folded.sent?.length || lead.length > 0) && folded.pending.length === 0 ? read(() => tutorStream(session, true)) : null;
     const earlyStance = early && session.conversational ? read(() => codeStance(session)) : "none";
     let earlySeen = 0;
     let earlyDone = false;
+    /** A continuation that starts by saying the fixed sentences again: those are left out (continuedSay). */
+    let echoed = 0;
     const onEarlyText = early ? (soFar: string) => {
       if (earlyDone || controller.signal.aborted || folded.request?.id !== requestId) return;
       const said = partialSay(soFar);
@@ -1028,7 +1035,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const parts = sentencesOf(said.text);
       const complete = said.complete ? parts : parts.slice(0, -1);
       for (const sentence of complete.slice(earlySeen)) {
-        const before = complete.slice(0, earlySeen);
+        if (earlySeen === echoed && echoed < lead.length && sentenceKey(sentence) === sentenceKey(lead[echoed])) { earlySeen++; echoed++; continue; }
+        const before = [...lead, ...complete.slice(echoed, earlySeen)];
         earlySeen++;
         let how = read(() => tutorStreamSentence(sentence, before, early));
         // A sentence the stream may not send (a judgment, another number) may still pass the whole check: both reviews.
@@ -1144,7 +1152,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     if (!candidate) return;
     const requestId = candidate.requestId;
     // Priority readings are already folded before any external free-talk review.
-    const first = read(() => step(folded.session, { type: "proposal", at: now(), proposal: candidate.proposal, ...(folded.sent?.length ? { sent: [...folded.sent] } : {}) }));
+    // 2026-11-15 (voice fallbacks): a tutor repair after streamed sentences continues them (as the fold steps it).
+    const continuation = candidate.continuation === true && candidate.source === "repair" && !!folded.sent?.length && !!folded.session.tutor;
+    const first = read(() => step(folded.session, { type: "proposal", at: now(), proposal: candidate.proposal, ...(folded.sent?.length ? { sent: [...folded.sent] } : {}), ...(continuation ? { continuation: true } : {}) }));
     const texts = [...new Set(first.refusal ? [] : first.effects.flatMap((e) => e.kind === "say" ? e.talk ?? [] : []).filter((t) => t.code === null && t.review === "not_run").map((t) => t.proposed))];
     // Two-layer true math: the tutor sentences code did not read whole, each with the sentences before it in the message.
     const said = first.refusal ? [] : first.effects.flatMap((e) => (e.kind === "say" ? [e] : []));
@@ -1170,7 +1180,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     })) : Promise.resolve([]);
     // The math-truth reviews run beside the safety reviews; one the stream started for the same input is used once.
     const say = candidate.proposal && typeof candidate.proposal === "object" ? (candidate.proposal as { say?: unknown }).say : undefined;
-    const message = typeof say === "string" ? sentencesOf(say.trim()) : [];
+    // A continuation's message is the fixed sentences, then its own: each sentence is reviewed after the ones before it.
+    const message = typeof say === "string" ? sentencesOf(continuation ? continuedSay(folded.sent!, say)?.text ?? say.trim() : say.trim()) : [];
     const mathUsed: string[] = [];
     // Each place a sentence stands in the message is reviewed with its own context, and a sentence passes only when every
     // place of it passes (final check of #1044: "The result we just computed is 4." said twice).
@@ -1246,15 +1257,18 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       if (controller.signal.aborted) break;
       // With the danger known, a refused proposal gets code's guidance now, not a second model call.
       const safetyDue = folded.session.safety.flagged && !folded.session.safety.guided;
-      // Words already streamed cannot be taken back: a refusal then goes straight to code's line after them.
-      // A turn a priority gate took after the model's reading (a scope redirect, a confirmation) is code's own line.
+      // Words already streamed cannot be taken back: on a controller turn a refusal then goes straight to code's line after
+      // them; on a tutor teaching turn the repair continues them (below). A turn a priority gate took after the model's reading (a scope redirect, a confirmation) is code's own line.
       const repairs = tutorTurn === null ? options.modelRepair !== false : tutorTurn && read(() => tutorTeachingNow(folded.session));
-      const refusedFirst = repairs && folded.attempts.at(-1)?.source === "model" && folded.attempts.at(-1)?.refusal && !folded.session.outcome && !safetyDue && !folded.sent?.length;
+      // 2026-11-15 (voice fallbacks): on a tutor teaching turn, words already streamed no longer end the turn in code's
+      // line: the repair continues them (continuedSay), and the whole message is checked as one. The controller's turns
+      // (and the AI disclosure, safety guidance and a stop, which are code's own and never stream) keep code's line.
+      const refusedFirst = repairs && folded.attempts.at(-1)?.source === "model" && folded.attempts.at(-1)?.refusal && !folded.session.outcome && !safetyDue && (!folded.sent?.length || tutorTurn === true);
       // #1072 (2026-11-15): on a tutor teaching turn the repair has its own reserved budget. Production call 1b428d5b:
       // the model took 3,128 ms and the math review 2,804 ms of the 6,000 ms turn, so no repair ran and code's plain line
       // went out with no teaching. Now a refused tutor message always gets its one repair, with TUTOR_REPAIR_BUDGET_MS
-      // of model time that the first attempt and its reviews cannot spend. A message with streamed words still goes to
-      // code's line (the repair's message is checked alone, not as a continuation of the words already said).
+      // of model time that the first attempt and its reviews cannot spend. After streamed words the repair continues them,
+      // and its message is checked with them as one (continuedSay, 2026-11-15).
       if (refusedFirst && tutorTurn) {
         // After #1072 (Chief of Staff rule: no silence of up to 10 s). On a voice turn the repair and its reviews end
         // inside VOICE_REPAIR_BUDGET_MS, and the worker may say its thinking phrase at once, but only when nothing of this
@@ -1267,7 +1281,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         const repairAt = Date.now();
         turnEndsAt = repairAt + (voice ? Math.max(0, budget - REVIEW_FLOOR_MS) : budget);
         if (voice) reviewEndsAt = repairAt + budget;
-        const quiet = voice && folded.pending.length === 0 && streamedThisOutput.length === 0;
+        // The phrase is asked for also after this message's own streamed sentences (a continuation); never after an
+        // accepted turn before it. The worker applies its own rules (no phrase while a sentence still plays).
+        const quiet = voice && folded.pending.length === 0 && streamedThisOutput.length === (folded.sent?.length ?? 0);
         let filler: string | null = null;
         if (quiet && options.onRepairStart) {
           try { filler = options.onRepairStart(); } catch { /* the worker's ear never fails the turn */ }
