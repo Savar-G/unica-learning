@@ -8,6 +8,7 @@
 import { openRouterDecisionClient } from "@/lib/decision-openrouter";
 import { livePriceGuard, withPriceGuard, type PriceGuard } from "@/lib/decision-price";
 import { recordAiUsage, type AiUsageTag } from "@/lib/ai-usage";
+import { keyIdentity } from "@/lib/ai-usage-context";
 
 /** The model when DECISION_MODEL is not set, until the comparison (#851) picks one. */
 export const DECISION_DEFAULT_MODEL = "typesafe/jev-1.14";
@@ -177,10 +178,10 @@ export function decisionClient(
     async decide(request) {
       try {
         const result = await inner.decide(request);
-        recordAiUsage(usage ?? { feature: "other" }, { provider: "openrouter", model: id, costUsd: result.usd, generationId: result.id });
+        recordAiUsage(usage ?? { feature: "other" }, { provider: "openrouter", model: id, costUsd: result.usd, generationId: result.id, keyAlias: "decisions", keyId: keyIdentity(apiKey), costBasis: "provider" });
         return result;
       } catch (e) {
-        if (e instanceof DecisionError && e.usd !== null) recordAiUsage(usage ?? { feature: "other" }, { provider: "openrouter", model: id, costUsd: e.usd });
+        if (e instanceof DecisionError && e.usd !== null) recordAiUsage(usage ?? { feature: "other" }, { provider: "openrouter", model: id, costUsd: e.usd, keyAlias: "decisions", keyId: keyIdentity(apiKey), costBasis: "provider" });
         throw e;
       }
     },

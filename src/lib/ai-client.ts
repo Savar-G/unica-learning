@@ -6,7 +6,8 @@
 // Behind a switch: on only when OPENROUTER_API_KEY is set. Off, there is no client, so no AI call can happen.
 // For the server only. No "server-only" import so that its tests can run, as src/lib/sign-in-link.ts.
 import { openRouterClient, type OpenRouterProvider } from "@/lib/ai-openrouter";
-import { recordAiUsage, type AiUsageTag } from "@/lib/ai-usage";
+import type { AiUsageTag } from "@/lib/ai-usage";
+import { keyAlias, type AiKeyAlias } from "@/lib/ai-usage-context";
 
 /** The model when AI_MODEL is not set: an OpenRouter model id with image input, structured output and reasoning. */
 export const AI_DEFAULT_MODEL = "anthropic/claude-sonnet-5.5";
@@ -79,14 +80,14 @@ export const NO_GOOGLE_PROVIDER: OpenRouterProvider = { ignore: ["google-vertex"
  * D-330); a call with no tag is stored as feature "other". Recording never fails or slows the call. `hooks.provider`: the
  * OpenRouter route; none gives NO_GOOGLE_PROVIDER (Maya sets a narrower route, src/lib/maya-ai-route.ts).
  */
-export function aiClient(env: Readonly<Record<string, string | undefined>> = process.env, model?: string, hooks?: { fetch?: typeof globalThis.fetch; onRequest?: () => Promise<void>; usage?: AiUsageTag; provider?: OpenRouterProvider }): AiClient | null {
+export function aiClient(env: Readonly<Record<string, string | undefined>> = process.env, model?: string, hooks?: { fetch?: typeof globalThis.fetch; onRequest?: () => Promise<void>; usage?: AiUsageTag; provider?: OpenRouterProvider; keyLabel?: AiKeyAlias }): AiClient | null {
   const apiKey = env.OPENROUTER_API_KEY?.trim();
   if (!apiKey) return null;
   const chosen = model?.trim() || env.AI_MODEL?.trim() || AI_DEFAULT_MODEL;
-  const { usage: tag, provider, ...rest } = hooks ?? {};
+  const { usage: tag, provider, keyLabel, ...rest } = hooks ?? {};
   return openRouterClient({
     apiKey, model: chosen, ...rest, provider: provider ?? NO_GOOGLE_PROVIDER, feature: tag?.feature ?? "other",
-    onUsage: (u) => recordAiUsage(tag, { provider: "openrouter", model: chosen, inputTokens: u.inputTokens, outputTokens: u.outputTokens, costUsd: u.costUsd, generationId: u.id }),
+    usage: tag, keyLabel: keyLabel ?? keyAlias(apiKey, env),
   });
 }
 

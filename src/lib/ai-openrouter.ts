@@ -4,6 +4,8 @@
 // provider.require_parameters: only providers that support every parameter sent (the JSON schema above all) get the
 // request. Which providers may train on inputs is an account setting on OpenRouter (#182), not a request field.
 import type { AiClient, AiJsonRequest, AiPart } from "@/lib/ai-client";
+import { recordAiUsage, type AiUsageTag, type AiFeature } from "@/lib/ai-usage";
+import { keyAlias, keyIdentity, type AiKeyAlias } from "@/lib/ai-usage-context";
 import { noteFenced } from "@/lib/ai-fenced";
 import { openRouterJsonOutput } from "@/lib/ai-openrouter-schema";
 import { observeAiCall } from "@/lib/ai-observe";
@@ -251,6 +253,8 @@ export function openRouterClient({
   onErrorAnswer,
   provider,
   feature = "other",
+  usage,
+  keyLabel,
 }: {
   apiKey: string;
   model: string;
@@ -269,6 +273,8 @@ export function openRouterClient({
   provider?: OpenRouterProvider;
   /** What the call is for, on its Sentry span and metrics (src/lib/ai-observe.ts): an AI usage feature name. */
   feature?: string;
+  usage?: AiUsageTag;
+  keyLabel?: AiKeyAlias;
 }): AiClient {
   return {
     model,
@@ -283,7 +289,13 @@ export function openRouterClient({
       const strict = "response_format" in sent;
       // One Sentry span for the request and its retries, with tokens and cost; never the prompt or the answer.
       return observeAiCall({ model, feature, provider: "openrouter" }, async (observe) => {
-        const used = (u: OpenRouterUsage) => { observe(u); onUsage?.(u); };
+        const used = (u: OpenRouterUsage) => {
+          recordAiUsage(usage ?? { feature: feature as AiFeature }, {
+            provider: "openrouter", model, inputTokens: u.inputTokens, outputTokens: u.outputTokens,
+            costUsd: u.costUsd, generationId: u.id, keyAlias: keyLabel ?? keyAlias(apiKey), keyId: keyIdentity(apiKey), costBasis: "provider",
+          });
+          observe(u); onUsage?.(u);
+        };
         for (let attempt = 0; ; attempt++) {
           if (signal.aborted) throw new Error("time is up");
           await onRequest?.();
