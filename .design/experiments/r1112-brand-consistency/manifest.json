@@ -1,0 +1,27 @@
+{
+  "issue": 1112,
+  "date": "2026-11-15",
+  "base": "4426ab082b3366679070166bcf50fc631c2efb92",
+  "branch": "site/product-brand-consistency",
+  "kind": "Authorized fallback: source audit and implementation plan",
+  "status": "visual implementation blocked",
+  "blocker": "Required project /design workflow source not found in project/provider/global sources; no substitute applied",
+  "designSource": "DESIGN.md at pinned base; .design/decisions.md; src/ds",
+  "inventory": "README.md",
+  "evidence": "source-evidence.json",
+  "regenerate": "python3 .design/experiments/r1112-brand-consistency/audit.py",
+  "productFilesChanged": [],
+  "screenshots": [],
+  "validation": {
+    "staticEvidence": "59 pinned source files; deterministic rerun and path validation",
+    "regressions": "not run; queued for implementation",
+    "eslint": "not run; queued for implementation",
+    "build": "not run; queued for implementation",
+    "browser": "not run; queued for implementation",
+    "keyboardAndContrast": "not run; queued for implementation",
+    "heavyJobCoordination": "Workbook lane owns slot; no heavy jobs run",
+    "maxVitestWorkersWhenResumed": 2
+  },
+  "review": { "self": "static documentation review", "independent": "pending parent" },
+  "productionChanges": false
+}
