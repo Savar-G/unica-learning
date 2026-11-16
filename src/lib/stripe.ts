@@ -202,16 +202,23 @@ async function monthlyPrice(s: Stripe, monthlyCents: number): Promise<Stripe.Sub
   return { price: price.id };
 }
 
+/** Payment method types a plan charges off-session each month. Link is Stripe's saved wallet: Checkout in setup mode offers it. */
+const PLAN_METHOD_TYPES: readonly string[] = ["card", "link"];
+
 /**
  * The card a new plan charges: the card a parent chose in a card update (the Customer's default, #554), else the Customer's
- * newest card. Only a card: a default of another type is not one the plan start charges.
+ * newest card, else the Customer's newest saved Link method (a parent who chose Link at the report's Checkout has no card).
+ * Only a card or Link: a default of another type is not one the plan start charges.
  */
 async function planCard(s: Stripe, customer: string): Promise<string | undefined> {
   const found = await s.customers.retrieve(customer, { expand: ["invoice_settings.default_payment_method"] }, CARD_READ);
   const chosen = found.deleted ? null : found.invoice_settings?.default_payment_method;
-  if (chosen && typeof chosen !== "string" && chosen.type === "card") return chosen.id;
-  const cards = await s.paymentMethods.list({ customer, type: "card", limit: 1 }, CARD_READ);
-  return cards.data[0]?.id;
+  if (chosen && typeof chosen !== "string" && PLAN_METHOD_TYPES.includes(chosen.type)) return chosen.id;
+  for (const type of ["card", "link"] as const) {
+    const methods = await s.paymentMethods.list({ customer, type, limit: 1 }, CARD_READ);
+    if (methods.data[0]) return methods.data[0].id;
+  }
+  return undefined;
 }
 
 /**
