@@ -27,6 +27,18 @@ it("explains a wrong answer using only stored text, key, reading and code steps;
   expect(payload).toMatchObject({ correctAnswer: "425", readAnswer: "415" }); expect(payload.steps.length).toBeGreaterThan(0);
   expect(JSON.stringify(f.fake.requests)).not.toMatch(/private-photo|private-page|11111111|22222222|33333333|firstName|parentId|qrToken/);
 });
+it("binds the stored family and child to usage without adding those ids to the model input", async () => {
+  const f = setup();
+  const owners: unknown[] = [];
+  const factory: ExplanationClientFactory = before => {
+    const transport = f.factory(before)!;
+    return { ...transport, client: { ...transport.client, withUsage(owner) { owners.push(owner); return transport.client; } } };
+  };
+  expect((await f.run(factory)).status).toBe("ready");
+  expect(owners).toEqual([{ parentId: parent, childId: child, source: { kind: "scan_photo", id: ref.photo } }]);
+  expect(JSON.stringify(f.fake.requests)).not.toContain(parent);
+  expect(JSON.stringify(f.fake.requests)).not.toContain(child);
+});
 function twoWaysContext(readAnswer: string): ExplanationContext {
   const two = structuredClone(pkg), base = packageItem(two);
   const item = { ...base, format: "two-ways" as const, regions: [{ id: "method-1", kind: "work" as const, label: "Method 1" }, { id: "method-2", kind: "work" as const, label: "Method 2" }, base.regions.find(r => r.kind === "box")!] };

@@ -269,7 +269,7 @@ export async function runFirstPagesJob(id: string, deps: FirstPagesJobDeps): Pro
     return now?.status === "ready" && now.result?.files.pdf.path === finishing ? "ready" : "stale";
   };
   try {
-    if (!deps.ai || !deps.solver) return await end("retry", "The AI is off here: no Claude subscription and no OPENROUTER_API_KEY.");
+    if (!deps.ai || !deps.solver) return await end("retry", "The AI is off here: no Claude subscription and no WORKBOOK_OPENROUTER_API_KEY.");
     const inputs = await deps.source.inputs(set.childId);
     if (!inputs) return await end("unavailable", "The child is not known.");
     if (inputs.parentId !== set.parentId) return await end("unavailable", "The child belongs to another family.");

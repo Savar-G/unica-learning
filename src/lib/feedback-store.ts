@@ -1,4 +1,5 @@
 import "server-only";
+import { monitorProduct } from "@/lib/product-monitoring";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { feedbackAdmission, type FeedbackProduct, type FeedbackStore, type FeedbackRow } from "@/lib/feedback";
@@ -7,12 +8,16 @@ import { notIn } from "@/lib/admin-test-families";
 export function feedbackStore(db: SupabaseClient<Database>): FeedbackStore {
   return {
     async submit(parent, input) {
-      const { data, error } = await db.rpc("submit_feedback", {
-        p_parent: parent, p_request: input.requestId, p_child: input.childId,
-        p_product: input.product, p_text: input.text, p_source: input.source,
-      });
-      if (error) throw new Error(`Feedback write: ${error.code}`);
-      return feedbackAdmission(data);
+      try {
+        const { data, error } = await db.rpc("submit_feedback", {
+          p_parent: parent, p_request: input.requestId, p_child: input.childId,
+          p_product: input.product, p_text: input.text, p_source: input.source,
+        });
+        if (error) throw new Error(`Feedback write: ${error.code}`);
+        const admission = feedbackAdmission(data);
+        if (admission === "saved") monitorProduct("feedback.received", { count: 1, product: input.product });
+        return admission;
+      } catch (error) { monitorProduct("feedback.failed"); throw error; }
     },
   };
 }

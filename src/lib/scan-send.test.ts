@@ -1,4 +1,5 @@
-import { expect, it, vi } from "vitest";
+import { setProductObserver } from "@/lib/product-monitoring";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
@@ -14,7 +15,7 @@ function fakeDb(o: { due?: { id: string; parent_id: string; child_id: string }[]
     rpc: async (name: string, args: Record<string, unknown>) => {
       calls.push({ name, args });
       if (name === "due_scan_sends") return o.failDue ? { data: null, error: { message: "down" } } : { data: (o.due ?? []).filter((r) => !args.p_parent || r.parent_id === args.p_parent), error: null };
-      if (name === "send_scan_photos" || name === "send_due_scan_photos") return o.failSend?.includes(args.p_child as string) ? { data: null, error: { message: "down" } } : { data: [...(args.p_ids as string[])].sort(), error: null };
+      if (name === "send_scan_photos_receipt" || name === "send_due_scan_photos") return o.failSend?.includes(args.p_child as string) ? { data: null, error: { message: "down" } } : { data: name === "send_scan_photos_receipt" ? [{ sent: [...(args.p_ids as string[])].sort(), newly_sent: [...(args.p_ids as string[])].sort() }] : [...(args.p_ids as string[])].sort(), error: null };
       return { data: args.p_ids, error: null };
     },
   };
@@ -26,7 +27,7 @@ it("groups Send by the child each photo is filed with, and sends only the childr
   const { db, calls } = fakeDb({ filed: { a: "leah", b: "aisha", c: "leah" } });
   const result = await sendFamilyPhotos(db, "family", ["a", "b", "c"], {}, decide({ leah: "open", aisha: "no_plan" }));
   expect(result).toMatchObject({ open: true, sent: ["a", "c"], byChild: [{ child: "leah", sent: ["a", "c"] }], closed: [{ child: "aisha", ids: ["b"], reason: "no_plan" }] });
-  expect(calls).toEqual([{ name: "send_scan_photos", args: { p_parent: "family", p_child: "leah", p_ids: ["a", "c"] } }]);
+  expect(calls).toEqual([{ name: "send_scan_photos_receipt", args: { p_parent: "family", p_child: "leah", p_ids: ["a", "c"] } }]);
 });
 
 it("is closed when no child of the photos may send, and throws only when every open child's send failed", async () => {
@@ -75,4 +76,26 @@ it("leaves the holds alone when marking is off for everyone, and defers pages it
   const failing = fakeDb({ due: [{ id: "a", parent_id: "p1", child_id: "leah" }], failSend: ["leah"] });
   await sendDuePhotos(failing.db, { decide: decide({ leah: "open" }) });
   expect(failing.calls.filter((c) => c.name === "defer_scan_sends")).toEqual([{ name: "defer_scan_sends", args: { p_parent: "p1", p_ids: ["a"], p_seconds: 3600 } }]);
+});
+
+
+beforeEach(() => { vi.clearAllMocks(); setProductObserver(null); });
+afterEach(() => { setProductObserver(null); vi.restoreAllMocks(); });
+it("reports one failure for a failed due Send and still defers its pages", async () => {
+  const observer = vi.fn(); setProductObserver(observer);
+  const { db, calls } = fakeDb({ due: [{ id: "a", parent_id: "p1", child_id: "leah" }], failSend: ["leah"] });
+  expect(await sendDuePhotos(db, { decide: decide({ leah: "open" }) })).toEqual([]);
+  expect(observer).toHaveBeenCalledExactlyOnceWith({ code: "scan.send_failed", attributes: { count: 1 } });
+  expect(calls.filter(c => c.name === "defer_scan_sends")).toHaveLength(1);
+});
+it("emits Send only for the committed new rows, and reports a caught due-list error", async () => {
+  const observer = vi.fn(); setProductObserver(observer);
+  const { db } = fakeDb({ filed: { a: "leah" } });
+  const rpc = vi.spyOn(db, "rpc").mockResolvedValueOnce({ data: [{ sent: ["a"], newly_sent: ["a"] }], error: null } as never).mockResolvedValueOnce({ data: [{ sent: ["a"], newly_sent: [] }], error: null } as never);
+  await sendFamilyPhotos(db, "family", ["a"], {}, decide({ leah: "open" }));
+  await sendFamilyPhotos(db, "family", ["a"], {}, decide({ leah: "open" }));
+  expect(observer).toHaveBeenCalledExactlyOnceWith({ code: "scan.send_accepted", attributes: { count: 1 } });
+  expect(rpc).toHaveBeenCalledTimes(2);
+  await sendDuePhotos(fakeDb({ failDue: true }).db);
+  expect(observer.mock.calls.at(-1)).toEqual([{ code: "scan.recovery_failed", attributes: { step: "send" } }]);
 });

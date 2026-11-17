@@ -1,4 +1,5 @@
 import "server-only";
+import { monitorProduct } from "@/lib/product-monitoring";
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
@@ -93,8 +94,8 @@ async function readChatSpend(parent: string, child: string, zone: FamilyZone, no
     if (!admin) throw Error("no secret key");
     const week = await mayaSpendLedger(admin).week({ parentId: parent, childId: child });
     return { state: week.state, notice: week.notice, resetsAt: week.resetsAt, zone: week.zone };
-  } catch (e) {
-    console.error("[desk chat] Maya spending could not be read", e instanceof Error ? e.message : "unknown");
+  } catch {
+    monitorProduct("maya.recovery_failed", { step: "usage" });
     return { state: "paused", notice: false, resetsAt: weekOf(now, zone).resetsAt, zone };
   }
 }
@@ -113,7 +114,7 @@ export async function parentChatUsage(session: DB, parent: string, children: rea
     const open = await parentChatChildren(admin, parent, children);
     return new Map(await Promise.all(children.filter((c) => open.has(c.id))
       .map(async (c) => [c.id, await readChatUsage(session, parent, c.id, zone)] as const)));
-  } catch { return new Map(); }
+  } catch { monitorProduct("dashboard.request_failed", { step: "usage" }); return new Map(); }
 }
 
 /** The children of this list who can chat now: chat is open to them, and their grade is served. Throws when the read fails. */
@@ -135,10 +136,10 @@ export async function parentChatChildren(db: DB, parent: string, children: reado
 export async function deskChat(session: DB, parent: string, child: { id: string; grade: number }, zone: FamilyZone, now = Date.now()): Promise<{ usage: ChatUsage | null; note: string | null; planClosed: boolean }> {
   const admin = adminClient();
   let gate: Awaited<ReturnType<typeof chatGate>> = "closed";
-  try { if (admin) gate = await chatGate(admin, parent, child.grade, child.id); } catch { /* Closed, as chat is when its check fails. */ }
+  try { if (admin) gate = await chatGate(admin, parent, child.grade, child.id); } catch { monitorProduct("dashboard.request_failed", { step: "chat" }); }
   if (gate === "too_young") return { usage: null, note: chatGradeLine(), planClosed: false };
   if (gate === "open") {
-    try { return { usage: await readChatUsage(session, parent, child.id, zone), note: null, planClosed: false }; } catch { /* Chat is open: no closed words. */ }
+    try { return { usage: await readChatUsage(session, parent, child.id, zone), note: null, planClosed: false }; } catch { monitorProduct("dashboard.request_failed", { step: "usage" }); }
     return { usage: null, note: null, planClosed: false };
   }
   const { access, resumesOn } = await childPlanRead({ parentId: parent, childId: child.id }, { db: admin, now: () => now });

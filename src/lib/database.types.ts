@@ -2443,6 +2443,7 @@ export type Database = {
       }
       maya_chat_messages: {
         Row: {
+          board_fates: Json | null
           body: string | null
           call_id: string
           child_id: string
@@ -2455,6 +2456,7 @@ export type Database = {
           received_at: string
         }
         Insert: {
+          board_fates?: Json | null
           body?: string | null
           call_id: string
           child_id: string
@@ -2467,6 +2469,7 @@ export type Database = {
           received_at?: string
         }
         Update: {
+          board_fates?: Json | null
           body?: string | null
           call_id?: string
           child_id?: string
@@ -2699,6 +2702,174 @@ export type Database = {
         }
         Relationships: []
       }
+      maya_stream_probe_calls: {
+        Row: {
+          assessment_id: string | null
+          assessment_question_id: string | null
+          assistance: string | null
+          board_history: Json | null
+          call_seconds: number | null
+          channel: string | null
+          child_id: string
+          child_ink: Json | null
+          child_ink_at: string | null
+          child_turns: number | null
+          connected_seconds: number | null
+          counts_minutes: boolean
+          created_at: string
+          ended_at: string | null
+          fallbacks: number | null
+          flag: string | null
+          flagged_at: string | null
+          highest_hint: number | null
+          id: string
+          kind: string
+          learning_event_id: string | null
+          live: Json | null
+          maya_turns: number | null
+          mishearing_confirmations: number | null
+          mishearing_corrections: number | null
+          mode: string
+          model: string
+          note_pending: Json | null
+          outcome_reason: string | null
+          package_hash: string
+          package_id: string
+          paper_status: string | null
+          parent_id: string
+          profile_rebuilt_at: string | null
+          prompt_version: string
+          question_source: string
+          question_text: string | null
+          record_version: number
+          revision: number
+          safety_flag: boolean
+          safety_severity: string | null
+          speech_to_text: string | null
+          started_at: string | null
+          started_by: string | null
+          status: string
+          trace: Json | null
+          understanding: string | null
+          updated_at: string
+          versions: Json
+          voice: string | null
+          workbook_id: string | null
+          workbook_page: number | null
+          workbook_question: number | null
+        }
+        Insert: {
+          assessment_id?: string | null
+          assessment_question_id?: string | null
+          assistance?: string | null
+          board_history?: Json | null
+          call_seconds?: number | null
+          channel?: string | null
+          child_id: string
+          child_ink?: Json | null
+          child_ink_at?: string | null
+          child_turns?: number | null
+          connected_seconds?: number | null
+          counts_minutes?: boolean
+          created_at?: string
+          ended_at?: string | null
+          fallbacks?: number | null
+          flag?: string | null
+          flagged_at?: string | null
+          highest_hint?: number | null
+          id: string
+          kind: string
+          learning_event_id?: string | null
+          live?: Json | null
+          maya_turns?: number | null
+          mishearing_confirmations?: number | null
+          mishearing_corrections?: number | null
+          mode?: string
+          model: string
+          note_pending?: Json | null
+          outcome_reason?: string | null
+          package_hash: string
+          package_id: string
+          paper_status?: string | null
+          parent_id: string
+          profile_rebuilt_at?: string | null
+          prompt_version: string
+          question_source: string
+          question_text?: string | null
+          record_version?: number
+          revision?: number
+          safety_flag?: boolean
+          safety_severity?: string | null
+          speech_to_text?: string | null
+          started_at?: string | null
+          started_by?: string | null
+          status?: string
+          trace?: Json | null
+          understanding?: string | null
+          updated_at?: string
+          versions: Json
+          voice?: string | null
+          workbook_id?: string | null
+          workbook_page?: number | null
+          workbook_question?: number | null
+        }
+        Update: {
+          assessment_id?: string | null
+          assessment_question_id?: string | null
+          assistance?: string | null
+          board_history?: Json | null
+          call_seconds?: number | null
+          channel?: string | null
+          child_id?: string
+          child_ink?: Json | null
+          child_ink_at?: string | null
+          child_turns?: number | null
+          connected_seconds?: number | null
+          counts_minutes?: boolean
+          created_at?: string
+          ended_at?: string | null
+          fallbacks?: number | null
+          flag?: string | null
+          flagged_at?: string | null
+          highest_hint?: number | null
+          id?: string
+          kind?: string
+          learning_event_id?: string | null
+          live?: Json | null
+          maya_turns?: number | null
+          mishearing_confirmations?: number | null
+          mishearing_corrections?: number | null
+          mode?: string
+          model?: string
+          note_pending?: Json | null
+          outcome_reason?: string | null
+          package_hash?: string
+          package_id?: string
+          paper_status?: string | null
+          parent_id?: string
+          profile_rebuilt_at?: string | null
+          prompt_version?: string
+          question_source?: string
+          question_text?: string | null
+          record_version?: number
+          revision?: number
+          safety_flag?: boolean
+          safety_severity?: string | null
+          speech_to_text?: string | null
+          started_at?: string | null
+          started_by?: string | null
+          status?: string
+          trace?: Json | null
+          understanding?: string | null
+          updated_at?: string
+          versions?: Json
+          voice?: string | null
+          workbook_id?: string | null
+          workbook_page?: number | null
+          workbook_question?: number | null
+        }
+        Relationships: []
+      }
       maya_wording_history: {
         Row: {
           child_id: string
@@ -2914,6 +3085,48 @@ export type Database = {
             referencedColumns: ["id", "parent_id", "child_id", "number"]
           },
         ]
+      }
+      openrouter_provider_receipts: {
+        Row: {
+          api_key_id: string | null
+          cost_usd: number | null
+          generation_id: string
+          input_cost_usd: number | null
+          input_tokens: number | null
+          model: string
+          occurred_at: string
+          output_cost_usd: number | null
+          output_tokens: number | null
+          received_at: string
+          workspace_id: string
+        }
+        Insert: {
+          api_key_id?: string | null
+          cost_usd?: number | null
+          generation_id: string
+          input_cost_usd?: number | null
+          input_tokens?: number | null
+          model: string
+          occurred_at: string
+          output_cost_usd?: number | null
+          output_tokens?: number | null
+          received_at?: string
+          workspace_id: string
+        }
+        Update: {
+          api_key_id?: string | null
+          cost_usd?: number | null
+          generation_id?: string
+          input_cost_usd?: number | null
+          input_tokens?: number | null
+          model?: string
+          occurred_at?: string
+          output_cost_usd?: number | null
+          output_tokens?: number | null
+          received_at?: string
+          workspace_id?: string
+        }
+        Relationships: []
       }
       parent_explanation_dispatches: {
         Row: {
@@ -8510,6 +8723,10 @@ export type Database = {
           id: string
         }[]
       }
+      admin_openrouter_provider_receipts: {
+        Args: { p_from: string; p_to: string }
+        Returns: Json
+      }
       admin_parents: {
         Args: never
         Returns: {
@@ -9854,6 +10071,10 @@ export type Database = {
         }
         Returns: string
       }
+      ingest_openrouter_provider_receipts: {
+        Args: { p_rows: Json }
+        Returns: undefined
+      }
       is_admin: { Args: never; Returns: boolean }
       issue_sign_in_link: {
         Args: {
@@ -9912,6 +10133,7 @@ export type Database = {
         }
         Returns: Json
       }
+      maya_chat_fates_valid: { Args: { p_fates: Json }; Returns: boolean }
       maya_minutes_used:
         | {
             Args: {
@@ -10806,20 +11028,36 @@ export type Database = {
         }
         Returns: Json
       }
-      take_maya_chat_message: {
-        Args: {
-          p_call: string
-          p_child: string
-          p_end: string
-          p_fingerprint: string
-          p_id: string
-          p_parent: string
-          p_revision: number
-          p_start: string
-          p_text: string
-        }
-        Returns: Json
-      }
+      take_maya_chat_message:
+        | {
+            Args: {
+              p_call: string
+              p_child: string
+              p_end: string
+              p_fingerprint: string
+              p_id: string
+              p_parent: string
+              p_revision: number
+              p_start: string
+              p_text: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_call: string
+              p_child: string
+              p_end: string
+              p_fates: Json
+              p_fingerprint: string
+              p_id: string
+              p_parent: string
+              p_revision: number
+              p_start: string
+              p_text: string
+            }
+            Returns: Json
+          }
       take_plan_read_order: { Args: never; Returns: number }
       team_end_plan_start: {
         Args: { p_admin: string; p_card: string; p_generation: number }

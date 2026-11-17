@@ -909,8 +909,8 @@ async function write(
 ): Promise<GeneratedWorkbook | "paused"> {
   await progress({ step: "plan" });
   await check();
-  if (!deps.ai) throw new Refusal("The AI is off: no Claude subscription here and no OPENROUTER_API_KEY.");
-  if (!deps.solver) throw new Refusal("The solve check is off: no Claude subscription here and no OPENROUTER_API_KEY.");
+  if (!deps.ai) throw new Refusal("The AI is off: no Claude subscription here and no WORKBOOK_OPENROUTER_API_KEY.");
+  if (!deps.solver) throw new Refusal("The solve check is off: no Claude subscription here and no WORKBOOK_OPENROUTER_API_KEY.");
   // The child is read for the name the pages print, and (on the first call only) for the plan.
   const inputs = await deps.source.inputs(run.childId);
   if (!inputs) throw new Refusal("The child is not known.");

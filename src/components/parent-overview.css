@@ -16,7 +16,7 @@
 /* The workbook card */
 .po-book { display: grid; gap: 16px; padding: 20px; }
 .po-book-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.support-page .pa .po-k { font-size: 12.5px; font-weight: 600; color: var(--pa-tx3); text-transform: uppercase; letter-spacing: 0.05em; }
+.support-page .pa .po-k { font: 400 12.5px/1.2 var(--mono); color: var(--pa-tx3); text-transform: uppercase; letter-spacing: 0.02em; }
 .support-page .pa .po-n { font-size: 40px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; margin-top: 6px; }
 .po-n small { font-size: 20px; color: var(--pa-tx3); font-weight: 600; }
 .po-ring { position: relative; flex: 0 0 auto; width: 96px; height: 96px; }

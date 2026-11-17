@@ -821,7 +821,7 @@ const SECRETS: [RegExp, string][] = [
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Environment variables whose values are secrets: redacted wherever they appear, whatever their shape. */
-const SECRET_ENV = ["OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "SUPABASE_SECRET_KEY", "STRIPE_SECRET_KEY", "RESEND_API_KEY", "CRON_SECRET", "LIVEKIT_API_SECRET", "LIVEKIT_API_KEY"];
+const SECRET_ENV = ["MAYA_OPENROUTER_API_KEY", "WORKBOOK_OPENROUTER_API_KEY", "ASSESSMENT_OPENROUTER_API_KEY", "PROFILE_OPENROUTER_API_KEY", "SCAN_MARKING_OPENROUTER_API_KEY", "PARENT_EXPLANATION_API_KEY", "DECISIONS_OPENROUTER_API_KEY", "OPENROUTER_BILLING_API_KEY", "OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "SUPABASE_SECRET_KEY", "STRIPE_SECRET_KEY", "RESEND_API_KEY", "CRON_SECRET", "LIVEKIT_API_SECRET", "LIVEKIT_API_KEY"];
 
 /** The configured secret values now (from the environment), longest first. */
 export function configuredSecrets(env: Record<string, string | undefined> = process.env): string[] {

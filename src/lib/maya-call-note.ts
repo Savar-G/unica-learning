@@ -413,13 +413,13 @@ function heldDelivered(trace: MayaTrace): boolean {
 }
 
 /**
- * The AI client for the notes, or null when the AI is off (no OPENROUTER_API_KEY; the model comes from AI_MODEL). In
+ * The AI client for the notes, or null when the AI is off (no MAYA_OPENROUTER_API_KEY; the model comes from AI_MODEL). In
  * development (never in a production build), AI_REVIEW_FAKE=sure or unsure gives the fake.
  */
 export function noteAiClient(env: Record<string, string | undefined> = process.env): AiClient | null {
   const fake = env.AI_REVIEW_FAKE;
   if (env.NODE_ENV !== "production" && (fake === "sure" || fake === "unsure")) return fakeNoteAi(fake);
-  return mayaAiClient(env);
+  return mayaAiClient(env, undefined, { usage: { feature: "maya_note" } });
 }
 
 // ---------- The writer ----------

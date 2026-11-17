@@ -40,15 +40,19 @@ export function questionWorkSpace(p: QuestionPackage, place?: string | null): nu
 const digitsOf = (n: number) => [...String(n)].reverse().map(Number);
 
 /**
- * A printed calculation and nothing else ("834 − 121 = ?", "9 × 110 = ?", "4.08 + 5.0 = ?") whose columns need no
- * carrying or borrowing. Addition and subtraction may hold decimals (columns lined up on the point); a multiplication
- * is whole numbers with one single-digit factor, the column method a child writes. Anything else is not one.
+ * A printed calculation and nothing else ("834 − 121 = ?", "9 × 110 = ?", "4.08 + 5.01 = ?") whose columns need no
+ * carrying or borrowing. Addition and subtraction may hold decimals with the same number of places (unequal places
+ * keep their space); a multiplication is whole numbers with one single-digit factor, the column method a child
+ * writes. Anything else is not one.
  */
 export function bareCalculationWithoutRegrouping(text: string): boolean {
   const m = /^\s*(\d[\d,]*(?:\.\d+)?)\s*([+\-−×])\s*(\d[\d,]*(?:\.\d+)?)\s*=\s*\?\s*$/.exec(text);
   if (!m) return false;
   const [a, b] = [m[1], m[3]].map(x => x.replaceAll(",", ""));
-  const places = Math.max(...[a, b].map(x => x.split(".")[1]?.length ?? 0));
+  // Unequal decimal places ("12 + 0.5 = ?") keep their space: lining up the decimal point is the skill (#1116).
+  const [placesA, placesB] = [a, b].map(x => x.split(".")[1]?.length ?? 0);
+  if (placesA !== placesB) return false;
+  const places = placesA;
   const scaled = (x: string) => Number(x.split(".")[0] + (x.split(".")[1] ?? "").padEnd(places, "0"));
   const [x, y] = [scaled(a), scaled(b)];
   if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y)) return false;

@@ -3,7 +3,7 @@
 // phrases, and board offers), the question with its checked answer and steps, and the recent transcript; it returns a
 // version 2 proposal (PROPOSAL_SCHEMA). Nothing the model returns reaches the child unless the session's `step`
 // accepts it (src/lib/maya-text.ts). The live model is any OpenRouter model through the AI client (AI_MODEL), off
-// without OPENROUTER_API_KEY; tests use a fake (src/lib/maya-model-fake.ts).
+// without MAYA_OPENROUTER_API_KEY; tests use a fake (src/lib/maya-model-fake.ts).
 import { withTimeLimit, type AiClient, type AiPart } from "@/lib/ai-client";
 import {
   drawOffers,

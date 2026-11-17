@@ -93,18 +93,23 @@ import { isTwoStep, routingTemplates } from "@/lib/workbook-curriculum/house-tem
 import { buildStepItem, mixedTemplateSign, NO_TEMPLATE_PLACES, STEP_STORY_PLACES, stepAiItem, stepBounds, stepOf, stepRank, stepTemplateItem, stepTemplateOf, sumTemplate, templateProblem } from "@/lib/workbook-step-items";
 import type { StepDeclaration, StepReference } from "@/lib/workbook-print-contract";
 
-/** A replacement must retain the practice page's own-step minimum before it can borrow review work. */
+/** A replacement must retain the page's own-step minimum before it can borrow review work. */
 function needsOwnPractice(input: GenerateInput, w: PageWork, slot: Slot): boolean {
   // Four likelihood questions give a full pair in each U4 practice block before its earlier-step review rows.
   const youngLikelihood = input.plan.level === 4 && !!slot.part.step && /likelihood/.test(slot.part.step.skill);
-  if ((input.plan.level < 10 && !youngLikelihood) || w.page.extraPractice || !["practice", "practice-2"].includes(w.page.type)) return false;
+  if ((input.plan.level < 10 && !youngLikelihood) || w.page.extraPractice || !["practice", "practice-2", "new-idea"].includes(w.page.type)) return false;
   const counted = (s: Slot) => !["remember-these", "spot-the-error", "solve-it-two-ways", "warm-up", "how-do-you-know"].includes(s.place ?? "");
   if (!slot.part.step || !counted(slot)) return false;
   const practice = w.slots.filter(counted);
   const own = practice.filter(s => s.id !== slot.id && s.contract && (!s.part.step || !s.contract.template
     || s.contract.template.skill === s.part.step.skill && s.contract.template.step === s.part.step.step)).length;
-  return own < (youngLikelihood ? 4 : Math.min(3, Math.ceil(practice.length / 2)));
+  const need = w.page.type === "new-idea" ? pageMinimum(w.page.type, input.plan.level, false, practice.some(s => plannedWorkHeight(s.contract, input.plan.level) > 0))
+    : youngLikelihood ? 4 : Math.min(3, Math.ceil(practice.length / 2));
+  return own < need;
 }
+
+const lacksOwnPractice = (input: GenerateInput, w: PageWork) => input.plan.level >= 10 && w.slots.some(s => s.contract?.template && s.part.step
+  && (s.contract.template.skill !== s.part.step.skill || s.contract.template.step !== s.part.step.step) && needsOwnPractice(input, w, s));
 
 /** The slot's own step, or a step its review part draws from. Later attempts can borrow a taught step. */
 function slotStep(input: GenerateInput, slot: Slot, attempt: number, level: number, day = 0, ownPractice = false): { skill: string; step: number } | null {
@@ -3234,14 +3239,17 @@ async function swapCompleteRows(input: GenerateInput, w: PageWork, work: PageWor
   return false;
 }
 
-/** Replace a review pair together: the intermediate odd sections can overflow even when the complete rows fit. */
+/** Practice review pairs move together; a new-idea grid can also replace one question without opening a row. */
 async function restoreOwnPractice(input: GenerateInput, w: PageWork, work: PageWork[], fitCheck: FitCheck): Promise<boolean> {
   const targets = w.slots.filter(s => s.part.step && s.contract?.template
     && (s.contract.template.skill !== s.part.step.skill || s.contract.template.step !== s.part.step.step) && needsOwnPractice(input, w, s));
   const before = w.slots.map(s => ({ ...s }));
   const minutes = plannedDayMinutes(input, work, w.day);
-  for (let i = 0; i < targets.length; i++) for (const second of targets.slice(i + 1).filter(s => s.layoutSlot === targets[i].layoutSlot)) {
-    const pair = [targets[i], second];
+  const groups = targets.flatMap((first, i) => [
+    ...(w.page.type === "new-idea" ? [[first]] : []),
+    ...targets.slice(i + 1).filter(s => s.layoutSlot === first.layoutSlot).map(second => [first, second]),
+  ]);
+  for (const pair of groups) {
     const taken = new Set([...work.flatMap(p => p.slots.flatMap(s => {
       const pkg = !pair.includes(s) && s.contract ? contractPackage(input, p, s.contract) : null;
       return pkg && s.place !== "warm-up" ? [taskIdentity(pkg)] : [];
@@ -3259,10 +3267,11 @@ async function restoreOwnPractice(input: GenerateInput, w: PageWork, work: PageW
       }
       return found;
     });
-    for (const a of choices[0]) for (const b of choices[1]) {
-      if (a.key === b.key) continue;
-      pair[0].contract = a.contract; pair[1].contract = b.contract;
-      const templatesOk = !templateTwice(w, pair[0], a.contract) && !templateTwice(w, pair[1], b.contract);
+    const combinations = pair.length === 1 ? choices[0].map(a => [a]) : choices[0].flatMap(a => choices[1].map(b => [a, b]));
+    for (const selected of combinations) {
+      if (new Set(selected.map(c => c.key)).size !== selected.length) continue;
+      pair.forEach((slot, i) => { slot.contract = selected[i].contract; });
+      const templatesOk = pair.every((slot, i) => !templateTwice(w, slot, selected[i].contract));
       ownStepFirst(w);
       const page = budgetPage(input, w);
       if (templatesOk && !pagePlan(page)?.incomplete?.length && exchangeQuality(input, w, page)
@@ -3300,7 +3309,8 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
     work.forEach((w, i) => { if (!firstOfDay.has(w.day)) firstOfDay.set(w.day, i); });
     const order = work.map((w, i) => ({ w, i })).sort((a, b) => firstOfDay.get(a.w.day)! - firstOfDay.get(b.w.day)! || Number(review(b.w)) - Number(review(a.w)) || a.i - b.i).map(x => x.w);
     for (const w of order) {
-      if (w.page.capacityChecked) continue;
+      // A prior physical-fit result does not establish the page's required own-step coverage.
+      if (w.page.capacityChecked && !lacksOwnPractice(input, w)) continue;
       // A day over its time budget plans one template practice item fewer on this page, and again (#489).
       // (Never Show what you know: the book's test keeps one of each step; the day's practice pages give the time.)
       for (let trimmed = 0; trimmed < 6 && w.layout && !w.page.extraPractice && w.page.type !== "show-what-you-know" && plannedDayMinutes(input, work, w.day) > DAY_MINUTES_MOST; trimmed++) {
@@ -3371,8 +3381,7 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         // (Room only: a layout problem is the template's, reported when the page is written.)
         const budgetPage = fitPage(w, "token-000000000001", questions, contentOf(input, w, questions, examples));
         const holes = pagePlan(budgetPage)?.incomplete ?? [];
-        const shortOwnPractice = input.plan.level >= 10 && !holes.length && w.slots.some(s => s.contract?.template && s.part.step
-          && (s.contract.template.skill !== s.part.step.skill || s.contract.template.step !== s.part.step.step) && needsOwnPractice(input, w, s));
+        const shortOwnPractice = !holes.length && lacksOwnPractice(input, w);
         const holeSlot = holes.length ? w.slots[holes[0] - 1] : undefined;
         const holeOwn = !!holeSlot?.part.step && !!holeSlot.contract && (holeSlot.contract.template ? holeSlot.contract.template.skill === holeSlot.part.step.skill && holeSlot.contract.template.step === holeSlot.part.step.step : holeSlot.contract.item.skill === holeSlot.part.step.skill);
         const reviewPartner = holes.length >= 2 && holeOwn

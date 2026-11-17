@@ -81,7 +81,7 @@ The script does these steps:
 2. It writes the settings file `~/.config/unica/workbook-worker.env` (chmod 600), if there is none.
 3. It writes the LaunchAgent `~/Library/LaunchAgents/com.unicalearning.workbook-worker.plist` and loads it. The LaunchAgent has `RunAtLoad`, `KeepAlive` (it starts the worker again when the worker exits or crashes), `ProcessType Interactive`, and the log at `~/Library/Logs/unica-workbook-worker.log`.
 
-In Claude mode, add `OPENROUTER_API_KEY` to the settings file to turn on the API fallback. Without it, a call that the subscription cannot take fails. The generator then marks that question as failed. Codex mode ignores the API key.
+In Claude mode, add `WORKBOOK_OPENROUTER_API_KEY` to the settings file to turn on the API fallback. Without it, a call that the subscription cannot take fails. The generator then marks that question as failed. Codex mode ignores the API key.
 
 Do not change files in `~/.unica-workbook-worker`. The launcher moves it to `origin/main` at each start.
 
@@ -94,7 +94,8 @@ Put these in `~/.config/unica/workbook-worker.env`. The worker reads the file at
 | `WORKBOOK_SUBSCRIPTION_PROVIDER` | `claude` | `claude` or `codex`. Codex always disables the API fallback. |
 | `WORKBOOK_CODEX_HOME` | none | Required for Codex: an absolute account directory with a stored ChatGPT file login. |
 | `WORKBOOK_AI_PRIMARY` | `subscription` | Set `api` to put the API first, for example when there are many more customers. |
-| `OPENROUTER_API_KEY` | none | The API fallback. |
+| `WORKBOOK_OPENROUTER_API_KEY` | none | The API fallback. |
+| `PROFILE_OPENROUTER_API_KEY` | none | Optional learner and child profile findings. The writer, solve checks and gates use only the workbook key. |
 | `AI_MODEL`, `AI_SOLVE_MODEL` | `anthropic/claude-sonnet-5.5`, `anthropic/claude-haiku-5.5` | The API models. |
 | `WORKBOOK_CLAUDE_MODEL`, `WORKBOOK_CLAUDE_SOLVE_MODEL` | `claude-sonnet-5-5`, `claude-haiku-5-5` | The subscription models. Keep them the same as the API models, so a run that changes provider keeps the same model name. |
 | `WORKBOOK_CLAUDE_CONFIG_DIR` | the normal `~/.claude` login | Which Claude account runs `claude -p`. |

@@ -1,10 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildStack, checkLine, costShare, featureGroupOf, groupFeatures, keyMonthUsage, niceTop, parseRange, parseUsage, periodFor, usd } from "@/lib/admin-ai-usage";
 import { PACIFIC_ZONE, localDateTime, localDay } from "@/lib/family-time";
 import { OPENROUTER_CHECK_MS, openRouterKeys, openRouterMonthCheck } from "@/lib/admin-ai-usage-store";
 
 // 2026-11-12, midday in Vancouver.
 const NOW = Date.parse("2026-11-12T20:00:00Z");
+beforeEach(() => vi.clearAllMocks());
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 describe("period", () => {
   it("counts Vancouver days, today last", () => {
@@ -32,6 +34,31 @@ describe("period", () => {
     expect(parseRange(["month"])).toBe("month");
     expect(parseRange("x")).toBe("30d");
     expect(parseRange(undefined)).toBe("30d");
+    expect(parseRange("year")).toBe("year");
+  });
+  it("starts this year at January 1 and applies dated Vancouver offsets", () => {
+    const p = periodFor("year", Date.parse("2026-11-16T20:00:00Z"));
+    expect(p.from.toISOString()).toBe("2026-01-01T08:00:00.000Z");
+    expect(p.to.toISOString()).toBe("2026-11-17T07:00:00.000Z");
+    expect(p.days).toHaveLength(320);
+    expect(p.days[0]).toBe("2026-01-01"); expect(p.days.at(-1)).toBe("2026-11-16");
+  });
+  it("changes years at Vancouver midnight, including the permanent UTC-7 override", () => {
+    const before = periodFor("year", Date.parse("2027-01-01T06:59:59Z"));
+    expect(before.from.toISOString()).toBe("2026-01-01T08:00:00.000Z");
+    expect(before.to.toISOString()).toBe("2027-01-01T07:00:00.000Z");
+    expect(before.days).toHaveLength(365);
+    const after = periodFor("year", Date.parse("2027-01-01T07:00:00Z"));
+    expect(after.from.toISOString()).toBe("2027-01-01T07:00:00.000Z");
+    expect(after.to.toISOString()).toBe("2027-01-02T07:00:00.000Z");
+    expect(after.days).toEqual(["2027-01-01"]);
+  });
+  it("keeps a complete leap year within the app reader's 400-day bound", () => {
+    const p = periodFor("year", Date.parse("2028-12-31T20:00:00Z"));
+    expect(p.days).toHaveLength(366);
+    expect(p.days).toContain("2028-02-29");
+    expect(p.to.toISOString()).toBe("2029-01-01T07:00:00.000Z");
+    expect((p.to.getTime() - p.from.getTime()) / 86400000).toBe(366);
   });
 });
 
@@ -117,8 +144,10 @@ describe("OpenRouter check", () => {
       seen.push({ key, limited: !!init?.signal });
       return new Response(JSON.stringify({ data: { usage_monthly: key.endsWith("b") ? 2 : 3 } }), { status: 200 });
     }) as unknown as typeof globalThis.fetch;
-    const env = { OPENROUTER_API_KEY: "a", SCAN_MARKING_OPENROUTER_API_KEY: "b", PARENT_EXPLANATION_API_KEY: "a" };
+    const env = { MAYA_OPENROUTER_API_KEY: "a", SCAN_MARKING_OPENROUTER_API_KEY: "b", PARENT_EXPLANATION_API_KEY: "a" };
     expect(openRouterKeys(env)).toEqual(["a", "b"]);
+    expect(openRouterKeys({ OPENROUTER_API_KEY: "shared", DECISIONS_OPENROUTER_API_KEY: "shared" })).toEqual([]);
+    expect(openRouterKeys({ MAYA_OPENROUTER_API_KEY: "m", SCAN_MARKING_OPENROUTER_API_KEY: "s", PARENT_EXPLANATION_API_KEY: "e", WORKBOOK_OPENROUTER_API_KEY: "w", ASSESSMENT_OPENROUTER_API_KEY: "a", PROFILE_OPENROUTER_API_KEY: "p" })).toEqual(["m", "s", "e", "w", "a", "p"]);
     await expect(openRouterMonthCheck(env, fetch)).resolves.toMatchObject({ monthUsd: 5, asked: 2, answered: 2 });
     expect(seen).toHaveLength(2);
     expect(seen.every((s) => s.limited)).toBe(true);
@@ -127,9 +156,9 @@ describe("OpenRouter check", () => {
   it("says partial when one key fails, null when none answers, and no-key when no key is set", async () => {
     const half = (async (_u: string, init?: RequestInit) => String((init?.headers as Record<string, string>).authorization).endsWith("b")
       ? new Response("no", { status: 401 }) : new Response(JSON.stringify({ data: { usage_monthly: 4 } }), { status: 200 })) as unknown as typeof globalThis.fetch;
-    await expect(openRouterMonthCheck({ OPENROUTER_API_KEY: "a", DECISIONS_OPENROUTER_API_KEY: "b" }, half)).resolves.toMatchObject({ monthUsd: 4, asked: 2, answered: 1 });
+    await expect(openRouterMonthCheck({ MAYA_OPENROUTER_API_KEY: "a", WORKBOOK_OPENROUTER_API_KEY: "b" }, half)).resolves.toMatchObject({ monthUsd: 4, asked: 2, answered: 1 });
     const down = (async () => { throw new Error("offline"); }) as unknown as typeof globalThis.fetch;
-    await expect(openRouterMonthCheck({ OPENROUTER_API_KEY: "a" }, down)).resolves.toBeNull();
+    await expect(openRouterMonthCheck({ MAYA_OPENROUTER_API_KEY: "a" }, down)).resolves.toBeNull();
     await expect(openRouterMonthCheck({}, down)).resolves.toBe("no-key");
   });
 });

@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Database } from "@/lib/database";
 import { callSeams } from "@/lib/maya-call-seams";
+import { MAYA_CHAT_STREAM_NOT_BEFORE } from "@/lib/maya-chat-stream-activation";
 
 // D-345: the MAYA_TUTOR_FAMILIES switch. Only the exact value "on" lets the tutor core teach family calls.
 
@@ -9,9 +10,15 @@ vi.mock("server-only", () => ({}));
 
 const db = {} as SupabaseClient<Database>;
 
-it.each([{}, { MAYA_CHAT_STREAMING_ENABLED: "on", MAYA_TUTOR_FAMILIES: "on" }])("deploys compatible readers with new chat part writes off", (env) => {
-  // Falsifier: a request or an environment value activates the writer during the incompatible-reader window.
-  expect(callSeams(db, { env }).streamChat).toBe(false);
+beforeEach(() => { vi.clearAllMocks(); });
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+
+it.each([-1, 0, 1])("binds the server writer to exact on and deadline offset %s", offset => {
+  // Falsifier: the configured writer opens before the final readers' deadline, or fails to open at it.
+  vi.spyOn(Date, "now").mockReturnValue(MAYA_CHAT_STREAM_NOT_BEFORE + offset);
+  expect(callSeams(db, { env: { MAYA_CHAT_STREAMING_ENABLED: "on" } }).streamChat).toBe(offset >= 0);
+  expect(callSeams(db, { env: {} }).streamChat).toBe(false);
+  expect(callSeams(db, { env: { MAYA_CHAT_STREAMING_ENABLED: "off" } }).streamChat).toBe(false);
 });
 
 describe("callSeams: MAYA_TUTOR_FAMILIES", () => {

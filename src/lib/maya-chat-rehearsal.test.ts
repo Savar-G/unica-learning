@@ -55,7 +55,7 @@ async function chatToTheEnd(tables: Record<string, Row[]>) {
 afterEach(() => vi.unstubAllEnvs());
 describe("the rehearsal family's parent note (#530)", () => {
   it("writes a real note for the rehearsal family's chat", async () => {
-    vi.stubEnv("OPENROUTER_API_KEY", ""); vi.stubEnv("AI_REVIEW_FAKE", "");
+    vi.stubEnv("MAYA_OPENROUTER_API_KEY", ""); vi.stubEnv("AI_REVIEW_FAKE", "");
     const notes = await chatToTheEnd({ test_accounts: [{ parent_id: parent }], maya_chat_families: [{ parent_id: parent, rehearsal: true }] });
     expect(notes).toHaveLength(1);
     expect(notes[0]).toMatchObject({ parent_id: parent, child_id: child, writer: "code" });
@@ -65,11 +65,11 @@ describe("the rehearsal family's parent note (#530)", () => {
     ["a test family off the list", []],
     ["a listed test family that is not the rehearsal", [{ parent_id: parent, rehearsal: false }]],
   ])("writes no note for %s", async (_, list) => {
-    vi.stubEnv("OPENROUTER_API_KEY", ""); vi.stubEnv("AI_REVIEW_FAKE", "");
+    vi.stubEnv("MAYA_OPENROUTER_API_KEY", ""); vi.stubEnv("AI_REVIEW_FAKE", "");
     expect(await chatToTheEnd({ test_accounts: [{ parent_id: parent }], maya_chat_families: list })).toEqual([]);
   });
   it("does not let a rehearsal mark on another family through", async () => {
-    vi.stubEnv("OPENROUTER_API_KEY", ""); vi.stubEnv("AI_REVIEW_FAKE", "");
+    vi.stubEnv("MAYA_OPENROUTER_API_KEY", ""); vi.stubEnv("AI_REVIEW_FAKE", "");
     const other = "55555555-5555-4555-8555-555555555555";
     expect(await chatToTheEnd({ test_accounts: [{ parent_id: parent }], maya_chat_families: [{ parent_id: other, rehearsal: true }] })).toEqual([]);
   });

@@ -12,7 +12,8 @@ const BEARER = /\bBearer\s+\S+/gi;
 
 /** Free text with emails, bearer values and long tokens replaced. */
 export function scrubText(value: string): string {
-  return value.replace(BEARER, "Bearer [hidden]").replace(EMAIL, "[email]").replace(TOKEN, "[token]");
+  return value.replace(/https:\/\/hooks\.slack\.com\/services\/[^\s"'<>)]*/gi, "https://hooks.slack.com/services/[hidden]")
+    .replace(BEARER, "Bearer [hidden]").replace(EMAIL, "[email]").replace(TOKEN, "[token]");
 }
 
 /**
@@ -23,6 +24,7 @@ export function scrubUrl(value: string): string {
   try {
     const parsed = new URL(value);
     if (!/^https?:$/.test(parsed.protocol)) return scrubText(value);
+    if (parsed.hostname === "hooks.slack.com") return "https://hooks.slack.com/services/[hidden]";
     return parsed.origin + redactPathTokens(parsed.pathname);
   } catch {
     const path = value.replace(/[?#].*$/, "");

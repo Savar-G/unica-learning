@@ -7,7 +7,7 @@ import { aiReviewer } from "@/lib/work-review";
 // #900 (D-337): a request that can carry a child's work, report facts or profile never goes to a Google endpoint. Google
 // Cloud's terms do not allow its generative AI services in a service likely to be used by people under 18.
 
-const env = { OPENROUTER_API_KEY: "test-key", AI_MODEL: "anthropic/claude-sonnet-5.5", NODE_ENV: "test" };
+const env = { ASSESSMENT_OPENROUTER_API_KEY: "test-assessments", PROFILE_OPENROUTER_API_KEY: "test-profiles", AI_MODEL: "anthropic/claude-sonnet-5.5", NODE_ENV: "test" };
 const request = { name: "t", system: "s", content: [{ type: "text" as const, text: "x" }], schema: { type: "object" } };
 const signal = () => new AbortController().signal;
 
@@ -46,6 +46,6 @@ describe("the AI client's default route (no Google endpoints, #900)", () => {
   it("keeps a route a feature sets itself", async () => {
     capture();
     const own = { only: ["anthropic"], require_parameters: true as const };
-    expect(await sent(() => aiClient(env, undefined, { provider: own })!.json(request, signal()))).toEqual(own);
+    expect(await sent(() => aiClient(env, undefined, { provider: own, usage: { feature: "report" } })!.json(request, signal()))).toEqual(own);
   });
 });

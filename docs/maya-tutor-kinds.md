@@ -40,7 +40,7 @@ The first kind that fits a question teaches it. A kind may import another kind's
 - `"$G" npx vitest run src/lib/maya/tutor-kinds/ src/lib/maya/tutor.test.ts src/lib/maya-text-tutor.test.ts src/lib/maya/tutor-corpus.test.ts --maxWorkers=2`, with `G=/Users/savargupta/unica-workbook-samples/customer-first-book-20261106/maya-coverage/gate-slot.sh`. Never run the full suite on the Mac; CI runs it.
 - `"$G" npx next typegen`, then `"$G" npx tsc --noEmit -p .` and `"$G" npx eslint src/lib/maya`.
 - Book 1 census: run the census script the Maya lead gives in the brief. It counts how many of the family's Book 1 questions the kind now fits. The Book 1 packages are a customer's book: never copy them into the repository. Build test packages with `workedSteps` (`src/lib/question-package.ts`) or the samples in `src/lib/maya-samples.ts`.
-- Optional: at most 3 real-model runs with `npm run maya:text -- --model openrouter --tutor --question <package.json>`, using the key `OPENROUTER_API_KEY="$(security find-generic-password -s unica-maya-openrouter -w)"`. Never print the key.
+- Optional: at most 3 real-model runs with `npm run maya:text -- --model openrouter --tutor --question <package.json>`, using the key `MAYA_OPENROUTER_API_KEY="$(security find-generic-password -s unica-maya-openrouter -w)"`. Never print the key.
 
 ## The PR
 

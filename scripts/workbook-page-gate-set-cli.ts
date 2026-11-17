@@ -103,8 +103,8 @@ async function run(o: { estimate: boolean; fromResults: boolean; max: number }) 
   let results = stored;
   if (!o.fromResults && missing.length) {
     if (estimate > o.max) throw new Error("estimate exceeds cap");
-    const client = decisionClient(process.env, MODEL, { maxRetries: 0 });
-    if (!client) throw new Error("DECISIONS_OPENROUTER_API_KEY is required");
+    const client = decisionClient(process.env, MODEL, { maxRetries: 0, usage: { feature: "workbook_gate", context: "evaluation" } });
+    if (!client) throw new Error("WORKBOOK_OPENROUTER_API_KEY is required");
     const rows: PageGateCaseRow[] = [];
     let exposure = 0, knownSpend = 0, unpriced = 0;
     const failures: string[] = [];

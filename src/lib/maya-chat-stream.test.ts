@@ -9,6 +9,7 @@ import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { MAYA_NOTICE_VERSION } from "@/lib/maya-notice";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
 import { mayaWorkbookFixture } from "@/lib/maya-workbook-fixture";
+import { mayaChatStreamEnabled, MAYA_CHAT_STREAM_NOT_BEFORE } from "@/lib/maya-chat-stream-activation";
 
 vi.mock("server-only", () => ({}));
 const local = vi.hoisted(() => ({ books: null as unknown, seams: null as unknown }));
@@ -27,8 +28,8 @@ const done = (text = "done"): ChatReply => ({ usage, chat: null, error: text });
 const lines = async (stream: ReadableStream<Uint8Array>) => (await new Response(stream).text()).split("\n").filter(Boolean).map((l) => JSON.parse(l) as ChatStreamEvent);
 const body = (...events: string[]) => new ReadableStream<Uint8Array>({ start(c) { for (const e of events) c.enqueue(new TextEncoder().encode(e)); c.close(); } });
 
-beforeEach(() => { vi.restoreAllMocks(); });
-afterEach(() => { vi.useRealTimers(); });
+beforeEach(() => { vi.restoreAllMocks(); vi.clearAllMocks(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 describe("chatStream: the route's answer for a child turn", () => {
   it("answers the reply itself when no sentence came first (the JSON contract of older desks)", async () => {
@@ -121,7 +122,7 @@ describe("runChat: admission before any streamed word", () => {
   const ID = "55555555-5555-4555-8555-555555555555";
   const MSG = "66666666-6666-4666-8666-666666666666";
 
-  async function setup(claim: () => Record<string, unknown> | null) {
+  async function setup(claim: () => Record<string, unknown> | null, flag: string | undefined = "on", now = MAYA_CHAT_STREAM_NOT_BEFORE) {
     const f = await mayaWorkbookFixture();
     f.books.setStatus(f.ids.workbook, "shipped");
     let held: (() => void) | null = null;
@@ -132,7 +133,7 @@ describe("runChat: admission before any streamed word", () => {
         answer: () => reply("7 ones and 9 ones make 16 ones. What do we write in the ones place?", "guide"),
         stream: { chunk: 9, beforeEnd: () => (hold ? new Promise<void>((r) => { held = r; }) : Promise.resolve()) },
       });
-      local.seams = { ...f.seams, tutorFamilies: true, streamChat: true, model: () => model, reviewer: () => fakeTalkReviewer(), mathReviewer: () => fakeMathReviewer(), canChat: async () => true } satisfies CallSeams;
+      local.seams = { ...f.seams, tutorFamilies: true, streamChat: mayaChatStreamEnabled(flag, now), model: () => model, reviewer: () => fakeTalkReviewer(), mathReviewer: () => fakeMathReviewer(), canChat: async () => true } satisfies CallSeams;
       return model;
     };
     const model = process();
@@ -164,6 +165,29 @@ describe("runChat: admission before any streamed word", () => {
     if (!started.chat) throw Error(`no chat: ${started.error}`);
     return { f, ctx, model, process, lapse: (text: string) => { lapsed = { text }; }, revision: started.chat.revision, hold: () => { hold = true; }, release: () => { hold = false; held?.(); } };
   }
+
+  it.each([
+    ["on", MAYA_CHAT_STREAM_NOT_BEFORE - 1, false],
+    ["on", MAYA_CHAT_STREAM_NOT_BEFORE, true],
+    ["on", MAYA_CHAT_STREAM_NOT_BEFORE + 1, true],
+    ["off", MAYA_CHAT_STREAM_NOT_BEFORE + 1, false],
+    ["ON", MAYA_CHAT_STREAM_NOT_BEFORE + 1, false],
+  ])("server flag %s at %s controls writes after admission", async (flag, now, enabled) => {
+    // Falsifier: a stream request bypasses the server gate, or the gate bypasses admission.
+    const s = await setup(() => null, flag, now);
+    const part = vi.fn();
+    s.hold();
+    const work = runChat(s.ctx, { type: "child", id: ID, messageId: MSG, revision: s.revision, text: "Is it 56?", MAYA_CHAT_STREAMING_ENABLED: "on", streamChat: true } as Parameters<typeof runChat>[1], { say: { part } });
+    try {
+      if (enabled) await vi.waitFor(() => expect(part).toHaveBeenCalled());
+      else await vi.waitFor(() => expect(s.model.briefs.length).toBe(1));
+    } finally { s.release(); }
+    const r = await work;
+    expect(r.admission).toBe("accepted");
+    expect(part.mock.calls.length > 0).toBe(enabled);
+    const saved = (await s.f.store.get(ID))!;
+    expect(saved.live?.text.log?.some(e => e.kind === "part_pending")).toBe(enabled);
+  });
 
   it.each([
     ["busy", { status: "busy", admitted: true }, "accepted"],

@@ -1,3 +1,4 @@
+import { setProductObserver } from "@/lib/product-monitoring";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const { gate, run } = vi.hoisted(() => ({ gate: vi.fn(), run: vi.fn() }));
 vi.mock("@/lib/desk-chat-request", () => ({ deskChatContext: gate }));
@@ -10,8 +11,8 @@ const typed = { type: "start", id, workbookId: book, reference: "page 3, number 
 const request = (body: unknown, origin = "http://localhost") => new Request("http://localhost/api/desk/chat", {
   method: "POST", headers: { origin }, body: JSON.stringify(body),
 });
-afterEach(() => { vi.restoreAllMocks(); });
-beforeEach(() => { vi.clearAllMocks(); gate.mockResolvedValue({ ok: true, ctx: { child: "selected-child" } }); run.mockResolvedValue({ chat: null }); });
+afterEach(() => { setProductObserver(null); vi.restoreAllMocks(); });
+beforeEach(() => { setProductObserver(null); vi.clearAllMocks(); gate.mockResolvedValue({ ok: true, ctx: { child: "selected-child" } }); run.mockResolvedValue({ chat: null }); });
 
 it("passes the typed reference under the server's selected-child context", async () => {
   expect((await POST(request(typed))).status).toBe(200);
@@ -80,4 +81,17 @@ it("keeps older desks and other actions on JSON with no ear", async () => {
   expect(run).toHaveBeenLastCalledWith({ child: "selected-child" }, child);
   await POST(streaming({ type: "read", id }));
   expect(run).toHaveBeenLastCalledWith({ child: "selected-child" }, { type: "read", id });
+});
+
+it("records one handled stream error after a sentence, with no child text in the event", async () => {
+  const observer = vi.fn(); setProductObserver(observer);
+  run.mockImplementation(async (_ctx, _action, options) => {
+    options.say.part("PRIVATE CHILD WORDS", 0);
+    throw Error("PRIVATE CHILD WORDS");
+  });
+  const response = await POST(streaming(child));
+  expect(response.status).toBe(200);
+  expect(await response.text()).toContain('"type":"error"');
+  expect(observer.mock.calls.filter(([e]) => e.code === "maya.failed")).toEqual([[{ code: "maya.failed", attributes: { callId: id, step: "stream" } }]]);
+  expect(JSON.stringify(observer.mock.calls)).not.toContain("PRIVATE");
 });

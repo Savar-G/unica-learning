@@ -107,7 +107,8 @@ export async function explainParentProblem(store: ExplanationStore, ref: Explana
         work.dispatch = admitted.dispatch; await active(signal);
       });
       if (!work.transport) return { status: "retry" };
-      const output = await work.transport.client.json(input.request, signal); await active(signal);
+      const client = work.transport.client.withUsage?.({ parentId: current.parent, childId: current.child, source: { kind: "scan_photo", id: ref.photo } }) ?? work.transport.client;
+      const output = await client.json(input.request, signal); await active(signal);
       const explanation = explanationOutput(output);
       await settle(); await active(signal);
       if (!explanation) return { status: "retry" };

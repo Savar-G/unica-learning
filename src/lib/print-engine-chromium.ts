@@ -235,13 +235,17 @@ const sameRect = (a: Rect, b: Rect | undefined) => !!b && (["x", "y", "width", "
 /** Each sheet's top in the document, in CSS pixels. */
 const SHEET_TOPS = `[...document.querySelectorAll("[data-sheet]")].map((s) => s.getBoundingClientRect().top + window.scrollY)`;
 
-/** The text of the QR code in a page image, read in the area of a measured element and 0.25 inches around it. */
+/** Read the measured QR first, then a quarter-inch margin if needed. Nearby footer ink can confuse the wider crop. */
 async function readQr(png: Uint8Array, at: Pick<MeasuredElement, "x" | "y" | "width" | "height"> | undefined, scale: number): Promise<string | null> {
   if (!at) return null;
-  const c = crop(at, scale, pngSize(png), 24);
-  if (!c) return null;
-  const { data, info } = await sharp(png).extract(c).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  return jsQR(new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength), info.width, info.height)?.data ?? null;
+  for (const pad of [0, 24]) {
+    const c = crop(at, scale, pngSize(png), pad);
+    if (!c) continue;
+    const { data, info } = await sharp(png).extract(c).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const text = jsQR(new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength), info.width, info.height)?.data;
+    if (text) return text;
+  }
+  return null;
 }
 
 /** A PNG's size from its header. */

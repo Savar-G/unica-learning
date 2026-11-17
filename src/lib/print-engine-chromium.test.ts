@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import jsQR from "jsqr";
@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { renderMonthlySummary } from "@/lib/monthly-summary";
 import type { MonthlySummaryView } from "@/lib/parent-view";
 import { browserStartPlan, chromiumPrintEngine, findChromium, startBrowser, stoppableStart } from "@/lib/print-engine-chromium";
-import { renderWorkbook, type PrintEngine, type WorkbookDraft } from "@/lib/workbook-render";
+import { IMAGE_SCALE, renderWorkbook, type PrintEngine, type WorkbookDraft } from "@/lib/workbook-render";
 import { sampleDraft } from "@/lib/workbook-sample";
 import { fixedTemplate } from "@/lib/workbook-template-fixed";
 import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
@@ -80,6 +80,21 @@ async function readQr(png: Uint8Array): Promise<string | null> {
 }
 
 describe.skipIf(!chromium)("renderWorkbook with Chromium", () => {
+  it("reads the measured QR code when surrounding footer ink confuses a wider crop", async () => {
+    // A synthetic QR and footer border, with no customer data. The 167 px fixture has a readable 91 px QR at (38,38).
+    // At the production scale the measured box isolates it, while the old 24 CSS px padding includes nearby ink.
+    const png = await readFile(new URL("./test-fixtures/qr-neighbour-ink.png", import.meta.url));
+    const expected = "https://unicalearning.com/tutor/p/W0pZZjSMH9Pg9oBUxqOI4k";
+    const html = `<!doctype html><html><head><style>
+      @page{size:200px 200px;margin:0}html,body{margin:0}
+      [data-sheet]{position:relative;width:200px;height:200px;background:white}
+      [data-measure="qr"]{position:absolute;left:64px;top:64.24px;width:58px;height:58px}
+      img{position:absolute;left:-24.32px;top:-24.56px;width:106.88px;height:106.88px;image-rendering:pixelated}
+      </style></head><body><section data-sheet="0"><div data-measure="qr"><img src="data:image/png;base64,${png.toString("base64")}"></div></section></body></html>`;
+    const result = await chromiumPrintEngine().print({ html, sheets: 1, page: { width: 200, height: 200 }, scale: IMAGE_SCALE });
+    expect(result.images[0].qrText).toBe(expected);
+  }, 60_000);
+
   it("prints the sample book: three PDF pages, a readable QR code on each page image, every box inside its image", async () => {
     const result = await render(draft());
     if (result.status !== "rendered") throw new Error(JSON.stringify(result));

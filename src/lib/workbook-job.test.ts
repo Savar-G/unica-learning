@@ -288,14 +288,14 @@ describe("a run", () => {
     const s = setup({ ai: null });
     const id = await started(s);
     expect(await runWorkbookJob(id, s.deps)).toBe("failed");
-    expect((await s.runs.run(id))!.error).toBe("The AI is off: no Claude subscription here and no OPENROUTER_API_KEY.");
+    expect((await s.runs.run(id))!.error).toBe("The AI is off: no Claude subscription here and no WORKBOOK_OPENROUTER_API_KEY.");
   });
 
   it("fails when the solve check is off, before any AI call", async () => {
     const s = setup({ solver: null });
     const id = await started(s);
     expect(await runWorkbookJob(id, s.deps)).toBe("failed");
-    expect((await s.runs.run(id))!.error).toBe("The solve check is off: no Claude subscription here and no OPENROUTER_API_KEY.");
+    expect((await s.runs.run(id))!.error).toBe("The solve check is off: no Claude subscription here and no WORKBOOK_OPENROUTER_API_KEY.");
     expect((s.ai as ReturnType<typeof fakeAiClient>).requests).toHaveLength(0);
   });
 

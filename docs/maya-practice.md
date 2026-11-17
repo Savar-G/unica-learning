@@ -8,8 +8,8 @@ The conversational model uses a sentence reviewer in both chat and voice, includ
 
 ```sh
 npm run maya:practice -- --estimate                                  # the cost estimate, then stop
-OPENROUTER_API_KEY_FILE=~/keys/openrouter npm run maya:practice      # the full suite (cap: twice the estimate)
-OPENROUTER_API_KEY_FILE=~/keys/openrouter npm run maya:practice -- --max-usd 20
+MAYA_OPENROUTER_API_KEY_FILE=~/keys/maya-openrouter npm run maya:practice      # the full suite (cap: twice the estimate)
+MAYA_OPENROUTER_API_KEY_FILE=~/keys/maya-openrouter npm run maya:practice -- --max-usd 20
 npm run maya:practice -- --anthropic --estimate                      # every model on the Claude API (local key)
 npm run maya:practice -- --anthropic --max-usd 25
 npm run maya:practice -- --anthropic --review-check                  # only the free-talk review over the never-say list
@@ -39,7 +39,7 @@ npm run maya:practice -- --report traces/maya-practice/<run>          # count a 
 | `--review-model` | The free-talk review's model. Default `MAYA_REVIEW_MODEL`, else `anthropic/claude-haiku-5.5`. |
 | `--maya-model`, `--sim-model`, `--validity-model`, `--judge-model` | The models. Defaults: `AI_MODEL` (else `anthropic/claude-sonnet-5.5`), `MAYA_SIM_MODEL` (else `anthropic/claude-haiku-5.5`), `MAYA_VALIDITY_MODEL` (else `openai/gpt-5.4-mini`), `MAYA_JUDGE_MODEL` (else `openai/gpt-5.4`). Both judges are from another model family than the child and Maya (research, section 8), so the validity judge does not share the child's blind spots. |
 
-**The key.** `OPENROUTER_API_KEY` in the environment, or `OPENROUTER_API_KEY_FILE` (a file that holds only the key), or `.env.local`. It is a Vercel Secret variable, so `vercel env pull` gives an empty value. Use the Unica OpenRouter key only. The exit code is 0 only when every planned run passed.
+**The key.** `MAYA_OPENROUTER_API_KEY` in the environment, or `MAYA_OPENROUTER_API_KEY_FILE` (a file that holds only the key), or `.env.local`. It is a Vercel Secret variable, so `vercel env pull` gives an empty value. Use the dedicated Maya OpenRouter key only. All practice roles belong to Maya and retain practice context. The exit code is 0 only when every planned run passed.
 
 **The credit check's key.** The run's own key: OpenRouter's credits route answers an ordinary key (checked 2026-11-07). What is left is `total_credits` minus `total_usage`. See "Cost".
 

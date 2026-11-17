@@ -13,7 +13,7 @@ import { MAYA_PROVIDER } from "@/lib/maya-ai-route";
 // D-337: every OpenRouter request that carries a child's words for Maya (her model, the safety read, the free-talk review
 // and the call note) goes only to Anthropic and Azure, never to Google. Other AI features use the client's default route, which also leaves Google out (#900).
 
-const env = { OPENROUTER_API_KEY: "test-key", AI_MODEL: "anthropic/claude-sonnet-5.5", NODE_ENV: "test" };
+const env = { MAYA_OPENROUTER_API_KEY: "test-key", AI_MODEL: "anthropic/claude-sonnet-5.5", NODE_ENV: "test" };
 const request = { name: "t", system: "s", content: [{ type: "text" as const, text: "x" }], schema: { type: "object" } };
 const P = "00000000-0000-4000-8000-0000000000a1", C = "00000000-0000-4000-8000-0000000000c1";
 const call = { id: "00000000-0000-4000-8000-0000000000f1", kind: "chat", parentId: P, childId: C };
@@ -119,7 +119,7 @@ describe("Maya's OpenRouter route (no Google endpoints, D-337)", () => {
 
   it("sends other AI features on the client's default route, which also leaves Google out (#900)", async () => {
     capture();
-    expect(await sent(() => aiClient(env)!.json(request, signal()))).toEqual(NO_GOOGLE_PROVIDER);
-    expect(await sent(() => aiClient(env, "anthropic/claude-haiku-5.5")!.json(request, signal()))).toEqual(NO_GOOGLE_PROVIDER);
+    expect(await sent(() => aiClient({ ...env, ASSESSMENT_OPENROUTER_API_KEY: "assessment-key" }, undefined, { usage: { feature: "report" } })!.json(request, signal()))).toEqual(NO_GOOGLE_PROVIDER);
+    expect(await sent(() => aiClient({ ...env, ASSESSMENT_OPENROUTER_API_KEY: "assessment-key" }, "anthropic/claude-haiku-5.5", { usage: { feature: "report" } })!.json(request, signal()))).toEqual(NO_GOOGLE_PROVIDER);
   });
 });

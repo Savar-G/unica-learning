@@ -1,0 +1,44 @@
+{
+  "issue": 1112,
+  "date": "2026-11-15",
+  "base": "4426ab082b3366679070166bcf50fc631c2efb92",
+  "branch": "site/product-brand-consistency",
+  "kind": "Product brand consistency implementation",
+  "status": "Implementation verified locally; CI and release review pending",
+  "blocker": null,
+  "designSource": "DESIGN.md at pinned base; .design/decisions.md; src/ds",
+  "inventory": "README.md",
+  "evidence": "source-evidence.json",
+  "regenerate": "python3 .design/experiments/r1112-brand-consistency/audit.py",
+  "productFilesChanged": [
+    "src/components/parent-progress.css",
+    "src/components/parent-overview.css",
+    "src/components/scan-pages.css",
+    "src/components/parent-shell.css",
+    "src/components/scan-page-results.css",
+    "src/components/parent-option-a.css",
+    "src/components/scan-tab.css",
+    "src/components/workbook-days.css",
+    "src/components/parent-workbooks.css"
+  ],
+  "screenshots": [
+    "browser-evidence.json"
+  ],
+  "validation": {
+    "fullSuite": "935 test files / 29,940 tests passed before the final Undo offset repair; final CI pending.",
+    "postQaRegressions": "9 suites / 220 tests passed after repair.",
+    "eslint": "Passed",
+    "build": "Passed after temporary QA cleanup.",
+    "browser": "106 synthetic captures at 375, 768 and 1440 pixels; keyboard, focus, contrast and reduced motion checks passed. See browser-evidence.json and reduced-motion.json.",
+    "heavyJobCoordination": "One heavy local job at a time; at most two Vitest workers."
+  },
+  "review": {
+    "standards": "No actionable findings on final product patch.",
+    "requirements": "No introduced defects. Final CI and release review remain."
+  },
+  "productionChanges": false,
+  "authorization": "Cedric: Proceed directly from DESIGN.md, 2026-11-16",
+  "implementation": "implementation.json",
+  "owner": "ltanafranca1004",
+  "updated": "2026-11-16"
+}

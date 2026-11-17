@@ -91,6 +91,18 @@ On every off-topic turn, before and after, the message starts with "I'm an AI". 
 
 Every Sol round found new false sentences that the claim reader passed on code alone ("24 is the answer with a negative sign.", "12 minus 8 is 4, with a negative sign."). The Chief of Staff's decision: code alone grants a pass only to an exact match, never to coverage.
 
+PR #1047 adds a finite list of complete phrases to `exactTexts` (`tutor-exact-phrases.ts`). Code computes each phrase from the active column question. It computes the steps again from the operation. The list includes write instructions, carries, trades, and complete statements about a single trade. Chains through zero keep the math review for an ambiguous "after the trade" count. The list contains no statement about what the child said or did. No reader accepts parts of a model sentence. A new word, a changed number or place, or a lead-in still needs the math review unless the whole sentence is already an exact text. The existing easier-example gate disables this list with the other main-question texts.
+
+Measured on 2026-11-16 against `3afd4bead`, with the full active-question check context and all 515 stored sentences:
+
+| Question | Sentences | Code alone before | Code alone after | Math review after | Refused after |
+|---|---|---|---|---|---|
+| 27 + 39 | 88 | 5 | 5 | 83 | 0 |
+| 52 - 28 | 427 | 13 | 32 | 395 | 0 |
+| Total | 515 | 18 (3.5%) | 37 (7.2%) | 478 | 0 |
+
+These counts use the same question contexts before and after the change. They do not use the reduced context of the older measurements below. They measure math-review admission only. Some phrases still need the separate talk review. They prove no current latency gain. The earlier broad-reader result of 65.6% does not apply to this change. Public text-session tests cover whole-message and streamed delivery, rejecting math reviews, and the easier-example gate. The false-sentence set now has 125 distinct entries, including the unique place-value case from the original #1047 set.
+
 - **Code alone** (`codeAlone` in `tutor.ts`) passes a sentence only when the whole sentence (`exactKey`: trimmed, one final ".", "!" or "?" removed, plain apostrophes and minus signs, lower case) is:
   1. one of code's own texts for this question (`exactTexts`): each step's work text (`TutorKind.steps`) sentence by sentence, each part of it between ";" or ":" (each part is code's own true statement of this question, such as "write 4 in the ones"), and the step question after each number of done steps (`TutorKind.stepQuestion`); or
   2. one closed plain form, as the whole sentence: an equation or place-value claim of numbers (`ASSERT_FORM`: "12 minus 8 is 4.", "52 is 4 tens and 12 ones.", "52 minus 28 isn't 36.") in which code read every number and relation inside a claim it found true; or a closed question form ("What is 12 minus 8?"), only in a question. Since final check 5 an instruction (a trade, an operation on a place) is code alone only as an exact text of the active problem.
@@ -408,7 +420,7 @@ Phase 1: 2-digit whole-number addition and subtraction (`isTutorQuestion`), on a
 The server switch `MAYA_TUTOR_FAMILIES` lets the tutor core teach family calls: the desk chat (kind `chat`, channel `chat`) and the child's voice call from the family desk (kind `family`). Only the exact value `on` turns it on. `callSeams` (`src/lib/maya-call-seams.ts`) reads it for the site and the voice worker and passes `tutorFamilies` to the call module; `src/lib/maya-call.ts` never reads the environment. The switch is off by default in code. Savar approved it for families on 2026-11-15 (option B); see "First-week review and kill switches" below.
 
 - The rule: `tutor = seams.tutor !== false && (kind === "admin_test" || (tutorFamilies && (kind === "chat" || kind === "family")))`. The core still decides per question: a question no tutor kind fits keeps the controller.
-- The safety review of each sentence that is not plain teaching runs on family calls too: the call module gives every kind the reviewer. Free talk stays off for chat and family; the tutor's review does not depend on it. Without a reviewer (no `OPENROUTER_API_KEY`) a tutor sentence that needs a review is refused; after the one repair, code's honest line is said.
+- The safety review of each sentence that is not plain teaching runs on family calls too: the call module gives every kind the reviewer. Free talk stays off for chat and family; the tutor's review does not depend on it. Without a reviewer (no `MAYA_OPENROUTER_API_KEY`) a tutor sentence that needs a review is refused; after the one repair, code's honest line is said.
 - The chat channel: chat does not stream, and the tutor's board drawings (`put`, `regroup`, `write`) are ordinary board batches that "Our board" takes. The chat's code-owned safety close is unchanged.
 - A call keeps what it started with: a resumed call reads its saved session, whatever the switch is now.
 - Tests: `src/lib/maya-call-tutor-families.test.ts` and `src/lib/maya-call-seams.test.ts`.

@@ -80,7 +80,8 @@ export async function escalationEvalMain() {
   const detail: unknown[] = [];
   for (const c of cases) {
     if (spentMicros / 1e6 + PER_CALL_USD > max) { console.log("stopped at the cap"); break; }
-    const factory = markingEscalationClient({ ...process.env, SCAN_MARKING_ESCALATION: "on" });
+    const factory = markingEscalationClient({ ...process.env, SCAN_MARKING_ESCALATION: "on" }, undefined,
+      { feature: "marking", context: "evaluation", source: { kind: "marking_evaluation_photo", id: c.photo.id } });
     const transport = factory?.(async () => {});
     if (!transport) throw Error("no escalation client: SCAN_MARKING_OPENROUTER_API_KEY is required");
     const image = new Uint8Array(await readFile(resolve(c.dir, c.photo.image.path)));

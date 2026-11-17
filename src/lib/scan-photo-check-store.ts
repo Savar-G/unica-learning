@@ -66,5 +66,6 @@ export function photoCheckClient(env: Readonly<Record<string, string | undefined
   if (fake === "blurry" || fake === "clear") {
     return fakeDecisionClient({ model: "fake/photo-check", usd: null, answer: () => new Promise((resolve) => setTimeout(() => resolve({ blurry: noul(fake === "blurry" ? 0.9 : 0.04) }), 1500)) });
   }
-  try { return decisionClient(env, undefined, { maxRetries: 0, timeout: PHOTO_CHECK_TIMEOUT_MS, usage: usage ?? { feature: "photo_check" } }); } catch { return null; }
+  if (usage && usage.feature !== "photo_check") return null;
+  try { return decisionClient(env, undefined, { maxRetries: 0, timeout: PHOTO_CHECK_TIMEOUT_MS, usage: { ...usage, feature: "photo_check" } }); } catch { return null; }
 }

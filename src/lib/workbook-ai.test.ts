@@ -68,7 +68,7 @@ describe("workbookAi", () => {
     const c = cli((model) => (model === "claude-haiku-5-5" ? solveAnswer : { items: [] }));
     const api = openRouter(() => ({}));
     const calls: [AiCallKind, AiCallRecord][] = [];
-    const live = workbookAi({ OPENROUTER_API_KEY: "k" }, { subscription: true, spawn: c.spawn, fetch: api.fetch, onCall: (k, r) => calls.push([k, r]) });
+    const live = workbookAi({ WORKBOOK_OPENROUTER_API_KEY: "k" }, { subscription: true, spawn: c.spawn, fetch: api.fetch, onCall: (k, r) => calls.push([k, r]) });
     expect(live.ai!.model).toBe("anthropic/claude-sonnet-5.5");
     expect(live.solve!.solver.model).toBe("anthropic/claude-haiku-5.5");
     expect(await live.ai!.json(page, signal())).toEqual({ items: [] });
@@ -83,7 +83,7 @@ describe("workbookAi", () => {
     const c = cli(() => "limit");
     const api = openRouter((model) => (model === "anthropic/claude-haiku-5.5" ? solveAnswer : { items: [1] }), 0.04);
     const calls: [AiCallKind, AiCallRecord][] = [];
-    const live = workbookAi({ OPENROUTER_API_KEY: "k" }, { subscription: true, spawn: c.spawn, fetch: api.fetch, onCall: (k, r) => calls.push([k, r]) });
+    const live = workbookAi({ WORKBOOK_OPENROUTER_API_KEY: "k" }, { subscription: true, spawn: c.spawn, fetch: api.fetch, onCall: (k, r) => calls.push([k, r]) });
     expect(await live.ai!.json(page, signal())).toEqual({ items: [1] });
     expect(await live.solve!.solver.solve(solveRequest, signal())).toEqual(solveAnswer);
     expect(c.models).toHaveLength(1);
@@ -95,7 +95,7 @@ describe("workbookAi", () => {
   it("on the server, uses the API only (never claude -p)", async () => {
     const c = cli(() => ({ items: [] }));
     const api = openRouter(() => ({ items: [2] }));
-    const live = workbookAi({ OPENROUTER_API_KEY: "k", WORKBOOK_AI_PRIMARY: "subscription" }, { subscription: false, spawn: c.spawn, fetch: api.fetch });
+    const live = workbookAi({ WORKBOOK_OPENROUTER_API_KEY: "k", WORKBOOK_AI_PRIMARY: "subscription" }, { subscription: false, spawn: c.spawn, fetch: api.fetch });
     expect(await live.ai!.json(page, signal())).toEqual({ items: [2] });
     expect(c.models).toEqual([]);
   });
@@ -103,7 +103,7 @@ describe("workbookAi", () => {
   it("with WORKBOOK_AI_PRIMARY=api on the Mac, asks the API first", async () => {
     const c = cli(() => ({ items: [] }));
     const api = openRouter(() => ({ items: [3] }));
-    const live = workbookAi({ OPENROUTER_API_KEY: "k", WORKBOOK_AI_PRIMARY: "api" }, { subscription: true, spawn: c.spawn, fetch: api.fetch });
+    const live = workbookAi({ WORKBOOK_OPENROUTER_API_KEY: "k", WORKBOOK_AI_PRIMARY: "api" }, { subscription: true, spawn: c.spawn, fetch: api.fetch });
     expect(await live.ai!.json(page, signal())).toEqual({ items: [3] });
     expect(c.models).toEqual([]);
   });
@@ -114,7 +114,7 @@ describe("edit batch provider dispatches", () => {
     it(`${subscription ? "Mac" : "server"} makes one API request per edit dispatch, including a 500 response`, async () => {
       const c = cli(() => ({ items: [] }));
       const fetch = vi.fn(async () => new Response('{"error":{"message":"unavailable"}}', {status: 500}));
-      const live = workbookAi({ OPENROUTER_API_KEY: "test" }, { subscription, primary: "api", singleDispatch: true, spawn: c.spawn, fetch });
+      const live = workbookAi({ WORKBOOK_OPENROUTER_API_KEY: "test" }, { subscription, primary: "api", singleDispatch: true, spawn: c.spawn, fetch });
       await expect(live.ai!.json(page, signal())).rejects.toThrow(/500/);
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(c.models).toHaveLength(0);
@@ -125,7 +125,7 @@ describe("edit batch provider dispatches", () => {
   }
   it("uses the fallback only on the next ledger dispatch after a subscription limit", async () => {
     const c = cli(() => "limit"), api = openRouter(() => ({items: []}));
-    const live = workbookAi({ OPENROUTER_API_KEY: "test" }, { subscription: true, singleDispatch: true, spawn: c.spawn, fetch: api.fetch });
+    const live = workbookAi({ WORKBOOK_OPENROUTER_API_KEY: "test" }, { subscription: true, singleDispatch: true, spawn: c.spawn, fetch: api.fetch });
     await expect(live.ai!.json(page, signal())).rejects.toThrow(/usage limit/);
     expect(c.models).toHaveLength(1); expect(api.models).toHaveLength(0);
     expect(await live.ai!.json(page, signal())).toEqual({items: []});
@@ -163,10 +163,10 @@ describe("R404 provider persistence and request counts", () => {
     const c = cli(() => "limit");
     const api = openRouter((model) => model.includes("haiku") ? solveAnswer : { items: [1] });
     const options = { subscription: true, spawn: c.spawn, fetch: api.fetch, onExclude: (p: "api" | "subscription", reason: string) => excludeRunProvider(db, "run", p, reason) };
-    const first = workbookAi({ OPENROUTER_API_KEY: "key" }, { ...options, gate: await loadRunProviderGate(db, "run") });
+    const first = workbookAi({ WORKBOOK_OPENROUTER_API_KEY: "key" }, { ...options, gate: await loadRunProviderGate(db, "run") });
     await first.ai!.json(page, signal());
     expect(off.subscription.note).toMatch(/usage limit/);
-    const resumed = workbookAi({ OPENROUTER_API_KEY: "key" }, { ...options, gate: await loadRunProviderGate(db, "run") });
+    const resumed = workbookAi({ WORKBOOK_OPENROUTER_API_KEY: "key" }, { ...options, gate: await loadRunProviderGate(db, "run") });
     expect(await resumed.ai!.json(page, signal())).toEqual({ items: [1] });
     expect(await resumed.solve!.solver.solve(solveRequest, signal())).toEqual(solveAnswer);
     expect(c.models).toHaveLength(1);
@@ -176,7 +176,7 @@ describe("R404 provider persistence and request counts", () => {
   it("R404-8 reports both API requests and their costs when one logical call retries", async () => {
     let requests = 0;
     const rows: AiCallRecord[] = [];
-    const live = workbookAi({ OPENROUTER_API_KEY: "key" }, { subscription: false, onCall: (_kind, r) => rows.push(r), fetch: async () => {
+    const live = workbookAi({ WORKBOOK_OPENROUTER_API_KEY: "key" }, { subscription: false, onCall: (_kind, r) => rows.push(r), fetch: async () => {
       requests++;
       return new Response(JSON.stringify(requests === 1
         ? { error: { message: "overloaded" }, usage: { cost: 0.02 } }
@@ -217,7 +217,7 @@ describe("explicit Codex workbook subscriptions", () => {
 
   it("refuses an unknown provider and refuses Codex where subscriptions cannot run", () => {
     expect(() => workbookAi({ WORKBOOK_SUBSCRIPTION_PROVIDER: "typo" }, { subscription: true })).toThrow(/WORKBOOK_SUBSCRIPTION_PROVIDER/);
-    expect(() => workbookAi({ ...env, OPENROUTER_API_KEY: "key" }, { subscription: false })).toThrow(/Codex/);
+    expect(() => workbookAi({ ...env, WORKBOOK_OPENROUTER_API_KEY: "key" }, { subscription: false })).toThrow(/Codex/);
   });
 
   it("writes and solves on the selected account only, even with API-first settings and API keys", async () => {
@@ -233,7 +233,7 @@ describe("explicit Codex workbook subscriptions", () => {
       await writeFile(args[args.indexOf("--output-last-message") + 1], JSON.stringify(options.input.includes("2 + 3") ? solveAnswer : { items: [] }));
       return { code: 0, stdout: '{"type":"turn.completed"}\n', stderr: "" };
     });
-    const settings = { ...env, PATH: "/bin", HOME: "/home/test", CODEX_HOME: "/wrong/account", OPENAI_API_KEY: "key", OPENROUTER_API_KEY: "key", ANTHROPIC_API_KEY: "key", WORKBOOK_AI_PRIMARY: "api" };
+    const settings = { ...env, PATH: "/bin", HOME: "/home/test", CODEX_HOME: "/wrong/account", OPENAI_API_KEY: "key", WORKBOOK_OPENROUTER_API_KEY: "key", ANTHROPIC_API_KEY: "key", WORKBOOK_AI_PRIMARY: "api" };
     expect(workbookModels(settings)).toMatchObject({ cli: model, cliSolve: model, write: model, solve: model });
     expect(workbookAiPrimary(settings)).toBe("subscription");
     const live = workbookAi(settings, { subscription: true, primary: "api", spawn, fetch, onCall: (k, r) => calls.push([k, r]) });
@@ -257,10 +257,10 @@ describe("explicit Codex workbook subscriptions", () => {
     const spawn = vi.fn<Spawner>(async () => ({ stdout: "", stderr: "", ...failure }));
     const fetch = vi.fn<typeof globalThis.fetch>();
     const options = { subscription: true, spawn, fetch, onExclude: (p: string, reason: string) => { off[p] = reason; } };
-    const first = workbookAi({ ...env, OPENROUTER_API_KEY: "key" }, options);
+    const first = workbookAi({ ...env, WORKBOOK_OPENROUTER_API_KEY: "key" }, options);
     await expect(first.ai!.json(page, signal())).rejects.toThrow();
     await expect(first.solve!.solver.solve(solveRequest, signal())).rejects.toThrow(/No AI provider/);
-    const restored = workbookAi({ ...env, OPENROUTER_API_KEY: "key" }, { ...options, gate: { off } });
+    const restored = workbookAi({ ...env, WORKBOOK_OPENROUTER_API_KEY: "key" }, { ...options, gate: { off } });
     await expect(restored.ai!.json(page, signal())).rejects.toThrow(/No AI provider/);
     expect(off.subscription).toBeTruthy();
     expect(spawn).toHaveBeenCalledTimes(1);
@@ -276,7 +276,7 @@ describe("explicit Codex workbook subscriptions", () => {
       controller.abort();
       return { code: 0, stdout: '{"type":"turn.completed"}\n', stderr: "" };
     };
-    const live = workbookAi({ ...env, OPENROUTER_API_KEY: "key" }, { subscription: true, spawn, fetch, onCall: (_k, r) => calls.push(r) });
+    const live = workbookAi({ ...env, WORKBOOK_OPENROUTER_API_KEY: "key" }, { subscription: true, spawn, fetch, onCall: (_k, r) => calls.push(r) });
     await expect(live.ai!.json(page, controller.signal)).rejects.toThrow();
     expect(calls.map(r => r.outcome)).toEqual(["failed"]);
     expect(live.gate.off).toEqual({});

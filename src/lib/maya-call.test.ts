@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { setProductObserver, type ProductEvent } from "@/lib/product-monitoring";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { templateSkills } from "@/lib/assessment";
 import { penHolder, replayOf } from "@/lib/board-history";
 import { learningEvents, type LearningEventStore } from "@/lib/learning-events";
@@ -287,15 +288,48 @@ describe("the child's wording history (D-196, #375)", () => {
   });
 
   it("never stops a call when the history cannot be read or written", async () => {
-    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const spy = vi.fn(); setProductObserver(spy);
     const broken: WordingHistoryStore = { read: () => Promise.reject(new Error("network")), record: () => Promise.reject(new Error("network")) };
     const s = setup({ history: broken });
     const end = await talk(s, NO_START);
     expect(end.view.status).toBe("ended");
     expect(end.view.outcome?.reason).toBe("solved");
     expect(end.view.learningEventId).not.toBeNull();
-    expect(spy).toHaveBeenCalledWith("[maya call] wording history read failed", CHILD, "network");
-    expect(spy).toHaveBeenCalledWith("[maya call] wording history record failed", end.view.id, "network");
-    spy.mockRestore();
+    expect(spy).toHaveBeenCalledWith({ code: "maya.recovery_failed", attributes: { step: "history" } });
+    expect(spy).toHaveBeenCalledWith({ code: "maya.recovery_failed", attributes: { callId: end.view.id, step: "history" } });
   });
+});
+
+
+// Monitoring is checked through the same call API as the desk, with no provider request.
+beforeEach(() => { vi.clearAllMocks(); setProductObserver(null); });
+afterEach(() => { setProductObserver(null); vi.restoreAllMocks(); });
+it("emits committed call transitions once and keeps child words in the protected call record", async () => {
+  const events: ProductEvent[] = []; setProductObserver((event) => { events.push(event); });
+  const s = setup();
+  const first = ok(await s.calls.start({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "PRIVATE NAME", package: PKG, startedBy: "admin-1" }));
+  expect(events.filter((e) => e.code === "maya.started")).toHaveLength(1);
+  const ended = ok(await s.calls.input(first.view.id, first.view.revision, { type: "end" }, "PRIVATE NAME"));
+  const codes = events.map((e) => e.code);
+  expect(codes.filter((c) => c === "maya.ended" || c === "maya.failed")).toHaveLength(1);
+  await s.calls.view(ended.view.id);
+  await s.calls.input(ended.view.id, ended.view.revision, { type: "end" }, "PRIVATE NAME");
+  expect(events.map((e) => e.code)).toEqual(codes);
+  expect(JSON.stringify(events)).not.toMatch(/PRIVATE|27|39|parentId|childId|questionText/);
+});
+it("records a caught history failure and still starts the call", async () => {
+  const events: ProductEvent[] = []; setProductObserver((event) => { events.push(event); });
+  const s = setup({ history: { read: async () => { throw Error("PRIVATE NAME AND WORDS"); }, record: async () => {} } });
+  expect((await s.calls.start({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: null, package: PKG, startedBy: "admin-1" })).ok).toBe(true);
+  expect(events).toContainEqual({ code: "maya.recovery_failed", attributes: { step: "history" } });
+  expect(JSON.stringify(events)).not.toContain("PRIVATE");
+});
+
+it("does not report a cancelled voice ticket as a failed conversation before Maya joins", async () => {
+  const observer = vi.fn(); setProductObserver(observer); const s = setup();
+  const ticket = ok(await s.calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: null, package: PKG, startedBy: "admin-1" }));
+  expect(ticket.view.startedAt).toBeNull();
+  const ended = ok(await s.calls.input(ticket.view.id, ticket.view.revision, { type: "end" }, null));
+  expect(ended.view.status).toBe("ended");
+  expect(observer.mock.calls.map(([event]) => event.code)).toEqual(["maya.ended"]);
 });

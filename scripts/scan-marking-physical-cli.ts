@@ -18,6 +18,7 @@ import { FIXED40_V7_MANIFEST_SHA256, assertComparisonResultIdentity, selectCompa
 import { runComparisonPhoto, type EvaluationBudget, type EvaluationJournal } from "../src/lib/scan-marking-comparison-run";
 import { FROZEN_KIT, PHYSICAL_MODELS, PHYSICAL_VERSION, physicalDevices, physicalModels, reviewedPhysicalSource, assertPhysicalFrame, physicalCreditPreflight, physicalEstimate, physicalEstimateLines, physicalFixedReport, physicalFixedSideBySide, physicalPhotoId, physicalReport, reviewedPhysicalStates, physicalScoringInput, physicalSettings, physicalSideBySide, physicalTruth, truthTemplate, validateMapping, writeTruthCsv, type PhysicalMapping, type PhysicalPage, type PhysicalPhoto, type PhysicalDevice, type PhysicalSet, type PhysicalState } from "../src/lib/scan-marking-physical";
 import { durableJson, fileJournal, loadComparisonAssets, refreshEvidence, rpcEvaluationBudget } from "./scan-marking-comparison-cli";
+import { AI_PRODUCTS, productKey } from "../src/lib/ai-product-keys";
 
 const ROOT = resolve(import.meta.dirname, "..");
 // Paths resolved by the launcher are supplied explicitly because the bundled file lives in a temporary directory.
@@ -468,8 +469,8 @@ export async function physicalMain() {
 }
 async function paidRun(out: string, set: PhysicalSet, plan: PhysicalPlan, states: PhysicalState[], fixed: ComparisonManifest | null, root: string) {
   await executePhysical({ out, set, plan, root, fixed, env: () => {
-    if (!process.env.SCAN_MARKING_OPENROUTER_API_KEY?.trim()) throw Error("dedicated-marking-key-required-no-fallback");
-    return { SCAN_MARKING_OPENROUTER_API_KEY: process.env.SCAN_MARKING_OPENROUTER_API_KEY };
+    if (!productKey("marking", process.env)) throw Error("dedicated-marking-key-required-no-fallback");
+    return Object.fromEntries(Object.values(AI_PRODUCTS).map((name) => [name, process.env[name]]));
   }, budget: () => { if (!process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) throw Error("ledger-credential-required"); return physicalBudget(process.env.SUPABASE_SERVICE_ROLE_KEY, fetch, (value, attempt, dispatchRun) => durableJson(resolve(out, `admission-${attempt}.json`), { run: dispatchRun, attempt, ledger: value }, true)); }, preflight: async () => {
     await mkdir(resolve(out, "preflight"), { recursive: true, mode: 0o700 });
     const fresh = await refreshEvidence(resolve(out, "preflight"), states.map(s => ({ model: s.evidence.model, status: "ready" as const, ...s })), fetch, physicalModels(plan.settings.models).map(m => `${m.model}@${m.endpoint}`));

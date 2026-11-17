@@ -63,7 +63,7 @@ export async function chatStream(run: (say: { part(sentence: string, index: numb
       sink = send;
       void settled.then((end) => {
         sink = null;
-        if ("failed" in end) console.error("[desk chat] streamed request failed", end.failed instanceof Error ? end.failed.message : "unknown");
+        // The route records stream failures with a fixed product event. No child text enters a log.
         send("reply" in end ? { type: "final", reply: end.reply } : { type: "error", error: "unavailable" });
         if (!open) return;
         open = false;

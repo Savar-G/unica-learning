@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { accountCredits, parseUsage, periodFor, safeKeyLabel } from "@/lib/admin-ai-usage";
+import { accountCredits, parseDetails, parseUsage, periodFor, safeKeyLabel } from "@/lib/admin-ai-usage";
 import { OPENROUTER_CHECK_MS, OPENROUTER_CREDITS_URL, openRouterBilling, readAiUsage } from "@/lib/admin-ai-usage-store";
 import type { AdminSession } from "@/lib/admin-store";
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 const json = (data: unknown) => new Response(JSON.stringify({ data }));
-const env = { OPENROUTER_BILLING_API_KEY: "billing-private", OPENROUTER_API_KEY: "main-private", SCAN_MARKING_OPENROUTER_API_KEY: "scan-private", PARENT_EXPLANATION_API_KEY: " main-private " };
+const env = { OPENROUTER_BILLING_API_KEY: "billing-private", MAYA_OPENROUTER_API_KEY: "main-private", SCAN_MARKING_OPENROUTER_API_KEY: "scan-private", PARENT_EXPLANATION_API_KEY: " main-private " };
 
 describe("independent OpenRouter billing scopes", () => {
   it("keeps account credits, lifetime usage and key month usage distinct; asks one account and each unique server key once", async () => {
@@ -29,7 +29,7 @@ describe("independent OpenRouter billing scopes", () => {
     const fetch = vi.fn(async () => json({ total_credits: 10, total_usage: 7, usage_monthly: 1 }));
     expect((await openRouterBilling({ OPENROUTER_API_KEY: "main" }, fetch)).account.source).toBe("main");
     const none = await openRouterBilling({}, fetch);
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(1);
     expect(none.account).toMatchObject({ status: "no-key", spentUsd: null, creditsUsd: null, balanceUsd: null });
     expect(none.month).toBe("no-key");
   });
@@ -69,7 +69,7 @@ describe("independent OpenRouter billing scopes", () => {
 it("passes selected date bounds and the test filter to the public admin read; failed or empty reads remain unavailable", async () => {
   const rpc = vi.fn(async () => ({ data: { totals: { cost_usd: 2.92 } }, error: null }));
   const admin = { db: { rpc } } as unknown as AdminSession;
-  for (const range of ["7d", "30d", "month"] as const) {
+  for (const range of ["7d", "30d", "month", "year"] as const) {
     const period = periodFor(range, Date.parse("2026-11-16T20:00:00Z"));
     for (const withTests of [true, false]) {
       expect((await readAiUsage(admin, period, withTests, 1.4)).totals.costUsd).toBe(2.92);
@@ -91,4 +91,13 @@ it("retains missing dimension coverage as unknown and permits only safe key labe
   const bad = parseUsage({ dimensions_version: 1, dimensions: [{ cost_usd: "bad" }], lifetime_receipts: [{ key_id: "a".repeat(64), cost_usd: "bad" }] });
   expect(bad.details![0].costUsd).toBeNull();
   expect(bad.lifetimeReceipts).toBeNull();
+});
+
+
+it.each(["maya", "marking", "explanations", "workbook", "assessments", "profiles", "main", "decisions", "local", "anthropic", "unknown"])("retains the known %s key label in every admin report", (alias) => {
+  const keyId = "a".repeat(64);
+  const expected = alias + " (aaaaaaaaaaaa)";
+  expect(safeKeyLabel(alias, keyId)).toBe(expected);
+  expect(parseDetails([{ key_alias: alias, key_id: keyId }])[0].keyLabel).toBe(expected);
+  expect(parseUsage({ dimensions_version: 1, by_key: [{ key_alias: alias, key_id: keyId }] }).byKey?.[0].label).toBe(expected);
 });

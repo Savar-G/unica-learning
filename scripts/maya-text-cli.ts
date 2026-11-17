@@ -5,7 +5,7 @@
 //   --question <id|file>     a sample id (default add-27-39; see --list) or a question package JSON file
 //   --model fake|openrouter|anthropic
 //                            fake: the rule player, no AI (default). openrouter: AI_MODEL through OpenRouter; needs
-//                            OPENROUTER_API_KEY (read from the environment, or from .env.local when it is not set).
+//                            MAYA_OPENROUTER_API_KEY (read from the environment, or from .env.local when it is not set).
 //                            anthropic: claude-sonnet-5-5 through the Claude API (src/lib/ai-anthropic.ts), with the key
 //                            in ANTHROPIC_API_KEY or the macOS Keychain item anthropic-unica-tools; local only
 //   --anthropic              the same as --model anthropic
@@ -45,6 +45,7 @@ import { aiTalkReviewer, fakeTalkReviewer, type TalkReviewer } from "@/lib/maya-
 import { aiMathReviewer, type MathReviewer } from "@/lib/maya-math-review";
 import { callMathReviewer, callReviewer } from "@/lib/maya-call-seams";
 import { mayaAiClient } from "@/lib/maya-ai-route";
+import { AI_PRODUCTS } from "@/lib/ai-product-keys";
 import { redactText } from "@/lib/maya-trace";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { createTextSession } from "@/lib/maya-text";
@@ -199,15 +200,17 @@ function model(o: Options, root: string): MayaModel {
   if (o.model === "fake") return ruleConversationalModel();
   const env: Record<string, string | undefined> = { ...process.env };
   const file = join(root, ".env.local");
-  if (!env.OPENROUTER_API_KEY && existsSync(file)) {
+  if (!env.MAYA_OPENROUTER_API_KEY && existsSync(file)) {
     const fromFile = readEnvFile(file);
-    env.OPENROUTER_API_KEY = fromFile.OPENROUTER_API_KEY;
-    // In process.env too, so the trace and the log redact this key wherever it appears (configuredSecrets).
-    if (fromFile.OPENROUTER_API_KEY) process.env.OPENROUTER_API_KEY = fromFile.OPENROUTER_API_KEY;
+    for (const name of Object.values(AI_PRODUCTS)) {
+      if (!env[name]?.trim() && fromFile[name]?.trim()) env[name] = fromFile[name];
+      if (env[name]) process.env[name] = env[name];
+    }
+    // In process.env too, so traces redact every loaded product credential.
     env.AI_MODEL ??= fromFile.AI_MODEL;
   }
   const client = mayaAiClient(env);
-  if (!client) throw new Error("--model openrouter needs OPENROUTER_API_KEY (in the environment or .env.local). The AI is off without it.");
+  if (!client) throw new Error("--model openrouter needs MAYA_OPENROUTER_API_KEY (in the environment or .env.local). The AI is off without it.");
   return o.legacy ? aiMayaModel(client) : conversationalMayaModel(client, o.effort ? { effort: o.effort } : {});
 }
 

@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { aiClient, type AiClient } from "@/lib/ai-client";
+import type { AiClient } from "@/lib/ai-client";
 import { mayaAiClient } from "@/lib/maya-ai-route";
 import type { AiUsageTag } from "@/lib/ai-usage";
 import { resendTransport } from "@/lib/email-resend";
@@ -82,10 +82,10 @@ export function mayaCallSpend(ledger: SpendLedger, newId: () => string): CallSpe
 
 /**
  * An OpenRouter client behind the ledger: the model `model` (or AI_MODEL), charged to `charge`. Null without
- * OPENROUTER_API_KEY.
+ * MAYA_OPENROUTER_API_KEY.
  */
 export function meteredClient(env: Env, ledger: SpendLedger, meter: { charge: Charge; callId: string | null; budgetKey?: string; newId: () => string; safetyRead?: boolean }, what: "model" | "review" | "note", model?: string): AiClient | null {
-  if (!aiClient(env, model)) return null;
+  if (!mayaAiClient(env, model)) return null;
   // Each answer's usage also goes to the AI usage ledger (D-330): the family, the child and the call, never the words.
   const usage: AiUsageTag = { feature: what === "model" ? "maya" : what === "review" ? "maya_review" : "maya_note", parentId: meter.charge.parentId, childId: meter.charge.childId, source: meter.callId ? { kind: "maya_call", id: meter.callId } : null };
   return meteredAi((hooks) => mayaAiClient(env, model, { ...hooks, usage })!, { ledger, ...meter }, what);
@@ -93,7 +93,7 @@ export function meteredClient(env: Env, ledger: SpendLedger, meter: { charge: Ch
 
 /** A speculative request uses its existing handle. It retains Maya's provider route and the AI usage log. */
 export function preparedClient(env: Env, budget: CallBudget, handle: Handle, meter: { charge: Charge; callId: string | null; diagnosticHandleId?: string }, model?: string): AiClient | null {
-  if (!budget.canSend(handle) || !aiClient(env, model)) return null;
+  if (!budget.canSend(handle) || !mayaAiClient(env, model)) return null;
   const usage: AiUsageTag = { feature: "maya", parentId: meter.charge.parentId, childId: meter.charge.childId, source: meter.callId ? { kind: "maya_call", id: meter.callId } : null };
   return preparedAi((hooks) => mayaAiClient(env, model, { ...hooks, usage })!, budget, handle, undefined, meter.diagnosticHandleId);
 }

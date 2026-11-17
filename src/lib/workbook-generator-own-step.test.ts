@@ -13,6 +13,42 @@ import { renderableDraft } from "./workbook-fit";
 import { workbookQuality } from "./workbook-quality";
 import { checkQuestionPackage, operationResult } from "./question-package";
 
+it("reserves the new-idea page's own-step minimum when review contracts displaced it", async () => {
+  const curriculum = curriculumFor("bc")!;
+  const placed = planNextWorkbook({ curriculum, grade: 8, profile: firstCustomerProfile(), number: 1, workbooks: [],
+    instructions: { version: 1, startLevel: "U19", teachMore: ["6.4", "6.13"], teachLess: [], addReview: ["5.2", "5.7", "5.15"], difficulty: null } });
+  if (!placed.ok) throw new Error(placed.reason);
+  const plan = workbookCapacityPlan(curriculum, placed.plan), day = plan.days.find(d => d.day === 8)!;
+  const page = day.pages.find(p => p.type === "new-idea")!, part = page.parts[0];
+  expect(part.step).toMatchObject({ skill: "6.13-classify-angles", step: 2 });
+  const refs: [string, number, string][] = [
+    ["6.4-lcm", 1, "missing"], ["6.4-lcm", 2, "bare"], ["6.4-lcm", 1, "bare"],
+    ["6.4-lcm", 1, "choose"], ["6.4-lcm", 1, "missing"], ["6.13-classify-angles", 2, "true-false"],
+  ];
+  const itemContracts = Object.fromEntries(refs.map(([skill, step, format], i) => {
+    const slot = `1.${i + 1}`, place = i === 0 ? "try-first" : i === 1 ? "spot-the-error" : "now-you";
+    const fill = Array.from({ length: 128 }, (_, attempt) => stepTemplateItem({ curriculum, skill, step,
+      place, level: 19, day: 8, seed: (i + 1) * 71, attempt, ordinal: i + 1 })).find(f => f?.ref.format === format);
+    if (!fill) throw new Error(`Missing ${skill}#${step} ${format}`);
+    return [slot, { type: "template" as const, source: "code" as const, template: fill.ref, numbers: fill.numbers,
+      dayRange: { min: 0, max: 1000000, pictures: false, help: "none" as const }, item: stepAiItem(slot, fill.ref, fill.text) }];
+  }));
+  const input: GenerateInput = { workbookId: "00000000-0000-4000-8000-000000000746", childId: "00000000-0000-4000-8000-000000000071", number: 1,
+    profileBuild: null, curriculum, itemPolicy: "approved-v1", book: { child: "Alex" },
+    plan: { ...plan, days: [{ ...day, pages: [{ ...page, capacityChecked: true, parts: [{ ...part, items: 6 }], itemContracts,
+      capacity: [{ slot: "try-first", part: 0, items: 1 }, { slot: "spot-the-error", part: 0, items: 1 }, { slot: "now-you", part: 0, items: 4 }] }] }] } };
+  const fit: FitCheck = { fits: async () => ({ ok: true }) };
+  const capacity = await prepareWorkbookCapacity(input, fit);
+  expect(Object.values(capacity.days[0].pages[0].itemContracts ?? {}).filter(c => c?.template?.skill === "6.13-classify-angles" && c.template.step === 2).length).toBeGreaterThanOrEqual(2);
+  let token = 0;
+  const result = await generateWorkbook({ ...input, plan: capacity }, { fit, ai: fakeAiClient({ answer: fakeWorkbookItems }), solver: keySolver(),
+    qrToken: () => `token-${String(++token).padStart(12, "0")}`, store: { save: async d => ({ status: "saved", draftId: d.id }), draft: async () => null } });
+  if (result.status !== "stored") throw new Error(result.status);
+  const printed = result.draft.pages.find(p => p.type === "new-idea")!;
+  expect(printed.questions.filter(q => q.place !== "spot-the-error" && q.itemPlan?.template?.skill === "6.13-classify-angles" && q.itemPlan.template.step === 2).length).toBeGreaterThanOrEqual(2);
+  expect(workbookQuality([printed]).issues.filter(i => i.kind === "step")).toEqual([]);
+});
+
 it("restores U19 LCM practice when complete review rows displaced its own-step minimum", async () => {
   const curriculum = curriculumFor("bc")!;
   const placed = planNextWorkbook({ curriculum, grade: 8, profile: firstCustomerProfile(), number: 1, workbooks: [],
