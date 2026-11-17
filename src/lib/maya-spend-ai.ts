@@ -8,7 +8,7 @@
 // A safety read (`Meter.safetyRead`) is the child's words read for danger at the cap. It cannot be refused and is sent
 // even with no ledger, and it counts only toward the month's total, never the child's week.
 import type { AiClient } from "@/lib/ai-client";
-import { withRequestContext } from "@/lib/maya-request-trace";
+import { requestContext, withRequestContext } from "@/lib/maya-request-trace";
 import { chargeOf, RESERVE_USD, usdToMicros, type Charge, type SpendCall, type SpendLedger } from "@/lib/maya-spend";
 
 /** A paid request the cap refused: the week is used up. Nothing was sent. */
@@ -123,8 +123,10 @@ export function meteredAi(make: (hooks: MeterHooks) => AiClient, meter: Meter, w
         return res;
       };
       try {
-        // The request's source for the worker's telemetry (src/lib/maya-request-trace.ts): a review is told apart from a turn's own request.
-        return await withRequestContext(what === "review" ? { source: "review" } : what === "model" ? { source: "model" } : {}, () => make({ fetch: counted, onRequest }).json(request, signal));
+        // Keep the repair label supplied by the call when sending a metered model request.
+        const source = what === "review" ? "review" : what === "model" ? (requestContext().source === "repair" ? "repair" : "model") : undefined;
+        const reviewKind = request.name === "maya_math_review" ? "math" : request.name === "maya_talk_review" ? "talk" : undefined;
+        return await withRequestContext(source ? { source, reviewKind } : {}, () => make({ fetch: counted, onRequest }).json(request, signal));
       } catch (e) {
         // A provider client may wrap fetch errors. Keep a local budget refusal visible to the call's safety path.
         throw dispatchRefusal ?? e;

@@ -41,7 +41,7 @@ export type TextLogEvent =
    * `drawMode` (B2): "derive" on a proposal stepped live since B2 derives drawings from Maya's sentences. A saved event
    * without it is replayed exactly as it was stepped (no derived drawing), so a restored call keeps its batches and ids.
    */
-  | { kind: "review"; at: number; requestId: number; reviews: TalkReview[]; mathReviews?: MathReview[]; reviewMs?: number; drawMode?: "derive" }
+  | { kind: "review"; at: number; requestId: number; reviews: TalkReview[]; mathReviews?: MathReview[]; unusedMath?: MathReview[]; reviewMs?: number; drawMode?: "derive" }
   | { kind: "fallback"; at: number; proposal: unknown; drawMode?: "derive" }
   | { kind: "recover"; at: number }
   | { kind: "cancelled"; at: number }
@@ -329,10 +329,11 @@ function flushDeferred(s: TextFold) {
     if (child?.status !== "dropped") applyInput(s, entry.event, undefined, false);
   }
 }
-function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt, reviews?: TalkReview[], mathReviews?: MathReview[], drawMode?: "derive", continues = false) {
+function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt, reviews?: TalkReview[], mathReviews?: MathReview[], drawMode?: "derive", continues = false, unusedMath?: MathReview[]) {
   const before = s.session.state;
   // Two-layer true math: every math-truth review of this attempt is kept in the trace, whatever the step decides.
-  if (mathReviews?.length) attempt.math = mathReviews.map((r) => ({ sentence: r.text, verdict: r.result.verdict, reason: r.result.reason, ...(r.result.retried ? { retried: true as const } : {}) }));
+  const recordedMath = [...(mathReviews ?? []), ...(unusedMath ?? [])];
+  if (recordedMath.length) attempt.math = recordedMath.map((r) => ({ sentence: r.text, verdict: r.result.verdict, reason: r.result.reason, ...(r.result.retried ? { retried: true as const } : {}) }));
   // 2026-11-15 (voice fallbacks): a tutor repair that started after streamed sentences continues them (continuedSay).
   const continuation = continues && attempt.source === "repair" && !!s.sent?.length && !!s.session.tutor;
   // #1107: sentences streamed as saved parts keep the drawing fixed when each went out.
@@ -513,7 +514,7 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
       if (s.request?.id !== e.requestId || s.candidate?.requestId !== e.requestId) break;
       const candidate = s.candidate;
       s.request = null; s.candidate = null;
-      proposal(s, candidate.proposal, e.at, { source: candidate.source, proposal: candidate.proposal, refusal: null, ms: candidate.ms, ...(candidate.fenced ? { fenced: true as const } : {}), ...(candidate.firstSayMs !== undefined ? { firstSayMs: candidate.firstSayMs } : {}), ...(candidate.gateDisagrees ? { gateDisagrees: true as const } : {}), ...(e.reviewMs !== undefined ? { reviewMs: e.reviewMs } : {}), ...(candidate.filler ? { filler: candidate.filler } : {}) }, e.reviews, e.mathReviews, e.drawMode, candidate.continuation === true);
+      proposal(s, candidate.proposal, e.at, { source: candidate.source, proposal: candidate.proposal, refusal: null, ms: candidate.ms, ...(candidate.fenced ? { fenced: true as const } : {}), ...(candidate.firstSayMs !== undefined ? { firstSayMs: candidate.firstSayMs } : {}), ...(candidate.gateDisagrees ? { gateDisagrees: true as const } : {}), ...(e.reviewMs !== undefined ? { reviewMs: e.reviewMs } : {}), ...(candidate.filler ? { filler: candidate.filler } : {}) }, e.reviews, e.mathReviews, e.drawMode, candidate.continuation === true, e.unusedMath);
       break;
     }
     case "fallback": proposal(s, e.proposal, e.at, { source: "fallback", proposal: e.proposal, refusal: null }, undefined, undefined, e.drawMode); break;

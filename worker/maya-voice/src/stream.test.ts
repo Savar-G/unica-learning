@@ -4,6 +4,7 @@ import { initializeLogger, normalizeLanguage, stt, VADEventType, voice, type VAD
 import { AudioFrame } from "@livekit/rtc-node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Batch } from "@/lib/board";
+import { logBaselineTurn } from "@/lib/maya-baseline";
 import { createBoardReceiver, createBoardSender } from "@/lib/board-protocol";
 import { createMemoryTransport } from "@/lib/board-protocol-memory";
 import { createBoardSpeech } from "@/lib/board-speech";
@@ -22,6 +23,7 @@ import { fakeTalkReviewer } from "@/lib/maya-talk-review";
 import { spokenMath } from "@/lib/maya-voice-spoken";
 import type { QuestionPackage } from "@/lib/question-package";
 import { VoiceCallRun, voiceSession, type PreparingCall, type Timers } from "./agent";
+import { startVoiceBaselineProfile, voiceBaselineTurn } from "./baseline";
 import { earlyRest } from "./early-speech";
 import { FakeTTS } from "./fake-providers";
 import { makeProviders } from "./providers";
@@ -38,6 +40,7 @@ initializeLogger({ pretty: false, level: "silent" });
 const PARENT = "11111111-1111-4111-8111-111111111111";
 const CHILD = "22222222-2222-4222-8222-222222222222";
 const TEST = "33333333-3333-4333-8333-333333333333";
+const BASELINE = { evidence: "simulated", mode: "voice", turnType: "routine", provider: "fake", device: "none", network: "in-process", concurrency: 1 } as const;
 const PKG: QuestionPackage = {
   ...SAMPLE_PACKAGES["add-27-39"],
   id: `${TEST}:s1-4`,
@@ -760,7 +763,7 @@ function fakeVad() {
 }
 
 describe("the wait of a turn the speech-to-text held (2026-11-13)", () => {
-  it("counts from the worker's detector when the final has no word times, and logs the hold", async () => {
+  it("#1139 counts from the worker's detector when the final has no word times, and logs the hold", async () => {
     const speech = new ProbeSTT();
     const v = fakeVad();
     const c = await voiceCall({ model: ruleConversationalModel(), speech, heardVad: v.vad });
@@ -778,6 +781,9 @@ describe("the wait of a turn the speech-to-text held (2026-11-13)", () => {
     const [s] = c.samples;
     expect(s).toMatchObject({ outcome: "answered", speechEnd: "detector", sttWaitMs: 4000, sttHoldMs: 4000 });
     expect(s.waitMs).toBe(4000 + s.answerMs!);
+    const row = voiceBaselineTurn(BASELINE, s, telemetry().turnClock(s.turnId));
+    expect(row).toMatchObject({ outcome: "completed", ms: { speechEndToFinal: 4000, finalToTurn: expect.any(Number), workerReply: s.waitMs } });
+    if (process.env.MAYA_BASELINE_LOG === "on") logBaselineTurn(row);
   });
 
   it("puts the detector's end, the time it reported it and the last loud frame in the turn's clock marks", async () => {
@@ -1143,8 +1149,9 @@ describe("turn-bound telemetry through a live call (latency audit 2026-11-14)", 
     return events;
   }
 
-  it("keeps the acknowledgement and the answer as two speeches, each with its own marks", async () => {
+  it("#1139 keeps the acknowledgement and the answer as two speeches, each with its own marks", async () => {
     const events = watch();
+    const profile = startVoiceBaselineProfile();
     const m = steppedModel(guideTurn(`${FIRST} ${SECOND}`));
     const c = await voiceCall({ model: m.model, ackLimitMs: 500 });
     const before = c.said().length;
@@ -1174,6 +1181,16 @@ describe("turn-bound telemetry through a live call (latency audit 2026-11-14)", 
     // The log of this turn holds no words.
     const log = JSON.stringify(events);
     for (const words of [FIRST, SECOND, "I got 56"]) expect(log).not.toContain(words);
+    const row = voiceBaselineTurn(BASELINE, c.samples[0], telemetry().turnClock(turnId));
+    expect(row.ms.workerFiller).toBe(c.samples[0].firstSoundMs);
+    expect(row.ms.turnToWorkerReply).toBeGreaterThanOrEqual(500);
+    expect(row.ms.deviceUseful).toBeUndefined();
+    const processProfile = profile();
+    expect(processProfile.loopDelay.n).toBeGreaterThan(0);
+    if (process.env.MAYA_BASELINE_LOG === "on") {
+      logBaselineTurn(row);
+      console.log("[maya baseline profile]", JSON.stringify({ ...BASELINE, ...processProfile }));
+    }
   });
 
   it("gives a turn after another its own final: the earlier turn's clock never holds the later final", async () => {

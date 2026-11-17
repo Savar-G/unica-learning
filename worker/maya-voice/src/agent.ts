@@ -451,6 +451,8 @@ export class VoiceCallRun {
       ackLimitMs?: number;
       /** One sample per child turn (./turn-timing.ts). */
       measureTurn?(sample: VoiceTurnSample): void;
+      /** Associates later board cue acknowledgements with the turn that staged the batches. */
+      measureBoardPlan?(utteranceId: string, turnId: string, batchIds: readonly string[]): void;
       /**
        * The words said once before Maya's first line (GREETING_TEXT). Said at most once per call: it is saved under
        * GREETING_ID in the call's acknowledged list before it is queued. Absent: no greeting.
@@ -715,7 +717,7 @@ export class VoiceCallRun {
           error => {
             pace.early.closed = true;
             pace.early.open = false;
-            this.closeTurn(pace);
+            this.closeTurn(pace, "failed");
             // Sentences already said stay said: their stream ends rather than fails, so their audio is not cut.
             if (pace.early.said.length) { pace.early.end?.(); pace.end(); }
             else if (pace.writable) { pace.writable = false; controller.error(error); }
@@ -779,7 +781,7 @@ export class VoiceCallRun {
     // replaced it. It keeps the rest of `after` (the revision, the check-ins, the call's end). The turn's own save is
     // done (`VoiceCall.child` waits for it), so the words do not wait for later saves, and the plan goes out while the
     // voice makes the first sentence: its audio waits for the plan (`boardAudio`), so no cue word is heard first.
-    for (const turn of turns) if (await this.after(turn, undefined, () => this.ownsReply(pace), true)) said.push(...turn.say);
+    for (const turn of turns) if (await this.after(turn, undefined, () => this.ownsReply(pace), true, pace.turnId)) said.push(...turn.say);
     const text = said.join(" ");
     if (!text || !this.ownsReply(pace)) {
       pace.clock.staged();
@@ -961,7 +963,7 @@ export class VoiceCallRun {
     }
     if (priority) { early.open = false; return this.sayFirst(pace, turns); }
     const generation = this.generation;
-    try { await this.stageBoard({ boardCues: shifted }, false); }
+    try { await this.stageBoard({ boardCues: shifted }, false, pace.turnId); }
     catch (error) { this.boardFailed(error); if (generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return this.closeTurn(pace); }
     const scope = this.boardScope;
     const speech = rest ? this.sayAs(rest, { addToChatCtx: true }, { turnId: pace.turnId, kind: "answer" }) : null;
@@ -1021,7 +1023,7 @@ export class VoiceCallRun {
       }
       const generation = guidance ? this.generation : pace?.generation ?? this.generation;
       // A plan with no batches has nothing to wait for, and a late board answer must not hold back these words.
-      try { await this.stageBoard(last, !!last.boardCues?.length); }
+      try { await this.stageBoard(last, !!last.boardCues?.length, pace?.turnId); }
       catch (error) { this.boardFailed(error); if (generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return this.closeTurn(pace); }
       if (this.finishing || !this.childHere || generation !== this.generation) {
         this.finalDropped({ ...last, say: turns.flatMap(t => t.say) });
@@ -1275,7 +1277,7 @@ export class VoiceCallRun {
     console.warn("[maya voice] board stage failed", this.call.id, error instanceof Error ? error.message : String(error));
   }
 
-  private async stageBoard(turn: Pick<VoiceTurn, "boardCues">, wait = true) {
+  private async stageBoard(turn: Pick<VoiceTurn, "boardCues">, wait = true, turnId?: string) {
     if (!this.options.board) return;
     const id = `speech-${this.segment}-${++this.utterance}`;
     // Batches the opening could not show go first, at this plan's first word.
@@ -1286,6 +1288,7 @@ export class VoiceCallRun {
     void staging.then(r => { if (r.refused.length) { console.warn("[maya voice] board batch refused", this.call.id, r.refused); this.call.boardRefused?.(r.refused.map(x => x.batchId)); } }, () => {});
     const scope = this.options.board.capture(id);
     this.boardScope = scope;
+    if (scope && turnId && turn.boardCues?.length) this.options.measureBoardPlan?.(scope.utteranceId, turnId, turn.boardCues.map(cue => cue.batch.transactionId));
     if (wait) await staging;
     else if (scope) this.boardTask(staging, scope);
   }
@@ -1479,13 +1482,13 @@ export class VoiceCallRun {
    * call's end. `overlap` (a child turn's reply, whose own save is done): no wait for later saves, and the plan is not
    * waited for here, as the reply's audio waits for it (`boardAudio`); a plan that fails ends the call (`boardTask`).
    */
-  private async after(turn: VoiceTurn, handle = this.speech, stage: () => boolean = () => true, overlap = false): Promise<boolean> {
+  private async after(turn: VoiceTurn, handle = this.speech, stage: () => boolean = () => true, overlap = false, turnId?: string): Promise<boolean> {
     if (!overlap) await this.call.settled();
     if (this.call.lost) { void this.finish({ detail: "the call could not be saved" }); return false; }
     if (this.finishing || !this.childHere) { this.finalDropped(turn); return false; }
     const generation = this.generation;
     if (stage()) {
-      try { await this.stageBoard(turn, !overlap); }
+      try { await this.stageBoard(turn, !overlap, turnId); }
       catch (error) { this.boardFailed(error); if (generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return false; }
     }
     if (this.finishing || generation !== this.generation || !this.childHere) { this.finalDropped(turn); return false; }

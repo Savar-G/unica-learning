@@ -17,6 +17,7 @@
 // each saved turn; the screen reads the call from the web server then.
 import { randomUUID } from "node:crypto";
 import { flushAiUsage } from "@/lib/ai-usage";
+import { BASELINE_PROFILE_PREFIX, logBaselineTurn, type BaselineGroup } from "@/lib/maya-baseline";
 import { createBoardSender } from "@/lib/board-protocol";
 import { boardRpcTransport } from "@/lib/board-rpc";
 import { createBoardSpeech, cueReport, type CueMeasurement } from "@/lib/board-speech";
@@ -40,6 +41,7 @@ import { referenceJob, referenceRoomName } from "@/lib/maya-workbook-speech";
 import { runWorkbookReference } from "./workbook-reference";
 import { monitoredVoiceJob } from "./monitoring";
 import { monitorProduct } from "@/lib/product-monitoring";
+import { startVoiceBaselineProfile, voiceBaselineTurn } from "./baseline";
 
 const log = (...a: unknown[]) => console.log("[maya voice]", ...a);
 
@@ -153,6 +155,14 @@ export default defineAgent({
       log("board cue", { callId, fakeAudio: made.tts.provider === "fake", ...sample });
     } });
     const turnSamples: VoiceTurnSample[] = [];
+    const baseline: BaselineGroup = {
+      mode: "voice", evidence: made.stt.provider === "fake" || made.tts.provider === "fake" ? "simulated" : "worker",
+      turnType: "unknown", provider: `${record.model}+${providers.ids.speechToText}+${providers.ids.voice}`,
+      device: "unknown", network: "unknown", concurrency: "unknown",
+    };
+    const baselineEnabled = process.env.MAYA_BASELINE_LOG === "on";
+    const boardOwners = new Map<string, { turnId: string; batchIds: readonly string[] }>();
+    let profile: ReturnType<typeof startVoiceBaselineProfile> | null = null;
     const ackLimit = Number(process.env.MAYA_ACK_LIMIT_MS);
     const run = new VoiceCallRun(session, opened.call, { board, notify, ...(openingText ? { opening: openingText, openingMark: mark } : {}),
       ...(made.fake ? {} : { numberContinueMs: tuning.numberContinueMs, dropSilentPeakDbfs: tuning.dropSilentPeakDbfs, detectorMinSilenceMs: tuning.detectorMinSilenceMs }),
@@ -162,9 +172,23 @@ export default defineAgent({
         turnSamples.push(sample);
         log("voice turn", { callId, fakeProviders: { speechToText: made.stt.provider === "fake", voice: made.tts.provider === "fake" }, ...sample, clock: telemetry().turnClock(sample.turnId) });
       },
+      ...(baselineEnabled ? { measureBoardPlan: (utteranceId, turnId, batchIds) => { boardOwners.set(utteranceId, { turnId, batchIds }); } } : {}),
       closed: async () => {
         log("board cue report", { callId, fakeAudio: made.tts.provider === "fake", groups: cueReport(samples) });
         log("voice turn report", { callId, fakeProviders: { speechToText: made.stt.provider === "fake", voice: made.tts.provider === "fake" }, ...voiceTurnReport(turnSamples) });
+        if (baselineEnabled) {
+          // Wait until close to read request marks. Streamed playout can start before a review or repair finishes.
+          for (const sample of turnSamples) {
+            const cues = samples.filter(cue => {
+              const owner = boardOwners.get(cue.utteranceId);
+              return owner && owner.turnId === sample.turnId && owner.batchIds.includes(cue.batchId);
+            });
+            logBaselineTurn(voiceBaselineTurn(baseline, sample, telemetry().turnClock(sample.turnId), cues));
+          }
+          if (profile) console.log(BASELINE_PROFILE_PREFIX + JSON.stringify({
+            ...baseline, ...profile(), discardedPreparation: telemetry().discardedPreparationSummary(),
+          }));
+        }
         await monitoring.flush();
         await ctx.shutdown("call ended");
       } });
@@ -243,6 +267,7 @@ export default defineAgent({
     }
     // The child is here: their microphone is published. `sinceChildMs` in "opening first sound" counts from now.
     childAt = Date.now();
+    if (baselineEnabled) profile = startVoiceBaselineProfile();
     marks.readyBeforeChild = childAt - readyAt;
     ctx.addShutdownCallback(async () => { try { await run.workerShutdown(); } finally { await Promise.all([flushAiUsage(), monitoring.flush()]); } });
     // The connection rows and the session start do not wait for each other.

@@ -40,6 +40,22 @@ describe("the marks of a final transcript (finalMark)", () => {
   });
 });
 
+it("#1139 separates finalization, worker queue time, and answer playout", () => {
+  let now = 500;
+  const clock = new TurnClock(() => now, 400, 500, { speechEndAt: 300, source: "detector", finalAt: 470 });
+  clock.ackQueued("filler");
+  now = 520;
+  clock.sound();
+  clock.ackEnded();
+  now = 580;
+  clock.ready({ modelMs: 70, repairMs: 0, reviewMs: 0 });
+  clock.held();
+  clock.staged();
+  now = 620;
+  clock.sound();
+  expect(clock.sample("answered")).toMatchObject({ sttWaitMs: 170, finalToTurnMs: 30, turnToAnswerMs: 120, waitMs: 320 });
+});
+
 describe("the child's end of speech for a turn (heardMarks)", () => {
   const same = (at: number) => at;
   it("takes the last word first, then the worker's detector, then LiveKit's end of speech before the final", () => {

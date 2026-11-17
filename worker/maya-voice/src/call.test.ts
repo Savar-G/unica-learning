@@ -4,6 +4,7 @@ import { initializeLogger, llm, normalizeLanguage, stt, voice } from "@livekit/a
 import { AudioFrame, TrackPublishOptions } from "@livekit/rtc-node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setProductObserver } from "@/lib/product-monitoring";
+import { logBaselineTurn } from "@/lib/maya-baseline";
 import { createBoardReceiver, createBoardSender } from "@/lib/board-protocol";
 import { createMemoryTransport } from "@/lib/board-protocol-memory";
 import { createBoardSpeech, type CueMeasurement } from "@/lib/board-speech";
@@ -25,6 +26,8 @@ import { mayaWorkbookFixture } from "@/lib/maya-workbook-fixture";
 import { selectWorkbookQuestion } from "@/lib/maya-workbook-question";
 import { spokenMath } from "@/lib/maya-voice-spoken";
 import { VoiceCallRun, voiceSession, type CallUpdate, type Timers } from "./agent";
+import { voiceBaselineTurn } from "./baseline";
+import type { VoiceTurnSample } from "./turn-timing";
 import { FakeTTS } from "./fake-providers";
 import { makeProviders } from "./providers";
 
@@ -136,7 +139,7 @@ afterEach(async () => {
   vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs();
 });
 
-async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["spend"]; speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel; board?: boolean; timestamps?: boolean; workbookReference?: string } = {}) {
+async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["spend"]; speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel; board?: boolean; timestamps?: boolean; workbookReference?: string; measureBaseline?: boolean } = {}) {
   const clock = handTimers();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -178,10 +181,19 @@ async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["
   const sender = createBoardSender({ sessionId: started.view.id, senderId: "worker", transport: createMemoryTransport(receiver) });
   const samples: CueMeasurement[] = [];
   const board = createBoardSpeech({ sender, now: clock.now, observe: snapshot => opened.call.observeBoard(snapshot), measure: s => samples.push(s) });
-  const run = new VoiceCallRun(session, opened.call, { ...(options.board ? { board } : {}), timers: clock.timers, notify: (u) => updates.push(u), closed });
+  const turns: VoiceTurnSample[] = [];
+  const boardPlans = new Map<string, { turnId: string; batchIds: readonly string[] }>();
+  const run = new VoiceCallRun(session, opened.call, {
+    ...(options.board ? { board } : {}), timers: clock.timers, notify: (u) => updates.push(u), closed,
+    ...(options.measureBaseline ? {
+      measureTurn: sample => turns.push(sample),
+      measureBoardPlan: (id, turnId, batchIds) => { boardPlans.set(id, { turnId, batchIds }); },
+    } : {}),
+  });
   await run.agentJoined();
   await session.start({ agent: run.agent });
   run.attachBoardAudio();
+  if (options.measureBaseline) run.attachTurnTiming();
   microphone.push();
   cleanup = async () => {
     await run.finish({ detail: "test over" });
@@ -196,7 +208,7 @@ async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["
     await opened.call.settled();
     return said().slice(before).join(" ");
   };
-  return { sender, receiver, board, samples, id: started.view.id, calls, store, connections, rebuild, run, session, said, childSays, clock, updates, closed, call: opened.call, seams, tts: voiceOut, speech: providers.fakeSpeech! };
+  return { sender, receiver, board, samples, turns, boardPlans, id: started.view.id, calls, store, connections, rebuild, run, session, said, childSays, clock, updates, closed, call: opened.call, seams, tts: voiceOut, speech: providers.fakeSpeech! };
 }
 
 describe("a voice call through LiveKit with the fake providers", () => {
@@ -692,11 +704,12 @@ it("R408-12: bounds an unfinished opening before the first turn can be saved", a
 });
 
 
-it.each([true, false])("#329 carries accepted controller batches through AgentSession with fake timestamps %s", async timestamps => {
-  const c = await voiceCall({ board: true, timestamps });
+it.each([true, false])("#1139 #329 carries accepted controller batches through AgentSession with fake timestamps %s", async timestamps => {
+  const c = await voiceCall({ board: true, timestamps, measureBaseline: true });
   await c.run.childJoined();
   await waitFor(() => c.session.agentState === "listening" && c.said().length > 0, "opening playout");
   await c.board.settled();
+  const openingCues = c.samples.length;
   await c.childSays("I don't know.");
   await waitFor(() => c.session.agentState === "listening", "example playout");
   await c.board.settled();
@@ -704,6 +717,20 @@ it.each([true, false])("#329 carries accepted controller batches through AgentSe
   expect(c.samples.map(s => s.source)).toEqual(c.samples.map(() => timestamps ? "word" : "sentence"));
   expect(c.samples.every(s => s.state === "shown")).toBe(true);
   expect(c.receiver.staged()).toEqual([]);
+  expect(c.turns).toHaveLength(1);
+  const [turn] = c.turns;
+  const cues = c.samples.filter(cue => {
+    const owner = c.boardPlans.get(cue.utteranceId);
+    return owner && owner.turnId === turn.turnId && owner.batchIds.includes(cue.batchId);
+  });
+  expect(cues.length).toBeGreaterThan(0);
+  expect(cues).toEqual(c.samples.slice(openingCues));
+  const row = voiceBaselineTurn({
+    evidence: "simulated", mode: "voice", turnType: "complex", provider: timestamps ? "fake-word-cues" : "fake-sentence-cues",
+    device: "none", network: "in-process", concurrency: 1,
+  }, turn, null, cues);
+  expect(row).toMatchObject({ outcome: "completed", ms: { boardCueAcknowledgement: expect.any(Number) }, counts: { boardCues: cues.length } });
+  if (process.env.MAYA_BASELINE_LOG === "on") logBaselineTurn(row);
 });
 
 

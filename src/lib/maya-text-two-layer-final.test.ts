@@ -11,6 +11,22 @@ const SUB = SAMPLE_PACKAGES["subtract-52-28"];
 const settle = async () => { for (let i = 0; i < 60; i++) await Promise.resolve(); };
 
 describe("final check of #1044 (2026-11-15)", () => {
+  it("#1045 retains a review started before a later sentence causes a code refusal", async () => {
+    const math = fakeMathReviewer();
+    const line = "The result we just computed is 4. The answer to 52 minus 28 is 25.";
+    const model = conversationalFake({ answer: (_input, n) => reply(n === 0 ? line : "What is 12 minus 8?", "guide"), stream: { chunk: 7, beforeEnd: settle } });
+    const session = createTextSession({ callId: "refused-review", package: SUB, model, clock: () => Date.UTC(2026, 10, 15), tutor: true, reviewer: fakeTalkReviewer(), mathReviewer: math, onSayPart: () => {} });
+    await session.start();
+    const out = await session.child("Please help me.");
+    const trace = await session.finish({ reason: "child_stopped" });
+    expect(math.requests.map(r => r.sentence)).toEqual(["The result we just computed is 4."]);
+    expect(out.say.join(" ")).not.toContain("25");
+    expect(trace.turns.flatMap(t => t.kind === "maya" ? t.attempts : [])).toContainEqual(expect.objectContaining({
+      source: "model", refusal: expect.any(Object), math: [{ sentence: math.requests[0].sentence, verdict: "true", reason: "all true" }],
+    }));
+    expect(trace.counts.mathReviews).toBe(1);
+    expect(checkTrace(trace).ok).toBe(true);
+  });
   it.each([false, true])("sends a number with a modifier word to the math review (stream %s)", async (stream) => {
     let now = Date.UTC(2026, 10, 15);
     const parts: string[] = [];

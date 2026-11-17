@@ -9,6 +9,7 @@ import {
 } from "./index";
 import { teachingJudgeInput } from "./teaching-judge";
 import { practicePackage } from "./packages";
+import { measureSuite } from "./cost";
 
 // The tutor suite (D-345) through its public interface, with fake models only: no network, no cost. The tutor core runs
 // through the text adapter; the teaching judge, the trace metrics and the case checks decide each run.
@@ -180,6 +181,12 @@ describe("the whole tutor suite with the fake tutor", () => {
 });
 
 describe("the cost estimate with --tutor", () => {
+  it("#1048 budgets math review requests in addition to the talk review allowance", async () => {
+    const tutor = conversationalFake({ answer: () => reply("The result we just computed is 4.", "guide") });
+    const measured = await measureSuite([K01], 1, { tutor: true }, { tutor });
+    expect(measured.reviewer.calls).toBeGreaterThan(measured.maya.calls);
+    expect(measured.reviewer.inputChars).toBeGreaterThan(measured.reviewer.largestChars);
+  });
   it("counts a second judge call for every run, and the tutor prompt for Maya", async () => {
     const models = { maya: "m", simulator: "s", validity: "v", judge: "j" };
     const price = { input: 1e-6, output: 1e-6 };

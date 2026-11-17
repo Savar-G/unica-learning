@@ -810,7 +810,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   const streamReviews = new Map<string, { requestId: number; result: Promise<TalkReviewResult>; stop?: AbortController }>();
   const reviewKey = (input: TalkReviewInput) => JSON.stringify(input);
   /** Math-truth reviews the stream started (two-layer true math), by their whole input, used once by the whole-reply check. */
-  const streamMathReviews = new Map<string, { requestId: number; result: Promise<MathReviewResult>; stop?: AbortController }>();
+  type StreamMathReview = { requestId: number; result: Promise<MathReviewResult>; stop: AbortController; observed: MathReview | null };
+  const streamMathReviews = new Map<string, StreamMathReview>();
   /**
    * Review of #1109 (money): the reviews a model request started while it streamed end when no one will read them: the
    * request was dropped, failed or ran out of time, the whole check stopped waiting for one, or the check is done. A
@@ -823,6 +824,13 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     for (const [id, c] of reviewStops) if (requestId === undefined || id === requestId) { c.abort(); reviewStops.delete(id); }
   };
   const mathKey = (input: MathReviewInput) => JSON.stringify(input);
+  function startStreamMath(input: MathReviewInput, requestId: number, turn: number, ms: number, own: { stop: AbortController; signal: AbortSignal }) {
+    const result = reviewMath(input, turn, ms, undefined, own.signal);
+    const entry: StreamMathReview = { requestId, result, stop: own.stop, observed: null };
+    streamMathReviews.set(mathKey(input), entry);
+    void result.then(review => { if (!own.signal.aborted) entry.observed = { text: input.sentence, result: review }; });
+    return result;
+  }
   /**
    * Final check 9 (2026-11-15): every terminal math review result that is not "true" (false, unsure after its retry,
    * malformed, an error, a time-out) is final for its sentence for the rest of the child turn: no second call of any
@@ -1121,8 +1129,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
           if (how.math) {
             const input = read(() => mathReviewInput(session, sentence, before));
             const own = reviewStop();
-            const started = reviewMath(input, session.turns.length, earlyLimit(mathLimit(true)), undefined, own.signal);
-            streamMathReviews.set(mathKey(input), { requestId, result: started, stop: own.stop });
+            const started = startStreamMath(input, requestId, session.turns.length, earlyLimit(mathLimit(true)), own);
             checks.push(started.then((r) => r.verdict === "true"));
           }
           void Promise.all(checks).then((ok) => {
@@ -1175,7 +1182,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
           const input = read(() => mathReviewInput(session, sentence, before));
           if (!streamMathReviews.has(mathKey(input))) {
             const own = reviewStop();
-            streamMathReviews.set(mathKey(input), { requestId, result: reviewMath(input, session.turns.length, earlyLimit(mathLimit(true)), undefined, own.signal), stop: own.stop });
+            startStreamMath(input, requestId, session.turns.length, earlyLimit(mathLimit(true)), own);
           }
         }
       }
@@ -1331,7 +1338,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const reviewed = Promise.all([reviews, mathReviews]).then(([results, maths]) => {
       for (const key of used) streamReviews.delete(key);
       for (const key of mathUsed) streamMathReviews.delete(key);
-      append({ kind: "review", at: now(), requestId, reviews: results, mathReviews: maths, ...((texts.length && options.reviewer) || (mathTexts.length && options.mathReviewer) ? { reviewMs: now() - t0 } : {}), drawMode: "derive" });
+      // #1045: a complete review can be left unused when a later sentence fails the code check.
+      const unusedMath = [...streamMathReviews.values()].flatMap(r => r.requestId === requestId && r.observed ? [r.observed] : []);
+      append({ kind: "review", at: now(), requestId, reviews: results, mathReviews: maths, ...(unusedMath.length ? { unusedMath } : {}), ...((texts.length && options.reviewer) || (mathTexts.length && options.mathReviewer) ? { reviewMs: now() - t0 } : {}), drawMode: "derive" });
     });
     try { await wait(reviewed, controller); } finally { stopReviews(requestId); }
   }
