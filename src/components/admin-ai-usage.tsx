@@ -125,7 +125,9 @@ const reportHref = (range: Period["range"], report: AiUsageReport) =>
 function WorkspaceBreakdown({ workspace, dimension }: { workspace: WorkspaceReading; dimension: "models" | "keys" }) {
   if (!workspace.usage) return <Empty>Unica workspace usage is unavailable. The cost and request count are unknown.</Empty>;
   const rows = workspace.usage[dimension];
+  const maximum = Math.max(0, ...rows.map((r) => r.costUsd));
   const list = (items: typeof rows) => <BarList label={dimension === "models" ? "Workspace models" : "Workspace keys"}
+    max={maximum}
     bars={items.map((r) => ({ key: r.label, label: r.label, value: r.costUsd,
       text: <span title={workspaceUsd(r.costUsd)}>{usd(r.costUsd)}</span>, sub: `${r.requests.toLocaleString("en-CA")} requests` }))} />;
   return <>

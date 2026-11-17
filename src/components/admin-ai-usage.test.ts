@@ -39,6 +39,18 @@ it("retains every provider model and key on its report, with an exact-value titl
   }
 });
 
+it.each(["models", "keys"] as const)("keeps one bar scale across the visible and disclosed %s", (report) => {
+  const groups = Array.from({ length: 9 }, (_, i) => ({ label: `group-${i}`, costUsd: i === 0 ? 100 : 1, requests: 1 }));
+  const reading: WorkspaceReading = { status: "ok", usage: { costUsd: 108, requests: 9, models: groups, keys: groups } };
+  const html = render(view, reading, report);
+  const widths = [...html.matchAll(/class="ab-bar-track"[^>]*><i style="width:([\d.]+)%/g)].map((m) => Number(m[1]));
+  expect(widths).toHaveLength(9);
+  expect(widths[0]).toBe(100);
+  expect(widths.slice(1)).toEqual(Array(8).fill(widths[1]));
+  expect(widths[1]).toBeGreaterThan(0);
+  expect(widths[1]).toBeLessThan(100);
+});
+
 it("preserves the selected report in date links and the selected period in report links", () => {
   const html = render(view, workspace, "families");
   for (const range of ["7d", "30d", "month", "year"]) expect(html).toContain(`range=${range}&amp;report=families`);
