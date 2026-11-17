@@ -50,6 +50,7 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
   const { sender } = options;
   let generation = 0;
   let plannedScope: SpeechScope | null = null;
+  let speechAbort: AbortController | null = null;
   let deliveryScope: SpeechScope | null = null;
   let cancellation: ReturnType<BoardSender["interrupt"]> | null = null;
   let retired = false;
@@ -101,6 +102,9 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
       return plannedScope?.utteranceId === utteranceId && !retired ? { ...plannedScope } : null;
     },
     owns,
+    signal(scope: SpeechScope): AbortSignal {
+      return owns(scope) && speechAbort ? speechAbort.signal : AbortSignal.abort();
+    },
     /**
      * Plans must be on the receiver before their speech is heard: the audio of a plan waits for `sent(scope)`. A new plan
      * invalidates callbacks from the previous speech. The returned promise also covers the save of the receiver's
@@ -108,6 +112,8 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
      * never waits for that save.
      */
     stage(id: string, cues: readonly BoardCue[]) {
+      speechAbort?.abort();
+      speechAbort = new AbortController();
       const gen = ++generation;
       const scope: SpeechScope = { utteranceId: id, generation: gen };
       plannedScope = scope;
@@ -240,11 +246,13 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
       if (!owns(scope)) return;
       retired = true;
       active = null;
+      speechAbort?.abort();
     },
     interrupt(scope: SpeechScope) {
       if (!owns(scope)) return Promise.resolve();
       retired = true;
       active = null;
+      speechAbort?.abort();
       // Send the stop outside the serial queue. A stalled release must not delay the interruption.
       const previous = deliveryScope;
       deliveryScope = scope;
@@ -267,6 +275,7 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
     connect,
     reconnect(scope: SpeechScope) {
       if (!matches(scope)) return Promise.resolve();
+      speechAbort?.abort();
       plannedScope = null;
       return connect();
     },

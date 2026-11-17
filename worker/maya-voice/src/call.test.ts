@@ -1,11 +1,11 @@
 import { ReadableStream, type ReadableStreamDefaultController } from "node:stream/web";
 import { EventEmitter } from "node:events";
-import { initializeLogger, llm, normalizeLanguage, stt, voice } from "@livekit/agents";
+import { initializeLogger, llm, normalizeLanguage, stt, tts, voice } from "@livekit/agents";
 import { AudioFrame, TrackPublishOptions } from "@livekit/rtc-node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setProductObserver } from "@/lib/product-monitoring";
 import { logBaselineTurn } from "@/lib/maya-baseline";
-import { createBoardReceiver, createBoardSender } from "@/lib/board-protocol";
+import { createBoardReceiver, createBoardSender, type BoardReceiver, type BoardTransport } from "@/lib/board-protocol";
 import { createMemoryTransport } from "@/lib/board-protocol-memory";
 import { createBoardSpeech, type CueMeasurement } from "@/lib/board-speech";
 import { templateSkills } from "@/lib/assessment";
@@ -99,21 +99,23 @@ function handTimers() {
     },
     clear: (h) => void due.delete(h as number),
   };
+  async function elapse(ms: number, step: number) {
+    const end = now + ms;
+    while (now < end) {
+      now = Math.min(end, now + step);
+      for (const [h, t] of [...due].sort((a, b) => a[1].at - b[1].at)) {
+        if (t.at > now) continue;
+        due.delete(h);
+        t.run();
+      }
+      await new Promise<void>(resolve => setImmediate(resolve));
+    }
+  }
   return {
     timers,
     now: () => now,
-    async advance(s: number) {
-      const end = now + s * 1000;
-      while (now < end) {
-        now = Math.min(end, now + 1000);
-        for (const [h, t] of [...due].sort((a, b) => a[1].at - b[1].at)) {
-          if (t.at > now) continue;
-          due.delete(h);
-          t.run();
-        }
-        await new Promise<void>(resolve => setImmediate(resolve));
-      }
-    },
+    advance: (s: number) => elapse(s * 1000, 1000),
+    play: (ms: number) => elapse(ms, 10),
   };
 }
 
@@ -139,7 +141,7 @@ afterEach(async () => {
   vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs();
 });
 
-async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["spend"]; speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel; board?: boolean; timestamps?: boolean; workbookReference?: string; measureBaseline?: boolean; exchange?: boolean } = {}) {
+async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["spend"]; speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel; board?: boolean; timestamps?: boolean; workbookReference?: string; measureBaseline?: boolean; exchange?: boolean; transport?: (receiver: BoardReceiver) => BoardTransport } = {}) {
   const clock = handTimers();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -180,7 +182,7 @@ async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["
   const updates: CallUpdate[] = [];
   const closed = vi.fn(async () => {});
   const receiver = createBoardReceiver({ sessionId: started.view.id, clock: clock.now });
-  const sender = createBoardSender({ sessionId: started.view.id, senderId: "worker", transport: createMemoryTransport(receiver) });
+  const sender = createBoardSender({ sessionId: started.view.id, senderId: "worker", transport: options.transport?.(receiver) ?? createMemoryTransport(receiver) });
   const samples: CueMeasurement[] = [];
   const board = createBoardSpeech({ sender, now: clock.now, observe: snapshot => opened.call.observeBoard(snapshot), measure: s => samples.push(s) });
   const turns: VoiceTurnSample[] = [];
@@ -416,6 +418,108 @@ class HeldSpeaker extends Speaker {
   override flush() { if (!this.held) super.flush(); }
 }
 
+class HeldSentence extends tts.SynthesizeStream {
+  label = "held.SynthesizeStream";
+  readonly requested = Promise.withResolvers<string>();
+  readonly cancelled = Promise.withResolvers<void>();
+  constructor(source: FakeTTS) { super(source); }
+  protected async run() {
+    let text = "";
+    for await (const part of this.input) {
+      if (part === tts.SynthesizeStream.FLUSH_SENTINEL) break;
+      text += part;
+    }
+    this.requested.resolve(text.trim());
+    if (!this.abortSignal.aborted) {
+      await new Promise<void>(resolve => this.abortSignal.addEventListener("abort", () => resolve(), { once: true }));
+    }
+    this.cancelled.resolve();
+  }
+}
+
+it("retires a checked plan on an SDK cut before the first frame and without a new transcript", async () => {
+  const c = await voiceCall({ model: ruleConversationalModel(), board: true, exchange: true });
+  await c.run.childJoined();
+  await waitFor(() => c.session.agentState === "listening" && c.said().length > 0, "opening");
+  const active = new HeldSentence(c.tts);
+  const handle = Promise.withResolvers<{ speech: voice.SpeechHandle }>();
+  c.session.once(voice.AgentSessionEventTypes.SpeechCreated, event => handle.resolve({ speech: event.speechHandle }));
+  vi.spyOn(c.tts, "stream").mockReturnValueOnce(active);
+  try {
+    expect(c.speech.say("Show me how to regroup.")).toBe(true);
+    await active.requested.promise;
+    await c.board.settled();
+    const ids = c.call.session.checkedExchange!.turns[0].actions.map(action => action.batchId);
+    expect(c.receiver.staged().map(batch => batch.batchId)).toEqual(ids);
+    (await handle.promise).speech.interrupt(true);
+    await active.cancelled.promise;
+    await waitFor(() => c.call.session.checkedExchange?.turns[0].actions.every(action => action.fate === "cancelled") === true,
+      "both unplayed cues to be retired");
+    expect(c.call.session.checkedExchange!.turns[0].playback).toBe("interrupted");
+    expect(c.receiver.snapshot().events.some(e => e.kind === "batch" && ids.includes(e.batchId))).toBe(false);
+    expect(c.call.session.assistance).not.toContain("guided");
+  } finally { active.close(); }
+});
+
+it.each([true, false])("cuts a spoken demonstration after its first shown cue and keeps the child's words (timestamps=%s)", async timestamps => {
+  let now = () => T0;
+  const speaker = new HeldSpeaker(() => now());
+  const c = await voiceCall({ speaker, model: ruleConversationalModel(), board: true, timestamps, exchange: true });
+  now = c.clock.now;
+  try {
+    await c.run.childJoined();
+    await waitFor(() => c.session.agentState === "listening" && c.said().length > 0, "opening");
+    speaker.held = true;
+    const stopped = vi.spyOn(speaker, "clearBuffer");
+    const stream = c.tts.stream.bind(c.tts);
+    const active = new HeldSentence(c.tts);
+    const ahead = new HeldSentence(c.tts);
+    vi.spyOn(c.tts, "stream").mockImplementationOnce(stream).mockReturnValueOnce(active).mockReturnValueOnce(ahead);
+    await c.childSays("Show me how to regroup.");
+    expect(await active.requested.promise).toBe("Trade 1 ten for 10 ones.");
+    expect(await ahead.requested.promise).toBe("Now we have 4 tens and 12 ones, which is still 52.");
+    await waitFor(() => speaker.pendingPlayoutSegments > 0, "the first sentence to enter playout");
+    await c.clock.play(40);
+    const [shown, future] = c.call.session.checkedExchange!.turns[0].actions;
+    const oldScope = c.receiver.scope()!;
+    await waitFor(() => c.receiver.snapshot().events.some(e => e.kind === "batch" && e.batchId === shown.batchId), "the first cue");
+    await c.board.settled();
+    expect(c.samples.find(s => s.batchId === shown.batchId)?.source).toBe(timestamps ? "word" : "sentence");
+    const state = voice.AgentSessionEventTypes.UserStateChanged;
+    c.session.emit(state, { type: state, newState: "speaking", oldState: "listening", createdAt: Date.now() });
+    await c.board.settled();
+    expect(c.receiver.staged().map(b => b.batchId)).toContain(future.batchId);
+    expect(stopped).not.toHaveBeenCalled();
+    c.session.emit(state, { type: state, newState: "listening", oldState: "speaking", createdAt: Date.now() });
+    const correction = "I need a second.";
+    expect(c.speech.say(correction)).toBe(true);
+    await Promise.all([active.cancelled.promise, ahead.cancelled.promise]);
+    await waitFor(() => stopped.mock.calls.length > 0, "the SDK to clear playout");
+    await c.board.settled();
+    speaker.finishPlayback();
+    await waitFor(() => c.call.session.turns.some(t => t.speaker === "child" && t.text === correction) &&
+      c.call.session.checkedExchange?.turns[0].playback === "interrupted", "the transcript and playout outcome to settle");
+    expect(c.said()).not.toContain("What changed when we traded a ten?");
+    expect(c.call.session.checkedExchange!.turns[0]).toMatchObject({
+      playback: "interrupted", actions: [{ fate: "shown" }, { fate: "cancelled" }],
+    });
+    expect(c.call.session.done).toEqual([]);
+
+    await c.run.childLeft("dropped");
+    const oldEpoch = c.receiver.epoch();
+    await c.run.childJoined();
+    expect(c.receiver.handle({ type: "release", sessionId: c.id, epoch: oldEpoch, scope: oldScope, batchId: future.batchId }))
+      .toMatchObject({ ok: false, code: "stale_epoch" });
+    const oldTurn = c.call.session.checkedExchange!.turns[0];
+    await c.call.exchangePlayback!(oldTurn.id, "finished");
+    expect(c.call.session.checkedExchange!.turns[0].playback).toBe("interrupted");
+    const log = c.receiver.snapshot().events;
+    expect(log.filter(e => e.kind === "batch" && e.batchId === shown.batchId)).toHaveLength(1);
+    expect(log.some(e => e.kind === "batch" && e.batchId === future.batchId)).toBe(false);
+    expect(c.call.session.assistance.filter(kind => kind === "guided")).toEqual(["guided"]);
+  } finally { speaker.finishPlayback(); }
+});
+
 it("interrupts a regrouping prompt in playout and shows the child's exchange once", async () => {
   let now = () => T0;
   const speaker = new HeldSpeaker(() => now());
@@ -435,7 +539,11 @@ it("interrupts a regrouping prompt in playout and shows the child's exchange onc
     ), "the shown tens while the prompt is playing");
     const target = (await c.calls.view(c.id))!.exchange!;
     expect(stopped).not.toHaveBeenCalled();
-    const attempts = await Promise.all([c.run.exchange(target), c.run.exchange(target)]);
+    const attemptsInFlight = [c.run.exchange(target), c.run.exchange(target)];
+    const state = voice.AgentSessionEventTypes.UserStateChanged;
+    c.session.emit(state, { type: state, newState: "speaking", oldState: "listening", createdAt: Date.now() });
+    c.session.emit(state, { type: state, newState: "listening", oldState: "speaking", createdAt: Date.now() });
+    const attempts = await Promise.all(attemptsInFlight);
     expect(attempts).toContain("accepted");
     expect(stopped).toHaveBeenCalled();
     expect(c.receiver.snapshot().events.filter(e => e.kind === "batch" && JSON.stringify(e.commands).includes("52 = 40 + 12"))).toHaveLength(1);
@@ -449,7 +557,126 @@ it("interrupts a regrouping prompt in playout and shows the child's exchange onc
   } finally { speaker.finishPlayback(); }
 });
 
-it("shows a saved child move after replacing a worker with an unplayed batch", async () => {
+it("accepts an immediate exchange while the shown batch acknowledgement is still in flight", async () => {
+  const releaseReceived = Promise.withResolvers<void>();
+  const releaseAnswer = Promise.withResolvers<void>();
+  let targetBatch = "";
+  let now = () => T0;
+  const speaker = new HeldSpeaker(() => now());
+  const c = await voiceCall({
+    model: ruleConversationalModel(), board: true, exchange: true, speaker,
+    transport: receiver => ({
+      async call(request) {
+        const result = receiver.handle(request);
+        if (request.type === "release" && request.batchId === targetBatch) {
+          receiver.presented(targetBatch);
+          receiver.presented(targetBatch);
+          releaseReceived.resolve();
+          await releaseAnswer.promise;
+        }
+        return result;
+      },
+    }),
+  });
+  now = c.clock.now;
+  try {
+    await c.run.childJoined();
+    await waitFor(() => c.session.agentState === "listening" && c.said().length > 0, "opening");
+    speaker.held = true;
+    await c.childSays("How do I regroup?");
+    const target = (await c.calls.view(c.id))!.exchange!;
+    targetBatch = target.batchId;
+    await waitFor(() => speaker.pendingPlayoutSegments > 0, "the prompt audio to reach the speaker");
+    await c.clock.advance(1);
+    await releaseReceived.promise;
+    const action = c.run.exchange(target);
+    await Promise.resolve();
+    releaseAnswer.resolve();
+    expect(await action).toBe("accepted");
+    expect(await c.run.exchange({ ...target, boardRevision: target.boardRevision + 1 })).toBe("stale");
+    expect(await c.run.exchange(target)).toBe("done");
+    expect(c.receiver.snapshot().events.filter(e => e.kind === "presented" && e.batchId === targetBatch)).toHaveLength(1);
+    expect(c.call.session.checkedExchange?.turns.filter(t => t.childAction)).toHaveLength(1);
+    expect(c.call.session.done).toEqual([]);
+  } finally { releaseAnswer.resolve(); speaker.finishPlayback(); }
+});
+
+it("cuts the prompt before the move is saved and plays the newer spoken reply after the move", async () => {
+  let now = () => T0;
+  const speaker = new HeldSpeaker(() => now());
+  const releasingMove = Promise.withResolvers<void>();
+  const releaseMove = Promise.withResolvers<void>();
+  let moveBatch = "";
+  const c = await voiceCall({
+    speaker, model: ruleConversationalModel(), board: true, timestamps: true, exchange: true,
+    transport: receiver => ({
+      async call(request) {
+        if (request.type === "apply" && JSON.stringify(request.commands).includes("52 = 40 + 12")) moveBatch = request.batchId;
+        if (request.type === "release" && request.batchId === moveBatch) {
+          releasingMove.resolve();
+          await releaseMove.promise;
+        }
+        return receiver.handle(request);
+      },
+    }),
+  });
+  now = c.clock.now;
+  const startedSave = Promise.withResolvers<void>();
+  const releaseSave = Promise.withResolvers<void>();
+  try {
+    await c.run.childJoined();
+    await waitFor(() => c.session.agentState === "listening" && c.said().length > 0, "opening");
+    speaker.held = true;
+    await c.childSays("How do I regroup?");
+    const target = (await c.calls.view(c.id))!.exchange!;
+    await waitFor(() => speaker.pendingPlayoutSegments > 0, "the prompt audio to reach the speaker");
+    await c.clock.play(40);
+    await waitFor(() => c.call.session.checkedExchange!.turns[0].actions[0].fate === "shown", "the prompt's shown batch");
+    const stopped = vi.spyOn(speaker, "clearBuffer");
+    const update = c.store.update.bind(c.store);
+    let held = false;
+    vi.spyOn(c.store, "update").mockImplementation(async (id, revision, change) => {
+      if (!held && change.live?.text.session.checkedExchange?.turns.some(t => t.childAction)) {
+        held = true;
+        startedSave.resolve();
+        await releaseSave.promise;
+      }
+      return update(id, revision, change);
+    });
+    const move = c.run.exchange(target);
+    await startedSave.promise;
+    await waitFor(() => stopped.mock.calls.length > 0, "the prompt audio to stop before the move save returns");
+    expect(c.receiver.snapshot().events.some(e => e.kind === "batch" && JSON.stringify(e.commands).includes("52 = 40 + 12"))).toBe(false);
+    expect(await c.run.exchange(target)).toBe("busy");
+
+    const words = "I need a second.";
+    const heard = Promise.withResolvers<void>();
+    c.session.on(voice.AgentSessionEventTypes.UserInputTranscribed, event => {
+      if (event.isFinal && event.transcript === words) heard.resolve();
+    });
+    expect(c.speech.say(words)).toBe(true);
+    await heard.promise;
+    releaseSave.resolve();
+    await releasingMove.promise;
+    await waitFor(() => c.call.session.turns.some(t => t.speaker === "child" && t.text === words) &&
+      c.call.session.turns.at(-1)?.speaker === "maya", "the newer reply to be accepted while the board is waiting");
+    const reply = spokenMath(c.call.session.turns.at(-1)!.text);
+    const played = vi.spyOn(speaker, "captureFrame");
+    expect(c.said().join(" ")).not.toContain(reply);
+    releaseMove.resolve();
+    expect(await move).toBe("accepted");
+    speaker.finishPlayback();
+    await waitFor(() => c.said().join(" ").includes(reply) && played.mock.calls.length > 0, "the newer reply to reach playout");
+    expect(c.said().join(" ").split(reply)).toHaveLength(2);
+    expect(c.said()).not.toContain("What changed when you traded a ten?");
+    expect(c.receiver.snapshot().events.filter(e => e.kind === "batch" && JSON.stringify(e.commands).includes("52 = 40 + 12"))).toHaveLength(1);
+    expect(await c.run.exchange(target)).toBe("done");
+    expect(c.call.session.checkedExchange!.turns.filter(t => t.childAction)).toHaveLength(1);
+    expect(c.call.session.done).toEqual([]);
+  } finally { releaseSave.resolve(); releaseMove.resolve(); speaker.finishPlayback(); }
+});
+
+it.each([false, true])("shows a saved child move on worker replacement even after a normal close (closed=%s)", async closed => {
   const c = await voiceCall({ model: ruleConversationalModel(), exchange: true });
   await c.board.connect();
   const show = async (id: string, cues: NonNullable<Awaited<ReturnType<typeof c.call.start>>["boardCues"]>) => {
@@ -463,6 +690,7 @@ it("shows a saved child move after replacing a worker with an unplayed batch", a
   await c.board.stage("unplayed-exchange", move);
   const id = move[0].batch.transactionId;
   expect(c.receiver.snapshot().events.some((e) => e.kind === "batch" && e.batchId === id)).toBe(false);
+  if (closed) expect((await c.call.child("I want to stop now.")).ended).toBe(true);
 
   const replacement = await c.calls.openVoice(c.id, { speechToText: "fake", voice: "fake" }, null);
   if (!replacement.ok) throw Error(replacement.error);
@@ -475,8 +703,44 @@ it("shows a saved child move after replacing a worker with an unplayed batch", a
     const events = c.receiver.snapshot().events;
     expect(events.some((e) => e.kind === "cancelled" && e.batchIds.includes(id))).toBe(true);
     expect(events.filter((e) => e.kind === "batch" && e.batchId === id)).toHaveLength(1);
-    expect(await run.exchange(target)).toBe("done");
+    if (closed) {
+      expect(session.say).toHaveBeenCalledOnce();
+      expect(session.say).not.toHaveBeenCalledWith(expect.stringContaining("4 tens and 12 ones"), expect.anything());
+    } else {
+      expect(await run.exchange(target)).toBe("done");
+      expect(session.say).not.toHaveBeenCalled();
+    }
+  } finally { await run.hangUp(); }
+});
+
+it("recovers a checked demonstration saved before its board plan reached the browser", async () => {
+  const c = await voiceCall({ model: ruleConversationalModel(), exchange: true });
+  await c.board.connect();
+  const opening = await c.call.start();
+  await c.board.stage("opening", opening.boardCues!);
+  await c.board.show(c.board.capture("opening")!);
+  const abandoned = await c.call.child("Show me how to regroup.");
+  expect(abandoned.boardCues).toHaveLength(2);
+
+  const replacement = await c.calls.openVoice(c.id, { speechToText: "fake", voice: "fake" }, null);
+  if (!replacement.ok) throw Error(replacement.error);
+  const call = replacement.call;
+  const sender = createBoardSender({ sessionId: c.id, senderId: "replacement", snapshot: call.boardSnapshot, transport: createMemoryTransport(c.receiver) });
+  const board = createBoardSpeech({ sender, now: c.clock.now, observe: snapshot => call.observeBoard(snapshot) });
+  const session = controlSession();
+  const run = new VoiceCallRun(session as unknown as voice.AgentSession, call, { board, timers: c.clock.timers, notify: () => {} });
+  try {
+    await run.childJoined();
+    expect(call.session.checkedExchange?.turns[0]).toMatchObject({
+      playback: "interrupted", actions: [{ fate: "cancelled" }, { fate: "cancelled" }],
+    });
+    expect(call.session.assistance).not.toContain("guided");
+    expect(c.receiver.snapshot().events.filter(e => e.kind === "batch").map(e => e.batchId)).toEqual(opening.boardCues!.map(cue => cue.batch.transactionId));
     expect(session.say).not.toHaveBeenCalled();
+    const retry = await call.child("Show me how to regroup again.");
+    expect(retry.boardCues).toHaveLength(2);
+    expect(retry.boardCues![0].batch.transactionId).not.toBe(abandoned.boardCues![0].batch.transactionId);
+    expect(call.session.done).toEqual([]);
   } finally { await run.hangUp(); }
 });
 

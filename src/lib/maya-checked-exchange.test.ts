@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { applyBatch, boardTargets, createScene, type Batch } from "@/lib/board";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
@@ -14,6 +14,7 @@ import { fakeTalkReviewer } from "@/lib/maya-talk-review";
 
 vi.mock("server-only", () => ({}));
 beforeEach(() => { vi.clearAllMocks(); });
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 const parentId = "11111111-1111-4111-8111-111111111111";
 const childId = "22222222-2222-4222-8222-222222222222";
@@ -38,7 +39,7 @@ function setup(overrides: Partial<CallSeams> = {}) {
     newId: () => `00000000-0000-4000-8000-${String(++id).padStart(12, "0")}`,
     ...overrides,
   };
-  return { calls: mayaCalls(seams), answer, store };
+  return { calls: mayaCalls(seams), answer, store, events: seams.events };
 }
 
 function ok(result: CallResult) {
@@ -114,8 +115,10 @@ it("requires the current lesson, turn, board revision and shown object", async (
 });
 
 it("restores a saved voice action when its worker disconnects before the board confirms it", async () => {
-  const { calls } = setup();
-  const started = ok(await calls.startVoice({ ...input, kind: "family" }));
+  const { calls, events } = setup();
+  const started = ok(await calls.startVoice({ ...input, kind: "family", package: {
+    ...input.package, ref: { source: "workbook", workbookId: "33333333-3333-4333-8333-333333333333", page: 1, question: 1 },
+  } }));
   const open = async () => {
     const opened = await calls.openVoice(started.view.id, { speechToText: "fake", voice: "fake" }, null);
     if (!opened.ok) throw Error(opened.error);
@@ -141,6 +144,10 @@ it("restores a saved voice action when its worker disconnects before the board c
   expect(recovered.pendingExchange).toBeUndefined();
   expect(recovered.session.checkedExchange?.turns.filter((turn) => turn.childAction)).toHaveLength(1);
   expect(recovered.session.done).toEqual([]);
+  await recovered.end({ reason: "child_stopped" });
+  await recovered.end({ reason: "child_stopped" });
+  const logged = await events.read(childId, { from: new Date(clock() - 1).toISOString(), to: new Date(clock() + 1).toISOString() });
+  expect(logged).toMatchObject([{ result: "blank", evidence: { kind: "call", id: started.view.id } }]);
 });
 
 it("delivers one checked exchange through chat and voice with the same words and dependent board actions", async () => {
@@ -162,6 +169,73 @@ it("delivers one checked exchange through chat and voice with the same words and
   checkExchange(spoken.boardCues!.map((cue) => cue.batch));
   expect(spoken.boardCues![0].word).toBeLessThan(spoken.boardCues![1].word);
   expect(answer).not.toHaveBeenCalled();
+});
+
+it("keeps worker playout separate from confirmed board delivery and child progress", async () => {
+  const { calls } = setup();
+  const voice = ok(await calls.startVoice({ ...input, kind: "family" }));
+  const opened = await calls.openVoice(voice.view.id, { speechToText: "fake", voice: "fake" }, null);
+  if (!opened.ok) throw new Error(opened.error);
+  const call = opened.call;
+  await call.start();
+  const first = await call.child("Can you show me how to regroup?");
+  const turnId = first.exchangeTurnId!;
+  await call.exchangePlayback!(turnId, "finished");
+  const turn = call.session.checkedExchange!.turns[0];
+  expect(turn).toMatchObject({ id: turnId, playback: "finished", actions: [{ delivery: "sent" }, { delivery: "sent" }] });
+  expect(turn.actions.every(action => !action.fate && !action.presented)).toBe(true);
+  expect(turn.childAction).toBeUndefined();
+  expect(call.session.done).toEqual([]);
+});
+
+it("plans an immediate spoken retry from the confirmed board after a cut", async () => {
+  const { calls } = setup();
+  const voice = ok(await calls.startVoice({ ...input, kind: "family" }));
+  const opened = await calls.openVoice(voice.view.id, { speechToText: "fake", voice: "fake" }, null);
+  if (!opened.ok) throw new Error(opened.error);
+  const { call } = opened;
+  const opening = (await call.start()).boardCues![0].batch;
+  const first = await call.child("Show me how to regroup.");
+  const [show, trade] = first.boardCues!.map(cue => cue.batch);
+  const reached = Promise.withResolvers<boolean>();
+  const observed = Promise.withResolvers<void>();
+  const retry = call.child("Show me how to regroup again.", undefined, {
+    checkedBoardSettled: () => {
+      reached.resolve(true);
+      return observed.promise;
+    },
+  });
+  try {
+    expect(await Promise.race([reached.promise, retry.then(() => false)])).toBe(true);
+    await call.observeBoard({ events: [
+      ...[opening, show].map(b => ({ kind: "batch" as const, batchId: b.transactionId, commands: [...b.commands] })),
+      { kind: "cancelled", batchIds: [trade.transactionId] },
+    ] });
+  } finally { observed.resolve(); }
+  const answer = await retry;
+  expect(answer.boardCues).toHaveLength(1);
+  expect(answer.boardCues![0].batch.after).toEqual([show.transactionId]);
+  expect(answer.boardCues![0].batch.transactionId).not.toBe(trade.transactionId);
+});
+
+it("does not hold a newer stop request behind the checked board acknowledgement", async () => {
+  const { calls } = setup();
+  const voice = ok(await calls.startVoice({ ...input, kind: "family" }));
+  const opened = await calls.openVoice(voice.view.id, { speechToText: "fake", voice: "fake" }, null);
+  if (!opened.ok) throw new Error(opened.error);
+  const { call } = opened;
+  await call.start();
+  await call.child("Show me how to regroup.");
+  const waiting = Promise.withResolvers<void>();
+  const observed = Promise.withResolvers<void>();
+  const retry = call.child("Show me how to regroup again.", undefined, {
+    checkedBoardSettled: () => { waiting.resolve(); return observed.promise; },
+  });
+  try {
+    await waiting.promise;
+    expect((await call.child("I want to stop now.")).ended).toBe(true);
+    expect((await retry).boardCues ?? []).toEqual([]);
+  } finally { observed.resolve(); }
 });
 
 it("keeps shown work through worker replacement and retries only the cancelled exchange", async () => {

@@ -522,6 +522,7 @@ export interface VoiceSay {
   part?(sentence: string, index: number): void;
   cancel?(fromIndex: number): void;
   end?(): void;
+  checkedBoardSettled?(): Promise<void> | undefined;
   /**
    * After #1072: the turn's one repair starts (a tutor teaching message was refused) and nothing of the turn was said yet.
    * The worker may say its thinking phrase now, with its own choice rule, and returns the phrase's id, or null when it
@@ -571,6 +572,7 @@ export interface VoiceCall {
   observeBoard(snapshot: BoardSnapshot): Promise<void>;
   /** Reports worker playout for a checked turn. A finished handle does not prove the child heard it. */
   exchangePlayback?(turnId: string, playback: "finished" | "interrupted"): Promise<void>;
+  reconcileExchange?(retiredTurns: readonly string[]): Promise<void>;
   /** B1: batches the board core refused at staging (board-speech `refused`): the session counts them as skipped. */
   boardRefused?(batchIds: readonly string[]): void;
   /** `openingSpoken`: the worker speaks the opening itself, so the turn comes back with no say (D-341). */
@@ -579,7 +581,7 @@ export interface VoiceCall {
   prepare(input: { text: string; reason: "interim" }): boolean;
   /** `say` hears this turn's sentences while it runs (VoiceSay), before the save behind it. */
   child(text: string, options?: { uncertain?: boolean; alternatives?: string[] }, say?: VoiceSay): Promise<VoiceTurn>;
-  exchange?(target: ExchangeTarget): Promise<VoiceTurn | null>;
+  exchange?(target: ExchangeTarget, onAccepted?: () => void): Promise<VoiceTurn | null>;
   /** A durable child action whose board change the receiver has not confirmed yet. */
   readonly pendingExchange?: Batch;
   tick(): Promise<VoiceTurn>;
@@ -981,7 +983,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   }
 
   /** A call's text session. Admin test calls have free talk on (D-197), with the model's review, and the tutor core (D-345); chat has free talk off; family calls get the tutor core behind `tutorFamilies`. A resumed call keeps its flags. */
-  function textSession(record: Pick<CallRecord, "id" | "parentId" | "childId"> & { kind: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void, sayHooks?: Pick<TextSessionOptions, "onSayPart" | "onSayCancel" | "onSayEnd" | "onRepairStart" | "modelRepair" | "onPreparation" | "withModelAttempt" | "persist">, spend?: SpendCall, preparing?: Pick<TextSessionOptions, "spend" | "prepareModel" | "prepareHandleId">): TextSession {
+  function textSession(record: Pick<CallRecord, "id" | "parentId" | "childId"> & { kind: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void, sayHooks?: Pick<TextSessionOptions, "onSayPart" | "onSayCancel" | "onSayEnd" | "onRepairStart" | "modelRepair" | "onPreparation" | "withModelAttempt" | "persist" | "checkedBoardSettled">, spend?: SpendCall, preparing?: Pick<TextSessionOptions, "spend" | "prepareModel" | "prepareHandleId">): TextSession {
     return createTextSession({
       onGuidance, ...sayHooks, ...preparing,
       callId: record.id, channel: record.kind === "chat" ? "chat" : undefined, package: pkg,
@@ -1292,6 +1294,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         onSayPart: (sentence, index) => listener?.part?.(sentence, index),
         onSayCancel: (fromIndex) => listener?.cancel?.(fromIndex),
         onSayEnd: () => listener?.end?.(),
+        checkedBoardSettled: () => listener?.checkedBoardSettled?.(),
         // After #1072: the worker's thinking phrase when a repair starts (null: none said).
         onRepairStart: () => listener?.repairing?.() ?? null,
         // A voice call has no time for a second model request: a refused first proposal goes straight to code's line.
@@ -1613,7 +1616,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         get boardSnapshot() { return structuredClone(record.boardHistory?.delivery ?? { events: [] }); },
         get pendingExchange() {
           const saved = record.live?.text;
-          if (inactive() || !saved || saved.session.outcome) return undefined;
+          if (inactive() || !saved) return undefined;
           const action = saved.session.checkedExchange?.turns.find((t) => t.childAction)?.actions[0];
           if (!action || action.fate === "shown") return undefined;
           return batchesOf(saved.board.filter((b) => b.transactionId === action.batchId))[0];
@@ -1664,12 +1667,36 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           later(() => persistExchangeEvidence((s) => s.exchangePlayback(turnId, playback)));
           await queue;
         },
+        async reconcileExchange(retiredTurns) {
+          if (inactive() || !retiredTurns.length) return;
+          later(async () => {
+            if (inactive()) return;
+            const waitingTurns = session.session.checkedExchange?.turns.filter(turn =>
+              retiredTurns.includes(turn.id) && (!turn.playback || (!turn.childAction && turn.actions.some(action => !action.fate)))
+            );
+            if (!waitingTurns?.length) return;
+            const reconcile = (text: TextSession) => {
+              for (const turn of text.session.checkedExchange?.turns ?? []) {
+                if (!waitingTurns.some(waiting => waiting.id === turn.id)) continue;
+                if (!turn.childAction) text.boardFates(turn.actions.filter(a => !a.fate).map(a => ({ batchId: a.batchId, fate: "cancelled" })));
+                text.exchangePlayback(turn.id, "interrupted");
+              }
+            };
+            reconcile(session);
+            await persistExchangeEvidence(reconcile);
+          });
+          await queue;
+        },
         start: (options) => turn(() => session.start(options)),
         child: (text, options, say) => turn(() => session.child(text.trim().slice(0, MAX_CHILD_TEXT), options), text.trim().slice(0, MAX_CHILD_TEXT), say),
-        async exchange(raw) {
+        async exchange(raw, onAccepted) {
           const target = readExchangeTarget(raw);
           if (inactive() || !target || !childExchangeProposal(session.session, target, seams.clock())) return null;
-          const out = await turn(async () => session.exchange(target));
+          const out = await turn(async () => {
+            const accepted = session.exchange(target);
+            if (accepted) onAccepted?.();
+            return accepted;
+          });
           return out.exchangeTurnId || out.ended ? out : null;
         },
         tick: () => turn(() => session.tick(), undefined, undefined, 2),

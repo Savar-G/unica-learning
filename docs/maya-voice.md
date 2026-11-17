@@ -481,6 +481,16 @@ After keys exist, verify these issue criteria in a real call:
 
 For that check, compare the actual speaker output and first visible stroke on Chrome and Safari on an iPad. Include interruption and reconnect cases. Save the worker logs and device observations separately. Report word and sentence results separately. Do not report the local fake timings as real audio results.
 
+### Checked exchange interruption and recovery
+
+For a checked demonstration, cancel the speech scope when LiveKit cuts playout or starts the child's next reply. A raw speaking-state change does not retire that plan. Retiring its scope stops the cue clock, closes current and prefetched synthesis, and cancels staged batches without undoing shown ones.
+
+A checked move can arrive while the browser's release acknowledgement is in flight. Wait for the matching board observation, then validate the lesson, turn, revision and object again. An accepted move cuts the old prompt before the save returns. The move itself is shown only after it is durable. If the child speaks while it is being saved or shown, keep the move and give the newer reply its own speech scope after the move. An immediate spoken request to repeat the checked demonstration waits for the old board scope's fate before it replans. A newer input can interrupt that wait.
+
+A replacement worker resets the board connection and reads its snapshot first. Any unconfirmed drawing from a retired checked turn stays off the board, including one saved by the controller but never staged. A durable child move is different: recover it from the snapshot or show it once, without replaying its follow-up speech. A dispatched plan, a batch the receiver accepted as shown, a browser presentation acknowledgement, and worker playout are separate observations. Worker playout does not establish what a child heard or grant completion of a math step.
+
+The simulated worker tests exercise both cue modes with held playout and pending synthesis, and submit an action while the old prompt is playing and its acknowledgement or save is pending. They do not measure the 300 ms p95 from intentional speech onset to audible stop, the false-stop or lost-speech rates, or when a stroke appears on the device. Those remain release checks under #1147, including #329's audible word cue and sentence fallback.
+
 ### PR #450 review corrections
 
 - R450-1: a cancellation-aware output clock replaces completed-run progress events as the cue source. Continuous fake output and the SDK native audio output release intermediate cues before final drain. The native test uses a local AudioSource and a fake track publication, with no room or provider request.

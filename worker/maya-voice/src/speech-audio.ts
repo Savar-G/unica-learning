@@ -100,6 +100,7 @@ export function boardAudio(
 ): ReadableStream<AudioFrame> {
   const abort = new AbortController();
   let current: ReadableStreamDefaultReader<AudioFrame> | null = null;
+  let waitingForBoard: ReadableStream<AudioFrame> | null = null;
   /** The next sentence's synthesis, started early. It is retired with this stream. */
   let ahead: Promise<ReadableStream<AudioFrame> | null> | null = null;
   const retireAhead = () => {
@@ -107,12 +108,23 @@ export function boardAudio(
     ahead = null;
     void next?.then(frames => frames?.cancel(scope)).catch(() => {});
   };
+  const scoped = board.signal(scope);
+  const stop = () => {
+    abort.abort();
+    retireAhead();
+    return (current ?? waitingForBoard)?.cancel(scope).catch(() => {});
+  };
   return new ReadableStream<AudioFrame>({
     async start(controller) {
+      let closed = false;
+      const close = () => { if (!closed) { closed = true; controller.close(); } };
+      const retired = () => { if (!abort.signal.aborted) { void stop(); close(); } };
+      if (scoped.aborted) return retired();
+      scoped.addEventListener("abort", retired, { once: true });
       const stale = () => {
         if (abort.signal.aborted) return true;
         if (board.owns(scope)) return false;
-        controller.close();
+        close();
         return true;
       };
       /** When each sentence's audio was asked for (for the "voice lead" log line). */
@@ -220,16 +232,21 @@ export function boardAudio(
             void frames?.cancel(scope).catch(() => {});
             return;
           }
-          if (!frames) { await unheard(false); if (!abort.signal.aborted) controller.close(); return; }
+          if (!frames) { await unheard(false); if (!abort.signal.aborted) close(); return; }
           if (!gated) {
             gated = true;
             // The voice has the words already; its audio waits until the plan is on the child's screen. A plan that
             // could not be sent has no audio: the call's own handler ends the call for that failure.
             let failed = false;
-            if (gate) { try { await board.sent(scope); } catch { failed = true; } }
+            if (gate) {
+              waitingForBoard = frames;
+              try { await board.sent(scope); }
+              catch { failed = true; }
+              finally { waitingForBoard = null; }
+            }
             if (failed || stale()) {
               void frames.cancel(scope).catch(() => {});
-              if (failed && !abort.signal.aborted) controller.close();
+              if (failed && !abort.signal.aborted) close();
               return;
             }
           }
@@ -315,7 +332,7 @@ export function boardAudio(
           if (durationMs <= 0) {
             // The sentence was never spoken. Only this stream's current plan is shown and ended.
             await unheard(false);
-            if (!abort.signal.aborted) controller.close();
+            if (!abort.signal.aborted) close();
             return;
           }
           words += speechWords(sentence).length;
@@ -324,21 +341,22 @@ export function boardAudio(
           await board.timing(scope, words, offsetMs, "sentence");
           if (stale()) return;
         }
-        if (!abort.signal.aborted) controller.close();
+        if (!abort.signal.aborted) close();
       } catch (e) {
         if (!abort.signal.aborted) {
           if (board.owns(scope)) {
             // The voice failed (or a release did): the rest of the speech has no audio. A board that cannot show the
             // batches is the call's own failure, reported where the plan's other work is.
             await unheard(true).catch(() => {});
-            controller.error(e);
-          } else controller.close();
+            if (!abort.signal.aborted) controller.error(e);
+          } else close();
         }
       } finally {
         // Every way out, a stale plan or a cut included, retires the sentence made ahead: it is never read.
         retireAhead();
+        scoped.removeEventListener("abort", retired);
       }
     },
-    async cancel() { abort.abort(); retireAhead(); await current?.cancel(scope).catch(() => {}); },
+    async cancel() { await stop(); },
   });
 }

@@ -6,6 +6,7 @@ import { ChatBoard, ChatControls, useDeskChat, type DeskChatState } from "@/comp
 import { boardDraftKey, chatBoardKey, childStrokes, createHistory, drawStroke, encodeHistory, inkLog, mayaWrites, penHolder, saveDraft, takePen, type BoardHistory, type Change, type DraftStore } from "@/lib/board-history";
 import type { ChatReply, ChatView } from "@/lib/maya-chat";
 import { EXCHANGE_OBJECT, type ExchangeTarget } from "@/lib/maya/checked-exchange";
+import { LEASE_SETTLE_MS, OPEN_RETRY_MS, OPEN_TRIES } from "@/lib/board-tab";
 
 const book = "45100000-0000-4000-8000-000000000031";
 const id = "45100000-0000-4000-8000-000000000021";
@@ -30,6 +31,7 @@ const send = async (type: "start" | "child" | "end", text?: string) => {
 const advance = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
 const button = (text: string) => [...host.querySelectorAll("button")].find((b) => b.textContent === text)!;
 beforeEach(() => {
+  vi.clearAllMocks();
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   localStorage.clear(); sessionStorage.clear(); requests.length = 0;
@@ -40,7 +42,7 @@ beforeEach(() => {
   });
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("chat message admission at the public hook", () => {
   it("hides the start button for a held question and keeps reference entry available", async () => {
@@ -197,9 +199,10 @@ describe("#534: the board in a chat", () => {
     const otherHost = document.createElement("div");
     document.body.append(otherHost);
     const other = createRoot(otherHost);
+    const otherButton = (text: string) => [...otherHost.querySelectorAll("button")].find(b => b.textContent === text);
     try {
       await act(async () => root.render(board));
-      await advance(500);
+      await advance(LEASE_SETTLE_MS);
       expect(onBoard.mock.lastCall?.[0].events).toContainEqual(expect.objectContaining({ kind: "maya", batchId: target.batchId }));
       expect(host.textContent).toContain("Exchange one ten");
       const exchange = button("Exchange one ten");
@@ -209,10 +212,16 @@ describe("#534: the board in a chat", () => {
       expect(onExchange).not.toHaveBeenCalled();
       await act(async () => button("Use board").click());
       await act(async () => other.render(board));
-      await advance(500);
+      await advance(OPEN_RETRY_MS * (OPEN_TRIES - 1));
       expect(otherHost.textContent).toContain("Use it here");
       expect(otherHost.textContent).not.toContain("Exchange one ten");
-      await act(async () => button("Exchange one ten").click());
+      const formerControl = button("Exchange one ten");
+      await act(async () => otherButton("Use it here")!.click());
+      await advance(LEASE_SETTLE_MS);
+      expect(button("Exchange one ten")).toBeUndefined();
+      await act(async () => formerControl.click());
+      expect(onExchange).not.toHaveBeenCalled();
+      await act(async () => otherButton("Exchange one ten")!.click());
       expect(onExchange).toHaveBeenCalledExactlyOnceWith(target);
     } finally {
       await act(async () => other.unmount());
@@ -822,4 +831,3 @@ describe("#639: ink stays on the device until the call holds it", () => {
     });
   });
 });
-

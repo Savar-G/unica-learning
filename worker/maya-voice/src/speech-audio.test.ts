@@ -42,6 +42,61 @@ async function setup(word: number) {
  await board.stage('speech',[{word,batch:columns}]);
  return {receiver,board,scope:board.capture("speech")!};
 }
+
+it("cancels current and prefetched synthesis when the board scope is retired", async () => {
+  const { board, scope, receiver } = await setup(1);
+  const prefetched = Promise.withResolvers<void>();
+  const cancelled = [vi.fn(), vi.fn()];
+  const requested: string[] = [];
+  const audio = boardAudio(inputText("First sentence. Second sentence. Third sentence."), async text => {
+    let sentence = "";
+    for await (const part of text) sentence += part;
+    const index = requested.push(sentence) - 1;
+    if (index === 1) prefetched.resolve();
+    return new ReadableStream<AudioFrame>({ cancel: cancelled[index] });
+  }, board, scope);
+  const reader = audio.getReader();
+  try {
+    const next = reader.read();
+    await prefetched.promise;
+    await board.interrupt(scope);
+    await vi.waitFor(() => expect(cancelled.map(fn => fn.mock.calls.length)).toEqual([1, 1]));
+    expect(await next).toEqual({ done: true, value: undefined });
+    expect(requested).toEqual(["First sentence.", "Second sentence."]);
+    expect(receiver.staged()).toHaveLength(0);
+    expect(receiver.snapshot().events.some(e => e.kind === "batch")).toBe(false);
+  } finally { await reader.cancel(); }
+});
+
+it("cancels synthesis without waiting for a pending board-stage acknowledgement", async () => {
+  const receiver = createBoardReceiver({ sessionId: "call" });
+  const answer = Promise.withResolvers<void>();
+  const sender = createBoardSender({ sessionId: "call", senderId: "worker", transport: {
+    async call(request) {
+      const result = receiver.handle(request);
+      if (request.type === "apply") await answer.promise;
+      return result;
+    },
+  } });
+  const board = createBoardSpeech({ sender, now: () => 0 });
+  await board.connect();
+  const staging = board.stage("speech", [{ word: 1, batch: columns }]);
+  const scope = board.capture("speech")!;
+  const cancelled = vi.fn();
+  const frames = new ReadableStream<AudioFrame>({ cancel: cancelled });
+  const waiting = Promise.withResolvers<void>();
+  const sent = board.sent.bind(board);
+  vi.spyOn(board, "sent").mockImplementation(owner => { waiting.resolve(); return sent(owner); });
+  const audio = boardAudio(inputText("First sentence."), async () => frames, board, scope);
+  const reader = audio.getReader();
+  try {
+    await waiting.promise;
+    const next = reader.read();
+    await board.interrupt(scope);
+    expect(await next).toEqual({ done: true, value: undefined });
+    await vi.waitFor(() => expect(cancelled).toHaveBeenCalledOnce());
+  } finally { answer.resolve(); await staging; await reader.cancel(); }
+});
 // R450-4 asked that empty TTS cancel its plan. Call 01f456de showed the cost: Maya's saved board holds the batch, so the
 // next plan built on it was refused and the call ended. Empty TTS now shows the plan at once and ends it: no cue time
 // releases anything later, and nothing stays staged.
