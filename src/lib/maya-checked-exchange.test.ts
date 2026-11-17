@@ -117,7 +117,7 @@ it("requires the current lesson, turn, board revision and shown object", async (
 it("restores a saved voice action when its worker disconnects before the board confirms it", async () => {
   const { calls, events } = setup();
   const started = ok(await calls.startVoice({ ...input, kind: "family", package: {
-    ...input.package, ref: { source: "workbook", workbookId: "33333333-3333-4333-8333-333333333333", page: 1, question: 1 },
+    ...SAMPLE_PACKAGES["subtract-52-28"], ref: { source: "workbook", workbookId: "33333333-3333-4333-8333-333333333333", page: 1, question: 1 },
   } }));
   const open = async () => {
     const opened = await calls.openVoice(started.view.id, { speechToText: "fake", voice: "fake" }, null);
