@@ -178,5 +178,16 @@
     "pull_request": "https://github.com/Savar-G/unica-learning/pull/946",
     "integration": "Integrated remote main 0569b755e44f0a7502c1bc19f12949e53f8000c3 for the authorized merge. Retained both reminder jobs, both pricing notes, current sitemap dates and onboarding/referral disclosures. Assigned referral D-344. Local main remains 5b09bcf91ea3328106e61d2d9c0aab6a147662d3.",
     "live_configuration": "Savar authorized the update. Aside saved and freshly verified 19 live webhook events, retaining the original seven. Existing site-key permissions cover the required resources and Invoice Payments. No key or signing secret was rotated. The sensitive deployed key binding was not directly read."
+  },
+  "ai_usage_panel": {
+    "route": "direct",
+    "phase": "build",
+    "selected_option": "B",
+    "contract": ".design/experiments/r1133-ai-cost-panel/contract.md",
+    "manifest": ".design/experiments/r1133-ai-cost-panel/manifest.json",
+    "gates": {
+      "direction": "approved by Savar",
+      "ship": "pending checks and review"
+    }
   }
 }

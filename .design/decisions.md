@@ -370,3 +370,8 @@ Savar approved all five wordings of the pattern length repair in `docs/maya-wave
 ### 2026-11-13: remaining comparison wording approved
 
 Savar approved the 75 new rendered comparison lines in `docs/maya-wave-lines.md`, using fixed checked wording for the 11 new comparison questions. The independent review on `30ec229c` passed all 75 lines and 111 public checks. The eight fraction questions reuse approved circle prompts and paper actions. The five shortened pattern-why wordings remain approved. This copy approval changes no practice, CI, production or family-release gate.
+
+
+### 2026-11-16: AI usage tabbed report selected
+
+Savar selected option B for AI usage and rejected the standalone prototype styling. Build the existing admin route with its current frame, Geist type, mono labels, warm tokens and shared components. Keep the main numbers first and place Features, Models, API keys, Families and Records in separate reports. Keep source notes and technical records closed. The implementation contract is .design/experiments/r1133-ai-cost-panel/contract.md.

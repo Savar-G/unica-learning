@@ -58,7 +58,7 @@ it("enforces the existing admin gate before provider and database reads", async 
   expect(f.receipts).not.toHaveBeenCalled();
 });
 it("uses the app period for receipts even when an old independent receipt filter is present", async () => {
-  const html = renderToStaticMarkup(await Page(props({ range: "7d", providerRange: "month" })));
+  const html = renderToStaticMarkup(await Page(props({ range: "7d", providerRange: "month", report: "records" })));
   expect(f.receipts).toHaveBeenCalledWith(await f.admin.mock.results[0].value, expect.objectContaining({ range: "7d", from: new Date("2026-11-10T07:00:00Z") }));
   expect(f.rpc).toHaveBeenCalledWith("admin_ai_usage", expect.objectContaining({ p_with_tests: true, p_from: "2026-11-10T07:00:00.000Z" }));
   expect(html).not.toContain("providerRange=");
@@ -67,7 +67,7 @@ it("uses the app period for receipts even when an old independent receipt filter
 });
 it("keeps workspace and app totals visible when the provider receipt read fails", async () => {
   f.receipts.mockRejectedValueOnce(new Error("private-receipt-error"));
-  const html = renderToStaticMarkup(await Page(props()));
+  const html = renderToStaticMarkup(await Page(props({ report: "records" })));
   expect(html).toContain("USD 56.741652"); expect(html).toContain("USD 2.92");
   expect(html).toContain("Provider receipts are unavailable. The cost is unknown.");
   expect(html).not.toContain("private-receipt-error");
@@ -84,7 +84,7 @@ it("keeps app records and receipt reads visible when a workspace request fails",
       unmatched_known_cost_usd: 0.037, unmatched_unknown_cost_receipts: 0, first_receipt_at: null, last_receipt_at: null, last_received_at: null },
     models: [], keys: [], features: [], children: [], omitted_groups: 0,
   });
-  const html = renderToStaticMarkup(await Page(props()));
+  const html = renderToStaticMarkup(await Page(props({ report: "records" })));
   expect(html).toContain("Unica workspace usage is unavailable"); expect(html).toContain("USD 2.92");
   expect(f.receipts).toHaveBeenCalledTimes(1);
   expect(html).toContain("USD 0.037");
@@ -106,4 +106,15 @@ it("includes each test-family child and its feature/model details in the reused 
   const html = renderToStaticMarkup(await Children(props()));
   for (const text of ["Test child", "Test parent", "maya_review", "review-model", "test-family"]) expect(html).toContain(text);
   expect(f.showTests).not.toHaveBeenCalled();
+});
+
+
+it("uses a safe report selection without changing any data scope", async () => {
+  for (const report of ["features", "models", "keys", "families", "records", "untrusted"]) {
+    const html = renderToStaticMarkup(await Page(props({ report, range: "year" })));
+    const label = report === "untrusted" ? "Features" : ({ features: "Features", models: "Models", keys: "API keys", families: "Families", records: "Records" } as Record<string, string>)[report];
+    expect(html).toMatch(new RegExp(`aria-current="page"[^>]*>${label}`));
+    expect(f.rpc).toHaveBeenLastCalledWith("admin_ai_usage", expect.objectContaining({ p_with_tests: true }));
+    expect(html).toContain("range=year&amp;report=");
+  }
 });
