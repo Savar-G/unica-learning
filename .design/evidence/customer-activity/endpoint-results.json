@@ -1,0 +1,33 @@
+{
+  "scope": "Marked synthetic family only; actual local routes and hosted writer.",
+  "results": [
+    {
+      "name": "rejected",
+      "status": 403
+    },
+    {
+      "name": "missing",
+      "status": 403
+    },
+    {
+      "name": "granted",
+      "status": 204
+    },
+    {
+      "name": "retry",
+      "status": 204
+    },
+    {
+      "name": "foreign-child",
+      "status": 403
+    },
+    {
+      "name": "forged-completion",
+      "status": 400
+    },
+    {
+      "name": "parent-note-refused",
+      "status": 404
+    }
+  ]
+}

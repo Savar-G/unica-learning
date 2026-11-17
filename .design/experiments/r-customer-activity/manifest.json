@@ -1,0 +1,16 @@
+{
+  "route": "direct",
+  "job_kind": "improve",
+  "surface": "product",
+  "constraint_mode": "existing-system",
+  "contract": "contract.md",
+  "status": "handoff",
+  "browser_review": "passed on the MacBook at 1440 and 390 px",
+  "evidence": [
+    "../../evidence/customer-activity/family-desktop.png",
+    "../../evidence/customer-activity/family-history.png",
+    "../../evidence/customer-activity/family-phone.png"
+  ],
+  "review": "../../reviews/customer-activity-final-2026-11-16.md",
+  "release": "Ready for PR; merge remains with Savar"
+}

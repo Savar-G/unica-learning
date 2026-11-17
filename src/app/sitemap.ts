@@ -21,7 +21,7 @@ const PATHS: { path: string; updated?: string }[] = [
   { path: "/curriculum", updated: "2026-11-14" },
   { path: "/sample-report", updated: "2026-11-11" },
   { path: "/contact", updated: "2026-10-18" },
-  { path: "/privacy", updated: "2026-11-15" },
+  { path: "/privacy", updated: "2026-11-16" },
   { path: "/terms", updated: "2026-11-13" },
   { path: "/resources", updated: newest(RESOURCES.map((r) => r.meta.updated)) },
   ...RESOURCES.map((r) => ({ path: resourcePath(r.meta.slug), updated: r.meta.updated })),

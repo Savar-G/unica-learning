@@ -3,7 +3,7 @@
 // labels and the grouping changed (emails and the analytics filter link to the old addresses).
 
 export type AdminNavKey =
-  | "home" | "health" | "families" | "tests" | "feedback" | "production" | "delivery" | "marking" | "calls"
+  | "home" | "health" | "customer-activity" | "families" | "tests" | "feedback" | "production" | "delivery" | "marking" | "calls"
   | "traffic" | "flyers" | "emails" | "templates" | "skillmap" | "reviews" | "ai" | "preview" | "budget" | "export";
 
 export interface AdminNavItem {
@@ -28,6 +28,7 @@ export const ADMIN_NAV: readonly AdminNavEntry[] = [
   { key: "health", label: "What to fix", href: "/admin/health" },
   { folder: "Families", items: [
     { key: "families", label: "Families", href: "/admin/parents" },
+    { key: "customer-activity", label: "Customer activity", href: "/admin/customer-activity" },
     { key: "tests", label: "Tests", href: "/admin/tests" },
     { key: "feedback", label: "Feedback", href: "/admin/feedback" },
   ] },
@@ -71,6 +72,7 @@ const SEGMENT: Record<string, AdminNavKey> = {
   activity: "home",
   health: "health",
   parents: "families",
+  "customer-activity": "customer-activity",
   children: "families",
   "maya-chat": "families",
   tests: "tests",

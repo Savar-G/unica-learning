@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { AdminFrame } from "@/components/admin-frame";
 import { ActivityView } from "@/components/admin-activity";
 import { FamilyDrawer } from "@/components/admin-family";
@@ -14,7 +15,7 @@ export default async function AdminActivity({ searchParams }: PageProps<"/admin/
   const { who, d, progress, query, demo } = await loadDashboard(await searchParams);
   const ctx = { path: PATH, query, demo };
   return (
-    <AdminFrame email={who} title="Activity" lead="Everything families did, day by day, newest first." testNote={d.tests.shown && d.tests.count > 0}>
+    <AdminFrame email={who} title="Activity" actions={<Link href="/admin/customer-activity" className="btn ghost adm-btn">Customer activity and progress</Link>} lead="Everything families did, day by day, newest first." testNote={d.tests.shown && d.tests.count > 0}>
       <ActivityView d={d} ctx={ctx} />
       {query.family && <FamilyDrawer ctx={ctx} d={d} id={query.family} progress={progress} />}
     </AdminFrame>

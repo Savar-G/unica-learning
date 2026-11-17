@@ -1189,6 +1189,82 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_activity: {
+        Row: {
+          actor_id: string
+          child_id: string | null
+          created_at: string
+          event: string
+          id: string
+          note: string | null
+          page: string | null
+          parent_id: string
+          request_id: string
+          workbook_id: string | null
+        }
+        Insert: {
+          actor_id: string
+          child_id?: string | null
+          created_at?: string
+          event: string
+          id?: string
+          note?: string | null
+          page?: string | null
+          parent_id: string
+          request_id: string
+          workbook_id?: string | null
+        }
+        Update: {
+          actor_id?: string
+          child_id?: string | null
+          created_at?: string
+          event?: string
+          id?: string
+          note?: string | null
+          page?: string | null
+          parent_id?: string
+          request_id?: string
+          workbook_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_activity_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_activity_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_activity_workbook_id_fkey"
+            columns: ["workbook_id"]
+            isOneToOne: false
+            referencedRelation: "workbooks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_activity_coverage: {
+        Row: {
+          available_at: string
+          singleton: boolean
+        }
+        Insert: {
+          available_at?: string
+          singleton?: boolean
+        }
+        Update: {
+          available_at?: string
+          singleton?: boolean
+        }
+        Relationships: []
+      }
       email_copies: {
         Row: {
           attachments: Json | null
@@ -8505,7 +8581,30 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      customer_activity_history: {
+        Row: {
+          actor: string | null
+          actor_id: string | null
+          at: string | null
+          child_id: string | null
+          href: string | null
+          key: string | null
+          label: string | null
+          note: string | null
+          parent_id: string | null
+          type: string | null
+          workbook_id: string | null
+        }
+        Relationships: []
+      }
+      customer_meaningful_work: {
+        Row: {
+          at: string | null
+          child_id: string | null
+          parent_id: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       _admit_workbook_scan_receipt: {
@@ -8750,6 +8849,50 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      admin_customer_book: {
+        Args: {
+          p_book: string
+          p_child?: string
+          p_parent?: string
+          p_tests?: boolean
+        }
+        Returns: Json
+      }
+      admin_customer_children: {
+        Args: {
+          p_after?: string
+          p_attention?: string
+          p_book?: string
+          p_books_before?: number
+          p_child?: string
+          p_from?: string
+          p_parent?: string
+          p_search?: string
+          p_tests?: boolean
+          p_to?: string
+        }
+        Returns: Json
+      }
+      admin_customer_history: {
+        Args: {
+          p_actor?: string
+          p_after_at?: string
+          p_after_key?: string
+          p_book?: string
+          p_child?: string
+          p_from?: string
+          p_parent?: string
+          p_search?: string
+          p_tests?: boolean
+          p_to?: string
+          p_type?: string
+        }
+        Returns: Json
+      }
+      admin_customer_metrics: {
+        Args: { p_from: string; p_to: string }
+        Returns: Json
       }
       admin_families_at_risk_v1: {
         Args: { p_with_tests?: boolean }
@@ -10390,6 +10533,7 @@ export type Database = {
         }
         Returns: Json
       }
+      purge_customer_activity: { Args: never; Returns: number }
       queue_workbook_edit: {
         Args: {
           p_action: string
@@ -10456,6 +10600,23 @@ export type Database = {
           p_session_created_at: string
         }
         Returns: Json
+      }
+      record_customer_activity: {
+        Args: {
+          p_actor: string
+          p_book: string
+          p_child: string
+          p_event: string
+          p_note?: string
+          p_page: string
+          p_parent: string
+          p_request: string
+        }
+        Returns: string
+      }
+      record_customer_plan_actor: {
+        Args: { p_actor: string; p_card: string; p_generation: number }
+        Returns: string
       }
       record_maya_wordings: {
         Args: { p_child: string; p_heard: Json; p_max: number }

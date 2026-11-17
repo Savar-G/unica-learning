@@ -21,12 +21,14 @@ export default async function MayaCallsPage({ searchParams }: PageProps<"/admin/
   const admin = await requireAdmin();
   const query = await searchParams;
   const { cursor, workbook, page, question } = query;
+  const child = typeof query.child === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(query.child) ? query.child : undefined;
+  if (query.child && !child) return <AdminFrame email={admin.email} title="Calls"><p role="alert">Invalid child filter.</p></AdminFrame>;
   const detail = typeof workbook === "string" ? await getWorkbook(admin, workbook) : null;
   const view = await loadTestFamilies(admin);
   const now = new Date();
   const [children, calls, stats] = await Promise.all([
     demoChildren(admin),
-    listCalls(admin, 50, typeof cursor === "string" ? cursor : undefined, view.hidden),
+    listCalls(admin, 50, typeof cursor === "string" ? cursor : undefined, view.hidden, child),
     callStats(admin, new Date(now.getTime() - WEEK_DAYS * 86_400_000), view.ids),
   ]);
   const week = callSummary(stats.rows, now, view.isTest, WEEK_DAYS);
@@ -52,7 +54,8 @@ export default async function MayaCallsPage({ searchParams }: PageProps<"/admin/
       ]} />
 
       <SectionHead id="mc-list" title="Every call" line={<>Safety calls come first, the most urgent first. Calls within each group are newest first. Test calls do not use the child&apos;s minutes.{!view.show && " Test calls are calls of test families, so they are hidden. Turn on Show test families, at the bottom of the menu, to see them."}</>} />
-      <MayaCallList calls={calls.calls} older={calls.older} newer={calls.newer} testParents={view.show ? view.ids : []} />
+      {child && <p className="adm-note">The call list shows only the selected child. The weekly totals cover all real families.</p>}
+      <MayaCallList calls={calls.calls} older={calls.older} newer={calls.newer} testParents={view.show ? view.ids : []} child={child} />
 
       <section className="mc-try" id="try-maya" aria-labelledby="try-maya-title">
         <SectionHead id="try-maya-title" title="Try Maya" line="Try Maya, the Unica Teaching Assistant, on a real question from a test child. Only test families can be used: no minutes are counted and no parents are emailed." />

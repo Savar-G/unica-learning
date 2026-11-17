@@ -1,17 +1,19 @@
 import Link from "next/link";
+import { CustomerActivityPanel } from "@/components/admin-customer-activity";
+import { customerFilters } from "@/lib/customer-activity-server";
 import { notFound } from "next/navigation";
 import { isUuid } from "@/lib/assessment-store";
 import { familyDashboardRows, familyProduction, getParent, requireAdmin, testAccountState } from "@/lib/admin-store";
 import { ADMIN_PATH, when } from "@/lib/admin-view";
 import { buildDashboard } from "@/lib/admin-dashboard";
 import { buildBooks } from "@/lib/admin-production";
-import { childPlan, familyJourney, familyNextSteps, familyTimeline, latestTest } from "@/lib/admin-family-page";
+import { childPlan, familyJourney, familyNextSteps, latestTest } from "@/lib/admin-family-page";
 import { workbookRunner } from "@/lib/workbook-ai";
 import { AdminFrame } from "@/components/admin-frame";
 import { TestTag, TestsTable } from "@/components/admin";
 import { CardsTable, EmailTable, WaitlistTable } from "@/components/admin-records";
 import { goalFacts } from "@/lib/child-goals";
-import { ChildCard, FamilyHead, FamilyTimeline, SectionHead } from "@/components/admin-family-page";
+import { ChildCard, FamilyHead, SectionHead } from "@/components/admin-family-page";
 import { DeleteFamily } from "@/components/delete-family";
 import { TestAccount } from "@/components/test-account";
 import { ChatFamily } from "@/components/chat-family";
@@ -26,7 +28,7 @@ const CHAT_GRADE = 3;
 // the contact), one card per child (latest test, current workbook, plan, Maya chat), the family's timeline, the tables
 // still worth comparing, then the team's actions with the deletion in its own danger area. A detail page: test families
 // always show here.
-export default async function ParentPage({ params }: PageProps<"/admin/parents/[id]">) {
+export default async function ParentPage({ params, searchParams }: PageProps<"/admin/parents/[id]">) {
   const admin = await requireAdmin();
   const id = (await params).id;
   // the family's stage and payment, the same way the dashboard works them out (D-099), from this family's rows only
@@ -51,11 +53,14 @@ export default async function ParentPage({ params }: PageProps<"/admin/parents/[
   const runner = workbookRunner();
   const source = Object.entries(p.source).map(([k, v]) => `${k}: ${v}`).join(", ");
   const people = <T extends { child_id: string }>(r: T) => ({ ...r, parent: p, child: family.children.find((c) => c.id === r.child_id) ?? null });
-  const timeline = f ? familyTimeline(f) : [];
+  let activityFilters;
+  try { activityFilters = customerFilters({ ...await searchParams, family: id }, now.getTime()); }
+  catch { activityFilters = customerFilters({ family: id }, now.getTime()); }
   const kids = [...family.children].sort((a, b) => a.created_at.localeCompare(b.created_at));
 
   return <AdminFrame email={admin.email} title={<>{p.name}<TestTag test={isTest} /></>} lead="Where this family is, what to do next, and everything that happened."
     actions={<>
+      <Link className="btn ghost adm-btn" href={`${ADMIN_PATH}/customer-activity?family=${p.id}`} prefetch={false}>Customer activity and progress</Link>
       <Link className="btn ghost adm-btn" href={`${ADMIN_PATH}?family=${p.id}`} prefetch={false}>Open on Home</Link>
       <Link className="btn ghost adm-btn" href={`${ADMIN_PATH}/activity?family=${p.id}`} prefetch={false}>Open in the activity log</Link>
     </>}>
@@ -80,9 +85,8 @@ export default async function ParentPage({ params }: PageProps<"/admin/parents/[
       </div>}
     </section>
 
-    <section className="rec-sec" aria-labelledby="rec-timeline">
-      <SectionHead id="rec-timeline" title="Timeline" count={timeline.length} hint="Signup, tests, payment steps and emails, newest first. Pacific time." />
-      <FamilyTimeline items={timeline} now={now} />
+    <section className="rec-sec" aria-label="Activity and progress">
+      <CustomerActivityPanel admin={admin} filters={activityFilters} tests={true} embedded path={`${ADMIN_PATH}/parents/${p.id}`} now={now.getTime()} />
     </section>
 
     <section className="rec-sec" aria-labelledby="tests">

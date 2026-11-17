@@ -189,5 +189,31 @@
       "direction": "approved by Savar",
       "ship": "pending checks and review"
     }
+  },
+  "customer_activity": {
+    "route": "direct",
+    "job_kind": "improve",
+    "surface": "product",
+    "constraint_mode": "existing-system",
+    "phase": "handoff",
+    "contract": ".design/experiments/r-customer-activity/contract.md",
+    "manifest": ".design/experiments/r-customer-activity/manifest.json",
+    "gates": {
+      "contract": "skipped by direct route",
+      "direction": "existing admin system and user-approved scope",
+      "ship": "pending Savar merge"
+    },
+    "hosted_migration": "20261117045730 customer_activity",
+    "review": "docs/customer-activity-review.md",
+    "latest_evidence": [
+      ".design/evidence/customer-activity/family-desktop.png",
+      ".design/evidence/customer-activity/family-history.png",
+      ".design/evidence/customer-activity/family-phone.png",
+      ".design/evidence/customer-activity/endpoint-results.json",
+      ".design/evidence/customer-activity/cleanup-results.json"
+    ],
+    "verification": "After the final one-line fix: 968 files and 30,479 tests passed, 36 tests skipped; source lint and production build passed. Prior app/voice type checks, 362 voice tests, local SQL, hosted security and local browser checks passed. Synthetic data removed; temporary admin session revoked.",
+    "latest_review": ".design/reviews/customer-activity-final-2026-11-16.md",
+    "review_result": "One remaining P2 book-dropdown edge case was fixed by the parent with a binding regression test. No other concrete code issue or visible design blocker. Independent design score 76/100; lower-page image coverage is limited."
   }
 }

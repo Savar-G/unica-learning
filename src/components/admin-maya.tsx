@@ -175,9 +175,14 @@ export function MayaPicker({ children, model, voice }: { children: DemoChild[]; 
   );
 }
 
-function CallPages({ older, newer }: { older?: string | null; newer?: string | null }) {
+function CallPages({ older, newer, child }: { older?: string | null; newer?: string | null; child?: string }) {
   if (!older && !newer) return null;
-  const href = (cursor: string) => cursor === "start" ? `${ADMIN_PATH}/maya` : `${ADMIN_PATH}/maya?cursor=${encodeURIComponent(cursor)}`;
+  const href = (cursor: string) => {
+    const query = new URLSearchParams();
+    if (cursor !== "start") query.set("cursor", cursor);
+    if (child) query.set("child", child);
+    return `${ADMIN_PATH}/maya${query.size ? "?" + query : ""}`;
+  };
   return <nav className="mc-pages" aria-label="Call pages">
     {newer && <Link className="btn sm ghost adm-btn" href={href(newer)}>Newer calls</Link>}
     {older && <Link className="btn sm ghost adm-btn" href={href(older)}>Older calls</Link>}
@@ -185,7 +190,7 @@ function CallPages({ older, newer }: { older?: string | null; newer?: string | n
 }
 
 /** `testParents`: the test families, whose calls are tagged (only while "Show test families" is on). */
-export function MayaCallList({ calls, older, newer, testParents = [] }: { calls: CallListRow[]; older?: string | null; newer?: string | null; testParents?: string[] }) {
+export function MayaCallList({ calls, older, newer, testParents = [], child }: { calls: CallListRow[]; older?: string | null; newer?: string | null; testParents?: string[]; child?: string }) {
   return (
     <>
     {calls.length === 0 ? <Empty>No calls on this page. A call shows here when a child chats with Maya or the team tries her.</Empty> :
@@ -219,7 +224,7 @@ export function MayaCallList({ calls, older, newer, testParents = [] }: { calls:
         </tbody>
       </table>
     </div>}
-    <CallPages older={older} newer={newer} />
+    <CallPages older={older} newer={newer} child={child} />
     </>
   );
 }
