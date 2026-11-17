@@ -8,6 +8,7 @@ export const DATABASE_CHECKS: readonly { table: string; name: string; definition
   {"table":"ad_visits","name":"ad_visits_utm_source_check","definition":"CHECK (((utm_source IS NULL) OR (((char_length(utm_source) >= 1) AND (char_length(utm_source) <= 100)) AND (utm_source !~ '[[:cntrl:]]'::text))))"},
   {"table":"admin_users","name":"admin_users_email_check","definition":"CHECK (((char_length(email) <= 200) AND (email = lower(email))))"},
   {"table":"admin_users","name":"admin_users_name_check","definition":"CHECK (((char_length(name) >= 1) AND (char_length(name) <= 60)))"},
+  {"table":"ai_cost_history_rows","name":"ai_cost_history_rows_evidence_check","definition":"CHECK (ai_history_valid_row(evidence))"},
   {"table":"ai_usage_events","name":"ai_usage_events_calls_check","definition":"CHECK (((calls >= 1) AND (calls <= 1000)))"},
   {"table":"ai_usage_events","name":"ai_usage_events_check","definition":"CHECK (((child_id IS NULL) OR (parent_id IS NOT NULL)))"},
   {"table":"ai_usage_events","name":"ai_usage_events_check1","definition":"CHECK (((source_kind IS NULL) = (source_id IS NULL)))"},

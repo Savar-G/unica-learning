@@ -208,3 +208,41 @@ changed-file lint and the disposable local SQL probe. The complete private CSV d
 run also passes with 20,281 rows and no database requests. No private source value is
 stored in this document. Final settlement, hosted checks, generated schema files,
 the full gate, browser checks, actual import and release remain pending.
+
+## Hosted integration and import
+
+Final independent settlement passed Standards and Spec at `37327a99e`, with zero
+remaining P1/P2 findings. Root applied `ai_cost_history` as live version
+`20261117034712`; its local file is `20261117030145_ai_cost_history.sql`.
+Generated types and all 697 live checks are committed with this integration.
+The state-list tests pass.
+
+Hosted rollback probes passed effective role grants, RLS, empty search paths,
+credential refusal, atomic conflicts, hidden partial imports, exact retries,
+completion, overlapping exports, append-only refusal and unchanged normal totals.
+A richer canonical receipt for a synthetic CSV generation remained writable.
+Zero synthetic rows, manifests, completions and receipts remained after rollback.
+Six concurrent HTTP retries against the completed actual export also passed.
+Pending-batch versus finalization races were proved locally, not on the hosted
+platform. The first controller probes had a wrong legacy column and an ambiguous
+local variable; they failed before evidence writes. Corrected probes passed.
+
+The complete private package imported successfully: 20,281 unique generations.
+Hosted verification confirms source and retained-row hashes, 19 model groups,
+seven key-label groups, and complete group row counts. It finds 605 exact current
+app matches and 574 child matches. Unknown ownership remains unknown. App, all
+four legacy-ledger and canonical counts and sums stayed unchanged. Private source
+data, owner IDs, generation IDs and credentials are absent from this repository.
+
+The small CSV/analytics difference remains labeled and unadjusted. Savar directed
+no further investigation of that difference. Original row time zones and capture
+time remain unknown. No classifier, paid call, product switch or worker deploy ran.
+
+Full source lint and the production build passed. Full unit tests are running.
+Authenticated local Records rendering, native pointer/keyboard disclosure, real
+Geist styles, 390 px no horizontal overflow and export/date links passed. A cold
+dev render showed the isolated unavailable state; the warm render loaded the
+export in HTTP 200 with 373,315 bytes in 1,566 ms. The independent admin HTTP read
+returned 200 with 73,242 bytes in 1,996 ms and passed response validation. No read
+deadline was widened. Final browser selection checks, full tests, CI and the web
+release remain pending. Production web is unchanged.

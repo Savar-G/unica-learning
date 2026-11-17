@@ -97,6 +97,82 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_cost_history_completions: {
+        Row: {
+          completed_at: string
+          export_id: string
+        }
+        Insert: {
+          completed_at?: string
+          export_id: string
+        }
+        Update: {
+          completed_at?: string
+          export_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_cost_history_completions_export_id_fkey"
+            columns: ["export_id"]
+            isOneToOne: true
+            referencedRelation: "ai_cost_history_manifests"
+            referencedColumns: ["export_id"]
+          },
+        ]
+      }
+      ai_cost_history_manifests: {
+        Row: {
+          export_id: string
+          manifest: Json
+          registered_at: string
+        }
+        Insert: {
+          export_id: string
+          manifest: Json
+          registered_at?: string
+        }
+        Update: {
+          export_id?: string
+          manifest?: Json
+          registered_at?: string
+        }
+        Relationships: []
+      }
+      ai_cost_history_rows: {
+        Row: {
+          cost_usd: number | null
+          evidence: Json
+          export_id: string
+          generation_id: string | null
+          row_number: number
+          source_row_number: number | null
+        }
+        Insert: {
+          cost_usd?: number | null
+          evidence: Json
+          export_id: string
+          generation_id?: string | null
+          row_number?: number
+          source_row_number?: number | null
+        }
+        Update: {
+          cost_usd?: number | null
+          evidence?: Json
+          export_id?: string
+          generation_id?: string | null
+          row_number?: number
+          source_row_number?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_cost_history_rows_export_id_fkey"
+            columns: ["export_id"]
+            isOneToOne: false
+            referencedRelation: "ai_cost_history_manifests"
+            referencedColumns: ["export_id"]
+          },
+        ]
+      }
       ai_usage_events: {
         Row: {
           calls: number
@@ -8563,6 +8639,7 @@ export type Database = {
         Args: { p_parent: string }
         Returns: boolean
       }
+      admin_ai_cost_history: { Args: { p_export_id?: string }; Returns: Json }
       admin_ai_usage: {
         Args: {
           p_cad_per_usd?: number
@@ -9116,6 +9193,8 @@ export type Database = {
         Args: { p: string }
         Returns: undefined
       }
+      ai_history_row_line: { Args: { j: Json }; Returns: string }
+      ai_history_valid_row: { Args: { j: Json }; Returns: boolean }
       append_maya_call_connection: {
         Args: { p_call: string; p_kind: string; p_revision: number }
         Returns: string
@@ -9168,6 +9247,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      begin_ai_cost_history: { Args: { p_manifest: Json }; Returns: undefined }
       begin_booking_signup: { Args: { payload: Json }; Returns: boolean }
       begin_family_card_operation: {
         Args: { p: string; token: string }
@@ -9867,6 +9947,10 @@ export type Database = {
       }
       family_retention_cards: { Args: { p: string }; Returns: Json }
       family_retention_due: { Args: { p: string }; Returns: boolean }
+      finalize_ai_cost_history: {
+        Args: { p_export_id: string }
+        Returns: boolean
+      }
       finish_booking_signup: {
         Args: { booking_ref: string; customer: string }
         Returns: boolean
@@ -10070,6 +10154,10 @@ export type Database = {
           p_width: number
         }
         Returns: string
+      }
+      ingest_ai_cost_history_rows: {
+        Args: { p_export_id: string; p_rows: Json }
+        Returns: undefined
       }
       ingest_openrouter_provider_receipts: {
         Args: { p_rows: Json }
