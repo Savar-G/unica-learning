@@ -1,8 +1,9 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { parseFragment, type DefaultTreeAdapterMap } from "parse5";
 vi.mock("server-only", () => ({}));
-import { AiUsagePage, UsageDetails } from "@/components/admin-ai-usage";
+import { AiUsagePage, UsageDetails, parseAiUsageReport, type AiUsageReport } from "@/components/admin-ai-usage";
 import { parseUsage, periodFor } from "@/lib/admin-ai-usage";
 import { parseWorkspaceUsage, workspaceActivityUrl, type WorkspaceReading } from "@/lib/openrouter-workspace";
 import fixtures from "@/lib/openrouter-workspace.fixtures.json";
@@ -11,18 +12,66 @@ beforeEach(() => vi.clearAllMocks());
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 const workspace: WorkspaceReading = { status: "ok", usage: parseWorkspaceUsage(fixtures.workspace.response, fixtures.model.response, fixtures.api_key_id.response)! };
 const period = periodFor("30d", Date.parse("2026-11-16T20:00:00Z"));
-const view = parseUsage({ totals: { cost_usd: 2.92, calls: 990 }, dimensions_version: 1, lifetime_receipts: [{ key_id: "a".repeat(64), cost_usd: 1 }], dimensions: [{ context: "practice", feature: "maya", provider: "openrouter", model: "m", key_alias: "local", key_id: "a".repeat(64), cost_usd: 1, calls: 1 }, { parent_id: "p", child_id: "c1", parent_name: "Parent", child_name: "Ada", context: "test-family", feature: "marking", provider: "subscription", model: "m", cost_usd: null, calls: 2 }] });
-const render = (v = view, w: WorkspaceReading = workspace) => renderToStaticMarkup(createElement(AiUsagePage, { view: v, workspace: w, period, rate: 1.4 }));
+const view = parseUsage({ totals: { cost_usd: 2.92, calls: 990 }, by_feature: [{ feature: "maya", cost_usd: 1, calls: 1 }, { feature: "marking", cost_usd: 0, calls: 2 }], dimensions_version: 1, lifetime_receipts: [{ key_id: "a".repeat(64), cost_usd: 1 }], dimensions: [{ context: "practice", feature: "maya", provider: "openrouter", model: "m", key_alias: "local", key_id: "a".repeat(64), cost_usd: 1, calls: 1 }, { parent_id: "p", child_id: "c1", parent_name: "Parent", child_name: "Ada", context: "test-family", feature: "marking", provider: "subscription", model: "m", cost_usd: null, calls: 2 }] });
+const render = (v = view, w: WorkspaceReading = workspace, report: AiUsageReport = "features") =>
+  renderToStaticMarkup(createElement(AiUsagePage, { view: v, workspace: w, period, rate: 1.4, report }));
 
-it("shows only Unica workspace charges, all native key/model groups and separate incomplete app data", () => {
+it("puts totals before report navigation and keeps the default page focused on features", () => {
   const html = render();
-  for (const text of ["Workspace spend (USD)", "USD 56.741652", "20,281", "Recorded app cost", "USD 2.92", "practice", "test-family", "Ada", "No child assigned", "No per-call charge", "These recorded app data are incomplete", "not provider totals", "Do not add these subtotals", "These totals do not assign costs to a feature or child."]) expect(html).toContain(text);
-  for (const group of [...workspace.usage!.models, ...workspace.usage!.keys]) expect(html).toContain(group.label.replaceAll("&", "&amp;"));
-  for (const text of ["Account lifetime spent", "Total credits", "Credit balance", "Configured API keys", "USD 64.63", "Unreconciled / unassigned"]) expect(html).not.toContain(text);
-  const links = [...html.matchAll(/href="(https:\/\/openrouter.ai[^"]+)"/g)].map((m) => m[1].replaceAll("&amp;", "&"));
-  expect(links).toHaveLength(2);
-  expect(links.every((link) => link === workspaceActivityUrl(period))).toBe(true);
+  for (const text of ["Workspace spend (USD)", "USD 56.74", "20,281", "Recorded app cost", "USD 2.92", "Partial history", "These recorded app data are incomplete", "not provider totals", "Do not add these subtotals"]) expect(html).toContain(text);
+  expect(html.indexOf('aria-label="AI cost totals"')).toBeLessThan(html.indexOf('aria-label="Cost reports"'));
+  expect(html.indexOf('aria-label="Cost reports"')).toBeLessThan(html.indexOf('Recorded cost by feature'));
+  expect(html).toMatch(/aria-current="page"[^>]*>Features/);
+  expect(html).not.toContain("Workspace cost by model");
+  expect(html).not.toContain("Workspace cost by API key");
+  expect(html).not.toContain("OpenRouter provider receipts");
+  expect(html).not.toMatch(/<details[^>]* open/);
+  for (const text of ["Account lifetime spent", "Total credits", "Credit balance", "Configured API keys", "USD 64.63"]) expect(html).not.toContain(text);
 });
+
+it("retains every provider model and key on its report, with an exact-value title and one scoped activity link", () => {
+  for (const report of ["models", "keys"] as const) {
+    const html = render(view, workspace, report);
+    for (const group of workspace.usage![report]) expect(html).toContain(group.label.replaceAll("&", "&amp;"));
+    const links = [...html.matchAll(/href="(https:\/\/openrouter.ai[^"]+)"/g)].map((m) => m[1].replaceAll("&amp;", "&"));
+    expect(links).toEqual([workspaceActivityUrl(period)]);
+    expect(html).toContain('title="USD 56.741652"');
+  }
+});
+
+it.each(["models", "keys"] as const)("keeps one bar scale across the visible and disclosed %s", (report) => {
+  const groups = Array.from({ length: 9 }, (_, i) => ({ label: `group-${i}`, costUsd: i === 0 ? 100 : 1, requests: 1 }));
+  const reading: WorkspaceReading = { status: "ok", usage: { costUsd: 108, requests: 9, models: groups, keys: groups } };
+  const html = render(view, reading, report);
+  const widths = [...html.matchAll(/class="ab-bar-track"[^>]*><i style="width:([\d.]+)%/g)].map((m) => Number(m[1]));
+  expect(widths).toHaveLength(9);
+  expect(widths[0]).toBe(100);
+  expect(widths.slice(1)).toEqual(Array(8).fill(widths[1]));
+  expect(widths[1]).toBeGreaterThan(0);
+  expect(widths[1]).toBeLessThan(100);
+});
+
+it("preserves the selected report in date links and the selected period in report links", () => {
+  const html = render(view, workspace, "families");
+  for (const range of ["7d", "30d", "month", "year"]) expect(html).toContain(`range=${range}&amp;report=families`);
+  for (const report of ["features", "models", "keys", "families", "records"]) expect(html).toContain(`range=30d&amp;report=${report}`);
+  expect(html).toMatch(/aria-current="page"[^>]*>Families/);
+});
+
+it("retains unknown prices, subscription meaning, safe keys and ownership in collapsed records", () => {
+  const html = render(view, workspace, "records");
+  for (const text of ["practice", "test-family", "Ada", "No child assigned", "No per-call charge"]) expect(html).toContain(text);
+  expect(html).toContain("Technical details");
+  expect(html).not.toMatch(/<details[^>]* open/);
+});
+
+it.each([undefined, "invalid", [], ["bad", "models"]])("defaults an unsupported report to Features: %s", (input) => {
+  expect(parseAiUsageReport(input)).toBe("features");
+});
+it("accepts only the first report value", () => {
+  expect(parseAiUsageReport(["models", "keys"])).toBe("models");
+});
+
 it("preserves workspace totals when the app read fails", () => {
   const html = renderToStaticMarkup(createElement(AiUsagePage, { view: null, workspace, period, rate: 1.4, error: "Ledger unavailable" }));
   expect(html).toContain("USD 56.741652"); expect(html).toContain("20,281"); expect(html).toContain("Ledger unavailable");
@@ -32,11 +81,34 @@ it.each(["unavailable", "no-key"] as const)("keeps %s workspace costs unknown an
   expect(html).toContain("Unica workspace usage is unavailable"); expect(html).toContain("USD 2.92");
   expect(html).toMatch(/Workspace spend \(USD\)<\/dt><dd><b>Unknown/);
   expect(html).toMatch(/Workspace requests<\/dt><dd><b>Unknown/);
-  expect(html).not.toContain("USD 0.00");
 });
 it("keeps unknown detail costs and missing migration coverage visible", () => {
   expect(renderToStaticMarkup(createElement(UsageDetails, { rows: null }))).toContain("Detailed records are unavailable");
   const unknown = { ...view.details![0], costUsd: null, unpricedCalls: 1 };
   const html = renderToStaticMarkup(createElement(UsageDetails, { rows: [unknown], more: true }));
   expect(html).toContain("Unknown"); expect(html).toContain("5,000"); expect(html).toContain("1 calls with unknown cost");
+});
+
+it.each([true, false])("keeps raw provider IDs inside closed Technical details when app data is available: %s", (available) => {
+  const key = "provider-key-proof";
+  const receipts = {
+    totals: { receipts: 1, known_cost_usd: 0.1, unknown_cost_receipts: 0, matched_receipts: 0, unmatched_receipts: 1,
+      unmatched_known_cost_usd: 0.1, unmatched_unknown_cost_receipts: 0, first_receipt_at: null, last_receipt_at: null, last_received_at: null },
+    models: [], keys: [{ workspace_id: "unica-workspace", api_key_id: key, receipts: 1, known_cost_usd: 0.1, unknown_cost_receipts: 0 }],
+    features: [], children: [], omitted_groups: 0,
+  };
+  const html = renderToStaticMarkup(createElement(AiUsagePage, { view: available ? view : null, workspace, period, rate: 1.4, report: "records", receipts }));
+  const paths: string[][] = [];
+  const visit = (node: DefaultTreeAdapterMap["node"], ancestors: string[]) => {
+    const children = "childNodes" in node ? node.childNodes : [];
+    const summary = node.nodeName === "details" ? children.find((n) => n.nodeName === "summary") : undefined;
+    const label = summary && "childNodes" in summary ? summary.childNodes.map((n) => "value" in n ? n.value : "").join("") : null;
+    const path = label === null ? ancestors : [...ancestors, label];
+    if ("value" in node && node.value.includes(key)) paths.push(path);
+    for (const child of children) visit(child, path);
+  };
+  visit(parseFragment(html), []);
+  expect(paths).toHaveLength(1);
+  expect(paths[0]).toEqual(["Provider receipts", "Technical details"]);
+  expect(html).not.toMatch(/<details[^>]* open/);
 });

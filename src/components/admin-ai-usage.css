@@ -45,3 +45,52 @@
 .adm-ai .ai-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s4); align-items: start; }
 .adm-ai .ai-pair .ap-card { margin-bottom: var(--s5); }
 @media (max-width: 859.98px) { .adm-ai .ai-pair { grid-template-columns: minmax(0, 1fr); } }
+
+/* Selected report layout. All type, spacing, surfaces and colours come from the admin system. */
+.adm-ai .ai-top .ab-pills { margin: 0; }
+.adm-ai .ai-period { color: var(--ink-3); font-size: 12.5px; }
+.adm-ai .ai-headline .ab-tiles { grid-template-columns: 1.25fr 1fr 1fr; }
+.adm-ai .ai-headline .ab-tile:first-child { background: var(--soft); }
+.adm-ai .ai-headline .ab-tile:first-child b { font-size: 42px; }
+.adm-ai .ai-reports { display: flex; gap: var(--s5); overflow-x: auto; margin: 0 0 var(--s5); border-bottom: 1px solid var(--line); }
+.adm-main .ai-reports a { display: inline-flex; align-items: center; flex: none; min-height: 44px; padding: var(--s3) 0; border-bottom: 2px solid transparent; color: var(--ink-2); font-size: 14px; text-decoration: none; }
+.adm-main .ai-reports a[aria-current="page"] { border-bottom-color: var(--accent); color: var(--ink); font-weight: 500; }
+.adm-main .ai-reports a:hover { color: var(--ink); }
+.adm-ai .ai-report > .ab-head:first-child { margin-top: 0; }
+.adm-ai .ai-features { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3); margin-bottom: var(--s5); align-items: start; }
+.adm-ai .ai-feature { min-width: 0; border: 1px solid var(--line); border-radius: var(--r); background: #fff; }
+.adm-ai .ai-feature > summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s2); padding: var(--s4); cursor: pointer; list-style: none; }
+.adm-ai .ai-feature > summary::-webkit-details-marker { display: none; }
+.adm-ai .ai-feature > summary:hover { background: var(--soft); border-radius: var(--r); }
+.adm-ai .ai-feature-label { grid-column: 1 / -1; font-size: 14px; font-weight: 500; }
+.adm-ai .ai-feature-value { grid-column: 1 / -1; margin-top: var(--s2); font: 300 30px/1.1 var(--sans); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.adm-ai .ai-feature-calls { grid-column: 1 / -1; font-size: 12.5px; color: var(--ink-2); }
+.adm-ai .ai-feature-track { grid-column: 1 / -1; height: 6px; margin: var(--s2) 0; border-radius: 4px; overflow: hidden; background: var(--soft); }
+.adm-ai .ai-feature-track i { display: block; height: 100%; border-radius: inherit; background: color-mix(in srgb, var(--sky) 60%, #fff); }
+.adm-ai .ai-feature-open { grid-column: 1; font-size: 12.5px; color: var(--ink-2); }
+.adm-ai .ai-feature > summary::after { content: "+"; grid-column: 2; grid-row: 5; color: var(--ink-3); }
+.adm-ai .ai-feature[open] { grid-column: 1 / -1; }
+.adm-ai .ai-feature[open] > summary::after { content: "−"; }
+.adm-ai .ai-feature-detail { padding: 0 var(--s4) var(--s4); }
+.adm-ai .ai-feature-detail .ap-card { margin-bottom: var(--s3); }
+.adm-ai .ai-disclosure { margin-top: var(--s3); border-top: 1px solid var(--line); }
+.adm-ai .ai-disclosure > summary { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); min-height: 44px; padding: var(--s2) 0; color: var(--ink-2); font-size: 13.5px; list-style: none; cursor: pointer; }
+.adm-ai .ai-disclosure > summary::-webkit-details-marker { display: none; }
+.adm-ai .ai-disclosure > summary::after { content: "+"; color: var(--ink-3); }
+.adm-ai .ai-disclosure[open] > summary::after { content: "−"; }
+.adm-ai .ai-disclosure .ab-head { margin-top: var(--s4); }
+.adm-ai .ai-after { margin-top: var(--s4); }
+.adm-ai .ai-sources { margin-top: var(--s5); }
+.adm-ai .ai-source-links { display: flex; flex-wrap: wrap; gap: var(--s4); margin: var(--s4) 0; }
+@media (max-width: 859.98px) {
+  .adm-ai .ai-features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .adm-ai .ai-headline .ab-tile:first-child b { font-size: 36px; }
+}
+@media (max-width: 559.98px) {
+  .adm-ai .ai-headline .ab-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .adm-ai .ai-headline .ab-tile:first-child { grid-column: 1 / -1; }
+  .adm-ai .ai-headline .ab-tile:not(:first-child) b { font-size: 26px; }
+  .adm-ai .ai-reports { gap: var(--s4); }
+  .adm-ai .ai-feature > summary { padding: var(--s3); }
+  .adm-ai .ai-feature-value { font-size: 25px; }
+}

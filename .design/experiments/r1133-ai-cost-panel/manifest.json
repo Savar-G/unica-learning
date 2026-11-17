@@ -1,0 +1,21 @@
+{
+  "round": "r1133-ai-cost-panel",
+  "route": "direct",
+  "job_kind": "redesign",
+  "surface": "product",
+  "constraint_mode": "existing-system",
+  "phase": "build",
+  "selected_option": "B",
+  "decision": "Tabbed reports, built with the actual admin design",
+  "contract": ".design/experiments/r1133-ai-cost-panel/contract.md",
+  "artifacts": [
+    "src/components/admin-ai-usage.tsx",
+    "src/components/admin-ai-usage.css",
+    "src/app/(product)/admin/ai/page.tsx"
+  ],
+  "gates": {
+    "contract": "approved by user scope",
+    "direction": "B selected by Savar; prototype styling rejected",
+    "ship": "pending checks and review"
+  }
+}

@@ -1,6 +1,5 @@
 import { AdminFrame } from "@/components/admin-frame";
-import { AiUsagePage } from "@/components/admin-ai-usage";
-import { AdminProviderReceipts } from "@/components/admin-provider-receipts";
+import { AiUsagePage, parseAiUsageReport } from "@/components/admin-ai-usage";
 import { requireAdmin } from "@/lib/admin-store";
 import { ADMIN_AI_PATH, parseRange, periodFor, type UsageView } from "@/lib/admin-ai-usage";
 import { readAiUsage } from "@/lib/admin-ai-usage-store";
@@ -26,9 +25,9 @@ export default async function AiUsageRoute({ searchParams }: PageProps<"/admin/a
   ]);
   const view = "view" in usage ? usage.view : null;
   return (
-    <AdminFrame email={admin.email} title="AI usage" lead="Unica workspace charges and recorded app data, including testing." testNote="All families are included on this page, regardless of the global test-family switch.">
-      <AiUsagePage view={view} period={period} rate={rate} workspace={workspace} error={"error" in usage ? usage.error : null} />
-      <AdminProviderReceipts view={providerReceipts} periodLabel={`${period.days[0]} to ${period.days.at(-1)}, Vancouver days`} />
+    <AdminFrame email={admin.email} title="AI usage" lead="AI costs for Unica Learning, including testing." testNote="All families are included on this page, regardless of the global test-family switch.">
+      <AiUsagePage view={view} period={period} rate={rate} workspace={workspace} receipts={providerReceipts}
+        report={parseAiUsageReport(query.report)} error={"error" in usage ? usage.error : null} />
     </AdminFrame>
   );
 }
