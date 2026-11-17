@@ -489,6 +489,8 @@ A checked move can arrive while the browser's release acknowledgement is in flig
 
 A replacement worker resets the board connection and reads its snapshot first. Any unconfirmed drawing from a retired checked turn stays off the board, including one saved by the controller but never staged. A durable child move is different: recover it from the snapshot or show it once, without replaying its follow-up speech. A dispatched plan, a batch the receiver accepted as shown, a browser presentation acknowledgement, and worker playout are separate observations. Worker playout does not establish what a child heard or grant completion of a math step.
 
+If a stop gets no reply after its retries, the worker tries the existing bounded board reconnect. It waits for the receiver's log and a new epoch before sending another board plan, so it does not assume the lost stop took effect. Deadline speech with no drawing uses an audio-only scope. Its frames can enter playout while a board acknowledgement is missing, without taking ownership from a durable move. Suppressing stale speech still retires the abandoned turn's cues and completes any saved terminal outcome.
+
 The simulated worker tests exercise both cue modes with held playout and pending synthesis, and submit an action while the old prompt is playing and its acknowledgement or save is pending. They do not measure the 300 ms p95 from intentional speech onset to audible stop, the false-stop or lost-speech rates, or when a stroke appears on the device. Those remain release checks under #1147, including #329's audible word cue and sentence fallback.
 
 ### PR #450 review corrections

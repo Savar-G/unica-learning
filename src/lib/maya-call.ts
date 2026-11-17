@@ -1618,7 +1618,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           const saved = record.live?.text;
           if (inactive() || !saved) return undefined;
           const action = saved.session.checkedExchange?.turns.find((t) => t.childAction)?.actions[0];
-          if (!action || action.fate === "shown") return undefined;
+          if (!action || action.fate === "shown" || record.boardHistory?.delivery?.events.some(e => e.kind === "batch" && e.batchId === action.batchId)) return undefined;
           return batchesOf(saved.board.filter((b) => b.transactionId === action.batchId))[0];
         },
         get acknowledged() { return [...acknowledged]; },

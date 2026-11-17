@@ -51,6 +51,7 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
   let generation = 0;
   let plannedScope: SpeechScope | null = null;
   let speechAbort: AbortController | null = null;
+  let audioOnly: { scope: SpeechScope; controller: AbortController } | null = null;
   let deliveryScope: SpeechScope | null = null;
   let cancellation: ReturnType<BoardSender["interrupt"]> | null = null;
   let retired = false;
@@ -62,8 +63,16 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
   let sending: { scope: SpeechScope; done: Promise<void> } | null = null;
   let queue: Promise<unknown> = Promise.resolve();
   const serial = <T>(op: () => Promise<T>) => { const run = queue.then(op); queue = run.catch(() => {}); return run; };
-  const matches = (scope: SpeechScope | null) => !!scope && plannedScope?.utteranceId === scope.utteranceId && plannedScope.generation === scope.generation;
-  const owns = (scope: SpeechScope | null) => matches(scope) && !retired;
+  const same = (a: SpeechScope | null | undefined, b: SpeechScope | null) => !!b && a?.utteranceId === b.utteranceId && a.generation === b.generation;
+  const matches = (scope: SpeechScope | null) => same(plannedScope, scope);
+  const owns = (scope: SpeechScope | null) => (matches(scope) && !retired) || same(audioOnly?.scope, scope);
+  const retireAudio = (scope: SpeechScope) => {
+    if (!audioOnly || !same(audioOnly.scope, scope)) return false;
+    const { controller } = audioOnly;
+    audioOnly = null;
+    controller.abort();
+    return true;
+  };
   // The code says why, for the worker's log: a refusal, an unreachable board, or another sender (Savar's call, 2026-11-13).
   const check = (r: { ok: boolean; code?: string }) => { if (!r.ok) throw new Error(`The board did not accept the speech operation (${r.code ?? "unknown"}).`); };
   const release = async () => {
@@ -103,7 +112,14 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
     },
     owns,
     signal(scope: SpeechScope): AbortSignal {
+      if (audioOnly && same(audioOnly.scope, scope)) return audioOnly.controller.signal;
       return owns(scope) && speechAbort ? speechAbort.signal : AbortSignal.abort();
+    },
+    openAudio(id: string): SpeechScope {
+      if (audioOnly) retireAudio(audioOnly.scope);
+      const scope = { utteranceId: id, generation: ++generation };
+      audioOnly = { scope, controller: new AbortController() };
+      return scope;
     },
     /**
      * Plans must be on the receiver before their speech is heard: the audio of a plan waits for `sent(scope)`. A new plan
@@ -175,7 +191,7 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
      * them too. A cancel here would leave the next plan, built on these batches, to be refused (call 01f456de).
      */
     show(scope: SpeechScope) {
-      if (!owns(scope)) return Promise.resolve();
+      if (!matches(scope) || !owns(scope)) return Promise.resolve();
       return serial(async () => {
         const a = active;
         if (!owns(scope) || !a || a.generation !== scope.generation) return;
@@ -197,7 +213,7 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
      * must give the batches another way. A batch the board core refuses is not drawn, nor are the ones after it.
      */
     showWith(scope: SpeechScope, batches: readonly Batch[]): Promise<{ shown: boolean; refused: StageRefusal[] }> {
-      if (!owns(scope)) return Promise.resolve({ shown: false, refused: [] });
+      if (!matches(scope) || !owns(scope)) return Promise.resolve({ shown: false, refused: [] });
       const copy = structuredClone([...batches]);
       return serial(async () => {
         const a = active;
@@ -243,12 +259,14 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
     /** Invalidate first, before any await. A late timing or playout callback cannot release old work. */
     /** A lost peer cannot receive a stop. Invalidate locally; reconnect will retire its staged work. */
     detach(scope: SpeechScope) {
+      if (retireAudio(scope)) return;
       if (!owns(scope)) return;
       retired = true;
       active = null;
       speechAbort?.abort();
     },
     interrupt(scope: SpeechScope) {
+      if (retireAudio(scope)) return Promise.resolve();
       if (!owns(scope)) return Promise.resolve();
       retired = true;
       active = null;
@@ -257,9 +275,17 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
       const previous = deliveryScope;
       deliveryScope = scope;
       const stop = () => previous && (previous.generation !== scope.generation || previous.utteranceId !== scope.utteranceId)
-        ? sender.interrupt(previous).then(result => { check(result); return sender.interrupt(scope); })
+        ? sender.interrupt(previous).then(result => result.ok ? sender.interrupt(scope) : result)
         : sender.interrupt(scope);
-      const stopping = cancellation ? cancellation.then(result => { check(result); return stop(); }) : stop();
+      const sent = cancellation ? cancellation.then(result => { check(result); return stop(); }) : stop();
+      const stopping = sent.then(async result => {
+        if (result.ok || result.code !== "unreachable") return result;
+        const recovered = await sender.connect();
+        if (!recovered.ok) return recovered;
+        if (same(deliveryScope, scope)) deliveryScope = null;
+        await options.observe?.(sender.snapshot());
+        return recovered;
+      });
       cancellation = stopping;
       // Keep priority acknowledgement independent of any release still in flight.
       // The next serial observation waits for that release and then reads the receiver's decision.

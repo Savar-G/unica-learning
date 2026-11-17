@@ -1,12 +1,15 @@
 import { ReadableStream } from "node:stream/web";
 import { AudioFrame } from "@livekit/rtc-node";
 import { USERDATA_TIMED_TRANSCRIPT, voice } from "@livekit/agents";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { boardPaths, type Batch } from "@/lib/board";
 import { createBoardReceiver, createBoardSender } from "@/lib/board-protocol";
 import { createMemoryTransport } from "@/lib/board-protocol-memory";
 import { createBoardSpeech } from "@/lib/board-speech";
 import { boardAudio, countedSynthesis } from "./speech-audio";
+
+beforeEach(() => vi.clearAllMocks());
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 it("maps spoken number words to the accepted text before it releases a cue", async () => {
   const receiver = createBoardReceiver({ sessionId: "call" });
