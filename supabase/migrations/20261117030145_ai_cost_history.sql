@@ -41,7 +41,7 @@ begin
     if v is not null and v !~ '^[a-zA-Z0-9][a-zA-Z0-9 ._:/()-]{0,79}$' then return false; end if;
   end loop;
   v := j->>'api_key_label';
-  if v ~* 'sk-|sb_secret|bearer|eyJ|[a-f0-9]{32}|[a-zA-Z0-9_-]{40}' then return false; end if;
+  if v ~* 'sk-|sb_secret|bearer|eyJ|AIza[a-zA-Z0-9_-]{35}|(AKIA|ASIA)[a-zA-Z0-9]{16}|[a-f0-9]{32}|[a-zA-Z0-9_-]{40}' then return false; end if;
   if j->>'api_key_disabled' is not null and j->>'api_key_disabled' not in ('true','false') then return false; end if;
   stamp := j->>'created_at_text';
   if stamp is not null then

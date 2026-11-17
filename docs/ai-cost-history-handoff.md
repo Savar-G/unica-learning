@@ -191,3 +191,20 @@ corrected the tests and used an ES module probe. The final checks above passed.
 8. Root owns push, PR, release and hosted page verification. Record verified results and
    remaining limits in the Unica vault notes. Keep source data out of commits and reports.
 9. Change `HANDOFF_READY` to `HANDOFF_DONE` only after integration and the required gates.
+
+## Root privacy repair
+
+Both independent initial reviews passed Standards and found the same Spec P2:
+shorter recognizable credentials could pass the key-label guards. Root added Google,
+AWS access and temporary AWS credential shapes to both the CSV and SQL validators.
+Three full-package regressions failed before the repair and passed after it. They
+bind the changed source and retained-row hashes, so a different validation failure
+cannot mask a retained credential. Every invalid package makes zero transport calls.
+The direct SQL rejection probe also failed before the SQL repair and passed after it.
+Ordinary safe-label, exact-decimal, retry, ownership and canonical-receipt probes pass.
+
+The repaired head passes 78 randomized focused checks (seed 1717), app typecheck,
+changed-file lint and the disposable local SQL probe. The complete private CSV dry
+run also passes with 20,281 rows and no database requests. No private source value is
+stored in this document. Final settlement, hosted checks, generated schema files,
+the full gate, browser checks, actual import and release remain pending.

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { historyFixture } from "./ai-cost-history.fixtures";
-import { HISTORY_FIELDS, HISTORY_HEADERS, historyHash, importHistoryPackage, inspectHistoryCsv, validateHistoryPackage } from "./ai-cost-history-package";
+import { HISTORY_FIELDS, HISTORY_HEADERS, historyHash, historyRowsHash, importHistoryPackage, inspectHistoryCsv, validateHistoryPackage } from "./ai-cost-history-package";
 import { historySum } from "./ai-cost-history";
 
 beforeEach(() => vi.clearAllMocks());
@@ -43,6 +43,19 @@ it.each([
   { api_key_name: "a".repeat(64) }, { tokens_prompt: "-1" }, { user: "bad\u0000source" }, { api_key_disabled: "maybe" },
 ])("rejects invalid source evidence without leaking its value", (override) => {
   expect(() => historyFixture([{ generation_id: "gen-synthetic-valid", ...override }])).toThrow();
+});
+it.each([
+  ["Google", "AIza" + "G".repeat(35)],
+  ["AWS", "AKIA" + "G".repeat(16)],
+  ["AWS temporary", "ASIA" + "G".repeat(16)],
+])("rejects a synthetic %s credential label before transport", async (_kind, label) => {
+  const f = historyFixture([{ generation_id: "gen-synthetic-label", cost_total: "0", api_key_name: "safe label" }]);
+  f.csv = Buffer.from(f.csv.toString().replace("safe label", label));
+  f.manifest.source = { sha256: historyHash(f.csv), bytes: f.csv.length };
+  f.manifest.rows_sha256 = historyRowsHash(f.rows.map((r) => ({ ...r, api_key_label: label })));
+  const call = vi.fn(async (name: string) => name === "finalize_ai_cost_history" ? true : null);
+  await expect(importHistoryPackage(f, { call })).rejects.toThrow();
+  expect(call).not.toHaveBeenCalled();
 });
 it("deduplicates identical records without losing source row positions, and rejects conflicting duplicates", () => {
   const first = { generation_id: "gen-synthetic-repeat", cost_total: "0.0100" };

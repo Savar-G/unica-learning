@@ -99,7 +99,7 @@ export function inspectHistoryCsv(bytes: Uint8Array) {
       if (month < 1 || month > 12 || day < 1 || day > days[month - 1] || hour > 23 || minute > 59 || second > 59) fail();
     }
     const label = nullable("api_key_name", /^[a-zA-Z0-9][a-zA-Z0-9 ._:/()-]{0,79}$/);
-    if (label && /sk-|sb_secret|bearer|eyJ|[a-f0-9]{32}|[a-zA-Z0-9_-]{40}/i.test(label)) fail();
+    if (label && /sk-|sb_secret|bearer|eyJ|AIza[a-zA-Z0-9_-]{35}|(?:AKIA|ASIA)[a-zA-Z0-9]{16}|[a-f0-9]{32}|[a-zA-Z0-9_-]{40}/i.test(label)) fail();
     rows.push({ row_number: rows.length + 1, source_row_number: offset + 1, generation_id: data.generation_id,
       created_at_text: created, cost_total_text: amount("cost_total"), cost_web_search_text: amount("cost_web_search"), cost_cache_text: amount("cost_cache", true),
       cost_file_processing_text: amount("cost_file_processing"), byok_usage_inference_text: amount("byok_usage_inference"),

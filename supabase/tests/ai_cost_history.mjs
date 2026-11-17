@@ -70,6 +70,9 @@ let started = false, stage = 'setup';
     await assert.rejects(batch(f,Array(129).fill(f.rows[0])));
     await assert.rejects(batch(f,[{ ...f.rows[0],private:'dropped' }]));
     for (const patch of [{created_at_text:'2026-02-30 01:00:00.000'},{api_key_label:'sk-or-secret'},{cost_total_text:'-1'},{model_permaslug:'<bad>'}]) await assert.rejects(batch(f,[{...f.rows[0],...patch}]));
+    for (const label of ['AIza'+'G'.repeat(35),'AKIA'+'G'.repeat(16),'ASIA'+'G'.repeat(16)]) {
+      await assert.rejects(batch(f,[{...f.rows[0],api_key_label:label}]));
+    }
     await batch(f,[f.rows[3]]); await batch(f,[f.rows[3]]);
     // The first new row must roll back when a later row conflicts in the same transaction.
     await assert.rejects(batch(f,[f.rows[0],{...f.rows[3],cost_total_text:'1'}]));
