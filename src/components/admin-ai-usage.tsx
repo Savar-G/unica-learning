@@ -8,6 +8,8 @@ import {
   type Period, type Stack, type UsageView, type UsageDetail,
 } from "@/lib/admin-ai-usage";
 import { AdminProviderReceipts } from "@/components/admin-provider-receipts";
+import { AdminAiCostHistory } from "@/components/admin-ai-cost-history";
+import type { HistoryView } from "@/lib/ai-cost-history";
 import type { ProviderReceiptView } from "@/lib/openrouter-provider-receipts";
 import { CHILD_COST_PATH } from "@/lib/child-unit-cost";
 import { formatCalendarDate } from "@/lib/family-time";
@@ -119,8 +121,8 @@ export function parseAiUsageReport(value: string | string[] | undefined): AiUsag
   return AI_USAGE_REPORTS.find((r) => r.key === selected)?.key ?? "features";
 }
 
-const reportHref = (range: Period["range"], report: AiUsageReport) =>
-  `${ADMIN_AI_PATH}?${new URLSearchParams({ range, report })}`;
+const reportHref = (range: Period["range"], report: AiUsageReport, historicalExport?: string) =>
+  `${ADMIN_AI_PATH}?${new URLSearchParams({ range, report, ...(historicalExport === undefined ? {} : { historicalExport }) })}`;
 
 function WorkspaceBreakdown({ workspace, dimension }: { workspace: WorkspaceReading; dimension: "models" | "keys" }) {
   if (!workspace.usage) return <Empty>Unica workspace usage is unavailable. The cost and request count are unknown.</Empty>;
@@ -221,12 +223,12 @@ function Records({ view, receipts, period }: { view: UsageView; receipts: Provid
   </>;
 }
 
-export function AiUsagePage({ view, period, rate, workspace, error, report = "features", receipts = null }: {
+export function AiUsagePage({ view, period, rate, workspace, error, report = "features", receipts = null, history = null, historySelection }: {
   view: UsageView | null; period: Period; rate: number; workspace: WorkspaceReading; error?: string | null;
-  report?: AiUsageReport; receipts?: ProviderReceiptView | null;
+  report?: AiUsageReport; receipts?: ProviderReceiptView | null; history?: HistoryView | null; historySelection?: string;
 }) {
   const usage = workspace.usage;
-  const pills = RANGES.map((r) => ({ key: r.key, href: reportHref(r.key, report), label: r.label, current: r.key === period.range }));
+  const pills = RANGES.map((r) => ({ key: r.key, href: reportHref(r.key, report, historySelection), label: r.label, current: r.key === period.range }));
   return <div className="adm-ai">
     <div className="ai-top">
       <Pills label="Period" pills={pills} />
@@ -242,7 +244,7 @@ export function AiUsagePage({ view, period, rate, workspace, error, report = "fe
     {!usage && <p className="ai-note" role="status">Unica workspace usage is unavailable. The cost and request count are unknown.{workspace.status === "no-key" ? " No management key is configured." : " The provider reads failed or did not reconcile."}</p>}
     {!view && <Empty>{error ?? "AI usage could not be read."}</Empty>}
     <nav className="ai-reports" aria-label="Cost reports">
-      {AI_USAGE_REPORTS.map((r) => <Link key={r.key} href={reportHref(period.range, r.key)} prefetch={false}
+      {AI_USAGE_REPORTS.map((r) => <Link key={r.key} href={reportHref(period.range, r.key, historySelection)} prefetch={false}
         aria-current={report === r.key ? "page" : undefined} scroll={false}>{r.label}</Link>)}
     </nav>
     <section className="ai-report" aria-label={AI_USAGE_REPORTS.find((r) => r.key === report)!.label}>
@@ -264,6 +266,7 @@ export function AiUsagePage({ view, period, rate, workspace, error, report = "fe
       {report === "families" && view && <Families view={view} period={period} rate={rate} />}
       {report === "records" && (view ? <Records view={view} receipts={receipts} period={period} /> :
         <ProviderRecords receipts={receipts} period={period} />)}
+      {report === "records" && <AdminAiCostHistory view={history} range={period.range} selected={historySelection} />}
     </section>
     {view && (report === "features" || report === "models") && <details className="ai-disclosure"><summary>Recorded app costs by day</summary>
       <SectionHead title="Recorded app cost by day" count={`${period.days.length} days`} line="USD, Vancouver days, stacked by model." />

@@ -86,6 +86,20 @@ Admins only (others get the site's 404). In the sidebar under Quality as "AI usa
 
 This importer handles retained recorder receipts only. Earlier practice traces with no provider id, price or trustworthy attribution cannot recover a detailed history. A provider receipt with no known child remains unassigned. Account balances alone cannot supply a historical model, feature, test/production or family split. Do not automatically import old aggregate cost estimates as exact provider receipts. No historical recovery has been run by this implementation task.
 
+## Historical export evidence
+
+Records also has a closed Historical exports section. It reads completed full snapshots
+from separate append-only manifest, row and completion tables. It does not import CSV
+rows into the app ledger or canonical provider receipts. The page date filter does not
+apply because CSV row time zones remain unknown. Select one export at a time. Never
+add overlapping exports or add them to ordinary totals. Source CSV amounts, the associated
+analytics amount and their unresolved difference remain separate exact decimal strings.
+
+The importer defaults to full offline validation with no database request. Root owns the
+private controller manifest, real sources, hosted migration, generated schema files,
+review, import and release. See [the implementation handoff](ai-cost-history-handoff.md)
+for the package contract, safe retry procedure, local checks and remaining hosted gates.
+
 ## Required hosted steps before shipping
 
 `AI_USAGE_HOSTED_STEPS_PENDING`
