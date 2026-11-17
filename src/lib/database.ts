@@ -113,7 +113,8 @@ type AnswerNulls = "p_misconception" | "p_read_aloud_count" | "p_read_aloud_at_m
 type NullArgs = KnownArgs<{
   record_customer_activity: "p_child" | "p_book" | "p_page" | "p_note";
   admin_customer_history: "p_parent" | "p_child" | "p_book" | "p_type" | "p_actor" | "p_after_at" | "p_after_key";
-  admin_customer_children: "p_parent" | "p_child" | "p_after";
+  admin_customer_children: "p_parent" | "p_child" | "p_after" | "p_book" | "p_books_before";
+  admin_customer_book: "p_parent" | "p_child";
   // Saved-preview reads send no new payload or hash.
   workbook_preview_command: "p_payload" | "p_hash";
   // A Book 1 baseline read sends no payload or hash.

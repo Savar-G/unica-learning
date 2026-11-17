@@ -189,5 +189,29 @@
       "direction": "approved by Savar",
       "ship": "pending checks and review"
     }
+  },
+  "customer_activity": {
+    "route": "direct",
+    "job_kind": "improve",
+    "surface": "product",
+    "constraint_mode": "existing-system",
+    "phase": "review",
+    "contract": ".design/experiments/r-customer-activity/contract.md",
+    "manifest": ".design/experiments/r-customer-activity/manifest.json",
+    "gates": {
+      "contract": "skipped by direct route",
+      "direction": "existing admin system and user-approved scope",
+      "ship": "pending final checks and Savar merge"
+    },
+    "hosted_migration": "20261117045730 customer_activity",
+    "review": "docs/customer-activity-review.md",
+    "latest_evidence": [
+      ".design/evidence/customer-activity/family-desktop.png",
+      ".design/evidence/customer-activity/family-history.png",
+      ".design/evidence/customer-activity/family-phone.png",
+      ".design/evidence/customer-activity/endpoint-results.json",
+      ".design/evidence/customer-activity/cleanup-results.json"
+    ],
+    "verification": "Full suite, source lint, production build, app/voice type checks, voice tests, local SQL, hosted security and actual local browser checks passed. Final repair review pending."
   }
 }

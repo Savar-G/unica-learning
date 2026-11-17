@@ -11,4 +11,4 @@ Optional attempts require analytics consent. Never claim that a missing completi
 Notes are private team records. Keep their author and time. Keep technical identifiers in a closed disclosure.
 
 Required states: empty, unavailable, invalid filter, navigation loading, dense table overflow, keyboard form submission and narrow viewport.
-Browser and independent design review remain with the parent. No rendered evidence was obtained by this implementation worker.
+The parent verified the actual local admin in Aside. Evidence is in .design/evidence/customer-activity/. Independent final repair and rendered review remain pending.

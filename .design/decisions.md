@@ -375,3 +375,8 @@ Savar approved the 75 new rendered comparison lines in `docs/maya-wave-lines.md`
 ### 2026-11-16: AI usage tabbed report selected
 
 Savar selected option B for AI usage and rejected the standalone prototype styling. Build the existing admin route with its current frame, Geist type, mono labels, warm tokens and shared components. Keep the main numbers first and place Features, Models, API keys, Families and Records in separate reports. Keep source notes and technical records closed. The implementation contract is .design/experiments/r1133-ai-cost-panel/contract.md.
+
+
+### 2026-11-16: customer activity scope accepted
+
+Savar approved team actions with saved actor identity and private contact notes. Savar also approved page visits and unfinished scanner and Maya attempts. Extend the existing admin system through the direct design route. Optional telemetry follows the existing consent setting. Retained source records supply historical product facts. A missing completion is not proof of abandonment. Canonical required-page scan completion suppresses inactivity; marking stays separate.

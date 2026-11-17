@@ -34,7 +34,8 @@ function reader(rows: Row[], fail = false) {
     if (url.pathname.endsWith("/rpc/admin_children")) return Response.json([{ id: "child", first_name: "Iris" }]);
     if (!url.pathname.endsWith("/maya_calls")) throw new Error(url.pathname);
     const filter = url.searchParams.get("or");
-    const filtered = filter ? rows.filter((r) => terms(filter.slice(1, -1)).some((t) => matches(r, t))) : rows;
+    const scoped = rows.filter(r => !url.searchParams.has("child_id") || String(r.child_id) === url.searchParams.get("child_id")!.slice(3));
+    const filtered = filter ? scoped.filter((r) => terms(filter.slice(1, -1)).some((t) => matches(r, t))) : scoped;
     const order = url.searchParams.get("order")!.split(",").map((s) => s.split("."));
     const sorted = [...filtered].sort((a, b) => {
       for (const [field, direction] of order) {
@@ -151,4 +152,14 @@ it.each(["2024-02-29T00:00:00Z", "2026-03-01T00:00:00.123456+14:00", "2026-02-28
   const next = await listCalls(s.admin, 1, first.older!);
   expect(next.calls.map((r) => r.id)).toEqual([uuid(1)]);
   expect(s.urls.some((u) => u.searchParams.get("or")?.includes(`created_at.lt.${at}`))).toBe(true);
+});
+
+it("filters the selected child before the call-page limit and keeps the filter on later reads", async () => {
+  const child = uuid(500);
+  const s = reader([...Array.from({ length: 60 }, (_, n) => row(uuid(n), { child_id: uuid(501) })), row(uuid(100), { child_id: child }), row(uuid(101), { child_id: child })]);
+  const first = await listCalls(s.admin, 1, undefined, [], child);
+  expect(first.calls.map(c => c.id)).toEqual([uuid(101)]);
+  const second = await listCalls(s.admin, 1, first.older!, [], child);
+  expect(second.calls.map(c => c.id)).toEqual([uuid(100)]);
+  expect(s.urls.filter(u => u.pathname.endsWith("/maya_calls")).every(u => u.searchParams.get("child_id") === "eq." + child)).toBe(true);
 });

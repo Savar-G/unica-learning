@@ -251,6 +251,26 @@
     "layout"
    ],
    "priority": "primary"
+  },
+  {
+   "source": "DESIGN.md#admin-area-d-313-d-315",
+   "author": "existing-product",
+   "annotation": "Extend current admin family and activity pages with the accepted customer-progress scope.",
+   "take": [
+    "existing AdminFrame, filters and table patterns",
+    "separate current position, period metrics and history"
+   ],
+   "avoid": [
+    "invented completion and historical telemetry",
+    "new visual system"
+   ],
+   "applies_to": [
+    "hierarchy",
+    "interaction",
+    "content",
+    "layout"
+   ],
+   "priority": "primary"
   }
  ]
 }

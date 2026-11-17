@@ -55,9 +55,17 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards
       const startedAt = Date.now();
       const result = await startPlan(s, { cardSetup: card.id, customer: card.stripe_customer_id, price, deliveryConfirmed: true }, undefined, undefined, liveReferralStarts(s));
       if (!result.ok) return Response.json(result, { status: 409 });
-      // The billing result stays authoritative if this separate activity write is unavailable.
-      await service.rpc("record_customer_plan_actor", { p_card: card.id, p_generation: result.generation, p_actor: admin.userId })
-        .then(({ error }) => { if (error) console.error("[customer-activity] plan confirmation not recorded"); }, () => { console.error("[customer-activity] plan confirmation not recorded"); });
+      // A separate activity write has at most 300 ms, even if its transport ignores cancellation.
+      let activityTimer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const audit = adminClient(AbortSignal.timeout(300), { retry: false });
+        if (audit) await Promise.race([
+          Promise.resolve(audit.rpc("record_customer_plan_actor", { p_card: card.id, p_generation: result.generation, p_actor: admin.userId }))
+            .then(({ error }) => { if (error) console.error("[customer-activity] plan confirmation not recorded"); }),
+          new Promise<void>(resolve => { activityTimer = setTimeout(() => { console.error("[customer-activity] plan confirmation timed out"); resolve(); }, 300); }),
+        ]);
+      } catch { console.error("[customer-activity] plan confirmation not recorded"); }
+      finally { clearTimeout(activityTimer); }
       const access = await openAccess({ customer: card.stripe_customer_id, cardSetup: card.id, generation: result.generation, startedAt });
       return Response.json({ ...result, access, confirmation: await confirm(card.id, result.generation, result.monthlyPrice ?? price, result.firstChargeAt, new URL(request.url).origin) });
     } finally {

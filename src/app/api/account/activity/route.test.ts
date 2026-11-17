@@ -10,7 +10,7 @@ const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")
 const payload = () => ({ event: "scanner_opened", page: "scanner", request: id(3), child: id(2), book: null });
 const request = (body: unknown, path = "account/activity", headers: Record<string, string> = {}) => new Request(`https://unicalearning.com/api/${path}`, { method: "POST", headers: { origin: "https://unicalearning.com", "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
 beforeEach(() => { vi.clearAllMocks(); state.consent = "granted"; state.parent = id(1); state.admin = true; state.rpc.mockResolvedValue({ data: "saved", error: null }); });
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 it("rejects consent withdrawal, missing auth and cross-origin requests before any write", async () => {
   state.consent = "denied"; expect((await POST(request(payload()))).status).toBe(403);
   state.consent = "granted"; state.parent = null; expect((await POST(request(payload()))).status).toBe(401);
@@ -38,4 +38,21 @@ it("requires an admin for a private note and never accepts a client actor", asyn
   expect(state.rpc).not.toHaveBeenCalled();
   expect((await notePost(request(note, "admin/customer-activity"))).status).toBe(200);
   expect(state.rpc).toHaveBeenCalledWith("record_customer_activity", expect.objectContaining({ p_actor: id(9), p_event: "contact_note", p_note: note.note }));
+});
+
+it.each([false, true])("rejects oversized open streams before EOF, note=%s", async note => {
+  const cancel = vi.fn();
+  const stream = new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new Uint8Array(note ? 14001 : 1001)); }, cancel });
+  const init: RequestInit & { duplex: "half" } = { method: "POST", headers: { origin: "https://unicalearning.com", "content-type": "application/json" }, body: stream, duplex: "half" };
+  const req = new Request(`https://unicalearning.com/api/${note ? "admin/customer-activity" : "account/activity"}`, init);
+  expect((await (note ? notePost(req) : POST(req))).status).toBe(413);
+  expect(cancel).toHaveBeenCalled(); expect(state.rpc).not.toHaveBeenCalled();
+});
+it("bounds a stalled body and cancels its reader", async () => {
+  vi.useFakeTimers();
+  const cancel = vi.fn();
+  const init: RequestInit & { duplex: "half" } = { method: "POST", headers: { origin: "https://unicalearning.com", "content-type": "application/json" }, body: new ReadableStream({ cancel }), duplex: "half" };
+  const pending = POST(new Request("https://unicalearning.com/api/account/activity", init));
+  await vi.advanceTimersByTimeAsync(2001);
+  expect((await pending).status).toBe(408); expect(cancel).toHaveBeenCalled(); expect(state.rpc).not.toHaveBeenCalled();
 });

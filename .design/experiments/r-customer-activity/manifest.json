@@ -1,1 +1,14 @@
-{"route":"direct","job_kind":"improve","surface":"product","constraint_mode":"existing-system","contract":"contract.md","status":"implementation","browser_review":"pending-parent"}
+{
+  "route": "direct",
+  "job_kind": "improve",
+  "surface": "product",
+  "constraint_mode": "existing-system",
+  "contract": "contract.md",
+  "status": "review",
+  "browser_review": "passed on the MacBook at 1440 and 390 px",
+  "evidence": [
+    "../../evidence/customer-activity/family-desktop.png",
+    "../../evidence/customer-activity/family-history.png",
+    "../../evidence/customer-activity/family-phone.png"
+  ]
+}

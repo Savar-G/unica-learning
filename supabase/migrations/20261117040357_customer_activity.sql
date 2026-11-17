@@ -136,7 +136,10 @@ union all select 'maya_end:'||m.id,m.ended_at,m.parent_id,m.child_id,m.workbook_
 union all select 'feedback:'||f.id,f.created_at,f.parent_id,f.child_id,null,'feedback','parent',null,'Feedback received','/admin/feedback',null from public.feedback f
 union all select 'delivery:'||r.audit_id,r.recorded_at,r.parent_id,r.child_id,r.workbook_id,'delivery','team',r.actor_id,'Delivery confirmed','/admin/workbooks/'||r.workbook_id,null from public.workbook_delivery_receipts r
 union all select 'delivery_correction:'||r.id,r.recorded_at,r.parent_id,r.child_id,r.workbook_id,'delivery','team',r.actor_id,'Delivery corrected','/admin/workbooks/'||r.workbook_id,null from public.workbook_delivery_corrections r
-union all select 'workbook:'||w.id,w.at,w.parent_id,w.child_id,w.workbook_id,'workbook',case when w.actor_id is null then 'system' else 'team' end,w.actor_id,'Workbook action: '||w.action,'/admin/workbooks/'||w.workbook_id,null from public.workbook_audit w where w.workbook_id is not null
+union all select 'workbook:'||w.id,w.at,w.parent_id,w.child_id,w.workbook_id,'workbook',case when w.actor_id is null then 'system' else 'team' end,w.actor_id,'Workbook action: '||w.action,
+ case when w.workbook_id is not null then '/admin/workbooks/'||w.workbook_id
+      when w.run_id is not null then '/admin/workbooks/runs/'||w.run_id
+      else '/admin/parents/'||w.parent_id end,null from public.workbook_audit w
 union all select 'plan:'||p.id,p.created_at,p.parent_id,p.child_id,null,'plan','unknown',null,'Plan change recorded. Current state: '||p.state,'/admin/parents/'||p.parent_id,null from public.plan_control_operations p
 union all select 'plan_start:'||s.card_setup_id::text||'-'||s.generation::text,s.started_at,s.parent_id,c.child_id,null,'plan','unknown',null,'Plan start recorded. Current state: '||s.state,'/admin/parents/'||s.parent_id,null from public.plan_starts s join public.card_setups c on c.id=s.card_setup_id
 union all select 'email:'||e.id,e.created_at,e.parent_id,e.child_id,null,'email','system',null,'Email record. Current state: '||coalesce(e.status,'unknown'),'/admin/emails',null from public.email_log e
@@ -183,7 +186,24 @@ union all select parent_id,child_id,last_answer_at from public.assessments where
 union all select parent_id,child_id,coalesce(started_at,created_at) from public.maya_calls where kind in ('chat','family') and child_turns>0;
 revoke all on public.customer_meaningful_work from public,anon,authenticated,service_role;
 
-create function public.admin_customer_children(p_parent uuid default null,p_child uuid default null,p_after uuid default null,p_tests boolean default false,p_from timestamptz default now()-interval '30 days',p_to timestamptz default now(),p_search text default null,p_attention text default null)
+-- Resolve an explicit book independently of either summary cursor. Scope and test visibility apply here.
+create function public.admin_customer_book(p_book uuid,p_parent uuid default null,p_child uuid default null,p_tests boolean default false)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare result jsonb;
+begin
+ if not public.is_admin() then raise insufficient_privilege; end if;
+ select jsonb_build_object('id',w.id,'parent',w.parent_id,'child',w.child_id,'number',w.number,'childName',c.first_name,'familyName',p.name)
+ into result from public.workbooks w join public.parents p on p.id=w.parent_id
+ join public.children c on c.id=w.child_id and c.parent_id=w.parent_id
+ where w.id=p_book and (p_parent is null or p.id=p_parent) and (p_child is null or c.id=p_child)
+ and (p_tests or (not exists(select 1 from public.test_accounts t where t.parent_id=p.id)
+   and not exists(select 1 from public.admin_users a where a.user_id=p.id)));
+ return result;
+end $$;
+revoke all on function public.admin_customer_book(uuid,uuid,uuid,boolean) from public,anon;
+grant execute on function public.admin_customer_book(uuid,uuid,uuid,boolean) to authenticated;
+
+create function public.admin_customer_children(p_parent uuid default null,p_child uuid default null,p_after uuid default null,p_tests boolean default false,p_from timestamptz default now()-interval '30 days',p_to timestamptz default now(),p_search text default null,p_attention text default null,p_book uuid default null,p_books_before integer default null)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare result jsonb;
 begin
@@ -193,6 +213,10 @@ begin
  (select x.province from public.children x where x.parent_id=p.id order by x.created_at,x.id limit 1) province,
  (exists(select 1 from public.test_accounts t where t.parent_id=p.id) or exists(select 1 from public.admin_users a where a.user_id=p.id)) test,
  (select max(m.at) from public.customer_meaningful_work m where m.child_id=c.id and m.parent_id=p.id) last_work,
+ -- The canonical identity refuses finished, unsupported, mismatched and superseded delivered books.
+ (select public._workbook_scan_inactivity_identity(w.id,now()) from public.workbooks w
+   join public.workbook_delivery_receipts d on d.workbook_id=w.id and d.parent_id=p.id and d.child_id=c.id and d.number=w.number
+   where w.parent_id=p.id and w.child_id=c.id order by w.number desc,w.id desc limit 1) inactivity,
  (select max(a.created_at) from public.customer_activity a where a.parent_id=p.id and (a.child_id=c.id or a.child_id is null) and a.event='page_visit' and a.created_at>=now()-interval '90 days') last_visit,
  (select s.kind from public.child_plan_states s where s.child_id=c.id and s.parent_id=p.id) plan,
  (select jsonb_build_object('id',a.id,'status',a.status,'at',a.last_answer_at,'resumeUntil',a.resume_until) from public.assessments a where a.child_id=c.id and a.parent_id=p.id order by a.started_at desc,a.id desc limit 1) assessment,
@@ -208,10 +232,13 @@ begin
    w.printed_revision is not null and w.print_manifest is not null contract_available
    from public.workbooks w left join public.workbook_delivery_receipts d on d.workbook_id=w.id and d.parent_id=p.id and d.child_id=c.id
    left join lateral(select x.* from public.workbook_delivery_corrections x where x.workbook_id=w.id order by x.audit_id desc limit 1) x on true
-   where w.parent_id=p.id and w.child_id=c.id order by w.number desc,w.id desc limit 21) b) books
+   where w.parent_id=p.id and w.child_id=c.id and (p_books_before is null or w.number<p_books_before) order by w.number desc,w.id desc limit 21) b) books
  from (select c.* from public.children c where (p_parent is null or c.parent_id=p_parent) and (p_child is null or c.id=p_child)
+   and (p_book is null or exists(select 1 from public.workbooks selected where selected.id=p_book and selected.child_id=c.id and selected.parent_id=c.parent_id))
    and (p_search is null or c.first_name ilike '%'||p_search||'%' or exists(select 1 from public.parents p where p.id=c.parent_id and p.name ilike '%'||p_search||'%'))
    and (p_attention is null
+     or (p_attention='inactive' and exists(select 1 from public.workbooks w where w.parent_id=c.parent_id and w.child_id=c.id
+       and public._workbook_scan_inactivity_identity(w.id,now()) is not null))
      or (p_attention='assessment' and (select a.status from public.assessments a where a.child_id=c.id and a.parent_id=c.parent_id order by a.started_at desc,a.id desc limit 1)='in_progress')
      or (p_attention='team' and exists(select 1 from public.scan_marking_items i join public.workbooks w on w.id=i.workbook_id and w.printed_revision=i.printed_revision where i.child_id=c.id and i.parent_id=c.parent_id
        and i.observation->>'result' is null and (i.observation->>'state'='parent-pending' or (i.observation->>'state'='pending' and (i.model is not null or i.observation->>'certainty'<>'not-read'))))))
@@ -221,8 +248,8 @@ begin
  ) r;
  return result;
 end $$;
-revoke all on function public.admin_customer_children(uuid,uuid,uuid,boolean,timestamptz,timestamptz,text,text) from public,anon;
-grant execute on function public.admin_customer_children(uuid,uuid,uuid,boolean,timestamptz,timestamptz,text,text) to authenticated;
+revoke all on function public.admin_customer_children(uuid,uuid,uuid,boolean,timestamptz,timestamptz,text,text,uuid,integer) from public,anon;
+grant execute on function public.admin_customer_children(uuid,uuid,uuid,boolean,timestamptz,timestamptz,text,text,uuid,integer) to authenticated;
 
 create function public.admin_customer_metrics(p_from timestamptz,p_to timestamptz)
 returns jsonb language plpgsql security definer set search_path = '' as $$

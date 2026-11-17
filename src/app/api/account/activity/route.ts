@@ -1,17 +1,17 @@
 import { cookies } from "next/headers";
 import { parentId, sessionClient, adminClient } from "@/lib/supabase-auth";
 import { activityInput, ACTIVITY_CONSENT_COOKIE, telemetryRequestAllowed } from "@/lib/customer-activity";
+import { activityJson, ActivityBodyError } from "@/lib/customer-activity-body";
 
 export async function POST(request: Request) {
   const reply = (status: number) => new Response(null, { status, headers: { "Cache-Control": "no-store" } });
   if (!telemetryRequestAllowed(request, (await cookies()).get(ACTIVITY_CONSENT_COOKIE)?.value)) return reply(403);
   if (!request.headers.get("content-type")?.startsWith("application/json")) return reply(415);
-  if (Number(request.headers.get("content-length")) > 1000) return reply(413);
   const parent = await parentId(await sessionClient());
   if (!parent) return reply(401);
   let input;
-  try { const raw = await request.text(); if (raw.length > 1000) return reply(413); input = activityInput(JSON.parse(raw)); }
-  catch { return reply(400); }
+  try { input = activityInput(await activityJson(request, 1000)); }
+  catch (e) { return reply(e instanceof ActivityBodyError ? e.status : 400); }
   if (!input) return reply(400);
   const db = adminClient(AbortSignal.timeout(4000), { retry: false });
   if (!db) return reply(503);

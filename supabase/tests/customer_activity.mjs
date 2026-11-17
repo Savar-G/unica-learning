@@ -35,7 +35,7 @@ try {
     create table feedback(id uuid primary key,parent_id uuid,child_id uuid,created_at timestamptz);
     create table workbook_delivery_receipts(workbook_id uuid primary key,parent_id uuid,child_id uuid,audit_id bigint,actor_id uuid,recorded_at timestamptz,delivered_at timestamptz,number int);
     create table workbook_delivery_corrections(id uuid primary key,workbook_id uuid,parent_id uuid,child_id uuid,audit_id bigint,actor_id uuid,recorded_at timestamptz,delivered_at timestamptz,number int);
-    create table workbook_audit(id bigint primary key,parent_id uuid,child_id uuid,workbook_id uuid,actor_id uuid,at timestamptz,action text);
+    create table workbook_audit(id bigint primary key,parent_id uuid,child_id uuid,workbook_id uuid,actor_id uuid,at timestamptz,action text,run_id uuid,draft_id uuid);
     create table plan_control_operations(id uuid primary key,parent_id uuid,child_id uuid,created_at timestamptz,state text);
     create table card_setups(id uuid primary key,child_id uuid,parent_id uuid,card_saved_at timestamptz,created_at timestamptz default now());
     create table reports(id uuid primary key,parent_id uuid,child_id uuid,created_at timestamptz,emailed_at timestamptz);
@@ -44,6 +44,8 @@ try {
     create table email_log(id uuid primary key,parent_id uuid,child_id uuid,created_at timestamptz,status text);
     create table email_sends(id uuid primary key,parent_id uuid,child_id uuid,created_at timestamptz,outcome text);
     create table child_plan_states(child_id uuid primary key,parent_id uuid,kind text);
+    create table candidate_identity(book uuid primary key,value jsonb);
+    create function _workbook_scan_inactivity_identity(p_book uuid,p_at timestamptz) returns jsonb language sql as $$ select value from public.candidate_identity where book=p_book $$;
     create function is_admin() returns boolean language sql as $$ select current_setting('test.admin',true)='yes' $$;
     create function fence_family_write() returns trigger language plpgsql as $$ begin return new; end $$;
     create function fence_child_delete_write() returns trigger language plpgsql as $$ begin return new; end $$;
@@ -97,6 +99,22 @@ try {
     values($1,$2,$3,$4,'{"result":null,"state":"pending","certainty":"unsure"}','stored-model','frozen')`,[id(701),id(1),id(830),id(700)]);
   const awaiting = (await db.query("select admin_customer_children(p_parent=>$1,p_attention=>'team') rows",[id(1)])).rows[0].rows;
   assert.equal(awaiting.length,1); assert.equal(awaiting[0].id,id(830));
+  // Retained pre-book audit actions keep their actor and usable run link.
+  await db.query("insert into workbook_audit(id,parent_id,child_id,run_id,actor_id,at,action) values(900,$1,$2,$3,$4,now(),'run-started')",[id(1),id(11),id(901),id(3)]);
+  const runHistory=(await db.query("select admin_customer_history(p_parent=>$1,p_type=>'workbook') rows",[id(1)])).rows[0].rows;
+  assert.equal(runHistory.length,1); assert.equal(runHistory[0].actor_name,'Team actor'); assert.equal(runHistory[0].href,'/admin/workbooks/runs/'+id(901));
+  // Explicit old-book selection and book pagination are independent of summary limits.
+  for(let number=1;number<=22;number++) await db.query("insert into workbooks values($1,$2,$3,$4,'shipped','frozen','{}')",[id(9000+number),id(1),id(11),number]);
+  const selected=(await db.query('select admin_customer_book($1) value',[id(9001)])).rows[0].value;
+  assert.equal(selected.number,1); assert.equal(selected.child,id(11));
+  assert.equal((await db.query('select admin_customer_book($1,p_parent=>$2) value',[id(9001),id(2)])).rows[0].value,null);
+  const oldBooks=(await db.query('select admin_customer_children(p_child=>$1,p_books_before=>3) rows',[id(11)])).rows[0].rows[0].books;
+  assert.deepEqual(oldBooks.map(b=>b.number),[2,1]);
+  // The synthetic canonical-identity seam tests selection only. Hosted probes use the real scan function.
+  await db.query('insert into candidate_identity values($1,$2)',[id(700),{workbook_id:id(700),delivered_at:'2026-11-01T00:00:00Z',anchor_at:'2026-11-01T00:00:00Z'}]);
+  await db.query('insert into workbook_delivery_receipts(workbook_id,parent_id,child_id,number,delivered_at) values($1,$2,$3,1,now())',[id(700),id(1),id(830)]);
+  const inactive=(await db.query("select admin_customer_children(p_attention=>'inactive') rows")).rows[0].rows;
+  assert.equal(inactive.length,1); assert.equal(inactive[0].id,id(830)); assert.equal(inactive[0].inactivity.workbook_id,id(700));
   await db.query("set test.admin='no'; set role authenticated");
   await assert.rejects(db.query('select admin_customer_history()'),/insufficient_privilege|permission denied/);
   await assert.rejects(write(db,id(1),id(11),id(300)),/permission denied/);

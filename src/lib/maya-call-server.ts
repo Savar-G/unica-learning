@@ -182,7 +182,8 @@ const callCursor = (value?: string): CallCursor | null => {
  * Calls by flag level, then newest, with a saved place for each direction. No database offset or total-size cap.
  * `hide`: the parent ids left out (the test families, while the admin's "Show test families" switch is off).
  */
-export async function listCalls(a: AdminSession, limit = 50, token?: string, hide: readonly string[] = []): Promise<CallListPage> {
+export async function listCalls(a: AdminSession, limit = 50, token?: string, hide: readonly string[] = [], child?: string): Promise<CallListPage> {
+  if (child && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(child)) throw new Error("Invalid child filter");
   const out = notIn(hide);
   const cursor = callCursor(token);
   const backwards = cursor?.direction === "newer";
@@ -200,6 +201,7 @@ export async function listCalls(a: AdminSession, limit = 50, token?: string, hid
     }
     const read = a.db.from("maya_calls").select("id, kind, created_at, parent_id, child_id, question_text, status, model, outcome_reason, assistance, call_seconds, learning_event_id, mode, connected_seconds, mishearing_confirmations, mishearing_corrections, flag, safety_severity, safety_flag")
       .or(filter);
+    if (child) read.eq("child_id", child);
     const rows = must<Database["public"]["Tables"]["maya_calls"]["Row"][]>(
       await (out ? read.not("parent_id", "in", out) : read).order("created_at", { ascending: backwards }).order("id", { ascending: backwards }).limit(limit + 1),
       "maya calls",
