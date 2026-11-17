@@ -38,7 +38,7 @@ it("teaches angle classification from the checked example's opening rather than 
     if (!filled || !["acute", "right", "obtuse"].includes(filled.ref.answer)) continue;
     answers.add(filled.ref.answer);
     const method = templateMethod(filled.ref.source, filled.text, filled.ref);
-    expect(method).toContain("square corner");
+    expect(method, filled.text).toContain("square corner");
     expect(method).toContain(filled.ref.answer);
     expect(method).not.toMatch(/Work it out|\d+ [+=×]/);
   }
@@ -101,7 +101,7 @@ it.each([1, 2])("teaches the printed angle count for step %i instead of its samp
   for (let attempt = 0; attempt < 80; attempt++) {
     const filled = stepTemplateItem({ curriculum, skill: "6.13-classify-angles", step, place: "on-your-own",
       level: 19, day: step === 1 ? 5 : 8, seed: 121, attempt, ordinal: 0 });
-    if (!filled?.text.startsWith("Of ")) continue;
+    if (!filled || !/^(Of |There are )/.test(filled.text)) continue;
     checked++;
     const method = templateMethod(filled.ref.source, filled.text, filled.ref);
     expect(method).toContain(step === 1 ? "Only acute angles" : "Only reflex angles");
@@ -122,4 +122,15 @@ it("does not pass a turn-composition Challenge with an opening definition alone"
     expect(templateMethod(filled.ref.source, filled.text, filled.ref)).toBeNull();
   }
   expect(checked).toBeGreaterThan(0);
+});
+
+it("does not teach an estimation method for a different group size or an unsupported step", () => {
+  const src: TemplateSource = { answer: "g * n", check: null, values: null, derived: [], slots: [
+    { name: "g", value: { int: "25" }, domain: { min: 25, max: 25 } },
+    { name: "n", value: { int: "4" }, domain: { min: 4, max: 4 } },
+  ] };
+  const text = "A box holds 25 beads. About how many beads are in 4 boxes?";
+  expect(templateMethod(src, text, { skill: "3.1-estimate-quantity", step: 1 })).toContain("4 × 25 = 100");
+  expect(templateMethod(src, text, { skill: "3.1-estimate-quantity", step: 2 })).toBeNull();
+  expect(templateMethod(src, text, { skill: "3.1-estimate-quantity", step: 4 })).toBeNull();
 });

@@ -1,4 +1,5 @@
 import { pagePlan } from "@/lib/workbook-template";
+import { taskIdentity } from "@/lib/workbook-task-identity";
 import { expect, it } from "vitest";
 import { fakeAiClient } from "@/lib/ai-client-fake";
 import { fakeWorkbookItems } from "@/lib/workbook-ai-fake";
@@ -28,6 +29,7 @@ it.each(["normal", "recover", "blocked"])("checks the U4 review floor before gen
     // This control proves refill selection only. The full seeded CLI checks physical fit.
     fit: { fits: async page => {
       if (page.type !== "remember-these") return { ok: true };
+      if (page.questions.length > 8) return { ok: false, problems: [{ question: null, reason: "Control: this page holds at most eight questions" }] };
       if (scenario === "blocked" && page.questions.length > 7) return { ok: false, problems: [{ question: null, reason: "Control: eight questions cannot fit" }] };
       if (page.questions.length <= 6) roomAvailable = true;
       return roomAvailable ? { ok: true } : { ok: false, problems: [{ question: null, reason: "Control: the initial questions exceed the room" }] };
@@ -47,6 +49,8 @@ it.each(["normal", "recover", "blocked"])("checks the U4 review floor before gen
   const questions = page.questions.filter(q => q.package && q.check.status !== "failed");
   expect(roomAvailable).toBe(true);
   expect(questions).toHaveLength(8);
+  expect(new Set(questions.flatMap(q => q.package ? [taskIdentity(q.package)] : [])).size).toBe(8);
+  expect(pagePlan({ ...page, questions: questions.flatMap(q => q.package ? [{ number: q.number, package: q.package }] : []) })?.incomplete).toEqual([]);
   expect(result.draft.quality?.issues.filter(i => i.kind === "coverage")).toEqual([]);
 });
 

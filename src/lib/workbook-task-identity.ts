@@ -1,6 +1,6 @@
-import type { QuestionPackage } from "./question-package";
+import type { Operation, QuestionPackage } from "./question-package";
 import { PEOPLE, THINGS } from "./workbook-wording";
-import { printedWorkbookQuestion } from "./workbook-maya-operation";
+import { printedOperation, printedWorkbookQuestion } from "./workbook-maya-operation";
 import { canonical } from "./workbook-digest";
 
 /** A step template item's format ("missing", "true-false", ...), from its template id (#489); null for any other item. */
@@ -58,29 +58,40 @@ export function reasoningSteps(p: QuestionPackage): number {
 
 
 /**
- * What a question asks, as mathematical data (#482 review): the operation and its operands, or the item's checks and
- * picture, with the format family (a drill, a story with its frame, an error to spot, ...). Where the printed "?" or
- * "=" sits is not part of it, so "9 × 2 = ?" and "? = 9 × 2" are one task. Region ids are left out too.
+ * A printed task, independent of template provenance, unused sampling slots and teaching metadata. Closed printed
+ * relationships share their arithmetic operation. Other tasks retain their words and quantity roles: a matching
+ * answer and a bag of numbers do not establish that two questions ask the same thing.
  */
 export function taskIdentity(p: QuestionPackage): string {
   p = printedWorkbookQuestion(p);
-  // One printed task for every path (#482 reviews at 3134252 and db3b1a0): template, hand-built and existing-writer
-  // questions alike are their format family (a drill, a story, an error to spot, two ways, a colouring, an explanation),
-  // the numbers they print with their sequence terms in any order (where the "?" sits does not matter), their answers
-  // and their picture. "11 × 5 = ?" from two fills, two templates or two builders is one task; so are two stories that
-  // work the same numbers to the same answer, whatever box they print in (a story card or a row). A question that
-  // prints no number is its words.
   const f = p.item?.format;
   const family = f === "spot-the-error" ? "error" : f === "two-ways" ? "two-ways" : f === "written-reason" ? "explain"
-    // (From the printed text alone: who wrote it, the AI or code, never changes the task, Codex at 47c5fd78.)
     : f === "draw" || f === "colour-or-shade" ? "colour" : contextFrame(p.text) ? "story" : "drill";
-  const numbers = printedTaskNumbers(p);
-  // (Its words with the names taken out: "when Jon fills it" and "when Raj fills it" ask one thing.)
-  // (And its places: "always sunny at the beach" and "at the rink" ask one thing, the real U4 sample.)
-  const words = numbers.length ? null : contextFrame(p.text) ?? p.text.toLowerCase().replace(PLACE, " _ ").replace(/[^a-z0-9_]+/g, " ").trim();
-  // (Canonical: a page read back from jsonb has its figure's keys in another order, and a resumed run compares its new
-  // questions with the stored pages', Codex on #631.)
-  return JSON.stringify(canonical(["task", family, numbers, answersOf(p), p.item?.figure ?? null, words]));
+  const operation = printedOperation(p.text);
+  const relationship = operation ? operationIdentity(operation) : taskWords(p.text);
+  // The displayed claim is part of an error task, including when the template stores it outside the question text.
+  // Its source expressions, slots and check-region ids are not printed and must never distinguish two tasks.
+  const shown = f === "spot-the-error" ? [p.item?.error?.answer ?? null,
+    ...(p.item?.checks ?? []).flatMap(c => c.kind === "template-shown" ? [c.shown] : [])] : null;
+  return JSON.stringify(canonical(["task", family, printedTaskNumbers(p), answersOf(p), p.item?.figure ?? null, relationship, shown]));
+}
+
+function operationIdentity(operation: Operation): unknown {
+  // Only these binary operations commute. Subtraction, division, fractions and expression trees keep operand roles.
+  if (operation.kind === "add" || operation.kind === "multiply" || operation.kind === "decimal-add" || operation.kind === "decimal-multiply") {
+    return [operation.kind, [...operation.operands].sort((a, b) => a - b)];
+  }
+  return operation;
+}
+
+/** Keep numbers and mathematical words in their printed roles, removing only incidental names, objects and places. */
+function taskWords(text: string): string {
+  const incidental = [...PEOPLE, ...THINGS, ...THINGS.map(x => x.replace(/s$/, ""))];
+  return text.replace(/\b[A-Z][a-z]+(?= (?:has|needs|wants|finds|gets|puts|sees|shares|fills|packs|drops)\b)/g, "_")
+    .toLowerCase().replace(new RegExp(`\\b(?:${incidental.map(x => x.toLowerCase()).join("|")})\\b`, "g"), "_")
+    .replace(/\b(?:he|she|him|her|his|hers|they|them|their)\b/g, "_").replace(PLACE, "at _")
+    .replace(/(\d)[\u00a0\u202f ](?=\d{3}\b)/g, "$1")
+    .replace(/[−–]/g, "-").replace(/\s+/g, " ").trim().replace(/[.?]$/, "");
 }
 
 /**
@@ -110,14 +121,15 @@ export function printedForm(p: QuestionPackage): string {
 }
 
 /**
- * The numbers a task works with, least to greatest (Codex at e6d79b6a, B2): the operands of the operation code picked,
+ * The numbers a task works with, least to greatest (Codex at e6d79b6a, B2): the operands of a closed printed relationship,
  * when it has one; else the numbers it prints, the sequence's printed terms included, without its distractors (a number
  * printed as a choice, or after "which number:"), whatever region the answer takes. "8
  * is 6 and which number: 2 or 3?" works with 8 and 6, as "8 is 6 and ?" does.
  */
 function printedTaskNumbers(p: QuestionPackage): number[] {
-  const ops = p.operation?.operands as unknown[] | undefined;
-  if (ops?.length && ops.every((x) => typeof x === "number" && Number.isFinite(x))) return [...(ops as number[])].sort((a, b) => a - b);
+  const ops = printedOperation(p.text)?.operands;
+  const numeric = ops?.filter((x): x is number => typeof x === "number" && Number.isFinite(x));
+  if (numeric?.length && numeric.length === ops?.length) return [...numeric].sort((a, b) => a - b);
   const terms = (p.item?.checks ?? []).flatMap((c) => (c.kind === "sequence" ? c.terms.flatMap((t) => ("region" in t ? [] : t.type === "number" ? [t.value] : [])) : []));
   const shown = p.text.replace(/(\d)[\u00a0\u202f ](?=\d{3}\b)/g, "$1")
     // (The distractors: "and which number: 2 or 3?" offers the answer among others. A comparison's numbers, "Which is

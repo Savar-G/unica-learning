@@ -122,6 +122,48 @@ describe("book instructions in the plan", () => {
     expect(p.newSteps).toEqual(plan({}).newSteps);
   });
 
+  it("uses the added upper-level review room for four topic quotas without changing teaching", () => {
+    const instructions = set({ startLevel: "U19", teachMore: ["6.4", "6.13"], addReview: ["5.2", "5.7", "5.15", "5.19"] });
+    const profile = profileWith([["5.2", 0, 2]], 5, 8);
+    const p = plan({ grade: 8, profile, instructions });
+    const withoutReview = plan({ grade: 8, profile, instructions: { ...instructions, addReview: [] } });
+    expect(p.level).toBe(19);
+    expect(p.newSteps).toEqual(withoutReview.newSteps);
+    expect(firstDay(p, "6.4")).toBe(1);
+    expect(firstDay(p, "6.13")).toBe(firstDay(withoutReview, "6.13"));
+    for (const code of instructions.addReview) {
+      // The fourth topic used to be deferred by the six-page layout's three-topic limit.
+      // The full review page now provides four additional two-question slots.
+      expect(outcome(p, "add-review", code)?.applied).toBe(true);
+      expect(checks(p, code)).toEqual([
+        { day: 2, kind: "remember-these", items: 2 }, { day: 3, kind: "remember-these", items: 2 },
+        { day: 4, kind: "remember-these", items: 2 }, { day: 5, kind: "friday-5", items: 1 },
+      ]);
+    }
+    for (const d of p.days) {
+      expect(d.pages).toHaveLength(8);
+      expect(d.time!.estimated).toBeLessThan(35);
+      for (const part of d.pages.flatMap(page => page.parts)) {
+        const reserved = (part.weakChecks ?? []).reduce((sum, check) => sum + check.items, 0);
+        expect(reserved).toBeLessThanOrEqual(part.items);
+        if (reserved) expect(part.extra).not.toBe(true);
+      }
+    }
+  });
+
+  it("keeps automatic U10, the explicit borrowing review and a deferred dependent teaching request", () => {
+    const profile = profileWith([["2.4", 0, 1]], 3, 5);
+    const p = plan({ grade: 5, profile, instructions: set({ teachMore: ["3.3"], addReview: ["2.4"] }) });
+    expect(p.level).toBe(10);
+    expect(firstDay(p, "3.3")).toBeUndefined();
+    expect(outcome(p, "teach-more", "3.3")?.applied).toBe(false);
+    expect(checks(p, "2.4")).toEqual([
+      { day: 2, kind: "remember-these", items: 2 }, { day: 3, kind: "remember-these", items: 2 },
+      { day: 4, kind: "remember-these", items: 2 }, { day: 5, kind: "friday-5", items: 1 },
+    ]);
+    expect(p.days.every(d => d.pages.length === 8)).toBe(true);
+  });
+
   it("add review refuses topics of this level or later, and above-grade topics that are not secure (D-084)", () => {
     const p = plan({ instructions: set({ addReview: ["5.5", "6.1"] }) });
     expect(outcome(p, "add-review", "5.5")).toMatchObject({ applied: false, note: expect.stringMatching(/taught in this book's level/) });

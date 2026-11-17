@@ -4,8 +4,8 @@
 // .design/workbooks/CONTEXT.md (sections 1, 2, 4 and 5) and DESIGN.md (section 7). The level comes from the workbook
 // curriculum (G0, #361) through planLevel.
 //
-// - Ten days, five a week. Pages a day by band (D-186): U1 to U3 4 to 6 parent-led pages (6 to 10 items a page, icon
-//   instructions read aloud), U4 to U18 8, U19 to U30 6.
+// - Ten days, five a week, eight useful pages every day at U1 to U30. U1 to U3 stay parent-led (6 to 10 items
+//   a page, icon instructions read aloud). Extra review pages consolidate eligible steps without spending teaching pages.
 // - The day's parts, with their level gates: page 1 is the warm-up from U8 (the grade's fluency skills, from the level
 //   or the nearest earlier level that has some, and one In your head item), below U8 a Remember these? picture review;
 //   the Fix it box sits on page 1 of Days 1 to 5 from workbook 2; Try first from U19 on a day a step of A or B starts;
@@ -230,6 +230,8 @@ export interface FixItem {
 export interface PlannedPart {
   /** The whole block is optional. It keeps its full item count (D-233, Q6). */
   extra?: boolean;
+  /** The teaching purpose of this part; later practice applies the same skill in a different form. */
+  learningStage?: "guided" | "independent" | "application";
   /** C3: G1 selects the hardest allowed templates, without adding an untaught step. */
   templateDifficulty?: "hard";
   /** Preferred secure standards, limited to the part's allowed steps. */
@@ -331,9 +333,9 @@ export interface ReviewFallback {
   day: number;
   page: number;
   part: PartKind;
-  source: "today" | "below-start" | "no-review";
+  source: "today" | "below-start" | "placement-check" | "no-review";
   steps: { skill: string; step: number }[];
-  reason: "no eligible review steps";
+  reason: "no eligible review steps" | "no earlier learning to review; check without teaching a new step";
 }
 
 /** Explicit preview-only policy. This does not authorize generation or select a new representation. */
@@ -658,7 +660,7 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
   const n = level.number;
   const personal = input.personal?.hasAssessment ? input.personal : undefined;
   const parentLed = n <= PARENT_LED_TO;
-  const sixPages = n >= UPPER_FROM;
+  const upperLevel = n >= UPPER_FROM;
   const instructions = n <= ICONS_TO ? "icons" : "text";
   const pageType = (type: PageType): PageType => (parentLed ? "parent-led" : type);
   const levelGrade = Math.max(...levelSkills.map((s) => MAP_SKILLS.get(s.id)!.standard.grade));
@@ -843,22 +845,24 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
   };
   /** Unit B has a page that day: a teaching day. */
   const bDay = (day: number) => bOn && kinds[day - 1] === "teach";
-  const challengeTrack = (day: number): Track => (bDay(day) ? "B" : "A");
+  // The upper band's final day consolidates its main unit after Show what you know.
+  // Its separate Challenge page must retain the day's main-to-secondary balance.
+  const challengeTrack = (day: number): Track => (bDay(day) && !(upperLevel && day === DAYS) ? "B" : "A");
   const reviewPage = (day: number): Shape => {
     const friday = FRIDAY_5_DAYS.includes(day);
     const second: PartKind = friday ? "friday-5" : n >= MIXED_SET_FROM ? "mixed-set" : "picture-stories";
     const type: PageType = friday ? "friday-5" : n >= MIXED_SET_FROM ? "remember-these-mixed-set" : "remember-these";
-    // The 6-page and parent-led days set the challenge on this page (DESIGN 7.2).
-    const challenge = sixPages || parentLed ? [T("challenge", challengeTrack(day))] : [];
+    // Parent-led days share the challenge with review; older children have a dedicated page.
+    const challenge = parentLed ? [T("challenge", challengeTrack(day))] : [];
     const checks = checksOn(day).map(() => T("unit-check"));
     return { type: pageType(type), role: "review", parts: [T("remember-these"), T(second), ...challenge, ...checks] };
   };
-  const challengePage = (day: number): Shape => ({ type: pageType("challenge"), role: "challenge", parts: [T("challenge", challengeTrack(day))] });
+  const challengePage = (day: number): Shape => ({ type: pageType("challenge"), role: "challenge", parts: [...(upperLevel ? [T("remember-these")] : []), T("challenge", challengeTrack(day))] });
   const reviewOnly = (role: string): Shape => ({ type: pageType("remember-these"), role, parts: [T("remember-these")] });
-  const newIdea = (track: Track) => [...(sixPages ? [T("try-first", track)] : []), T("new-idea", track), T("spot-the-error", track)];
+  const newIdea = (track: Track) => [...(upperLevel ? [T("try-first", track)] : []), T("new-idea", track), T("spot-the-error", track)];
   const twoWays = n >= SOLVE_TWO_WAYS_FROM ? [T("solve-it-two-ways", "A"), T("spot-the-error", "A")] : [];
   const teachDay = (day: number, startsA: boolean, startsB: boolean, extras: Set<string>): Shape[] => {
-    const world = sixPages && MATH_IN_THE_WORLD_DAYS.includes(day);
+    const world = upperLevel && MATH_IN_THE_WORLD_DAYS.includes(day);
     const second: Shape | null =
       day === DAYS ? { type: pageType("show-what-you-know"), role: "second", parts: [T("show-what-you-know")] }
       : startsA ? { type: pageType("new-idea"), role: "second", parts: newIdea("A") }
@@ -867,10 +871,10 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
       : { type: "practice", role: "second", parts: [T("practice", "A"), ...(world ? twoWays : [])] };
     const practice: Shape = world
       ? { type: "math-in-the-world", role: "practice", parts: [T("math-in-the-world", "A")] }
-      : { type: pageType("practice"), role: "practice", parts: [T("practice", "A"), ...(sixPages ? twoWays : [])] };
+      : { type: pageType("practice"), role: "practice", parts: [T("practice", "A"), ...(upperLevel ? twoWays : [])] };
     // Else on the word problems page.
     // (U4 to U9, D-226: Solve it two ways moves here from practice-2, see workbook-early-levels.ts.)
-    const twoWaysHere = !parentLed && !sixPages && twoWaysOnStoriesPage(n);
+    const twoWaysHere = !parentLed && !upperLevel && twoWaysOnStoriesPage(n);
     const story: Shape = {
       type: pageType("word-problems"), role: "story",
       parts: [T(parentLed ? "picture-stories" : "word-problems", "A"), ...(world && second?.type !== "practice" || twoWaysHere ? twoWays.slice(0, 1) : [])],
@@ -892,27 +896,32 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
       // On a step day, A's practice page shares its room with the day's picture stories (CONTEXT 4.7: every day).
       const shared: Shape = { ...practice, parts: [...practice.parts, T("picture-stories", "A")] };
       const teachA = startsA && second ? [second, shared] : [practice, story];
-      return [check(1), check(2), ...teachA, slot, reviewPage(day)]
+      return [check(1), check(2), ...teachA, slot, reviewOnly("consolidate-1"), reviewOnly("consolidate-2"), reviewPage(day)]
         .map((s) => (extras.has(`${day}:${s.role}`) ? { ...s, parts: [...s.parts, T("remember-these")] } : s));
     }
-    const pages: (Shape | null)[] = parentLed || sixPages
-      ? [firstPage(day), second, practice, story, slot, reviewPage(day)]
+    const pages: (Shape | null)[] = parentLed || upperLevel
+      ? [firstPage(day), second, ...(world && slot.parts.some(p => p.kind === "practice" && p.track === "A")
+        ? [slot, practice, story] : [practice, story, slot]), ...(upperLevel ? [reviewOnly("consolidate")] : []), reviewPage(day), ...(upperLevel ? [challengePage(day)] : [])]
       : [firstPage(day), second, practice, { type: "practice-2", role: "practice-2", parts: [T("practice", "A"), ...(twoWaysHere ? twoWays.slice(1) : twoWays)] }, story, slot, reviewPage(day), challengePage(day)];
-    return pages.filter((s): s is Shape => s !== null).map((s) => (extras.has(`${day}:${s.role}`) ? { ...s, parts: [...s.parts, T("remember-these")] } : s));
+    const full = pages.filter((s): s is Shape => s !== null);
+    // Kindergarten keeps its existing teaching budget, including a day without a new idea.
+    // Use the remaining pages for picture review, not another step or empty padding.
+    if (parentLed) while (full.length < 8) full.splice(full.length - 1, 0, reviewOnly(`consolidate-${full.length}`));
+    return full.map((s) => (extras.has(`${day}:${s.role}`) ? { ...s, parts: [...s.parts, T("remember-these")] } : s));
   };
   /** A Remember these? day after a pause: the day's pages, review (the support unit keeps its page) and a challenge. */
   const rememberDay = (day: number): Shape[] => {
-    const tail = sixPages || parentLed ? [reviewPage(day)] : [reviewPage(day), challengePage(day)];
-    const count = parentLed ? level.pagesPerDay.min + 1 : level.pagesPerDay.max;
+    const tail = parentLed ? [reviewPage(day)] : [reviewPage(day), challengePage(day)];
+    const count = 8;
     const reviews = Array.from({ length: count - 1 - tail.length }, (_, i) => reviewOnly(`review-${i}`));
     if (support) reviews[reviews.length - 1] = reviewOnly("slot");
     return [firstPage(day), ...reviews, ...tail];
   };
   const levelTestDay = (): Shape[] =>
-    Array.from({ length: parentLed ? level.pagesPerDay.min : level.pagesPerDay.max }, (_, i): Shape => ({ type: pageType("level-test"), role: `test-${i}`, parts: [T("level-test")] }));
-  /** The light day: half the pages (at least the parent-led minimum), review and a challenge, no new idea. */
+    Array.from({ length: 8 }, (_, i): Shape => ({ type: pageType("level-test"), role: `test-${i}`, parts: [T("level-test")] }));
+  /** The light day keeps eight pages of familiar review and a challenge, with no new idea. */
   const lightDay = (day: number): Shape[] => {
-    const count = Math.max(Math.ceil(level.pagesPerDay.max / 2), parentLed ? level.pagesPerDay.min : 0);
+    const count = 8;
     return [firstPage(day), ...Array.from({ length: count - 2 }, (_, i) => reviewOnly(`review-${i}`)), { ...challengePage(day), parts: [T("remember-these"), T("challenge", "A")] }];
   };
 
@@ -1002,7 +1011,7 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
   // only where the day's A to B stays about 2:1.
   const weightOf = (s: Shape) => s.parts.filter((p) => REVIEW_PARTS.has(p.kind)).length / s.parts.length;
   const shareOf = (all: Shape[][]) => all.flat().reduce((sum, s) => sum + weightOf(s), 0) / all.flat().length;
-  const roles = parentLed || sixPages ? ["practice", "story"] : ["practice-2", "story", "challenge"];
+  const roles = parentLed || upperLevel ? ["practice", "story"] : ["practice-2", "story", "challenge"];
   let sim = simulate();
   for (let day = DAYS; day >= 1 && shareOf(shapesFor(sim.startDays)) < level.reviewShare; day--) {
     if (kinds[day - 1] !== "teach") continue;
@@ -1060,9 +1069,9 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
   /** Items in a page's Remember these? (DESIGN 7 slot limits; a parent-led page holds 6 to 10 in all). */
   const rememberItems = (shape: Shape) => {
     const alone = shape.parts.length === 1;
-    if (shape.role === "review") return parentLed ? (shape.parts.some((p) => p.kind === "friday-5") ? 4 : 6) : sixPages ? 6 : 8;
+    if (shape.role === "review") return parentLed ? (shape.parts.some((p) => p.kind === "friday-5") ? 4 : 6) : upperLevel ? 6 : 8;
     if (shape.role === "first") return parentLed ? 6 : 8;
-    if (alone) return 8;
+    if (alone) return parentLed || upperLevel ? 6 : 8;
     // A block beside other parts: the spare room of a teaching page, the mini-test page or the light day's challenge.
     return parentLed ? (shape.role === "challenge" ? 6 : 2) : 4;
   };
@@ -1136,7 +1145,8 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
     return at < n ? level.codeReviewSteps?.[skill]?.at(-1) : undefined;
   };
   const rememberAllowed = (skill: string, day: number) => (!personal || personalReviewStep(skill, day) !== undefined)
-    && (!secureBelow.has(skill) || placed.some(r => r.skill === skill && r.due <= day));
+    && (!secureBelow.has(skill) || placed.some(r => r.skill === skill && r.due <= day)
+      || [2, 3, 4, 5].includes(day) && earlyBelow.some(check => check.skills.includes(skill)));
   // Stories keep their known earlier-level candidates independently of the Remember these schedule.
   const storyPrerequisites = personal ? earlier.filter(skill => {
     const at = level.skillLevels?.[skill];
@@ -1166,12 +1176,13 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
     let used = 0;
     let fillAt = 0;
     let checkAt = 0;
+    const practisedSteps = new Set<string>();
     const pagesOut = dayShapes.map((shape, p): PlannedPage => {
       const out = shape.parts.map(({ kind: k, track }, idx): PlannedPart => {
         const t = track ?? "A";
         switch (k) {
           case "warm-up": {
-            const facts = n < MIXED_SET_FROM ? 8 : boxOn(day).length > 0 ? 15 : sixPages ? 27 : 30;
+            const facts = n < MIXED_SET_FROM ? 8 : boxOn(day).length > 0 ? 15 : upperLevel ? 27 : 30;
             return part(k, facts, { skills: [...level.fluency] });
           }
           case "in-your-head": return part(k, 1, { skills: [...level.fluency] });
@@ -1195,23 +1206,29 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
             });
           }
           case "try-first": return unitPart(k, t, 1);
-          case "new-idea": return unitPart(k, t, parentLed ? (t === "B" ? 4 : 5) : 4, { methods: ["Method 1", "Method 2"] });
+          case "new-idea": return unitPart(k, t, parentLed ? (t === "B" ? 4 : 5) : 4, { methods: ["Method 1", "Method 2"], learningStage: "guided" });
           case "spot-the-error": return unitPart(k, t, 1);
           case "practice": {
-            if (shape.role === "practice-2") return unitPart(k, t, personal ? 10 : 12);
-            // A parent-led page shared with a New idea or with picture stories keeps the page within 6 to 10 items. Beside
-            // picture stories, practice takes the page's 6 cards: Watch one, two to finish and two on your own (#380).
+            const ref = stepOf(t) ?? stepOf("A");
+            const key = ref ? `${ref.skill}#${ref.step}` : t;
+            const later = practisedSteps.has(key);
+            practisedSteps.add(key);
+            if (shape.role === "practice-2") return unitPart(k, t, personal ? 10 : 12, { learningStage: later ? "application" : "independent" });
+            // Teach the method once. A later page on the same step has independent application instead
+            // of repeating Watch one and Getting started with another set of numbers.
+            if (later && !parentLed) return unitPart(k, t, 6, { learningStage: "application" });
+            // A parent-led page shared with a New idea or with picture stories keeps its six-card budget.
             const items = parentLed && shape.role === "slot" && shape.parts.length > 1 ? 3
               : parentLed && shape.parts.some((x) => x.kind === "picture-stories") ? 5 : 8;
-            return unitPart(k, t, items, { faded: { watch: 1, finish: 2 } });
+            return unitPart(k, t, items, { learningStage: "independent", faded: { watch: 1, finish: 2 } });
           }
           case "solve-it-two-ways": return unitPart(k, "A", 1, { methods: ["Method 1", "Method 2"] });
-          case "word-problems": return unitPart(k, "A", 3);
+          case "word-problems": return unitPart(k, "A", 3, { learningStage: "application" });
           case "picture-stories":
             // On a story page, A's step; beside Remember these?, the latest steps.
             return track ? unitPart(k, "A", parentLed ? (shape.role === "practice" ? 4 : 6) : 3) : part(k, 3, { skills: [...new Set([...stepsBefore(day + 1), ...passedSkills, ...earlier])].slice(0, 3) });
           case "math-in-the-world": return unitPart(k, "A", 1);
-          case "mixed-set": return part(k, sixPages ? 3 : 4, { skills: [...new Set([...stepsBefore(day + 1), ...passedSkills, ...earlier])] });
+          case "mixed-set": return part(k, upperLevel ? 3 : 4, { skills: [...new Set([...stepsBefore(day + 1), ...passedSkills, ...earlier])] });
           case "friday-5": {
             // The last 3 weeks: this workbook's steps so far, then the reviews carried at their first intervals.
             const recent = [...new Set([...stepsBefore(day), ...input.reviews.filter((r) => r.interval <= 1 && eligible(r.skill)).map((r) => r.skill)])];
@@ -1352,6 +1369,22 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
           const refs = today.length ? today : below;
           p.skills = [...new Set(refs.map(s => s.skill))];
           p.reviewSteps = refs;
+          if (!refs.length && parentLed) {
+            // A first Kindergarten book after a pause may have no prior learning to review.
+            // Sample the level without hints, as on Already know it? pages, instead of printing an empty page
+            // or teaching a new step during the pause review days.
+            const unit = level.units[(page.number - 1) % level.units.length];
+            p.kind = "already-know-it";
+            p.skills = unit.skills.map(skill => skill.id);
+            const checkSteps = p.skills.map(skill => ({ skill, step: 1 }));
+            p.reviewSteps = checkSteps;
+            p.hints = false;
+            p.check = { unit: unit.code, page: d.day % 2 === 1 ? 1 : 2 };
+            p.items = ALREADY_KNOW_IT_ITEMS;
+            reviewFallbacks.push({ day: d.day, page: page.number, part: p.kind, source: "placement-check",
+              steps: checkSteps, reason: "no earlier learning to review; check without teaching a new step" });
+            continue;
+          }
           if (!refs.length) p.items = 0;
           reviewFallbacks.push({ day: d.day, page: page.number, part: p.kind,
             source: today.length ? "today" : below.length ? "below-start" : "no-review", steps: refs, reason: "no eligible review steps" });
@@ -1380,14 +1413,9 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
       if (estimated >= 35) return { ok: false, reason: `day ${d.day}: the planned estimate reaches 35 minutes` };
       const weekly = personal.parent.weeklyTime === "under_1h" ? 20 : personal.parent.weeklyTime === "1_to_2h" ? 25 : estimated;
       const target = Math.min(estimated, weekly) - (personal.behaviour?.lateDrop ? 5 : 0);
-      const challenge = all.filter(p => p.kind === "challenge");
-      const practice = [...d.pages].reverse().filter(page => page.parts.some(p => p.kind === "practice")).map(page => page.parts);
-      if (personal.adjustments.extraChallenge) for (const p of challenge) p.extra = true;
-      // Each next practice block is the day's last remaining practice block. Counts and pages stay full.
-      for (const block of [...challenge.map(p => [p]), ...practice]) {
-        if (estimate() <= target) break;
-        for (const p of block) p.extra = true;
-      }
+      // Every planned daily page is core work, including Challenge. A short weekly preference
+      // cannot turn a core page into optional filler. Keep the estimate and report any shortfall
+      // below; capacity still has to satisfy the unchanged page, review and day-time gates.
       const round = (v: number) => Math.round(v * 10) / 10;
       d.time = { estimated: round(estimated), required: round(estimate()), target: round(target) };
       const shortfall = round(d.time.required - d.time.target);
@@ -1456,7 +1484,7 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
       ...(personal ? { personal: { ...personal, ...(timeShortfalls.length ? { timeShortfalls } : {}), ...(notReviewed.length ? { notReviewed } : {}), ...(reviewFallbacks.length ? { reviewFallbacks } : {}) } } : {}),
       level: n,
       lead: level.lead,
-      pagesADay: { ...level.pagesPerDay },
+      pagesADay: { min: 8, max: 8 },
       timeTarget: personal ? { min: Math.min(...days.map(d => d.time!.required)), max: Math.max(...days.map(d => d.time!.required)) }
         : { min: Math.min(level.dailyMinutes.min, 30), max: Math.min(level.dailyMinutes.max, 30) },
       testWorkbook,

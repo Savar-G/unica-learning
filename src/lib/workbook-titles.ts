@@ -34,8 +34,8 @@ const STRAND_TITLES: Readonly<Record<string, string>> = {
 
 /** Parts that hold review, tests and fixed pages: a page of only one of them takes its name. */
 const REVIEW_TITLES: Partial<Record<PartKind, string>> = {
-  "warm-up": "Warm-up", "remember-these": "Review", "already-know-it": "Already know it?", "friday-5": "Friday 5",
-  challenge: "Challenge", "show-what-you-know": "Show what you know", "math-in-the-world": "Math in the world",
+  "warm-up": "Warm-up", "remember-these": "Review", "already-know-it": "Already know it?", "friday-5": "Five-skill check",
+  challenge: "Challenge", "show-what-you-know": "Show what you know", "math-in-the-world": "Word problems",
   "unit-check": "Quick check", "mini-test": "Mini-test", "fix-it": "Fix it",
 };
 /** Parts with no title of their own: they sit beside a page's teaching (a Spot the error, the Mixed set). */
@@ -87,7 +87,7 @@ export function pageTitle(page: Pick<PlannedPage, "type" | "parts">, level: numb
   const own = kinds.filter((k) => !BESIDE.has(k) || k === "warm-up");
   if (own.length === 1 && REVIEW_TITLES[own[0]]) return REVIEW_TITLES[own[0]]!;
   if (kinds.length === 1 && REVIEW_TITLES[kinds[0]]) return REVIEW_TITLES[kinds[0]]!;
-  if (own.length === 2 && own.includes("remember-these") && own.includes("friday-5")) return "Review and Friday 5";
+  if (own.length === 2 && own.includes("remember-these") && own.includes("friday-5")) return "Practise and check";
   if (own.length > 0 && own.every((k) => STORIES.has(k))) return storiesTitle(skills(parts), level, s);
   // Review beside other work: the page mixes what it asks.
   if (own.some((k) => REVIEW.has(k) || k === "show-what-you-know")) return own.length === 1 ? REVIEW_TITLES[own[0]] ?? "Mixed review" : "Mixed review";

@@ -65,6 +65,11 @@ function range(where, value) {
   return { min: Number(m[1]), max: Number(m[2] ?? m[1]) };
 }
 
+function learningPagesPerDay(where, value) {
+  const parsed = range(where, value);
+  return parsed && { min: Math.max(8, parsed.min), max: Math.max(8, parsed.max) };
+}
+
 function whole(where, value, min = 0) {
   return Number.isInteger(value) && value >= min ? value : fail(where, `"${value}" is not a whole number of ${min} or more`);
 }
@@ -129,7 +134,9 @@ function parseLevels(sheets) {
         topics: text(at, r.topics),
         band: oneOf(at, r.band, { Early: "early", Middle: "middle", Upper: "upper" }),
         units: String(r.units ?? "").split(",").map((u) => u.trim()).filter(Boolean),
-        pagesPerDay: range(at, r.pagesPerDay),
+        // Current user policy supersedes the skeleton's historical 4-6/6-page ranges.
+        // Parse first so malformed spreadsheet metadata still fails the import.
+        pagesPerDay: learningPagesPerDay(at, r.pagesPerDay),
         lead: id && Number(id.slice(1)) >= 4 && Number(id.slice(1)) <= 6 ? "child-led" : oneOf(at, r.lead, LEADS),
         dailyMinutes: range(at, r.daily),
         practicePageMinutes: range(at, String(r.practice).replace(/^about /, ""))?.min ?? null,

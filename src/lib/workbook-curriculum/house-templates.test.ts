@@ -3,7 +3,7 @@ import { BC_CURRICULUM, bcStepProgressions } from "@/lib/workbook-curriculum";
 import { HOUSE_TEMPLATES, isChallengeOnly, isTwoStep, withHouseTemplates } from "./house-templates";
 import { stepFieldProblems } from "./step-source";
 import { prepareTemplate, seededRandom } from "./template";
-import { challengeTemplateCount, choicesFor, sequenceOf, stepRangeProblem } from "@/lib/workbook-step-items";
+import { buildStepItem, challengeTemplateCount, choicesFor, sequenceOf, stepRangeProblem, stepTemplateItem } from "@/lib/workbook-step-items";
 import { takeAwayProblem } from "@/lib/workbook-wording";
 
 describe("Unica Challenge templates", () => {
@@ -74,7 +74,7 @@ describe("Unica Challenge templates", () => {
           const claim = String(filled.values.claim);
           expect(filled.answer).toBe(claim.endsWith(kind) ? "true" : "false");
         } else {
-          expect(filled.text).toMatch(/Of \d acute and \d obtuse angles/);
+          expect(filled.text).toMatch(/There are \d acute angles and \d obtuse angles/);
           expect(Number(filled.answer)).toBe(Number(filled.values.a));
           expect(Number(filled.values.a)).toBeGreaterThan(0);
           expect(Number(filled.values.b)).toBeGreaterThan(0);
@@ -129,7 +129,7 @@ describe("Unica Challenge templates", () => {
             expect(prime(n("p"))).toBe(true);
             expect(prime(n("c"))).toBe(false);
             if (t.format !== "missing") expect(prime(n("q"))).toBe(true);
-            expect(answer).toBe(h.step === 1 ? t.format === "missing" ? n("p") - 2 : n("p") + n("q")
+            expect(answer).toBe(h.step === 1 ? t.format === "missing" ? n("p") - 2 : t.format === "story" ? n("p") - n("q") : n("p") + n("q")
               : t.format === "missing" ? n("p") + 31 : n("p") + n("q") - (t.format === "story" ? 31 : 0));
           } else if (h.skill === "6.4-divisibility") {
             const multiple = h.step === 1 ? 10 : h.step === 2 ? 9 : t.format === "bare" ? 12 : t.format === "missing" ? 24 : 8;
@@ -152,8 +152,9 @@ describe("Unica Challenge templates", () => {
               expect(answer).toBeGreaterThan(n("n"));
             }
             if (t.format === "story" && templateIndex < 3) {
-              const interval = item.text.match(/(\d+) < \? < (\d+)/)!;
-              const low = Number(interval[1]), top = Number(interval[2]);
+              const low = n("lo"), top = n("top");
+              expect(item.text).toContain(`greater than ${low}`);
+              expect(item.text).toContain(`less than ${top}`);
               const candidates = Array.from({ length: top - low - 1 }, (_, i) => low + i + 1);
               expect(candidates.length).toBeGreaterThan(1);
               const divisors = h.step === 1 ? [2, 5] : h.step === 2 ? [3, 9] : [4, 8];
@@ -165,11 +166,11 @@ describe("Unica Challenge templates", () => {
             const expected = h.step === 1 ? t.format === "bare" ? 3 * common : t.format === "missing" ? common - n("a") : 2 * common
               : t.format === "bare" ? 2 * common - n("a") : t.format === "missing" ? common / n("a") - 1 : common + n("start");
             expect(answer).toBe(expected);
-            if (h.step === 2 && t.format === "missing") expect(item.text).toMatch(/^Count positive multiples/);
+            if (h.step === 2 && t.format === "missing") expect(item.text).toMatch(/^Count the positive multiples/);
           } else {
             expect(item.answer).toBe(h.step === 1 ? t.format === "bare" ? "yes" : t.format === "compare" ? "B" : "no"
               : t.format === "bare" ? "straight" : t.format === "compare" ? "reflex" : "yes");
-            expect(item.text).toMatch(h.step === 1 ? /arms|opening/ : /angles|turn/);
+            expect(item.text).toMatch(h.step === 1 ? /sides|opening/ : /angles|turn/);
             expect(choicesFor(item.text, item.answer)).toContain(item.answer);
           }
           expect(stepRangeProblem(step, item.text)).toBeNull();
@@ -178,10 +179,69 @@ describe("Unica Challenge templates", () => {
       }
     }
   });
+  it.each(["3.6-increasing-pattern", "3.6-decreasing-pattern"])("checks varied independent tasks for %s across both steps", skill => {
+    for (const step of c.skillSteps(skill)!.filter(step => step.number <= 2)) {
+      const tasks = step.templates!.filter(t => t.text.includes("Its second number is")
+        || t.text.startsWith("The first two numbers in a pattern") || t.text.startsWith("A pattern begins"));
+      expect(tasks).toHaveLength(3);
+      expect(stepFieldProblems(step, c.contexts).filter(p => !/needs four to six templates/.test(p))).toEqual([]);
+      for (const t of tasks) for (let seed = 1; seed <= 200; seed++) {
+        const filled = prepareTemplate(step, t, c.contexts).fill(seededRandom(seed));
+        const a = Number(filled.values.a), b = Number(filled.values.b), jump = Math.abs(b - a);
+        if (t.format === "missing") expect(Number(filled.answer)).toBe(skill.includes("decreasing") ? b + jump : b - jump);
+        else if (t.format === "bare") expect(Number(filled.answer)).toBe(jump);
+        else {
+          expect(["A", "B"]).toContain(filled.answer);
+          expect(Number(filled.values[filled.answer === "A" ? "oa" : "ob"])).toBe(jump);
+          expect(filled.values.oa).not.toBe(filled.values.ob);
+        }
+        expect(stepRangeProblem(step, filled.text), filled.text).toBeNull();
+        expect(stepRangeProblem(step, filled.answer)).toBeNull();
+      }
+    }
+  });
+  it("offers checked zero-placeholder reasoning beyond repeated digit-reading choices", () => {
+    const skill = "3.1-place-value-1000";
+    const step = c.skillSteps(skill)![1];
+    const practice = HOUSE_TEMPLATES.find(h => h.skill === skill && h.step === 2)!.practice!;
+    expect(practice).toHaveLength(3);
+    for (const [index, t] of practice.entries()) for (let seed = 1; seed <= 200; seed++) {
+      const filled = prepareTemplate(step, t, c.contexts).fill(seededRandom(seed));
+      const h = Number(filled.values.h), o = Number(filled.values.o);
+      if (index === 0) {
+        const n = Number(filled.values.n);
+        expect(Number(filled.answer)).toBe(n - Math.floor(n / 100) * 100);
+        expect(n % 10 === 0 || Math.floor(n / 10) % 10 === 0).toBe(true);
+      } else if (index === 1) {
+        expect(Number(filled.values.wrong)).not.toBe(h * 100 + o);
+        expect(Number(filled.answer)).toBe(h * 100 + o);
+      } else {
+        expect(Number(filled.answer)).toBe(Math.min(h * 100 + o, h * 100 + o * 10));
+      }
+      expect(stepRangeProblem(step, filled.text), filled.text).toBeNull();
+      expect(stepRangeProblem(step, filled.answer)).toBeNull();
+    }
+    const numericForms = new Set<number>();
+    for (let attempt = 0; attempt < 96; attempt++) {
+      const item = stepTemplateItem({ curriculum: c, skill, step: 2, level: 10, day: 4,
+        place: "practice-row", learningStage: "independent", seed: 31, ordinal: 2, attempt });
+      expect(item).not.toBeNull();
+      if (!item) continue;
+      expect(item.ref.difficulty).not.toBe("easy");
+      expect(isChallengeOnly(step.templates![item.ref.index])).toBe(false);
+      const built = buildStepItem(item.ref, item.text, { id: `placeholder-${attempt}`, workbookId: "placeholder-practice",
+        page: 30, question: 3, level: 10, skills: [skill] }, "code");
+      expect(built.check.status, item.text).toBe("checked");
+      if (item.ref.kind === "box") numericForms.add(item.ref.index);
+    }
+    expect(numericForms.size).toBeGreaterThanOrEqual(3);
+  });
   it("fills the normal decreasing-pattern choice in 200 seeds with the checked next term and two distinct choices", () => {
     const h = HOUSE_TEMPLATES.find(h => h.skill === "3.6-decreasing-pattern" && h.step === 1)!;
     const step = c.skillSteps(h.skill)![h.step - 1];
-    for (const t of h.practice!) {
+    const choices = h.practice!.filter(t => t.text.startsWith("Start at {a} and subtract"));
+    expect(choices).toHaveLength(1);
+    for (const t of choices) {
       const prepared = prepareTemplate(step, t, c.contexts);
       for (let seed = 1; seed <= 200; seed++) {
         const filled = prepared.fill(seededRandom(seed));
@@ -220,16 +280,16 @@ describe("code's two-step Challenge cards (U4)", () => {
   });
 });
 
-describe("Unica's shorter level wording", () => {
+describe("Unica's explicit level wording", () => {
   const c = bcStepProgressions();
-  it("rewrites only templates whose text is still Cedric's, with their own slots, shorter, and fills them", async () => {
+  it("rewrites only templates whose text is still Cedric's, with their own slots and answer keys, and fills them", async () => {
     const { LEVEL_REWRITES, templateAtLevel } = await import("./house-templates");
     const holes = (s: string) => new Set([...s.matchAll(/\{([A-Za-z_0-9]+)\}/g)].map((m) => m[1]));
     for (const r of LEVEL_REWRITES) {
       const step = c.skillSteps(r.skill)![r.step - 1];
       const t = step.templates![r.template - 1];
       expect(t.text, `${r.skill}#${r.step}.${r.template}`).toBe(r.from);
-      expect(r.to.length).toBeLessThan(r.from.length);
+      expect(r.to).not.toBe(r.from);
       for (const h of holes(r.to)) expect(holes(r.from).has(h), `${r.skill}#${r.step}.${r.template} {${h}}`).toBe(true);
       const shown = templateAtLevel(r.level, step, r.template - 1, t);
       expect(shown.text).toBe(r.to);
@@ -259,5 +319,92 @@ describe("Unica's shorter level wording", () => {
       }
       expect(filled, `${r.skill}#${r.step}.${r.template}`).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("child-readable Challenge tasks", () => {
+  const c = bcStepProgressions();
+
+  it("counts the second future bell coincidence from now, and the next one on a timer", () => {
+    for (const stepNumber of [1, 2]) {
+      const h = HOUSE_TEMPLATES.find(h => h.skill === "6.4-lcm" && h.step === stepNumber)!;
+      const step = c.skillSteps(h.skill)![stepNumber - 1];
+      const t = h.templates.find(t => t.format === "story")!;
+      for (let seed = 1; seed <= 40; seed++) {
+        const item = prepareTemplate(step, t, c.contexts).fill(seededRandom(seed));
+        const a = Number(item.values.a), b = Number(item.values.b);
+        const coincidences = Array.from({ length: a * b * 2 }, (_, i) => i + 1).filter(s => s % a === 0 && s % b === 0);
+        expect(item.text).toContain(`One bell rings every ${a}`);
+        expect(item.text).toContain(`Another bell rings every ${b}`);
+        if (stepNumber === 1) {
+          expect(item.text).toContain("seconds from now");
+          expect(item.text).toContain("for the second time, without counting now");
+          expect(Number(item.answer)).toBe(coincidences[1]);
+        } else {
+          expect(item.text).toContain(`minute ${item.values.start} on a timer`);
+          expect(item.text).toContain("At what minute on the timer");
+          expect(Number(item.answer)).toBe(Number(item.values.start) + coincidences[0]);
+        }
+      }
+    }
+  });
+
+  it("defines sides and openings without asking the child to infer a missing angle diagram", () => {
+    const h = HOUSE_TEMPLATES.find(h => h.skill === "6.13-classify-angles" && h.step === 1)!;
+    const step = c.skillSteps(h.skill)![0];
+    const tasks = h.templates.map(t => prepareTemplate(step, t, c.contexts).fill(seededRandom(1)));
+    expect(tasks[0].text).toContain("two sides that meet at a point");
+    expect(tasks[0].text).toContain("without changing the opening");
+    expect(tasks[0].answer).toBe("yes");
+    expect(tasks[1].text).toContain("Angle A has long sides and an opening smaller than a square corner");
+    expect(tasks[1].text).toContain("Angle B has short sides and an opening wider than a square corner");
+    expect(tasks[1].answer).toBe("B");
+    expect(tasks[2].text).toContain("without changing the opening");
+    expect(tasks[2].answer).toBe("no");
+    for (const task of tasks) {
+      expect(task.text).toMatch(/Circle (?:yes or no|A or B)/);
+      expect(task.text).not.toMatch(/arms|picture|diagram/);
+      expect(choicesFor(task.text, task.answer)).toContain(task.answer);
+    }
+    expect(new Set(tasks.map(t => t.text)).size).toBe(3);
+  });
+
+  it("states a common direction for every composed-turn question", () => {
+    const h = HOUSE_TEMPLATES.find(h => h.skill === "6.13-classify-angles" && h.step === 2)!;
+    const step = c.skillSteps(h.skill)![1];
+    for (const t of h.templates) {
+      const item = prepareTemplate(step, t, c.contexts).fill(seededRandom(1));
+      expect(item.text).toContain("in the same direction");
+      expect(item.text).toContain("Circle");
+      expect(choicesFor(item.text, item.answer)).toContain(item.answer);
+    }
+  });
+
+  it("gives the prime-card story a different mathematical task from the prime sum", () => {
+    const h = HOUSE_TEMPLATES.find(h => h.skill === "6.4-prime-composite" && h.step === 1)!;
+    const step = c.skillSteps(h.skill)![0];
+    for (let seed = 1; seed <= 40; seed++) {
+      const item = prepareTemplate(step, h.templates[2], c.contexts).fill(seededRandom(seed));
+      const primes = [Number(item.values.p), Number(item.values.q)];
+      expect(item.text).toContain("Subtract the smaller prime from the larger prime");
+      expect(Number(item.answer)).toBe(Math.max(...primes) - Math.min(...primes));
+      expect(Number(item.answer)).toBeGreaterThan(0);
+    }
+  });
+
+  it("states what is counted and which estimate to use on all sensible-estimate Challenge forms", () => {
+    const h = HOUSE_TEMPLATES.find(h => h.skill === "3.1-estimate-quantity" && h.step === 3)!;
+    const step = c.skillSteps(h.skill)![2];
+    for (const [i, t] of h.templates.entries()) {
+      const item = prepareTemplate(step, t, c.contexts).fill(seededRandom(1));
+      expect(item.text).toContain("Use that estimate");
+      expect(Number(item.answer)).toBe(Number(item.values.b) * (i + 2));
+      if (i === 2) expect(item.text).toContain("short picture books");
+    }
+    const boxes = HOUSE_TEMPLATES.find(h => h.skill === "3.1-estimate-quantity" && h.step === 2)!;
+    const story = prepareTemplate(c.skillSteps(boxes.skill)![1], boxes.templates[2], c.contexts).fill(seededRandom(1));
+    expect(story.text).toContain("takes");
+    expect(story.text).toContain("out of the boxes");
+    expect(Number(story.answer)).toBe(Number(story.values.a) * Number(story.values.g) - Number(story.values.b));
   });
 });

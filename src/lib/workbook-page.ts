@@ -48,6 +48,8 @@ export type WorkedLine = string;
 
 /** One slot's content on a page. Which fields a slot reads is in the template; the rest are left out. */
 export interface Block {
+  /** Explain the named idea before the first new-idea question. */
+  introduction?: string;
   /** L1/G1 contract: copy PlannedPart.extra to every block of that part. */
   extra?: boolean;
   slot: SlotName;
@@ -237,7 +239,7 @@ function partSlots(part: PlannedPart, page: PlannedPage, level: number): { slots
       return laid([
         ...(watch > 0 ? [{ slot: "watch-one" as const, items: 0 }] : []),
         ...(finish > 0 ? [{ slot: "finish-these" as const, items: finish }] : []),
-        { slot: "on-your-own", items: full ? Math.min(own, 2) : early ? Math.min(own, 3) : own },
+        { slot: "on-your-own", items: full ? Math.min(own, 2) : early ? Math.min(own, 3) : watch > 0 && has("spot-the-error") ? Math.min(own, 4) : own },
       ], full ? "On your own takes 2 items beside Solve it two ways and Spot the error" : "On your own takes 3 items at U1 to U9");
     }
     // The stories, then one "How do you know?" with two writing lines, where the stories have no work box (U1 to U3,

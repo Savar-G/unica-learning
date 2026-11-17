@@ -5,6 +5,8 @@
 // data/curriculum/author-changes.md ("Unica Challenge templates"). The step's name is checked, so a renumbered step
 // (Cedric's v2, PR #508) fails the curriculum test instead of taking a template that is not its own.
 import type { CurriculumData, CurriculumStep, StepTemplate } from "./types";
+import { U10_APPLICATION_TEMPLATES } from "./u10-application-templates";
+import { U19_APPLICATION_TEMPLATES } from "./u19-application-templates";
 
 export interface HouseTemplates {
   skill: string;
@@ -36,6 +38,11 @@ export const isChallengeOnly = (t: StepTemplate): boolean => CHALLENGE_ONLY.has(
 const SPOT_ONLY = new WeakSet<StepTemplate>();
 const spotPractice = (t: StepTemplate): StepTemplate => { SPOT_ONLY.add(t); return t; };
 export const isSpotOnly = (t: StepTemplate): boolean => SPOT_ONLY.has(t);
+/** Authored reasoning forms for a later application page, kept separate from the first independent drills. */
+const APPLICATION_PRACTICE = new WeakSet<StepTemplate>();
+const applicationPractice = (t: StepTemplate): StepTemplate => { APPLICATION_PRACTICE.add(t); return t; };
+export const isApplicationPractice = (t: StepTemplate): boolean => APPLICATION_PRACTICE.has(t);
+
 /** Unica's Challenge-only templates that do not choose a page's step (all but the `routes` set). */
 const NOT_ROUTED = new WeakSet<StepTemplate>();
 /**
@@ -49,6 +56,27 @@ export const routingTemplates = (step: { templates?: readonly StepTemplate[] } |
 const medium = (text: string, answer: string, slots: Record<string, string>, derived: Record<string, string>, check: string): StepTemplate =>
   ({ format: "story", difficulty: "medium", text, answer, slots, derived, check });
 
+/** Prime classification applied to a claim, a code requirement and equal grouping, within the same number range. */
+function primePractice(upper: boolean): StepTemplate[] {
+  const slots = { i: "template_i", j: "template_j", f: "template_flip" };
+  const derived = upper
+    ? { p: "[31, 37, 41, 43, 47, 53, 59, 61, 67][i]", c: "[51, 57, 77, 87, 91][j % 5]", d: "[3, 3, 7, 3, 7][j % 5]" }
+    : { p: "[11, 13, 17, 19, 23, 29][j]", c: "[9, 15, 21, 25, 27][i]", d: "[3, 3, 3, 5, 3][i]" };
+  return [
+    { format: "true-false", difficulty: "medium", text: "{c} has a factor {d} besides 1 and itself. True or false: {claim}.",
+      answer: "'true' if f == 0 else 'false'", slots,
+      derived: { ...derived, claim: "str(c) + ' is composite' if f == 0 else str(c) + ' is prime'" } },
+    applicationPractice({ format: "missing", difficulty: "medium", text: "One of {p} and {c} is composite. Find that number, then write its smallest factor greater than 1.",
+      answer: "d", slots, derived }),
+    applicationPractice({ format: "true-false", difficulty: "medium", text: "{name} says that {c} is prime because it is odd. True or false: {name} is correct.",
+      answer: "'false'", slots, derived }),
+    applicationPractice({ format: "story", difficulty: "medium", text: "A club has {c} members. They can form equal teams of {d}, with more than one team. Is {c} prime or composite? Write prime or composite.",
+      answer: "'composite'", slots, derived }),
+    applicationPractice({ format: "choose", difficulty: "medium", text: "A game code must have exactly two positive factors. Which code works: {p} or {c}?",
+      answer: "str(p)", slots, derived }),
+  ];
+}
+
 export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
   {
     skill: "6.13-classify-angles", step: 1, name: "Acute, right and obtuse",
@@ -60,23 +88,24 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
         derived: { obj: "['corner of a book', 'corner of a door', 'tip of a thin pizza slice', 'tip of a sharp pencil', 'opening of a laptop tilted far back', 'opening of a book lying almost flat'][k]",
           kind: "['right', 'right', 'acute', 'acute', 'obtuse', 'obtuse'][k]", other: "'obtuse' if kind == 'acute' else 'acute'", chosen: "kind if f == 0 else other",
           claim: "'an acute' if chosen == 'acute' else ('an obtuse' if chosen == 'obtuse' else 'a right')" } },
-      { format: "bare", difficulty: "medium", text: "Of {a} acute and {b} obtuse angles, how many are smaller than a square corner?",
+      { format: "bare", difficulty: "medium", text: "There are {a} acute angles and {b} obtuse angles. How many of these angles are smaller than a square corner?",
         answer: "a", slots: { k: "template_k", f: "flip" }, derived: { a: "k + 1", b: "1 + (k + 1 + f) % 5" } },
     ],
     templates: [
-      hard("bare", "Same opening, longer arms. Same angle size? Yes or no?", "'yes'", {}, {}, "True"),
-      hard("compare", "A) long arms B) opens wider than A. Which is larger?", "'B'", {}, {}, "True"),
-      hard("story", "{name} says longer arms make angles bigger. Yes or no?", "'no'", {}, {}, "True"),
+      hard("bare", "An angle has two sides that meet at a point. Both sides are drawn longer without changing the opening between them. Does the angle stay the same size? Circle yes or no.", "'yes'", {}, {}, "True"),
+      hard("compare", "Angle A has long sides and an opening smaller than a square corner. Angle B has short sides and an opening wider than a square corner but smaller than a straight angle. Which angle is larger? Circle A or B. A) Angle A B) Angle B", "'B'", {}, {}, "True"),
+      hard("story", "{name} draws the two sides of an angle longer without changing the opening between them. {name} says the angle is now bigger. Is {name} right? Circle yes or no.", "'no'", {}, {}, "True"),
     ],
   },
   {
     skill: "6.4-prime-composite", step: 1, name: "Primes and composites to 30",
+    practice: primePractice(false),
     templates: [
       hard("bare", "Add the prime numbers: {p}, {c}, {q}.", "p + q", { i: "template_i", j: "template_j" },
         { p: "[11, 13, 17, 19, 23, 29][j]", q: "[2, 3, 5, 7, 11][i]", c: "[9, 15, 21, 25, 27][i]" }, "p != q and p + q <= 30"),
-      hard("missing", "Find the prime in {p} and {c}. Subtract 2: __.", "p - 2", { i: "template_i", j: "template_j" },
+      hard("missing", "One of these numbers is prime: {p} and {c}. Find the prime number, then subtract 2 from it. Write the result.", "p - 2", { i: "template_i", j: "template_j" },
         { p: "[11, 13, 17, 19, 23, 29][j]", c: "[9, 15, 21, 25, 27][i]" }, "p - 2 >= 2"),
-      hard("story", "Cards: {p}, {c}, {q}. {name} adds only the primes. Total?", "p + q", { i: "template_i", j: "template_j" },
+      hard("story", "{name} has cards showing {p}, {c} and {q}. Find the two prime numbers. Subtract the smaller prime from the larger prime. What is the difference?", "p - q", { i: "template_i", j: "template_j" },
         { p: "[11, 13, 17, 19, 23, 29][j]", q: "[2, 3, 5, 7, 11][i]", c: "[9, 15, 21, 25, 27][i]" }, "p != q and p + q <= 30"),
     ],
   },
@@ -84,14 +113,14 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
     skill: "6.4-divisibility", step: 1, name: "Last-digit rules: 2, 5, 10",
     // Numeric normal practice keeps Spot the error on this step, without a generic division sum.
     practice: [
-      spotPractice({ format: "bare", difficulty: "medium", text: "Write the multiple of 10 between {lo} and {hi}.",
+      spotPractice({ format: "bare", difficulty: "medium", text: "Write the multiple of 10 that is greater than {lo} and less than {hi}.",
         answer: "lo + 10", slots: { n: "template_n0" },
         derived: { lo: "n - n % 10", hi: "lo + 20" }, check: "hi <= 9999" }),
     ],
     templates: [
-      hard("bare", "Smallest multiple of both 2 and 5 above {n}?", "n - n % 10 + 10", { n: "template_n0" }, {}, "n - n % 10 + 10 <= 9999"),
-      hard("missing", "Count back from {n} to a multiple of 10. First smaller number: __.", "((n - 1) // 10) * 10", { n: "template_n0" }, {}, "((n - 1) // 10) * 10 >= 10"),
-      hard("story", "{name}'s score: {lo} < ? < {top}. Divisible by 2 and 5. Find it.", "n - n % 10 + 10", { n: "template_n0" },
+      hard("bare", "What is the smallest whole number greater than {n} that is divisible by both 2 and 5?", "n - n % 10 + 10", { n: "template_n0" }, {}, "n - n % 10 + 10 <= 9999"),
+      hard("missing", "What is the greatest multiple of 10 that is less than {n}?", "((n - 1) // 10) * 10", { n: "template_n0" }, {}, "((n - 1) // 10) * 10 >= 10"),
+      hard("story", "{name}'s score is greater than {lo} points and less than {top} points. The score is divisible by both 2 and 5. How many points does {name} have?", "n - n % 10 + 10", { n: "template_n0" },
         { lo: "n - n % 10 + 1", top: "n - n % 10 + 11" }, "top <= 9999"),
     ],
   },
@@ -99,15 +128,15 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
     skill: "6.4-divisibility", step: 2, name: "Digit-sum rules: 3 and 9",
     // Numeric normal practice keeps Spot the error on this step, without a generic division sum.
     practice: [
-      spotPractice({ format: "bare", difficulty: "medium", text: "Write the multiple of 9 between {lo} and {hi}.",
+      spotPractice({ format: "bare", difficulty: "medium", text: "Write the multiple of 9 that is greater than {lo} and less than {hi}.",
         answer: "lo + 9", slots: { n: "template_n" },
         derived: { lo: "n - n % 9", hi: "lo + 18" }, check: "hi <= 9999" }),
     ],
     templates: [
       hard("bare", "Increase {n} to the next number divisible by 9. What is it?", "n - n % 9 + 9", { n: "template_n" }, {}, "n - n % 9 + 9 <= 9999"),
-      hard("missing", "First multiple of 3 but not 9 after {n}: __.", "r if r % 9 != 0 else r + 3", { n: "template_n" },
+      hard("missing", "What is the smallest whole number greater than {n} that is divisible by 3 but not by 9?", "r if r % 9 != 0 else r + 3", { n: "template_n" },
         { r: "n - n % 3 + 3" }, "r + 3 <= 9999"),
-      hard("story", "Lock code: {lo} < ? < {top}. Divisible by 9. Find it.", "n - n % 9 + 9", { n: "template_n" },
+      hard("story", "A lock code is a whole number greater than {lo} and less than {top}. It is divisible by 9. What is the code?", "n - n % 9 + 9", { n: "template_n" },
         { lo: "n - n % 9 + 1", top: "n - n % 9 + 10" }, "top <= 9999"),
     ],
   },
@@ -115,64 +144,65 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
     skill: "6.4-divisibility", step: 3, name: "Rules for 4, 6 and 8",
     // Numeric normal practice keeps Spot the error on this step, without a generic division sum.
     practice: [
-      spotPractice({ format: "bare", difficulty: "medium", text: "Write the multiple of 8 between {lo} and {hi}.",
+      spotPractice({ format: "bare", difficulty: "medium", text: "Write the multiple of 8 that is greater than {lo} and less than {hi}.",
         answer: "lo + 8", slots: { n: "template_n" },
         derived: { lo: "n - n % 8", hi: "lo + 16" }, check: "hi <= 99999" }),
     ],
     templates: [
-      hard("bare", "Smallest multiple of both 4 and 6 above {n}?", "n - n % 12 + 12", { n: "template_n" }, {}, "n - n % 12 + 12 <= 99999"),
+      hard("bare", "What is the smallest whole number greater than {n} that is divisible by both 4 and 6?", "n - n % 12 + 12", { n: "template_n" }, {}, "n - n % 12 + 12 <= 99999"),
       hard("missing", "The first multiple of both 6 and 8 after {n} is __.", "n - n % 24 + 24", { n: "template_n" }, {}, "n - n % 24 + 24 <= 99999"),
-      hard("story", "Score divisible by 4 and 8: {lo} < ? < {top}. Find it.", "n - n % 8 + 8", { n: "template_n" },
+      hard("story", "A game score is greater than {lo} points and less than {top} points. It is divisible by both 4 and 8. How many points is the score?", "n - n % 8 + 8", { n: "template_n" },
         { lo: "n - n % 8 + 1", top: "n - n % 8 + 9" }, "top <= 99999"),
       // This step is the hardest on two consecutive days: its second set keeps the card-frame rule.
       hard("bare", "How many positive multiples of both 4 and 6 are below {n}?", "(n - 1) // 12", { n: "template_n" }, {}, "n > 12"),
-      hard("missing", "Largest number below {n} divisible by both 6 and 8: __.", "((n - 1) // 24) * 24", { n: "template_n" }, {}, "n > 24"),
-      hard("story", "{name}'s score is below {n}, divisible by 4 and 6, not 8. Greatest?", "r if r % 8 != 0 else r - 12", { n: "template_n" },
+      hard("missing", "What is the greatest whole number less than {n} that is divisible by both 6 and 8?", "((n - 1) // 24) * 24", { n: "template_n" }, {}, "n > 24"),
+      hard("story", "{name}'s score is less than {n} points. It is divisible by both 4 and 6 but not by 8. What is the greatest number of points {name} could have?", "r if r % 8 != 0 else r - 12", { n: "template_n" },
         { r: "((n - 1) // 12) * 12" }, "r > 12"),
     ],
   },
   {
     skill: "6.4-prime-composite", step: 2, name: "Numbers to 100",
+    practice: primePractice(true),
     templates: [
       hard("bare", "Add only the primes: {p}, {c}, {q}.", "p + q", { i: "template_i", j: "template_j" },
         { p: "[31, 37, 41, 43, 47][j % 5]", q: "[31, 37, 41, 43, 47][i % 5]", c: "[51, 57, 77, 87, 91][i % 5]" }, "p != q and p + q <= 100"),
-      hard("missing", "Pick the prime from {p}, {c}. Add 31: __.", "p + 31", { i: "template_i", j: "template_j" },
+      hard("missing", "One of these numbers is prime: {p} and {c}. Find the prime number, then add 31 to it. Write the result.", "p + 31", { i: "template_i", j: "template_j" },
         { p: "[31, 37, 41, 43, 47, 53, 59, 61, 67][i]", c: "[51, 57, 77, 87, 91][j % 5]" }, "p + 31 <= 100"),
-      hard("story", "{name}'s cards: {p}, {c}, {q}. Add the primes, then subtract 31.", "p + q - 31", { i: "template_i", j: "template_j" },
+      hard("story", "{name} has cards showing {p}, {c} and {q}. Add the two prime numbers, then subtract 31 from their sum. What is the result?", "p + q - 31", { i: "template_i", j: "template_j" },
         { p: "[31, 37, 41, 43, 47][j % 5]", q: "[31, 37, 41, 43, 47][i % 5]", c: "[51, 57, 77, 87, 91][i % 5]" }, "p != q and p + q - 31 <= 100"),
     ],
   },
   {
     skill: "6.4-lcm", step: 1, name: "List multiples",
     practice: [
-      { format: "bare", difficulty: "medium", text: "Smallest positive multiple shared by {a} and {b}?", answer: "lcm(a, b)",
+      { format: "bare", difficulty: "medium", text: "What is the smallest positive number that is a multiple of both {a} and {b}?", answer: "lcm(a, b)",
         slots: { a: "number1", b: "number2" }, derived: {}, check: "a != b and lcm(a, b) <= 24" },
-      { format: "missing", difficulty: "medium", text: "First shared multiple of {a} and {b}: {a} × __.", answer: "lcm(a, b) // a",
+      { format: "missing", difficulty: "medium", text: "Find the smallest positive common multiple of {a} and {b}. Fill in the missing number: {a} × __.", answer: "lcm(a, b) // a",
         slots: { a: "number1", b: "number2" }, derived: {}, check: "a != b and lcm(a, b) <= 24" },
       { format: "true-false", difficulty: "medium", text: "True or false: the LCM of {a} and {b} is {c}.", answer: "'true' if f == 0 else 'false'",
         slots: { a: "number1", b: "number2", f: "flip" }, derived: { c: "lcm(a, b) if f == 0 else 2 * lcm(a, b)" },
         check: "a != b and c <= 24" },
-      { format: "bare", difficulty: "medium", text: "Find the shared number: {a}, {aa}, {aaa}; {b}, {bb}, {bbb}.", answer: "lcm(a, b)",
+      { format: "bare", difficulty: "medium", text: "The first list is {a}, {aa}, {aaa}. The second list is {b}, {bb}, {bbb}. Which number appears in both lists?", answer: "lcm(a, b)",
         slots: { a: "number1", b: "number2" }, derived: { aa: "2 * a", aaa: "3 * a", bb: "2 * b", bbb: "3 * b" },
         check: "a != b and aaa <= 24 and bbb <= 24 and lcm(a, b) <= min(aaa, bbb) and 2 * lcm(a, b) > min(aaa, bbb)" },
     ],
     templates: [
-      hard("bare", "Add the first two common multiples of {a} and {b}.", "3 * lcm(a, b)", { i: "template_i" },
+      hard("bare", "Find the two smallest positive common multiples of {a} and {b}. What is their sum?", "3 * lcm(a, b)", { i: "template_i" },
         { a: "[2, 2, 3, 4, 2][i % 5]", b: "[3, 4, 6, 8, 6][i % 5]" }, "3 * lcm(a, b) <= 24"),
-      hard("missing", "LCM of {a} and {b}, minus {a}: __.", "lcm(a, b) - a", { i: "template_i" },
+      hard("missing", "Find the least common multiple of {a} and {b}. Subtract {a} from it. What is the result?", "lcm(a, b) - a", { i: "template_i" },
         { a: "[3, 4, 6, 6, 4][i % 5]", b: "[4, 6, 8, 9, 10][i % 5]" }, "lcm(a, b) - a > 0"),
-      hard("story", "Two bells: every {a}s and {b}s, together now. Second repeat: __s.", "2 * lcm(a, b)", { i: "template_i" },
+      hard("story", "One bell rings every {a} seconds. Another bell rings every {b} seconds. They both ring now. How many seconds from now will they ring together for the second time, without counting now?", "2 * lcm(a, b)", { i: "template_i" },
         { a: "[2, 3, 4, 2, 3][i % 5]", b: "[3, 4, 6, 6, 6][i % 5]" }, "2 * lcm(a, b) <= 24"),
     ],
   },
   {
     skill: "6.4-lcm", step: 2, name: "Two-digit numbers",
     templates: [
-      hard("bare", "Second common multiple of {a} and {b}, minus {a}?", "2 * lcm(a, b) - a", { i: "template_g0" },
+      hard("bare", "Find the second smallest positive common multiple of {a} and {b}. Subtract {a} from it. What is the result?", "2 * lcm(a, b) - a", { i: "template_g0" },
         { a: "[9, 12, 12, 15, 18][i % 5]", b: "[12, 18, 16, 20, 24][i % 5]" }, "2 * lcm(a, b) - a <= 72"),
-      hard("missing", "Count positive multiples of {a} below the LCM of {a} and {b}: __.", "lcm(a, b) // a - 1", { i: "template_g0" },
+      hard("missing", "Count the positive multiples of {a} that are less than the least common multiple of {a} and {b}. How many are there?", "lcm(a, b) // a - 1", { i: "template_g0" },
         { a: "[9, 12, 12, 15, 18][i % 5]", b: "[12, 18, 16, 20, 24][i % 5]" }, "lcm(a, b) // a > 1"),
-      hard("story", "Bells: every {a}min and {b}min, both at minute {start}. Next together?", "start + lcm(a, b)", { i: "template_g0" },
+      hard("story", "One bell rings every {a} minutes. Another bell rings every {b} minutes. Both ring at minute {start} on a timer. At what minute on the timer will they next ring together?", "start + lcm(a, b)", { i: "template_g0" },
         { a: "[9, 12, 12, 15, 18][i % 5]", b: "[12, 18, 16, 20, 24][i % 5]", start: "i" }, "start + lcm(a, b) <= 72"),
     ],
   },
@@ -182,13 +212,13 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
       { format: "true-false", difficulty: "medium", text: "True or false: {claim}.", answer: "'true' if f == 0 else 'false'",
         slots: { k: "template_k", f: "flip" }, derived: {
           claim: "['half a turn makes a straight angle', 'a reflex angle is less than one full turn', 'a straight angle is exactly half a turn', 'a reflex angle is more than half a turn'][k] if f == 0 else ['half a turn makes a reflex angle', 'a reflex angle is more than one full turn', 'a straight angle is more than half a turn', 'a reflex angle is less than half a turn'][k]" } },
-      { format: "bare", difficulty: "medium", text: "Of {a} straight and {b} reflex angles, how many exceed half a turn?", answer: "b",
+      { format: "bare", difficulty: "medium", text: "There are {a} straight angles and {b} reflex angles. How many of these angles are greater than half a turn?", answer: "b",
         slots: { k: "template_k", f: "flip" }, derived: { a: "k + 1", b: "1 + (k + 1 + f) % 4" } },
     ],
     templates: [
-      hard("bare", "Two quarter turns the same way. Is it straight or reflex?", "'straight'", {}, {}, "True"),
-      hard("compare", "Half a turn plus a quarter turn. Is it straight or reflex?", "'reflex'", {}, {}, "True"),
-      hard("story", "{name} makes two half turns. Full turn? Yes or no?", "'yes'", {}, {}, "True"),
+      hard("bare", "A pointer makes two quarter turns in the same direction. What kind of angle has it turned through? Circle straight or reflex.", "'straight'", {}, {}, "True"),
+      hard("compare", "A pointer makes half a turn, then a quarter turn in the same direction. What kind of angle has it turned through? Circle straight or reflex.", "'reflex'", {}, {}, "True"),
+      hard("story", "{name} makes two half turns in the same direction. Has {name} made one full turn? Circle yes or no.", "'yes'", {}, {}, "True"),
     ],
   },
   {
@@ -201,6 +231,15 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
   },
   {
     skill: "3.1-place-value-1000", step: 2, name: "Zero as a placeholder",
+    practice: [
+      { format: "missing", difficulty: "medium", text: "Complete the expanded form: {n} = {hundreds} + __.", answer: "rest",
+        slots: { n0: "number", f: "template_flip" }, derived: {
+          h: "n0 // 100", o: "1 + n0 % 9", hundreds: "100 * h", rest: "o if f == 0 else 10 * o", n: "hundreds + rest" } },
+      { format: "bare", difficulty: "medium", text: "{name} writes {wrong} for {h} hundreds and {o} ones. Write the correct number.", answer: "100 * h + o",
+        slots: { n0: "number" }, derived: { h: "n0 // 100", o: "1 + n0 % 9", wrong: "100 * h + 10 * o" } },
+      { format: "bare", difficulty: "medium", text: "Keep {h} in the hundreds place. Put {o} and 0 in the other two places. Write the smaller number you can make.", answer: "100 * h + o",
+        slots: { n0: "number" }, derived: { h: "n0 // 100", o: "1 + n0 % 9" } },
+    ],
     templates: [
       hard("bare", "In {n}, replace the zero tens digit with {t}. What is the new number?", "100 * h + 10 * t + o", { n0: "number" }, { h: "3 + n0 % 6", t: "1 + n0 % 9", o: "1 + n0 // 10 % 9", n: "100 * h + o" }, "n <= 899"),
       hard("missing", "{n} + {t} tens - 100 = __", "100 * (h - 1) + 10 * t + o", { n0: "number" }, { h: "3 + n0 % 6", t: "1 + n0 % 9", o: "1 + n0 // 10 % 9", n: "100 * h + o" }, "n <= 899"),
@@ -226,40 +265,51 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
   {
     skill: "3.1-estimate-quantity", step: 2, name: "Estimate with a group of 100",
     templates: [
-      hard("bare", "About how many in {a} groups of {g} and {b} more?", "a * g + b", { g: "group_size", n0: "groups" }, { a: "3 + n0 % 5", b: "(1 + n0 % 5) * 10" }, "a * g + b <= 1000"),
+      hard("bare", "There are {a} groups with about {g} cards in each group, and {b} extra cards. About how many cards are there?", "a * g + b", { g: "group_size", n0: "groups" }, { a: "3 + n0 % 5", b: "(1 + n0 % 5) * 10" }, "a * g + b <= 1000"),
       hard("missing", "{a} boxes hold about {g} cards each. Take away 1 box and {b} more cards. About __ cards are left.", "a * g - g - b", { g: "group_size", n0: "groups" }, { a: "3 + n0 % 5", b: "(1 + n0 % 5) * 10" }, "a * g - g - b >= 50"),
-      hard("story", "There are {a} boxes with about {g} cards each. {b} cards are unpacked. About how many cards are still boxed?", "a * g - b", { g: "group_size", n0: "groups" }, { a: "3 + n0 % 5", b: "(1 + n0 % 5) * 10" }, "a * g - b >= 50 and a * g - b <= 1000"),
+      hard("story", "There are {a} boxes with about {g} cards in each box. Someone takes {b} cards out of the boxes. About how many cards remain in the boxes?", "a * g - b", { g: "group_size", n0: "groups" }, { a: "3 + n0 % 5", b: "(1 + n0 % 5) * 10" }, "a * g - b >= 50 and a * g - b <= 1000"),
     ],
   },
   {
     skill: "3.1-estimate-quantity", step: 3, name: "Choose a sensible estimate",
-    // The child picks the sensible guess among Cedric's choices (it, 10 times and 100 times as many), then uses it.
+    // A numeric correction stays on the estimation step, with the guide visible in Sam's printed task.
+    practice: [
+      spotPractice({ format: "bare", difficulty: "medium", text: "Use about {b} {guide} as a guide. {ask} Write the matching estimate.",
+        answer: "str(b)", slots: { x: "choices" },
+        derived: { i: "x % 5", v: "x // 5 % 8",
+          b: "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
+          guide: "'pencils per pencil case' if i == 0 else ('pages per picture book' if i == 1 else ('grapes per small bunch' if i == 2 else ('books per classroom shelf' if i == 3 else 'children per class')))",
+          ask: "'About how many pencils fit in one pencil case?' if i == 0 else ('About how many pages are in one picture book?' if i == 1 else ('About how many grapes are in one small bunch?' if i == 2 else ('About how many books fit on one classroom shelf?' if i == 3 else 'About how many children are in one class?')))" } }),
+    ],
+    // The printed guide fixes this task's assumption. The child chooses its matching estimate, then scales it.
     // The choices rotate, so the sensible one is not always first.
     templates: [
-      hard("bare", "Children in one class: {p}, {q} or {r}? Double the sensible guess.", "2 * b", { x: "choices", pos: "template_pos" }, { b: "20 + x % 8", t10: "b * 10", h100: "b * 100", p: "b if pos == 0 else (h100 if pos == 1 else t10)", q: "t10 if pos == 0 else (b if pos == 1 else h100)", r: "h100 if pos == 0 else (t10 if pos == 1 else b)" }, "h100 <= 3000"),
-      hard("missing", "Books on one shelf: {p}, {q} or {r}? Use the sensible guess. 3 shelves hold about __ books.", "3 * b", { x: "choices", pos: "template_pos" }, { b: "24 + 2 * (x % 4)", t10: "b * 10", h100: "b * 100", p: "b if pos == 0 else (h100 if pos == 1 else t10)", q: "t10 if pos == 0 else (b if pos == 1 else h100)", r: "h100 if pos == 0 else (t10 if pos == 1 else b)" }, "h100 <= 3000"),
-      hard("story", "{name} reads 4 storybooks. Pages in each: {p}, {q} or {r}? Use the sensible guess. About how many pages?", "4 * b", { x: "choices", pos: "template_pos" }, { b: "20 + 2 * (x % 6)", t10: "b * 10", h100: "b * 100", p: "b if pos == 0 else (h100 if pos == 1 else t10)", q: "t10 if pos == 0 else (b if pos == 1 else h100)", r: "h100 if pos == 0 else (t10 if pos == 1 else b)" }, "h100 <= 3000"),
+      hard("bare", "Use about {b} children per class as a guide. Which is a sensible estimate for the number of children in one class: {p}, {q} or {r}? Use that estimate for each of two classes. About how many children are in the two classes?", "2 * b", { x: "choices", pos: "template_pos" }, { b: "20 + x % 8", t10: "b * 10", h100: "b * 100", p: "b if pos == 0 else (h100 if pos == 1 else t10)", q: "t10 if pos == 0 else (b if pos == 1 else h100)", r: "h100 if pos == 0 else (t10 if pos == 1 else b)" }, "h100 <= 3000"),
+      hard("missing", "Use about {b} books per classroom shelf as a guide. Which is a sensible estimate for the number of books on one classroom shelf: {p}, {q} or {r}? Use that estimate for each of 3 shelves. About how many books are on the 3 shelves?", "3 * b", { x: "choices", pos: "template_pos" }, { b: "24 + 2 * (x % 4)", t10: "b * 10", h100: "b * 100", p: "b if pos == 0 else (h100 if pos == 1 else t10)", q: "t10 if pos == 0 else (b if pos == 1 else h100)", r: "h100 if pos == 0 else (t10 if pos == 1 else b)" }, "h100 <= 3000"),
+      hard("story", "Use about {b} pages per short picture book as a guide. {name} reads 4 short picture books. Which is a sensible estimate for the number of pages in each book: {p}, {q} or {r}? Use that estimate to find about how many pages {name} reads.", "4 * b", { x: "choices", pos: "template_pos" }, { b: "20 + 2 * (x % 6)", t10: "b * 10", h100: "b * 100", p: "b if pos == 0 else (h100 if pos == 1 else t10)", q: "t10 if pos == 0 else (b if pos == 1 else h100)", r: "h100 if pos == 0 else (t10 if pos == 1 else b)" }, "h100 <= 3000"),
     ],
   },
   {
     skill: "3.6-increasing-pattern", step: 1, name: "Add 2, 5 or 10",
+    practice: patternPractice(false),
     templates: [
       hard("bare", "Start at {a}. Add {d}, then add {d} again. What number do you reach?", "a + 2 * d", { a0: "start", d: "step" }, { a: "2 + a0 % 20" }, "a + 2 * d <= 100"),
       hard("missing", "Add the same amount each time: {a}, {b}, __, {e}. Write the missing number.", "a + 2 * d", { a0: "start", d: "step" }, { a: "2 + a0 % 20", b: "a + d", e: "a + 3 * d" }, "a + 3 * d <= 100"),
-      hard("story", "{name} starts with {a} tiles. {They} adds {d} tiles each turn. How many tiles after 3 turns?", "a + 3 * d", { a0: "start", d: "step" }, { a: "2 + a0 % 20" }, "a + 3 * d <= 100"),
+      hard("story", "{name} starts with {a} tiles. {They} adds {d} tiles each turn. How many tiles does {name} have after adding tiles on 3 turns?", "a + 3 * d", { a0: "start", d: "step" }, { a: "2 + a0 % 20" }, "a + 3 * d <= 100"),
     ],
   },
   {
     skill: "3.6-increasing-pattern", step: 2, name: "Other jumps",
+    practice: patternPractice(false, 500),
     templates: [
       hard("bare", "Start at {a}. Add {d} four times. What number do you reach?", "a + 4 * d", { a0: "start", d: "step" }, { a: "3 + a0 % 90" }, "a + 4 * d <= 500"),
       hard("missing", "{a}, {b}, __, {e}, {f}. Each jump is equal. Write the missing term.", "a + 2 * d", { a0: "start", d: "step" }, { a: "3 + a0 % 90", b: "a + d", e: "a + 3 * d", f: "a + 4 * d" }, "a + 4 * d <= 500"),
-      hard("story", "{name}'s display starts with {a} lights. Each new row adds {d} lights. How many lights after 3 new rows?", "a + 3 * d", { a0: "start", d: "step" }, { a: "3 + a0 % 90" }, "a + 3 * d <= 500"),
+      hard("story", "{name}'s display starts with {a} lights. Each new row adds {d} lights. How many lights are in the display after adding 3 new rows?", "a + 3 * d", { a0: "start", d: "step" }, { a: "3 + a0 % 90" }, "a + 3 * d <= 500"),
     ],
   },
   {
     skill: "3.6-decreasing-pattern", step: 1, name: "Take away 1, 2, 5 or 10",
-    practice: [{ format: "choose", difficulty: "medium", text: "Start {a}. Subtract {d}. What comes next: {p} or {q}?", answer: "str(right)",
+    practice: [...patternPractice(true), { format: "choose", difficulty: "medium", text: "Start at {a} and subtract {d}. Which number do you reach: {p} or {q}?", answer: "str(right)",
       slots: { a0: "start", d: "step", flip: "template_flip" },
       derived: { a: "6 * d + 1 + a0 % (100 - 6 * d)", right: "a - d", wrong: "right + 1", p: "right if flip == 0 else wrong", q: "wrong if flip == 0 else right" }, check: "right >= 5" }],
     templates: [
@@ -367,9 +417,9 @@ function twoStepTemplates(step: CurriculumStep): StepTemplate[] {
   if (/likelihood/.test(step.skill)) {
     const slots = { a: "two_step", b: "two_step" };
     const made = [
-      hard("choose", "A bag has only {a} blue cubes. {name} picks one cube without looking. It is red. Circle never, sometimes or always.", "'never'", slots, {}, "a >= 2 and b >= 2"),
-      hard("choose", "A bag has {a} red cubes and {b} blue cubes. {name} picks one cube without looking. It is red. Circle never, sometimes or always.", "'sometimes'", slots, {}, "a >= 2 and b >= 2"),
-      hard("choose", "A bag has only {a} red cubes. {name} picks one cube without looking. It is red. Circle never, sometimes or always.", "'always'", slots, {}, "a >= 2 and b >= 2"),
+      hard("choose", "A bag has only {a} blue cubes. {name} picks one cube without looking. How often will the cube be red? Circle never, sometimes or always.", "'never'", slots, {}, "a >= 2 and b >= 2"),
+      hard("choose", "A bag has {a} red cubes and {b} blue cubes. {name} picks one cube without looking. How often will the cube be red? Circle never, sometimes or always.", "'sometimes'", slots, {}, "a >= 2 and b >= 2"),
+      hard("choose", "A bag has only {a} red cubes. {name} picks one cube without looking. How often will the cube be red? Circle never, sometimes or always.", "'always'", slots, {}, "a >= 2 and b >= 2"),
     ];
     for (const t of made) TWO_STEP.add(t);
     return made;
@@ -382,7 +432,7 @@ function twoStepTemplates(step: CurriculumStep): StepTemplate[] {
   const made = [
     hard("bare", "What is {a} + {b} + {c}?", "a + b + c", slots, {}, `a >= 2 and a + b + c <= ${top} and a + b + c >= ${Math.ceil(top / 2)}`),
     hard("missing", "{a} - {b} + {c} = __", "a - b + c", slots, {}, `b < a and a - b + c <= ${top} and a >= ${Math.ceil(top / 2)}`),
-    hard("missing", "{a} is {b} and {c} and __", "a - b - c", slots, {}, `b + c < a and a >= ${Math.ceil(top / 2)}`),
+    hard("missing", "Split {a} into three parts. Two parts are {b} and {c}. What is the third part?", "a - b - c", slots, {}, `b + c < a and a >= ${Math.ceil(top / 2)}`),
     hard("story", "{name} has {a} {things}. {They} gets {b} more, then {c} more. How many {things} does {name} have now?", "a + b + c", slots, {}, `a >= 2 and b >= 2 and c >= 2 and a + b + c <= ${top}`),
     hard("story", "{name} has {a} {things}. {They} gives {b} away, then gets {c} more. How many {things} does {name} have now?", "a - b + c", slots, {}, `a >= ${Math.ceil(top / 2)} and b >= 2 and c >= 2 and b < a and a - b + c <= ${top}`),
   ];
@@ -390,12 +440,51 @@ function twoStepTemplates(step: CurriculumStep): StepTemplate[] {
   return made;
 }
 
+/** Infer a rule or starting term as well as continuing the pattern. */
+function patternPractice(down: boolean, maximum = 100): StepTemplate[] {
+  const verb = down ? "takes away" : "adds";
+  const command = down ? "take away" : "add";
+  const difference = down ? "taken away" : "added";
+  const slots = { a: "start", d: "step" };
+  const derived = { b: down ? "a - d" : "a + d" };
+  const check = `b > 0 and b <= ${maximum}`;
+  return [
+    { format: "missing", difficulty: "medium", text: `A pattern ${verb} {d} each time. Its second number is {b}. What is its first number?`,
+      answer: "a", slots, derived, check },
+    { format: "bare", difficulty: "medium", text: `The first two numbers in a pattern are {a} and {b}. How much is ${difference} each time?`,
+      answer: "d", slots, derived, check },
+    { format: "choose", difficulty: "medium", text: `A pattern begins {a}, {b}. Which rule fits? A) ${command} {oa}  B) ${command} {ob}. Write A or B.`,
+      answer: "'A' if f == 0 else 'B'", slots: { ...slots, e: "step", f: "template_flip" },
+      derived: { ...derived, oa: "d if f == 0 else e", ob: "e if f == 0 else d" }, check: `${check} and d != e` },
+  ];
+}
+
 /** The curriculum data with Unica's templates appended to their steps. Throws when a step is missing or renamed. */
 export function withHouseTemplates(data: CurriculumData, house: readonly HouseTemplates[] = HOUSE_TEMPLATES): CurriculumData {
   const byKey = new Map(house.map((h) => [`${h.skill}#${h.step}`, h]));
   const found = new Set<string>();
   const twoStepSkills = new Set(data.skills.filter((k) => TWO_STEP_LEVELS.has(k.level)).map((k) => k.id));
-  const steps = data.steps.map((s): CurriculumStep => {
+  const countBackSpot = spotPractice({ format: "bare", difficulty: "medium", text: "Count back by 1 from {s}. What number comes next?",
+    answer: "s - 1", slots: { s: "start" } });
+  const likelihoodPractice: StepTemplate[] = [
+    { format: "choose", difficulty: "medium", text: "A bag has {r} red beads and {b} blue beads. Pick one without looking. Is picking red never, sometimes or always?",
+      answer: "'never' if r == 0 else 'always' if b == 0 else 'sometimes'", slots: { r: "pick" }, derived: { b: "5 - r" }, check: "r != 1 and r != 4" },
+    { format: "true-false", difficulty: "medium", text: "A bag has {r} red beads and {b} blue beads. Pick one without looking. True or false: you will always pick red.",
+      answer: "'true' if b == 0 else 'false'", slots: { r: "pick" }, derived: { b: "5 - r" }, check: "r != 1 and r != 4" },
+    { format: "story", difficulty: "medium", text: "A box contains {n} {colour} beads and no other beads. Pick one without looking. Is picking a {asked} bead never, sometimes or always?",
+      answer: "'always' if f == 0 else 'never'", slots: { p: "pick", f: "flip" },
+      derived: { n: "2 + p % 4", colour: "'red' if p % 2 == 0 else 'blue'", asked: "colour if f == 0 else ('blue' if p % 2 == 0 else 'red')" } },
+  ];
+  const steps = data.steps.map((source): CurriculumStep => {
+    let s = source.skill === "1.1-count-to-20" && source.number === 3
+      ? { ...source, templates: [...(source.templates ?? []), countBackSpot] } : source;
+    if (source.skill === "1.10-likelihood-words" && source.number === 1) {
+      if (source.name !== "Never, sometimes, always") throw new Error("Likelihood practice needs its named source step");
+      s = { ...s, templates: [...(s.templates ?? []), ...likelihoodPractice] };
+    }
+    if (source.skill === "3.6-decreasing-pattern" && source.number === 2) {
+      s = { ...s, templates: [...(s.templates ?? []), ...patternPractice(true, 500)] };
+    }
     const h = byKey.get(`${s.skill}#${s.number}`);
     if (!h && twoStepSkills.has(s.skill)) {
       const two = twoStepTemplates(s);
@@ -414,62 +503,33 @@ export function withHouseTemplates(data: CurriculumData, house: readonly HouseTe
   });
   const missing = [...byKey.keys()].filter((k) => !found.has(k));
   if (missing.length) throw new Error(`Unica templates name steps the curriculum does not have: ${missing.join(", ")}`);
-  return { ...data, steps };
+  const applications = new Map([...U10_APPLICATION_TEMPLATES, ...U19_APPLICATION_TEMPLATES]
+    .map(entry => [`${entry.skill}#${entry.step}`, entry]));
+  return { ...data, steps: steps.map(step => {
+    const entry = applications.get(`${step.skill}#${step.number}`);
+    if (!entry) return step;
+    if (entry.name !== step.name) throw new Error(`Application templates for ${entry.skill}#${entry.step} name a different step`);
+    return { ...step, templates: [...(step.templates ?? []), ...entry.templates.map(applicationPractice)] };
+  }) };
 }
 
 /**
- * Shorter words for U4/U10's long templates and U16's hundreds-place question. Each keeps its slots, answer, difficulty
+ * Explicit instructions for source templates that need more context. Each keeps its slots, answer, difficulty
  * and task. Only the named level changes; other levels keep Cedric's words. U4's part-part-whole form prints the
  * given parts and whole without a picture note. The source text is checked: a changed template is not rewritten.
- * Logged in data/curriculum/author-changes.md ("Unica's shorter U4 wording").
+ * The 2026-11-16 content audit supersedes the older shortening rules.
  */
 export interface LevelRewrite { level: number; skill: string; step: number; template: number; from: string; to: string }
 
 export const LEVEL_REWRITES: readonly LevelRewrite[] = [
-  { level: 19, skill: "6.13-classify-angles", step: 1, template: 1, from: "{name} looks at an angle that is {desc}. What kind of angle is it? Write acute, right or obtuse.", to: "{name}'s angle is {desc}. Is it acute, right or obtuse?" },
-  { level: 19, skill: "6.13-classify-angles", step: 1, template: 2, from: "What kind of angle is the {obj}? Write acute, right or obtuse.", to: "Classify the {obj}: acute, right or obtuse." },
-  { level: 19, skill: "6.13-classify-angles", step: 1, template: 3, from: "Which angle is obtuse? A) {oa}  B) {ob}  Write A or B.", to: "Which is obtuse? A) {oa}  B) {ob}" },
-  { level: 10, skill: "2.5-increasing-pattern", step: 3, template: 2, from: "{name} saves {things} in a pattern. Day 1 {name} has {a}. Each day {name} adds {s} more. How many on day 2?", to: "Day 1: {name} has {a} {things}. Add {s} each day. How many on day 2?" },
-  { level: 10, skill: "3.6-decreasing-pattern", step: 1, template: 2, from: "{name} starts with {a} {things} and gives away {d} each day. How many {things} are there the next day?", to: "{name} has {a} {things} and gives away {d}. How many now?" },
-  { level: 10, skill: "3.6-decreasing-pattern", step: 1, template: 3, from: "Number 1 is {a}. Take away {d} each time. Number {n} is __.", to: "Number 1 is {a}. Take {d} off each time. Number {n}: __." },
-  { level: 10, skill: "3.6-decreasing-pattern", step: 1, template: 4, from: "Number 1 is {a}. Take away {d} each time. True or false: number {n} is {shown}.", to: "Number 1 is {a}. Take {d} off each time. Number {n} is {shown}: true or false?" },
-  { level: 16, skill: "5.1-place-value-million", step: 3, template: 2, from: "What is the value of the digit in the hundreds place of {n}?", to: "{n}: value of the hundreds digit?" },
-  { level: 4, skill: "K3-part-part-whole", step: 3, template: 1, from: "(picture: part {sa}, part {sb}, whole {sc}) Find the missing number.", to: "Parts {sa}, {sb}. Whole {sc}." },
-  { level: 4, skill: "K5-two-more-less", step: 3, template: 3, from: "{name} has {s} {things}. {name} gets 2 more. How many {things} does {name} have now?", to: "{name} has {s} {things} and gets 2 more. How many {things} now?" },
-  { level: 4, skill: "K1-count-scattered", step: 3, template: 4, from: "{name} counts {c} {things} in a circle and says {a}. Is that right? If not, say the right number.", to: "{c} {things} in a circle. {name} counts {a}. Right? If not, fix it." },
-  ...[1, 2, 3].map((step) => ({ level: 4, skill: "1.2-decompose-within-10", step, template: 3, from: "{name} has {w} {things}. {p} of them {be} red and the rest are blue. How many are blue?", to: "{w} {things}: {p} red, the rest blue. How many are blue?" })),
-  ...[1, 2].map((step) => ({ level: 4, skill: "1.1-subitize-to-10", step, template: 2, from: "True or false: if you count {n} {things}, the last number you say is {shown}.", to: "True or false: counting {n} {things}, you end on {shown}." })),
-  ...[1, 2].map((step) => ({ level: 4, skill: "1.1-subitize-to-10", step, template: 3, from: "{name} has {n} {things}. {name} gets 1 more. How many {things} now?", to: "{name} has {n} {things} and gets 1 more. How many {things} now?" })),
-  { level: 4, skill: "1.1-count-to-20", step: 1, template: 1, from: "Count on: {s}, __, __. What are the next two numbers?", to: "Count on: {s}, __, __." },
-  { level: 4, skill: "1.1-count-to-20", step: 2, template: 1, from: "Count on: {s}, __, __. What are the next two numbers?", to: "Count on: {s}, __, __." },
-  { level: 4, skill: "1.1-count-to-20", step: 1, template: 5, from: "Count on: {s}, __, __, __, __. Write the next four numbers.", to: "Count on: {s}, __, __, __, __." },
-  { level: 4, skill: "1.1-count-to-20", step: 2, template: 5, from: "Count on: {s}, __, __, __, __. Write the next four numbers.", to: "Count on: {s}, __, __, __, __." },
-  { level: 4, skill: "1.1-count-to-20", step: 3, template: 1, from: "Count back: {s}, __, __. What are the next two numbers?", to: "Count back: {s}, __, __." },
-  { level: 4, skill: "1.1-count-to-20", step: 3, template: 5, from: "Count back: {s}, __, __, __, __. Write the next four numbers.", to: "Count back: {s}, __, __, __, __." },
-  { level: 4, skill: "1.1-count-to-20", step: 1, template: 2, from: "{name} counts {things}. {name} says {s}. What does {name} say next?", to: "{name} counts {things}: {s}. What comes next?" },
-  { level: 4, skill: "1.1-count-to-20", step: 2, template: 2, from: "{name} counts {things}. {name} says {s}. What does {name} say next?", to: "{name} counts {things}: {s}. What comes next?" },
-  { level: 4, skill: "1.1-count-to-20", step: 3, template: 2, from: "{name} counts down from {s} at the rink. What does {name} say next?", to: "{name} counts back: {s}. What comes next?" },
-  { level: 4, skill: "1.1-count-to-20", step: 1, template: 4, from: "Which number comes right after {s}: {x} or {y}?", to: "After {s}: {x} or {y}?" },
-  { level: 4, skill: "1.1-count-to-20", step: 2, template: 4, from: "Which number comes right after {s}: {x} or {y}?", to: "After {s}: {x} or {y}?" },
-  { level: 4, skill: "1.1-count-to-20", step: 3, template: 4, from: "Which number comes right before {s}: {x} or {y}?", to: "Before {s}: {x} or {y}?" },
-  { level: 4, skill: "1.1-subitize-to-10", step: 3, template: 3, from: "{name} has {w} {things}. {p} are red and the rest are blue. How many are blue?", to: "{w} {things}: {p} red, the rest blue. How many blue?" },
-  { level: 4, skill: "1.10-likelihood-words", step: 1, template: 1, from: "{name} says {animals} can drive a car. Circle never, sometimes or always.", to: "Can {animals} drive a car?" },
-  { level: 4, skill: "1.10-likelihood-words", step: 1, template: 3, from: "The sun will rise tomorrow. Circle never, sometimes or always.", to: "The sun will rise tomorrow. How often?" },
-  { level: 4, skill: "1.10-likelihood-words", step: 1, template: 4, from: "{name} thinks about this: {ev}. Circle never, sometimes or always.", to: "{ev}. How often?" },
-  { level: 4, skill: "1.10-likelihood-words", step: 1, template: 5, from: "{st}. Is that never, sometimes or always?", to: "{st}. How often?" },
-  { level: 4, skill: "K3-part-part-whole", step: 3, template: 5, from: "Out of {w} {things}, {name} puts {p} in a {container}. {name} says the rest is {claim}. Is that right? If not, say how many.", to: "{w} {things}. {p} put away. {claim} left out? Fix if wrong." },
-  { level: 4, skill: "K3-make-10", step: 3, template: 5, from: "{name} has {p} {things} and wants {w}. How many more?", to: "{p} {things}. How many more make {w}?" },
-  { level: 4, skill: "K5-two-more-less", step: 3, template: 5, from: "{name} says 2 more than {s} is {claim}. Is that right? If not, say the right number.", to: "2 more than {s} is {claim}. Right? Fix if wrong." },
-  { level: 4, skill: "K1-write-numerals", step: 3, template: 4, from: "{name} wrote {a} for the number {n}. Is that right? If not, write the right number.", to: "{name} writes {a} for {n}. Right? Fix if wrong." },
-  { level: 4, skill: "1.2-decompose-within-10", step: 1, template: 5, from: "{name} says {w} is {a} and {claim}. Is that right? If not, write what goes with {a}.", to: "{w} is {a} and {claim}. Right? Fix if wrong." },
-  { level: 4, skill: "1.2-decompose-within-10", step: 2, template: 5, from: "{name} says {w} is {a} and {claim}. Is that right? If not, write what goes with {a}.", to: "{w} is {a} and {claim}. Right? Fix if wrong." },
-  { level: 4, skill: "K5-two-more-less", step: 3, template: 1, from: "What is 2 more than {s}?", to: "2 more than {s}?" },
-  { level: 4, skill: "K1-number-sequence", step: 3, template: 1, from: "What comes just after {n}?", to: "What comes after {n}?" },
-  { level: 4, skill: "K1-number-sequence", step: 3, template: 4, from: "What comes just before {n}? A) {x}  B) {y}", to: "Before {n}? A) {x} B) {y}" },
-  { level: 4, skill: "K1-number-sequence", step: 3, template: 5, from: "{name} counts up and says {n}, then {m}. Which number did {name} skip?", to: "{name} counts up: {n}, then {m}. What was skipped?" },
+  { level: 10, skill: "2.5-increasing-pattern", step: 3, template: 2, from: "{name} saves {things} in a pattern. Day 1 {name} has {a}. Each day {name} adds {s} more. How many on day 2?", to: "On day 1, {name} has {a} {things}. Each day after day 1, {name} adds {s} {things}. How many {things} does {name} have on day 2?" },
+  { level: 4, skill: "K3-part-part-whole", step: 3, template: 1, from: "(picture: part {sa}, part {sb}, whole {sc}) Find the missing number.", to: "The whole is {sc}. Its two parts are {sa} and {sb}. Write the missing number." },
+  ...[1, 2].map((step) => ({ level: 4, skill: "1.1-subitize-to-10", step, template: 3, from: "{name} has {n} {things}. {name} gets 1 more. How many {things} now?", to: "{name} has {n} {things}. {name} gets 1 more. How many {things} does {name} have now?" })),
+  { level: 4, skill: "1.10-likelihood-words", step: 1, template: 5, from: "{st}. Is that never, sometimes or always?", to: "{st}. Circle never, sometimes or always." },
+  { level: 4, skill: "K3-make-10", step: 3, template: 5, from: "{name} has {p} {things} and wants {w}. How many more?", to: "{name} has {p} {things} and wants {w} {things}. How many more {things} does {name} need?" },
 ];
 
-/** A template as a book of this level prints it: Unica's shorter words where there are some, else Cedric's. */
+/** A template as a book of this level prints it: Unica's clarified instructions where needed, else Cedric's. */
 export function templateAtLevel(level: number, step: CurriculumStep, index: number, t: StepTemplate): StepTemplate {
   const r = LEVEL_REWRITES.find((x) => x.level === level && x.skill === step.skill && x.step === step.number && x.template === index + 1 && x.from === t.text);
   return r ? { ...t, text: r.to } : t;

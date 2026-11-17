@@ -237,8 +237,8 @@ it("requires three contexts or formats on a printed page and no repeated sentenc
 
 it("fails a Challenge no harder than that day's practice of its step, by what the child does (#482 review at 3134252)", () => {
   const bc = curriculumFor("bc")!;
-  const question = (n: number, place: string, part: string, at: Parameters<typeof stepTemplateItem>[0]["place"], seed: number, attempt = 0) => {
-    const it = stepTemplateItem({ curriculum: bc, skill: "1.1-count-to-20", step: 1, place: at, level: 4, day: 1, seed, attempt, ordinal: 0 })!;
+  const question = (n: number, place: string, part: string, at: Parameters<typeof stepTemplateItem>[0]["place"], seed: number, attempt = 0, learningStage?: Parameters<typeof stepTemplateItem>[0]["learningStage"]) => {
+    const it = stepTemplateItem({ curriculum: bc, skill: "1.1-count-to-20", step: 1, place: at, learningStage, level: 4, day: 1, seed, attempt, ordinal: 0 })!;
     const b = buildStepItem(it.ref, it.text, { id: `q${n}`, workbookId: "00000000-0000-4000-8000-0000000000a1", page: 3, question: n, level: 4, skills: [it.ref.skill] }, "code");
     return { number: n, slot: `1.${n}`, part, place, attempts: 1, check: b.check, package: b.package, itemPlan: { template: it.ref } } as unknown as GeneratedPage["questions"][number];
   };
@@ -249,8 +249,9 @@ it("fails a Challenge no harder than that day's practice of its step, by what th
   const reasons = (pages: GeneratedPage[]) => workbookQuality(pages).issues.filter(i => i.kind === "challenge").map(i => i.reason);
   // The step's hard count (write the next four numbers) is harder than its practice.
   expect(reasons(day(question(1, "challenge", "challenge", "challenge", 9)))).toEqual([]);
-  // A true or false (medium) asks less than practice's medium number question: a circled choice, no worked answer.
-  const easy = question(1, "challenge", "challenge", "on-your-own", 11);
+  // A larger number in the same true-or-false question is not a harder task.
+  const easy = Array.from({ length: 24 }, (_, attempt) => question(1, "challenge", "challenge", "on-your-own", 11, attempt, "guided"))
+    .find(q => q.itemPlan!.template!.kind === "choice" && q.itemPlan!.template!.difficulty === "medium")!;
   expect(easy.itemPlan!.template!.kind).toBe("choice");
   expect(day(easy)[0].questions[1].itemPlan!.template!.difficulty).toBe(easy.itemPlan!.template!.difficulty);
   expect(reasons(day(easy)).join(" ")).toMatch(/no harder than that day's practice/);
@@ -390,4 +391,22 @@ it.each(["fixed", "new failure"])("keeps additional book checks binding and supp
   expect(result.pages[0].dayLabel).toBe(label === "fixed" ? "fixed" : "needs interest");
   expect(observed).toBe(result.pages[0].dayLabel);
   expect(result.quality.issues.filter(i => i.reason === "additional family check")).toHaveLength(label === "fixed" ? 1 : 2);
+});
+
+
+it("rejects ordinary drills substituted into a declared application slot", () => {
+  const curriculum = curriculumFor("bc")!;
+  const p = page(5, 1, 1);
+  p.expected = [{ slot: "1.1", part: "practice", place: "on-your-own", application: true,
+    steps: ["6.4-prime-composite#1"] }];
+  const issue = (learningStage: "independent" | "application") => {
+    const item = stepTemplateItem({ curriculum, skill: "6.4-prime-composite", step: 1,
+      place: "on-your-own", learningStage, level: 19, day: 1, seed: 121, attempt: 0, ordinal: 0 })!;
+    const built = buildStepItem(item.ref, item.text, { id: "application-guard", workbookId: "application-guard",
+      page: 5, question: 1, level: 19, skills: [item.ref.skill] }, "code");
+    p.questions[0] = { ...p.questions[0], package: built.package, check: built.check };
+    return workbookQuality([p]).issues.filter(i => i.reason.includes("application slot"));
+  };
+  expect(issue("independent")).toHaveLength(1);
+  expect(issue("application")).toEqual([]);
 });

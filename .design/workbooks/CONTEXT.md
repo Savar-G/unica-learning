@@ -28,23 +28,22 @@ public curriculum page `/curriculum`.
   weeks. The program runs all year, summer included, and never pauses on its own (section 4.10).
 - **Book order:** cover, How + Plan page, Day 1 to Day 10, blank pages to a multiple
   of 4.
-- **Pages a day (D-186), capped at 8 for now:**
+- **Pages a day (user requirement, 2026-11-16): eight useful pages at every level.** This replaces D-186's shorter U1 to U3 and U19 to U30 days. Teaching budgets and start levels stay unchanged; the added pages consolidate eligible steps. A parent-led pause day with no earlier learning uses unhinted Already know it? checks instead of empty review pages.
 
 | Levels | Band | Pages a day | Who leads | Daily time target | Level test |
 |---|---|---|---|---|---|
-| U1 to U3 | Early | 4 to 6 short pages | Parent-led: the parent reads every instruction aloud | 15 to 20 min | 15 to 20 min, two parts if needed |
+| U1 to U3 | Early | 8 short pages | Parent-led: the parent reads every instruction aloud | 15 to 20 min | 15 to 20 min, two parts if needed |
 | U4 to U6 | Early | 8 | Parent-supported: icon instructions, the parent reads on request | 20 to 25 min | 20 to 25 min |
 | U7 to U9 | Early | 8 | Child-led | 20 to 25 min | 20 to 25 min |
 | U10 to U15 | Middle | 8 | Child-led | 25 to 30 min | 30 to 35 min |
 | U16 to U18 | Middle | 8 | Child-led | 25 to 30 min | 35 to 40 min |
-| U19 to U24 | Upper | 6 | Child-led | about 30 min | 40 to 45 min |
-| U25 to U30 | Upper | 6 | Child-led | about 30 min | 45 to 50 min |
+| U19 to U24 | Upper | 8 | Child-led | about 30 min | 40 to 45 min |
+| U25 to U30 | Upper | 8 | Child-led | about 30 min | 45 to 50 min |
 
   These are planning estimates. Issue #479 caps generated days at 30 minutes; a generated day is about 30 minutes, and the
   How it works page says "about 30 minutes" from the book's own estimate (D-229, Savar confirmed 2026-11-03). Real
   children have not been timed.
-- **Size of a book:** at 8 a day, cover + plan + 80 day pages = 82, padded to **84 (the maximum)**; at 6 a
-  day, 62 padded to 64.
+- **Size of a book:** cover + plan + 80 day pages = 82, padded to **84 (the maximum)** at every level.
 - **Print and binding (D-191):** US Letter, colour, **saddle stitch**; blank pages go **at the end**.
 - **Workbooks per grade:** Kindergarten 8, Grades 1 and 2: 10, Grades 3 to 5: 12, Grades 6 to 9: 14 (120 in all),
   split across each grade's three levels by page share (2 to 6 per level, usually 3 to 5). Planning averages, not
@@ -176,7 +175,7 @@ Every run makes a **draft**. A team member reviews it in admin, fixes or redoes 
 - **When:** built when every unit in the level has reached its last step at 90% or more in the scans, or after the
   level's workbook budget plus 2 workbooks, whichever comes first (the test runs anyway and decides).
 - **Days:** 1 to 6 normal with extra mixed review of every unit in the level; Day 7 the **level test** in one sitting
-  (U1 to U3: two parts on the same day if needed), every unit, no hints, at least one context question; Day 8 light (no
+  (U1 to U3: two parts on the same day if needed), every unit, no hints, at least one context question; Day 8 light, with eight pages of familiar review (no
   new ideas); Days 9 and 10 mixed practice; Day 10 still ends with Show what you know (D-190).
 - **Unit judgement:** a unit's result = its test items together with the last two workbooks' accuracy on it; one slip on
   4 to 6 items never makes a weak unit alone. The plan page says the test is done alone; the app asks "Did anyone
@@ -206,16 +205,16 @@ The parts of a day, in order (skeleton, "A normal day"), and the levels they app
 |---|---|---|
 | Warm-up | 2 to 3 minutes of fact practice from the grade's fluency unit; never timed below U16, from U16 "beat your own count"; one mental-math item with "How did you work it out?" | Every day from **U8** |
 | Fix it | Section 4.6 | Page 1 of Days 1 to 5, from workbook 2 |
-| Try first | One problem of the new idea before it is taught; not marked for mastery | U19 and up, on a day that starts a new step |
+| Try one | One problem after the concept and worked example; not marked for mastery | U19 and up, on a day that starts a new step |
 | New idea | The worked example in the step's representation, solved two ways ("Method 1", "Method 2"), then one spot-the-error item | Only on a day a new step starts |
 | Practice that builds | Faded: a full example, 2 half-finished problems, then problems on their own, getting harder | Every day |
 | Word and picture problems | The same idea in stories and pictures; at least one "How do you know?" | Every day (U19 and up: Math in the world on Days 4 and 9) |
 | Review | Unit B, or an earlier skill on its spaced schedule ("Remember these?") | Every day |
 | Mixed set | 2 problems where the child chooses the operation: "1 Tick the operation", "2 Write the answer" | Every day from **U10**; Days 5 and 10: Friday 5 instead |
 | Friday 5 | Section 4.8 | Days 5 and 10 |
-| Challenge | 3 challenge problems (Cedric's section 8: 3 to 4) | Every day |
+| Challenge | 3 required challenge problems (Cedric's section 8: 3 to 4) | Every day |
 
-How these parts sit on 8 and 6 pages is in `DESIGN.md` section 7 (from the samples: warm-up, new idea, practice,
+The page formats are in `DESIGN.md` section 7 (from the samples: warm-up, new idea, practice,
 practice 2, word problems, unit B, remember these + mixed set, challenge).
 
 ## 6. Items and answers (what marking and Maya read)
@@ -267,7 +266,7 @@ practice 2, word problems, unit B, remember these + mixed set, challenge).
 
 | Topic | Disagreement | Decision |
 |---|---|---|
-| Pages a day | Notes: U4 to U9 10 to 12, U10 to U18 8 to 10; samples: 8 or 6 | Skeleton, capped at 8: U1 to U3 4 to 6, U4 to U18 8, U19 to U30 6 (D-186) |
+| Pages a day | Notes: U4 to U9 10 to 12, U10 to U18 8 to 10; samples: 8 or 6 | Eight useful pages every day, U1 to U30, including pause days and all test-workbook days (user requirement, 2026-11-16). Upper levels separate Challenge from mixed review and add a review page; parent-led days keep short supported tasks and add picture review. |
 | Page number on pages | Samples print only "Day 1 · Page 2 of 8" | The book page number under the page ID (D-187) |
 | Numbered items | Samples number most items, not all | Every answer item numbered (D-187) |
 | Level test day | Notes: Day 10 "Show what you know" in every book; skeleton: Day 7 of the test workbook | Both (D-190) |
@@ -309,7 +308,7 @@ practice 2, word problems, unit B, remember these + mixed set, challenge).
 | Workbook store (#299) | merged | none (pages, questions, boxes, tokens) |
 | Answer checker (#306, #307) | merged | multi-box items, tick-one and tick-plus-number items, written reasons marked "not checked by code", the skeleton's response types |
 | Child profile (#303) and AI findings (#304) | merged / in review | read calls and Maya's set problems as mastery evidence; careless versus conceptual errors |
-| Two-week planner G4 (#308, PR #356) | in review, **to rework** | the day parts and level gates in section 5; at most 8 new steps; units A and B at 2:1; Fix it on page 1 of Days 1 to 5; Friday 5 on Days 5 and 10 replacing the Mixed set; Show what you know on Day 10; the test workbook rules (4.9); review share by level (4.3); spaced intervals (4.4); pages a day 4 to 6, 8 or 6 |
+| Two-week planner G4 (#308, PR #356) | in review, **to rework** | the day parts and level gates in section 5; at most 8 new steps; units A and B at 2:1; Fix it on page 1 of Days 1 to 5; Friday 5 on Days 5 and 10 replacing the Mixed set; Show what you know on Day 10; the test workbook rules (4.9); review share by level (4.3); spaced intervals (4.4); eight pages a day at every level |
 | Renderer G5 (#309, PR #352) | in review | real templates in #310 from `DESIGN.md`; footer with page ID, page number and QR; back cover; padding at the end to a multiple of 4 |
 | Level, unit, skill and step data | not in code | the skeleton's Levels and Units & skills tabs become code (with importance, difficulty, delivery, response type, scorable, pages); steps for every grade (only Grade 3 drafted) |
 | Item templates and tags | not in code | number ranges per step, strategy tags, context templates |
@@ -318,3 +317,10 @@ practice 2, word problems, unit B, remember these + mixed set, challenge).
 ## Scan decisions, 2026-11-02
 
 D-207 to D-213 replace earlier sample, marking, retention and calendar defaults. Days follow printed-page progress. A four-day scan gap can produce a reminder. Confirmed delivery plus 21 local calendar days provides the next-book snapshot backstop. Whole-page marking runs on the website server through the API. S1 stores one private normalized photo and makes no model request. Keep answer history until family deletion after photos expire at 90 days.
+
+
+### November 16 teaching and daily progression update
+
+All eight daily learning pages contain required work, including Challenge. A weekly-time preference cannot turn a core page into an optional page. Report a time shortfall when the required work cannot meet that preference; capacity must still satisfy the stored time target and the 35-minute whole-day limit. Optional material outside the core plan keeps its explicit label.
+
+Explain the named concept before the worked example and the first new-idea question. Supported practice leads to independent work and application; later pages must vary what the child does, rather than repeat the same stem with new numbers. Use complete sentences and checked questions from the intended skill and step. In public plan rows, describe the day's purpose. Five-skill check replaces Friday 5, and Day 10 consolidates the book's learning.
