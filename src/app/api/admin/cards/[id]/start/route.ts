@@ -55,6 +55,9 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards
       const startedAt = Date.now();
       const result = await startPlan(s, { cardSetup: card.id, customer: card.stripe_customer_id, price, deliveryConfirmed: true }, undefined, undefined, liveReferralStarts(s));
       if (!result.ok) return Response.json(result, { status: 409 });
+      // The billing result stays authoritative if this separate activity write is unavailable.
+      await service.rpc("record_customer_plan_actor", { p_card: card.id, p_generation: result.generation, p_actor: admin.userId })
+        .then(({ error }) => { if (error) console.error("[customer-activity] plan confirmation not recorded"); }, () => { console.error("[customer-activity] plan confirmation not recorded"); });
       const access = await openAccess({ customer: card.stripe_customer_id, cardSetup: card.id, generation: result.generation, startedAt });
       return Response.json({ ...result, access, confirmation: await confirm(card.id, result.generation, result.monthlyPrice ?? price, result.firstChargeAt, new URL(request.url).origin) });
     } finally {

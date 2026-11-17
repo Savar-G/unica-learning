@@ -1,4 +1,5 @@
 "use client";
+import { recordActivity } from "@/lib/customer-activity-client";
 import { useRef, useState, useEffect, useCallback, useMemo, type FormEvent } from "react";
 import { growInkLog, historyFromLog, inkLog, readInkEvent, type BoardHistory, type InkEvent } from "@/lib/board-history";
 import { chatBoardFates, type ScreenFateReport } from "@/lib/board-fate";
@@ -429,6 +430,7 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
     const generation = epoch.current;
     try {
       if (type === "start") {
+        recordActivity("maya_chat_attempt", "desk", child, at.book);
         const reference = text?.trim();
         if (reference && chat && !chat.ended) {
           await board.finish(chat.id);

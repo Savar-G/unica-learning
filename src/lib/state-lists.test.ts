@@ -2,6 +2,7 @@
 // database side comes from src/lib/database.checks.ts: after a migration that changes a check, run npm run db:checks.
 // To add a machine, add one line here with its list and its column.
 import { describe, expect, it } from "vitest";
+import { CUSTOMER_ACTIVITY_KINDS, ACTIVITY_PAGES } from "@/lib/customer-activity";
 import { AD_STEPS } from "@/lib/ad-visit-steps";
 import { ATTEMPT_STATUSES } from "@/lib/assessment";
 import { FAMILY_BUCKETS } from "@/lib/assessment/deletion";
@@ -19,6 +20,8 @@ import { REFERRAL_RISKS, REFERRAL_OPERATION_STATES, REFERRAL_REWARD_KINDS, REFER
 import { GATE_OUTCOMES } from "@/lib/workbook-run-gates";
 
 const LISTS: { name: string; list: readonly string[]; table: string; column: string }[] = [
+  { name: "CUSTOMER_ACTIVITY_KINDS", list: CUSTOMER_ACTIVITY_KINDS, table: "customer_activity", column: "event" },
+  { name: "ACTIVITY_PAGES", list: ACTIVITY_PAGES, table: "customer_activity", column: "page" },
   { name: "REFERRAL_RISKS", list: REFERRAL_RISKS, table: "referral_rewards", column: "risk" },
   { name: "REFERRAL_RISKS", list: REFERRAL_RISKS, table: "referral_invoice_risk", column: "risk" },
   { name: "REFERRAL_OPERATION_STATES", list: REFERRAL_OPERATION_STATES, table: "referral_operations", column: "state" },

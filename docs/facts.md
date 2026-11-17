@@ -191,3 +191,7 @@ These are places where the code, the site copy and the decision records disagree
 2. "One sitting": settled 2026-11-14. Savar says the assessment is done in one sitting. The assessment page line "They can pause and return to their saved answers" describes what happens after an interruption.
 3. The free month ends Nov 30 (`OFFER_ENDS`). After that, the FAQ, the terms and every "first month free" line must change together with this file.
 4. The legal entity: Unica Learning Inc. exists, but the site still says "Unica Learning". Safer reading: use "Unica Learning".
+
+## Private customer activity (pending hosted setup)
+
+- The new activity implementation records signed-in visits and scanner/Maya attempts only after optional-analytics consent. It links fixed safe labels and owned references to the family. It hides optional records after 90 days and removes up to 10,000 expired records in each daily keepalive run. Service failure or backlog can delay removal. Private team notes are separate, bounded to 2,000 characters and deleted with the linked family or child. Sources: `src/lib/customer-activity.ts`, `src/lib/customer-activity-client.ts`, `src/app/api/account/activity/route.ts`, `supabase/migrations/20261117040357_customer_activity.sql`, `docs/customer-activity.md`. Status on 2026-11-16: implementation only; hosted setup and browser review pending.

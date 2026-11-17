@@ -1,5 +1,6 @@
 import { monitored } from "@/lib/sentry-cron";
 import { timingSafeEqual } from "node:crypto";
+import { adminClient } from "@/lib/supabase-auth";
 import { supabase } from "@/lib/supabase";
 
 // Daily Vercel cron (vercel.json). Supabase pauses free projects after 7 days with no
@@ -12,7 +13,11 @@ async function run(request: Request) {
   if (given.length !== expected.length || !timingSafeEqual(given, expected)) return new Response("Unauthorized", { status: 401 });
   const { error } = await supabase().rpc("ping");
   if (error) return Response.json({ ok: false, error: error.message }, { status: 502 });
-  return Response.json({ ok: true });
+  const service = adminClient(AbortSignal.timeout(10000), { retry: false });
+  if (!service) return Response.json({ ok: false }, { status: 503 });
+  const purged = await service.rpc("purge_customer_activity");
+  if (purged.error) return Response.json({ ok: false }, { status: 502 });
+  return Response.json({ ok: true, activityPurged: purged.data });
 }
 
 // Each scheduled call checks in with Sentry (src/lib/sentry-cron.ts).

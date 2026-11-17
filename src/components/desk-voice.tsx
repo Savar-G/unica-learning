@@ -1,4 +1,5 @@
 "use client";
+import { recordActivity } from "@/lib/customer-activity-client";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Avatar, Icon } from "@/components/desk-icons";
 import { MayaBoard } from "@/components/maya-board";
@@ -64,7 +65,7 @@ async function post(body: VoiceRequest, keepalive = false): Promise<DeskVoiceRep
   }
 }
 
-export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: string; page: number; question: number | null }) {
+export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: string; page: number; question: number | null; child?: string }) {
   const [usage, setUsage] = useState<VoiceUsage | null>(initial?.usage ?? null);
   const [flow, setFlow] = useState<VoiceFlow>("idle");
   const [call, setCall] = useState<DeskVoiceCall | null>(null);
@@ -264,6 +265,7 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
 
   /** Opens the microphone check, and makes the call. `before` runs first (the desk ends an open chat); false from it stops here. */
   const open = async (before?: () => Promise<boolean>) => {
+    if (at.child) recordActivity("maya_voice_attempt", "desk", at.child, at.book);
     const q = at.question;
     if (!initial || flow !== "idle" || q === null || voiceWeekUsed(usage)) return;
     if (before && !(await before())) return;

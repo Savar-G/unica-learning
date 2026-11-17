@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { voiceStartMarks, voiceStartTrace } from "@/lib/maya-voice-start-trace";
 import { useDeskVoice, VoiceBoard, VoiceControls, VoiceLimit, VoiceTranscript } from "./desk-voice";
 import type { DeskVoiceCall, DeskVoiceReply, VoiceUsage } from "@/lib/maya-voice-desk";
@@ -39,7 +39,7 @@ let root: Root | undefined;
 let host: HTMLDivElement;
 const sent: Array<Record<string, unknown>> = [];
 let answer: (body: Record<string, unknown>) => DeskVoiceReply;
-afterEach(async () => { await act(async () => root?.unmount()); root = undefined; host?.remove(); rooms.length = 0; sent.length = 0; vi.unstubAllGlobals(); });
+afterEach(async () => { await act(async () => root?.unmount()); root = undefined; host?.remove(); rooms.length = 0; sent.length = 0; vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 function Harness({ voice, question = 2 }: { voice: { usage: VoiceUsage } | null; question?: number | null }) {
   const state = useDeskVoice(voice, { book: "wb1", page: 3, question });
@@ -52,6 +52,11 @@ function Harness({ voice, question = 2 }: { voice: { usage: VoiceUsage } | null;
 
 let heldMic: ((stream: unknown) => void) | null = null;
 let audioContexts = 0;
+beforeEach(() => {
+  vi.clearAllMocks(); localStorage.clear(); sessionStorage.clear(); heldMic = null; audioContexts = 0; lastId = "c1";
+  answer = body => ({ call: call({ ended: body.type === "cancel" }), usage: USAGE,
+    ...(body.type === "start" ? { ticket: { url: "ws://fake", token: "t-start", room: "r", identity: "child", expiresAt: "x" } } : {}) });
+});
 async function mount(opts: { voice?: { usage: VoiceUsage } | null; mic?: "ok" | "blocked" | "none" | "held"; question?: number | null } = {}) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("requestAnimationFrame", vi.fn(() => 1));

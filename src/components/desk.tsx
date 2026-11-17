@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, 
 import { DESK_HOME, type LeaveResult, type QuestionCrop, type TapArea } from "@/lib/desk";
 import type { QuestionBoard } from "@/lib/desk-board";
 import type { ForgotPinResult } from "@/lib/parent-pin-server";
+import { recordActivity } from "@/lib/customer-activity-client";
 import { track } from "@/lib/track";
 import { AnnounceDesk } from "@/components/desk-guard";
 import type { RetryTime } from "@/lib/family-time";
@@ -114,7 +115,8 @@ export function Desk(props: DeskProps) {
   const talk = useRef<HTMLDivElement>(null);
   const still = useStill();
   const chat = useDeskChat(props.chatUsage ?? null, { book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: picked }, props.childId);
-  const voice = useDeskVoice(props.voice ?? null, { book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: picked });
+  useEffect(() => { recordActivity("page_visit", "desk", props.childId, ready?.book.id ?? null); }, [props.childId, ready?.book.id]);
+  const voice = useDeskVoice(props.voice ?? null, { book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: picked, child: props.childId });
   // Out of chat messages for today still leaves the page, the picker and the call.
   const chatOpen = chat.usage?.left !== 0 || voice.enabled;
   const seenTip = useSyncExternalStore(subscribeTip, () => tipSeen(props.childId), () => true);

@@ -55,6 +55,8 @@ export function isConsentPersisted(): boolean {
 export function setConsent(choice: ConsentChoice): void {
   if (typeof window === "undefined") return;
   fallback.memory = choice;
+  // Mirror the choice for the private activity endpoint. Revocation takes effect on the next request.
+  try { document.cookie = `unica_activity_consent=${choice}; Path=/; SameSite=Strict${window.location.protocol === "https:" ? "; Secure" : ""}`; } catch { /* Cookie access can be blocked independently of storage. */ }
   try {
     window.localStorage.setItem(CONSENT_KEY, JSON.stringify({ v: 1, analytics: choice, at: Date.now() }));
     fallback.persisted = true;

@@ -10,6 +10,7 @@ import { dayStrip, pageScore, retakeLine, scoreLine, todaysPages, type StripStat
 import { PHOTO_PROBLEM_TEXT, type PhotoCheckView, type PhotoProblem } from "@/lib/scan-photo-check-text";
 import { SCANNING_COOKIE, SCANNING_SECONDS } from "@/lib/scan-tab";
 import { PACIFIC_ZONE, type FamilyZone } from "@/lib/family-time";
+import { recordActivity } from "@/lib/customer-activity-client";
 import { scanEventTicket } from "@/lib/scan-track";
 import { nextUploads, REQUEST_TIMEOUT_MS, roomWait, UPLOAD_TIMEOUT_MS, waitsForRoom } from "@/lib/scan-upload-queue";
 import { workbooksPath } from "@/lib/parent-shell";
@@ -199,6 +200,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   allPages?: readonly string[];
 }) {
   const [child, setChild] = useState(focus?.childId ?? childrenList[0]?.id ?? "");
+  useEffect(() => { if (child) recordActivity("scanner_opened", "scanner", child); }, [child]);
   const [listing, setListing] = useState<ScanListing | null>(initial?.listing ?? null);
   const [uploads, setUploads] = useState<Local[]>([]);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
