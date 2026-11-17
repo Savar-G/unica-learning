@@ -1,3 +1,4 @@
+import { contentIssues } from "./workbook-content-checks";
 import { isApplicationPractice } from "./workbook-curriculum/house-templates";
 import { printedInstruction, workbookWorkLine } from "@/lib/workbook-page-instructions";
 import { mixedTemplateSign, stepTemplateOf } from "./workbook-step-items";
@@ -92,7 +93,9 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     return subtitle !== null && printed.content?.kind === "day"
       ? { ...printed, content: { ...printed.content, subtitle } } : printed;
   });
-  const issues: BookIssue[] = [];
+  // Content checks no measurement catches (the live U10 Book 1, 2026-11-17): two-ways methods, estimate guides that answer
+  // themselves, empty headings, stray or broken Watch out lines, a story or Challenge template on two days, plan rows.
+  const issues: BookIssue[] = [...contentIssues(pages)];
   const days: DayQuality[] = [];
   const seen = new Map<string, number[]>();
   let extraRepeats = 0;
