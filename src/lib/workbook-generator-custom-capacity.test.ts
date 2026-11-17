@@ -238,3 +238,48 @@ it("repairs a stories page whose different sentence frames still repeat a story 
   expect(tooTall).not.toBeNull();
   expect(resumed.draft.quality?.issues.filter(i => i.reason.startsWith("the stories page"))).toEqual([]);
 });
+
+// Option A (Luis, 2026-11-17): a practice page that cannot hold its floor beside Solve it two ways and Spot the error
+// gives its Spot the error to the day's other practice page on the same step. The seam stands in for the measured
+// page: the full U19 practice page holds only five questions when both number blocks are on it.
+it("moves Spot the error to the day's other practice page when the practice page cannot hold its floor", async () => {
+  const input = customInput(["5.2", "5.7", "5.15"], [2]);
+  const blocks = (page: Parameters<FitCheck["fits"]>[0]) => page.content?.kind === "day" ? page.content.blocks.map(b => b.slot) : [];
+  const tight: FitCheck = { fits: async page => {
+    const both = blocks(page).includes("spot-the-error") && blocks(page).includes("solve-it-two-ways");
+    return page.questions.length <= (both ? 5 : page.type === "warm-up" ? 12 : 10) ? { ok: true }
+      : { ok: false, problems: [{ question: null, reason: "test page capacity" }] };
+  } };
+  const day = (plan: GenerateInput["plan"]) => plan.days.find(d => d.day === 2)!.pages;
+  const kinds = (plan: GenerateInput["plan"]) => day(plan).map(p => p.parts.map(x => x.kind));
+  const before = kinds(input.plan);
+  expect(before[2]).toEqual(["practice", "solve-it-two-ways", "spot-the-error"]);
+  expect(before[4]).toEqual(["practice"]);
+
+  const prepared = await prepareWorkbookCapacity(input, tight);
+  const after = kinds(prepared);
+  expect(after[2]).toEqual(["practice", "solve-it-two-ways"]);
+  expect(after[4]).toEqual(["practice", "spot-the-error"]);
+  // The rest of the day is the planned layout, and the day still has both of its Spot the error items.
+  expect(after.filter((_, i) => i !== 2 && i !== 4)).toEqual(before.filter((_, i) => i !== 2 && i !== 4));
+  expect(after.flat().filter(k => k === "spot-the-error")).toHaveLength(2);
+  const moved = day(prepared)[4].parts.find(p => p.kind === "spot-the-error")!;
+  expect(moved.step).toEqual(day(input.plan)[2].parts.find(p => p.kind === "spot-the-error")!.step);
+  // The page keeps its floor of practice questions.
+  const practice = day(prepared)[2];
+  expect(Object.values(practice.itemContracts!).filter(Boolean).length).toBeGreaterThanOrEqual(5);
+
+  // The written book prints it there, from the same plan.
+  let token = 0;
+  const generated = await generateWorkbook({ ...input, plan: prepared }, { fit: tight,
+    ai: fakeAiClient({ answer: fakeWorkbookItems }), solver: keySolver(), qrToken: () => `token-${String(++token).padStart(12, "0")}`,
+    store: { save: async draft => ({ status: "saved", draftId: draft.id }), draft: async () => null } });
+  if (generated.status !== "stored") throw new Error(generated.status);
+  const printed = (n: number) => { const c = generated.draft.pages.find(p => p.day === 2 && p.pageOfDay === n)?.content; return c?.kind === "day" ? c.blocks.map(b => b.slot) : []; };
+  expect(printed(3)).toContain("solve-it-two-ways");
+  expect(printed(3)).not.toContain("spot-the-error");
+  expect(printed(5)).toContain("spot-the-error");
+
+  // A page that fits keeps Savar's layout (#308): no move.
+  expect(kinds(await prepareWorkbookCapacity(input, capacityFit))).toEqual(before);
+});

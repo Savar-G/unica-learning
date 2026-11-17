@@ -3932,7 +3932,7 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
       if (!w.page.extraPractice && ["practice", "practice-2", "remember-these", "show-what-you-know"].includes(w.page.type)) {
         const count = w.slots.filter(s => !["spot-the-error", "solve-it-two-ways", "warm-up", "how-do-you-know"].includes(s.place ?? "")).length;
         const floor = minimumFor(w, input.plan.level);
-        if (count < floor) return `Page ${w.number}: capacity could not restore ${floor} planned practice questions; ${count} remain (${w.page.type}, day ${w.day})`;
+        if (count < floor) return `Page ${w.number}: ${FLOOR_SHORT} ${floor} planned practice questions; ${count} remain (${w.page.type}, day ${w.day})`;
       }
       const oldSlots = w.slots;
       w.page = { ...w.page, parts: w.page.parts.map((p, i) => ({ ...p, items: (w.layout?.slots ?? []).filter(s => s.part === i && s.slot !== "how-do-you-know").reduce((n,s)=>n+s.items,0) + (p.kind === "practice" ? p.faded?.watch ?? 0 : 0) })), capacity: w.layout?.slots, capacityChecked: true };
@@ -4026,13 +4026,59 @@ async function repairFinalRows(input: GenerateInput, w: PageWork, work: PageWork
   return questions;
 }
 
+const FLOOR_SHORT = "capacity could not restore";
+/** What the capacity pass writes on a planned page (the planner writes none of it). */
+const CAPACITY_KEYS = ["capacity", "capacityChecked", "capacityOmissions", "itemContracts", "panelAttempts", "existingSlots", "extraGap",
+  "fillingComplete", "timeLimited", "atMaximum", "gapCap", "refills", "noWatchOut", "compactPanel"] as const satisfies readonly (keyof PlannedPage)[];
+
+/**
+ * A practice page that cannot hold its floor of practice questions gives its Spot the error to the day's other
+ * practice page on the same step (Luis, 2026-11-17, option A). On U19 and up a practice page carries the Remember
+ * panel, Solve it two ways and Spot the error (#308); with a review row that needs calculation space they left too
+ * little room for the floor (the custom U19 Book 1's Day 2, page 3). Spot the error is not counted in the floor, so
+ * the move keeps every count, check and the day's Spot the error, and happens only when the page has failed, so a book
+ * that fits keeps Savar's layout. Null when there is no such move.
+ */
+function spotMoved(plan: WorkbookPlan, problem: string, work: readonly PageWork[]): WorkbookPlan | null {
+  const at = new RegExp(`^Page (\\d+): ${FLOOR_SHORT} `).exec(problem);
+  const w = at ? work.find(x => x.number === Number(at[1])) : undefined;
+  if (!w || w.page.type !== "practice" || w.page.extraPractice) return null;
+  const moved = structuredClone(plan);
+  const pages = moved.days.find(d => d.day === w.day)?.pages ?? [];
+  const from = pages.find(p => p.number === w.page.number && !p.extraPractice);
+  const index = from?.parts.findIndex(p => p.kind === "spot-the-error") ?? -1;
+  if (!from || index < 0) return null;
+  const spot = from.parts[index];
+  const same = (part: PlannedPart) => part.kind === "practice" && !!part.step && part.step.skill === spot.step?.skill && part.step.step === spot.step?.step;
+  const to = pages.find(p => p !== from && p.type === "practice" && !p.extraPractice && !p.parts.some(x => x.kind === "spot-the-error") && p.parts.some(same));
+  if (!to) return null;
+  from.parts.splice(index, 1);
+  to.parts.push(spot);
+  // Both pages are laid out and measured again from their parts: nothing the capacity pass decided for them stays.
+  for (const page of [from, to]) for (const key of CAPACITY_KEYS) delete page[key];
+  return moved;
+}
+
+/** Lays the book out and fits it, moving a Spot the error that leaves a practice page short of its floor (spotMoved). */
+async function fittedWork(input: GenerateInput, fitCheck: FitCheck): Promise<{ input: GenerateInput; laid: ReturnType<typeof layOut>; problem: string | null }> {
+  for (let moves = 0; ; moves++) {
+    const laid = layOut(input);
+    const problem = await fitWorkBudget(input, fitCheck, laid.work);
+    // (At most one move a day: each moves a different day's Spot the error, or finds none.)
+    const moved = problem && moves < input.plan.days.length ? spotMoved(input.plan, problem, laid.work) : null;
+    if (!moved) return { input, laid, problem };
+    input = { ...input, plan: moved };
+  }
+}
+
 /** The planned book does not fit its pages: the same plan and workbook id give the same answer every time. */
 export class CapacityProblem extends Error {}
 
 export async function prepareWorkbookCapacity(input: GenerateInput, fitCheck: FitCheck): Promise<WorkbookPlan> {
-  const { work } = layOut(input);
-  const problem = await fitWorkBudget(input, fitCheck, work);
-  if (problem) throw new CapacityProblem(problem);
+  const fitted = await fittedWork(input, fitCheck);
+  const { work } = fitted.laid;
+  if (fitted.problem) throw new CapacityProblem(fitted.problem);
+  input = fitted.input;
   // (Each panel's measured attempt goes with its page, as its slots' contracts do, #746.)
   const withPanelAttempts = (w: PageWork) => {
     const attempts = w.panels.filter((p) => p.attempt !== undefined).map((p) => [p.id, p.attempt!] as const);
@@ -4079,9 +4125,10 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
   if (input.plan.days.length === 0) return { status: "refused", reason: "the plan has no days" };
 
   if (input.itemPolicy === "approved-v1") input = { ...input, plan: workbookCapacityPlan(input.curriculum, input.plan) };
-  const { work, backCover, total } = layOut(input);
-  const capacityProblem = await fitWorkBudget(input, deps.fit, work);
-  if (capacityProblem) return { status: "refused", reason: capacityProblem };
+  const fitted = await fittedWork(input, deps.fit);
+  input = fitted.input;
+  const { work, backCover, total } = fitted.laid;
+  if (fitted.problem) return { status: "refused", reason: fitted.problem };
   const byNumber = new Map(work.map((w) => [w.number, w]));
   if (only) {
     for (const n of only) {
