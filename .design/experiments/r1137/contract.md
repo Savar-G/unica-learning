@@ -21,6 +21,6 @@ Use the exchange to compare motion. The new quantities appear immediately and a 
 
 **Recommendation.** Choose A, Board-led, with current Relief SingleLine lettering. A keeps the representation beside the notation and offers a direct way back to paper. Relief preserves the existing shape of the written digits. Review the alternatives before recording a choice.
 
-**Selection.** Pending. Choose A, B, or C, or name the parts to combine. Choose Relief SingleLine, EMS Tech, or the typeset sample separately. The prototype simulates the interaction and uses no family or provider account.
+**Selection.** Savar chose A, Board-led, and Relief SingleLine on 2026-11-17. The prototype simulates the interaction and uses no family or provider account.
 
 Preview checks passed at 728 and 390 CSS px for all three options. The checks exercised the exchange to 4 tens and 12 ones, division into four groups of 2 tens, both disclosures, and paper mode with the completed step retained. No animation ran with the reduced-motion control selected. The checks ran with synthetic data and programmed button clicks. Touch, keyboard focus order, and audio on real devices remain release checks.

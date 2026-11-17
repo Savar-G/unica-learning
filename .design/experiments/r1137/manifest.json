@@ -36,6 +36,11 @@
     }
   ],
   "recommended_option": "A",
-  "selection": null,
-  "open_decisions": ["Lesson layout", "Math lettering"]
+  "selection": {
+    "option": "A",
+    "math_lettering": "Relief SingleLine",
+    "selected_by": "Savar",
+    "selected_on": "2026-11-17"
+  },
+  "open_decisions": []
 }

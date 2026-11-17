@@ -221,30 +221,17 @@
     "job_kind": "redesign",
     "surface": "product",
     "constraint_mode": "existing-system",
-    "phase": "explore",
+    "phase": "build",
     "contract": ".design/experiments/r1137/contract.md",
     "manifest": ".design/experiments/r1137/manifest.json",
     "artifacts": {
-      "selected_experiment": null
+      "selected_experiment": ".design/experiments/r1137/preview.html"
     },
     "gates": {
-      "contract": "pending selection",
-      "direction": "pending",
+      "contract": "approved",
+      "direction": "approved",
       "ship": "pending"
     },
-    "open_decisions": [
-      {
-        "id": "MAYA-LAYOUT",
-        "question": "Which layout leads the lesson?",
-        "owner": "user",
-        "status": "open"
-      },
-      {
-        "id": "MAYA-LETTERING",
-        "question": "Which math lettering should the lesson use?",
-        "owner": "user",
-        "status": "open"
-      }
-    ]
+    "open_decisions": []
   }
 }
