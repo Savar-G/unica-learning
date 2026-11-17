@@ -112,6 +112,56 @@ describe("Unica Challenge templates", () => {
       expect(stepRangeProblem(step, item.answer)).toBeNull();
     }
   });
+  it("checks the last-digit practice for U19 divisibility step 1 independently across 200 seeds", () => {
+    const h = HOUSE_TEMPLATES.find(h => h.skill === "6.4-divisibility" && h.step === 1)!;
+    const step = c.skillSteps(h.skill)![0];
+    const forms = h.practice!.filter(t => !t.text.startsWith("Write the multiple of 10"));
+    expect(forms).toHaveLength(4);
+    for (const t of forms) {
+      const seen = new Set<string>();
+      for (let seed = 1; seed <= 200; seed++) {
+        const item = prepareTemplate(step, t, c.contexts).fill(seededRandom(seed));
+        const numbers = (item.text.replace(/divisible by 5|boxes of 10/, "").match(/\d+/g) ?? []).map(Number);
+        const answer = Number(item.answer);
+        if (t.text.startsWith("Which is divisible")) {
+          // Exactly one listed number ends in 0 or 5, and it is the answer.
+          expect(numbers.filter(n => n % 5 === 0), item.text).toEqual([5].map(() => answer));
+        } else if (t.text.includes("next multiple of 10")) {
+          expect((numbers[0] + answer) % 10, item.text).toBe(0);
+          expect(answer).toBeGreaterThan(0); expect(answer).toBeLessThan(10);
+        } else if (t.text.startsWith("How many numbers from")) {
+          const [lo, hi] = numbers;
+          let count = 0; for (let k = lo; k <= hi; k++) if (k % 5 === 0) count++;
+          expect(answer, item.text).toBe(count);
+          expect(count).toBeGreaterThanOrEqual(2);
+        } else {
+          const eggs = numbers[0];
+          expect(answer, item.text).toBe(eggs % 10);
+          expect(answer).toBeGreaterThan(0);
+        }
+        expect(stepRangeProblem(step, item.text), item.text).toBeNull();
+        seen.add(item.text);
+      }
+      expect(seen.size, t.text).toBeGreaterThan(50);
+    }
+  });
+  it("gives U19 divisibility step 1 six independent practice forms, none the Challenge's or application", () => {
+    const step = c.skillSteps("6.4-divisibility")![0];
+    const indices = new Set<number>();
+    for (let attempt = 0; attempt < 400; attempt++) {
+      const item = stepTemplateItem({ curriculum: c, skill: "6.4-divisibility", step: 1, place: "on-your-own", learningStage: "independent",
+        level: 19, day: 2, seed: 11, attempt, ordinal: attempt % 6 });
+      expect(item).not.toBeNull();
+      const t = step.templates![item!.ref.index];
+      expect(isChallengeOnly(t) || isApplicationPractice(t) || t.difficulty === "easy", t.text).toBe(false);
+      const built = buildStepItem(item!.ref, item!.text, { id: `d-${attempt}`, workbookId: "divisibility-practice", page: 5, question: 1,
+        level: 19, skills: ["6.4-divisibility"] }, "code");
+      expect(built.check.status, item!.text).toBe("checked");
+      indices.add(item!.ref.index);
+    }
+    // A six-question page refuses two questions that differ only by their numbers.
+    expect(indices.size).toBeGreaterThanOrEqual(6);
+  });
   it("checks the added common-multiple practice independently across 200 seeds", () => {
     const h = HOUSE_TEMPLATES.find(h => h.skill === "6.4-lcm" && h.step === 1)!;
     const step = c.skillSteps(h.skill)![0];

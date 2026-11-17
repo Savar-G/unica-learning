@@ -116,6 +116,19 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
       spotPractice({ format: "bare", difficulty: "medium", text: "Write the multiple of 10 that is greater than {lo} and less than {hi}.",
         answer: "lo + 10", slots: { n: "template_n0" },
         derived: { lo: "n - n % 10", hi: "lo + 20" }, check: "hi <= 9999" }),
+      // Independent practice needs more than its two yes-or-no checks: a six-question page refuses questions that differ
+      // only by their numbers, and the step's other forms are easy, the Challenge's, Spot the error's or application.
+      { format: "bare", difficulty: "medium", text: "Which is divisible by 5: {x}, {y} or {z}?",
+        answer: "five", slots: { n: "template_n0", f: "template_f" },
+        derived: { base: "n - n % 10", five: "base + 5", x: "base + 3 if f == 0 else base + 5", y: "base + 5 if f == 0 else base + 7", z: "base + 9" },
+        check: "base + 9 <= 9999" },
+      { format: "missing", difficulty: "medium", text: "What must you add to {n} to reach the next multiple of 10?",
+        answer: "10 - n % 10", slots: { n: "template_n0" }, derived: {}, check: "n % 10 != 0" },
+      { format: "bare", difficulty: "medium", text: "How many numbers from {lo} to {hi} are divisible by 5?",
+        answer: "r", slots: { n: "template_n0", r: "template_r" },
+        derived: { lo: "n - n % 10 + 1", hi: "lo + 5 * r - 1" }, check: "r >= 2 and hi <= 9999" },
+      { format: "story", difficulty: "medium", text: "{name} packs {n} eggs in full boxes of 10. How many are left over?",
+        answer: "n % 10", slots: { n: "template_n0" }, derived: {}, check: "n % 10 != 0" },
     ],
     templates: [
       hard("bare", "What is the smallest whole number greater than {n} that is divisible by both 2 and 5?", "n - n % 10 + 10", { n: "template_n0" }, {}, "n - n % 10 + 10 <= 9999"),
