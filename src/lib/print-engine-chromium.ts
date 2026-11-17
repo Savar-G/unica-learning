@@ -310,7 +310,29 @@ export function stoppableStart<T extends { close(): Promise<void> }>(start: () =
   });
 }
 
+/** A browser that died during a print (not stopped by the job): Chromium's own crash, which a fresh browser repairs. */
+export function crashedBrowser(e: unknown): boolean {
+  return /\b(?:Target closed|Session closed|Connection closed)\b/i.test(e instanceof Error ? e.message : String(e));
+}
+
 export function chromiumPrintEngine(): PrintEngine {
+  const engine = chromiumPrintOnce();
+  return {
+    // One more try in a fresh browser when Chromium itself dies mid-print (2026-11-17: "Page.captureScreenshot: Target
+    // closed" stopped a live U10 run at its plan step and a U19 fake proof; the same prints passed again). A stopped job
+    // and any other error are not retried. The print and its checks are the same either way.
+    async print(job) {
+      try {
+        return await engine.print(job);
+      } catch (e) {
+        if (job.signal?.aborted || !crashedBrowser(e)) throw e;
+        return engine.print(job);
+      }
+    },
+  };
+}
+
+function chromiumPrintOnce(): PrintEngine {
   return {
     async print(job) {
       job.signal?.throwIfAborted();

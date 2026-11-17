@@ -6,7 +6,7 @@ import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import { renderMonthlySummary } from "@/lib/monthly-summary";
 import type { MonthlySummaryView } from "@/lib/parent-view";
-import { browserStartPlan, chromiumPrintEngine, findChromium, startBrowser, stoppableStart } from "@/lib/print-engine-chromium";
+import { browserStartPlan, chromiumPrintEngine, crashedBrowser, findChromium, startBrowser, stoppableStart } from "@/lib/print-engine-chromium";
 import { IMAGE_SCALE, renderWorkbook, type PrintEngine, type WorkbookDraft } from "@/lib/workbook-render";
 import { sampleDraft } from "@/lib/workbook-sample";
 import { fixedTemplate } from "@/lib/workbook-template-fixed";
@@ -340,5 +340,14 @@ describe("a stop while Chromium starts", () => {
   it("starts as before with no signal", async () => {
     const browser = { close: async () => undefined };
     await expect(stoppableStart(async () => browser)).resolves.toBe(browser);
+  });
+});
+
+describe("a browser that dies mid-print", () => {
+  it("is told apart from other print errors, so only its print is tried again", () => {
+    expect(crashedBrowser(new Error("Protocol error (Page.captureScreenshot): Target closed"))).toBe(true);
+    expect(crashedBrowser(new Error("Protocol error (Runtime.callFunctionOn): Session closed. Most likely the page has been closed."))).toBe(true);
+    expect(crashedBrowser(new Error("print engine: 2 sheets for 1"))).toBe(false);
+    expect(crashedBrowser(new Error("The operation was aborted"))).toBe(false);
   });
 });
