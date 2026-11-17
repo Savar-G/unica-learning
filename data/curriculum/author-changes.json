@@ -105945,5 +105945,483 @@
     "after": "'that is far above the stated guide, so it is not a sensible estimate for this task'",
     "kind": "wording-rewrite",
     "why": "State why the estimate disagrees with this task's printed guide; do not claim an unmeasured real container could never hold it."
+  },
+  {
+    "skill": "3.1-place-value-1000",
+    "step": 3,
+    "template": null,
+    "path": [
+      "spotTheError"
+    ],
+    "before": {
+      "wrong": "13 tens = 1 hundred and 3 ones, so the total is 505.",
+      "fix": "13 tens = 1 hundred and 3 tens, so 532."
+    },
+    "after": {
+      "wrong": "4 hundreds, 13 tens and 2 ones is 4,132.",
+      "fix": "trade 10 tens for 1 hundred: 5 hundreds, 3 tens and 2 ones is 532."
+    },
+    "kind": "wording-rewrite",
+    "why": "The pair did not name hundreds, tens and ones, so the Watch out was held back and the step's name printed in its place (the live U10 Book 1, Day 7). A self-contained pair from the step's N1 mistake."
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": null,
+    "path": [
+      "change"
+    ],
+    "before": "No group shown: the child picks the sensible estimate",
+    "after": "The guide is for one group: the child judges the size for several groups and picks the sensible estimate",
+    "kind": "wording-rewrite",
+    "why": "The printed guide was for the one group the task asked about, so the guide was the answer (the live U10 Book 1, 2026-11-17). The guide stays for one group; the task asks about 2 to 5 groups with choices 10 times apart."
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": null,
+    "path": [
+      "example"
+    ],
+    "before": {
+      "problem": "Use about 300 books per classroom bookcase as a guide. About how many books fill one bookcase: 30, 300 or 3000?",
+      "answer": "300"
+    },
+    "after": {
+      "problem": "Use about 30 books per classroom shelf as a guide. About how many books fit on 3 classroom shelves: 9, 90 or 900?",
+      "answer": "90"
+    },
+    "kind": "wording-rewrite",
+    "why": "The printed guide was for the one group the task asked about, so the guide was the answer (the live U10 Book 1, 2026-11-17). The guide stays for one group; the task asks about 2 to 5 groups with choices 10 times apart."
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": null,
+    "path": [
+      "spotTheError"
+    ],
+    "before": {
+      "wrong": "Use about 300 books per classroom bookcase as a guide. Sam estimates 3,000 books for one bookcase.",
+      "fix": "3,000 is 10 times the stated guide. For this task, estimate about 300 books for one bookcase."
+    },
+    "after": {
+      "wrong": "Sam estimates 900 books on 3 shelves of about 30.",
+      "fix": "3 shelves of about 30 make about 90 books, not 900."
+    },
+    "kind": "wording-rewrite",
+    "why": "The printed guide was for the one group the task asked about, so the guide was the answer (the live U10 Book 1, 2026-11-17). The guide stays for one group; the task asks about 2 to 5 groups with choices 10 times apart."
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": null,
+    "path": [
+      "numbers"
+    ],
+    "before": {
+      "choices": {
+        "min": 5,
+        "max": 3000
+      },
+      "template_flip": {
+        "min": 0,
+        "max": 1
+      },
+      "template_pos": {
+        "min": 0,
+        "max": 2
+      }
+    },
+    "after": {
+      "choices": {
+        "min": 1,
+        "max": 3000
+      },
+      "template_flip": {
+        "min": 0,
+        "max": 1
+      },
+      "template_pos": {
+        "min": 0,
+        "max": 2
+      }
+    },
+    "kind": "wording-rewrite",
+    "why": "The printed guide was for the one group the task asked about, so the guide was the answer (the live U10 Book 1, 2026-11-17). The guide stays for one group; the task asks about 2 to 5 groups with choices 10 times apart."
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": 1,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "x": "choices",
+      "flip": "template_flip"
+    },
+    "after": {
+      "x": "choices",
+      "flip": "template_flip",
+      "pos": "template_pos"
+    },
+    "kind": "wording-rewrite",
+    "why": "The printed guide was for the one group the task asked about, so the guide was the answer (the live U10 Book 1, 2026-11-17). The guide stays for one group; the task asks about 2 to 5 groups with choices 10 times apart."
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": 1,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "i": "x % 5",
+      "v": "x // 5 % 8",
+      "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
+      "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
+      "ask": "'How many pencils fit in a pencil case?' if i == 0 else ('How many pages are in a picture book?' if i == 1 else ('How many grapes are in a small bunch?' if i == 2 else ('How many books fit on a classroom shelf?' if i == 3 else 'How many children are in a classroom?')))",
+      "bad": "b * 10",
+      "s": "b if flip == 0 else bad",
+      "guide": "'pencils per pencil case' if i == 0 else ('pages per picture book' if i == 1 else ('grapes per small bunch' if i == 2 else ('books per classroom shelf' if i == 3 else 'children per class')))"
+    },
+    "after": {
+      "i": "x % 5",
+      "v": "x // 5 % 4",
+      "n": "2 + x // 20 % 4",
+      "b": "[[10, 20, 10, 20], [20, 30, 20, 30], [20, 30, 20, 30], [20, 30, 40, 30], [20, 30, 20, 30]][i][v]",
+      "ans": "b * n",
+      "low": "ans // 10",
+      "t10": "ans * 10",
+      "guide": "['pencils per pencil case', 'pages per picture book', 'grapes per small bunch', 'books per classroom shelf', 'children per class'][i]",
+      "what": "['pencils fit in ' + str(n) + ' pencil cases', 'pages are in ' + str(n) + ' picture books', 'grapes are in ' + str(n) + ' small bunches', 'books fit on ' + str(n) + ' classroom shelves', 'children are in ' + str(n) + ' classes'][i]",
+      "ask": "['About how many pencils fit in ' + str(n) + ' pencil cases?', 'About how many pages are in ' + str(n) + ' picture books?', 'About how many grapes are in ' + str(n) + ' small bunches?', 'About how many books fit on ' + str(n) + ' classroom shelves?', 'About how many children are in ' + str(n) + ' classes?'][i]",
+      "bad": "t10 if pos != 1 else low",
+      "s": "ans if flip == 0 else bad"
+    },
+    "kind": "wording-rewrite",
+    "why": "The printed guide was for the one group the task asked about, so the guide was the answer (the live U10 Book 1, 2026-11-17). The guide stays for one group; the task asks about 2 to 5 groups with choices 10 times apart."
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": 2,
+    "path": [
+      "answer"
+    ],
+    "before": "str(b)",
+    "after": "str(ans)",
+    "kind": "wording-rewrite",
+    "why": "The printed guide was for the one group the task asked about, so the guide was the answer (the live U10 Book 1, 2026-11-17). The guide stays for one group; the task asks about 2 to 5 groups with choices 10 times apart."
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": 2,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "i": "x % 5",
+      "v": "x // 5 % 8",
+      "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
+      "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
+      "ask": "'Pencils in a pencil case.' if i == 0 else ('Pages in a picture book.' if i == 1 else ('Grapes in a small bunch.' if i == 2 else ('Books on a classroom shelf.' if i == 3 else 'Children in a classroom.')))",
+      "bad": "b * 10",
+      "p": "b if flip == 0 else bad",
+      "q": "bad if flip == 0 else b",
+      "guide": "'pencils per pencil case' if i == 0 else ('pages per picture book' if i == 1 else ('grapes per small bunch' if i == 2 else ('books per classroom shelf' if i == 3 else 'children per class')))"
+    },
+    "after": {
+      "i": "x % 5",
+      "v": "x // 5 % 4",
+      "n": "2 + x // 20 % 4",
+      "b": "[[10, 20, 10, 20], [20, 30, 20, 30], [20, 30, 20, 30], [20, 30, 40, 30], [20, 30, 20, 30]][i][v]",
+      "ans": "b * n",
+      "low": "ans // 10",
+      "t10": "ans * 10",
+      "guide": "['pencils per pencil case', 'pages per picture book', 'grapes per small bunch', 'books per classroom shelf', 'children per class'][i]",
+      "what": "['pencils fit in ' + str(n) + ' pencil cases', 'pages are in ' + str(n) + ' picture books', 'grapes are in ' + str(n) + ' small bunches', 'books fit on ' + str(n) + ' classroom shelves', 'children are in ' + str(n) + ' classes'][i]",
+      "ask": "['About how many pencils fit in ' + str(n) + ' pencil cases?', 'About how many pages are in ' + str(n) + ' picture books?', 'About how many grapes are in ' + str(n) + ' small bunches?', 'About how many books fit on ' + str(n) + ' classroom shelves?', 'About how many children are in ' + str(n) + ' classes?'][i]",
+      "bad": "t10",
+      "p": "ans if flip == 0 else bad",
+      "q": "bad if flip == 0 else ans"
+    },
+    "kind": "wording-rewrite",
+    "why": "The printed guide was for the one group the task asked about, so the guide was the answer (the live U10 Book 1, 2026-11-17). The guide stays for one group; the task asks about 2 to 5 groups with choices 10 times apart."
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": 3,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "x": "choices",
+      "flip": "template_flip"
+    },
+    "after": {
+      "x": "choices",
+      "flip": "template_flip",
+      "pos": "template_pos"
+    },
+    "kind": "wording-rewrite",
+    "why": "The printed guide was for the one group the task asked about, so the guide was the answer (the live U10 Book 1, 2026-11-17). The guide stays for one group; the task asks about 2 to 5 groups with choices 10 times apart."
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": 3,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "i": "x % 5",
+      "v": "x // 5 % 8",
+      "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
+      "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
+      "ask": "'How many pencils fit in a pencil case?' if i == 0 else ('How many pages are in a picture book?' if i == 1 else ('How many grapes are in a small bunch?' if i == 2 else ('How many books fit on a classroom shelf?' if i == 3 else 'How many children are in a classroom?')))",
+      "bad": "b * 10",
+      "s": "b if flip == 0 else bad",
+      "guide": "'pencils per pencil case' if i == 0 else ('pages per picture book' if i == 1 else ('grapes per small bunch' if i == 2 else ('books per classroom shelf' if i == 3 else 'children per class')))"
+    },
+    "after": {
+      "i": "x % 5",
+      "v": "x // 5 % 4",
+      "n": "2 + x // 20 % 4",
+      "b": "[[10, 20, 10, 20], [20, 30, 20, 30], [20, 30, 20, 30], [20, 30, 40, 30], [20, 30, 20, 30]][i][v]",
+      "ans": "b * n",
+      "low": "ans // 10",
+      "t10": "ans * 10",
+      "guide": "['pencils per pencil case', 'pages per picture book', 'grapes per small bunch', 'books per classroom shelf', 'children per class'][i]",
+      "what": "['pencils fit in ' + str(n) + ' pencil cases', 'pages are in ' + str(n) + ' picture books', 'grapes are in ' + str(n) + ' small bunches', 'books fit on ' + str(n) + ' classroom shelves', 'children are in ' + str(n) + ' classes'][i]",
+      "ask": "['About how many pencils fit in ' + str(n) + ' pencil cases?', 'About how many pages are in ' + str(n) + ' picture books?', 'About how many grapes are in ' + str(n) + ' small bunches?', 'About how many books fit on ' + str(n) + ' classroom shelves?', 'About how many children are in ' + str(n) + ' classes?'][i]",
+      "bad": "t10 if pos != 1 else low",
+      "s": "ans if flip == 0 else bad"
+    },
+    "kind": "wording-rewrite",
+    "why": "The printed guide was for the one group the task asked about, so the guide was the answer (the live U10 Book 1, 2026-11-17). The guide stays for one group; the task asks about 2 to 5 groups with choices 10 times apart."
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": 4,
+    "path": [
+      "answer"
+    ],
+    "before": "str(b)",
+    "after": "str(ans)",
+    "kind": "wording-rewrite",
+    "why": "The printed guide was for the one group the task asked about, so the guide was the answer (the live U10 Book 1, 2026-11-17). The guide stays for one group; the task asks about 2 to 5 groups with choices 10 times apart."
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": 4,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "x": "choices",
+      "pos": "template_pos"
+    },
+    "after": {
+      "x": "choices",
+      "flip": "template_flip",
+      "pos": "template_pos"
+    },
+    "kind": "wording-rewrite",
+    "why": "The printed guide was for the one group the task asked about, so the guide was the answer (the live U10 Book 1, 2026-11-17). The guide stays for one group; the task asks about 2 to 5 groups with choices 10 times apart."
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": 4,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "i": "x % 5",
+      "v": "x // 5 % 8",
+      "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
+      "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
+      "ask": "'Pencils in a pencil case.' if i == 0 else ('Pages in a picture book.' if i == 1 else ('Grapes in a small bunch.' if i == 2 else ('Books on a classroom shelf.' if i == 3 else 'Children in a classroom.')))",
+      "bad": "b * 10",
+      "t10": "b * 10",
+      "h100": "b * 100",
+      "p": "b if pos == 0 else (h100 if pos == 1 else t10)",
+      "q": "t10 if pos == 0 else (b if pos == 1 else h100)",
+      "r": "h100 if pos == 0 else (t10 if pos == 1 else b)",
+      "guide": "'pencils per pencil case' if i == 0 else ('pages per picture book' if i == 1 else ('grapes per small bunch' if i == 2 else ('books per classroom shelf' if i == 3 else 'children per class')))"
+    },
+    "after": {
+      "i": "x % 5",
+      "v": "x // 5 % 4",
+      "n": "2 + x // 20 % 4",
+      "b": "[[10, 20, 10, 20], [20, 30, 20, 30], [20, 30, 20, 30], [20, 30, 40, 30], [20, 30, 20, 30]][i][v]",
+      "ans": "b * n",
+      "low": "ans // 10",
+      "t10": "ans * 10",
+      "guide": "['pencils per pencil case', 'pages per picture book', 'grapes per small bunch', 'books per classroom shelf', 'children per class'][i]",
+      "what": "['pencils fit in ' + str(n) + ' pencil cases', 'pages are in ' + str(n) + ' picture books', 'grapes are in ' + str(n) + ' small bunches', 'books fit on ' + str(n) + ' classroom shelves', 'children are in ' + str(n) + ' classes'][i]",
+      "ask": "['About how many pencils fit in ' + str(n) + ' pencil cases?', 'About how many pages are in ' + str(n) + ' picture books?', 'About how many grapes are in ' + str(n) + ' small bunches?', 'About how many books fit on ' + str(n) + ' classroom shelves?', 'About how many children are in ' + str(n) + ' classes?'][i]",
+      "p": "low if pos == 0 else (t10 if pos == 1 else ans)",
+      "q": "ans if pos == 0 else (low if pos == 1 else t10)",
+      "r": "t10 if pos == 0 else (ans if pos == 1 else low)"
+    },
+    "kind": "wording-rewrite",
+    "why": "The printed guide was for the one group the task asked about, so the guide was the answer (the live U10 Book 1, 2026-11-17). The guide stays for one group; the task asks about 2 to 5 groups with choices 10 times apart."
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "answer"
+    ],
+    "before": "'that is far above the stated guide, so it is not a sensible estimate for this task'",
+    "after": "str(n) + ' groups of about ' + str(b) + ' make about ' + str(ans) + ', and ' + str(bad) + ' is 10 times that'",
+    "kind": "wording-rewrite",
+    "why": "The printed guide was for the one group the task asked about, so the guide was the answer (the live U10 Book 1, 2026-11-17). The guide stays for one group; the task asks about 2 to 5 groups with choices 10 times apart."
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "x": "choices"
+    },
+    "after": {
+      "x": "choices",
+      "flip": "template_flip"
+    },
+    "kind": "wording-rewrite",
+    "why": "The printed guide was for the one group the task asked about, so the guide was the answer (the live U10 Book 1, 2026-11-17). The guide stays for one group; the task asks about 2 to 5 groups with choices 10 times apart."
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "i": "x % 5",
+      "v": "x // 5 % 8",
+      "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
+      "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
+      "ask": "'How many pencils fit in a pencil case?' if i == 0 else ('How many pages are in a picture book?' if i == 1 else ('How many grapes are in a small bunch?' if i == 2 else ('How many books fit on a classroom shelf?' if i == 3 else 'How many children are in a classroom?')))",
+      "bad": "b * 10",
+      "guide": "'pencils per pencil case' if i == 0 else ('pages per picture book' if i == 1 else ('grapes per small bunch' if i == 2 else ('books per classroom shelf' if i == 3 else 'children per class')))"
+    },
+    "after": {
+      "i": "x % 5",
+      "v": "x // 5 % 4",
+      "n": "2 + x // 20 % 4",
+      "b": "[[10, 20, 10, 20], [20, 30, 20, 30], [20, 30, 20, 30], [20, 30, 40, 30], [20, 30, 20, 30]][i][v]",
+      "ans": "b * n",
+      "low": "ans // 10",
+      "t10": "ans * 10",
+      "guide": "['pencils per pencil case', 'pages per picture book', 'grapes per small bunch', 'books per classroom shelf', 'children per class'][i]",
+      "what": "['pencils fit in ' + str(n) + ' pencil cases', 'pages are in ' + str(n) + ' picture books', 'grapes are in ' + str(n) + ' small bunches', 'books fit on ' + str(n) + ' classroom shelves', 'children are in ' + str(n) + ' classes'][i]",
+      "ask": "['About how many pencils fit in ' + str(n) + ' pencil cases?', 'About how many pages are in ' + str(n) + ' picture books?', 'About how many grapes are in ' + str(n) + ' small bunches?', 'About how many books fit on ' + str(n) + ' classroom shelves?', 'About how many children are in ' + str(n) + ' classes?'][i]",
+      "bad": "t10"
+    },
+    "kind": "wording-rewrite",
+    "why": "The printed guide was for the one group the task asked about, so the guide was the answer (the live U10 Book 1, 2026-11-17). The guide stays for one group; the task asks about 2 to 5 groups with choices 10 times apart."
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": 6,
+    "path": [
+      "answer"
+    ],
+    "before": "str(h100)",
+    "after": "str(t10)",
+    "kind": "wording-rewrite",
+    "why": "The printed guide was for the one group the task asked about, so the guide was the answer (the live U10 Book 1, 2026-11-17). The guide stays for one group; the task asks about 2 to 5 groups with choices 10 times apart."
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": 6,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "x": "choices",
+      "pos": "template_pos"
+    },
+    "after": {
+      "x": "choices",
+      "flip": "template_flip",
+      "pos": "template_pos"
+    },
+    "kind": "wording-rewrite",
+    "why": "The printed guide was for the one group the task asked about, so the guide was the answer (the live U10 Book 1, 2026-11-17). The guide stays for one group; the task asks about 2 to 5 groups with choices 10 times apart."
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": 6,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "i": "x % 5",
+      "v": "x // 5 % 8",
+      "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
+      "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
+      "ask": "'Pencils in a pencil case.' if i == 0 else ('Pages in a picture book.' if i == 1 else ('Grapes in a small bunch.' if i == 2 else ('Books on a classroom shelf.' if i == 3 else 'Children in a classroom.')))",
+      "bad": "b * 10",
+      "t10": "b * 10",
+      "h100": "b * 100",
+      "p": "b if pos == 0 else (h100 if pos == 1 else t10)",
+      "q": "t10 if pos == 0 else (b if pos == 1 else h100)",
+      "r": "h100 if pos == 0 else (t10 if pos == 1 else b)",
+      "guide": "'pencils per pencil case' if i == 0 else ('pages per picture book' if i == 1 else ('grapes per small bunch' if i == 2 else ('books per classroom shelf' if i == 3 else 'children per class')))"
+    },
+    "after": {
+      "i": "x % 5",
+      "v": "x // 5 % 4",
+      "n": "2 + x // 20 % 4",
+      "b": "[[10, 20, 10, 20], [20, 30, 20, 30], [20, 30, 20, 30], [20, 30, 40, 30], [20, 30, 20, 30]][i][v]",
+      "ans": "b * n",
+      "low": "ans // 10",
+      "t10": "ans * 10",
+      "guide": "['pencils per pencil case', 'pages per picture book', 'grapes per small bunch', 'books per classroom shelf', 'children per class'][i]",
+      "what": "['pencils fit in ' + str(n) + ' pencil cases', 'pages are in ' + str(n) + ' picture books', 'grapes are in ' + str(n) + ' small bunches', 'books fit on ' + str(n) + ' classroom shelves', 'children are in ' + str(n) + ' classes'][i]",
+      "ask": "['About how many pencils fit in ' + str(n) + ' pencil cases?', 'About how many pages are in ' + str(n) + ' picture books?', 'About how many grapes are in ' + str(n) + ' small bunches?', 'About how many books fit on ' + str(n) + ' classroom shelves?', 'About how many children are in ' + str(n) + ' classes?'][i]",
+      "near": "ans + 5",
+      "p": "ans if pos == 0 else (t10 if pos == 1 else near)",
+      "q": "near if pos == 0 else (ans if pos == 1 else t10)",
+      "r": "t10 if pos == 0 else (near if pos == 1 else ans)"
+    },
+    "kind": "wording-rewrite",
+    "why": "The printed guide was for the one group the task asked about, so the guide was the answer (the live U10 Book 1, 2026-11-17). The guide stays for one group; the task asks about 2 to 5 groups with choices 10 times apart."
+  },
+  {
+    "skill": "3.6-decreasing-pattern",
+    "step": 1,
+    "template": null,
+    "path": [
+      "spotTheError"
+    ],
+    "before": {
+      "wrong": "50, 45, 40, 45:",
+      "fix": "the pattern goes down by 5, so after 40 comes 35."
+    },
+    "after": {
+      "wrong": "In 50, 45, 40, the next number is 45.",
+      "fix": "the pattern goes down by 5, so after 40 comes 35."
+    },
+    "kind": "wording-rewrite",
+    "why": "The wrong line ended in a colon, so the Watch out printed \"45:.\" (the live U10 Book 1, Day 9). A whole sentence."
   }
 ]

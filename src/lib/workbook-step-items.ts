@@ -141,11 +141,16 @@ function choiceList(text: string, answer: string): string[] | null {
   const tail = (text.split(/[.:]\s+/).at(-1) ?? text).replace(/^which is greater[,:?]\s*/i, "");
   const m = tail.match(/\b(?:is it|is that|write|circle|say|choose|it is|they are|use)\s+([^?]*?\bor\b[^?]*?)\??\s*$/i) ?? tail.match(/^\s*([^?]*?\bor\b[^?]*?)\??\s*$/i);
   if (!m) return null;
-  const options = m[1].split(/,\s*|\s+or\s+/).map((x) => x.trim().replace(/^(?:a|an|the)\s+/i, "").replace(/[.?!]$/, "")).filter(Boolean);
+  const printed = m[1].split(/,\s*|\s+or\s+/).map((x) => x.trim().replace(/[.?!]$/, "")).filter(Boolean);
+  const options = printed.map((x) => x.replace(/^(?:a|an|the)\s+/i, ""));
   const clean = (x: string) => x.toLowerCase().replace(/^(?:a|an|the)\s+/, "");
   if (options.length < 2 || options.length > 4 || options.some((x) => x.length > 40 || x.split(/\s+/).length > MOST_ANSWER_WORDS)) return null;
-  const hit = options.find((x) => clean(x) === clean(answer));
-  return hit ? options.map((x) => (x === hit ? answer : x)) : null;
+  const hit = options.findIndex((x) => clean(x) === clean(answer));
+  if (hit < 0) return null;
+  // Every choice in the key's form: with its article when the key has one ("the hundreds digit", "the tens digit"), so
+  // the right answer never stands out (the live U10 Book 1 printed "the hundreds digit" beside "tens digit").
+  const keyed = /^(?:a|an|the)\s/i.test(answer) ? printed : options;
+  return keyed.map((x, i) => (i === hit ? answer : x));
 }
 
 /**
@@ -550,7 +555,9 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
       // work with the step's 4-digit numbers); a container holding thousands of them is still no story.
       // (An interest's things too: no one has 5380 jerseys.)
       const SMALL = r.interests?.things.length ? new RegExp(`${SMALL_THINGS.source.slice(0, -3)}|${r.interests.things.map(escapeWord).join("|")})\\b`, "i") : SMALL_THINGS;
-      const small = SMALL.exec(text);
+      // (Not in a sensible-estimate task: there the thousands are the guess the child must reject, "about 1,200 books on 3
+      // shelves", and the live U10 Book 1 printed "points per classroom shelf".)
+      const small = r.skill === "3.1-estimate-quantity" ? null : SMALL.exec(text);
       if (small) {
         if (/\b(?:holds?|box(?:es)?|bags?|jars?|trays?|baskets?|bins?|containers?|packs?|bottles?)\b/i.test(text)) continue;
         const big = (r.seed + r.attempt + tryNo) % 2 ? "points" : "tickets";

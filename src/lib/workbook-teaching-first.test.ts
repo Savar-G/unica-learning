@@ -113,7 +113,8 @@ describe("the plan describes what the day does", () => {
   it.each(["U10", "U19"])("distinguishes learning, checking and final consolidation in %s", level => {
     const plan = samplePlan(level);
     const first = planRow(curriculum, plan, 1), friday = planRow(curriculum, plan, 5), final = planRow(curriculum, plan, 10);
-    expect(first.second).toBe("Learn, practise, then apply");
+    // (Each row says what its day does: no fixed "Learn, practise, then apply" line on every teaching day.)
+    expect(first.second).toMatch(/^Learn it/);
     expect(friday.second).toBe("Practise, then check five skills");
     expect(final).toEqual({ topic: "Put your learning together", second: "Apply the skills from this book" });
     expect(final.topic).not.toBe(planRow(curriculum, plan, 9).topic);
@@ -121,5 +122,7 @@ describe("the plan describes what the day does", () => {
       const row = planRow(curriculum, plan, day.day);
       expect(row.second).not.toMatch(/^Review$|Friday 5/);
     }
+    const seconds = plan.days.map(day => planRow(curriculum, plan, day.day).second);
+    expect(new Set(seconds).size, seconds.join(" | ")).toBe(seconds.length);
   });
 });

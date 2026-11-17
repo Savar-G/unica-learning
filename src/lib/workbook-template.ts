@@ -1,4 +1,5 @@
 import { questionWorkSpace } from "./workbook-work-space";
+import { twoWaysMethods } from "./workbook-two-ways";
 import { isWarmUpPage, printedInstruction, workbookWorkLine, workQuestionNumbers } from "@/lib/workbook-page-instructions";
 // The workbook templates (#310, spec #296): one layout for every page type of .design/workbooks/DESIGN.md (section
 // 7), with its tokens (section 1 to 4): the 8-page and 6-page days, Math in the world, the cover, How + Plan, the back
@@ -872,21 +873,10 @@ function boxWidth(v: AnswerValue | null, band: Band): number {
 }
 
 /** The unit word after an answer box ("tiles", "cm"), or "". */
-/** Two ways to work a question, by what it asks: add, take away, multiply, share, or null. */
+/** Two ways to work a question: from its kind of question (src/lib/workbook-two-ways.ts), or null. */
 function twoWays(p: QuestionPackage): [string, string] | null {
-  if (p.templateId?.startsWith("6.4-lcm#")) return ["list both sets of multiples", "test multiples of the larger number"];
-  const t = `${p.operation?.kind ?? ""} ${p.text}`.toLowerCase();
-  const small = Math.max(0, ...(p.text.match(/\d+/g) ?? []).map(Number)) < 20;
-  if (small && /subtract|−|\s-\s|left|take|eats|gives|fewer|less|the rest/.test(t)) return ["count back", "count up from the smaller number"];
-  // (Making a ten helps only when the sum passes 10: "6 + 1" counts on, or uses fingers.)
-  const numbers = (p.text.match(/\d+/g) ?? []).map(Number);
-  const pastTen = numbers.length >= 2 && numbers.reduce((a, b) => a + b, 0) > 10;
-  if (small && /add|\+|more|in all|together|gets/.test(t)) return ["count on from the bigger number", pastTen ? "make a ten first" : "use your fingers"];
-  if (/multiply|×|\beach\b|groups? of|packs? of|times/.test(t)) return ["split a number into parts", "use a fact you know, then the zeros"];
-  if (/divide|÷|share|equally/.test(t)) return ["share in groups", "use a times fact"];
-  if (/subtract|−|\s-\s|left|take|eats|gives|fewer|less/.test(t)) return ["take away the tens, then the ones", "count up from the smaller number"];
-  if (/add|\+|more|in all|together|gets/.test(t)) return ["add the tens, then the ones", "make a ten first"];
-  return null;
+  const pair = twoWaysMethods(p);
+  return pair ? [pair[0], pair[1]] : null;
 }
 
 function unitAfter(p: QuestionPackage): string {
@@ -1304,7 +1294,8 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
     case "practice-row": {
       const head = prev === "practice-row" ? "" : chipHtml(PRACTICE, b.note);
       const columns = band.name === "mid" && !parent && !b.figures?.some(Boolean) && qs.every((q) => ["add", "subtract", "multiply"].includes(q.package.operation?.kind ?? "") && packageItem(q.package).regions.length === 1 && !questionWorkSpace(q.package));
-      return head + (b.label ? `<div class="lab">${escape(b.label)}</div>` : "") + (columns ? list((q) => columnItem(q, band), "cols") : items("two"));
+      // (A heading only over questions: never an empty section.)
+      return head + (b.label && qs.length ? `<div class="lab">${escape(b.label)}</div>` : "") + (columns ? list((q) => columnItem(q, band), "cols") : items("two"));
     }
     case "unit-b-practice":
       return chipHtml(PRACTICE, b.note) + items(qs.length >= 2 && !parent ? "two" : "list");

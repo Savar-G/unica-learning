@@ -284,22 +284,49 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
     ],
   },
   {
+    skill: "2.4-word-problems-100", step: 4, name: "Choose how to solve",
+    // A review of two-step stories within 100 comes back on several days of a U10 book: the step's one usable medium
+    // story printed on Days 2, 8 and 10 of the live U10 Book 1 (2026-11-17). Two more structures: a remainder of a total,
+    // and a comparison then a total.
+    practice: [
+      { format: "story", difficulty: "medium", text: "{name} reads {a} pages on Monday and {b} pages on Tuesday. The book has {c} pages. How many pages are left?",
+        answer: "c - a - b", slots: { a0: "value", b0: "value", c0: "value" }, derived: { a: "5 + a0 % 25", b: "5 + b0 % 25", c: "60 + c0 % 40" }, check: "c > a + b + 4" },
+      { format: "story", difficulty: "medium", text: "{name} has {a} stickers. A friend has {b} more than {name}. How many stickers do they have together?",
+        answer: "a + a + b", slots: { a0: "value", b0: "value" }, derived: { a: "12 + a0 % 30", b: "3 + b0 % 20" }, check: "a + a + b <= 100" },
+    ],
+    templates: [],
+  },
+  {
     skill: "3.1-estimate-quantity", step: 3, name: "Choose a sensible estimate",
-    // A numeric correction stays on the estimation step, with the guide visible in Sam's printed task.
+    // A numeric correction stays on the estimation step, with the guide visible in Sam's printed task. The guide is for
+    // one group and the task asks about several, so the guide is never the answer (the live U10 Book 1, 2026-11-17).
     practice: [
       spotPractice({ format: "bare", difficulty: "medium", text: "Use about {b} {guide} as a guide. {ask} Write the matching estimate.",
-        answer: "str(b)", slots: { x: "choices" },
-        derived: { i: "x % 5", v: "x // 5 % 8",
-          b: "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
+        answer: "str(ans)", slots: { x: "choices" },
+        derived: { i: "x % 5", v: "x // 5 % 4", n: "2 + x // 20 % 3",
+          b: "[[10, 20, 10, 20], [20, 30, 20, 30], [20, 30, 20, 30], [20, 30, 40, 30], [20, 30, 20, 30]][i][v]", ans: "b * n",
           guide: "'pencils per pencil case' if i == 0 else ('pages per storybook' if i == 1 else ('grapes per small bunch' if i == 2 else ('books per classroom shelf' if i == 3 else 'children per class')))",
-          ask: "'About how many pencils fit in one pencil case?' if i == 0 else ('About how many pages are in one storybook?' if i == 1 else ('About how many grapes are in one small bunch?' if i == 2 else ('About how many books fit on one classroom shelf?' if i == 3 else 'About how many children are in one class?')))" } }),
+          ask: "'About how many pencils fit in ' + str(n) + ' pencil cases?' if i == 0 else ('About how many pages are in ' + str(n) + ' storybooks?' if i == 1 else ('About how many grapes are in ' + str(n) + ' small bunches?' if i == 2 else ('About how many books fit on ' + str(n) + ' classroom shelves?' if i == 3 else 'About how many children are in ' + str(n) + ' classes?')))" } }),
     ],
-    // The printed guide fixes this task's assumption. The child chooses its matching estimate, then scales it.
-    // The choices rotate, so the sensible one is not always first.
+    // The printed guide is for one group. Each Challenge judges a guess or a set of choices 10 times apart, then writes
+    // the sensible estimate for several groups. Six forms in six contexts and structures, so two Challenge days of the
+    // step differ (the live U10 Book 1 printed one set on Days 8 and 10).
     templates: [
-      hard("bare", "Use about {b} children per class as a guide. Which is a sensible estimate for the number of children in one class: {p}, {q} or {r}? Use that estimate for each of two classes. About how many children are in the two classes?", "2 * b", { x: "choices", pos: "template_pos" }, { b: "20 + x % 8", t10: "b * 10", h100: "b * 100", p: "b if pos == 0 else (h100 if pos == 1 else t10)", q: "t10 if pos == 0 else (b if pos == 1 else h100)", r: "h100 if pos == 0 else (t10 if pos == 1 else b)" }, "h100 <= 3000"),
-      hard("missing", "Use about {b} books per classroom shelf as a guide. Which is a sensible estimate for the number of books on one classroom shelf: {p}, {q} or {r}? Use that estimate for each of 3 shelves. About how many books are on the 3 shelves?", "3 * b", { x: "choices", pos: "template_pos" }, { b: "24 + 2 * (x % 4)", t10: "b * 10", h100: "b * 100", p: "b if pos == 0 else (h100 if pos == 1 else t10)", q: "t10 if pos == 0 else (b if pos == 1 else h100)", r: "h100 if pos == 0 else (t10 if pos == 1 else b)" }, "h100 <= 3000"),
-      hard("story", "Use about {b} pages per short storybook as a guide. {name} reads 4 short storybooks. Which is a sensible estimate for the number of pages in each book: {p}, {q} or {r}? Use that estimate to find about how many pages {name} reads.", "4 * b", { x: "choices", pos: "template_pos" }, { b: "20 + 2 * (x % 6)", t10: "b * 10", h100: "b * 100", p: "b if pos == 0 else (h100 if pos == 1 else t10)", q: "t10 if pos == 0 else (b if pos == 1 else h100)", r: "h100 if pos == 0 else (t10 if pos == 1 else b)" }, "h100 <= 3000"),
+      hard("story", "Use about {b} children per class as a guide. {name} says two classes have about {big} children. Write a sensible estimate for the two classes.", "2 * b",
+        { x: "choices" }, { b: "20 + x % 8", big: "b * 20" }, "b >= 20"),
+      hard("missing", "Use about {b} books per classroom shelf as a guide. Are there about {p}, {q} or {r} books on 3 shelves? Write the sensible estimate.", "3 * b",
+        { x: "choices", pos: "template_pos" }, { b: "24 + 2 * (x % 4)", ans: "3 * b", low: "ans // 10", t10: "ans * 10",
+          p: "low if pos == 0 else (t10 if pos == 1 else ans)", q: "ans if pos == 0 else (low if pos == 1 else t10)", r: "t10 if pos == 0 else (ans if pos == 1 else low)" }, "low >= 5"),
+      hard("bare", "Use about {b} pages per short storybook as a guide. Are 4 short storybooks about {p}, {q} or {r} pages? Write the sensible estimate.", "4 * b",
+        { x: "choices", pos: "template_pos" }, { b: "20 + 2 * (x % 6)", ans: "4 * b", low: "ans // 10", t10: "ans * 10",
+          p: "t10 if pos == 0 else (ans if pos == 1 else low)", q: "low if pos == 0 else (t10 if pos == 1 else ans)", r: "ans if pos == 0 else (low if pos == 1 else t10)" }, "low >= 5"),
+      hard("story", "Use about {b} grapes per small bunch as a guide. {name} guesses about {big} grapes in 3 small bunches. Write a more sensible estimate.", "3 * b",
+        { x: "choices" }, { b: "15 + x % 10", big: "b * 30" }, "b >= 15"),
+      hard("missing", "Use about {b} pages per short storybook as a guide. {name} says two short storybooks have about {small} pages. Write a sensible estimate for the two storybooks.", "2 * b",
+        { x: "choices" }, { b: "25 + x % 10", small: "2 * b // 10" }, "small >= 5"),
+      hard("bare", "Use about {b} children per class as a guide. Which is closest to the children in 4 classes: {p}, {q} or {r}? Write that estimate.", "4 * b",
+        { x: "choices", pos: "template_pos" }, { b: "20 + x % 9", ans: "4 * b", low: "ans // 10", t10: "ans * 10",
+          p: "ans if pos == 0 else (t10 if pos == 1 else low)", q: "t10 if pos == 0 else (low if pos == 1 else ans)", r: "low if pos == 0 else (ans if pos == 1 else t10)" }, "low >= 5"),
     ],
   },
   {

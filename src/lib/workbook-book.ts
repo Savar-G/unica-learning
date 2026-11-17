@@ -364,9 +364,21 @@ function estimateMethod(src: TemplateSource, text: string, step: number): string
     const times = src.answer.match(/^([234]) \* b$/);
     if (times) {
       const count = Number(times[1]);
-      const groups = count === 2 ? /(?:two|2) classes/i : count === 3 ? /3 shelves/i : /4 short (?:picture books|storybooks)/i;
+      const groups = new RegExp(`(?:${count}|${["", "", "two", "three", "four"][count]}) (?:classes|(?:classroom )?shelves|(?:short )?(?:picture books|storybooks)|small bunches|pencil cases)`, "i");
       if (!groups.test(plain)) return null;
       return numeric(count * v.b, `Use the stated guide of about ${fmt(v.b)} for each group. ${count} × ${fmt(v.b)} = ${fmt(count * v.b)}, so estimate about ${fmt(count * v.b)} in all.`);
+    }
+    // The guide is for one group and the question asks about several (the guide alone answered the live U10 Book 1's
+    // tasks): work out the several groups, then judge the guesses against that.
+    if (Number.isInteger(v.n) && v.n >= 2 && v.ans === v.n * v.b && printed(v.n)) {
+      const groups = `Use the guide of about ${fmt(v.b)} for each group. ${v.n} × ${fmt(v.b)} = ${fmt(v.ans)}, so about ${fmt(v.ans)} is sensible.`;
+      if (src.answer === "str(ans)") return numeric(v.ans, `${groups} ${printed(v.ans) ? "Choose" : "Write"} ${fmt(v.ans)}.`);
+      if (/^'true' if flip == 0 else 'false'$|^'yes' if flip == 0 else 'no'$/.test(src.answer) && printed(v.s)) {
+        const same = v.s === v.ans;
+        if (checked.answer !== (src.answer.includes("'true'") ? same ? "true" : "false" : same ? "yes" : "no")) return null;
+        return `${groups} ${fmt(v.s)} is ${same ? "about that, so it is sensible" : v.s > v.ans ? "10 times too many" : "10 times too few"}.`;
+      }
+      return null;
     }
     if (src.answer === "str(b)" && printed(v.b))
       return `The stated guide is about ${fmt(v.b)}. Choose ${fmt(v.b)} because it matches that guide.`;
@@ -1286,6 +1298,8 @@ export function samFix(p: QuestionPackage, level: number, from: number, ok: (p: 
 export const mistakesFor = (level: number) => levelMistakes(level).map((name) => ({ name, ...SAM_MISTAKE_RULES[name] }));
 
 /** Notes and labels of list slots, as the sample sheets show them. */
+/** Practice row headings, in order, for rows that hold questions: an empty row never prints one (the live U10 Book 1,
+ * Day 1 page 4, printed "A little harder" over no questions). */
 const ROW_LABELS = ["Getting started", "A little harder", "Harder again"];
 
 /** The idea a new lesson explains before showing its checked, reserved example. */
@@ -1386,7 +1400,7 @@ export function dayPageContent(o: {
       // authors supply a self-contained pair; a checked worked example cannot repair a different claim.
       const pair = `${mistake?.wrong ?? ""} ${mistake?.fix ?? ""}`;
       const skill = part?.step?.skill, number = part?.step?.step;
-      const grounded = skill === "3.1-estimate-quantity" && number === 3 ? false
+      const grounded = skill === "3.1-estimate-quantity" && number === 3 ? /of about \d+/.test(mistake?.wrong ?? "")
         : skill === "3.1-place-value-1000" && number === 3 ? /\d+ hundreds/.test(mistake?.wrong ?? "") && /\d+ tens/.test(mistake?.wrong ?? "") && /\d+ ones/.test(mistake?.wrong ?? "")
         : skill === "6.13-classify-angles" && number === 1 && /obtuse/.test(pair) ? /straight line/.test(pair)
         : skill === "6.13-classify-angles" && number === 2 && /reflex/.test(pair) ? /full turn/.test(pair)
@@ -1411,7 +1425,8 @@ export function dayPageContent(o: {
           methods: lines.length ? [{ label: taught ? taught.label : "Step by step", lines }] : [],
           // #489: the imported steps' change notes are for builders; the page names the step plainly, and with Cedric's
           // worked example it puts the step's common mistake right.
-          explain: taught?.remember ? `Watch out: ${taught.remember}` : step?.templates?.length ? `${step.name}.` : step?.change ?? "Work one step at a time. Then check your answer.",
+          // (No Watch out: no line. The step's name in its place repeated the panel's title, the live U10 Book 1's Days 7 and 8.)
+          explain: taught?.remember ? `Watch out: ${taught.remember}` : step?.templates?.length ? undefined : step?.change ?? "Work one step at a time. Then check your answer.",
         };
       }
       case "watch-one": {
@@ -1438,7 +1453,8 @@ export function dayPageContent(o: {
           slot: s.slot, items: [], label: "Remember", note: "From before",
           // Keep the compact question and method together, including numeric reminders.
           lines: ex ? ex.lines : [],
-          explain: step?.templates?.length ? `${step.name}.` : step?.change ?? "Do it the same way as before. Check each answer.",
+          // (Never the step's name alone: it repeats the page's topic.)
+          explain: step?.templates?.length ? undefined : step?.change ?? "Do it the same way as before. Check each answer.",
         };
       }
       case "spot-the-error": {
@@ -1453,7 +1469,7 @@ export function dayPageContent(o: {
         return { slot: s.slot, items, who: "Sam", lines: work?.lines ?? [], ...withFigures, ...missing };
       }
       case "practice-row":
-        return { slot: s.slot, items, label: ROW_LABELS[Math.min(row++, ROW_LABELS.length - 1)], ...withFigures, ...missing, ...reviewFrom };
+        return { slot: s.slot, items, ...(items.length ? { label: ROW_LABELS[Math.min(row++, ROW_LABELS.length - 1)] } : {}), ...withFigures, ...missing, ...reviewFrom };
       case "finish-these":
         return { slot: s.slot, items, hints: items.map(() => null), ...withFigures, ...missing, ...reviewFrom };
       default:
@@ -1488,11 +1504,37 @@ export function planRow(curriculum: Curriculum, plan: WorkbookPlan, day: number)
   const parts = d.pages.flatMap(p => p.parts);
   const starts = parts.some(p => p.kind === "new-idea");
   if (day === 10) return { topic: "Put your learning together", second: "Apply the skills from this book" };
-  const second = day === 5 ? "Practise, then check five skills"
-    : starts ? "Learn, practise, then apply"
-    : d.kind === "remember" ? "Revisit earlier skills, then apply"
-    : "Build fluency, then try harder tasks";
-  return { topic: a ?? "Practise earlier learning", second };
+  if (day === 5) return { topic: a ?? "Practise earlier learning", second: "Practise, then check five skills" };
+  // Each row says what its own day does (Cedric's handoff, 2026-11-16: the live U10 Book 1 printed "Learn, practise,
+  // then apply" on 8 of 10 rows): the new idea or more practice, then the earlier topic the day reviews. A topic an
+  // earlier row already named gives way to the day's next one, so two rows read the same only when a day reviews nothing new.
+  const review = planReview(curriculum, d, reviewedBefore(curriculum, plan, day), a);
+  const lead = starts ? "Learn it" : d.kind === "remember" ? "Revisit earlier skills" : "More practice";
+  return { topic: a ?? "Practise earlier learning", second: review ? `${lead}, then review ${review}` : starts ? "Learn it, practise, then a challenge" : `${lead}, then harder tasks` };
+}
+
+/** The topics an earlier row of the plan already named for its review, in day order. */
+function reviewedBefore(curriculum: Curriculum, plan: WorkbookPlan, day: number): Set<string> {
+  const used = new Set<string>();
+  for (const x of plan.days) {
+    if (x.day >= day) break;
+    if (x.day === 5 || x.day === 10 || x.kind === "test" || x.kind === "light") continue;
+    const own = x.pages.flatMap((p) => p.parts).find((p) => p.unit === "A" && p.step);
+    const r = planReview(curriculum, x, used, own ? pageTopic(curriculum, own.step!.skill, own.step!.step) : null);
+    if (r) used.add(r);
+  }
+  return used;
+}
+
+/** The first earlier topic a day reviews (its Remember these steps, then its review checks) that no earlier row named. */
+function planReview(curriculum: Curriculum, d: WorkbookPlan["days"][number], used: ReadonlySet<string>, own?: string | null): string | null {
+  const topics = d.pages.flatMap((p) => p.parts).flatMap((p) => [
+    ...(p.reviewSteps ?? []).map((r) => pageTopic(curriculum, r.skill, undefined)),
+    ...(p.weakChecks ?? []).flatMap((c) => c.skills.map((skill) => pageTopic(curriculum, skill, undefined))),
+  ]).filter((t) => t !== "Review" && t !== own);
+  const lower = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
+  const fresh = topics.map(lower).find((t) => !used.has(t));
+  return fresh ?? null;
 }
 
 /** A skill title as a plain continuation of "will learn to" on the cover. */

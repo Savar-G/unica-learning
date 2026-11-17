@@ -459,11 +459,14 @@ describe("child-readable Challenge tasks", () => {
   it("states what is counted and which estimate to use on all sensible-estimate Challenge forms", () => {
     const h = HOUSE_TEMPLATES.find(h => h.skill === "3.1-estimate-quantity" && h.step === 3)!;
     const step = c.skillSteps(h.skill)![2];
-    for (const [i, t] of h.templates.entries()) {
+    // Each form states the guide for one group, names how many groups, and asks for the sensible estimate (the guide alone
+    // is never the answer: the live U10 Book 1, 2026-11-17).
+    for (const t of h.templates) {
       const item = prepareTemplate(step, t, c.contexts).fill(seededRandom(1));
-      expect(item.text).toContain("Use that estimate");
-      expect(Number(item.answer)).toBe(Number(item.values.b) * (i + 2));
-      if (i === 2) expect(item.text).toContain("short storybooks");
+      const count = Number(/^([234]) \* b$/.exec(t.answer)?.[1]);
+      expect(item.text).toMatch(/as a guide\./);
+      expect(item.text).toMatch(/sensible estimate|closest|Write that estimate/);
+      expect(Number(item.answer)).toBe(Number(item.values.b) * count);
     }
     const boxes = HOUSE_TEMPLATES.find(h => h.skill === "3.1-estimate-quantity" && h.step === 2)!;
     const story = prepareTemplate(c.skillSteps(boxes.skill)![1], boxes.templates[2], c.contexts).fill(seededRandom(1));

@@ -25,51 +25,69 @@ function sampledSource(s: CurriculumStep, t: StepTemplate, item: FilledTemplate)
 }
 
 describe("task-specific sensible-estimate guides", () => {
-  it("keeps the six original formats and keys while making every task's assumption visible", () => {
+  // The guide is for one group and the task asks about several, so the guide is never the answer (the live U10 Book 1,
+  // 2026-11-17: "Use about 21 grapes per small bunch as a guide ... about how many grapes in a bunch?"). These replace
+  // the earlier tests that kept the guide as the key.
+  it("asks about several groups in all six forms, so the sensible estimate is never the printed guide", () => {
     expect(step.templates?.map(t => [t.format, t.answer])).toEqual([
       ["true-false", "'true' if flip == 0 else 'false'"],
-      ["choose", "str(b)"],
+      ["choose", "str(ans)"],
       ["story", "'yes' if flip == 0 else 'no'"],
-      ["choose", "str(b)"],
-      ["explain", "'that is far above the stated guide, so it is not a sensible estimate for this task'"],
-      ["choose", "str(h100)"],
+      ["choose", "str(ans)"],
+      ["explain", "str(n) + ' groups of about ' + str(b) + ' make about ' + str(ans) + ', and ' + str(bad) + ' is 10 times that'"],
+      ["choose", "str(t10)"],
     ]);
     for (const [index, t] of (step.templates ?? []).entries()) {
       const fill = prepareTemplate(step, t, source.contexts);
       const contexts = new Set<string>();
       for (let seed = 0; seed < 80; seed++) {
         const item = fill.fill(seededRandom(seed));
-        const b = formatValue(item.values.b), guide = formatValue(item.values.guide);
+        const b = Number(formatValue(item.values.b)), n = Number(formatValue(item.values.n)), guide = formatValue(item.values.guide);
         expect(item.text).toContain(`Use about ${b} ${guide} as a guide.`);
+        expect(item.text).toMatch(new RegExp(`\\b${n} (?:pencil cases|picture books|small bunches|classroom shelves|classes)\\b`));
+        expect(n).toBeGreaterThanOrEqual(2);
+        expect(Number(formatValue(item.values.ans))).toBe(n * b);
+        // The key is never the guide.
+        expect(item.answer).not.toBe(String(b));
         contexts.add(guide);
         const method = templateMethod(sampledSource(step, t, item), item.text, scope);
-        if (index < 4) {
-          expect(method, item.text).toContain("stated guide");
-          expect(method, item.text).toContain(b);
-        } else {
-          // A printed guide is not an implemented worked method for every response type.
-          expect(method).toBeNull();
-        }
+        if (index < 4) expect(method, item.text).toContain(`${n} × ${b} = ${n * b}`);
+        else expect(method).toBeNull();
       }
       expect(contexts.size).toBe(5);
     }
   });
 
-  it("teaches all three Challenge forms from the stated per-group guide", () => {
+  it("gives six Challenge forms that judge a guess or choices 10 times apart, then scale the guide", () => {
     const house = HOUSE_TEMPLATES.find(h => h.skill === step.skill && h.step === step.number);
     if (!house) throw new Error("Missing sensible-estimate Challenge forms");
-    expect(house.templates).toHaveLength(3);
-    for (const [index, t] of house.templates.entries()) {
+    expect(house.templates).toHaveLength(6);
+    for (const t of house.templates) {
+      const count = Number(/^([234]) \* b$/.exec(t.answer)?.[1]);
       const fill = prepareTemplate(step, t, source.contexts);
       for (let seed = 0; seed < 40; seed++) {
         const item = fill.fill(seededRandom(seed));
-        const b = Number(formatValue(item.values.b)), count = index + 2;
+        const b = Number(formatValue(item.values.b));
         expect(Number(item.answer)).toBe(count * b);
+        expect(item.answer).not.toBe(String(b));
         expect(item.text).toMatch(new RegExp(`Use about ${b} .+ as a guide\\.`));
+        expect(item.text).not.toMatch(/\bone (?:class|classroom shelf|short storybook|small bunch|pencil case)\b/);
         const method = templateMethod(sampledSource(step, t, item), item.text, scope);
         expect(method, item.text).toContain(`${count} × ${b} = ${count * b}`);
         expect(method).not.toMatch(/cannot hold|could never hold|impossible/);
       }
+    }
+    // Four contexts and three structures (a guess to correct, choices to judge, the closest of three).
+    expect(new Set(house.templates.map(t => t.text.split(" as a guide.")[0])).size).toBeGreaterThanOrEqual(4);
+    expect(new Set(house.templates.map(t => t.text.split(" as a guide.")[1].split(" ").slice(1, 3).join(" "))).size).toBeGreaterThanOrEqual(3);
+  });
+
+  it("keeps the counted things when a wrong guess runs to thousands", () => {
+    const curriculum = bcStepProgressions();
+    for (let seed = 0; seed < 300; seed++) {
+      const made = stepTemplateItem({ curriculum, skill: step.skill, step: step.number, place: "on-your-own", level: 10, day: 8, seed, attempt: 0, ordinal: seed % 3 });
+      if (!made) continue;
+      expect(made.text, made.text).not.toMatch(/\b(?:points|tickets) per\b/);
     }
   });
 
@@ -83,8 +101,8 @@ describe("task-specific sensible-estimate guides", () => {
       const t = curriculum.skillSteps(step.skill)?.find(s => s.number === 3)?.templates?.[made.ref.index];
       expect(t && isSpotOnly(t)).toBe(true);
       expect(made.text).toContain("as a guide.");
-      expect(made.ref.source.answer).toBe("str(b)");
-      expect(templateMethod(made.ref.source, made.text, made.ref)).toContain("matches that guide");
+      expect(made.ref.source.answer).toBe("str(ans)");
+      expect(templateMethod(made.ref.source, made.text, made.ref)).toMatch(/× .* (?:Choose|Write)/);
       seen++;
     }
     expect(seen).toBeGreaterThan(0);
