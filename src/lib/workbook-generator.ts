@@ -2401,6 +2401,8 @@ function omissionsWith(w: PageWork, leftOut: { slot: Slot }[]): Omission[] {
  */
 function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuestion[], examples: (QuestionPackage | null)[] = []): PageContent | null {
   if (!input.book || !w.layout) return null;
+  // (The questions keep it too: the stored draft and its print contract show the writing lines the page prints.)
+  if (w.page.explainChoices) for (const q of questions) if (q.place === "challenge" && q.package) q.package = explainedChoice(q.package);
   const layoutSlot = (q: GeneratedQuestion) => w.slots.find((x) => x.id === q.slot)!.layoutSlot;
   const keep = w.layout.slots.flatMap((x, k) => (PANEL_SLOTS.includes(x.slot) || questions.some((q) => layoutSlot(q) === k) ? [k] : []));
   const content = dayPageContent({
@@ -3923,9 +3925,21 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         let checked = await check();
         // The restored grid can have room left even with stretched rows. Spread its existing gaps within the
         // template's limit, and stop as soon as it fits or a failure other than fullness appears.
-        for (let extra = (w.page.extraGap ?? 0) + 4; !checked.ok && checked.problems.every(p => p.kind === "fullness") && extra <= 48; extra += 4) {
-          w.page.extraGap = extra;
+        const spread = async () => {
+          for (let extra = (w.page.extraGap ?? 0) + 4; !checked.ok && checked.problems.every(p => p.kind === "fullness") && extra <= 48; extra += 4) {
+            w.page.extraGap = extra;
+            checked = await check();
+          }
+        };
+        await spread();
+        // A Challenge of circled answers still too empty: each circled answer asks "How do you know?" (Luis,
+        // 2026-11-17). Only here, so a Challenge page that fits keeps its questions as they were, and review stays off
+        // the Challenge page (Savar, 2026-11-02).
+        if (!checked.ok && !w.page.explainChoices && w.page.type === "challenge" && checked.problems.every(p => p.kind === "fullness")
+          && w.slots.some(s => s.place === "challenge" && s.contract && circledAnswer(contractPackage(input, w, s.contract)))) {
+          w.page.explainChoices = true; w.page.extraGap = 0;
           checked = await check();
+          await spread();
         }
         if (!checked.ok) return `Page ${w.number}: its last complete grid does not fit: ${checked.problems.map(p => p.reason).join(" ")}`;
       }
@@ -4027,9 +4041,20 @@ async function repairFinalRows(input: GenerateInput, w: PageWork, work: PageWork
 }
 
 const FLOOR_SHORT = "capacity could not restore";
+
+/** An item answered only by circling or ticking a choice. */
+const circledAnswer = (p: QuestionPackage | null | undefined): boolean => {
+  const regions = p?.item?.regions ?? [];
+  return regions.length > 0 && regions.every(r => r.kind === "choice");
+};
+/** A circled item that also asks "How do you know?": writing lines under its choice, never scored by code. */
+function explainedChoice(p: QuestionPackage): QuestionPackage {
+  if (!circledAnswer(p)) return p;
+  return { ...p, item: { ...p.item!, regions: [...p.item!.regions, { id: "reason", kind: "lines", label: "How do you know?" }] } };
+}
 /** What the capacity pass writes on a planned page (the planner writes none of it). */
 const CAPACITY_KEYS = ["capacity", "capacityChecked", "capacityOmissions", "itemContracts", "panelAttempts", "existingSlots", "extraGap",
-  "fillingComplete", "timeLimited", "atMaximum", "gapCap", "refills", "noWatchOut", "compactPanel"] as const satisfies readonly (keyof PlannedPage)[];
+  "fillingComplete", "timeLimited", "atMaximum", "gapCap", "refills", "noWatchOut", "compactPanel", "explainChoices"] as const satisfies readonly (keyof PlannedPage)[];
 
 /**
  * A practice page that cannot hold its floor of practice questions gives its Spot the error to the day's other
