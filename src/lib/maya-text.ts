@@ -436,6 +436,7 @@ export interface TextSessionOptions {
    */
   tutor?: boolean;
   checkedExchange?: boolean;
+  checkedRoutine?: boolean;
   /** The free-talk review (src/lib/maya-talk-review.ts), or null. D-341: it reads each reply that is not plain math talk. */
   reviewer?: TalkReviewer | null;
   /**
@@ -688,7 +689,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   if (resume?.v === 6 && (!resume.initial || !Array.isArray(resume.log))) throw new Error("maya text: the saved event log is missing");
   if (resume && (![1, 6].includes(resume.v) || (resume.v === 6 ? resume.initial!.session.callId : resume.session.callId) !== options.callId)) throw new Error("maya text: the saved session is not this call's");
   const initial: TextLogInitial = resume?.v === 6 && resume.initial ? structuredClone(resume.initial) : {
-    session: resume ? structuredClone(resume.session) : createSession({ callId: options.callId, confirmWorkbook: options.confirmWorkbook, channel: options.channel, package: options.package, random: options.random, grade: options.grade, history: options.history, childName: options.childName, freeTalk: options.freeTalk === true, limitMs: options.limitMs, conversational: model.output === 3, tutor: options.tutor === true, checkedExchange: options.checkedExchange }),
+    session: resume ? structuredClone(resume.session) : createSession({ callId: options.callId, confirmWorkbook: options.confirmWorkbook, channel: options.channel, package: options.package, random: options.random, grade: options.grade, history: options.history, childName: options.childName, freeTalk: options.freeTalk === true, limitMs: options.limitMs, conversational: model.output === 3, tutor: options.tutor === true, checkedExchange: options.checkedExchange, checkedRoutine: options.checkedRoutine }),
     endedAt: resume?.endedAt ?? null, turns: resume?.turns ?? [], board: resume?.board ?? [],
     approved: resume?.approved, obligations: resume?.obligations, childState: resume?.childState, problems: resume?.problems,
   };
@@ -729,7 +730,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   let preparationStopped = false;
   const preparations: PrepareRecord[] = structuredClone(resume?.preparations ?? []);
   const costs = new Map<PrepareRecord, PreparedReply>();
-  const cache = options.spend && model.output === 3 ? preparedReplies(model, options.spend, () => now(), options.prepareModel, options.prepareHandleId) : null;
+  const checkedRoutine = initial.session.checkedRoutine === true;
+  const cache = options.spend && model.output === 3 && !checkedRoutine ? preparedReplies(model, options.spend, () => now(), options.prepareModel, options.prepareHandleId) : null;
   let committing: { generation: number; entries: Map<string, PreparedReply>; at: number } | null = null;
   let preparedOutput: Pick<TextOutput, "prepared" | "preparedLeadMs" | "preparedKind"> = {};
   function record(entry: PreparedReply, value: PrepareRecord) {
@@ -1078,7 +1080,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     // D-345: a tutor message streams too. A plain teaching sentence goes out once every check passes on the words so
     // far; any other sentence is held, alone, while its safety review runs in parallel; a refused review or a failed
     // check stops the stream, and the rest waits for the whole message and its whole check.
-    const tutor = model.output === 3 && options.onSayPart && !folded.session.checkedExchange && !folded.sent?.length && folded.pending.length === 0 ? read(() => tutorStream(folded.session)) : null;
+    const tutor = model.output === 3 && options.onSayPart && !checkedRoutine && !folded.session.checkedExchange && !folded.sent?.length && folded.pending.length === 0 ? read(() => tutorStream(folded.session)) : null;
     // Final check 3: a refusal of a sentence that judges correctness is binding, whatever rules it names.
     const passes = (r: TalkReviewResult, sentence: string) => r.verdict === "pass" || (r.verdict === "fail" && r.rules.length > 0 && r.rules.every((id) => TUTOR_REVIEW_IGNORED.includes(id)) && !bindingReview(sentence, tutor?.wordAnswer, tutor?.stance));
     const flushTutor = () => {
@@ -1155,7 +1157,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     // Which reviews a sentence needs is read as the stream reads it; a sentence that fails code's own check ends it.
     // A continuation's sentences start their reviews early too, each read after the fixed sentences (`lead`).
     // #1107: voice only. A chat turn reviews what its stream holds, and the whole check the rest, as before.
-    const early = model.output === 3 && voice && folded.session.tutor && (!folded.sent?.length || lead.length > 0) && folded.pending.length === 0 ? read(() => tutorStream(session, true)) : null;
+    const early = model.output === 3 && voice && !checkedRoutine && folded.session.tutor && (!folded.sent?.length || lead.length > 0) && folded.pending.length === 0 ? read(() => tutorStream(session, true)) : null;
     const earlyStance = early && session.conversational ? read(() => codeStance(session)) : "none";
     let earlySeen = 0;
     let earlyDone = false;
@@ -1303,10 +1305,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     // 2026-11-15 (voice fallbacks): a tutor repair after streamed sentences continues them (as the fold steps it).
     const continuation = candidate.continuation === true && candidate.source === "repair" && !!folded.sent?.length && !!folded.session.tutor;
     const first = read(() => step(folded.session, { type: "proposal", at: now(), proposal: candidate.proposal, ...(folded.sent?.length ? { sent: [...folded.sent] } : {}), ...(continuation ? { continuation: true } : {}) }));
-    const texts = [...new Set(first.refusal ? [] : first.effects.flatMap((e) => e.kind === "say" ? e.talk ?? [] : []).filter((t) => t.code === null && t.review === "not_run").map((t) => t.proposed))];
+    const texts = [...new Set(checkedRoutine || first.refusal ? [] : first.effects.flatMap((e) => e.kind === "say" ? e.talk ?? [] : []).filter((t) => t.code === null && t.review === "not_run").map((t) => t.proposed))];
     // Two-layer true math: the tutor sentences code did not read whole, each with the sentences before it in the message.
     const said = first.refusal ? [] : first.effects.flatMap((e) => (e.kind === "say" ? [e] : []));
-    const mathTexts = [...new Set(said.flatMap((e) => (e.math ?? []).filter((m) => m.verdict === "not_run").map((m) => m.sentence)))];
+    const mathTexts = checkedRoutine ? [] : [...new Set(said.flatMap((e) => (e.math ?? []).filter((m) => m.verdict === "not_run").map((m) => m.sentence)))];
     const t0 = now();
     const before = folded.session;
     const stance = before.conversational ? read(() => codeStance(before)) : "none";
@@ -1354,7 +1356,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   }
   /** Guidance the session accepted goes out now. A call that ended returns it with its outcome instead. */
   function sendGuidance() {
-    if (!options.onGuidance || folded.session.outcome || !folded.pending.some((p) => p.act === "safety")) return;
+    if (checkedRoutine || !options.onGuidance || folded.session.outcome || !folded.pending.some((p) => p.act === "safety")) return;
     const out = textOutput(folded);
     append({ kind: "delivered", at: now() });
     options.onGuidance(out);
@@ -1375,8 +1377,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const urgent = folded.session.safety.flagged || folded.session.contentProblem !== null;
       if (folded.childState === "child_speaking" && !urgent) break;
       if (read(() => nextActs(folded.session)).expect !== "maya") break;
-      const { state, safety } = folded.session;
-      if (options.channel === "chat" && state === "SAFETY" && safety.guided && !folded.candidate && !folded.attempts.length) {
+      const { state, safety, sensitiveHold, silence } = folded.session;
+      const fixedClose = ((checkedRoutine || options.channel === "chat") && state === "SAFETY" && safety.guided) ||
+        (sensitiveHold && silence === "close_due");
+      if (fixedClose && !folded.candidate && !folded.attempts.length) {
         closeByCode();
         break;
       }
@@ -1567,8 +1571,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       startedAt: iso(session.startedAt), endedAt: iso(outcome ? endedAt ?? session.now : null),
       model: { id: model.id, promptVersion: model.promptVersion }, versions: { proposal: PROPOSAL_VERSION, lines: LINES_VERSION, session: session.version },
       question: { id: typeof raw.id === "string" ? raw.id : null, ref: raw.ref ?? null, text: typeof raw.text === "string" ? raw.text : null, hash: packageHash(options.package) },
-      freeTalk: session.freeTalk, reviewer: options.reviewer ? { id: options.reviewer.id, promptVersion: options.reviewer.promptVersion } : null,
-      ...(session.tutor ? { mathReviewer: options.mathReviewer ? { id: options.mathReviewer.id, promptVersion: options.mathReviewer.promptVersion, ...(options.mathReviewer.retry ? { retryId: options.mathReviewer.retry.id } : {}) } : null } : {}),
+      freeTalk: session.freeTalk, reviewer: !checkedRoutine && options.reviewer ? { id: options.reviewer.id, promptVersion: options.reviewer.promptVersion } : null,
+      ...(session.tutor ? { mathReviewer: !checkedRoutine && options.mathReviewer ? { id: options.mathReviewer.id, promptVersion: options.mathReviewer.promptVersion, ...(options.mathReviewer.retry ? { retryId: options.mathReviewer.retry.id } : {}) } : null } : {}),
       scopeRefusals: structuredClone(session.scopeRefusals ?? []),
       ...(preparations.length ? { preparations: preparationRecords() } : {}),
       ...(session.checkedExchange ? { checkedExchange: structuredClone(session.checkedExchange) } : {}),

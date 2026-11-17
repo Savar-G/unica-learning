@@ -78,6 +78,7 @@ import { placeDigitsSaid } from "./tutor-math";
 import { MATH_REVIEW_PROMPT_VERSION, mathReviewsOf, type MathReview, type MathReviewInput } from "./math-review";
 import { reviewStart, reviewSteps } from "./math-review-steps";
 import { hideName as redactChildName } from "../child-name-redaction";
+import { SAFETY_CLARIFICATION, SAFETY_PAUSE, sensitiveInput } from "./sensitive-input";
 
 /** Closing starts 9 minutes into the call; the call ends at 10 minutes. */
 export const TIME_LIMITS = { closingAtMs: 9 * 60_000, endAtMs: 10 * 60_000 } as const;
@@ -571,6 +572,9 @@ export interface Session {
    */
   tutor?: { help: number; drawn: string[]; sent?: { batch: string; keys: string[] }[]; offer?: true; childFirst?: string[] };
   checkedExchange?: CheckedExchangeLesson;
+  checkedRoutine?: true;
+  sensitiveHold?: true;
+  unsafeRequestAt?: number;
 }
 
 /**
@@ -601,6 +605,7 @@ export function createSession(input: {
   /** D-345: teach with the tutor core when the question is one it teaches (isTutorQuestion) on a conversational call. */
   tutor?: boolean;
   checkedExchange?: boolean;
+  checkedRoutine?: boolean;
 }): Session {
   const { pkg, held } = teachableOf(input.package);
   const teachable = held === null;
@@ -657,6 +662,7 @@ export function createSession(input: {
     ...shorterLimits(input.limitMs),
     ...(tutor ? { tutor: { help: 0, drawn: [] } } : {}),
     ...(input.checkedExchange === true && tutor && pkg && supportsCheckedExchange(pkg) ? { checkedExchange: { version: 1, id: `${input.callId}:regrouping`, turns: [] } } : {}),
+    ...(input.checkedRoutine === true && tutor && pkg && supportsCheckedExchange(pkg) ? { checkedRoutine: true } : {}),
   };
 }
 
@@ -1542,8 +1548,11 @@ export function step(session: Session, event: SessionEvent): StepResult {
   const shape = event.type === "proposal" ? (v3 ? outputProblem(raw) : proposalProblem(raw)) : null;
   // The priority input is read field by field, so a malformed board or answer list cannot drop it.
   const priority = priorityOf(raw);
-  const severity = event.type === "safety" ? event.severity : priority.safety;
+  const saidSensitive = s.checkedRoutine && event.type === "child_turn" && event.final !== false && typeof event.text === "string" ? sensitiveInput(event.text) : null;
+  const sensitive = saidSensitive && event.type === "child_turn" && event.uncertain ? "clarify" : saidSensitive;
+  const severity = event.type === "safety" ? event.severity : sensitive === "immediate" || sensitive === "concern" ? sensitive : priority.safety;
   if (severity) raiseSafety(s, severity, event.at, effects);
+  if (sensitive === "unsafe_request") s.unsafeRequestAt ??= event.at;
 
   // The child's turn as the model read it: a stop, an unclear number and a no-start hold even if the proposal fails.
   // Refuse a model-only stop before it can persist, including from malformed output or a streamed priority field.
@@ -1630,6 +1639,35 @@ export function step(session: Session, event: SessionEvent): StepResult {
       }
       const alternatives = Array.isArray(event.alternatives) ? event.alternatives.filter((a) => typeof a === "string") : [];
       s.turns.push({ at: event.at, speaker: "child", text: event.text, state: s.state, ...(alternatives.length > 0 ? { alternatives } : {}) });
+      if (s.checkedRoutine && s.safety.flagged) {
+        if (asksIdentity(event.text)) s.replies = ["about.ai", ...(asksSecret(event.text) ? ["about.no_secret" as const] : [])];
+        break;
+      }
+      if (s.checkedRoutine && s.package && (sensitive === "clarify" || sensitive === "unsafe_request" || alternatives.some((a) => sensitiveInput(a) !== null))) {
+        const fixed = asksIdentity(event.text)
+          ? safetyDisclosure({ replies: ["about.ai", ...(asksSecret(event.text) ? ["about.no_secret" as const] : [])] })
+          : asksSecret(event.text) ? safetyDisclosure({ replies: ["about.no_secret"] }) : "";
+        const stop = sentencesOf(event.text).some(clearStop);
+        const closing = stop || s.state === "TIME_CLOSE";
+        const reply = sensitive === "unsafe_request" ? packageLines(s.package).decline()[0].texts[0] : closing ? SAFETY_PAUSE : SAFETY_CLARIFICATION;
+        const text = fixed ? `${fixed} ${reply}` : reply;
+        s.turn = null;
+        delete s.mathClaim;
+        delete s.scopeDue;
+        delete s.thinking;
+        delete s.tutor?.offer;
+        const act = closing ? "close" : "clarify";
+        effects.push({ kind: "say", act, text });
+        s.turns.push({ at: event.at, speaker: "maya", text, state: s.state, act });
+        if (closing) end(s, stop ? "child_stopped" : "time_limit", effects, false);
+        else {
+          waitForChild(s);
+          s.sensitiveHold = true;
+          s.silence = "checked";
+        }
+        break;
+      }
+      if (s.sensitiveHold) delete s.sensitiveHold;
       // A number form code cannot read is confirmed, never guessed; one inside the child's explanation is never their
       // answer ("66, because six tens and six ones"), so it needs no confirmation (D-199).
       const operands = readNumbers(event.text, { fractions: true, operands: true });
@@ -5436,7 +5474,7 @@ export function tutorTeachingNow(s: Session, reading: Reading = {}): boolean {
  */
 function tutorGate(s: Session, reading: Reading): Allowed | null {
   const g = gate(s, reading);
-  if (g?.code === "scope_first" && s.scopeDue === "other_topic" && !reading.unsafeRequest && !s.mathClaim) return null;
+  if (!s.checkedRoutine && g?.code === "scope_first" && s.scopeDue === "other_topic" && !reading.unsafeRequest && !s.mathClaim) return null;
   return g;
 }
 
@@ -5494,7 +5532,7 @@ function checkedExchangePlan(s: Session, afterFailure: boolean): ExchangeTurn | 
 /** The screen offers this target once it has drawn its show batch. */
 export function childExchangeTarget(s: Session): ExchangeTarget | undefined {
   const prompt = s.checkedExchange?.turns.at(-1)?.prompt;
-  if (!prompt || prompt.boardRevision !== s.batches || s.outcome || s.safety.flagged || s.stopRequested ||
+  if (!prompt || prompt.boardRevision !== s.batches || s.outcome || s.safety.flagged || s.sensitiveHold || s.stopRequested ||
     s.solved !== null || s.done.includes("ones") || s.noBoard || !isTeaching(s.state) || s.expect !== "child" || s.turn) return;
   const show = s.checkedExchange!.turns.flatMap((turn) => turn.actions).find((action) => action.batchId === prompt.batchId);
   if (show?.delivery === "sent" && show.fate !== "cancelled" && show.fate !== "skipped") return prompt;
@@ -6013,6 +6051,7 @@ function tellsAnswer(base: Session, pkg: OperationPackage, texts: readonly strin
   // when the value is a value of the work too ("The answer is 6.", "Write 6 on your paper." on 3 × 2). "hint" or "guided"
   // is recorded only when code proves the message holds no answer value.
   if (!committedRight && texts.some((x) => namesValue(x, answer))) return true;
+  if (base.checkedRoutine && !committedRight && texts.some((x) => equationsOf(x).some((e) => !e.negated && e.result.q?.[0] === answer && e.result.q[1] === 1 && equationHolds(e) === true))) return true;
   // Final check 5 (2026-11-15): a message that names every digit of the answer in its place, in any order, in digits or
   // words ("Write 2 in the tens place and 4 in the ones place", "2 tens and 4 ones"), gives the answer. A place quantity
   // that makes up another number of the question ("28 is 2 tens and 8 ones") names no digit of the answer.
@@ -6228,7 +6267,12 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   // Final check 4: code's texts only for the active problem (tutorTexts), with the question's own numbers.
   const texts = tutorTexts(pkg, [...base.turns.map((t) => t.text), base.turn?.text ?? ""], base.exampleIntroduced === true || base.exampleShown > 0);
   const wordAnswer = !!sessionClaim(pkg) || !!comparisonOf(pkg);
-  let verdict = checkTutorSay(text, { stance, extra, childValues, claims, trades: tutorKind(pkg).workValues(pkg), columns: columnSums(pkg), ...texts, wordAnswer, nameWords: nameWordsOf(base), ...(op ? { op } : {}), ...(answer === undefined ? {} : { answer }), ...(fallback ? {} : teachingChecks(base)) });
+  const heard = base.checkedRoutine && !fallback ? childAnswerOf(base, (x) => x) : null;
+  const checkedRoutine = base.checkedRoutine && !fallback ? {
+    committed: heard?.verdict === "right" && typeof heard.value === "number" ? heard.value : null,
+    solved: s.solved === "child" && s.lastResult === "right",
+  } : undefined;
+  let verdict = checkTutorSay(text, { stance, extra, childValues, claims, trades: tutorKind(pkg).workValues(pkg), columns: columnSums(pkg), ...texts, wordAnswer, nameWords: nameWordsOf(base), ...(op ? { op } : {}), ...(answer === undefined ? {} : { answer }), ...(fallback ? {} : teachingChecks(base)), checkedRoutine });
   // Code's own line never fails its turn: after streamed words that leave no room, the turn is those words.
   // Savar's call 2: a prefix that ends with no question gets code's step question when the open question does not fit.
   if (fallback && !verdict.ok && sent.length && !doneNow && s.solved === null) {
@@ -6298,8 +6342,9 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   const prior = fixedDrawings ?? [];
   const base0 = s.batches - prior.length;
   const checked = !!s.checkedExchange;
-  const ties = !derive || s.noBoard || checked ? null : deriveDrawings(pkg, sentencesOf(text), tutor.drawn, (tutor.sent ?? []).flatMap((x) => x.keys), noDraw, (k, i) => `tutor-note-${base0 + 1 + k}-${i}`, opener, fixedDrawings ? { sentences: sent.length, drawings: prior } : undefined);
-  const legacy = s.noBoard || derive || checked ? { commands: [], keys: [] } : tutorDrawings(pkg, out.draw ?? [], tutor.drawn, (i) => `tutor-note-${s.batches + 1}-${i}`);
+  const noDrawing = s.noBoard || checked || (s.checkedRoutine && fallback);
+  const ties = !derive || noDrawing ? null : deriveDrawings(pkg, sentencesOf(text), tutor.drawn, (tutor.sent ?? []).flatMap((x) => x.keys), noDraw, (k, i) => `tutor-note-${base0 + 1 + k}-${i}`, opener, fixedDrawings ? { sentences: sent.length, drawings: prior } : undefined);
+  const legacy = noDrawing || derive ? { commands: [], keys: [] } : tutorDrawings(pkg, out.draw ?? [], tutor.drawn, (i) => `tutor-note-${s.batches + 1}-${i}`);
   const batches: { commands: Record<string, unknown>[]; keys: string[]; sentence?: number; after?: number[] }[] = ties ? ties.drawings.slice(prior.length) : legacy.commands.length ? [legacy] : [];
   // Savar's call 2 and the Chief of Staff (2026-11-15): when the child's right final answer first stands, the board shows
   // the whole answer: code draws every answer digit not yet drawn, from its own values, with the good-job message (its
@@ -6324,7 +6369,7 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   // Final check 4: only code's validated credit after this turn (the result that stands once any answer taken back this
   // turn is cleared) lets Maya say the answer back without giving it away; never a number in the child's words.
   const committedRight = s.solved === "child" && s.lastResult === "right";
-  if (checked && !committedRight && tellsAnswer(base, pkg, sentencesOf(text), tutor.drawn, false)) {
+  if ((checked || s.checkedRoutine) && !committedRight && tellsAnswer(base, pkg, [...sentencesOf(text), ...drawing.commands.flatMap((command) => boardTexts(command))], tutor.drawn, false)) {
     if (!fallback) return no("say_check", "The message gives away the answer before the child solves the question.", "never_say");
     text = "Which part would you like to try next?";
   }
@@ -6546,7 +6591,7 @@ function proposeV3(base: Session, out: ModelOutput, effects: Effect[], reviews: 
   const at = r.effects.findLastIndex((e) => e.kind === "say");
   if (at === -1) return r;
   const planned = (r.effects[at] as Extract<Effect, { kind: "say" }>).text;
-  const codeWords = !!comparisonOf(base.package) || p.act === "safety" || base.state === "CONTENT_HOLD" || (p.act === "close" && base.state === "SAFETY") ||
+  const codeWords = base.checkedRoutine || !!comparisonOf(base.package) || p.act === "safety" || base.state === "CONTENT_HOLD" || (p.act === "close" && base.state === "SAFETY") ||
     p.parts.some((x) => "line" in x && (CODE_WORD_LINES.includes(x.line) || (x.line === "redirect.workbook" && base.scopeDue === "outside_work"))) || (p.act === "open" && !!base.confirmWorkbook);
   if (codeWords) return withSent(r, sent, base, disclosureDue(base));
   const rules = sayRules(base, r.session, p, planned);

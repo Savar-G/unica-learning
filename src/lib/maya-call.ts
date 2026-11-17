@@ -84,6 +84,7 @@ import type { TalkReviewer } from "@/lib/maya-talk-review";
 import type { MathReviewer } from "@/lib/maya-math-review";
 import { snapshotFates } from "@/lib/board-fate";
 import { checkedExchangeProposal, childExchangeProposal, childExchangeTarget } from "@/lib/maya/session";
+import { sensitiveInput } from "@/lib/maya/sensitive-input";
 import { readExchangeTarget, sameExchangeTarget, type ExchangeTarget } from "@/lib/maya/checked-exchange";
 import { createTextSession, readFateReports, withHelpLedger, type BoardFateReport, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession, type TextSessionOptions } from "@/lib/maya-text";
 import { packageHash, type MayaTrace } from "@/lib/maya-trace";
@@ -297,6 +298,7 @@ export interface CallSeams {
   tutorFamilies?: boolean;
   /** Enables the checked exchange for newly created, supported tutor sessions. */
   checkedExchange?: boolean;
+  checkedRoutine?: boolean;
   /**
    * #1107 reader-first release: saved sentence writes are off unless explicitly enabled by the server.
    * Enable only after all supported readers and end workers can restore parts and interrupted turns.
@@ -786,7 +788,8 @@ function flagOf(session: TextSession, unsafe: FlagLevel | null): CallFlag | null
   }
   if (unsafe) {
     const asked = session.trace().turns.find((t) => t.kind === "maya" && t.attempts.some((a) => readsUnsafe(a.proposal)));
-    if (asked) flags.push({ level: unsafe, at: iso(asked.at) });
+    const at = session.session.unsafeRequestAt ?? asked?.at;
+    if (at !== undefined) flags.push({ level: unsafe, at: iso(at) });
   }
   return flags.reduce<CallFlag | null>((top, f) => (rank(f) > rank(top) ? f : top), null);
 }
@@ -861,8 +864,11 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
    * stop it. Null when the read could not be made. The read's words are never said.
    */
   async function safetyRead(record: CallRecord, text: string): Promise<SafetyFound | null> {
-    const model = seams.model(record.model, spendCall(record), { safetyRead: true });
     const saved = record.live?.text.session;
+    const sensitive = saved?.checkedRoutine ? sensitiveInput(text) : null;
+    if (sensitive === "concern" || sensitive === "immediate") return { proposal: null, severity: sensitive, unsafe: false };
+    if (sensitive === "unsafe_request") return { proposal: null, severity: null, unsafe: true };
+    const model = seams.model(record.model, spendCall(record), { safetyRead: true });
     if (!model || !saved) return null;
     try {
       const at = seams.clock();
@@ -996,6 +1002,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       // MAYA_TUTOR_FAMILIES switch is on. The core still decides per question (isTutorQuestion).
       tutor: seams.tutor !== false && (record.kind === "admin_test" || (seams.tutorFamilies === true && (record.kind === "chat" || record.kind === "family"))),
       checkedExchange: seams.checkedExchange,
+      checkedRoutine: seams.checkedRoutine,
       freeTalk: record.kind !== "chat" && record.kind !== "family", reviewer: seams.reviewer?.(model.id, spend ?? spendCall(record)) ?? null,
       mathReviewer: seams.mathReviewer?.(model.id, spend ?? spendCall(record)) ?? null,
     });
@@ -1455,8 +1462,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         const s = session.session;
         // D-341, round 3: a plain stop is code's goodbye with no model call (the text adapter's pump reads the same).
         const codeStop = s.conversational === true && s.stopRequested && !s.safety.flagged && !!s.turn && clearStop(s.turn.text);
-        const asks = s.outcome === null && nextActs(s).expect === "maya" && !codeStop && !checkedExchangeProposal(s);
-        return { model: asks, conversational: model.output === 3, streams: asks && !s.checkedExchange && model.output === 3 && streamPlan(s) !== null };
+        const codeClose = codeStop || (s.checkedRoutine && s.safety.flagged) || (s.sensitiveHold && s.silence === "close_due");
+        const asks = s.outcome === null && nextActs(s).expect === "maya" && !codeClose && !checkedExchangeProposal(s);
+        return { model: asks, conversational: model.output === 3, streams: asks && !s.checkedRoutine && !s.checkedExchange && model.output === 3 && streamPlan(s) !== null };
       };
       /**
        * One input. `need`: free model attempts the gate asks for, 2 for a turn with no child words (a check-in), so the
