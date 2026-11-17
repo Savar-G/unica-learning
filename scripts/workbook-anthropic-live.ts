@@ -14,16 +14,26 @@ import { workbookAnthropicBudget } from "./workbook-anthropic-budget.mjs";
 
 const PROJECT = "cdjobwsyzndtltzfpyqa";
 delete process.env.WORKBOOK_AI_FAKE;
-const PARENT = "dba5df60-d57d-445a-8d27-b56c0c70f4ff";
-const ACTOR = { id: "fa95ec5a-7805-4120-ab5a-b9b239844427", email: "ctanafranca0524@gmail.com" };
-const CHILDREN = { Gerald: "da104429-93a0-4a10-bddc-fa6c3aaee415", Geraldine: "9c2b8523-8865-40be-adab-4739587e0fa5" };
 const { values } = parseArgs({ options: { child: { type: "string" }, "resume-run": { type: "string" }, execute: { type: "boolean", default: false }, help: { type: "boolean", default: false } } });
 if (values.help) {
-  console.log("node scripts/workbook-anthropic-live.mjs --child Gerald|Geraldine [--resume-run ID] [--execute]\nANTHROPIC_API_KEY_FILE must name the private key file. Read-only preflight is the default. Each child has one persistent $35 ledger. --execute creates or resumes Book 1 without approving or shipping it.");
+  console.log("node scripts/workbook-anthropic-live.mjs --child LABEL [--resume-run ID] [--execute]\nWORKBOOK_LIVE_CONFIG must name the private family config (parentId, actor, surname, children, optional limitUsd). ANTHROPIC_API_KEY_FILE must name the private key file. Read-only preflight is the default. Each child has one persistent ledger (at most $35). --execute creates or resumes Book 1 without approving or shipping it.");
   process.exit(0);
 }
+// Family identity lives in a private file outside the repo: no child ids, names or admin email in source.
+const configFile = process.env.WORKBOOK_LIVE_CONFIG;
+if (!configFile) throw new Error("WORKBOOK_LIVE_CONFIG is required; it names the private family config");
+const config: unknown = JSON.parse(await readFile(configFile, "utf8"));
+const text = (v: unknown): v is string => typeof v === "string" && v.length > 0;
+const record = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+if (!record(config) || !text(config.parentId) || !text(config.surname) || !record(config.actor) || !text(config.actor.id) || !text(config.actor.email)
+  || !record(config.children) || !Object.values(config.children).every(text)
+  || (config.limitUsd !== undefined && (typeof config.limitUsd !== "number" || !(config.limitUsd > 0 && config.limitUsd <= 35)))) throw new Error("The private family config is invalid");
+const PARENT = config.parentId;
+const ACTOR = { id: config.actor.id, email: config.actor.email };
+const CHILDREN = config.children as Record<string, string>;
+const limitUsd = typeof config.limitUsd === "number" ? config.limitUsd : 35;
 const name = values.child;
-if (name !== "Gerald" && name !== "Geraldine") throw new Error("Choose an authorized child: Gerald or Geraldine");
+if (!name || !Object.hasOwn(CHILDREN, name)) throw new Error(`Choose an authorized child: ${Object.keys(CHILDREN).join(" or ")}`);
 const childId = CHILDREN[name];
 const git = (...args: string[]) => execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
 if (git("status", "--porcelain")) throw new Error("Commit the reviewed code before a live run; the checkout must be clean");
@@ -53,7 +63,7 @@ const [child, actor, books, active] = await Promise.all([
   admin.from("workbook_runs").select("id,status").eq("child_id", childId).in("status", ["queued", "running"]),
 ]);
 for (const result of [child, actor, books, active]) if (result.error) throw new Error(result.error.message);
-if (child.data?.parent_id !== PARENT || child.data.first_name !== `${name} Packson` || actor.data?.email !== ACTOR.email) throw new Error("The authorized family or admin identity did not match");
+if (child.data?.parent_id !== PARENT || child.data.first_name !== `${name} ${config.surname}` || actor.data?.email !== ACTOR.email) throw new Error("The authorized family or admin identity did not match");
 if (books.data?.length) throw new Error("A stored workbook already exists; this authorization covers Book 1 only");
 if (active.data?.some(run => run.id !== values["resume-run"])) throw new Error("This child already has a queued or running workbook; no duplicate was created");
 const runs = workbookRunStore(admin);
@@ -66,7 +76,7 @@ if (values["resume-run"]) {
 }
 const stateDir = join(homedir(), ".local/state/unica/workbook-anthropic-live");
 await mkdir(stateDir, { recursive: true, mode: 0o700 });
-const budget = await workbookAnthropicBudget({ file: join(stateDir, `${childId}.json`), childId, limitUsd: 35 });
+const budget = await workbookAnthropicBudget({ file: join(stateDir, `${childId}.json`), childId, limitUsd });
 console.log(JSON.stringify({ child: name, build, budget: await budget.state(), execute: values.execute }));
 if (!values.execute) process.exit(0);
 // Deliberately isolated env: profile AI and unrelated accounts cannot consume this authorization.

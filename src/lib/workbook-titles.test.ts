@@ -83,7 +83,7 @@ describe("page titles", () => {
   it("keeps a review page's own name, and calls review mixed with stories or a challenge 'Mixed review'", () => {
     expect(pageTitle(page([part("already-know-it", ["N1"])]), 3, skills)).toBe("Already know it?");
     expect(pageTitle(page([part("warm-up", ["N1"]), part("fix-it", ["N1"]), part("in-your-head", ["N1"])], "warm-up"), 12, skills)).toBe("Warm-up");
-    expect(pageTitle(page([part("remember-these", ["N1"]), part("friday-5", ["N1"])], "friday-5"), 12, skills)).toBe("Review and Friday 5");
+    expect(pageTitle(page([part("remember-these", ["N1"]), part("friday-5", ["N1"])], "friday-5"), 12, skills)).toBe("Practise and check");
     expect(pageTitle(page([part("remember-these", ["N1"]), part("picture-stories", ["N1"]), part("challenge", ["N1"], 1)]), 3, skills)).toBe("Mixed review");
     expect(pageTitle(page([part("level-test", ["N1"])], "level-test"), 12, skills)).toBe("Level U12 test");
   });

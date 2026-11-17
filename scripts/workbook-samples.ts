@@ -85,7 +85,7 @@ const { values } = parseArgs({
     steps: { type: "string" }, days: { type: "string" }, out: { type: "string", default: "/tmp/ui-review/samples" }, concurrency: { type: "string", default: "6" },
     replay: { type: "string" }, diff: { type: "string" }, "check-only": { type: "boolean", default: false },
     fake: { type: "boolean", default: false }, api: { type: "boolean", default: false }, anthropic: { type: "boolean", default: false }, "family-only": { type: "boolean", default: false }, "no-store": { type: "boolean", default: false }, "subscription-only": { type: "boolean", default: false },
-    persona: { type: "string" }, codex: { type: "boolean", default: false }, instructions: { type: "string" },
+    persona: { type: "string" }, codex: { type: "boolean", default: false }, instructions: { type: "string" }, planning: { type: "string" },
   },
 });
 // G1: --persona plans one first book from a made-up profile with production placement (P0 to P9), not the level sample.
@@ -98,6 +98,16 @@ if (values.days && (values.second || values.test)) throw new Error("--days is on
 if (values.instructions && (!values.persona || process.argv.some(a => a === "--levels" || a.startsWith("--levels=")))) throw new Error("--instructions needs --persona without --levels.");
 const bookInstructions = values.instructions ? workbookInstructions(JSON.parse(await readFile(values.instructions, "utf8"))) : null;
 if (values.instructions && !bookInstructions) throw new Error(`${values.instructions}: not a valid set of book instructions`);
+// --planning <file>: a run frame's frozen placement (workbook_run_frames.frame.planning.placement: grade, profile, report
+// and device signals, stored workbooks, book number, instructions), placed and planned again with this checkout's planner
+// through planNextWorkbook, as the workbook job does. It holds family data: keep the file and --out private. No names.
+type FrozenPlacement = Omit<Parameters<typeof planNextWorkbook>[0], "curriculum"> & { curriculum?: { key: string; version: string } };
+if (values.planning && (values.persona || values.instructions || values.second || values.test || values["family-only"] || !values["no-store"]
+  || process.argv.some(a => a === "--levels" || a.startsWith("--levels=")))) throw new Error("--planning makes one first book with --no-store, without --persona, --instructions or --levels.");
+const frozen: FrozenPlacement | null = values.planning ? JSON.parse(await readFile(values.planning, "utf8")) : null;
+if (frozen && (frozen.curriculum?.key !== undefined && frozen.curriculum.key !== "bc" || typeof frozen.grade !== "number" && typeof frozen.grade !== "string" || !Array.isArray(frozen.workbooks) || typeof frozen.number !== "number"))
+  throw new Error(`${values.planning}: not a frozen BC placement`);
+if (frozen?.instructions && !workbookInstructions(frozen.instructions)) throw new Error(`${values.planning}: its instructions are not valid`);
 // A local comparison can change only the data while it keeps the generator and plan inputs fixed.
 if (values.steps && !values["no-store"]) throw new Error("--steps requires --no-store");
 const source = values.steps ? parseStepProgressions(JSON.parse(await readFile(values.steps, "utf8"))) : null;
@@ -407,10 +417,10 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
   const childId = family?.children.get(level)?.id ?? randomUUID();
   const parentId = family?.parentId ?? randomUUID();
   const persona = values.persona as PersonaName | undefined;
-  const label = `${level}${persona ? `-${persona}` : kind === "first" ? "" : kind === "second" ? "-workbook-2" : "-test-workbook"}`;
+  const label = `${level}${frozen ? "-family" : persona ? `-${persona}` : kind === "first" ? "" : kind === "second" ? "-workbook-2" : "-test-workbook"}`;
   const input = samplePlanInput(BC, child, kind);
   const planStart = performance.now();
-  const planned = persona && !forcedLevel ? personaPlan(persona) : planWorkbook(persona ? personaProbe(persona, input) : input);
+  const planned = frozen ? frozenPlan(frozen) : persona && !forcedLevel ? personaPlan(persona) : planWorkbook(persona ? personaProbe(persona, input) : input);
   profile.plan = { ms: performance.now() - planStart, calls: 1, sheets: 0 };
   if (!planned.ok) throw new Error(`${label}: plan refused: ${planned.reason}`);
   // Reuse the previous sample's seed, so selection/layout changes keep identical requests reusable.
@@ -594,6 +604,12 @@ function personaProfile(persona: PersonaName) {
 function personaPlan(persona: PersonaName) {
   return planNextWorkbook({ curriculum: BC, grade: 4, profile: personaProfile(persona), workbooks: [], number: 1, instructions: bookInstructions });
 }
+/** A frozen family placement, placed and planned again with this checkout's curriculum and planner. */
+function frozenPlan(f: FrozenPlacement) {
+  const { curriculum: _version, ...placement } = f;
+  void _version;
+  return planNextWorkbook({ ...placement, curriculum: BC });
+}
 /**
  * A forced-level probe (--persona with --levels): the level's sample input with the persona's standards (early-sign
  * secure as developing, P5a) and its book signals, as the PR #523 review probes did. It keeps lower-level weak units in
@@ -617,7 +633,14 @@ if (bookInstructions && personaPlanned?.ok) {
   for (const s of personaPlanned.plan.newSteps) days.set(s.day, [...days.get(s.day) ?? [], `${s.unit}:${s.skill}#${s.step}`]);
   console.log(`  new steps: ${[...days].map(([d, steps]) => `D${d} ${steps.join(" ")}`).join(" | ")}`);
 }
-const jobs: { level: string; kind: SampleBookKind }[] = personaLevel ? [{ level: personaLevel, kind: "first" }] : [
+const frozenPlanned = frozen ? frozenPlan(frozen) : null;
+if (frozenPlanned && !frozenPlanned.ok) throw new Error(`frozen placement: plan refused: ${frozenPlanned.reason}`);
+if (frozen) {
+  if (frozen.curriculum?.version && frozen.curriculum.version !== curriculumVersion("bc")) console.log(`frozen placement: planned on curriculum ${frozen.curriculum.version}, replanned on ${curriculumVersion("bc")}`);
+  console.log(`frozen placement: placed at ${frozenPlanned!.levelId}`);
+  for (const o of frozenPlanned!.ok ? frozenPlanned!.plan.instructions?.outcomes ?? [] : []) console.log(`  instruction ${o.section} ${o.value}: ${o.applied ? "applied" : "not applied"}, ${o.note}`);
+}
+const jobs: { level: string; kind: SampleBookKind }[] = frozenPlanned ? [{ level: frozenPlanned.levelId!, kind: "first" }] : personaLevel ? [{ level: personaLevel, kind: "first" }] : [
   ...levels.map((level) => ({ level, kind: "first" as const })),
   ...list(values.second!).map((level) => ({ level, kind: "second" as const })),
   ...list(values.test!).map((level) => ({ level, kind: "test" as const })),

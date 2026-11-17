@@ -60,6 +60,7 @@ import type { ChildStandard } from "@/lib/child-profile";
 import type { QuestionRef } from "@/lib/question-package";
 import type { Curriculum, CurriculumKey, CurriculumLevel, Delivery, Range } from "@/lib/workbook-curriculum";
 import { sumTemplate, templateProblem } from "@/lib/workbook-step-items";
+import { isApplicationPractice } from "@/lib/workbook-curriculum/house-templates";
 import type { BookSignals } from "@/lib/workbook-signals";
 import type { InstructionOutcome, InstructionsTrace } from "@/lib/workbook-instructions";
 import type { WorkbookProgressDecision } from "./workbook-progress";
@@ -111,6 +112,8 @@ export interface PlanStep {
   pages: number;
   /** #489: the step has a sum two methods can work (Solve it two ways); absent: unknown, kept. */
   sums?: boolean;
+  /** Authored application task families (house-templates.ts); absent: none. A day asks each at most once. */
+  applicationFamilies?: number;
 }
 
 /** One skill of a level. */
@@ -171,7 +174,7 @@ export function planLevel(curriculum: Curriculum, levelId: string): PlanLevel | 
         id: s.id,
         delivery: s.delivery,
         pages: s.pages,
-        steps: (curriculum.skillSteps(s.id) ?? []).map((step) => ({ pages: step.pages, ...(step.templates?.length ? { sums: step.templates.some((t) => t.difficulty !== "hard" && !templateProblem(t, level.number) && sumTemplate(t)) } : {}) })),
+        steps: (curriculum.skillSteps(s.id) ?? []).map((step) => ({ pages: step.pages, ...(step.templates?.some(isApplicationPractice) ? { applicationFamilies: step.templates.filter(isApplicationPractice).length } : {}), ...(step.templates?.length ? { sums: step.templates.some((t) => t.difficulty !== "hard" && !templateProblem(t, level.number) && sumTemplate(t)) } : {}) })),
       })),
     })),
     fluency: fluencyFrom ? warmUp(fluencyFrom) : [],
@@ -232,6 +235,12 @@ export interface PlannedPart {
   extra?: boolean;
   /** The teaching purpose of this part; later practice applies the same skill in a different form. */
   learningStage?: "guided" | "independent" | "application";
+  /**
+   * An application part on a step with authored application families: its first this many items are application (the
+   * families still unused that day), the rest (all of them at 0) independent practice of the same step. Absent (a step
+   * with no families): every item is application practice from the ordinary non-easy pool.
+   */
+  applicationItems?: number;
   /** C3: G1 selects the hardest allowed templates, without adding an untaught step. */
   templateDifficulty?: "hard";
   /** Preferred secure standards, limited to the part's allowed steps. */
@@ -1177,6 +1186,21 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
     let fillAt = 0;
     let checkAt = 0;
     const practisedSteps = new Set<string>();
+    // Each application family at most once a day per step (handoff: explain, guided, independent, then applied; the
+    // same family on several pages is repetition). Beyond the families, the part practises the step independently.
+    const applicationUsed = new Map<string, number>();
+    const applicationStage = (ref: { skill: string; step: number } | null | undefined, key: string, items: number): Partial<PlannedPart> => {
+      const families = ref ? level.units.flatMap(u => u.skills).find(sk => sk.id === ref.skill)?.steps[ref.step - 1]?.applicationFamilies ?? 0 : 0;
+      // (A step with no authored families keeps the label: its application pool is the ordinary non-easy pool.)
+      if (!families) return { learningStage: "application" };
+      const used = applicationUsed.get(key) ?? 0;
+      const left = families - used;
+      // (Still a later page on the step, with its later page's count; its items practise the step independently.)
+      if (left <= 0) return { learningStage: "application", applicationItems: 0 };
+      applicationUsed.set(key, used + Math.min(left, items));
+      // (Always stated: a slot capacity adds later stays independent practice, so the day never passes its families.)
+      return { learningStage: "application", applicationItems: Math.min(left, items) };
+    };
     const pagesOut = dayShapes.map((shape, p): PlannedPage => {
       const out = shape.parts.map(({ kind: k, track }, idx): PlannedPart => {
         const t = track ?? "A";
@@ -1213,10 +1237,12 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
             const key = ref ? `${ref.skill}#${ref.step}` : t;
             const later = practisedSteps.has(key);
             practisedSteps.add(key);
-            if (shape.role === "practice-2") return unitPart(k, t, personal ? 10 : 12, { learningStage: later ? "application" : "independent" });
+            // Practice 2 is rows of short items, each row a little harder (DESIGN.md 7.1): its progression is the rows.
+            // Application tasks are sentences a row cannot hold; they go on a later Practice page and Word problems.
+            if (shape.role === "practice-2") return unitPart(k, t, personal ? 10 : 12, { learningStage: "independent" });
             // Teach the method once. A later page on the same step has independent application instead
             // of repeating Watch one and Getting started with another set of numbers.
-            if (later && !parentLed) return unitPart(k, t, 6, { learningStage: "application" });
+            if (later && !parentLed) return unitPart(k, t, 6, applicationStage(ref, key, 6));
             // A parent-led page shared with a New idea or with picture stories keeps its six-card budget.
             const items = parentLed && shape.role === "slot" && shape.parts.length > 1 ? 3
               : parentLed && shape.parts.some((x) => x.kind === "picture-stories") ? 5 : 8;

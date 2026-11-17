@@ -278,15 +278,15 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
         answer: "str(b)", slots: { x: "choices" },
         derived: { i: "x % 5", v: "x // 5 % 8",
           b: "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
-          guide: "'pencils per pencil case' if i == 0 else ('pages per picture book' if i == 1 else ('grapes per small bunch' if i == 2 else ('books per classroom shelf' if i == 3 else 'children per class')))",
-          ask: "'About how many pencils fit in one pencil case?' if i == 0 else ('About how many pages are in one picture book?' if i == 1 else ('About how many grapes are in one small bunch?' if i == 2 else ('About how many books fit on one classroom shelf?' if i == 3 else 'About how many children are in one class?')))" } }),
+          guide: "'pencils per pencil case' if i == 0 else ('pages per storybook' if i == 1 else ('grapes per small bunch' if i == 2 else ('books per classroom shelf' if i == 3 else 'children per class')))",
+          ask: "'About how many pencils fit in one pencil case?' if i == 0 else ('About how many pages are in one storybook?' if i == 1 else ('About how many grapes are in one small bunch?' if i == 2 else ('About how many books fit on one classroom shelf?' if i == 3 else 'About how many children are in one class?')))" } }),
     ],
     // The printed guide fixes this task's assumption. The child chooses its matching estimate, then scales it.
     // The choices rotate, so the sensible one is not always first.
     templates: [
       hard("bare", "Use about {b} children per class as a guide. Which is a sensible estimate for the number of children in one class: {p}, {q} or {r}? Use that estimate for each of two classes. About how many children are in the two classes?", "2 * b", { x: "choices", pos: "template_pos" }, { b: "20 + x % 8", t10: "b * 10", h100: "b * 100", p: "b if pos == 0 else (h100 if pos == 1 else t10)", q: "t10 if pos == 0 else (b if pos == 1 else h100)", r: "h100 if pos == 0 else (t10 if pos == 1 else b)" }, "h100 <= 3000"),
       hard("missing", "Use about {b} books per classroom shelf as a guide. Which is a sensible estimate for the number of books on one classroom shelf: {p}, {q} or {r}? Use that estimate for each of 3 shelves. About how many books are on the 3 shelves?", "3 * b", { x: "choices", pos: "template_pos" }, { b: "24 + 2 * (x % 4)", t10: "b * 10", h100: "b * 100", p: "b if pos == 0 else (h100 if pos == 1 else t10)", q: "t10 if pos == 0 else (b if pos == 1 else h100)", r: "h100 if pos == 0 else (t10 if pos == 1 else b)" }, "h100 <= 3000"),
-      hard("story", "Use about {b} pages per short picture book as a guide. {name} reads 4 short picture books. Which is a sensible estimate for the number of pages in each book: {p}, {q} or {r}? Use that estimate to find about how many pages {name} reads.", "4 * b", { x: "choices", pos: "template_pos" }, { b: "20 + 2 * (x % 6)", t10: "b * 10", h100: "b * 100", p: "b if pos == 0 else (h100 if pos == 1 else t10)", q: "t10 if pos == 0 else (b if pos == 1 else h100)", r: "h100 if pos == 0 else (t10 if pos == 1 else b)" }, "h100 <= 3000"),
+      hard("story", "Use about {b} pages per short storybook as a guide. {name} reads 4 short storybooks. Which is a sensible estimate for the number of pages in each book: {p}, {q} or {r}? Use that estimate to find about how many pages {name} reads.", "4 * b", { x: "choices", pos: "template_pos" }, { b: "20 + 2 * (x % 6)", t10: "b * 10", h100: "b * 100", p: "b if pos == 0 else (h100 if pos == 1 else t10)", q: "t10 if pos == 0 else (b if pos == 1 else h100)", r: "h100 if pos == 0 else (t10 if pos == 1 else b)" }, "h100 <= 3000"),
     ],
   },
   {

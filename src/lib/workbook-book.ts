@@ -352,11 +352,11 @@ function estimateMethod(src: TemplateSource, text: string, step: number): string
   if (step === 3) {
     // A context label alone cannot establish a real container's capacity. Source authors must
     // print the assumption; we never infer it from b, the distractor, or the smallest choice.
-    const anchor = plain.match(/Use about (\d+) (pencils per pencil case|pages per (?:short )?picture book|grapes per small bunch|books per (?:classroom )?shelf|children per class) as a guide\./i);
+    const anchor = plain.match(/Use about (\d+) (pencils per pencil case|pages per (?:short )?(?:picture book|storybook)|grapes per small bunch|books per (?:classroom )?shelf|children per class) as a guide\./i);
     if (!anchor || Number(anchor[1]) !== v.b || !Number.isInteger(v.b) || v.b <= 0) return null;
     const context = plain.replace(anchor[0], "");
     const sameContext = /^pencils/i.test(anchor[2]) ? /pencils.*pencil case/i.test(context)
-      : /^pages/i.test(anchor[2]) ? /pages.*picture book|picture books.*pages/i.test(context)
+      : /^pages/i.test(anchor[2]) ? /pages.*(?:picture book|storybook)|(?:picture books|storybooks).*pages/i.test(context)
       : /^grapes/i.test(anchor[2]) ? /grapes.*small bunch/i.test(context)
       : /^books/i.test(anchor[2]) ? /books.*shelf|books.*shelves/i.test(context)
       : /children.*class|classes.*children/i.test(context);
@@ -364,7 +364,7 @@ function estimateMethod(src: TemplateSource, text: string, step: number): string
     const times = src.answer.match(/^([234]) \* b$/);
     if (times) {
       const count = Number(times[1]);
-      const groups = count === 2 ? /(?:two|2) classes/i : count === 3 ? /3 shelves/i : /4 short picture books/i;
+      const groups = count === 2 ? /(?:two|2) classes/i : count === 3 ? /3 shelves/i : /4 short (?:picture books|storybooks)/i;
       if (!groups.test(plain)) return null;
       return numeric(count * v.b, `Use the stated guide of about ${fmt(v.b)} for each group. ${count} × ${fmt(v.b)} = ${fmt(count * v.b)}, so estimate about ${fmt(count * v.b)} in all.`);
     }

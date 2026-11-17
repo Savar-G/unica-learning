@@ -69,6 +69,9 @@ describe("the step progression (#489)", () => {
 });
 
 // Reviewed eight-page plans across all bands. Hash the complete serialized result, including property order.
+// Updated 2026-11-17 after a path-by-path diff against 32c54d09: eight pages a day at U1, U19 and U27, learning
+// stages, Watch one taught once, the per-day application cap (applicationItems) and the counts these move. No page made
+// optional, no hints or day count changed. Tool and record: the overnight brief "plan snapshot hash".
 const GOLDEN: Record<string, string> = {
   "U1-first": "bdb813ebb6b7646592e072762965dc3f88fd94e097e2aa5ff50bb6000858aad9",
   "U1-second": "f84df7bf6a4dbe7ef396f47011d409fd8d425805e9d1f59a490fd73ba3655dfc",
@@ -76,18 +79,18 @@ const GOLDEN: Record<string, string> = {
   "U4-first": "6f45f29400af9b7784f38c05b8be8dad80e324461f207319f7fc5cfa603603c1",
   "U4-second": "08ef9250caa7ead62482ba1b3062c1bfee35410d9b3b142864d270b1f33afd06",
   "U4-test": "a933145b0600deb539194f048209d4777f217e96abd7a2c4fb32b3a541e30f30",
-  "U10-first": "c9bba61507c4cb58aae3c90a4b500c1a32ad3a690dd651837d9571800f24f25d",
-  "U10-second": "da2046e1703d677b51f97b4b7e292078dd4cf1ae6af1045a669f4cadb95ad013",
+  "U10-first": "74b26e56cc409d9915b8a4fb16735d49551693a965047dec5b91c3f191eca5d7",
+  "U10-second": "ff5f33583b042227709b0b1c6630dd2ce0dd8f5833f6c67d4d5cf4e7c4f74277",
   "U10-test": "35093b3429519eb3bae8f690a5e56382dafe9740e8b273f45f4c41cf45416069",
   "U16-first": "b6f594b2583841fc66f98c79c5c5f68a2dc24a944ae2e353c17c8ec78cc88aeb",
   "U16-second": "1c7a336e988290bc0a5e09684d3f881aaceb05d9cb373eadcd93380a659b0955",
   "U16-test": "3003a3de23131abb4c8f1fe1dc75bbd5f9255e9f708356ca0e0741bdd055711d",
-  "U19-first": "f4ce4bcb7e6fcb62a65b61a24baad3a7cea7cb745a27e5ef1e21ecb30a686353",
-  "U19-second": "d02e06af660a88c367ddeebe37cd2a7de534f752dd5c73d48b11069616f41155",
-  "U19-test": "6a4398f3f58c0095751a3135e142497ac86b19171b31ccfb8bae4c3aecc4dc90",
-  "U27-first": "d5327ba30c3f26c7a174a4bb7f7473229b180561975c74677c6975ff5d73cee8",
-  "U27-second": "e7298c99acb53f86602cc33f5a111d76771c62647a8d4500a12f6969408c2fd7",
-  "U27-test": "ee1cefefcc5ff264a415959ae01d126309bcf6d41a7af7d46e5f0a82b6a50915",
+  "U19-first": "b18e2f35b3aee7c38b58c74bd79081d2542c9bd9fe8757381ece7c5f14ac5a7c",
+  "U19-second": "4b6a838c18164e113421e1fdddf9253c8ada06375bd9672d8ecc9d397281e77c",
+  "U19-test": "512efc6a70befceb34c9cf026a5cb9747dd61e2b886637401b428d44e5d83e00",
+  "U27-first": "55790aad0d1b60b0564f1c35d1fe6930c821afc9e055eacb615a61a10793a1be",
+  "U27-second": "db90fc679ad20e51bd3b15fb07473cbede958eba948c387d3e29b19e0ec8548a",
+  "U27-test": "0c57ec11fed49abc4c21fa4e079d6b754d955c5b2a04cdfcf77423dc0a7df4fb",
 };
 
 const personalInput = (level = "U16", persona: "ahead" | "catch-up" | "on-level" | "rushed" = "ahead"): PlanInput & { personal: BookSignals } => {

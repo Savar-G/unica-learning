@@ -280,7 +280,8 @@ describe("v2 data and answer contracts", () => {
   ] as const)("preserves %s money and units in the number check, solve check and key display", async (skill, stepNumber, index, level, answerPattern) => {
     const step = BC.skillSteps(skill)!.find(s => s.number === stepNumber)!;
     const curriculum = { ...BC, skillSteps: (id: string) => id === skill ? [{ ...step, templates: [step.templates![index]] }] : BC.skillSteps(id) };
-    const filled = stepTemplateItem({ curriculum, skill, step: stepNumber, place: "on-your-own", level, day: 1, ordinal: 0, seed: 7, attempt: 0 })!;
+    // Guided practice, where an easy form like the bank record prints.
+    const filled = stepTemplateItem({ curriculum, skill, step: stepNumber, place: "on-your-own", learningStage: "guided", level, day: 1, ordinal: 0, seed: 7, attempt: 0 })!;
     expect(filled).not.toBeNull();
     expect(filled.ref.answer).toMatch(answerPattern);
     const built = buildStepItem(filled.ref, filled.text, { id: "q", workbookId: "w", page: 2, question: 1, level, skills: [skill] }, "ai");

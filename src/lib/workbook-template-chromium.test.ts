@@ -8,7 +8,8 @@ import { WARM_UP_INSTRUCTION } from "@/lib/workbook-page-instructions";
 import { sampleBook } from "@/lib/workbook-sample-book";
 import { titleProblem, UNIT_TITLES } from "@/lib/workbook-titles";
 import { SKILL_TITLES } from "@/lib/workbook-skill-titles";
-import { bandOf, CARD_LINES, workbookTemplate } from "@/lib/workbook-template";
+import { bandOf, CARD_LINES, pagePlan, workbookTemplate, workMinimum } from "@/lib/workbook-template";
+import { taskIdentity } from "@/lib/workbook-task-identity";
 import { bcStepProgressions } from "@/lib/workbook-curriculum";
 import { buildStepItem, stepTemplateItem } from "@/lib/workbook-step-items";
 import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
@@ -80,21 +81,21 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
     const source = draft.pages.find(page => page.type === "challenge")!;
     if (source.content?.kind !== "day") throw new Error("Expected Challenge day page");
     const curriculum = bcStepProgressions();
-    // This checks three printed tasks; source-template diversity is tested by the curriculum suite.
-    const tasks = new Map<string, NonNullable<ReturnType<typeof stepTemplateItem>>>();
+    // Three different printed tasks: the same template with its choices reordered is one task (taskIdentity), not two.
+    // Source-template diversity is tested by the curriculum suite.
+    const tasks = new Map<string, NonNullable<ReturnType<typeof buildStepItem>["package"]>>();
     for (let attempt = 0; attempt < 32 && tasks.size < 3; attempt++) {
       const item = stepTemplateItem({ curriculum, skill: "3.1-estimate-quantity", step: 3, level: 10,
         day: 8, place: "challenge", seed: 19 + Math.floor(attempt / 3), ordinal: attempt % 3, attempt });
-      if (item) tasks.set(item.text, item);
-    }
-    expect(tasks.size).toBe(3);
-    const questions = [...tasks.values()].map((item, i) => {
-      const built = buildStepItem(item.ref, item.text, { id: `estimate-challenge-${i}`, workbookId: draft.id,
-        page: source.number, question: i + 1, level: 10, skills: [item.ref.skill] }, "code");
+      if (!item) continue;
+      const built = buildStepItem(item.ref, item.text, { id: `estimate-challenge-${tasks.size}`, workbookId: draft.id,
+        page: source.number, question: tasks.size + 1, level: 10, skills: [item.ref.skill] }, "code");
       if (!built.package) throw new Error(`No checked estimation task: ${item.text}`);
       expect(built.check.status).toBe("checked");
-      return { number: i + 1, package: built.package };
-    });
+      if (!tasks.has(taskIdentity(built.package))) tasks.set(taskIdentity(built.package), built.package);
+    }
+    expect(tasks.size).toBe(3);
+    const questions = [...tasks.values()].map((pkg, i) => ({ number: i + 1, package: pkg }));
     const page: DraftPage = { ...source, questions, content: { ...source.content, level: 10, day: 8,
       consistentLayout: true, pages: 8, title: "Challenge", subtitle: "Write your answers in the boxes.",
       blocks: [{ slot: "challenge", items: [1, 2, 3] }] } };
@@ -107,9 +108,16 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
       expect(prompt.width).toBeGreaterThan(500);
       expect(Math.round(prompt.height / (bandOf(10).body * 1.4))).toBeLessThanOrEqual(CARD_LINES);
       expect(answer.y).toBeGreaterThanOrEqual(prompt.y + prompt.height);
-      const work = measured.find(item => item.name === `workspace-${question.number}` || item.name === `region-${question.number}-working`);
-      expect(work?.visible).toBe(true);
+      // Each estimation task asks for working: its package declares one work region, printed as region-<n>-<id>.
+      const workRegions = question.package.item?.regions.filter(region => region.kind === "work") ?? [];
+      expect(workRegions, question.package.text).toHaveLength(1);
+      const work = byName.get(`region-${question.number}-${workRegions[0].id}`);
+      expect(work?.visible, question.package.text).toBe(true);
+      // Below the full-width prompt, beside (not over) the answer, with the band's minimum height and 240 px of width.
       expect(work!.y).toBeGreaterThanOrEqual(prompt.y + prompt.height);
+      expect(work!.x).toBeGreaterThanOrEqual(answer.x + answer.width);
+      expect(work!.height).toBeGreaterThanOrEqual(workMinimum(10) - 0.5);
+      expect(work!.width).toBeGreaterThanOrEqual(239.5);
     }
   }, 30_000);
 
@@ -348,7 +356,7 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
 
   it("fits the longest title code writes on one line on every day page type, and fails a title too long for one (D-201)", async () => {
     // The separate catalogue print checks every skill and unit title. Here the longest string also visits every page type.
-    const titles = [...Object.values(SKILL_TITLES), ...Object.values(UNIT_TITLES), "Patterns and equations", "Fractions and decimals", "Shapes and measuring", "Number stories to 1000", "Review and Friday 5", "Show what you know", "Level U30 test"];
+    const titles = [...Object.values(SKILL_TITLES), ...Object.values(UNIT_TITLES), "Patterns and equations", "Fractions and decimals", "Shapes and measuring", "Number stories to 1000", "Practise and check", "Five-skill check", "Word problems", "Show what you know", "Level U30 test"];
     const longest = titles.reduce((a, b) => (b.length > a.length ? b : a));
     expect(titleProblem(longest)).toBeNull();
     // The title goes in when the book is planned, as the generator's will.
@@ -417,6 +425,33 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
       }
     }
   }, 120_000);
+
+  it.each(["U10", "U16"])("places Show what you know answers under the prompt on rows with working, and beside it otherwise, in %s", async level => {
+    const draft = book(level, 1);
+    const source = draft.pages.find(p => p.content?.kind === "day" && p.content.blocks.some(b => b.slot === "show-what-you-know"));
+    if (!source || source.content?.kind !== "day") throw new Error("no Show what you know page");
+    // (The sample page is not capacity-planned for the measured layout: four of its rows, as capacity would keep.)
+    const questions = source.questions.slice(0, 4);
+    const page: DraftPage = { ...source, questions, content: { ...source.content, consistentLayout: true,
+      blocks: source.content.blocks.map(b => b.slot === "show-what-you-know" ? { ...b, items: questions.map(q => q.number) } : b) } };
+    const plan = pagePlan(page)!;
+    const { measured } = await printPage(page, draft);
+    const byName = new Map(measured.map(m => [m.name, m]));
+    expect(template.fit!(page, byName, draft)).toEqual([]);
+    let below = 0;
+    for (const [n, at] of plan.beside) {
+      const prompt = byName.get(`question-${n}-content`)!;
+      const work = measured.some(m => (m.name === `workspace-${n}` || m.name.startsWith(`region-${n}-`) && /work/.test(m.name)) && m.visible);
+      // A row prints its answers under the prompt exactly when it has a work area.
+      expect(at.align, `question ${n}`).toBe(work ? "below" : "top");
+      if (at.align === "below") {
+        below++;
+        for (const name of at.regions) expect(byName.get(name)!.y).toBeGreaterThanOrEqual(prompt.y + prompt.height - 1);
+      }
+    }
+    expect(plan.beside.size).toBeGreaterThan(0);
+    void below;
+  }, 60_000);
 
   it("fails a cover whose title runs to a third line, naming the slot", async () => {
     const draft = book("U12", 7);

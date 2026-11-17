@@ -407,6 +407,10 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
   const numberAnswer = numberAnswerOf;
   const printable = step.templates.map((t, index) => ({ t: templateAtLevel(r.level, step, index, t), index })).filter(({ t, index }) => !templateProblem(t, r.level)
     && (r.place === "spot-the-error" || !isSpotOnly(step.templates![index]))
+    // Application tasks are practice: never a worked example, Spot the error, two ways, review, Challenge or test (the
+    // staged filter below keeps them out of independent practice too). A Finish these block may take one when its step
+    // has few ordinary forms (U19 LCM step 2), as before.
+    && (!isApplicationPractice(step.templates![index]) || ["on-your-own", "practice-row", "unit-b-practice", "finish-these"].includes(r.place ?? ""))
     && (r.place !== "solve-it-two-ways" || sumTemplate(t)) && (r.place !== "spot-the-error" || numberAnswer(t))
     // (Code's two-step cards are the Challenge's last fill only; Unica's Challenge templates the Challenge's and Show what
     // you know's, house-templates.ts.)

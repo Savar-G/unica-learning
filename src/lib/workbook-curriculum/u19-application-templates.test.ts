@@ -110,13 +110,13 @@ describe("U19 application practice", () => {
 
   it.each(U19_APPLICATION_TEMPLATES)("builds checked printable contracts for every $skill step $step form", entry => {
     for (const template of entry.templates) {
-      // Exercise the public template and package builders with one real authored form.
-      // Worked-example selection avoids depending on the parent's application-pool wiring.
+      // Exercise the public template and package builders with one real authored form, through the application
+      // practice slot it is authored for (application tasks never print as worked examples).
       const curriculum = curriculumFromData({ ...BC_CURRICULUM, steps: BC_CURRICULUM.steps.map(step =>
         step.skill === entry.skill && step.number === entry.step ? { ...step, templates: [template] } : step) });
       for (let seed = 1; seed <= 24; seed++) {
-        const filled = stepTemplateItem({ curriculum, skill: entry.skill, step: entry.step, place: "worked-example",
-          level: 19, day: 1, seed, attempt: 0, ordinal: 0 });
+        const filled = stepTemplateItem({ curriculum, skill: entry.skill, step: entry.step, place: "on-your-own",
+          learningStage: "application", level: 19, day: 1, seed, attempt: 0, ordinal: 0 });
         expect(filled, template.text).not.toBeNull();
         if (!filled) continue;
         const result = buildStepItem(filled.ref, filled.text, { id: `application-${seed}`, workbookId: "application-proof",

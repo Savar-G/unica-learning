@@ -1046,6 +1046,12 @@ function regionsSplit(q: DraftQuestion, o: RegionOpts): { inline: string; full: 
   return { inline, full };
 }
 
+/** Whether a full-width task row prints a work area (regionsSplit's `full` part), so its answers sit under the prompt. */
+function taskRowHasWork(q: DraftQuestion, band: Band): boolean {
+  const names = regionNames(q);
+  return names.some((x) => !inRow(x.region)) || (!!band.consistentLayout && !names.some((x) => x.region.kind === "work") && questionWorkSpace(q.package) > 0);
+}
+
 /** The question's text, marked as its content. */
 /** A word with a hyphen ("ten-frame") never breaks at it: the line breaks before the word. */
 const keepHyphens = (html: string) => html.replace(/\b([A-Za-z]+(?:-[A-Za-z]+)+)\b/g, `<span style="white-space:nowrap">$1</span>`);
@@ -1418,8 +1424,9 @@ export interface BesideAnswers {
   /** The measured names of the regions, by their role (never by where they printed). */
   regions: string[];
   /** "top": each box's top at the first line's top, each circle target on its baseline; "centre": a one-line fact's box
-   * centred on it. */
-  align: "top" | "centre";
+   * centred on it; "below": a full-width task row with working prints its answers under the whole prompt, inside the
+   * column (DESIGN.md, Show what you know and level test cards). */
+  align: "top" | "centre" | "below";
   /** CSS pixels from the question's measured right edge to its column's edge (a card's border and padding). */
   inset: number;
 }
@@ -1524,7 +1531,8 @@ export function pagePlan(page: DraftPage): PagePlan | null {
         if (parent) { cards(); break; }
         // Full-width task rows, matching blockHtml. There is no half-card or special final row.
         rows.push(...items.map(n => [n]));
-        items.forEach((n) => answers(n, "top", 15));
+        // (A task row is padded 12 px inside its 1 px border. A row with working puts its answers under the prompt.)
+        items.forEach((n) => answers(n, taskRowHasWork(byNumber.get(n)!, band) ? "below" : "top", 13));
         break;
       }
       case "challenge":

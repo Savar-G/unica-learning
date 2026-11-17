@@ -21,7 +21,7 @@ export const U19_APPLICATION_TEMPLATES: readonly ApplicationTemplateEntry[] = [
         answer: "(10 - (prefix * 10) % 10) % 10", slots: { base: "template_n0" },
         derived: { prefix: "base // 10" }, check: "prefix >= 1" },
       { format: "true-false", difficulty: "medium",
-        text: "There are {n} stickers in complete packs of 5. One sticker is removed. True or false: the {left} remaining stickers can be split into two equal groups.",
+        text: "A fair prints {n} tickets in complete rolls of 5. One ticket is torn off and lost. True or false: the {left} remaining tickets can be split into two equal groups.",
         answer: "'true' if left % 2 == 0 else 'false'", slots: { base: "template_n0", f: "template_f" },
         derived: { n: "base - base % 10 + 5 * f", left: "n - 1" }, check: "n >= 10" },
       { format: "bare", difficulty: "medium",

@@ -109,7 +109,8 @@ describe("audited source conventions", () => {
     if (!bc) throw new Error("Missing BC curriculum");
     const curriculum = { ...bc, skillSteps: (id: string) => id === skill ? [{ ...s, templates: [t] }] : bc.skillSteps(id) };
     for (let seed = 1; seed <= 12; seed++) {
-      const item = stepTemplateItem({ curriculum, skill, step: number, level, place: "on-your-own", day: 1, ordinal: 0, seed, attempt: 0 });
+      // Guided practice: these easy comparison forms print before independent work drops easy forms.
+      const item = stepTemplateItem({ curriculum, skill, step: number, level, place: "on-your-own", learningStage: "guided", day: 1, ordinal: 0, seed, attempt: 0 });
       expect(item).not.toBeNull();
       if (!item) throw new Error("Missing comparison item");
       expect(item.text).toContain("Write the greater number:");

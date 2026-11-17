@@ -18,10 +18,10 @@ function groupedEstimates(maximum: number): StepTemplate[] {
       answer: "'true' if n * g <= capacity else 'false'", slots: { n: "groups", g: "group_size", f: "template_flip" },
       derived: { capacity: "(n + 1 - 2 * f) * g" }, check: `capacity <= ${maximum}` },
     { format: "choose", difficulty: "medium",
-      text: "For {n} equal trays, estimate about {g} seeds per tray. Which calculation estimates all the seeds? A) {oa}  B) {ob}. Write A or B.",
+      text: "Use about {g} seeds per tray for {n} trays. Which estimates all the seeds? A) {oa}  B) {ob}",
       answer: "'A' if f == 0 else 'B'", slots: { n: "groups", g: "group_size", f: "template_flip" },
-      derived: { product: "str(n) + ' × ' + str(g)", sum: "str(n) + ' + ' + str(g)",
-        oa: "product if f == 0 else sum", ob: "sum if f == 0 else product" } },
+      derived: { product: "str(n) + ' × ' + str(g)", addition: "str(n) + ' + ' + str(g)",
+        oa: "product if f == 0 else addition", ob: "addition if f == 0 else product" } },
   ];
 }
 

@@ -121,13 +121,20 @@ function reviewCheckFor(slot: Slot) {
   return null;
 }
 
+/** A slot's teaching stage: an application part past its day's application families practises independently (plan). */
+function slotStage(slot: Pick<Slot, "id" | "part">): PlannedPart["learningStage"] {
+  const { learningStage, applicationItems } = slot.part;
+  if (learningStage !== "application" || applicationItems === undefined) return learningStage;
+  return (Number(slot.id.split(".")[1]) || 1) <= applicationItems ? "application" : "independent";
+}
+
 /** The slot's own step, or a step its review part draws from. Later attempts can borrow a taught step. */
 function slotStep(input: GenerateInput, slot: Slot, attempt: number, level: number, day = 0, ownPractice = false): { skill: string; step: number } | null {
   const part = slot.part;
   if (part.step) {
     // Teaching and error analysis must demonstrate this exact step, including late retries.
     if ((!!slot.place && PANEL_SLOTS.includes(slot.place)) || slot.place === "spot-the-error") return { skill: part.step.skill, step: part.step.step };
-    if (ownPractice || part.learningStage === "application" && ["on-your-own", "practice-row", "unit-b-practice"].includes(slot.place ?? "")
+    if (ownPractice || slotStage(slot) === "application" && ["on-your-own", "practice-row", "unit-b-practice"].includes(slot.place ?? "")
       && stepOf(input.curriculum, part.step.skill, part.step.step)?.templates?.some(isApplicationPractice))
       return { skill: part.step.skill, step: part.step.step };
     if (slot.place === "solve-it-two-ways") {
@@ -238,7 +245,7 @@ function templateContractFor(input: GenerateInput, w: PageWork, slot: Slot, atte
   const fill = stepTemplateItem({
     curriculum: input.curriculum, skill: at.skill, step: at.step, place: panel ? "worked-example" : slot.place, level, day: difficultyDay(input.plan, w.day),
     seed: hashOf(`${input.workbookId}:${w.number}:${slot.id}`) % 1_000_000_007, attempt, ordinal, usedOnPage: used, room,
-    learningStage: panel ? undefined : slot.part.learningStage,
+    learningStage: panel ? undefined : slotStage(slot),
     // The writer's unknown key reserves the wider box. A checked template budgets for its actual key.
     ...(level >= FOUR_DIGIT_LEVEL && place ? { roomForAnswer: (answer: string) =>
       textLimit(textRoom(place, level, input.plan.days.find(d => d.day === w.day)?.pages.length ?? 8, true, templateAnswerValue(answer))) } : {}), avoid: input.book?.child || null,
@@ -1291,7 +1298,13 @@ function planBook(input: GenerateInput, work: PageWork[]) {
           if (!limit) return fills.sort((a, b) => (shapeUse.get(shapeOf(a.said)) ?? 0) - (shapeUse.get(shapeOf(b.said)) ?? 0))[0] ?? null;
           return fills[0] ?? null;
         };
-        const chosen = pick(pair, thingHere!) ?? pick(pair, thingHere!, null, false);
+        let chosen = pick(pair, thingHere!) ?? pick(pair, thingHere!, null, false);
+        // Every unused wording of the slot's numbers was said earlier in the book (a late day of a long book): its spare
+        // numbers become the slot's own, so the slot still has a planned wording and nothing repeats.
+        if (!chosen && spare) {
+          const alternative = pick(spare, thingHere!) ?? pick(spare, thingHere!, null, false);
+          if (alternative) { chosen = alternative; pair = spare; spare = null; }
+        }
         if (chosen) {
           say = chosen.said;
           if (slot.aim && chosen.kind !== slot.aim.kind) slot.aim = { ...slot.aim, kind: chosen.kind, orElse: [slot.aim.kind, ...slot.aim.orElse.filter((k) => k !== chosen.kind)] };
@@ -1621,7 +1634,7 @@ const panelSlot = (w: PageWork, p: Panel): Slot => ({ id: p.id,
 /** Expected teaching steps survive storage, so edits and the final book check use the same admission rule. */
 function expectedSlots(input: GenerateInput, w: PageWork): NonNullable<GeneratedPage["expected"]> {
   return [...w.slots, ...w.panels.map(p => panelSlot(w, p))]
-    .map(s => ({ slot: s.id, part: s.part.kind, place: s.place, ...(s.part.learningStage === "application" && s.part.step
+    .map(s => ({ slot: s.id, part: s.part.kind, place: s.place, ...(slotStage(s) === "application" && s.part.step
       && ["on-your-own", "practice-row", "unit-b-practice"].includes(s.place ?? "")
       && stepOf(input.curriculum, s.part.step.skill, s.part.step.step)?.templates?.some(isApplicationPractice)
         ? { application: true as const } : {}), ...slotSteps(input, s, w.day) }));
@@ -3446,7 +3459,10 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
     const review = (w: PageWork) => w.page.type === "remember-these" || w.page.type === "remember-these-mixed-set";
     const firstOfDay = new Map<number, number>();
     work.forEach((w, i) => { if (!firstOfDay.has(w.day)) firstOfDay.set(w.day, i); });
-    const order = work.map((w, i) => ({ w, i })).sort((a, b) => firstOfDay.get(a.w.day)! - firstOfDay.get(b.w.day)! || Number(review(b.w)) - Number(review(a.w)) || a.i - b.i).map(x => x.w);
+    // (A day over its time limit gives back its warm-up fill first, down to 8 facts, so a review grid keeps its complete
+    // rows: the U19 custom Book 1's Day 1 at its 25-minute family target lost a review row before its warm-up shrank.)
+    const warmUp = (w: PageWork) => w.page.type === "warm-up";
+    const order = work.map((w, i) => ({ w, i })).sort((a, b) => firstOfDay.get(a.w.day)! - firstOfDay.get(b.w.day)! || Number(warmUp(b.w)) - Number(warmUp(a.w)) || Number(review(b.w)) - Number(review(a.w)) || a.i - b.i).map(x => x.w);
     for (const w of order) {
       // A prior physical-fit result does not establish the page's required own-step coverage.
       if (w.page.capacityChecked && !lacksOwnPractice(input, w)) continue;

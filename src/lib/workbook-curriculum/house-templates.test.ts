@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { BC_CURRICULUM, bcStepProgressions } from "@/lib/workbook-curriculum";
-import { HOUSE_TEMPLATES, isChallengeOnly, isTwoStep, withHouseTemplates } from "./house-templates";
+import { HOUSE_TEMPLATES, isApplicationPractice, isChallengeOnly, isTwoStep, withHouseTemplates } from "./house-templates";
+import { U10_APPLICATION_TEMPLATES } from "./u10-application-templates";
+import { U19_APPLICATION_TEMPLATES } from "./u19-application-templates";
 import { stepFieldProblems } from "./step-source";
 import { prepareTemplate, seededRandom } from "./template";
-import { buildStepItem, challengeTemplateCount, choicesFor, sequenceOf, stepRangeProblem, stepTemplateItem } from "@/lib/workbook-step-items";
+import { buildStepItem, challengeTemplateCount, choicesFor, sequenceOf, stepRangeProblem, stepTemplateItem, templateProblem } from "@/lib/workbook-step-items";
 import { takeAwayProblem } from "@/lib/workbook-wording";
 
 describe("Unica Challenge templates", () => {
@@ -17,9 +19,21 @@ describe("Unica Challenge templates", () => {
       expect(step.name).toBe(h.name);
       const own = BC_CURRICULUM.steps.find((s) => s.skill === h.skill && s.number === h.step)!.templates ?? [];
       expect(step.templates!.slice(0, own.length)).toEqual(own);
-      expect(step.templates!.slice(own.length)).toEqual([...(h.practice ?? []), ...h.templates]);
+      // Later application forms (U10/U19) follow the house templates of the same step, in authored order.
+      const application = [...U10_APPLICATION_TEMPLATES, ...U19_APPLICATION_TEMPLATES]
+        .find((entry) => entry.skill === h.skill && entry.step === h.step)?.templates ?? [];
+      expect(step.templates!.slice(own.length)).toEqual([...(h.practice ?? []), ...h.templates, ...application]);
+      for (const t of application) expect(isApplicationPractice(step.templates!.find((x) => x.text === t.text)!)).toBe(true);
       for (const t of h.practice ?? []) expect(isChallengeOnly(t)).toBe(false);
       if (!h.stories) for (const t of h.templates) expect(isChallengeOnly(t)).toBe(true);
+    }
+  });
+  it("prints every authored Challenge and practice form at its level (no silently refused wording)", () => {
+    // A form the generator refuses (a "picture" it cannot draw, a rejected phrase) leaves the Challenge a card short.
+    for (const h of HOUSE_TEMPLATES) {
+      const level = c.levelOfSkill(h.skill)!.number;
+      for (const t of [...(h.practice ?? []), ...h.templates]) expect(templateProblem(t, level), `${h.skill}#${h.step}: ${t.text}`).toBeNull();
+      if (!h.stories) expect(challengeTemplateCount(c, h.skill, h.step, level), `${h.skill}#${h.step}`).toBeGreaterThanOrEqual(Math.min(3, h.templates.length));
     }
   });
   it("refuse a renamed or missing step", () => {
@@ -399,7 +413,7 @@ describe("child-readable Challenge tasks", () => {
       const item = prepareTemplate(step, t, c.contexts).fill(seededRandom(1));
       expect(item.text).toContain("Use that estimate");
       expect(Number(item.answer)).toBe(Number(item.values.b) * (i + 2));
-      if (i === 2) expect(item.text).toContain("short picture books");
+      if (i === 2) expect(item.text).toContain("short storybooks");
     }
     const boxes = HOUSE_TEMPLATES.find(h => h.skill === "3.1-estimate-quantity" && h.step === 2)!;
     const story = prepareTemplate(c.skillSteps(boxes.skill)![1], boxes.templates[2], c.contexts).fill(seededRandom(1));
