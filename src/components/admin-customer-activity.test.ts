@@ -38,3 +38,17 @@ it("loads an explicitly selected old book even when no child summary is on this 
   expect(html).toContain("1 days fully marked"); expect(html).not.toContain("Book progress unavailable");
   expect(html).not.toContain("Needs attention:");
 });
+
+it.each([0, 19, 20])("keeps exactly one selected Book option at loaded position %s", async position => {
+  const books = Array.from({ length: 21 }, (_, n) => ({ id: id(100 + n), number: 21 - n, status: "shipped", delivered: null, firstScan: null, receipts: 0, scannedPages: 0, repeatPhotos: 0, contractAvailable: false }));
+  const child = { id: id(4), parent: id(2), name: "Child", family: "Family", test: false, plan: null, assessment: null, lastWork: null, lastVisit: null, zone: "America/Vancouver", books,
+    maya: { sessions: 0, ended: 0, withWork: 0, solved: 0, technical: 0, noOutcome: 0, seconds: null, unknownDuration: 0 } };
+  fake.load.mockResolvedValue({ children: { data: [child], error: false }, history: { data: [], error: false }, metrics: { data: null, error: true } });
+  const selected = books[position];
+  fake.book.mockResolvedValue({ ...selected, child: child.id, parent: child.parent, name: child.name, progress: null });
+  const html = renderToStaticMarkup(await CustomerActivityPanel({ ...props, filters: { ...props.filters, book: selected.id } }));
+  const select = html.match(/<select name="book"[\s\S]*?<\/select>/)![0];
+  const chosen = [...select.matchAll(/<option\b[^>]*\bselected=""[^>]*>/g)].map(m => m[0]);
+  expect(chosen).toEqual([`<option value="${selected.id}" selected="">`]);
+  expect(select.split(`value="${selected.id}"`).length - 1).toBe(1);
+});

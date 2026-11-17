@@ -1,6 +1,6 @@
 # Customer activity and progress
 
-Implementation on the MacBook. The additive migration is hosted as `20261117045730` (`customer_activity`). Official types and checks are generated. Two independent Sol reviews and a third settlement identified nine repair items. Repairs passed the focused checks; the full test gate, lint and rendered checks pass. The final production build passes; repair review is pending.
+Implementation on the MacBook. The additive migration is hosted as `20261117045730` (`customer_activity`). Official types and checks are generated. Two independent Sol reviews and a third settlement identified nine repair items. Repairs passed the focused checks; the full test gate, lint and rendered checks pass. The independent final review found one remaining book-dropdown edge case. Its one-line repair and binding regression test pass. The final done gate passes after that repair: 30,479 application tests, source lint and production build.
 
 Open `/admin/customer-activity` in the Families folder. The family page embeds the same child summaries, filters, book details, history and private contact-note form. The existing Activity page links to the new view. All reads require the live admin session and checked SQL functions. New service writes require an authenticated parent or admin route first.
 
@@ -119,7 +119,7 @@ The first worker reported 267 passing tests, but the independent reviewer reprod
 
 ## Final validation
 
-- Full suite: 968 passed files, 3 skipped; 30,476 passed tests, 36 skipped. The first full run found a keepalive test mock/import failure; it is repaired and the complete rerun passed.
+- Full suite: 968 passed files, 3 skipped; 30,479 passed tests, 36 skipped. The first full run found a keepalive test mock/import failure; it is repaired and the complete rerun passed.
 - Source lint passed after the final test repair. Application type checking passed. Both production builds passed, including the final build after the last test repair. The pre-existing ai-usage dynamic-file tracing warning remains.
 - Aside verified real local admin reads, empty All selections, inactive filtering, the test-family switch, a private note save with author, keyboard Tab/Enter, a bare book selection with ten printed days, and 1440/390 px layouts. Use localhost for this local check: the development server constructs localhost request origins, so 127.0.0.1 causes the existing same-origin guard to refuse mutations. No origin guard was weakened.
 - Actual local endpoint checks against the hosted writer passed missing/denied consent, grant, retry, foreign-child refusal, forged-completion refusal and parent refusal on the admin note endpoint. See `.design/evidence/customer-activity/endpoint-results.json`. These checks used a marked synthetic family only.
@@ -127,3 +127,7 @@ The first worker reported 267 passing tests, but the independent reviewer reprod
 - Browser screenshots: `family-desktop.png`, `family-history.png` and `family-phone.png` in `.design/evidence/customer-activity/`. These show a synthetic family; period totals are real admin aggregates.
 
 Voice type checking also passed. The final full gate was `npm test`, `npx eslint src`, and `npm run build`; each exit code was zero.
+
+The final independent source review found only the selected-book option at loaded position 21. Its one-line repair has a failing-before/passing-after test covering positions 1, 20 and 21. No new delegate was used for that small fix. The independent rendered review scored 76/100 and found no visible blocker; its images did not cover the full lower history and note form. Prior DOM checks verified the note save and status, but do not remove that independent image-coverage limit. See `.design/reviews/customer-activity-final-2026-11-16.md`.
+
+Final head validation after the position-21 fix: 968 test files passed, 3 skipped; 30,479 tests passed, 36 skipped. Source lint and production build also passed. No source changes followed these checks.
