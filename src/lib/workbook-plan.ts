@@ -296,7 +296,7 @@ export interface PlannedPage {
   noWatchOut?: boolean;
   /** A practice page whose floor does not fit beside its full example panel prints a one-line reminder instead (U4 to U9). */
   compactPanel?: boolean;
-  /** A Challenge page of circled answers that left the page too empty: each circled answer asks "How do you know?". */
+  /** A Challenge or Show what you know page of circled answers that left the page too empty: each circled answer asks "How do you know?". */
   explainChoices?: boolean;
   /** Approved pipeline capacity. The writer and layout consume this same budget. */
   capacity?: import("./workbook-page").PlannedSlot[];

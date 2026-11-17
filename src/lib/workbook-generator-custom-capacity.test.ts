@@ -284,12 +284,12 @@ it("moves Spot the error to the day's other practice page when the practice page
   expect(kinds(await prepareWorkbookCapacity(input, capacityFit))).toEqual(before);
 });
 
-// Luis, 2026-11-17: a Challenge of circled answers that leaves its page too empty asks "How do you know?" under each
-// circled answer; a Challenge page that fits is unchanged. The seam stands in for the measured page: three circled
+// Luis, 2026-11-17: a Challenge of circled answers that leaves its page too empty asks "How do you know?" (a work box)
+// under each circled answer; a Challenge page that fits is unchanged. The seam stands in for the measured page: three circled
 // answers alone leave gaps over the fullness limit (the custom U19 Book 1's Day 5, 6.13 step 1).
-it("adds How do you know? lines to circled Challenge answers only when the Challenge page is too empty", async () => {
+it("adds a How do you know? box to circled Challenge answers only when the Challenge page is too empty", async () => {
   const input = customInput(["5.2", "5.7", "5.15"], [5]);
-  const lines = (page: Parameters<FitCheck["fits"]>[0]) => page.questions.filter(q => q.package?.item?.regions.some(r => r.kind === "lines")).length;
+  const lines = (page: Parameters<FitCheck["fits"]>[0]) => page.questions.filter(q => q.package?.item?.regions.some(r => r.kind === "work" && r.label === "How do you know?")).length;
   const circled = (page: Parameters<FitCheck["fits"]>[0]) => page.questions.filter(q => q.package?.item?.regions.some(r => r.kind === "choice")).length;
   const empty: FitCheck = { fits: async page => page.type !== "challenge" || circled(page) === 0 || lines(page) > 0 ? capacityFit.fits(page, null as never)
     : { ok: false, problems: [{ question: null, reason: "The page has a 227 px unoccupied gap; allow 12 px plus at most 48 px extra.", kind: "fullness" }] } };
@@ -311,11 +311,11 @@ it("adds How do you know? lines to circled Challenge answers only when the Chall
     return generated.draft.pages.find(p => p.day === 5 && p.type === "challenge")!.questions.map(q => q.package?.item?.regions.map(r => r.kind) ?? []);
   };
   const plain = await write(fits, capacityFit);
-  expect(plain.flat()).not.toContain("lines");
+  expect(plain.flat()).not.toContain("work");
   const explained = await write(tight, empty);
   for (const [i, kinds] of explained.entries()) {
-    if (plain[i].every(k => k === "choice")) expect(kinds).toEqual([...plain[i], "lines"]);
+    if (plain[i].every(k => k === "choice")) expect(kinds).toEqual([...plain[i], "work"]);
     else expect(kinds).toEqual(plain[i]);
   }
-  expect(explained.flat()).toContain("lines");
+  expect(explained.flat()).toContain("work");
 });

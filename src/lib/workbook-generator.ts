@@ -76,6 +76,8 @@ import {
   type DayLayout, type NumberRange,
 } from "@/lib/workbook-book";
 import { pageId, type Omission, type PageContent, type SlotName } from "@/lib/workbook-page";
+import { twoWaysMethods } from "./workbook-two-ways";
+import { storyRepeatAllowed } from "./workbook-content-checks";
 import { dayDifficulty, type PageType, type PlannedPage, type PlannedPart, type WorkbookPlan } from "@/lib/workbook-plan";
 import { estimatedDayMinutes, generatedDayTime, scheduledItemProblem } from "@/lib/workbook-feedback-check";
 import { workbookEditItem } from "@/lib/workbook-edit-item";
@@ -89,7 +91,7 @@ import { isNumberStory } from "@/lib/workbook-code-story";
 import { cardFrame, cardFrameProblem, cardNumbers, type CardFrameUse, largestNumber, operationStory, printedForm, sentenceFrameOf, stemOf, storyKind, storyFrame, taskIdentity, taskType, wordedTask } from "@/lib/workbook-task-identity";
 import { COMPACT_STORY_FRAMES } from "@/lib/workbook-story-bank";
 import { childSamMistakes, difficultyDay, daySchedule, INTEREST_SHARE, interestEligible, interestShareProblems, interestWords, printsInterest, shortStories, SHORT_STORY_WORDS, storyThings, styleKinds, templateSpotShown, warmUpFact, warmUpShareProblems, warmUpSkill, type WarmUpFact } from "@/lib/workbook-personal-items";
-import { isApplicationPractice, isTwoStep, routingTemplates } from "@/lib/workbook-curriculum/house-templates";
+import { isApplicationPractice, isChallengeOnly, isTwoStep, routingTemplates } from "@/lib/workbook-curriculum/house-templates";
 import { buildStepItem, mixedTemplateSign, NO_TEMPLATE_PLACES, STEP_STORY_PLACES, stepAiItem, stepBounds, stepOf, stepRank, stepTemplateItem, stepTemplateOf, sumTemplate, templateProblem } from "@/lib/workbook-step-items";
 import type { StepDeclaration, StepReference } from "@/lib/workbook-print-contract";
 
@@ -494,6 +496,16 @@ const levelRange = (p: QuestionPackage, input: GenerateInput) => (isStepItem(p) 
 
 /** The shared schedule bounds every code-picked item in its skill's range. */
 function contractFor(input: GenerateInput, w: PageWork, slot: Slot, attempt = 0, skillOverride?: string): ItemPlan | null {
+  const c = anyContractFor(input, w, slot, attempt, skillOverride);
+  // Every path that fills Use 2 ways (planning, capacity repairs, resumes) takes only a question with two methods.
+  if (c && slot.place === "solve-it-two-ways" && input.itemPolicy === "approved-v1") {
+    const pkg = contractPackage(input, w, c);
+    if (pkg && !twoWaysMethods(pkg)) return null;
+  }
+  return c;
+}
+
+function anyContractFor(input: GenerateInput, w: PageWork, slot: Slot, attempt = 0, skillOverride?: string): ItemPlan | null {
   if (slot.existing) return null;
   if (skillOverride && input.itemPolicy === "approved-v1" && slot.part.step
     && (slot.place === "spot-the-error" || !!slot.place && PANEL_SLOTS.includes(slot.place))) return null;
@@ -589,6 +601,32 @@ function capacityInterest(input: GenerateInput, work: PageWork[], except?: Slot)
 /** The day's number and picture check (scheduledItemProblem): with no signals exactly today's. */
 const NEW_IDEA_PICTURES: ReadonlySet<string> = new Set(["worked-example", "now-you", "try-first"]);
 function dayProblem(input: GenerateInput, p: QuestionPackage, day: number, place: string): string | null {
+  return bookStoryProblem(input, p, day, place) ?? scheduledDayProblem(input, p, day, place);
+}
+
+/** The book's pages by their plan, so every path that picks a question sees the other days (layOut registers them). */
+const BOOK_WORK = new WeakMap<WorkbookPlan, readonly PageWork[]>();
+
+/**
+ * A number stories or Challenge template another day prints comes back once at most, 3 or more days later
+ * (storyRepeatAllowed; the live U10 Book 1, 2026-11-17). Every path that picks a question checks it here, capacity
+ * repairs too (the custom U19 Book 1's Day 9 story came back from Day 8 through a refill).
+ */
+function bookStoryProblem(input: GenerateInput, p: QuestionPackage, day: number, place: string): string | null {
+  const template = p.templateId?.split(":")[0];
+  // (A Challenge's limit is per page pair, in the planning loop and the book check: nearly identical pages fail.)
+  const key = template && place !== "challenge" ? bookStoryKey(place, template) : null;
+  const work = key ? BOOK_WORK.get(input.plan) : undefined;
+  if (!key || !work) return null;
+  const days = new Set<number>();
+  for (const w of work) if (w.day !== day && !w.page.extraPractice) for (const s of w.slots) {
+    const t = s.contract?.template;
+    if (t && s.place && bookStoryKey(s.place, `${t.skill}#${t.step}.${t.index}`) === key) days.add(w.day);
+  }
+  return storyRepeatAllowed([...days], day) ? null : `the ${place === "challenge" ? "Challenge" : "story"} template ${template} prints on another day`;
+}
+
+function scheduledDayProblem(input: GenerateInput, p: QuestionPackage, day: number, place: string): string | null {
   const sday = difficultyDay(input.plan, day);
   const help = daySchedule(input.plan, day).helpLevel;
   if (!input.plan.personal?.hasAssessment || sday === day && help === dayDifficulty(input.plan.level, day).helpLevel) return scheduledItemProblem(p, input.curriculum, day, place);
@@ -2402,7 +2440,7 @@ function omissionsWith(w: PageWork, leftOut: { slot: Slot }[]): Omission[] {
 function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuestion[], examples: (QuestionPackage | null)[] = []): PageContent | null {
   if (!input.book || !w.layout) return null;
   // (The questions keep it too: the stored draft and its print contract show the writing lines the page prints.)
-  if (w.page.explainChoices) for (const q of questions) if (q.place === "challenge" && q.package) q.package = explainedChoice(q.package);
+  if (w.page.explainChoices) for (const q of questions) if (CARD_PLACES.has(q.place ?? "") && q.package) q.package = explainedChoice(q.package);
   const layoutSlot = (q: GeneratedQuestion) => w.slots.find((x) => x.id === q.slot)!.layoutSlot;
   const keep = w.layout.slots.flatMap((x, k) => (PANEL_SLOTS.includes(x.slot) || questions.some((q) => layoutSlot(q) === k) ? [k] : []));
   const content = dayPageContent({
@@ -2593,6 +2631,7 @@ export function workbookCapacityPlan(curriculum: Curriculum, plan: WorkbookPlan)
 }
 
 function layOut(input: GenerateInput) {
+  const given = input.plan;
   if (input.itemPolicy === "approved-v1") input = { ...input, plan: workbookCapacityPlan(input.curriculum, input.plan) };
   const work: PageWork[] = [];
   let number = 2;
@@ -2635,6 +2674,8 @@ function layOut(input: GenerateInput) {
   }
   // Each slot's skill, kind of question, numbers and person, planned in book order (#380), so the same skill is not
   // asked the same way page after page and no two questions of a page work one sum.
+  // (Under both plans: the capacity plan this function plans with, and the plan its callers pass on.)
+  BOOK_WORK.set(given, work); BOOK_WORK.set(input.plan, work);
   if (input.book) planBook(input, work);
   if (input.itemPolicy === "approved-v1") {
     const used = new Map<string, number>(), frames = new Set<string>();
@@ -2696,6 +2737,8 @@ function layOut(input: GenerateInput) {
     // A Challenge or Show what you know frame once a book (the U16 r13 review: "Write N thousands, ... as a number" on
     // the Challenge of Days 1, 5 and 10): a step with no other hard frame takes the hard items of steps reached so far.
     const cardFrames = new Map<string, CardFrameUse[]>();
+    // The days each story or Challenge template printed on (bookStoryKey): another day's waits while others are left.
+    const bookStories = new Map<string, Set<number>>();
     const cardUse = (w: PageWork, slot: Slot, p: QuestionPackage): CardFrameUse => ({ day: w.day, challenge: slot.place === "challenge", numbers: cardNumbers(p) });
     const cardPlace = (slot: Slot) => slot.place === "challenge" || slot.place === "show-what-you-know";
     // G1 (item 5): the book's eligible code stories so far and how many name an interest, in book order.
@@ -2778,7 +2821,9 @@ function layOut(input: GenerateInput) {
         // (Last, a review card whose part reviews one exhausted step takes the page's practice part, its earlier steps'
         // hard review items: the full U4 book's Day 9 "Remember these" had no likelihood task left, Savar 2026-11-04.)
         const practicePart = slot.place === "remember-these" ? w.slots.find((s) => s.part !== slot.part && s.part.step && ["on-your-own", "finish-these", "practice-row"].includes(s.place ?? ""))?.part : undefined;
-        const passes: { strict: boolean; override?: string; borrow?: boolean }[] = [{ strict: true }, ...(builder && needForm ? [{ strict: true, override: builder }] : []), { strict: false }, ...(builder ? [{ strict: false, override: builder }] : []), ...(practicePart ? [{ strict: false, borrow: true }] : [])];
+        // (A day whose own step has no two-ways question takes a sum of an adding or subtracting skill the day reviews.)
+        const twoWaysSkills = slot.place === "solve-it-two-ways" ? dayArithmeticSkills(input, w.day) : [];
+        const passes: { strict: boolean; override?: string; borrow?: boolean }[] = [{ strict: true }, ...(builder && needForm ? [{ strict: true, override: builder }] : []), { strict: false }, ...(builder ? [{ strict: false, override: builder }] : []), ...(practicePart ? [{ strict: false, borrow: true }] : []), ...twoWaysSkills.map((override) => ({ strict: false, override }))];
         for (const { strict, override, borrow } of passes) {
           if (borrow && practicePart) slot.part = practicePart;
           for (let candidate = 0; candidate < (strict ? 512 : 1024) && !best; candidate++) {
@@ -2791,6 +2836,8 @@ function layOut(input: GenerateInput) {
             const built = buildPlannedItem(c, c.item, { id: "capacity", workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [c.item.skill] });
             const p = built.package;
             if (!p || built.check.status === "failed" || dayProblem(input, p, w.day,slot.place ?? "")) continue;
+            // Use 2 ways only for a question with two sensible methods of its kind, never a trivial sum (workbook-two-ways).
+            if (slot.place === "solve-it-two-ways" && !twoWaysMethods(p)) continue;
             // G1: a short-story day takes stories of at most 20 words first (reading load, item 8).
             if (strict && candidate < 256 && slot.place && STORY_CHECK_PLACES.has(slot.place) && shortStories(input.plan, w.day) && wordsIn(p.text) > SHORT_STORY_WORDS) continue;
             // (An interest slot takes a story that names an interest first, while its early attempts find one, item 5.)
@@ -2813,6 +2860,18 @@ function layOut(input: GenerateInput) {
             if (strict && truth && ["true", "false"].includes(truth) && (truthCounts.get(truth) ?? 0) > (truthCounts.get(truth === "true" ? "false" : "true") ?? 0)) continue;
             const tk = templateKey(c);
             const kk = kindKey(c);
+            // A number stories or Challenge template another day printed waits while the step has others (Cedric's
+            // handoff: avoid the same question families at the same difficulty; the live U10 Book 1 printed one set of three
+            // money stories on Days 1, 4 and 7, and one Challenge on Days 8 and 10). The relaxed pass may still repeat it.
+            const bookKey = tk && slot.place ? bookStoryKey(slot.place, tk) : null;
+            const daysOf = bookKey ? [...(bookStories.get(bookKey) ?? [])].filter((d) => d !== w.day) : [];
+            // A step that is the Challenge on two days, with two sets of hard forms (6 or more), gives the earlier day its first
+            // set and the later day its second, each authored as one story, one bare and one missing question (the custom U19
+            // Book 1's Days 9 and 10; the live U10 Book 1's Days 8 and 10 printed one set twice).
+            if (strict && slot.place === "challenge" && c.template && !challengeHalf(input, w.day, c.template)) continue;
+            // (A Challenge prefers forms no other day prints; a later pass may share one, never two, with a page within 3 days.)
+            if (bookKey && slot.place !== "challenge" && (strict ? daysOf.length > 0 : !storyRepeatAllowed(daysOf, w.day))) continue;
+            if (bookKey && slot.place === "challenge" && (strict ? daysOf.length > 0 : !challengeShareAllowed(bookStories, slot.place, tk!, w.day, pageTemplates))) continue;
             // (Show what you know reviews the book with each step's hardest version: the Challenge's limits on practice
             // are not its own.)
             const topReview = slot.place === "show-what-you-know" || slot.place === "level-test";
@@ -2885,6 +2944,8 @@ function layOut(input: GenerateInput) {
           if (bestStem) pageStems.set(bestStem, (pageStems.get(bestStem) ?? 0) + 1); pageTypes.set(best.type, (pageTypes.get(best.type) ?? 0) + 1); partTypes.set(`${slot.layoutSlot}|${best.type}`, (partTypes.get(`${slot.layoutSlot}|${best.type}`) ?? 0) + 1);
           const tk = templateKey(best.c);
           if (tk && !NUMBER_PLACES.has(slot.place ?? "")) pageTemplates.set(tk, (pageTemplates.get(tk) ?? 0) + 1);
+          const storyAt = tk && slot.place ? bookStoryKey(slot.place, tk) : null;
+          if (storyAt) bookStories.set(storyAt, new Set([...(bookStories.get(storyAt) ?? []), w.day]));
           if (tk && slot.place !== "challenge" && slot.place !== "warm-up") dayTemplates.set(tk, (dayTemplates.get(tk) ?? 0) + 1);
           const kk = kindKey(best.c);
           if (tk && best.c.template?.reserved && slot.place !== "challenge") dayReserved.set(tk, (dayReserved.get(tk) ?? 0) + 1);
@@ -3935,8 +3996,9 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         // A Challenge of circled answers still too empty: each circled answer asks "How do you know?" (Luis,
         // 2026-11-17). Only here, so a Challenge page that fits keeps its questions as they were, and review stays off
         // the Challenge page (Savar, 2026-11-02).
-        if (!checked.ok && !w.page.explainChoices && w.page.type === "challenge" && checked.problems.every(p => p.kind === "fullness")
-          && w.slots.some(s => s.place === "challenge" && s.contract && circledAnswer(contractPackage(input, w, s.contract)))) {
+        // (Show what you know's cards too: the custom U19 Book 1's Day 10 check left 65 px with two circled cards.)
+        if (!checked.ok && !w.page.explainChoices && (w.page.type === "challenge" || w.page.type === "show-what-you-know") && checked.problems.every(p => p.kind === "fullness")
+          && w.slots.some(s => CARD_PLACES.has(s.place ?? "") && s.contract && circledAnswer(contractPackage(input, w, s.contract)))) {
           w.page.explainChoices = true; w.page.extraGap = 0;
           checked = await check();
           await spread();
@@ -4042,15 +4104,59 @@ async function repairFinalRows(input: GenerateInput, w: PageWork, work: PageWork
 
 const FLOOR_SHORT = "capacity could not restore";
 
+/** The adding and subtracting skills a day reviews or teaches, for a Use 2 ways question its own step cannot give. */
+function dayArithmeticSkills(input: GenerateInput, day: number): string[] {
+  const parts = input.plan.days.find((d) => d.day === day)?.pages.flatMap((p) => p.parts) ?? [];
+  const skills = [...new Set(parts.flatMap((p) => [...(p.reviewSteps ?? []).map((r) => r.skill), ...p.skills, ...(p.weakChecks ?? []).flatMap((c) => c.skills)]))];
+  return skills.filter((s) => approvedQuestionTypes(s).some((t) => t === "add" || t === "subtract"));
+}
+
+/** A story or Challenge place's template, for the book's one-day-each rule; null for any other place. */
+function bookStoryKey(place: string, template: string): string | null {
+  if (place === "challenge") return `challenge|${template}`;
+  return STEP_STORY_PLACES.has(place as SlotName) ? `story|${template}` : null;
+}
+
+/**
+ * Whether a Challenge page may take a template another day's Challenge printed: only when that day is 3 or more days away,
+ * or when this page shares no other template with it (two Challenge pages within 3 days share one form at most).
+ */
+function challengeShareAllowed(bookStories: ReadonlyMap<string, ReadonlySet<number>>, place: string, template: string, day: number, onPage: ReadonlyMap<string, number>): boolean {
+  const near = (d: number) => d !== day && Math.abs(d - day) < 3;
+  const daysOf = (t: string) => [...(bookStories.get(bookStoryKey(place, t) ?? "") ?? [])];
+  const close = daysOf(template).filter(near);
+  return close.every((d) => ![...onPage.keys()].some((t) => daysOf(t).includes(d)));
+}
+
+/**
+ * Whether a Challenge template is in the half of its step's hard forms this day takes, when the step is the Challenge on
+ * two or more days and has 6 or more hard forms: the step's first Challenge day the first half, later days the second.
+ * Any other step or day takes them all.
+ */
+function challengeHalf(input: GenerateInput, day: number, t: { skill: string; step: number; index: number }): boolean {
+  const days = input.plan.days.filter((d) => d.pages.some((p) => p.parts.some((part) => part.kind === "challenge" && part.step?.skill === t.skill && part.step.step === t.step))).map((d) => d.day);
+  if (days.length < 2 || !days.includes(day)) return true;
+  const hard = (stepOf(input.curriculum, t.skill, t.step)?.templates ?? []).flatMap((x, i) => x.difficulty === "hard" && isChallengeOnly(x) ? [i] : []);
+  if (hard.length < 6 || !hard.includes(t.index)) return true;
+  const half = Math.floor(hard.length / 2);
+  return days.indexOf(day) === 0 ? hard.slice(0, half).includes(t.index) : hard.slice(half).includes(t.index);
+}
+
+/** Card places whose circled answers may ask "How do you know?" when their page is too empty. */
+const CARD_PLACES: ReadonlySet<string> = new Set(["challenge", "show-what-you-know"]);
+
 /** An item answered only by circling or ticking a choice. */
 const circledAnswer = (p: QuestionPackage | null | undefined): boolean => {
   const regions = p?.item?.regions ?? [];
   return regions.length > 0 && regions.every(r => r.kind === "choice");
 };
-/** A circled item that also asks "How do you know?": writing lines under its choice, never scored by code. */
+/**
+ * A circled item that also asks "How do you know?": a work box under its choice, like a number Challenge's working,
+ * never scored by code. (Three writing lines left the custom U19 Book 1's Day 5 Challenge 127 px short of full.)
+ */
 function explainedChoice(p: QuestionPackage): QuestionPackage {
   if (!circledAnswer(p)) return p;
-  return { ...p, item: { ...p.item!, regions: [...p.item!.regions, { id: "reason", kind: "lines", label: "How do you know?" }] } };
+  return { ...p, item: { ...p.item!, regions: [...p.item!.regions, { id: "reason", kind: "work", label: "How do you know?" }] } };
 }
 /** What the capacity pass writes on a planned page (the planner writes none of it). */
 const CAPACITY_KEYS = ["capacity", "capacityChecked", "capacityOmissions", "itemContracts", "panelAttempts", "existingSlots", "extraGap",
