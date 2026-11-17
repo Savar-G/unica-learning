@@ -1356,7 +1356,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   }
   /** Guidance the session accepted goes out now. A call that ended returns it with its outcome instead. */
   function sendGuidance() {
-    if (checkedRoutine || !options.onGuidance || folded.session.outcome || !folded.pending.some((p) => p.act === "safety")) return;
+    if (!options.onGuidance || folded.session.outcome || !folded.pending.some((p) => p.act === "safety")) return;
     const out = textOutput(folded);
     append({ kind: "delivered", at: now() });
     options.onGuidance(out);
@@ -1430,7 +1430,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const safetyDue = folded.session.safety.flagged && !folded.session.safety.guided;
       // Words already streamed cannot be taken back: on a controller turn a refusal then goes straight to code's line after
       // them; on a tutor teaching turn the repair continues them (below). A turn a priority gate took after the model's reading (a scope redirect, a confirmation) is code's own line.
-      const repairs = tutorTurn === null ? options.modelRepair !== false : tutorTurn && read(() => tutorTeachingNow(folded.session));
+      const repairs = !checkedRoutine && (tutorTurn === null ? options.modelRepair !== false : tutorTurn && read(() => tutorTeachingNow(folded.session)));
       // 2026-11-15 (voice fallbacks): on a tutor teaching turn, words already streamed no longer end the turn in code's
       // line: the repair continues them (continuedSay), and the whole message is checked as one. The controller's turns
       // (and the AI disclosure, safety guidance and a stop, which are code's own and never stream) keep code's line.
@@ -1527,7 +1527,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     // #1107: a chat that saves its parts sends only saved parts; the rest reaches the desk with the saved reply.
     if (options.persist) return;
     // Return the checked speech and its cues together, after the caller's save.
-    if (out.exchangeTurnId) { options.onSayEnd?.(); return; }
+    if (out.exchangeTurnId || (checkedRoutine && options.onGuidance)) { options.onSayEnd?.(); return; }
     if (!options.onSayPart && !options.onSayEnd) return;
     // Sentences streamed while the reply came in were sent already, in order: the rest follow them.
     const queue = [...streamedSentences];

@@ -16,10 +16,10 @@ import type { MayaModel } from "@/lib/maya-model";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
-import { voiceProviders } from "@/lib/maya-voice";
+import { CONNECTION_RENEW_MS, voiceProviders } from "@/lib/maya-voice";
 import { ACK_HOLD_LIMIT_MS, ACK_LIMIT_MS, ACK_PHRASES } from "@/lib/maya-voice-ack";
 import type { QuestionPackage } from "@/lib/question-package";
-import { VoiceCallRun, voiceSession, type Timers } from "./agent";
+import { VoiceCallRun, voiceSession, type CallUpdate, type Timers } from "./agent";
 import { FakeTTS } from "./fake-providers";
 import { makeProviders } from "./providers";
 import { TURN_PARTS, TurnClock, voiceTurnReport, type VoiceTurnSample } from "./turn-timing";
@@ -204,7 +204,7 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; seams?: Partial<CallSeams>; board?: boolean; speech?: ProbeSTT; limitMs?: number; timestamps?: boolean }) {
+async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; seams?: Partial<CallSeams>; board?: boolean; speech?: ProbeSTT; limitMs?: number; timestamps?: boolean; notify?(update: CallUpdate): void }) {
   const clock = handClock();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -240,7 +240,7 @@ async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; seams
   const board = createBoardSpeech({ sender, now: () => Date.now(), observe: (snapshot) => opened.call.observeBoard(snapshot) });
   const samples: VoiceTurnSample[] = [];
   const run = new VoiceCallRun(session, opened.call, {
-    ...(options.board === false ? {} : { board }), timers: clock.timers, notify: () => {}, measureTurn: (s) => samples.push(s),
+    ...(options.board === false ? {} : { board }), timers: clock.timers, notify: options.notify ?? (() => {}), measureTurn: (s) => samples.push(s),
     ...(options.ackLimitMs !== undefined ? { ackLimitMs: options.ackLimitMs } : {}),
   });
   await run.agentJoined();
@@ -249,11 +249,12 @@ async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; seams
   run.attachTurnTiming();
   microphone.push();
   cleanup = async () => { await run.finish({ detail: "test over" }); };
-  const said = () => (providers.tts as FakeTTS).spoken;
+  const tts = providers.tts as FakeTTS;
+  const said = () => tts.spoken;
   await run.childJoined();
   await waitFor(() => said().length > 0 && session.agentState === "listening", "the opening");
   const say = (text: string) => expect(providers.fakeSpeech!.say(text)).toBe(true);
-  return { clock, say, said, session, speaker, sender, receiver, board, samples, run, id: started.view.id, calls, call: opened.call, store };
+  return { clock, say, said, tts, session, speaker, sender, receiver, board, samples, run, id: started.view.id, calls, call: opened.call, store };
 }
 
 const ACKS = new Set(ACK_PHRASES.map((p) => p.text));
@@ -1248,12 +1249,15 @@ describe("#589: the safety guidance does not wait for the close", () => {
     const m = closeHangs();
     const speech = new ProbeSTT();
     const c = await voiceCall({ model: m.model, speech });
+    const guidancePlayback = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
+    Object.assign(c.call, { guidancePlayback });
     m.arm(c.clock.timers);
     speech.says("Someone is hurting me.");
     await waitFor(() => m.asked === 1, "the child turn's model call");
     c.speaker.pace(1);
     m.releaseDanger();
     await waitFor(() => c.speaker.waitingToPlay && c.said().includes(WORDS.immediate), "the guidance's first frame");
+    expect(guidancePlayback).not.toHaveBeenCalled();
     // A noise that never becomes words.
     speech.send(stt.SpeechEventType.START_OF_SPEECH);
     await waitFor(() => c.session.userState === "speaking", "the noise");
@@ -1266,6 +1270,8 @@ describe("#589: the safety guidance does not wait for the close", () => {
     expect(c.speaker.plays.at(-2)).toBeLessThan(WHOLE_GUIDANCE_S);
     expect(count(c.said(), WORDS.immediate)).toBe(2);
     await waitFor(() => c.said().at(-1) === LAST.immediate, "the whole repeat in the voice");
+    await waitFor(() => guidancePlayback.mock.calls.length > 0, "the repeat's playback acknowledgement");
+    expect(guidancePlayback.mock.calls).toEqual([[SAFETY_GUIDANCE.immediate]]);
     const before = c.said().length;
     await waitFor(() => m.hanging === 1, "the close call");
     const closedAt = watchClose(c.session);
@@ -1281,6 +1287,8 @@ describe("#589: the safety guidance does not wait for the close", () => {
     const m = closeHangs();
     const speech = new ProbeSTT();
     const c = await voiceCall({ model: m.model, speech });
+    const guidancePlayback = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
+    Object.assign(c.call, { guidancePlayback });
     m.arm(c.clock.timers);
     const noise = async (paceNext = false) => {
       speech.send(stt.SpeechEventType.START_OF_SPEECH);
@@ -1305,6 +1313,65 @@ describe("#589: the safety guidance does not wait for the close", () => {
     m.releaseClose();
     await waitFor(() => c.run.done !== null, "the call's end");
     await c.run.done;
+    expect(guidancePlayback).not.toHaveBeenCalled();
+  });
+
+  it("guidance with a missing sentence is not acknowledged", async () => {
+    const m = closeHangs();
+    const c = await voiceCall({ model: m.model });
+    const guidancePlayback = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
+    Object.assign(c.call, { guidancePlayback });
+    m.arm(c.clock.timers);
+    c.say("Someone is hurting me.");
+    await waitFor(() => m.asked === 1, "the child turn's model call");
+    const stream = c.tts.stream.bind(c.tts);
+    let sentence = 0;
+    vi.spyOn(c.tts, "stream").mockImplementation((...args) => {
+      if (++sentence === 3) c.tts.silentNext = 1;
+      return stream(...args);
+    });
+    m.releaseDanger();
+    await waitFor(() => c.tts.silenced.length > 0, "the missing sentence");
+    await waitFor(() => m.hanging === 1, "the close call");
+    m.releaseClose();
+    await waitFor(() => c.run.done !== null, "the call's end");
+    await c.run.done;
+    expect(c.said()).toContain(WORDS.immediate);
+    expect(guidancePlayback).not.toHaveBeenCalled();
+  });
+
+  it("a thrown guidance save leaves its audio playing before the technical end", async () => {
+    const m = closeHangs();
+    const notify = vi.fn<(update: CallUpdate) => void>();
+    const c = await voiceCall({ model: m.model, notify });
+    m.arm(c.clock.timers);
+    const update = c.store.update.bind(c.store);
+    vi.spyOn(c.store, "update").mockImplementation(async (...args) => {
+      if (args[2].live?.text.session.safety.guided) throw new Error("write failed");
+      return update(...args);
+    });
+    const guidancePlayback = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
+    Object.assign(c.call, { guidancePlayback });
+    c.speaker.held = true;
+    try {
+      c.say("Someone is hurting me.");
+      await waitFor(() => m.asked === 1, "the child turn's model call");
+      m.releaseDanger();
+      await waitFor(() => c.call.lost, "the failed guidance save");
+      expect(c.call.replaced).toBe(false);
+      await waitFor(() => c.said().includes(LAST.immediate), "the guidance in the voice despite the failed save");
+      await c.clock.advance(CONNECTION_RENEW_MS);
+      expect(c.run.done).toBeNull();
+      expect(notify).not.toHaveBeenCalledWith(expect.objectContaining({ error: "technical_issue" }));
+      c.speaker.release();
+      await waitFor(() => c.run.done !== null, "the technical end after guidance");
+      await c.run.done;
+      expect(notify).toHaveBeenLastCalledWith(expect.objectContaining({ ended: false, error: "technical_issue" }));
+      expect(guidancePlayback).not.toHaveBeenCalled();
+    } finally {
+      c.speaker.release();
+      m.releaseClose();
+    }
   });
 
   it("guidance cut by a dropped connection plays when the child is back", async () => {
@@ -1461,6 +1528,81 @@ describe("#589: the safety guidance does not wait for the close", () => {
     await run.done;
     expect((made.tts as FakeTTS).spoken.join(" ")).not.toContain(WORDS.immediate);
     expect((await c.store.get(c.id))!.status).toBe("ended");
+    expect((await c.calls.view(c.id))!.outcome).toMatchObject({ reason: "safety" });
+  });
+
+  it.each([["unfinished", false, false], ["saved", true, false], ["saved and interrupted", true, true]] as const)(
+    "a replacement plays recovered guidance when the safety close is %s", async (_name, ended, dropped) => {
+    const m = closeHangs();
+    const c = await voiceCall({ model: m.model });
+    m.arm(c.clock.timers);
+    c.speaker.held = true;
+    c.say("Someone is hurting me.");
+    await waitFor(() => m.asked === 1, "the child turn's model call");
+    m.releaseDanger();
+    await waitFor(() => m.hanging === 1, "the old worker's close call");
+    if (ended) {
+      m.releaseClose();
+      await waitFor(() => c.call.ended, "the accepted safety close");
+    }
+    await c.call.settled();
+
+    const opened = await c.calls.openVoice(c.id, { speechToText: "fake", voice: "fake" }, null);
+    if (!opened.ok) throw new Error(opened.error);
+    expect(opened.call.ended).toBe(ended);
+    const guidance = SAFETY_GUIDANCE.immediate;
+    const disclosure = "I am an AI, not a person.";
+    vi.spyOn(opened.call, "pendingFinal", "get").mockReturnValue({
+      say: ended ? [guidance, disclosure] : [guidance], newBatches: 0, safetyMessage: null, ended, guidance,
+    });
+    const guidancePlayback = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
+    Object.assign(opened.call, { guidancePlayback });
+    const config = voiceProviders({});
+    if (!config.ok) throw new Error("fake providers");
+    const made = await makeProviders(config, { fakeMsPerChar: 1 });
+    const session = voiceSession(made, { endpointingMs: 20, aecWarmupDuration: 0 });
+    session.input.audio = new SilentMicrophone();
+    const speaker = new Speaker();
+    speaker.held = true;
+    session.output.audio = speaker;
+    const run = new VoiceCallRun(session, opened.call, { timers: c.clock.timers, notify: () => {} });
+    const oldCleanup = cleanup;
+    cleanup = async () => {
+      c.speaker.release();
+      speaker.release();
+      m.releaseClose();
+      await run.finish({ detail: "test over" });
+      await oldCleanup?.();
+    };
+    await run.agentJoined();
+    await session.start({ agent: run.agent });
+    const joined = run.childJoined();
+    const said = (made.tts as FakeTTS).spoken;
+    await waitFor(() => said.join(" ").includes(LAST.immediate), "the recovered guidance in the voice");
+    await c.clock.advance(0);
+    expect(m.hanging).toBe(ended ? 0 : 1);
+    expect(guidancePlayback).not.toHaveBeenCalled();
+    expect(said.join(" ")).not.toContain(disclosure);
+
+    if (dropped) await run.childLeft("dropped");
+    speaker.release();
+    await joined;
+    if (dropped) {
+      expect(guidancePlayback).not.toHaveBeenCalled();
+      expect(run.done).toBeNull();
+      await run.childJoined();
+    }
+    await waitFor(() => guidancePlayback.mock.calls.length > 0, "the recovered guidance's playback acknowledgement");
+    expect(guidancePlayback.mock.calls).toEqual([[guidance]]);
+    expect(said.join(" ").split(WORDS.immediate)).toHaveLength(dropped ? 3 : 2);
+    if (!ended) {
+      await c.clock.advance(0);
+      await waitFor(() => m.hanging === 2, "the replacement worker's close call");
+      m.releaseClose();
+    }
+    await waitFor(() => run.done !== null, "the replacement worker's end");
+    await run.done;
+    if (ended) expect(said.join(" ").split(disclosure)).toHaveLength(2);
     expect((await c.calls.view(c.id))!.outcome).toMatchObject({ reason: "safety" });
   });
 

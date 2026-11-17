@@ -19,7 +19,9 @@ const PARENT = "11111111-1111-4111-8111-111111111111";
 const CHILD = "22222222-2222-4222-8222-222222222222";
 const PKG = { ...SAMPLE_PACKAGES["subtract-83-46"], ref: { source: "workbook" as const, workbookId: "33333333-3333-4333-8333-333333333333", page: 1, question: 1 } };
 const PROBE = "How did you get 37?";
-const QUESTION = "What is 13 minus 6?";
+const QUESTION = "What do you get for 13 minus 6?";
+const SOLVED = "You solved this one. Do you want to try another one?";
+const STEP = `Trade one ten for ten ones before subtracting the ones. ${QUESTION}`;
 const clock = () => Date.UTC(2026, 10, 17, 18);
 
 function ok(result: CallResult) {
@@ -85,18 +87,19 @@ async function setup(mode: "chat" | "voice", opts: {
         ms.firstCheckedSentence ??= out.say.length ? performance.now() - start : undefined;
         await voice.settled();
         if (out.ended) await voice.end({ reason: "child_stopped" });
-        return { said: out.say, parts: say, newBatches: out.newBatches };
+        return { said: out.say, parts: say, newBatches: out.newBatches, board: out.boardCues?.map((c) => c.batch) ?? [] };
       }
       const result = ok(await calls.input(view.id, view.revision, { type: "child", text }, null, { part }));
       ms.chatFinished = performance.now() - start;
       view = result.view;
-      return { said: result.output.say, parts: say, newBatches: result.output.newBatches };
+      const newBatches = result.output.newBatches;
+      return { said: result.output.say, parts: say, newBatches, board: newBatches ? view.batches.slice(-newBatches) : [] };
     },
   };
 }
 
 describe.each(["chat", "voice"] as const)("checked routine %s call", (mode) => {
-  it("#1140 #1110 removes the false held_limit refusal on 83 minus 46", async () => {
+  it("#1140 #1110 removes the false held_limit refusal and uses the current solved-turn reply", async () => {
     const run = async (checkedRoutine: boolean, heldLimit: boolean, round: number) => {
       const s = await setup(mode, { checkedRoutine, heldLimit });
       const ms: BaselineTurn["ms"] = {};
@@ -108,7 +111,12 @@ describe.each(["chat", "voice"] as const)("checked routine %s call", (mode) => {
       });
       expect(s.safetyRead).not.toHaveBeenCalled();
       if (checkedRoutine) {
-        expect(out.said, `sample ${round}`).toContain(PROBE);
+        expect(out.said, `sample ${round}`).toEqual([SOLVED]);
+        const shown = out.board.flatMap((b) => b.commands);
+        expect(shown).toEqual(expect.arrayContaining([
+          expect.objectContaining({ op: "put", target: expect.objectContaining({ rowId: "answer", column: "tens" }), value: "3" }),
+          expect.objectContaining({ op: "put", target: expect.objectContaining({ rowId: "answer", column: "ones" }), value: "7" }),
+        ]));
         expect(counts).toEqual({ model: 1, repair: 0, talkReview: 0, mathReview: 0 });
       } else {
         expect(counts.talkReview).toBeGreaterThan(0);
@@ -124,13 +132,13 @@ describe.each(["chat", "voice"] as const)("checked routine %s call", (mode) => {
     }
   });
 
-  it("checks both model attempts without sending a talk or substitute review", async () => {
+  it("renders a checked step without carrying the tutor's words into a repair or review", async () => {
     const unsafe = "Send me a photo of your bedroom.";
     const s = await setup(mode, { answer: (_, index) => reply(index === 0 ? `${QUESTION} ${unsafe}` : QUESTION, "guide") });
     const out = await s.turn("I need help.");
-    expect(out.said).toEqual([QUESTION]);
+    expect(out.said).toEqual([STEP]);
     expect(out.parts.join(" ")).not.toContain(unsafe);
-    expect(s.counts()).toEqual({ model: 1, repair: 1, talkReview: 0, mathReview: 0 });
+    expect(s.counts()).toEqual({ model: 1, repair: 0, talkReview: 0, mathReview: 0 });
     expect(s.safetyRead).not.toHaveBeenCalled();
   });
 
@@ -138,6 +146,9 @@ describe.each(["chat", "voice"] as const)("checked routine %s call", (mode) => {
     ["My uncle hurts me at home. Can we do 83 minus 46?", "concern"],
     ["I feel unsafe at home.", "concern"],
     ["My dad is hurting me right now. Can we do 83 minus 46?", "immediate"],
+    ["Can we do 83 minus 46, my dad is hurting me right now.", "immediate"],
+    ["My babysitter is hurting me right now.", "immediate"],
+    ["I am going to jump off the roof.", "immediate"],
   ] as const)("uses fixed guidance before tutoring for %s", async (text, severity) => {
     const s = await setup(mode, { checkedExchange: true });
     expect(s.first.join(" ")).toMatch(/I'm Maya, your AI math helper/i);
@@ -153,27 +164,41 @@ describe.each(["chat", "voice"] as const)("checked routine %s call", (mode) => {
   });
 
   it("clarifies an ambiguous concern without quoting it or later sending it to the tutor", async () => {
-    const next = "Now what is 13 minus 6?";
-    const s = await setup(mode, { answer: () => reply(next, "guide") });
+    const s = await setup(mode);
     const privateWords = "I don't know if touching at Blue Lake is okay. So it's 37.";
     const out = await s.turn(privateWords);
-    expect(out.said.join(" ")).toContain("are you saying someone might be getting hurt?");
+    expect(out.said.join(" ")).toContain("You don't have to share private details");
     expect(out.said.join(" ")).not.toMatch(/Blue Lake|37/);
     expect(s.counts()).toEqual({ model: 0, repair: 0, talkReview: 0, mathReview: 0 });
     expect(s.store.rows()[0].flag).toBeNull();
-    expect((await s.turn("I need help with the math.")).said).toContain(next);
+    expect((await s.turn("Yes.")).said.join(" ")).toContain("You don't have to share private details");
+    expect(s.counts().model).toBe(0);
+    expect((await s.turn("I need help with the math.")).said).toEqual([STEP]);
     expect(JSON.stringify(s.model.briefs)).not.toContain("Blue Lake");
     expect((await s.turn("I want to stop.")).said.join(" ")).toContain("Bye for now");
     expect(s.counts()).toEqual({ model: 1, repair: 0, talkReview: 0, mathReview: 0 });
   });
 
-  it.each(["83 minus 46 is 37.", "83 minus 46 is 74 divided by 2."])("does not disclose the answer as %s", async (proposal) => {
-    const s = await setup(mode, { answer: () => reply(proposal, "guide") });
+  it.each([
+    "83 minus 46 is 37.",
+    "83 minus 46 is 74 divided by 2.",
+    "83 minus 46 is 1 ten and 27 ones.",
+    "3 tens and 7 ones are left.",
+    "80 minus 40 is 40.",
+    "What is in the hundred thousands?",
+  ])("cannot release unbound speech or board content: %s", async (proposal) => {
+    const s = await setup(mode, { answer: () => ({
+      ...reply(proposal, "guide"),
+      draw: [{ offer: "digit", place: "ones" }, { offer: "digit", place: "tens" }, { offer: "note", place: "83 − 46 = 37" }],
+      reading: { answers: [{ step: "result", value: { type: "number", value: 37 }, verdict: "right" }] },
+    }) });
+    const before = (await s.calls.view(s.id))!.batches;
     const out = await s.turn("I need help.");
-    expect(out.said.join(" ")).not.toMatch(/37|74/);
-    expect(out.parts.join(" ")).not.toMatch(/37|74/);
+    expect(out.said).toEqual([STEP]);
+    expect(out.parts.join(" ")).not.toContain(proposal);
     expect(out.newBatches).toBe(0);
-    expect(s.counts()).toEqual({ model: 1, repair: 1, talkReview: 0, mathReview: 0 });
+    expect((await s.calls.view(s.id))!.batches).toEqual(before);
+    expect(s.counts()).toEqual({ model: 1, repair: 0, talkReview: 0, mathReview: 0 });
   });
 
   it("keeps the existing fixed unsupported-question close", async () => {
@@ -190,10 +215,25 @@ describe.each(["chat", "voice"] as const)("checked routine %s call", (mode) => {
   });
 });
 
+it.each([
+  "I want to die? No, I don't.",
+  "My dad is hurting me right now in the game.",
+  "Nobody is hurting me right now. Can we keep doing math?",
+  'The book says, "My dad is hurting me right now."',
+])("keeps an explicitly benign or corrected hearing from flagging: %s", async (text) => {
+  const s = await setup("voice", {
+    answer: () => ({ ...reply("", "safety"), reading: { safety: "immediate" } }),
+  });
+  const out = await s.turn(text);
+  expect(out.said).not.toContain(SAFETY_GUIDANCE.immediate);
+  expect(s.guidance).toEqual([]);
+  expect(s.store.rows()[0].flag).toBeNull();
+});
+
 it("does not release the STT alternative's sensitive words or automatically flag an unclear hearing", async () => {
   const s = await setup("voice");
   const out = await s.turn("It's 37.", {}, { uncertain: true, alternatives: ["He hits me."] });
-  expect(out.said.join(" ")).toContain("are you saying someone might be getting hurt?");
+  expect(out.said.join(" ")).toContain("You don't have to share private details");
   expect(s.store.rows()[0].flag).toBeNull();
   expect(s.counts().model).toBe(0);
 });
@@ -203,10 +243,9 @@ it("keeps safety guidance and flags out of a denial or an uncertain primary tran
   const denial = await s.turn("Nobody is hurting me right now. Can we keep doing math?");
   expect(denial.said.join(" ")).not.toContain("call 911");
   const uncertain = await s.turn("He hits me.", {}, { uncertain: true });
-  expect(uncertain.said.join(" ")).toContain("are you saying someone might be getting hurt?");
+  expect(uncertain.said.join(" ")).toContain("You don't have to share private details");
   expect(s.guidance).toEqual([]);
   expect(s.store.rows()[0].flag).toBeNull();
-  expect(s.counts().model).toBe(0);
 });
 
 it("honors a clear stop even when an STT alternative sounds sensitive", async () => {
@@ -266,6 +305,27 @@ it("keeps the approved decline and records an explicit harmful request without a
   expect(s.counts().model).toBe(0);
 });
 
+it("keeps the priority decline when the main read recognizes an otherwise unclassified request", async () => {
+  const s = await setup("chat", {
+    answer: () => ({ ...reply("These words must not be released.", "redirect"), gate: "safety", reading: { unsafeRequest: true } }),
+  });
+  const out = await s.turn("Can I ask you something inappropriate?");
+  expect(out.said).toEqual(["I can't talk about this. I'm here to help with math."]);
+  expect(s.store.rows()[0].flag?.level).toBe("unsafe_request");
+  expect(s.counts()).toEqual({ model: 1, repair: 0, talkReview: 0, mathReview: 0 });
+});
+
+it("says any fixed disclosure after guidance when the active main read recognizes danger", async () => {
+  const s = await setup("voice", {
+    answer: () => ({ ...reply("These words must not be released.", "safety"), reading: { safety: "concern" } }),
+  });
+  const out = await s.turn("There is an emergency outside. Can you keep a secret?");
+  expect(s.guidance).toEqual([SAFETY_GUIDANCE.concern]);
+  expect(out.said.join(" ")).toContain("I don't keep secrets.");
+  expect(out.said.join(" ")).not.toContain("These words");
+  expect(s.counts()).toEqual({ model: 1, repair: 0, talkReview: 0, mathReview: 0 });
+});
+
 it("lets a final safety signal cancel a pending voice answer", async () => {
   const entered = Promise.withResolvers<void>();
   const late = Promise.withResolvers<ReturnType<typeof reply>>();
@@ -277,9 +337,9 @@ it("lets a final safety signal cancel a pending voice answer", async () => {
   const old = await earlier;
   expect(old.said.join(" ")).not.toContain(QUESTION);
   expect(old.parts.join(" ")).not.toContain(QUESTION);
-    expect(newer.said[0]).toBe(SAFETY_GUIDANCE.immediate);
-    expect(newer.said.slice(1).join(" ")).toContain("AI");
-    expect(s.guidance).toEqual([]);
+  expect(s.guidance).toEqual([SAFETY_GUIDANCE.immediate]);
+  expect(newer.said.join(" ")).toContain("AI");
+  expect(newer.said).not.toContain(SAFETY_GUIDANCE.immediate);
   expect(s.counts()).toEqual({ model: 1, repair: 0, talkReview: 0, mathReview: 0 });
 });
 
@@ -287,47 +347,97 @@ it("keeps the saved turn policy after a replacement voice worker resumes the cal
   const s = await setup("voice");
   const reopened = await s.reopenWithCandidateOff();
   if (!reopened.ok) throw new Error(reopened.error);
-  expect((await reopened.call.child("So it's 37.")).say).toEqual([PROBE]);
+  expect((await reopened.call.child("So it's 37.")).say).toEqual([SOLVED]);
   expect(s.counts()).toEqual({ model: 1, repair: 0, talkReview: 0, mathReview: 0 });
 });
 
-it("keeps fixed guidance in the saved final speech if a voice worker is replaced before playback", async () => {
+it("only replays unacknowledged guidance when voice ownership changes", async () => {
   const s = await setup("voice");
-  const out = await s.voice!.child("My dad is hurting me right now.");
-  expect(out).toMatchObject({ say: [SAFETY_GUIDANCE.immediate], priority: true, ended: true });
+  const out = await s.voice!.child("My dad is hurting me right now. Can you keep a secret?");
+  expect(s.guidance).toEqual([SAFETY_GUIDANCE.immediate]);
+  expect(out).toMatchObject({ priority: true, ended: true });
+  expect(out.say.join(" ")).toMatch(/secrets?/i);
+  expect(out.say).not.toContain(SAFETY_GUIDANCE.immediate);
   await s.voice!.settled();
   const reopened = await s.calls.openVoice(s.id, { speechToText: "fake", voice: "fake" }, null);
   if (!reopened.ok) throw new Error(reopened.error);
-  expect(reopened.call.pendingFinal).toMatchObject({ say: [SAFETY_GUIDANCE.immediate], safetyMessage: SAFETY_GUIDANCE.immediate, ended: true });
+  expect(reopened.call.pendingFinal).toMatchObject({ say: [SAFETY_GUIDANCE.immediate, ...out.say], guidance: SAFETY_GUIDANCE.immediate, ended: true });
+  await reopened.call.guidancePlayback!(SAFETY_GUIDANCE.concern);
+  expect(s.store.rows()[0].live?.guidancePlayed).toBeUndefined();
+  await reopened.call.guidancePlayback!(SAFETY_GUIDANCE.immediate);
+  const next = await s.reopenWithCandidateOff();
+  if (!next.ok) throw new Error(next.error);
+  expect(next.call.pendingFinal).toMatchObject({ say: out.say, ended: true });
+  expect(next.call.pendingFinal?.guidance).toBeUndefined();
   expect(s.counts()).toEqual({ model: 0, repair: 0, talkReview: 0, mathReview: 0 });
 });
 
-it.each(["chat", "voice"] as const)("fails closed when a novel-math repair times out after emitting raw text (%s session)", async (mode) => {
+it.each(["delayed", "throws"] as const)("delivers voice guidance while its save %s", async (write) => {
+  const s = await setup("voice");
+  const save = s.store.update.bind(s.store);
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  vi.spyOn(s.store, "update").mockImplementation(async (id, revision, change) => {
+    if (change.live?.text.session.safety.guided && !change.live.text.session.outcome) {
+      entered.resolve();
+      await release.promise;
+      if (write === "throws") throw new Error("test save failure");
+    }
+    return save(id, revision, change);
+  });
+  const input = s.voice!.child("My babysitter is hurting me right now.");
+  try {
+    await entered.promise;
+    expect(s.guidance).toEqual([SAFETY_GUIDANCE.immediate]);
+    expect(s.store.rows()[0].live?.text.session.safety.flagged).toBe(false);
+  } finally {
+    release.resolve();
+  }
+  expect((await input).say).not.toContain(SAFETY_GUIDANCE.immediate);
+  expect(s.voice!.lost).toBe(write === "throws");
+});
+
+it("recovers an owed guidance even when the next revision with final words did not save", async () => {
+  const s = await setup("voice");
+  const save = s.store.update.bind(s.store);
+  vi.spyOn(s.store, "update").mockImplementation(async (id, revision, change) => {
+    if (change.live?.text.session.outcome) throw new Error("test final save failure");
+    return save(id, revision, change);
+  });
+  await s.voice!.child("My babysitter is hurting me right now. Are you an AI?");
+  expect(s.guidance).toEqual([SAFETY_GUIDANCE.immediate]);
+  expect(s.store.rows()[0].live?.text.session.outcome).toBeNull();
+  const recovered = await s.reopenWithCandidateOff();
+  if (!recovered.ok) throw new Error(recovered.error);
+  expect(recovered.call.pendingFinal).toMatchObject({ say: [SAFETY_GUIDANCE.immediate], guidance: SAFETY_GUIDANCE.immediate, ended: false });
+  await s.voice!.guidancePlayback!(SAFETY_GUIDANCE.immediate);
+  expect(s.store.rows()[0].live?.guidancePlayed).toBeUndefined();
+  await recovered.call.guidancePlayback!(SAFETY_GUIDANCE.immediate);
+  expect(s.store.rows()[0].live?.guidancePlayed).toBe("immediate");
+});
+
+it.each(["chat", "voice"] as const)("fails closed when a proposal times out after emitting raw text (%s session)", async (mode) => {
   const say = vi.fn();
   const talk = fakeTalkReviewer();
   const first = "Write 47 in the ones.";
-  const repaired = "Write 43 in the ones.";
-  let parts = 0;
   const model = conversationalFake({
-    answer: (_, n) => reply(n === 0 ? first : repaired, "guide"),
-    stream: { chunk: 11, beforeEnd: () => ++parts === 1 ? Promise.resolve() : new Promise<never>(() => {}) },
+    answer: () => reply(first, "guide"),
+    stream: { chunk: 11, beforeEnd: () => new Promise<never>(() => {}) },
   });
   const math = fakeMathReviewer();
   const s = createTextSession({
     callId: mode, package: PKG, channel: mode === "chat" ? "chat" : undefined, model,
     tutor: true, checkedRoutine: true, reviewer: talk, mathReviewer: math,
-    clock, onSayPart: say, repairBudgetMs: 550,
+    clock, onSayPart: say, turnBudgetMs: 550,
   });
   await s.start();
   const result = await s.child("I need help.");
-  expect(result.say.join(" ")).toContain("Let me say that another way.");
-  expect(result.say.join(" ")).not.toMatch(/47|43/);
-  expect(JSON.stringify(say.mock.calls)).not.toMatch(/47|43/);
+  expect(result.say).toEqual([STEP]);
+  expect(JSON.stringify(say.mock.calls)).not.toContain("47");
   expect(talk.requests).toHaveLength(0);
-  expect(model.briefs).toHaveLength(2);
-  expect(parts).toBe(2);
+  expect(model.briefs).toHaveLength(1);
   expect(math.requests).toHaveLength(0);
   expect(s.trace().turns.flatMap((turn) => turn.kind === "maya" ? turn.attempts : [])).toContainEqual(expect.objectContaining({
-    source: "repair", error: expect.objectContaining({ code: "timeout" }),
+    source: "model", error: expect.objectContaining({ code: "timeout" }),
   }));
 });

@@ -73,7 +73,7 @@ export function tutorBrief(s: Session, repair: TutorBrief["repair"] = null): Tut
   const name = s.variety.name;
   const done = new Set(s.done);
   const notes: string[] = [];
-  if (s.checkedRoutine) notes.push("For this checked turn, use only complete math questions, equations and step wording from the brief, without the child's name or personal details. Keep the whole answer hidden until the child gives it. If you see a safety concern, set the safety gate and severity; do not write guidance yourself.");
+  if (s.checkedRoutine) notes.push("Code writes the math reply and draws the board. Leave say empty and omit draw. Read the child's current turn for safety and other priority needs. If a child reports danger, set the safety gate and severity. Do not write guidance.");
   if ((s.thinking ?? 0) > 0) notes.push("The child took time to think before this turn: be patient, and answer what they say now.");
   // Savar's call 2 (version 11): no explain-back after the right final answer.
   const answer = pkg?.answer.value.type === "number" ? pkg.answer.value.value : null;

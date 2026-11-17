@@ -416,7 +416,7 @@ export class VoiceCallRun {
   /** The plans of words said again after a silent speech: a second silence is not said a third time. */
   private resaid = new Set<string>();
   /** The guidance on its way to the child. */
-  private guidance: { speech: voice.SpeechHandle; over: Promise<void>; scope: SpeechScope | null; cut: boolean; repeated: boolean } | null = null;
+  private guidance: { speech: voice.SpeechHandle; over: Promise<void>; scope: SpeechScope | null; cut: boolean; repeated: boolean; silent: boolean } | null = null;
   /** Guidance cut while the child was away. They hear it when they are back. */
   private guidanceOwed: string | null = null;
   /** The last words of a call that ended while the child was away. They come first when the child is back, and then the stored call ends. */
@@ -1004,7 +1004,7 @@ export class VoiceCallRun {
    * to the reply could not start until the phrase ended, and words in a stopped reply are never read at all. Null: the
    * marks of this turn are already taken.
    */
-  private async sayFirst(pace: TurnPace | null, turns: VoiceTurn[]) {
+  private async sayFirst(pace: TurnPace | null, turns: VoiceTurn[], repeatedGuidance = false) {
     if (pace) {
       pace.ownSpeech = true;
       this.cutAck(pace);
@@ -1024,7 +1024,8 @@ export class VoiceCallRun {
       else await this.guidance?.over;
       // Guidance is for the child who is here now, or who comes back. Other words belong to the connection that asked.
       if (guidance && !this.childHere && !this.finishing) {
-        this.guidanceOwed = guidance;
+        if (last.ended) this.finalDropped({ ...last, say: turns.flatMap(t => t.say) });
+        else this.guidanceOwed = guidance;
         return this.closeTurn(pace);
       }
       const generation = guidance ? this.generation : pace?.generation ?? this.generation;
@@ -1032,12 +1033,14 @@ export class VoiceCallRun {
       try { await this.stageBoard(last, !!last.boardCues?.length, pace?.turnId); }
       catch (error) { this.boardFailed(error); if (generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return this.closeTurn(pace); }
       if (this.finishing || !this.childHere || generation !== this.generation) {
+        if (guidance && !last.ended && !this.childHere && !this.finishing) this.guidanceOwed = guidance;
         this.finalDropped({ ...last, say: turns.flatMap(t => t.say) });
         return this.closeTurn(pace);
       }
+      if (guidance && this.call.replaced) { void this.finish({ detail: "the call could not be saved" }); return this.closeTurn(pace); }
       pace?.clock.staged();
       speech = this.sayAs(text, { addToChatCtx: true }, { turnId: pace?.turnId ?? null, kind: guidance ? "guidance" : "answer" });
-      if (guidance) this.followGuidance(guidance, speech);
+      if (guidance) this.followGuidance(guidance, speech, repeatedGuidance);
     } else this.closeTurn(pace, "no_words");
     for (const turn of turns) await this.after(turn, speech, () => false);
   }
@@ -1062,18 +1065,27 @@ export class VoiceCallRun {
 
   /** Follows the guidance's speech. If it was cut it plays once more, and words after it wait for that too. */
   private followGuidance(text: string, speech: voice.SpeechHandle, repeated = false) {
-    const followed = { speech, scope: this.boardScope, cut: false, repeated, over: Promise.resolve() };
+    const audio = this.session.output.audio;
+    const captured = audio?.capturedPlayoutSegments ?? 0;
+    const followed = { speech, scope: this.boardScope, cut: false, repeated, silent: false, over: Promise.resolve() };
     const run = async () => {
       await speech.waitForPlayout();
       if (this.guidance !== followed) return;
-      if ((followed.cut || speech.interrupted) && !followed.repeated && !this.finishing) {
-        if (this.childHere) await this.repeatGuidance(text);
-        else this.guidanceOwed = text;
+      if (this.finishing || this.call.replaced) return;
+      if (followed.cut || speech.interrupted) {
+        if (!followed.repeated) {
+          if (this.childHere) await this.repeatGuidance(text);
+          else this.guidanceOwed = text;
+        }
+      } else if (!this.call.lost && this.childHere && !followed.silent && audio && audio.capturedPlayoutSegments > captured) {
+        void this.call.guidancePlayback?.(text).then(() => {
+          if (this.call.lost) void this.finishSaveFailure("the guidance playback could not be saved");
+        }, () => this.finishSaveFailure("the guidance playback could not be saved"));
       }
-      if (this.guidance === followed) this.guidance = null;
     };
     this.guidance = followed;
-    followed.over = run().catch(() => { if (this.guidance === followed) this.guidance = null; });
+    followed.over = run().catch(() => {}).finally(() => { if (this.guidance === followed) this.guidance = null; });
+    return followed.over;
   }
 
   /** The once more. Its plan has no batches, as the guidance has none. */
@@ -1082,8 +1094,7 @@ export class VoiceCallRun {
     this.pace?.handle?.interrupt(true);
     await this.stageBoard({}, false);
     const speech = this.sayAs(text, { addToChatCtx: true }, { turnId: null, kind: "guidance" });
-    this.followGuidance(text, speech, true);
-    await speech.waitForPlayout();
+    await this.followGuidance(text, speech, true);
   }
 
   /** The next speech this run asks the session for, and who owns it (one-shot, like `ungatedNext`). */
@@ -1237,14 +1248,16 @@ export class VoiceCallRun {
     const generation = this.generation;
     void task.catch(() => {
       // An absent peer cannot answer an RPC. Its snapshot is reconciled when it returns.
-      if (!this.finishing && (this.call.lost || (generation === this.generation && this.childHere && this.options.board?.owns(scope)))) void this.finish({ detail: "the speech board connection failed" });
+      if (this.finishing) return;
+      if (this.call.lost) void this.finishSaveFailure("the speech board connection failed");
+      else if (generation === this.generation && this.childHere && this.options.board?.owns(scope)) void this.finish({ detail: "the speech board connection failed" });
     });
   }
   private stopBoard(scope: SpeechScope) {
     const board = this.options.board;
     if (!board?.owns(scope)) return;
     // A retired plan's audio never reaches the child, whatever its speech handle says afterwards.
-    if (this.guidance?.scope === scope && !this.guidance.repeated) this.guidance.cut = true;
+    if (this.guidance?.scope === scope) this.guidance.cut = true;
     this.boardAudio?.cancelPending(scope);
     if (this.childHere) this.boardTask(board.interrupt(scope), scope);
     else board.detach(scope);
@@ -1288,6 +1301,7 @@ export class VoiceCallRun {
     const { scope, text, heardAny, failed } = speech;
     const repeat = this.resaid.has(`${scope.utteranceId}:${scope.generation}`);
     console.warn("[maya voice] speech had no audio", this.call.id, { words: speechWords(text).length, heardAny, failed, repeat });
+    if (this.guidance?.scope === scope) this.guidance.silent = true;
     if (this.exchangeScope?.scope.generation === scope.generation) {
       this.exchangeScope.silent = true;
       return;
@@ -1370,7 +1384,7 @@ export class VoiceCallRun {
     this.leaseTimer = this.timers.set(CONNECTION_RENEW_MS, () => {
       void (async () => {
         await this.call.connection("agent_joined");
-        if (this.call.lost) await this.finish({ detail: "the connection lease could not be saved" });
+        if (this.call.lost) await this.finishSaveFailure("the connection lease could not be saved");
         else this.renewLease();
       })();
     });
@@ -1403,7 +1417,7 @@ export class VoiceCallRun {
     }
     catch { if (generation === this.generation && this.childHere) return this.finish({ detail: "the board reconnect failed" }); return; }
     // The opening does not wait for the row. A row that could not be saved ends the call when it reports.
-    void row.then(() => { if (this.call.lost && !this.finishing) void this.finish({ detail: "the connection could not be saved" }); }, () => {});
+    void row.then(() => { if (this.call.lost && !this.finishing) void this.finishSaveFailure("the connection could not be saved"); }, () => {});
     if (generation !== this.generation || !this.childHere || this.finishing) return;
     if (this.call.lost) return this.finish({ detail: "the connection could not be saved" });
     const exchange = this.call.pendingExchange;
@@ -1416,23 +1430,36 @@ export class VoiceCallRun {
     const owed = this.guidanceOwed;
     const lastWords = this.finalOwed;
     this.guidanceOwed = this.finalOwed = null;
-    if (owed || lastWords) {
+    const replay = owed || lastWords ? (async () => {
       // The guidance first. Then the call that ended while the child was away ends here, after its own last words.
-      void (async () => {
-        if (owed) await this.repeatGuidance(owed);
-        if (lastWords) await this.sayFirst(null, [lastWords]);
-        else if (this.call.ended) await this.finish({ reason: "child_stopped" }, false, "controller_end", this.call.session.outcome?.reason);
-      })().catch(() => this.finish({ detail: "the final speech failed" }));
-    }
+      const combined = owed !== null && lastWords?.guidance === owed;
+      if (owed && !combined) await this.repeatGuidance(owed);
+      if (lastWords) await this.sayFirst(null, [lastWords], combined);
+      else if (this.call.ended) await this.finish({ reason: "child_stopped" }, false, "controller_end", this.call.session.outcome?.reason);
+    })().catch(() => this.finish({ detail: "the final speech failed" })) : null;
     // Bound the opening model request too, before the first session state can be saved.
     this.scheduleLimit(this.call.session.startedAt ?? this.timers.now());
     const final = this.call.pendingFinal;
     if (final && !this.replayingFinal) {
       this.replayingFinal = true;
       try {
-        await this.stageBoard(final);
-        const speech = final.say.length ? this.sayAs(final.say.join(" "), { addToChatCtx: true }, { turnId: null, kind: "answer" }) : null;
-        await this.after(final, speech, () => false);
+        if (final.guidance) {
+          const { guidance, ...close } = final;
+          if (close.ended && close.say.includes(guidance)) {
+            await this.sayFirst(null, [{ say: [guidance], newBatches: 0, safetyMessage: close.safetyMessage, ended: false, guidance }]);
+            await this.sayFirst(null, [{ ...close, say: close.say.filter(line => line !== guidance) }]);
+          } else {
+            await this.sayFirst(null, [final]);
+          }
+          if (!close.ended) {
+            await this.guidance?.over;
+            this.resumeSafetyClose(generation);
+          }
+        } else {
+          await this.stageBoard(final);
+          const speech = final.say.length ? this.sayAs(final.say.join(" "), { addToChatCtx: true }, { turnId: null, kind: "answer" }) : null;
+          await this.after(final, speech, () => false);
+        }
       } catch { await this.finish({ detail: "the saved final speech failed" }); }
     } else if (this.call.session.startedAt === null || said) {
       // The opening is Maya's first sound (Savar, 2026-11-13). The greeting follows it, unless the child cut the opening:
@@ -1444,13 +1471,18 @@ export class VoiceCallRun {
       });
     } else {
       this.schedule();
-      // A new worker took over after the guidance: the close call the old one waited for is gone.
-      const { state, safety, outcome } = this.call.session;
-      if (state === "SAFETY" && safety.guided && !outcome && !this.call.working) {
-        if (this.tickTimer !== null) this.timers.clear(this.tickTimer);
-        this.tickTimer = this.timers.set(0, () => void this.tick());
-      }
+      const guidance = replay ?? this.guidance?.over;
+      if (guidance) void guidance.then(() => this.resumeSafetyClose(generation));
+      else this.resumeSafetyClose(generation);
     }
+  }
+
+  private resumeSafetyClose(generation: number) {
+    if (generation !== this.generation || !this.childHere || this.finishing || this.call.lost) return;
+    const { state, safety, outcome } = this.call.session;
+    if (state !== "SAFETY" || !safety.guided || outcome || this.call.working) return;
+    if (this.tickTimer !== null) this.timers.clear(this.tickTimer);
+    this.tickTimer = this.timers.set(0, () => void this.tick());
   }
 
   async childLeft(how: "hang_up" | "dropped", protocolReason?: unknown) {
@@ -1460,6 +1492,7 @@ export class VoiceCallRun {
     const generation = ++this.generation;
     this.childHere = false;
     if (this.pace) this.cutAck(this.pace);
+    if (this.guidance) this.guidance.cut = true;
     if (this.boardScope) this.stopBoard(this.boardScope);
     if (this.tickTimer !== null) this.timers.clear(this.tickTimer);
     this.tickTimer = null;
@@ -1552,7 +1585,7 @@ export class VoiceCallRun {
     const childTurnBegan = () => this.replies !== repliesBefore;
     try {
       const turn = await this.call.tick();
-      if (this.call.lost) return this.finish({ detail: "the call could not be saved" });
+      if (this.call.lost) return this.finishSaveFailure("the call could not be saved");
       if (this.finishing) return;
       // A check-in's sound is not an earlier answer's.
       if (turn.priority) {
@@ -1581,7 +1614,10 @@ export class VoiceCallRun {
    */
   private async after(turn: VoiceTurn, handle = this.speech, stage: () => boolean = () => true, overlap = false, turnId?: string): Promise<boolean> {
     if (!overlap) await this.call.settled();
-    if (this.call.lost) { void this.finish({ detail: "the call could not be saved" }); return false; }
+    if (this.call.lost) {
+      void this.finishSaveFailure("the call could not be saved");
+      return false;
+    }
     if (this.finishing || !this.childHere) { this.finalDropped(turn); return false; }
     const generation = this.generation;
     if (stage()) {
@@ -1604,6 +1640,10 @@ export class VoiceCallRun {
       void (async () => {
         try { await handle?.waitForPlayout(); await this.guidance?.over; await this.options.board?.settled(); }
         catch { await this.finish({ detail: "the final speech failed" }); return; }
+        if (!this.childHere && this.guidanceOwed) {
+          this.finalDropped(turn);
+          return;
+        }
         await this.finish({ reason: "child_stopped" }, false, "controller_end", this.call.session.outcome?.reason);
       })();
     } else this.schedule();
@@ -1621,6 +1661,11 @@ export class VoiceCallRun {
     if (this.finishing || !this.childHere) return;
     const at = nextTickAt(this.call.session, { speechEndedAt: this.speechEndedAt, lastTickAt: this.lastTickAt });
     if (at !== null) this.tickTimer = this.timers.set(at - this.timers.now(), () => void this.tick());
+  }
+
+  private finishSaveFailure(detail: string) {
+    const guidance = this.childHere && !this.call.replaced && this.guidance;
+    return guidance ? guidance.over.then(() => this.finish({ detail })) : this.finish({ detail });
   }
 
   finish(how: FinishOptions, limit = false, entry: CloseEntry = "finish", reason?: unknown): Promise<void> {

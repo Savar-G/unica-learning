@@ -477,7 +477,6 @@ export interface TutorCheckContext {
    * ("52 minus 28 isn't 3.") is then refused: it is the form for a wrong final answer only.
    */
   stepMiss?: { pkg: OperationPackage };
-  checkedRoutine?: { committed: number | null; solved: boolean };
 }
 
 /** Negative judgment words and phrases (final check 3, 2026-11-15). */
@@ -687,18 +686,6 @@ export function checkTutorSay(text: string, ctx: TutorCheckContext & { extra?: R
   // Final check 4: code's texts count only for the active problem: a message that names a number of the easier example
   // only (and not of the question) drops them.
   const active = sentences.some((x) => sayNumbers(x).some((t) => !!t.q && t.q[1] === 1 && !!ctx.exampleOnly?.has(t.q[0]))) ? { ...ctx, exact: undefined } : ctx;
-  if (ctx.checkedRoutine) {
-    const { committed, solved } = ctx.checkedRoutine;
-    for (const sentence of sentences) {
-      const key = exactKey(sentence);
-      const explainBack = committed !== null && /^how did you get \d+\?$/i.test(sentence.trim()) && valueOf(sentence) === committed;
-      if (explainBack || (committed !== null && key === "that's right") || (solved && (sentence === FINAL_ASK || key === "you solved this one"))) continue;
-      const question = sentence.replace(/^(?:now|next|then)\s+(?=what |how many |which )/i, "");
-      if (codeAlone(sentence, active) || (question !== sentence && /\?$/.test(question) && codeAlone(question, { ...active, exact: undefined }))) continue;
-      return { ok: false, reason: "never_say", detail: "Use only a checked step from the brief or a complete checked math equation or question. Leave out other words." };
-    }
-    return { ok: true, needsReview: false, review: [], math: [] };
-  }
   const review = sentences.filter((x) => !plainTeaching(x, ctx.extra) || stanceHeld(x, active));
   // The exact-match rule (2026-11-15): only an exact match of code's own text or of a closed plain form passes on code
   // alone; every other sentence goes to the math-truth review. Final check 6: a sentence passes on code alone only when
@@ -826,6 +813,13 @@ export function continuedSay(sent: readonly string[], say: string): { text: stri
 export function stepsStated(pkg: OperationPackage, sentences: readonly string[]): string[] {
   const said = new Set(sentences.flatMap((x) => equationsOf(x).filter((e) => !e.negated && equationHolds(e) === true && [...e.operands, e.result].every((o) => o.q?.[1] === 1)).map((e) => expressionKey(e.operands.map((o) => o.q![0]), e.ops))));
   return stepFacts(pkg).filter((st) => equationsOf(st.work).some((e) => [...e.operands, e.result].every((o) => o.q?.[1] === 1) && said.has(expressionKey(e.operands.map((o) => o.q![0]), e.ops)))).map((st) => st.id);
+}
+
+export function checkedSubtractionQuestion(pkg: OperationPackage, done: readonly string[], feedback: string | null, help: boolean): string {
+  const question = tutorKind(pkg).stepQuestion(pkg, done) ?? "What is the whole answer?";
+  const hint = !help ? null : !done.includes("ones") ? "Trade one ten for ten ones before subtracting the ones."
+    : !done.includes("tens") ? "Use the tens that are left after the trade." : "Put the tens and ones together.";
+  return [feedback, hint, question].filter(Boolean).join(" ");
 }
 
 /** Code's honest line when the model's message failed twice (D-345): one short line and the step's question. */
