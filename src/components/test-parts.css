@@ -1,11 +1,5 @@
-/* Read-aloud button, progress and halfway break (#69), in the split-desk look (D-088, #79). Loads after test-base.css,
+/* Progress and halfway break (#69), in the split-desk look (D-088, #79). Loads after test-base.css,
    which holds the tokens. Every tap target is 44 px or more; with reduced motion nothing moves. */
-
-/* ---------- read it to me ---------- */
-.test-read { flex: none; display: grid; place-items: center; width: 60px; height: 60px; border-radius: 50%; border: 0; background: var(--test-read); color: #fff; cursor: pointer; box-shadow: var(--test-read-shadow); transition: background 0.2s; }
-.test-read:hover { background: var(--test-read-deep); }
-.test-read[data-speaking] { background: var(--ink); animation: test-read-pulse 1.4s ease-in-out infinite; }
-@keyframes test-read-pulse { 50% { box-shadow: 0 0 0 10px var(--test-read-glow); } }
 
 /* ---------- progress ---------- */
 /* In the top bar: the segments in the middle column, "n of N" in the right one (DESIGN.md, assessment test item 1). */
@@ -38,8 +32,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .test-read[data-speaking] { animation: none; box-shadow: 0 0 0 6px var(--test-read-glow); }
-  .test-progress-seg span, .test-progress-ring, .test-read { transition: none; }
+  .test-progress-seg span, .test-progress-ring { transition: none; }
   .test-breath, .test-breath span { animation: none; }
   .test-breath-in, .test-breath-out { display: none; }
   .test-breath-still { display: block; }

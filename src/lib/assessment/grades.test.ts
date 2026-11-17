@@ -15,7 +15,6 @@ import {
   isGrade,
   learnerProfile,
   lockStage1,
-  readsAloudFirst,
   reportFacts,
   reportModel,
   restoreSession,
@@ -80,10 +79,6 @@ describe("the school grades (D-156)", () => {
     // Kindergarten draws and does not type, like grades 1-2 (#67).
     expect(bandFor(0)).toMatchObject({ length: 24, stage1: 12, whiteboardRequired: 5, whiteboardTyping: false, strands: ["number", "algebra", "shapes"] });
     expect(bandFor(9)).toMatchObject({ length: 42, stage1: 21, whiteboardRequired: 10, whiteboardTyping: true });
-  });
-
-  it("read the questions aloud without a tap for Kindergarten only", () => {
-    expect(GRADES.filter(readsAloudFirst)).toEqual([0]);
   });
 
   it("have template pools at the start levels in every strand of the band, in every province", () => {
