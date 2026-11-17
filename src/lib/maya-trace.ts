@@ -1,4 +1,5 @@
 import { SCOPE_REASONS } from "@/lib/maya/scope";
+import { exchangeFacts, exchangeWords, type CheckedExchangeLesson } from "@/lib/maya/checked-exchange";
 // Maya's trace format (#322, spec #297): one versioned record of one Maya session, written by every session (the text
 // adapter now, the voice agent #326, the test bench #323 and the admin demo #324 later). It records the model and
 // prompt version, the question package hash, every turn with each proposal, its refusal and repair and the final
@@ -263,7 +264,7 @@ export interface TraceBoardBatch {
    * a proposal from before B2).
    */
   sentence?: number;
-  /** Version 15 (B2): the batches of the same turn this one builds on; it is off the board when one of them is. */
+  /** Version 15 (B2): the earlier batches this one builds on; it is off the board when one of them is. */
   after?: string[];
 }
 
@@ -282,6 +283,7 @@ export function boardFateCounts(board: readonly TraceBoardBatch[]): TraceBoardFa
 }
 
 export interface MayaTrace {
+  checkedExchange?: CheckedExchangeLesson;
   /** C2: committed preparation decisions. No hypothetical child text is stored. */
   preparations?: import("@/lib/maya-prepared").PrepareRecord[];
   kind: typeof TRACE_KIND;
@@ -530,6 +532,14 @@ function checkOrder(attempts: Record<string, unknown>[], path: string) {
   if (attempts[1]?.source === "repair") need(attempts[0].refusal !== null, `${path}[1]`, "a repair only after a refusal, not after a model error");
 }
 
+function checkedExchangeOutput(proposal: unknown, output: unknown): boolean {
+  if (!isObject(proposal) || proposal.checkedExchange !== 1 || typeof proposal.value !== "number" ||
+    typeof proposal.example !== "boolean" || typeof proposal.show !== "boolean" || !isObject(output)) return false;
+  const facts = exchangeFacts(proposal.value, proposal.example);
+  return facts !== null && output.act === "guide" && Array.isArray(output.say) && output.say.length === 1 &&
+    output.say[0] === exchangeWords(facts, proposal.show).join(" ") && Array.isArray(output.board) && output.board.length === (proposal.show ? 2 : 1);
+}
+
 function checkTurn(t: unknown, path: string, version: number): Record<string, unknown> {
   need(isObject(t), path, "a turn");
   const x = t as Record<string, unknown>;
@@ -582,7 +592,10 @@ function checkTurn(t: unknown, path: string, version: number): Record<string, un
         // D-341, round 2: code's patient line for a child who is thinking, with the name as a redacted trace writes it.
         const patient = o?.act === "wait" && Array.isArray(o?.say) && o.say.length === 1 && Array.isArray(o?.board) && o.board.length === 0 &&
           PATIENT_LINES.some((line) => [line, line.replace(/,? ?\{name\}/g, "")].includes((o.say as unknown[])[0] as string));
-        need(attempts.length === 1 && attempts[0].proposal === null && attempts[0].refusal === null && attempts[0].error === undefined && Array.isArray(o?.say) && o.say.length === 1 && (opening || patient || (exact.includes(o.say[0] as string) && Array.isArray(o?.board) && o.board.length === 0)), path, "controller output is exact safety guidance, the exact held lines, the code opening or a patient line only");
+        const fixed = attempts[0].proposal === null && Array.isArray(o?.say) && o.say.length === 1 &&
+          (opening || patient || (exact.includes(o.say[0] as string) && Array.isArray(o?.board) && o.board.length === 0));
+        need(attempts.length === 1 && attempts[0].refusal === null && attempts[0].error === undefined &&
+          (fixed || checkedExchangeOutput(attempts[0].proposal, o)), path, "controller output is exact safety guidance, the exact held lines, the code opening, a patient line or a checked exchange");
       }
       // A chat's close after the safety guidance is code's own: no model is asked for it (#589).
       // D-341, round 3: also a plain stop, closed in code's approved words with no model call.
@@ -591,7 +604,7 @@ function checkTurn(t: unknown, path: string, version: number): Record<string, un
         const o = x.output as { act?: unknown; say?: unknown } | null;
         // Exactly one guidance message (review of #1033).
         const guidance = o?.act === "safety" && Array.isArray(o.say) && o.say.length === 1 && (Object.values(SAFETY_GUIDANCE) as unknown[]).includes(o.say[0]);
-        need(o?.act === "close" || guidance, `${path}.attempts`, "a fallback with no model attempt is only a close (after safety guidance, or a plain stop) or code's exact safety guidance");
+        need(o?.act === "close" || guidance, `${path}.attempts`, "a fallback with no model attempt is a code-written close or safety guidance");
       }
       attempts.forEach((a, i) => checkAttempt(a, `${path}.attempts[${i}]`));
       checkOrder(attempts, `${path}.attempts`);
@@ -881,7 +894,9 @@ export function redactTrace(trace: MayaTrace, childName: string | null): MayaTra
         return { ...t, detail: redactText(t.detail, childName) };
       case "technical":
         return { ...t, detail: redactText(t.detail, childName) };
-      case "maya":
+      case "maya": {
+        const last = t.attempts.at(-1);
+        const fixedExchange = (last?.source === "controller" || last?.source === "fallback") && checkedExchangeOutput(last.proposal, t.output);
         return {
           ...t,
           attempts: t.attempts.map((a) => ({
@@ -892,8 +907,9 @@ export function redactTrace(trace: MayaTrace, childName: string | null): MayaTra
             ...(a.math ? { math: a.math.map((x) => ({ ...x, sentence: redactText(x.sentence, childName), reason: redactText(x.reason, childName) })) } : {}),
             // Errors are codes and fixed wording: nothing to redact.
           })),
-          output: t.output ? { ...t.output, say: t.output.say.map((x) => redactText(x, childName, configuredSecrets(), keep)) } : null,
+          output: t.output ? { ...t.output, say: t.output.say.map((x) => redactText(x, fixedExchange ? null : childName, configuredSecrets(), keep)) } : null,
         };
+      }
       default:
         return t;
     }

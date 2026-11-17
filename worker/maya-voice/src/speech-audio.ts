@@ -95,6 +95,8 @@ export function boardAudio(
   silent?: (speech: SilentSpeech) => void,
   /** False: the audio does not wait for the plan to be sent. Only for a plan with no batches. */
   gate = true,
+  /** Checked actions depend on their spoken cue. Cancel the ones that did not reach it. */
+  requireSpokenCues = false,
 ): ReadableStream<AudioFrame> {
   const abort = new AbortController();
   let current: ReadableStreamDefaultReader<AudioFrame> | null = null;
@@ -128,6 +130,11 @@ export function boardAudio(
        */
       const unheard = async (failed: boolean) => {
         if (abort.signal.aborted || !board.owns(scope)) return;
+        if (requireSpokenCues) {
+          silent?.({ scope, text: full, heardAny, failed });
+          await board.interrupt(scope);
+          return;
+        }
         await board.show(scope);
         silent?.({ scope, text: full, heardAny, failed });
       };

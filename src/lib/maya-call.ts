@@ -83,6 +83,7 @@ import { modelInput, type MayaModel } from "@/lib/maya-model";
 import type { TalkReviewer } from "@/lib/maya-talk-review";
 import type { MathReviewer } from "@/lib/maya-math-review";
 import { snapshotFates } from "@/lib/board-fate";
+import { checkedExchangeProposal } from "@/lib/maya/session";
 import { createTextSession, readFateReports, withHelpLedger, type BoardFateReport, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession, type TextSessionOptions } from "@/lib/maya-text";
 import { packageHash, type MayaTrace } from "@/lib/maya-trace";
 import { type QuestionPackage, type QuestionRef } from "@/lib/question-package";
@@ -293,6 +294,8 @@ export interface CallSeams {
    * The server's MAYA_TUTOR_FAMILIES switch (callSeams); only true turns it on. A resumed call keeps what it started with.
    */
   tutorFamilies?: boolean;
+  /** Enables the checked exchange for newly created, supported tutor sessions. */
+  checkedExchange?: boolean;
   /**
    * #1107 reader-first release: saved sentence writes are off unless explicitly enabled by the server.
    * Enable only after all supported readers and end workers can restore parts and interrupted turns.
@@ -455,12 +458,13 @@ export interface StartInput {
 }
 
 export type CallResult =
-  | { ok: true; view: CallView; output: { say: string[]; newBatches: number; safetyMessage: string | null } }
+  | { ok: true; view: CallView; output: { say: string[]; newBatches: number; safetyMessage: string | null; exchangeTurnId?: string } }
   | { ok: false; error: "not_found" | "not_test_family" | "invalid_question" | "invalid_input" | "conflict" | "model_unavailable" | "voice_call" | Exclude<SpendState, "open"> };
 
 /** What reached the child after one input of a voice call. */
 export interface VoiceTurn {
   boardCues?: BoardCue[];
+  exchangeTurnId?: string;
   say: string[];
   newBatches: number;
   safetyMessage: string | null;
@@ -560,6 +564,8 @@ export interface VoiceCall {
    * the child's screen did with each batch in it (shown or cancelled), saved with the next turn.
    */
   observeBoard(snapshot: BoardSnapshot): Promise<void>;
+  /** Reports worker playout for a checked turn. A finished handle does not prove the child heard it. */
+  exchangePlayback?(turnId: string, playback: "finished" | "interrupted"): Promise<void>;
   /** B1: batches the board core refused at staging (board-speech `refused`): the session counts them as skipped. */
   boardRefused?(batchIds: readonly string[]): void;
   /** `openingSpoken`: the worker speaks the opening itself, so the turn comes back with no say (D-341). */
@@ -635,6 +641,16 @@ export const FAKE_MODEL_ID = "fake";
 // B2: `after` goes with a batch, so the desk can skip a batch whose earlier batch it skipped.
 const batchesOf = (board: readonly { transactionId: string; commands: readonly unknown[]; after?: readonly string[] }[]): Batch[] => board.map((b) => ({ transactionId: b.transactionId, commands: b.commands, ...(b.after?.length ? { after: [...b.after] } : {}) }));
 
+function replayableBoard(trace: MayaTrace): MayaTrace["board"] {
+  if (!trace.checkedExchange) return trace.board;
+  const excluded = new Set(trace.checkedExchange.turns.flatMap((turn) => turn.actions)
+    .filter((action) => action.fate === "skipped" || action.fate === "cancelled").map((action) => action.batchId));
+  for (const batch of trace.board) {
+    if (batch.after?.some((id) => excluded.has(id))) excluded.add(batch.transactionId);
+  }
+  return trace.board.filter((batch) => !excluded.has(batch.transactionId));
+}
+
 /** The transcript from a trace: the child's turns, Maya's words, and notes for writing, waits and failures. */
 function transcriptOf(trace: MayaTrace): TranscriptLine[] {
   const start = trace.turns.find((t) => t.kind === "start")?.at ?? trace.turns[0]?.at ?? 0;
@@ -674,7 +690,7 @@ function freeTalkOf(trace: MayaTrace): CallView["freeTalk"] {
 export function boardHistoryOf(trace: MayaTrace): BoardHistory {
   const start = trace.turns.find((t) => t.kind === "start")?.at ?? 0;
   let h = createHistory();
-  for (const b of trace.board) {
+  for (const b of replayableBoard(trace)) {
     const r = mayaWrites(h, { transactionId: b.transactionId, commands: b.commands }, Math.max(0, b.at - start));
     if (r.ok) h = r.history;
   }
@@ -731,7 +747,7 @@ export function callView(record: CallRecord, trace: MayaTrace, alerts: AlertStat
     transcript: transcriptOf(trace),
     freeTalk: freeTalkOf(trace),
     scopeRefusals: structuredClone(trace.scopeRefusals ?? []),
-    batches: observed ? history.events.flatMap(e => e.kind === "maya" ? [{ transactionId: e.batchId, commands: e.commands }] : []) : batchesOf(trace.board),
+    batches: observed ? history.events.flatMap(e => e.kind === "maya" ? [{ transactionId: e.batchId, commands: e.commands }] : []) : batchesOf(replayableBoard(trace)),
     boardHistory: history,
     technicalNotes: trace.turns.flatMap((t) => t.kind === "technical" ? [t.detail] : []),
     outcome: record.outcome ?? trace.outcome,
@@ -966,6 +982,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       // D-345: the tutor core teaches admin test calls, and family calls (desk chat and family voice) only when the
       // MAYA_TUTOR_FAMILIES switch is on. The core still decides per question (isTutorQuestion).
       tutor: seams.tutor !== false && (record.kind === "admin_test" || (seams.tutorFamilies === true && (record.kind === "chat" || record.kind === "family"))),
+      checkedExchange: seams.checkedExchange,
       freeTalk: record.kind !== "chat" && record.kind !== "family", reviewer: seams.reviewer?.(model.id, spend ?? spendCall(record)) ?? null,
       mathReviewer: seams.mathReviewer?.(model.id, spend ?? spendCall(record)) ?? null,
     });
@@ -1188,7 +1205,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   const result = async (record: CallRecord, trace: MayaTrace, out: TextOutput | null): Promise<CallResult> => ({
     ok: true,
     view: callView(record, trace, await alertsOf(record)),
-    output: { say: out?.say ?? [], newBatches: out?.board.length ?? 0, safetyMessage: out?.safetyMessage ?? null },
+    output: { say: out?.say ?? [], newBatches: out?.board.length ?? 0, safetyMessage: out?.safetyMessage ?? null, ...(out?.exchangeTurnId ? { exchangeTurnId: out.exchangeTurnId } : {}) },
   });
 
   return {
@@ -1315,6 +1332,21 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         });
       const none: VoiceTurn = { say: [], newBatches: 0, safetyMessage: null, ended: false };
       const inactive = () => lost || record.status === "ended";
+      // Board and playback observations can arrive during a new turn. Persist only the observation on the last
+      // durable session, so an in-flight request or an output that has yet to pass its save cannot leak into storage.
+      const saveExchangeEvidence = async (observe: (saved: TextSession) => void): Promise<CallChange> => {
+        const live = record.live;
+        if (!live?.text.session.checkedExchange) return {};
+        const saved = textSession(record, pkg, idleModel(record), name, live.text);
+        observe(saved);
+        return { live: { ...live, text: await saved.saved() } };
+      };
+      const persistExchangeEvidence = async (observe: (saved: TextSession) => void) => {
+        if (inactive()) return;
+        const change = await saveExchangeEvidence(observe);
+        if (!(await store.update(record.id, record.revision, change))) { lose(true); return; }
+        record = { ...record, ...change, revision: record.revision + 1 };
+      };
       /** What the worker needs of one output: the trace turns from `before` on give its times and each batch's cue. */
       const voiceTurn = (out: TextOutput, before: number): VoiceTurn => {
         // Preserve the controller turn association. Do not spread batches evenly across an entire reply.
@@ -1349,7 +1381,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         const priority = state.safety.flagged || state.state === "TIME_CLOSE" || state.outcome?.reason === "time_limit" || closing;
         // Round 4: a turn that streamed sentences and then turned into safety holds them and the guidance in one line.
         const guidance = (Object.values(SAFETY_GUIDANCE) as string[]).find((g) => out.say.some((text) => text === g || text.endsWith(` ${g}`)));
-        return { say: out.say, newBatches: out.board.length, boardCues, safetyMessage: out.safetyMessage, ended: out.ended !== null, priority, time, ...(guidance ? { guidance } : {}), ...(out.wait ? { wait: true } : {}) };
+        return { say: out.say, newBatches: out.board.length, boardCues, safetyMessage: out.safetyMessage, ended: out.ended !== null, priority, time, ...(out.exchangeTurnId ? { exchangeTurnId: out.exchangeTurnId } : {}), ...(guidance ? { guidance } : {}), ...(out.wait ? { wait: true } : {}) };
       };
       let working = 0;
       /** The turns admitted and not done, each with the child's words it carries (a check-in carries none). */
@@ -1410,8 +1442,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         const s = session.session;
         // D-341, round 3: a plain stop is code's goodbye with no model call (the text adapter's pump reads the same).
         const codeStop = s.conversational === true && s.stopRequested && !s.safety.flagged && !!s.turn && clearStop(s.turn.text);
-        const asks = s.outcome === null && nextActs(s).expect === "maya" && !codeStop;
-        return { model: asks, conversational: model.output === 3, streams: asks && model.output === 3 && streamPlan(s) !== null };
+        const asks = s.outcome === null && nextActs(s).expect === "maya" && !codeStop && !checkedExchangeProposal(s);
+        return { model: asks, conversational: model.output === 3, streams: asks && !s.checkedExchange && model.output === 3 && streamPlan(s) !== null };
       };
       /**
        * One input. `need`: free model attempts the gate asks for, 2 for a turn with no child words (a check-in), so the
@@ -1582,12 +1614,15 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         },
         async observeBoard(snapshot) {
           const copy = structuredClone(snapshot);
+          const fates = snapshotFates(copy).slice(-32);
+          const presented = copy.events.flatMap((e) => e.kind === "presented" ? [e.batchId] : []);
+          const observe = (s: TextSession) => { s.boardFates(fates); s.exchangePresented(presented); };
           // B1: the screen's word on each batch reaches the session at once (the next turn's brief reads it).
-          if (!inactive() && !session.ended) session.boardFates(snapshotFates(copy).slice(-32));
+          if (!inactive() && !session.ended) observe(session);
           later(async () => {
             if (lost || record.status === "ended") return;
             const boardHistory = voiceBoardHistory(copy, record.live?.text.session.startedAt ?? seams.clock(), seams.clock(), record.boardHistory);
-            const change: CallChange = { boardHistory };
+            const change: CallChange = { boardHistory, ...await saveExchangeEvidence(observe) };
             if (!(await store.update(record.id, record.revision, change))) { lose(true); return; }
             record = { ...record, ...change, revision: record.revision + 1 };
           });
@@ -1596,7 +1631,16 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         },
         boardRefused(batchIds) {
           if (inactive() || session.ended) return;
-          session.boardFates(batchIds.slice(-32).map((batchId) => ({ batchId, fate: "skipped" as const })));
+          const fates = batchIds.slice(-32).map((batchId) => ({ batchId, fate: "skipped" as const }));
+          session.boardFates(fates);
+          if (session.session.checkedExchange?.turns.some((turn) => turn.actions.some((a) => batchIds.includes(a.batchId)))) {
+            later(() => persistExchangeEvidence((s) => s.boardFates(fates)));
+          }
+        },
+        async exchangePlayback(turnId, playback) {
+          if (inactive() || !session.exchangePlayback(turnId, playback)) return;
+          later(() => persistExchangeEvidence((s) => s.exchangePlayback(turnId, playback)));
+          await queue;
         },
         start: (options) => turn(() => session.start(options)),
         child: (text, options, say) => turn(() => session.child(text.trim().slice(0, MAX_CHILD_TEXT), options), text.trim().slice(0, MAX_CHILD_TEXT), say),

@@ -1,6 +1,7 @@
 // Persistent transition rules for the text adapter. No provider, clock, promise or abort signal enters this fold.
 import { applyBatch, createScene, type Batch, type Scene } from "@/lib/board";
 import { withEmittedHelp, type Assistance } from "@/lib/maya/session";
+import type { ExchangeProposal } from "@/lib/maya/checked-exchange";
 import { BOARD_FATES, nextActs, speechKey, step, TIME_LIMITS, SAFETY_GUIDANCE, type Act, type BoardFate, type Effect, type MathReview, type Session, type SessionEvent, type TalkReview, type TiedDrawing } from "@/lib/maya";
 import { type TraceAttempt, type TraceBoardBatch, type TraceError, type TraceObligation, type TraceTurn } from "@/lib/maya-trace";
 import type { TextOutput } from "@/lib/maya-text";
@@ -43,9 +44,12 @@ export type TextLogEvent =
    */
   | { kind: "review"; at: number; requestId: number; reviews: TalkReview[]; mathReviews?: MathReview[]; unusedMath?: MathReview[]; reviewMs?: number; drawMode?: "derive" }
   | { kind: "fallback"; at: number; proposal: unknown; drawMode?: "derive" }
+  | { kind: "checked_exchange"; at: number; proposal: ExchangeProposal }
   | { kind: "recover"; at: number }
   | { kind: "cancelled"; at: number }
   | { kind: "delivered"; at: number }
+  | { kind: "exchange_playback"; at: number; turnId: string; playback: "finished" | "interrupted" }
+  | { kind: "exchange_presented"; at: number; batchId: string }
   /** B1: what the child's screen did with board batches Maya sent (boardFates), by transaction id. */
   | { kind: "fates"; at: number; fates: { batchId: string; fate: BoardFate }[] }
   /**
@@ -57,7 +61,7 @@ export type TextLogEvent =
 /** #1107: a drawing streamed with its sentence: the batch, its keys, and its place in the message's drawings (`tied`). */
 export interface StreamedBoard { batch: Batch; keys: string[]; tied: TiedDrawing }
 /** `ties` (B2): the sentence each batch is tied to, by transaction id; a batch not in it goes at the end of the turn. */
-type PendingOutput = { entry: Extract<TraceTurn, { kind: "maya" }>; act: Act; say: string[]; batches: Batch[]; ties?: Record<string, number>; obligations: number[]; control: number };
+type PendingOutput = { entry: Extract<TraceTurn, { kind: "maya" }>; act: Act; say: string[]; batches: Batch[]; exchangeTurnId?: string; ties?: Record<string, number>; obligations: number[]; control: number };
 export interface TextFold {
   session: Session;
   /** Upper bound on persisted event content for one live call. */
@@ -91,7 +95,7 @@ export interface TextFold {
   attempts: TraceAttempt[];
   deferred: { event: SessionEvent; childId: number | null }[];
   pending: PendingOutput[];
-  output: Pick<TextOutput, "say" | "board" | "cancelled">;
+  output: Pick<TextOutput, "say" | "board" | "cancelled" | "exchangeTurnId">;
   /**
    * B1, before B2's review: the batches the child's screen skipped or cancelled, undone one by one. No longer written:
    * the server's board is rebuilt from the batch fates (`shownScene`). Kept so an older checkpoint still reads.
@@ -99,6 +103,7 @@ export interface TextFold {
   undos?: { at: number; transactionId: string }[];
   /** B1: words from the screen that came while an output was pending, applied once it is delivered. */
   lateFates?: { at: number; batchId: string; fate: BoardFate }[];
+  latePresentations?: Extract<TextLogEvent, { kind: "exchange_presented" }>[];
 }
 export type TextCheckpoint = Omit<TextFold, "scene" | "initialScene" | "endedAt"> & { sceneBatches: Batch[]; initialSceneBatches: Batch[] };
 export function saveTextCheckpoint(s: TextFold): TextCheckpoint {
@@ -156,6 +161,9 @@ function terminal(s: TextFold) {
 function refreshOutput(s: TextFold) {
   s.output.say = s.pending.flatMap((p) => p.say);
   s.output.board = s.pending.flatMap((p) => p.batches);
+  const exchange = s.pending.find((pending) => pending.exchangeTurnId);
+  if (exchange) s.output.exchangeTurnId = exchange.exchangeTurnId;
+  else delete s.output.exchangeTurnId;
   s.endedAt = s.session.outcome ? s.session.now : null;
 }
 /** Recompute controller state after an output decision. Inputs and priority readings remain in their original order. */
@@ -270,7 +278,8 @@ function takeEffects(s: TextFold, effects: Effect[], at: number, attempts: Trace
     if (says.length || (attempts.length && !attempts.at(-1)?.refusal && !attempts.at(-1)?.error)) {
       const kinds: TraceObligation["kind"][] = act === "open" ? ["opening_due"] : act === "repair" ? ["repair_due"] : act === "safety" ? ["safety_due"] : act === "close" ? ["child_turn_pending", "content_problem"] : s.session.turn === null ? ["child_turn_pending"] : [];
       const ids = s.obligations.filter((o) => o.status === "pending" && kinds.includes(o.kind) && !s.pending.some((p) => p.obligations.includes(o.id))).map((o) => o.id);
-      s.pending.push({ entry, act, say: says.map((e) => e.text), batches, ...(Object.keys(ties).length ? { ties } : {}), obligations: ids, control: s.controls.length - 1 });
+      const exchangeTurnId = says.find((say) => say.exchangeTurnId)?.exchangeTurnId;
+      s.pending.push({ entry, act, say: says.map((e) => e.text), batches, ...(exchangeTurnId ? { exchangeTurnId } : {}), ...(Object.keys(ties).length ? { ties } : {}), obligations: ids, control: s.controls.length - 1 });
     }
   }
   refreshOutput(s);
@@ -338,7 +347,8 @@ function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt
   const continuation = continues && attempt.source === "repair" && !!s.sent?.length && !!s.session.tutor;
   // #1107: sentences streamed as saved parts keep the drawing fixed when each went out.
   const streamed = s.parts ? { streamed: { drawings: (s.streamBoard ?? []).map((b) => structuredClone(b.tied)) } } : {};
-  const event: SessionEvent = { type: "proposal", at: Math.max(at, s.session.now ?? 0), proposal: value, talkReviews: reviews, ...(mathReviews ? { mathReviews } : {}), ...(attempt.source === "fallback" ? { fallback: true } : {}), ...(s.sent?.length ? { sent: [...s.sent] } : {}), ...(drawMode ? { drawMode } : {}), ...(continuation ? { continuation: true } : {}), ...streamed };
+  const codeWritten = attempt.source === "fallback" || attempt.source === "controller";
+  const event: SessionEvent = { type: "proposal", at: Math.max(at, s.session.now ?? 0), proposal: value, talkReviews: reviews, ...(mathReviews ? { mathReviews } : {}), ...(codeWritten ? { fallback: true } : {}), ...(s.sent?.length ? { sent: [...s.sent] } : {}), ...(drawMode ? { drawMode } : {}), ...(continuation ? { continuation: true } : {}), ...streamed };
   // B2: the trace says how this attempt's drawings were made.
   if (drawMode && s.session.tutor) attempt.drawMode = drawMode;
   let r = step(s.session, event);
@@ -376,7 +386,7 @@ function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt
   // B2: each clause code read as a board action, drawn or why not (board-ties.ts), on the attempt whose words were said.
   const boardReads = r.refusal ? [] : r.effects.flatMap((e) => e.kind === "say" ? e.boardReads ?? [] : []);
   if (boardReads.length) attempt.boardReads = boardReads;
-  if (attempt.source !== "fallback" || !r.refusal) s.attempts.push(attempt);
+  if (!codeWritten || !r.refusal) s.attempts.push(attempt);
   if (r.refusal && !s.session.outcome) { takeEffects(s, r.effects, at); return; }
   s.scene = scene;
   // #1107: the turn's words start with the streamed parts, so its output carries their drawings first (already on the
@@ -397,11 +407,13 @@ function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt
  */
 function applyFates(s: TextFold, fates: readonly { at: number; batchId: string; fate: BoardFate }[]) {
   if (s.pending.length) { s.lateFates = [...(s.lateFates ?? []), ...fates]; return; }
-  // Latest batch first: an earlier batch a later one builds on can then be undone too.
   const order = (id: string) => s.board.findIndex((b) => b.transactionId === id);
-  for (const f of [...fates].sort((a, b) => order(b.batchId) - order(a.batchId))) {
+  const checked = new Set(s.session.checkedExchange?.turns.flatMap((turn) => turn.actions.map((action) => action.batchId)));
+  // The checked plan requires proof each prerequisite was shown. Legacy drawings use the original reverse order.
+  for (const f of [...fates].sort((a, b) => checked.size ? order(a.batchId) - order(b.batchId) : order(b.batchId) - order(a.batchId))) {
     const b = s.board.find((x) => x.transactionId === f.batchId);
     if (!b || b.fate || !BOARD_FATES.includes(f.fate)) continue;
+    if (checked.has(f.batchId) && f.fate === "shown" && b.after?.some((id) => s.board.find((batch) => batch.transactionId === id)?.fate !== "shown")) continue;
     b.fate = f.fate;
     if (s.session.outcome || s.session.startedAt === null) continue;
     const at = Math.max(f.at, s.session.now ?? 0);
@@ -518,6 +530,7 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
       break;
     }
     case "fallback": proposal(s, e.proposal, e.at, { source: "fallback", proposal: e.proposal, refusal: null }, undefined, undefined, e.drawMode); break;
+    case "checked_exchange": proposal(s, e.proposal, e.at, { source: s.attempts.length ? "fallback" : "controller", proposal: e.proposal, refusal: null }); break;
     case "part_pending":
       if (s.request?.id === e.requestId && !s.candidate && !s.session.outcome && !s.pendingPart) {
         s.streamDelivery = true;
@@ -570,10 +583,18 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
     case "stream_hold":
       if (s.request?.id === e.requestId && !s.candidate) s.streamHold = { requestId: e.requestId, ...(e.priority ? { priority: structuredClone(e.priority) } : {}) };
       break;
-    case "recover": if (!s.candidate) s.request = null; break;
+    case "recover":
+      if (s.pending.some((p) => p.exchangeTurnId)) cancel(s, "checked exchange recovered before dispatch");
+      if (!s.candidate) s.request = null;
+      break;
     case "cancelled": s.output.cancelled = false; break;
     // A control, so a cancellation's replay keeps it.
     case "help": s.session = controllerStep(s, { type: "help", at: e.at, assistance: e.assistance }).session; break;
+    case "exchange_playback": s.session = controllerStep(s, { type: "exchange_playback", at: e.at, turnId: e.turnId, playback: e.playback }).session; break;
+    case "exchange_presented":
+      if (s.pending.length) (s.latePresentations ??= []).push(e);
+      else s.session = controllerStep(s, { type: "exchange_presented", at: e.at, batchId: e.batchId }).session;
+      break;
     case "delivered": {
       const last = s.turns.at(-1);
       const terminalTurn = last && ["hang_up", "technical"].includes(last.kind) ? s.turns.pop() : undefined;
@@ -588,6 +609,7 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
           if (o.status === "pending") { o.status = "served"; o.servedBy = index; }
         }
         for (const b of p.batches) s.board.push({ at: turn.at, turn: index, transactionId: b.transactionId, commands: b.commands, ...(p.ties?.[b.transactionId] === undefined ? {} : { sentence: p.ties[b.transactionId] }), ...(b.after?.length ? { after: [...b.after] } : {}) });
+        if (p.exchangeTurnId) s.session = controllerStep(s, { type: "exchange_sent", at: Math.max(e.at, s.session.now ?? 0), turnId: p.exchangeTurnId }).session;
       }
       if (terminalTurn) s.turns.push(terminalTurn);
       if (s.output.say.length) {
@@ -597,6 +619,10 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
       }
       s.pending = []; s.output = emptyOutput(); terminal(s); flushDeferred(s);
       if (s.lateFates?.length && !s.pending.length) { const late = s.lateFates; delete s.lateFates; applyFates(s, late); }
+      if (s.latePresentations?.length && !s.pending.length) {
+        for (const p of s.latePresentations) s.session = controllerStep(s, { type: "exchange_presented", at: Math.max(p.at, s.session.now ?? 0), batchId: p.batchId }).session;
+        delete s.latePresentations;
+      }
       break;
     }
     case "fates": applyFates(s, e.fates.map((f) => ({ at: e.at, batchId: f.batchId, fate: f.fate }))); break;

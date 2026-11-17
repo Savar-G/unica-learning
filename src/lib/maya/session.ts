@@ -72,6 +72,7 @@ import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
 import { answersOwnQuestion, askedStep, doneReply, firstTimeTurn, yesReply, type AskedRead } from "./teaching-reads";
 import { deriveDrawings, type BoardRead, type TiedDrawing } from "./board-ties";
+import { exchangeCommands, exchangeFacts, exchangeWords, supportsCheckedExchange, type CheckedExchangeLesson, type ExchangeAction, type ExchangeProposal, type ExchangeTurn } from "./checked-exchange";
 import { agreementClause, askedStep as askedOperationStep, bindingReview, checkTutorSay, continuedSay, stepsStated, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, FINAL_ASK, TUTOR_FIRST_TIME_WORD_LIMIT, TUTOR_REVIEW_IGNORED } from "./tutor";
 import { placeDigitsSaid } from "./tutor-math";
 import { MATH_REVIEW_PROMPT_VERSION, mathReviewsOf, type MathReview, type MathReviewInput } from "./math-review";
@@ -181,6 +182,9 @@ export type SessionEvent =
    * help ledger). A control like any other input, so a cancellation or a replay never takes it back. Help only rises.
    */
   | { type: "help"; at: number; assistance: Assistance }
+  | { type: "exchange_sent"; at: number; turnId: string }
+  | { type: "exchange_playback"; at: number; turnId: string; playback: "finished" | "interrupted" }
+  | { type: "exchange_presented"; at: number; batchId: string }
   /** The child starts or stops writing on the board. */
   | { type: "writing"; at: number; status: "started" | "done" }
   /** A safety signal from outside the model (a classifier or a person). */
@@ -260,7 +264,7 @@ export type Effect =
    * `math` (two-layer true math): the tutor sentences code did not read whole, each with its math-truth review: "not_run"
    * on the step before the reviews (the adapter reviews those), "true" when it passed.
    */
-  | { kind: "say"; act: Act; text: string; talkReplaced?: number; talk?: TalkCheck[]; math?: { sentence: string; verdict: "not_run" | "true" }[]; planned?: string; dropped?: { text: string; reason: string }[]; boardReads?: BoardRead[] }
+  | { kind: "say"; act: Act; text: string; exchangeTurnId?: string; talkReplaced?: number; talk?: TalkCheck[]; math?: { sentence: string; verdict: "not_run" | "true" }[]; planned?: string; dropped?: { text: string; reason: string }[]; boardReads?: BoardRead[] }
   /** `sentence` (B2): the 0-based sentence of the turn's words the batch is tied to; absent: the end of the turn. */
   | { kind: "board"; batch: Batch; sentence?: number }
   /** Stop speaking and drop board batches not yet shown. */
@@ -566,6 +570,7 @@ export interface Session {
    * are exempt from answer help when Maya repeats them. Earlier Maya help remains in the ledger.
    */
   tutor?: { help: number; drawn: string[]; sent?: { batch: string; keys: string[] }[]; offer?: true; childFirst?: string[] };
+  checkedExchange?: CheckedExchangeLesson;
 }
 
 /**
@@ -595,9 +600,11 @@ export function createSession(input: {
   conversational?: boolean;
   /** D-345: teach with the tutor core when the question is one it teaches (isTutorQuestion) on a conversational call. */
   tutor?: boolean;
+  checkedExchange?: boolean;
 }): Session {
   const { pkg, held } = teachableOf(input.package);
   const teachable = held === null;
+  const tutor = input.tutor === true && input.conversational === true && teachable && isTutorQuestion(pkg);
   return {
     version: 4,
     callId: input.callId,
@@ -648,7 +655,8 @@ export function createSession(input: {
     turns: [],
     outcome: null,
     ...shorterLimits(input.limitMs),
-    ...(input.tutor === true && input.conversational === true && teachable && isTutorQuestion(pkg) ? { tutor: { help: 0, drawn: [] } } : {}),
+    ...(tutor ? { tutor: { help: 0, drawn: [] } } : {}),
+    ...(input.checkedExchange === true && tutor && pkg && supportsCheckedExchange(pkg) ? { checkedExchange: { version: 1, id: `${input.callId}:regrouping`, turns: [] } } : {}),
   };
 }
 
@@ -1515,6 +1523,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
   if (event.type !== "start" && session.startedAt === null) return refuse(session, "invalid_event", "The call has not started.");
   if (event.type === "board_fate") return boardFate(session, event);
   if (event.type === "streamed_board") return streamedBoard(session, event);
+  if (event.type === "exchange_sent" || event.type === "exchange_playback" || event.type === "exchange_presented") return exchangeDelivery(session, event);
 
   const s: Session = structuredClone(session);
   // Old saved sessions must not retain obsolete numeric context.
@@ -1762,6 +1771,14 @@ export function step(session: Session, event: SessionEvent): StepResult {
       end(s, "child_stopped", effects, true);
       break;
     case "proposal":
+      if (event.fallback && isObject(event.proposal) && event.proposal.checkedExchange === 1) {
+        const plan = checkedExchangePlan(s, event.proposal.afterFailure === true);
+        if (!plan || event.proposal.noDraw === "all" || event.proposal.value !== plan.facts.value ||
+          event.proposal.example !== plan.facts.example || event.proposal.show !== (plan.actions[0].kind === "show")) {
+          return refuse(s, "act_not_allowed", "No matching checked exchange is due.");
+        }
+        return deliverExchange(s, plan, effects);
+      }
       if (shape) return { session: s, effects, refusal: { code: "invalid_proposal", reason: shape, allowed: (gate(s, {}) ?? actsNow(s, {}, false)).acts } };
       {
         // D-341: sentences already streamed to the child (onSayPart) stay said: the turn's words start with them.
@@ -5421,6 +5438,94 @@ function tutorGate(s: Session, reading: Reading): Allowed | null {
   return g;
 }
 
+const EXCHANGE_REQUEST = /^(?:(?:can|could|would) you (?:show|tell) me |(?:please )?show me )?(?:how (?:do (?:i|we) |to )?|why (?:do (?:i|we) |to )?)?(?:regroup(?:ing)?|borrow(?:ing)?|(?:trade|exchange) (?:a|one|1) ten)(?: again)?[.?!]*$/i;
+const SUBTRACTION_HELP = /^(?:i need help|can you help me|i (?:don't|do not) know how to start)[.?!]*$/i;
+
+export function checkedExchangeProposal(s: Session, afterFailure = false): ExchangeProposal | null {
+  const plan = checkedExchangePlan(s, afterFailure);
+  if (!plan) return null;
+  return { checkedExchange: 1, value: plan.facts.value, example: plan.facts.example, show: plan.actions[0].kind === "show", ...(afterFailure ? { afterFailure: true } : {}) };
+}
+
+function checkedExchangePlan(s: Session, afterFailure: boolean): ExchangeTurn | null {
+  const lesson = s.checkedExchange;
+  const pkg = s.package;
+  if (lesson?.version !== 1 || !pkg || !tutorTeachingNow(s) || s.scopeDue || s.noBoard || s.solved !== null ||
+    !s.turn || s.turn.uncertain || s.done.includes("ones") || s.stopRequested) return null;
+  const text = s.turn.text.trim();
+  if (!EXCHANGE_REQUEST.test(text) && !(afterFailure && SUBTRACTION_HELP.test(text))) return null;
+
+  const turns = lesson.turns;
+  const previous = turns.at(-1);
+  const held = turns.flatMap((t) => t.actions).filter((action) => action.fate === "shown");
+  // An unknown delivery may have reached the board. Wait for its fate before trying it again.
+  if (previous?.actions.some((action) => !action.fate) || held.some((action) => action.kind === "exchange")) return null;
+  const shown = held.find((action) => action.kind === "show");
+  const before = pkg.operation.kind === "subtract" ? pkg.operation.operands[0] : 0;
+  // A worked example uses a different number if any speech or block quantity would disclose the target.
+  const facts = (previous ? [previous.facts.value] : [before, 52, 63, 74, 85])
+    .map((value) => exchangeFacts(value, value !== before))
+    .find((candidate) => {
+      if (!candidate) return false;
+      const board = [...exchangeCommands("show", candidate), ...exchangeCommands("exchange", candidate)];
+      return !tellsAnswer(s, pkg, [...exchangeWords(candidate, true), ...board.flatMap((command) => boardTexts(command))], [], false);
+    });
+  if (!facts) return null;
+  const batchId = (offset: number) => `${s.callId}-b${s.batches + offset}`;
+  const action = (kind: ExchangeAction["kind"], id: string, after?: string): ExchangeAction => ({
+    kind, id: `${lesson.id}:${kind}`, batchId: id, delivery: "generated", ...(after ? { after } : {}),
+  });
+  const show = shown ?? action("show", batchId(1));
+  return {
+    id: `${lesson.id}:${turns.length + 1}`,
+    facts,
+    actions: [...(shown ? [] : [show]), action("exchange", batchId(shown ? 1 : 2), show.batchId)],
+  };
+}
+
+function deliverExchange(s: Session, plan: ExchangeTurn, effects: Effect[]): StepResult {
+  const show = plan.actions[0].kind === "show";
+  const text = exchangeWords(plan.facts, show).join(" ");
+  s.checkedExchange!.turns.push(plan);
+  s.batches += plan.actions.length;
+  effects.push({ kind: "say", act: "guide", text, exchangeTurnId: plan.id });
+  for (const [sentence, action] of plan.actions.entries()) {
+    effects.push({
+      kind: "board", sentence,
+      batch: { transactionId: action.batchId, commands: exchangeCommands(action.kind, plan.facts), ...(action.after ? { after: [action.after] } : {}) },
+    });
+  }
+  s.turns.push({ at: s.now!, speaker: "maya", text, state: s.state, act: "guide" });
+  s.turn = null;
+  delete s.tutor!.offer;
+  delete s.mathClaim;
+  waitForChild(s);
+  return { session: s, effects, refusal: null };
+}
+
+function exchangeDelivery(session: Session, event: Extract<SessionEvent, { type: "exchange_sent" | "exchange_playback" | "exchange_presented" }>): StepResult {
+  const s = structuredClone(session);
+  if (event.type === "exchange_presented") {
+    const action = s.checkedExchange?.turns.flatMap((turn) => turn.actions).find((action) => action.batchId === event.batchId);
+    if (action?.fate === "shown") action.presented = true;
+  } else {
+    const turn = s.checkedExchange?.turns.find((turn) => turn.id === event.turnId);
+    if (event.type === "exchange_sent" && turn) {
+      for (const action of turn.actions) action.delivery = "sent";
+    }
+    if (event.type === "exchange_playback" && turn && !turn.playback && turn.actions.every((action) => action.delivery === "sent")) {
+      turn.playback = event.playback;
+      if (event.playback === "finished") recordExchangeHelp(s);
+    }
+  }
+  return { session: s, effects: [], refusal: null };
+}
+
+function recordExchangeHelp(s: Session) {
+  if (!s.assistance.includes("guided")) s.assistance.push("guided");
+  s.stuckStep ??= "ones";
+}
+
 /**
  * Code's verdict on the word the child said for a word question (a claim's yes or no, true or false, or a comparison
  * word), or null when the turn holds no such word or the question has none. The same verdict sets the stance of the
@@ -6148,8 +6253,9 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   // the batch numbers of this message start before them, so a message read whole and one streamed get the same ids.
   const prior = fixedDrawings ?? [];
   const base0 = s.batches - prior.length;
-  const ties = !derive || s.noBoard ? null : deriveDrawings(pkg, sentencesOf(text), tutor.drawn, (tutor.sent ?? []).flatMap((x) => x.keys), noDraw, (k, i) => `tutor-note-${base0 + 1 + k}-${i}`, opener, fixedDrawings ? { sentences: sent.length, drawings: prior } : undefined);
-  const legacy = s.noBoard || derive ? { commands: [], keys: [] } : tutorDrawings(pkg, out.draw ?? [], tutor.drawn, (i) => `tutor-note-${s.batches + 1}-${i}`);
+  const checked = !!s.checkedExchange;
+  const ties = !derive || s.noBoard || checked ? null : deriveDrawings(pkg, sentencesOf(text), tutor.drawn, (tutor.sent ?? []).flatMap((x) => x.keys), noDraw, (k, i) => `tutor-note-${base0 + 1 + k}-${i}`, opener, fixedDrawings ? { sentences: sent.length, drawings: prior } : undefined);
+  const legacy = s.noBoard || derive || checked ? { commands: [], keys: [] } : tutorDrawings(pkg, out.draw ?? [], tutor.drawn, (i) => `tutor-note-${s.batches + 1}-${i}`);
   const batches: { commands: Record<string, unknown>[]; keys: string[]; sentence?: number; after?: number[] }[] = ties ? ties.drawings.slice(prior.length) : legacy.commands.length ? [legacy] : [];
   // Savar's call 2 and the Chief of Staff (2026-11-15): when the child's right final answer first stands, the board shows
   // the whole answer: code draws every answer digit not yet drawn, from its own values, with the good-job message (its
@@ -6174,6 +6280,10 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   // Final check 4: only code's validated credit after this turn (the result that stands once any answer taken back this
   // turn is cleared) lets Maya say the answer back without giving it away; never a number in the child's words.
   const committedRight = s.solved === "child" && s.lastResult === "right";
+  if (checked && !committedRight && tellsAnswer(base, pkg, sentencesOf(text), tutor.drawn, false)) {
+    if (!fallback) return no("say_check", "The message gives away the answer before the child solves the question.", "never_say");
+    text = "Which part would you like to try next?";
+  }
   if ((s.solved === null || !committedRight) && act === "guide") {
     const open = stepFacts(pkg).filter((st) => !base.done.includes(st.id));
     // Final check 9 (2026-11-15), inverted: every board command Maya sends is read as her words are: each text or value
@@ -6319,6 +6429,12 @@ export function streamedDrawing(session: Session, sentences: readonly string[], 
  */
 function boardFate(session: Session, e: Extract<SessionEvent, { type: "board_fate" }>): StepResult {
   const s: Session = structuredClone(session);
+  const actions = s.checkedExchange?.turns.flatMap((turn) => turn.actions) ?? [];
+  const action = actions.find((action) => action.batchId === e.batch);
+  if (action?.delivery === "sent" && !action.fate && BOARD_FATES.includes(e.fate)) {
+    action.fate = e.fate;
+    if (actions.some((item) => item.fate === "shown" && (!item.after || actions.some((prior) => prior.batchId === item.after && prior.fate === "shown")))) recordExchangeHelp(s);
+  }
   const sent = s.tutor?.sent?.find((x) => x.batch === e.batch);
   if (!s.tutor || !sent || !BOARD_FATES.includes(e.fate)) return { session: s, effects: [], refusal: null };
   const rest = s.tutor.sent!.filter((x) => x !== sent);

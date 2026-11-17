@@ -225,7 +225,7 @@ export class MayaVoiceAgent extends voice.Agent {
     if (!this.board) return synthesize(text);
     const scope = this.board.scope();
     if (!scope || !this.board.sync.owns(scope)) return null;
-    return boardAudio(text, synthesize, this.board.sync, scope, speech => this.onSilent?.(speech), !ungated);
+    return boardAudio(text, synthesize, this.board.sync, scope, speech => this.onSilent?.(speech), !ungated, this.requireSpokenCues?.(scope));
   }
 
   /**
@@ -240,6 +240,7 @@ export class MayaVoiceAgent extends voice.Agent {
   utteranceOwner: (() => UtteranceOwner) | null = null;
   /** A speech with a board plan whose voice gave no audio (./speech-audio.ts `boardAudio`). */
   onSilent: ((speech: SilentSpeech) => void) | null = null;
+  requireSpokenCues?: (scope: SpeechScope) => boolean;
   private starting: Promise<unknown> | null = null;
   /** The worker spoke the opening itself, and the call starts behind it: no opening reply, and a child turn waits for the start. */
   openedByWorker(starting: Promise<unknown>) {
@@ -400,6 +401,7 @@ export class VoiceCallRun {
   private replayingFinal = false;
   private utterance = 0;
   private boardScope: SpeechScope | null = null;
+  private exchangeScope: { scope: SpeechScope; turnId: string; silent: boolean } | null = null;
   private boardAudio: CuePlaybackOutput | null = null;
   private childStoppedAt: number | null = null;
   /**
@@ -488,6 +490,7 @@ export class VoiceCallRun {
       { greetingOver: () => this.greetingOver(), childWentOn: text => this.childWentOn(text), prepare: text => this.prepareHint(text) });
     this.agent.hearing = { dropSilentPeakDbfs: options.dropSilentPeakDbfs ?? null, ...(options.heardVad ? { vad: options.heardVad } : {}), detectorMinSilenceMs: options.detectorMinSilenceMs ?? null };
     this.agent.onSilent = speech => this.silentSpeech(speech);
+    this.agent.requireSpokenCues = scope => this.exchangeScope?.scope.generation === scope.generation;
     this.agent.utteranceOwner = () => this.utteranceOwner();
     call.onGuidance(turn => this.guidanceNow(turn));
     // The controller's prepared-reply decisions (optional: an older call has no setter, and selection stays unreported).
@@ -1253,6 +1256,10 @@ export class VoiceCallRun {
     const { scope, text, heardAny, failed } = speech;
     const repeat = this.resaid.has(`${scope.utteranceId}:${scope.generation}`);
     console.warn("[maya voice] speech had no audio", this.call.id, { words: speechWords(text).length, heardAny, failed, repeat });
+    if (this.exchangeScope?.scope.generation === scope.generation) {
+      this.exchangeScope.silent = true;
+      return;
+    }
     if (heardAny || repeat || !text.trim() || FILLERS.has(text.trim())) return;
     const current = this.boardScope;
     const fresh = () => this.childHere && !this.finishing && !this.guidance && this.session.userState !== "speaking";
@@ -1277,7 +1284,7 @@ export class VoiceCallRun {
     console.warn("[maya voice] board stage failed", this.call.id, error instanceof Error ? error.message : String(error));
   }
 
-  private async stageBoard(turn: Pick<VoiceTurn, "boardCues">, wait = true, turnId?: string) {
+  private async stageBoard(turn: Pick<VoiceTurn, "boardCues" | "exchangeTurnId">, wait = true, turnId?: string) {
     if (!this.options.board) return;
     const id = `speech-${this.segment}-${++this.utterance}`;
     // Batches the opening could not show go first, at this plan's first word.
@@ -1288,6 +1295,7 @@ export class VoiceCallRun {
     void staging.then(r => { if (r.refused.length) { console.warn("[maya voice] board batch refused", this.call.id, r.refused); this.call.boardRefused?.(r.refused.map(x => x.batchId)); } }, () => {});
     const scope = this.options.board.capture(id);
     this.boardScope = scope;
+    this.exchangeScope = scope && turn.exchangeTurnId ? { scope, turnId: turn.exchangeTurnId, silent: false } : null;
     if (scope && turnId && turn.boardCues?.length) this.options.measureBoardPlan?.(scope.utteranceId, turnId, turn.boardCues.map(cue => cue.batch.transactionId));
     if (wait) await staging;
     else if (scope) this.boardTask(staging, scope);
@@ -1492,6 +1500,13 @@ export class VoiceCallRun {
       catch (error) { this.boardFailed(error); if (generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return false; }
     }
     if (this.finishing || generation !== this.generation || !this.childHere) { this.finalDropped(turn); return false; }
+    const exchange = this.exchangeScope;
+    if (exchange && exchange.turnId === turn.exchangeTurnId && handle) {
+      void handle.waitForPlayout().then(
+        () => this.call.exchangePlayback?.(exchange.turnId, handle.interrupted || exchange.silent ? "interrupted" : "finished"),
+        () => this.call.exchangePlayback?.(exchange.turnId, "interrupted"),
+      ).catch(() => {});
+    }
     this.options.notify({ revision: this.call.revision, segment: this.segment, ended: false });
     this.expectNumber(turn);
     this.scheduleLimit();

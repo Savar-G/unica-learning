@@ -13,6 +13,10 @@ const db = {} as SupabaseClient<Database>;
 beforeEach(() => { vi.clearAllMocks(); });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
+it.each([undefined, "off", "ON", "on"])("enables the checked exchange only for exact opt-in (%s)", (value) => {
+  expect(callSeams(db, { env: { MAYA_CHECKED_EXCHANGE: value } }).checkedExchange).toBe(value === "on");
+});
+
 it.each([-1, 0, 1])("binds the server writer to exact on and deadline offset %s", offset => {
   // Falsifier: the configured writer opens before the final readers' deadline, or fails to open at it.
   vi.spyOn(Date, "now").mockReturnValue(MAYA_CHAT_STREAM_NOT_BEFORE + offset);

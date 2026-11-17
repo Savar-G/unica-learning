@@ -397,3 +397,15 @@ describe("a speech that gives no audio (call 01f456de)", () => {
     expect(c.silent).toHaveBeenCalledWith(expect.objectContaining({ heardAny: false, text: "Let's look at 52 − 28 together." }));
   });
 });
+
+it("cancels an unheard checked cue without presenting its drawing", async () => {
+  const { receiver, board, scope } = await setup(1);
+  const silent = vi.fn();
+  const audio = boardAudio(inputText("Write."), async () => null, board, scope, silent, true, true);
+  for await (const frame of audio) void frame;
+  await board.settled();
+  expect(silent).toHaveBeenCalledOnce();
+  expect(boardPaths(receiver.scene())).toEqual([]);
+  expect(receiver.staged()).toEqual([]);
+  expect(receiver.snapshot().events).toContainEqual(expect.objectContaining({ kind: "cancelled", batchIds: ["columns"] }));
+});
