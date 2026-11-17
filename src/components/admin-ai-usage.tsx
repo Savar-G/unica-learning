@@ -180,8 +180,19 @@ function Families({ view, period, rate }: { view: UsageView; period: Period; rat
       })}
     </Table>
     <details className="ai-disclosure"><summary>Family and child records</summary><UsageDetails rows={view.details ?? null} more={view.detailsMore} /></details>
-    <details className="ai-disclosure"><summary>How plan comparisons are calculated</summary><p className="ai-note">Plan is the family's monthly price in CAD. The share compares the AI cost with that price for the same {days} days, at {rate.toFixed(2)} CAD per USD.</p></details>
+    <details className="ai-disclosure"><summary>How plan comparisons are calculated</summary><p className="ai-note">Plan is the family&apos;s monthly price in CAD. The share compares the AI cost with that price for the same {days} days, at {rate.toFixed(2)} CAD per USD.</p></details>
   </>;
+}
+
+function ProviderRecords({ receipts, period }: { receipts: ProviderReceiptView | null; period: Period }) {
+  return (
+    <details className="ai-disclosure"><summary>Provider receipts</summary>
+      <p className="ai-note">{receipts ? `${receipts.totals.receipts.toLocaleString("en-CA")} generations received in this period.` : "Provider receipts are unavailable. The cost is unknown."} A connection test does not establish genuine delivery.</p>
+      <details className="ai-disclosure"><summary>Technical details</summary>
+        <AdminProviderReceipts view={receipts} periodLabel={`${period.days[0]} to ${period.days.at(-1)}, Vancouver days`} />
+      </details>
+    </details>
+  );
 }
 
 function Records({ view, receipts, period }: { view: UsageView; receipts: ProviderReceiptView | null; period: Period }) {
@@ -199,12 +210,7 @@ function Records({ view, receipts, period }: { view: UsageView; receipts: Provid
         <section className="ap-card"><SectionHead title="Recorded cost basis" /><BarList label="Cost basis" bars={(view.byBasis ?? []).map((r) => ({ key: r.label, label: r.label, value: r.costUsd, text: `${usd(r.costUsd)} / ${calls(r.calls)}` }))} /></section>
       </div>
     </details>
-    <details className="ai-disclosure"><summary>Provider receipts</summary>
-      <p className="ai-note">{receipts ? `${receipts.totals.receipts.toLocaleString("en-CA")} generations received in this period.` : "Provider receipts are unavailable. The cost is unknown."} A connection test does not establish genuine delivery.</p>
-      <details className="ai-disclosure"><summary>Technical details</summary>
-        <AdminProviderReceipts view={receipts} periodLabel={`${period.days[0]} to ${period.days.at(-1)}, Vancouver days`} />
-      </details>
-    </details>
+    <ProviderRecords receipts={receipts} period={period} />
     <details className="ai-disclosure"><summary>Technical details</summary>
       <SectionHead title="Recorded cost by API key" line="Safe labels only. Historical key identities can be unknown." />
       <BarList label="Recorded keys" bars={(view.byKey ?? []).map((r) => ({ key: r.label, label: r.label, value: r.costUsd, text: `${usd(r.costUsd)} / ${calls(r.calls)}` }))} />
@@ -255,7 +261,7 @@ export function AiUsagePage({ view, period, rate, workspace, error, report = "fe
       </>}
       {report === "families" && view && <Families view={view} period={period} rate={rate} />}
       {report === "records" && (view ? <Records view={view} receipts={receipts} period={period} /> :
-        <details className="ai-disclosure"><summary>Provider receipts</summary><AdminProviderReceipts view={receipts} periodLabel={`${period.days[0]} to ${period.days.at(-1)}, Vancouver days`} /></details>)}
+        <ProviderRecords receipts={receipts} period={period} />)}
     </section>
     {view && (report === "features" || report === "models") && <details className="ai-disclosure"><summary>Recorded app costs by day</summary>
       <SectionHead title="Recorded app cost by day" count={`${period.days.length} days`} line="USD, Vancouver days, stacked by model." />

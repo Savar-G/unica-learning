@@ -89,6 +89,7 @@
 @media (max-width: 559.98px) {
   .adm-ai .ai-headline .ab-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .adm-ai .ai-headline .ab-tile:first-child { grid-column: 1 / -1; }
+  .adm-ai .ai-headline .ab-tile:not(:first-child) b { font-size: 26px; }
   .adm-ai .ai-reports { gap: var(--s4); }
   .adm-ai .ai-feature > summary { padding: var(--s3); }
   .adm-ai .ai-feature-value { font-size: 25px; }

@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { parseFragment, type DefaultTreeAdapterMap } from "parse5";
 vi.mock("server-only", () => ({}));
 import { AiUsagePage, UsageDetails, parseAiUsageReport, type AiUsageReport } from "@/components/admin-ai-usage";
 import { parseUsage, periodFor } from "@/lib/admin-ai-usage";
@@ -74,4 +75,28 @@ it("keeps unknown detail costs and missing migration coverage visible", () => {
   const unknown = { ...view.details![0], costUsd: null, unpricedCalls: 1 };
   const html = renderToStaticMarkup(createElement(UsageDetails, { rows: [unknown], more: true }));
   expect(html).toContain("Unknown"); expect(html).toContain("5,000"); expect(html).toContain("1 calls with unknown cost");
+});
+
+it.each([true, false])("keeps raw provider IDs inside closed Technical details when app data is available: %s", (available) => {
+  const key = "provider-key-proof";
+  const receipts = {
+    totals: { receipts: 1, known_cost_usd: 0.1, unknown_cost_receipts: 0, matched_receipts: 0, unmatched_receipts: 1,
+      unmatched_known_cost_usd: 0.1, unmatched_unknown_cost_receipts: 0, first_receipt_at: null, last_receipt_at: null, last_received_at: null },
+    models: [], keys: [{ workspace_id: "unica-workspace", api_key_id: key, receipts: 1, known_cost_usd: 0.1, unknown_cost_receipts: 0 }],
+    features: [], children: [], omitted_groups: 0,
+  };
+  const html = renderToStaticMarkup(createElement(AiUsagePage, { view: available ? view : null, workspace, period, rate: 1.4, report: "records", receipts }));
+  const paths: string[][] = [];
+  const visit = (node: DefaultTreeAdapterMap["node"], ancestors: string[]) => {
+    const children = "childNodes" in node ? node.childNodes : [];
+    const summary = node.nodeName === "details" ? children.find((n) => n.nodeName === "summary") : undefined;
+    const label = summary && "childNodes" in summary ? summary.childNodes.map((n) => "value" in n ? n.value : "").join("") : null;
+    const path = label === null ? ancestors : [...ancestors, label];
+    if ("value" in node && node.value.includes(key)) paths.push(path);
+    for (const child of children) visit(child, path);
+  };
+  visit(parseFragment(html), []);
+  expect(paths).toHaveLength(1);
+  expect(paths[0]).toEqual(["Provider receipts", "Technical details"]);
+  expect(html).not.toMatch(/<details[^>]* open/);
 });
