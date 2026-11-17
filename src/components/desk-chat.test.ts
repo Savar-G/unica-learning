@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatBoard, ChatControls, useDeskChat, type DeskChatState } from "@/components/desk-chat";
 import { boardDraftKey, chatBoardKey, childStrokes, createHistory, drawStroke, encodeHistory, inkLog, mayaWrites, penHolder, saveDraft, takePen, type BoardHistory, type Change, type DraftStore } from "@/lib/board-history";
 import type { ChatReply, ChatView } from "@/lib/maya-chat";
+import { EXCHANGE_OBJECT, type ExchangeTarget } from "@/lib/maya/checked-exchange";
 
 const book = "45100000-0000-4000-8000-000000000031";
 const id = "45100000-0000-4000-8000-000000000021";
@@ -184,6 +185,40 @@ describe("#534: the board in a chat", () => {
     return accepted(drawStroke(from, { erase: false, w: 5, boardWidth: 800, page: 1, pts: [[x, 0.7, at], [x + 0.05, 0.75, at + 100]] }));
   };
   const work = { transactionId: "reply-1", commands: [{ op: "columns", id: "work", operation: "add", operands: [{ id: "a", value: "27" }, { id: "b", value: "39" }], place: { region: "main" } }] };
+
+  it("offers the same native exchange button only in the tab that holds the shown board", async () => {
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    const target: ExchangeTarget = { lessonId: "lesson", turnId: "prompt", boardRevision: 2, objectId: EXCHANGE_OBJECT, batchId: "show-tens" };
+    const show = { transactionId: target.batchId, commands: [{ op: "model", id: target.objectId,
+      model: { kind: "base_ten", hundreds: 0, tens: 5, ones: 2 }, place: { region: "main" } }] };
+    const onExchange = vi.fn(async () => true);
+    const onBoard = vi.fn<(history: BoardHistory) => void>();
+    const board = createElement(ChatBoard, { chat: { ...view(2), batches: [show], exchange: target }, still: true, onExchange, onBoard });
+    const otherHost = document.createElement("div");
+    document.body.append(otherHost);
+    const other = createRoot(otherHost);
+    try {
+      await act(async () => root.render(board));
+      await advance(500);
+      expect(onBoard.mock.lastCall?.[0].events).toContainEqual(expect.objectContaining({ kind: "maya", batchId: target.batchId }));
+      expect(host.textContent).toContain("Exchange one ten");
+      const exchange = button("Exchange one ten");
+      expect(exchange.type).toBe("button");
+      await act(async () => button("Use paper").click());
+      expect(button("Exchange one ten")).toBeUndefined();
+      expect(onExchange).not.toHaveBeenCalled();
+      await act(async () => button("Use board").click());
+      await act(async () => other.render(board));
+      await advance(500);
+      expect(otherHost.textContent).toContain("Use it here");
+      expect(otherHost.textContent).not.toContain("Exchange one ten");
+      await act(async () => button("Exchange one ten").click());
+      expect(onExchange).toHaveBeenCalledExactlyOnceWith(target);
+    } finally {
+      await act(async () => other.unmount());
+      otherHost.remove();
+    }
+  });
 
   it("keeps the pen on the chat's board: Maya's work shows, then the pen passes to the child, and each change goes to the call", async () => {
     vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });

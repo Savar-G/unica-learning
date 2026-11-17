@@ -236,7 +236,8 @@ export function Desk(props: DeskProps) {
         </div>}
 
         {voice.showBoard ? <VoiceBoard state={voice} still={still} /> : chat.chat ? <ChatBoard chat={chat.chat} still={still} carry={{ book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: card?.number ?? null }}
-          restore={chat.callInk?.id === chat.chat.id ? chat.callInk.log : null} onBoard={(h) => chat.saveBoard(chat.chat!.id, h)} /> : <OurBoard
+          restore={chat.callInk?.id === chat.chat.id ? chat.callInk.log : null} onBoard={(h) => chat.saveBoard(chat.chat!.id, h)}
+          onExchange={chat.exchange} exchangeDisabled={chat.busy || chat.chat.pending || chat.uncertain || chat.usage?.left === 0} /> : <OurBoard
           key={`${ready?.book.id ?? "none"}:${ready?.page.number ?? 0}:${card?.number ?? "none"}`}
           question={card?.board ?? null}
           at={{ book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: card?.number ?? null }}

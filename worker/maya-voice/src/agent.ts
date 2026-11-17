@@ -25,6 +25,7 @@ import type { AudioFrame } from "@livekit/rtc-node";
 import type { Batch } from "@/lib/board";
 import type { FinishOptions } from "@/lib/maya-text";
 import type { VoiceCall, VoiceSay, VoiceTurn } from "@/lib/maya-call";
+import { sameExchangeTarget, type ExchangeTarget } from "@/lib/maya/checked-exchange";
 import { speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-speech";
 import { CuePlaybackOutput } from "./cue-playback";
 import { earlyRest, type EarlyRest } from "./early-speech";
@@ -402,6 +403,8 @@ export class VoiceCallRun {
   private utterance = 0;
   private boardScope: SpeechScope | null = null;
   private exchangeScope: { scope: SpeechScope; turnId: string; silent: boolean } | null = null;
+  private exchangeAdmission: Promise<void> | null = null;
+  private exchangeBoard: Promise<void> | null = null;
   private boardAudio: CuePlaybackOutput | null = null;
   private childStoppedAt: number | null = null;
   /**
@@ -504,7 +507,7 @@ export class VoiceCallRun {
       if (ev.newState === "speaking") {
         this.speechEndSeenAt = null;
         if (this.pace) this.cutAck(this.pace);
-        if (this.boardScope) this.stopBoard(this.boardScope);
+        if (this.boardScope && !this.exchangeBoard) this.stopBoard(this.boardScope);
       } else if (ev.oldState === "speaking") {
         this.childStoppedAt = this.timers.now();
         this.speechEndSeenAt = ev.createdAt;
@@ -1247,6 +1250,35 @@ export class VoiceCallRun {
     else board.detach(scope);
   }
 
+  /** The child's completed move has no speech cue. Deliver it before staging the next ordinary reply. */
+  private showChildExchange(batch: Batch): Promise<void> {
+    const board = this.options.board!;
+    let scope: SpeechScope | null = null;
+    const show = async () => {
+      const id = `speech-${this.segment}-${++this.utterance}`;
+      const staged = board.stage(id, [{ batch, word: 1 }]);
+      const owner = board.capture(id)!;
+      scope = owner;
+      this.boardScope = owner;
+      this.exchangeScope = null;
+      const { refused } = await staged;
+      if (refused.length) throw Error("The board refused the child's exchange.");
+      await board.show(owner);
+      if (this.childHere && !this.finishing && !this.call.session.safety.flagged &&
+        !this.call.boardSnapshot.events.some((event) => event.kind === "batch" && event.batchId === batch.transactionId)) {
+        throw Error("The board did not confirm the child's exchange.");
+      }
+    };
+    const delivered = show().catch(async (error: unknown) => {
+      if (!scope || scope !== this.boardScope || this.call.lost || !this.childHere || this.finishing || this.call.session.safety.flagged) throw error;
+      // A lost acknowledgement can leave the batch staged or already shown. Read the receiver before trying again.
+      await board.reconnect(scope);
+      if (scope === this.boardScope && this.childHere && !this.finishing && this.call.pendingExchange?.transactionId === batch.transactionId) await show();
+    }).finally(() => { if (this.exchangeBoard === delivered) this.exchangeBoard = null; });
+    this.exchangeBoard = delivered;
+    return delivered;
+  }
+
   /**
    * A speech whose voice gave no audio: its batches are already on the board (`boardAudio`). The worker log shows it,
    * and when none of it was heard the words are said once more, with a fresh speech and an empty plan, if nothing came
@@ -1286,6 +1318,8 @@ export class VoiceCallRun {
 
   private async stageBoard(turn: Pick<VoiceTurn, "boardCues" | "exchangeTurnId">, wait = true, turnId?: string) {
     if (!this.options.board) return;
+    if (this.exchangeAdmission && !this.call.session.safety.flagged) await this.exchangeAdmission;
+    if (this.exchangeBoard && !this.call.session.safety.flagged) await this.exchangeBoard;
     const id = `speech-${this.segment}-${++this.utterance}`;
     // Batches the opening could not show go first, at this plan's first word.
     const owed = this.owedBatches.splice(0).map(batch => ({ batch, word: 1 }));
@@ -1372,6 +1406,11 @@ export class VoiceCallRun {
     void row.then(() => { if (this.call.lost && !this.finishing) void this.finish({ detail: "the connection could not be saved" }); }, () => {});
     if (generation !== this.generation || !this.childHere || this.finishing) return;
     if (this.call.lost) return this.finish({ detail: "the connection could not be saved" });
+    const exchange = this.call.pendingExchange;
+    if (exchange && this.options.board && !this.call.session.safety.flagged) {
+      try { await this.showChildExchange(exchange); }
+      catch (error) { this.boardFailed(error); if (this.childHere && generation === this.generation) return this.finish({ detail: "the saved exchange could not be shown" }); return; }
+    }
     this.speechEndedAt = this.timers.now();
     this.lastTickAt = this.timers.now();
     const owed = this.guidanceOwed;
@@ -1441,6 +1480,56 @@ export class VoiceCallRun {
   }
 
   hangUp() { return this.finish({ reason: "child_stopped" }, false, "explicit_rpc"); }
+
+  async exchange(target: ExchangeTarget): Promise<"accepted" | "busy" | "done" | "stale"> {
+    if (!this.childHere || this.finishing || !this.options.board || !this.call.exchange) return "stale";
+    if (this.exchangeAdmission || this.exchangeBoard) return "busy";
+    const completed = this.call.session.checkedExchange?.turns.some((t) => sameExchangeTarget(t.childAction, target));
+    if (completed) {
+      const pending = this.call.pendingExchange;
+      if (pending && !this.call.session.safety.flagged) {
+        if (this.boardScope) this.stopBoard(this.boardScope);
+        await this.showChildExchange(pending);
+      }
+      return this.call.pendingExchange ? "busy" : "done";
+    }
+    const generation = this.generation;
+    const replies = this.replies;
+    const prompt = { scope: this.boardScope, speech: this.speech, pace: this.pace };
+    let settled!: () => void;
+    const admission = new Promise<void>((resolve) => { settled = resolve; });
+    this.exchangeAdmission = admission;
+    const release = () => {
+      if (this.exchangeAdmission === admission) this.exchangeAdmission = null;
+      settled();
+    };
+    try {
+      const turn = await this.call.exchange(target);
+      if (!turn || this.finishing || !this.childHere || generation !== this.generation) return "stale";
+      const batch = turn.exchangeTurnId ? turn.boardCues?.[0]?.batch : undefined;
+      if (batch && !this.call.session.safety.flagged) {
+        if (prompt.scope) this.stopBoard(prompt.scope);
+        // An action supersedes the prompt. Close its stream and cut buffered audio before staging the new board state.
+        prompt.pace?.handle?.interrupt(true);
+        prompt.pace?.early.speech?.interrupt(true);
+        prompt.pace?.end();
+        this.closeTurn(prompt.pace);
+        if (prompt.speech && !prompt.speech.interrupted) prompt.speech.interrupt(true);
+        await this.showChildExchange(batch);
+      }
+      release();
+      if (generation === this.generation && this.childHere && !this.finishing) {
+        if (turn.ended || (!this.call.session.safety.flagged && replies === this.replies)) {
+          await this.sayFirst(null, [{ ...turn, boardCues: [] }]);
+        } else {
+          this.options.notify({ revision: this.call.revision, segment: this.segment, ended: false });
+        }
+      }
+      return batch ? "accepted" : "stale";
+    } finally {
+      release();
+    }
+  }
 
   workerShutdown() { return this.finish({ detail: "the voice worker stopped" }, false, "worker_shutdown"); }
 

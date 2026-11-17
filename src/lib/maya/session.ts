@@ -72,7 +72,7 @@ import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
 import { answersOwnQuestion, askedStep, doneReply, firstTimeTurn, yesReply, type AskedRead } from "./teaching-reads";
 import { deriveDrawings, type BoardRead, type TiedDrawing } from "./board-ties";
-import { exchangeCommands, exchangeFacts, exchangeWords, supportsCheckedExchange, type CheckedExchangeLesson, type ExchangeAction, type ExchangeProposal, type ExchangeTurn } from "./checked-exchange";
+import { EXCHANGE_OBJECT, exchangeChildWords, exchangeCommands, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, sameExchangeTarget, supportsCheckedExchange, type CheckedExchangeLesson, type ExchangeAction, type ExchangeProposal, type ExchangeTarget, type ExchangeTurn } from "./checked-exchange";
 import { agreementClause, askedStep as askedOperationStep, bindingReview, checkTutorSay, continuedSay, stepsStated, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, FINAL_ASK, TUTOR_FIRST_TIME_WORD_LIMIT, TUTOR_REVIEW_IGNORED } from "./tutor";
 import { placeDigitsSaid } from "./tutor-math";
 import { MATH_REVIEW_PROMPT_VERSION, mathReviewsOf, type MathReview, type MathReviewInput } from "./math-review";
@@ -1772,9 +1772,11 @@ export function step(session: Session, event: SessionEvent): StepResult {
       break;
     case "proposal":
       if (event.fallback && isObject(event.proposal) && event.proposal.checkedExchange === 1) {
-        const plan = checkedExchangePlan(s, event.proposal.afterFailure === true);
+        const target = readExchangeTarget(event.proposal.childAction);
+        const plan = target ? childExchangePlan(s, target) : checkedExchangePlan(s, event.proposal.afterFailure === true);
         if (!plan || event.proposal.noDraw === "all" || event.proposal.value !== plan.facts.value ||
-          event.proposal.example !== plan.facts.example || event.proposal.show !== (plan.actions[0].kind === "show")) {
+          event.proposal.example !== plan.facts.example || event.proposal.show !== (plan.actions[0]?.kind === "show") ||
+          (event.proposal.prompt === true) !== !!plan.prompt) {
           return refuse(s, "act_not_allowed", "No matching checked exchange is due.");
         }
         return deliverExchange(s, plan, effects);
@@ -5439,12 +5441,13 @@ function tutorGate(s: Session, reading: Reading): Allowed | null {
 }
 
 const EXCHANGE_REQUEST = /^(?:(?:can|could|would) you (?:show|tell) me |(?:please )?show me )?(?:how (?:do (?:i|we) |to )?|why (?:do (?:i|we) |to )?)?(?:regroup(?:ing)?|borrow(?:ing)?|(?:trade|exchange) (?:a|one|1) ten)(?: again)?[.?!]*$/i;
+const CHILD_EXCHANGE_REQUEST = /^(?:how do (?:i|we) (?:regroup|borrow|(?:trade|exchange) (?:a|one|1) ten)|(?:can i|i want to) (?:try regrouping|(?:trade|exchange) (?:a|one|1) ten))(?: again)?[.?!]*$/i;
 const SUBTRACTION_HELP = /^(?:i need help|can you help me|i (?:don't|do not) know how to start)[.?!]*$/i;
 
 export function checkedExchangeProposal(s: Session, afterFailure = false): ExchangeProposal | null {
   const plan = checkedExchangePlan(s, afterFailure);
   if (!plan) return null;
-  return { checkedExchange: 1, value: plan.facts.value, example: plan.facts.example, show: plan.actions[0].kind === "show", ...(afterFailure ? { afterFailure: true } : {}) };
+  return { checkedExchange: 1, value: plan.facts.value, example: plan.facts.example, show: plan.actions[0]?.kind === "show", ...(plan.prompt ? { prompt: true } : {}), ...(afterFailure ? { afterFailure: true } : {}) };
 }
 
 function checkedExchangePlan(s: Session, afterFailure: boolean): ExchangeTurn | null {
@@ -5453,9 +5456,11 @@ function checkedExchangePlan(s: Session, afterFailure: boolean): ExchangeTurn | 
   if (lesson?.version !== 1 || !pkg || !tutorTeachingNow(s) || s.scopeDue || s.noBoard || s.solved !== null ||
     !s.turn || s.turn.uncertain || s.done.includes("ones") || s.stopRequested) return null;
   const text = s.turn.text.trim();
-  if (!EXCHANGE_REQUEST.test(text) && !(afterFailure && SUBTRACTION_HELP.test(text))) return null;
+  const prompt = CHILD_EXCHANGE_REQUEST.test(text);
+  if (!prompt && !EXCHANGE_REQUEST.test(text) && !(afterFailure && SUBTRACTION_HELP.test(text))) return null;
 
   const turns = lesson.turns;
+  if (turns.some((turn) => turn.childAction)) return null;
   const previous = turns.at(-1);
   const held = turns.flatMap((t) => t.actions).filter((action) => action.fate === "shown");
   // An unknown delivery may have reached the board. Wait for its fate before trying it again.
@@ -5468,7 +5473,8 @@ function checkedExchangePlan(s: Session, afterFailure: boolean): ExchangeTurn | 
     .find((candidate) => {
       if (!candidate) return false;
       const board = [...exchangeCommands("show", candidate), ...exchangeCommands("exchange", candidate)];
-      return !tellsAnswer(s, pkg, [...exchangeWords(candidate, true), ...board.flatMap((command) => boardTexts(command))], [], false);
+      const words = prompt ? [...exchangePromptWords(candidate, true), ...exchangeChildWords(candidate)] : exchangeWords(candidate, true);
+      return !tellsAnswer(s, pkg, [...words, ...board.flatMap((command) => boardTexts(command))], [], false);
     });
   if (!facts) return null;
   const batchId = (offset: number) => `${s.callId}-b${s.batches + offset}`;
@@ -5476,16 +5482,54 @@ function checkedExchangePlan(s: Session, afterFailure: boolean): ExchangeTurn | 
     kind, id: `${lesson.id}:${kind}`, batchId: id, delivery: "generated", ...(after ? { after } : {}),
   });
   const show = shown ?? action("show", batchId(1));
+  const id = `${lesson.id}:${turns.length + 1}`;
   return {
-    id: `${lesson.id}:${turns.length + 1}`,
+    id,
     facts,
-    actions: [...(shown ? [] : [show]), action("exchange", batchId(shown ? 1 : 2), show.batchId)],
+    actions: [...(shown ? [] : [show]), ...(prompt ? [] : [action("exchange", batchId(shown ? 1 : 2), show.batchId)])],
+    ...(prompt ? { prompt: { lessonId: lesson.id, turnId: id, objectId: EXCHANGE_OBJECT, batchId: show.batchId, boardRevision: s.batches + (shown ? 0 : 1) } } : {}),
   };
 }
 
+/** The screen offers this target once it has drawn its show batch. */
+export function childExchangeTarget(s: Session): ExchangeTarget | undefined {
+  const prompt = s.checkedExchange?.turns.at(-1)?.prompt;
+  if (!prompt || prompt.boardRevision !== s.batches || s.outcome || s.safety.flagged || s.stopRequested ||
+    s.solved !== null || s.done.includes("ones") || s.noBoard || !isTeaching(s.state) || s.expect !== "child" || s.turn) return;
+  const show = s.checkedExchange!.turns.flatMap((turn) => turn.actions).find((action) => action.batchId === prompt.batchId);
+  if (show?.delivery === "sent" && show.fate !== "cancelled" && show.fate !== "skipped") return prompt;
+}
+
+function childExchangePlan(s: Session, target: ExchangeTarget): ExchangeTurn | null {
+  const offered = childExchangeTarget(s);
+  if (!s.package || !offered || !sameExchangeTarget(offered, target) ||
+    !s.checkedExchange!.turns.some((turn) => turn.actions.some((action) => action.batchId === target.batchId && action.fate === "shown"))) return null;
+  const lesson = s.checkedExchange!;
+  const facts = lesson.turns.at(-1)!.facts;
+  if (tellsAnswer(s, s.package, [...exchangeChildWords(facts), ...exchangeCommands("exchange", facts).flatMap((command) => boardTexts(command))], [], false)) return null;
+  return {
+    id: `${lesson.id}:${lesson.turns.length + 1}`,
+    facts,
+    actions: [{ kind: "exchange", id: `${lesson.id}:exchange`, batchId: `${s.callId}-b${s.batches + 1}`, after: target.batchId, delivery: "generated" }],
+    childAction: offered,
+  };
+}
+
+export function childExchangeProposal(s: Session, target: ExchangeTarget, at: number): ExchangeProposal | null {
+  if (s.startedAt === null || at - s.startedAt >= limitsOf(s).closingAtMs) return null;
+  const plan = childExchangePlan(s, target);
+  return plan ? { checkedExchange: 1, value: plan.facts.value, example: plan.facts.example, show: false, childAction: plan.childAction } : null;
+}
+
 function deliverExchange(s: Session, plan: ExchangeTurn, effects: Effect[]): StepResult {
-  const show = plan.actions[0].kind === "show";
-  const text = exchangeWords(plan.facts, show).join(" ");
+  const show = plan.actions[0]?.kind === "show";
+  const words = plan.prompt ? exchangePromptWords(plan.facts, show)
+    : plan.childAction ? exchangeChildWords(plan.facts) : exchangeWords(plan.facts, show);
+  const text = words.join(" ");
+  if (plan.childAction) {
+    recordExchangeHelp(s);
+    effects.push({ kind: "cancel_output" });
+  }
   s.checkedExchange!.turns.push(plan);
   s.batches += plan.actions.length;
   effects.push({ kind: "say", act: "guide", text, exchangeTurnId: plan.id });

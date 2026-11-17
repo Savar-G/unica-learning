@@ -83,7 +83,8 @@ import { modelInput, type MayaModel } from "@/lib/maya-model";
 import type { TalkReviewer } from "@/lib/maya-talk-review";
 import type { MathReviewer } from "@/lib/maya-math-review";
 import { snapshotFates } from "@/lib/board-fate";
-import { checkedExchangeProposal } from "@/lib/maya/session";
+import { checkedExchangeProposal, childExchangeProposal, childExchangeTarget } from "@/lib/maya/session";
+import { readExchangeTarget, sameExchangeTarget, type ExchangeTarget } from "@/lib/maya/checked-exchange";
 import { createTextSession, readFateReports, withHelpLedger, type BoardFateReport, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession, type TextSessionOptions } from "@/lib/maya-text";
 import { packageHash, type MayaTrace } from "@/lib/maya-trace";
 import { type QuestionPackage, type QuestionRef } from "@/lib/question-package";
@@ -360,7 +361,9 @@ export interface CallSeams {
  * `fates` (B1, chat): what the child's screen did with Maya's board batches since the call last heard (src/lib/board-fate.ts).
  * The session hears them before the child's words, so the brief for this turn counts only what the screen showed.
  */
-export type CallInput = { type: "child"; text: string; fates?: BoardFateReport[] } | { type: "tick" } | { type: "writing"; status: "started" | "done" } | { type: "end" };
+export type CallInput = { type: "child"; text: string; fates?: BoardFateReport[] } |
+  { type: "exchange"; target: ExchangeTarget; fates?: BoardFateReport[] } |
+  { type: "tick" } | { type: "writing"; status: "started" | "done" } | { type: "end" };
 
 /** The most characters of one typed child turn. */
 export const MAX_CHILD_TEXT = 500;
@@ -426,6 +429,8 @@ export interface CallView {
   freeTalk: { on: boolean; reviewer: string | null; lines: FreeTalkLine[] };
   /** Maya's board batches, in order. */
   batches: Batch[];
+  exchange?: ExchangeTarget;
+  exchangeResult?: string;
   /** Saved board times and child ink, for the admin replay. Older calls rebuild this from their trace. */
   boardHistory: BoardHistory;
   /** Service diagnostics belong only in the closed technical details. */
@@ -574,6 +579,9 @@ export interface VoiceCall {
   prepare(input: { text: string; reason: "interim" }): boolean;
   /** `say` hears this turn's sentences while it runs (VoiceSay), before the save behind it. */
   child(text: string, options?: { uncertain?: boolean; alternatives?: string[] }, say?: VoiceSay): Promise<VoiceTurn>;
+  exchange?(target: ExchangeTarget): Promise<VoiceTurn | null>;
+  /** A durable child action whose board change the receiver has not confirmed yet. */
+  readonly pendingExchange?: Batch;
   tick(): Promise<VoiceTurn>;
   writing(status: "started" | "done"): Promise<VoiceTurn>;
   /** Ends from the last durable state without waiting for active model work. */
@@ -727,6 +735,8 @@ export function callView(record: CallRecord, trace: MayaTrace, alerts: AlertStat
   // A text call's board carries the child's ink from the desk (#534); a voice call's ink is in its observed board.
   const window = { endMs: inkWindowEnd(trace) };
   const history = record.mode !== "text" ? recorded : ink.length > 0 ? withInkLog(recorded, ink, window) : withChildInk(recorded, record.childInk ?? null, window);
+  const exchange = record.status === "live" && record.live ? childExchangeTarget(record.live.text.session) : undefined;
+  const exchangeResult = trace.checkedExchange?.turns.find((t) => t.childAction)?.actions[0]?.batchId;
   return {
     id: record.id,
     kind: record.kind,
@@ -748,6 +758,8 @@ export function callView(record: CallRecord, trace: MayaTrace, alerts: AlertStat
     freeTalk: freeTalkOf(trace),
     scopeRefusals: structuredClone(trace.scopeRefusals ?? []),
     batches: observed ? history.events.flatMap(e => e.kind === "maya" ? [{ transactionId: e.batchId, commands: e.commands }] : []) : batchesOf(replayableBoard(trace)),
+    ...(exchange ? { exchange } : {}),
+    ...(exchangeResult ? { exchangeResult } : {}),
     boardHistory: history,
     technicalNotes: trace.turns.flatMap((t) => t.kind === "technical" ? [t.detail] : []),
     outcome: record.outcome ?? trace.outcome,
@@ -798,6 +810,7 @@ const countsOf = (trace: MayaTrace): NonNullable<CallRecord["counts"]> => ({
 
 function checkInput(input: CallInput): boolean {
   if (input.type === "child") return typeof input.text === "string" && input.text.trim().length > 0 && input.text.length <= MAX_CHILD_TEXT && (input.fates === undefined || readFateReports(input.fates) !== null);
+  if (input.type === "exchange") return readExchangeTarget(input.target) !== null && (input.fates === undefined || readFateReports(input.fates) !== null);
   if (input.type === "writing") return input.status === "started" || input.status === "done";
   return input.type === "tick" || input.type === "end";
 }
@@ -1449,7 +1462,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
        * One input. `need`: free model attempts the gate asks for, 2 for a turn with no child words (a check-in), so the
        * last attempt stays for the child.
        */
-      const turn = async (run: () => Promise<TextOutput>, childText?: string, say?: VoiceSay, need: 1 | 2 = 1): Promise<VoiceTurn> => {
+      const turn = async (run: () => Promise<TextOutput | null>, childText?: string, say?: VoiceSay, need: 1 | 2 = 1): Promise<VoiceTurn> => {
         if (inactive()) return none;
         // The admission interval, timed at its own awaits (telemetry only; the gate itself is unchanged).
         const gate = say?.admission ? { startedAt: seams.clock(), stt: "none" as "none" | "cached" | "network", sttMs: 0, block: "memory" as "memory" | "awaited", blockMs: 0, done: false } : null;
@@ -1510,7 +1523,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         }
       };
       /** An admitted input (`ticket`: its model attempt from the block). */
-      const admitted = async (me: { words?: string }, ticket: Handle | null, run: () => Promise<TextOutput>, childText?: string, say?: VoiceSay): Promise<VoiceTurn> => {
+      const admitted = async (me: { words?: string }, ticket: Handle | null, run: () => Promise<TextOutput | null>, childText?: string, say?: VoiceSay): Promise<VoiceTurn> => {
         let input = run;
         if (childText && pastClock(session.session) && !session.session.safety.flagged) {
           // Words after the call's clock: read for danger first, as the session would end the call unread.
@@ -1536,7 +1549,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         const seen = refusals;
         const before = session.trace().turns.length;
         working++;
-        let out: TextOutput;
+        let out: TextOutput | null;
         listener = say ?? null;
         try {
           // The input is in the session once `input` returns its promise, before any model call.
@@ -1544,6 +1557,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           if (say?.begun) { try { say.begun(planOf()); } catch { /* the worker's ear never fails the turn */ } }
           out = await running;
         } finally { working--; listener = null; }
+        if (!out) return none;
         // The input's model requests are over: an admitted attempt none of them took goes back before the cap's check.
         if (ticket) budget?.release(ticket);
         // Refused in this turn's time (any refusal while it ran counts: the turns share one model).
@@ -1597,6 +1611,13 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           return pendingFinal ? structuredClone(pendingFinal) : null;
         },
         get boardSnapshot() { return structuredClone(record.boardHistory?.delivery ?? { events: [] }); },
+        get pendingExchange() {
+          const saved = record.live?.text;
+          if (inactive() || !saved || saved.session.outcome) return undefined;
+          const action = saved.session.checkedExchange?.turns.find((t) => t.childAction)?.actions[0];
+          if (!action || action.fate === "shown") return undefined;
+          return batchesOf(saved.board.filter((b) => b.transactionId === action.batchId))[0];
+        },
         get acknowledged() { return [...acknowledged]; },
         async acknowledge(id) {
           if (acknowledged.includes(id)) return !lost;
@@ -1614,7 +1635,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         },
         async observeBoard(snapshot) {
           const copy = structuredClone(snapshot);
-          const fates = snapshotFates(copy).slice(-32);
+          const childBatch = session.session.checkedExchange?.turns.find((t) => t.childAction)?.actions[0]?.batchId;
+          const fates = snapshotFates(copy).filter((f) => f.fate === "shown" || f.batchId !== childBatch).slice(-32);
           const presented = copy.events.flatMap((e) => e.kind === "presented" ? [e.batchId] : []);
           const observe = (s: TextSession) => { s.boardFates(fates); s.exchangePresented(presented); };
           // B1: the screen's word on each batch reaches the session at once (the next turn's brief reads it).
@@ -1644,6 +1666,12 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         },
         start: (options) => turn(() => session.start(options)),
         child: (text, options, say) => turn(() => session.child(text.trim().slice(0, MAX_CHILD_TEXT), options), text.trim().slice(0, MAX_CHILD_TEXT), say),
+        async exchange(raw) {
+          const target = readExchangeTarget(raw);
+          if (inactive() || !target || !childExchangeProposal(session.session, target, seams.clock())) return null;
+          const out = await turn(async () => session.exchange(target));
+          return out.exchangeTurnId || out.ended ? out : null;
+        },
         tick: () => turn(() => session.tick(), undefined, undefined, 2),
         writing: (status) => turn(() => session.writing(status), undefined, undefined, 2),
         async limit() {
@@ -1720,6 +1748,11 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       if (!checkInput(input)) return { ok: false, error: "invalid_input" };
       const record = await store.get(id);
       if (!record) return { ok: false, error: "not_found" };
+      if (input.type === "exchange" && record.mode === "text" && record.kind === "chat" &&
+        (record.live?.text.session.checkedExchange ?? record.trace?.checkedExchange)?.turns.some((t) => sameExchangeTarget(t.childAction, input.target))) {
+        const view = recordView(record);
+        if (view) return { ok: true, view, output: { say: [], newBatches: 0, safetyMessage: null } };
+      }
       if (record.revision !== revision) return { ok: false, error: "conflict" };
       if (record.status === "ended") {
         if (input.type !== "end" || !record.trace) return { ok: false, error: "conflict" };
@@ -1751,6 +1784,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       // The name the saved session holds hides itself in the stored trace when the caller gives none: the sweep and an
       // admin end pass no name, and the trace hid only the name it was given (a chat's trace kept the real name, 2026-11-13).
       const name = savedName(saved) ?? childName;
+      if (input.type === "exchange" && (record.kind !== "chat" || !sameExchangeTarget(childExchangeTarget(saved.session), input.target))) {
+        return { ok: false, error: "conflict" };
+      }
       if (input.type === "child" && record.kind === "chat") {
         // #1107: a chat turn whose request stopped after saved parts (its process went away): the recovered request for
         // the same message ends it from the saved parts, with code's line and no model call, before any spend or clock
@@ -1807,10 +1843,11 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       } else {
         try {
           // B1: the screen's word on Maya's batches first, so this turn's brief counts only what the child saw.
-          if (input.type === "child" && input.fates?.length) session.boardFates(input.fates);
-          out = input.type === "child" ? await session.child(input.text.trim()) : input.type === "tick" ? await session.tick() : await session.writing(input.status);
+          if ((input.type === "child" || input.type === "exchange") && input.fates?.length) session.boardFates(input.fates);
+          if (input.type === "exchange") out = session.exchange(readExchangeTarget(input.target)!);
+          else out = input.type === "child" ? await session.child(input.text.trim()) : input.type === "tick" ? await session.tick() : await session.writing(input.status);
         } finally {
-          saved2 = await save(record, pkg, session);
+          if (input.type !== "exchange" || out) saved2 = await save(record, pkg, session);
         }
       }
       if (!saved2) return { ok: false, error: "conflict" };

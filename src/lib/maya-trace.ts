@@ -1,5 +1,5 @@
 import { SCOPE_REASONS } from "@/lib/maya/scope";
-import { exchangeFacts, exchangeWords, type CheckedExchangeLesson } from "@/lib/maya/checked-exchange";
+import { exchangeChildWords, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, type CheckedExchangeLesson } from "@/lib/maya/checked-exchange";
 // Maya's trace format (#322, spec #297): one versioned record of one Maya session, written by every session (the text
 // adapter now, the voice agent #326, the test bench #323 and the admin demo #324 later). It records the model and
 // prompt version, the question package hash, every turn with each proposal, its refusal and repair and the final
@@ -536,8 +536,10 @@ function checkedExchangeOutput(proposal: unknown, output: unknown): boolean {
   if (!isObject(proposal) || proposal.checkedExchange !== 1 || typeof proposal.value !== "number" ||
     typeof proposal.example !== "boolean" || typeof proposal.show !== "boolean" || !isObject(output)) return false;
   const facts = exchangeFacts(proposal.value, proposal.example);
-  return facts !== null && output.act === "guide" && Array.isArray(output.say) && output.say.length === 1 &&
-    output.say[0] === exchangeWords(facts, proposal.show).join(" ") && Array.isArray(output.board) && output.board.length === (proposal.show ? 2 : 1);
+  if (!facts || output.act !== "guide" || !Array.isArray(output.say) || output.say.length !== 1 || !Array.isArray(output.board)) return false;
+  if (proposal.prompt === true) return output.say[0] === exchangePromptWords(facts, proposal.show).join(" ") && output.board.length === Number(proposal.show);
+  if (readExchangeTarget(proposal.childAction)) return !proposal.show && output.say[0] === exchangeChildWords(facts).join(" ") && output.board.length === 1;
+  return output.say[0] === exchangeWords(facts, proposal.show).join(" ") && output.board.length === (proposal.show ? 2 : 1);
 }
 
 function checkTurn(t: unknown, path: string, version: number): Record<string, unknown> {
@@ -901,7 +903,7 @@ export function redactTrace(trace: MayaTrace, childName: string | null): MayaTra
           ...t,
           attempts: t.attempts.map((a) => ({
             ...a,
-            proposal: redactDeep(a.proposal, childName),
+            proposal: a === last && fixedExchange ? a.proposal : redactDeep(a.proposal, childName),
             refusal: a.refusal ? { ...a.refusal, reason: redactText(a.refusal.reason, childName) } : null,
             ...(a.talk ? { talk: a.talk.map((x) => redactDeep(x, childName) as TraceTalk) } : {}),
             ...(a.math ? { math: a.math.map((x) => ({ ...x, sentence: redactText(x.sentence, childName), reason: redactText(x.reason, childName) })) } : {}),

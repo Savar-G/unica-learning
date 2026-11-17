@@ -67,14 +67,14 @@ class SilentMicrophone extends voice.AudioInput {
 /** The child's speaker: plays each segment at once. */
 class Speaker extends voice.AudioOutput {
   private captured = 0;
-  constructor() {
+  constructor(private readonly clock = Date.now) {
     super(24_000);
   }
   override async captureFrame(frame: AudioFrame) {
     const before = this.capturedPlayoutSegments;
     await super.captureFrame(frame);
     this.captured += frame.samplesPerChannel / frame.sampleRate;
-    if (this.capturedPlayoutSegments > before) this.onPlaybackStarted(Date.now());
+    if (this.capturedPlayoutSegments > before) this.onPlaybackStarted(this.clock());
   }
   override flush() {
     super.flush();
@@ -139,7 +139,7 @@ afterEach(async () => {
   vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs();
 });
 
-async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["spend"]; speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel; board?: boolean; timestamps?: boolean; workbookReference?: string; measureBaseline?: boolean } = {}) {
+async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["spend"]; speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel; board?: boolean; timestamps?: boolean; workbookReference?: string; measureBaseline?: boolean; exchange?: boolean } = {}) {
   const clock = handTimers();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -155,6 +155,7 @@ async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["
     rebuild,
     model: (id) => (id === null || id === "fake" ? options.model ?? ruleMayaModel() : null),
     isTestFamily: async (p) => p === PARENT,
+    checkedExchange: options.exchange,
     ...(options.spend ? { spend: options.spend(clock.now) } : {}),
     clock: clock.now,
     newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`,
@@ -164,7 +165,8 @@ async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["
   const fixture = options.workbookReference ? await mayaWorkbookFixture() : null;
   const selected = fixture ? await selectWorkbookQuestion({ childId: fixture.ids.child, workbookId: fixture.ids.workbook, reference: options.workbookReference }, fixture.reader) : null;
   if (selected && !selected.ok) throw Error(selected.error);
-  const started = await calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: selected?.ok ? selected.package : PKG, confirmWorkbook: !!selected?.ok, startedBy: "admin-1" });
+  const pkg = selected?.ok ? selected.package : options.exchange ? { ...SAMPLE_PACKAGES["subtract-52-28"], ref: PKG.ref } : PKG;
+  const started = await calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: pkg, confirmWorkbook: !!selected?.ok, startedBy: "admin-1" });
   if (!started.ok) throw new Error(started.error);
   const config = voiceProviders({});
   if (!config.ok) throw new Error("fake providers");
@@ -413,6 +415,70 @@ class HeldSpeaker extends Speaker {
   finishPlayback() { this.held = false; super.flush(); }
   override flush() { if (!this.held) super.flush(); }
 }
+
+it("interrupts a regrouping prompt in playout and shows the child's exchange once", async () => {
+  let now = () => T0;
+  const speaker = new HeldSpeaker(() => now());
+  const c = await voiceCall({ speaker, model: ruleConversationalModel(), board: true, timestamps: true, exchange: true });
+  now = c.clock.now;
+  try {
+    await c.run.childJoined();
+    await waitFor(() => c.said().length > 0 && c.session.agentState === "listening", "opening");
+    speaker.held = true;
+    const stopped = vi.spyOn(speaker, "clearBuffer");
+    const oldSpeech = c.childSays("How do I regroup?");
+    await oldSpeech;
+    await waitFor(() => speaker.pendingPlayoutSegments > 0, "the prompt audio to reach the speaker");
+    await c.clock.advance(1);
+    await waitFor(() => c.session.agentState === "speaking" && c.receiver.snapshot().events.some(
+      e => e.kind === "batch" && JSON.stringify(e.commands).includes("52 = 50 + 2"),
+    ), "the shown tens while the prompt is playing");
+    const target = (await c.calls.view(c.id))!.exchange!;
+    expect(stopped).not.toHaveBeenCalled();
+    const attempts = await Promise.all([c.run.exchange(target), c.run.exchange(target)]);
+    expect(attempts).toContain("accepted");
+    expect(stopped).toHaveBeenCalled();
+    expect(c.receiver.snapshot().events.filter(e => e.kind === "batch" && JSON.stringify(e.commands).includes("52 = 40 + 12"))).toHaveLength(1);
+    await waitFor(() => c.said().join(" ").includes("4 tens and 12 ones"), "Maya's reply to the exchange");
+    expect(c.call.session.done).toEqual([]);
+    expect(c.call.session.checkedExchange?.turns.filter(t => t.childAction)).toHaveLength(1);
+    expect(c.call.session.checkedExchange?.turns.find(t => t.prompt)?.playback).toBe("interrupted");
+    const latest = (await c.calls.view(c.id))!;
+    expect(latest.exchange).toBeUndefined();
+    expect(await c.run.exchange(target)).toBe("done");
+  } finally { speaker.finishPlayback(); }
+});
+
+it("shows a saved child move after replacing a worker with an unplayed batch", async () => {
+  const c = await voiceCall({ model: ruleConversationalModel(), exchange: true });
+  await c.board.connect();
+  const show = async (id: string, cues: NonNullable<Awaited<ReturnType<typeof c.call.start>>["boardCues"]>) => {
+    await c.board.stage(id, cues);
+    await c.board.show(c.board.capture(id)!);
+  };
+  await show("opening", (await c.call.start()).boardCues!);
+  await show("prompt", (await c.call.child("How do I regroup?")).boardCues!);
+  const target = (await c.calls.view(c.id))!.exchange!;
+  const move = (await c.call.exchange!(target))!.boardCues!;
+  await c.board.stage("unplayed-exchange", move);
+  const id = move[0].batch.transactionId;
+  expect(c.receiver.snapshot().events.some((e) => e.kind === "batch" && e.batchId === id)).toBe(false);
+
+  const replacement = await c.calls.openVoice(c.id, { speechToText: "fake", voice: "fake" }, null);
+  if (!replacement.ok) throw Error(replacement.error);
+  const sender = createBoardSender({ sessionId: c.id, senderId: "replacement", snapshot: replacement.call.boardSnapshot, transport: createMemoryTransport(c.receiver) });
+  const board = createBoardSpeech({ sender, now: c.clock.now, observe: (snapshot) => replacement.call.observeBoard(snapshot) });
+  const session = controlSession();
+  const run = new VoiceCallRun(session as unknown as voice.AgentSession, replacement.call, { board, timers: c.clock.timers, notify: () => {} });
+  try {
+    await run.childJoined();
+    const events = c.receiver.snapshot().events;
+    expect(events.some((e) => e.kind === "cancelled" && e.batchIds.includes(id))).toBe(true);
+    expect(events.filter((e) => e.kind === "batch" && e.batchId === id)).toHaveLength(1);
+    expect(await run.exchange(target)).toBe("done");
+    expect(session.say).not.toHaveBeenCalled();
+  } finally { await run.hangUp(); }
+});
 
 function controlSession() {
   const emitter = new EventEmitter();

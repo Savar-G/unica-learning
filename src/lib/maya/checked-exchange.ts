@@ -3,6 +3,32 @@ import type { OperationPackage } from "@/lib/question-package";
 
 type ActionKind = "show" | "exchange";
 
+export const EXCHANGE_OBJECT = "exchange-before";
+export const EXCHANGE_RPC = "maya.exchange";
+
+/** A revision names the lesson board at the time this object was offered. */
+export interface ExchangeTarget {
+  lessonId: string;
+  turnId: string;
+  boardRevision: number;
+  objectId: typeof EXCHANGE_OBJECT;
+  batchId: string;
+}
+
+export function readExchangeTarget(value: unknown): ExchangeTarget | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const { lessonId, turnId, boardRevision, objectId, batchId } = value as Partial<ExchangeTarget>;
+  const id = (field: unknown): field is string => typeof field === "string" && field.length > 0 && field.length <= 160;
+  if (!id(lessonId) || !id(turnId) || !id(batchId) || typeof boardRevision !== "number" ||
+    !Number.isSafeInteger(boardRevision) || boardRevision < 1 || objectId !== EXCHANGE_OBJECT) return null;
+  return { lessonId, turnId, boardRevision, objectId, batchId };
+}
+
+export function sameExchangeTarget(a: ExchangeTarget | undefined, b: ExchangeTarget): boolean {
+  return !!a && a.lessonId === b.lessonId && a.turnId === b.turnId && a.boardRevision === b.boardRevision &&
+    a.objectId === b.objectId && a.batchId === b.batchId;
+}
+
 export interface ExchangeAmounts {
   tens: number;
   ones: number;
@@ -30,6 +56,8 @@ export interface ExchangeTurn {
   facts: ExchangeFacts;
   actions: ExchangeAction[];
   playback?: "finished" | "interrupted";
+  prompt?: ExchangeTarget;
+  childAction?: ExchangeTarget;
 }
 
 export interface CheckedExchangeLesson {
@@ -43,6 +71,8 @@ export interface ExchangeProposal {
   value: number;
   example: boolean;
   show: boolean;
+  prompt?: true;
+  childAction?: ExchangeTarget;
   afterFailure?: true;
 }
 
@@ -73,19 +103,30 @@ export function exchangeWords(facts: ExchangeFacts, show: boolean): string[] {
   ];
 }
 
+export function exchangePromptWords(facts: ExchangeFacts, show: boolean): string[] {
+  return [
+    ...(show ? exchangeWords(facts, true).slice(0, 1) : []),
+    "Trade one ten for ten ones. Use the Exchange one ten button on the board.",
+  ];
+}
+
+export function exchangeChildWords(facts: ExchangeFacts): string[] {
+  return [...exchangeWords(facts, false).slice(1, 2), "What changed when you traded a ten?"];
+}
+
 function notation(value: number, { tens, ones }: ExchangeAmounts): string {
   return `${value} = ${tens * 10} + ${ones}`;
 }
 
 export function exchangeCommands(action: ActionKind, facts: ExchangeFacts): Command[] {
   if (action === "show") return [
-    { op: "model", id: "exchange-before", model: { kind: "base_ten", hundreds: 0, ...facts.before }, place: { region: "main" } },
-    { op: "write", id: "exchange-before-notation", text: notation(facts.value, facts.before), place: { below: "exchange-before" } },
-    { op: "focus", target: { objectId: "exchange-before", part: "piece", piece: `ten-${facts.before.tens}` } },
+    { op: "model", id: EXCHANGE_OBJECT, model: { kind: "base_ten", hundreds: 0, ...facts.before }, place: { region: "main" } },
+    { op: "write", id: "exchange-before-notation", text: notation(facts.value, facts.before), place: { below: EXCHANGE_OBJECT } },
+    { op: "focus", target: { objectId: EXCHANGE_OBJECT, part: "piece", piece: `ten-${facts.before.tens}` } },
   ];
   return [
     { op: "remove", objectId: "exchange-before-notation" },
-    { op: "remove", objectId: "exchange-before" },
+    { op: "remove", objectId: EXCHANGE_OBJECT },
     { op: "model", id: "exchange-after", model: { kind: "base_ten", hundreds: 0, ...facts.after }, place: { region: "main" } },
     { op: "write", id: "exchange-after-notation", text: notation(facts.value, facts.after), place: { below: "exchange-after" } },
   ];

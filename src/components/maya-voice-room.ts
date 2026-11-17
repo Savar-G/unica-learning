@@ -21,6 +21,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Room as LkRoom } from "livekit-client";
 import { createBoardReceiver, type BoardSnapshot } from "@/lib/board-protocol";
 import { BOARD_RPC, boardRpcHandler } from "@/lib/board-rpc";
+import { EXCHANGE_RPC, type ExchangeTarget } from "@/lib/maya/checked-exchange";
 import { voiceDisconnectReason } from "@/lib/maya-voice-close-reason";
 import type { VoiceTicket } from "@/lib/maya-voice";
 import { newAttemptId, voiceStartTrace, type PrejoinDropReason, type PrejoinReason, type PrejoinStage, type VoiceStartDetail, type VoiceStartEvent, type VoiceTapLabel } from "@/lib/maya-voice-start-trace";
@@ -164,6 +165,7 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
   const [seconds, setSeconds] = useState(0);
   const [fakeSpeech, setFakeSpeech] = useState(false);
   const [sending, setSending] = useState(false);
+  const exchanging = useRef(false);
   // The child's words as Maya hears them (src/lib/maya-voice-hearing.ts): on this screen only, never saved, and cleared
   // when the saved call is read again after Maya's turn.
   const [heard, setHeard] = useState<HeardSegment[]>([]);
@@ -727,7 +729,23 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
     }
   }, [sending]);
 
+  const exchange = useCallback(async (target: ExchangeTarget): Promise<boolean> => {
+    const current = room.current;
+    const owner = agent.current;
+    if (phase !== "live" || !current || roomCall.current !== callId || !owner || exchanging.current) return false;
+    exchanging.current = true;
+    try {
+      const answer = await current.localParticipant.performRpc({
+        destinationIdentity: owner, method: EXCHANGE_RPC, payload: JSON.stringify(target), responseTimeout: 5000,
+      });
+      if (room.current !== current) return false;
+      await latest.current.onUpdate();
+      return answer === "accepted" || answer === "done";
+    } catch { return false; }
+    finally { exchanging.current = false; }
+  }, [callId, phase]);
+
   /** The child's words Maya is hearing now, for the child's last bubble in light text; null when there are none. */
   const hearing = heardText(heard);
-  return { phase, maya, error, seconds, fakeSpeech, sending, hearing, audioHost, prepare, leave, connect, hangUp, say, markTap };
+  return { phase, maya, error, seconds, fakeSpeech, sending, hearing, audioHost, prepare, leave, connect, hangUp, say, exchange, markTap };
 }

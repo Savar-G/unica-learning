@@ -656,6 +656,7 @@ export function createBoardSender(options: { sessionId: string; senderId: string
   let pen: PenHolder = "maya";
   const log: BoardEvent[] = [];
   const states = new Map<string, BatchState>();
+  const cancelledInPriorEpoch = new Set<string>();
 
   function record(events: BoardEvent[]) {
     for (const e of events) {
@@ -771,6 +772,8 @@ export function createBoardSender(options: { sessionId: string; senderId: string
       if (!synced) return UNREACHABLE;
       if (synced.epoch > epoch) return supersede();
       if (synced.epoch !== epoch) continue;
+      cancelledInPriorEpoch.clear();
+      for (const [id, state] of states) if (state === "cancelled") cancelledInPriorEpoch.add(id);
       connected = true;
       return { ok: true };
     }
@@ -791,8 +794,9 @@ export function createBoardSender(options: { sessionId: string; senderId: string
     // Still staged, nothing else can have changed the board since it was accepted. A retry that finds it shown or
     // cancelled may carry later changes of the child's: Maya reads those with `sync`.
     if (r.state === "accepted") revision = r.revision;
-    // A retry may answer with a later state the sender has read already: never move a batch back.
-    if (r.state !== "accepted" || !states.has(r.batchId)) states.set(r.batchId, r.state);
+    // A batch cancelled before this epoch may be staged again. Within an epoch, keep any later fate already read.
+    const retried = cancelledInPriorEpoch.delete(r.batchId);
+    if (r.state !== "accepted" || !states.has(r.batchId) || retried) states.set(r.batchId, r.state);
     return { ok: true, batchId: r.batchId, state: r.state };
   }
 

@@ -3,7 +3,7 @@ import { applyBatch, boardTargets, createScene, type Batch } from "@/lib/board";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { memoryWordingHistoryStore } from "@/lib/maya";
-import { mayaCalls, type CallResult, type CallSeams, type StartInput } from "@/lib/maya-call";
+import { mayaCalls, type CallInput, type CallResult, type CallSeams, type StartInput } from "@/lib/maya-call";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { fakeMathReviewer } from "@/lib/maya-math-review";
@@ -62,6 +62,86 @@ function checkExchange(batches: Batch[]) {
     ]));
   }
 }
+
+it("lets the child exchange the highlighted ten and keeps the checked result after a retry", async () => {
+  const { calls, answer, store } = setup();
+  const chat = ok(await calls.start(input));
+  const prompt = ok(await calls.input(chat.view.id, chat.view.revision, { type: "child", text: "How do I regroup?" }, null));
+  const target = prompt.view.exchange!;
+  expect(target).toMatchObject({ objectId: "exchange-before", boardRevision: expect.any(Number) });
+  expect(prompt.output.say.join(" ")).toContain("Trade one ten");
+  const show = prompt.view.batches.at(-1)!;
+  expect(show.transactionId).toBe(target.batchId);
+  const action = { type: "exchange" as const, target, fates: [{ batchId: show.transactionId, fate: "shown" as const }] };
+  const result = ok(await calls.input(chat.view.id, prompt.view.revision, action, null));
+  expect(result.output.say.join(" ")).toMatch(/4 tens and 12 ones.*still 52/);
+  checkExchange(result.view.batches.slice(-2));
+  expect(result.view.exchange).toBeUndefined();
+  const retry = ok(await calls.input(chat.view.id, prompt.view.revision, action, null));
+  expect(retry.output.say).toEqual([]);
+  expect(retry.view.batches).toEqual(result.view.batches);
+  const ended = ok(await calls.input(chat.view.id, retry.view.revision, { type: "end" }, null));
+  expect(ended.view.outcome?.assistance).toBe("guided");
+  expect(checkTrace(store.rows()[0].trace)).toMatchObject({ ok: true });
+  expect(answer).not.toHaveBeenCalled();
+});
+
+it("requires the current lesson, turn, board revision and shown object", async () => {
+  const { calls } = setup();
+  const chat = ok(await calls.start(input));
+  const prompt = ok(await calls.input(chat.view.id, chat.view.revision, { type: "child", text: "How do I regroup?" }, null));
+  const first = prompt.view.exchange!;
+  const shown = [{ batchId: first.batchId, fate: "shown" as const }];
+  const submit = (action: CallInput, revision = prompt.view.revision) => calls.input(chat.view.id, revision, action, null);
+  expect(await submit({ type: "exchange", target: first })).toEqual({ ok: false, error: "conflict" });
+  for (const changes of [
+    { lessonId: "another-lesson" }, { turnId: "another-turn" }, { boardRevision: first.boardRevision - 1 },
+    { batchId: "another-batch" }, { objectId: "exchange-after" as typeof first.objectId },
+  ]) {
+    expect((await submit({ type: "exchange", target: { ...first, ...changes }, fates: shown })).ok).toBe(false);
+  }
+  const newer = ok(await submit({ type: "child", text: "Can I try regrouping?", fates: shown }));
+  expect(newer.view.exchange).toMatchObject({ lessonId: first.lessonId, boardRevision: first.boardRevision, objectId: first.objectId });
+  expect(newer.view.exchange!.turnId).not.toBe(first.turnId);
+  expect(newer.view.batches).toEqual(prompt.view.batches);
+  expect((await submit({ type: "exchange", target: first }, newer.view.revision)).ok).toBe(false);
+  const action = { type: "exchange" as const, target: newer.view.exchange! };
+  const attempts = await Promise.all([submit(action, newer.view.revision), submit(action, newer.view.revision)]);
+  expect(attempts.filter((r) => r.ok && r.output.newBatches === 1)).toHaveLength(1);
+  const reconciled = ok(await submit(action, newer.view.revision));
+  expect(reconciled.output.newBatches).toBe(0);
+  checkExchange(reconciled.view.batches.slice(-2));
+});
+
+it("restores a saved voice action when its worker disconnects before the board confirms it", async () => {
+  const { calls } = setup();
+  const started = ok(await calls.startVoice({ ...input, kind: "family" }));
+  const open = async () => {
+    const opened = await calls.openVoice(started.view.id, { speechToText: "fake", voice: "fake" }, null);
+    if (!opened.ok) throw Error(opened.error);
+    return opened.call;
+  };
+  const call = await open();
+  const first = (await call.start()).boardCues![0].batch;
+  const prompt = await call.child("How do I regroup?");
+  const show = prompt.boardCues![0].batch;
+  const target = (await calls.view(started.view.id))!.exchange!;
+  expect(await call.exchange!(target)).toBeNull();
+  const shown = [first, show].map((b) => ({ kind: "batch" as const, batchId: b.transactionId, commands: [...b.commands] }));
+  await call.observeBoard({ events: shown });
+  const result = await call.exchange!(target);
+  const batch = result!.boardCues![0].batch;
+  expect(await call.exchange!(target)).toBeNull();
+  const recovered = await open();
+  expect(recovered.pendingExchange).toEqual(batch);
+  const cancelled = [...shown, { kind: "cancelled" as const, batchIds: [batch.transactionId] }];
+  await recovered.observeBoard({ events: cancelled });
+  expect(recovered.pendingExchange).toEqual(batch);
+  await recovered.observeBoard({ events: [...cancelled, { kind: "batch", batchId: batch.transactionId, commands: [...batch.commands] }] });
+  expect(recovered.pendingExchange).toBeUndefined();
+  expect(recovered.session.checkedExchange?.turns.filter((turn) => turn.childAction)).toHaveLength(1);
+  expect(recovered.session.done).toEqual([]);
+});
 
 it("delivers one checked exchange through chat and voice with the same words and dependent board actions", async () => {
   const { calls, answer } = setup();
@@ -135,12 +215,13 @@ it("keeps shown work through worker replacement and retries only the cancelled e
 it("uses a separate example when one of the target's shown quantities would give away the answer", async () => {
   const { calls } = setup();
   const operation: Operation = { kind: "subtract", operands: [52, 48] };
-  const chat = ok(await calls.start({
+  const setupInput: StartInput = {
     ...input, package: {
       ...SAMPLE_PACKAGES["subtract-52-28"], operation, steps: workedSteps(operation), text: "52 - 48 = ?",
       answer: { value: { type: "number", value: 4 }, accepted: [], unit: null },
     },
-  }));
+  };
+  const chat = ok(await calls.start(setupInput));
   const turn = ok(await calls.input(chat.view.id, chat.view.revision, { type: "child", text: "Show me how to regroup." }, null));
   expect(turn.output.say.join(" ")).toMatch(/separate example: 63.*5 tens and 13 ones.*63/i);
   expect(turn.output.say.join(" ")).not.toMatch(/\b(?:4|four)\b/i);
@@ -151,6 +232,16 @@ it("uses a separate example when one of the target's shown quantities would give
     expect.objectContaining({ model: { kind: "base_ten", hundreds: 0, tens: 6, ones: 3 } }),
     expect.objectContaining({ model: { kind: "base_ten", hundreds: 0, tens: 5, ones: 13 } }),
   ]);
+
+  const guided = ok(await calls.start(setupInput));
+  const offer = ok(await calls.input(guided.view.id, guided.view.revision, { type: "child", text: "How do I regroup?" }, null));
+  const target = offer.view.exchange!;
+  const result = ok(await calls.input(guided.view.id, offer.view.revision, {
+    type: "exchange", target, fates: [{ batchId: target.batchId, fate: "shown" }],
+  }, null));
+  expect(result.output.say.join(" ")).toMatch(/5 tens and 13 ones.*still 63/);
+  expect(result.output.say.join(" ")).not.toMatch(/\b(?:4|four)\b/i);
+  expect(result.view.batches.at(-1)?.commands).toContainEqual(expect.objectContaining({ op: "write", text: "63 = 50 + 13" }));
 });
 
 it("rejects a target answer in a free-form turn before it can stream or appear in a board batch", async () => {

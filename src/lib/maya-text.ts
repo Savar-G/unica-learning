@@ -60,7 +60,8 @@ import {
 import { modelInput, turnBrief, type MayaModel, type ModelInput, type TurnBrief } from "@/lib/maya-model";
 import { tutorBrief } from "@/lib/maya/tutor-prompt";
 import { continuedSay } from "@/lib/maya/tutor";
-import { checkedExchangeProposal } from "@/lib/maya/session";
+import { checkedExchangeProposal, childExchangeProposal } from "@/lib/maya/session";
+import type { ExchangeTarget } from "@/lib/maya/checked-exchange";
 import { preparedReplies, preparedKey, preparedKeys, sameTurn, MAX_PREPARES_PER_TURN, type PrepareHypothesis, type PreparedReply, type PrepareRecord } from "@/lib/maya-prepared";
 import type { SpendHandle, SpendSeam } from "@/lib/maya-spend-seam";
 import { readReuse, withReadReuse } from "@/lib/maya/read-reuse";
@@ -575,6 +576,8 @@ export interface TextSession {
   cancelPending(): void;
   /** One child turn as text. */
   child(text: string, options?: { uncertain?: boolean; alternatives?: string[] }): Promise<TextOutput>;
+  /** Accepts an exchange on the shown board and commits its checked reply as one input. */
+  exchange(target: ExchangeTarget): TextOutput | null;
   /**
    * A partial transcript of the child, who talks over Maya (`child_turn` with `final: false`): Maya's output stops
    * (`cancelled`) and nothing is judged. The full turn comes later through `child`.
@@ -1586,6 +1589,20 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const pending = receive({ type: "child_turn", at: now(), text, ...structuredClone(opts) });
       const version = generation;
       return pending.then((out) => { if (version === generation && !out.cancelled) { if (committing) { discard(committing.entries, "not_plain"); committing = null; } prepareNext(); } return out; });
+    },
+    exchange(target) {
+      recover();
+      const at = now();
+      const proposal = childExchangeProposal(folded.session, target, at);
+      if (!proposal || folded.childState === "child_speaking" || folded.pending.length) return null;
+      generation++;
+      active?.abort();
+      clearPrepares("stale");
+      append({ kind: "checked_exchange", at, proposal });
+      const out = textOutput(folded);
+      if (!out.exchangeTurnId) return null;
+      append({ kind: "delivered", at });
+      return out;
     },
     partial: (text) => receive({ type: "child_turn", at: now(), text, final: false }, false),
     mayaSaid: (text) => receive({ type: "maya_said", at: now(), text }),

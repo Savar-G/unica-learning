@@ -28,6 +28,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { callSeams } from "@/lib/maya-call-seams";
 import { mayaCalls } from "@/lib/maya-call";
+import { EXCHANGE_RPC, readExchangeTarget } from "@/lib/maya/checked-exchange";
 import { voiceOpening } from "./opening";
 import { mayaCallStore } from "@/lib/maya-call-store";
 import { asksWordTimings, callKeyterms, callOfRoom, childIdentity, turnSilences, VOICE_AGENT_NAME, voiceProviders, type TurnSilence, type VoiceCallFacts } from "@/lib/maya-voice";
@@ -201,6 +202,13 @@ export default defineAgent({
       if (data.callerIdentity !== identity) throw new RpcError(1403, "not this call's child");
       void run.hangUp();
       return "ok";
+    });
+    if (opened.call.session.checkedExchange) local.registerRpcMethod(EXCHANGE_RPC, async (data) => {
+      if (data.callerIdentity !== identity) throw new RpcError(1403, "not this call's child");
+      let target = null;
+      try { if (data.payload.length <= 1000) target = readExchangeTarget(JSON.parse(data.payload)); } catch { /* Invalid JSON. */ }
+      if (!target) throw new RpcError(1400, "invalid exchange target");
+      return run.exchange(target);
     });
     if (made.fakeSpeech) {
       const speech = made.fakeSpeech;

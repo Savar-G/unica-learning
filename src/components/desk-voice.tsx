@@ -3,6 +3,7 @@ import { recordActivity } from "@/lib/customer-activity-client";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Avatar, Icon } from "@/components/desk-icons";
 import { MayaBoard } from "@/components/maya-board";
+import { ExchangeControls } from "@/components/maya-exchange-controls";
 import { clock, useMayaVoiceRoom, useMicCheck, type MayaState } from "@/components/maya-voice-room";
 import type { BoardSnapshot } from "@/lib/board-protocol";
 import type { PlayStep } from "@/lib/board-svg";
@@ -16,7 +17,7 @@ import { voiceStartTrace } from "@/lib/maya-voice-start-trace";
 // The child's voice call with Maya on the desk (D-197 voice MVP). One call control beside chat: the child picks a
 // question, taps Call Maya, checks the microphone, and the call starts on the server (POST /api/desk/voice). The room
 // itself (LiveKit, the microphone, Maya's board over RPC) is the shared hook in maya-voice-room.ts, the same one the
-// admin test call uses. During a call Maya's board shows in the desk's board area, read-only: the child's pen is not
+// admin test call uses. During a call Maya's board shows in the desk's board area. The child's pen is not
 // part of a voice call. The screen to show is decided by src/lib/desk-voice-screen.ts.
 //
 // The call is made when the microphone check opens (docs/maya-voice.md, "The child joins the room before the Connect
@@ -74,6 +75,7 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
   const [hungUp, setHungUp] = useState(false);
   const [board, setBoard] = useState(EMPTY_BOARD);
   const [shown, setShown] = useState(0);
+  const [boardBatch, setBoardBatch] = useState<string | null>(null);
   // The week as it was before this call: the server counts a live call at its whole limit, so the time left during
   // the call is this minus the call's own seconds, never the server's count minus them again.
   const [base, setBase] = useState<VoiceUsage | null>(null);
@@ -128,6 +130,7 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
     onBoard(snapshot: BoardSnapshot, restored: boolean) {
       const next = boardOfSnapshot(snapshot);
       if (!next) return;
+      setBoardBatch(snapshot.events.findLast((e) => e.kind === "batch")?.batchId ?? null);
       if (!restored && next.steps.length === drawn.current) return;
       setShown(restored ? next.steps.length : Math.max(0, drawn.current));
       drawn.current = next.steps.length;
@@ -146,6 +149,7 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
     setCall(null);
     setBoard(EMPTY_BOARD);
     setShown(0);
+    setBoardBatch(null);
     setBase(null);
   };
 
@@ -425,7 +429,7 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
   const screen = voiceScreen({ flow, phase: room.phase, callEnded: call?.ended === true, hungUp, error: room.error });
   return {
     enabled: initial !== null, usage, liveLeft, flow, screen, call, mic, room: { phase: room.phase, maya: room.maya, error: room.error, seconds: room.seconds, fakeSpeech: room.fakeSpeech, sending: room.sending, hearing: room.hearing, say: room.say },
-    audioHost: room.audioHost, startError, board, shown,
+    audioHost: room.audioHost, startError, board, shown, boardBatch, exchange: room.exchange,
     /** A call is under way or just ended: the desk's own controls give way to the call's. */
     engaged: flow !== "idle",
     /** Maya's board shows for the call and until the child is back on the page. */
@@ -459,9 +463,11 @@ export function VoiceTranscript({ state }: { state: DeskVoiceState }) {
   {hearing && <p className="desk-bubble desk-child-bubble desk-hearing" aria-hidden="true">{hearing}</p>}</>;
 }
 
-/** Maya's board during a call: read-only. The child's pen is not part of a voice call. */
+/** Maya's board during a call. The child can make the checked move when Maya offers it. */
 export function VoiceBoard({ state, still }: { state: DeskVoiceState; still: boolean }) {
-  const { board, shown } = state;
+  const { board, shown, call, boardBatch } = state;
+  const exchange = state.screen === "live" && call?.exchange?.batchId === boardBatch ? call.exchange : undefined;
+  const showExchangeResult = !!call?.exchangeResult && call.exchangeResult === boardBatch;
   return (
     <section className="desk-board" id="voice-board" aria-labelledby="desk-board-title">
       <header>
@@ -470,10 +476,11 @@ export function VoiceBoard({ state, still }: { state: DeskVoiceState; still: boo
       </header>
       <div className="desk-board-body desk-board-solo">
         <div className="desk-canvas">
-          {board.steps.length > 0 && <MayaBoard steps={board.steps} viewBox={board.viewBox} instant={still} shown={shown} label="Maya's drawing for your question" />}
+          {board.steps.length > 0 && <MayaBoard steps={board.steps} viewBox={board.viewBox} instant={still || showExchangeResult} shown={shown} label="Maya's drawing for your question" />}
           <p className="desk-caption">{board.steps.length > 0 ? "Follow each step. Then write on your paper." : "Maya writes here while she talks."}</p>
         </div>
       </div>
+      {exchange && <ExchangeControls key={exchange.turnId} target={exchange} submit={state.exchange} />}
     </section>
   );
 }
