@@ -338,6 +338,7 @@ export interface TranscriptTurn {
   act?: Act;
   /** Other transcripts speech-to-text offered for a child turn, kept for review. */
   alternatives?: string[];
+  excludedFromTutor?: true;
   /** D-341: code's own plan for a turn Maya said in the model's words (what code would have said). */
   planned?: string;
 }
@@ -1683,10 +1684,12 @@ export function step(session: Session, event: SessionEvent): StepResult {
         break;
       }
       const alternatives = Array.isArray(event.alternatives) ? event.alternatives.filter((a) => typeof a === "string") : [];
-      s.turns.push({ at: event.at, speaker: "child", text: event.text, state: s.state, ...(alternatives.length > 0 ? { alternatives } : {}) });
-      if (s.checkedRoutine && s.safety.flagged) break;
       const stillHeld = s.sensitiveHold && (event.uncertain || sensitive !== null || !resolvesSafetyHold(event.text));
-      if (s.checkedRoutine && s.package && (sensitive === "clarify" || sensitive === "unsafe_request" || stillHeld)) {
+      const held = s.checkedRoutine && s.package && (sensitive === "clarify" || sensitive === "unsafe_request" || stillHeld);
+      const excluded = held || (s.checkedRoutine && s.safety.flagged);
+      s.turns.push({ at: event.at, speaker: "child", text: event.text, state: s.state, ...(alternatives.length > 0 ? { alternatives } : {}), ...(excluded ? { excludedFromTutor: true } : {}) });
+      if (s.checkedRoutine && s.safety.flagged) break;
+      if (held) {
         replyToSensitive(s, effects, event.text, sensitive === "unsafe_request");
         break;
       }

@@ -69,6 +69,7 @@ const hide = (text: string, name: string | null | undefined) => {
 
 /** The brief for the tutor's next message. */
 export function tutorBrief(s: Session, repair: TutorBrief["repair"] = null): TutorBrief {
+  if (s.checkedRoutine) s = { ...s, turns: s.turns.filter((t) => !t.excludedFromTutor) };
   const pkg = s.package;
   const name = s.variety.name;
   const done = new Set(s.done);

@@ -34,7 +34,7 @@ async function setup(mode: "chat" | "voice", opts: { checkedRoutine?: boolean; a
   const ledger = createSpendLedger({ store: memorySpendStore({ clock }), config: spendConfig({}), clock, zone: async () => "America/Vancouver" });
   const spend = callSpend(ledger, { clock, newId });
   const model = conversationalFake({ answer: opts.answer ?? (() => reply("What is 13 minus 6?", "guide")) });
-  const forced = vi.fn(async (input: ModelInput) => ({
+  const forced = vi.fn<(input: ModelInput, signal: AbortSignal) => Promise<{ reading: { safety: string } | null; say: string }>>(async (input) => ({
     reading: input.childTurn?.includes("emergency") || input.childTurn?.includes("hits me") ? { safety: "concern" } : null,
     say: "These model words must never be spoken.",
   }));
@@ -153,6 +153,110 @@ it.each(["clock", "cap"] as const)("queues guidance before a held %s save and re
   expect(next.call.pendingFinal?.say).toEqual([IDENTITY]);
   await next.call.end({});
   expect(s.alert).toHaveBeenCalledOnce();
+});
+
+it("queues known cap danger without waiting for an unrelated revision write", async () => {
+  const s = await setup("voice");
+  const call = s.voice!;
+  const saved = s.store.update.bind(s.store);
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  vi.spyOn(s.store, "update").mockImplementation(async (id, revision, change) => {
+    if (change.live?.acknowledged?.includes("some-phrase")) {
+      entered.resolve();
+      await release.promise;
+    }
+    return saved(id, revision, change);
+  });
+  const write = call.acknowledge("some-phrase");
+  await entered.promise;
+  s.reachCap();
+  const dispatch = Promise.withResolvers<void>();
+  let played: Promise<void> | undefined;
+  call.onGuidance((turn) => {
+    expect(turn.say).toEqual([SAFETY_GUIDANCE.immediate]);
+    played = call.guidancePlayback!(SAFETY_GUIDANCE.immediate);
+    dispatch.resolve();
+  });
+  const closing = s.child("My babysitter is hurting me right now.");
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([dispatch.promise, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("Guidance waited for the unrelated write")), 800);
+    })]);
+  } finally {
+    clearTimeout(timer);
+    release.resolve();
+  }
+  await write;
+  expect(await closing).toMatchObject({ ended: true, say: [], safetyMessage: SAFETY_GUIDANCE.immediate });
+  await played;
+  expect(s.stored().flag?.level).toBe("safety_immediate");
+  expect(s.stored().live?.guidancePlayed).toBe("immediate");
+});
+
+it("drains a safety-only read admitted before the deadline closes and does not release its model words", async () => {
+  const s = await setup("voice");
+  s.reachClock();
+  const call = s.voice!;
+  const admitted = Promise.withResolvers<void>();
+  const read = Promise.withResolvers<{ reading: { safety: string }; say: string }>();
+  s.forced.mockImplementation(() => { admitted.resolve(); return read.promise; });
+  const sent = vi.fn();
+  call.onGuidance(sent);
+  const child = s.child("There is an emergency outside. Are you a real person?");
+  await admitted.promise;
+  const deadline = call.safetyDeadline!();
+  expect((await call.child("What is five minus two?")).say).toEqual([]);
+  expect(sent).not.toHaveBeenCalled();
+  read.resolve({ reading: { safety: "immediate" }, say: "Do not emit the model's words." });
+  expect(await deadline).toMatchObject({ say: [IDENTITY], ended: true });
+  expect(sent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ say: [SAFETY_GUIDANCE.immediate] }));
+  expect((await child).say).toEqual([]);
+  await call.settled();
+  expect(s.stored().flag?.level).toBe("safety_immediate");
+  expect(await call.deferGuidance!()).toBe(true);
+  expect((await s.reopen())).toMatchObject({ ok: true, call: { pendingFinal: { say: [SAFETY_GUIDANCE.immediate, IDENTITY] } } });
+  expect(s.forced).toHaveBeenCalledOnce();
+  expect(s.model.briefs).toEqual([]);
+});
+
+it("bounds the deadline even when the admitted safety read ignores its abort signal", async () => {
+  const s = await setup("voice");
+  s.reachClock();
+  const started = Promise.withResolvers<void>();
+  const late = Promise.withResolvers<{ reading: { safety: string }; say: string }>();
+  let signal: AbortSignal | undefined;
+  s.forced.mockImplementation((_input, abort) => { signal = abort; started.resolve(); return late.promise; });
+  const call = s.voice!;
+  const sent = vi.fn();
+  call.onGuidance(sent);
+  const child = s.child("There is an emergency outside.");
+  await started.promise;
+  await call.limit();
+  expect(signal?.aborted).toBe(true);
+  expect(s.stored().status).toBe("ended");
+  late.resolve({ reading: { safety: "immediate" }, say: "Do not emit this." });
+  expect((await child).say).toEqual([]);
+  expect(sent).not.toHaveBeenCalled();
+  expect(s.forced).toHaveBeenCalledOnce();
+});
+
+it("carries the saved disclosure past the deadline without replaying acknowledged guidance", async () => {
+  const s = await setup("voice");
+  const call = s.voice!;
+  call.onGuidance(vi.fn());
+  await s.child("My babysitter is hurting me right now. Are you a real person?");
+  await call.guidancePlayback!(SAFETY_GUIDANCE.immediate);
+  s.reachClock();
+  const recovered = await s.reopen();
+  if (!recovered.ok) throw new Error(recovered.error);
+  const sent = vi.fn();
+  recovered.call.onGuidance(sent);
+  expect(await recovered.call.safetyDeadline!()).toMatchObject({ say: [IDENTITY], ended: true });
+  await recovered.call.settled();
+  expect(s.stored().live?.pendingVoice?.say).toEqual([SAFETY_GUIDANCE.immediate, IDENTITY]);
+  expect(sent).not.toHaveBeenCalled();
 });
 
 it.each(["chat", "voice"] as const)("doesn't make a candidate safety read for ordinary math at the %s clock", async (mode) => {

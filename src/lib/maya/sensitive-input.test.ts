@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { closingSafetyRead, resolvesSafetyHold, sensitiveHearing, shareableTutorTurn } from "./sensitive-input";
+import { benignSafetyContext, closingSafetyRead, resolvesSafetyHold, sensitiveHearing, shareableTutorTurn } from "./sensitive-input";
 
 describe("sensitive hearing", () => {
   it.each([
@@ -38,11 +38,28 @@ describe("sensitive hearing", () => {
     expect(shareableTutorTurn({ speaker: "child", text: "Eight minus three", alternatives: ["He hits me"] })).toBe(false);
   });
 
+  it.each([
+    ["I'm scared of getting the answer wrong because my babysitter is hitting me right now.", "immediate", false, false],
+    ["My dad is hurting me right now because I lost in the game.", "immediate", false, false],
+    ["My dad hit me? No I meant the ball.", null, true, false],
+    ["My dad hit me? No, he hit the ball.", null, true, false],
+    ["My dad hit me? No, I meant the ball, but someone is hitting me right now.", "immediate", false, false],
+    ["I am in danger. No, I meant the ball.", "immediate", false, false],
+    ['The book says, "I am in danger. My dad is hurting me right now."', null, true, false],
+    ['The book says, "I am in danger," but someone is hitting me right now.', "immediate", false, false],
+    ["In the story, my dad hit me.", null, true, false],
+    ["I died in the game but there is an emergency outside.", null, false, true],
+  ] as const)("binds an exemption to the claim it actually qualifies: %s", (text, expected, benign, requiresClosingRead) => {
+    expect(sensitiveHearing({ text })).toBe(expected);
+    expect(benignSafetyContext(text)).toBe(benign);
+    expect(closingSafetyRead(text)).toBe(requiresClosingRead);
+  });
+
   it("requires an actual correction or return to math to release a safety hold", () => {
-    for (const text of ["No, nobody is hurting me.", "I meant the math.", "Can we go back to math?"]) {
+    for (const text of ["No, nobody is hurting me.", "No, I'm safe.", "I meant the math.", "Can we go back to math?"]) {
       expect(resolvesSafetyHold(text)).toBe(true);
     }
-    for (const text of ["Yes.", "No.", "Seven.", "I don't know.", "I'm sorry.", "I was joking."]) {
+    for (const text of ["Yes.", "No.", "Seven.", "I don't know.", "I'm sorry.", "I was joking.", "I'm safe. 17 Synthetic Cedar Lane."]) {
       expect(resolvesSafetyHold(text)).toBe(false);
     }
   });

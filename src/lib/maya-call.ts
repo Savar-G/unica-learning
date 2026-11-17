@@ -555,6 +555,8 @@ export interface VoiceCall {
    */
   onGuidance(listener: (turn: VoiceTurn) => void): void;
   guidancePlayback?(text: string): Promise<void>;
+  safetyDeadline?(): Promise<VoiceTurn | null>;
+  deferGuidance?(): Promise<boolean>;
   /** Diagnostic decisions from the controller, including discards outside a child turn. The observer gets a copy. */
   onPreparation?(listener: (record: PrepareRecord) => void): void;
   /** Saved last words and unplayed guidance when this handle restored a safety close. */
@@ -860,6 +862,15 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   /** What a safety read found in the child's words. */
   interface SafetyFound { proposal: unknown; severity: Severity | null; unsafe: boolean; pause?: boolean; known?: boolean }
 
+  const safetyDrainMs = 2_000;
+  function knownSafety(hearings: readonly ChildHearing[]): SafetyFound | null {
+    const readings = hearings.map(sensitiveHearing);
+    const severity = readings.includes("immediate") ? "immediate" : readings.includes("concern") ? "concern" : null;
+    const unsafe = readings.includes("unsafe_request");
+    const pause = readings.includes("clarify");
+    return severity || unsafe || pause ? { proposal: null, severity, unsafe, pause, known: true } : null;
+  }
+
   /**
    * The child's words, read once by the model for danger, apart from the teaching session: its clock and the cap do not
    * stop it. Null when the read could not be made. The read's words are never said.
@@ -870,13 +881,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     let known: SafetyFound | null = null;
     let text: string;
     if (saved.checkedRoutine) {
-      const readings = hearings.map(sensitiveHearing);
-      const severity = readings.includes("immediate") ? "immediate" : readings.includes("concern") ? "concern" : null;
-      const unsafe = readings.includes("unsafe_request");
-      const pause = !severity && !unsafe && readings.includes("clarify");
-      if (severity || unsafe || pause) known = { proposal: null, severity, unsafe, pause, known: true };
-      if (severity) return known;
-      text = hearings.filter((h, i) => readings[i] === null && !h.uncertain && closingSafetyRead(h.text)).map((h) => h.text).join("\n");
+      known = knownSafety(hearings);
+      if (known?.severity) return known;
+      text = hearings.filter((h) => !h.uncertain && sensitiveHearing(h) === null && closingSafetyRead(h.text)).map((h) => h.text).join("\n");
     } else {
       text = hearings.map((h) => h.text).join(" ");
     }
@@ -892,7 +899,15 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         ...structuredClone(saved), expect: "maya", turn: { at, text, uncertain: false },
         turns: [...saved.turns, { at, speaker: "child", text, state: saved.state }],
       });
-      const proposal = await model.propose(input, new AbortController().signal);
+      const stop = new AbortController();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let proposal: unknown;
+      try {
+        const read = model.propose(input, stop.signal);
+        proposal = saved.checkedRoutine ? await Promise.race([read, new Promise<null>((resolve) => {
+          timer = setTimeout(() => { resolve(null); stop.abort(); }, safetyDrainMs);
+        })]) : await read;
+      } finally { clearTimeout(timer); }
       const safety = (proposal as { reading?: { safety?: unknown } | null } | null)?.reading?.safety;
       // A proposal of kind "safety" with no severity is a concern (final check 1, 2026-11-15; as priorityOf in session.ts).
       const kindSafety = (proposal as { kind?: unknown } | null)?.kind === "safety";
@@ -943,9 +958,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
    * leaves unread get one safety read; guidance due comes first, then code's closing line, and nothing else is said.
    * What reached the child before stays as it was. Null on a conflict.
    */
-  async function closeAtCap(record: CallRecord, state: Exclude<SpendState, "open">, childName: string | null, extra?: (endedAt: number) => Promise<CallChange>, hearings: readonly ChildHearing[] = [], help: readonly Assistance[] = [], stageSafety?: (session: TextSession, turn: VoiceTurn) => Promise<CallRecord | null>): Promise<{ record: CallRecord; say: string[]; safetyMessage: string | null; guidance?: string } | null> {
+  async function closeAtCap(record: CallRecord, state: Exclude<SpendState, "open">, childName: string | null, extra?: (endedAt: number) => Promise<CallChange>, hearings: readonly ChildHearing[] = [], help: readonly Assistance[] = [], stageSafety?: (session: TextSession, turn: VoiceTurn) => Promise<CallRecord | null>, alreadyRead?: Promise<SafetyFound | null>): Promise<{ record: CallRecord; say: string[]; safetyMessage: string | null; guidance?: string } | null> {
     const live = record.live!;
-    const found = live.text.session.safety.flagged ? null : await safetyRead(record, hearings);
+    const found = live.text.session.safety.flagged ? null : await (alreadyRead ?? safetyRead(record, hearings));
     // Final check 12: the help of every sentence the live session emitted (its ledger), also during the unsaved turn.
     const session = textSession(record, live.package, found?.severity && !live.text.session.checkedRoutine ? replay(record, found.proposal) : idleModel(record), childName, withHelpLedger(live.text, help));
     const before = session.session.safety;
@@ -1320,6 +1335,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const prepareHandleId = createHandleDiagnosticIds(voiceSpend.budgetKey ?? record.id);
       // C2 speculative requests use this budget through a request-bound model, without a second reservation.
       let hearGuidance: ((turn: VoiceTurn) => void) | null = null;
+      let dispatchedGuidance: string | undefined;
       let hearPreparation: ((record: PrepareRecord) => void) | null = null;
       // Every trace turn before this index has been told to the worker in an earlier turn.
       let told = 0;
@@ -1330,7 +1346,13 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         const from = told;
         told = session.trace().turns.length;
         // Only a worker that lost the call to another stays silent.
-        if (!replaced && record.status !== "ended") hearGuidance?.(voiceTurn(out, from));
+        if (!replaced && record.status !== "ended") {
+          const turn = voiceTurn(out, from);
+          if (hearGuidance && (!checkedRoutine || turn.guidance !== dispatchedGuidance)) {
+            dispatchedGuidance = turn.guidance;
+            hearGuidance(turn);
+          }
+        }
       };
       const session = textSession(record, pkg, model, name, restored, undefined, undefined, undefined, undefined, undefined, guidanceNow, {
         onSayPart: (sentence, index) => listener?.part?.(sentence, index),
@@ -1383,7 +1405,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         // The outcome can precede final playout. Count room time through the media close.
         return { connectedSeconds: connectedSeconds(events, Math.max(endedAt, seams.clock(), ...events.map((e) => e.at))) };
       };
+      let acceptedSafetyClose: TextOutput | undefined;
       const persist = (out: TextOutput) => {
+        if (checkedRoutine && out.ended && out.safetyMessage) acceptedSafetyClose = out;
         const accepted = checkedRoutine ? session.saved() : null;
         later(async () => {
           if (inactive()) return;
@@ -1403,8 +1427,37 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         });
       };
       const none: VoiceTurn = { say: [], newBatches: 0, safetyMessage: null, ended: false };
-      const inactive = () => lost || record.status === "ended" || forcedClose;
+      const inactive = () => lost || record.status === "ended" || forcedClose || deadlineStarted;
       let forcedClose = false;
+      let deadlineStarted = false;
+      let deadline: Promise<VoiceTurn | null> | undefined;
+      let reportedGuidance: string | undefined;
+      const emitFixedGuidance = (guidance: string): boolean => {
+        const acknowledged = record.live?.guidancePlayed;
+        if (acknowledged && SAFETY_GUIDANCE[acknowledged] === guidance) return true;
+        if (!hearGuidance || replaced || record.status !== "live") return false;
+        if (dispatchedGuidance !== guidance) {
+          if (dispatchedGuidance === SAFETY_GUIDANCE.immediate) return false;
+          dispatchedGuidance = guidance;
+          hearGuidance({ say: [guidance], newBatches: 0, safetyMessage: guidance, guidance, priority: true, ended: false });
+        }
+        return true;
+      };
+      const stageSafety = async (final: TextSession, pendingVoice: VoiceTurn): Promise<CallRecord | null> => {
+        const live = record.live!;
+        const text = await final.saved();
+        const severity = text.session.safety.severity;
+        const guidancePlayed = severity && reportedGuidance === SAFETY_GUIDANCE[severity] ? severity : live.guidancePlayed;
+        const flag = risen(record.flag, flagOf(final, unsafe));
+        const change: CallChange = {
+          live: { ...live, text, pendingVoice, ...(guidancePlayed ? { guidancePlayed } : {}) },
+          startedAt: final.trace().startedAt, ...(flag ? { flag } : {}),
+        };
+        if (!(await store.update(record.id, record.revision, change))) return null;
+        monitorCallChange(record, change);
+        forcedClose = true;
+        return { ...record, ...change, revision: record.revision + 1 };
+      };
       // Board and playback observations can arrive during a new turn. Persist only the observation on the last
       // durable session, so an in-flight request or an output that has yet to pass its save cannot leak into storage.
       const saveExchangeEvidence = async (observe: (saved: TextSession) => void): Promise<CallChange> => {
@@ -1467,6 +1520,61 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
        */
       const unread = (own?: ChildHearing, me?: { hearing?: ChildHearing }): ChildHearing[] =>
         [...(own ? [own] : []), ...owed.splice(0), ...[...inflight].flatMap((t) => t !== me && t.hearing ? [t.hearing] : [])];
+      const safetyReads = new Set<{ hearings: readonly ChildHearing[]; found: Promise<SafetyFound | null> }>();
+      const startSafetyRead = (hearings: readonly ChildHearing[]) => {
+        const read = { hearings, found: safetyRead(record, hearings) };
+        safetyReads.add(read);
+        return read;
+      };
+      const safetyDeadline = (): Promise<VoiceTurn | null> => deadline ??= (async () => {
+        if (forcedClose && !lost) return record.live?.pendingVoice ?? null;
+        if (inactive()) return null;
+        deadlineStarted = true;
+        const hearings = [...new Set([...unread(), ...[...safetyReads].flatMap((read) => read.hearings)])];
+        const observed = session.session.safety.severity;
+        void stopBudget();
+        const known = knownSafety(hearings);
+        let severity: Severity | null = known?.severity === "immediate" || observed === "immediate" ? "immediate" : known?.severity ?? observed;
+        let harmful = known?.unsafe === true;
+        let sent = severity ? emitFixedGuidance(SAFETY_GUIDANCE[severity]) : false;
+        if (severity !== "immediate") await Promise.all([...safetyReads].map(async ({ found: reading }) => {
+          const found = await reading;
+          if (found?.severity && (!severity || (severity === "concern" && found.severity === "immediate"))) {
+            severity = found.severity;
+            sent = emitFixedGuidance(SAFETY_GUIDANCE[severity]);
+          }
+          harmful ||= found?.unsafe === true;
+        }));
+        if (lost || record.status !== "live" || !record.live) return null;
+        const guidance = severity ? SAFETY_GUIDANCE[severity] : null;
+        const prior = acceptedSafetyClose ?? record.live.pendingVoice;
+        const say = [...new Set([
+          ...(prior?.safetyMessage ? prior.say.filter((text) => text !== prior.safetyMessage) : []),
+          ...fixedClosingWords(session.session, hearings, severity ? { proposal: null, severity, unsafe: harmful } : known),
+        ])];
+        const priority: VoiceTurn = {
+          say: guidance && !sent ? [guidance, ...say] : say, ended: true, newBatches: 0, priority: true,
+          safetyMessage: guidance, ...(guidance && !sent ? { guidance } : {}),
+        };
+        if (severity || harmful) later(async () => {
+          if (lost || record.status !== "live" || !record.live || forcedClose) return;
+          const final = textSession(record, pkg, idleModel(record), name, withHelpLedger(record.live.text, session.helpLedger()));
+          if (severity && !final.ended) await final.safety(severity);
+          if (severity && final.session.safety.guided) {
+            const pendingVoice: VoiceTurn = { ...priority, say: [guidance!, ...say], guidance: guidance! };
+            const saved = await stageSafety(final, pendingVoice);
+            if (!saved) lose(true);
+            else record = saved;
+          } else if (harmful && unsafe) {
+            const flag = risen(record.flag, { level: unsafe, at: iso(seams.clock()) });
+            if (!flag) return;
+            if (!(await store.update(record.id, record.revision, { flag }))) { lose(true); return; }
+            monitorCallChange(record, { flag });
+            record = { ...record, flag, revision: record.revision + 1 };
+          }
+        });
+        return guidance || say.length ? priority : null;
+      })();
       /** Speech-to-text reserved ahead (its own requests, only when its block is near its end). */
       const sttNow = async (seen?: (read: "none" | "cached" | "network") => void): Promise<SpendState> => {
         if (!meter) { seen?.("none"); return "open"; }
@@ -1488,30 +1596,27 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       };
       /** Ends the call because of the cap after `said` (what this input already says), with code's closing line. */
       const capClose = async (state: Exclude<SpendState, "open">, said: VoiceTurn | null, hearings: readonly ChildHearing[]): Promise<VoiceTurn> => {
+        if (inactive()) return none;
+        const alreadyRead = checkedRoutine && !record.live?.text.session.safety.flagged ? startSafetyRead(hearings) : undefined;
+        if (checkedRoutine) void stopBudget();
         let closed: Awaited<ReturnType<typeof closeAtCap>> = null;
         let sent: string | undefined;
+        if (alreadyRead) {
+          const finding = await alreadyRead.found;
+          if (inactive()) { safetyReads.delete(alreadyRead); return none; }
+          if (finding?.severity && emitFixedGuidance(SAFETY_GUIDANCE[finding.severity])) sent = SAFETY_GUIDANCE[finding.severity];
+        }
         later(async () => {
           if (inactive() || !record.live) return;
           // Close admission synchronously. A held settlement cannot delay the forced safety read or guidance.
           void stopBudget();
-          closed = await closeAtCap(record, state, name, connected, hearings, session.helpLedger(), checkedRoutine ? async (final, pendingVoice) => {
-            if (hearGuidance && pendingVoice.guidance) {
-              sent = pendingVoice.guidance;
-              hearGuidance({ ...pendingVoice, say: [sent], ended: false });
-            }
-            const text = await final.saved();
-            const flag = risen(record.flag, flagOf(final, unsafe));
-            const change: CallChange = { live: { ...record.live!, text, pendingVoice }, startedAt: final.trace().startedAt, ...(flag ? { flag } : {}) };
-            if (!(await store.update(record.id, record.revision, change))) return null;
-            monitorCallChange(record, change);
-            forcedClose = true;
-            return { ...record, ...change, revision: record.revision + 1 };
-          } : undefined);
+          closed = await closeAtCap(record, state, name, connected, hearings, session.helpLedger(), checkedRoutine ? stageSafety : undefined, alreadyRead?.found);
           if (!closed) { lose(true); }
           else record = closed.record;
         });
         // Speech-to-text runs until the worker ends the call after the closing line: `end` settles it then.
         await queue;
+        if (alreadyRead) safetyReads.delete(alreadyRead);
         const done = closed as Awaited<ReturnType<typeof closeAtCap>>;
         if (!done) return said ?? none;
         const prior = session.session.checkedRoutine && (done.guidance || done.say.includes(SAFETY_PAUSE)) ? null : said;
@@ -1602,7 +1707,10 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         if (hearing && pastClock(session.session) && !session.session.safety.flagged) {
           // Words after the call's clock: read for danger first, as the session would end the call unread.
           const atClose = session.session;
-          const found = await safetyRead(record, [hearing]);
+          const read = checkedRoutine ? startSafetyRead([hearing]) : null;
+          const found = await (read?.found ?? safetyRead(record, [hearing]));
+          if (read) safetyReads.delete(read);
+          if (inactive()) return none;
           if (atClose.checkedRoutine && (!found?.known || found.unsafe)) {
             const fixed = fixedClosingWords(atClose, [hearing], found);
             input = async () => {
@@ -1646,8 +1754,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         const stopped: Exclude<SpendState, "open"> | null = refusals !== seen ? lastRefusal : null;
         persist(out);
         const fixed = checkedRoutine && hearGuidance && out.ended && out.safetyMessage;
-        if (fixed && out.say.includes(fixed) && !replaced) {
-          hearGuidance?.(voiceTurn({ ...out, say: [fixed], board: [], ended: null }, before));
+        if (fixed && out.say.includes(fixed) && emitFixedGuidance(fixed)) {
           out = { ...out, say: out.say.filter((text) => text !== fixed) };
         }
         // The cap's check after the turn runs beside the save. A request refused in the turn decides without it.
@@ -1692,19 +1799,39 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         },
         get working() { return working > 0; },
         onGuidance(listener) { hearGuidance = listener; },
-        async guidancePlayback(text) {
-          if (!checkedRoutine) return;
-          later(async () => {
-            const live = record.live;
-            const safety = live?.text.session.safety;
-            const severity = safety?.severity;
-            if (lost || record.status === "ended" || !live || !safety?.guided || !severity || SAFETY_GUIDANCE[severity] !== text || live.guidancePlayed === severity) return;
-            const change: CallChange = { live: { ...live, guidancePlayed: severity } };
-            if (!(await store.update(record.id, record.revision, change))) { lose(true); return; }
-            record = { ...record, ...change, revision: record.revision + 1 };
-          });
-          await queue;
-        },
+        ...(checkedRoutine ? {
+          safetyDeadline,
+          async guidancePlayback(text: string) {
+            if (text === dispatchedGuidance || text === pendingFinal?.guidance) reportedGuidance = text;
+            later(async () => {
+              const live = record.live;
+              const safety = live?.text.session.safety;
+              const severity = safety?.severity;
+              if (lost || record.status === "ended" || !live || !safety?.guided || !severity || SAFETY_GUIDANCE[severity] !== text || live.guidancePlayed === severity) return;
+              const change: CallChange = { live: { ...live, guidancePlayed: severity } };
+              if (!(await store.update(record.id, record.revision, change))) { lose(true); return; }
+              record = { ...record, ...change, revision: record.revision + 1 };
+            });
+            await queue;
+          },
+          async deferGuidance() {
+            const settledBudget = stopBudget();
+            await queue;
+            if (lost || record.status !== "live" || !record.live) return false;
+            const { safety } = record.live.text.session;
+            if (!safety.guided || !safety.severity || record.live.guidancePlayed === safety.severity) return false;
+            const flag = risen(record.flag, { level: safety.severity === "immediate" ? "safety_immediate" : "safety_concern", at: iso(safety.at ?? seams.clock()) });
+            if (flag) {
+              if (!(await store.update(record.id, record.revision, { flag }))) { lose(true); return false; }
+              monitorCallChange(record, { flag });
+              record = { ...record, flag, revision: record.revision + 1 };
+            }
+            await alert(record);
+            await meter?.stop();
+            await settledBudget;
+            return true;
+          },
+        } : {}),
         onPreparation(listener) { hearPreparation = listener; },
         prepare: (input) => !inactive() && !session.ended && !working && !pastClock(session.session) && !!budget && session.prepare(input),
         get pendingFinal() {
@@ -1778,6 +1905,10 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         tick: () => turn(() => session.tick(), undefined, undefined, 2),
         writing: (status) => turn(() => session.writing(status), undefined, undefined, 2),
         async limit() {
+          if (checkedRoutine) {
+            const fixed = await safetyDeadline();
+            if (fixed?.safetyMessage && await call.deferGuidance!()) return;
+          }
           void stopBudget();
           later(async () => {
             if (lost || record.status === "ended" || !record.live) return;
