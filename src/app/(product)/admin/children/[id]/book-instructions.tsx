@@ -3,7 +3,7 @@ import { isGrade, type Grade } from "@/lib/assessment";
 import { storedChildProfile } from "@/lib/child-profile";
 import { when } from "@/lib/admin-view";
 import { curriculumFor } from "@/lib/workbook-curriculum";
-import { instructionPicker } from "@/lib/workbook-instructions";
+import { fullDayLabel, instructionPicker } from "@/lib/workbook-instructions";
 import { readWorkbookInstructions } from "@/lib/workbook-instructions-store";
 import { PLACEMENT_CEILING, placeChild } from "@/lib/workbook-placement";
 import { WorkbookInstructionsForm } from "@/components/workbook-instructions-form";
@@ -32,13 +32,15 @@ export function BookInstructions({ child, note, data }: {
     <h3 id="book-instructions-title">Book instructions</h3>
     <p>Set these after a results call with the family. They apply to every next workbook until you change or clear them. Each run keeps the set it was made with and shows which ones applied.</p>
     <p className="adm-note">{data.stored ? `Saved by ${data.stored.updatedBy ?? "an admin"} on ${when(data.stored.updatedAt)} (Pacific).` : "No instructions saved: the next workbook uses the automatic plan."}</p>
+    {data.stored?.instructions.fullDayBook != null && <p className="adm-note">Full day: {fullDayLabel(data.stored.instructions.fullDayBook)}. Saving the form keeps it.</p>}
     {!data.levels ? <p role="status">A workbook curriculum is not available for this child.</p> : <>
       <p className="adm-hint">
         <strong>What the parent said {child.first_name} finds hard:</strong> {note ? `“${note}”` : "No answer on the learning card."} This is a hint for you; the book never reads it.
       </p>
       <WorkbookInstructionsForm childId={child.id} child={child.first_name} schoolGrade={child.grade} levels={data.levels} autoLevel={data.autoLevel}
         saved={data.stored && { startLevel: data.stored.instructions.startLevel, teachMore: data.stored.instructions.teachMore, teachLess: data.stored.instructions.teachLess,
-          addReview: data.stored.instructions.addReview, difficulty: data.stored.instructions.difficulty }} />
+          addReview: data.stored.instructions.addReview, difficulty: data.stored.instructions.difficulty,
+          ...(data.stored.instructions.fullDayBook != null ? { fullDayBook: data.stored.instructions.fullDayBook } : {}) }} />
     </>}
   </>;
 }

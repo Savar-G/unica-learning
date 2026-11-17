@@ -278,6 +278,48 @@ describe("book instructions in the plan", () => {
     for (const note of notes) expect(note).not.toMatch(/\b(P\d+[a-z]?|I1|D-\d+|rule)\b/);
   });
 
+  it("full day lifts the family's weekly time for the named book only, and keeps D-232's ceiling", () => {
+    // Cedric, 2026-11-17: one child's Book 1 fills its days to D-232's limit instead of the family's 25 minutes.
+    const short = firstCustomerProfile();
+    short.parent = { ...short.parent, weeklyTime: "1_to_2h" };
+    const family = plan({ profile: short, instructions: set({ startLevel: "U19" }) });
+    expect(family.personal?.adjustments.requiredMinutes).toBe(25);
+    expect(family.days.every(d => d.time!.target <= 25)).toBe(true);
+
+    const captured: PlanInput[] = [];
+    const full = plan({ profile: short, instructions: set({ startLevel: "U19", fullDayBook: 1 }) }, 1, i => captured.push(i));
+    expect(captured[0].instructions?.fullDay).toBe(true);
+    expect(full.personal?.adjustments.requiredMinutes).toBeNull();
+    // The family's stored setting is untouched: only the plan's day limit changes.
+    expect(full.personal?.parent.weeklyTime).toBe("1_to_2h");
+    expect(short.parent.weeklyTime).toBe("1_to_2h");
+    expect(full.personal?.timeShortfalls).toBeUndefined();
+    for (const d of full.days) {
+      expect(d.time!.target).toBe(d.time!.estimated);
+      expect(d.time!.estimated).toBeLessThan(35);
+      expect(d.difficulty!.maxMinutes).toBe(35);
+    }
+    expect(outcome(full, "full-day", "1")).toMatchObject({ applied: true, note: expect.stringContaining("instead of the family's 25 minutes") });
+    // Same pages and steps: only the time target moves.
+    expect(full.days.map(d => d.pages.map(p => p.type))).toEqual(family.days.map(d => d.pages.map(p => p.type)));
+
+    // Book 2 of the same child keeps the family's time.
+    const second = plan({ profile: short, instructions: set({ startLevel: "U19", fullDayBook: 1 }) }, 2, i => captured.push(i));
+    expect(captured[1].instructions).not.toHaveProperty("fullDay");
+    expect(second.personal?.adjustments.requiredMinutes).toBe(25);
+    expect(outcome(second, "full-day", "1")).toBeUndefined();
+
+    // Without a test there is no weekly time to lift.
+    expect(outcome(plan({ profile: null, instructions: set({ fullDayBook: 1 }) }), "full-day", "1")).toMatchObject({ applied: false });
+  });
+
+  it("reads and refuses the full day book number", () => {
+    expect(workbookInstructions({ fullDayBook: 1 })).toEqual({ ...EMPTY_INSTRUCTIONS, fullDayBook: 1 });
+    expect(workbookInstructions({ fullDayBook: null })).toEqual(EMPTY_INSTRUCTIONS);
+    for (const bad of [0, -1, 1.5, "1", true]) expect(workbookInstructions({ fullDayBook: bad }), String(bad)).toBeNull();
+    expect(instructionsEmpty(set({ fullDayBook: 1 }))).toBe(false);
+  });
+
   it("difficulty replaces the automatic stretch", () => {
     // The first customer is above grade and at the ceiling: the automatic stretch is 2 days and a hard Challenge.
     const usual = plan({ instructions: set({ difficulty: "usual" }) });

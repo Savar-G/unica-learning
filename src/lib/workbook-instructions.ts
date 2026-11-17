@@ -16,7 +16,12 @@
 // - Difficulty: "harder" starts the day difficulty 2 days ahead and gives the Challenge its hardest questions from
 //   Day 1 (section 4, item 2); "usual" turns that stretch off. Both need a finished assessment.
 //
-// Interests and day length are not sections: the parent's learning card holds them, and the book already reads it.
+// - Full day (Cedric, 2026-11-17): for one book number only, the day fills to D-232's limit (about 33 minutes, never 35)
+//   instead of the parent's weekly time from the learning card. The card's stored setting does not change, and any other
+//   book of the child keeps it. Set for one child's Book 1, whose U19 days could not hold their pages in 25 minutes.
+//
+// Interests are not a section: the parent's learning card holds them, and the book already reads it. Day length is the
+// card's too; Full day only lifts it for one named book.
 // Pure TypeScript: no network, database, clock or randomness.
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import type { Curriculum } from "@/lib/workbook-curriculum";
@@ -38,11 +43,13 @@ export interface WorkbookInstructions {
   addReview: string[];
   /** Null: the automatic stretch rules. */
   difficulty: InstructionDifficulty | null;
+  /** The one book number whose days fill to D-232's limit instead of the parent's weekly time. Absent or null: none. */
+  fullDayBook?: number | null;
 }
 
-export type InstructionSection = "start-level" | "teach-more" | "teach-less" | "add-review" | "difficulty";
+export type InstructionSection = "start-level" | "teach-more" | "teach-less" | "add-review" | "difficulty" | "full-day";
 export const SECTION_LABELS: Readonly<Record<InstructionSection, string>> = {
-  "start-level": "Start level", "teach-more": "Teach more", "teach-less": "Teach less", "add-review": "Add review", difficulty: "Difficulty",
+  "start-level": "Start level", "teach-more": "Teach more", "teach-less": "Teach less", "add-review": "Add review", difficulty: "Difficulty", "full-day": "Full day",
 };
 
 /** What one instruction did to the plan: applied, or not, with the plain reason. */
@@ -86,12 +93,15 @@ export function workbookInstructions(value: unknown): WorkbookInstructions | nul
   };
   const teachMore = list("teachMore"), teachLess = list("teachLess"), addReview = list("addReview");
   if (!teachMore || !teachLess || !addReview) return null;
-  return { version: WORKBOOK_INSTRUCTIONS_VERSION, startLevel: start as string | null, teachMore, teachLess, addReview, difficulty: difficulty as InstructionDifficulty | null };
+  const fullDayBook = v.fullDayBook ?? null;
+  if (fullDayBook !== null && (typeof fullDayBook !== "number" || !Number.isInteger(fullDayBook) || fullDayBook < 1)) return null;
+  return { version: WORKBOOK_INSTRUCTIONS_VERSION, startLevel: start as string | null, teachMore, teachLess, addReview, difficulty: difficulty as InstructionDifficulty | null,
+    ...(fullDayBook !== null ? { fullDayBook } : {}) };
 }
 
 /** True when nothing is set: the book is made exactly as without instructions. */
 export function instructionsEmpty(i: WorkbookInstructions | null | undefined): boolean {
-  return !i || (i.startLevel === null && i.difficulty === null && !i.teachMore.length && !i.teachLess.length && !i.addReview.length);
+  return !i || (i.startLevel === null && i.difficulty === null && !i.teachMore.length && !i.teachLess.length && !i.addReview.length && i.fullDayBook == null);
 }
 
 /** Why a set cannot be saved, or null. The level-dependent checks are the planner's (shown on the run page). */
@@ -117,7 +127,13 @@ export function instructionLines(i: WorkbookInstructions | null | undefined): { 
     ...(i.teachLess.length ? [{ section: SECTION_LABELS["teach-less"], value: topics(i.teachLess) }] : []),
     ...(i.addReview.length ? [{ section: SECTION_LABELS["add-review"], value: topics(i.addReview) }] : []),
     ...(i.difficulty ? [{ section: SECTION_LABELS.difficulty, value: difficultyLabel(i.difficulty) }] : []),
+    ...(i.fullDayBook != null ? [{ section: SECTION_LABELS["full-day"], value: fullDayLabel(i.fullDayBook) }] : []),
   ];
+}
+
+/** "Workbook 1: days fill to about 33 minutes (never 35), not the family's weekly time". */
+export function fullDayLabel(book: number): string {
+  return `Workbook ${book}: days fill to about 33 minutes (never 35), not the family's weekly time`;
 }
 
 export function difficultyLabel(d: InstructionDifficulty): string {

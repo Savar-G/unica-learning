@@ -419,6 +419,8 @@ export interface PlanInstructions {
   weakBelowChecks?: boolean;
   /** Teach less units the test found secure, clear or early sign (a first book still teaches an early one, P5a). */
   securePerTest?: readonly string[];
+  /** Full day for this book: the days fill to D-232's limit, with no target from the parent's weekly time. */
+  fullDay?: boolean;
 }
 
 export interface PlanInput {
@@ -1438,7 +1440,8 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
       const estimated = estimate();
       if (estimated >= 35) return { ok: false, reason: `day ${d.day}: the planned estimate reaches 35 minutes` };
       const weekly = personal.parent.weeklyTime === "under_1h" ? 20 : personal.parent.weeklyTime === "1_to_2h" ? 25 : estimated;
-      const target = Math.min(estimated, weekly) - (personal.behaviour?.lateDrop ? 5 : 0);
+      // A Full day instruction for this book (Cedric, 2026-11-17): no family target, only D-232's limit.
+      const target = input.instructions?.fullDay ? estimated : Math.min(estimated, weekly) - (personal.behaviour?.lateDrop ? 5 : 0);
       // Every planned daily page is core work, including Challenge. A short weekly preference
       // cannot turn a core page into optional filler. Keep the estimate and report any shortfall
       // below; capacity still has to satisfy the unchanged page, review and day-time gates.

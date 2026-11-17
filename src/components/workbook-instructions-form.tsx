@@ -16,6 +16,8 @@ export interface FormInstructions {
   teachLess: string[];
   addReview: string[];
   difficulty: "harder" | "usual" | null;
+  /** Kept as saved: the form has no control for it yet (Full day, Cedric 2026-11-17), so a save never drops it. */
+  fullDayBook?: number | null;
 }
 
 const TOPICS_MAX = 8;
