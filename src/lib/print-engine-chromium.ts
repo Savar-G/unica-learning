@@ -328,6 +328,8 @@ export function chromiumPrintEngine(): PrintEngine {
           return await engine.print(job);
         } catch (e) {
           if (attempt >= 2 || job.signal?.aborted || !crashedBrowser(e)) throw e;
+          // (Counted from the run's log: one line a crash, with the try that follows.)
+          console.warn(`[print engine] Chromium closed during a print (${e instanceof Error ? e.message : String(e)}); printing again, try ${attempt + 2} of 3`);
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       }
