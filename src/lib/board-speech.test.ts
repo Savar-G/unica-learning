@@ -19,6 +19,27 @@ async function setup() {
 }
 
 describe("board speech through the real receiver and fake transport", () => {
+  it("retires audio-only scopes without changing or releasing the board plan", async () => {
+    const c = await setup();
+    await c.speech.stage("plan", [{ batch: columns, word: 1 }]);
+    const plan = c.speech.capture("plan")!;
+    const old = c.speech.openAudio("deadline");
+    const stopped = c.speech.signal(old)!;
+    const newer = c.speech.openAudio("deadline");
+    expect(stopped.aborted).toBe(true);
+    expect(c.speech.owns(old)).toBe(false);
+    await c.speech.interrupt(old);
+    expect(c.speech.owns(newer)).toBe(true);
+    await c.speech.show(newer);
+    expect(await c.speech.showWith(newer, [answer])).toEqual({ shown: false, refused: [] });
+    await c.speech.interrupt(newer);
+    expect(c.speech.owns(plan)).toBe(true);
+    expect(c.receiver.staged().map(b => b.batchId)).toEqual(["columns"]);
+    await c.speech.timing(plan, 1, 100, "word");
+    await c.speech.played(plan, 100);
+    expect(c.receiver.snapshot().events.filter(e => e.kind === "batch").map(e => e.batchId)).toEqual(["columns"]);
+  });
+
   it("releases at the cue word only after playback reaches it, and reports worker-clock acknowledgement time", async () => {
     const c = await setup();
     await c.speech.stage("one", [{ batch: columns, word: 2 }, { batch: answer, word: 5 }]);
