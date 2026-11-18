@@ -497,6 +497,21 @@ const levelRange = (p: QuestionPackage, input: GenerateInput) => (isStepItem(p) 
 /** The shared schedule bounds every code-picked item in its skill's range. */
 function contractFor(input: GenerateInput, w: PageWork, slot: Slot, attempt = 0, skillOverride?: string): ItemPlan | null {
   const c = anyContractFor(input, w, slot, attempt, skillOverride);
+  // A new pick for a number stories slot never takes a story template another day prints, unless that day is 3 or more
+  // days away and the only one (storyRepeatAllowed), from U10. Capacity repairs pick here too (the custom U19 Book 1's
+  // Day 8 story came back on Day 9 through one). A contract a slot already holds is kept as it is.
+  const choosing = slot.contract === undefined || attempt > 0 || !!skillOverride;
+  const t = c?.template;
+  const key = t && choosing && input.plan.level >= 10 && slot.place && slot.place !== "challenge" ? bookStoryKey(slot.place, `${t.skill}#${t.step}.${t.index}`) : null;
+  const work = key ? BOOK_WORK.get(input.plan) : undefined;
+  if (key && work) {
+    const days = new Set<number>();
+    for (const other of work) if (other.day !== w.day && !other.page.extraPractice) for (const s of other.slots) {
+      const o = s.contract?.template;
+      if (o && s.place && bookStoryKey(s.place, `${o.skill}#${o.step}.${o.index}`) === key) days.add(other.day);
+    }
+    if (!storyRepeatAllowed([...days], w.day)) return null;
+  }
   // Every path that fills Use 2 ways (planning, capacity repairs, resumes) takes only a question with two methods.
   if (c && slot.place === "solve-it-two-ways" && input.itemPolicy === "approved-v1" && input.plan.level >= 10) {
     const pkg = contractPackage(input, w, c);
@@ -2609,6 +2624,7 @@ export function workbookCapacityPlan(curriculum: Curriculum, plan: WorkbookPlan)
 }
 
 function layOut(input: GenerateInput) {
+  const given = input.plan;
   if (input.itemPolicy === "approved-v1") input = { ...input, plan: workbookCapacityPlan(input.curriculum, input.plan) };
   const work: PageWork[] = [];
   let number = 2;
@@ -2651,6 +2667,7 @@ function layOut(input: GenerateInput) {
   }
   // Each slot's skill, kind of question, numbers and person, planned in book order (#380), so the same skill is not
   // asked the same way page after page and no two questions of a page work one sum.
+  BOOK_WORK.set(given, work); BOOK_WORK.set(input.plan, work);
   if (input.book) planBook(input, work);
   if (input.itemPolicy === "approved-v1") {
     const used = new Map<string, number>(), frames = new Set<string>();
@@ -2765,8 +2782,12 @@ function layOut(input: GenerateInput) {
         // the slot takes it, never the writer. The real U16 first-customer sample's writer stories failed their checks.)
         // (G1, a personal plan's Mixed set lists every secure skill below the level; with no signals, today's choice.)
         const mixedBuilder = !!input.plan.personal?.hasAssessment && slot.place === "mixed-set" && slot.part.skills.some((s) => approvedQuestionTypes(s).some((t) => !["places", "order", "count", "relation", "likelihood"].includes(t)));
+        // (From U10 a Use 2 ways slot never goes to the writer while the day reviews an adding or subtracting skill: code
+        // picks a sum with two methods, or the slot fails as missing. The writer printed "40 + 80 = ?" in the live U10
+        // regen, 2026-11-18, where the day's own step had no Use 2 ways question.)
+        const twoWaysBuilder = input.plan.level >= 10 && slot.place === "solve-it-two-ways" && dayArithmeticSkills(input, w.day).length > 0;
         slot.existing = slot.part.step && slot.place === "spot-the-error" ? false
-          : w.page.existingSlots ? w.page.existingSlots.includes(slot.id) : templated || mixedBuilder ? false : slot.place === "challenge" ? !challengeSkill : !approvedQuestionTypes(skill).length;
+          : w.page.existingSlots ? w.page.existingSlots.includes(slot.id) : templated || mixedBuilder || twoWaysBuilder ? false : slot.place === "challenge" ? !challengeSkill : !approvedQuestionTypes(skill).length;
         if (slot.existing) {
           slot.contract = null;
           // (A writer's Spot the error sum is known only when it is written: it takes the day's allowance, once.)
@@ -4100,6 +4121,9 @@ function dayArithmeticSkills(input: GenerateInput, day: number): string[] {
   const skills = [...new Set(parts.flatMap((p) => [...(p.reviewSteps ?? []).map((r) => r.skill), ...p.skills, ...(p.weakChecks ?? []).flatMap((c) => c.skills)]))];
   return skills.filter((s) => approvedQuestionTypes(s).some((t) => t === "add" || t === "subtract"));
 }
+
+/** The book's pages by their plan, so a new pick sees the other days (layOut registers them under both plans it uses). */
+const BOOK_WORK = new WeakMap<WorkbookPlan, readonly PageWork[]>();
 
 /** A story or Challenge place's template, for the book's one-day-each rule; null for any other place. */
 function bookStoryKey(place: string, template: string): string | null {

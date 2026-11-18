@@ -9,7 +9,7 @@ import { buildStepItem, challengeTemplateCount, choicesFor, sequenceOf, stepRang
 import { takeAwayProblem } from "@/lib/workbook-wording";
 
 /** The U19 Challenge forms Luis added (2026-11-17), by their words. */
-const ADDED_FORMS = ["The smaller prime in", "needs ? more to reach", "The larger of the two primes in", "True or false: a pointer that makes", "How many whole numbers from", "The last multiple of both 4 and 8 before"];
+const ADDED_FORMS = ["two of these are prime. What do you get if you double the smaller prime", "needs ? more to reach", "two of these are prime. Subtract the smaller prime", "True or false: a pointer that makes", "How many whole numbers from", "The last multiple of both 4 and 6 before"];
 
 describe("Unica Challenge templates", () => {
   const c = bcStepProgressions();
@@ -487,14 +487,18 @@ describe("added U19 Challenge forms", () => {
   const c = bcStepProgressions();
   const prime = (n: number) => n > 1 && Array.from({ length: n - 2 }, (_, k) => k + 2).every(d => n % d !== 0);
   const nums = (text: string) => (text.replace(/(\d),(?=\d{3}\b)/g, "$1").match(/\d+/g) ?? []).map(Number);
+  // Each form's key worked out from its printed numbers, and the edge rules a Grade 5-6 reader needs (Luis, 2026-11-18):
+  // exactly two primes printed; never 0 more; turns of 1 or 3 quarters only; no range end on a multiple of 12; never a
+  // number that is itself the multiple.
+  const twoPrimes = (t: string) => { const ps = nums(t).filter(prime).sort((a, b) => a - b); expect(ps, t).toHaveLength(2); return ps; };
   const forms: [string, number, string, (text: string) => string][] = [
-    ["6.4-prime-composite", 1, "The smaller prime in", t => { const ps = nums(t).filter(prime).sort((a, b) => a - b); return String(2 * ps[0] + ps[1]); }],
-    ["6.4-divisibility", 1, "needs ? more to reach the next number divisible by both 2 and 5", t => String(10 - nums(t)[0] % 10)],
-    ["6.4-prime-composite", 2, "The larger of the two primes in", t => { const ps = nums(t).filter(prime); return String(Math.max(...ps) - Math.min(...ps)); }],
-    ["6.4-divisibility", 2, "needs ? more to reach the next number divisible by 9", t => String(9 - nums(t)[0] % 9)],
-    ["6.13-classify-angles", 2, "True or false: a pointer that makes", t => { const turn = 90 * nums(t)[0]; return turn > 180 && turn < 360 ? "true" : "false"; }],
-    ["6.4-divisibility", 3, "How many whole numbers from", t => { const [lo, hi] = nums(t); let n = 0; for (let x = lo; x <= hi; x++) if (x % 4 === 0 && x % 6 === 0) n++; return String(n); }],
-    ["6.4-divisibility", 3, "The last multiple of both 4 and 8 before", t => { let x = nums(t).at(-1)! - 1; while (x % 8 !== 0) x--; return String(x); }],
+    ["6.4-prime-composite", 1, "two of these are prime. What do you get if you double the smaller prime", t => { const [a, b] = twoPrimes(t); return String(2 * a + b); }],
+    ["6.4-divisibility", 1, "needs ? more to reach the next number divisible by both 2 and 5", t => { const n = nums(t)[0]; expect(n % 10, t).not.toBe(0); return String(10 - n % 10); }],
+    ["6.4-prime-composite", 2, "two of these are prime. Subtract the smaller prime", t => { const [a, b] = twoPrimes(t); return String(b - a); }],
+    ["6.4-divisibility", 2, "needs ? more to reach the next number divisible by 9", t => { const n = nums(t)[0]; expect(n % 9, t).not.toBe(0); return String(9 - n % 9); }],
+    ["6.13-classify-angles", 2, "True or false: a pointer that makes", t => { const k = nums(t)[0]; expect([1, 3], t).toContain(k); return k === 3 ? "true" : "false"; }],
+    ["6.4-divisibility", 3, "How many whole numbers from", t => { const [lo, hi] = nums(t); expect(lo % 12, t).not.toBe(0); expect(hi % 12, t).not.toBe(0); let n = 0; for (let x = lo; x <= hi; x++) if (x % 12 === 0) n++; return String(n); }],
+    ["6.4-divisibility", 3, "The last multiple of both 4 and 6 before", t => { const n = nums(t).filter(x => x > 12).at(-1)!; expect(n % 12, t).not.toBe(0); let x = n - 1; while (x % 4 !== 0 || x % 6 !== 0) x--; return String(x); }],
   ];
   it.each(forms)("checks every instance of the %s step %i form \"%s\" across 300 seeds", (skill, number, words, key) => {
     const step = c.skillSteps(skill)![number - 1];

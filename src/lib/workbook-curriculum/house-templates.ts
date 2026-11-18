@@ -109,7 +109,7 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
         { p: "[11, 13, 17, 19, 23, 29][j]", q: "[2, 3, 5, 7, 11][i]", c: "[9, 15, 21, 25, 27][i]" }, "p != q and p + q <= 30"),
       // (A fourth form of a kind the step's Challenge lacked: Cedric's three-forms rule reads printed forms, and the other
       // forms printed two kinds, the custom U19 Book 1, 2026-11-17. Luis's addition, for Cedric's review.)
-      hard("missing", "The smaller prime in {c}, {p} and {q}, doubled, plus the larger prime is ?", "p + 2 * q", { i: "template_i", j: "template_j" },
+      hard("missing", "{c}, {p} and {q}: two of these are prime. What do you get if you double the smaller prime and add the larger one?", "p + 2 * q", { i: "template_i", j: "template_j" },
         { p: "[11, 13, 17, 19, 23, 29][j]", q: "[2, 3, 5, 7, 11][i]", c: "[9, 15, 21, 25, 27][i]" }, "q < p and p + 2 * q <= 30"),
     ],
   },
@@ -184,8 +184,8 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
       // (Two more, so each day's half of the step's forms prints three kinds: a count and a missing number. Luis's
       // addition, for Cedric's review, the custom U19 Book 1's Days 9 and 10, 2026-11-17.)
       hard("bare", "How many whole numbers from {lo} to {hi} are divisible by both 4 and 6?", "hi // 12 - (lo - 1) // 12", { n: "template_n" },
-        { lo: "n - n % 100 + 1", hi: "lo + 99" }, "hi <= 99999"),
-      hard("missing", "The last multiple of both 4 and 8 before {n} is ?", "((n - 1) // 8) * 8", { n: "template_n" }, {}, "n > 8"),
+        { lo: "n - n % 100 + 1", hi: "lo + 98" }, "hi <= 99999"),
+      hard("missing", "The last multiple of both 4 and 6 before {n} is ?", "((n - 1) // 12) * 12", { n: "template_n" }, {}, "n > 12 and n % 12 != 0"),
     ],
   },
   {
@@ -200,7 +200,7 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
         { p: "[31, 37, 41, 43, 47][j % 5]", q: "[31, 37, 41, 43, 47][i % 5]", c: "[51, 57, 77, 87, 91][i % 5]" }, "p != q and p + q - 31 <= 100"),
       // (A fourth form of a kind the step's Challenge lacked: Cedric's three-forms rule reads printed forms, and the other
       // forms printed two kinds, the custom U19 Book 1, 2026-11-17. Luis's addition, for Cedric's review.)
-      hard("missing", "The larger of the two primes in {p}, {c} and {q}, minus the smaller one, is ?", "abs(p - q)", { i: "template_i", j: "template_j" },
+      hard("missing", "{p}, {c} and {q}: two of these are prime. Subtract the smaller prime from the larger one. What do you get?", "abs(p - q)", { i: "template_i", j: "template_j" },
         { p: "[31, 37, 41, 43, 47][j % 5]", q: "[31, 37, 41, 43, 47][i % 5]", c: "[51, 57, 77, 87, 91][i % 5]" }, "p != q"),
     ],
   },
@@ -254,7 +254,7 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
       // (A fourth form of a kind the step's Challenge lacked: Cedric's three-forms rule reads printed forms, and the other
       // forms printed two kinds, the custom U19 Book 1, 2026-11-17. Luis's addition, for Cedric's review.)
       hard("true-false", "True or false: a pointer that makes {k} quarter turns in the same direction has turned through a reflex angle. Circle true or false.", "'true' if k == 3 else 'false'",
-        { g: "template_g" }, { k: "2 + g" }, "True"),
+        { g: "template_g" }, { k: "1 + 2 * g" }, "True"),
     ],
   },
   {
