@@ -81,7 +81,8 @@ describe("Unica Challenge templates", () => {
     const step = c.skillSteps(h.skill)![0];
     const kinds = ["right", "right", "acute", "acute", "obtuse", "obtuse"];
     const seen = new Set<string>();
-    for (const t of h.practice!) {
+    // (The 2026-11-18 forms have their own key checks below: "added U19 practice forms".)
+    for (const t of h.practice!.slice(0, 2)) {
       const prepared = prepareTemplate(step, t, c.contexts);
       for (let seed = 1; seed <= 200; seed++) {
         const filled = prepared.fill(seededRandom(seed));
@@ -521,5 +522,61 @@ describe("added U19 Challenge forms", () => {
       checked++;
     }
     expect(checked, words).toBeGreaterThan(50);
+  });
+});
+
+// Luis's added independent practice (2026-11-18) for the steps whose own-step pool ran out on a U19 practice page: every
+// instance is made as an on-your-own slot makes it, passes the answer checker, and its key is worked out again here from
+// the printed numbers alone. Edge rules a Grade 5-6 reader needs: never a 0 answer, inclusive ranges whose ends are
+// not prime, and a pair of choices with exactly one right.
+describe("added U19 practice forms", () => {
+  const c = bcStepProgressions();
+  const prime = (n: number) => n > 1 && Array.from({ length: n - 2 }, (_, k) => k + 2).every(d => n % d !== 0);
+  const nums = (text: string) => (text.replace(/(\d),(?=\d{3}\b)/g, "$1").match(/\d+/g) ?? []).map(Number);
+  const nextPrime = (n: number) => { let x = n + 1; while (!prime(x)) x++; return x; };
+  const lastPrime = (n: number) => { let x = n - 1; while (!prime(x)) x--; return x; };
+  const lcm = (a: number, b: number) => { let x = Math.max(a, b); while (x % a || x % b) x++; return x; };
+  const forms: [string, number, string, (text: string) => string][] = [
+    ["6.4-divisibility", 2, "+ ? is the next number divisible by 3", t => { const n = nums(t)[0]; expect(n % 3, t).not.toBe(0); return String(3 - n % 3); }],
+    ["6.4-divisibility", 2, "stacks them in piles of 9", t => { const n = nums(t)[0]; expect(n % 9, t).not.toBe(0); return String(n % 9); }],
+    ["6.4-divisibility", 2, "Which number is divisible by 9", t => { const [x, y] = nums(t).slice(1); expect([x % 9 === 0, y % 9 === 0].filter(Boolean), t).toHaveLength(1); return String(x % 9 === 0 ? x : y); }],
+    ["6.4-divisibility", 2, "are divisible by 3?", t => { const ns = nums(t).slice(0, 3); const k = ns.filter(n => n % 3 === 0).length; expect(k, t).toBeGreaterThan(0); return String(k); }],
+    ["6.4-divisibility", 3, "+ ? is the next number divisible by 4", t => { const n = nums(t)[0]; expect(n % 4, t).not.toBe(0); return String(4 - n % 4); }],
+    ["6.4-divisibility", 3, "in crates of 8", t => { const n = nums(t)[0]; expect(n % 8, t).not.toBe(0); return String(n % 8); }],
+    ["6.4-divisibility", 3, "Which number is divisible by 6", t => { const [x, y] = nums(t).slice(1); expect([x % 6 === 0, y % 6 === 0].filter(Boolean), t).toHaveLength(1); return String(x % 6 === 0 ? x : y); }],
+    ["6.4-divisibility", 3, "that is divisible by 8?", t => { const n = nums(t)[0]; return String(n - n % 8 + 8); }],
+    ["6.4-lcm", 2, "Which is a common multiple of", t => { const [a, b, x, y] = nums(t); expect([x, y].filter(m => m % a === 0 && m % b === 0), t).toHaveLength(1); return String(x % a === 0 && x % b === 0 ? x : y); }],
+    ["6.4-lcm", 2, "True or false: {t} is a common multiple", t => { const [m, a, b] = nums(t); expect(m, t).toBeGreaterThan(0); return m % a === 0 && m % b === 0 ? "true" : "false"; }],
+    ["6.4-lcm", 2, "× ? is the least common multiple", t => { const [b, a, b2] = nums(t); expect(b2).toBe(b); const k = lcm(a, b) / b; expect(k, t).toBeGreaterThan(1); return String(k); }],
+    ["6.4-prime-composite", 1, "The next prime number after", t => String(nextPrime(nums(t)[0]))],
+    ["6.4-prime-composite", 1, "What is the largest prime number less than", t => String(lastPrime(nums(t)[0]))],
+    ["6.4-prime-composite", 1, "How many prime numbers are there from", t => { const [lo, hi] = nums(t); expect(prime(lo) || prime(hi), t).toBe(false); let k = 0; for (let x = lo; x <= hi; x++) if (prime(x)) k++; return String(k); }],
+    ["6.4-prime-composite", 2, "The next prime number after", t => String(nextPrime(nums(t)[0]))],
+    ["6.4-prime-composite", 2, "What is the largest prime number less than", t => String(lastPrime(nums(t)[0]))],
+    ["6.4-prime-composite", 2, "How many prime numbers are there from", t => { const [lo, hi] = nums(t); expect(prime(lo) || prime(hi), t).toBe(false); let k = 0; for (let x = lo; x <= hi; x++) if (prime(x)) k++; return String(k); }],
+    ["6.13-classify-angles", 1, "Which makes an acute angle?", t => { const a = /A\) (.*?)  B\)/.exec(t)![1]; const sharp = /tip of a sharp pencil|tip of a thin pizza slice|point of a star|tip of a paper airplane/; expect(sharp.test(a) !== sharp.test(t.split("B)")[1]), t).toBe(true); return sharp.test(a) ? "A" : "B"; }],
+    ["6.13-classify-angles", 1, "are obtuse. How many of these angles are wider", t => { const [a, b, o] = nums(t); expect(new Set([a, b, o]).size, t).toBe(3); return String(o); }],
+    ["6.13-classify-angles", 1, "True or false: {claim}", t => /obtuse angle is wider|right angle is the same/.test(t) ? "true" : "false"],
+  ];
+  it.each(forms)("checks every instance of the %s step %i form \"%s\" across 300 seeds", (skill, number, words, key) => {
+    const step = c.skillSteps(skill)![number - 1];
+    const index = step.templates!.findIndex(t => (words.includes("{") ? t.text === words || t.text.startsWith(words) : t.text.includes(words)) && !isChallengeOnly(t) && t.difficulty === "medium");
+    expect(index, words).toBeGreaterThanOrEqual(0);
+    const t = step.templates![index];
+    expect(t.difficulty).toBe("medium");
+    let checked = 0;
+    for (let seed = 1; seed <= 6000 && checked < 300; seed++) {
+      const item = stepTemplateItem({ curriculum: c, skill, step: number, place: "on-your-own", level: 19, day: 3, seed, attempt: seed % 13, ordinal: seed % 4, learningStage: "independent" });
+      if (!item || item.ref.index !== index) continue;
+      const built = buildStepItem(item.ref, item.text, { id: `p-${seed}`, workbookId: "added-practice", page: 1, question: 1, level: 19, skills: [skill] }, "code");
+      expect(built.check.status, item.text).toBe("checked");
+      const regions = built.package!.item!.regions;
+      const printedKey = regions.flatMap(r => r.kind === "box" && r.answer?.type === "number" ? [String(r.answer.value)] : r.kind === "choice" && r.answer ? [r.answer] : [])[0];
+      expect(printedKey, item.text).toBe(key(item.text));
+      expect(printedKey, item.text).not.toBe("0");
+      expect(stepRangeProblem(step, item.text), item.text).toBeNull();
+      checked++;
+    }
+    expect(checked, words).toBeGreaterThan(30);
   });
 });

@@ -90,6 +90,18 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
           claim: "'an acute' if chosen == 'acute' else ('an obtuse' if chosen == 'obtuse' else 'a right')" } },
       { format: "bare", difficulty: "medium", text: "There are {a} acute angles and {b} obtuse angles. How many of these angles are smaller than a square corner?",
         answer: "a", slots: { k: "template_k", f: "flip" }, derived: { a: "k + 1", b: "1 + (k + 1 + f) % 5" } },
+      // Independent practice the step was short of (Luis, 2026-11-18): with two or three forms, a U19 practice page
+      // mixing own-step and review rows ran out of distinct own-step questions and left a hole in its grid (the 20-seed
+      // sweep of the custom U19 Book 1).
+      { format: "choose", difficulty: "medium", text: "Which makes an acute angle? A) {oa}  B) {ob}  Write A or B.", answer: "'A' if f == 0 else 'B'",
+        slots: { k: "template_k_4", f: "flip" },
+        derived: { sharp: "['the tip of a sharp pencil', 'the tip of a thin pizza slice', 'the point of a star', 'the tip of a paper airplane'][k]",
+          wide: "['the corner of a door', 'the corner of a book', 'a laptop opened far back', 'a book lying almost flat'][k]",
+          oa: "sharp if f == 0 else wide", ob: "wide if f == 0 else sharp" } },
+      { format: "bare", difficulty: "medium", text: "{a} angles are right, {b} are acute and {c} are obtuse. How many of these angles are wider than a square corner?",
+        answer: "c", slots: { k: "template_k", f: "flip" }, derived: { a: "k % 3 + 1", b: "k + 2", c: "[4, 4, 1, 2, 3][k] + f" }, check: "c != a and c != b" },
+      { format: "true-false", difficulty: "medium", text: "True or false: {claim}", answer: "'true' if k % 2 == 0 else 'false'", slots: { k: "template_k_4" },
+        derived: { claim: "['an obtuse angle is wider than a right angle.', 'an acute angle is wider than a right angle.', 'a right angle is the same as a square corner.', 'an obtuse angle is smaller than a square corner.'][k]" } },
     ],
     templates: [
       hard("bare", "An angle has two sides that meet at a point. Both sides are drawn longer without changing the opening between them. Does the angle stay the same size? Circle yes or no.", "'yes'", {}, {}, "True"),
@@ -99,7 +111,17 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
   },
   {
     skill: "6.4-prime-composite", step: 1, name: "Primes and composites to 30",
-    practice: primePractice(false),
+    practice: [...primePractice(false),
+      // Independent practice the step was short of (Luis, 2026-11-18): with two or three forms, a U19 practice page
+      // mixing own-step and review rows ran out of distinct own-step questions and left a hole in its grid (the 20-seed
+      // sweep of the custom U19 Book 1).
+      { format: "missing", difficulty: "medium", text: "The next prime number after {n} is ?", answer: "x", slots: { j: "template_j", i: "template_i" },
+        derived: { k: "j + 6 * (i % 2)", n: "[8, 9, 10, 14, 15, 16, 20, 21, 22, 24, 25, 26][k]", x: "[11, 11, 11, 17, 17, 17, 23, 23, 23, 29, 29, 29][k]" }, check: "True" },
+      { format: "compare", difficulty: "medium", text: "What is the largest prime number less than {n}?", answer: "x", slots: { j: "template_j", i: "template_i" },
+        derived: { k: "j + 6 * (i % 2)", n: "[10, 12, 15, 18, 20, 22, 25, 28, 30, 16, 24, 27][k]", x: "[7, 11, 13, 17, 19, 19, 23, 23, 29, 13, 23, 23][k]" }, check: "True" },
+      { format: "bare", difficulty: "medium", text: "How many prime numbers are there from {lo} to {hi}?", answer: "x", slots: { j: "template_j" },
+        derived: { lo: "[4, 8, 14, 20, 6, 15][j]", hi: "[12, 15, 20, 30, 16, 25][j]", x: "[3, 2, 2, 2, 3, 3][j]" }, check: "True" },
+    ],
     templates: [
       hard("bare", "Add the prime numbers: {p}, {c}, {q}.", "p + q", { i: "template_i", j: "template_j" },
         { p: "[11, 13, 17, 19, 23, 29][j]", q: "[2, 3, 5, 7, 11][i]", c: "[9, 15, 21, 25, 27][i]" }, "p != q and p + q <= 30"),
@@ -148,6 +170,15 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
     skill: "6.4-divisibility", step: 2, name: "Digit-sum rules: 3 and 9",
     // Numeric normal practice keeps Spot the error on this step, without a generic division sum.
     practice: [
+      // Independent practice the step was short of (Luis, 2026-11-18): with two or three forms, a U19 practice page
+      // mixing own-step and review rows ran out of distinct own-step questions and left a hole in its grid (the 20-seed
+      // sweep of the custom U19 Book 1).
+      { format: "missing", difficulty: "medium", text: "{n} + ? is the next number divisible by 3.", answer: "3 - n % 3", slots: { n: "template_n" }, derived: {}, check: "n % 3 != 0" },
+      { format: "story", difficulty: "medium", text: "A printer prints {n} pages and stacks them in piles of 9. How many pages are left over?", answer: "n % 9", slots: { n: "template_n" }, derived: {}, check: "n % 9 != 0" },
+      { format: "choose", difficulty: "medium", text: "Which number is divisible by 9: {x} or {y}?", answer: "str(m)", slots: { n: "template_n", f: "template_f" },
+        derived: { m: "n - n % 9 + 9", o: "m + 3", x: "m if f == 0 else o", y: "o if f == 0 else m" }, check: "o <= 9999" },
+      { format: "bare", difficulty: "medium", text: "How many of {a}, {b} and {c} are divisible by 3?", answer: "1 if f == 0 else 2", slots: { n: "template_n", f: "template_f" },
+        derived: { a: "n - n % 3 + 3", b: "a + 1", c: "a + 5 if f == 0 else a + 6" }, check: "c <= 9999" },
       spotPractice({ format: "bare", difficulty: "medium", text: "Write the multiple of 9 that is greater than {lo} and less than {hi}.",
         answer: "lo + 9", slots: { n: "template_n" },
         derived: { lo: "n - n % 9", hi: "lo + 18" }, check: "hi <= 9999" }),
@@ -167,6 +198,14 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
     skill: "6.4-divisibility", step: 3, name: "Rules for 4, 6 and 8",
     // Numeric normal practice keeps Spot the error on this step, without a generic division sum.
     practice: [
+      // Independent practice the step was short of (Luis, 2026-11-18): with two or three forms, a U19 practice page
+      // mixing own-step and review rows ran out of distinct own-step questions and left a hole in its grid (the 20-seed
+      // sweep of the custom U19 Book 1).
+      { format: "missing", difficulty: "medium", text: "{n} + ? is the next number divisible by 4.", answer: "4 - n % 4", slots: { n: "template_n" }, derived: {}, check: "n % 4 != 0" },
+      { format: "story", difficulty: "medium", text: "A factory packs {n} bottles in crates of 8. How many bottles are left over?", answer: "n % 8", slots: { n: "template_n" }, derived: {}, check: "n % 8 != 0" },
+      { format: "choose", difficulty: "medium", text: "Which number is divisible by 6: {x} or {y}?", answer: "str(m)", slots: { n: "template_n", f: "template_f" },
+        derived: { m: "n - n % 6 + 6", o: "m + 3", x: "m if f == 0 else o", y: "o if f == 0 else m" }, check: "o <= 99999" },
+      { format: "bare", difficulty: "medium", text: "What is the smallest whole number greater than {n} that is divisible by 8?", answer: "n - n % 8 + 8", slots: { n: "template_n" }, derived: {}, check: "n - n % 8 + 8 <= 99999" },
       spotPractice({ format: "bare", difficulty: "medium", text: "Write the multiple of 8 that is greater than {lo} and less than {hi}.",
         answer: "lo + 8", slots: { n: "template_n" },
         derived: { lo: "n - n % 8", hi: "lo + 16" }, check: "hi <= 99999" }),
@@ -190,7 +229,17 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
   },
   {
     skill: "6.4-prime-composite", step: 2, name: "Numbers to 100",
-    practice: primePractice(true),
+    practice: [...primePractice(true),
+      // Independent practice the step was short of (Luis, 2026-11-18): with two or three forms, a U19 practice page
+      // mixing own-step and review rows ran out of distinct own-step questions and left a hole in its grid (the 20-seed
+      // sweep of the custom U19 Book 1).
+      { format: "missing", difficulty: "medium", text: "The next prime number after {n} is ?", answer: "x", slots: { k: "template_k_2" },
+        derived: { n: "[32, 34, 38, 40, 44, 45, 48, 50, 54, 56, 62, 65, 68, 74, 77][k]", x: "[37, 37, 41, 41, 47, 47, 53, 53, 59, 59, 67, 67, 71, 79, 79][k]" }, check: "True" },
+      { format: "compare", difficulty: "medium", text: "What is the largest prime number less than {n}?", answer: "x", slots: { k: "template_k_2" },
+        derived: { n: "[36, 40, 45, 50, 55, 60, 64, 70, 75, 80, 85, 88, 92, 96, 100][k]", x: "[31, 37, 43, 47, 53, 59, 61, 67, 73, 79, 83, 83, 89, 89, 97][k]" }, check: "True" },
+      { format: "bare", difficulty: "medium", text: "How many prime numbers are there from {lo} to {hi}?", answer: "x", slots: { j: "template_j" },
+        derived: { lo: "[32, 40, 50, 60, 70, 80, 90, 33, 44, 64][j]", hi: "[40, 50, 60, 70, 80, 90, 100, 45, 56, 75][j]", x: "[1, 3, 2, 2, 3, 2, 1, 3, 2, 3][j]" }, check: "True" },
+    ],
     templates: [
       hard("bare", "Add only the primes: {p}, {c}, {q}.", "p + q", { i: "template_i", j: "template_j" },
         { p: "[31, 37, 41, 43, 47][j % 5]", q: "[31, 37, 41, 43, 47][i % 5]", c: "[51, 57, 77, 87, 91][i % 5]" }, "p != q and p + q <= 100"),
@@ -229,6 +278,17 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
   },
   {
     skill: "6.4-lcm", step: 2, name: "Two-digit numbers",
+    practice: [
+      // Independent practice the step was short of (Luis, 2026-11-18): with two or three forms, a U19 practice page
+      // mixing own-step and review rows ran out of distinct own-step questions and left a hole in its grid (the 20-seed
+      // sweep of the custom U19 Book 1).
+      { format: "choose", difficulty: "medium", text: "Which is a common multiple of {a} and {b}: {x} or {y}?", answer: "str(m)", slots: { k: "template_a", f: "template_f" },
+        derived: { a: "[9, 12, 12, 15, 18, 14, 18, 16][k % 8]", b: "[12, 18, 16, 20, 24, 21, 27, 24][k % 8]", m: "lcm(a, b)", o: "m - a", x: "m if f == 0 else o", y: "o if f == 0 else m" }, check: "True" },
+      { format: "true-false", difficulty: "medium", text: "True or false: {t} is a common multiple of {a} and {b}.", answer: "'true' if f == 0 else 'false'", slots: { k: "template_a", f: "template_f" },
+        derived: { a: "[9, 12, 12, 15, 18, 14, 18, 16][k % 8]", b: "[12, 18, 16, 20, 24, 21, 27, 24][k % 8]", t: "lcm(a, b) if f == 0 else lcm(a, b) - a" }, check: "True" },
+      { format: "missing", difficulty: "medium", text: "{b} × ? is the least common multiple of {a} and {b}.", answer: "lcm(a, b) // b", slots: { k: "template_a" },
+        derived: { a: "[9, 12, 12, 15, 18, 14, 18, 16][k % 8]", b: "[12, 18, 16, 20, 24, 21, 27, 24][k % 8]" }, check: "True" },
+    ],
     templates: [
       hard("bare", "Find the second smallest positive common multiple of {a} and {b}. Subtract {a} from it. What is the result?", "2 * lcm(a, b) - a", { i: "template_g0" },
         { a: "[9, 12, 12, 15, 18][i % 5]", b: "[12, 18, 16, 20, 24][i % 5]" }, "2 * lcm(a, b) - a <= 72"),
