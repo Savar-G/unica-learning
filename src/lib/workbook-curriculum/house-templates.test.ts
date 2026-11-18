@@ -508,7 +508,7 @@ describe("added U19 Challenge forms", () => {
     for (let seed = 1; seed <= 3000 && checked < 300; seed++) {
       const item = stepTemplateItem({ curriculum: c, skill, step: number, place: "challenge", level: 19, day: 9, seed, attempt: seed % 11, ordinal: seed % 3 });
       if (!item || item.ref.index !== index) continue;
-      const built = buildStepItem(item.ref, item.text, { id: `n-${seed}`, workbookId: "added-forms", page: 1, question: 1, level: 19, skills: [skill] });
+      const built = buildStepItem(item.ref, item.text, { id: `n-${seed}`, workbookId: "added-forms", page: 1, question: 1, level: 19, skills: [skill] }, "code");
       expect(built.check.status, item.text).toBe("checked");
       const regions = built.package!.item!.regions;
       const printedKey = regions.flatMap(r => r.kind === "box" && r.answer?.type === "number" ? [String(r.answer.value)] : r.kind === "choice" && r.answer ? [r.answer] : [])[0];
