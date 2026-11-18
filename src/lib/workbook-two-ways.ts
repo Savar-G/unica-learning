@@ -28,8 +28,30 @@ export function trivialCalculation(numbers: readonly number[]): boolean {
   return round(100) || round(10);
 }
 
+/**
+ * U4 to U9's methods, unchanged (D-226 puts their Use 2 ways on the Number stories page; their small facts are the
+ * point there): by the words the question uses.
+ */
+function earlyMethods(p: QuestionPackage): MethodPair | null {
+  const t = `${p.operation?.kind ?? ""} ${p.text}`.toLowerCase();
+  const small = Math.max(0, ...(p.text.match(/\d+/g) ?? []).map(Number)) < 20;
+  if (small && /subtract|−|\s-\s|left|take|eats|gives|fewer|less|the rest/.test(t)) return ["count back", "count up from the smaller number"];
+  const numbers = (p.text.match(/\d+/g) ?? []).map(Number);
+  const pastTen = numbers.length >= 2 && numbers.reduce((a, b) => a + b, 0) > 10;
+  if (small && /add|\+|more|in all|together|gets/.test(t)) return ["count on from the bigger number", pastTen ? "make a ten first" : "use your fingers"];
+  if (/multiply|×|\beach\b|groups? of|packs? of|times/.test(t)) return ["split a number into parts", "use a fact you know, then the zeros"];
+  if (/divide|÷|share|equally/.test(t)) return ["share in groups", "use a times fact"];
+  if (/subtract|−|\s-\s|left|take|eats|gives|fewer|less/.test(t)) return ["take away the tens, then the ones", "count up from the smaller number"];
+  if (/add|\+|more|in all|together|gets/.test(t)) return ["add the tens, then the ones", "make a ten first"];
+  return null;
+}
+
+/** Whether a question's Use 2 ways follows the kind-of-question rules below: from U10 (U4 to U9 keep earlyMethods). */
+export const twoWaysByKind = (p: QuestionPackage): boolean => (p.level ?? 0) >= 10;
+
 /** The two methods of a question, or null when it has no sensible pair (then it is not a Use 2 ways question). */
 export function twoWaysMethods(p: QuestionPackage): MethodPair | null {
+  if (!twoWaysByKind(p)) return p.templateId?.startsWith("6.4-lcm#") ? ["list both sets of multiples", "test multiples of the larger number"] : earlyMethods(p);
   const skill = skillOf(p);
   if (skill === "6.4-lcm") return ["list both sets of multiples", "test multiples of the larger number"];
   const text = p.text.toLowerCase();

@@ -498,7 +498,7 @@ const levelRange = (p: QuestionPackage, input: GenerateInput) => (isStepItem(p) 
 function contractFor(input: GenerateInput, w: PageWork, slot: Slot, attempt = 0, skillOverride?: string): ItemPlan | null {
   const c = anyContractFor(input, w, slot, attempt, skillOverride);
   // Every path that fills Use 2 ways (planning, capacity repairs, resumes) takes only a question with two methods.
-  if (c && slot.place === "solve-it-two-ways" && input.itemPolicy === "approved-v1") {
+  if (c && slot.place === "solve-it-two-ways" && input.itemPolicy === "approved-v1" && input.plan.level >= 10) {
     const pkg = contractPackage(input, w, c);
     if (pkg && !twoWaysMethods(pkg)) return null;
   }
@@ -2418,7 +2418,7 @@ function omissionsWith(w: PageWork, leftOut: { slot: Slot }[]): Omission[] {
 function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuestion[], examples: (QuestionPackage | null)[] = []): PageContent | null {
   if (!input.book || !w.layout) return null;
   // (The questions keep it too: the stored draft and its print contract show the writing lines the page prints.)
-  if (w.page.explainChoices) for (const q of questions) if (CARD_PLACES.has(q.place ?? "") && q.package) q.package = explainedChoice(q.package);
+  if (w.page.explainChoices) for (const q of questions) if (CARD_PLACES.has(q.place ?? "") && q.package) q.package = explainedChoice(q.package, w.page.explainChoices);
   const layoutSlot = (q: GeneratedQuestion) => w.slots.find((x) => x.id === q.slot)!.layoutSlot;
   const keep = w.layout.slots.flatMap((x, k) => (PANEL_SLOTS.includes(x.slot) || questions.some((q) => layoutSlot(q) === k) ? [k] : []));
   const content = dayPageContent({
@@ -2797,7 +2797,7 @@ function layOut(input: GenerateInput) {
         // hard review items: the full U4 book's Day 9 "Remember these" had no likelihood task left, Savar 2026-11-04.)
         const practicePart = slot.place === "remember-these" ? w.slots.find((s) => s.part !== slot.part && s.part.step && ["on-your-own", "finish-these", "practice-row"].includes(s.place ?? ""))?.part : undefined;
         // (A day whose own step has no two-ways question takes a sum of an adding or subtracting skill the day reviews.)
-        const twoWaysSkills = slot.place === "solve-it-two-ways" ? dayArithmeticSkills(input, w.day) : [];
+        const twoWaysSkills = slot.place === "solve-it-two-ways" && input.plan.level >= 10 ? dayArithmeticSkills(input, w.day) : [];
         const passes: { strict: boolean; override?: string; borrow?: boolean }[] = [{ strict: true }, ...(builder && needForm ? [{ strict: true, override: builder }] : []), { strict: false }, ...(builder ? [{ strict: false, override: builder }] : []), ...(practicePart ? [{ strict: false, borrow: true }] : []), ...twoWaysSkills.map((override) => ({ strict: false, override }))];
         for (const { strict, override, borrow } of passes) {
           if (borrow && practicePart) slot.part = practicePart;
@@ -2812,7 +2812,7 @@ function layOut(input: GenerateInput) {
             const p = built.package;
             if (!p || built.check.status === "failed" || dayProblem(input, p, w.day,slot.place ?? "")) continue;
             // Use 2 ways only for a question with two sensible methods of its kind, never a trivial sum (workbook-two-ways).
-            if (slot.place === "solve-it-two-ways" && !twoWaysMethods(p)) continue;
+            if (slot.place === "solve-it-two-ways" && input.plan.level >= 10 && !twoWaysMethods(p)) continue;
             // G1: a short-story day takes stories of at most 20 words first (reading load, item 8).
             if (strict && candidate < 256 && slot.place && STORY_CHECK_PLACES.has(slot.place) && shortStories(input.plan, w.day) && wordsIn(p.text) > SHORT_STORY_WORDS) continue;
             // (An interest slot takes a story that names an interest first, while its early attempts find one, item 5.)
@@ -3974,11 +3974,24 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         // 2026-11-17). Only here, so a Challenge page that fits keeps its questions as they were, and review stays off
         // the Challenge page (Savar, 2026-11-02).
         // (Show what you know's cards too: the custom U19 Book 1's Day 10 check left 65 px with two circled cards.)
-        if (!checked.ok && !w.page.explainChoices && (w.page.type === "challenge" || w.page.type === "show-what-you-know") && checked.problems.every(p => p.kind === "fullness")
-          && w.slots.some(s => CARD_PLACES.has(s.place ?? "") && s.contract && circledAnswer(contractPackage(input, w, s.contract)))) {
-          w.page.explainChoices = true; w.page.extraGap = 0;
+        // A Challenge or Show what you know of circled answers still too empty: each circled answer asks "How do you
+        // know?" (Luis, 2026-11-17), first with writing lines, then, if the page is still too empty, with a work box (the
+        // custom U19 Book 1's Day 5 Challenge stayed 127 px short with lines). A work box that overflows goes back to the
+        // lines (the U4 fake book's Day 9 Challenge). Only here, so a page that fits keeps its questions as they were, and
+        // review stays off the Challenge page (Savar, 2026-11-02).
+        const circledCards = (w.page.type === "challenge" || w.page.type === "show-what-you-know")
+          && w.slots.some(s => CARD_PLACES.has(s.place ?? "") && s.contract && circledAnswer(contractPackage(input, w, s.contract)));
+        if (!checked.ok && !w.page.explainChoices && circledCards && checked.problems.every(p => p.kind === "fullness")) {
+          w.page.explainChoices = "lines"; w.page.extraGap = 0;
           checked = await check();
           await spread();
+          if (!checked.ok && checked.problems.every(p => p.kind === "fullness")) {
+            const lines = { checked, gap: w.page.extraGap };
+            w.page.explainChoices = "work"; w.page.extraGap = 0;
+            checked = await check();
+            await spread();
+            if (!checked.ok && !checked.problems.every(p => p.kind === "fullness")) { w.page.explainChoices = "lines"; w.page.extraGap = lines.gap; checked = lines.checked; }
+          }
         }
         if (!checked.ok) return `Page ${w.number}: its last complete grid does not fit: ${checked.problems.map(p => p.reason).join(" ")}`;
       }
@@ -4120,9 +4133,9 @@ const circledAnswer = (p: QuestionPackage | null | undefined): boolean => {
  * A circled item that also asks "How do you know?": a work box under its choice, like a number Challenge's working,
  * never scored by code. (Three writing lines left the custom U19 Book 1's Day 5 Challenge 127 px short of full.)
  */
-function explainedChoice(p: QuestionPackage): QuestionPackage {
+function explainedChoice(p: QuestionPackage, room: "lines" | "work"): QuestionPackage {
   if (!circledAnswer(p)) return p;
-  return { ...p, item: { ...p.item!, regions: [...p.item!.regions, { id: "reason", kind: "work", label: "How do you know?" }] } };
+  return { ...p, item: { ...p.item!, regions: [...p.item!.regions, { id: "reason", kind: room, label: "How do you know?" }] } };
 }
 /** What the capacity pass writes on a planned page (the planner writes none of it). */
 const CAPACITY_KEYS = ["capacity", "capacityChecked", "capacityOmissions", "itemContracts", "panelAttempts", "existingSlots", "extraGap",

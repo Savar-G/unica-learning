@@ -12,7 +12,7 @@ export function storyRepeatAllowed(otherDays: readonly number[], day: number): b
   return otherDays.length === 0 || otherDays.length === 1 && Math.abs(otherDays[0] - day) >= 3;
 }
 
-import { twoWaysMethods } from "./workbook-two-ways";
+import { twoWaysByKind, twoWaysMethods } from "./workbook-two-ways";
 
 export interface ContentIssue { page: number; kind: "repeat" | "variety" | "coverage"; reason: string }
 
@@ -53,7 +53,7 @@ export function contentIssues(pages: readonly GeneratedPage[]): ContentIssue[] {
     for (const q of p.questions) {
       const pkg = q.package;
       if (!pkg) continue;
-      if (q.place === "solve-it-two-ways" && !twoWaysMethods(pkg))
+      if (q.place === "solve-it-two-ways" && twoWaysByKind(pkg) && !twoWaysMethods(pkg))
         issues.push({ page: p.number, kind: "coverage", reason: `question ${q.number} asks for 2 ways but has no two methods of its kind ("${pkg.text}")` });
       if (guideIsAnswer(pkg)) issues.push({ page: p.number, kind: "coverage", reason: `question ${q.number}'s answer is the guide it prints ("${pkg.text}")` });
       const template = pkg.templateId?.split(":")[0];

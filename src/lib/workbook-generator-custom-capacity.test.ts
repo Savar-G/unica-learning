@@ -298,7 +298,7 @@ it("adds a How do you know? box to circled Challenge answers only when the Chall
   const fits = await prepareWorkbookCapacity(input, capacityFit);
   expect(challenge(fits).explainChoices).toBeUndefined();
   const tight = await prepareWorkbookCapacity(input, empty);
-  expect(challenge(tight).explainChoices).toBe(true);
+  expect(challenge(tight).explainChoices).toBe("work");
   // The planned questions and Savar's empty review part stay as they were: only writing lines are added.
   expect(challenge(tight).itemContracts).toEqual(challenge(fits).itemContracts);
   expect(challenge(tight).capacity).toEqual(challenge(fits).capacity);
