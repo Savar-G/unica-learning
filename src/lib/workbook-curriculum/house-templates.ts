@@ -253,8 +253,8 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
       hard("story", "{name} makes two half turns in the same direction. Has {name} made one full turn? Circle yes or no.", "'yes'", {}, {}, "True"),
       // (A fourth form of a kind the step's Challenge lacked: Cedric's three-forms rule reads printed forms, and the other
       // forms printed two kinds, the custom U19 Book 1, 2026-11-17. Luis's addition, for Cedric's review.)
-      hard("true-false", "True or false: a pointer that makes {k} quarter turns in the same direction has turned through a reflex angle. Circle true or false.", "'true' if k == 3 else 'false'",
-        { g: "template_g" }, { k: "1 + 2 * g" }, "True"),
+      hard("true-false", "True or false: a pointer that makes {k} {turns} in the same direction has turned through a reflex angle. Circle true or false.", "'true' if k == 3 else 'false'",
+        { g: "template_g" }, { k: "1 + 2 * g", turns: "'quarter turn' if k == 1 else 'quarter turns'" }, "True"),
     ],
   },
   {
