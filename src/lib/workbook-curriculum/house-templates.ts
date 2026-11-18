@@ -107,6 +107,10 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
         { p: "[11, 13, 17, 19, 23, 29][j]", c: "[9, 15, 21, 25, 27][i]" }, "p - 2 >= 2"),
       hard("story", "{name} has cards showing {p}, {c} and {q}. Find the two prime numbers. Subtract the smaller prime from the larger prime. What is the difference?", "p - q", { i: "template_i", j: "template_j" },
         { p: "[11, 13, 17, 19, 23, 29][j]", q: "[2, 3, 5, 7, 11][i]", c: "[9, 15, 21, 25, 27][i]" }, "p != q and p + q <= 30"),
+      // (A fourth form of a kind the step's Challenge lacked: Cedric's three-forms rule reads printed forms, and the other
+      // forms printed two kinds, the custom U19 Book 1, 2026-11-17. Luis's addition, for Cedric's review.)
+      hard("missing", "The smaller prime in {c}, {p} and {q}, doubled, plus the larger prime is ?", "p + 2 * q", { i: "template_i", j: "template_j" },
+        { p: "[11, 13, 17, 19, 23, 29][j]", q: "[2, 3, 5, 7, 11][i]", c: "[9, 15, 21, 25, 27][i]" }, "q < p and p + 2 * q <= 30"),
     ],
   },
   {
@@ -135,6 +139,9 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
       hard("missing", "What is the greatest multiple of 10 that is less than {n}?", "((n - 1) // 10) * 10", { n: "template_n0" }, {}, "((n - 1) // 10) * 10 >= 10"),
       hard("story", "{name}'s score is greater than {lo} points and less than {top} points. The score is divisible by both 2 and 5. How many points does {name} have?", "n - n % 10 + 10", { n: "template_n0" },
         { lo: "n - n % 10 + 1", top: "n - n % 10 + 11" }, "top <= 9999"),
+      // (A fourth form of a kind the step's Challenge lacked: Cedric's three-forms rule reads printed forms, and the other
+      // forms printed two kinds, the custom U19 Book 1, 2026-11-17. Luis's addition, for Cedric's review.)
+      hard("missing", "{n} needs ? more to reach the next number divisible by both 2 and 5.", "10 - n % 10", { n: "template_n0" }, {}, "n % 10 != 0"),
     ],
   },
   {
@@ -151,6 +158,9 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
         { r: "n - n % 3 + 3" }, "r + 3 <= 9999"),
       hard("story", "A lock code is a whole number greater than {lo} and less than {top}. It is divisible by 9. What is the code?", "n - n % 9 + 9", { n: "template_n" },
         { lo: "n - n % 9 + 1", top: "n - n % 9 + 10" }, "top <= 9999"),
+      // (A fourth form of a kind the step's Challenge lacked: Cedric's three-forms rule reads printed forms, and the other
+      // forms printed two kinds, the custom U19 Book 1, 2026-11-17. Luis's addition, for Cedric's review.)
+      hard("missing", "{n} needs ? more to reach the next number divisible by 9.", "9 - n % 9", { n: "template_n" }, {}, "n % 9 != 0"),
     ],
   },
   {
@@ -171,6 +181,11 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
       hard("missing", "What is the greatest whole number less than {n} that is divisible by both 6 and 8?", "((n - 1) // 24) * 24", { n: "template_n" }, {}, "n > 24"),
       hard("story", "{name}'s score is less than {n} points. It is divisible by both 4 and 6 but not by 8. What is the greatest number of points {name} could have?", "r if r % 8 != 0 else r - 12", { n: "template_n" },
         { r: "((n - 1) // 12) * 12" }, "r > 12"),
+      // (Two more, so each day's half of the step's forms prints three kinds: a count and a missing number. Luis's
+      // addition, for Cedric's review, the custom U19 Book 1's Days 9 and 10, 2026-11-17.)
+      hard("bare", "How many whole numbers from {lo} to {hi} are divisible by both 4 and 6?", "hi // 12 - (lo - 1) // 12", { n: "template_n" },
+        { lo: "n - n % 100 + 1", hi: "lo + 99" }, "hi <= 99999"),
+      hard("missing", "The last multiple of both 4 and 8 before {n} is ?", "((n - 1) // 8) * 8", { n: "template_n" }, {}, "n > 8"),
     ],
   },
   {
@@ -183,6 +198,10 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
         { p: "[31, 37, 41, 43, 47, 53, 59, 61, 67][i]", c: "[51, 57, 77, 87, 91][j % 5]" }, "p + 31 <= 100"),
       hard("story", "{name} has cards showing {p}, {c} and {q}. Add the two prime numbers, then subtract 31 from their sum. What is the result?", "p + q - 31", { i: "template_i", j: "template_j" },
         { p: "[31, 37, 41, 43, 47][j % 5]", q: "[31, 37, 41, 43, 47][i % 5]", c: "[51, 57, 77, 87, 91][i % 5]" }, "p != q and p + q - 31 <= 100"),
+      // (A fourth form of a kind the step's Challenge lacked: Cedric's three-forms rule reads printed forms, and the other
+      // forms printed two kinds, the custom U19 Book 1, 2026-11-17. Luis's addition, for Cedric's review.)
+      hard("missing", "The larger of the two primes in {p}, {c} and {q}, minus the smaller one, is ?", "abs(p - q)", { i: "template_i", j: "template_j" },
+        { p: "[31, 37, 41, 43, 47][j % 5]", q: "[31, 37, 41, 43, 47][i % 5]", c: "[51, 57, 77, 87, 91][i % 5]" }, "p != q"),
     ],
   },
   {
@@ -232,6 +251,10 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
       hard("bare", "A pointer makes two quarter turns in the same direction. What kind of angle has it turned through? Circle straight or reflex.", "'straight'", {}, {}, "True"),
       hard("compare", "A pointer makes half a turn, then a quarter turn in the same direction. What kind of angle has it turned through? Circle straight or reflex.", "'reflex'", {}, {}, "True"),
       hard("story", "{name} makes two half turns in the same direction. Has {name} made one full turn? Circle yes or no.", "'yes'", {}, {}, "True"),
+      // (A fourth form of a kind the step's Challenge lacked: Cedric's three-forms rule reads printed forms, and the other
+      // forms printed two kinds, the custom U19 Book 1, 2026-11-17. Luis's addition, for Cedric's review.)
+      hard("true-false", "True or false: a pointer that makes {k} quarter turns in the same direction has turned through a reflex angle. Circle true or false.", "'true' if k == 3 else 'false'",
+        { g: "template_g" }, { k: "2 + g" }, "True"),
     ],
   },
   {

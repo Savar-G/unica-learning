@@ -8,6 +8,9 @@ import { prepareTemplate, seededRandom } from "./template";
 import { buildStepItem, challengeTemplateCount, choicesFor, sequenceOf, stepRangeProblem, stepTemplateItem, templateProblem } from "@/lib/workbook-step-items";
 import { takeAwayProblem } from "@/lib/workbook-wording";
 
+/** The U19 Challenge forms Luis added (2026-11-17), by their words. */
+const ADDED_FORMS = ["The smaller prime in", "needs ? more to reach", "The larger of the two primes in", "True or false: a pointer that makes", "How many whole numbers from", "The last multiple of both 4 and 8 before"];
+
 describe("Unica Challenge templates", () => {
   const c = bcStepProgressions();
   it.each([1, 2, 3])("provides three distinct hard contracts for U19 divisibility step %i", step => {
@@ -184,6 +187,8 @@ describe("Unica Challenge templates", () => {
     for (const h of HOUSE_TEMPLATES.filter(h => ["6.13-classify-angles", "6.4-prime-composite", "6.4-divisibility", "6.4-lcm"].includes(h.skill))) {
       const step = c.skillSteps(h.skill)![h.step - 1];
       for (const [templateIndex, t] of h.templates.entries()) {
+        // (Luis's added forms, 2026-11-17, have their own key checks below: "added U19 Challenge forms".)
+        if (ADDED_FORMS.some(words => t.text.includes(words))) continue;
         const prepared = prepareTemplate(step, t, c.contexts);
         for (let seed = 1; seed <= 200; seed++) {
           const item = prepared.fill(seededRandom(seed));
@@ -473,5 +478,44 @@ describe("child-readable Challenge tasks", () => {
     expect(story.text).toContain("takes");
     expect(story.text).toContain("out of the boxes");
     expect(Number(story.answer)).toBe(Number(story.values.a) * Number(story.values.g) - Number(story.values.b));
+  });
+});
+
+// Luis's added U19 Challenge forms (2026-11-17), one of a printed kind each step's Challenge lacked: every instance is
+// built and passes the answer checker, and its key is worked out again here from the printed numbers alone.
+describe("added U19 Challenge forms", () => {
+  const c = bcStepProgressions();
+  const prime = (n: number) => n > 1 && Array.from({ length: n - 2 }, (_, k) => k + 2).every(d => n % d !== 0);
+  const nums = (text: string) => (text.replace(/(\d),(?=\d{3}\b)/g, "$1").match(/\d+/g) ?? []).map(Number);
+  const forms: [string, number, string, (text: string) => string][] = [
+    ["6.4-prime-composite", 1, "The smaller prime in", t => { const ps = nums(t).filter(prime).sort((a, b) => a - b); return String(2 * ps[0] + ps[1]); }],
+    ["6.4-divisibility", 1, "needs ? more to reach the next number divisible by both 2 and 5", t => String(10 - nums(t)[0] % 10)],
+    ["6.4-prime-composite", 2, "The larger of the two primes in", t => { const ps = nums(t).filter(prime); return String(Math.max(...ps) - Math.min(...ps)); }],
+    ["6.4-divisibility", 2, "needs ? more to reach the next number divisible by 9", t => String(9 - nums(t)[0] % 9)],
+    ["6.13-classify-angles", 2, "True or false: a pointer that makes", t => { const turn = 90 * nums(t)[0]; return turn > 180 && turn < 360 ? "true" : "false"; }],
+    ["6.4-divisibility", 3, "How many whole numbers from", t => { const [lo, hi] = nums(t); let n = 0; for (let x = lo; x <= hi; x++) if (x % 4 === 0 && x % 6 === 0) n++; return String(n); }],
+    ["6.4-divisibility", 3, "The last multiple of both 4 and 8 before", t => { let x = nums(t).at(-1)! - 1; while (x % 8 !== 0) x--; return String(x); }],
+  ];
+  it.each(forms)("checks every instance of the %s step %i form \"%s\" across 300 seeds", (skill, number, words, key) => {
+    const step = c.skillSteps(skill)![number - 1];
+    const index = step.templates!.findIndex(t => t.text.includes(words) || t.text.replace("{n} ", "").includes(words));
+    expect(index, words).toBeGreaterThanOrEqual(0);
+    const t = step.templates![index];
+    expect(t.difficulty).toBe("hard");
+    expect(isChallengeOnly(t)).toBe(true);
+    // (As the generator makes them: the Challenge's own request, then the answer checker on the built package.)
+    let checked = 0;
+    for (let seed = 1; seed <= 3000 && checked < 300; seed++) {
+      const item = stepTemplateItem({ curriculum: c, skill, step: number, place: "challenge", level: 19, day: 9, seed, attempt: seed % 11, ordinal: seed % 3 });
+      if (!item || item.ref.index !== index) continue;
+      const built = buildStepItem(item.ref, item.text, { id: `n-${seed}`, workbookId: "added-forms", page: 1, question: 1, level: 19, skills: [skill] });
+      expect(built.check.status, item.text).toBe("checked");
+      const regions = built.package!.item!.regions;
+      const printedKey = regions.flatMap(r => r.kind === "box" && r.answer?.type === "number" ? [String(r.answer.value)] : r.kind === "choice" && r.answer ? [r.answer] : [])[0];
+      expect(printedKey, item.text).toBe(key(item.text));
+      expect(stepRangeProblem(step, item.text), item.text).toBeNull();
+      checked++;
+    }
+    expect(checked, words).toBeGreaterThan(50);
   });
 });
