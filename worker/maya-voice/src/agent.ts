@@ -215,18 +215,37 @@ export class MayaVoiceAgent extends voice.Agent {
   }
 
   override async ttsNode(text: ReadableStream<string> | AsyncIterable<string>, settings: voice.ModelSettings) {
+    const ungated = this.ungatedNext;
+    this.ungatedNext = false;
+    return this.synthesizeSpeech(text, settings, this.utteranceOwner?.() ?? { turnId: null, kind: "other" }, this.board?.scope(), !ungated);
+  }
+
+  audioWithoutBoard(text: string, scope: SpeechScope, owner: UtteranceOwner): ReadableStream<AudioFrame> {
+    let reader: ReadableStreamDefaultReader<AudioFrame> | undefined;
+    let cancelled = false;
+    return new ReadableStream<AudioFrame>({
+      pull: async controller => {
+        reader ??= (await this.synthesizeSpeech(ReadableStream.from([text]), {}, owner, scope, false))?.getReader();
+        if (cancelled) { await reader?.cancel(); return; }
+        if (!reader) return controller.close();
+        const next = await reader.read();
+        if (cancelled) return;
+        if (next.done) controller.close();
+        else controller.enqueue(next.value);
+      },
+      cancel: async reason => { cancelled = true; await reader?.cancel(reason); },
+    }, { highWaterMark: 0 });
+  }
+
+  private synthesizeSpeech(text: ReadableStream<string> | AsyncIterable<string>, settings: voice.ModelSettings, owner: UtteranceOwner, scope: SpeechScope | null | undefined, gate: boolean) {
     // Every line reaches the voice provider here: replies, acknowledgement phrases and guidance said again.
-    const sentence = telemetry().speech(this.utteranceOwner?.() ?? { turnId: null, kind: "other" });
+    const sentence = telemetry().speech(owner);
     let sentenceIndex = 0;
     const synthesize = (input: ReadableStream<string> | AsyncIterable<string>) =>
       countedSynthesis(input, counted => voice.Agent.default.ttsNode(this, counted, settings), said => void this.call.spoken(said), sentence(sentenceIndex++));
-    // The worker's own opening has an empty plan, and must not wait for the board to connect.
-    const ungated = this.ungatedNext;
-    this.ungatedNext = false;
     if (!this.board) return synthesize(text);
-    const scope = this.board.scope();
     if (!scope || !this.board.sync.owns(scope)) return null;
-    return boardAudio(text, synthesize, this.board.sync, scope, speech => this.onSilent?.(speech), !ungated, this.requireSpokenCues?.(scope));
+    return boardAudio(text, synthesize, this.board.sync, scope, speech => this.onSilent?.(speech), gate, this.requireSpokenCues?.(scope));
   }
 
   /**
@@ -407,6 +426,7 @@ export class VoiceCallRun {
   private exchangeScope: { scope: SpeechScope; turnId: string; silent: boolean } | null = null;
   private exchangeAdmission: Promise<void> | null = null;
   private exchangeBoard: Promise<void> | null = null;
+  private ungatedSpeech: SpeechScope | null = null;
   private boardAudio: CuePlaybackOutput | null = null;
   private childStoppedAt: number | null = null;
   /**
@@ -510,8 +530,10 @@ export class VoiceCallRun {
     session.on(voice.AgentSessionEventTypes.UserInputTranscribed, ev => { if (ev.transcript.trim()) this.wordsHeard(); });
     session.on(voice.AgentSessionEventTypes.UserStateChanged, ev => {
       if (ev.newState === "speaking") {
+        const audioScope = this.ungatedSpeech;
         this.speechEndSeenAt = null;
         if (this.pace) this.cutAck(this.pace);
+        if (audioScope) this.stopBoard(audioScope);
         if (this.boardScope && !this.exchangeBoard) this.stopBoard(this.boardScope);
       } else if (ev.oldState === "speaking") {
         this.childStoppedAt = this.timers.now();
@@ -1057,8 +1079,9 @@ export class VoiceCallRun {
         return this.closeTurn(pace);
       }
       const generation = guidance ? this.generation : pace?.generation ?? this.generation;
+      const ungated = guidance ? !!this.call.guidancePlayback : last.priority && !this.call.session.safety.flagged && !last.boardCues?.length;
       // A plan with no batches has nothing to wait for, and a late board answer must not hold back these words.
-      try { await this.stageBoard(last, !!last.boardCues?.length, pace?.turnId); }
+      try { if (!ungated) await this.stageBoard(last, !!last.boardCues?.length, pace?.turnId); }
       catch (error) { this.boardFailed(error); if (generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return this.closeTurn(pace); }
       if (queued && queued.promise !== this.guidanceQueue) return this.closeTurn(pace);
       if (this.finishing || (this.deadlineFinish && !guidance) || !this.childHere || generation !== this.generation) {
@@ -1068,8 +1091,10 @@ export class VoiceCallRun {
       }
       if (this.call.guidancePlayback && guidance && this.call.replaced) { void this.finish({ detail: "the call could not be saved" }); return this.closeTurn(pace); }
       pace?.clock.staged();
-      speech = this.sayAs(text, { addToChatCtx: true }, { turnId: pace?.turnId ?? null, kind: guidance ? "guidance" : "answer" });
-      if (guidance) this.followGuidance(guidance, speech, repeatedGuidance);
+      const owner = { turnId: pace?.turnId ?? null, kind: guidance ? "guidance" : "answer" } as const;
+      const spoken = ungated ? this.sayWithoutBoard(text, owner) : { speech: this.sayAs(text, { addToChatCtx: true }, owner), scope: this.boardScope };
+      speech = spoken.speech;
+      if (guidance) this.followGuidance(guidance, speech, spoken.scope, repeatedGuidance);
     } else this.closeTurn(pace, "no_words");
     queued?.resolve();
     if (!this.deadlineFinish) for (const turn of turns) await this.after(turn, speech, () => false);
@@ -1090,6 +1115,7 @@ export class VoiceCallRun {
   private dropGuidance() {
     const old = this.guidance;
     this.guidance = null;
+    if (this.call.guidancePlayback && old?.scope) this.stopBoard(old.scope);
     old?.speech.interrupt(true);
   }
 
@@ -1104,9 +1130,7 @@ export class VoiceCallRun {
   }
 
   /** Follows the guidance's speech. If it was cut it plays once more, and words after it wait for that too. */
-  private followGuidance(text: string, speech: voice.SpeechHandle, repeated = false, scope = this.boardScope) {
-    const audio = this.session.output.audio;
-    const captured = audio?.capturedPlayoutSegments ?? 0;
+  private followGuidance(text: string, speech: voice.SpeechHandle, scope: SpeechScope | null, repeated = false) {
     const followed = { speech, scope, cut: false, repeated, silent: false, over: Promise.resolve() };
     const candidate = !!this.call.guidancePlayback;
     const run = async () => {
@@ -1114,7 +1138,7 @@ export class VoiceCallRun {
       if (this.guidance !== followed) return;
       if (this.finishing || (candidate && this.call.replaced)) return;
       const cut = followed.cut || speech.interrupted;
-      const capturedAudio = scope && this.boardAudio ? this.boardAudio.captured(scope) : audio && audio.capturedPlayoutSegments > captured;
+      const capturedAudio = scope && this.boardAudio?.captured(scope);
       const incomplete = !played || followed.silent || !capturedAudio;
       if (candidate ? cut || incomplete || !this.childHere : played && cut) {
         if (!followed.repeated) {
@@ -1139,20 +1163,37 @@ export class VoiceCallRun {
   private async repeatGuidance(text: string) {
     // A reply can hold the queue, as it waits for the model's close. It has no words to say in a flagged call.
     this.pace?.handle?.interrupt(true);
-    const generation = this.generation;
-    const previous = this.guidance;
-    await this.stageBoard({}, false);
-    if (this.call.guidancePlayback && previous !== this.guidance) return;
-    if (this.call.guidancePlayback && (this.finishing || this.call.replaced || generation !== this.generation || !this.childHere)) {
-      if (!this.finishing && !this.call.replaced) this.guidanceOwed = text;
-      return;
+    const owner = { turnId: null, kind: "guidance" } as const;
+    if (this.call.guidancePlayback) {
+      if (this.finishing || this.call.replaced || !this.childHere) {
+        if (!this.finishing && !this.call.replaced) this.guidanceOwed = text;
+        return;
+      }
+      const { speech, scope } = this.sayWithoutBoard(text, owner);
+      return this.followGuidance(text, speech, scope, true);
     }
-    const speech = this.sayAs(text, { addToChatCtx: true }, { turnId: null, kind: "guidance" });
-    await this.followGuidance(text, speech, true);
+    await this.stageBoard({}, false);
+    const speech = this.sayAs(text, { addToChatCtx: true }, owner);
+    await this.followGuidance(text, speech, this.boardScope, true);
   }
 
   /** The next speech this run asks the session for, and who owns it (one-shot, like `ungatedNext`). */
   private nextUtterance: { turnId: string | null; kind: UtteranceKind; handle: voice.SpeechHandle | null } | null = null;
+
+  private sayWithoutBoard(text: string, owner: { turnId: string | null; kind: UtteranceKind }): { speech: voice.SpeechHandle; scope: SpeechScope | null } {
+    const board = this.options.board;
+    if (!board) return { speech: this.sayAs(text, { addToChatCtx: true }, owner), scope: null };
+    if (this.boardScope && !this.exchangeBoard) this.stopBoard(this.boardScope);
+    const audioScope = board.openAudio(`speech-${this.segment}-${++this.utterance}`);
+    this.ungatedSpeech = audioScope;
+    const speech = this.session.say(text, { addToChatCtx: true, audio: this.agent.audioWithoutBoard(text, audioScope, owner) });
+    const retire = () => {
+      board.detach(audioScope);
+      if (this.ungatedSpeech === audioScope) this.ungatedSpeech = null;
+    };
+    void speech.waitForPlayout().then(retire, retire);
+    return { speech, scope: audioScope };
+  }
 
   /** `session.say` with the speech's owner named for the telemetry. The speech and its words are the session's, unchanged. */
   private sayAs(text: string | ReadableStream<string>, options: { addToChatCtx: boolean }, owner: { turnId: string | null; kind: UtteranceKind }): voice.SpeechHandle {
@@ -1554,6 +1595,7 @@ export class VoiceCallRun {
     this.childHere = false;
     if (this.pace) this.cutAck(this.pace);
     if (this.call.guidancePlayback && this.guidance) this.guidance.cut = true;
+    if (this.ungatedSpeech) this.stopBoard(this.ungatedSpeech);
     if (this.boardScope) this.stopBoard(this.boardScope);
     if (this.tickTimer !== null) this.timers.clear(this.tickTimer);
     this.tickTimer = null;
@@ -1800,6 +1842,7 @@ export class VoiceCallRun {
       for (const t of [this.tickTimer, this.graceTimer, this.limitTimer, this.leaseTimer, this.meterTimer]) if (t !== null) this.timers.clear(t);
       this.tickTimer = this.graceTimer = this.limitTimer = this.leaseTimer = this.meterTimer = null;
       this.closeTurn();
+      if (this.ungatedSpeech) this.stopBoard(this.ungatedSpeech);
       if (scope) this.stopBoard(scope);
       // Stop media immediately for a deadline, hang-up, failure or lost ownership.
       this.closeMark(entry, reason, "media_close");
