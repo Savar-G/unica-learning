@@ -114,6 +114,7 @@ function handTimers() {
   return {
     timers,
     now: () => now,
+    jump(s: number) { now += s * 1000; },
     advance: (s: number) => elapse(s * 1000, 1000),
     play: (ms: number) => elapse(ms, 10),
   };
@@ -555,6 +556,131 @@ it("interrupts a regrouping prompt in playout and shows the child's exchange onc
     expect(latest.exchange).toBeUndefined();
     expect(await c.run.exchange(target)).toBe("done");
   } finally { speaker.finishPlayback(); }
+});
+
+it("drops deadline audio when the child starts speaking before the first frame reaches output", async () => {
+  const speaker = new Speaker();
+  const c = await voiceCall({ speaker, board: true, timestamps: true });
+  await c.run.childJoined();
+  await waitFor(() => c.said().length > 0 && c.session.agentState === "listening", "the opening");
+  await c.board.settled();
+  const output = vi.spyOn(speaker, "captureFrame");
+  const adapter = c.session.output.audio!;
+  const capture = adapter.captureFrame.bind(adapter);
+  const deadlineMark = 2_200;
+  let spoke = false;
+  vi.spyOn(adapter, "captureFrame").mockImplementation(frame => {
+    const forwarded = capture(frame);
+    if (!spoke && frame.data[0] === deadlineMark) {
+      spoke = true;
+      c.session.emit(voice.AgentSessionEventTypes.UserStateChanged, {
+        type: voice.AgentSessionEventTypes.UserStateChanged, oldState: "listening", newState: "speaking", createdAt: c.clock.now(),
+      });
+    }
+    return forwarded;
+  });
+  c.tts.amplitude = deadlineMark;
+  c.clock.jump(TIME_LIMITS.closingAtMs / 1000);
+  await c.run.tick();
+  await waitFor(() => c.closed.mock.calls.length === 1, "the deadline call to close");
+  expect(c.call.session.outcome?.reason).toBe("time_limit");
+  expect(spoke).toBe(true);
+  expect(output.mock.calls.filter(([frame]) => frame.data[0] === deadlineMark)).toHaveLength(0);
+});
+
+it.each(["checked move", "legacy", "legacy disconnect", "hard cutoff"])("plays deadline frames with a board ACK held (%s)", async mode => {
+  const exchange = mode === "checked move";
+  let now = () => T0;
+  const speaker = new HeldSpeaker(() => now());
+  const c = await voiceCall({ speaker, model: exchange ? ruleConversationalModel() : undefined, board: true, timestamps: true, exchange });
+  now = c.clock.now;
+  const unblock = Promise.withResolvers<void>();
+  let moveBatch = "";
+  let holding = false;
+  let acknowledged = false;
+  let move: Promise<unknown> | undefined;
+  try {
+    await c.run.childJoined();
+    await waitFor(() => c.said().length > 0 && c.session.agentState === "listening", "the opening");
+    await c.board.settled();
+    const adapter = c.session.output.audio!;
+    const tagged = vi.spyOn(adapter, "captureFrame");
+    const output = vi.spyOn(speaker, "captureFrame");
+    const transport = createMemoryTransport(c.receiver);
+    c.sender.useTransport({ async call(request) {
+      const result = await transport.call(request);
+      if (exchange && request.type === "apply" && JSON.stringify(request.commands).includes("52 = 40 + 12")) moveBatch = request.batchId;
+      if (request.type === "release" && (!exchange || request.batchId === moveBatch)) {
+        holding = true;
+        await unblock.promise;
+      }
+      return result;
+    } });
+    c.tts.amplitude = 1_100;
+    speaker.held = true;
+    const cut = vi.spyOn(speaker, "clearBuffer");
+    await c.childSays(exchange ? "How do I regroup?" : "I don't know.");
+    await waitFor(() => speaker.pendingPlayoutSegments > 0, "the prompt reaching output");
+    expect(output.mock.calls.some(([frame]) => frame.data[0] === 1_100)).toBe(true);
+    if (exchange) {
+      await c.clock.advance(1);
+      const target = (await c.calls.view(c.id))!.exchange!;
+      expect(target).toBeDefined();
+      const visible = () => c.receiver.snapshot().events.some(e => e.kind === "batch" && e.batchId === target.batchId);
+      await waitFor(visible, "the prompt on the receiver");
+      move = c.run.exchange(target);
+    } else {
+      await waitFor(() => c.receiver.staged().length > 0, "the legacy board plan");
+      const scope = c.receiver.scope()!;
+      await c.board.timing(scope, 10_000, 100, "word");
+      void c.board.played(scope, 100).catch(() => {});
+    }
+    await waitFor(() => holding, "the held release ACK", 2_000);
+    const boardScope = c.receiver.scope();
+    if (exchange) await waitFor(() => cut.mock.calls.length > 0, "the move cutting the prompt");
+    c.tts.amplitude = 2_200;
+    await c.clock.advance(TIME_LIMITS.closingAtMs / 1000);
+    expect(c.speech.say("Could you show me another step?")).toBe(true);
+    await waitFor(() => c.call.session.outcome?.reason === "time_limit", "the deadline outcome");
+    const words = spokenMath(c.call.session.turns.at(-1)!.text);
+    await waitFor(() => {
+      const cleared = cut.mock.invocationCallOrder[0];
+      return cleared !== undefined && c.said().join(" ").includes(words) && output.mock.calls.some(([frame], i) =>
+        frame.data[0] === 2_200 && output.mock.invocationCallOrder[i] > cleared);
+    }, "new deadline PCM after the prompt clears, still without the board ACK", 2_000);
+    expect(acknowledged).toBe(false);
+    const afterCut = output.mock.calls.filter((_, i) => output.mock.invocationCallOrder[i] > cut.mock.invocationCallOrder[0]);
+    expect(afterCut.every(([frame]) => frame.data[0] === 2_200)).toBe(true);
+    if (exchange) {
+      expect(c.receiver.snapshot().events.filter(e => e.kind === "batch" && e.batchId === moveBatch)).toHaveLength(1);
+      expect(c.receiver.scope()).toEqual(boardScope);
+    } else expect(c.call.session.checkedExchange).toBeUndefined();
+    if (mode === "legacy disconnect" || mode === "hard cutoff") {
+      const old = tagged.mock.calls.find(([frame]) => frame.data[0] === 2_200)![0];
+      if (mode === "hard cutoff") {
+        const close = vi.spyOn(c.session, "close");
+        await c.clock.advance((TIME_LIMITS.endAtMs - TIME_LIMITS.closingAtMs) / 1000 + 1);
+        expect(close).toHaveBeenCalled();
+        expect(acknowledged).toBe(false);
+      } else await c.run.childLeft("dropped");
+      const captures = output.mock.calls.length;
+      await adapter.captureFrame(old);
+      expect(output.mock.calls).toHaveLength(captures);
+    }
+    acknowledged = true;
+    unblock.resolve();
+    await move;
+    speaker.finishPlayback();
+    if (mode !== "legacy disconnect") {
+      await waitFor(() => c.closed.mock.calls.length === 1, "deadline call closed");
+      expect(await c.calls.view(c.id)).toMatchObject({ status: "ended", outcome: { reason: "time_limit" } });
+    }
+  } finally {
+    acknowledged = true;
+    unblock.resolve();
+    await move;
+    speaker.finishPlayback();
+  }
 });
 
 it("accepts an immediate exchange while the shown batch acknowledgement is still in flight", async () => {
