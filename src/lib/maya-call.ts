@@ -598,6 +598,7 @@ export interface VoiceCall {
    * fits and no input is running, the call closes and this returns code's closing words. Else null.
    */
   meter(): Promise<VoiceTurn | null>;
+  stopMeter(): Promise<void>;
   /** Counts the voice of words that became audio at the provider. Never throws, and nothing waits for it. */
   spoken(text: string): Promise<void>;
   /**
@@ -1386,6 +1387,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const acknowledged = [...(found.live.acknowledged ?? [])];
       let lost = false;
       let replaced = false;
+      let mediaCutAt: number | null = null;
       const stopBudget = () => { session.cancelPending(); return budget?.stop(); };
       const lose = (confirmed = false) => { lost = true; if (confirmed) replaced = true; void stopBudget(); };
       let queue: Promise<void> = Promise.resolve();
@@ -1428,6 +1430,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       };
       const none: VoiceTurn = { say: [], newBatches: 0, safetyMessage: null, ended: false };
       const inactive = () => lost || record.status === "ended" || forcedClose || deadlineStarted;
+      const admitting = () => mediaCutAt === null && !inactive();
       let forcedClose = false;
       let deadlineStarted = false;
       let deadline: Promise<VoiceTurn | null> | undefined;
@@ -1596,7 +1599,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       };
       /** Ends the call because of the cap after `said` (what this input already says), with code's closing line. */
       const capClose = async (state: Exclude<SpendState, "open">, said: VoiceTurn | null, hearings: readonly ChildHearing[]): Promise<VoiceTurn> => {
-        if (inactive()) return none;
+        if (!admitting()) return none;
         const alreadyRead = checkedRoutine && !record.live?.text.session.safety.flagged ? startSafetyRead(hearings) : undefined;
         if (checkedRoutine) void stopBudget();
         let closed: Awaited<ReturnType<typeof closeAtCap>> = null;
@@ -1641,7 +1644,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
        * last attempt stays for the child.
        */
       const turn = async (run: () => Promise<TextOutput | null>, hearing?: ChildHearing, say?: VoiceSay, need: 1 | 2 = 1): Promise<VoiceTurn> => {
-        if (inactive()) return none;
+        if (!admitting()) return none;
         // The admission interval, timed at its own awaits (telemetry only; the gate itself is unchanged).
         const gate = say?.admission ? { startedAt: seams.clock(), stt: "none" as "none" | "cached" | "network", sttMs: 0, block: "memory" as "memory" | "awaited", blockMs: 0, done: false } : null;
         const report = (outcome: AdmissionSample["outcome"]) => {
@@ -1652,8 +1655,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         const sttStart = gate ? seams.clock() : 0;
         const stt = await sttNow(gate ? (read) => { gate.stt = read; } : undefined);
         if (gate) gate.sttMs = seams.clock() - sttStart;
+        if (!admitting()) { report("inactive"); return none; }
         if (stt !== "open") { report("cap"); return capClose(stt, null, unread(hearing)); }
-        if (inactive()) { report("inactive"); return none; }
         const me = { hearing };
         inflight.add(me);
         let ticket: Handle | null = null;
@@ -1671,13 +1674,13 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
               const ensureStart = gate ? seams.clock() : 0;
               const state = await budget.ensure();
               if (gate) { gate.block = "awaited"; gate.blockMs = seams.clock() - ensureStart; }
-              if (inactive()) { report("inactive"); return none; }
+              if (!admitting()) { report("inactive"); return none; }
               // The model refill can outlast admitted STT coverage. Hold no model ticket during a new STT wait.
               if (state === "open" && meter && meter.state() !== "open") {
                 const coverageStart = gate ? seams.clock() : 0;
                 const coverage = await sttNow(gate ? (read) => { if (read === "network") gate.stt = "network"; } : undefined);
                 if (gate) gate.sttMs += seams.clock() - coverageStart;
-                if (inactive()) { report("inactive"); return none; }
+                if (!admitting()) { report("inactive"); return none; }
                 const current = meter.state();
                 if (coverage !== "open") { report("cap"); return capClose(coverage, null, unread(hearing, me)); }
                 if (current !== "open") { report("cap"); return capClose(current ?? "paused", null, unread(hearing, me)); }
@@ -1758,18 +1761,19 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           out = { ...out, say: out.say.filter((text) => text !== fixed) };
         }
         // The cap's check after the turn runs beside the save. A request refused in the turn decides without it.
-        const capAfter = session.ended || stopped ? null : capAfterTurn();
+        const capAfter = session.ended || stopped || mediaCutAt !== null ? null : capAfterTurn();
         void capAfter?.catch(() => {});
         await queue;
         if (inactive()) return none;
         const from = Math.max(before, told);
         told = session.trace().turns.length;
         const said = voiceTurn(out, from);
-        if (!session.ended) {
+        if (!session.ended && mediaCutAt === null) {
           // The words this input chose are said; then the cap closes the call when it is reached. A request refused in
           // the middle of the turn left the child's words unread, so they get the safety read. While another turn still
           // runs, that turn closes the call after its own words, and reads the words owed.
           const after = stopped ?? await (capAfter ?? capAfterTurn());
+          if (mediaCutAt !== null) return said;
           if (after !== "open" || owed.length > 0) {
             if (inflight.size > 1) {
               if (stopped && hearing) owed.push(hearing);
@@ -1940,16 +1944,21 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           await queue;
         },
         async meter() {
+          if (mediaCutAt !== null) return null;
           // The worker's 10-second tick also renews and retires the budget block by age (in the background).
           budget?.tick();
           if (!meter || inactive() || session.ended) return null;
           const state = await meter.ensure();
-          if (state === "open" || inactive() || session.ended) return null;
+          if (state === "open" || !admitting() || session.ended) return null;
           // Speech-to-text cannot be renewed: the call closes now, also during a model request (its answer is not said,
           // and the child's words it was reading get the safety read). Waiting for it would keep the room listening.
           return capClose(state, null, unread());
         },
         spoken: (text) => meter?.spoken(text) ?? Promise.resolve(),
+        stopMeter() {
+          mediaCutAt ??= seams.clock();
+          return meter?.stop() ?? Promise.resolve();
+        },
         async end(how) {
           // Stop admissions before waiting for a save or the STT meter.
           const settledBudget = stopBudget();

@@ -41,7 +41,11 @@ async function setup(mode: "chat" | "voice", opts: { checkedRoutine?: boolean; a
   const alert = vi.fn(async () => {});
   const seams: CallSeams = {
     checkedRoutine: opts.checkedRoutine ?? true, tutorFamilies: true, store, clock, newId, seed: () => 42,
-    spend: { ...spend, state: async () => state, voice: () => ({ state: () => state, ensure: async () => state, stop: async () => {}, spoken: async () => {} }) },
+    spend: { ...spend, state: async () => state, voice: () => {
+      let stopped = false;
+      const coverage = () => stopped ? "paused" as const : state;
+      return { state: coverage, ensure: async () => coverage(), stop: async () => { stopped = true; }, spoken: async () => {} };
+    } },
     connections: memoryConnectionLog(store, clock), history: memoryWordingHistoryStore(),
     events: learningEvents(memoryLearningEventStore({ children: [{ id: CHILD, parentId: PARENT }] })),
     rebuild: async () => true,
@@ -60,7 +64,7 @@ async function setup(mode: "chat" | "voice", opts: { checkedRoutine?: boolean; a
     model, voice, forced, alert, store,
     reopen: () => calls.openVoice(view.id, { speechToText: "fake", voice: "fake" }, null),
     reachClock: () => { now += TIME_LIMITS.endAtMs; },
-    reachCap: () => { state = "week_used"; },
+    reachCap: (reason: Exclude<SpendState, "open"> = "week_used") => { state = reason; },
     stored: () => store.rows()[0],
     async child(text: string, options?: { uncertain?: boolean; alternatives?: string[] }) {
       if (voice) return voice.child(text, options);
@@ -105,6 +109,52 @@ it("preserves hearing boundaries when a voice cap drops a turn in flight", async
     late.resolve(reply("What is 13 minus 6?", "guide"));
   }
   expect((await prior).say).toEqual([]);
+});
+
+it.each([true, false])("does not close at the cap when an admitted turn sees an ordinary media cutoff (candidate %s)", async (checkedRoutine) => {
+  const entered = Promise.withResolvers<void>();
+  const late = Promise.withResolvers<ReturnType<typeof reply>>();
+  const s = await setup("voice", { checkedRoutine, answer: () => { entered.resolve(); return late.promise; } });
+  const call = s.voice!;
+  const sent = vi.fn();
+  call.onGuidance(sent);
+  const pending = s.child("Can you help me?");
+  await entered.promise;
+  await call.stopMeter();
+  late.resolve(reply("What is 13 minus 6?", "guide"));
+  const finished = await pending;
+  expect(finished.ended).toBe(false);
+  expect(finished.say).not.toContain(SPEND_CLOSE.paused.line);
+  expect(await call.meter()).toBeNull();
+  expect(await s.child("My babysitter is hurting me right now.")).toMatchObject({ say: [], ended: false });
+  expect(sent).not.toHaveBeenCalled();
+  expect(s.stored()).toMatchObject({ status: "live", flag: null });
+  await call.end({ reason: "child_stopped" });
+  expect(s.stored().outcome?.reason).toBe("child_stopped");
+});
+
+it("keeps an admitted cap safety read when ordinary media cuts during the read", async () => {
+  const s = await setup("voice");
+  const call = s.voice!;
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<{ reading: { safety: string }; say: string }>();
+  s.forced.mockImplementationOnce(() => { entered.resolve(); return release.promise; });
+  const sent = vi.fn();
+  call.onGuidance(sent);
+  s.reachCap("paused");
+  const closing = s.child("I saw a knife today.");
+  try {
+    await entered.promise;
+    await call.stopMeter();
+    expect(await call.meter()).toBeNull();
+  } finally {
+    release.resolve({ reading: { safety: "concern" }, say: "These words must not be spoken." });
+  }
+  expect(await closing).toMatchObject({ ended: true, safetyMessage: SAFETY_GUIDANCE.concern });
+  expect(sent).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ say: [SAFETY_GUIDANCE.concern] }));
+  await call.end({ reason: "child_stopped" });
+  expect(s.stored().outcome?.reason).toBe("safety");
+  expect(s.stored().flag?.level).toBe("safety_concern");
 });
 
 it.each([["voice", "clock"], ["voice", "cap"], ["chat", "clock"], ["chat", "cap"]] as const)(
