@@ -525,8 +525,10 @@ export class VoiceCallRun {
     session.on(voice.AgentSessionEventTypes.UserInputTranscribed, ev => { if (ev.transcript.trim()) this.wordsHeard(); });
     session.on(voice.AgentSessionEventTypes.UserStateChanged, ev => {
       if (ev.newState === "speaking") {
+        const audioScope = this.ungatedSpeech;
         this.speechEndSeenAt = null;
         if (this.pace) this.cutAck(this.pace);
+        if (audioScope) this.stopBoard(audioScope);
         if (this.boardScope && !this.exchangeBoard) this.stopBoard(this.boardScope);
       } else if (ev.oldState === "speaking") {
         this.childStoppedAt = this.timers.now();

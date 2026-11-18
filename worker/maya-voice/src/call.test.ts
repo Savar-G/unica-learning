@@ -102,6 +102,7 @@ function handTimers() {
   return {
     timers,
     now: () => now,
+    jump(s: number) { now += s * 1000; },
     async advance(s: number) {
       const end = now + s * 1000;
       while (now < end) {
@@ -449,7 +450,37 @@ it("interrupts a regrouping prompt in playout and shows the child's exchange onc
   } finally { speaker.finishPlayback(); }
 });
 
-it.each(["checked move", "legacy", "legacy disconnect"])("plays deadline frames with a board ACK held (%s)", async mode => {
+it("drops deadline audio when the child starts speaking before the first frame reaches output", async () => {
+  const speaker = new Speaker();
+  const c = await voiceCall({ speaker, board: true, timestamps: true });
+  await c.run.childJoined();
+  await waitFor(() => c.said().length > 0 && c.session.agentState === "listening", "the opening");
+  await c.board.settled();
+  const output = vi.spyOn(speaker, "captureFrame");
+  const adapter = c.session.output.audio!;
+  const capture = adapter.captureFrame.bind(adapter);
+  const deadlineMark = 2_200;
+  let spoke = false;
+  vi.spyOn(adapter, "captureFrame").mockImplementation(frame => {
+    const forwarded = capture(frame);
+    if (!spoke && frame.data[0] === deadlineMark) {
+      spoke = true;
+      c.session.emit(voice.AgentSessionEventTypes.UserStateChanged, {
+        type: voice.AgentSessionEventTypes.UserStateChanged, oldState: "listening", newState: "speaking", createdAt: c.clock.now(),
+      });
+    }
+    return forwarded;
+  });
+  c.tts.amplitude = deadlineMark;
+  c.clock.jump(TIME_LIMITS.closingAtMs / 1000);
+  await c.run.tick();
+  await waitFor(() => c.closed.mock.calls.length === 1, "the deadline call to close");
+  expect(c.call.session.outcome?.reason).toBe("time_limit");
+  expect(spoke).toBe(true);
+  expect(output.mock.calls.filter(([frame]) => frame.data[0] === deadlineMark)).toHaveLength(0);
+});
+
+it.each(["checked move", "legacy", "legacy disconnect", "hard cutoff"])("plays deadline frames with a board ACK held (%s)", async mode => {
   const exchange = mode === "checked move";
   let now = () => T0;
   const speaker = new HeldSpeaker(() => now());
@@ -516,9 +547,14 @@ it.each(["checked move", "legacy", "legacy disconnect"])("plays deadline frames 
       expect(c.receiver.snapshot().events.filter(e => e.kind === "batch" && e.batchId === moveBatch)).toHaveLength(1);
       expect(c.receiver.scope()).toEqual(boardScope);
     } else expect(c.call.session.checkedExchange).toBeUndefined();
-    if (mode === "legacy disconnect") {
+    if (mode === "legacy disconnect" || mode === "hard cutoff") {
       const old = tagged.mock.calls.find(([frame]) => frame.data[0] === 2_200)![0];
-      await c.run.childLeft("dropped");
+      if (mode === "hard cutoff") {
+        const close = vi.spyOn(c.session, "close");
+        await c.clock.advance((TIME_LIMITS.endAtMs - TIME_LIMITS.closingAtMs) / 1000 + 1);
+        expect(close).toHaveBeenCalled();
+        expect(acknowledged).toBe(false);
+      } else await c.run.childLeft("dropped");
       const captures = output.mock.calls.length;
       await adapter.captureFrame(old);
       expect(output.mock.calls).toHaveLength(captures);
