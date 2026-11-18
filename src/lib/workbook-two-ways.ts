@@ -10,8 +10,13 @@ import type { QuestionPackage } from "./question-package";
 
 export type MethodPair = readonly [string, string];
 
-/** Skills whose questions have no two methods worth writing out. */
-const NO_TWO_WAYS = /place-value|expanded|digit|estimate|round|compare|order|count|likelihood|benchmark|value/;
+/**
+ * Skills whose questions have no two methods worth writing out. Probability and experiments too (the U19 proof's
+ * "A spinner has 5 equal parts ... How far off is the prediction?" printed "split a number into parts", Luis 2026-11-18).
+ */
+const NO_TWO_WAYS = /place-value|expanded|digit|estimate|round|compare|order|count|likelihood|benchmark|value|probab|experiment|outcome|chance|two-events/;
+/** Probability wording in a question of another skill. */
+const PROBABILITY_TEXT = /\bspin(?:s|ner)?\b|\bprobability\b|\bchance\b|\bpredict(?:ion|s|ed)?\b|\boutcomes?\b|\bat random\b/;
 
 const skillOf = (p: QuestionPackage): string => p.templateId?.split("#")[0] ?? "";
 const numbersIn = (text: string): number[] => (text.replace(/(\d),(?=\d{3}\b)/g, "$1").match(/\d+/g) ?? []).map(Number);
@@ -67,7 +72,7 @@ export function twoWaysMethods(p: QuestionPackage): MethodPair | null {
       return ["write each number of the pattern in turn", down ? "take away all the jumps at once" : "add all the jumps at once"];
     return null;
   }
-  if (NO_TWO_WAYS.test(skill)) return null;
+  if (NO_TWO_WAYS.test(skill) || PROBABILITY_TEXT.test(text)) return null;
   const kind = p.operation?.kind ?? (/[×]|\btimes\b|groups? of|each (?:box|bag|row|pack)/.test(text) ? "multiply"
     : /[÷]|\bshare|equally\b/.test(text) ? "divide"
     : /−|\s-\s|\bleft\b|\btake(?:s)? away\b|\bfewer\b|\bless than\b|\bgives?\b|\beats?\b/.test(text) ? "subtract"
@@ -75,13 +80,13 @@ export function twoWaysMethods(p: QuestionPackage): MethodPair | null {
   if (!kind) return null;
   const numbers = numbersIn(p.text);
   if (["add", "subtract", "missing-addend"].includes(kind) && trivialCalculation(numbers)) return null;
-  const small = Math.max(0, ...numbers) < 20;
+  // From U10 a sum or difference of numbers under 20 is a fact to know, not one to work out two ways (the U19 proof's
+  // "4 + 15", Luis 2026-11-18). (U4 to U9 keep earlyMethods, where these small facts are the point.)
+  if (["add", "subtract", "missing-addend"].includes(kind) && Math.max(0, ...numbers) < 20) return null;
   switch (kind) {
     case "add": case "missing-addend":
-      if (small) return ["count on from the bigger number", numbers.reduce((a, b) => a + b, 0) > 10 ? "make a ten first" : "use your fingers"];
       return ["add the tens, then the ones", numbers.some((n) => n % 10 >= 5) ? "make a friendly number first" : "count on in tens, then in ones"];
     case "subtract":
-      if (small) return ["count back", "count up from the smaller number"];
       return ["take away the tens, then the ones", "count up from the smaller number"];
     case "multiply": return ["split a number into parts", "use a fact you know, then the zeros"];
     case "divide": return ["share in groups", "use a times fact"];

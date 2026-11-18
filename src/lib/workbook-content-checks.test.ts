@@ -31,6 +31,12 @@ describe("Use 2 ways methods come from the kind of question", () => {
     expect(twoWaysMethods(pkg("A pattern adds 25 each time. Its second number is 451. What is its first number?", { templateId: "3.6-increasing-pattern#2.3:missing" })))
       .toEqual(["take away one jump from the second number", "count back from the second number"]);
     expect(twoWaysMethods(pkg("300 + 200 = ?", { kind: "add" }))).toBeNull();
+    // From U10: sums under 20 and probability questions get no pair (the U19 proof, 2026-11-18).
+    expect(twoWaysMethods(pkg("4 + 15 = ?", { kind: "add" }))).toBeNull();
+    expect(twoWaysMethods(pkg("18 − 9 = ?", { kind: "subtract" }))).toBeNull();
+    expect(twoWaysMethods(pkg("A spinner has 5 equal parts and 1 is red. Aiyana spins it 30 times and gets 10 reds. How far off is the prediction of 6 reds?", { templateId: "5.18-experiment#3.3:story" }))).toBeNull();
+    expect(twoWaysMethods(pkg("A bag has 3 red and 5 blue marbles. One is picked at random 40 times. About how many times is it red?", { templateId: "6.4-divisibility#1.1:story", kind: "multiply" }))).toBeNull();
+    expect(twoWaysMethods(pkg("24 + 17 = ?", { kind: "add" }))).toEqual(["add the tens, then the ones", "make a friendly number first"]);
     expect(trivialCalculation([40, 30])).toBe(true);
     expect(twoWaysMethods(pkg("47 + 28 = ?", { kind: "add" }))).toEqual(["add the tens, then the ones", "make a friendly number first"]);
     expect(twoWaysMethods(pkg("81 − 37 = ?", { kind: "subtract" }))).toEqual(["take away the tens, then the ones", "count up from the smaller number"]);
