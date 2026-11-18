@@ -319,7 +319,11 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
       plannedScope = null;
       return connect();
     },
-    settled: async () => { await observation; await queue; await stagedObservation; },
+    settled: async ({ drainOnFailure = false } = {}) => {
+      await (drainOnFailure ? observation.catch(() => {}) : observation);
+      await queue;
+      await stagedObservation;
+    },
   };
 }
 export type BoardSpeech = ReturnType<typeof createBoardSpeech>;

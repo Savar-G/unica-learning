@@ -12,7 +12,7 @@ import { limitsOf, memoryWordingHistoryStore, TIME_LIMITS } from "@/lib/maya";
 import { mayaCalls, recordView, boardHistoryOf, type CallResult, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import { ruleConversationalModel, ruleMayaModel } from "@/lib/maya-model-fake";
-import { VOICE_CALL_STALE_MS } from "@/lib/maya-voice";
+import { BOARD_CLOSE_SETTLE_MS, VOICE_CALL_STALE_MS } from "@/lib/maya-voice";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { checkTrace } from "@/lib/maya-trace";
 import type { QuestionPackage } from "@/lib/question-package";
@@ -457,6 +457,48 @@ it.each([false, true])("R450-3 voice replay follows the receiver after cancellat
   if (shownPrefix) expect(saved.boardHistory.events[0]).toMatchObject({ kind: "maya", t: 2000 });
 });
 
+
+it.each(["append", "expired", "changed revision", "ordinary close"])("only the deadline owner can append replay evidence (%s)", async control => {
+  const s = setup();
+  const view = await newVoiceCall(s);
+  const call = await open(s, view.id);
+  await call.start();
+  const turn = await call.child("I don't know.");
+  const cues = turn.boardCues!;
+  const receiver = createBoardReceiver({ sessionId: call.id, clock: s.now });
+  const sender = createBoardSender({ sessionId: call.id, senderId: "worker", transport: createMemoryTransport(receiver) });
+  const board = createBoardSpeech({ sender, now: s.now, observe: snapshot => call.observeBoard(snapshot) });
+  await board.connect();
+  await board.stage("speech", cues);
+  const scope = board.capture("speech")!;
+  await board.timing(scope, cues[0].word, 100, "word");
+  await board.played(scope, 100);
+  const prefix = receiver.snapshot();
+  receiver.release(cues[1].batch.transactionId, scope);
+  const confirmed = receiver.snapshot();
+  expect(confirmed.events).toHaveLength(prefix.events.length + 1);
+  s.advance(TIME_LIMITS.endAtMs / 1000);
+  if (control === "ordinary close") await call.end({ reason: "child_stopped" });
+  else await call.limit();
+  const ended = s.store.rows()[0];
+  expect(ended.status).toBe("ended");
+  expect(ended.boardHistory?.delivery).toEqual(prefix);
+  if (control === "expired") s.advance(BOARD_CLOSE_SETTLE_MS / 1000);
+  if (control === "changed revision") expect(await s.store.update(call.id, ended.revision, {})).toBe(true);
+  const before = s.store.rows()[0];
+  if (control === "append") {
+    await call.observeBoard({ events: [{ ...confirmed.events[0], at: -1 }, ...confirmed.events.slice(1)] });
+    expect(s.store.rows()[0]).toEqual(before);
+  }
+  await call.observeBoard(confirmed);
+  const after = s.store.rows()[0];
+  if (control === "append") {
+    expect(after).toEqual({ ...before, revision: before.revision + 1, boardHistory: after.boardHistory });
+    expect(after.boardHistory?.delivery).toEqual(confirmed);
+    await call.observeBoard(confirmed);
+    expect(s.store.rows()[0]).toEqual(after);
+  } else expect(after).toEqual(before);
+});
 
 it.each(["saved", "trace", "empty delivery"] as const)("R450-6 preserves the history contract for %s", async source => {
   const s = setup();

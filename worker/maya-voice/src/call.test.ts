@@ -20,7 +20,7 @@ import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { callSpend, createSpendLedger, spendConfig, SPEND_CLOSE, WEEK_MICROS } from "@/lib/maya-spend";
 import { memorySpendStore } from "@/lib/maya-spend-memory";
 import { checkTrace } from "@/lib/maya-trace";
-import { RECONNECT_GRACE_MS, REJOIN_AFTER_LEAVE_MS, voiceProviders } from "@/lib/maya-voice";
+import { BOARD_CLOSE_SETTLE_MS, RECONNECT_GRACE_MS, REJOIN_AFTER_LEAVE_MS, voiceProviders } from "@/lib/maya-voice";
 import type { QuestionPackage } from "@/lib/question-package";
 import { mayaWorkbookFixture } from "@/lib/maya-workbook-fixture";
 import { selectWorkbookQuestion } from "@/lib/maya-workbook-question";
@@ -975,8 +975,9 @@ it.each([false, true])("stores the flag-off hard close without board recovery (a
   const unblock = Promise.withResolvers<void>();
   const session = controlSession();
   const updates: CallUpdate[] = [];
+  const closed = vi.fn(async () => {});
   const run = new VoiceCallRun(session as unknown as voice.AgentSession, c.call, {
-    board: c.board, timers: c.clock.timers, notify: update => updates.push(update),
+    board: c.board, timers: c.clock.timers, notify: update => updates.push(update), closed,
   });
   let stops = 0;
   let statusHeld = false;
@@ -1019,10 +1020,91 @@ it.each([false, true])("stores the flag-off hard close without board recovery (a
     expect(c.store.rows()[0]).toMatchObject({ outcome: { reason: "time_limit" }, boardHistory: { delivery: confirmed } });
     expect(c.connections.rows().slice(-2).map(event => event.kind)).toEqual(["child_left", "agent_left"]);
     expect(updates.at(-1)).toMatchObject({ ended: true });
+    if (alreadyRecovering) {
+      await c.clock.advance(BOARD_CLOSE_SETTLE_MS / 1000);
+      expect(closed).toHaveBeenCalledOnce();
+    }
   } finally {
     unblock.resolve();
     await recovering;
     await run.hangUp();
+  }
+});
+
+it.each(["deadline", "hang-up"])("preserves receiver-shown work in the flag-off %s replay", async close => {
+  const c = await voiceCall();
+  const shown = Promise.withResolvers<void>();
+  const unblock = Promise.withResolvers<void>();
+  const session = controlSession();
+  const closed = vi.fn(async () => {});
+  const updates: CallUpdate[] = [];
+  const run = new VoiceCallRun(session as unknown as voice.AgentSession, c.call, {
+    board: c.board, timers: c.clock.timers, notify: update => updates.push(update), closed,
+  });
+  let releaseTries = 0;
+  let stopTries = 0;
+  let resets = 0;
+  let closing: Promise<void> | null = null;
+  try {
+    await run.agentJoined();
+    await run.childJoined();
+    const context = new llm.ChatContext();
+    await readReply(await run.agent.llmNode(context, llm.ToolContext.empty(), {}));
+    context.addMessage({ role: "user", content: "I don't know." });
+    await readReply(await run.agent.llmNode(context, llm.ToolContext.empty(), {}));
+    await c.board.settled();
+    expect(c.call.session.checkedExchange).toBeUndefined();
+    const scope = c.receiver.scope()!;
+    const batchId = c.receiver.staged()[0].batchId;
+    c.sender.useTransport({ async call(request) {
+      const response = c.receiver.handle(request);
+      if (request.type === "reset") resets++;
+      if (request.type === "stop") {
+        stopTries++;
+        if (close === "hang-up") throw Error("lost stop reply");
+      }
+      if (request.type === "release" && request.batchId === batchId) {
+        releaseTries++;
+        shown.resolve();
+        await unblock.promise;
+        if (close === "hang-up") throw Error("lost release reply");
+      }
+      return response;
+    } });
+    await c.board.timing(scope, 10_000, 100, "word");
+    const release = c.board.played(scope, 100).catch(() => {});
+    await shown.promise;
+    const observed = (id: string) => c.store.rows()[0].boardHistory?.delivery?.events.filter(e => e.kind === "batch" && e.batchId === id) ?? [];
+    expect(c.receiver.snapshot().events.filter(e => e.kind === "batch" && e.batchId === batchId)).toHaveLength(1);
+    expect(observed(batchId)).toHaveLength(0);
+    if (close === "deadline") {
+      session.userState = "speaking";
+      await c.clock.advance(TIME_LIMITS.endAtMs / 1000);
+      closing = run.done;
+      await waitFor(() => updates.at(-1)?.ended === true, "the persisted deadline before the release ACK", 750);
+      expect(observed(batchId)).toHaveLength(0);
+    } else {
+      closing = run.hangUp();
+      await waitFor(() => stopTries >= 3, "the lost hang-up stop replies", 750);
+    }
+    expect(session.close).toHaveBeenCalledOnce();
+    const ended = c.store.rows()[0];
+    unblock.resolve();
+    await release;
+    await closing;
+    expect(closed).toHaveBeenCalledOnce();
+    expect(observed(batchId)).toHaveLength(1);
+    const replay = await c.calls.view(c.id);
+    expect(replay?.batches.filter(b => b.transactionId === batchId)).toHaveLength(1);
+    expect(replay?.outcome?.reason).toBe(close === "deadline" ? "time_limit" : "child_stopped");
+    if (close === "deadline") {
+      expect(c.store.rows()[0]).toMatchObject({ endedAt: ended.endedAt, trace: ended.trace, outcome: ended.outcome, learningEventId: ended.learningEventId });
+      expect(releaseTries).toBe(1);
+      expect(resets).toBe(0);
+    } else expect(resets).toBe(1);
+  } finally {
+    unblock.resolve();
+    await (closing ?? run.hangUp());
   }
 });
 

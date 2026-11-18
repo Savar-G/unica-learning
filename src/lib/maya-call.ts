@@ -89,7 +89,7 @@ import { createTextSession, readFateReports, withHelpLedger, type BoardFateRepor
 import { packageHash, type MayaTrace } from "@/lib/maya-trace";
 import { type QuestionPackage, type QuestionRef } from "@/lib/question-package";
 import { teachingPackage } from "@/lib/maya-teaching";
-import { connectedSeconds, VOICE_CALL_STALE_MS, type ConnectionEvent, type ConnectionKind } from "@/lib/maya-voice";
+import { BOARD_CLOSE_SETTLE_MS, connectedSeconds, VOICE_CALL_STALE_MS, type ConnectionEvent, type ConnectionKind } from "@/lib/maya-voice";
 import { spendCloseOf, SPEND_CLOSE, type CallSpend, type SpendCall, type SpendState, type VoiceMeter } from "@/lib/maya-spend";
 import type { CallBudget, Handle } from "@/lib/maya-spend-block";
 import { SpendRefused } from "@/lib/maya-spend-ai";
@@ -1312,6 +1312,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const acknowledged = [...(found.live.acknowledged ?? [])];
       let lost = false;
       let replaced = false;
+      let boardAfterLimitUntil: number | null = null;
       const stopBudget = () => { session.cancelPending(); return budget?.stop(); };
       const lose = (confirmed = false) => { lost = true; if (confirmed) replaced = true; void stopBudget(); };
       let queue: Promise<void> = Promise.resolve();
@@ -1645,7 +1646,21 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           // B1: the screen's word on each batch reaches the session at once (the next turn's brief reads it).
           if (!inactive() && !session.ended) observe(session);
           later(async () => {
-            if (lost || record.status === "ended") return;
+            if (lost) return;
+            if (record.status === "ended") {
+              const now = seams.clock();
+              const prior = record.boardHistory?.delivery;
+              if (boardAfterLimitUntil === null || now >= boardAfterLimitUntil || !prior || copy.events.length <= prior.events.length) return;
+              try {
+                const boardHistory = voiceBoardHistory(copy, record.startedAt === null ? now : Date.parse(record.startedAt), now, record.boardHistory);
+                if (await store.update(record.id, record.revision, { boardHistory })) {
+                  record = { ...record, boardHistory, revision: record.revision + 1 };
+                } else boardAfterLimitUntil = null;
+              } catch {
+                monitorProduct("maya.recovery_failed", { callId: record.id, step: "voice" });
+              }
+              return;
+            }
             const boardHistory = voiceBoardHistory(copy, record.live?.text.session.startedAt ?? seams.clock(), seams.clock(), record.boardHistory);
             const change: CallChange = { boardHistory, ...await saveExchangeEvidence(observe) };
             if (!(await store.update(record.id, record.revision, change))) { lose(true); return; }
@@ -1702,6 +1717,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         tick: () => turn(() => session.tick(), undefined, undefined, 2),
         writing: (status) => turn(() => session.writing(status), undefined, undefined, 2),
         async limit() {
+          const settleUntil = seams.clock() + BOARD_CLOSE_SETTLE_MS;
           void stopBudget();
           later(async () => {
             if (lost || record.status === "ended" || !record.live) return;
@@ -1711,7 +1727,10 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             await final.tick();
             const ended = await end(record, pkg, final, {}, connected, record.startedAt === null);
             if (!ended) { lose(true); }
-            else record = ended;
+            else {
+              record = ended;
+              boardAfterLimitUntil = settleUntil;
+            }
           });
           await queue;
           await meter?.stop();

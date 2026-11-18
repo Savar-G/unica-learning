@@ -22,6 +22,7 @@ export const VOICE_AGENT_NAME = "maya-voice";
 export const VOICE_TOKEN_TTL_SECONDS = 5 * 60;
 /** How long the worker waits for the child to come back after the connection drops (ms). */
 export const RECONNECT_GRACE_MS = 30_000;
+export const BOARD_CLOSE_SETTLE_MS = 20_000;
 /**
  * How long the worker waits for the child to come back after a leave that says the child's screen left (#992). The
  * hang-up button ends the call at once through the maya.hang_up RPC; a leave alone is not proof of it, because a

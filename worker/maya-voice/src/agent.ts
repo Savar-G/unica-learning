@@ -38,7 +38,7 @@ import { boardAudio, countedSynthesis, type SilentSpeech } from "./speech-audio"
 import { VOICE_METER_TICK_MS } from "@/lib/maya-spend";
 import { monitorProduct } from "@/lib/product-monitoring";
 import { limitsOf, sentencesOf } from "@/lib/maya";
-import { asksForNumber, CONNECTION_RENEW_MS, childTurnFrom, endsInOpenNumber, GREETING_ID, GREETING_TEXT, nextTickAt, openingAsksForNumber, RECONNECT_GRACE_MS, REJOIN_AFTER_LEAVE_MS, type Heard, type TurnSilence, type VoiceTuning } from "@/lib/maya-voice";
+import { asksForNumber, BOARD_CLOSE_SETTLE_MS, CONNECTION_RENEW_MS, childTurnFrom, endsInOpenNumber, GREETING_ID, GREETING_TEXT, nextTickAt, openingAsksForNumber, RECONNECT_GRACE_MS, REJOIN_AFTER_LEAVE_MS, type Heard, type TurnSilence, type VoiceTuning } from "@/lib/maya-voice";
 import { ACK_HOLD_LIMIT_MS, ACK_LIMIT_MS, ACK_NOT_STREAMED_MS, ACK_PHRASES, nextAcknowledgement } from "@/lib/maya-voice-ack";
 import { finalMark, heardMarks, TurnClock, type AckSkip, type FinalMark, type TurnOutcome, type VoiceTurnSample } from "./turn-timing";
 
@@ -1309,7 +1309,7 @@ export class VoiceCallRun {
       if (!this.finishing && (this.call.lost || (generation === this.generation && this.childHere && this.options.board?.owns(scope)))) void this.finish({ detail: "the speech board connection failed" });
     });
   }
-  private stopBoard(scope: SpeechScope) {
+  private stopBoard(scope: SpeechScope, recover = true) {
     const board = this.options.board;
     if (!board?.owns(scope)) return;
     // A retired plan's audio never reaches the child, whatever its speech handle says afterwards.
@@ -1318,7 +1318,7 @@ export class VoiceCallRun {
     if (exchange) exchange.cut = true;
     this.boardAudio?.cancelPending(scope);
     if (!this.childHere) { board.detach(scope); return; }
-    const stopped = board.interrupt(scope, !this.finishing);
+    const stopped = board.interrupt(scope, recover);
     if (!exchange) { this.boardTask(stopped, scope); return; }
     const observed = stopped.then(async () => {
       await board.settled();
@@ -1740,15 +1740,19 @@ export class VoiceCallRun {
       this.tickTimer = this.graceTimer = this.limitTimer = this.leaseTimer = this.meterTimer = null;
       this.closeTurn();
       if (this.ungatedSpeech) this.stopBoard(this.ungatedSpeech);
-      if (scope) this.stopBoard(scope);
+      if (scope) this.stopBoard(scope, !limit);
       // Stop media immediately for a deadline, hang-up, failure or lost ownership.
       this.closeMark(entry, reason, "media_close");
       const closing = this.session.close().catch(() => {});
+      const board = this.options.board;
+      const settling = this.childHere && board ? new Promise<void>(resolve => {
+        const timer = this.timers.set(BOARD_CLOSE_SETTLE_MS, resolve);
+        const done = () => { this.timers.clear(timer); resolve(); };
+        void board.settled({ drainOnFailure: true }).then(done, done);
+      }) : undefined;
       let failed = this.call.lost;
       try {
-        if (this.childHere && !limit) {
-          try { await this.options.board?.settled(); } catch { /* Keep the last confirmed snapshot on transport failure. */ }
-        }
+        if (!limit) await settling;
         // Store the media-close boundary before counting, using the database's clock.
         if (this.childHere) await this.call.connection("child_left");
         await this.call.connection("agent_left");
@@ -1758,6 +1762,7 @@ export class VoiceCallRun {
       } catch { failed = true; }
       if (!this.call.replaced) this.options.notify({ revision: this.call.revision, segment: this.segment, ended: !failed, ...(failed ? { error: "technical_issue" as const } : {}) });
       await closing;
+      if (limit) await settling;
       await this.options.closed?.();
     });
     return this.finishing;
