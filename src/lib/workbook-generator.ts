@@ -2832,6 +2832,9 @@ function layOut(input: GenerateInput) {
             const built = buildPlannedItem(c, c.item, { id: "capacity", workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [c.item.skill] });
             const p = built.package;
             if (!p || built.check.status === "failed" || dayProblem(input, p, w.day,slot.place ?? "")) continue;
+            // (Math in the world asks applied problems with working: a circled yes or no waits for the relaxed pass. One beside
+            // two work cards left uneven row gaps on the custom U19 Book 1's Day 4, a layout check.)
+            if (strict && slot.place === "math-in-the-world" && circledAnswer(p)) continue;
             // Use 2 ways only for a question with two sensible methods of its kind, never a trivial sum (workbook-two-ways).
             if (slot.place === "solve-it-two-ways" && input.plan.level >= 10 && !twoWaysMethods(p)) continue;
             // G1: a short-story day takes stories of at most 20 words first (reading load, item 8).

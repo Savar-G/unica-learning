@@ -57,6 +57,9 @@ describe("headings, Watch out lines and the plan", () => {
   it("fails an empty section heading", () => {
     expect(reasons([page(6, 1, [], day([{ slot: "practice-row", items: [], label: "A little harder" }]))])[0]).toMatch(/heading "A little harder" over no questions/);
     expect(reasons([page(6, 1, [], day([{ slot: "practice-row", items: [], label: undefined }]))])).toEqual([]);
+    // "A little harder" over a row of review only reads as an empty section followed by Review.
+    expect(reasons([page(6, 1, [], day([{ slot: "practice-row", items: [5, 6, 7, 8], label: "A little harder", reviewFrom: 5 }]))])[0]).toMatch(/over review questions only/);
+    expect(reasons([page(6, 1, [], day([{ slot: "practice-row", items: [5, 6, 7, 8], label: "A little harder", reviewFrom: 7 }]))])).toEqual([]);
   });
   it("fails a topic name where the Watch out goes, and a broken Watch out", () => {
     expect(reasons([page(52, 7, [], day([{ slot: "worked-example", items: [], label: "Trading tens and ones (up to 19 tens)", explain: "Trading tens and ones (up to 19 tens)." }]))])[0])

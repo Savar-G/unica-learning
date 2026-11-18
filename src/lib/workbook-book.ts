@@ -1469,7 +1469,10 @@ export function dayPageContent(o: {
         return { slot: s.slot, items, who: "Sam", lines: work?.lines ?? [], ...withFigures, ...missing };
       }
       case "practice-row":
-        return { slot: s.slot, items, ...(items.length ? { label: ROW_LABELS[Math.min(row++, ROW_LABELS.length - 1)] } : {}), ...withFigures, ...missing, ...reviewFrom };
+        // (A row of review only takes no heading: its Review tag names it, and "A little harder" over it read as an empty
+        // section, the live U10 Book 1's Day 1 page 4.)
+        { const reviewOnly = reviewFrom.reviewFrom !== undefined && items.length > 0 && items.every((n) => n >= reviewFrom.reviewFrom!);
+          return { slot: s.slot, items, ...(items.length && !reviewOnly ? { label: ROW_LABELS[Math.min(row++, ROW_LABELS.length - 1)] } : {}), ...withFigures, ...missing, ...reviewFrom }; }
       case "finish-these":
         return { slot: s.slot, items, hints: items.map(() => null), ...withFigures, ...missing, ...reviewFrom };
       default:

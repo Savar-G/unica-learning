@@ -75,6 +75,8 @@ export function contentIssues(pages: readonly GeneratedPage[]): ContentIssue[] {
     if (c?.kind !== "day") continue;
     for (const b of c.blocks) {
       if (QUESTION_SLOTS.has(b.slot) && b.label && !b.items.length) issues.push({ page: p.number, kind: "coverage", reason: `the page prints the heading "${b.label}" over no questions` });
+      if (b.slot === "practice-row" && b.label && b.reviewFrom !== undefined && b.items.length && b.items.every((n) => n >= b.reviewFrom!))
+        issues.push({ page: p.number, kind: "coverage", reason: `the page prints the heading "${b.label}" over review questions only` });
       if (!PANELS.has(b.slot)) continue;
       const explain = b.explain?.trim();
       if (explain && !/^Watch out: /.test(explain) && [b.label, c.title].some((t) => t && explain.replace(/\.$/, "").toLowerCase() === t.trim().toLowerCase()))
