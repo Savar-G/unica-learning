@@ -1074,8 +1074,14 @@ export class VoiceCallRun {
       const generation = guidance ? this.generation : pace?.generation ?? this.generation;
       const ungated = last.priority && !guidance && !this.call.session.safety.flagged && !last.boardCues?.length;
       // A plan with no batches has nothing to wait for, and a late board answer must not hold back these words.
-      try { if (!ungated) staged = await this.stageBoard(last, !!last.boardCues?.length, pace?.turnId, current); }
-      catch (error) { this.boardFailed(error); if (generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return this.closeTurn(pace); }
+      try {
+        if (!ungated) await this.stageBoard(last, !!last.boardCues?.length, pace?.turnId, current, scope => { staged = scope; });
+      } catch (error) {
+        if (!current()) return abandon();
+        this.boardFailed(error);
+        if (generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" });
+        return this.closeTurn(pace);
+      }
       if (!current()) return abandon();
       if (this.finishing || !this.childHere || generation !== this.generation) {
         this.finalDropped({ ...last, say: turns.flatMap(t => t.say) });
@@ -1312,7 +1318,7 @@ export class VoiceCallRun {
     if (exchange) exchange.cut = true;
     this.boardAudio?.cancelPending(scope);
     if (!this.childHere) { board.detach(scope); return; }
-    const stopped = board.interrupt(scope);
+    const stopped = board.interrupt(scope, !this.finishing);
     if (!exchange) { this.boardTask(stopped, scope); return; }
     const observed = stopped.then(async () => {
       await board.settled();
@@ -1391,7 +1397,7 @@ export class VoiceCallRun {
     console.warn("[maya voice] board stage failed", this.call.id, error instanceof Error ? error.message : String(error));
   }
 
-  private async stageBoard(turn: Pick<VoiceTurn, "boardCues" | "exchangeTurnId">, wait = true, turnId?: string, current = () => true) {
+  private async stageBoard(turn: Pick<VoiceTurn, "boardCues" | "exchangeTurnId">, wait = true, turnId?: string, current = () => true, onScope?: (scope: SpeechScope | null) => void) {
     if (!this.options.board) return null;
     if (this.exchangeAdmission && !this.call.session.safety.flagged) await this.exchangeAdmission;
     if (this.exchangeBoard && !this.call.session.safety.flagged) await this.exchangeBoard;
@@ -1405,6 +1411,7 @@ export class VoiceCallRun {
     void staging.then(r => { if (r.refused.length) { console.warn("[maya voice] board batch refused", this.call.id, r.refused); this.call.boardRefused?.(r.refused.map(x => x.batchId)); } }, () => {});
     const scope = this.options.board.capture(id);
     this.boardScope = scope;
+    onScope?.(scope);
     this.exchangeScope = scope && turn.exchangeTurnId ? { scope, turnId: turn.exchangeTurnId, cut: false } : null;
     if (scope && turnId && turn.boardCues?.length) this.options.measureBoardPlan?.(scope.utteranceId, turnId, turn.boardCues.map(cue => cue.batch.transactionId));
     if (wait) await staging;
@@ -1739,7 +1746,7 @@ export class VoiceCallRun {
       const closing = this.session.close().catch(() => {});
       let failed = this.call.lost;
       try {
-        if (this.childHere) {
+        if (this.childHere && !limit) {
           try { await this.options.board?.settled(); } catch { /* Keep the last confirmed snapshot on transport failure. */ }
         }
         // Store the media-close boundary before counting, using the database's clock.

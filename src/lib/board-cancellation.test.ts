@@ -108,3 +108,150 @@ it("scoped snapshot parts fit the RPC bound with the longest escaped owner ID", 
   expect(Math.max(...sizes)).toBeLessThanOrEqual(MAX_BATCH_BYTES);
   expect(sender.snapshot()).toEqual(receiver.snapshot());
 });
+
+it.each([true, false])("does not reset a newer same-sender plan after old stop replies are lost (stop arrived=%s)", async delivered => {
+  const c = await setup();
+  const started = Promise.withResolvers<void>();
+  const lost = Promise.withResolvers<void>();
+  const epoch = c.sender.epoch();
+  c.sender.useTransport({ async call(request) {
+    if (request.type === "stop" && request.epoch === epoch) {
+      if (delivered) await c.transport.call(request);
+      started.resolve();
+      await lost.promise;
+      throw Error("lost old stop reply");
+    }
+    return c.transport.call(request);
+  } });
+  const stopping = c.board.interrupt(c.scope);
+  const stopped = Promise.allSettled([stopping]);
+  try {
+    await started.promise;
+    await c.board.reconnect(c.scope);
+    const newerEpoch = c.sender.epoch();
+    await c.board.stage("new session", [{ word: 1, batch: batch("kept") }]);
+    const scope = c.board.capture("new session")!;
+    lost.resolve();
+    expect((await stopped)[0]?.status).toBe("fulfilled");
+    expect(c.receiver.epoch()).toBe(newerEpoch);
+    expect(c.receiver.staged().map(b => b.batchId)).toEqual(["kept"]);
+    await c.board.timing(scope, 1, 100, "word");
+    await c.board.played(scope, 100);
+    expect(c.receiver.snapshot().events.filter(e => e.kind === "batch").map(e => e.batchId)).toEqual(["kept"]);
+  } finally {
+    lost.resolve();
+    await stopped;
+  }
+});
+
+it.each([false, true])("fences a held release independently of its RPC (receiver already showed it=%s)", async confirmed => {
+  const c = await setup();
+  const entered = Promise.withResolvers<void>();
+  const unblock = Promise.withResolvers<void>();
+  const epoch = c.sender.epoch();
+  c.sender.useTransport({ async call(request) {
+    if (request.type === "stop" && request.epoch === epoch) throw Error("stop did not reach the receiver");
+    if (request.type === "release" && request.epoch === epoch) {
+      const response = confirmed ? await c.transport.call(request) : undefined;
+      entered.resolve();
+      await unblock.promise;
+      return response ?? c.transport.call(request);
+    }
+    return c.transport.call(request);
+  } });
+  await c.board.timing(c.scope, 1, 100, "word");
+  const playback = Promise.allSettled([c.board.played(c.scope, 100)]);
+  await entered.promise;
+  const stopping = Promise.allSettled([c.board.interrupt(c.scope)]);
+  try {
+    const fenced = await new Promise<boolean>(resolve => {
+      const deadline = setTimeout(() => resolve(false), 500);
+      void stopping.then(() => { clearTimeout(deadline); resolve(c.receiver.epoch() > epoch); });
+    });
+    expect(fenced).toBe(true);
+  } finally {
+    unblock.resolve();
+    await stopping;
+    await playback;
+  }
+  await c.board.settled();
+  expect(c.receiver.snapshot().events.filter(e => e.kind === "batch").map(e => e.batchId)).toEqual(confirmed ? ["new"] : []);
+  expect(c.sender.snapshot()).toEqual(c.receiver.snapshot());
+  await c.board.stage("after recovery", [{ word: 1, batch: batch("after") }]);
+  expect(c.receiver.staged().map(b => b.batchId)).toEqual(["after"]);
+});
+
+it("an in-flight recovery reset cannot reclaim the board after a replacement claims it", async () => {
+  const c = await setup();
+  const reached = Promise.withResolvers<void>();
+  const unblock = Promise.withResolvers<void>();
+  c.sender.useTransport({ async call(request) {
+    if (request.type === "stop") throw Error("lost stop");
+    if (request.type === "reset") {
+      reached.resolve();
+      await unblock.promise;
+    }
+    return c.transport.call(request);
+  } });
+  const stopping = Promise.allSettled([c.board.interrupt(c.scope)]);
+  try {
+    await reached.promise;
+    const replacement = createBoardSender({ sessionId: "call", senderId: "replacement", transport: c.transport });
+    expect(await replacement.connect()).toEqual({ ok: true });
+    const epoch = replacement.epoch();
+    const scope = { utteranceId: "replacement", generation: 1 };
+    expect(await replacement.send(batch("replacement"), { scope })).toMatchObject({ ok: true, state: "accepted" });
+    unblock.resolve();
+    expect((await stopping)[0]).toMatchObject({ status: "rejected", reason: expect.objectContaining({ message: expect.stringContaining("superseded") }) });
+    expect(c.receiver.epoch()).toBe(epoch);
+    expect(c.receiver.staged().map(b => b.batchId)).toEqual(["replacement"]);
+    expect(await replacement.release("replacement", scope)).toMatchObject({ ok: true, state: "shown" });
+  } finally {
+    unblock.resolve();
+    await stopping;
+  }
+});
+
+it("does not claim a stop was confirmed when the receiver cannot be reached", async () => {
+  const c = await setup();
+  const epoch = c.receiver.epoch();
+  const snapshot = c.receiver.snapshot();
+  c.sender.useTransport({ async call() { throw Error("board partition"); } });
+  await expect(c.board.interrupt(c.scope)).rejects.toThrow("unreachable");
+  expect(c.board.owns(c.scope)).toBe(false);
+  expect(c.receiver.epoch()).toBe(epoch);
+  expect(c.receiver.staged().map(b => b.batchId)).toEqual(["new"]);
+  expect(c.sender.snapshot()).toEqual(snapshot);
+});
+
+it("changing lines alone does not confirm an old stop or retry it on the new line", async () => {
+  const c = await setup();
+  const reached = Promise.withResolvers<void>();
+  const unblock = Promise.withResolvers<void>();
+  c.sender.useTransport({ async call(request) {
+    if (request.type === "stop") {
+      reached.resolve();
+      await unblock.promise;
+      throw Error("lost stop on the old line");
+    }
+    return c.transport.call(request);
+  } });
+  const stopping = Promise.allSettled([c.board.interrupt(c.scope)]);
+  let calls = 0;
+  try {
+    await reached.promise;
+    c.sender.useTransport({ async call(request) {
+      calls++;
+      return c.transport.call(request);
+    } });
+    unblock.resolve();
+    expect((await stopping)[0]).toMatchObject({ status: "rejected", reason: expect.objectContaining({ message: expect.stringContaining("unreachable") }) });
+    expect(calls).toBe(0);
+    expect(c.receiver.staged().map(b => b.batchId)).toEqual(["new"]);
+    await c.board.reconnect(c.scope);
+    expect(c.receiver.staged()).toEqual([]);
+  } finally {
+    unblock.resolve();
+    await stopping;
+  }
+});

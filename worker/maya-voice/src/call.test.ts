@@ -913,6 +913,119 @@ it.each(["before", "after"])("retires an unsaid retry stale %s staging without l
   } finally { answered.resolve(); await run.hangUp(); }
 });
 
+it("keeps the newer reply when the abandoned retry's cancel is rejected", async () => {
+  const c = await voiceCall({ model: ruleConversationalModel(), exchange: true });
+  const cancelling = Promise.withResolvers<void>();
+  const unblock = Promise.withResolvers<void>();
+  const retired = Promise.withResolvers<void>();
+  let hold = false;
+  let delayedScope = 0;
+  let rejected = false;
+  const sender = createBoardSender({ sessionId: c.id, senderId: "overlap", transport: {
+    async call(request) {
+      const delayed = hold && request.type === "cancel";
+      if (delayed) {
+        hold = false;
+        delayedScope = request.scope.generation;
+        cancelling.resolve();
+        await unblock.promise;
+      }
+      const reply = c.receiver.handle(request);
+      if (request.type === "stop" && delayedScope && request.scope.generation > delayedScope) retired.resolve();
+      if (delayed) rejected = !reply.ok && reply.code === "invalid_request";
+      return reply;
+    },
+  } });
+  const board = createBoardSpeech({ sender, now: c.clock.now, observe: snapshot => c.call.observeBoard(snapshot) });
+  const session = controlSession();
+  const run = new VoiceCallRun(session as unknown as voice.AgentSession, c.call, { board, timers: c.clock.timers, notify() {} });
+  const context = new llm.ChatContext();
+  const runNode = async () => readReply(await run.agent.llmNode(context, llm.ToolContext.empty(), {}));
+  try {
+    await run.childJoined();
+    await runNode();
+    context.addMessage({ role: "user", content: "Show me how to regroup." });
+    await runNode();
+    await board.settled();
+    expect(c.receiver.staged()).toHaveLength(2);
+    hold = true;
+    context.addMessage({ role: "user", content: "Show me how to regroup again." });
+    const retry = runNode();
+    await cancelling.promise;
+    context.addMessage({ role: "user", content: "Could you show me how to regroup again?" });
+    const newer = runNode();
+    await retired.promise;
+    unblock.resolve();
+    const settled = await Promise.allSettled([retry, newer]);
+    expect(rejected).toBe(true);
+    expect(run.done).toBeNull();
+    expect(settled.map(result => result.status)).toEqual(["fulfilled", "fulfilled"]);
+    await board.settled();
+    expect(c.call.session.checkedExchange!.turns.at(-1)!.actions).toHaveLength(2);
+    expect(c.receiver.staged().map(b => b.batchId)).toEqual(c.call.session.checkedExchange!.turns.at(-1)!.actions.map(a => a.batchId));
+  } finally {
+    unblock.resolve();
+    await run.hangUp();
+  }
+});
+
+it.each([false, true])("stores the flag-off hard close without board recovery (already recovering=%s)", async alreadyRecovering => {
+  const c = await voiceCall();
+  const held = Promise.withResolvers<void>();
+  const unblock = Promise.withResolvers<void>();
+  const session = controlSession();
+  const updates: CallUpdate[] = [];
+  const run = new VoiceCallRun(session as unknown as voice.AgentSession, c.call, {
+    board: c.board, timers: c.clock.timers, notify: update => updates.push(update),
+  });
+  let stops = 0;
+  let statusHeld = false;
+  let recovering: Promise<unknown> | undefined;
+  try {
+    await run.agentJoined();
+    await run.childJoined();
+    const context = new llm.ChatContext();
+    await readReply(await run.agent.llmNode(context, llm.ToolContext.empty(), {}));
+    context.addMessage({ role: "user", content: "I don't know." });
+    await readReply(await run.agent.llmNode(context, llm.ToolContext.empty(), {}));
+    await c.board.settled();
+    expect(c.call.session.checkedExchange).toBeUndefined();
+    expect(c.receiver.staged().length).toBeGreaterThan(0);
+    const scope = c.receiver.scope()!;
+    const confirmed = c.call.boardSnapshot;
+    const transport = createMemoryTransport(c.receiver);
+    c.sender.useTransport({ async call(request) {
+      if (request.type === "stop") {
+        stops++;
+        throw Error("lost stop");
+      }
+      if (request.type === "status" && stops >= 3) {
+        statusHeld = true;
+        held.resolve();
+        await unblock.promise;
+      }
+      return transport.call(request);
+    } });
+    if (alreadyRecovering) {
+      recovering = c.board.interrupt(scope).catch(() => {});
+      await held.promise;
+    }
+    session.userState = "speaking";
+    await c.clock.advance(TIME_LIMITS.endAtMs / 1000);
+    expect(session.close).toHaveBeenCalledOnce();
+    expect(stops).toBe(3);
+    await waitFor(() => c.store.rows()[0].status === "ended", "the durable close with recovery held", 750);
+    expect(statusHeld).toBe(alreadyRecovering);
+    expect(c.store.rows()[0]).toMatchObject({ outcome: { reason: "time_limit" }, boardHistory: { delivery: confirmed } });
+    expect(c.connections.rows().slice(-2).map(event => event.kind)).toEqual(["child_left", "agent_left"]);
+    expect(updates.at(-1)).toMatchObject({ ended: true });
+  } finally {
+    unblock.resolve();
+    await recovering;
+    await run.hangUp();
+  }
+});
+
 it.each([true, false])("recovers a reachable board after all stop replies are lost (stop arrived=%s)", async delivered => {
   let drop = false;
   let stops = 0;
