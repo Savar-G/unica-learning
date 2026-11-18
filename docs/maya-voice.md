@@ -244,6 +244,8 @@ A child's turn runs behind the speech. `llmNode` returns its stream at once, so 
 - An ordinary answer waits for the phrase to finish, because cutting a phrase of a few words sounds worse than a short wait. If the phrase's audio never reports an end, its speech is stopped 3000 ms after it was queued (`ACK_HOLD_LIMIT_MS`, 5000 ms before the review of PR #577), and the answer is queued as speech of its own, because a word added to that reply would wait for the same end (#589). The longest phrase is about 1.5 s at a calm pace.
 - It is not in the call's transcript or trace, which hold only what the session accepted. The `voice turn` log holds the phrase id. Practice runs do not run it: they use the text adapter.
 
+A priority deadline line with no drawing uses an audio-only scope. The worker supplies its audio to that exact LiveKit speech handle rather than borrowing the current board plan or the next speech's marker. A pending board acknowledgement cannot hold those frames back. The scope cannot draw or release a batch; a completed or disconnected speech cannot contribute stale frames. Fixed guidance keeps its existing policy and delivery path.
+
 **The measure.** The worker logs one `voice turn` line per child turn, and a `voice turn report` line when the call closes (counts, then p50 and p95). Logs hold times and phrase ids, never words. `fakeProviders` says which side was fake.
 
 | Field | Meaning |

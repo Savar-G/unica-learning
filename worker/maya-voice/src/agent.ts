@@ -215,18 +215,37 @@ export class MayaVoiceAgent extends voice.Agent {
   }
 
   override async ttsNode(text: ReadableStream<string> | AsyncIterable<string>, settings: voice.ModelSettings) {
+    const ungated = this.ungatedNext;
+    this.ungatedNext = false;
+    return this.synthesizeSpeech(text, settings, this.utteranceOwner?.() ?? { turnId: null, kind: "other" }, this.board?.scope(), !ungated);
+  }
+
+  audioWithoutBoard(text: string, scope: SpeechScope, owner: UtteranceOwner): ReadableStream<AudioFrame> {
+    let reader: ReadableStreamDefaultReader<AudioFrame> | undefined;
+    let cancelled = false;
+    return new ReadableStream<AudioFrame>({
+      pull: async controller => {
+        reader ??= (await this.synthesizeSpeech(ReadableStream.from([text]), {}, owner, scope, false))?.getReader();
+        if (cancelled) { await reader?.cancel(); return; }
+        if (!reader) return controller.close();
+        const next = await reader.read();
+        if (cancelled) return;
+        if (next.done) controller.close();
+        else controller.enqueue(next.value);
+      },
+      cancel: async reason => { cancelled = true; await reader?.cancel(reason); },
+    }, { highWaterMark: 0 });
+  }
+
+  private synthesizeSpeech(text: ReadableStream<string> | AsyncIterable<string>, settings: voice.ModelSettings, owner: UtteranceOwner, scope: SpeechScope | null | undefined, gate: boolean) {
     // Every line reaches the voice provider here: replies, acknowledgement phrases and guidance said again.
-    const sentence = telemetry().speech(this.utteranceOwner?.() ?? { turnId: null, kind: "other" });
+    const sentence = telemetry().speech(owner);
     let sentenceIndex = 0;
     const synthesize = (input: ReadableStream<string> | AsyncIterable<string>) =>
       countedSynthesis(input, counted => voice.Agent.default.ttsNode(this, counted, settings), said => void this.call.spoken(said), sentence(sentenceIndex++));
-    // The worker's own opening has an empty plan, and must not wait for the board to connect.
-    const ungated = this.ungatedNext;
-    this.ungatedNext = false;
     if (!this.board) return synthesize(text);
-    const scope = this.board.scope();
     if (!scope || !this.board.sync.owns(scope)) return null;
-    return boardAudio(text, synthesize, this.board.sync, scope, speech => this.onSilent?.(speech), !ungated, this.requireSpokenCues?.(scope));
+    return boardAudio(text, synthesize, this.board.sync, scope, speech => this.onSilent?.(speech), gate, this.requireSpokenCues?.(scope));
   }
 
   /**
@@ -405,6 +424,7 @@ export class VoiceCallRun {
   private exchangeScope: { scope: SpeechScope; turnId: string; silent: boolean } | null = null;
   private exchangeAdmission: Promise<void> | null = null;
   private exchangeBoard: Promise<void> | null = null;
+  private ungatedSpeech: SpeechScope | null = null;
   private boardAudio: CuePlaybackOutput | null = null;
   private childStoppedAt: number | null = null;
   /**
@@ -1028,15 +1048,17 @@ export class VoiceCallRun {
         return this.closeTurn(pace);
       }
       const generation = guidance ? this.generation : pace?.generation ?? this.generation;
+      const ungated = last.priority && !guidance && !this.call.session.safety.flagged && !last.boardCues?.length;
       // A plan with no batches has nothing to wait for, and a late board answer must not hold back these words.
-      try { await this.stageBoard(last, !!last.boardCues?.length, pace?.turnId); }
+      try { if (!ungated) await this.stageBoard(last, !!last.boardCues?.length, pace?.turnId); }
       catch (error) { this.boardFailed(error); if (generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return this.closeTurn(pace); }
       if (this.finishing || !this.childHere || generation !== this.generation) {
         this.finalDropped({ ...last, say: turns.flatMap(t => t.say) });
         return this.closeTurn(pace);
       }
       pace?.clock.staged();
-      speech = this.sayAs(text, { addToChatCtx: true }, { turnId: pace?.turnId ?? null, kind: guidance ? "guidance" : "answer" });
+      const owner: { turnId: string | null; kind: UtteranceKind } = { turnId: pace?.turnId ?? null, kind: guidance ? "guidance" : "answer" };
+      speech = ungated ? this.sayWithoutBoard(text, owner) : this.sayAs(text, { addToChatCtx: true }, owner);
       if (guidance) this.followGuidance(guidance, speech);
     } else this.closeTurn(pace, "no_words");
     for (const turn of turns) await this.after(turn, speech, () => false);
@@ -1088,6 +1110,21 @@ export class VoiceCallRun {
 
   /** The next speech this run asks the session for, and who owns it (one-shot, like `ungatedNext`). */
   private nextUtterance: { turnId: string | null; kind: UtteranceKind; handle: voice.SpeechHandle | null } | null = null;
+
+  private sayWithoutBoard(text: string, owner: { turnId: string | null; kind: UtteranceKind }): voice.SpeechHandle {
+    const board = this.options.board;
+    if (!board) return this.sayAs(text, { addToChatCtx: true }, owner);
+    if (this.boardScope && !this.exchangeBoard) this.stopBoard(this.boardScope);
+    const audioScope = board.openAudio(`speech-${this.segment}-${++this.utterance}`);
+    this.ungatedSpeech = audioScope;
+    const speech = this.session.say(text, { addToChatCtx: true, audio: this.agent.audioWithoutBoard(text, audioScope, owner) });
+    const retire = () => {
+      board.detach(audioScope);
+      if (this.ungatedSpeech === audioScope) this.ungatedSpeech = null;
+    };
+    void speech.waitForPlayout().then(retire, retire);
+    return speech;
+  }
 
   /** `session.say` with the speech's owner named for the telemetry. The speech and its words are the session's, unchanged. */
   private sayAs(text: string | ReadableStream<string>, options: { addToChatCtx: boolean }, owner: { turnId: string | null; kind: UtteranceKind }): voice.SpeechHandle {
@@ -1460,6 +1497,7 @@ export class VoiceCallRun {
     const generation = ++this.generation;
     this.childHere = false;
     if (this.pace) this.cutAck(this.pace);
+    if (this.ungatedSpeech) this.stopBoard(this.ungatedSpeech);
     if (this.boardScope) this.stopBoard(this.boardScope);
     if (this.tickTimer !== null) this.timers.clear(this.tickTimer);
     this.tickTimer = null;
@@ -1631,6 +1669,7 @@ export class VoiceCallRun {
       for (const t of [this.tickTimer, this.graceTimer, this.limitTimer, this.leaseTimer, this.meterTimer]) if (t !== null) this.timers.clear(t);
       this.tickTimer = this.graceTimer = this.limitTimer = this.leaseTimer = this.meterTimer = null;
       this.closeTurn();
+      if (this.ungatedSpeech) this.stopBoard(this.ungatedSpeech);
       if (scope) this.stopBoard(scope);
       // Stop media immediately for a deadline, hang-up, failure or lost ownership.
       this.closeMark(entry, reason, "media_close");
