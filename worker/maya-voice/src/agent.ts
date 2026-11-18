@@ -220,21 +220,25 @@ export class MayaVoiceAgent extends voice.Agent {
     return this.synthesizeSpeech(text, settings, this.utteranceOwner?.() ?? { turnId: null, kind: "other" }, this.board?.scope(), !ungated);
   }
 
-  audioWithoutBoard(text: string, scope: SpeechScope, owner: UtteranceOwner): ReadableStream<AudioFrame> {
+  audioWithoutBoard(text: string, scope: SpeechScope, owner: UtteranceOwner) {
     let reader: ReadableStreamDefaultReader<AudioFrame> | undefined;
     let cancelled = false;
-    return new ReadableStream<AudioFrame>({
+    let ended = false;
+    const stream = new ReadableStream<AudioFrame>({
       pull: async controller => {
         reader ??= (await this.synthesizeSpeech(ReadableStream.from([text]), {}, owner, scope, false))?.getReader();
         if (cancelled) { await reader?.cancel(); return; }
         if (!reader) return controller.close();
         const next = await reader.read();
         if (cancelled) return;
-        if (next.done) controller.close();
-        else controller.enqueue(next.value);
+        if (next.done) {
+          ended = !!this.board?.sync.owns(scope);
+          controller.close();
+        } else controller.enqueue(next.value);
       },
       cancel: async reason => { cancelled = true; await reader?.cancel(reason); },
     }, { highWaterMark: 0 });
+    return { stream, audioEnded: () => ended };
   }
 
   private synthesizeSpeech(text: ReadableStream<string> | AsyncIterable<string>, settings: voice.ModelSettings, owner: UtteranceOwner, scope: SpeechScope | null | undefined, gate: boolean) {
@@ -406,6 +410,12 @@ const timeOf = (turns: readonly VoiceTurn[]) => ({
   repairMs: turns.reduce((sum, t) => sum + (t.time?.repairMs ?? 0), 0),
   reviewMs: turns.reduce((sum, t) => sum + (t.time?.reviewMs ?? 0), 0),
 });
+
+interface ScopedSpeech {
+  speech: voice.SpeechHandle;
+  scope: SpeechScope | null;
+  audioEnded?: () => boolean;
+}
 
 export class VoiceCallRun {
   private lastTickAt: number | null = null;
@@ -1094,7 +1104,7 @@ export class VoiceCallRun {
       const owner = { turnId: pace?.turnId ?? null, kind: guidance ? "guidance" : "answer" } as const;
       const spoken = ungated ? this.sayWithoutBoard(text, owner) : { speech: this.sayAs(text, { addToChatCtx: true }, owner), scope: this.boardScope };
       speech = spoken.speech;
-      if (guidance) this.followGuidance(guidance, speech, spoken.scope, repeatedGuidance);
+      if (guidance) this.followGuidance(guidance, spoken, repeatedGuidance);
     } else this.closeTurn(pace, "no_words");
     queued?.resolve();
     if (!this.deadlineFinish) for (const turn of turns) await this.after(turn, speech, () => false);
@@ -1130,7 +1140,7 @@ export class VoiceCallRun {
   }
 
   /** Follows the guidance's speech. If it was cut it plays once more, and words after it wait for that too. */
-  private followGuidance(text: string, speech: voice.SpeechHandle, scope: SpeechScope | null, repeated = false) {
+  private followGuidance(text: string, { speech, scope, audioEnded }: ScopedSpeech, repeated = false) {
     const followed = { speech, scope, cut: false, repeated, silent: false, over: Promise.resolve() };
     const candidate = !!this.call.guidancePlayback;
     const run = async () => {
@@ -1139,7 +1149,7 @@ export class VoiceCallRun {
       if (this.finishing || (candidate && this.call.replaced)) return;
       const cut = followed.cut || speech.interrupted;
       const capturedAudio = scope && this.boardAudio?.captured(scope);
-      const incomplete = !played || followed.silent || !capturedAudio;
+      const incomplete = !played || !audioEnded?.() || followed.silent || !capturedAudio;
       if (candidate ? cut || incomplete || !this.childHere : played && cut) {
         if (!followed.repeated) {
           if (this.childHere) await this.repeatGuidance(text);
@@ -1169,30 +1179,30 @@ export class VoiceCallRun {
         if (!this.finishing && !this.call.replaced) this.guidanceOwed = text;
         return;
       }
-      const { speech, scope } = this.sayWithoutBoard(text, owner);
-      return this.followGuidance(text, speech, scope, true);
+      return this.followGuidance(text, this.sayWithoutBoard(text, owner), true);
     }
     await this.stageBoard({}, false);
     const speech = this.sayAs(text, { addToChatCtx: true }, owner);
-    await this.followGuidance(text, speech, this.boardScope, true);
+    await this.followGuidance(text, { speech, scope: this.boardScope }, true);
   }
 
   /** The next speech this run asks the session for, and who owns it (one-shot, like `ungatedNext`). */
   private nextUtterance: { turnId: string | null; kind: UtteranceKind; handle: voice.SpeechHandle | null } | null = null;
 
-  private sayWithoutBoard(text: string, owner: { turnId: string | null; kind: UtteranceKind }): { speech: voice.SpeechHandle; scope: SpeechScope | null } {
+  private sayWithoutBoard(text: string, owner: { turnId: string | null; kind: UtteranceKind }): ScopedSpeech {
     const board = this.options.board;
     if (!board) return { speech: this.sayAs(text, { addToChatCtx: true }, owner), scope: null };
     if (this.boardScope && !this.exchangeBoard) this.stopBoard(this.boardScope);
     const audioScope = board.openAudio(`speech-${this.segment}-${++this.utterance}`);
     this.ungatedSpeech = audioScope;
-    const speech = this.session.say(text, { addToChatCtx: true, audio: this.agent.audioWithoutBoard(text, audioScope, owner) });
+    const { stream, audioEnded } = this.agent.audioWithoutBoard(text, audioScope, owner);
+    const speech = this.session.say(text, { addToChatCtx: true, audio: stream });
     const retire = () => {
       board.detach(audioScope);
       if (this.ungatedSpeech === audioScope) this.ungatedSpeech = null;
     };
     void speech.waitForPlayout().then(retire, retire);
-    return { speech, scope: audioScope };
+    return { speech, scope: audioScope, audioEnded };
   }
 
   /** `session.say` with the speech's owner named for the telemetry. The speech and its words are the session's, unchanged. */

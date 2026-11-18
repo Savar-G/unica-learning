@@ -1409,13 +1409,14 @@ describe("#589: the safety guidance does not wait for the close", () => {
 
       await waitFor(() => output.mock.calls.slice(prior).some(([frame]) => frame.data[0] === 2_200), "guidance PCM at the speaker before a board acknowledgement");
       const attempt = say.mock.calls.findIndex(([text]) => text === SAFETY_GUIDANCE.immediate);
-      expect(say.mock.calls[attempt]?.[1]?.audio).toBeInstanceOf(ReadableStream);
+      expect(attempt).toBeGreaterThanOrEqual(0);
       const scope = tagged.mock.calls.find(([frame]) => frame.data[0] === 2_200)?.[0].userdata[SPEECH_SCOPE_DATA] as SpeechScope;
       expect(scope).toBeDefined();
       expect(scope).not.toEqual(old.userdata[SPEECH_SCOPE_DATA]);
       expect(c.board.owns(scope)).toBe(true);
+      const staleCaptures = output.mock.calls.filter(([frame]) => frame.data[0] === 1_100).length;
       await adapter.captureFrame(old);
-      expect(output.mock.calls.slice(prior).every(([frame]) => frame.data[0] === 2_200)).toBe(true);
+      expect(output.mock.calls.filter(([frame]) => frame.data[0] === 1_100)).toHaveLength(staleCaptures);
       expect(request.mock.calls.some(([rpc]) => rpc.type === "release" && batches.includes(rpc.batchId))).toBe(false);
       expect(c.receiver.snapshot().events.some(event => event.kind === "batch" && batches.includes(event.batchId))).toBe(false);
       expect(playback).not.toHaveBeenCalled();
@@ -1457,6 +1458,63 @@ describe("#589: the safety guidance does not wait for the close", () => {
     expect(c.speaker.starts.length - superseded).toBe(missing === "all audio" ? 1 : 2);
     expect(c.speaker.plays.at(-1)).toBeGreaterThanOrEqual(WHOLE_GUIDANCE_S);
     expect(playback.mock.calls).toEqual([[SAFETY_GUIDANCE.immediate]]);
+    expect((await c.store.get(c.id))?.status).toBe("ended");
+  });
+
+  it("does not acknowledge a partial stream when LiveKit times out after the first guidance sentence", async () => {
+    const c = await voiceCall({ model: ruleConversationalModel(), ackLimitMs: 0, seams: { checkedRoutine: true } });
+    c.session.sessionOptions.forwardAudioIdleTimeout = 250;
+    c.tts.amplitude = 2_200;
+    const stalled = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const provider = c.tts.stream.bind(c.tts);
+    let sentence = 0;
+    vi.spyOn(c.tts, "stream").mockImplementation((...args) => {
+      const stream = provider(...args);
+      if (++sentence === 3) {
+        const next = stream.next.bind(stream);
+        vi.spyOn(stream, "next").mockImplementationOnce(async () => {
+          stalled.resolve();
+          await release.promise;
+          return next();
+        });
+      }
+      return stream;
+    });
+    const playback = vi.spyOn(c.call, "guidancePlayback");
+    const output = vi.spyOn(c.speaker, "captureFrame");
+    const say = c.session.say.bind(c.session);
+    const attempts: voice.SpeechHandle[] = [];
+    vi.spyOn(c.session, "say").mockImplementation((text, options) => {
+      if (text === SAFETY_GUIDANCE.immediate && attempts.length === 1) {
+        c.speaker.held = true;
+        c.tts.amplitude = 3_300;
+      }
+      const handle = say(text, options);
+      if (text === SAFETY_GUIDANCE.immediate) attempts.push(handle);
+      return handle;
+    });
+    try {
+      c.say("My dad is hurting me right now.");
+      await stalled.promise;
+      await waitFor(() => output.mock.calls.some(([frame]) => frame.data[0] === 2_200), "the partial guidance PCM");
+      await attempts[0].waitForPlayout();
+      expect(attempts[0].interrupted).toBe(false);
+      await waitFor(() => attempts.length === 2 || playback.mock.calls.length > 0, "the worker's decision after partial playout");
+      expect(playback).not.toHaveBeenCalled();
+      await waitFor(() => output.mock.calls.some(([frame]) => frame.data[0] === 3_300), "the full retry's PCM");
+      expect(attempts).toHaveLength(2);
+      expect(playback).not.toHaveBeenCalled();
+      c.speaker.release();
+      await attempts[1].waitForPlayout();
+      await waitFor(() => playback.mock.calls.length === 1, "completed guidance acknowledgement");
+      expect(playback.mock.calls).toEqual([[SAFETY_GUIDANCE.immediate]]);
+    } finally {
+      release.resolve();
+      c.speaker.release();
+    }
+    await waitFor(() => c.run.done !== null, "the call's end after full guidance");
+    await c.run.done;
     expect((await c.store.get(c.id))?.status).toBe("ended");
   });
 
