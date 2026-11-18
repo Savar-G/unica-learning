@@ -60,6 +60,12 @@ A full local baseline ran 902 files in 619.72 s: 898 passed, one failed, three h
 
 The one partial rerun in the hosted sample had an original Maya gate failure: 36,755 ms against its 30,000 ms assertion (`gate.test.ts:136`, job `132902806859`). Its second attempt passed. That is a missed performance budget, not evidence that the first failure can be ignored. Another failed run ended with a runner shutdown signal; its logs do not establish an assertion failure. No retry or larger timeout was added by this work.
 
+## The Maya gate's timing budget: 2026-11-17
+
+The gate's own work is the cost of `src/lib/maya-gate` in the unit shard, and it was budgeted as one number for the whole block: `ms < 30_000` over 564 behaviours. That number measured the runner, not the gate. Over the 19 first attempts read for this change (15 successful runs, and the four re-runs for this test whose logs still exist), the block took 15,748 to 36,755 ms of wall clock, median 20,605 ms, so 28 to 65 ms a behaviour. The four failing runs measured 30,094, 30,224 and 30,296 ms against the assertion, and one took 36,755 ms: 1.5x the median, not a regression. The 36,755 ms run also spent 53.2 s of CPU time where the median run spent 28.9 s, for the same work, so the spread is machine speed and not queued work.
+
+The test now budgets each behaviour: `ms / BEHAVIOURS.length < 150` ms, four times the 36 ms median. A behaviour added to the gate no longer spends the budget, and a gate made ten times slower measures about 360 ms a behaviour, which fails with the measurement in the message ("332 ms a behaviour, over 564: expected 332 to be less than 150" when a 300 ms spin was put in `runBehaviour`). The hook that wraps the block is now 240 s and is a hang guard, not the speed gate, so a budget failure reports the number instead of a hook timeout. The test logs `perBehaviourMs` beside `wallMs` and `cpuMs` on CI; read that line before moving this budget.
+
 ## Remaining acceptance work
 
 The targets remain unmet. No hosted after-change distribution exists yet.

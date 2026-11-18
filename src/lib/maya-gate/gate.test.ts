@@ -31,16 +31,27 @@ beforeAll(async () => {
     const cpu = process.cpuUsage(cpuStart);
     console.info(JSON.stringify({ check: "maya-behaviour-timing", pid: process.pid, parallelism: availableParallelism(),
       worker: process.env.VITEST_POOL_ID ?? null, behaviours: BEHAVIOURS.length,
-      wallMs: ms, cpuMs: (cpu.user + cpu.system) / 1000 }));
+      wallMs: ms, perBehaviourMs: ms / BEHAVIOURS.length, cpuMs: (cpu.user + cpu.system) / 1000 }));
   }
   const dir = process.env.MAYA_GATE_TRACES;
   if (dir) {
     mkdirSync(dir, { recursive: true });
     for (const id of store.ids()) writeFileSync(join(dir, `${id}.json`), store.load(id)!);
   }
-// Every behaviour runs in this one hook: give it CI's test time limit, not the 10 s hook default (the CI runner took over
-// 10 s once the claim behaviours were added; locally it takes about 3 s).
-}, 60_000);
+// Every behaviour runs in this one hook: it takes about 20 s on CI (564 behaviours) and about 22 s on a laptop, so the
+// hook needs more than its 10 s default. The hook is a hang guard, not the speed gate: the budget below allows up to 85 s
+// and a gate ten times slower takes about 190 s, so this limit stays out of the way until a run has blown the budget by
+// more than 2.8x, and a slow machine reports the measurement rather than a hook timeout.
+}, 240_000);
+
+// The gate's own work, per behaviour. On CI the whole block took 15.7 s to 36.8 s wall clock over the 19 runs measured to
+// 2026-11-17 (median 20.6 s), 28 to 65 ms a behaviour, median 36.5 ms; local runs give 37 to 41 ms. That spread is the
+// machine's speed, not the gate's: the 36.8 s run also spent 1.8x the usual CPU time on the same work (53 s against 29 s).
+// A budget on the whole block therefore sits on the slowest honest runner, and 30 s was 1.46x the median, which failed five
+// CI runs in two days. Budgeting each behaviour instead leaves a new behaviour without a claim on it, and 150 ms is 4.1x
+// the median cost: a gate made ten times slower measures about 365 ms a behaviour and fails here, while the slowest honest
+// runner seen (65 ms) keeps 2.3x of room.
+const BUDGET_MS_PER_BEHAVIOUR = 150;
 
 const RESEARCH_IDS = Array.from({ length: 40 }, (_, i) => `C${String(i + 1).padStart(2, "0")}`);
 const baseId = (id: string) => id.replace(/[a-z]$/, "");
@@ -133,7 +144,8 @@ describe("the behaviour gate", () => {
   });
 
   it("runs fast enough for npm test", () => {
-    expect(ms).toBeLessThan(30_000);
+    const perBehaviour = ms / BEHAVIOURS.length;
+    expect(Math.round(perBehaviour), `${Math.round(perBehaviour)} ms a behaviour, over ${BEHAVIOURS.length}`).toBeLessThan(BUDGET_MS_PER_BEHAVIOUR);
   });
 
   it("keeps docs/maya-gate.md in step: every hard failure, behaviour and pending item, with its status", () => {
