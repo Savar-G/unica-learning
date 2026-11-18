@@ -320,7 +320,9 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
       return connect();
     },
     settled: async ({ drainOnFailure = false } = {}) => {
-      await (drainOnFailure ? observation.catch(() => {}) : observation);
+      await (drainOnFailure ? observation.catch(async () => {
+        if (await sender.sync()) await options.observe?.(sender.snapshot());
+      }) : observation);
       await queue;
       await stagedObservation;
     },

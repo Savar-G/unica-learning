@@ -31,7 +31,7 @@ import { mayaCalls } from "@/lib/maya-call";
 import { EXCHANGE_RPC, readExchangeTarget } from "@/lib/maya/checked-exchange";
 import { voiceOpening } from "./opening";
 import { mayaCallStore } from "@/lib/maya-call-store";
-import { asksWordTimings, callKeyterms, callOfRoom, childIdentity, turnSilences, VOICE_AGENT_NAME, voiceProviders, type TurnSilence, type VoiceCallFacts } from "@/lib/maya-voice";
+import { asksWordTimings, callKeyterms, callOfRoom, childIdentity, HANG_UP_BOARD_DRAIN, turnSilences, VOICE_AGENT_NAME, voiceProviders, type TurnSilence, type VoiceCallFacts } from "@/lib/maya-voice";
 import { VoiceCallRun, voiceSession, type CallUpdate } from "./agent";
 import { CallTelemetry, markedFetch, telemetry, setTelemetry } from "./telemetry";
 import { presenceOf, waitForChild } from "./child-wait";
@@ -201,7 +201,7 @@ export default defineAgent({
     local.registerRpcMethod("maya.hang_up", async (data) => {
       if (data.callerIdentity !== identity) throw new RpcError(1403, "not this call's child");
       void run.hangUp();
-      return "ok";
+      return data.payload === HANG_UP_BOARD_DRAIN ? HANG_UP_BOARD_DRAIN : "ok";
     });
     if (opened.call.session.checkedExchange) local.registerRpcMethod(EXCHANGE_RPC, async (data) => {
       if (data.callerIdentity !== identity) throw new RpcError(1403, "not this call's child");

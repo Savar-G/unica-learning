@@ -595,6 +595,7 @@ export interface VoiceCall {
    * fits and no input is running, the call closes and this returns code's closing words. Else null.
    */
   meter(): Promise<VoiceTurn | null>;
+  stopMeter(): Promise<void>;
   /** Counts the voice of words that became audio at the provider. Never throws, and nothing waits for it. */
   spoken(text: string): Promise<void>;
   /**
@@ -1271,6 +1272,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const pkg = found.live.package;
       // The call's speech-to-text and voice in the spending ledger (D-290).
       const meter: VoiceMeter | null = seams.spend ? seams.spend.voice(voiceSpend) : null;
+      const stopMeter = () => meter?.stop() ?? Promise.resolve();
       // The call's model attempts are paid from its budget block (src/lib/maya-spend-block.ts, latency plan V1): the first
       // block is reserved now, in the background; the first turn waits for it only if it has not answered.
       const budget: CallBudget | null = seams.spend ? seams.spend.budget(voiceSpend) : null;
@@ -1313,6 +1315,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       let lost = false;
       let replaced = false;
       let boardAfterLimitUntil: number | null = null;
+      let mediaCutAt: number | null = null;
       const stopBudget = () => { session.cancelPending(); return budget?.stop(); };
       const lose = (confirmed = false) => { lost = true; if (confirmed) replaced = true; void stopBudget(); };
       let queue: Promise<void> = Promise.resolve();
@@ -1330,7 +1333,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const connected = async (endedAt: number): Promise<CallChange> => {
         const events = await log.read(record.id);
         // The outcome can precede final playout. Count room time through the media close.
-        return { connectedSeconds: connectedSeconds(events, Math.max(endedAt, seams.clock(), ...events.map((e) => e.at))) };
+        return { connectedSeconds: connectedSeconds(events, mediaCutAt ?? Math.max(endedAt, seams.clock(), ...events.map((e) => e.at))) };
       };
       const persist = (out: TextOutput) =>
         later(async () => {
@@ -1718,6 +1721,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         writing: (status) => turn(() => session.writing(status), undefined, undefined, 2),
         async limit() {
           const settleUntil = seams.clock() + BOARD_CLOSE_SETTLE_MS;
+          const settledMeter = stopMeter();
           void stopBudget();
           later(async () => {
             if (lost || record.status === "ended" || !record.live) return;
@@ -1733,7 +1737,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             }
           });
           await queue;
-          await meter?.stop();
+          await settledMeter;
         },
         async connection(kind) {
           const event: ConnectionEvent = { kind, at: seams.clock() };
@@ -1761,12 +1765,17 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           // and the child's words it was reading get the safety read). Waiting for it would keep the room listening.
           return capClose(state, null, unread());
         },
+        stopMeter() {
+          mediaCutAt ??= seams.clock();
+          return stopMeter();
+        },
         spoken: (text) => meter?.spoken(text) ?? Promise.resolve(),
         async end(how) {
           // Stop admissions before waiting for a save or the STT meter.
           const settledBudget = stopBudget();
+          const settledMeter = stopMeter();
           await queue;
-          await meter?.stop();
+          await settledMeter;
           if (lost) { await settledBudget; return; }
           if (record.status === "live") {
             later(async () => {

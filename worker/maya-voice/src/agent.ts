@@ -316,6 +316,7 @@ export interface CallUpdate {
   segment: number;
   ended: boolean;
   error?: "technical_issue";
+  boardDrain?: true;
 }
 
 export interface Timers {
@@ -1746,23 +1747,29 @@ export class VoiceCallRun {
       // Stop media immediately for a deadline, hang-up, failure or lost ownership.
       this.closeMark(entry, reason, "media_close");
       const closing = this.session.close().catch(() => {});
+      void this.call.stopMeter();
       const board = this.options.board;
+      let boardDraining = false;
       const settling = this.childHere && board ? new Promise<void>(resolve => {
-        const timer = this.timers.set(BOARD_CLOSE_SETTLE_MS, resolve);
-        const done = () => { this.timers.clear(timer); resolve(); };
+        boardDraining = true;
+        const done = () => { boardDraining = false; this.timers.clear(timer); resolve(); };
+        const timer = this.timers.set(BOARD_CLOSE_SETTLE_MS, done);
         void board.settled({ drainOnFailure: true }).then(done, done);
       }) : undefined;
       let failed = this.call.lost;
       try {
-        if (!limit) await settling;
         // Store the media-close boundary before counting, using the database's clock.
         if (this.childHere) await this.call.connection("child_left");
         await this.call.connection("agent_left");
+        if (!limit) await settling;
         if (limit) await this.call.limit();
         else await this.call.end(how);
         failed ||= this.call.lost;
       } catch { failed = true; }
-      if (!this.call.replaced) this.options.notify({ revision: this.call.revision, segment: this.segment, ended: !failed, ...(failed ? { error: "technical_issue" as const } : {}) });
+      if (!this.call.replaced) this.options.notify({
+        revision: this.call.revision, segment: this.segment, ended: !failed,
+        ...(failed ? { error: "technical_issue" as const } : limit && boardDraining ? { boardDrain: true as const } : {}),
+      });
       await closing;
       if (limit) await settling;
       await this.options.closed?.();

@@ -7,6 +7,7 @@ import { setProductObserver } from "@/lib/product-monitoring";
 import { logBaselineTurn } from "@/lib/maya-baseline";
 import { createBoardReceiver, createBoardSender, type BoardReceiver, type BoardTransport } from "@/lib/board-protocol";
 import { createMemoryTransport } from "@/lib/board-protocol-memory";
+import { boardRpcHandler, boardRpcTransport } from "@/lib/board-rpc";
 import { createBoardSpeech, type CueMeasurement } from "@/lib/board-speech";
 import { templateSkills } from "@/lib/assessment";
 import { learningEvents } from "@/lib/learning-events";
@@ -1157,13 +1158,34 @@ it.each([false, true])("stores the flag-off hard close without board recovery (a
   }
 });
 
-it.each(["deadline", "hang-up"])("preserves receiver-shown work in the flag-off %s replay", async close => {
-  const c = await voiceCall();
+it.each(["deadline", "deadline with lost replies", "hang-up", "hang-up with a frozen desk", "hang-up with delayed leaves", "hang-up with an admitted turn"])("preserves receiver-shown work in the flag-off %s replay", async close => {
+  const deadline = close.startsWith("deadline");
+  const loseReplies = close !== "deadline";
+  const enteredModel = Promise.withResolvers<void>();
+  const releaseModel = Promise.withResolvers<void>();
+  const model = ruleMayaModel();
+  let holdModel = false;
+  const spend = memorySpendStore();
+  const c = await voiceCall({ model: { ...model, propose: async (input, signal) => {
+    if (holdModel) { enteredModel.resolve(); await releaseModel.promise; }
+    return model.propose(input, signal);
+  } }, spend: clock => {
+    const config = spendConfig({ MAYA_STT_USD_PER_MINUTE: "0.06" });
+    return callSpend(createSpendLedger({ store: spend, clock, config, zone: async () => "America/Vancouver" }), { clock, newId: () => crypto.randomUUID() });
+  } });
   const shown = Promise.withResolvers<void>();
   const unblock = Promise.withResolvers<void>();
   const session = controlSession();
   const closed = vi.fn(async () => {});
   const updates: CallUpdate[] = [];
+  let frozen = false;
+  let transferId = 0;
+  const handle = boardRpcHandler(c.receiver, {
+    allowed: identity => identity === "worker" && (!updates.at(-1)?.ended || updates.at(-1)?.boardDrain === true),
+    readOnly: () => frozen || updates.at(-1)?.ended === true,
+    changed() {},
+  });
+  const rpc = boardRpcTransport({ performRpc: async ({ payload }) => handle("worker", payload) }, "child", () => String(++transferId));
   const run = new VoiceCallRun(session as unknown as voice.AgentSession, c.call, {
     board: c.board, timers: c.clock.timers, notify: update => updates.push(update), closed,
   });
@@ -1171,6 +1193,7 @@ it.each(["deadline", "hang-up"])("preserves receiver-shown work in the flag-off 
   let stopTries = 0;
   let resets = 0;
   let closing: Promise<void> | null = null;
+  let admitted: Promise<unknown> | undefined;
   try {
     await run.agentJoined();
     await run.childJoined();
@@ -1183,17 +1206,17 @@ it.each(["deadline", "hang-up"])("preserves receiver-shown work in the flag-off 
     const scope = c.receiver.scope()!;
     const batchId = c.receiver.staged()[0].batchId;
     c.sender.useTransport({ async call(request) {
-      const response = c.receiver.handle(request);
+      if (request.type === "stop") stopTries++;
+      const response = await rpc.call(request);
       if (request.type === "reset") resets++;
       if (request.type === "stop") {
-        stopTries++;
-        if (close === "hang-up") throw Error("lost stop reply");
+        if (loseReplies) throw Error("lost stop reply");
       }
       if (request.type === "release" && request.batchId === batchId) {
         releaseTries++;
         shown.resolve();
         await unblock.promise;
-        if (close === "hang-up") throw Error("lost release reply");
+        if (loseReplies) throw Error("lost release reply");
       }
       return response;
     } });
@@ -1203,15 +1226,33 @@ it.each(["deadline", "hang-up"])("preserves receiver-shown work in the flag-off 
     const observed = (id: string) => c.store.rows()[0].boardHistory?.delivery?.events.filter(e => e.kind === "batch" && e.batchId === id) ?? [];
     expect(c.receiver.snapshot().events.filter(e => e.kind === "batch" && e.batchId === batchId)).toHaveLength(1);
     expect(observed(batchId)).toHaveLength(0);
-    if (close === "deadline") {
+    if (deadline) {
       session.userState = "speaking";
       await c.clock.advance(TIME_LIMITS.endAtMs / 1000);
       closing = run.done;
       await waitFor(() => updates.at(-1)?.ended === true, "the persisted deadline before the release ACK", 750);
+      expect(updates.at(-1)?.boardDrain).toBe(true);
       expect(observed(batchId)).toHaveLength(0);
     } else {
+      await c.clock.advance(1);
+      if (close === "hang-up with delayed leaves") {
+        const append = c.connections.append;
+        vi.spyOn(c.connections, "append").mockImplementation(async (event, revision) => {
+          if (event.kind === "child_left") await unblock.promise;
+          return append(event, revision);
+        });
+      }
+      if (close === "hang-up with an admitted turn") {
+        holdModel = true;
+        admitted = c.call.child("I got 56.");
+        await enteredModel.promise;
+      }
+      frozen = close === "hang-up with a frozen desk";
       closing = run.hangUp();
       await waitFor(() => stopTries >= 3, "the lost hang-up stop replies", 750);
+      releaseModel.resolve();
+      await admitted;
+      await c.clock.advance(7);
     }
     expect(session.close).toHaveBeenCalledOnce();
     const ended = c.store.rows()[0];
@@ -1222,14 +1263,23 @@ it.each(["deadline", "hang-up"])("preserves receiver-shown work in the flag-off 
     expect(observed(batchId)).toHaveLength(1);
     const replay = await c.calls.view(c.id);
     expect(replay?.batches.filter(b => b.transactionId === batchId)).toHaveLength(1);
-    expect(replay?.outcome?.reason).toBe(close === "deadline" ? "time_limit" : "child_stopped");
-    if (close === "deadline") {
+    expect(replay?.outcome?.reason).toBe(deadline ? "time_limit" : "child_stopped");
+    if (deadline) {
       expect(c.store.rows()[0]).toMatchObject({ endedAt: ended.endedAt, trace: ended.trace, outcome: ended.outcome, learningEventId: ended.learningEventId });
       expect(releaseTries).toBe(1);
       expect(resets).toBe(0);
-    } else expect(resets).toBe(1);
+    } else {
+      expect(resets).toBe(frozen ? 0 : 1);
+      expect(updates.at(-1)?.boardDrain).toBeUndefined();
+      expect({
+        connectedSeconds: c.store.rows()[0].connectedSeconds,
+        speechToText: spend.rows().filter(row => row.what === "speech_to_text").map(row => row.cost),
+      }).toEqual({ connectedSeconds: 1, speechToText: [1_400] });
+    }
   } finally {
+    releaseModel.resolve();
     unblock.resolve();
+    await admitted;
     await (closing ?? run.hangUp());
   }
 });
