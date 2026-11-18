@@ -321,12 +321,15 @@ export function chromiumPrintEngine(): PrintEngine {
     // One more try in a fresh browser when Chromium itself dies mid-print (2026-11-17: "Page.captureScreenshot: Target
     // closed" stopped a live U10 run at its plan step and a U19 fake proof; the same prints passed again). A stopped job
     // and any other error are not retried. The print and its checks are the same either way.
+    // (Up to twice more, a second apart: a U19 fake proof later met two crashes in a row on one print.)
     async print(job) {
-      try {
-        return await engine.print(job);
-      } catch (e) {
-        if (job.signal?.aborted || !crashedBrowser(e)) throw e;
-        return engine.print(job);
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await engine.print(job);
+        } catch (e) {
+          if (attempt >= 2 || job.signal?.aborted || !crashedBrowser(e)) throw e;
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
       }
     },
   };
