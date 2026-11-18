@@ -601,29 +601,7 @@ function capacityInterest(input: GenerateInput, work: PageWork[], except?: Slot)
 /** The day's number and picture check (scheduledItemProblem): with no signals exactly today's. */
 const NEW_IDEA_PICTURES: ReadonlySet<string> = new Set(["worked-example", "now-you", "try-first"]);
 function dayProblem(input: GenerateInput, p: QuestionPackage, day: number, place: string): string | null {
-  return bookStoryProblem(input, p, day, place) ?? scheduledDayProblem(input, p, day, place);
-}
-
-/** The book's pages by their plan, so every path that picks a question sees the other days (layOut registers them). */
-const BOOK_WORK = new WeakMap<WorkbookPlan, readonly PageWork[]>();
-
-/**
- * A number stories or Challenge template another day prints comes back once at most, 3 or more days later
- * (storyRepeatAllowed; the live U10 Book 1, 2026-11-17). Every path that picks a question checks it here, capacity
- * repairs too (the custom U19 Book 1's Day 9 story came back from Day 8 through a refill).
- */
-function bookStoryProblem(input: GenerateInput, p: QuestionPackage, day: number, place: string): string | null {
-  const template = p.templateId?.split(":")[0];
-  // (A Challenge's limit is per page pair, in the planning loop and the book check: nearly identical pages fail.)
-  const key = template && place !== "challenge" ? bookStoryKey(place, template) : null;
-  const work = key ? BOOK_WORK.get(input.plan) : undefined;
-  if (!key || !work) return null;
-  const days = new Set<number>();
-  for (const w of work) if (w.day !== day && !w.page.extraPractice) for (const s of w.slots) {
-    const t = s.contract?.template;
-    if (t && s.place && bookStoryKey(s.place, `${t.skill}#${t.step}.${t.index}`) === key) days.add(w.day);
-  }
-  return storyRepeatAllowed([...days], day) ? null : `the ${place === "challenge" ? "Challenge" : "story"} template ${template} prints on another day`;
+  return scheduledDayProblem(input, p, day, place);
 }
 
 function scheduledDayProblem(input: GenerateInput, p: QuestionPackage, day: number, place: string): string | null {
@@ -2631,7 +2609,6 @@ export function workbookCapacityPlan(curriculum: Curriculum, plan: WorkbookPlan)
 }
 
 function layOut(input: GenerateInput) {
-  const given = input.plan;
   if (input.itemPolicy === "approved-v1") input = { ...input, plan: workbookCapacityPlan(input.curriculum, input.plan) };
   const work: PageWork[] = [];
   let number = 2;
@@ -2674,8 +2651,6 @@ function layOut(input: GenerateInput) {
   }
   // Each slot's skill, kind of question, numbers and person, planned in book order (#380), so the same skill is not
   // asked the same way page after page and no two questions of a page work one sum.
-  // (Under both plans: the capacity plan this function plans with, and the plan its callers pass on.)
-  BOOK_WORK.set(given, work); BOOK_WORK.set(input.plan, work);
   if (input.book) planBook(input, work);
   if (input.itemPolicy === "approved-v1") {
     const used = new Map<string, number>(), frames = new Set<string>();
@@ -2863,15 +2838,17 @@ function layOut(input: GenerateInput) {
             // A number stories or Challenge template another day printed waits while the step has others (Cedric's
             // handoff: avoid the same question families at the same difficulty; the live U10 Book 1 printed one set of three
             // money stories on Days 1, 4 and 7, and one Challenge on Days 8 and 10). The relaxed pass may still repeat it.
-            const bookKey = tk && slot.place ? bookStoryKey(slot.place, tk) : null;
+            // (From U10: U4 to U9 keep their small task pools as tuned.)
+            const bookKey = tk && slot.place && input.plan.level >= 10 ? bookStoryKey(slot.place, tk) : null;
             const daysOf = bookKey ? [...(bookStories.get(bookKey) ?? [])].filter((d) => d !== w.day) : [];
             // A step that is the Challenge on two days, with two sets of hard forms (6 or more), gives the earlier day its first
             // set and the later day its second, each authored as one story, one bare and one missing question (the custom U19
             // Book 1's Days 9 and 10; the live U10 Book 1's Days 8 and 10 printed one set twice).
-            if (strict && slot.place === "challenge" && c.template && !challengeHalf(input, w.day, c.template)) continue;
+            if (strict && slot.place === "challenge" && c.template && input.plan.level >= 10 && !challengeHalf(input, w.day, c.template)) continue;
             // (A Challenge prefers forms no other day prints; a later pass may share one, never two, with a page within 3 days.)
             if (bookKey && slot.place !== "challenge" && (strict ? daysOf.length > 0 : !storyRepeatAllowed(daysOf, w.day))) continue;
-            if (bookKey && slot.place === "challenge" && (strict ? daysOf.length > 0 : !challengeShareAllowed(bookStories, slot.place, tk!, w.day, pageTemplates))) continue;
+            // (A Challenge prefers forms no other day prints, its step's half when it has two sets; a later pass takes any.)
+            if (bookKey && slot.place === "challenge" && strict && daysOf.length > 0) continue;
             // (Show what you know reviews the book with each step's hardest version: the Challenge's limits on practice
             // are not its own.)
             const topReview = slot.place === "show-what-you-know" || slot.place === "level-test";
@@ -4115,17 +4092,6 @@ function dayArithmeticSkills(input: GenerateInput, day: number): string[] {
 function bookStoryKey(place: string, template: string): string | null {
   if (place === "challenge") return `challenge|${template}`;
   return STEP_STORY_PLACES.has(place as SlotName) ? `story|${template}` : null;
-}
-
-/**
- * Whether a Challenge page may take a template another day's Challenge printed: only when that day is 3 or more days away,
- * or when this page shares no other template with it (two Challenge pages within 3 days share one form at most).
- */
-function challengeShareAllowed(bookStories: ReadonlyMap<string, ReadonlySet<number>>, place: string, template: string, day: number, onPage: ReadonlyMap<string, number>): boolean {
-  const near = (d: number) => d !== day && Math.abs(d - day) < 3;
-  const daysOf = (t: string) => [...(bookStories.get(bookStoryKey(place, t) ?? "") ?? [])];
-  const close = daysOf(template).filter(near);
-  return close.every((d) => ![...onPage.keys()].some((t) => daysOf(t).includes(d)));
 }
 
 /**

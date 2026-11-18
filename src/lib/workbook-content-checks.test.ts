@@ -7,12 +7,12 @@ import { trivialCalculation, twoWaysMethods } from "./workbook-two-ways";
 // Made-up pages: each check is shown failing on the problem a read of the live U10 Book 1 found (2026-11-17), and
 // passing once it is put right.
 const pkg = (text: string, o: { templateId?: string; kind?: string; answer?: number | string } = {}): QuestionPackage => ({
-  text, templateId: o.templateId ?? null, operation: o.kind ? { kind: o.kind, operands: [0, 0] } : null,
+  text, level: 10, templateId: o.templateId ?? null, operation: o.kind ? { kind: o.kind, operands: [0, 0] } : null,
   answer: typeof o.answer === "number" ? { value: { type: "number", value: o.answer } } : null,
   item: { regions: typeof o.answer === "string" ? [{ id: "c", kind: "choice", mark: "circle", label: null, choices: [o.answer], answer: o.answer }] : [] },
 } as unknown as QuestionPackage);
 const page = (number: number, day: number | null, questions: { place: string; package: QuestionPackage }[], content: unknown = null): GeneratedPage =>
-  ({ number, day, questions: questions.map((q, i) => ({ number: i + 1, ...q })), content } as unknown as GeneratedPage);
+  ({ number, day, questions: questions.map((q, i) => ({ number: i + 1, itemPlan: { template: { challengeTemplates: 6 } }, ...q })), content } as unknown as GeneratedPage);
 const reasons = (pages: GeneratedPage[]) => contentIssues(pages).map((i) => i.reason);
 
 describe("Use 2 ways methods come from the kind of question", () => {
@@ -80,7 +80,11 @@ describe("number stories and Challenges vary across the book", () => {
     expect(reasons([story(8), story(10)])[0]).toMatch(/repeats the number story template/);
     expect(reasons([story(2), story(8)])).toEqual([]);
     expect(reasons([story(1)])).toEqual([]);
-    // A Challenge page sharing 2 or more templates with one 1 or 2 days away is nearly identical (Days 8 and 10 shared 3).
+    // (U4 to U9 keep their small pools: no check below U10.)
+    const young = (day: number) => page(day * 8, day, [{ place: "word-problems", package: { ...pkg("A story."), level: 4, templateId: "1.1-count#1.1:story" } as QuestionPackage }]);
+    expect(reasons([young(1), young(2), young(3)])).toEqual([]);
+    // A Challenge page sharing 2 or more templates with one 1 or 2 days away is nearly identical (Days 8 and 10 shared 3),
+    // when the step has two sets of hard forms to give each day its own.
     const challenge = (day: number, ids: number[]) => page(day * 8, day, ids.map((i) => ({ place: "challenge", package: pkg("A task.", { templateId: `3.1-estimate-quantity#3.${i}:story` }) })));
     expect(reasons([challenge(8, [8, 9, 10]), challenge(10, [8, 9, 10])])[0]).toMatch(/the Challenge repeats 3 templates of page 64/);
     expect(reasons([challenge(9, [5, 6, 8]), challenge(10, [8, 9, 10])])).toEqual([]);

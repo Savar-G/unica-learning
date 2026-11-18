@@ -57,7 +57,8 @@ export function contentIssues(pages: readonly GeneratedPage[]): ContentIssue[] {
         issues.push({ page: p.number, kind: "coverage", reason: `question ${q.number} asks for 2 ways but has no two methods of its kind ("${pkg.text}")` });
       if (guideIsAnswer(pkg)) issues.push({ page: p.number, kind: "coverage", reason: `question ${q.number}'s answer is the guide it prints ("${pkg.text}")` });
       const template = pkg.templateId?.split(":")[0];
-      if (template && q.place && STORY_PLACES.has(q.place) && p.day !== null) {
+      // (From U10, as the planner applies it: U4 to U9 keep their small task pools.)
+      if (template && q.place && STORY_PLACES.has(q.place) && p.day !== null && pkg.level >= 10) {
         const key = `${q.place === "challenge" ? "challenge" : "story"}|${template}`;
         const before = storyDays.get(key) ?? [];
         const others = before.filter((u) => u.day !== p.day);
@@ -68,8 +69,9 @@ export function contentIssues(pages: readonly GeneratedPage[]): ContentIssue[] {
         storyDays.set(key, [...before, { day: p.day, page: p.number }]);
       }
     }
-    if (p.day !== null && p.questions.some((q) => q.place === "challenge")) challengePages.push({ day: p.day, page: p.number,
-      templates: new Set(p.questions.flatMap((q) => q.place === "challenge" && q.package?.templateId ? [q.package.templateId.split(":")[0]] : [])) });
+    // (A step with two sets of hard forms, 6 or more, can give each day its own: then a near repeat is avoidable.)
+    if (p.day !== null && p.questions.some((q) => q.place === "challenge" && (q.package?.level ?? 0) >= 10)) challengePages.push({ day: p.day, page: p.number,
+      templates: new Set(p.questions.flatMap((q) => q.place === "challenge" && q.package?.templateId && (q.itemPlan?.template?.challengeTemplates ?? 0) >= 6 ? [q.package.templateId.split(":")[0]] : [])) });
     if (c?.kind !== "day") continue;
     for (const b of c.blocks) {
       if (QUESTION_SLOTS.has(b.slot) && b.label && !b.items.length) issues.push({ page: p.number, kind: "coverage", reason: `the page prints the heading "${b.label}" over no questions` });
