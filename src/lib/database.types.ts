@@ -97,6 +97,82 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_cost_history_completions: {
+        Row: {
+          completed_at: string
+          export_id: string
+        }
+        Insert: {
+          completed_at?: string
+          export_id: string
+        }
+        Update: {
+          completed_at?: string
+          export_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_cost_history_completions_export_id_fkey"
+            columns: ["export_id"]
+            isOneToOne: true
+            referencedRelation: "ai_cost_history_manifests"
+            referencedColumns: ["export_id"]
+          },
+        ]
+      }
+      ai_cost_history_manifests: {
+        Row: {
+          export_id: string
+          manifest: Json
+          registered_at: string
+        }
+        Insert: {
+          export_id: string
+          manifest: Json
+          registered_at?: string
+        }
+        Update: {
+          export_id?: string
+          manifest?: Json
+          registered_at?: string
+        }
+        Relationships: []
+      }
+      ai_cost_history_rows: {
+        Row: {
+          cost_usd: number | null
+          evidence: Json
+          export_id: string
+          generation_id: string | null
+          row_number: number
+          source_row_number: number | null
+        }
+        Insert: {
+          cost_usd?: number | null
+          evidence: Json
+          export_id: string
+          generation_id?: string | null
+          row_number?: number
+          source_row_number?: number | null
+        }
+        Update: {
+          cost_usd?: number | null
+          evidence?: Json
+          export_id?: string
+          generation_id?: string | null
+          row_number?: number
+          source_row_number?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_cost_history_rows_export_id_fkey"
+            columns: ["export_id"]
+            isOneToOne: false
+            referencedRelation: "ai_cost_history_manifests"
+            referencedColumns: ["export_id"]
+          },
+        ]
+      }
       ai_usage_events: {
         Row: {
           calls: number
@@ -1110,6 +1186,82 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+        }
+        Relationships: []
+      }
+      customer_activity: {
+        Row: {
+          actor_id: string
+          child_id: string | null
+          created_at: string
+          event: string
+          id: string
+          note: string | null
+          page: string | null
+          parent_id: string
+          request_id: string
+          workbook_id: string | null
+        }
+        Insert: {
+          actor_id: string
+          child_id?: string | null
+          created_at?: string
+          event: string
+          id?: string
+          note?: string | null
+          page?: string | null
+          parent_id: string
+          request_id: string
+          workbook_id?: string | null
+        }
+        Update: {
+          actor_id?: string
+          child_id?: string | null
+          created_at?: string
+          event?: string
+          id?: string
+          note?: string | null
+          page?: string | null
+          parent_id?: string
+          request_id?: string
+          workbook_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_activity_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_activity_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_activity_workbook_id_fkey"
+            columns: ["workbook_id"]
+            isOneToOne: false
+            referencedRelation: "workbooks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_activity_coverage: {
+        Row: {
+          available_at: string
+          singleton: boolean
+        }
+        Insert: {
+          available_at?: string
+          singleton?: boolean
+        }
+        Update: {
+          available_at?: string
+          singleton?: boolean
         }
         Relationships: []
       }
@@ -5371,6 +5523,271 @@ export type Database = {
           },
         ]
       }
+      social_accounts: {
+        Row: {
+          account_id: string
+          name: string
+          platform: string
+          read_at: string
+        }
+        Insert: {
+          account_id: string
+          name: string
+          platform: string
+          read_at: string
+        }
+        Update: {
+          account_id?: string
+          name?: string
+          platform?: string
+          read_at?: string
+        }
+        Relationships: []
+      }
+      social_audience_snapshots: {
+        Row: {
+          dimension: string
+          label: string
+          platform: string
+          read_at: string
+          unit: string
+          value: number
+        }
+        Insert: {
+          dimension: string
+          label: string
+          platform: string
+          read_at: string
+          unit: string
+          value: number
+        }
+        Update: {
+          dimension?: string
+          label?: string
+          platform?: string
+          read_at?: string
+          unit?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_audience_snapshots_platform_fkey"
+            columns: ["platform"]
+            isOneToOne: false
+            referencedRelation: "social_accounts"
+            referencedColumns: ["platform"]
+          },
+        ]
+      }
+      social_daily_snapshots: {
+        Row: {
+          day: string
+          followers: number | null
+          followers_gained: number | null
+          interactions: number | null
+          link_clicks: number | null
+          platform: string
+          profile_visits: number | null
+          raw: Json
+          reach: number | null
+          read_at: string
+          views: number | null
+        }
+        Insert: {
+          day: string
+          followers?: number | null
+          followers_gained?: number | null
+          interactions?: number | null
+          link_clicks?: number | null
+          platform: string
+          profile_visits?: number | null
+          raw: Json
+          reach?: number | null
+          read_at: string
+          views?: number | null
+        }
+        Update: {
+          day?: string
+          followers?: number | null
+          followers_gained?: number | null
+          interactions?: number | null
+          link_clicks?: number | null
+          platform?: string
+          profile_visits?: number | null
+          raw?: Json
+          reach?: number | null
+          read_at?: string
+          views?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_daily_snapshots_platform_fkey"
+            columns: ["platform"]
+            isOneToOne: false
+            referencedRelation: "social_accounts"
+            referencedColumns: ["platform"]
+          },
+        ]
+      }
+      social_post_snapshots: {
+        Row: {
+          comments: number | null
+          follows: number | null
+          likes: number | null
+          platform: string
+          post_id: string
+          raw: Json
+          reach: number | null
+          read_at: string
+          saves: number | null
+          shares: number | null
+          views: number | null
+          watch_percent: number | null
+          watch_seconds: number | null
+        }
+        Insert: {
+          comments?: number | null
+          follows?: number | null
+          likes?: number | null
+          platform: string
+          post_id: string
+          raw: Json
+          reach?: number | null
+          read_at: string
+          saves?: number | null
+          shares?: number | null
+          views?: number | null
+          watch_percent?: number | null
+          watch_seconds?: number | null
+        }
+        Update: {
+          comments?: number | null
+          follows?: number | null
+          likes?: number | null
+          platform?: string
+          post_id?: string
+          raw?: Json
+          reach?: number | null
+          read_at?: string
+          saves?: number | null
+          shares?: number | null
+          views?: number | null
+          watch_percent?: number | null
+          watch_seconds?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_post_snapshots_platform_post_id_fkey"
+            columns: ["platform", "post_id"]
+            isOneToOne: false
+            referencedRelation: "social_posts"
+            referencedColumns: ["platform", "post_id"]
+          },
+        ]
+      }
+      social_posts: {
+        Row: {
+          caption: string
+          format: string
+          permalink: string
+          platform: string
+          post_id: string
+          published_at: string
+          utm_campaign: string | null
+          utm_content: string | null
+        }
+        Insert: {
+          caption: string
+          format: string
+          permalink: string
+          platform: string
+          post_id: string
+          published_at: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+        }
+        Update: {
+          caption?: string
+          format?: string
+          permalink?: string
+          platform?: string
+          post_id?: string
+          published_at?: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_posts_platform_fkey"
+            columns: ["platform"]
+            isOneToOne: false
+            referencedRelation: "social_accounts"
+            referencedColumns: ["platform"]
+          },
+        ]
+      }
+      social_refresh_results: {
+        Row: {
+          message: string | null
+          platform: string
+          started_at: string
+          status: string
+        }
+        Insert: {
+          message?: string | null
+          platform: string
+          started_at: string
+          status: string
+        }
+        Update: {
+          message?: string | null
+          platform?: string
+          started_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_refresh_results_started_at_fkey"
+            columns: ["started_at"]
+            isOneToOne: false
+            referencedRelation: "social_refreshes"
+            referencedColumns: ["started_at"]
+          },
+        ]
+      }
+      social_refreshes: {
+        Row: {
+          started_at: string
+        }
+        Insert: {
+          started_at: string
+        }
+        Update: {
+          started_at?: string
+        }
+        Relationships: []
+      }
+      social_tiktok_tokens: {
+        Row: {
+          access_expires_at: string
+          access_token: string
+          business_id: string
+          refresh_token: string
+        }
+        Insert: {
+          access_expires_at: string
+          access_token: string
+          business_id: string
+          refresh_token: string
+        }
+        Update: {
+          access_expires_at?: string
+          access_token?: string
+          business_id?: string
+          refresh_token?: string
+        }
+        Relationships: []
+      }
       team_digest_days: {
         Row: {
           claimed_at: string
@@ -8429,7 +8846,99 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      customer_activity_history: {
+        Row: {
+          actor: string | null
+          actor_id: string | null
+          at: string | null
+          child_id: string | null
+          href: string | null
+          key: string | null
+          label: string | null
+          note: string | null
+          parent_id: string | null
+          type: string | null
+          workbook_id: string | null
+        }
+        Relationships: []
+      }
+      customer_meaningful_work: {
+        Row: {
+          at: string | null
+          child_id: string | null
+          parent_id: string | null
+        }
+        Relationships: []
+      }
+      social_latest_audience: {
+        Row: {
+          dimension: string | null
+          label: string | null
+          platform: string | null
+          read_at: string | null
+          unit: string | null
+          value: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_audience_snapshots_platform_fkey"
+            columns: ["platform"]
+            isOneToOne: false
+            referencedRelation: "social_accounts"
+            referencedColumns: ["platform"]
+          },
+        ]
+      }
+      social_latest_days: {
+        Row: {
+          day: string | null
+          followers: number | null
+          followers_gained: number | null
+          interactions: number | null
+          link_clicks: number | null
+          platform: string | null
+          profile_visits: number | null
+          raw: Json | null
+          reach: number | null
+          read_at: string | null
+          views: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_daily_snapshots_platform_fkey"
+            columns: ["platform"]
+            isOneToOne: false
+            referencedRelation: "social_accounts"
+            referencedColumns: ["platform"]
+          },
+        ]
+      }
+      social_post_milestone_reads: {
+        Row: {
+          comments: number | null
+          follows: number | null
+          likes: number | null
+          platform: string | null
+          post_id: string | null
+          raw: Json | null
+          reach: number | null
+          read_at: string | null
+          saves: number | null
+          shares: number | null
+          views: number | null
+          watch_percent: number | null
+          watch_seconds: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_post_snapshots_platform_post_id_fkey"
+            columns: ["platform", "post_id"]
+            isOneToOne: false
+            referencedRelation: "social_posts"
+            referencedColumns: ["platform", "post_id"]
+          },
+        ]
+      }
     }
     Functions: {
       _admit_workbook_scan_receipt: {
@@ -8563,6 +9072,7 @@ export type Database = {
         Args: { p_parent: string }
         Returns: boolean
       }
+      admin_ai_cost_history: { Args: { p_export_id?: string }; Returns: Json }
       admin_ai_usage: {
         Args: {
           p_cad_per_usd?: number
@@ -8673,6 +9183,50 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      admin_customer_book: {
+        Args: {
+          p_book: string
+          p_child?: string
+          p_parent?: string
+          p_tests?: boolean
+        }
+        Returns: Json
+      }
+      admin_customer_children: {
+        Args: {
+          p_after?: string
+          p_attention?: string
+          p_book?: string
+          p_books_before?: number
+          p_child?: string
+          p_from?: string
+          p_parent?: string
+          p_search?: string
+          p_tests?: boolean
+          p_to?: string
+        }
+        Returns: Json
+      }
+      admin_customer_history: {
+        Args: {
+          p_actor?: string
+          p_after_at?: string
+          p_after_key?: string
+          p_book?: string
+          p_child?: string
+          p_from?: string
+          p_parent?: string
+          p_search?: string
+          p_tests?: boolean
+          p_to?: string
+          p_type?: string
+        }
+        Returns: Json
+      }
+      admin_customer_metrics: {
+        Args: { p_from: string; p_to: string }
+        Returns: Json
       }
       admin_families_at_risk_v1: {
         Args: { p_with_tests?: boolean }
@@ -8908,6 +9462,30 @@ export type Database = {
         Args: { p_days?: number; p_with_tests?: boolean }
         Returns: Json
       }
+      admin_social_attribution: {
+        Args: { p_day: string }
+        Returns: {
+          cards: number
+          checks: number
+          platform: string
+          post_id: string
+          signups: number
+          visits: number
+          week_cards: number
+          week_checks: number
+          week_signups: number
+          week_visits: number
+        }[]
+      }
+      admin_social_email: {
+        Args: { p_day: string }
+        Returns: {
+          clicks: number
+          delivered: number
+          failed: number
+          sent: number
+        }[]
+      }
       admin_team_ids: { Args: never; Returns: string[] }
       admin_team_names: {
         Args: never
@@ -9116,6 +9694,8 @@ export type Database = {
         Args: { p: string }
         Returns: undefined
       }
+      ai_history_row_line: { Args: { j: Json }; Returns: string }
+      ai_history_valid_row: { Args: { j: Json }; Returns: boolean }
       append_maya_call_connection: {
         Args: { p_call: string; p_kind: string; p_revision: number }
         Returns: string
@@ -9168,6 +9748,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      begin_ai_cost_history: { Args: { p_manifest: Json }; Returns: undefined }
       begin_booking_signup: { Args: { payload: Json }; Returns: boolean }
       begin_family_card_operation: {
         Args: { p: string; token: string }
@@ -9542,6 +10123,7 @@ export type Database = {
         }
         Returns: string
       }
+      claim_social_refresh: { Args: { p_started_at: string }; Returns: boolean }
       claim_workbook_edit: {
         Args: { p_id: string; p_lease: string; p_runner: string }
         Returns: boolean
@@ -9867,6 +10449,10 @@ export type Database = {
       }
       family_retention_cards: { Args: { p: string }; Returns: Json }
       family_retention_due: { Args: { p: string }; Returns: boolean }
+      finalize_ai_cost_history: {
+        Args: { p_export_id: string }
+        Returns: boolean
+      }
       finish_booking_signup: {
         Args: { booking_ref: string; customer: string }
         Returns: boolean
@@ -10071,6 +10657,10 @@ export type Database = {
         }
         Returns: string
       }
+      ingest_ai_cost_history_rows: {
+        Args: { p_export_id: string; p_rows: Json }
+        Returns: undefined
+      }
       ingest_openrouter_provider_receipts: {
         Args: { p_rows: Json }
         Returns: undefined
@@ -10255,6 +10845,10 @@ export type Database = {
         Args: { p_id: string; p_parent: string }
         Returns: boolean
       }
+      pin_workbook_run_draft_key: {
+        Args: { p_by: string; p_by_email: string; p_key: string; p_run: string }
+        Returns: Json
+      }
       ping: { Args: never; Returns: number }
       plan_control_context: {
         Args: { p_card: string; p_parent: string }
@@ -10302,6 +10896,7 @@ export type Database = {
         }
         Returns: Json
       }
+      purge_customer_activity: { Args: never; Returns: number }
       queue_workbook_edit: {
         Args: {
           p_action: string
@@ -10368,6 +10963,23 @@ export type Database = {
           p_session_created_at: string
         }
         Returns: Json
+      }
+      record_customer_activity: {
+        Args: {
+          p_actor: string
+          p_book: string
+          p_child: string
+          p_event: string
+          p_note?: string
+          p_page: string
+          p_parent: string
+          p_request: string
+        }
+        Returns: string
+      }
+      record_customer_plan_actor: {
+        Args: { p_actor: string; p_card: string; p_generation: number }
+        Returns: string
       }
       record_maya_wordings: {
         Args: { p_child: string; p_heard: Json; p_max: number }
@@ -10817,6 +11429,19 @@ export type Database = {
       save_next_book_snapshot: {
         Args: { p_data: Json; p_hash: string; p_id: string }
         Returns: Json
+      }
+      save_social_pull: {
+        Args: {
+          p_account_id: string
+          p_audience: Json
+          p_days: Json
+          p_name: string
+          p_platform: string
+          p_post_reads: Json
+          p_posts: Json
+          p_read_at: string
+        }
+        Returns: undefined
       }
       save_workbook_comment: {
         Args: {
