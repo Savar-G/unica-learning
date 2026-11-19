@@ -101,7 +101,7 @@ it.each([1, 2])("teaches the printed angle count for step %i instead of its samp
   for (let attempt = 0; attempt < 80; attempt++) {
     const filled = stepTemplateItem({ curriculum, skill: "6.13-classify-angles", step, place: "on-your-own",
       level: 19, day: step === 1 ? 5 : 8, seed: 121, attempt, ordinal: 0 });
-    if (!filled || !/^(Of |There are )/.test(filled.text)) continue;
+    if (!filled || !/^(Of |There (?:is|are) )/.test(filled.text)) continue;
     checked++;
     const method = templateMethod(filled.ref.source, filled.text, filled.ref);
     expect(method).toContain(step === 1 ? "Only acute angles" : "Only reflex angles");

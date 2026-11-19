@@ -505,7 +505,7 @@ export function templateMethod(src: TemplateSource, text: string, scope?: { skil
       if (description && straight && result.answer === "straight") return "Half a turn makes a straight line: a straight angle.";
       if (description && reflex && result.answer === "reflex") return "More than half a turn, short of a full turn, is a reflex angle.";
       const values = templateNumbers(src);
-      if (values && scope.step === 1 && src.answer === "a" && /^(?:Of \d+ acute and \d+ obtuse angles, how many are smaller than a square corner|There are \d+ acute angles and \d+ obtuse angles\. How many of these angles are smaller than a square corner)\?$/i.test(text))
+      if (values && scope.step === 1 && src.answer === "a" && /^(?:Of \d+ acute and \d+ obtuse angles, how many are smaller than a square corner|There (?:is|are) \d+ acute angles? and \d+ obtuse angles?\. How many of these angles are smaller than a square corner)\?$/i.test(text))
         return `Only acute angles are smaller than a square corner. Count the acute angles: ${values.a}.`;
       if (values && scope.step === 2 && src.answer === "b" && /^(?:Of \d+ straight and \d+ reflex angles, how many exceed half a turn|There are \d+ straight angles and \d+ reflex angles\. How many of these angles are greater than half a turn)\?$/i.test(text))
         return `Only reflex angles exceed half a turn. Count the reflex angles: ${values.b}.`;
