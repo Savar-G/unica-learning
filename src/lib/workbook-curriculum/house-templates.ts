@@ -178,7 +178,9 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
       // mixing own-step and review rows ran out of distinct own-step questions and left a hole in its grid (the 20-seed
       // sweep of the custom U19 Book 1).
       { format: "missing", difficulty: "medium", text: "{n} + ? is the next number divisible by 3.", answer: "3 - n % 3", slots: { n: "template_n" }, derived: {}, check: "n % 3 != 0" },
-      { format: "story", difficulty: "medium", text: "A printer prints {n} pages and stacks them in piles of 9. How many pages are left over?", answer: "n % 9", slots: { n: "template_n" }, derived: {}, check: "n % 9 != 0" },
+      // "bare", not "story": a step with a story form that works a sum gives the Word problems page all its stories (storySteps),
+      // and one leftover form cannot fill three (the U19 sweep's Day 9 Word problems page stayed 25% full, Luis 2026-11-18).
+      { format: "bare", difficulty: "medium", text: "A printer prints {n} pages and stacks them in piles of 9. How many pages are left over?", answer: "n % 9", slots: { n: "template_n" }, derived: {}, check: "n % 9 != 0" },
       { format: "choose", difficulty: "medium", text: "Which number is divisible by 9: {x} or {y}?", answer: "str(m)", slots: { n: "template_n", f: "template_f" },
         derived: { m: "n - n % 9 + 9", o: "m + 3", x: "m if f == 0 else o", y: "o if f == 0 else m" }, check: "o <= 9999" },
       { format: "bare", difficulty: "medium", text: "How many of {a}, {b} and {c} are divisible by 3?", answer: "1 if f == 0 else 2", slots: { n: "template_n", f: "template_f" },
@@ -206,7 +208,9 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
       // mixing own-step and review rows ran out of distinct own-step questions and left a hole in its grid (the 20-seed
       // sweep of the custom U19 Book 1).
       { format: "missing", difficulty: "medium", text: "{n} + ? is the next number divisible by 4.", answer: "4 - n % 4", slots: { n: "template_n" }, derived: {}, check: "n % 4 != 0" },
-      { format: "story", difficulty: "medium", text: "A factory packs {n} bottles in crates of 8. How many bottles are left over?", answer: "n % 8", slots: { n: "template_n" }, derived: {}, check: "n % 8 != 0" },
+      // "bare", not "story": a step with a story form that works a sum gives the Word problems page all its stories (storySteps),
+      // and one leftover form cannot fill three (the U19 sweep's Day 9 Word problems page stayed 25% full, Luis 2026-11-18).
+      { format: "bare", difficulty: "medium", text: "A factory packs {n} bottles in crates of 8. How many bottles are left over?", answer: "n % 8", slots: { n: "template_n" }, derived: {}, check: "n % 8 != 0" },
       { format: "choose", difficulty: "medium", text: "Which number is divisible by 6: {x} or {y}?", answer: "str(m)", slots: { n: "template_n", f: "template_f" },
         derived: { m: "n - n % 6 + 6", o: "m + 3", x: "m if f == 0 else o", y: "o if f == 0 else m" }, check: "o <= 99999" },
       { format: "bare", difficulty: "medium", text: "What is the smallest whole number greater than {n} that is divisible by 8?", answer: "n - n % 8 + 8", slots: { n: "template_n" }, derived: {}, check: "n - n % 8 + 8 <= 99999" },
