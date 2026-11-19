@@ -100,9 +100,7 @@ try {
       throw new Error("The new run did not match the authorized Book 1; it was stopped before generation");
     }
     if (seed !== undefined) {
-      // STUB until pin_workbook_run_draft_key is applied and `npm run db:types` lists it: then call admin.rpc directly.
-      const rpc = admin.rpc as unknown as (fn: string, args: Record<string, string>) => Promise<{ data: unknown; error: { message: string } | null }>;
-      const pinned = await rpc.call(admin, "pin_workbook_run_draft_key", { p_run: run.id, p_key: seed, p_by: ACTOR.id, p_by_email: ACTOR.email });
+      const pinned = await admin.rpc("pin_workbook_run_draft_key", { p_run: run.id, p_key: seed, p_by: ACTOR.id, p_by_email: ACTOR.email });
       const result = pinned.data as { status?: string; reason?: string } | null;
       if (pinned.error || result?.status !== "pinned") {
         await runs.stop(run.id, ACTOR);
