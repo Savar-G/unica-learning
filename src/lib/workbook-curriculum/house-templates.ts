@@ -88,8 +88,10 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
         derived: { obj: "['corner of a book', 'corner of a door', 'tip of a thin pizza slice', 'tip of a sharp pencil', 'opening of a laptop tilted far back', 'opening of a book lying almost flat'][k]",
           kind: "['right', 'right', 'acute', 'acute', 'obtuse', 'obtuse'][k]", other: "'obtuse' if kind == 'acute' else 'acute'", chosen: "kind if f == 0 else other",
           claim: "'an acute' if chosen == 'acute' else ('an obtuse' if chosen == 'obtuse' else 'a right')" } },
-      { format: "bare", difficulty: "medium", text: "There are {a} acute angles and {b} obtuse angles. How many of these angles are smaller than a square corner?",
-        answer: "a", slots: { k: "template_k", f: "flip" }, derived: { a: "k + 1", b: "1 + (k + 1 + f) % 5" } },
+      { format: "bare", difficulty: "medium", text: "There {be} {a} acute {an} and {b} obtuse {bn}. How many of these angles are smaller than a square corner?",
+        answer: "a", slots: { k: "template_k", f: "flip" },
+        // Singular or plural by count: "There is 1 acute angle", not "There are 1 acute angles" (Luis, 2026-11-18).
+        derived: { a: "k + 1", b: "1 + (k + 1 + f) % 5", be: "'is' if a == 1 else 'are'", an: "'angle' if a == 1 else 'angles'", bn: "'angle' if b == 1 else 'angles'" } },
       // Independent practice the step was short of (Luis, 2026-11-18): with two or three forms, a U19 practice page
       // mixing own-step and review rows ran out of distinct own-step questions and left a hole in its grid (the 20-seed
       // sweep of the custom U19 Book 1).
@@ -98,8 +100,10 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
         derived: { sharp: "['the tip of a sharp pencil', 'the tip of a thin pizza slice', 'the point of a star', 'the tip of a paper airplane'][k]",
           wide: "['the corner of a door', 'the corner of a book', 'a laptop opened far back', 'a book lying almost flat'][k]",
           oa: "sharp if f == 0 else wide", ob: "wide if f == 0 else sharp" } },
-      { format: "bare", difficulty: "medium", text: "{a} angles are right, {b} are acute and {c} are obtuse. How many of these angles are wider than a square corner?",
-        answer: "c", slots: { k: "template_k", f: "flip" }, derived: { a: "k % 3 + 1", b: "k + 2", c: "[4, 4, 1, 2, 3][k] + f" }, check: "c != a and c != b" },
+      { format: "bare", difficulty: "medium", text: "{a} {an} right, {b} {bv} acute and {c} {cv} obtuse. How many of these angles are wider than a square corner?",
+        answer: "c", slots: { k: "template_k", f: "flip" },
+        derived: { a: "k % 3 + 1", b: "k + 2", c: "[4, 4, 1, 2, 3][k] + f", an: "'angle is' if a == 1 else 'angles are'", bv: "'is' if b == 1 else 'are'", cv: "'is' if c == 1 else 'are'" },
+        check: "c != a and c != b" },
       { format: "true-false", difficulty: "medium", text: "True or false: {claim}", answer: "'true' if k % 2 == 0 else 'false'", slots: { k: "template_k_4" },
         derived: { claim: "['an obtuse angle is wider than a right angle.', 'an acute angle is wider than a right angle.', 'a right angle is the same as a square corner.', 'an obtuse angle is smaller than a square corner.'][k]" } },
     ],

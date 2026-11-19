@@ -92,7 +92,7 @@ describe("Unica Challenge templates", () => {
           const claim = String(filled.values.claim);
           expect(filled.answer).toBe(claim.endsWith(kind) ? "true" : "false");
         } else {
-          expect(filled.text).toMatch(/There are \d acute angles and \d obtuse angles/);
+          expect(filled.text).toMatch(/There (?:is 1 acute angle|are [2-9] acute angles) and (?:1 obtuse angle|[2-9] obtuse angles)\./);
           expect(Number(filled.answer)).toBe(Number(filled.values.a));
           expect(Number(filled.values.a)).toBeGreaterThan(0);
           expect(Number(filled.values.b)).toBeGreaterThan(0);
@@ -555,7 +555,7 @@ describe("added U19 practice forms", () => {
     ["6.4-prime-composite", 2, "What is the largest prime number less than", t => String(lastPrime(nums(t)[0]))],
     ["6.4-prime-composite", 2, "How many prime numbers are there from", t => { const [lo, hi] = nums(t); expect(prime(lo) || prime(hi), t).toBe(false); let k = 0; for (let x = lo; x <= hi; x++) if (prime(x)) k++; return String(k); }],
     ["6.13-classify-angles", 1, "Which makes an acute angle?", t => { const a = /A\) (.*?)  B\)/.exec(t)![1]; const sharp = /tip of a sharp pencil|tip of a thin pizza slice|point of a star|tip of a paper airplane/; expect(sharp.test(a) !== sharp.test(t.split("B)")[1]), t).toBe(true); return sharp.test(a) ? "A" : "B"; }],
-    ["6.13-classify-angles", 1, "are obtuse. How many of these angles are wider", t => { const [a, b, o] = nums(t); expect(new Set([a, b, o]).size, t).toBe(3); return String(o); }],
+    ["6.13-classify-angles", 1, "obtuse. How many of these angles are wider", t => { const [a, b, o] = nums(t); expect(new Set([a, b, o]).size, t).toBe(3); return String(o); }],
     ["6.13-classify-angles", 1, "True or false: {claim}", t => /obtuse angle is wider|right angle is the same/.test(t) ? "true" : "false"],
   ];
   it.each(forms)("checks every instance of the %s step %i form \"%s\" across 300 seeds", (skill, number, words, key) => {
@@ -578,5 +578,21 @@ describe("added U19 practice forms", () => {
       checked++;
     }
     expect(checked, words).toBeGreaterThan(30);
+  });
+  // "There are 1 acute angles" printed in a U19 proof (Luis, 2026-11-18): each count says angle or angles, is or are.
+  it("prints a count of 1 in the singular in both angle-count forms", () => {
+    const step = c.skillSteps("6.13-classify-angles")![0];
+    const forms = step.templates!.filter(t => /acute {an}|{a} {an} right/.test(t.text) && !isChallengeOnly(t));
+    expect(forms).toHaveLength(2);
+    for (const t of forms) {
+      const prepared = prepareTemplate(step, t, c.contexts);
+      let ones = 0;
+      for (let seed = 1; seed <= 300; seed++) {
+        const text = prepared.fill(seededRandom(seed)).text;
+        expect(text, text).not.toMatch(/\b1 (?:acute |obtuse )?angles\b|\b1 are\b|There are 1\b|\b(?:[2-9]|1\d) (?:acute |obtuse )?angle\b|\b(?:[2-9]|1\d) is\b|There is (?!1\b)/);
+        if (/(?:There is 1 acute angle|\b1 obtuse angle\b|^1 angle is right|, 1 is obtuse)/.test(text)) ones++;
+      }
+      expect(ones, t.text).toBeGreaterThan(0);
+    }
   });
 });
