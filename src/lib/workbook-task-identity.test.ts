@@ -2,7 +2,7 @@ import { expect, it } from "vitest";
 import type { QuestionPackage } from "./question-package";
 import type { GeneratedPage } from "./workbook-generator";
 import { workbookQuality } from "./workbook-quality";
-import { taskIdentity } from "./workbook-task-identity";
+import { storyKind, taskIdentity } from "./workbook-task-identity";
 
 function question(text: string, value: number): QuestionPackage {
   return { id: "identity-regression", ref: { source: "workbook", workbookId: "identity-book", page: 3, question: 1 },
@@ -107,4 +107,13 @@ it("includes a hand-built error's displayed claim without depending on its inter
     error: { answer: { type: "number", value: 46 }, step: "different-internal-id" } } };
   expect(taskIdentity(first)).not.toBe(taskIdentity(second));
   expect(taskIdentity(first)).toBe(taskIdentity(renamed));
+});
+
+// The U19 sweep's Day 2 (Luis, 2026-11-19): an estimated total read as no story at all, so the page counted two groups
+// stories and failed "one kind". A total of two amounts is a join; groups, compare and take-away keep their kinds.
+it("reads a total of two amounts as a join, and keeps the stronger kinds first", () => {
+  expect(storyKind("Amara picked 31.327 kg of apples in the morning and 48.991 kg in the afternoon. Estimate the total kg by rounding to whole numbers.")).toBe("join");
+  expect(storyKind("Ana buys 3 notebooks at $2.50 each. What is the total?")).toBe("groups");
+  expect(storyKind("The total of two bars is 80. One bar shows 30. How many fewer does it show than the other bar?")).toBe("compare");
+  expect(storyKind("Jin buys 29 packs of 653 toy drums. How many toy drums is that?")).toBe("groups");
 });

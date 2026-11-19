@@ -238,7 +238,9 @@ export function storyKind(text: string): "compare" | "take-away" | "part-whole" 
   if (/\beats?\b|\bgives?\b.*\baway\b|\bleft\b|\btakes? out\b|\bloses?\b|\bspends?\b|\buses?\b/.test(t)) return "take-away";
   if (/\bthe rest\b|\bare not in\b|\bare in an? \w+\b/.test(t)) return "part-whole";
   if (/\beach\b|\bpacks? of\b|\bper\b|\bshares?\b|\bequally\b|\bboxes with\b|\bcarries\b/.test(t)) return "groups";
-  if (/\bgets?\b|\bfinds?\b|\bmore\b|\bin all\b|\baltogether\b|\btogether\b|\bboth days\b|\bon monday\b/.test(t)) return "join";
+  // (A total of two amounts joins them: "31.327 kg in the morning and 48.991 kg in the afternoon. Estimate the total", the
+  // U19 sweep's Day 2, Luis 2026-11-19.)
+  if (/\bgets?\b|\bfinds?\b|\bmore\b|\bin all\b|\baltogether\b|\btogether\b|\bboth days\b|\bon monday\b|\btotal\b/.test(t)) return "join";
   return null;
 }
 

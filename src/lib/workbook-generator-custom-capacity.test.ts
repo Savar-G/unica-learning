@@ -224,8 +224,10 @@ it("repairs a stories page whose different sentence frames still repeat a story 
   let tooTall: string | null = null;
   const fit: FitCheck = { fits: async (candidate, book) => {
     if (candidate.type === "word-problems") {
+      // (The first repaired page that mixes its kinds: an estimated total is a join since the U19 sweep, Luis 2026-11-19,
+      // so the repair can reach two kinds and a page that passes without a third.)
       const kinds = candidate.questions.map(q => storyKind(q.package.text)).filter(Boolean);
-      if (new Set(kinds).size === 3) {
+      if (new Set(kinds).size >= 2) {
         const text = candidate.questions.map(q => q.package.text).join("\n");
         tooTall ??= text;
         if (text === tooTall) return { ok: false, problems: [{ question: null, reason: "the first replacement runs 10 px past the content area" }] };

@@ -150,8 +150,8 @@ function slotStep(input: GenerateInput, slot: Slot, attempt: number, level: numb
         if (prior.length) return prior[Math.floor(attempt / 6) % prior.length];
       }
     }
-    const stories = storySteps(input, slot, day, level);
-    if (stories.length) return stories[Math.floor(attempt / 6) % stories.length];
+    const stories = attempt >= WIDER_STORIES ? widerStorySteps(input, slot, day, level) : storySteps(input, slot, day, level);
+    if (stories.length) return stories[Math.floor((attempt >= WIDER_STORIES ? attempt - WIDER_STORIES : attempt) / 6) % stories.length];
     // The last questions of a practice block review an earlier step (the U16 and U4 reviews: a day mixes the new step
     // with earlier ones, not one task twenty times).
     const ordinal = Number(slot.id.split(".")[1]) || 1;
@@ -308,28 +308,53 @@ function taughtSteps(input: GenerateInput, day: number, level: number): { skill:
  */
 const storyFallbacks = new WeakMap<Curriculum, Map<string, { skill: string; step: number }[]>>();
 
+/** Whether a step has a story template that works a sum at this level. (Not "gets 1 more": one more is a count, not a story to work out; the U4 review.) */
+function storySums(input: GenerateInput, skill: string, n: number | null, level: number): boolean {
+  return routingTemplates(stepOf(input.curriculum, skill, n)).some((t) => t.format === "story" && !isTwoStep(t) && sumTemplate(t, true) && !/\b1 (?:more|less|fewer)\b/.test(t.text) && !templateProblem(t, level));
+}
+
+/** Every step before `at` with such stories, the most advanced first (U16 up: numbers to 100 or more). */
+function priorStorySteps(input: GenerateInput, at: { skill: string; step: number }, level: number): { skill: string; step: number }[] {
+  let cached = storyFallbacks.get(input.curriculum);
+  if (!cached) { cached = new Map(); storyFallbacks.set(input.curriculum, cached); }
+  const key = `${at.skill}#${at.step}:${level}`;
+  const saved = cached.get(key);
+  if (saved) return saved;
+  const rank = stepRank(input.curriculum, at.skill, at.step) ?? 0;
+  const prior = input.curriculum.levels.flatMap(l => input.curriculum.levelSkills(l.id) ?? [])
+    .flatMap(s => (input.curriculum.skillSteps(s.id) ?? []).map(st => ({ skill: s.id, step: st.number })))
+    .filter(x => (stepRank(input.curriculum, x.skill, x.step) ?? Infinity) < rank && storySums(input, x.skill, x.step, level)
+      && (level < 16 || (stepBounds(stepOf(input.curriculum, x.skill, x.step)!)?.max ?? 0) >= 100))
+    .sort((a, b) => (stepRank(input.curriculum, b.skill, b.step) ?? 0) - (stepRank(input.curriculum, a.skill, a.step) ?? 0));
+  cached.set(key, prior);
+  return prior;
+}
+
+/**
+ * A Word problems slot's late candidates (from WIDER_STORIES): its routed steps, then every earlier step with stories, so
+ * a page whose routed steps tell one kind of story can still mix its kinds. The U19 sweep's Day 3 took its stories from
+ * the day's own step, the book's steps and the day's reviewed steps, all equal groups, and printed two groups stories
+ * and a hole (Luis, 2026-11-19). A page its first candidates fill is unchanged.
+ */
+const WIDER_STORIES = 512;
+function widerStorySteps(input: GenerateInput, slot: Slot, day: number, level: number): { skill: string; step: number }[] {
+  const routed = storySteps(input, slot, day, level);
+  const at = slot.part.step;
+  if (!at || !routed.length) return routed;
+  const seen = new Set(routed.map((x) => `${x.skill}#${x.step}`));
+  return [...routed, ...priorStorySteps(input, at, level).filter((x) => !seen.has(`${x.skill}#${x.step}`))];
+}
+
 function storySteps(input: GenerateInput, slot: Slot, day: number, level: number): { skill: string; step: number }[] {
   const at = slot.part.step;
   if (!at || slot.place !== "word-problems") return [];
-  // (Not "gets 1 more": one more is a count, not a story to work out; the U4 review.)
-  const sums = (skill: string, n: number | null) => routingTemplates(stepOf(input.curriculum, skill, n)).some((t) => t.format === "story" && !isTwoStep(t) && sumTemplate(t, true) && !/\b1 (?:more|less|fewer)\b/.test(t.text) && !templateProblem(t, level));
+  const sums = (skill: string, n: number | null) => storySums(input, skill, n, level);
   // The page's own step first when it has such stories; then this book's steps taught by today and the day's reviewed
   // steps, the most advanced first (the U16 review: Grade 5 stories, not "Hana has 9 leaves. She gets 7 more").
   // If this step has no usable story, look backwards within the skill, then through
   // earlier skills. The required story format must not advance the child's step.
   if (!sums(at.skill, at.step)) {
-    let cached = storyFallbacks.get(input.curriculum);
-    if (!cached) { cached = new Map(); storyFallbacks.set(input.curriculum, cached); }
-    const key = `${at.skill}#${at.step}:${level}`;
-    const saved = cached.get(key);
-    if (saved?.length) return saved;
-    const rank = stepRank(input.curriculum, at.skill, at.step) ?? 0;
-    const prior = input.curriculum.levels.flatMap(l => input.curriculum.levelSkills(l.id) ?? [])
-      .flatMap(s => (input.curriculum.skillSteps(s.id) ?? []).map(st => ({ skill: s.id, step: st.number })))
-      .filter(x => (stepRank(input.curriculum, x.skill, x.step) ?? Infinity) < rank && sums(x.skill, x.step)
-        && (level < 16 || (stepBounds(stepOf(input.curriculum, x.skill, x.step)!)?.max ?? 0) >= 100))
-      .sort((a, b) => (stepRank(input.curriculum, b.skill, b.step) ?? 0) - (stepRank(input.curriculum, a.skill, a.step) ?? 0));
-    cached.set(key, prior);
+    const prior = priorStorySteps(input, at, level);
     if (prior.length) return prior;
   }
   const seen = new Set<string>([`${at.skill}#${at.step}`]);
