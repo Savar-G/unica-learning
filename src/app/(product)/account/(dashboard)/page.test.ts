@@ -1,10 +1,13 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Account from "./page";
 import StartScreen from "../start/[child]/page";
 import type { ParentNote } from "@/lib/parent-maya-notes";
 import type { ChildView } from "@/lib/parent-view";
+import * as preview from "@/lib/progress-preview";
+import * as progressServer from "@/lib/progress-preview-server";
+import { sampleReportWithBook } from "@/lib/sample-book-one";
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ usePathname: () => "/account", useRouter: () => ({}), redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); } }));
@@ -22,8 +25,14 @@ vi.mock("@/components/plan-closed-note", () => ({
 }));
 const scanning = vi.hoisted(() => ({ enabled: false }));
 vi.mock("@/lib/scan-pages-access", () => ({ scanPagesAccess: async () => scanning.enabled }));
-const progress = vi.hoisted(() => ({ value: new Map<string, import("@/lib/progress-preview-server").HomeProgress>(), reads: null as string[][] | null }));
-vi.mock("@/lib/progress-preview-server", () => ({ homeProgress: async (_db: unknown, _parent: string, reports: { child_id: string }[]) => { progress.reads?.push(reports.map((r) => r.child_id)); return new Map([...progress.value].filter(([id]) => reports.some((r) => r.child_id === id))); } }));
+vi.mock("@/lib/report-loading-server", () => ({ parentReportReader: () => ({}) }));
+vi.mock("@/lib/report-loading", () => ({
+  loadReportView: async () => ({
+    view: { ...sampleReportWithBook(), childName: "Sample child", completedAt: new Date().toISOString() },
+    childId: "c1",
+    assessmentId: "a1",
+  }),
+}));
 const notes = vi.hoisted(() => ({ latest: new Map<string, ParentNote>() }));
 vi.mock("@/lib/parent-maya-notes", async (original) => ({ ...await original<typeof import("@/lib/parent-maya-notes")>(), latestParentMayaNotes: async () => notes.latest }));
 
@@ -39,6 +48,7 @@ vi.mock("@/lib/test-attempt-server", () => ({
   parentStartStates: async () => new Map([["c1", { kind: "wait", completedAt: Date.parse("2026-10-19T04:29:00Z"), opensAt: Date.parse("2026-11-18T04:29:00Z") }]]),
 }));
 vi.mock("@/lib/supabase-auth", () => ({
+  adminClient: () => null,
   parentId: async () => (family.signedOut ? null : "p1"),
   sessionClient: async () => ({
     from: (table: string) => ({
@@ -67,7 +77,8 @@ vi.mock("@/lib/supabase-auth", () => ({
   }),
 }));
 
-beforeEach(() => { chats.value = new Map(); dashboard.value = null; overview.value = null; overview.reads = 0; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; family.report = false; family.signedOut = false; scanning.enabled = false; notes.latest = new Map(); progress.value = new Map(); progress.reads = null; });
+beforeEach(() => { chats.value = new Map(); dashboard.value = null; overview.value = null; overview.reads = 0; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; family.report = false; family.signedOut = false; scanning.enabled = false; notes.latest = new Map(); });
+afterEach(() => vi.restoreAllMocks());
 
 it("a signed-out parent signs in and comes back to the child the link named (#563)", async () => {
   family.signedOut = true;
@@ -158,29 +169,23 @@ it("R425M-3: account and a younger child's start use the oldest sibling's provin
   }
 });
 
-it("shows the goal sentence from the child's newest report, with a link to the report's plan", async () => {
+it.each([false, true])("shows the goal sentence and its link on Parent home only when enabled: %s", async (enabled) => {
   family.report = true;
-  const render = async () => renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
-  expect(await render()).not.toContain("We can help");
-  progress.value = new Map([["c1", { href: "/account/report/r1#rpt-progress", preview: {
-    name: "Asha", today: 1, goal: 3, todayLabel: "Grade 1 level", goalLabel: "Grade 3 level", goalMonth: "September 2027",
-    sentence: { lead: "We can help Asha reach a ", goal: "grade 3 level", by: "September 2027" }, rows: [], books: [1, 1, 2], stages: [],
-    steps: [{ title: "A new workbook every 2 weeks", text: "" }, { title: "8 pages a day, 5 days a week", text: "" }, { title: "We mark the finished pages", text: "" }], basis: "",
-  } }]]);
-  const out = await render();
-  expect(out).toContain("We can help Asha reach a <b>grade 3 level</b> by <b>September 2027</b>.");
-  expect(out).toContain("3 workbooks, 8 pages a day, 5 days a week.");
-  expect(out).toContain('href="/account/report/r1#rpt-progress"');
+  vi.spyOn(preview, "progressPreview").mockImplementation(preview.createProgressPreview(enabled));
+  const out = renderToStaticMarkup(await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) }));
+  expect(out).toContain('class="acct-kids"');
+  if (enabled) {
+    expect(out).toContain("We can help Sample child reach a <b>grade 3 level</b> by <b>");
+    expect(out).toContain('href="/account/report/r1#rpt-progress"');
+  } else {
+    expect(out).not.toMatch(/acct-goal|rpt-progress|#goal|We can help|See how .* gets there|See the plan/i);
+  }
 });
 
 it("shows no goal sentence once the child has a shipped workbook, and reads only the shown child's report on the dashboard", async () => {
   family.report = true;
-  const asked: string[][] = [];
-  progress.reads = asked;
-  progress.value = new Map([["c1", { href: "/account/report/r1#rpt-progress", preview: {
-    name: "Asha", today: 1, goal: 3, todayLabel: "", goalLabel: "", goalMonth: "September 2027", sentence: { lead: "We can help Asha reach a ", goal: "grade 3 level", by: "September 2027" },
-    rows: [], books: [1], stages: [], steps: [{ title: "", text: "" }, { title: "8 pages a day, 5 days a week", text: "" }, { title: "", text: "" }], basis: "",
-  } }]]);
+  const loadProgress = vi.spyOn(progressServer, "homeProgress");
+  vi.spyOn(preview, "progressPreview").mockImplementation(preview.createProgressPreview(true));
   mayaNotice.books = [{ id: "w1", childId: "c1", number: 1, status: "shipped" }];
   let out: string;
   try {
@@ -189,7 +194,7 @@ it("shows no goal sentence once the child has a shipped workbook, and reads only
     mayaNotice.books = [];
   }
   // The loader is told to skip a child with a shipped workbook (the real one is never called for it).
-  expect(asked.at(-1)).toEqual([]);
+  expect(loadProgress.mock.lastCall?.[2]).toEqual([]);
   expect(out).not.toContain("We can help");
 });
 
