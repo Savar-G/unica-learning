@@ -97,6 +97,11 @@ export function ParentDashboardHome({ dashboard, overview, kids, addressChild, p
       {home && <ParentOverview overview={shown} />}
       {!home && shown?.onTheWay != null && <OnTheWay number={shown.onTheWay} />}
       {(!home || goal?.placement) && progressCard}
+      {home && goal?.retake && kid && state && state.kind !== "wait" && !view?.readOnly && (
+        phone
+          ? <SendLink childId={kid.id} name={kid.first_name} sent={sentHere} />
+          : <StartTest childId={kid.id} name={kid.first_name} state={state} when={startWhen(state, timeZone)} />
+      )}
       {!home && kid && state && (
         <>
           {phone && state.kind !== "wait" && (

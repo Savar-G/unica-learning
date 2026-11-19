@@ -5,6 +5,7 @@ import ReportPage from "./page";
 import type { ParentDashboard } from "@/lib/parent-dashboard-server";
 import type { ChildView } from "@/lib/parent-view";
 import { sampleReportView } from "@/lib/sample-children";
+import { sampleReportWithBook } from "@/lib/sample-book-one";
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ usePathname: () => "/account/report/sample-report",
@@ -23,7 +24,12 @@ const state = vi.hoisted(() => ({
   saved: false,
   joined: false,
 }));
-vi.mock("@/lib/family-plan-offer-server", () => ({ loadFamilyPlanOffer: async () => state.offer }));
+const { planOffer, firstPages } = vi.hoisted(() => ({
+  planOffer: vi.fn(async () => state.offer),
+  firstPages: vi.fn<() => Promise<import("@/components/report-first-pages").FirstPagesView["pages"] | null>>(async () => null),
+}));
+vi.mock("@/lib/family-plan-offer-server", () => ({ loadFamilyPlanOffer: planOffer }));
+vi.mock("@/lib/first-pages-server", () => ({ firstPagesForReport: firstPages }));
 vi.mock("@/lib/parent-dashboard-server", () => ({ parentDashboard: async () => state.dashboard }));
 vi.mock("@/lib/report-loading", () => ({ loadReportView: async () => state.report }));
 vi.mock("@/lib/report-loading-server", () => ({ parentReportReader: () => ({}) }));
@@ -51,6 +57,9 @@ const open = async (query: Record<string, string> = {}) =>
   renderToStaticMarkup(createElement("div", null, await ReportPage({ params: Promise.resolve({ id: ID }), searchParams: Promise.resolve(query) })));
 
 beforeEach(() => {
+  planOffer.mockClear();
+  firstPages.mockReset();
+  firstPages.mockResolvedValue(null);
   state.dashboard = null;
   state.report = { view: { ...sampleReportView(), id: ID }, childId: CHILD };
   state.retake = null;
@@ -243,6 +252,27 @@ describe("a family the switch opens to", () => {
       state.retake = { kind: "opens", at: Date.parse("2026-11-04T23:12:00Z") };
       expect(await open()).not.toContain("The next test opens");
     });
+  });
+
+  it.each([false, true])("shows only the retake report and skips plan and first-page reads (dashboard: %s)", async (dashboard) => {
+    if (dashboard) family();
+    const sampled = sampleReportWithBook();
+    state.report = {
+      childId: CHILD,
+      view: {
+        ...sampled, id: ID,
+        model: { ...sampled.model, level: { ...sampled.model.level, adaptiveVersion: 2, working: null },
+          reliability: { veryFast: 18, answers: 30 } },
+      },
+    };
+    state.retake = { kind: "open", resume: false };
+    firstPages.mockResolvedValueOnce([{ number: 1, kind: "cover", url: "/fixture-cover.png", width: 400, height: 500 }]);
+    const out = await open({ step: "plan" });
+    expect(out).toContain("Please retake the test");
+    expect(out).toContain(`href="/account/start/${CHILD}"`);
+    expect(out).not.toMatch(/rpt-next|rpt-plans|Checking your card|Workbook 1|first pages|rpt-call|Results call|Working level/);
+    expect(planOffer).not.toHaveBeenCalled();
+    expect(firstPages).not.toHaveBeenCalled();
   });
 
   it("keeps today's page for a child who is not in the family's list", async () => {

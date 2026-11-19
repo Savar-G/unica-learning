@@ -35,8 +35,11 @@ vi.mock("@/lib/parent-dashboard-server", () => ({
 }));
 const family = vi.hoisted(() => ({ postal: "V3S 1A1" as string | null, timeZone: null as string | null, olderChild: false, card: false, signedOut: false, report: false, reportVersion: null as number | null }));
 const opensAt = Date.parse("2026-11-18T04:29:00Z");
+const start = vi.hoisted(() => ({
+  state: { kind: "wait", completedAt: Date.parse("2026-10-19T04:29:00Z"), opensAt: Date.parse("2026-11-18T04:29:00Z") } as import("@/lib/assessment").StartState,
+}));
 vi.mock("@/lib/test-attempt-server", () => ({
-  parentStartStates: async () => new Map([["c1", { kind: "wait", completedAt: Date.parse("2026-10-19T04:29:00Z"), opensAt: Date.parse("2026-11-18T04:29:00Z") }]]),
+  parentStartStates: async () => new Map([["c1", start.state]]),
 }));
 vi.mock("@/lib/supabase-auth", () => ({
   parentId: async () => (family.signedOut ? null : "p1"),
@@ -67,7 +70,7 @@ vi.mock("@/lib/supabase-auth", () => ({
   }),
 }));
 
-beforeEach(() => { chats.value = new Map(); dashboard.value = null; overview.value = null; overview.reads = 0; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; family.report = false; family.reportVersion = null; family.signedOut = false; scanning.enabled = false; notes.latest = new Map(); progress.value = new Map(); progress.reads = null; });
+beforeEach(() => { start.state = { kind: "wait", completedAt: Date.parse("2026-10-19T04:29:00Z"), opensAt }; chats.value = new Map(); dashboard.value = null; overview.value = null; overview.reads = 0; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; family.report = false; family.reportVersion = null; family.signedOut = false; scanning.enabled = false; notes.latest = new Map(); progress.value = new Map(); progress.reads = null; });
 
 it("a signed-out parent signs in and comes back to the child the link named (#563)", async () => {
   family.signedOut = true;
@@ -451,6 +454,17 @@ describe("a family the switch opens to", () => {
       for (const gone of ["Level by area", "Working at", "po-bar", "po-maya", "Notes from Maya", "po-action", "Tell us how", "po-summary", "Monthly summary", "We can help", "pd-test", "On the desk"]) expect(out).not.toContain(gone);
     });
 
+    it("lets a parent start an eligible v2 retake beside an active workbook", async () => {
+      family.report = true;
+      family.reportVersion = 2;
+      progress.value.set("c1", { href: "/account/report/r1", placement: "Please take the test again.", retake: true });
+      start.state = { kind: "start", retake: true };
+      const out = await render(full());
+      expect(out).toContain("Workbook 2</p>");
+      expect(out).toContain('href="/account/test/c1"');
+      expect(out).toContain("The next test is open. It has new questions.");
+    });
+
     it("links the Today row to the Workbooks page at today's day (#1031), and leaves no link once the book's last day has passed", async () => {
       const out = await render(full());
       expect(out).toContain('<a class="po-today" href="/account/workbooks/c1?day=4#day-4">');
@@ -582,6 +596,7 @@ it("tells a closed family why the product is closed; a family with no plan reads
 it("shows a v2 retake on Parent home after a workbook has shipped", async () => {
   family.report = true;
   family.reportVersion = 2;
+  start.state = { kind: "start", retake: true };
   mayaNotice.books = [{ id: "w1", childId: "c1", number: 1, status: "shipped" }];
   progress.value = new Map([["c1", { href: "/account/report/r1", placement: "Asha answered many questions very quickly, so please have Asha take the test again." }]]);
   try {
@@ -590,6 +605,11 @@ it("shows a v2 retake on Parent home after a workbook has shipped", async () => 
     expect(out).toContain("please have Asha take the test again.");
     expect(out).toContain('href="/account/report/r1"');
     expect(out).not.toContain("We can help");
+    expect(out).toContain('href="/account/test/c1"');
+    const screen = await StartScreen({ params: Promise.resolve({ child: "c1" }), searchParams: Promise.resolve({}) });
+    const html = renderToStaticMarkup(screen);
+    expect(html).toContain('href="/account/test/c1"');
+    expect(html).toContain("The next test is open. It has new questions.");
   } finally {
     mayaNotice.books = [];
   }

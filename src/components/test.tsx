@@ -25,7 +25,7 @@ import { breakSeen, loadBreak, markBreakSeen, saveBreak, TestBreak } from "./tes
 import { Choices } from "./test-choices";
 import { BarGraph, ChoiceFace, PromptText } from "./test-figures";
 import { TestHelp } from "./test-help";
-import { TestProgress } from "./test-progress";
+import { AdaptiveBreakProgress, TestProgress } from "./test-progress";
 import { BackLabel, NextLabel, TestCheck, TestSteps } from "./test-steps";
 import { Whiteboard, boardImage, clearDrafts, loadDraft, saveDraft, type BoardSize } from "./whiteboard";
 import "./test.css";
@@ -547,7 +547,9 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
         <span className="logo">Unica Learning<b /></span>
         {screen.name === "question" && <TestProgress block={screen.block} answered={screen.number - 1} total={screen.total} breakAfter={screen.breakAfter} at="question" current={(viewed?.number ?? screen.number) - 1} />}
         {screen.name === "check" && <TestProgress block={screen.section.startsWith("block-") ? { first: screen.numbers[0], end: screen.numbers.at(-1)! } : undefined} answered={screen.numbers.at(-1)!} total={screen.total} breakAfter={screen.breakAfter} at="check" current={viewed ? viewed.number - 1 : undefined} />}
-        {screen.name === "break" && <TestProgress block={screen.next.block} answered={screen.after} total={screen.next.total} breakAfter={screen.next.breakAfter} at="halfway" />}
+        {screen.name === "break" && (screen.after === screen.next.secondBreakAfter
+          ? <AdaptiveBreakProgress answered={screen.after} />
+          : <TestProgress block={screen.next.block} answered={screen.after} total={screen.next.total} breakAfter={screen.next.breakAfter} at="halfway" />)}
         {screen.name === "facts" && <TestProgress block={screen.next.block} answered={screen.next.number - 1} total={screen.next.total} breakAfter={screen.next.breakAfter} at="facts" />}
         {screen.name === "more" && <TestProgress block={screen.next.block} answered={screen.next.number - 1} total={screen.next.total} breakAfter={screen.next.breakAfter} at="help" />}
         {(screen.name === "help" || screen.name === "done") && progress && <TestProgress answered={progress.total} total={progress.total} breakAfter={progress.breakAfter} at={screen.name === "help" ? "help" : "end"} />}

@@ -1,12 +1,12 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { createAdaptiveSession, givenQuestions, lockAdaptiveBlock, nextQuestion, restoreSession, startAttempt, storedTest, UNKNOWN_RESPONSE, REPORTED_STRAND } from "@/lib/assessment";
-import { answerQuestion, changeAnswer, doneChecking, finishTest, nextStep, StoreError } from "@/lib/test-attempt";
+import { answerQuestion, changeAnswer, doneChecking, finishTest, nextStep, retakeState, startStates, startTest, stateFor, StoreError } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
 const now = Date.UTC(2026,10,5,18);
 function family(seed = 7) {
   const s = createAdaptiveSession({ grade: 4, province: "BC" }, seed);
   const row: MemoryTest = { ...startAttempt("a1",now), parentId:"p1",childId:"c1",seed,test:storedTest(s),answers:[] };
-  return memoryAttemptStore({ tests:[row] });
+  return memoryAttemptStore({ children: [{ id: "c1", parentId: "p1", grade: 4, province: "BC" }], tests: [row] });
 }
 async function answerBlock(m: ReturnType<typeof family>) {
   for (let i=0;i<6;i++) {
@@ -52,7 +52,7 @@ describe("durable assessment block locks",()=>{
     delete m.fail.lockBlock;
     expect(await doneChecking(m.store,"p1","a1","block-1",now+20_000)).toMatchObject({ok:true});
   });
-  it("finishes with no placement level when too many answers are rushed", async () => {
+  it("opens a new test after a v2 result with too many rushed answers", async () => {
     const m = family(1);
     let result = await nextStep(m.store, "p1", "a1", now);
     for (let i = 0; i < 100 && result.ok && result.step.status !== "complete"; i++) {
@@ -67,6 +67,14 @@ describe("durable assessment block locks",()=>{
     expect(await finishTest(m.store, "p1", "a1", "no", now + 120_000)).toMatchObject({ ok: true, finished: "now" });
     expect(m.tests[0].status).toBe("completed");
     expect(m.tests[0].placement).toMatchObject({ workingLevel: null, adaptiveVersion: 2, pace: { unreliable: true } });
+    const restartAt = now + 121_000;
+    expect(stateFor(await startStates(m.store, "p1", restartAt), "c1")).toEqual({ kind: "start", retake: true });
+    expect(await retakeState(m.store, "p1", "c1", restartAt)).toEqual({ kind: "open", resume: false });
+    const replacement = await startTest(m.store, "p1", "c1", restartAt, { restart: false, newSeed: () => 2 });
+    expect(replacement).toMatchObject({ ok: true, resumed: false });
+    expect(m.tests.map(({ status, seed }) => ({ status, seed }))).toEqual([
+      { status: "completed", seed: 1 }, { status: "in_progress", seed: 2 },
+    ]);
   });
 
   it("withholds a result for an unfinished assessment or a family that does not own it",async()=>{

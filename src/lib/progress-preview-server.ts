@@ -10,8 +10,8 @@ import { levelSentence, reportPath } from "@/lib/report-view";
 import { adminClient } from "@/lib/supabase-auth";
 
 export type HomeProgress =
-  | { preview: ProgressPreview; href: string; placement?: string }
-  | { placement: string; href: string; preview?: never };
+  | { preview: ProgressPreview; href: string; placement?: string; retake?: never }
+  | { placement: string; href: string; preview?: never; retake?: true };
 
 /** One read may not hold Parent home: a slow one shows no card. */
 const LOAD_MS = 2000;
@@ -28,6 +28,7 @@ export async function homeProgress(db: SupabaseClient<Database>, parentId: strin
       const { view } = loaded;
       const href = reportPath(id);
       const placement = view.model.level.adaptiveVersion === 2 ? levelSentence(view) : undefined;
+      if (placement && view.model.level.working === null) return [childId, { placement, href, retake: true }] as const;
       // `now`: a goal date already past shows nothing on Parent home.
       const preview = shipped.has(childId) ? null : progressPreview(view, undefined, Date.now());
       if (preview) return [childId, { preview, href: `${href}#rpt-progress`, placement }] as const;
