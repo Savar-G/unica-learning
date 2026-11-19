@@ -91,7 +91,7 @@ describe("Unica Challenge templates", () => {
           const claim = String(filled.values.claim);
           expect(filled.answer).toBe(claim.endsWith(kind) ? "true" : "false");
         } else {
-          expect(filled.text).toMatch(/There are \d acute angles and \d obtuse angles/);
+          expect(filled.text).toMatch(/There (?:is 1 acute angle|are [2-9] acute angles) and (?:1 obtuse angle|[2-9] obtuse angles)\./);
           expect(Number(filled.answer)).toBe(Number(filled.values.a));
           expect(Number(filled.values.a)).toBeGreaterThan(0);
           expect(Number(filled.values.b)).toBeGreaterThan(0);
@@ -521,5 +521,23 @@ describe("added U19 Challenge forms", () => {
       checked++;
     }
     expect(checked, words).toBeGreaterThan(50);
+  });
+});
+
+// "There are 1 acute angles" printed in a U19 proof (Luis, 2026-11-18): the count says angle or angles, is or are.
+describe("angle-count form", () => {
+  it("prints a count of 1 in the singular", () => {
+    const c = bcStepProgressions();
+    const step = c.skillSteps("6.13-classify-angles")![0];
+    const forms = step.templates!.filter(t => /acute {an}/.test(t.text) && !isChallengeOnly(t));
+    expect(forms).toHaveLength(1);
+    const prepared = prepareTemplate(step, forms[0], c.contexts);
+    let ones = 0;
+    for (let seed = 1; seed <= 300; seed++) {
+      const text = prepared.fill(seededRandom(seed)).text;
+      expect(text, text).not.toMatch(/\b1 (?:acute |obtuse )?angles\b|There are 1\b|\b(?:[2-9]|1\d) (?:acute |obtuse )?angle\b|There is (?!1\b)/);
+      if (/There is 1 acute angle|\b1 obtuse angle\b/.test(text)) ones++;
+    }
+    expect(ones).toBeGreaterThan(0);
   });
 });

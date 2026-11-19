@@ -88,8 +88,10 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
         derived: { obj: "['corner of a book', 'corner of a door', 'tip of a thin pizza slice', 'tip of a sharp pencil', 'opening of a laptop tilted far back', 'opening of a book lying almost flat'][k]",
           kind: "['right', 'right', 'acute', 'acute', 'obtuse', 'obtuse'][k]", other: "'obtuse' if kind == 'acute' else 'acute'", chosen: "kind if f == 0 else other",
           claim: "'an acute' if chosen == 'acute' else ('an obtuse' if chosen == 'obtuse' else 'a right')" } },
-      { format: "bare", difficulty: "medium", text: "There are {a} acute angles and {b} obtuse angles. How many of these angles are smaller than a square corner?",
-        answer: "a", slots: { k: "template_k", f: "flip" }, derived: { a: "k + 1", b: "1 + (k + 1 + f) % 5" } },
+      { format: "bare", difficulty: "medium", text: "There {be} {a} acute {an} and {b} obtuse {bn}. How many of these angles are smaller than a square corner?",
+        answer: "a", slots: { k: "template_k", f: "flip" },
+        // Singular or plural by count: "There is 1 acute angle", not "There are 1 acute angles" (Luis, 2026-11-18).
+        derived: { a: "k + 1", b: "1 + (k + 1 + f) % 5", be: "'is' if a == 1 else 'are'", an: "'angle' if a == 1 else 'angles'", bn: "'angle' if b == 1 else 'angles'" } },
     ],
     templates: [
       hard("bare", "An angle has two sides that meet at a point. Both sides are drawn longer without changing the opening between them. Does the angle stay the same size? Circle yes or no.", "'yes'", {}, {}, "True"),
