@@ -277,6 +277,8 @@ export interface AdaptiveBlock {
 }
 export interface AdaptiveTest {
   version: 1 | 2;
+  /** Absent on v2 attempts started before the above-grade confirmation rule. */
+  placementRules?: "above-grade-confirmation";
   pool: Question[];
   blocks: AdaptiveBlock[];
   locked: number;

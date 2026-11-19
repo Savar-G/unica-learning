@@ -25,7 +25,10 @@ export function createAdaptiveSession(profile: ChildProfile, seed: number, bank:
   const rng = rngFor(seed, "blocks");
   const pool = rng.shuffle(bank.filter(t => levelFor(t, profile.province) <= adaptiveTop(profile)))
     .map((t, i) => fillTemplate(t, seed, profile.province, `bq-${i}`));
-  const adaptive: AdaptiveTest = { version: 2, pool, blocks: [], locked: 0, complete: false, sufficientEvidence: false };
+  const adaptive: AdaptiveTest = {
+    version: 2, placementRules: "above-grade-confirmation", pool, blocks: [],
+    locked: 0, complete: false, sufficientEvidence: false,
+  };
   const first = selectBlock(adaptive, profile, profile.grade, "search");
   if (first.questions.length !== BLOCK_SIZE) throw new Error("The bank cannot start this assessment");
   adaptive.blocks.push(first);
@@ -164,28 +167,41 @@ function placementEvidence(test: AdaptiveTest, answers: readonly Answer[]) {
 
 type GradeCheck = "probe" | "first-look" | "second-look" | "pass" | "fail";
 
-function gradeCheck(answers: readonly Answer[]): GradeCheck {
+function gradeCheck(answers: readonly Answer[], aboveSchoolGrade: boolean): GradeCheck {
   if (answers.length < BLOCK_SIZE) return "probe";
   if (answers.length < LEVEL_EVIDENCE_MINIMUM) return "first-look";
   const first = answers.slice(0, LEVEL_EVIDENCE_MINIMUM).filter(a => a.correct).length;
+  if (aboveSchoolGrade) {
+    if (first >= 10) return "pass";
+    if (first < 9) return "fail";
+    if (answers.length < SECOND_LOOK_MINIMUM) return "second-look";
+    return answers.slice(LEVEL_EVIDENCE_MINIMUM, SECOND_LOOK_MINIMUM).filter(a => a.correct).length >= 4 ? "pass" : "fail";
+  }
   if (first >= 9) return "pass";
   if (first <= 6) return "fail";
   if (answers.length < SECOND_LOOK_MINIMUM) return "second-look";
   return first + answers.slice(LEVEL_EVIDENCE_MINIMUM, SECOND_LOOK_MINIMUM).filter(a => a.correct).length >= 12 ? "pass" : "fail";
 }
 
-function highestPass(byLevel: ReadonlyMap<Level, Answer[]>): Level | undefined {
-  return [...byLevel.keys()].sort((a, b) => b - a).find(level => gradeCheck(byLevel.get(level) ?? []) === "pass");
+type CheckGrade = (level: Level, answers: readonly Answer[]) => GradeCheck;
+
+function gradeCheckFor(test: StoredTest, useCurrent = false): CheckGrade {
+  const confirmAboveGrade = useCurrent || test.adaptive?.placementRules === "above-grade-confirmation";
+  return (level, answers) => gradeCheck(answers, confirmAboveGrade && level > test.profile.grade);
+}
+
+function highestPass(byLevel: ReadonlyMap<Level, Answer[]>, checkGrade: CheckGrade): Level | undefined {
+  return [...byLevel.keys()].sort((a, b) => b - a).find(level => checkGrade(level, byLevel.get(level) ?? []) === "pass");
 }
 
 /** Locks are final. A later fast answer can extend a rushing run across a block boundary. */
-function confirmedGrade(test: AdaptiveTest, answers: readonly Answer[], byLevel: ReadonlyMap<Level, Answer[]>): Level | undefined {
-  let best = highestPass(byLevel);
+function confirmedGrade(test: AdaptiveTest, answers: readonly Answer[], byLevel: ReadonlyMap<Level, Answer[]>, checkGrade: CheckGrade): Level | undefined {
+  let best = highestPass(byLevel, checkGrade);
   let end = 0;
   for (const block of test.blocks.slice(0, test.locked)) {
     end += block.questions.length;
     if (end >= answers.length || block.purpose === "coverage") break;
-    const prior = highestPass(placementEvidence(test, answers.slice(0, end)).byLevel);
+    const prior = highestPass(placementEvidence(test, answers.slice(0, end)).byLevel, checkGrade);
     if (prior !== undefined && (best === undefined || prior > best)) best = prior;
   }
   return best;
@@ -197,6 +213,15 @@ export type AdaptivePlacementScore =
 
 /** Apply the current placement rules to the stored form, without changing its questions, its version or its answers. */
 export function rescoreAdaptivePlacement(test: StoredTest, answers: readonly Answer[]): AdaptivePlacementScore {
+  return scorePlacement(test, answers, gradeCheckFor(test, true));
+}
+
+/** Score a v2 attempt using the rule it started with, including completed attempts restored for reports. */
+export function scoreStoredAdaptivePlacement(session: Session): AdaptivePlacementScore {
+  return scorePlacement(session, session.answers, gradeCheckFor(session));
+}
+
+function scorePlacement(test: StoredTest, answers: readonly Answer[], checkGrade: CheckGrade): AdaptivePlacementScore {
   if (!test.adaptive) throw new Error("An adaptive test is required");
   const questions = adaptiveQuestions(test.adaptive);
   if (answers.length !== questions.length || answers.some((a, i) => a.questionId !== questions[i].id)) {
@@ -204,16 +229,17 @@ export function rescoreAdaptivePlacement(test: StoredTest, answers: readonly Ans
   }
   if (paceOf(answers).unreliable) return { outcome: "retake", level: null };
   const { byLevel } = placementEvidence(test.adaptive, answers);
-  const best = confirmedGrade(test.adaptive, answers, byLevel);
-  const floorChecked = gradeCheck(byLevel.get(0) ?? []) === "fail";
+  const best = confirmedGrade(test.adaptive, answers, byLevel, checkGrade);
+  const floorChecked = checkGrade(0, byLevel.get(0) ?? []) === "fail";
   if (best === undefined) return { outcome: floorChecked ? "placed" : "insufficient", level: 0, passed: false, clear: false };
-  const above = gradeCheck(byLevel.get((best + 1) as Level) ?? []);
+  const aboveLevel = (best + 1) as Level;
+  const above = checkGrade(aboveLevel, byLevel.get(aboveLevel) ?? []);
   return { outcome: "placed", level: best, passed: true, clear: above === "pass" || above === "fail" };
 }
 
-function searchLevel(here: Level, top: Level, byLevel: ReadonlyMap<Level, Answer[]>): Level | null {
+function searchLevel(here: Level, top: Level, byLevel: ReadonlyMap<Level, Answer[]>, checkGrade: CheckGrade): Level | null {
   const answers = byLevel.get(here) ?? [];
-  const check = gradeCheck(answers);
+  const check = checkGrade(here, answers);
   const above = Math.min(top, here + 1) as Level;
   const below = Math.max(0, here - 1) as Level;
   if (check === "probe" || check === "second-look") return here;
@@ -225,9 +251,9 @@ function searchLevel(here: Level, top: Level, byLevel: ReadonlyMap<Level, Answer
     return here;
   }
   if (check === "pass") {
-    return above !== here && gradeCheck(byLevel.get(above) ?? []) !== "fail" ? above : null;
+    return above !== here && checkGrade(above, byLevel.get(above) ?? []) !== "fail" ? above : null;
   }
-  if (here === 0 || highestPass(byLevel) !== undefined) return null;
+  if (here === 0 || highestPass(byLevel, checkGrade) !== undefined) return null;
   return below;
 }
 
@@ -235,7 +261,8 @@ function lockPlacementBlock(session: Session, a: AdaptiveTest, questions: Questi
   const { profile, answers } = session;
   const { byLevel, scored } = placementEvidence(a, answers);
   const block = a.blocks.at(-1)!;
-  const best = confirmedGrade(a, answers, byLevel);
+  const checkGrade = gradeCheckFor(session);
+  const best = confirmedGrade(a, answers, byLevel, checkGrade);
   const top = adaptiveTop(profile);
   const room = ADAPTIVE_QUESTION_LIMIT - questions.length;
   const searchCount = a.blocks.filter(b => b.purpose === "search").reduce((n, b) => n + b.questions.length, 0);
@@ -246,24 +273,24 @@ function lockPlacementBlock(session: Session, a: AdaptiveTest, questions: Questi
   };
   let next: AdaptiveBlock | null = null;
   if (block.purpose === "search" && searchCount < SEARCH_QUESTION_LIMIT) {
-    const level = searchLevel(block.level, top, byLevel);
+    const level = searchLevel(block.level, top, byLevel, checkGrade);
     if (level !== null) next = select(level, "search", SEARCH_QUESTION_LIMIT - searchCount);
   }
   if (!next?.questions.length && block.purpose !== "coverage") {
     const checked = [...byLevel.keys()].sort((x, y) => y - x);
     const adjacent = best !== undefined && best < top ? (best + 1) as Level : null;
-    const pending = checked.find(level => (best === undefined || level > best) && gradeCheck(byLevel.get(level) ?? []) === "second-look");
+    const pending = checked.find(level => (best === undefined || level > best) && checkGrade(level, byLevel.get(level) ?? []) === "second-look");
     const promising = checked.find(level => {
       const rows = byLevel.get(level) ?? [];
-      return (best === undefined || level > best) && gradeCheck(rows) === "first-look" && rows.filter(x => x.correct).length >= 3;
+      return (best === undefined || level > best) && checkGrade(level, rows) === "first-look" && rows.filter(x => x.correct).length >= 3;
     });
     const revisit = adjacent !== null && a.blocks.some(b => b.level === adjacent) && (byLevel.get(adjacent)?.length ?? 0) < LEVEL_EVIDENCE_MINIMUM ? adjacent : null;
     let fallback: Level | undefined;
     if (best === undefined) {
       for (let level = Math.max(0, block.level - 1); level >= 0; level--) {
-        const check = gradeCheck(byLevel.get(level as Level) ?? []);
-        if (check !== "fail") {
-          fallback = level as Level;
+        const candidate = level as Level;
+        if (checkGrade(candidate, byLevel.get(candidate) ?? []) !== "fail") {
+          fallback = candidate;
           break;
         }
       }
@@ -279,7 +306,7 @@ function lockPlacementBlock(session: Session, a: AdaptiveTest, questions: Questi
   if (next?.questions.length && next.questions.length <= room) a.blocks.push(next);
   else {
     a.complete = true;
-    a.sufficientEvidence = rescoreAdaptivePlacement({ ...session, adaptive: a }, answers).outcome !== "insufficient";
+    a.sufficientEvidence = scorePlacement({ ...session, adaptive: a }, answers, checkGrade).outcome !== "insufficient";
   }
   return { ...session, adaptive: a };
 }

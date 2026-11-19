@@ -1,4 +1,4 @@
-import { ADAPTIVE_BREAK_AFTER, ADAPTIVE_SECOND_BREAK_AFTER, rescoreAdaptivePlacement, adaptiveEvidence, adaptiveQuestions, adaptiveTop, LEVEL_EVIDENCE_MINIMUM, UNKNOWN_RESPONSE } from "./adaptive";
+import { ADAPTIVE_BREAK_AFTER, ADAPTIVE_SECOND_BREAK_AFTER, scoreStoredAdaptivePlacement, adaptiveEvidence, adaptiveQuestions, adaptiveTop, LEVEL_EVIDENCE_MINIMUM, UNKNOWN_RESPONSE } from "./adaptive";
 // The assessment session: pure functions over plain data.
 // No network, database, clock or Math.random: the caller passes the seed and every time value.
 import {
@@ -661,7 +661,7 @@ export function finish(session: Session, facts: FactsSession | null = null, help
   const levels: LevelResult[] = [...new Set(marked.map((m) => m.q.level))]
     .sort((a, b) => a - b)
     .map((level) => ({ level, ...tally(scored.filter((m) => m.q.level === level)) }));
-  const current = session.adaptive?.version === 2 ? rescoreAdaptivePlacement(session, session.answers) : null;
+  const current = session.adaptive?.version === 2 ? scoreStoredAdaptivePlacement(session) : null;
   const workingLevel = current ? current.level : session.adaptive ? adaptiveEvidence(session).level : workingLevelOf(levels);
   const placementLevels = session.adaptive ? levels.filter(l => l.total >= LEVEL_EVIDENCE_MINIMUM) : levels;
 
