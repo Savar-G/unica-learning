@@ -45,11 +45,11 @@ beforeEach(() => {
   f.requireAdmin.mockResolvedValue(admin());
 });
 
-it("runs the public preview loader using only reads and returns U16 with the report check", async () => {
+it("runs the public preview loader using only reads and returns U17 with the report check", async () => {
   const detail = await loadPreviewPlan(admin(), id);
   expect(detail?.preview.ok).toBe(true);
   if (!detail?.preview.ok) return;
-  expect(detail.preview.plan.level).toBe(16);
+  expect(detail.preview.plan.level).toBe(17);
   expect(detail.preview.why.inputs.find(i => i.label === "Report recommendation")).toMatchObject({ status: "Used", value: "Move ahead" });
   expect(reads).toEqual(["admin_assessments", "child_profiles", "workbook_instructions", "admin_reports", "learner_profiles"]);
   expect(detail.preview.plan.instructions).toBeUndefined();

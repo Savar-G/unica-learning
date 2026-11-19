@@ -80,8 +80,8 @@ export function placeChild(o: PlacementInput): PlacedChild {
   const measuredLevel = signals.working?.working ?? null;
   const grade = measuredLevel ?? o.grade;
   const first = firstLevel(levels, grade);
-  const gradeWeak = signals.standards.some(s => s.grade === grade && s.status !== "secure");
-  const home = gradeWeak ? first : levels.filter(l => l.schoolGrade === grade)[1] ?? first;
+  const gradeClearlyWeak = signals.clearlyWeak.some(s => s.grade === grade);
+  const home = gradeClearlyWeak ? first : levels.filter(l => l.schoolGrade === grade)[1] ?? first;
   const decide = (level: CurriculumLevel, rule: PlacementTrace["rule"], reason: string, inLevel = 0, isFirst = true, support: string | null = null): PlacedChild => ({
     measuredLevel, startingPoint: level.id, level, inLevel, first: isFirst, support,
     trace: { rule, reason, measuredLevel, startingPoint: level.id, home: home.id, support,
@@ -116,9 +116,9 @@ export function placeChild(o: PlacementInput): PlacedChild {
     return decide(lowest.level, "P3", "Start at the lowest clearly weak topic because there are several clear gaps or a gap at least two grades below the measured level.");
   }
   const reason = first.schoolGrade !== grade ? "Use the highest available level within the placement limit."
-    : gradeWeak ? "Use the first level of the measured grade because the test or later work showed a weak topic there."
+    : gradeClearlyWeak ? "Use the first level of the measured grade because the test or later work showed a clearly weak topic there."
     : home === first ? "Use the available level of the measured grade."
-    : "Use the middle of the measured grade because no weak topic was found in that grade.";
+    : "Use the middle of the measured grade because no clearly weak topic was found in that grade.";
   const support = supportFor(levels, home, signals);
   if (support) return decide(home, "P4", `${reason} Teach the lower weak topic alongside it for two books.`, 0, true, support);
   return decide(home, "P5", reason);

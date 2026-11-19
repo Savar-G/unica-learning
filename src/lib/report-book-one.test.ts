@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 import { bookOne } from "@/lib/report-book-one";
 import { sampleLearnerProfile, sampleReportView } from "@/lib/sample-children";
 
-// The sample assessment measures Grade 2 and shows weak evidence there. Book 1 starts at U7, the first level of Grade 2.
+// Add clear evidence to the Grade 2 sample to exercise U7 and its plan details.
 describe("bookOne (D-305)", () => {
   const view = sampleReportView();
-  const book = bookOne({ profile: sampleLearnerProfile()!, grade: 3, assessmentId: "sample", completedAt: view.completedAt, minutes: view.minutes, howWeHelp: view.model.howWeHelp })!;
+  const profile = sampleLearnerProfile()!;
+  const report = { profile, grade: 3 as const, assessmentId: "sample", completedAt: view.completedAt, minutes: view.minutes, howWeHelp: view.model.howWeHelp };
+  const clearProfile = { ...profile, standards: profile.standards.map(standard => standard.code === "2.4"
+    ? { ...standard, total: 3 } : standard) };
+  const book = bookOne({ ...report, profile: clearProfile })!;
 
   it("counts what the book is made of from the plan's items, teaching first", () => {
     expect(book.mix[0]).toMatchObject({ kind: "main", code: "2.1" });
@@ -33,9 +37,11 @@ describe("bookOne (D-305)", () => {
   });
 
   it("has the plan's days and challenge parts, and lists warm-ups only when planned", () => {
+    expect(book.level).toBe(7);
     expect(book.days).toBe(10);
     expect(book.challenge.harder).toBe(true);
     expect(book.warmUp).toEqual([]);
+    expect(bookOne(report)).toMatchObject({ level: 8, warmUp: ["Facts to 10"] });
   });
 
   it("gives null without a curriculum", () => {

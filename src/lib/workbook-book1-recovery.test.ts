@@ -5,6 +5,7 @@ import { loadPinnedPlanningEngine } from "./workbook-book1-pinned";
 import { recoverBook1PlanningInput, type Book1RecoverySources, type PinnedPlanningEngine } from "./workbook-book1-recovery";
 import { curriculumFor } from "./workbook-curriculum";
 import type { RunFrame } from "./workbook-job";
+import { EMPTY_INSTRUCTIONS } from "./workbook-instructions";
 import { planNextWorkbook, prepareNextWorkbookInput } from "./workbook-placement";
 import type { PlanInput, WorkbookPlan } from "./workbook-plan";
 import { bookPersona, type BookPersona } from "./workbook-sample-profiles";
@@ -96,11 +97,11 @@ describe("recoverBook1PlanningInput with the pinned original planner", () => {
 });
 
 describe("public planning contracts against the base pin", () => {
-  const cases: { name: string; grade: number; persona: BookPersona | null; workbooks: { number: number; levels: number[] }[]; number: number; reviewedOmissions?: string[] }[] = [
+  const cases: { name: string; grade: number; persona: BookPersona | null; workbooks: { number: number; levels: number[] }[]; number: number; newLevel?: number; reviewedOmissions?: string[] }[] = [
     { name: "no profile, grade 1", grade: 1, persona: null, workbooks: [], number: 1 },
-    { name: "on-level", grade: 4, persona: "on-level", workbooks: [], number: 1 },
-    { name: "catch-up", grade: 4, persona: "catch-up", workbooks: [], number: 1, reviewedOmissions: ["3.1", "3.6", "3.13"] },
-    { name: "ahead", grade: 4, persona: "ahead", workbooks: [], number: 1 },
+    { name: "on-level", grade: 4, persona: "on-level", workbooks: [], number: 1, newLevel: 14 },
+    { name: "catch-up", grade: 4, persona: "catch-up", workbooks: [], number: 1, newLevel: 11, reviewedOmissions: ["3.1", "3.6", "3.13"] },
+    { name: "ahead", grade: 4, persona: "ahead", workbooks: [], number: 1, newLevel: 17 },
     { name: "rushed book 2", grade: 4, persona: "rushed", workbooks: [{ number: 1, levels: [13] }], number: 2 },
   ];
   it.each(cases)("captures the exact input for a new plan without changing the pinned frame for $name", c => {
@@ -117,7 +118,9 @@ describe("public planning contracts against the base pin", () => {
     if (!prepared.ok) throw Error(prepared.reason);
     expect(captured).toEqual([prepared.input]);
     const expectedPlan = structuredClone(pinned.result.plan) as WorkbookPlan;
-    expect(withCapture.plan.level).toBe(expectedPlan.level);
+    const level = c.newLevel ?? expectedPlan.level;
+    expect(withCapture.plan.level).toBe(level);
+    expect(prepared.input.level.number).toBe(level);
     if (!c.persona) {
       expect(withCapture.plan).toEqual(expectedPlan);
       expect(captured).toEqual(pinned.calls);
@@ -126,19 +129,21 @@ describe("public planning contracts against the base pin", () => {
 
     expect(withCapture.placement).toMatchObject({
       measuredLevel: captured[0].personal?.working?.working,
-      startingPoint: `U${expectedPlan.level}`,
+      startingPoint: `U${level}`,
     });
     expect(withCapture.plan.personal?.start).toEqual(withCapture.placement);
     if (c.reviewedOmissions) {
-      // Keep the #755 proof that skills omitted from the pinned metadata receive review.
+      // Compare review coverage at the same level as the pin for #755.
       const omissions = expectedPlan.personal!.notReviewed!;
       const removed = omissions.filter(entry => c.reviewedOmissions!.includes(entry.unit));
       expect(removed.map(entry => entry.unit)).toEqual(c.reviewedOmissions);
-      const scheduled = new Set(withCapture.plan.days.flatMap(day => day.pages.flatMap(page =>
+      const atPinnedLevel = planNextWorkbook({ ...input, instructions: { ...EMPTY_INSTRUCTIONS, startLevel: `U${expectedPlan.level}` } });
+      if (!atPinnedLevel.ok) throw Error(atPinnedLevel.reason);
+      const scheduled = new Set(atPinnedLevel.plan.days.flatMap(day => day.pages.flatMap(page =>
         page.parts.filter(part => part.items > 0).flatMap(part => (part.reviewSteps ?? []).map(review => review.skill)))));
       expect(removed.flatMap(entry => entry.skills).every(skill => scheduled.has(skill))).toBe(true);
       expect(captured[0].personal?.weak.map(topic => topic.code)).toEqual(["3.3"]);
-    } else {
+    } else if (c.newLevel === undefined) {
       expect(JSON.parse(JSON.stringify({ ...withCapture.plan, personal: undefined })))
         .toEqual(JSON.parse(JSON.stringify({ ...expectedPlan, personal: undefined })));
     }

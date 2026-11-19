@@ -1,3 +1,4 @@
+import { EMPTY_INSTRUCTIONS } from "@/lib/workbook-instructions";
 import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import { fakeAiClient } from "@/lib/ai-client-fake";
@@ -27,7 +28,8 @@ const ADMIN = { id: "00000000-0000-4000-8000-0000000000ad", email: "admin@exampl
 const fits: FitCheck = { fits: async () => ({ ok: true }) };
 
 const child = (over: Partial<ChildInputs> = {}): ChildInputs => ({
-  parentId: PARENT, name: "Leah", grade: 4, province: "BC", profile: { revision: 1, profile: firstCustomerProfile() }, workbooks: [], ...over,
+  parentId: PARENT, name: "Leah", grade: 4, province: "BC", profile: { revision: 1, profile: firstCustomerProfile() }, workbooks: [],
+  instructions: { ...EMPTY_INSTRUCTIONS, startLevel: "U16" }, ...over,
 });
 
 function setup(o: { inputs?: ChildInputs; itemPolicy?: "approved-v1" | "legacy"; fail?: () => boolean } = {}) {

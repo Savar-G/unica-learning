@@ -1,3 +1,4 @@
+import { EMPTY_INSTRUCTIONS } from "@/lib/workbook-instructions";
 import { describe, expect, it } from "vitest";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { fakeAiClient } from "@/lib/ai-client-fake";
@@ -27,7 +28,8 @@ const ADMIN = { id: "00000000-0000-4000-8000-0000000000ad", email: "admin@exampl
 const fits: FitCheck = { fits: async () => ({ ok: true }) };
 
 const child = (over: Partial<ChildInputs> = {}): ChildInputs => ({
-  parentId: PARENT, name: "Leah", grade: 4, province: "BC", profile: { revision: 1, profile: firstCustomerProfile() }, workbooks: [], ...over,
+  parentId: PARENT, name: "Leah", grade: 4, province: "BC", profile: { revision: 1, profile: firstCustomerProfile() }, workbooks: [],
+  instructions: { ...EMPTY_INSTRUCTIONS, startLevel: "U16" }, ...over,
 });
 
 /** The day pages each AI request was for, as "<day>:<page of the day>": the page writer names them in its request. */
@@ -191,7 +193,12 @@ describe("first pages", () => {
 
   it("plans a child with no clear gap, and a child placed below the school grade, from the real planner", async () => {
     // No profile: the planner starts from the school grade. A grade 6 child whose profile shows gaps starts lower.
-    for (const inputs of [child({ profile: null, grade: 2 }), child({ grade: 6 })]) {
+    const below = firstCustomerProfile();
+    below.standards = below.standards.map(topic => topic.code === "5.13"
+      ? { ...topic, correct: 0, total: 3, status: "needs-attention", certainty: "clear" } : topic);
+    const cases = [child({ profile: null, grade: 2, instructions: null }),
+      child({ grade: 6, profile: { revision: 1, profile: below }, instructions: null })];
+    for (const inputs of cases) {
       const s = setup({ inputs });
       const set = s.first.queue({ assessmentId: TEST, parentId: PARENT, childId: CHILD });
       expect(await runFirstPagesJob(set.id, s.deps)).toBe("ready");

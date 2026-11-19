@@ -16,14 +16,14 @@ function preview(input = facts(), books: { number: number; levels: number[] }[] 
 }
 
 describe("Why this book and read-only preview", () => {
-  it("previews the first customer at U16 with all inputs, start reason, page rows and warnings", () => {
+  it("previews the first customer at U17 with all inputs, start reason, page rows and warnings", () => {
     const { plan, why } = preview();
-    expect(plan.level).toBe(16);
+    expect(plan.level).toBe(17);
     expect(plan.personal?.start.rules).toEqual(expect.arrayContaining(["P5", "P5a", "P5b", "P7", "P8"]));
     expect(plan.personal?.why).toEqual(why);
     expect(why.inputs).toHaveLength(22);
-    expect(why).toMatchObject({ measuredLevel: 5, startingPoint: "U16" });
-    expect(why.start).toContain("first level of the measured grade");
+    expect(why).toMatchObject({ measuredLevel: 5, startingPoint: "U17" });
+    expect(why.start).toContain("middle of the measured grade because no clearly weak topic");
     expect(why.pages).toHaveLength(1 + plan.days.reduce((n, d) => n + d.pages.length, 0));
     expect(why.inputs.find(i => i.label === "Number facts")?.value).toContain("2s, 5s and 10s");
     expect(why.inputs.find(i => i.label === "Parent's answers")).toMatchObject({ status: "Missing", reason: expect.stringContaining("Learning card not answered") });
@@ -43,9 +43,9 @@ describe("Why this book and read-only preview", () => {
   it("labels a legacy frame using its saved working level and plan", () => {
     const plan: WorkbookPlan = preview().plan;
     const start = plan.personal!.start!;
-    plan.personal!.start = { rule: start.rule, reason: start.reason, home: start.home, rules: start.rules, support: start.support, level: "U16" };
-    expect(workbookWhy(plan)).toMatchObject({ measuredLevel: 5, startingPoint: "U16" });
-    expect(plan.personal?.start).toHaveProperty("level", "U16");
+    plan.personal!.start = { rule: start.rule, reason: start.reason, home: start.home, rules: start.rules, support: start.support, level: "U17" };
+    expect(workbookWhy(plan)).toMatchObject({ measuredLevel: 5, startingPoint: "U17" });
+    expect(plan.personal?.start).toHaveProperty("level", "U17");
   });
 
   it("builds profile facts in memory and calls the planner once without changing its input", () => {
@@ -97,7 +97,7 @@ describe("Why this book and read-only preview", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const why = workbookWhy(result.plan)!;
-    expect(why.start).toContain("first level of the measured grade");
+    expect(why.start).toContain("middle of the measured grade because no clearly weak topic");
     expect(why.inputs.find(i => i.label === "Parent's answers")?.value).toContain("Catch up");
     expect(why.pages.some(p => p.choices.some(c => c.includes("Extra")))).toBe(true);
     result.plan.personal!.timeShortfalls = [{ day: 1, target: 20, required: 22, shortfall: 2 }];
@@ -120,7 +120,7 @@ describe("Why this book and read-only preview", () => {
     const result = planNextWorkbook({ curriculum, grade: 4, profile: firstCustomerProfile(), workbooks: [], number: 1, report: { howWeHelp: "behind", minutes: 55 } });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.plan.level).toBe(16);
+    expect(result.plan.level).toBe(17);
     expect(result.plan.personal!.why!.warnings.some(w => w.includes("do not agree"))).toBe(true);
     expect(result.plan.personal!.why!.inputs.find(i => i.label === "Report recommendation")?.value).toBe("Catch up");
   });
@@ -149,10 +149,10 @@ describe("Why this book and read-only preview", () => {
   it("names every displayed topic and explains why secure topics with limited evidence are taught", () => {
     const { why } = preview();
     const text = JSON.stringify(why);
-    expect(text).toContain("Numbers to a million (5.1)");
+    expect(text).toContain("Multiplying and dividing (5.6)");
     expect(text).toContain("Perimeter (4.14)");
     expect(text.replace(/\((?:\d+\.\d+|K\d+)\)/g, "")).not.toMatch(/\b[1-9]\.\d+\b/);
-    expect(why.pages.some(p => p.choices.some(c => c.includes("Teach Numbers to a million (5.1) from step 1") && c.includes("secure, but the evidence is limited")))).toBe(true);
+    expect(why.pages.some(p => p.choices.some(c => c.includes("Teach Multiplying and dividing (5.6) from step 1") && c.includes("secure, but the evidence is limited")))).toBe(true);
   });
 
   // Codex's source-isolation reproduction from /tmp/pr570-source-probe.cjs.

@@ -10,6 +10,7 @@ import { fakeAiClient } from "@/lib/ai-client-fake";
 import { fakeWorkbookItems } from "@/lib/workbook-ai-fake";
 import { keySolver } from "@/lib/workbook-solve-check";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
+import { EMPTY_INSTRUCTIONS } from "@/lib/workbook-instructions";
 
 const BC=curriculumFor("bc")!;
 const input=(profile: ChildLearnerProfile | null=firstCustomerProfile(),grade:Grade=4):PlacementInput=>({curriculum:BC,grade,profile,workbooks:[]});
@@ -93,8 +94,20 @@ describe("placement P0 to P9",()=>{
   it.each([[4,"U14"],[3,"U11"]] as const)("P5 starts in the middle of measured Grade %i when that grade has no weak topics", (measuredLevel, startingPoint) => {
     expect(placeChild(input(changed([],measuredLevel)))).toMatchObject({measuredLevel,startingPoint,trace:{rule:"P5",measuredLevel,startingPoint}});
   });
-  it("starts at the first level of the measured grade when there is weak evidence there",()=>{
-    expect(placeChild(input(changed([["4.5",1,2]])))).toMatchObject({measuredLevel:4,startingPoint:"U13",trace:{rule:"P5"}});
+  it("keeps the middle of the measured grade after one miss in that grade", () => {
+    const i = input(changed([["4.1", 0, 1]]));
+    expect(placeChild(i)).toMatchObject({
+      measuredLevel: 4, startingPoint: "U14",
+      trace: { rule: "P5", reason: expect.stringContaining("no clearly weak topic") },
+    });
+    expect(planned(i).personal?.start.rules).toContain("P6");
+  });
+  it("starts at the first level of the measured grade when a topic there is clearly weak", () => {
+    const i = input(changed([["4.1", 0, 3]]));
+    expect(placeChild(i)).toMatchObject({
+      measuredLevel: 4, startingPoint: "U13",
+      trace: { rule: "P5", reason: expect.stringContaining("showed a clearly weak topic") },
+    });
   });
   it.each([
     { name: "above the measured grade", working: 3 as const, weak: [["4.4",0,3],["4.5",0,3]] as const, start: "U11", clear: [] },
@@ -111,12 +124,16 @@ describe("placement P0 to P9",()=>{
     expect(early.newSteps.some(s=>s.unit==="5.6"&&s.step===1)).toBe(true);
     expect(clear.newSteps.some(s=>s.unit==="5.6")).toBe(false);
   });
-  it("P5b checks untested start units and P7 keeps the ceiling customer at U16",()=>{
-    const i=input(),place=placeChild(i),plan=planned(i);
-    expect(place.level.id).toBe("U16");expect(place.trace.rules).toContain("P7");
+  it("P7 keeps the ceiling result at the middle of the measured grade", () => {
+    const place = placeChild(input());
+    expect(place.level.id).toBe("U17");
+    expect(place.trace.rules).toContain("P7");
+  });
+  it("P5b checks untested start units when the team chooses U16", () => {
+    const plan = planned({ ...input(), instructions: { ...EMPTY_INSTRUCTIONS, startLevel: "U16" } });
     expect([...new Set(plan.newSteps.map(s=>s.unit))]).toEqual(["5.1","5.9","5.10"]);
     expect(plan.checks.filter(c=>["5.8","5.9"].includes(c.unit))).toEqual([{unit:"5.8",kind:"unit-check",day:1},{unit:"5.9",kind:"unit-check",day:2}]);
-    expect(plan.personal?.start.rules).toEqual(expect.arrayContaining(["P5","P5a","P5b","P7","P8"]));
+    expect(plan.personal?.start.rules).toEqual(expect.arrayContaining(["I1","P5a","P5b","P8"]));
     expect(plan.days.flatMap(d=>d.pages.flatMap(p=>p.parts)).flatMap(p=>p.skills).every(s=>BC.skill(s)!.unit!=="5.13")).toBe(true);
   });
   it("P6 keeps early weak standards below home from lowering the start",()=>{
@@ -125,8 +142,8 @@ describe("placement P0 to P9",()=>{
     expect(planned(i).personal?.start.rules).toContain("P6");
   });
   it("P8 never uses an above-school-grade error as a weakness, even if a stale flag says otherwise",()=>{
-    const p=changed([["5.13",0,2]],5);p.standards[0].aboveGrade=false;p.notYetSecure=["5.13"];
-    const place=placeChild(input(p));expect(place).toMatchObject({level:{id:"U16"},support:null,trace:{rule:"P5"}});
+    const p=changed([["5.13",0,3]],5);p.standards[0].aboveGrade=false;p.notYetSecure=["5.13"];
+    const place=placeChild(input(p));expect(place).toMatchObject({level:{id:"U17"},support:null,trace:{rule:"P5"}});
     expect(planned(input(p)).personal?.weak).toEqual([]);
   });
   it.each([0,9] as const)("P9 keeps grade %i within the existing bounds",grade=>{

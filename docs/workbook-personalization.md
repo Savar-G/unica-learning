@@ -84,8 +84,8 @@ These are the terms the rules use:
 
 - **G** is the school grade.
 - **W** is the measured level (S2), the grade of work the test found.
-- **Home level** is the middle workbook level of W when there is no weak topic recorded in W. If there is one, use the first workbook level of W. U27 is the ceiling (D-153). The **starting point** is the workbook level chosen by the rules below.
-- **Weak** for review, support and P3 means a standard that is yet to be secure and is at or below both G and W. When W is unavailable, G is the only bound.
+- **Home level** is the middle workbook level of W. Use the first workbook level of W when a topic in W is clearly weak. U27 is the ceiling (D-153). The **starting point** is the workbook level chosen by the rules below.
+- **Weak** for placement, review and support means a standard that is yet to be secure and is at or below both G and W. When W is unavailable, G is the only bound.
 - **Clearly weak** means weak with certainty "clear" and at least three scored answers.
 
 The rules apply in order. The first one that matches decides the start.
@@ -110,13 +110,11 @@ The rules apply inside every start level:
 - **P8: never a weakness above grade** (D-084) stays. Above-grade wrong answers (5.13 here) never become review, Fix it or a Watch out line before their own level is taught. The admin view lists them as "above school grade, not a weakness".
 - **P9: Kindergarten can start above U1** with a clear, trusted above-grade result. U27 stays the ceiling.
 
-**The U16 case, encoded as a test.** G = 4, W = 5. The level is clear, confidence normal, help not likely, results reliable, at the ceiling.
+**The Grade 5 ceiling case, encoded as a test.** G = 4, W = 5. The level is clear, confidence normal, help not likely, results reliable, at the ceiling.
 
-- P2 does not apply. There are no weak standards at or below G, so P3, P4 and P6 do not apply. A weak topic in W leads P5 to choose its first level, **U16**.
-- P5a: 5.1, 5.5, 5.10, 5.12 and 5.17 (secure on 1 to 2 answers) are taught.
-- P5b: 5.8 and 5.9 (untested) get unit checks on Days 1 and 2.
-- P8: 5.13 (0 of 1, a U17 unit) is not in the book.
-- The step progression's window of three gives book 1 the units 5.1, 5.9 and 5.10. The probe on main showed this order once the skip was off.
+- P2 does not apply. There are no weak standards at or below G, so P3, P4 and P6 do not apply. P5 chooses **U17**, the middle of Grade 5.
+- P8: 5.13 (0 of 1, a U17 unit) is above school grade and supplies no placement or remediation signal.
+- The existing U16 teaching and unit-check example applies when the team explicitly chooses U16. The step progression's window of three gives that book units 5.1, 5.9 and 5.10, with checks for the untested units 5.8 and 5.9 on Days 1 and 2.
 
 ## 4. What each signal changes in the book
 
@@ -128,7 +126,7 @@ Each rule names its gate, its change and its limit. "Today" means the book is ma
 - **Extra practice.** A weak unit taught in the book adds 1 more practice page on its first step's day, inside the day's page count. It takes the place of a word-problems page that day, never Practice 2 or the Challenge.
 - **Spaced review.** A weak skill's first review comes after 2 practice days, then 5, then 15. These are today's intervals, but they start from a weak skill's first taught day, not its last.
 - **Weak below the start level:** P6.
-- **Gate:** clearly weak and early-sign weak both count for order and review. Only clearly weak moves the start (P3, P4).
+- **Gate:** clearly weak and early-sign weak both count for order and review. The start changes only on clearly weak evidence (home level and P3). Early signs can still get P6 checks or the P4 support slot for a catch-up request.
 - **Test:** a persona with weak 4.3 gets 4.3 skills in Remember these on Days 2 to 4 and in the Friday 5. Remove the weakness and those items go.
 
 ### 2. Strengths, the ceiling and where to stretch (S2 to S5)
@@ -338,8 +336,7 @@ The view goes on the admin draft page (`/admin/workbooks/[id]`) and the run page
   - the cover sentence.
 
   Every pair of personas must differ in at least 3 features. Each persona must match its own expected values.
-- **The first customer.** A fixture with his profile's shape (no name, no ids, no answer text) must give:
-  - U16;
+- **Grade 5 ceiling fixture.** The automatic preview starts at U17 and shows Grade 5 as the measured level. When the team sets U16 explicitly, the same fixture checks:
   - 5.1, 5.9 and 5.10 taught in book 1;
   - unit checks for 5.8 and 5.9;
   - no 5.13;
@@ -347,7 +344,7 @@ The view goes on the admin draft page (`/admin/workbooks/[id]`) and the run page
   - ×3, ×4 and extended facts on at least 15 of 30 warm-up items on Days 1 to 5;
   - today's interest lists and Watch out lines;
   - the cover sentence of section 4, item 10.
-- **Live check, read-only.** Preview plan on the live admin for child `71ce22a1…` shows U16 and the same trace as the fixture. Nothing is stored except the profile rows B1 writes when a real run starts.
+- **Admin preview check.** The preview shows the measured level and the starting point separately, with the reason for the start. The preview stores nothing.
 - **Integration**, per the round guide: full seeded U4 and U16 fake books, then the Ahead and Catch up personas at their levels. Then a real U16 sample with `--replay` for Savar, with its Why this book page.
 
 ## 8. Savar's answers (2026-11-04)
