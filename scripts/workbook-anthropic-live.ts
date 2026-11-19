@@ -14,9 +14,9 @@ import { workbookAnthropicBudget } from "./workbook-anthropic-budget.mjs";
 
 const PROJECT = "cdjobwsyzndtltzfpyqa";
 delete process.env.WORKBOOK_AI_FAKE;
-const { values } = parseArgs({ options: { child: { type: "string" }, "resume-run": { type: "string" }, execute: { type: "boolean", default: false }, help: { type: "boolean", default: false } } });
+const { values } = parseArgs({ options: { child: { type: "string" }, "resume-run": { type: "string" }, execute: { type: "boolean", default: false }, seed: { type: "string" }, help: { type: "boolean", default: false } } });
 if (values.help) {
-  console.log("node scripts/workbook-anthropic-live.mjs --child LABEL [--resume-run ID] [--execute]\nWORKBOOK_LIVE_CONFIG must name the private family config (parentId, actor, surname, children, optional limitUsd). ANTHROPIC_API_KEY_FILE must name the private key file. Read-only preflight is the default. Each child has one persistent ledger (at most $35). --execute creates or resumes Book 1 without approving or shipping it.");
+  console.log("node scripts/workbook-anthropic-live.mjs --child LABEL [--resume-run ID] [--seed UUID] [--execute]\nWORKBOOK_LIVE_CONFIG must name the private family config (parentId, actor, surname, children, optional limitUsd). ANTHROPIC_API_KEY_FILE must name the private key file. Read-only preflight is the default. Each child has one persistent ledger (at most $35). --execute creates or resumes Book 1 without approving or shipping it. --seed gives a new run a draft key a fake sweep proved (needs pin_workbook_run_draft_key).");
   process.exit(0);
 }
 // Family identity lives in a private file outside the repo: no child ids, names or admin email in source.
@@ -35,6 +35,9 @@ const limitUsd = typeof config.limitUsd === "number" ? config.limitUsd : 35;
 const name = values.child;
 if (!name || !Object.hasOwn(CHILDREN, name)) throw new Error(`Choose an authorized child: ${Object.keys(CHILDREN).join(" or ")}`);
 const childId = CHILDREN[name];
+// A proven sample seed (the run's draft key): the fake sweep's plan prints live. Only for a new run, or the run it pinned.
+const seed = values.seed;
+if (seed !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(seed)) throw new Error("--seed must be a lowercase UUID");
 const git = (...args: string[]) => execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
 if (git("status", "--porcelain")) throw new Error("Commit the reviewed code before a live run; the checkout must be clean");
 const build = git("rev-parse", "HEAD");
@@ -71,6 +74,7 @@ const resumeRun = values["resume-run"] ? await runs.run(values["resume-run"]) : 
 if (values["resume-run"]) {
   if (!resumeRun || resumeRun.childId !== childId || resumeRun.parentId !== PARENT || resumeRun.number !== 1 || resumeRun.runner !== "server" || resumeRun.startedBy.id !== ACTOR.id || !["queued", "running"].includes(resumeRun.status)) throw new Error("Only this child's active authorized API Book 1 can resume");
   const frame = await runs.frame(resumeRun.id);
+  if (seed !== undefined && resumeRun.draftKey !== seed) throw new Error("The run to resume has another draft key than --seed; no request sent");
   if (resumeRun.status === "running" && !frame) throw new Error("The running book has no checkpoint; inspect it before resuming");
   if (frame && (frame.versions.build !== build || frame.versions.model !== "claude-sonnet-5-5" || frame.versions.solveModel !== "claude-haiku-5-5")) throw new Error("The checkpoint belongs to another build or provider; no request sent");
 }
@@ -94,6 +98,16 @@ try {
     if (!run || run.childId !== childId || run.parentId !== PARENT || run.number !== 1 || run.runner !== "server") {
       await runs.stop(started.runId, ACTOR);
       throw new Error("The new run did not match the authorized Book 1; it was stopped before generation");
+    }
+    if (seed !== undefined) {
+      const pinned = await admin.rpc("pin_workbook_run_draft_key", { p_run: run.id, p_key: seed, p_by: ACTOR.id, p_by_email: ACTOR.email });
+      const result = pinned.data as { status?: string; reason?: string } | null;
+      if (pinned.error || result?.status !== "pinned") {
+        await runs.stop(run.id, ACTOR);
+        throw new Error(`The seed was not pinned (${pinned.error?.message ?? result?.reason ?? "unknown"}); the run was stopped before generation`);
+      }
+      run = await runs.run(run.id);
+      if (!run || run.draftKey !== seed) throw new Error("The pinned run did not read back with its seed; stop it before generation");
     }
   }
   console.log(JSON.stringify({ child: name, runId: run.id, status: resumeRun ? "resuming" : "started", provider: "anthropic" }));

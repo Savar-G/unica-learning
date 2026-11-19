@@ -28,6 +28,8 @@ export async function runWorkbookEditWith(db: SupabaseClient<Database>, id: stri
   const env = place.env ?? process.env;
   const fake = workbookFakeAi(env);
   const live = fake ? null : workbookAi(env, { subscription: place.subscription, primary: place.primary, singleDispatch: true, onStart: log.add, onCall: log.add,
+    // (A direct Anthropic edit keeps the per-child spending guard, as a live run does.)
+    anthropicFetchWrapper: place.anthropicFetchWrapper,
     usage: { parentId: run.data.parent_id, childId: run.data.child_id, runId: run.data.id } });
   const template = workbookTemplate(await fixedTemplateFonts()), engine = chromiumPrintEngine(), files = workbookFiles(db);
   const rendering = workbookEditRendering(db, template, engine);
