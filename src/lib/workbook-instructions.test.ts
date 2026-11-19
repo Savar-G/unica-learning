@@ -72,22 +72,22 @@ describe("book instructions in the plan", () => {
     const captured: PlanInput[] = [];
     const p = plan({ instructions: set({ startLevel: "U19" }) }, 1, i => captured.push(i));
     expect(p.level).toBe(19);
-    expect(p.personal?.start).toMatchObject({ rule: "I1", level: "U19" });
+    expect(p.personal?.start).toMatchObject({ rule: "I1", measuredLevel: 5, startingPoint: "U19" });
     expect(outcome(p, "start-level", "U19")).toMatchObject({ applied: true, note: expect.stringContaining("automatic U16") });
     expect(p.instructions?.instructions).toEqual(set({ startLevel: "U19" }));
     expect(captured[0].instructions).toEqual({ teachMore: [], teachLess: [], addReview: [], weakBelowChecks: true });
     // The cover makes no claim that the assessment showed this level.
-    expect(workbookCoverLine(p, "Leah", 1)).toMatch(/^This book gives Leah practice with /);
+    expect(workbookCoverLine(p, "Leah", 1)).toMatch(/^This book gives Leah a starting point in /);
     expect(workbookWhy(p)!.start).toMatch(/team instruction/);
   });
 
-  it("start level stays inside the ceiling and Kindergarten keeps U1", () => {
+  it("start level stays inside the ceiling and can override Kindergarten placement", () => {
     const high = plan({ instructions: set({ startLevel: "U28" }) });
     expect(high.level).toBe(16);
     expect(outcome(high, "start-level", "U28")).toMatchObject({ applied: false, note: expect.stringMatching(/above U27, the highest level a book can start at.*automatic U16/) });
     const k = planNextWorkbook({ curriculum: BC, grade: 0, profile: null, workbooks: [], number: 1, instructions: set({ startLevel: "U4" }) });
-    expect(k.ok && k.plan.level).toBe(1);
-    expect(k.ok && k.plan.instructions?.outcomes[0]).toMatchObject({ applied: false, note: expect.stringMatching(/Kindergarten starts at U1/) });
+    expect(k.ok && k.plan.level).toBe(4);
+    expect(k.placement).toMatchObject({ rule: "I1", measuredLevel: null, startingPoint: "U4" });
   });
 
   it("start level applies to a later book too, counted in its own level", () => {
@@ -99,7 +99,7 @@ describe("book instructions in the plan", () => {
   });
 
   it("a higher start keeps one level and checks the clear gap below it (P6), with no support slot", () => {
-    const profile = profileWith([["3.3", 0, 2]], 4);
+    const profile = profileWith([["3.3", 0, 3]], 4);
     const auto = plan({ profile });
     expect(auto.units.support).toBe("3.3");
     const p = plan({ profile, instructions: set({ startLevel: "U16" }) });
@@ -158,22 +158,22 @@ describe("book instructions in the plan", () => {
   });
 
   it("teach more teaches a clear secure unit that would be skipped", () => {
-    const profile = profileWith([["5.1", 4, 4]], 5, 5);
+    const profile = profileWith([["5.6", 4, 4]], 5, 5);
     const auto = plan({ profile, grade: 5 });
-    expect(firstDay(auto, "5.1")).toBeUndefined();
-    const p = plan({ profile, grade: 5, instructions: set({ teachMore: ["5.1"] }) });
-    expect(firstDay(p, "5.1")).toBe(1);
+    expect(firstDay(auto, "5.6")).toBeUndefined();
+    const p = plan({ profile, grade: 5, instructions: set({ teachMore: ["5.6"] }) });
+    expect(firstDay(p, "5.6")).toBe(1);
   });
 
   it("explains why a secure own-level unit has no review in book 1 (#755)", () => {
-    const profile = profileWith([["5.1", 4, 4]], 5, 5);
+    const profile = profileWith([["5.6", 4, 4]], 5, 5);
     const p = plan({ profile, grade: 5 });
-    expect(p.level).toBe(16);
-    expect(p.newSteps.some(s => s.unit === "5.1")).toBe(false);
-    expect(p.personal?.notReviewed?.find(x => x.unit === "5.1")).toMatchObject({
+    expect(p.level).toBe(17);
+    expect(p.newSteps.some(s => s.unit === "5.6")).toBe(false);
+    expect(p.personal?.notReviewed?.find(x => x.unit === "5.6")).toMatchObject({
       reason: "not reviewed: secure on the assessment; no review scheduled in this book",
     });
-    const skipped = p.personal!.notReviewed!.find(x => x.unit === "5.1")!.skills;
+    const skipped = p.personal!.notReviewed!.find(x => x.unit === "5.6")!.skills;
     const reviews = p.days.flatMap(d => d.pages.flatMap(pg => pg.parts.flatMap(part => part.reviewSteps ?? [])));
     expect(reviews.some(review => skipped.includes(review.skill))).toBe(false);
   });

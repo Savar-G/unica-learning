@@ -76,6 +76,7 @@ export interface BookSignalsInput {
   /** At plan time, restrict soft choices to the selected level and already allowed standards. */
   allowedStandards?: readonly string[];
 }
+const MIN_CLEAR_WEAK_ANSWERS = 3;
 const MAP = new Map(BC_SKILL_MAP.standards.map(s => [s.code, s]));
 const unique = (values: readonly string[]) => [...new Set(values)];
 const codes = (values: readonly string[]) => unique(values.filter(c => MAP.has(c)));
@@ -89,27 +90,32 @@ export function bookSignals(input: BookSignalsInput): BookSignals {
   const a = stored?.schemaVersion === 1 ? stored : undefined;
   const b = a?.behaviour;
   const grade = input.grade;
+  const working = a?.level ? { working: a.level.working, certainty: a.level.certainty, confidence: a.level.confidence, atCeiling: a.level.atCeiling } : null;
+  const weaknessThrough = Math.min(grade, working?.working ?? grade);
   const standards = (p?.standards ?? []).flatMap(s => {
     const known = MAP.get(s.code);
-    return known ? [{ code: s.code, grade: known.grade, status: s.status, certainty: s.certainty, aboveGrade: known.grade > grade }] : [];
+    if (!known) return [];
+    const certainty = s.status !== "secure" && s.total < MIN_CLEAR_WEAK_ANSWERS ? "early-sign" : s.certainty;
+    return [{ code: s.code, grade: known.grade, status: s.status, certainty, aboveGrade: known.grade > grade }];
   });
-  const weak = standards.filter(s => !s.aboveGrade && s.status !== "secure");
+  const weak = standards.filter(s => s.grade <= weaknessThrough && s.status !== "secure");
   const secure = standards.filter(s => s.status === "secure");
   const weakCodes = new Set(weak.map(s => s.code));
   const secureCodes = new Set(secure.map(s => s.code));
   const allowed = input.allowedStandards ? new Set(input.allowedStandards) : null;
   const preferences = { styles: [...(p?.preferences?.styles ?? [])], interests: [...(p?.preferences?.interests ?? [])] };
   const parent = { feeling: p?.parent?.feeling ?? absentParent.feeling, goal: p?.parent?.goal ?? absentParent.goal, weeklyTime: p?.parent?.weeklyTime ?? absentParent.weeklyTime };
-  const working = a?.level ? { working: a.level.working, certainty: a.level.certainty, confidence: a.level.confidence, atCeiling: a.level.atCeiling } : null;
   const strands = (a?.strands ?? []).map(s => ({ strand: s.strand, level: s.level, status: s.status, certainty: s.certainty, levelCertainty: s.levelCertainty, correct: s.correct, total: s.total }));
-  const rushed = !!b && (b.unreliable || b.rushRuns > 0);
-  const trustedAboveGrade = !!working && working.working > grade && working.certainty === "clear" && working.confidence === "normal" && !!b && !b.help?.likely && !rushed;
+  const aboveGrade = !!working && working.working > grade;
+  // The stored score already identifies fast wrong answers inside a rush run.
+  const rushed = !!b && (aboveGrade ? b.leftOut > 0 : b.unreliable || b.rushRuns > 0);
+  const trustedAboveGrade = aboveGrade && working.certainty === "clear" && working.confidence === "normal" && !!b && !b.help?.likely && !rushed;
   const stretch = !!working && (working.working > grade || working.atCeiling || (parent.goal === "get_ahead" && working.working === grade && strands.length === 4 && strands.every(s => s.status === "secure")));
   const shift = !rushed && stretch ? parent.feeling === "avoids" ? 1 : 2 : 0;
   const baseMinutes = parent.weeklyTime === "under_1h" ? 20 : parent.weeklyTime === "1_to_2h" ? 25 : null;
   const lateDrop = b?.thirds?.drop ?? null;
   const requiredMinutes = lateDrop ? (baseMinutes ?? 35) - 5 : baseMinutes;
-  const mistakes = (p?.standards ?? []).filter(s => MAP.has(s.code) && MAP.get(s.code)!.grade <= grade).flatMap(s => {
+  const mistakes = (p?.standards ?? []).filter(s => MAP.has(s.code) && MAP.get(s.code)!.grade <= weaknessThrough).flatMap(s => {
     const wrong = a?.struggles?.filter(x => x.code === s.code).flatMap(x => x.wrong ?? []) ?? [];
     const e = s.events;
     const misconceptions = unique([...wrong.flatMap(x => x.misconception ? [x.misconception] : []), ...(e?.mistakes ?? [])]);
@@ -171,12 +177,12 @@ export function bookSignals(input: BookSignalsInput): BookSignals {
   add("S3", "fact", working?.atCeiling !== undefined, !!working?.atCeiling, "the start never exceeds the measured level");
   add("S4", strands.length > 0 && strands.every(s => s.certainty === "clear" && s.levelCertainty === "clear") ? "clear" : "early-sign", strands.length > 0, true, "area status and level use their lower certainty; secure areas can permit the parent's get-ahead request");
   add("S5", standards.every(s => s.certainty === "clear") ? "clear" : "early-sign", standards.length > 0, true, "only clear secure units can skip first-book teaching");
-  add("S6", weak.every(s => s.certainty === "clear") ? "clear" : "early-sign", !!p, weak.length > 0, weak.length ? "weaknesses at or below school grade only" : "no weakness at or below school grade");
-  add("S7", "fact", !!a, mistakes.some(m => m.misconceptions.length > 0), "use coded mistakes at or below school grade; never copy answers");
+  add("S6", weak.every(s => s.certainty === "clear") ? "clear" : "early-sign", !!p, weak.length > 0, weak.length ? "weaknesses at or below school grade and measured level" : "no weakness within the levels considered");
+  add("S7", "fact", !!a, mistakes.some(m => m.misconceptions.length > 0), "use coded mistakes within the same bounds as weaknesses");
   add("S8", "fact", !!p?.events, (p?.events?.counted ?? 0) > 0, "counted learning events; no event identifiers or question text");
   add("S9", "fact", !!section, !!section && section.answered > 0, section?.byFamily ? "per-family accuracy and speed" : "older profile: section result applies only to the families asked");
   add("S10", "fact", !!unknowns, !!unknowns && (unknowns.untested.length + unknowns.checkNext.length > 0), "unmeasured units keep placement checks");
-  add("S11", "fact", !!b, rushed, rushed ? "rushing blocks stretch" : "pace alone has no slow norm and changes nothing");
+  add("S11", "fact", !!b, rushed, rushed ? "rushing blocks stretch" : "no rushing that blocks stretch");
   add("S12", "fact", lateDrop !== null, lateDrop === true, "a measured late drop reduces the required estimate by five minutes");
   add("S13", "fact", behaviour?.readAloud !== null && !!behaviour, (behaviour?.readAloud ?? 0) >= 3, "three or more questions read aloud select short stories");
   add("S14", "fact", !!b?.whiteboard, false, "shown work is for the admin view only");

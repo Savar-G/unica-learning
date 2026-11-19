@@ -60,8 +60,10 @@ describe("book signals through the public profile interface", () => {
   });
   it("exposes the catch-up controls and a coded mistake only", () => {
     const p=bookPersona("catch-up").profile,s=bookSignals({grade:4,profile:p});
-    expect(s.clearlyWeak.map(w=>w.code)).toEqual(["3.3","4.4"]);
-    expect(s.mistakes.find(m=>m.standard==="4.4")?.misconceptions).toEqual(["forgot-carry"]);
+    expect(s.clearlyWeak).toEqual([]);
+    expect(s.earlyWeak.map(w=>w.code)).toEqual(["3.3"]);
+    expect(s.weak.some(w=>w.code==="4.4")).toBe(false);
+    expect(s.mistakes.some(m=>m.standard==="4.4")).toBe(false);
     expect(s.adjustments).toMatchObject({picturesThrough:5,shortStories:true,storyShare:0.2,requiredMinutes:20,extraChallenge:true});
     expect(s.preferences).toEqual({styles:["pictures"],interests:["animals"]});
   });
@@ -73,15 +75,20 @@ describe("book signals through the public profile interface", () => {
     expect(s.preferences).toEqual({styles:["stories"],interests:["sports","space"]});
     expect(s.facts.find(f=>f.family==="mul234510")?.state).toBe("needs-practice");
   });
-  it.each(["early-sign","low","help","unreliable","rush"])("blocks a trusted above-grade start for %s", reason=>{
+  it.each(["early-sign","low","help","fast wrong"])("blocks a trusted above-grade start for %s", reason=>{
     const i=input(),a=base(i.profile!);
     if(reason==="early-sign") a.level.certainty="early-sign";
     if(reason==="low") a.level.confidence="low";
     if(reason==="help") a.behaviour.help.likely=true;
-    if(reason==="unreliable") a.behaviour.unreliable=true;
-    if(reason==="rush") a.behaviour.rushRuns=1;
+    if(reason==="fast wrong") Object.assign(a.behaviour,{rushRuns:1,leftOut:1});
     expect(bookSignals(i).adjustments.trustedAboveGrade).toBe(false);
-    if(["unreliable","rush"].includes(reason)) expect(bookSignals(i).adjustments.stretchShift).toBe(0);
+    if(reason==="fast wrong") expect(bookSignals(i).adjustments.stretchShift).toBe(0);
+  });
+  it("trusts a clear above-grade result even if fast right answers triggered the pace flag",()=>{
+    const i=input();
+    Object.assign(base(i.profile!).behaviour,{rushRuns:1,leftOut:0,unreliable:true});
+    expect(bookSignals(i).adjustments.trustedAboveGrade).toBe(true);
+    expect(signal(i,"S11").status).toBe("not-used");
   });
   it.each([null,"under_1h","1_to_2h","2_to_3h","over_3h"] as const)("applies the required estimate for %s and the late-drop reduction",time=>{
     const i=input();i.profile!.parent.weeklyTime=time;
@@ -148,9 +155,9 @@ describe("book signals through the public profile interface", () => {
   it("review F1: an eligible child finding does not mark empty learner AI used", () => {
     const p=bookPersona("catch-up").profile;
     base(p).ai={};p.events.counted=1;
-    p.ai={model:"probe",findings:[{standard:"4.4",hypothesis:"ignored",events:[""]}]};
+    p.ai={model:"probe",findings:[{standard:"3.3",hypothesis:"ignored",events:[""]}]};
     const s=bookSignals({grade:4,profile:p});
-    expect(s.soft.weakOrder).toEqual(["4.4"]);
+    expect(s.soft.weakOrder).toEqual(["3.3"]);
     expect(s.trace.find(t=>t.id==="S19")?.status).toBe("not-used");
     expect(s.trace.find(t=>t.id==="S20")?.status).toBe("used");
   });

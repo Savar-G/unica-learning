@@ -13,7 +13,7 @@ import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 
 const BC=curriculumFor("bc")!;
 const input=(profile: ChildLearnerProfile | null=firstCustomerProfile(),grade:Grade=4):PlacementInput=>({curriculum:BC,grade,profile,workbooks:[]});
-function changed(weak: readonly [string,number,number][]=[],working:Grade=4,grade:Grade=4) {
+function changed(weak: readonly (readonly [string,number,number])[]=[],working:Grade=4,grade:Grade=4) {
   const original=firstCustomerProfile().assessment!.profile;
   original.level={working,certainty:"clear",confidence:"normal",atCeiling:false};original.test.grade=grade;
   original.standards=weak.map(([code,correct,total])=>{
@@ -31,37 +31,41 @@ function planned(i:PlacementInput,number=1):PersonalWorkbookPlan {
 describe("placement P0 to P9",()=>{
   it("P0 continues the newest workbook and counts books in that level",()=>{
     const p=placeChild({...input(),workbooks:[{number:3,levels:[14]},{number:1,levels:[13]},{number:2,levels:[14]}]});
-    expect(p).toMatchObject({level:{id:"U14"},inLevel:2,first:false,trace:{rule:"P0"}});
+    expect(p).toMatchObject({startingPoint:"U14",measuredLevel:5,level:{id:"U14"},inLevel:2,first:false,trace:{rule:"P0",startingPoint:"U14",measuredLevel:5}});
   });
   it("P1 preserves the old placement when the assessment level is absent",()=>{
     const p=changed([["2.4",0,2],["3.3",0,2]],3,3);p.assessment=null;
     expect(placeChild(input(p,3))).toMatchObject({level:{id:"U9"},trace:{rule:"P1"}});
     expect(placeChild(input(null))).toMatchObject({level:{id:"U13"},trace:{rule:"P1"}});
   });
-  it.each(["early-sign","low","help","unreliable","rush"])("P2 blocks above-grade placement for %s",reason=>{
+  it.each(["early-sign","low","help","fast wrong"])("P2 blocks above-grade placement for %s",reason=>{
     const p=firstCustomerProfile(),a=p.assessment!.profile;
     if(reason==="early-sign")a.level.certainty="early-sign";
     if(reason==="low")a.level.confidence="low";
     if(reason==="help")a.behaviour.help.likely=true;
-    if(reason==="unreliable")a.behaviour.unreliable=true;
-    if(reason==="rush")a.behaviour.rushRuns=1;
+    if(reason==="fast wrong") Object.assign(a.behaviour,{rushRuns:1,leftOut:1});
     expect(placeChild(input(p))).toMatchObject({level:{id:"U13"},trace:{rule:"P2"}});
+  });
+  it("allows an above-grade start after a run of fast right answers",()=>{
+    const p=changed([],5);
+    Object.assign(p.assessment!.profile.behaviour,{veryFast:3,rushRuns:1,leftOut:0});
+    expect(placeChild(input(p))).toMatchObject({measuredLevel:5,startingPoint:"U17",trace:{rule:"P5",measuredLevel:5,startingPoint:"U17"}});
   });
   it("P2 has priority over clearly weak standards",()=>{
     const p=changed([["2.4",0,2],["3.3",0,2]],5);p.assessment!.profile.behaviour.help.likely=true;
     expect(placeChild(input(p)).trace.rule).toBe("P2");
   });
   it("P3 starts at the lowest of two clearly weak standards",()=>{
-    const p=placeChild(input(changed([["4.4",0,2],["3.3",0,2]],4)));
+    const p=placeChild(input(changed([["4.4",0,3],["3.3",0,3]],4)));
     expect(p.level.id).toBe(BC.unit("3.3")!.level);expect(p.trace.rule).toBe("P3");
   });
   it("P3 moves down for one clear gap at least two grades below home",()=>{
-    const p=placeChild(input(changed([["2.4",0,2]],4)));
+    const p=placeChild(input(changed([["2.4",0,3]],4)));
     expect(p).toMatchObject({level:{id:"U9"},support:null,trace:{rule:"P3"}});
   });
   it("P4 keeps home for one lower clear gap and reserves its support slot",()=>{
-    const i=input(changed([["3.3",0,2]],4)),p=placeChild(i),plan=planned(i);
-    expect(p).toMatchObject({level:{id:"U13"},support:"3.3",trace:{rule:"P4"}});
+    const i=input(changed([["3.3",0,3]],4)),p=placeChild(i),plan=planned(i);
+    expect(p).toMatchObject({level:{id:"U14"},support:"3.3",trace:{rule:"P4"}});
     expect(plan.units.support).toBe("3.3");
     for(const day of plan.days.filter(d=>d.day<10)) {
       const support=day.pages.flatMap(p=>p.parts).filter(p=>p.kind==="remember-these"&&p.reviews===undefined);
@@ -71,30 +75,41 @@ describe("placement P0 to P9",()=>{
     }
   });
   it("P4 retains support in book two, tests on Day 6, and removes it in book three",()=>{
-    const i=input(changed([["3.3",0,2]],4));
-    const second=planned({...i,workbooks:[{number:1,levels:[13]}]},2);
+    const i=input(changed([["3.3",0,3]],4));
+    const second=planned({...i,workbooks:[{number:1,levels:[14]}]},2);
     const mini=second.days.flatMap(d=>d.pages.flatMap(p=>p.parts.filter(p=>p.kind==="mini-test").map(p=>({day:d.day,p}))));
     expect(mini).toHaveLength(1);expect(mini[0].day).toBe(6);
     expect(mini[0].p.skills.every(s=>BC.skill(s)!.unit==="3.3")).toBe(true);
     expect(second.personal?.start.rule).toBe("P0");
-    const third=planned({...i,workbooks:[{number:1,levels:[13]},{number:2,levels:[13]}]},3);
+    const third=planned({...i,workbooks:[{number:1,levels:[14]},{number:2,levels:[14]}]},3);
     expect(third.units.support).toBeNull();
     expect(third.days.flatMap(d=>d.pages.flatMap(p=>p.parts)).some(p=>p.kind==="mini-test")).toBe(false);
   });
   it("P4 applies the parent's catch-up request to two early gaps, after clear-fact rules",()=>{
     const p=changed([["2.4",1,2],["3.3",1,2]],4);p.parent.goal="catch_up";
-    expect(placeChild(input(p))).toMatchObject({level:{id:"U13"},support:"2.4",trace:{rule:"P4"}});
-    p.parent.goal=null;expect(placeChild(input(p))).toMatchObject({level:{id:"U13"},support:null,trace:{rule:"P5"}});
+    expect(placeChild(input(p))).toMatchObject({level:{id:"U14"},support:"2.4",trace:{rule:"P4"}});
+    p.parent.goal=null;expect(placeChild(input(p))).toMatchObject({level:{id:"U14"},support:null,trace:{rule:"P5"}});
   });
-  it("P5 uses the working level for an on-level and a behind child",()=>{
-    expect(placeChild(input(changed([],4)))).toMatchObject({level:{id:"U13"},trace:{rule:"P5"}});
-    expect(placeChild(input(changed([],3)))).toMatchObject({level:{id:"U10"},trace:{rule:"P5"}});
+  it.each([[4,"U14"],[3,"U11"]] as const)("P5 starts in the middle of measured Grade %i when that grade has no weak topics", (measuredLevel, startingPoint) => {
+    expect(placeChild(input(changed([],measuredLevel)))).toMatchObject({measuredLevel,startingPoint,trace:{rule:"P5",measuredLevel,startingPoint}});
+  });
+  it("starts at the first level of the measured grade when there is weak evidence there",()=>{
+    expect(placeChild(input(changed([["4.5",1,2]])))).toMatchObject({measuredLevel:4,startingPoint:"U13",trace:{rule:"P5"}});
+  });
+  it.each([
+    { name: "above the measured grade", working: 3 as const, weak: [["4.4",0,3],["4.5",0,3]] as const, start: "U11", clear: [] },
+    { name: "above the starting point within the measured grade", working: 4 as const, weak: [["4.5",0,3],["4.10",0,3]] as const, start: "U13", clear: ["4.5","4.10"] },
+    { name: "too thin to be clear", working: 4 as const, weak: [["2.4",0,2]] as const, start: "U14", clear: [] },
+  ])("P3 keeps the starting point when weak evidence is $name", ({ working, weak, start, clear }) => {
+    const i = input(changed(weak,working));
+    expect(placeChild(i)).toMatchObject({startingPoint:start,trace:{rule:"P5"}});
+    expect(planned(i).personal?.clearlyWeak.map(s=>s.code)).toEqual(clear);
   });
   it("P5a teaches early-secure start units but skips clear-secure ones",()=>{
-    const early=planned(input(changed([["5.1",2,2]],5)));
-    const clear=planned(input(changed([["5.1",4,4]],5)));
-    expect(early.newSteps.some(s=>s.unit==="5.1"&&s.step===1)).toBe(true);
-    expect(clear.newSteps.some(s=>s.unit==="5.1")).toBe(false);
+    const early=planned(input(changed([["5.6",2,2]],5)));
+    const clear=planned(input(changed([["5.6",4,4]],5)));
+    expect(early.newSteps.some(s=>s.unit==="5.6"&&s.step===1)).toBe(true);
+    expect(clear.newSteps.some(s=>s.unit==="5.6")).toBe(false);
   });
   it("P5b checks untested start units and P7 keeps the ceiling customer at U16",()=>{
     const i=input(),place=placeChild(i),plan=planned(i);
@@ -106,7 +121,7 @@ describe("placement P0 to P9",()=>{
   });
   it("P6 keeps early weak standards below home from lowering the start",()=>{
     const i=input(changed([["2.4",1,2],["3.3",1,2]],4));
-    expect(placeChild(i)).toMatchObject({level:{id:"U13"},support:null,trace:{rule:"P5"}});
+    expect(placeChild(i)).toMatchObject({level:{id:"U14"},support:null,trace:{rule:"P5"}});
     expect(planned(i).personal?.start.rules).toContain("P6");
   });
   it("P8 never uses an above-school-grade error as a weakness, even if a stale flag says otherwise",()=>{
@@ -119,6 +134,12 @@ describe("placement P0 to P9",()=>{
     expect(placeChild(input(null,grade)).level.id).toBe(expected);
     expect(placeChild(input(changed([],grade,grade),grade)).level.id).toBe(expected);
     expect(placeChild({...input(null,grade),workbooks:[{number:1,levels:[30]}]}).level.id).toBe("U27");
+  });
+  it("P9 permits a trusted Grade 1 start for a Kindergarten child",()=>{
+    const p=changed([],1,0);
+    expect(placeChild(input(p,0))).toMatchObject({ measuredLevel:1,startingPoint:"U5",trace:{rule:"P5"} });
+    p.assessment!.profile.level.certainty="early-sign";
+    expect(placeChild(input(p,0))).toMatchObject({ measuredLevel:1,startingPoint:"U1",trace:{rule:"P9"} });
   });
   it("AI suggestions cannot move placement or alter the plan's units and counts",()=>{
     const p=firstCustomerProfile(),before=planned(input(p));delete p.assessment!.profile.ai;
@@ -134,8 +155,8 @@ describe("placement P0 to P9",()=>{
     }
   });
   it("fills lower-level P4 support and mini-test pages through the public generator",async()=>{
-    const p=changed([["3.3",0,2]],4),i=input(p);
-    const plan=planned({...i,workbooks:[{number:1,levels:[13]}]},2);
+    const p=changed([["3.3",0,3]],4),i=input(p);
+    const plan=planned({...i,workbooks:[{number:1,levels:[14]}]},2);
     // Selected support pages test generation, not physical print acceptance. The fit seam is deliberately fake.
     const selected={...plan,days:plan.days.filter(d=>[1,6].includes(d.day)).map(d=>({...d,pages:d.pages.filter(page=>page.parts.some(part=>part.kind==="mini-test"||(part.kind==="remember-these"&&part.reviews===undefined)))}))};
     const child="00000000-0000-4000-8000-000000000004",parent="00000000-0000-4000-8000-000000000001";

@@ -5,7 +5,7 @@ import { loadPinnedPlanningEngine } from "./workbook-book1-pinned";
 import { recoverBook1PlanningInput, type Book1RecoverySources, type PinnedPlanningEngine } from "./workbook-book1-recovery";
 import { curriculumFor } from "./workbook-curriculum";
 import type { RunFrame } from "./workbook-job";
-import { planNextWorkbook } from "./workbook-placement";
+import { planNextWorkbook, prepareNextWorkbookInput } from "./workbook-placement";
 import type { PlanInput, WorkbookPlan } from "./workbook-plan";
 import { bookPersona, type BookPersona } from "./workbook-sample-profiles";
 
@@ -103,7 +103,7 @@ describe("public planning contracts against the base pin", () => {
     { name: "ahead", grade: 4, persona: "ahead", workbooks: [], number: 1 },
     { name: "rushed book 2", grade: 4, persona: "rushed", workbooks: [{ number: 1, levels: [13] }], number: 2 },
   ];
-  it.each(cases)("planNextWorkbook preserves scheduling and planner input for $name", c => {
+  it.each(cases)("captures the exact input for a new plan without changing the pinned frame for $name", c => {
     const profile = c.persona ? JSON.parse(JSON.stringify(bookPersona(c.persona).profile)) : null;
     const facts = profile ? { report, device } : {};
     const pinned = base.plan({ curriculumKey: "bc", grade: c.grade, profile, ...facts, workbooks: c.workbooks, number: c.number });
@@ -112,19 +112,35 @@ describe("public planning contracts against the base pin", () => {
     const withCapture = planNextWorkbook(input, i => { captured.push(i); });
     const without = planNextWorkbook(input);
     expect(JSON.parse(JSON.stringify(without))).toEqual(JSON.parse(JSON.stringify(withCapture)));
+    if (!withCapture.ok) throw Error(withCapture.reason);
+    const prepared = prepareNextWorkbookInput(input);
+    if (!prepared.ok) throw Error(prepared.reason);
+    expect(captured).toEqual([prepared.input]);
     const expectedPlan = structuredClone(pinned.result.plan) as WorkbookPlan;
+    expect(withCapture.plan.level).toBe(expectedPlan.level);
+    if (!c.persona) {
+      expect(withCapture.plan).toEqual(expectedPlan);
+      expect(captured).toEqual(pinned.calls);
+      return;
+    }
+
+    expect(withCapture.placement).toMatchObject({
+      measuredLevel: captured[0].personal?.working?.working,
+      startingPoint: `U${expectedPlan.level}`,
+    });
+    expect(withCapture.plan.personal?.start).toEqual(withCapture.placement);
     if (c.reviewedOmissions) {
-      // #755 corrects omission metadata only. Pin the exact legacy entries removed, and prove they receive review.
+      // Keep the #755 proof that skills omitted from the pinned metadata receive review.
       const omissions = expectedPlan.personal!.notReviewed!;
       const removed = omissions.filter(entry => c.reviewedOmissions!.includes(entry.unit));
       expect(removed.map(entry => entry.unit)).toEqual(c.reviewedOmissions);
-      const scheduled = new Set(withCapture.ok ? withCapture.plan.days.flatMap(day => day.pages.flatMap(page =>
-        page.parts.filter(part => part.items > 0).flatMap(part => (part.reviewSteps ?? []).map(review => review.skill)))) : []);
+      const scheduled = new Set(withCapture.plan.days.flatMap(day => day.pages.flatMap(page =>
+        page.parts.filter(part => part.items > 0).flatMap(part => (part.reviewSteps ?? []).map(review => review.skill)))));
       expect(removed.flatMap(entry => entry.skills).every(skill => scheduled.has(skill))).toBe(true);
-      expectedPlan.personal!.notReviewed = omissions.filter(entry => !c.reviewedOmissions!.includes(entry.unit));
+      expect(captured[0].personal?.weak.map(topic => topic.code)).toEqual(["3.3"]);
+    } else {
+      expect(JSON.parse(JSON.stringify({ ...withCapture.plan, personal: undefined })))
+        .toEqual(JSON.parse(JSON.stringify({ ...expectedPlan, personal: undefined })));
     }
-    expect(JSON.parse(JSON.stringify(withCapture.ok && withCapture.plan))).toEqual(JSON.parse(JSON.stringify(expectedPlan)));
-    expect(captured).toHaveLength(1);
-    expect(JSON.parse(JSON.stringify(captured))).toEqual(JSON.parse(JSON.stringify(pinned.calls)));
   });
 });

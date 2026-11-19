@@ -19,11 +19,11 @@ describe("the sample report", () => {
     expect(whereView(view)).not.toBeNull();
   });
 
-  it("shows workbook 1 from the real planner, and the first gap is its main work", () => {
+  it("shows workbook 1 from the real planner and marks only gaps that the book covers", () => {
     const view = sampleReportWithBook();
     const book = bookOneView(view)!;
-    expect(book.main.title).toBe("Adding and subtracting");
-    expect(gapsView(view)![0].cover).toBe("In workbook 1");
+    expect(book.main.title).toBe("Numbers to 100 · Patterns");
+    expect(gapsView(view)![0]).toMatchObject({ title: "Adding and subtracting", cover: null });
     // The browser's copy (the admin preview) has no plan: the curriculum stays on the server.
     expect(sampleReportView().bookOne).toBeUndefined();
   });

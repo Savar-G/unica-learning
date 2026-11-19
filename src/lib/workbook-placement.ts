@@ -22,12 +22,18 @@ export interface PlacementTrace {
   /** I1: the admin's start level. */
   rule: "P0" | "P1" | "P2" | "P3" | "P4" | "P5" | "P9" | "I1";
   reason: string;
-  level: string;
+  measuredLevel: Grade | null;
+  startingPoint: string;
   home: string;
   support: string | null;
   rules: string[];
 }
+/** Pre-#1174 frames recorded the start as level and kept the test result in BookSignals. */
+export type SavedPlacementTrace = PlacementTrace | (Omit<PlacementTrace, "measuredLevel" | "startingPoint"> & { level: string });
+
 interface PlacedChild {
+  measuredLevel: Grade | null;
+  startingPoint: string;
   level: CurriculumLevel;
   inLevel: number;
   first: boolean;
@@ -37,7 +43,7 @@ interface PlacedChild {
 export type PersonalWorkbookPlan = WorkbookPlan & { personal?: BookSignals & { start: PlacementTrace } };
 export type NextWorkbookResult = ({ ok: true; plan: PersonalWorkbookPlan } | { ok: false; reason: string }) & { levelId?: string; placement?: PlacementTrace };
 
-/** The first level of a grade, with the existing Kindergarten and U27 bounds. */
+/** The first available level of a grade, or the highest available level below it. */
 function firstLevel(levels: readonly CurriculumLevel[], grade: number): CurriculumLevel {
   const atOrBelow = levels.filter(l => l.schoolGrade <= grade);
   return atOrBelow.find(l => l.schoolGrade === grade) ?? atOrBelow.at(-1) ?? levels[0];
@@ -57,14 +63,13 @@ function supportFor(levels: readonly CurriculumLevel[], home: CurriculumLevel, s
   return signals.parent.goal === "catch_up" && early.length >= 2 ? early[0].standard.code : null;
 }
 
-/** The admin's start level, when it can apply: else the plain reason. Kindergarten keeps U1 (P9); never above U27. */
+/** The admin's start level, when it exists and is within the curriculum ceiling. */
 export function instructedStart(o: PlacementInput): { level: CurriculumLevel } | { reason: string } | null {
   const id = o.instructions?.startLevel;
   if (!id) return null;
   const level = o.curriculum.level(id);
   if (!level) return { reason: `The curriculum has no level ${id}.` };
   if (level.number > PLACEMENT_CEILING) return { reason: `It is above U${PLACEMENT_CEILING}, the highest level a book can start at.` };
-  if (o.grade === 0) return { reason: "Kindergarten starts at U1." };
   return { level };
 }
 
@@ -72,10 +77,15 @@ export function instructedStart(o: PlacementInput): { level: CurriculumLevel } |
 export function placeChild(o: PlacementInput): PlacedChild {
   const levels = o.curriculum.levels.filter(l => l.number <= PLACEMENT_CEILING);
   const signals = bookSignals(o);
-  const home = firstLevel(levels, Math.min(signals.working?.working ?? o.grade, 9));
-  const decide = (level: CurriculumLevel, rule: PlacementTrace["rule"], reason: string, inLevel = 0, first = true, support: string | null = null): PlacedChild => ({
-    level, inLevel, first, support,
-    trace: { rule, reason, level: level.id, home: home.id, support, rules: [...new Set([rule, ...(signals.working?.atCeiling && rule === "P5" ? ["P7"] : []), "P8", ...(o.grade === 0 || level.number === PLACEMENT_CEILING ? ["P9"] : [])])] },
+  const measuredLevel = signals.working?.working ?? null;
+  const grade = measuredLevel ?? o.grade;
+  const first = firstLevel(levels, grade);
+  const gradeWeak = signals.standards.some(s => s.grade === grade && s.status !== "secure");
+  const home = gradeWeak ? first : levels.filter(l => l.schoolGrade === grade)[1] ?? first;
+  const decide = (level: CurriculumLevel, rule: PlacementTrace["rule"], reason: string, inLevel = 0, isFirst = true, support: string | null = null): PlacedChild => ({
+    measuredLevel, startingPoint: level.id, level, inLevel, first: isFirst, support,
+    trace: { rule, reason, measuredLevel, startingPoint: level.id, home: home.id, support,
+      rules: [...new Set([rule, ...(signals.working?.atCeiling && rule === "P5" ? ["P7"] : []), "P8", ...(level.number === PLACEMENT_CEILING ? ["P9"] : [])])] },
   });
   const newest = [...o.workbooks].sort((a,b) => b.number-a.number)[0];
   const wanted = instructedStart(o);
@@ -88,25 +98,30 @@ export function placeChild(o: PlacementInput): PlacedChild {
     const at = Math.min(Math.max(...newest.levels), PLACEMENT_CEILING);
     const level = levels.find(l => l.number === at) ?? levels[levels.length-1];
     const inLevel = o.workbooks.filter(w => w.levels.includes(level.number)).length;
-    const support = signals.hasAssessment && level.number === home.number && inLevel < 2 ? supportFor(levels, home, signals) : null;
+    const support = signals.hasAssessment && (level.number === home.number || level.number === first.number) && inLevel < 2 ? supportFor(levels, level, signals) : null;
     return decide(level, "P0", "Continue at the newest workbook's level.", inLevel, false, support);
   }
-  if (o.grade === 0) return decide(firstLevel(levels, 0), "P9", "Kindergarten starts at U1.");
-  if (!signals.hasAssessment) {
+  if (o.grade === 0 && !signals.adjustments.trustedAboveGrade) return decide(firstLevel(levels, 0), "P9", "Start at U1 unless the test clearly supports work above Kindergarten.");
+  if (measuredLevel === null) {
     const notSecure = new Set(o.profile?.notYetSecure ?? []);
     const weak = levels.filter(l => l.schoolGrade <= o.grade).find(l => l.units.some(u => notSecure.has(u)));
     return decide(weak ?? firstLevel(levels, o.grade), "P1", "No measured working level: use the previous grade-and-standards placement.");
   }
-  if (signals.working!.working > o.grade && !signals.adjustments.trustedAboveGrade) {
-    return decide(firstLevel(levels, o.grade), "P2", "An above-grade start needs a clear level, normal confidence, no likely help and no rushing.");
+  if (measuredLevel > o.grade && !signals.adjustments.trustedAboveGrade) {
+    return decide(firstLevel(levels, o.grade), "P2", "An above-grade start needs a clear level, normal confidence, no likely help and no fast wrong answers excluded from scoring.");
   }
-  const clear = weakLevels(levels, signals.clearlyWeak);
-  if (clear.length >= 2 || clear.some(s => home.schoolGrade - s.standard.grade >= 2)) {
-    return decide(clear[0].level, "P3", "Start at the lowest clearly weak unit: multiple clear gaps or a gap at least two grades below home.");
+  const clear = weakLevels(levels, signals.clearlyWeak).filter(s => s.level.number <= home.number);
+  const lowest = clear[0];
+  if (lowest && lowest.level.number < home.number && (clear.length >= 2 || grade - lowest.standard.grade >= 2)) {
+    return decide(lowest.level, "P3", "Start at the lowest clearly weak topic because there are several clear gaps or a gap at least two grades below the measured level.");
   }
+  const reason = first.schoolGrade !== grade ? "Use the highest available level within the placement limit."
+    : gradeWeak ? "Use the first level of the measured grade because the test or later work showed a weak topic there."
+    : home === first ? "Use the available level of the measured grade."
+    : "Use the middle of the measured grade because no weak topic was found in that grade.";
   const support = supportFor(levels, home, signals);
-  if (support) return decide(home, "P4", "Start at home and use the lower weak unit in the support slot for two books.", 0, true, support);
-  return decide(home, "P5", "Start at the measured working level; early gaps below it do not lower the start.");
+  if (support) return decide(home, "P4", `${reason} Teach the lower weak topic alongside it for two books.`, 0, true, support);
+  return decide(home, "P5", reason);
 }
 
 /** Prepare the planner input and placement context without making a plan. */

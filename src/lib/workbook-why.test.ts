@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { childProfileFacts, type ChildProfileInput } from "@/lib/child-profile";
 import { curriculumFor } from "@/lib/workbook-curriculum";
 import { planNextWorkbook } from "@/lib/workbook-placement";
+import type { WorkbookPlan } from "@/lib/workbook-plan";
 import { bookPersona, firstCustomerProfile } from "@/lib/workbook-sample-profiles";
 import { previewWorkbook, workbookWhy } from "@/lib/workbook-why";
 
@@ -21,9 +22,8 @@ describe("Why this book and read-only preview", () => {
     expect(plan.personal?.start.rules).toEqual(expect.arrayContaining(["P5", "P5a", "P5b", "P7", "P8"]));
     expect(plan.personal?.why).toEqual(why);
     expect(why.inputs).toHaveLength(22);
-    expect(why.start).toContain("Start at U16");
-    expect(why.start).toContain("Grade 5");
-    expect(why.start).toContain("No topic at or below school grade is weak");
+    expect(why).toMatchObject({ measuredLevel: 5, startingPoint: "U16" });
+    expect(why.start).toContain("first level of the measured grade");
     expect(why.pages).toHaveLength(1 + plan.days.reduce((n, d) => n + d.pages.length, 0));
     expect(why.inputs.find(i => i.label === "Number facts")?.value).toContain("2s, 5s and 10s");
     expect(why.inputs.find(i => i.label === "Parent's answers")).toMatchObject({ status: "Missing", reason: expect.stringContaining("Learning card not answered") });
@@ -38,6 +38,14 @@ describe("Why this book and read-only preview", () => {
     profile.assessment!.profile.level.working = 2;
     expect(workbookWhy(saved)).toEqual(why);
     expect(saved.personal.why).toEqual(why);
+  });
+
+  it("labels a legacy frame using its saved working level and plan", () => {
+    const plan: WorkbookPlan = preview().plan;
+    const start = plan.personal!.start!;
+    plan.personal!.start = { rule: start.rule, reason: start.reason, home: start.home, rules: start.rules, support: start.support, level: "U16" };
+    expect(workbookWhy(plan)).toMatchObject({ measuredLevel: 5, startingPoint: "U16" });
+    expect(plan.personal?.start).toHaveProperty("level", "U16");
   });
 
   it("builds profile facts in memory and calls the planner once without changing its input", () => {
@@ -57,7 +65,7 @@ describe("Why this book and read-only preview", () => {
     const result = previewWorkbook({ curriculum, grade: 4, facts: input, workbooks: [{ number: 3, levels: [14] }, { number: 1, levels: [13] }] }, planner);
     expect(result.ok).toBe(true);
     expect(planner.mock.calls[0][0].number).toBe(4);
-    if (result.ok) expect(result.why.start).toContain("Start at U14. Continue");
+    if (result.ok) expect(result.why).toMatchObject({ startingPoint: "U14", start: expect.stringContaining("Continue") });
   });
 
   it("shows missing inputs with no test and keeps the legacy planner path", () => {
@@ -89,7 +97,7 @@ describe("Why this book and read-only preview", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const why = workbookWhy(result.plan)!;
-    expect(why.start).toContain("lowest clearly weak topic");
+    expect(why.start).toContain("first level of the measured grade");
     expect(why.inputs.find(i => i.label === "Parent's answers")?.value).toContain("Catch up");
     expect(why.pages.some(p => p.choices.some(c => c.includes("Extra")))).toBe(true);
     result.plan.personal!.timeShortfalls = [{ day: 1, target: 20, required: 22, shortfall: 2 }];

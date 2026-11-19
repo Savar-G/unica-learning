@@ -352,7 +352,7 @@ export interface WorkbookPlan {
   /** Multi-skill preview decisions, including whether each target fits this plan. */
   previewDecisions?: (ProgressPlanInput & { teachingDays: number[] })[];
   personal?: BookSignals & {
-    start?: import("./workbook-placement").PlacementTrace;
+    start?: import("./workbook-placement").SavedPlacementTrace;
     why?: import("./workbook-why").WorkbookWhy;
     /** Whole Extra blocks were exhausted. Keep the book and report the remaining required minutes to the admin. */
     timeShortfalls?: RequiredTimeShortfall[];

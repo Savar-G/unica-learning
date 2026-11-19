@@ -300,11 +300,13 @@ describe("C3 personal plan", () => {
     profile.assessment!.profile.test.grade = 2;
     profile.assessment!.profile.level = { working: 2, certainty: "clear", confidence: "normal", atCeiling: false };
     profile.standards = BC.level("U7")!.units.map(code => ({ ...profile.standards[0], code, status: "secure", certainty: "clear", aboveGrade: false }));
+    // Weak evidence in the measured grade selects its first level, where this shortfall occurs.
+    profile.standards.push({ ...profile.standards[0], code: "2.7", correct: 0, total: 2, status: "needs-attention", certainty: "early-sign" });
     const r = planNextWorkbook({ curriculum: BC, grade: 2, profile, workbooks: [], number: 1 });
     if (!r.ok) throw new Error(r.reason);
     expect(r.plan.level).toBe(7);
     expect(r.plan.personal).toMatchObject({
-      start: { level: "U7" },
+      start: { measuredLevel: 2, startingPoint: "U7" },
       timeShortfalls: [{ day: 10, target: 20, required: 20.7, shortfall: .7 }],
     });
   });
