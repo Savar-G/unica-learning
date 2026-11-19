@@ -135,6 +135,7 @@ export type TestStep =
       number: number;
       total: number;
       breakAfter: number;
+      secondBreakAfter?: number;
       /** #189: the last RUSH_RUN answers were all very fast, so the screen says "Take your time". */
       takeYourTime: boolean;
       /** D-282: the number of questions before the third stage, while it runs; absent otherwise. */
@@ -244,7 +245,10 @@ export interface Placement {
   province: Province;
   /** The province whose grade tags scored the test. */
   scoredAgainst: TaggedProvince;
-  workingLevel: Level;
+  workingLevel: Level | null;
+  adaptiveVersion?: 2;
+  /** The measured level cleared the placement bar. */
+  mastered?: boolean;
   /** "low" when no level reached the working-level bar, so the level is an estimate below the lowest level seen. */
   confidence: "normal" | "low";
   /** #189: "clear" when one more answer, right or wrong, would not change the working level. Absent before #189. */
@@ -272,7 +276,7 @@ export interface AdaptiveBlock {
   questions: Question[];
 }
 export interface AdaptiveTest {
-  version: 1;
+  version: 1 | 2;
   pool: Question[];
   blocks: AdaptiveBlock[];
   locked: number;

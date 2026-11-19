@@ -493,3 +493,20 @@ describe("strengths, gaps, next topics and workbook 1 (#198, D-305)", () => {
     expect(bookOneView(withBook(waitlist))).toBeNull();
   });
 });
+
+describe("the version 2 placement sentence", () => {
+  function mastery(completedAt: string, working: 2 | 3 | 4 | 5 = 3): ReportView {
+    const v = view(knowsUpTo(3));
+    return { ...v, completedAt, timeZone: "America/Vancouver", model: { ...v.model, level: { ...v.model.level, working, adaptiveVersion: 2, mastered: true } } };
+  }
+
+  it("uses the finish month in the family's time zone at the February cutoff", () => {
+    expect(levelSentence(mastery("2026-02-01T07:59:59Z"))).toBe("Maya has mastered Grade 3 work and is on track for Grade 4 in January.");
+    expect(levelSentence(mastery("2026-02-01T08:00:00Z"))).toBe("Maya has mastered Grade 3 work, which is one grade below where we would expect them to be in February.");
+  });
+
+  it("counts the gap against the previous grade in the fall and recognizes work above grade", () => {
+    expect(levelSentence(mastery("2026-11-19T20:00:00Z", 2))).toBe("Maya has mastered Grade 2 work, which is one grade below where we would expect them to be in November.");
+    expect(levelSentence(mastery("2026-11-19T20:00:00Z", 5))).toBe("Maya has mastered Grade 5 work, which is above their school grade.");
+  });
+});

@@ -23,7 +23,7 @@ describe("durable assessment block locks",()=>{
     const results=await Promise.all([doneChecking(m.store,"p1","a1","block-1",now+20_000),doneChecking(m.store,"p1","a1","block-1",now+20_000)]);
     expect(results.every(r=>r.ok)).toBe(true);
     expect(m.tests[0].test.adaptive!.blocks).toHaveLength(2);
-    expect(await doneChecking(m.store,"p1","a1","block-1",now+20_001)).toMatchObject({ok:true,step:{status:"question",number:7,question:{level:3},block:{number:2,first:7,end:12}}});
+    expect(await doneChecking(m.store,"p1","a1","block-1",now+20_001)).toMatchObject({ok:true,step:{status:"question",number:7,question:{level:2},block:{number:2,first:7,end:12}}});
     const first=givenQuestions(m.tests[0].test,null)[0];
     expect(await changeAnswer(m.store,"p1","a1",{questionId:first.id,response:first.answer,timeMs:1000,work:{png:null,text:""},workChanged:false},now+30_000)).toMatchObject({ok:false,error:"conflict"});
     const resume=await nextStep(m.store,"p1","a1",now+30_000);
@@ -52,7 +52,7 @@ describe("durable assessment block locks",()=>{
     delete m.fail.lockBlock;
     expect(await doneChecking(m.store,"p1","a1","block-1",now+20_000)).toMatchObject({ok:true});
   });
-  it("closes without scoring when an area's only answers are excluded as rushed", async () => {
+  it("finishes with no placement level when too many answers are rushed", async () => {
     const m = family(1);
     let result = await nextStep(m.store, "p1", "a1", now);
     for (let i = 0; i < 100 && result.ok && result.step.status !== "complete"; i++) {
@@ -63,10 +63,10 @@ describe("durable assessment block locks",()=>{
         result = await answerQuestion(m.store, "p1", "a1", { questionId: q.id, response: REPORTED_STRAND[q.strand] === "shapes" ? q.wrong[0].value : q.answer, timeMs: 100, work: { png: null, text: "" } }, now + (i + 1) * 1000);
       }
     }
-    expect(result).toMatchObject({ ok: true, step: { status: "complete", sufficientEvidence: false } });
-    expect(await finishTest(m.store, "p1", "a1", "no", now + 120_000)).toMatchObject({ ok: false, error: "expired" });
-    expect(m.tests[0].status).toBe("expired");
-    expect(m.tests[0].placement).toBeUndefined();
+    expect(result).toMatchObject({ ok: true, step: { status: "complete", sufficientEvidence: true } });
+    expect(await finishTest(m.store, "p1", "a1", "no", now + 120_000)).toMatchObject({ ok: true, finished: "now" });
+    expect(m.tests[0].status).toBe("completed");
+    expect(m.tests[0].placement).toMatchObject({ workingLevel: null, adaptiveVersion: 2, pace: { unreliable: true } });
   });
 
   it("withholds a result for an unfinished assessment or a family that does not own it",async()=>{
@@ -108,5 +108,28 @@ describe("the in-memory lockBlock answers as lock_assessment_block does", ()=>{
     expect(m.tests[0].test.adaptive!.locked).toBe(1);
     expect(m.tests[0].resumeUntil).toBe(later);
     expect(m.tests[0].lastAnswerAt).toBe(Math.max(now + 1005, later - 120_000 - 24 * 60 * 60_000));
+  });
+});
+
+it("resumes at question 37 with the second break while keeping the first break's record", async () => {
+  const m = family(1);
+  const row = m.tests[0];
+  row.breakStartedAt = now + 12_000;
+  row.breakEndedAt = now + 13_000;
+
+  for (let i = 0; i < 6; i++) {
+    for (let j = 0; j < 6; j++) {
+      const q = nextQuestion(restoreSession(row.test, row.answers))!;
+      expect(await answerQuestion(m.store, "p1", "a1", {
+        questionId: q.id, response: q.answer, timeMs: 20_000, work: { png: null, text: "" },
+      }, now + 20_000 + (i * 6 + j) * 1000)).toMatchObject({ ok: true });
+    }
+    expect(await doneChecking(m.store, "p1", "a1", `block-${i + 1}`, now + 26_000 + i * 6000)).toMatchObject({ ok: true });
+  }
+
+  expect(await nextStep(m.store, "p1", "a1", now + 60_000)).toMatchObject({
+    ok: true,
+    step: { status: "question", number: 37, secondBreakAfter: 36, breakAfter: 12 },
+    break: { startedAt: now + 12_000, ended: true },
   });
 });

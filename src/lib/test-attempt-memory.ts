@@ -319,7 +319,7 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       if (row.test.adaptive.locked !== expected) return "changed";
       if (row.test.adaptive.complete) return "closed";
       if (!sameAnswers(row.answers, answers)) return "changed";
-      if (adaptive.version !== 1 || adaptive.locked !== expected + 1 || JSON.stringify(adaptive.pool) !== JSON.stringify(row.test.adaptive.pool)) {
+      if (adaptive.version !== row.test.adaptive.version || adaptive.locked !== expected + 1 || JSON.stringify(adaptive.pool) !== JSON.stringify(row.test.adaptive.pool)) {
         throw new Error("Invalid assessment block transition");
       }
       row.test.adaptive = structuredClone(adaptive);

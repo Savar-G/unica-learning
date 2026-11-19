@@ -57,11 +57,19 @@ export function MayaChatRow({ name, chat }: { name: string; chat: ChatUsage }) {
 }
 
 /** "We can help [Name] reach ..." from the child's newest report (round r-progress-preview-5), with a link to the report's plan. */
-export function ProgressCard({ progress: { preview: p, href } }: { progress: HomeProgress }) {
+export function ProgressCard({ progress }: { progress: HomeProgress }) {
+  const { href } = progress;
+  if (!progress.preview) return (
+    <div className="acct-card acct-goal">
+      <p className="acct-goal-say">{progress.placement}</p>
+      <Link className="small" href={href}>Open assessment report <span aria-hidden="true">→</span></Link>
+    </div>
+  );
+  const p = progress.preview;
   return (
     <div className="acct-card acct-goal">
       <p className="acct-goal-say">{p.sentence.lead}<b>{p.sentence.goal}</b>{p.sentence.by && <> by <b>{p.sentence.by}</b></>}.</p>
-      <p className="small">{p.todayLabel} today. {p.books.length} workbooks, {p.steps[1].title.toLowerCase()}.</p>
+      <p className="small">{progress.placement ?? `${p.todayLabel} today.`} {p.books.length} workbooks, {p.steps[1].title.toLowerCase()}.</p>
       <Link className="small" href={href}>See how {p.name} gets there <span aria-hidden="true">→</span></Link>
     </div>
   );

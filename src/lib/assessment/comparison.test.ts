@@ -34,7 +34,7 @@ describe("comparison among children who took this test", () => {
 
   it("ranks working level before share right, and share at that level before stage 1", () => {
     const value = (workingLevel: Placement["workingLevel"], correct: number, total: number, stage1 = 0): Placement =>
-      ({ ...placement, workingLevel, levels: [{ level: workingLevel, correct, total }], stage1: { correct: stage1, total: 18 } });
+      ({ ...placement, workingLevel, levels: [{ level: workingLevel!, correct, total }], stage1: { correct: stage1, total: 18 } });
     const tests = [test("subject", value(4, 8, 10, 18)),
       ...Array.from({ length: 150 }, (_, i) => test(`lower-level-${i}`, value(3, 10, 10, 18))),
       ...Array.from({ length: 100 }, (_, i) => test(`lower-share-${i}`, value(4, 7, 10, 18))),

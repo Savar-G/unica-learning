@@ -26,6 +26,7 @@ export interface ComparisonInput {
 }
 
 function compare(a: Placement, b: Placement): number {
+  if (a.workingLevel === null || b.workingLevel === null) return 0;
   if (a.workingLevel !== b.workingLevel) return a.workingLevel - b.workingLevel;
   const x = a.levels.find((l) => l.level === a.workingLevel && l.total > 0);
   const y = b.levels.find((l) => l.level === b.workingLevel && l.total > 0);
@@ -49,7 +50,7 @@ export function comparisonFor({ assessmentId, tests, excludedEmails = [] }: Comp
   const cohort = [...latest.values()].filter((t) => {
     const email = t.email.trim().toLowerCase();
     const domain = email.slice(email.lastIndexOf("@") + 1);
-    return t.placement?.grade === subject?.grade && !helpLikely(t.placement?.flags) &&
+    return t.placement?.workingLevel != null && t.placement.grade === subject?.grade && !helpLikely(t.placement?.flags) &&
       !/^(?:.*\.)?(?:example\.com|resend\.dev)$/.test(domain) && !excluded.has(email);
   });
   const n = cohort.length;

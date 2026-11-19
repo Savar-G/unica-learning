@@ -58,7 +58,7 @@ export function ParentReport({ view, child, next, newTest, learning, alerts, tra
 }) {
   const name = view.childName;
   const zone = view.timeZone ?? zoneForProvince(view.province);
-  const action = reportAction(child.stage, view.model.callToAction);
+  const action = view.model.level.working !== null && reportAction(child.stage, view.model.callToAction);
   const card = action && view.model.callToAction === "card";
   const tests = otherTests(child, view.id, (at) => formatInZone(at, zone, { dateStyle: "long" }));
   const opens = newTest?.state.kind === "opens" ? newTest.state.at : null;

@@ -66,7 +66,7 @@ export interface ReportModel {
    * `testedTo` (D-158): the grade the test measured up to, which the level is compared with: the school grade, or grade
    * 8 for a Grade 9 test from before D-158. Absent in reports made before D-158 (comparedGrade in grades.ts).
    */
-  level: { working: Level; grade: Grade; testedTo?: Level; atCeiling: boolean; confidence: Placement["confidence"]; certainty?: Certainty };
+  level: { working: Level | null; adaptiveVersion?: 2; mastered?: boolean; grade: Grade; testedTo?: Level; atCeiling: boolean; confidence: Placement["confidence"]; certainty?: Certainty };
   /** Each area; its `certainty` (#189) is absent in reports from placements stored before #189. */
   strands: (StrandResult & { name: string })[];
   comparison: Comparison;
@@ -147,26 +147,27 @@ export function reportModel(placement: Placement, context: ReportContext): Repor
   const model: ReportModel = {
     level: {
       working: workingLevel,
+      ...(placement.adaptiveVersion === 2 && { adaptiveVersion: 2, mastered: placement.mastered }),
       grade,
       testedTo: tested,
       atCeiling: placement.atCeiling,
       confidence: placement.confidence,
       ...(placement.levelCertainty ? { certainty: storedLevelCertainty({ confidence: placement.confidence, certainty: placement.levelCertainty }) } : {}),
     },
-    strands: placement.strands.map((s) => ({ ...s, name: REPORTED_STRAND_NAMES[s.strand] })),
-    comparison: context.comparison ? comparisonFor(context.comparison) : { stage: "scale" },
-    fsa: fsaLine(grade, placement.province),
-    howWeHelp: workingLevel === tested ? "on-grade" : workingLevel < tested ? "behind" : "ahead",
+    strands: (workingLevel === null ? [] : placement.strands).map((s) => ({ ...s, name: REPORTED_STRAND_NAMES[s.strand] })),
+    comparison: workingLevel !== null && context.comparison ? comparisonFor(context.comparison) : { stage: "scale" },
+    fsa: workingLevel === null ? null : fsaLine(grade, placement.province),
+    howWeHelp: workingLevel === null || workingLevel === tested ? "on-grade" : workingLevel < tested ? "behind" : "ahead",
     // Card for the curricula we make books for today (D-053); every other province joins the waitlist.
     callToAction: statusFor(placement.province) === "reserved" ? "card" : "waitlist",
-    work: workFor(context),
+    work: workingLevel === null ? [] : workFor(context),
     // Older placements were stored before the facts section existed and have no facts field.
-    facts: placement.facts ? factsReport(placement.facts) : null,
+    facts: workingLevel !== null && placement.facts ? factsReport(placement.facts) : null,
     helpWarning: helpLikely(placement.flags),
     ...(placement.pace?.unreliable ? { reliability: { veryFast: placement.pace.veryFast, answers: placement.pace.answers } } : {}),
     ...(placement.pace?.leftOut.length ? { leftOut: placement.pace.leftOut.length } : {}),
   };
-  if (!context.reportText) return model;
+  if (workingLevel === null || !context.reportText) return model;
   const check = checkReportText(model, context.reportText);
   return check.ok ? { ...model, summary: check.text } : model;
 }

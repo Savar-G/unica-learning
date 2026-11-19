@@ -240,6 +240,7 @@ export interface LoadedReport {
  * version. A failed read is logged and gives null: the report shows without these sections.
  */
 async function findingsOf(reader: ReportReader, row: ReportRecord, model: ReportModel) {
+  if (model.level.working === null) return { findings: null, book: null };
   const assessmentId = row.assessmentId;
   try {
     const profile = storedProfile(await reader.profile(assessmentId));

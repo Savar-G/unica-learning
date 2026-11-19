@@ -96,7 +96,7 @@ export function ParentDashboardHome({ dashboard, overview, kids, addressChild, p
       {!kid && <p className="lead">Add a child on the <Link href="/account/settings">Account</Link> page to start.</p>}
       {home && <ParentOverview overview={shown} />}
       {!home && shown?.onTheWay != null && <OnTheWay number={shown.onTheWay} />}
-      {!home && progressCard}
+      {(!home || goal?.placement) && progressCard}
       {!home && kid && state && (
         <>
           {phone && state.kind !== "wait" && (

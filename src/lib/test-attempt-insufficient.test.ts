@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { createAdaptiveSession, lockAdaptiveBlock, nextQuestion, REPORTED_STRAND, startAttempt, storedTest, submitAnswer, testStep } from "@/lib/assessment";
+import { createAdaptiveSession, lockAdaptiveBlock, nextQuestion, REPORTED_STRAND, startAttempt, storedTest, submitAnswer, testStep, type Session } from "@/lib/assessment";
 import { memoryAttemptStore } from "@/lib/test-attempt-memory";
 import { finishTest, nextStep, startStates, startTest } from "@/lib/test-attempt";
 
@@ -8,7 +8,8 @@ const child = { id: "child-1", parentId: "parent-1", grade: 4, province: "BC" } 
 
 /** A real completed block test: rushed shape errors leave too little evidence, or careful answers allow scoring. */
 function family(scorable = false) {
-  let session = createAdaptiveSession(child, 1);
+  const created = createAdaptiveSession(child, 1);
+  let session: Session = { ...created, adaptive: { ...created.adaptive!, version: 1 } };
   for (let i = 0; i < 100 && !session.adaptive!.complete; i++) {
     if (testStep(session).status === "check") session = lockAdaptiveBlock(session);
     else {

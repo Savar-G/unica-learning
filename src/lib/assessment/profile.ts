@@ -354,7 +354,7 @@ function behaviourOf(input: ProfileInput): ProfileBehaviour {
  */
 export function learnerProfile(input: ProfileInput): LearnerProfile | null {
   const { placement, answers, learning } = input;
-  if (placement.scoredAgainst !== "BC") return null;
+  if (placement.workingLevel === null || placement.scoredAgainst !== "BC") return null;
   // A rushed wrong answer the stored placement left out of the score (#189) is not a sign of what the child knows.
   const leftOut = new Set(placement.pace?.leftOut ?? []);
   const scored = (a: ProfileAnswer) => !leftOut.has(a.question.id);

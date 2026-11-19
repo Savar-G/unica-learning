@@ -15,6 +15,7 @@ import {
   WORKING_LEVEL_PERCENT,
   comparedGrade,
   gradeLabel,
+  schoolYearPlacement,
   type Certainty,
   type Level,
   type Province,
@@ -26,7 +27,7 @@ import {
 import { familyPlanWords as w, familyWindowWords, type FamilyPlanOffer } from "@/lib/family-plan-words";
 import type { ReportSrc } from "@/lib/next-step";
 import type { BookOne } from "@/lib/report-book-one";
-import { formatInZone, zoneForProvince, type FamilyZone } from "@/lib/family-time";
+import { formatInZone, localMonth, zoneForProvince, type FamilyZone } from "@/lib/family-time";
 import { CURRICULA } from "@/lib/signup";
 import { PLANS, cad, type PlanId } from "@/lib/site";
 import { UNIT_TITLES } from "@/lib/workbook-unit-titles";
@@ -69,9 +70,18 @@ export const workResult = (correct: boolean) => (correct ? "Right answer" : "Not
 export const reportPath = (id: string) => `/account/report/${id}`;
 
 /** "grade 3", or "kindergarten" for level 0. */
-export const levelName = (level: Level | number) => (level === 0 ? "kindergarten" : `grade ${level}`);
+export const levelName = (level: number | null) => level === null ? "no level" : level === 0 ? "kindergarten" : `grade ${level}`;
 
-export const levelSentence = (v: ReportView) => `${v.childName} is working at a ${levelName(v.model.level.working)} level.`;
+export const retakeSentence = (name: string) => `${name} answered many questions very quickly, so please have ${name} take the test again.`;
+
+export const levelSentence = (v: ReportView) => {
+  const level = v.model.level;
+  if (level.working === null) return retakeSentence(v.childName);
+  return level.adaptiveVersion === 2 ? verdictSentence(v) : `${v.childName} is working at a ${levelName(level.working)} level.`;
+};
+
+/** V2 includes the comparison in the overall sentence. */
+export const legacyVerdict = (v: ReportView) => v.model.level.adaptiveVersion === 2 ? "" : verdictSentence(v);
 
 const COUNT = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
 
@@ -97,7 +107,20 @@ export const gradeNineNote = (name: string) =>
 
 /** One plain sentence against the school grade: below, matches, or above (D-084: say it plainly, never to sell). */
 export function verdictSentence(v: ReportView): string {
-  const { working, grade } = v.model.level;
+  const { working, grade, adaptiveVersion, mastered } = v.model.level;
+  if (working === null) return retakeSentence(v.childName);
+  if (adaptiveVersion === 2) {
+    if (!mastered) return `The test suggests ${v.childName} is starting with kindergarten math.`;
+    const zone = v.timeZone ?? zoneForProvince(v.province);
+    const at = Date.parse(v.completedAt);
+    const month = formatInZone(at, zone, { month: "long" });
+    const { gradesBehind, aboveSchoolGrade } = schoolYearPlacement(grade, working, Number(localMonth(at, zone).slice(-2)));
+    const mastery = `${v.childName} has mastered ${gradeLabel(working)} work`;
+    if (aboveSchoolGrade) return `${mastery}, which is above their school grade.`;
+    if (!gradesBehind) return `${mastery} and is on track for ${gradeLabel(grade)} in ${month}.`;
+    const gap = gradesBehind === 1 ? "one grade" : `${COUNT[gradesBehind]} grades`;
+    return `${mastery}, which is ${gap} below where we would expect them to be in ${month}.`;
+  }
   // D-156: a Grade 9 child tested before D-158 is compared with grade 8, the highest level that test checked.
   if (aboveTestedGrades(v)) {
     const top = comparedGrade(v.model.level);
@@ -153,6 +176,11 @@ export function levelNotes(v: ReportView): string[] {
   const { working, atCeiling, confidence } = v.model.level;
   const name = v.childName;
   const notes: string[] = [];
+  if (working === null) return notes;
+  if (v.model.level.adaptiveVersion === 2) {
+    if (atCeiling) notes.push(`The test went up to ${levelName(working)}, and ${name} may be ready for harder work.`);
+    return notes;
+  }
   // At the ceiling, the working level is the highest level the test reached.
   if (atCeiling) {
     notes.push(`The test went up to ${levelName(working)}, and ${name} got ${WORKING_LEVEL_PERCENT}% or more of those questions right. ${name} may work above this level.`);
@@ -290,8 +318,8 @@ export function reliabilityNote(v: ReportView, retake?: RetakeState): Reliabilit
       ? `${name} can take a new test now, with new questions. There is no ${RETAKE_DAYS}-day wait.`
       : `${name} can take a new test, with new questions, from ${when.date}.`;
   return {
-    title: "This result may not be reliable",
-    text: `${name} answered ${r.veryFast} of ${r.answers} questions in under ${TOO_FAST_MS / 1000} seconds. Most questions take longer than that to work out, so this report may not show what ${name} can do.`,
+    title: v.model.level.working === null ? "Please retake the test" : "This result may not be reliable",
+    text: v.model.level.working === null ? retakeSentence(name) : `${name} answered ${r.veryFast} of ${r.answers} questions in under ${TOO_FAST_MS / 1000} seconds. Most questions take longer than that to work out, so this report may not show what ${name} can do.`,
     offer,
     veryFast: r.veryFast,
     answers: r.answers,
@@ -614,12 +642,16 @@ function struggles(v: ReportView): StruggleView[] {
  * Next to learn: topics above the working level, up to the school grade. Null when a part is empty.
  */
 export function gapsView(v: ReportView): StruggleView[] | null {
-  const list = struggles(v).filter((s) => s.level <= v.model.level.working);
+  const working = v.model.level.working;
+  if (working === null) return null;
+  const list = struggles(v).filter((s) => s.level <= working);
   return list.length ? list : null;
 }
 
 export function nextView(v: ReportView): StruggleView[] | null {
-  const list = struggles(v).filter((s) => s.level > v.model.level.working);
+  const working = v.model.level.working;
+  if (working === null) return null;
+  const list = struggles(v).filter((s) => s.level > working);
   return list.length ? list : null;
 }
 
@@ -629,6 +661,7 @@ export const gapsNote = (v: ReportView) =>
   `Topics at or below ${levelName(v.model.level.working)} that ${v.childName} has not mastered, with one of ${v.childName}'s answers for each.`;
 export const nextNote = (v: ReportView) => {
   const { working, grade } = v.model.level;
+  if (working === null) return "";
   const span = grade - working > 1 ? `${levelName(working + 1)} to ${grade}` : levelName(grade);
   return `Topics from ${span} that ${v.childName} has not mastered yet. Later books teach them.`;
 };
@@ -651,8 +684,8 @@ export interface WhereView {
  * not the working level (secure, gaps), or when the next topics span more than one grade.
  */
 export function whereView(v: ReportView): WhereView | null {
-  if (!v.findings) return null;
   const { working, grade } = v.model.level;
+  if (!v.findings || working === null) return null;
   const meta = (...parts: (string | null)[]) => parts.filter(Boolean).join(" · ") || null;
   const otherGrade = (level: Level) => (level === working ? null : levelName(level));
   const secure = (strengthsView(v) ?? []).map((t) => ({ title: t.title, meta: otherGrade(t.level) }));
