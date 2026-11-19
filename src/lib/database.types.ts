@@ -10486,6 +10486,10 @@ export type Database = {
         Args: { p_id: string; p_parent: string }
         Returns: boolean
       }
+      pin_workbook_run_draft_key: {
+        Args: { p_by: string; p_by_email: string; p_key: string; p_run: string }
+        Returns: Json
+      }
       ping: { Args: never; Returns: number }
       plan_control_context: {
         Args: { p_card: string; p_parent: string }
