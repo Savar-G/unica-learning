@@ -8,8 +8,8 @@ type MetaPlatform = "instagram" | "facebook";
 const GRAPH = "https://graph.facebook.com/v26.0/";
 const IG_DAILY = ["views", "reach", "total_interactions", "profile_views", "profile_links_taps"];
 const FB_DAILY = ["page_media_view", "page_total_media_view_unique", "page_post_engagements", "page_views_total", "page_total_actions", "page_follows", "page_daily_follows"];
-const IG_POST = ["views", "reach", "shares", "saved", "follows"];
-const FB_POST = ["post_media_view", "post_total_media_view_unique"];
+const IG_POST = ["views", "reach", "shares", "saved"];
+const FB_POST = ["post_media_view", "post_total_media_view_unique", "post_reactions_like_total", "post_activity_by_action_type"];
 
 const value = (metric: Json | undefined) =>
   object(object(metric).total_value).value ?? object(list(object(metric).values)[0]).value;
@@ -82,7 +82,7 @@ export function metaAdapter(platform: MetaPlatform, config: MetaCredentials, doF
       const readPosts = async () => {
         const fields = instagram
           ? "id,permalink,caption,timestamp,media_type,media_product_type,like_count,comments_count"
-          : "id,permalink_url,message,created_time,shares,reactions.type(LIKE).limit(0).summary(true),comments.limit(0).summary(true),attachments{media_type,type,target}";
+          : "id,permalink_url,message,created_time,shares,attachments{media_type,type,target}";
         const posts = new Map<string, ReturnType<typeof object>>();
         let after = "";
         do {
@@ -188,10 +188,10 @@ export function metaAdapter(platform: MetaPlatform, config: MetaCredentials, doF
         const isVideo = reel || type.toLowerCase().includes("video");
         const format = reel ? "Reel" : isVideo ? "Video" : type === "CAROUSEL_ALBUM" || type === "album" ? "Carousel"
           : ["IMAGE", "photo"].includes(type) ? "Photo" : "Post";
-        const metrics = instagram && reel ? [...IG_POST, "ig_reels_avg_watch_time"] : instagram ? IG_POST : FB_POST;
+        const metrics = instagram ? [...IG_POST, reel ? "ig_reels_avg_watch_time" : "follows"] : FB_POST;
         const videoId = words(object(attachment.target).id);
         const [row, video] = await Promise.all([
-          insights("post insights", post_id, metrics, {}),
+          insights("post insights", post_id, metrics, instagram ? {} : { period: "lifetime" }),
           !instagram && isVideo && videoId
             ? insights("video insights", videoId, reel ? ["post_video_avg_time_watched", "post_video_followers"] : ["post_video_avg_time_watched"], {}, "video_insights")
             : Promise.resolve<Record<string, Json | undefined>>({}),
@@ -204,9 +204,12 @@ export function metaAdapter(platform: MetaPlatform, config: MetaCredentials, doF
           caption: line(instagram ? post.caption : post.message),
         });
         const watchMs = number(value(instagram ? row.ig_reels_avg_watch_time : video.post_video_avg_time_watched));
-        const likes = number(instagram ? post.like_count : object(object(post.reactions).summary).total_count);
-        const comments = number(instagram ? post.comments_count : object(object(post.comments).summary).total_count);
-        const shares = number(instagram ? value(row.shares) : object(post.shares).count);
+        // Post insight totals work with read_insights. Expanding comments or reactions on the Page post edge
+        // requires pages_read_user_content, even with limit(0), and makes the whole post listing fail.
+        const actions = object(value(row.post_activity_by_action_type));
+        const likes = number(instagram ? post.like_count : value(row.post_reactions_like_total));
+        const comments = number(instagram ? post.comments_count : actions.comment);
+        const shares = number(instagram ? value(row.shares) : object(post.shares).count ?? actions.share);
         pull.postReads.push(postRead(post_id, {
           views: number(value(instagram ? row.views : row.post_media_view)),
           reach: number(value(instagram ? row.reach : row.post_total_media_view_unique)),

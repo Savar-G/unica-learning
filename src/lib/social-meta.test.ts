@@ -26,10 +26,10 @@ describe("Meta adapters", () => {
       }] });
       const metric = url.searchParams.get("metric") ?? "";
       if (url.pathname.endsWith("/ig1/insights")) {
-        expect(metric).toBe("views,reach,shares,saved,follows,ig_reels_avg_watch_time");
+        expect(metric).toBe("views,reach,shares,saved,ig_reels_avg_watch_time");
         return Response.json({ data: [
           lifetime("views", 88), lifetime("reach", 63), lifetime("shares", 8), lifetime("saved", 3),
-          lifetime("follows", 2), lifetime("ig_reels_avg_watch_time", 10300),
+          lifetime("ig_reels_avg_watch_time", 10300),
         ] });
       }
       if (metric === "follower_demographics") {
@@ -51,7 +51,7 @@ describe("Meta adapters", () => {
     const output = await adapter.pull(now);
     expect(output.warnings).toEqual([]);
     expect(output.posts).toMatchObject([{ post_id: "ig1", caption: "First line", format: "Reel" }]);
-    expect(output.postReads).toMatchObject([{ views: 88, reach: 63, saves: 3, shares: 8, follows: 2, watch_seconds: 10.3 }]);
+    expect(output.postReads).toMatchObject([{ views: 88, reach: 63, saves: 3, shares: 8, follows: null, watch_seconds: 10.3 }]);
     expect(output.days).toHaveLength(15);
     expect(output.days[0]).toMatchObject({ views: 120, reach: 80, link_clicks: 4, followers_gained: 7 });
     expect(output.audience).toMatchObject([{ dimension: "age", label: "25-34" }, { dimension: "country", label: "CA" }]);
@@ -63,17 +63,24 @@ describe("Meta adapters", () => {
       expect(url.pathname).toContain("/v26.0/");
       const metrics = url.searchParams.get("metric") ?? "";
       if (url.pathname.endsWith("/100")) return Response.json({ id: "100", name: "Facebook fixture", followers_count: 95 });
-      if (url.pathname.endsWith("/published_posts")) return Response.json({ data: [{
-        id: "100_1", created_time: "2026-11-18T15:10:00+0000", permalink_url: "https://www.facebook.com/reel/1/",
-        reactions: { summary: { total_count: 4 } }, comments: { summary: { total_count: 1 } }, shares: { count: 2 },
-        attachments: { data: [{ media_type: "video", target: { id: "1" } }] },
-      }] });
+      if (url.pathname.endsWith("/published_posts")) {
+        expect(url.searchParams.get("fields")).not.toMatch(/reactions|comments/);
+        return Response.json({ data: [{
+          id: "100_1", created_time: "2026-11-18T15:10:00+0000", permalink_url: "https://www.facebook.com/reel/1/",
+          shares: { count: 2 },
+          attachments: { data: [{ media_type: "video", target: { id: "1" } }] },
+        }] });
+      }
       if (url.pathname.endsWith("/1/video_insights")) {
         return Response.json({ data: [lifetime("post_video_avg_time_watched", 5250), lifetime("post_video_followers", 2)] });
       }
       if (url.pathname.endsWith("/100_1/insights")) {
-        expect(metrics).toBe("post_media_view,post_total_media_view_unique");
-        return Response.json({ data: [lifetime("post_media_view", 12), lifetime("post_total_media_view_unique", 10)] });
+        expect(url.searchParams.get("period")).toBe("lifetime");
+        expect(metrics).toBe("post_media_view,post_total_media_view_unique,post_reactions_like_total,post_activity_by_action_type");
+        return Response.json({ data: [
+          lifetime("post_media_view", 12), lifetime("post_total_media_view_unique", 10), lifetime("post_reactions_like_total", 4),
+          { name: "post_activity_by_action_type", values: [{ value: { comment: 1 } }] },
+        ] });
       }
       if (metrics.includes("page_views_total")) return Response.json({ error: { code: 100 } }, { status: 400 });
       return Response.json({ data: [
@@ -85,7 +92,7 @@ describe("Meta adapters", () => {
     if (adapter.kind !== "connected") throw new Error("Missing fixture credentials");
     const output = await adapter.pull(now);
     expect(output.days).toMatchObject([{ day: "2026-11-18", views: 80, reach: 70, profile_visits: null }, { followers: 95 }]);
-    expect(output.postReads).toMatchObject([{ views: 12, reach: 10, likes: 4, shares: 2, watch_seconds: 5.25, follows: 2 }]);
+    expect(output.postReads).toMatchObject([{ views: 12, reach: 10, likes: 4, comments: 1, shares: 2, watch_seconds: 5.25, follows: 2 }]);
     expect(output.warnings).toEqual(["Facebook daily insights returned HTTP 400."]);
     expect(output.audience).toEqual([]);
   });
