@@ -76,7 +76,7 @@ import {
   type DayLayout, type NumberRange,
 } from "@/lib/workbook-book";
 import { pageId, type Omission, type PageContent, type SlotName } from "@/lib/workbook-page";
-import { twoWaysMethods } from "./workbook-two-ways";
+import { twoWaysMethods, writtenTwoWaysProblem } from "./workbook-two-ways";
 import { storyRepeatAllowed } from "./workbook-content-checks";
 import { dayDifficulty, type PageType, type PlannedPage, type PlannedPart, type WorkbookPlan } from "@/lib/workbook-plan";
 import { estimatedDayMinutes, generatedDayTime, scheduledItemProblem } from "@/lib/workbook-feedback-check";
@@ -1950,7 +1950,8 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
     }
     // Every number fits the level and slot: the range of the item's skill (an earlier skill's under review).
     if (slot.place && b.check.status !== "failed" && b.package) {
-      const problem = levelRange(b.package, input) ?? (input.itemPolicy === "approved-v1" ? dayProblem(input, b.package, w.day, slot.place ?? "") : null);
+      const problem = levelRange(b.package, input) ?? (input.itemPolicy === "approved-v1" ? dayProblem(input, b.package, w.day, slot.place ?? "") : null)
+        ?? writtenTwoWaysProblem(input.plan.level, slot.place, b.package);
       if (problem) b.check = { status: "failed", reason: problem };
     }
     return b;
@@ -4755,6 +4756,7 @@ export async function reviseWorkbookPage(input: GenerateInput, deps: GenerateDep
     }
     const problem = levelRange(b.package, input)
       ?? (input.itemPolicy === "approved-v1" ? dayProblem(input, b.package, w.day, slot.place ?? "") : null)
+      ?? writtenTwoWaysProblem(input.plan.level, slot.place, b.package)
       ?? (slot.place === "spot-the-error" && !isStepItem(b.package) ? samProblem(b.package, input.plan.level) : null);
     if (problem) throw new Error(problem);
   }

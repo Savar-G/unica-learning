@@ -87,8 +87,11 @@ export function fakeWorkbookItems(r: AiJsonRequest) {
       // others' (the k-th slot), and a bare sum takes another form after every `span` slots and in each later call.
       const planned = plan?.numbers && plan.numbers[0] >= 1 && plan.numbers[0] + plan.numbers[1] + 1 <= max ? plan.numbers : null;
       const span = Math.max(1, max > 40 ? 19 : Math.min(9, max - 3));
-      let b = planned?.[1] ?? 1 + ((seed + k) % span);
-      const a = planned?.[0] ?? 1 + ((Math.floor(seed / 9) + 7 * k) % Math.max(1, max - span - 1));
+      // (Use 2 ways, as the real AI is asked again from U10 when its sum has no two methods: numbers of 20 or more that
+      // are not whole tens. Only where the slot's range holds them, so U4 to U9's small sums stay.)
+      const twoWays = !planned && format === "two-ways" && max >= 64;
+      let b = planned?.[1] ?? (twoWays ? [12, 13, 15, 16, 17, 18, 19, 22, 25][Math.floor(seed / 7) % 9] : 1 + ((seed + k) % span));
+      const a = planned?.[0] ?? (twoWays ? [21, 23, 24, 26, 27, 28, 32, 34, 36, 37][(seed + k) % 10] : 1 + ((Math.floor(seed / 9) + 7 * k) % Math.max(1, max - span - 1)));
       for (let n = 0; n < span && sums.has(`${a},${b}`) && a + b + 2 <= max; n++) b = b % span + 1;
       sums.add(`${a},${b}`);
       // The kind code aimed the slot at, as the real AI is asked (#480 review: three contexts or formats a page): a

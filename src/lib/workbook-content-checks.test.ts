@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { QuestionPackage } from "./question-package";
 import { contentIssues, guideIsAnswer, malformedLine } from "./workbook-content-checks";
 import type { GeneratedPage } from "./workbook-generator";
-import { trivialCalculation, twoWaysMethods } from "./workbook-two-ways";
+import { fakeWorkbookItems } from "./workbook-ai-fake";
+import { trivialCalculation, twoWaysMethods, writtenTwoWaysProblem } from "./workbook-two-ways";
 
 // Made-up pages: each check is shown failing on the problem a read of the live U10 Book 1 found (2026-11-17), and
 // passing once it is put right.
@@ -14,6 +15,32 @@ const pkg = (text: string, o: { templateId?: string; kind?: string; answer?: num
 const page = (number: number, day: number | null, questions: { place: string; package: QuestionPackage }[], content: unknown = null): GeneratedPage =>
   ({ number, day, questions: questions.map((q, i) => ({ number: i + 1, itemPlan: { template: { challengeTemplates: 6 } }, ...q })), content } as unknown as GeneratedPage);
 const reasons = (pages: GeneratedPage[]) => contentIssues(pages).map((i) => i.reason);
+
+// The U19 sweep's Day 8 (Luis, 2026-11-19): an angles day reviews no adding or subtracting skill, so its Use 2 ways went
+// to the writer, whose "4 + 15 = ?" the book check failed. The written item is refused, so the redo writes another.
+describe("a written Use 2 ways question", () => {
+  it("is refused from U10 when it has no two methods, and kept when it has", () => {
+    expect(writtenTwoWaysProblem(19, "solve-it-two-ways", pkg("4 + 15 = ?", { kind: "add" }))).toMatch(/two methods/);
+    expect(writtenTwoWaysProblem(19, "solve-it-two-ways", pkg("40 + 80 = ?", { kind: "add" }))).toMatch(/two methods/);
+    expect(writtenTwoWaysProblem(19, "solve-it-two-ways", pkg("34 + 27 = ?", { kind: "add" }))).toBeNull();
+    // (Another place, or U4 to U9, keeps its small sums.)
+    expect(writtenTwoWaysProblem(19, "on-your-own", pkg("4 + 15 = ?", { kind: "add" }))).toBeNull();
+    expect(writtenTwoWaysProblem(9, "solve-it-two-ways", pkg("4 + 15 = ?", { kind: "add" }))).toBeNull();
+  });
+  it("from the fake writer has two methods wherever its range holds them, and stays small where it does not", () => {
+    const ask = (max: number, slot: string, note: string | null = null) => {
+      const request = { name: "workbook_page", content: [{ type: "text", text: JSON.stringify({ day: 8, page: 61, note,
+        slots: [{ slot, place: "solve-it-two-ways", skills: ["6.13-classify-angles"], formats: ["two-ways"], numbers: { "6.13-classify-angles": { max } } }] }) }] };
+      const item = (fakeWorkbookItems(request as never).items[0]) as { text: string; operation: { operands: { value: number }[] } };
+      return { text: item.text, numbers: item.operation.operands.map((o) => o.value) };
+    };
+    for (const slot of ["1.1", "2.1", "3.4", "4.2", "5.7"]) for (const note of [null, "redo"]) {
+      const big = ask(999, slot, note);
+      expect(writtenTwoWaysProblem(19, "solve-it-two-ways", pkg(big.text, { kind: "add" })), big.text).toBeNull();
+      expect(Math.max(...ask(40, slot, note).numbers), slot).toBeLessThan(40);
+    }
+  });
+});
 
 describe("Use 2 ways methods come from the kind of question", () => {
   it("gives a pattern its own methods, never the times-table pair", () => {

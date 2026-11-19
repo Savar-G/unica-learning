@@ -93,3 +93,13 @@ export function twoWaysMethods(p: QuestionPackage): MethodPair | null {
     default: return null;
   }
 }
+
+/**
+ * Why a written Use 2 ways question cannot print from U10, or null: it needs two methods of its kind. On a day that
+ * reviews no adding or subtracting skill the slot goes to the writer, whose "4 + 15 = ?" the book check then failed (the
+ * U19 sweep's Day 8, Luis 2026-11-19). The writer's redo is asked again with this reason.
+ */
+export function writtenTwoWaysProblem(level: number, place: string | null | undefined, p: QuestionPackage): string | null {
+  if (place !== "solve-it-two-ways" || level < 10 || twoWaysMethods(p)) return null;
+  return "Use 2 ways needs a sum or product with two methods: numbers of 20 or more, not a fact, not all whole tens or hundreds";
+}
