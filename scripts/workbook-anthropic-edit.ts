@@ -27,9 +27,9 @@ import { workbookAnthropicBudget } from "./workbook-anthropic-budget.mjs";
 const PROJECT = "cdjobwsyzndtltzfpyqa";
 delete process.env.WORKBOOK_AI_FAKE;
 const { values } = parseArgs({ options: { child: { type: "string" }, run: { type: "string" }, comments: { type: "string" },
-  "dry-run": { type: "boolean", default: false }, execute: { type: "boolean", default: false }, help: { type: "boolean", default: false } } });
+  batch: { type: "string" }, "dry-run": { type: "boolean", default: false }, execute: { type: "boolean", default: false }, help: { type: "boolean", default: false } } });
 if (values.help) {
-  console.log("node scripts/workbook-anthropic-edit.mjs --child LABEL --run RUN_ID --comments FILE [--dry-run | --execute]\nFILE: [{ page, question, note }]. WORKBOOK_LIVE_CONFIG and ANTHROPIC_API_KEY_FILE as for workbook-anthropic-live. Read-only preflight is the default.");
+  console.log("node scripts/workbook-anthropic-edit.mjs --child LABEL --run RUN_ID --comments FILE [--dry-run | --execute [--batch ID]]\nFILE: [{ page, question, note }]. WORKBOOK_LIVE_CONFIG and ANTHROPIC_API_KEY_FILE as for workbook-anthropic-live. Read-only preflight is the default.");
   process.exit(0);
 }
 const configFile = process.env.WORKBOOK_LIVE_CONFIG;
@@ -68,7 +68,10 @@ const [books, edits, open, revisions] = await Promise.all([
 ]);
 for (const r of [books, edits, open, revisions]) if (r.error) throw new Error(r.error.message);
 if (books.data?.length) throw new Error("This draft has a workbook row; it is not edited from here");
-if (edits.data?.length || open.data?.length) throw new Error("This draft has an open edit or comment; finish it on the admin page first");
+// (--batch takes up a batch this script queued and did not claim: queued, runner "server", this draft.)
+const resume = values.batch ? edits.data?.find(e => e.id === values.batch && e.status === "queued") : undefined;
+if (values.batch && !resume) throw new Error("--batch must name this draft's queued edit");
+if (!resume && (edits.data?.length || open.data?.length)) throw new Error("This draft has an open edit or comment; finish it on the admin page first");
 const revision = revisions.data?.[0]?.revision;
 if (!revision) throw new Error("The draft has no revision");
 const snapshot = await workbookEditStore(admin).load(draftId);
@@ -112,22 +115,29 @@ const apiKeyFile = process.env.ANTHROPIC_API_KEY_FILE;
 if (!apiKeyFile) throw new Error("ANTHROPIC_API_KEY_FILE is required; never put a key in the command line");
 const apiKey = (await readFile(apiKeyFile, "utf8")).trim();
 if (!apiKey) throw new Error("The saved Anthropic key is empty");
-for (const c of comments) {
+let batchId = resume?.id ?? null;
+if (!batchId) for (const c of comments) {
   const saved = await admin.rpc("save_workbook_comment", { p_draft: draftId, p_revision: revision, p_by: ACTOR.id, p_email: ACTOR.email,
     p_comment: toJson({ page: c.page, question: c.question, note: c.note, x: 0.5, y: 0.5, requestKey: randomUUID() }) });
   const result = saved.data as { status?: string; reason?: string } | null;
   if (saved.error || result?.status !== "saved") throw new Error(`Comment on page ${c.page} not saved: ${saved.error?.message ?? result?.reason}`);
 }
-const sent = await admin.rpc("send_workbook_comments", { p_draft: draftId, p_revision: revision, p_by: ACTOR.id, p_email: ACTOR.email, p_runner: "server" });
-const batch = sent.data as { status?: string; id?: string; runner?: string; reason?: string } | null;
-if (sent.error || batch?.status !== "queued" || !batch.id || batch.runner !== "server") throw new Error(`The comments were not sent: ${sent.error?.message ?? batch?.reason ?? batch?.status}`);
-console.log(JSON.stringify({ batch: batch.id, status: "queued" }));
+if (!batchId) {
+  const sent = await admin.rpc("send_workbook_comments", { p_draft: draftId, p_revision: revision, p_by: ACTOR.id, p_email: ACTOR.email, p_runner: "server" });
+  const batch = sent.data as { status?: string; id?: string; reason?: string } | null;
+  if (sent.error || batch?.status !== "queued" || !batch.id) throw new Error(`The comments were not sent: ${sent.error?.message ?? batch?.reason ?? batch?.status}`);
+  batchId = batch.id;
+}
+// (The queue's answer does not name the runner: the batch row does. Only a "server" batch is this process's to claim.)
+const row = await admin.from("workbook_edits").select("id,status,runner,draft_id").eq("id", batchId).single();
+if (row.error || row.data.runner !== "server" || row.data.status !== "queued" || row.data.draft_id !== draftId) throw new Error(`Batch ${batchId} is not a queued server edit of this draft`);
+console.log(JSON.stringify({ batch: batchId, status: "queued" }));
 const env = { WORKBOOK_API_PROVIDER: "anthropic", WORKBOOK_AI_PRIMARY: "api", WORKBOOK_ANTHROPIC_CHILD_ID: childId,
   ANTHROPIC_API_KEY: apiKey, NODE_ENV: "production", CHROMIUM_PATH: process.env.CHROMIUM_PATH };
 configureAiUsage({ url, key: serviceKey });
 try {
-  const outcome = await runWorkbookEditWith(admin, batch.id, { subscription: false, primary: "api", env, build, timeLimitMs: 10 * 60_000, anthropicFetchWrapper: budget.wrap });
-  const after = await admin.from("workbook_edits").select("status,error").eq("id", batch.id).single();
-  console.log(JSON.stringify({ batch: batch.id, outcome, edit: after.data, budget: await budget.state() }));
+  const outcome = await runWorkbookEditWith(admin, batchId, { subscription: false, primary: "api", env, build, timeLimitMs: 10 * 60_000, anthropicFetchWrapper: budget.wrap });
+  const after = await admin.from("workbook_edits").select("status,error").eq("id", batchId).single();
+  console.log(JSON.stringify({ batch: batchId, outcome, edit: after.data, budget: await budget.state() }));
   if (outcome !== "done") process.exitCode = 1;
 } finally { await flushAiUsage(); }
