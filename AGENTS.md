@@ -1,6 +1,6 @@
 <!-- BEGIN:nextjs-agent-rules -->
 
-# This is NOT the Next.js you know
+## This is NOT the Next.js you know
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
 
@@ -42,6 +42,8 @@ Personalized, mailed math and reading workbooks for ages 5 to 14 (Kindergarten t
 - Blog (`/blog`, D-152): one post per file in `src/content/blog/<slug>.tsx`, registered in `src/lib/blog.ts`; writing rules in `docs/blog-style.md` (checked by `src/lib/blog.test.ts`); topic queue in `docs/blog-topics.md`. The cloud routine "Unica weekly blog" runs `docs/blog-automation.md` every Sunday and pushes one post on a `claude/blog-<slug>` branch. The GitHub Actions workflow `Blog publish` (`.github/workflows/blog-publish.yml`) checks with `scripts/blog-publish-guard.mjs` that the branch only adds or fixes a post, merges it into `main`, runs the done gate and pushes `main`. Never name a branch `claude/blog-*` for any other work; a name ending in `-dryrun` runs the checks without the push.
 - Use plain language in all customer text. Keep development notes and draft labels out of public pages. Give provider names only in the privacy disclosure, with a plain explanation.
 - In marketing copy (social posts, ads, share images, headlines, kickers), call the product "a personalized math learning program". Do not call it "workbooks".
+
+- Admin Social (#913, `docs/social-metrics.md`): `social_accounts` and `social_posts` hold channels, posts and editable UTM tags. `social_post_snapshots`, `social_daily_snapshots` and `social_audience_snapshots` append provider reads. `social_refreshes` and `social_refresh_results` hold the shared cooldown and outcomes. Admins read; the server writes. The daily `/api/social-metrics` cron uses `CRON_SECRET`. Optional server env: `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN`, `META_PAGE_ACCESS_TOKEN`, `META_PAGE_ID`, `META_IG_USER_ID`.
 
 ## Tools and services
 
