@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { toJson } from "@/lib/database";
+import type { Json } from "@/lib/database.types";
 import { configureAiUsage, flushAiUsage } from "@/lib/ai-usage";
 import { workbookFakeAi, workbookFakeSolver } from "@/lib/workbook-ai-fake";
 import { runWorkbookEditWith } from "@/lib/workbook-edit-deps";
@@ -42,7 +42,8 @@ const ACTOR = { id: config.actor.id, email: config.actor.email };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 if (!values.run || !uuid.test(values.run)) throw new Error("--run must be a lowercase UUID");
 if (!values.comments) throw new Error("--comments names the private comments file");
-const comments = JSON.parse(await readFile(values.comments, "utf8")) as { page: number; question: number | null; note: string }[];
+// (An item replaces the question as the admin page's manual edit does: code builds and checks it, with no writer call.)
+const comments = JSON.parse(await readFile(values.comments, "utf8")) as { page: number; question: number | null; note: string; item?: unknown }[];
 if (!Array.isArray(comments) || !comments.length || comments.some(c => !Number.isInteger(c.page) || (c.question !== null && !Number.isInteger(c.question)) || typeof c.note !== "string" || !c.note.trim()))
   throw new Error("The comments file is invalid");
 if (values["dry-run"] && values.execute) throw new Error("Choose --dry-run or --execute");
@@ -63,7 +64,7 @@ const draftId = run.data.draft_id;
 const [books, edits, open, revisions] = await Promise.all([
   admin.from("workbooks").select("id,status").eq("id", draftId),
   admin.from("workbook_edits").select("id,status").eq("draft_id", draftId).in("status", ["queued", "running"]),
-  admin.from("workbook_comments").select("id,status").eq("draft_id", draftId).in("status", ["pending", "failed", "sent"]),
+  admin.from("workbook_comments").select("id,status,page_number,question_number").eq("draft_id", draftId).in("status", ["pending", "failed", "sent"]),
   admin.from("workbook_draft_revisions").select("revision").eq("draft_id", draftId).order("revision", { ascending: false }).limit(1),
 ]);
 for (const r of [books, edits, open, revisions]) if (r.error) throw new Error(r.error.message);
@@ -71,7 +72,12 @@ if (books.data?.length) throw new Error("This draft has a workbook row; it is no
 // (--batch takes up a batch this script queued and did not claim: queued, runner "server", this draft.)
 const resume = values.batch ? edits.data?.find(e => e.id === values.batch && e.status === "queued") : undefined;
 if (values.batch && !resume) throw new Error("--batch must name this draft's queued edit");
-if (!resume && (edits.data?.length || open.data?.length)) throw new Error("This draft has an open edit or comment; finish it on the admin page first");
+// (A failed comment on a question this file comments on again is updated in place, as the admin page does; any other
+// open comment or edit stops a live edit. A dry run writes nothing, so it does not stop.)
+const reused = new Map((open.data ?? []).filter(o => o.status === "failed" && comments.some(c => c.page === o.page_number && c.question === o.question_number))
+  .map(o => [`${o.page_number}:${o.question_number}`, o.id]));
+if (!values["dry-run"] && !resume && (edits.data?.length || (open.data ?? []).some(o => ![...reused.values()].includes(o.id))))
+  throw new Error("This draft has an open edit or comment; finish it on the admin page first");
 const revision = revisions.data?.[0]?.revision;
 if (!revision) throw new Error("The draft has no revision");
 const snapshot = await workbookEditStore(admin).load(draftId);
@@ -101,6 +107,7 @@ if (values["dry-run"]) {
       const next = await reviseWorkbookPage(snapshot.input, deps as never, current, {
         question: group.some(c => c.question === null) ? null : group.map(c => c.question!),
         note: group.map(c => `${c.question === null ? "Whole page" : `Question ${c.question}`}: ${c.note}`).join("\n"),
+        items: Object.fromEntries(group.filter(c => c.item && c.question !== null).map(c => [c.question!, c.item])),
       });
       for (const q of next.questions) if (group.some(c => c.question === null || c.question === q.number))
         console.log(JSON.stringify({ page, question: q.number, place: q.place, template: q.package?.templateId ?? null, check: q.check, text: q.package?.text }));
@@ -115,10 +122,15 @@ const apiKeyFile = process.env.ANTHROPIC_API_KEY_FILE;
 if (!apiKeyFile) throw new Error("ANTHROPIC_API_KEY_FILE is required; never put a key in the command line");
 const apiKey = (await readFile(apiKeyFile, "utf8")).trim();
 if (!apiKey) throw new Error("The saved Anthropic key is empty");
+// (The file is parsed JSON, so its item is JSON too.)
+const comment = (c: (typeof comments)[number]): Json => {
+  const id = reused.get(`${c.page}:${c.question}`);
+  return { ...(id ? { id } : { requestKey: randomUUID() }), page: c.page, question: c.question, note: c.note, item: (c.item ?? null) as Json, x: 0.5, y: 0.5 };
+};
 let batchId = resume?.id ?? null;
 if (!batchId) for (const c of comments) {
   const saved = await admin.rpc("save_workbook_comment", { p_draft: draftId, p_revision: revision, p_by: ACTOR.id, p_email: ACTOR.email,
-    p_comment: toJson({ page: c.page, question: c.question, note: c.note, x: 0.5, y: 0.5, requestKey: randomUUID() }) });
+    p_comment: comment(c) });
   const result = saved.data as { status?: string; reason?: string } | null;
   if (saved.error || result?.status !== "saved") throw new Error(`Comment on page ${c.page} not saved: ${saved.error?.message ?? result?.reason}`);
 }
