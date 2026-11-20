@@ -4,11 +4,24 @@
 // the finished board at once (a replay's end, a reload). Every frame comes from the pure playback in
 // src/lib/board-svg.ts; this component only keeps the clock and paints. The child's ink is a separate layer (M6).
 import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
-import type { Ink } from "@/lib/board";
+import type { Ink, Rect } from "@/lib/board";
 import type { ReplayFrame } from "@/lib/board-history";
 import { eraserLine, inkLayers, inkOutline, type InkLayer } from "@/lib/child-ink-svg";
 import { BATCH_GAP_MS, frameAt, pathData, reveal, SVG_UNITS, timeline, type PlayStep } from "@/lib/board-svg";
 import "./maya-board.css";
+
+/** The box around each object's painted strokes, in SVG units. */
+function objectBoxes(strokes: readonly { path: { objectId: string; pts: readonly (readonly [number, number])[]; width: number }; progress: number }[]): Map<string, Rect> {
+  const edges = new Map<string, [number, number, number, number]>();
+  for (const { path, progress } of strokes) {
+    if (progress <= 0) continue;
+    const r = path.width / 2;
+    const e = edges.get(path.objectId) ?? [Infinity, Infinity, -Infinity, -Infinity];
+    for (const [x, y] of path.pts) e.splice(0, 4, Math.min(e[0], x - r), Math.min(e[1], y - r), Math.max(e[2], x + r), Math.max(e[3], y + r));
+    edges.set(path.objectId, e);
+  }
+  return new Map([...edges].map(([id, [x0, y0, x1, y1]]) => [id, { x: x0 * SVG_UNITS, y: y0 * SVG_UNITS, w: (x1 - x0) * SVG_UNITS, h: (y1 - y0) * SVG_UNITS }]));
+}
 
 const INK: Record<Ink, string> = {
   blue: "var(--board-blue)",
@@ -24,7 +37,11 @@ const INK: Record<Ink, string> = {
  * playback in board-svg.ts decides. `instant`: show the finished board, with no drawing. `shown`: how many of the
  * steps are on the board already (a live call): those show at once and only the later ones draw.
  */
-export function MayaBoard({ steps, viewBox, label, instant = false, shown = 0, frame: savedFrame }: { steps: readonly PlayStep[]; viewBox: string; label: string; instant?: boolean; shown?: number; frame?: ReplayFrame }) {
+export function MayaBoard({ steps, viewBox, label, instant = false, shown = 0, frame: savedFrame, overlay }: {
+  steps: readonly PlayStep[]; viewBox: string; label: string; instant?: boolean; shown?: number; frame?: ReplayFrame;
+  /** #1152: drawn over Maya's strokes, with a box (SVG units) around each object painted now. */
+  overlay?: (boxes: ReadonlyMap<string, Rect>) => ReactNode;
+}) {
   const t = useMemo(() => timeline(steps), [steps]);
   const offset = useMemo(() => (shown <= 0 ? 0 : shown >= steps.length ? Infinity : timeline(steps.slice(0, shown)).durationMs + BATCH_GAP_MS), [steps, shown]);
   // A stroke's shape never changes: its path data is made once, and each frame only moves the dash.
@@ -83,6 +100,7 @@ export function MayaBoard({ steps, viewBox, label, instant = false, shown = 0, f
         );
       })}
       {child.length > 0 && <g aria-label="Child's writing">{layer(inkLayers(child))}</g>}
+      {overlay?.(objectBoxes(strokes))}
     </svg>
   );
 }

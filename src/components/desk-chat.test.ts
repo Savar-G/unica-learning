@@ -229,6 +229,32 @@ describe("#534: the board in a chat", () => {
     }
   });
 
+  it("offers pointing at Maya's objects only in the tab that holds the shown board", async () => {
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    const offer = { lessonId: "lesson", turnId: "lesson:m2", boardRevision: 1, question: "52 - 28 = ?" };
+    const show = { transactionId: "show-tens", commands: [{ op: "model", id: "exchange-before",
+      model: { kind: "base_ten", hundreds: 0, tens: 5, ones: 2 }, place: { region: "main" } }] };
+    const onSelect = vi.fn(async () => true);
+    const board = createElement(ChatBoard, { chat: { ...view(2), batches: [show], selection: offer }, still: true, onSelect });
+    const otherHost = document.createElement("div");
+    document.body.append(otherHost);
+    const other = createRoot(otherHost);
+    try {
+      await act(async () => root.render(board));
+      await advance(500);
+      await act(async () => other.render(board));
+      await advance(500);
+      expect(otherHost.textContent).not.toContain("Point to a part");
+      await act(async () => button("Point to a part").click());
+      expect(host.querySelector(".desk-canvas")!.hasAttribute("data-pointing")).toBe(true);
+      await act(async () => button("Blocks").click());
+      expect(onSelect).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ ...offer, objectId: "exchange-before", batchId: "show-tens" }));
+    } finally {
+      await act(async () => other.unmount());
+      otherHost.remove();
+    }
+  });
+
   it("keeps the pen on the chat's board: Maya's work shows, then the pen passes to the child, and each change goes to the call", async () => {
     vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
     const boards: BoardHistory[] = [];

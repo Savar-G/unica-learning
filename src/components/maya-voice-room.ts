@@ -22,6 +22,7 @@ import type { Room as LkRoom } from "livekit-client";
 import { createBoardReceiver, type BoardSnapshot } from "@/lib/board-protocol";
 import { BOARD_RPC, boardRpcHandler } from "@/lib/board-rpc";
 import { EXCHANGE_RPC, type ExchangeTarget } from "@/lib/maya/checked-exchange";
+import { SELECT_RPC, type SelectionTarget } from "@/lib/maya/board-selection";
 import { voiceDisconnectReason } from "@/lib/maya-voice-close-reason";
 import { BOARD_CLOSE_SETTLE_MS, HANG_UP_BOARD_DRAIN, type VoiceTicket } from "@/lib/maya-voice";
 import { newAttemptId, voiceStartTrace, type PrejoinDropReason, type PrejoinReason, type PrejoinStage, type VoiceStartDetail, type VoiceStartEvent, type VoiceTapLabel } from "@/lib/maya-voice-start-trace";
@@ -798,7 +799,24 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
     finally { exchanging.current = false; }
   }, [callId, phase]);
 
+  /** #1152: the child points to a board object; the worker answers it the way it answers the exchange. */
+  const select = useCallback(async (target: SelectionTarget): Promise<boolean> => {
+    const current = room.current;
+    const owner = agent.current;
+    if (phase !== "live" || !current || roomCall.current !== callId || !owner || exchanging.current) return false;
+    exchanging.current = true;
+    try {
+      const answer = await current.localParticipant.performRpc({
+        destinationIdentity: owner, method: SELECT_RPC, payload: JSON.stringify(target), responseTimeout: 5000,
+      });
+      if (room.current !== current) return false;
+      await latest.current.onUpdate();
+      return answer === "accepted" || answer === "done";
+    } catch { return false; }
+    finally { exchanging.current = false; }
+  }, [callId, phase]);
+
   /** The child's words Maya is hearing now, for the child's last bubble in light text; null when there are none. */
   const hearing = heardText(heard);
-  return { phase, maya, error, seconds, fakeSpeech, sending, hearing, audioHost, prepare, leave, connect, hangUp, say, exchange, markTap };
+  return { phase, maya, error, seconds, fakeSpeech, sending, hearing, audioHost, prepare, leave, connect, hangUp, say, exchange, select, markTap };
 }
