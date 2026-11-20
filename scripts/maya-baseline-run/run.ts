@@ -35,6 +35,18 @@ const TEXT: Record<string, string> = {
 };
 const FAKE_TURN_MS = 9000;
 
+/** Every child turn a call plans, in order. Background speech is not a turn. */
+const PLANNED = CASES.flatMap(c => c.kind === "background" ? [] : c.kind === "interrupt" ? [c.prompt, c.cut] : [c.prompt]);
+
+/** A call that never reported still counts: each planned turn it did not finish is a failed attempt. */
+function failedRows(job: BaselineJob, fake: boolean, done: number): BaselineTurn[] {
+  const teaching = job.teaching === "checked" ? "checked-exchange+checked-routine" as const : "existing" as const;
+  return PLANNED.slice(done).map(prompt => ({
+    v: 1, evidence: fake ? "simulated" : "device", mode: "voice", turnType: TURN_TYPES[prompt], provider: "unreported", teaching,
+    device: job.device, network: job.network, concurrency: job.concurrency, outcome: "failed", ms: {}, counts: {},
+  }));
+}
+
 const RATE = 24_000;
 const FRAME = RATE / 100;
 const LOUD = 0.008 * 32768;
@@ -137,7 +149,11 @@ async function child(o: { url: string; job: BaselineJob; prompts: Map<string, In
 async function runCall(o: { url: string; dispatch: AgentDispatchClient; job: Omit<BaselineJob, "dispatchAt">; prompts: Map<string, Int16Array>; capture: string; cases: string; fake: boolean }) {
   const job: BaselineJob = { ...o.job, dispatchAt: Date.now() };
   await o.dispatch.createDispatch(voiceRoom(job.callId), BASELINE_AGENT, { metadata: JSON.stringify(job) });
-  const c = await child({ url: o.url, job, prompts: o.prompts });
+  let c: Awaited<ReturnType<typeof child>>;
+  try { c = await child({ url: o.url, job, prompts: o.prompts }); } catch (e) {
+    appendFileSync(o.capture, failedRows(job, o.fake, 0).map(r => BASELINE_PREFIX + JSON.stringify(r)).join("\n") + "\n");
+    throw e;
+  }
   const steps: Step[] = [];
   const caseRows: unknown[] = [];
   const callStart = Date.now();
@@ -196,6 +212,10 @@ async function runCall(o: { url: string; dispatch: AgentDispatchClient; job: Omi
 function write(capture: string, cases: string, job: BaselineJob, steps: Step[], c: Awaited<ReturnType<typeof child>>, caseRows: unknown[], callMinutes: number, fake: boolean) {
   const lines: string[] = [];
   const turns = c.messages.filter((m): m is Extract<ReportMessage, { kind: "turn" }> => m.kind === "turn");
+  if (!c.messages.some(m => m.kind === "done")) {
+    // No worker report: the device rows below still show what the child heard; the worker rows are failures.
+    lines.push(...failedRows(job, true, 0).map(r => BASELINE_PREFIX + JSON.stringify({ ...r, evidence: fake ? "simulated" : "worker" })));
+  }
   const call = c.messages.find((m): m is Extract<ReportMessage, { kind: "call" }> => m.kind === "call");
   const teaching = job.teaching === "checked" ? "checked-exchange+checked-routine" as const : "existing" as const;
   const stepOf = (t0: number | null) => t0 === null ? -1 : steps.findLastIndex(s => s.inputEnd - 3000 <= t0);
