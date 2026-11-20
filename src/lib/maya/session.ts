@@ -6023,8 +6023,11 @@ function transferQuestionAction(s: Session): ExchangeAction {
 function transferAssistance(s: Session): RegroupingObservation["assistance"] {
   const turns = s.checkedExchange?.turns.filter((turn) => turn.transfer) ?? [];
   if (turns.some((turn) => turn.support === "demonstrated")) return "demonstrated";
+  const unconfirmed = turns.filter((turn) => turn.sent && !turn.support && turn.playback !== "finished").map(regroupingHelp);
+  // A demonstration the child may have heard part of is stronger help than a finished hint: the help is unknown.
+  if (unconfirmed.includes("demonstrated")) return "uncertain";
   if (turns.some((turn) => turn.support === "hinted")) return "hinted";
-  return turns.some((turn) => turn.sent && !turn.support && turn.playback !== "finished" && regroupingHelp(turn)) ? "uncertain" : "independent";
+  return unconfirmed.some(Boolean) ? "uncertain" : "independent";
 }
 
 function transferOutcome(s: Session): Pick<Outcome, "transfer"> {

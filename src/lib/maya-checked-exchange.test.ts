@@ -963,3 +963,60 @@ it("answers who Maya is during the related question and comes back to that quest
   expect(byKey(await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" })))
     .toMatchObject([{ result: "right" }, { result: "right", assistance: "independent", question: { source: "transfer" } }]);
 });
+
+it("draws the related question again when the child's interruption cancelled its board batch in the same call", async () => {
+  const { calls, events, store } = setup();
+  const question = { ...SAMPLE_PACKAGES["subtract-52-28"], ref: { source: "workbook" as const, workbookId: parentId, page: 1, question: 1 } };
+  const voice = ok(await calls.startVoice({ ...input, kind: "family", package: question }));
+  const opened = await calls.openVoice(voice.view.id, { speechToText: "fake", voice: "fake" }, null);
+  if (!opened.ok) throw Error(opened.error);
+  const call = opened.call;
+  const observe = (board: Batch) => ({ kind: "batch" as const, batchId: board.transactionId, commands: [...board.commands] });
+  const opening = (await call.start()).boardCues![0].batch;
+  await call.child("My answer is 24.");
+  const start = await call.child("Yes.");
+  const related = start.boardCues![0].batch;
+  await call.exchangePlayback!(start.exchangeTurnId!, "interrupted");
+  await call.observeBoard({ events: [observe(opening), { kind: "cancelled", batchIds: [related.transactionId] }] });
+  const question1 = call.session.checkedExchange!.turns.flatMap((turn) => turn.actions).find((action) => action.kind === "question");
+  expect(question1).toMatchObject({ batchId: related.transactionId, fate: "cancelled" });
+  const next = await call.child("I don't know.");
+  expect(next.boardCues?.map((cue) => cue.batch.commands)).toEqual([related.commands]);
+  const again = next.boardCues![0].batch;
+  await call.observeBoard({ events: [observe(opening), { kind: "cancelled", batchIds: [related.transactionId] }, observe(again)] });
+  expect((await call.child("What did you say?")).boardCues ?? []).toEqual([]);
+  expect((await call.child("36.")).ended).toBe(true);
+  await call.end({ reason: "child_stopped" });
+  expect(checkTrace(store.rows()[0].trace)).toMatchObject({ ok: true });
+  expect(byKey(await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" })))
+    .toMatchObject([{ result: "right" }, { result: "right_with_help", question: { source: "transfer" } }]);
+});
+
+it("keeps related help unconfirmed when a finished hint is followed by an interrupted demonstration", async () => {
+  const { calls, events, store } = setup();
+  const question = { ...SAMPLE_PACKAGES["subtract-52-28"], ref: { source: "workbook" as const, workbookId: parentId, page: 1, question: 1 } };
+  const voice = ok(await calls.startVoice({ ...input, kind: "family", package: question }));
+  const opened = await calls.openVoice(voice.view.id, { speechToText: "fake", voice: "fake" }, null);
+  if (!opened.ok) throw Error(opened.error);
+  const call = opened.call;
+  await call.start();
+  await call.child("My answer is 24.");
+  await call.child("Yes.");
+  const hint = await call.child("I don't know.");
+  expect(hint.say.join(" ")).toMatch(/what can you trade/i);
+  await call.exchangePlayback!(hint.exchangeTurnId!, "finished");
+  const show = await call.child("Show me how to regroup.");
+  expect(show.say.join(" ")).toMatch(/5 tens and 13 ones/i);
+  await call.exchangePlayback!(show.exchangeTurnId!, "interrupted");
+  await call.child("6 ones.");
+  await call.child("3 tens.");
+  expect((await call.child("36.")).ended).toBe(true);
+  await call.end({ reason: "child_stopped" });
+  const record = store.rows().find((row) => row.id === voice.view.id)!;
+  expect(record.outcome).toMatchObject({ reason: "solved", transfer: { result: "right", assistance: "uncertain" } });
+  const learned = byKey(await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" }));
+  expect(learned[1]).toMatchObject({ result: "right_with_help", assistance: "uncertain", question: { source: "transfer" } });
+  const sentences = codeSentences(noteFacts({ outcome: record.outcome!, event: learned[0], package: question, question: question.ref })).join(" ");
+  expect(sentences).toContain("gave the correct answer to a related question. The amount of help is unknown.");
+  expect(sentences).not.toContain("with hints");
+});
