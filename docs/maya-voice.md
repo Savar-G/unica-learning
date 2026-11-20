@@ -583,6 +583,26 @@ What the numbers mean:
 - Cues after a resume (n 1 to 2 per batch) reached the child 52 to 68 ms before their word was heard, the same as other cues.
 - Limits: synthetic adult voices; no device speaker or echo cancellation; the worker and child share one process; resume gaps are LiveKit's output calls, not audio measured at the child.
 
+### The same values on LiveKit Cloud (staging, 2026-11-20)
+
+The `staging` deployment (`docs/maya-voice-deploy.md`) ran #1147 at `2fc4e3bf1` (version `yMnQ5aC4PayZ`). The settings were the code defaults; no secret sets them. Each batch was one admin test call of a test family with 20 requests and #1147's incidental clips. The child was `scripts/maya-staging-call.ts` on Savar's MacBook, one call at a time under the real-audio lock. Every job ran on the staging host, and production's log named none of the calls.
+
+| Path, mode (`minDuration` 30 ms, resume 1000 ms) | Stop p50 / p95 (n) | Within 300 ms | Quiet 700 ms after an incidental sound: resumed / permanent | "mm hm" resumed | "okay" resumed | -26 dB request stopped her | Hum resumed | Noise paused her | Lost | Silence after a resume, p50 (max) | Container warnings: at capacity / event loop blocked |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Existing tutor, vad | 477 / 556 ms (20) | 2 of 20 | 10 / 6 of 18 | 5 of 5 | 1 of 2 | 4 of 4 | 4 of 4 | 1 of 3 | 1 of 20 | 1,820 (2,241) ms | 26 / 7 |
+| Checked exchange, vad | 459 / 508 ms (20) | 4 of 20 | 10 / 7 of 20 | 4 of 5 | 2 of 3 | 4 of 4 | 4 of 4 | 1 of 4 | 0 of 20 | 1,659 to 1,910 (1,921) ms | 21 / 16 |
+| Existing tutor, adaptive | 1,737 ms / none (17): 6 requests did not stop her within 3 s | 3 of 17 | 1 / 4 of 5 | 1 of 2 | none played | 1 of 1 | 0 of 1 | 1 of 1 | 1 of 20 | 1,798 ms | 20 / 13 |
+
+"Resumed" is the worker's own record: LiveKit's false-interruption event with `resumed` true within 4 s of the sound, and the worker logged each backchannel it ignored (10 per vad batch, 10 in the adaptive batch). The checked path released 2 board cues; the browser acknowledged them 467 ms (other) and 500 ms (after a resume) after the worker reached them. That acknowledgement is a worker-clock round trip, not #1147's cue-before-word measure, which needs the audio delay at the child.
+
+What the numbers mean:
+
+- **`vad` is the right mode on Cloud too.** With the backchannel rule, `adaptive` let 6 of 17 requests go unanswered for over 3 s, and its stops that did come were slow. The detector reported 28 of 35 overlaps as interruptions but waited for its model each time.
+- **The backchannel rule works on Cloud.** "mm hm", "okay" and a hum resumed Maya in 20 of 23 cases across the two vad batches. A -26 dB request has words and stops her, as designed. A noise burst paused her in 2 of 7 trials and she did not resume.
+- **The 300 ms target is not met at the child on Cloud.** The stops were 459 to 477 ms p50 and 508 to 556 ms p95, about 200 to 250 ms behind the local run. Several things add to that: the network both ways (the Mac to the LiveKit edge is about 49 ms per round trip, and the agent runs in `us-east`), the child's receive buffer, and the staging container. That container has 2 CPU (production has 8), and it logged "worker is at full capacity" 20 to 26 times and "event loop blocked" 7 to 16 times per call, so these numbers are likely partly load-bound. The Mac's own load was 4 to 10 during these calls.
+- **After a backchannel, Maya is silent for about 1.7 to 1.9 s** before she resumes: the 1000 ms wait, plus the pause and the network.
+- Limits: n 20 per batch; synthetic adult voices; no device, browser or echo cancellation; a quarter of production's CPU.
+
 ### PR #450 review corrections
 
 - R450-1: a cancellation-aware output clock replaces completed-run progress events as the cue source. Continuous fake output and the SDK native audio output release intermediate cues before final drain. The native test uses a local AudioSource and a fake track publication, with no room or provider request.

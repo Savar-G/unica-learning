@@ -87,7 +87,7 @@ A non-production copy of the agent, named `staging`, measures what only LiveKit 
 - **End a test call with a hang-up.** A headless child that is stopped without one ends the call as `technical_issue` after the reconnect grace, and before the fix above that raised a production alert (2026-11-20).
 - **Remove it**: `lk agent delete --deployment staging`. Without `--deployment`, `lk agent delete` deletes the whole agent, production included. Never run `lk agent promote`: it puts the staging image into production.
 
-**State (2026-11-20).** Version `z2B5cgvR7CAJ`, built from `d35b668fd` on `site/maya-staging-cloud` (with #1147 at `3ca2ad123`), region `us-east`, 2 CPU and 4 GB, at most 1 replica (production: 8 CPU, 16 GB). Idle, so asleep. Production stayed on `cVzyNNt59kL2` through every staging deploy.
+**State (2026-11-20).** Version `yMnQ5aC4PayZ`, built from `b2b67251c` on `site/maya-staging-cloud` (with #1147 at `2fc4e3bf1`: the backchannel rule, `vad`, 30 ms, 1000 ms), region `us-east`, 2 CPU and 4 GB, at most 1 replica (production: 8 CPU, 16 GB). Idle, so asleep. Production stayed on `cVzyNNt59kL2` through every staging deploy. The #1147 values measured on it are in `docs/maya-voice.md` ("The same values on LiveKit Cloud"). A harness started with `MAYA_CHECKED_EXCHANGE=on` in its own environment makes a checked-exchange call: the session keeps the flag it was started with, so no secret changes.
 
 ### Results (2026-11-20)
 
@@ -116,7 +116,7 @@ The time includes the model's reply (about 2 s). The detector's own decision cam
 
 **Limits.** n is small. Staging has a quarter of production's CPU: in the adaptive run the worker logged "at full capacity" 27 times and "event loop blocked" 15 times, so Cloud stop times may be high. The earlier warm-up (`d91ec277`) and the first adaptive run (`9538f82d`) overlapped another real-audio job and are left out. No device speaker, echo cancellation, browser or child voice.
 
-**Spend.** 10 calls, about 20 call minutes: model USD 2.03 (provider receipts in `ai_usage_events`), speech-to-text and voice USD 0.83 and profiles USD 0.67 (ledger), LiveKit agent minutes inside the Scale plan. The ledger's `maya_spend` model rows for the same calls add up to USD 36.16, about 18 times the receipts.
+**Spend.** 10 calls, about 20 call minutes: model USD 2.03 (provider receipts in `ai_usage_events`), speech-to-text and voice USD 0.83 and profiles USD 0.67 (ledger), LiveKit agent minutes inside the Scale plan. The ledger's `maya_spend` model rows for the same calls add up to USD 36.16, about 18 times the receipts. The four #1147 calls later that day (warm-up and three batches, 14 call minutes) added model USD 1.59 and speech-to-text and voice USD 0.63.
 
 ## Turn on LiveKit Inference
 
