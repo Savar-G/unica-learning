@@ -79,8 +79,9 @@ async function child(o: { url: string; job: BaselineJob; prompts: Map<string, In
   const bursts: { start: number; end: number }[] = [];
   const board: number[] = [];
   const messages: ReportMessage[] = [];
-  // The worker's live reports: answer playout starts, and each playout's end (null while it plays) by its start.
+  // The worker's live reports: answer playout starts, reply-done times, and each playout's end (null while it plays).
   const answers: number[] = [];
+  const replies: number[] = [];
   const live = new Map<number, number | null>();
   let done!: () => void;
   const reported = new Promise<void>(resolve => { done = resolve; });
@@ -122,6 +123,7 @@ async function child(o: { url: string; job: BaselineJob; prompts: Map<string, In
     const m = JSON.parse(data.payload) as ReportMessage;
     messages.push(m);
     if (m.kind === "answer") answers.push(m.at);
+    if (m.kind === "reply_done") replies.push(m.at);
     // RPCs can arrive out of order: a finish is never undone by its own start.
     if (m.kind === "playout" && !(m.end === null && live.get(m.start) != null)) live.set(m.start, m.end);
     if (m.kind === "done") done();
@@ -156,14 +158,14 @@ async function child(o: { url: string; job: BaselineJob; prompts: Map<string, In
     return { first: firstLoud || started, end: lastLoud || Date.now() };
   };
   /**
-   * Waits until the worker's answer to the prompt that ended at `after` has finished playing and is quiet (replyOver),
+   * Waits until the worker reports the reply to the prompt that ended at `after` done and it is quiet (replyOver),
    * or `limit` passes. Filler never ends the wait: an answer can come many seconds after it. The opening has no answer.
    */
   const quiet = async (after: number, limit = TURN_LIMIT_MS, needsAnswer = true) => {
     const until = Date.now() + limit;
     while (Date.now() < until) {
       const playouts = [...live].map(([start, end]) => ({ start, end }));
-      if (replyOver({ after, now: Date.now(), bursts, answers, playouts, needsAnswer })) return true;
+      if (replyOver({ after, now: Date.now(), bursts, answers, replies, playouts, needsAnswer })) return true;
       await pause(50);
     }
     return false;

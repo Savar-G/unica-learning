@@ -495,6 +495,11 @@ export class VoiceCallRun {
       ackLimitMs?: number;
       /** One sample per child turn (./turn-timing.ts). */
       measureTurn?(sample: VoiceTurnSample): void;
+      /**
+       * #1139: once per child turn, when its reply's last speech has played (or stopped). A reply of two speeches (the
+       * early sentences, then the rest after its board) is done after the second.
+       */
+      replyDone?(turnId: string): void;
       /** Associates later board cue acknowledgements with the turn that staged the batches. */
       measureBoardPlan?(utteranceId: string, turnId: string, batchIds: readonly string[]): void;
       /**
@@ -1375,6 +1380,9 @@ export class VoiceCallRun {
     this.cutAck(pace);
     if (this.pace === pace) this.pace = null;
     this.measure(pace, outcome);
+    // A closed turn makes no more speech: its newest speech is the reply's last.
+    const replyDone = this.options.replyDone;
+    if (replyDone) void (this.speech?.waitForPlayout() ?? Promise.resolve()).catch(() => {}).then(() => replyDone(pace.turnId));
   }
 
   private measure(pace: TurnPace, outcome: TurnOutcome) {

@@ -189,7 +189,7 @@ class ProbeStream extends stt.SpeechStream {
   }
 }
 
-async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; speech?: ProbeSTT; numberContinueMs?: number; dropSilentPeakDbfs?: number; heardVad?: VAD; childName?: string | null; note?: CallSeams["note"]; reviewer?: ReturnType<typeof fakeTalkReviewer> }) {
+async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; speech?: ProbeSTT; numberContinueMs?: number; dropSilentPeakDbfs?: number; heardVad?: VAD; replyDone?: (turnId: string) => void; childName?: string | null; note?: CallSeams["note"]; reviewer?: ReturnType<typeof fakeTalkReviewer> }) {
   const clock = handClock();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -229,6 +229,7 @@ async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; speec
   const samples: VoiceTurnSample[] = [];
   const run = new VoiceCallRun(session, opened.call, {
     board, timers: clock.timers, notify: () => {}, measureTurn: (s) => samples.push(s), ackLimitMs: options.ackLimitMs ?? 0, numberContinueMs: options.numberContinueMs ?? 0, dropSilentPeakDbfs: options.dropSilentPeakDbfs ?? null, ...(options.heardVad ? { heardVad: options.heardVad } : {}),
+    ...(options.replyDone ? { replyDone: options.replyDone } : {}),
   });
   await run.agentJoined();
   await session.start({ agent: run.agent });
@@ -450,7 +451,9 @@ describe("the parts of a turn as the worker hears them (VoiceSay)", () => {
   });
 
   it("says a turn's batches after the early sentence, with each cue moved, and the board ends as the turn says", async () => {
-    const c = await voiceCall({ model: ruleConversationalModel() });
+    // #1139: the reply is done only when its last speech has played, not when its first sentence played.
+    const done: { turnId: string; said: string[]; samples: number }[] = [];
+    const c: Awaited<ReturnType<typeof voiceCall>> = await voiceCall({ model: ruleConversationalModel(), replyDone: (turnId) => done.push({ turnId, said: [...c.said()], samples: c.samples.length }) });
     // The question the opening drew (one batch), and a note below it that this turn draws.
     const question = (await c.store.get(c.id))!.live!.text.board[0];
     const target = (question.commands[0] as { id: string }).id;
@@ -480,6 +483,10 @@ describe("the parts of a turn as the worker hears them (VoiceSay)", () => {
     const shown = c.receiver.snapshot().events.flatMap((e) => (e.kind === "batch" ? [e.batchId] : []));
     expect(shown).toEqual([question.transactionId, note.transactionId]);
     expect(c.receiver.staged()).toEqual([]);
+    const reply = done.filter((d) => d.said.length > before);
+    expect(reply).toHaveLength(1);
+    expect(reply[0].said.slice(before)).toEqual([FIRST, SECOND, third]);
+    expect(reply[0].turnId).toEqual(expect.any(String));
   });
 });
 

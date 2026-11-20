@@ -136,6 +136,8 @@ export interface ReplyWatch {
   bursts: readonly { start: number; end: number }[];
   /** The worker's answer playout starts, reported as each answer starts to play. */
   answers: readonly number[];
+  /** When the worker reported a turn's reply done: its last speech played, after any board between its speeches. */
+  replies: readonly number[];
   /** The worker's playouts so far; `end` is null while one is playing. */
   playouts: readonly { start: number; end: number | null }[];
   /** A child turn waits for an answer; the opening has none, only its playouts. */
@@ -148,13 +150,14 @@ const REPLY_QUIET_MS = 2000;
 const SAME_EVENT_MS = 20;
 
 /**
- * The reply is over when the worker's answer for this turn (or, for the opening, any playout) has started and every
- * playout since then has finished, and nothing was heard or played for REPLY_QUIET_MS. Filler alone never ends a turn:
- * an answer can come many seconds after it. The caller keeps its own timeout for an answer that never comes.
+ * The reply is over when the worker's answer for this turn has started, the worker then reported the reply done, every
+ * playout since the answer has finished, and nothing was heard or played for REPLY_QUIET_MS. The opening has no answer
+ * and no done report: any playout counts. Filler alone never ends a turn (an answer can come many seconds after it),
+ * and neither does a pause between a reply's two speeches. The caller keeps its own timeout for a reply that never ends.
  */
 export function replyOver(o: ReplyWatch): boolean {
   const answer = o.answers.find(at => at >= o.after);
-  if (o.needsAnswer && answer === undefined) return false;
+  if (o.needsAnswer && (answer === undefined || !o.replies.some(at => at >= answer))) return false;
   const from = (answer ?? o.after) - SAME_EVENT_MS;
   const reply = o.playouts.filter(p => p.start >= from);
   if (!reply.length || reply.some(p => p.end === null)) return false;
