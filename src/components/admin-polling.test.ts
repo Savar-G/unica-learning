@@ -30,7 +30,7 @@ describe("the admin sidebar", () => {
     expect(html).toMatch(/<a(?=[^>]*href="\/admin")(?=[^>]*aria-current="page")[^>]*>/);
     expect(html).not.toContain("is-shut");
     expect(html.match(/aria-expanded="true"/g)?.length).toBeGreaterThanOrEqual(6);
-    expect(html).toMatch(/<input type="checkbox" role="switch"(?![^>]*checked)/);
+    expect(html).toMatch(/<input(?=[^>]*type="checkbox")(?=[^>]*role="switch")(?=[^>]*aria-checked="false")(?![^>]*\schecked(?==|[\s/>]))[^>]*>/);
     expect(html).toContain('action="/admin/parents"');
     for (const gone of ["Maya board", "Maya chat", "Cards and waitlist", "Scan pages", "Parent dashboard", ">Children<", ">Activity<"]) expect(html).not.toContain(gone);
   });

@@ -145,10 +145,22 @@ function PathSlide({ c, n }: { c: DeckChild; n: number }) {
   );
 }
 
+function numberDeckSlides(kids: readonly DeckChild[]) {
+  let n = 4;
+  const perChild = kids.map((c) => {
+    const where = n++;
+    const answers = c.answers.length > 0 ? n++ : null;
+    const inside = c.book ? n++ : null;
+    const workbook = c.book ? n++ : null;
+    const path = c.book ? n++ : null;
+    return { where, answers, inside, workbook, path };
+  });
+  return { perChild, howItWorks: n++, gettingStarted: n++ };
+}
+
 export function ResultsDeckView({ deck }: { deck: ResultsDeck }) {
-  let n = 1;
-  const next = () => ++n;
   const { children: kids, names } = deck;
+  const slideNumbers = numberDeckSlides(kids);
   const chat = kids.some((c) => c.chat);
   const rushed = kids.reduce((sum, c) => sum + c.rushed, 0);
   return (
@@ -161,7 +173,7 @@ export function ResultsDeckView({ deck }: { deck: ResultsDeck }) {
         <footer className="dk-foot"><span>unicalearning.com</span><span>BC curriculum</span></footer>
       </section>
 
-      <Slide tag="Your goals" n={next()} title="What you're hoping for">
+      <Slide tag="Your goals" n={2} title="What you're hoping for">
         <div className="dk-goals">
           {kids.map((c) => (
             <div className="dk-card" key={c.name}>
@@ -173,7 +185,7 @@ export function ResultsDeckView({ deck }: { deck: ResultsDeck }) {
         </div>
       </Slide>
 
-      <Slide tag="How the test works" n={next()} eyebrow="More than a score" title={<>How we found <Hi>{kids.length > 1 ? "their level" : `${names}'s level`}</Hi></>}>
+      <Slide tag="How the test works" n={3} eyebrow="More than a score" title={<>How we found <Hi>{kids.length > 1 ? "their level" : `${names}'s level`}</Hi></>}>
         <div className="dk-how">{HOW_TEST.map(([t, d], i) => <div className="dk-card" key={t}><p className="dk-num">{String(i + 1).padStart(2, "0")}</p><b>{t}</b><p>{d}</p></div>)}</div>
         <div className="dk-stats">
           {kids.map((c) => <div key={c.name}><span>{c.name}</span><b>{c.stats}</b></div>)}
@@ -181,17 +193,20 @@ export function ResultsDeckView({ deck }: { deck: ResultsDeck }) {
         </div>
       </Slide>
 
-      {kids.map((c) => (
-        <div key={c.name} className="dk-group">
-          <WhereSlide c={c} n={next()} />
-          {c.answers.length > 0 && <AnswersSlide c={c} n={next()} />}
-          {c.book && <InsideSlide c={c} n={next()} />}
-          {c.book && <WorkbookSlide c={c} n={next()} placeholder={deck.placeholderPages} />}
-          {c.book && <PathSlide c={c} n={next()} />}
-        </div>
-      ))}
+      {kids.map((c, index) => {
+        const nums = slideNumbers.perChild[index];
+        return (
+          <div key={c.name} className="dk-group">
+            <WhereSlide c={c} n={nums.where} />
+            {nums.answers !== null && <AnswersSlide c={c} n={nums.answers} />}
+            {nums.inside !== null && <InsideSlide c={c} n={nums.inside} />}
+            {nums.workbook !== null && <WorkbookSlide c={c} n={nums.workbook} placeholder={deck.placeholderPages} />}
+            {nums.path !== null && <PathSlide c={c} n={nums.path} />}
+          </div>
+        );
+      })}
 
-      <Slide tag="How it works" n={next()} title={<>A workbook built <Hi>{kids.length > 1 ? "for each of them" : `for ${names}`}</Hi></>}>
+      <Slide tag="How it works" n={slideNumbers.howItWorks} title={<>A workbook built <Hi>{kids.length > 1 ? "for each of them" : `for ${names}`}</Hi></>}>
         <div className="dk-steps">
           {[
             ["A workbook in the mail", "Paper practice, built from the results and the BC curriculum."],
@@ -208,7 +223,7 @@ export function ResultsDeckView({ deck }: { deck: ResultsDeck }) {
         </div>
       </Slide>
 
-      <Slide tag="Getting started" n={next()} eyebrow="If it comes up" title={<>How to <Hi>get started</Hi></>}>
+      <Slide tag="Getting started" n={slideNumbers.gettingStarted} eyebrow="If it comes up" title={<>How to <Hi>get started</Hi></>}>
         <div className="dk-start">
           <div className="dk-card"><p className="dk-k">Set up once</p><ol className="dk-num-list">
             <li><b>Sign in</b><span>Go to unicalearning.com/account on your phone or computer.</span></li>

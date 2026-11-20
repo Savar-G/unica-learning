@@ -97,6 +97,7 @@ function TestsSwitch({ on }: { on: boolean }) {
         type="checkbox"
         role="switch"
         checked={checked}
+        aria-checked={checked}
         aria-busy={pending || undefined}
         onChange={(e) => {
           const next = e.currentTarget.checked;

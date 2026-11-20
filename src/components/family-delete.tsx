@@ -141,6 +141,7 @@ export function FamilyDelete({ child }: { child?: { id: string; name: string } }
     <h2 id={titleId}>{done === "deleted" ? `${child.name} is deleted` : `${child.name}'s deletion is saved`}</h2>
     <p role="status">{done === "deleted" ? `${child.name}'s data and files are deleted. A copy of each test without names stays.` : `We stopped ${child.name}'s workbook plans. We have not finished removing the data and files. We will retry the remaining steps.`}</p>
     <p>We will make no more charges for {child.name}&apos;s plans. Your account and other children stay.</p>
+    {/* oxlint-disable-next-line nextjs/no-html-link-for-pages -- full reload refreshes /account/settings after child deletion */}
     <a className="btn" href="/account/settings">Back to Account</a>
   </section>;
 
