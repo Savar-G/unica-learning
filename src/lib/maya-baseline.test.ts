@@ -1,6 +1,6 @@
 import { ServerOptions } from "@livekit/agents";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { baselineAgentName, baselineCostReport, baselineReport, complexBudget, prepareBaselineEnv, readBaselineCost, deviceTurn, plannedTurns, readBaselineTurn, receiptCost, requestEffort, speechCosts, type BaselineTurn } from "./maya-baseline";
+import { baselineAgentName, baselineCostReport, baselineReport, complexBudget, prepareBaselineEnv, readBaselineCost, deviceTurn, plannedTurns, readBaselineTurn, receiptCost, replyOver, requestEffort, speechCosts, type BaselineTurn } from "./maya-baseline";
 
 describe("#1139 baseline report", () => {
   it("separates matched measurements by the active teaching settings", () => {
@@ -111,6 +111,32 @@ describe("#1139 device turns on one machine clock", () => {
     const turn = deviceTurn({ group, inputEnd: 1000, bursts, answerPlayback: 2280, otherPlayouts: [], boardAt: null, interruptionAt: 3000 });
     expect(turn.ms.deviceInterruptionStop).toBe(1100);
     expect(deviceTurn({ group, inputEnd: 1000, bursts, answerPlayback: 2280, otherPlayouts: [], boardAt: null, interruptionAt: 5000 }).ms.deviceInterruptionStop).toBeUndefined();
+  });
+});
+
+describe("#1139 the child waits for the answer to finish", () => {
+  const filler = { start: 1100, end: 1500 };
+
+  it("keeps waiting through long quiet after filler until the answer's playout has finished", () => {
+    const bursts = [filler];
+    const fillerOnly = { after: 1000, bursts, answers: [], playouts: [{ start: 1080, end: 1480 }], needsAnswer: true };
+    // The old rule ended the turn 6 s after any sound; the answer can still be coming.
+    expect(replyOver({ ...fillerOnly, now: 12_000 })).toBe(false);
+    const answer = { start: 13_000, end: null };
+    const playing = { ...fillerOnly, bursts: [filler, { start: 13_050, end: 15_000 }], answers: [13_002], playouts: [...fillerOnly.playouts, answer] };
+    expect(replyOver({ ...playing, now: 18_000 })).toBe(false);
+    const done = { ...playing, playouts: [fillerOnly.playouts[0], { start: 13_000, end: 14_950 }] };
+    // The last received sound is within the quiet window: its audio can still be arriving.
+    expect(replyOver({ ...done, now: 16_500 })).toBe(false);
+    expect(replyOver({ ...done, now: 17_000 })).toBe(true);
+  });
+
+  it("ignores an earlier turn's answer and waits for a playout after the opening", () => {
+    const old = { start: 500, end: 900 };
+    const base = { after: 1000, now: 9000, bursts: [{ start: 520, end: 880 }], playouts: [old] };
+    expect(replyOver({ ...base, answers: [502], needsAnswer: true })).toBe(false);
+    expect(replyOver({ ...base, after: 0, answers: [], needsAnswer: false })).toBe(true);
+    expect(replyOver({ ...base, after: 0, answers: [], playouts: [{ start: 500, end: null }], needsAnswer: false })).toBe(false);
   });
 });
 

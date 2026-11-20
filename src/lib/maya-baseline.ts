@@ -128,6 +128,40 @@ export function deviceTurn(o: DeviceObservation): BaselineTurn {
   return { v: 1, ...o.group, outcome, ms, counts: {} };
 }
 
+/** What the synthetic child knows while it waits for Maya's reply: its received sound and the worker's live reports. */
+export interface ReplyWatch {
+  /** The end of the child's prompt (0 for the opening). */
+  after: number;
+  now: number;
+  bursts: readonly { start: number; end: number }[];
+  /** The worker's answer playout starts, reported as each answer starts to play. */
+  answers: readonly number[];
+  /** The worker's playouts so far; `end` is null while one is playing. */
+  playouts: readonly { start: number; end: number | null }[];
+  /** A child turn waits for an answer; the opening has none, only its playouts. */
+  needsAnswer: boolean;
+}
+
+/** Quiet after the reply's last playout and last received sound before the child speaks again. */
+const REPLY_QUIET_MS = 2000;
+/** An answer report and its playout come from one output event, a few ms apart at most. */
+const SAME_EVENT_MS = 20;
+
+/**
+ * The reply is over when the worker's answer for this turn (or, for the opening, any playout) has started and every
+ * playout since then has finished, and nothing was heard or played for REPLY_QUIET_MS. Filler alone never ends a turn:
+ * an answer can come many seconds after it. The caller keeps its own timeout for an answer that never comes.
+ */
+export function replyOver(o: ReplyWatch): boolean {
+  const answer = o.answers.find(at => at >= o.after);
+  if (o.needsAnswer && answer === undefined) return false;
+  const from = (answer ?? o.after) - SAME_EVENT_MS;
+  const reply = o.playouts.filter(p => p.start >= from);
+  if (!reply.length || reply.some(p => p.end === null)) return false;
+  const lastSound = Math.max(...reply.map(p => p.end!), o.bursts.at(-1)?.end ?? 0);
+  return o.now - lastSound >= REPLY_QUIET_MS;
+}
+
 /**
  * One row for each planned child turn of a call, in order: the observed row where the call reached the turn, else a
  * failed attempt under the run's own group. A call that was refused, never connected or never reported still counts.
