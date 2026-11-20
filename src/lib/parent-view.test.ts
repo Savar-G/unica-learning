@@ -502,7 +502,7 @@ describe("the Home (#560, #1003)", () => {
         }
       });
       it("omits the title when no usable printed title can be read", async () => {
-        const cases: MemoryParentViewTables[] = [
+        const cases: Parameters<typeof read>[0][] = [
           { ...tables, fail: ["planTopics"] },
           { ...tables, planTopics: plan.filter((r) => r.day !== 3) },
           { ...tables, planTopics: [] },
