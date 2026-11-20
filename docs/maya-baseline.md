@@ -51,14 +51,29 @@ On November 19, 2026, a MacBook M4 Pro ran the existing tutor path and the check
 
 | Path | First received sound | Next sound | Board changes | Tutor requests |
 |---|---:|---:|---|---|
-| Existing tutor | 1,191 ms, filler | 2,610 ms | 11,019 ms | One Sonnet 5.5 proposal and four Haiku 5.5 math reviews |
+| Existing tutor | 1,191 ms, filler | 2,610 ms | 11,019 ms | One Sonnet 5.5 proposal, four Haiku 5.5 math reviews, two Haiku 5.5 talk reviews |
 | Checked exchange | 1,095 ms, answer | 5,676 ms | 3,767 ms and 5,546 ms | Zero model and review requests for this code-written turn |
 
 The transcript matched the synthetic input in both calls. In the checked call, word cues showed five tens and two ones, then four tens and twelve ones. The stored trace records each action once, with the exchange after the starting state. Both calls ended as `child_stopped`. The checked explanation kept the subtraction answer hidden. The browser measurement covers received audio and rendered SVG. It does not independently transcribe the returned audio or measure the physical speaker and display.
 
 These are single observations. Hosted load, physical devices, interruption and false stops, total billed costs, and the complex-turn budget still need measurement. The isolated browser harness had a failed setup attempt when the room expired before the browser joined. It produced no turn timing.
 
+The existing tutor's seven OpenRouter receipts reported USD 0.0243625 for this turn. These receipts exclude speech and transport.
+
+The checked routine chat path at `bf76f87ff` answered “What do I do first?” for the same question in 2,852 ms at the public call interface. It made one Sonnet 5.5 proposal and zero math or talk-review requests. The OpenRouter receipt reported USD 0.021969. This separate chat sample measures one routine turn. It does not measure browser rendering or playback.
+
 At `ddfa6616f`, the actual desk voice controls and board ran in the same isolated setup at a 390 by 844 viewport with reduced motion. The synthetic prompt asked how to regroup. The paper option hid the exchange button. After switching back to the board, Shift+Tab focused the button and Enter submitted the action while Maya was speaking. The receiver retained the first drawing and showed one exchange. The board changed from 27 to 36 paths, and the transcript asked how many ones remained without giving the target answer. The stored trace records the first prompt as interrupted and the child action as shown. The call ended as `child_stopped`. Physical touch and audible stop timing still need measurement.
+
+## Speech synthesis sample for #1148
+
+The installed LiveKit Inference SDK sent two fixed regrouping sentences to Cartesia Sonic 3.6. Three trials used two parallel streams, one per sentence. Three trials used one stream with the second sentence submitted 700 ms after the first. All six returned 13 timed words. The one-stream trials used one segment with increasing word times and returned audio before the second sentence was submitted.
+
+| Synthesis | SDK streams per reply | First frame samples (ms) | Aligned sentence gap samples (ms) |
+|---|---:|---|---|
+| Separate | 2 | 542, 194, 198 | 159, 239, 159 |
+| One stream | 1 | 196, 199, 194 | 260, 158, 205 |
+
+The one-stream trials had a longer median aligned gap. The sample covers provider output before the worker trims and plays the frames. It leaves the audible gap, board fallback, cancellation, reconnect, and billed cost comparisons open.
 
 ## Matched routine-turn probe (#1140)
 
