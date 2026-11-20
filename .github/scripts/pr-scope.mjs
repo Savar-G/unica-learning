@@ -23,6 +23,7 @@ const ALWAYS_FULL_PATTERNS = [
   /^vitest\.config\./,
   /^tsconfig.*\.json$/,
   /^eslint\.config\./,
+  /^\.oxlintrc\.json$/,
   /^next\.config\./,
   /^\.github\//,
   /^data\//,

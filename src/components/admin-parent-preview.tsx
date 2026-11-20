@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { AppRouterContext, type AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { PathnameContext, SearchParamsContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import { renderToStaticMarkup } from "react-dom/server.browser";
@@ -323,7 +324,7 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
         busy={false} result={state === "sent" ? { ok: true } : error ? { ok: false, error } : null} />
     </SupportPage>;
   }
-  if (!child) return <SupportPage label="Your account" title="Your account"><p className="lead">Add a child on the <a href="/account/settings">Account</a> page to start.</p></SupportPage>;
+  if (!child) return <SupportPage label="Your account" title="Your account"><p className="lead">Add a child on the <Link href="/account/settings">Account</Link> page to start.</p></SupportPage>;
   switch (selection.view) {
     case "assessment": {
       const start: StartState = state === "test_running" ? { kind: "resume", attemptId: "sample-test", resumeUntil: SAMPLE_NOW + 3600000 }
@@ -359,7 +360,7 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
         cancellation={state.startsWith("cancel_") ? row => <CancelPlanView name={row.childName} consequence="The plan ends on November 26, 2026. We will not charge your card again." asking busy={false} failed={state === "cancel_pending"} cancel={noAction} keep={noAction} ask={noAction} /> : undefined} />;
     }
     case "scan": return <SupportPage label="Your account" title="Scan pages"><ScanPages childrenList={[child, ...kids.filter(k => k.id !== child.id)].map(k => ({ id: k.id, first_name: k.firstName }))} parent="sample-parent" noticeAcknowledged mode={selection.size === "desktop" ? "desktop" : "phone"} initial={{ listing: scanListing(state), loadFailed: state === "unavailable" }} /></SupportPage>;
-    case "scan_results": return <SupportPage label="Your account" title="Page results"><div className="scan-pages"><a href="/account/scan">Back to Scan pages</a><ScanMarkingResults result={scanResult(state)} showHeading={false} itemExplanation={state.startsWith("explain_") ? item => <ScanProblemExplanationView number={item.number} state={state.slice(8) as ExplanationState} result={state === "explain_ready" ? { status: "ready", context: "synthetic", correctAnswer: "42", explanation: { steps: ["Add the ones: 4 plus 8 is 12. Write 2 and carry 1 ten.", "Add the tens and the carried ten: 2 plus 1 plus 1 is 4."], say: "Let us add one column at a time." } } : undefined} /> : undefined} /></div></SupportPage>;
+    case "scan_results": return <SupportPage label="Your account" title="Page results"><div className="scan-pages"><Link href="/account/scan">Back to Scan pages</Link><ScanMarkingResults result={scanResult(state)} showHeading={false} itemExplanation={state.startsWith("explain_") ? item => <ScanProblemExplanationView number={item.number} state={state.slice(8) as ExplanationState} result={state === "explain_ready" ? { status: "ready", context: "synthetic", correctAnswer: "42", explanation: { steps: ["Add the ones: 4 plus 8 is 12. Write 2 and carry 1 ten.", "Add the tens and the carried ten: 2 plus 1 plus 1 is 4."], say: "Let us add one column at a time." } } : undefined} /> : undefined} /></div></SupportPage>;
   }
 }
 
