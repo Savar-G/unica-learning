@@ -110,7 +110,7 @@ export function useBoardSelection(control: SelectionControl | undefined): {
       </>}
       {selected && !pointingNow && <p role="status">You pointed to: {selected.label}</p>}
       {problem === "changed" && <p role="status">The board changed. Point to the part again.</p>}
-      {problem === "error" && <p role="status">Maya could not take that. Try again.</p>}
+      {problem === "error" && <p role="status">{"That didn't work. Tap it again."}</p>}
     </div>
   );
   return { pointing: pointingNow, ...(active || selected ? { overlay } : {}), panel };

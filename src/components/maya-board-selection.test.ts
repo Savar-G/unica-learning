@@ -89,7 +89,7 @@ it("leaves pointing mode with Escape, says when a tap fails, and offers nothing 
   expect(button("Point to a part")!.getAttribute("aria-pressed")).toBe("false");
   await act(async () => button("Point to a part")!.click());
   await act(async () => button("Ask about Blocks")!.click());
-  expect(host.textContent).toContain("Maya could not take that. Try again.");
+  expect(host.textContent).toContain("That didn't work. Tap it again.");
   await render({ batches, steps, submit });
   expect(button("Point to a part")).toBeUndefined();
   expect(host.querySelector(".board-pick-panel")).toBeNull();
@@ -109,6 +109,6 @@ it("lists only objects the board drew, says when the board changed, and lets the
   await act(async () => outlined.dispatchEvent(new PointerEvent("pointerup", { bubbles: true })));
   expect(submit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ objectId: "exchange-before" }));
   expect(host.textContent).toContain("The board changed. Point to the part again.");
-  expect(host.textContent).not.toContain("Maya could not take that");
+  expect(host.textContent).not.toContain("That didn't work");
   expect(button("Stop pointing")?.getAttribute("aria-pressed")).toBe("true");
 });
