@@ -5,7 +5,7 @@ import type { DeskVoiceReply, VoiceAction } from "@/lib/maya-voice-desk";
 import { isUuid } from "@/lib/workbook-content";
 
 // A child's voice call with Maya from the desk. One POST route for the call screen: { type: "start", id, question } makes the
-// call and answers its LiveKit ticket; { type: "token", id } a fresh ticket for the child's own live call (reconnect);
+// call and answers its LiveKit ticket (with `fromChatId`, the call goes on with that chat's lesson, #1200); { type: "token", id } a fresh ticket for the child's own live call (reconnect);
 // { type: "read", id } the call's child-safe view; { type: "cancel", id } ends a call Maya has not joined. Every answer is a
 // DeskVoiceReply with Cache-Control: no-store. The parent and the child come from the signed-in parent and the desk cookie,
 // never from the body.
@@ -26,8 +26,10 @@ export async function POST(request: Request) {
     const q = action.question;
     if (!q || typeof q !== "object" || q.source !== "workbook" || !isUuid(q.workbookId) ||
       !Number.isSafeInteger(q.page) || q.page < 1 || !Number.isSafeInteger(q.question) || q.question < 1) return refused("invalid", 400);
-    // Only the fields of the question reference reach the call module.
-    action = { type: "start", id: action.id, question: { source: "workbook", workbookId: q.workbookId, page: q.page, question: q.question } };
+    const from = action.fromChatId;
+    if (from !== undefined && (!isUuid(from) || from === action.id)) return refused("invalid", 400);
+    // Only the fields of the question reference reach the call module. The chat's owner is checked there, on the server.
+    action = { type: "start", id: action.id, question: { source: "workbook", workbookId: q.workbookId, page: q.page, question: q.question }, ...(from ? { fromChatId: from } : {}) };
   } else action = { type: action.type, id: action.id };
   try {
     const gate = await deskChatContext(request);

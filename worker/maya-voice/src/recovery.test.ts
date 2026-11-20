@@ -12,6 +12,7 @@ import { ruleMayaModel } from '@/lib/maya-model-fake';
 import { SAMPLE_PACKAGES } from '@/lib/maya-samples';
 import type { QuestionPackage } from '@/lib/question-package';
 import { VoiceCallRun, voiceSession, type Timers, type CallUpdate } from './agent';
+import { CONTINUE_ID, voiceContinuation, voiceOpening } from './opening';
 import { CallTelemetry, setTelemetry, type Emitted } from './telemetry';
 
 initializeLogger({ pretty: false, level: 'silent' });
@@ -310,4 +311,44 @@ it("a replacement registry and segment cannot borrow the old run's origin", asyn
   expect(newLog().find(e => e.phase === "origin")).toMatchObject({ entry: "worker_shutdown" });
   expect(newLog().map(e => e.originId)).not.toContain(oldLog()[0].closeId);
   expect(b.run.segment).toBeGreaterThan(a.run.segment);
+});
+
+describe('a call that goes on with a chat lesson (#1200)', () => {
+  it('takes the chat over when the child joins and says a short continuation line instead of the opening', async () => {
+    const now = T0;
+    let n = 0;
+    const store = memoryCallStore({ testFamilies: [] }), connections = memoryConnectionLog(store, () => now);
+    const eventStore = memoryLearningEventStore({ children: [{ id: C, parentId: P }] });
+    const seams: CallSeams = { store, connections, alerts: { send: async () => {}, list: async () => [] }, history: memoryWordingHistoryStore(), events: learningEvents(eventStore), rebuild: async () => true, model: () => ruleMayaModel(), isTestFamily: async () => false, canChat: async () => true, canCallVoice: async () => true, clock: () => now, newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}`, seed: () => 42 };
+    const calls = mayaCalls(seams);
+    const book: QuestionPackage = { ...SAMPLE_PACKAGES['add-27-39'], ref: { source: 'workbook', workbookId: '44444444-4444-4444-8444-444444444444', page: 1, question: 1 } };
+    const chat = await calls.start({ kind: 'chat', parentId: P, childId: C, childName: 'Leah', grade: 4, package: book, startedBy: P });
+    if (!chat.ok) throw Error(chat.error);
+    const answered = await calls.input(chat.view.id, chat.view.revision, { type: 'child', text: '7 plus 9 is 16.' }, 'Leah');
+    if (!answered.ok) throw Error(answered.error);
+    const made = await calls.startVoice({ kind: 'family', parentId: P, childId: C, childName: 'Leah', package: book, startedBy: P, fromChat: chat.view.id });
+    if (!made.ok) throw Error(made.error);
+    const opened = await calls.openVoice(made.view.id, { speechToText: 'fake', voice: 'fake' }, 'Leah');
+    if (!opened.ok) throw Error(opened.error);
+    expect(voiceOpening(opened.call.session)).toBeNull();
+    const continuation = voiceContinuation(opened.call);
+    expect(continuation).toMatch(/^Let's keep going\./);
+    const session = Object.assign(new EventEmitter(), { agentState: 'listening', userState: 'listening', generateReply: vi.fn(), say: vi.fn((_text: string) => ({ waitForPlayout: async () => {} })), close: vi.fn(async () => {}) });
+    const timers: Timers = { now: () => now, set: () => 0, clear: () => {} };
+    const run = new VoiceCallRun(session as unknown as voice.AgentSession, opened.call, { timers, notify: () => {}, closed: vi.fn(async () => {}), ...(continuation ? { continuation } : {}) });
+    await run.childJoined();
+    await flush();
+    await opened.call.settled();
+    expect(session.generateReply).not.toHaveBeenCalled();
+    expect(session.say.mock.calls.map((c) => c[0])).toEqual([continuation]);
+    expect(opened.call.resumed).toBe(false);
+    expect(opened.call.session.startedAt).toBe(now);
+    expect((await store.get(chat.view.id))!).toMatchObject({ status: 'ended', learningEventId: null });
+    // A rejoin, or a worker that takes the call over, never says it again.
+    const again = await calls.openVoice(made.view.id, { speechToText: 'fake', voice: 'fake' }, 'Leah');
+    if (!again.ok) throw Error(again.error);
+    expect(again.call.resumed).toBe(false);
+    expect(voiceContinuation(again.call)).toBeNull();
+    expect(again.call.acknowledged).toContain(CONTINUE_ID);
+  });
 });

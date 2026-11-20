@@ -38,6 +38,7 @@ import { boardAudio, countedSynthesis, type SilentSpeech } from "./speech-audio"
 import { VOICE_METER_TICK_MS } from "@/lib/maya-spend";
 import { monitorProduct } from "@/lib/product-monitoring";
 import { limitsOf, sentencesOf } from "@/lib/maya";
+import { CONTINUE_ID } from "./opening";
 import { asksForNumber, BOARD_CLOSE_SETTLE_MS, CONNECTION_RENEW_MS, childTurnFrom, endsInOpenNumber, GREETING_ID, GREETING_TEXT, nextTickAt, openingAsksForNumber, RECONNECT_GRACE_MS, REJOIN_AFTER_LEAVE_MS, type Heard, type TurnSilence, type VoiceTuning } from "@/lib/maya-voice";
 import { ACK_HOLD_LIMIT_MS, ACK_LIMIT_MS, ACK_NOT_STREAMED_MS, ACK_PHRASES, nextAcknowledgement } from "@/lib/maya-voice-ack";
 import { finalMark, heardMarks, TurnClock, type AckSkip, type FinalMark, type TurnOutcome, type VoiceTurnSample } from "./turn-timing";
@@ -464,6 +465,8 @@ export class VoiceCallRun {
   private greeted: Promise<void> | null = null;
   private greetStarted = false;
   private openingSaid = false;
+  /** #1200: the continuation line was started on this run. */
+  private continued = false;
   /** A phrase's save was refused (this worker was replaced): no more phrases. */
   private acksRefused = false;
   /** The start's batches the opening's plan could not show (`openingBoard`): the next staged plan carries them. */
@@ -508,6 +511,11 @@ export class VoiceCallRun {
        */
       opening?: string;
       openingMark?: (name: string) => void;
+      /**
+       * #1200: a call that goes on with a chat's lesson (`call.resumed`): it takes the lesson over when the child is here,
+       * and says these words (./opening.ts `voiceContinuation`) instead of the opening. Said once per call.
+       */
+      continuation?: string;
       /**
        * The speech-to-text's silence limits for the one child turn after Maya asks for a number (`number`) and for every
        * other turn (`normal`), set through `set` while the call runs. Absent: the limits set at the start stay.
@@ -731,6 +739,21 @@ export class VoiceCallRun {
     // A speech whose playback never ends holds LiveKit's queue, and the opening with it: stop it after the longest wait.
     const hold = this.timers.set(GREETING_HOLD_LIMIT_MS, () => speech.interrupt(true));
     this.greeted = speech.waitForPlayout().catch(() => {}).then(() => { this.timers.clear(hold); });
+  }
+
+  /**
+   * #1200: says the continuation line once, for a call that went on with a chat's lesson. Like the greeting: a code line
+   * with an empty board plan, saved under CONTINUE_ID before it is queued, so a rejoin or a new worker never says it again.
+   */
+  private async continueLesson(generation: number) {
+    const text = this.options.continuation;
+    if (!text || this.continued || this.call.acknowledged.includes(CONTINUE_ID)) return;
+    if (this.pace || this.session.userState === "speaking") return;
+    this.continued = true;
+    const stale = () => this.finishing !== null || this.deadlineFinish !== null || generation !== this.generation || !this.childHere;
+    try { await this.stageBoard({}); } catch { return; }
+    if (stale() || !(await this.call.acknowledge(CONTINUE_ID)) || stale()) return;
+    this.sayAs(text, { addToChatCtx: true }, { turnId: null, kind: "opening" });
   }
 
   /** The stream of a child turn's reply. It is returned at once: the turn runs behind it. */
@@ -1598,6 +1621,9 @@ export class VoiceCallRun {
       if (lastWords) await this.sayFirst(null, [lastWords], { repeatedGuidance: combined });
       else if (this.call.ended) await this.finish({ reason: "child_stopped" }, false, "controller_end", this.call.session.outcome?.reason);
     })().catch(() => this.finish({ detail: "the final speech failed" })) : null;
+    // #1200: the chat's lesson moves here now, and the call's own time starts with it, before the limit is set from it.
+    if (this.call.resumed && this.call.resume && !(await this.call.resume())) return this.finish({ detail: "the chat's lesson could not be taken over" });
+    if (generation !== this.generation || !this.childHere || this.finishing || this.deadlineFinish) return;
     // Bound the opening model request too, before the first session state can be saved.
     this.scheduleLimit(this.call.session.startedAt ?? this.timers.now());
     const final = this.call.pendingFinal;
@@ -1636,6 +1662,7 @@ export class VoiceCallRun {
       });
     } else {
       this.schedule();
+      void this.continueLesson(generation);
       const guidance = this.call.guidancePlayback ? replay ?? this.guidance?.over : null;
       if (guidance) void guidance.then(() => this.resumeSafetyClose(generation));
       else this.resumeSafetyClose(generation);

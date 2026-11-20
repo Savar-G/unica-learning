@@ -86,9 +86,12 @@ export function voiceSwitchOpen(family: { test: boolean }, env: Readonly<Record<
   return family.test || env.MAYA_VOICE_ENABLED === "on";
 }
 
-/** One request from the desk's call screen. The server takes the parent and the child from the desk, never from this. */
+/**
+ * One request from the desk's call screen. The server takes the parent and the child from the desk, never from this.
+ * `fromChatId` (#1200): the desk chat on the same question the child switched from; the call goes on with its lesson.
+ */
 export type VoiceAction =
-  | { type: "start"; id: string; question: WorkbookQuestionRef }
+  | { type: "start"; id: string; question: WorkbookQuestionRef; fromChatId?: string }
   | { type: "token"; id: string }
   | { type: "read"; id: string }
   | { type: "cancel"; id: string };

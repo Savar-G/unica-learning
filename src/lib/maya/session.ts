@@ -564,6 +564,11 @@ export interface Session {
   /** A shorter call's limits (#330; see limitsOf). A full 10-minute call, and a saved session from before, has none. */
   limits?: { closingAtMs: number; endAtMs: number };
   /**
+   * #1200: a call that took over a chat's lesson (src/lib/maya-call-resume.ts): the chat's time on the question (`ms`),
+   * counted in the learning event. `evidence` false: the chat kept its own lesson and event, so this call writes none.
+   */
+  carried?: { ms: number; evidence?: false };
+  /**
    * D-345: the tutor core teaches this call (tutor.ts): one model message per child turn, checked as a whole. `help`
    * counts Maya's teaching messages since the child last made progress; `drawn` is what the tutor drew on the board.
    * B1: a drawing counts as on the board only when the child's screen said it showed it. `sent` holds the keys of each
@@ -847,7 +852,7 @@ export function learningEvent(session: Session, family: { parentId: string; chil
   const { outcome, package: pkg } = session;
   // A held question (#527) records nothing: Maya taught nothing she could trust, so the call says nothing about the child.
   // Any stored content problem counts, whatever the final reason (a safety concern after the hold ends as "safety").
-  if (!outcome || !pkg || session.startedAt === null || session.contentProblem !== null || outcome.reason === "content_issue") return null;
+  if (!outcome || !pkg || session.startedAt === null || session.contentProblem !== null || outcome.reason === "content_issue" || session.carried?.evidence === false) return null;
   // A correct answer with unconfirmed voice help is not evidence of independent work.
   const right = session.lastResult === "right" && !outcome.helpUnconfirmed;
   const result = right ? (outcome.assistance === "independent" ? "right" : "right_with_help") : "blank";
@@ -863,7 +868,7 @@ export function learningEvent(session: Session, family: { parentId: string; chil
     stuckStep: result === "right" ? null : result === "right_with_help" ? session.stuckStep ?? first : currentStep(pkg, session.done),
     mistake: null,
     hints: Math.min(session.hints, MAX_HINTS),
-    timeMs: Math.min(endTime(session) - session.startedAt, MAX_TIME_MS),
+    timeMs: Math.min(endTime(session) - session.startedAt + (session.carried?.ms ?? 0), MAX_TIME_MS),
     occurredAt: isoTime(endTime(session)),
     evidence: { kind: "call", id: session.callId },
   };

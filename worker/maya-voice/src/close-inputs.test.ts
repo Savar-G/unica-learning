@@ -14,7 +14,7 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({ from: () => ({ 
 vi.mock("@/lib/maya-call-store", () => ({ mayaCallStore: () => ({ get: f.get }) }));
 vi.mock("@/lib/maya-call-seams", () => ({ callSeams: () => ({}) }));
 vi.mock("@/lib/maya-call", () => ({ mayaCalls: () => ({ openVoice: f.open }) }));
-vi.mock("./opening", () => ({ voiceOpening: () => null }));
+vi.mock("./opening", () => ({ voiceOpening: () => null, voiceContinuation: () => null, CONTINUE_ID: "continue.lesson" }));
 vi.mock("./providers", () => ({ makeProviders: async () => ({ fake: true, stt: { provider: "fake" }, tts: { provider: "fake", prewarm() {} } }) }));
 vi.mock("./child-wait", () => ({ waitForChild: async () => ({ child: {} }), presenceOf: () => "here" }));
 vi.mock("@/lib/board-protocol", () => ({ createBoardSender: () => ({}) }));

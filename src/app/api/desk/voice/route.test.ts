@@ -46,6 +46,8 @@ describe("POST /api/desk/voice", () => {
     ["a start with a fractional question", { type: "start", id: ID, question: { ...question, question: 1.5 } }],
     ["a start with a huge question", { type: "start", id: ID, question: { ...question, question: 2 ** 60 } }],
     ["a body that is too long", { type: "read", id: ID, pad: "x".repeat(2100) }],
+    ["a start from a chat with a bad id", { type: "start", id: ID, question, fromChatId: "not-a-uuid" }],
+    ["a start from a chat with the call's own id", { type: "start", id: ID, question, fromChatId: ID }],
   ])("answers 400 for %s and runs nothing", async (_name, body) => {
     const r = await post(body);
     expect(r.status).toBe(400);
@@ -69,6 +71,14 @@ describe("POST /api/desk/voice", () => {
     expect(state.ran).toEqual([{ type: "start", id: ID, question: { source: "workbook", workbookId: BOOK, page: 1, question: 2 } }]);
     await post({ type: "token", id: ID, parentId: "x" });
     expect(state.ran[1]).toEqual({ type: "token", id: ID });
+  });
+
+  it("passes the chat a start comes from (#1200), and nothing of it on any other action", async () => {
+    const CHAT = "66666666-6666-4666-8666-666666666666";
+    await post({ type: "start", id: ID, question, fromChatId: CHAT });
+    expect(state.ran[0]).toEqual({ type: "start", id: ID, question, fromChatId: CHAT });
+    await post({ type: "read", id: ID, fromChatId: CHAT });
+    expect(state.ran[1]).toEqual({ type: "read", id: ID });
   });
 
   it.each(["closed", "too_young"] as const)("refuses a start or a token with 403 when voice is %s for this child", async (gate) => {
