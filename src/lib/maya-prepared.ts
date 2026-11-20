@@ -6,7 +6,8 @@
 //
 // A prepared reply is single-use and belongs to one child turn. Equal keys share one model request. A reply not used
 // is aborted when the turn commits or the session ends. Each request holds one spend handle (src/lib/maya-spend-seam.ts),
-// settled exactly once: with the provider's cost, else an estimate from the text sizes.
+// settled with the provider's cost, else (#1203) first provisionally with the full output allowance, then once with the
+// cost from the provider's generation stats, else an estimate from the tokens actually streamed.
 import { codeStance, codeVerdicts, type Session } from "@/lib/maya";
 import { confirmNote, type MayaModel, type ModelInput, type TurnBrief } from "@/lib/maya-model";
 import type { SpendHandle, SpendSeam } from "@/lib/maya-spend-seam";
@@ -26,6 +27,18 @@ export const MAX_PREPARES_PER_TURN = 3;
  * cost USD 0.0091). The trace marks such a cost `estimated`.
  */
 export const PREPARE_ESTIMATE_USD_PER_M = { input: 2, output: 10 } as const;
+/** The output allowance of a prepared request (maxTokens of conversationalMayaModel). */
+const PREPARE_OUTPUT_TOKENS = 1_500;
+/**
+ * #1203: output tokens the provider may have made past the text that reached us before the abort reached it. Maya's
+ * route (Anthropic, Azure) stops generating and billing when the stream is aborted (OpenRouter streaming guide, read
+ * 2026-11-20). A token is at least one character, so the streamed characters bound the streamed tokens.
+ */
+export const PREPARE_ABORT_MARGIN_TOKENS = 300;
+/** #1203: the waits before each ask for an aborted request's stats, in ms (a 404 means not yet). Then the estimate. */
+export const PREPARE_STATS_WAITS_MS = [1_000, 2_000, 4_000] as const;
+/** One ask for the stats stops after this long. */
+const PREPARE_STATS_ASK_MS = 2_000;
 
 const UNITS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
 const TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
@@ -172,24 +185,65 @@ export function preparedReplies(model: MayaModel, spend: SpendSeam, clock: () =>
       if (!asked || asked.output !== 3) { spend.giveBack(handle); return false; }
       const controller = new AbortController();
       let soFar = "";
+      // Characters received, also after the abort: what the provider streamed.
+      let received = 0;
+      let lookup: (() => Promise<number | null>) | null = null;
+      // The provider's request ended (it answered or failed), not just our timer.
+      let ended = false;
       let listener: ((text: string) => void) | undefined;
       let settled: { usd: number; estimated?: true } | null = null;
       let reported: number | null = null;
       let used = false;
       let decision: boolean | null = null;
       let done = false;
-      // Upper bound when the provider gives no price: one token per character of input, plus the full 1,500-token
-      // output allowance. Abort does not prove that the provider stopped generating.
-      const upperCost = Math.max(handle.micros / 1_000_000, ((JSON.stringify(brief).length + 8_000) * PREPARE_ESTIMATE_USD_PER_M.input + 1_500 * PREPARE_ESTIMATE_USD_PER_M.output) / 1_000_000);
+      // US dollars when the provider gives no price: one token per character of input (and 8,000 for the instructions),
+      // and the output tokens. The handle's reservation is in CAD micros and is never a price (#1203).
+      const usdFor = (outputTokens: number) => ((JSON.stringify(brief).length + 8_000) * PREPARE_ESTIMATE_USD_PER_M.input + outputTokens * PREPARE_ESTIMATE_USD_PER_M.output) / 1_000_000;
+      const upperCost = usdFor(PREPARE_OUTPUT_TOKENS);
+      // The provider's real cost from its stats, a late reported cost, or null after the last wait.
+      const finalCost = async (): Promise<number | null> => {
+        for (const ms of PREPARE_STATS_WAITS_MS) {
+          await new Promise((r) => setTimeout(r, ms));
+          if (reported !== null) return reported;
+          if (!lookup) return null;
+          const ask = lookup;
+          const usd = await Promise.race([ask().catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), PREPARE_STATS_ASK_MS))]);
+          if (reported !== null) return reported;
+          if (typeof usd === "number" && Number.isFinite(usd) && usd >= 0) return usd;
+        }
+        return null;
+      };
       const settle = () => {
         if (settled || decision === null || !done) return;
-        settled = reported !== null ? { usd: reported } : { usd: upperCost, estimated: true };
-        spend.settle(handle, settled.usd, { used: decision });
+        const used = decision;
+        if (reported !== null) {
+          settled = { usd: reported };
+          spend.settle(handle, reported, { used });
+          return;
+        }
+        // No cost came back (an aborted stream sends no usage chunk). With a request that ended and no stats to ask,
+        // nothing more can come: the streamed size plus a margin.
+        const streamed = Math.min(upperCost, usdFor(received + PREPARE_ABORT_MARGIN_TOKENS));
+        if (ended && !lookup) {
+          settled = { usd: streamed, estimated: true };
+          spend.settle(handle, streamed, { used });
+          return;
+        }
+        // Else the most the provider can bill counts at once, and the final figure replaces it once: the real cost, else
+        // the streamed estimate. A provider still running at our timer may produce the whole allowance: it stays.
+        settled = { usd: upperCost, estimated: true };
+        spend.settle(handle, upperCost, { used, provisional: true });
+        void finalCost().then((usd) => {
+          settled = usd !== null ? { usd } : { usd: ended ? Math.min(upperCost, usdFor(received + PREPARE_ABORT_MARGIN_TOKENS)) : upperCost, estimated: true };
+          spend.settle(handle, settled.usd, { used });
+        });
       };
       let end: (value: { proposal: unknown } | { error: unknown }) => void;
       const result = new Promise<{ proposal: unknown } | { error: unknown }>((resolve) => { end = resolve; });
-      const finish = (got: { proposal: unknown } | { error: unknown }) => {
+      const finish = (got: { proposal: unknown } | { error: unknown }, provider = true) => {
         clearTimeout(timer);
+        if (done) return;
+        ended = provider;
         done = true;
         settle();
         end(got);
@@ -220,12 +274,13 @@ export function preparedReplies(model: MayaModel, spend: SpendSeam, clock: () =>
           // allowance if it never returns. No late callback can reach the child.
         },
       };
-      const timer = setTimeout(() => { entry.abort(); finish({ error: new Error("prepared request timed out") }); }, 6_000);
+      const timer = setTimeout(() => { entry.abort(); finish({ error: new Error("prepared request timed out") }, false); }, 6_000);
       open.set(key, entry);
       try {
         void Promise.resolve(asked.propose(brief as unknown as ModelInput, controller.signal,
-          (text) => { if (!controller.signal.aborted) { soFar = text; listener?.(text); } },
-          (usd) => { if (Number.isFinite(usd) && usd >= 0) reported = usd; }))
+          (text) => { received = Math.max(received, text.length); if (!controller.signal.aborted) { soFar = text; listener?.(text); } },
+          (usd) => { if (Number.isFinite(usd) && usd >= 0) reported = usd; },
+          (cost) => { lookup = cost; }))
           .then((proposal) => finish({ proposal }), (error: unknown) => finish({ error }));
       } catch (error) { finish({ error }); }
       return true;

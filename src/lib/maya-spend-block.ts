@@ -53,10 +53,12 @@ export interface Handle {
  * SPECULATIVE_KEEP or fewer attempts are free, and the week's cap. `settle` gives the attempt's real cost in US
  * dollars; `{ used: true }` marks a speculative attempt whose reply was used (it stays kind "speculative"). `giveBack`:
  * the attempt was never sent and costs nothing. Each handle is settled or given back once; a second call changes nothing.
+ * `{ provisional: true }` (#1203): a first figure that counts at once, while the block's row waits for the final figure,
+ * which the next settle gives once.
  */
 export interface BlockSeam {
   take(kind: "model" | "speculative"): Handle | null;
-  settle(handle: Handle, usd: number, how?: { used?: boolean }): void;
+  settle(handle: Handle, usd: number, how?: { used?: boolean; provisional?: boolean }): void;
   giveBack(handle: Handle): void;
 }
 
@@ -90,8 +92,11 @@ export interface CallBudget {
   claim(micros: number): Handle | null;
   /** The claimed attempt may still dispatch now. No await may separate this check from dispatch. */
   canSend(handle: Handle): boolean;
-  /** The attempt's real cost in micros; null: not known, it stays at its reservation. */
-  finish(handle: Handle, micros: number | null, how?: { used?: boolean }): void;
+  /**
+   * The attempt's real cost in micros; null: not known, it stays at its reservation. `provisional`: the figure counts at
+   * once, the attempt stays open (its block's row waits), and the next finish gives the final figure once.
+   */
+  finish(handle: Handle, micros: number | null, how?: { used?: boolean; provisional?: boolean }): void;
   /** Whole model attempts free now. */
   attempts(): number;
   /**
@@ -135,6 +140,8 @@ interface Block {
 interface Ticket extends Handle {
   block: Block;
   done: boolean;
+  /** The figure a provisional finish counted, while the final figure is owed. */
+  provisional?: { micros: number; used: boolean };
 }
 
 export function createBudget(seams: BudgetSeams): CallBudget {
@@ -232,17 +239,27 @@ export function createBudget(seams: BudgetSeams): CallBudget {
     return t;
   }
 
-  function finish(handle: Handle, micros: number | null, how?: { used?: boolean }) {
+  function finish(handle: Handle, micros: number | null, how?: { used?: boolean; provisional?: boolean }) {
     const t = handle as Ticket;
-    if (t.done) return;
+    const was = t.provisional;
+    if (t.done && !was) return;
     t.done = true;
+    t.provisional = undefined;
     const i = pending.indexOf(t);
     if (i >= 0) pending.splice(i, 1);
     const cost = micros === null ? t.micros : Math.max(0, Math.ceil(micros));
-    t.block.spent += cost - t.micros;
+    const used = how?.used ?? was?.used ?? false;
+    // The figure counted before is replaced: the reservation, or the provisional figure.
+    const before = was ? was.micros : t.micros;
+    t.block.spent += cost - before;
+    totals[t.kind] += cost - (was ? was.micros : 0);
+    if (t.kind === "speculative") totals.speculativeUsed += (used ? cost : 0) - (was?.used ? was.micros : 0);
+    if (how?.provisional && !was) {
+      // The attempt stays open: its block is not written until the final figure comes.
+      t.provisional = { micros: cost, used };
+      return;
+    }
     t.block.open--;
-    totals[t.kind] += cost;
-    if (t.kind === "speculative" && how?.used) totals.speculativeUsed += cost;
     if (!t.block.retired && t.block.open === 0 && freeOf(t.block) < m && active().at(-1) !== t.block) retire(t.block);
     settleIfDone(t.block);
   }

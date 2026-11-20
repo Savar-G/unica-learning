@@ -18,6 +18,7 @@ export function preparedAi(make: (hooks: MeterHooks) => AiClient, budget: Pick<C
       if (claimed) throw new SpendRefused("paused");
       claimed = true;
       const client = make({
+        statsFetch: base,
         onRequest: async () => { if (!allowed()) throw new SpendRefused("paused"); },
         fetch: async (input, init) => {
           if (signal.aborted || !allowed()) throw new SpendRefused("paused");

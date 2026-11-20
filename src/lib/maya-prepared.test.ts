@@ -4,7 +4,7 @@ import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
 import { memorySpendSeam } from "@/lib/maya-spend-seam";
-import { normalizeTurn } from "@/lib/maya-prepared";
+import { normalizeTurn, preparedReplies } from "@/lib/maya-prepared";
 import { checkTrace } from "@/lib/maya-trace";
 import type { MayaModel, TurnBrief } from "@/lib/maya-model";
 
@@ -160,7 +160,7 @@ describe("prepare then commit", () => {
     expect(spend.settled[0].usd).toBe(0.123);
     expect(settled).toEqual([{ used: false }]);
   });
-  it("keeps the full reservation when an aborted provider never reports a bill", async () => {
+  it("counts the full output allowance, never the reservation read as dollars, when an aborted provider never ends or reports a bill", async () => {
     vi.useFakeTimers();
     try {
       const amounts: number[] = [];
@@ -172,7 +172,12 @@ describe("prepare then commit", () => {
       expect(amounts).toEqual([]);
       await vi.advanceTimersByTimeAsync(6_000);
       expect(amounts).toHaveLength(1);
-      expect(amounts[0]).toBeGreaterThanOrEqual(0.05);
+      // The handle's 50,000 CAD micros are not USD 0.05 (#1203): the figure is the input plus the 1,500-token allowance.
+      expect(amounts[0]).toBeGreaterThan(0.015);
+      expect(amounts[0]).toBeLessThan(0.05);
+      // No stats and a provider that never ended: the final figure keeps the full allowance.
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(amounts).toEqual([amounts[0], amounts[0]]);
       expect(session.trace().preparations).toMatchObject([{ status: "discarded", estimated: true }]);
     } finally { vi.useRealTimers(); }
   });
@@ -219,5 +224,74 @@ describe("prepare then commit", () => {
     await Promise.all([first, second]);
     expect(signals[0].aborted).toBe(true);
     expect(spoken.join(" ")).not.toContain("24");
+  });
+});
+
+describe("the cost of an aborted prepare with no reported cost (#1203)", () => {
+  // An empty brief: the input estimate is (2 + 8,000) tokens at USD 2 a million = USD 0.016004. The full 1,500-token
+  // output allowance adds USD 0.015 (USD 10 a million); 200 streamed characters add at most USD 0.002, and the abort
+  // margin of 300 tokens at most USD 0.003.
+  const brief = {} as TurnBrief;
+  const FULL = 0.031004;
+  /** A model that streams `chars` characters, reports no cost, and stops at the abort, like OpenRouter's stream. */
+  const streaming = (chars: number, lookup?: () => Promise<number | null>): MayaModel => ({ id: "m", promptVersion: "t", output: 3,
+    propose: (_input, signal, onText, _onCost, onGeneration) => new Promise((_, reject) => {
+      if (lookup) onGeneration?.(lookup);
+      onText?.("x".repeat(chars));
+      signal.addEventListener("abort", () => reject(new Error("time is up")), { once: true });
+    }) });
+  const run = (model: MayaModel) => {
+    const seam = memorySpendSeam();
+    const calls: { usd: number; provisional?: boolean }[] = [];
+    const spend = { ...seam, settle: (h: Parameters<typeof seam.settle>[0], usd: number, how?: { used?: boolean; provisional?: boolean }) => { calls.push({ usd, ...(how?.provisional ? { provisional: true } : {}) }); seam.settle(h, usd, how); } };
+    const cache = preparedReplies(model, spend, () => 0);
+    expect(cache.start("k", brief, { text: "6", reason: "interim" }, seam.take("speculative")!)).toBe(true);
+    const reply = cache.get("k")!;
+    cache.discard(reply, "text", 0);
+    return { seam, calls, reply };
+  };
+
+  it("settles once near its streamed size when the provider gives no stats to ask", async () => {
+    vi.useFakeTimers();
+    try {
+      const { seam, calls, reply } = run(streaming(200));
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(calls).toHaveLength(1);
+      expect(calls[0].provisional).toBeUndefined();
+      expect(seam.settled).toHaveLength(1);
+      expect(seam.settled[0].usd).toBeGreaterThanOrEqual(0.018004);
+      expect(seam.settled[0].usd).toBeLessThanOrEqual(0.021004);
+      expect(reply.cost()).toEqual({ usd: seam.settled[0].usd, estimated: true });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("replaces the estimate once with the provider's real cost when its stats arrive", async () => {
+    vi.useFakeTimers();
+    try {
+      const answers = [null, 0.0045, 0.9];
+      const lookup = vi.fn(async () => answers.shift() ?? null);
+      const { seam, calls, reply } = run(streaming(200, lookup));
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(lookup).toHaveBeenCalledTimes(2);
+      expect(calls).toEqual([{ usd: FULL, provisional: true }, { usd: 0.0045 }]);
+      expect(seam.settled.map((x) => x.usd)).toEqual([0.0045]);
+      expect(reply.cost()).toEqual({ usd: 0.0045 });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("falls back to the streamed estimate when the stats never answer with a cost", async () => {
+    vi.useFakeTimers();
+    try {
+      const lookup = vi.fn(() => new Promise<number | null>(() => {}));
+      const { seam, calls } = run(streaming(200, lookup));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(calls).toEqual([{ usd: FULL, provisional: true }]);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(lookup.mock.calls.length).toBeGreaterThan(0);
+      expect(lookup.mock.calls.length).toBeLessThanOrEqual(3);
+      expect(calls).toHaveLength(2);
+      expect(seam.settled[0].usd).toBeGreaterThanOrEqual(0.018004);
+      expect(seam.settled[0].usd).toBeLessThanOrEqual(0.021004);
+    } finally { vi.useRealTimers(); }
   });
 });

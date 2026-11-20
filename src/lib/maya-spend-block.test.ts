@@ -4,6 +4,9 @@ import { callSpend, createSpendLedger, spendConfig, usdToMicros, RESERVATION_TTL
 import { meteredAi, SpendRefused } from "@/lib/maya-spend-ai";
 import { BLOCK_ATTEMPTS, BLOCK_RENEW_MS, BLOCK_RETIRE_MS, SPECULATIVE_PER_TURN } from "@/lib/maya-spend-block";
 import { memorySpendStore } from "@/lib/maya-spend-memory";
+import { preparedReplies } from "@/lib/maya-prepared";
+import type { MayaModel, TurnBrief } from "@/lib/maya-model";
+import type { Handle } from "@/lib/maya-spend-block";
 
 // The voice budget block (latency plan V1, 2026-11-13) through the ledger's public interface on the in-memory store,
 // whose `log` holds one entry per database request: one atomic reservation of a block of model attempts for a voice
@@ -374,6 +377,27 @@ describe("the seam the text session gets (agreed with the Maya lead)", () => {
     expect(b.totals()).toMatchObject({ speculative: 2 * usdToMicros(0.01, t.config), speculativeUsed: usdToMicros(0.01, t.config) });
   });
 
+  it("frees room at a provisional settle, holds the block's row until the final figure, and takes the final figure once (#1203)", async () => {
+    const t = setup();
+    const b = t.spend.budget(voice);
+    await b.open();
+    b.newTurn();
+    const h = b.seam.take("speculative")!;
+    b.seam.settle(h, 0.05, { provisional: true });
+    // The room is free at once: the provisional figure, not the reservation, is counted in memory.
+    expect(b.attempts()).toBe(BLOCK_ATTEMPTS - 1);
+    await b.stop();
+    // The call ended, but the block's row waits for the final figure.
+    expect(t.blocks()).toMatchObject([{ settled: false }]);
+    b.seam.settle(h, 0.004);
+    await t.flush();
+    expect(t.blocks()).toMatchObject([{ settled: true, cost: usdToMicros(0.004, t.config) }]);
+    b.seam.settle(h, 0.09);
+    await t.flush();
+    expect(t.blocks()).toMatchObject([{ settled: true, cost: usdToMicros(0.004, t.config) }]);
+    expect(b.totals()).toMatchObject({ speculative: usdToMicros(0.004, t.config) });
+  });
+
   it("counts the speculative attempts per turn", async () => {
     const t = setup();
     const b = t.spend.budget(voice);
@@ -384,5 +408,76 @@ describe("the seam the text session gets (agreed with the Maya lead)", () => {
     expect(SPECULATIVE_PER_TURN).toBe(3);
     b.newTurn();
     expect(takes()).toBe(true);
+  });
+});
+
+describe("aborted prepared replies with no reported cost (#1203)", () => {
+  /** A model that streams 200 characters, reports no cost, stops at the abort, and offers its stats (`stats`). */
+  const streaming = (stats: () => Promise<number | null>): MayaModel => ({ id: "m", promptVersion: "t", output: 3,
+    propose: (_input, signal, onText, _onCost, onGeneration) => new Promise((_, reject) => {
+      onGeneration?.(stats);
+      onText?.("x".repeat(200));
+      signal.addEventListener("abort", () => reject(new Error("time is up")), { once: true });
+    }) });
+  /** Prepares one reply on `handle` and aborts it, as a turn whose words changed does. */
+  const abortedPrepare = (b: ReturnType<ReturnType<typeof setup>["spend"]["budget"]>, handle: Handle, stats: () => Promise<number | null>) => {
+    const cache = preparedReplies(streaming(stats), b.seam, () => 0);
+    cache.start("k", {} as TurnBrief, { text: "6", reason: "interim" }, handle);
+    cache.discard(cache.get("k")!, "text", 0);
+  };
+
+  it("a block of 4 aborted prepares with no stats settles near their streamed size, far below its CAD 0.84", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = setup();
+      const b = t.spend.budget(voice);
+      await b.open();
+      b.newTurn();
+      const handles = [b.seam.take("speculative")!, b.seam.take("speculative")!, b.take("model")!, b.take("model")!];
+      for (const h of handles) abortedPrepare(b, h, async () => null);
+      await vi.advanceTimersByTimeAsync(30_000);
+      await b.stop();
+      await vi.advanceTimersByTimeAsync(0);
+      const [row] = t.blocks();
+      expect(row).toMatchObject({ reserved: BLOCK_ATTEMPTS * t.m, settled: true });
+      // Each: an empty brief's input (USD 0.016004) plus 200 streamed characters and the 300-token margin.
+      expect(row.cost).toBeGreaterThanOrEqual(4 * usdToMicros(0.018004, t.config));
+      expect(row.cost).toBeLessThanOrEqual(4 * usdToMicros(0.021004, t.config));
+      expect(row.cost).toBeLessThan(BLOCK_ATTEMPTS * t.m / 5);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("keeps the week under the cap with two calls of one child at once, while stats are owed and after they arrive", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = setup();
+      // Room for one block of 4 and one more attempt.
+      t.leave(BLOCK_ATTEMPTS * t.m + t.m);
+      const other: SpendCall = { ...voice, id: "77777777-7777-4777-8777-777777777777" };
+      const [a, b] = [t.spend.budget(voice), t.spend.budget(other)];
+      await Promise.all([a.open(), b.open()]);
+      expect(await t.week()).toBe(WEEK_MICROS);
+      let sent = 0;
+      for (const budget of [a, b]) for (;;) {
+        budget.newTurn();
+        const h = budget.take("model");
+        if (!h) break;
+        sent++;
+        abortedPrepare(budget, h, async () => 0.02);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(await t.week()).toBeLessThanOrEqual(WEEK_MICROS);
+      }
+      // Each attempt counts at most its full allowance (~CAD 0.043), so a block holds more of them than 4 reservations.
+      expect(sent).toBeGreaterThan(BLOCK_ATTEMPTS + 1);
+      await Promise.all([a.stop(), b.stop()]);
+      expect(await t.week()).toBeLessThanOrEqual(WEEK_MICROS);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(t.store.rows().filter((r) => r.what === "model").every((r) => r.settled)).toBe(true);
+      expect(await t.week()).toBeLessThanOrEqual(WEEK_MICROS);
+      // A later call of the child finds no room.
+      const c = t.spend.budget({ ...voice, id: "88888888-8888-4888-8888-888888888888" });
+      await c.open();
+      expect(await t.week()).toBeLessThanOrEqual(WEEK_MICROS);
+    } finally { vi.useRealTimers(); }
   });
 });

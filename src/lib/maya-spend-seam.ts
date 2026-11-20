@@ -15,8 +15,11 @@ export interface SpendHandle {
 export interface SpendSeam {
   /** Permission for one request, at once, with no I/O. Null: no money for it, so the session sends nothing. */
   take(kind: SpendKind): SpendHandle | null;
-  /** The request ended or was aborted: its cost in US dollars (the provider's own figure, else an estimate). Once per handle. */
-  settle(handle: SpendHandle, usd: number, how?: { used?: boolean }): void;
+  /**
+   * The request ended or was aborted: its cost in US dollars (the provider's own figure, else an estimate). Once per handle,
+   * except after `{ provisional: true }` (#1203): that figure counts at once, and one more settle gives the final figure.
+   */
+  settle(handle: SpendHandle, usd: number, how?: { used?: boolean; provisional?: boolean }): void;
   /** The request was never sent. Once per handle, in place of `settle`. */
   giveBack(handle: SpendHandle): void;
 }
@@ -26,6 +29,7 @@ export function memorySpendSeam(limit = Number.POSITIVE_INFINITY): SpendSeam & {
   const taken: SpendHandle[] = [];
   const settled: { handle: SpendHandle; usd: number }[] = [];
   const givenBack: SpendHandle[] = [];
+  const provisional: SpendHandle[] = [];
   return {
     taken, settled, givenBack,
     take(kind) {
@@ -34,7 +38,13 @@ export function memorySpendSeam(limit = Number.POSITIVE_INFINITY): SpendSeam & {
       taken.push(handle);
       return handle;
     },
-    settle(handle, usd) { settled.push({ handle, usd }); },
+    settle(handle, usd, how) {
+      // A final figure after a provisional one replaces it: each handle keeps one entry.
+      const at = provisional.indexOf(handle);
+      if (at >= 0) { provisional.splice(at, 1); settled.splice(settled.findIndex((x) => x.handle === handle), 1, { handle, usd }); return; }
+      if (how?.provisional) provisional.push(handle);
+      settled.push({ handle, usd });
+    },
     giveBack(handle) { givenBack.push(handle); },
     usd: () => settled.reduce((n, x) => n + x.usd, 0),
   };

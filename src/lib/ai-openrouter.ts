@@ -11,6 +11,28 @@ import { openRouterJsonOutput } from "@/lib/ai-openrouter-schema";
 import { observeAiCall } from "@/lib/ai-observe";
 
 export const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+/** A generation's stats, with its final cost (`data.total_cost`, US dollars): https://openrouter.ai/docs/api/api-reference/generations (read 2026-11-20). */
+export const OPENROUTER_GENERATION_URL = "https://openrouter.ai/api/v1/generation";
+/** The generation id pattern of the stats endpoint. */
+const GENERATION_ID = /^gen-[0-9A-Za-z-]{1,124}$/;
+/** One stats lookup stops after this long. */
+const STATS_TIMEOUT_MS = 2_000;
+
+/**
+ * A generation's final cost in US dollars from OpenRouter's stats (#1203), also for a stream the caller aborted: the
+ * provider bills what it generated. Null when the stats are not there yet (a 404 soon after the request), give no cost,
+ * or cannot be read. Never throws.
+ */
+export async function generationCost(apiKey: string, id: string, fetch: typeof globalThis.fetch = globalThis.fetch): Promise<number | null> {
+  try {
+    const res = await fetch(`${OPENROUTER_GENERATION_URL}?id=${encodeURIComponent(id)}`, { method: "GET", headers: { authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(STATS_TIMEOUT_MS) });
+    if (!res.ok) return null;
+    const cost = ((await res.json()) as { data?: { total_cost?: unknown } } | null)?.data?.total_cost;
+    return typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? cost : null;
+  } catch {
+    return null;
+  }
+}
 /** One request stops after this long. A time-out, a lost connection, a 408, a 429 or a 5xx gets one more try. */
 export const AI_REQUEST_TIMEOUT_MS = 60_000;
 const MAX_TOKENS = 16_000;
@@ -126,7 +148,7 @@ const reportCost = (cost: unknown, onCost?: (usd: number) => void) => {
  * is the chunks' `delta.content` in order. `onText` gets the text so far after each chunk. The end is the same checks
  * as an answer sent whole: an error, a refusal, a finish reason other than "stop", or no output throws.
  */
-async function readStream(res: Response, strict: boolean, onText: (soFar: string) => void, onUsage?: (u: OpenRouterUsage) => void, onCost?: (usd: number) => void): Promise<unknown> {
+async function readStream(res: Response, strict: boolean, onText: (soFar: string) => void, onUsage?: (u: OpenRouterUsage) => void, onCost?: (usd: number) => void, onGenerationId?: (id: string) => void): Promise<unknown> {
   const reader = res.body?.getReader();
   if (!reader) throw new Error("no output");
   const decoder = new TextDecoder();
@@ -135,6 +157,7 @@ async function readStream(res: Response, strict: boolean, onText: (soFar: string
   let finish: string | null = null;
   let native: string | null = null;
   let used: OpenRouterUsage | null = null;
+  let named = false;
   const report = () => {
     if (used && onUsage) { try { onUsage(used); } catch { /* recording never fails a call */ } }
     used = null;
@@ -148,6 +171,11 @@ async function readStream(res: Response, strict: boolean, onText: (soFar: string
       chunk = JSON.parse(data);
     } catch {
       return;
+    }
+    // Every chunk names the generation; the first one is enough to ask its cost later (an abort sends no usage chunk).
+    if (!named && typeof chunk.id === "string" && GENERATION_ID.test(chunk.id)) {
+      named = true;
+      try { onGenerationId?.(chunk.id); } catch { /* observing never fails a call */ }
     }
     // The usage comes in the stream's last chunk (the AI usage ledger): the call is billed whatever its end is.
     used = usageOf(chunk) ?? used;
@@ -188,7 +216,7 @@ async function readStream(res: Response, strict: boolean, onText: (soFar: string
 /** An observer of one HTTP error answer: its status, the body text the try read, and its headers. */
 export type OnErrorAnswer = (status: number, body: string, headers: Headers) => void;
 /** One try: the parsed JSON output, or an error. Error messages hold codes and OpenRouter's words, never the output. */
-async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: AbortSignal, timeout: number, strict: boolean, onDispatch?: () => void, onUsage?: (u: OpenRouterUsage) => void, onText?: (soFar: string) => void, onCost?: (usd: number) => void, onErrorAnswer?: OnErrorAnswer): Promise<unknown> {
+async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: AbortSignal, timeout: number, strict: boolean, onDispatch?: () => void, onUsage?: (u: OpenRouterUsage) => void, onText?: (soFar: string) => void, onCost?: (usd: number) => void, onErrorAnswer?: OnErrorAnswer, onGenerationId?: (id: string) => void): Promise<unknown> {
   let res: Response;
   try {
     const options = { ...init, signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)]) };
@@ -201,7 +229,7 @@ async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: A
   }
   if (onText && res.ok && (res.headers.get("content-type") ?? "").includes("text/event-stream")) {
     try {
-      return await readStream(res, strict, onText, onUsage, onCost);
+      return await readStream(res, strict, onText, onUsage, onCost, onGenerationId);
     } catch (e) {
       if (signal.aborted) throw new Error("time is up");
       throw e;
@@ -245,6 +273,7 @@ export function openRouterClient({
   apiKey,
   model,
   fetch = globalThis.fetch,
+  statsFetch = globalThis.fetch,
   maxRetries = 1,
   timeout = AI_REQUEST_TIMEOUT_MS,
   onRequest,
@@ -260,6 +289,8 @@ export function openRouterClient({
   model: string;
   /** For tests: the fetch to use. */
   fetch?: typeof globalThis.fetch;
+  /** The fetch of a generation's stats (#1203): never the metered request fetch, which permits one dispatch. */
+  statsFetch?: typeof globalThis.fetch;
   maxRetries?: number;
   timeout?: number;
   onRequest?: () => Promise<void>;
@@ -296,12 +327,14 @@ export function openRouterClient({
           });
           observe(u); onUsage?.(u);
         };
+        const named = request.onGeneration;
+        const onGenerationId = named ? (id: string) => named(() => generationCost(apiKey, id, statsFetch)) : undefined;
         for (let attempt = 0; ; attempt++) {
           if (signal.aborted) throw new Error("time is up");
           await onRequest?.();
           if (signal.aborted) throw new Error("time is up");
           try {
-            return await once(fetch, init, signal, timeout, strict, onDispatch, used, request.onText, request.onCost, onErrorAnswer);
+            return await once(fetch, init, signal, timeout, strict, onDispatch, used, request.onText, request.onCost, onErrorAnswer, onGenerationId);
           } catch (e) {
             if (!(e instanceof Retryable) || attempt >= maxRetries || signal.aborted) throw e instanceof Retryable ? new Error(e.message) : e;
           }

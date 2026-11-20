@@ -49,6 +49,11 @@ export interface AiJsonRequest {
    * is aborted or gets no answer reports nothing.
    */
   onCost?: (usd: number) => void;
+  /**
+   * #1203: the request's generation exists at the provider (a streamed answer's first chunk). `cost` asks the provider,
+   * later and also after an abort, for that generation's final cost in US dollars; null when it cannot tell yet.
+   */
+  onGeneration?: (cost: () => Promise<number | null>) => void;
 }
 
 export interface AiClient {
@@ -82,7 +87,7 @@ export const NO_GOOGLE_PROVIDER: OpenRouterProvider = { ignore: ["google-vertex"
  * D-330); a call with no assigned feature has no client. Recording never fails or slows the call. `hooks.provider`: the
  * OpenRouter route; none gives NO_GOOGLE_PROVIDER (Maya sets a narrower route, src/lib/maya-ai-route.ts).
  */
-export function aiClient(env: Readonly<Record<string, string | undefined>> = process.env, model?: string, hooks?: { fetch?: typeof globalThis.fetch; onRequest?: () => Promise<void>; usage?: AiUsageTag; provider?: OpenRouterProvider }): AiClient | null {
+export function aiClient(env: Readonly<Record<string, string | undefined>> = process.env, model?: string, hooks?: { fetch?: typeof globalThis.fetch; statsFetch?: typeof globalThis.fetch; onRequest?: () => Promise<void>; usage?: AiUsageTag; provider?: OpenRouterProvider }): AiClient | null {
   const binding = productKey(hooks?.usage?.feature, env);
   if (!binding) return null;
   const chosen = model?.trim() || env.AI_MODEL?.trim() || AI_DEFAULT_MODEL;
