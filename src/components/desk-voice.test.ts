@@ -2,8 +2,12 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { createBoardSender } from "@/lib/board-protocol";
+import { boardRpcTransport } from "@/lib/board-rpc";
+import { BOARD_CLOSE_SETTLE_MS } from "@/lib/maya-voice";
 import { voiceStartMarks, voiceStartTrace } from "@/lib/maya-voice-start-trace";
 import { useDeskVoice, VoiceBoard, VoiceControls, VoiceLimit, VoiceTranscript } from "./desk-voice";
+import { MAYA_JOIN_MS } from "./maya-voice-room";
 import type { DeskVoiceCall, DeskVoiceReply, VoiceUsage } from "@/lib/maya-voice-desk";
 
 // The child's voice call on the desk, driven through its public pieces (the hook and the screens) with a fake LiveKit
@@ -11,13 +15,24 @@ import type { DeskVoiceCall, DeskVoiceReply, VoiceUsage } from "@/lib/maya-voice
 // it does not prove: real audio, a real microphone, or the real route (the server side is another branch).
 
 type Participant = { identity: string; kind: number; attributes: Record<string, string> };
-interface TestRoom { remoteParticipants: Map<string, Participant>; emit(event: string, ...args: unknown[]): void; disconnect: ReturnType<typeof vi.fn>; localParticipant: { performRpc: ReturnType<typeof vi.fn> } }
+interface TestRoom {
+  remoteParticipants: Map<string, Participant>;
+  emit(event: string, ...args: unknown[]): void;
+  disconnect: ReturnType<typeof vi.fn>;
+  mic: { stop: ReturnType<typeof vi.fn> };
+  localParticipant: {
+    performRpc: ReturnType<typeof vi.fn>;
+    registerRpcMethod: ReturnType<typeof vi.fn<(method: string, handler: (data: { callerIdentity: string; payload: string }) => Promise<string>) => void>>;
+  };
+}
 const rooms = vi.hoisted(() => [] as TestRoom[]);
 vi.mock("livekit-client", () => {
   class Room {
     remoteParticipants = new Map<string, Participant>();
     handlers = new Map<string, Array<(...args: unknown[]) => void>>();
-    localParticipant = { registerRpcMethod: vi.fn(), setMicrophoneEnabled: vi.fn(async () => {}), performRpc: vi.fn(async () => {}) };
+    mic = { stop: vi.fn() };
+    localParticipant = { registerRpcMethod: vi.fn(), setMicrophoneEnabled: vi.fn(async () => {}), performRpc: vi.fn(async () => {}),
+      getTrackPublication: () => ({ track: this.mic }), unpublishTrack: vi.fn(async () => {}) };
     connected: unknown[] = [];
     registerTextStreamHandler() {}
     constructor() { rooms.push(this as never); }
@@ -27,7 +42,7 @@ vi.mock("livekit-client", () => {
     async startAudio() {}
     disconnect = vi.fn(async () => { this.emit("Disconnected"); });
   }
-  return { Room, RoomEvent: new Proxy({}, { get: (_, key) => key }), Track: { Kind: { Audio: "audio" } }, ParticipantKind: { AGENT: 4 } };
+  return { Room, RoomEvent: new Proxy({}, { get: (_, key) => key }), Track: { Kind: { Audio: "audio" }, Source: { Microphone: "microphone" } }, ParticipantKind: { AGENT: 4 } };
 });
 
 const USAGE: VoiceUsage = { usedSeconds: 600, leftSeconds: 1200, limitSeconds: 1800, resetsAt: "2026-11-17T03:00:00.000Z", zone: "America/Vancouver" };
@@ -39,7 +54,7 @@ let root: Root | undefined;
 let host: HTMLDivElement;
 const sent: Array<Record<string, unknown>> = [];
 let answer: (body: Record<string, unknown>) => DeskVoiceReply;
-afterEach(async () => { await act(async () => root?.unmount()); root = undefined; host?.remove(); rooms.length = 0; sent.length = 0; vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+afterEach(async () => { await act(async () => root?.unmount()); root = undefined; host?.remove(); rooms.length = 0; sent.length = 0; vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 function Harness({ voice, question = 2 }: { voice: { usage: VoiceUsage } | null; question?: number | null }) {
   const state = useDeskVoice(voice, { book: "wb1", page: 3, question });
@@ -177,6 +192,7 @@ it("goes from the microphone check to a live call and back to the page", async (
 
   // The worker says the call ended: the saved call is read again, and its lines show.
   await act(async () => rooms[0].emit("DataReceived", new TextEncoder().encode(JSON.stringify({ segment: 1, ended: true })), worker(), undefined, "maya.call"));
+  expect(rooms[0].disconnect).toHaveBeenCalledOnce();
   expect(host.textContent).toContain("The call is over. Look at our board.");
   await act(async () => { await new Promise((r) => setTimeout(r, 450)); });
   expect(sent.some((b) => b.type === "read" && b.id === sent[0].id)).toBe(true);
@@ -192,6 +208,89 @@ it("goes from the microphone check to a live call and back to the page", async (
   expect(host.textContent).not.toContain("Hi! Let us start.");
   expect(host.querySelector("#voice-board")).toBeNull();
   expect(host.querySelector("footer")?.className).toBe("");
+});
+
+it.each(["worker departure", "timeout", "explicit hang-up"])("keeps only confirmed board evidence after terminal media cutoff (%s)", async end => {
+  vi.useFakeTimers();
+  const f = await mount();
+  await f.click("Call Maya");
+  await f.click("Start the call");
+  const r = rooms[0];
+  const audio = document.createElement("audio");
+  const track = { kind: "audio", attach: vi.fn(() => audio), detach: vi.fn(() => [audio]) };
+  const p = { ...worker(), audioTrackPublications: new Map([["voice", { track }]]) };
+  await join(r, p);
+  await act(async () => r.emit("TrackSubscribed", track, {}, p));
+  expect(host.contains(audio)).toBe(true);
+
+  let transfer = 0;
+  const transport = (identity: string) => boardRpcTransport({
+    performRpc: args => r.localParticipant.registerRpcMethod.mock.calls.find(([method]) => method === args.method)![1]({ callerIdentity: identity, payload: args.payload }),
+  }, "child", () => String(++transfer));
+  const sessionId = String(sent[0].id);
+  const rpc = transport(p.identity);
+  const held = Promise.withResolvers<void>();
+  const ack = Promise.withResolvers<void>();
+  const sender = createBoardSender({ sessionId, senderId: p.identity, transport: { async call(request) {
+    const result = await rpc.call(request);
+    if (request.type === "release" && request.batchId === "shown") {
+      held.resolve();
+      await ack.promise;
+    }
+    return result;
+  } } });
+  const scope = { utteranceId: "deadline-proof", generation: 1 };
+  const batch = (transactionId: string) => ({ transactionId, commands: [{ op: "columns" as const, id: transactionId, operation: "add" as const,
+    operands: [{ id: "top", value: "27" }, { id: "bottom", value: "39" }], place: { region: "main" as const } }] });
+  await act(async () => {
+    expect((await sender.connect()).ok).toBe(true);
+    expect((await sender.send(batch("shown"), { scope })).ok).toBe(true);
+    expect((await sender.send(batch("not-shown"), { scope })).ok).toBe(true);
+  });
+  const released = sender.release("shown", scope).catch(() => null);
+  try {
+    await act(async () => { await held.promise; });
+    expect(sender.snapshot().events).toEqual([]);
+    await act(async () => { await vi.advanceTimersByTimeAsync(MAYA_JOIN_MS - 1000); });
+    const ended = new TextEncoder().encode(JSON.stringify({ segment: 1, ended: true, boardDrain: true }));
+    if (end === "explicit hang-up") {
+      r.localParticipant.performRpc.mockResolvedValueOnce("board-status");
+      await f.click("Hang up");
+      expect(host.textContent).not.toContain("On the call");
+    } else {
+      await act(async () => r.emit("DataReceived", ended, p, undefined, "maya.call"));
+      expect(host.textContent).toContain("The call is over. Look at our board.");
+    }
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    ack.resolve();
+    await expect(released).resolves.toMatchObject({ ok: true, state: "shown" });
+    expect(sender.snapshot().events.filter(e => e.kind === "batch").map(e => e.batchId)).toEqual(["shown"]);
+    expect(r.disconnect).not.toHaveBeenCalled();
+    expect(r.mic.stop).toHaveBeenCalledOnce();
+    expect(track.detach).toHaveBeenCalledOnce();
+    expect(host.contains(audio)).toBe(false);
+    await act(async () => r.emit("TrackSubscribed", track, {}, p));
+    expect(track.attach).toHaveBeenCalledOnce();
+
+    const status = { type: "status" as const, sessionId, since: 0 };
+    await expect(transport("old-worker").call(status)).rejects.toThrow("does not own");
+    r.remoteParticipants.set(p.identity, worker(2));
+    await expect(rpc.call(status)).rejects.toThrow("does not own");
+    r.remoteParticipants.set(p.identity, p);
+    await expect(rpc.call({ type: "release", sessionId, epoch: sender.epoch(), batchId: "not-shown", scope })).rejects.toThrow();
+    await expect(rpc.call(status)).resolves.toMatchObject({ ok: true, log: [{ kind: "batch", batchId: "shown" }] });
+    if (end === "explicit hang-up") {
+      const ordinaryEnd = new TextEncoder().encode(JSON.stringify({ segment: 1, ended: true }));
+      await act(async () => r.emit("DataReceived", ordinaryEnd, p, undefined, "maya.call"));
+    } else if (end === "timeout") await act(async () => { await vi.advanceTimersByTimeAsync(BOARD_CLOSE_SETTLE_MS - 1000); });
+    else await act(async () => { r.remoteParticipants.delete(p.identity); r.emit("ParticipantDisconnected", p); });
+    expect(r.disconnect).toHaveBeenCalledOnce();
+    expect(host.textContent).toContain("The call is over. Look at our board.");
+    await expect(rpc.call(status)).rejects.toThrow("does not own");
+  } finally {
+    ack.resolve();
+    await released;
+  }
 });
 
 it("hangs up through Maya's worker and shows Hanging up, never a failed connection", async () => {

@@ -1393,6 +1393,7 @@ describe("#589: the safety guidance does not wait for the close", () => {
       const prior = output.mock.calls.length;
       let stopped = false;
       request.mockImplementation(async message => {
+        if (mode === "failed" && stopped && message.type === "status") throw Error("board recovery status unavailable");
         const reply = await transport.call(message);
         if (message.type === "stop") {
           stopped = true;

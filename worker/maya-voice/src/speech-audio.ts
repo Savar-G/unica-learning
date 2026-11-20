@@ -100,6 +100,7 @@ export function boardAudio(
 ): ReadableStream<AudioFrame> {
   const abort = new AbortController();
   let current: ReadableStreamDefaultReader<AudioFrame> | null = null;
+  let waitingForBoard: ReadableStream<AudioFrame> | null = null;
   /** The next sentence's synthesis, started early. It is retired with this stream. */
   let ahead: Promise<ReadableStream<AudioFrame> | null> | null = null;
   const retireAhead = () => {
@@ -111,15 +112,15 @@ export function boardAudio(
   const stop = () => {
     abort.abort();
     retireAhead();
-    return current?.cancel(scope).catch(() => {});
+    return (current ?? waitingForBoard)?.cancel(scope).catch(() => {});
   };
   return new ReadableStream<AudioFrame>({
     async start(controller) {
       let closed = false;
       const close = () => { if (!closed) { closed = true; controller.close(); } };
       const retired = () => { if (!abort.signal.aborted) { void stop(); close(); } };
-      if (scoped?.aborted) return retired();
-      scoped?.addEventListener("abort", retired, { once: true });
+      if (scoped.aborted) return retired();
+      scoped.addEventListener("abort", retired, { once: true });
       const stale = () => {
         if (abort.signal.aborted) return true;
         if (board.owns(scope)) return false;
@@ -237,7 +238,12 @@ export function boardAudio(
             // The voice has the words already; its audio waits until the plan is on the child's screen. A plan that
             // could not be sent has no audio: the call's own handler ends the call for that failure.
             let failed = false;
-            if (gate) { try { await board.sent(scope); } catch { failed = true; } }
+            if (gate) {
+              waitingForBoard = frames;
+              try { await board.sent(scope); }
+              catch { failed = true; }
+              finally { waitingForBoard = null; }
+            }
             if (failed || stale()) {
               void frames.cancel(scope).catch(() => {});
               if (failed && !abort.signal.aborted) close();
@@ -348,7 +354,7 @@ export function boardAudio(
       } finally {
         // Every way out, a stale plan or a cut included, retires the sentence made ahead: it is never read.
         retireAhead();
-        scoped?.removeEventListener("abort", retired);
+        scoped.removeEventListener("abort", retired);
       }
     },
     async cancel() { await stop(); },

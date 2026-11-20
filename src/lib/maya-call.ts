@@ -90,7 +90,7 @@ import { createTextSession, readFateReports, withHelpLedger, type BoardFateRepor
 import { packageHash, type MayaTrace } from "@/lib/maya-trace";
 import { type QuestionPackage, type QuestionRef } from "@/lib/question-package";
 import { teachingPackage } from "@/lib/maya-teaching";
-import { connectedSeconds, VOICE_CALL_STALE_MS, type ConnectionEvent, type ConnectionKind } from "@/lib/maya-voice";
+import { BOARD_CLOSE_SETTLE_MS, connectedSeconds, VOICE_CALL_STALE_MS, type ConnectionEvent, type ConnectionKind } from "@/lib/maya-voice";
 import { spendCloseOf, SPEND_CLOSE, type CallSpend, type SpendCall, type SpendState, type VoiceMeter } from "@/lib/maya-spend";
 import type { CallBudget, Handle } from "@/lib/maya-spend-block";
 import { SpendRefused } from "@/lib/maya-spend-ai";
@@ -524,6 +524,7 @@ export interface VoiceSay {
   part?(sentence: string, index: number): void;
   cancel?(fromIndex: number): void;
   end?(): void;
+  checkedBoardSettled?(): Promise<void> | undefined;
   /**
    * After #1072: the turn's one repair starts (a tutor teaching message was refused) and nothing of the turn was said yet.
    * The worker may say its thinking phrase now, with its own choice rule, and returns the phrase's id, or null when it
@@ -576,6 +577,7 @@ export interface VoiceCall {
   observeBoard(snapshot: BoardSnapshot): Promise<void>;
   /** Reports worker playout for a checked turn. A finished handle does not prove the child heard it. */
   exchangePlayback?(turnId: string, playback: "finished" | "interrupted"): Promise<void>;
+  reconcileExchange?(retiredTurns: readonly string[]): Promise<void>;
   /** B1: batches the board core refused at staging (board-speech `refused`): the session counts them as skipped. */
   boardRefused?(batchIds: readonly string[]): void;
   /** `openingSpoken`: the worker speaks the opening itself, so the turn comes back with no say (D-341). */
@@ -584,7 +586,7 @@ export interface VoiceCall {
   prepare(input: { text: string; reason: "interim" }): boolean;
   /** `say` hears this turn's sentences while it runs (VoiceSay), before the save behind it. */
   child(text: string, options?: { uncertain?: boolean; alternatives?: string[] }, say?: VoiceSay): Promise<VoiceTurn>;
-  exchange?(target: ExchangeTarget): Promise<VoiceTurn | null>;
+  exchange?(target: ExchangeTarget, onAccepted?: () => void): Promise<VoiceTurn | null>;
   /** A durable child action whose board change the receiver has not confirmed yet. */
   readonly pendingExchange?: Batch;
   tick(): Promise<VoiceTurn>;
@@ -1038,7 +1040,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   }
 
   /** A call's text session. Admin test calls have free talk on (D-197), with the model's review, and the tutor core (D-345); chat has free talk off; family calls get the tutor core behind `tutorFamilies`. A resumed call keeps its flags. */
-  function textSession(record: Pick<CallRecord, "id" | "parentId" | "childId"> & { kind: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void, sayHooks?: Pick<TextSessionOptions, "onSayPart" | "onSayCancel" | "onSayEnd" | "onRepairStart" | "modelRepair" | "onPreparation" | "withModelAttempt" | "persist">, spend?: SpendCall, preparing?: Pick<TextSessionOptions, "spend" | "prepareModel" | "prepareHandleId">): TextSession {
+  function textSession(record: Pick<CallRecord, "id" | "parentId" | "childId"> & { kind: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void, sayHooks?: Pick<TextSessionOptions, "onSayPart" | "onSayCancel" | "onSayEnd" | "onRepairStart" | "modelRepair" | "onPreparation" | "withModelAttempt" | "persist" | "checkedBoardSettled">, spend?: SpendCall, preparing?: Pick<TextSessionOptions, "spend" | "prepareModel" | "prepareHandleId">): TextSession {
     return createTextSession({
       onGuidance, ...sayHooks, ...preparing,
       callId: record.id, channel: record.kind === "chat" ? "chat" : undefined, package: pkg,
@@ -1328,6 +1330,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const pkg = found.live.package;
       // The call's speech-to-text and voice in the spending ledger (D-290).
       const meter: VoiceMeter | null = seams.spend ? seams.spend.voice(voiceSpend) : null;
+      const stopMeter = () => meter?.stop() ?? Promise.resolve();
       // The call's model attempts are paid from its budget block (src/lib/maya-spend-block.ts, latency plan V1): the first
       // block is reserved now, in the background; the first turn waits for it only if it has not answered.
       const budget: CallBudget | null = seams.spend ? seams.spend.budget(voiceSpend) : null;
@@ -1359,6 +1362,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         onSayPart: (sentence, index) => listener?.part?.(sentence, index),
         onSayCancel: (fromIndex) => listener?.cancel?.(fromIndex),
         onSayEnd: () => listener?.end?.(),
+        checkedBoardSettled: () => listener?.checkedBoardSettled?.(),
         // After #1072: the worker's thinking phrase when a repair starts (null: none said).
         onRepairStart: () => listener?.repairing?.() ?? null,
         // A voice call has no time for a second model request: a refused first proposal goes straight to code's line.
@@ -1387,6 +1391,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const acknowledged = [...(found.live.acknowledged ?? [])];
       let lost = false;
       let replaced = false;
+      let boardAfterLimitUntil: number | null = null;
       let mediaCutAt: number | null = null;
       const stopBudget = () => { session.cancelPending(); return budget?.stop(); };
       const lose = (confirmed = false) => { lost = true; if (confirmed) replaced = true; void stopBudget(); };
@@ -1405,7 +1410,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const connected = async (endedAt: number): Promise<CallChange> => {
         const events = await log.read(record.id);
         // The outcome can precede final playout. Count room time through the media close.
-        return { connectedSeconds: connectedSeconds(events, Math.max(endedAt, seams.clock(), ...events.map((e) => e.at))) };
+        return { connectedSeconds: connectedSeconds(events, mediaCutAt ?? Math.max(endedAt, seams.clock(), ...events.map((e) => e.at))) };
       };
       let acceptedSafetyClose: TextOutput | undefined;
       const persist = (out: TextOutput) => {
@@ -1844,9 +1849,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         get boardSnapshot() { return structuredClone(record.boardHistory?.delivery ?? { events: [] }); },
         get pendingExchange() {
           const saved = record.live?.text;
-          if (inactive() || !saved || saved.session.outcome) return undefined;
+          if (inactive() || !saved) return undefined;
           const action = saved.session.checkedExchange?.turns.find((t) => t.childAction)?.actions[0];
-          if (!action || action.fate === "shown") return undefined;
+          if (!action || action.fate === "shown" || record.boardHistory?.delivery?.events.some(e => e.kind === "batch" && e.batchId === action.batchId)) return undefined;
           return batchesOf(saved.board.filter((b) => b.transactionId === action.batchId))[0];
         },
         get acknowledged() { return [...acknowledged]; },
@@ -1873,7 +1878,21 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           // B1: the screen's word on each batch reaches the session at once (the next turn's brief reads it).
           if (!inactive() && !session.ended) observe(session);
           later(async () => {
-            if (lost || record.status === "ended") return;
+            if (lost) return;
+            if (record.status === "ended") {
+              const now = seams.clock();
+              const prior = record.boardHistory?.delivery;
+              if (boardAfterLimitUntil === null || now >= boardAfterLimitUntil || !prior || copy.events.length <= prior.events.length) return;
+              try {
+                const boardHistory = voiceBoardHistory(copy, record.startedAt === null ? now : Date.parse(record.startedAt), now, record.boardHistory);
+                if (await store.update(record.id, record.revision, { boardHistory })) {
+                  record = { ...record, boardHistory, revision: record.revision + 1 };
+                } else boardAfterLimitUntil = null;
+              } catch {
+                monitorProduct("maya.recovery_failed", { callId: record.id, step: "voice" });
+              }
+              return;
+            }
             const boardHistory = voiceBoardHistory(copy, record.live?.text.session.startedAt ?? seams.clock(), seams.clock(), record.boardHistory);
             const change: CallChange = { boardHistory, ...await saveExchangeEvidence(observe) };
             if (!(await store.update(record.id, record.revision, change))) { lose(true); return; }
@@ -1895,15 +1914,39 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           later(() => persistExchangeEvidence((s) => s.exchangePlayback(turnId, playback)));
           await queue;
         },
+        async reconcileExchange(retiredTurns) {
+          if (inactive() || !retiredTurns.length) return;
+          later(async () => {
+            if (inactive()) return;
+            const waitingTurns = session.session.checkedExchange?.turns.filter(turn =>
+              retiredTurns.includes(turn.id) && (!turn.playback || (!turn.childAction && turn.actions.some(action => !action.fate)))
+            );
+            if (!waitingTurns?.length) return;
+            const reconcile = (text: TextSession) => {
+              for (const turn of text.session.checkedExchange?.turns ?? []) {
+                if (!waitingTurns.some(waiting => waiting.id === turn.id)) continue;
+                if (!turn.childAction) text.boardFates(turn.actions.filter(a => !a.fate).map(a => ({ batchId: a.batchId, fate: "cancelled" })));
+                text.exchangePlayback(turn.id, "interrupted");
+              }
+            };
+            reconcile(session);
+            await persistExchangeEvidence(reconcile);
+          });
+          await queue;
+        },
         start: (options) => turn(() => session.start(options)),
         child: (text, options, say) => {
           const hearing = { text: text.trim().slice(0, MAX_CHILD_TEXT), uncertain: options?.uncertain, alternatives: options?.alternatives?.slice() };
           return turn(() => session.child(hearing.text, hearing), hearing.text ? hearing : undefined, say);
         },
-        async exchange(raw) {
+        async exchange(raw, onAccepted) {
           const target = readExchangeTarget(raw);
           if (inactive() || !target || !childExchangeProposal(session.session, target, seams.clock())) return null;
-          const out = await turn(async () => session.exchange(target));
+          const out = await turn(async () => {
+            const accepted = session.exchange(target);
+            if (accepted) onAccepted?.();
+            return accepted;
+          });
           return out.exchangeTurnId || out.ended ? out : null;
         },
         tick: () => turn(() => session.tick(), undefined, undefined, 2),
@@ -1913,6 +1956,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             const fixed = await safetyDeadline();
             if (fixed?.safetyMessage && await call.deferGuidance!()) return;
           }
+          const settleUntil = seams.clock() + BOARD_CLOSE_SETTLE_MS;
+          const settledMeter = stopMeter();
           void stopBudget();
           later(async () => {
             if (lost || record.status === "ended" || !record.live) return;
@@ -1922,10 +1967,13 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             await final.tick();
             const ended = await end(record, pkg, final, {}, connected, record.startedAt === null);
             if (!ended) { lose(true); }
-            else record = ended;
+            else {
+              record = ended;
+              boardAfterLimitUntil = settleUntil;
+            }
           });
           await queue;
-          await meter?.stop();
+          await settledMeter;
         },
         async connection(kind) {
           const event: ConnectionEvent = { kind, at: seams.clock() };
@@ -1954,16 +2002,17 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           // and the child's words it was reading get the safety read). Waiting for it would keep the room listening.
           return capClose(state, null, unread());
         },
-        spoken: (text) => meter?.spoken(text) ?? Promise.resolve(),
         stopMeter() {
           mediaCutAt ??= seams.clock();
-          return meter?.stop() ?? Promise.resolve();
+          return stopMeter();
         },
+        spoken: (text) => meter?.spoken(text) ?? Promise.resolve(),
         async end(how) {
           // Stop admissions before waiting for a save or the STT meter.
           const settledBudget = stopBudget();
+          const settledMeter = stopMeter();
           await queue;
-          await meter?.stop();
+          await settledMeter;
           if (lost) { await settledBudget; return; }
           if (record.status === "live") {
             later(async () => {

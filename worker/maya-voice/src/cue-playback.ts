@@ -149,6 +149,7 @@ export class CuePlaybackOutput {
   clearBuffer(scope: SpeechScope) {
     if (!same(this.segments[0]?.scope ?? this.forwarding?.scope ?? this.scope, scope)) return;
     this.cancelPending(scope);
+    this.interrupted(scope);
     this.adapter.seal();
     this.output.clearBuffer();
   }

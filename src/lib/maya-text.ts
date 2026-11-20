@@ -60,7 +60,7 @@ import {
 import { modelInput, turnBrief, type MayaModel, type ModelInput, type TurnBrief } from "@/lib/maya-model";
 import { tutorBrief } from "@/lib/maya/tutor-prompt";
 import { continuedSay } from "@/lib/maya/tutor";
-import { checkedExchangeProposal, childExchangeProposal } from "@/lib/maya/session";
+import { checkedExchangeProposal, checkedExchangeWaitingForBoard, childExchangeProposal } from "@/lib/maya/session";
 import type { ExchangeTarget } from "@/lib/maya/checked-exchange";
 import { preparedReplies, preparedKey, preparedKeys, sameTurn, MAX_PREPARES_PER_TURN, type PrepareHypothesis, type PreparedReply, type PrepareRecord } from "@/lib/maya-prepared";
 import type { SpendHandle, SpendSeam } from "@/lib/maya-spend-seam";
@@ -489,6 +489,7 @@ export interface TextSessionOptions {
   persist?: () => Promise<boolean>;
   onSayCancel?: (fromIndex: number) => void;
   onSayEnd?: () => void;
+  checkedBoardSettled?: () => Promise<void> | undefined;
   /** The time limit of one review (default REVIEW_TIME_LIMIT_MS); a late review fails the line. */
   reviewTimeLimitMs?: number;
   /**
@@ -1415,6 +1416,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         if (folded.pending.length === before && !folded.session.outcome) append({ kind: "input", at: now(), event: { type: "technical", at: now(), detail: "the interrupted turn had no safe line" } });
         sendGuidance();
         continue;
+      }
+      if (n === 0 && !urgent && options.checkedBoardSettled && read(() => checkedExchangeWaitingForBoard(folded.session))) {
+        const board = options.checkedBoardSettled();
+        if (board && await wait(board, controller) === stopped) break;
       }
       const exchange = !folded.candidate && !folded.attempts.length ? read(() => checkedExchangeProposal(folded.session)) : null;
       if (exchange) {

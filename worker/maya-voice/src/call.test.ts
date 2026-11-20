@@ -1,12 +1,13 @@
 import { ReadableStream, type ReadableStreamDefaultController } from "node:stream/web";
 import { EventEmitter } from "node:events";
-import { initializeLogger, llm, normalizeLanguage, stt, voice } from "@livekit/agents";
+import { initializeLogger, llm, normalizeLanguage, stt, tts, voice } from "@livekit/agents";
 import { AudioFrame, TrackPublishOptions } from "@livekit/rtc-node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setProductObserver } from "@/lib/product-monitoring";
 import { logBaselineTurn } from "@/lib/maya-baseline";
-import { createBoardReceiver, createBoardSender } from "@/lib/board-protocol";
+import { createBoardReceiver, createBoardSender, type BoardReceiver, type BoardTransport } from "@/lib/board-protocol";
 import { createMemoryTransport } from "@/lib/board-protocol-memory";
+import { boardRpcHandler, boardRpcTransport } from "@/lib/board-rpc";
 import { createBoardSpeech, type CueMeasurement } from "@/lib/board-speech";
 import { templateSkills } from "@/lib/assessment";
 import { learningEvents } from "@/lib/learning-events";
@@ -20,7 +21,7 @@ import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { callSpend, createSpendLedger, spendConfig, SPEND_CLOSE, WEEK_MICROS } from "@/lib/maya-spend";
 import { memorySpendStore } from "@/lib/maya-spend-memory";
 import { checkTrace } from "@/lib/maya-trace";
-import { RECONNECT_GRACE_MS, REJOIN_AFTER_LEAVE_MS, voiceProviders } from "@/lib/maya-voice";
+import { BOARD_CLOSE_SETTLE_MS, RECONNECT_GRACE_MS, REJOIN_AFTER_LEAVE_MS, voiceProviders } from "@/lib/maya-voice";
 import type { QuestionPackage } from "@/lib/question-package";
 import { mayaWorkbookFixture } from "@/lib/maya-workbook-fixture";
 import { selectWorkbookQuestion } from "@/lib/maya-workbook-question";
@@ -99,22 +100,24 @@ function handTimers() {
     },
     clear: (h) => void due.delete(h as number),
   };
+  async function elapse(ms: number, step: number) {
+    const end = now + ms;
+    while (now < end) {
+      now = Math.min(end, now + step);
+      for (const [h, t] of [...due].sort((a, b) => a[1].at - b[1].at)) {
+        if (t.at > now) continue;
+        due.delete(h);
+        t.run();
+      }
+      await new Promise<void>(resolve => setImmediate(resolve));
+    }
+  }
   return {
     timers,
     now: () => now,
     jump(s: number) { now += s * 1000; },
-    async advance(s: number) {
-      const end = now + s * 1000;
-      while (now < end) {
-        now = Math.min(end, now + 1000);
-        for (const [h, t] of [...due].sort((a, b) => a[1].at - b[1].at)) {
-          if (t.at > now) continue;
-          due.delete(h);
-          t.run();
-        }
-        await new Promise<void>(resolve => setImmediate(resolve));
-      }
-    },
+    advance: (s: number) => elapse(s * 1000, 1000),
+    play: (ms: number) => elapse(ms, 10),
   };
 }
 
@@ -140,7 +143,7 @@ afterEach(async () => {
   vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs();
 });
 
-async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["spend"]; speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel; board?: boolean; timestamps?: boolean; workbookReference?: string; measureBaseline?: boolean; exchange?: boolean } = {}) {
+async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["spend"]; speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel; board?: boolean; timestamps?: boolean; workbookReference?: string; measureBaseline?: boolean; exchange?: boolean; transport?: (receiver: BoardReceiver) => BoardTransport } = {}) {
   const clock = handTimers();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -181,7 +184,7 @@ async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["
   const updates: CallUpdate[] = [];
   const closed = vi.fn(async () => {});
   const receiver = createBoardReceiver({ sessionId: started.view.id, clock: clock.now });
-  const sender = createBoardSender({ sessionId: started.view.id, senderId: "worker", transport: createMemoryTransport(receiver) });
+  const sender = createBoardSender({ sessionId: started.view.id, senderId: "worker", transport: options.transport?.(receiver) ?? createMemoryTransport(receiver) });
   const samples: CueMeasurement[] = [];
   const board = createBoardSpeech({ sender, now: clock.now, observe: snapshot => opened.call.observeBoard(snapshot), measure: s => samples.push(s) });
   const turns: VoiceTurnSample[] = [];
@@ -417,6 +420,108 @@ class HeldSpeaker extends Speaker {
   override flush() { if (!this.held) super.flush(); }
 }
 
+class HeldSentence extends tts.SynthesizeStream {
+  label = "held.SynthesizeStream";
+  readonly requested = Promise.withResolvers<string>();
+  readonly cancelled = Promise.withResolvers<void>();
+  constructor(source: FakeTTS) { super(source); }
+  protected async run() {
+    let text = "";
+    for await (const part of this.input) {
+      if (part === tts.SynthesizeStream.FLUSH_SENTINEL) break;
+      text += part;
+    }
+    this.requested.resolve(text.trim());
+    if (!this.abortSignal.aborted) {
+      await new Promise<void>(resolve => this.abortSignal.addEventListener("abort", () => resolve(), { once: true }));
+    }
+    this.cancelled.resolve();
+  }
+}
+
+it("retires a checked plan on an SDK cut before the first frame and without a new transcript", async () => {
+  const c = await voiceCall({ model: ruleConversationalModel(), board: true, exchange: true });
+  await c.run.childJoined();
+  await waitFor(() => c.session.agentState === "listening" && c.said().length > 0, "opening");
+  const active = new HeldSentence(c.tts);
+  const handle = Promise.withResolvers<{ speech: voice.SpeechHandle }>();
+  c.session.once(voice.AgentSessionEventTypes.SpeechCreated, event => handle.resolve({ speech: event.speechHandle }));
+  vi.spyOn(c.tts, "stream").mockReturnValueOnce(active);
+  try {
+    expect(c.speech.say("Show me how to regroup.")).toBe(true);
+    await active.requested.promise;
+    await c.board.settled();
+    const ids = c.call.session.checkedExchange!.turns[0].actions.map(action => action.batchId);
+    expect(c.receiver.staged().map(batch => batch.batchId)).toEqual(ids);
+    (await handle.promise).speech.interrupt(true);
+    await active.cancelled.promise;
+    await waitFor(() => c.call.session.checkedExchange?.turns[0].actions.every(action => action.fate === "cancelled") === true,
+      "both unplayed cues to be retired");
+    expect(c.call.session.checkedExchange!.turns[0].playback).toBe("interrupted");
+    expect(c.receiver.snapshot().events.some(e => e.kind === "batch" && ids.includes(e.batchId))).toBe(false);
+    expect(c.call.session.assistance).not.toContain("guided");
+  } finally { active.close(); }
+});
+
+it.each([true, false])("cuts a spoken demonstration after its first shown cue and keeps the child's words (timestamps=%s)", async timestamps => {
+  let now = () => T0;
+  const speaker = new HeldSpeaker(() => now());
+  const c = await voiceCall({ speaker, model: ruleConversationalModel(), board: true, timestamps, exchange: true });
+  now = c.clock.now;
+  try {
+    await c.run.childJoined();
+    await waitFor(() => c.session.agentState === "listening" && c.said().length > 0, "opening");
+    speaker.held = true;
+    const stopped = vi.spyOn(speaker, "clearBuffer");
+    const stream = c.tts.stream.bind(c.tts);
+    const active = new HeldSentence(c.tts);
+    const ahead = new HeldSentence(c.tts);
+    vi.spyOn(c.tts, "stream").mockImplementationOnce(stream).mockReturnValueOnce(active).mockReturnValueOnce(ahead);
+    await c.childSays("Show me how to regroup.");
+    expect(await active.requested.promise).toBe("Trade 1 ten for 10 ones.");
+    expect(await ahead.requested.promise).toBe("Now we have 4 tens and 12 ones, which is still 52.");
+    await waitFor(() => speaker.pendingPlayoutSegments > 0, "the first sentence to enter playout");
+    await c.clock.play(40);
+    const [shown, future] = c.call.session.checkedExchange!.turns[0].actions;
+    const oldScope = c.receiver.scope()!;
+    await waitFor(() => c.receiver.snapshot().events.some(e => e.kind === "batch" && e.batchId === shown.batchId), "the first cue");
+    await c.board.settled();
+    expect(c.samples.find(s => s.batchId === shown.batchId)?.source).toBe(timestamps ? "word" : "sentence");
+    const state = voice.AgentSessionEventTypes.UserStateChanged;
+    c.session.emit(state, { type: state, newState: "speaking", oldState: "listening", createdAt: Date.now() });
+    await c.board.settled();
+    expect(c.receiver.staged().map(b => b.batchId)).toContain(future.batchId);
+    expect(stopped).not.toHaveBeenCalled();
+    c.session.emit(state, { type: state, newState: "listening", oldState: "speaking", createdAt: Date.now() });
+    const correction = "I need a second.";
+    expect(c.speech.say(correction)).toBe(true);
+    await Promise.all([active.cancelled.promise, ahead.cancelled.promise]);
+    await waitFor(() => stopped.mock.calls.length > 0, "the SDK to clear playout");
+    await c.board.settled();
+    speaker.finishPlayback();
+    await waitFor(() => c.call.session.turns.some(t => t.speaker === "child" && t.text === correction) &&
+      c.call.session.checkedExchange?.turns[0].playback === "interrupted", "the transcript and playout outcome to settle");
+    expect(c.said()).not.toContain("What changed when we traded a ten?");
+    expect(c.call.session.checkedExchange!.turns[0]).toMatchObject({
+      playback: "interrupted", actions: [{ fate: "shown" }, { fate: "cancelled" }],
+    });
+    expect(c.call.session.done).toEqual([]);
+
+    await c.run.childLeft("dropped");
+    const oldEpoch = c.receiver.epoch();
+    await c.run.childJoined();
+    expect(c.receiver.handle({ type: "release", sessionId: c.id, epoch: oldEpoch, scope: oldScope, batchId: future.batchId }))
+      .toMatchObject({ ok: false, code: "stale_epoch" });
+    const oldTurn = c.call.session.checkedExchange!.turns[0];
+    await c.call.exchangePlayback!(oldTurn.id, "finished");
+    expect(c.call.session.checkedExchange!.turns[0].playback).toBe("interrupted");
+    const log = c.receiver.snapshot().events;
+    expect(log.filter(e => e.kind === "batch" && e.batchId === shown.batchId)).toHaveLength(1);
+    expect(log.some(e => e.kind === "batch" && e.batchId === future.batchId)).toBe(false);
+    expect(c.call.session.assistance.filter(kind => kind === "guided")).toEqual(["guided"]);
+  } finally { speaker.finishPlayback(); }
+});
+
 it("interrupts a regrouping prompt in playout and shows the child's exchange once", async () => {
   let now = () => T0;
   const speaker = new HeldSpeaker(() => now());
@@ -436,7 +541,11 @@ it("interrupts a regrouping prompt in playout and shows the child's exchange onc
     ), "the shown tens while the prompt is playing");
     const target = (await c.calls.view(c.id))!.exchange!;
     expect(stopped).not.toHaveBeenCalled();
-    const attempts = await Promise.all([c.run.exchange(target), c.run.exchange(target)]);
+    const attemptsInFlight = [c.run.exchange(target), c.run.exchange(target)];
+    const state = voice.AgentSessionEventTypes.UserStateChanged;
+    c.session.emit(state, { type: state, newState: "speaking", oldState: "listening", createdAt: Date.now() });
+    c.session.emit(state, { type: state, newState: "listening", oldState: "speaking", createdAt: Date.now() });
+    const attempts = await Promise.all(attemptsInFlight);
     expect(attempts).toContain("accepted");
     expect(stopped).toHaveBeenCalled();
     expect(c.receiver.snapshot().events.filter(e => e.kind === "batch" && JSON.stringify(e.commands).includes("52 = 40 + 12"))).toHaveLength(1);
@@ -575,7 +684,174 @@ it.each(["checked move", "legacy", "legacy disconnect", "hard cutoff"])("plays d
   }
 });
 
-it("shows a saved child move after replacing a worker with an unplayed batch", async () => {
+it("accepts an immediate exchange while the shown batch acknowledgement is still in flight", async () => {
+  const releaseReceived = Promise.withResolvers<void>();
+  const releaseAnswer = Promise.withResolvers<void>();
+  let targetBatch = "";
+  let now = () => T0;
+  const speaker = new HeldSpeaker(() => now());
+  const c = await voiceCall({
+    model: ruleConversationalModel(), board: true, exchange: true, speaker,
+    transport: receiver => ({
+      async call(request) {
+        const result = receiver.handle(request);
+        if (request.type === "release" && request.batchId === targetBatch) {
+          receiver.presented(targetBatch);
+          receiver.presented(targetBatch);
+          releaseReceived.resolve();
+          await releaseAnswer.promise;
+        }
+        return result;
+      },
+    }),
+  });
+  now = c.clock.now;
+  try {
+    await c.run.childJoined();
+    await waitFor(() => c.session.agentState === "listening" && c.said().length > 0, "opening");
+    speaker.held = true;
+    await c.childSays("How do I regroup?");
+    const target = (await c.calls.view(c.id))!.exchange!;
+    targetBatch = target.batchId;
+    await waitFor(() => speaker.pendingPlayoutSegments > 0, "the prompt audio to reach the speaker");
+    await c.clock.advance(1);
+    await releaseReceived.promise;
+    const action = c.run.exchange(target);
+    await Promise.resolve();
+    releaseAnswer.resolve();
+    expect(await action).toBe("accepted");
+    expect(await c.run.exchange({ ...target, boardRevision: target.boardRevision + 1 })).toBe("stale");
+    expect(await c.run.exchange(target)).toBe("done");
+    expect(c.receiver.snapshot().events.filter(e => e.kind === "presented" && e.batchId === targetBatch)).toHaveLength(1);
+    expect(c.call.session.checkedExchange?.turns.filter(t => t.childAction)).toHaveLength(1);
+    expect(c.call.session.done).toEqual([]);
+  } finally { releaseAnswer.resolve(); speaker.finishPlayback(); }
+});
+
+it("plays the deadline close before a checked prompt acknowledgement returns", async () => {
+  const held = Promise.withResolvers<void>();
+  const answer = Promise.withResolvers<void>();
+  let targetBatch = "";
+  let now = () => T0;
+  const speaker = new HeldSpeaker(() => now());
+  const c = await voiceCall({ model: ruleConversationalModel(), board: true, exchange: true, speaker, timestamps: true,
+    transport: receiver => ({ async call(request) {
+      const result = receiver.handle(request);
+      if (request.type === "release" && request.batchId === targetBatch) {
+        held.resolve();
+        await answer.promise;
+      }
+      return result;
+    } }),
+  });
+  now = c.clock.now;
+  try {
+    await c.run.childJoined();
+    await waitFor(() => c.session.agentState === "listening" && c.said().length > 0, "opening");
+    speaker.held = true;
+    await c.childSays("How do I regroup?");
+    const target = (await c.calls.view(c.id))!.exchange!;
+    targetBatch = target.batchId;
+    await waitFor(() => speaker.pendingPlayoutSegments > 0, "prompt playout");
+    await c.clock.play(40);
+    await held.promise;
+    const move = c.run.exchange(target);
+    await c.clock.advance(TIME_LIMITS.closingAtMs / 1000);
+    const cut = vi.spyOn(speaker, "clearBuffer");
+    const played = vi.spyOn(speaker, "captureFrame");
+    expect(c.speech.say("Could you show me another step?")).toBe(true);
+    await waitFor(() => c.call.session.outcome?.reason === "time_limit", "the controller's deadline close");
+    const words = spokenMath(c.call.session.turns.at(-1)!.text);
+    await waitFor(() => {
+      const stopped = cut.mock.invocationCallOrder[0];
+      return stopped !== undefined && c.said().join(" ").includes(words) &&
+        played.mock.invocationCallOrder.some(frame => frame > stopped);
+    }, "deadline frames after the old prompt clears, with the ACK still held", 2500);
+    answer.resolve();
+    expect(await move).toBe("stale");
+    speaker.finishPlayback();
+    await waitFor(() => c.closed.mock.calls.length === 1, "closed deadline call");
+    expect(await c.calls.view(c.id)).toMatchObject({ status: "ended", outcome: { reason: "time_limit" } });
+    expect(c.receiver.snapshot().events.filter(e => e.kind === "batch" && e.batchId === targetBatch)).toHaveLength(1);
+  } finally { answer.resolve(); speaker.finishPlayback(); }
+});
+
+it("cuts the prompt before the move is saved and plays the newer spoken reply after the move", async () => {
+  let now = () => T0;
+  const speaker = new HeldSpeaker(() => now());
+  const releasingMove = Promise.withResolvers<void>();
+  const releaseMove = Promise.withResolvers<void>();
+  let moveBatch = "";
+  const c = await voiceCall({
+    speaker, model: ruleConversationalModel(), board: true, timestamps: true, exchange: true,
+    transport: receiver => ({
+      async call(request) {
+        if (request.type === "apply" && JSON.stringify(request.commands).includes("52 = 40 + 12")) moveBatch = request.batchId;
+        if (request.type === "release" && request.batchId === moveBatch) {
+          releasingMove.resolve();
+          await releaseMove.promise;
+        }
+        return receiver.handle(request);
+      },
+    }),
+  });
+  now = c.clock.now;
+  const startedSave = Promise.withResolvers<void>();
+  const releaseSave = Promise.withResolvers<void>();
+  try {
+    await c.run.childJoined();
+    await waitFor(() => c.session.agentState === "listening" && c.said().length > 0, "opening");
+    speaker.held = true;
+    await c.childSays("How do I regroup?");
+    const target = (await c.calls.view(c.id))!.exchange!;
+    await waitFor(() => speaker.pendingPlayoutSegments > 0, "the prompt audio to reach the speaker");
+    await c.clock.play(40);
+    await waitFor(() => c.call.session.checkedExchange!.turns[0].actions[0].fate === "shown", "the prompt's shown batch");
+    const stopped = vi.spyOn(speaker, "clearBuffer");
+    const update = c.store.update.bind(c.store);
+    let held = false;
+    vi.spyOn(c.store, "update").mockImplementation(async (id, revision, change) => {
+      if (!held && change.live?.text.session.checkedExchange?.turns.some(t => t.childAction)) {
+        held = true;
+        startedSave.resolve();
+        await releaseSave.promise;
+      }
+      return update(id, revision, change);
+    });
+    const move = c.run.exchange(target);
+    await startedSave.promise;
+    await waitFor(() => stopped.mock.calls.length > 0, "the prompt audio to stop before the move save returns");
+    expect(c.receiver.snapshot().events.some(e => e.kind === "batch" && JSON.stringify(e.commands).includes("52 = 40 + 12"))).toBe(false);
+    expect(await c.run.exchange(target)).toBe("busy");
+
+    const words = "I need a second.";
+    const heard = Promise.withResolvers<void>();
+    c.session.on(voice.AgentSessionEventTypes.UserInputTranscribed, event => {
+      if (event.isFinal && event.transcript === words) heard.resolve();
+    });
+    expect(c.speech.say(words)).toBe(true);
+    await heard.promise;
+    releaseSave.resolve();
+    await releasingMove.promise;
+    await waitFor(() => c.call.session.turns.some(t => t.speaker === "child" && t.text === words) &&
+      c.call.session.turns.at(-1)?.speaker === "maya", "the newer reply to be accepted while the board is waiting");
+    const reply = spokenMath(c.call.session.turns.at(-1)!.text);
+    const played = vi.spyOn(speaker, "captureFrame");
+    expect(c.said().join(" ")).not.toContain(reply);
+    releaseMove.resolve();
+    expect(await move).toBe("accepted");
+    speaker.finishPlayback();
+    await waitFor(() => c.said().join(" ").includes(reply) && played.mock.calls.length > 0, "the newer reply to reach playout");
+    expect(c.said().join(" ").split(reply)).toHaveLength(2);
+    expect(c.said()).not.toContain("What changed when you traded a ten?");
+    expect(c.receiver.snapshot().events.filter(e => e.kind === "batch" && JSON.stringify(e.commands).includes("52 = 40 + 12"))).toHaveLength(1);
+    expect(await c.run.exchange(target)).toBe("done");
+    expect(c.call.session.checkedExchange!.turns.filter(t => t.childAction)).toHaveLength(1);
+    expect(c.call.session.done).toEqual([]);
+  } finally { releaseSave.resolve(); releaseMove.resolve(); speaker.finishPlayback(); }
+});
+
+it.each([false, true])("shows a saved child move on worker replacement even after a normal close (closed=%s)", async closed => {
   const c = await voiceCall({ model: ruleConversationalModel(), exchange: true });
   await c.board.connect();
   const show = async (id: string, cues: NonNullable<Awaited<ReturnType<typeof c.call.start>>["boardCues"]>) => {
@@ -589,6 +865,7 @@ it("shows a saved child move after replacing a worker with an unplayed batch", a
   await c.board.stage("unplayed-exchange", move);
   const id = move[0].batch.transactionId;
   expect(c.receiver.snapshot().events.some((e) => e.kind === "batch" && e.batchId === id)).toBe(false);
+  if (closed) expect((await c.call.child("I want to stop now.")).ended).toBe(true);
 
   const replacement = await c.calls.openVoice(c.id, { speechToText: "fake", voice: "fake" }, null);
   if (!replacement.ok) throw Error(replacement.error);
@@ -601,8 +878,45 @@ it("shows a saved child move after replacing a worker with an unplayed batch", a
     const events = c.receiver.snapshot().events;
     expect(events.some((e) => e.kind === "cancelled" && e.batchIds.includes(id))).toBe(true);
     expect(events.filter((e) => e.kind === "batch" && e.batchId === id)).toHaveLength(1);
-    expect(await run.exchange(target)).toBe("done");
+    expect(replacement.call.pendingExchange).toBeUndefined();
+    if (closed) {
+      expect(session.say).toHaveBeenCalledOnce();
+      expect(session.say).not.toHaveBeenCalledWith(expect.stringContaining("4 tens and 12 ones"), expect.anything());
+    } else {
+      expect(await run.exchange(target)).toBe("done");
+      expect(session.say).not.toHaveBeenCalled();
+    }
+  } finally { await run.hangUp(); }
+});
+
+it("recovers a checked demonstration saved before its board plan reached the browser", async () => {
+  const c = await voiceCall({ model: ruleConversationalModel(), exchange: true });
+  await c.board.connect();
+  const opening = await c.call.start();
+  await c.board.stage("opening", opening.boardCues!);
+  await c.board.show(c.board.capture("opening")!);
+  const abandoned = await c.call.child("Show me how to regroup.");
+  expect(abandoned.boardCues).toHaveLength(2);
+
+  const replacement = await c.calls.openVoice(c.id, { speechToText: "fake", voice: "fake" }, null);
+  if (!replacement.ok) throw Error(replacement.error);
+  const call = replacement.call;
+  const sender = createBoardSender({ sessionId: c.id, senderId: "replacement", snapshot: call.boardSnapshot, transport: createMemoryTransport(c.receiver) });
+  const board = createBoardSpeech({ sender, now: c.clock.now, observe: snapshot => call.observeBoard(snapshot) });
+  const session = controlSession();
+  const run = new VoiceCallRun(session as unknown as voice.AgentSession, call, { board, timers: c.clock.timers, notify: () => {} });
+  try {
+    await run.childJoined();
+    expect(call.session.checkedExchange?.turns[0]).toMatchObject({
+      playback: "interrupted", actions: [{ fate: "cancelled" }, { fate: "cancelled" }],
+    });
+    expect(call.session.assistance).not.toContain("guided");
+    expect(c.receiver.snapshot().events.filter(e => e.kind === "batch").map(e => e.batchId)).toEqual(opening.boardCues!.map(cue => cue.batch.transactionId));
     expect(session.say).not.toHaveBeenCalled();
+    const retry = await call.child("Show me how to regroup again.");
+    expect(retry.boardCues).toHaveLength(2);
+    expect(retry.boardCues![0].batch.transactionId).not.toBe(abandoned.boardCues![0].batch.transactionId);
+    expect(call.session.done).toEqual([]);
   } finally { await run.hangUp(); }
 });
 
@@ -623,6 +937,392 @@ async function controlledRun(c: Awaited<ReturnType<typeof voiceCall>>, call = c.
   await run.childJoined();
   return { run, session, updates, closed };
 }
+
+it("finishes a spoken stop during a move even when fresher sound suppresses its speech", async () => {
+  const c = await voiceCall({ model: ruleConversationalModel(), exchange: true });
+  const releasing = Promise.withResolvers<void>();
+  const released = Promise.withResolvers<void>();
+  const sender = createBoardSender({ sessionId: c.id, senderId: "stop", transport: {
+    async call(request) {
+      if (request.type === "release" && c.call.pendingExchange?.transactionId === request.batchId) {
+        releasing.resolve();
+        await released.promise;
+      }
+      return c.receiver.handle(request);
+    },
+  } });
+  const board = createBoardSpeech({ sender, now: c.clock.now, observe: snapshot => c.call.observeBoard(snapshot) });
+  const session = controlSession();
+  const closed = vi.fn(async () => {});
+  const run = new VoiceCallRun(session as unknown as voice.AgentSession, c.call, { board, timers: c.clock.timers, notify: () => {}, closed });
+  const context = new llm.ChatContext();
+  const runNode = async () => readReply(await run.agent.llmNode(context, llm.ToolContext.empty(), {}));
+  try {
+    await run.childJoined();
+    await runNode();
+    const prompt = await c.call.child("How do I regroup?");
+    await board.stage("prompt", prompt.boardCues!);
+    await board.show(board.capture("prompt")!);
+    const move = run.exchange((await c.calls.view(c.id))!.exchange!);
+    await releasing.promise;
+    context.addMessage({ role: "user", content: "I want to stop now." });
+    const reply = runNode();
+    await waitFor(() => c.store.rows()[0].live?.text.session.outcome?.reason === "child_stopped", "the saved stop");
+    session.userState = "speaking";
+    session.emit(voice.AgentSessionEventTypes.UserStateChanged, { newState: "speaking", oldState: "listening" });
+    released.resolve();
+    await Promise.all([reply, move]);
+    await waitFor(() => closed.mock.calls.length === 1, "normal terminal closure");
+    expect(await c.calls.view(c.id)).toMatchObject({ status: "ended", outcome: { reason: "child_stopped" } });
+    expect(session.say).not.toHaveBeenCalled();
+    expect(c.receiver.snapshot().events.filter(e => e.kind === "batch" && JSON.stringify(e.commands).includes("52 = 40 + 12"))).toHaveLength(1);
+  } finally { released.resolve(); await run.hangUp(); }
+});
+
+it.each(["before", "after"])("retires an unsaid retry stale %s staging without losing the next plan", async timing => {
+  const c = await voiceCall({ model: ruleConversationalModel(), exchange: true });
+  const staged = Promise.withResolvers<void>();
+  const answered = Promise.withResolvers<void>();
+  let hold = false;
+  const sender = createBoardSender({ sessionId: c.id, senderId: "retry", transport: {
+    async call(request) {
+      const response = c.receiver.handle(request);
+      if (hold && request.type === "apply") {
+        hold = false;
+        staged.resolve();
+        await answered.promise;
+      }
+      return response;
+    },
+  } });
+  const board = createBoardSpeech({ sender, now: c.clock.now, observe: snapshot => c.call.observeBoard(snapshot) });
+  const session = controlSession();
+  const run = new VoiceCallRun(session as unknown as voice.AgentSession, c.call, { board, timers: c.clock.timers, notify: () => {} });
+  const context = new llm.ChatContext();
+  const runNode = async () => readReply(await run.agent.llmNode(context, llm.ToolContext.empty(), {}));
+  try {
+    await run.childJoined();
+    await runNode();
+    context.addMessage({ role: "user", content: "Show me how to regroup." });
+    await runNode();
+    await board.settled();
+    expect(c.receiver.staged()).toHaveLength(2);
+    if (timing === "after") hold = true;
+    else {
+      const update = c.store.update.bind(c.store);
+      let blocked = false;
+      vi.spyOn(c.store, "update").mockImplementation(async (id, revision, change) => {
+        if (!blocked && change.live?.text.session.checkedExchange?.turns.length === 2) {
+          blocked = true;
+          staged.resolve();
+          await answered.promise;
+        }
+        return update(id, revision, change);
+      });
+    }
+    context.addMessage({ role: "user", content: "Show me how to regroup again." });
+    const retry = runNode();
+    await Promise.race([staged.promise, retry.then(() => { throw Error("retry did not reach its test gate"); })]);
+    session.userState = "speaking";
+    session.emit(voice.AgentSessionEventTypes.UserStateChanged, { newState: "speaking", oldState: "listening" });
+    answered.resolve();
+    await retry;
+    await board.settled();
+    await waitFor(() => c.call.session.checkedExchange?.turns[1]?.playback === "interrupted", "the abandoned retry to retire");
+    expect(c.receiver.staged()).toEqual([]);
+    expect(c.call.session.checkedExchange?.turns[1]?.actions.map(action => action.fate)).toEqual(["cancelled", "cancelled"]);
+    expect(session.say).not.toHaveBeenCalled();
+    session.userState = "listening";
+    context.addMessage({ role: "user", content: "Could you show me how to regroup again?" });
+    await runNode();
+    await board.settled();
+    expect(c.receiver.staged().map(b => b.batchId)).toEqual(c.call.session.checkedExchange?.turns[2].actions.map(action => action.batchId));
+  } finally { answered.resolve(); await run.hangUp(); }
+});
+
+it("keeps the newer reply when the abandoned retry's cancel is rejected", async () => {
+  const c = await voiceCall({ model: ruleConversationalModel(), exchange: true });
+  const cancelling = Promise.withResolvers<void>();
+  const unblock = Promise.withResolvers<void>();
+  const retired = Promise.withResolvers<void>();
+  let hold = false;
+  let delayedScope = 0;
+  let rejected = false;
+  const sender = createBoardSender({ sessionId: c.id, senderId: "overlap", transport: {
+    async call(request) {
+      const delayed = hold && request.type === "cancel";
+      if (delayed) {
+        hold = false;
+        delayedScope = request.scope.generation;
+        cancelling.resolve();
+        await unblock.promise;
+      }
+      const reply = c.receiver.handle(request);
+      if (request.type === "stop" && delayedScope && request.scope.generation > delayedScope) retired.resolve();
+      if (delayed) rejected = !reply.ok && reply.code === "invalid_request";
+      return reply;
+    },
+  } });
+  const board = createBoardSpeech({ sender, now: c.clock.now, observe: snapshot => c.call.observeBoard(snapshot) });
+  const session = controlSession();
+  const run = new VoiceCallRun(session as unknown as voice.AgentSession, c.call, { board, timers: c.clock.timers, notify() {} });
+  const context = new llm.ChatContext();
+  const runNode = async () => readReply(await run.agent.llmNode(context, llm.ToolContext.empty(), {}));
+  try {
+    await run.childJoined();
+    await runNode();
+    context.addMessage({ role: "user", content: "Show me how to regroup." });
+    await runNode();
+    await board.settled();
+    expect(c.receiver.staged()).toHaveLength(2);
+    hold = true;
+    context.addMessage({ role: "user", content: "Show me how to regroup again." });
+    const retry = runNode();
+    await cancelling.promise;
+    context.addMessage({ role: "user", content: "Could you show me how to regroup again?" });
+    const newer = runNode();
+    await retired.promise;
+    unblock.resolve();
+    const settled = await Promise.allSettled([retry, newer]);
+    expect(rejected).toBe(true);
+    expect(run.done).toBeNull();
+    expect(settled.map(result => result.status)).toEqual(["fulfilled", "fulfilled"]);
+    await board.settled();
+    expect(c.call.session.checkedExchange!.turns.at(-1)!.actions).toHaveLength(2);
+    expect(c.receiver.staged().map(b => b.batchId)).toEqual(c.call.session.checkedExchange!.turns.at(-1)!.actions.map(a => a.batchId));
+  } finally {
+    unblock.resolve();
+    await run.hangUp();
+  }
+});
+
+it.each([false, true])("stores the flag-off hard close while board status is held (already recovering=%s)", async alreadyRecovering => {
+  const c = await voiceCall();
+  const held = Promise.withResolvers<void>();
+  const unblock = Promise.withResolvers<void>();
+  const session = controlSession();
+  const updates: CallUpdate[] = [];
+  const closed = vi.fn(async () => {});
+  const run = new VoiceCallRun(session as unknown as voice.AgentSession, c.call, {
+    board: c.board, timers: c.clock.timers, notify: update => updates.push(update), closed,
+  });
+  let stops = 0;
+  let resets = 0;
+  let recovering: Promise<unknown> | undefined;
+  try {
+    await run.agentJoined();
+    await run.childJoined();
+    const context = new llm.ChatContext();
+    await readReply(await run.agent.llmNode(context, llm.ToolContext.empty(), {}));
+    context.addMessage({ role: "user", content: "I don't know." });
+    await readReply(await run.agent.llmNode(context, llm.ToolContext.empty(), {}));
+    await c.board.settled();
+    expect(c.call.session.checkedExchange).toBeUndefined();
+    expect(c.receiver.staged().length).toBeGreaterThan(0);
+    const scope = c.receiver.scope()!;
+    const confirmed = c.call.boardSnapshot;
+    const transport = createMemoryTransport(c.receiver);
+    c.sender.useTransport({ async call(request) {
+      if (request.type === "stop") {
+        stops++;
+        throw Error("lost stop");
+      }
+      if (request.type === "status" && stops >= 3) {
+        held.resolve();
+        await unblock.promise;
+      }
+      if (request.type === "reset") resets++;
+      return transport.call(request);
+    } });
+    if (alreadyRecovering) {
+      recovering = c.board.interrupt(scope).catch(() => {});
+      await held.promise;
+    }
+    session.userState = "speaking";
+    await c.clock.advance(TIME_LIMITS.endAtMs / 1000);
+    expect(session.close).toHaveBeenCalledOnce();
+    expect(stops).toBe(3);
+    await held.promise;
+    await waitFor(() => c.store.rows()[0].status === "ended", "the durable close with recovery held", 750);
+    expect(resets).toBe(0);
+    expect(c.store.rows()[0]).toMatchObject({ outcome: { reason: "time_limit" }, boardHistory: { delivery: confirmed } });
+    expect(c.connections.rows().slice(-2).map(event => event.kind)).toEqual(["child_left", "agent_left"]);
+    expect(updates.at(-1)).toMatchObject({ ended: true });
+    await c.clock.advance(BOARD_CLOSE_SETTLE_MS / 1000);
+    expect(closed).toHaveBeenCalledOnce();
+  } finally {
+    unblock.resolve();
+    await recovering;
+    await run.hangUp();
+  }
+  if (!alreadyRecovering) expect(resets).toBe(0);
+});
+
+it.each(["deadline", "deadline with lost replies", "hang-up", "hang-up with a frozen desk", "hang-up with delayed leaves", "hang-up with an admitted turn"])("preserves receiver-shown work in the flag-off %s replay", async close => {
+  const deadline = close.startsWith("deadline");
+  const loseReplies = close !== "deadline";
+  const enteredModel = Promise.withResolvers<void>();
+  const releaseModel = Promise.withResolvers<void>();
+  const model = ruleMayaModel();
+  let holdModel = false;
+  const spend = memorySpendStore();
+  const c = await voiceCall({ model: { ...model, propose: async (input, signal) => {
+    if (holdModel) { enteredModel.resolve(); await releaseModel.promise; }
+    return model.propose(input, signal);
+  } }, spend: clock => {
+    const config = spendConfig({ MAYA_STT_USD_PER_MINUTE: "0.06" });
+    return callSpend(createSpendLedger({ store: spend, clock, config, zone: async () => "America/Vancouver" }), { clock, newId: () => crypto.randomUUID() });
+  } });
+  const shown = Promise.withResolvers<void>();
+  const unblock = Promise.withResolvers<void>();
+  const session = controlSession();
+  const closed = vi.fn(async () => {});
+  const updates: CallUpdate[] = [];
+  let frozen = false;
+  let transferId = 0;
+  const handle = boardRpcHandler(c.receiver, {
+    allowed: identity => identity === "worker" && (!updates.at(-1)?.ended || updates.at(-1)?.boardDrain === true),
+    readOnly: () => frozen || updates.at(-1)?.ended === true,
+    changed() {},
+  });
+  const rpc = boardRpcTransport({ performRpc: async ({ payload }) => handle("worker", payload) }, "child", () => String(++transferId));
+  const run = new VoiceCallRun(session as unknown as voice.AgentSession, c.call, {
+    board: c.board, timers: c.clock.timers, notify: update => updates.push(update), closed,
+  });
+  let releaseTries = 0;
+  let stopTries = 0;
+  let resets = 0;
+  let closing: Promise<void> | null = null;
+  let admitted: Promise<unknown> | undefined;
+  try {
+    await run.agentJoined();
+    await run.childJoined();
+    const context = new llm.ChatContext();
+    await readReply(await run.agent.llmNode(context, llm.ToolContext.empty(), {}));
+    context.addMessage({ role: "user", content: "I don't know." });
+    await readReply(await run.agent.llmNode(context, llm.ToolContext.empty(), {}));
+    await c.board.settled();
+    expect(c.call.session.checkedExchange).toBeUndefined();
+    const scope = c.receiver.scope()!;
+    const batchId = c.receiver.staged()[0].batchId;
+    c.sender.useTransport({ async call(request) {
+      if (request.type === "stop") stopTries++;
+      const response = await rpc.call(request);
+      if (request.type === "reset") resets++;
+      if (request.type === "stop") {
+        if (loseReplies) throw Error("lost stop reply");
+      }
+      if (request.type === "release" && request.batchId === batchId) {
+        releaseTries++;
+        shown.resolve();
+        await unblock.promise;
+        if (loseReplies) throw Error("lost release reply");
+      }
+      return response;
+    } });
+    await c.board.timing(scope, 10_000, 100, "word");
+    const release = c.board.played(scope, 100).catch(() => {});
+    await shown.promise;
+    const observed = (id: string) => c.store.rows()[0].boardHistory?.delivery?.events.filter(e => e.kind === "batch" && e.batchId === id) ?? [];
+    expect(c.receiver.snapshot().events.filter(e => e.kind === "batch" && e.batchId === batchId)).toHaveLength(1);
+    expect(observed(batchId)).toHaveLength(0);
+    if (deadline) {
+      session.userState = "speaking";
+      await c.clock.advance(TIME_LIMITS.endAtMs / 1000);
+      closing = run.done;
+      await waitFor(() => updates.at(-1)?.ended === true, "the persisted deadline before the release ACK", 750);
+      expect(updates.at(-1)?.boardDrain).toBe(true);
+      expect(observed(batchId)).toHaveLength(0);
+    } else {
+      await c.clock.advance(1);
+      if (close === "hang-up with delayed leaves") {
+        const append = c.connections.append;
+        vi.spyOn(c.connections, "append").mockImplementation(async (event, revision) => {
+          if (event.kind === "child_left") await unblock.promise;
+          return append(event, revision);
+        });
+      }
+      if (close === "hang-up with an admitted turn") {
+        holdModel = true;
+        admitted = c.call.child("I got 56.");
+        await enteredModel.promise;
+      }
+      frozen = close === "hang-up with a frozen desk";
+      closing = run.hangUp();
+      await waitFor(() => stopTries >= 3, "the lost hang-up stop replies", 750);
+      releaseModel.resolve();
+      await admitted;
+      await c.clock.advance(7);
+    }
+    expect(session.close).toHaveBeenCalledOnce();
+    const ended = c.store.rows()[0];
+    unblock.resolve();
+    await release;
+    await closing;
+    expect(closed).toHaveBeenCalledOnce();
+    expect(observed(batchId)).toHaveLength(1);
+    const replay = await c.calls.view(c.id);
+    expect(replay?.batches.filter(b => b.transactionId === batchId)).toHaveLength(1);
+    expect(replay?.outcome?.reason).toBe(deadline ? "time_limit" : "child_stopped");
+    if (deadline) {
+      expect(c.store.rows()[0]).toMatchObject({ endedAt: ended.endedAt, trace: ended.trace, outcome: ended.outcome, learningEventId: ended.learningEventId });
+      expect(releaseTries).toBe(1);
+      expect(resets).toBe(0);
+    } else {
+      expect(resets).toBe(frozen ? 0 : 1);
+      expect(updates.at(-1)?.boardDrain).toBeUndefined();
+      expect({
+        connectedSeconds: c.store.rows()[0].connectedSeconds,
+        speechToText: spend.rows().filter(row => row.what === "speech_to_text").map(row => row.cost),
+      }).toEqual({ connectedSeconds: 1, speechToText: [1_400] });
+    }
+  } finally {
+    releaseModel.resolve();
+    unblock.resolve();
+    await admitted;
+    await (closing ?? run.hangUp());
+  }
+});
+
+it.each([true, false])("recovers a reachable board after all stop replies are lost (stop arrived=%s)", async delivered => {
+  let drop = false;
+  let stops = 0;
+  let now = () => T0;
+  const speaker = new HeldSpeaker(() => now());
+  const c = await voiceCall({ model: ruleConversationalModel(), board: true, exchange: true, speaker, timestamps: true,
+    transport: receiver => ({ async call(request) {
+      if (request.type === "stop" && drop) {
+        if (delivered) receiver.handle(request);
+        stops++;
+        throw Error("synthetic lost stop reply");
+      }
+      return receiver.handle(request);
+    } }),
+  });
+  now = c.clock.now;
+  try {
+    await c.run.childJoined();
+    await waitFor(() => c.session.agentState === "listening" && c.said().length > 0, "opening");
+    speaker.held = true;
+    await c.childSays("Show me how to regroup.");
+    await waitFor(() => speaker.pendingPlayoutSegments > 0, "demonstration playout");
+    await c.clock.play(40);
+    const [shown, future] = c.call.session.checkedExchange!.turns[0].actions;
+    await waitFor(() => c.call.session.checkedExchange?.turns[0].actions[0].fate === "shown", "completed first batch");
+    const previousEpoch = c.receiver.epoch();
+    const old = c.receiver.scope()!;
+    const replyStart = c.said().length;
+    drop = true;
+    expect(c.speech.say("Show me how to regroup again.")).toBe(true);
+    await waitFor(() => c.said().length > replyStart && c.receiver.epoch() > previousEpoch, "the next reply after reconciliation", 2500);
+    expect(stops).toBeGreaterThanOrEqual(3);
+    expect(c.run.done).toBeNull();
+    expect(c.call.session.checkedExchange?.turns[0]).toMatchObject({ actions: [{ fate: "shown" }, { fate: "cancelled" }] });
+    expect(c.receiver.snapshot().events.filter(e => e.kind === "batch" && e.batchId === shown.batchId)).toHaveLength(1);
+    expect(c.receiver.handle({ type: "release", scope: old, epoch: previousEpoch, batchId: future.batchId, sessionId: c.id }))
+      .toMatchObject({ ok: false, code: "stale_epoch" });
+  } finally { drop = false; speaker.finishPlayback(); }
+});
 
 describe("R408 controlled probes through public interfaces", () => {
   it.each([true, false])("records a provider failure without its private diagnostic, recoverable=%s", async recoverable => {

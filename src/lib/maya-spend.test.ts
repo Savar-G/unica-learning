@@ -225,6 +225,34 @@ describe("a metered AI client", () => {
 });
 
 describe("a voice call's meter", () => {
+  it("settles at the cutoff even if an in-flight reservation delays the stop", async () => {
+    const t = setup({ env: { MAYA_STT_USD_PER_MINUTE: "0.06" } });
+    let elapsed = 0;
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const reserve = t.store.reserve;
+    const held = vi.spyOn(t.store, "reserve").mockImplementationOnce(async request => {
+      entered.resolve();
+      await release.promise;
+      return reserve(request);
+    });
+    const meter = callSpend(t.ledger, { clock: () => Date.parse("2026-11-05T18:00:00Z") + elapsed, newId: t.newId }).voice({ id: "call-1", kind: "chat", parentId: P, childId: C });
+    try {
+      const admission = meter.ensure();
+      await entered.promise;
+      elapsed = 1000;
+      const stop = meter.stop();
+      elapsed = 8000;
+      release.resolve();
+      await admission;
+      await stop;
+      expect(t.store.rows()).toMatchObject([{ what: "speech_to_text", cost: 1_400, settled: true }]);
+    } finally {
+      release.resolve();
+      held.mockRestore();
+    }
+  });
+
   it("reserves speech-to-text a block ahead, counts the voice of each line, and settles the last block at the time used", async () => {
     const t = setup({ env: { MAYA_STT_USD_PER_MINUTE: "0.01", MAYA_VOICE_USD_PER_1K_CHARS: "0.03" } });
     let elapsed = 0;

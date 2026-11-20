@@ -5533,6 +5533,13 @@ export function checkedExchangeProposal(s: Session, afterFailure = false): Excha
   return { checkedExchange: 1, value: plan.facts.value, example: plan.facts.example, show: plan.actions[0]?.kind === "show", ...(plan.prompt ? { prompt: true } : {}), ...(afterFailure ? { afterFailure: true } : {}) };
 }
 
+export function checkedExchangeWaitingForBoard(s: Session): boolean {
+  const turn = s.turn;
+  return !!turn && !turn.uncertain && tutorTeachingNow(s) &&
+    !!s.checkedExchange?.turns.at(-1)?.actions.some(action => !action.fate) &&
+    (CHILD_EXCHANGE_REQUEST.test(turn.text.trim()) || EXCHANGE_REQUEST.test(turn.text.trim()));
+}
+
 function checkedExchangePlan(s: Session, afterFailure: boolean): ExchangeTurn | null {
   const lesson = s.checkedExchange;
   const pkg = s.package;
