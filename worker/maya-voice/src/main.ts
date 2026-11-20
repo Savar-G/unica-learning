@@ -17,7 +17,7 @@
 // each saved turn; the screen reads the call from the web server then.
 import { randomUUID } from "node:crypto";
 import { flushAiUsage } from "@/lib/ai-usage";
-import { BASELINE_PROFILE_PREFIX, logBaselineTurn, type BaselineGroup } from "@/lib/maya-baseline";
+import { BASELINE_PROFILE_PREFIX, baselineTeaching, logBaselineTurn, type BaselineGroup } from "@/lib/maya-baseline";
 import { createBoardSender } from "@/lib/board-protocol";
 import { boardRpcTransport } from "@/lib/board-rpc";
 import { createBoardSpeech, cueReport, type CueMeasurement } from "@/lib/board-speech";
@@ -156,9 +156,11 @@ export default defineAgent({
       log("board cue", { callId, fakeAudio: made.tts.provider === "fake", ...sample });
     } });
     const turnSamples: VoiceTurnSample[] = [];
+    const teaching = opened.call.session;
     const baseline: BaselineGroup = {
       mode: "voice", evidence: made.stt.provider === "fake" || made.tts.provider === "fake" ? "simulated" : "worker",
       turnType: "unknown", provider: `${record.model}+${providers.ids.speechToText}+${providers.ids.voice}`,
+      teaching: baselineTeaching(!!teaching.checkedExchange, teaching.checkedRoutine === true),
       device: "unknown", network: "unknown", concurrency: "unknown",
     };
     const baselineEnabled = process.env.MAYA_BASELINE_LOG === "on";

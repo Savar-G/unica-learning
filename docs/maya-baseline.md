@@ -9,7 +9,7 @@ MAYA_BASELINE_LOG=on npm run voice:test -- src/call.test.ts src/stream.test.ts -
 node scripts/maya-baseline-report.mjs "$maya_capture"
 ```
 
-The report groups turns by evidence source, mode, turn type, provider, device, network and concurrency. Each group shows all outcomes and the sample size for each phase. The median and p95 use nearest rank. An absent measurement has zero samples and null percentiles. A recorded zero is a measurement. An incomplete request stays in the count.
+The report groups turns by evidence source, mode, turn type, provider, active teaching settings, device, network and concurrency. Each group shows all outcomes and the sample size for each phase. The median and p95 use nearest rank. An absent measurement has zero samples and null percentiles. A recorded zero is a measurement. An incomplete request stays in the count.
 
 | Evidence | What it measures |
 |---|---|
@@ -17,6 +17,14 @@ The report groups turns by evidence source, mode, turn type, provider, device, n
 | Simulated voice | A controlled transcription hold, answer and filler playback at the LiveKit worker output, and word-cued and sentence-cued releases to an in-memory board receiver. These checks use a controlled media clock. The worker process profile uses the local runtime clock. |
 | Voice worker | With local `MAYA_BASELINE_LOG=on`, the worker emits structured samples at call close. It reports its speech end estimate, final transcript, final-to-turn delay, admission, provider response body, checked sentence, synthesis frames, worker playout and board cue acknowledgement. Rows with either speech provider set to fake carry the simulated label. |
 | Device | Reserved for measured useful output, board presentation and interruption stop on the child's device. The local probes do not produce these marks. |
+
+Append device observations as one `[maya baseline] ` line per attempted turn. Use the device clock for each interval. For example, this fixture records a timeout before any useful output:
+
+```text
+[maya baseline] {"v":1,"evidence":"device","mode":"voice","turnType":"routine","provider":"fixture","teaching":"checked-exchange+checked-routine","device":"fixture","network":"loopback","concurrency":1,"outcome":"timeout","ms":{},"counts":{"requestTimeout":1}}
+```
+
+The timeout row has no measured useful output. For completed turns, `deviceUseful` is the time from the end of child input to the first useful response. `deviceBoard` uses the same start and ends when the board shows the change. `deviceInterruptionStop` starts at the onset of the child interruption. For voice, use captured audio to identify useful speech and the stop. Older rows without a teaching label form a separate group.
 
 An acknowledgement is filler. Its time is in `workerFiller`. The answer's worker playout is a separate proxy. `workerReply` needs a speech-end estimate. `turnToWorkerReply` uses worker turn admission as its start. `modelFirstChunk` is the first HTTP body chunk. The checked sentence has its own mark. `boardPlanReady` measures staging, and `boardCueAcknowledgement` is the first shown or presented cue's round trip. The worker joins the acknowledgement to the staged turn and batch IDs. Chat dispatch and board acknowledgement do not measure a physical screen update.
 
@@ -65,6 +73,12 @@ The existing tutor's seven OpenRouter receipts reported USD 0.0243625 for this t
 The checked routine chat path at `bf76f87ff` answered “What do I do first?” for the same question in 2,852 ms at the public call interface. It made one Sonnet 5.5 proposal and zero math or talk-review requests. The OpenRouter receipt reported USD 0.021969. This separate chat sample measures one routine turn. It does not measure browser rendering or playback.
 
 At `ddfa6616f`, the actual desk voice controls and board ran in the same isolated setup at a 390 by 844 viewport with reduced motion. The synthetic prompt asked how to regroup. The paper option hid the exchange button. After switching back to the board, Shift+Tab focused the button and Enter submitted the action while Maya was speaking. The receiver retained the first drawing and showed one exchange. The board changed from 27 to 36 paths, and the transcript asked how many ones remained without giving the target answer. The stored trace records the first prompt as interrupted and the child action as shown. The call ended as `child_stopped`. Physical touch and audible stop timing still need measurement.
+
+## Touch input check for #1142
+
+On November 19, 2026, Safari on an iPhone 17 Pro simulator ran the desk chat controls and board at `65c1ff411`. The local harness used synthetic input, a model double, and the public Maya call interface with an in-memory store. A simulator tap on **Exchange one ten** changed the visible board from five tens and two ones to four tens and twelve ones. Maya said the total was still 52 and asked how many ones remained. The board and reply kept the target answer hidden. In a first run, **Use paper** hid the action, and **Use board** restored it.
+
+The touch request included the lesson, turn, board revision, and object. The result advanced one session revision and added one drawing. Replaying the request at its original revision returned the same board with no extra drawing or reply. The saved end-of-call trace passed validation. This check covers touch input in simulator Safari. It leaves physical-device playback and interruption timing to the release and voice checks.
 
 ## Speech synthesis sample for #1148
 

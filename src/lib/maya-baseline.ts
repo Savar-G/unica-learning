@@ -4,6 +4,7 @@ export const BASELINE_PROFILE_PREFIX = "[maya baseline profile] ";
 
 const EVIDENCE = ["simulated", "worker", "device"] as const;
 const MODES = ["chat", "voice"] as const;
+const TEACHING = ["existing", "checked-exchange", "checked-routine", "checked-exchange+checked-routine"] as const;
 const TURN_TYPES = ["routine", "complex", "unknown"] as const;
 const OUTCOMES = ["completed", "failed", "timeout", "interrupted", "no_output"] as const;
 const PHASES = [
@@ -22,6 +23,7 @@ export interface BaselineGroup {
   mode: typeof MODES[number];
   turnType: typeof TURN_TYPES[number];
   provider: string;
+  teaching?: typeof TEACHING[number];
   device: string;
   network: string;
   concurrency: number | "unknown";
@@ -44,12 +46,17 @@ const record = (v: unknown, keys: readonly string[], check: (n: unknown) => bool
 export function readBaselineTurn(value: unknown): BaselineTurn {
   if (!isObject(value) || value.v !== 1 || !allowed(value.evidence, EVIDENCE) || !allowed(value.mode, MODES) ||
     !allowed(value.turnType, TURN_TYPES) || !allowed(value.outcome, OUTCOMES) || !label(value.provider) ||
-    !label(value.device) || !label(value.network) ||
+    !label(value.device) || !label(value.network) || (value.teaching !== undefined && !allowed(value.teaching, TEACHING)) ||
     !(value.concurrency === "unknown" || (elapsed(value.concurrency) && Number.isSafeInteger(value.concurrency) && value.concurrency > 0)) ||
     !record(value.ms, PHASES, elapsed) || !record(value.counts, COUNTS, n => elapsed(n) && Number.isSafeInteger(n))) {
     throw Error("Invalid Maya baseline turn");
   }
   return value as unknown as BaselineTurn;
+}
+
+export function baselineTeaching(checkedExchange: boolean, checkedRoutine: boolean): NonNullable<BaselineGroup["teaching"]> {
+  if (checkedExchange) return checkedRoutine ? "checked-exchange+checked-routine" : "checked-exchange";
+  return checkedRoutine ? "checked-routine" : "existing";
 }
 
 export function logBaselineTurn(turn: BaselineTurn) {
@@ -65,8 +72,8 @@ const distribution = (values: number[]) => {
 export function baselineReport(turns: readonly BaselineTurn[]) {
   const groups = new Map<string, { group: BaselineGroup; rows: BaselineTurn[] }>();
   for (const row of turns) {
-    const { evidence, mode, turnType, provider, device, network, concurrency } = row;
-    const group = { evidence, mode, turnType, provider, device, network, concurrency };
+    const { evidence, mode, turnType, provider, teaching, device, network, concurrency } = row;
+    const group = { evidence, mode, turnType, provider, ...(teaching ? { teaching } : {}), device, network, concurrency };
     const key = JSON.stringify(group);
     const entry = groups.get(key) ?? { group, rows: [] };
     entry.rows.push(row);

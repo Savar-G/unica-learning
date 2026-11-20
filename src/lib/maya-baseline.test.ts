@@ -1,7 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { baselineReport, type BaselineTurn } from "./maya-baseline";
+import { baselineReport, readBaselineTurn, type BaselineTurn } from "./maya-baseline";
 
 describe("#1139 baseline report", () => {
+  it("separates matched measurements by the active teaching settings", () => {
+    const base = {
+      v: 1, evidence: "device", mode: "voice", turnType: "complex", provider: "same-providers",
+      device: "same-device", network: "loopback", concurrency: 1, outcome: "completed", counts: {},
+    } as const;
+    const report = baselineReport([
+      readBaselineTurn({ ...base, teaching: "existing", ms: { deviceUseful: 2600 } }),
+      readBaselineTurn({ ...base, teaching: "checked-exchange+checked-routine", ms: { deviceUseful: 1100 } }),
+      readBaselineTurn({ ...base, ms: { deviceUseful: 1700 } }),
+    ]);
+    expect(report.map(({ group, ms }) => [group.teaching, ms.deviceUseful])).toEqual([
+      ["existing", { n: 1, p50: 2600, p95: 2600 }],
+      ["checked-exchange+checked-routine", { n: 1, p50: 1100, p95: 1100 }],
+      [undefined, { n: 1, p50: 1700, p95: 1700 }],
+    ]);
+    expect(() => readBaselineTurn({ ...base, teaching: "arbitrary text", ms: {} })).toThrow("Invalid Maya baseline turn");
+  });
+
   it("keeps failed turns in the group and leaves unobserved device output empty", () => {
     const group = { evidence: "simulated", mode: "voice", turnType: "routine", provider: "fake", device: "none", network: "in-process", concurrency: 2 } as const;
     const base: BaselineTurn = { v: 1, ...group, outcome: "completed", ms: {}, counts: {} };
