@@ -24,7 +24,7 @@
 .test-bars { margin: 4px 0 0; width: min(100%, 440px); }
 .test-bars svg { display: block; width: 100%; height: auto; }
 .test-bars line { stroke: var(--line); stroke-width: 1; }
-.test-bars line.is-major { stroke: var(--test-rule); }
+.test-bars line.is-major { stroke: var(--test-rule, var(--line)); }
 .test-bars-bar.is-a { fill: var(--sky); }
 .test-bars-bar.is-b { fill: var(--accent); }
 .test-bars-label { font: 500 15px var(--sans); fill: var(--ink); }

@@ -1,5 +1,5 @@
 // Numeric measurements and fixed labels are enough to reconstruct the question as shown.
-export type Point = readonly [x: number, y: number];
+export type Point = [x: number, y: number];
 
 export const BAR_CATEGORIES = ["Class A", "Class B"] as const;
 export const BAR_SERIES = ["Monday", "Tuesday"] as const;

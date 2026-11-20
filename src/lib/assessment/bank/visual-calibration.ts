@@ -1,7 +1,6 @@
 // Pass 2 uses new IDs in the adaptive pool. Both prior catalogues still describe stored questions.
 import { BAR_CATEGORIES, LINE_DAYS, type DrawnFigure, type Point } from "../figure-data";
-import type { MisconceptionId } from "../misconceptions";
-import type { Difficulty, Filled, Level, Strand, Template, Wording } from "../types";
+import type { Difficulty, Filled, Template, Wording } from "../types";
 import { draw, wrong } from "./kit";
 
 type QuestionTemplate = Template & { difficulty: Difficulty; wording: Wording; skill: string };
