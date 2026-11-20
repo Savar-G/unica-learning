@@ -1,4 +1,5 @@
 import { SCOPE_REASONS } from "@/lib/maya/scope";
+import { checkDivisionOutput } from "@/lib/maya/checked-division";
 import { exchangeChildWords, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingWords, type CheckedExchangeLesson } from "@/lib/maya/checked-exchange";
 // Maya's trace format (#322, spec #297): one versioned record of one Maya session, written by every session (the text
 // adapter now, the voice agent #326, the test bench #323 and the admin demo #324 later). It records the model and
@@ -535,6 +536,7 @@ function checkOrder(attempts: Record<string, unknown>[], path: string) {
 function checkedExchangeOutput(proposal: unknown, output: unknown): boolean {
   if (!isObject(proposal) || proposal.checkedExchange !== 1 || typeof proposal.value !== "number" ||
     typeof proposal.example !== "boolean" || typeof proposal.show !== "boolean" || !isObject(output)) return false;
+  if (proposal.divisor !== undefined) return checkDivisionOutput(proposal, output, readExchangeTarget);
   const facts = exchangeFacts(proposal.value, proposal.example);
   if (!facts || !Array.isArray(output.say) || output.say.length !== 1 || !Array.isArray(output.board)) return false;
   // #1144: a declined offer and a finished related question close the call; the related question's start shows it.

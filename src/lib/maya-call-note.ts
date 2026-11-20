@@ -306,16 +306,20 @@ export function codeSentences(f: NoteFacts, heldSaid = false): string[] {
     else if (f.help === "hint") lines.push("Maya gave a small hint.");
   }
   if (f.paper === "child_confirmed") lines.push(`${CHILD} said the answer is on paper now.`);
-  if (f.transfer) lines.push(transferSentence(f.transfer));
+  if (f.transfer) lines.push(transferSentence(f.transfer, f.question.text?.includes("÷") === true));
   return lines;
 }
 
 /** One related question says how it went, with its help. It never claims more than that one result. */
-function transferSentence(t: NonNullable<NoteFacts["transfer"]>): string {
+function transferSentence(t: NonNullable<NoteFacts["transfer"]>, isDivision: boolean): string {
   if (t.result === "unfinished") return `Then ${CHILD} started a related question but did not finish it.`;
   if (t.assistance === "independent") return `Then ${CHILD} tried a related question with no help and got it right.`;
   if (t.assistance === "hinted") return `Then ${CHILD} tried a related question and got it right with hints.`;
-  if (t.assistance === "demonstrated") return `Then Maya showed the trade again, and ${CHILD} got a related question right.`;
+  if (t.assistance === "demonstrated") {
+    return isDivision
+      ? `Then Maya showed the sharing steps again, and ${CHILD} got a related question right.`
+      : `Then Maya showed the trade again, and ${CHILD} got a related question right.`;
+  }
   return `Then ${CHILD} gave the correct answer to a related question. The amount of help is unknown.`;
 }
 

@@ -170,6 +170,79 @@ describe("other kinds", () => {
   });
 });
 
+describe("#1096: long-division steps draw from explicit clauses and dependencies", () => {
+  const divPkg = (a: number, b: number): OperationPackage => {
+    const op: Operation = { kind: "divide", operands: [a, b] };
+    return {
+      ...SUB,
+      id: `divide-${a}-${b}`,
+      text: `${a} ÷ ${b} = ?`,
+      level: 12,
+      skill: { standard: "4.8", skills: ["4.8-division-facts"] },
+      operation: op,
+      steps: workedSteps(op),
+      answer: { value: { type: "number", value: a / b }, accepted: [], unit: null },
+      wrongAnswers: [{ value: { type: "number", value: a / b + 1 }, cause: "careless", description: "One more.", step: null }],
+      easierExample: { text: "8 ÷ 2 = ?", operation: { kind: "divide", operands: [8, 2] }, steps: workedSteps({ kind: "divide", operands: [8, 2] }), answer: { type: "number", value: 4 } },
+    } as OperationPackage;
+  };
+  const D84 = divPkg(84, 4);
+  const D96 = divPkg(96, 4);
+
+  it("96 ÷ 4: draws layout, quotient, product, remainder, exchanged ones and next step with explicit after dependencies", () => {
+    const r = derive(
+      D96,
+      "Share 96 into 4 groups. Write 2 above the tens, subtract 8, leaving 1 ten. Combine the 6 ones to make 16 ones. Write 4 above the ones, subtract 16, leaving 0 ones.",
+    );
+    expect(r.drawings.map((d) => [d.sentence, ops(d.commands), d.after])).toEqual([
+      [0, ["division"], []],
+      [1, ["put", "put", "put"], [0]],
+      [2, ["put"], [1]],
+      [3, ["put", "put", "put"], [2]],
+    ]);
+    expect(r.drawings[1].commands).toMatchObject([
+      { op: "put", target: { rowId: "quotient", column: "tens" }, value: "2" },
+      { op: "put", target: { rowId: "product1" }, value: "8" },
+      { op: "put", target: { rowId: "difference1" }, value: "1" },
+    ]);
+    expect(r.drawings[2].commands).toMatchObject([
+      { op: "put", target: { rowId: "bring2" }, value: "6" },
+    ]);
+    expect(r.drawings[3].commands).toMatchObject([
+      { op: "put", target: { rowId: "quotient", column: "ones" }, value: "4" },
+      { op: "put", target: { rowId: "product2" }, value: "16" },
+      { op: "put", target: { rowId: "difference2" }, value: "0" },
+    ]);
+    expect(r.reads.every((x) => x.drew)).toBe(true);
+  });
+
+  it("84 ÷ 4: distinguishes duplicate values (4 ones vs product 4, and 0 tens left vs 0 ones left) in dependency order", () => {
+    const r = derive(
+      D84,
+      "Share 84 into 4 groups. Write 2 above the tens, subtract 8, leaving 0 tens. Move to the 4 ones. Write 1 above the ones, subtract 4, leaving 0 ones.",
+    );
+    expect(r.drawings.map((d) => [d.sentence, d.commands.map((c) => [(c.target as { rowId?: string } | undefined)?.rowId ?? c.op, c.value ?? null]), d.after])).toEqual([
+      [0, [["division", null]], []],
+      [1, [["quotient", "2"], ["product1", "8"], ["difference1", "0"]], [0]],
+      [2, [["bring2", "4"]], [1]],
+      [3, [["quotient", "1"], ["product2", "4"], ["difference2", "0"]], [2]],
+    ]);
+  });
+
+  it("refuses wrong values, skipped dependencies and unexplained bring-down instructions", () => {
+    // Missing layout: quotient cannot draw.
+    expect(reasons(derive(D96, "Write 2 above the tens."))).toEqual(["needs_earlier"]);
+    // Skipped product/difference: combining ones cannot draw yet.
+    expect(reasons(derive(D96, "Share 96 into 4 groups. Combine the 6 ones to make 16 ones."))).toEqual(["needs_earlier"]);
+    // Wrong product stops the whole multi-clause sentence.
+    expect(derive(D96, "Write 2 above the tens, subtract 7, leaving 1 ten.", ["division"]).drawings).toEqual([]);
+    // Wrong combined quantity (15 instead of 16) refuses to draw.
+    expect(derive(D96, "Combine the 6 ones to make 15 ones.", ["division", "div:quotient:1", "div:product:1", "div:diff:1"]).drawings).toEqual([]);
+    // Unexplained bring-down draws nothing.
+    expect(derive(D96, "Bring down 6.", ["division", "div:quotient:1", "div:product:1", "div:diff:1"]).drawings).toEqual([]);
+  });
+});
+
 describe("sentenceCueWord", () => {
   const TEXT = "You can't take 8 from 2, so we trade 1 ten for 10 ones. Write 4 in the ones. What is 4 tens minus 2 tens?";
   it("is the last word of the sentence, counted over the whole message", () => {

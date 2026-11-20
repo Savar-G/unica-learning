@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatBoard, ChatControls, useDeskChat, type DeskChatState } from "@/components/desk-chat";
 import { boardDraftKey, chatBoardKey, childStrokes, createHistory, drawStroke, encodeHistory, inkLog, mayaWrites, penHolder, saveDraft, takePen, type BoardHistory, type Change, type DraftStore } from "@/lib/board-history";
 import type { ChatReply, ChatView } from "@/lib/maya-chat";
-import { EXCHANGE_OBJECT, type ExchangeTarget } from "@/lib/maya/checked-exchange";
+import { EXCHANGE_OBJECT, SHARE_OBJECT, type ExchangeTarget } from "@/lib/maya/checked-exchange";
 import { LEASE_SETTLE_MS, OPEN_RETRY_MS, OPEN_TRIES } from "@/lib/board-tab";
 
 const book = "45100000-0000-4000-8000-000000000031";
@@ -227,6 +227,23 @@ describe("#534: the board in a chat", () => {
       await act(async () => other.unmount());
       otherHost.remove();
     }
+  });
+
+  it("renders Share the tens and paper guidance for a division sharing target", async () => {
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    const target: ExchangeTarget = { lessonId: "div-lesson", turnId: "prompt", boardRevision: 1, objectId: SHARE_OBJECT, batchId: "show-div" };
+    const show = { transactionId: target.batchId, commands: [{ op: "model", id: target.objectId,
+      model: { kind: "base_ten", hundreds: 0, tens: 9, ones: 6 }, place: { region: "main" } }] };
+    const onExchange = vi.fn(async () => true);
+    await act(async () => root.render(createElement(ChatBoard, { chat: { ...view(1), batches: [show], exchange: target }, still: true, onExchange })));
+    await advance(LEASE_SETTLE_MS);
+    expect(button("Share the tens")).toBeDefined();
+    expect(button("Exchange one ten")).toBeUndefined();
+    await act(async () => button("Use paper").click());
+    expect(host.textContent).toContain("Show the equal groups on your paper");
+    await act(async () => button("Use board").click());
+    await act(async () => button("Share the tens")!.click());
+    expect(onExchange).toHaveBeenCalledExactlyOnceWith(target);
   });
 
   it("keeps the pen on the chat's board: Maya's work shows, then the pen passes to the child, and each change goes to the call", async () => {

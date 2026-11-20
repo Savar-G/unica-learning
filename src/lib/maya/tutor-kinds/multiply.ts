@@ -184,9 +184,19 @@ function steps(pkg: OperationPackage): TutorStepFact[] {
   }
   if (sh.kind === "divide") {
     const d = divisorOf(pkg);
-    return divSteps(pkg).map((st, i) => {
+    const dsteps = divSteps(pkg);
+    return dsteps.map((st, i) => {
       const parts: string[] = [];
-      if (i > 0) parts.push(`bring down ${st.digit} to make ${st.current}`);
+      if (i > 0) {
+        const prev = dsteps[i - 1];
+        const prevUnit = prev.remainder === 1 ? prev.place.replace(/s$/, "") : prev.place;
+        const curUnit = st.digit === 1 ? st.place.replace(/s$/, "") : st.place;
+        parts.push(
+          prev.remainder > 0
+            ? `trade ${prev.remainder} ${prevUnit} for ${prev.remainder * 10} ${st.place} and combine with ${st.digit} ${curUnit} to make ${st.current} ${st.place}`
+            : `move to the ${st.digit} ${curUnit}`,
+        );
+      }
       parts.push(`${divEq(st, d)}, because ${st.quotient} × ${d} = ${st.product} and ${st.current} − ${st.product} = ${st.remainder}`);
       parts.push(`write ${st.write ?? 0} above the ${st.place}`);
       return { id: st.id, place: st.place, work: parts.join("; "), result: st.write ?? 0 };
@@ -391,7 +401,7 @@ function notes(pkg: OperationPackage): string[] {
     const out: string[] = [];
     if (sh.printed) out.push(`${sh.printed.unknownFirst ? `? × ${sh.printed.known}` : `${sh.printed.known} × ?`} = ${sh.printed.total}: division undoes multiplication, so the missing number is ${sh.printed.total} ÷ ${sh.printed.known} = ${answer}. Check: ${sh.printed.known} × ${answer} = ${sh.printed.total}.`);
     if (sh.zeros) out.push(`${sh.zeros.from} ÷ ${sh.zeros.by} is the same as ${sh.zeros.toFrom} ÷ ${sh.zeros.toBy}: taking the same ${sh.zeros.zeros === 1 ? "zero" : `${sh.zeros.zeros} zeros`} off both numbers divides both by ${10 ** sh.zeros.zeros}, and the quotient stays the same.`);
-    out.push("Long division works from the left: divide, multiply, subtract, then bring down the next digit.");
+    out.push("Long division works from the left: share each place equally, subtract what was shared, trade any remaining amount into the next smaller place, and combine with the next place.");
     return out;
   }
   return [`${sh.frame.known} × ? = ${sh.frame.total}: the missing factor is found by trying numbers and multiplying each one out; ${sh.trial.factor} is about ${sh.trial.round}, so ${sh.trial.total} ÷ ${sh.trial.round} gives a near guess.`];
@@ -406,7 +416,7 @@ const DRAW_MULTIPLY = [
 const DRAW_ROWS = { id: "row", does: "writes the next partial product row of the long multiplication (6 × 40 = 240)" };
 const DRAW_DIVIDE = [
   { id: "division", does: "lays out the long division (the divisor, the bracket and the dividend)" },
-  { id: "step", does: "shows the next step of the long division: bring down, the quotient digit, the product and what is left" },
+  { id: "step", does: "shows the next step of the long division: combining with the next place, the quotient digit, the product and what is left" },
   { id: "note", does: "writes one true equation of numbers on the board (\"place\": \"14 ÷ 2 = 7\")" },
 ];
 const DRAW_TRY = [
@@ -486,16 +496,28 @@ function draw(pkg: OperationPackage, requests: readonly { offer: string; place?:
     for (const d of requests) {
       if (d.offer === "division") layout();
       else if (d.offer === "step") {
-        const n = dsteps.findIndex((_, k) => !has(`step:${k + 1}`));
+        const n = dsteps.findIndex((_, k) => !has(`div:diff:${k + 1}`));
         if (n < 0 || !oneWord(dsteps[n].place)) continue;
         // Steps in order: every earlier step must be on the board first (the board refuses a step out of order).
         layout();
         const st = dsteps[n];
-        if (n > 0) commands.push({ op: "put", target: target(`bring${n + 1}`), value: String(st.digit) });
-        commands.push({ op: "put", target: target("quotient", st.place), value: String(st.quotient) });
-        commands.push({ op: "put", target: target(`product${n + 1}`), value: String(st.product) });
-        commands.push({ op: "put", target: target(`difference${n + 1}`), value: String(st.remainder) });
-        keys.push(`step:${n + 1}`);
+        const k = n + 1;
+        if (n > 0 && !has(`div:combine:${k}`)) {
+          commands.push({ op: "put", target: target(`bring${k}`), value: String(st.digit) });
+          keys.push(`div:combine:${k}`);
+        }
+        if (!has(`div:quotient:${k}`)) {
+          commands.push({ op: "put", target: target("quotient", st.place), value: String(st.quotient) });
+          keys.push(`div:quotient:${k}`);
+        }
+        if (!has(`div:product:${k}`)) {
+          commands.push({ op: "put", target: target(`product${k}`), value: String(st.product) });
+          keys.push(`div:product:${k}`);
+        }
+        if (!has(`div:diff:${k}`)) {
+          commands.push({ op: "put", target: target(`difference${k}`), value: String(st.remainder) });
+          keys.push(`div:diff:${k}`);
+        }
       } else if (d.offer === "note" && d.place) note(noteFromEquation(d.place), where());
     }
     return { commands, keys };
@@ -630,7 +652,13 @@ function boardNeeds(pkg: OperationPackage): Record<string, string[]> {
     }
   } else if (sh.kind === "divide") {
     needs.division = [];
-    divSteps(pkg).forEach((_, k) => { needs[`step:${k + 1}`] = ["division", ...(k > 0 ? [`step:${k}`] : [])]; });
+    divSteps(pkg).forEach((_, k) => {
+      const n = k + 1;
+      if (k > 0) needs[`div:combine:${n}`] = [`div:diff:${k}`];
+      needs[`div:quotient:${n}`] = [k === 0 ? "division" : `div:combine:${n}`];
+      needs[`div:product:${n}`] = [`div:quotient:${n}`];
+      needs[`div:diff:${n}`] = [`div:product:${n}`];
+    });
   } else for (const t of sh.trial.tries) needs[`try:${t.value}`] = [];
   return needs;
 }

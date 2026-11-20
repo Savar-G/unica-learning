@@ -211,3 +211,25 @@ describe("#1020 review fixes", () => {
     expect(multiplyKind.fits(opPkg("Kai buys 20 packs of 3 books. How many books is that?", mul(20, 3), mul(2, 2)))).toBe(true);
   });
 });
+
+describe("#1155 / #1096: division steps explain quantities without bring-down and declare atomic dependencies", () => {
+  it("explains 84 ÷ 4 and 96 ÷ 4 through place quantities and declares ordered long-division dependencies", () => {
+    const d84 = opPkg("84 ÷ 4 = ?", div(84, 4), div(8, 2));
+    const d96 = opPkg("96 ÷ 4 = ?", div(96, 4), div(8, 2));
+    for (const pkg of [d84, d96, P.divide]) {
+      const work = multiplyKind.steps(pkg).map((s) => s.work).join(" ");
+      expect(work).not.toMatch(/bring down/i);
+    }
+    expect(multiplyKind.steps(d96)[1].work).toMatch(/trade 1 ten for 10 ones and combine with 6 ones to make 16 ones/i);
+    expect(multiplyKind.boardNeeds(d96)).toEqual({
+      division: [],
+      "div:quotient:1": ["division"],
+      "div:product:1": ["div:quotient:1"],
+      "div:diff:1": ["div:product:1"],
+      "div:combine:2": ["div:diff:1"],
+      "div:quotient:2": ["div:combine:2"],
+      "div:product:2": ["div:quotient:2"],
+      "div:diff:2": ["div:product:2"],
+    });
+  });
+});
