@@ -44,6 +44,7 @@ import { monitoredVoiceJob } from "./monitoring";
 import { monitorProduct } from "@/lib/product-monitoring";
 import { startVoiceBaselineProfile, voiceBaselineTurn } from "./baseline";
 import { labInput, stagingLab } from "./staging";
+import { attachStopTiming } from "./stop-timing";
 
 const log = (...a: unknown[]) => console.log("[maya voice]", ...a);
 
@@ -258,6 +259,11 @@ export default defineAgent({
     });
     run.attachBoardAudio();
     run.attachTurnTiming();
+    // A named deployment only: when Maya's output was asked to pause or clear, and when its audio stopped (./stop-timing.ts).
+    if (staging) {
+      const stopTiming = attachStopTiming(session, record => log("staging stop timing", { callId, ...record }));
+      session.on(voice.AgentSessionEventTypes.Close, () => stopTiming.flush());
+    }
     made.tts.prewarm();
     const readyAt = Date.now();
     // A call cancelled before the tap (the desk cancels its pre-made call after 60 s, or when the child leaves the

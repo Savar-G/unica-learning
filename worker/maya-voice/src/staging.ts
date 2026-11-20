@@ -13,12 +13,15 @@ export interface StagingLab {
   turnDetection?: "stt" | "multimodal";
   /** LiveKit Cloud's Krisp filter on the child's audio: noise only (NC), or background voices too (BVC). */
   noise?: "krisp-nc" | "krisp-bvc";
+  /** How long LiveKit waits for words before it resumes a paused Maya (ms). Production: MAYA_FALSE_INTERRUPTION_MS. */
+  falseInterruptionMs?: "500" | "700" | "1000" | "1500" | "2000";
 }
 
 const ALLOWED: { [K in keyof StagingLab]-?: readonly NonNullable<StagingLab[K]>[] } = {
   interruption: ["adaptive", "vad"],
   turnDetection: ["stt", "multimodal"],
   noise: ["krisp-nc", "krisp-bvc"],
+  falseInterruptionMs: ["500", "700", "1000", "1500", "2000"],
 };
 
 /** The deployment's name and the job's lab settings, or null in production (no deployment name). */
@@ -38,8 +41,9 @@ export function stagingLab(env: Readonly<Record<string, string | undefined>>, jo
 }
 
 /** The session's turn handling a lab changes (agent.ts `voiceSession`). Nothing without lab settings. */
-export function labTurnHandling(lab: StagingLab | undefined): { turnDetection?: InstanceType<typeof inference.TurnDetector>; interruptionMode?: "adaptive" | "vad" } {
+export function labTurnHandling(lab: StagingLab | undefined): { turnDetection?: InstanceType<typeof inference.TurnDetector>; interruptionMode?: "adaptive" | "vad"; falseInterruptionMs?: number } {
   return {
+    ...(lab?.falseInterruptionMs ? { falseInterruptionMs: Number(lab.falseInterruptionMs) } : {}),
     ...(lab?.turnDetection === "multimodal" ? { turnDetection: new inference.TurnDetector() } : {}),
     ...(lab?.interruption ? { interruptionMode: lab.interruption } : {}),
   };

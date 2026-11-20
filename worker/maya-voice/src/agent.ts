@@ -72,6 +72,7 @@ export function voiceSession(providers: { stt: stt.STT; tts: tts.TTS; fake: bool
     ...(tuning.turn?.interruptMode ? { mode: tuning.turn.interruptMode } : {}),
     ...(tuning.turn?.falseInterruptionMs !== undefined ? { falseInterruptionTimeout: tuning.turn.falseInterruptionMs } : {}),
     ...(lab.interruptionMode ? { mode: lab.interruptionMode } : {}),
+    ...(lab.falseInterruptionMs !== undefined ? { falseInterruptionTimeout: lab.falseInterruptionMs } : {}),
   };
   return new voice.AgentSession({
     stt: providers.stt,

@@ -25,6 +25,12 @@ describe("a deployment's lab settings", () => {
       .toEqual({ deployment: "staging", lab: { interruption: "vad", turnDetection: "stt", noise: "krisp-nc" } });
   });
 
+  it("read the resume wait from a fixed list only", () => {
+    expect(stagingLab({ LIVEKIT_AGENT_DEPLOYMENT: "staging" }, job({ falseInterruptionMs: "700" }))).toEqual({ deployment: "staging", lab: { falseInterruptionMs: "700" } });
+    expect(stagingLab({ LIVEKIT_AGENT_DEPLOYMENT: "staging" }, job({ falseInterruptionMs: "650" }))).toEqual({ deployment: "staging", lab: {} });
+    expect(stagingLab({ LIVEKIT_AGENT_DEPLOYMENT: "" }, job({ falseInterruptionMs: "700" }))).toBeNull();
+  });
+
   it("keep production's behaviour for a setting the job leaves out or names wrongly", () => {
     expect(stagingLab({ LIVEKIT_AGENT_DEPLOYMENT: "staging" }, job({ interruption: "loud", turnDetection: 3, extra: "x" }))).toEqual({ deployment: "staging", lab: {} });
     expect(stagingLab({ LIVEKIT_AGENT_DEPLOYMENT: "staging" }, "not json")).toEqual({ deployment: "staging", lab: {} });
@@ -58,6 +64,13 @@ describe("a voice session on a lab deployment", () => {
     const turn = { turnMinDelayMs: 100, interruptMinMs: 300, interruptMinWords: 0, interruptMode: "adaptive" as const };
     expect((await session(undefined, turn)).interruptionDetection).toBe("adaptive");
     expect((await session({ interruption: "vad" }, turn)).interruptionDetection).toBe("vad");
+  });
+
+  it("keeps a real call's resume wait, and lets the lab's wait win over it", async () => {
+    const turn = { turnMinDelayMs: 100, interruptMinMs: 30, interruptMinWords: 0, interruptMode: "vad" as const, falseInterruptionMs: 1000 };
+    const wait = (s: Awaited<ReturnType<typeof session>>) => s.sessionOptions.turnHandling.interruption.falseInterruptionTimeout;
+    expect(wait(await session(undefined, turn))).toBe(1000);
+    expect(wait(await session({ falseInterruptionMs: "700" }, turn))).toBe(700);
   });
 
   it("filters the child's audio with the lab's Krisp model", async () => {
