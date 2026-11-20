@@ -136,3 +136,45 @@ describe("the early dispatch of Maya's worker", () => {
     expect(sent).toBe(0);
   });
 });
+
+describe("the deployment that takes a voice call", () => {
+  const base = { notice: { accepted: async () => true }, parentId: A.parentId, childId: A.childId, project, now: Date.UTC(2026, 10, 1, 16) };
+  type Sent = { room: string; metadata: string; deployment: string };
+  const dispatchOf = async (r: Awaited<ReturnType<typeof mintVoiceToken>>) => {
+    if (!r.ok) throw new Error(r.error);
+    const claims = await verifier.verify(r.ticket.token);
+    return (claims.roomConfig as unknown as { agents: { agentName: string; metadata: string; deployment?: string }[] }).agents[0];
+  };
+
+  it("is production for every call that names none, as the site's routes do", async () => {
+    const sent: Sent[] = [];
+    const r = await mintVoiceToken({ ...base, call: { ...A, kind: "family" }, dispatch: async (room, metadata, deployment) => { sent.push({ room, metadata, deployment }); } });
+    const token = await dispatchOf(r);
+    expect(token.deployment ?? "").toBe("");
+    expect(JSON.parse(token.metadata)).toEqual({ callId: A.id });
+    expect(sent).toEqual([{ room: voiceRoom(A.id), metadata: JSON.stringify({ callId: A.id }), deployment: "" }]);
+  });
+
+  it("is the named one for an admin test call that asks, with its lab settings, in the token and the early dispatch", async () => {
+    const sent: Sent[] = [];
+    const r = await mintVoiceToken({ ...base, call: { ...A, kind: "admin_test" }, staging: { deployment: "staging", lab: { interruption: "adaptive" } },
+      dispatch: async (room, metadata, deployment) => { sent.push({ room, metadata, deployment }); } });
+    const token = await dispatchOf(r);
+    expect(token.deployment).toBe("staging");
+    expect(JSON.parse(token.metadata)).toEqual({ callId: A.id, lab: { interruption: "adaptive" } });
+    expect(sent).toEqual([{ room: voiceRoom(A.id), metadata: JSON.stringify({ callId: A.id, lab: { interruption: "adaptive" } }), deployment: "staging" }]);
+  });
+
+  it("never sends a family call to another deployment", async () => {
+    let sent = 0;
+    await expect(mintVoiceToken({ ...base, call: { ...A, kind: "family" }, staging: { deployment: "staging" }, dispatch: async () => { sent++; } }))
+      .rejects.toThrow(/admin test/);
+    expect(sent).toBe(0);
+  });
+
+  it("refuses a name that is not a non-production deployment", async () => {
+    for (const deployment of ["", "production", "-staging", "stag ing", "a".repeat(64)]) {
+      await expect(mintVoiceToken({ ...base, call: { ...A, kind: "admin_test" }, staging: { deployment }, dispatch: null })).rejects.toThrow(/deployment/);
+    }
+  });
+});

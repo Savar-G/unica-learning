@@ -29,6 +29,7 @@ import { sameExchangeTarget, type ExchangeTarget } from "@/lib/maya/checked-exch
 import { childExchangeTarget } from "@/lib/maya/session";
 import { speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-speech";
 import { CuePlaybackOutput } from "./cue-playback";
+import { labTurnHandling, type StagingLab } from "./staging";
 import { earlyRest, type EarlyRest } from "./early-speech";
 import { detectorVad, HeardSignals, PrepareSignal, silentFinal } from "./heard-signals";
 import { voiceDisconnectReason } from "@/lib/maya-voice-close-reason";
@@ -59,7 +60,13 @@ export type TurnTuning = Pick<VoiceTuning, "turnMinDelayMs" | "interruptMinMs" |
  * LiveKit adds after the speech-to-text end of turn (its default is 500 ms), and when the child's speech stops Maya
  * (`minDuration`, `minWords`). A test's `endpointingMs` wins over `turn.turnMinDelayMs`.
  */
-export function voiceSession(providers: { stt: stt.STT; tts: tts.TTS; fake: boolean }, tuning: { endpointingMs?: number; aecWarmupDuration?: number; turn?: TurnTuning } = {}) {
+export function voiceSession(providers: { stt: stt.STT; tts: tts.TTS; fake: boolean }, tuning: { endpointingMs?: number; aecWarmupDuration?: number; turn?: TurnTuning; lab?: StagingLab } = {}) {
+  // A non-production deployment's lab settings (./staging.ts); production has none and keeps the settings below.
+  const lab = labTurnHandling(tuning.lab);
+  const interruption = {
+    ...(tuning.turn ? { minDuration: tuning.turn.interruptMinMs, minWords: tuning.turn.interruptMinWords } : {}),
+    ...(lab.interruptionMode ? { mode: lab.interruptionMode } : {}),
+  };
   return new voice.AgentSession({
     stt: providers.stt,
     tts: providers.tts,
@@ -69,13 +76,13 @@ export function voiceSession(providers: { stt: stt.STT; tts: tts.TTS; fake: bool
     ...(providers.fake ? { vad: null } : {}),
     // The speech-to-text says when the child's turn ends (AssemblyAI's end of turn; the fake's end of speech).
     turnHandling: {
-      turnDetection: "stt",
+      turnDetection: lab.turnDetection ?? "stt",
       preemptiveGeneration: { enabled: false },
       ...(tuning.endpointingMs !== undefined ? { endpointing: { minDelay: tuning.endpointingMs, maxDelay: tuning.endpointingMs } }
         : tuning.turn ? { endpointing: { minDelay: tuning.turn.turnMinDelayMs } } : {}),
       // Speech this long stops Maya, and (with `minWords` above 0) only once the speech-to-text has heard that many words.
       // The other options (the false interruption timeout and its resume) keep LiveKit's defaults.
-      ...(tuning.turn ? { interruption: { minDuration: tuning.turn.interruptMinMs, minWords: tuning.turn.interruptMinWords } } : {}),
+      ...(Object.keys(interruption).length ? { interruption } : {}),
     },
     ...(tuning.aecWarmupDuration !== undefined ? { aecWarmupDuration: tuning.aecWarmupDuration } : {}),
     // The session's own pause policy (src/lib/maya) decides about silence, not LiveKit's away timer.

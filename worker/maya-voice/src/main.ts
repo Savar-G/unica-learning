@@ -43,6 +43,7 @@ import { runWorkbookReference } from "./workbook-reference";
 import { monitoredVoiceJob } from "./monitoring";
 import { monitorProduct } from "@/lib/product-monitoring";
 import { startVoiceBaselineProfile, voiceBaselineTurn } from "./baseline";
+import { labInput, stagingLab } from "./staging";
 
 const log = (...a: unknown[]) => console.log("[maya voice]", ...a);
 
@@ -135,7 +136,15 @@ export default defineAgent({
     // The turn delay and interruption settings are for real providers. The fakes keep LiveKit's defaults, as the tests do.
     mark("providers");
     const { tuning } = providers;
-    const session = voiceSession(made, made.fake ? {} : { turn: tuning });
+    // A non-production deployment reads an admin test call's lab settings from the job (./staging.ts); production: null.
+    const staging = stagingLab(process.env, ctx.job.metadata || "{}");
+    const session = voiceSession(made, { ...(made.fake ? {} : { turn: tuning }), ...(staging ? { lab: staging.lab } : {}) });
+    if (staging) {
+      log("staging lab", { callId, deployment: staging.deployment, lab: staging.lab, hosted: process.env.LIVEKIT_REMOTE_EOT_URL !== undefined, interruptionMode: session.interruptionDetection ?? "unset" });
+      session.on(voice.AgentSessionEventTypes.AgentFalseInterruption, ev => log("staging false interruption", { callId, resumed: ev.resumed, at: ev.createdAt }));
+      session.on(voice.AgentSessionEventTypes.OverlappingSpeech, ev => log("staging overlap", { callId, isInterruption: ev.isInterruption, agentEnded: ev.agentEnded ?? false, probability: ev.probability, detectionDelayS: ev.detectionDelayInS, totalS: ev.totalDurationInS, at: ev.detectedAt }));
+      session.on(voice.AgentSessionEventTypes.EotPrediction, ev => log("staging eot", { callId, probability: ev.probability, threshold: ev.threshold, delayMs: ev.delayMs, inferenceMs: ev.inferenceDurationMs }));
+    }
     const patience = made.patience;
     // The opening's speed: the child's microphone published (or the job, when it was there first) to Maya's first sound.
     let firstSound = false;
@@ -243,7 +252,7 @@ export default defineAgent({
       agent: run.agent,
       room: ctx.room,
       // The call's child only, by microphone: no typed chat, no video, and the call (not LiveKit) decides when it ends.
-      inputOptions: { participantIdentity: identity, textEnabled: false, closeOnDisconnect: false },
+      inputOptions: { participantIdentity: identity, textEnabled: false, closeOnDisconnect: false, ...(await labInput(staging?.lab)) },
       // Disable session recording. Direct-provider retention needs separate verified settings (docs/maya-voice.md).
       record: false,
     });

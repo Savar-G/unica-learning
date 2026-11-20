@@ -37,6 +37,7 @@
     "test:family-zones": "node --expose-gc supabase/tests/maya_window_zones.cjs --bootstrap"
   },
   "dependencies": {
+    "@livekit/noise-cancellation-node": "0.3.1",
     "@sentry/nextjs": "11.14.0",
     "@sentry/node": "11.14.0",
     "@sentry/replay": "11.14.0",
