@@ -31,7 +31,7 @@ jobs:
   scope:
     name: Change scope
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 3
     outputs:
       mode: ${{ steps.classify.outputs.mode }}
       reason: ${{ steps.classify.outputs.reason }}
@@ -65,7 +65,7 @@ jobs:
     needs: [scope]
     if: needs.scope.outputs.mode == 'full'
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -90,7 +90,7 @@ jobs:
         timeout-minutes: 2
       # The timed Maya files run below on their own runner without other unit files competing for CPU.
       - run: npm test -- --config .github/scripts/vitest-ci.config.mjs --exclude='src/lib/maya-gate/{gate,word-count-grade-1,word-count-grade-4}.test.ts' --testTimeout=60000 --shard=${{ matrix.shard }}/5
-        timeout-minutes: 20
+        timeout-minutes: 12
 
   # Fast affected unit tests on scoped pull requests.
   pr-unit:
@@ -98,7 +98,7 @@ jobs:
     needs: [scope]
     if: needs.scope.outputs.mode == 'affected' && needs.scope.outputs.run_pr_unit == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         timeout-minutes: 4
@@ -120,7 +120,7 @@ jobs:
         env:
           BASE_SHA: ${{ needs.scope.outputs.base_sha }}
         run: npm test -- --config .github/scripts/vitest-ci.config.mjs --changed="$BASE_SHA" --exclude='src/lib/maya-gate/{gate,word-count-grade-1,word-count-grade-4}.test.ts' --testTimeout=60000 --passWithNoTests
-        timeout-minutes: 15
+        timeout-minutes: 10
       - name: Run dynamically-referenced consumer tests
         if: needs.scope.outputs.extra_tests != ''
         env:
@@ -128,14 +128,14 @@ jobs:
         run: |
           read -r -a files <<< "$EXTRA_TESTS"
           npm test -- "${files[@]}" --testTimeout=60000
-        timeout-minutes: 10
+        timeout-minutes: 8
 
   maya-behaviour:
     name: Maya behaviour and word limits
     needs: [scope]
     if: needs.scope.outputs.run_maya_behaviour == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         timeout-minutes: 4
@@ -153,7 +153,7 @@ jobs:
       # file its own CPU core while retaining every behaviour, all three seeds and the same 60 s test timeout.
       - name: Maya behaviour gate and Grade 1 / Grade 4 word limits
         run: npm test -- src/lib/maya-gate/gate.test.ts src/lib/maya-gate/word-count-grade-1.test.ts src/lib/maya-gate/word-count-grade-4.test.ts --testTimeout=60000 --maxWorkers=3
-        timeout-minutes: 15
+        timeout-minutes: 6
 
   # SQL comparison of family windows and concurrent quota probes (the only CI job that needs Postgres).
   family-zones:
@@ -161,7 +161,7 @@ jobs:
     needs: [scope]
     if: needs.scope.outputs.run_family_zones == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 8
     # Supabase uses PostgreSQL 17. This database contains synthetic rows only.
     services:
       postgres:
@@ -192,7 +192,7 @@ jobs:
         timeout-minutes: 1
       - name: Compare family windows and run concurrent quota probes
         run: npm run test:family-zones
-        timeout-minutes: 10
+        timeout-minutes: 5
         env:
           PGPORT: '5432'
           PGDATABASE: postgres
@@ -205,7 +205,7 @@ jobs:
     needs: [scope]
     if: needs.scope.outputs.run_lint_and_types == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         timeout-minutes: 4
@@ -227,17 +227,17 @@ jobs:
       - name: Full lint (ESLint)
         if: needs.scope.outputs.mode == 'full'
         run: npx eslint src
-        timeout-minutes: 5
+        timeout-minutes: 4
       - name: App type check
         run: npm run typecheck
-        timeout-minutes: 8
+        timeout-minutes: 4
       # The daily Family retention workflow runs a bundle that plain Node must load. Build it and load it with --help
       # (no credentials, no database), so an import Node cannot resolve fails here and not at 15:17 UTC (2026-11-06).
       - name: Retention worker loads
         run: node scripts/build-retention-worker.mjs && node --conditions=react-server .retention/worker.mjs --help
         timeout-minutes: 2
       - name: CI tooling self-tests
-        run: node --test .github/scripts/unit-shards.test.mjs .github/scripts/pr-scope.test.mjs scripts/ci-audit.test.mjs
+        run: node --test .github/scripts/unit-shards.test.mjs .github/scripts/pr-scope.test.mjs scripts/ci-audit.test.mjs scripts/pre-push-check.test.mjs
         timeout-minutes: 2
 
   # The root tsconfig.json excludes worker/, so the Maya voice worker's own type check and tests run here.
@@ -246,7 +246,7 @@ jobs:
     needs: [scope]
     if: needs.scope.outputs.run_voice_worker == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         timeout-minutes: 4
@@ -262,17 +262,17 @@ jobs:
         timeout-minutes: 5
       - name: Voice worker type check
         run: npm run voice:typecheck
-        timeout-minutes: 5
+        timeout-minutes: 3
       - name: Voice worker tests
         run: npm run voice:test
-        timeout-minutes: 8
+        timeout-minutes: 5
 
   # The required check. Keep this name exactly `test`: Vercel's Deployment Check and branch rules use it.
   test:
     needs: [scope, unit, pr-unit, maya-behaviour, family-zones, lint-and-types, voice-worker]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 3
     steps:
       - name: Required CI jobs passed
         env:

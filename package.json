@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "lint:fast": "oxlint src",
+    "check:fast": "node scripts/pre-push-check.mjs",
+    "hooks:install": "git config core.hooksPath .githooks",
     "test": "vitest run",
     "build:ds": "node scripts/build-ds.mjs",
     "check:templates": "node scripts/check-templates.mjs",
