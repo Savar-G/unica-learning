@@ -42,6 +42,17 @@ it("starts no SDK or delivery when the worker environment is not explicitly enab
   expect(Sentry.init).not.toHaveBeenCalled(); expect(request).not.toHaveBeenCalled();
 });
 
+it("starts no SDK or Slack alert on a non-production LiveKit deployment, which shares production's secrets", async () => {
+  const request = vi.fn<typeof fetch>();
+  const staging = { MAYA_VOICE_MONITORING: "production", SLACK_PRODUCT_ALERTS_WEBHOOK_URL: webhook, LIVEKIT_AGENT_DEPLOYMENT: "staging" };
+  expect(voiceMonitoringOptions(staging)).toMatchObject({ enabled: false, environment: "staging" });
+  const monitoring = registerVoiceMonitoring(staging, request);
+  monitorProduct("maya.failed", { callId }); await monitoring.flush();
+  expect(Sentry.init).not.toHaveBeenCalled(); expect(request).not.toHaveBeenCalled();
+  // Production sets the variable to an empty string: monitoring stays as configured.
+  expect(voiceMonitoringOptions({ MAYA_VOICE_MONITORING: "production", LIVEKIT_AGENT_DEPLOYMENT: "" })).toMatchObject({ enabled: true, environment: "production" });
+});
+
 it("sends committed events without holding the caller and waits for delivery during shutdown", async () => {
   let finish: (value: Response) => void = () => {};
   const request = vi.fn<typeof fetch>(() => new Promise(resolve => { finish = resolve; }));
