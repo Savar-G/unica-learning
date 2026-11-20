@@ -19,7 +19,7 @@ const PATHS: { path: string; updated?: string }[] = [
   { path: "/rewards", updated: "2026-11-11" },
   { path: "/whats-included", updated: "2026-11-14" },
   { path: "/curriculum", updated: "2026-11-14" },
-  { path: "/sample-report", updated: "2026-11-11" },
+  { path: "/sample-report", updated: "2026-11-19" },
   { path: "/contact", updated: "2026-10-18" },
   { path: "/privacy", updated: "2026-11-16" },
   { path: "/terms", updated: "2026-11-13" },
