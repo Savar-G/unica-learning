@@ -268,7 +268,8 @@ if (wanted === 0) {
   await until(() => quietFor(2500), 40_000);
 }
 while (trials.filter(t => t.kind === "intentional").length < wanted && clock() < deadline && !call.session.done.length) {
-  if (quietFor(1500)) {
+  // Longer than a resumed pause (about 2 s), so a restart request never lands inside one.
+  if (quietFor(3500)) {
     restarts++;
     restartOnsets.push(await play(intentional[0].pcm));
     await until(() => !quietFor(50), 12_000);

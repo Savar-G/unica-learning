@@ -138,7 +138,9 @@ export function scoreTrials(rows: readonly TrialRow[], childTurns: readonly { at
     const endedOnItsOwn = !cut && agentListeningMs !== null && vadMs !== null && agentListeningMs < vadMs;
     const stopMs = r.stopMs !== null && r.stopMs < limit ? r.stopMs : null;
     const heard = normalizeTranscript(r.transcripts.join(" "));
-    const reachedTurn = heard.length > 0 && childTurns.some(t => t.at >= r.onsetAt && t.at < next && normalizeTranscript(t.text) === heard);
+    // Split or merged, the child turns of the window must hold exactly the trial's words.
+    const said = normalizeTranscript(childTurns.filter(t => t.at >= r.onsetAt && t.at < next).map(t => t.text).join(" "));
+    const reachedTurn = heard.length > 0 && said === heard;
     return { ...r, output, vadMs, agentListeningMs, stopMs, cut, endedOnItsOwn, reachedTurn };
   });
   const intent = scored.filter(r => r.kind === "intentional");

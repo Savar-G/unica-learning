@@ -161,5 +161,11 @@ describe("scoreTrials", () => {
     expect(scoreTrials(rows, [{ at: 800, text: "Okay." }]).lostSpeech).toMatchObject({ notATurn: 1 });
     expect(scoreTrials(rows, [{ at: 800, text: "okay, four" }]).lostSpeech).toMatchObject({ notATurn: 0 });
   });
+
+  it("counts a request split into two finals as delivered when its turns hold the same words", () => {
+    const rows = [row({ kind: "intentional", onsetAt: 0, transcripts: ["What does that mean?", "Show me."] })];
+    expect(scoreTrials(rows, [{ at: 800, text: "What does that mean?" }, { at: 1100, text: "Show me." }]).lostSpeech).toMatchObject({ split: 1, notATurn: 0 });
+    expect(scoreTrials(rows, [{ at: 800, text: "What does that mean?" }]).lostSpeech).toMatchObject({ notATurn: 1 });
+  });
 });
 
