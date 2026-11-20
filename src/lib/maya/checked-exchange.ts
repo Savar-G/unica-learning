@@ -1,4 +1,5 @@
 import type { Command } from "@/lib/board";
+import { MAX_OBSERVATIONS, type LessonObservation } from "@/lib/learning-events";
 import type { OperationPackage } from "@/lib/question-package";
 import { readTransferOperands, TRANSFER_GOODBYE, TRANSFER_OFFER, transferRetryWords, transferStartWords, type TransferOperands } from "./transfer";
 
@@ -120,6 +121,25 @@ export interface RegroupingObservation {
   result: "correct" | "incorrect";
   assistance: "independent" | "hinted" | "demonstrated" | "uncertain";
   at: number;
+}
+
+/**
+ * The lesson's checked observations for one question's learning event (#1145): the original question's turns, or the
+ * related question's (`transfer`), oldest first, the newest MAX_OBSERVATIONS. `board`: the blocks were on the child's board
+ * (a show or exchange batch the screen showed in an earlier turn of the same question, or the child's own exchange).
+ */
+export function lessonObservations(lesson: CheckedExchangeLesson | undefined, transfer: boolean): LessonObservation[] {
+  let blocks = false;
+  const found: LessonObservation[] = [];
+  for (const turn of lesson?.turns ?? []) {
+    if ((turn.transfer === true) !== transfer) continue;
+    if (turn.observation) {
+      const { skill, result, assistance } = turn.observation;
+      found.push({ skill, result, assistance, board: blocks || !!turn.childAction });
+    }
+    if (turn.childAction || turn.actions.some((a) => a.kind !== "question" && a.fate === "shown")) blocks = true;
+  }
+  return found.slice(-MAX_OBSERVATIONS);
 }
 
 export function regroupingOffersAction(instruction: RegroupingInstruction | undefined): boolean {

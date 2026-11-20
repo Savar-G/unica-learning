@@ -2015,6 +2015,7 @@ export type Database = {
           id: string
           idempotency_key: string
           mistake: string | null
+          observations: Json | null
           occurred_at: string
           parent_id: string
           question_source: string
@@ -2042,6 +2043,7 @@ export type Database = {
           id?: string
           idempotency_key: string
           mistake?: string | null
+          observations?: Json | null
           occurred_at: string
           parent_id: string
           question_source: string
@@ -2069,6 +2071,7 @@ export type Database = {
           id?: string
           idempotency_key?: string
           mistake?: string | null
+          observations?: Json | null
           occurred_at?: string
           parent_id?: string
           question_source?: string

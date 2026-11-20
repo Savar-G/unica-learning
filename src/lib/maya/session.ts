@@ -73,7 +73,7 @@ import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
 import { answersOwnQuestion, askedStep, doneReply, firstTimeTurn, yesReply, type AskedRead } from "./teaching-reads";
 import { deriveDrawings, type BoardRead, type TiedDrawing } from "./board-ties";
 import { chooseTransfer, relatedChoice, TRANSFER_MIN_MS, TRANSFER_OFFER, transferBoard, transferPackage, type RelatedStep, type TransferOperands } from "./transfer";
-import { EXCHANGE_OBJECT, exchangeChildWords, exchangeCommands, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingOffersAction, regroupingWords, sameExchangeTarget, supportsCheckedExchange, type CheckedExchangeLesson, type ExchangeAction, type ExchangeProposal, type ExchangeTarget, type ExchangeTurn, type RegroupingInstruction, type RegroupingObservation } from "./checked-exchange";
+import { EXCHANGE_OBJECT, lessonObservations, exchangeChildWords, exchangeCommands, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingOffersAction, regroupingWords, sameExchangeTarget, supportsCheckedExchange, type CheckedExchangeLesson, type ExchangeAction, type ExchangeProposal, type ExchangeTarget, type ExchangeTurn, type RegroupingInstruction, type RegroupingObservation } from "./checked-exchange";
 import { agreementClause, askedStep as askedOperationStep, bindingReview, checkedSubtractionQuestion, checkTutorSay, continuedSay, stepsStated, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, FINAL_ASK, TUTOR_FIRST_TIME_WORD_LIMIT, TUTOR_REVIEW_IGNORED } from "./tutor";
 import { placeDigitsSaid } from "./tutor-math";
 import { MATH_REVIEW_PROMPT_VERSION, mathReviewsOf, type MathReview, type MathReviewInput } from "./math-review";
@@ -866,7 +866,14 @@ export function learningEvent(session: Session, family: { parentId: string; chil
     timeMs: Math.min(endTime(session) - session.startedAt, MAX_TIME_MS),
     occurredAt: isoTime(endTime(session)),
     evidence: { kind: "call", id: session.callId },
+    ...observationsOf(session, false),
   };
+}
+
+/** #1145: the call's checked lesson observations, when it made any. */
+function observationsOf(session: Session, transfer: boolean): Pick<NewLearningEvent, "observations"> {
+  const observations = lessonObservations(session.checkedExchange, transfer);
+  return observations.length > 0 ? { observations } : {};
 }
 
 /**
@@ -889,8 +896,9 @@ export function transferLearningEvent(session: Session, family: { parentId: stri
   const helped = turns.find((turn) => turn.support);
   const open = !transfer.done.includes("ones") ? "ones" : !transfer.done.includes("tens") ? "tens" : "result";
   const started = transfer.startedAt ?? session.startedAt!;
+  const { observations: _original, ...base } = original;
   return {
-    ...original,
+    ...base,
     key: transferEventKey(session.callId),
     question: { source: "transfer", relatedEventId, text: transferPackage(session.package!, transfer.operands).text },
     result,
@@ -898,6 +906,7 @@ export function transferLearningEvent(session: Session, family: { parentId: stri
     hints: Math.min(turns.filter((turn) => turn.support === "hinted").length, MAX_HINTS),
     timeMs: Math.min(Math.max(0, endTime(session) - started), MAX_TIME_MS),
     assistance: outcome.assistance,
+    ...observationsOf(session, true),
   };
 }
 

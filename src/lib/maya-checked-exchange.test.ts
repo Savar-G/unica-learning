@@ -963,3 +963,22 @@ it("answers who Maya is during the related question and comes back to that quest
   expect(byKey(await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" })))
     .toMatchObject([{ result: "right" }, { result: "right", assistance: "independent", question: { source: "transfer" } }]);
 });
+
+it("keeps the lesson's checked observations on the call's learning event (#1145)", async () => {
+  const { calls, events } = setup();
+  const question = { ...SAMPLE_PACKAGES["subtract-52-28"], ref: { source: "workbook" as const, workbookId: parentId, page: 1, question: 1 } };
+  let turn = ok(await calls.start({ ...input, package: question }));
+  const say = async (text: string) => {
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text }, null));
+    return turn.output.say.join(" ");
+  };
+  expect(await say("I don't know how to start.")).toMatch(/how many tens are in 52/i);
+  expect(await say("Five tens.")).toMatch(/trade to make more ones/i);
+  await say("My answer is 24.");
+  await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null);
+  const [event] = byKey(await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" }));
+  expect(event.observations).toEqual([
+    { skill: "identify_tens", result: "correct", assistance: "independent", board: false },
+    { skill: "difference", result: "correct", assistance: "independent", board: false },
+  ]);
+});
