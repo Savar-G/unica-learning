@@ -19,8 +19,19 @@ export function productAlertText(event: ProductEvent): string {
   const counts = ["count", "scored", "pending", "total"].flatMap((key) => typeof a[key] === "number" ? [`${key}=${a[key]}`] : []);
   const link = a.callId ? `https://unicalearning.com/admin/maya/${a.callId}`
     : safe.code.startsWith("scan.") ? "https://unicalearning.com/admin/scans"
+    : safe.code.startsWith("workbook.") ? "https://unicalearning.com/admin/workbooks"
     : safe.code.startsWith("feedback.") ? "https://unicalearning.com/admin/feedback" : "https://unicalearning.com/admin";
   return [safe.code, ...counts, link].join(" ");
+}
+
+export function productAlertsWebhook(value: string | undefined): URL | null {
+  if (!value) return null;
+  try {
+    const webhook = new URL(value);
+    if (webhook.protocol === "https:" && webhook.hostname === "hooks.slack.com" && !webhook.port && !webhook.username
+      && !webhook.password && !webhook.search && !webhook.hash && /^\/services\/[A-Za-z0-9/_-]+$/.test(webhook.pathname)) return webhook;
+  } catch { /* Invalid webhook. */ }
+  return null;
 }
 
 /** Registers delivery in Next after. Nothing waits for Slack on the customer request path. */
@@ -35,11 +46,8 @@ export function productDelivery(deps: ProductDeliveryDeps): ProductObserver {
       else deps.log(event);
     } catch { report("monitoring.record_failed", {}); }
     if (env.VERCEL_ENV !== "production" || !PRODUCT_EVENTS[event.code].alert || !env.SLACK_PRODUCT_ALERTS_WEBHOOK_URL) return;
-    let webhook: URL;
-    try {
-      webhook = new URL(env.SLACK_PRODUCT_ALERTS_WEBHOOK_URL);
-      if (webhook.protocol !== "https:" || webhook.hostname !== "hooks.slack.com" || webhook.port || webhook.username || webhook.password || webhook.search || webhook.hash || !/^\/services\/[A-Za-z0-9/_-]+$/.test(webhook.pathname)) throw Error();
-    } catch { report("monitoring.configuration_failed", {}); return; }
+    const webhook = productAlertsWebhook(env.SLACK_PRODUCT_ALERTS_WEBHOOK_URL);
+    if (!webhook) { report("monitoring.configuration_failed", {}); return; }
     try {
       schedule(async () => {
         const controller = new AbortController();

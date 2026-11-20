@@ -3,6 +3,7 @@ import path from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Database } from "@/lib/database";
+import { setProductObserver } from "@/lib/product-monitoring";
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({ cookies: async () => ({ getAll: () => [], set: () => {} }) }));
@@ -16,10 +17,17 @@ const h = vi.hoisted(() => ({
   run: vi.fn(),
   send: vi.fn(),
   admin: vi.fn(),
+  after: vi.fn<(work: () => Promise<unknown>) => void>(),
+  claimAlerts: vi.fn(),
+}));
+vi.mock("next/server", async (importOriginal) => ({
+  ...await importOriginal<typeof import("next/server")>(),
+  after: h.after,
 }));
 vi.mock("@/lib/supabase-auth", () => ({
   adminClient: (signal?: AbortSignal, options?: { retry?: boolean }) => {
     h.admin(signal, options);
+    if (process.env.VERCEL_ENV === "production") return { rpc: h.claimAlerts };
     if (!(h.real && signal && options?.retry === false)) return null;
     // Every request stalls until its signal aborts, as a database that does not answer.
     return createClient<Database>("https://fixture.invalid", "synthetic-key", {
@@ -48,11 +56,14 @@ const post = (query = "", auth: string | null = "Bearer cron") =>
   POST(new Request(`https://unicalearning.com/api/next-book-prepare${query}`, { method: "POST", headers: auth ? { authorization: auth } : {} }));
 
 beforeEach(() => {
+  vi.clearAllMocks();
   vi.stubEnv("CRON_SECRET", "cron");
+  vi.stubEnv("VERCEL_ENV", "");
+  vi.stubEnv("SLACK_PRODUCT_ALERTS_WEBHOOK_URL", "");
   h.real = false;
   h.stalledRequests = 0;
 });
-afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); vi.clearAllMocks(); });
+afterEach(() => { setProductObserver(null); vi.unstubAllEnvs(); vi.useRealTimers(); });
 
 describe("the next-book cron route", () => {
   it("refuses a request without the secret, and does not run without one configured", async () => {
@@ -111,6 +122,60 @@ describe("the next-book cron route", () => {
     await vi.advanceTimersByTimeAsync(30_000);
     expect(h.stalledRequests).toBe(1);
     expect(h.send).not.toHaveBeenCalled();
+  });
+});
+
+describe("workbook job alerts on the cron route", () => {
+  beforeEach(() => {
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("SLACK_PRODUCT_ALERTS_WEBHOOK_URL", "https://hooks.slack.com/services/test/alerts/example");
+    h.create.mockReturnValue(null);
+  });
+
+  const finishRequest = async () => {
+    for (const [work] of h.after.mock.calls) await work();
+  };
+
+  it("reports only the new job counts even when next-book preparation is off", async () => {
+    const observe = vi.fn();
+    setProductObserver(observe);
+    h.claimAlerts.mockResolvedValueOnce({ data: [
+      { reason: "failed", job_count: 2 },
+      { reason: "stalled", job_count: 1 },
+      { reason: "waiting", job_count: 3 },
+    ], error: null }).mockResolvedValueOnce({ data: [], error: null });
+    expect(await (await post()).json()).toEqual({ ok: true, status: "off" });
+    await finishRequest();
+    h.after.mockClear();
+    await post();
+    await finishRequest();
+    expect(h.claimAlerts).toHaveBeenCalledTimes(2);
+    expect(observe.mock.calls).toEqual([
+      [{ code: "workbook.job_failed", attributes: { count: 2 } }],
+      [{ code: "workbook.job_stalled", attributes: { count: 1 } }],
+      [{ code: "workbook.job_waiting", attributes: { count: 3 } }],
+    ]);
+  });
+
+  it("does not claim alerts for an unauthorized or dry request, a preview, or an invalid webhook", async () => {
+    await post("", null);
+    await post("?dry=1");
+    vi.stubEnv("VERCEL_ENV", "preview");
+    await post();
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("SLACK_PRODUCT_ALERTS_WEBHOOK_URL", "https://example.test/services/test/alerts/example");
+    await post();
+    await finishRequest();
+    expect(h.claimAlerts).not.toHaveBeenCalled();
+  });
+
+  it("reports a check failure without sending database details or changing the cron response", async () => {
+    const observe = vi.fn();
+    setProductObserver(observe);
+    h.claimAlerts.mockResolvedValueOnce({ error: { message: "private error" }, data: null });
+    expect(await (await post()).json()).toEqual({ ok: true, status: "off" });
+    await finishRequest();
+    expect(observe.mock.calls).toEqual([[{ code: "workbook.alert_check_failed", attributes: {} }]]);
   });
 });
 

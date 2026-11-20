@@ -58,6 +58,18 @@ Other events create info logs. `scan.marking_deferred` and `maya.voice_provider_
 | `feedback.failed` | The feedback store throws or returns an invalid admission result. | Validation, rate limits, conflicts, and family deletion refusals are expected. |
 | `dashboard.request_failed` | The scan stack fails, its optional book or marks read fails, or handled chat-access/usage reads fail. | Each failed read can emit. Existing Sentry still handles browser navigation and render exceptions. |
 
+## Workbook job alerts
+
+The production next-book cron checks workbook generation, edits, and first-page jobs every 15 minutes, even when next-book preparation is off. The check sends these alerts to `#product-alerts`.
+
+| Code | Condition |
+| --- | --- |
+| `workbook.job_failed` | A job ended in the failed state in the last 24 hours, after the alert check was added. |
+| `workbook.job_stalled` | A running job has missed its six-minute check-in limit, or a generation job recently expired. An admin stop is excluded. |
+| `workbook.job_waiting` | A job has waited at least 30 minutes for the server, or for the Mac while its worker is offline. |
+
+Slack gets one count and a link to the protected Workbooks admin page for each condition with newly detected jobs. An empty queue and a first-page job in the unavailable state produce no alert. The database records each condition once per job before Slack delivery. The check does not retry an uncertain delivery. These events create structured logs. A database check failure creates the fixed Sentry issue `workbook.alert_check_failed`.
+
 ## Configuration and verification
 
 1. Keep the existing Sentry configuration in [sentry.md](sentry.md).
