@@ -23,12 +23,14 @@ export const MAX_PREPARES_PER_TURN = 3;
 
 /**
  * #1203: the waits before each ask for an aborted request's receipt (OpenRouter's generation stats; a 404 means not yet),
- * in ms. After the last one the cost is unknown and the reservation stays counted. No estimate frees room: no bound on
- * what the provider bills (model, route, reasoning tokens) is verified here.
+ * in ms: asks at about 1, 3, 7, 15 and 27 s. Live probe, 2026-11-20 (8 aborted Sonnet 5.5 streams on Maya's route, all
+ * Azure): the stats appeared after 1 to 7.5 s, and once only after 12 to 20 s. After the last ask the cost is unknown and
+ * the reservation stays counted. No estimate frees room: no bound on what the provider bills (model, route, reasoning
+ * tokens) is verified here. The call's end waits for these asks (BLOCK_DRAIN_MS, src/lib/maya-spend-block.ts).
  */
-export const PREPARE_STATS_WAITS_MS = [1_000, 2_000, 4_000] as const;
+export const PREPARE_STATS_WAITS_MS = [1_000, 2_000, 4_000, 8_000, 12_000] as const;
 /** One ask for the receipt stops after this long. */
-const PREPARE_STATS_ASK_MS = 2_000;
+export const PREPARE_STATS_ASK_MS = 2_000;
 
 const UNITS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
 const TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];

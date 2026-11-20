@@ -4,7 +4,8 @@ import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
 import { memorySpendSeam } from "@/lib/maya-spend-seam";
-import { normalizeTurn, preparedReplies } from "@/lib/maya-prepared";
+import { normalizeTurn, preparedReplies, PREPARE_STATS_ASK_MS, PREPARE_STATS_WAITS_MS } from "@/lib/maya-prepared";
+import { BLOCK_DRAIN_MS } from "@/lib/maya-spend-block";
 import { checkTrace } from "@/lib/maya-trace";
 import type { MayaModel, TurnBrief } from "@/lib/maya-model";
 
@@ -265,14 +266,36 @@ describe("the cost of an aborted prepare with no reported cost (#1203)", () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it("keeps asking for about 27 s: a receipt that appears 20 s after the abort is taken (live probe, 2026-11-20)", async () => {
+    vi.useFakeTimers();
+    try {
+      // Live: OpenRouter's stats for an aborted Sonnet 5.5 stream on Maya's route appeared after 1 to 7.5 s, and once
+      // only after 12 to 20 s.
+      const start = Date.now();
+      const asked: number[] = [];
+      const lookup = vi.fn(async () => { asked.push(Date.now() - start); return Date.now() - start >= 20_000 ? 0.0019 : null; });
+      const { calls } = run(streaming(lookup));
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(calls).toEqual([0.0019]);
+      expect(asked.at(-1)).toBeGreaterThanOrEqual(20_000);
+      expect(asked.at(-1)).toBeLessThanOrEqual(30_000);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("finishes its last ask inside the call's end-of-call drain bound", () => {
+    const worst = PREPARE_STATS_WAITS_MS.reduce((n, ms) => n + ms + PREPARE_STATS_ASK_MS, 0);
+    expect(worst).toBeLessThan(BLOCK_DRAIN_MS);
+    // LiveKit stops a job process 60 s after shutdown starts (agents-js shutdownProcessTimeout).
+    expect(BLOCK_DRAIN_MS).toBeLessThanOrEqual(45_000);
+  });
+
   it("keeps the reservation when no receipt comes: settles once as unknown, never with an estimate", async () => {
     vi.useFakeTimers();
     try {
       const lookup = vi.fn(() => new Promise<number | null>(() => {}));
       const { calls, reply } = run(streaming(lookup));
       await vi.advanceTimersByTimeAsync(60_000);
-      expect(lookup.mock.calls.length).toBeGreaterThan(0);
-      expect(lookup.mock.calls.length).toBeLessThanOrEqual(3);
+      expect(lookup.mock.calls.length).toBe(PREPARE_STATS_WAITS_MS.length);
       expect(calls).toEqual([null]);
       expect(reply.cost()).toBeNull();
     } finally { vi.useRealTimers(); }

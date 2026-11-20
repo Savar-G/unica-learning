@@ -38,10 +38,11 @@ export const SPECULATIVE_PER_TURN = 3;
 export const SPECULATIVE_KEEP = 2;
 /**
  * #1203: the call's end waits at most this long for attempts still owed their cost (a prepared reply asking its
- * provider's receipt, about 13 s at most, src/lib/maya-prepared.ts) and for the rows written with them, before the
- * process may exit. A block still open then stays counted at its reservation until the expiry.
+ * provider's receipt, about 37 s at most, src/lib/maya-prepared.ts) and for the rows written with them, before the
+ * process may exit. Below LiveKit's 60-second job shutdown timeout. A block still open then stays counted at its
+ * reservation until the expiry.
  */
-export const BLOCK_DRAIN_MS = 20_000;
+export const BLOCK_DRAIN_MS = 40_000;
 
 /** What an attempt from the block is: Maya's model, a prepared reply that may not be used, or a free-talk review. */
 export type BlockKind = "model" | "speculative" | "review";
