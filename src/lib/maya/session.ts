@@ -72,7 +72,7 @@ import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
 import { answersOwnQuestion, askedStep, doneReply, firstTimeTurn, yesReply, type AskedRead } from "./teaching-reads";
 import { deriveDrawings, type BoardRead, type TiedDrawing } from "./board-ties";
-import { EXCHANGE_OBJECT, exchangeChildWords, exchangeCommands, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, sameExchangeTarget, supportsCheckedExchange, type CheckedExchangeLesson, type ExchangeAction, type ExchangeProposal, type ExchangeTarget, type ExchangeTurn } from "./checked-exchange";
+import { EXCHANGE_OBJECT, exchangeChildWords, exchangeCommands, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingOffersAction, regroupingWords, sameExchangeTarget, supportsCheckedExchange, type CheckedExchangeLesson, type ExchangeAction, type ExchangeProposal, type ExchangeTarget, type ExchangeTurn, type RegroupingInstruction, type RegroupingObservation } from "./checked-exchange";
 import { agreementClause, askedStep as askedOperationStep, bindingReview, checkedSubtractionQuestion, checkTutorSay, continuedSay, stepsStated, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, FINAL_ASK, TUTOR_FIRST_TIME_WORD_LIMIT, TUTOR_REVIEW_IGNORED } from "./tutor";
 import { placeDigitsSaid } from "./tutor-math";
 import { MATH_REVIEW_PROMPT_VERSION, mathReviewsOf, type MathReview, type MathReviewInput } from "./math-review";
@@ -663,7 +663,7 @@ export function createSession(input: {
     outcome: null,
     ...shorterLimits(input.limitMs),
     ...(tutor ? { tutor: { help: 0, drawn: [] } } : {}),
-    ...(input.checkedExchange === true && tutor && pkg && supportsCheckedExchange(pkg) ? { checkedExchange: { version: 1, id: `${input.callId}:regrouping`, turns: [] } } : {}),
+    ...(input.checkedExchange === true && tutor && pkg && supportsCheckedExchange(pkg) ? { checkedExchange: { version: 1, progression: 1, id: `${input.callId}:regrouping`, turns: [] } } : {}),
     ...(input.checkedRoutine === true && tutor && pkg && supportsCheckedExchange(pkg) ? { checkedRoutine: true } : {}),
   };
 }
@@ -1620,7 +1620,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
       ...(r.outsideScope === "outside_work" || r.outsideScope === "other_person" || r.outsideScope === "other_topic" ? { outsideScope: r.outsideScope } : {}),
       ...(Array.isArray(r.mathRequests) ? { mathRequests: r.mathRequests as ScopeReading["mathRequests"] } : {}),
     };
-    const reason = scopeReason(s.package, s.turn.text, s.exampleIntroduced === true || s.exampleShown > 0, reading);
+    const reason = sessionScopeReason(s, s.package, s.turn.text, reading);
     if (reason && !disclosureDue(s)) s.scopeDue ??= reason;
   }
   if (s.turn && priority.noBoard) s.noBoard = true;
@@ -1704,7 +1704,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
       // answer ("66, because six tens and six ones"), so it needs no confirmation (D-199).
       const operands = readNumbers(event.text, { fractions: true, operands: true });
       const readableQuestion = s.package && !operands.unreadable && operands.values.length >= 2 &&
-        !scopeReason(s.package, event.text, s.exampleIntroduced === true || s.exampleShown > 0);
+        !sessionScopeReason(s, s.package, event.text);
       const uncertain = event.uncertain === true || (!readableQuestion && unreadableAnswer(event.text, readOptionsFor(s.package)));
       // A new line keeps the turns apart, so a sign in the second turn is not read as a subtraction from the first.
       s.turn = s.turn
@@ -1714,7 +1714,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
       delete s.scopeDue;
       s.mathClaim = mathClaimIn(s.turn.text);
       if (s.package) {
-        const reason = scopeReason(s.package, s.turn.text, s.exampleIntroduced === true || s.exampleShown > 0);
+        const reason = sessionScopeReason(s, s.package, s.turn.text);
         if (reason) s.scopeDue = reason;
       }
       // #1051 (safety floor): code's own read of "Are you a real person?" makes the disclosure due now, before any model
@@ -1851,7 +1851,8 @@ export function step(session: Session, event: SessionEvent): StepResult {
         const plan = target ? childExchangePlan(s, target) : checkedExchangePlan(s, event.proposal.afterFailure === true);
         if (!plan || event.proposal.noDraw === "all" || event.proposal.value !== plan.facts.value ||
           event.proposal.example !== plan.facts.example || event.proposal.show !== (plan.actions[0]?.kind === "show") ||
-          (event.proposal.prompt === true) !== !!plan.prompt) {
+          (event.proposal.prompt === true) !== !!plan.prompt ||
+          !matchesRegroupingInstruction(event.proposal.instruction, plan.instruction)) {
           return refuse(s, "act_not_allowed", "No matching checked exchange is due.");
         }
         return deliverExchange(s, plan, effects);
@@ -5526,11 +5527,115 @@ function tutorGate(s: Session, reading: Reading): Allowed | null {
 const EXCHANGE_REQUEST = /^(?:(?:can|could|would) you (?:show|tell) me |(?:please )?show me )?(?:how (?:do (?:i|we) |to )?|why (?:do (?:i|we) |to )?)?(?:regroup(?:ing)?|borrow(?:ing)?|(?:trade|exchange) (?:a|one|1) ten)(?: again)?[.?!]*$/i;
 const CHILD_EXCHANGE_REQUEST = /^(?:how do (?:i|we) (?:regroup|borrow|(?:trade|exchange) (?:a|one|1) ten)|(?:can i|i want to) (?:try regrouping|(?:trade|exchange) (?:a|one|1) ten))(?: again)?[.?!]*$/i;
 const SUBTRACTION_HELP = /^(?:i need help|can you help me|i (?:don't|do not) know how to start)[.?!]*$/i;
+const REGROUPING_START = /^(?:i (?:still )?(?:don'?t|do not) (?:know(?: how to (?:start|regroup|borrow|subtract))?|get it|understand(?: (?:regrouping|borrowing|subtraction))?)|i(?:'m| am) (?:still )?(?:stuck|confused|new to (?:regrouping|borrowing|subtraction))|i(?:'ve| have) never (?:regrouped|done this before)|(?:can you )?(?:teach me|explain) how to (?:regroup|borrow|subtract))[.?!]*$/i;
+const KNOWS_EXCHANGE = /^(?:i (?:can|would|will) |i'll |we can )?(?:trade|exchange|swap|break|regroup) (?:a|one|1) ten(?: (?:rod|block))? (?:for|into|to) (?:10|ten) ones$/;
+const REPEAT_REGROUPING = /^(?:what did you say|(?:can|could) you repeat (?:that|it)|(?:say|explain) that again)[.?!]*$/i;
+
+function regroupingReversal(text: string, top: number, bottom: number): boolean {
+  const body = wholeTurn(text);
+  if (!body || saysGuess(text)) return false;
+  // Read just one equation, with an optional preceding claim of the whole difference.
+  const parts = /^(?:(?:my (?:final )?answer is |i got )?([\w -]+) because )?([\w -]+?)\s*(?:minus|take away|-)\s*([\w -]+?)\s*(?:is|equals|makes|=)\s*([\w -]+)$/.exec(body);
+  if (!parts || (parts[1] && plainNumber(parts[1]) === null)) return false;
+  const [, , left, right, difference] = parts;
+  const [a, b, result] = [left, right, difference].map((part) => plainNumber(part.trim()));
+  const topOnes = top % 10;
+  const bottomOnes = bottom % 10;
+  return result === bottomOnes - topOnes &&
+    ((a === topOnes && b === bottomOnes) || (a === bottomOnes && b === topOnes));
+}
+
+function sessionScopeReason(s: Session, pkg: OperationPackage, text: string, reading?: ScopeReading) {
+  const reason = scopeReason(pkg, text, s.exampleIntroduced === true || s.exampleShown > 0, reading);
+  const { operation } = pkg;
+  return reason === "changed_problem" && s.checkedExchange?.progression && operation.kind === "subtract" &&
+    regroupingReversal(text, ...operation.operands) ? null : reason;
+}
+
+function matchesRegroupingInstruction(value: unknown, expected: RegroupingInstruction | undefined): boolean {
+  if (!expected) return value === undefined;
+  return isObject(value) && value.step === expected.step && value.usePlaceValueTerms === expected.usePlaceValueTerms &&
+    value.subtrahend === expected.subtrahend;
+}
+
+type RegroupingChoice = { step: RegroupingInstruction["step"]; observation?: RegroupingObservation };
+
+function regroupingObservation(s: Session, skill: RegroupingObservation["skill"], result: RegroupingObservation["result"]): RegroupingObservation {
+  const turns = s.checkedExchange!.turns;
+  const demonstrated = turns.some((turn) => turn.support === "demonstrated");
+  const hinted = turns.some((turn) => turn.support === "hinted") || s.assistance.includes("hint");
+  const assistedElsewhere = s.assistance.some((kind) => kind !== "independent" && kind !== "hint");
+  const assistance = demonstrated ? "demonstrated" : hinted ? "hinted" : assistedElsewhere ? "demonstrated" : "independent";
+  return { skill, result, assistance, at: s.now! };
+}
+
+function regroupingChoice(s: Session, previous: ExchangeTurn | undefined, top: number, bottom: number): RegroupingChoice | undefined {
+  const text = s.turn!.text.trim();
+  const body = wholeTurn(text);
+  const step = previous?.instruction?.step;
+  const count = (place: "one" | "ten") => body === null ? null :
+    wholeValue(body.replace(/^(?:there (?:are|is)|i have) /, "").replace(new RegExp(` ${place}s?$`), ""));
+  const stuck = REGROUPING_START.test(text) || SUBTRACTION_HELP.test(text);
+  const observed = (next: RegroupingChoice["step"], skill: RegroupingObservation["skill"], result: RegroupingObservation["result"] = "correct") =>
+    ({ step: next, observation: regroupingObservation(s, skill, result) });
+  const reversed = regroupingReversal(text, top, bottom);
+  const exchanged = s.checkedExchange!.turns.some((turn) =>
+    !turn.facts.example && (turn.childAction || turn.actions.some((action) => action.kind === "exchange" && action.fate === "shown")));
+  if (reversed) return observed(exchanged ? "recheck_ones" : "reversal", "reversal", "incorrect");
+
+  if (previous?.instruction && REPEAT_REGROUPING.test(text)) {
+    if (step === "connect") {
+      if (previous.support === "demonstrated") return { step: "connect" };
+    } else if (step !== "correct") return { step: previous.instruction.step };
+  }
+
+  const stepQuestion = step === "check_place" || step === "check_exchange" || step === "ones" || step === "recheck_ones" ||
+    step === "tens" || (step === "connect" && !previous?.facts.example);
+  const wholeAnswer = !stepQuestion || /\b(?:my (?:final )?answer|(?:whole|final) (?:answer|difference))\b/i.test(text);
+  if (wholeAnswer && !childSaysFalse(text) && heardAnswers(s).some((a) => a.step === "result" && a.verdict === "right")) {
+    return observed("correct", "difference");
+  }
+  if (step === "check_place") {
+    const tens = count("ten");
+    if (tens === previous!.facts.before.tens) return observed("check_exchange", "identify_tens");
+    if (tens !== null) return observed("place_gap", "identify_tens", "incorrect");
+    if (stuck) return { step: "place_gap" };
+  }
+  if (step === "check_exchange" || !previous) {
+    if (body && KNOWS_EXCHANGE.test(body)) return observed("independent", "explain_exchange");
+    if (step === "check_exchange" && stuck) return { step: "guide_exchange" };
+  }
+  if (step === "independent" && stuck) return { step: "guide_exchange" };
+  if (previous && !step && !previous.prompt && !previous.childAction && previous.support === "demonstrated" && body) {
+    const groups = /^(.+) tens? and (.+) ones?$/.exec(body);
+    const equivalent = groups && plainNumber(groups[1]) === previous.facts.after.tens && plainNumber(groups[2]) === previous.facts.after.ones;
+    if (equivalent || KNOWS_EXCHANGE.test(body)) {
+      return observed(previous.facts.example ? "independent" : "ones", "explain_exchange");
+    }
+  }
+  if ((step === "connect" && !previous!.facts.example) || step === "ones" || step === "recheck_ones") {
+    const ones = count("one");
+    if (ones === top % 10 + 10 - bottom % 10 || heardAnswers(s).some((a) => a.step === "ones" && a.verdict === "right")) {
+      return observed("tens", "subtract_ones");
+    }
+    if (ones !== null) return observed("ones", "subtract_ones", "incorrect");
+    if (stuck) return { step: "ones" };
+  }
+  if (step === "tens") {
+    const tens = count("ten");
+    if (tens === Math.floor(top / 10) - 1 - Math.floor(bottom / 10) || heardAnswers(s).some((a) => a.step === "tens" && a.verdict === "right")) {
+      return observed("combine", "subtract_tens");
+    }
+    if (tens !== null) return observed("tens", "subtract_tens", "incorrect");
+    if (stuck) return { step: "tens" };
+  }
+  if (!previous && REGROUPING_START.test(text)) return { step: "check_place" };
+}
 
 export function checkedExchangeProposal(s: Session, afterFailure = false): ExchangeProposal | null {
   const plan = checkedExchangePlan(s, afterFailure);
   if (!plan) return null;
-  return { checkedExchange: 1, value: plan.facts.value, example: plan.facts.example, show: plan.actions[0]?.kind === "show", ...(plan.prompt ? { prompt: true } : {}), ...(afterFailure ? { afterFailure: true } : {}) };
+  return { checkedExchange: 1, value: plan.facts.value, example: plan.facts.example, show: plan.actions[0]?.kind === "show", ...(plan.prompt ? { prompt: true } : {}), ...(plan.instruction ? { instruction: plan.instruction } : {}), ...(afterFailure ? { afterFailure: true } : {}) };
 }
 
 export function checkedExchangeWaitingForBoard(s: Session): boolean {
@@ -5543,27 +5648,35 @@ export function checkedExchangeWaitingForBoard(s: Session): boolean {
 function checkedExchangePlan(s: Session, afterFailure: boolean): ExchangeTurn | null {
   const lesson = s.checkedExchange;
   const pkg = s.package;
-  if (lesson?.version !== 1 || !pkg || !tutorTeachingNow(s) || s.scopeDue || s.noBoard || s.solved !== null ||
-    !s.turn || s.turn.uncertain || s.done.includes("ones") || s.stopRequested) return null;
+  if (lesson?.version !== 1 || pkg?.operation.kind !== "subtract" || !tutorTeachingNow(s) || s.scopeDue || s.noBoard ||
+    s.solved !== null || !s.turn || s.turn.uncertain || s.stopRequested) return null;
   const text = s.turn.text.trim();
-  const prompt = CHILD_EXCHANGE_REQUEST.test(text);
-  if (!prompt && !EXCHANGE_REQUEST.test(text) && !(afterFailure && SUBTRACTION_HELP.test(text))) return null;
-
+  const [before, bottom] = pkg.operation.operands;
   const turns = lesson.turns;
-  if (turns.some((turn) => turn.childAction)) return null;
   const previous = turns.at(-1);
+  const choice = lesson.progression ? regroupingChoice(s, previous, before, bottom) : undefined;
+  const step = choice?.step;
+  if (!step && (s.done.includes("ones") || turns.some((turn) => turn.childAction))) return null;
+  const prompt = step
+    ? regroupingOffersAction({ step })
+    : CHILD_EXCHANGE_REQUEST.test(text);
+  if (!step && !prompt && !EXCHANGE_REQUEST.test(text) && !(afterFailure && SUBTRACTION_HELP.test(text))) return null;
+  const withBoard = !step || prompt;
   const held = turns.flatMap((t) => t.actions).filter((action) => action.fate === "shown");
   // An unknown delivery may have reached the board. Wait for its fate before trying it again.
-  if (previous?.actions.some((action) => !action.fate) || held.some((action) => action.kind === "exchange")) return null;
+  if (withBoard && (turns.some((t) => t.actions.some((action) => !action.fate)) || held.some((action) => action.kind === "exchange"))) return null;
   const shown = held.find((action) => action.kind === "show");
-  const before = pkg.operation.kind === "subtract" ? pkg.operation.operands[0] : 0;
+  const instruction: RegroupingInstruction | undefined = step ? { step, ...((s.grade ?? 0) >= 5 ? { usePlaceValueTerms: true } : {}) } : undefined;
   // A worked example uses a different number if any speech or block quantity would disclose the target.
   const facts = (previous ? [previous.facts.value] : [before, 52, 63, 74, 85])
     .map((value) => exchangeFacts(value, value !== before))
     .find((candidate) => {
       if (!candidate) return false;
-      const board = [...exchangeCommands("show", candidate), ...exchangeCommands("exchange", candidate)];
-      const words = prompt ? [...exchangePromptWords(candidate, true), ...exchangeChildWords(candidate)] : exchangeWords(candidate, true);
+      const board = (withBoard || step === "check_place") ? [...exchangeCommands("show", candidate), ...exchangeCommands("exchange", candidate)] : [];
+      const words = [
+        ...(regroupingWords(candidate, instruction, true) ?? []),
+        ...(withBoard || step === "check_place" ? [...exchangePromptWords(candidate, true), ...exchangeWords(candidate, true)] : []),
+      ];
       return !tellsAnswer(s, pkg, [...words, ...board.flatMap((command) => boardTexts(command))], [], false);
     });
   if (!facts) return null;
@@ -5573,11 +5686,17 @@ function checkedExchangePlan(s: Session, afterFailure: boolean): ExchangeTurn | 
   });
   const show = shown ?? action("show", batchId(1));
   const id = `${lesson.id}:${turns.length + 1}`;
+  if (instruction && !facts.example && (step === "connect" || step === "ones" || step === "recheck_ones" || step === "tens")) {
+    const explicit = { ...instruction, subtrahend: bottom };
+    if (!tellsAnswer(s, pkg, regroupingWords(facts, explicit, false) ?? [], [], false)) instruction.subtrahend = bottom;
+  }
   return {
     id,
     facts,
-    actions: [...(shown ? [] : [show]), ...(prompt ? [] : [action("exchange", batchId(shown ? 1 : 2), show.batchId)])],
+    actions: withBoard ? [...(shown ? [] : [show]), ...(prompt ? [] : [action("exchange", batchId(shown ? 1 : 2), show.batchId)])] : [],
     ...(prompt ? { prompt: { lessonId: lesson.id, turnId: id, objectId: EXCHANGE_OBJECT, batchId: show.batchId, boardRevision: s.batches + (shown ? 0 : 1) } } : {}),
+    ...(instruction ? { instruction } : {}),
+    ...(choice?.observation ? { observation: choice.observation } : {}),
   };
 }
 
@@ -5595,35 +5714,56 @@ function childExchangePlan(s: Session, target: ExchangeTarget): ExchangeTurn | n
   if (!s.package || !offered || !sameExchangeTarget(offered, target) ||
     !s.checkedExchange!.turns.some((turn) => turn.actions.some((action) => action.batchId === target.batchId && action.fate === "shown"))) return null;
   const lesson = s.checkedExchange!;
-  const facts = lesson.turns.at(-1)!.facts;
-  if (tellsAnswer(s, s.package, [...exchangeChildWords(facts), ...exchangeCommands("exchange", facts).flatMap((command) => boardTexts(command))], [], false)) return null;
+  const previous = lesson.turns.at(-1)!;
+  const facts = previous.facts;
+  const operation = s.package.operation;
+  const instruction: RegroupingInstruction | undefined = lesson.progression && operation.kind === "subtract"
+    ? { step: "connect", ...((s.grade ?? 0) >= 5 ? { usePlaceValueTerms: true } : {}) }
+    : undefined;
+  if (instruction && !facts.example && operation.kind === "subtract") {
+    const explicit = { ...instruction, subtrahend: operation.operands[1] };
+    if (!tellsAnswer(s, s.package, regroupingWords(facts, explicit, false) ?? [], [], false)) instruction.subtrahend = operation.operands[1];
+  }
+  const words = regroupingWords(facts, instruction, false) ?? exchangeChildWords(facts);
+  if (tellsAnswer(s, s.package, [...words, ...exchangeCommands("exchange", facts).flatMap((command) => boardTexts(command))], [], false)) return null;
   return {
     id: `${lesson.id}:${lesson.turns.length + 1}`,
     facts,
     actions: [{ kind: "exchange", id: `${lesson.id}:exchange`, batchId: `${s.callId}-b${s.batches + 1}`, after: target.batchId, delivery: "generated" }],
     childAction: offered,
+    ...(instruction ? { instruction, observation: regroupingObservation(s, "perform_exchange", "correct") } : {}),
   };
 }
 
 export function childExchangeProposal(s: Session, target: ExchangeTarget, at: number): ExchangeProposal | null {
   if (s.startedAt === null || at - s.startedAt >= limitsOf(s).closingAtMs) return null;
   const plan = childExchangePlan(s, target);
-  return plan ? { checkedExchange: 1, value: plan.facts.value, example: plan.facts.example, show: false, childAction: plan.childAction } : null;
+  return plan ? { checkedExchange: 1, value: plan.facts.value, example: plan.facts.example, show: false, childAction: plan.childAction, ...(plan.instruction ? { instruction: plan.instruction } : {}) } : null;
 }
 
 function deliverExchange(s: Session, plan: ExchangeTurn, effects: Effect[]): StepResult {
   const show = plan.actions[0]?.kind === "show";
-  const words = plan.prompt ? exchangePromptWords(plan.facts, show)
-    : plan.childAction ? exchangeChildWords(plan.facts) : exchangeWords(plan.facts, show);
+  const words = regroupingWords(plan.facts, plan.instruction, show) ??
+    (plan.prompt ? exchangePromptWords(plan.facts, show) : plan.childAction ? exchangeChildWords(plan.facts) : exchangeWords(plan.facts, show));
   const text = words.join(" ");
+  if (plan.instruction?.step === "correct") {
+    s.solved = "child";
+    s.lastResult = "right";
+  }
+  const observed = plan.observation;
+  if (observed?.result === "correct") {
+    const column = observed.skill === "subtract_ones" ? "ones" : observed.skill === "subtract_tens" ? "tens" : null;
+    if (column && !s.done.includes(column)) s.done.push(column);
+  }
   if (plan.childAction) {
-    recordExchangeHelp(s);
+    recordExchangeHelp(s, "guided");
     effects.push({ kind: "cancel_output" });
   }
   s.checkedExchange!.turns.push(plan);
   s.batches += plan.actions.length;
   effects.push({ kind: "say", act: "guide", text, exchangeTurnId: plan.id });
-  for (const [sentence, action] of plan.actions.entries()) {
+  for (const [index, action] of plan.actions.entries()) {
+    const sentence = action.kind === "show" && plan.instruction?.step === "reversal" ? 2 : index;
     effects.push({
       kind: "board", sentence,
       batch: { transactionId: action.batchId, commands: exchangeCommands(action.kind, plan.facts), ...(action.after ? { after: [action.after] } : {}) },
@@ -5649,15 +5789,34 @@ function exchangeDelivery(session: Session, event: Extract<SessionEvent, { type:
     }
     if (event.type === "exchange_playback" && turn && !turn.playback && turn.actions.every((action) => action.delivery === "sent")) {
       turn.playback = event.playback;
-      if (event.playback === "finished") recordExchangeHelp(s);
+      if (event.playback === "finished") recordRegroupingPlayback(s, turn);
     }
   }
   return { session: s, effects: [], refusal: null };
 }
 
-function recordExchangeHelp(s: Session) {
-  if (!s.assistance.includes("guided")) s.assistance.push("guided");
+function recordExchangeHelp(s: Session, kind: "hint" | "guided") {
+  if (!s.assistance.includes(kind)) s.assistance.push(kind);
   s.stuckStep ??= "ones";
+}
+
+function recordRegroupingSupport(s: Session, turn: ExchangeTurn, support: "hinted" | "demonstrated") {
+  if (!s.checkedExchange?.progression) {
+    recordExchangeHelp(s, "guided");
+    return;
+  }
+  if (turn.support === "demonstrated" || turn.support === support) return;
+  turn.support = support;
+  if (support === "hinted") s.hints += 1;
+  recordExchangeHelp(s, support === "hinted" ? "hint" : "guided");
+}
+
+function recordRegroupingPlayback(s: Session, turn: ExchangeTurn) {
+  const step = turn.instruction?.step;
+  if (step === "connect" || (!step && !turn.prompt)) recordRegroupingSupport(s, turn, "demonstrated");
+  else if (turn.prompt || step === "ones" || step === "recheck_ones" || step === "tens") {
+    recordRegroupingSupport(s, turn, "hinted");
+  }
 }
 
 /**
@@ -6567,11 +6726,21 @@ export function streamedDrawing(session: Session, sentences: readonly string[], 
  */
 function boardFate(session: Session, e: Extract<SessionEvent, { type: "board_fate" }>): StepResult {
   const s: Session = structuredClone(session);
-  const actions = s.checkedExchange?.turns.flatMap((turn) => turn.actions) ?? [];
+  const turns = s.checkedExchange?.turns ?? [];
+  const actions = turns.flatMap((turn) => turn.actions);
   const action = actions.find((action) => action.batchId === e.batch);
   if (action?.delivery === "sent" && !action.fate && BOARD_FATES.includes(e.fate)) {
     action.fate = e.fate;
-    if (actions.some((item) => item.fate === "shown" && (!item.after || actions.some((prior) => prior.batchId === item.after && prior.fate === "shown")))) recordExchangeHelp(s);
+    if (e.fate === "shown") {
+      const shown = new Set(actions.filter((item) => item.fate === "shown").map((item) => item.batchId));
+      for (const turn of turns) {
+        for (const item of turn.actions) {
+          if (shown.has(item.batchId) && (!item.after || shown.has(item.after))) {
+            recordRegroupingSupport(s, turn, item.kind === "show" ? "hinted" : "demonstrated");
+          }
+        }
+      }
+    }
   }
   const sent = s.tutor?.sent?.find((x) => x.batch === e.batch);
   if (!s.tutor || !sent || !BOARD_FATES.includes(e.fate)) return { session: s, effects: [], refusal: null };

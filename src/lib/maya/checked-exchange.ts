@@ -58,10 +58,17 @@ export interface ExchangeTurn {
   playback?: "finished" | "interrupted";
   prompt?: ExchangeTarget;
   childAction?: ExchangeTarget;
+  instruction?: RegroupingInstruction;
+  /** Acknowledged board work or completed playback. Sending a turn does not set this field. */
+  support?: Exclude<RegroupingObservation["assistance"], "independent">;
+  /** A checked child response. The learning event refers to the call that stores this observation. */
+  observation?: RegroupingObservation;
 }
 
 export interface CheckedExchangeLesson {
   version: 1;
+  /** Older saved sessions continue with the original exchange interaction. */
+  progression?: 1;
   id: string;
   turns: ExchangeTurn[];
 }
@@ -74,6 +81,75 @@ export interface ExchangeProposal {
   prompt?: true;
   childAction?: ExchangeTarget;
   afterFailure?: true;
+  instruction?: RegroupingInstruction;
+}
+
+export interface RegroupingInstruction {
+  step: "check_place" | "check_exchange" | "independent" | "guide_exchange" | "place_gap" | "reversal" |
+    "connect" | "ones" | "recheck_ones" | "tens" | "combine" | "correct";
+  usePlaceValueTerms?: true;
+  /** Omitted when naming the quantity would disclose the target answer. */
+  subtrahend?: number;
+}
+
+export interface RegroupingObservation {
+  skill: "identify_tens" | "explain_exchange" | "perform_exchange" | "subtract_ones" | "subtract_tens" | "difference" | "reversal";
+  result: "correct" | "incorrect";
+  assistance: "independent" | "hinted" | "demonstrated";
+  at: number;
+}
+
+export function regroupingOffersAction(instruction: RegroupingInstruction | undefined): boolean {
+  return instruction?.step === "guide_exchange" || instruction?.step === "place_gap" || instruction?.step === "reversal";
+}
+
+/** Code-owned lesson prompts. The only quantities here come from checked exchange facts. */
+export function regroupingWords(facts: ExchangeFacts, instruction: unknown, show: boolean): string[] | null {
+  if (!instruction || typeof instruction !== "object") return null;
+  const { step, usePlaceValueTerms, subtrahend } = instruction as RegroupingInstruction;
+  if (subtrahend !== undefined && (facts.example || !Number.isInteger(subtrahend) || subtrahend <= 0 ||
+    subtrahend >= facts.value || subtrahend % 10 <= facts.before.ones)) return null;
+  const ones = subtrahend === undefined ? "the bottom ones" : `${subtrahend % 10} ones`;
+  const tens = subtrahend === undefined ? "the bottom tens" : `${Math.floor(subtrahend / 10)} tens`;
+  switch (step) {
+    case "check_place":
+      return [usePlaceValueTerms ? `What is the tens digit in ${facts.value}?` : `How many tens are in ${facts.value}?`];
+    case "check_exchange":
+      return [usePlaceValueTerms ? "What can you exchange to regroup the ones?" : "What can you trade to make more ones?"];
+    case "independent":
+      return ["Try the whole subtraction on your own."];
+    case "place_gap":
+    case "reversal":
+    case "guide_exchange":
+      return [
+        ...(step === "reversal" ? ["Start with the top number in each column. Swapping the numbers changes the problem."] : []),
+        ...(show || step === "place_gap" ? exchangePromptWords(facts, true).slice(0, 1) : []),
+        "We need more ones. We can trade a ten for ten ones and keep the same amount.",
+        "Use the Exchange one ten button to make the trade.",
+      ];
+    case "connect":
+      return [
+        exchangeChildWords(facts)[0],
+        usePlaceValueTerms
+          ? "The tens and ones columns record these new amounts."
+          : "Write the new counts above the old tens and ones.",
+        facts.example ? "Try the same trade on your own question." : `Take away ${ones}. How many ones are left?`,
+      ];
+    case "ones":
+    case "recheck_ones":
+      return [
+        ...(step === "recheck_ones" ? ["Start with the top number. Swapping the numbers changes the problem."] : []),
+        `Start with the regrouped ones. Take away ${ones}. How many are left?`,
+      ];
+    case "tens":
+      return [`Now take away ${tens}. How many tens are left?`];
+    case "combine":
+      return ["Put your tens and ones together. What is the whole difference?"];
+    case "correct":
+      return ["You found the difference."];
+    default:
+      return null;
+  }
 }
 
 export function supportsCheckedExchange(pkg: OperationPackage): boolean {

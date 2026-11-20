@@ -1,5 +1,5 @@
 import { SCOPE_REASONS } from "@/lib/maya/scope";
-import { exchangeChildWords, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, type CheckedExchangeLesson } from "@/lib/maya/checked-exchange";
+import { exchangeChildWords, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingWords, type CheckedExchangeLesson } from "@/lib/maya/checked-exchange";
 // Maya's trace format (#322, spec #297): one versioned record of one Maya session, written by every session (the text
 // adapter now, the voice agent #326, the test bench #323 and the admin demo #324 later). It records the model and
 // prompt version, the question package hash, every turn with each proposal, its refusal and repair and the final
@@ -537,6 +537,11 @@ function checkedExchangeOutput(proposal: unknown, output: unknown): boolean {
     typeof proposal.example !== "boolean" || typeof proposal.show !== "boolean" || !isObject(output)) return false;
   const facts = exchangeFacts(proposal.value, proposal.example);
   if (!facts || output.act !== "guide" || !Array.isArray(output.say) || output.say.length !== 1 || !Array.isArray(output.board)) return false;
+  if (proposal.instruction !== undefined) {
+    const words = regroupingWords(facts, proposal.instruction, proposal.show);
+    return !!words && output.say[0] === words.join(" ") &&
+      output.board.length === Number(proposal.show || readExchangeTarget(proposal.childAction) !== null);
+  }
   if (proposal.prompt === true) return output.say[0] === exchangePromptWords(facts, proposal.show).join(" ") && output.board.length === Number(proposal.show);
   if (readExchangeTarget(proposal.childAction)) return !proposal.show && output.say[0] === exchangeChildWords(facts).join(" ") && output.board.length === 1;
   return output.say[0] === exchangeWords(facts, proposal.show).join(" ") && output.board.length === (proposal.show ? 2 : 1);

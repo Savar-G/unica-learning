@@ -518,7 +518,9 @@ it.each([true, false])("cuts a spoken demonstration after its first shown cue an
     const log = c.receiver.snapshot().events;
     expect(log.filter(e => e.kind === "batch" && e.batchId === shown.batchId)).toHaveLength(1);
     expect(log.some(e => e.kind === "batch" && e.batchId === future.batchId)).toBe(false);
-    expect(c.call.session.assistance.filter(kind => kind === "guided")).toEqual(["guided"]);
+    expect(c.call.session.checkedExchange!.turns[0].support).toBe("hinted");
+    expect(c.call.session.assistance).toContain("hint");
+    expect(c.call.session.assistance).not.toContain("guided");
   } finally { speaker.finishPlayback(); }
 });
 

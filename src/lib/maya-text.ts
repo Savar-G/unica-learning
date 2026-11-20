@@ -758,7 +758,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     if (!h.text.trim() || h.text.length > 1_000) return false;
     const at = now();
     const copy = foldTextEvent(restoreTextCheckpoint(saveTextCheckpoint(folded)), { kind: "input", at, event: { type: "child_turn", at, text: h.text } });
-    if (!plainMathTurn(copy.session) || copy.session.outcome) return false;
+    if (!plainMathTurn(copy.session) || copy.session.outcome || checkedExchangeProposal(copy.session)) return false;
     // D-345: a tutor call prepares its own brief; the reply still goes through the whole-message check.
     const brief = copy.session.tutor ? tutorBrief(copy.session) as unknown as TurnBrief : turnBrief(copy.session);
     const key = preparedKey(copy.session, brief);
