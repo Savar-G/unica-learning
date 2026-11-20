@@ -2,6 +2,7 @@
 import { applyBatch, createScene, type Batch, type Scene } from "@/lib/board";
 import { withEmittedHelp, type Assistance } from "@/lib/maya/session";
 import type { ExchangeProposal } from "@/lib/maya/checked-exchange";
+import type { SelectionProposal } from "@/lib/maya/board-selection";
 import { BOARD_FATES, nextActs, speechKey, step, TIME_LIMITS, SAFETY_GUIDANCE, type Act, type BoardFate, type Effect, type MathReview, type Session, type SessionEvent, type TalkReview, type TiedDrawing } from "@/lib/maya";
 import { type TraceAttempt, type TraceBoardBatch, type TraceError, type TraceObligation, type TraceTurn } from "@/lib/maya-trace";
 import type { TextOutput } from "@/lib/maya-text";
@@ -45,6 +46,8 @@ export type TextLogEvent =
   | { kind: "review"; at: number; requestId: number; reviews: TalkReview[]; mathReviews?: MathReview[]; unusedMath?: MathReview[]; reviewMs?: number; drawMode?: "derive" }
   | { kind: "fallback"; at: number; proposal: unknown; drawMode?: "derive" }
   | { kind: "checked_exchange"; at: number; proposal: ExchangeProposal }
+  /** #1152: code's checked reply to the child pointing at a board object. */
+  | { kind: "board_selection"; at: number; proposal: SelectionProposal }
   | { kind: "recover"; at: number }
   | { kind: "cancelled"; at: number }
   | { kind: "delivered"; at: number }
@@ -531,6 +534,7 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
     }
     case "fallback": proposal(s, e.proposal, e.at, { source: "fallback", proposal: e.proposal, refusal: null }, undefined, undefined, e.drawMode); break;
     case "checked_exchange": proposal(s, e.proposal, e.at, { source: s.attempts.length ? "fallback" : "controller", proposal: e.proposal, refusal: null }); break;
+    case "board_selection": proposal(s, e.proposal, e.at, { source: s.attempts.length ? "fallback" : "controller", proposal: e.proposal, refusal: null }); break;
     case "part_pending":
       if (s.request?.id === e.requestId && !s.candidate && !s.session.outcome && !s.pendingPart) {
         s.streamDelivery = true;

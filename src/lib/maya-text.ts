@@ -60,7 +60,8 @@ import {
 import { modelInput, turnBrief, type MayaModel, type ModelInput, type TurnBrief } from "@/lib/maya-model";
 import { tutorBrief } from "@/lib/maya/tutor-prompt";
 import { continuedSay } from "@/lib/maya/tutor";
-import { checkedExchangeProposal, checkedExchangeWaitingForBoard, childExchangeProposal } from "@/lib/maya/session";
+import { boardSelectionProposal, checkedExchangeProposal, checkedExchangeWaitingForBoard, childExchangeProposal } from "@/lib/maya/session";
+import { selectableObjects, type ObjectFacts, type SelectionTarget } from "@/lib/maya/board-selection";
 import type { ExchangeTarget } from "@/lib/maya/checked-exchange";
 import { preparedReplies, preparedKey, preparedKeys, sameTurn, MAX_PREPARES_PER_TURN, type PrepareHypothesis, type PreparedReply, type PrepareRecord } from "@/lib/maya-prepared";
 import type { SpendHandle, SpendSeam } from "@/lib/maya-spend-seam";
@@ -580,6 +581,8 @@ export interface TextSession {
   child(text: string, options?: { uncertain?: boolean; alternatives?: string[] }): Promise<TextOutput>;
   /** Accepts an exchange on the shown board and commits its checked reply as one input. */
   exchange(target: ExchangeTarget): TextOutput | null;
+  /** #1152: the child points to a board object. Code answers in checked words, or asks again when the board moved on. */
+  select(target: SelectionTarget): TextOutput | null;
   /**
    * A partial transcript of the child, who talks over Maya (`child_turn` with `final: false`): Maya's output stops
    * (`cancelled`) and nothing is judged. The full turn comes later through `child`.
@@ -1613,6 +1616,21 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       append({ kind: "delivered", at });
       return out;
     },
+    select(target) {
+      recover();
+      const at = now();
+      if (folded.childState === "child_speaking" || folded.pending.length) return null;
+      const proposal = boardSelectionProposal(folded.session, target, shownObject(folded.board, target), at);
+      if (!proposal) return null;
+      generation++;
+      active?.abort();
+      clearPrepares("stale");
+      append({ kind: "board_selection", at, proposal });
+      const out = textOutput(folded);
+      if (!out.say.length) return null;
+      append({ kind: "delivered", at });
+      return out;
+    },
     partial: (text) => receive({ type: "child_turn", at: now(), text, final: false }, false),
     mayaSaid: (text) => receive({ type: "maya_said", at: now(), text }),
     contentProblem: (detail) => receive({ type: "content_problem", at: now(), detail: redactText(detail) }),
@@ -1660,4 +1678,15 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     trace,
     saved: async () => structuredClone({ ...(preparations.length ? { preparations: preparationRecords() } : {}), v: 6 as const, initial, checkpoint, nextRequestId, log, session: folded.session, turns: folded.turns, board: folded.board, endedAt: folded.endedAt, approved: folded.approved, obligations: folded.obligations, childState: folded.childState }),
   };
+}
+
+/**
+ * #1152: the facts of the object a tap names, as the child's screen holds the board: drawn by a batch the screen said it
+ * showed, and not taken away by a batch it did not skip or cancel. Null when it is not there.
+ */
+function shownObject(board: readonly TraceBoardBatch[], target: SelectionTarget): ObjectFacts | null {
+  const visible = board.filter((b) => b.fate !== "skipped" && b.fate !== "cancelled")
+    .map((b) => ({ transactionId: b.transactionId, commands: b.commands }));
+  const found = selectableObjects(visible).find((o) => o.objectId === target.objectId && o.batchId === target.batchId);
+  return found && board.find((b) => b.transactionId === found.batchId)?.fate === "shown" ? found.facts : null;
 }

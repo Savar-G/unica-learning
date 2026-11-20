@@ -83,7 +83,8 @@ import { modelInput, type MayaModel } from "@/lib/maya-model";
 import type { TalkReviewer } from "@/lib/maya-talk-review";
 import type { MathReviewer } from "@/lib/maya-math-review";
 import { snapshotFates } from "@/lib/board-fate";
-import { checkedExchangeProposal, childExchangeProposal, childExchangeTarget, fixedSafetyDisclosure } from "@/lib/maya/session";
+import { checkedExchangeProposal, childExchangeProposal, childExchangeTarget, fixedSafetyDisclosure, selectedObject, selectionOffer, selectionSeen } from "@/lib/maya/session";
+import { readSelectionTarget, type SelectedObject, type SelectionOffer, type SelectionTarget } from "@/lib/maya/board-selection";
 import { needsSafetyRead, SAFETY_PAUSE, sensitiveHearing, type ChildHearing } from "@/lib/maya/sensitive-input";
 import { readExchangeTarget, sameExchangeTarget, type ExchangeTarget } from "@/lib/maya/checked-exchange";
 import { createTextSession, readFateReports, withHelpLedger, type BoardFateReport, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession, type TextSessionOptions } from "@/lib/maya-text";
@@ -365,6 +366,7 @@ export interface CallSeams {
  */
 export type CallInput = { type: "child"; text: string; fates?: BoardFateReport[] } |
   { type: "exchange"; target: ExchangeTarget; fates?: BoardFateReport[] } |
+  { type: "select"; target: SelectionTarget; fates?: BoardFateReport[] } |
   { type: "tick" } | { type: "writing"; status: "started" | "done" } | { type: "end" };
 
 /** The most characters of one typed child turn. */
@@ -433,6 +435,9 @@ export interface CallView {
   batches: Batch[];
   exchange?: ExchangeTarget;
   exchangeResult?: string;
+  /** #1152: what the child may point to now, and the object their last answered tap named. */
+  selection?: SelectionOffer;
+  selected?: SelectedObject;
   /** Saved board times and child ink, for the admin replay. Older calls rebuild this from their trace. */
   boardHistory: BoardHistory;
   /** Service diagnostics belong only in the closed technical details. */
@@ -587,6 +592,11 @@ export interface VoiceCall {
   /** `say` hears this turn's sentences while it runs (VoiceSay), before the save behind it. */
   child(text: string, options?: { uncertain?: boolean; alternatives?: string[] }, say?: VoiceSay): Promise<VoiceTurn>;
   exchange?(target: ExchangeTarget, onAccepted?: () => void): Promise<VoiceTurn | null>;
+  /**
+   * #1152: the child pointed to a board object. Null for a tap already answered or one this call cannot take now.
+   * `onAccepted` runs once the reply is committed, before it is saved, so the worker can stop older speech first.
+   */
+  select?(target: SelectionTarget, onAccepted?: () => void): Promise<VoiceTurn | null>;
   /** A durable child action whose board change the receiver has not confirmed yet. */
   readonly pendingExchange?: Batch;
   tick(): Promise<VoiceTurn>;
@@ -745,6 +755,9 @@ export function callView(record: CallRecord, trace: MayaTrace, alerts: AlertStat
   const history = record.mode !== "text" ? recorded : ink.length > 0 ? withInkLog(recorded, ink, window) : withChildInk(recorded, record.childInk ?? null, window);
   const exchange = record.status === "live" && record.live ? childExchangeTarget(record.live.text.session) : undefined;
   const exchangeResult = trace.checkedExchange?.turns.find((t) => t.childAction)?.actions[0]?.batchId;
+  const live = record.status === "live" && record.live ? record.live.text.session : null;
+  const selection = live ? selectionOffer(live) : undefined;
+  const selected = live ? selectedObject(live) : undefined;
   return {
     id: record.id,
     kind: record.kind,
@@ -768,6 +781,8 @@ export function callView(record: CallRecord, trace: MayaTrace, alerts: AlertStat
     batches: observed ? history.events.flatMap(e => e.kind === "maya" ? [{ transactionId: e.batchId, commands: e.commands }] : []) : batchesOf(replayableBoard(trace)),
     ...(exchange ? { exchange } : {}),
     ...(exchangeResult ? { exchangeResult } : {}),
+    ...(selection ? { selection } : {}),
+    ...(selected ? { selected } : {}),
     boardHistory: history,
     technicalNotes: trace.turns.flatMap((t) => t.kind === "technical" ? [t.detail] : []),
     outcome: record.outcome ?? trace.outcome,
@@ -820,6 +835,7 @@ const countsOf = (trace: MayaTrace): NonNullable<CallRecord["counts"]> => ({
 function checkInput(input: CallInput): boolean {
   if (input.type === "child") return typeof input.text === "string" && input.text.trim().length > 0 && input.text.length <= MAX_CHILD_TEXT && (input.fates === undefined || readFateReports(input.fates) !== null);
   if (input.type === "exchange") return readExchangeTarget(input.target) !== null && (input.fates === undefined || readFateReports(input.fates) !== null);
+  if (input.type === "select") return readSelectionTarget(input.target) !== null && (input.fates === undefined || readFateReports(input.fates) !== null);
   if (input.type === "writing") return input.status === "started" || input.status === "done";
   return input.type === "tick" || input.type === "end";
 }
@@ -1949,6 +1965,16 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           });
           return out.exchangeTurnId || out.ended ? out : null;
         },
+        async select(raw, onAccepted) {
+          const target = readSelectionTarget(raw);
+          if (inactive() || !target || selectionSeen(session.session, target.selectionId)) return null;
+          const out = await turn(async () => {
+            const accepted = session.select(target);
+            if (accepted) onAccepted?.();
+            return accepted;
+          });
+          return out.say.length || out.ended ? out : null;
+        },
         tick: () => turn(() => session.tick(), undefined, undefined, 2),
         writing: (status) => turn(() => session.writing(status), undefined, undefined, 2),
         async limit() {
@@ -2045,6 +2071,12 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         const view = recordView(record);
         if (view) return { ok: true, view, output: { say: [], newBatches: 0, safetyMessage: null } };
       }
+      // #1152: a retried tap is answered once.
+      if (input.type === "select" && record.mode === "text" && record.kind === "chat" && record.live &&
+        selectionSeen(record.live.text.session, input.target.selectionId)) {
+        const view = recordView(record);
+        if (view) return { ok: true, view, output: { say: [], newBatches: 0, safetyMessage: null } };
+      }
       if (record.revision !== revision) return { ok: false, error: "conflict" };
       if (record.status === "ended") {
         if (input.type !== "end" || !record.trace) return { ok: false, error: "conflict" };
@@ -2079,6 +2111,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       if (input.type === "exchange" && (record.kind !== "chat" || !sameExchangeTarget(childExchangeTarget(saved.session), input.target))) {
         return { ok: false, error: "conflict" };
       }
+      if (input.type === "select" && record.kind !== "chat") return { ok: false, error: "conflict" };
       if (input.type === "child" && record.kind === "chat") {
         // #1107: a chat turn whose request stopped after saved parts (its process went away): the recovered request for
         // the same message ends it from the saved parts, with code's line and no model call, before any spend or clock
@@ -2135,11 +2168,12 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       } else {
         try {
           // B1: the screen's word on Maya's batches first, so this turn's brief counts only what the child saw.
-          if ((input.type === "child" || input.type === "exchange") && input.fates?.length) session.boardFates(input.fates);
+          if ((input.type === "child" || input.type === "exchange" || input.type === "select") && input.fates?.length) session.boardFates(input.fates);
           if (input.type === "exchange") out = session.exchange(readExchangeTarget(input.target)!);
+          else if (input.type === "select") out = session.select(readSelectionTarget(input.target)!);
           else out = input.type === "child" ? await session.child(input.text.trim()) : input.type === "tick" ? await session.tick() : await session.writing(input.status);
         } finally {
-          if (input.type !== "exchange" || out) saved2 = await save(record, pkg, session);
+          if ((input.type !== "exchange" && input.type !== "select") || out) saved2 = await save(record, pkg, session);
         }
       }
       if (!saved2) return { ok: false, error: "conflict" };
