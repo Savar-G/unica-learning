@@ -208,7 +208,7 @@ describe("the turn and interruption settings of a session", () => {
     if (!config.ok) throw new Error("fake providers");
     const made = await makeProviders(config);
     const session = voiceSession(made, tuning);
-    return (session as unknown as { sessionOptions: { turnHandling: { turnDetection: string; endpointing: { minDelay: number; maxDelay: number }; interruption: { minDuration: number; minWords: number; falseInterruptionTimeout: number; resumeFalseInterruption: boolean } } } }).sessionOptions.turnHandling;
+    return (session as unknown as { sessionOptions: { turnHandling: { turnDetection: string; endpointing: { minDelay: number; maxDelay: number }; interruption: { mode?: string; minDuration: number; minWords: number; falseInterruptionTimeout: number; resumeFalseInterruption: boolean } } } }).sessionOptions.turnHandling;
   };
 
   it("keep LiveKit's defaults with no tuning (the fakes), where the end of the turn is 500 ms and speech of 500 ms stops Maya", async () => {
@@ -226,6 +226,14 @@ describe("the turn and interruption settings of a session", () => {
     const words = await options({ turn: { turnMinDelayMs: 0, interruptMinMs: 400, interruptMinWords: 1 } });
     expect(words.endpointing.minDelay).toBe(0);
     expect(words.interruption).toMatchObject({ minDuration: 400, minWords: 1 });
+  });
+
+  it("ask for adaptive interruption on a real call, so a local or self-hosted worker matches LiveKit Cloud, and keep VAD when set", async () => {
+    const t = await options({ turn: { turnMinDelayMs: 100, interruptMinMs: 300, interruptMinWords: 0, interruptMode: "adaptive" } });
+    expect(t.interruption).toMatchObject({ mode: "adaptive", minDuration: 300, resumeFalseInterruption: true });
+    const vad = await options({ turn: { turnMinDelayMs: 100, interruptMinMs: 300, interruptMinWords: 0, interruptMode: "vad" } });
+    expect(vad.interruption).toMatchObject({ mode: "vad" });
+    expect((await options()).interruption.mode).toBeUndefined();
   });
 
   it("let a test's own endpointing win", async () => {

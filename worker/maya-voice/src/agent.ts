@@ -51,7 +51,7 @@ const stoppedSpeakingAt = (ctx: llm.ChatContext) => {
 };
 
 /** The turn and interruption settings a real call sets (src/lib/maya-voice.ts `VoiceTuning`). */
-export type TurnTuning = Pick<VoiceTuning, "turnMinDelayMs" | "interruptMinMs" | "interruptMinWords">;
+export type TurnTuning = Pick<VoiceTuning, "turnMinDelayMs" | "interruptMinMs" | "interruptMinWords"> & Partial<Pick<VoiceTuning, "interruptMode">>;
 
 /**
  * A session for a voice call: LiveKit's pipeline with Maya's agent. `fake` turns off voice activity detection. `tuning`
@@ -75,7 +75,11 @@ export function voiceSession(providers: { stt: stt.STT; tts: tts.TTS; fake: bool
         : tuning.turn ? { endpointing: { minDelay: tuning.turn.turnMinDelayMs } } : {}),
       // Speech this long stops Maya, and (with `minWords` above 0) only once the speech-to-text has heard that many words.
       // The other options (the false interruption timeout and its resume) keep LiveKit's defaults.
-      ...(tuning.turn ? { interruption: { minDuration: tuning.turn.interruptMinMs, minWords: tuning.turn.interruptMinWords } } : {}),
+      // `mode` is set on real calls only: the fakes run no VAD, and LiveKit refuses adaptive detection without one.
+      ...(tuning.turn ? { interruption: {
+        minDuration: tuning.turn.interruptMinMs, minWords: tuning.turn.interruptMinWords,
+        ...(tuning.turn.interruptMode ? { mode: tuning.turn.interruptMode } : {}),
+      } } : {}),
     },
     ...(tuning.aecWarmupDuration !== undefined ? { aecWarmupDuration: tuning.aecWarmupDuration } : {}),
     // The session's own pause policy (src/lib/maya) decides about silence, not LiveKit's away timer.
@@ -548,7 +552,9 @@ export class VoiceCallRun {
         this.speechEndSeenAt = null;
         if (this.pace) this.cutAck(this.pace);
         if (audioScope) this.stopBoard(audioScope);
-        if (this.boardScope && !this.exchangeScope && !this.exchangeBoard) this.stopBoard(this.boardScope);
+        // An output that can pause leaves the decision to LiveKit: it pauses Maya, then resumes her when no words
+        // follow (a "mm-hm" or a noise) or clears her speech, which retires the plan, when they do.
+        if (this.boardScope && !this.exchangeScope && !this.exchangeBoard && !this.session.output.audio?.canPause) this.stopBoard(this.boardScope);
       } else if (ev.oldState === "speaking") {
         this.childStoppedAt = this.timers.now();
         this.speechEndSeenAt = ev.createdAt;

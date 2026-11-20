@@ -214,6 +214,11 @@ export interface VoiceTuning {
   /** LiveKit interruption `minWords`: words the speech-to-text must have heard before speech stops Maya; 0 is none. */
   interruptMinWords: number;
   /**
+   * LiveKit interruption `mode`. `adaptive` (the default) runs LiveKit's barge-in model, which tells "mm-hm" from a real
+   * interruption; set it so a local or self-hosted worker behaves as on LiveKit Cloud. `vad`: speech alone decides.
+   */
+  interruptMode: "adaptive" | "vad";
+  /**
    * A final transcript is dropped (never a child turn) only when the local voice activity detector heard no speech at
    * all since the previous final AND the input's peak stayed below this level (dBFS): words "heard" in digital silence
    * (a phantom "Yes!" on a silent microphone). Null: the rule is off. A quiet real answer has detector speech or a
@@ -250,6 +255,7 @@ export const VOICE_TUNING_DEFAULTS: VoiceTuning = {
   numberContinueMs: 1500,
   interruptMinMs: 300,
   interruptMinWords: 0,
+  interruptMode: "adaptive",
   // Real speech in two real calls peaked at -2.7 and -2.9 dBFS (mean level -26 and -29.3): -50 is far below any voice.
   dropSilentPeakDbfs: -50,
   // LiveKit Agents 1.9.5's local VAD default (inference/vad.js), set here so a call can change it (2026-11-13).
@@ -267,7 +273,7 @@ const TUNING_SETTINGS = [
   { env: "MAYA_INTERRUPT_MIN_MS", field: "interruptMinMs", min: 0, max: 2000 },
   { env: "MAYA_INTERRUPT_MIN_WORDS", field: "interruptMinWords", min: 0, max: 5 },
   { env: "MAYA_DETECTOR_MIN_SILENCE_MS", field: "detectorMinSilenceMs", min: 100, max: 2000 },
-] as const satisfies readonly { env: string; field: Exclude<keyof VoiceTuning, "dropSilentPeakDbfs">; min: number; max: number }[];
+] as const satisfies readonly { env: string; field: Exclude<keyof VoiceTuning, "dropSilentPeakDbfs" | "interruptMode">; min: number; max: number }[];
 
 /** AssemblyAI's two end-of-turn silences (ms): `min_turn_silence` and `max_turn_silence`. */
 export interface TurnSilence {
@@ -296,6 +302,9 @@ export function voiceTuning(env: Readonly<Record<string, string | undefined>>): 
     if (!/^\d+$/.test(raw) || !Number.isSafeInteger(n) || n < min || n > max) problems.push(`${name} must be a whole number from ${min} to ${max}, not "${raw}"`);
     else tuning[field] = n;
   }
+  const mode = value(env, "MAYA_INTERRUPT_MODE");
+  if (mode === "adaptive" || mode === "vad") tuning.interruptMode = mode;
+  else if (mode) problems.push(`MAYA_INTERRUPT_MODE must be "adaptive" or "vad", not "${mode}"`);
   // `off` turns the silent-transcript rule off; else a level from -120 to 0 dBFS.
   const drop = value(env, "MAYA_DROP_SILENT_PEAK_DBFS");
   if (drop === "off") tuning.dropSilentPeakDbfs = null;

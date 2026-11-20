@@ -211,3 +211,94 @@ it("forwards each 20 ms part in its own buffer, with its own samples (rtc-node s
   }
 });
 
+
+/** The SDK's own room output, with a 100 ms queue, on real time: pause holds forwarding and drops what is queued. */
+async function nativeSetup() {
+  const native = new voice.ParticipantAudioOutput({ localParticipant: { publishTrack: async () => ({ sid: "local", waitForSubscription: async () => {} }) } } as unknown as ConstructorParameters<typeof voice.ParticipantAudioOutput>[0],
+    { sampleRate: 24000, numChannels: 1, queueSizeMs: 100, trackPublishOptions: new TrackPublishOptions() });
+  await native.start(new AbortController().signal);
+  const receiver = createBoardReceiver({ sessionId: "native" });
+  const sender = createBoardSender({ sessionId: "native", senderId: "worker", transport: createMemoryTransport(receiver) });
+  const board = createBoardSpeech({ sender, now: () => Date.now() });
+  await board.connect();
+  await board.stage("speech", [1, 2].map(word => ({ word, batch: { transactionId: `b${word}`, commands: [{ op: "write", id: `n${word}`, text: String(word), place: { region: "main" } }] } })));
+  const scope = board.capture("speech")!;
+  await board.timing(scope, 1, 200, "word");
+  await board.timing(scope, 2, 900, "word");
+  const failure = vi.fn();
+  const interrupted = vi.fn((s: SpeechScope) => { void board.interrupt(s); });
+  const output = new CuePlaybackOutput(native, board, { now: () => Date.now(), set: (ms, run) => setTimeout(run, ms), clear: h => clearTimeout(h as ReturnType<typeof setTimeout>) },
+    p => { void p.catch(failure); }, interrupted);
+  const shown = () => receiver.snapshot().events.filter(e => e.kind === "batch").map(e => e.batchId);
+  const capture = output.captureFrame(frame(1200, scope)).then(() => output.flush());
+  const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
+  const close = async () => { output.cancelPending(scope); native.clearBuffer(); await capture; await native.close(); };
+  return { native, receiver, board, scope, output, shown, capture, failure, interrupted, wait, close };
+}
+
+it("pauses Maya without ending her speech, and resumes the audio and its cues together", async () => {
+  const c = await nativeSetup();
+  try {
+    expect(c.output.audio.canPause).toBe(true);
+    await c.wait(400);
+    await c.board.settled();
+    expect(c.shown()).toEqual(["b1"]);
+    c.output.audio.pause();
+    await c.wait(800);
+    await c.board.settled();
+    expect(c.shown()).toEqual(["b1"]);
+    expect(c.board.owns(c.scope)).toBe(true);
+    expect(c.receiver.staged().map(b => b.batchId)).toEqual(["b2"]);
+    expect(c.interrupted).not.toHaveBeenCalled();
+    c.output.audio.resume();
+    // About 500 ms of audio had been sent at the pause; the cue at 900 ms is reached about 400 ms after the resume.
+    await c.wait(150);
+    await c.board.settled();
+    expect(c.shown()).toEqual(["b1"]);
+    await c.wait(600);
+    await c.board.settled();
+    expect(c.shown()).toEqual(["b1", "b2"]);
+    await c.capture;
+    await c.output.waitForPlayout();
+    expect(c.interrupted).not.toHaveBeenCalled();
+    expect(c.failure).not.toHaveBeenCalled();
+  } finally { await c.close(); }
+});
+
+it("cancels the later cue when a real interruption follows a pause, and the SDK's resume after it plays nothing", async () => {
+  const c = await nativeSetup();
+  try {
+    await c.wait(400);
+    c.output.audio.pause();
+    await c.wait(200);
+    c.output.audio.clearBuffer();
+    c.output.audio.resume();
+    await c.wait(1200);
+    await c.board.settled();
+    expect(c.interrupted).toHaveBeenCalledTimes(1);
+    expect(c.shown()).toEqual(["b1"]);
+    expect(c.receiver.staged()).toEqual([]);
+    expect(c.receiver.snapshot().events).toContainEqual(expect.objectContaining({ kind: "cancelled", batchIds: ["b2"] }));
+    expect(c.failure).not.toHaveBeenCalled();
+  } finally { await c.close(); }
+});
+
+it("treats a repeated pause or resume as one", async () => {
+  const c = await nativeSetup();
+  try {
+    await c.wait(400);
+    c.output.audio.pause();
+    c.output.audio.pause();
+    await c.wait(500);
+    c.output.audio.resume();
+    c.output.audio.resume();
+    await c.wait(150);
+    await c.board.settled();
+    expect(c.shown()).toEqual(["b1"]);
+    await c.wait(600);
+    await c.board.settled();
+    expect(c.shown()).toEqual(["b1", "b2"]);
+    expect(c.receiver.snapshot().events.filter(e => e.kind === "batch" && e.batchId === "b2")).toHaveLength(1);
+    expect(c.interrupted).not.toHaveBeenCalled();
+  } finally { await c.close(); }
+});

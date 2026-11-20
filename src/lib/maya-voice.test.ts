@@ -270,7 +270,7 @@ it("R408-11: bounds a crashed worker's connection lease and starts a separate se
 
 describe("the tuning settings", () => {
   it("default to the documented values, and the providers carry them", () => {
-    expect(VOICE_TUNING_DEFAULTS).toEqual({ sttMinSilenceMs: 400, sttMaxSilenceMs: 1600, sttNumberMinSilenceMs: 512, sttNumberSilenceMs: 2500, turnMinDelayMs: 100, numberContinueMs: 1500, interruptMinMs: 300, interruptMinWords: 0, dropSilentPeakDbfs: -50, detectorMinSilenceMs: 250 });
+    expect(VOICE_TUNING_DEFAULTS).toEqual({ sttMinSilenceMs: 400, sttMaxSilenceMs: 1600, sttNumberMinSilenceMs: 512, sttNumberSilenceMs: 2500, turnMinDelayMs: 100, numberContinueMs: 1500, interruptMinMs: 300, interruptMinWords: 0, interruptMode: "adaptive", dropSilentPeakDbfs: -50, detectorMinSilenceMs: 250 });
     expect(voiceTuning({})).toEqual({ tuning: VOICE_TUNING_DEFAULTS, problems: [] });
     expect(voiceProviders({})).toMatchObject({ ok: true, tuning: VOICE_TUNING_DEFAULTS });
   });
@@ -278,10 +278,16 @@ describe("the tuning settings", () => {
   it("are read from their variables, an empty one keeping its default", () => {
     const env = { MAYA_STT_MIN_SILENCE_MS: "256", MAYA_STT_MAX_SILENCE_MS: "3500", MAYA_STT_NUMBER_MIN_SILENCE_MS: "800", MAYA_STT_NUMBER_SILENCE_MS: "5000", MAYA_TURN_MIN_DELAY_MS: "0", MAYA_NUMBER_CONTINUE_MS: "", MAYA_INTERRUPT_MIN_MS: "400", MAYA_INTERRUPT_MIN_WORDS: "1", MAYA_DROP_SILENT_PEAK_DBFS: "-60.5", MAYA_DETECTOR_MIN_SILENCE_MS: "300" };
     expect(voiceTuning(env)).toEqual({
-      tuning: { sttMinSilenceMs: 256, sttMaxSilenceMs: 3500, sttNumberMinSilenceMs: 800, sttNumberSilenceMs: 5000, turnMinDelayMs: 0, numberContinueMs: 1500, interruptMinMs: 400, interruptMinWords: 1, dropSilentPeakDbfs: -60.5, detectorMinSilenceMs: 300 },
+      tuning: { sttMinSilenceMs: 256, sttMaxSilenceMs: 3500, sttNumberMinSilenceMs: 800, sttNumberSilenceMs: 5000, turnMinDelayMs: 0, numberContinueMs: 1500, interruptMinMs: 400, interruptMinWords: 1, interruptMode: "adaptive", dropSilentPeakDbfs: -60.5, detectorMinSilenceMs: 300 },
       problems: [],
     });
     expect(voiceProviders(env)).toMatchObject({ ok: true, tuning: { sttMaxSilenceMs: 3500 } });
+  });
+
+  it("use adaptive interruption by default, and VAD-only with MAYA_INTERRUPT_MODE=vad", () => {
+    expect(voiceTuning({}).tuning.interruptMode).toBe("adaptive");
+    expect(voiceTuning({ MAYA_INTERRUPT_MODE: "vad" })).toMatchObject({ tuning: { interruptMode: "vad" }, problems: [] });
+    expect(voiceTuning({ MAYA_INTERRUPT_MODE: "off" }).problems).toEqual(['MAYA_INTERRUPT_MODE must be "adaptive" or "vad", not "off"']);
   });
 
   it("turn the silent-transcript rule off with MAYA_DROP_SILENT_PEAK_DBFS=off", () => {
