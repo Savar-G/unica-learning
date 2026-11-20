@@ -108,6 +108,7 @@ Voice calls with Maya are not released to families. See "Never say" below. Do no
 | Nothing is charged when the parent adds a card. A card is added after the report, only if the family wants to continue. | `src/app/(site)/pricing/page.tsx:45`, `src/lib/faq.ts:25` | 2026-11-14 |
 | A sibling who starts inside the family's free window gets only the time that is left in it. A sibling who starts after the window pays at once. | `docs/plan-controls.md` (Family admission, D-306), D-324 | 2026-11-14 |
 | Unica Learning costs less than a typical learning centre. BC learning centre pages list about CAD 170 to 220 per subject a month. | `src/lib/faq.ts:9`, `DESIGN.md:41` (D-114) | 2026-11-14 |
+| Unica Learning costs less than weekly tutoring. One hour a week for 4 weeks costs about CAD 152 to 400 at published Vancouver rates. Say "weekly tutoring", not "a tutor": one tutor hour can cost less than one Unica month. | `src/content/resources/tutor-cost-bc.tsx:27`, `src/content/resources/tutor-cost-bc.tsx:69` | 2026-11-20 |
 
 Do not write "money-back guarantee". The free month replaced it (`src/lib/site.ts:26`).
 
