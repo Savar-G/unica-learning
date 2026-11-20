@@ -100,6 +100,13 @@ export function skillRows(today: Level, goal: Level): ProgressPreview["rows"] {
   });
 }
 
+export function createProgressPreview(enabled: boolean): typeof buildProgressPreview {
+  return enabled ? buildProgressPreview : () => null;
+}
+
+// Keep the goal panel off until its goal and timeline are redefined.
+export const progressPreview = createProgressPreview(false);
+
 /**
  * The preview for one report, or null: no workbook 1 (a family on the waitlist, a failed plan), a start level the
  * curriculum does not hold, or a goal the start level already reaches.
@@ -108,7 +115,7 @@ export function skillRows(today: Level, goal: Level): ProgressPreview["rows"] {
  * `now` (a time in ms): Parent home passes it, so a goal date already past shows nothing instead of a stale promise. The
  * report page and the email pass none: they are about the day of the test.
  */
-export function progressPreview(v: ReportView, curriculum: Curriculum | null = curriculumFor("bc"), now?: number): ProgressPreview | null {
+function buildProgressPreview(v: ReportView, curriculum: Curriculum | null = curriculumFor("bc"), now?: number): ProgressPreview | null {
   const book = v.bookOne;
   if (!book || !curriculum || v.model.callToAction !== "card") return null;
   const start = curriculum.levels.find((l) => l.number === book.level);

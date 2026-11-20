@@ -1,0 +1,35 @@
+{
+  "round": "r1169-goal-panel",
+  "issue": 1169,
+  "capture": "Aside Browser on local Next.js development",
+  "states": {
+    "on": "Before, with the goal panel enabled",
+    "off": "After, with the goal panel disabled"
+  },
+  "screens": [
+    {
+      "surface": "Public sample report",
+      "source": "/sample-report with the displayed sample name anonymized",
+      "on": "sample-report-on.png",
+      "off": "sample-report-off.png"
+    },
+    {
+      "surface": "Parent report",
+      "source": "ParentReport rendered with sample data",
+      "on": "parent-report-on.png",
+      "off": "parent-report-off.png"
+    },
+    {
+      "surface": "Parent home",
+      "source": "ParentDashboardHome rendered with sample data",
+      "on": "parent-home-on.png",
+      "off": "parent-home-off.png"
+    },
+    {
+      "surface": "Report email",
+      "source": "HTML file from reportEmail rendered with sample data",
+      "on": "report-email-on.png",
+      "off": "report-email-off.png"
+    }
+  ]
+}
