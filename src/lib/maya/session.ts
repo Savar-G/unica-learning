@@ -5827,6 +5827,7 @@ function deliverMultiply(s: Session, plan: MultiplyTurn, effects: Effect[]): Ste
     lesson.builtGroups = Math.max(lesson.builtGroups, plan.facts.builtGroups);
   } else if (plan.facts.example) {
     lesson.visualSupport = "full";
+    lesson.builtGroups = 0;
   }
   if (step === "correct" || step === "offer") {
     s.solved = "child";

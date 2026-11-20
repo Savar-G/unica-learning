@@ -107,8 +107,25 @@ export function multiplyIdentifiesGroups(text: string, facts: MultiplyFacts): bo
 /** Detects whether the child explained repeated addition, skip counting, or multiplication for the groups. */
 export function multiplyExplainsMeaning(text: string, facts: MultiplyFacts): boolean {
   const lower = text.toLowerCase().replace(/[’']/g, "'").trim();
+  if (
+    MULTIPLY_START.test(lower) ||
+    MULTIPLY_HELP.test(lower) ||
+    /\?$/.test(lower) ||
+    /\b(?:don't|do not|can't|cannot|not sure|never|no idea|confused|stuck|help|how do|what does|teach me|explain)\b/.test(lower)
+  ) {
+    return false;
+  }
   const { groups, size } = facts;
-  if (/\b(?:skip[- ]?count|count by|repeated addition|add equal groups|multiply)\b/.test(lower)) return true;
+  if (/\b(?:skip[- ]?count|count by|repeated addition|add equal groups)\b/.test(lower)) return true;
+  const mulPair = new RegExp(
+    String.raw`\bmultiply\s+(?:(${NUM_PAT})\s+(?:by|and|times)\s+(${NUM_PAT})|(?:the\s+)?(?:groups?|rows?|numbers?|them|both))\b`,
+  ).exec(lower);
+  if (mulPair) {
+    if (!mulPair[1]) return true;
+    const a = smallNumber(mulPair[1]);
+    const b = smallNumber(mulPair[2]);
+    if ((a === groups && b === size) || (a === size && b === groups)) return true;
+  }
   const addTimes = new RegExp(String.raw`\badd\s+(${NUM_PAT})\s+(${NUM_PAT})\s+times\b`).exec(lower);
   if (addTimes) {
     const a = smallNumber(addTimes[1]);
@@ -152,10 +169,10 @@ export function multiplyOffByOne(committedNumber: number | null, groups: number,
 }
 
 const AREA_ALIASES: Record<string, RegExp> = {
-  "mm²": /\b(?:mm²|mm2|sq\.?\s*mm|square\s+millimet(?:re|er)s?)\b/i,
-  "cm²": /\b(?:cm²|cm2|sq\.?\s*cm|square\s+centimet(?:re|er)s?)\b/i,
-  "m²": /\b(?:m²|m2|sq\.?\s*m|square\s+met(?:re|er)s?)\b/i,
-  "km²": /\b(?:km²|km2|sq\.?\s*km|square\s+kilomet(?:re|er)s?)\b/i,
+  "mm²": /\b(?:mm²(?![\w²])|(?:mm2|sq\.?\s*mm|square\s+millimet(?:re|er)s?)\b)/i,
+  "cm²": /\b(?:cm²(?![\w²])|(?:cm2|sq\.?\s*cm|square\s+centimet(?:re|er)s?)\b)/i,
+  "m²": /\b(?:m²(?![\w²])|(?:m2|sq\.?\s*m|square\s+met(?:re|er)s?)\b)/i,
+  "km²": /\b(?:km²(?![\w²])|(?:km2|sq\.?\s*km|square\s+kilomet(?:re|er)s?)\b)/i,
 };
 
 const LINEAR_ALIASES: Record<string, RegExp> = {
@@ -169,7 +186,7 @@ const LINEAR_ALIASES: Record<string, RegExp> = {
   L: /\b(?:l|lit(?:re|er)s?)\b/i,
 };
 
-const ANY_MEASURE_UNIT = /\b(?:mm²|cm²|m²|km²|sq\.?\s*(?:mm|cm|m|km)|square\s+(?:milli|centi|kilo)?met(?:re|er)s?|millimet(?:re|er)s?|centimet(?:re|er)s?|kilomet(?:re|er)s?|met(?:re|er)s?|kilograms?|grams?|millilit(?:re|er)s?|lit(?:re|er)s?|mm|cm|km|kg|ml)\b/i;
+const ANY_MEASURE_UNIT = /\b(?:(?:mm|cm|m|km)²(?![\w²])|(?:sq\.?\s*(?:mm|cm|m|km)|square\s+(?:milli|centi|kilo)?met(?:re|er)s?|millimet(?:re|er)s?|centimet(?:re|er)s?|kilomet(?:re|er)s?|met(?:re|er)s?|kilograms?|grams?|millilit(?:re|er)s?|lit(?:re|er)s?|mm|cm|km|kg|ml)\b)/i;
 
 /**
  * Checks whether the child named the right product number with a WRONG unit
@@ -452,22 +469,22 @@ export function planMultiplyTurn(host: MultiplySessionHost, afterFailure: boolea
     observation = observe("off_by_one_group", "incorrect");
     visualSupport = "partial";
   } else if (prevStep === "check_groups" || prevStep === "worked_example") {
-    if (multiplyIdentifiesGroups(text, targetFacts)) {
+    if (stuck) {
+      step = "guide_groups";
+      visualSupport = "partial";
+    } else if (multiplyIdentifiesGroups(text, targetFacts)) {
       step = "check_meaning";
       observation = observe("equal_groups", "correct");
       visualSupport = "faded";
-    } else if (stuck) {
-      step = "guide_groups";
-      visualSupport = "partial";
     }
   } else if (prevStep === "check_meaning") {
-    if (multiplyExplainsMeaning(text, targetFacts)) {
+    if (stuck) {
+      step = "guide_groups";
+      visualSupport = "partial";
+    } else if (multiplyExplainsMeaning(text, targetFacts)) {
       step = "independent";
       observation = observe("repeated_addition", "correct");
       visualSupport = "faded";
-    } else if (stuck) {
-      step = "guide_groups";
-      visualSupport = "partial";
     }
   } else if (prevStep === "independent" && stuck) {
     step = "guide_groups";

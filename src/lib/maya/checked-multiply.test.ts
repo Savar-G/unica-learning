@@ -222,6 +222,48 @@ describe("child group actions and context protection", () => {
     expect(answer).not.toHaveBeenCalled();
   });
 
+  it("does not ask for the Add button when an off-by-one or additive mistake happens after all rows are built", async () => {
+    const { calls } = setup();
+    let turn = ok(await calls.start(startInput(PLAIN_3X4)));
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text: "How do I build the groups?" }, null));
+    const t1 = turn.view.exchange!;
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, {
+      type: "exchange", target: t1, fates: [{ batchId: t1.batchId, fate: "shown" }],
+    }, null));
+    const t2 = turn.view.exchange!;
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, {
+      type: "exchange", target: t2, fates: [{ batchId: t2.batchId, fate: "shown" }],
+    }, null));
+    expect(turn.view.exchange).toBeUndefined();
+
+    const offByOne = ok(await calls.input(turn.view.id, turn.view.revision, {
+      type: "child", text: "8.", fates: [{ batchId: turn.view.batches.at(-1)!.transactionId, fate: "shown" }],
+    }, null));
+    expect(offByOne.view.exchange).toBeUndefined();
+    expect(offByOne.output.say.join(" ")).not.toMatch(/add 1 group|button/i);
+    expect(offByOne.output.say.join(" ")).toMatch(/count all 3 rows of 4/i);
+    expect(offByOne.output.say.join(" ")).not.toMatch(/\b12\b|twelve/i);
+
+    const additive = ok(await calls.input(turn.view.id, offByOne.view.revision, { type: "child", text: "7." }, null));
+    expect(additive.view.exchange).toBeUndefined();
+    expect(additive.output.say.join(" ")).not.toMatch(/add 1 group|button/i);
+    expect(additive.output.say.join(" ")).toMatch(/count all 3 rows of 4/i);
+  });
+
+  it("treats help requests like 'I don't know how to multiply.' as needing help, not repeated-addition mastery", async () => {
+    const { calls, store } = setup();
+    let turn = ok(await calls.start(startInput(APPLES_STORY)));
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text: "I don't know how to start." }, null));
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text: "3 bags and 4 apples in each." }, null));
+    const help = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text: "I don't know how to multiply." }, null));
+    expect(help.view.exchange).toMatchObject({ objectId: GROUPS_OBJECT, groupSize: 4, nextGroups: 2 });
+    expect(help.output.say.join(" ")).toMatch(/build 3 equal bags of 4 apples/i);
+    await calls.input(turn.view.id, help.view.revision, { type: "end" }, null);
+    const trace = store.rows()[0].trace!;
+    expect(trace.checkedMultiply?.turns.some((t) => t.observation?.skill === "repeated_addition")).toBe(false);
+    expect(trace.checkedMultiply?.turns.at(-1)?.instruction.step).toBe("guide_groups");
+  });
+
   it("does not silently interchange group count and group size in context, even when the product matches", async () => {
     const { calls, store, answer } = setup();
     const chat = ok(await calls.start(startInput(APPLES_STORY)));
@@ -420,15 +462,21 @@ describe("units, answer restrictions, cancellation, and #1088 regressions", () =
     c1 = ok(await calls.input(c1.view.id, c1.view.revision, { type: "child", text: "12 apples." }, null));
     expect(c1.output.say.join(" ")).toMatch(/you found the product/i);
 
-    // Area: "12 cm" is wrong unit for cm²; a question "Is it 12 square centimetres?" is not credited; "12 square centimetres." is accepted.
+    // Area: "12 cm" and "12 m²." are wrong units for cm²; a question is not credited; "12 square centimetres." and "12 cm²." are accepted.
     let c2 = ok(await calls.start(startInput(AREA_3X4)));
     c2 = ok(await calls.input(c2.view.id, c2.view.revision, { type: "child", text: "12 cm." }, null));
     expect(c2.output.say.join(" ")).toMatch(/check the unit.*square centimetres/i);
     expect(c2.output.say.join(" ")).not.toMatch(/\b12\b|twelve/i);
+    c2 = ok(await calls.input(c2.view.id, c2.view.revision, { type: "child", text: "12 m²." }, null));
+    expect(c2.output.say.join(" ")).toMatch(/check the unit.*square centimetres/i);
     c2 = ok(await calls.input(c2.view.id, c2.view.revision, { type: "child", text: "Is it 12 square centimetres?" }, null));
     expect(c2.output.say.join(" ")).not.toMatch(/you found the product/i);
     c2 = ok(await calls.input(c2.view.id, c2.view.revision, { type: "child", text: "12 square centimetres." }, null));
     expect(c2.output.say.join(" ")).toMatch(/you found the product/i);
+
+    let c3 = ok(await calls.start(startInput(AREA_3X4)));
+    c3 = ok(await calls.input(c3.view.id, c3.view.revision, { type: "child", text: "12 cm²." }, null));
+    expect(c3.output.say.join(" ")).toMatch(/you found the product/i);
   });
 
   it("does not hold a stop request behind checked board acknowledgement in voice", async () => {

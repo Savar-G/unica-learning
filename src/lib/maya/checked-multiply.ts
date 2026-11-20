@@ -460,6 +460,13 @@ export function multiplyWords(facts: MultiplyFacts, instruction: unknown, show: 
     : unitName
       ? `What is the product in ${unitName}?`
       : "What is the product?";
+  const canAddGroup = builtGroups < groups;
+  const nextActionLines = canAddGroup
+    ? [
+        ...(show ? [`Start with ${builtGroups} ${gWord(builtGroups)} of ${size}.`] : []),
+        `Use the Add 1 group of ${size} button on the board.`,
+      ]
+    : [`Count all ${groups} rows of ${size} on the board.`, totalAsk];
 
   switch (step) {
     case "check_groups":
@@ -492,29 +499,27 @@ export function multiplyWords(facts: MultiplyFacts, instruction: unknown, show: 
     case "additive_error":
       return [
         `Adding puts ${groups} and ${size} together once, not in equal ${gNoun}. Multiplication counts ${groups} ${gNoun} of ${thingInGroup}.`,
-        ...(show ? [`Start with ${builtGroups} ${gWord(builtGroups)} of ${size}.`] : []),
-        `Use the Add 1 group of ${size} button on the board.`,
+        ...nextActionLines,
       ];
 
     case "swapped_factors":
       return [
         `Careful: that swaps the number of ${gNoun} and the size of each ${gSing}. There are ${groups} ${gNoun} with ${thingInGroup} in each ${gSing}, not ${size} ${gNoun} of ${groups}.`,
-        ...(show ? [`Start with ${builtGroups} ${gWord(builtGroups)} of ${size}.`] : []),
-        `Use the Add 1 group of ${size} button on the board.`,
+        ...nextActionLines,
       ];
 
     case "off_by_one":
       return [
         `Check how many equal ${gNoun} of ${size} you counted. We need ${groups} ${gNoun} of ${size}.`,
-        ...(show ? [`Start with ${builtGroups} ${gWord(builtGroups)} of ${size}.`] : []),
-        `Use the Add 1 group of ${size} button on the board.`,
+        ...nextActionLines,
       ];
 
     case "guide_groups":
       return [
-        `Let's build ${groups} equal ${gNoun} of ${thingInGroup} on the board.`,
-        ...(show ? [`Start with ${builtGroups} ${gWord(builtGroups)} of ${size}.`] : []),
-        `Use the Add 1 group of ${size} button on the board.`,
+        canAddGroup
+          ? `Let's build ${groups} equal ${gNoun} of ${thingInGroup} on the board.`
+          : `We already have ${groups} equal ${gNoun} of ${thingInGroup} on the board.`,
+        ...nextActionLines,
       ];
 
     case "group_added": {
@@ -605,11 +610,11 @@ export function multiplyRelatedChoice(
   if (r.offByOne) return { step: "transfer_hint", observation: ["off_by_one_group", "incorrect"] };
   if (r.wrongProduct) {
     return {
-      step: r.previous === "transfer_hint" ? "transfer_show" : "transfer_hint",
+      step: r.previous === "transfer_hint" || r.previous === "transfer_show" ? "transfer_show" : "transfer_hint",
       observation: ["product", "incorrect"],
     };
   }
-  if (r.stuck) return { step: r.previous === "transfer_hint" ? "transfer_show" : "transfer_hint" };
+  if (r.stuck) return { step: r.previous === "transfer_hint" || r.previous === "transfer_show" ? "transfer_show" : "transfer_hint" };
   return { step: again };
 }
 
