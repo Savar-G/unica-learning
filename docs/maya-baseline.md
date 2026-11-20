@@ -54,7 +54,9 @@ On November 19, 2026, a MacBook M4 Pro ran the existing tutor path and the check
 | Existing tutor | 1,191 ms, filler | 2,610 ms | 11,019 ms | One Sonnet 5.5 proposal, four Haiku 5.5 math reviews, two Haiku 5.5 talk reviews |
 | Checked exchange | 1,095 ms, answer | 5,676 ms | 3,767 ms and 5,546 ms | Zero model and review requests for this code-written turn |
 
-The transcript matched the synthetic input in both calls. In the checked call, word cues showed five tens and two ones, then four tens and twelve ones. The stored trace records each action once, with the exchange after the starting state. Both calls ended as `child_stopped`. The checked explanation kept the subtraction answer hidden. The browser measurement covers received audio and rendered SVG. It does not independently transcribe the returned audio or measure the physical speaker and display.
+The transcript matched the synthetic input in both calls. In the checked call, word cues showed five tens and two ones, then four tens and twelve ones. The stored trace records each action once, with the exchange after the starting state. Both calls ended as `child_stopped`. The checked explanation kept the subtraction answer hidden. The first browser measurement covers energy in the received stream and changes to the rendered SVG.
+
+A second checked browser call at `9b6c5305b` captured 216,680 bytes from the received audio track. AssemblyAI transcribed that capture and confirmed the five tens and two ones, the trade of one ten for ten ones, and the four tens and twelve ones that still make 52. The target answer remained hidden. The receiver again showed each action once.
 
 These are single observations. Hosted load, physical devices, interruption and false stops, total billed costs, and the complex-turn budget still need measurement. The isolated browser harness had a failed setup attempt when the room expired before the browser joined. It produced no turn timing.
 
