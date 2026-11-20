@@ -1838,7 +1838,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             await queue;
           },
           async deferGuidance() {
-            const settledBudget = stopBudget();
+            // #1203: admission closes now; the block rows are written in the background and drained before the
+            // process exits (`spendSettled`), so the child's notice never waits for the ledger.
+            void stopBudget();
             await queue;
             if (lost || record.status !== "live" || !record.live) return false;
             const { safety } = record.live.text.session;
@@ -1851,7 +1853,6 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             }
             await alert(record);
             await meter?.stop();
-            await settledBudget;
             return true;
           },
         } : {}),
@@ -2024,12 +2025,13 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         },
         spoken: (text) => meter?.spoken(text) ?? Promise.resolve(),
         async end(how) {
-          // Stop admissions before waiting for a save or the STT meter.
-          const settledBudget = stopBudget();
+          // Stop admissions before waiting for a save or the STT meter. #1203: the block rows are written in the
+          // background and drained before the process exits (`spendSettled`), so the child's notice never waits for them.
+          void stopBudget();
           const settledMeter = stopMeter();
           await queue;
           await settledMeter;
-          if (lost) { await settledBudget; return; }
+          if (lost) return;
           if (record.status === "live") {
             later(async () => {
               // A fatal close or hang-up must not wait for an unfinished model turn.
@@ -2045,7 +2047,6 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             });
           }
           await queue;
-          await settledBudget;
         },
         settled: () => queue,
         spendSettled: () => (budget ? budget.drained().catch(() => {}) : Promise.resolve()),

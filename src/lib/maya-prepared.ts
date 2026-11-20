@@ -22,15 +22,19 @@ export interface PrepareHypothesis {
 export const MAX_PREPARES_PER_TURN = 3;
 
 /**
- * #1203: the waits before each ask for an aborted request's receipt (OpenRouter's generation stats; a 404 means not yet),
- * in ms: asks at about 1, 3, 7, 15 and 27 s. Live probe, 2026-11-20 (8 aborted Sonnet 5.5 streams on Maya's route, all
- * Azure): the stats appeared after 1 to 7.5 s, and once only after 12 to 20 s. After the last ask the cost is unknown and
- * the reservation stays counted. No estimate frees room: no bound on what the provider bills (model, route, reasoning
- * tokens) is verified here. The call's end waits for these asks (BLOCK_DRAIN_MS, src/lib/maya-spend-block.ts).
+ * #1203: when an aborted request's receipt is asked (OpenRouter's generation stats; a 404 means not yet), in ms after the
+ * request stopped: its abort or the provider's end, whichever came first. Live probe, 2026-11-20 (8 aborted Sonnet 5.5
+ * streams on Maya's route, all Azure): the stats appeared after 1 to 7.5 s, and once only after 12 to 20 s. No estimate
+ * frees room: no bound on what the provider bills (model, route, reasoning tokens) is verified here.
  */
-export const PREPARE_STATS_WAITS_MS = [1_000, 2_000, 4_000, 8_000, 12_000] as const;
-/** One ask for the receipt stops after this long. */
-export const PREPARE_STATS_ASK_MS = 2_000;
+export const PREPARE_STATS_ASK_AT_MS = [1_000, 3_000, 7_000, 15_000, 22_000] as const;
+/**
+ * The receipt is settled by this long after the request stopped: with no receipt, the cost is unknown and the
+ * reservation stays counted. The call's end leaves time after it for the block row's write (BLOCK_DRAIN_MS).
+ */
+export const PREPARE_RECEIPT_BY_MS = 25_000;
+/** One ask for the receipt stops after this long (or at PREPARE_RECEIPT_BY_MS). */
+const PREPARE_STATS_ASK_MS = 2_000;
 
 const UNITS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
 const TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
@@ -181,6 +185,8 @@ export function preparedReplies(model: MayaModel, spend: SpendSeam, clock: () =>
       let lookup: (() => Promise<number | null>) | null = null;
       // The provider's request ended (it answered or failed). Apart from `done`: our timer can end the reply first.
       let providerEnded = false;
+      // When the request stopped: its abort or the provider's end, whichever came first. The receipt clock starts here.
+      let stoppedAt: number | null = null;
       let listener: ((text: string) => void) | undefined;
       let settled: { usd: number } | null = null;
       let settling = false;
@@ -191,15 +197,18 @@ export function preparedReplies(model: MayaModel, spend: SpendSeam, clock: () =>
       // The provider's receipt: a late reported cost, or the generation stats' cost; null when none came by the last
       // ask, or at once when the provider ended with no cost and offered no stats (nothing more can come).
       const receipt = async (): Promise<number | null> => {
-        for (const ms of PREPARE_STATS_WAITS_MS) {
+        const origin = stoppedAt ?? Date.now();
+        for (const at of PREPARE_STATS_ASK_AT_MS) {
           if (reported !== null) return reported;
           if (providerEnded && !lookup) return null;
-          await new Promise((r) => setTimeout(r, ms));
+          await new Promise((r) => setTimeout(r, Math.max(0, origin + at - Date.now())));
           if (reported !== null) return reported;
           // A provider still running may report its cost when it ends.
           if (!lookup) continue;
+          const left = Math.min(PREPARE_STATS_ASK_MS, origin + PREPARE_RECEIPT_BY_MS - Date.now());
+          if (left <= 0) break;
           const ask = lookup;
-          const usd = await Promise.race([ask().catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), PREPARE_STATS_ASK_MS))]);
+          const usd = await Promise.race([ask().catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), left))]);
           if (reported !== null) return reported;
           if (typeof usd === "number" && Number.isFinite(usd) && usd >= 0) return usd;
         }
@@ -247,6 +256,7 @@ export function preparedReplies(model: MayaModel, spend: SpendSeam, clock: () =>
         discard() { decision ??= false; entry.abort(); settle(); },
         abort() {
           listener = undefined;
+          stoppedAt ??= Date.now();
           controller.abort();
           // Give an abort-ignoring provider time to report the actual bill. The bounded timer ends the reply; the
           // receipt is still asked. No late callback can reach the child.
@@ -259,8 +269,8 @@ export function preparedReplies(model: MayaModel, spend: SpendSeam, clock: () =>
           (text) => { if (!controller.signal.aborted) { soFar = text; listener?.(text); } },
           (usd) => { if (Number.isFinite(usd) && usd >= 0) reported = usd; },
           (cost) => { lookup = cost; }))
-          .then((proposal) => { providerEnded = true; finish({ proposal }); }, (error: unknown) => { providerEnded = true; finish({ error }); });
-      } catch (error) { providerEnded = true; finish({ error }); }
+          .then((proposal) => { providerEnded = true; stoppedAt ??= Date.now(); finish({ proposal }); }, (error: unknown) => { providerEnded = true; stoppedAt ??= Date.now(); finish({ error }); });
+      } catch (error) { providerEnded = true; stoppedAt ??= Date.now(); finish({ error }); }
       return true;
     },
     takeAll(): Map<string, PreparedReply> { const taken = open; open = new Map(); return taken; },

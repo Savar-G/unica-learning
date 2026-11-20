@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { openRouterClient } from "@/lib/ai-openrouter";
 import { callSpend, createSpendLedger, spendConfig, usdToMicros, RESERVATION_TTL_MS, RESERVE_USD, WEEK_MICROS, type Charge, type SpendCall } from "@/lib/maya-spend";
 import { meteredAi, SpendRefused } from "@/lib/maya-spend-ai";
-import { BLOCK_ATTEMPTS, BLOCK_DRAIN_MS, BLOCK_RENEW_MS, BLOCK_RETIRE_MS, SPECULATIVE_PER_TURN } from "@/lib/maya-spend-block";
+import { createBudget, BLOCK_ATTEMPTS, BLOCK_DRAIN_MS, BLOCK_RENEW_MS, BLOCK_RETIRE_MS, SPECULATIVE_PER_TURN } from "@/lib/maya-spend-block";
 import { memorySpendStore } from "@/lib/maya-spend-memory";
 import { preparedReplies } from "@/lib/maya-prepared";
 import type { MayaModel, TurnBrief } from "@/lib/maya-model";
@@ -498,6 +498,27 @@ describe("aborted prepared replies with no reported cost (#1203)", () => {
           expect(drained).toBe(true);
           expect(t.blocks()).toMatchObject([{ settled: true, cost: usdToMicros(0.004, t.config) }]);
         }
+      }
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("applies one deadline from its call to the whole drain, also over a refill and a row write that never answer", async () => {
+    vi.useFakeTimers();
+    try {
+      for (const hang of ["settle", "refill"] as const) {
+        let reserves = 0;
+        const b = createBudget({ modelMicros: 100, reviewMicros: 10, clock: () => Date.now(), newId: () => String(++reserves), usdToMicros: (usd) => Math.ceil(usd * 1e6),
+          reserve: async () => (hang === "refill" && reserves > 1 ? new Promise(() => {}) : { ok: true }),
+          settle: async () => (hang === "settle" ? new Promise(() => {}) : undefined) });
+        await b.open();
+        // Free attempts down to the refill line: a refill starts and, for "refill", never answers.
+        for (let i = 0; i < BLOCK_ATTEMPTS - 1; i++) b.finish(b.take("model")!, 100);
+        let drained = false;
+        void b.drained().then(() => { drained = true; });
+        await vi.advanceTimersByTimeAsync(BLOCK_DRAIN_MS - 1);
+        expect(drained).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(drained).toBe(true);
       }
     } finally { vi.useRealTimers(); }
   });

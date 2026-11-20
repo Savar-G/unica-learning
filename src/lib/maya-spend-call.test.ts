@@ -210,6 +210,26 @@ describe("an admin test call", () => {
   });
 });
 
+describe("the end of a voice call (#1203)", () => {
+  it("ends, saves and lets the child be told without waiting for the budget's row writes", async () => {
+    const t = setup();
+    const view = ok(await t.calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: TEST_PKG, startedBy: "admin-1" })).view;
+    const opened = await t.calls.openVoice(view.id, { speechToText: "fake", voice: "fake" }, "Leah");
+    if (!opened.ok) throw new Error(opened.error);
+    await opened.call.start();
+    // The ledger stops answering the model block's settle.
+    const settle = t.spendStore.settle.bind(t.spendStore);
+    vi.spyOn(t.spendStore, "settle").mockImplementation(async (id, micros) => {
+      if (t.spendStore.rows().find((r) => r.id === id)?.what === "model") return new Promise(() => {});
+      return settle(id, micros);
+    });
+    let ended = false;
+    void opened.call.end({ reason: "child_stopped" }).then(() => { ended = true; });
+    await vi.waitFor(() => expect(ended).toBe(true));
+    expect(t.store.rows()[0]).toMatchObject({ status: "ended" });
+  });
+});
+
 describe("a voice call at the cap", () => {
   it("counts its speech-to-text, closes with code's line after one safety read, and is refused when new", async () => {
     const t = setup({ voiceIsTheChilds: true });

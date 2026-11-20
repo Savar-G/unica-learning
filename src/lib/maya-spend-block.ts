@@ -37,12 +37,12 @@ export const SPECULATIVE_PER_TURN = 3;
 /** A speculative attempt must leave this many attempts free for live work. */
 export const SPECULATIVE_KEEP = 2;
 /**
- * #1203: the call's end waits at most this long for attempts still owed their cost (a prepared reply asking its
- * provider's receipt, about 37 s at most, src/lib/maya-prepared.ts) and for the rows written with them, before the
- * process may exit. Below LiveKit's 60-second job shutdown timeout. A block still open then stays counted at its
- * reservation until the expiry.
+ * #1203: one deadline for the whole drain at the call's end, from `drained`'s call: a refill under way, attempts still
+ * owed their cost (a prepared reply's receipt, by PREPARE_RECEIPT_BY_MS = 25 s after its abort, src/lib/maya-prepared.ts)
+ * and the block rows written with them, before the process may exit. Well below LiveKit's 60-second job shutdown
+ * timeout. A block still open then stays counted at its reservation until the expiry.
  */
-export const BLOCK_DRAIN_MS = 40_000;
+export const BLOCK_DRAIN_MS = 35_000;
 
 /** What an attempt from the block is: Maya's model, a prepared reply that may not be used, or a free-talk review. */
 export type BlockKind = "model" | "speculative" | "review";
@@ -113,8 +113,9 @@ export interface CallBudget {
   /** The call's end: no more takes; every block is settled with its real total once its open attempts end. */
   stop(): Promise<void>;
   /**
-   * #1203: `stop`, then waits until every block is written with its real total, at most BLOCK_DRAIN_MS: an attempt may
-   * still be owed its cost after the call's end. For the process's exit, after the media closed and the child was told.
+   * #1203: stops, then waits until every block is written with its real total: an attempt may still be owed its cost
+   * after the call's end. One deadline, BLOCK_DRAIN_MS from this call, covers a refill, the receipts and the writes. For
+   * the process's exit, after the media closed and the child was told. Never throws.
    */
   drained(): Promise<void>;
   totals(): BlockTotals;
@@ -341,13 +342,14 @@ export function createBudget(seams: BudgetSeams): CallBudget {
       await refilling;
       await Promise.all([...settles]);
     },
-    async drained() {
-      await budget.stop();
-      if (isDrained()) return;
-      await new Promise<void>((resolve) => {
-        const done = () => { clearTimeout(timer); resolve(); };
-        const timer = setTimeout(() => { const i = drainers.indexOf(done); if (i >= 0) drainers.splice(i, 1); resolve(); }, BLOCK_DRAIN_MS);
+    drained() {
+      return new Promise<void>((resolve) => {
+        const done = () => { clearTimeout(timer); const i = drainers.indexOf(done); if (i >= 0) drainers.splice(i, 1); resolve(); };
+        const timer = setTimeout(done, BLOCK_DRAIN_MS);
         drainers.push(done);
+        // `stop` closes admission at once; its waits (a refill, the writes) are under the one deadline above.
+        void budget.stop().then(wake, wake);
+        wake();
       });
     },
     totals: () => ({ ...totals }),

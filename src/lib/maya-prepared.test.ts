@@ -4,7 +4,7 @@ import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
 import { memorySpendSeam } from "@/lib/maya-spend-seam";
-import { normalizeTurn, preparedReplies, PREPARE_STATS_ASK_MS, PREPARE_STATS_WAITS_MS } from "@/lib/maya-prepared";
+import { normalizeTurn, preparedReplies, PREPARE_RECEIPT_BY_MS, PREPARE_STATS_ASK_AT_MS } from "@/lib/maya-prepared";
 import { BLOCK_DRAIN_MS } from "@/lib/maya-spend-block";
 import { checkTrace } from "@/lib/maya-trace";
 import type { MayaModel, TurnBrief } from "@/lib/maya-model";
@@ -266,7 +266,7 @@ describe("the cost of an aborted prepare with no reported cost (#1203)", () => {
     } finally { vi.useRealTimers(); }
   });
 
-  it("keeps asking for about 27 s: a receipt that appears 20 s after the abort is taken (live probe, 2026-11-20)", async () => {
+  it("keeps asking until PREPARE_RECEIPT_BY_MS: a receipt that appears 20 s after the abort is taken (live probe, 2026-11-20)", async () => {
     vi.useFakeTimers();
     try {
       // Live: OpenRouter's stats for an aborted Sonnet 5.5 stream on Maya's route appeared after 1 to 7.5 s, and once
@@ -278,15 +278,40 @@ describe("the cost of an aborted prepare with no reported cost (#1203)", () => {
       await vi.advanceTimersByTimeAsync(60_000);
       expect(calls).toEqual([0.0019]);
       expect(asked.at(-1)).toBeGreaterThanOrEqual(20_000);
-      expect(asked.at(-1)).toBeLessThanOrEqual(30_000);
+      expect(asked.at(-1)).toBeLessThanOrEqual(PREPARE_RECEIPT_BY_MS);
     } finally { vi.useRealTimers(); }
   });
 
-  it("finishes its last ask inside the call's end-of-call drain bound", () => {
-    const worst = PREPARE_STATS_WAITS_MS.reduce((n, ms) => n + ms + PREPARE_STATS_ASK_MS, 0);
-    expect(worst).toBeLessThan(BLOCK_DRAIN_MS);
-    // LiveKit stops a job process 60 s after shutdown starts (agents-js shutdownProcessTimeout).
-    expect(BLOCK_DRAIN_MS).toBeLessThanOrEqual(45_000);
+  it("counts its receipt clock from the discard: an abort-ignoring provider's receipt is settled by PREPARE_RECEIPT_BY_MS after it", async () => {
+    vi.useFakeTimers();
+    try {
+      const seam = memorySpendSeam();
+      const settledAt: number[] = [];
+      const spend = { ...seam, settle: (h: Parameters<typeof seam.settle>[0], usd: number | null) => { settledAt.push(Date.now()); seam.settle(h, usd); } };
+      const asked: number[] = [];
+      // It ignores the abort, never ends, and every ask hangs: the worst case for the bound.
+      const model: MayaModel = { id: "m", promptVersion: "t", output: 3, propose: (_input, _signal, _onText, _onCost, onGeneration) => {
+        onGeneration?.(() => { asked.push(Date.now()); return new Promise(() => {}); });
+        return new Promise(() => {});
+      } };
+      const cache = preparedReplies(model, spend, () => 0);
+      cache.start("k", brief, { text: "6", reason: "interim" }, seam.take("speculative")!);
+      await vi.advanceTimersByTimeAsync(5_000);
+      const discardedAt = Date.now();
+      cache.discard(cache.get("k")!, "text", 0);
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(settledAt).toHaveLength(1);
+      expect(settledAt[0] - discardedAt).toBeLessThanOrEqual(PREPARE_RECEIPT_BY_MS);
+      expect(asked.every((at) => at - discardedAt < PREPARE_RECEIPT_BY_MS)).toBe(true);
+      expect(seam.settled[0].usd).toBeNull();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("leaves time inside the call's single drain deadline for the ledger write after the last receipt", () => {
+    expect(PREPARE_STATS_ASK_AT_MS.at(-1)!).toBeLessThan(PREPARE_RECEIPT_BY_MS);
+    // At least 10 s for the block row's write; LiveKit stops a job process 60 s after shutdown starts.
+    expect(PREPARE_RECEIPT_BY_MS + 10_000).toBeLessThanOrEqual(BLOCK_DRAIN_MS);
+    expect(BLOCK_DRAIN_MS).toBeLessThanOrEqual(40_000);
   });
 
   it("keeps the reservation when no receipt comes: settles once as unknown, never with an estimate", async () => {
@@ -295,7 +320,7 @@ describe("the cost of an aborted prepare with no reported cost (#1203)", () => {
       const lookup = vi.fn(() => new Promise<number | null>(() => {}));
       const { calls, reply } = run(streaming(lookup));
       await vi.advanceTimersByTimeAsync(60_000);
-      expect(lookup.mock.calls.length).toBe(PREPARE_STATS_WAITS_MS.length);
+      expect(lookup.mock.calls.length).toBe(PREPARE_STATS_ASK_AT_MS.length);
       expect(calls).toEqual([null]);
       expect(reply.cost()).toBeNull();
     } finally { vi.useRealTimers(); }
