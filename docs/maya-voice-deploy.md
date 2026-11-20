@@ -75,6 +75,16 @@ cd ~/unica-maya-voice-deploy && lk agent deploy
 
 Change one setting with `lk agent update-secrets --secrets "MAYA_TTS=inference"`; settings you do not name stay. `lk agent rollback` returns to the previous version.
 
+## The staging deployment (#1137)
+
+A non-production copy of the agent, named `staging`, measures what only LiveKit Cloud runs: adaptive interruption, the multimodal turn detector and Krisp filters ([Non-production deployments](https://docs.livekit.io/deploy/agents/deployments.md), read 2026-11-20). Savar approved it on 2026-11-20. It sleeps when idle and costs nothing then.
+
+- **Only admin test calls reach it.** A dispatch with no deployment name goes to `production`. The site never names one: `mintVoiceToken` takes a `staging` option for an admin test call only and throws for any other kind, and no route passes it. LiveKit Agents for Node 1.9.5 registers each worker under `LIVEKIT_AGENT_DEPLOYMENT`, which LiveKit Cloud sets (empty in production). Versions before 1.7.1 register a staging worker as production, so never deploy one there.
+- **Secrets are shared with production.** Never run `lk agent update-secrets` for a staging test, and never pass `--secrets` or `--secrets-file` to a staging deploy. Staging-only settings come from the job: `worker/maya-voice/src/staging.ts` reads a `lab` object from the job's metadata only when `LIVEKIT_AGENT_DEPLOYMENT` is not empty. Production ignores it. The settings are `interruption` (`adaptive` or `vad`), `turnDetection` (`stt` or `multimodal`) and `noise` (`krisp-nc` or `krisp-bvc`).
+- **Deploy** (staged as above, from the staged folder): `lk agent deploy --deployment staging --project unica-ai-teacher --no-default-attributes --attribute git_commit=<sha> --attribute git_branch=<branch> -y .`. A redeploy drops a live staging call at once.
+- **Run one test call**: `node scripts/maya-staging-call.mjs` (usage in the file). It makes a real admin test call of a test family, names the deployment in the token, joins as a headless child and plays recorded clips. It refuses to start while a family voice call is live. Read the worker's lines with `lk agent logs --deployment staging`: `registered worker` shows `deployment: staging`, and `staging lab` shows the call's settings.
+- **Remove it**: `lk agent delete --deployment staging`. Without `--deployment`, `lk agent delete` deletes the whole agent, production included. Never run `lk agent promote`: it puts the staging image into production.
+
 ## Turn on LiveKit Inference
 
 The worker sends speech-to-text and the voice through LiveKit Inference with `MAYA_STT=inference` and `MAYA_TTS=inference` (D-238). It uses the project's own key, which LiveKit Cloud injects, so no other account is needed. Only after every check of the [privacy gate](maya-voice.md#privacy-gate):

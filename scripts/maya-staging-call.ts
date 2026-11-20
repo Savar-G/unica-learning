@@ -30,7 +30,7 @@ import type { Database } from "@/lib/database";
 import { BOARD_RPC, boardRpcHandler } from "@/lib/board-rpc";
 import { createBoardReceiver } from "@/lib/board-protocol";
 import { callsOn } from "@/lib/maya-call-seams";
-import { testQuestion } from "@/lib/maya-call-server";
+import { assessmentQuestionReader } from "@/lib/assessment-questions";
 import { livekitProject } from "@/lib/maya-voice";
 import { mintVoiceToken } from "@/lib/maya-voice-token";
 import { audibleStop, interruptReport, type Level } from "../worker/maya-voice/src/interrupt-measure";
@@ -82,8 +82,11 @@ let seed = 7;
 const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 
 // ---------- the call ----------
-const question = await testQuestion(args.assessment, args.question);
-if (!question) throw new Error("no such test question");
+// As the admin voice route reads it (src/lib/maya-call-server.ts `testQuestion`, which needs Next's request scope).
+const { data: assessment } = await db.from("assessments").select("id, parent_id, child_id, children(first_name, grade)").eq("id", args.assessment).maybeSingle();
+const found = assessment && await assessmentQuestionReader(db).question({ source: "assessment", assessmentId: assessment.id, questionId: args.question });
+if (!assessment || !found || found.status !== "found") throw new Error("no such test question");
+const question = { parentId: assessment.parent_id, childId: assessment.child_id, childName: assessment.children?.first_name ?? null, grade: assessment.children?.grade, package: found.package };
 const calls = callsOn(db);
 const started = await calls.startVoice({ kind: "admin_test", ...question, startedBy: args.admin });
 if (!started.ok) throw new Error(started.error);
