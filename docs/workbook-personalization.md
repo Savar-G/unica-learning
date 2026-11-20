@@ -25,7 +25,7 @@ These are the facts, checked on main at `02cfcab5` and against the live database
 
 How reliable each signal is:
 
-- **Clear** means one more answer, right or wrong, would not change the result (`strandCertainty`). On a standard, this takes 4 of 4 right to be clearly secure, or 0 of 2 to be clearly not secure.
+- **Clear** means one more answer, right or wrong, would not change the result (`strandCertainty`). On a standard, 4 of 4 can be clearly secure. For placement, weak topics also need at least three scored answers before they count as clear.
 - **Early sign** is any other result. The test asks 1 to 3 questions per standard, so almost every standard result is an early sign.
 - **Parent** means the parent's answer on the learning card. It says what the parent thinks, not what the child did.
 - **Soft** means AI-written text. It is a hypothesis, never a fact.
@@ -37,7 +37,7 @@ How reliable each signal is:
 | S3 | At the test ceiling | `profile.level.atCeiling` | Fact: the test could not measure higher | `true` |
 | S4 | Per-area status and level | `profile.strands[]` | Clear or early sign; about 6 questions per area | All 4 areas secure, 6 of 6 each, level 5 |
 | S5 | Per-standard status | `profile.standards[]` → `ChildStandard` (`status`, `certainty`, `aboveGrade`) | **Early sign**, 1 to 3 questions | 16 Grade 4 standards secure, all early signs. Grade 5: 13 secure, all early signs; 5.13 is 0 of 1. |
-| S6 | Struggles: not secure, at or below grade | `profile.struggles[]` and `ChildLearnerProfile.notYetSecure` | Early sign unless 0 of 2 or worse | None. 5.13 is above his grade, so it is not a struggle (D-084). |
+| S6 | Struggles: below secure, at or below school grade and measured level | `ChildLearnerProfile.standards` | Clear only with clear certainty and at least three scored answers | None. 5.13 is above his grade, so it is not a struggle (D-084). |
 | S7 | Wrong answers and misconceptions | `struggles[].wrong[]` (`response`, `misconception`), and `public.answers.misconception` | Fact for the answer. The misconception is a code match, and is often null. | One wrong answer, on 5.13 (`g35-5-same-area`): he answered "60", with no misconception matched and no drawing. |
 | S8 | Learning events: right, with help, wrong, blank, hints, stuck steps, mistakes | `public.learning_events` → `ChildStandard.events` | Fact per event. Few events per standard at first. | 0 events |
 | S9 | Fact fluency | `profile.facts` (`families`, `correct`, `answered`, `medianMs`, `accuracy`, `speed`) | Fact for the whole section. There is **no result per family** today. | Families add/sub to 20 and ×2, ×5, ×10. 19 of 19 right in 60 s, median 2.6 s. Accuracy secure, speed quick. |
@@ -83,19 +83,21 @@ A resume call never rebuilds. It uses the stored frame, so a run stays one book.
 These are the terms the rules use:
 
 - **G** is the school grade.
-- **W** is the working level (S2).
-- **Home level** is the first level of grade `min(W, 9)`, capped at U27 (D-153). For example, Grade 5 is U16 and Grade 4 is U13.
-- **Weak** means a standard at or below G that is not secure (D-084). A standard above G is never weak.
-- **Clearly weak** means weak with certainty "clear", for example 0 of 2.
+- **W** is the measured level (S2), the grade of work the test found.
+- **Home level** is the middle workbook level of W. Use the first workbook level of W when a topic in W is clearly weak. U27 is the ceiling (D-153). The **starting point** is the workbook level chosen by the rules below.
+- **Weak** for placement, review and support means a standard that is yet to be secure and is at or below both G and W. When W is unavailable, G is the only bound.
+- **Clearly weak** means weak with certainty "clear" and at least three scored answers.
 
 The rules apply in order. The first one that matches decides the start.
 
 | Rule | When | Start |
 |---|---|---|
+| I1 | The admin chose an available start at or below U27 | The admin’s level |
 | P0 | The child has workbooks | As today: the newest workbook's level (later, the level test moves the child on) |
+| P9 | G is Kindergarten and the test gives no clear, trusted result above it | U1 |
 | P1 | No learner profile | As today: the lowest weak level at or below G, else the first level of G |
-| P2 | W > G, and any of these: level certainty is an early sign, confidence is "low", `help.likely`, or `behaviour.unreliable` | The first level of G. The above-grade start needs a clear, trusted level. Its units get the stretch rules in section 4, item 2. |
-| P3 | 2 or more clearly weak standards, or one clearly weak standard 2 or more grades below the home level | The lowest level holding a clearly weak standard: catch up first, as today |
+| P2 | W > G, and any of these: level certainty is an early sign, confidence is "low", `help.likely`, or fast wrong answers were left out of the score | The first level of G. The above-grade start needs a clear, trusted level. Its units get the stretch rules in section 4, item 2. |
+| P3 | The lowest clearly weak standard is below home, and either two clearly weak standards are at or below home or the lowest is at least two grades below W | The level of the lowest clearly weak standard |
 | P4 | Exactly 1 clearly weak standard below the home level | The home level. The weak unit takes the support slot (the Unit B page, plan rule 4.9) in the first 2 books, with the mini-test on Day 6 of book 2. The child catches up while moving on. |
 | P5 | Otherwise | The home level |
 
@@ -106,15 +108,13 @@ The rules apply inside every start level:
 - **P6: early-sign weak standards below the start level do not move the start.** Each one gets its skills in Remember these on Days 2, 3 and 4 (2 items each), 1 item in the Friday 5 on Day 5, and its spaced review from Day 2. If the check items come back wrong on marked pages, the next book's Fix it takes them.
 - **P7: at the ceiling** (S3 true, with P5), the start stays at the home level. The book never guesses a level above what the test measured. The stretch is in section 4, item 2.
 - **P8: never a weakness above grade** (D-084) stays. Above-grade wrong answers (5.13 here) never become review, Fix it or a Watch out line before their own level is taught. The admin view lists them as "above school grade, not a weakness".
-- **P9: Kindergarten and U27** stay as today.
+- **P9: Kindergarten can start above U1** with a clear, trusted above-grade result. U27 stays the ceiling.
 
-**The U16 case, encoded as a test.** G = 4, W = 5. The level is clear, confidence normal, help not likely, results reliable, at the ceiling.
+**The Grade 5 ceiling case, encoded as a test.** G = 4, W = 5. The level is clear, confidence normal, help not likely, results reliable, at the ceiling.
 
-- P2 does not apply. There are no weak standards, so P3, P4 and P6 do not apply. P5 gives the home level, **U16**.
-- P5a: 5.1, 5.5, 5.10, 5.12 and 5.17 (secure on 1 to 2 answers) are taught.
-- P5b: 5.8 and 5.9 (untested) get unit checks on Days 1 and 2.
-- P8: 5.13 (0 of 1, a U17 unit) is not in the book.
-- The step progression's window of three gives book 1 the units 5.1, 5.9 and 5.10. The probe on main showed this order once the skip was off.
+- P2 does not apply. There are no weak standards at or below G, so P3, P4 and P6 do not apply. P5 chooses **U17**, the middle of Grade 5.
+- P8: 5.13 (0 of 1, a U17 unit) is above school grade and supplies no placement or remediation signal.
+- The existing U16 teaching and unit-check example applies when the team explicitly chooses U16. The step progression's window of three gives that book units 5.1, 5.9 and 5.10, with checks for the untested units 5.8 and 5.9 on Days 1 and 2.
 
 ## 4. What each signal changes in the book
 
@@ -126,7 +126,7 @@ Each rule names its gate, its change and its limit. "Today" means the book is ma
 - **Extra practice.** A weak unit taught in the book adds 1 more practice page on its first step's day, inside the day's page count. It takes the place of a word-problems page that day, never Practice 2 or the Challenge.
 - **Spaced review.** A weak skill's first review comes after 2 practice days, then 5, then 15. These are today's intervals, but they start from a weak skill's first taught day, not its last.
 - **Weak below the start level:** P6.
-- **Gate:** clearly weak and early-sign weak both count for order and review. Only clearly weak moves the start (P3, P4).
+- **Gate:** clearly weak and early-sign weak both count for order and review. The start changes only on clearly weak evidence (home level and P3). Early signs can still get P6 checks or the P4 support slot for a catch-up request.
 - **Test:** a persona with weak 4.3 gets 4.3 skills in Remember these on Days 2 to 4 and in the Friday 5. Remove the weakness and those items go.
 
 ### 2. Strengths, the ceiling and where to stretch (S2 to S5)
@@ -151,7 +151,7 @@ The rules:
 - **Spot the error.** A closed table maps misconception ids to Sam's mistakes, for example a dropped carry to `forgot-carry` and regrouping not taken to `regroup-not-taken`. On a step page whose sum allows it, Sam's mistake is the child's own mistake first. The others follow in today's order, at most once a day.
 - **Fresh numbers only.** The book never reprints the child's question or answer (D-227).
 - **Stuck steps:** the faded practice of that skill's step ends with 2 "finish this" items instead of 1.
-- **Gate:** the mistake must be on a standard at or below G (D-084).
+- **Gate:** the mistake must be on a standard at or below both G and W when W is available (D-084, #1174).
 - **Fallback:** today's Watch out and Spot the error.
 - **First customer:** his one wrong answer has no code and is above his grade, so nothing changes, as expected.
 - **Test:** a persona with misconception `forgot-carry` on 4.4 gets that line on the 4.4 worked example and Sam's `forgot-carry` on the first Spot the error that allows it.
@@ -215,7 +215,7 @@ D-070 lets us name styles, but there is no evidence that matching a style helps.
 
 - **Reads with help.** When read-aloud was used on 3 or more questions, stories use the short frames (`COMPACT_STORY_FRAMES`) where one exists for the operation, story text is at most 20 words, and the story share stays at 0.2 on every day (today it is 0.4 on Days 8 to 10).
 - **Late-test drop** (`thirds.drop` true): the required estimate is lowered by 5 minutes.
-- **Rushed** (`rushRuns` 1 or more, or `unreliable`): no stretch shift (P2 already blocks an above-grade start).
+- **Rushing** blocks stretch. For an above-grade result, count only fast wrong answers excluded from scoring. Otherwise use `rushRuns` and `unreliable`.
 - **Pace alone** (`medianMs`): no change. We have no norm for slow, and a slow, accurate child (like the first customer) should not get easier work.
 - **Shown work, test length and device:** recorded in the admin view, with no change. Savar removed redundant explain prompts, so we do not add any.
 - **Answer changes:** never used (S16).
@@ -336,8 +336,7 @@ The view goes on the admin draft page (`/admin/workbooks/[id]`) and the run page
   - the cover sentence.
 
   Every pair of personas must differ in at least 3 features. Each persona must match its own expected values.
-- **The first customer.** A fixture with his profile's shape (no name, no ids, no answer text) must give:
-  - U16;
+- **Grade 5 ceiling fixture.** The automatic preview starts at U17 and shows Grade 5 as the measured level. When the team sets U16 explicitly, the same fixture checks:
   - 5.1, 5.9 and 5.10 taught in book 1;
   - unit checks for 5.8 and 5.9;
   - no 5.13;
@@ -345,10 +344,12 @@ The view goes on the admin draft page (`/admin/workbooks/[id]`) and the run page
   - ×3, ×4 and extended facts on at least 15 of 30 warm-up items on Days 1 to 5;
   - today's interest lists and Watch out lines;
   - the cover sentence of section 4, item 10.
-- **Live check, read-only.** Preview plan on the live admin for child `71ce22a1…` shows U16 and the same trace as the fixture. Nothing is stored except the profile rows B1 writes when a real run starts.
+- **Admin preview check.** The preview shows the measured level and the starting point separately, with the reason for the start. The preview stores nothing.
 - **Integration**, per the round guide: full seeded U4 and U16 fake books, then the Ahead and Catch up personas at their levels. Then a real U16 sample with `--replay` for Savar, with its Why this book page.
 
 ## 8. Savar's answers (2026-11-04)
+
+These are the original answers. Section 3 describes current placement, including the changes in #1174.
 
 | # | Question | Recommendation | Savar |
 |---|---|---|---|

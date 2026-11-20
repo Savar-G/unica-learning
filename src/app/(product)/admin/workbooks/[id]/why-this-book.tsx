@@ -1,3 +1,4 @@
+import { AdminWorkbookPlacement } from "@/components/admin-workbook-placement";
 import { Table } from "@/components/admin";
 import type { WorkbookWhy } from "@/lib/workbook-why";
 
@@ -5,6 +6,7 @@ export function WhyThisBook({ why }: { why: WorkbookWhy | null }) {
   return <section aria-labelledby="why-this-book-title">
     <h2 id="why-this-book-title">Why this book</h2>
     {!why ? <p>No explanation was saved for this book. Older books keep their original plan.</p> : <>
+      {why.startingPoint && <AdminWorkbookPlacement measuredLevel={why.measuredLevel ?? null} startingPoint={why.startingPoint} />}
       <p>{why.start}</p>
       <h3>Inputs</h3>
       <p>Clear means one more right or wrong answer would not change the result. Early sign means one more answer could change it.</p>

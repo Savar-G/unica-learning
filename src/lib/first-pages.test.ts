@@ -1,3 +1,4 @@
+import { EMPTY_INSTRUCTIONS } from "@/lib/workbook-instructions";
 import { describe, expect, it } from "vitest";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { fakeAiClient } from "@/lib/ai-client-fake";
@@ -7,12 +8,13 @@ import { FIRST_DAY_PAGES, firstPagesProblem, runFirstPagesJob, type FirstPagesJo
 import { memoryFirstPagesStore } from "@/lib/first-pages-memory";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { memoryRunStore } from "@/lib/workbook-job-memory";
-import { FIRST_PAGES_CHANGED, runWorkbookJob, startWorkbookRun, STALE_SECONDS, type ChildInputs, type WorkbookJobDeps } from "@/lib/workbook-job";
-import type { FitCheck, GeneratedPage } from "@/lib/workbook-generator";
+import { FIRST_PAGES_CHANGED, frameInput, makeRunFrame, runWorkbookJob, startWorkbookRun, STALE_SECONDS, type ChildInputs, type WorkbookJobDeps } from "@/lib/workbook-job";
+import { generateWorkbook, type FitCheck, type GeneratedPage } from "@/lib/workbook-generator";
 import { memoryWorkbookFiles } from "@/lib/workbook-store-memory";
+import { printedForm, taskIdentity } from "@/lib/workbook-task-identity";
 import { workbookTemplate } from "@/lib/workbook-template";
 import { keySolver } from "@/lib/workbook-solve-check";
-import { firstCustomerProfile } from "@/lib/workbook-sample-profiles";
+import { bookPersona, firstCustomerProfile } from "@/lib/workbook-sample-profiles";
 
 // The first pages of Workbook 1 (docs/first-pages.md) through the job's public interface: the in-memory stores, the
 // fake AI with the dev fake's items, the key solver, the fake print engine and the real templates and generator. Then
@@ -27,7 +29,8 @@ const ADMIN = { id: "00000000-0000-4000-8000-0000000000ad", email: "admin@exampl
 const fits: FitCheck = { fits: async () => ({ ok: true }) };
 
 const child = (over: Partial<ChildInputs> = {}): ChildInputs => ({
-  parentId: PARENT, name: "Leah", grade: 4, province: "BC", profile: { revision: 1, profile: firstCustomerProfile() }, workbooks: [], ...over,
+  parentId: PARENT, name: "Leah", grade: 4, province: "BC", profile: { revision: 1, profile: firstCustomerProfile() }, workbooks: [],
+  instructions: { ...EMPTY_INSTRUCTIONS, startLevel: "U16" }, ...over,
 });
 
 /** The day pages each AI request was for, as "<day>:<page of the day>": the page writer names them in its request. */
@@ -80,6 +83,51 @@ function setup(o: { inputs?: ChildInputs; itemPolicy?: "approved-v1" | "legacy";
 const printed = (p: GeneratedPage) => ({ number: p.number, type: p.type, qrToken: p.qrToken, questions: p.questions.map((q) => ({ slot: q.slot, number: q.number, package: q.package, check: q.check })), content: p.content });
 
 describe("first pages", () => {
+  it.each([2, 4])("fills the full auto-placed U17 Ahead plan for seed %i", async (seed) => {
+    const inputs = child({ instructions: undefined, profile: { revision: 1, profile: bookPersona("ahead").profile } });
+    const s = setup({ inputs });
+    const target = { childId: CHILD, parentId: PARENT, number: 1, workbookId: `00000000-0000-4000-8000-${String(seed).padStart(12, "0")}` };
+    const solver = keySolver();
+    const frame = await makeRunFrame(target, { ...s.deps, ai: s.ai, solver }, inputs.name, inputs);
+    expect(frame.plan.level).toBe(17);
+    expect(frame.plan.days).toHaveLength(10);
+
+    const result = await generateWorkbook(frameInput(target, frame, inputs.name), {
+      ai: s.ai, solver, fit: fits, store: s.drafts, qrToken: s.deps.qrToken,
+    });
+    if (result.status !== "stored") throw new Error(JSON.stringify(result));
+
+    const quality = result.draft.quality;
+    if (!quality) throw new Error("the generated book has no quality report");
+    const gaps = quality.issues.map(issue => `page ${issue.page} (${issue.kind}): ${issue.reason}`);
+    const challenges = result.draft.pages.filter(p => p.type === "challenge");
+    expect(challenges.map(p => p.day)).toEqual(frame.plan.days.map(d => d.day));
+    for (const page of result.draft.pages) {
+      const at = `day ${page.day}, page ${page.number} (${page.type})`;
+      const filled = new Set(page.questions.filter(q => q.package && q.check.status === "checked").map(q => q.slot));
+      for (const slot of page.expected ?? []) {
+        if (!filled.has(slot.slot)) gaps.push(`${at}, ${slot.place} ${slot.slot}: missing or failed`);
+      }
+      for (const omission of [...page.omissions ?? [], ...page.leftOut ?? []]) {
+        gaps.push(`${at}: ${JSON.stringify(omission)}`);
+      }
+      if (page.type !== "challenge") continue;
+      const planned = frame.plan.days.find(d => d.day === page.day)?.pages
+        .find(p => p.number === page.pageOfDay)?.parts.find(p => p.kind === "challenge")?.step;
+      const cards = page.questions.filter(q => q.place === "challenge");
+      const contracts = cards.flatMap(q => q.itemPlan?.template ? [q.itemPlan.template] : []);
+      const packages = cards.flatMap(q => q.package ? [q.package] : []);
+      if (cards.length !== 3 || contracts.length !== 3 || contracts.some(t => t.difficulty !== "hard")
+        || contracts.some(t => t.skill !== planned?.skill || t.step !== planned?.step)
+        || new Set(contracts.map(t => t.index)).size !== 3
+        || new Set(packages.map(taskIdentity)).size !== 3 || new Set(packages.map(printedForm)).size !== 3) {
+        gaps.push(`${at}: expected three distinct hard template cards, got ${contracts.map(t => `${t.skill}#${t.step}:${t.index} (${t.difficulty})`).join(", ")}. Printed forms: ${packages.map(p => `${printedForm(p)} (${p.text})`).join(", ")}`);
+      }
+    }
+    // Report all gaps from the real selector, writer and solver seams in one run.
+    expect(gaps).toEqual([]);
+  });
+
   it("writes only the cover, the first lesson and its two practice pages, prints them, and Workbook 1 keeps them exactly", async () => {
     const s = setup();
     const set = s.first.queue({ assessmentId: TEST, parentId: PARENT, childId: CHILD });
@@ -191,7 +239,12 @@ describe("first pages", () => {
 
   it("plans a child with no clear gap, and a child placed below the school grade, from the real planner", async () => {
     // No profile: the planner starts from the school grade. A grade 6 child whose profile shows gaps starts lower.
-    for (const inputs of [child({ profile: null, grade: 2 }), child({ grade: 6 })]) {
+    const below = firstCustomerProfile();
+    below.standards = below.standards.map(topic => topic.code === "5.13"
+      ? { ...topic, correct: 0, total: 3, status: "needs-attention", certainty: "clear" } : topic);
+    const cases = [child({ profile: null, grade: 2, instructions: null }),
+      child({ grade: 6, profile: { revision: 1, profile: below }, instructions: null })];
+    for (const inputs of cases) {
       const s = setup({ inputs });
       const set = s.first.queue({ assessmentId: TEST, parentId: PARENT, childId: CHILD });
       expect(await runFirstPagesJob(set.id, s.deps)).toBe("ready");

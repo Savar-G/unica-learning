@@ -1,5 +1,5 @@
 import type { AdminSession } from "@/lib/admin-store";
-import { isGrade, type Grade } from "@/lib/assessment";
+import { isGrade } from "@/lib/assessment";
 import { storedChildProfile } from "@/lib/child-profile";
 import { when } from "@/lib/admin-view";
 import { curriculumFor } from "@/lib/workbook-curriculum";
@@ -13,14 +13,19 @@ export async function loadBookInstructions(admin: AdminSession, child: { id: str
   const curriculum = child.province === "BC" ? curriculumFor("bc") : null;
   const stored = await readWorkbookInstructions(admin.db, child.id);
   let autoLevel: string | null = null;
+  let placement: Pick<ReturnType<typeof placeChild>, "measuredLevel" | "startingPoint"> | null = null;
   if (curriculum && isGrade(child.grade)) {
     // Only a hint for the form: a profile that cannot be read leaves "Automatic" without a level.
     const { data } = await admin.db.from("child_profiles").select("profile").eq("child_id", child.id).maybeSingle();
     try {
-      autoLevel = placeChild({ curriculum, grade: child.grade as Grade, profile: data ? storedChildProfile(data.profile) : null, workbooks }).level.id;
-    } catch { autoLevel = null; }
+      const input = { curriculum, grade: child.grade, profile: data ? storedChildProfile(data.profile) : null, workbooks };
+      const automatic = placeChild(input);
+      const actual = stored?.instructions.startLevel ? placeChild({ ...input, instructions: stored.instructions }) : automatic;
+      autoLevel = automatic.startingPoint;
+      placement = { measuredLevel: actual.measuredLevel, startingPoint: actual.startingPoint };
+    } catch { /* An unreadable profile leaves the form without a placement hint. */ }
   }
-  return { stored, autoLevel, levels: curriculum ? instructionPicker(curriculum, PLACEMENT_CEILING) : null };
+  return { stored, autoLevel, placement, levels: curriculum ? instructionPicker(curriculum, PLACEMENT_CEILING) : null };
 }
 
 export function BookInstructions({ child, note, data }: {

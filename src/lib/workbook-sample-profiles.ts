@@ -167,6 +167,7 @@ export function bookPersona(persona: BookPersona): { initials: string; profile: 
     profile.level.certainty = "early-sign";
     profile.behaviour.unreliable = true;
     profile.behaviour.rushRuns = 1;
+    profile.behaviour.leftOut = 1;
     profile.behaviour.help.likely = true;
     profile.behaviour.help.answer = "a-little";
   }

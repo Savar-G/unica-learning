@@ -41,8 +41,9 @@ export function workbookCoverLine(plan: WorkbookPlan, child: string, workbook: n
   if (!topics.length) return null;
 
   const b = s.behaviour;
+  const current = s.start && "startingPoint" in s.start;
   const trusted = s.working?.certainty === "clear" && s.working.confidence === "normal"
-    && !!b && !b.helpLikely && !b.unreliable && b.rushRuns === 0;
+    && !!b && !b.helpLikely && (current ? b.leftOut === 0 : !b.unreliable && b.rushRuns === 0);
   const secureAreas = s.strands.length === 4
     && ["number", "fractions", "algebra", "shapes"].every(strand => s.strands.some(x => x.strand === strand && x.status === "secure" && x.total > 0 && x.correct > 0 && x.correct <= x.total));
   // Signals also list untested families. Require the grade's round in full and check any other recorded family.
@@ -60,13 +61,20 @@ export function workbookCoverLine(plan: WorkbookPlan, child: string, workbook: n
   const catchUp = !instructed && (s.start?.rule === "P3" || !!s.working && s.working.working < s.grade);
   for (const name of [child, "Your child"]) for (let count = topics.length; count > 0; count--) {
     const selected = topics.slice(0, count);
-    const line = ahead
-      ? `${name} did very well on every part of the assessment, so this book moves ahead to ${list(selected)}.`
+    // Saved plans still produce the same cover if the run resumes or re-renders it.
+    const topicText = list(selected);
+    const childName = name === "Your child" ? "your child" : name;
+    const line = current
+      ? ahead
+        ? `${name} did very well on every part of the assessment, so this book uses ${topicText} as a starting point.`
+        : `This book gives ${childName} a starting point in ${topicText}.`
+      : ahead
+      ? `${name} did very well on every part of the assessment, so this book moves ahead to ${topicText}.`
       : catchUp
         ? `This book starts with ${selected[0]}, step by step${selected.length > 1 ? `, then moves on to ${list(selected.slice(1))}` : ""}.`
         : trusted && !instructed
-          ? `This book works on ${list(selected)}, at the level ${name === "Your child" ? "your child" : name} showed on the assessment.`
-          : `This book gives ${name === "Your child" ? "your child" : name} practice with ${list(selected)}, step by step.`;
+          ? `This book works on ${topicText}, at the level ${childName} showed on the assessment.`
+          : `This book gives ${childName} practice with ${topicText}, step by step.`;
     if (!coverLineProblem(line)) return line;
   }
   throw new Error("The personal cover sentence does not meet its copy limits.");

@@ -35,7 +35,7 @@ describe("G1 personal choices with no signals keep today's book", () => {
 describe("G1 stretch (item 2)", () => {
   it("moves the first customer's Day 1 to today's Day 3, never past Day 10", () => {
     const plan = placed();
-    expect(plan.level).toBe(16);
+    expect(plan.level).toBe(17);
     expect([1, 5, 9, 10].map((d) => difficultyDay(plan, d))).toEqual([3, 7, 10, 10]);
   });
 });

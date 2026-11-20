@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { familyProduction, getChild, getChildRuns, getChildWorkbooks, getWorkbookWorker, requireAdmin } from "@/lib/admin-store";
 import { workbookRunner } from "@/lib/workbook-ai";
 import { buildBooks } from "@/lib/admin-production";
@@ -23,6 +23,8 @@ import { nextBookWiring } from "@/lib/next-book-planner";
 import { loadTestFamilies } from "@/lib/admin-test-families-server";
 import { AdminScanProgress } from "@/components/admin-scan-progress";
 import { loadAdminScanProgress } from "@/lib/admin-scan-progress-server";
+import { AdminWorkbookPlacement } from "@/components/admin-workbook-placement";
+import { savedWorkbookWhy } from "../../workbooks/[id]/saved-why";
 import { BookInstructions, loadBookInstructions } from "./book-instructions";
 
 // One child (D-313, D-315): a head card with the current workbook on Production's stages and its one action, then how
@@ -72,6 +74,23 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
   const prepareInHead = !book || book.stage === "none";
   const restart = !!requests?.data?.length && <p role="status" className="rec-warn">Paid Restart: prepare the next workbook from the current child profile. {requests.data.length} request pending. The request stays here until a new preparation run starts.</p>;
 
+  const book1 = workbooks.find(w => w.number === 1);
+  const savedRun = runs.find(({ run }) => run.number === 1 &&
+    (book1 ? run.draftId === book1.id : run.status !== "failed" && run.status !== "stale"));
+  const placement = async () => {
+    const saved = await savedWorkbookWhy(admin, savedRun?.run.id ?? null);
+    const summary = saved || book1 ? {
+      measuredLevel: saved?.measuredLevel ?? null,
+      startingPoint: saved?.startingPoint ?? (book1?.levels[0] ? `U${book1.levels[0]}` : null),
+    } : instructions.placement;
+    return summary && <>
+      <h3>Workbook 1 placement</h3>
+      <AdminWorkbookPlacement {...summary} />
+    </>;
+  };
+  // Failures in the read-only summary should not hide the child's other records and planning tools.
+  const workbookPlacement = placement().catch(() => null);
+
   return <AdminFrame email={admin.email} title={<>{c.first_name}<TestTag test={isTest} /></>}
     lead={<>{gradeAndPlace(c.grade, c.province)}. Family: <Link href={adminParentPath(c.parent_id)}>{family.parent.name}</Link>.</>}
     actions={<>
@@ -105,6 +124,7 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
 
     <section className="rec-sec" aria-labelledby="rec-plan">
       <SectionHead id="rec-plan" title="Plan the next book" hint="Instructions, previews and the runs that make each draft." />
+      <Suspense fallback={null}>{workbookPlacement}</Suspense>
       <div className="rec-tools">
         <Link className="btn ghost adm-btn" href={`/admin/children/${c.id}/preview-plan`} prefetch={false}>Preview plan</Link>
         <Link className="btn ghost adm-btn" href={`/admin/children/${c.id}/preview-marks`} prefetch={false}>Preview from marks</Link>

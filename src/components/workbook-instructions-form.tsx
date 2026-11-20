@@ -91,7 +91,7 @@ export function WorkbookInstructionsForm({ childId, child, schoolGrade, levels, 
         <option value="">{auto ? `Automatic (now ${auto.id}, ${grade(auto.schoolGrade)})` : "Automatic"}</option>
         {levels.map((l) => <option key={l.id} value={l.id}>{l.id}, {grade(l.schoolGrade)}: {l.title}</option>)}
       </select>
-      <p className="adm-note">One level per book. To give more of a higher grade, choose a higher level; weak topics below it become review checks. Kindergarten children always start at U1.</p>
+      <p className="adm-note">One level per book. To give more of a higher grade, choose a higher level; weak topics below it become review checks.</p>
     </fieldset>
 
     <fieldset>

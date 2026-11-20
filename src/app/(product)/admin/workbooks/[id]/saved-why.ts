@@ -13,7 +13,10 @@ export async function savedWorkbookWhy(admin: AdminSession, runId: string | null
   if (error) throw new Error("Could not read the saved workbook plan.");
   const frame = data?.frame;
   if (!frame?.plan || !curriculumFor(frame.curriculum)) return null;
-  return workbookWhy(frame.plan) ?? frame.plan.personal?.why ?? null;
+  return workbookWhy(frame.plan) ?? {
+    measuredLevel: null, startingPoint: `U${frame.plan.level}`, start: "No starting-point reason was saved.",
+    inputs: [], pages: [], warnings: [],
+  };
 }
 
 /** The book instructions the run's saved plan was made with, and what each did; null without any. */

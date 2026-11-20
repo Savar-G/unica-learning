@@ -1,5 +1,5 @@
 // Unica's own Challenge templates: hard numeric work with more than one step, or named qualitative reasoning, for
-// the U10, U16 and selected U19 day steps with too few hard templates. A Challenge prints 3 cards a day on the day's step
+// day steps with too few hard templates. A Challenge prints 3 cards a day on the day's step
 // (D-228), each harder than that day's practice (Codex at 24751f16, B3), so these steps needed 3 hard ones. They are
 // appended to Cedric's templates of the step when the curriculum loads; his data stays as he wrote it. Each is logged in
 // data/curriculum/author-changes.md ("Unica Challenge templates"). The step's name is checked, so a renumbered step
@@ -255,6 +255,103 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
   {
     skill: "4.4-add-within-10000", step: 5, name: "Story problems", stories: true,
     templates: [medium("{name} has {a} stickers and wants {s}. How many more stickers does {name} need?", "s - a", { u1: "u1", u2: "u2", u3: "u3", u4: "u4", u5: "u5", u6: "u6", u7: "u7", u8: "u8" }, { a: "1000 + u1 * 400 + u2 * 40 + u3 * 4 + u4", s: "1000 + u1 * 400 + u2 * 40 + u3 * 4 + u4 + 1000 + u5 * 300 + u6 * 30 + u7 * 3 + u8" }, "s <= 9999")],
+  },
+  {
+    skill: "5.6-multiply-2-digit", step: 1, name: "2-digit × 2-digit with an area model",
+    templates: [
+      hard("bare", "What is {a} × {b} - {c}?", "a * b - c",
+        { a: "template_a", b: "template_b", c: "template_c" }, {}, "a * b - c >= 100"),
+      hard("missing", "{a} × {b} = {p} + __", "a * b - p",
+        { a: "template_a", b: "template_b" }, { p: "a * b - 100 - (a + b) % 90" }, "p >= 100"),
+    ],
+  },
+  {
+    skill: "5.6-divide-remainder", step: 1, name: "Check a division with multiplication",
+    templates: [
+      hard("bare", "Divide {n} by {b}. How much larger is the quotient than the remainder?", "q - r",
+        { b: "template_b", q: "template_q", r0: "template_r0" }, { r: "1 + r0 % (b - 1)", n: "b * q + r" }, "n >= 500 and n <= 999"),
+      hard("missing", "{n} ÷ {b} has a remainder of {r}. Complete {b} × __ + {r} = {n}.", "q",
+        { b: "template_b", q: "template_q", r0: "template_r0" }, { r: "1 + r0 % (b - 1)", n: "b * q + r" }, "n >= 500 and n <= 999"),
+      hard("story", "At a show, {n} people fill benches of {b} seats in order. How many seats stay empty on the last bench?", "b - r",
+        { b: "template_b", q: "template_q", r0: "template_r0" }, { r: "1 + r0 % (b - 1)", n: "b * q + r" }, "n >= 500 and n <= 999"),
+    ],
+  },
+  {
+    skill: "5.6-divide-remainder", step: 2, name: "Zero in the quotient",
+    templates: [
+      hard("bare", "Divide {n} by {b}. Subtract the remainder from the quotient.", "q - r",
+        { b: "template_b", y: "template_y", r0: "template_r0" }, { q: "100 + y", r: "1 + r0 % (b - 1)", n: "b * q + r" }, "n >= 500 and n <= 999"),
+      hard("missing", "{n} ÷ {b} has a quotient of {q}. Complete {b} × {q} + __ = {n}.", "r",
+        { b: "template_b", y: "template_y", r0: "template_r0" }, { q: "100 + y", r: "1 + r0 % (b - 1)", n: "b * q + r" }, "n >= 500 and n <= 999"),
+      hard("story", "A bakery packs {n} buns, {b} to a bag. How many bags are needed, counting the one that is partly full?", "q + 1",
+        { b: "template_b", y: "template_y", r0: "template_r0" }, { q: "100 + y", r: "1 + r0 % (b - 1)", n: "b * q + r" }, "n >= 500 and n <= 999"),
+    ],
+  },
+  {
+    skill: "5.6-multiply-2-digit", step: 2, name: "Column method",
+    templates: [
+      hard("bare", "What is {a} × {b} - {c} × {b}?", "(a - c) * b",
+        { a: "template_a", b: "template_b", c: "operand1" }, {}, "a > c and a * b >= 4901"),
+      hard("missing", "{a} × {b} = {p} + __", "a * b - p",
+        { a: "template_a", b: "template_b" }, { p: "a * (b // 10 * 10)" }, "a * b >= 4901 and b % 10 > 0"),
+      hard("story", "A print shop starts with {a} packs of {b} sheets, then uses {c} sheets. How many sheets are left?", "a * b - c",
+        { a: "template_a", b: "template_b", c: "operand1" }, {}, "a * b - c >= 4901"),
+    ],
+  },
+  {
+    skill: "5.6-multiply-2-digit", step: 3, name: "3-digit × 2-digit",
+    templates: [
+      hard("bare", "What is {a} × {b} - {a} × {c}?", "(b - c) * a",
+        { a: "operand1", b: "operand2", c: "template_b" }, {}, "b > c and a * b >= 50000"),
+      hard("missing", "{a} × {b} = {p} + __", "a * b - p",
+        { a: "operand1", b: "operand2" }, { p: "a * (b // 10 * 10)" }, "p >= 50000 and b % 10 > 0"),
+      hard("story", "A warehouse ships {b} cartons of {a} pencils. It also sends {e} loose pencils. How many pencils does it send?", "a * b + e",
+        { a: "operand1", b: "operand2", e: "template_e" }, {}, "a * b >= 50000 and a * b + e <= 99999"),
+    ],
+  },
+  {
+    skill: "5.3-equivalent-fractions", step: 1, name: "Equivalent fractions with strips",
+    templates: [
+      hard("bare", "Write {a}/{d} with denominator {e}. Then give the sum of the new numerator and the old one.", "a * k + a",
+        { d: "template_b", n: "template_a0", t: "template_k0" }, { a: "1 + n % (d - 1)", k: "2 + t % (12 // d - 1)", e: "d * k" }, "a * k + a <= 12"),
+      hard("missing", "Fill in __ as the numerator over {e} so the fraction equals both {a}/{d} and {m}/{f}.", "a * k",
+        { d0: "template_b", n: "template_a0", t: "template_k0" }, { d: "2 + d0 % 3", a: "1 + n % (d - 1)", k: "3 + t % (12 // d - 2)", e: "d * k", m: "2 * a", f: "2 * d" }, "e <= 12"),
+      hard("story", "{name} colours {a}/{d} of a strip split into {e} equal parts. How many parts stay blank?", "e - a * k",
+        { d: "template_b", n: "template_a0", t: "template_k0" }, { a: "1 + n % (d - 1)", k: "2 + t % (12 // d - 1)", e: "d * k" }, "e <= 12"),
+    ],
+  },
+  {
+    skill: "5.3-equivalent-fractions", step: 2, name: "Multiply top and bottom",
+    templates: [
+      hard("bare", "Scale {a}/{d} to denominator {e}. By how much does the numerator increase?", "a * k - a",
+        { d: "template_b", n: "template_a0", k: "template_k1" }, { a: "1 + n % (d - 1)", e: "d * k" }, "e >= 18 and e <= 36"),
+      hard("missing", "Fill in __ as the denominator under {m} so the fraction equals {a}/{d} and {a2}/{d2}.", "d * k",
+        { d: "template_b", n: "template_a0", k: "template_k1" }, { a: "1 + n % (d - 1)", m: "a * k", a2: "2 * a", d2: "2 * d" }, "k >= 3 and d * k >= 18 and d * k <= 36"),
+      hard("story", "{name} eats {a}/{d} of a pizza cut into {e} equal slices. How many slices would be twice that amount?", "2 * a * k",
+        { d: "template_b", n: "template_a0", k: "template_k1" }, { a: "1 + n % (d - 1)", e: "d * k" }, "e >= 18 and e <= 36 and 2 * a <= d"),
+    ],
+  },
+  {
+    skill: "5.3-same-amount", step: 1, name: "Explain equivalence",
+    templates: [
+      hard("bare", "What number multiplies both parts of {a}/{d} to make {m}/{e}? Show why it works for both.", "k",
+        { d: "template_b", n: "template_a0", k: "template_k" }, { a: "1 + n % (d - 1)", m: "a * k", e: "d * k" }, "e <= 12"),
+      hard("missing", "Fill in __ as the numerator over {e} for the same amount as {a}/{d}. Show how both parts change.", "a * k",
+        { d: "template_b", n: "template_a0", k: "template_k" }, { a: "1 + n % (d - 1)", e: "d * k" }, "e <= 12"),
+      hard("story", "{name} walks {a}/{d} of a trail split into {e} equal parts. How many parts is that? Explain.", "a * k",
+        { d: "template_b", n: "template_a0", k: "template_k" }, { a: "1 + n % (d - 1)", e: "d * k" }, "e <= 12"),
+    ],
+  },
+  {
+    skill: "5.11-evaluate-expression", step: 1, name: "One operation",
+    templates: [
+      hard("bare", "How much greater is n + {a} than {b} - n when n is {n}?", "2 * n + a - b",
+        { a: "template_a", b: "template_b", n: "template_n" }, {}, "2 * n + a > b"),
+      hard("missing", "When n is {n}, ({b} - n) + (n + {a}) = __.", "a + b",
+        { a: "template_a", b: "template_b", n: "template_n" }, {}, "a + b <= 40"),
+      hard("story", "{name} scores {b} - n points. If n is {n}, how many more points are needed to reach {a}?", "a - (b - n)",
+        { a: "template_a", b: "template_b", n: "template_n" }, {}, "a > b - n"),
+    ],
   },
   {
     skill: "5.1-place-value-million", step: 1, name: "Value of a digit to 10 000s", routes: true,

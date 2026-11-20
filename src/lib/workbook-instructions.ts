@@ -3,8 +3,8 @@
 // or clears them (public.workbook_instructions), and each run keeps the exact set it used in its plan
 // (plan.instructions, inside public.workbook_run_frames).
 //
-// - Start level: the book's level instead of the automatic placement (P0 to P5), within the curriculum and the U27
-//   ceiling (D-153). Kindergarten keeps U1 (P9). The book stays one level (Option A): weak topics below the chosen
+// - Start level: the admin overrides automatic placement within the curriculum and the U27 ceiling (D-153).
+//   The book stays one level (Option A): weak topics below the chosen
 //   level, clear or early, get the P6 review checks.
 // - Teach more: units of the book's level that go first (after their prerequisites) and take the extra practice page
 //   on their first step's day (docs/workbook-personalization.md section 4, item 1). A clear secure unit is taught too.

@@ -1,3 +1,4 @@
+import { EMPTY_INSTRUCTIONS } from "@/lib/workbook-instructions";
 // G1 (docs/workbook-personalization.md section 7): each persona's fake book against a fixed set of visible features.
 // Fake AI, the key solver and a fit check that holds ten questions a page: no browser, no network.
 import { writeFileSync } from "node:fs";
@@ -39,8 +40,9 @@ const fakeDeps = (child: string, parent: string) => {
     store: memoryDraftStore({ [child]: parent }), qrToken: () => `personal-token-${String(++token).padStart(8, "0")}`, solver: keySolver() };
 };
 
-async function book(profile: ReturnType<typeof firstCustomerProfile>, signals = true, days = DAYS): Promise<{ plan: WorkbookPlan; draft: GeneratedWorkbook; input: GenerateInput }> {
-  const placed = planNextWorkbook({ curriculum: BC, grade: 4, profile, workbooks: [], number: 1 });
+async function book(profile: ReturnType<typeof firstCustomerProfile>, signals = true, days = DAYS, startLevel?: string): Promise<{ plan: WorkbookPlan; draft: GeneratedWorkbook; input: GenerateInput }> {
+  const placed = planNextWorkbook({ curriculum: BC, grade: 4, profile, workbooks: [], number: 1,
+    instructions: startLevel ? { ...EMPTY_INSTRUCTIONS, startLevel } : undefined });
   if (!placed.ok) throw new Error(placed.reason);
   const plan = reviewDays(signals ? placed.plan : { ...placed.plan, personal: undefined }, days);
   return generated(plan);
@@ -90,7 +92,9 @@ describe("G1 persona books", () => {
   it("every pair of personas differs in at least 3 visible features, and each keeps its own", async () => {
     const made = new Map<string, ReturnType<typeof features>>(), todayMade = new Map<string, ReturnType<typeof features>>();
     for (const persona of PERSONAS) {
-      const { plan, draft } = await book(bookPersona(persona).profile);
+      // This print comparison uses the established U10 catch-up sample.
+      const startLevel = persona === "catch-up" ? "U10" : undefined;
+      const { plan, draft } = await book(bookPersona(persona).profile, true, DAYS, startLevel);
       made.set(persona, features(plan, draft));
       if (persona === "ahead") {
         const frame = { curriculum: "bc", curriculumVersion: curriculumVersion("bc")!, plan, units: skillUnits(BC) };
@@ -109,7 +113,7 @@ describe("G1 persona books", () => {
       }
       // No personal choice fails a question the same plan's book without them passes.
       const failed = (d: GeneratedWorkbook) => d.pages.flatMap((p) => p.questions.filter((q) => q.check.status === "failed").map((q) => `${p.type} d${p.day} ${q.place}: ${(q.check as { reason: string }).reason}`)).sort();
-      const plainBook = await book(bookPersona(persona).profile, false);
+      const plainBook = await book(bookPersona(persona).profile, false, DAYS, startLevel);
       todayMade.set(persona, features(plainBook.plan, plainBook.draft));
       const today = failed(plainBook.draft);
       expect(failed(draft).filter((x) => { const i = today.indexOf(x); if (i >= 0) today.splice(i, 1); return i < 0; }), persona).toEqual([]);
@@ -118,8 +122,8 @@ describe("G1 persona books", () => {
     const today = Object.fromEntries(todayMade) as Record<BookPersona, ReturnType<typeof features>>;
     // (G1_FEATURES=<file> keeps the table for a review.)
     if (process.env.G1_FEATURES) writeFileSync(process.env.G1_FEATURES, JSON.stringify({ personal: f, today }, null, 1));
-    // Ahead: U16 from the trusted level, the ×3 and ×4 facts in the warm-up.
-    expect(f.ahead.start.startsWith("U16:")).toBe(true);
+    // Ahead: U17 from the trusted level, the ×3 and ×4 facts in the warm-up.
+    expect(f.ahead.start.startsWith("U17:")).toBe(true);
     const count = (warmUp: string, key: string) => Number(warmUp.split(",").find((x) => x.startsWith(`${key}:`))?.split(":")[1] ?? 0);
     const total = (warmUp: string) => warmUp.split(",").reduce((n, x) => n + Number(x.split(":")[1] ?? 0), 0);
     expect(count(f.ahead.warmUp, "×3/4") * 2).toBeGreaterThanOrEqual(total(f.ahead.warmUp));
@@ -157,10 +161,11 @@ describe("G1 persona books", () => {
       return p;
     };
     const lines = async (profile: ReturnType<typeof firstCustomerProfile>) => {
-      const placed = planNextWorkbook({ curriculum: BC, grade: 4, profile, workbooks: [], number: 1 });
+      const placed = planNextWorkbook({ curriculum: BC, grade: 4, profile, workbooks: [], number: 1,
+        instructions: { ...EMPTY_INSTRUCTIONS, startLevel: "U13" } });
       if (!placed.ok) throw new Error(placed.reason);
       const day = placed.plan.newSteps.find((x) => x.skill === skill && x.step === 2)!.day;
-      const { draft } = await book(profile, true, String(day));
+      const { draft } = await book(profile, true, String(day), "U13");
       return draft.pages.flatMap((p) => (p.content?.kind === "day" ? p.content.blocks : [])).flatMap((b) => (b.explain?.startsWith("Watch out") ? [b.explain] : []));
     };
     const own = await lines(withMistake());

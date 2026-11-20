@@ -1,3 +1,4 @@
+import { EMPTY_INSTRUCTIONS } from "@/lib/workbook-instructions";
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
 import { BC_SKILL_MAP } from "@/lib/assessment";
@@ -172,7 +173,7 @@ describe("C3 personal plan", () => {
   });
 
   it("reviews only workbook-taught steps or code steps below the start in the first customer's book", () => {
-    const r = planNextWorkbook({ curriculum: BC, grade: 4, profile: firstCustomerProfile(), workbooks: [], number: 1 });
+    const r = planNextWorkbook({ curriculum: BC, grade: 4, profile: firstCustomerProfile(), workbooks: [], number: 1, instructions: { ...EMPTY_INSTRUCTIONS, startLevel: "U16" } });
     if (!r.ok) throw new Error(r.reason);
     const forbidden = new Set(["5.2", "5.3", "5.4", "5.5", "5.6"]);
     for (const d of r.plan.days) for (const p of dayParts(r.plan, d.day)) {
@@ -300,11 +301,13 @@ describe("C3 personal plan", () => {
     profile.assessment!.profile.test.grade = 2;
     profile.assessment!.profile.level = { working: 2, certainty: "clear", confidence: "normal", atCeiling: false };
     profile.standards = BC.level("U7")!.units.map(code => ({ ...profile.standards[0], code, status: "secure", certainty: "clear", aboveGrade: false }));
+    // A clearly weak topic in the measured grade selects the first level, where this shortfall occurs.
+    profile.standards.push({ ...profile.standards[0], code: "2.7", correct: 0, total: 3, status: "needs-attention", certainty: "clear" });
     const r = planNextWorkbook({ curriculum: BC, grade: 2, profile, workbooks: [], number: 1 });
     if (!r.ok) throw new Error(r.reason);
     expect(r.plan.level).toBe(7);
     expect(r.plan.personal).toMatchObject({
-      start: { level: "U7" },
+      start: { measuredLevel: 2, startingPoint: "U7" },
       timeShortfalls: [{ day: 10, target: 20, required: 20.7, shortfall: .7 }],
     });
   });
@@ -378,8 +381,8 @@ describe("C3 personal plan", () => {
     expect(dayParts(p, 1).flatMap(p => p.reviewSteps ?? []).some(r => lower.includes(r.skill))).toBe(true);
   });
 
-  it("2/Q4: the first customer starts at U16, teaches 5.1, 5.9 and 5.10, and stretches from Day 1", () => {
-    const r = planNextWorkbook({ curriculum: BC, grade: 4, profile: firstCustomerProfile(), workbooks: [], number: 1 });
+  it("2/Q4: an explicit U16 start teaches 5.1, 5.9 and 5.10, and stretches from Day 1", () => {
+    const r = planNextWorkbook({ curriculum: BC, grade: 4, profile: firstCustomerProfile(), workbooks: [], number: 1, instructions: { ...EMPTY_INSTRUCTIONS, startLevel: "U16" } });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     const p = r.plan;
