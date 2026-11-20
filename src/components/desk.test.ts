@@ -288,5 +288,9 @@ describe("the board-led lesson (#1151)", () => {
     const boardMin = bodyCss.match(/grid-template-rows:\s*auto\s+minmax\((\d+)px,\s*1fr\)\s+auto\s+auto/);
     expect(boardMin, `expected a pixel floor on the board row in .desk-body: ${bodyCss}`).not.toBeNull();
     expect(Number(boardMin![1])).toBeGreaterThanOrEqual(320);
+    // Paper mode hides the drawing, so the floor goes away there; the phone layout keeps its own rows.
+    const paper = rules.filter((r) => r.selector === '.desk-root[data-paper="true"] .desk-body');
+    expect(paper.map((r) => r.media)).toEqual(["(min-width: 701px) and (min-height: 561px)"]);
+    expect(paper[0].body).toMatch(/grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)\s+auto\s+auto/);
   });
 });

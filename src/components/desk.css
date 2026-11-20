@@ -99,6 +99,10 @@
 .desk-paper-note { margin: 0; padding: 12px 14px; border: 1px solid var(--desk-warn); border-radius: 12px; background: var(--accent-soft); font: 500 15px/1.4 var(--sans); color: var(--ink); }
 .desk-root[data-paper="true"] .desk-board-body, .desk-root[data-paper="true"] .desk-pen { display: none; }
 .desk-root[data-paper="true"] .desk-board { flex: none; }
+/* With the drawing hidden, the board row needs no floor: keep the reply controls on the first screen. */
+@media (min-width: 701px) and (min-height: 561px) {
+  .desk-root[data-paper="true"] .desk-body { grid-template-rows: auto minmax(0, 1fr) auto auto; }
+}
 
 .desk-board { position: relative; flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
 /* The thin colour bar of the D-037 colours, as in the video. */
