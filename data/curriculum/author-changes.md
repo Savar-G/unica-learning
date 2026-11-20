@@ -4534,6 +4534,16 @@ Savar approved writing hard Challenge templates for the U16 day steps that had t
 
 Code's two-step Challenge cards for U4 (Savar: the last fill of a short U4 Challenge) are made from each U4 number step's own range by `twoStepTemplates` in the same file, not stored here; likelihood steps get three cards that reason from a bag's cubes.
 
+## Unica stories with Grade 5 and 6 numbers (2026-11-20)
+
+Luis added take-away and compare stories to a U18 step whose stories printed only numbers under 100. From U16 another step's story must print a number of 100 or more (`tooEasyStory`, Savar's Grade 5 rule, unchanged), so a U19 stories page could not take them and ended with too few kinds of story (the U19 sweep). Cedric's data is unchanged: the templates live in `src/lib/workbook-curriculum/house-templates.ts` with `stories: true`.
+
+| Skill | Step | Format | Template | Answer |
+|---|---:|---|---|---|
+| 5.7-subtract-thousandths | 2 | story | `A delivery truck carries {a} kg of sand. It unloads {b} kg at the first stop. How much sand is left on the truck, in kilograms?` | `round(a - b, 3)` |
+| 5.7-subtract-thousandths | 2 | story | `A farm stand has {a} kg of potatoes. {name} sells {b} kg on Saturday. How many kilograms of potatoes are left?` | `round(a - b, 3)` |
+| 5.7-subtract-thousandths | 2 | story | `A big water tank holds {a} L and a small tank holds {b} L. How many more litres does the big tank hold?` | `round(a - b, 3)` |
+
 ## Unica's shorter U4 wording (2026-11-04)
 
 Savar confirmed 8 to 10 practice questions a page, so the wordiest templates a U4 book prints are shorter there (option A, Codex at e6d79b6a's B4 follow-up). Only the printed words change, and only in a U4 book: each keeps its slots, answer, difficulty and what it asks; the Kindergarten books keep Cedric's words. The rewrites live in `LEVEL_REWRITES` in `src/lib/workbook-curriculum/house-templates.ts`, and a test checks each still matches Cedric's text.

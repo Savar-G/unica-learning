@@ -150,8 +150,8 @@ function slotStep(input: GenerateInput, slot: Slot, attempt: number, level: numb
         if (prior.length) return prior[Math.floor(attempt / 6) % prior.length];
       }
     }
-    const stories = storySteps(input, slot, day, level);
-    if (stories.length) return stories[Math.floor(attempt / 6) % stories.length];
+    const stories = attempt >= DECLARED_STORIES ? declaredStorySteps(input, slot, day, level) : storySteps(input, slot, day, level);
+    if (stories.length) return stories[Math.floor((attempt >= DECLARED_STORIES ? attempt - DECLARED_STORIES : attempt) / 6) % stories.length];
     // The last questions of a practice block review an earlier step (the U16 and U4 reviews: a day mixes the new step
     // with earlier ones, not one task twenty times).
     const ordinal = Number(slot.id.split(".")[1]) || 1;
@@ -328,6 +328,26 @@ function priorStorySteps(input: GenerateInput, at: { skill: string; step: number
     .sort((a, b) => (stepRank(input.curriculum, b.skill, b.step) ?? 0) - (stepRank(input.curriculum, a.skill, a.step) ?? 0));
   cached.set(key, prior);
   return prior;
+}
+
+/**
+ * A Word problems slot's late candidates (from DECLARED_STORIES, after the strict pass): the other steps its page
+ * declares (slotSteps) that tell stories, after its routed steps, so a page whose routed steps tell one or two kinds can
+ * reach a third. The U19 sweep's stories pages took their stories from groups and join steps while the page also
+ * declares take-away and compare steps (5.7 subtract, 5.4 compare, with stories of 100 or more since 2026-11-20). Never
+ * a step the page does not declare: the book's step check holds every story to that list (Luis, 2026-11-20). A page
+ * its first candidates fill is unchanged.
+ */
+const DECLARED_STORIES = 512;
+function declaredStorySteps(input: GenerateInput, slot: Slot, day: number, level: number): { skill: string; step: number }[] {
+  const routed = storySteps(input, slot, day, level);
+  if (!routed.length) return routed;
+  const seen = new Set(routed.map((x) => `${x.skill}#${x.step}`));
+  const declared = (slotSteps(input, slot, day).steps ?? []).flatMap((key) => {
+    const [skill, n] = key.split("#");
+    return seen.has(key) || !storySums(input, skill, Number(n), level) ? [] : [{ skill, step: Number(n) }];
+  });
+  return [...routed, ...declared];
 }
 
 function storySteps(input: GenerateInput, slot: Slot, day: number, level: number): { skill: string; step: number }[] {

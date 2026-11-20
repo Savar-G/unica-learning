@@ -7,6 +7,7 @@ import { stepFieldProblems } from "./step-source";
 import { prepareTemplate, seededRandom } from "./template";
 import { buildStepItem, challengeTemplateCount, choicesFor, sequenceOf, stepRangeProblem, stepTemplateItem, templateProblem } from "@/lib/workbook-step-items";
 import { takeAwayProblem } from "@/lib/workbook-wording";
+import { operationStory, storyKind } from "@/lib/workbook-task-identity";
 
 /** The U19 Challenge forms Luis added (2026-11-17), by their words. */
 const ADDED_FORMS = ["two of these are prime. What do you get if you double the smaller prime", "needs ? more to reach", "two of these are prime. Subtract the smaller prime", "True or false: a pointer that makes", "How many whole numbers from", "The last multiple of both 4 and 6 before"];
@@ -65,7 +66,12 @@ describe("Unica Challenge templates", () => {
           try { item = prepared.fill(seededRandom(seed)); } catch { continue; }
           filled++;
           if (h.answerKind === "choice") expect(choicesFor(item.text, item.answer)).toContain(item.answer);
-          else expect(item.answer, `${h.skill}#${h.step}: ${item.text}`).toMatch(/^[1-9]\d*$/);
+          // (A stories entry of a decimal step answers with a decimal, "55.476", always above 0; a Challenge card, which no
+          // stories entry prints, keeps a whole-number result. Luis, 2026-11-20.)
+          else if (h.stories && /thousandths/.test(h.skill)) {
+            expect(item.answer, `${h.skill}#${h.step}: ${item.text}`).toMatch(/^\d+\.\d+$/);
+            expect(Number(item.answer), item.text).toBeGreaterThan(0);
+          } else expect(item.answer, `${h.skill}#${h.step}: ${item.text}`).toMatch(/^[1-9]\d*$/);
           expect(stepRangeProblem(step, item.text), item.text).toBeNull();
           expect(stepRangeProblem(step, item.answer), item.text).toBeNull();
           expect(takeAwayProblem(item.text, Number(item.answer)), item.text).toBeNull();
@@ -594,5 +600,49 @@ describe("added U19 practice forms", () => {
       }
       expect(ones, t.text).toBeGreaterThan(0);
     }
+  });
+});
+
+// Luis's added stories (2026-11-20) for U19 stories pages: from U16 another step's story must print a number of 100 or
+// more (tooEasyStory, unchanged), and these steps' stories printed only smaller ones, so a page ended with too few kinds
+// of story. Every instance is made as a stories slot makes it, passes the answer checker, and its key is worked out
+// again here from the printed numbers. Edge rules: a number of 100 or more, never a 0 or negative answer, the step's
+// own skill (a tenths amount minus a thousandths amount) and its unit.
+describe("added U19 stories with numbers of 100 or more", () => {
+  const c = bcStepProgressions();
+  const decimals = (text: string) => (text.match(/\d+\.\d+/g) ?? []);
+  const places = (s: string) => s.split(".")[1].length;
+  const exact = (n: number) => String(Math.round(n * 1000) / 1000);
+  const forms: [string, number, string, string, string][] = [
+    ["5.7-subtract-thousandths", 2, "A delivery truck carries", "take-away", "kg"],
+    ["5.7-subtract-thousandths", 2, "A farm stand has", "take-away", "kg"],
+    ["5.7-subtract-thousandths", 2, "A big water tank holds", "compare", "L"],
+  ];
+  it.each(forms)("checks every instance of the %s step %i story \"%s\" across 300 seeds", (skill, number, words, kind, unit) => {
+    const step = c.skillSteps(skill)!.find(s => s.number === number)!;
+    const index = step.templates!.findIndex(t => t.text.startsWith(words) && t.format === "story" && t.difficulty === "medium" && !isChallengeOnly(t));
+    expect(index, words).toBeGreaterThanOrEqual(0);
+    let checked = 0;
+    for (let seed = 1; seed <= 8000 && checked < 300; seed++) {
+      const item = stepTemplateItem({ curriculum: c, skill, step: number, place: "word-problems", level: 19, day: 3, seed, attempt: seed % 13, ordinal: seed % 4 });
+      if (!item || item.ref.index !== index) continue;
+      const built = buildStepItem(item.ref, item.text, { id: `s-${seed}`, workbookId: "added-stories", page: 1, question: 1, level: 19, skills: [skill] }, "code");
+      expect(built.check.status, item.text).toBe("checked");
+      expect(storyKind(item.text), item.text).toBe(kind);
+      expect(stepRangeProblem(step, item.text), item.text).toBeNull();
+      const [x, y] = decimals(item.text) as [string, string];
+      const [a, b] = [Number(x), Number(y)];
+      expect(Math.max(a, b), item.text).toBeGreaterThanOrEqual(100);
+      const box = built.package!.item!.regions.find(r => r.kind === "box");
+      const printed = box?.kind === "box" && box.answer?.type === "number" ? String(box.answer.value) : null;
+      // (The unit is named in the question; the answer is the number, so a stories page reads it as working an operation.)
+      expect(item.text, item.text).toMatch(unit === "kg" ? /\bkilograms\b/ : /\blitres\b/);
+      expect(operationStory(built.package!, step.templates![index].answer), item.text).toBe(true);
+      expect([places(x), places(y)], item.text).toEqual([1, 3]);
+      expect(a - b, item.text).toBeGreaterThan(0);
+      expect(printed, item.text).toBe(exact(a - b));
+      checked++;
+    }
+    expect(checked, words).toBeGreaterThan(30);
   });
 });

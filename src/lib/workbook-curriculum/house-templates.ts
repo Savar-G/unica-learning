@@ -455,6 +455,23 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
     skill: "4.4-subtract-within-10000", step: 5, name: "Take away from 10 000, then check", stories: true,
     templates: [medium("{name} scores {a} points. A friend scores {c} points. How many more points does {name} score?", "a - c", { b0: "template_b0", c0: "template_c0" }, { a: "max(b0, c0)", c: "min(b0, c0)" }, "max(b0, c0) - min(b0, c0) >= 100 and min(b0, c0) >= 1000")],
   },
+  // Take-away and compare stories with a number of 100 or more for U19 stories pages (Luis, 2026-11-20): this step's
+  // stories printed only numbers under 100, so from U16 a stories page could not take them as another step's story
+  // (tooEasyStory, Savar's Grade 5 rule, unchanged) and ended with too few kinds (the U19 sweep). Same format and
+  // fill-with-zeros skill as the step's own stories; the unit is in the question and the answer is the number, as a
+  // stories page's story works an operation (operationStory). (5.4 compare-decimals stories cannot serve: a stories page's story
+  // works an operation, notAStory, and "which is more" only picks a number.)
+  {
+    skill: "5.7-subtract-thousandths", step: 2, name: "Fill with zeros", stories: true,
+    templates: [
+      medium("A delivery truck carries {a} kg of sand. It unloads {b} kg at the first stop. How much sand is left on the truck, in kilograms?", "round(a - b, 3)",
+        { p0: "minuend_tenths", q0: "subtrahend_thousandths" }, { a: "(1000 + p0) / 10", b: "q0 / 1000" }, "p0 % 10 != 0 and q0 % 10 != 0"),
+      medium("A farm stand has {a} kg of potatoes. {name} sells {b} kg on Saturday. How many kilograms of potatoes are left?", "round(a - b, 3)",
+        { p0: "minuend_tenths", q0: "subtrahend_thousandths" }, { a: "(2000 + p0) / 10", b: "q0 / 1000" }, "p0 % 10 != 0 and q0 % 10 != 0"),
+      medium("A big water tank holds {a} L and a small tank holds {b} L. How many more litres does the big tank hold?", "round(a - b, 3)",
+        { p0: "minuend_tenths", q0: "subtrahend_thousandths" }, { a: "(1000 + p0) / 10", b: "q0 / 1000" }, "p0 % 10 != 0 and q0 % 10 != 0"),
+    ],
+  },
   {
     skill: "4.4-add-within-10000", step: 5, name: "Story problems", stories: true,
     templates: [medium("{name} has {a} stickers and wants {s}. How many more stickers does {name} need?", "s - a", { u1: "u1", u2: "u2", u3: "u3", u4: "u4", u5: "u5", u6: "u6", u7: "u7", u8: "u8" }, { a: "1000 + u1 * 400 + u2 * 40 + u3 * 4 + u4", s: "1000 + u1 * 400 + u2 * 40 + u3 * 4 + u4 + 1000 + u5 * 300 + u6 * 30 + u7 * 3 + u8" }, "s <= 9999")],

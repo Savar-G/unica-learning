@@ -458,7 +458,10 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
   // (U4 to U9 only: from U10 the hard ones stay the Challenge's, and a page keeps its own step.)
   if (r.level <= 9 && r.attempt >= 320 && r.place !== "challenge" && r.place !== "show-what-you-know" && r.place !== "level-test" && (r.curriculum.levelOfSkill(r.skill)?.number ?? r.level) <= r.level) usable = printable;
   // A Number stories page asks stories when the step has them (the review: no drills on a page of stories).
-  if (r.place && STEP_STORY_PLACES.has(r.place) && r.place !== "challenge" && r.attempt < 256 && usable.some(({ t }) => t.format === "story")) usable = usable.filter(({ t }) => t.format === "story");
+  // (And a Word problems slot's late attempts on its page's declared steps, from 512: notAStory refuses anything else on
+  // that page, so a drill there was only a lost attempt, and the U19 sweep's stories pages never reached those steps'
+  // stories, Luis 2026-11-20. Attempts 256 to 511 draw as before.)
+  if (r.place && STEP_STORY_PLACES.has(r.place) && r.place !== "challenge" && (r.attempt < 256 || r.place === "word-problems" && r.attempt >= 512) && usable.some(({ t }) => t.format === "story")) usable = usable.filter(({ t }) => t.format === "story");
   // (Code's two-step cards follow the step's own, the Challenge's last fill: house-templates.ts.)
   if (r.place === "challenge" && r.attempt < 256) usable = [...reserved, ...printable.filter((x) => isTwoStep(x.t) && !reserved.includes(x))];
   // Show what you know asks each step's hardest version, the Challenge's templates too (the real U4 sample: "Kai says
