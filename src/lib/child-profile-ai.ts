@@ -180,7 +180,7 @@ function codeQuestion(p: QuestionPackage) {
 }
 
 /** The trusted package of each event's question that has one, by reference; read READS_AT_ONCE at a time. */
-async function readQuestions(reader: QuestionReader | null, events: readonly LearningEvent[]): Promise<Map<string, QuestionPackage>> {
+async function readQuestions(reader: QuestionReader | null, events: readonly (LearningEvent & { question: QuestionRef })[]): Promise<Map<string, QuestionPackage>> {
   const packages = new Map<string, QuestionPackage>();
   if (!reader) return packages;
   const refs = [...new Map(events.map((e) => [refKey(e.question), e.question])).entries()];
@@ -212,7 +212,7 @@ function fromPackage(e: LearningEvent, p: QuestionPackage | undefined) {
 }
 
 /** What the AI reads: the facts and the newest events with their trusted question data, with no name, family, account or workbook id. */
-function childProfileAiFacts(profile: ChildLearnerProfile, newest: readonly LearningEvent[], packages: ReadonlyMap<string, QuestionPackage>) {
+function childProfileAiFacts(profile: ChildLearnerProfile, newest: readonly (LearningEvent & { question: QuestionRef })[], packages: ReadonlyMap<string, QuestionPackage>) {
   const counted = new Set(profile.standards.flatMap((s) => s.evidence.events));
   return {
     school_grade: profile.grade,
@@ -313,7 +313,8 @@ export async function writeChildProfileFindings(
   events: readonly LearningEvent[],
   signal: AbortSignal,
 ) {
-  const newest = events.slice(-AI_EVENTS_MAX);
+  // #1144: a related question after a call is evidence for later teaching (#1145), not for the profile's findings.
+  const newest = events.filter((e): e is LearningEvent & { question: QuestionRef } => e.question.source !== "transfer").slice(-AI_EVENTS_MAX);
   const facts = childProfileAiFacts(profile, newest, await readQuestions(questions, newest));
   signal.throwIfAborted();
   const output = await client.json({

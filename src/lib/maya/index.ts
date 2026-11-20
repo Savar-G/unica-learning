@@ -35,6 +35,7 @@ export {
   heldReason,
   mayaPackageCheck,
   learningEvent,
+  transferLearningEvent,
   drawOffers,
   lineOffers,
   warmGroups,

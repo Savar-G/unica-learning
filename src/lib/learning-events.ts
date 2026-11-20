@@ -20,6 +20,9 @@
 //   child stopped, or the call ended before an answer) is blank, with the step where the child stopped as the stuck
 //   step and the hints given so far; a wrong answer said during the call that the child then left is still blank, as
 //   only the final answer counts.
+// - A related question after a call (#1144): right on the child's own; right_with_help after hints, a demonstration or
+//   help nobody confirmed; blank when unfinished. Its help is in `assistance`. It names the call question's event
+//   (`question.relatedEventId`), never a workbook or assessment question, and the child profile does not count it.
 // The stuck step is the worked step id (WorkedStep.id, "tens") where the child got stuck; a right answer with no help
 // has none, and only a wrong answer has a mistake.
 //
@@ -37,13 +40,30 @@ export type EventResult = "right" | "wrong" | "blank" | "right_with_help";
 /** What the evidence id names: a call, a scan of a page, or an answer of a test (public.answers). */
 export type EvidenceKind = "call" | "scan" | "answer";
 
+/**
+ * A related question Maya generated after the call's question (#1144): never a workbook or assessment question. It
+ * names the learning event of the call's question it follows (the same child's) and its own text ("63 - 27 = ?").
+ */
+export interface TransferQuestionRef {
+  source: "transfer";
+  relatedEventId: string;
+  text: string;
+}
+/** The question an event is about. */
+export type EventQuestion = QuestionRef | TransferQuestionRef;
+/** The values of public.learning_events.question_source. */
+export const QUESTION_SOURCES = ["workbook", "assessment", "transfer"] as const;
+/** The help on a related question: uncertain when some voice help may have played but no source confirmed it. */
+export const TRANSFER_ASSISTANCE = ["independent", "hinted", "demonstrated", "uncertain"] as const;
+export type TransferAssistance = (typeof TRANSFER_ASSISTANCE)[number];
+
 export interface NewLearningEvent {
   /** The writer's id for this logical event, the same on every retry ("assessment-answer:<answer id>"). */
   key: string;
   parentId: string;
   childId: string;
   source: EventSource;
-  question: QuestionRef;
+  question: EventQuestion;
   /** A BC standard code ("2.4") and the ids of its smaller skills in the BC skill map, as the question package names them. */
   skill: { standard: string; skills: string[] };
   result: EventResult;
@@ -58,6 +78,8 @@ export interface NewLearningEvent {
   /** When it happened: an ISO time with a time zone; stored in UTC. */
   occurredAt: string;
   evidence: { kind: EvidenceKind; id: string } | null;
+  /** Only on a related question (#1144): the help the child had. Its result never makes a standard secure by itself. */
+  assistance?: TransferAssistance;
 }
 
 export interface LearningEvent extends NewLearningEvent {
@@ -119,9 +141,10 @@ function content(e: NewLearningEvent) {
   const q = e.question;
   return [
     e.key, e.parentId, e.childId, e.source,
-    q.source === "workbook" ? [q.source, q.workbookId, q.page, q.question] : [q.source, q.assessmentId, q.questionId],
+    q.source === "workbook" ? [q.source, q.workbookId, q.page, q.question]
+      : q.source === "assessment" ? [q.source, q.assessmentId, q.questionId] : [q.source, q.relatedEventId, q.text],
     e.skill.standard, e.skill.skills, e.result, e.stuckStep, e.mistake, e.hints, e.timeMs, new Date(e.occurredAt).toISOString(),
-    e.evidence && [e.evidence.kind, e.evidence.id],
+    e.evidence && [e.evidence.kind, e.evidence.id], e.assistance ?? null,
   ];
 }
 
@@ -150,9 +173,14 @@ const text = (v: unknown, max: number): v is string => typeof v === "string" && 
 const whole = (v: unknown, min: number, max: number): v is number => Number.isInteger(v) && (v as number) >= min && (v as number) <= max;
 
 /** The reference with its id in lower case. The reference must be valid (questionProblem). */
-const lowerRef = (q: QuestionRef): QuestionRef => (q.source === "workbook" ? { ...q, workbookId: q.workbookId.toLowerCase() } : { ...q, assessmentId: q.assessmentId.toLowerCase() });
+const lowerRef = (q: EventQuestion): EventQuestion => (q.source === "workbook" ? { ...q, workbookId: q.workbookId.toLowerCase() }
+  : q.source === "assessment" ? { ...q, assessmentId: q.assessmentId.toLowerCase() } : { ...q, relatedEventId: q.relatedEventId.toLowerCase() });
 
-function questionProblem(q: QuestionRef): string | null {
+function questionProblem(q: EventQuestion): string | null {
+  if (q?.source === "transfer") {
+    if (!UUID.test(String(q.relatedEventId))) return "a related question needs the event of the question it follows";
+    return text(q.text, 80) ? null : "a related question needs its text";
+  }
   if (q?.source === "workbook") {
     if (!UUID.test(String(q.workbookId))) return "a workbook question needs the workbook's id";
     if (!whole(q.page, 1, 9999) || !whole(q.question, 1, 9999)) return "a workbook question needs a page number and a question number from 1";
@@ -173,6 +201,9 @@ function checkEvent(e: NewLearningEvent): NewLearningEvent | string {
   const question = questionProblem(e.question);
   if (question) return question;
   if (e.source === "assessment" && e.question.source !== "assessment") return "an assessment event is on an assessment question";
+  const related = e.question.source === "transfer";
+  if (related && (e.source !== "call" || e.evidence?.kind !== "call")) return "a related question comes from a call";
+  if (related !== (e.assistance !== undefined) || (related && !TRANSFER_ASSISTANCE.includes(e.assistance!))) return "only a related question has its help";
   if (!STANDARDS.has(e.skill?.standard)) return `the BC skill map has no standard ${e.skill?.standard}`;
   if (!Array.isArray(e.skill.skills) || e.skill.skills.length > 20 || !e.skill.skills.every((k) => SKILLS.has(k))) return "every skill must be a skill of the BC skill map";
   if (!RESULTS.includes(e.result)) return `unknown result ${e.result}`;
