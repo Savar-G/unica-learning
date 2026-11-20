@@ -869,6 +869,38 @@ export function learningEvent(session: Session, family: { parentId: string; chil
   };
 }
 
+/**
+ * The learning event of the related question after the call's question (#1144), or null when none started or the call
+ * question's event was not written. It names that event (`relatedEventId`), never the workbook or assessment question.
+ * Result: right on the child's own; right_with_help after hints, a demonstration, or help nobody confirmed (never
+ * "right"); blank when unfinished. The help is in `assistance`. One related question never makes a standard secure.
+ */
+/** The related question's learning event key: the call question's event key, `call:<id>`, with ":transfer". */
+export const transferEventKey = (callId: string) => `call:${callId}:transfer`;
+
+export function transferLearningEvent(session: Session, family: { parentId: string; childId: string }, relatedEventId: string): NewLearningEvent | null {
+  const original = learningEvent(session, family);
+  const transfer = session.checkedExchange?.transfer;
+  if (!original || !transfer || (transfer.state !== "started" && transfer.state !== "finished")) return null;
+  const turns = session.checkedExchange!.turns.filter((turn) => turn.transfer);
+  const outcome = transferOutcome(session).transfer!;
+  const result = outcome.result === "unfinished" ? "blank" : outcome.assistance === "independent" ? "right" : "right_with_help";
+  const column = (step: RegroupingInstruction["step"] | undefined) => step === "tens" ? "tens" : step === "combine" ? "result" : "ones";
+  const helped = turns.find((turn) => turn.support);
+  const open = !transfer.done.includes("ones") ? "ones" : !transfer.done.includes("tens") ? "tens" : "result";
+  const started = transfer.startedAt ?? session.startedAt!;
+  return {
+    ...original,
+    key: transferEventKey(session.callId),
+    question: { source: "transfer", relatedEventId, text: transferPackage(session.package!, transfer.operands).text },
+    result,
+    stuckStep: result === "right" ? null : result === "blank" ? open : column(helped?.instruction?.step),
+    hints: Math.min(turns.filter((turn) => turn.support === "hinted").length, MAX_HINTS),
+    timeMs: Math.min(Math.max(0, endTime(session) - started), MAX_TIME_MS),
+    assistance: outcome.assistance,
+  };
+}
+
 // ---------- Steps and math ----------
 
 /** The worked steps a child does, without the result (fractions.ts: the steps Maya teaches for this question). */
@@ -5786,7 +5818,7 @@ function deliverExchange(s: Session, plan: ExchangeTurn, effects: Effect[]): Ste
   }
   if (step === "offer") lesson.transfer = { operands: transferFor(s)!, state: "offered", done: [] };
   if (step === "decline") lesson.transfer!.state = "declined";
-  if (step === "transfer") lesson.transfer!.state = "started";
+  if (step === "transfer") Object.assign(lesson.transfer!, { state: "started", startedAt: s.now!, eventKey: transferEventKey(s.callId) });
   if (step === "transfer_correct") lesson.transfer!.state = "finished";
   const observed = plan.observation;
   if (observed?.result === "correct") {

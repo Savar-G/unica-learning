@@ -75,6 +75,10 @@ export interface TransferTask {
   state: "offered" | "declined" | "started" | "finished";
   /** Columns the child finished in the related question. */
   done: ("ones" | "tens")[];
+  /** When the related question started (#1144: its learning event's time spent). */
+  startedAt?: number;
+  /** The idempotency key of the related question's learning event, set when it starts (#1145 reads the event by it). */
+  eventKey?: string;
 }
 
 export interface CheckedExchangeLesson {

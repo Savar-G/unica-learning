@@ -219,7 +219,7 @@ Method: rg/sed over src/lib, src/app, src/components, supabase/migrations, docs.
 - Value x risk: low.
 
 ### 14. Learning events
-- Entity / storage: `public.learning_events` (20261029_add_learning_events.sql): append-only (update refused, service role gets insert/select only), unique `idempotency_key`, `source` in (call, marking, assessment), `result` in (right, wrong, blank, right_with_help), evidence kind (call, scan, answer).
+- Entity / storage: `public.learning_events` (20261029_add_learning_events.sql): append-only (update refused, service role gets insert/select only), unique `idempotency_key`, `source` in (call, marking, assessment), `result` in (right, wrong, blank, right_with_help), evidence kind (call, scan, answer). `question_source` in (workbook, assessment, transfer): a transfer row is a related question after a call (#1144), with `related_event_id` (the call question's event, same child), `generated_question` and `assistance` in (independent, hinted, demonstrated, uncertain); the child profile never counts it.
 - States: none (rows immutable). The only lifecycle is the outbox publication for `source=marking` (machine 7) and calls (Maya, other lead).
 - Transitions: `append` (learning-events.ts: validate -> insert -> same key returns stored; different content for the key -> `key_conflict`; family fence -> `family_refused`). Assessment backfill `backfillAssessment` ran once on the hosted DB and then the rows were removed (docs/assessment-deletion.md:214); no live caller writes assessment events (rg: only tests reference it).
 - Where rules live: one file (learning-events.ts, pure, with in-memory store) + SQL check constraints (source/result lists duplicated: `SOURCES`/`RESULTS` TS arrays vs SQL checks).

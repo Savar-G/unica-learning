@@ -75,7 +75,7 @@ import { createHistory, inkLog, mayaWrites, readInkEvent, withChildInk, withInkL
 import { fitView, type PlayStep } from "@/lib/board-svg";
 import type { LearningEvents, NewLearningEvent } from "@/lib/learning-events";
 import type { NoteStep } from "@/lib/maya-call-note";
-import { clearStop, heardWordings, learningEvent, limitsOf, mayaPackageCheck, nextActs, SAFETY_GUIDANCE, sentenceCueWord, streamPlan, type Assistance, type Outcome, type Session, type Severity, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
+import { clearStop, heardWordings, learningEvent, transferLearningEvent, limitsOf, mayaPackageCheck, nextActs, SAFETY_GUIDANCE, sentenceCueWord, streamPlan, type Assistance, type Outcome, type Session, type Severity, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
 import { createHandleDiagnosticIds } from "@/lib/maya-handle-diagnostic";
 import type { PrepareRecord } from "@/lib/maya-prepared";
 import { withRequestContext } from "@/lib/maya-request-trace";
@@ -1098,8 +1098,16 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       if (event) {
         try {
           const appended = await seams.events.append(event);
-          if (appended.ok || appended.error === "key_conflict") [eventId, done] = [appended.event.id, true];
-          else {
+          if (appended.ok || appended.error === "key_conflict") {
+            // #1144: the related question's own event, after the call question's (it names that event). Its key makes
+            // a retry, a duplicate "yes" or a reconnect store one event; a throw retries both appends later.
+            const related = transferLearningEvent(ended.session, { parentId: current.parentId, childId: current.childId }, appended.event.id);
+            const relatedAppended = related ? await seams.events.append(related) : null;
+            if (relatedAppended && !relatedAppended.ok && relatedAppended.error !== "key_conflict") {
+              console.error("[maya call] related question event refused", current.id, relatedAppended.error, "reason" in relatedAppended ? relatedAppended.reason : "");
+            }
+            [eventId, done] = [appended.event.id, true];
+          } else {
             // A refused event is refused again on a retry: the call goes on without one.
             console.error("[maya call] learning event refused", current.id, appended.error, "reason" in appended ? appended.reason : "");
             done = true;

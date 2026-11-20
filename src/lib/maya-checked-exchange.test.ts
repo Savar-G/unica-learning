@@ -43,6 +43,9 @@ function setup(overrides: Partial<CallSeams> = {}) {
   return { calls: mayaCalls(seams), answer, store, events: seams.events };
 }
 
+/** The call question's event first, then its related question's (both have the call's end time). */
+const byKey = <T extends { key: string }>(events: T[]) => [...events].sort((a, b) => a.key.localeCompare(b.key));
+
 function ok(result: CallResult) {
   if (!result.ok) throw new Error(result.error);
   return result;
@@ -598,11 +601,20 @@ it("starts a related question when the child accepts and keeps the original ques
   expect(closing).not.toMatch(/master|explain|\?/i);
   expect(turn.view.outcome).toMatchObject({ reason: "solved", assistance: "independent", transfer: { result: "right", assistance: "independent" } });
   await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null);
-  const recorded = await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" });
-  expect(recorded).toMatchObject([{ result: "right", question: question.ref, evidence: { kind: "call", id: turn.view.id } }]);
+  await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null);
+  const recorded = byKey(await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" }));
+  expect(recorded).toMatchObject([
+    { key: `call:${turn.view.id}`, result: "right", question: question.ref, evidence: { kind: "call", id: turn.view.id } },
+    {
+      key: `call:${turn.view.id}:transfer`, source: "call", result: "right", assistance: "independent", stuckStep: null, hints: 0,
+      question: { source: "transfer", text: "63 - 27 = ?" }, skill: question.skill, evidence: { kind: "call", id: turn.view.id },
+    },
+  ]);
+  expect(recorded[1].question).toEqual({ source: "transfer", relatedEventId: recorded[0].id, text: "63 - 27 = ?" });
+  expect(recorded[0]).not.toHaveProperty("assistance");
   const trace = store.rows()[0].trace!;
   expect(checkTrace(trace)).toMatchObject({ ok: true });
-  expect(trace.checkedExchange?.transfer).toMatchObject({ operands: [63, 27], state: "finished" });
+  expect(trace.checkedExchange?.transfer).toMatchObject({ operands: [63, 27], state: "finished", eventKey: recorded[1].key });
   expect(trace.checkedExchange?.turns.filter((t) => t.observation?.skill === "difference").map((t) => [t.transfer === true, t.observation!.assistance]))
     .toEqual([[false, "independent"], [true, "independent"]]);
   expect(answer).not.toHaveBeenCalled();
@@ -610,8 +622,8 @@ it("starts a related question when the child accepts and keeps the original ques
 
 it("closes normally when the child declines, and makes no offer without time for one", async () => {
   let now = clock();
-  const { calls, store } = setup({ clock: () => now });
-  const declined = ok(await calls.start(input));
+  const { calls, store, events } = setup({ clock: () => now });
+  const declined = ok(await calls.start({ ...input, package: { ...SAMPLE_PACKAGES["subtract-52-28"], ref: { source: "workbook", workbookId: parentId, page: 1, question: 1 } } }));
   const offer = ok(await calls.input(declined.view.id, declined.view.revision, { type: "child", text: "My answer is 24." }, null));
   const bye = ok(await calls.input(offer.view.id, offer.view.revision, { type: "child", text: "No thanks." }, null));
   expect(bye.output.say.join(" ")).toMatch(/great work today\. bye for now!$/i);
@@ -619,6 +631,7 @@ it("closes normally when the child declines, and makes no offer without time for
   expect(bye.view.outcome).toMatchObject({ reason: "solved", assistance: "independent" });
   expect(bye.view.outcome).not.toHaveProperty("transfer");
   expect(checkTrace(store.rows()[0].trace)).toMatchObject({ ok: true });
+  expect((await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" })).map((e) => e.key)).toEqual([`call:${bye.view.id}`]);
 
   const late = ok(await calls.start(input));
   now += 7 * 60_000 + 1;
@@ -674,8 +687,9 @@ it("keeps hinted related work apart from the original success in the record and 
   expect(await say("36.")).toMatch(/you found the difference/i);
   expect(turn.view.outcome).toMatchObject({ reason: "solved", assistance: "independent", transfer: { result: "right", assistance: "hinted" } });
   await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null);
-  const [event] = await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" });
-  expect(event).toMatchObject({ result: "right", hints: 0 });
+  const [event, related] = byKey(await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" }));
+  expect(event).toMatchObject({ result: "right", hints: 0, stuckStep: null });
+  expect(related).toMatchObject({ result: "right_with_help", assistance: "hinted", hints: 4, stuckStep: "ones", question: { source: "transfer" } });
   const record = store.rows()[0];
   expect(record.trace?.checkedExchange?.turns.filter((t) => t.transfer && t.observation).map((t) => [t.observation!.skill, t.observation!.assistance]))
     .toEqual([["explain_exchange", "hinted"], ["subtract_ones", "hinted"], ["subtract_tens", "hinted"], ["difference", "hinted"]]);
@@ -746,8 +760,11 @@ it("starts the related question once on a duplicate submit and resumes it after 
   const record = store.rows().find((row) => row.id === voice.view.id)!;
   expect(record.outcome).toMatchObject({ reason: "solved", assistance: "independent", transfer: { result: "right", assistance: "uncertain" } });
   expect(record.trace?.checkedExchange?.turns.filter((t) => t.observation?.skill === "difference")).toHaveLength(2);
-  const learned = await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" });
-  expect(learned).toMatchObject([{ result: "right", evidence: { id: voice.view.id } }]);
+  const learned = byKey(await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" }));
+  expect(learned).toMatchObject([
+    { result: "right", evidence: { id: voice.view.id } },
+    { result: "right_with_help", assistance: "uncertain", question: { source: "transfer" }, evidence: { id: voice.view.id } },
+  ]);
   expect(codeSentences(noteFacts({ outcome: record.outcome!, event: learned[0], package: question, question: question.ref })).join(" "))
     .toContain("gave the correct answer to a related question. The amount of help is unknown.");
 });
@@ -788,8 +805,8 @@ it("records a demonstrated related answer and draws the same related question in
 
 it("ends an unfinished related question at the time limit with the original success intact", async () => {
   let now = clock();
-  const { calls } = setup({ clock: () => now });
-  let turn = ok(await calls.start(input));
+  const { calls, events } = setup({ clock: () => now });
+  let turn = ok(await calls.start({ ...input, package: { ...SAMPLE_PACKAGES["subtract-52-28"], ref: { source: "workbook", workbookId: parentId, page: 1, question: 1 } } }));
   turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text: "My answer is 24." }, null));
   turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text: "Yes." }, null));
   now += 10 * 60_000;
@@ -797,6 +814,10 @@ it("ends an unfinished related question at the time limit with the original succ
   const ended = late.view.outcome ? late : ok(await calls.input(late.view.id, late.view.revision, { type: "end" }, null));
   expect(ended.view.outcome).toMatchObject({ reason: "solved", transfer: { result: "unfinished", assistance: "independent" } });
   expect(ended.view.outcome!.seconds).toBeLessThanOrEqual(600);
+  await calls.input(ended.view.id, ended.view.revision, { type: "end" }, null);
+  expect(byKey(await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" }))).toMatchObject([
+    { result: "right" }, { result: "blank", assistance: "independent", stuckStep: "ones", question: { source: "transfer" } },
+  ]);
   expect(codeSentences(noteFacts({ outcome: ended.view.outcome!, event: null, package: SAMPLE_PACKAGES["subtract-52-28"], question: SAMPLE_PACKAGES["subtract-52-28"].ref })).join(" "))
     .toContain("started a related question but did not finish it.");
 });
