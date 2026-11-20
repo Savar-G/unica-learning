@@ -1025,8 +1025,15 @@ export class VoiceCallRun {
     }
     if (priority) { early.open = false; return this.sayFirst(pace, turns); }
     const generation = this.generation;
-    try { await this.stageBoard({ boardCues: shifted }, false, pace.turnId); }
+    try { await this.stageBoard({ boardCues: shifted }, false, pace.turnId, owns); }
     catch (error) { this.boardFailed(error); if (generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return this.closeTurn(pace); }
+    // The child can speak while the board waits (an exchange, before staging): a turn that is no longer this run's
+    // stages no board and says no rest (#1139).
+    if (!owns()) {
+      for (const turn of turns) await this.after(turn, undefined, () => false, true);
+      early.open = false;
+      return this.closeTurn(pace, "interrupted");
+    }
     const scope = this.boardScope;
     const speech = rest ? this.sayAs(rest, { addToChatCtx: true }, { turnId: pace.turnId, kind: "answer" }) : null;
     // No words left: the batches are shown at once, once they are on the receiver.
@@ -1231,7 +1238,8 @@ export class VoiceCallRun {
   private turnSpeeches = new Map<string, voice.SpeechHandle[]>();
 
   private ownSpeech(turnId: string | null, speech: voice.SpeechHandle) {
-    if (turnId === null || !this.options.replyDone) return;
+    // Only the open turn owns new speech: a closed turn's report is already on its way, and its entry is gone.
+    if (turnId === null || !this.options.replyDone || this.pace?.turnId !== turnId || this.pace.closed) return;
     this.turnSpeeches.set(turnId, [...(this.turnSpeeches.get(turnId) ?? []), speech]);
   }
 

@@ -491,6 +491,48 @@ describe("the parts of a turn as the worker hears them (VoiceSay)", () => {
   });
 });
 
+  it("#1139 drops the rest when the child interrupts while its board waits, and reports the turn done once", async () => {
+    const done: { turnId: string; said: string[] }[] = [];
+    const c: Awaited<ReturnType<typeof voiceCall>> = await voiceCall({ model: ruleConversationalModel(), replyDone: (turnId) => done.push({ turnId, said: [...c.said()] }) });
+    const question = (await c.store.get(c.id))!.live!.text.board[0];
+    const note: Batch = { transactionId: `${c.id}-note`, commands: [{ op: "write", id: "note-ones", text: "ones", place: { below: (question.commands[0] as { id: string }).id } }] };
+    const third = "Start with the seven.";
+    const queued: string[] = [];
+    const realSay = c.session.say.bind(c.session);
+    vi.spyOn(c.session, "say").mockImplementation((text, options) => {
+      if (typeof text === "string") queued.push(text);
+      return realSay(text, options);
+    });
+    let finish = () => {};
+    const held = new Promise<void>((resolve) => { finish = resolve; });
+    vi.spyOn(c.call, "child").mockImplementationOnce(async (_text, _options, say) => {
+      say!.part!(FIRST, 0);
+      await held;
+      return { say: [`${FIRST} ${SECOND} ${third}`], newBatches: 1, boardCues: [{ batch: note, word: 16 }], safetyMessage: null, ended: false };
+    });
+    const before = c.said().length;
+    c.say("I got 56.");
+    await waitFor(() => c.said().slice(before).includes(FIRST), "the first sentence");
+    // The board waits for an exchange before it stages the rest (stageBoard). The test releases that wait.
+    let release = () => {};
+    (c.run as unknown as { exchangeBoard: Promise<void> | null }).exchangeBoard = new Promise<void>((resolve) => { release = resolve; });
+    finish();
+    await pause();
+    // The child speaks while the board waits: the turn closes.
+    c.say("Wait, I have a question.");
+    await waitFor(() => done.length >= 1, "the turn's report");
+    (c.run as unknown as { exchangeBoard: Promise<void> | null }).exchangeBoard = null;
+    release();
+    await waitFor(() => c.session.agentState === "listening", "the call to settle");
+    await pause();
+    // The rest is never queued after the turn closed, so Maya cannot say it after the child spoke.
+    expect(queued.filter((text) => text.includes(third))).toEqual([]);
+    expect(c.said().slice(before)).not.toContain(third);
+    expect(c.receiver.snapshot().events.some((e) => e.kind === "batch" && e.batchId === note.transactionId)).toBe(false);
+    const first = done[0].turnId;
+    expect(done.filter((d) => d.turnId === first)).toHaveLength(1);
+  });
+
 describe("what is left of a turn after its early sentences (earlyRest)", () => {
   const batch = (id: string): Batch => ({ transactionId: id, commands: [] });
   const turn = (say: string[], cues: { id: string; word: number }[] = []): VoiceTurn => ({ say, newBatches: cues.length, boardCues: cues.map((c) => ({ batch: batch(c.id), word: c.word })), safetyMessage: null, ended: false });
