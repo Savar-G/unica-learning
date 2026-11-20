@@ -46,9 +46,9 @@ export const PHOTO_CHECK_QUESTIONS: Readonly<Record<PhotoProblem, DecisionQuesti
 
 /**
  * The thresholds of PHOTO_CHECK_VERSION: P(yes) at or above it is a problem. null: the question is not asked. blurry: the
- * lowest value from 0.50 to 0.99 that flags none of the 30 clear synthetic photos, and none of the 10 real clear phone
- * photos either (#856: highest 0.10). glare, shadow and faint stay off: on the real photos none caught 80% of at least 5
- * photos of its kind (docs/photo-check-thresholds.md, "Real photos").
+ * lowest value from 0.50 to 0.99 that flags none of the 30 clear synthetic photos, and none of the 18 real clear phone
+ * pages either (#856: highest 0.13). glare, shadow and faint stay off: in three real runs (the Robin booklet and a
+ * customer's printed book) none reached 80% with at least 5 photos of its kind (docs/photo-check-thresholds.md, "Real photos").
  */
 export const PHOTO_CHECK_THRESHOLDS: Readonly<Record<PhotoProblem, number | null>> = { blurry: 0.5, glare: null, shadow: null, faint: null };
 
