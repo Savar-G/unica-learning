@@ -83,6 +83,49 @@ export interface TransferTask {
   eventKey?: string;
 }
 
+/**
+ * #1145: what the child's versioned profile said about this lesson's standard when the call started (made by
+ * teachingBrief, src/lib/child-profile-teaching.ts). It changes only the first step after the child says they are stuck.
+ * A lesson saved without it, or with an empty one, teaches as before.
+ */
+export interface LessonBrief {
+  standard: string;
+  /** The profile revision it was read from. */
+  revision: number;
+  /** The tens prerequisite: null with no evidence. */
+  prerequisite: "unsure" | "gap" | "secure" | null;
+  /** The base-ten blocks on the board: null with no evidence. */
+  blocks: "helped" | "not_yet" | null;
+  /** Misconceptions still open (suspected or likely), by id ("reversal", "O3"). */
+  misconceptions: string[];
+  /** The open review targets' reasons. */
+  reviews: string[];
+}
+
+const BRIEF_VIEWS = { prerequisite: ["unsure", "gap", "secure"], blocks: ["helped", "not_yet"] } as const;
+
+/** The brief a seam gave, checked; null when it is not one. */
+export function readLessonBrief(value: unknown): LessonBrief | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const b = value as Partial<LessonBrief>;
+  const ids = (list: unknown): list is string[] => Array.isArray(list) && list.length <= 20 && list.every((id) => typeof id === "string" && id.length >= 1 && id.length <= 40);
+  if (typeof b.standard !== "string" || b.standard.length > 20 || !Number.isSafeInteger(b.revision) || b.revision! < 1 ||
+    !(b.prerequisite === null || BRIEF_VIEWS.prerequisite.includes(b.prerequisite!)) || !(b.blocks === null || BRIEF_VIEWS.blocks.includes(b.blocks!)) ||
+    !ids(b.misconceptions) || !ids(b.reviews)) return null;
+  return { standard: b.standard, revision: b.revision!, prerequisite: b.prerequisite!, blocks: b.blocks!, misconceptions: [...b.misconceptions], reviews: [...b.reviews] };
+}
+
+/**
+ * The lesson's first step when the child says they are stuck (#1145). With no brief: check the tens. The tens known on
+ * the child's own: go straight to the exchange question. A tens gap: show the blocks with the trade. The blocks helped
+ * before: start with them.
+ */
+export function stuckStart(brief: LessonBrief | undefined): "check_place" | "check_exchange" | "place_gap" | "guide_exchange" {
+  if (brief?.prerequisite === "secure") return "check_exchange";
+  if (brief?.prerequisite === "gap") return "place_gap";
+  return brief?.blocks === "helped" ? "guide_exchange" : "check_place";
+}
+
 export interface CheckedExchangeLesson {
   version: 1;
   /** Older saved sessions continue with the original exchange interaction. */
@@ -92,6 +135,8 @@ export interface CheckedExchangeLesson {
   id: string;
   turns: ExchangeTurn[];
   transfer?: TransferTask;
+  /** #1145: the child's teaching brief at the call's start, when the profile had one for this standard. */
+  brief?: LessonBrief;
 }
 
 export interface ExchangeProposal {

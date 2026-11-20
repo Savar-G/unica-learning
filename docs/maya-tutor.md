@@ -331,6 +331,16 @@ When the checked regrouping lesson (`MAYA_CHECKED_EXCHANGE`) credits the child's
 - The parent note adds one sentence for the related question, with its help: no help, hints, the trade shown again, help unknown, or not finished.
 - Known limit: "24 plus 1." after a right answer still keeps the original success (#1089). It cannot answer the offer.
 
+## The next lesson from saved teaching evidence (#1145)
+
+The checked regrouping lesson adapts its first step from the child's versioned profile. There is no second learner memory: the profile is rebuilt from the learning events after each call, as before.
+
+- Evidence: the call's learning event (and the related question's event) keeps the lesson's checked observations in `observations` (migration `20261120211040_learning_events_lesson_observations`): the tens check, a swapped-digit mistake, the exchange and each column, each with its help and whether the blocks were on the board.
+- Profile (schema version 3, `teaching`, `src/lib/child-profile-teaching.ts`): prerequisite evidence, misconceptions, useful representations and review targets, each with the source and time of its evidence and an uncertainty. One error is "unsure" or "suspected", never a gap; two errors in different calls make a gap or a likely misconception. The child's own later right answer revises the view. Help never counts as the child's own work. A stored version 1 or 2 profile reads with no teaching evidence until its next rebuild.
+- Brief: `newCall` reads a compact brief for the question's standard (`teachingBrief`, the `brief` seam) after the family and question checks. A missing profile, a failed read or no answer within `BRIEF_READ_MS` (1.5 s) starts the call without one. The brief is saved in the lesson (`checkedExchange.brief`), so a resumed call and the trace keep it. A lesson saved without it teaches as before.
+- Use: when the child says they are stuck on the first turn (`stuckStart`): tens known on the child's own, the exchange question ("What can you trade to make more ones?"); a tens gap, the blocks with the trade; blocks that helped before, the blocks; otherwise the tens check. Grade still sets the wording. Misconceptions and review reasons are in the brief but change no step yet.
+- Later review: a review target names its route. `workbook_plan` means the standard is not secure, so the existing workbook planner already reviews it. `next_call` means only Maya's next call reads it. No new scheduler exists.
+
 ## Credit, the learning event and the parent note
 
 Code's credit of the child decides the saved result, never the model's reading (part C of the pre-launch review, 2026-11-15; tests: `src/lib/maya-call-tutor-credit.test.ts`, `src/lib/maya/tutor-credit.test.ts`):

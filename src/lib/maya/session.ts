@@ -73,7 +73,7 @@ import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
 import { answersOwnQuestion, askedStep, doneReply, firstTimeTurn, yesReply, type AskedRead } from "./teaching-reads";
 import { deriveDrawings, type BoardRead, type TiedDrawing } from "./board-ties";
 import { chooseTransfer, relatedChoice, TRANSFER_MIN_MS, TRANSFER_OFFER, transferBoard, transferPackage, type RelatedStep, type TransferOperands } from "./transfer";
-import { EXCHANGE_OBJECT, lessonObservations, exchangeChildWords, exchangeCommands, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingOffersAction, regroupingWords, sameExchangeTarget, supportsCheckedExchange, type CheckedExchangeLesson, type ExchangeAction, type ExchangeProposal, type ExchangeTarget, type ExchangeTurn, type RegroupingInstruction, type RegroupingObservation } from "./checked-exchange";
+import { EXCHANGE_OBJECT, lessonObservations, readLessonBrief, stuckStart, type LessonBrief, exchangeChildWords, exchangeCommands, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingOffersAction, regroupingWords, sameExchangeTarget, supportsCheckedExchange, type CheckedExchangeLesson, type ExchangeAction, type ExchangeProposal, type ExchangeTarget, type ExchangeTurn, type RegroupingInstruction, type RegroupingObservation } from "./checked-exchange";
 import { agreementClause, askedStep as askedOperationStep, bindingReview, checkedSubtractionQuestion, checkTutorSay, continuedSay, stepsStated, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, FINAL_ASK, TUTOR_FIRST_TIME_WORD_LIMIT, TUTOR_REVIEW_IGNORED } from "./tutor";
 import { placeDigitsSaid } from "./tutor-math";
 import { MATH_REVIEW_PROMPT_VERSION, mathReviewsOf, type MathReview, type MathReviewInput } from "./math-review";
@@ -613,6 +613,8 @@ export function createSession(input: {
   tutor?: boolean;
   checkedExchange?: boolean;
   checkedRoutine?: boolean;
+  /** #1145: the child's teaching brief for this question's standard, read at the call's start; null or left out: none. */
+  brief?: LessonBrief | null;
 }): Session {
   const { pkg, held } = teachableOf(input.package);
   const teachable = held === null;
@@ -668,9 +670,15 @@ export function createSession(input: {
     outcome: null,
     ...shorterLimits(input.limitMs),
     ...(tutor ? { tutor: { help: 0, drawn: [] } } : {}),
-    ...(input.checkedExchange === true && tutor && pkg && supportsCheckedExchange(pkg) ? { checkedExchange: { version: 1, progression: 1, transfers: 1, id: `${input.callId}:regrouping`, turns: [] } } : {}),
+    ...(input.checkedExchange === true && tutor && pkg && supportsCheckedExchange(pkg) ? { checkedExchange: { version: 1, progression: 1, transfers: 1, id: `${input.callId}:regrouping`, turns: [], ...briefFor(input.brief, pkg) } } : {}),
     ...(input.checkedRoutine === true && tutor && pkg && supportsCheckedExchange(pkg) ? { checkedRoutine: true } : {}),
   };
+}
+
+/** The brief, when it is one and is about this question's standard. */
+function briefFor(value: unknown, pkg: OperationPackage): { brief?: LessonBrief } {
+  const brief = readLessonBrief(value);
+  return brief && brief.standard === pkg.skill.standard ? { brief } : {};
 }
 
 /**
@@ -896,7 +904,9 @@ export function transferLearningEvent(session: Session, family: { parentId: stri
   const helped = turns.find((turn) => turn.support);
   const open = !transfer.done.includes("ones") ? "ones" : !transfer.done.includes("tens") ? "tens" : "result";
   const started = transfer.startedAt ?? session.startedAt!;
-  const { observations: _original, ...base } = original;
+  // The related question's own observations, never the call question's.
+  const base: NewLearningEvent = { ...original };
+  delete base.observations;
   return {
     ...base,
     key: transferEventKey(session.callId),
@@ -5696,7 +5706,8 @@ function regroupingChoice(s: Session, previous: ExchangeTurn | undefined, top: n
     if (tens !== null) return observed("tens", "subtract_tens", "incorrect");
     if (stuck) return { step: "tens" };
   }
-  if (!previous && REGROUPING_START.test(text)) return { step: "check_place" };
+  // #1145: the saved teaching evidence picks the first step of a stuck child.
+  if (!previous && REGROUPING_START.test(text)) return { step: stuckStart(s.checkedExchange!.brief) };
 }
 
 export function checkedExchangeProposal(s: Session, afterFailure = false): ExchangeProposal | null {

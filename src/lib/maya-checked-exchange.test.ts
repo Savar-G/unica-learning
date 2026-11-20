@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyBatch, boardTargets, createScene, type Batch } from "@/lib/board";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
@@ -11,6 +11,9 @@ import { fakeMathReviewer } from "@/lib/maya-math-review";
 import { workedSteps, type Operation } from "@/lib/question-package";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { checkTrace } from "@/lib/maya-trace";
+import { readChildProfile, rebuildChildProfile } from "@/lib/child-profile";
+import { memoryChildProfiles } from "@/lib/child-profile-memory";
+import { teachingBrief } from "@/lib/child-profile-teaching";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
 
 vi.mock("server-only", () => ({}));
@@ -612,6 +615,11 @@ it("starts a related question when the child accepts and keeps the original ques
   ]);
   expect(recorded[1].question).toEqual({ source: "transfer", relatedEventId: recorded[0].id, text: "63 - 27 = ?" });
   expect(recorded[0]).not.toHaveProperty("assistance");
+  // #1145: each event has its own question's checked observations.
+  expect([recorded[0].observations, recorded[1].observations]).toEqual([
+    [{ skill: "difference", result: "correct", assistance: "independent", board: false }],
+    [{ skill: "difference", result: "correct", assistance: "independent", board: false }],
+  ]);
   const trace = store.rows()[0].trace!;
   expect(checkTrace(trace)).toMatchObject({ ok: true });
   expect(trace.checkedExchange?.transfer).toMatchObject({ operands: [63, 27], state: "finished", eventKey: recorded[1].key });
@@ -981,4 +989,64 @@ it("keeps the lesson's checked observations on the call's learning event (#1145)
     { skill: "identify_tens", result: "correct", assistance: "independent", board: false },
     { skill: "difference", result: "correct", assistance: "independent", board: false },
   ]);
+});
+
+describe("the next call's lesson from saved teaching evidence (#1145)", () => {
+  const question = { ...SAMPLE_PACKAGES["subtract-52-28"], ref: { source: "workbook" as const, workbookId: parentId, page: 1, question: 1 } };
+
+  /** Calls whose events rebuild the child's profile in memory, and whose start reads the brief from it. */
+  function family(overrides: Partial<CallSeams> = {}) {
+    const f = memoryChildProfiles({ children: [{ id: childId, parentId, grade: 2 }] });
+    let now = Date.UTC(2026, 10, 17, 9);
+    const { calls } = setup({
+      clock: () => now, events: learningEvents(f.events),
+      rebuild: async (child) => (await rebuildChildProfile(child, { profiles: f.profiles, events: f.events })).built,
+      brief: async (child, standard) => {
+        const profile = await readChildProfile(f.profiles, child);
+        return profile && teachingBrief(profile, standard);
+      },
+      ...overrides,
+    });
+    /** One call: the child's turns, then the end. Returns what Maya said after each turn. */
+    async function call(turns: string[]) {
+      now += 3_600_000;
+      let turn = ok(await calls.start({ ...input, package: question }));
+      const said: string[] = [];
+      for (const text of turns) {
+        turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text }, null));
+        said.push(turn.output.say.join(" "));
+      }
+      ok(await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null));
+      return { said, view: turn.view };
+    }
+    return { call, f };
+  }
+
+  it("checks the tens first, returns to the blocks after two missed tens checks, and skips the check once the child knows it", async () => {
+    const { call, f } = family();
+    const first = await call(["I don't know how to start.", "Four tens."]);
+    expect(first.said[0]).toMatch(/how many tens are in 52/i);
+    // One error is not a gap: the next call checks the tens again.
+    const second = await call(["I don't know how to start.", "Four tens."]);
+    expect(second.said[0]).toMatch(/how many tens are in 52/i);
+    const gap = await call(["I don't know how to start."]);
+    expect(gap.said[0]).not.toMatch(/how many tens/i);
+    expect(gap.said[0]).toMatch(/trade a ten for ten ones/i);
+    expect(gap.view.exchange).toMatchObject({ objectId: "exchange-before" });
+    const profile = (await readChildProfile(f.profiles, childId))!.profile;
+    expect(profile.teaching.notes).toContainEqual(expect.objectContaining({ kind: "prerequisite", standard: "2.4", view: "gap" }));
+    // The child's own whole answer (it needs the tens) revises the view; the next call skips the check.
+    await call(["My answer is 24."]);
+    const known = await call(["I don't know how to start."]);
+    expect(known.said[0]).toMatch(/trade to make more ones/i);
+    expect(known.said[0]).not.toMatch(/how many tens/i);
+  });
+
+  it("teaches from the default lesson when the brief cannot be read or never answers", async () => {
+    for (const brief of [async () => { throw new Error("profile store down"); }, () => new Promise<never>(() => {})]) {
+      const { call } = family({ brief });
+      const lesson = await call(["I don't know how to start."]);
+      expect(lesson.said[0]).toMatch(/how many tens are in 52/i);
+    }
+  });
 });

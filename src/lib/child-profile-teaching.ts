@@ -4,7 +4,9 @@
 //
 // From the events (src/lib/learning-events.ts):
 // - Prerequisite evidence: a call lesson's checked "identify_tens" observation (how many tens a number has, the
-//   prerequisite of a regrouping subtraction). Only the child's own answers diagnose: help is not evidence either way.
+//   prerequisite of a regrouping subtraction), and the lesson's whole difference found on the child's own, which needs
+//   the tens (so a gap can be revised without another tens check). Only the child's own answers diagnose: help is not
+//   evidence either way.
 //   After the child's newest own correct answer, one own error leaves the view "unsure" (a single error is never a
 //   durable diagnosis), two errors in different events make it a "gap"; with no error since that correct answer, it is
 //   "secure". So new independent evidence revises the view both ways.
@@ -19,8 +21,12 @@
 //   src/lib/workbook-plan.ts), else "next_call" (only Maya's next call reads it). No new scheduler exists.
 // Each note has the source and time of each piece of evidence (the newest MAX_EVIDENCE), `since` (its newest
 // evidence) and `uncertainty`: high from one piece, medium from two or three, low from more.
+// The teaching brief (teachingBrief): the compact part of one standard's evidence that Maya's next call reads at its start
+// (src/lib/maya-call.ts, the `brief` seam): the prerequisite's view, whether the blocks helped, the open misconceptions
+// and the review reasons. Its first step after a stuck child follows it (stuckStart, src/lib/maya/checked-exchange.ts).
 // Pure TypeScript: no Next.js, React, network, database or clock.
-import type { LearningEvent, ObservedSkill, TransferAssistance } from "@/lib/learning-events";
+import type { LearningEvent, TransferAssistance } from "@/lib/learning-events";
+import type { LessonBrief } from "@/lib/maya/checked-exchange";
 
 /** The newest pieces of evidence a note keeps. */
 export const MAX_EVIDENCE = 6;
@@ -76,13 +82,9 @@ const lastIndex = <T>(list: readonly T[], test: (item: T) => boolean) => list.re
 /** The child's own right answer on the question: a call or related question right with no help, or a right marked or test answer. */
 const ownRight = (e: LearningEvent) => e.result === "right" && (e.question.source !== "transfer" || e.assistance === "independent");
 
-/** Each checked observation of the events, with its event, in event order. */
-function observed(events: readonly LearningEvent[], skill: ObservedSkill) {
-  return events.flatMap((e) => (e.observations ?? []).filter((o) => o.skill === skill).map((o) => ({ e, o })));
-}
-
 function prerequisite(standard: string, events: readonly LearningEvent[]): TeachingNote | null {
-  const seen = observed(events, "identify_tens");
+  const seen = events.flatMap((e) => (e.observations ?? []).filter((o) => o.skill === "identify_tens" ||
+    (o.skill === "difference" && o.result === "correct" && o.assistance === "independent")).map((o) => ({ e, o })));
   if (seen.length === 0) return null;
   const own = seen.filter(({ o }) => o.assistance === "independent");
   const lastRight = lastIndex(own, ({ o }) => o.result === "correct");
@@ -158,4 +160,24 @@ export function teachingEvidence(events: readonly LearningEvent[], secure: reado
     out.push(...reviews(standard, mine, own, secure.includes(standard)));
   }
   return { notes, reviews: out };
+}
+
+/**
+ * The compact brief of one standard for Maya's next call, from a read profile (readChildProfile); null when the profile
+ * has no teaching evidence for it.
+ */
+export function teachingBrief(read: { revision: number; profile: { teaching: TeachingEvidenceSummary } }, standard: string): LessonBrief | null {
+  const notes = read.profile.teaching.notes.filter((n) => n.standard === standard);
+  const reviews = read.profile.teaching.reviews.filter((r) => r.standard === standard);
+  if (notes.length === 0 && reviews.length === 0) return null;
+  const prerequisite = notes.find((n) => n.kind === "prerequisite");
+  const blocks = notes.find((n) => n.kind === "representation" && n.id === "blocks");
+  return {
+    standard,
+    revision: read.revision,
+    prerequisite: prerequisite?.kind === "prerequisite" ? prerequisite.view : null,
+    blocks: blocks?.kind === "representation" ? blocks.view : null,
+    misconceptions: notes.flatMap((n) => (n.kind === "misconception" && n.view !== "resolved" ? [n.id] : [])),
+    reviews: [...new Set(reviews.map((r) => r.reason))],
+  };
 }

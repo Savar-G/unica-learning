@@ -85,7 +85,7 @@ import type { MathReviewer } from "@/lib/maya-math-review";
 import { snapshotFates } from "@/lib/board-fate";
 import { checkedExchangeProposal, childExchangeProposal, childExchangeTarget, fixedSafetyDisclosure } from "@/lib/maya/session";
 import { needsSafetyRead, SAFETY_PAUSE, sensitiveHearing, type ChildHearing } from "@/lib/maya/sensitive-input";
-import { readExchangeTarget, sameExchangeTarget, type ExchangeTarget } from "@/lib/maya/checked-exchange";
+import { readExchangeTarget, sameExchangeTarget, type ExchangeTarget, type LessonBrief } from "@/lib/maya/checked-exchange";
 import { createTextSession, readFateReports, withHelpLedger, type BoardFateReport, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession, type TextSessionOptions } from "@/lib/maya-text";
 import { packageHash, type MayaTrace } from "@/lib/maya-trace";
 import { type QuestionPackage, type QuestionRef } from "@/lib/question-package";
@@ -95,6 +95,9 @@ import { spendCloseOf, SPEND_CLOSE, type CallSpend, type SpendCall, type SpendSt
 import type { CallBudget, Handle } from "@/lib/maya-spend-block";
 import { SpendRefused } from "@/lib/maya-spend-ai";
 export type { SpendCall } from "@/lib/maya-spend";
+
+/** The longest a new call waits for the child's teaching brief (#1145); after it the call teaches without one. */
+export const BRIEF_READ_MS = 1_500;
 
 /** The longest the note step of an ended call may take; after it the note stays pending. */
 export const NOTE_STEP_MS = 20_000;
@@ -307,6 +310,12 @@ export interface CallSeams {
   store: CallStore;
   /** The children's wording history: read before a call, added to when it ends. */
   history: WordingHistoryStore;
+  /**
+   * #1145: the child's teaching brief for a standard, from the versioned child profile (teachingBrief), read before a
+   * new call; null when the profile has none. Optional: without it, a throw, or no answer within BRIEF_READ_MS, the call
+   * teaches without a brief.
+   */
+  brief?(childId: string, standard: string): Promise<LessonBrief | null>;
   events: LearningEvents;
   /** Rebuilds the child's profile; true when it was built. Never throws. */
   rebuild(childId: string, options?: { factsOnly?: boolean; call?: SpendCall }): Promise<boolean>;
@@ -1040,9 +1049,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   }
 
   /** A call's text session. Admin test calls have free talk on (D-197), with the model's review, and the tutor core (D-345); chat has free talk off; family calls get the tutor core behind `tutorFamilies`. A resumed call keeps its flags. */
-  function textSession(record: Pick<CallRecord, "id" | "parentId" | "childId"> & { kind: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void, sayHooks?: Pick<TextSessionOptions, "onSayPart" | "onSayCancel" | "onSayEnd" | "onRepairStart" | "modelRepair" | "onPreparation" | "withModelAttempt" | "persist" | "checkedBoardSettled">, spend?: SpendCall, preparing?: Pick<TextSessionOptions, "spend" | "prepareModel" | "prepareHandleId">): TextSession {
+  function textSession(record: Pick<CallRecord, "id" | "parentId" | "childId"> & { kind: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void, sayHooks?: Pick<TextSessionOptions, "onSayPart" | "onSayCancel" | "onSayEnd" | "onRepairStart" | "modelRepair" | "onPreparation" | "withModelAttempt" | "persist" | "checkedBoardSettled">, spend?: SpendCall, preparing?: Pick<TextSessionOptions, "spend" | "prepareModel" | "prepareHandleId">, brief?: LessonBrief | null): TextSession {
     return createTextSession({
-      onGuidance, ...sayHooks, ...preparing,
+      onGuidance, ...sayHooks, ...preparing, brief,
       callId: record.id, channel: record.kind === "chat" ? "chat" : undefined, package: pkg,
       model: { ...model, propose: async (...args) => {
         try { return await model.propose(...args); }
@@ -1068,6 +1077,21 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     } catch {
       monitorProduct("maya.recovery_failed", { step: "history" });
       return {};
+    }
+  }
+
+  /** The child's teaching brief before a new call; null when there is none, it fails, or it is slow. Never throws. */
+  async function readBrief(childId: string, standard: string): Promise<LessonBrief | null> {
+    if (!seams.brief) return null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const late = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), BRIEF_READ_MS); });
+      return await Promise.race([seams.brief(childId, standard), late]);
+    } catch {
+      monitorProduct("maya.recovery_failed", { step: "profile" });
+      return null;
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -1244,7 +1268,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     }
     const model = seams.model(null, call);
     if (!model) return { ok: false, error: "model_unavailable" };
-    const session = textSession({ id, kind: input.kind, parentId: input.parentId, childId: input.childId }, pkg, model, input.childName, undefined, seams.seed(), await readHistory(input.childId), input.limitMs, input.grade, input.confirmWorkbook);
+    const session = textSession({ id, kind: input.kind, parentId: input.parentId, childId: input.childId }, pkg, model, input.childName, undefined, seams.seed(), await readHistory(input.childId), input.limitMs, input.grade, input.confirmWorkbook,
+      undefined, undefined, undefined, undefined, await readBrief(input.childId, pkg.skill.standard));
     const empty = session.trace();
     const record: CallRecord = {
       id,
