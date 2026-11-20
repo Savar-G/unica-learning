@@ -29,8 +29,8 @@ test("planShards forms a complete, disjoint partition of every unit test file", 
   const files = walkTests(path.join(ROOT, "src"));
   assert.ok(files.length > 900, `expected >900 unit test files, got ${files.length}`);
 
-  const shards = planShards(files, { shardCount: 5, timings: TIMINGS });
-  assert.equal(shards.length, 5);
+  const shards = planShards(files, { shardCount: 8, timings: TIMINGS });
+  assert.equal(shards.length, 8);
 
   const seen = new Set();
   for (const shard of shards) {
@@ -49,7 +49,7 @@ test("planShards forms a complete, disjoint partition of every unit test file", 
 
 test("workbook-book1-recovery.test.ts is always pinned to shard 1", () => {
   const files = walkTests(path.join(ROOT, "src"));
-  for (const shardCount of [2, 4, 5, 6]) {
+  for (const shardCount of [2, 4, 5, 8]) {
     const shards = planShards(files, { shardCount, timings: TIMINGS });
     for (const [pinnedFile, pinnedShard] of Object.entries(PINNED_SHARD_FILES)) {
       assert.ok(shards[pinnedShard - 1].items.includes(pinnedFile), `${pinnedFile} missing from shard ${pinnedShard} (count=${shardCount})`);

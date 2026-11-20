@@ -3,7 +3,7 @@
 CI uses a two-tier model while keeping the repository on personal account `Savar-G` (free public GitHub Actions runners):
 
 - **Pull requests (fast feedback):** `.github/scripts/pr-scope.mjs` classifies each PR diff into `skip` (unreferenced docs/design-only), `affected` (`vitest --changed` plus explicit consumer tests for dynamically-read docs/assets, full `lint-and-types` when code changed, and path-scoped `maya-behaviour`, `family-zones`, and `voice-worker`), or `full` (configs, CI, DB migrations, `data/`, `scripts/`, `public/`, core shared modules, >40 files, or unknown paths).
-- **`main` push & release gate (full suite):** Every `push` to `main` and every `workflow_dispatch` runs the complete suite across 5 duration-balanced unit shards plus all check jobs. Vercel's Deployment Check requires `main`'s `test` check to pass before promoting a build to production, so a cross-PR regression on `main` is held out of production until fixed forward.
+- **`main` push & release gate (full suite):** Every `push` to `main` and every `workflow_dispatch` runs the complete suite across 8 duration-balanced unit shards plus all check jobs. Vercel's Deployment Check requires `main`'s `test` check to pass before promoting a build to production, so a cross-PR regression on `main` is held out of production until fixed forward.
 - Do not retry tests, raise timeouts, or skip tests to meet a speed target.
 
 ## Measured progress (2026-11-19)
@@ -19,9 +19,12 @@ CI uses a two-tier model while keeping the repository on personal account `Savar
 4. **PR #1192 (Oxlint on scoped PRs):**
    - Added `oxlint` (`1.94.0`) with `.oxlintrc.json` mapping **80 of 86** active ESLint rules from `eslint.config.mjs` (2 unmapped rules are obsolete in the React 19 automatic JSX runtime: `react/jsx-uses-react`, `react/jsx-uses-vars`; 4 real ESLint-only rules remain: `@next/next/no-location-assign-relative-destination`, `react-hooks/config`, `react-hooks/gating`, `react/no-deprecated`).
    - `lint-and-types` runs `npx oxlint src` (~1 s locally vs ~38 s local / ~56 s CI for ESLint) on every code PR and `main`, and runs `npx eslint src` on `mode == 'full'` (`main` pushes, `workflow_dispatch`, and high-blast-radius PRs including `.oxlintrc.json` / `eslint.config.mjs` edits) so none of the 4 ESLint-only rules lose enforcement. Also added `npm run lint:fast`.
-5. **Local pre-push gate & CI duration budgets (this change):**
-   - Added `.githooks/pre-push` + `scripts/pre-push-check.mjs` (`npm run hooks:install`, `npm run check:fast`), which runs `oxlint src`, `next typegen && tsgo --noEmit`, and `tsgo -p worker/maya-voice/tsconfig.json` in parallel using direct `node_modules/.bin` binaries (~5.8 s total wall clock on macOS arm64, within the 9 s budget, skipping remote ref-deletion-only pushes).
-   - Right-sized `timeout-minutes` across all 8 CI jobs and key steps based on post-PR-#1187/#1190/#1191/#1192 green Linux durations (`scope` 3 m, `unit` 15 m / 12 m step, `pr-unit` 12 m / 10 m step, `maya-behaviour` 8 m / 6 m step, `family-zones` 8 m / 5 m step, `lint-and-types` 8 m, `voice-worker` 8 m, `test` 3 m — ~2×–3× headroom over observed green runs without letting hangs burn 20–25 m).
+5. **PR #1194 (local pre-push gate & CI duration budgets):**
+   - Added `.githooks/pre-push` + `scripts/pre-push-check.mjs` (`npm run hooks:install`, `npm run check:fast`), which runs `oxlint src`, `next typegen && tsgo --noEmit`, and `tsgo -p worker/maya-voice/tsconfig.json` in parallel using direct `node_modules/.bin` binaries (~5.3–5.8 s warm wall clock on macOS arm64, skipping remote ref-deletion-only pushes).
+   - Right-sized `timeout-minutes` across all 8 CI jobs and key steps based on post-PR-#1187/#1190/#1191/#1192 green Linux durations.
+6. **8 duration-balanced unit shards & top outlier splits (this change):**
+   - Evaluated selective Vitest `isolate: false` on 76 pure `src/lib/**` subdir files (`--sequence.shuffle --sequence.seed=17 --maxWorkers=4`): `isolate=true` took **68.07 s** (`import 13.93 s`, `tests 150.99 s`) vs `isolate=false` **65.28 s** (`import 11.10 s`, `tests 159.31 s`) — only a ~4% wall-clock delta because >90% of unit wall time is test CPU work, not module isolation. Retained `isolate: true` across the entire suite.
+   - Instead split the two remaining >180 s single-file ceilings (`src/lib/scan-binding-scale-chromium.test.ts` → `+ src/lib/scan-binding-qr-chromium.test.ts`; `src/lib/maya/first-ship-practice.test.ts` → `+ src/lib/maya/first-ship-practice-tone.test.ts`, keeping 100% of existing cases, seeds, and assertions) and scaled `unit` from 5 → 8 duration-balanced shards (12 concurrent jobs total, within GitHub's 20-job free concurrency cap for public repos), cutting the single-file ceiling from **235.2 s → 157.2 s** and targeting ~3.5–4.5 min full `main` CI wall time.
 
 ## Baseline: 2026-11-15
 

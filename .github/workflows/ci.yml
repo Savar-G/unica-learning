@@ -2,7 +2,7 @@ name: CI
 
 # Two-tier CI (docs/ci/README.md):
 # - On every `push` to `main`, `workflow_dispatch`, or high-blast-radius PR (configs, CI, DB, data, scripts, core shared
-#   modules, >40 files), the full suite runs: 5 duration-balanced vitest shards (`unit`) plus `maya-behaviour`,
+#   modules, >40 files), the full suite runs: 8 duration-balanced vitest shards (`unit`) plus `maya-behaviour`,
 #   `family-zones`, `lint-and-types`, and `voice-worker`.
 # - On scoped pull requests, `scope` selects `affected` mode (Vitest `--changed` + any dynamically-read consumer tests,
 #   full `lint-and-types` when code changed, and path-scoped `maya-behaviour` / `family-zones` / `voice-worker`), or
@@ -57,19 +57,19 @@ jobs:
           echo "$out"
           echo "$out" >> "$GITHUB_OUTPUT"
 
-  # Full 5-shard unit suite (runs on main pushes, workflow_dispatch, and high-blast-radius PRs).
+  # Full 8-shard unit suite (runs on main pushes, workflow_dispatch, and high-blast-radius PRs).
   # Shard 1 is pinned to hold src/lib/workbook-book1-recovery.test.ts (#472), which loads pinned planners from Git
-  # commits, so only shard 1 needs full history (`fetch-depth: 0`); shards 2–5 use a shallow checkout.
+  # commits, so only shard 1 needs full history (`fetch-depth: 0`); shards 2–8 use a shallow checkout.
   unit:
-    name: unit (${{ matrix.shard }}/5)
+    name: unit (${{ matrix.shard }}/8)
     needs: [scope]
     if: needs.scope.outputs.mode == 'full'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 12
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         timeout-minutes: 4
@@ -89,8 +89,8 @@ jobs:
         run: node -e 'import("@sparticuz/chromium").then(async (m) => console.log(await m.default.executablePath()))'
         timeout-minutes: 2
       # The timed Maya files run below on their own runner without other unit files competing for CPU.
-      - run: npm test -- --config .github/scripts/vitest-ci.config.mjs --exclude='src/lib/maya-gate/{gate,word-count-grade-1,word-count-grade-4}.test.ts' --testTimeout=60000 --shard=${{ matrix.shard }}/5
-        timeout-minutes: 12
+      - run: npm test -- --config .github/scripts/vitest-ci.config.mjs --exclude='src/lib/maya-gate/{gate,word-count-grade-1,word-count-grade-4}.test.ts' --testTimeout=60000 --shard=${{ matrix.shard }}/8
+        timeout-minutes: 10
 
   # Fast affected unit tests on scoped pull requests.
   pr-unit:
