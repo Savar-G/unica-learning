@@ -349,6 +349,7 @@ interface ChildTurn {
   text: string;
   /** Needs confirming before any answer in it is judged. */
   uncertain: boolean;
+  unsafeRequest?: true;
 }
 
 /** The hint ladder of the current target step. `hint` is the highest level used, or -1 before any hint. */
@@ -1036,7 +1037,7 @@ function proposalProblem(p: unknown): string | null {
 }
 
 /** The priority fields of a proposal's reading, each checked alone: a malformed field elsewhere does not drop them. */
-function priorityOf(raw: unknown): Pick<Reading, "safety" | "stop" | "unclear" | "start" | "noBoard" | "shorter" | "aboutMaya"> {
+function priorityOf(raw: unknown): Pick<Reading, "safety" | "unsafeRequest" | "stop" | "unclear" | "start" | "noBoard" | "shorter" | "aboutMaya"> {
   const r = isObject(raw) && isObject(raw.reading) ? raw.reading : {};
   // The tutor's gate (2026-11-15) is a priority reading too, fail closed: a flag the full reading does not repeat still
   // counts, so code's own line goes first. A "safety" gate on a harmful request (unsafeRequest) is the decline's.
@@ -1044,6 +1045,7 @@ function priorityOf(raw: unknown): Pick<Reading, "safety" | "stop" | "unclear" |
   return {
     // Pre-launch review: a proposal of kind "safety" is a safety signal even when its severity is missing ("none").
     safety: SEVERITIES.includes(r.safety as Severity) ? (r.safety as Severity) : isObject(raw) && (raw.kind === "safety" || (gate === "safety" && r.unsafeRequest !== true)) ? "concern" : undefined,
+    unsafeRequest: r.unsafeRequest === true,
     stop: r.stop === true || gate === "stop",
     noBoard: r.noBoard === true,
     shorter: r.shorter === true,
@@ -1594,6 +1596,10 @@ export function step(session: Session, event: SessionEvent): StepResult {
     }
   }
   if (sensitive === "unsafe_request") s.unsafeRequestAt ??= event.at;
+  if (s.checkedRoutine && s.package && s.turn && !benign && !s.safety.flagged && priority.unsafeRequest) {
+    s.turn.unsafeRequest = true;
+    s.unsafeRequestAt ??= event.at;
+  }
 
   // The child's turn as the model read it: a stop, an unclear number and a no-start hold even if the proposal fails.
   // Refuse a model-only stop before it can persist, including from malformed output or a streamed priority field.
@@ -1835,14 +1841,9 @@ export function step(session: Session, event: SessionEvent): StepResult {
       end(s, "child_stopped", effects, true);
       break;
     case "proposal":
-      if (!event.priorityOnly && s.checkedRoutine && s.package && s.turn && !benign && !s.safety.flagged &&
-        isObject(raw) && isObject(raw.reading) && raw.reading.unsafeRequest === true) {
-        s.unsafeRequestAt ??= event.at;
-        replyToSensitive(s, effects, s.turn.text, true);
-        break;
-      }
-      if (event.fallback && s.checkedRoutine && s.package && s.turn && !s.safety.flagged && needsSafetyRead(s.turn.text)) {
-        replyToSensitive(s, effects, s.turn.text, false);
+      if (!event.priorityOnly && s.checkedRoutine && s.package && s.turn && !s.safety.flagged &&
+        (s.turn.unsafeRequest || (event.fallback && needsSafetyRead(s.turn.text)))) {
+        replyToSensitive(s, effects, s.turn.text, s.turn.unsafeRequest === true);
         break;
       }
       if (event.fallback && isObject(event.proposal) && event.proposal.checkedExchange === 1) {

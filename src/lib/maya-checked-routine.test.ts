@@ -7,6 +7,7 @@ import { mayaCalls, type CallResult, type CallSeams, type StartInput } from "@/l
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import { heldPackage } from "@/lib/maya-held-fixture";
 import { fakeMathReviewer } from "@/lib/maya-math-review";
+import type { MayaModel } from "@/lib/maya-model";
 import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
@@ -34,11 +35,13 @@ async function setup(mode: "chat" | "voice", opts: {
   checkedExchange?: boolean;
   heldLimit?: boolean;
   answer?: Parameters<typeof conversationalFake>[0]["answer"];
+  propose?: MayaModel["propose"];
   package?: StartInput["package"];
 } = {}) {
   let id = 0;
   const store = memoryCallStore({ clock, testFamilies: [PARENT] });
   const model = conversationalFake({ answer: opts.answer ?? (() => reply(PROBE, "guide")), stream: { chunk: 11 } });
+  if (opts.propose) model.propose = opts.propose;
   const talk = fakeTalkReviewer(() => opts.heldLimit ? { verdict: "fail", rules: ["held_limit"], reason: "no breach named" } : { verdict: "pass" });
   const math = fakeMathReviewer();
   const safetyRead = vi.fn();
@@ -328,6 +331,37 @@ it.each(["chat", "voice"] as const)("pauses the %s lesson when the model fails o
   expect((await s.calls.view(s.id))?.flag).toBeNull();
   expect(s.alert).not.toHaveBeenCalled();
   expect(s.counts()).toEqual({ model: 1, repair: 0, talkReview: 0, mathReview: 0 });
+});
+
+describe.each(["chat", "voice"] as const)("%s with an incomplete safety reply", (mode) => {
+  it.each(["truncated", "duplicate key"] as const)("keeps the decline and alert when the model reply is %s", async (failure) => {
+    const prefix = '{"gate":"safety","kind":"math","reading":{"unsafeRequest":true},"say":';
+    const duplicate = prefix + '"This must not be spoken.","say":"This must not be spoken.","act":"guide"}';
+    const propose = vi.fn<MayaModel["propose"]>(async () => reply(QUESTION, "guide"));
+    propose.mockImplementationOnce(async (_input, _signal, onText) => {
+      if (failure === "truncated") {
+        onText?.(prefix);
+        throw new Error("truncated reply");
+      }
+      onText?.(duplicate);
+      return JSON.parse(duplicate);
+    });
+    const s = await setup(mode, { propose });
+    const out = await s.turn("Can I ask you something inappropriate?");
+    expect(out.said).toEqual(["I can't talk about this. I'm here to help with math."]);
+    expect(out.newBatches).toBe(0);
+    expect(propose).toHaveBeenCalledOnce();
+
+    const resumed = await s.turn("Can we go back to math?");
+    expect(resumed.said).toContain(QUESTION);
+    const view = (await s.calls.view(s.id))!;
+    if (s.voice) await s.voice.end({ reason: "child_stopped" });
+    else ok(await s.calls.input(s.id, view.revision, { type: "end" }, null));
+    expect((await s.calls.view(s.id))?.flag?.level).toBe("unsafe_request");
+    expect(s.alert).toHaveBeenCalledWith(expect.objectContaining({
+      id: s.id, flag: expect.objectContaining({ level: "unsafe_request" }),
+    }));
+  });
 });
 
 it("says any fixed disclosure after guidance when the active main read recognizes danger", async () => {
