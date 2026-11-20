@@ -32,6 +32,7 @@ Personalized math learning program with mailed paper workbooks for ages 5–14 (
 
 - **Branches & worktrees:** Work in your own worktree on `site/<topic>` from `origin/main`. Never switch branches in the main checkout (`git worktree list`). Never commit `worker/*/node_modules`. Never name non-blog branches `claude/blog-*`.
 - **PRs & merges:** Open a PR yourself when done—do not ask first. **Never merge to `main` unless Savar asks** (merging deploys production).
+- **PR format:** Write for human reviewers using `.github/PULL_REQUEST_TEMPLATE.md`—plain-English title, 1–2 line summary, short Before/After table, optional preview link, and all technical/agent details inside `<details>`.
 - **Post-merge ("merge and clean up"):** Delete merged remote & local branches, remove the task worktree, fast-forward local `main`, and verify the `test` CI check + live production behavior (and LiveKit deploy if `worker/maya-voice/` changed).
 - **Vercel Hobby cap (~100/day):** Only `main` auto-deploys (`vercel.json`); CI checks branches. Push once per review round; merge `main` only for conflicts or right before merge; never push empty commits (use `npx vercel@latest redeploy <url>` for infra failures). Manual previews only when needed (`npx vercel@latest deploy --scope unica-learning`).
 - **Git LFS:** `.design/` media uses LFS (`git lfs install`; `git add --renormalize .design` if dirty after merge). Never put `src/` or `public/` assets in LFS (Vercel builds with LFS off).
