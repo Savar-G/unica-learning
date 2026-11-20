@@ -1096,7 +1096,7 @@ it("keeps the newer reply when the abandoned retry's cancel is rejected", async 
   }
 });
 
-it.each([false, true])("stores the flag-off hard close without board recovery (already recovering=%s)", async alreadyRecovering => {
+it.each([false, true])("stores the flag-off hard close while board status is held (already recovering=%s)", async alreadyRecovering => {
   const c = await voiceCall();
   const held = Promise.withResolvers<void>();
   const unblock = Promise.withResolvers<void>();
@@ -1107,7 +1107,7 @@ it.each([false, true])("stores the flag-off hard close without board recovery (a
     board: c.board, timers: c.clock.timers, notify: update => updates.push(update), closed,
   });
   let stops = 0;
-  let statusHeld = false;
+  let resets = 0;
   let recovering: Promise<unknown> | undefined;
   try {
     await run.agentJoined();
@@ -1128,10 +1128,10 @@ it.each([false, true])("stores the flag-off hard close without board recovery (a
         throw Error("lost stop");
       }
       if (request.type === "status" && stops >= 3) {
-        statusHeld = true;
         held.resolve();
         await unblock.promise;
       }
+      if (request.type === "reset") resets++;
       return transport.call(request);
     } });
     if (alreadyRecovering) {
@@ -1142,20 +1142,20 @@ it.each([false, true])("stores the flag-off hard close without board recovery (a
     await c.clock.advance(TIME_LIMITS.endAtMs / 1000);
     expect(session.close).toHaveBeenCalledOnce();
     expect(stops).toBe(3);
+    await held.promise;
     await waitFor(() => c.store.rows()[0].status === "ended", "the durable close with recovery held", 750);
-    expect(statusHeld).toBe(alreadyRecovering);
+    expect(resets).toBe(0);
     expect(c.store.rows()[0]).toMatchObject({ outcome: { reason: "time_limit" }, boardHistory: { delivery: confirmed } });
     expect(c.connections.rows().slice(-2).map(event => event.kind)).toEqual(["child_left", "agent_left"]);
     expect(updates.at(-1)).toMatchObject({ ended: true });
-    if (alreadyRecovering) {
-      await c.clock.advance(BOARD_CLOSE_SETTLE_MS / 1000);
-      expect(closed).toHaveBeenCalledOnce();
-    }
+    await c.clock.advance(BOARD_CLOSE_SETTLE_MS / 1000);
+    expect(closed).toHaveBeenCalledOnce();
   } finally {
     unblock.resolve();
     await recovering;
     await run.hangUp();
   }
+  if (!alreadyRecovering) expect(resets).toBe(0);
 });
 
 it.each(["deadline", "deadline with lost replies", "hang-up", "hang-up with a frozen desk", "hang-up with delayed leaves", "hang-up with an admitted turn"])("preserves receiver-shown work in the flag-off %s replay", async close => {
