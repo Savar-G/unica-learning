@@ -6,7 +6,7 @@ const EVIDENCE = ["simulated", "worker", "device"] as const;
 const MODES = ["chat", "voice"] as const;
 const TEACHING = ["existing", "checked-exchange", "checked-routine", "checked-exchange+checked-routine"] as const;
 const TURN_TYPES = ["routine", "complex", "unknown"] as const;
-const OUTCOMES = ["completed", "failed", "timeout", "interrupted", "no_output"] as const;
+const OUTCOMES = ["completed", "failed", "timeout", "interrupted", "no_output", "ambiguous"] as const;
 const PHASES = [
   "chatDispatch", "chatFinished", "chatBoardDispatch", "speechEndToFinal", "finalToTurn", "admission",
   "modelFirstChunk", "firstCheckedSentence", "voiceCallFinished", "workerReply", "turnToWorkerReply", "workerFiller", "synthesisFirstFrame",
@@ -59,6 +59,23 @@ export function baselineTeaching(checkedExchange: boolean, checkedRoutine: boole
   return checkedRoutine ? "checked-routine" : "existing";
 }
 
+/**
+ * The baseline worker writes no hosted row and registers under its own name. This removes every Supabase setting (the
+ * job processes inherit this environment) and the SDK's agent name override, which wins over the name the runner gives.
+ * Returns the removed names.
+ */
+export function prepareBaselineEnv(env: Record<string, string | undefined>): string[] {
+  const removed = Object.keys(env).filter(k => k.includes("SUPABASE") || k === "LIVEKIT_AGENT_NAME_OVERRIDE" || k === "LIVEKIT_AGENT_NAME");
+  for (const k of removed) delete env[k];
+  return removed;
+}
+
+/** The name the server options resolved, which must be the baseline's own, never maya-voice. */
+export function baselineAgentName(options: { agentName: string }, expected: string): string {
+  if (options.agentName !== expected) throw Error(`The baseline worker would register as "${options.agentName}", not "${expected}"`);
+  return options.agentName;
+}
+
 export interface DeviceObservation {
   group: BaselineGroup;
   /** End of the child's last loud input frame. All times use one machine clock. */
@@ -67,23 +84,57 @@ export interface DeviceObservation {
   bursts: readonly { start: number; end: number }[];
   /** The worker's answer playout start, or null when no answer played. */
   answerPlayback: number | null;
+  /** Every other playout of the worker (filler, earlier speech) as start and end on the same clock. */
+  otherPlayouts: readonly { start: number; end: number }[];
   /** The first board update received for this turn. */
   boardAt: number | null;
   /** Onset of an intentional interruption. */
   interruptionAt?: number;
 }
 
-/** Join device output energy with worker playout marks. Filler can be the first sound; only the answer is useful. */
+/** The longest time a worker frame can take to reach the child, when no playout onset bounds it more tightly. */
+const MAX_TRANSIT_MS = 250;
+
+/**
+ * Join device output energy with the worker's playouts. Filler can be the first sound; only the answer is useful.
+ * A received sound is matched by its onset. Nothing that starts before the answer's playout start is the answer. A
+ * sound that starts after it is the answer unless its onset falls where another playout's sound can still be arriving:
+ * from that playout's start to its finish plus its own transit bound. A playout's transit bound is the delay from its
+ * start to the first sound that starts during it, and MAX_TRANSIT_MS when no sound starts during it. Any such overlap
+ * makes the turn `ambiguous`: no useful time, counted apart from completed and failed turns in the report.
+ */
 export function deviceTurn(o: DeviceObservation): BaselineTurn {
   const ms: BaselineTurn["ms"] = {};
   const first = o.bursts.find(b => b.start >= o.inputEnd);
   if (first) ms.deviceFirstSound = first.start - o.inputEnd;
-  const answer = o.answerPlayback === null ? undefined : o.bursts.find(b => b.start >= o.answerPlayback! - 50 && b.start >= o.inputEnd);
-  if (answer) ms.deviceUseful = answer.start - o.inputEnd;
+  let outcome: BaselineTurn["outcome"] = "timeout";
+  const p = o.answerPlayback;
+  const heard = p === null ? undefined : o.bursts.find(b => b.end > p && b.end >= o.inputEnd);
+  if (p !== null && heard) {
+    const transit = (x: { start: number; end: number }) => {
+      const onset = o.bursts.find(b => b.start >= x.start && b.start <= x.end);
+      return onset ? Math.min(MAX_TRANSIT_MS, onset.start - x.start) : MAX_TRANSIT_MS;
+    };
+    const other = o.otherPlayouts.some(x => heard.start >= x.start && heard.start < x.end + transit(x));
+    if (heard.start < p || other) outcome = "ambiguous";
+    else {
+      outcome = "completed";
+      ms.deviceUseful = Math.max(heard.start, o.inputEnd) - o.inputEnd;
+    }
+  }
   if (o.boardAt !== null && o.boardAt >= o.inputEnd) ms.deviceBoard = o.boardAt - o.inputEnd;
   const cut = o.interruptionAt === undefined ? undefined : o.bursts.find(b => b.start <= o.interruptionAt! && b.end >= o.interruptionAt!);
   if (cut) ms.deviceInterruptionStop = cut.end - o.interruptionAt!;
-  return { v: 1, ...o.group, outcome: answer ? "completed" : "timeout", ms, counts: {} };
+  return { v: 1, ...o.group, outcome, ms, counts: {} };
+}
+
+/**
+ * One row for each planned child turn of a call, in order: the observed row where the call reached the turn, else a
+ * failed attempt under the run's own group. A call that was refused, never connected or never reported still counts.
+ */
+export function plannedTurns(group: Omit<BaselineGroup, "turnType">, planned: readonly ("routine" | "complex")[], observed: readonly (BaselineTurn | undefined)[]): BaselineTurn[] {
+  if (observed.length > planned.length) throw Error("more observed turns than planned");
+  return planned.map((turnType, i) => observed[i] ?? { v: 1, ...group, turnType, outcome: "failed", ms: {}, counts: {} });
 }
 
 export function logBaselineTurn(turn: BaselineTurn) {
@@ -121,16 +172,32 @@ export function baselineReport(turns: readonly BaselineTurn[]) {
 const MIN_BUDGET_SAMPLES = 5;
 const roundUp = (ms: number) => Math.ceil(ms / 100) * 100;
 
+/** Rows from one harness: the same providers, device and network. */
+export type BaselineCohort = Pick<BaselineGroup, "provider" | "device" | "network">;
+const cohortOf = ({ provider, device, network }: BaselineTurn): BaselineCohort => ({ provider, device, network });
+const sameCohort = (a: BaselineCohort, b: BaselineCohort) => a.provider === b.provider && a.device === b.device && a.network === b.network;
+
 /**
  * The complex-explanation budget (#1137): useful device output of complex turns on the existing path, one call at a
- * time, rounded up to 100 ms. Percentiles use completed turns; every other attempted turn is a failure that a candidate must not exceed.
+ * time, rounded up to 100 ms. Percentiles use completed turns; every other attempted turn is a failure that a candidate
+ * must not exceed; ambiguous turns are counted apart. The rows come from one cohort: the named one, or else the only
+ * cohort that can measure useful output (it has an answer playout mark), so a hosted call's timeouts never enter a
+ * loopback denominator.
  */
-export function complexBudget(turns: readonly BaselineTurn[]) {
+export function complexBudget(turns: readonly BaselineTurn[], cohort?: BaselineCohort) {
   // One call at a time, as the matched comparison runs. A completed row without a useful mark measured first sound only.
-  const rows = turns.filter(t => t.evidence === "device" && t.turnType === "complex" && (t.teaching ?? "existing") === "existing" &&
+  const eligible = turns.filter(t => t.evidence === "device" && t.turnType === "complex" && (t.teaching ?? "existing") === "existing" &&
     t.concurrency === 1 && !(t.outcome === "completed" && t.ms.deviceUseful === undefined));
+  const measuring: BaselineCohort[] = [];
+  for (const t of eligible) if (t.ms.deviceUseful !== undefined && !measuring.some(c => sameCohort(c, cohortOf(t)))) measuring.push(cohortOf(t));
+  // A named cohort is used as named, even when every one of its turns failed.
+  const chosen = cohort ?? (measuring.length === 1 ? measuring[0] : undefined);
+  if (!chosen) return { ok: false as const, reason: measuring.length > 1 ? "several cohorts measure useful output; name one" : "no cohort measures useful output" };
+  const rows = eligible.filter(t => sameCohort(cohortOf(t), chosen));
   const useful = rows.flatMap(t => t.outcome === "completed" && t.ms.deviceUseful !== undefined ? [t.ms.deviceUseful] : []);
-  const counts = { n: rows.length, completed: useful.length, failed: rows.length - useful.length };
+  // An ambiguous turn neither met nor missed the budget: it is counted, never as a failure or a percentile sample.
+  const ambiguous = rows.filter(t => t.outcome === "ambiguous").length;
+  const counts = { cohort: { provider: chosen.provider, device: chosen.device, network: chosen.network }, n: rows.length, completed: useful.length, failed: rows.length - useful.length - ambiguous, ambiguous };
   if (useful.length < MIN_BUDGET_SAMPLES) return { ok: false as const, ...counts, reason: `needs at least ${MIN_BUDGET_SAMPLES} completed complex device turns` };
   const { p50, p95 } = distribution(useful);
   return { ok: true as const, ...counts, p50Ms: roundUp(p50!), p95Ms: roundUp(p95!) };
@@ -171,6 +238,57 @@ export function readBaselineCost(value: unknown): BaselineCost {
 
 export function logBaselineCost(row: BaselineCost) {
   console.log(BASELINE_COST_PREFIX + JSON.stringify(row));
+}
+
+type CostBase = Pick<BaselineCost, "v" | "mode" | "teaching" | "concurrency">;
+
+/** A local AI usage receipt, with the request role and effort the baseline worker added beside it. */
+export interface BaselineReceipt {
+  feature: string;
+  model: string;
+  cost_usd: number | null;
+  cost_basis: BaselineCost["basis"];
+  calls: number;
+  /** The request source of the call (model, repair, review, prepared_interim, prepared_expected, unlabelled). */
+  role?: string;
+  effort?: string;
+}
+
+const ROLE_WORK: Record<string, BaselineCost["work"]> = { model: "model", prepared_interim: "model", prepared_expected: "model", repair: "repair", review: "review" };
+
+/** One provider receipt as a cost row. A receipt without a known role falls back on its feature; a missing effort stays unknown. */
+export function receiptCost(r: BaselineReceipt, base: CostBase): BaselineCost {
+  const work = (r.role && ROLE_WORK[r.role]) || (r.feature.includes("review") ? "review" : "model");
+  const basis = r.cost_usd === null ? "unknown" : r.cost_basis === "unknown" ? "provider" : r.cost_basis;
+  return { ...base, work, model: r.model, effort: r.effort && label(r.effort) ? r.effort : "unknown", basis, calls: r.calls, usd: r.cost_usd };
+}
+
+/** The reasoning effort an OpenRouter request body asks for: "none" when it asks for no reasoning. */
+export function requestEffort(body: unknown): string {
+  if (typeof body !== "string") return "unknown";
+  try {
+    const sent = JSON.parse(body) as { reasoning?: { effort?: unknown } };
+    if (!isObject(sent)) return "unknown";
+    const effort = sent.reasoning?.effort;
+    return effort === undefined ? "none" : typeof effort === "string" && label(effort) ? effort : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+/** A resolved speech provider, as voiceProviders returns it. */
+export interface SpeechProvider { provider: string; model?: string }
+const speechModel = (p: SpeechProvider) => (p.model ? `${p.provider}/${p.model}` : p.provider);
+
+/** The ledger's speech estimates (configured rates) for the providers the run resolved, and transport with no local price. */
+export function speechCosts(base: CostBase, providers: { stt: SpeechProvider; tts: SpeechProvider }, callMinutes: number, speech: { stt: number; tts: number } | null): BaselineCost[] {
+  const minutes = Math.round(callMinutes * 1e4) / 1e4;
+  const priced = (usd: number | undefined) => (speech ? { basis: "estimate" as const, usd: usd! } : { basis: "unknown" as const, usd: null });
+  return [
+    { ...base, work: "stt", model: speechModel(providers.stt), effort: "none", ...priced(speech?.stt), calls: 1, quantity: { unit: "minutes", value: minutes } },
+    { ...base, work: "tts", model: speechModel(providers.tts), effort: "none", ...priced(speech?.tts), calls: 1 },
+    { ...base, work: "transport", model: "livekit-server-dev", effort: "none", basis: "unknown", calls: 1, usd: null, quantity: { unit: "participantMinutes", value: Math.round(minutes * 2 * 1e4) / 1e4 } },
+  ];
 }
 
 /** Sum by run conditions, work, model, effort and basis. A missing price stays null; it is never a zero. */

@@ -2,15 +2,17 @@
 // VoiceCallRun with real speech and model providers and in-memory call stores. It registers as `maya-baseline`, never as
 // `maya-voice`, and reads no database. Its rows go to the synthetic child over RPC when the call closes.
 import { randomUUID } from "node:crypto";
-import { defineAgent, type JobContext } from "@livekit/agents";
-import { flushAiUsage } from "@/lib/ai-usage";
+import { appendFileSync } from "node:fs";
+import { defineAgent, voice, type JobContext } from "@livekit/agents";
+import { configureAiUsage, flushAiUsage } from "@/lib/ai-usage";
 import { boardRpcTransport } from "@/lib/board-rpc";
 import { createBoardSender } from "@/lib/board-protocol";
 import { createBoardSpeech, type CueMeasurement, type CueSource } from "@/lib/board-speech";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { memoryWordingHistoryStore } from "@/lib/maya";
-import { baselineTeaching, type BaselineGroup } from "@/lib/maya-baseline";
+import { baselineTeaching, requestEffort, type BaselineGroup, type BaselineReceipt } from "@/lib/maya-baseline";
+import { requestContext } from "@/lib/maya-request-trace";
 import { mayaCalls, type CallModelOptions } from "@/lib/maya-call";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import { callMathReviewer, callModel, callReviewer } from "@/lib/maya-call-seams";
@@ -30,6 +32,32 @@ import { configureDelivery } from "../../worker/maya-voice/src/voice-delivery";
 
 export const BASELINE_AGENT = "maya-baseline";
 export const REPORT_RPC = "maya.baseline.report";
+
+/** The provider label of every row of a run: the call's model and both speech providers, as the worker resolves them. */
+export function baselineProvider(env: Readonly<Record<string, string | undefined>>): string {
+  const providers = voiceProviders(env);
+  if (!providers.ok) throw Error(providers.problems.join("; "));
+  return `${callModel(null, env)?.id ?? "default"}+${providers.ids.speechToText}+${providers.ids.voice}`;
+}
+
+/**
+ * Local-only AI usage for one job: no hosted write, even with a Supabase key in the environment. Each receipt gets the
+ * request's role and the effort its body asked for. Both are read in the request's own context: the metered client
+ * opens a new context for each request, so the fetch and the receipt of one request share it.
+ */
+function localUsage(receipts: string) {
+  const efforts = new WeakMap<object, string>();
+  const inner = globalThis.fetch;
+  globalThis.fetch = (input, init) => {
+    efforts.set(requestContext(), requestEffort(init?.body));
+    return inner(input, init);
+  };
+  configureAiUsage({ local: row => {
+    const ctx = requestContext();
+    const receipt: BaselineReceipt & typeof row = { ...row, role: ctx.source ?? "unlabelled", effort: efforts.get(ctx) ?? "unknown" };
+    appendFileSync(receipts, JSON.stringify(receipt) + "\n", { mode: 0o600 });
+  } });
+}
 
 export interface BaselineJob {
   callId: string;
@@ -61,10 +89,15 @@ export interface ReportedChildTranscript {
   alternatives: string[];
 }
 
+/** One playout of the room's audio output on the machine clock, from its start event to its finish event. */
+export interface Playout { start: number; end: number | null }
+/** Enough for a call's fillers and answers, and well under the RPC payload limit. */
+const MAX_PLAYOUTS = 300;
+
 /** What the child receives at close: one message per RPC, each well under the RPC payload limit. */
 export type ReportMessage =
   | { kind: "turn"; row: ReturnType<typeof voiceBaselineTurn>; t0: number | null; turnStart: number | null; answerPlayback: number | null; ackPlayback: number | null; ttsChars: number; cues: ReportedCue[]; childText: string | null }
-  | { kind: "call"; workerQueueMs: number; profile: Record<string, unknown> | null; discardedPreparation: unknown; speechUsd: { stt: number; tts: number }; ttsChars: number; openingTtsChars: number; models: { stt: string; tts: string }; childTranscripts: ReportedChildTranscript[] }
+  | { kind: "call"; workerQueueMs: number; profile: Record<string, unknown> | null; discardedPreparation: unknown; speechUsd: { stt: number; tts: number }; playouts: Playout[]; ttsChars: number; openingTtsChars: number; models: { stt: string; tts: string }; childTranscripts: ReportedChildTranscript[] }
   | { kind: "done" };
 
 export default defineAgent({
@@ -74,7 +107,7 @@ export default defineAgent({
     for (const key of Object.keys(process.env)) if (key.startsWith("SUPABASE_")) delete process.env[key];
     delete process.env.LIVEKIT_AGENT_NAME_OVERRIDE;
     const job = JSON.parse(ctx.job.metadata) as BaselineJob;
-    process.env.AI_USAGE_RECEIPT_FILE = job.receipts;
+    localUsage(job.receipts);
     globalThis.fetch = markedFetch(globalThis.fetch);
     setTelemetry(new CallTelemetry({ callId: job.callId, scopeId: ctx.job.id }));
     configureDelivery({ callId: job.callId });
@@ -125,7 +158,7 @@ export default defineAgent({
     const sender = createBoardSender({ sessionId: job.callId, senderId: randomUUID(), snapshot: opened.call.boardSnapshot, transport: boardRpcTransport(local, identity, randomUUID) });
     const board = createBoardSpeech({ sender, now: clock, observe: s => opened.call.observeBoard(s), measure: s => samples.push(s) });
     const group: BaselineGroup = {
-      evidence: made.fake ? "simulated" : "worker", mode: "voice", turnType: "unknown", provider: `${store.rows()[0]?.model ?? "default"}+${providers.ids.speechToText}+${providers.ids.voice}`,
+      evidence: made.fake ? "simulated" : "worker", mode: "voice", turnType: "unknown", provider: baselineProvider(process.env),
       teaching: baselineTeaching(checked, checked), device: job.device, network: job.network, concurrency: job.concurrency,
     };
     // The ledger's speech estimates (configured rates, CAD micro-units) in USD.
@@ -134,6 +167,7 @@ export default defineAgent({
       return { stt: Math.round(usd("speech_to_text") * 1e6) / 1e6, tts: Math.round(usd("voice") * 1e6) / 1e6 };
     };
     const turns: VoiceTurnSample[] = [];
+    const playouts: Playout[] = [];
     const owners = new Map<string, { turnId: string; batchIds: readonly string[] }>();
     let profile: ReturnType<typeof startVoiceBaselineProfile> | null = null;
     const send = (message: ReportMessage) => local.performRpc({ destinationIdentity: identity, method: REPORT_RPC, payload: JSON.stringify(message), responseTimeout: 10_000 });
@@ -186,6 +220,7 @@ export default defineAgent({
             profile: profile ? profile() : null,
             discardedPreparation: telemetry().discardedPreparationSummary(),
             speechUsd: speechUsd(),
+            playouts: playouts.slice(-MAX_PLAYOUTS),
             ttsChars: totalTtsChars,
             openingTtsChars,
             models: { stt: sttModel, tts: ttsModel },
@@ -211,6 +246,10 @@ export default defineAgent({
     await session.start({ agent: run.agent, room: ctx.room, inputOptions: { participantIdentity: identity, textEnabled: false, closeOnDisconnect: false }, record: false });
     run.attachBoardAudio();
     run.attachTurnTiming();
+    // The same output events as the turn timing: the child matches received sound to these playouts.
+    const output = session.output.audio;
+    output?.on(voice.AudioOutput.EVENT_PLAYBACK_STARTED, () => { playouts.push({ start: Date.now(), end: null }); });
+    output?.on(voice.AudioOutput.EVENT_PLAYBACK_FINISHED, () => { const last = playouts.at(-1); if (last && last.end === null) last.end = Date.now(); });
     made.tts.prewarm();
     const waited = await waitForChild(ctx.room, { id: job.callId, parentId: job.parentId, childId: job.childId, mode: "voice", status: "live" });
     if (!waited.child) { await run.standDown(); return ctx.shutdown(waited.why); }
