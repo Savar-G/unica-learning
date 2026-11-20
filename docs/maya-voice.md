@@ -195,9 +195,9 @@ The worker sends `min_turn_silence` 400 ms and `max_turn_silence` 1600 ms to eve
 
 **Interruption.** LiveKit's defaults are `minDuration` 500 ms, `minWords` 0, `falseInterruptionTimeout` 2000 ms with resume on, and `mode` unset (`turn_config/interruption`). The worker sets `minDuration` 300 ms and `minWords` 0 for real providers (`MAYA_INTERRUPT_MIN_MS`, `MAYA_INTERRUPT_MIN_WORDS`).
 
-- Speech of 300 ms pauses Maya's audio. The child hears her stop within about 300 ms plus the voice activity detector's delay. If no words follow within 2000 ms, LiveKit resumes her. If words follow, the speech is interrupted for good.
-- `minWords` above 0 counts words in the speech-to-text's current transcript. It keeps a noise with no words from pausing Maya. It also delays the stop until the first partial transcript, which can be later than 300 ms. The worker keeps 0. Set 1 if noise pauses her too often in the pilot.
-- These options do not tell "mm-hm" from a turn. A "mm-hm" that lasts 300 ms pauses her. If the speech-to-text returns it as words, it becomes a child turn. LiveKit's adaptive interruption detector can classify such sounds (`mode` unset uses it only when the worker runs on LiveKit Cloud or in dev mode, `resolveInterruptionDetector`). The worker does not set `mode`. Nobody has tested that detector with this worker.
+- Speech of 300 ms stops Maya's audio for good. LiveKit pauses and later resumes speech only when every audio output in the chain can pause (`canPause`). The cue output (`worker/maya-voice/src/cue-playback.ts`) does not declare pause, so LiveKit interrupts the speech and clears the buffer. The 2000 ms resume does not run. A noise or a "mm-hm" of 300 ms ends that speech (measured on 2026-11-20, "Real-audio interruption check" below).
+- `minWords` above 0 counts words in the speech-to-text's current transcript. It keeps a noise with no words from stopping Maya. It also delays the stop until the first partial transcript, which can be later than 300 ms. The worker keeps 0. Set 1 if noise stops her too often in the pilot.
+- These options do not tell "mm-hm" from a turn. A "mm-hm" that lasts 300 ms stops her. If the speech-to-text returns it as words, it becomes a child turn. LiveKit's adaptive interruption detector can classify such sounds (`mode` unset uses it only when the worker runs on LiveKit Cloud or in dev mode, `resolveInterruptionDetector`). The worker does not set `mode`. Nobody has tested that detector with this worker.
 - How safety guidance is queued is unchanged ("Safety guidance goes first" below).
 
 **Words heard in silence (2026-11-13).** Real calls gave a child turn "Yes!" when the microphone sent only silence (a browser test with a silent WebAudio stream, about 12 s into the call, soon after Maya stopped), and "Bye-bye" when Savar said "hi" on a MacBook microphone. Maya answered both. The silent stream cannot carry Maya's voice back, so the first is the speech-to-text giving words for silence, not echo. The second had real speech in it. The worker does **not** drop any transcript yet, because no signal it has today is known to separate these from a child's short real answers ("24", "yes", "no", "six"):
@@ -500,6 +500,30 @@ If a stop gets no reply after its retries, the sender tries the bounded reconnec
 Suppressing stale speech still retires the abandoned turn's cues and completes any saved terminal outcome. A late cancellation failure cannot close a newer turn that did not own it.
 
 The simulated worker tests exercise both cue modes with held playout and pending synthesis, and submit an action while the old prompt is playing and its acknowledgement or save is pending. They do not measure the 300 ms p95 from intentional speech onset to audible stop, the false-stop or lost-speech rates, or when a stroke appears on the device. Those remain release checks under #1147, including #329's audible word cue and sentence fallback.
+
+### Real-audio interruption check (#1147, 2026-11-20)
+
+`npm run voice:interrupt-proof` (`scripts/maya-interrupt-proof.ts`) runs the worker and a headless child in one room on a self-hosted `livekit-server`. It never registers a worker with LiveKit Cloud. Only the speech-to-text (AssemblyAI Universal 3.6 Pro) and the voice (Cartesia Sonic 3.6) go to LiveKit Inference. The teaching model is the rule fake on the checked 52 - 28 lesson. The child plays recorded `say` clips into a real microphone track while Maya is audible at the child. The measure is Maya's audio as the child's participant receives it, on the same clock as the clip's first audible frame (`worker/maya-voice/src/interrupt-measure.ts`). `--cues sentence` asks the voice for no word times. `--trials 0` lets one demonstration play without interruption.
+
+Results (two batches, word and sentence cues, VAD-only interruption, machine load 48 to 90 on 12 cores):
+
+| Measure | Result |
+| --- | --- |
+| Audible stop after a clear request | n 44, p50 549 ms, p95 649 ms, max 692 ms. 1 of 44 within 300 ms. |
+| Stages (p50) | Child speech detected 275 to 294 ms; worker stops the speech 486 to 498 ms; audio quiet at the child about 60 ms later. |
+| Lost child speech | 0 of 44 lost. 2 of 44 split into two transcripts. All 44 reached the call as a child turn with every word. |
+| False stops | 16 of 21: "mm hm" 6 of 6, "okay" 6 of 6, a request at -26 dB 4 of 4, a 150 ms noise burst 0 of 5. |
+| Word cues | n 6, all shown. The batch reached the child 48 to 71 ms before its word was audible there. |
+| Sentence fallback | n 2, both `sentence` source and shown, 43 and 50 ms before the sentence end was audible. |
+
+What the numbers mean:
+
+- The 300 ms p95 target is not met. The detector reports speech about 280 ms after the sound, and the interruption minimum (`MAYA_INTERRUPT_MIN_MS` 300) is reached about 200 ms later. The one stop within 300 ms was a speech that was near its end. A lower minimum would raise false stops, which are already 16 of 21.
+- Every false stop is a hard stop. The cue output declares no pause (above, "Interruption"), so the SDK cannot resume Maya after a backchannel.
+- The local run uses VAD-only interruption. On LiveKit Cloud the SDK also starts its adaptive interruption detector (`resolveInterruptionDetector`, `isHosted()`). That path is not measured here. A local run with `LIVEKIT_DEV_MODE=1` was refused by Inference (HTTP 429, below).
+- The board reaches the child before the audio, because the RPC is faster than the audio path (about 65 to 82 ms). This is a margin, not a lag. Browser paint and the device speaker are not in the measure.
+
+Limits: synthetic adult voices, not children; no echo cancellation or device speaker; one process for the worker and the child; high machine load; small cue samples. After the two batches, every Inference connection returned HTTP 429 for STT and TTS. No LiveKit Cloud room was live at that time. Find the cause of the 429 before the next run, because production calls use the same Inference account.
 
 ### PR #450 review corrections
 

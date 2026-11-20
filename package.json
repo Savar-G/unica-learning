@@ -26,6 +26,7 @@
     "voice:dev": "node worker/maya-voice/build.mjs && node --conditions=react-server worker/maya-voice/dist/main.mjs dev",
     "voice:start": "node --conditions=react-server worker/maya-voice/dist/main.mjs start",
     "voice:listen": "node scripts/voice-listening-test.mjs",
+    "voice:interrupt-proof": "node scripts/maya-interrupt-proof.mjs",
     "voice:stage": "node scripts/voice-deploy-context.mjs",
     "voice:lock": "node scripts/voice-lockfile.mjs",
     "workbooks:samples": "node scripts/workbook-samples.mjs",
