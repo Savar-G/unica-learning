@@ -7906,3 +7906,7 @@ Straight/reflex step 2 gets two normal practice forms: a claim about half/full t
 Review repairs: the LCM step-2 question explicitly asks for a count, rather than a list of multiples. Angle teaching methods are scoped to the trusted step, so definitions for steps 1/2 cannot stand in for degree calculations in step 3. The labelled-group angle examples explain which class to count; their compact reminders keep the actual question and never show the sampling calculation used to construct it.
 
 The U10 estimate new-idea pages for steps 2 and 3 reserve four practice cells before the day time pass. Four cells close both two-column rows; three would leave a missing partner when the minimum prevents dropping to two. The page and day limits remain binding.
+
+## U17 Day 1 Challenge coverage (#1174, proposed)
+
+Two house templates join the existing egg-crate story on `5.6-multiply-2-digit`, step 1. One subtracts a small amount from a two-digit product. The other asks for the missing addend that completes a two-digit product. Both use the step's existing ranges and checked numeric answers. They supply distinct forms for the three required Challenge cards and stay out of ordinary practice and page routing. The source template positions remain intact. The questions are proposed for Savar's sample review.

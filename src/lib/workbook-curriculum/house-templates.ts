@@ -1,5 +1,5 @@
 // Unica's own Challenge templates: hard numeric work with more than one step, or named qualitative reasoning, for
-// the U10, U16 and selected U19 day steps with too few hard templates. A Challenge prints 3 cards a day on the day's step
+// day steps with too few hard templates. A Challenge prints 3 cards a day on the day's step
 // (D-228), each harder than that day's practice (Codex at 24751f16, B3), so these steps needed 3 hard ones. They are
 // appended to Cedric's templates of the step when the curriculum loads; his data stays as he wrote it. Each is logged in
 // data/curriculum/author-changes.md ("Unica Challenge templates"). The step's name is checked, so a renumbered step
@@ -255,6 +255,15 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
   {
     skill: "4.4-add-within-10000", step: 5, name: "Story problems", stories: true,
     templates: [medium("{name} has {a} stickers and wants {s}. How many more stickers does {name} need?", "s - a", { u1: "u1", u2: "u2", u3: "u3", u4: "u4", u5: "u5", u6: "u6", u7: "u7", u8: "u8" }, { a: "1000 + u1 * 400 + u2 * 40 + u3 * 4 + u4", s: "1000 + u1 * 400 + u2 * 40 + u3 * 4 + u4 + 1000 + u5 * 300 + u6 * 30 + u7 * 3 + u8" }, "s <= 9999")],
+  },
+  {
+    skill: "5.6-multiply-2-digit", step: 1, name: "2-digit × 2-digit with an area model",
+    templates: [
+      hard("bare", "What is {a} × {b} - {c}?", "a * b - c",
+        { a: "template_a", b: "template_b", c: "template_c" }, {}, "a * b - c >= 100"),
+      hard("missing", "{a} × {b} = {p} + __", "a * b - p",
+        { a: "template_a", b: "template_b" }, { p: "a * b - 100 - (a + b) % 90" }, "p >= 100"),
+    ],
   },
   {
     skill: "5.1-place-value-million", step: 1, name: "Value of a digit to 10 000s", routes: true,

@@ -8,12 +8,12 @@ import { FIRST_DAY_PAGES, firstPagesProblem, runFirstPagesJob, type FirstPagesJo
 import { memoryFirstPagesStore } from "@/lib/first-pages-memory";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { memoryRunStore } from "@/lib/workbook-job-memory";
-import { FIRST_PAGES_CHANGED, runWorkbookJob, startWorkbookRun, STALE_SECONDS, type ChildInputs, type WorkbookJobDeps } from "@/lib/workbook-job";
+import { FIRST_PAGES_CHANGED, makeRunFrame, runWorkbookJob, startWorkbookRun, STALE_SECONDS, type ChildInputs, type WorkbookJobDeps } from "@/lib/workbook-job";
 import type { FitCheck, GeneratedPage } from "@/lib/workbook-generator";
 import { memoryWorkbookFiles } from "@/lib/workbook-store-memory";
 import { workbookTemplate } from "@/lib/workbook-template";
 import { keySolver } from "@/lib/workbook-solve-check";
-import { firstCustomerProfile } from "@/lib/workbook-sample-profiles";
+import { bookPersona, firstCustomerProfile } from "@/lib/workbook-sample-profiles";
 
 // The first pages of Workbook 1 (docs/first-pages.md) through the job's public interface: the in-memory stores, the
 // fake AI with the dev fake's items, the key solver, the fake print engine and the real templates and generator. Then
@@ -82,6 +82,30 @@ function setup(o: { inputs?: ChildInputs; itemPolicy?: "approved-v1" | "legacy";
 const printed = (p: GeneratedPage) => ({ number: p.number, type: p.type, qrToken: p.qrToken, questions: p.questions.map((q) => ({ slot: q.slot, number: q.number, package: q.package, check: q.check })), content: p.content });
 
 describe("first pages", () => {
+  it("plans three distinct Challenge questions when Ahead starts automatically at U17", async () => {
+    const inputs = child({ instructions: undefined, profile: { revision: 1, profile: bookPersona("ahead").profile } });
+    const target = { childId: CHILD, parentId: PARENT, number: 1, workbookId: "00000000-0000-4000-8000-000000000002" };
+    let challengeForms: string[] = [];
+    const frame = await makeRunFrame(target, {
+      source: {
+        inputs: async () => inputs,
+        prepareProfile: async () => ({ ok: true, profile: inputs.profile }),
+      },
+      ai: { model: "fake" }, solver: keySolver(),
+      fit: () => ({
+        async fits(page) {
+          if (page.type === "challenge" && page.content?.kind === "day" && page.content.day === 1) {
+            challengeForms = page.questions.map(q => q.package.text.replace(/\d[\d,]*/g, "#"));
+          }
+          return { ok: true };
+        },
+      }),
+    }, inputs.name, inputs);
+    expect(frame.plan.level).toBe(17);
+    expect(challengeForms).toHaveLength(3);
+    expect(new Set(challengeForms).size).toBe(3);
+  });
+
   it("writes only the cover, the first lesson and its two practice pages, prints them, and Workbook 1 keeps them exactly", async () => {
     const s = setup();
     const set = s.first.queue({ assessmentId: TEST, parentId: PARENT, childId: CHILD });
