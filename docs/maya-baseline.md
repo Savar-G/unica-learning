@@ -43,7 +43,22 @@ These are code defaults and request scopes. Record the actual model, effort, pro
 - Measure actual model, review, repair, discarded preparation, STT, TTS and transport usage. Keep estimates and billed amounts separate. Profile the worker under the same concurrent load before proposing a native component.
 - Keep the routine targets from #1137 at median below 1,000 ms and p95 below 2,000 ms for useful audible output. Set and record a separate complex-explanation budget from matched device samples before comparing candidates. The fake clocks give no basis for a device budget.
 
-A faster result fails the comparison if it cuts off the child, uses filler as the endpoint, loses a required board update, or excludes failures. The credit hold leaves all device and hosted criteria open.
+A faster result fails the comparison if it cuts off the child, uses filler as the endpoint, loses a required board update, or excludes failures.
+
+## First matched browser samples
+
+On November 19, 2026, a MacBook M4 Pro ran the existing tutor path and the checked exchange from the source tree of `7c5f92599`. The real admin voice panel and board renderer connected to an isolated LiveKit room on the same machine. Both runs used the same 1.660-second synthetic prompt, AssemblyAI Universal 3.6 Pro and Cartesia Sonic 3.6 through LiveKit Inference. The viewport was 1440 by 900. Each run had one call and one child turn. The clock was the browser performance clock, from the last 20 ms input window above the audio threshold. The audio marks measure energy in the received stream. The board marks measure changes to the rendered SVG.
+
+| Path | First received sound | Next sound | Board changes | Tutor requests |
+|---|---:|---:|---|---|
+| Existing tutor | 1,191 ms, filler | 2,610 ms | 11,019 ms | One Sonnet 5.5 proposal and four Haiku 5.5 math reviews |
+| Checked exchange | 1,095 ms, answer | 5,676 ms | 3,767 ms and 5,546 ms | Zero model and review requests for this code-written turn |
+
+The transcript matched the synthetic input in both calls. In the checked call, word cues showed five tens and two ones, then four tens and twelve ones. The stored trace records each action once, with the exchange after the starting state. Both calls ended as `child_stopped`. The checked explanation kept the subtraction answer hidden. The browser measurement covers received audio and rendered SVG. It does not independently transcribe the returned audio or measure the physical speaker and display.
+
+These are single observations. Hosted load, physical devices, interruption and false stops, total billed costs, and the complex-turn budget still need measurement. The isolated browser harness had a failed setup attempt when the room expired before the browser joined. It produced no turn timing.
+
+At `ddfa6616f`, the actual desk voice controls and board ran in the same isolated setup at a 390 by 844 viewport with reduced motion. The synthetic prompt asked how to regroup. The paper option hid the exchange button. After switching back to the board, Shift+Tab focused the button and Enter submitted the action while Maya was speaking. The receiver retained the first drawing and showed one exchange. The board changed from 27 to 36 paths, and the transcript asked how many ones remained without giving the target answer. The stored trace records the first prompt as interrupted and the child action as shown. The call ended as `child_stopped`. Physical touch and audible stop timing still need measurement.
 
 ## Matched routine-turn probe (#1140)
 
