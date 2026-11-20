@@ -6,7 +6,7 @@ const EVIDENCE = ["simulated", "worker", "device"] as const;
 const MODES = ["chat", "voice"] as const;
 const TEACHING = ["existing", "checked-exchange", "checked-routine", "checked-exchange+checked-routine"] as const;
 const TURN_TYPES = ["routine", "complex", "unknown"] as const;
-const OUTCOMES = ["completed", "failed", "timeout", "interrupted", "no_output"] as const;
+const OUTCOMES = ["completed", "failed", "timeout", "interrupted", "no_output", "ambiguous"] as const;
 const PHASES = [
   "chatDispatch", "chatFinished", "chatBoardDispatch", "speechEndToFinal", "finalToTurn", "admission",
   "modelFirstChunk", "firstCheckedSentence", "voiceCallFinished", "workerReply", "turnToWorkerReply", "workerFiller", "synthesisFirstFrame",
@@ -84,31 +84,46 @@ export interface DeviceObservation {
   bursts: readonly { start: number; end: number }[];
   /** The worker's answer playout start, or null when no answer played. */
   answerPlayback: number | null;
+  /** Every other playout of the worker (filler, earlier speech) as start and end on the same clock. */
+  otherPlayouts: readonly { start: number; end: number }[];
   /** The first board update received for this turn. */
   boardAt: number | null;
   /** Onset of an intentional interruption. */
   interruptionAt?: number;
 }
 
-/** The filler's last frames can still arrive this long after the answer starts to play. */
-const FILLER_TAIL_MS = 100;
+/** The longest time a worker frame can take to reach the child, when no playout onset bounds it more tightly. */
+const MAX_TRANSIT_MS = 250;
 
 /**
- * Join device output energy with worker playout marks. Filler can be the first sound; only the answer is useful. The
- * answer's sound is the first sound still heard after its playout mark plus the filler's transit tail. When the filler
- * runs into the answer with no gap, they are one sound, and the answer starts at its playout mark inside it.
+ * Join device output energy with the worker's playouts. Filler can be the first sound; only the answer is useful.
+ * Received sound is matched to the playout it can belong to: nothing heard before the answer's playout start is the
+ * answer, and a sound heard after it is the answer only when no other playout's sound can still be arriving. The
+ * transit time is at most the delay from another playout's start to its first heard sound (and never more than
+ * MAX_TRANSIT_MS). When a sound could belong to the answer or to another playout, the turn is `ambiguous`: it has no
+ * useful time, and the report counts it apart from completed and failed turns.
  */
 export function deviceTurn(o: DeviceObservation): BaselineTurn {
   const ms: BaselineTurn["ms"] = {};
   const first = o.bursts.find(b => b.start >= o.inputEnd);
   if (first) ms.deviceFirstSound = first.start - o.inputEnd;
+  let outcome: BaselineTurn["outcome"] = "timeout";
   const p = o.answerPlayback;
-  const answer = p === null ? undefined : o.bursts.find(b => b.end > p + FILLER_TAIL_MS && b.end >= o.inputEnd);
-  if (answer) ms.deviceUseful = Math.max(answer.start, p!, o.inputEnd) - o.inputEnd;
+  const heard = p === null ? undefined : o.bursts.find(b => b.end > p && b.end >= o.inputEnd);
+  if (p !== null && heard) {
+    const onsets = o.otherPlayouts.flatMap(x => o.bursts.filter(b => b.start >= x.start && b.start <= x.end).slice(0, 1).map(b => b.start - x.start));
+    const transit = Math.min(MAX_TRANSIT_MS, ...onsets);
+    const other = o.otherPlayouts.some(x => heard.start < x.end + transit && heard.end > x.start);
+    if (heard.start < p || other) outcome = "ambiguous";
+    else {
+      outcome = "completed";
+      ms.deviceUseful = Math.max(heard.start, o.inputEnd) - o.inputEnd;
+    }
+  }
   if (o.boardAt !== null && o.boardAt >= o.inputEnd) ms.deviceBoard = o.boardAt - o.inputEnd;
   const cut = o.interruptionAt === undefined ? undefined : o.bursts.find(b => b.start <= o.interruptionAt! && b.end >= o.interruptionAt!);
   if (cut) ms.deviceInterruptionStop = cut.end - o.interruptionAt!;
-  return { v: 1, ...o.group, outcome: answer ? "completed" : "timeout", ms, counts: {} };
+  return { v: 1, ...o.group, outcome, ms, counts: {} };
 }
 
 /**
@@ -163,8 +178,9 @@ const sameCohort = (a: BaselineCohort, b: BaselineCohort) => a.provider === b.pr
 /**
  * The complex-explanation budget (#1137): useful device output of complex turns on the existing path, one call at a
  * time, rounded up to 100 ms. Percentiles use completed turns; every other attempted turn is a failure that a candidate
- * must not exceed. The rows come from one cohort that can measure useful output (it has an answer playout mark): a
- * hosted call's timeouts never enter a loopback denominator. With no cohort named, exactly one such cohort must exist.
+ * must not exceed; ambiguous turns are counted apart. The rows come from one cohort: the named one, or else the only
+ * cohort that can measure useful output (it has an answer playout mark), so a hosted call's timeouts never enter a
+ * loopback denominator.
  */
 export function complexBudget(turns: readonly BaselineTurn[], cohort?: BaselineCohort) {
   // One call at a time, as the matched comparison runs. A completed row without a useful mark measured first sound only.
@@ -172,11 +188,14 @@ export function complexBudget(turns: readonly BaselineTurn[], cohort?: BaselineC
     t.concurrency === 1 && !(t.outcome === "completed" && t.ms.deviceUseful === undefined));
   const measuring: BaselineCohort[] = [];
   for (const t of eligible) if (t.ms.deviceUseful !== undefined && !measuring.some(c => sameCohort(c, cohortOf(t)))) measuring.push(cohortOf(t));
-  const chosen = cohort ? measuring.find(c => sameCohort(c, cohort)) : measuring.length === 1 ? measuring[0] : undefined;
-  if (!chosen) return { ok: false as const, reason: measuring.length > 1 && !cohort ? "several cohorts measure useful output; name one" : "no cohort measures useful output" };
+  // A named cohort is used as named, even when every one of its turns failed.
+  const chosen = cohort ?? (measuring.length === 1 ? measuring[0] : undefined);
+  if (!chosen) return { ok: false as const, reason: measuring.length > 1 ? "several cohorts measure useful output; name one" : "no cohort measures useful output" };
   const rows = eligible.filter(t => sameCohort(cohortOf(t), chosen));
   const useful = rows.flatMap(t => t.outcome === "completed" && t.ms.deviceUseful !== undefined ? [t.ms.deviceUseful] : []);
-  const counts = { cohort: { ...chosen }, n: rows.length, completed: useful.length, failed: rows.length - useful.length };
+  // An ambiguous turn neither met nor missed the budget: it is counted, never as a failure or a percentile sample.
+  const ambiguous = rows.filter(t => t.outcome === "ambiguous").length;
+  const counts = { cohort: { provider: chosen.provider, device: chosen.device, network: chosen.network }, n: rows.length, completed: useful.length, failed: rows.length - useful.length - ambiguous, ambiguous };
   if (useful.length < MIN_BUDGET_SAMPLES) return { ok: false as const, ...counts, reason: `needs at least ${MIN_BUDGET_SAMPLES} completed complex device turns` };
   const { p50, p95 } = distribution(useful);
   return { ok: true as const, ...counts, p50Ms: roundUp(p50!), p95Ms: roundUp(p95!) };

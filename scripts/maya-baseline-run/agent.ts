@@ -3,7 +3,7 @@
 // `maya-voice`, and reads no database. Its rows go to the synthetic child over RPC when the call closes.
 import { randomUUID } from "node:crypto";
 import { appendFileSync } from "node:fs";
-import { defineAgent, type JobContext } from "@livekit/agents";
+import { defineAgent, voice, type JobContext } from "@livekit/agents";
 import { configureAiUsage, flushAiUsage } from "@/lib/ai-usage";
 import { boardRpcTransport } from "@/lib/board-rpc";
 import { createBoardSender } from "@/lib/board-protocol";
@@ -72,10 +72,15 @@ export interface BaselineJob {
   device: string;
 }
 
+/** One playout of the room's audio output on the machine clock, from its start event to its finish event. */
+export interface Playout { start: number; end: number | null }
+/** Enough for a call's fillers and answers, and well under the RPC payload limit. */
+const MAX_PLAYOUTS = 300;
+
 /** What the child receives at close: one message per RPC, each well under the RPC payload limit. */
 export type ReportMessage =
   | { kind: "turn"; row: ReturnType<typeof voiceBaselineTurn>; t0: number | null; answerPlayback: number | null; ackPlayback: number | null }
-  | { kind: "call"; workerQueueMs: number; profile: Record<string, unknown> | null; discardedPreparation: unknown; speechUsd: { stt: number; tts: number } }
+  | { kind: "call"; workerQueueMs: number; profile: Record<string, unknown> | null; discardedPreparation: unknown; speechUsd: { stt: number; tts: number }; playouts: Playout[] }
   | { kind: "done" };
 
 export default defineAgent({
@@ -130,6 +135,7 @@ export default defineAgent({
       return { stt: Math.round(usd("speech_to_text") * 1e6) / 1e6, tts: Math.round(usd("voice") * 1e6) / 1e6 };
     };
     const turns: VoiceTurnSample[] = [];
+    const playouts: Playout[] = [];
     const owners = new Map<string, { turnId: string; batchIds: readonly string[] }>();
     let profile: ReturnType<typeof startVoiceBaselineProfile> | null = null;
     const send = (message: ReportMessage) => local.performRpc({ destinationIdentity: identity, method: REPORT_RPC, payload: JSON.stringify(message), responseTimeout: 10_000 });
@@ -154,7 +160,7 @@ export default defineAgent({
             };
             await send({ kind: "turn", row: voiceBaselineTurn(group, sample, turnClock, cues), t0: turnClock?.t0 ?? null, answerPlayback: at("answer"), ackPlayback: at("ack") });
           }
-          await send({ kind: "call", workerQueueMs: entryAt - job.dispatchAt, profile: profile ? profile() : null, discardedPreparation: telemetry().discardedPreparationSummary(), speechUsd: speechUsd() });
+          await send({ kind: "call", workerQueueMs: entryAt - job.dispatchAt, profile: profile ? profile() : null, discardedPreparation: telemetry().discardedPreparationSummary(), speechUsd: speechUsd(), playouts: playouts.slice(-MAX_PLAYOUTS) });
           await send({ kind: "done" });
         } finally {
           await flushAiUsage();
@@ -175,6 +181,10 @@ export default defineAgent({
     await session.start({ agent: run.agent, room: ctx.room, inputOptions: { participantIdentity: identity, textEnabled: false, closeOnDisconnect: false }, record: false });
     run.attachBoardAudio();
     run.attachTurnTiming();
+    // The same output events as the turn timing: the child matches received sound to these playouts.
+    const output = session.output.audio;
+    output?.on(voice.AudioOutput.EVENT_PLAYBACK_STARTED, () => { playouts.push({ start: Date.now(), end: null }); });
+    output?.on(voice.AudioOutput.EVENT_PLAYBACK_FINISHED, () => { const last = playouts.at(-1); if (last && last.end === null) last.end = Date.now(); });
     made.tts.prewarm();
     const waited = await waitForChild(ctx.room, { id: job.callId, parentId: job.parentId, childId: job.childId, mode: "voice", status: "live" });
     if (!waited.child) { await run.standDown(); return ctx.shutdown(waited.why); }

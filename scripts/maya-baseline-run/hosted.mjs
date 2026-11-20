@@ -2,6 +2,7 @@
 // test child, the deployed site and the LiveKit Cloud worker. A synthetic microphone plays the run's prompts; the page
 // measures received audio energy and board SVG changes on the browser clock. It writes device rows to the capture.
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -18,6 +19,7 @@ const clips = Object.fromEntries(prompts.map(([name]) => [name, readFileSync(joi
 // which leaves time to hang up and close the tab inside the script.
 const OUTER_MS = 150_000;
 const MEASURE_MS = 85_000;
+const marker = `b1139-${randomUUID()}`;
 
 // Runs inside Aside's REPL. Everything it needs is in this string.
 const script = `
@@ -26,12 +28,33 @@ const order = ${JSON.stringify(prompts)};
 const end1139 = Date.now() + ${MEASURE_MS};
 // A wait never runs past the measurement deadline, so the cleanup below always has its time.
 const left1139 = (limit) => Math.max(500, Math.min(limit, end1139 - Date.now()));
-const before1139 = new Set((await listBrowserTabs()).map(t => t.targetId));
-const h1139 = await openTab(${JSON.stringify(values.site + "/admin/maya")});
-// The tab's id goes out at once: if this script is stopped, the runner closes the tab with it.
-const tab1139 = (await listBrowserTabs()).find(t => !before1139.has(t.targetId))?.targetId ?? null;
-console.log("HOSTED1139_TAB " + JSON.stringify(tab1139));
+// A marker only this run's tab carries, in case the returned tab has no id of its own.
+const mark1139 = ${JSON.stringify(marker)};
+/** The id of the tab that openTab returned: its own id, its CDP target, or the one open tab with this run's marker. */
+const idOf1139 = async (tab) => {
+  if (typeof tab.targetId === "string") return tab.targetId;
+  try {
+    const cdp = await tab.context().newCDPSession(tab);
+    const { targetInfo } = await cdp.send("Target.getTargetInfo");
+    await cdp.detach().catch(() => {});
+    if (targetInfo?.targetId) return targetInfo.targetId;
+  } catch { /* not a CDP page */ }
+  const marked = (await listBrowserTabs()).filter(t => String(t.url ?? "").includes(mark1139));
+  return marked.length === 1 ? marked[0].targetId : null;
+};
+async function end1139Call(h1139) {
+  const hang1139 = h1139.getByRole("button", { name: "Hang up", exact: true });
+  if (await hang1139.isVisible().catch(() => false)) {
+    await hang1139.click({ timeout: 5000 }).catch(() => {});
+    await h1139.getByRole("status").filter({ hasText: "The call has ended" }).waitFor({ timeout: 8000 }).catch(() => {});
+  }
+  await closeTab(h1139);
+}
+let h1139 = null;
 try {
+  h1139 = await openTab(${JSON.stringify(values.site + "/admin/maya#")} + mark1139);
+  // The tab's id goes out at once: if this script is stopped, the runner closes this tab and no other.
+  console.log("HOSTED1139_TAB " + JSON.stringify(await idOf1139(h1139)));
   await h1139.getByRole("heading", { name: "Start a test call" }).waitFor({ timeout: left1139(15000) });
   await h1139.getByText("Speak", { exact: true }).click();
   const child = h1139.getByRole("combobox", { name: "Test child" });
@@ -114,12 +137,7 @@ try {
   console.log("HOSTED1139 " + JSON.stringify(result));
 } finally {
   // Hang up first, then close the tab: a call left open keeps the test child's room busy.
-  const hang1139 = h1139.getByRole("button", { name: "Hang up", exact: true });
-  if (await hang1139.isVisible().catch(() => false)) {
-    await hang1139.click({ timeout: 5000 }).catch(() => {});
-    await h1139.getByRole("status").filter({ hasText: "The call has ended" }).waitFor({ timeout: 8000 }).catch(() => {});
-  }
-  await closeTab(h1139);
+  if (h1139) await end1139Call(h1139);
 }
 `;
 

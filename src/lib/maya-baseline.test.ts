@@ -49,35 +49,52 @@ describe("#1139 device turns on one machine clock", () => {
   const bursts = [{ start: 900, end: 1500 }, { start: 2300, end: 4100 }, { start: 9000, end: 9400 }];
 
   it("measures useful output from the answer's playout, not from the filler", () => {
-    const turn = deviceTurn({ group, inputEnd: 1000, bursts, answerPlayback: 2280, boardAt: 2600 });
+    const turn = deviceTurn({ group, inputEnd: 1000, bursts, answerPlayback: 2280, otherPlayouts: [{ start: 880, end: 1450 }], boardAt: 2600 });
     expect(turn).toMatchObject({ outcome: "completed", ms: { deviceFirstSound: 1300, deviceUseful: 1300, deviceBoard: 1600 } });
     expect(readBaselineTurn(turn)).toEqual(turn);
   });
 
-  it("never counts a filler that starts just before the answer's playout mark as useful", () => {
-    // The filler's last frames arrive 30 ms after the answer starts to play; the answer's own sound follows.
-    const filler = { start: 1970, end: 2030 }, answer = { start: 2400, end: 4000 };
-    expect(deviceTurn({ group, inputEnd: 1000, bursts: [filler, answer], answerPlayback: 2000, boardAt: null }))
-      .toMatchObject({ outcome: "completed", ms: { deviceFirstSound: 970, deviceUseful: 1400 } });
-    expect(deviceTurn({ group, inputEnd: 1000, bursts: [filler], answerPlayback: 2000, boardAt: null }))
-      .toMatchObject({ outcome: "timeout", ms: { deviceFirstSound: 970 } });
+  it("marks a sound that starts before the answer's playout as ambiguous, never as useful (review repro 1)", () => {
+    // A filler-only sound from 1,970 to 2,150 ms around an answer mark at 2,000 ms: its part after the mark could be either.
+    const turn = deviceTurn({ group, inputEnd: 1000, bursts: [{ start: 1970, end: 2150 }], answerPlayback: 2000, otherPlayouts: [{ start: 1400, end: 1990 }], boardAt: null });
+    expect(turn).toMatchObject({ outcome: "ambiguous", ms: { deviceFirstSound: 970 } });
+    expect(turn.ms.deviceUseful).toBeUndefined();
+    // The same when the filler runs into the answer as one sound.
+    expect(deviceTurn({ group, inputEnd: 1000, bursts: [{ start: 1340, end: 5200 }], answerPlayback: 2100, otherPlayouts: [{ start: 1300, end: 2050 }], boardAt: null }).outcome).toBe("ambiguous");
   });
 
-  it("finds the answer inside one sound when the filler runs into it", () => {
-    const turn = deviceTurn({ group, inputEnd: 1000, bursts: [{ start: 1340, end: 5200 }], answerPlayback: 2100, boardAt: null });
-    expect(turn).toMatchObject({ outcome: "completed", ms: { deviceFirstSound: 340, deviceUseful: 1100 } });
+  it("counts a short answer heard just after its playout mark when no other playout can reach it (review repro 2)", () => {
+    // The filler played from 1,200 to 1,600 ms and was heard from 1,230 ms: transit is at most 30 ms.
+    const filler = { start: 1230, end: 1630 };
+    const turn = deviceTurn({ group, inputEnd: 1000, bursts: [filler, { start: 2020, end: 2090 }], answerPlayback: 2000, otherPlayouts: [{ start: 1200, end: 1600 }], boardAt: null });
+    expect(turn).toMatchObject({ outcome: "completed", ms: { deviceFirstSound: 230, deviceUseful: 1020 } });
+    expect(deviceTurn({ group, inputEnd: 1000, bursts: [{ start: 2020, end: 2090 }], answerPlayback: 2000, otherPlayouts: [], boardAt: null }))
+      .toMatchObject({ outcome: "completed", ms: { deviceUseful: 1020 } });
+  });
+
+  it("marks a sound after the mark as ambiguous when another playout's sound could still be arriving", () => {
+    // No onset bounds the transit here, so the filler that ended at 1,990 ms could still be heard at 2,020 ms.
+    expect(deviceTurn({ group, inputEnd: 1000, bursts: [{ start: 2020, end: 2090 }], answerPlayback: 2000, otherPlayouts: [{ start: 1400, end: 1990 }], boardAt: null }).outcome).toBe("ambiguous");
+  });
+
+  it("counts ambiguous turns in the report and keeps them out of the percentiles", () => {
+    const rows = [
+      deviceTurn({ group, inputEnd: 1000, bursts: [{ start: 1970, end: 2150 }], answerPlayback: 2000, otherPlayouts: [], boardAt: null }),
+      deviceTurn({ group, inputEnd: 1000, bursts: [{ start: 2500, end: 3000 }], answerPlayback: 2400, otherPlayouts: [], boardAt: null }),
+    ].map(readBaselineTurn);
+    expect(baselineReport(rows)[0]).toMatchObject({ turns: 2, outcomes: { completed: 1, ambiguous: 1 }, ms: { deviceUseful: { n: 1, p50: 1500, p95: 1500 } } });
   });
 
   it("keeps a turn without an answer as a timeout and gives it no useful time", () => {
-    const turn = deviceTurn({ group, inputEnd: 5000, bursts, answerPlayback: null, boardAt: null });
+    const turn = deviceTurn({ group, inputEnd: 5000, bursts, answerPlayback: null, otherPlayouts: [], boardAt: null });
     expect(turn.outcome).toBe("timeout");
     expect(turn.ms).toEqual({ deviceFirstSound: 4000 });
   });
 
   it("measures the stop from the interruption onset to the end of the sound it cut", () => {
-    const turn = deviceTurn({ group, inputEnd: 1000, bursts, answerPlayback: 2280, boardAt: null, interruptionAt: 3000 });
+    const turn = deviceTurn({ group, inputEnd: 1000, bursts, answerPlayback: 2280, otherPlayouts: [], boardAt: null, interruptionAt: 3000 });
     expect(turn.ms.deviceInterruptionStop).toBe(1100);
-    expect(deviceTurn({ group, inputEnd: 1000, bursts, answerPlayback: 2280, boardAt: null, interruptionAt: 5000 }).ms.deviceInterruptionStop).toBeUndefined();
+    expect(deviceTurn({ group, inputEnd: 1000, bursts, answerPlayback: 2280, otherPlayouts: [], boardAt: null, interruptionAt: 5000 }).ms.deviceInterruptionStop).toBeUndefined();
   });
 });
 
@@ -110,30 +127,42 @@ describe("#1139 complex-explanation budget", () => {
   it("sets the budget from complex device turns of the existing path, rounded up, with failures counted", () => {
     const turns = [2010, 2290, 2550, 3120, 3990, null, 1100].map(ms => row(ms));
     const budget = complexBudget([...turns, row(400, "checked-exchange"), row(300, "existing", "routine")]);
-    expect(budget).toEqual({ ok: true, cohort, n: 7, completed: 6, failed: 1, p50Ms: 2300, p95Ms: 4000 });
+    expect(budget).toEqual({ ok: true, cohort, n: 7, completed: 6, failed: 1, ambiguous: 0, p50Ms: 2300, p95Ms: 4000 });
   });
 
   it("uses one-call runs only and leaves out rows that never measured useful output", () => {
     const turns = [2010, 2290, 2550, 3120, 3990].map(ms => row(ms));
     const parallel = { ...row(9000), concurrency: 8 };
     const firstSoundOnly: BaselineTurn = { ...row(null), outcome: "completed", ms: { deviceFirstSound: 1100 } };
-    expect(complexBudget([...turns, parallel, firstSoundOnly])).toEqual({ ok: true, cohort, n: 5, completed: 5, failed: 0, p50Ms: 2600, p95Ms: 4000 });
+    expect(complexBudget([...turns, parallel, firstSoundOnly])).toEqual({ ok: true, cohort, n: 5, completed: 5, failed: 0, ambiguous: 0, p50Ms: 2600, p95Ms: 4000 });
   });
 
   it("keeps a cohort that cannot measure useful output out of the denominator", () => {
     const turns = [2010, 2290, 2550, 3120, 3990].map(ms => row(ms));
     // A hosted call has no answer playout mark: its timeouts and first sounds say nothing about useful output.
     const hosted = (outcome: BaselineTurn["outcome"]): BaselineTurn => ({ ...row(null), outcome, provider: "production", device: "macbook-aside", network: "home-wifi", ms: outcome === "completed" ? { deviceFirstSound: 1100 } : {} });
-    expect(complexBudget([...turns, hosted("timeout"), hosted("completed")])).toEqual({ ok: true, cohort, n: 5, completed: 5, failed: 0, p50Ms: 2600, p95Ms: 4000 });
+    expect(complexBudget([...turns, hosted("timeout"), hosted("completed")])).toEqual({ ok: true, cohort, n: 5, completed: 5, failed: 0, ambiguous: 0, p50Ms: 2600, p95Ms: 4000 });
     const other = { provider: "p2", device: "d", network: "loopback" };
     const both = [...turns, ...turns.map(t => ({ ...t, ...other }))];
     expect(complexBudget(both)).toMatchObject({ ok: false, reason: "several cohorts measure useful output; name one" });
-    expect(complexBudget([...both, { ...row(null), ...other }], other)).toEqual({ ok: true, cohort: other, n: 6, completed: 5, failed: 1, p50Ms: 2600, p95Ms: 4000 });
+    expect(complexBudget([...both, { ...row(null), ...other }], other)).toEqual({ ok: true, cohort: other, n: 6, completed: 5, failed: 1, ambiguous: 0, p50Ms: 2600, p95Ms: 4000 });
     expect(complexBudget([hosted("timeout")])).toMatchObject({ ok: false, reason: "no cohort measures useful output" });
   });
 
+  it("keeps a named cohort even when none of its turns measured useful output", () => {
+    const failed = [row(null), row(null), row(null)];
+    expect(complexBudget([...failed, ...[2010, 2290].map(ms => ({ ...row(ms), provider: "p2" }))], cohort))
+      .toEqual({ ok: false, cohort, n: 3, completed: 0, failed: 3, ambiguous: 0, reason: "needs at least 5 completed complex device turns" });
+  });
+
+  it("counts ambiguous turns apart from completed and failed ones", () => {
+    const turns = [2010, 2290, 2550, 3120, 3990].map(ms => row(ms));
+    const ambiguous: BaselineTurn = { ...row(null), outcome: "ambiguous", ms: { deviceFirstSound: 900 } };
+    expect(complexBudget([...turns, ambiguous, row(null)])).toEqual({ ok: true, cohort, n: 7, completed: 5, failed: 1, ambiguous: 1, p50Ms: 2600, p95Ms: 4000 });
+  });
+
   it("refuses a budget from too few completed samples", () => {
-    expect(complexBudget([row(2000), row(2100), row(null)])).toEqual({ ok: false, cohort, n: 3, completed: 2, failed: 1, reason: "needs at least 5 completed complex device turns" });
+    expect(complexBudget([row(2000), row(2100), row(null)])).toEqual({ ok: false, cohort, n: 3, completed: 2, failed: 1, ambiguous: 0, reason: "needs at least 5 completed complex device turns" });
   });
 });
 

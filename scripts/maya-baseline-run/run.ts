@@ -16,7 +16,7 @@ import {
   speechCosts, type BaselineCost, type BaselineGroup, type BaselineReceipt, type BaselineTurn, type DeviceObservation, type SpeechProvider,
 } from "@/lib/maya-baseline";
 import { ATTR, childGrant, childIdentity, HANG_UP_BOARD_DRAIN, voiceProviders, voiceRoom } from "@/lib/maya-voice";
-import { BASELINE_AGENT, baselineProvider, REPORT_RPC, type BaselineJob, type ReportMessage } from "./agent";
+import { BASELINE_AGENT, baselineProvider, REPORT_RPC, type BaselineJob, type Playout, type ReportMessage } from "./agent";
 
 export interface Prompt { name: string; turnType: "routine" | "complex"; file: string; leadMs?: number }
 /** The matched speech cases (#1137). `interrupt` plays its second prompt while the answer to the first is playing. */
@@ -238,6 +238,19 @@ async function runCall(o: { url: string; dispatch: AgentDispatchClient; job: Omi
   }
 }
 
+/** The answer's own playout and the worker's stamp of it come from one output event, a few ms apart at most. */
+const SAME_EVENT_MS = 20;
+
+/**
+ * The worker's playouts that are not this step's answer and can reach its sounds. A playout without a finish event is
+ * taken to run to the step's end. With no worker report, nothing is known: every later sound is then ambiguous.
+ */
+function otherPlayouts(playouts: Playout[] | undefined, answer: number | null, from: number, to: number) {
+  if (!playouts) return [{ start: from, end: to }];
+  return playouts.filter(x => !(answer !== null && Math.abs(x.start - answer) <= SAME_EVENT_MS) && x.start < to && (x.end ?? to) >= from - 1000)
+    .map(x => ({ start: x.start, end: Math.min(x.end ?? to, to) }));
+}
+
 /**
  * The turn rows of one call. Worker rows are the worker's own turns, or a failed row for each planned turn when the worker
  * never reported. Device rows (real speech only) are one per planned turn: what the child observed, or a failure.
@@ -265,8 +278,9 @@ function write(capture: string, cases: string, job: BaselineJob, run: RunSetting
   steps.forEach((s, i) => {
     const end = steps[i + 1]?.inputEnd ?? Infinity;
     const mine = turns.filter(t => stepOf(t.t0) === i);
+    const answerPlayback = mine.find(t => t.answerPlayback !== null)?.answerPlayback ?? null;
     const device: Omit<DeviceObservation, "group"> = {
-      inputEnd: s.inputEnd, bursts: c.bursts.filter(b => b.start < end && b.end >= s.inputEnd), answerPlayback: mine.find(t => t.answerPlayback !== null)?.answerPlayback ?? null,
+      inputEnd: s.inputEnd, bursts: c.bursts.filter(b => b.start < end && b.end >= s.inputEnd), answerPlayback, otherPlayouts: otherPlayouts(call?.playouts, answerPlayback, s.inputEnd, Number.isFinite(end) ? end : Date.now()),
       boardAt: c.board.find(at => at >= s.inputEnd && at < end) ?? null, ...(s.interruptionAt ? { interruptionAt: s.interruptionAt } : {}),
     };
     // Background speech should get no reply: any Maya sound before the next step is a false response. The raw device
