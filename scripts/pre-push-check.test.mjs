@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildChecks, isDeleteOnlyPush, LOCAL_BUDGET_MS, runPrePushChecks } from "./pre-push-check.mjs";
+import { buildChecks, isDeleteOnlyPush, LOCAL_BUDGET_MS, runPrePushChecks, spawnSpec } from "./pre-push-check.mjs";
 
 const ZERO = "0".repeat(40);
 const SHA = "a".repeat(40);
@@ -16,6 +16,17 @@ test("isDeleteOnlyPush skips pure remote ref deletions and runs on normal pushes
   assert.equal(
     isDeleteOnlyPush(`(delete) ${ZERO} refs/heads/old ${SHA}\nrefs/heads/site/new ${SHA} refs/heads/site/new ${ZERO}\n`),
     false,
+  );
+});
+
+test("spawnSpec wraps Windows commands with cmd.exe and runs POSIX binaries directly", () => {
+  assert.deepEqual(
+    spawnSpec({ cmd: "C:\\repo\\node_modules\\.bin\\oxlint.cmd", args: ["src"], platform: "win32", comSpec: "C:\\Windows\\System32\\cmd.exe" }),
+    { command: "C:\\Windows\\System32\\cmd.exe", args: ["/d", "/c", "C:\\repo\\node_modules\\.bin\\oxlint.cmd", "src"] },
+  );
+  assert.deepEqual(
+    spawnSpec({ cmd: "/repo/node_modules/.bin/oxlint", args: ["src"], platform: "darwin" }),
+    { command: "/repo/node_modules/.bin/oxlint", args: ["src"] },
   );
 });
 

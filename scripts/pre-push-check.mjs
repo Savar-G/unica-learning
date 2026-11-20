@@ -49,9 +49,17 @@ export function buildChecks(rootDir) {
   ];
 }
 
+export function spawnSpec({ cmd, args, platform = process.platform, comSpec = process.env.ComSpec || "cmd.exe" }) {
+  if (platform === "win32") {
+    return { command: comSpec, args: ["/d", "/c", cmd, ...args] };
+  }
+  return { command: cmd, args };
+}
+
 function defaultRunStep({ cmd, args, cwd }) {
   return new Promise((resolveStep) => {
-    const child = spawn(cmd, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    const spec = spawnSpec({ cmd, args });
+    const child = spawn(spec.command, spec.args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
     let out = "";
     child.stdout?.on("data", (chunk) => { out += chunk.toString(); });
     child.stderr?.on("data", (chunk) => { out += chunk.toString(); });
