@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { aiClient } from "@/lib/ai-client";
-import { flushAiUsage, insertUsageRow, recordAiUsage, usageRow, type AiUsageRow } from "@/lib/ai-usage";
+import { configureAiUsage, flushAiUsage, insertUsageRow, recordAiUsage, usageRow, type AiUsageRow } from "@/lib/ai-usage";
 
 const reading = { provider: "openrouter" as const, model: "anthropic/claude-sonnet-5.5", inputTokens: 1200, outputTokens: 80, costUsd: 0.0123456789, generationId: "gen-1" };
 
@@ -40,6 +43,38 @@ describe("recordAiUsage", () => {
     expect(() => recordAiUsage({ feature: "other" }, reading, () => { throw new Error("db down"); })).not.toThrow();
     expect(() => recordAiUsage({ feature: "other" }, reading, async () => { throw new Error("db down"); })).not.toThrow();
     await expect(flushAiUsage()).resolves.toBeUndefined();
+  });
+});
+
+describe("a local-only process (the #1139 baseline)", () => {
+  afterEach(() => { configureAiUsage(null); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+
+  it("gives each row to its local writer and never posts to Supabase, even with the secret key set", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ai-usage-"));
+    try {
+      // Outside a test run, as a script runs, with the secret key inherited from the shell.
+      vi.stubEnv("VITEST", "");
+      vi.stubEnv("VERCEL", "");
+      vi.stubEnv("SUPABASE_SECRET_KEY", "secret");
+      vi.stubEnv("AI_USAGE_RECEIPT_FILE", join(dir, "receipts.jsonl"));
+      const posted = vi.fn(async () => new Response(null, { status: 201 }));
+      vi.stubGlobal("fetch", posted);
+      // The default sink of the same process does post: this check can see a hosted write.
+      recordAiUsage({ feature: "maya" }, reading);
+      await flushAiUsage();
+      expect(posted).toHaveBeenCalledTimes(1);
+      posted.mockClear();
+      const rows: AiUsageRow[] = [];
+      configureAiUsage({ local: (row) => { rows.push(row); } });
+      recordAiUsage({ feature: "maya_review" }, reading);
+      await flushAiUsage();
+      expect(posted).not.toHaveBeenCalled();
+      expect(rows.map((r) => r.feature)).toEqual(["maya_review"]);
+      // The local writer replaces the default receipt file: only the first row is there.
+      expect(readFileSync(join(dir, "receipts.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l).feature)).toEqual(["maya"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
