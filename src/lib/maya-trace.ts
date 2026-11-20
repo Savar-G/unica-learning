@@ -42,11 +42,13 @@ export interface TraceRefusal {
  * fate. Version 15 (B2, "draw while speaking") adds, on a board batch, `sentence`: the sentence of its turn's words the
  * batch is tied to (0-based; absent: the end of the turn) and `after` (the batches of the same turn it builds on), and,
  * on an accepted attempt, `boardReads`: each clause code read as a board action, drawn or why not (the drawings are read
- * from Maya's sentences), with the counts `clausesDrawn` and `clausesNotDrawn`. `checkTrace` reads all fifteen versions.
+ * from Maya's sentences), with the counts `clausesDrawn` and `clausesNotDrawn`. Version 16 (#1147) adds the turn
+ * `backchannel`: a lone "mm-hmm" or "okay" the child said while Maya spoke, which did not stop her and is not a child
+ * turn. `checkTrace` reads all sixteen versions.
  */
-export const TRACE_VERSION = 15;
+export const TRACE_VERSION = 16;
 /** The trace versions `checkTrace` reads. */
-export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] as const;
+export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] as const;
 /**
  * The held turn as version 8 traces stored it, before D-327 (line sets 11 to 13). Frozen here: stored admin test
  * calls from preview deployments may hold it, and they stay readable.
@@ -240,6 +242,8 @@ export type TraceTurn =
   | { kind: "partial"; at: number; text: string; cancelled: true }
   /** Version 4: what Maya actually said. `cancelled`: it was not her approved text, so her output stopped and a repair started. */
   | { kind: "maya_said"; at: number; text: string; cancelled: boolean }
+  /** Version 16: a backchannel the child said while Maya spoke ("mm-hmm", "okay"). Maya went on; nothing was judged. */
+  | { kind: "backchannel"; at: number; text: string }
   /**
    * Version 4: the package turned out wrong during the call (`detail` is wording code wrote). `cancelled`: the call
    * went to the content hold and Maya's output stopped; false when the safety state kept the call.
@@ -576,6 +580,9 @@ function checkTurn(t: unknown, path: string, version: number): Record<string, un
       need(isText(x.text), `${path}.text`, "text");
       need(typeof x.cancelled === "boolean", `${path}.cancelled`, "a boolean");
       break;
+    case "backchannel":
+      need(isText(x.text), `${path}.text`, "text");
+      break;
     case "content_problem":
       need(isText(x.detail), `${path}.detail`, "text");
       need(typeof x.cancelled === "boolean", `${path}.cancelled`, "a boolean");
@@ -752,6 +759,7 @@ function check(raw: unknown): MayaTrace {
   });
   // The voice agent's input turns come in version 4.
   turns.forEach((t, i) => need(!["partial", "maya_said", "content_problem"].includes(t.kind as string) || (r.version as number) >= 4, `turns[${i}].kind`, `not ${String(t.kind)} before version 4`));
+  turns.forEach((t, i) => need(t.kind !== "backchannel" || (r.version as number) >= 16, `turns[${i}].kind`, "not backchannel before version 16"));
   if ((r.version as number) >= 5 || r.obligations !== undefined) {
     need(Array.isArray(r.obligations), "obligations", "the obligation ledger");
     const ids = new Set<number>();
@@ -898,6 +906,7 @@ export function redactTrace(trace: MayaTrace, childName: string | null): MayaTra
       case "child":
       case "partial":
       case "maya_said":
+      case "backchannel":
         return { ...t, text: redactText(t.text, childName) };
       case "content_problem":
         return { ...t, detail: redactText(t.detail, childName) };

@@ -80,6 +80,12 @@ function summarize(rows: Row[]) {
     lostSpeech: { n: intent.length, lost: intent.filter(r => r.lost).length, split: intent.filter(r => r.split).length, notATurn: intent.filter(r => !r.reachedTurn).length,
       meanWordShare: intent.length ? Math.round(intent.reduce((sum, r) => sum + (r.wordShare ?? 0), 0) / intent.length * 100) / 100 : null },
     // A false stop is resumed when LiveKit reports the false interruption as resumed; else it ended Maya's speech.
+    // The silence a resumed false stop left: from LiveKit's first pause to its resume, in the output calls.
+    resumeGapMs: interruptReport(incid.filter(r => r.falseStop && r.resumed).map(r => {
+      const at = (kind: string) => r.output.map(o => o.split("@")).find(([k]) => k === kind)?.[1];
+      const paused = at("pause"), resumed = at("resume");
+      return { stopMs: paused !== undefined && resumed !== undefined ? Number(resumed) - Number(paused) : null };
+    }), 2000),
     falseStops: { n: incid.length, stopped: incid.filter(r => r.falseStop).length, resumed: incid.filter(r => r.falseStop && r.resumed).length,
       permanent: incid.filter(r => r.falseStop && !r.resumed).length,
       byClip: INCIDENTAL.map(clip => {
@@ -382,7 +388,7 @@ const cueSummary = (["word", "sentence", "after-resume"] as const).map(s => {
 });
 const checked = call.session.checkedExchange?.turns.map(t => ({ playback: t.playback, prompt: Boolean(t.prompt), actions: t.actions.map(a => a.fate) }));
 const report = {
-  at: new Date().toISOString(), load: { start: loadAtStart, end: loadavg()[0], cores: cpus().length }, cues: args.cues, interruptMode: speech.tuning.interruptMode ?? "unset", devMode: process.env.LIVEKIT_DEV_MODE === "1", providers: speech.ids, restarts,
+  at: new Date().toISOString(), load: { start: loadAtStart, end: loadavg()[0], cores: cpus().length }, cues: args.cues, interruptMode: speech.tuning.interruptMode ?? "unset", interruptMinMs: speech.tuning.interruptMinMs, backchannels: run.backchannels ?? null, devMode: process.env.LIVEKIT_DEV_MODE === "1", providers: speech.ids, restarts,
   ...summarize(rows),
   workerToChildAudioMs: { n: delays.length, median: delay },
   cueSummary, falseInterruptionEvents: falseInterruptions.length, detectorOn,

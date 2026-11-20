@@ -29,6 +29,7 @@ import { sameExchangeTarget, type ExchangeTarget } from "@/lib/maya/checked-exch
 import { childExchangeTarget } from "@/lib/maya/session";
 import { speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-speech";
 import { CuePlaybackOutput } from "./cue-playback";
+import { isBackchannel } from "./backchannel";
 import { earlyRest, type EarlyRest } from "./early-speech";
 import { detectorVad, HeardSignals, PrepareSignal, silentFinal } from "./heard-signals";
 import { voiceDisconnectReason } from "@/lib/maya-voice-close-reason";
@@ -93,6 +94,11 @@ interface AgentHooks {
   greetingOver(): Promise<void>;
   /** True when the child went on speaking within the wait; `text` ends in a number word that can go on. */
   childWentOn(text: string): Promise<boolean>;
+  /**
+   * True when a final transcript is a lone backchannel said while Maya speaks (#1147): the run records it, and the
+   * transcript never reaches LiveKit, so a paused speech resumes. Absent: every transcript goes on.
+   */
+  backchannel?(text: string): boolean;
   /** Gives the call a prepare hint (`PrepareSignal`). False: dropped (no `prepare`, or a child turn runs). */
   prepare?(text: string): boolean;
 }
@@ -175,6 +181,7 @@ export class MayaVoiceAgent extends voice.Agent {
     const finals = this.finals;
     const marks = this.marks;
     const callId = this.call.id;
+    const hooks = this.hooks;
     /**
      * A start of speech held back while the input is silent (no detector speech, a low peak): a phantom transcript then
      * leaves the session's user state alone. It goes on as soon as anything of the speech is kept.
@@ -200,6 +207,11 @@ export class MayaVoiceAgent extends voice.Agent {
             if (silentFinal(heard, limit)) {
               // Words in digital silence: not a child turn, never answered. The signals go in the log, no words.
               console.warn("[maya voice] dropped transcript", callId, heard);
+              return;
+            }
+            if (hooks.backchannel?.(event.alternatives[0]?.text ?? "")) {
+              // Maya goes on: LiveKit never reads the words, so its pause ends in a resume. The signals go in the log, no words.
+              console.info("[maya voice] backchannel over Maya", callId, heard);
               return;
             }
             finals.push(event.alternatives.map((a) => ({ text: a.text, confidence: a.confidence })));
@@ -533,7 +545,7 @@ export class VoiceCallRun {
     this.segment = call.revision;
     this.agent = new MayaVoiceAgent(call, turn => this.after(turn), options.board ? { sync: options.board, scope: () => this.boardScope } : undefined,
       (stoppedAt, work, mark, finalIds) => this.reply(stoppedAt, work, mark, finalIds),
-      { greetingOver: () => this.greetingOver(), childWentOn: text => this.childWentOn(text), prepare: text => this.prepareHint(text) });
+      { greetingOver: () => this.greetingOver(), childWentOn: text => this.childWentOn(text), prepare: text => this.prepareHint(text), backchannel: text => this.backchannel(text) });
     this.agent.hearing = { dropSilentPeakDbfs: options.dropSilentPeakDbfs ?? null, ...(options.heardVad ? { vad: options.heardVad } : {}), detectorMinSilenceMs: options.detectorMinSilenceMs ?? null };
     this.agent.onSilent = speech => this.silentSpeech(speech);
     this.agent.requireSpokenCues = scope => this.exchangeScope?.scope.generation === scope.generation;
@@ -614,6 +626,21 @@ export class VoiceCallRun {
   }
 
   /** The speech-to-text gave words: a child who went on speaking ends the wait of `childWentOn`. */
+  /** Backchannels said over Maya and ignored in this run (#1147). */
+  backchannels = 0;
+
+  /** Maya's audio plays, or LiveKit paused it for the child's sound and may resume it. */
+  private mayaSpeaking() {
+    return this.session.agentState === "speaking" || this.boardAudio?.isPaused === true;
+  }
+
+  private backchannel(text: string) {
+    if (!isBackchannel(text) || !this.mayaSpeaking()) return false;
+    this.backchannels++;
+    void this.call.backchannel?.(text).catch(() => { /* the trace record never stops Maya */ });
+    return true;
+  }
+
   private wordsHeard() {
     this.wordCount++;
     this.wordWaiter?.();

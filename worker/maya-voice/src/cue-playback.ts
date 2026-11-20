@@ -46,6 +46,7 @@ export class CuePlaybackOutput {
   private suspended = false;
   /** LiveKit paused the output: the cue clock stops, and the plan keeps its scope. */
   private paused = false;
+  get isPaused() { return this.paused; }
   private generation = 0;
   private forwarding: { scope: SpeechScope; frame: AudioFrame } | null = null;
   private segments: { scope: SpeechScope; started: boolean }[] = [];
