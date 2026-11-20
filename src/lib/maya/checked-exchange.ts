@@ -6,6 +6,7 @@ import { readTransferOperands, TRANSFER_GOODBYE, TRANSFER_OFFER, transferRetryWo
 type ActionKind = "show" | "exchange" | "question";
 
 export const EXCHANGE_OBJECT = "exchange-before";
+export const GROUPS_OBJECT = "multiply-groups";
 export const EXCHANGE_RPC = "maya.exchange";
 
 /** A revision names the lesson board at the time this object was offered. */
@@ -13,22 +14,35 @@ export interface ExchangeTarget {
   lessonId: string;
   turnId: string;
   boardRevision: number;
-  objectId: typeof EXCHANGE_OBJECT;
+  objectId: typeof EXCHANGE_OBJECT | typeof GROUPS_OBJECT;
   batchId: string;
+  /** Multiplication equal-groups action (#1154): group size and next group count. */
+  groupSize?: number;
+  nextGroups?: number;
 }
 
 export function readExchangeTarget(value: unknown): ExchangeTarget | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
-  const { lessonId, turnId, boardRevision, objectId, batchId } = value as Partial<ExchangeTarget>;
+  const { lessonId, turnId, boardRevision, objectId, batchId, groupSize, nextGroups } = value as Partial<ExchangeTarget>;
   const id = (field: unknown): field is string => typeof field === "string" && field.length > 0 && field.length <= 160;
   if (!id(lessonId) || !id(turnId) || !id(batchId) || typeof boardRevision !== "number" ||
-    !Number.isSafeInteger(boardRevision) || boardRevision < 1 || objectId !== EXCHANGE_OBJECT) return null;
-  return { lessonId, turnId, boardRevision, objectId, batchId };
+    !Number.isSafeInteger(boardRevision) || boardRevision < 1) return null;
+  if (objectId === EXCHANGE_OBJECT) {
+    if (groupSize !== undefined || nextGroups !== undefined) return null;
+    return { lessonId, turnId, boardRevision, objectId, batchId };
+  }
+  if (objectId === GROUPS_OBJECT) {
+    if (typeof groupSize !== "number" || !Number.isSafeInteger(groupSize) || groupSize < 2 || groupSize > 10 ||
+      typeof nextGroups !== "number" || !Number.isSafeInteger(nextGroups) || nextGroups < 2 || nextGroups > 10) return null;
+    return { lessonId, turnId, boardRevision, objectId, batchId, groupSize, nextGroups };
+  }
+  return null;
 }
 
 export function sameExchangeTarget(a: ExchangeTarget | undefined, b: ExchangeTarget): boolean {
   return !!a && a.lessonId === b.lessonId && a.turnId === b.turnId && a.boardRevision === b.boardRevision &&
-    a.objectId === b.objectId && a.batchId === b.batchId;
+    a.objectId === b.objectId && a.batchId === b.batchId &&
+    a.groupSize === b.groupSize && a.nextGroups === b.nextGroups;
 }
 
 export interface ExchangeAmounts {

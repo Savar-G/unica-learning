@@ -74,6 +74,8 @@ import { answersOwnQuestion, askedStep, doneReply, firstTimeTurn, yesReply, type
 import { deriveDrawings, type BoardRead, type TiedDrawing } from "./board-ties";
 import { chooseTransfer, relatedChoice, TRANSFER_MIN_MS, TRANSFER_OFFER, transferBoard, transferPackage, type RelatedStep, type TransferOperands } from "./transfer";
 import { EXCHANGE_OBJECT, exchangeChildWords, exchangeCommands, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingOffersAction, regroupingWords, sameExchangeTarget, supportsCheckedExchange, type CheckedExchangeLesson, type ExchangeAction, type ExchangeProposal, type ExchangeTarget, type ExchangeTurn, type RegroupingInstruction, type RegroupingObservation } from "./checked-exchange";
+import { asBoardActions, multiplyFacts, multiplyTransferPackage, multiplyWords, supportsCheckedMultiply, unitDisplay, type CheckedMultiplyLesson, type MultiplyProposal, type MultiplyTurn } from "./checked-multiply";
+import { childMultiplyTarget, hasUnconfirmedMultiplyHelp, initCheckedMultiply, matchesMultiplyProposal, multiplyAdditiveError, multiplyBatchCommands, multiplyHelp, multiplyProposalOf, multiplySwappedContext, multiplyTransferFor, multiplyTransferOutcome, multiplyWaitingForBoard, planMultiplyChildAction, planMultiplyTurn, type MultiplySessionHost } from "./multiply-lesson";
 import { agreementClause, askedStep as askedOperationStep, bindingReview, checkedSubtractionQuestion, checkTutorSay, continuedSay, stepsStated, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, FINAL_ASK, TUTOR_FIRST_TIME_WORD_LIMIT, TUTOR_REVIEW_IGNORED } from "./tutor";
 import { placeDigitsSaid } from "./tutor-math";
 import { MATH_REVIEW_PROMPT_VERSION, mathReviewsOf, type MathReview, type MathReviewInput } from "./math-review";
@@ -579,6 +581,7 @@ export interface Session {
    */
   tutor?: { help: number; drawn: string[]; sent?: { batch: string; keys: string[] }[]; offer?: true; childFirst?: string[] };
   checkedExchange?: CheckedExchangeLesson;
+  checkedMultiply?: CheckedMultiplyLesson;
   checkedRoutine?: true;
   sensitiveHold?: true;
   unsafeRequestAt?: number;
@@ -669,7 +672,8 @@ export function createSession(input: {
     ...shorterLimits(input.limitMs),
     ...(tutor ? { tutor: { help: 0, drawn: [] } } : {}),
     ...(input.checkedExchange === true && tutor && pkg && supportsCheckedExchange(pkg) ? { checkedExchange: { version: 1, progression: 1, transfers: 1, id: `${input.callId}:regrouping`, turns: [] } } : {}),
-    ...(input.checkedRoutine === true && tutor && pkg && supportsCheckedExchange(pkg) ? { checkedRoutine: true } : {}),
+    ...(input.checkedExchange === true && tutor && pkg && supportsCheckedMultiply(pkg) ? { checkedMultiply: initCheckedMultiply(input.callId, pkg) } : {}),
+    ...(input.checkedRoutine === true && tutor && pkg && (supportsCheckedExchange(pkg) || supportsCheckedMultiply(pkg)) ? { checkedRoutine: true } : {}),
   };
 }
 
@@ -880,8 +884,27 @@ export const transferEventKey = (callId: string) => `call:${callId}:transfer`;
 
 export function transferLearningEvent(session: Session, family: { parentId: string; childId: string }, relatedEventId: string): NewLearningEvent | null {
   const original = learningEvent(session, family);
+  if (!original) return null;
+  if (session.checkedMultiply?.transfer) {
+    const transfer = session.checkedMultiply.transfer;
+    if (transfer.state !== "started" && transfer.state !== "finished") return null;
+    const turns = session.checkedMultiply.turns.filter((turn) => turn.transfer);
+    const outcome = multiplyTransferOutcome(session.checkedMultiply).transfer!;
+    const result = outcome.result === "unfinished" ? "blank" : outcome.assistance === "independent" ? "right" : "right_with_help";
+    const started = transfer.startedAt ?? session.startedAt!;
+    return {
+      ...original,
+      key: transferEventKey(session.callId),
+      question: { source: "transfer", relatedEventId, text: multiplyTransferPackage(session.package!, transfer.operands).text },
+      result,
+      stuckStep: result === "right" ? null : "result",
+      hints: Math.min(turns.filter((turn) => turn.support === "hinted").length, MAX_HINTS),
+      timeMs: Math.min(Math.max(0, endTime(session) - started), MAX_TIME_MS),
+      assistance: outcome.assistance,
+    };
+  }
   const transfer = session.checkedExchange?.transfer;
-  if (!original || !transfer || (transfer.state !== "started" && transfer.state !== "finished")) return null;
+  if (!transfer || (transfer.state !== "started" && transfer.state !== "finished")) return null;
   const turns = session.checkedExchange!.turns.filter((turn) => turn.transfer);
   const outcome = transferOutcome(session).transfer!;
   const result = outcome.result === "unfinished" ? "blank" : outcome.assistance === "independent" ? "right" : "right_with_help";
@@ -1898,6 +1921,15 @@ export function step(session: Session, event: SessionEvent): StepResult {
           return refuse(s, "act_not_allowed", "No matching checked exchange is due.");
         }
         return deliverExchange(s, plan, effects);
+      }
+      if (event.fallback && isObject(event.proposal) && event.proposal.checkedMultiply === 1) {
+        const target = readExchangeTarget(event.proposal.childAction);
+        const host = multiplyHost(s);
+        const plan = target ? planMultiplyChildAction(host, target) : planMultiplyTurn(host, event.proposal.afterFailure === true);
+        if (!plan || !matchesMultiplyProposal(event.proposal, plan)) {
+          return refuse(s, "act_not_allowed", "No matching checked multiplication turn is due.");
+        }
+        return deliverMultiply(s, plan, effects);
       }
       if (shape) return { session: s, effects, refusal: { code: "invalid_proposal", reason: shape, allowed: (gate(s, {}) ?? actsNow(s, {}, false)).acts } };
       {
@@ -4786,6 +4818,11 @@ function heardAnswers(session: Session): ChildAnswer[] {
   if (!pkg || !session.turn || session.scopeDue) return [];
   if (session.checkedExchange?.progression && pkg.operation.kind === "subtract" &&
     regroupingReversal(session.turn.text, ...pkg.operation.operands)) return [];
+  if (session.checkedMultiply && pkg.operation.kind === "multiply") {
+    const ctx = session.checkedMultiply.context;
+    const f = multiplyFacts(ctx.groups, ctx.size, session.checkedMultiply.builtGroups, false, session.checkedMultiply.visualSupport, ctx);
+    if (f && (multiplySwappedContext(session.turn.text, f) || multiplyAdditiveError(session.turn.text, ctx.groups, ctx.size, null))) return [];
+  }
   const read = turnRead(session);
   if (read.choice) return [];
   const found: ChildAnswer[] = [];
@@ -5605,8 +5642,15 @@ function sessionScopeReason(s: Session, original: OperationPackage, text: string
   const pkg = transferNow(s) ?? original;
   const reason = scopeReason(pkg, text, s.exampleIntroduced === true || s.exampleShown > 0, reading);
   const { operation } = pkg;
-  return reason === "changed_problem" && s.checkedExchange?.progression && operation.kind === "subtract" &&
-    regroupingReversal(text, ...operation.operands) ? null : reason;
+  if (reason === "changed_problem" && s.checkedExchange?.progression && operation.kind === "subtract" &&
+    regroupingReversal(text, ...operation.operands)) return null;
+  if (reason === "changed_problem" && s.checkedMultiply && operation.kind === "multiply") {
+    const ctx = s.checkedMultiply.context;
+    const f = multiplyFacts(ctx.groups, ctx.size, s.checkedMultiply.builtGroups, false, s.checkedMultiply.visualSupport, ctx);
+    const [a, b] = operation.operands;
+    if ((f && multiplySwappedContext(text, f)) || multiplyAdditiveError(text, a, b, null)) return null;
+  }
+  return reason;
 }
 
 function matchesRegroupingInstruction(value: unknown, expected: RegroupingInstruction | undefined): boolean {
@@ -5690,13 +5734,159 @@ function regroupingChoice(s: Session, previous: ExchangeTurn | undefined, top: n
   if (!previous && REGROUPING_START.test(text)) return { step: "check_place" };
 }
 
-export function checkedExchangeProposal(s: Session, afterFailure = false): ExchangeProposal | null {
+export const hasCheckedLesson = (s: Session): boolean => !!(s.checkedExchange || s.checkedMultiply);
+
+export function checkedLessonTurns(s: Session): readonly { id: string; actions: readonly ExchangeAction[]; playback?: "finished" | "interrupted"; childAction?: ExchangeTarget }[] {
+  if (s.checkedExchange) return s.checkedExchange.turns;
+  if (s.checkedMultiply) return s.checkedMultiply.turns.map((t) => ({ id: t.id, actions: asBoardActions(t.actions), playback: t.playback, childAction: t.childAction }));
+  return [];
+}
+
+function multiplyHost(s: Session): MultiplySessionHost {
+  const lesson = s.checkedMultiply;
+  const related = lesson?.transfer?.state === "started" && s.package
+    ? multiplyTransferPackage(s.package, lesson.transfer.operands)
+    : null;
+  const activePkg = related ?? s.package;
+  const view: Session = related ? { ...s, package: related, done: [], solved: null, lastResult: null, passed: [] } : s;
+  const text = s.turn?.text.trim() ?? "";
+  const body = wholeTurn(text);
+  let committedNumber: number | null = null;
+  if (body !== null && !saysGuess(text)) {
+    const stripped = body.replace(/^(?:my (?:final )?answer is|i got|it'?s|it is)\s+/, "");
+    committedNumber = wholeValue(stripped);
+    if (committedNumber === null && lesson) {
+      const tails = [lesson.context.itemNoun, lesson.context.unit, unitDisplay(lesson.context.unit)]
+        .filter((x): x is string => !!x)
+        .map((x) => x.toLowerCase());
+      for (const tail of tails) {
+        if (stripped.endsWith(` ${tail}`)) {
+          committedNumber = wholeValue(stripped.slice(0, -(tail.length + 1)).trim());
+          if (committedNumber !== null) break;
+        }
+      }
+    }
+  }
+  const unclear = !!s.turn && (s.turn.uncertain || hasTranscriptAlternatives(s));
+  const rightProduct = !unclear && !s.scopeDue && !!activePkg &&
+    heardAnswers(view).some((a) => a.step === "result" && a.verdict === "right");
+  return {
+    callId: s.callId,
+    now: s.now,
+    startedAt: s.startedAt,
+    channel: s.channel ?? "voice",
+    state: s.state,
+    expect: s.expect,
+    batches: s.batches,
+    outcome: s.outcome,
+    solved: s.solved,
+    lastResult: s.lastResult,
+    noBoard: s.noBoard === true,
+    stopRequested: s.stopRequested,
+    sensitiveHold: s.sensitiveHold,
+    safetyFlagged: s.safety.flagged,
+    scopeDue: s.scopeDue,
+    turn: s.turn ? { text: s.turn.text, uncertain: s.turn.uncertain } : null,
+    turns: s.turns,
+    assistance: s.assistance,
+    package: s.package,
+    checkedMultiply: lesson,
+    closingAtMs: limitsOf(s).closingAtMs,
+    tutorTeachingNow: tutorTeachingNow(s),
+    isTeachingState: isTeaching(s.state),
+    hasAlternatives: hasTranscriptAlternatives(s),
+    rightProduct,
+    childSaysFalse: !!s.turn && childSaysFalse(s.turn.text),
+    committedNumber,
+    yesReply: !!s.turn && yesReply(s.turn.text),
+    doneReply: !!s.turn && doneReply(s.turn.text),
+    tellsAnswer: (pkg, texts) => tellsAnswer(view, pkg, texts, [], false),
+    boardTexts: (cmd) => boardTexts(cmd),
+  };
+}
+
+function recordMultiplySupport(s: Session, turn: MultiplyTurn, support: "hinted" | "demonstrated") {
+  if (turn.transfer) {
+    if (turn.support !== "demonstrated") turn.support = support;
+    return;
+  }
+  if (turn.support === "demonstrated" || turn.support === support) return;
+  turn.support = support;
+  if (support === "hinted") s.hints += 1;
+  recordExchangeHelp(s, support === "hinted" ? "hint" : "guided");
+}
+
+function deliverMultiply(s: Session, plan: MultiplyTurn, effects: Effect[]): StepResult {
+  const show = plan.actions.some((a) => a.kind === "show" || a.kind === "replace" || a.kind === "question");
+  const words = multiplyWords(plan.facts, plan.instruction, show) ?? [];
+  const text = words.join(" ");
+  const step = plan.instruction.step;
+  const lesson = s.checkedMultiply!;
+  if (!plan.transfer && !plan.facts.example) {
+    lesson.visualSupport = plan.facts.visualSupport;
+    lesson.builtGroups = Math.max(lesson.builtGroups, plan.facts.builtGroups);
+  } else if (plan.facts.example) {
+    lesson.visualSupport = "full";
+  }
+  if (step === "correct" || step === "offer") {
+    s.solved = "child";
+    s.lastResult = "right";
+  }
+  if (step === "offer") lesson.transfer = { operands: multiplyTransferFor(multiplyHost(s))!, state: "offered", done: [] };
+  if (step === "decline" && lesson.transfer?.state === "offered") lesson.transfer.state = "declined";
+  if (step === "transfer") {
+    Object.assign(lesson.transfer!, { state: "started", startedAt: s.now!, eventKey: transferEventKey(s.callId) });
+    lesson.visualSupport = "faded";
+  }
+  if (step === "transfer_correct") lesson.transfer!.state = "finished";
+  if (plan.childAction) {
+    recordExchangeHelp(s, "guided");
+    effects.push({ kind: "cancel_output" });
+  }
+  lesson.turns.push(plan);
+  s.batches += plan.actions.length;
+  const closes = step === "decline" || step === "transfer_correct";
+  effects.push({ kind: "say", act: closes ? "close" : "guide", text, exchangeTurnId: plan.id });
+  if (closes) {
+    s.turns.push({ at: s.now!, speaker: "maya", text, state: "CLOSE", act: "close" });
+    delete s.tutor!.offer;
+    delete s.mathClaim;
+    end(s, closeCause(s), effects, false);
+    return { session: s, effects, refusal: null };
+  }
+  for (const [index, action] of plan.actions.entries()) {
+    const rawSentence = (action.kind === "show" || action.kind === "replace") && step !== "worked_example" ? 1 : index;
+    const sentence = Math.min(rawSentence, Math.max(0, words.length - 1));
+    effects.push({
+      kind: "board",
+      sentence,
+      batch: {
+        transactionId: action.batchId,
+        commands: multiplyBatchCommands(action, plan, lesson.transfer?.operands),
+        ...(action.after ? { after: [action.after] } : {}),
+      },
+    });
+  }
+  s.turns.push({ at: s.now!, speaker: "maya", text, state: s.state, act: "guide" });
+  s.turn = null;
+  delete s.tutor!.offer;
+  delete s.mathClaim;
+  waitForChild(s);
+  return { session: s, effects, refusal: null };
+}
+
+export function checkedExchangeProposal(s: Session, afterFailure = false): ExchangeProposal | MultiplyProposal | null {
+  if (s.checkedMultiply) {
+    const plan = planMultiplyTurn(multiplyHost(s), afterFailure);
+    return plan ? multiplyProposalOf(plan, afterFailure) : null;
+  }
   const plan = checkedExchangePlan(s, afterFailure);
   if (!plan) return null;
   return { checkedExchange: 1, value: plan.facts.value, example: plan.facts.example, show: leadsWithBoard(plan), ...(plan.prompt ? { prompt: true } : {}), ...(plan.instruction ? { instruction: plan.instruction } : {}), ...(afterFailure ? { afterFailure: true } : {}) };
 }
 
 export function checkedExchangeWaitingForBoard(s: Session): boolean {
+  if (s.checkedMultiply) return multiplyWaitingForBoard(multiplyHost(s));
   const turn = s.turn;
   return !!turn && !turn.uncertain && tutorTeachingNow(s) &&
     !!s.checkedExchange?.turns.at(-1)?.actions.some(action => !action.fate) &&
@@ -5768,6 +5958,7 @@ function checkedExchangePlan(s: Session, afterFailure: boolean): ExchangeTurn | 
 
 /** The screen offers this target once it has drawn its show batch. */
 export function childExchangeTarget(s: Session): ExchangeTarget | undefined {
+  if (s.checkedMultiply) return childMultiplyTarget(multiplyHost(s));
   const prompt = s.checkedExchange?.turns.at(-1)?.prompt;
   if (!prompt || prompt.boardRevision !== s.batches || s.outcome || s.safety.flagged || s.sensitiveHold || s.stopRequested ||
     s.solved !== null || s.done.includes("ones") || s.noBoard || !isTeaching(s.state) || s.expect !== "child" || s.turn) return;
@@ -5801,8 +5992,12 @@ function childExchangePlan(s: Session, target: ExchangeTarget): ExchangeTurn | n
   };
 }
 
-export function childExchangeProposal(s: Session, target: ExchangeTarget, at: number): ExchangeProposal | null {
+export function childExchangeProposal(s: Session, target: ExchangeTarget, at: number): ExchangeProposal | MultiplyProposal | null {
   if (s.startedAt === null || at - s.startedAt >= limitsOf(s).closingAtMs) return null;
+  if (s.checkedMultiply) {
+    const plan = planMultiplyChildAction(multiplyHost(s), target);
+    return plan ? multiplyProposalOf(plan) : null;
+  }
   const plan = childExchangePlan(s, target);
   return plan ? { checkedExchange: 1, value: plan.facts.value, example: plan.facts.example, show: false, childAction: plan.childAction, ...(plan.instruction ? { instruction: plan.instruction } : {}) } : null;
 }
@@ -5867,6 +6062,30 @@ function deliverExchange(s: Session, plan: ExchangeTurn, effects: Effect[]): Ste
 
 function exchangeDelivery(session: Session, event: Extract<SessionEvent, { type: "exchange_sent" | "exchange_playback" | "exchange_presented" }>): StepResult {
   const s = structuredClone(session);
+  if (s.checkedMultiply) {
+    if (event.type === "exchange_presented") {
+      const action = s.checkedMultiply.turns.flatMap((turn) => turn.actions).find((action) => action.batchId === event.batchId);
+      if (action?.fate === "shown") action.presented = true;
+    } else {
+      const turn = s.checkedMultiply.turns.find((turn) => turn.id === event.turnId);
+      if (event.type === "exchange_sent" && turn) {
+        turn.sent = true;
+        for (const action of turn.actions) action.delivery = "sent";
+        if (s.channel === "chat") {
+          const support = multiplyHelp(turn);
+          if (support) recordMultiplySupport(s, turn, support);
+        }
+      }
+      if (event.type === "exchange_playback" && turn && !turn.playback && turn.actions.every((action) => action.delivery === "sent")) {
+        turn.playback = event.playback;
+        if (event.playback === "finished") {
+          const support = multiplyHelp(turn);
+          if (support) recordMultiplySupport(s, turn, support);
+        }
+      }
+    }
+    return { session: s, effects: [], refusal: null };
+  }
   if (event.type === "exchange_presented") {
     const action = s.checkedExchange?.turns.flatMap((turn) => turn.actions).find((action) => action.batchId === event.batchId);
     if (action?.fate === "shown") action.presented = true;
@@ -5919,8 +6138,10 @@ function hasUnconfirmedRegroupingHelp(s: Session): boolean {
     turn.sent && !turn.support && turn.playback !== "finished" && regroupingHelp(turn) !== undefined);
 }
 
-/** #1144: the related question's package once it started, else null. */
+/** #1144/#1154: the related question's package once it started, else null. */
 function transferNow(s: Session): OperationPackage | null {
+  const mTransfer = s.checkedMultiply?.transfer;
+  if (mTransfer?.state === "started" && s.package) return multiplyTransferPackage(s.package, mTransfer.operands);
   const transfer = s.checkedExchange?.transfer;
   return transfer?.state === "started" && s.package ? transferPackage(s.package, transfer.operands) : null;
 }
@@ -6028,6 +6249,7 @@ function transferAssistance(s: Session): RegroupingObservation["assistance"] {
 }
 
 function transferOutcome(s: Session): Pick<Outcome, "transfer"> {
+  if (s.checkedMultiply?.transfer) return multiplyTransferOutcome(s.checkedMultiply);
   const transfer = s.checkedExchange?.transfer;
   if (transfer?.state !== "started" && transfer?.state !== "finished") return {};
   const solved = s.checkedExchange!.turns.find((turn) => turn.transfer && turn.observation?.skill === "difference" && turn.observation.result === "correct");
@@ -6946,6 +7168,23 @@ export function streamedDrawing(session: Session, sentences: readonly string[], 
  */
 function boardFate(session: Session, e: Extract<SessionEvent, { type: "board_fate" }>): StepResult {
   const s: Session = structuredClone(session);
+  const mTurns = s.checkedMultiply?.turns ?? [];
+  const mActions = mTurns.flatMap((turn) => turn.actions);
+  const mAction = mActions.find((item) => item.batchId === e.batch);
+  if (mAction?.delivery === "sent" && !mAction.fate && BOARD_FATES.includes(e.fate)) {
+    mAction.fate = e.fate;
+    if (e.fate === "shown") {
+      const shown = new Set(mActions.filter((item) => item.fate === "shown").map((item) => item.batchId));
+      for (const turn of mTurns) {
+        for (const item of turn.actions) {
+          if (shown.has(item.batchId) && (!item.after || shown.has(item.after)) && item.kind !== "question") {
+            const support = item.kind === "show" || item.kind === "replace" ? "hinted" : multiplyHelp(turn);
+            if (support) recordMultiplySupport(s, turn, support);
+          }
+        }
+      }
+    }
+  }
   const turns = s.checkedExchange?.turns ?? [];
   const actions = turns.flatMap((turn) => turn.actions);
   const action = actions.find((action) => action.batchId === e.batch);
@@ -7403,7 +7642,7 @@ function outcomeOf(s: Session, cause: Reason): Outcome {
   return {
     reason,
     assistance,
-    ...(assistance === "independent" && hasUnconfirmedRegroupingHelp(s) ? { helpUnconfirmed: true } : {}),
+    ...(assistance === "independent" && (hasUnconfirmedRegroupingHelp(s) || hasUnconfirmedMultiplyHelp(s.checkedMultiply)) ? { helpUnconfirmed: true } : {}),
     ...transferOutcome(s),
     paperStatus: s.paper,
     understanding: s.understanding,

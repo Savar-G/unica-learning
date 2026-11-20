@@ -211,3 +211,35 @@ describe("#1020 review fixes", () => {
     expect(multiplyKind.fits(opPkg("Kai buys 20 packs of 3 books. How many books is that?", mul(20, 3), mul(2, 2)))).toBe(true);
   });
 });
+
+describe("#1088 false-refusal regressions", () => {
+  const ctx = (pkg: OperationPackage) => ({ stance: "none" as const, answer: (pkg.answer.value as { value: number }).value, claims: (x: string) => multiplyKind.claimProblems(pkg, x) });
+
+  it("does not refuse a negated remainder claim through fullRead", () => {
+    const negated = "It is not true that 2 goes into 13 6 times with 2 left over.";
+    expect(multiplyKind.claimProblems(P.divide, negated)).toEqual([]);
+    const checked = checkTutorSay(negated, ctx(P.divide));
+    expect(checked).toMatchObject({ ok: true });
+    if (checked.ok) expect(checked.math).toContain(negated);
+    // Control: the unnegated false remainder is still refused.
+    expect(checkTutorSay("2 goes into 13 6 times with 2 left over.", ctx(P.divide))).toMatchObject({ ok: false, reason: "false_equation" });
+  });
+
+  it("does not refuse true half, double, or triple claims in checkTutorSay and leaves them for review", () => {
+    for (const sentence of [
+      "Half of 1340 is 670.",
+      "Double 670 is 1340.",
+      "Twice 670 is 1340.",
+      "Triple 4 is 12.",
+      "Half of 12 is 6.",
+      "Double 6 is 12.",
+    ]) {
+      const checked = checkTutorSay(sentence, ctx(P.divide));
+      expect(checked, sentence).toMatchObject({ ok: true });
+      if (checked.ok) expect(checked.math, sentence).toContain(sentence);
+    }
+    // Control: false half/double claims are still refused.
+    expect(checkTutorSay("Half of 1340 is 680.", ctx(P.divide))).toMatchObject({ ok: false, reason: "false_equation" });
+    expect(checkTutorSay("Double 670 is 1300.", ctx(P.divide))).toMatchObject({ ok: false, reason: "false_equation" });
+  });
+});

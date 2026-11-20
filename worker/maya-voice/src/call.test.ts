@@ -22,7 +22,7 @@ import { callSpend, createSpendLedger, spendConfig, SPEND_CLOSE, WEEK_MICROS } f
 import { memorySpendStore } from "@/lib/maya-spend-memory";
 import { checkTrace } from "@/lib/maya-trace";
 import { BOARD_CLOSE_SETTLE_MS, RECONNECT_GRACE_MS, REJOIN_AFTER_LEAVE_MS, voiceProviders } from "@/lib/maya-voice";
-import type { QuestionPackage } from "@/lib/question-package";
+import { workedSteps, type OperationPackage, type QuestionPackage } from "@/lib/question-package";
 import { mayaWorkbookFixture } from "@/lib/maya-workbook-fixture";
 import { selectWorkbookQuestion } from "@/lib/maya-workbook-question";
 import { spokenMath } from "@/lib/maya-voice-spoken";
@@ -143,7 +143,7 @@ afterEach(async () => {
   vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs();
 });
 
-async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["spend"]; speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel; board?: boolean; timestamps?: boolean; workbookReference?: string; measureBaseline?: boolean; exchange?: boolean; transport?: (receiver: BoardReceiver) => BoardTransport } = {}) {
+async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["spend"]; speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel; board?: boolean; timestamps?: boolean; workbookReference?: string; measureBaseline?: boolean; exchange?: boolean; package?: OperationPackage; transport?: (receiver: BoardReceiver) => BoardTransport } = {}) {
   const clock = handTimers();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -169,7 +169,7 @@ async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["
   const fixture = options.workbookReference ? await mayaWorkbookFixture() : null;
   const selected = fixture ? await selectWorkbookQuestion({ childId: fixture.ids.child, workbookId: fixture.ids.workbook, reference: options.workbookReference }, fixture.reader) : null;
   if (selected && !selected.ok) throw Error(selected.error);
-  const pkg = selected?.ok ? selected.package : options.exchange ? { ...SAMPLE_PACKAGES["subtract-52-28"], ref: PKG.ref } : PKG;
+  const pkg = options.package ?? (selected?.ok ? selected.package : options.exchange ? { ...SAMPLE_PACKAGES["subtract-52-28"], ref: PKG.ref } : PKG);
   const started = await calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: pkg, confirmWorkbook: !!selected?.ok, startedBy: "admin-1" });
   if (!started.ok) throw new Error(started.error);
   const config = voiceProviders({});
@@ -557,6 +557,51 @@ it("interrupts a regrouping prompt in playout and shows the child's exchange onc
     expect(c.call.session.checkedExchange?.turns.find(t => t.prompt)?.playback).toBe("interrupted");
     const latest = (await c.calls.view(c.id))!;
     expect(latest.exchange).toBeUndefined();
+    expect(await c.run.exchange(target)).toBe("done");
+  } finally { speaker.finishPlayback(); }
+});
+
+it("lets a multiplication child group action interrupt speech, update the array board, and advance to the next group", async () => {
+  let now = () => T0;
+  const speaker = new HeldSpeaker(() => now());
+  const mulOp = { kind: "multiply" as const, operands: [3, 4] as [number, number] };
+  const easier = { kind: "multiply" as const, operands: [2, 2] as [number, number] };
+  const mulPkg: OperationPackage = {
+    id: "mul-3-4-voice",
+    ref: PKG.ref,
+    templateId: null,
+    text: "There are 3 bags with 4 apples in each bag. How many apples are there in all?",
+    answer: { value: { type: "number", value: 12 }, accepted: [], unit: null },
+    operation: mulOp,
+    steps: workedSteps(mulOp),
+    skill: { standard: "4.8", skills: ["4.8-multiplication-facts"] },
+    level: 12,
+    difficulty: 2,
+    wrongAnswers: [{ value: { type: "number", value: 7 }, cause: "careless", description: "Added instead of multiplying.", step: null }],
+    easierExample: { text: "2 × 2 = ?", operation: easier, answer: { type: "number", value: 4 }, steps: workedSteps(easier) },
+  };
+  const c = await voiceCall({ speaker, model: ruleConversationalModel(), board: true, timestamps: true, exchange: true, package: mulPkg });
+  now = c.clock.now;
+  try {
+    await c.run.childJoined();
+    await waitFor(() => c.said().length > 0 && c.session.agentState === "listening", "opening");
+    speaker.held = true;
+    const stopped = vi.spyOn(speaker, "clearBuffer");
+    await c.childSays("How do I build the groups?");
+    await waitFor(() => speaker.pendingPlayoutSegments > 0, "the group prompt audio");
+    await c.clock.advance(1);
+    await waitFor(() => c.session.agentState === "speaking" && c.receiver.snapshot().events.some(
+      e => e.kind === "batch" && JSON.stringify(e.commands).includes("multiply-groups"),
+    ), "the initial array batch while the prompt is playing");
+    const target = (await c.calls.view(c.id))!.exchange!;
+    expect(target).toMatchObject({ objectId: "multiply-groups", groupSize: 4, nextGroups: 2 });
+    const res = await c.run.exchange(target);
+    expect(res).toBe("accepted");
+    expect(stopped).toHaveBeenCalled();
+    await waitFor(() => c.said().join(" ").includes("2 bags of 4"), "Maya's reply to the group action");
+    expect(c.call.session.checkedMultiply?.builtGroups).toBe(2);
+    const next = (await c.calls.view(c.id))!.exchange!;
+    expect(next).toMatchObject({ objectId: "multiply-groups", groupSize: 4, nextGroups: 3 });
     expect(await c.run.exchange(target)).toBe("done");
   } finally { speaker.finishPlayback(); }
 });
