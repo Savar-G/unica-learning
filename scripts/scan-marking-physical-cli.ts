@@ -152,22 +152,33 @@ export async function preparePhysical(options: { kit: string; photos: string; tr
 async function writeBytes(path: string, bytes: Uint8Array) { const file = await open(path, "wx", 0o600); try { await file.writeFile(bytes); await file.sync(); } finally { await file.close(); } }
 
 export interface PhysicalPlan { version: typeof PHYSICAL_VERSION; owner: string; source: Record<string, string>; setHash: string; settings: ReturnType<typeof physicalSettings>; evidences: EndpointEvidence[]; requests: { photo: string; image: string; request: string }[]; fixed: { manifest: string; photos: { photo: string; image: string; request: string }[] } | null }
+// Import specifiers depend solely on a file's exact content bytes (keyed by SHA-256). Every call still reads and
+// hashes the live bytes from disk, so any on-disk change immediately invalidates the parsed entry.
+const IMPORTS_BY_HASH = new Map<string, readonly string[]>();
+
 async function sourceHashes(root: string) {
   const hashes = new Map<string, string>();
   const visit = async (path: string): Promise<void> => {
     if (hashes.has(path)) return;
     if (!path.startsWith(resolve(root) + "/")) throw Error("source-outside-checkout");
-    const bytes = await regularBytes(path, 8 * 1024 * 1024); hashes.set(path, hashBytes(bytes));
+    const bytes = await regularBytes(path, 8 * 1024 * 1024);
+    const contentHash = hashBytes(bytes);
+    hashes.set(path, contentHash);
     if (!/\.[cm]?tsx?$/.test(path)) return;
     // Bind transitive local source too, including the fraction reader and checked-package logic.
-    const imports: string[] = [];
-    const syntax = ts.createSourceFile(path, bytes.toString(), ts.ScriptTarget.Latest, true);
-    const scan = (node: ts.Node) => {
-      if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) imports.push(node.moduleSpecifier.text);
-      if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments[0] && ts.isStringLiteral(node.arguments[0])) imports.push(node.arguments[0].text);
-      ts.forEachChild(node, scan);
-    };
-    scan(syntax);
+    let imports = IMPORTS_BY_HASH.get(contentHash);
+    if (!imports) {
+      const foundImports: string[] = [];
+      const syntax = ts.createSourceFile(path, bytes.toString(), ts.ScriptTarget.Latest, true);
+      const scan = (node: ts.Node) => {
+        if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) foundImports.push(node.moduleSpecifier.text);
+        if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments[0] && ts.isStringLiteral(node.arguments[0])) foundImports.push(node.arguments[0].text);
+        ts.forEachChild(node, scan);
+      };
+      scan(syntax);
+      imports = foundImports;
+      IMPORTS_BY_HASH.set(contentHash, imports);
+    }
     for (const spec of imports) {
       if (!spec.startsWith(".") && !spec.startsWith("@/")) continue;
       const base = spec.startsWith("@/") ? resolve(root, "src", spec.slice(2)) : resolve(path, "..", spec);

@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { chromiumPrintEngine, findChromium } from "@/lib/print-engine-chromium";
+import { afterAll, describe, expect, it } from "vitest";
+import { findChromium, sharedChromiumPrintEngine } from "@/lib/print-engine-chromium";
 import { calibratePhoto, cropBox, cropPlan, type Calibration, type CropItem, type Raster } from "@/lib/scan-calibration";
 import { cropCut, drawDigit, greyRaster, photoJpeg, photographed, readDigit, rotatedCorners, uprightCorners } from "@/lib/scan-synthetic";
 import { printContractForPhoto, type PagePrintContract } from "@/lib/workbook-print-contract";
@@ -13,23 +13,35 @@ import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
 // handwriting, a real camera or a curled saddle-stitched page. Runs where a Chromium is found; skipped elsewhere.
 
 const chromium = await findChromium();
+const engine = sharedChromiumPrintEngine();
+afterAll(() => engine.close());
 const PARENT = "11111111-1111-4111-8111-111111111111";
 const CHILD = "22222222-2222-4222-8222-222222222222";
 const REVISION = "c".repeat(28);
 
 const SIZE = { width: 1500, height: 1900 };
+const renderedCache = new Map<string, ReturnType<typeof renderLevelPages>>();
 
-async function renderedPages(level: string) {
+async function renderLevelPages(level: string) {
   const { draft } = sampleBook({ level, workbookId: "55555555-5555-4555-8555-000000000041", childId: CHILD, child: "Mateo", number: 2 });
   // The first Day 1 pages that hold at least one question.
   const pages = draft.pages.filter((p: DraftPage) => p.dayLabel === "Day 1" && p.questions.length > 0).slice(0, 4);
-  const result = await renderWorkbook({ draft: { ...draft, pages }, parentId: PARENT, template: workbookTemplate(await fixedTemplateFonts()), engine: chromiumPrintEngine() });
+  const result = await renderWorkbook({ draft: { ...draft, pages }, parentId: PARENT, template: workbookTemplate(await fixedTemplateFonts()), engine });
   if (result.status !== "rendered") throw new Error(JSON.stringify(result.problems.slice(0, 3)));
   return result.workbook.pages.flatMap((page) => {
     const plan = cropPlan(page.questions.map((q) => ({ number: q.number, package: q.package as never, regions: q.regions ?? null })));
     const png = result.files.find((f) => f.path === page.image!.path)?.bytes;
     return page.printContract && png ? [{ number: page.number, contract: page.printContract, png, plan, link: pageUrl(page.qrToken), writing: page.questions.flatMap((q) => (q.regions ?? []).flatMap((r) => (r.box ? [r.box] : []))) }] : [];
   });
+}
+
+function renderedPages(level: string) {
+  let promise = renderedCache.get(level);
+  if (!promise) {
+    promise = renderLevelPages(level);
+    renderedCache.set(level, promise);
+  }
+  return promise;
 }
 
 const CORNERS = {
