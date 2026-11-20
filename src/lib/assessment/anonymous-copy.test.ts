@@ -143,6 +143,23 @@ const keysOf = (value: unknown): string[] => typeof value !== "object" || value 
   : Array.isArray(value) ? value.flatMap(keysOf) : Object.entries(value).flatMap(([k, v]) => [k, ...keysOf(v)]);
 
 describe("the copy without names", () => {
+  it("copies the saved figure measurements and drops unrecognized fields", () => {
+    const fixture = source();
+    const [first, second, third, ...rest] = fixture.stored.stage1;
+    const bars = { kind: "bars", bars: [{ label: "Books", value: 5 }] } as const;
+    const clock = { kind: "clock", hour: 10, minute: 15 } as const;
+    const extendedBars = { ...bars, bars: bars.bars.map((b) => ({ ...b, note: "maya.parent@example.invalid" })) };
+    const extendedClock = { ...clock, note: "maya.parent@example.invalid" };
+    fixture.stored.stage1 = [
+      { ...first, figure: extendedBars },
+      { ...second, figure: extendedClock },
+      { ...third, figure: { kind: "polygon", shape: "triangle" } },
+      ...rest,
+    ];
+    const copy = anonymousTestCopy(fixture);
+    expect(copy.questions.slice(0, 3).map((q) => q.figure)).toEqual([bars, clock, { kind: "polygon", shape: "triangle" }]);
+  });
+
   it("is an allowlist: no name, email, postal code, family or test id, drawing, stroke, typed working or free text", () => {
     const copy = anonymousTestCopy(source());
     expect(Object.keys(copy)).toEqual([...COPY_FIELDS.test]);

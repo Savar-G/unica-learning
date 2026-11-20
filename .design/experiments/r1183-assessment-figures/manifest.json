@@ -1,0 +1,29 @@
+{
+  "issue": 1183,
+  "base": "91896b2203351b095ea329033f42786cbcf05b04",
+  "surface": "Existing TakeTest question screen with an invented local assessment fixture. The fixture serves seeded questions through the standard question interface and marks submitted answers with submitAnswer.",
+  "browser": "Aside account u0",
+  "phone": {
+    "viewport": [390, 844],
+    "captures": [
+      "kindergarten-phone.png", "corners-phone.png", "ruler-phone.png",
+      "fraction-line-phone.png", "decimal-line-phone.png", "clock-phone.png", "symmetry-phone.png",
+      "double-bars-phone.png", "plant-height-phone.png", "line-graph-phone.png",
+      "circle-graph-phone.png", "coordinates-phone.png", "circumference-phone.png", "circle-phone.png",
+      "net-phone.png", "triangle-phone.png", "missing-leg-phone.png", "cylinder-phone.png", "relation-phone.png",
+      "truncated-bars-phone.png"
+    ]
+  },
+  "desktop": {
+    "viewport": [1440, 1024],
+    "captures": [
+      "clock-desktop.png", "ruler-desktop.png", "double-bars-desktop.png",
+      "circle-desktop.png", "net-desktop.png", "truncated-bars-desktop.png"
+    ]
+  },
+  "flow": {
+    "capture": "rounded-answer.mp4",
+    "method": "Sequence of Aside screenshots during a continuous visit to the local assessment screen.",
+    "result": "The 4 cm radius gives an exact area of 50.24 square centimetres. The fixture marked 50.2 correct and advanced to question 2."
+  }
+}

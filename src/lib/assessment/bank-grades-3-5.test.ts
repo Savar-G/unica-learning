@@ -671,7 +671,8 @@ describe("primary-source corrections from the #75 checker run", () => {
   it.each(["g35-4-bar-scale", "g35-5-double-bar-difference"])("%s: the voice does not read the bar values, so reading the graph stays the skill (#79)", (id) => {
     for (const seed of SEEDS) {
       const q = fillTemplate(byId(id), seed);
-      for (const bar of q.figure!.bars) expect(q.readAloud).not.toMatch(new RegExp(`\\b${bar.value}\\b`));
+      if (q.figure?.kind !== "bars") throw new Error("Expected a bar graph");
+      for (const bar of q.figure.bars) expect(q.readAloud).not.toMatch(new RegExp(`\\b${bar.value}\\b`));
       expect(q.readAloud).toContain("Look at the graph.");
     }
   });

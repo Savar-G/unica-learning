@@ -7,8 +7,8 @@ describe("figures the screen draws (#79)", () => {
   it("the bar graph question sends its bars to the screen, and its text asks the child to read them", () => {
     for (const seed of [1, 2, 3, 4, 5]) {
       const q = toPublicQuestion(fillTemplate(template, seed));
-      expect(q.figure?.kind).toBe("bars");
-      const bars = q.figure!.bars;
+      if (q.figure?.kind !== "bars") throw new Error("Expected a bar graph");
+      const bars = q.figure.bars;
       expect(bars).toHaveLength(2);
       for (const bar of bars) {
         expect(q.prompt.toLowerCase()).toContain(bar.label.toLowerCase());

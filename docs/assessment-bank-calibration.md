@@ -39,3 +39,21 @@ New numeric questions save their grading policy with the filled question. A sing
 The target is one or two easy, two or three medium, and at most two hard. Every full BC block in this sample met it. Grades 3–5 each had 40 shorter coverage blocks in both runs because only the remaining strand evidence was needed. Short blocks use the closest available mix. The selector preserves the rotation's strand slots and the coverage block's required strands and nearest levels. If those slots lack the preferred ratings, it fills from eligible inventory and minimizes excess hard questions first. The regression suite exercises a six-item all-hard eligible pool. Difficulty ratings are estimates, and this run measures selection against those labels.
 
 A three-seed spot check for each of the other tagged curricula found one full-block exception. Alberta Grade 7 at seed 15838 needed number, fractions and algebra coverage slots at Grade 7. Each slot had only one eligible hard item left at that level. The resulting coverage block had one easy, two medium and three hard questions.
+
+## Pass 2 figures and hand arithmetic
+
+Issue #1183. Pass 2 adds ten BC templates and introduces 19 replacements across the supported curricula, including the Ontario Grade 7 cylinder variant. The original and pass 1 IDs stay in the catalogue. Replacements inherit the eligible template's province tags. New coverage uses the BC skill map.
+
+| Grade | Visual questions | Additional coverage |
+|---|---|---|
+| K–2 | A turned shape, corners on a shape, and a pencil aligned to a ruler | Grade 1 shape attributes |
+| 3–4 | Fraction and decimal number lines, analog clock, and line symmetry | Addition facts to 20 and related division facts |
+| 5–6 | A scaled double bar graph and a line graph | Scaling a known addition fact and reading a height from a graph |
+| 7–8 | Coordinate grid, circle graph, circle and cylinder measurements, right triangles, and a cube net | Reading integer coordinates, finding a linear rule, and deciding if a net folds into a cube |
+| 9 | A bar graph with an axis starting above zero | |
+
+The circle and cylinder questions use 3.14 for π and smaller products. Each prompt accepts its exact key or the nearest tenth, computed in integer hundredths and saved with the question. The revised fraction-to-decimal question uses denominators that scale to 100. The diameter, right-triangle and percent-change questions use smaller values that suit working on paper.
+
+The question renderer and admin timeline use the same figure component. Each SVG has a text alternative. The assessment keeps the steps that use the figure, such as comparing two bars or converting clock-hand positions. Stored attempts keep their original figure data, key, grading policy and block selector. The anonymous assessment copy keeps the new figure data through the same field allowlist as the old bars.
+
+Invented-data phone, desktop and rounded-answer flow captures are in [the figure review round](../.design/experiments/r1183-assessment-figures/manifest.json).
