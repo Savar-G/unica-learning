@@ -155,7 +155,9 @@ export function Desk(props: DeskProps) {
   // #1107: also as Maya's streamed message grows.
   const lastLine = chat.chat?.transcript.at(-1)?.text.length;
   useEffect(() => {
-    if (picked !== null && talk.current) talk.current.scrollTop = talk.current.scrollHeight;
+    // The "Maya says" column scrolls, not the transcript inside it.
+    const column = talk.current?.closest<HTMLElement>(".desk-maya");
+    if (picked !== null && column) column.scrollTop = column.scrollHeight;
   }, [picked, chat.chat?.transcript.length, lastLine, voice.call?.transcript.length]);
 
   const ref = chat.chat?.question;
