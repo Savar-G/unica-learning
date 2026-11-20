@@ -298,7 +298,8 @@ export class MayaVoiceAgent extends voice.Agent {
       // The reply's first sentences may stream (D-341), unless the call's own start runs in the same work.
       return this.reply(stoppedSpeakingAt(chatCtx), async (say) => [
         ...((await this.starting, opening) ? [await this.call.start()] : []),
-        await this.call.child(heard.text, heard.uncertain ? { uncertain: true, alternatives: heard.alternatives } : undefined, opening ? undefined : say),
+        // Another reading (a sound-alike number, #1146) goes with the turn even when no part was unsure: no credit before a confirm.
+        await this.call.child(heard.text, heard.uncertain || heard.alternatives.length > 0 ? { uncertain: heard.uncertain, alternatives: heard.alternatives } : undefined, opening ? undefined : say),
       ], heldMarks.at(-1) ?? null, heldMarks.map(m => m.finalId));
     }
     if (!opening) return null;

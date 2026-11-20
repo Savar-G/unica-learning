@@ -1156,7 +1156,7 @@ function gate(s: Session, reading: Reading): Allowed | null {
     }
     // A confirm that could credit nothing is no use: the normal help comes instead ("Is it 6?" on the ones, "I carried 1.").
     // A claim's result in another person's words or a copy ("My mom said 1440."): no confirm either (claim.ts, #737 P1).
-    if (stepOnlyTurn(s) || claimJudgedWrong(s) || claimResultUnconfirmable(s)) return null;
+    if ((stepOnlyTurn(s) && !otherReadingCredits(s)) || claimJudgedWrong(s) || claimResultUnconfirmable(s)) return null;
     if (s.confirmTries < 2) return { acts: ["confirm"], code: "confirm_first", reason: "What the child said is unclear: confirm it before judging any math." };
     return {
       acts: s.offeredOtherInput ? ["close"] : ["offer_other_input", "close"],
@@ -1405,7 +1405,7 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   // ...and only for what was not clear (#605: "I carry the 1 to the tens" got "Was that 1?"): a turn code or the model
   // read as unclear, numbers speech heard two ways, a choice, or a final answer the child is not sure of.
   const confirm: Act[] = s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !again && !claimJudgedWrong(s) && !claimResultUnconfirmable(s) &&
-    (stepSaidUnheard(s) || claimResultUnheard(s) || (notClear(s, reading) && !stepOnlyTurn(s))) ? ["confirm"] : [];
+    (stepSaidUnheard(s) || claimResultUnheard(s) || (notClear(s, reading) && (!stepOnlyTurn(s) || otherReadingCredits(s)))) ? ["confirm"] : [];
   if (s.state === "TIME_CLOSE") {
     const acts: Act[] = s.solved !== null ? (s.writeAsked ? ["close"] : ["ask_write", "close"])
       : rightResult ? ["accept_answer", "close"] : misses >= 2 ? ["close"] : (s.workAttempts ?? 0) > 0 ? ["ask_write", "close"] : ["close"];
@@ -2349,7 +2349,9 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       // The loop guard's confirm asks the column's total, the one number its yes credits.
       if (guarded && !(s.heardAsked && saidAs(guarded, s.heardAsked))) return no("line_not_offered", `Ask if the child said ${valueText(guarded)}: confirm.heard with ${valueText(guarded)}.`, allowedNow);
       const total = stepSaidUnheard(s) ? stepConfirmable(s) : guarded;
-      s.stepAsked = total && s.heardAsked && saidAs(total, s.heardAsked) ? s.heardAsked : null;
+      // #1146: a confirm of the other reading of a turn heard two ways ("Six teen.": "Did you say 16?") asks that step too.
+      const otherAsked = !!s.heardAsked && otherReadingValues(s).some((v) => saidAs(v, s.heardAsked!) && otherReadingStep(s, v));
+      s.stepAsked = (total && s.heardAsked && saidAs(total, s.heardAsked)) || otherAsked ? s.heardAsked : null;
       const result = claimResultAsked(s);
       s.resultAsked = result && s.heardAsked && saidAs(result, s.heardAsked) ? s.heardAsked : null;
       // A claim's bare word said back (claim.ts): a plain yes to it commits that word.
@@ -2808,6 +2810,41 @@ function notClear(s: Session, reading: Reading): boolean {
 function hasTranscriptAlternatives(s: Session): boolean {
   const last = s.turns.findLastIndex((turn) => turn.speaker === "maya");
   return s.turns.slice(last + 1).some((turn) => (turn.alternatives?.length ?? 0) > 0);
+}
+
+/**
+ * #1146: the other reading of a turn heard two ways could earn credit ("Six teen." reads as 6, the tens total, but its
+ * other reading 16 is the ones step): a confirm is of use even when the turn's own reading answers only another step.
+ */
+function otherReadingCredits(s: Session): boolean {
+  const pkg = s.package;
+  return !!pkg && otherReadingValues(s).some((v) => otherReadingStep(s, v) || rightForQuestion(pkg, v));
+}
+
+/** The numbers in the other readings of the child's turns since Maya last spoke. */
+function otherReadingValues(s: Session): AnswerValue[] {
+  if (!s.package) return [];
+  const opts = readOptionsFor(s.package);
+  const last = s.turns.findLastIndex((turn) => turn.speaker === "maya");
+  return s.turns.slice(last + 1).flatMap((t) => (t.speaker === "child" ? (t.alternatives ?? []).flatMap((a) => valuesIn(a, opts)) : []));
+}
+
+/** Whether `value`, from another reading of the turn, is the value of a step not done yet: a yes to its confirm credits it. */
+function otherReadingStep(s: Session, value: AnswerValue): boolean {
+  return currentSteps(s).some((st) => answersStep(st, value));
+}
+
+/**
+ * #1146: the child's turn names one number, the one Maya's confirm just asked about ("Did you say 16?" or "16 or 60?",
+ * then "Sixteen."). Heard two ways again (a sound-alike always is, below the bar), it still answers her question, so the
+ * child is not asked a third time for the number they already said twice. A split teen (uncertain) still is.
+ */
+function answersConfirm(s: Session, value: AnswerValue): boolean {
+  const asked = s.turns.findLast((t) => t.speaker === "maya");
+  if (asked?.act !== "confirm" || !s.turn || !s.package) return false;
+  const opts = readOptionsFor(s.package);
+  const said = valuesIn(s.turn.text, opts);
+  return said.length === 1 && saidAs(said[0], value) && valuesIn(asked.text, opts).some((v) => saidAs(v, value));
 }
 
 /** A hedge ("I think it's 66", "maybe", a question) is not clear, though the reader may find it sure: the one doubt check. */
@@ -3944,7 +3981,7 @@ function ownTurn(s: Session, target: WorkedStep | null, value: AnswerValue, opti
   if (!pkg || !s.turn) return "not_said";
   if (s.turn.uncertain) return "uncertain";
   const last = s.turns.map((t) => t.speaker).lastIndexOf("maya");
-  if (s.turns.slice(last + 1).some((t) => t.speaker === "child" && (t.alternatives?.length ?? 0) > 0)) return "uncertain";
+  if (s.turns.slice(last + 1).some((t) => t.speaker === "child" && (t.alternatives?.length ?? 0) > 0) && !answersConfirm(s, value)) return "uncertain";
   const opts = readOptionsFor(pkg);
   const raw = (options.text ?? s.turn.text).trim().replace(/[’‘]/g, "'").replace(/[“”]/g, "\"").replace(/'cause\b/gi, "because")
     // A stutter ("s-s-sixty-six") is the word it starts.

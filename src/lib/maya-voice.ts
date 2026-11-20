@@ -15,6 +15,7 @@
 //   the time limits), never while Maya is still speaking.
 import { limitsOf, PAUSES, TIME_LIMITS, type Session } from "@/lib/maya";
 import type { AnswerValue, QuestionPackage } from "@/lib/question-package";
+import { otherReadings } from "@/lib/maya-voice-heard";
 
 /** The worker's agent name: LiveKit sends a job to this worker only when the token's room asks for it. */
 export const VOICE_AGENT_NAME = "maya-voice";
@@ -42,6 +43,12 @@ export const JOIN_WAIT_MS = 2 * 60_000;
 export const MIC_WAIT_MS = VOICE_TOKEN_TTL_SECONDS * 1000;
 /** A transcript the speech-to-text is less sure of than this is uncertain: Maya confirms a number in it. */
 export const UNSURE_CONFIDENCE = 0.6;
+/**
+ * A short turn with a sound-alike number ("fourteen", "forty", "14") below this is heard both ways, and Maya confirms
+ * before credit (#1146). Real AssemblyAI finals for a clearly spoken lone "fourteen" scored 0.63 to 0.86 (n 17,
+ * 2026-11-20): confidence does not tell "fourteen" from "forty", so a lone sound-alike number is confirmed.
+ */
+export const SOUND_ALIKE_CONFIDENCE = 0.9;
 /** A started voice call cannot still be running after this long (ms): the admin may end it by hand. */
 export const VOICE_CALL_STALE_MS = TIME_LIMITS.endAtMs + 60_000;
 
@@ -434,14 +441,20 @@ export interface Heard {
 
 /**
  * A child turn from the final transcripts of one turn: the words joined, uncertain when any part was below
- * UNSURE_CONFIDENCE, with the other alternatives of the unsure parts (so the session can confirm what it heard).
+ * UNSURE_CONFIDENCE, with the other alternatives of the unsure parts (so the session can confirm what it heard). A
+ * number that can be heard two ways adds its other reading (./maya-voice-heard.ts): a teen split by a pause ("four
+ * teen") makes the turn uncertain, and a sound-alike number in a short turn below SOUND_ALIKE_CONFIDENCE ("fourteen" at
+ * 0.75) adds its partner ("forty"). The session credits no turn with alternatives; it confirms first.
  */
 export function childTurnFrom(finals: readonly (readonly Heard[])[]): { text: string; uncertain: boolean; alternatives: string[] } | null {
   const best = finals.map((alts) => alts[0]).filter((h): h is Heard => !!h && h.text.trim().length > 0);
   if (best.length === 0) return null;
   const unsure = finals.filter((alts) => alts[0] && alts[0].text.trim() && typeof alts[0].confidence === "number" && alts[0].confidence < UNSURE_CONFIDENCE);
-  const alternatives = [...new Set(unsure.flatMap((alts) => alts.slice(1).map((h) => h.text.trim()).filter(Boolean)))].slice(0, 4);
-  return { text: best.map((h) => h.text.trim()).join(" "), uncertain: unsure.length > 0, alternatives };
+  const text = best.map((h) => h.text.trim()).join(" ");
+  const lowest = Math.min(...best.map((h) => (typeof h.confidence === "number" ? h.confidence : 1)));
+  const other = otherReadings(text, lowest, SOUND_ALIKE_CONFIDENCE);
+  const alternatives = [...new Set([...unsure.flatMap((alts) => alts.slice(1).map((h) => h.text.trim()).filter(Boolean)), ...other.alternatives])].slice(0, 4);
+  return { text, uncertain: unsure.length > 0 || other.uncertain, alternatives };
 }
 
 /**

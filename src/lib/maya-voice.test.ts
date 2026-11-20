@@ -205,6 +205,32 @@ describe("what the child said", () => {
     expect(childTurnFrom([[{ text: "six" }]])).toEqual({ text: "six", uncertain: false, alternatives: [] });
     expect(childTurnFrom([[{ text: "  " }], []])).toBeNull();
   });
+  // #1146: real AssemblyAI finals for a clearly said lone "fourteen" scored 0.63 to 0.86 (n 17, 2026-11-20).
+  it.each([
+    ["Fourteen.", 0.8, ["Forty."]],
+    ["forty", 0.7, ["fourteen"]],
+    ["14.", 0.74, ["40."]],
+    ["Is it 90?", 0.85, ["Is it 19?"]],
+    ["Four no, fourteen.", 0.79, ["Four no, forty."]],
+  ])("hears a sound-alike number in a short turn below the bar both ways: %j", (text, confidence, alternatives) => {
+    expect(childTurnFrom([[{ text, confidence }]])).toEqual({ text, uncertain: false, alternatives });
+  });
+  it.each([
+    ["Fourteen.", 0.95, "sure"],
+    ["Forty-six.", 0.7, "not a sound-alike: forty goes on"],
+    ["forty six", 0.7, "not a sound-alike: forty goes on"],
+    ["46", 0.7, "not a sound-alike"],
+    ["40.5", 0.7, "a decimal"],
+    ["I think the answer is fourteen.", 0.7, "a sentence, not a lone number"],
+    ["Sixty six.", 0.7, "sixty goes on"],
+  ])("leaves %j at %d alone (%s)", (text, confidence) => {
+    expect(childTurnFrom([[{ text, confidence }]])).toEqual({ text, uncertain: false, alternatives: [] });
+  });
+  it("hears a teen split by a pause as the teen and its first number, whatever the confidence", () => {
+    expect(childTurnFrom([[{ text: "Four teen.", confidence: 0.99 }]])).toEqual({ text: "Four teen.", uncertain: true, alternatives: ["Fourteen.", "Four."] });
+    expect(childTurnFrom([[{ text: "four", confidence: 0.99 }], [{ text: "teen", confidence: 0.99 }]])).toEqual({ text: "four teen", uncertain: true, alternatives: ["fourteen", "four"] });
+    expect(childTurnFrom([[{ text: "fif-teen", confidence: 0.99 }]])).toEqual({ text: "fif-teen", uncertain: true, alternatives: ["fifteen"] });
+  });
 });
 
 describe("connected time", () => {

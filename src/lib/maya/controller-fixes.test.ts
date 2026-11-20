@@ -926,3 +926,39 @@ describe("#605 Maya claims no feelings (C24-r2: 'I had fun working with you' pas
     for (const x of OK_TALK) expect(feelingClaim(x.line), x.line).toBeNull();
   });
 });
+
+// #1146: the worker adds the other reading of a number the speech-to-text could hear two ways (src/lib/maya-voice-heard.ts):
+// a sound-alike ("Sixteen." with "Sixty.") or a teen split by a pause ("Six teen.", uncertain). On 27 + 39 the ones step is
+// 16: Maya confirms before any credit, and the child's yes or plain repeat then credits it.
+describe("#1146 a step answer heard two ways is confirmed before credit", () => {
+  const credit = { act: "guide" as const, step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { answers: [ans(16, "ones", "right")] } };
+  const asked = () => {
+    const c = call();
+    c.child("What do I do first?");
+    c.maya({ act: "guide", step: "ones", level: 0, parts: [ln("step.invite", { step: "ones" })] });
+    return c;
+  };
+  const heardTwoWays: [string, Partial<Extract<SessionEvent, { type: "child_turn" }>>][] = [
+    ["a sound-alike", { text: "Sixteen.", alternatives: ["Sixty."] }],
+    ["a split teen", { text: "Six teen.", uncertain: true, alternatives: ["Sixteen.", "Six."] }],
+  ];
+  it.each(heardTwoWays)("asks about %s, refuses the credit until then, and credits it after a yes", (_, turn) => {
+    const c = asked();
+    c.send({ type: "child_turn", at: T0 + 20_000, text: "", ...turn });
+    expect(c.acts).toContain("confirm");
+    expect(c.propose(credit).refusal).not.toBeNull();
+    expect(c.session.done).not.toContain("ones");
+    expect(c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "16" })] })).toContain("16");
+    c.child("Yes.");
+    c.maya(credit);
+    expect(c.session.done).toContain("ones");
+  });
+  it("credits the child's repeat of the number Maya asked about, though it is heard two ways again", () => {
+    const c = asked();
+    c.send({ type: "child_turn", at: T0 + 20_000, text: "Sixteen.", alternatives: ["Sixty."] });
+    c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "16" })] });
+    c.send({ type: "child_turn", at: T0 + 30_000, text: "Sixteen.", alternatives: ["Sixty."] });
+    c.maya(credit);
+    expect(c.session.done).toContain("ones");
+  });
+});
