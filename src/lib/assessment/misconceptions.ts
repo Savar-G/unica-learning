@@ -188,6 +188,7 @@ export const MISCONCEPTIONS = {
   "visible-parts": { description: "Counts only the faces, edges or corners that can be seen in a picture", evidence: "none" },
   "faces-corners": { description: "Mixes up the faces, edges and corners of a solid", evidence: "none" },
   "wrong-row": { description: "Reads the amount for the wrong row of a graph", evidence: "none" },
+  "unequal-chance": { description: "Chooses one outcome as more likely when both have the same chance", evidence: "none" },
   "chance-reversed": { description: "Picks the less likely outcome as the more likely one", evidence: "none" },
   "impossible-possible": { description: "Thinks an impossible event could still happen", evidence: "none" },
   "certain-likely": { description: "Calls a certain event only likely", evidence: "none" },

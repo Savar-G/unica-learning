@@ -4,7 +4,7 @@ import { AdminFrame } from "@/components/admin-frame";
 import { BarList, Empty, PercentBar, SectionHead, Tiles } from "@/components/admin-blocks";
 import { CountedNote, TemplateFilterForm, demoHref, templateQuery } from "@/components/admin-templates";
 import { RecordFacts } from "@/components/admin-records";
-import { BANKS, BC_SKILL_MAP, MISCONCEPTIONS, STRAND_NAMES, fillTemplate, type MisconceptionId } from "@/lib/assessment";
+import { ASSESSMENT_TEMPLATES, BANKS, BC_SKILL_MAP, MISCONCEPTIONS, STRAND_NAMES, fillTemplate, type MisconceptionId } from "@/lib/assessment";
 import { requireAdmin, templateStats } from "@/lib/admin-store";
 import { showTestFamilies } from "@/lib/admin-test-families-server";
 import {
@@ -33,7 +33,7 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
   const filters = { ...parseTemplateFilters(query), withTests: await showTestFamilies() };
   const stats = admin ? await templateStats(admin, filters, id) : countAnswers(demoAnswers(), filters).filter((s) => s.template_id === id);
   const bands = Object.entries(BANKS).filter(([, bank]) => bank.some((t) => t.id === id)).map(([band]) => band);
-  const template = Object.values(BANKS).flat().find((t) => t.id === id);
+  const template = ASSESSMENT_TEMPLATES.find((t) => t.id === id);
   if (!template && stats.length === 0) notFound();
 
   const table = templateTable(stats, template ? [template] : []);
@@ -110,7 +110,7 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
             ["Other curricula", otherLevels || "-"],
             ["Answer", template.format === "choice" ? "Choose one" : "Type a number"],
             ["Whiteboard", template.whiteboard ? "May require shown work" : "No"],
-            ["Question banks", bands.map((b) => `Grades ${b}`).join(", ")],
+            ["Question banks", bands.map((b) => `Grades ${b}`).join(", ") || "Adaptive assessment"],
           ]} />
         </details>
       )}

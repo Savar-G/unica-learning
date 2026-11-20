@@ -41,7 +41,7 @@ export {
   type ReviewedWork,
 } from "./ai-checks";
 export { SAMPLE_BANK } from "./sample-bank";
-export { BANKS, GRADE_1_2_BANK, bankFor, difficultyOf, wordingOf, type BankTemplate } from "./bank";
+export { ASSESSMENT_TEMPLATES, BANKS, GRADE_1_2_BANK, bankFor, difficultyOf, wordingOf, type BankTemplate } from "./bank";
 export type { TaggedTemplate } from "./bank/kit";
 export {
   adaptiveAnsweredAll,

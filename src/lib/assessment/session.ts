@@ -69,6 +69,7 @@ export function fillTemplate(template: Template, seed: number, province: Provinc
     choices: template.format === "choice" ? rng.shuffle([filled.answer, ...filled.wrong.map((w) => w.value)]) : undefined,
     ...(filled.say ? { say: filled.say } : {}),
     ...(filled.figure ? { figure: filled.figure } : {}),
+    ...(filled.roundedAnswers ? { numberGrading: { rounded: [...filled.roundedAnswers] } } : {}),
     values: filled.values,
     answer: filled.answer,
     wrong: filled.wrong,
@@ -395,14 +396,17 @@ export const fromRemovedRound = (questionId: string): boolean => questionId.star
 const MINUS = /[−–]/g;
 // Commas only as thousands separators: "1,200" is 1200, "1,2,0,0" is not a number.
 const NUMBER = /^[-+]?(\d{1,3}(,\d{3})+|\d+)?(\.\d+)?$/;
-function asNumber(text: string): number | null {
-  const clean = text.replace(MINUS, "-").replace(/\s/g, "");
+const TRAILING_POINT = /^[-+]?(?:\d{1,3}(?:,\d{3})+|\d+)\.$/;
+
+function asNumber(text: string, allowTrailingPoint = false): number | null {
+  const normalized = text.replace(MINUS, "-").replace(/\s/g, "");
+  const clean = allowTrailingPoint && TRAILING_POINT.test(normalized) ? normalized.slice(0, -1) : normalized;
   return /\d/.test(clean) && NUMBER.test(clean) ? Number(clean.replace(/,/g, "")) : null;
 }
 
 function isSameAnswer(q: Question, a: string, b: string): boolean {
   if (q.format === "number") {
-    const [x, y] = [asNumber(a), asNumber(b)];
+    const [x, y] = [asNumber(a, q.numberGrading !== undefined), asNumber(b)];
     return x !== null && y !== null && Math.abs(x - y) < 1e-9;
   }
   return a.trim() === b.trim();
@@ -424,7 +428,8 @@ export interface Submission {
 /** The response marked against its question: right or wrong, and the misconception of a coded wrong answer. */
 function marked(q: Question, response: string, timeMs: number): Answer {
   if (!Number.isFinite(timeMs) || timeMs < 0) throw new Error("timeMs must be a time in milliseconds");
-  const correct = response !== UNKNOWN_RESPONSE && isSameAnswer(q, response, q.answer);
+  const correct = response !== UNKNOWN_RESPONSE && (isSameAnswer(q, response, q.answer)
+    || (q.numberGrading?.rounded ?? []).some((answer) => isSameAnswer(q, response, answer)));
   const misconception = correct || response === UNKNOWN_RESPONSE ? null : (q.wrong.find((w) => isSameAnswer(q, response, w.value))?.misconception ?? null);
   return {
     questionId: q.id,

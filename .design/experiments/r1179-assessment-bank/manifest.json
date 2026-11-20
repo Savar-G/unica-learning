@@ -1,0 +1,18 @@
+{
+  "issue": 1179,
+  "data": "Invented local assessment fixtures with the normal question interface and grading function.",
+  "browser": "Aside account u0 against npm run dev",
+  "before": {
+    "circle": "circle-before.png"
+  },
+  "after": {
+    "kindergartenPosition": "kindergarten-position.png",
+    "equalPlaceDecimals": "decimal-compare.png",
+    "circle": "circle-after.png"
+  },
+  "flow": {
+    "video": "rounded-answer.mp4",
+    "method": "Sequence of actual Aside captures while typing and submitting 79. in the local question screen.",
+    "grading": "For a radius of 5 cm, 78.5 is exact and 79. is accepted. The fixture recorded the mark as correct and the browser advanced to question 2."
+  }
+}
