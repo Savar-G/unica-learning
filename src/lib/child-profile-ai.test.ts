@@ -402,11 +402,16 @@ describe("a profile stored before the findings", () => {
     const built = await rebuildChildProfile(CHILD, f);
     const v1: Record<string, unknown> = { ...(built.built ? built.profile : never()), schemaVersion: 1 };
     delete v1.ai;
+    delete v1.teaching;
     const stored = (await f.profiles.current(CHILD))!;
     expect(await f.profiles.save({ childId: CHILD, parentId: PARENT, assessmentId: TEST, profile: v1 as never }, stored)).toMatchObject({ revision: 2 });
     expect((await f.profiles.current(CHILD))?.schemaVersion).toBe(1);
     const read = await readChildProfile(f.profiles, CHILD);
-    expect(read?.profile).toEqual({ ...v1, schemaVersion: 2, ai: null });
+    expect(read?.profile).toEqual({ ...v1, schemaVersion: 3, ai: null, teaching: { notes: [], reviews: [] } });
+    // #1145: a version 2 profile (findings, no teaching evidence) keeps its findings and reads with no teaching evidence.
+    const v2 = { ...v1, schemaVersion: 2, ai: { model: "fake", findings: [] } };
+    expect(await f.profiles.save({ childId: CHILD, parentId: PARENT, assessmentId: TEST, profile: v2 as never }, (await f.profiles.current(CHILD))!)).toMatchObject({ revision: 3 });
+    expect((await readChildProfile(f.profiles, CHILD))?.profile).toEqual({ ...v2, schemaVersion: 3, teaching: { notes: [], reviews: [] } });
   });
 });
 

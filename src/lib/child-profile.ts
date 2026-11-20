@@ -37,6 +37,9 @@ import { effectiveMarkingEvents, effectiveSkillMarks, type EffectiveMark } from 
 // replaces them, so they stay): an earlier build's findings were written from other facts. AI off, failing (an error, a time
 // out, output that does not match the schema) or late leaves the facts-only profile, and never fails the rebuild.
 // Schema version 2 adds `ai`; a stored version 1 profile reads as version 2 with no findings.
+// Schema version 3 adds `teaching` (#1145, src/lib/child-profile-teaching.ts): prerequisite evidence, misconceptions,
+// useful representations and review targets from the events, related questions included. A stored version 1 or 2
+// profile reads with no teaching evidence until the next rebuild, which works it out from the events.
 //
 // Skill states (spec #544, the rule in src/lib/assessment/skill-state.ts): the rebuild works out each BC standard's states
 // from every finished test's own tally (not the combined tally above: help and calls are not test answers) and the latest
@@ -76,11 +79,12 @@ import {
 import { withTimeLimit, type AiClient } from "@/lib/ai-client";
 import { CHILD_PROFILE_AI_MS, writeChildProfileFindings, type FindingDrop, type QuestionReader } from "@/lib/child-profile-ai";
 import { SpendRefused } from "@/lib/maya-spend-ai";
+import { teachingEvidence, type TeachingEvidenceSummary } from "@/lib/child-profile-teaching";
 import { learningEvents, type EventSource, type LearningEvent, type LearningEventStore } from "@/lib/learning-events";
 import type { Interest, LearningGoal, LearningStyle, MathFeeling, WeeklyTime } from "@/lib/learning-style";
 
 /** The version of the child profile's JSON. A change that a reader of stored profiles must know about adds one. */
-export const CHILD_PROFILE_SCHEMA_VERSION = 2;
+export const CHILD_PROFILE_SCHEMA_VERSION = 3;
 
 /** What the counted events say about one standard. */
 export interface StandardEvents {
@@ -153,6 +157,8 @@ export interface ChildLearnerProfile {
   events: { counted: number; inAssessmentProfile: number; lastAt: string | null };
   /** The AI findings written from these facts, with the model's id; null when there are none (AI off, failed, or late). */
   ai: { model: string; findings: ChildProfileFinding[] } | null;
+  /** #1145: what the events say about how to teach the child (src/lib/child-profile-teaching.ts). */
+  teaching: TeachingEvidenceSummary;
 }
 
 /** The stored assessment profile the build starts from: public.learner_profiles, as stored. */
@@ -253,6 +259,8 @@ function buildFacts(input: ChildProfileInput): ChildLearnerProfile {
     parent: { feeling: learning?.feeling ?? null, goal: learning?.goal ?? null, weeklyTime: learning?.weeklyTime ?? null },
     events: { counted: counted.length, inAssessmentProfile: input.events.filter(inProfile).length, lastAt: newest(counted.map((e) => e.occurredAt)) },
     ai: null,
+    // Related questions count here: they are teaching evidence, not answers toward a standard.
+    teaching: teachingEvidence(input.events.filter((e) => !inProfile(e)), standards.filter((s) => s.status === "secure").map((s) => s.code)),
   };
 }
 
@@ -384,14 +392,18 @@ const ALL_TIME = { from: "2000-01-01T00:00:00.000Z", to: "9999-01-01T00:00:00.00
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const NO_TEACHING = (): TeachingEvidenceSummary => ({ notes: [], reviews: [] });
+
 /**
- * The stored JSON as this version's profile: version 1 (before the findings) as version 2 with no findings. Null when it
- * was written at another schema version.
+ * The stored JSON as this version's profile: version 1 (before the findings) with no findings, and versions 1 and 2
+ * (before the teaching evidence, #1145) with none, until the next rebuild. Null when it was written at another schema
+ * version.
  */
 export function storedChildProfile(value: unknown): ChildLearnerProfile | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   const version = (value as { schemaVersion?: unknown }).schemaVersion;
-  if (version === 1) return { ...(value as Omit<ChildLearnerProfile, "schemaVersion" | "ai">), schemaVersion: CHILD_PROFILE_SCHEMA_VERSION, ai: null };
+  if (version === 1) return { ...(value as Omit<ChildLearnerProfile, "schemaVersion" | "ai" | "teaching">), schemaVersion: CHILD_PROFILE_SCHEMA_VERSION, ai: null, teaching: NO_TEACHING() };
+  if (version === 2) return { ...(value as Omit<ChildLearnerProfile, "schemaVersion" | "teaching">), schemaVersion: CHILD_PROFILE_SCHEMA_VERSION, teaching: NO_TEACHING() };
   return version === CHILD_PROFILE_SCHEMA_VERSION ? (value as ChildLearnerProfile) : null;
 }
 

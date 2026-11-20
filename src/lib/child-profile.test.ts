@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { learnerProfile, type LearnerProfile } from "@/lib/assessment";
 import { knowsUpTo, takeTest } from "@/lib/assessment/scripted-child";
 import { childProfileFacts, type ChildProfileInput } from "@/lib/child-profile";
-import type { LearningEvent } from "@/lib/learning-events";
+import type { LearningEvent, LessonObservation } from "@/lib/learning-events";
 
 // The child's profile facts (#303, spec #295) through the pure builder: the latest assessment profile plus every
 // learning event, by BC standard.
@@ -145,5 +145,59 @@ describe("the child's profile facts", () => {
     // A stored profile at another schema version is not read: the build has no assessment, and the test's events count.
     expect(childProfileFacts(input({ assessment: { ...assessment, profile: { schemaVersion: 99 } }, events: [event()] }))?.assessment).toBeNull();
     expect(childProfileFacts(input({ learning }))).toBeNull();
+  });
+});
+
+describe("the child's teaching evidence (#1145)", () => {
+  const seen = (skill: LessonObservation["skill"], result: LessonObservation["result"], over: Partial<LessonObservation> = {}): LessonObservation =>
+    ({ skill, result, assistance: "independent", board: false, ...over });
+  const call = (observations: LessonObservation[], over: Partial<LearningEvent> = {}) =>
+    event({ result: "right_with_help", stuckStep: "ones", hints: 1, observations, ...over });
+  const teaching = (events: LearningEvent[]) => childProfileFacts(input({ events }))!.teaching;
+  const note = (events: LearningEvent[], kind: string, id: string) => teaching(events).notes.find((n) => n.kind === kind && n.id === id);
+
+  it("keeps one error as unsure, two independent errors as a gap, and revises the view after a new independent success", () => {
+    const first = call([seen("identify_tens", "incorrect")]);
+    expect(note([first], "prerequisite", "identify_tens")).toEqual({
+      kind: "prerequisite", id: "identify_tens", standard: "3.3", view: "unsure", uncertainty: "high", since: first.occurredAt,
+      evidence: [{ event: first.id, source: "call", at: first.occurredAt, result: "incorrect", assistance: "independent" }],
+    });
+    const second = call([seen("identify_tens", "incorrect")]);
+    expect(note([first, second], "prerequisite", "identify_tens")).toMatchObject({ view: "gap", uncertainty: "medium", since: second.occurredAt });
+    expect(teaching([first, second]).reviews).toContainEqual({ standard: "3.3", reason: "prerequisite_gap", since: second.occurredAt, events: [first.id, second.id], route: "workbook_plan" });
+    // Help does not show the child knows it; the child's own correct answer does.
+    const shown = call([seen("identify_tens", "correct", { assistance: "demonstrated" })]);
+    expect(note([first, second, shown], "prerequisite", "identify_tens")).toMatchObject({ view: "gap" });
+    const own = call([seen("identify_tens", "correct")]);
+    expect(note([first, second, shown, own], "prerequisite", "identify_tens")).toMatchObject({ view: "secure", uncertainty: "high", since: own.occurredAt });
+    expect(teaching([first, second, shown, own]).reviews.map((r) => r.reason)).not.toContain("prerequisite_gap");
+  });
+
+  it("suspects a misconception from one event, finds it likely from two, and resolves it after the child's own right answer", () => {
+    const swapped = [call([seen("reversal", "incorrect")]), call([seen("reversal", "incorrect")])];
+    expect(note(swapped.slice(0, 1), "misconception", "reversal")).toMatchObject({ view: "suspected", uncertainty: "high" });
+    expect(note(swapped, "misconception", "reversal")).toMatchObject({ view: "likely", uncertainty: "medium" });
+    const marked = [1, 2].map(() => event({ source: "marking", result: "wrong", mistake: "O3", evidence: { kind: "scan", id: "scan-1" } }));
+    expect(note(marked, "misconception", "O3")).toMatchObject({ view: "likely", evidence: [{ source: "marking", assistance: null, result: "incorrect" }, {}] });
+    const related = event({ question: { source: "transfer", relatedEventId: swapped[1].id, text: "63 - 27 = ?" }, assistance: "independent" });
+    expect(note([...swapped, related], "misconception", "reversal")).toMatchObject({
+      view: "resolved", since: related.occurredAt, evidence: [{}, {}, { event: related.id, source: "transfer", result: "correct", assistance: "independent" }],
+    });
+  });
+
+  it("records which board representation the child worked with, and review targets for help-only and assisted related work", () => {
+    const helped = call([seen("perform_exchange", "correct", { assistance: "demonstrated", board: true }), seen("subtract_ones", "correct", { board: true })]);
+    expect(note([helped], "representation", "blocks")).toMatchObject({ view: "helped", uncertainty: "medium" });
+    expect(note([helped], "representation", "words")).toBeUndefined();
+    const related = event({ question: { source: "transfer", relatedEventId: helped.id, text: "63 - 27 = ?" }, result: "right_with_help", stuckStep: "ones", assistance: "hinted" });
+    expect(teaching([helped, related]).reviews).toEqual([
+      { standard: "3.3", reason: "assisted_only", since: helped.occurredAt, events: [helped.id], route: "workbook_plan" },
+      { standard: "3.3", reason: "transfer_not_independent", since: related.occurredAt, events: [related.id], route: "workbook_plan" },
+    ]);
+    // A secure standard has no workbook review: Maya's next call is its only route.
+    const secure = [1, 2, 3, 4].map(() => event());
+    const late = event({ question: { source: "transfer", relatedEventId: secure[3].id, text: "63 - 27 = ?" }, result: "blank", stuckStep: "ones", assistance: "independent" });
+    expect(teaching([...secure, late]).reviews).toEqual([{ standard: "3.3", reason: "transfer_not_independent", since: late.occurredAt, events: [late.id], route: "next_call" }]);
+    expect(teaching(secure)).toEqual({ notes: [], reviews: [] });
   });
 });
