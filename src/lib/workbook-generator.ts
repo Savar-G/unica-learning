@@ -3826,7 +3826,7 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
               ceiling = w.slots.length; minimum = Math.min(minimum, w.slots.length); added = null; pendingRefill = null;
               w.page.timeLimited = !timeOk; continue;
             }
-            return `Page ${w.number}: cannot complete the question grid within the page and day limits: ${JSON.stringify({ holes, timeOk, slots: w.slots.map(s => [s.place, s.contract?.template?.skill, s.contract?.template?.step, s.refillOwnStep, s.part.step?.step]), count: countedAfter })}`;
+            return `Page ${w.number}: ${GRID_INCOMPLETE} within the page and day limits: ${JSON.stringify({ holes, timeOk, slots: w.slots.map(s => [s.place, s.contract?.template?.skill, s.contract?.template?.step, s.refillOwnStep, s.part.step?.step]), count: countedAfter })}`;
           }
           if (short) break;
           if (!w.page.fillingComplete) { w.page.fillingComplete=true; continue; }
@@ -4076,7 +4076,7 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
       ownStepFirst(w);
       explainFirstStory(w, work);
       const finalHoles = pagePlan(budgetPage(input, w))?.incomplete ?? [];
-      if (finalHoles.length) return `Page ${w.number}: capacity ended with an empty cell beside question ${finalHoles[0]} (${JSON.stringify({ lastHoles, fit: lastBudgetFit, complete: !!lastComplete, slots: w.slots.map(s => [s.place, s.contract?.template?.skill, s.contract?.template?.step]) })})`;
+      if (finalHoles.length) return `Page ${w.number}: ${GRID_HOLE} beside question ${finalHoles[0]} (${JSON.stringify({ lastHoles, fit: lastBudgetFit, complete: !!lastComplete, slots: w.slots.map(s => [s.place, s.contract?.template?.skill, s.contract?.template?.step]) })})`;
       w.page.itemContracts = Object.fromEntries(w.slots.map(s=>[s.id,s.contract ?? null]));
       if (w.layout?.omissions.length) w.page.capacityOmissions = structuredClone(w.layout.omissions);
       if (w.slots.some(s => s.existing)) w.page.existingSlots = w.slots.filter(s => s.existing).map(s => s.id);
@@ -4148,6 +4148,9 @@ async function repairFinalRows(input: GenerateInput, w: PageWork, work: PageWork
 }
 
 const FLOOR_SHORT = "capacity could not restore";
+/** A practice grid capacity could not close: an odd row left empty, or no complete grid within the page and day. */
+const GRID_HOLE = "capacity ended with an empty cell";
+const GRID_INCOMPLETE = "cannot complete the question grid";
 
 /** The adding and subtracting skills a day reviews or teaches, for a Use 2 ways question its own step cannot give. */
 function dayArithmeticSkills(input: GenerateInput, day: number): string[] {
@@ -4251,9 +4254,12 @@ const CAPACITY_KEYS = ["capacity", "capacityChecked", "capacityOmissions", "item
  * little room for the floor (the custom U19 Book 1's Day 2, page 3). Spot the error is not counted in the floor, so
  * the move keeps every count, check and the day's Spot the error, and happens only when the page has failed, so a book
  * that fits keeps Savar's layout. Null when there is no such move.
+ * (Also when its grid cannot be completed: the U19 sweep's pages 13 and 45 fit 4 practice questions beside Solve it two
+ * ways and Spot the error, a 5th ran 64 px past the page, and their floor is 6, so capacity ended on a hole rather than
+ * on the floor message, Luis 2026-11-19. The page must still reach its floor in complete rows after the move.)
  */
 function spotMoved(plan: WorkbookPlan, problem: string, work: readonly PageWork[]): WorkbookPlan | null {
-  const at = new RegExp(`^Page (\\d+): ${FLOOR_SHORT} `).exec(problem);
+  const at = new RegExp(`^Page (\\d+): (?:${FLOOR_SHORT}|${GRID_HOLE}|${GRID_INCOMPLETE}) `).exec(problem);
   const w = at ? work.find(x => x.number === Number(at[1])) : undefined;
   if (!w || w.page.type !== "practice" || w.page.extraPractice) return null;
   const moved = structuredClone(plan);
