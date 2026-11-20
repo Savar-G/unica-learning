@@ -1,7 +1,7 @@
 import sharp from "sharp";
 import { mkdir, writeFile } from "node:fs/promises";
-import { describe, expect, it } from "vitest";
-import { chromiumPrintEngine, findChromium } from "@/lib/print-engine-chromium";
+import { afterAll, describe, expect, it } from "vitest";
+import { findChromium, sharedChromiumPrintEngine } from "@/lib/print-engine-chromium";
 import { proofPages, renderWorkbook, type DraftPage, type MeasuredElement, type WorkbookDraft } from "@/lib/workbook-render";
 import type { AnswerRegion, ItemCheck, ItemFormat } from "@/lib/question-package";
 import { WARM_UP_INSTRUCTION } from "@/lib/workbook-page-instructions";
@@ -20,7 +20,8 @@ import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
 const PARENT = "11111111-1111-4111-8111-111111111111";
 const CHILD = "22222222-2222-4222-8222-222222222222";
 const chromium = await findChromium();
-const engine = chromiumPrintEngine();
+const engine = sharedChromiumPrintEngine();
+afterAll(() => engine.close());
 const template = chromium ? workbookTemplate(await fixedTemplateFonts()) : workbookTemplate();
 const book = (level: string, n: number, testWorkbook = false, title?: string) =>
   sampleBook({ level, workbookId: `55555555-5555-4555-8555-00000000001${n}`, childId: CHILD, child: "Mateo", number: 2, testWorkbook, title }).draft;

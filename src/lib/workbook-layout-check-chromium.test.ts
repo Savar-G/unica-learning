@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { chromiumPrintEngine, findChromium } from "@/lib/print-engine-chromium";
+import { afterAll, describe, expect, it } from "vitest";
+import { findChromium, sharedChromiumPrintEngine } from "@/lib/print-engine-chromium";
 import type { DayContent } from "@/lib/workbook-page";
 import { renderWorkbook, type DraftPage, type MeasuredElement, type PrintOutput } from "@/lib/workbook-render";
 import { sampleBook } from "@/lib/workbook-sample-book";
@@ -14,6 +14,8 @@ import practiceSectionGap from "./workbook-practice-section-gap.fixture.json";
 // whose rows grew unevenly at their maximum now print with even rows. Runs where a Chromium is found.
 
 const chromium = await findChromium();
+const sharedEngine = sharedChromiumPrintEngine();
+afterAll(() => sharedEngine.close());
 const draft = sampleBook({ level: "U12", workbookId: "55555555-5555-4555-8555-000000000021", childId: "22222222-2222-4222-8222-222222222222", child: "Mateo", number: 1 }).draft;
 const source = draft.pages.find((p) => p.content?.kind === "day" && p.questions.length >= 4)!;
 const base = source.questions.find((q) => !q.package.answer?.unit && q.package.answer?.value.type !== "quantity")!.package;
@@ -48,7 +50,7 @@ describe.skipIf(!chromium)("the layout checks in Chromium", () => {
     const result = await renderWorkbook({ draft: { ...STRETCHED_BOOK,
       id: "55555555-5555-4555-8555-000000000908", pages: [page] },
       parentId: "11111111-1111-4111-8111-111111111111",
-      template: workbookTemplate(await fixedTemplateFonts()), engine: chromiumPrintEngine() });
+      template: workbookTemplate(await fixedTemplateFonts()), engine: sharedEngine });
     const problems = result.status === "failed" ? result.problems.map(p => p.reason) : [];
     expect(problems).toEqual([]);
   }, 120_000);
@@ -60,7 +62,7 @@ describe.skipIf(!chromium)("the layout checks in Chromium", () => {
       end + sel.split(",").map((x) => `[data-sheet="${i}"] .pg ${x.trim()}`).join(",") + "{")).join("\n");
     const pages = CASES.map(([, , subtitle], i) => page(101 + i, subtitle));
     let printed: PrintOutput | undefined;
-    const engine = chromiumPrintEngine();
+    const engine = sharedEngine;
     const result = await renderWorkbook({
       draft: { ...draft, pages }, parentId: "11111111-1111-4111-8111-111111111111", template: { ...template, css: template.css + css },
       engine: { print: async (job) => (printed = await engine.print(job)) },
@@ -77,7 +79,7 @@ describe.skipIf(!chromium)("the layout checks in Chromium", () => {
   it.each(Object.keys(STRETCHED_PAGES))("reject the empty cells in the recorded U4 Practice 2 page of seed %s", async (seed) => {
     const template = workbookTemplate(await fixedTemplateFonts());
     const page = STRETCHED_PAGES[seed];
-    const result = await renderWorkbook({ draft: { ...STRETCHED_BOOK, pages: [page] }, parentId: "11111111-1111-4111-8111-111111111111", template, engine: chromiumPrintEngine() });
+    const result = await renderWorkbook({ draft: { ...STRETCHED_BOOK, pages: [page] }, parentId: "11111111-1111-4111-8111-111111111111", template, engine: sharedEngine });
     expect(result.status).toBe("failed");
     const problems = result.status === "failed" ? result.problems.map(p => p.reason) : [];
     expect(problems.some(reason => /empty cell/.test(reason))).toBe(true);

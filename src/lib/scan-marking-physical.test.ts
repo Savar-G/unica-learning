@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
@@ -51,10 +51,13 @@ function blankTruth(): Record<string, string>[] {
   // These supplied synthetic test readings are blank. No key or model fills human truth.
   return truthTemplate(mapping(), pages()).map(r => ({ ...r, intended_result: "blank", reading_state: "blank" }));
 }
+let blankJpegPromise: Promise<Buffer> | null = null;
+const blankJpeg = () => (blankJpegPromise ??= sharp({ create: { width: 1000, height: 1400, channels: 3, background: "white" } }).jpeg().toBuffer());
+
 async function setAndPlan(proofClass: PhysicalSet["proofClass"] = "physical-input", maxMicros = 15_000_000) {
   const out = await temp(); await mkdir(resolve(out, "images"));
   await durableJson(resolve(out, "owner.json"), { owner: "local-test-owner" }, true);
-  const bytes = await sharp({ create: { width: 1000, height: 1400, channels: 3, background: "white" } }).jpeg().toBuffer();
+  const bytes = await blankJpeg();
   const truths = physicalTruth(mapping(), pages(), writeTruthCsv(blankTruth()));
   const set: PhysicalSet = { version: PHYSICAL_VERSION, proofClass, kit: FROZEN_KIT, draftSha256: hashBytes("supplied-synthetic-test-draft"), revision: "a".repeat(28), truthSha256: hashBytes("supplied-synthetic-blank-readings"), mappingSha256: hashValue(mapping()), missing: [], photos: [], inventory: mapping().photos.map(m => ({ file: m.file, rawSha256: hashBytes(bytes), reason: null })) };
   for (const m of mapping().photos) {
@@ -299,14 +302,30 @@ describe("Sonnet and Terra side by side", () => {
   // Blank truth on the two-ways item: code reads it blank with the method rules on, and our team marks it with them off.
   const twoWaysBlank = TWO_WAYS_METHOD_MARKS ? { blank: 2, unsure: 0, clearUnsure: 0, clearUnsureRate: 0, unsureRate: 0 } : { blank: 0, unsure: 2, clearUnsure: 1, clearUnsureRate: 1, unsureRate: 1 };
   const team = TWO_WAYS_METHOD_MARKS ? 0 : 1;
-  async function fakeRun() {
-    const input = await setAndPlan("local-fake");
-    await fakePhysicalHttp(input.out, input.set, input.plan, input.run, terraDiffers);
-    const results = JSON.parse(await readFile(resolve(input.out, "results.json"), "utf8")) as ComparisonResult[];
-    return { input, results, report: physicalReport(input.set, results, evidences(), input.run) };
+  async function fakeRun(trackCleanup = true) {
+    const out = await mkdtemp(resolve(tmpdir(), "robin-phone-proof-"));
+    if (trackCleanup) folders.push(out);
+    await mkdir(resolve(out, "images"));
+    await durableJson(resolve(out, "owner.json"), { owner: "local-test-owner" }, true);
+    const bytes = await blankJpeg();
+    const truths = physicalTruth(mapping(), pages(), writeTruthCsv(blankTruth()));
+    const set: PhysicalSet = { version: PHYSICAL_VERSION, proofClass: "local-fake", kit: FROZEN_KIT, draftSha256: hashBytes("supplied-synthetic-test-draft"), revision: "a".repeat(28), truthSha256: hashBytes("supplied-synthetic-blank-readings"), mappingSha256: hashValue(mapping()), missing: [], photos: [], inventory: mapping().photos.map(m => ({ file: m.file, rawSha256: hashBytes(bytes), reason: null })) };
+    for (const m of mapping().photos) {
+      const id = physicalPhotoId(m.file), photo: ComparisonPhoto = { id, clear: m.clarity === "clear", image: { path: `images/${id}.jpg`, sha256: hashBytes(bytes), width: 1000, height: 1400, metadataFree: true }, frame: { ...pages()[0].frame, photo: id }, truth: truths.get(m.file)! };
+      await writeFile(resolve(out, photo.image.path), bytes); await writeFile(resolve(out, `images/${id}-oriented.jpg`), bytes);
+      set.photos.push({ mapping: m, status: "ready", reason: null, rawSha256: hashBytes(bytes), normalizedSha256: hashBytes(bytes), calibration: { suppliedSyntheticGeometry: true }, crops: [], photo });
+    }
+    await durableJson(resolve(out, "set.json"), set, true);
+    const { plan, run } = await sealPhysicalPlan(out, set, root, 15_000_000);
+    await fakePhysicalHttp(out, set, plan, run, terraDiffers);
+    const results = JSON.parse(await readFile(resolve(out, "results.json"), "utf8")) as ComparisonResult[];
+    return { input: { out, set, plan, run }, results, report: physicalReport(set, results, evidences(), run) };
   }
-  it("runs both models on the same photos, truth, prompt and reader", async () => {
-    const { input, results } = await fakeRun();
+  let sharedFake!: Awaited<ReturnType<typeof fakeRun>>;
+  beforeAll(async () => { sharedFake = await fakeRun(false); });
+  afterAll(async () => { if (sharedFake) await rm(sharedFake.input.out, { recursive: true, force: true }); });
+  it("runs both models on the same photos, truth, prompt and reader", () => {
+    const { input, results } = sharedFake;
     expect(results).toHaveLength(4);
     for (const photo of input.set.photos) {
       const pair = results.filter(r => r.photo === photo.photo.id);
@@ -316,8 +335,8 @@ describe("Sonnet and Terra side by side", () => {
       expect(pair.every(r => r.attempts[0].usage.provider === PHYSICAL_MODELS.find(m => m.model === r.model)!.providerName)).toBe(true);
     }
   });
-  it("reports wrong marks, wrong marked right, clear unsure, two-ways, cost and latency for each model", async () => {
-    const { report } = await fakeRun(), [sonnet, terra] = report.models;
+  it("reports wrong marks, wrong marked right, clear unsure, two-ways, cost and latency for each model", () => {
+    const { report } = sharedFake, [sonnet, terra] = report.models;
     // Our team marks the two-ways item while the method rules are off: D-267 leaves it out, so a perfect reader passes.
     expect(sonnet).toMatchObject({ model: SONNET.model, endpoint: "google-vertex/global", wrongMarks: 0, wrongAsRight: 0, clearUnsure: 0, clearUnsureWithTeam: team, passed: true, complete: true,
       twoWays: { items: 2, right: 0, wrong: 0, wrongMarks: 0, wrongAsRight: 0, ...twoWaysBlank } });
@@ -326,8 +345,8 @@ describe("Sonnet and Terra side by side", () => {
     for (const m of report.models) { expect(m.costPerPageUsd).toBe(0); expect(m.latencyP50Ms).not.toBeNull(); expect(m.latencyP95Ms).not.toBeNull(); }
     expect(report.passed).toBe(false);
   });
-  it("shows the two-ways unsure rate apart from the whole-page unsure rate, for each model", async () => {
-    const { report } = await fakeRun(), [sonnet, terra] = report.models;
+  it("shows the two-ways unsure rate apart from the whole-page unsure rate, for each model", () => {
+    const { report } = sharedFake, [sonnet, terra] = report.models;
     expect(sonnet).toMatchObject({ clearUnsureRate: 0, clearUnsureRateWithTeam: team / 9, twoWays: { clearItems: 1, clearUnsure: twoWaysBlank.clearUnsure, clearUnsureRate: twoWaysBlank.clearUnsureRate, unsureRate: twoWaysBlank.unsureRate } });
     expect(terra).toMatchObject({ clearUnsureRate: 1 / (9 - team), clearUnsureRateWithTeam: (1 + team) / 9, twoWays: { clearItems: 1, clearUnsure: twoWaysBlank.clearUnsure, clearUnsureRate: twoWaysBlank.clearUnsureRate } });
     const text = physicalSideBySide(report);
@@ -355,8 +374,8 @@ describe("Sonnet and Terra side by side", () => {
     expect(report).toMatchObject({ proofClass: "saved-reader-replay", rescoredItems: 36 });
     expect(report.models.map((m: { wrongMarks: number }) => m.wrongMarks)).toEqual([0, 2]);
   });
-  it("lists each disagreement by photo and item, with the truth and each model's result", async () => {
-    const { report, input } = await fakeRun();
+  it("lists each disagreement by photo and item, with the truth and each model's result", () => {
+    const { report, input } = sharedFake;
     expect(report.disagreements).toHaveLength(4);
     expect(report.disagreements.filter(d => d.format === "two-ways")).toHaveLength(0);
     const decimal = report.disagreements.filter(d => d.format === "decimal");
@@ -364,18 +383,18 @@ describe("Sonnet and Terra side by side", () => {
     expect(decimal[0]).toEqual({ photo: "iphone.jpg", pdfPage: 2, question: 3, itemId: input.set.photos[0].photo.truth.find(t => t.format === "decimal")!.itemId, format: "decimal", truth: "blank", results: { [SONNET.model]: "blank", [TERRA.model]: "wrong" } });
     expect(report.disagreements.filter(d => d.question === 1).map(d => d.results[TERRA.model])).toEqual(["unsure", "unsure"]);
   });
-  it("prints a side-by-side table with no key or child data", async () => {
-    const { report } = await fakeRun(), text = physicalSideBySide(report);
+  it("prints a side-by-side table with no key or child data", () => {
+    const { report } = sharedFake, text = physicalSideBySide(report);
     for (const row of ["Wrong marks", "Wrong marked right", "Clear unsure", "Two-ways", "Cost per page", "Latency p50", "Latency p95", "Disagreements", "Sonnet", "Terra", "AI-marked 18", "parent 0", `AI-marked 18, of which ${TWO_WAYS_METHOD_MARKS ? 0 : 2} team-marked; parent 0`]) expect(text).toContain(row);
     expect(text).not.toContain(FAKE_KEY);
   });
-  it("states on its first line how many items went to the team and why", async () => {
-    const { report } = await fakeRun(), first = physicalSideBySide(report).split("\n")[0];
+  it("states on its first line how many items went to the team and why", () => {
+    const { report } = sharedFake, first = physicalSideBySide(report).split("\n")[0];
     expect(report.team).toEqual(TWO_WAYS_METHOD_MARKS ? { items: 0, reasons: {} } : { items: 2, reasons: { "two-ways-method-marks-off": 2 } });
     expect(first).toBe(TWO_WAYS_METHOD_MARKS ? "0 items went to the team." : "2 items went to the team: two-ways method marking is off.");
   });
   it("keeps the same side-by-side result in saved replay", async () => {
-    const { input, report } = await fakeRun(), parent = await temp(), out = resolve(parent, "replay");
+    const { input, report } = sharedFake, parent = await temp(), out = resolve(parent, "replay");
     await replayPhysical(input.out, out, root);
     const saved = JSON.parse(await readFile(resolve(out, "report.json"), "utf8"));
     expect(saved.proofClass).toBe("saved-reader-replay");
@@ -547,7 +566,7 @@ describe("fixed 40 set in the same paid step", () => {
   async function withFixed(maxMicros = 15_000_000) {
     const out = await temp(); await mkdir(resolve(out, "images"));
     await durableJson(resolve(out, "owner.json"), { owner: "local-test-owner" }, true);
-    const bytes = await sharp({ create: { width: 1000, height: 1400, channels: 3, background: "white" } }).jpeg().toBuffer();
+    const bytes = await blankJpeg();
     const truths = physicalTruth(mapping(), pages(), writeTruthCsv(blankTruth()));
     const set: PhysicalSet = { version: PHYSICAL_VERSION, proofClass: "local-fake", kit: FROZEN_KIT, draftSha256: hashBytes("d"), revision: "a".repeat(28), truthSha256: hashBytes("t"), mappingSha256: hashValue(mapping()), missing: [], photos: [], inventory: mapping().photos.map(m => ({ file: m.file, rawSha256: hashBytes(bytes), reason: null })) };
     for (const m of mapping().photos) {
@@ -651,7 +670,7 @@ describe("one phone on the production route", () => {
   async function oneSetAndPlan(proofClass: PhysicalSet["proofClass"] = "local-fake") {
     const out = await temp(); await mkdir(resolve(out, "images"));
     await durableJson(resolve(out, "owner.json"), { owner: "local-test-owner" }, true);
-    const bytes = await sharp({ create: { width: 1000, height: 1400, channels: 3, background: "white" } }).jpeg().toBuffer();
+    const bytes = await blankJpeg();
     const map = iphoneOnly(), truths = physicalTruth(map, pages(), writeTruthCsv(blankTruth().filter(r => r.photo === "iphone.jpg")));
     const set: PhysicalSet = { version: PHYSICAL_VERSION, proofClass, kit: FROZEN_KIT, draftSha256: hashBytes("supplied-synthetic-test-draft"), revision: "a".repeat(28), truthSha256: hashBytes("supplied-synthetic-blank-readings"), mappingSha256: hashValue(map),
       missing: validateMapping(map, pages(), ["iphone"]), photos: [], inventory: map.photos.map(m => ({ file: m.file, rawSha256: hashBytes(bytes), reason: null })), devices: ["iphone"] };

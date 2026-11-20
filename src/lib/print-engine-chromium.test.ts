@@ -3,10 +3,10 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import jsQR from "jsqr";
 import sharp from "sharp";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { renderMonthlySummary } from "@/lib/monthly-summary";
 import type { MonthlySummaryView } from "@/lib/parent-view";
-import { browserStartPlan, chromiumPrintEngine, findChromium, startBrowser, stoppableStart } from "@/lib/print-engine-chromium";
+import { browserStartPlan, chromiumPrintEngine, findChromium, sharedChromiumPrintEngine, startBrowser, stoppableStart } from "@/lib/print-engine-chromium";
 import { renderWorkbook, type PrintEngine, type WorkbookDraft } from "@/lib/workbook-render";
 import { sampleDraft } from "@/lib/workbook-sample";
 import { fixedTemplate } from "@/lib/workbook-template-fixed";
@@ -66,11 +66,13 @@ describe("starting Chromium on a busy machine", () => {
 });
 
 const chromium = await findChromium();
+const sharedEngine = sharedChromiumPrintEngine();
+afterAll(() => sharedEngine.close());
 const draft = () => sampleDraft({ workbookId: WORKBOOK, childId: CHILD, qrTokens: TOKENS });
 const render = async (book: WorkbookDraft, change?: (page: number, html: string) => string) => {
   const template = fixedTemplate(await fixedTemplateFonts());
   const changed = change ? { ...template, page: (...a: Parameters<typeof template.page>) => change(a[0].number, template.page(...a)!) } : template;
-  return renderWorkbook({ draft: book, parentId: PARENT, template: changed, engine: chromiumPrintEngine() });
+  return renderWorkbook({ draft: book, parentId: PARENT, template: changed, engine: sharedEngine });
 };
 
 /** The text of the QR code in a PNG, or null. */
@@ -247,7 +249,7 @@ describe.skipIf(!chromium)("the monthly summary with Chromium", () => {
   };
 
   it("prints the summary on one Letter page", async () => {
-    const out = await renderMonthlySummary({ view, engine: chromiumPrintEngine(), fonts: await fixedTemplateFonts() });
+    const out = await renderMonthlySummary({ view, engine: sharedEngine, fonts: await fixedTemplateFonts() });
     if (out.status !== "rendered") throw new Error(JSON.stringify(out));
     expect(new TextDecoder("latin1").decode(out.pdf).match(/\/Type\s*\/Page\b/g)?.length).toBe(1);
     expect(await sharp(out.png).metadata()).toMatchObject({ width: 1275, height: 1650 });
@@ -274,7 +276,7 @@ describe.skipIf(!chromium)("the monthly summary with Chromium", () => {
     ["one word", "W".repeat(60)],
   ])("fits the fullest summary on one page with a 60-character name in %s", async (_, firstName) => {
     expect(firstName).toHaveLength(60);
-    const out = await renderMonthlySummary({ view: most(firstName), engine: chromiumPrintEngine(), fonts: await fixedTemplateFonts() });
+    const out = await renderMonthlySummary({ view: most(firstName), engine: sharedEngine, fonts: await fixedTemplateFonts() });
     expect(out.status).toBe("rendered");
   }, 60_000);
 
@@ -287,7 +289,7 @@ describe.skipIf(!chromium)("the monthly summary with Chromium", () => {
     const at = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     try {
       const firstName = `<img src="${at}/img"><script>fetch("${at}/script")</script>`;
-      const out = await renderMonthlySummary({ view: { ...view, firstName }, engine: chromiumPrintEngine(), fonts: await fixedTemplateFonts() });
+      const out = await renderMonthlySummary({ view: { ...view, firstName }, engine: sharedEngine, fonts: await fixedTemplateFonts() });
       expect(out.status).toBe("rendered");
       expect(asked).toEqual([]);
     } finally {
@@ -297,7 +299,7 @@ describe.skipIf(!chromium)("the monthly summary with Chromium", () => {
 
   it("fails a summary too long for one page", async () => {
     const long = { ...view, mailed: Array.from({ length: 40 }, (_, i) => ({ number: i + 1, shippedOn: "2026-10-14" })) };
-    expect(await renderMonthlySummary({ view: long, engine: chromiumPrintEngine(), fonts: await fixedTemplateFonts() })).toEqual({ status: "failed", reason: "the summary does not fit on one page" });
+    expect(await renderMonthlySummary({ view: long, engine: sharedEngine, fonts: await fixedTemplateFonts() })).toEqual({ status: "failed", reason: "the summary does not fit on one page" });
   }, 60_000);
 });
 
