@@ -46,7 +46,7 @@ import type { ParentPlan } from "@/lib/parent-plan";
 import type { ChildView, OverviewView, ProgressNumbers, SkillItemView, WorkbooksView } from "@/lib/parent-view";
 import type { HelpMark } from "@/lib/needs-help";
 import { skillSentence, type MistakeFact, type SkillGroup } from "@/lib/skill-sentences";
-import type { WeekDayState, WeekProgress } from "@/lib/parent-week";
+import { WORKBOOK_DAYS, type WeekDayState, type WeekProgress } from "@/lib/parent-week";
 import { freeMonthWords } from "@/lib/parent-assessment";
 import { homeStory, type HomeStoryFacts } from "@/lib/home-highlights";
 import { overviewDesk, tabLinks } from "@/lib/parent-shell";
@@ -176,18 +176,21 @@ function overview(child: ChildView, state: string): OverviewView {
   const preparing = state === "preparing" || state === "late";
   const empty = state === "first_book_coming";
   const first = state === "first_scan";
-  const notStarted = state === "day_not_started";
   // Book 2 is in the mail: Book 1 is still the card. Over: Book 1's last day has passed, so there is no Today row.
   const mailed = state === "book_2_mailed" || state === "book_over";
   const over = state === "book_over";
-  const behind = state === "behind";
   const quiet = state === "nothing_to_say";
-  const states = sampleCircles(state, child.stage === "ended");
+  const states = sampleCircles(state, child.readOnly);
+  const day = quiet ? 1 : 4;
+  const doneDays = over ? 9 : states.filter((state) => state === "done" || state === "today_done").length;
   const week: OverviewView["week"] = empty ? null : (["Mon", "Tue", "Wed", "Thu", "Fri"] as const).map((label, i) => ({ label, state: states[i] }));
   return { child, resultPreparing: preparing, resultLate: state === "late", week, onTheWay: mailed ? 2 : null,
-    workbook: empty ? null : over ? { number: 1, day: 10, days: 10, percent: 90, today: null }
-      : quiet ? { number: 1, day: 1, days: 10, percent: null, today: { label: "Today", topic: "Hundreds, tens and ones", scanned: 0, pages: 8 } }
-      : { number: mailed ? 1 : 3, day: 4, days: 10, percent: first ? null : behind ? 20 : 38, today: { label: "Today", topic: "Hundreds, tens and ones", scanned: first || notStarted ? 0 : sampleTodayScanned(state), pages: 8 } },
+    workbook: empty ? null : {
+      number: mailed || quiet ? 1 : 3,
+      doneDays,
+      totalDays: WORKBOOK_DAYS,
+      today: over || child.readOnly ? null : { day, label: "Today", title: SAMPLE_TOPICS[day - 1] },
+    },
     scanPrompt: first ? { day: 1, pages: 8 } : null, skills: sampleSkillFacts(state).skills, weekLine: story.line, highlights: story.highlights, summaryMonth: child.stage === "active" || child.stage === "ended" ? "2026-10" : null };
 }
 

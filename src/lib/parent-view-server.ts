@@ -263,15 +263,9 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
       if (error) throw new Error(`workbook standards read: ${error.message}`);
       return [...new Set(data.flatMap((q) => q.standard ?? []))];
     },
-    async workbookQuestions(workbookId) {
-      const { data, error } = await session.from("workbook_questions").select("page_id, standard:package->skill->>standard").eq("workbook_id", workbookId)
-        .order("page_id").order("question_number").limit(2000);
-      if (error) throw new Error(`workbook questions read: ${error.message}`);
-      return data.map((q) => ({ pageId: q.page_id, standard: q.standard }));
-    },
     async planTopics(childId, workbookId) {
       // Share the Workbooks tab's frozen-plan validation, without its scan receipts or marks. One deadline covers
-      // every request, including ownership checks. Missing, invalid or slow plans leave Home's question fallback.
+      // every request, including ownership checks. Missing, invalid or slow plans leave the title out.
       if (!admin) return null;
       return readScheduleTopics(parentScheduleStore(session, admin, parent, AbortSignal.timeout(1500)), parent, childId, workbookId);
     },

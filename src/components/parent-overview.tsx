@@ -19,20 +19,6 @@ import "./parent-overview.css";
 
 const SR: Record<WeekDayState, string> = { done: "done", today: "today, not done yet", today_done: "today, done", open: "coming up" };
 
-/** The workbook's pages scanned: a ring with the percent. Its text alternative says the same in words. */
-function Ring({ percent, book }: { percent: number; book: number }) {
-  const size = 96, r = size / 2 - 7, c = 2 * Math.PI * r;
-  return (
-    <div className="po-ring" role="img" aria-label={`${percent}% of Workbook ${book}'s pages scanned`}>
-      <svg width={size} height={size} aria-hidden="true">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--card)" strokeWidth="9" />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--pa-g)" strokeWidth="9" strokeLinecap="round" strokeDasharray={`${(c * percent) / 100} ${c}`} transform={`rotate(-90 ${size / 2} ${size / 2})`} />
-      </svg>
-      <div className="po-ring-in" aria-hidden="true"><span><b>{percent}%</b>done</span></div>
-    </div>
-  );
-}
-
 /** One plain line for a newer book that is mailed and not delivered yet. */
 export function OnTheWay({ number }: { number: number }) {
   return <p className="po-way">Workbook {number} is on its way</p>;
@@ -70,17 +56,13 @@ export function ParentOverview({ overview }: { overview: OverviewView }) {
           )}
           {workbook && (
             <section className="pa-card po-book" aria-labelledby="po-book-k">
-              <div className="po-book-top">
-                <div>
-                  <p className="eyebrow" id="po-book-k">Workbook {workbook.number}</p>
-                  <h2 className="po-n">Day {workbook.day}<small> of {workbook.days}</small></h2>
-                </div>
-                {workbook.percent !== null && <Ring percent={workbook.percent} book={workbook.number} />}
+              <div>
+                <p className="eyebrow" id="po-book-k">Workbook {workbook.number}</p>
+                <h2 className="po-n">{workbook.doneDays} of {workbook.totalDays}<small> days done</small></h2>
               </div>
               {workbook.today && (
-                <Link className="po-today" href={workbooksDayPath(child.id, workbook.day)}>
-                  <div><b>{workbook.today.label}</b>{workbook.today.topic && <span>{workbook.today.topic}</span>}</div>
-                  {workbook.today.pages > 0 && <span className="po-pp">{workbook.today.scanned} of {workbook.today.pages} scanned</span>}
+                <Link className="po-today" href={workbooksDayPath(child.id, workbook.today.day)}>
+                  <div><b>{workbook.today.label}</b>{workbook.today.title && <span>{workbook.today.title}</span>}</div>
                   <span className="po-chev" aria-hidden="true">›</span>
                 </Link>
               )}

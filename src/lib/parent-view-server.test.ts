@@ -416,7 +416,7 @@ describe("the Supabase reader of the Overview (#560)", () => {
   });
   it("reads a shipped workbook's question standards with the parent's session (#1003)", async () => {
     const r = overviewReader({ workbook_questions: [{ page_id: "p1", standard: "3.1" }, { page_id: "p2", standard: null }] });
-    expect(await r.reader.workbookQuestions(WORKBOOK)).toEqual([{ pageId: "p1", standard: "3.1" }, { pageId: "p2", standard: null }]);
+    expect(await r.reader.workbookStandards(WORKBOOK)).toEqual(["3.1"]);
     expect(select(r.session, "workbook_questions").get("workbook_id")).toBe(`eq.${WORKBOOK}`);
     expect(r.admin.filter((u) => u.pathname.endsWith("/workbook_questions"))).toEqual([]);
   });
@@ -462,14 +462,14 @@ describe("the Supabase reader of the Overview (#560)", () => {
     expect(select(r.admin, "workbook_draft_revisions").get("revision")).toBe("eq.1");
     expect(r.signals).toHaveLength(8);
     expect(new Set(r.signals).size).toBe(1);
-    expect((await readOverview(overviewReader(printedPlanRows()).reader, CHILD, NOW))?.workbook?.today?.topic).toBe("Second printed row first");
+    expect((await readOverview(overviewReader(printedPlanRows()).reader, CHILD, NOW))?.workbook?.today?.title).toBe("Second printed row first");
   });
-  it.each(["rpc/my_family_deletion_state", "workbook_draft_revisions"])("falls back to the question topic after the 1.5 second deadline on %s", async slow => {
+  it.each(["rpc/my_family_deletion_state", "workbook_draft_revisions"])("omits the printed title after the 1.5 second deadline on %s", async slow => {
     const timeout = vi.spyOn(AbortSignal, "timeout");
     try {
       const r = overviewReader(printedPlanRows(), slow);
       const view = await readOverview(r.reader, CHILD, NOW);
-      expect(view?.workbook?.today?.topic).toBe("Number concepts to 1000");
+      expect(view?.workbook?.today).toMatchObject({ title: null });
       expect(timeout).toHaveBeenCalledWith(1500);
       expect(r.signals.length).toBeGreaterThan(0);
       expect(r.signals.every(signal => signal.aborted)).toBe(true);

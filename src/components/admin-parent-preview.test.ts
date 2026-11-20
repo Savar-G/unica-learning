@@ -225,12 +225,11 @@ it("shows the Overview's first line as the child's name once, with the desk besi
   expect(output.querySelector(".pd-top .pd-kid b")?.textContent).toBe("Leah");
 });
 
-it("draws the workbook ring filled to its percent, so the preview matches the page (#1024)", () => {
+it("shows completed workbook days and the sample's printed title on Home", () => {
   const output = dom(rendered("overview", "active", "one", "phone"));
-  const [track, fill] = [...output.querySelectorAll(".po-ring circle")];
-  expect(track.getAttribute("stroke-dasharray")).toBeNull();
-  const [drawn, whole] = (fill.getAttribute("stroke-dasharray") ?? "").split(" ").map(Number);
-  expect(Math.round((drawn / whole) * 100)).toBe(38);
+  expect(output.querySelector(".po-book h2")?.textContent).toBe("3 of 10 days done");
+  expect(output.querySelector(".po-today")?.textContent).toContain("Subtracting across a zero");
+  expect(output.querySelector(".po-ring")).toBeNull();
 });
 
 it("keeps the eyebrow, without a square, on the other pages (#1024)", () => {

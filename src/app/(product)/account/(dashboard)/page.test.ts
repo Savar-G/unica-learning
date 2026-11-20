@@ -445,7 +445,7 @@ describe("a family the switch opens to", () => {
       resultPreparing: false,
       resultLate: false,
       week: [{ label: "Mon", state: "done" }, { label: "Tue", state: "done" }, { label: "Wed", state: "done" }, { label: "Thu", state: "today" }, { label: "Fri", state: "open" }],
-      workbook: { number: 2, day: 4, days: 10, percent: 38, today: { label: "Today", topic: "Hundreds, tens and ones", scanned: 6, pages: 8 } },
+      workbook: { number: 2, doneDays: 3, totalDays: 10, today: { day: 4, label: "Today", title: "Hundreds, tens and ones" } },
       onTheWay: null,
       scanPrompt: null,
       skills: {
@@ -470,10 +470,9 @@ describe("a family the switch opens to", () => {
       expect(out).toMatch(/<main[^>]*><div class="pd-name-row">/);
       for (const [i, word] of ["Mon: done", "Tue: done", "Wed: done", "Thu: today, not done yet", "Fri: coming up"].entries()) expect(out.split('class="pa-vh"')[i + 1]).toContain(word);
       expect(out).toContain("Workbook 2</p>");
-      expect(out).toMatch(/Day 4<small> of 10<\/small>/);
-      expect(out).toContain("38% of Workbook 2&#x27;s pages scanned");
+      expect(out).toContain("3 of 10<small> days done</small>");
+      expect(out).not.toContain("po-ring");
       expect(out).toContain("Hundreds, tens and ones");
-      expect(out).toContain("6 of 8 scanned");
       expect(out).toContain("Since Asha started");
       // The three counts, each number once, on its own button; the list opens on Needs help.
       expect(out).toMatch(/<b>2<\/b><span>Mastered<\/span>/);
@@ -507,8 +506,16 @@ describe("a family the switch opens to", () => {
     it("links the Today row to the Workbooks page at today's day (#1031), and leaves no link once the book's last day has passed", async () => {
       const out = await render(full());
       expect(out).toContain('<a class="po-today" href="/account/workbooks/c1?day=4#day-4">');
-      expect(out.match(/Hundreds, tens and ones[^]*6 of 8 scanned[^]*<\/a>/)).not.toBeNull();
-      expect(await render({ ...full(), workbook: { ...full().workbook!, day: 10, today: null } })).not.toContain("/account/workbooks/c1?day=");
+      expect(out).toContain("<b>Today</b><span>Hundreds, tens and ones</span>");
+      expect(await render({ ...full(), workbook: { ...full().workbook!, today: null } })).not.toContain("/account/workbooks/c1?day=");
+    });
+
+    it("omits a missing day title while keeping the Today link", async () => {
+      const value = full();
+      value.workbook!.today!.title = null;
+      const out = await render(value);
+      expect(out).toContain('<a class="po-today" href="/account/workbooks/c1?day=4#day-4"><div><b>Today</b></div>');
+      expect(out).not.toContain("Hundreds, tens and ones");
     });
 
     it("rings today when all of today's pages are scanned, as the circle says", async () => {
@@ -544,9 +551,9 @@ describe("a family the switch opens to", () => {
       expect(out).not.toContain("Since Asha started");
     });
 
-    it("before the first scan: no ring, and one prompt to scan the first pages, with the Scan button", async () => {
+    it("before the first scan: zero days done and one prompt to scan the first pages, with the Scan button", async () => {
       const value = full();
-      const out = await render({ ...value, workbook: { ...value.workbook!, percent: null, today: { ...value.workbook!.today!, scanned: 0 } }, scanPrompt: { day: 1, pages: 8 }, skills: null });
+      const out = await render({ ...value, workbook: { ...value.workbook!, doneDays: 0 }, scanPrompt: { day: 1, pages: 8 }, skills: null });
       expect(out).not.toContain("po-ring");
       expect(out).toContain("Scan the first pages when they&#x27;re done");
       expect(out).toContain("Day 1 has 8 pages. Any order is fine.");
@@ -589,10 +596,10 @@ describe("a family the switch opens to", () => {
       expect(only).toContain('id="pd-test"');
     });
 
-    it("the card after the book is over has no Today row and still shows the book and its percent", async () => {
+    it("the card after the book is over has no Today row and still shows the book and its completed days", async () => {
       const value = full();
-      const out = await render({ ...value, workbook: { ...value.workbook!, day: 10, percent: 90, today: null }, week: value.week!.map((d) => ({ ...d, state: "done" as const })) });
-      expect(out).toContain("90% of Workbook 2&#x27;s pages scanned");
+      const out = await render({ ...value, workbook: { ...value.workbook!, doneDays: 10, today: null }, week: value.week!.map((d) => ({ ...d, state: "done" as const })) });
+      expect(out).toContain("10 of 10<small> days done</small>");
       expect(out).not.toContain("po-today");
       expect(out).not.toContain("is-today");
     });

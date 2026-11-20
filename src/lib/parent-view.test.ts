@@ -208,7 +208,7 @@ describe("the Workbooks tab (#558)", () => {
       current: null, next: { kind: "first_book_coming" }, books: [], today: "2026-11-04", homeScan: null,
     });
   });
-  it("counts the current book's scanned pages the way Home does: saved photos that have not expired, over its day pages", async () => {
+  it("counts saved, unexpired scans of day pages on the current book's Workbooks cover", async () => {
     const page = (id: string, dayLabel: string | null) => ({ parentId: "parent-1", workbookId: "wb-1", id, dayLabel });
     const scan = (pageId: string, over: Partial<MemoryScan> = {}): MemoryScan => ({ ...own, workbookId: "wb-1", pageId, state: "saved", expiresAt: "2027-01-01T00:00:00Z", ...over });
     const tables = {
@@ -218,7 +218,7 @@ describe("the Workbooks tab (#558)", () => {
     };
     // One of four day pages: the expired photo, the cover, the rejected photo and another book's photo do not count.
     expect((await read(tables))?.homeScan).toEqual({ bookId: "wb-1", scanned: 1, total: 4 });
-    expect((await readOverview(parent({ ...card, ...tables }), "child-1", NOW))?.workbook?.percent).toBe(25);
+    expect((await readOverview(parent({ ...card, ...tables }), "child-1", NOW))?.workbook?.doneDays).toBe(0);
     // No delivered book: nothing to count. A failed read leaves the count out and the page still reads.
     expect((await read({ workbooks: [book(1)] }))?.homeScan).toBeNull();
     expect((await read({ ...tables, fail: ["scans"] }))?.homeScan).toBeNull();
@@ -358,7 +358,7 @@ describe("the Home (#560, #1003)", () => {
     const twoPages = [...pages, { parentId: "parent-1", workbookId: "wb-2", id: "2-d1a", dayLabel: "Day 1" }];
     it("keeps the newest delivered book's card and week, and says the next one is on its way", async () => {
       const view = await read({ ...two, pages: twoPages, scans: scans("d1a", "d1b") });
-      expect(view?.workbook).toMatchObject({ number: 1, day: 3, percent: 20, today: { label: "Today" } });
+      expect(view?.workbook).toMatchObject({ number: 1, doneDays: 1, today: { day: 3, label: "Today" } });
       expect(circles(view)).toEqual(["Mon:done", "Tue:open", "Wed:today", "Thu:open", "Fri:open"]);
       expect(view?.onTheWay).toBe(2);
     });
@@ -376,34 +376,25 @@ describe("the Home (#560, #1003)", () => {
   });
 
   describe("this week and the workbook card", () => {
-    it("mid-week: finished days are done, today is ringed, the card counts the pages scanned", async () => {
-      const view = await read({ scans: scans("d1a", "d1b", "d2a", "d2b", "d3a"), questions: [question("d3a", "3.1"), question("d3a", "3.1"), question("d3b", "3.2")] });
-      expect(circles(view)).toEqual(["Mon:done", "Tue:done", "Wed:today", "Thu:open", "Fri:open"]);
-      // 5 of the book's 10 day pages are scanned.
-      expect(view?.workbook).toEqual({ number: 1, day: 3, days: 10, percent: 50, today: { label: "Today", topic: textOf("3.1"), scanned: 1, pages: 2 } });
+    it.each([
+      { situation: "on track", saved: ["d1a", "d1b", "d2a", "d2b", "d3a"], done: 2,
+        states: ["Mon:done", "Tue:done", "Wed:today", "Thu:open", "Fri:open"], line: { lead: "On track this week.", text: "2 days done." } },
+      { situation: "behind", saved: ["d1a", "d1b", "d2a"], done: 1,
+        states: ["Mon:done", "Tue:open", "Wed:today", "Thu:open", "Fri:open"], line: { lead: "A quieter week.", text: "1 day done. Day 2 is ready when Leah is." } },
+      { situation: "ahead", saved: ["d1a", "d1b", "d2a", "d2b", "d3a", "d3b", "d4a", "d4b"], done: 4,
+        states: ["Mon:done", "Tue:done", "Wed:today_done", "Thu:done", "Fri:open"], line: { lead: "On track this week.", text: "4 days done." } },
+      { situation: "scanning out of order", saved: ["d1a", "d1b", "d3a", "d3b"], done: 2,
+        states: ["Mon:done", "Tue:open", "Wed:today_done", "Thu:open", "Fri:open"], line: { lead: "Catching up this week.", text: "2 days done. Day 2 is ready when Leah is." } },
+    ])("the card and week agree when $situation", async ({ saved, done, states, line }) => {
+      const view = await read({ scans: scans(...saved) });
+      expect(view?.workbook).toEqual({ number: 1, doneDays: done, totalDays: 10, today: { day: 3, label: "Today", title: null } });
+      expect(circles(view)).toEqual(states);
+      expect(view?.weekLine).toEqual(line);
     });
-    it("the ring's percent is rounded down: 9 of 10 pages is 90, and 1 of 3 is 33, never 100 with a page left", async () => {
-      const nine = await read({ scans: scans("d1a", "d1b", "d2a", "d2b", "d3a", "d3b", "d4a", "d4b", "d5a") });
-      expect(nine?.workbook?.percent).toBe(90);
-      const third = await read({ pages: pages.filter((p) => ["cover", "d1a", "d1b", "d2a"].includes(p.id)), scans: scans("d1a") });
-      expect(third?.workbook?.percent).toBe(33);
-      const most = await read({ pages: [...Array.from({ length: 199 }, (_, i) => page(`x${i}`, "Day 1")), page("last", "Day 2")], scans: Array.from({ length: 199 }, (_, i) => scan(`x${i}`)) });
-      expect(most?.workbook?.percent).toBe(99);
-    });
-    it("all of today's pages scanned: today is done and ringed", async () => {
-      const view = await read({ scans: scans("d1a", "d1b", "d2a", "d2b", "d3a", "d3b") });
-      expect(circles(view)).toEqual(["Mon:done", "Tue:done", "Wed:today_done", "Thu:open", "Fri:open"]);
-      expect(view?.workbook?.today).toMatchObject({ scanned: 2, pages: 2 });
-    });
-    it("a day not started: nothing of today scanned", async () => {
-      const view = await read({ scans: scans("d1a", "d1b") });
-      expect(circles(view)).toEqual(["Mon:done", "Tue:open", "Wed:today", "Thu:open", "Fri:open"]);
-      expect(view?.workbook?.today).toMatchObject({ scanned: 0, pages: 2 });
-    });
-    it("before the first scan: no ring, and the one prompt to scan the first pages", async () => {
+    it("before the first scan: zero days done and the prompt to scan the first pages", async () => {
       const view = await read({});
       expect(circles(view)).toEqual(["Mon:open", "Tue:open", "Wed:today", "Thu:open", "Fri:open"]);
-      expect(view?.workbook?.percent).toBeNull();
+      expect(view?.workbook?.doneDays).toBe(0);
       expect(view?.scanPrompt).toEqual({ day: 3, pages: 2 });
     });
     it("no prompt after the first scan, and none where the Scan tab is off", async () => {
@@ -413,8 +404,7 @@ describe("the Home (#560, #1003)", () => {
     it("counts a day only when every page of it has a saved photo that has not expired", async () => {
       const view = await read({ scans: [scan("d1a"), scan("d1b", { expiresAt: "2026-11-01T00:00:00Z" }), scan("d2a"), scan("d2b", { state: "pending" })] });
       expect(circles(view)).toEqual(["Mon:open", "Tue:open", "Wed:today", "Thu:open", "Fri:open"]);
-      // Two of the book's 10 day pages are scanned, though no day is complete.
-      expect(view?.workbook?.percent).toBe(20);
+      expect(view?.workbook?.doneDays).toBe(0);
     });
     it("counts only the newest shipped workbook, and only the family's own rows", async () => {
       const workbooks = [{ ...own, id: "wb-1", number: 1, status: "shipped" }, { ...own, id: "wb-2", number: 2, status: "shipped" }];
@@ -428,48 +418,60 @@ describe("the Home (#560, #1003)", () => {
       const saturday = Date.parse("2026-11-07T20:00:00Z");
       const view = await read({ scans: scans("d1a", "d1b", "d2a", "d2b", "d3a", "d3b", "d4a", "d4b", "d5a", "d5b") }, saturday);
       expect(circles(view)).toEqual(["Mon:done", "Tue:done", "Wed:done", "Thu:done", "Fri:done"]);
-      expect(view?.workbook).toMatchObject({ day: 5, today: { label: "Friday", scanned: 2, pages: 2 } });
+      expect(view?.workbook).toMatchObject({ doneDays: 5, today: { day: 5, label: "Friday" } });
     });
     it("a book delivered on a weekend starts on Day 1, named by the Monday it starts on, never Friday", async () => {
       const view = await read({ deliveries: [{ ...own, workbookId: "wb-1", deliveredAt: "2026-11-07T20:00:00Z" }] }, Date.parse("2026-11-07T21:00:00Z"));
-      expect(view?.workbook).toMatchObject({ day: 1, today: { label: "Day 1 · Monday", pages: 2 } });
+      expect(view?.workbook).toMatchObject({ doneDays: 0, today: { day: 1, label: "Day 1 · Monday" } });
       expect(circles(view)).toEqual(["Mon:open", "Tue:open", "Wed:open", "Thu:open", "Fri:open"]);
     });
     describe("after the book's last day, or once the plan ended", () => {
       const all = (n: number) => Array.from({ length: n }, (_, i) => i + 1).flatMap((d) => [page(`e${d}a`, `Day ${d}`), page(`e${d}b`, `Day ${d}`)]);
       const full = { pages: all(10), scans: all(9).map((p) => scan(p.id)) };
       // Delivered Monday 2 November: Day 10 is Friday 13 November. Saturday 14 and Tuesday 17 are after it.
-      it("has no Today row and no ringed circle, and the card keeps the book and its percent done", async () => {
+      it("has no Today row and no ringed circle, and the card keeps the book and its completed days", async () => {
         for (const at of ["2026-11-14T20:00:00Z", "2026-11-17T20:00:00Z"]) {
           const view = await read(full, Date.parse(at));
-          expect(view?.workbook).toMatchObject({ number: 1, day: 10, days: 10, percent: 90, today: null });
+          expect(view?.workbook).toMatchObject({ number: 1, doneDays: 9, totalDays: 10, today: null });
           expect(view?.week?.some((d) => d.state === "today" || d.state === "today_done")).toBe(false);
           expect(view?.scanPrompt).toBeNull();
         }
       });
+      it("shows all ten days done when the workbook is complete", async () => {
+        const view = await read({ pages: all(10), scans: all(10).map((p) => scan(p.id)) }, Date.parse("2026-11-14T20:00:00Z"));
+        expect(view?.workbook).toEqual({ number: 1, doneDays: 10, totalDays: 10, today: null });
+        expect(circles(view)).toEqual(["Mon:done", "Tue:done", "Wed:done", "Thu:done", "Fri:done"]);
+        expect(view?.weekLine).toEqual({ lead: "On track this week.", text: "5 days done." });
+      });
+      it("crosses into week two at Monday midnight in family time", async () => {
+        const tables = { pages: all(10), scans: all(6).map((p) => scan(p.id)) };
+        const sunday = await read(tables, Date.parse("2026-11-09T06:59:59Z"));
+        const monday = await read(tables, Date.parse("2026-11-09T07:00:00Z"));
+        expect(sunday?.workbook).toMatchObject({ doneDays: 6, today: { day: 5, label: "Friday" } });
+        expect(monday?.workbook).toMatchObject({ doneDays: 6, today: { day: 6, label: "Today" } });
+        expect(circles(sunday)).toEqual(["Mon:done", "Tue:done", "Wed:done", "Thu:done", "Fri:done"]);
+        expect(circles(monday)).toEqual(["Mon:today_done", "Tue:open", "Wed:open", "Thu:open", "Fri:open"]);
+        expect(sunday?.weekLine?.text).toBe("5 days done.");
+        expect(monday?.weekLine?.text).toBe("1 day done.");
+      });
       it("the book's last day is still Today", async () => {
         const view = await read(full, Date.parse("2026-11-13T20:00:00Z"));
-        expect(view?.workbook).toMatchObject({ day: 10, today: { label: "Today" } });
+        expect(view?.workbook).toMatchObject({ doneDays: 9, today: { day: 10, label: "Today" } });
         expect(circles(view)?.[4]).toBe("Fri:today");
       });
       it("an ended plan has no Today row or ringed circle, mid-book", async () => {
         const view = await read({ plans: [{ ...own, kind: "ended" }] });
         expect(view?.child.stage).toBe("ended");
-        expect(view?.workbook).toMatchObject({ day: 3, today: null });
+        expect(view?.workbook).toMatchObject({ doneDays: 0, today: null });
         expect(view?.week?.some((d) => d.state === "today" || d.state === "today_done")).toBe(false);
       });
     });
     it("reads the delivery day in the family's time zone", async () => {
       // 02:00 UTC on Tuesday 3 November is Monday 2 November in Vancouver: Day 1 is Monday, so Wednesday is Day 3.
       const view = await read({ deliveries: [{ ...own, workbookId: "wb-1", deliveredAt: "2026-11-03T02:00:00Z" }] });
-      expect(view?.workbook?.day).toBe(3);
+      expect(view?.workbook?.today?.day).toBe(3);
     });
-    it("names the skill most of the day's questions are on, and none when the questions cannot be read", async () => {
-      expect((await read({ questions: [question("d3a", "3.5"), question("d3b", "3.4"), question("d3a", "3.4"), question("d1a", "3.1")] }))?.workbook?.today?.topic).toBe(textOf("3.4"));
-      expect((await read({}))?.workbook?.today?.topic).toBeNull();
-      expect((await read({ fail: ["questions"] }))?.workbook?.today?.topic).toBeNull();
-    });
-    describe("the day's topic is the printed plan's (the Workbooks tab's), not the questions'", () => {
+    describe("the printed title for Today", () => {
       const PLAN = ["Hundreds, tens and ones", "Comparing numbers", "Adding with regrouping", "Subtracting across a zero", "Review"];
       const plan = PLAN.map((topic, i) => ({ ...own, workbookId: "wb-1", day: i + 1, topic }));
       // Most of Day 3's questions are on 3.1, whose name is not the plan's name for the day.
@@ -482,30 +484,34 @@ describe("the Home (#560, #1003)", () => {
           requiredPages: Array.from({ length: 8 }, (_, k) => 3 + i * 8 + k), scan: { kind: "unknown" as const }, marks: { kind: "none" as const, marked: 0, total: 8 } })),
       });
 
-      it("Home and the Workbooks tab name Day 3 the same way, and count the same pages", async () => {
+      it("Home and the Workbooks tab name Day 3 the same way", async () => {
         expect(textOf("3.1")).not.toBe(PLAN[2]);
         const home = await read(tables);
-        expect(home?.workbook?.today?.topic).toBe("Adding with regrouping");
+        expect(home?.workbook?.today?.title).toBe("Adding with regrouping");
         const reader = parent({ children: [leah, omar], ...delivered, pages, switches, ...tables });
         const workbooks = await readWorkbooks(reader, "child-1", NOW);
         const cover = withHomeCount(bookDays(schedule(), { start: workbooks!.current!.deliveredOn, today: workbooks!.today, ended: false }), workbooks!.homeScan!);
-        expect(cover.day).toBe(home!.workbook!.day);
-        expect(cover.topic).toBe(home!.workbook!.today!.topic);
-        expect(cover.rows[cover.day - 1].topic).toBe(home!.workbook!.today!.topic);
-        // The cover's book count is Home's: 5 of the 10 day pages, and the same whole percent.
-        expect([cover.scanned, cover.total, cover.percent]).toEqual([5, 10, home!.workbook!.percent]);
-        expect(home!.workbook!.today).toMatchObject({ scanned: 1, pages: 2 });
+        expect(cover.day).toBe(home!.workbook!.today!.day);
+        expect(cover.topic).toBe(home!.workbook!.today!.title);
+        expect(cover.rows[cover.day - 1].topic).toBe(home!.workbook!.today!.title);
+        expect([cover.scanned, cover.total, cover.percent]).toEqual([5, 10, 50]);
       });
       it("names each day of the week by the plan, whichever day it is", async () => {
         for (const [day, at] of [[1, "2026-11-02T20:00:00Z"], [2, "2026-11-03T20:00:00Z"], [4, "2026-11-05T20:00:00Z"]] as const) {
-          expect((await read(tables, Date.parse(at)))?.workbook?.today?.topic).toBe(PLAN[day - 1]);
+          expect((await read(tables, Date.parse(at)))?.workbook?.today?.title).toBe(PLAN[day - 1]);
         }
       });
-      it("falls back to the questions' topic when the plan cannot be read, has no row for the day, or is not stored", async () => {
-        expect((await read({ ...tables, fail: ["planTopics"] }))?.workbook?.today?.topic).toBe(textOf("3.1"));
-        expect((await read({ ...tables, planTopics: plan.filter((r) => r.day !== 3) }))?.workbook?.today?.topic).toBe(textOf("3.1"));
-        expect((await read({ ...tables, planTopics: [] }))?.workbook?.today?.topic).toBe(textOf("3.1"));
-        expect((await read({ ...tables, planTopics: plan.map((r) => ({ ...r, parentId: "parent-2" })) }))?.workbook?.today?.topic).toBe(textOf("3.1"));
+      it("omits the title when no usable printed title can be read", async () => {
+        const cases: MemoryParentViewTables[] = [
+          { ...tables, fail: ["planTopics"] },
+          { ...tables, planTopics: plan.filter((r) => r.day !== 3) },
+          { ...tables, planTopics: [] },
+          { ...tables, planTopics: plan.map((r) => ({ ...r, topic: " " })) },
+          { ...tables, planTopics: plan.map((r) => ({ ...r, parentId: "parent-2" })) },
+        ];
+        for (const input of cases) {
+          expect((await read(input))?.workbook?.today).toEqual({ day: 3, label: "Today", title: null });
+        }
       });
     });
   });
@@ -745,7 +751,7 @@ describe("the Home (#560, #1003)", () => {
       expect((await story({ scans: scans("d1a", "d1b") })).line).toBe("A quieter week. 1 day done. Day 2 is ready when Leah is.");
     });
     it("catching up: an earlier day is open and the latest is done", async () => {
-      expect((await story({ scans: scans("d2a", "d2b") })).line).toBe("Catching up. 1 day done. Day 1 is ready when Leah is.");
+      expect((await story({ scans: scans("d2a", "d2b") })).line).toBe("Catching up this week. 1 day done. Day 1 is ready when Leah is.");
     });
     it("a day with only some pages scanned is not done", async () => {
       expect((await story({ scans: scans("d1a", "d1b", "d2a") })).line).toBe("A quieter week. 1 day done. Day 2 is ready when Leah is.");
@@ -877,7 +883,7 @@ describe("the Home (#560, #1003)", () => {
   it("holds only the named fields: no percent right, no wrong-answer count, no level or area bar, no raw record", async () => {
     const view = await read({ scans: scans("d1a"), switches: { progress: true, maya: false, scanPages: true }, tests: [test("t")], reports: [report("t")], skillTests: [{ ...own, assessmentId: "t", standard: "3.1", correct: 4, total: 4, at: "2026-10-30T18:00:00Z", secret: "RAW" } as never] });
     expect(Object.keys(view!).sort()).toEqual(["child", "highlights", "onTheWay", "resultLate", "resultPreparing", "scanPrompt", "skills", "summaryMonth", "week", "weekLine", "workbook"]);
-    expect(Object.keys(view!.workbook!).sort()).toEqual(["day", "days", "number", "percent", "today"]);
+    expect(Object.keys(view!.workbook!).sort()).toEqual(["doneDays", "number", "today", "totalDays"]);
     expect(JSON.stringify(view)).not.toMatch(/RAW|percentRight|wrong|"level"|"areas"/);
   });
 

@@ -113,8 +113,8 @@ export function bookDays(schedule: ReadySchedule, calendar: BookCalendar | null)
 }
 
 /**
- * The cover's count the way Home counts it (src/lib/parent-view.ts `readBookDays`): saved, unexpired photos over the book's
- * day pages, percent floored. The Workbooks tab and Home then say the same number for the current book.
+ * Page counts for the newest delivered book's cover, with the percent rounded down.
+ * Uses the same saved, unexpired scans as Home's completed-day count.
  */
 export const withHomeCount = (days: BookDays, count: { scanned: number; total: number }): BookDays =>
   ({ ...days, scanned: count.scanned, total: count.total, percent: count.total > 0 ? Math.floor((count.scanned / count.total) * 100) : 0 });

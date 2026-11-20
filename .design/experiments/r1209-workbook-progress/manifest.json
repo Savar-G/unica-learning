@@ -1,0 +1,21 @@
+{
+  "issue": 1209,
+  "base": "9129f7b78aa14a10ea1979d8b3c32cdaf472a177",
+  "browser": "Aside u0",
+  "render": "Local Next.js /account with ParentShell, ParentOverview and readOverview over invented workbook records",
+  "fixture": {
+    "workbookNumber": 3,
+    "timeZone": "America/Vancouver",
+    "deliveredOn": "2026-11-02",
+    "today": "2026-11-05",
+    "fullDays": [1, 3],
+    "partialDays": [2, 4],
+    "savedPages": 18,
+    "dayPages": 80,
+    "todayTitle": "Making change from ten dollars"
+  },
+  "captures": [
+    { "before": "before-desktop.png", "after": "after-desktop.png", "width": 1440, "height": 1000 },
+    { "before": "before-phone.png", "after": "after-phone.png", "width": 390, "height": 844 }
+  ]
+}

@@ -36,7 +36,7 @@ describe("the line under the Workbook card", () => {
     expect(line({ openDay: 2 })).toBe("On track this week. 3 days done.");
   });
   it("catching up: a day is open but the latest one is done, said without blame", () => {
-    expect(line({ week: { done: 2, due: 3, missed: [1], catchingUp: true } })).toBe("Catching up. 2 days done. Day 1 is ready when Leah is.");
+    expect(line({ week: { done: 2, due: 3, missed: [1], catchingUp: true } })).toBe("Catching up this week. 2 days done. Day 1 is ready when Leah is.");
   });
   it("no scans this week: nothing scanned yet, and no full day yet when some pages are scanned", () => {
     expect(line({ week: { done: 0, due: 3, missed: [1, 2, 3], catchingUp: false }, scansThisWeek: 0 })).toBe("A quiet week so far. Nothing scanned yet. Day 1 is ready when Leah is.");
