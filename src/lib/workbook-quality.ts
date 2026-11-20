@@ -511,6 +511,10 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
         issues.push({ page: p.number, kind: "step", reason: `Spot the error question ${q.number} must demonstrate its exact curriculum step ${own}` });
       }
     }
+    // A code-built Use 2 ways sum from U10 comes from a step the page's plan declares (a borrowed sum's step is listed).
+    const codeSkill = !t && q.package && !q.existing && q.place === "solve-it-two-ways" && q.package.level >= 10 && declaration?.steps ? q.itemPlan?.item.skill : undefined;
+    if (codeSkill && !declaration!.steps!.some((k) => k.startsWith(`${codeSkill}#`)))
+      issues.push({ page: p.number, kind: "step", reason: `Use 2 ways question ${q.number} works a sum of ${codeSkill}, not one of the page's steps (${declaration!.steps!.join(", ")})` });
     if (!t || !q.package) continue;
     const allowed = declaration?.steps;
     if (allowed && !allowed.includes(`${t.skill}#${t.step}`)) issues.push({ page: p.number, kind: "step", reason: `question ${q.number} comes from ${t.skill} step ${t.step}, not one of the page's steps (${allowed.join(", ")})` });

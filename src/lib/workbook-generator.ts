@@ -150,8 +150,8 @@ function slotStep(input: GenerateInput, slot: Slot, attempt: number, level: numb
         if (prior.length) return prior[Math.floor(attempt / 6) % prior.length];
       }
     }
-    const stories = attempt >= WIDER_STORIES ? widerStorySteps(input, slot, day, level) : storySteps(input, slot, day, level);
-    if (stories.length) return stories[Math.floor((attempt >= WIDER_STORIES ? attempt - WIDER_STORIES : attempt) / 6) % stories.length];
+    const stories = storySteps(input, slot, day, level);
+    if (stories.length) return stories[Math.floor(attempt / 6) % stories.length];
     // The last questions of a practice block review an earlier step (the U16 and U4 reviews: a day mixes the new step
     // with earlier ones, not one task twenty times).
     const ordinal = Number(slot.id.split(".")[1]) || 1;
@@ -328,21 +328,6 @@ function priorStorySteps(input: GenerateInput, at: { skill: string; step: number
     .sort((a, b) => (stepRank(input.curriculum, b.skill, b.step) ?? 0) - (stepRank(input.curriculum, a.skill, a.step) ?? 0));
   cached.set(key, prior);
   return prior;
-}
-
-/**
- * A Word problems slot's late candidates (from WIDER_STORIES): its routed steps, then every earlier step with stories, so
- * a page whose routed steps tell one kind of story can still mix its kinds. The U19 sweep's Day 3 took its stories from
- * the day's own step, the book's steps and the day's reviewed steps, all equal groups, and printed two groups stories
- * and a hole (Luis, 2026-11-19). A page its first candidates fill is unchanged.
- */
-const WIDER_STORIES = 512;
-function widerStorySteps(input: GenerateInput, slot: Slot, day: number, level: number): { skill: string; step: number }[] {
-  const routed = storySteps(input, slot, day, level);
-  const at = slot.part.step;
-  if (!at || !routed.length) return routed;
-  const seen = new Set(routed.map((x) => `${x.skill}#${x.step}`));
-  return [...routed, ...priorStorySteps(input, at, level).filter((x) => !seen.has(`${x.skill}#${x.step}`))];
 }
 
 function storySteps(input: GenerateInput, slot: Slot, day: number, level: number): { skill: string; step: number }[] {
@@ -1693,7 +1678,21 @@ function expectedSlots(input: GenerateInput, w: PageWork): NonNullable<Generated
     .map(s => ({ slot: s.id, part: s.part.kind, place: s.place, ...(slotStage(s) === "application" && s.part.step
       && ["on-your-own", "practice-row", "unit-b-practice"].includes(s.place ?? "")
       && stepOf(input.curriculum, s.part.step.skill, s.part.step.step)?.templates?.some(isApplicationPractice)
-        ? { application: true as const } : {}), ...slotSteps(input, s, w.day) }));
+        ? { application: true as const } : {}), ...withTwoWaysSteps(input, s, w.day, slotSteps(input, s, w.day)) }));
+}
+
+/**
+ * A U10+ Use 2 ways slot also lists the adding or subtracting steps code takes its sum from (twoWaysArithmeticSkills),
+ * so the page's plan declares the step a borrowed sum comes from and the book check holds it to them. The slot's number
+ * range stays its own steps'.
+ */
+function withTwoWaysSteps(input: GenerateInput, slot: Slot, day: number, declared: ReturnType<typeof slotSteps>): ReturnType<typeof slotSteps> {
+  if (slot.place !== "solve-it-two-ways" || input.plan.level < 10 || !declared.steps) return declared;
+  const sums = twoWaysArithmeticSkills(input, day).flatMap((skill) => {
+    const at = stepOf(input.curriculum, skill, reviewMasteryStep(input.curriculum, input.plan.level, skill) ?? 1);
+    return at ? [`${skill}#${at.number}`] : [];
+  });
+  return { ...declared, steps: [...new Set([...declared.steps, ...sums])] };
 }
 
 /** The tasks of a page's worked examples, as planned. */
@@ -2811,7 +2810,9 @@ function layOut(input: GenerateInput) {
         // (From U10 a Use 2 ways slot never goes to the writer while the day reviews an adding or subtracting skill: code
         // picks a sum with two methods, or the slot fails as missing. The writer printed "40 + 80 = ?" in the live U10
         // regen, 2026-11-18, where the day's own step had no Use 2 ways question.)
-        const twoWaysBuilder = input.plan.level >= 10 && slot.place === "solve-it-two-ways" && dayArithmeticSkills(input, w.day).length > 0;
+        // (A day that reviews none takes one the book reviews on the nearest other day: the live U19 Book 1's Day 8, an
+        // angles day, sent its Use 2 ways to the writer, whose angle count failed the book check, 2026-11-19.)
+        const twoWaysBuilder = input.plan.level >= 10 && slot.place === "solve-it-two-ways" && twoWaysArithmeticSkills(input, w.day).length > 0;
         slot.existing = slot.part.step && slot.place === "spot-the-error" ? false
           : w.page.existingSlots ? w.page.existingSlots.includes(slot.id) : templated || mixedBuilder || twoWaysBuilder ? false : slot.place === "challenge" ? !challengeSkill : !approvedQuestionTypes(skill).length;
         if (slot.existing) {
@@ -2844,13 +2845,16 @@ function layOut(input: GenerateInput) {
         // hard review items: the full U4 book's Day 9 "Remember these" had no likelihood task left, Savar 2026-11-04.)
         const practicePart = slot.place === "remember-these" ? w.slots.find((s) => s.part !== slot.part && s.part.step && ["on-your-own", "finish-these", "practice-row"].includes(s.place ?? ""))?.part : undefined;
         // (A day whose own step has no two-ways question takes a sum of an adding or subtracting skill the day reviews.)
-        const twoWaysSkills = slot.place === "solve-it-two-ways" && input.plan.level >= 10 ? dayArithmeticSkills(input, w.day) : [];
+        const twoWaysSkills = slot.place === "solve-it-two-ways" && input.plan.level >= 10 ? twoWaysArithmeticSkills(input, w.day) : [];
+        // (A sum from another day's step: two 2-digit numbers that need regrouping, worth working out two ways.)
+        const borrowedSum = twoWaysSkills.length > 0 && dayArithmeticSkills(input, w.day).length === 0;
         const passes: { strict: boolean; override?: string; borrow?: boolean }[] = [{ strict: true }, ...(builder && needForm ? [{ strict: true, override: builder }] : []), { strict: false }, ...(builder ? [{ strict: false, override: builder }] : []), ...(practicePart ? [{ strict: false, borrow: true }] : []), ...twoWaysSkills.map((override) => ({ strict: false, override }))];
         for (const { strict, override, borrow } of passes) {
           if (borrow && practicePart) slot.part = practicePart;
           for (let candidate = 0; candidate < (strict ? 512 : 1024) && !best; candidate++) {
             if (borrow && candidate >= 512) break;
-            const c = contractFor(input, w, slot, borrow ? LATE_ATTEMPT + candidate : candidate, override);
+            const c = override && borrowedSum && twoWaysSkills.includes(override)
+              ? borrowedTwoWaysContract(input, w, slot, candidate, override) : contractFor(input, w, slot, borrow ? LATE_ATTEMPT + candidate : candidate, override);
             if (!c) continue;
             // A template item's sentence frames are limited by page and day instead (Cedric's section 9).
             const frame = !c.template && (c.source === "story" || c.type === "likelihood") ? storyFrame(c.item.text) : null;
@@ -2863,6 +2867,7 @@ function layOut(input: GenerateInput) {
             if (strict && slot.place === "math-in-the-world" && circledAnswer(p)) continue;
             // Use 2 ways only for a question with two sensible methods of its kind, never a trivial sum (workbook-two-ways).
             if (slot.place === "solve-it-two-ways" && input.plan.level >= 10 && !twoWaysMethods(p)) continue;
+            if (borrowedSum && override && !regroupingTwoDigit(p)) continue;
             // G1: a short-story day takes stories of at most 20 words first (reading load, item 8).
             if (strict && candidate < 256 && slot.place && STORY_CHECK_PLACES.has(slot.place) && shortStories(input.plan, w.day) && wordsIn(p.text) > SHORT_STORY_WORDS) continue;
             // (An interest slot takes a story that names an interest first, while its early attempts find one, item 5.)
@@ -4149,6 +4154,51 @@ function dayArithmeticSkills(input: GenerateInput, day: number): string[] {
   const parts = input.plan.days.find((d) => d.day === day)?.pages.flatMap((p) => p.parts) ?? [];
   const skills = [...new Set(parts.flatMap((p) => [...(p.reviewSteps ?? []).map((r) => r.skill), ...p.skills, ...(p.weakChecks ?? []).flatMap((c) => c.skills)]))];
   return skills.filter((s) => approvedQuestionTypes(s).some((t) => t === "add" || t === "subtract"));
+}
+
+/** A borrowed Use 2 ways sum (twoWaysArithmeticSkills on a day that reviews none): numbers for two 2-digit operands. */
+function borrowedTwoWaysContract(input: GenerateInput, w: PageWork, slot: Slot, attempt: number, skill: string): ItemPlan | null {
+  return planItem({ skill, slot: slot.id, level: input.plan.level, day: difficultyDay(input.plan, w.day), ordinal: w.number * 31 + (Number(slot.id.split(".")[1]) || 1),
+    range: { min: 40, max: 198, pictures: false, help: "none" }, format: "two-ways", attempt });
+}
+
+/** Two 2-digit numbers whose sum carries a ten (47 + 38) or whose difference borrows one (82 − 47). */
+export function regroupingTwoDigit(p: QuestionPackage): boolean {
+  const op = p.operation;
+  if (!op || (op.kind !== "add" && op.kind !== "subtract")) return false;
+  const [a, b] = op.operands;
+  if (![a, b].every((n) => Number.isInteger(n) && n >= 10 && n <= 99)) return false;
+  return op.kind === "add" ? a % 10 + b % 10 >= 10 : a > b && a % 10 < b % 10;
+}
+
+/**
+ * The adding or subtracting skills a U10+ Use 2 ways slot may take its sum from: the day's own, else those the book
+ * reviews on the nearest other day (earlier first on a tie), so the slot never goes to the writer.
+ */
+function twoWaysArithmeticSkills(input: GenerateInput, day: number): string[] {
+  const own = dayArithmeticSkills(input, day);
+  if (own.length) return own;
+  const days = input.plan.days.map((d) => d.day).filter((d) => d !== day).sort((a, b) => Math.abs(a - day) - Math.abs(b - day) || a - b);
+  for (const other of days) {
+    const skills = dayArithmeticSkills(input, other);
+    if (skills.length) return skills;
+  }
+  // (A book with none, as U19's: the curriculum's adding and subtracting skills, the most advanced first. Its 2-digit
+  // regrouping sum is a review of one of them, and the page's plan lists it, withTwoWaysSteps.)
+  return curriculumArithmeticSkills(input.curriculum);
+}
+
+const ARITHMETIC_SKILLS = new WeakMap<Curriculum, string[]>();
+function curriculumArithmeticSkills(curriculum: Curriculum): string[] {
+  const saved = ARITHMETIC_SKILLS.get(curriculum);
+  if (saved) return saved;
+  const skills = [...new Set(curriculum.levels.flatMap((l) => curriculum.levelSkills(l.id) ?? []).map((s) => s.id))]
+    // (Only skills whose numbers reach 2-digit sums that regroup: never "within 10" or a K story.)
+    .filter((s) => approvedQuestionTypes(s).some((t) => t === "add" || t === "subtract") && stepRank(curriculum, s, 1) !== null
+      && (curriculum.skillSteps(s) ?? []).some((st) => (stepBounds(st)?.max ?? 0) >= 99))
+    .sort((a, b) => (stepRank(curriculum, b, 1) ?? 0) - (stepRank(curriculum, a, 1) ?? 0));
+  ARITHMETIC_SKILLS.set(curriculum, skills);
+  return skills;
 }
 
 /** The book's pages by their plan, so a new pick sees the other days (layOut registers them under both plans it uses). */

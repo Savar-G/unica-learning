@@ -3,6 +3,7 @@ import type { QuestionPackage } from "./question-package";
 import { contentIssues, guideIsAnswer, malformedLine } from "./workbook-content-checks";
 import type { GeneratedPage } from "./workbook-generator";
 import { fakeWorkbookItems } from "./workbook-ai-fake";
+import { regroupingTwoDigit } from "./workbook-generator";
 import { trivialCalculation, twoWaysMethods, writtenTwoWaysProblem } from "./workbook-two-ways";
 
 // Made-up pages: each check is shown failing on the problem a read of the live U10 Book 1 found (2026-11-17), and
@@ -134,5 +135,17 @@ describe("choices print in one form", () => {
     expect(choicesFor("Which is worth more in 658: the hundreds digit or the tens digit?", "the hundreds digit")).toEqual(["the hundreds digit", "the tens digit"]);
     expect(choicesFor("Which is worth more in 568: the hundreds digit or the tens digit?", "the tens digit")).toEqual(["the hundreds digit", "the tens digit"]);
     expect(choicesFor("Is it a cone or a cube?", "cube")).toEqual(["cone", "cube"]);
+  });
+});
+
+describe("a borrowed Use 2 ways sum", () => {
+  it("is two 2-digit numbers that regroup", () => {
+    const op = (kind: "add" | "subtract", a: number, b: number) => ({ operation: { kind, operands: [a, b] } }) as unknown as QuestionPackage;
+    expect(regroupingTwoDigit(op("add", 47, 38))).toBe(true);
+    expect(regroupingTwoDigit(op("add", 23, 22))).toBe(false);
+    expect(regroupingTwoDigit(op("subtract", 82, 47))).toBe(true);
+    expect(regroupingTwoDigit(op("subtract", 87, 42))).toBe(false);
+    expect(regroupingTwoDigit(op("add", 147, 38))).toBe(false);
+    expect(regroupingTwoDigit(op("add", 4, 9))).toBe(false);
   });
 });

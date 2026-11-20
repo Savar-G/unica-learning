@@ -307,7 +307,7 @@ it("counts a question stem with no person in it twice a page at most", () => {
 });
 
 it("asks a step's only Challenge template once and keeps every card on the day's step (B3)", () => {
-  const challenge = (rank: number, index: number, difficulty: string, kind = "story") => ({ skill: rank === 9 ? "5.1-place-value-million" : "4.4-add-within-10000", step: 1, index, rank, difficulty, kind, challengeTemplates: 1 });
+  const challenge = (rank: number, index: number, difficulty: string, kind = "story") => ({ skill: rank === 9 ? "5.1-place-value-million" : "3.3-add-within-1000", step: 1, index, rank, difficulty, kind, challengeTemplates: 1 });
   const p = page(10, 1, 3);
   p.type = "challenge";
   // The day's practice on its hardest step (rank 9), easy.
@@ -409,4 +409,17 @@ it("rejects ordinary drills substituted into a declared application slot", () =>
   };
   expect(issue("independent")).toHaveLength(1);
   expect(issue("application")).toEqual([]);
+});
+
+// The U19 sweep's Day 8 (Luis, 2026-11-19): a day that reviews no adding or subtracting skill takes its Use 2 ways sum
+// from another day's step. The page's plan lists that step, and the book check holds a code-built sum to the list.
+it("holds a code-built U10+ Use 2 ways sum to the steps its page declares", () => {
+  const p = page(61, 8, 1);
+  const plan = planItem({ skill: "3.3-add-within-1000", slot: "2.1", day: 8, level: 19, ordinal: 7, format: "two-ways", range: { min: 40, max: 198, help: "none", pictures: false } })!;
+  const b = buildPlannedItem(plan, plan.item, { id: "p61q1", workbookId: "00000000-0000-4000-8000-0000000000a1", page: 61, question: 1, level: 19, skills: [plan.item.skill] });
+  p.questions = [{ number: 1, slot: "2.1", part: "practice", place: "solve-it-two-ways", attempts: 1, check: b.check, package: b.package, itemPlan: plan }];
+  const reasons = (steps: string[]) => workbookQuality([{ ...p, expected: [{ slot: "2.1", part: "practice", place: "solve-it-two-ways", steps }] }]).issues
+    .filter(i => i.kind === "step").map(i => i.reason);
+  expect(reasons(["6.13-classify-angles#2"])[0]).toMatch(/Use 2 ways question 1 works a sum of 3.3-add-within-1000, not one of the page's steps/);
+  expect(reasons(["6.13-classify-angles#2", "3.3-add-within-1000#3"])).toEqual([]);
 });
