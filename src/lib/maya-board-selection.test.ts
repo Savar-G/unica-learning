@@ -243,3 +243,23 @@ it("tells a tap sent at an old call revision that the board changed, without app
   // Other inputs keep the plain conflict.
   expect(await calls.input(prompt.view.id, prompt.view.revision, { type: "child", text: "Hi" }, null)).toEqual({ ok: false, error: "conflict" });
 });
+
+it("answers a follow-up about the pointed object in code's checked routine", async () => {
+  const { calls, answer, store } = setup({ checkedRoutine: true });
+  const chat = ok(await calls.start(input));
+  const prompt = ok(await calls.input(chat.view.id, chat.view.revision, { type: "child", text: "How do I regroup?" }, null));
+  const fates = prompt.view.batches.map((b) => ({ batchId: b.transactionId, fate: "shown" as const }));
+  const picked = { ...prompt.view.selection!, objectId: "exchange-before", batchId: prompt.view.batches.at(-1)!.transactionId, selectionId: tap() };
+  const answered = ok(await calls.input(chat.view.id, prompt.view.revision, { type: "select", target: picked, fates }, null));
+  const followUp = ok(await calls.input(chat.view.id, answered.view.revision, { type: "child", text: "Why are some of them long?" }, null));
+  const said = followUp.output.say.join(" ");
+  expect(said).toMatch(/^The long blocks are tens\. Each long block is ten small squares joined together\. The small squares are ones\./);
+  expect(said).not.toContain("Start with the ones.");
+  expect(said).not.toMatch(/\b(?:24|twenty-four)\b/i);
+  // Without the tap just before, the same words get the plain checked step question.
+  const plain = ok(await calls.input(chat.view.id, followUp.view.revision, { type: "child", text: "Why are some of them long?" }, null));
+  expect(plain.output.say.join(" ")).not.toContain("The long blocks are tens");
+  ok(await calls.input(chat.view.id, plain.view.revision, { type: "end" }, null));
+  expect(checkTrace(store.rows()[0].trace)).toMatchObject({ ok: true });
+  void answer;
+});

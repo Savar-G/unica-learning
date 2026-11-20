@@ -72,7 +72,7 @@ import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
 import { answersOwnQuestion, askedStep, doneReply, firstTimeTurn, yesReply, type AskedRead } from "./teaching-reads";
 import { deriveDrawings, type BoardRead, type TiedDrawing } from "./board-ties";
-import { readSelectionTarget, selectionWords, type ObjectFacts, type SelectedObject, type SelectionOffer, type SelectionProposal, type SelectionTarget } from "./board-selection";
+import { pointedFollowUp, readSelectionTarget, selectionWords, type ObjectFacts, type SelectedObject, type SelectionOffer, type SelectionProposal, type SelectionTarget } from "./board-selection";
 import { chooseTransfer, relatedChoice, TRANSFER_MIN_MS, TRANSFER_OFFER, transferBoard, transferPackage, type RelatedStep, type TransferOperands } from "./transfer";
 import { EXCHANGE_OBJECT, exchangeChildWords, exchangeCommands, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingOffersAction, regroupingWords, sameExchangeTarget, supportsCheckedExchange, type CheckedExchangeLesson, type ExchangeAction, type ExchangeProposal, type ExchangeTarget, type ExchangeTurn, type RegroupingInstruction, type RegroupingObservation } from "./checked-exchange";
 import { agreementClause, askedStep as askedOperationStep, bindingReview, checkedSubtractionQuestion, checkTutorSay, continuedSay, stepsStated, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, FINAL_ASK, TUTOR_FIRST_TIME_WORD_LIMIT, TUTOR_REVIEW_IGNORED } from "./tutor";
@@ -6778,8 +6778,11 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   // After streamed words tell a step, ask the next open step. Otherwise preserve the question the child missed.
   const stated = sent.length ? stepsStated(pkg, sent) : [];
   const done = [...new Set([...s.done, ...stated])];
+  // #1152: words that follow a tap are about the object the child pointed to, unless they give an answer.
+  const pointed = base.checkedRoutine && stance === "none" && !progress ? pointedObject(base) : undefined;
+  const aboutPointed = pointed ? pointedFollowUp(pointed).join(" ") : "";
   const honest = endNow === "yes" ? TUTOR_GOODBYE_YES : endNow === "no" ? TUTOR_GOODBYE : base.checkedRoutine && s.solved === null
-    ? checkedSubtractionQuestion(pkg, done, stance === "wrong" ? "Not quite." : progress ? "That's right." : null,
+    ? (aboutPointed ? `${aboutPointed} ` : "") + checkedSubtractionQuestion(pkg, done, stance === "wrong" ? "Not quite." : progress ? "That's right." : null,
       !!base.turn && (ASKS_TUTOR.test(base.turn.text) || /\b(?:regroup|borrow|exchange|trade)\b/i.test(base.turn.text) || saysStuck(base.turn.text)))
     : tutorFallbackText(pkg, done, s.solved !== null, stated.length ? null : openAsked(base));
   // A continuation supplies only the rest; its checks still read the fixed sentences and the rest together.

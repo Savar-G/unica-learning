@@ -170,6 +170,19 @@ export function pointedNote(facts: ObjectFacts): string {
   return `The child pointed to ${nameOf(facts)} on the board${what} and Maya asked what about it is confusing. Answer about that object.`;
 }
 
+/**
+ * Code's checked routine (`checkedRoutine`) writes Maya's reply itself. When the child's next words follow a tap, it
+ * explains the object they pointed to before the step question. No digits: only place-value words code owns.
+ */
+export function pointedFollowUp(facts: ObjectFacts): string[] {
+  switch (facts.kind) {
+    case "base_ten": return ["The long blocks are tens.", "Each long block is ten small squares joined together.", "The small squares are ones."];
+    case "write": return ["That line shows the same amount two ways: the whole number, then its tens and ones."];
+    case "columns": return ["Each column holds one place: tens on the left and ones on the right."];
+    case "named": return [];
+  }
+}
+
 /** Maya's words for a checked selection. Code owns every quantity: they come from the command that drew the object. */
 export function selectionWords(proposal: SelectionProposal): string[] | null {
   if (proposal.result === "changed") return ["The board changed after you pointed.", "Point to the part again, or tell me which part you mean."];
