@@ -50332,7 +50332,7 @@
     {
      "format": "true-false",
      "difficulty": "medium",
-     "text": "True or false: {n} {n_groups} of 25 is about {shown}.",
+     "text": "Use 25 as the estimate for each of {n} groups. Multiply to estimate the total. True or false: the resulting estimate is {shown}.",
      "answer": "'true' if f == 0 else 'false'",
      "slots": {
       "n": "groups",
@@ -62223,7 +62223,7 @@
     {
      "format": "compare",
      "difficulty": "easy",
-     "text": "A bag has {a} red marbles and {b} blue marbles. Which is more likely to be picked?",
+     "text": "A bag has {a} red marbles and {b} blue marbles. Pick one marble without looking. Which is more likely to be picked, red or blue?",
      "answer": "'red' if a > b else 'blue'",
      "slots": {
       "a": "count",
@@ -62234,7 +62234,7 @@
     {
      "format": "true-false",
      "difficulty": "easy",
-     "text": "True or false: a bag with {a} red and {b} blue makes red more likely.",
+     "text": "A bag has {a} red marbles and {b} blue marbles. Pick one marble without looking. True or false: picking red is more likely than picking blue.",
      "answer": "'true' if a > b else 'false'",
      "slots": {
       "a": "count",
@@ -62245,7 +62245,7 @@
     {
      "format": "story",
      "difficulty": "medium",
-     "text": "{name} picks from a bag with {a} red and {b} blue marbles. Is red more likely, less likely or equally likely?",
+     "text": "A bag has {a} red marbles and {b} blue marbles. {name} picks one marble without looking. Compared with blue, is picking red more likely, less likely or equally likely?",
      "answer": "'more likely' if a > b else ('less likely' if a < b else 'equally likely')",
      "slots": {
       "a": "count",
@@ -62255,7 +62255,7 @@
     {
      "format": "choose",
      "difficulty": "medium",
-     "text": "A bag has {a} red and {b} blue marbles. Red is A: more likely   B: less likely   C: equally likely",
+     "text": "A bag has {a} red marbles and {b} blue marbles. Pick one marble without looking. Compared with blue, picking red is A: more likely   B: less likely   C: equally likely",
      "answer": "'A' if a > b else ('B' if a < b else 'C')",
      "slots": {
       "a": "count",
@@ -62265,7 +62265,7 @@
     {
      "format": "compare",
      "difficulty": "hard",
-     "text": "A bag has {a} red, {b} blue and {c} green marbles. Which colour is least likely to be picked?",
+     "text": "A bag has {a} red, {b} blue and {c} green marbles. Pick one marble without looking. Which colour is least likely to be picked?",
      "answer": "nm",
      "slots": {
       "a": "count",
@@ -68088,7 +68088,7 @@
     {
      "format": "story",
      "difficulty": "easy",
-     "text": "{name} has {p} {things}. A friend has {q}. About how many together?",
+     "text": "Round each number to the nearest ten, then add. {name} has {p} {things}. A friend has {q}. About how many together?",
      "answer": "S",
      "slots": {
       "a": "value",
@@ -68105,7 +68105,7 @@
     {
      "format": "true-false",
      "difficulty": "medium",
-     "text": "True or false: {p} + {q} is about {shown}.",
+     "text": "Round {p} and {q} each to the nearest ten, then add. True or false: the resulting estimate is {shown}.",
      "answer": "'true' if f == 0 else 'false'",
      "slots": {
       "a": "value",
@@ -68124,7 +68124,7 @@
     {
      "format": "choose",
      "difficulty": "medium",
-     "text": "About how much is {p} + {q}? A: {x}   B: {y}",
+     "text": "Round each number to the nearest ten, then add. About how much is {p} + {q}? A: {x}   B: {y}",
      "answer": "'A' if f == 0 else 'B'",
      "slots": {
       "a": "value",
@@ -68266,7 +68266,7 @@
     {
      "format": "story",
      "difficulty": "medium",
-     "text": "{name} had {p} {things} and gave away {q}. About how many are left?",
+     "text": "{name} had {p} {things} and gave away {q}. Round each number to the nearest ten, then subtract. What is the estimate for how many {things} are left?",
      "answer": "S",
      "slots": {
       "a": "value",
@@ -68283,7 +68283,7 @@
     {
      "format": "true-false",
      "difficulty": "medium",
-     "text": "True or false: {p} - {q} is about {shown}.",
+     "text": "Round {p} and {q} each to the nearest ten, then subtract. True or false: the resulting estimate is {shown}.",
      "answer": "'true' if f == 0 else 'false'",
      "slots": {
       "a": "value",
@@ -68302,7 +68302,7 @@
     {
      "format": "choose",
      "difficulty": "medium",
-     "text": "About how much is {p} - {q}? A: {x}   B: {y}",
+     "text": "Round {p} and {q} each to the nearest ten, then subtract. What is the resulting estimate? A: {x}   B: {y}",
      "answer": "'A' if f == 0 else 'B'",
      "slots": {
       "a": "value",
@@ -72819,32 +72819,18 @@
      "answer": "4132",
      "why": "Writes 4, 13 and 2 side by side without trading",
      "kind": "conceptual",
-     "misconception": "N1",
-     "watchOut": {
-      "wrong": "Writes 4 hundreds, 13 tens and 2 ones side by side as 4,132.",
-      "fix": "Trade 10 tens for 1 hundred: 5 hundreds, 3 tens, 2 ones = 532.",
-      "verified": true,
-      "verifierModel": "claude-opus-5-5",
-      "verificationHash": "0fbaf5bac6a52e1c42c4bcf655e4"
-     }
+     "misconception": "N1"
     },
     {
      "answer": "432",
      "why": "Keeps the 3 of 13 tens and loses the extra hundred",
      "kind": "conceptual",
-     "misconception": "N2",
-     "watchOut": {
-      "wrong": "Writes 432 by keeping the 3 of 13 tens and dropping a hundred.",
-      "fix": "10 of the 13 tens make 1 hundred: 5 hundreds, 3 tens, 2 ones = 532.",
-      "verified": true,
-      "verifierModel": "claude-opus-5-5",
-      "verificationHash": "0cc38739d7e32416bba2948fe6cc"
-     }
+     "misconception": "N2"
     }
    ],
    "spotTheError": {
-    "wrong": "13 tens = 1 hundred and 3 ones, so the total is 505.",
-    "fix": "13 tens = 1 hundred and 3 tens, so 532."
+    "wrong": "4 hundreds, 13 tens and 2 ones is 4,132.",
+    "fix": "trade 10 tens for 1 hundred: 5 hundreds, 3 tens and 2 ones is 532."
    },
    "arithmetic": "checked",
    "numbers": {
@@ -74939,7 +74925,7 @@
     {
      "format": "true-false",
      "difficulty": "medium",
-     "text": "True or false: {n} groups of about {g} is about {shown}.",
+     "text": "Use {g} as the estimate for each of {n} groups. Multiply to estimate the total. True or false: the resulting estimate is {shown}.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "g": "group_size",
@@ -75132,7 +75118,7 @@
     {
      "format": "true-false",
      "difficulty": "medium",
-     "text": "True or false: {n} groups of about {g} is about {shown}.",
+     "text": "Use {g} as the estimate for each of {n} groups. Multiply to estimate the total. True or false: the resulting estimate is {shown}.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "g": "group_size",
@@ -75193,11 +75179,11 @@
    "number": 3,
    "position": "U10.1.4.3",
    "name": "Choose a sensible estimate",
-   "change": "No group shown: the child picks the sensible estimate",
+   "change": "The guide is for one group: the child judges the size for several groups and picks the sensible estimate",
    "rules": "Choices differ by a factor of 10",
    "example": {
-    "problem": "About how many books fill a classroom bookcase: 30, 300 or 3000?",
-    "answer": "300"
+    "problem": "Use about 30 books per classroom shelf as a guide. About how many books fit on 3 classroom shelves: 9, 90 or 900?",
+    "answer": "90"
    },
    "pages": 6,
    "representation": "table",
@@ -75216,13 +75202,13 @@
     }
    ],
    "spotTheError": {
-    "wrong": "A classroom bookcase holds about 3000 books.",
-    "fix": "3000 is far too many for one bookcase; 300 fits."
+    "wrong": "Sam estimates 900 books on 3 shelves of about 30.",
+    "fix": "3 shelves of about 30 make about 90 books, not 900."
    },
    "arithmetic": "checked",
    "numbers": {
     "choices": {
-     "min": 5,
+     "min": 1,
      "max": 3000
     },
     "template_flip": {
@@ -75236,22 +75222,22 @@
    },
    "practice": [
     {
-     "problem": "About how many pencils fit in a pencil case: 10, 100 or 1000?",
+     "problem": "Use about 10 pencils per pencil case as a guide. About how many pencils fit in a pencil case: 10, 100 or 1000?",
      "answer": "10",
      "difficulty": "easy"
     },
     {
-     "problem": "About how many students fit on a school bus: 6, 60 or 600?",
+     "problem": "Use about 60 students per school bus as a guide. About how many students fit on a school bus: 6, 60 or 600?",
      "answer": "60",
      "difficulty": "easy"
     },
     {
-     "problem": "About how many steps from your classroom to the gym: 5, 50 or 500?",
+     "problem": "Use about 50 steps from the classroom to the gym as a guide. About how many steps from your classroom to the gym: 5, 50 or 500?",
      "answer": "50",
      "difficulty": "medium"
     },
     {
-     "problem": "Which is right? About how many jelly beans fill a big jar? A 5, B 50, C 500",
+     "problem": "Use about 500 jelly beans per big jar as a guide. Which is right? About how many jelly beans fill a big jar? A 5, B 50, C 500",
      "answer": "C (500)",
      "difficulty": "medium"
     },
@@ -75261,7 +75247,7 @@
      "difficulty": "hard"
     },
     {
-     "problem": "Explain in one sentence: why is 3000 too many pencils for one pencil case?",
+     "problem": "Use about 10 pencils per pencil case as a guide. Explain in one sentence: why is 3000 too many pencils for one pencil case?",
      "answer": "a pencil case holds only about 10 pencils",
      "difficulty": "hard"
     }
@@ -75270,122 +75256,152 @@
     {
      "format": "true-false",
      "difficulty": "easy",
-     "text": "True or false: about {s} {what}.",
+     "text": "Use about {b} {guide} as a guide. True or false: about {s} {what}.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "x": "choices",
-      "flip": "template_flip"
+      "flip": "template_flip",
+      "pos": "template_pos"
      },
      "derived": {
       "i": "x % 5",
-      "v": "x // 5 % 8",
-      "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
-      "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
-      "ask": "'How many pencils fit in a pencil case?' if i == 0 else ('How many pages are in a picture book?' if i == 1 else ('How many grapes are in a small bunch?' if i == 2 else ('How many books fit on a classroom shelf?' if i == 3 else 'How many children are in a classroom?')))",
-      "bad": "b * 10",
-      "s": "b if flip == 0 else bad"
+      "v": "x // 5 % 4",
+      "n": "2 + x // 20 % 4",
+      "b": "[[10, 20, 10, 20], [20, 30, 20, 30], [20, 30, 20, 30], [20, 30, 40, 30], [20, 30, 20, 30]][i][v]",
+      "ans": "b * n",
+      "low": "ans // 10",
+      "t10": "ans * 10",
+      "guide": "['pencils per pencil case', 'pages per picture book', 'grapes per small bunch', 'books per classroom shelf', 'children per class'][i]",
+      "what": "['pencils fit in ' + str(n) + ' pencil cases', 'pages are in ' + str(n) + ' picture books', 'grapes are in ' + str(n) + ' small bunches', 'books fit on ' + str(n) + ' classroom shelves', 'children are in ' + str(n) + ' classes'][i]",
+      "ask": "['About how many pencils fit in ' + str(n) + ' pencil cases?', 'About how many pages are in ' + str(n) + ' picture books?', 'About how many grapes are in ' + str(n) + ' small bunches?', 'About how many books fit on ' + str(n) + ' classroom shelves?', 'About how many children are in ' + str(n) + ' classes?'][i]",
+      "bad": "t10 if pos != 1 else low",
+      "s": "ans if flip == 0 else bad"
      }
     },
     {
      "format": "choose",
      "difficulty": "easy",
-     "text": "{ask} Which guess is sensible: {p} or {q}?",
-     "answer": "str(b)",
+     "text": "Use about {b} {guide} as a guide. {ask} Which guess is sensible: {p} or {q}?",
+     "answer": "str(ans)",
      "slots": {
       "x": "choices",
       "flip": "template_flip"
      },
      "derived": {
       "i": "x % 5",
-      "v": "x // 5 % 8",
-      "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
-      "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
-      "ask": "'Pencils in a pencil case.' if i == 0 else ('Pages in a picture book.' if i == 1 else ('Grapes in a small bunch.' if i == 2 else ('Books on a classroom shelf.' if i == 3 else 'Children in a classroom.')))",
-      "bad": "b * 10",
-      "p": "b if flip == 0 else bad",
-      "q": "bad if flip == 0 else b"
+      "v": "x // 5 % 4",
+      "n": "2 + x // 20 % 4",
+      "b": "[[10, 20, 10, 20], [20, 30, 20, 30], [20, 30, 20, 30], [20, 30, 40, 30], [20, 30, 20, 30]][i][v]",
+      "ans": "b * n",
+      "low": "ans // 10",
+      "t10": "ans * 10",
+      "guide": "['pencils per pencil case', 'pages per picture book', 'grapes per small bunch', 'books per classroom shelf', 'children per class'][i]",
+      "what": "['pencils fit in ' + str(n) + ' pencil cases', 'pages are in ' + str(n) + ' picture books', 'grapes are in ' + str(n) + ' small bunches', 'books fit on ' + str(n) + ' classroom shelves', 'children are in ' + str(n) + ' classes'][i]",
+      "ask": "['About how many pencils fit in ' + str(n) + ' pencil cases?', 'About how many pages are in ' + str(n) + ' picture books?', 'About how many grapes are in ' + str(n) + ' small bunches?', 'About how many books fit on ' + str(n) + ' classroom shelves?', 'About how many children are in ' + str(n) + ' classes?'][i]",
+      "bad": "t10",
+      "p": "ans if flip == 0 else bad",
+      "q": "bad if flip == 0 else ans"
      }
     },
     {
      "format": "story",
      "difficulty": "medium",
-     "text": "{name} guesses that about {s} {what}. Is that sensible?",
+     "text": "Use about {b} {guide} as a guide. {name} guesses that about {s} {what}. Is that sensible?",
      "answer": "'yes' if flip == 0 else 'no'",
+     "slots": {
+      "x": "choices",
+      "flip": "template_flip",
+      "pos": "template_pos"
+     },
+     "derived": {
+      "i": "x % 5",
+      "v": "x // 5 % 4",
+      "n": "2 + x // 20 % 4",
+      "b": "[[10, 20, 10, 20], [20, 30, 20, 30], [20, 30, 20, 30], [20, 30, 40, 30], [20, 30, 20, 30]][i][v]",
+      "ans": "b * n",
+      "low": "ans // 10",
+      "t10": "ans * 10",
+      "guide": "['pencils per pencil case', 'pages per picture book', 'grapes per small bunch', 'books per classroom shelf', 'children per class'][i]",
+      "what": "['pencils fit in ' + str(n) + ' pencil cases', 'pages are in ' + str(n) + ' picture books', 'grapes are in ' + str(n) + ' small bunches', 'books fit on ' + str(n) + ' classroom shelves', 'children are in ' + str(n) + ' classes'][i]",
+      "ask": "['About how many pencils fit in ' + str(n) + ' pencil cases?', 'About how many pages are in ' + str(n) + ' picture books?', 'About how many grapes are in ' + str(n) + ' small bunches?', 'About how many books fit on ' + str(n) + ' classroom shelves?', 'About how many children are in ' + str(n) + ' classes?'][i]",
+      "bad": "t10 if pos != 1 else low",
+      "s": "ans if flip == 0 else bad"
+     }
+    },
+    {
+     "format": "choose",
+     "difficulty": "medium",
+     "text": "Use about {b} {guide} as a guide. {ask} Which guess is sensible: {p}, {q} or {r}?",
+     "answer": "str(ans)",
+     "slots": {
+      "x": "choices",
+      "flip": "template_flip",
+      "pos": "template_pos"
+     },
+     "derived": {
+      "i": "x % 5",
+      "v": "x // 5 % 4",
+      "n": "2 + x // 20 % 4",
+      "b": "[[10, 20, 10, 20], [20, 30, 20, 30], [20, 30, 20, 30], [20, 30, 40, 30], [20, 30, 20, 30]][i][v]",
+      "ans": "b * n",
+      "low": "ans // 10",
+      "t10": "ans * 10",
+      "guide": "['pencils per pencil case', 'pages per picture book', 'grapes per small bunch', 'books per classroom shelf', 'children per class'][i]",
+      "what": "['pencils fit in ' + str(n) + ' pencil cases', 'pages are in ' + str(n) + ' picture books', 'grapes are in ' + str(n) + ' small bunches', 'books fit on ' + str(n) + ' classroom shelves', 'children are in ' + str(n) + ' classes'][i]",
+      "ask": "['About how many pencils fit in ' + str(n) + ' pencil cases?', 'About how many pages are in ' + str(n) + ' picture books?', 'About how many grapes are in ' + str(n) + ' small bunches?', 'About how many books fit on ' + str(n) + ' classroom shelves?', 'About how many children are in ' + str(n) + ' classes?'][i]",
+      "p": "low if pos == 0 else (t10 if pos == 1 else ans)",
+      "q": "ans if pos == 0 else (low if pos == 1 else t10)",
+      "r": "t10 if pos == 0 else (ans if pos == 1 else low)"
+     }
+    },
+    {
+     "format": "explain",
+     "difficulty": "medium",
+     "text": "Use about {b} {guide} as a guide. Explain in one sentence: why is {bad} not a sensible answer to \"{ask}\"",
+     "answer": "str(n) + ' groups of about ' + str(b) + ' make about ' + str(ans) + ', and ' + str(bad) + ' is 10 times that'",
      "slots": {
       "x": "choices",
       "flip": "template_flip"
      },
      "derived": {
       "i": "x % 5",
-      "v": "x // 5 % 8",
-      "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
-      "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
-      "ask": "'How many pencils fit in a pencil case?' if i == 0 else ('How many pages are in a picture book?' if i == 1 else ('How many grapes are in a small bunch?' if i == 2 else ('How many books fit on a classroom shelf?' if i == 3 else 'How many children are in a classroom?')))",
-      "bad": "b * 10",
-      "s": "b if flip == 0 else bad"
-     }
-    },
-    {
-     "format": "choose",
-     "difficulty": "medium",
-     "text": "{ask} Which guess is sensible: {p}, {q} or {r}?",
-     "answer": "str(b)",
-     "slots": {
-      "x": "choices",
-      "pos": "template_pos"
-     },
-     "derived": {
-      "i": "x % 5",
-      "v": "x // 5 % 8",
-      "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
-      "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
-      "ask": "'Pencils in a pencil case.' if i == 0 else ('Pages in a picture book.' if i == 1 else ('Grapes in a small bunch.' if i == 2 else ('Books on a classroom shelf.' if i == 3 else 'Children in a classroom.')))",
-      "bad": "b * 10",
-      "t10": "b * 10",
-      "h100": "b * 100",
-      "p": "b if pos == 0 else (h100 if pos == 1 else t10)",
-      "q": "t10 if pos == 0 else (b if pos == 1 else h100)",
-      "r": "h100 if pos == 0 else (t10 if pos == 1 else b)"
-     }
-    },
-    {
-     "format": "explain",
-     "difficulty": "medium",
-     "text": "Explain in one sentence: why is {bad} not a sensible answer to \"{ask}\"",
-     "answer": "'that is far more than would really fit, so it is not sensible'",
-     "slots": {
-      "x": "choices"
-     },
-     "derived": {
-      "i": "x % 5",
-      "v": "x // 5 % 8",
-      "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
-      "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
-      "ask": "'How many pencils fit in a pencil case?' if i == 0 else ('How many pages are in a picture book?' if i == 1 else ('How many grapes are in a small bunch?' if i == 2 else ('How many books fit on a classroom shelf?' if i == 3 else 'How many children are in a classroom?')))",
-      "bad": "b * 10"
+      "v": "x // 5 % 4",
+      "n": "2 + x // 20 % 4",
+      "b": "[[10, 20, 10, 20], [20, 30, 20, 30], [20, 30, 20, 30], [20, 30, 40, 30], [20, 30, 20, 30]][i][v]",
+      "ans": "b * n",
+      "low": "ans // 10",
+      "t10": "ans * 10",
+      "guide": "['pencils per pencil case', 'pages per picture book', 'grapes per small bunch', 'books per classroom shelf', 'children per class'][i]",
+      "what": "['pencils fit in ' + str(n) + ' pencil cases', 'pages are in ' + str(n) + ' picture books', 'grapes are in ' + str(n) + ' small bunches', 'books fit on ' + str(n) + ' classroom shelves', 'children are in ' + str(n) + ' classes'][i]",
+      "ask": "['About how many pencils fit in ' + str(n) + ' pencil cases?', 'About how many pages are in ' + str(n) + ' picture books?', 'About how many grapes are in ' + str(n) + ' small bunches?', 'About how many books fit on ' + str(n) + ' classroom shelves?', 'About how many children are in ' + str(n) + ' classes?'][i]",
+      "bad": "t10"
      }
     },
     {
      "format": "choose",
      "difficulty": "hard",
-     "text": "{ask} Which guess is least sensible: {p}, {q} or {r}?",
-     "answer": "str(h100)",
+     "text": "Use about {b} {guide} as a guide. {ask} Which guess is least sensible: {p}, {q} or {r}?",
+     "answer": "str(t10)",
      "slots": {
       "x": "choices",
+      "flip": "template_flip",
       "pos": "template_pos"
      },
      "derived": {
       "i": "x % 5",
-      "v": "x // 5 % 8",
-      "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
-      "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
-      "ask": "'Pencils in a pencil case.' if i == 0 else ('Pages in a picture book.' if i == 1 else ('Grapes in a small bunch.' if i == 2 else ('Books on a classroom shelf.' if i == 3 else 'Children in a classroom.')))",
-      "bad": "b * 10",
-      "t10": "b * 10",
-      "h100": "b * 100",
-      "p": "b if pos == 0 else (h100 if pos == 1 else t10)",
-      "q": "t10 if pos == 0 else (b if pos == 1 else h100)",
-      "r": "h100 if pos == 0 else (t10 if pos == 1 else b)"
+      "v": "x // 5 % 4",
+      "n": "2 + x // 20 % 4",
+      "b": "[[10, 20, 10, 20], [20, 30, 20, 30], [20, 30, 20, 30], [20, 30, 40, 30], [20, 30, 20, 30]][i][v]",
+      "ans": "b * n",
+      "low": "ans // 10",
+      "t10": "ans * 10",
+      "guide": "['pencils per pencil case', 'pages per picture book', 'grapes per small bunch', 'books per classroom shelf', 'children per class'][i]",
+      "what": "['pencils fit in ' + str(n) + ' pencil cases', 'pages are in ' + str(n) + ' picture books', 'grapes are in ' + str(n) + ' small bunches', 'books fit on ' + str(n) + ' classroom shelves', 'children are in ' + str(n) + ' classes'][i]",
+      "ask": "['About how many pencils fit in ' + str(n) + ' pencil cases?', 'About how many pages are in ' + str(n) + ' picture books?', 'About how many grapes are in ' + str(n) + ' small bunches?', 'About how many books fit on ' + str(n) + ' classroom shelves?', 'About how many children are in ' + str(n) + ' classes?'][i]",
+      "near": "ans + 5",
+      "p": "ans if pos == 0 else (t10 if pos == 1 else near)",
+      "q": "near if pos == 0 else (ans if pos == 1 else t10)",
+      "r": "t10 if pos == 0 else (near if pos == 1 else ans)"
      }
     }
    ],
@@ -81038,7 +81054,7 @@
     }
    ],
    "spotTheError": {
-    "wrong": "50, 45, 40, 45:",
+    "wrong": "In 50, 45, 40, the next number is 45.",
     "fix": "the pattern goes down by 5, so after 40 comes 35."
    },
    "arithmetic": "checked",
@@ -131851,7 +131867,7 @@
     {
      "format": "compare",
      "difficulty": "medium",
-     "text": "Circle the greater: {a} or {b}",
+     "text": "Write the greater number: {a} or {b}",
      "answer": "max(a, b)",
      "slots": {
       "a": "value",
@@ -145431,7 +145447,7 @@
     {
      "format": "compare",
      "difficulty": "easy",
-     "text": "Circle the greater: {n}/{d} or {x}",
+     "text": "Write the greater number: {n}/{d} or {x}",
      "answer": "str(n) + '/' + str(d) if n / d > x else str(x)",
      "slots": {
       "d0": "denominator",
@@ -145620,7 +145636,7 @@
     {
      "format": "compare",
      "difficulty": "easy",
-     "text": "Circle the greater: {x} or {y}",
+     "text": "Write the greater number: {x} or {y}",
      "answer": "max(x, y)",
      "slots": {
       "x0": "thousandths",
@@ -145956,7 +145972,7 @@
     {
      "format": "compare",
      "difficulty": "easy",
-     "text": "Circle the greater: {p}/{q} or {r}/{s}",
+     "text": "Write the greater number: {p}/{q} or {r}/{s}",
      "answer": "str(p) + '/' + str(q) if p * s > r * q else str(r) + '/' + str(s)",
      "slots": {
       "b0": "denominator",
@@ -146140,7 +146156,7 @@
     {
      "format": "compare",
      "difficulty": "easy",
-     "text": "Circle the greater: {a}/{b} or {c}/{d}",
+     "text": "Write the greater number: {a}/{b} or {c}/{d}",
      "answer": "str(a) + '/' + str(b) if a * d > c * b else str(c) + '/' + str(d)",
      "slots": {
       "b0": "denominator",
@@ -156118,19 +156134,12 @@
      "answer": "obtuse",
      "why": "judges by the length of the arms",
      "kind": "conceptual",
-     "misconception": "M5",
-     "watchOut": {
-      "wrong": "Calling an angle obtuse because its arms look long.",
-      "fix": "Arm length doesn't matter. An opening smaller than a square corner (90°) is acute.",
-      "verified": true,
-      "verifierModel": "claude-opus-5-5",
-      "verificationHash": "05b1f641aeddb11f71ad934eb6a7"
-     }
+     "misconception": "M5"
     }
    ],
    "spotTheError": {
-    "wrong": "Tia called a very wide angle acute.",
-    "fix": "wider than a square corner means obtuse."
+    "wrong": "Tia calls an angle acute. Its opening is wider than a square corner but less than a straight angle.",
+    "fix": "Its opening is between 90° and 180°, so it is obtuse."
    },
    "arithmetic": "checked",
    "numbers": {
@@ -156157,7 +156166,7 @@
    },
    "practice": [
     {
-     "problem": "The corner of a book is what kind of angle?",
+     "problem": "Two sides meet at a square corner of a book. What kind of angle is it?",
      "answer": "right",
      "difficulty": "easy"
     },
@@ -156167,7 +156176,7 @@
      "difficulty": "easy"
     },
     {
-     "problem": "An angle is wider than a square corner but not a straight line. What kind is it?",
+     "problem": "An angle opens wider than a square corner but less than a straight angle. What kind is it?",
      "answer": "obtuse",
      "difficulty": "medium"
     },
@@ -156177,7 +156186,7 @@
      "difficulty": "medium"
     },
     {
-     "problem": "An angle has very long arms but only a narrow opening. What kind is it?",
+     "problem": "An angle has long sides, but its opening is smaller than a square corner. What kind of angle is it?",
      "answer": "acute",
      "difficulty": "hard"
     },
@@ -156209,7 +156218,7 @@
       "k": "template_k_2"
      },
      "derived": {
-      "obj": "['corner of a book', 'corner of a door', 'tip of a thin pizza slice', 'tip of a sharp pencil', 'opening of a laptop tilted far back', 'opening of a book lying almost flat'][k]"
+      "obj": "['corner of a book with sides meeting at a square corner', 'corner of a door with sides meeting at a square corner', 'tip of a pizza slice whose sides open less than a square corner', 'tip of a pencil whose sides open less than a square corner', 'opening between a laptop screen and keyboard, wider than a square corner but less than a straight angle', 'opening between two book covers, wider than a square corner but less than a straight angle'][k]"
      }
     },
     {
@@ -156238,8 +156247,8 @@
       "f": "flip"
      },
      "derived": {
-      "claimT": "('an angle that is smaller than a square corner is acute', 'an angle with very long arms but a narrow opening is acute', 'an angle wider than a square corner but narrower than a straight line is obtuse', 'a square corner is a right angle',)",
-      "claimF": "('an angle that is smaller than a square corner is obtuse', 'an angle with very long arms but a narrow opening is obtuse', 'an angle wider than a square corner but narrower than a straight line is acute', 'a square corner is an acute angle',)",
+      "claimT": "('an angle that is smaller than a square corner is acute', 'an angle with long sides but an opening smaller than a square corner is acute', 'an angle wider than a square corner but narrower than a straight line is obtuse', 'a square corner is a right angle',)",
+      "claimF": "('an angle that is smaller than a square corner is obtuse', 'an angle with long sides but an opening smaller than a square corner is obtuse', 'an angle wider than a square corner but narrower than a straight line is acute', 'a square corner is an acute angle',)",
       "claim": "claimT[k] if f == 0 else claimF[k]"
      }
     }

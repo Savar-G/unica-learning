@@ -3,10 +3,9 @@ import type { PageContent } from "@/lib/workbook-page";
 import { questionWorkSpace, WORK_INSTRUCTION } from "@/lib/workbook-work-space";
 
 /**
- * Every warm-up page's instruction (Savar, 2026-11-09): what the warm-up is and that every question is done. No timing
- * and no counting words ("Beat your own count", "Do as many as you can", "there is no timer").
+ * Name what the warm-up practises, without timing, counting or completion demands.
  */
-export const WARM_UP_INSTRUCTION = "A warm-up on things you learned before. Do every question.";
+export const WARM_UP_INSTRUCTION = "A warm-up on things you learned before.";
 
 export interface InstructionQuestion { number: number; package: QuestionPackage | null; place?: string | null }
 interface InstructionPage { content?: PageContent; questions: readonly InstructionQuestion[] }
@@ -76,12 +75,13 @@ const RETIRED_WARM_UP = ["Beat your own count from last time.", "Do as many as y
   /\b(?:Circle|Tick) (?:one choice|or tick one choice|your answers?|true or false|yes or no)\./g];
 const warmUp = (page: InstructionPage) => isWarmUpPage(page.content);
 /**
- * On a warm-up, one sentence says both (Cedric and Savar, 2026-11-09): "Do every question. Write in boxes." said the same
- * thing twice. Only the printed words change; stored instructions stay.
+ * Retire completion demands from older warm-up instructions while keeping their response cue.
  */
 export const mergeWarmUp = (text: string) => text
-  .replace("Do every question. Write in boxes.", "Answer every question in its box.")
-  .replace("Do every question. Write on the lines.", "Answer every question on its line.");
+  .replaceAll("Do every question.", "")
+  .replaceAll("Answer every question in its box.", "Write in boxes.")
+  .replaceAll("Answer every question on its line.", "Write on the lines.")
+  .replace(/\s+/g, " ").trim();
 
 /** The first-delivery U16 template's instruction, from the page's answer regions. Stored questions and content stay unchanged. */
 export function workbookPageInstruction(page: InstructionPage): string | null {

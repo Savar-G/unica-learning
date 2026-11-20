@@ -1,4 +1,5 @@
 import { questionWorkSpace } from "./workbook-work-space";
+import { twoWaysMethods } from "./workbook-two-ways";
 import { isWarmUpPage, printedInstruction, workbookWorkLine, workQuestionNumbers } from "@/lib/workbook-page-instructions";
 // The workbook templates (#310, spec #296): one layout for every page type of .design/workbooks/DESIGN.md (section
 // 7), with its tokens (section 1 to 4): the 8-page and 6-page days, Math in the world, the cover, How + Plan, the back
@@ -37,9 +38,9 @@ import { printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
 import { curriculumFor } from "@/lib/workbook-curriculum";
 
 /** A review page's title, as a child reads it: "Remember these?" prints "Review" (Savar, 2026-11-09). */
-export const reviewTitle = (title: string) => title === "Remember these?" ? "Review" : title;
+export const reviewTitle = (title: string) => title === "Remember these?" ? "Review" : title === "Math in the world" ? "Word problems" : title;
 /** A plan row's second line, the same way: "Remember these?" and "Remember these? and a challenge". */
-const reviewTopic = (topic: string) => topic.replace(/^Remember these\?/, "Review");
+const reviewTopic = (topic: string) => topic.replace(/^Remember these\?/, "Review").replace(/Math in the world/g, "Word problems");
 
 /**
  * Teaching data does not select a print layout or change a printed method. The printed instruction and title follow
@@ -228,8 +229,8 @@ export function textRoom(slot: SlotName, level: number, pages = 8, consistent = 
     case "friday-5": case "unit-check": case "mini-test": case "already-know-it": return list(true);
     case "picture-stories": return card;
     case "show-what-you-know": case "level-test":
-      // Test cards, two to a row: half the width less padding, badge, gaps and the box; the work area grows.
-      return parent ? card : textRoomOf((CONTENT_W - 16) / 2 - 28 - badge - 24 - box, band.body, 2);
+      // Full-width task rows leave room for complete sentences beside the response.
+      return parent ? card : textRoomOf(CONTENT_W - 28 - badge - 24 - box, band.body, 3);
     case "solve-it-two-ways":
       // Beside the number and the "Solve it two ways" label (17 letters of Geist Mono).
       return textRoomOf(CONTENT_W - 22 - 24 - 17 * band.small * MONO_EM, band.body, 2);
@@ -239,7 +240,8 @@ export function textRoom(slot: SlotName, level: number, pages = 8, consistent = 
     case "mixed-set":
       return textRoomOf((consistent ? (CONTENT_W - 32) / 2 : CONTENT_W) - 22 - 12, band.name === "mid" ? 14 : band.story, 2);
     case "challenge":
-      return textRoomOf(CONTENT_W - 35 - badge - 32 - box, band.body, 4);
+      // Consistent Challenge prompts span the card; answers and working sit underneath.
+      return textRoomOf(consistent ? CONTENT_W - 27 - badge - 12 : CONTENT_W - 35 - badge - 32 - box, band.body, CARD_LINES);
     case "math-in-the-world":
       return textRoomOf(CONTENT_W - 22 - 36 - box, band.body, 2);
   }
@@ -483,8 +485,9 @@ const CSS = `
 .hp .plan-time{display:block;font-size:13px;line-height:18px;color:#44444C}
 .hp .dn{width:56px;text-align:right}
 .hp .how{margin-top:auto;border-top:1px solid #0C0C0E;padding-top:14px;display:flex;flex-direction:column;gap:12px}
-.hp .hw{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.2fr) minmax(0,1fr) minmax(0,.9fr);gap:16px}
+.hp .hw{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr);gap:16px}
 .hp .hw>div{text-align:center}
+.hp .hw .chiprow{justify-content:center}
 .hp .how-work{align-self:center;margin:12px 0 0;font-size:14px;line-height:1.4;font-weight:600;text-align:center}
 .hp .how-work mark{background:#FFD23F;color:#0C0C0E;padding:0 5px;box-decoration-break:clone}
 .hp .hw p{margin:8px 0 0;font-size:14px;overflow-wrap:normal}
@@ -593,11 +596,6 @@ const CSS = `
 .pg.consistent .mx .sl{min-width:0}
 .pg.consistent .chc{padding:12px;gap:8px}
 .pg.consistent .chc .act{display:flex;gap:16px;align-items:flex-end;flex:1}
-.pg.consistent .chs.side3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
-.pg.consistent .chs.side3 .top{gap:8px}
-.pg.consistent .chs.side3 .act{flex-direction:column;align-items:stretch;gap:8px}
-.pg.consistent .chs.side3 .act .wb{width:100%;min-width:0}
-.pg.consistent .chs.side3 .act .rg{align-self:flex-end}
 .pg.consistent.older-extra .ab{height:88px}
 /* The shading is the question's only: the work space under it is white paper. A layer behind the question paints it,
    from the card's edge to half the gap under the question, so no box moves: the card and its work space keep their size. */
@@ -647,6 +645,30 @@ const CSS = `
 .pg.consistent.stretch .chs>.chc.nowork{flex:1 0 auto}
 .pg.consistent .story .act{flex:1}
 .pg.consistent .story .act .wb,.pg.consistent .chc .act .wb{height:auto!important;min-height:var(--work-min);align-self:stretch}
+/* Full-width task rows keep sentences readable. Only genuine work areas grow, never an empty choice card. */
+.task-rows{display:flex;flex-direction:column;flex:1 0 auto;justify-content:space-between;gap:8px}
+.task-rows>.task-card{flex:0 0 auto;min-width:0}
+.task-rows>.tc{padding:6px 12px}
+.task-rows>.tc.has-work{display:grid;grid-template-columns:minmax(0,1fr) minmax(240px,.85fr);gap:16px}
+.task-rows>.tc.has-work>.q{display:grid;grid-template-columns:24px minmax(0,1fr);align-content:start;column-gap:12px;row-gap:12px}
+.task-rows>.tc.has-work>.q>.rgs{grid-column:2}
+.task-rows>.has-work:has(.wb,.work-space){flex:1 0 auto}
+.task-card .q{flex-wrap:nowrap;align-items:flex-start}
+.task-card .q>.qb{min-width:0}
+.task-card .q>.rgs{flex:none}
+.task-work{display:flex;flex-direction:column;gap:6px;flex:1 0 auto;min-width:0}
+.task-work>.wb{min-height:var(--work-min);flex:1 0 auto}
+.task-work>.work-space{flex:1 0 auto}
+.pg.consistent .challenge-rows>.has-work{display:flex;flex-direction:column;background:#fff}
+.challenge-rows .task-response{display:flex;align-items:stretch;gap:16px;flex:1 0 auto;min-width:0}
+.challenge-rows .task-response>.task-answer{margin:0;align-self:flex-start;flex:none}
+.challenge-rows .task-response>.task-work{flex:1 1 0;min-width:240px}
+.task-prompt{min-width:0}
+.task-answer{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0 0 36px}
+/* Center the numeral itself; punctuation belongs to ordinary row numbers, outside circular badges. */
+.badge{padding:0;text-align:center}
+.badge>.number-digit{display:block;line-height:1}
+
 `;
 
 // ---------- Icons ----------
@@ -671,11 +693,11 @@ const CHIPS: Partial<Record<SlotName, Chip>> = {
   "fix-it": { label: "Fix it", cls: "c-fx", icon: ICONS.wrench },
   "spot-the-error": { label: "Spot the error", cls: "c-ni", icon: ICONS.search },
   "mixed-set": { label: "Mixed set", cls: "c-mx", icon: ICONS.shuffle },
-  "friday-5": { label: "Friday 5", cls: "c-mx", icon: ICONS.shuffle },
+  "friday-5": { label: "Five-skill check", cls: "c-mx", icon: ICONS.shuffle },
   challenge: { label: "Challenge", cls: "c-ch", icon: ICONS.bulb },
   "remember-these": { label: "Review", cls: "c-rv" },
   "picture-stories": { label: "Stories", cls: "c-wp", icon: ICONS.book },
-  "math-in-the-world": { label: "Math in the world", cls: "c-wp" },
+  "math-in-the-world": { label: "Word problems", cls: "c-wp" },
   "show-what-you-know": { label: "Show what you know", cls: "c-rv", icon: ICONS.star },
   "level-test": { label: "Level test", cls: "c-lt", icon: ICONS.pencil },
   "unit-check": { label: "Quick check", cls: "c-rv", icon: ICONS.check },
@@ -851,21 +873,10 @@ function boxWidth(v: AnswerValue | null, band: Band): number {
 }
 
 /** The unit word after an answer box ("tiles", "cm"), or "". */
-/** Two ways to work a question, by what it asks: add, take away, multiply, share, or null. */
+/** Two ways to work a question: from its kind of question (src/lib/workbook-two-ways.ts), or null. */
 function twoWays(p: QuestionPackage): [string, string] | null {
-  if (p.templateId?.startsWith("6.4-lcm#")) return ["list both sets of multiples", "test multiples of the larger number"];
-  const t = `${p.operation?.kind ?? ""} ${p.text}`.toLowerCase();
-  const small = Math.max(0, ...(p.text.match(/\d+/g) ?? []).map(Number)) < 20;
-  if (small && /subtract|−|\s-\s|left|take|eats|gives|fewer|less|the rest/.test(t)) return ["count back", "count up from the smaller number"];
-  // (Making a ten helps only when the sum passes 10: "6 + 1" counts on, or uses fingers.)
-  const numbers = (p.text.match(/\d+/g) ?? []).map(Number);
-  const pastTen = numbers.length >= 2 && numbers.reduce((a, b) => a + b, 0) > 10;
-  if (small && /add|\+|more|in all|together|gets/.test(t)) return ["count on from the bigger number", pastTen ? "make a ten first" : "use your fingers"];
-  if (/multiply|×|\beach\b|groups? of|packs? of|times/.test(t)) return ["split a number into parts", "use a fact you know, then the zeros"];
-  if (/divide|÷|share|equally/.test(t)) return ["share in groups", "use a times fact"];
-  if (/subtract|−|\s-\s|left|take|eats|gives|fewer|less/.test(t)) return ["take away the tens, then the ones", "count up from the smaller number"];
-  if (/add|\+|more|in all|together|gets/.test(t)) return ["add the tens, then the ones", "make a ten first"];
-  return null;
+  const pair = twoWaysMethods(p);
+  return pair ? [pair[0], pair[1]] : null;
 }
 
 function unitAfter(p: QuestionPackage): string {
@@ -889,6 +900,8 @@ interface RegionOpts {
   writingRoom?: number;
   /** Show a box region's label before it ("ANSWER", "a)"). */
   labels?: boolean;
+  /** Keep the work label inside a task with a distinct working area. */
+  workLabel?: boolean;
   /** Leave out the unit word after a box (a parent-led card has no room; its question names the unit). */
   noUnits?: boolean;
   /** Writing lines with no label (the item's text is their prompt). */
@@ -929,7 +942,7 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
     case "work": {
       if (o.compactWork && o.band.consistentLayout) return `<div class="work-space" ${at} style="min-height:${Math.max(32, questionWorkSpace(q.package))}px"></div>`;
       // The page's instruction names this question: its own "Show your work" says it again (Savar, book 1 review).
-      const repeated = !!o.band.instructed?.has(q.number) && /^show your work$/i.test(r.label.trim());
+      const repeated = !o.workLabel && !!o.band.instructed?.has(q.number) && /^show your work$/i.test(r.label.trim());
       // A method box is its label and then its writing room: a label that wraps makes the box taller, never the room
       // smaller (Cedric's printed pages, #1116: two wrapped labels left about 0.7 in).
       if (o.writingRoom !== undefined && !repeated) return `<div class="wb room" ${at}><span class="lab" ${measureAttr(`worklabel-${q.number}-${r.id}`)}>${escape(r.label)}</span><i style="height:${o.writingRoom}px"></i></div>`;
@@ -1019,8 +1032,14 @@ function regionsSplit(q: DraftQuestion, o: RegionOpts): { inline: string; full: 
     else full += html;
   }
   const space = o.band.consistentLayout && !names.some(x => x.region.kind === "work") ? questionWorkSpace(q.package) : 0;
-  if (space) full += `<div class="work-space" data-measure="workspace-${q.number}" style="min-height:${space}px"></div>`;
+  if (space) full += `${o.workLabel ? '<span class="lab">Show your work</span>' : ''}<div class="work-space" data-measure="workspace-${q.number}" style="min-height:${space}px"></div>`;
   return { inline, full };
+}
+
+/** Whether a full-width task row prints a work area (regionsSplit's `full` part), so its answers sit under the prompt. */
+function taskRowHasWork(q: DraftQuestion, band: Band): boolean {
+  const names = regionNames(q);
+  return names.some((x) => !inRow(x.region)) || (!!band.consistentLayout && !names.some((x) => x.region.kind === "work") && questionWorkSpace(q.package) > 0);
 }
 
 /** The question's text, marked as its content. */
@@ -1178,7 +1197,11 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
   const chip = (fallback?: Chip, note?: string) => {
     const own = CHIPS[b.slot] ?? fallback;
     const said = b.slot === "warm-up" ? undefined : b.note ?? note ?? NOTES[b.slot];
-    return own ? `<div data-measure="chip-${i}">${chipHtml(own, said)}</div>` : "";
+    // The title already names this section. Keep its distinct instruction, and let the optional-block label stand alone.
+    if (own && own.label.toLowerCase() === reviewTitle(c.title).toLowerCase())
+      return said ? `<div class="side" data-measure="chipnote-${i}">${escape(said)}</div>` : "";
+    return own ? `<div data-measure="chip-${i}">${chipHtml(own, said)}</div>`
+      : said ? `<div class="side" data-measure="chipnote-${i}">${escape(said)}</div>` : "";
   };
   const allReview = b.reviewFrom !== undefined && qs.length > 0 && qs[0].number >= b.reviewFrom;
 
@@ -1196,20 +1219,26 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       return (pill ? chip() : "") + items(parent ? "pcards" : "two");
     }
     case "try-first":
-      return (prev === undefined ? chipHtml(NEW_IDEA, b.note) : "")
-        + `<div class="outl"><div class="lab">Try this first</div>${qs.map((q, k) => lineItem(q, band, null, 80, b.figures?.[k])).join("")}</div>`;
+      return (!c.blocks.some(block => block.slot === "worked-example") && prev === undefined ? chipHtml(NEW_IDEA, b.note) : "")
+        + `<div class="outl"><div class="lab">Try one</div>${qs.map((q, k) => lineItem(q, band, null, 80, b.figures?.[k])).join("")}</div>`;
     case "worked-example": {
-      const head = prev === "try-first" ? "" : chipHtml(NEW_IDEA, b.note);
+      const head = chipHtml(NEW_IDEA, b.note);
+      const introduction = b.introduction
+        ? `<div data-measure="introduction-${i}"><div class="lab">The idea</div><p style="margin:4px 0 0">${escape(b.introduction)}</p></div>` : "";
       const label = `<div class="lab">Worked example${b.label && !/^example$/i.test(b.label) ? ` · ${escape(b.label)}` : ""}</div>`;
       // A Watch out line is a note under the example: smaller and lighter (Savar, 2026-11-04).
       const note = (t: string) => `<span class="${/^Watch out:/.test(t) ? "wo" : ""}">${escape(t)}</span>`;
-      const ways = b.methods && b.methods.length > 0
+      const single = b.methods?.length === 1 ? b.methods[0] : null;
+      const singleLabel = single?.label && !/^(?:How it works|Step by step)$/i.test(single.label)
+        ? `<div class="lab">${escape(single.label)}</div>` : "";
+      const ways = single ? `${singleLabel}<div class="wk">${single.lines.map(worked).join("<br>")}</div>`
+        : b.methods && b.methods.length > 0
         ? `<div class="ways" style="grid-template-columns:repeat(${b.methods.length},minmax(0,1fr))">${b.methods.map((m, k) => `<div class="in"><div class="lab">Method ${k + 1}${m.label ? ` · ${escape(m.label)}` : ""}</div><div class="wk">${m.lines.map(worked).join("<br>")}</div></div>`).join("")}</div>`
         : "";
       const why = b.figure || b.explain
         ? `<div class="${b.figure ? "fig2" : "full-width"}">${b.figure ? figureSvg(b.figure, band.name === "mid" ? 1 : 1.3,c.consistentLayout ? 40 : 30) : ""}<div class="why"><div class="lab">What's going on</div><span>${escape(b.explain ?? "")}</span></div></div>`
         : "";
-      return head + `<div class="panel p-ni" data-measure="panel-${i}" style="display:flex;flex-direction:column;gap:12px">${label}${ways}${ways && b.explain && !b.figure ? note(b.explain) : why}</div>`;
+      return head + introduction + `<div class="panel p-ni" data-measure="panel-${i}" style="display:flex;flex-direction:column;gap:12px">${label}${ways}${ways && b.explain && !b.figure ? note(b.explain) : why}</div>`;
     }
     case "now-you":
       return parent
@@ -1255,17 +1284,18 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
     }
     case "finish-these":
       // (A block of review only prints "Remember these" alone, never under "Getting started" as the page's skill.)
-      return (allReview && !!ctx.review[i]?.open ? "" : `<div class="lab" data-measure="heading-${i}">Getting started</div>`) + items(c.consistentLayout || ctx.six ? "two" : "list");
+      return (allReview && !!ctx.review[i]?.open ? "" : `<div class="lab" data-measure="heading-${i}">Getting started</div>`) + items(c.consistentLayout || ctx.six || c.level >= 19 ? "two" : "list");
     case "on-your-own": {
       const head = prev === "finish-these" ? (allReview && !!ctx.review[i]?.open ? "" : `<div class="lab" data-measure="heading-${i}">On your own</div>`) : chipHtml(PRACTICE, b.note);
       // Column sums on the 8-page day; the 6-page practice page lists them, as in the sample (DESIGN.md 7.2).
       const columns = band.name === "mid" && !parent && !ctx.six && qs.length > 0 && !b.figures?.some(Boolean) && qs.every((q) => ["add", "subtract", "multiply"].includes(q.package.operation?.kind ?? "") && packageItem(q.package).regions.length === 1 && !questionWorkSpace(q.package));
-      return head + (columns ? list((q) => columnItem(q, band), "cols") : items(c.consistentLayout || ctx.six ? "two" : "list"));
+      return head + (columns ? list((q) => columnItem(q, band), "cols") : items(c.consistentLayout || ctx.six || c.level >= 19 ? "two" : "list"));
     }
     case "practice-row": {
       const head = prev === "practice-row" ? "" : chipHtml(PRACTICE, b.note);
       const columns = band.name === "mid" && !parent && !b.figures?.some(Boolean) && qs.every((q) => ["add", "subtract", "multiply"].includes(q.package.operation?.kind ?? "") && packageItem(q.package).regions.length === 1 && !questionWorkSpace(q.package));
-      return head + (b.label ? `<div class="lab">${escape(b.label)}</div>` : "") + (columns ? list((q) => columnItem(q, band), "cols") : items("two"));
+      // (A heading only over questions: never an empty section.)
+      return head + (b.label && qs.length ? `<div class="lab">${escape(b.label)}</div>` : "") + (columns ? list((q) => columnItem(q, band), "cols") : items("two"));
     }
     case "unit-b-practice":
       return chipHtml(PRACTICE, b.note) + items(qs.length >= 2 && !parent ? "two" : "list");
@@ -1279,7 +1309,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
         return `<div class="tw" ${mark.question(q.number)}><div class="q"><span class="n">${questionNumber(q.number)}</span><span class="lab" style="color:#0C0C0E">${c.consistentLayout ? "Use 2 ways" : "Solve it two ways"}</span><span class="qb">${qtext(q)}</span></div><div class="ways2">${works}${boxes}</div></div>`;
       }).join("");
     case "word-problems":
-      return qs.map((q, k) => {
+      return chip() + qs.map((q, k) => {
         const names = regionNames(q);
         const work = names.filter((x) => x.region.kind === "work").map((x) => regionHtml(q, x.region, x.name, { band, work: c.consistentLayout ? workMinimum(c.level) : band.name === "early" && qs.length===2 ? 120 : 88 })).join("");
         const boxes = names.filter((x) => x.region.kind === "box" || x.region.kind === "choice").map((x) => regionHtml(q, x.region, x.name, { band, labels: true })).join("");
@@ -1320,9 +1350,9 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
     case "friday-5": case "unit-check": case "mini-test": case "already-know-it":
       return chip() + items(parent ? "pcards" : c.consistentLayout || qs.length>5 ? "two" : "list");
     case "show-what-you-know": case "level-test": {
-      // The test and the celebration fill their page: each item is a card in a grid whose rows share the room left
-      // under the chip, and its work area grows into its card (an item with no work region gets a plain one).
+      // The test and celebration use full-width task rows. Only genuine working areas grow into free room.
       if (parent) return chip() + list((q, k) => parentItem(q, band, b.figures?.[k]), `pcards fill`);
+      if (!c.consistentLayout) {
       const cols = qs.length <= 3 ? 1 : 2;
       // Every row is full: a wide card takes its row, and a half card left alone in its row takes the row too (the real U4
       // sample: rows with one half card and an empty half).
@@ -1342,29 +1372,24 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
         const work = area || (c.consistentLayout ? "" : `<div class="wb"><span class="lab">Show your work</span></div>`);
         return `<div class="tc"${wide[k] || full.has(k) ? ` style="grid-column:1/-1"` : ""} ${mark.question(q.number)}><div class="q"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${qtext(q)}</span><span class="rgs">${inline}</span></div>${work}</div>`;
       }).join("")}</div>`;
+      }
+      return chip() + `<div class="task-rows">${qs.map(q => {
+        const { inline, full } = regionsSplit(q, { band, work: "fill", labels: true, workLabel: true });
+        return `<div class="tc task-card${full ? " has-work" : ""}" ${mark.question(q.number)}><div class="q"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${qtext(q)}</span><span class="rgs">${inline}</span></div>${full ? `<div class="task-work">${full}</div>` : ""}</div>`;
+      }).join("")}</div>`;
     }
     case "challenge": {
       if (!c.consistentLayout) {
-
-      const side = ctx.six && qs.length === 2;
-      const work = "fill" as const;
-      return chip() + `<div class="chs${side ? " side2" : ""}">${qs.map((q) => {
-        const { inline, full } = regionsSplit(q, { band, work });
-        return `<div class="chc" ${mark.question(q.number)}><div class="top"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${text(q)}</span>${inline}</div>${full}</div>`;
-      }).join("")}</div>`;
-
+        const side = ctx.six && qs.length === 2;
+        return chip() + `<div class="chs${side ? " side2" : ""}">${qs.map(q => {
+          const { inline, full } = regionsSplit(q, { band, work: "fill" });
+          return `<div class="chc" ${mark.question(q.number)}><div class="top"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${text(q)}</span>${inline}</div>${full}</div>`;
+        }).join("")}</div>`;
       }
-
-      const side = ctx.six && qs.length === 2;
-      const three = ctx.six && qs.length === 3;
-      const work = c.consistentLayout ? workMinimum(c.level) : "fill" as const;
-      return chip() + `<div class="chs${side ? " side2" : three ? " side3" : ""}">${qs.map((q) => {
-        const { inline, full } = regionsSplit(q, { band, work });
-        // (A card with nothing to work in, a count with boxes, keeps its height: its boxes sit under the question, never at
-        // the foot of an empty card, the real U4 sample.)
-        // A card whose work the instruction asks for: its question shaded, its work space white (Savar, book 1 review).
-        const plain = full && band.instructed?.has(q.number) ? " plain" : "";
-        return `<div class="chc${full ? plain : " nowork"}" ${mark.question(q.number)}><div class="top"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${text(q)}</span></div><div class="act">${full}${inline}</div></div>`;
+      return chip() + `<div class="task-rows challenge-rows">${qs.map(q => {
+        const { inline, full } = regionsSplit(q, { band, work: workMinimum(c.level), labels: true, workLabel: true });
+        // Read the full-width prompt first, then answer and work below. Choice-only tasks stay short.
+        return `<div class="chc task-card${full ? " has-work" : " nowork"}" ${mark.question(q.number)}><div class="task-prompt"><div class="q"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${text(q)}</span>${!full ? `<span class="rgs">${inline}</span>` : ""}</div></div>${full ? `<div class="task-response"><div class="task-answer">${inline}</div><div class="task-work">${full}</div></div>` : ""}</div>`;
       }).join("")}</div>`;
     }
     case "math-in-the-world": {
@@ -1390,8 +1415,9 @@ export interface BesideAnswers {
   /** The measured names of the regions, by their role (never by where they printed). */
   regions: string[];
   /** "top": each box's top at the first line's top, each circle target on its baseline; "centre": a one-line fact's box
-   * centred on it. */
-  align: "top" | "centre";
+   * centred on it; "below": a full-width task row with working prints its answers under the whole prompt, inside the
+   * column (DESIGN.md, Show what you know and level test cards). */
+  align: "top" | "centre" | "below";
   /** CSS pixels from the question's measured right edge to its column's edge (a card's border and padding). */
   inset: number;
 }
@@ -1494,15 +1520,14 @@ export function pagePlan(page: DraftPage): PagePlan | null {
       case "picture-stories": cards(); break;
       case "show-what-you-know": case "level-test": {
         if (parent) { cards(); break; }
-        const cols = items.length <= 3 ? 1 : 2;
-        // (blockHtml: a wide count takes its row, and a half card left alone in its row takes the row too.)
-        rows.push(...gridRows(items, cols, (n) => wideSequence(byNumber.get(n)!)));
-        items.forEach((n) => answers(n, "top", 15));
+        // Full-width task rows, matching blockHtml. There is no half-card or special final row.
+        rows.push(...items.map(n => [n]));
+        // (A task row is padded 12 px inside its 1 px border. A row with working puts its answers under the prompt.)
+        items.forEach((n) => answers(n, taskRowHasWork(byNumber.get(n)!, band) ? "below" : "top", 13));
         break;
       }
       case "challenge":
-        if (six && items.length === 2) rows.push(items);
-        else if (six && items.length === 3) rows.push(items);
+        // Challenge answers sit with their prompt, beside a separate working area when present.
         break;
       case "math-in-the-world":
         for (const n of items) {
@@ -1554,7 +1579,15 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
   // A Challenge block takes the free room of its page: its work boxes grow into it (DESIGN.md section 4).
   // (A block's rows: the sum of its grids' --rows, so blocks grow by their rows too.)
   const blockRows = (html: string) => [...html.matchAll(/class="(?:two|cols|list|facts|pcards|pcards fill|mxs)" style="--rows:(\d+)"/g)].reduce((n, m) => n + Number(m[1]), 0) || 1;
-  const blocks = c.blocks.map((b, i) => {
+  // Teach before asking, including a saved layout whose Try first slot came before its example.
+  // Keep the original indexes: measurements, reserved examples and question regions refer to them.
+  const displayed = c.blocks.map((b, i) => ({ b, i }));
+  for (let at = 0; at + 1 < displayed.length; at++) {
+    if (displayed[at].b.slot !== "try-first" || displayed[at + 1].b.slot !== "worked-example") continue;
+    [displayed[at], displayed[at + 1]] = [displayed[at + 1], displayed[at]];
+    at++;
+  }
+  const blocks = displayed.map(({ b, i }) => {
     let html = blockHtml(b, i, ctx);
     const partialExtra = b.extra && !wholePageExtra;
     if (partialExtra) {
@@ -1568,7 +1601,7 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
     // Teaching panels already enclose their content. Other optional blocks need a visible boundary around all sections.
     const outline = partialExtra && !["worked-example", "watch-one", "reminder"].includes(b.slot);
     return [b, i, html, outline] as const;
-  }).map(([b, i, html, outline]) => `<section class="blk${outline ? " optional-block" : ""}${GROW.has(b.slot) || c.consistentLayout && b.slot === "word-problems" ? " grow" : ""}" style="--rows:${blockRows(html)}${b.slot === "in-your-head" ? `;flex:0 0 auto` : ""}" data-slot="${b.slot}" data-measure="block-${i}">${html.replace(/<div class="chiprow">([\s\S]*?)<\/div>/g, (_row, inner: string, at: number) => `<div class="chiprow" data-measure="chip-${i}-${at}">${inner.replace('<span class="chip ', `<span data-measure="chipbadge-${i}-${at}" class="chip `).replace('<span class="side">', `<span data-measure="chipnote-${i}-${at}" class="side">`)}</div>`).replace(/<div class="lab"([^>]*)>/g, (tag, attrs: string, at: number) => attrs.includes("data-measure") ? tag : `<div class="lab" data-measure="label-${i}-${at}"${attrs}>`).replace(NUMBER_SPAN, (_tag, cls: string, n: string) => `<span class="${cls}" data-measure="number-${n}">${n}.</span>`).replace(FRAME, (_tag, cls: string, at: number) => `<div class="${cls}" data-measure="frame-${i}-${at}"`)}${missingHtml(b)}</section>`).join("");
+  }).map(([b, i, html, outline]) => `<section class="blk${outline ? " optional-block" : ""}${GROW.has(b.slot) || c.consistentLayout && b.slot === "word-problems" ? " grow" : ""}" style="--rows:${blockRows(html)}${b.slot === "in-your-head" ? `;flex:0 0 auto` : ""}" data-slot="${b.slot}" data-measure="block-${i}">${html.replace(/<div class="chiprow">([\s\S]*?)<\/div>/g, (_row, inner: string, at: number) => `<div class="chiprow" data-measure="chip-${i}-${at}">${inner.replace('<span class="chip ', `<span data-measure="chipbadge-${i}-${at}" class="chip `).replace('<span class="side">', `<span data-measure="chipnote-${i}-${at}" class="side">`)}</div>`).replace(/<div class="lab"([^>]*)>/g, (tag, attrs: string, at: number) => attrs.includes("data-measure") ? tag : `<div class="lab" data-measure="label-${i}-${at}"${attrs}>`).replace(NUMBER_SPAN, (_tag, cls: string, n: string) => `<span class="${cls}" data-measure="number-${n}">${cls === "badge" ? `<span class="number-digit" data-measure="numberglyph-${n}">${n}</span>` : `${n}.`}</span>`).replace(FRAME, (_tag, cls: string, at: number) => `<div class="${cls}" data-measure="frame-${i}-${at}"`)}${missingHtml(b)}</section>`).join("");
   // Finished rows share the remaining page space. Two-method pages keep their explicit writing allocation unless
   // their existing plan requires stretching. No new question or answer enters this rendering step.
   const stretch = c.consistentLayout && c.fillingComplete && (c.atMaximum || !c.blocks.some(b => b.slot === "solve-it-two-ways")) ? " stretch" : "";
@@ -1633,7 +1666,7 @@ function howPlanPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, 
   const roundedMinutes = (minutes: number) => Math.ceil(minutes - 1e-9);
   const rows = c.rows.map((r) => {
     const time = times.get(r.day);
-    return `<tr><td class="d">Day ${r.day}</td><td><span class="tp" ${mark.slot(`day-${r.day}`)}><b>${escape(r.topic)}</b><span class="t2">${escape(reviewTopic(r.second))}</span></span></td>`
+    return `<tr><td class="d">Day ${r.day}</td><td><span class="tp" ${mark.slot(`day-${r.day}`)}><b>${escape(reviewTopic(r.topic))}</b><span class="t2">${escape(reviewTopic(r.second))}</span></span></td>`
     + `<td class="pp">${r.pages[0]}–${r.pages[1]}${time ? `<span class="plan-time" ${mark.slot(`required-time-${r.day}`)}>${roundedMinutes(time.requiredMinutes)} min</span>` : ""}</td><td class="dn"><i class="tb"></i></td></tr>`;
   }).join("");
   const how = [

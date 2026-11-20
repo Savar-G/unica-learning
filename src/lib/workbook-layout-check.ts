@@ -257,6 +257,16 @@ function alignmentProblems(page: DraftPage, c: DayContent, measured: Measured, p
     const regions = at.regions.map((name) => ({ name, m: measured.get(name) }));
     const missing = regions.find((r) => !shown(r.m));
     if (missing) { fail(n, `question ${n}'s answer space ${missing.name} is not printed beside it`); continue; }
+    if (at.align === "below") {
+      // A task row with working: every answer starts under the whole prompt and stays inside the column.
+      const prompt = measured.get(`question-${n}-content`)!;
+      const edge = el.x + el.width - at.inset;
+      for (const { name, m: r } of regions as { name: string; m: MeasuredElement }[]) {
+        if (r.y < prompt.y + prompt.height - T.top) fail(n, `question ${n}'s answer space ${name} starts ${px(prompt.y + prompt.height - r.y)} above the end of its prompt`);
+        if (r.x + r.width > edge + T.edge) fail(n, `question ${n}'s answer space ${name} ends ${px(r.x + r.width - edge)} past its column's edge`);
+      }
+      continue;
+    }
     for (const { m: r } of regions as { m: MeasuredElement }[]) {
       if (at.align === "centre") {
         const centre = r.y + r.height / 2 - (text.y + text.height / 2);

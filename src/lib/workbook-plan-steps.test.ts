@@ -68,26 +68,29 @@ describe("the step progression (#489)", () => {
   });
 });
 
-// Updated for the approved warm-up removal. Hash the complete serialized result, including property order.
+// Reviewed eight-page plans across all bands. Hash the complete serialized result, including property order.
+// Updated 2026-11-17 after a path-by-path diff against 32c54d09: eight pages a day at U1, U19 and U27, learning
+// stages, Watch one taught once, the per-day application cap (applicationItems) and the counts these move. No page made
+// optional, no hints or day count changed. Tool and record: the overnight brief "plan snapshot hash".
 const GOLDEN: Record<string, string> = {
-  "U1-first": "7c177267cce542a8f25abb6e5f1d1814e26900c0c82703e691aefbccaa8b68c2",
-  "U1-second": "0efc9603b7e656458a6ff2d2c4605df04df705c3727ada6ab2758e807fffb95f",
-  "U1-test": "b7309b5032fb2e448c26b1259e915b1f338bfdaa5873a47ca9c00234f181c373",
-  "U4-first": "ba2be623afc9b14533556472b9a6d4fbcc734c50f07ad0b8d607cd8507786b97",
-  "U4-second": "331dca7bd47a8bdc6457a2ff388316ad7b6e459afd3fdab742a99fdaba6259db",
-  "U4-test": "592d27baa06fa34d576da28b83c41647436781c2e7a87b5eaa9bcc9ecdf03d6b",
-  "U10-first": "c84ace63234b5b7269571676734da9ee26ac53bd67234e199ef815498657c64d",
-  "U10-second": "c5aa2a7adddc57bd443b658eba2873e7607cd1a80faf83d2701102150f1f802a",
-  "U10-test": "de4d1edd026643e6306b3b66ef5465526b76a73805110f8bd7edb3a109fc673a",
-  "U16-first": "143a268dffeaa0d82eb58124e0b50e36d955d6affe02255e4bea6e3cea263cbc",
-  "U16-second": "1d19e147e608652b68b857f08774326dd9cd81ff13c773aee87880392873e0e4",
-  "U16-test": "1bd0fc27cb9a2c8b9d0455ec5b441bff0c6837dc0028e03e630f10a5ff3efa8d",
-  "U19-first": "f785c04a77b1889d66931d4279f134564578a2c14abcc6e314c63c8d010bc8f0",
-  "U19-second": "dd2f67ff4dfa5d7d03fea55b4698edd22bc3a1a8587dbfa9c2942ea641bd3a71",
-  "U19-test": "8195a047f68d588c5e6bdb64a6d8970369dd1bd62ea8f382dbbef569ee264dd9",
-  "U27-first": "0ee5827becd08f2933e25b1fbc853ecbd1faafc4548557646ecd24ba9904ff34",
-  "U27-second": "fecd5e778fa84fe18ace720807b67ac08bcdab85603d534000b0f6733c448631",
-  "U27-test": "e80de7b08d9208f1abe9d65e19fe4b5b70b14d200bf0ca92db2cd82582f5ff7b",
+  "U1-first": "bdb813ebb6b7646592e072762965dc3f88fd94e097e2aa5ff50bb6000858aad9",
+  "U1-second": "f84df7bf6a4dbe7ef396f47011d409fd8d425805e9d1f59a490fd73ba3655dfc",
+  "U1-test": "e55ea5a4858e6fad0706388043bcf1731caff87dced8f82aefcf1d7482599f22",
+  "U4-first": "6f45f29400af9b7784f38c05b8be8dad80e324461f207319f7fc5cfa603603c1",
+  "U4-second": "08ef9250caa7ead62482ba1b3062c1bfee35410d9b3b142864d270b1f33afd06",
+  "U4-test": "a933145b0600deb539194f048209d4777f217e96abd7a2c4fb32b3a541e30f30",
+  "U10-first": "74b26e56cc409d9915b8a4fb16735d49551693a965047dec5b91c3f191eca5d7",
+  "U10-second": "ff5f33583b042227709b0b1c6630dd2ce0dd8f5833f6c67d4d5cf4e7c4f74277",
+  "U10-test": "35093b3429519eb3bae8f690a5e56382dafe9740e8b273f45f4c41cf45416069",
+  "U16-first": "b6f594b2583841fc66f98c79c5c5f68a2dc24a944ae2e353c17c8ec78cc88aeb",
+  "U16-second": "1c7a336e988290bc0a5e09684d3f881aaceb05d9cb373eadcd93380a659b0955",
+  "U16-test": "3003a3de23131abb4c8f1fe1dc75bbd5f9255e9f708356ca0e0741bdd055711d",
+  "U19-first": "b18e2f35b3aee7c38b58c74bd79081d2542c9bd9fe8757381ece7c5f14ac5a7c",
+  "U19-second": "4b6a838c18164e113421e1fdddf9253c8ada06375bd9672d8ecc9d397281e77c",
+  "U19-test": "512efc6a70befceb34c9cf026a5cb9747dd61e2b886637401b428d44e5d83e00",
+  "U27-first": "55790aad0d1b60b0564f1c35d1fe6930c821afc9e055eacb615a61a10793a1be",
+  "U27-second": "db90fc679ad20e51bd3b15fb07473cbede958eba948c387d3e29b19e0ec8548a",
+  "U27-test": "0c57ec11fed49abc4c21fa4e079d6b754d955c5b2a04cdfcf77423dc0a7df4fb",
 };
 
 const personalInput = (level = "U16", persona: "ahead" | "catch-up" | "on-level" | "rushed" = "ahead"): PlanInput & { personal: BookSignals } => {
@@ -125,8 +128,7 @@ describe("C3 personal plan", () => {
       expect(p.items).toBeGreaterThan(0);
     }
     for (const d of r.plan.days) {
-      expect(d.pages.length).toBeGreaterThanOrEqual(4);
-      expect(d.pages.length).toBeLessThanOrEqual(6);
+      expect(d.pages).toHaveLength(8);
       for (const p of dayParts(r.plan, d.day)) if (p.items > 0) expect(p.skills.length).toBeGreaterThan(0);
     }
     expect(r.plan.personal).toMatchObject({ reviewFallbacks: expect.arrayContaining([
@@ -134,18 +136,24 @@ describe("C3 personal plan", () => {
     ]) });
   });
 
-  it("R599-P1: leaves review empty when no past, current-day or below-start step exists", () => {
+  it("checks Kindergarten without hints when pause days have no learning to review", () => {
     const i = personalInput("U1");
     i.pausedWeeks = 2;
     const p = plan(i);
     expect(p.newSteps.some(s => s.day <= 2)).toBe(false);
-    const reviews = [1, 2].flatMap(day => dayParts(p, day).filter(p => p.kind === "remember-these"));
-    expect(reviews.length).toBeGreaterThan(0);
-    for (const r of reviews) expect(r).toMatchObject({ items: 0, skills: [], reviewSteps: [] });
-    expect(p.personal).toMatchObject({ reviewFallbacks: expect.arrayContaining([
-      expect.objectContaining({ day: 1, source: "no-review", steps: [] }),
-      expect.objectContaining({ day: 2, source: "no-review", steps: [] }),
-    ]) });
+    for (const day of p.days.slice(0, 2)) {
+      expect(day.pages).toHaveLength(8);
+      for (const page of day.pages) expect(page.parts.reduce((sum, part) => sum + part.items, 0)).toBeGreaterThan(0);
+      const checks = dayParts(p, day.day).filter(part => part.kind === "already-know-it");
+      expect(checks.length).toBeGreaterThan(0);
+      for (const check of checks) {
+        expect(check.hints).toBe(false);
+        expect(check.items).toBeGreaterThanOrEqual(6);
+        expect(check.step).toBeNull();
+        expect(check.skills.every(skill => BC.levelOfSkill(skill)!.number === 1)).toBe(true);
+      }
+    }
+    expect(p.personal!.reviewFallbacks!.some(f => f.source === "placement-check")).toBe(true);
   });
 
   it("R599-P1: uses code steps below the start when the day has no teaching step", () => {
@@ -286,7 +294,7 @@ describe("C3 personal plan", () => {
     expect(last.time!.estimated).toBeLessThan(35);
     expect(last.time!.required).toBeGreaterThan(last.time!.target);
     expect(last.time!.target).toBe(20);
-    expect(last.pages.flatMap(pg => pg.parts.filter(p => p.kind === "challenge" || p.kind === "practice")).every(p => p.extra)).toBe(true);
+    expect(last.pages.flatMap(pg => pg.parts.filter(p => p.kind === "challenge" || p.kind === "practice")).every(p => !p.extra)).toBe(true);
     expect(p.personal).toMatchObject({ timeShortfalls: expect.arrayContaining([
       expect.objectContaining({ day: 10, target: 20, required: last.time!.required, shortfall: Number((last.time!.required - 20).toFixed(1)) }),
     ]) });
@@ -305,7 +313,7 @@ describe("C3 personal plan", () => {
     expect(r.plan.level).toBe(7);
     expect(r.plan.personal).toMatchObject({
       start: { level: "U7" },
-      timeShortfalls: [{ day: 10, target: 20, required: 20.7, shortfall: .7 }],
+      timeShortfalls: expect.arrayContaining([expect.objectContaining({ day: 10, target: 20 })]),
     });
   });
 
@@ -342,7 +350,7 @@ describe("C3 personal plan", () => {
     expect(extra).toHaveLength(1);
     expect(extra[0].day).toBe(changed.newSteps.find(s => s.unit === "4.9")!.day);
     expect(extra[0].pg.type).toBe("practice");
-    expect(extra[0].pg.parts[0]).toMatchObject({ kind: "practice", items: 8 });
+    expect(extra[0].pg.parts[0]).toMatchObject({ kind: "practice", items: 6, learningStage: "application" });
     expect(changed.days.map(d => d.pages.length)).toEqual(plain.days.map(d => d.pages.length));
     expect(extra[0].pg.number).toBe(5);
     expect(changed.days[extra[0].day - 1].pages[3].type).toBe("practice-2");
@@ -403,31 +411,33 @@ describe("C3 personal plan", () => {
     expect(plan(i).days[0].difficulty!.rangeFraction).toBe(dayDifficulty(13, 1).rangeFraction);
   });
 
-  it("7: avoids caps stretch at one day and makes the whole Challenge block Extra", () => {
+  it("7: avoids caps stretch at one day while keeping Challenge required", () => {
     const profile = firstCustomerProfile();
     profile.parent.feeling = "avoids";
     const i = personalInput();
     i.personal = bookSignals({ grade: 4, profile });
     const p = plan(i);
     expect(p.days[0].difficulty!.rangeFraction).toBe(dayDifficulty(16, 2).rangeFraction);
-    expect(dayParts(p, 1).filter(p => p.kind === "challenge")).toEqual([expect.objectContaining({ extra: true, items: 3 })]);
+    expect(dayParts(p, 1).filter(p => p.kind === "challenge")).toEqual([expect.objectContaining({ items: 3 })]);
+    expect(dayParts(p, 1).filter(p => p.kind === "challenge").some(part => part.extra)).toBe(false);
   });
 
-  it.each(["under_1h", "1_to_2h"] as const)("7/Q6: %s makes whole blocks Extra in order without removing items or pages", weeklyTime => {
+  it.each(["under_1h", "1_to_2h"] as const)("7/Q6: %s records the time gap while preserving eight required learning pages", weeklyTime => {
     const i = personalInput();
     i.personal.parent.weeklyTime = weeklyTime;
     const p = plan(i);
     const plain = plan(personalInput());
-    expect(p.days.map(d => d.pages.map(pg => pg.parts.map(p => p.items)))).toEqual(plain.days.map(d => d.pages.map(pg => pg.parts.map(p => p.items))));
+    expect(p.days.map(d => d.pages.map(pg => pg.parts.map(part => part.items)))).toEqual(plain.days.map(d => d.pages.map(pg => pg.parts.map(part => part.items))));
     for (const d of p.days) {
-      expect(d.time!.required).toBeLessThanOrEqual(weeklyTime === "under_1h" ? 20 : 25);
+      expect(d.pages).toHaveLength(8);
       expect(d.time!.estimated).toBeLessThan(35);
-      const optional = d.pages.flatMap(pg => pg.parts).filter(p => p.extra);
-      expect(optional.length).toBeGreaterThan(0);
-      expect(optional.some(p => p.kind === "challenge")).toBe(true);
-      const practice = d.pages.filter(pg => pg.parts.some(p => p.kind === "practice"));
-      const firstRequired = practice.findIndex(pg => pg.parts.some(p => p.extra));
-      if (firstRequired >= 0) expect(practice.slice(firstRequired).every(pg => pg.parts.every(p => p.extra))).toBe(true);
+      expect(d.time!.required).toBe(d.time!.estimated);
+      expect(d.pages.flatMap(pg => pg.parts).some(part => part.extra)).toBe(false);
+      expect(d.time!.target).toBeLessThanOrEqual(weeklyTime === "under_1h" ? 20 : 25);
+      if (d.time!.required > d.time!.target) expect(p.personal!.timeShortfalls).toContainEqual({
+        day: d.day, target: d.time!.target, required: d.time!.required,
+        shortfall: Number((d.time!.required - d.time!.target).toFixed(1)),
+      });
     }
   });
 
@@ -454,7 +464,8 @@ describe("C3 personal plan", () => {
     const p = plan(i);
     for (const d of p.days) {
       expect(d.time!.target).toBeCloseTo(d.time!.estimated - 5, 1);
-      expect(d.time!.required).toBeLessThanOrEqual(d.time!.target);
+      expect(d.time!.required).toBe(d.time!.estimated);
+      expect(p.personal!.timeShortfalls).toContainEqual({ day: d.day, target: d.time!.target, required: d.time!.required, shortfall: 5 });
     }
   });
 

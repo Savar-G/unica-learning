@@ -237,8 +237,8 @@ it("requires three contexts or formats on a printed page and no repeated sentenc
 
 it("fails a Challenge no harder than that day's practice of its step, by what the child does (#482 review at 3134252)", () => {
   const bc = curriculumFor("bc")!;
-  const question = (n: number, place: string, part: string, at: Parameters<typeof stepTemplateItem>[0]["place"], seed: number, attempt = 0) => {
-    const it = stepTemplateItem({ curriculum: bc, skill: "1.1-count-to-20", step: 1, place: at, level: 4, day: 1, seed, attempt, ordinal: 0 })!;
+  const question = (n: number, place: string, part: string, at: Parameters<typeof stepTemplateItem>[0]["place"], seed: number, attempt = 0, learningStage?: Parameters<typeof stepTemplateItem>[0]["learningStage"]) => {
+    const it = stepTemplateItem({ curriculum: bc, skill: "1.1-count-to-20", step: 1, place: at, learningStage, level: 4, day: 1, seed, attempt, ordinal: 0 })!;
     const b = buildStepItem(it.ref, it.text, { id: `q${n}`, workbookId: "00000000-0000-4000-8000-0000000000a1", page: 3, question: n, level: 4, skills: [it.ref.skill] }, "code");
     return { number: n, slot: `1.${n}`, part, place, attempts: 1, check: b.check, package: b.package, itemPlan: { template: it.ref } } as unknown as GeneratedPage["questions"][number];
   };
@@ -249,8 +249,9 @@ it("fails a Challenge no harder than that day's practice of its step, by what th
   const reasons = (pages: GeneratedPage[]) => workbookQuality(pages).issues.filter(i => i.kind === "challenge").map(i => i.reason);
   // The step's hard count (write the next four numbers) is harder than its practice.
   expect(reasons(day(question(1, "challenge", "challenge", "challenge", 9)))).toEqual([]);
-  // A true or false (medium) asks less than practice's medium number question: a circled choice, no worked answer.
-  const easy = question(1, "challenge", "challenge", "on-your-own", 11);
+  // A larger number in the same true-or-false question is not a harder task.
+  const easy = Array.from({ length: 24 }, (_, attempt) => question(1, "challenge", "challenge", "on-your-own", 11, attempt, "guided"))
+    .find(q => q.itemPlan!.template!.kind === "choice" && q.itemPlan!.template!.difficulty === "medium")!;
   expect(easy.itemPlan!.template!.kind).toBe("choice");
   expect(day(easy)[0].questions[1].itemPlan!.template!.difficulty).toBe(easy.itemPlan!.template!.difficulty);
   expect(reasons(day(easy)).join(" ")).toMatch(/no harder than that day's practice/);
@@ -306,7 +307,7 @@ it("counts a question stem with no person in it twice a page at most", () => {
 });
 
 it("asks a step's only Challenge template once and keeps every card on the day's step (B3)", () => {
-  const challenge = (rank: number, index: number, difficulty: string, kind = "story") => ({ skill: rank === 9 ? "5.1-place-value-million" : "4.4-add-within-10000", step: 1, index, rank, difficulty, kind, challengeTemplates: 1 });
+  const challenge = (rank: number, index: number, difficulty: string, kind = "story") => ({ skill: rank === 9 ? "5.1-place-value-million" : "3.3-add-within-1000", step: 1, index, rank, difficulty, kind, challengeTemplates: 1 });
   const p = page(10, 1, 3);
   p.type = "challenge";
   // The day's practice on its hardest step (rank 9), easy.
@@ -390,4 +391,35 @@ it.each(["fixed", "new failure"])("keeps additional book checks binding and supp
   expect(result.pages[0].dayLabel).toBe(label === "fixed" ? "fixed" : "needs interest");
   expect(observed).toBe(result.pages[0].dayLabel);
   expect(result.quality.issues.filter(i => i.reason === "additional family check")).toHaveLength(label === "fixed" ? 1 : 2);
+});
+
+
+it("rejects ordinary drills substituted into a declared application slot", () => {
+  const curriculum = curriculumFor("bc")!;
+  const p = page(5, 1, 1);
+  p.expected = [{ slot: "1.1", part: "practice", place: "on-your-own", application: true,
+    steps: ["6.4-prime-composite#1"] }];
+  const issue = (learningStage: "independent" | "application") => {
+    const item = stepTemplateItem({ curriculum, skill: "6.4-prime-composite", step: 1,
+      place: "on-your-own", learningStage, level: 19, day: 1, seed: 121, attempt: 0, ordinal: 0 })!;
+    const built = buildStepItem(item.ref, item.text, { id: "application-guard", workbookId: "application-guard",
+      page: 5, question: 1, level: 19, skills: [item.ref.skill] }, "code");
+    p.questions[0] = { ...p.questions[0], package: built.package, check: built.check };
+    return workbookQuality([p]).issues.filter(i => i.reason.includes("application slot"));
+  };
+  expect(issue("independent")).toHaveLength(1);
+  expect(issue("application")).toEqual([]);
+});
+
+// The U19 sweep's Day 8 (Luis, 2026-11-19): a day that reviews no adding or subtracting skill takes its Use 2 ways sum
+// from another day's step. The page's plan lists that step, and the book check holds a code-built sum to the list.
+it("holds a code-built U10+ Use 2 ways sum to the steps its page declares", () => {
+  const p = page(61, 8, 1);
+  const plan = planItem({ skill: "3.3-add-within-1000", slot: "2.1", day: 8, level: 19, ordinal: 7, format: "two-ways", range: { min: 40, max: 198, help: "none", pictures: false } })!;
+  const b = buildPlannedItem(plan, plan.item, { id: "p61q1", workbookId: "00000000-0000-4000-8000-0000000000a1", page: 61, question: 1, level: 19, skills: [plan.item.skill] });
+  p.questions = [{ number: 1, slot: "2.1", part: "practice", place: "solve-it-two-ways", attempts: 1, check: b.check, package: b.package, itemPlan: plan }];
+  const reasons = (steps: string[]) => workbookQuality([{ ...p, expected: [{ slot: "2.1", part: "practice", place: "solve-it-two-ways", steps }] }]).issues
+    .filter(i => i.kind === "step").map(i => i.reason);
+  expect(reasons(["6.13-classify-angles#2"])[0]).toMatch(/Use 2 ways question 1 works a sum of 3.3-add-within-1000, not one of the page's steps/);
+  expect(reasons(["6.13-classify-angles#2", "3.3-add-within-1000#3"])).toEqual([]);
 });

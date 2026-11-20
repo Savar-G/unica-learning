@@ -70,6 +70,10 @@ describe("page titles", () => {
     expect(pageTitle(page([part("word-problems", ["N1:20"]), part("mixed-set", ["N1:20"])], "word-problems"), 6, skills)).toBe("Number stories to 20");
   });
 
+  it("prints the real-world task family as Word problems, retaining its internal identifier", () => {
+    expect(pageTitle(page([part("math-in-the-world", ["N1"])], "math-in-the-world"), 22, skills)).toBe("Word problems");
+  });
+
   it("titles a teaching page by its unit, a page of two units of one strand by the strand, anything else 'Mixed practice'", () => {
     expect(pageTitle(page([part("new-idea", ["K3-ten-frame"], 0), part("spot-the-error", ["K3-make-10"], 1)]), 3, { ...skills, unit: (s) => BC.skill(s)!.unit })).toBe("Number parts to 10");
     expect(pageTitle(page([part("practice", ["K3-ten-frame"]), part("practice", ["K1-how-many"])]), 3, { ...skills, unit: (s) => BC.skill(s)!.unit, strand: (u) => BC.unit(u)!.strand })).toBe("Numbers");
@@ -79,7 +83,7 @@ describe("page titles", () => {
   it("keeps a review page's own name, and calls review mixed with stories or a challenge 'Mixed review'", () => {
     expect(pageTitle(page([part("already-know-it", ["N1"])]), 3, skills)).toBe("Already know it?");
     expect(pageTitle(page([part("warm-up", ["N1"]), part("fix-it", ["N1"]), part("in-your-head", ["N1"])], "warm-up"), 12, skills)).toBe("Warm-up");
-    expect(pageTitle(page([part("remember-these", ["N1"]), part("friday-5", ["N1"])], "friday-5"), 12, skills)).toBe("Review and Friday 5");
+    expect(pageTitle(page([part("remember-these", ["N1"]), part("friday-5", ["N1"])], "friday-5"), 12, skills)).toBe("Practise and check");
     expect(pageTitle(page([part("remember-these", ["N1"]), part("picture-stories", ["N1"]), part("challenge", ["N1"], 1)]), 3, skills)).toBe("Mixed review");
     expect(pageTitle(page([part("level-test", ["N1"])], "level-test"), 12, skills)).toBe("Level U12 test");
   });

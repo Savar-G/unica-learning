@@ -202,7 +202,7 @@ describe("the workbook templates", () => {
     expect(root.querySelectorAll('.ct [data-measure^="chipbadge-extra-"]')).toHaveLength(0);
     expect(root.querySelectorAll(".optional-block")).toHaveLength(0);
     for (const q of p.questions) expect(html).toContain(`data-measure="question-${q.number}"`);
-    expect(html.match(/class="chiprow"/g)).toHaveLength(original.match(/class="chiprow"/g)?.length ?? 0);
+    expect(html.match(/class="chiprow"/g) ?? []).toHaveLength(original.match(/class="chiprow"/g)?.length ?? 0);
     expect(original).not.toContain(">Extra</span>");
   });
 
@@ -572,18 +572,22 @@ describe("a pattern item's choices", () => {
   });
 });
 
-it("prints a period after each question number in every page family",()=>{
-  const template=workbookTemplate();
-  for(const level of ["U2","U6","U12","U22"]) {
-    const draft=book(level);
-    for(const page of draft.pages) for(const consistentLayout of [false,true]) {
-      const p={...page,content:page.content?.kind==="day"?{...page.content,consistentLayout}:page.content};
-      const html=template.page(p,{qr:`<div data-measure="qr"></div>`,qrUrl:"https://unicalearning.com/tutor/p/test"},draft)!;
-      for(const q of p.questions) expect(html,`${level} ${p.type} q${q.number}`).toMatch(new RegExp(`<span class="(?:n|gn|sn|badge)"(?: data-measure="number-${q.number}")?>${q.number}\\.</span>`));
+it("centers unpunctuated badge numerals and keeps ordinary row numbers dotted in every page family", () => {
+  const template = workbookTemplate();
+  for (const level of ["U2", "U6", "U12", "U22"]) {
+    const draft = book(level);
+    for (const page of draft.pages) for (const consistentLayout of [false, true]) {
+      const p = { ...page, content: page.content?.kind === "day" ? { ...page.content, consistentLayout } : page.content };
+      const root = parsedPage(template.page(p, { qr: "", qrUrl: "" }, draft)!);
+      for (const q of p.questions) {
+        const number = root.querySelector(`[data-measure="number-${q.number}"]`)!;
+        expect(number, `${level} ${p.type} q${q.number}`).toBeTruthy();
+        expect(number.textContent).toBe(number.classList.contains("badge") ? `${q.number}` : `${q.number}.`);
+        if (number.classList.contains("badge")) expect(number.querySelector(".number-digit")?.textContent).toBe(`${q.number}`);
+      }
     }
   }
 });
-
 
 it.each([false, true].flatMap(consistentLayout => [false, true].map(choice => ({ consistentLayout, choice }))))("prints a warm-up tick cue (consistent: $consistentLayout, choice region: $choice, #821)", ({ consistentLayout, choice }) => {
   const draft = book("U8"), p = draft.pages.find(p => p.content?.kind === "day" && p.content.blocks.some(b => b.slot === "warm-up"))!;

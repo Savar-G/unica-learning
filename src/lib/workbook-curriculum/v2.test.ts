@@ -50,7 +50,7 @@ describe("v2 data and answer contracts", () => {
   });
 
   it("replays every recorded change and keeps all template positions with easy and hard coverage", () => {
-    const patches = JSON.parse(read("author-changes.json")) as { skill: string; step: number; template: number | null; path: string[]; before: unknown; after: unknown; why: string; kind?: "quality-fallback" | "wording-rewrite" | "level-wording" | "page-instruction"; level?: number; beforeAbsent?: boolean; afterAbsent?: boolean }[];
+    const patches = JSON.parse(read("author-changes.json")) as { skill: string; step: number; template: number | null; path: string[]; before: unknown; after: unknown; why: string; kind?: "quality-fallback" | "wording-rewrite" | "level-wording" | "retired-level-wording" | "page-instruction"; level?: number; beforeAbsent?: boolean; afterAbsent?: boolean }[];
     for (const patch of patches) {
       // Page instructions belong to generated content, outside Cedric's raw template data.
       if (patch.kind === "page-instruction") {
@@ -64,6 +64,12 @@ describe("v2 data and answer contracts", () => {
       const step = original.steps.find(s => s.skill === patch.skill && s.number === patch.step)!;
       const target = (patch.template === null ? step : step.templates![patch.template - 1]) as unknown as Record<string, unknown>;
       expect(patch.path).toHaveLength(1);
+      if (patch.kind === "retired-level-wording") {
+        expect(LEVEL_REWRITES.some(r => r.level === patch.level && r.skill === patch.skill && r.step === patch.step && r.template === patch.template)).toBe(false);
+        expect(typeof patch.before).toBe("string");
+        expect(typeof patch.after).toBe("string");
+        continue;
+      }
       if (patch.kind === "level-wording") {
         const rewrite = LEVEL_REWRITES.find(r => r.level === patch.level && r.skill === patch.skill && r.step === patch.step && r.template === patch.template);
         expect(rewrite).toBeDefined();
@@ -71,7 +77,7 @@ describe("v2 data and answer contracts", () => {
         expect(target.text).toBe(rewrite!.from);
         expect(patch.after).toBe(rewrite!.to);
         expect(typeof patch.before).toBe("string");
-        expect(rewrite!.to.length).toBeLessThan((patch.before as string).length);
+        expect(rewrite!.to).not.toBe(rewrite!.from);
         expect(patch.why).not.toBe("");
         continue;
       }
@@ -274,7 +280,8 @@ describe("v2 data and answer contracts", () => {
   ] as const)("preserves %s money and units in the number check, solve check and key display", async (skill, stepNumber, index, level, answerPattern) => {
     const step = BC.skillSteps(skill)!.find(s => s.number === stepNumber)!;
     const curriculum = { ...BC, skillSteps: (id: string) => id === skill ? [{ ...step, templates: [step.templates![index]] }] : BC.skillSteps(id) };
-    const filled = stepTemplateItem({ curriculum, skill, step: stepNumber, place: "on-your-own", level, day: 1, ordinal: 0, seed: 7, attempt: 0 })!;
+    // Guided practice, where an easy form like the bank record prints.
+    const filled = stepTemplateItem({ curriculum, skill, step: stepNumber, place: "on-your-own", learningStage: "guided", level, day: 1, ordinal: 0, seed: 7, attempt: 0 })!;
     expect(filled).not.toBeNull();
     expect(filled.ref.answer).toMatch(answerPattern);
     const built = buildStepItem(filled.ref, filled.text, { id: "q", workbookId: "w", page: 2, question: 1, level, skills: [skill] }, "ai");

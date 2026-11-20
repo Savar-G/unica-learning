@@ -19,7 +19,7 @@ import { checkQuestionPackage } from "@/lib/question-package";
 import { storedDomain, templateAnswerValue, templateScalar, type TemplateScalar, type TemplateSource } from "@/lib/question-package-template";
 import type { Curriculum, CurriculumStep, NumberDomain, NumberRange, StepTemplate, TemplateDifficulty } from "@/lib/workbook-curriculum";
 import { prepareTemplate, seededRandom, slotDomain } from "@/lib/workbook-curriculum/template";
-import { isChallengeOnly, isSpotOnly, isTwoStep, templateAtLevel } from "@/lib/workbook-curriculum/house-templates";
+import { isApplicationPractice, isChallengeOnly, isSpotOnly, isTwoStep, templateAtLevel } from "@/lib/workbook-curriculum/house-templates";
 import type { AiItem, BuiltQuestion, SlotPlace } from "@/lib/workbook-generator-items";
 import type { SlotName } from "@/lib/workbook-page";
 import type { StepDeclaration } from "@/lib/workbook-print-contract";
@@ -141,11 +141,16 @@ function choiceList(text: string, answer: string): string[] | null {
   const tail = (text.split(/[.:]\s+/).at(-1) ?? text).replace(/^which is greater[,:?]\s*/i, "");
   const m = tail.match(/\b(?:is it|is that|write|circle|say|choose|it is|they are|use)\s+([^?]*?\bor\b[^?]*?)\??\s*$/i) ?? tail.match(/^\s*([^?]*?\bor\b[^?]*?)\??\s*$/i);
   if (!m) return null;
-  const options = m[1].split(/,\s*|\s+or\s+/).map((x) => x.trim().replace(/^(?:a|an|the)\s+/i, "").replace(/[.?!]$/, "")).filter(Boolean);
+  const printed = m[1].split(/,\s*|\s+or\s+/).map((x) => x.trim().replace(/[.?!]$/, "")).filter(Boolean);
+  const options = printed.map((x) => x.replace(/^(?:a|an|the)\s+/i, ""));
   const clean = (x: string) => x.toLowerCase().replace(/^(?:a|an|the)\s+/, "");
   if (options.length < 2 || options.length > 4 || options.some((x) => x.length > 40 || x.split(/\s+/).length > MOST_ANSWER_WORDS)) return null;
-  const hit = options.find((x) => clean(x) === clean(answer));
-  return hit ? options.map((x) => (x === hit ? answer : x)) : null;
+  const hit = options.findIndex((x) => clean(x) === clean(answer));
+  if (hit < 0) return null;
+  // Every choice in the key's form: with its article when the key has one ("the hundreds digit", "the tens digit"), so
+  // the right answer never stands out (the live U10 Book 1 printed "the hundreds digit" beside "tens digit").
+  const keyed = /^(?:a|an|the)\s/i.test(answer) ? printed : options;
+  return keyed.map((x, i) => (i === hit ? answer : x));
 }
 
 /**
@@ -289,6 +294,8 @@ export interface StepItemRequest {
   allEasy?: boolean;
   /** The slot's place among its block's slots, from 0. */
   ordinal: number;
+  /** The planned daily stage; guided places still use their introductory examples. */
+  learningStage?: "guided" | "independent" | "application";
   /** Templates the page has used, by index, so the page's slots take different ones first. */
   usedOnPage?: ReadonlyMap<number, number>;
   /** The most characters the text has room for. */
@@ -405,6 +412,10 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
   const numberAnswer = numberAnswerOf;
   const printable = step.templates.map((t, index) => ({ t: templateAtLevel(r.level, step, index, t), index })).filter(({ t, index }) => !templateProblem(t, r.level)
     && (r.place === "spot-the-error" || !isSpotOnly(step.templates![index]))
+    // Application tasks are practice: never a worked example, Spot the error, two ways, review, Challenge or test (the
+    // staged filter below keeps them out of independent practice too). A Finish these block may take one when its step
+    // has few ordinary forms (U19 LCM step 2), as before.
+    && (!isApplicationPractice(step.templates![index]) || ["on-your-own", "practice-row", "unit-b-practice", "finish-these"].includes(r.place ?? ""))
     && (r.place !== "solve-it-two-ways" || sumTemplate(t)) && (r.place !== "spot-the-error" || numberAnswer(t))
     // (Code's two-step cards are the Challenge's last fill only; Unica's Challenge templates the Challenge's and Show what
     // you know's, house-templates.ts.)
@@ -460,6 +471,17 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
   // (Every other card, so the page keeps three forms.)
   // (Among the harder ones only for a few attempts: a harder choice beats an easy number question.)
   if (r.place === "show-what-you-know" && r.ordinal % 2 === 0 && r.attempt < (r.hardOnly ? 16 : 192) && usable.some(({ t }) => numberAnswer(t))) usable = usable.filter(({ t }) => numberAnswer(t));
+  const stagedPractice = r.place === "on-your-own" || r.place === "practice-row" || r.place === "unit-b-practice";
+  if (stagedPractice) {
+    const applications = usable.filter(({ t }) => isApplicationPractice(t));
+    if (r.learningStage === "application" && step.templates?.some(isApplicationPractice)) usable = applications;
+    else if (r.learningStage !== "application") usable = usable.filter(({ t }) => !isApplicationPractice(t));
+  }
+  // A preference alone is not progression: retries used to cycle easy classification tasks
+  // back into independent work. Once guided practice is over, keep the supported normal
+  // medium/hard pool binding. Unsupported stages stay missing instead of borrowing a skill.
+  const independent = r.learningStage !== "guided" && (r.place === "on-your-own" || r.place === "practice-row" || r.place === "unit-b-practice");
+  if (independent) usable = usable.filter(({ t }) => t.difficulty !== "easy");
   if (!usable.length) return null;
   const used = (i: number) => r.usedOnPage?.get(i) ?? 0;
   // A story place takes the step's stories first, then its number questions (word problems are number stories).
@@ -469,10 +491,12 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
     : !storyPlace ? 0 : t.format === "story" ? 0 : ["bare", "missing"].includes(t.format) ? 1 : 2;
   // A worked example and a Challenge take their difficulty first: the easiest to show, the hardest to stretch.
   const byDifficulty = r.place === "challenge" || topPlace || r.place === "worked-example" || r.place === "watch-one" || r.place === "reminder";
+  const application = r.learningStage === "application" && !storyPlace;
+  const applicationRank = (t: StepTemplate) => application ? t.format === "story" ? 0 : t.format === "missing" || t.format === "true-false" ? 1 : 2 : 0;
   const order = usable
     .map((x, k) => ({ ...x, rank: wanted.indexOf(x.t.difficulty), turn: (k + r.seed) % usable.length }))
     // A Challenge takes the step's hardest template first (Cedric's section 9), whatever its format.
-    .sort((a, b) => Number(isTwoStep(a.t)) - Number(isTwoStep(b.t)) || (byDifficulty ? a.rank - b.rank : 0) || fit(a.t) - fit(b.t) || used(a.index) - used(b.index) || a.rank - b.rank || a.turn - b.turn);
+    .sort((a, b) => Number(isTwoStep(a.t)) - Number(isTwoStep(b.t)) || applicationRank(a.t) - applicationRank(b.t) || (byDifficulty ? a.rank - b.rank : 0) || fit(a.t) - fit(b.t) || used(a.index) - used(b.index) || a.rank - b.rank || a.turn - b.turn);
   const people = contexts.people.map((p) => p.name);
   for (let k = 0; k < order.length; k++) {
     const { t, index } = order[(k + r.attempt) % order.length];
@@ -531,7 +555,9 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
       // work with the step's 4-digit numbers); a container holding thousands of them is still no story.
       // (An interest's things too: no one has 5380 jerseys.)
       const SMALL = r.interests?.things.length ? new RegExp(`${SMALL_THINGS.source.slice(0, -3)}|${r.interests.things.map(escapeWord).join("|")})\\b`, "i") : SMALL_THINGS;
-      const small = SMALL.exec(text);
+      // (Not in a sensible-estimate task: there the thousands are the guess the child must reject, "about 1,200 books on 3
+      // shelves", and the live U10 Book 1 printed "points per classroom shelf".)
+      const small = r.skill === "3.1-estimate-quantity" ? null : SMALL.exec(text);
       if (small) {
         if (/\b(?:holds?|box(?:es)?|bags?|jars?|trays?|baskets?|bins?|containers?|packs?|bottles?)\b/i.test(text)) continue;
         const big = (r.seed + r.attempt + tryNo) % 2 ? "points" : "tickets";

@@ -393,3 +393,30 @@ backwards") does not print.
 The sample index's quality row adds step progression (each day's average
 rank) and template coverage (templates, hand-built and existing writer). The
 builder coverage table shows each level's skills by source.
+
+## Content checks from the live U10 Book 1 read (2026-11-17)
+
+A manual read of the first live U10 book found problems no measurement catches. Each is fixed at its source and
+has a book check (`src/lib/workbook-content-checks.ts`, run by `workbookQuality`) that fails a book where it comes
+back.
+
+- **Use 2 ways** takes its two methods from the kind of question (`src/lib/workbook-two-ways.ts`): a pattern gets
+  pattern methods (one jump at a time, or all at once; back one jump for a first number), a sum or difference gets
+  tens-and-ones methods, place value, expanded form and estimates get none. A trivial question (adding or taking away
+  0, a one-step fact such as 300 + 200 or 10 + 7, a single jump) gets none. A question with no pair is never chosen;
+  a day whose own step has none takes a sum from an adding or subtracting skill the day reviews.
+- **Sensible estimates** (3.1 step 3): the guide is for one group and every question asks about 2 to 5 groups, with
+  choices 10 times apart, so the guide is never the answer. Six Challenge forms in four contexts. The book check fails
+  a printed guide that is also the answer.
+- **Stories and Challenges vary:** a number stories or Challenge template prints once a book, or once more 3 or more
+  days later (`storyRepeatAllowed`). The planner tries other templates first.
+- **Headings:** a practice row with no questions prints no heading.
+- **Watch out:** a panel with no Watch out prints no line (never the step's name). The 3.1 trading and 3.6
+  decreasing-pattern pairs were rewritten so they print whole; the check fails a topic name or broken punctuation
+  (": .") in a panel line.
+- **Plan page:** each teaching day's row names the earlier topic it reviews; the check fails two identical rows.
+- **Choices:** every choice prints in the key's form ("the hundreds digit", "the tens digit").
+- **Warm-ups** of 10 on a day are intended: the time pass gives back warm-up facts first when a day passes 33.3
+  minutes (D-232).
+- **Challenge of circled answers:** when it still fails fullness after its gaps spread, each circled answer gets a
+  "How do you know?" work box (never scored by code); a Challenge page that fits is unchanged.

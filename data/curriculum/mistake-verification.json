@@ -57278,5 +57278,68 @@
         }
       ]
     }
+  ],
+  "invalidations": [
+    {
+      "id": "6.13-classify-angles#1:0",
+      "previous": {
+        "wrong": "Calling an angle obtuse because its arms look long.",
+        "fix": "Arm length doesn't matter. An opening smaller than a square corner (90°) is acute.",
+        "verified": true,
+        "verifierModel": "claude-opus-5-5",
+        "verificationHash": "05b1f641aeddb11f71ad934eb6a7"
+      },
+      "replacement": {
+        "wrong": "Long sides mean an obtuse angle.",
+        "fix": "Compare openings: less than a square corner is acute; between a square corner and a straight angle is obtuse.",
+        "verified": false
+      },
+      "status": "pending-independent-verification",
+      "deterministicChecks": [
+        "acute: 0 < angle < 90; obtuse: 90 < angle < 180; side length cannot change either classification"
+      ]
+    },
+    {
+      "id": "3.1-place-value-1000#3:0",
+      "previous": {
+        "wrong": "Writes 4 hundreds, 13 tens and 2 ones side by side as 4,132.",
+        "fix": "Trade 10 tens for 1 hundred: 5 hundreds, 3 tens, 2 ones = 532.",
+        "verified": true,
+        "verifierModel": "claude-opus-5-5",
+        "verificationHash": "0fbaf5bac6a52e1c42c4bcf655e4"
+      },
+      "replacement": {
+        "wrong": "Calls 4 hundreds, 13 tens, 2 ones 4,132.",
+        "fix": "Trade 10 tens for 1 hundred: 4 + 1 = 5 hundreds, 3 tens, 2 ones = 532.",
+        "verified": false
+      },
+      "status": "pending-independent-verification",
+      "deterministicChecks": [
+        "4*100 + 13*10 + 2 == 532",
+        "13 tens == 1 hundred + 3 tens",
+        "5*100 + 3*10 + 2 == 532"
+      ]
+    },
+    {
+      "id": "3.1-place-value-1000#3:1",
+      "previous": {
+        "wrong": "Writes 432 by keeping the 3 of 13 tens and dropping a hundred.",
+        "fix": "10 of the 13 tens make 1 hundred: 5 hundreds, 3 tens, 2 ones = 532.",
+        "verified": true,
+        "verifierModel": "claude-opus-5-5",
+        "verificationHash": "0cc38739d7e32416bba2948fe6cc"
+      },
+      "replacement": {
+        "wrong": "Calls 4 hundreds, 13 tens, 2 ones 432.",
+        "fix": "Trade 10 tens for 1 hundred: 4 + 1 = 5 hundreds, 3 tens, 2 ones = 532.",
+        "verified": false
+      },
+      "status": "pending-independent-verification",
+      "deterministicChecks": [
+        "4*100 + 13*10 + 2 == 532",
+        "13 tens == 1 hundred + 3 tens",
+        "5*100 + 3*10 + 2 == 532"
+      ]
+    }
   ]
 }

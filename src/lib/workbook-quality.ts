@@ -1,3 +1,5 @@
+import { contentIssues } from "./workbook-content-checks";
+import { isApplicationPractice } from "./workbook-curriculum/house-templates";
 import { printedInstruction, workbookWorkLine } from "@/lib/workbook-page-instructions";
 import { mixedTemplateSign, stepTemplateOf } from "./workbook-step-items";
 import { checkQuestionPackage } from "./question-package";
@@ -14,7 +16,7 @@ import { numberAnswer } from "./workbook-generator-items";
 import { likelihoodChoicesProblem, likelihoodWord } from "./workbook-likelihood";
 import { extraPracticeRepeats, newIdeaFloor, twoWaysCountsAsStory } from "./workbook-early-levels";
 import { generatedDayTime, printedQuestionMinutes, requiredTimeProblem } from "./workbook-feedback-check";
-import { printedNumbers } from "./workbook-book";
+import { printedNumbers, templateMethod, PANEL_SLOTS } from "./workbook-book";
 import { storyFrame, wordedTask, taskType, reasoningSteps, taskIdentity, printedForm, sentenceFrameOf, stemOf, largestNumber, storyKind, cardFrame, cardFrameProblem, cardNumbers, operationStory, type CardFrameUse } from "./workbook-task-identity";
 import { printedWorkbookQuestion } from "./workbook-maya-operation";
 import { dayDifficulty } from "./workbook-plan";
@@ -70,7 +72,7 @@ export function pageMinimum(type: string, level: number, extra: boolean, working
   const FLOORS: Record<string, number> = { practice: 8, "practice-2": 8, "remember-these": 8, "remember-these-mixed-set": 4, "friday-5": 9,
     "word-problems": 3, challenge: 3, "math-in-the-world": 2, "show-what-you-know": 4, "unit-b": 4, "level-test": 4, "mini-test": 4,
     "already-know-it": 4, "warm-up": 8 };
-  const n = extra ? 8 : working && level >= 10 && type === "practice-2" && support >= 2 ? 4 : working && level >= 10 && ["practice", "practice-2", "remember-these"].includes(type) ? 6 : type === "new-idea" ? working && level >= 10 ? 2 : newIdeaFloor(level) : FLOORS[type] ?? 1;
+  const n = extra ? 8 : level >= 10 && type === "practice-2" && support >= 2 ? 4 : working && level >= 10 && ["practice", "practice-2", "remember-these"].includes(type) ? 6 : type === "new-idea" ? working && level >= 10 ? 2 : newIdeaFloor(level) : FLOORS[type] ?? 1;
   // From U19 three quarters: Cedric's upper band (a new idea's 3 becomes 2 there, as his table has it; Savar, 2026-11-03).
   return level >= 19 ? Math.max(1, Math.round(n * .75)) : n;
 }
@@ -91,7 +93,9 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     return subtitle !== null && printed.content?.kind === "day"
       ? { ...printed, content: { ...printed.content, subtitle } } : printed;
   });
-  const issues: BookIssue[] = [];
+  // Content checks no measurement catches (the live U10 Book 1, 2026-11-17): two-ways methods, estimate guides that answer
+  // themselves, empty headings, stray or broken Watch out lines, a story or Challenge template on two days, plan rows.
+  const issues: BookIssue[] = [...contentIssues(pages)];
   const days: DayQuality[] = [];
   const seen = new Map<string, number[]>();
   let extraRepeats = 0;
@@ -212,6 +216,14 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     }
     if ((p.day !== null || p.content?.kind === "day") && p.questions.length === 0) issues.push({ page: p.number, kind: "coverage", reason: "a day page has no planned questions" });
     for (const expected of p.expected ?? []) {
+      if (expected.place && PANEL_SLOTS.includes(expected.place)) continue;
+      if (expected.application) {
+        const question = p.questions.find(q => q.slot === expected.slot);
+        const ref = question?.package && stepTemplateOf(question.package);
+        const template = ref && bcStepProgressions().skillSteps(ref.skill)?.find(s => s.number === ref.step)?.templates?.[ref.index];
+        if (!template || !isApplicationPractice(template) || expected.steps?.[0] !== `${ref?.skill}#${ref?.step}`)
+          issues.push({ page: p.number, kind: "progress", reason: `application slot ${expected.slot} must use a distinct application task on its planned step` });
+      }
       if (!p.questions.some(q => q.slot === expected.slot && q.package && q.check.status !== "failed")) issues.push({ page: p.number, kind: "coverage", reason: `required planned slot ${expected.slot} (${expected.part}) is missing or failed` });
     }
     const friday = p.type === "friday-5" || (p.expected ?? []).some(q => q.part === "friday-5") || p.questions.some(q => q.part === "friday-5") || p.omissions?.some(o => o.kind === "friday-5");
@@ -337,7 +349,7 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     const ofDay = pages.filter(p => p.day === day);
     // A worked example shows its method: a line after the question that is not its answer alone (Codex at db3b1a0 and
     // 47c5fd78: "Answer: 6 000" under "How it works" teaches nothing).
-    for (const p of ofDay) if (p.content?.kind === "day" && p.content.level >= 4) for (const b of p.content.blocks.filter(b => ["worked-example", "watch-one"].includes(b.slot))) {
+    for (const p of ofDay) if (p.content?.kind === "day" && p.content.level >= 4) for (const b of p.content.blocks.filter(b => ["worked-example", "watch-one", "reminder"].includes(b.slot))) {
       // (A panel's explanation, the likelihood words' meanings, is its method too; a Watch out line is not.)
       const lines = [...(b.methods ?? []).flatMap(m => m.lines), ...(b.lines ?? []), ...(b.explain ? [b.explain] : [])].filter(l => !/^Watch out:/.test(l));
       if (!lines.length) continue;
@@ -346,6 +358,28 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       if (!method) issues.push({ page: p.number, kind: "coverage", reason: `the worked example shows its answer without a method ("${lines[0].slice(0, 40)}")` });
     }
     // A worked example and a Watch out line once a day (the real U4 sample: one mistake on three pages of Day 1).
+    for (const p of ofDay) {
+      const declarations = p.expected?.filter(e => !!e.place && PANEL_SLOTS.includes(e.place)) ?? [];
+      declarations.forEach((declaration, index) => {
+        const scope = declaration.steps?.[0];
+        if (!scope) return;
+        const pkg = p.panelExamples?.[index];
+        const ref = pkg ? stepTemplateOf(pkg) : null;
+        if (!pkg || !ref || `${ref.skill}#${ref.step}` !== scope || !pkg.skill.skills.includes(ref.skill)) {
+          issues.push({ page: p.number, kind: "step", reason: `the ${declaration.place} example must use its reserved curriculum step ${scope}` });
+          return;
+        }
+        const sequence = pkg.item?.checks.some(c => c.kind === "sequence");
+        const source = pkg.item?.checks.find(c => c.kind === "template" || c.kind === "template-choice");
+        const method = source && "source" in source ? templateMethod(source.source, pkg.text, ref) : null;
+        const block = p.content?.kind === "day" ? p.content.blocks.filter(b => PANEL_SLOTS.includes(b.slot))[index] : null;
+        const printed = [...(block?.methods ?? []).flatMap(m => m.lines), ...(block?.lines ?? [])].join(" ").replace(/\s+/g, " ");
+        if (!/likelihood/.test(ref.skill) && !sequence && (!method || !printed.includes(method.replace(/\s+/g, " "))
+          || ref.skill === "3.1-estimate-quantity" && pkg.operation)) {
+          issues.push({ page: p.number, kind: "coverage", reason: `the ${declaration.place} example has no checked method for ${scope}` });
+        }
+      });
+    }
     const panelSeen = new Map<string, number>();
     for (const p of ofDay) if (p.content?.kind === "day") for (const b of p.content.blocks.filter(b => ["worked-example", "watch-one", "reminder"].includes(b.slot))) {
       // (The whole example, its lines together: two examples may share a question stem with other numbers.)
@@ -401,7 +435,7 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       const same = (a: typeof q, b: typeof q) => a.itemPlan!.template!.skill === b.itemPlan!.template!.skill && a.itemPlan!.template!.step === b.itemPlan!.template!.step && a.itemPlan!.template!.index === b.itemPlan!.template!.index;
       // (Then the numbers its answer combines, its steps: "a + b + c" asks two where "w - p" asks one, Codex at 24751f16.)
       const steps = (o: typeof q) => new Set(((o.itemPlan!.template!.source?.answer ?? "").replace(/'[^']*'|"[^"]*"/g, "").match(/\b[a-z_][a-z_0-9]*\b/gi) ?? []).filter((v) => !ANSWER_WORDS.has(v))).size;
-      const above = (a: typeof q, b: typeof q) => level(a) !== level(b) ? level(a) > level(b) : work(a) !== work(b) ? work(a) > work(b) : steps(a) !== steps(b) ? steps(a) > steps(b) : same(a, b) && size(a) > size(b);
+      const above = (a: typeof q, b: typeof q) => level(a) !== level(b) ? level(a) > level(b) : work(a) !== work(b) ? work(a) > work(b) : steps(a) !== steps(b) ? steps(a) > steps(b) : work(a) > 0 && same(a, b) && size(a) > size(b);
       const mine = questions.filter(o => o.itemPlan?.template && o.place !== "challenge" && o.place !== "warm-up" && !reviewParts.has(o.part) && ownStep(o) && o.itemPlan.template.rank === dayTop);
       // (Every card is on the day's hardest step, so it is compared with that step's practice of the day.)
       if (mine.length && !mine.every(o => above(q, o))) issues.push({ page: p.number, kind: "challenge", reason: `Day ${day}'s Challenge question ${q.number} is no harder than that day's practice of its step` });
@@ -467,8 +501,22 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       const out = (q.package.text.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number).find(n => n < slotBounds.min || n > slotBounds.max);
       if (out !== undefined) issues.push({ page: p.number, kind: "range", reason: `question ${q.number} prints ${out}, outside its steps' range (${slotBounds.min} to ${slotBounds.max})` });
     }
+    const declaration = p.expected?.find(e => e.slot === q.slot);
+    const own = declaration?.steps?.[0];
+    if (q.package && q.place === "spot-the-error" && own) {
+      const ref = stepTemplateOf(q.package);
+      const source = q.package.item?.checks.find(c => c.kind === "template" || c.kind === "template-choice" || c.kind === "template-shown");
+      if (!ref || `${ref.skill}#${ref.step}` !== own || !q.package.skill.skills.includes(ref.skill)
+        || ref.skill === "3.1-estimate-quantity" && (!source || !("source" in source) || !templateMethod(source.source, q.package.text, ref) || q.package.operation)) {
+        issues.push({ page: p.number, kind: "step", reason: `Spot the error question ${q.number} must demonstrate its exact curriculum step ${own}` });
+      }
+    }
+    // A code-built Use 2 ways sum from U10 comes from a step the page's plan declares (a borrowed sum's step is listed).
+    const codeSkill = !t && q.package && !q.existing && q.place === "solve-it-two-ways" && q.package.level >= 10 && declaration?.steps ? q.itemPlan?.item.skill : undefined;
+    if (codeSkill && !declaration!.steps!.some((k) => k.startsWith(`${codeSkill}#`)))
+      issues.push({ page: p.number, kind: "step", reason: `Use 2 ways question ${q.number} works a sum of ${codeSkill}, not one of the page's steps (${declaration!.steps!.join(", ")})` });
     if (!t || !q.package) continue;
-    const allowed = p.expected?.find(e => e.slot === q.slot)?.steps;
+    const allowed = declaration?.steps;
     if (allowed && !allowed.includes(`${t.skill}#${t.step}`)) issues.push({ page: p.number, kind: "step", reason: `question ${q.number} comes from ${t.skill} step ${t.step}, not one of the page's steps (${allowed.join(", ")})` });
     const out = t.bounds && (q.package.text.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number).find(n => n < t.bounds!.min || n > t.bounds!.max);
     if (out !== undefined && out !== null && t.bounds) issues.push({ page: p.number, kind: "range", reason: `question ${q.number} prints ${out}, outside ${t.skill} step ${t.step}'s range (${t.bounds.min} to ${t.bounds.max})` });

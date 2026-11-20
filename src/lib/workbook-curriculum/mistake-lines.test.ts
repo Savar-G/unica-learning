@@ -16,6 +16,7 @@ interface VerificationRecord {
   attempts: { round: number; pair: WatchOutPair | null; writerReason: string; verified: boolean; reason: string; verifierModel: string }[];
 }
 const report = JSON.parse(readFileSync("data/curriculum/mistake-verification.json", "utf8")) as {
+  invalidations: { id: string; previous: WatchOutPair; replacement: WatchOutPair; status: string; deterministicChecks: string[] }[];
   coverage: { verified: number; dropped: number; pairsWritten: number; candidateVersionsWritten: number; rejected: number };
   records: VerificationRecord[];
   rechecks: { prompt: string; selection: string[]; records: VerificationRecord[]; previousRecords: VerificationRecord[] }[];
@@ -23,6 +24,9 @@ const report = JSON.parse(readFileSync("data/curriculum/mistake-verification.jso
 
 describe("C2 mistake lines", () => {
   it("accounts for every coded mistake and exposes only independently verified pairs", () => {
+    expect(report.invalidations.map(entry => entry.id).sort()).toEqual([
+      "3.1-place-value-1000#3:0", "3.1-place-value-1000#3:1", "6.13-classify-angles#1:0",
+    ]);
     expect(codedSteps).toHaveLength(1417);
     expect(coded).toHaveLength(1503);
     expect(new Set(coded.map(x => x.mistake.misconception)).size).toBe(327);
@@ -47,6 +51,18 @@ describe("C2 mistake lines", () => {
       if (accepted) {
         verified++;
         expect(accepted.verifierModel, at).toBe(MISTAKE_VERIFIER_MODEL);
+        const invalidation = report.invalidations.find(entry => entry.id === record.id);
+        if (invalidation) {
+          expect(invalidation.status).toBe("pending-independent-verification");
+          expect(invalidation.previous).toMatchObject({ ...accepted.pair, verified: true });
+          expect(mistake.watchOut).toBeUndefined();
+          expect(invalidation.replacement.verified).toBe(false);
+          expect(verifiedWatchOut(step, { ...mistake, watchOut: invalidation.replacement })).toBeNull();
+          expect(verifiedWatchOut(step, mistake), at).toBeNull();
+          expect(watchOutProblems(invalidation.replacement)).toEqual([]);
+          expect(invalidation.deterministicChecks.length).toBeGreaterThan(0);
+          continue;
+        }
         expect(verifiedWatchOut(step, mistake), at).toBe(mistake.watchOut);
         expect(mistake.watchOut, at).toMatchObject({ ...accepted.pair, verified: true, verifierModel: MISTAKE_VERIFIER_MODEL });
         expect(watchOutProblems(mistake.watchOut!), at).toEqual([]);
@@ -188,8 +204,8 @@ describe("C2 mistake lines", () => {
   });
 
   it("keeps all retained numbers printable without relying on a shared misconception pair", () => {
-    const all = coded.flatMap(x => x.mistake.watchOut ? [x.mistake.watchOut] : []);
-    expect(all.length).toBe(report.coverage.verified);
+    const all = coded.flatMap(x => x.mistake.watchOut?.verified === true ? [x.mistake.watchOut] : []);
+    expect(all.length).toBe(report.coverage.verified - report.invalidations.length);
     expect(all.length).toBeGreaterThan(0);
     expect(all.some(p => p.fix.includes("1,000"))).toBe(true);
     expect(all.flatMap(watchOutProblems)).toEqual([]);

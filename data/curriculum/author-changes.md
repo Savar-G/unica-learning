@@ -7907,4 +7907,55 @@ Review repairs: the LCM step-2 question explicitly asks for a count, rather than
 
 The U10 estimate new-idea pages for steps 2 and 3 reserve four practice cells before the day time pass. Four cells close both two-column rows; three would leave a missing partner when the minimum prevents dropping to two. The page and day limits remain binding.
 
-The live Packson U19 run exposed missing numeric normal practice on divisibility steps 1 and 3. A normal-practice interval form on steps 1, 2 and 3 asks for the unique multiple of 10, 9 or 8 between two consecutive surrounding multiples. Several integer candidates lie inside each interval. Code derives the bounds and key, and Spot the error uses a checked plausible wrong answer on that declared step. These medium forms are reserved for Spot the error and excluded from ordinary practice, story routing and Challenge selection. This keeps their numeric error examples from changing regular divisibility practice or its row grouping.
+The live custom U19 run exposed missing numeric normal practice on divisibility steps 1 and 3. A normal-practice interval form on steps 1, 2 and 3 asks for the unique multiple of 10, 9 or 8 between two consecutive surrounding multiples. Several integer candidates lie inside each interval. Code derives the bounds and key, and Spot the error uses a checked plausible wrong answer on that declared step. These medium forms are reserved for Spot the error and excluded from ordinary practice, story routing and Challenge selection. This keeps their numeric error examples from changing regular divisibility practice or its row grouping.
+
+## Source clarity audit, 2026-11-16
+
+The appended JSON entries replay after the existing history. No template is added or removed. Slots, ranges, derived arithmetic, checks, formats, answers and region identities stay unchanged.
+
+- 3.1-estimate-quantity step 1, template 3, `text`: Audit 2026-11-16: state the estimate calculation convention; preserve slots, derived expressions, checks and keyed truth.
+- 3.1-estimate-quantity step 2, template 3, `text`: Audit 2026-11-16: state the estimate calculation convention; preserve slots, derived expressions, checks and keyed truth.
+- 2.2-benchmarks-25-50-100 step 3, template 3, `text`: Audit 2026-11-16: state the estimate calculation convention; preserve slots, derived expressions, checks and keyed truth.
+- 2.4-estimate-100 step 3, template 2, `text`: Audit 2026-11-16: state the estimate calculation convention; preserve slots, derived expressions, checks and keyed truth.
+- 2.4-estimate-100 step 3, template 3, `text`: Audit 2026-11-16: state the estimate calculation convention; preserve slots, derived expressions, checks and keyed truth.
+- 2.4-estimate-100 step 3, template 4, `text`: Audit 2026-11-16: state the estimate calculation convention; preserve slots, derived expressions, checks and keyed truth.
+- 2.4-estimate-100 step 2, template 2, `text`: Audit 2026-11-16: state the estimate calculation convention; preserve slots, derived expressions, checks and keyed truth.
+- 2.4-estimate-100 step 2, template 3, `text`: Audit 2026-11-16: state the estimate calculation convention; preserve slots, derived expressions, checks and keyed truth.
+- 2.4-estimate-100 step 2, template 4, `text`: Audit 2026-11-16: state the estimate calculation convention; preserve slots, derived expressions, checks and keyed truth.
+- 2.11-compare-likelihood step 2, template 1, `text`: Audit 2026-11-16: make the random pick and compared outcomes explicit; preserve computed colour/A/B/C keys.
+- 2.11-compare-likelihood step 2, template 2, `text`: Audit 2026-11-16: make the random pick and compared outcomes explicit; preserve computed colour/A/B/C keys.
+- 2.11-compare-likelihood step 2, template 3, `text`: Audit 2026-11-16: make the random pick and compared outcomes explicit; preserve computed colour/A/B/C keys.
+- 2.11-compare-likelihood step 2, template 4, `text`: Audit 2026-11-16: make the random pick and compared outcomes explicit; preserve computed colour/A/B/C keys.
+- 2.11-compare-likelihood step 2, template 5, `text`: Audit 2026-11-16: make the random pick and compared outcomes explicit; preserve computed colour/A/B/C keys.
+- 5.1-compare-order-million step 1, template 3, `text`: Audit 2026-11-16: comparison items have a write-answer box; keep the original format, key and notation. No invented choices.
+- 5.4-fraction-to-decimal step 2, template 1, `text`: Audit 2026-11-16: comparison items have a write-answer box; keep the original format, key and notation. No invented choices.
+- 5.4-compare-decimals step 1, template 1, `text`: Audit 2026-11-16: comparison items have a write-answer box; keep the original format, key and notation. No invented choices.
+- 5.4-compare-fractions step 1, template 1, `text`: Audit 2026-11-16: comparison items have a write-answer box; keep the original format, key and notation. No invented choices.
+- 5.4-compare-fractions step 2, template 1, `text`: Audit 2026-11-16: comparison items have a write-answer box; keep the original format, key and notation. No invented choices.
+- 6.13-classify-angles step 1, template 2, `derived`: Audit 2026-11-16: describe each object angle explicitly, including both bounds for obtuse angles.
+- 6.13-classify-angles step 1, template 4, `derived`: Audit 2026-11-16: use sides and a square-corner comparison rather than unexplained arms/narrow shorthand.
+- 6.13-classify-angles step 1, template step, `practice`: Audit 2026-11-16: explicit angle comparisons in the source examples.
+- 6.13-classify-angles step 1, template step, `spotTheError`: Audit 2026-11-16: obtuse requires both the right-angle lower bound and straight-angle upper bound.
+- 6.13-classify-angles step 1, template step, `mistakes`: C2-R4: Audit 2026-11-16 correction. Historical approval does not cover this wording; replacement is unverified and fails closed.
+- 3.1-place-value-1000 step 3, template step, `mistakes`: C2-R4: Audit 2026-11-16 correction. Historical approval does not cover this wording; replacement is unverified and fails closed.
+- 3.1-place-value-1000 step 3, template step, `mistakes`: C2-R4: Audit 2026-11-16 correction. Historical approval does not cover this wording; replacement is unverified and fails closed.
+
+Three corrected Watch out pairs are deliberately unverified and retained only in the invalidation records. The old pairs are removed from printable source. Historical approvals remain in mistake-verification.json; invalidations identify their replacements and deterministic mathematical checks. The existing verifiedWatchOut gate must return null for each replacement. No verifier hash or approval was minted.
+
+The current user requirement overrides the historical spreadsheet page ranges: U1 to U30 all require at least eight learning pages per day. The importer floors both range ends at eight and preserves any larger spreadsheet value. Skill page budgets and workbook counts are unchanged.
+
+Pending replacement pairs, excluded by the print gate:
+
+| 6.13-classify-angles | 1 | 1 | Long sides mean an obtuse angle. / Compare openings: less than a square corner is acute; between a square corner and a straight angle is obtuse. | pending |
+| 3.1-place-value-1000 | 3 | 1 | Calls 4 hundreds, 13 tens, 2 ones 4,132. / Trade 10 tens for 1 hundred: 4 + 1 = 5 hundreds, 3 tens, 2 ones = 532. | pending |
+| 3.1-place-value-1000 | 3 | 2 | Calls 4 hundreds, 13 tens, 2 ones 432. / Trade 10 tens for 1 hundred: 4 + 1 = 5 hundreds, 3 tens, 2 ones = 532. | pending |
+
+## Explicit real-world estimation guides, 2026-11-16
+
+All six 3.1-estimate-quantity step 3 source forms now print their task-specific guide. The context alone no longer decides whether a pencil case, book, bunch, shelf or class can hold a quantity. The same given guide appears in the three Challenge forms before the child estimates two classes, three shelves or four picture books. Numeric keys, source positions and formats remain unchanged. The static example, practice and Spot the error state their assumptions too. No Watch out approval is added.
+
+The existing open-explanation form and least-sensible choice still have no code teaching method. They remain unavailable as worked examples; adding a guide does not authorize answer-only teaching or waive own-step admission.
+
+A medium Spot the error form supplies a numeric estimate from the same printed guide. It is tagged SPOT_ONLY, so it cannot displace ordinary practice or the three Challenge tasks. Its independently computed key is str(b); no generic addition or comparison can substitute for this estimation step.
+
+- Sensible-estimate explanations compare with the stated task guide, without claiming a real container cannot hold the distractor quantity.

@@ -135,6 +135,21 @@ function preparePlacement(o: PlacementInput & { number: number }) {
         ? "the day's numbers and difficulty start 2 days ahead, and the Challenge uses the hardest allowed questions from Day 1." : "no stretch shift, and the Challenge keeps its usual questions."}` });
     }
   }
+  let fullDay = false;
+  if (ins?.fullDayBook != null && ins.fullDayBook === o.number) {
+    // Full day (Cedric, 2026-11-17): this book's days fill to D-232's limit, not the parent's weekly time. Only the
+    // plan's copy changes; the learning card keeps its setting, and D-232's 35-minute ceiling and every fit, coverage
+    // and contract check stay as they are.
+    if (!signals.hasAssessment) outcomes.push({ section: "full-day", value: String(ins.fullDayBook), applied: false, note: "It needs a finished assessment: the weekly time it lifts comes from the test's learning card." });
+    else {
+      fullDay = true;
+      const had = signals.adjustments.requiredMinutes;
+      signals.adjustments.requiredMinutes = null;
+      outcomes.push({ section: "full-day", value: String(ins.fullDayBook), applied: true, note: had === null
+        ? "The family's time already allowed the full day: no change."
+        : `Days fill to about 33 minutes and stay under 35 (D-232), instead of the family's ${had} minutes.` });
+    }
+  }
   // Teach less units the test found secure (clear or early sign), before a first book's own level marks early ones developing.
   const secureLess = (codes: readonly string[]) => {
     const found = codes.filter(code => signals.hasAssessment && o.profile?.standards.some(s => s.code === code && s.status === "secure"));
@@ -151,7 +166,8 @@ function preparePlacement(o: PlacementInput & { number: number }) {
     reviews: [], missedReviews: [], misses: [], pausedWeeks: 0,
     support: place.support, unassessedUnits,
     ...(ins ? { instructions: { teachMore: [...ins.teachMore], teachLess: [...ins.teachLess], addReview: [...ins.addReview],
-      ...secureLess(ins.teachLess), ...(place.trace.rule === "I1" ? { weakBelowChecks: true } : {}) } } : {}),
+      ...secureLess(ins.teachLess), ...(place.trace.rule === "I1" ? { weakBelowChecks: true } : {}),
+      ...(fullDay ? { fullDay: true } : {}) } } : {}),
   };
   return { ok: true as const, planning, place, signals, outcomes, standards, unassessedUnits, ins };
 }

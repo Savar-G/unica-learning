@@ -8,7 +8,10 @@ import { WARM_UP_INSTRUCTION } from "@/lib/workbook-page-instructions";
 import { sampleBook } from "@/lib/workbook-sample-book";
 import { titleProblem, UNIT_TITLES } from "@/lib/workbook-titles";
 import { SKILL_TITLES } from "@/lib/workbook-skill-titles";
-import { workbookTemplate } from "@/lib/workbook-template";
+import { bandOf, CARD_LINES, pagePlan, workbookTemplate, workMinimum } from "@/lib/workbook-template";
+import { taskIdentity } from "@/lib/workbook-task-identity";
+import { bcStepProgressions } from "@/lib/workbook-curriculum";
+import { buildStepItem, stepTemplateItem } from "@/lib/workbook-step-items";
 import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
 
 // The workbook templates (#310) laid out in real Chromium: one page of each type from sample books at U2 (parent-led),
@@ -27,7 +30,9 @@ const book = (level: string, n: number, testWorkbook = false, title?: string) =>
 
 async function printPage(page: DraftPage, draft: WorkbookDraft) {
   const html = `<!doctype html><html><head><style>@page{size:8.5in 11in;margin:0}html,body{margin:0}[data-sheet]{position:relative;width:816px;height:1056px;overflow:hidden}</style><style>${template.css}</style></head><body><section data-sheet="0" data-measure="sheet">${template.page(page, { qr: '<div data-measure="qr"></div>', qrUrl: "x" }, draft)}</section></body></html>`;
-  return engine.print({ html, sheets: 1, page: { width: 816, height: 1056 }, scale: 1 });
+  let pill = 0;
+  const measuredHtml = html.replace(/<span class="chip /g, () => `<span data-measure="test-pill-${pill++}" class="chip `);
+  return engine.print({ html: measuredHtml, sheets: 1, page: { width: 816, height: 1056 }, scale: 1 });
 }
 
 /** One page of each type (a parent-led page per first slot), with the book's own page numbers. */
@@ -46,6 +51,76 @@ function oneOfEach(draft: WorkbookDraft): WorkbookDraft {
 describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
   // Cedric's printed pages (#1116): a Use 2 ways method label that wrapped to two lines left about 0.7 in to write in.
   // Each method box now has at least 96 px under its label, and the two boxes of a question are the same height.
+  it("centers one- and two-digit badge numerals across card families and preserves ordinary row styles", async () => {
+    const draft = book("U22", 1);
+    const source = draft.pages.find(p => p.content?.kind === "day" && p.questions.length >= 3)!;
+    if (source.content?.kind !== "day") throw new Error("Expected a day page");
+    for (const slot of ["challenge", "show-what-you-know", "now-you", "fix-it", "picture-stories", "practice-row"] as const) {
+      const questions = source.questions.slice(0, 3).map((q, i) => ({ ...q, number: [1, 10, 12][i] }));
+      const page: DraftPage = { ...source, questions, content: { ...source.content, consistentLayout: true,
+        blocks: [{ slot, items: questions.map(q => q.number) }] } };
+      const { measured } = await printPage(page, draft);
+      for (const q of questions) {
+        const badge = measured.find(m => m.name === `number-${q.number}`)!;
+        const glyph = measured.find(m => m.name === `numberglyph-${q.number}`);
+        expect(badge?.visible, `${slot} ${q.number}`).toBe(true);
+        if (glyph) {
+          expect(glyph.text).toBe(String(q.number));
+          expect(Math.abs(glyph.x + glyph.width / 2 - badge.x - badge.width / 2)).toBeLessThan(0.75);
+          expect(Math.abs(glyph.y + glyph.height / 2 - badge.y - badge.height / 2)).toBeLessThan(0.75);
+        } else {
+          expect(badge.text).toBe(`${q.number}.`);
+          expect(["now-you", "practice-row"]).toContain(slot);
+        }
+      }
+    }
+  }, 120_000);
+
+  it("fits three estimation Challenge prompts above their answer and working areas", async () => {
+    const draft = book("U10", 1);
+    const source = draft.pages.find(page => page.type === "challenge")!;
+    if (source.content?.kind !== "day") throw new Error("Expected Challenge day page");
+    const curriculum = bcStepProgressions();
+    // Three different printed tasks: the same template with its choices reordered is one task (taskIdentity), not two.
+    // Source-template diversity is tested by the curriculum suite.
+    const tasks = new Map<string, NonNullable<ReturnType<typeof buildStepItem>["package"]>>();
+    for (let attempt = 0; attempt < 32 && tasks.size < 3; attempt++) {
+      const item = stepTemplateItem({ curriculum, skill: "3.1-estimate-quantity", step: 3, level: 10,
+        day: 8, place: "challenge", seed: 19 + Math.floor(attempt / 3), ordinal: attempt % 3, attempt });
+      if (!item) continue;
+      const built = buildStepItem(item.ref, item.text, { id: `estimate-challenge-${tasks.size}`, workbookId: draft.id,
+        page: source.number, question: tasks.size + 1, level: 10, skills: [item.ref.skill] }, "code");
+      if (!built.package) throw new Error(`No checked estimation task: ${item.text}`);
+      expect(built.check.status).toBe("checked");
+      if (!tasks.has(taskIdentity(built.package))) tasks.set(taskIdentity(built.package), built.package);
+    }
+    expect(tasks.size).toBe(3);
+    const questions = [...tasks.values()].map((pkg, i) => ({ number: i + 1, package: pkg }));
+    const page: DraftPage = { ...source, questions, content: { ...source.content, level: 10, day: 8,
+      consistentLayout: true, pages: 8, title: "Challenge", subtitle: "Write your answers in the boxes.",
+      blocks: [{ slot: "challenge", items: [1, 2, 3] }] } };
+    const { measured } = await printPage(page, draft);
+    const byName = new Map(measured.map(item => [item.name, item]));
+    expect(template.fit!(page, byName, draft)).toEqual([]);
+    for (const question of questions) {
+      const prompt = byName.get(`question-${question.number}-content`)!;
+      const answer = byName.get(`question-${question.number}-answer`)!;
+      expect(prompt.width).toBeGreaterThan(500);
+      expect(Math.round(prompt.height / (bandOf(10).body * 1.4))).toBeLessThanOrEqual(CARD_LINES);
+      expect(answer.y).toBeGreaterThanOrEqual(prompt.y + prompt.height);
+      // Each estimation task asks for working: its package declares one work region, printed as region-<n>-<id>.
+      const workRegions = question.package.item?.regions.filter(region => region.kind === "work") ?? [];
+      expect(workRegions, question.package.text).toHaveLength(1);
+      const work = byName.get(`region-${question.number}-${workRegions[0].id}`);
+      expect(work?.visible, question.package.text).toBe(true);
+      // Below the full-width prompt, beside (not over) the answer, with the band's minimum height and 240 px of width.
+      expect(work!.y).toBeGreaterThanOrEqual(prompt.y + prompt.height);
+      expect(work!.x).toBeGreaterThanOrEqual(answer.x + answer.width);
+      expect(work!.height).toBeGreaterThanOrEqual(workMinimum(10) - 0.5);
+      expect(work!.width).toBeGreaterThanOrEqual(239.5);
+    }
+  }, 30_000);
+
   it.each(["U4", "U16"])("leaves 96 px to write under each Use 2 ways method label in %s", async level => {
     const draft = book(level, 1);
     const page = draft.pages.find(p => p.content?.kind === "day" && p.content.blocks.some(b => b.slot === "solve-it-two-ways"));
@@ -161,6 +236,10 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
       const instruction = byName.get(`slot-how-${i}`)!;
       expect(instruction.visible && instruction.textPrinted).toBe(true);
       expect(instruction.y + instruction.height).toBeLessThan(reminder.y);
+      const pill = byName.get(`test-pill-${i}`)!;
+      expect(pill.visible && pill.textPrinted).toBe(true);
+      expect(Math.abs(pill.x + pill.width / 2 - instruction.x - instruction.width / 2)).toBeLessThan(0.5);
+      expect(Math.abs(pill.y - byName.get("test-pill-0")!.y)).toBeLessThan(0.5);
     }
   }, 30_000);
 
@@ -277,7 +356,7 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
 
   it("fits the longest title code writes on one line on every day page type, and fails a title too long for one (D-201)", async () => {
     // The separate catalogue print checks every skill and unit title. Here the longest string also visits every page type.
-    const titles = [...Object.values(SKILL_TITLES), ...Object.values(UNIT_TITLES), "Patterns and equations", "Fractions and decimals", "Shapes and measuring", "Number stories to 1000", "Review and Friday 5", "Show what you know", "Level U30 test"];
+    const titles = [...Object.values(SKILL_TITLES), ...Object.values(UNIT_TITLES), "Patterns and equations", "Fractions and decimals", "Shapes and measuring", "Number stories to 1000", "Practise and check", "Five-skill check", "Word problems", "Show what you know", "Level U30 test"];
     const longest = titles.reduce((a, b) => (b.length > a.length ? b : a));
     expect(titleProblem(longest)).toBeNull();
     // The title goes in when the book is planned, as the generator's will.
@@ -346,6 +425,33 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
       }
     }
   }, 120_000);
+
+  it.each(["U10", "U16"])("places Show what you know answers under the prompt on rows with working, and beside it otherwise, in %s", async level => {
+    const draft = book(level, 1);
+    const source = draft.pages.find(p => p.content?.kind === "day" && p.content.blocks.some(b => b.slot === "show-what-you-know"));
+    if (!source || source.content?.kind !== "day") throw new Error("no Show what you know page");
+    // (The sample page is not capacity-planned for the measured layout: four of its rows, as capacity would keep.)
+    const questions = source.questions.slice(0, 4);
+    const page: DraftPage = { ...source, questions, content: { ...source.content, consistentLayout: true,
+      blocks: source.content.blocks.map(b => b.slot === "show-what-you-know" ? { ...b, items: questions.map(q => q.number) } : b) } };
+    const plan = pagePlan(page)!;
+    const { measured } = await printPage(page, draft);
+    const byName = new Map(measured.map(m => [m.name, m]));
+    expect(template.fit!(page, byName, draft)).toEqual([]);
+    let below = 0;
+    for (const [n, at] of plan.beside) {
+      const prompt = byName.get(`question-${n}-content`)!;
+      const work = measured.some(m => (m.name === `workspace-${n}` || m.name.startsWith(`region-${n}-`) && /work/.test(m.name)) && m.visible);
+      // A row prints its answers under the prompt exactly when it has a work area.
+      expect(at.align, `question ${n}`).toBe(work ? "below" : "top");
+      if (at.align === "below") {
+        below++;
+        for (const name of at.regions) expect(byName.get(name)!.y).toBeGreaterThanOrEqual(prompt.y + prompt.height - 1);
+      }
+    }
+    expect(plan.beside.size).toBeGreaterThan(0);
+    void below;
+  }, 60_000);
 
   it("fails a cover whose title runs to a third line, naming the slot", async () => {
     const draft = book("U12", 7);

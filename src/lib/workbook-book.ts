@@ -96,9 +96,9 @@ export function dayHeader(curriculum: Curriculum, page: PlannedPage, level: numb
     : first === "new-idea" ? "new-idea" : first === "picture-stories" ? "word-problems" : first === "remember-these" ? "remember-these" : first ?? "practice";
   const subtitles: Record<string, string> = {
     // From U13 the warm-up's facts go past 20 (times tables, adding hundreds): it names no range then.
-    // Every warm-up says what it is and that every question is done: no timing or counting words (Savar, 2026-11-09).
+    // Name the warm-up without timing, counting or completion demands.
     "warm-up": WARM_UP_INSTRUCTION,
-    "new-idea": level >= 19 ? "Try it first. Then see how it works." : "Read how it works, then try it.",
+    "new-idea": "Read how it works, then try it.",
     practice: "Read the example, then answer the questions.",
     "practice-2": "Each row is a little harder than the one before.",
     "word-problems": "Read it. Work it out in the box. Write the answer.",
@@ -252,7 +252,13 @@ interface PanelExample {
 }
 
 /** The lines of a sound example item: a sum worked out, or a count, a sequence or an order shown done; else null. */
-function exampleOf(p: QuestionPackage, level: number): PanelExample | null {
+function exampleOf(p: QuestionPackage, level: number, scope?: { skill: string; step: number }): PanelExample | null {
+  if (scope && ["3.1-estimate-quantity", "3.1-place-value-1000", "3.6-increasing-pattern", "3.6-decreasing-pattern", "6.13-classify-angles"].includes(scope.skill)) {
+    const ref = stepTemplateOf(p);
+    if (!ref || ref.skill !== scope.skill || ref.step !== scope.step || p.operation) return null;
+  }
+  // Estimation needs a scoped template method, never an arithmetic or relation stand-in.
+  if (p.skill.skills.includes("3.1-estimate-quantity") && !stepTemplateOf(p)) return null;
   if (p.operation) {
     const lines = workedLines(p.operation, 3, level);
     return { label: operationText(p.operation), lines, answered: lines.at(-1)! };
@@ -286,18 +292,19 @@ function exampleOf(p: QuestionPackage, level: number): PanelExample | null {
       const step = c.step.type === "number" ? c.step.value : null;
       const how = step ? `${step > 0 ? "Add" : "Take away"} ${Math.abs(step)} each time.` : null;
       // (A template's question first: "Count on. What are the next two numbers?" over its worked count.)
-      const asked = p.templateId && /[a-z]{3,}/i.test(p.text) ? [p.text] : [];
+      const asked = p.text.trim() ? [p.text] : [];
       return { label: "Fill the gaps", lines: [...asked, ...(how ? [how] : []), line], answered: line };
     }
     if (c.kind === "relation") {
+      if (p.skill.skills.includes("3.1-estimate-quantity")) return null;
       const r = relationChoices(c);
       if (typeof r === "string") continue;
       const [n, m] = c.numbers;
       const b = c.to[0];
       const lines = c.relation === "less-than" ? [`Is ${n} less than ${b}?`, `${n} ${n < b ? `comes before ${b}` : n === b ? `is ${b}` : `comes after ${b}`}: [${r.answer}].`]
         : c.relation === "closer" ? [`Is ${n} close to ${c.to[0]} or ${c.to[1]}?`, `${n} is ${Math.abs(n - c.to[0])} from ${c.to[0]} and ${Math.abs(n - c.to[1])} from ${c.to[1]}: [${r.answer}].`]
-        : c.relation === "equal" ? [`${n} and ${m}: equal or not?`, `[${r.answer}].`]
-        : [`${c.labels[0]} ${n}, ${c.labels[1]} ${m}. Which has ${c.relation}?`, `[${r.answer}].`];
+        : c.relation === "equal" ? [`Are ${n} and ${m} equal?`, `Match the two amounts: ${n} and ${m}. They are ${n === m ? "the same" : "different"}: [${r.answer}].`]
+        : [`There are ${n} in the ${c.labels[0]} group and ${m} in the ${c.labels[1]} group. Which group has ${c.relation}?`, `On a number line, ${Math.min(n, m)} comes before ${Math.max(n, m)}. Choose the ${c.relation === "more" ? "larger" : "smaller"} amount: [${r.answer}].`];
       const label = c.relation === "less-than" ? `Less than ${c.to[0]}?` : c.relation === "closer" ? `Close to ${c.to[0]} or ${c.to[1]}?` : c.relation === "equal" ? "Equal or not?" : `Which has ${c.relation}?`;
       return { label, lines, answered: lines[1] };
     }
@@ -314,18 +321,18 @@ function exampleOf(p: QuestionPackage, level: number): PanelExample | null {
  * for the panel (GenerateInput's panel examples, #380), else a question of the same part on that skill (its easier
  * example's sum first), else null: never a sum of another skill on the page.
  */
-function panelExample(questions: PageQuestion[], example: QuestionPackage | null, skill: string | undefined, sameP: number[], level: number): PanelExample | null {
+function panelExample(questions: PageQuestion[], example: QuestionPackage | null, skill: string | undefined, sameP: number[], level: number, scope?: { skill: string; step: number }): PanelExample | null {
   if (example) {
-    const own = exampleOf(example, level);
+    const own = exampleOf(example, level, scope);
     if (own) return own;
   }
   const mine = questions.filter((q) => sameP.includes(q.slot) && q.package && (!skill || q.package.skill.skills.includes(skill)));
   for (const q of mine) {
     const op = q.package!.easierExample?.operation;
-    if (op) return exampleOf({ ...q.package!, operation: op }, level);
+    if (op) return exampleOf({ ...q.package!, operation: op }, level, scope);
   }
   for (const q of mine) {
-    const own = exampleOf(q.package!, level);
+    const own = exampleOf(q.package!, level, scope);
     if (own) return own;
   }
   return null;
@@ -334,27 +341,173 @@ function panelExample(questions: PageQuestion[], example: QuestionPackage | null
 const PLACE_NAMES: Record<number, string> = { 1: "ones", 10: "tens", 100: "hundreds", 1000: "thousands", 10000: "ten thousands", 100000: "hundred thousands", 1000000: "millions" };
 const SYMBOL: Record<string, string> = { "+": "+", "-": "−", "*": "×", "//": "÷" };
 
+/** Methods for the estimation curriculum use the printed group, not the sampling recipe. */
+function estimateMethod(src: TemplateSource, text: string, step: number): string | null {
+  const v = templateNumbers(src), checked = templateAnswer(src);
+  if (!v || !("answer" in checked) || ![1, 2, 3].includes(step)) return null;
+  const plain = text.replace(/(\d)[,\s\u00a0\u202f](?=\d{3}\b)/g, "$1");
+  const printed = (n: number) => Number.isFinite(n) && new RegExp(`(?:^|[^\\d])${n}(?!\\d)`).test(plain);
+  const fmt = groupedNumber;
+  const numeric = (n: number, how: string) => Number(checked.answer) === n ? how : null;
+  if (step === 3) {
+    // A context label alone cannot establish a real container's capacity. Source authors must
+    // print the assumption; we never infer it from b, the distractor, or the smallest choice.
+    const anchor = plain.match(/Use about (\d+) (pencils per pencil case|pages per (?:short )?(?:picture book|storybook)|grapes per small bunch|books per (?:classroom )?shelf|children per class) as a guide\./i);
+    if (!anchor || Number(anchor[1]) !== v.b || !Number.isInteger(v.b) || v.b <= 0) return null;
+    const context = plain.replace(anchor[0], "");
+    const sameContext = /^pencils/i.test(anchor[2]) ? /pencils.*pencil case/i.test(context)
+      : /^pages/i.test(anchor[2]) ? /pages.*(?:picture book|storybook)|(?:picture books|storybooks).*pages/i.test(context)
+      : /^grapes/i.test(anchor[2]) ? /grapes.*small bunch/i.test(context)
+      : /^books/i.test(anchor[2]) ? /books.*shelf|books.*shelves/i.test(context)
+      : /children.*class|classes.*children/i.test(context);
+    if (!sameContext) return null;
+    const times = src.answer.match(/^([234]) \* b$/);
+    if (times) {
+      const count = Number(times[1]);
+      const groups = new RegExp(`(?:${count}|${["", "", "two", "three", "four"][count]}) (?:classes|(?:classroom )?shelves|(?:short )?(?:picture books|storybooks)|small bunches|pencil cases)`, "i");
+      if (!groups.test(plain)) return null;
+      return numeric(count * v.b, `Use the stated guide of about ${fmt(v.b)} for each group. ${count} × ${fmt(v.b)} = ${fmt(count * v.b)}, so estimate about ${fmt(count * v.b)} in all.`);
+    }
+    // The guide is for one group and the question asks about several (the guide alone answered the live U10 Book 1's
+    // tasks): work out the several groups, then judge the guesses against that.
+    if (Number.isInteger(v.n) && v.n >= 2 && v.ans === v.n * v.b && printed(v.n)) {
+      const groups = `Use the guide of about ${fmt(v.b)} for each group. ${v.n} × ${fmt(v.b)} = ${fmt(v.ans)}, so about ${fmt(v.ans)} is sensible.`;
+      if (src.answer === "str(ans)") return numeric(v.ans, `${groups} ${printed(v.ans) ? "Choose" : "Write"} ${fmt(v.ans)}.`);
+      if (/^'true' if flip == 0 else 'false'$|^'yes' if flip == 0 else 'no'$/.test(src.answer) && printed(v.s)) {
+        const same = v.s === v.ans;
+        if (checked.answer !== (src.answer.includes("'true'") ? same ? "true" : "false" : same ? "yes" : "no")) return null;
+        return `${groups} ${fmt(v.s)} is ${same ? "about that, so it is sensible" : v.s > v.ans ? "10 times too many" : "10 times too few"}.`;
+      }
+      return null;
+    }
+    if (src.answer === "str(b)" && printed(v.b))
+      return `The stated guide is about ${fmt(v.b)}. Choose ${fmt(v.b)} because it matches that guide.`;
+    if (/^'true' if flip == 0 else 'false'$|^'yes' if flip == 0 else 'no'$/.test(src.answer) && printed(v.s)) {
+      const same = v.s === v.b;
+      if (checked.answer !== (src.answer.includes("'true'") ? same ? "true" : "false" : same ? "yes" : "no")) return null;
+      return `Compare the proposed ${fmt(v.s)} with the stated guide of about ${fmt(v.b)}. They ${same ? "match" : "do not match"} the assumption in this task.`;
+    }
+    return null;
+  }
+  const g = v.g;
+  if (!(step === 1 ? [10, 25] : [100]).includes(g) || !printed(g)) return null;
+  const count = v.n ?? v.a;
+  if (!Number.isInteger(count) || count < 1 || count > 100 || src.answer !== "n" && !printed(count)) return null;
+  const total = count * g;
+  const how = `Use about ${fmt(g)} in each group. ${count} groups give ${count} × ${fmt(g)} = ${fmt(total)}, so about ${fmt(total)} in all.`;
+  if (["g * n", "n * g"].includes(src.answer) && /box|group/i.test(plain)) return numeric(total, how);
+  if (/^\(str\(n\) \+ ' groups of ' \+ str\(g\)\) if f == 1 else str\(e\)$/.test(src.answer) && printed(v.e) && /which is greater/i.test(plain)) {
+    const expected = total > v.e ? `${count} groups of ${g}` : String(v.e);
+    return checked.answer === expected ? `${how} Compare ${fmt(total)} with ${fmt(v.e)}. ${fmt(Math.max(total, v.e))} is greater.` : null;
+  }
+  if (src.answer === "n" && v.t === total && printed(v.t) && /how many groups/i.test(plain))
+    return numeric(count, `Use about ${fmt(g)} per group. ${fmt(total)} ÷ ${fmt(g)} = ${count}, so about ${count} groups.`);
+  if (["a * g + b", "a * g - b", "a * g - g - b"].includes(src.answer) && Number.isInteger(v.b) && printed(v.b)) {
+    const plus = src.answer === "a * g + b";
+    const box = src.answer === "a * g - g - b";
+    if (!(plus ? /extra/i : /take away|takes|removes/i).test(plain) || box && !/1 box/i.test(plain)) return null;
+    const result = total + (plus ? v.b : -v.b) - (box ? g : 0);
+    return numeric(result, `${how} ${box ? `One box is about ${fmt(g)}. ` : ""}${fmt(total)} ${box ? `− ${fmt(g)} ` : ""}${plus ? "+" : "−"} ${fmt(v.b)} = ${fmt(result)}. Estimate about ${fmt(result)} ${plus ? "in all" : "left"}.`);
+  }
+  if (/^'true' if flip == 0 else 'false'$/.test(src.answer) && /use[^.?!]*(?:each|every) group/i.test(plain) && printed(v.shown)) {
+    const same = total === v.shown;
+    return checked.answer === (same ? "true" : "false") ? `${how} The stated estimate ${fmt(v.shown)} ${same ? "matches" : "does not match"} ${fmt(total)}.` : null;
+  }
+  return null;
+}
+
+/** Place-value and pattern methods explain the child's trades and jumps, never derived sampling. */
+function placeOrPatternMethod(src: TemplateSource, text: string, skill: string, step: number): string | null {
+  const v = templateNumbers(src), checked = templateAnswer(src);
+  if (!v || !("answer" in checked)) return null;
+  const plain = text.replace(/(\d)[,\s\u00a0\u202f](?=\d{3}\b)/g, "$1");
+  const printed = (n: number) => Number.isFinite(n) && new RegExp(`(?:^|[^\\d])${n}(?!\\d)`).test(plain);
+  const fmt = groupedNumber;
+  if (skill === "3.1-place-value-1000" && step === 3) {
+    const { h, t, o } = v;
+    if (![h, t, o].every(Number.isInteger) || h < 1 || h > 9 || t < 0 || t > 19 || o < 0 || o > 19 || ![h, t, o].every(printed)) return null;
+    if (src.answer !== "100 * h + 10 * t + o" || Number(checked.answer) !== h * 100 + t * 10 + o || !/hundred|boxes of 100/i.test(plain)) return null;
+    const tens = t + Math.floor(o / 10), hundreds = h + Math.floor(tens / 10);
+    return `${h} hundreds, ${t} tens, ${o} ones. ${o >= 10 ? "Trade 10 ones for 1 ten. " : ""}${tens >= 10 ? "Trade 10 tens for 1 hundred. " : ""}${hundreds} hundreds, ${tens % 10} tens, ${o % 10} ones make ${fmt(Number(checked.answer))}.`;
+  }
+  if (skill === "3.1-place-value-1000" && step === 2) {
+    const number = v.n;
+    if (!Number.isInteger(number) || number < 100 || number > 999) return null;
+    const h = Math.floor(number / 100), t = Math.floor(number / 10) % 10, o = number % 10;
+    const places = `${fmt(number)} has ${h} hundreds, ${t} tens and ${o} ones.`;
+    if (printed(number) && t === 0) {
+      if (src.answer === "str(h * 100) + ' + ' + str(o)" && checked.answer === `${h * 100} + ${o}` && /expanded form/i.test(plain))
+        return `${places} Keep the zero tens place: ${h * 100} + ${o} = ${fmt(number)}.`;
+      const digit = src.answer === "0 if sv == 0 else (o if sv == 1 else h)";
+      const value = src.answer === "0 if sv == 0 else (o if sv == 1 else h * 100)";
+      const place = ["tens", "ones", "hundreds"][v.sv];
+      const expected = [0, o, value ? h * 100 : h][v.sv];
+      if ((digit || value) && place && plain.includes(place) && Number(checked.answer) === expected)
+        return `${places} The ${place} ${value ? "value" : "digit"} is ${expected}.`;
+    }
+    if (src.answer === "str(n)" && t === 0 && printed(number) && printed(v.m) && /zero in the tens place/i.test(plain) && Math.floor(v.m / 10) % 10 !== 0 && checked.answer === String(number))
+      return `${places} The zero holds the empty tens place. ${fmt(v.m)} has ${Math.floor(v.m / 10) % 10} tens, so choose ${fmt(number)}.`;
+    return null;
+  }
+  if (skill === "3.1-place-value-1000" && step === 1 && printed(v.n) && Number.isInteger(v.n) && v.n >= 100 && v.n <= 999) {
+    const h = Math.floor(v.n / 100), t = Math.floor(v.n / 10) % 10, o = v.n % 10;
+    if (src.answer === "nh * 100" && Number(checked.answer) === h * 100 && /hundreds digit/i.test(plain))
+      return `${fmt(v.n)} has ${h} hundreds, ${t} tens and ${o} ones. The hundreds digit is worth ${h} × 100 = ${h * 100}.`;
+    if (src.answer === "nt" && Number(checked.answer) === t && /tens place/i.test(plain))
+      return `${fmt(v.n)} has ${h} hundreds, ${t} tens and ${o} ones. Read the tens place: ${t}.`;
+  }
+  if (skill === "3.1-place-value-1000" && step === 1 && printed(v.n)) {
+    const h = Math.floor(v.n / 100), t = Math.floor(v.n / 10) % 10, o = v.n % 10;
+    if (src.answer === "'the hundreds digit'" && checked.answer === "the hundreds digit" && /worth more/i.test(plain) && h * 100 > t * 10)
+      return `${h} hundreds are worth ${h * 100}; ${t} tens are worth ${t * 10}. ${h * 100} is greater than ${t * 10}.`;
+    if (src.answer === "'true' if flip == 0 else 'false'" && printed(v.shown) && /ones place/i.test(plain) && checked.answer === (o === v.shown ? "true" : "false"))
+      return `${fmt(v.n)} has ${h} hundreds, ${t} tens and ${o} ones. Compare the ones digit ${o} with the stated ${v.shown}.`;
+  }
+  if (!["3.6-increasing-pattern", "3.6-decreasing-pattern"].includes(skill) || ![1, 2].includes(step)) return null;
+  const { a, d } = v;
+  if (!Number.isInteger(a) || !Number.isInteger(d) || d <= 0 || !printed(a)) return null;
+  const down = skill === "3.6-decreasing-pattern";
+  const equalGaps = /same amount|equal|missing/i.test(plain) && (printed(v.b) && v.b === a + (down ? -d : d) || down && printed(v.c) && printed(v.e) && v.c === a - 2 * d && v.e === v.c - d);
+  if (!equalGaps && (!printed(d) || !(down ? /take(?:s)? away|subtract|gives away/i : /add/i).test(plain))) return null;
+  const sign = down ? "-" : "+", symbol = down ? "−" : "+";
+  let jumps = src.answer === `a ${sign} d` ? 1 : 0;
+  const repeated = src.answer.match(/^a ([+-]) ([234]) \* d$/);
+  if (repeated && repeated[1] === sign) jumps = Number(repeated[2]);
+  if (src.answer === `a ${sign} (n - 1) * d` && printed(v.n) && /(?:number 1|start is number 1)/i.test(plain)) jumps = v.n - 1;
+  if (!Number.isInteger(jumps) || jumps < 1 || jumps > 6 || Number(checked.answer) !== a + (down ? -1 : 1) * jumps * d) return null;
+  const terms = Array.from({ length: jumps + 1 }, (_, i) => a + (down ? -1 : 1) * i * d);
+  return `${down ? "Take away" : "Add"} ${d} for each jump. ${jumps} jump${jumps === 1 ? "" : "s"}: ${terms.map(fmt).join(", ")}. ${fmt(a)} ${symbol} ${jumps * d} = ${fmt(terms[jumps])}.`;
+}
+
 /**
  * A template example's worked method line, from its answer expression and its numbers: "8 − 5 = 3", "20 × 40 = 800",
  * "The thousands digit of 97531 is 7.", or for a true or false the sum it checks. Null when the expression is not one
  * code can word.
  */
 export function templateMethod(src: TemplateSource, text: string, scope?: { skill: string; step: number; index?: number }): string | null {
+  if (scope?.skill === "3.1-estimate-quantity") return estimateMethod(src, text, scope.step);
+  if (scope && (scope.skill === "3.1-place-value-1000" && [1, 2, 3].includes(scope.step) || ["3.6-increasing-pattern", "3.6-decreasing-pattern"].includes(scope.skill)))
+    return placeOrPatternMethod(src, text, scope.skill, scope.step);
   // Classification examples compare openings, not an arithmetic stand-in supplied by the writer.
   if (scope?.skill === "6.13-classify-angles" && [1, 2].includes(scope.step) && /\b(?:angle|acute|right|obtuse|straight|reflex)\b/i.test(text)) {
     const result = templateAnswer(src);
     if ("answer" in result) {
       // The original description/object forms classify an opening. Turn-composition cards need a fuller method.
       const description = scope.index === 0 || scope.index === 1;
-      if (description && result.answer === "acute") return "Compare with a square corner. A smaller opening is acute.";
-      if (description && result.answer === "right") return "Compare with a square corner. The same opening is a right angle.";
-      if (description && result.answer === "obtuse") return "Compare with a square corner. A wider opening, short of a straight line, is obtuse.";
-      if (description && result.answer === "straight") return "Half a turn makes a straight line: a straight angle.";
-      if (description && result.answer === "reflex") return "More than half a turn, short of a full turn, is a reflex angle.";
+      const small = /smaller than a square corner|narrower than a square corner|open less than a square corner/i.test(text);
+      const right = /exactly a square corner|corner of a book|corner of a door/i.test(text);
+      const obtuse = /wider than a square corner but (?:narrower than a straight line|less than a straight angle)|almost a straight line but not quite|nearly a straight line but not quite/i.test(text);
+      const straight = /makes a straight line|half a full turn/i.test(text);
+      const reflex = /(?:bigger than a straight line|more than a half turn) but (?:smaller|less) than a full turn/i.test(text);
+      if (description && small && result.answer === "acute") return "Compare with a square corner. A smaller opening is acute.";
+      if (description && right && result.answer === "right") return "Compare with a square corner. The same opening is a right angle.";
+      if (description && obtuse && result.answer === "obtuse") return "Compare with a square corner. A wider opening, short of a straight line, is obtuse.";
+      if (description && straight && result.answer === "straight") return "Half a turn makes a straight line: a straight angle.";
+      if (description && reflex && result.answer === "reflex") return "More than half a turn, short of a full turn, is a reflex angle.";
       const values = templateNumbers(src);
-      if (values && scope.step === 1 && src.answer === "a" && /^Of \d+ acute and \d+ obtuse angles, how many are smaller than a square corner\?$/i.test(text))
+      if (values && scope.step === 1 && src.answer === "a" && /^(?:Of \d+ acute and \d+ obtuse angles, how many are smaller than a square corner|There (?:is|are) \d+ acute angles? and \d+ obtuse angles?\. How many of these angles are smaller than a square corner)\?$/i.test(text))
         return `Only acute angles are smaller than a square corner. Count the acute angles: ${values.a}.`;
-      if (values && scope.step === 2 && src.answer === "b" && /^Of \d+ straight and \d+ reflex angles, how many exceed half a turn\?$/i.test(text))
+      if (values && scope.step === 2 && src.answer === "b" && /^(?:Of \d+ straight and \d+ reflex angles, how many exceed half a turn|There are \d+ straight angles and \d+ reflex angles\. How many of these angles are greater than half a turn)\?$/i.test(text))
         return `Only reflex angles exceed half a turn. Count the reflex angles: ${values.b}.`;
     }
     // Never teach a sampling expression such as a = k + 1 as the child's angle method.
@@ -1145,7 +1298,46 @@ export function samFix(p: QuestionPackage, level: number, from: number, ok: (p: 
 export const mistakesFor = (level: number) => levelMistakes(level).map((name) => ({ name, ...SAM_MISTAKE_RULES[name] }));
 
 /** Notes and labels of list slots, as the sample sheets show them. */
+/** Practice row headings, in order, for rows that hold questions: an empty row never prints one (the live U10 Book 1,
+ * Day 1 page 4, printed "A little harder" over no questions). */
 const ROW_LABELS = ["Getting started", "A little harder", "Harder again"];
+
+/** The idea a new lesson explains before showing its checked, reserved example. */
+function conceptIntroduction(skill: string | undefined, step: number | undefined): string | null {
+  if (!skill || !step) return null;
+  switch (skill) {
+    case "6.4-prime-composite":
+      return "A factor divides a whole number without a remainder. A prime number has exactly two factors: 1 and itself. A composite number has more than two. The number 1 is neither.";
+    case "6.4-divisibility":
+      return step === 1 ? "Divisible means dividing leaves no remainder. For 2, the last digit must be even. For 5, it must be 0 or 5. For 10, it must be 0."
+        : step === 2 ? "To test divisibility by 3 or 9, add the digits. If the sum is divisible by 3, the number is too. The same rule works for 9."
+        : step === 3 ? "For 4, test the last two digits. For 8, test the last three. For 6, the number must be divisible by both 2 and 3. Each test must leave no remainder." : null;
+    case "6.4-factors":
+      return "Factors multiply to make a number. A factor pair is two whole numbers whose product is that number. List pairs in order so you do not miss any.";
+    case "6.4-gcf":
+      return "A common factor divides both numbers without a remainder. The greatest common factor is the largest factor they share.";
+    case "6.4-lcm":
+      return "Multiples are the numbers you get by multiplying by 1, 2, 3 and so on. The least common multiple is the smallest positive multiple two numbers share.";
+    case "6.13-classify-angles":
+      return step === 1 ? "An angle measures the opening between two sides, not their length. A right angle is a square corner. Acute is smaller; obtuse is larger than a square corner but smaller than a straight angle."
+        : step === 2 ? "A straight angle is half a turn. A reflex angle is more than half a turn but less than a full turn. Longer sides do not change the opening."
+        : step === 3 ? "A full turn is 360 degrees. Acute angles are between 0 and 90 degrees; right angles are 90; obtuse angles are between 90 and 180. Straight angles are 180; reflex angles are between 180 and 360." : null;
+    case "3.1-place-value-1000":
+      return step === 1 ? "A digit's place tells its value. Ten ones make one ten, and ten tens make one hundred. Read a three-digit number as hundreds, tens and ones."
+        : step === 2 ? "Zero holds an empty place. In a three-digit number, a zero in the tens place means there are no tens. Keep that place so the other digits keep their values."
+        : step === 3 ? "Trading changes how you group an amount, not its total. Trade 10 ones for 1 ten, or 10 tens for 1 hundred. Keep any ones and tens left over." : null;
+    case "3.1-estimate-quantity":
+      return step === 1 || step === 2 ? `An estimate is an amount that is close enough for the task. Use a group of ${step === 1 ? "10 or 25" : "100"} as a guide, then work out how many groups there are.`
+        : step === 3 ? "A sensible estimate fits the information you have. Use the guide stated in the question to compare guesses. If there is more than one group, use the guide for each group." : null;
+    case "3.6-increasing-pattern":
+      return "An increasing number pattern goes up. Find how much is added at each jump, then use that same jump to continue. The starting number is the first term, before any jumps.";
+    case "3.6-decreasing-pattern":
+      return "A decreasing number pattern goes down. Find how much is taken away at each jump, then use that same jump to continue. The starting number is the first term, before any jumps.";
+    default:
+      // Other lessons still show their checked method before the first question.
+      return null;
+  }
+}
 
 /**
  * A day page's content for the template: the header, then one block per laid-out slot, each naming its questions by
@@ -1183,7 +1375,7 @@ export function dayPageContent(o: {
     const withFigures = figures.some(Boolean) ? { figures } : {};
     // A panel's example: of the panel's own skill only, from its own worked example or the same part's questions.
     const sameP = layout.slots.flatMap((x, k) => (x.part === s.part && k !== i ? [k] : []));
-    const panel = () => panelExample(questions, o.examples?.find((e) => e.slot === i)?.package ?? null, part?.step?.skill ?? part?.skills[0], sameP, plan.level);
+    const panel = () => panelExample(questions, o.examples?.find((e) => e.slot === i)?.package ?? null, part?.step?.skill ?? part?.skills[0], sameP, plan.level, part?.step ?? undefined);
     // #482 review at db3b1a0: a template step's panel teaches with Cedric's worked example for the step and its common
     // mistake put right, never a question and its key alone.
     const teaching = (): { label: string; lines: string[]; remember: string | null } | null => {
@@ -1204,7 +1396,16 @@ export function dayPageContent(o: {
       const day = plan.days.find((d) => d.day === o.day);
       const sameStep = (x: PlannedPage) => x.parts.some((pt) => pt.step && part?.step && pt.step.skill === part.step.skill && pt.step.step === part.step.step && (x.type === "new-idea" || !!pt.faded?.watch));
       const earlier = (day?.pages ?? []).some((x) => x.number < page.number && sameStep(x));
-      const both = !earlier && !page.noWatchOut && printable(mistake?.wrong) && printable(mistake?.fix) && `${mistake.wrong} ${mistake.fix}`.length <= 150;
+      // These legacy warnings lack inputs or bounds. Keep them off the page until source
+      // authors supply a self-contained pair; a checked worked example cannot repair a different claim.
+      const pair = `${mistake?.wrong ?? ""} ${mistake?.fix ?? ""}`;
+      const skill = part?.step?.skill, number = part?.step?.step;
+      const grounded = skill === "3.1-estimate-quantity" && number === 3 ? /of about \d+/.test(mistake?.wrong ?? "")
+        : skill === "3.1-place-value-1000" && number === 3 ? /\d+ hundreds/.test(mistake?.wrong ?? "") && /\d+ tens/.test(mistake?.wrong ?? "") && /\d+ ones/.test(mistake?.wrong ?? "")
+        : skill === "6.13-classify-angles" && number === 1 && /obtuse/.test(pair) ? /straight line/.test(pair)
+        : skill === "6.13-classify-angles" && number === 2 && /reflex/.test(pair) ? /full turn/.test(pair)
+        : true;
+      const both = grounded && !earlier && !page.noWatchOut && printable(mistake?.wrong) && printable(mistake?.fix) && `${mistake.wrong} ${mistake.fix}`.length <= 150;
       return { label: "How it works", lines: [step.example.problem, `Answer: [${step.example.answer}]`], remember: both ? `${mistake.wrong.replace(/\.?$/, ".")} No: ${mistake.fix.replace(/^[A-Z]/, (c) => c.toLowerCase())}` : null };
     };
     switch (s.slot) {
@@ -1214,15 +1415,18 @@ export function dayPageContent(o: {
         // The page's own reserved example, worked with its method (Codex at 47c5fd78: Cedric's fixed example printed
         // a task the repeat check never saw, and its answer alone); Cedric's example only when there is none.
         const own = o.examples?.find((e) => e.slot === i)?.package;
-        const ex = own ? exampleOf(own, plan.level) : taught ? null : panel();
-        const lines = ex?.lines.length ? ex.lines : taught?.lines ?? [];
+        const ex = own ? exampleOf(own, plan.level, part?.step ?? undefined) : taught ? null : panel();
+        const lines = ex?.lines ?? [];
+        const introduction = conceptIntroduction(part?.step?.skill, part?.step?.step);
         return {
           slot: s.slot, items: [], label: taught ? step?.name : ex?.label,
           note: "Read how it works, then try it.",
+          ...(introduction ? { introduction } : {}),
           methods: lines.length ? [{ label: taught ? taught.label : "Step by step", lines }] : [],
           // #489: the imported steps' change notes are for builders; the page names the step plainly, and with Cedric's
           // worked example it puts the step's common mistake right.
-          explain: taught?.remember ? `Watch out: ${taught.remember}` : step?.templates?.length ? `${step.name}.` : step?.change ?? "Work one step at a time. Then check your answer.",
+          // (No Watch out: no line. The step's name in its place repeated the panel's title, the live U10 Book 1's Days 7 and 8.)
+          explain: taught?.remember ? `Watch out: ${taught.remember}` : step?.templates?.length ? undefined : step?.change ?? "Work one step at a time. Then check your answer.",
         };
       }
       case "watch-one": {
@@ -1232,27 +1436,25 @@ export function dayPageContent(o: {
         const taught = teaching();
         // (The panel's own example only, never one of the page's questions: it would give that answer away.)
         const own = o.examples?.find((e) => e.slot === i)?.package;
-        const ex = taught ? (own ? exampleOf(own, plan.level) : null) : panel();
+        const ex = taught ? (own ? exampleOf(own, plan.level, part?.step ?? undefined) : null) : panel();
         // (Its question first when the worked line does not say it: "Count on. What are the next two numbers?" over
         // "6, [7], [8]".)
         // (Never for a relation: its worked lines open with its question in code's own words, "Is 240 close to 30 or
         // 300?", and Kai's U10 book 2 printed both, #811.)
         const relation = !!own?.item?.checks.some((c) => c.kind === "relation");
         const asked = taught && own && ex?.lines.length && !relation && !ex.lines.some((l) => l.replace(/[[\]]/g, "").includes(own.text.trim())) ? [own.text] : [];
-        const lines = ex?.lines.length ? [...asked, ...ex.lines] : taught?.lines ?? [];
+        const lines = ex?.lines.length ? [...asked, ...ex.lines] : [];
         return { slot: s.slot, items: [], label: ex?.lines.length ? ex.label : taught ? "How it works" : undefined, note: "Read the example, then try it.", lines, ...(taught?.remember ? { explain: `Watch out: ${taught.remember}` } : {}) };
       }
       case "reminder": {
         const ex = panel();
-        const own = o.examples?.find((e) => e.slot === i)?.package;
-        const wordAnswer = own?.item?.checks.some(c => c.kind === "template" || c.kind === "template-choice")
-          && own.item.regions.some(r => r.kind === "choice" || r.kind === "box" && (r.answer?.type === "text" || r.answer?.type === "choice"));
         const step = part?.step ? curriculum.skillSteps(part.step.skill)?.[part.step.step - 1] : undefined;
         return {
           slot: s.slot, items: [], label: "Remember", note: "From before",
-          // A word answer alone ("yes") loses the example's question and repeats across distinct reminders.
-          lines: ex ? own && wordAnswer ? [own.text, ex.answered] : [ex.answered] : [],
-          explain: step?.templates?.length ? `${step.name}.` : step?.change ?? "Do it the same way as before. Check each answer.",
+          // Keep the compact question and method together, including numeric reminders.
+          lines: ex ? ex.lines : [],
+          // (Never the step's name alone: it repeats the page's topic.)
+          explain: step?.templates?.length ? undefined : step?.change ?? "Do it the same way as before. Check each answer.",
         };
       }
       case "spot-the-error": {
@@ -1267,7 +1469,10 @@ export function dayPageContent(o: {
         return { slot: s.slot, items, who: "Sam", lines: work?.lines ?? [], ...withFigures, ...missing };
       }
       case "practice-row":
-        return { slot: s.slot, items, label: ROW_LABELS[Math.min(row++, ROW_LABELS.length - 1)], ...withFigures, ...missing, ...reviewFrom };
+        // (A row of review only takes no heading: its Review tag names it, and "A little harder" over it read as an empty
+        // section, the live U10 Book 1's Day 1 page 4.)
+        { const reviewOnly = reviewFrom.reviewFrom !== undefined && items.length > 0 && items.every((n) => n >= reviewFrom.reviewFrom!);
+          return { slot: s.slot, items, ...(items.length && !reviewOnly ? { label: ROW_LABELS[Math.min(row++, ROW_LABELS.length - 1)] } : {}), ...withFigures, ...missing, ...reviewFrom }; }
       case "finish-these":
         return { slot: s.slot, items, hints: items.map(() => null), ...withFigures, ...missing, ...reviewFrom };
       default:
@@ -1297,11 +1502,42 @@ export function planRow(curriculum: Curriculum, plan: WorkbookPlan, day: number)
     return part ? pageTopic(curriculum, part.step!.skill, part.step!.step) : null;
   };
   if (d.kind === "test") return { topic: "Level test", second: "Done alone, in one sitting" };
-  if (d.kind === "light") return { topic: "A light day", second: "Review and a challenge" };
+  if (d.kind === "light") return { topic: "Practise familiar skills", second: "Build confidence, then try a challenge" };
   const a = topicOf("A");
-  const b = topicOf("B");
-  const second = day === 10 ? "Show what you know" : day === 5 ? "Friday 5" : b ?? (d.kind === "mixed" ? "Mixed practice" : "Review");
-  return { topic: a ?? (d.kind === "mixed" ? "Mixed practice" : "Review"), second };
+  const parts = d.pages.flatMap(p => p.parts);
+  const starts = parts.some(p => p.kind === "new-idea");
+  if (day === 10) return { topic: "Put your learning together", second: "Apply the skills from this book" };
+  if (day === 5) return { topic: a ?? "Practise earlier learning", second: "Practise, then check five skills" };
+  // Each row says what its own day does (Cedric's handoff, 2026-11-16: the live U10 Book 1 printed "Learn, practise,
+  // then apply" on 8 of 10 rows): the new idea or more practice, then the earlier topic the day reviews. A topic an
+  // earlier row already named gives way to the day's next one, so two rows read the same only when a day reviews nothing new.
+  const review = planReview(curriculum, d, reviewedBefore(curriculum, plan, day), a);
+  const lead = starts ? "Learn it" : d.kind === "remember" ? "Revisit earlier skills" : "More practice";
+  return { topic: a ?? "Practise earlier learning", second: review ? `${lead}, then review ${review}` : starts ? "Learn it, practise, then a challenge" : `${lead}, then harder tasks` };
+}
+
+/** The topics an earlier row of the plan already named for its review, in day order. */
+function reviewedBefore(curriculum: Curriculum, plan: WorkbookPlan, day: number): Set<string> {
+  const used = new Set<string>();
+  for (const x of plan.days) {
+    if (x.day >= day) break;
+    if (x.day === 5 || x.day === 10 || x.kind === "test" || x.kind === "light") continue;
+    const own = x.pages.flatMap((p) => p.parts).find((p) => p.unit === "A" && p.step);
+    const r = planReview(curriculum, x, used, own ? pageTopic(curriculum, own.step!.skill, own.step!.step) : null);
+    if (r) used.add(r);
+  }
+  return used;
+}
+
+/** The first earlier topic a day reviews (its Remember these steps, then its review checks) that no earlier row named. */
+function planReview(curriculum: Curriculum, d: WorkbookPlan["days"][number], used: ReadonlySet<string>, own?: string | null): string | null {
+  const topics = d.pages.flatMap((p) => p.parts).flatMap((p) => [
+    ...(p.reviewSteps ?? []).map((r) => pageTopic(curriculum, r.skill, undefined)),
+    ...(p.weakChecks ?? []).flatMap((c) => c.skills.map((skill) => pageTopic(curriculum, skill, undefined))),
+  ]).filter((t) => t !== "Review" && t !== own);
+  const lower = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
+  const fresh = topics.map(lower).find((t) => !used.has(t));
+  return fresh ?? null;
 }
 
 /** A skill title as a plain continuation of "will learn to" on the cover. */

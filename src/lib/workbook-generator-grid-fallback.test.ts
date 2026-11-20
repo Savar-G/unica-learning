@@ -3,12 +3,13 @@ import { curriculumFor } from "./workbook-curriculum";
 import { prepareWorkbookCapacity, workbookCapacityPlan, type FitCheck, type GenerateInput } from "./workbook-generator";
 import { planNextWorkbook } from "./workbook-placement";
 import { pagePlan } from "./workbook-template";
+import { pageMinimum } from "./workbook-quality";
 import type { DraftPage } from "./workbook-render";
 
 const fullness = { ok: false as const, problems: [{ question: null, kind: "fullness" as const,
   reason: "The page leaves 70 px empty at the bottom; add a question, or spread the rows evenly." }] };
 
-function input(number: number): GenerateInput {
+function input(number: number, day = 1): GenerateInput {
   const curriculum = curriculumFor("bc")!;
   // Grade 3, no assessment results, and preceding U10 books. No family data.
   const placed = planNextWorkbook({ curriculum, grade: 3, profile: null, number,
@@ -17,7 +18,7 @@ function input(number: number): GenerateInput {
   const plan = workbookCapacityPlan(curriculum, placed.plan);
   return { workbookId: "00000000-0000-4000-8000-000000000728", childId: "00000000-0000-4000-8000-000000000001",
     number, profileBuild: null, curriculum, itemPolicy: "approved-v1", book: { child: "Alex" },
-    plan: { ...plan, days: plan.days.filter(d => d.day === 1) } };
+    plan: { ...plan, days: plan.days.filter(d => d.day === day) } };
 }
 
 it.each([2, 3])("spreads the complete U10 book %i fallback grid and checks it again", async number => {
@@ -106,4 +107,41 @@ it("checks final empty cells using approved questions, not invented stand-ins (#
   expect(page.capacityChecked).toBe(true);
   expect(page.itemContracts!["2.3"]).toBeNull();
   expect(Object.values(page.itemContracts!).filter(Boolean)).toHaveLength(6);
+});
+
+it("reduces an overfull practice page before trying cross-page exchanges above its floor", async () => {
+  const source = input(1, 3);
+  // Isolate overflow repair from the other pages' day-time allocation. The full-day
+  // fixture gives those pages unlimited room and can fail before this page is reached.
+  source.plan.days = source.plan.days.map(day => ({ ...day,
+    pages: day.pages.filter(page => page.type === "practice-2"),
+  }));
+  expect(source.plan.days[0].pages).toHaveLength(1);
+  const planned = source.plan.days[0].pages[0];
+  expect(planned.parts.filter(part => ["spot-the-error", "solve-it-two-ways"].includes(part.kind))).toHaveLength(2);
+  const measured: DraftPage[] = [];
+  const prepared = await prepareWorkbookCapacity(source, { fits: async page => {
+    if (page.type !== "practice-2") return { ok: true };
+    measured.push(structuredClone(page));
+    return page.questions.length <= 6 ? { ok: true }
+      : { ok: false, problems: [{ question: null, reason: "Control: the practice page can hold six tasks" }] };
+  } });
+  const practice = prepared.days[0].pages.find(page => page.type === "practice-2")!;
+  expect(practice.capacityChecked).toBe(true);
+  expect(practice.capacity!.reduce((sum, slot) => sum + slot.items, 0)).toBeLessThanOrEqual(6);
+  expect(measured.some(page => page.questions.length > 6)).toBe(true);
+  expect(measured.length).toBeLessThan(40);
+  const last = measured.at(-1)!;
+  expect(last.questions).toHaveLength(6);
+  expect(pagePlan(last)?.incomplete).toEqual([]);
+  expect(Object.values(practice.itemContracts!).filter(Boolean)).toHaveLength(6);
+  expect(practice.capacity!.filter(slot => ["spot-the-error", "solve-it-two-ways"].includes(slot.slot))
+    .map(slot => slot.items)).toEqual([1, 1]);
+});
+
+
+it("budgets for two teaching tasks even when the ordinary questions need no extra work space", () => {
+  expect(pageMinimum("practice-2", 10, false, false, 2)).toBe(4);
+  expect(pageMinimum("practice-2", 10, false, false, 1)).toBe(8);
+  expect(pageMinimum("practice-2", 10, false, false, 0)).toBe(8);
 });

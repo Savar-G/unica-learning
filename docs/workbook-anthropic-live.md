@@ -1,17 +1,17 @@
 # Direct Anthropic Book 1 runs
 
-Cedric authorized direct Anthropic generation for Gerald and Geraldine on November 16, 2026, up to USD35 each, USD70 combined. The previous USD5 local verification budget is separate and must not be reset. This runner creates a normal stored draft through the existing workbook job. It does not approve, print, ship or email a book.
+Cedric authorized direct Anthropic generation for one authorized family (two children) on November 16, 2026, up to USD35 each, USD70 combined. The previous USD5 local verification budget is separate and must not be reset. This runner creates a normal stored draft through the existing workbook job. It does not approve, print, ship or email a book.
 
 The normal production button still queues Savar's subscription worker. Having a local API key does not change that button. Run this operator command from the reviewed, clean checkout instead:
 
 ```sh
-ANTHROPIC_API_KEY_FILE=/private/path/to/key node scripts/workbook-anthropic-live.mjs --child Gerald
-ANTHROPIC_API_KEY_FILE=/private/path/to/key node scripts/workbook-anthropic-live.mjs --child Gerald --execute
+WORKBOOK_LIVE_CONFIG=/private/path/to/live-config.json ANTHROPIC_API_KEY_FILE=/private/path/to/key node scripts/workbook-anthropic-live.mjs --child LABEL
+WORKBOOK_LIVE_CONFIG=/private/path/to/live-config.json ANTHROPIC_API_KEY_FILE=/private/path/to/key node scripts/workbook-anthropic-live.mjs --child LABEL --execute
 ```
 
-Repeat for Geraldine after Gerald finishes. Omit `--execute` for read-only family and queue checks. Supabase credentials come from `SUPABASE_SECRET_KEY` or the existing `supabase-pagewise` Keychain item. The script does not change the worker's environment or Vercel settings. Never print or commit the key.
+Repeat for the second child after the first finishes. The private config (kept outside the repo) holds the parent id, the two child ids under their labels, the family surname, the admin identity and an optional lower `limitUsd` (at most 35). Omit `--execute` for read-only family and queue checks. Supabase credentials come from `SUPABASE_SECRET_KEY` or the existing `supabase-pagewise` Keychain item. The script does not change the worker's environment or Vercel settings. Never print or commit the key.
 
-The runner verifies the two fixed child IDs, their parent, Cedric's current admin identity, no stored Book 1 and no active run. The database defaults new runs to the server runner, so Savar's Mac cannot take them. It refuses existing active runs rather than rerouting them or mixing old model checkpoints into a new run. The normal job preserves the family's stored instructions, curriculum, independent solve checks, strict physical fit checks, durable AI-call records and draft rendering.
+The runner verifies the configured child IDs, their parent and full names, the configured admin identity, no stored Book 1 and no active run. The database defaults new runs to the server runner, so Savar's Mac cannot take them. It refuses existing active runs rather than rerouting them or mixing old model checkpoints into a new run. The normal job preserves the family's stored instructions, curriculum, independent solve checks, strict physical fit checks, durable AI-call records and draft rendering.
 
 The observed current worker frame has no decision-model gate configured. This runner likewise has no decision-model key. It retains the deterministic and independent-solver checks, but does not claim an additional calibrated model page review. Inspect the finished PDF before approval.
 
