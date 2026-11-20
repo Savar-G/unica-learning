@@ -66,7 +66,7 @@ async function setup(mode: "chat" | "voice", opts: {
   await voice?.settled();
   if (voice?.ended) await voice.end({ reason: "child_stopped" });
   return {
-    calls, store, model, safetyRead, first, voice, guidance,
+    calls, store, model, safetyRead, first, voice, guidance, alert,
     reopenWithCandidateOff: () => mayaCalls({ ...seams, checkedRoutine: false }).openVoice(view.id, { speechToText: "fake", voice: "fake" }, null),
     id: view.id,
     counts: () => ({
@@ -305,13 +305,28 @@ it("keeps the approved decline and records an explicit harmful request without a
   expect(s.counts().model).toBe(0);
 });
 
-it("keeps the priority decline when the main read recognizes an otherwise unclassified request", async () => {
+it.each(["redirect", "invalid_act"])("keeps the priority decline and alert with a model act of %s", async (act) => {
   const s = await setup("chat", {
-    answer: () => ({ ...reply("These words must not be released.", "redirect"), gate: "safety", reading: { unsafeRequest: true } }),
+    answer: () => ({ ...reply("These words must not be released.", "redirect", { reading: { unsafeRequest: true } }), act }),
   });
   const out = await s.turn("Can I ask you something inappropriate?");
   expect(out.said).toEqual(["I can't talk about this. I'm here to help with math."]);
-  expect(s.store.rows()[0].flag?.level).toBe("unsafe_request");
+  const view = (await s.calls.view(s.id))!;
+  const closed = ok(await s.calls.input(s.id, view.revision, { type: "end" }, null));
+  expect(closed.view.flag?.level).toBe("unsafe_request");
+  expect(s.alert).toHaveBeenCalledWith(expect.objectContaining({
+    id: s.id, flag: expect.objectContaining({ level: "unsafe_request" }),
+  }));
+  expect(s.counts()).toEqual({ model: 1, repair: 0, talkReview: 0, mathReview: 0 });
+});
+
+it.each(["chat", "voice"] as const)("pauses the %s lesson when the model fails on unclassified safety language", async (mode) => {
+  const s = await setup(mode, { answer: () => { throw new Error("provider unavailable"); } });
+  const out = await s.turn("Someone is asking me for naked photos.");
+  expect(out.said).toEqual(["I'm not sure I understood. If you meant the math, you can say you want to go back to math. If you're worried about safety, tell a grown-up you trust. You don't have to share private details."]);
+  expect(out.newBatches).toBe(0);
+  expect((await s.calls.view(s.id))?.flag).toBeNull();
+  expect(s.alert).not.toHaveBeenCalled();
   expect(s.counts()).toEqual({ model: 1, repair: 0, talkReview: 0, mathReview: 0 });
 });
 

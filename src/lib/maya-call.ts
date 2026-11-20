@@ -84,7 +84,7 @@ import type { TalkReviewer } from "@/lib/maya-talk-review";
 import type { MathReviewer } from "@/lib/maya-math-review";
 import { snapshotFates } from "@/lib/board-fate";
 import { checkedExchangeProposal, childExchangeProposal, childExchangeTarget, fixedSafetyDisclosure } from "@/lib/maya/session";
-import { closingSafetyRead, SAFETY_PAUSE, sensitiveHearing, type ChildHearing } from "@/lib/maya/sensitive-input";
+import { needsSafetyRead, SAFETY_PAUSE, sensitiveHearing, type ChildHearing } from "@/lib/maya/sensitive-input";
 import { readExchangeTarget, sameExchangeTarget, type ExchangeTarget } from "@/lib/maya/checked-exchange";
 import { createTextSession, readFateReports, withHelpLedger, type BoardFateReport, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession, type TextSessionOptions } from "@/lib/maya-text";
 import { packageHash, type MayaTrace } from "@/lib/maya-trace";
@@ -884,7 +884,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     if (saved.checkedRoutine) {
       known = knownSafety(hearings);
       if (known?.severity) return known;
-      text = hearings.filter((h) => !h.uncertain && sensitiveHearing(h) === null && closingSafetyRead(h.text)).map((h) => h.text).join("\n");
+      text = hearings.filter((h) => !h.uncertain && sensitiveHearing(h) === null && needsSafetyRead(h.text)).map((h) => h.text).join("\n");
     } else {
       text = hearings.map((h) => h.text).join(" ");
     }

@@ -78,7 +78,7 @@ import { placeDigitsSaid } from "./tutor-math";
 import { MATH_REVIEW_PROMPT_VERSION, mathReviewsOf, type MathReview, type MathReviewInput } from "./math-review";
 import { reviewStart, reviewSteps } from "./math-review-steps";
 import { hideName as redactChildName } from "../child-name-redaction";
-import { benignSafetyContext, resolvesSafetyHold, SAFETY_CLARIFICATION, SAFETY_PAUSE, sensitiveHearing } from "./sensitive-input";
+import { benignSafetyContext, needsSafetyRead, resolvesSafetyHold, SAFETY_CLARIFICATION, SAFETY_PAUSE, sensitiveHearing } from "./sensitive-input";
 
 /** Closing starts 9 minutes into the call; the call ends at 10 minutes. */
 export const TIME_LIMITS = { closingAtMs: 9 * 60_000, endAtMs: 10 * 60_000 } as const;
@@ -171,7 +171,7 @@ export type SessionEvent =
    * (`drawings`, already counted by `streamed_board`): they are never drawn again, and a streamed sentence with no drawing
    * never draws later. Absent: the sent sentences are read whole with the message (voice).
    */
-  | { type: "proposal"; at: number; proposal: unknown; talkReviews?: TalkReview[]; mathReviews?: MathReview[]; fallback?: boolean; sent?: string[]; drawMode?: "derive"; continuation?: boolean; streamed?: { drawings: TiedDrawing[] } }
+  | { type: "proposal"; at: number; proposal: unknown; priorityOnly?: true; talkReviews?: TalkReview[]; mathReviews?: MathReview[]; fallback?: boolean; sent?: string[]; drawMode?: "derive"; continuation?: boolean; streamed?: { drawings: TiedDrawing[] } }
   /**
    * #1107: a drawing streamed to the desk with its sentence (chat), before the message's whole check. It is committed now:
    * the batch count rises to its id, and its keys are drawn and sent (B1: counted shown only when the screen says so).
@@ -1835,10 +1835,14 @@ export function step(session: Session, event: SessionEvent): StepResult {
       end(s, "child_stopped", effects, true);
       break;
     case "proposal":
-      if (!shape && s.checkedRoutine && s.package && s.turn && !benign && !s.safety.flagged &&
+      if (!event.priorityOnly && s.checkedRoutine && s.package && s.turn && !benign && !s.safety.flagged &&
         isObject(raw) && isObject(raw.reading) && raw.reading.unsafeRequest === true) {
         s.unsafeRequestAt ??= event.at;
         replyToSensitive(s, effects, s.turn.text, true);
+        break;
+      }
+      if (event.fallback && s.checkedRoutine && s.package && s.turn && !s.safety.flagged && needsSafetyRead(s.turn.text)) {
+        replyToSensitive(s, effects, s.turn.text, false);
         break;
       }
       if (event.fallback && isObject(event.proposal) && event.proposal.checkedExchange === 1) {

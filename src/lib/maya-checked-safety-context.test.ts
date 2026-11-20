@@ -50,14 +50,18 @@ it.each(["active", "closing minute", "at the limit"] as const)(
   },
 );
 
-it("does not veto a model safety read of an independent concern next to a fictional claim", async () => {
-  const model = conversationalFake({ answer: () => ({ ...reply("", "safety"), reading: { safety: "immediate" } }) });
+it.each([
+  ["I died in the game, but there is an emergency outside.", "immediate"],
+  ["I died in the game, but my babysitter makes me undress.", "concern"],
+  ["In the game I died but Uncle Jo makes me undress.", "concern"],
+] as const)("honors the model safety read of a separate disclosure in %s", async (text, severity) => {
+  const model = conversationalFake({ answer: () => ({ ...reply("", "safety"), reading: { safety: severity } }) });
   const call = createTextSession({ callId: "model-danger", package: PACKAGE, model, tutor: true, checkedRoutine: true, clock: () => 0 });
   await call.start();
-  const out = await call.child("I died in the game, but there is an emergency outside.");
+  const out = await call.child(text);
   expect(model.briefs).toHaveLength(1);
-  expect(out.say[0]).toBe(SAFETY_GUIDANCE.immediate);
-  expect(out.ended).toMatchObject({ reason: "safety", safetySeverity: "immediate" });
+  expect(out.say[0]).toBe(SAFETY_GUIDANCE[severity]);
+  expect(out.ended).toMatchObject({ reason: "safety", safetySeverity: severity });
 });
 
 it("keeps a held child's private replies out of later tutor requests after saving and resuming", async () => {

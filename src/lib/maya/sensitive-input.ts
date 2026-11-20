@@ -15,7 +15,7 @@ const FICTION_TAIL = new RegExp(`^${FICTION_PLACE}(?: (?:right )?now)?$`);
 const FICTION_QUOTE = new RegExp(String.raw`(\b${FICTION_REPORT}\b)\s*[:,]?\s*(?:"[^"]*"|'(?:[^']|'(?=\w))*')`, "g");
 const FICTION_COMMA = new RegExp(`(^|[.?!;\\n,]\\s*|\\b(?:and|but|then|except|because|so) )(${FICTION_PLACE}),`, "g");
 const MATH = /\b(?:scared|afraid) (?:of )?(?:getting|i(?:'ll)? get|i got) (?:the )?(?:math|answer|problem|question) wrong\b|\bhit (?:the )?(?:enter|submit|next)(?: (?:key|button))?\b/g;
-const RETURN_TO_MATH = /^(?:no[,\s]+)?(?:(?:i mean(?:t)?|i was (?:only |just )?talking about|it was(?: only| just)?|it's(?: only| just)?) (?:the )?(?:math|maths|math problem|problem|question|game|story|book)|(?:(?:can|could) (?:i|we)|let's|i want to) (?:go back|go|get back|return) to (?:the )?(?:math|maths|math problem|problem|question)|(?:i need help|(?:can|could) you help me) with (?:the |this )?(?:math|maths|math problem|problem|question))[.!?]*$/;
+const RETURN_TO_MATH = /^(?:no[,\s]+)?(?:(?:i mean(?:t)?|i was (?:only |just )?talking about|it was(?: only| just)?|it's(?: only| just)?) (?:the )?(?:math|maths|math problem|problem|question|game|story|book)|(?:(?:can|could) (?:i|we)|let's|i want to) (?:(?:go back|go|get back|return) to|keep doing) (?:the )?(?:math|maths|math problem|problem|question)|(?:i need help|(?:can|could) you help me) with (?:the |this )?(?:math|maths|math problem|problem|question))[.!?]*$/;
 const RETRACTION = /^i (?:don't|do not)$/;
 const BALL_CORRECTION = /^(?:i mean(?:t)? (?:(?:he|she|they|my \w+) hit )?|(?:he|she|they|my \w+) hit )(?:the |a )?ball$/;
 const FICTION_CORRECTION = new RegExp(`^(?:i mean(?:t)?(?: it was)?|that was) ${FICTION_PLACE}$`);
@@ -50,11 +50,13 @@ function readClaim(text: string): ClauseRead {
 function readClauses(text: string): ClauseRead[] {
   const said = normalize(text).replace(FICTION_QUOTE, "$1").replace(FICTION_COMMA, "$1$2 ")
     .replace(/\b(said|says|told me|read|reads|wrote|writes)\s*[:,]\s*(?=["'])/g, "$1 ");
-  const clauses = said.split(/[.?!;\n,]+|\s+\b(?:and|but|then|except|because|so)\s+(?=(?:i|my|he|she|they|someone|somebody|there|the|a|no|nobody)\b)/)
-    .map((clause) => clause.trim().replace(/\s+/g, " ").replace(/^(?:(?:maya|um|please|and|but|then|because|so)\s+)+/, ""));
+  const clauses = said.split(/[.?!;\n,]+|\s+but\s+|\s+(?:and|then|except|because|so)\s+(?=(?:i|my|he|she|they|someone|somebody|there|the|a|no|nobody)\b)/)
+    .map((clause) => clause.trim().replace(/\s+/g, " ").replace(/^(?:(?:maya|um|please|and|but|then|because|so)\s+)+/, ""))
+    .filter(Boolean);
   const reads = clauses.map((clause) => {
+    if (resolvesSafetyHold(clause)) return "benign";
     const claim = clause.replace(DENIAL, "").replace(MATH, " ").trim();
-    return readClaim(claim) ?? (claim !== clause ? "benign" : null);
+    return readClaim(claim) ?? (!claim ? "benign" : null);
   });
   clauses.forEach((clause, index) => {
     if (reads[index] !== "immediate" && reads[index] !== "concern") return;
@@ -65,6 +67,7 @@ function readClauses(text: string): ClauseRead[] {
     if (FICTION_CORRECTION.test(next) || (/\bhit(?:s|ting)? me\b/.test(clause) && (no || next.startsWith("i mean")) && BALL_CORRECTION.test(next)) ||
       (no && RETRACTION.test(next) && /^i want to (?:die|hurt myself|kill myself)$/.test(clause))) {
       reads[index] = reads[nextIndex] = "benign";
+      if (following === "no") reads[index + 1] = "benign";
     }
   });
   return reads;
@@ -84,14 +87,14 @@ export function sensitiveInput(text: string): Sensitive | null {
   return sensitiveHearing({ text });
 }
 
-export function closingSafetyRead(text: string): boolean {
+export function needsSafetyRead(text: string): boolean {
   const reads = readClauses(text);
   return reads.includes("unclassified") && !PRIORITY.some((level) => reads.includes(level));
 }
 
 export function benignSafetyContext(text: string): boolean {
   const reads = readClauses(text);
-  return reads.includes("benign") && !hasSignal(reads);
+  return reads.length > 0 && reads.every((read) => read === "benign");
 }
 
 export function resolvesSafetyHold(text: string): boolean {

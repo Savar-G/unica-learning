@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { benignSafetyContext, closingSafetyRead, resolvesSafetyHold, sensitiveHearing, shareableTutorTurn } from "./sensitive-input";
+import { benignSafetyContext, needsSafetyRead, resolvesSafetyHold, sensitiveHearing, shareableTutorTurn } from "./sensitive-input";
 
 describe("sensitive hearing", () => {
   it.each([
@@ -30,9 +30,9 @@ describe("sensitive hearing", () => {
   });
 
   it("reserves the closing read for current unclassified safety language", () => {
-    expect(closingSafetyRead("There is an emergency outside.")).toBe(true);
+    expect(needsSafetyRead("There is an emergency outside.")).toBe(true);
     for (const text of ["I feel scared.", "He hits me.", "No one is hurting me.", "Eight minus three."]) {
-      expect(closingSafetyRead(text)).toBe(false);
+      expect(needsSafetyRead(text)).toBe(false);
     }
     expect(shareableTutorTurn({ speaker: "child", text: "There is an emergency outside." })).toBe(false);
     expect(shareableTutorTurn({ speaker: "child", text: "Eight minus three", alternatives: ["He hits me"] })).toBe(false);
@@ -52,7 +52,7 @@ describe("sensitive hearing", () => {
   ] as const)("binds an exemption to the claim it actually qualifies: %s", (text, expected, benign, requiresClosingRead) => {
     expect(sensitiveHearing({ text })).toBe(expected);
     expect(benignSafetyContext(text)).toBe(benign);
-    expect(closingSafetyRead(text)).toBe(requiresClosingRead);
+    expect(needsSafetyRead(text)).toBe(requiresClosingRead);
   });
 
   it("requires an actual correction or return to math to release a safety hold", () => {
