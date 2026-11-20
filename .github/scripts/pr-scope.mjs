@@ -26,6 +26,7 @@ const ALWAYS_FULL_PATTERNS = [
   /^\.oxlintrc\.json$/,
   /^next\.config\./,
   /^\.github\//,
+  /^\.githooks\//,
   /^data\//,
   /^scripts\//,
   /^supabase\//,

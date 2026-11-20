@@ -16,9 +16,12 @@ CI uses a two-tier model while keeping the repository on personal account `Savar
    - Top single-file CI ceiling dropped from **366.5s** (`maya-text-log.test.ts`) to **235.2s** (`scan-binding-scale-chromium.test.ts`); `unit (5/5)` finished in **4m 37s** and `unit-timings.json` was refreshed from green run `44682556546` to rebalance all 5 shards.
 3. **PR #1191 (two-tier PR selection):**
    - Added `scope` + `pr-unit` (`vitest --changed` + explicit consumer tests for dynamically-read docs/assets) for fast PR feedback while preserving the full 5-shard gate on `main` pushes and high-blast-radius PRs. If the repository later moves to a GitHub Organization, adding `merge_group:` to `ci.yml` upgrades this cleanly to an enforced merge queue.
-4. **Oxlint on scoped PRs (this change):**
+4. **PR #1192 (Oxlint on scoped PRs):**
    - Added `oxlint` (`1.94.0`) with `.oxlintrc.json` mapping **80 of 86** active ESLint rules from `eslint.config.mjs` (2 unmapped rules are obsolete in the React 19 automatic JSX runtime: `react/jsx-uses-react`, `react/jsx-uses-vars`; 4 real ESLint-only rules remain: `@next/next/no-location-assign-relative-destination`, `react-hooks/config`, `react-hooks/gating`, `react/no-deprecated`).
-   - `lint-and-types` now runs `npx oxlint src` (~1 s locally vs ~38 s local / ~56 s CI for ESLint) on every code PR and `main`, and runs `npx eslint src` on `mode == 'full'` (`main` pushes, `workflow_dispatch`, and high-blast-radius PRs including `.oxlintrc.json` / `eslint.config.mjs` edits) so none of the 4 ESLint-only rules lose enforcement. Also added `npm run lint:fast`.
+   - `lint-and-types` runs `npx oxlint src` (~1 s locally vs ~38 s local / ~56 s CI for ESLint) on every code PR and `main`, and runs `npx eslint src` on `mode == 'full'` (`main` pushes, `workflow_dispatch`, and high-blast-radius PRs including `.oxlintrc.json` / `eslint.config.mjs` edits) so none of the 4 ESLint-only rules lose enforcement. Also added `npm run lint:fast`.
+5. **Local pre-push gate & CI duration budgets (this change):**
+   - Added `.githooks/pre-push` + `scripts/pre-push-check.mjs` (`npm run hooks:install`, `npm run check:fast`), which runs `oxlint src`, `next typegen && tsgo --noEmit`, and `tsgo -p worker/maya-voice/tsconfig.json` in parallel using direct `node_modules/.bin` binaries (~5.8 s total wall clock on macOS arm64, within the 9 s budget, skipping remote ref-deletion-only pushes).
+   - Right-sized `timeout-minutes` across all 8 CI jobs and key steps based on post-PR-#1187/#1190/#1191/#1192 green Linux durations (`scope` 3 m, `unit` 15 m / 12 m step, `pr-unit` 12 m / 10 m step, `maya-behaviour` 8 m / 6 m step, `family-zones` 8 m / 5 m step, `lint-and-types` 8 m, `voice-worker` 8 m, `test` 3 m — ~2×–3× headroom over observed green runs without letting hangs burn 20–25 m).
 
 ## Baseline: 2026-11-15
 
