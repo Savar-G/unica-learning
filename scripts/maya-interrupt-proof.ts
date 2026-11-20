@@ -60,7 +60,7 @@ const INCIDENTAL = ["mmhm", "okay", "noise-burst", "request-at-minus-26-db", "hu
 if (args.rescore) {
   const saved = JSON.parse(readFileSync(args.rescore, "utf8"));
   // Runs saved before 2026-11-20 kept no child turns with times: their turn match cannot be scored again.
-  const result = scoreTrials(saved.rows.map((r: TrialRow) => ({ ...r, transcripts: r.transcripts ?? [], resumed: r.resumed ?? false })), saved.childTurns ?? [], 300, INCIDENTAL);
+  const result = scoreTrials(saved.rows.map((r: TrialRow) => ({ ...r, transcripts: r.transcripts ?? [], resumed: r.resumed ?? false })), saved.childTurns ?? [], 300, INCIDENTAL, saved.restartOnsets ?? []);
   const scored = { ...saved, ...result, lostSpeech: { ...result.lostSpeech, notATurn: saved.childTurns ? result.lostSpeech.notATurn : null } };
   writeFileSync(args.rescore, JSON.stringify(scored, null, 2));
   console.log(JSON.stringify({ stop: scored.stop, lostSpeech: scored.lostSpeech, falseStops: scored.falseStops, cueSummary: scored.cueSummary }, null, 1));
@@ -255,20 +255,22 @@ async function until(test: () => boolean, ms: number) {
 const trials: { kind: "intentional" | "incidental"; clip: string; onsetAt: number; audioStartAt: number }[] = [];
 const wanted = Number(args.trials);
 let restarts = 0;
+/** The onsets of the restart requests the script plays when Maya is silent: each bounds the trial before it. */
+const restartOnsets: number[] = [];
 const deadline = clock() + 8 * 60_000;
 await until(() => !quietFor(50), 30_000);
 await until(() => quietFor(900), 30_000);
 let next = 0;
 if (wanted === 0) {
   // Cue-only: one request, and Maya's whole demonstration plays with no interruption.
-  await play(intentional[0].pcm);
+  restartOnsets.push(await play(intentional[0].pcm));
   await until(() => !quietFor(50), 15_000);
   await until(() => quietFor(2500), 40_000);
 }
 while (trials.filter(t => t.kind === "intentional").length < wanted && clock() < deadline && !call.session.done.length) {
   if (quietFor(1500)) {
     restarts++;
-    await play(intentional[0].pcm);
+    restartOnsets.push(await play(intentional[0].pcm));
     await until(() => !quietFor(50), 12_000);
     continue;
   }
@@ -302,7 +304,8 @@ await workerRoom.disconnect();
 const childTurns = call.session.turns.filter(t => t.speaker === "child").map(t => ({ at: t.at, text: t.text }));
 const rows: TrialRow[] = trials.map((t, i) => {
   // A trial owns what happens before the next trial's onset, and at most 10 s.
-  const until = Math.min(trials[i + 1]?.onsetAt ?? Infinity, t.onsetAt + 10_000);
+  // The next clip, a trial or a restart request, owns what follows its onset.
+  const until = Math.min(trials[i + 1]?.onsetAt ?? Infinity, ...restartOnsets.filter(at => at > t.onsetAt), t.onsetAt + 10_000);
   const within = (at: number) => at >= t.onsetAt && at < until;
   const heard = finals.filter(f => within(f.at));
   const stop = audibleStop(levels, t.onsetAt);
@@ -315,7 +318,7 @@ const rows: TrialRow[] = trials.map((t, i) => {
     overlaps: overlaps.filter(o => within(o.at)).map(o => `${o.isInterruption ? "barge-in" : "backchannel"}@${o.at - t.onsetAt}`),
   };
 });
-const scored = scoreTrials(rows, childTurns, 300, INCIDENTAL);
+const scored = scoreTrials(rows, childTurns, 300, INCIDENTAL, restartOnsets);
 // Worker-to-child audio delay: each utterance's first audible frame at the child against the worker's playback start.
 const starts = telemetry.filter(t => t.ev === "mark" && t.name === "playbackStarted").map(t => t.at);
 const delays = starts.map(at => levels.find(l => l.at >= at && l.db >= -45)?.at).map((at, i) => (at === undefined ? NaN : at - starts[i])).filter(d => d >= 0 && d < 1000).sort((a, b) => a - b);
@@ -341,7 +344,7 @@ const report = {
   overlapEvents: { n: overlaps.length, bargeIns: overlaps.filter(o => o.isInterruption).length },
   speeches: { n: speeches.length, interrupted: speeches.filter(s => s.interrupted).length },
   checked, boardEvents: receiver.snapshot().events.map(e => e.kind),
-  rows: scored.rows, childTurns, cueRows,
+  rows: scored.rows, childTurns, restartOnsets, cueRows,
 };
 writeFileSync(args.out!, JSON.stringify(report, null, 2));
 log(JSON.stringify({ stop: report.stop, lostSpeech: report.lostSpeech, falseStops: report.falseStops, cueSummary, workerToChildAudioMs: report.workerToChildAudioMs }, null, 1));

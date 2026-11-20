@@ -1850,6 +1850,65 @@ it("goes on through a lone backchannel said over Maya, and stops for anything el
   expect(checkTrace(trace)).toMatchObject({ ok: true });
 });
 
+it.each([true, false])("passes an unsure or number-bearing \"okay\" over Maya to the session's hearing checks (board=%s)", async board => {
+  let now = () => T0;
+  const speaker = new HeldSpeaker(() => now(), true);
+  const c = await voiceCall({ speaker, board, timestamps: true });
+  now = c.clock.now;
+  const childTexts = () => c.call.session.turns.filter(t => t.speaker === "child").map(t => t.text);
+  try {
+    await c.run.childJoined();
+    await waitFor(() => c.said().length > 0 && c.session.agentState === "listening", "opening");
+    const cases: [string, { confidence?: number; alternatives?: string[] }][] = [["Okay.", { confidence: 0.4, alternatives: ["Okay, he hits me."] }], ["Okay, 4.", {}]];
+    for (const [text, options] of cases) {
+      await waitFor(() => c.session.agentState === "listening", "Maya to finish");
+      speaker.held = true;
+      const before = c.said().length;
+      expect(c.speech.say("I don't know.")).toBe(true);
+      await waitFor(() => c.said().length > before && c.session.agentState === "speaking", "Maya's reply in playout");
+      expect(c.speech.say(text, options)).toBe(true);
+      await waitFor(() => childTexts().includes(text), `"${text}" to reach the session`);
+      expect(c.run.backchannels).toBe(0);
+      speaker.finishPlayback();
+      speaker.held = false;
+      await c.call.settled();
+    }
+  } finally { speaker.finishPlayback(); }
+});
+
+it("ignores a late backchannel in a voice-only call after LiveKit moved Maya's paused speech to listening", async () => {
+  let now = () => T0;
+  const speaker = new HeldSpeaker(() => now(), true);
+  const c = await voiceCall({ speaker, timestamps: true });
+  now = c.clock.now;
+  const childTexts = () => c.call.session.turns.filter(t => t.speaker === "child").map(t => t.text);
+  try {
+    await c.run.childJoined();
+    await waitFor(() => c.said().length > 0 && c.session.agentState === "listening", "opening");
+    speaker.held = true;
+    const stopped = vi.spyOn(speaker, "clearBuffer");
+    const before = c.said().length;
+    const speeches: voice.SpeechHandle[] = [];
+    c.session.on(voice.AgentSessionEventTypes.SpeechCreated, e => { speeches.push(e.speechHandle); });
+    expect(c.speech.say("I don't know.")).toBe(true);
+    await waitFor(() => c.said().length > before && c.session.agentState === "speaking", "Maya's reply in playout");
+    const children = childTexts().length;
+    // LiveKit paused her for the sound: its state is "listening" while the speech waits to resume.
+    const state = vi.spyOn(c.session, "agentState", "get").mockReturnValue("listening");
+    expect(c.speech.say("Okay.")).toBe(true);
+    await waitFor(() => c.run.backchannels === 1, "the backchannel");
+    state.mockRestore();
+    await c.call.settled();
+    expect(stopped).not.toHaveBeenCalled();
+    expect(childTexts()).toHaveLength(children);
+    speaker.finishPlayback();
+    await waitFor(() => speeches.length > 0 && speeches.every(h => h.done()), "Maya's speech to finish");
+    // Her speech is over: "Okay." is a child turn again.
+    await c.childSays("Okay.");
+    expect(childTexts()).toContain("Okay.");
+  } finally { speaker.finishPlayback(); }
+});
+
 it("keeps ordinary speech and its board when the child starts to speak, until LiveKit cuts it", async () => {
   const c = await voiceCall();
   const native = new voice.ParticipantAudioOutput({ localParticipant: { publishTrack: async () => ({ sid: "local", waitForSubscription: async () => {} }) } } as unknown as ConstructorParameters<typeof voice.ParticipantAudioOutput>[0],

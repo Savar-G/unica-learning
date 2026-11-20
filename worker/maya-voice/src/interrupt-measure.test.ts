@@ -122,7 +122,8 @@ describe("scoreTrials", () => {
       row({ kind: "intentional", onsetAt: 9000, speaking: false, transcripts: ["Show me."] }),
     ];
     const scored = scoreTrials(rows, [{ at: 800, text: "Show me." }, { at: 9800, text: "Show me." }]);
-    expect(scored.stop.n).toBe(1);
+    // The second request was not heard and Maya talked through it: a missed stop.
+    expect(scored.stop).toMatchObject({ n: 2, stopped: 1, missed: 1 });
     expect(scored.lostSpeech).toMatchObject({ n: 3, lost: 1, notATurn: 1 });
   });
 
@@ -134,4 +135,31 @@ describe("scoreTrials", () => {
     const scored = scoreTrials(rows, [{ at: 800, text: "Show me." }]);
     expect(scored.lostSpeech).toMatchObject({ n: 2, lost: 0, notATurn: 1 });
   });
+
+  it("counts a request Maya talked through as a missed stop, so one stop and one miss do not pass", () => {
+    const rows = [
+      row({ kind: "intentional", onsetAt: 0, stopMs: 200, transcripts: ["Show me."] }),
+      row({ kind: "intentional", onsetAt: 5000, stopMs: null, vadMs: 180, agentListeningMs: null, transcripts: ["Show me."] }),
+    ];
+    const scored = scoreTrials(rows, [{ at: 800, text: "Show me." }, { at: 5800, text: "Show me." }]);
+    expect(scored.stop).toMatchObject({ n: 2, stopped: 1, neverStopped: 1, p95: null, missed: 1 });
+  });
+
+  it("keeps a speech that ended before the child was heard out of the stop count", () => {
+    const rows = [row({ kind: "intentional", onsetAt: 0, stopMs: 40, vadMs: 180, agentListeningMs: 30, transcripts: ["Show me."] })];
+    expect(scoreTrials(rows, [{ at: 800, text: "Show me." }]).stop).toMatchObject({ n: 0, endedOnTheirOwn: 1, missed: 0 });
+  });
+
+  it("credits no stop that lands after the next clip began, a restart clip included", () => {
+    const rows = [row({ kind: "intentional", onsetAt: 0, stopMs: 610, agentListeningMs: 560, transcripts: ["Show me."] })];
+    const scored = scoreTrials(rows, [{ at: 500, text: "Show me." }], 300, [], [550]);
+    expect(scored.stop).toMatchObject({ n: 1, stopped: 0, missed: 1 });
+  });
+
+  it("counts a request as delivered only when a child turn holds its whole transcript", () => {
+    const rows = [row({ kind: "intentional", onsetAt: 0, transcripts: ["Okay four."] })];
+    expect(scoreTrials(rows, [{ at: 800, text: "Okay." }]).lostSpeech).toMatchObject({ notATurn: 1 });
+    expect(scoreTrials(rows, [{ at: 800, text: "okay, four" }]).lostSpeech).toMatchObject({ notATurn: 0 });
+  });
 });
+

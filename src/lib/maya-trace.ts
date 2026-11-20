@@ -242,8 +242,11 @@ export type TraceTurn =
   | { kind: "partial"; at: number; text: string; cancelled: true }
   /** Version 4: what Maya actually said. `cancelled`: it was not her approved text, so her output stopped and a repair started. */
   | { kind: "maya_said"; at: number; text: string; cancelled: boolean }
-  /** Version 16: a backchannel the child said while Maya spoke ("mm-hmm", "okay"). Maya went on; nothing was judged. */
-  | { kind: "backchannel"; at: number; text: string }
+  /**
+   * Version 16: a backchannel the child said while Maya spoke ("mm-hmm", "okay"). Maya went on; nothing was judged.
+   * `id` is the event's own id, so a save that already holds it never adds it twice.
+   */
+  | { kind: "backchannel"; at: number; text: string; id: string }
   /**
    * Version 4: the package turned out wrong during the call (`detail` is wording code wrote). `cancelled`: the call
    * went to the content hold and Maya's output stopped; false when the safety state kept the call.
@@ -585,6 +588,7 @@ function checkTurn(t: unknown, path: string, version: number): Record<string, un
       break;
     case "backchannel":
       need(isText(x.text), `${path}.text`, "text");
+      need(isText(x.id), `${path}.id`, "the event's id");
       break;
     case "content_problem":
       need(isText(x.detail), `${path}.detail`, "text");

@@ -1,3 +1,5 @@
+import { normalizeTranscript } from "@/lib/maya-voice";
+
 // How the real-audio interruption check (#1147, scripts/maya-interrupt-proof.ts) turns received audio levels into a
 // stop time. The input is Maya's audio as the child's participant receives it from the room, one level per 10 ms
 // frame on the same clock as the child's speech onset. A device speaker, echo cancellation and the browser's own
@@ -119,27 +121,36 @@ export interface TrialRow {
 }
 
 /**
- * Scores the trials. Each trial owns only what happens before the next trial's onset. A stop counts only when the
- * child's sound cut Maya (`cutByChild`); lost speech counts every request, whether or not Maya stopped, and each request
- * must reach a child turn of its own window.
+ * Scores the trials. Each trial owns only what happens before the next clip's onset: the next trial or a restart clip
+ * (`boundaries`). A stop counts only when the child's sound cut Maya (`cutByChild`) within that window. Every request
+ * Maya was speaking over counts: one she talked through is a missed stop, unless her speech ended before the child was
+ * heard. Lost speech counts every request, and a request is delivered only when a child turn of its own window holds its
+ * whole transcript.
  */
-export function scoreTrials(rows: readonly TrialRow[], childTurns: readonly { at: number; text: string }[], targetMs = 300, kinds: readonly string[] = []) {
+export function scoreTrials(rows: readonly TrialRow[], childTurns: readonly { at: number; text: string }[], targetMs = 300, kinds: readonly string[] = [], boundaries: readonly number[] = []) {
   const scored = rows.map((r, i) => {
-    const limit = (rows[i + 1]?.onsetAt ?? Infinity) - r.onsetAt;
+    const next = Math.min(rows[i + 1]?.onsetAt ?? Infinity, ...boundaries.filter(b => b > r.onsetAt));
+    const limit = next - r.onsetAt;
     const own = (ms: number | null) => (ms !== null && ms < limit ? ms : null);
     const output = r.output.filter(o => Number(o.split("@")[1]) < limit);
-    const cut = cutByChild({ vadMs: own(r.vadMs), agentListeningMs: own(r.agentListeningMs), cleared: output.some(o => !o.startsWith("resume")) });
-    const turns = childTurns.filter(t => t.at >= r.onsetAt && t.at < r.onsetAt + limit);
-    const reachedTurn = r.transcripts.length > 0 && turns.some(t => r.transcripts.some(h => t.text.includes(h.trim()) || h.includes(t.text.trim())));
-    return { ...r, output, cut, reachedTurn };
+    const vadMs = own(r.vadMs), agentListeningMs = own(r.agentListeningMs);
+    const cut = cutByChild({ vadMs, agentListeningMs, cleared: output.some(o => !o.startsWith("resume")) });
+    const endedOnItsOwn = !cut && agentListeningMs !== null && vadMs !== null && agentListeningMs < vadMs;
+    const stopMs = r.stopMs !== null && r.stopMs < limit ? r.stopMs : null;
+    const heard = normalizeTranscript(r.transcripts.join(" "));
+    const reachedTurn = heard.length > 0 && childTurns.some(t => t.at >= r.onsetAt && t.at < next && normalizeTranscript(t.text) === heard);
+    return { ...r, output, vadMs, agentListeningMs, stopMs, cut, endedOnItsOwn, reachedTurn };
   });
   const intent = scored.filter(r => r.kind === "intentional");
-  const stops = intent.filter(r => r.speaking && r.cut);
+  const eligible = intent.filter(r => r.speaking && !r.endedOnItsOwn);
+  const stops = eligible.filter(r => r.cut);
   const incid = scored.filter(r => r.kind === "incidental" && r.speaking);
   const at = (r: { output: string[] }, kind: string) => r.output.map(o => o.split("@")).find(([k]) => k === kind)?.[1];
   return {
     rows: scored,
-    stop: { ...interruptReport(stops, targetMs), endedOnTheirOwn: intent.filter(r => r.speaking && !r.cut).length, notSpeaking: intent.filter(r => !r.speaking).length,
+    // A missed stop counts as never stopped, so it lands at the top of the percentiles.
+    stop: { ...interruptReport(eligible.map(r => ({ stopMs: r.cut ? r.stopMs : null })), targetMs), missed: eligible.filter(r => !r.cut).length,
+      endedOnTheirOwn: intent.filter(r => r.speaking && r.endedOnItsOwn).length, notSpeaking: intent.filter(r => !r.speaking).length,
       vadMs: interruptReport(stops.map(r => ({ stopMs: r.vadMs })), targetMs), cutMs: interruptReport(stops.map(r => ({ stopMs: r.agentListeningMs })), targetMs) },
     lostSpeech: { n: intent.length, lost: intent.filter(r => r.transcripts.length === 0).length, split: intent.filter(r => r.transcripts.length > 1).length,
       notATurn: intent.filter(r => !r.reachedTurn).length },

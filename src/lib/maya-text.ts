@@ -589,7 +589,7 @@ export interface TextSession {
    * A lone backchannel the child said while Maya spoke ("mm-hmm", "okay"; #1147). It goes in the trace only: it is no
    * child turn, changes no state and gives no help or credit. False when the call has ended.
    */
-  backchannel(text: string): boolean;
+  backchannel(text: string, id: string): boolean;
   /**
    * What Maya actually said in an unspoken utterance of the current batch. Words that are not her approved text stop her
    * output and start a repair, which comes first; then the teaching goes on.
@@ -1619,9 +1619,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       return out;
     },
     partial: (text) => receive({ type: "child_turn", at: now(), text, final: false }, false),
-    backchannel: (text) => {
+    backchannel: (text, id) => {
       if (folded.session.outcome) return false;
-      append({ kind: "backchannel", at: Math.max(now(), folded.session.now ?? 0), text: redactText(text) });
+      if (!folded.turns.some((t) => t.kind === "backchannel" && t.id === id)) append({ kind: "backchannel", at: Math.max(now(), folded.session.now ?? 0), text: redactText(text), id });
       return true;
     },
     mayaSaid: (text) => receive({ type: "maya_said", at: now(), text }),

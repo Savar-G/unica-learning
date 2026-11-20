@@ -29,7 +29,7 @@ import { sameExchangeTarget, type ExchangeTarget } from "@/lib/maya/checked-exch
 import { childExchangeTarget } from "@/lib/maya/session";
 import { speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-speech";
 import { CuePlaybackOutput } from "./cue-playback";
-import { isBackchannel } from "./backchannel";
+import { clearBackchannel } from "./backchannel";
 import { earlyRest, type EarlyRest } from "./early-speech";
 import { detectorVad, HeardSignals, PrepareSignal, silentFinal } from "./heard-signals";
 import { voiceDisconnectReason } from "@/lib/maya-voice-close-reason";
@@ -99,7 +99,7 @@ interface AgentHooks {
    * True when a final transcript is a lone backchannel said while Maya speaks (#1147): the run records it, and the
    * transcript never reaches LiveKit, so a paused speech resumes. Absent: every transcript goes on.
    */
-  backchannel?(text: string): boolean;
+  backchannel?(alternatives: readonly Heard[]): boolean;
   /** Gives the call a prepare hint (`PrepareSignal`). False: dropped (no `prepare`, or a child turn runs). */
   prepare?(text: string): boolean;
 }
@@ -210,7 +210,7 @@ export class MayaVoiceAgent extends voice.Agent {
               console.warn("[maya voice] dropped transcript", callId, heard);
               return;
             }
-            if (hooks.backchannel?.(event.alternatives[0]?.text ?? "")) {
+            if (hooks.backchannel?.(event.alternatives.map((a) => ({ text: a.text, confidence: a.confidence })))) {
               // Maya goes on: LiveKit never reads the words, so its pause ends in a resume. The signals go in the log, no words.
               console.info("[maya voice] backchannel over Maya", callId, heard);
               return;
@@ -546,7 +546,7 @@ export class VoiceCallRun {
     this.segment = call.revision;
     this.agent = new MayaVoiceAgent(call, turn => this.after(turn), options.board ? { sync: options.board, scope: () => this.boardScope } : undefined,
       (stoppedAt, work, mark, finalIds) => this.reply(stoppedAt, work, mark, finalIds),
-      { greetingOver: () => this.greetingOver(), childWentOn: text => this.childWentOn(text), prepare: text => this.prepareHint(text), backchannel: text => this.backchannel(text) });
+      { greetingOver: () => this.greetingOver(), childWentOn: text => this.childWentOn(text), prepare: text => this.prepareHint(text), backchannel: alternatives => this.backchannel(alternatives) });
     this.agent.hearing = { dropSilentPeakDbfs: options.dropSilentPeakDbfs ?? null, ...(options.heardVad ? { vad: options.heardVad } : {}), detectorMinSilenceMs: options.detectorMinSilenceMs ?? null };
     this.agent.onSilent = speech => this.silentSpeech(speech);
     this.agent.requireSpokenCues = scope => this.exchangeScope?.scope.generation === scope.generation;
@@ -581,6 +581,7 @@ export class VoiceCallRun {
       else this.closeMark("sdk_error", "recoverable", "observation");
     });
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, ev => {
+      if (ev.newState === "speaking") this.audibleSpeech = this.speech;
       if (ev.oldState === "speaking" && ev.newState !== "speaking") {
         this.speechEndedAt = this.timers.now();
         this.schedule();
@@ -630,15 +631,22 @@ export class VoiceCallRun {
   /** Backchannels said over Maya and ignored in this run (#1147). */
   backchannels = 0;
 
-  /** Maya's audio plays, or LiveKit paused it for the child's sound and may resume it. */
+  /** The last speech whose audio played: it may be paused (LiveKit then reports "listening") and resumed. */
+  private audibleSpeech: voice.SpeechHandle | null = null;
+
+  /**
+   * Maya's speech is under way: it has played audio and is neither done nor interrupted. A pause keeps it under way.
+   * This holds with or without the board's audio adapter.
+   */
   private mayaSpeaking() {
-    return this.session.agentState === "speaking" || this.boardAudio?.isPaused === true;
+    const speech = this.audibleSpeech;
+    return !!speech && !speech.done() && !speech.interrupted;
   }
 
-  private backchannel(text: string) {
-    if (!isBackchannel(text) || !this.mayaSpeaking()) return false;
+  private backchannel(alternatives: readonly Heard[]) {
+    if (!clearBackchannel(alternatives) || !this.mayaSpeaking()) return false;
     this.backchannels++;
-    void this.call.backchannel?.(text).catch(() => { /* the trace record never stops Maya */ });
+    void this.call.backchannel?.(alternatives[0].text).catch(() => { /* the trace record never stops Maya */ });
     return true;
   }
 

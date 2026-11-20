@@ -94,6 +94,26 @@ it("records a backchannel said over Maya in the trace, with no child turn, help 
   expect(checkTrace(trace)).toMatchObject({ ok: true });
 });
 
+it("records a backchannel once when another save of the call runs at the same time", async () => {
+  const s = setup();
+  const view = await newVoiceCall(s);
+  const call = await open(s, view.id);
+  await call.start();
+  // A child turn's save is under way when each backchannel comes, so the saved text can already hold it.
+  const first = call.child("I don't know.");
+  const okay = call.backchannel!("Okay.");
+  await first;
+  const second = call.child("Can you show me?");
+  await Promise.all([okay, call.backchannel!("Mm-hmm."), second]);
+  await call.settled();
+  // A replacement worker restores the saved text: it must hold each backchannel once.
+  const replacement = await open(s, view.id);
+  await replacement.end({ reason: "child_stopped" });
+  const turns = s.store.rows()[0].trace!.turns.filter(t => t.kind === "backchannel");
+  expect(turns.map(t => "text" in t && t.text).sort()).toEqual(["Mm-hmm.", "Okay."]);
+  expect(checkTrace(s.store.rows()[0].trace!)).toMatchObject({ ok: true });
+});
+
 describe("a voice call", () => {
   it("says how long a child's input spent on the model, and keeps the acknowledgements said across a new worker (#532)", async () => {
     const s = setup();

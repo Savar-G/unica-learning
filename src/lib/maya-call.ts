@@ -1922,12 +1922,14 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           }
         },
         async backchannel(text) {
-          if (inactive() || !session.backchannel(text)) return;
+          // One id for the event in the live session and in the saved copy: a save that already holds it keeps it once.
+          const id = seams.newId();
+          if (inactive() || !session.backchannel(text, id)) return;
           later(async () => {
             const live = record.live;
             if (inactive() || !live) return;
             const saved = textSession(record, pkg, idleModel(record), name, live.text);
-            saved.backchannel(text);
+            saved.backchannel(text, id);
             const change: CallChange = { live: { ...live, text: await saved.saved() } };
             if (!(await store.update(record.id, record.revision, change))) { lose(true); return; }
             record = { ...record, ...change, revision: record.revision + 1 };
