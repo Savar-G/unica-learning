@@ -83,8 +83,8 @@ const MAX_PLAYOUTS = 300;
  * the RPC payload limit.
  */
 export type ReportMessage =
-  | { kind: "answer"; at: number }
-  | { kind: "reply_done"; at: number }
+  | { kind: "answer"; turnId: string; at: number }
+  | { kind: "reply_done"; turnId: string; at: number }
   | { kind: "playout"; start: number; end: number | null }
   | { kind: "turn"; row: ReturnType<typeof voiceBaselineTurn>; t0: number | null; answerPlayback: number | null; ackPlayback: number | null }
   | { kind: "call"; workerQueueMs: number; profile: Record<string, unknown> | null; discardedPreparation: unknown; speechUsd: { stt: number; tts: number }; playouts: Playout[] }
@@ -156,10 +156,10 @@ export default defineAgent({
       measureTurn: sample => {
         turns.push(sample);
         // An answered turn is measured when its answer starts to play.
-        if (sample.outcome === "answered") void send({ kind: "answer", at: Date.now() }).catch(() => {});
+        if (sample.outcome === "answered" && sample.turnId) void send({ kind: "answer", turnId: sample.turnId, at: Date.now() }).catch(() => {});
       },
       // The child speaks again only after this: a reply of two speeches can pause between them for its board.
-      replyDone: () => { void send({ kind: "reply_done", at: Date.now() }).catch(() => {}); },
+      replyDone: turnId => { void send({ kind: "reply_done", turnId, at: Date.now() }).catch(() => {}); },
       measureBoardPlan: (utteranceId, turnId, batchIds) => { owners.set(utteranceId, { turnId, batchIds }); },
       closed: async () => {
         try {

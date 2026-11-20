@@ -1227,6 +1227,13 @@ export class VoiceCallRun {
 
   /** The next speech this run asks the session for, and who owns it (one-shot, like `ungatedNext`). */
   private nextUtterance: { turnId: string | null; kind: UtteranceKind; handle: voice.SpeechHandle | null } | null = null;
+  /** #1139: the speeches each open turn asked for by name (its phrase, its early sentences, its rest), for `replyDone`. */
+  private turnSpeeches = new Map<string, voice.SpeechHandle[]>();
+
+  private ownSpeech(turnId: string | null, speech: voice.SpeechHandle) {
+    if (turnId === null || !this.options.replyDone) return;
+    this.turnSpeeches.set(turnId, [...(this.turnSpeeches.get(turnId) ?? []), speech]);
+  }
 
   private sayWithoutBoard(text: string, owner: { turnId: string | null; kind: UtteranceKind }): ScopedSpeech {
     const board = this.options.board;
@@ -1236,6 +1243,7 @@ export class VoiceCallRun {
     this.ungatedSpeech = audioScope;
     const { stream, audioEnded } = this.agent.audioWithoutBoard(text, audioScope, owner);
     const speech = this.session.say(text, { addToChatCtx: true, audio: stream });
+    this.ownSpeech(owner.turnId, speech);
     const retire = () => {
       board.detach(audioScope);
       if (this.ungatedSpeech === audioScope) this.ungatedSpeech = null;
@@ -1250,6 +1258,7 @@ export class VoiceCallRun {
     this.nextUtterance = claim;
     const speech = this.session.say(text, options);
     claim.handle = speech;
+    this.ownSpeech(owner.turnId, speech);
     return speech;
   }
 
@@ -1380,9 +1389,12 @@ export class VoiceCallRun {
     this.cutAck(pace);
     if (this.pace === pace) this.pace = null;
     this.measure(pace, outcome);
-    // A closed turn makes no more speech: its newest speech is the reply's last.
+    // A closed turn makes no more speech. Its reply is done when its own speeches are: the reply's stream and each
+    // speech it asked for by name. Never the session's newest speech, which can be a newer turn's.
     const replyDone = this.options.replyDone;
-    if (replyDone) void (this.speech?.waitForPlayout() ?? Promise.resolve()).catch(() => {}).then(() => replyDone(pace.turnId));
+    const own = [pace.handle, ...(this.turnSpeeches.get(pace.turnId) ?? [])];
+    this.turnSpeeches.delete(pace.turnId);
+    if (replyDone) void Promise.all(own.map(h => h?.waitForPlayout().catch(() => {}))).then(() => replyDone(pace.turnId));
   }
 
   private measure(pace: TurnPace, outcome: TurnOutcome) {

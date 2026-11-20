@@ -486,7 +486,8 @@ describe("the parts of a turn as the worker hears them (VoiceSay)", () => {
     const reply = done.filter((d) => d.said.length > before);
     expect(reply).toHaveLength(1);
     expect(reply[0].said.slice(before)).toEqual([FIRST, SECOND, third]);
-    expect(reply[0].turnId).toEqual(expect.any(String));
+    // The report names the same turn as the turn's sample, so the child can match the answer and the report by turn.
+    expect(reply[0].turnId).toBe(c.samples.at(-1)!.turnId);
   });
 });
 

@@ -80,8 +80,8 @@ async function child(o: { url: string; job: BaselineJob; prompts: Map<string, In
   const board: number[] = [];
   const messages: ReportMessage[] = [];
   // The worker's live reports: answer playout starts, reply-done times, and each playout's end (null while it plays).
-  const answers: number[] = [];
-  const replies: number[] = [];
+  const answers: { turnId: string; at: number }[] = [];
+  const replies: { turnId: string; at: number }[] = [];
   const live = new Map<number, number | null>();
   let done!: () => void;
   const reported = new Promise<void>(resolve => { done = resolve; });
@@ -122,8 +122,8 @@ async function child(o: { url: string; job: BaselineJob; prompts: Map<string, In
   local.registerRpcMethod(REPORT_RPC, async data => {
     const m = JSON.parse(data.payload) as ReportMessage;
     messages.push(m);
-    if (m.kind === "answer") answers.push(m.at);
-    if (m.kind === "reply_done") replies.push(m.at);
+    if (m.kind === "answer") answers.push({ turnId: m.turnId, at: m.at });
+    if (m.kind === "reply_done") replies.push({ turnId: m.turnId, at: m.at });
     // RPCs can arrive out of order: a finish is never undone by its own start.
     if (m.kind === "playout" && !(m.end === null && live.get(m.start) != null)) live.set(m.start, m.end);
     if (m.kind === "done") done();

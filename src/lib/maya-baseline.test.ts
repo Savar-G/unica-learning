@@ -123,9 +123,9 @@ describe("#1139 the child waits for the answer to finish", () => {
     // The old rule ended the turn 6 s after any sound; the answer can still be coming.
     expect(replyOver({ ...fillerOnly, now: 12_000 })).toBe(false);
     const answer = { start: 13_000, end: null };
-    const playing = { ...fillerOnly, bursts: [filler, { start: 13_050, end: 15_000 }], answers: [13_002], playouts: [...fillerOnly.playouts, answer] };
+    const playing = { ...fillerOnly, bursts: [filler, { start: 13_050, end: 15_000 }], answers: [{ turnId: "t2", at: 13_002 }], playouts: [...fillerOnly.playouts, answer] };
     expect(replyOver({ ...playing, now: 18_000 })).toBe(false);
-    const done = { ...playing, playouts: [fillerOnly.playouts[0], { start: 13_000, end: 14_950 }], replies: [14_960] };
+    const done = { ...playing, playouts: [fillerOnly.playouts[0], { start: 13_000, end: 14_950 }], replies: [{ turnId: "t2", at: 14_960 }] };
     // The last received sound is within the quiet window: its audio can still be arriving.
     expect(replyOver({ ...done, now: 16_500 })).toBe(false);
     expect(replyOver({ ...done, now: 17_000 })).toBe(true);
@@ -133,19 +133,20 @@ describe("#1139 the child waits for the answer to finish", () => {
 
   it("waits through a gap between a reply's two speeches until the worker says the reply is done", () => {
     // The worker plays the early sentences, then stages the board for the rest: more than 2 s with no sound.
-    const first = { after: 1000, bursts: [{ start: 2050, end: 3000 }], answers: [2002], replies: [], playouts: [{ start: 2000, end: 2950 }], needsAnswer: true };
+    const first = { after: 1000, bursts: [{ start: 2050, end: 3000 }], answers: [{ turnId: "t2", at: 2002 }], replies: [], playouts: [{ start: 2000, end: 2950 }], needsAnswer: true };
     expect(replyOver({ ...first, now: 8000 })).toBe(false);
-    const both = { ...first, bursts: [...first.bursts, { start: 8550, end: 10_000 }], playouts: [...first.playouts, { start: 8500, end: 9950 }], replies: [9960] };
+    const both = { ...first, bursts: [...first.bursts, { start: 8550, end: 10_000 }], playouts: [...first.playouts, { start: 8500, end: 9950 }], replies: [{ turnId: "t2", at: 9960 }] };
     expect(replyOver({ ...both, now: 11_500 })).toBe(false);
     expect(replyOver({ ...both, now: 12_000 })).toBe(true);
-    // A done report from the turn before this answer never ends this one.
-    expect(replyOver({ ...both, replies: [1500], now: 12_000 })).toBe(false);
+    // A done report from the turn before this answer never ends this one, even when it comes during this reply's pause.
+    expect(replyOver({ ...both, replies: [{ turnId: "t1", at: 1500 }], now: 12_000 })).toBe(false);
+    expect(replyOver({ ...both, replies: [{ turnId: "t1", at: 5000 }], now: 12_000 })).toBe(false);
   });
 
   it("ignores an earlier turn's answer and waits for a playout after the opening", () => {
     const old = { start: 500, end: 900 };
-    const base = { after: 1000, now: 9000, bursts: [{ start: 520, end: 880 }], replies: [905], playouts: [old] };
-    expect(replyOver({ ...base, answers: [502], needsAnswer: true })).toBe(false);
+    const base = { after: 1000, now: 9000, bursts: [{ start: 520, end: 880 }], replies: [{ turnId: "t1", at: 905 }], playouts: [old] };
+    expect(replyOver({ ...base, answers: [{ turnId: "t1", at: 502 }], needsAnswer: true })).toBe(false);
     expect(replyOver({ ...base, after: 0, answers: [], needsAnswer: false })).toBe(true);
     expect(replyOver({ ...base, after: 0, answers: [], playouts: [{ start: 500, end: null }], needsAnswer: false })).toBe(false);
   });
