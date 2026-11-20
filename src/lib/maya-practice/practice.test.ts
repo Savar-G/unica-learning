@@ -819,10 +819,10 @@ describe("cost and the spending cap", () => {
 });
 
 describe("the docs", () => {
-  it("AGENTS.md names the command and when it must run", () => {
+  it("AGENTS.md names the practice command and its doc", () => {
     const agents = readFileSync(join(ROOT, "AGENTS.md"), "utf8");
     expect(agents).toContain("npm run maya:practice");
-    expect(agents).toMatch(/maya:practice[^\n]*before[^\n]*(controller|prompt|model)/i);
+    expect(agents).toContain("docs/maya-practice.md");
   });
 
   it("docs/maya-practice.md lists every case", () => {

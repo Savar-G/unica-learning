@@ -52,7 +52,7 @@ So on these synthetic pages, calibration refuses a photo before it is blurry eno
 
 Set: Cedric's iPhone photos of the made-up Robin booklet (#852): 10 clear, 3 shadow, 10 blurry, 10 glare (6 of them a crumpled plastic bag over the page, 4 a lamp or flash). No faint photo was taken. Their labels are the problem each photo was taken to show; a person can still read most of the shadow and glare photos (the #852 truth review).
 
-The check runs only on a page that calibrated (a ready page), so it was asked about the straightened pages the Robin phone test made (`scripts/scan-marking-physical.mjs --estimate`). Calibration refused 17 photos before the check would run: all 10 blurry, 6 glare (pages 3, 4, 5, 7, 8, 9) and the page 3 shadow photo. That leaves 16: 10 clear, 2 shadow, 4 glare, 0 blurry. All four questions in one request per photo, two runs, model `typesafe/jev-1.14`. Results: `docs/photo-check-real-results-20261114.json` (photo names, image hashes and every answer; no images).
+The check runs only on a page that calibrated (a ready page), so it was asked about the straightened pages the Robin phone test made (`scripts/scan-marking-physical.mjs --estimate`). Calibration refused 17 photos before the check would run: all 10 blurry, 6 glare (pages 3, 4, 5, 7, 8, 9) and the page 3 shadow photo. That leaves 16: 10 clear, 2 shadow, 4 glare, 0 blurry. All four questions in one request per photo, two runs, model `typesafe/jev-1.14`. Results: `docs/archive/photo-check-real-results-20261114.json` (photo names, image hashes and every answer; no images).
 
 Rule for a real-photo threshold (`kindThreshold`): of the thresholds from 0.50 to 0.99 that flag no clear photo, those that flag the most photos of the kind, and the middle of that range. A kind ships only with at least 5 photos of it (`PHOTO_CHECK_MIN_PROBLEM_PHOTOS`; each photo counts once over the runs) and at least 80% of them caught.
 
@@ -86,7 +86,7 @@ node scripts/photo-check-thresholds.mjs --set "$SET" --runs 2 --max-usd 0.5
 
 ### Second real run (2026-11-14, 53 photos)
 
-Cedric added 20 photos: 10 clear single pages, 5 flash or lamp glare and 5 hand or phone shadow, with the corners and QR codes in view. The page check (main plus #954's stacked-sheet fix) accepted 37 of 53, so the check was asked about 18 clear, 11 glare and 8 shadow pages, two runs each, on `typesafe/jev-1.14` (74 requests, USD 0.0167, 0 failures). Results: `docs/photo-check-real-results-20261114-v2.json` (names, hashes and every answer; no images).
+Cedric added 20 photos: 10 clear single pages, 5 flash or lamp glare and 5 hand or phone shadow, with the corners and QR codes in view. The page check (main plus #954's stacked-sheet fix) accepted 37 of 53, so the check was asked about 18 clear, 11 glare and 8 shadow pages, two runs each, on `typesafe/jev-1.14` (74 requests, USD 0.0167, 0 failures). Results: `docs/archive/photo-check-real-results-20261114-v2.json` (names, hashes and every answer; no images).
 
 | Question | Highest on a clear photo | Its own photos | Caught | Ships? |
 |---|---|---|---|---|

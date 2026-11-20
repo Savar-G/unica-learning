@@ -104,7 +104,7 @@ problems. The measured layout requires at least 85 percent occupied space,
 or a completed item budget with bounded even spacing and no large bottom gap.
 Fake books always keep the approval hold. No child was timed.
 
-The example candidates are listed in `workbook-example-bank-480.md`. Savar
+The example candidates are listed in `archive/workbook-example-bank-480.md`. Savar
 must approve the bank and the next authorised subscription sample before merge.
 No real sample is authorised for these fixes. The layout changes below are
 included. The imported step templates are integrated (#489, `workbook-step-templates.md`).

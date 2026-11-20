@@ -17,7 +17,7 @@ The tracked files were clean at start. Only this prepared branch was advanced fr
 - `supabase/migrations/20261107034950_scan_marking_evaluation_full_reservation.sql`
 - `supabase/tests/scan_marking_evaluation_full_reservation.cjs`
 - `docs/scan-marking-evaluation-full-reservation-report.md`
-- `docs/scan-marking-evaluation-full-reservation-local-proof.log`
+- `docs/archive/scan-marking-evaluation-full-reservation-local-proof.log`
 
 ## Durable operation
 

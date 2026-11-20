@@ -1,6 +1,6 @@
 # Workbook step progressions v2
 
-The [merged-base follow-up](workbook-steps-v2-merged-review.md) records the current corrections, data fallback and U4/U16 checks on base `24751f16`. This file preserves the earlier comparison on `85578a5b`.
+The [merged-base follow-up](archive/workbook-steps-v2-merged-review.md) records the current corrections, data fallback and U4/U16 checks on base `24751f16`. This file preserves the earlier comparison on `85578a5b`.
 
 Issue: [#505](https://github.com/Savar-G/unica-learning/issues/505). PR base: `site/workbook-consistency` at `85578a5b4c4ed3b3fc7bc45e3aeaf8e810ffb40f`. This branch includes that commit. The final fetch found no newer base.
 
@@ -67,7 +67,7 @@ Seed: `00000000-0000-4000-8000-000000000016`. Runtime generator head: `5d92422ce
 
 The `npm run workbook:fast` loop runs the actual strict fit checks. Final image runs use `--diff` against the matching v1 folder. Real runs use `--replay` against the v1 real folder, with API keys removed and `--subscription-only`. All runs use `--no-store`. No live family rows are written. No full real book is generated. The v1 check-only controls exit 1 because they retain the recorded quality defects. The image-generating v2 CLI exits 0 even when a book has quality issues. The comparison therefore reads every quality count and measured page; it does not treat that exit code as book acceptance.
 
-Each run manifest records code head, base, bundle hash, data hash, seed and arguments. [Machine report](workbook-steps-v2-comparison.json). The table uses v1 → v2. Fullness is measured occupied page area. Room omissions and later losses are separate. Time-budget trims remove optional questions above the page minimum to keep the day within 30 minutes. These counts increase in full U10 (70 to 73), U14 (50 to 52) and U16 (50 to 55). They also increase in the selected U14 and U16 samples. The table shows them separately from required-question and room omissions. All page minimums remain satisfied.
+Each run manifest records code head, base, bundle hash, data hash, seed and arguments. [Machine report](archive/workbook-steps-v2-comparison.json). The table uses v1 → v2. Fullness is measured occupied page area. Room omissions and later losses are separate. Time-budget trims remove optional questions above the page minimum to keep the day within 30 minutes. These counts increase in full U10 (70 to 73), U14 (50 to 52) and U16 (50 to 55). They also increase in the selected U14 and U16 samples. The table shows them separately from required-question and room omissions. All page minimums remain satisfied.
 
 | Run / level | Failed % | Room omissions / later losses | Time-budget trims | Fullness min / mean % | Estimated minutes per day | Template questions / all questions; unique templates | Frame max page / day; stem max page | Hard Challenge cards / all cards | Worse metrics |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
