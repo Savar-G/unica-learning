@@ -11,7 +11,8 @@ import { available, calibrate, calibrateAmong, chromium, coverQr, createScanBind
 
 // Which sheet a photo's crops come from, on pages printed by real Chromium with the real template. A wrong crop is a wrong
 // mark on a child's work, so each test here asks for a refusal, with a control that the same page calibrates when it is
-// right. Scale & angle matrix cases live in src/lib/scan-binding-scale-chromium.test.ts. Skipped where no Chromium is found.
+// right. Scale & angle matrix cases live in src/lib/scan-binding-scale-chromium.test.ts and QR/scale margin cases live in
+// src/lib/scan-binding-qr-chromium.test.ts. Skipped where no Chromium is found.
 
 const ctx = createScanBindingContext();
 afterAll(() => ctx.close());
