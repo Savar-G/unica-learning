@@ -8,7 +8,7 @@ const TURN_TYPES = ["routine", "complex", "unknown"] as const;
 const OUTCOMES = ["completed", "failed", "timeout", "interrupted", "no_output"] as const;
 const PHASES = [
   "chatDispatch", "chatFinished", "chatBoardDispatch", "speechEndToFinal", "finalToTurn", "admission",
-  "modelFirstChunk", "firstCheckedSentence", "workerReply", "turnToWorkerReply", "workerFiller", "synthesisFirstFrame",
+  "modelFirstChunk", "firstCheckedSentence", "voiceCallFinished", "workerReply", "turnToWorkerReply", "workerFiller", "synthesisFirstFrame",
   "frameToWorkerPlayout", "boardPlanReady", "boardCueAcknowledgement", "requestModel", "requestRepair", "requestReview",
   "deviceUseful", "deviceBoard", "deviceInterruptionStop",
 ] as const;

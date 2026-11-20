@@ -5,21 +5,21 @@ import { AudioFrame } from "@livekit/rtc-node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBoardReceiver, createBoardSender } from "@/lib/board-protocol";
 import { createMemoryTransport } from "@/lib/board-protocol-memory";
-import { createBoardSpeech } from "@/lib/board-speech";
+import { createBoardSpeech, SPEECH_SCOPE_DATA, type SpeechScope } from "@/lib/board-speech";
 import { templateSkills } from "@/lib/assessment";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { memoryWordingHistoryStore, PROPOSAL_VERSION, SAFETY_GUIDANCE } from "@/lib/maya";
-import { mayaCalls, type CallSeams } from "@/lib/maya-call";
+import { mayaCalls, type CallSeams, type VoiceCall } from "@/lib/maya-call";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import type { MayaModel } from "@/lib/maya-model";
-import { ruleMayaModel } from "@/lib/maya-model-fake";
+import { ruleConversationalModel, ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
-import { voiceProviders } from "@/lib/maya-voice";
+import { CONNECTION_RENEW_MS, voiceProviders } from "@/lib/maya-voice";
 import { ACK_HOLD_LIMIT_MS, ACK_LIMIT_MS, ACK_PHRASES } from "@/lib/maya-voice-ack";
 import type { QuestionPackage } from "@/lib/question-package";
-import { VoiceCallRun, voiceSession, type Timers } from "./agent";
+import { VoiceCallRun, voiceSession, type CallUpdate, type Timers } from "./agent";
 import { FakeTTS } from "./fake-providers";
 import { makeProviders } from "./providers";
 import { TURN_PARTS, TurnClock, voiceTurnReport, type VoiceTurnSample } from "./turn-timing";
@@ -40,6 +40,7 @@ const PKG: QuestionPackage = {
   templateId: "2-add-2-digit",
   skill: { standard: "2.4", skills: templateSkills("2-add-2-digit").map((k) => k.id) },
 };
+const CHECKED_PKG = { ...PKG, ...SAMPLE_PACKAGES["subtract-83-46"], ref: PKG.ref };
 
 class SilentMicrophone extends voice.AudioInput {
   private controller!: ReadableStreamDefaultController<AudioFrame>;
@@ -195,16 +196,18 @@ function heldModel(inner: MayaModel = ruleMayaModel()) {
 
 let cleanup: (() => Promise<void>) | null = null;
 beforeEach(() => {
+  vi.clearAllMocks();
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(Date.UTC(2026, 10, 1, 16, 0, 0));
 });
 afterEach(async () => {
   await cleanup?.();
   cleanup = null;
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
-async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; seams?: Partial<CallSeams>; board?: boolean; speech?: ProbeSTT; limitMs?: number; timestamps?: boolean }) {
+async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; seams?: Partial<CallSeams>; board?: boolean; speech?: ProbeSTT; limitMs?: number; timestamps?: boolean; notify?(update: CallUpdate): void }) {
   const clock = handClock();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -223,7 +226,7 @@ async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; seams
     ...options.seams,
   };
   const calls = mayaCalls(seams);
-  const started = await calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: PKG, startedBy: "admin-1", ...(options.limitMs ? { limitMs: options.limitMs } : {}) });
+  const started = await calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: seams.checkedRoutine ? CHECKED_PKG : PKG, startedBy: "admin-1", ...(options.limitMs ? { limitMs: options.limitMs } : {}) });
   if (!started.ok) throw new Error(started.error);
   const config = voiceProviders({});
   if (!config.ok) throw new Error("fake providers");
@@ -240,7 +243,7 @@ async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; seams
   const board = createBoardSpeech({ sender, now: () => Date.now(), observe: (snapshot) => opened.call.observeBoard(snapshot) });
   const samples: VoiceTurnSample[] = [];
   const run = new VoiceCallRun(session, opened.call, {
-    ...(options.board === false ? {} : { board }), timers: clock.timers, notify: () => {}, measureTurn: (s) => samples.push(s),
+    ...(options.board === false ? {} : { board }), timers: clock.timers, notify: options.notify ?? (() => {}), measureTurn: (s) => samples.push(s),
     ...(options.ackLimitMs !== undefined ? { ackLimitMs: options.ackLimitMs } : {}),
   });
   await run.agentJoined();
@@ -249,11 +252,12 @@ async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; seams
   run.attachTurnTiming();
   microphone.push();
   cleanup = async () => { await run.finish({ detail: "test over" }); };
-  const said = () => (providers.tts as FakeTTS).spoken;
+  const tts = providers.tts as FakeTTS;
+  const said = () => tts.spoken;
   await run.childJoined();
   await waitFor(() => said().length > 0 && session.agentState === "listening", "the opening");
   const say = (text: string) => expect(providers.fakeSpeech!.say(text)).toBe(true);
-  return { clock, say, said, session, speaker, sender, receiver, board, samples, run, id: started.view.id, calls, call: opened.call, store };
+  return { clock, say, said, tts, session, speaker, sender, receiver, board, samples, run, id: started.view.id, calls, call: opened.call, store };
 }
 
 const ACKS = new Set(ACK_PHRASES.map((p) => p.text));
@@ -1097,6 +1101,11 @@ describe("#589: the safety guidance does not wait for the close", () => {
   }
   const count = (said: readonly string[], text: string) => said.filter((t) => t === text).length;
 
+  function replacementBoard(call: VoiceCall, receiver: ReturnType<typeof createBoardReceiver>) {
+    const sender = createBoardSender({ sessionId: call.id, senderId: "worker-2", snapshot: call.boardSnapshot, transport: createMemoryTransport(receiver) });
+    return createBoardSpeech({ sender, now: () => Date.now(), observe: snapshot => call.observeBoard(snapshot) });
+  }
+
   /** When the voice session closed (the call hung up), on the test's clock; null while it is open. */
   function watchClose(session: voice.AgentSession) {
     let at: number | null = null;
@@ -1221,10 +1230,13 @@ describe("#589: the safety guidance does not wait for the close", () => {
 
   // Item 2: decided, not assumed. An interruptible speech waits for `userSilenceEvent` in LiveKit's `ttsTask`, so words the
   // child is talking through are held. `allowInterruptions: false` would skip that wait and talk over the child.
-  it("a child who is talking is heard first: queued at once, and played when they stop", async () => {
+  it.each([false, true])("a child who is talking is heard first: queued at once, and played when they stop (candidate transport %s)", async (candidate) => {
     const m = closeHangs();
     const speech = new ProbeSTT();
     const c = await voiceCall({ model: m.model, speech });
+    if (candidate) Object.assign(c.call, { guidancePlayback: vi.fn().mockResolvedValue(undefined) });
+    const output = vi.spyOn(c.speaker, "captureFrame");
+    c.tts.amplitude = 2_200;
     m.arm(c.clock.timers);
     const measure = watchGuidance(c, m, WORDS.immediate);
     speech.says("Someone is hurting me.");
@@ -1237,8 +1249,9 @@ describe("#589: the safety guidance does not wait for the close", () => {
     await pause();
     expect(c.said().join(" ")).not.toContain(WORDS.immediate);
     expect(c.speaker.starts.length).toBe(starts);
+    expect(output.mock.calls).toHaveLength(0);
     speech.send(stt.SpeechEventType.END_OF_SPEECH);
-    await waitFor(() => c.said().includes(LAST.immediate), "the guidance after the child stopped");
+    await waitFor(() => output.mock.calls.some(([frame]) => frame.data[0] === 2_200), "guidance PCM after the child stopped");
     expect(count(c.said(), WORDS.immediate)).toBe(1);
     m.releaseClose();
   });
@@ -1248,15 +1261,25 @@ describe("#589: the safety guidance does not wait for the close", () => {
     const m = closeHangs();
     const speech = new ProbeSTT();
     const c = await voiceCall({ model: m.model, speech });
+    const guidancePlayback = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
+    Object.assign(c.call, { guidancePlayback });
+    const say = vi.spyOn(c.session, "say");
+    const adapter = c.session.output.audio!;
+    const tagged = vi.spyOn(adapter, "captureFrame");
+    const output = vi.spyOn(c.speaker, "captureFrame");
+    c.tts.amplitude = 2_200;
     m.arm(c.clock.timers);
     speech.says("Someone is hurting me.");
     await waitFor(() => m.asked === 1, "the child turn's model call");
     c.speaker.pace(1);
     m.releaseDanger();
     await waitFor(() => c.speaker.waitingToPlay && c.said().includes(WORDS.immediate), "the guidance's first frame");
+    const first = tagged.mock.calls.find(([frame]) => frame.data[0] === 2_200)![0];
+    expect(guidancePlayback).not.toHaveBeenCalled();
     // A noise that never becomes words.
     speech.send(stt.SpeechEventType.START_OF_SPEECH);
     await waitFor(() => c.session.userState === "speaking", "the noise");
+    c.tts.amplitude = 3_300;
     c.speaker.play();
     await pause();
     speech.send(stt.SpeechEventType.END_OF_SPEECH);
@@ -1265,7 +1288,19 @@ describe("#589: the safety guidance does not wait for the close", () => {
     // What the noise cut: one playback that did not carry it whole, which nothing but the repeat makes up for.
     expect(c.speaker.plays.at(-2)).toBeLessThan(WHOLE_GUIDANCE_S);
     expect(count(c.said(), WORDS.immediate)).toBe(2);
+    expect(output.mock.calls.some(([frame]) => frame.data[0] === 3_300)).toBe(true);
+    const retried = tagged.mock.calls.find(([frame]) => frame.data[0] === 3_300)![0];
+    expect(retried.userdata[SPEECH_SCOPE_DATA]).not.toEqual(first.userdata[SPEECH_SCOPE_DATA]);
+    const handles = say.mock.results.filter((_, i) => say.mock.calls[i][0] === SAFETY_GUIDANCE.immediate).map(result => result.value);
+    expect(handles).toHaveLength(2);
+    expect(handles[0]).not.toBe(handles[1]);
+    await handles[1].waitForPlayout();
+    const oldCaptures = output.mock.calls.filter(([frame]) => frame.data[0] === 2_200).length;
+    await adapter.captureFrame(first);
+    expect(output.mock.calls.filter(([frame]) => frame.data[0] === 2_200)).toHaveLength(oldCaptures);
     await waitFor(() => c.said().at(-1) === LAST.immediate, "the whole repeat in the voice");
+    await waitFor(() => guidancePlayback.mock.calls.length > 0, "the repeat's playback acknowledgement");
+    expect(guidancePlayback.mock.calls).toEqual([[SAFETY_GUIDANCE.immediate]]);
     const before = c.said().length;
     await waitFor(() => m.hanging === 1, "the close call");
     const closedAt = watchClose(c.session);
@@ -1281,6 +1316,8 @@ describe("#589: the safety guidance does not wait for the close", () => {
     const m = closeHangs();
     const speech = new ProbeSTT();
     const c = await voiceCall({ model: m.model, speech });
+    const guidancePlayback = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
+    Object.assign(c.call, { guidancePlayback });
     m.arm(c.clock.timers);
     const noise = async (paceNext = false) => {
       speech.send(stt.SpeechEventType.START_OF_SPEECH);
@@ -1305,6 +1342,432 @@ describe("#589: the safety guidance does not wait for the close", () => {
     m.releaseClose();
     await waitFor(() => c.run.done !== null, "the call's end");
     await c.run.done;
+    expect(guidancePlayback).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])("guidance with a missing sentence is not acknowledged, with a retry only for the candidate (%s)", async (candidate) => {
+    const m = closeHangs();
+    const c = await voiceCall({ model: m.model });
+    const guidancePlayback = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
+    expect(c.call.guidancePlayback).toBeUndefined();
+    if (candidate) Object.assign(c.call, { guidancePlayback });
+    const says = vi.spyOn(c.session, "say");
+    m.arm(c.clock.timers);
+    c.say("Someone is hurting me.");
+    await waitFor(() => m.asked === 1, "the child turn's model call");
+    const stream = c.tts.stream.bind(c.tts);
+    let sentence = 0;
+    vi.spyOn(c.tts, "stream").mockImplementation((...args) => {
+      if (++sentence >= 3) c.tts.silentNext = 1;
+      return stream(...args);
+    });
+    m.releaseDanger();
+    await waitFor(() => c.tts.silenced.length > 0, "the missing sentence");
+    await waitFor(() => m.hanging === 1, "the close call");
+    m.releaseClose();
+    await waitFor(() => c.run.done !== null, "the call's end");
+    await c.run.done;
+    expect(c.said()).toContain(WORDS.immediate);
+    expect(says.mock.calls.filter(([text]) => text === SAFETY_GUIDANCE.immediate)).toHaveLength(candidate ? 2 : 1);
+    expect(guidancePlayback).not.toHaveBeenCalled();
+  });
+
+  it.each(["held", "failed"] as const)("plays and acknowledges candidate guidance with a %s board stop", async (mode) => {
+    const c = await voiceCall({ model: ruleConversationalModel(), ackLimitMs: 0, seams: { checkedRoutine: true, checkedExchange: true } });
+    await c.board.settled();
+    const playback = vi.spyOn(c.call, "guidancePlayback");
+    const adapter = c.session.output.audio!;
+    const tagged = vi.spyOn(adapter, "captureFrame");
+    const output = vi.spyOn(c.speaker, "captureFrame");
+    const say = vi.spyOn(c.session, "say");
+    const transport = createMemoryTransport(c.receiver);
+    const gate = Promise.withResolvers<void>();
+    const request = vi.fn<typeof transport.call>();
+    c.speaker.held = true;
+    try {
+      c.tts.amplitude = 1_100;
+      c.say("How do I regroup?");
+      await waitFor(() => c.receiver.staged().length > 0 && tagged.mock.calls.some(([frame]) => frame.data[0] === 1_100), "a teaching frame with its batches still staged");
+      const old = tagged.mock.calls.find(([frame]) => frame.data[0] === 1_100)![0];
+      const batches = c.receiver.staged().map(batch => batch.batchId);
+      const prior = output.mock.calls.length;
+      let stopped = false;
+      request.mockImplementation(async message => {
+        const reply = await transport.call(message);
+        if (message.type === "stop") {
+          stopped = true;
+          if (mode === "held") await gate.promise;
+          else throw Error("board stop acknowledgement unavailable");
+        }
+        return reply;
+      });
+      c.sender.useTransport({ call: request });
+      c.tts.amplitude = 2_200;
+      c.say("My dad is hurting me right now.");
+      await waitFor(() => stopped, "the old board stop");
+      if (mode === "failed") await expect(c.board.settled()).rejects.toThrow();
+
+      await waitFor(() => output.mock.calls.slice(prior).some(([frame]) => frame.data[0] === 2_200), "guidance PCM at the speaker before a board acknowledgement");
+      const attempt = say.mock.calls.findIndex(([text]) => text === SAFETY_GUIDANCE.immediate);
+      expect(attempt).toBeGreaterThanOrEqual(0);
+      const scope = tagged.mock.calls.find(([frame]) => frame.data[0] === 2_200)?.[0].userdata[SPEECH_SCOPE_DATA] as SpeechScope;
+      expect(scope).toBeDefined();
+      expect(scope).not.toEqual(old.userdata[SPEECH_SCOPE_DATA]);
+      expect(c.board.owns(scope)).toBe(true);
+      const staleCaptures = output.mock.calls.filter(([frame]) => frame.data[0] === 1_100).length;
+      await adapter.captureFrame(old);
+      expect(output.mock.calls.filter(([frame]) => frame.data[0] === 1_100)).toHaveLength(staleCaptures);
+      expect(request.mock.calls.some(([rpc]) => rpc.type === "release" && batches.includes(rpc.batchId))).toBe(false);
+      expect(c.receiver.snapshot().events.some(event => event.kind === "batch" && batches.includes(event.batchId))).toBe(false);
+      expect(playback).not.toHaveBeenCalled();
+
+      c.speaker.release();
+      await say.mock.results[attempt].value.waitForPlayout();
+      await waitFor(() => playback.mock.calls.length === 1, "the guidance's completion acknowledgment");
+      expect(playback.mock.calls).toEqual([[SAFETY_GUIDANCE.immediate]]);
+      expect(c.speaker.plays.at(-1)).toBeGreaterThanOrEqual(WHOLE_GUIDANCE_S);
+      expect(c.board.owns(scope)).toBe(false);
+    } finally {
+      gate.resolve();
+      c.speaker.release();
+    }
+    await waitFor(() => c.run.done !== null, "the call finishing");
+    await c.run.done;
+    expect((await c.store.get(c.id))?.status).toBe("ended");
+  });
+
+  it.each(["a later sentence", "all audio"] as const)("repeats the full candidate guidance once when missing %s", async (missing) => {
+    const c = await voiceCall({ model: ruleConversationalModel(), ackLimitMs: 0, seams: { checkedRoutine: true } });
+    expect(c.call.session.checkedRoutine).toBe(true);
+    const playback = vi.spyOn(c.call, "guidancePlayback");
+    const superseded = c.speaker.starts.length;
+    const stream = c.tts.stream.bind(c.tts);
+    if (missing === "all audio") c.tts.silentNext = 1;
+    else {
+      let sentence = 0;
+      vi.spyOn(c.tts, "stream").mockImplementation((...args) => {
+        if (++sentence === 3) c.tts.silentNext = 1;
+        return stream(...args);
+      });
+    }
+    const says = vi.spyOn(c.session, "say");
+    c.say("My dad is hurting me right now.");
+    await waitFor(() => c.run.done !== null, "the call ends after the recovered guidance");
+    await c.run.done;
+    expect(says.mock.calls.map(([text]) => text)).toEqual([SAFETY_GUIDANCE.immediate, SAFETY_GUIDANCE.immediate]);
+    expect(c.speaker.starts.length - superseded).toBe(missing === "all audio" ? 1 : 2);
+    expect(c.speaker.plays.at(-1)).toBeGreaterThanOrEqual(WHOLE_GUIDANCE_S);
+    expect(playback.mock.calls).toEqual([[SAFETY_GUIDANCE.immediate]]);
+    expect((await c.store.get(c.id))?.status).toBe("ended");
+  });
+
+  it("does not acknowledge a partial stream when LiveKit times out after the first guidance sentence", async () => {
+    const c = await voiceCall({ model: ruleConversationalModel(), ackLimitMs: 0, seams: { checkedRoutine: true } });
+    c.session.sessionOptions.forwardAudioIdleTimeout = 250;
+    c.tts.amplitude = 2_200;
+    const stalled = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const provider = c.tts.stream.bind(c.tts);
+    let sentence = 0;
+    vi.spyOn(c.tts, "stream").mockImplementation((...args) => {
+      const stream = provider(...args);
+      if (++sentence === 3) {
+        const next = stream.next.bind(stream);
+        vi.spyOn(stream, "next").mockImplementationOnce(async () => {
+          stalled.resolve();
+          await release.promise;
+          return next();
+        });
+      }
+      return stream;
+    });
+    const playback = vi.spyOn(c.call, "guidancePlayback");
+    const output = vi.spyOn(c.speaker, "captureFrame");
+    const say = c.session.say.bind(c.session);
+    const attempts: voice.SpeechHandle[] = [];
+    vi.spyOn(c.session, "say").mockImplementation((text, options) => {
+      if (text === SAFETY_GUIDANCE.immediate && attempts.length === 1) {
+        c.speaker.held = true;
+        c.tts.amplitude = 3_300;
+      }
+      const handle = say(text, options);
+      if (text === SAFETY_GUIDANCE.immediate) attempts.push(handle);
+      return handle;
+    });
+    try {
+      c.say("My dad is hurting me right now.");
+      await stalled.promise;
+      await waitFor(() => output.mock.calls.some(([frame]) => frame.data[0] === 2_200), "the partial guidance PCM");
+      await attempts[0].waitForPlayout();
+      expect(attempts[0].interrupted).toBe(false);
+      await waitFor(() => attempts.length === 2 || playback.mock.calls.length > 0, "the worker's decision after partial playout");
+      expect(playback).not.toHaveBeenCalled();
+      await waitFor(() => output.mock.calls.some(([frame]) => frame.data[0] === 3_300), "the full retry's PCM");
+      expect(attempts).toHaveLength(2);
+      expect(playback).not.toHaveBeenCalled();
+      c.speaker.release();
+      await attempts[1].waitForPlayout();
+      await waitFor(() => playback.mock.calls.length === 1, "completed guidance acknowledgement");
+      expect(playback.mock.calls).toEqual([[SAFETY_GUIDANCE.immediate]]);
+    } finally {
+      release.resolve();
+      c.speaker.release();
+    }
+    await waitFor(() => c.run.done !== null, "the call's end after full guidance");
+    await c.run.done;
+    expect((await c.store.get(c.id))?.status).toBe("ended");
+  });
+
+  it("hangs up during candidate guidance without acknowledging or releasing its stale frames", async () => {
+    const c = await voiceCall({ model: ruleConversationalModel(), ackLimitMs: 0, seams: { checkedRoutine: true } });
+    const playback = vi.spyOn(c.call, "guidancePlayback");
+    const close = vi.spyOn(c.session, "close");
+    const adapter = c.session.output.audio!;
+    const tagged = vi.spyOn(adapter, "captureFrame");
+    const output = vi.spyOn(c.speaker, "captureFrame");
+    c.tts.amplitude = 2_200;
+    c.speaker.held = true;
+    try {
+      c.say("My dad is hurting me right now.");
+      await waitFor(() => output.mock.calls.some(([frame]) => frame.data[0] === 2_200), "guidance PCM in the held speaker");
+      const stale = tagged.mock.calls.find(([frame]) => frame.data[0] === 2_200)![0];
+      const hungUp = c.run.hangUp();
+      await waitFor(() => close.mock.calls.length > 0, "immediate media close");
+      const captures = output.mock.calls.length;
+      await adapter.captureFrame(stale);
+      expect(output.mock.calls).toHaveLength(captures);
+      await hungUp;
+      expect(playback).not.toHaveBeenCalled();
+    } finally { c.speaker.release(); }
+  });
+
+  it("leaves candidate guidance owed after two incomplete attempts and plays it on a replacement worker", async () => {
+    const updates: CallUpdate[] = [];
+    const c = await voiceCall({ model: ruleConversationalModel(), ackLimitMs: 0, seams: { checkedRoutine: true }, notify: update => updates.push(update) });
+    expect(c.call.session.checkedRoutine).toBe(true);
+    const stream = c.tts.stream.bind(c.tts);
+    let sentence = 0;
+    vi.spyOn(c.tts, "stream").mockImplementation((...args) => {
+      if (++sentence % 3 === 0) c.tts.silentNext = 1;
+      return stream(...args);
+    });
+    const sends = vi.spyOn(c.session, "say");
+    c.say("My dad is hurting me right now.");
+    await waitFor(() => c.run.done !== null, "the incomplete guidance disconnects the worker");
+    await c.run.done;
+    expect(sends.mock.calls.map(([text]) => text)).toEqual([SAFETY_GUIDANCE.immediate, SAFETY_GUIDANCE.immediate]);
+    expect(updates.at(-1)).toMatchObject({ ended: false });
+    expect(updates.at(-1)?.error).toBeUndefined();
+    const saved = await c.store.get(c.id);
+    expect(saved?.status).toBe("live");
+    expect(saved?.live?.text.session.safety).toMatchObject({ guided: true, severity: "immediate" });
+    expect(saved?.live?.guidancePlayed).toBeUndefined();
+
+    const config = voiceProviders({});
+    if (!config.ok) throw new Error("fake providers");
+    c.clock.move(11 * 60_000);
+    const opened = await c.calls.openVoice(c.id, config.ids, null);
+    if (!opened.ok) throw new Error(opened.error);
+    expect(opened.call.pendingFinal?.guidance).toBe(SAFETY_GUIDANCE.immediate);
+    const made = await makeProviders(config, { fakeMsPerChar: 1 });
+    const session = voiceSession(made, { endpointingMs: 20, aecWarmupDuration: 0 });
+    session.input.audio = new SilentMicrophone();
+    const speaker = new Speaker();
+    speaker.held = true;
+    session.output.audio = speaker;
+    const output = vi.spyOn(speaker, "captureFrame");
+    const tts = made.tts as FakeTTS;
+    tts.amplitude = 2_200;
+    const run = new VoiceCallRun(session, opened.call, { board: replacementBoard(opened.call, c.receiver), timers: c.clock.timers, notify: () => {} });
+    const oldCleanup = cleanup;
+    cleanup = async () => {
+      speaker.release();
+      await run.finish({ detail: "test over" });
+      await oldCleanup?.();
+    };
+    const playback = vi.spyOn(opened.call, "guidancePlayback");
+    await run.agentJoined();
+    await session.start({ agent: run.agent });
+    run.attachBoardAudio();
+    const joined = run.childJoined();
+    await waitFor(() => output.mock.calls.some(([frame]) => frame.data[0] === 2_200), "the owed guidance reaches the replacement's speaker");
+    await c.clock.advance(0);
+    expect(speaker.starts).toHaveLength(1);
+    expect(playback).not.toHaveBeenCalled();
+    expect((await c.store.get(c.id))?.status).toBe("live");
+    speaker.release();
+    await joined;
+    await waitFor(() => run.done !== null, "the replacement ends after complete playout");
+    await run.done;
+    expect(playback.mock.calls).toEqual([[SAFETY_GUIDANCE.immediate]]);
+    expect((await c.store.get(c.id))?.status).toBe("ended");
+    expect((await c.calls.view(c.id))?.outcome).toMatchObject({ reason: "safety" });
+  });
+
+  it("blocks new teaching at the deadline and lets an admitted safety read speak before media closes", async () => {
+    const { promise: read, resolve: finishRead } = Promise.withResolvers<unknown>();
+    const { promise: reading, resolve: startedRead } = Promise.withResolvers<void>();
+    const model = ruleConversationalModel();
+    const c = await voiceCall({
+      model, ackLimitMs: 0, limitMs: 62_000,
+      seams: {
+        checkedRoutine: true,
+        model: (_id, _spend, options) => options?.safetyRead
+          ? { ...model, propose: () => { startedRead(); return read; } }
+          : model,
+      },
+    });
+    expect(c.call.safetyDeadline).toBeDefined();
+    const close = watchClose(c.session);
+    const child = vi.spyOn(c.call, "child");
+    const limit = vi.spyOn(c.call, "limit");
+    const output = vi.spyOn(c.speaker, "captureFrame");
+    c.tts.amplitude = 2_200;
+    c.clock.move(62_000);
+    c.say("I saw a knife today.");
+    await reading;
+    expect(child).toHaveBeenCalledTimes(1);
+    try {
+      await c.clock.advance(0);
+      expect(close()).toBeNull();
+      expect(limit).not.toHaveBeenCalled();
+      c.say("Can you show me the answer?");
+      await pause();
+      expect(child).toHaveBeenCalledTimes(1);
+      c.speaker.held = true;
+      finishRead({ version: PROPOSAL_VERSION, act: "safety", reading: { safety: "immediate" }, parts: [] });
+      await waitFor(() => output.mock.calls.some(([frame]) => frame.data[0] === 2_200), "guidance PCM before media closes");
+      expect(close()).toBeNull();
+      c.speaker.release();
+      await c.run.done;
+      expect(close()).not.toBeNull();
+      expect((await c.calls.view(c.id))?.outcome).toMatchObject({ reason: "safety" });
+    } finally {
+      finishRead(null);
+      c.speaker.release();
+      await c.clock.advance(8_000);
+    }
+  });
+
+  it("stops deadline guidance after a bounded playout window and keeps the call recoverable", async () => {
+    const updates: CallUpdate[] = [];
+    const c = await voiceCall({
+      model: ruleConversationalModel(), ackLimitMs: 0, limitMs: 62_000, seams: { checkedRoutine: true },
+      notify: update => updates.push(update),
+    });
+    const close = watchClose(c.session);
+    const limit = vi.spyOn(c.call, "limit");
+    c.speaker.held = true;
+    try {
+      c.say("My dad is hurting me right now.");
+      await waitFor(() => c.said().includes(LAST.immediate), "guidance enters held playout");
+      await c.clock.advance(62_000);
+      await c.clock.advance(7_999);
+      expect(close()).toBeNull();
+      expect(limit).not.toHaveBeenCalled();
+      await c.clock.advance(1);
+      await c.run.done;
+      expect(close()).not.toBeNull();
+      expect(limit).not.toHaveBeenCalled();
+      expect(updates.at(-1)).toMatchObject({ ended: false });
+      expect(updates.at(-1)?.error).toBeUndefined();
+      const saved = await c.store.get(c.id);
+      expect(saved?.status).toBe("live");
+      expect(saved?.live?.text.session.safety).toMatchObject({ guided: true, severity: "immediate" });
+      expect(saved?.live?.guidancePlayed).toBeUndefined();
+    } finally { c.speaker.release(); }
+  });
+
+  it.each([true, false])("a thrown save waits for guidance playout only with candidate hooks (%s)", async (candidate) => {
+    const m = closeHangs();
+    const notify = vi.fn<(update: CallUpdate) => void>();
+    const c = await voiceCall({ model: m.model, notify });
+    m.arm(c.clock.timers);
+    const update = c.store.update.bind(c.store);
+    vi.spyOn(c.store, "update").mockImplementation(async (...args) => {
+      if (args[2].live?.text.session.safety.guided) throw new Error("write failed");
+      return update(...args);
+    });
+    const guidancePlayback = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
+    if (candidate) Object.assign(c.call, { guidancePlayback });
+    const output = vi.spyOn(c.speaker, "captureFrame");
+    c.tts.amplitude = 2_200;
+    c.speaker.held = true;
+    try {
+      c.say("Someone is hurting me.");
+      await waitFor(() => m.asked === 1, "the child turn's model call");
+      m.releaseDanger();
+      await waitFor(() => c.call.lost, "the failed guidance save");
+      expect(c.call.replaced).toBe(false);
+      await c.clock.advance(CONNECTION_RENEW_MS);
+      if (candidate) {
+        await waitFor(() => output.mock.calls.some(([frame]) => frame.data[0] === 2_200), "guidance PCM despite the failed save");
+        expect(c.run.done).toBeNull();
+        expect(notify).not.toHaveBeenCalledWith(expect.objectContaining({ error: "technical_issue" }));
+        c.speaker.release();
+      }
+      await waitFor(() => c.run.done !== null, "the technical end after guidance");
+      await c.run.done;
+      expect(notify).toHaveBeenLastCalledWith(expect.objectContaining({ ended: false, error: "technical_issue" }));
+      expect(guidancePlayback).not.toHaveBeenCalled();
+    } finally {
+      c.speaker.release();
+      m.releaseClose();
+    }
+  });
+
+  it("plays candidate guidance while its save is held, then records the completed attempt", async () => {
+    const c = await voiceCall({ model: ruleConversationalModel(), ackLimitMs: 0, seams: { checkedRoutine: true } });
+    await c.board.settled();
+    const output = vi.spyOn(c.speaker, "captureFrame");
+    const playback = vi.spyOn(c.call, "guidancePlayback");
+    const saving = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const update = c.store.update.bind(c.store);
+    const writes = vi.spyOn(c.store, "update").mockImplementation(async (...args) => {
+      if (args[2].live?.text.session.safety.guided) {
+        saving.resolve();
+        await release.promise;
+      }
+      return update(...args);
+    });
+    c.tts.amplitude = 2_200;
+    c.speaker.held = true;
+    try {
+      c.say("My dad is hurting me right now.");
+      await saving.promise;
+      await waitFor(() => output.mock.calls.some(([frame]) => frame.data[0] === 2_200), "guidance PCM while the save is still held");
+      expect(playback).not.toHaveBeenCalled();
+      c.speaker.release();
+      await waitFor(() => playback.mock.calls.length === 1, "completion of the exact guidance attempt");
+      expect((await c.store.get(c.id))?.live?.guidancePlayed).toBeUndefined();
+      release.resolve();
+      await c.call.settled();
+      const acknowledgement = writes.mock.calls.findIndex(([, , change]) => change.live?.guidancePlayed === "immediate");
+      expect(acknowledgement).toBeGreaterThanOrEqual(0);
+      await expect(writes.mock.results[acknowledgement].value).resolves.toBe(true);
+    } finally {
+      release.resolve();
+      c.speaker.release();
+    }
+    await waitFor(() => c.run.done !== null, "the call's end after saving the guidance");
+    await c.run.done;
+    expect((await c.store.get(c.id))?.status).toBe("ended");
+  });
+
+  it("keeps explicit hang-up immediate during the candidate deadline drain", async () => {
+    const c = await voiceCall({ model: ruleConversationalModel(), limitMs: 62_000, seams: { checkedRoutine: true } });
+    const close = watchClose(c.session);
+    const { promise, resolve } = Promise.withResolvers<null>();
+    const drain = vi.spyOn(c.call, "safetyDeadline").mockReturnValue(promise);
+    try {
+      await c.clock.advance(62_000);
+      await vi.waitFor(() => expect(drain).toHaveBeenCalledTimes(1));
+      expect(close()).toBeNull();
+      const hungUp = c.run.hangUp();
+      await waitFor(() => close() !== null, "media closes while the safety drain is still held");
+      await hungUp;
+    } finally { resolve(null); }
   });
 
   it("guidance cut by a dropped connection plays when the child is back", async () => {
@@ -1461,6 +1924,82 @@ describe("#589: the safety guidance does not wait for the close", () => {
     await run.done;
     expect((made.tts as FakeTTS).spoken.join(" ")).not.toContain(WORDS.immediate);
     expect((await c.store.get(c.id))!.status).toBe("ended");
+    expect((await c.calls.view(c.id))!.outcome).toMatchObject({ reason: "safety" });
+  });
+
+  it.each([["unfinished", false, false], ["saved", true, false], ["saved and interrupted", true, true]] as const)(
+    "a replacement plays recovered guidance when the safety close is %s", async (_name, ended, dropped) => {
+    const m = closeHangs();
+    const c = await voiceCall({ model: m.model });
+    m.arm(c.clock.timers);
+    c.speaker.held = true;
+    c.say("Someone is hurting me.");
+    await waitFor(() => m.asked === 1, "the child turn's model call");
+    m.releaseDanger();
+    await waitFor(() => m.hanging === 1, "the old worker's close call");
+    if (ended) {
+      m.releaseClose();
+      await waitFor(() => c.call.ended, "the accepted safety close");
+    }
+    await c.call.settled();
+
+    const opened = await c.calls.openVoice(c.id, { speechToText: "fake", voice: "fake" }, null);
+    if (!opened.ok) throw new Error(opened.error);
+    expect(opened.call.ended).toBe(ended);
+    const guidance = SAFETY_GUIDANCE.immediate;
+    const disclosure = "I am an AI, not a person.";
+    vi.spyOn(opened.call, "pendingFinal", "get").mockReturnValue({
+      say: ended ? [guidance, disclosure] : [guidance], newBatches: 0, safetyMessage: null, ended, guidance,
+    });
+    const guidancePlayback = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
+    Object.assign(opened.call, { guidancePlayback });
+    const config = voiceProviders({});
+    if (!config.ok) throw new Error("fake providers");
+    const made = await makeProviders(config, { fakeMsPerChar: 1 });
+    const session = voiceSession(made, { endpointingMs: 20, aecWarmupDuration: 0 });
+    session.input.audio = new SilentMicrophone();
+    const speaker = new Speaker();
+    speaker.held = true;
+    session.output.audio = speaker;
+    const run = new VoiceCallRun(session, opened.call, { board: replacementBoard(opened.call, c.receiver), timers: c.clock.timers, notify: () => {} });
+    const oldCleanup = cleanup;
+    cleanup = async () => {
+      c.speaker.release();
+      speaker.release();
+      m.releaseClose();
+      await run.finish({ detail: "test over" });
+      await oldCleanup?.();
+    };
+    await run.agentJoined();
+    await session.start({ agent: run.agent });
+    run.attachBoardAudio();
+    const joined = run.childJoined();
+    const said = (made.tts as FakeTTS).spoken;
+    await waitFor(() => said.join(" ").includes(LAST.immediate), "the recovered guidance in the voice");
+    await c.clock.advance(0);
+    expect(m.hanging).toBe(ended ? 0 : 1);
+    expect(guidancePlayback).not.toHaveBeenCalled();
+    expect(said.join(" ")).not.toContain(disclosure);
+
+    if (dropped) await run.childLeft("dropped");
+    speaker.release();
+    await joined;
+    if (dropped) {
+      expect(guidancePlayback).not.toHaveBeenCalled();
+      expect(run.done).toBeNull();
+      await run.childJoined();
+    }
+    await waitFor(() => guidancePlayback.mock.calls.length > 0, "the recovered guidance's playback acknowledgement");
+    expect(guidancePlayback.mock.calls).toEqual([[guidance]]);
+    expect(said.join(" ").split(WORDS.immediate)).toHaveLength(dropped ? 3 : 2);
+    if (!ended) {
+      await c.clock.advance(0);
+      await waitFor(() => m.hanging === 2, "the replacement worker's close call");
+      m.releaseClose();
+    }
+    await waitFor(() => run.done !== null, "the replacement worker's end");
+    await run.done;
+    if (ended) expect(said.join(" ").split(disclosure)).toHaveLength(2);
     expect((await c.calls.view(c.id))!.outcome).toMatchObject({ reason: "safety" });
   });
 

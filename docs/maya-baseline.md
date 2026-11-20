@@ -44,3 +44,12 @@ These are code defaults and request scopes. Record the actual model, effort, pro
 - Keep the routine targets from #1137 at median below 1,000 ms and p95 below 2,000 ms for useful audible output. Set and record a separate complex-explanation budget from matched device samples before comparing candidates. The fake clocks give no basis for a device budget.
 
 A faster result fails the comparison if it cuts off the child, uses filler as the endpoint, loses a required board update, or excludes failures. The credit hold leaves all device and hosted criteria open.
+
+## Matched routine-turn probe (#1140)
+
+```sh
+MAYA_BASELINE_LOG=on npm test -- src/lib/maya-checked-routine.test.ts -t '#1110' --disableConsoleIntercept > node_modules/.cache-maya-routine.log
+node scripts/maya-baseline-report.mjs node_modules/.cache-maya-routine.log
+```
+
+The probe uses the same fake proposal, reviewer responses, package and child input in both policies. It alternates the order of parent and candidate across three pairs per mode and review response. The parent path runs with the candidate off. The `held` case reproduces the historical false review refusal. The candidate discards the historical explain-back and gives the currently approved solved reply. Compare request counts, not parity of the historical and current wording. `voiceCallFinished` ends at the public voice call's return, not synthesis or playback. `chatFinished` ends at the public chat call's return. Both include in-process work with fakes and neither establishes device latency.

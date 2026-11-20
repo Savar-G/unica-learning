@@ -815,6 +815,13 @@ export function stepsStated(pkg: OperationPackage, sentences: readonly string[])
   return stepFacts(pkg).filter((st) => equationsOf(st.work).some((e) => [...e.operands, e.result].every((o) => o.q?.[1] === 1) && said.has(expressionKey(e.operands.map((o) => o.q![0]), e.ops)))).map((st) => st.id);
 }
 
+export function checkedSubtractionQuestion(pkg: OperationPackage, done: readonly string[], feedback: string | null, help: boolean): string {
+  const question = tutorKind(pkg).stepQuestion(pkg, done) ?? "What is the whole answer?";
+  const hint = !help ? null : !done.includes("ones") ? "Trade one ten for ten ones before subtracting the ones."
+    : !done.includes("tens") ? "Use the tens that are left after the trade." : "Put the tens and ones together.";
+  return [feedback, hint, question].filter(Boolean).join(" ");
+}
+
 /** Code's honest line when the model's message failed twice (D-345): one short line and the step's question. */
 export function tutorFallbackText(pkg: OperationPackage, done: readonly string[], solved: boolean, asked?: string | null): string {
   // Savar's call 2 (2026-11-15): no explain-back after the right final answer; ask whether the child wants another.

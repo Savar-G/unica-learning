@@ -175,7 +175,7 @@ function replayControls(s: TextFold, count = s.controls.length) {
     if (c.replaceTurn) session.turn = null;
     if (c.cancelled && event.type === "proposal") {
       const reading = event.proposal && typeof event.proposal === "object" ? (event.proposal as { reading?: unknown }).reading : undefined;
-      event = { type: "proposal", at: event.at, proposal: { reading } };
+      event = { type: "proposal", at: event.at, proposal: { reading }, priorityOnly: true };
     }
     const r = step(session, event);
     session = r.session;
@@ -251,8 +251,8 @@ function syncSafety(s: TextFold, at: number) {
   }
 }
 function receiveReading(s: TextFold, reading: unknown, at: number, gate?: unknown) {
-  // Invalid shape applies only the controller's priority reading. It cannot score or speak.
-  const r = controllerStep(s, { type: "proposal", at, proposal: { reading, ...(gate === undefined ? {} : { gate }) } });
+  // Apply the priority fields here. The complete proposal owns the response.
+  const r = controllerStep(s, { type: "proposal", at, proposal: { reading, ...(gate === undefined ? {} : { gate }) }, priorityOnly: true });
   const previous = s.session.safety.severity;
   s.session = r.session;
   syncSafety(s, at);
@@ -368,7 +368,7 @@ function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt
     }
     if (!applied.ok) {
       const reading = value && typeof value === "object" ? (value as { reading?: unknown }).reading : undefined;
-      controlEvent = { type: "proposal", at, proposal: { reading } };
+      controlEvent = { type: "proposal", at, proposal: { reading }, priorityOnly: true };
       r = step(s.session, controlEvent);
       r.refusal = { code: "invalid_proposal", reason: `The board refused batch ${e.batch.transactionId}: ${applied.refusal.code}`, allowed: nextActs(r.session).acts };
       break;
