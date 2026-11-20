@@ -420,9 +420,13 @@ export interface LearningEventRow {
   time_ms: number | null;
   evidence_kind: Database["public"]["Tables"]["learning_events"]["Row"]["evidence_kind"];
   evidence_id: string | null;
+  /** A related question after a call (#1144): the call question's event, its text and the help. */
+  related_event_id: string | null;
+  generated_question: string | null;
+  assistance: Database["public"]["Tables"]["learning_events"]["Row"]["assistance"];
 }
 
-const EVENT_COLUMNS = "id, occurred_at, source, question_source, workbook_id, workbook_page, workbook_question, assessment_id, assessment_question_id, skill_standard, result, stuck_step, mistake, hints, time_ms, evidence_kind, evidence_id";
+const EVENT_COLUMNS = "id, occurred_at, source, question_source, workbook_id, workbook_page, workbook_question, assessment_id, assessment_question_id, skill_standard, result, stuck_step, mistake, hints, time_ms, evidence_kind, evidence_id, related_event_id, generated_question, assistance";
 
 /** One child's current profile (public.child_profiles: admins read it), with the child and every event of the child, oldest first. */
 export interface ChildProfileDetail {
