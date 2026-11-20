@@ -41,7 +41,7 @@ jobs:
         timeout-minutes: 4
         with:
           persist-credentials: false
-          fetch-depth: ${{ matrix.shard == 1 && 0 || 1 }}
+          fetch-depth: ${{ matrix.shard == 1 && '0' || '1' }}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         timeout-minutes: 4
         with:
