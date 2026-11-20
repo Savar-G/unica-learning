@@ -1,3 +1,4 @@
+import type { DrawnFigure } from "./figure-data";
 import type { CurriculumId } from "@/lib/signup";
 import type { StoredWork } from "@/lib/strokes";
 import type { Certainty } from "./certainty";
@@ -71,7 +72,7 @@ export interface BarFigure {
 }
 
 /** Figures the test screen can draw. */
-export type Figure = BarFigure;
+export type Figure = BarFigure | DrawnFigure;
 
 /**
  * A question template. Its level on the K-8 scale is the grade where BC teaches it (grades.BC);

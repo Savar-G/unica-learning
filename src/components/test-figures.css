@@ -24,8 +24,31 @@
 .test-bars { margin: 4px 0 0; width: min(100%, 440px); }
 .test-bars svg { display: block; width: 100%; height: auto; }
 .test-bars line { stroke: var(--line); stroke-width: 1; }
-.test-bars line.is-major { stroke: var(--test-rule); }
+.test-bars line.is-major { stroke: var(--test-rule, var(--line)); }
 .test-bars-bar.is-a { fill: var(--sky); }
 .test-bars-bar.is-b { fill: var(--accent); }
 .test-bars-label { font: 500 15px var(--sans); fill: var(--ink); }
 .test-bars-num { font: 500 12px var(--mono); fill: var(--ink-2); }
+
+/* The figure scales with the question card. Axis labels and outlines remain readable on narrow screens. */
+.test-drawing { width: 100%; margin: 4px 0 0; color: var(--ink); }
+.test-drawing svg { display: block; width: 100%; height: auto; }
+.test-drawing :is(path, line, polyline, polygon, circle, ellipse, rect) { stroke: currentColor; }
+.test-drawing [stroke="none"] { stroke: none; }
+.test-drawing text { fill: currentColor; font: 600 14px var(--sans); text-anchor: middle; }
+.test-drawing .test-drawing-start { text-anchor: start; }
+.test-drawing .test-drawing-fill { fill: var(--sky); }
+.test-drawing .test-drawing-dark { fill: var(--ink); }
+.test-drawing .test-drawing-grid { stroke: var(--test-rule, var(--line)); }
+.test-drawing .test-drawing-minor { stroke-width: 0.6; }
+.test-drawing .test-drawing-guide { stroke-dasharray: 3 3; }
+
+/* Explanation choices need the whole row at phone widths. */
+.test-root .test-response-explanations .test-choices { grid-template-columns: 1fr; }
+.test-root .test-response-explanations .test-choice { font-size: 20px; min-height: 54px; }
+
+@media (max-width: 480px) {
+  .test-drawing + .test-response .test-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .test-drawing + .test-response .test-choice { min-width: 0; gap: 8px; padding-inline: 12px; font-size: clamp(18px, 5vw, 22px); }
+  .test-drawing + .test-response-explanations .test-choices { grid-template-columns: 1fr; }
+}

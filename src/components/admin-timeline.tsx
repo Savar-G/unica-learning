@@ -5,7 +5,7 @@
 import { duration, levelText, whenExact, type AnswerLine, type ShownLine } from "@/lib/admin-view";
 import { Chip } from "@/components/admin";
 import { RecordFacts } from "@/components/admin-records";
-import { BarGraph, ChoiceFace, PromptText } from "@/components/test-figures";
+import { ChoiceFace, PromptText, QuestionFigure } from "@/components/test-figures";
 import "./admin-timeline.css";
 
 const NOT_RECORDED = "Not recorded";
@@ -48,7 +48,7 @@ export function QuestionTimeline({ lines }: { lines: AnswerLine[] }) {
         <span className="adm-mono">{a.templateId ?? "no template"}</span> · BC {a.standard ?? "-"}
       </p>
       <div className="adm-timeline-q">{a.prompt === null ? <p className="adm-note">The question is not in the stored test ({a.questionId}).</p> : <p><PromptText text={a.prompt} /></p>}
-        {a.figure?.kind === "bars" && <BarGraph figure={a.figure} />}
+        {a.figure && <QuestionFigure figure={a.figure} />}
       </div>
       {a.choices ? <ol className="adm-choices" aria-label="Choices in the order shown">{a.choices.map((c) => <li key={c}>
         <ChoiceFace text={c} />

@@ -4,15 +4,16 @@ import {
   storedTest, submitAnswer, templateSkills, toPublicQuestion,
   type Question, type Session,
 } from "@/lib/assessment";
-import { adaptiveBank, ALL_TEMPLATES } from "./bank";
+import { adaptiveBank, ALL_TEMPLATES, ASSESSMENT_TEMPLATES } from "./bank";
 
 const bc = adaptiveBank("BC");
 const byId = new Map(bc.map((t) => [t.id, t]));
+const catalogue = new Map(ASSESSMENT_TEMPLATES.map((t) => [t.id, t]));
 const originalById = new Map(ALL_TEMPLATES.map((t) => [t.id, t]));
 const seeds = Array.from({ length: 50 }, (_, i) => i * 7919);
 
 function drawn(id: string, seed = 1) {
-  const template = byId.get(id);
+  const template = catalogue.get(id);
   if (!template) throw new Error(`Missing test template ${id}`);
   return fillTemplate(template, seed);
 }
@@ -43,7 +44,7 @@ describe("new adaptive question pool", () => {
       ["2-certain-possible", "1-never-sometimes-always"],
       ["g35-5-rectangle-area", "g67-5-rectangle-area"],
       ["g67-6-mixed-to-improper", "g35-6-mixed-to-improper"],
-      ["g67-8-cylinder-volume-revised", "g67-7-cylinder-volume"],
+      ["8-cylinder-volume-by-hand", "g67-7-cylinder-volume"],
     ];
     for (const [kept, retired] of pairs) {
       expect(byId.has(kept), kept).toBe(true);
@@ -54,7 +55,7 @@ describe("new adaptive question pool", () => {
     expect(byId.has("k-make-balance")).toBe(false);
     expect(byId.has("k-where-is-revised")).toBe(true);
     // Ontario's Grade 7 cylinder filing continues to get a rounded variant.
-    expect(adaptiveBank("ON").some((t) => t.id === "g67-7-cylinder-volume-revised" && t.grades.ON === 7)).toBe(true);
+    expect(adaptiveBank("ON").some((t) => t.id === "7-cylinder-volume-by-hand" && t.grades.ON === 7)).toBe(true);
   });
 
   it("moves the verified integer equations and two-operation rule to their mapped BC standards", () => {
@@ -151,7 +152,7 @@ describe("new adaptive question pool", () => {
 
   it("keeps the strand rotation and fills the block when the difficulty target is impossible", () => {
     const ids = new Set([
-      "g67-8-hypotenuse", "g67-8-cylinder-volume-revised", "g67-8-root-between",
+      "8-hypotenuse-by-hand", "8-cylinder-volume-by-hand", "g67-8-root-between",
       "g67-8-add-fractions", "g67-8-negative-coefficient", "g67-8-small-percent",
     ]);
     const hardBank = bc.filter((t) => ids.has(t.id));

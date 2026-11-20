@@ -7,6 +7,7 @@ import { GRADE_1_2_BANK as GRADES_1_2 } from "./grades-1-2";
 import { GRADE_3_5_BANK as GRADES_3_5 } from "./grades-3-5";
 import { GRADE_6_7_BANK as GRADES_6_7 } from "./grades-6-7";
 import { DIFFICULTY } from "./difficulty";
+import { visualRevisions, VISUAL_ADDITIONS } from "./visual-calibration";
 import { WORDING } from "./wording";
 import { BC_DIFFICULTY, BC_RETIRED_TEMPLATES, calibratedTemplates } from "./calibration";
 
@@ -38,7 +39,9 @@ export const BANKS: Record<GradeBandId, readonly BankTemplate[]> = {
 export const ALL_TEMPLATES: readonly BankTemplate[] = [...flagged.values()];
 
 const { plainTemplates, revisions } = calibratedTemplates(ALL_TEMPLATES);
-const newTemplates = [...plainTemplates, ...revisions.map(({ template }) => template)];
+const calibrated = [...plainTemplates, ...revisions.map(({ template }) => template)];
+const visuals = visualRevisions([...ALL_TEMPLATES, ...calibrated]);
+const newTemplates = [...calibrated, ...visuals.values(), ...VISUAL_ADDITIONS];
 const newById = new Map(newTemplates.map((t) => [t.id, t]));
 const newBySource = new Map(revisions.map((revision) => [revision.source, revision]));
 
@@ -54,7 +57,8 @@ export function adaptiveBank(province: TaggedProvince) {
     const revision = newBySource.get(original.id);
     return [revision && (province === "BC" || revision.allProvinces) ? revision.template : original];
   });
-  return province === "BC" ? [...active, ...plainTemplates] : active;
+  const eligible = province === "BC" ? [...active, ...plainTemplates, ...VISUAL_ADDITIONS] : active;
+  return eligible.map((template) => visuals.get(template.id) ?? template);
 }
 
 /** How hard a template is for a child at its grade (D-282); "medium" for an id no bank holds, as in a test's own bank. */

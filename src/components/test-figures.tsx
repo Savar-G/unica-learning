@@ -2,7 +2,8 @@
 // rows of a picture graph lined up, a choice that is a line drawn as a line, and a bar graph. Fonts draw ▬ as a dash,
 // ▮ tiny and ■ smaller than ▲, so the screen draws them itself.
 import type { CSSProperties, ReactNode } from "react";
-import { isLineChoice, type BarFigure } from "@/lib/assessment";
+import { isLineChoice, type BarFigure, type Figure } from "@/lib/assessment";
+import { DrawnQuestionFigure } from "./test-drawings";
 import "./test-base.css";
 import "./test-figures.css";
 
@@ -81,7 +82,7 @@ export function ChoiceFace({ text }: { text: string }) {
 }
 
 /** A bar graph to read: one bar per row against a scale from 0, with a line at every unit. */
-export function BarGraph({ figure }: { figure: BarFigure }) {
+function BarGraph({ figure }: { figure: BarFigure }) {
   const top = Math.max(...figure.bars.map((b) => b.value));
   const max = Math.ceil((top + 1) / 2) * 2;
   const step = max > 12 ? 2 : 1;
@@ -108,4 +109,8 @@ export function BarGraph({ figure }: { figure: BarFigure }) {
       </svg>
     </figure>
   );
+}
+
+export function QuestionFigure({ figure }: { figure: Figure }) {
+  return figure.kind === "bars" ? <BarGraph figure={figure} /> : <DrawnQuestionFigure figure={figure} />;
 }

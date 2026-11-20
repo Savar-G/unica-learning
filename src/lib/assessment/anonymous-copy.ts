@@ -9,10 +9,11 @@
 // (supabase/migrations/20261016_test_copies_without_names.sql).
 import { UNKNOWN_RESPONSE } from "./adaptive";
 import { ASSESSMENT_TEMPLATES } from "./bank";
+import { POLYGONS, type Point } from "./figure-data";
 import { isGrade } from "./grades";
 import { fromRemovedRound } from "./session";
 import { INTERESTS, LEARNING_GOALS, LEARNING_STYLES, MATH_FEELINGS, WEEKLY_TIMES } from "@/lib/learning-style";
-import type { Placement, Province, Route } from "./types";
+import type { Figure, Placement, Province, Route } from "./types";
 
 /**
  * The version of the copy's JSON. A change that a reader of stored copies must know about adds one. 2 (D-145): no
@@ -71,7 +72,7 @@ export interface QuestionCopy {
   prompt: string | null;
   /** The choices in the order shown; null for a number question. */
   choices: string[] | null;
-  figure: { kind: "bars"; bars: { label: string; value: number }[] } | null;
+  figure: Figure | null;
   values: Record<string, number>;
   answer: string | null;
   showWork: boolean;
@@ -195,11 +196,82 @@ function storedQuestions(stored: unknown): Map<string, Raw> {
   return found;
 }
 
+function pointOf(value: unknown): Point | null {
+  if (!Array.isArray(value) || value.length !== 2) return null;
+  const [x, y] = value.map(num);
+  return x === null || y === null ? null : [x, y];
+}
+
 function figureOf(v: unknown): QuestionCopy["figure"] {
   const f = record(v);
-  if (f?.kind !== "bars" || !Array.isArray(f.bars)) return null;
-  const bars = f.bars.map((b) => ({ label: str(record(b)?.label), value: num(record(b)?.value) }));
-  return bars.every((b) => b.label !== null && b.value !== null) ? { kind: "bars", bars: bars as { label: string; value: number }[] } : null;
+  const kind = f?.kind;
+  if (!f) return null;
+  switch (kind) {
+    case "bars": {
+      if (!Array.isArray(f.bars)) return null;
+      const bars = f.bars.flatMap((entry) => {
+        const b = record(entry), label = str(b?.label), value = num(b?.value);
+        return label === null || value === null ? [] : [{ label, value }];
+      });
+      return bars.length === f.bars.length ? { kind, bars } : null;
+    }
+    case "clock": {
+      const hour = num(f.hour), minute = num(f.minute);
+      return hour !== null && minute !== null ? { kind, hour, minute } : null;
+    }
+    case "ruler": {
+      const end = num(f.end);
+      return end === null ? null : { kind, end };
+    }
+    case "number-line": {
+      const intervals = num(f.intervals), mark = num(f.mark);
+      return intervals !== null && mark !== null ? { kind, intervals, mark } : null;
+    }
+    case "polygon": {
+      const shape = oneOf(f.shape, POLYGONS);
+      return shape ? { kind, shape } : null;
+    }
+    case "right-triangle": {
+      const base = num(f.base), height = num(f.height), hypotenuse = num(f.hypotenuse);
+      if (base === null) return null;
+      if (f.height === null && hypotenuse !== null) return { kind, base, height: null, hypotenuse };
+      return f.hypotenuse === null && height !== null ? { kind, base, height, hypotenuse: null } : null;
+    }
+    case "circle": {
+      const measurement = oneOf(f.measurement, ["radius", "diameter"] as const), length = num(f.length);
+      return measurement && length !== null ? { kind, measurement, length } : null;
+    }
+    case "cylinder": {
+      const radius = num(f.radius), height = num(f.height);
+      return radius !== null && height !== null ? { kind, radius, height } : null;
+    }
+    case "net": case "coordinate-grid": {
+      const entries = kind === "net" ? f.cells : f.points;
+      if (!Array.isArray(entries)) return null;
+      const points = entries.map(pointOf).filter((point) => point !== null);
+      if (points.length !== entries.length) return null;
+      return kind === "net" ? { kind, cells: points } : { kind, points };
+    }
+    case "line-plot": {
+      if (!Array.isArray(f.heights)) return null;
+      const heights = f.heights.map(num).filter((height) => height !== null);
+      return heights.length === f.heights.length ? { kind, heights } : null;
+    }
+    case "grouped-bars": {
+      if (!Array.isArray(f.counts) || f.counts.length !== 2) return null;
+      const scale = num(f.scale), first = pointOf(f.counts[0]), second = pointOf(f.counts[1]);
+      return scale !== null && first && second ? { kind, scale, counts: [first, second] } : null;
+    }
+    case "truncated-bars": {
+      const start = num(f.start), first = num(f.first), second = num(f.second);
+      return start !== null && first !== null && second !== null ? { kind, start, first, second } : null;
+    }
+    case "circle-graph": {
+      const percent = num(f.percent);
+      return percent === null ? null : { kind, percent };
+    }
+    default: return null;
+  }
 }
 
 const valuesOf = (v: unknown): Record<string, number> =>

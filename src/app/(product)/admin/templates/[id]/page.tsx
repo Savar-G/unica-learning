@@ -4,6 +4,7 @@ import { AdminFrame } from "@/components/admin-frame";
 import { BarList, Empty, PercentBar, SectionHead, Tiles } from "@/components/admin-blocks";
 import { CountedNote, TemplateFilterForm, TemplateReviewNote, demoHref, templateQuery } from "@/components/admin-templates";
 import { RecordFacts } from "@/components/admin-records";
+import { QuestionFigure } from "@/components/test-figures";
 import { ASSESSMENT_TEMPLATES, BANKS, BC_SKILL_MAP, MISCONCEPTIONS, STRAND_NAMES, fillTemplate, type MisconceptionId } from "@/lib/assessment";
 import { requireAdmin, templateStats } from "@/lib/admin-store";
 import { showTestFamilies } from "@/lib/admin-test-families-server";
@@ -85,7 +86,7 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
             return (
               <li key={seed}>
                 <p className="ap-sample-q">{q.prompt}</p>
-                {q.figure && <p className="adm-note">With a bar graph: {q.figure.bars.map((b) => `${b.label} ${b.value}`).join(", ")}</p>}
+                {q.figure && <QuestionFigure figure={q.figure} />}
                 {q.choices
                   ? <ul className="ap-choices" aria-label="Choices">{q.choices.map((c) => <li key={c} className={String(c) === String(q.answer) ? "is-right" : undefined}>{c}</li>)}</ul>
                   : null}

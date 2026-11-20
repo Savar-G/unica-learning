@@ -23,7 +23,7 @@ import { leaveDestination, questionButtons, type LeaveAction, type QuestionButto
 import { FactsSection } from "./facts";
 import { breakSeen, loadBreak, markBreakSeen, saveBreak, TestBreak } from "./test-break";
 import { Choices } from "./test-choices";
-import { BarGraph, ChoiceFace, PromptText } from "./test-figures";
+import { ChoiceFace, PromptText, QuestionFigure } from "./test-figures";
 import { TestHelp } from "./test-help";
 import { AdaptiveBreakProgress, TestProgress } from "./test-progress";
 import { BackLabel, NextLabel, TestCheck, TestSteps } from "./test-steps";
@@ -954,8 +954,8 @@ function Question({ testId, typing, question, initial, initialBoard, storedWork,
         <div className="test-qrow">
           <h1 id="test-q-title" ref={heading} tabIndex={-1} className="test-prompt"><PromptText text={question.prompt} /></h1>
         </div>
-        {question.figure?.kind === "bars" && <BarGraph figure={question.figure} />}
-        <div className="test-response">
+        {question.figure && <QuestionFigure figure={question.figure} />}
+        <div className={question.figure?.kind === "truncated-bars" ? "test-response test-response-explanations" : "test-response"}>
           {question.format === "choice" ? (
             <Choices options={shown.map((c, i) => ({ value: c, label: <ChoiceFace text={c} />, name: names[i] }))} value={value || null} onChange={setValue} labelledBy="test-q-title" />
           ) : (
