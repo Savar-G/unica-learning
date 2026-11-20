@@ -23,6 +23,11 @@ export const PRODUCT_EVENTS = {
   "feedback.received": { failure: false, alert: true },
   "feedback.failed": { failure: true, alert: true },
   "dashboard.request_failed": { failure: true, alert: true },
+  // Send the job counts directly. A Sentry issue would also notify Slack through the project rule.
+  "workbook.job_failed": { failure: false, alert: true },
+  "workbook.job_stalled": { failure: false, alert: true },
+  "workbook.job_waiting": { failure: false, alert: true },
+  "workbook.alert_check_failed": { failure: true, alert: false },
 } as const;
 export type ProductCode = keyof typeof PRODUCT_EVENTS;
 export interface ProductEvent { code: ProductCode; attributes: Record<string, string | number> }

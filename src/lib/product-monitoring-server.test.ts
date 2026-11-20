@@ -50,6 +50,20 @@ it("creates fixed issue codes for real failures and does not turn safety signals
   expect(s.log).toHaveBeenCalledTimes(2); expect(s.tasks).toHaveLength(2);
 });
 
+it("sends one workbook alert with a count and admin link, without creating a second Sentry alert", async () => {
+  const s = setup();
+  s.observer({ code: "workbook.job_failed", attributes: { count: 2, jobId: "PRIVATE", error: "PRIVATE" } });
+  expect(s.issue).not.toHaveBeenCalled();
+  expect(s.log).toHaveBeenCalledExactlyOnceWith({ code: "workbook.job_failed", attributes: { count: 2 } });
+  expect(s.tasks).toHaveLength(1);
+  await s.tasks[0]();
+  expect(s.fetch).toHaveBeenCalledOnce();
+  expect(JSON.parse(String(s.fetch.mock.calls[0][1]?.body))).toEqual({
+    text: "workbook.job_failed count=2 https://unicalearning.com/admin/workbooks",
+    unfurl_links: false, unfurl_media: false,
+  });
+});
+
 it.each(["network", "refused", "timeout"])("contains %s delivery failure, without a recursive Slack send or private diagnostics", async (failure) => {
   vi.useFakeTimers(); const s = setup();
   if (failure === "network") s.fetch.mockRejectedValue(Error(webhook + " PRIVATE"));
