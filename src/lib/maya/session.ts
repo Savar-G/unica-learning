@@ -5919,8 +5919,17 @@ function regroupingHelp(turn: ExchangeTurn): ExchangeTurn["support"] {
 function unconfirmedRegroupingHelp(s: Session): NonNullable<ExchangeTurn["support"]>[] {
   const lesson = s.checkedExchange;
   if (lesson?.progression !== 1) return [];
-  return lesson.turns.filter((turn) => !turn.transfer && turn.sent && !turn.support && turn.playback !== "finished")
-    .map(regroupingHelp).filter((help) => help !== undefined);
+  return lesson.turns.filter((turn) => !turn.transfer).map(unconfirmedHelp).filter((help) => help !== undefined);
+}
+
+/**
+ * Help a sent reply may have given beyond what is confirmed, while its voice playback has not finished. A shown board
+ * batch confirms only its own part: the starting blocks confirm a hint, not the trade drawing the child cut off.
+ */
+function unconfirmedHelp(turn: ExchangeTurn): ExchangeTurn["support"] {
+  if (!turn.sent || turn.playback === "finished") return undefined;
+  const help = regroupingHelp(turn);
+  return help && (!turn.support || (turn.support === "hinted" && help === "demonstrated")) ? help : undefined;
 }
 
 /**
@@ -6036,7 +6045,7 @@ function transferQuestionAction(s: Session): ExchangeAction {
 function transferAssistance(s: Session): RegroupingObservation["assistance"] {
   const turns = s.checkedExchange?.turns.filter((turn) => turn.transfer) ?? [];
   if (turns.some((turn) => turn.support === "demonstrated")) return "demonstrated";
-  const unconfirmed = turns.filter((turn) => turn.sent && !turn.support && turn.playback !== "finished").map(regroupingHelp);
+  const unconfirmed = turns.map(unconfirmedHelp);
   // A demonstration the child may have heard part of is stronger help than a finished hint: the help is unknown.
   if (unconfirmed.includes("demonstrated")) return "uncertain";
   if (turns.some((turn) => turn.support === "hinted")) return "hinted";

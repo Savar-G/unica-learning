@@ -585,6 +585,33 @@ it("keeps the original question's help unconfirmed when the child cut off a demo
   expect(sentences).not.toMatch(/small hint/);
 });
 
+it("keeps help unconfirmed when the board showed the starting blocks but the child cut off the trade", async () => {
+  const { calls, events, store } = setup();
+  const question = { ...SAMPLE_PACKAGES["subtract-52-28"], ref: { source: "workbook" as const, workbookId: parentId, page: 1, question: 1 } };
+  const started = ok(await calls.startVoice({ ...input, kind: "family", package: question }));
+  const opened = await calls.openVoice(started.view.id, { speechToText: "fake", voice: "fake" }, null);
+  if (!opened.ok) throw Error(opened.error);
+  const call = opened.call;
+  const observe = (board: Batch) => ({ kind: "batch" as const, batchId: board.transactionId, commands: [...board.commands] });
+  const opening = (await call.start()).boardCues![0].batch;
+  const show = await call.child("Show me how to regroup.");
+  const [blocks, trade] = show.boardCues!.map((cue) => cue.batch);
+  expect(trade?.after).toEqual([blocks.transactionId]);
+  await call.observeBoard({ events: [observe(opening), observe(blocks), { kind: "cancelled", batchIds: [trade.transactionId] }] });
+  await call.exchangePlayback!(show.exchangeTurnId!, "interrupted");
+  await call.child("My answer is 24.");
+  await call.end({ reason: "child_stopped" });
+  const record = store.rows()[0];
+  expect(checkTrace(record.trace)).toMatchObject({ ok: true });
+  expect(record.trace?.checkedExchange?.turns.find(t => t.observation?.skill === "difference")?.observation).toMatchObject({ assistance: "uncertain" });
+  expect(record.outcome).toMatchObject({ reason: "solved", helpUnconfirmed: true });
+  const learned = await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" });
+  expect(learned).toMatchObject([{ result: "right_with_help" }]);
+  const sentences = codeSentences(noteFacts({ outcome: record.outcome!, event: learned[0], package: question, question: question.ref })).join(" ");
+  expect(sentences).toContain("The amount of help is unknown.");
+  expect(sentences).not.toMatch(/small hint/);
+});
+
 it("does not credit a place value count with an unresolved transcript alternative", async () => {
   const { calls } = setup();
   const started = ok(await calls.startVoice({ ...input, kind: "family" }));
