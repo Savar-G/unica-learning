@@ -471,7 +471,7 @@ export interface StartInput {
 
 export type CallResult =
   | { ok: true; view: CallView; output: { say: string[]; newBatches: number; safetyMessage: string | null; exchangeTurnId?: string } }
-  | { ok: false; error: "not_found" | "not_test_family" | "invalid_question" | "invalid_input" | "conflict" | "model_unavailable" | "voice_call" | Exclude<SpendState, "open"> };
+  | { ok: false; error: "not_found" | "not_test_family" | "invalid_question" | "invalid_input" | "conflict" | "board_changed" | "model_unavailable" | "voice_call" | Exclude<SpendState, "open"> };
 
 /** What reached the child after one input of a voice call. */
 export interface VoiceTurn {
@@ -2090,7 +2090,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         const view = recordView(record);
         if (view) return { ok: true, view, output: { say: [], newBatches: 0, safetyMessage: null } };
       }
-      if (record.revision !== revision) return { ok: false, error: "conflict" };
+      // #1152: a tap read from an older view is not applied. The screen tells the child the board changed.
+      if (record.revision !== revision) return { ok: false, error: input.type === "select" ? "board_changed" : "conflict" };
       if (record.status === "ended") {
         if (input.type !== "end" || !record.trace) return { ok: false, error: "conflict" };
         // An ended call: send the alert, write the event and rebuild the profile when an earlier try did not.

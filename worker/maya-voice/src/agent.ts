@@ -27,7 +27,7 @@ import type { FinishOptions } from "@/lib/maya-text";
 import type { VoiceCall, VoiceSay, VoiceTurn } from "@/lib/maya-call";
 import { sameExchangeTarget, type ExchangeTarget } from "@/lib/maya/checked-exchange";
 import type { SelectionTarget } from "@/lib/maya/board-selection";
-import { childExchangeTarget } from "@/lib/maya/session";
+import { childExchangeTarget, selectionSeen } from "@/lib/maya/session";
 import { speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-speech";
 import { CuePlaybackOutput } from "./cue-playback";
 import { earlyRest, type EarlyRest } from "./early-speech";
@@ -1760,7 +1760,7 @@ export class VoiceCallRun {
    */
   async select(target: SelectionTarget): Promise<"accepted" | "busy" | "done" | "stale"> {
     if (!this.childHere || this.finishing || this.deadlineFinish || !this.call.select) return "stale";
-    if (this.call.session.boardSelections?.some((record) => record.selectionId === target.selectionId)) return "done";
+    if (selectionSeen(this.call.session, target.selectionId)) return "done";
     if (this.exchangeAdmission || this.exchangeBoard) return "busy";
     const generation = this.generation;
     const replies = this.replies;
@@ -1791,7 +1791,7 @@ export class VoiceCallRun {
         this.closeTurn(prompt.pace);
         if (prompt.speech && !prompt.speech.interrupted) prompt.speech.interrupt(true);
       });
-      if (!turn) return this.call.session.boardSelections?.some((record) => record.selectionId === target.selectionId) ? "done" : "stale";
+      if (!turn) return selectionSeen(this.call.session, target.selectionId) ? "done" : "stale";
       // Maya already asked the child to point again: a repeated stale tap adds nothing.
       if (!turn.say.length && !turn.ended) return "done";
       release();

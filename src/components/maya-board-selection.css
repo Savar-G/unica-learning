@@ -2,6 +2,8 @@
 .board-pick-target { fill: rgba(51, 102, 240, 0.06); stroke: #3366f0; stroke-width: 4; stroke-dasharray: 14 10; cursor: pointer; pointer-events: all; }
 .board-pick-target:hover { fill: rgba(51, 102, 240, 0.14); }
 .board-pick-selected { fill: rgba(51, 102, 240, 0.08); stroke: #3366f0; stroke-width: 6; pointer-events: none; }
+/* Pointing mode: the outlined object takes a tap like the others. */
+.board-pick-target.board-pick-selected { stroke-dasharray: none; pointer-events: all; }
 /* While the child points, a tap reaches Maya's objects, not the pen layer above them. */
 .desk-canvas[data-pointing] .child-ink { pointer-events: none; }
 .desk-canvas[data-pointing] .maya-board { touch-action: manipulation; }

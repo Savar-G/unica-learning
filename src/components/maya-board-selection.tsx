@@ -5,6 +5,7 @@
 // object of the last answered tap keeps an outline while the board is the one the child pointed at.
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Batch, Rect } from "@/lib/board";
+import type { PlayStep } from "@/lib/board-svg";
 import { selectableObjects, type SelectedObject, type SelectionOffer, type SelectionTarget } from "@/lib/maya/board-selection";
 import "./maya-board-selection.css";
 
@@ -12,9 +13,22 @@ export interface SelectionControl {
   offer?: SelectionOffer;
   /** Maya's batches on this board, in order: the objects come from the commands that drew them. */
   batches: readonly Batch[];
+  /** What the board applied: only objects it drew are offered (a batch the board refused draws nothing). */
+  steps: readonly PlayStep[];
   selected?: SelectedObject;
   disabled?: boolean;
-  submit(target: SelectionTarget): Promise<boolean>;
+  /** "changed": the call moved on since this view (the tap was not applied). */
+  submit(target: SelectionTarget): Promise<boolean | "changed">;
+}
+
+/** The objects with at least one stroke still on the board after these steps. */
+export function drawnObjects(steps: readonly PlayStep[]): Set<string> {
+  const owner = new Map<string, string>();
+  for (const step of steps) {
+    for (const path of step.drawn) owner.set(path.id, path.objectId);
+    for (const id of step.erased ?? []) owner.delete(id);
+  }
+  return new Set(owner.values());
 }
 
 /** A box around each object Maya's board paints now, in SVG units (MayaBoard's `overlay`). */
@@ -30,8 +44,11 @@ export function useBoardSelection(control: SelectionControl | undefined): {
 } {
   const [pointing, setPointing] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(false);
-  const objects = useMemo(() => selectableObjects(control?.batches ?? []), [control?.batches]);
+  const [problem, setProblem] = useState<"error" | "changed" | null>(null);
+  const objects = useMemo(() => {
+    const drawn = drawnObjects(control?.steps ?? []);
+    return selectableObjects(control?.batches ?? []).filter((o) => drawn.has(o.objectId));
+  }, [control?.batches, control?.steps]);
   const offer = control?.offer;
   const active = !!control && !!offer && objects.length > 0;
   const selected = control?.selected && objects.find((o) => o.objectId === control.selected!.objectId && o.batchId === control.selected!.batchId);
@@ -49,12 +66,13 @@ export function useBoardSelection(control: SelectionControl | undefined): {
   const pick = async (objectId: string, batchId: string) => {
     if (!offer || blocked) return;
     setBusy(true);
-    setError(false);
+    setProblem(null);
     try {
-      const ok = await control.submit({ ...offer, objectId, batchId, selectionId: newTapId() });
-      setError(!ok);
-      if (ok) setPointing(false);
-    } catch { setError(true); }
+      const result = await control.submit({ ...offer, objectId, batchId, selectionId: newTapId() });
+      // A changed board keeps pointing mode on, so the child can point again at once.
+      setProblem(result === "changed" ? "changed" : result ? null : "error");
+      if (result === true) setPointing(false);
+    } catch { setProblem("error"); }
     finally { setBusy(false); }
   };
 
@@ -67,7 +85,8 @@ export function useBoardSelection(control: SelectionControl | undefined): {
         if (!pointingNow && !isSelected) return null;
         return <rect
           key={o.objectId}
-          className={isSelected ? "board-pick-selected" : "board-pick-target"}
+          // In pointing mode every object takes a tap, the outlined one too.
+          className={pointingNow ? `board-pick-target${isSelected ? " board-pick-selected" : ""}` : "board-pick-selected"}
           data-object={o.objectId}
           x={box.x - PAD} y={box.y - PAD} width={box.w + 2 * PAD} height={box.h + 2 * PAD} rx={12}
           onPointerUp={pointingNow ? (e) => { e.stopPropagation(); void pick(o.objectId, o.batchId); } : undefined}
@@ -90,7 +109,8 @@ export function useBoardSelection(control: SelectionControl | undefined): {
         </ul>
       </>}
       {selected && !pointingNow && <p role="status">You pointed to: {selected.label}</p>}
-      {error && <p role="status">Maya could not take that. Try again.</p>}
+      {problem === "changed" && <p role="status">The board changed. Point to the part again.</p>}
+      {problem === "error" && <p role="status">Maya could not take that. Try again.</p>}
     </div>
   );
   return { pointing: pointingNow, ...(active || selected ? { overlay } : {}), panel };

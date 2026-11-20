@@ -348,7 +348,8 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
       } else setUncertain(true);
     }
     // The message cap and Maya's spending cap (D-290) are told by the usage, not as an error.
-    if (answer.error && !["cap", "week_used", "paused"].includes(answer.error)) throw new ChatRefusal(answer.errorLine ?? ERROR);
+    // #1152: a tap read from an older view is told apart, so the board asks the child to point again.
+    if (answer.error && !["cap", "week_used", "paused", "board_changed"].includes(answer.error)) throw new ChatRefusal(answer.errorLine ?? ERROR);
     setError(null);
     return answer;
   }, []);
@@ -480,16 +481,17 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
     finally { requestBusy.current = false; if (generation === epoch.current) setBusy(false); }
   };
   /** #1152: the child points to a board object. Code answers it in the chat; no model request and no typed message. */
-  const select = async (target: SelectionTarget): Promise<boolean> => {
+  const select = async (target: SelectionTarget): Promise<boolean | "changed"> => {
     if (!chat || chat.ended || chat.pending || pending.current || requestBusy.current || usage?.left === 0) return false;
     requestBusy.current = true;
     setBusy(true);
     const generation = epoch.current;
     const reported = fatesFor(chat.id).fates ?? [];
-    // The child pointed at an object this tab's board shows: its batch is on the screen.
-    const fates = [...reported.filter((f) => f.batchId !== target.batchId), { batchId: target.batchId, fate: "shown" }];
+    // The child pointed at an object this tab's board drew. The board's own receipt for its batch stands.
+    const fates = reported.some((f) => f.batchId === target.batchId) ? reported : [...reported, { batchId: target.batchId, fate: "shown" }];
     try {
       const reply = await request({ type: "select", id: chat.id, revision: chat.revision, target, fates }, generation);
+      if (reply?.error === "board_changed") return "changed";
       return !!reply?.chat && !reply.error;
     } catch { return false; }
     finally { requestBusy.current = false; if (generation === epoch.current) setBusy(false); }
@@ -553,7 +555,7 @@ export function ChatBoard({ chat, still, carry, restore, onBoard, onExchange, ex
   onBoard?: (history: BoardHistory) => void;
   onExchange?: (target: ExchangeTarget) => Promise<boolean>;
   exchangeDisabled?: boolean;
-  onSelect?: (target: SelectionTarget) => Promise<boolean>;
+  onSelect?: (target: SelectionTarget) => Promise<boolean | "changed">;
 }) {
   // Read once, when the board starts: the board takes it only then.
   const restored = useMemo(() => (Array.isArray(restore) && restore.length > 0 ? historyFromLog(restore, chat.batches) : null), [restore, chat.batches]);

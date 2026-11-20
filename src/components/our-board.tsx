@@ -146,7 +146,7 @@ export interface OurBoardProps {
   /** Where the board's draft is kept: the workbook, its page and the question. */
   at: { book: string; page: number; question: number | null };
   /** A chat with Maya (#534): the board is the chat's, with her replies' batches; its draft is kept by the chat's id. */
-  chat?: { id: string; batches: readonly Batch[]; carry?: { book: string; page: number; question: number | null }; exchange?: ExchangeControl; exchangeResult?: string; selection?: SelectionControl };
+  chat?: { id: string; batches: readonly Batch[]; carry?: { book: string; page: number; question: number | null }; exchange?: ExchangeControl; exchangeResult?: string; selection?: Omit<SelectionControl, "steps"> };
   /** Hears every change of the board this tab holds (a chat sends it to the call). */
   onChange?: (history: BoardHistory) => void;
   /**
@@ -497,7 +497,7 @@ function LiveBoard({ question, chat, onChange, restore, label, caption, still, d
   const showExchangeResult = chat?.exchangeResult && lastMaya?.batchId === chat.exchangeResult;
   const selection = chat?.selection;
   const pick = useBoardSelection(selection && role === "holder"
-    ? { ...selection, submit: (target) => tab.current?.owns() ? selection.submit(target) : Promise.resolve(false) } : undefined);
+    ? { ...selection, steps: steps ?? [], submit: (target) => tab.current?.owns() ? selection.submit(target) : Promise.resolve(false) } : undefined);
   return (
     <>
       <section className="desk-board" id={chat ? "chat-board" : undefined} aria-labelledby="desk-board-title">

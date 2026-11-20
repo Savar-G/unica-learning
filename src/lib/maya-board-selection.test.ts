@@ -201,3 +201,45 @@ it("tells the voice worker to stop Maya only for a tap on a current object", asy
   expect(stops).toEqual([true, false]);
   expect(call.session.boardSelections?.map((s) => s.result)).toEqual(["answer", "changed"]);
 });
+
+it("answers each tap once for the whole call, even after more than twenty newer taps", async () => {
+  const { calls } = setup();
+  const started = ok(await calls.startVoice({ ...input, kind: "family" }));
+  const opened = await calls.openVoice(started.view.id, { speechToText: "fake", voice: "fake" }, null);
+  if (!opened.ok) throw Error(opened.error);
+  const call = opened.call;
+  const first = (await call.start()).boardCues![0].batch;
+  const show = (await call.child("How do I regroup?")).boardCues![0].batch;
+  await call.observeBoard({ events: [first, show].map((b) => ({ kind: "batch" as const, batchId: b.transactionId, commands: [...b.commands] })) });
+  const tapOn = async () => ({ ...(await calls.view(started.view.id))!.selection!, objectId: "exchange-before", batchId: show.transactionId, selectionId: tap() });
+  const original = await tapOn();
+  expect((await call.select!(original))!.say[0]).toMatch(/^You pointed to the blocks/);
+  for (let i = 0; i < 21; i++) expect((await call.select!(await tapOn()))!.say[0]).toMatch(/^You pointed to the blocks/);
+  // The original request arrives again, late: Maya does not answer it a second time.
+  expect(await call.select!(original)).toBeNull();
+});
+
+it("keeps the child's name out of the saved trace when it is in a tap's request fields", async () => {
+  const { calls, store } = setup();
+  const chat = ok(await calls.start({ ...input, childName: "Zebulon" }));
+  const prompt = ok(await calls.input(chat.view.id, chat.view.revision, { type: "child", text: "How do I regroup?" }, "Zebulon"));
+  const fates = prompt.view.batches.map((b) => ({ batchId: b.transactionId, fate: "shown" as const }));
+  const picked = { ...prompt.view.selection!, objectId: "exchange-before", batchId: prompt.view.batches.at(-1)!.transactionId, selectionId: "Zebulon-tap-1" };
+  const answered = ok(await calls.input(chat.view.id, prompt.view.revision, { type: "select", target: picked, fates }, "Zebulon"));
+  expect(answered.output.say[0]).toMatch(/^You pointed to the blocks\./);
+  ok(await calls.input(chat.view.id, answered.view.revision, { type: "end" }, "Zebulon"));
+  const trace = store.rows()[0].trace!;
+  expect(JSON.stringify(trace)).not.toContain("Zebulon");
+  expect(checkTrace(trace)).toMatchObject({ ok: true });
+  expect(JSON.stringify(trace)).toContain("They show 5 tens and 2 ones, which is 52.");
+});
+
+it("tells a tap sent at an old call revision that the board changed, without applying it", async () => {
+  const { calls, prompt, fates, target } = await shownBlocks();
+  const moved = ok(await calls.input(prompt.view.id, prompt.view.revision, { type: "child", text: "How do I regroup?", fates }, null));
+  expect(await calls.input(prompt.view.id, prompt.view.revision, { type: "select", target: target("exchange-before") }, null))
+    .toEqual({ ok: false, error: "board_changed" });
+  expect((await calls.view(prompt.view.id))!.revision).toBe(moved.view.revision);
+  // Other inputs keep the plain conflict.
+  expect(await calls.input(prompt.view.id, prompt.view.revision, { type: "child", text: "Hi" }, null)).toEqual({ ok: false, error: "conflict" });
+});

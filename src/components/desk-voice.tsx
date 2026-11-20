@@ -471,7 +471,7 @@ export function VoiceBoard({ state, still }: { state: DeskVoiceState; still: boo
   const showExchangeResult = !!call?.exchangeResult && call.exchangeResult === boardBatch;
   const live = state.screen === "live" && !!call && !call.ended;
   const pick = useBoardSelection(live && (call.selection || call.selected)
-    ? { offer: call.selection, selected: call.selected, batches: call.batches, submit: state.select } : undefined);
+    ? { offer: call.selection, selected: call.selected, batches: call.batches, steps: board.steps, submit: state.select } : undefined);
   return (
     <section className="desk-board" id="voice-board" aria-labelledby="desk-board-title">
       <header>

@@ -551,6 +551,15 @@ function checkedExchangeOutput(proposal: unknown, output: unknown): boolean {
   return output.say[0] === exchangeWords(facts, proposal.show).join(" ") && output.board.length === (proposal.show ? 2 : 1);
 }
 
+/**
+ * A fixed exchange or selection reply keeps the facts its words are checked against. A selection's request fields
+ * (`target`: ids and the tap id the screen sent) are not facts: they are redacted like any other input.
+ */
+function keptProposal(proposal: unknown, childName: string | null): unknown {
+  if (!isObject(proposal) || proposal.boardSelection !== 1) return proposal;
+  return { ...proposal, target: redactDeep(proposal.target, childName) };
+}
+
 /** #1152: code's reply to a board selection, recomputed from its proposal. It never draws. */
 function boardSelectionOutput(proposal: unknown, output: unknown): boolean {
   if (!isObject(proposal) || proposal.boardSelection !== 1 || !isObject(output) || output.act !== "guide" ||
@@ -925,7 +934,7 @@ export function redactTrace(trace: MayaTrace, childName: string | null): MayaTra
           ...t,
           attempts: t.attempts.map((a) => ({
             ...a,
-            proposal: a === last && fixedExchange ? a.proposal : redactDeep(a.proposal, childName),
+            proposal: a === last && fixedExchange ? keptProposal(a.proposal, childName) : redactDeep(a.proposal, childName),
             refusal: a.refusal ? { ...a.refusal, reason: redactText(a.refusal.reason, childName) } : null,
             ...(a.talk ? { talk: a.talk.map((x) => redactDeep(x, childName) as TraceTalk) } : {}),
             ...(a.math ? { math: a.math.map((x) => ({ ...x, sentence: redactText(x.sentence, childName), reason: redactText(x.reason, childName) })) } : {}),

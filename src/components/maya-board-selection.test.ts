@@ -52,7 +52,7 @@ const render = (control: SelectionControl) => act(async () => root.render(create
 
 it("lets the child point by tapping the board or by choosing a native button, and outlines the answered object", async () => {
   const submit = vi.fn(async () => true);
-  await render({ offer, batches, submit });
+  await render({ offer, batches, steps, submit });
   expect(host.querySelectorAll(".board-pick-target")).toHaveLength(0);
   const toggle = button("Point to a part")!;
   expect(toggle.getAttribute("aria-pressed")).toBe("false");
@@ -70,7 +70,7 @@ it("lets the child point by tapping the board or by choosing a native button, an
   expect(button("Point to a part")!.getAttribute("aria-pressed")).toBe("false");
 
   // The view names the answered object: it keeps an outline, also after a re-render (paper mode, a layout change).
-  await render({ offer: { ...offer, turnId: "call:regrouping:m3" }, batches, submit, selected: { objectId: "exchange-before", batchId: "call-b2", boardRevision: 2 } });
+  await render({ offer: { ...offer, turnId: "call:regrouping:m3" }, batches, steps, submit, selected: { objectId: "exchange-before", batchId: "call-b2", boardRevision: 2 } });
   expect([...host.querySelectorAll<SVGRectElement>(".board-pick-selected")].map((a) => a.dataset.object)).toEqual(["exchange-before"]);
   expect(host.textContent).toContain("You pointed to: Blocks");
 
@@ -83,14 +83,32 @@ it("lets the child point by tapping the board or by choosing a native button, an
 
 it("leaves pointing mode with Escape, says when a tap fails, and offers nothing without an offer", async () => {
   const submit = vi.fn(async () => false);
-  await render({ offer, batches, submit });
+  await render({ offer, batches, steps, submit });
   await act(async () => button("Point to a part")!.click());
   await act(async () => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); });
   expect(button("Point to a part")!.getAttribute("aria-pressed")).toBe("false");
   await act(async () => button("Point to a part")!.click());
   await act(async () => button("Ask about Blocks")!.click());
   expect(host.textContent).toContain("Maya could not take that. Try again.");
-  await render({ batches, submit });
+  await render({ batches, steps, submit });
   expect(button("Point to a part")).toBeUndefined();
   expect(host.querySelector(".board-pick-panel")).toBeNull();
+});
+
+it("lists only objects the board drew, says when the board changed, and lets the child reselect the outlined object", async () => {
+  // The board refuses this batch: its anchor is not on the board. Its object must not be offered.
+  const refused: Batch = { transactionId: "call-b3", commands: [{ op: "write", id: "orphan-note", text: "12", place: { below: "missing" } }] };
+  const submit = vi.fn<SelectionControl["submit"]>(async () => "changed");
+  await render({ offer, batches: [...batches, refused], steps, submit, selected: { objectId: "exchange-before", batchId: "call-b2", boardRevision: 2 } });
+  await act(async () => button("Point to a part")!.click());
+  expect(button("Ask about 12")).toBeUndefined();
+  expect(host.querySelector('[data-object="orphan-note"]')).toBeNull();
+  // The outlined object takes a tap again in pointing mode.
+  const outlined = host.querySelector<SVGRectElement>('rect[data-object="exchange-before"]')!;
+  expect(outlined.classList.contains("board-pick-target")).toBe(true);
+  await act(async () => outlined.dispatchEvent(new PointerEvent("pointerup", { bubbles: true })));
+  expect(submit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ objectId: "exchange-before" }));
+  expect(host.textContent).toContain("The board changed. Point to the part again.");
+  expect(host.textContent).not.toContain("Maya could not take that");
+  expect(button("Stop pointing")?.getAttribute("aria-pressed")).toBe("true");
 });

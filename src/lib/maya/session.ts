@@ -582,6 +582,8 @@ export interface Session {
   checkedExchange?: CheckedExchangeLesson;
   /** #1152: the child's recent board selections, newest last. Selection is context only and never earns credit. */
   boardSelections?: BoardSelection[];
+  /** #1152: every tap id this call answered, for its whole life (the history above keeps only the latest 20). */
+  boardSelectionIds?: string[];
   checkedRoutine?: true;
   sensitiveHold?: true;
   unsafeRequestAt?: number;
@@ -5833,7 +5835,7 @@ export function selectedObject(s: Session): SelectedObject | undefined {
 }
 
 export function selectionSeen(s: Session, selectionId: string): boolean {
-  return !!s.boardSelections?.some((record) => record.selectionId === selectionId);
+  return !!s.boardSelectionIds?.includes(selectionId) || !!s.boardSelections?.some((record) => record.selectionId === selectionId);
 }
 
 /**
@@ -5885,6 +5887,7 @@ function deliverSelection(s: Session, proposal: SelectionProposal, effects: Effe
     selectionId: target.selectionId, objectId: target.objectId, batchId: target.batchId, boardRevision: target.boardRevision,
     result: proposal.result, mayaTurn: s.turns.length, ...(proposal.facts ? { facts: structuredClone(proposal.facts) } : {}),
   }].slice(-MAX_BOARD_SELECTIONS);
+  s.boardSelectionIds = [...(s.boardSelectionIds ?? []), target.selectionId];
   effects.push({ kind: "say", act: "guide", text });
   s.turns.push({ at: s.now!, speaker: "maya", text, state: s.state, act: "guide" });
   delete s.tutor?.offer;
