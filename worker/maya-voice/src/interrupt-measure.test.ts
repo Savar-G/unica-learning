@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { audibleStop, cutByChild, interruptReport } from "./interrupt-measure";
+import { audibleStop, cutByChild, interruptReport, pace, readWav, scoreTrials, type TrialRow } from "./interrupt-measure";
 
 /** 10 ms level frames of Maya's audio as the child receives it: loud until `stopAt`, then quiet. */
 function levels(from: number, to: number, stopAt: number, loud = -20, quiet = -80) {
   const frames = [];
-  for (let at = from; at < to; at += 10) frames.push({ at, db: at < stopAt ? loud : quiet });
+  for (let at = from; at < to; at += 10) frames.push({ at, db: at < stopAt ? loud : quiet, ms: 10 });
   return frames;
 }
 
@@ -20,6 +20,12 @@ describe("audibleStop", () => {
 
   it("reports a trial where Maya was not audible just before the onset", () => {
     expect(audibleStop(levels(0, 3000, 500), 1000)).toEqual({ speaking: false, stopMs: 0 });
+  });
+
+  it("uses each frame's own duration, not the gap between the first two arrivals", () => {
+    const frames = levels(0, 4000, 1240);
+    frames[1] = { ...frames[1], at: 30 };
+    expect(audibleStop(frames, 1000)).toEqual({ speaking: true, stopMs: 240 });
   });
 
   it("reports no stop when Maya is still audible at the end of the window", () => {
@@ -48,5 +54,84 @@ describe("cutByChild", () => {
 
   it("counts a cleared output as a cut", () => {
     expect(cutByChild({ vadMs: null, agentListeningMs: null, cleared: true })).toBe(true);
+  });
+});
+
+/** A RIFF WAV with one fmt chunk and one data chunk. */
+function wavFile(format: number, channels: number, rate: number, bits: number, samples: number[]) {
+  const data = Buffer.alloc(samples.length * 2);
+  samples.forEach((v, i) => data.writeInt16LE(v, i * 2));
+  const fmt = Buffer.alloc(24);
+  fmt.write("fmt ", 0, "ascii"); fmt.writeUInt32LE(16, 4); fmt.writeUInt16LE(format, 8); fmt.writeUInt16LE(channels, 10);
+  fmt.writeUInt32LE(rate, 12); fmt.writeUInt32LE(rate * channels * bits / 8, 16); fmt.writeUInt16LE(channels * bits / 8, 20); fmt.writeUInt16LE(bits, 22);
+  const head = Buffer.alloc(12);
+  head.write("RIFF", 0, "ascii"); head.writeUInt32LE(4 + fmt.length + 8 + data.length, 4); head.write("WAVE", 8, "ascii");
+  const dataHead = Buffer.alloc(8);
+  dataHead.write("data", 0, "ascii"); dataHead.writeUInt32LE(data.length, 4);
+  return Buffer.concat([head, fmt, dataHead, data]);
+}
+
+describe("readWav", () => {
+  it("reads 16-bit mono PCM at the expected rate", () => {
+    expect([...readWav(wavFile(1, 1, 48_000, 16, [1, -2, 3]), 48_000)]).toEqual([1, -2, 3]);
+  });
+
+  it("refuses another rate, channel count or sample format", () => {
+    expect(() => readWav(wavFile(1, 1, 44_100, 16, [0]), 48_000)).toThrow(/44100 Hz/);
+    expect(() => readWav(wavFile(1, 2, 48_000, 16, [0, 0]), 48_000)).toThrow(/2 channels/);
+    expect(() => readWav(wavFile(3, 1, 48_000, 16, [0]), 48_000)).toThrow(/format 3/);
+  });
+});
+
+describe("pace", () => {
+  it("keeps a small lead, and dates each frame by its schedule", () => {
+    const p = { start: 0, sent: 0 };
+    expect(pace(p, 0)).toBe(2);
+    p.sent = 2;
+    expect(pace(p, 10)).toBe(1);
+    expect(p.start).toBe(0);
+  });
+
+  it("moves the schedule to now after a stall, so a frame's time is its send time and the backlog is not added", () => {
+    const p = { start: 0, sent: 10 };
+    expect(pace(p, 500)).toBe(2);
+    expect(p.start + p.sent * 10).toBe(500);
+  });
+});
+
+describe("scoreTrials", () => {
+  const row = (r: Partial<TrialRow> & Pick<TrialRow, "kind" | "onsetAt">): TrialRow => ({
+    clip: r.kind === "intentional" ? "int1.wav" : "mmhm", speaking: true, stopMs: 400, vadMs: 180, agentListeningMs: 420,
+    speechInterrupted: null, output: [], transcripts: [], resumed: false, ...r,
+  });
+
+  it("gives a later trial's clear to that trial, not to the incidental sound before it", () => {
+    const rows = [
+      row({ kind: "incidental", onsetAt: 0, vadMs: null, agentListeningMs: null, output: ["clear@900"] }),
+      row({ kind: "intentional", onsetAt: 700, output: ["clear@200"], transcripts: ["Wait."] }),
+    ];
+    const scored = scoreTrials(rows, [{ at: 1500, text: "Wait." }]);
+    expect(scored.falseStops).toMatchObject({ n: 1, stopped: 0 });
+    expect(scored.stop.n).toBe(1);
+  });
+
+  it("counts lost speech over every request, also one Maya did not stop for", () => {
+    const rows = [
+      row({ kind: "intentional", onsetAt: 0, transcripts: ["Show me."] }),
+      row({ kind: "intentional", onsetAt: 5000, vadMs: null, agentListeningMs: null, transcripts: [] }),
+      row({ kind: "intentional", onsetAt: 9000, speaking: false, transcripts: ["Show me."] }),
+    ];
+    const scored = scoreTrials(rows, [{ at: 800, text: "Show me." }, { at: 9800, text: "Show me." }]);
+    expect(scored.stop.n).toBe(1);
+    expect(scored.lostSpeech).toMatchObject({ n: 3, lost: 1, notATurn: 1 });
+  });
+
+  it("matches each request to a child turn of its own window, so an earlier identical turn cannot hide a later drop", () => {
+    const rows = [
+      row({ kind: "intentional", onsetAt: 0, transcripts: ["Show me."] }),
+      row({ kind: "intentional", onsetAt: 5000, transcripts: ["Show me."] }),
+    ];
+    const scored = scoreTrials(rows, [{ at: 800, text: "Show me." }]);
+    expect(scored.lostSpeech).toMatchObject({ n: 2, lost: 0, notATurn: 1 });
   });
 });

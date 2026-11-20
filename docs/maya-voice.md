@@ -133,9 +133,10 @@ Agents create no accounts. Create these, then set the values below.
 | `MAYA_STT_NUMBER_SILENCE_MS` | No | Optional | `max_turn_silence` for the one turn after Maya asks for a number. Default 2500 (4500 before 2026-11-13). 100 to 10000, not less than `MAYA_STT_MAX_SILENCE_MS` or `MAYA_STT_NUMBER_MIN_SILENCE_MS`. |
 | `MAYA_TURN_MIN_DELAY_MS` | No | Optional | LiveKit endpointing `minDelay`, added after the speech-to-text end of turn. Default 100. 0 to 2000. |
 | `MAYA_NUMBER_CONTINUE_MS` | No | Optional | The one extra wait after a transcript that ends in a number word that can go on. Default 1500. 0 turns it off. 0 to 3000. |
-| `MAYA_INTERRUPT_MIN_MS` | No | Optional | Speech this long stops Maya (LiveKit interruption `minDuration`). Default 300. 0 to 2000. |
+| `MAYA_INTERRUPT_MIN_MS` | No | Optional | Speech this long pauses Maya (LiveKit interruption `minDuration`). Default 30. 10 to 2000 (at 0 LiveKit cuts every speech before it is heard). |
 | `MAYA_INTERRUPT_MIN_WORDS` | No | Optional | Words the speech-to-text must have heard before speech stops Maya (`minWords`). Default 0. 0 to 5. |
-| `MAYA_INTERRUPT_MODE` | No | Optional | LiveKit interruption `mode`: `adaptive` (default, LiveKit's barge-in model) or `vad` (speech alone decides). |
+| `MAYA_INTERRUPT_MODE` | No | Optional | LiveKit interruption `mode`: `vad` (default, speech alone decides) or `adaptive` (LiveKit's barge-in model). |
+| `MAYA_FALSE_INTERRUPTION_MS` | No | Optional | How long LiveKit waits, after a sound with no words for Maya, before it resumes her (`falseInterruptionTimeout`). Default 1000. 500 to 5000. |
 
 A real provider set without its privacy confirmation, key or voice, or with an Inference model off the allow list, or with a tuning value outside its bounds, stops the worker's job with a clear log line. It never falls back to the fake quietly (`voiceProviders`, `src/lib/maya-voice.ts`). With `inference`, the worker uses `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`, which LiveKit Cloud injects.
 
@@ -194,13 +195,14 @@ The worker sends `min_turn_silence` 400 ms and `max_turn_silence` 1600 ms to eve
 
 **Keyterms.** The worker passes `callKeyterms(package)` at the start of the call (`keyterms_prompt` for AssemblyAI through Inference, `keytermsPrompt` for the plugin, `keyterm` for Deepgram Flux). The terms are the right answer and the likely wrong answers, together: the stored wrong answers, the operands, the answer plus or minus 1 and 10, and its digits reversed. Each is in digits and in words. Then come the number words that sound alike (thirteen and thirty, up to nineteen and ninety) and a few math words. The limits are 100 terms and 50 characters each. The function reads numbers only, never the question's text, so it holds no name. It never boosts only the right answer: a model told to expect one answer can hear that answer in what the child said. The research report says that boosting can pull a transcript toward a context term (one secondary source), so code still checks what was heard against what is expected. LiveKit also sends Maya's accepted words to AssemblyAI as `agent_context` (`_pushConversationItem`), because the worker says them with `addToChatCtx`. The words hold no child name.
 
-**Interruption.** LiveKit's defaults are `minDuration` 500 ms, `minWords` 0, `falseInterruptionTimeout` 2000 ms with resume on, and `mode` unset (`turn_config/interruption`). The worker sets `minDuration` 300 ms, `minWords` 0 and `mode` `adaptive` for real providers (`MAYA_INTERRUPT_MIN_MS`, `MAYA_INTERRUPT_MIN_WORDS`, `MAYA_INTERRUPT_MODE`). With `mode` unset, LiveKit uses its adaptive detector only on LiveKit Cloud or in dev mode, so a local or self-hosted worker behaved differently from production. Self-hosted adaptive use counts toward the project's monthly development allowance; on LiveKit Cloud it is included.
+**Interruption.** LiveKit's defaults are `minDuration` 500 ms, `minWords` 0, `falseInterruptionTimeout` 2000 ms with resume on, and `mode` unset (`turn_config/interruption`). The worker sets `minDuration` 30 ms, `minWords` 0, `falseInterruptionTimeout` 1000 ms and `mode` `vad` for real providers (`MAYA_INTERRUPT_MIN_MS`, `MAYA_INTERRUPT_MIN_WORDS`, `MAYA_FALSE_INTERRUPTION_MS`, `MAYA_INTERRUPT_MODE`; measured in "Backchannels and a faster pause" below). With `mode` unset, LiveKit uses its adaptive detector only on LiveKit Cloud or in dev mode, so a local or self-hosted worker behaved differently from production; the explicit mode removes that difference. Self-hosted adaptive use counts toward the project's monthly development allowance; on LiveKit Cloud it is included.
 
-- Speech of 300 ms pauses Maya (since #1147, 2026-11-20). The cue output (`worker/maya-voice/src/cue-playback.ts`) declares pause. A pause stops the cue clock and keeps the plan, its staged batches and its synthesis. If no words follow within 2000 ms, LiveKit resumes her. The native output drops the audio it held at the pause (at most its 200 ms queue), so the cue clock goes on from the audio already sent, and a cue whose word was dropped is released at once. If words follow, LiveKit interrupts the speech and clears the output, which retires the plan as before.
+- Speech of 30 ms pauses Maya (since #1147, 2026-11-20). The cue output (`worker/maya-voice/src/cue-playback.ts`) declares pause. A pause stops the cue clock and keeps the plan, its staged batches and its synthesis. If no words follow within 1000 ms of the end of the sound, LiveKit resumes her. The native output drops the audio it held at the pause (at most its 200 ms queue), so the cue clock goes on from the audio already sent, and a cue whose word was dropped is released at once. If words follow, LiveKit interrupts the speech and clears the output, which retires the plan as before.
 - The start of the child's speech no longer retires ordinary speech when the output can pause (`agent.ts`, `UserStateChanged`). It still cuts the thinking phrase and the priority deadline audio. An output that cannot pause (the test speakers) keeps the old rule.
 - Before #1147 the cue output declared no pause, so LiveKit interrupted the speech at once and the resume never ran. A noise or a "mm-hm" of 300 ms ended that speech ("Real-audio interruption check" below).
 - `minWords` above 0 counts words in the speech-to-text's current transcript. It keeps a noise with no words from stopping Maya. It also delays the stop until the first partial transcript, which can be later than 300 ms. The worker keeps 0. Set 1 if noise stops her too often in the pilot.
-- With `mode` `vad`, these options do not tell "mm-hm" from a turn. A "mm-hm" that lasts 300 ms pauses her, and if the speech-to-text returns it as words, it becomes a child turn and interrupts her. The adaptive detector classifies such sounds and drops a backchannel's transcript (LiveKit, "Adaptive interruption handling"). If Inference is unavailable or the allowance is used up, LiveKit falls back to `vad`.
+- **Backchannels (Savar, 2026-11-20).** While Maya speaks, or LiveKit has paused her, a final transcript that is only "mm", "mm-hmm", "uh-huh", "okay" or "yeah" (any case, any punctuation, spelling variants such as "mhm") does not stop her. The worker drops it in `sttNode` (`worker/maya-voice/src/backchannel.ts`), so LiveKit reads no words and resumes her paused speech, and the board plan goes on. The call records it as a `backchannel` trace turn (trace version 16): no child turn, state change, help or credit. Anything else interrupts as before, including "wait", "stop", "no", "okay I get it" or any second word. When Maya is silent, these words are an ordinary child turn.
+- The adaptive detector (`MAYA_INTERRUPT_MODE=adaptive`) can classify backchannels itself, but on 2026-11-20 it classed every test backchannel as an interruption and was slower. If Inference is unavailable or the allowance is used up, LiveKit falls back to `vad`.
 - How safety guidance is queued is unchanged ("Safety guidance goes first" below).
 
 **Words heard in silence (2026-11-13).** Real calls gave a child turn "Yes!" when the microphone sent only silence (a browser test with a silent WebAudio stream, about 12 s into the call, soon after Maya stopped), and "Bye-bye" when Savar said "hi" on a MacBook microphone. Maya answered both. The silent stream cannot carry Maya's voice back, so the first is the speech-to-text giving words for silence, not echo. The second had real speech in it. The worker does **not** drop any transcript yet, because no signal it has today is known to separate these from a child's short real answers ("24", "yes", "no", "six"):
@@ -552,7 +554,34 @@ What the numbers mean:
 - The audible stop is about the same. Before, the raw start of speech retired the plan at about 180 ms and the 200 ms output queue played out. Now LiveKit's pause at about 420 ms drops the queue. Neither meets the 300 ms target.
 - Cue sync after a resume is proved by the unit tests only, because no real resume happened.
 
-Next options (not done): drop or hold a transcript that is only a backchannel word while Maya speaks, so the pause can resume. Whether a child's "okay" should stop Maya is a teaching decision.
+Savar then decided the backchannel rule ("Interruption" above), built next.
+
+### Backchannels and a faster pause (#1147, 2026-11-20)
+
+With the backchannel rule in place, false pauses can resume, so the pause threshold came down. Each batch: 30 requests and 12 to 14 incidental sounds, word cues, machine load 2 to 5 on 12 cores, one batch at a time under the real-audio lock. The scoring was corrected first (PR #1197 review): each trial owns only what happens before the next trial's onset, an onset is its frame's send time, lost speech counts every request, and each request must reach a child turn of its own window.
+
+| Mode, `minDuration`, resume wait | Stop p50 / p95 | Within 300 ms | Backchannels resumed (mm hm, okay, hum) | Requests at -26 dB that stopped her | Noise that paused her | Lost / split | Resume gap p50 / p95 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| vad, 300 ms, 2000 ms | 517 / 541 ms | 0 of 30 | 8 of 8 | 3 of 3 | 0 of 3 | 0 / 0 | not recorded |
+| vad, 100 ms, 2000 ms | 327 / 348 ms | 3 of 30 | 7 of 7 | 2 of 2 | 0 of 3 | 0 / 2 | not recorded |
+| vad, 50 ms, 2000 ms | 310 / 341 ms | 8 of 29 | 7 of 8 | 2 of 2 | 0 of 3 | 0 / 4 | 3050 / 4334 ms |
+| vad, 30 ms, 2000 ms | 256 / 286 ms | 30 of 30 | 7 of 8 | 3 of 3 | 0 of 3 | 0 / 2 | 2947 / 4279 ms |
+| vad, 20 ms, 2000 ms | 240 / 270 ms | 30 of 30 | 7 of 8 | 2 of 2 | 0 of 3 | 0 / 0 | 2976 / 4285 ms |
+| vad, 20 ms, 1000 ms | 252 / 313 ms | 27 of 30 | 6 of 6 | 3 of 3 | 0 of 3 | 0 / 0 | 1824 / 2700 ms |
+| adaptive, 300 ms, 2000 ms | 538 / 717 ms | 0 of 30 | 8 of 8 | 3 of 3 | 0 of 3 | 0 / 1 | not recorded |
+| adaptive, 100 ms, 2000 ms | 554 / 764 ms | 1 of 30 | 7 of 7 | 2 of 2 | 0 of 3 | 0 / 1 | 2854 / 4278 ms |
+| adaptive, 50 ms, 2000 ms | 432 / 693 ms | 7 of 30 | 7 of 8 | 2 of 2 | 0 of 3 | 0 / 3 | 2994 / 4314 ms |
+
+The two 20 ms batches together: n 60, p50 250 ms, p95 283 ms, 57 of 60 within 300 ms.
+
+What the numbers mean:
+
+- **Default: `vad`, 30 ms, 1000 ms.** 30 ms and 20 ms meet the 300 ms p95 target with the same false pauses; 30 ms keeps a little more margin against short noises. 0 ms is refused: every voice activity reading then passes LiveKit's minimum, and all 45 speeches of that batch were cut before they were heard.
+- Every backchannel paused Maya and then resumed her. The one "mm hm" counted as a permanent stop in some batches was the script's own restart request, which it plays when Maya is silent for 1.5 s, landing in the long pause. A request at -26 dB (quiet background speech) stops her: it has words. A 150 ms noise burst never paused her.
+- A 1000 ms resume wait cuts the silence after a backchannel from about 3 s to about 1.8 s. The stop time does not depend on it; the 313 ms p95 of that batch is batch-to-batch spread.
+- `adaptive` is slower (p95 693 to 764 ms) and classed every synthetic backchannel as an interruption, so it adds nothing over the word rule here. Children's own voices may differ.
+- Cues after a resume (n 1 to 2 per batch) reached the child 52 to 68 ms before their word was heard, the same as other cues.
+- Limits: synthetic adult voices; no device speaker or echo cancellation; the worker and child share one process; resume gaps are LiveKit's output calls, not audio measured at the child.
 
 ### PR #450 review corrections
 

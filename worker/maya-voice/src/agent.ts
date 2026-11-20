@@ -52,7 +52,7 @@ const stoppedSpeakingAt = (ctx: llm.ChatContext) => {
 };
 
 /** The turn and interruption settings a real call sets (src/lib/maya-voice.ts `VoiceTuning`). */
-export type TurnTuning = Pick<VoiceTuning, "turnMinDelayMs" | "interruptMinMs" | "interruptMinWords"> & Partial<Pick<VoiceTuning, "interruptMode">>;
+export type TurnTuning = Pick<VoiceTuning, "turnMinDelayMs" | "interruptMinMs" | "interruptMinWords"> & Partial<Pick<VoiceTuning, "interruptMode" | "falseInterruptionMs">>;
 
 /**
  * A session for a voice call: LiveKit's pipeline with Maya's agent. `fake` turns off voice activity detection. `tuning`
@@ -80,6 +80,7 @@ export function voiceSession(providers: { stt: stt.STT; tts: tts.TTS; fake: bool
       ...(tuning.turn ? { interruption: {
         minDuration: tuning.turn.interruptMinMs, minWords: tuning.turn.interruptMinWords,
         ...(tuning.turn.interruptMode ? { mode: tuning.turn.interruptMode } : {}),
+        ...(tuning.turn.falseInterruptionMs !== undefined ? { falseInterruptionTimeout: tuning.turn.falseInterruptionMs } : {}),
       } } : {}),
     },
     ...(tuning.aecWarmupDuration !== undefined ? { aecWarmupDuration: tuning.aecWarmupDuration } : {}),
