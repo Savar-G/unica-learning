@@ -668,7 +668,7 @@ export function createSession(input: {
     outcome: null,
     ...shorterLimits(input.limitMs),
     ...(tutor ? { tutor: { help: 0, drawn: [] } } : {}),
-    ...(input.checkedExchange === true && tutor && pkg && supportsCheckedExchange(pkg) ? { checkedExchange: { version: 1, progression: 1, id: `${input.callId}:regrouping`, turns: [] } } : {}),
+    ...(input.checkedExchange === true && tutor && pkg && supportsCheckedExchange(pkg) ? { checkedExchange: { version: 1, progression: 1, transfers: 1, id: `${input.callId}:regrouping`, turns: [] } } : {}),
     ...(input.checkedRoutine === true && tutor && pkg && supportsCheckedExchange(pkg) ? { checkedRoutine: true } : {}),
   };
 }
@@ -1768,6 +1768,8 @@ export function step(session: Session, event: SessionEvent): StepResult {
       // wrong final answer.
       // #1144: an answer to the related question never takes back or clears the original question's answer.
       const relatedTurn = transferNow(s) !== null;
+      // A redirect or a disclosure during the related question was answered; the child's new turn goes back to it.
+      if (relatedTurn && s.state === "REDIRECT" && s.resume && isTeaching(s.resume)) moveTo(s, s.resume);
       const back = s.package && s.lastResult === "right" && !relatedTurn ? takenBack(event.text, readOptionsFor(s.package)) : null;
       if (back && !(back.kept && (rightForQuestion(s.package!, back.kept) || answersAStep(s.package!, back.kept)))) {
         s.lastResult = null;
@@ -1890,7 +1892,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
         const target = readExchangeTarget(event.proposal.childAction);
         const plan = target ? childExchangePlan(s, target) : checkedExchangePlan(s, event.proposal.afterFailure === true);
         if (!plan || event.proposal.noDraw === "all" || event.proposal.value !== plan.facts.value ||
-          event.proposal.example !== plan.facts.example || event.proposal.show !== (plan.actions[0]?.kind === "show") ||
+          event.proposal.example !== plan.facts.example || event.proposal.show !== leadsWithBoard(plan) ||
           (event.proposal.prompt === true) !== !!plan.prompt ||
           !matchesRegroupingInstruction(event.proposal.instruction, plan.instruction)) {
           return refuse(s, "act_not_allowed", "No matching checked exchange is due.");
@@ -5691,7 +5693,7 @@ function regroupingChoice(s: Session, previous: ExchangeTurn | undefined, top: n
 export function checkedExchangeProposal(s: Session, afterFailure = false): ExchangeProposal | null {
   const plan = checkedExchangePlan(s, afterFailure);
   if (!plan) return null;
-  return { checkedExchange: 1, value: plan.facts.value, example: plan.facts.example, show: plan.actions[0]?.kind === "show", ...(plan.prompt ? { prompt: true } : {}), ...(plan.instruction ? { instruction: plan.instruction } : {}), ...(afterFailure ? { afterFailure: true } : {}) };
+  return { checkedExchange: 1, value: plan.facts.value, example: plan.facts.example, show: leadsWithBoard(plan), ...(plan.prompt ? { prompt: true } : {}), ...(plan.instruction ? { instruction: plan.instruction } : {}), ...(afterFailure ? { afterFailure: true } : {}) };
 }
 
 export function checkedExchangeWaitingForBoard(s: Session): boolean {
@@ -5805,8 +5807,11 @@ export function childExchangeProposal(s: Session, target: ExchangeTarget, at: nu
   return plan ? { checkedExchange: 1, value: plan.facts.value, example: plan.facts.example, show: false, childAction: plan.childAction, ...(plan.instruction ? { instruction: plan.instruction } : {}) } : null;
 }
 
+/** The turn first shows a board: the exchange blocks, or the related question (#1144). */
+const leadsWithBoard = (plan: ExchangeTurn) => plan.actions[0]?.kind === "show" || plan.actions[0]?.kind === "question";
+
 function deliverExchange(s: Session, plan: ExchangeTurn, effects: Effect[]): StepResult {
-  const show = plan.actions[0]?.kind === "show";
+  const show = leadsWithBoard(plan);
   const words = regroupingWords(plan.facts, plan.instruction, show) ??
     (plan.prompt ? exchangePromptWords(plan.facts, show) : plan.childAction ? exchangeChildWords(plan.facts) : exchangeWords(plan.facts, show));
   const text = words.join(" ");
@@ -5817,7 +5822,7 @@ function deliverExchange(s: Session, plan: ExchangeTurn, effects: Effect[]): Ste
     s.lastResult = "right";
   }
   if (step === "offer") lesson.transfer = { operands: transferFor(s)!, state: "offered", done: [] };
-  if (step === "decline") lesson.transfer!.state = "declined";
+  if (step === "decline" && lesson.transfer!.state === "offered") lesson.transfer!.state = "declined";
   if (step === "transfer") Object.assign(lesson.transfer!, { state: "started", startedAt: s.now!, eventKey: transferEventKey(s.callId) });
   if (step === "transfer_correct") lesson.transfer!.state = "finished";
   const observed = plan.observation;
@@ -5834,10 +5839,6 @@ function deliverExchange(s: Session, plan: ExchangeTurn, effects: Effect[]): Ste
   s.batches += plan.actions.length;
   const closes = step === "decline" || step === "transfer_correct";
   effects.push({ kind: "say", act: closes ? "close" : "guide", text, exchangeTurnId: plan.id });
-  if (step === "transfer") {
-    s.batches += 1;
-    effects.push({ kind: "board", sentence: 0, batch: { transactionId: `${s.callId}-b${s.batches}`, commands: transferBoard(lesson.transfer!.operands) } });
-  }
   if (closes) {
     s.turns.push({ at: s.now!, speaker: "maya", text, state: "CLOSE", act: "close" });
     delete s.tutor!.offer;
@@ -5849,7 +5850,11 @@ function deliverExchange(s: Session, plan: ExchangeTurn, effects: Effect[]): Ste
     const sentence = action.kind === "show" && plan.instruction?.step === "reversal" ? 2 : index;
     effects.push({
       kind: "board", sentence,
-      batch: { transactionId: action.batchId, commands: exchangeCommands(action.kind, plan.facts), ...(action.after ? { after: [action.after] } : {}) },
+      batch: {
+        transactionId: action.batchId,
+        commands: action.kind === "question" ? transferBoard(lesson.transfer!.operands) : exchangeCommands(action.kind, plan.facts),
+        ...(action.after ? { after: [action.after] } : {}),
+      },
     });
   }
   s.turns.push({ at: s.now!, speaker: "maya", text, state: s.state, act: "guide" });
@@ -5924,7 +5929,7 @@ function transferNow(s: Session): OperationPackage | null {
 function transferFor(s: Session): TransferOperands | null {
   const lesson = s.checkedExchange;
   const pkg = s.package;
-  if (!lesson?.progression || lesson.transfer || pkg?.operation.kind !== "subtract" || s.startedAt === null || s.now === null ||
+  if (!lesson?.progression || lesson.transfers !== 1 || lesson.transfer || pkg?.operation.kind !== "subtract" || s.startedAt === null || s.now === null ||
     s.now - s.startedAt > limitsOf(s).closingAtMs - TRANSFER_MIN_MS) return null;
   const said = s.turns.filter((turn) => turn.speaker === "maya").map((turn) => turn.text);
   return chooseTransfer(pkg.operation.operands, lesson.turns.map((turn) => turn.facts.value),
@@ -5932,7 +5937,8 @@ function transferFor(s: Session): TransferOperands | null {
 }
 
 function transferOfferPending(s: Session): boolean {
-  const last = s.turns.findLast((turn) => turn.speaker === "maya");
+  // A patient line ("Take your time.") or a silence check-in keeps the offer open: neither asks anything new.
+  const last = s.turns.findLast((turn) => turn.speaker === "maya" && turn.act !== "wait" && turn.act !== "check_in");
   return s.checkedExchange?.transfer?.state === "offered" && s.lastResult === "right" && !!last?.text.endsWith(TRANSFER_OFFER);
 }
 
@@ -5946,7 +5952,7 @@ function offerReplyPlan(s: Session): ExchangeTurn | null {
   return {
     id: `${lesson.id}:${lesson.turns.length + 1}`,
     facts: step === "transfer" ? exchangeFacts(transfer.operands[0], false)! : lesson.turns.at(-1)!.facts,
-    actions: [],
+    actions: step === "transfer" ? [transferQuestionAction(s)] : [],
     instruction: { step, ...(step === "transfer" ? { transfer: transfer.operands } : {}) },
     ...(step === "transfer" ? { transfer: true as const } : {}),
   };
@@ -5968,7 +5974,9 @@ function relatedPlan(s: Session): ExchangeTurn {
   const right = (step: string) => heard.some((a) => a.step === step && a.verdict === "right");
   const said = body === null || saysGuess(text) ? null : wholeValue(body.replace(/^(?:my (?:final )?answer is|i got|it'?s|it is) /, ""));
   const previous = lesson.turns.filter((turn) => turn.transfer).at(-1)?.instruction?.step ?? "transfer";
-  const choice = unclear
+  // "I'm done" ends the call as after the offer; the related question stays unfinished. A bare "no" may answer a hint.
+  const done = !unclear && doneReply(text) && !/^(?:no|nope|nah)[.!]*$/i.test(text);
+  const choice: { step: RelatedStep | "decline"; observation?: [RegroupingObservation["skill"], RegroupingObservation["result"]] } = done ? { step: "decline" } : unclear
     ? { step: previous === "transfer" ? "transfer_retry" as const : previous as RelatedStep }
     : relatedChoice({
       previous,
@@ -5989,16 +5997,24 @@ function relatedPlan(s: Session): ExchangeTurn {
     instruction.subtrahend = bottom;
   }
   if (tells(regroupingWords(facts, instruction, false))) instruction = { step: "transfer_retry", transfer: transfer.operands };
+  // A related question the board skipped or cancelled (a reconnect, a closed tab) goes out again with this turn.
+  const question = lesson.turns.flatMap((turn) => turn.actions).findLast((action) => action.kind === "question");
+  const missed = question?.fate === "cancelled" || question?.fate === "skipped";
   return {
     id: `${lesson.id}:${lesson.turns.length + 1}`,
     facts,
-    actions: [],
+    actions: missed ? [transferQuestionAction(s)] : [],
     instruction,
     transfer: true,
     ...(choice.observation && instruction.step === choice.step
       ? { observation: { skill: choice.observation[0], result: choice.observation[1], assistance: transferAssistance(s), at: s.now! } }
       : {}),
   };
+}
+
+/** The related question's board batch, tracked through delivery like the exchange. */
+function transferQuestionAction(s: Session): ExchangeAction {
+  return { kind: "question", id: `${s.checkedExchange!.id}:question`, batchId: `${s.callId}-b${s.batches + 1}`, delivery: "generated" };
 }
 
 /** The help the related question had so far, from its own turns only. */
@@ -6938,7 +6954,7 @@ function boardFate(session: Session, e: Extract<SessionEvent, { type: "board_fat
       for (const turn of turns) {
         for (const item of turn.actions) {
           if (shown.has(item.batchId) && (!item.after || shown.has(item.after))) {
-            recordRegroupingSupport(s, turn, item.kind === "show" ? "hinted" : "demonstrated");
+            if (item.kind !== "question") recordRegroupingSupport(s, turn, item.kind === "show" ? "hinted" : "demonstrated");
           }
         }
       }
@@ -7784,7 +7800,10 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
   const l = packageLines(pkg);
   if (s.scopeDue && act === "redirect" && !disclosureDue(s)) return [...l.workbook(), ...l.decline(), ...l.redirect()];
   if (s.replies?.length && act === "redirect") {
-    return [...fixedOffers(), ...l.question()].filter((o) => o.line === s.replies![0]);
+    // #1144: during the related question the follow-up names that question. The board already shows it.
+    const related = transferNow(s);
+    const question = related ? packageLines(related).question().map((o) => ({ ...o, board: undefined })) : l.question();
+    return [...fixedOffers(), ...question].filter((o) => o.line === s.replies![0]);
   }
   const main = isTeaching(s.state) ? s.state : s.resume;
   const solved = s.solved ?? (view.rightResult ? "child" : null);

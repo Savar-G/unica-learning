@@ -543,7 +543,7 @@ function checkedExchangeOutput(proposal: unknown, output: unknown): boolean {
   if (proposal.instruction !== undefined) {
     const words = regroupingWords(facts, proposal.instruction, proposal.show);
     return !!words && output.say[0] === words.join(" ") &&
-      output.board.length === Number(proposal.show || readExchangeTarget(proposal.childAction) !== null || step === "transfer");
+      output.board.length === Number(proposal.show || readExchangeTarget(proposal.childAction) !== null);
   }
   if (proposal.prompt === true) return output.say[0] === exchangePromptWords(facts, proposal.show).join(" ") && output.board.length === Number(proposal.show);
   if (readExchangeTarget(proposal.childAction)) return !proposal.show && output.say[0] === exchangeChildWords(facts).join(" ") && output.board.length === 1;

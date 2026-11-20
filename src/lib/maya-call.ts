@@ -1858,9 +1858,11 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         get pendingExchange() {
           const saved = record.live?.text;
           if (inactive() || !saved) return undefined;
-          const action = saved.session.checkedExchange?.turns.find((t) => t.childAction)?.actions[0];
-          if (!action || action.fate === "shown" || record.boardHistory?.delivery?.events.some(e => e.kind === "batch" && e.batchId === action.batchId)) return undefined;
-          return batchesOf(saved.board.filter((b) => b.transactionId === action.batchId))[0];
+          // The child's exchange, then the related question's board (#1144): a saved batch the board never confirmed.
+          const turns = saved.session.checkedExchange?.turns ?? [];
+          const pending = [turns.find((t) => t.childAction)?.actions[0], turns.flatMap((t) => t.actions).findLast((a) => a.kind === "question")]
+            .find((action) => action && action.fate !== "shown" && !record.boardHistory?.delivery?.events.some(e => e.kind === "batch" && e.batchId === action.batchId));
+          return pending ? batchesOf(saved.board.filter((b) => b.transactionId === pending.batchId))[0] : undefined;
         },
         get acknowledged() { return [...acknowledged]; },
         async acknowledge(id) {

@@ -2,7 +2,8 @@ import type { Command } from "@/lib/board";
 import type { OperationPackage } from "@/lib/question-package";
 import { readTransferOperands, TRANSFER_GOODBYE, TRANSFER_OFFER, transferRetryWords, transferStartWords, type TransferOperands } from "./transfer";
 
-type ActionKind = "show" | "exchange";
+/** "question": the related question's board (#1144), tracked like the exchange so a lost batch is shown again. */
+type ActionKind = "show" | "exchange" | "question";
 
 export const EXCHANGE_OBJECT = "exchange-before";
 export const EXCHANGE_RPC = "maya.exchange";
@@ -85,6 +86,8 @@ export interface CheckedExchangeLesson {
   version: 1;
   /** Older saved sessions continue with the original exchange interaction. */
   progression?: 1;
+  /** #1144: offers the related question. A lesson saved without it replays its old "correct" step unchanged. */
+  transfers?: 1;
   id: string;
   turns: ExchangeTurn[];
   transfer?: TransferTask;
@@ -227,7 +230,7 @@ function notation(value: number, { tens, ones }: ExchangeAmounts): string {
   return `${value} = ${tens * 10} + ${ones}`;
 }
 
-export function exchangeCommands(action: ActionKind, facts: ExchangeFacts): Command[] {
+export function exchangeCommands(action: Exclude<ActionKind, "question">, facts: ExchangeFacts): Command[] {
   if (action === "show") return [
     { op: "model", id: EXCHANGE_OBJECT, model: { kind: "base_ten", hundreds: 0, ...facts.before }, place: { region: "main" } },
     { op: "write", id: "exchange-before-notation", text: notation(facts.value, facts.before), place: { below: EXCHANGE_OBJECT } },

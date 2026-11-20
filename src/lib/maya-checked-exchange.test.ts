@@ -3,7 +3,7 @@ import { applyBatch, boardTargets, createScene, type Batch } from "@/lib/board";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { memoryWordingHistoryStore } from "@/lib/maya";
-import { mayaCalls, type CallInput, type CallResult, type CallSeams, type StartInput } from "@/lib/maya-call";
+import { mayaCalls, type CallInput, type CallRecord, type CallResult, type CallSeams, type StartInput } from "@/lib/maya-call";
 import { codeSentences, noteFacts } from "@/lib/maya-call-note";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import { conversationalFake, reply } from "@/lib/maya-model-fake";
@@ -820,4 +820,119 @@ it("ends an unfinished related question at the time limit with the original succ
   ]);
   expect(codeSentences(noteFacts({ outcome: ended.view.outcome!, event: null, package: SAMPLE_PACKAGES["subtract-52-28"], question: SAMPLE_PACKAGES["subtract-52-28"].ref })).join(" "))
     .toContain("started a related question but did not finish it.");
+});
+
+it("keeps a correct answer saved by the code before the related question when the new code replays it", async () => {
+  // Records saved by base commit fee7814e6 right after "My answer is 24." in chat and in voice.
+  const saved = (await import("@/lib/maya/__fixtures__/checked-exchange-base-fee7814e6.json")).default.records as unknown as CallRecord[];
+  const store = memoryCallStore({ clock, testFamilies: [parentId] });
+  for (const record of saved) await store.insert(record);
+  const { calls, events } = setup({ store, connections: memoryConnectionLog(store, clock) });
+  const [chat, voice] = saved;
+  const next = ok(await calls.input(chat.id, chat.revision, { type: "child", text: "Yes." }, null));
+  expect(next.output.say.join(" ")).not.toMatch(/minus 27/i);
+  const ended = ok(await calls.input(chat.id, next.view.revision, { type: "end" }, null));
+  expect(ended.view.outcome).toMatchObject({ reason: "solved", assistance: "independent" });
+  expect(ended.view.outcome).not.toHaveProperty("transfer");
+
+  const opened = await calls.openVoice(voice.id, { speechToText: "fake", voice: "fake" }, null);
+  if (!opened.ok) throw Error(opened.error);
+  expect(opened.call.session).toMatchObject({ solved: "child", lastResult: "right" });
+  await opened.call.end({ reason: "child_stopped" });
+  const learned = await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" });
+  expect(byKey(learned)).toMatchObject([{ key: `call:${chat.id}`, result: "right" }, { key: `call:${voice.id}`, result: "right" }]);
+});
+
+it("shows the related question again when a voice reconnect lost its board batch", async () => {
+  const { calls, events } = setup();
+  const question = { ...SAMPLE_PACKAGES["subtract-52-28"], ref: { source: "workbook" as const, workbookId: parentId, page: 1, question: 1 } };
+  const voice = ok(await calls.startVoice({ ...input, kind: "family", package: question }));
+  const open = async () => {
+    const opened = await calls.openVoice(voice.view.id, { speechToText: "fake", voice: "fake" }, null);
+    if (!opened.ok) throw Error(opened.error);
+    return opened.call;
+  };
+  const observe = (board: Batch) => ({ kind: "batch" as const, batchId: board.transactionId, commands: [...board.commands] });
+  const call = await open();
+  const opening = (await call.start()).boardCues![0].batch;
+  await call.child("My answer is 24.");
+  const related = (await call.child("Yes.")).boardCues![0].batch;
+  expect(related.commands[0]).toEqual({ op: "clear", scope: "maya_objects" });
+  await call.settled();
+
+  const resumed = await open();
+  expect(resumed.pendingExchange).toEqual(related);
+  await resumed.observeBoard({ events: [observe(opening), { kind: "cancelled", batchIds: [related.transactionId] }] });
+  const repeat = await resumed.child("Can you repeat that?");
+  expect(repeat.say.join(" ")).toMatch(/63 minus 27/i);
+  expect(repeat.boardCues?.map((cue) => cue.batch.commands)).toEqual([related.commands]);
+  const again = repeat.boardCues![0].batch;
+  expect(again.transactionId).not.toBe(related.transactionId);
+  await resumed.observeBoard({ events: [observe(opening), { kind: "cancelled", batchIds: [related.transactionId] }, observe(again)] });
+  expect(resumed.pendingExchange).toBeUndefined();
+  expect((await resumed.child("What did you say?")).boardCues ?? []).toEqual([]);
+  expect((await resumed.child("36.")).ended).toBe(true);
+  await resumed.end({ reason: "child_stopped" });
+  expect(byKey(await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" })))
+    .toMatchObject([{ result: "right" }, { result: "right", assistance: "independent", question: { source: "transfer" } }]);
+});
+
+it("keeps the related question offer open through a patient line and a silence check-in", async () => {
+  let now = clock();
+  const { calls, events } = setup({ clock: () => now });
+  const question = { ...SAMPLE_PACKAGES["subtract-52-28"], ref: { source: "workbook" as const, workbookId: parentId, page: 1, question: 1 } };
+  const keys: string[] = [];
+  for (const pause of ["thinking", "silence"] as const) {
+    let turn = ok(await calls.start({ ...input, package: question }));
+    const send = async (event: CallInput) => {
+      turn = ok(await calls.input(turn.view.id, turn.view.revision, event, null));
+      return turn.output.say.join(" ");
+    };
+    expect(await send({ type: "child", text: "My answer is 24." })).toMatch(/one more like this/i);
+    if (pause === "thinking") expect(await send({ type: "child", text: "I'm thinking." })).not.toMatch(/minus/i);
+    else {
+      now += 16_000;
+      expect(await send({ type: "tick" })).not.toBe("");
+    }
+    expect(await send({ type: "child", text: "Yes." })).toMatch(/63 minus 27/i);
+    await send({ type: "child", text: "36." });
+    await send({ type: "end" });
+    keys.push(`call:${turn.view.id}`, `call:${turn.view.id}:transfer`);
+  }
+  const learned = await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" });
+  expect(learned.map((e) => e.key).sort()).toEqual(keys.sort());
+  expect(learned.filter((e) => e.question.source === "transfer").map((e) => [e.result, e.assistance])).toEqual([["right", "independent"], ["right", "independent"]]);
+});
+
+it.each(["I'm done.", "I want to stop."])("closes normally on %s during the related question and records it unfinished", async (text) => {
+  const { calls, events } = setup();
+  const question = { ...SAMPLE_PACKAGES["subtract-52-28"], ref: { source: "workbook" as const, workbookId: parentId, page: 1, question: 1 } };
+  let turn = ok(await calls.start({ ...input, package: question }));
+  for (const said of ["My answer is 24.", "Yes."]) turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text: said }, null));
+  const bye = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text }, null));
+  expect(bye.output.say.join(" ")).toMatch(/bye for now!$/i);
+  expect(bye.output.say.join(" ")).not.toMatch(/minus/i);
+  expect(bye.view.outcome).toMatchObject({ reason: "solved", transfer: { result: "unfinished", assistance: "independent" } });
+  await calls.input(bye.view.id, bye.view.revision, { type: "end" }, null);
+  expect(byKey(await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" })))
+    .toMatchObject([{ result: "right" }, { result: "blank", stuckStep: "ones", question: { source: "transfer" } }]);
+});
+
+it("answers who Maya is during the related question and comes back to that question", async () => {
+  const { calls, store, events } = setup();
+  let turn = ok(await calls.start({ ...input, package: { ...SAMPLE_PACKAGES["subtract-52-28"], ref: { source: "workbook", workbookId: parentId, page: 1, question: 1 } } }));
+  for (const said of ["My answer is 24.", "Yes."]) turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text: said }, null));
+  const batches = turn.view.batches.length;
+  const reply = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text: "Are you a real person?" }, null));
+  const said = reply.output.say.join(" ");
+  expect(said).toMatch(/\bAI\b/);
+  expect(said).toMatch(/63 [-\u2212] 27/);
+  expect(said).not.toMatch(/52/);
+  expect(reply.view.batches).toHaveLength(batches);
+  const closing = ok(await calls.input(reply.view.id, reply.view.revision, { type: "child", text: "36." }, null));
+  expect(closing.view.outcome).toMatchObject({ reason: "solved", transfer: { result: "right", assistance: "independent" } });
+  expect(checkTrace(store.rows()[0].trace)).toMatchObject({ ok: true });
+  await calls.input(closing.view.id, closing.view.revision, { type: "end" }, null);
+  expect(byKey(await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" })))
+    .toMatchObject([{ result: "right" }, { result: "right", assistance: "independent", question: { source: "transfer" } }]);
 });
