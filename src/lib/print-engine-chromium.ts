@@ -386,8 +386,9 @@ export function chromiumPrintEngine(): PrintEngine {
 }
 
 /**
- * Print engine that reuses one headless Chromium process across print calls, isolating each job in its own fresh
- * browser context. Intended for test suites that print many pages in one file; call `close()` in `afterAll`.
+ * Print engine that reuses one headless Chromium process across print calls, opening and closing a fresh tab per job
+ * (avoiding `createBrowserContext`, which disconnects `@sparticuz/chromium`'s `--single-process` headless shell on
+ * Linux). Intended for test suites that print many pages in one file; call `close()` in `afterAll`.
  */
 export function sharedChromiumPrintEngine(): PrintEngine & { close(): Promise<void> } {
   type Browser = Awaited<ReturnType<typeof puppeteer.launch>>;
@@ -444,16 +445,17 @@ export function sharedChromiumPrintEngine(): PrintEngine & { close(): Promise<vo
       const { timeoutMs, waitsMs } = browserStartPlan();
       const browser = await stoppableStart(() => getBrowser(timeoutMs, waitsMs), job.signal);
       job.signal?.throwIfAborted();
-      const context = await browser.createBrowserContext();
-      const onAbort = () => { void context.close().catch(() => undefined); };
+      const page = await browser.newPage();
+      const onAbort = () => { void page.close().catch(() => undefined); };
       job.signal?.addEventListener("abort", onAbort, { once: true });
       try {
         job.signal?.throwIfAborted();
-        const page = await context.newPage();
         return await printWithPage(page, job, timeoutMs);
       } finally {
         job.signal?.removeEventListener("abort", onAbort);
-        await context.close().catch((e: unknown) => { if (!job.signal?.aborted) throw e; });
+        if (!page.isClosed()) {
+          await page.close().catch(() => undefined);
+        }
       }
     },
   };

@@ -108,13 +108,14 @@ describe.skipIf(!chromium)("renderWorkbook with Chromium", () => {
 
   it("ends a print in progress when its signal aborts, and refuses a print after it", async () => {
     const engine = chromiumPrintEngine();
+    const template = fixedTemplate(await fixedTemplateFonts());
     const whole = Date.now();
-    await render(draft());
+    await renderWorkbook({ draft: draft(), parentId: PARENT, template, engine });
     const wholeMs = Date.now() - whole;
     const stop = new AbortController();
     const started = Date.now();
     const stopping: PrintEngine = { print: (job) => engine.print({ ...job, signal: stop.signal }) };
-    const printing = renderWorkbook({ draft: draft(), parentId: PARENT, template: fixedTemplate(await fixedTemplateFonts()), engine: stopping });
+    const printing = renderWorkbook({ draft: draft(), parentId: PARENT, template, engine: stopping });
     setTimeout(() => stop.abort(), 300);
     await expect(printing).rejects.toThrow();
     const stoppedMs = Date.now() - started;
