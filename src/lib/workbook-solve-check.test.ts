@@ -65,6 +65,19 @@ describe("the solve check", () => {
     expect((await solveCheck(reader, story("Mia has 7 cups and gets 5. How many in all?"), 1000))!.verdict.status).toBe("agreed");
   });
 
+  it("accepts an explicit zero remainder for exact division, while rejecting a different remainder or quotient", async () => {
+    const p = story("92 ÷ 4 = ?", op("divide", 92, 4), { text: "48 ÷ 4 = ?", operation: op("divide", 48, 4) });
+    const check = (answer: string, easier = "12 R 0") => solveCheck(aiSolver(fakeAiClient({ answer: () => ({
+      answers: [{ question: "question", box: "answer", answer }, { question: "easier", box: "answer", answer: easier }], problem: null,
+    }) })), p, 1000);
+    expect((await check("23 R 0"))!.verdict.status).toBe("agreed");
+    expect((await check("23 R 1"))!.verdict.status).toBe("disagreed");
+    expect((await check("22 R 0"))!.verdict.status).toBe("disagreed");
+    expect((await check("23", "11 R 0"))!.verdict.status).toBe("disagreed");
+    // An ordinary number key still does not accept arbitrary remainder notation.
+    expect(sameAnswer("12 R 0", ["12"], false)).toBe(false);
+  });
+
   it("fails an easier example whose text contradicts its key", async () => {
     // The question is sound; its easier example prints 6 - 5 over add [6, 5] (key 11).
     const built = story("Mia has 7 cups and gets 5. How many in all?", op("add", 7, 5), { text: "6 - 5 = ?", operation: op("add", 6, 5) });

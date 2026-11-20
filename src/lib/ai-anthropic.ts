@@ -1,7 +1,6 @@
 // The Anthropic adapter of the AI client (#183): the Claude Messages API, through the official SDK, with structured
-// output (output_config.format, a JSON schema) and image input. For local tools only (the sample workbooks, #363), with
-// an Anthropic API key, such as one paid by the monthly API credits of Savar's Max plan. The live site stays on
-// OpenRouter (src/lib/ai-client.ts), because a key on monthly credits stops when the credits run out.
+// output (output_config.format, a JSON schema) and image input. Used by local samples and explicitly authorized,
+// budgeted workbook API runs. Other site AI stays on its existing provider.
 // API: https://platform.claude.com/docs/en/build-with-claude/structured-outputs (read 2026-10-31).
 // Constrained output has limits (16 union-type parameters, 24 optional ones: the generator's item schemas have about
 // 70 nullable fields). When the API refuses a schema, the adapter sends that request name with the schema in the
@@ -16,6 +15,7 @@ import type { AiClient, AiJsonRequest, AiPart } from "@/lib/ai-client";
 /** The model when none is given: Claude Sonnet 5.5, the model the live site uses through OpenRouter. */
 export const ANTHROPIC_DEFAULT_MODEL = "claude-sonnet-5-5";
 const MAX_TOKENS = 16_000;
+class RequestGuardError extends Error {}
 
 /** The tokens of one answer, for the caller's cost count. */
 export interface AnthropicUsage {
@@ -89,6 +89,10 @@ export function anthropicClient({
   maxRetries = 2,
   timeout = 200_000,
   onUsage,
+  onRequest,
+  onDispatch,
+  fetchWrapper,
+  singleDispatch = false,
   fallbacks = true,
   usage,
 }: {
@@ -101,11 +105,36 @@ export function anthropicClient({
   timeout?: number;
   /** Called once for each answer that has usage, also when its output is refused or cut off. */
   onUsage?: (usage: AnthropicUsage) => void;
+  /** Persist the request intent before each HTTP attempt, including a refused-schema retry. */
+  onRequest?: () => Promise<void>;
+  /** Record dispatch only after the intent and cancellation checks pass. */
+  onDispatch?: () => void;
+  /** A spending guard wraps the final transport, before its durable intent and dispatch hooks. */
+  fetchWrapper?: (send: typeof globalThis.fetch) => typeof globalThis.fetch;
+  /** Edit batches record one physical dispatch, so schema rejection must not issue another request. */
+  singleDispatch?: boolean;
   /** Ask for the server-side fallback on a decline (default). Off for a model that has none, such as Claude Haiku 5.5. */
   fallbacks?: boolean;
   usage?: AiUsageTag;
 }): AiClient {
-  const client = new Anthropic({ apiKey, maxRetries, timeout, ...(fetch ? { fetch } : {}) });
+  const baseFetch = fetch ?? globalThis.fetch;
+  const trackedFetch: typeof globalThis.fetch = async (input, init) => {
+    init?.signal?.throwIfAborted();
+    try { await onRequest?.(); }
+    catch (error) { throw new RequestGuardError(error instanceof Error ? error.message : "Request intent could not be saved"); }
+    init?.signal?.throwIfAborted();
+    onDispatch?.();
+    return baseFetch(input, init);
+  };
+  const guarded = fetchWrapper ? fetchWrapper(trackedFetch) : trackedFetch;
+  const transport: typeof globalThis.fetch = async (input, init) => {
+    try { return await guarded(input, init); }
+    catch (error) {
+      if (error instanceof TypeError || error instanceof RequestGuardError) throw error;
+      throw new RequestGuardError(error instanceof Error ? error.message : "Workbook request guard failed");
+    }
+  };
+  const client = new Anthropic({ apiKey, maxRetries: singleDispatch ? 0 : maxRetries, timeout, fetch: transport });
   /** Request names whose schema the API refused: they go with the schema in the instructions. */
   const inText = new Set<string>();
   const send = (request: AiJsonRequest, signal: AbortSignal, constrained: boolean) =>
@@ -134,13 +163,14 @@ export function anthropicClient({
           try {
             message = await send(request, signal, true);
           } catch (e) {
-            if (!schemaRefused(e) || signal.aborted) throw e;
+            if (singleDispatch || !schemaRefused(e) || signal.aborted) throw e;
             inText.add(request.name);
             message = await send(request, signal, false);
           }
         }
       } catch (e) {
         if (signal.aborted) throw new Error("time is up");
+        if (e instanceof Anthropic.APIConnectionError && e.cause instanceof RequestGuardError) throw e.cause;
         if (e instanceof Anthropic.APIError) throw new Error(`Anthropic answered ${e.status ?? "no status"}: ${short(e.message)}`);
         throw new Error(`Anthropic could not be reached: ${short(e instanceof Error ? e.message : e)}`);
       }

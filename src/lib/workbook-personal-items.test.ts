@@ -160,6 +160,14 @@ describe("G1 interests (item 5)", () => {
     expect(interestShareProblems(BC, placed(), pages(0, 10))).toEqual([]);
     expect(interestEligible(BC, { source: "code", item: {} })).toBe(false);
   });
+  it("names a page whose eligible story can repair the interest share", () => {
+    const plan = placed(bookPersona("on-level").profile);
+    const questions = (interest: boolean, count: number) => Array.from({ length: count }, () => ({
+      itemPlan: { source: "story", item: { thing: "x" } }, package: { text: interest ? "Ava has 12 medals." : "Ava has 12 stickers." },
+    }));
+    expect(interestShareProblems(BC, plan, [{ number: 3, questions: questions(true, 2) }, { number: 4, questions: questions(false, 8) }])[0].page).toBe(4);
+    expect(interestShareProblems(BC, plan, [{ number: 3, questions: questions(false, 1) }, { number: 4, questions: questions(true, 9) }])[0].page).toBe(4);
+  });
   it("offers interest things in 3 of every 5 turns and keeps today's list otherwise", () => {
     const plan = placed(bookPersona("on-level").profile);
     const list = storyThings(plan);

@@ -20,12 +20,15 @@ it("generates and teaches all five missing factors from their printed products",
       env: { ...process.env, WORKBOOK_SAMPLE_ID: "17fc5da1-2442-488a-a450-611a471e73e6" }, maxBuffer: 2_000_000,
     });
     const draft: GeneratedWorkbook = JSON.parse(await readFile(join(out, "U16-draft.json"), "utf8"));
-    const expected = [[21, 1, 20, 6000], [22, 1, 20, 2000], [24, 4, 20, 8000], [25, 2, 50, 2000], [27, 9, 50, 5000]];
+    // Capacity repairs can move these tasks. Keep all five exact printed equations as the regression cases.
+    const expected = [[20, 6000], [20, 2000], [20, 8000], [50, 2000], [50, 5000]];
     const missing = draft.pages.flatMap(page => page.questions.flatMap(q => q.package?.templateId === "5.9-multiply-tens#3.3:missing"
       ? [[page.number, q.number, q.package] as const] : []));
     expect(missing).toHaveLength(5);
-    for (const [page, number, factor, product] of expected) {
-      const pkg = missing.find(([p, q]) => p === page && q === number)![2];
+    for (const [factor, product] of expected) {
+      const found = missing.find(([,, pkg]) => pkg.text === `${factor} × ? = ${product}`);
+      if (!found) throw new Error(`Missing regression task: ${factor} × ? = ${product}`);
+      const [page, number, pkg] = found;
       expect(pkg.text).toBe(`${factor} × ? = ${product}`);
       expect(pkg.operation).toEqual({ kind: "divide", operands: [product, factor] });
       expect(pkg.answer?.value).toEqual({ type: "number", value: product / factor });

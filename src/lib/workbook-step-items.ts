@@ -19,7 +19,7 @@ import { checkQuestionPackage } from "@/lib/question-package";
 import { storedDomain, templateAnswerValue, templateScalar, type TemplateScalar, type TemplateSource } from "@/lib/question-package-template";
 import type { Curriculum, CurriculumStep, NumberDomain, NumberRange, StepTemplate, TemplateDifficulty } from "@/lib/workbook-curriculum";
 import { prepareTemplate, seededRandom, slotDomain } from "@/lib/workbook-curriculum/template";
-import { isChallengeOnly, isTwoStep, templateAtLevel } from "@/lib/workbook-curriculum/house-templates";
+import { isChallengeOnly, isSpotOnly, isTwoStep, templateAtLevel } from "@/lib/workbook-curriculum/house-templates";
 import type { AiItem, BuiltQuestion, SlotPlace } from "@/lib/workbook-generator-items";
 import type { SlotName } from "@/lib/workbook-page";
 import type { StepDeclaration } from "@/lib/workbook-print-contract";
@@ -293,6 +293,8 @@ export interface StepItemRequest {
   usedOnPage?: ReadonlyMap<number, number>;
   /** The most characters the text has room for. */
   room?: number;
+  /** A checked template has a known key; budget its text for the box that key prints. */
+  roomForAnswer?: (answer: string) => number | undefined;
   /** A name never to print (the child's own). */
   avoid?: string | null;
   /**
@@ -401,7 +403,8 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
   const wanted = wantedDifficulty(r.place, r.day, r.ordinal);
   // A number to work out: a number answer, or a list of numbers (a count with boxes).
   const numberAnswer = numberAnswerOf;
-  const printable = step.templates.map((t, index) => ({ t: templateAtLevel(r.level, step, index, t), index })).filter(({ t }) => !templateProblem(t, r.level)
+  const printable = step.templates.map((t, index) => ({ t: templateAtLevel(r.level, step, index, t), index })).filter(({ t, index }) => !templateProblem(t, r.level)
+    && (r.place === "spot-the-error" || !isSpotOnly(step.templates![index]))
     && (r.place !== "solve-it-two-ways" || sumTemplate(t)) && (r.place !== "spot-the-error" || numberAnswer(t))
     // (Code's two-step cards are the Challenge's last fill only; Unica's Challenge templates the Challenge's and Show what
     // you know's, house-templates.ts.)
@@ -537,7 +540,8 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
       // Derived words can introduce the same unsupported drawing or picture
       // request as literal template text. Check the final text too.
       if (templateProblem({ ...t, text }, r.level)) continue;
-      if (r.room !== undefined && text.length > r.room) continue;
+      const room = r.roomForAnswer ? r.roomForAnswer(filled.answer) : r.room;
+      if (room !== undefined && text.length > room) continue;
       if (stepRangeProblem(step, text) || stepRangeProblem(step, filled.answer)) continue;
       if (topPlace && r.level >= 10 && !r.allEasy) {
         const bounds = stepBounds(step);

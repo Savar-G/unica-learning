@@ -60,6 +60,7 @@ import { choiceInstruction } from "@/lib/workbook-layout-check";
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { withTimeLimit, type AiClient } from "@/lib/ai-client";
 import { WorkbookAiUnavailable } from "@/lib/workbook-ai-unavailable";
+import { templateAnswerValue } from "@/lib/question-package-template";
 import { checkQuestionPackage, type QuestionPackage } from "@/lib/question-package";
 import { isQrToken, isUuid } from "@/lib/workbook-content";
 import type { Curriculum } from "@/lib/workbook-curriculum";
@@ -79,7 +80,7 @@ import { dayDifficulty, type PageType, type PlannedPage, type PlannedPart, type 
 import { estimatedDayMinutes, generatedDayTime, scheduledItemProblem } from "@/lib/workbook-feedback-check";
 import { workbookEditItem } from "@/lib/workbook-edit-item";
 import type { DraftPage } from "@/lib/workbook-render";
-import { textRoom, slotMax, pagePlan } from "@/lib/workbook-template";
+import { textRoom, slotMax, pagePlan, FOUR_DIGIT_LEVEL } from "@/lib/workbook-template";
 
 import { checkWholeBook, workbookQuality, pageMinimum, questionMinutes, typeKey, type BookQuality } from "@/lib/workbook-quality";
 import { extraPracticeRepeats, twoWaysCountsAsStory } from "@/lib/workbook-early-levels";
@@ -92,18 +93,23 @@ import { isTwoStep, routingTemplates } from "@/lib/workbook-curriculum/house-tem
 import { buildStepItem, mixedTemplateSign, NO_TEMPLATE_PLACES, STEP_STORY_PLACES, stepAiItem, stepBounds, stepOf, stepRank, stepTemplateItem, stepTemplateOf, sumTemplate, templateProblem } from "@/lib/workbook-step-items";
 import type { StepDeclaration, StepReference } from "@/lib/workbook-print-contract";
 
-/** A replacement must retain the practice page's own-step minimum before it can borrow review work. */
+/** A replacement must retain the page's own-step minimum before it can borrow review work. */
 function needsOwnPractice(input: GenerateInput, w: PageWork, slot: Slot): boolean {
   // Four likelihood questions give a full pair in each U4 practice block before its earlier-step review rows.
   const youngLikelihood = input.plan.level === 4 && !!slot.part.step && /likelihood/.test(slot.part.step.skill);
-  if ((input.plan.level < 10 && !youngLikelihood) || w.page.extraPractice || !["practice", "practice-2"].includes(w.page.type)) return false;
+  if ((input.plan.level < 10 && !youngLikelihood) || w.page.extraPractice || !["practice", "practice-2", "new-idea"].includes(w.page.type)) return false;
   const counted = (s: Slot) => !["remember-these", "spot-the-error", "solve-it-two-ways", "warm-up", "how-do-you-know"].includes(s.place ?? "");
   if (!slot.part.step || !counted(slot)) return false;
   const practice = w.slots.filter(counted);
   const own = practice.filter(s => s.id !== slot.id && s.contract && (!s.part.step || !s.contract.template
     || s.contract.template.skill === s.part.step.skill && s.contract.template.step === s.part.step.step)).length;
-  return own < (youngLikelihood ? 4 : Math.min(3, Math.ceil(practice.length / 2)));
+  const need = w.page.type === "new-idea" ? pageMinimum(w.page.type, input.plan.level, false, practice.some(s => plannedWorkHeight(s.contract, input.plan.level) > 0))
+    : youngLikelihood ? 4 : Math.min(3, Math.ceil(practice.length / 2));
+  return own < need;
 }
+
+const lacksOwnPractice = (input: GenerateInput, w: PageWork) => input.plan.level >= 10 && w.slots.some(s => s.contract?.template && s.part.step
+  && (s.contract.template.skill !== s.part.step.skill || s.contract.template.step !== s.part.step.step) && needsOwnPractice(input, w, s));
 
 /** The slot's own step, or a step its review part draws from. Later attempts can borrow a taught step. */
 function slotStep(input: GenerateInput, slot: Slot, attempt: number, level: number, day = 0, ownPractice = false): { skill: string; step: number } | null {
@@ -205,11 +211,18 @@ function templateContractFor(input: GenerateInput, w: PageWork, slot: Slot, atte
   // Later attempts take longer templates too (U16: a page of only the short ones prints one form); the measured fit
   // then plans the page.
   // (A Show what you know card holds 3 lines, D-201: its room is 3 of its lines, not twice its 2-line room.)
-  const card = slot.place === "show-what-you-know" || slot.place === "level-test";
-  const room = drill && slot.place !== "spot-the-error" ? (card ? drill.perLine * 3 : Math.round(Math.max(drill.characters * 2, drill.perLine * 3) * (attempt >= 128 && LONGER_PLACES.has(slot.place!) ? 1.6 : 1))) : undefined;
+  const place = slot.place;
+  const card = place === "show-what-you-know" || place === "level-test";
+  const textLimit = (size: ReturnType<typeof textRoom>) => size && place && place !== "spot-the-error"
+    ? card ? size.perLine * 3 : Math.round(Math.max(size.characters * 2, size.perLine * 3) * (attempt >= 128 && LONGER_PLACES.has(place) ? 1.6 : 1))
+    : undefined;
+  const room = textLimit(drill);
   const fill = stepTemplateItem({
     curriculum: input.curriculum, skill: at.skill, step: at.step, place: panel ? "worked-example" : slot.place, level, day: difficultyDay(input.plan, w.day),
-    seed: hashOf(`${input.workbookId}:${w.number}:${slot.id}`) % 1_000_000_007, attempt, ordinal, usedOnPage: used, room, avoid: input.book?.child || null,
+    seed: hashOf(`${input.workbookId}:${w.number}:${slot.id}`) % 1_000_000_007, attempt, ordinal, usedOnPage: used, room,
+    // The writer's unknown key reserves the wider box. A checked template budgets for its actual key.
+    ...(level >= FOUR_DIGIT_LEVEL && place ? { roomForAnswer: (answer: string) =>
+      textLimit(textRoom(place, level, input.plan.days.find(d => d.day === w.day)?.pages.length ?? 8, true, templateAnswerValue(answer))) } : {}), avoid: input.book?.child || null,
     ...(slot.interest ? { interests: interestWords(input.plan) } : {}),
   });
   if (!fill) return null;
@@ -2409,6 +2422,10 @@ async function pool<T>(items: T[], limit: number, run: (item: T) => Promise<void
  * day page with its layout, slots and panels, and each slot planned (#380). The same input always gives the same.
  */
 /** Apply the template capacity before assigning an item or asking the writer. */
+const needsTwoPracticeRows = (step: PlannedPart["step"]) => !!step
+  && (step.skill === "3.1-estimate-quantity" && [2, 3].includes(step.step)
+    || step.skill === "5.1-place-value-million" && step.step === 3);
+
 export function workbookCapacityPlan(curriculum: Curriculum, plan: WorkbookPlan): WorkbookPlan {
   const taught = new Set<string>();
   return { ...plan, days: plan.days.map(day => ({ ...day, pages: day.pages.map(page => {
@@ -2434,7 +2451,7 @@ export function workbookCapacityPlan(curriculum: Curriculum, plan: WorkbookPlan)
       if (s.slot === "now-you") {
         const step = page.parts[s.part].step;
         // This step's short choices need two complete pairs. Reserve its page minimum before the day's time pass.
-        s.items = target(page.type === "new-idea" && step?.skill === "3.1-estimate-quantity" && [2, 3].includes(step.step) ? 4 : 3);
+        s.items = target(page.type === "new-idea" && needsTwoPracticeRows(step) ? 4 : 3);
       }
       if (s.slot === "finish-these") s.items = target(2);
       if (s.slot === "on-your-own") s.items = target(6);
@@ -2922,7 +2939,7 @@ const HOLE_ROUNDS = 12;
 function minimumFor(w: PageWork, level: number): number {
   const working = w.slots.some(s => s.place !== "warm-up" && !NUMBER_PLACES.has(s.place ?? "") && plannedWorkHeight(s.contract, level) > 0);
   const minimum = pageMinimum(w.slots.every(s => s.place === "mini-test") ? "mini-test" : w.page.type, level, !!w.page.extraPractice, working, w.slots.filter(s => NUMBER_PLACES.has(s.place ?? "")).length);
-  const paired = w.page.type === "new-idea" && w.slots.some(s => s.place === "now-you" && s.part.step?.skill === "3.1-estimate-quantity" && [2, 3].includes(s.part.step.step));
+  const paired = w.page.type === "new-idea" && w.slots.some(s => s.place === "now-you" && needsTwoPracticeRows(s.part.step));
   return paired ? Math.max(4, minimum) : minimum;
 }
 
@@ -3029,7 +3046,8 @@ function exampleStandIn(input: GenerateInput, w: PageWork, p: Panel): QuestionPa
  * A panel's example that no question and no other example of the book asks (#811), in place of a repeated one: a
  * code-built example of the panel's skill first; else, for a whole-number +, - or × the writer built (Kai's estimation
  * pages have no code example at any attempt), the same sum with its first number moved on, to a number of as many
- * digits, so the method keeps its steps and the room measured for it. Code writes its words (D-231). Null when there is none.
+ * digits, so the method keeps its steps and the room measured for it. A closer-to-benchmark example keeps its
+ * benchmarks and changes only the compared whole number. Code writes its words (D-231). Null when there is none.
  */
 function unusedPanelExample(input: GenerateInput, w: PageWork, panel: Panel, repeated: QuestionPackage, taken: ReadonlySet<string>): QuestionPackage | null {
   const usable = (pkg: QuestionPackage | null): pkg is QuestionPackage => !!pkg && workableExample(pkg) && !taken.has(taskIdentity(pkg)) && !levelRange(pkg, input) && !dayProblem(input, pkg, w.day, panel.place);
@@ -3040,6 +3058,20 @@ function unusedPanelExample(input: GenerateInput, w: PageWork, panel: Panel, rep
     // (The page prints the example of this attempt from now on, as the capacity pass's panels do.)
     panel.attempt = attempt;
     return withoutSam(pkg, null);
+  }
+  const relation = repeated.item?.checks.find(c => c.kind === "relation");
+  if (relation?.kind === "relation" && relation.relation === "closer" && Number.isSafeInteger(relation.numbers[0])) {
+    const original = relation.numbers[0];
+    for (let offset = 1; offset <= PANEL_ATTEMPTS; offset++) for (const n of [original + offset, original - offset]) {
+      if (String(n).length !== String(original).length || n < Math.min(...relation.to) || n > Math.max(...relation.to)) continue;
+      const built = buildQuestion({
+        slot: panel.id, skill: panel.skill, difficulty: 2, text: "", format: "relation", figure: null,
+        numbers: [itemNumber(n)], places: null, direction: null, sequence: null, pattern: null,
+        relation: { kind: "closer", to: [...relation.to], labels: [] }, figureShows: null, name: null, thing: null,
+        operation: null, easier: null, wrongAnswers: [], shownWrong: null,
+      }, { id: repeated.id, workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [panel.skill] });
+      if (built.check.status !== "failed" && usable(built.package)) return withoutSam(built.package, null);
+    }
   }
   const op = repeated.operation;
   const sign = op ? SUM_SIGNS[op.kind] : undefined;
@@ -3207,14 +3239,17 @@ async function swapCompleteRows(input: GenerateInput, w: PageWork, work: PageWor
   return false;
 }
 
-/** Replace a review pair together: the intermediate odd sections can overflow even when the complete rows fit. */
+/** Practice review pairs move together; a new-idea grid can also replace one question without opening a row. */
 async function restoreOwnPractice(input: GenerateInput, w: PageWork, work: PageWork[], fitCheck: FitCheck): Promise<boolean> {
   const targets = w.slots.filter(s => s.part.step && s.contract?.template
     && (s.contract.template.skill !== s.part.step.skill || s.contract.template.step !== s.part.step.step) && needsOwnPractice(input, w, s));
   const before = w.slots.map(s => ({ ...s }));
   const minutes = plannedDayMinutes(input, work, w.day);
-  for (let i = 0; i < targets.length; i++) for (const second of targets.slice(i + 1).filter(s => s.layoutSlot === targets[i].layoutSlot)) {
-    const pair = [targets[i], second];
+  const groups = targets.flatMap((first, i) => [
+    ...(w.page.type === "new-idea" ? [[first]] : []),
+    ...targets.slice(i + 1).filter(s => s.layoutSlot === first.layoutSlot).map(second => [first, second]),
+  ]);
+  for (const pair of groups) {
     const taken = new Set([...work.flatMap(p => p.slots.flatMap(s => {
       const pkg = !pair.includes(s) && s.contract ? contractPackage(input, p, s.contract) : null;
       return pkg && s.place !== "warm-up" ? [taskIdentity(pkg)] : [];
@@ -3232,10 +3267,11 @@ async function restoreOwnPractice(input: GenerateInput, w: PageWork, work: PageW
       }
       return found;
     });
-    for (const a of choices[0]) for (const b of choices[1]) {
-      if (a.key === b.key) continue;
-      pair[0].contract = a.contract; pair[1].contract = b.contract;
-      const templatesOk = !templateTwice(w, pair[0], a.contract) && !templateTwice(w, pair[1], b.contract);
+    const combinations = pair.length === 1 ? choices[0].map(a => [a]) : choices[0].flatMap(a => choices[1].map(b => [a, b]));
+    for (const selected of combinations) {
+      if (new Set(selected.map(c => c.key)).size !== selected.length) continue;
+      pair.forEach((slot, i) => { slot.contract = selected[i].contract; });
+      const templatesOk = pair.every((slot, i) => !templateTwice(w, slot, selected[i].contract));
       ownStepFirst(w);
       const page = budgetPage(input, w);
       if (templatesOk && !pagePlan(page)?.incomplete?.length && exchangeQuality(input, w, page)
@@ -3273,7 +3309,8 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
     work.forEach((w, i) => { if (!firstOfDay.has(w.day)) firstOfDay.set(w.day, i); });
     const order = work.map((w, i) => ({ w, i })).sort((a, b) => firstOfDay.get(a.w.day)! - firstOfDay.get(b.w.day)! || Number(review(b.w)) - Number(review(a.w)) || a.i - b.i).map(x => x.w);
     for (const w of order) {
-      if (w.page.capacityChecked) continue;
+      // A prior physical-fit result does not establish the page's required own-step coverage.
+      if (w.page.capacityChecked && !lacksOwnPractice(input, w)) continue;
       // A day over its time budget plans one template practice item fewer on this page, and again (#489).
       // (Never Show what you know: the book's test keeps one of each step; the day's practice pages give the time.)
       for (let trimmed = 0; trimmed < 6 && w.layout && !w.page.extraPractice && w.page.type !== "show-what-you-know" && plannedDayMinutes(input, work, w.day) > DAY_MINUTES_MOST; trimmed++) {
@@ -3344,12 +3381,7 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         // (Room only: a layout problem is the template's, reported when the page is written.)
         const budgetPage = fitPage(w, "token-000000000001", questions, contentOf(input, w, questions, examples));
         const holes = pagePlan(budgetPage)?.incomplete ?? [];
-        // U16 page 22 can close its rows by dropping from three own questions to two. Keep the minimum binding.
-        if (input.plan.level === 16 && !holes.length && w.slots.some(s => s.contract?.template && s.part.step
-          && (s.contract.template.skill !== s.part.step.skill || s.contract.template.step !== s.part.step.step) && needsOwnPractice(input, w, s))) {
-          if (await restoreOwnPractice(input, w, work, fitCheck)) continue;
-          return `Page ${w.number}: cannot restore its own-step minimum in complete rows within the page and day limits`;
-        }
+        const shortOwnPractice = !holes.length && lacksOwnPractice(input, w);
         const holeSlot = holes.length ? w.slots[holes[0] - 1] : undefined;
         const holeOwn = !!holeSlot?.part.step && !!holeSlot.contract && (holeSlot.contract.template ? holeSlot.contract.template.skill === holeSlot.part.step.skill && holeSlot.contract.template.step === holeSlot.part.step.step : holeSlot.contract.item.skill === holeSlot.part.step.skill);
         const reviewPartner = holes.length >= 2 && holeOwn
@@ -3374,6 +3406,12 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         // fullness, while its floor is 8, Savar's 8 to 10.)
         const counted = w.slots.filter((s) => !["spot-the-error", "solve-it-two-ways", "warm-up", "how-do-you-know"].includes(s.place ?? "")).length;
         const belowFloor = !w.page.extraPractice && counted < minimumFor(w, input.plan.level);
+        // Restore coverage before accepting a complete grid. An overfull or under-count page must first finish
+        // its normal capacity repair; a pair-only replacement cannot remove an extra question.
+        if (shortOwnPractice && !belowFloor && (fit.ok || fit.problems.every(p => p.kind === "fullness"))) {
+          if (await restoreOwnPractice(input, w, work, fitCheck)) continue;
+          return `Page ${w.number}: cannot restore its own-step minimum in complete rows within the page and day limits`;
+        }
         // Apply the short reminder before rejecting an added question that needs calculation space.
         if (!fit.ok && !fit.problems.every(p => p.kind === "fullness") && input.plan.level >= 10 && !w.page.compactPanel
           && ["practice", "practice-2"].includes(w.page.type) && w.panels.some(p => p.place === "watch-one")
@@ -3392,7 +3430,9 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
             continue;
           }
         }
-        if (holes.length >= 2 && !belowFloor && (fit.ok || fit.problems.every(p => p.kind === "fullness")) && await swapCompleteRows(input, w, work, fitCheck)) continue;
+        // Closing two odd sections can remove a row and its overflow. The exchange checks both resulting pages;
+        // requiring the broken grid to fit first would prevent that repair.
+        if (holes.length >= 2 && !belowFloor && await swapCompleteRows(input, w, work, fitCheck)) continue;
         const wanted = Math.max(minimum, w.slots.length + (belowFloor ? 1 : 0));
         const restoringFloor = belowFloor;
         const canRefill = restoringFloor ? round < 63 : (w.page.refills ?? 0) < 8 && round < 48;
@@ -4129,7 +4169,7 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
   let quality: BookQuality | undefined;
   if (input.itemPolicy === "approved-v1") {
     const repairKeys=new Set<string>(), repairFrames=new Set<string>();
-    const reviewed = await checkWholeBook(pages, async (page, issues) => {
+    const reviewed = await checkWholeBook(pages, async (page, issues, currentPages) => {
       const w = byNumber.get(page.number);
       // The first pages a parent saw stay as they were; their issues stay on them.
       if (!w || pinned.has(page.number)) return null;
@@ -4140,9 +4180,9 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
       const swapped = new Set<number>();
       if (issues.some((i) => i.kind === "repeat" && /^the worked example repeats/.test(i.reason))) {
         const keysOf = (ps: GeneratedPage[]) => ps.flatMap((p) => (p.panelExamples ?? []).flatMap((e) => (e ? [taskIdentity(e)] : [])));
-        const earlier = new Set(keysOf(pages.filter((p) => p.number < page.number)));
-        const taken = new Set([...keysOf(pages), ...repairKeys,
-          ...pages.flatMap((p) => p.questions.flatMap((q) => (q.package && q.place !== "warm-up" ? [taskIdentity(q.package)] : [])))]);
+        const earlier = new Set(keysOf(currentPages.filter((p) => p.number < page.number)));
+        const taken = new Set([...keysOf([...currentPages]), ...repairKeys,
+          ...currentPages.flatMap((p) => p.questions.flatMap((q) => (q.package && q.place !== "warm-up" ? [taskIdentity(q.package)] : [])))]);
         examples = examples.map((e, k) => {
           const panel = w.panels[k];
           if (!e || !panel || !earlier.has(taskIdentity(e))) return e;
@@ -4156,7 +4196,7 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
       }
       const keyOf=(pkg:QuestionPackage)=>taskIdentity(pkg);
       const current=[...page.questions];
-      const questions = page.questions.map((q,index) => {
+      const repairQuestion = async (q: GeneratedQuestion, index: number): Promise<GeneratedQuestion> => {
         // Issues that each name their question change only those questions (a repeat, a Challenge card, a story too easy).
         // (A day's time estimate names no question, and a new question does not fix it.)
         const named=(i:{reason:string})=>/\bquestion \d+ /.test(i.reason);
@@ -4173,31 +4213,62 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
         const forms=()=>new Set(current.flatMap(o=>o.package && o.place!=="warm-up" ? [printedForm(o.package)] : []));
         const fewForms=issues.some(i=>/contexts? or formats?/.test(i.reason)) && forms().size<3 && !!q.package && q.place!=="warm-up" && current.filter(o=>o.package && printedForm(o.package)===printedForm(q.package!)).length>=2;
         const frameAgain=issues.some(i=>i.reason.startsWith(`question ${q.number} uses the sentence frame`) || /sentence frame/.test(i.reason) && i.reason.includes("times") && !!q.package && i.reason.includes(`"${sentenceFrameOf(q.package)}"`));
-        if(fixable.every(i=>i.kind==="variety") && q.package && (counts.get(kindOf(q)) ?? 0)<=limit && !fewForms && !frameAgain) return q;
-        const others=pages.flatMap(p=>p.questions.filter(other=>p.number!==page.number || other.number!==q.number)).concat(current.slice(0,index));
-        const keys=new Set([...others.flatMap(other=>other.package && other.place!=="warm-up" ? [keyOf(other.package)] : []), ...pages.flatMap(p=>(p.panelExamples ?? []).flatMap(e=>e ? [keyOf(e)] : []))]);
+        // Different sentence frames can still be the same story kind, such as two equal-groups stories.
+        const stories = current.filter(o => o.package && ["word-problems", "solve-it-two-ways"].includes(o.place ?? ""));
+        const currentStory = q.package ? storyKind(q.package.text) : null;
+        const storyKinds = new Set(stories.flatMap(o => storyKind(o.package!.text) ?? []));
+        const repeatedStory = issues.some(i => i.reason.startsWith("the stories page")) && stories.includes(q)
+          && !!currentStory && storyKinds.size < Math.min(input.plan.level >= 10 ? 3 : 2, stories.length)
+          && stories.filter(o => storyKind(o.package!.text) === currentStory).length > 1;
+        const interestIssue = issues.some(i => /stories with a thing or place name an interest/.test(i.reason));
+        const eligible = currentPages.flatMap(p => (p.number === page.number ? current : p.questions)
+          .filter(other => other.package && interestEligible(input.curriculum, other.itemPlan)));
+        const namedInterests = eligible.filter(other => printsInterest(input.plan, other.package!.text)).length;
+        const wantedInterest = eligible.length && namedInterests / eligible.length < INTEREST_SHARE.min ? true
+          : eligible.length && namedInterests / eligible.length > INTEREST_SHARE.max ? false : null;
+        const interestRepair = interestIssue && wantedInterest !== null && !!q.package
+          && interestEligible(input.curriculum, q.itemPlan) && printsInterest(input.plan, q.package.text) !== wantedInterest;
+        if (interestRepair && wantedInterest !== null) slot.interest = wantedInterest;
+        else if (repeatedStory && q.package && interestEligible(input.curriculum, q.itemPlan)) slot.interest = printsInterest(input.plan, q.package.text);
+        if(fixable.every(i=>i.kind==="variety") && q.package && (counts.get(kindOf(q)) ?? 0)<=limit && !fewForms && !frameAgain && !repeatedStory && !interestRepair) return q;
+        const others=currentPages.flatMap(p=>p.questions.filter(other=>p.number!==page.number || other.number!==q.number)).concat(current.slice(0,index));
+        const keys=new Set([...others.flatMap(other=>other.package && other.place!=="warm-up" ? [keyOf(other.package)] : []), ...currentPages.flatMap(p=>(p.panelExamples ?? []).flatMap(e=>e ? [keyOf(e)] : []))]);
         const frames=new Set(others.flatMap(other=>other.package && wordedTask(other.package) ? [storyFrame(other.package.text)] : []));
         // Its own step first, then (late attempts) an earlier step the book taught or the day reviews.
         for(const attempt of [...Array.from({length:128},(_,k)=>k+2), ...Array.from({length:96},(_,k)=>LATE_ATTEMPT+k)]) {
           const c=contractFor(input,w,slot,attempt);
-          if(!c || c.source!=="code") continue;
+          if(!c || c.source!=="code" && !((repeatedStory || interestRepair) && c.source==="story")) continue;
           const b=buildPlannedItem(c,c.item,{id:q.package?.id ?? `${input.workbookId}:${page.number}:${q.slot}`,workbookId:input.workbookId,page:page.number,question:q.number,level:input.plan.level,skills:[c.item.skill]});
           if(!b.package || b.check.status==="failed" || levelRange(b.package, input) || dayProblem(input, b.package, w.day,slot.place ?? "")) continue;
           if(keys.has(keyOf(b.package)) || repairKeys.has(keyOf(b.package)) || wordedTask(b.package) && !c.template && (frames.has(storyFrame(b.package.text)) || repairFrames.has(storyFrame(b.package.text)))) continue;
           const type=kindOf({itemPlan:c,package:b.package}),old=q.package ? kindOf(q) : "";
           if(current.length>=3 && (counts.get(type) ?? 0)-(type===old ? 1 : 0)>=limit) continue;
           if(fewForms && forms().has(printedForm(b.package))) continue;
+          if (repeatedStory) {
+            const kind = storyKind(b.package.text);
+            if (!kind || stories.some(o => o !== q && storyKind(o.package!.text) === kind)) continue;
+          }
+          if (interestRepair && (!interestEligible(input.curriculum, c) || printsInterest(input.plan, b.package.text) !== wantedInterest)) continue;
           const sentence=sentenceFrameOf(b.package);
           if(sentence && current.some((o,k)=>k!==index && o.package && sentenceFrameOf(o.package)===sentence)) continue;
           // A stem twice a page; a story too easy for the level; a Challenge template once (as the planner).
           const stem=stemOf(b.package);
           if(stem && current.filter((o,k)=>k!==index && o.package && o.place!=="warm-up" && stemOf(o.package)===stem).length>=2) continue;
-          if(tooEasyStory(input,slot,c,b.package)) continue;
+          if(tooEasyStory(input,slot,c,b.package) || notAStory(input,slot,c,b.package,w.page.type)) continue;
           if(c.template && slot.place!=="challenge" && slot.place!=="warm-up" && current.filter((o,k)=>k!==index && o.place!=="warm-up" && o.place!=="challenge" && o.itemPlan?.template && o.itemPlan.template.skill===c.template!.skill && o.itemPlan.template.step===c.template!.step && o.itemPlan.template.index===c.template!.index).length>=2) continue;
           if(slot.place==="challenge" && c.template && current.some((o,k)=>k!==index && o.itemPlan?.template && o.itemPlan.template.skill===c.template!.skill && o.itemPlan.template.step===c.template!.step && o.itemPlan.template.index===c.template!.index)) continue;
           // At most twice a day: the day's other pages count too.
-          if(sentence && pages.filter(p=>p.day===page.day && p.number!==page.number).flatMap(p=>p.questions).filter(o=>o.package && o.place!=="warm-up" && sentenceFrameOf(o.package)===sentence).length + current.filter((o,k)=>k!==index && o.package && sentenceFrameOf(o.package)===sentence).length>=2) continue;
-          const fresh={...q,check:b.check,package:b.package,itemPlan:c};
+          if(sentence && currentPages.filter(p=>p.day===page.day && p.number!==page.number).flatMap(p=>p.questions).filter(o=>o.package && o.place!=="warm-up" && sentenceFrameOf(o.package)===sentence).length + current.filter((o,k)=>k!==index && o.package && sentenceFrameOf(o.package)===sentence).length>=2) continue;
+          const fresh={...q,check:b.check,package:b.package,itemPlan:c, itemStep: b.itemStep ?? null,
+            stepDeclaration: b.stepDeclaration, itemStepReason: b.itemStepReason ?? null};
+          if (repeatedStory || interestRepair) {
+            const trial = current.map((other, k) => k === index ? fresh : other);
+            const content = contentOf(input, w, trial, examples);
+            const trialPages = currentPages.map(p => p.number === page.number ? { ...page, questions: trial } : p);
+            if (!interestShareProblems(input.curriculum, input.plan, currentPages).length
+              && interestShareProblems(input.curriculum, input.plan, trialPages).length) continue;
+            if (!(await deps.fit.fits(fitPage(w, page.qrToken, trial, content), book)).ok) continue;
+          }
           slot.contract = c;
           current[index]=fresh;
           repairKeys.add(keyOf(b.package));
@@ -4205,7 +4276,9 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
           return fresh;
         }
         return q;
-      });
+      };
+      const questions: GeneratedQuestion[] = [];
+      for (const [index, q] of page.questions.entries()) questions.push(await repairQuestion(q, index));
       const finalQuestions = await repairFinalRows(input, w, work, questions, examples, deps.fit, book);
       const content = contentOf(input, w, finalQuestions, examples);
       // Older checkpoints keep the checked teaching blocks, even if their
@@ -4220,11 +4293,8 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
       }
       const fit = await deps.fit.fits(fitPage(w, page.qrToken, finalQuestions, content), book);
       return { ...page, questions: finalQuestions, ...(swapped.size ? { panelExamples: examples } : {}), ...(content ? { content } : {}), fit: fit.ok ? { status: "fits" } : { status: "failed", problems: fit.problems } };
-    });
+    }, candidate => personalBookIssues(input, candidate));
     quality = reviewed.quality;
-    // G1: the personal book checks read the printed book: the warm-up's fact families (item 4) and the interest share
-    // (item 5). A failure is a whole-book issue on its page; with no signals there are none.
-    quality = withPersonalIssues(input, reviewed.pages, quality);
     pages = reviewed.pages.map(p => {
       const issues = quality!.issues.filter(i => i.page === p.number);
       return issues.length ? { ...p, fit: { status: "failed" as const, problems: [...(p.fit.status === "failed" ? p.fit.problems : []), ...issues.map(i => ({ question: null, reason: `whole-book check: ${i.reason}` }))] } } : p;

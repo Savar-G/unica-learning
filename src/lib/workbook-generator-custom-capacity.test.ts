@@ -4,6 +4,7 @@ import { firstCustomerProfile } from "./workbook-sample-profiles";
 import { planNextWorkbook } from "./workbook-placement";
 import { generateWorkbook, prepareWorkbookCapacity, workbookCapacityPlan, type FitCheck, type GenerateInput } from "./workbook-generator";
 import { buildPlannedItem } from "./workbook-item-plan";
+import { buildStepItem, stepAiItem, stepTemplateItem } from "./workbook-step-items";
 import { storyKind, taskIdentity } from "./workbook-task-identity";
 import { fakeAiClient } from "./ai-client-fake";
 import { fakeWorkbookItems } from "./workbook-ai-fake";
@@ -188,4 +189,52 @@ it("keeps the distinct angle task beside its method when practice uses compact r
   }
   expect(countExamples).toBeGreaterThan(0);
   expect(workbookQuality(pages).issues.filter(i => i.kind === "repeat" && i.reason.startsWith("the teaching panel repeats"))).toEqual([]);
+});
+
+it("repairs a stories page whose different sentence frames still repeat a story kind", async () => {
+  const source = customInput(["5.2", "5.7", "5.15", "5.19"], [10], 8);
+  const input = { ...source, workbookId: "f84bd24a-7751-4f81-a739-5c7ff266ef23" };
+  const plan = await prepareWorkbookCapacity(input, capacityFit);
+  let token = 0;
+  const deps = { fit: capacityFit, ai: fakeAiClient({ answer: fakeWorkbookItems }), solver: keySolver(),
+    qrToken: () => `token-${String(++token).padStart(12, "0")}`,
+    store: { save: async (draft: { id: string }) => ({ status: "saved" as const, draftId: draft.id }), draft: async () => null } };
+  const generated = await generateWorkbook({ ...input, plan }, deps);
+  if (generated.status !== "stored") throw new Error(generated.status);
+  const pages = structuredClone(generated.draft.pages.filter(p => p.content?.kind === "day"));
+  const page = pages.find(p => p.type === "word-problems")!;
+  const target = page.questions.find(q => q.package && storyKind(q.package.text) !== "groups")!;
+  expect(target).toBeTruthy();
+  // A checked, distinct equal-groups story simulates a kept pre-review page. The other two stories remain intact.
+  let replacement = false;
+  for (let attempt = 0; attempt < 40 && !replacement; attempt++) {
+    const fill = stepTemplateItem({ curriculum: input.curriculum, skill: "4.5-multiply-1-digit", step: 4,
+      place: "word-problems", level: 19, day: 10, seed: 83, attempt, ordinal: 0 });
+    if (!fill) continue;
+    const built = buildStepItem(fill.ref, fill.text, { id: target.package!.id, workbookId: input.workbookId,
+      page: page.number, question: target.number, level: 19, skills: [fill.ref.skill] }, "code");
+    if (!built.package || built.check.status !== "checked" || storyKind(built.package.text) !== "groups"
+      || page.questions.some(q => q.package && taskIdentity(q.package) === taskIdentity(built.package!))) continue;
+    Object.assign(target, built, { itemPlan: { ...target.itemPlan!, type: "template", source: "story",
+      template: fill.ref, item: stepAiItem(target.slot, fill.ref, fill.text), numbers: fill.numbers } });
+    replacement = true;
+  }
+  expect(replacement).toBe(true);
+  expect(workbookQuality([page]).issues.some(i => i.reason.startsWith("the stories page"))).toBe(true);
+  let tooTall: string | null = null;
+  const fit: FitCheck = { fits: async (candidate, book) => {
+    if (candidate.type === "word-problems") {
+      const kinds = candidate.questions.map(q => storyKind(q.package.text)).filter(Boolean);
+      if (new Set(kinds).size === 3) {
+        const text = candidate.questions.map(q => q.package.text).join("\n");
+        tooTall ??= text;
+        if (text === tooTall) return { ok: false, problems: [{ question: null, reason: "the first replacement runs 10 px past the content area" }] };
+      }
+    }
+    return capacityFit.fits(candidate, book);
+  } };
+  const resumed = await generateWorkbook({ ...input, plan }, { ...deps, fit, pages: { load: async () => pages, save: async () => {} } });
+  if (resumed.status !== "stored") throw new Error(resumed.status);
+  expect(tooTall).not.toBeNull();
+  expect(resumed.draft.quality?.issues.filter(i => i.reason.startsWith("the stories page"))).toEqual([]);
 });

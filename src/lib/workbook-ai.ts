@@ -21,6 +21,7 @@ import { CLAUDE_CLI_DEFAULT_MODEL, CLAUDE_CLI_SOLVE_DEFAULT_MODEL, CLAUDE_CLI_TI
 import { CODEX_SUBSCRIPTION_MODEL, codexCliClient, codexCliPreflight } from "@/lib/ai-codex-cli";
 import { isAbsolute } from "node:path";
 import { fallbackAiClient, newGate, type AiCallRecord, type AiProvider, type ProviderGate } from "@/lib/ai-fallback";
+import { ANTHROPIC_DEFAULT_MODEL, anthropicClient, type AnthropicUsage } from "@/lib/ai-anthropic";
 import { costingFetch, openRouterClient } from "@/lib/ai-openrouter";
 import type { AiFeature, AiUsageTag } from "@/lib/ai-usage";
 import { productKey } from "@/lib/ai-product-keys";
@@ -29,6 +30,27 @@ import { aiSolver, type SolveLog, type Solver } from "@/lib/workbook-solve-check
 type Env = Record<string, string | undefined>;
 
 export type WorkbookRunner = "mac" | "server";
+
+/** A direct API account is always selected explicitly; an unknown value never chooses another provider. */
+export function workbookApiProvider(env: Env): "openrouter" | "anthropic" {
+  const provider = env.WORKBOOK_API_PROVIDER?.trim().toLowerCase() ?? "openrouter";
+  if (provider !== "openrouter" && provider !== "anthropic") throw new Error("WORKBOOK_API_PROVIDER must be openrouter or anthropic");
+  if (provider === "anthropic" && workbookSubscriptionProvider(env) === "codex") throw new Error("Explicit Codex mode cannot switch to the Anthropic API; configure an API-only run explicitly");
+  return provider;
+}
+
+/** Conservative token cost, including the longer cache-write rate. Pricing read 2026-11-16. */
+function anthropicCost(u: AnthropicUsage): number {
+  const totalInput = u.inputTokens + u.cacheReadTokens + u.cacheWriteTokens;
+  const sonnet = u.model.startsWith("claude-sonnet-5-5");
+  const haiku = u.model.startsWith("claude-haiku-5-5");
+  if (!sonnet && !haiku) throw new Error("Unpriced Anthropic response model");
+  const input = sonnet ? 2 : totalInput > 100_000 ? .5 : .1;
+  const output = sonnet ? 10 : totalInput > 100_000 ? 2.5 : .5;
+  const read = sonnet ? .1 : totalInput > 100_000 ? .05 : .01;
+  return Math.round((u.inputTokens * input + u.outputTokens * output + u.cacheReadTokens * read + u.cacheWriteTokens * input * 2) * 100) / 1e8;
+}
+
 
 /** Where "Prepare next workbook" makes a run: WORKBOOK_RUNNER, "mac" unless it says "server". */
 export const workbookRunner = (env: Env = process.env): WorkbookRunner => (env.WORKBOOK_RUNNER?.trim().toLowerCase() === "server" ? "server" : "mac");
@@ -51,7 +73,7 @@ export async function workbookAiPreflight(env: Env = process.env, options: { spa
 }
 
 /** Which provider goes first: WORKBOOK_AI_PRIMARY, "subscription" unless it says "api". */
-export const workbookAiPrimary = (env: Env = process.env): AiProvider => (workbookSubscriptionProvider(env) !== "codex" && env.WORKBOOK_AI_PRIMARY?.trim().toLowerCase() === "api" ? "api" : "subscription");
+export const workbookAiPrimary = (env: Env = process.env): AiProvider => workbookApiProvider(env) === "anthropic" ? "api" : (workbookSubscriptionProvider(env) !== "codex" && env.WORKBOOK_AI_PRIMARY?.trim().toLowerCase() === "api" ? "api" : "subscription");
 
 /** "anthropic/claude-sonnet-5.5" and "claude-sonnet-5-5" name the same model. */
 const sameModel = (cli: string, api: string) => api.replace(/^anthropic\//, "").replace(/\./g, "-") === cli;
@@ -63,12 +85,14 @@ export const runModelName = (cli: string, api: string) => (sameModel(cli, api) ?
 export function workbookModels(env: Env = process.env) {
   const cli = env.WORKBOOK_CLAUDE_MODEL?.trim() || CLAUDE_CLI_DEFAULT_MODEL;
   const cliSolve = env.WORKBOOK_CLAUDE_SOLVE_MODEL?.trim() || CLAUDE_CLI_SOLVE_DEFAULT_MODEL;
-  const api = env.AI_MODEL?.trim() || AI_DEFAULT_MODEL;
-  const apiSolve = env.AI_SOLVE_MODEL?.trim() || AI_SOLVE_DEFAULT_MODEL;
+  const direct = workbookApiProvider(env) === "anthropic";
+  const api = direct ? env.WORKBOOK_ANTHROPIC_MODEL?.trim() || ANTHROPIC_DEFAULT_MODEL : env.AI_MODEL?.trim() || AI_DEFAULT_MODEL;
+  const apiSolve = direct ? env.WORKBOOK_ANTHROPIC_SOLVE_MODEL?.trim() || CLAUDE_CLI_SOLVE_DEFAULT_MODEL : env.AI_SOLVE_MODEL?.trim() || AI_SOLVE_DEFAULT_MODEL;
+  if (direct && [api, apiSolve].some(m => m !== ANTHROPIC_DEFAULT_MODEL && m !== CLAUDE_CLI_SOLVE_DEFAULT_MODEL)) throw new Error("The workbook Anthropic models must have pinned pricing: claude-sonnet-5-5 or claude-haiku-5-5");
   if (workbookSubscriptionProvider(env) === "codex") {
     return { cli: CODEX_SUBSCRIPTION_MODEL, cliSolve: CODEX_SUBSCRIPTION_MODEL, api, apiSolve, write: CODEX_SUBSCRIPTION_MODEL, solve: CODEX_SUBSCRIPTION_MODEL };
   }
-  return { cli, cliSolve, api, apiSolve, write: runModelName(cli, api), solve: runModelName(cliSolve, apiSolve) };
+  return { cli, cliSolve, api, apiSolve, write: direct ? api : runModelName(cli, api), solve: direct ? apiSolve : runModelName(cliSolve, apiSolve) };
 }
 
 export type AiCallKind = "write" | "solve";
@@ -92,6 +116,8 @@ export interface WorkbookAiOptions {
   spawn?: Spawner;
   /** For tests: the fetch under the API client. */
   fetch?: typeof globalThis.fetch;
+  /** Per-run spending guard for explicitly authorized direct Anthropic requests. */
+  anthropicFetchWrapper?: (send: typeof globalThis.fetch) => typeof globalThis.fetch;
   /** Each AI call, with what made it. */
   onCall?: (kind: AiCallKind, record: AiCallRecord) => unknown | Promise<unknown>;
   onStart?: (kind: AiCallKind, record: AiCallRecord) => unknown | Promise<unknown>;
@@ -113,23 +139,30 @@ const API_SOLVE_TIMEOUT_MS = 60_000;
  */
 export function workbookAi(env: Env, o: WorkbookAiOptions): WorkbookAi {
   const codex = workbookSubscriptionProvider(env) === "codex";
+  const direct = workbookApiProvider(env) === "anthropic";
+  if (direct && o.usage && (!o.usage.childId || o.usage.childId !== env.WORKBOOK_ANTHROPIC_CHILD_ID || !o.anthropicFetchWrapper)) throw new Error("A live Anthropic workbook requires its authorized child and spending guard");
+  if (direct && !env.ANTHROPIC_API_KEY?.trim()) throw new Error("The selected Anthropic API key is missing");
   if (codex && !o.subscription) throw new Error("The selected Codex subscription cannot run here; API fallback is disabled");
   const models = workbookModels(env);
   const gate = o.gate ?? newGate();
-  const primary = codex ? "subscription" : o.primary ?? workbookAiPrimary(env);
-  const binding = codex ? null : productKey("workbook", env);
+  const primary = direct ? "api" : codex ? "subscription" : o.primary ?? workbookAiPrimary(env);
+  const binding = codex || direct ? null : productKey("workbook", env);
+  const directKey = direct ? env.ANTHROPIC_API_KEY?.trim() : undefined;
   const base = o.fetch ?? globalThis.fetch;
   const timeout = Number(env.WORKBOOK_CLAUDE_TIMEOUT_MS) > 0 ? Number(env.WORKBOOK_CLAUDE_TIMEOUT_MS) : CLAUDE_CLI_TIMEOUT_MS;
   const tagOf = (feature: AiFeature): AiUsageTag => ({ feature, parentId: o.usage?.parentId, childId: o.usage?.childId, source: o.usage ? { kind: o.usage.kind ?? "workbook_run", id: o.usage.runId } : null });
-  const cli = (model: string, feature: AiFeature) => o.subscription
+  const cli = (model: string, feature: AiFeature) => o.subscription && !direct
     ? codex
       ? codexCliClient({ configDir: env.WORKBOOK_CODEX_HOME!.trim(), spawn: o.spawn, env, usage: tagOf(feature) })
       : claudeCliClient({ model, command: env.WORKBOOK_CLAUDE_COMMAND?.trim() || "claude", spawn: o.spawn, env, configDir: env.WORKBOOK_CLAUDE_CONFIG_DIR, timeout,
           usage: tagOf(feature) })
     : null;
-  const api = (model: string, ms: number, feature: AiFeature) => binding
-    ? (onCost: (usd: number) => void, onRequest: () => Promise<void>, onDispatch: () => void) => openRouterClient({ ...binding, model, feature, fetch: costingFetch(onCost, base), timeout: ms, maxRetries: o.singleDispatch ? 0 : 1, onRequest, onDispatch,
-        usage: tagOf(feature) })
+  const api = (model: string, ms: number, feature: AiFeature) => direct && directKey
+    ? (onCost: (usd: number) => void, onRequest: () => Promise<void>, onDispatch: () => void) => anthropicClient({ apiKey: directKey, model, fetch: base, timeout: ms, maxRetries: 0, singleDispatch: o.singleDispatch, fallbacks: false, onRequest, onDispatch, fetchWrapper: o.anthropicFetchWrapper,
+        usage: tagOf(feature), onUsage: (u) => onCost(anthropicCost(u)) })
+    : binding
+      ? (onCost: (usd: number) => void, onRequest: () => Promise<void>, onDispatch: () => void) => openRouterClient({ ...binding, model, feature, fetch: costingFetch(onCost, base), timeout: ms, maxRetries: o.singleDispatch ? 0 : 1, onRequest, onDispatch,
+          usage: tagOf(feature) })
     : null;
   const writeCli = cli(models.cli, "workbook");
   const writeApi = api(models.api, API_TIMEOUT_MS, "workbook");

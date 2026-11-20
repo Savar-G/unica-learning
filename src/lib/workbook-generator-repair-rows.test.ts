@@ -4,6 +4,33 @@ import { prepareWorkbookCapacity, workbookCapacityPlan, type FitCheck } from "./
 import { planNextWorkbook } from "./workbook-placement";
 import { pagePlan } from "./workbook-template";
 import { questionWorkSpace } from "./workbook-work-space";
+import { firstCustomerProfile } from "./workbook-sample-profiles";
+
+it("closes odd practice groups even when their extra rows overflow", async () => {
+  const curriculum = curriculumFor("bc")!;
+  const placed = planNextWorkbook({ curriculum, grade: 8, profile: firstCustomerProfile(), workbooks: [], number: 1,
+    instructions: { version: 1, startLevel: "U19", teachMore: ["6.4", "6.13"], teachLess: [], addReview: ["5.2", "5.7", "5.15"], difficulty: null } });
+  if (!placed.ok) throw new Error(placed.reason);
+  const broken = new Set<number>(), repaired = new Set<number>();
+  const plan = await prepareWorkbookCapacity({ workbookId: "704684c5-7d3c-46c1-b55b-e13a4ba1b8c4",
+    childId: "00000000-0000-4000-8000-000000000001", number: 1, profileBuild: null, curriculum,
+    plan: workbookCapacityPlan(curriculum, placed.plan), itemPolicy: "approved-v1", book: { child: "Alex" } }, {
+    fits: async page => {
+      const holes = pagePlan(page)?.incomplete?.length ?? 0;
+      if (page.type === "practice" && holes >= 2) {
+        broken.add(page.number);
+        return { ok: false, problems: [{ question: null, reason: "the odd groups add rows beyond the content area" }] };
+      }
+      const fits = page.questions.length <= (page.type === "warm-up" ? 12 : 10);
+      if (fits && !holes && broken.has(page.number)) repaired.add(page.number);
+      return fits ? { ok: true } : { ok: false, problems: [{ question: null, reason: "test page capacity" }] };
+    },
+  });
+  expect(broken.size).toBeGreaterThan(0);
+  expect(repaired.size).toBeGreaterThan(0);
+  expect(plan.days).toHaveLength(10);
+  for (const day of plan.days) for (const page of day.pages) expect(page.capacityChecked).toBe(true);
+}, 60_000);
 
 // U10 book 3, Day 7 page 4 (#728): eight practice rows overflowed while an own-step question needed its 64 px
 // calculation space. Shortening took an earlier step's question, which left an empty cell in the own-step rows, and every

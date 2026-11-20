@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { workbookAi } from "@/lib/workbook-ai";
 import { aiClient } from "@/lib/ai-client";
 import { openRouterClient } from "@/lib/ai-openrouter";
 import { configureAiUsage, configureAiUsageLifetime, flushAiUsage, insertUsageRow, recordAiUsage, usageRow, type AiUsageRow } from "@/lib/ai-usage";
@@ -39,6 +40,26 @@ it("records the shared client once, rather than once in each adapter layer", asy
   expect(rows).toHaveLength(1);
   expect(JSON.parse(rows[0])).toMatchObject({ feature: "marking", parent_id: "parent", child_id: "child", key_alias: "marking" });
 });
+it("records a direct workbook request once with its family, child and run tags", async () => {
+  const childId = "00000000-0000-4000-8000-000000000116";
+  const calls: (number | null)[] = [];
+  const live = workbookAi({ WORKBOOK_API_PROVIDER: "anthropic", ANTHROPIC_API_KEY: "test-only",
+    WORKBOOK_ANTHROPIC_CHILD_ID: childId }, { subscription: false,
+    usage: { childId, parentId: "parent", runId: "run" }, anthropicFetchWrapper: send => send,
+    onCall: (_kind, call) => { calls.push(call.usd); },
+    fetch: async () => new Response(JSON.stringify({ id: "msg-workbook", type: "message", role: "assistant", model: "claude-sonnet-5-5",
+      content: [{ type: "text", text: '{"ok":true}' }], stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 20 } }),
+      { headers: { "content-type": "application/json" } }),
+  });
+  expect(await live.ai!.json(request, new AbortController().signal)).toEqual({ ok: true });
+  await flushAiUsage();
+  const rows = readFileSync(join(dir, "receipts.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line));
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({ feature: "workbook", provider: "anthropic", parent_id: "parent", child_id: childId,
+    source_kind: "workbook_run", source_id: "run", generation_id: "msg-workbook", key_alias: "anthropic" });
+  expect(calls).toEqual([0.0004]);
+});
+
 it("retains each in-flight write through the host callback and flushes concurrent writes before exit", async () => {
   let release!: () => void;
   const gate = new Promise<void>((r) => { release = r; });

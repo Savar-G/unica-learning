@@ -303,7 +303,7 @@ export function interestShareProblems(curriculum: Curriculum, plan: Plan, pages:
   const eligible = pages.flatMap((p) => p.questions.filter((q) => q.package && interestEligible(curriculum, q.itemPlan)).map((q) => ({ page: p.number, interest: printsInterest(plan, q.package!.text) })));
   if (eligible.length < 6) return [];
   const share = eligible.filter((x) => x.interest).length / eligible.length;
-  return share >= INTEREST_SHARE.min && share <= INTEREST_SHARE.max ? [] : [{ page: eligible[0].page, reason: `${eligible.filter((x) => x.interest).length} of ${eligible.length} stories with a thing or place name an interest; the book needs half to two thirds` }];
+  return share >= INTEREST_SHARE.min && share <= INTEREST_SHARE.max ? [] : [{ page: (eligible.find(x => x.interest === (share > INTEREST_SHARE.max)) ?? eligible[0]).page, reason: `${eligible.filter((x) => x.interest).length} of ${eligible.length} stories with a thing or place name an interest; the book needs half to two thirds` }];
 }
 
 // ---------- Reading load (item 8) ----------
