@@ -1,0 +1,1606 @@
+{
+ "commit": "fee7814e6",
+ "records": [
+  {
+   "id": "00000000-0000-4000-8000-000000000001",
+   "createdAt": "2026-11-17T18:00:00.000Z",
+   "recordVersion": 1,
+   "kind": "chat",
+   "mode": "text",
+   "startedBy": "11111111-1111-4111-8111-111111111111",
+   "parentId": "11111111-1111-4111-8111-111111111111",
+   "childId": "22222222-2222-4222-8222-222222222222",
+   "question": {
+    "source": "workbook",
+    "workbookId": "11111111-1111-4111-8111-111111111111",
+    "page": 1,
+    "question": 1
+   },
+   "packageId": "subtract-52-28",
+   "packageHash": "sha256:762a9568fb978c9d7d2804e40f463b9470347f84a123ceec08ac57bb2e982662",
+   "questionText": "52 - 28 = ?",
+   "status": "live",
+   "revision": 2,
+   "startedAt": "2026-11-17T18:00:00.000Z",
+   "endedAt": null,
+   "model": "fake-v3",
+   "promptVersion": "maya-conversation-8",
+   "versions": {
+    "proposal": 2,
+    "lines": 22,
+    "session": 4,
+    "trace": 15
+   },
+   "outcome": null,
+   "counts": null,
+   "live": {
+    "package": {
+     "id": "subtract-52-28",
+     "ref": {
+      "source": "workbook",
+      "workbookId": "11111111-1111-4111-8111-111111111111",
+      "page": 1,
+      "question": 1
+     },
+     "templateId": null,
+     "text": "52 - 28 = ?",
+     "answer": {
+      "value": {
+       "type": "number",
+       "value": 24
+      },
+      "accepted": [],
+      "unit": null
+     },
+     "operation": {
+      "kind": "subtract",
+      "operands": [
+       52,
+       28
+      ]
+     },
+     "steps": [
+      {
+       "id": "ones",
+       "kind": "subtract-column",
+       "place": "ones",
+       "top": 2,
+       "bottom": 8,
+       "lent": false,
+       "regrouped": true,
+       "write": 4
+      },
+      {
+       "id": "tens",
+       "kind": "subtract-column",
+       "place": "tens",
+       "top": 5,
+       "bottom": 2,
+       "lent": true,
+       "regrouped": false,
+       "write": 2
+      },
+      {
+       "id": "result",
+       "kind": "result",
+       "value": {
+        "type": "number",
+        "value": 24
+       }
+      }
+     ],
+     "skill": {
+      "standard": "2.4",
+      "skills": [
+       "2.4-subtract-within-100"
+      ]
+     },
+     "level": 9,
+     "difficulty": 2,
+     "wrongAnswers": [
+      {
+       "value": {
+        "type": "number",
+        "value": 36
+       },
+       "cause": "O1",
+       "description": "Takes the smaller ones digit from the larger",
+       "step": "ones"
+      },
+      {
+       "value": {
+        "type": "number",
+        "value": 34
+       },
+       "cause": "regroup-forget",
+       "description": "Does not take the ten from the tens",
+       "step": "tens"
+      }
+     ],
+     "easierExample": {
+      "text": "42 - 7 = ?",
+      "operation": {
+       "kind": "subtract",
+       "operands": [
+        42,
+        7
+       ]
+      },
+      "answer": {
+       "type": "number",
+       "value": 35
+      },
+      "steps": [
+       {
+        "id": "ones",
+        "kind": "subtract-column",
+        "place": "ones",
+        "top": 2,
+        "bottom": 7,
+        "lent": false,
+        "regrouped": true,
+        "write": 5
+       },
+       {
+        "id": "tens",
+        "kind": "subtract-column",
+        "place": "tens",
+        "top": 4,
+        "bottom": null,
+        "lent": true,
+        "regrouped": false,
+        "write": 3
+       },
+       {
+        "id": "result",
+        "kind": "result",
+        "value": {
+         "type": "number",
+         "value": 35
+        }
+       }
+      ]
+     }
+    },
+    "text": {
+     "v": 6,
+     "initial": {
+      "session": {
+       "version": 4,
+       "callId": "00000000-0000-4000-8000-000000000001",
+       "channel": "chat",
+       "variety": {
+        "rng": 42,
+        "seq": 0,
+        "heard": {},
+        "history": {},
+        "name": null,
+        "nameAt": null
+       },
+       "freeTalk": false,
+       "conversational": true,
+       "state": "READY",
+       "resume": null,
+       "package": {
+        "id": "subtract-52-28",
+        "ref": {
+         "source": "workbook",
+         "workbookId": "11111111-1111-4111-8111-111111111111",
+         "page": 1,
+         "question": 1
+        },
+        "templateId": null,
+        "text": "52 - 28 = ?",
+        "answer": {
+         "value": {
+          "type": "number",
+          "value": 24
+         },
+         "accepted": [],
+         "unit": null
+        },
+        "operation": {
+         "kind": "subtract",
+         "operands": [
+          52,
+          28
+         ]
+        },
+        "steps": [
+         {
+          "id": "ones",
+          "kind": "subtract-column",
+          "place": "ones",
+          "top": 2,
+          "bottom": 8,
+          "lent": false,
+          "regrouped": true,
+          "write": 4
+         },
+         {
+          "id": "tens",
+          "kind": "subtract-column",
+          "place": "tens",
+          "top": 5,
+          "bottom": 2,
+          "lent": true,
+          "regrouped": false,
+          "write": 2
+         },
+         {
+          "id": "result",
+          "kind": "result",
+          "value": {
+           "type": "number",
+           "value": 24
+          }
+         }
+        ],
+        "skill": {
+         "standard": "2.4",
+         "skills": [
+          "2.4-subtract-within-100"
+         ]
+        },
+        "level": 9,
+        "difficulty": 2,
+        "wrongAnswers": [
+         {
+          "value": {
+           "type": "number",
+           "value": 36
+          },
+          "cause": "O1",
+          "description": "Takes the smaller ones digit from the larger",
+          "step": "ones"
+         },
+         {
+          "value": {
+           "type": "number",
+           "value": 34
+          },
+          "cause": "regroup-forget",
+          "description": "Does not take the ten from the tens",
+          "step": "tens"
+         }
+        ],
+        "easierExample": {
+         "text": "42 - 7 = ?",
+         "operation": {
+          "kind": "subtract",
+          "operands": [
+           42,
+           7
+          ]
+         },
+         "answer": {
+          "type": "number",
+          "value": 35
+         },
+         "steps": [
+          {
+           "id": "ones",
+           "kind": "subtract-column",
+           "place": "ones",
+           "top": 2,
+           "bottom": 7,
+           "lent": false,
+           "regrouped": true,
+           "write": 5
+          },
+          {
+           "id": "tens",
+           "kind": "subtract-column",
+           "place": "tens",
+           "top": 4,
+           "bottom": null,
+           "lent": true,
+           "regrouped": false,
+           "write": 3
+          },
+          {
+           "id": "result",
+           "kind": "result",
+           "value": {
+            "type": "number",
+            "value": 35
+           }
+          }
+         ]
+        }
+       },
+       "contentProblem": null,
+       "startedAt": null,
+       "now": null,
+       "expect": "nothing",
+       "waitingSince": null,
+       "silence": "none",
+       "turn": null,
+       "stopRequested": false,
+       "opened": false,
+       "clarified": false,
+       "noStart": false,
+       "exampleShown": 0,
+       "retried": false,
+       "done": [],
+       "ladder": {
+        "step": "ones",
+        "hint": -1,
+        "unlocked": 0,
+        "failures": 0
+       },
+       "highestHint": null,
+       "hints": 0,
+       "assistance": [],
+       "solved": null,
+       "lastResult": null,
+       "answerGivenFirst": false,
+       "understanding": "uncertain",
+       "paper": "unknown",
+       "wrote": false,
+       "finalMisses": 0,
+       "writeAsked": false,
+       "confirmTries": 0,
+       "offeredOtherInput": false,
+       "redirects": 0,
+       "safety": {
+        "flagged": false,
+        "severity": null,
+        "at": null,
+        "guided": false
+       },
+       "mishearing": {
+        "confirmations": 0,
+        "corrections": 0
+       },
+       "stuckStep": null,
+       "boardRoles": {},
+       "batches": 0,
+       "turns": [],
+       "outcome": null,
+       "tutor": {
+        "help": 0,
+        "drawn": []
+       },
+       "checkedExchange": {
+        "version": 1,
+        "progression": 1,
+        "id": "00000000-0000-4000-8000-000000000001:regrouping",
+        "turns": []
+       }
+      },
+      "endedAt": null,
+      "turns": [],
+      "board": []
+     },
+     "nextRequestId": 0,
+     "log": [
+      {
+       "kind": "input",
+       "at": 1794938400000,
+       "event": {
+        "type": "start",
+        "at": 1794938400000
+       }
+      },
+      {
+       "kind": "delivered",
+       "at": 1794938400000
+      },
+      {
+       "kind": "input",
+       "at": 1794938400000,
+       "event": {
+        "type": "child_turn",
+        "at": 1794938400000,
+        "text": "My answer is 24."
+       }
+      },
+      {
+       "kind": "checked_exchange",
+       "at": 1794938400000,
+       "proposal": {
+        "checkedExchange": 1,
+        "value": 52,
+        "example": false,
+        "show": false,
+        "instruction": {
+         "step": "correct"
+        }
+       }
+      },
+      {
+       "kind": "delivered",
+       "at": 1794938400000
+      }
+     ],
+     "session": {
+      "version": 4,
+      "callId": "00000000-0000-4000-8000-000000000001",
+      "channel": "chat",
+      "variety": {
+       "rng": 42,
+       "seq": 0,
+       "heard": {},
+       "history": {},
+       "name": null,
+       "nameAt": null
+      },
+      "freeTalk": false,
+      "conversational": true,
+      "state": "ASSESS",
+      "resume": null,
+      "package": {
+       "id": "subtract-52-28",
+       "ref": {
+        "source": "workbook",
+        "workbookId": "11111111-1111-4111-8111-111111111111",
+        "page": 1,
+        "question": 1
+       },
+       "templateId": null,
+       "text": "52 - 28 = ?",
+       "answer": {
+        "value": {
+         "type": "number",
+         "value": 24
+        },
+        "accepted": [],
+        "unit": null
+       },
+       "operation": {
+        "kind": "subtract",
+        "operands": [
+         52,
+         28
+        ]
+       },
+       "steps": [
+        {
+         "id": "ones",
+         "kind": "subtract-column",
+         "place": "ones",
+         "top": 2,
+         "bottom": 8,
+         "lent": false,
+         "regrouped": true,
+         "write": 4
+        },
+        {
+         "id": "tens",
+         "kind": "subtract-column",
+         "place": "tens",
+         "top": 5,
+         "bottom": 2,
+         "lent": true,
+         "regrouped": false,
+         "write": 2
+        },
+        {
+         "id": "result",
+         "kind": "result",
+         "value": {
+          "type": "number",
+          "value": 24
+         }
+        }
+       ],
+       "skill": {
+        "standard": "2.4",
+        "skills": [
+         "2.4-subtract-within-100"
+        ]
+       },
+       "level": 9,
+       "difficulty": 2,
+       "wrongAnswers": [
+        {
+         "value": {
+          "type": "number",
+          "value": 36
+         },
+         "cause": "O1",
+         "description": "Takes the smaller ones digit from the larger",
+         "step": "ones"
+        },
+        {
+         "value": {
+          "type": "number",
+          "value": 34
+         },
+         "cause": "regroup-forget",
+         "description": "Does not take the ten from the tens",
+         "step": "tens"
+        }
+       ],
+       "easierExample": {
+        "text": "42 - 7 = ?",
+        "operation": {
+         "kind": "subtract",
+         "operands": [
+          42,
+          7
+         ]
+        },
+        "answer": {
+         "type": "number",
+         "value": 35
+        },
+        "steps": [
+         {
+          "id": "ones",
+          "kind": "subtract-column",
+          "place": "ones",
+          "top": 2,
+          "bottom": 7,
+          "lent": false,
+          "regrouped": true,
+          "write": 5
+         },
+         {
+          "id": "tens",
+          "kind": "subtract-column",
+          "place": "tens",
+          "top": 4,
+          "bottom": null,
+          "lent": true,
+          "regrouped": false,
+          "write": 3
+         },
+         {
+          "id": "result",
+          "kind": "result",
+          "value": {
+           "type": "number",
+           "value": 35
+          }
+         }
+        ]
+       }
+      },
+      "contentProblem": null,
+      "startedAt": 1794938400000,
+      "now": 1794938400000,
+      "expect": "child",
+      "waitingSince": 1794938400000,
+      "silence": "none",
+      "turn": null,
+      "stopRequested": false,
+      "opened": true,
+      "clarified": false,
+      "noStart": false,
+      "exampleShown": 0,
+      "retried": false,
+      "done": [],
+      "ladder": {
+       "step": "ones",
+       "hint": -1,
+       "unlocked": 0,
+       "failures": 0
+      },
+      "highestHint": null,
+      "hints": 0,
+      "assistance": [],
+      "solved": "child",
+      "lastResult": "right",
+      "answerGivenFirst": false,
+      "understanding": "uncertain",
+      "paper": "unknown",
+      "wrote": false,
+      "finalMisses": 0,
+      "writeAsked": false,
+      "confirmTries": 0,
+      "offeredOtherInput": false,
+      "redirects": 0,
+      "safety": {
+       "flagged": false,
+       "severity": null,
+       "at": null,
+       "guided": false
+      },
+      "mishearing": {
+       "confirmations": 0,
+       "corrections": 0
+      },
+      "stuckStep": null,
+      "boardRoles": {
+       "question": "target"
+      },
+      "batches": 1,
+      "turns": [
+       {
+        "at": 1794938400000,
+        "speaker": "maya",
+        "text": "Hi there! I'm Maya, your AI math helper. We're doing 52 minus 28 today. What part is confusing, or where do you need help?",
+        "state": "OPEN",
+        "act": "open"
+       },
+       {
+        "at": 1794938400000,
+        "speaker": "child",
+        "text": "My answer is 24.",
+        "state": "OPEN"
+       },
+       {
+        "at": 1794938400000,
+        "speaker": "maya",
+        "text": "You found the difference.",
+        "state": "ASSESS",
+        "act": "guide"
+       }
+      ],
+      "outcome": null,
+      "tutor": {
+       "help": 0,
+       "drawn": []
+      },
+      "checkedExchange": {
+       "version": 1,
+       "progression": 1,
+       "id": "00000000-0000-4000-8000-000000000001:regrouping",
+       "turns": [
+        {
+         "id": "00000000-0000-4000-8000-000000000001:regrouping:1",
+         "facts": {
+          "value": 52,
+          "before": {
+           "tens": 5,
+           "ones": 2
+          },
+          "after": {
+           "tens": 4,
+           "ones": 12
+          },
+          "example": false
+         },
+         "actions": [],
+         "instruction": {
+          "step": "correct"
+         },
+         "observation": {
+          "skill": "difference",
+          "result": "correct",
+          "assistance": "independent",
+          "at": 1794938400000
+         },
+         "sent": true
+        }
+       ]
+      }
+     },
+     "turns": [
+      {
+       "kind": "start",
+       "at": 1794938400000
+      },
+      {
+       "kind": "maya",
+       "at": 1794938400000,
+       "state": "READY",
+       "stateAfter": "OPEN",
+       "finalMisses": 0,
+       "attempts": [
+        {
+         "source": "controller",
+         "proposal": null,
+         "refusal": null
+        }
+       ],
+       "output": {
+        "act": "open",
+        "say": [
+         "Hi there! I'm Maya, your AI math helper. We're doing 52 minus 28 today. What part is confusing, or where do you need help?"
+        ],
+        "board": [
+         "00000000-0000-4000-8000-000000000001-b1"
+        ]
+       }
+      },
+      {
+       "kind": "child",
+       "at": 1794938400000,
+       "text": "My answer is 24."
+      },
+      {
+       "kind": "maya",
+       "at": 1794938400000,
+       "state": "ASSESS",
+       "stateAfter": "ASSESS",
+       "finalMisses": 0,
+       "attempts": [
+        {
+         "source": "controller",
+         "proposal": {
+          "checkedExchange": 1,
+          "value": 52,
+          "example": false,
+          "show": false,
+          "instruction": {
+           "step": "correct"
+          }
+         },
+         "refusal": null
+        }
+       ],
+       "output": {
+        "act": "guide",
+        "say": [
+         "You found the difference."
+        ],
+        "board": []
+       }
+      }
+     ],
+     "board": [
+      {
+       "at": 1794938400000,
+       "turn": 1,
+       "transactionId": "00000000-0000-4000-8000-000000000001-b1",
+       "commands": [
+        {
+         "op": "columns",
+         "id": "question",
+         "operation": "subtract",
+         "operands": [
+          {
+           "id": "top",
+           "value": "52"
+          },
+          {
+           "id": "bottom",
+           "value": "28"
+          }
+         ],
+         "place": {
+          "region": "main"
+         }
+        }
+       ]
+      }
+     ],
+     "endedAt": null,
+     "approved": [
+      "You found the difference."
+     ],
+     "obligations": [
+      {
+       "id": 0,
+       "kind": "start_pending",
+       "at": 1794938400000,
+       "status": "served",
+       "servedBy": 0
+      },
+      {
+       "id": 1,
+       "kind": "opening_due",
+       "at": 1794938400000,
+       "status": "served",
+       "servedBy": 1
+      },
+      {
+       "id": 2,
+       "kind": "child_turn_pending",
+       "at": 1794938400000,
+       "status": "served",
+       "text": "My answer is 24.",
+       "servedBy": 3
+      }
+     ],
+     "childState": "listening"
+    }
+   },
+   "trace": null,
+   "boardHistory": null,
+   "learningEventId": null,
+   "profileRebuiltAt": null,
+   "notePending": null,
+   "speechToText": null,
+   "voice": null,
+   "connectedSeconds": null,
+   "flag": null
+  },
+  {
+   "id": "00000000-0000-4000-8000-000000000002",
+   "createdAt": "2026-11-17T18:00:00.000Z",
+   "recordVersion": 1,
+   "kind": "family",
+   "mode": "voice",
+   "startedBy": "11111111-1111-4111-8111-111111111111",
+   "parentId": "11111111-1111-4111-8111-111111111111",
+   "childId": "22222222-2222-4222-8222-222222222222",
+   "question": {
+    "source": "workbook",
+    "workbookId": "11111111-1111-4111-8111-111111111111",
+    "page": 1,
+    "question": 1
+   },
+   "packageId": "subtract-52-28",
+   "packageHash": "sha256:762a9568fb978c9d7d2804e40f463b9470347f84a123ceec08ac57bb2e982662",
+   "questionText": "52 - 28 = ?",
+   "status": "live",
+   "revision": 3,
+   "startedAt": "2026-11-17T18:00:00.000Z",
+   "endedAt": null,
+   "model": "fake-v3",
+   "promptVersion": "maya-conversation-8",
+   "versions": {
+    "proposal": 2,
+    "lines": 22,
+    "session": 4,
+    "trace": 15
+   },
+   "outcome": null,
+   "counts": null,
+   "live": {
+    "package": {
+     "id": "subtract-52-28",
+     "ref": {
+      "source": "workbook",
+      "workbookId": "11111111-1111-4111-8111-111111111111",
+      "page": 1,
+      "question": 1
+     },
+     "templateId": null,
+     "text": "52 - 28 = ?",
+     "answer": {
+      "value": {
+       "type": "number",
+       "value": 24
+      },
+      "accepted": [],
+      "unit": null
+     },
+     "operation": {
+      "kind": "subtract",
+      "operands": [
+       52,
+       28
+      ]
+     },
+     "steps": [
+      {
+       "id": "ones",
+       "kind": "subtract-column",
+       "place": "ones",
+       "top": 2,
+       "bottom": 8,
+       "lent": false,
+       "regrouped": true,
+       "write": 4
+      },
+      {
+       "id": "tens",
+       "kind": "subtract-column",
+       "place": "tens",
+       "top": 5,
+       "bottom": 2,
+       "lent": true,
+       "regrouped": false,
+       "write": 2
+      },
+      {
+       "id": "result",
+       "kind": "result",
+       "value": {
+        "type": "number",
+        "value": 24
+       }
+      }
+     ],
+     "skill": {
+      "standard": "2.4",
+      "skills": [
+       "2.4-subtract-within-100"
+      ]
+     },
+     "level": 9,
+     "difficulty": 2,
+     "wrongAnswers": [
+      {
+       "value": {
+        "type": "number",
+        "value": 36
+       },
+       "cause": "O1",
+       "description": "Takes the smaller ones digit from the larger",
+       "step": "ones"
+      },
+      {
+       "value": {
+        "type": "number",
+        "value": 34
+       },
+       "cause": "regroup-forget",
+       "description": "Does not take the ten from the tens",
+       "step": "tens"
+      }
+     ],
+     "easierExample": {
+      "text": "42 - 7 = ?",
+      "operation": {
+       "kind": "subtract",
+       "operands": [
+        42,
+        7
+       ]
+      },
+      "answer": {
+       "type": "number",
+       "value": 35
+      },
+      "steps": [
+       {
+        "id": "ones",
+        "kind": "subtract-column",
+        "place": "ones",
+        "top": 2,
+        "bottom": 7,
+        "lent": false,
+        "regrouped": true,
+        "write": 5
+       },
+       {
+        "id": "tens",
+        "kind": "subtract-column",
+        "place": "tens",
+        "top": 4,
+        "bottom": null,
+        "lent": true,
+        "regrouped": false,
+        "write": 3
+       },
+       {
+        "id": "result",
+        "kind": "result",
+        "value": {
+         "type": "number",
+         "value": 35
+        }
+       }
+      ]
+     }
+    },
+    "text": {
+     "v": 6,
+     "initial": {
+      "session": {
+       "version": 4,
+       "callId": "00000000-0000-4000-8000-000000000002",
+       "variety": {
+        "rng": 42,
+        "seq": 0,
+        "heard": {},
+        "history": {},
+        "name": null,
+        "nameAt": null
+       },
+       "freeTalk": false,
+       "conversational": true,
+       "state": "READY",
+       "resume": null,
+       "package": {
+        "id": "subtract-52-28",
+        "ref": {
+         "source": "workbook",
+         "workbookId": "11111111-1111-4111-8111-111111111111",
+         "page": 1,
+         "question": 1
+        },
+        "templateId": null,
+        "text": "52 - 28 = ?",
+        "answer": {
+         "value": {
+          "type": "number",
+          "value": 24
+         },
+         "accepted": [],
+         "unit": null
+        },
+        "operation": {
+         "kind": "subtract",
+         "operands": [
+          52,
+          28
+         ]
+        },
+        "steps": [
+         {
+          "id": "ones",
+          "kind": "subtract-column",
+          "place": "ones",
+          "top": 2,
+          "bottom": 8,
+          "lent": false,
+          "regrouped": true,
+          "write": 4
+         },
+         {
+          "id": "tens",
+          "kind": "subtract-column",
+          "place": "tens",
+          "top": 5,
+          "bottom": 2,
+          "lent": true,
+          "regrouped": false,
+          "write": 2
+         },
+         {
+          "id": "result",
+          "kind": "result",
+          "value": {
+           "type": "number",
+           "value": 24
+          }
+         }
+        ],
+        "skill": {
+         "standard": "2.4",
+         "skills": [
+          "2.4-subtract-within-100"
+         ]
+        },
+        "level": 9,
+        "difficulty": 2,
+        "wrongAnswers": [
+         {
+          "value": {
+           "type": "number",
+           "value": 36
+          },
+          "cause": "O1",
+          "description": "Takes the smaller ones digit from the larger",
+          "step": "ones"
+         },
+         {
+          "value": {
+           "type": "number",
+           "value": 34
+          },
+          "cause": "regroup-forget",
+          "description": "Does not take the ten from the tens",
+          "step": "tens"
+         }
+        ],
+        "easierExample": {
+         "text": "42 - 7 = ?",
+         "operation": {
+          "kind": "subtract",
+          "operands": [
+           42,
+           7
+          ]
+         },
+         "answer": {
+          "type": "number",
+          "value": 35
+         },
+         "steps": [
+          {
+           "id": "ones",
+           "kind": "subtract-column",
+           "place": "ones",
+           "top": 2,
+           "bottom": 7,
+           "lent": false,
+           "regrouped": true,
+           "write": 5
+          },
+          {
+           "id": "tens",
+           "kind": "subtract-column",
+           "place": "tens",
+           "top": 4,
+           "bottom": null,
+           "lent": true,
+           "regrouped": false,
+           "write": 3
+          },
+          {
+           "id": "result",
+           "kind": "result",
+           "value": {
+            "type": "number",
+            "value": 35
+           }
+          }
+         ]
+        }
+       },
+       "contentProblem": null,
+       "startedAt": null,
+       "now": null,
+       "expect": "nothing",
+       "waitingSince": null,
+       "silence": "none",
+       "turn": null,
+       "stopRequested": false,
+       "opened": false,
+       "clarified": false,
+       "noStart": false,
+       "exampleShown": 0,
+       "retried": false,
+       "done": [],
+       "ladder": {
+        "step": "ones",
+        "hint": -1,
+        "unlocked": 0,
+        "failures": 0
+       },
+       "highestHint": null,
+       "hints": 0,
+       "assistance": [],
+       "solved": null,
+       "lastResult": null,
+       "answerGivenFirst": false,
+       "understanding": "uncertain",
+       "paper": "unknown",
+       "wrote": false,
+       "finalMisses": 0,
+       "writeAsked": false,
+       "confirmTries": 0,
+       "offeredOtherInput": false,
+       "redirects": 0,
+       "safety": {
+        "flagged": false,
+        "severity": null,
+        "at": null,
+        "guided": false
+       },
+       "mishearing": {
+        "confirmations": 0,
+        "corrections": 0
+       },
+       "stuckStep": null,
+       "boardRoles": {},
+       "batches": 0,
+       "turns": [],
+       "outcome": null,
+       "tutor": {
+        "help": 0,
+        "drawn": []
+       },
+       "checkedExchange": {
+        "version": 1,
+        "progression": 1,
+        "id": "00000000-0000-4000-8000-000000000002:regrouping",
+        "turns": []
+       }
+      },
+      "endedAt": null,
+      "turns": [],
+      "board": []
+     },
+     "nextRequestId": 0,
+     "log": [
+      {
+       "kind": "input",
+       "at": 1794938400000,
+       "event": {
+        "type": "start",
+        "at": 1794938400000
+       }
+      },
+      {
+       "kind": "delivered",
+       "at": 1794938400000
+      },
+      {
+       "kind": "input",
+       "at": 1794938400000,
+       "event": {
+        "type": "child_turn",
+        "at": 1794938400000,
+        "text": "My answer is 24."
+       }
+      },
+      {
+       "kind": "checked_exchange",
+       "at": 1794938400000,
+       "proposal": {
+        "checkedExchange": 1,
+        "value": 52,
+        "example": false,
+        "show": false,
+        "instruction": {
+         "step": "correct"
+        }
+       }
+      },
+      {
+       "kind": "delivered",
+       "at": 1794938400000
+      }
+     ],
+     "session": {
+      "version": 4,
+      "callId": "00000000-0000-4000-8000-000000000002",
+      "variety": {
+       "rng": 42,
+       "seq": 0,
+       "heard": {},
+       "history": {},
+       "name": null,
+       "nameAt": null
+      },
+      "freeTalk": false,
+      "conversational": true,
+      "state": "ASSESS",
+      "resume": null,
+      "package": {
+       "id": "subtract-52-28",
+       "ref": {
+        "source": "workbook",
+        "workbookId": "11111111-1111-4111-8111-111111111111",
+        "page": 1,
+        "question": 1
+       },
+       "templateId": null,
+       "text": "52 - 28 = ?",
+       "answer": {
+        "value": {
+         "type": "number",
+         "value": 24
+        },
+        "accepted": [],
+        "unit": null
+       },
+       "operation": {
+        "kind": "subtract",
+        "operands": [
+         52,
+         28
+        ]
+       },
+       "steps": [
+        {
+         "id": "ones",
+         "kind": "subtract-column",
+         "place": "ones",
+         "top": 2,
+         "bottom": 8,
+         "lent": false,
+         "regrouped": true,
+         "write": 4
+        },
+        {
+         "id": "tens",
+         "kind": "subtract-column",
+         "place": "tens",
+         "top": 5,
+         "bottom": 2,
+         "lent": true,
+         "regrouped": false,
+         "write": 2
+        },
+        {
+         "id": "result",
+         "kind": "result",
+         "value": {
+          "type": "number",
+          "value": 24
+         }
+        }
+       ],
+       "skill": {
+        "standard": "2.4",
+        "skills": [
+         "2.4-subtract-within-100"
+        ]
+       },
+       "level": 9,
+       "difficulty": 2,
+       "wrongAnswers": [
+        {
+         "value": {
+          "type": "number",
+          "value": 36
+         },
+         "cause": "O1",
+         "description": "Takes the smaller ones digit from the larger",
+         "step": "ones"
+        },
+        {
+         "value": {
+          "type": "number",
+          "value": 34
+         },
+         "cause": "regroup-forget",
+         "description": "Does not take the ten from the tens",
+         "step": "tens"
+        }
+       ],
+       "easierExample": {
+        "text": "42 - 7 = ?",
+        "operation": {
+         "kind": "subtract",
+         "operands": [
+          42,
+          7
+         ]
+        },
+        "answer": {
+         "type": "number",
+         "value": 35
+        },
+        "steps": [
+         {
+          "id": "ones",
+          "kind": "subtract-column",
+          "place": "ones",
+          "top": 2,
+          "bottom": 7,
+          "lent": false,
+          "regrouped": true,
+          "write": 5
+         },
+         {
+          "id": "tens",
+          "kind": "subtract-column",
+          "place": "tens",
+          "top": 4,
+          "bottom": null,
+          "lent": true,
+          "regrouped": false,
+          "write": 3
+         },
+         {
+          "id": "result",
+          "kind": "result",
+          "value": {
+           "type": "number",
+           "value": 35
+          }
+         }
+        ]
+       }
+      },
+      "contentProblem": null,
+      "startedAt": 1794938400000,
+      "now": 1794938400000,
+      "expect": "child",
+      "waitingSince": 1794938400000,
+      "silence": "none",
+      "turn": null,
+      "stopRequested": false,
+      "opened": true,
+      "clarified": false,
+      "noStart": false,
+      "exampleShown": 0,
+      "retried": false,
+      "done": [],
+      "ladder": {
+       "step": "ones",
+       "hint": -1,
+       "unlocked": 0,
+       "failures": 0
+      },
+      "highestHint": null,
+      "hints": 0,
+      "assistance": [],
+      "solved": "child",
+      "lastResult": "right",
+      "answerGivenFirst": false,
+      "understanding": "uncertain",
+      "paper": "unknown",
+      "wrote": false,
+      "finalMisses": 0,
+      "writeAsked": false,
+      "confirmTries": 0,
+      "offeredOtherInput": false,
+      "redirects": 0,
+      "safety": {
+       "flagged": false,
+       "severity": null,
+       "at": null,
+       "guided": false
+      },
+      "mishearing": {
+       "confirmations": 0,
+       "corrections": 0
+      },
+      "stuckStep": null,
+      "boardRoles": {
+       "question": "target"
+      },
+      "batches": 1,
+      "turns": [
+       {
+        "at": 1794938400000,
+        "speaker": "maya",
+        "text": "Hi there! I'm Maya, your AI math helper. We're doing 52 minus 28 today. What part is confusing, or where do you need help?",
+        "state": "OPEN",
+        "act": "open"
+       },
+       {
+        "at": 1794938400000,
+        "speaker": "child",
+        "text": "My answer is 24.",
+        "state": "OPEN"
+       },
+       {
+        "at": 1794938400000,
+        "speaker": "maya",
+        "text": "You found the difference.",
+        "state": "ASSESS",
+        "act": "guide"
+       }
+      ],
+      "outcome": null,
+      "tutor": {
+       "help": 0,
+       "drawn": []
+      },
+      "checkedExchange": {
+       "version": 1,
+       "progression": 1,
+       "id": "00000000-0000-4000-8000-000000000002:regrouping",
+       "turns": [
+        {
+         "id": "00000000-0000-4000-8000-000000000002:regrouping:1",
+         "facts": {
+          "value": 52,
+          "before": {
+           "tens": 5,
+           "ones": 2
+          },
+          "after": {
+           "tens": 4,
+           "ones": 12
+          },
+          "example": false
+         },
+         "actions": [],
+         "instruction": {
+          "step": "correct"
+         },
+         "observation": {
+          "skill": "difference",
+          "result": "correct",
+          "assistance": "independent",
+          "at": 1794938400000
+         },
+         "sent": true
+        }
+       ]
+      }
+     },
+     "turns": [
+      {
+       "kind": "start",
+       "at": 1794938400000
+      },
+      {
+       "kind": "maya",
+       "at": 1794938400000,
+       "state": "READY",
+       "stateAfter": "OPEN",
+       "finalMisses": 0,
+       "attempts": [
+        {
+         "source": "controller",
+         "proposal": null,
+         "refusal": null
+        }
+       ],
+       "output": {
+        "act": "open",
+        "say": [
+         "Hi there! I'm Maya, your AI math helper. We're doing 52 minus 28 today. What part is confusing, or where do you need help?"
+        ],
+        "board": [
+         "00000000-0000-4000-8000-000000000002-b1"
+        ]
+       }
+      },
+      {
+       "kind": "child",
+       "at": 1794938400000,
+       "text": "My answer is 24."
+      },
+      {
+       "kind": "maya",
+       "at": 1794938400000,
+       "state": "ASSESS",
+       "stateAfter": "ASSESS",
+       "finalMisses": 0,
+       "attempts": [
+        {
+         "source": "controller",
+         "proposal": {
+          "checkedExchange": 1,
+          "value": 52,
+          "example": false,
+          "show": false,
+          "instruction": {
+           "step": "correct"
+          }
+         },
+         "refusal": null
+        }
+       ],
+       "output": {
+        "act": "guide",
+        "say": [
+         "You found the difference."
+        ],
+        "board": []
+       }
+      }
+     ],
+     "board": [
+      {
+       "at": 1794938400000,
+       "turn": 1,
+       "transactionId": "00000000-0000-4000-8000-000000000002-b1",
+       "commands": [
+        {
+         "op": "columns",
+         "id": "question",
+         "operation": "subtract",
+         "operands": [
+          {
+           "id": "top",
+           "value": "52"
+          },
+          {
+           "id": "bottom",
+           "value": "28"
+          }
+         ],
+         "place": {
+          "region": "main"
+         }
+        }
+       ]
+      }
+     ],
+     "endedAt": null,
+     "approved": [
+      "You found the difference."
+     ],
+     "obligations": [
+      {
+       "id": 0,
+       "kind": "start_pending",
+       "at": 1794938400000,
+       "status": "served",
+       "servedBy": 0
+      },
+      {
+       "id": 1,
+       "kind": "opening_due",
+       "at": 1794938400000,
+       "status": "served",
+       "servedBy": 1
+      },
+      {
+       "id": 2,
+       "kind": "child_turn_pending",
+       "at": 1794938400000,
+       "status": "served",
+       "text": "My answer is 24.",
+       "servedBy": 3
+      }
+     ],
+     "childState": "listening"
+    }
+   },
+   "trace": null,
+   "boardHistory": {
+    "v": 1,
+    "revision": 0,
+    "events": [],
+    "delivery": {
+     "events": []
+    }
+   },
+   "learningEventId": null,
+   "profileRebuiltAt": null,
+   "notePending": null,
+   "speechToText": "fake",
+   "voice": "fake",
+   "connectedSeconds": null,
+   "flag": null
+  }
+ ]
+}

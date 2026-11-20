@@ -38,13 +38,27 @@ const callEvent = (over: Partial<NewLearningEvent> = {}): NewLearningEvent => ({
   ...over,
 });
 
+/** The related question after that call (#1144): right on the child's own. */
+const transferEvent = (relatedEventId: string, over: Partial<NewLearningEvent> = {}): NewLearningEvent => ({
+  ...callEvent(),
+  key: "call:1:transfer",
+  question: { source: "transfer", relatedEventId, text: "63 - 27 = ?" },
+  result: "right",
+  stuckStep: null,
+  hints: 0,
+  timeMs: 40_000,
+  occurredAt: "2026-10-29T16:06:00.000Z",
+  assistance: "independent",
+  ...over,
+});
+
 /** The families both stores know: a child under its parent, and a family whose deletion is requested. */
 const FAMILIES = {
   children: [{ id: CHILD, parentId: PARENT }, { id: OTHER_CHILD, parentId: PARENT }, { id: FENCED_CHILD, parentId: FENCED_PARENT }],
   tests: [{ id: TEST, childId: CHILD }],
   deleting: [FENCED_PARENT],
 };
-const UUID_COLUMNS = ["parent_id", "child_id", "workbook_id", "assessment_id"];
+const UUID_COLUMNS = ["parent_id", "child_id", "workbook_id", "assessment_id", "related_event_id"];
 
 /**
  * A fake PostgREST with one table, public.learning_events, that keeps the database's rules: a stored idempotency key
@@ -72,6 +86,9 @@ function fakeDb(tables: Record<string, Record<string, unknown>[]> = {}, { before
         return Response.json({ code: "23503", message: "insert or update on table \"learning_events\" violates foreign key constraint" }, { status: 409 });
       }
       if (row.assessment_id !== null && !FAMILIES.tests.some((t) => t.id === row.assessment_id && t.childId === row.child_id)) {
+        return Response.json({ code: "23503", message: "insert or update on table \"learning_events\" violates foreign key constraint" }, { status: 409 });
+      }
+      if (row.related_event_id && !rows.some((r) => r.id === row.related_event_id && r.child_id === row.child_id)) {
         return Response.json({ code: "23503", message: "insert or update on table \"learning_events\" violates foreign key constraint" }, { status: 409 });
       }
       if (rows.some((r) => r.idempotency_key === row.idempotency_key)) {
@@ -225,6 +242,31 @@ describe.each([["Supabase", () => fakePostgrest(2)], ["in-memory", memory]] as c
     expect(await events.append(otherChildsTest)).toEqual({ ok: false, error: "family_refused", reason: expect.any(String) });
     expect(await events.read(FENCED_CHILD, DAY)).toEqual([]);
     expect(await events.read(OTHER_CHILD, DAY)).toEqual([]);
+  });
+
+  it("keeps a related question's event apart from the call question it follows (#1144)", async () => {
+    const events = open();
+    const first = await events.append(callEvent());
+    if (!first.ok) throw new Error(first.error);
+    const related = transferEvent(first.event.id);
+    const appended = await events.append(related);
+    expect(appended).toEqual({ ok: true, created: true, event: { ...related, id: expect.any(String) } });
+    expect(await events.append(related)).toMatchObject({ ok: true, created: false });
+    expect(await events.read(CHILD, DAY)).toEqual([first.event, appended.ok && appended.event]);
+    expect(await events.append(transferEvent(first.event.id, { assistance: "hinted", result: "right_with_help" }))).toMatchObject({ ok: false, error: "key_conflict" });
+  });
+
+  it("refuses a related question that names no call question event of the same child, or no call and help", async () => {
+    const events = open();
+    const first = await events.append(callEvent());
+    if (!first.ok) throw new Error(first.error);
+    expect(await events.append(transferEvent("00000000-0000-4000-8000-00000000dead"))).toEqual({ ok: false, error: "family_refused", reason: expect.any(String) });
+    expect(await events.append(transferEvent(first.event.id, { key: "other-child", childId: OTHER_CHILD }))).toEqual({ ok: false, error: "family_refused", reason: expect.any(String) });
+    for (const over of [{ assistance: undefined }, { source: "marking" as const }, { evidence: null }, { question: { source: "transfer" as const, relatedEventId: first.event.id, text: "" } }]) {
+      expect(await events.append(transferEvent(first.event.id, over))).toMatchObject({ ok: false, error: "invalid" });
+    }
+    expect(await events.append(callEvent({ key: "helped", assistance: "hinted" }))).toMatchObject({ ok: false, error: "invalid" });
+    expect(await events.read(CHILD, DAY)).toEqual([first.event]);
   });
 
   it("refuses a range that does not end after it starts", async () => {
