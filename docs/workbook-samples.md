@@ -55,4 +55,4 @@ The #479 layout-only check uses:
 env -u WORKBOOK_OPENROUTER_API_KEY -u WORKBOOK_OPENROUTER_API_KEY_FILE -u ANTHROPIC_API_KEY WORKBOOK_CLAUDE_CONFIG_DIR=/Users/savargupta/.claude_second npm run workbooks:samples -- --fake --levels U4 --days 1,3,5,8,10 --concurrency 4 --out /tmp/ui-review/samples-479-fake-final
 ```
 
-See `docs/workbook-feedback-479.md` for the shared `dayDifficulty` API, the checks that the #480 writer must use, and the U26 checker limits. The fake run makes no subscription or API calls and stores nothing. It does not approve question quality.
+See `docs/archive/workbook-feedback-479.md` for the shared `dayDifficulty` API, the checks that the #480 writer must use, and the U26 checker limits. The fake run makes no subscription or API calls and stores nothing. It does not approve question quality.

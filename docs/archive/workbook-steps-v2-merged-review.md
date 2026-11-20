@@ -1,6 +1,6 @@
 # PR 508 after the consistency merge
 
-The matched U4 and U16 fake comparisons pass on consistency base `24751f162fca3facf010d1ef8153c7573af5d8cb`. No compared failure, omission, render, fullness or variety measure is worse than v1. The local merge is `04174cea530a4f1cf9cddd3de6d008aba8dec0fb`. The [earlier report](workbook-steps-v2.md) records the comparison before this merge. The [new machine report](workbook-steps-v2-merged-comparison.json) records this round.
+The matched U4 and U16 fake comparisons pass on consistency base `24751f162fca3facf010d1ef8153c7573af5d8cb`. No compared failure, omission, render, fullness or variety measure is worse than v1. The local merge is `04174cea530a4f1cf9cddd3de6d008aba8dec0fb`. The [earlier report](../workbook-steps-v2.md) records the comparison before this merge. The [new machine report](workbook-steps-v2-merged-comparison.json) records this round.
 
 ## Corrections
 

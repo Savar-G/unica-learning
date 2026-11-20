@@ -97,7 +97,7 @@ analytics amount and their unresolved difference remain separate exact decimal s
 
 The importer defaults to full offline validation with no database request. Root owns the
 private controller manifest, real sources, hosted migration, generated schema files,
-review, import and release. See [the implementation handoff](ai-cost-history-handoff.md)
+review, import and release. See [the implementation handoff](archive/ai-cost-history-handoff.md)
 for the package contract, safe retry procedure, local checks and remaining hosted gates.
 
 ## Required hosted steps before shipping
