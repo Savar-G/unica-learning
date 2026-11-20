@@ -5803,6 +5803,17 @@ export function boardSelectionProposal(s: Session, target: SelectionTarget, foun
   return { boardSelection: 1, target, result: "answer", facts: found, detail };
 }
 
+/**
+ * A stale tap after Maya's last words already asked the child to point again: she says nothing new. Without this, a child
+ * tapping an old object again and again would hear the same request each time.
+ */
+export function selectionRepeat(s: Session, target: SelectionTarget, found: ObjectFacts | null, at: number): boolean {
+  const proposal = boardSelectionProposal(s, target, found, at);
+  const last = s.boardSelections?.at(-1);
+  return proposal !== null && proposal.result !== "answer" && last !== undefined && last.result !== "answer" &&
+    s.turns.findLastIndex((t) => t.speaker === "maya") === last.mayaTurn && !s.turns.slice(last.mayaTurn).some((t) => t.speaker === "child");
+}
+
 function checkSelection(s: Session, value: Record<string, unknown>): SelectionProposal | null {
   const target = readSelectionTarget(value.target);
   const result = value.result;
@@ -5818,8 +5829,8 @@ function checkSelection(s: Session, value: Record<string, unknown>): SelectionPr
 
 function deliverSelection(s: Session, proposal: SelectionProposal, effects: Effect[]): StepResult {
   const text = selectionWords(proposal)!.join(" ");
-  // A tap during Maya's speech replaces what she had left to say or draw.
-  effects.push({ kind: "cancel_output" });
+  // A tap on a current object replaces what Maya had left to say or draw. A stale tap does not: she finishes first.
+  if (proposal.result === "answer") effects.push({ kind: "cancel_output" });
   const { target } = proposal;
   s.boardSelections = [...(s.boardSelections ?? []), {
     selectionId: target.selectionId, objectId: target.objectId, batchId: target.batchId, boardRevision: target.boardRevision,

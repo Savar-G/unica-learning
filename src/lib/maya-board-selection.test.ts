@@ -93,16 +93,17 @@ it("asks which part the child means when the object was removed or the board mov
 
   const after = exchanged.view.batches.at(-1)!.transactionId;
   const shownAfter = [{ batchId: after, fate: "shown" as const }];
-  const old = { ...offer, objectId: "exchange-after", batchId: after, selectionId: tap() };
-  const changed = ok(await calls.input(prompt.view.id, removed.view.revision, { type: "select", target: old, fates: shownAfter }, null));
-  expect(changed.output.say.join(" ")).toBe("The board changed after you pointed. Point to the part again, or tell me which part you mean.");
-
-  const current = { ...changed.view.selection!, objectId: "exchange-after", batchId: after, selectionId: tap() };
-  const now = ok(await calls.input(prompt.view.id, changed.view.revision, { type: "select", target: current }, null));
+  const current = { ...removed.view.selection!, objectId: "exchange-after", batchId: after, selectionId: tap() };
+  const now = ok(await calls.input(prompt.view.id, removed.view.revision, { type: "select", target: current, fates: shownAfter }, null));
   expect(now.output.say.join(" ")).toContain("They show 4 tens and 12 ones, which is 52.");
 
+  // A tap from a screen that still shows an earlier turn: the object is there, but Maya has spoken since.
+  const old = { ...offer, objectId: "exchange-after", batchId: after, selectionId: tap() };
+  const changed = ok(await calls.input(prompt.view.id, now.view.revision, { type: "select", target: old }, null));
+  expect(changed.output.say.join(" ")).toBe("The board changed after you pointed. Point to the part again, or tell me which part you mean.");
+
   const foreign = { ...current, lessonId: "another-call:regrouping", selectionId: tap() };
-  expect(await calls.input(prompt.view.id, now.view.revision, { type: "select", target: foreign }, null)).toEqual({ ok: false, error: "conflict" });
+  expect(await calls.input(prompt.view.id, changed.view.revision, { type: "select", target: foreign }, null)).toEqual({ ok: false, error: "conflict" });
   expect(answer).not.toHaveBeenCalled();
 });
 
@@ -161,4 +162,42 @@ it("answers the same tap in voice with the same words, once, and only for object
   await call.settled();
   expect((await calls.view(started.view.id))!.selected).toMatchObject({ objectId: "exchange-before" });
   expect(answer).not.toHaveBeenCalled();
+});
+
+it("lets Maya finish when a tap is stale, and asks to point again once for repeated stale taps", async () => {
+  const { calls, answer, prompt, fates, offer, target, show } = await shownBlocks();
+  const exchanged = ok(await calls.input(prompt.view.id, prompt.view.revision, { type: "exchange", target: prompt.view.exchange!, fates }, null));
+  const pointAgain = (say: string[]) => say.filter((line) => line.startsWith("That part is not on the board now")).length;
+  const stale = ok(await calls.input(prompt.view.id, exchanged.view.revision, { type: "select", target: target("exchange-before") }, null));
+  expect(pointAgain(stale.output.say)).toBe(1);
+  // The child taps the old blocks again: Maya has already asked, so she says nothing new.
+  const again = ok(await calls.input(prompt.view.id, stale.view.revision, { type: "select", target: { ...offer, objectId: "exchange-before", batchId: show.transactionId, selectionId: tap() } }, null));
+  expect(again.output.say).toEqual([]);
+  expect(again.view.transcript.filter((t) => t.speaker === "maya" && t.text.startsWith("That part is not on the board now"))).toHaveLength(1);
+  expect(again.view.transcript.some((t) => t.speaker === "maya" && t.text.includes("4 tens and 12 ones"))).toBe(true);
+  // A tap on a current object is still answered.
+  const after = exchanged.view.batches.at(-1)!.transactionId;
+  const current = ok(await calls.input(prompt.view.id, again.view.revision, { type: "select", target: { ...again.view.selection!, objectId: "exchange-after", batchId: after, selectionId: tap() }, fates: [{ batchId: after, fate: "shown" }] }, null));
+  expect(current.output.say.join(" ")).toContain("They show 4 tens and 12 ones");
+  expect(answer).not.toHaveBeenCalled();
+});
+
+it("tells the voice worker to stop Maya only for a tap on a current object", async () => {
+  const { calls } = setup();
+  const started = ok(await calls.startVoice({ ...input, kind: "family" }));
+  const opened = await calls.openVoice(started.view.id, { speechToText: "fake", voice: "fake" }, null);
+  if (!opened.ok) throw Error(opened.error);
+  const call = opened.call;
+  const first = (await call.start()).boardCues![0].batch;
+  const show = (await call.child("How do I regroup?")).boardCues![0].batch;
+  await call.observeBoard({ events: [first, show].map((b) => ({ kind: "batch" as const, batchId: b.transactionId, commands: [...b.commands] })) });
+  const offer = (await calls.view(started.view.id))!.selection!;
+  const stops: boolean[] = [];
+  const blocks = { ...offer, objectId: "exchange-before", batchId: show.transactionId };
+  expect((await call.select!({ ...blocks, selectionId: tap() }, (stop) => { stops.push(stop); }))!.say[0]).toMatch(/^You pointed to the blocks/);
+  const stale = await call.select!({ ...blocks, selectionId: tap() }, (stop) => { stops.push(stop); });
+  expect(stale!.say[0]).toMatch(/^The board changed after you pointed/);
+  expect((await call.select!({ ...blocks, selectionId: tap() }, (stop) => { stops.push(stop); }))!.say).toEqual([]);
+  expect(stops).toEqual([true, false]);
+  expect(call.session.boardSelections?.map((s) => s.result)).toEqual(["answer", "changed"]);
 });

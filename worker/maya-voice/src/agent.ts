@@ -471,6 +471,9 @@ export class VoiceCallRun {
   private owedBatches: Batch[] = [];
   /** Words (transcripts, interim or final) the speech-to-text gave so far, and who waits for the next one. */
   private wordCount = 0;
+  /** sayFirst calls in progress, and stale-tap replies waiting for them to end (#1152). */
+  private saying = 0;
+  private quietWaiters: (() => void)[] = [];
   private wordWaiter: (() => void) | null = null;
   /** The speech-to-text now waits the longer limit, because Maya asked for a number. */
   private numberWait = false;
@@ -1057,6 +1060,16 @@ export class VoiceCallRun {
    * marks of this turn are already taken.
    */
   private async sayFirst(pace: TurnPace | null, turns: VoiceTurn[], options: { current?: () => boolean; repeatedGuidance?: boolean } = {}) {
+    // #1152: a stale tap's reply waits while any sayFirst is staging or playing (`whenQuiet`).
+    this.saying++;
+    try { return await this.sayFirstCounted(pace, turns, options); }
+    finally {
+      this.saying--;
+      if (this.saying === 0) for (const resolve of this.quietWaiters.splice(0)) resolve();
+    }
+  }
+
+  private async sayFirstCounted(pace: TurnPace | null, turns: VoiceTurn[], options: { current?: () => boolean; repeatedGuidance?: boolean }) {
     const guidance = turns.findLast(t => t.guidance)?.guidance;
     const repeated = options.repeatedGuidance ?? false;
     if (guidance && this.call.guidancePlayback) {
@@ -1766,7 +1779,11 @@ export class VoiceCallRun {
         await this.options.board.settled();
       }
       if (this.finishing || this.deadlineFinish || !this.childHere || generation !== this.generation) return "stale";
-      const turn = await this.call.select(target, () => {
+      let stops = false;
+      const turn = await this.call.select(target, (stopsSpeech) => {
+        stops = stopsSpeech;
+        // A stale tap leaves Maya's current words and drawing alone.
+        if (!stopsSpeech) return;
         if (prompt.scope) this.stopBoard(prompt.scope);
         prompt.pace?.handle?.interrupt(true);
         prompt.pace?.early.speech?.interrupt(true);
@@ -1775,11 +1792,25 @@ export class VoiceCallRun {
         if (prompt.speech && !prompt.speech.interrupted) prompt.speech.interrupt(true);
       });
       if (!turn) return this.call.session.boardSelections?.some((record) => record.selectionId === target.selectionId) ? "done" : "stale";
+      // Maya already asked the child to point again: a repeated stale tap adds nothing.
+      if (!turn.say.length && !turn.ended) return "done";
       release();
       if (generation === this.generation && this.childHere && !this.finishing && !this.deadlineFinish) {
         const current = () => generation === this.generation && this.childHere && !this.finishing && !this.deadlineFinish &&
           (turn.ended || (!this.call.session.safety.flagged && replies === this.replies &&
             words === this.wordCount && this.session.userState !== "speaking"));
+        if (!stops && !turn.ended) {
+          // A stale tap: Maya finishes what she is saying, then asks the child to point again, unless something newer
+          // was said in between.
+          const text = turn.say.join(" ");
+          const stillLast = () => current() && this.call.session.turns.findLast((t) => t.speaker === "maya")?.text === text;
+          void this.whenQuiet().then(async () => {
+            if (!(await this.sayFirst(null, [{ ...turn, boardCues: [] }], { current: stillLast }))) {
+              this.options.notify({ revision: this.call.revision, segment: this.segment, ended: false });
+            }
+          }).catch(() => {});
+          return "accepted";
+        }
         if (!(await this.sayFirst(null, [{ ...turn, boardCues: [] }], { current }))) {
           this.options.notify({ revision: this.call.revision, segment: this.segment, ended: false });
         }
@@ -1787,6 +1818,22 @@ export class VoiceCallRun {
       return "accepted";
     } finally {
       release();
+    }
+  }
+
+  /** Resolves once Maya has no speech playing or being prepared, and no reply is being worked out. */
+  private async whenQuiet() {
+    for (let round = 0; round < 100; round++) {
+      if (this.finishing || this.deadlineFinish || !this.childHere) return;
+      const speech = this.speech;
+      if (speech && !speech.done()) { await speech.waitForPlayout().catch(() => {}); continue; }
+      if (this.saying > 0) { await new Promise<void>((resolve) => this.quietWaiters.push(resolve)); continue; }
+      if (this.call.working) { await this.call.settled(); continue; }
+      if (this.session.agentState === "speaking" || this.session.agentState === "thinking") {
+        await new Promise<void>((resolve) => this.session.once(voice.AgentSessionEventTypes.AgentStateChanged, () => resolve()));
+        continue;
+      }
+      return;
     }
   }
 

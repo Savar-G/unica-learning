@@ -593,10 +593,12 @@ export interface VoiceCall {
   child(text: string, options?: { uncertain?: boolean; alternatives?: string[] }, say?: VoiceSay): Promise<VoiceTurn>;
   exchange?(target: ExchangeTarget, onAccepted?: () => void): Promise<VoiceTurn | null>;
   /**
-   * #1152: the child pointed to a board object. Null for a tap already answered or one this call cannot take now.
-   * `onAccepted` runs once the reply is committed, before it is saved, so the worker can stop older speech first.
+   * #1152: the child pointed to a board object. Null for a tap already answered or one this call cannot take now; a turn
+   * with no words for a stale tap after Maya already asked to point again. `onAccepted` runs once the reply is committed,
+   * before it is saved. `stopsSpeech` is true only for a current object: then the worker stops older speech first. A stale
+   * tap's request to point again waits until Maya has finished.
    */
-  select?(target: SelectionTarget, onAccepted?: () => void): Promise<VoiceTurn | null>;
+  select?(target: SelectionTarget, onAccepted?: (stopsSpeech: boolean) => void): Promise<VoiceTurn | null>;
   /** A durable child action whose board change the receiver has not confirmed yet. */
   readonly pendingExchange?: Batch;
   tick(): Promise<VoiceTurn>;
@@ -1968,9 +1970,10 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         async select(raw, onAccepted) {
           const target = readSelectionTarget(raw);
           if (inactive() || !target || selectionSeen(session.session, target.selectionId)) return null;
+          if (session.selectionRepeat(target)) return { ...none };
           const out = await turn(async () => {
             const accepted = session.select(target);
-            if (accepted) onAccepted?.();
+            if (accepted) onAccepted?.(accepted.cancelled === true);
             return accepted;
           });
           return out.say.length || out.ended ? out : null;
@@ -2163,6 +2166,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const session = textSession(record, pkg, model, name, saved, undefined, undefined, undefined, undefined, undefined, undefined, hear);
       let out: TextOutput | null = null;
       let saved2: CallRecord | null = null;
+      let repeat = false;
       if (input.type === "end") {
         saved2 = await end(record, pkg, session, { reason: "child_stopped" });
       } else {
@@ -2170,10 +2174,18 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           // B1: the screen's word on Maya's batches first, so this turn's brief counts only what the child saw.
           if ((input.type === "child" || input.type === "exchange" || input.type === "select") && input.fates?.length) session.boardFates(input.fates);
           if (input.type === "exchange") out = session.exchange(readExchangeTarget(input.target)!);
-          else if (input.type === "select") out = session.select(readSelectionTarget(input.target)!);
+          else if (input.type === "select") {
+            const target = readSelectionTarget(input.target)!;
+            if (session.selectionRepeat(target)) repeat = true;
+            else out = session.select(target);
+          }
           else out = input.type === "child" ? await session.child(input.text.trim()) : input.type === "tick" ? await session.tick() : await session.writing(input.status);
         } finally {
           if ((input.type !== "exchange" && input.type !== "select") || out) saved2 = await save(record, pkg, session);
+        }
+        if (repeat) {
+          const view = recordView(record);
+          if (view) return { ok: true, view, output: { say: [], newBatches: 0, safetyMessage: null } };
         }
       }
       if (!saved2) return { ok: false, error: "conflict" };

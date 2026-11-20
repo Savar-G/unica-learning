@@ -60,7 +60,7 @@ import {
 import { modelInput, turnBrief, type MayaModel, type ModelInput, type TurnBrief } from "@/lib/maya-model";
 import { tutorBrief } from "@/lib/maya/tutor-prompt";
 import { continuedSay } from "@/lib/maya/tutor";
-import { boardSelectionProposal, checkedExchangeProposal, checkedExchangeWaitingForBoard, childExchangeProposal } from "@/lib/maya/session";
+import { boardSelectionProposal, selectionRepeat, checkedExchangeProposal, checkedExchangeWaitingForBoard, childExchangeProposal } from "@/lib/maya/session";
 import { selectableObjects, type ObjectFacts, type SelectionTarget } from "@/lib/maya/board-selection";
 import type { ExchangeTarget } from "@/lib/maya/checked-exchange";
 import { preparedReplies, preparedKey, preparedKeys, sameTurn, MAX_PREPARES_PER_TURN, type PrepareHypothesis, type PreparedReply, type PrepareRecord } from "@/lib/maya-prepared";
@@ -583,6 +583,8 @@ export interface TextSession {
   exchange(target: ExchangeTarget): TextOutput | null;
   /** #1152: the child points to a board object. Code answers in checked words, or asks again when the board moved on. */
   select(target: SelectionTarget): TextOutput | null;
+  /** A stale tap after Maya already asked the child to point again (no new words). */
+  selectionRepeat(target: SelectionTarget): boolean;
   /**
    * A partial transcript of the child, who talks over Maya (`child_turn` with `final: false`): Maya's output stops
    * (`cancelled`) and nothing is judged. The full turn comes later through `child`.
@@ -1616,6 +1618,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       append({ kind: "delivered", at });
       return out;
     },
+    selectionRepeat: (target) => selectionRepeat(folded.session, target, shownObject(folded.board, target), now()),
     select(target) {
       recover();
       const at = now();
