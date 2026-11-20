@@ -43,6 +43,12 @@ function setup(overrides: Partial<CallSeams> = {}) {
   return { calls: mayaCalls(seams), answer, store, events: seams.events };
 }
 
+// #1153: the addition lesson, 38 + 45, runs on its own switch.
+const addition = { ...SAMPLE_PACKAGES["add-38-45"], ref: { source: "workbook" as const, workbookId: parentId, page: 1, question: 1 } };
+const additionInput: StartInput = { ...input, package: addition };
+const addSetup = (overrides: Partial<CallSeams> = {}) => setup({ checkedAddition: true, ...overrides });
+const lessons = [["subtraction", input, {}], ["addition", additionInput, { checkedAddition: true }]] as const;
+
 /** The call question's event first, then its related question's (both have the call's end time). */
 const byKey = <T extends { key: string }>(events: T[]) => [...events].sort((a, b) => a.key.localeCompare(b.key));
 
@@ -192,9 +198,9 @@ it("keeps worker playout separate from confirmed board delivery and child progre
   expect(call.session.done).toEqual([]);
 });
 
-it("plans an immediate spoken retry from the confirmed board after a cut", async () => {
-  const { calls } = setup();
-  const voice = ok(await calls.startVoice({ ...input, kind: "family" }));
+it.each(lessons)("plans an immediate spoken retry from the confirmed board after a cut in %s", async (_lesson, start, seams) => {
+  const { calls } = setup(seams);
+  const voice = ok(await calls.startVoice({ ...start, kind: "family" }));
   const opened = await calls.openVoice(voice.view.id, { speechToText: "fake", voice: "fake" }, null);
   if (!opened.ok) throw new Error(opened.error);
   const { call } = opened;
@@ -222,9 +228,9 @@ it("plans an immediate spoken retry from the confirmed board after a cut", async
   expect(answer.boardCues![0].batch.transactionId).not.toBe(trade.transactionId);
 });
 
-it("does not hold a newer stop request behind the checked board acknowledgement", async () => {
-  const { calls } = setup();
-  const voice = ok(await calls.startVoice({ ...input, kind: "family" }));
+it.each(lessons)("does not hold a newer stop request behind the checked board acknowledgement in %s", async (_lesson, start, seams) => {
+  const { calls } = setup(seams);
+  const voice = ok(await calls.startVoice({ ...start, kind: "family" }));
   const opened = await calls.openVoice(voice.view.id, { speechToText: "fake", voice: "fake" }, null);
   if (!opened.ok) throw new Error(opened.error);
   const { call } = opened;
@@ -1076,4 +1082,241 @@ it("keeps related help unconfirmed when a finished hint is followed by an interr
   const sentences = codeSentences(noteFacts({ outcome: record.outcome!, event: learned[0], package: question, question: question.ref })).join(" ");
   expect(sentences).toContain("gave the correct answer to a related question. The amount of help is unknown.");
   expect(sentences).not.toContain("with hints");
+});
+
+// ---------- Addition with regrouping (#1153): 38 + 45 through thirteen ones, one exchange and the carried ten ----------
+
+const shownFates = (turn: CallResult & { ok: true }) =>
+  turn.view.batches.slice(turn.view.batches.length - turn.output.newBatches).map((b) => ({ batchId: b.transactionId, fate: "shown" as const }));
+
+/** Each batch keeps the represented ones total: thirteen ones before the exchange, 1 ten and 3 ones after it. */
+function checkAdditionExchange(batches: Batch[], ones = 13) {
+  expect(batches.flatMap((b) => b.commands)).toContainEqual(expect.objectContaining({ op: "write", text: `${ones} = 10 + ${ones - 10}` }));
+  let scene = createScene();
+  const seen: string[] = [];
+  for (const batch of batches) {
+    const result = applyBatch(scene, batch);
+    if (!result.ok) throw new Error(result.refusal.reason);
+    scene = result.scene;
+    seen.push(...boardTargets(scene).flatMap((t) => t.target.part === "whole" && t.target.objectId.startsWith("exchange-") && !t.target.objectId.includes("notation") && t.target.objectId !== "exchange-carry" ? [t.value ?? ""] : []));
+  }
+  expect(seen.length).toBeGreaterThanOrEqual(2);
+  expect(seen).toEqual(seen.map(() => String(ones)));
+  const pieces = boardTargets(scene).map((t) => [t.target.part === "piece" ? t.target.piece : t.target.part, t.value]);
+  expect(pieces).toEqual(expect.arrayContaining([["tens", "1"], ["ones", String(ones - 10)]]));
+  const targets = boardTargets(scene);
+  expect(targets).toContainEqual(expect.objectContaining({
+    label: "carry 1 from the ones to the tens",
+    value: "1",
+  }));
+  const answerCells = targets.filter(({ target }) =>
+    target.objectId === "addition-columns" && target.part === "cell" && target.rowId === "answer");
+  expect(answerCells.map(({ value }) => value)).toEqual([null, null]);
+}
+
+it("teaches 38 plus 45 from a prerequisite through the child's exchange and the carried ten without giving the sum", async () => {
+  const { calls, answer, store, events } = addSetup();
+  let turn = ok(await calls.start({ ...additionInput, grade: 3 }));
+  const said: string[] = [];
+  const send = async (event: CallInput) => {
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, event, null));
+    said.push(turn.output.say.join(" "));
+    return said.at(-1)!;
+  };
+  expect(await send({ type: "child", text: "I don't know how to start." })).toMatch(/how many ones do 8 ones and 5 ones make/i);
+  expect(await send({ type: "child", text: "13 ones." })).toMatch(/too many ones.*what can you trade/i);
+  const guide = await send({ type: "child", text: "I don't know." });
+  expect(guide).toMatch(/8 ones and 5 ones make 13 ones.*trade ten ones for one ten.*exchange ten ones button/i);
+  const target = turn.view.exchange!;
+  expect(target).toMatchObject({ objectId: "exchange-ones", batchId: turn.view.batches.at(-1)!.transactionId });
+  const show = turn.view.batches.at(-1)!;
+  expect(show.commands).toContainEqual(expect.objectContaining({ op: "model", model: { kind: "base_ten", hundreds: 0, tens: 0, ones: 13 } }));
+  const connect = await send({ type: "exchange", target, fates: [{ batchId: target.batchId, fate: "shown" }] });
+  expect(connect).toMatch(/now we have 1 ten and 3 ones, which is still 13 ones.*carry.*tens.*how many ones are left to write/i);
+  checkAdditionExchange([show, turn.view.batches.at(-1)!]);
+  expect(turn.view.batches.at(-1)!.after).toEqual([show.transactionId]);
+  expect(await send({ type: "child", text: "3 ones.", fates: shownFates(turn) })).toMatch(/add the tens: 3 tens, 4 tens and the 1 ten you carried\. how many tens/i);
+  expect(await send({ type: "child", text: "8 tens." })).toMatch(/put your tens and ones together.*whole sum/i);
+  // Maya never gives the sum, in one message or across messages, before the child says it.
+  expect(said.join(" ")).not.toMatch(/\b83\b|eighty.three|\b8 tens\b/i);
+  expect(await send({ type: "child", text: "83." })).toMatch(/^you found the sum\./i);
+  await send({ type: "end" });
+  expect(turn.view.outcome).toMatchObject({ reason: "solved", assistance: "guided" });
+  expect(checkTrace(store.rows()[0].trace)).toMatchObject({ ok: true });
+  expect(store.rows()[0].trace?.checkedExchange?.turns.flatMap((t) => t.observation ? [[t.observation.skill, t.observation.result]] : []))
+    .toEqual([["combine_ones", "correct"], ["perform_exchange", "correct"], ["add_ones", "correct"], ["add_tens", "correct"], ["sum", "correct"]]);
+  expect(await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" })).toMatchObject([{ result: "right_with_help" }]);
+  expect(answer).not.toHaveBeenCalled();
+});
+
+it("lets a child who knows the exchange add on their own without a demonstration", async () => {
+  const { calls, answer } = addSetup();
+  let turn = ok(await calls.start({ ...additionInput, grade: 3 }));
+  const say = async (text: string) => {
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text }, null));
+    return turn.output.say.join(" ");
+  };
+  await say("I don't know how to start.");
+  await say("13 ones.");
+  expect(await say("Trade ten ones for one ten.")).toMatch(/try the whole addition on your own/i);
+  expect(turn.output.newBatches).toBe(0);
+  expect(turn.view.exchange).toBeUndefined();
+  expect(await say("My answer is 83.")).toMatch(/you found the sum/i);
+  turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null));
+  // Prerequisite questions are not help: the child did the exchange and the columns alone.
+  expect(turn.view.outcome).toMatchObject({ reason: "solved", assistance: "independent" });
+  expect(answer).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["73.", /ten you made from the ones still counts/i],
+  ["713.", /only one digit fits in each place/i],
+])("answers the carry mistake %s with feedback and the exchange, and gives no credit", async (wrong, feedback) => {
+  const { calls, store } = addSetup();
+  let turn = ok(await calls.start(additionInput));
+  turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text: wrong }, null));
+  const reply = turn.output.say.join(" ");
+  expect(reply).toMatch(feedback);
+  expect(reply).toMatch(/8 ones and 5 ones make 13 ones.*exchange ten ones button/i);
+  expect(reply).not.toMatch(/\b83\b|eighty.three/i);
+  expect(turn.view.exchange).toMatchObject({ objectId: "exchange-ones" });
+  expect(turn.view.outcome).toBeNull();
+  const ended = ok(await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null));
+  expect(ended.view.outcome?.reason).toBe("child_stopped");
+  expect(store.rows()[0].trace?.checkedExchange?.turns.at(0)?.observation).toMatchObject({ skill: "carry", result: "incorrect" });
+});
+
+it("gives place-value feedback on a wrong ones or tens count after the exchange", async () => {
+  const { calls } = addSetup();
+  let turn = ok(await calls.start(additionInput));
+  const send = async (event: CallInput) => {
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, event, null));
+    return turn.output.say.join(" ");
+  };
+  await send({ type: "child", text: "How do I regroup?" });
+  const target = turn.view.exchange!;
+  await send({ type: "exchange", target, fates: [{ batchId: target.batchId, fate: "shown" }] });
+  expect(await send({ type: "child", text: "13 ones.", fates: shownFates(turn) })).toMatch(/ten of the 13 ones make the carried ten.*how many ones are left to write/i);
+  expect(await send({ type: "child", text: "3 ones." })).toMatch(/add the tens/i);
+  expect(await send({ type: "child", text: "7 tens." })).toMatch(/carried ten still counts.*how many tens/i);
+  expect(await send({ type: "child", text: "8 tens." })).toMatch(/whole sum/i);
+  expect(await send({ type: "child", text: "My answer is 83 because 3 plus 4 is 8." })).not.toMatch(/you found the sum/i);
+});
+
+it("speaks the same prerequisite, mistake feedback, guided action and decline in voice as in chat", async () => {
+  const { calls, store } = addSetup();
+  for (const script of [
+    ["I don't know how to start.", "13 ones.", "I don't know."],
+    ["I got 713.", "Show me how to carry."],
+    ["83.", "No thanks."],
+  ]) {
+    let chat = ok(await calls.start(additionInput));
+    const voice = ok(await calls.startVoice({ ...additionInput, kind: "family" }));
+    const opened = await calls.openVoice(voice.view.id, { speechToText: "fake", voice: "fake" }, null);
+    if (!opened.ok) throw Error(opened.error);
+    await opened.call.start();
+    for (const text of script) {
+      chat = ok(await calls.input(chat.view.id, chat.view.revision, { type: "child", text }, null));
+      const spoken = await opened.call.child(text);
+      expect(spoken.say).toEqual(chat.output.say);
+      if (text !== "83.") expect(chat.output.say.join(" ")).not.toMatch(/\b83\b|eighty.three/i);
+    }
+    if (script[0] === "83.") expect(chat.view.outcome).toMatchObject({ reason: "solved", assistance: "independent" });
+    await opened.call.end({ reason: "child_stopped" });
+    expect(checkTrace(store.rows().find((row) => row.id === voice.view.id)!.trace)).toMatchObject({ ok: true });
+  }
+});
+
+it("delivers the same addition lesson in chat and voice and keeps a voice exchange through a reconnect", async () => {
+  const { calls, events } = addSetup();
+  const chat = ok(await calls.start(additionInput));
+  const voice = ok(await calls.startVoice({ ...additionInput, kind: "family" }));
+  const open = async () => {
+    const opened = await calls.openVoice(voice.view.id, { speechToText: "fake", voice: "fake" }, null);
+    if (!opened.ok) throw Error(opened.error);
+    return opened.call;
+  };
+  const call = await open();
+  const opening = (await call.start()).boardCues![0].batch;
+  const text = "How do I regroup?";
+  const [typed, spoken] = await Promise.all([calls.input(chat.view.id, chat.view.revision, { type: "child", text }, null).then(ok), call.child(text)]);
+  expect(typed.output.say).toEqual(spoken.say);
+  expect(spoken.say.join(" ")).toMatch(/13 ones.*exchange ten ones button/i);
+  const show = spoken.boardCues![0].batch;
+  const observe = (b: Batch) => ({ kind: "batch" as const, batchId: b.transactionId, commands: [...b.commands] });
+  await call.observeBoard({ events: [opening, show].map(observe) });
+  const target = (await calls.view(voice.view.id))!.exchange!;
+  expect(target.objectId).toBe("exchange-ones");
+  const exchange = (await call.exchange!(target))!;
+  expect(exchange.say.join(" ")).toMatch(/1 ten and 3 ones, which is still 13 ones/i);
+  const trade = exchange.boardCues![0].batch;
+  checkAdditionExchange([show, trade]);
+  expect(await call.exchange!(target)).toBeNull();
+  const recovered = await open();
+  expect(recovered.pendingExchange).toEqual(trade);
+  await recovered.observeBoard({ events: [opening, show, trade].map(observe) });
+  expect(recovered.pendingExchange).toBeUndefined();
+  await recovered.exchangePlayback!(exchange.exchangeTurnId!, "interrupted");
+  const repeat = await recovered.child("Can you repeat that?");
+  expect(repeat.say.join(" ")).toMatch(/1 ten and 3 ones.*how many ones are left to write/i);
+  expect(repeat.boardCues ?? []).toEqual([]);
+  expect((await recovered.child("Three.")).say.join(" ")).toMatch(/add the tens/i);
+  expect(recovered.session.checkedExchange?.turns.filter((t) => t.observation?.skill === "perform_exchange")).toHaveLength(1);
+  await recovered.end({ reason: "child_stopped" });
+  expect(await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" })).toMatchObject([{ result: "blank" }]);
+});
+
+it.each(["independent", "hinted", "demonstrated"] as const)("offers a checked related addition and records %s help apart from the original", async (help) => {
+  const { calls, events, store } = addSetup();
+  let turn = ok(await calls.start({ ...additionInput, grade: 3 }));
+  const said: string[] = [];
+  const say = async (text: string) => {
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text, fates: shownFates(turn) }, null));
+    said.push(turn.output.say.join(" "));
+    return said.at(-1)!;
+  };
+  expect(await say("My answer is 83.")).toMatch(/you found the sum\. do you want to try one more like this on your own\?$/i);
+  const start = await say("Yes.");
+  expect(start).toMatch(/here is one more: 27 plus 46\..*what is the sum\?/i);
+  expect(turn.view.batches.at(-1)!.commands).toEqual([
+    { op: "clear", scope: "maya_objects" }, expect.objectContaining({ op: "write", text: "27 + 46 = ?" }),
+  ]);
+  if (help === "hinted") {
+    expect(await say("I don't know.")).toMatch(/too many ones.*what can you trade/i);
+    expect(await say("Trade ten ones for one ten.")).toMatch(/how many ones are left to write/i);
+    expect(await say("3 ones.")).toMatch(/add the tens: 2 tens, 4 tens and the 1 ten you carried/i);
+    expect(await say("7 tens.")).toMatch(/whole sum/i);
+  }
+  if (help === "demonstrated") {
+    expect(await say("Show me how to regroup.")).toMatch(/1 ten and 3 ones, which is still 13 ones/i);
+    await say("3 ones.");
+    await say("7 tens.");
+  }
+  // The related answer is never given before the child says it.
+  expect(said.join(" ")).not.toMatch(/\b73\b|seventy.three|\b7 tens\b/i);
+  expect(await say("73.")).toMatch(/^you found the sum\. great work today/i);
+  expect(turn.view.outcome).toMatchObject({ reason: "solved", assistance: "independent", transfer: { result: "right", assistance: help } });
+  await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null);
+  const [original, related] = byKey(await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" }));
+  expect(original).toMatchObject({ result: "right", question: addition.ref });
+  expect(related).toMatchObject({
+    result: help === "independent" ? "right" : "right_with_help", assistance: help, question: { source: "transfer", text: "27 + 46 = ?" },
+  });
+  expect(checkTrace(store.rows()[0].trace)).toMatchObject({ ok: true });
+});
+
+it("keeps the existing path for addition without the switch and for addition that needs no exchange", async () => {
+  const { calls: off } = setup();
+  const { calls: on } = addSetup();
+  const operation: Operation = { kind: "add", operands: [23, 45] };
+  const noExchange: StartInput = { ...input, package: {
+    ...addition, operation, steps: workedSteps(operation), text: "23 + 45 = ?", answer: { value: { type: "number", value: 68 }, accepted: [], unit: null },
+  } };
+  for (const [calls, start] of [[off, additionInput], [on, noExchange], [on, { ...input, package: SAMPLE_PACKAGES["add-fractions-3-4-1-8"] }]] as const) {
+    const chat = ok(await calls.start(start));
+    const turn = ok(await calls.input(chat.view.id, chat.view.revision, { type: "child", text: "Show me how to regroup." }, null));
+    expect(turn.output).not.toHaveProperty("exchangeTurnId");
+    expect(turn.view.exchange).toBeUndefined();
+    expect(turn.output.say.length).toBeGreaterThan(0);
+  }
 });

@@ -298,6 +298,8 @@ export interface CallSeams {
   tutorFamilies?: boolean;
   /** Enables the checked exchange for newly created, supported tutor sessions. */
   checkedExchange?: boolean;
+  /** #1153: with checkedExchange, new addition sessions that need one exchange get the checked lesson too. */
+  checkedAddition?: boolean;
   checkedRoutine?: boolean;
   /**
    * #1107 reader-first release: saved sentence writes are off unless explicitly enabled by the server.
@@ -1062,6 +1064,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       // MAYA_TUTOR_FAMILIES switch is on. The core still decides per question (isTutorQuestion).
       tutor: seams.tutor !== false && (record.kind === "admin_test" || (seams.tutorFamilies === true && (record.kind === "chat" || record.kind === "family"))),
       checkedExchange: seams.checkedExchange,
+      checkedAddition: seams.checkedAddition,
       checkedRoutine: seams.checkedRoutine,
       freeTalk: record.kind !== "chat" && record.kind !== "family", reviewer: seams.reviewer?.(model.id, spend ?? spendCall(record)) ?? null,
       mathReviewer: seams.mathReviewer?.(model.id, spend ?? spendCall(record)) ?? null,

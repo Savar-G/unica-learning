@@ -73,7 +73,10 @@ import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
 import { answersOwnQuestion, askedStep, doneReply, firstTimeTurn, yesReply, type AskedRead } from "./teaching-reads";
 import { deriveDrawings, type BoardRead, type TiedDrawing } from "./board-ties";
 import { chooseTransfer, relatedChoice, TRANSFER_MIN_MS, TRANSFER_OFFER, transferBoard, transferPackage, type RelatedStep, type TransferOperands } from "./transfer";
-import { EXCHANGE_OBJECT, exchangeChildWords, exchangeCommands, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingOffersAction, regroupingWords, sameExchangeTarget, supportsCheckedExchange, type CheckedExchangeLesson, type ExchangeAction, type ExchangeProposal, type ExchangeTarget, type ExchangeTurn, type RegroupingInstruction, type RegroupingObservation } from "./checked-exchange";
+import { exchangeChildWords, exchangeCommands, exchangeObject, exchangePromptWords, exchangeWords, factCandidates, lessonKind, observedColumn, readExchangeTarget, regroupingOffersAction, regroupingWords, relatedFacts, sameExchangeTarget, supportsCheckedExchange, type CheckedExchangeLesson, type ExchangeAction, type ExchangeProposal, type ExchangeTarget, type ExchangeTurn, type RegroupingInstruction, type RegroupingObservation } from "./checked-exchange";
+import { additionChoice, supportsCheckedAddition } from "./checked-addition";
+import { asksChildExchange, asksExchange, asksHelp, asksRepeat, carryMistake, columnCount, knowsExchange, namesWhole, regroupingReversal, regroupingStart } from "./regrouping-reads";
+import { helpUnconfirmed, recordExchangeHelp, recordRegroupingDelivery, recordRegroupingSupport, regroupingObservation, transferAssistance, transferOutcome } from "./regrouping-help";
 import { agreementClause, askedStep as askedOperationStep, bindingReview, checkedSubtractionQuestion, checkTutorSay, continuedSay, stepsStated, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, FINAL_ASK, TUTOR_FIRST_TIME_WORD_LIMIT, TUTOR_REVIEW_IGNORED } from "./tutor";
 import { placeDigitsSaid } from "./tutor-math";
 import { MATH_REVIEW_PROMPT_VERSION, mathReviewsOf, type MathReview, type MathReviewInput } from "./math-review";
@@ -612,6 +615,8 @@ export function createSession(input: {
   /** D-345: teach with the tutor core when the question is one it teaches (isTutorQuestion) on a conversational call. */
   tutor?: boolean;
   checkedExchange?: boolean;
+  /** #1153: also teach addition with regrouping as a checked lesson (needs checkedExchange). */
+  checkedAddition?: boolean;
   checkedRoutine?: boolean;
 }): Session {
   const { pkg, held } = teachableOf(input.package);
@@ -668,7 +673,7 @@ export function createSession(input: {
     outcome: null,
     ...shorterLimits(input.limitMs),
     ...(tutor ? { tutor: { help: 0, drawn: [] } } : {}),
-    ...(input.checkedExchange === true && tutor && pkg && supportsCheckedExchange(pkg) ? { checkedExchange: { version: 1, progression: 1, transfers: 1, id: `${input.callId}:regrouping`, turns: [] } } : {}),
+    ...(input.checkedExchange === true && tutor && pkg && (supportsCheckedExchange(pkg) || (input.checkedAddition === true && supportsCheckedAddition(pkg))) ? { checkedExchange: { version: 1, progression: 1, transfers: 1, id: `${input.callId}:regrouping`, turns: [] } } : {}),
     ...(input.checkedRoutine === true && tutor && pkg && supportsCheckedExchange(pkg) ? { checkedRoutine: true } : {}),
   };
 }
@@ -886,7 +891,7 @@ export function transferLearningEvent(session: Session, family: { parentId: stri
   const turns = session.checkedExchange!.turns.filter((turn) => turn.transfer);
   const outcome = transferOutcome(session).transfer!;
   const result = outcome.result === "unfinished" ? "blank" : outcome.assistance === "independent" ? "right" : "right_with_help";
-  const column = (step: RegroupingInstruction["step"] | undefined) => step === "tens" ? "tens" : step === "combine" ? "result" : "ones";
+  const column = (step: RegroupingInstruction["step"] | undefined) => step === "tens" || step === "recheck_tens" ? "tens" : step === "combine" ? "result" : "ones";
   const helped = turns.find((turn) => turn.support);
   const open = !transfer.done.includes("ones") ? "ones" : !transfer.done.includes("tens") ? "tens" : "result";
   const started = transfer.startedAt ?? session.startedAt!;
@@ -1892,7 +1897,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
       if (event.fallback && isObject(event.proposal) && event.proposal.checkedExchange === 1) {
         const target = readExchangeTarget(event.proposal.childAction);
         const plan = target ? childExchangePlan(s, target) : checkedExchangePlan(s, event.proposal.afterFailure === true);
-        if (!plan || event.proposal.noDraw === "all" || event.proposal.value !== plan.facts.value ||
+        if (!plan || event.proposal.noDraw === "all" || event.proposal.value !== plan.facts.value || event.proposal.add !== plan.facts.add ||
           event.proposal.example !== plan.facts.example || event.proposal.show !== leadsWithBoard(plan) ||
           (event.proposal.prompt === true) !== !!plan.prompt ||
           !matchesRegroupingInstruction(event.proposal.instruction, plan.instruction)) {
@@ -5573,33 +5578,6 @@ function tutorGate(s: Session, reading: Reading): Allowed | null {
   return g;
 }
 
-const EXCHANGE_REQUEST = /^(?:(?:can|could|would) you (?:show|tell) me |(?:please )?show me )?(?:how (?:do (?:i|we) |to )?|why (?:do (?:i|we) |to )?)?(?:regroup(?:ing)?|borrow(?:ing)?|(?:trade|exchange) (?:a|one|1) ten)(?: again)?[.?!]*$/i;
-const CHILD_EXCHANGE_REQUEST = /^(?:how do (?:i|we) (?:regroup|borrow|(?:trade|exchange) (?:a|one|1) ten)|(?:can i|i want to) (?:try regrouping|(?:trade|exchange) (?:a|one|1) ten))(?: again)?[.?!]*$/i;
-const SUBTRACTION_HELP = /^(?:i need help|can you help me|i (?:don't|do not) know how to start)[.?!]*$/i;
-const REGROUPING_START = /^(?:i (?:still )?(?:don'?t|do not) (?:know(?: how to (?:start|regroup|borrow|subtract))?|get it|understand(?: (?:regrouping|borrowing|subtraction))?)|i(?:'m| am) (?:still )?(?:stuck|confused|new to (?:regrouping|borrowing|subtraction))|i(?:'ve| have) never (?:regrouped|done this before)|(?:can you )?(?:teach me|explain) how to (?:regroup|borrow|subtract))[.?!]*$/i;
-const KNOWS_EXCHANGE = /^(?:i (?:can|would|will) |i'll |we can )?(?:trade|exchange|swap|break|regroup) (?:a|one|1) ten(?: (?:rod|block))? (?:for|into|to) (?:10|ten) ones$/;
-const REPEAT_REGROUPING = /^(?:what did you say|(?:can|could) you repeat (?:that|it)|(?:say|explain) that again)[.?!]*$/i;
-
-function regroupingReversal(text: string, top: number, bottom: number): boolean {
-  const body = wholeTurn(text);
-  if (!body || saysGuess(text)) return false;
-  const prefix = /^(?:(?:my (?:final )?answer is |i got )?([\w -]+) because )/.exec(body);
-  if (prefix && plainNumber(prefix[1]) === null) return false;
-  const reason = body.slice(prefix?.[0].length ?? 0);
-  const topOnes = top % 10;
-  const bottomOnes = bottom % 10;
-  const sameDigits = (a: number | null, b: number | null) =>
-    (a === topOnes && b === bottomOnes) || (a === bottomOnes && b === topOnes);
-  const equation = /^([\w -]+?)\s*(?:minus|take away|-)\s*([\w -]+?)\s*(?:is|equals|makes|=)\s*([\w -]+)$/.exec(reason);
-  if (equation) {
-    const [, left, right, difference] = equation;
-    return sameDigits(plainNumber(left), plainNumber(right)) && plainNumber(difference) === bottomOnes - topOnes;
-  }
-  const swapped = /^(?:(?:i|we) )?(?:swapped|switched|reversed) (?:the )?([\w -]+?) and (?:the )?([\w -]+)$/.exec(reason);
-  if (swapped) return sameDigits(plainNumber(swapped[1]), plainNumber(swapped[2]));
-  const from = /^(?:(?:i|we) )?(?:took (?:the )?([\w -]+?) away|subtracted (?:the )?([\w -]+?)) from (?:the )?([\w -]+)$/.exec(reason);
-  return !!from && plainNumber(from[1] ?? from[2]) === topOnes && plainNumber(from[3]) === bottomOnes;
-}
 
 function sessionScopeReason(s: Session, original: OperationPackage, text: string, reading?: ScopeReading) {
   // #1144: during the related question, its own numbers are in scope.
@@ -5618,43 +5596,38 @@ function matchesRegroupingInstruction(value: unknown, expected: RegroupingInstru
 
 type RegroupingChoice = { step: RegroupingInstruction["step"]; observation?: RegroupingObservation };
 
-function regroupingObservation(s: Session, skill: RegroupingObservation["skill"], result: RegroupingObservation["result"]): RegroupingObservation {
-  const turns = s.checkedExchange!.turns;
-  const demonstrated = turns.some((turn) => turn.support === "demonstrated");
-  const hinted = turns.some((turn) => turn.support === "hinted") || s.assistance.includes("hint");
-  const assistedElsewhere = s.assistance.some((kind) => kind !== "independent" && kind !== "hint");
-  // A demonstration the child may have heard part of is stronger help than a hint: the help is unknown.
-  const assistance = demonstrated || assistedElsewhere ? "demonstrated" : unconfirmedRegroupingHelp(s).includes("demonstrated") ? "uncertain" :
-    hinted ? "hinted" : unconfirmedRegroupingHelp(s).length ? "uncertain" : "independent";
-  return { skill, result, assistance, at: s.now! };
-}
 
 function regroupingChoice(s: Session, previous: ExchangeTurn | undefined, top: number, bottom: number): RegroupingChoice | undefined {
+  const kind = lessonKind(s.package)!;
   const text = s.turn!.text.trim();
   const body = wholeTurn(text);
   const step = previous?.instruction?.step;
-  const count = (place: "one" | "ten") => body === null ? null :
-    wholeValue(body.replace(/^(?:there (?:are|is)|i have) /, "").replace(new RegExp(` ${place}s?$`), ""));
-  const stuck = REGROUPING_START.test(text) || SUBTRACTION_HELP.test(text);
+  const count = (place: "one" | "ten") => columnCount(body, place);
+  const stuck = regroupingStart(kind, text) || asksHelp(text);
   const observed = (next: RegroupingChoice["step"], skill: RegroupingObservation["skill"], result: RegroupingObservation["result"] = "correct") =>
     ({ step: next, observation: regroupingObservation(s, skill, result) });
-  const reversed = regroupingReversal(text, top, bottom);
   const exchanged = s.checkedExchange!.turns.some((turn) =>
     !turn.facts.example && (turn.childAction || turn.actions.some((action) => action.kind === "exchange" && action.fate === "shown")));
-  if (reversed) return observed(exchanged ? "recheck_ones" : "reversal", "reversal", "incorrect");
-
-  if (previous?.instruction && REPEAT_REGROUPING.test(text)) {
-    if (step === "connect") {
-      if (previous.support === "demonstrated") return { step: "connect" };
-    } else if (step !== "correct") return { step: previous.instruction.step };
+  const repeat = !!previous?.instruction && asksRepeat(text) && (step === "connect" ? previous.support === "demonstrated" : step !== "correct");
+  const heard = (id: string) => heardAnswers(s).some((a) => a.step === id && a.verdict === "right");
+  const rightWhole = !childSaysFalse(text) && heard("result");
+  if (kind === "add") {
+    const mistake = carryMistake(text, top, bottom);
+    if (!mistake && repeat) return { step: step! };
+    const choice = additionChoice({
+      step, previous: !!previous, example: !!previous?.facts.example, exchanged, mistake, stuck, rightWhole,
+      demonstrated: !!previous && !step && !previous.prompt && !previous.childAction && previous.support === "demonstrated",
+      knowsExchange: !!body && knowsExchange(kind, body), start: regroupingStart(kind, text), saysWhole: namesWhole(text),
+      ones: count("one"), tens: count("ten"), heardTens: heard("tens"),
+    }, [top, bottom]);
+    return choice && (choice.observation ? observed(choice.step, ...choice.observation) : { step: choice.step });
   }
+  if (regroupingReversal(text, top, bottom)) return observed(exchanged ? "recheck_ones" : "reversal", "reversal", "incorrect");
+  if (repeat) return { step: step! };
 
   const stepQuestion = step === "check_place" || step === "check_exchange" || step === "ones" || step === "recheck_ones" ||
     step === "tens" || (step === "connect" && !previous?.facts.example);
-  const wholeAnswer = !stepQuestion || /\b(?:my (?:final )?answer|(?:whole|final) (?:answer|difference))\b/i.test(text);
-  if (wholeAnswer && !childSaysFalse(text) && heardAnswers(s).some((a) => a.step === "result" && a.verdict === "right")) {
-    return observed("correct", "difference");
-  }
+  if ((!stepQuestion || namesWhole(text)) && rightWhole) return observed("correct", "difference");
   if (step === "check_place") {
     const tens = count("ten");
     if (tens === previous!.facts.before.tens) return observed("check_exchange", "identify_tens");
@@ -5662,20 +5635,20 @@ function regroupingChoice(s: Session, previous: ExchangeTurn | undefined, top: n
     if (stuck) return { step: "place_gap" };
   }
   if (step === "check_exchange" || !previous) {
-    if (body && KNOWS_EXCHANGE.test(body)) return observed("independent", "explain_exchange");
+    if (body && knowsExchange(kind, body)) return observed("independent", "explain_exchange");
     if (step === "check_exchange" && stuck) return { step: "guide_exchange" };
   }
   if (step === "independent" && stuck) return { step: "guide_exchange" };
   if (previous && !step && !previous.prompt && !previous.childAction && previous.support === "demonstrated" && body) {
     const groups = /^(.+) tens? and (.+) ones?$/.exec(body);
     const equivalent = groups && plainNumber(groups[1]) === previous.facts.after.tens && plainNumber(groups[2]) === previous.facts.after.ones;
-    if (equivalent || KNOWS_EXCHANGE.test(body)) {
+    if (equivalent || knowsExchange(kind, body)) {
       return observed(previous.facts.example ? "independent" : "ones", "explain_exchange");
     }
   }
   if ((step === "connect" && !previous!.facts.example) || step === "ones" || step === "recheck_ones") {
     const ones = count("one");
-    if (ones === top % 10 + 10 - bottom % 10 || heardAnswers(s).some((a) => a.step === "ones" && a.verdict === "right")) {
+    if (ones === top % 10 + 10 - bottom % 10 || heard("ones")) {
       return observed("tens", "subtract_ones");
     }
     if (ones !== null) return observed("ones", "subtract_ones", "incorrect");
@@ -5683,41 +5656,45 @@ function regroupingChoice(s: Session, previous: ExchangeTurn | undefined, top: n
   }
   if (step === "tens") {
     const tens = count("ten");
-    if (tens === Math.floor(top / 10) - 1 - Math.floor(bottom / 10) || heardAnswers(s).some((a) => a.step === "tens" && a.verdict === "right")) {
+    if (tens === Math.floor(top / 10) - 1 - Math.floor(bottom / 10) || heard("tens")) {
       return observed("combine", "subtract_tens");
     }
     if (tens !== null) return observed("tens", "subtract_tens", "incorrect");
     if (stuck) return { step: "tens" };
   }
-  if (!previous && REGROUPING_START.test(text)) return { step: "check_place" };
+  if (!previous && regroupingStart(kind, text)) return { step: "check_place" };
 }
 
 export function checkedExchangeProposal(s: Session, afterFailure = false): ExchangeProposal | null {
   const plan = checkedExchangePlan(s, afterFailure);
   if (!plan) return null;
-  return { checkedExchange: 1, value: plan.facts.value, example: plan.facts.example, show: leadsWithBoard(plan), ...(plan.prompt ? { prompt: true } : {}), ...(plan.instruction ? { instruction: plan.instruction } : {}), ...(afterFailure ? { afterFailure: true } : {}) };
+  return { checkedExchange: 1, value: plan.facts.value, ...addendOf(plan), example: plan.facts.example, show: leadsWithBoard(plan), ...(plan.prompt ? { prompt: true } : {}), ...(plan.instruction ? { instruction: plan.instruction } : {}), ...(afterFailure ? { afterFailure: true } : {}) };
 }
+
+const addendOf = (plan: ExchangeTurn) => plan.facts.add === undefined ? {} : { add: plan.facts.add };
 
 export function checkedExchangeWaitingForBoard(s: Session): boolean {
   const turn = s.turn;
-  return !!turn && !turn.uncertain && tutorTeachingNow(s) &&
+  const kind = lessonKind(s.package);
+  return !!turn && !!kind && !turn.uncertain && tutorTeachingNow(s) &&
     !!s.checkedExchange?.turns.at(-1)?.actions.some(action => !action.fate) &&
-    (CHILD_EXCHANGE_REQUEST.test(turn.text.trim()) || EXCHANGE_REQUEST.test(turn.text.trim()));
+    (asksChildExchange(kind, turn.text.trim()) || asksExchange(kind, turn.text.trim()));
 }
 
 function checkedExchangePlan(s: Session, afterFailure: boolean): ExchangeTurn | null {
   const lesson = s.checkedExchange;
   const pkg = s.package;
-  if (lesson?.progression && pkg?.operation.kind === "subtract" && lesson.transfer && tutorTeachingNow(s) && !s.noBoard &&
+  const kind = lessonKind(pkg);
+  if (lesson?.progression && kind && lesson.transfer && tutorTeachingNow(s) && !s.noBoard &&
     s.turn && !s.stopRequested && s.solved !== null) {
     if (lesson.transfer.state === "started") return relatedPlan(s);
     if (transferOfferPending(s) && !s.scopeDue && !s.turn.uncertain && !hasTranscriptAlternatives(s)) return offerReplyPlan(s);
     return null;
   }
-  if (lesson?.version !== 1 || pkg?.operation.kind !== "subtract" || !tutorTeachingNow(s) || s.scopeDue || s.noBoard ||
+  if (lesson?.version !== 1 || !kind || !pkg || !tutorTeachingNow(s) || s.scopeDue || s.noBoard ||
     s.solved !== null || !s.turn || s.turn.uncertain || hasTranscriptAlternatives(s) || s.stopRequested) return null;
   const text = s.turn.text.trim();
-  const [before, bottom] = pkg.operation.operands;
+  const [before, bottom] = pkg.operation.operands as [number, number];
   const turns = lesson.turns;
   const previous = turns.at(-1);
   const choice = lesson.progression ? regroupingChoice(s, previous, before, bottom) : undefined;
@@ -5727,8 +5704,8 @@ function checkedExchangePlan(s: Session, afterFailure: boolean): ExchangeTurn | 
   if (!step && (s.done.includes("ones") || turns.some((turn) => turn.childAction))) return null;
   const prompt = step
     ? regroupingOffersAction({ step })
-    : CHILD_EXCHANGE_REQUEST.test(text);
-  if (!step && !prompt && !EXCHANGE_REQUEST.test(text) && !(afterFailure && SUBTRACTION_HELP.test(text))) return null;
+    : asksChildExchange(kind, text);
+  if (!step && !prompt && !asksExchange(kind, text) && !(afterFailure && asksHelp(text))) return null;
   const withBoard = !step || prompt;
   const held = turns.flatMap((t) => t.actions).filter((action) => action.fate === "shown");
   // An unknown delivery may have reached the board. Wait for its fate before trying it again.
@@ -5736,10 +5713,8 @@ function checkedExchangePlan(s: Session, afterFailure: boolean): ExchangeTurn | 
   const shown = held.find((action) => action.kind === "show");
   const instruction: RegroupingInstruction | undefined = step ? { step, ...((s.grade ?? 0) >= 5 ? { usePlaceValueTerms: true } : {}) } : undefined;
   // A worked example uses a different number if any speech or block quantity would disclose the target.
-  const facts = (previous ? [previous.facts.value] : [before, 52, 63, 74, 85])
-    .map((value) => exchangeFacts(value, value !== before))
+  const facts = factCandidates(kind, [before, bottom], previous?.facts)
     .find((candidate) => {
-      if (!candidate) return false;
       const board = (withBoard || step === "check_place") ? [...exchangeCommands("show", candidate), ...exchangeCommands("exchange", candidate)] : [];
       const words = [
         ...(regroupingWords(candidate, instruction, true) ?? []),
@@ -5754,7 +5729,7 @@ function checkedExchangePlan(s: Session, afterFailure: boolean): ExchangeTurn | 
   });
   const show = shown ?? action("show", batchId(1));
   const id = `${lesson.id}:${turns.length + 1}`;
-  if (instruction && !facts.example && (step === "connect" || step === "ones" || step === "recheck_ones" || step === "tens")) {
+  if (instruction && !facts.example && (step === "connect" || step === "ones" || step === "recheck_ones" || step === "tens" || step === "recheck_tens")) {
     const explicit = { ...instruction, subtrahend: bottom };
     if (!tellsAnswer(s, pkg, regroupingWords(facts, explicit, false) ?? [], [], false)) instruction.subtrahend = bottom;
   }
@@ -5762,7 +5737,7 @@ function checkedExchangePlan(s: Session, afterFailure: boolean): ExchangeTurn | 
     id,
     facts,
     actions: withBoard ? [...(shown ? [] : [show]), ...(prompt ? [] : [action("exchange", batchId(shown ? 1 : 2), show.batchId)])] : [],
-    ...(prompt ? { prompt: { lessonId: lesson.id, turnId: id, objectId: EXCHANGE_OBJECT, batchId: show.batchId, boardRevision: s.batches + (shown ? 0 : 1) } } : {}),
+    ...(prompt ? { prompt: { lessonId: lesson.id, turnId: id, objectId: exchangeObject(facts), batchId: show.batchId, boardRevision: s.batches + (shown ? 0 : 1) } } : {}),
     ...(instruction ? { instruction } : {}),
     ...(choice?.observation ? { observation: choice.observation } : {}),
   };
@@ -5784,13 +5759,13 @@ function childExchangePlan(s: Session, target: ExchangeTarget): ExchangeTurn | n
   const lesson = s.checkedExchange!;
   const previous = lesson.turns.at(-1)!;
   const facts = previous.facts;
-  const operation = s.package.operation;
-  const instruction: RegroupingInstruction | undefined = lesson.progression && operation.kind === "subtract"
+  const second = (s.package.operation.operands as number[])[1];
+  const instruction: RegroupingInstruction | undefined = lesson.progression && lessonKind(s.package)
     ? { step: "connect", ...((s.grade ?? 0) >= 5 ? { usePlaceValueTerms: true } : {}) }
     : undefined;
-  if (instruction && !facts.example && operation.kind === "subtract") {
-    const explicit = { ...instruction, subtrahend: operation.operands[1] };
-    if (!tellsAnswer(s, s.package, regroupingWords(facts, explicit, false) ?? [], [], false)) instruction.subtrahend = operation.operands[1];
+  if (instruction && !facts.example) {
+    const explicit = { ...instruction, subtrahend: second };
+    if (!tellsAnswer(s, s.package, regroupingWords(facts, explicit, false) ?? [], [], false)) instruction.subtrahend = second;
   }
   const words = regroupingWords(facts, instruction, false) ?? exchangeChildWords(facts);
   if (tellsAnswer(s, s.package, [...words, ...exchangeCommands("exchange", facts).flatMap((command) => boardTexts(command))], [], false)) return null;
@@ -5806,7 +5781,7 @@ function childExchangePlan(s: Session, target: ExchangeTarget): ExchangeTurn | n
 export function childExchangeProposal(s: Session, target: ExchangeTarget, at: number): ExchangeProposal | null {
   if (s.startedAt === null || at - s.startedAt >= limitsOf(s).closingAtMs) return null;
   const plan = childExchangePlan(s, target);
-  return plan ? { checkedExchange: 1, value: plan.facts.value, example: plan.facts.example, show: false, childAction: plan.childAction, ...(plan.instruction ? { instruction: plan.instruction } : {}) } : null;
+  return plan ? { checkedExchange: 1, value: plan.facts.value, ...addendOf(plan), example: plan.facts.example, show: false, childAction: plan.childAction, ...(plan.instruction ? { instruction: plan.instruction } : {}) } : null;
 }
 
 /** The turn first shows a board: the exchange blocks, or the related question (#1144). */
@@ -5829,7 +5804,7 @@ function deliverExchange(s: Session, plan: ExchangeTurn, effects: Effect[]): Ste
   if (step === "transfer_correct") lesson.transfer!.state = "finished";
   const observed = plan.observation;
   if (observed?.result === "correct") {
-    const column = observed.skill === "subtract_ones" ? "ones" : observed.skill === "subtract_tens" ? "tens" : null;
+    const column = observedColumn(observed.skill);
     const done = plan.transfer ? lesson.transfer!.done : s.done;
     if (column && !done.includes(column)) done.push(column);
   }
@@ -5854,7 +5829,7 @@ function deliverExchange(s: Session, plan: ExchangeTurn, effects: Effect[]): Ste
       kind: "board", sentence,
       batch: {
         transactionId: action.batchId,
-        commands: action.kind === "question" ? transferBoard(lesson.transfer!.operands) : exchangeCommands(action.kind, plan.facts),
+        commands: action.kind === "question" ? transferBoard(lesson.transfer!.operands, lessonKind(s.package)!) : exchangeCommands(action.kind, plan.facts),
         ...(action.after ? { after: [action.after] } : {}),
       },
     });
@@ -5887,59 +5862,6 @@ function exchangeDelivery(session: Session, event: Extract<SessionEvent, { type:
   return { session: s, effects: [], refusal: null };
 }
 
-function recordExchangeHelp(s: Session, kind: "hint" | "guided") {
-  if (!s.assistance.includes(kind)) s.assistance.push(kind);
-  s.stuckStep ??= "ones";
-}
-
-function recordRegroupingSupport(s: Session, turn: ExchangeTurn, support: "hinted" | "demonstrated") {
-  // #1144: help on the related question stays on its own turns; the original question's help is unchanged.
-  if (turn.transfer) {
-    if (turn.support !== "demonstrated") turn.support = support;
-    return;
-  }
-  if (!s.checkedExchange?.progression) {
-    recordExchangeHelp(s, "guided");
-    return;
-  }
-  if (turn.support === "demonstrated" || turn.support === support) return;
-  turn.support = support;
-  if (support === "hinted") s.hints += 1;
-  recordExchangeHelp(s, support === "hinted" ? "hint" : "guided");
-}
-
-function regroupingHelp(turn: ExchangeTurn): ExchangeTurn["support"] {
-  const step = turn.instruction?.step;
-  if (turn.transfer && (step === "check_exchange" || step === "combine")) return "hinted";
-  if (step === "connect" || (!step && !turn.prompt)) return "demonstrated";
-  if (turn.prompt || step === "ones" || step === "recheck_ones" || step === "tens") return "hinted";
-}
-
-/** The original question's help that was sent but that the child may not have heard (voice playback not finished). */
-function unconfirmedRegroupingHelp(s: Session): NonNullable<ExchangeTurn["support"]>[] {
-  const lesson = s.checkedExchange;
-  if (lesson?.progression !== 1) return [];
-  return lesson.turns.filter((turn) => !turn.transfer).map(unconfirmedHelp).filter((help) => help !== undefined);
-}
-
-/**
- * Help a sent reply may have given beyond what is confirmed, while its voice playback has not finished. A shown board
- * batch confirms only its own part: the starting blocks confirm a hint, not the trade drawing the child cut off.
- */
-function unconfirmedHelp(turn: ExchangeTurn): ExchangeTurn["support"] {
-  if (!turn.sent || turn.playback === "finished") return undefined;
-  const help = regroupingHelp(turn);
-  return help && (!turn.support || (turn.support === "hinted" && help === "demonstrated")) ? help : undefined;
-}
-
-/**
- * The outcome cannot name the original question's help: help the child may not have heard is the only help, or it is a
- * demonstration after no more than a hint.
- */
-function helpUnconfirmed(s: Session, assistance: Assistance): boolean {
-  const unconfirmed = unconfirmedRegroupingHelp(s);
-  return assistance === "independent" ? unconfirmed.length > 0 : assistance === "hint" && unconfirmed.includes("demonstrated");
-}
 
 /** #1144: the related question's package once it started, else null. */
 function transferNow(s: Session): OperationPackage | null {
@@ -5951,10 +5873,11 @@ function transferNow(s: Session): OperationPackage | null {
 function transferFor(s: Session): TransferOperands | null {
   const lesson = s.checkedExchange;
   const pkg = s.package;
-  if (!lesson?.progression || lesson.transfers !== 1 || lesson.transfer || pkg?.operation.kind !== "subtract" || s.startedAt === null || s.now === null ||
+  const kind = lessonKind(pkg);
+  if (!lesson?.progression || lesson.transfers !== 1 || lesson.transfer || !kind || !pkg || s.startedAt === null || s.now === null ||
     s.now - s.startedAt > limitsOf(s).closingAtMs - TRANSFER_MIN_MS) return null;
   const said = s.turns.filter((turn) => turn.speaker === "maya").map((turn) => turn.text);
-  return chooseTransfer(pkg.operation.operands, lesson.turns.map((turn) => turn.facts.value),
+  return chooseTransfer(kind, pkg.operation.operands as [number, number], lesson.turns.map((turn) => turn.facts.value),
     (operands) => tellsAnswer(s, transferPackage(pkg, operands), said, [], false));
 }
 
@@ -5973,7 +5896,7 @@ function offerReplyPlan(s: Session): ExchangeTurn | null {
   if (!step) return null;
   return {
     id: `${lesson.id}:${lesson.turns.length + 1}`,
-    facts: step === "transfer" ? exchangeFacts(transfer.operands[0], false)! : lesson.turns.at(-1)!.facts,
+    facts: step === "transfer" ? relatedFacts(lessonKind(s.package)!, transfer.operands) : lesson.turns.at(-1)!.facts,
     actions: step === "transfer" ? [transferQuestionAction(s)] : [],
     instruction: { step, ...(step === "transfer" ? { transfer: transfer.operands } : {}) },
     ...(step === "transfer" ? { transfer: true as const } : {}),
@@ -5985,12 +5908,12 @@ function relatedPlan(s: Session): ExchangeTurn {
   const lesson = s.checkedExchange!;
   const transfer = lesson.transfer!;
   const [top, bottom] = transfer.operands;
+  const kind = lessonKind(s.package)!;
   const pkg = transferPackage(s.package!, transfer.operands);
   const view: Session = { ...s, package: pkg, done: [...transfer.done], solved: null, lastResult: null, passed: [] };
   const text = s.turn!.text.trim();
   const body = wholeTurn(text);
-  const count = (place: "one" | "ten") => body === null ? null :
-    wholeValue(body.replace(/^(?:there (?:are|is)|i have) /, "").replace(new RegExp(` ${place}s?$`), ""));
+  const count = (place: "one" | "ten") => columnCount(body, place);
   const unclear = s.turn!.uncertain || hasTranscriptAlternatives(s);
   const heard = unclear || s.scopeDue ? [] : heardAnswers(view);
   const right = (step: string) => heard.some((a) => a.step === step && a.verdict === "right");
@@ -6002,20 +5925,21 @@ function relatedPlan(s: Session): ExchangeTurn {
     ? { step: previous === "transfer" ? "transfer_retry" as const : previous as RelatedStep }
     : relatedChoice({
       previous,
-      reversal: regroupingReversal(text, top, bottom),
-      repeat: REPEAT_REGROUPING.test(text),
-      asksExchange: EXCHANGE_REQUEST.test(text) || CHILD_EXCHANGE_REQUEST.test(text),
-      knowsExchange: !!body && KNOWS_EXCHANGE.test(body),
-      stuck: REGROUPING_START.test(text) || SUBTRACTION_HELP.test(text),
+      reversal: kind === "add" ? carryMistake(text, top, bottom) !== null : regroupingReversal(text, top, bottom),
+      repeat: asksRepeat(text),
+      asksExchange: asksExchange(kind, text) || asksChildExchange(kind, text),
+      knowsExchange: !!body && knowsExchange(kind, body),
+      stuck: regroupingStart(kind, text) || asksHelp(text),
       rightWhole: right("result") && !childSaysFalse(text),
-      saysWhole: /\b(?:my (?:final )?answer|(?:whole|final) (?:answer|difference))\b/i.test(text),
-      wrongWhole: !s.scopeDue && said !== null && said !== top - bottom,
-      ones: count("one"), tens: count("ten"), heardOnes: right("ones"), heardTens: right("tens"),
-    }, transfer.operands);
-  const facts = exchangeFacts(top, false)!;
+      saysWhole: namesWhole(text),
+      wrongWhole: !s.scopeDue && said !== null && said !== (pkg.answer.value as { value: number }).value,
+      // An addition's ones step also takes the ones total (13), which is not the ones to write.
+      ones: count("one"), tens: count("ten"), heardOnes: kind === "subtract" && right("ones"), heardTens: right("tens"),
+    }, kind, transfer.operands);
+  const facts = relatedFacts(kind, transfer.operands);
   let instruction: RegroupingInstruction = { step: choice.step, ...((s.grade ?? 0) >= 5 ? { usePlaceValueTerms: true } : {}), transfer: transfer.operands };
   const tells = (words: string[] | null) => tellsAnswer(view, pkg, words ?? [], [], false);
-  if (["connect", "ones", "recheck_ones", "tens"].includes(choice.step) && !tells(regroupingWords(facts, { ...instruction, subtrahend: bottom }, false))) {
+  if (["connect", "ones", "recheck_ones", "tens", "recheck_tens"].includes(choice.step) && !tells(regroupingWords(facts, { ...instruction, subtrahend: bottom }, false))) {
     instruction.subtrahend = bottom;
   }
   if (tells(regroupingWords(facts, instruction, false))) instruction = { step: "transfer_retry", transfer: transfer.operands };
@@ -6041,28 +5965,6 @@ function transferQuestionAction(s: Session): ExchangeAction {
   return { kind: "question", id: `${s.checkedExchange!.id}:question`, batchId: `${s.callId}-b${s.batches + 1}`, delivery: "generated" };
 }
 
-/** The help the related question had so far, from its own turns only. */
-function transferAssistance(s: Session): RegroupingObservation["assistance"] {
-  const turns = s.checkedExchange?.turns.filter((turn) => turn.transfer) ?? [];
-  if (turns.some((turn) => turn.support === "demonstrated")) return "demonstrated";
-  const unconfirmed = turns.map(unconfirmedHelp);
-  // A demonstration the child may have heard part of is stronger help than a finished hint: the help is unknown.
-  if (unconfirmed.includes("demonstrated")) return "uncertain";
-  if (turns.some((turn) => turn.support === "hinted")) return "hinted";
-  return unconfirmed.some(Boolean) ? "uncertain" : "independent";
-}
-
-function transferOutcome(s: Session): Pick<Outcome, "transfer"> {
-  const transfer = s.checkedExchange?.transfer;
-  if (transfer?.state !== "started" && transfer?.state !== "finished") return {};
-  const solved = s.checkedExchange!.turns.find((turn) => turn.transfer && turn.observation?.skill === "difference" && turn.observation.result === "correct");
-  return { transfer: { result: solved ? "right" : "unfinished", assistance: solved?.observation?.assistance ?? transferAssistance(s) } };
-}
-
-function recordRegroupingDelivery(s: Session, turn: ExchangeTurn) {
-  const support = regroupingHelp(turn);
-  if (support) recordRegroupingSupport(s, turn, support);
-}
 
 /**
  * Code's verdict on the word the child said for a word question (a claim's yes or no, true or false, or a comparison

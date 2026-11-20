@@ -65,4 +65,9 @@ export const SAMPLE_PACKAGES: Record<string, QuestionPackage> = {
     { value: num(36), cause: "O1", description: "Takes the smaller ones digit from the larger", step: "ones" },
     { value: num(34), cause: "regroup-forget", description: "Does not take the ten from the tens", step: "tens" },
   ]),
+  // Spec #1137's addition lesson (#1153): 8 ones and 5 ones make 13 ones, which need one exchange into a ten.
+  "add-38-45": sample("add-38-45", "add", 38, 45, [16, 7], [
+    { value: num(73), cause: "O3", description: "Forgets to carry when adding", step: "tens" },
+    { value: num(713), cause: "carry-write-both", description: "Writes the whole ones total in the ones place", step: "ones" },
+  ]),
 };

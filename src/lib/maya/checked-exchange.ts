@@ -1,11 +1,15 @@
 import type { Command } from "@/lib/board";
 import type { OperationPackage } from "@/lib/question-package";
 import { readTransferOperands, TRANSFER_GOODBYE, TRANSFER_OFFER, transferRetryWords, transferStartWords, type TransferOperands } from "./transfer";
+import { ADD_EXCHANGE_OBJECT, ADDITION_EXAMPLES, additionChildWords, additionCommands, additionExchangeWords, additionFacts, additionPromptWords, additionWords, type AdditionFacts, type AdditionSkill, type AdditionStep } from "./checked-addition";
+import type { LessonKind } from "./regrouping-reads";
 
 /** "question": the related question's board (#1144), tracked like the exchange so a lost batch is shown again. */
 type ActionKind = "show" | "exchange" | "question";
 
 export const EXCHANGE_OBJECT = "exchange-before";
+/** The object the child exchanges: a ten in subtraction, ten ones in addition (#1153). */
+export type ExchangeObject = typeof EXCHANGE_OBJECT | typeof ADD_EXCHANGE_OBJECT;
 export const EXCHANGE_RPC = "maya.exchange";
 
 /** A revision names the lesson board at the time this object was offered. */
@@ -13,7 +17,7 @@ export interface ExchangeTarget {
   lessonId: string;
   turnId: string;
   boardRevision: number;
-  objectId: typeof EXCHANGE_OBJECT;
+  objectId: ExchangeObject;
   batchId: string;
 }
 
@@ -22,7 +26,7 @@ export function readExchangeTarget(value: unknown): ExchangeTarget | null {
   const { lessonId, turnId, boardRevision, objectId, batchId } = value as Partial<ExchangeTarget>;
   const id = (field: unknown): field is string => typeof field === "string" && field.length > 0 && field.length <= 160;
   if (!id(lessonId) || !id(turnId) || !id(batchId) || typeof boardRevision !== "number" ||
-    !Number.isSafeInteger(boardRevision) || boardRevision < 1 || objectId !== EXCHANGE_OBJECT) return null;
+    !Number.isSafeInteger(boardRevision) || boardRevision < 1 || (objectId !== EXCHANGE_OBJECT && objectId !== ADD_EXCHANGE_OBJECT)) return null;
   return { lessonId, turnId, boardRevision, objectId, batchId };
 }
 
@@ -37,7 +41,10 @@ export interface ExchangeAmounts {
 }
 
 export interface ExchangeFacts {
+  /** The minuend, or the first addend. */
   value: number;
+  /** The second addend: set only in an addition lesson (#1153), where `before` and `after` count the ones total. */
+  add?: number;
   before: ExchangeAmounts;
   after: ExchangeAmounts;
   example: boolean;
@@ -96,6 +103,8 @@ export interface CheckedExchangeLesson {
 export interface ExchangeProposal {
   checkedExchange: 1;
   value: number;
+  /** The second addend of an addition lesson's facts (#1153). */
+  add?: number;
   example: boolean;
   show: boolean;
   prompt?: true;
@@ -107,30 +116,73 @@ export interface ExchangeProposal {
 export interface RegroupingInstruction {
   step: "check_place" | "check_exchange" | "independent" | "guide_exchange" | "place_gap" | "reversal" |
     "connect" | "ones" | "recheck_ones" | "tens" | "combine" | "correct" |
-    "offer" | "decline" | "transfer" | "transfer_retry" | "transfer_correct";
+    "offer" | "decline" | "transfer" | "transfer_retry" | "transfer_correct" | AdditionStep;
   usePlaceValueTerms?: true;
   /** The related question's operands, on every turn of it (#1144). */
   transfer?: TransferOperands;
-  /** Omitted when naming the quantity would disclose the target answer. */
+  /** The second operand (the subtrahend, or the second addend). Omitted when naming it would disclose the target answer. */
   subtrahend?: number;
 }
 
 export interface RegroupingObservation {
-  skill: "identify_tens" | "explain_exchange" | "perform_exchange" | "subtract_ones" | "subtract_tens" | "difference" | "reversal";
+  skill: "identify_tens" | "explain_exchange" | "perform_exchange" | "subtract_ones" | "subtract_tens" | "difference" | "reversal" | AdditionSkill;
   result: "correct" | "incorrect";
   assistance: "independent" | "hinted" | "demonstrated" | "uncertain";
   at: number;
 }
 
 export function regroupingOffersAction(instruction: RegroupingInstruction | undefined): boolean {
-  return instruction?.step === "guide_exchange" || instruction?.step === "place_gap" || instruction?.step === "reversal";
+  return ["guide_exchange", "place_gap", "reversal", "forgot_carry", "both_digits"].includes(instruction?.step ?? "");
 }
+
+/** The column a correct step observation finishes. */
+export function observedColumn(skill: RegroupingObservation["skill"]): "ones" | "tens" | null {
+  return skill === "subtract_ones" || skill === "add_ones" ? "ones" : skill === "subtract_tens" || skill === "add_tens" ? "tens" : null;
+}
+
+/** A right whole answer: the difference, or the sum (#1153). */
+export const solvesQuestion = (skill: RegroupingObservation["skill"] | undefined) => skill === "difference" || skill === "sum";
+
+/** The lesson's operation, from its question. */
+export function lessonKind(pkg: OperationPackage | null | undefined): LessonKind | null {
+  return pkg?.operation.kind === "subtract" || pkg?.operation.kind === "add" ? pkg.operation.kind : null;
+}
+
+/** The checked facts a proposal names, or null when they do not hold. */
+export function checkedFacts(value: number, example: boolean, add: unknown): ExchangeFacts | null {
+  if (add === undefined) return exchangeFacts(value, example);
+  return typeof add === "number" ? additionFacts(value, add, example) : null;
+}
+
+/** The facts to try for a turn: the previous turn's, else the question's, then separate worked examples. */
+export function factCandidates(kind: LessonKind, [top, bottom]: [number, number], previous: ExchangeFacts | undefined): ExchangeFacts[] {
+  const pairs: [number, number][] = previous ? [[previous.value, previous.add ?? bottom]] : kind === "add"
+    ? [[top, bottom], ...ADDITION_EXAMPLES]
+    : [top, 52, 63, 74, 85].map((value) => [value, bottom]);
+  return pairs.flatMap(([value, add]) => {
+    const example = kind === "add" ? value !== top || add !== bottom : value !== top;
+    const facts = kind === "add" ? additionFacts(value, add, example) : exchangeFacts(value, example);
+    return facts ? [facts] : [];
+  });
+}
+
+/** The facts of a related question (#1144). */
+export const relatedFacts = (kind: LessonKind, [top, bottom]: [number, number]) => (kind === "add" ? additionFacts(top, bottom, false) : exchangeFacts(top, false))!;
+
+export const exchangeObject = (facts: ExchangeFacts): ExchangeObject => facts.add === undefined ? EXCHANGE_OBJECT : ADD_EXCHANGE_OBJECT;
+
+const asAddition = (facts: ExchangeFacts) => facts as AdditionFacts;
 
 /** Code-owned lesson prompts. The only quantities here come from checked exchange facts. */
 export function regroupingWords(facts: ExchangeFacts, instruction: unknown, show: boolean): string[] | null {
   if (!instruction || typeof instruction !== "object") return null;
   const { step, usePlaceValueTerms, subtrahend } = instruction as RegroupingInstruction;
   const related = (instruction as RegroupingInstruction).transfer === undefined ? null : readTransferOperands((instruction as RegroupingInstruction).transfer);
+  if (facts.add !== undefined) {
+    if ((instruction as RegroupingInstruction).transfer !== undefined && (!related || related[0] !== facts.value || related[1] !== facts.add || facts.example)) return null;
+    if (subtrahend !== undefined && (facts.example || subtrahend !== facts.add)) return null;
+    return additionWords(asAddition(facts), step, show, usePlaceValueTerms === true, subtrahend !== undefined, related, TRANSFER_OFFER, TRANSFER_GOODBYE);
+  }
   if ((instruction as RegroupingInstruction).transfer !== undefined && (!related || related[0] !== facts.value || facts.example ||
     (subtrahend !== undefined && subtrahend !== related[1]))) return null;
   if (subtrahend !== undefined && (facts.example || !Number.isInteger(subtrahend) || subtrahend <= 0 ||
@@ -205,6 +257,7 @@ export function exchangeFacts(value: number, example: boolean): ExchangeFacts | 
 }
 
 export function exchangeWords(facts: ExchangeFacts, show: boolean): string[] {
+  if (facts.add !== undefined) return additionExchangeWords(asAddition(facts), show);
   const { value, before, after, example } = facts;
   const groups = ({ tens, ones }: ExchangeAmounts) => `${tens} ${tens === 1 ? "ten" : "tens"} and ${ones} ${ones === 1 ? "one" : "ones"}`;
   return [
@@ -216,6 +269,7 @@ export function exchangeWords(facts: ExchangeFacts, show: boolean): string[] {
 }
 
 export function exchangePromptWords(facts: ExchangeFacts, show: boolean): string[] {
+  if (facts.add !== undefined) return additionPromptWords(asAddition(facts), show);
   return [
     ...(show ? exchangeWords(facts, true).slice(0, 1) : []),
     "Trade one ten for ten ones. Use the Exchange one ten button on the board.",
@@ -223,6 +277,7 @@ export function exchangePromptWords(facts: ExchangeFacts, show: boolean): string
 }
 
 export function exchangeChildWords(facts: ExchangeFacts): string[] {
+  if (facts.add !== undefined) return additionChildWords(asAddition(facts));
   return [...exchangeWords(facts, false).slice(1, 2), "What changed when you traded a ten?"];
 }
 
@@ -231,6 +286,7 @@ function notation(value: number, { tens, ones }: ExchangeAmounts): string {
 }
 
 export function exchangeCommands(action: Exclude<ActionKind, "question">, facts: ExchangeFacts): Command[] {
+  if (facts.add !== undefined) return additionCommands(action, asAddition(facts));
   if (action === "show") return [
     { op: "model", id: EXCHANGE_OBJECT, model: { kind: "base_ten", hundreds: 0, ...facts.before }, place: { region: "main" } },
     { op: "write", id: "exchange-before-notation", text: notation(facts.value, facts.before), place: { below: EXCHANGE_OBJECT } },

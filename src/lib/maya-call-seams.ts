@@ -116,6 +116,8 @@ export function callSeams(db: SupabaseClient<Database>, options: { env?: Env; or
     // D-345: only the exact value "on" lets the tutor core teach family calls (desk chat and family voice).
     tutorFamilies: env.MAYA_TUTOR_FAMILIES === "on",
     checkedExchange: env.MAYA_CHECKED_EXCHANGE === "on",
+    // #1153: the addition lesson rolls out on its own switch, after the subtraction lesson.
+    checkedAddition: env.MAYA_CHECKED_ADDITION === "on",
     checkedRoutine: env.MAYA_CHECKED_ROUTINE_TURNS === "on",
     // Only server configuration and time can activate writes after the verified reader cutover.
     streamChat: mayaChatStreamEnabled(env.MAYA_CHAT_STREAMING_ENABLED, Date.now()),
