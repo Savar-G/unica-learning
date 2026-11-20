@@ -151,7 +151,7 @@ Method: rg/sed over src/lib, src/app, src/components, supabase/migrations, docs.
 - Impossible/unhandled: permanently reserved production holds after a crash or unknown cost (money stays blocked; no TTL or reconciliation job for production; evaluation has an explicit resolve function). A failed `settle` in the `finally` throws `marking_cost_reconciliation` and can mask the run result (scan-marking.ts:284; store.settle throws when `r !== true`, scan-marking-store.ts:62) - the job lease still lapses and recovers.
 - Race: serialised by the global lock; double-dispatch window documented.
 - What the user sees: `budgetHeld` text only. Admin: raw JSON "Job state and cost".
-- Existing tests: probes supabase/tests/scan_marking_evaluation*.cjs, scan_marking.sql; scan-marking-comparison*.test.ts, scan-marking-d267-switch.test.ts. (Spend numbers verified by probes only, not re-run.)
+- Existing tests: probes supabase/tests/scan_marking_evaluation*.cjs, scan_marking.sql; scan-marking-comparison.test.ts. (Spend numbers verified by probes only, not re-run.)
 - Pure core already? No (accounting in SQL). `scan-marking-launch.ts` is a pure evidence/readiness record (`scanMarkingLaunchReadiness`).
 - Value x risk: UX low; AX medium; risk: very high (money). Do not touch.
 
@@ -176,7 +176,7 @@ Method: rg/sed over src/lib, src/app, src/components, supabase/migrations, docs.
 - DB enforcement: none (pure app rule). SQL `scan_marking_command` does not check `test_accounts` (docs/scan-pages.md says so); only app checks.
 - Impossible/unhandled: plan closing mid-run: `processScanMarking` decides once at the start (scan-marking-server.ts:40), so an in-flight job finishes; a closed plan publishes committed marks only. Explanation uses a different rule (`explanationPlanOpen`, docs/scan-pages.md).
 - What the user sees: usual not-found for refused routes; Scan tab hidden; "Marking is not ready yet" on a sent tile when `listing.marking` false (machine 1).
-- Existing tests: scan-marking-family-mode.test.ts, scan-pages-access.test.ts, scan-marking-d267-switch.test.ts, scan-pages-release.test.ts.
+- Existing tests: scan-marking-family-mode.test.ts, scan-pages-access.test.ts, scan-marking-comparison.test.ts, scan-pages-release.test.ts.
 - Pure core already? Yes-ish: `admission()` is a small pure-shaped function over injected db/plan; reasons are a typed union.
 - Value x risk: low; do not change without Savar's switch decision.
 
