@@ -30,6 +30,11 @@ In a call with the checked exchange lesson, the child can point to an object May
 - **No credit:** a selection changes no step, hint count, observation or solved state. A retried tap (same `selectionId`) is answered once.
 - **During speech:** a tap stops Maya's remaining speech and board cues, like the exchange, then she answers it.
 - **Context:** the session keeps the last 20 selections. The view's `selected` names the answered object while the board revision is unchanged, so the outline survives a re-render, paper mode and a reload. The next tutor brief says what the child pointed to, so a follow-up question is answered about that object.
+- **Real audio check (2026-11-20, code df8b57292):** this ran on a self-hosted `livekit-server --dev` room with LiveKit Inference STT (`assemblyai/universal-3-6-pro`) and TTS (`cartesia/sonic-3.6`). The real desk voice board ran in the Aside browser with a synthetic child clip, "How do I regroup?". A real STT pass transcribed the captured return audio.
+  - The child tapped the blocks while Maya said the regrouping prompt. The prompt's last sentence ("Use the Exchange one ten button on the board.") was never heard, and its turn was saved as `interrupted`. Maya's answer about the blocks started 0.5 s after the tap and was heard word for word.
+  - After the exchange removed the blocks, an old tap on them was heard as "That part is not on the board now. Point to something on the board, or tell me which part you mean."
+  - The trace was valid. Neither tap added a hint, step or solved state.
+- **Known behaviour:** any tap, a stale one too, stops Maya's current speech. In the check, the stale tap came just after the exchange reply was saved and before its audio started, so that reply was never heard. Its turn is saved as `interrupted`, so it gives no credit.
 
 
 A normal candidate turn can still use its one lesson request to read priority needs. No routine talk review, math review, repair or speculative preparation runs. A malformed or timed-out reply gets the same code-written teaching. Recognized benign off-topic questions get a fixed redirect instead of a conversational answer; this is a deliberate limit of the candidate, not a change to the other question kinds.
