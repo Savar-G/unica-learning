@@ -111,7 +111,9 @@ it("R425M-3: a younger child's reminder uses the older inactive sibling's provin
 
 /** Maya's block (adaptive) test, as stored after `blocks` blocks locked, with every drawn question answered; complete when no block follows. */
 function adaptiveTest(blocks: number | "all", rushed = false): { test: StoredTest; answered: number } {
-  let s: Session = createAdaptiveSession(PROFILE, rushed ? 1 : 7);
+  const created = createAdaptiveSession(PROFILE, rushed ? 1 : 7);
+  // The terminal-without-a-report case exercises the v1 rules. A rushed v2 test produces a retake report.
+  let s: Session = rushed ? { ...created, adaptive: { ...created.adaptive!, version: 1 } } : created;
   for (let locked = 0; blocks === "all" ? !s.adaptive!.complete : locked <= blocks; ) {
     const q = nextQuestion(s);
     if (q) s = submitAnswer(s, { questionId: q.id, response: rushed && REPORTED_STRAND[q.strand] === "shapes" ? q.wrong[0].value : q.answer, timeMs: rushed ? 100 : 20_000 });

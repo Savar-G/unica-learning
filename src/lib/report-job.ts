@@ -133,6 +133,7 @@ export async function runReportJob(assessmentId: string, origin: string, options
   const rebuildChild = options.rebuildChild ?? (options.profiles ? null : rebuildChildProfileNow);
   let profile: ProfileBuild | null = null;
   let childId: string | null = null;
+  let placed = false;
   let parentId: string | null = null;
   try {
     const inputs = await loadReportInputs(db.reader, assessmentId, db.comparison);
@@ -142,9 +143,10 @@ export async function runReportJob(assessmentId: string, origin: string, options
     }
     const { assessment } = inputs;
     childId = assessment.childId;
+    placed = assessment.placement.workingLevel !== null;
     parentId = assessment.parentId;
     const { report, ai } = await storeReport(store, inputs, reviewer === undefined ? aiReviewer(process.env, { feature: "report", parentId, childId, source: { kind: "assessment", id: assessmentId } }) : reviewer);
-    profile = await profileStep(assessmentId, () => storeProfileFacts(db.profiles, inputs));
+    if (placed) profile = await profileStep(assessmentId, () => storeProfileFacts(db.profiles, inputs));
     if (!email) {
       console.info("[report] built with no email", assessmentId);
     } else {
@@ -178,10 +180,10 @@ export async function runReportJob(assessmentId: string, origin: string, options
   // Step 6, after the emails: the profile's AI parts, over the facts this run stored.
   if (profile) await profileStep(assessmentId, () => addProfileAi(db.profiles, profile, { ai: profileAi === undefined ? profileAiClient(process.env, { feature: "learner_profile", parentId, childId, source: { kind: "assessment", id: assessmentId } }) : profileAi }));
   // Step 7: the child's profile, from what is stored now.
-  if (childId && rebuildChild) await profileStep(assessmentId, () => rebuildChild(childId!));
+  if (placed && childId && rebuildChild) await profileStep(assessmentId, () => rebuildChild(childId!));
   // Step 8: the first pages, queued only; made elsewhere.
   const firstPages = options.firstPages === undefined ? (options.profiles ? null : (id: string, o: string) => queueFirstPagesNow(id, o, "report")) : options.firstPages;
-  if (childId && email && firstPages) await profileStep(assessmentId, () => firstPages(assessmentId, origin));
+  if (placed && childId && email && firstPages) await profileStep(assessmentId, () => firstPages(assessmentId, origin));
 }
 
 /**
@@ -193,10 +195,11 @@ async function storeReport(store: ReportJobStore, inputs: ReportInputs, reviewer
   const existing = await store.report(a.id);
   if (existing) return { report: existing };
 
-  const comparison = await inputs.comparison();
+  const retake = a.placement.workingLevel === null;
+  const comparison = retake ? undefined : await inputs.comparison();
   // #67: the child's whiteboard work; the model picks what the report shows. #68: the AI reviews it first, when on.
   const { model, ai } = await aiReport({
-    reviewer,
+    reviewer: retake ? null : reviewer,
     pieces: async () => inputs.reviewPieces(),
     store: store.reviews(a),
     build: (workReviews, reportText) => reportModel(a.placement, { comparison, workReviews, shownWork, reportText }),
@@ -239,7 +242,7 @@ async function emailParent(
   // CASL (#80): the email offers a plan, so it carries an unsubscribe link. The token is new for each send; only its
   // hash is kept, in the claim's own write, so the link works as soon as the email can go. A parent who already
   // unsubscribed gets the report alone, without the plan or waitlist button and without the unsubscribe headers.
-  const offer = !(await store.unsubscribed(parent.id));
+  const offer = view.model.level.working !== null && !(await store.unsubscribed(parent.id));
   const { token, hash } = newToken();
   const origin = new URL(url).origin;
   const email = reportEmail({ view, parentName: parent.name, url, unsubscribeUrl: `${origin}/unsubscribe?t=${token}`, offer });

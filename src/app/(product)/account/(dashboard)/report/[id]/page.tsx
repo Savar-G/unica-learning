@@ -50,7 +50,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
   const report = await loadReportView(parentReportReader(db, { admin: adminClient(), parentId: parent }), id);
   if (!report) notFound();
   const { childId } = report;
-  const view = { ...report.view, planOffer: report.view.model.callToAction === "card" ? await loadFamilyPlanOffer(parent, childId) : null };
+  const offersPlan = report.view.model.level.working !== null && report.view.model.callToAction === "card";
+  const view = { ...report.view, planOffer: offersPlan ? await loadFamilyPlanOffer(parent, childId) : null };
 
   // The dashboard (#551, #552), for the families its switch opens to; everyone else gets the page below, as it was.
   const shown = (await parentDashboard())?.children.find((c) => c.id === childId) ?? null;
@@ -59,7 +60,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
     learningStart(db, childId),
     view.model.reliability || shown ? newTestOffer(parent, childId) : null,
     // The first pages of workbook 1 (docs/first-pages.md), only for a report that offers the plan.
-    view.model.callToAction === "card" ? firstPagesForReport(parent, report.assessmentId) : null,
+    offersPlan ? firstPagesForReport(parent, report.assessmentId) : null,
   ]);
   const firstPages = pages ? { pages } : null;
   // Back from the payment page without a card: not a new report open.

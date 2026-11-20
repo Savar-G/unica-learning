@@ -121,6 +121,7 @@ function buildProgressPreview(v: ReportView, curriculum: Curriculum | null = cur
   const start = curriculum.levels.find((l) => l.number === book.level);
   if (!start) return null;
   const today = v.model.level.working;
+  if (today === null) return null;
   const goal = goalGrade(today, v.model.level.grade);
   const startGrade = start.schoolGrade as Level;
   if (startGrade >= goal) return null;

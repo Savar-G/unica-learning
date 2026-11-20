@@ -688,7 +688,7 @@ function homeSkills(
 /** The Level tile and the area bars of one finished test with a report, scored by the assessment core. */
 async function testLevel(reader: ParentViewReader, test: TestRecord, schoolGrade: Grade, zone: FamilyZone, marks: readonly AreaAnswer[] = []): Promise<{ level: LevelTileView | null; areas: AreaBarView[] }> {
   const result = await reader.testResult(test.id);
-  if (!result) return { level: null, areas: [] };
+  if (!result || result.level.working === null) return { level: null, areas: [] };
   // D-258 (#579): a test the report calls unreliable shows no bars. A fall back to the overall level would invent a
   // weakness (D-108). Only the stored report's note decides: the sentence says the report offers a new test, and a
   // rescore can change the test's pace flag without changing the report the parent reads.

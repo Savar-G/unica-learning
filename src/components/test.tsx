@@ -25,7 +25,7 @@ import { breakSeen, loadBreak, markBreakSeen, saveBreak, TestBreak } from "./tes
 import { Choices } from "./test-choices";
 import { BarGraph, ChoiceFace, PromptText } from "./test-figures";
 import { TestHelp } from "./test-help";
-import { TestProgress } from "./test-progress";
+import { AdaptiveBreakProgress, TestProgress } from "./test-progress";
 import { BackLabel, NextLabel, TestCheck, TestSteps } from "./test-steps";
 import { Whiteboard, boardImage, clearDrafts, loadDraft, saveDraft, type BoardSize } from "./whiteboard";
 import "./test.css";
@@ -41,7 +41,7 @@ type Screen =
   | { name: "more"; next: Extract<TestStep, { status: "question" }> }
   /** #253: "Check your answers" at the end of a part: its question numbers; "Done checking" goes on. */
   | { name: "check"; section: "stage1" | "stage2" | "stage3" | `block-${number}`; numbers: number[]; total: number; breakAfter: number; testId: string }
-  | { name: "break"; next: Extract<TestStep, { status: "question" }> }
+  | { name: "break"; next: Extract<TestStep, { status: "question" }>; after: number }
   /** The timed facts section (#70), after the halfway break; then the test carries on with `next`. */
   | { name: "facts"; testId: string; next: Extract<TestStep, { status: "question" }> }
   /** "Did anyone help?" (#71): after the last question; its answer goes with the finish request. */
@@ -294,13 +294,18 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
       saveBreak(id, { startedAt, end: null });
       breakShownAt.current = performance.now() - Math.max(0, Date.now() - startedAt);
       void sendContext(id, { break: "shown" });
-      setScreen({ name: "break", next: step });
+      setScreen({ name: "break", next: step, after: step.breakAfter });
       return true;
     }
     // Then the timed facts section (#70, D-088): the break's onDone comes back here. On a resume the facts screen
     // asks the server first and hands straight on to the question when the section is already done.
     if (!factsDone.current && id && step.number > step.breakAfter) {
       setScreen({ name: "facts", testId: id, next: step });
+      return true;
+    }
+    if (step.secondBreakAfter !== undefined && step.number === step.secondBreakAfter + 1 && !breakSeen(`${id}-second`)) {
+      track("test_break", { status: "shown" });
+      setScreen({ name: "break", next: step, after: step.secondBreakAfter });
       return true;
     }
     // #189: the last three answers were very fast, so the question says "Take your time" (absent from an older server: off).
@@ -542,7 +547,9 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
         <span className="logo">Unica Learning<b /></span>
         {screen.name === "question" && <TestProgress block={screen.block} answered={screen.number - 1} total={screen.total} breakAfter={screen.breakAfter} at="question" current={(viewed?.number ?? screen.number) - 1} />}
         {screen.name === "check" && <TestProgress block={screen.section.startsWith("block-") ? { first: screen.numbers[0], end: screen.numbers.at(-1)! } : undefined} answered={screen.numbers.at(-1)!} total={screen.total} breakAfter={screen.breakAfter} at="check" current={viewed ? viewed.number - 1 : undefined} />}
-        {screen.name === "break" && <TestProgress block={screen.next.block} answered={screen.next.breakAfter} total={screen.next.total} breakAfter={screen.next.breakAfter} at="halfway" />}
+        {screen.name === "break" && (screen.after === screen.next.secondBreakAfter
+          ? <AdaptiveBreakProgress answered={screen.after} />
+          : <TestProgress block={screen.next.block} answered={screen.after} total={screen.next.total} breakAfter={screen.next.breakAfter} at="halfway" />)}
         {screen.name === "facts" && <TestProgress block={screen.next.block} answered={screen.next.number - 1} total={screen.next.total} breakAfter={screen.next.breakAfter} at="facts" />}
         {screen.name === "more" && <TestProgress block={screen.next.block} answered={screen.next.number - 1} total={screen.next.total} breakAfter={screen.next.breakAfter} at="help" />}
         {(screen.name === "help" || screen.name === "done") && progress && <TestProgress answered={progress.total} total={progress.total} breakAfter={progress.breakAfter} at={screen.name === "help" ? "help" : "end"} />}
@@ -585,12 +592,14 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
           </MessageScreen>
         )}
         {screen.name === "break" && (
-          <TestBreak adaptive={!!screen.next.block} name={name} answered={screen.next.breakAfter} total={screen.next.total} onDone={(how) => {
+          <TestBreak adaptive={!!screen.next.block} name={name} answered={screen.after} total={screen.next.total} onDone={(how) => {
             track("test_break", { status: how });
             // #185: how the break ended and how long it lasted on this screen, sent at once.
             const id = testId.current;
             const shownAt = breakShownAt.current;
-            if (id && shownAt !== null) {
+            if (id && screen.after !== screen.next.breakAfter) {
+              markBreakSeen(`${id}-second`);
+            } else if (id && shownAt !== null) {
               const lengthMs = Math.round(performance.now() - shownAt);
               saveBreak(id, { startedAt: loadBreak(id)?.startedAt ?? Date.now() - lengthMs, end: { event: how, lengthMs } });
               markBreakSeen(id);

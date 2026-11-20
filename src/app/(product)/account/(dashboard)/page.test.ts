@@ -27,11 +27,20 @@ const scanning = vi.hoisted(() => ({ enabled: false }));
 vi.mock("@/lib/scan-pages-access", () => ({ scanPagesAccess: async () => scanning.enabled }));
 vi.mock("@/lib/report-loading-server", () => ({ parentReportReader: () => ({}) }));
 vi.mock("@/lib/report-loading", () => ({
-  loadReportView: async () => ({
-    view: { ...sampleReportWithBook(), childName: "Sample child", completedAt: new Date().toISOString() },
-    childId: "c1",
-    assessmentId: "a1",
-  }),
+  loadReportView: async () => {
+    const sample = sampleReportWithBook();
+    const level = family.reportVersion === 2
+      ? { ...sample.model.level, adaptiveVersion: family.reportVersion, working: 1 as const, mastered: true }
+      : sample.model.level;
+    const model = family.retakeReport
+      ? { ...sample.model, level: { ...level, working: null }, reliability: { veryFast: 18, answers: 30 } }
+      : { ...sample.model, level };
+    return {
+      view: { ...sample, model, childName: family.retakeReport ? "Asha" : "Sample child", completedAt: new Date().toISOString() },
+      childId: "c1",
+      assessmentId: "a1",
+    };
+  },
 }));
 const notes = vi.hoisted(() => ({ latest: new Map<string, ParentNote>() }));
 vi.mock("@/lib/parent-maya-notes", async (original) => ({ ...await original<typeof import("@/lib/parent-maya-notes")>(), latestParentMayaNotes: async () => notes.latest }));
@@ -42,10 +51,13 @@ vi.mock("@/lib/parent-dashboard-server", () => ({
   parentDashboard: async () => dashboard.value,
   dashboardOverview: async () => { overview.reads++; return overview.value; },
 }));
-const family = vi.hoisted(() => ({ postal: "V3S 1A1" as string | null, timeZone: null as string | null, olderChild: false, card: false, signedOut: false, report: false }));
+const family = vi.hoisted(() => ({ postal: "V3S 1A1" as string | null, timeZone: null as string | null, olderChild: false, card: false, signedOut: false, report: false, reportVersion: null as 2 | null, retakeReport: false }));
 const opensAt = Date.parse("2026-11-18T04:29:00Z");
+const start = vi.hoisted(() => ({
+  state: { kind: "wait", completedAt: Date.parse("2026-10-19T04:29:00Z"), opensAt: Date.parse("2026-11-18T04:29:00Z") } as import("@/lib/assessment").StartState,
+}));
 vi.mock("@/lib/test-attempt-server", () => ({
-  parentStartStates: async () => new Map([["c1", { kind: "wait", completedAt: Date.parse("2026-10-19T04:29:00Z"), opensAt: Date.parse("2026-11-18T04:29:00Z") }]]),
+  parentStartStates: async () => new Map([["c1", start.state]]),
 }));
 vi.mock("@/lib/supabase-auth", () => ({
   adminClient: () => null,
@@ -57,12 +69,12 @@ vi.mock("@/lib/supabase-auth", () => ({
         const rows: Record<string, Record<string, unknown>[]> = {
           parents: [{ name: "Alex Family", email: "alex@example.com", postal: family.postal, time_zone: family.timeZone }],
           children: [{ id: "c1", parent_id: "p1", created_at: "2021-01-01", first_name: "Asha", grade: 3, province: "BC" }, ...(family.olderChild ? [{ id: "z-old", parent_id: "p1", created_at: "2020-01-01", first_name: "Sam", grade: 4, province: "ON" }] : [])],
-          reports: family.report ? [{ id: "r1", child_id: "c1" }] : [],
+          reports: family.report ? [{ id: "r1", child_id: "c1", adaptive_version: family.reportVersion }] : [],
           // Both children have a test, so the goals step (D-325) does not stop the start screen.
           assessments: [{ child_id: "c1" }, { child_id: "z-old" }],
           card_setups: family.card ? [{ card_saved_at: "2026-11-01T00:00:00Z" }] : [{ card_saved_at: null }],
         };
-        let data = (rows[table] ?? []).map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => columns.split(/,\s*/).includes(key))));
+        let data = (rows[table] ?? []).map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => columns.split(/,\s*/).some(column => column === key || column.startsWith(`${key}:`)))));
         const query = {
           order: (key: string) => { if (key === "created_at") data.sort((a, b) => String(a[key]).localeCompare(String(b[key]))); return query; },
           eq: (key: string, value: string) => { if (key === "id") data = data.filter((r) => r.id === value); return query; },
@@ -77,7 +89,23 @@ vi.mock("@/lib/supabase-auth", () => ({
   }),
 }));
 
-beforeEach(() => { chats.value = new Map(); dashboard.value = null; overview.value = null; overview.reads = 0; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; family.report = false; family.signedOut = false; scanning.enabled = false; notes.latest = new Map(); });
+beforeEach(() => {
+  start.state = { kind: "wait", completedAt: Date.parse("2026-10-19T04:29:00Z"), opensAt };
+  chats.value = new Map();
+  dashboard.value = null;
+  overview.value = null;
+  overview.reads = 0;
+  family.postal = "V3S 1A1";
+  family.timeZone = null;
+  family.olderChild = false;
+  family.card = false;
+  family.report = false;
+  family.reportVersion = null;
+  family.retakeReport = false;
+  family.signedOut = false;
+  scanning.enabled = false;
+  notes.latest = new Map();
+});
 afterEach(() => vi.restoreAllMocks());
 
 it("a signed-out parent signs in and comes back to the child the link named (#563)", async () => {
@@ -180,6 +208,15 @@ it.each([false, true])("shows the goal sentence and its link on Parent home only
   } else {
     expect(out).not.toMatch(/acct-goal|rpt-progress|#goal|We can help|See how .* gets there|See the plan/i);
   }
+});
+
+it("keeps the v2 placement and report link on Parent home with the goal panel hidden", async () => {
+  family.report = true;
+  family.reportVersion = 2;
+  const out = renderToStaticMarkup(await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) }));
+  expect(out).toContain("Sample child has mastered Grade 1 work");
+  expect(out).toContain('href="/account/report/r1"');
+  expect(out).not.toMatch(/rpt-progress|#goal|We can help|See the plan|take the test again/i);
 });
 
 it("shows no goal sentence once the child has a shipped workbook, and reads only the shown child's report on the dashboard", async () => {
@@ -456,6 +493,17 @@ describe("a family the switch opens to", () => {
       for (const gone of ["Level by area", "Working at", "po-bar", "po-maya", "Notes from Maya", "po-action", "Tell us how", "po-summary", "Monthly summary", "We can help", "pd-test", "On the desk"]) expect(out).not.toContain(gone);
     });
 
+    it("lets a parent start an eligible v2 retake beside an active workbook", async () => {
+      family.report = true;
+      family.reportVersion = 2;
+      family.retakeReport = true;
+      start.state = { kind: "start", retake: true };
+      const out = await render(full());
+      expect(out).toContain("Workbook 2</p>");
+      expect(out).toContain('href="/account/test/c1"');
+      expect(out).toContain("The next test is open. It has new questions.");
+    });
+
     it("links the Today row to the Workbooks page at today's day (#1031), and leaves no link once the book's last day has passed", async () => {
       const out = await render(full());
       expect(out).toContain('<a class="po-today" href="/account/workbooks/c1?day=4#day-4">');
@@ -582,4 +630,26 @@ it("tells a closed family why the product is closed; a family with no plan reads
   const out = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
   planNote.closed = null;
   expect(out).toContain("Your plan is closed, on home");
+});
+
+it("shows a v2 retake on Parent home after a workbook has shipped", async () => {
+  family.report = true;
+  family.reportVersion = 2;
+  family.retakeReport = true;
+  start.state = { kind: "start", retake: true };
+  mayaNotice.books = [{ id: "w1", childId: "c1", number: 1, status: "shipped" }];
+  try {
+    const page = await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) });
+    const out = renderToStaticMarkup(createElement("div", null, page));
+    expect(out).toContain("please have Asha take the test again.");
+    expect(out).toContain('href="/account/report/r1"');
+    expect(out).not.toContain("We can help");
+    expect(out).toContain('href="/account/test/c1"');
+    const screen = await StartScreen({ params: Promise.resolve({ child: "c1" }), searchParams: Promise.resolve({}) });
+    const html = renderToStaticMarkup(screen);
+    expect(html).toContain('href="/account/test/c1"');
+    expect(html).toContain("The next test is open. It has new questions.");
+  } finally {
+    mayaNotice.books = [];
+  }
 });

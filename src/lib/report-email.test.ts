@@ -401,3 +401,16 @@ describe("progress preview (round r-progress-preview-5)", () => {
     }
   });
 });
+
+it("asks for a retake without a working level or a plan offer", () => {
+  const v = view(knowsUpTo(3));
+  const model = { ...v.model, level: { ...v.model.level, working: null, adaptiveVersion: 2 as const } };
+  const email = reportEmail({ view: { ...v, model }, parentName: "Priya", url: URL, unsubscribeUrl: UNSUB });
+  expect(email.subject).toContain("retake");
+  for (const body of [email.text, email.html]) {
+    expect(body).toContain("Maya answered many questions very quickly, so please have Maya take the test again.");
+    expect(body).not.toContain("Grade 3");
+    expect(body).not.toContain("working level");
+    expect(body).not.toContain("workbook");
+  }
+});

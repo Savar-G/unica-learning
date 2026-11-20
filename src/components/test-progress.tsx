@@ -1,6 +1,7 @@
 // Progress (#69, D-088): one segment per question, done in ink and the current one in tangerine, with a ring between
 // the two halves for the break and quick facts. It shows how far the child is; there is no clock and no countdown.
 // It sits in the test's top bar: the segments in the middle, the label on the right (#79).
+import { ADAPTIVE_QUESTION_LIMIT } from "@/lib/assessment/adaptive";
 import "./test-base.css";
 import "./test-parts.css";
 
@@ -59,6 +60,24 @@ export function TestProgress({ answered, block, total, breakAfter, at, current: 
         <div className="test-progress-seg" aria-hidden>{range(breakAfter, total)}</div>
       </div>
       <span className="test-progress-count" aria-hidden>{label}</span>
+    </div>
+  );
+}
+
+/** The next block has not started. Show completed questions against the test's upper limit. */
+export function AdaptiveBreakProgress({ answered }: { answered: number }) {
+  const segments = 6;
+  const perSegment = ADAPTIVE_QUESTION_LIMIT / segments;
+  return (
+    <div className="test-progress">
+      <div className="test-progress-bar" role="progressbar" aria-label="Test progress"
+        aria-valuemin={0} aria-valuemax={ADAPTIVE_QUESTION_LIMIT} aria-valuenow={answered}
+        aria-valuetext={`${answered} questions done, up to ${ADAPTIVE_QUESTION_LIMIT} in the test`}>
+        <div className="test-progress-seg" aria-hidden>
+          {Array.from({ length: segments }, (_, i) => <span key={i} className={(i + 1) * perSegment <= answered ? "is-done" : undefined} />)}
+        </div>
+      </div>
+      <span className="test-progress-count">Break</span>
     </div>
   );
 }

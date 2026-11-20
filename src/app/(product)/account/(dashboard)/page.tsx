@@ -59,7 +59,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
     // Start, continue, start again after 24 hours, or wait 30 days after a completed test (#72).
     parentStartStates(parentUser),
     // Reports (#65), oldest first, each with the time its test finished.
-    db.from("reports").select("id, child_id, assessment:assessments(completed_at)").order("created_at"),
+    db.from("reports").select("id, child_id, adaptive_version:model->level->adaptiveVersion, assessment:assessments(completed_at)").order("created_at"),
     // A saved card opens the plan page, where the parent can see or cancel the plan.
     db.from("card_setups").select("card_saved_at"),
   ]);
@@ -82,9 +82,11 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
     currentWorkbooks(db, children.map((c) => c.id)), pinIsSet(parentUser),
     parentChatUsage(db, parentUser, children, timeZone), scanPagesAccess(parentUser), latestParentMayaNotes(db, parentUser, children.map((c) => c.id)), mayaNoticeDueForFamily(parentUser, children), closedNoteFor(parentUser, !!dashboard),
   ]);
-  // The goal sentence from the newest report (round r-progress-preview-5): only for the child shown (the dashboard shows
-  // one) and only until the first workbook has shipped, when the real books take over.
-  const progress = await homeProgress(db, parentUser, (reports ?? []).filter((r) => !current.has(r.child_id) && (!dashboard || !opening || r.child_id === opening.id)));
+  // Parent home shows the newest report for the child in view. After a workbook has shipped, only v2 placement copy applies.
+  const homeReports = (reports ?? []).filter(r =>
+    (!dashboard || !opening || r.child_id === opening.id) && (!current.has(r.child_id) || r.adaptive_version === 2),
+  );
+  const progress = await homeProgress(db, parentUser, homeReports, new Set(current.keys()));
   // Everyone else gets today's Parent home below.
   if (dashboard) {
     const overview = await dashboardOverview(dashboard, addressed);

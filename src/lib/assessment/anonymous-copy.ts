@@ -44,7 +44,7 @@ export const COPY_FIELDS = {
  * stored placement).
  */
 const PLACEMENT_FIELDS = [
-  "grade", "province", "scoredAgainst", "workingLevel", "confidence", "levelCertainty", "atCeiling", "route", "stage3Route", "stage1",
+  "grade", "province", "scoredAgainst", "workingLevel", "adaptiveVersion", "mastered", "confidence", "levelCertainty", "atCeiling", "route", "stage3Route", "stage1",
   "levels", "strands", "facts", "flags", "pace",
 ] as const;
 
