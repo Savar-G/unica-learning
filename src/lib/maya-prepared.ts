@@ -29,8 +29,9 @@ export const MAX_PREPARES_PER_TURN = 3;
  */
 export const PREPARE_STATS_ASK_AT_MS = [1_000, 3_000, 7_000, 15_000, 22_000] as const;
 /**
- * The receipt is settled by this long after the request stopped: with no receipt, the cost is unknown and the
- * reservation stays counted. The call's end leaves time after it for the block row's write (BLOCK_DRAIN_MS).
+ * The receipt is settled by this long after the request stopped (or, for a completed reply discarded later, one ask of
+ * at most PREPARE_STATS_ASK_MS after the discard): with no receipt, the cost is unknown and the reservation stays
+ * counted. The call's end leaves time after it for the block row's write (BLOCK_DRAIN_MS).
  */
 export const PREPARE_RECEIPT_BY_MS = 25_000;
 /** One ask for the receipt stops after this long (or at PREPARE_RECEIPT_BY_MS). */
@@ -198,6 +199,13 @@ export function preparedReplies(model: MayaModel, spend: SpendSeam, clock: () =>
       // ask, or at once when the provider ended with no cost and offered no stats (nothing more can come).
       const receipt = async (): Promise<number | null> => {
         const origin = stoppedAt ?? Date.now();
+        let asked = false;
+        const ask = async (ms: number) => {
+          asked = true;
+          const lookUp = lookup!;
+          return Promise.race([lookUp().catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), ms))]);
+        };
+        const valid = (usd: number | null): usd is number => typeof usd === "number" && Number.isFinite(usd) && usd >= 0;
         for (const at of PREPARE_STATS_ASK_AT_MS) {
           if (reported !== null) return reported;
           if (providerEnded && !lookup) return null;
@@ -207,10 +215,14 @@ export function preparedReplies(model: MayaModel, spend: SpendSeam, clock: () =>
           if (!lookup) continue;
           const left = Math.min(PREPARE_STATS_ASK_MS, origin + PREPARE_RECEIPT_BY_MS - Date.now());
           if (left <= 0) break;
-          const ask = lookup;
-          const usd = await Promise.race([ask().catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), left))]);
+          const usd = await ask(left);
           if (reported !== null) return reported;
-          if (typeof usd === "number" && Number.isFinite(usd) && usd >= 0) return usd;
+          if (valid(usd)) return usd;
+        }
+        // A completed reply that waited in the cache past the schedule is still asked once: its receipt is likely there.
+        if (!asked && lookup && reported === null) {
+          const usd = await ask(PREPARE_STATS_ASK_MS);
+          if (valid(usd)) return usd;
         }
         return reported;
       };
@@ -246,7 +258,8 @@ export function preparedReplies(model: MayaModel, spend: SpendSeam, clock: () =>
           used = true;
           decision = true;
           settle();
-          const abort = () => { listener = undefined; controller.abort(); };
+          // An abort in use stops the request too: the receipt clock starts here.
+          const abort = () => { listener = undefined; stoppedAt ??= Date.now(); controller.abort(); };
           signal.addEventListener("abort", abort, { once: true });
           listener = onText;
           if (soFar) listener?.(soFar);

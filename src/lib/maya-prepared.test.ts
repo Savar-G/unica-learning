@@ -307,6 +307,52 @@ describe("the cost of an aborted prepare with no reported cost (#1203)", () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it("asks at least once for a completed prepare discarded after a long stay in the cache", async () => {
+    vi.useFakeTimers();
+    try {
+      const seam = memorySpendSeam();
+      const settledAt: number[] = [];
+      const spend = { ...seam, settle: (h: Parameters<typeof seam.settle>[0], usd: number | null) => { settledAt.push(Date.now()); seam.settle(h, usd); } };
+      const lookup = vi.fn(async () => 0.003);
+      // The provider ends at once with no reported cost, and offers its stats.
+      const model: MayaModel = { id: "m", promptVersion: "t", output: 3, propose: async (_input, _signal, _onText, _onCost, onGeneration) => { onGeneration?.(lookup); return reply("ready", "guide"); } };
+      const cache = preparedReplies(model, spend, () => 0);
+      cache.start("k", brief, { text: "6", reason: "interim" }, seam.take("speculative")!);
+      await vi.advanceTimersByTimeAsync(31_000);
+      const discardedAt = Date.now();
+      cache.discard(cache.get("k")!, "text", 0);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(lookup).toHaveBeenCalledTimes(1);
+      expect(seam.settled.map((x) => x.usd)).toEqual([0.003]);
+      expect(settledAt[0] - discardedAt).toBeLessThanOrEqual(2_000);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("settles a prepare aborted while in use by PREPARE_RECEIPT_BY_MS after that abort", async () => {
+    vi.useFakeTimers();
+    try {
+      const seam = memorySpendSeam();
+      const settledAt: number[] = [];
+      const spend = { ...seam, settle: (h: Parameters<typeof seam.settle>[0], usd: number | null) => { settledAt.push(Date.now()); seam.settle(h, usd); } };
+      // It ignores the abort, never ends, and every ask hangs.
+      const model: MayaModel = { id: "m", promptVersion: "t", output: 3, propose: (_input, _signal, _onText, _onCost, onGeneration) => {
+        onGeneration?.(() => new Promise(() => {}));
+        return new Promise(() => {});
+      } };
+      const cache = preparedReplies(model, spend, () => 0);
+      cache.start("k", brief, { text: "6", reason: "interim" }, seam.take("speculative")!);
+      const turn = new AbortController();
+      void cache.get("k")!.use(undefined, turn.signal).catch(() => {});
+      await vi.advanceTimersByTimeAsync(1_000);
+      const abortedAt = Date.now();
+      turn.abort();
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(settledAt).toHaveLength(1);
+      expect(settledAt[0] - abortedAt).toBeLessThanOrEqual(PREPARE_RECEIPT_BY_MS);
+      expect(seam.settled[0].usd).toBeNull();
+    } finally { vi.useRealTimers(); }
+  });
+
   it("leaves time inside the call's single drain deadline for the ledger write after the last receipt", () => {
     expect(PREPARE_STATS_ASK_AT_MS.at(-1)!).toBeLessThan(PREPARE_RECEIPT_BY_MS);
     // At least 10 s for the block row's write; LiveKit stops a job process 60 s after shutdown starts.

@@ -92,7 +92,7 @@ import { type QuestionPackage, type QuestionRef } from "@/lib/question-package";
 import { teachingPackage } from "@/lib/maya-teaching";
 import { BOARD_CLOSE_SETTLE_MS, connectedSeconds, VOICE_CALL_STALE_MS, type ConnectionEvent, type ConnectionKind } from "@/lib/maya-voice";
 import { spendCloseOf, SPEND_CLOSE, type CallSpend, type SpendCall, type SpendState, type VoiceMeter } from "@/lib/maya-spend";
-import type { CallBudget, Handle } from "@/lib/maya-spend-block";
+import { BLOCK_DRAIN_MS, type CallBudget, type Handle } from "@/lib/maya-spend-block";
 import { SpendRefused } from "@/lib/maya-spend-ai";
 export type { SpendCall } from "@/lib/maya-spend";
 
@@ -611,9 +611,10 @@ export interface VoiceCall {
   /** Waits until every save so far is done. */
   settled(): Promise<void>;
   /**
-   * #1203: waits, at most BLOCK_DRAIN_MS (src/lib/maya-spend-block.ts), until the call's budget blocks are written with
-   * their real totals: a prepared reply may still be asking its provider's receipt after the end. For the worker's exit,
-   * after the media closed and the child was told. Never throws.
+   * #1203: waits, under one deadline of BLOCK_DRAIN_MS (src/lib/maya-spend-block.ts), until the call's spend is written:
+   * the budget blocks with their real totals (a prepared reply may still be asking its provider's receipt) and the
+   * speech-to-text and voice rows. `end`, `limit` and the guidance close do not wait for these writes. For the worker's
+   * exit, after the media closed and the child was told. Never throws.
    */
   spendSettled(): Promise<void>;
 }
@@ -1852,7 +1853,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
               record = { ...record, flag, revision: record.revision + 1 };
             }
             await alert(record);
-            await meter?.stop();
+            // #1203: the speech-to-text and voice writes are drained before the process exits (`spendSettled`).
+            void stopMeter();
             return true;
           },
         } : {}),
@@ -1974,7 +1976,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             if (fixed?.safetyMessage && await call.deferGuidance!()) return;
           }
           const settleUntil = seams.clock() + BOARD_CLOSE_SETTLE_MS;
-          const settledMeter = stopMeter();
+          // #1203: the meter's and the budget's writes are drained before the process exits (`spendSettled`).
+          void stopMeter();
           void stopBudget();
           later(async () => {
             if (lost || record.status === "ended" || !record.live) return;
@@ -1990,7 +1993,6 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             }
           });
           await queue;
-          await settledMeter;
         },
         async connection(kind) {
           const event: ConnectionEvent = { kind, at: seams.clock() };
@@ -2028,9 +2030,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           // Stop admissions before waiting for a save or the STT meter. #1203: the block rows are written in the
           // background and drained before the process exits (`spendSettled`), so the child's notice never waits for them.
           void stopBudget();
-          const settledMeter = stopMeter();
+          void stopMeter();
           await queue;
-          await settledMeter;
           if (lost) return;
           if (record.status === "live") {
             later(async () => {
@@ -2049,7 +2050,11 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           await queue;
         },
         settled: () => queue,
-        spendSettled: () => (budget ? budget.drained().catch(() => {}) : Promise.resolve()),
+        // #1203: one deadline over the model budget's drain and the speech-to-text and voice writes.
+        spendSettled: () => new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, BLOCK_DRAIN_MS);
+          void Promise.all([budget?.drained(), stopMeter()]).catch(() => {}).then(() => { clearTimeout(timer); resolve(); });
+        }),
       };
       return { ok: true, call };
     },
