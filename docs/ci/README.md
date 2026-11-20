@@ -1,6 +1,21 @@
 # CI performance
 
-The full suite must pass on the proposed merge before main changes. Do not reduce PR test coverage until an enforced merge queue runs the full suite. Do not retry tests, raise timeouts, or skip tests to meet a speed target.
+CI uses a two-tier model while keeping the repository on personal account `Savar-G` (free public GitHub Actions runners):
+
+- **Pull requests (fast feedback):** `.github/scripts/pr-scope.mjs` classifies each PR diff into `skip` (unreferenced docs/design-only), `affected` (`vitest --changed` plus explicit consumer tests for dynamically-read docs/assets, full `lint-and-types` when code changed, and path-scoped `maya-behaviour`, `family-zones`, and `voice-worker`), or `full` (configs, CI, DB migrations, `data/`, `scripts/`, `public/`, core shared modules, >40 files, or unknown paths).
+- **`main` push & release gate (full suite):** Every `push` to `main` and every `workflow_dispatch` runs the complete suite across 5 duration-balanced unit shards plus all check jobs. Vercel's Deployment Check requires `main`'s `test` check to pass before promoting a build to production, so a cross-PR regression on `main` is held out of production until fixed forward.
+- Do not retry tests, raise timeouts, or skip tests to meet a speed target.
+
+## Measured progress (2026-11-19)
+
+1. **PR #1187 (5 duration-balanced unit shards, parallel checks, workflow cleanup):**
+   - Replaced 2 alphabetical shards with 5 Longest-Processing-Time shards (`.github/scripts/vitest-ci.config.mjs`, `.github/scripts/unit-shards.mjs`), dropped unused Postgres containers from unit shards, limited `fetch-depth: 0` to shard 1 (pinned to `workbook-book1-recovery.test.ts`), pre-unpacked `@sparticuz/chromium`, split serial `checks` into `family-zones`, `lint-and-types`, and `voice-worker`, and ran the 3 `maya-behaviour` files concurrently with `--maxWorkers=3`.
+   - Observed PR feedback dropped from **17m 26s** median (40-run pre-change sample) to **7m 11s** (`unit (1/5)`–`(5/5)` 5m 08s–7m 06s; `lint-and-types` 1m 38s; `voice-worker` 1m 41s; `family-zones` 2m 05s; `maya-behaviour` 2m 07s).
+2. **PR #1190 (shared Chromium engine, content-hashed AST import cache, split mega-suites):**
+   - Added `sharedChromiumPrintEngine()` (tab reuse per test file), cached SHA-256-keyed AST imports in `scripts/scan-marking-physical-cli.ts` (`scan-marking-physical.test.ts` dropped from 262s CI to ~15s), deduplicated `realPages()` in `scan-binding-chromium`, fixed the O(N²) log-sizing loop in `historyLimitSeed`, and split `maya-text-log`, `maya/example-flow`, and `scan-binding-chromium` across parallel files while retaining 100% of existing cases, seeds, and assertions.
+   - Top single-file CI ceiling dropped from **366.5s** (`maya-text-log.test.ts`) to **235.2s** (`scan-binding-scale-chromium.test.ts`); `unit (5/5)` finished in **4m 37s** and `unit-timings.json` was refreshed from green run `44682556546` to rebalance all 5 shards.
+3. **Two-tier PR selection (this change):**
+   - Adds `scope` + `pr-unit` (`vitest --changed`) for fast PR feedback while preserving the full 5-shard gate on `main` pushes and high-blast-radius PRs. If the repository later moves to a GitHub Organization, adding `merge_group:` to `ci.yml` upgrades this cleanly to an enforced merge queue.
 
 ## Baseline: 2026-11-15
 
