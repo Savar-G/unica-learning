@@ -83,7 +83,7 @@ import { modelInput, type MayaModel } from "@/lib/maya-model";
 import type { TalkReviewer } from "@/lib/maya-talk-review";
 import type { MathReviewer } from "@/lib/maya-math-review";
 import { snapshotFates } from "@/lib/board-fate";
-import { checkedExchangeProposal, childExchangeProposal, childExchangeTarget, fixedSafetyDisclosure } from "@/lib/maya/session";
+import { checkedExchangeProposal, checkedLessonFor, childExchangeProposal, childExchangeTarget, fixedSafetyDisclosure } from "@/lib/maya/session";
 import { needsSafetyRead, SAFETY_PAUSE, sensitiveHearing, type ChildHearing } from "@/lib/maya/sensitive-input";
 import { readExchangeTarget, sameExchangeTarget, type ExchangeTarget, type LessonBrief } from "@/lib/maya/checked-exchange";
 import { createTextSession, readFateReports, withHelpLedger, type BoardFateReport, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession, type TextSessionOptions } from "@/lib/maya-text";
@@ -1062,7 +1062,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       } }, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved, limitMs, grade, confirmWorkbook,
       // D-345: the tutor core teaches admin test calls, and family calls (desk chat and family voice) only when the
       // MAYA_TUTOR_FAMILIES switch is on. The core still decides per question (isTutorQuestion).
-      tutor: seams.tutor !== false && (record.kind === "admin_test" || (seams.tutorFamilies === true && (record.kind === "chat" || record.kind === "family"))),
+      tutor: tutorFor(record.kind),
       checkedExchange: seams.checkedExchange,
       checkedRoutine: seams.checkedRoutine,
       freeTalk: record.kind !== "chat" && record.kind !== "family", reviewer: seams.reviewer?.(model.id, spend ?? spendCall(record)) ?? null,
@@ -1080,13 +1080,24 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     }
   }
 
-  /** The child's teaching brief before a new call; null when there is none, it fails, or it is slow. Never throws. */
-  async function readBrief(childId: string, standard: string): Promise<LessonBrief | null> {
-    if (!seams.brief) return null;
+  /** D-345: admin test calls teach with the tutor core; family calls only behind `tutorFamilies`. */
+  function tutorFor(kind: CallKind): boolean {
+    return seams.tutor !== false && (kind === "admin_test" || (seams.tutorFamilies === true && (kind === "chat" || kind === "family")));
+  }
+
+  /**
+   * The child's teaching brief before a new call that teaches the checked lesson; null otherwise, or when there is none,
+   * it fails, or it is slow (a failure and a slow read are reported). Never throws.
+   */
+  async function readBrief(childId: string, kind: CallKind, pkg: QuestionPackage, model: MayaModel): Promise<LessonBrief | null> {
+    if (!seams.brief || !checkedLessonFor(pkg, { tutor: tutorFor(kind), conversational: model.output === 3, checkedExchange: seams.checkedExchange })) return null;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const late = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), BRIEF_READ_MS); });
-      return await Promise.race([seams.brief(childId, standard), late]);
+      const late = new Promise<"late">((resolve) => { timer = setTimeout(() => resolve("late"), BRIEF_READ_MS); });
+      const read = await Promise.race([seams.brief(childId, pkg.skill.standard), late]);
+      if (read !== "late") return read;
+      monitorProduct("maya.recovery_failed", { step: "profile" });
+      return null;
     } catch {
       monitorProduct("maya.recovery_failed", { step: "profile" });
       return null;
@@ -1269,7 +1280,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     const model = seams.model(null, call);
     if (!model) return { ok: false, error: "model_unavailable" };
     const session = textSession({ id, kind: input.kind, parentId: input.parentId, childId: input.childId }, pkg, model, input.childName, undefined, seams.seed(), await readHistory(input.childId), input.limitMs, input.grade, input.confirmWorkbook,
-      undefined, undefined, undefined, undefined, await readBrief(input.childId, pkg.skill.standard));
+      undefined, undefined, undefined, undefined, await readBrief(input.childId, input.kind, pkg, model));
     const empty = session.trace();
     const record: CallRecord = {
       id,

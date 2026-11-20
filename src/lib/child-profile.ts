@@ -260,7 +260,7 @@ function buildFacts(input: ChildProfileInput): ChildLearnerProfile {
     events: { counted: counted.length, inAssessmentProfile: input.events.filter(inProfile).length, lastAt: newest(counted.map((e) => e.occurredAt)) },
     ai: null,
     // Related questions count here: they are teaching evidence, not answers toward a standard.
-    teaching: teachingEvidence(input.events.filter((e) => !inProfile(e)), standards.filter((s) => s.status === "secure").map((s) => s.code)),
+    teaching: teachingEvidence(input.events.filter((e) => !inProfile(e)), standards.map((s) => ({ code: s.code, secure: s.status === "secure", aboveGrade: s.aboveGrade }))),
   };
 }
 

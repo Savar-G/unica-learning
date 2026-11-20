@@ -94,6 +94,8 @@ export interface LessonBrief {
   revision: number;
   /** The tens prerequisite: null with no evidence. */
   prerequisite: "unsure" | "gap" | "secure" | null;
+  /** A gap the child has worked on with the blocks or help since its last error: check the tens again on the child's own. */
+  recheck?: true;
   /** The base-ten blocks on the board: null with no evidence. */
   blocks: "helped" | "not_yet" | null;
   /** Misconceptions still open (suspected or likely), by id ("reversal", "O3"). */
@@ -112,17 +114,19 @@ export function readLessonBrief(value: unknown): LessonBrief | null {
   if (typeof b.standard !== "string" || b.standard.length > 20 || !Number.isSafeInteger(b.revision) || b.revision! < 1 ||
     !(b.prerequisite === null || BRIEF_VIEWS.prerequisite.includes(b.prerequisite!)) || !(b.blocks === null || BRIEF_VIEWS.blocks.includes(b.blocks!)) ||
     !ids(b.misconceptions) || !ids(b.reviews)) return null;
-  return { standard: b.standard, revision: b.revision!, prerequisite: b.prerequisite!, blocks: b.blocks!, misconceptions: [...b.misconceptions], reviews: [...b.reviews] };
+  if (b.recheck !== undefined && (b.recheck !== true || b.prerequisite !== "gap")) return null;
+  return { standard: b.standard, revision: b.revision!, prerequisite: b.prerequisite!, ...(b.recheck ? { recheck: true as const } : {}), blocks: b.blocks!, misconceptions: [...b.misconceptions], reviews: [...b.reviews] };
 }
 
 /**
  * The lesson's first step when the child says they are stuck (#1145). With no brief: check the tens. The tens known on
- * the child's own: go straight to the exchange question. A tens gap: show the blocks with the trade. The blocks helped
- * before: start with them.
+ * the child's own: go straight to the exchange question. A tens gap: show the blocks with the trade, and once the child
+ * has worked with them (`recheck`), check the tens again on the child's own so the gap can be revised. The blocks
+ * helped before: start with them.
  */
 export function stuckStart(brief: LessonBrief | undefined): "check_place" | "check_exchange" | "place_gap" | "guide_exchange" {
   if (brief?.prerequisite === "secure") return "check_exchange";
-  if (brief?.prerequisite === "gap") return "place_gap";
+  if (brief?.prerequisite === "gap") return brief.recheck ? "check_place" : "place_gap";
   return brief?.blocks === "helped" ? "guide_exchange" : "check_place";
 }
 
@@ -157,6 +161,8 @@ export interface RegroupingInstruction {
   usePlaceValueTerms?: true;
   /** The related question's operands, on every turn of it (#1144). */
   transfer?: TransferOperands;
+  /** #1145: the brief's open swapped-digit mistake: the first ones step starts with the reminder. */
+  remind?: "reversal";
   /** Omitted when naming the quantity would disclose the target answer. */
   subtrahend?: number;
 }
@@ -194,9 +200,19 @@ export function regroupingOffersAction(instruction: RegroupingInstruction | unde
 /** Code-owned lesson prompts. The only quantities here come from checked exchange facts. */
 export function regroupingWords(facts: ExchangeFacts, instruction: unknown, show: boolean): string[] | null {
   if (!instruction || typeof instruction !== "object") return null;
-  const { step, usePlaceValueTerms, subtrahend } = instruction as RegroupingInstruction;
-  const related = (instruction as RegroupingInstruction).transfer === undefined ? null : readTransferOperands((instruction as RegroupingInstruction).transfer);
-  if ((instruction as RegroupingInstruction).transfer !== undefined && (!related || related[0] !== facts.value || facts.example ||
+  const { step, usePlaceValueTerms, subtrahend, remind } = instruction as RegroupingInstruction;
+  if (remind !== undefined && (remind !== "reversal" || (step !== "connect" && step !== "ones"))) return null;
+  const words = stepWords(facts, instruction as RegroupingInstruction, show, step, usePlaceValueTerms, subtrahend);
+  return words && remind ? [REVERSAL_REMINDER, ...words] : words;
+}
+
+/** #1145: said once before the first ones step when the child's brief has an open swapped-digit mistake. */
+export const REVERSAL_REMINDER = "Start with the top number in each column. Swapping the numbers changes the problem.";
+
+function stepWords(facts: ExchangeFacts, instruction: RegroupingInstruction, show: boolean, step: RegroupingInstruction["step"],
+  usePlaceValueTerms: true | undefined, subtrahend: number | undefined): string[] | null {
+  const related = instruction.transfer === undefined ? null : readTransferOperands(instruction.transfer);
+  if (instruction.transfer !== undefined && (!related || related[0] !== facts.value || facts.example ||
     (subtrahend !== undefined && subtrahend !== related[1]))) return null;
   if (subtrahend !== undefined && (facts.example || !Number.isInteger(subtrahend) || subtrahend <= 0 ||
     subtrahend >= facts.value || subtrahend % 10 <= facts.before.ones)) return null;
@@ -213,7 +229,7 @@ export function regroupingWords(facts: ExchangeFacts, instruction: unknown, show
     case "reversal":
     case "guide_exchange":
       return [
-        ...(step === "reversal" ? ["Start with the top number in each column. Swapping the numbers changes the problem."] : []),
+        ...(step === "reversal" ? [REVERSAL_REMINDER] : []),
         ...(show || step === "place_gap" ? exchangePromptWords(facts, true).slice(0, 1) : []),
         "We need more ones. We can trade a ten for ten ones and keep the same amount.",
         "Use the Exchange one ten button to make the trade.",

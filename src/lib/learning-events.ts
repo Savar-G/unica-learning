@@ -106,6 +106,11 @@ export interface NewLearningEvent {
 
 export interface LearningEvent extends NewLearningEvent {
   id: string;
+  /**
+   * Only on a marked page's effective event in memory (effectiveMarkingEvents, src/lib/scan-marking.ts), never stored:
+   * whether anyone helped with the math (#1145). A stored marking event read without the projection has none: unknown.
+   */
+  markedHelp?: "none" | "math-help" | "unknown";
 }
 
 export type AppendResult =

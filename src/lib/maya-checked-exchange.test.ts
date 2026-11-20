@@ -14,6 +14,7 @@ import { checkTrace } from "@/lib/maya-trace";
 import { readChildProfile, rebuildChildProfile } from "@/lib/child-profile";
 import { memoryChildProfiles } from "@/lib/child-profile-memory";
 import { teachingBrief } from "@/lib/child-profile-teaching";
+import { setProductObserver, type ProductEvent } from "@/lib/product-monitoring";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
 
 vi.mock("server-only", () => ({}));
@@ -1007,13 +1008,16 @@ describe("the next call's lesson from saved teaching evidence (#1145)", () => {
       },
       ...overrides,
     });
-    /** One call: the child's turns, then the end. Returns what Maya said after each turn. */
+    /** One call: the child's turns ("exchange": the child's own trade on the offered blocks), then the end. */
     async function call(turns: string[]) {
       now += 3_600_000;
       let turn = ok(await calls.start({ ...input, package: question }));
       const said: string[] = [];
       for (const text of turns) {
-        turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text }, null));
+        const target = turn.view.exchange;
+        const fates = turn.view.batches.slice(turn.view.batches.length - turn.output.newBatches).map((b) => ({ batchId: b.transactionId, fate: "shown" as const }));
+        const action: CallInput = text === "exchange" ? { type: "exchange", target: target!, fates } : { type: "child", text, fates };
+        turn = ok(await calls.input(turn.view.id, turn.view.revision, action, null));
         said.push(turn.output.say.join(" "));
       }
       ok(await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null));
@@ -1022,31 +1026,66 @@ describe("the next call's lesson from saved teaching evidence (#1145)", () => {
     return { call, f };
   }
 
-  it("checks the tens first, returns to the blocks after two missed tens checks, and skips the check once the child knows it", async () => {
+  it("checks the tens, teaches with the blocks after two missed checks, checks again on the child's own, then skips the check", async () => {
     const { call, f } = family();
     const first = await call(["I don't know how to start.", "Four tens."]);
     expect(first.said[0]).toMatch(/how many tens are in 52/i);
     // One error is not a gap: the next call checks the tens again.
     const second = await call(["I don't know how to start.", "Four tens."]);
     expect(second.said[0]).toMatch(/how many tens are in 52/i);
-    const gap = await call(["I don't know how to start."]);
+    const gap = await call(["I don't know how to start.", "exchange", "My answer is 24."]);
     expect(gap.said[0]).not.toMatch(/how many tens/i);
     expect(gap.said[0]).toMatch(/trade a ten for ten ones/i);
-    expect(gap.view.exchange).toMatchObject({ objectId: "exchange-before" });
+    // A right whole answer is evidence for the subtraction, not for the tens: the gap stays, and is due a check.
     const profile = (await readChildProfile(f.profiles, childId))!.profile;
-    expect(profile.teaching.notes).toContainEqual(expect.objectContaining({ kind: "prerequisite", standard: "2.4", view: "gap" }));
-    // The child's own whole answer (it needs the tens) revises the view; the next call skips the check.
-    await call(["My answer is 24."]);
+    expect(profile.teaching.notes).toContainEqual(expect.objectContaining({ kind: "prerequisite", standard: "2.4", view: "gap", recheck: true }));
+    const recheck = await call(["I don't know how to start.", "Five tens."]);
+    expect(recheck.said[0]).toMatch(/how many tens are in 52/i);
     const known = await call(["I don't know how to start."]);
     expect(known.said[0]).toMatch(/trade to make more ones/i);
     expect(known.said[0]).not.toMatch(/how many tens/i);
   });
 
-  it("teaches from the default lesson when the brief cannot be read or never answers", async () => {
-    for (const brief of [async () => { throw new Error("profile store down"); }, () => new Promise<never>(() => {})]) {
-      const { call } = family({ brief });
-      const lesson = await call(["I don't know how to start."]);
-      expect(lesson.said[0]).toMatch(/how many tens are in 52/i);
+  it("reminds a child with an open swapped-digit mistake to start with the top number, once, at the first ones step", async () => {
+    const brief = async () => ({ standard: "2.4", revision: 3, prerequisite: null, blocks: null, misconceptions: ["reversal"], reviews: ["misconception"] });
+    for (const [given, reminded] of [[brief, true], [async () => null, false]] as const) {
+      const { calls } = setup({ brief: given });
+      const chat = ok(await calls.start({ ...input, package: question }));
+      const prompt = ok(await calls.input(chat.view.id, chat.view.revision, { type: "child", text: "How do I regroup?" }, null));
+      const show = prompt.view.batches.at(-1)!;
+      const traded = ok(await calls.input(chat.view.id, prompt.view.revision, { type: "exchange", target: prompt.view.exchange!, fates: [{ batchId: show.transactionId, fate: "shown" }] }, null));
+      const words = traded.output.say.join(" ");
+      expect(words).toMatch(/how many ones are left/i);
+      expect(/start with the top number/i.test(words)).toBe(reminded);
+      const next = ok(await calls.input(chat.view.id, traded.view.revision, { type: "child", text: "I don't know." }, null));
+      expect(next.output.say.join(" ")).not.toMatch(/start with the top number in each column/i);
     }
+  });
+
+  it("teaches from the default lesson when the brief cannot be read or never answers, and reports it", async () => {
+    const seen: ProductEvent[] = [];
+    setProductObserver((event) => { seen.push(event); });
+    try {
+      for (const brief of [async () => { throw new Error("profile store down"); }, () => new Promise<never>(() => {})]) {
+        seen.length = 0;
+        const { call } = family({ brief });
+        const lesson = await call(["I don't know how to start."]);
+        expect(lesson.said[0]).toMatch(/how many tens are in 52/i);
+        expect(seen).toContainEqual({ code: "maya.recovery_failed", attributes: { step: "profile" } });
+      }
+    } finally { setProductObserver(null); }
+  });
+
+  it("does not read the brief for a call without the checked lesson", async () => {
+    for (const overrides of [{ checkedExchange: false }, { tutorFamilies: false }]) {
+      const brief = vi.fn(async () => null);
+      const { call } = family({ brief, ...overrides });
+      await call([]);
+      expect(brief).not.toHaveBeenCalled();
+    }
+    const brief = vi.fn(async () => null);
+    const { calls } = setup({ brief });
+    ok(await calls.start({ ...input, package: { ...SAMPLE_PACKAGES["add-27-39"], ref: question.ref } }));
+    expect(brief).not.toHaveBeenCalled();
   });
 });

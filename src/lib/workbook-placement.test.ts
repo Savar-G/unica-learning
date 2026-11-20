@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BC_SKILL_MAP, REPORTED_STRAND, strandCertainty, strandStatus, type Grade } from "@/lib/assessment";
 import { childProfileFacts, type ChildLearnerProfile } from "@/lib/child-profile";
 import { curriculumFor } from "@/lib/workbook-curriculum";
-import { placeChild, planNextWorkbook, type PlacementInput, type PersonalWorkbookPlan } from "@/lib/workbook-placement";
+import { placeChild, planNextWorkbook, prepareNextWorkbookInput, type PlacementInput, type PersonalWorkbookPlan } from "@/lib/workbook-placement";
 import { planLevel, planWorkbook } from "@/lib/workbook-plan";
 import { firstCustomerProfile } from "@/lib/workbook-sample-profiles";
 import { generateWorkbook } from "@/lib/workbook-generator";
@@ -150,4 +150,15 @@ describe("placement P0 to P9",()=>{
       expect(page.questions.every(q=>q.check.status==="checked")).toBe(true);
     }
   },60000);
+});
+
+describe("teaching evidence in the plan (#1145)",()=>{
+  it("hands a gap or a likely misconception on a secure standard to the planner as not secure, and nothing else",()=>{
+    const statusOf=(p:ChildLearnerProfile)=>{const r=prepareNextWorkbookInput({...input(p),number:1});if(!r.ok)throw new Error(r.reason);return r.input.profile.standards.find(s=>s.code==="3.3")?.status;};
+    const target=(route:"workbook_plan"|"next_call",reason:"misconception"|"assisted_only")=>({standard:"3.3",reason,since:"2026-11-20T10:00:00.000Z",events:["e1","e2"],sources:["call" as const],uncertainty:"medium" as const,route});
+    const p=changed([["3.3",2,2]],4);
+    expect(statusOf(p)).toBe("secure");
+    expect(statusOf({...p,teaching:{notes:[],reviews:[target("next_call","assisted_only")]}})).toBe("secure");
+    expect(statusOf({...p,teaching:{notes:[],reviews:[target("workbook_plan","misconception")]}})).toBe("developing");
+  });
 });

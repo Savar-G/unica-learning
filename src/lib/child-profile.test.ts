@@ -151,53 +151,98 @@ describe("the child's profile facts", () => {
 describe("the child's teaching evidence (#1145)", () => {
   const seen = (skill: LessonObservation["skill"], result: LessonObservation["result"], over: Partial<LessonObservation> = {}): LessonObservation =>
     ({ skill, result, assistance: "independent", board: false, ...over });
-  const call = (observations: LessonObservation[], over: Partial<LearningEvent> = {}) =>
-    event({ result: "right_with_help", stuckStep: "ones", hints: 1, observations, ...over });
-  const teaching = (events: LearningEvent[]) => childProfileFacts(input({ events }))!.teaching;
+  const call = (observations: LessonObservation[], over: Partial<LearningEvent> = {}) => {
+    const e = event({ result: "right_with_help", stuckStep: "ones", hints: 1, observations, ...over });
+    return { ...e, evidence: over.evidence ?? { kind: "call" as const, id: `call-${e.id}` } };
+  };
+  /** The related question of a call: the same call, the same end time. */
+  const relatedTo = (original: LearningEvent, over: Partial<LearningEvent> = {}): LearningEvent => ({
+    ...event(), key: `${original.key}:transfer`, question: { source: "transfer", relatedEventId: original.id, text: "63 - 27 = ?" },
+    occurredAt: original.occurredAt, evidence: original.evidence, assistance: "independent", ...over,
+  });
+  const marked = (over: Partial<LearningEvent> = {}): LearningEvent =>
+    event({ source: "marking", result: "wrong", mistake: "O3", evidence: { kind: "scan", id: "scan-1" }, ...over });
+  const teaching = (events: LearningEvent[], grade = 3) => childProfileFacts(input({ events, grade: grade as 3 }))!.teaching;
   const note = (events: LearningEvent[], kind: string, id: string) => teaching(events).notes.find((n) => n.kind === kind && n.id === id);
 
-  it("keeps one error as unsure, two independent errors as a gap, and revises the view after a new independent success", () => {
+  it("keeps one error as unsure, two independent errors as a gap, and revises the view after a new independent tens check", () => {
     const first = call([seen("identify_tens", "incorrect")]);
     expect(note([first], "prerequisite", "identify_tens")).toEqual({
-      kind: "prerequisite", id: "identify_tens", standard: "3.3", view: "unsure", uncertainty: "high", since: first.occurredAt,
+      kind: "prerequisite", id: "identify_tens", standard: "3.3", view: "unsure", uncertainty: "high", since: first.occurredAt, recheck: false,
       evidence: [{ event: first.id, source: "call", at: first.occurredAt, result: "incorrect", assistance: "independent" }],
     });
     const second = call([seen("identify_tens", "incorrect")]);
-    expect(note([first, second], "prerequisite", "identify_tens")).toMatchObject({ view: "gap", uncertainty: "medium", since: second.occurredAt });
-    expect(teaching([first, second]).reviews).toContainEqual({ standard: "3.3", reason: "prerequisite_gap", since: second.occurredAt, events: [first.id, second.id], route: "workbook_plan" });
-    // Help does not show the child knows it; the child's own correct answer does.
-    const shown = call([seen("identify_tens", "correct", { assistance: "demonstrated" })]);
-    expect(note([first, second, shown], "prerequisite", "identify_tens")).toMatchObject({ view: "gap" });
+    expect(note([first, second], "prerequisite", "identify_tens")).toMatchObject({ view: "gap", uncertainty: "medium", since: second.occurredAt, recheck: false });
+    expect(teaching([first, second]).reviews).toContainEqual({
+      standard: "3.3", reason: "prerequisite_gap", since: second.occurredAt, events: [first.id, second.id], sources: ["call"], uncertainty: "medium", route: "workbook_plan",
+    });
+    // Help does not show the child knows it, and neither does a whole answer (it may come from memory or counting up).
+    const shown = call([seen("identify_tens", "correct", { assistance: "demonstrated" }), seen("perform_exchange", "correct", { assistance: "demonstrated", board: true })]);
+    const answered = call([seen("difference", "correct")], { result: "right", stuckStep: null, hints: 0 });
+    expect(note([first, second, shown, answered], "prerequisite", "identify_tens")).toMatchObject({ view: "gap", recheck: true });
     const own = call([seen("identify_tens", "correct")]);
-    expect(note([first, second, shown, own], "prerequisite", "identify_tens")).toMatchObject({ view: "secure", uncertainty: "high", since: own.occurredAt });
-    expect(teaching([first, second, shown, own]).reviews.map((r) => r.reason)).not.toContain("prerequisite_gap");
+    expect(note([first, second, shown, answered, own], "prerequisite", "identify_tens")).toMatchObject({ view: "secure", uncertainty: "high", since: own.occurredAt });
+    expect(teaching([first, second, shown, answered, own]).reviews.map((r) => r.reason)).not.toContain("prerequisite_gap");
   });
 
-  it("suspects a misconception from one event, finds it likely from two, and resolves it after the child's own right answer", () => {
+  it("builds the gap's review from the errors that set it, however much later evidence there is", () => {
+    const errors = [call([seen("identify_tens", "incorrect")]), call([seen("identify_tens", "incorrect")])];
+    const later = [1, 2, 3, 4, 5, 6].map(() => call([seen("identify_tens", "correct", { assistance: "hinted" })]));
+    const summary = teaching([...errors, ...later]);
+    const gap = summary.notes.find((n) => n.kind === "prerequisite")!;
+    expect(gap).toMatchObject({ view: "gap" });
+    expect(gap.evidence).toHaveLength(6);
+    expect(gap.evidence.filter((p) => p.result === "incorrect").map((p) => p.event)).toEqual(errors.map((e) => e.id));
+    expect(summary.reviews.find((r) => r.reason === "prerequisite_gap")).toMatchObject({ events: errors.map((e) => e.id) });
+  });
+
+  it("suspects a misconception from one call, finds it likely from two, and resolves it after the child's own right answer", () => {
     const swapped = [call([seen("reversal", "incorrect")]), call([seen("reversal", "incorrect")])];
     expect(note(swapped.slice(0, 1), "misconception", "reversal")).toMatchObject({ view: "suspected", uncertainty: "high" });
+    // The call's related question repeats the mistake: still one call, so still suspected.
+    const again = relatedTo(swapped[0], { result: "right_with_help", stuckStep: "ones", assistance: "hinted", observations: [seen("reversal", "incorrect", { assistance: "hinted" })] });
+    expect(note([swapped[0], again], "misconception", "reversal")).toMatchObject({ view: "suspected", uncertainty: "high" });
     expect(note(swapped, "misconception", "reversal")).toMatchObject({ view: "likely", uncertainty: "medium" });
-    const marked = [1, 2].map(() => event({ source: "marking", result: "wrong", mistake: "O3", evidence: { kind: "scan", id: "scan-1" } }));
-    expect(note(marked, "misconception", "O3")).toMatchObject({ view: "likely", evidence: [{ source: "marking", assistance: null, result: "incorrect" }, {}] });
-    const related = event({ question: { source: "transfer", relatedEventId: swapped[1].id, text: "63 - 27 = ?" }, assistance: "independent" });
-    expect(note([...swapped, related], "misconception", "reversal")).toMatchObject({
-      view: "resolved", since: related.occurredAt, evidence: [{}, {}, { event: related.id, source: "transfer", result: "correct", assistance: "independent" }],
+    const fixed = relatedTo(swapped[1]);
+    // The related question shares its call's end time and may come first in the read; it still follows its call.
+    expect(note([swapped[0], fixed, swapped[1]], "misconception", "reversal")).toMatchObject({
+      view: "resolved", since: fixed.occurredAt, evidence: [{}, {}, { event: fixed.id, source: "transfer", result: "correct", assistance: "independent" }],
     });
   });
 
-  it("records which board representation the child worked with, and review targets for help-only and assisted related work", () => {
+  it("reads marked pages in time order and resolves a misconception only with the child's own work", () => {
+    const pages = [marked({ markedHelp: "none" }), marked({ markedHelp: "none" })];
+    expect(note(pages, "misconception", "O3")).toMatchObject({ view: "likely", evidence: [{ source: "marking", assistance: "independent", result: "incorrect" }, {}] });
+    for (const markedHelp of ["math-help", "unknown", undefined] as const) {
+      const right = marked({ result: "right", mistake: null, markedHelp });
+      expect(note([...pages, right], "misconception", "O3")?.view).toBe("likely");
+    }
+    expect(note([...pages, marked({ result: "right", mistake: null, markedHelp: "none" })], "misconception", "O3")?.view).toBe("resolved");
+    // The marking projection lists marks after the calls; an older mark still comes before a newer own right answer.
+    const ownRight = call([], { result: "right", stuckStep: null, hints: 0, observations: undefined });
+    const older = { ...marked({ markedHelp: "none" }), occurredAt: "2026-10-28T10:00:00.000Z" };
+    const olderToo = { ...marked({ markedHelp: "none" }), occurredAt: "2026-10-28T11:00:00.000Z" };
+    expect(note([ownRight, older, olderToo], "misconception", "O3")).toMatchObject({ view: "resolved", since: ownRight.occurredAt });
+  });
+
+  it("records which board representation the child worked with, and review targets with their source, uncertainty and route", () => {
     const helped = call([seen("perform_exchange", "correct", { assistance: "demonstrated", board: true }), seen("subtract_ones", "correct", { board: true })]);
     expect(note([helped], "representation", "blocks")).toMatchObject({ view: "helped", uncertainty: "medium" });
     expect(note([helped], "representation", "words")).toBeUndefined();
-    const related = event({ question: { source: "transfer", relatedEventId: helped.id, text: "63 - 27 = ?" }, result: "right_with_help", stuckStep: "ones", assistance: "hinted" });
+    const related = relatedTo(helped, { result: "right_with_help", stuckStep: "ones", assistance: "hinted" });
     expect(teaching([helped, related]).reviews).toEqual([
-      { standard: "3.3", reason: "assisted_only", since: helped.occurredAt, events: [helped.id], route: "workbook_plan" },
-      { standard: "3.3", reason: "transfer_not_independent", since: related.occurredAt, events: [related.id], route: "workbook_plan" },
+      { standard: "3.3", reason: "assisted_only", since: helped.occurredAt, events: [helped.id], sources: ["call"], uncertainty: "high", route: "workbook_plan" },
+      { standard: "3.3", reason: "transfer_not_independent", since: related.occurredAt, events: [related.id], sources: ["transfer"], uncertainty: "high", route: "workbook_plan" },
     ]);
-    // A secure standard has no workbook review: Maya's next call is its only route.
-    const secure = [1, 2, 3, 4].map(() => event());
-    const late = event({ question: { source: "transfer", relatedEventId: secure[3].id, text: "63 - 27 = ?" }, result: "blank", stuckStep: "ones", assistance: "independent" });
-    expect(teaching([...secure, late]).reviews).toEqual([{ standard: "3.3", reason: "transfer_not_independent", since: late.occurredAt, events: [late.id], route: "next_call" }]);
+    // A secure standard: help-only work is for Maya's next call; a likely misconception goes to the workbook plan.
+    const secure = Array.from({ length: 10 }, () => event());
+    const late = relatedTo(secure[9], { result: "blank", stuckStep: "ones" });
+    expect(teaching([...secure, late]).reviews).toEqual([{ standard: "3.3", reason: "transfer_not_independent", since: late.occurredAt, events: [late.id], sources: ["transfer"], uncertainty: "high", route: "next_call" }]);
+    const swapped = [call([seen("reversal", "incorrect")], { result: "blank" }), call([seen("reversal", "incorrect")], { result: "blank" })];
+    expect(teaching([...secure, ...swapped]).reviews.find((r) => r.reason === "misconception")).toMatchObject({ route: "workbook_plan", uncertainty: "medium" });
+    // Above the school grade nothing is a weakness for the plan (D-084): only the next call reads it.
+    const above = swapped.map((e) => ({ ...e, skill: { standard: "8.5", skills: [] } }));
+    expect(teaching(above).reviews.find((r) => r.reason === "misconception")).toMatchObject({ standard: "8.5", route: "next_call" });
     expect(teaching(secure)).toEqual({ notes: [], reviews: [] });
   });
 });
