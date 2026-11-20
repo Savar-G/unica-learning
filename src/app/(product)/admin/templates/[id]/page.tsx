@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminFrame } from "@/components/admin-frame";
 import { BarList, Empty, PercentBar, SectionHead, Tiles } from "@/components/admin-blocks";
-import { CountedNote, TemplateFilterForm, demoHref, templateQuery } from "@/components/admin-templates";
+import { CountedNote, TemplateFilterForm, TemplateReviewNote, demoHref, templateQuery } from "@/components/admin-templates";
 import { RecordFacts } from "@/components/admin-records";
 import { QuestionFigure } from "@/components/test-figures";
 import { ASSESSMENT_TEMPLATES, BANKS, BC_SKILL_MAP, MISCONCEPTIONS, STRAND_NAMES, fillTemplate, type MisconceptionId } from "@/lib/assessment";
@@ -62,6 +62,7 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
         { key: "wrong", label: "Wrong answers", value: wrongTotal, sub: `${allWrong.length} different ${allWrong.length === 1 ? "answer" : "answers"}` },
       ]} />
       <CountedNote filters={filters} />
+      {template && <TemplateReviewNote filters={filters} answered={line?.answered ?? 0} />}
 
       <section className="ap-card" aria-labelledby="tpl-wrong">
         <SectionHead id="tpl-wrong" title="Wrong answers, most chosen first" count={wrongTotal ? `${wrongTotal} in all` : undefined} line="Each answer with the mistake it is coded as, when it has one." />
