@@ -228,12 +228,18 @@ describe("the turn and interruption settings of a session", () => {
     expect(words.interruption).toMatchObject({ minDuration: 400, minWords: 1 });
   });
 
-  it("ask for adaptive interruption on a real call, so a local or self-hosted worker matches LiveKit Cloud, and keep VAD when set", async () => {
+  it("pass the interruption mode of a real call, so local, self-hosted and Cloud workers behave the same", async () => {
     const t = await options({ turn: { turnMinDelayMs: 100, interruptMinMs: 300, interruptMinWords: 0, interruptMode: "adaptive" } });
     expect(t.interruption).toMatchObject({ mode: "adaptive", minDuration: 300, resumeFalseInterruption: true });
     const vad = await options({ turn: { turnMinDelayMs: 100, interruptMinMs: 300, interruptMinWords: 0, interruptMode: "vad" } });
     expect(vad.interruption).toMatchObject({ mode: "vad" });
     expect((await options()).interruption.mode).toBeUndefined();
+  });
+
+  it("pass the false interruption wait of a real call, and keep LiveKit's 2000 ms without one", async () => {
+    const t = await options({ turn: { turnMinDelayMs: 100, interruptMinMs: 20, interruptMinWords: 0, falseInterruptionMs: 1200 } });
+    expect(t.interruption).toMatchObject({ minDuration: 20, falseInterruptionTimeout: 1200, resumeFalseInterruption: true });
+    expect((await options({ turn: { turnMinDelayMs: 100, interruptMinMs: 300, interruptMinWords: 0 } })).interruption.falseInterruptionTimeout).toBe(2000);
   });
 
   it("let a test's own endpointing win", async () => {

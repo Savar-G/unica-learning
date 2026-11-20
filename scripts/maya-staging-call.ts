@@ -19,7 +19,7 @@
 //     --mode interrupt|turns|background [--lab '{"interruption":"adaptive"}'] [--trials 20]
 // Not measured: a device speaker, echo cancellation, a browser, or a child's voice. Times are at the headless child, so
 // they include the Mac-to-Cloud network both ways.
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadavg } from "node:os";
 import { parseArgs } from "node:util";
@@ -108,7 +108,7 @@ room.localParticipant!.registerRpcMethod(BOARD_RPC, async data => handle(data.ca
 const levels: Level[] = [];
 room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => {
   if (track.kind !== TrackKind.KIND_AUDIO) return;
-  void (async () => { for await (const frame of new AudioStream(track, { sampleRate: RATE, numChannels: 1 })) levels.push({ at: clock(), db: db10(frame.data) }); })();
+  void (async () => { for await (const frame of new AudioStream(track, { sampleRate: RATE, numChannels: 1 })) levels.push({ at: clock(), db: db10(frame.data), ms: (frame.samplesPerChannel / RATE) * 1000 }); })();
 });
 const source = new AudioSource(RATE, 1);
 await room.localParticipant!.publishTrack(LocalAudioTrack.createAudioTrack("microphone", source), new TrackPublishOptions({ source: TrackSource.SOURCE_MICROPHONE }));
@@ -170,7 +170,9 @@ if (args.mode === "interrupt") {
   const requests = ["int1.wav", "int3.wav", "int5.wav", "int7.wav", "int9.wav"].map(wav);
   const incidental = [{ clip: "mmhm", pcm: wav("mmhm.wav") }, { clip: "okay", pcm: wav("okay.wav") },
     { clip: "noise-burst", pcm: Int16Array.from({ length: RATE * 0.15 }, () => Math.round((random() * 2 - 1) * 9000)) },
-    { clip: "request-at-minus-26-db", pcm: gain(requests[0], -26) }];
+    { clip: "request-at-minus-26-db", pcm: gain(requests[0], -26) },
+    // A wordless hum (#1147's clip): long enough to pause Maya, with no words for the speech-to-text.
+    ...(existsSync(join(args.clips!, "hum.wav")) ? [{ clip: "hum", pcm: wav("hum.wav") }] : [])];
   let next = 0;
   while (rows.filter(r => r.kind === "intentional").length < Number(args.trials) && clock() < deadline && !(await callDone())) {
     if (quietFor(1500)) { await play(requests[0]); await until(() => !quietFor(50), 15_000); continue; }
@@ -184,8 +186,10 @@ if (args.mode === "interrupt") {
       const { onsetAt } = await play(c.pcm);
       await pause(2500);
       const stop = audibleStop(levels, onsetAt, { windowMs: 2000 });
-      const back = stop.stopMs !== null ? firstSoundAfter(onsetAt + stop.stopMs + 650) : null;
-      rows.push({ kind: "incidental", clip: c.clip, onsetAt, speaking: stop.speaking, falseStop: stop.speaking && stop.stopMs !== null, stopMs: stop.stopMs, soundBackMs: back && back - onsetAt });
+      // Maya quiet for 700 ms within 2 s of the sound. Whether LiveKit resumed her comes from the worker log.
+      const back = stop.stopMs !== null ? firstSoundAfter(onsetAt + stop.stopMs) : null;
+      rows.push({ kind: "incidental", clip: c.clip, onsetAt, speaking: stop.speaking, falseStop: stop.speaking && stop.stopMs !== null, stopMs: stop.stopMs,
+        silenceMs: back !== null && stop.stopMs !== null ? back - (onsetAt + stop.stopMs) : null, soundBackMs: back && back - onsetAt });
       continue;
     }
     const delay = 400 + Math.round(random() * 2200);
@@ -227,7 +231,15 @@ if (worker) await room.localParticipant!.performRpc({ destinationIdentity: worke
 await until(() => false, 3000);
 pumping = false;
 await room.disconnect();
-const { data: ended } = await db.from("maya_calls").select("status, outcome_reason, child_turns, maya_turns, call_seconds").eq("id", v.id).maybeSingle();
+const { data: ended } = await db.from("maya_calls").select("status, outcome_reason, child_turns, maya_turns, call_seconds, trace").eq("id", v.id).maybeSingle();
+// The call's child turns (worker clock, NTP-close to this one): each request must reach a turn of its own window.
+const childTurns = ((ended?.trace as { turns?: { kind?: string; at?: number; text?: string }[] } | null)?.turns ?? [])
+  .filter(t => t.kind === "child" && typeof t.at === "number").map(t => ({ at: t.at!, text: t.text ?? "" }));
+for (const [i, r] of rows.entries()) {
+  if (r.kind !== "intentional") continue;
+  const until = Math.min((rows[i + 1]?.onsetAt as number | undefined) ?? Infinity, (r.onsetAt as number) + 10_000);
+  r.lost = !childTurns.some(t => t.at >= (r.onsetAt as number) && t.at < until);
+}
 
 // ---------- report ----------
 const intent = rows.filter(r => r.kind === "intentional" && r.speaking) as { stopMs: number | null }[];
@@ -235,9 +247,11 @@ const incid = rows.filter(r => r.kind === "incidental" && r.speaking) as { clip:
 const turns = rows.filter(r => r.kind === "turn") as { clip: string; cutIn: boolean; replyMs: number | null }[];
 const pct = (xs: number[], p: number) => { const s = [...xs].sort((a, b) => a - b); return s.length ? s[Math.max(0, Math.ceil(p * s.length) - 1)] : null; };
 const report = {
-  at: new Date().toISOString(), callId: v.id, deployment: args.deployment, lab, mode: args.mode, load: { start: loadAtStart, end: loadavg()[0] }, call: ended,
+  at: new Date().toISOString(), callId: v.id, deployment: args.deployment, lab, mode: args.mode, load: { start: loadAtStart, end: loadavg()[0] },
+  call: ended && { status: ended.status, outcome_reason: ended.outcome_reason, child_turns: ended.child_turns, maya_turns: ended.maya_turns, call_seconds: ended.call_seconds },
   ...(args.mode === "interrupt" ? {
     stop: interruptReport(intent, 300), endedOnTheirOwn: intent.filter(r => r.stopMs === null).length,
+    lostSpeech: { n: rows.filter(r => r.kind === "intentional").length, lost: rows.filter(r => r.kind === "intentional" && r.lost).length },
     falseStops: { n: incid.length, stopped: incid.filter(r => r.falseStop).length,
       byClip: [...new Set(incid.map(r => r.clip))].map(clip => ({ clip, n: incid.filter(r => r.clip === clip).length, stopped: incid.filter(r => r.clip === clip && r.falseStop).length })) },
   } : {}),
