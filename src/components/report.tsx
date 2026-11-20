@@ -42,7 +42,7 @@ import {
   sharePercent,
   summaryText,
   thresholdsLine,
-  verdictSentence,
+  legacyVerdict,
   workResult,
   type FactsMeasure,
   type ReportView,
@@ -84,6 +84,14 @@ export interface NewTestOffer {
  * The results call sits after the working level for parents and on the sample report, not on the admin's copy.
  */
 export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot, newTest = null, actionBeside = false, firstPages = null, progress = null }: { view: ReportView; next?: ReportNextContext; readOnly?: boolean; nextSlot?: ReactNode; newTest?: NewTestOffer | null; actionBeside?: boolean; firstPages?: FirstPagesView | null; progress?: ProgressPreview | null }) {
+  if (view.model.level.working === null) {
+    return (
+      <article className="rpt" aria-labelledby="rpt-title">
+        <ReportHeader view={view} />
+        <ReportContext view={view} newTest={newTest} />
+      </article>
+    );
+  }
   return (
     <article className="rpt" aria-labelledby="rpt-title">
       <ReportHeader view={view} />
@@ -152,6 +160,7 @@ function ReportHeader({ view }: { view: ReportView }) {
  */
 function LevelScale({ view }: { view: ReportView }) {
   const { working, grade } = view.model.level;
+  if (working === null) return null;
   const levels = rulerLevels(view);
   const last = levels[levels.length - 1];
   const onScale = grade <= last;
@@ -188,7 +197,7 @@ function ReportOverall({ view }: { view: ReportView }) {
     <section className={`rpt-overall is-${view.model.howWeHelp}`} aria-labelledby="rpt-level">
       <p className="eyebrow">Overall</p>
       <h2 id="rpt-level">{levelSentence(view)}</h2>
-      <p className="rpt-verdict">{verdictSentence(view)}</p>
+      {legacyVerdict(view) && <p className="rpt-verdict">{legacyVerdict(view)}</p>}
       <Certainty view={view} certainty={view.model.level.certainty} lead="How sure:" />
       <LevelScale view={view} />
       {/* D-305: a parent read "working at a grade 5 level" as "only grade 5 work". */}
@@ -208,7 +217,7 @@ export function ReportLevelPreview({ view }: { view: ReportView }) {
     <section className={`rpt-overall rpt-level-preview is-${view.model.howWeHelp}`} aria-label="Sample report">
       <p className="eyebrow">Sample report</p>
       <p className="rpt-level-preview-h">{levelSentence(view)}</p>
-      <p className="rpt-verdict">{verdictSentence(view)}</p>
+      {legacyVerdict(view) && <p className="rpt-verdict">{legacyVerdict(view)}</p>}
       <LevelScale view={view} />
     </section>
   );

@@ -277,7 +277,7 @@ describe("the report of a child two grades away from their own", () => {
     const placement = finish(session, null, "no");
     const model = reportModel(placement, { workReviews: [] });
     expect(model.level.working).toBe(placement.workingLevel);
-    expect(Math.abs(placement.workingLevel - grade)).toBe(2);
+    expect(Math.abs(placement.workingLevel! - grade)).toBe(2);
     const profile = learnerProfile({ placement, answers: profileOf(session), help: "no", learning: null });
     expect(profile).not.toBeNull();
   });

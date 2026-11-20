@@ -40,7 +40,7 @@ import {
   rulerLevels,
   summaryText,
   thresholdsLine,
-  verdictSentence,
+  legacyVerdict,
   whereNotes,
   whereView,
   workingLevelNote,
@@ -108,6 +108,7 @@ const chip = ({ bg, fg }: { bg: string; fg: string }, label: string) =>
  */
 function rulerHtml(v: ReportView): string {
   const { working, grade } = v.model.level;
+  if (working === null) return "";
   const levels = rulerLevels(v);
   const last = levels[levels.length - 1];
   const onScale = grade <= last;
@@ -186,6 +187,14 @@ const button = (href: string, label: string) =>
 export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = true }: { view: ReportView; parentName: string; url: string; unsubscribeUrl: string; offer?: boolean }) {
   const name = v.childName;
   const first = firstName(parentName);
+  if (v.model.level.working === null) {
+    const subject = `Please retake ${name}'s math test`;
+    const message = levelSentence(v);
+    const action = "Open the assessment report";
+    const text = `Hi ${first},\n\n${message}\n\n${action}: ${url}`;
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(subject)}</title></head><body><p>Hi ${esc(first)},</p><p>${esc(message)}</p><p><a href="${esc(url)}">${action}</a></p></body></html>`;
+    return { subject, text, html };
+  }
   const subject = `${name}'s math report is ready`;
   const weakest = [...(v.findings?.struggles ?? [])]
     .filter((item) => item.certainty === "clear" && item.total > 0)
@@ -263,7 +272,7 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
     intro,
     ...(offer && booking ? [`${callLabel}: ${booking}`] : []),
     `${name} finished the math placement test: ${questionsAndMinutes(v)}.`,
-    [levelSentence(v), verdictSentence(v), ...(levelSure ? [`How sure: ${levelSure}`] : []), definition, ...notes, ...(summary ? [summary] : [])].join("\n"),
+    [levelSentence(v), ...(legacyVerdict(v) ? [legacyVerdict(v)] : []), ...(levelSure ? [`How sure: ${levelSure}`] : []), definition, ...notes, ...(summary ? [summary] : [])].join("\n"),
     ...(reliability ? [`${reliability.title}\n${reliability.text}\n${reliability.offer}`] : []),
     ...(fsa ? [`For context: ${fsa.text}\nSource: ${fsa.source.name}, ${fsa.source.url}`] : []),
     ...(comparison ? [`${comparison.title}\n${comparison.text}\n${comparison.note}`] : []),
@@ -319,7 +328,7 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
 </head>
 <body style="margin:0;padding:0;background:#ffffff">
 <div style="background:#ffffff;padding:24px 0">
-<span style="display:none;max-height:0;overflow:hidden;mso-hide:all">${esc(levelSentence(v))} ${esc(verdictSentence(v))}</span>
+<span style="display:none;max-height:0;overflow:hidden;mso-hide:all">${esc(levelSentence(v))} ${esc(legacyVerdict(v))}</span>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;margin:0 auto;font-family:${FONT};font-size:16px;line-height:1.5;color:${INK}">
 ${emailHeaderHtml(20)}
 <tr><td style="padding:0 20px 6px">
@@ -333,7 +342,7 @@ ${p(esc(`${name} finished the math placement test: ${questionsAndMinutes(v)}.`))
 <tr><td style="padding:26px 20px 22px">
 <p style="margin:0 0 10px;font-family:${MONO};font-size:12px;line-height:1.2;color:${INK}"><span style="display:inline-block;width:8px;height:8px;margin-right:6px;background:${ACCENT}"></span>Overall</p>
 ${p(esc(levelSentence(v)), "margin:0 0 8px;font-size:28px;line-height:1.15;font-weight:300;letter-spacing:-0.02em")}
-${p(esc(verdictSentence(v)), levelSure ? "margin:0 0 6px;font-size:17px" : "margin:0 0 18px;font-size:17px")}
+${legacyVerdict(v) ? p(esc(legacyVerdict(v)), levelSure ? "margin:0 0 6px;font-size:17px" : "margin:0 0 18px;font-size:17px") : ""}
 ${levelSure ? p(esc(`How sure: ${levelSure}`), `margin:0 0 18px;font-family:${MONO};font-size:13px`) : ""}
 ${rulerHtml(v)}
 ${p(`<b>What &quot;working level&quot; means.</b> ${esc(workingLevelNote(v))}`, `margin:16px 0 0;padding:12px 14px;background:#ffffff;border-radius:8px;font-size:15px`)}
@@ -566,7 +575,8 @@ export function reportAlert({
   const facts = factsView(v, { speed: true });
   const comparison = comparisonView(v);
   const measuredCount = m.comparison.stage === "scale" || comparison ? m.comparison.n : undefined;
-  const subject = `Test finished: ${v.childName}, ${levelName(m.level.grade)}, working at ${levelName(m.level.working)}`;
+  const result = m.level.working === null ? "retake requested" : `working at ${levelName(m.level.working)}`;
+  const subject = `Test finished: ${v.childName}, ${levelName(m.level.grade)}, ${result}`;
   const deck = resultsDeck({ parentName: parent.name, month: "", children: [{ view: v }] }).children[0];
   const lines = [
     `Child: ${v.childName}`,

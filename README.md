@@ -45,7 +45,7 @@ Open [http://localhost:3000](http://localhost:3000). Fill in the values needed f
 
 ### Configuration
 
-The example file lists common settings. [AGENTS.md](AGENTS.md) has the full list and defaults. Features that use external services need the applicable credentials.
+The example file lists common settings. [docs/environment.md](docs/environment.md) has the full list and defaults. Features that use external services need the applicable credentials.
 
 | Variable | Purpose |
 | --- | --- |
@@ -54,7 +54,7 @@ The example file lists common settings. [AGENTS.md](AGENTS.md) has the full list
 | `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_ALLOW_INDEX` | Set the public URL and control search indexing. Keep indexing off for local work. |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Enable Stripe card setup, plans and webhook verification. |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Configure outgoing email. |
-| `OPENROUTER_API_KEY` | Enable AI features that use OpenRouter. |
+| `MAYA_OPENROUTER_API_KEY`, `SCAN_MARKING_OPENROUTER_API_KEY`, `PARENT_EXPLANATION_API_KEY`, `WORKBOOK_OPENROUTER_API_KEY`, `ASSESSMENT_OPENROUTER_API_KEY`, `PROFILE_OPENROUTER_API_KEY` | Dedicated OpenRouter keys per AI product ([docs/ai-product-keys.md](docs/ai-product-keys.md)). Shared `OPENROUTER_API_KEY` is disabled. |
 | `NEXT_PUBLIC_POSTHOG_KEY` | Enable optional analytics after visitor consent. |
 
 ### Checks
@@ -64,6 +64,7 @@ Run the project checks before opening a pull request:
 ```bash
 npm test
 npx eslint src
+npm run typecheck
 npm run build
 ```
 

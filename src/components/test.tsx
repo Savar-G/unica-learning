@@ -1,8 +1,8 @@
 "use client";
 
 // The child's test (#64), in the split desk (D-088, #79): the start screen, one question at a time, the end screen.
-// Read-aloud, the halfway break and progress (#69) are their own parts (test-read-aloud.tsx, test-break.tsx,
-// test-progress.tsx); the whiteboard (#67) is whiteboard.tsx, beside each question; quick facts (#70) is facts.tsx.
+// The halfway break and progress (#69) are their own parts (test-break.tsx, test-progress.tsx); the whiteboard (#67)
+// is whiteboard.tsx, beside each question; quick facts (#70) is facts.tsx.
 // The server marks every answer; the browser gets only the next question and never learns what was right.
 // Shared CSS first, so each screen's own CSS comes later and wins (test-base.css).
 import "./test-base.css";
@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNod
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/ds";
-import { UNKNOWN_RESPONSE, UNKNOWN_WAIT_MS, breakDue, readAloudText, spokenChoices, type AnsweredQuestion, type HelpAnswer, type PublicQuestion, type TestStep } from "@/lib/assessment";
+import { UNKNOWN_RESPONSE, UNKNOWN_WAIT_MS, breakDue, spokenChoices, type AnsweredQuestion, type HelpAnswer, type PublicQuestion, type TestStep } from "@/lib/assessment";
 import { ANSWER_MAX, type FinishResult, type StartResult, type StepResult, type TestError, type WorkPayload } from "@/lib/test-api";
 import { answerRecorder, mergeEvents, type AnswerEvents } from "@/lib/answer-events";
 import { deviceOf, type BreakEvent, type BreakResume, type ContextResult, type TestDevice } from "@/lib/test-context";
@@ -25,9 +25,8 @@ import { breakSeen, loadBreak, markBreakSeen, saveBreak, TestBreak } from "./tes
 import { Choices } from "./test-choices";
 import { BarGraph, ChoiceFace, PromptText } from "./test-figures";
 import { TestHelp } from "./test-help";
-import { TestProgress } from "./test-progress";
+import { AdaptiveBreakProgress, TestProgress } from "./test-progress";
 import { BackLabel, NextLabel, TestCheck, TestSteps } from "./test-steps";
-import { ReadAloud, warmUpVoices } from "./test-read-aloud";
 import { Whiteboard, boardImage, clearDrafts, loadDraft, saveDraft, type BoardSize } from "./whiteboard";
 import "./test.css";
 
@@ -42,7 +41,7 @@ type Screen =
   | { name: "more"; next: Extract<TestStep, { status: "question" }> }
   /** #253: "Check your answers" at the end of a part: its question numbers; "Done checking" goes on. */
   | { name: "check"; section: "stage1" | "stage2" | "stage3" | `block-${number}`; numbers: number[]; total: number; breakAfter: number; testId: string }
-  | { name: "break"; next: Extract<TestStep, { status: "question" }> }
+  | { name: "break"; next: Extract<TestStep, { status: "question" }>; after: number }
   /** The timed facts section (#70), after the halfway break; then the test carries on with `next`. */
   | { name: "facts"; testId: string; next: Extract<TestStep, { status: "question" }> }
   /** "Did anyone help?" (#71): after the last question; its answer goes with the finish request. */
@@ -123,10 +122,9 @@ export type StartMode = "new" | "resume" | "finish" | "restart";
 
 /**
  * `typing`: the whiteboard has a text box (grades 3-9); Kindergarten to grade 2 draw only (#67). `breakAfter`: questions
- * before the halfway ring, for the progress on the help and end screens (the band's stage 1). `readFirst` (D-156,
- * Kindergarten): the voice reads each new question as it opens (readsAloudFirst).
+ * before the halfway ring, for the progress on the help and end screens (the band's stage 1).
  */
-export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMode = "new", typing = true, afterBreak = false, checkGrid = false, readFirst = false }: { childId: string; name: string; breakAfter: number; ready: boolean; done: boolean; mode?: StartMode; typing?: boolean; afterBreak?: boolean; checkGrid?: boolean; readFirst?: boolean }) {
+export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMode = "new", typing = true, afterBreak = false, checkGrid = false }: { childId: string; name: string; breakAfter: number; ready: boolean; done: boolean; mode?: StartMode; typing?: boolean; afterBreak?: boolean; checkGrid?: boolean }) {
   const [screen, setScreen] = useState<Screen>(done ? { name: "done" } : { name: "intro" });
   const [progress, setProgress] = useState<{ total: number; breakAfter: number } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -208,9 +206,6 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
     carry.current.delete(v.questionId);
     return before ? { ...v, timeMs: before.ms + v.timeMs, events: mergeEvents(before.events, before.ms, v.events)! } : v;
   };
-
-  // The voices for "read it to me" load while the child reads the start screen, so the button is there with question 1.
-  useEffect(() => warmUpVoices(), []);
 
   useEffect(() => {
     const seen = (e: PointerEvent) => {
@@ -299,13 +294,18 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
       saveBreak(id, { startedAt, end: null });
       breakShownAt.current = performance.now() - Math.max(0, Date.now() - startedAt);
       void sendContext(id, { break: "shown" });
-      setScreen({ name: "break", next: step });
+      setScreen({ name: "break", next: step, after: step.breakAfter });
       return true;
     }
     // Then the timed facts section (#70, D-088): the break's onDone comes back here. On a resume the facts screen
     // asks the server first and hands straight on to the question when the section is already done.
     if (!factsDone.current && id && step.number > step.breakAfter) {
       setScreen({ name: "facts", testId: id, next: step });
+      return true;
+    }
+    if (step.secondBreakAfter !== undefined && step.number === step.secondBreakAfter + 1 && !breakSeen(`${id}-second`)) {
+      track("test_break", { status: "shown" });
+      setScreen({ name: "break", next: step, after: step.secondBreakAfter });
       return true;
     }
     // #189: the last three answers were very fast, so the question says "Take your time" (absent from an older server: off).
@@ -547,7 +547,9 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
         <span className="logo">Unica Learning<b /></span>
         {screen.name === "question" && <TestProgress block={screen.block} answered={screen.number - 1} total={screen.total} breakAfter={screen.breakAfter} at="question" current={(viewed?.number ?? screen.number) - 1} />}
         {screen.name === "check" && <TestProgress block={screen.section.startsWith("block-") ? { first: screen.numbers[0], end: screen.numbers.at(-1)! } : undefined} answered={screen.numbers.at(-1)!} total={screen.total} breakAfter={screen.breakAfter} at="check" current={viewed ? viewed.number - 1 : undefined} />}
-        {screen.name === "break" && <TestProgress block={screen.next.block} answered={screen.next.breakAfter} total={screen.next.total} breakAfter={screen.next.breakAfter} at="halfway" />}
+        {screen.name === "break" && (screen.after === screen.next.secondBreakAfter
+          ? <AdaptiveBreakProgress answered={screen.after} />
+          : <TestProgress block={screen.next.block} answered={screen.after} total={screen.next.total} breakAfter={screen.next.breakAfter} at="halfway" />)}
         {screen.name === "facts" && <TestProgress block={screen.next.block} answered={screen.next.number - 1} total={screen.next.total} breakAfter={screen.next.breakAfter} at="facts" />}
         {screen.name === "more" && <TestProgress block={screen.next.block} answered={screen.next.number - 1} total={screen.next.total} breakAfter={screen.next.breakAfter} at="help" />}
         {(screen.name === "help" || screen.name === "done") && progress && <TestProgress answered={progress.total} total={progress.total} breakAfter={progress.breakAfter} at={screen.name === "help" ? "help" : "end"} />}
@@ -562,7 +564,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
         {screen.name === "intro" && <Intro name={name} ready={ready} busy={busy} onStart={() => start()} failure={failure} mode={mode} afterBreak={afterBreak} checkGrid={checkGrid} />}
         {screen.name === "question" && (
           <Question key={`${(viewed?.question ?? screen.question).id}:${visit}`} testId={screen.testId} typing={typing}
-            readFirst={readFirst && viewed === null} question={viewed?.question ?? screen.question} initial={viewed ? viewed.response : held[screen.question.id] ?? ""} revisit={viewed !== null}
+            question={viewed?.question ?? screen.question} initial={viewed ? viewed.response : held[screen.question.id] ?? ""} revisit={viewed !== null}
             initialBoard={viewed ? unsaved[viewed.question.id] : undefined} storedWork={viewed?.work}
             canBack={answered.some((a) => a.number < (viewed?.number ?? screen.number))}
             marked={marks.has(viewed?.number ?? screen.number)} onMark={() => toggleMark(viewed?.number ?? screen.number)}
@@ -590,12 +592,14 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
           </MessageScreen>
         )}
         {screen.name === "break" && (
-          <TestBreak adaptive={!!screen.next.block} name={name} answered={screen.next.breakAfter} total={screen.next.total} onDone={(how) => {
+          <TestBreak adaptive={!!screen.next.block} name={name} answered={screen.after} total={screen.next.total} onDone={(how) => {
             track("test_break", { status: how });
             // #185: how the break ended and how long it lasted on this screen, sent at once.
             const id = testId.current;
             const shownAt = breakShownAt.current;
-            if (id && shownAt !== null) {
+            if (id && screen.after !== screen.next.breakAfter) {
+              markBreakSeen(`${id}-second`);
+            } else if (id && shownAt !== null) {
               const lengthMs = Math.round(performance.now() - shownAt);
               saveBreak(id, { startedAt: loadBreak(id)?.startedAt ?? Date.now() - lengthMs, end: { event: how, lengthMs } });
               markBreakSeen(id);
@@ -726,8 +730,6 @@ interface QuestionProps {
   testId: string;
   /** Grades 3-9 can type on the whiteboard; Kindergarten to grade 2 draw only (#67). */
   typing: boolean;
-  /** D-156: the voice reads the question as it opens (Kindergarten, a question not seen before). */
-  readFirst?: boolean;
   question: PublicQuestion;
   /** #249: the answer on the screen when the question opens: the child's answer to a question they went back to. */
   initial: string;
@@ -770,7 +772,7 @@ function useBoardHidden(): [boolean, (hidden: boolean) => void] {
 }
 
 // One question in the split desk (D-088): the question and the answer on the left, the whiteboard on the right.
-function Question({ testId, typing, readFirst = false, question, initial, initialBoard, storedWork, revisit, canBack, marked, onMark, main, takeYourTime, onLeave, onShown, failure, boardHidden, onBoardHidden }: QuestionProps) {
+function Question({ testId, typing, question, initial, initialBoard, storedWork, revisit, canBack, marked, onMark, main, takeYourTime, onLeave, onShown, failure, boardHidden, onBoardHidden }: QuestionProps) {
   const [value, setValue] = useState(initial);
   const [unknownReady, setUnknownReady] = useState(initial === UNKNOWN_RESPONSE);
   useEffect(() => {
@@ -786,7 +788,7 @@ function Question({ testId, typing, readFirst = false, question, initial, initia
     heading.current?.focus();
   }, []);
 
-  // #184: what the child does before Next, from when the question appears: each answer change, each "Read it to me",
+  // #184: what the child does before Next, from when the question appears: each answer change
   // and each time the tab is hidden (another tab or app in front) with how long. #249: the answer already on the screen
   // when the question opens is not a change.
   const [recorder] = useState(() => answerRecorder(initial));
@@ -800,7 +802,6 @@ function Question({ testId, typing, readFirst = false, question, initial, initia
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [recorder]);
-  const onRead = useCallback(() => recorder.readAloud(performance.now() - shownAt.current), [recorder]);
 
   // #67: the whiteboard. A resume of this question on this device brings back the work from before the stop (#72).
   // #249: an answered question the child went back to keeps no draft. #252: its board opens with the stored work, which
@@ -942,9 +943,8 @@ function Question({ testId, typing, readFirst = false, question, initial, initia
     return () => window.removeEventListener("keydown", onKey);
   }, [question.format, press]);
 
-  // "Read it to me" reads the choices in the order of the rows on screen (#79): the core shuffles them.
+  // Accessible choice names follow the shuffled rows on screen (#79).
   const shown = question.format === "choice" ? question.choices ?? [] : [];
-  const spoken = readAloudText(question, shown);
   const names = spokenChoices(question, shown);
 
   return (
@@ -952,7 +952,6 @@ function Question({ testId, typing, readFirst = false, question, initial, initia
       <div className="test-pane test-pane-l">
         {takeYourTime && <TakeYourTime />}
         <div className="test-qrow">
-          <ReadAloud key={question.id} text={spoken} onRead={onRead} auto={readFirst} />
           <h1 id="test-q-title" ref={heading} tabIndex={-1} className="test-prompt"><PromptText text={question.prompt} /></h1>
         </div>
         {question.figure?.kind === "bars" && <BarGraph figure={question.figure} />}

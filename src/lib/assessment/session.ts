@@ -1,4 +1,4 @@
-import { ADAPTIVE_BREAK_AFTER, adaptiveEvidence, adaptiveQuestions, adaptiveTop, LEVEL_EVIDENCE_MINIMUM, UNKNOWN_RESPONSE } from "./adaptive";
+import { ADAPTIVE_BREAK_AFTER, ADAPTIVE_SECOND_BREAK_AFTER, scoreStoredAdaptivePlacement, adaptiveEvidence, adaptiveQuestions, adaptiveTop, LEVEL_EVIDENCE_MINIMUM, UNKNOWN_RESPONSE } from "./adaptive";
 // The assessment session: pure functions over plain data.
 // No network, database, clock or Math.random: the caller passes the seed and every time value.
 import {
@@ -593,7 +593,7 @@ export function testStep(session: Session): TestStep {
     const section = openSection(session);
     const breakAfter = ADAPTIVE_BREAK_AFTER;
     if (session.answers.length === total) return { status: "check", section: section.name, numbers: section.answered.map(x => x.position + 1), total, breakAfter };
-    return { status: "question", question: toPublicQuestion(nextQuestion(session)!), number: session.answers.length + 1, total, breakAfter, takeYourTime: takeYourTime(session.answers), block: { number: a.locked + 1, first: section.first + 1, end: section.end } };
+    return { status: "question", question: toPublicQuestion(nextQuestion(session)!), number: session.answers.length + 1, total, breakAfter, ...(a.version === 2 && { secondBreakAfter: ADAPTIVE_SECOND_BREAK_AFTER }), takeYourTime: takeYourTime(session.answers), block: { number: a.locked + 1, first: section.first + 1, end: section.end } };
   }
   const breakAfter = session.stage1.length;
   // Before routing, use the longest stored form. Once routed, the exact stored form is authoritative.
@@ -661,7 +661,8 @@ export function finish(session: Session, facts: FactsSession | null = null, help
   const levels: LevelResult[] = [...new Set(marked.map((m) => m.q.level))]
     .sort((a, b) => a - b)
     .map((level) => ({ level, ...tally(scored.filter((m) => m.q.level === level)) }));
-  const workingLevel = session.adaptive ? adaptiveEvidence(session).level : workingLevelOf(levels);
+  const current = session.adaptive?.version === 2 ? scoreStoredAdaptivePlacement(session) : null;
+  const workingLevel = current ? current.level : session.adaptive ? adaptiveEvidence(session).level : workingLevelOf(levels);
   const placementLevels = session.adaptive ? levels.filter(l => l.total >= LEVEL_EVIDENCE_MINIMUM) : levels;
 
   // An area's status counts only the questions at or below the school grade (D-084: never invent a weakness; decision
@@ -678,8 +679,9 @@ export function finish(session: Session, facts: FactsSession | null = null, help
     province: session.profile.province,
     scoredAgainst: scoredAgainst(session.profile.province),
     workingLevel,
-    confidence: placementLevels.some((l) => atLeast(l.correct, l.total, WORKING_LEVEL_PERCENT)) ? "normal" : "low",
-    levelCertainty: levelCertainty(placementLevels),
+    ...(current && { adaptiveVersion: 2, mastered: current.outcome === "placed" && current.passed }),
+    confidence: (current ? current.outcome === "placed" && current.passed : placementLevels.some((l) => atLeast(l.correct, l.total, WORKING_LEVEL_PERCENT))) ? "normal" : "low",
+    levelCertainty: current ? (current.outcome === "placed" && current.clear ? "clear" : "early-sign") : levelCertainty(placementLevels),
     // Only a child routed up who clears the highest level asked may work above what the test could show. For Grade 8 the
     // up form is at level 8 (D-153 rule 2) and for Grade 9 at level 9, the top of the bank, so clearing it is the ceiling.
     // D-282: with a third stage up, the highest level asked is the third stage's.

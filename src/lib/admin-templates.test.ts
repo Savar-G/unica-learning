@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BANKS, BC_SKILL_MAP, type Level, type Strand, type Template } from "@/lib/assessment";
-import { WRONG_SHOWN, adminTemplatePath, parseTemplateFilters, skillMapStandardPath, templateStats, templateTable, type AnswerFact, type TemplateStat } from "@/lib/admin-templates";
+import { WRONG_SHOWN, adminTemplatePath, parseTemplateFilters, skillMapStandardPath, templateReview, templateStats, templateTable, type AnswerFact, type TemplateStat } from "@/lib/admin-templates";
 
 const answer = (over: Partial<AnswerFact> = {}): AnswerFact => ({
   templateId: "add-within-10",
@@ -79,6 +79,46 @@ const template = (id: string, level: Level, strand: Strand = "N", standard = `${
   fill: () => ({ prompt: "1 + 1", readAloud: "1 plus 1", answer: "2", wrong: [], values: {} }),
 });
 const stat = (over: Partial<TemplateStat> & { template_id: string }): TemplateStat => ({ shown: 0, answered: over.shown ?? 0, correct: 0, median_ms: null, wrong: [], ...over });
+
+describe("templateReview", () => {
+  const bank = [template("add-within-10", 1)];
+
+  it.each([
+    [0, "waiting"],
+    [29, "waiting"],
+    [30, "ready"],
+    [31, "ready"],
+  ])("uses %i answered attempts even when more questions were shown", (answered, expected) => {
+    const filters = parseTemplateFilters({ grade: "2" });
+    const rows = [
+      ...Array.from({ length: answered }, () => answer()),
+      answer({ correct: null, response: null, timeMs: null }),
+    ];
+    const [line] = templateTable(templateStats(rows, filters), bank).grades[0].lines;
+    expect(line.shown).toBe(answered + 1);
+    expect(templateReview(line.answered, filters)).toBe(expected);
+  });
+
+  it("reviews filtered school grades and curricula without pooling other grades or test families", () => {
+    const rows = [
+      ...Array.from({ length: 29 }, () => answer()),
+      ...Array.from({ length: 30 }, () => answer({ grade: 3 })),
+      answer({ province: "AB" }),
+      answer({ testFamily: true }),
+    ];
+    const review = (query: Parameters<typeof parseTemplateFilters>[0]) => {
+      const filters = parseTemplateFilters(query);
+      const [line] = templateTable(templateStats(rows, filters), bank).grades[0].lines;
+      return [line.answered, templateReview(line.answered, filters)];
+    };
+    expect(review({})).toEqual([60, "select-grade"]);
+    expect(review({ grade: "2" })).toEqual([30, "ready"]);
+    expect(review({ grade: "2", province: "BC" })).toEqual([29, "waiting"]);
+    expect(review({ grade: "2", province: "BC", tests: "1" })).toEqual([30, "exclude-tests"]);
+    expect(review({ grade: "3", province: "BC" })).toEqual([30, "ready"]);
+    expect(review({ grade: "4", province: "BC" })).toEqual([0, "waiting"]);
+  });
+});
 
 describe("templateTable", () => {
   it("has one row per bank template, by BC grade, with the template and its BC standard as links", () => {

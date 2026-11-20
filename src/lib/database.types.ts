@@ -6815,6 +6815,35 @@ export type Database = {
           },
         ]
       }
+      workbook_job_alerts: {
+        Row: {
+          child_id: string
+          job_id: string
+          job_type: string
+          reason: string
+        }
+        Insert: {
+          child_id: string
+          job_id: string
+          job_type: string
+          reason: string
+        }
+        Update: {
+          child_id?: string
+          job_id?: string
+          job_type?: string
+          reason?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_job_alerts_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_pages: {
         Row: {
           created_at: string
@@ -9791,6 +9820,13 @@ export type Database = {
           p_stale_seconds: number
         }
         Returns: boolean
+      }
+      claim_workbook_job_alerts: {
+        Args: never
+        Returns: {
+          job_count: number
+          reason: string
+        }[]
       }
       claim_workbook_layout_edit: {
         Args: { p_id: string; p_lease: string }

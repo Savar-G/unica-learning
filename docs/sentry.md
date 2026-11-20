@@ -16,7 +16,7 @@ USD 5,000 in credits, which end on 2027-11-15.
 | Errors | Browser, Node server, edge | `src/instrumentation.ts` (`onRequestError`), `src/instrumentation-client.ts`, `src/app/error.tsx` |
 | Traces | Every server request (100%), a tenth of browser page loads | `tracesSampleRate` in `sharedOptions`. Spans stream in batches (SDK 11). |
 | Logs | Server `console.warn` and `console.error` | `consoleLoggingIntegration` in `src/instrumentation.ts`. `info` and `log` lines stay in Vercel only. |
-| Cron monitors | 8 scheduled routes, the retention workflow, the Mac workbook worker | Below |
+| Cron monitors | 8 scheduled routes and the retention workflow | Below |
 | AI monitoring | Every OpenRouter request on the Next.js server | `src/lib/ai-observe-sentry.ts`, registered by `src/instrumentation.ts` through `setAiObserver` (`src/lib/ai-observe.ts` imports no Sentry, so the Maya voice worker and the Mac worker build without the SDK): one `gen_ai.chat` span per request with the feature (`gen_ai.agent.name`), model, tokens and cost; metrics `ai.cost` (USD), `ai.tokens`, `ai.failures`. |
 | Uptime | `https://unicalearning.com/`, `/start` | Uptime monitors in Sentry, every 5 minutes. |
 | Session Replay | Browser, on error only | `src/lib/sentry-replay.ts`, below |
@@ -88,10 +88,9 @@ check-in, so Sentry creates and updates the monitor from `CRON_MONITORS`. When y
 | `workbook-emails` | pg_cron | 7, 22, 37, 52 past each hour |
 | `keepalive`, `child-deletions` | Vercel cron | 15:00, 15:15 |
 | `family-retention` | GitHub workflow `retention.yml` (scheduled runs only) | 15:17 |
-| `workbook-worker` | The Mac worker, every 5 minutes (`scripts/workbook-worker.ts`) | heartbeat |
 
-The last two check in over HTTP (`sentryCheckInUrl`) and were created through the Sentry API. `workbook-worker` opens an
-issue after 1 hour with no check-in, so it also opens one when the Mac sleeps for the night.
+The retention workflow checks in over HTTP. The `workbook-worker` Sentry monitor is disabled because it reported
+missed Mac check-ins while the queue was empty. The production cron checks actual [workbook job states](product-monitoring.md#workbook-job-alerts).
 
 ## Source maps and releases
 

@@ -1,10 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import { reportModel, storedReportModel, type Grade, type Province, type ReportFacts } from "@/lib/assessment";
 import { allRight, knowsUpTo, takeTest, type Script } from "@/lib/assessment/scripted-child";
 import { reportAlert, reportEmail } from "@/lib/report-email";
 import type { ReportView } from "@/lib/report-view";
-import { progressPreview } from "@/lib/progress-preview";
+import * as preview from "@/lib/progress-preview";
 import { sampleReportWithBook } from "@/lib/sample-book-one";
 
 const URL = "https://unicalearning.com/account/report/r-1?src=email";
@@ -368,9 +368,12 @@ describe("results call invitation", () => {
 });
 
 describe("progress preview (round r-progress-preview-5)", () => {
+  afterEach(() => vi.restoreAllMocks());
+
   it("says the prediction, the skills today and at the goal, and how, as on the report page; nothing without the offer", () => {
+    vi.spyOn(preview, "progressPreview").mockImplementation(preview.createProgressPreview(true));
     const v = sampleReportWithBook();
-    const p = progressPreview(v)!;
+    const p = preview.progressPreview(v)!;
     const email = reportEmail({ unsubscribeUrl: UNSUB, view: v, parentName: "Priya", url: URL });
     expect(email.text).toContain(`We can help ${p.name} reach a ${p.sentence.goal} by ${p.goalMonth}.`);
     expect(email.text).toContain(`- Adding and subtracting: ${p.rows[1].today} -> ${p.rows[1].goal}`);
@@ -384,4 +387,30 @@ describe("progress preview (round r-progress-preview-5)", () => {
     expect(quiet.text).not.toContain("We can help");
     expect(quiet.html).not.toContain("We can help");
   });
+
+  it("omits the whole goal block and any links to it from HTML and text when disabled", () => {
+    vi.spyOn(preview, "progressPreview").mockImplementation(preview.createProgressPreview(false));
+    const view = sampleReportWithBook();
+    const email = reportEmail({ unsubscribeUrl: UNSUB, view, parentName: "Sample parent", url: URL });
+    const goal = preview.createProgressPreview(true)(view)!;
+    for (const body of [email.html, email.text]) {
+      expect(body).toContain(URL);
+      expect(body).not.toMatch(/We can help .* reach a |How we get .* there|See the plan|#(?:rpt-progress|goal)/i);
+      expect(body).not.toContain(goal.rows[1].goal);
+      expect(body).not.toContain(goal.stages[0].months);
+    }
+  });
+});
+
+it("asks for a retake without a working level or a plan offer", () => {
+  const v = view(knowsUpTo(3));
+  const model = { ...v.model, level: { ...v.model.level, working: null, adaptiveVersion: 2 as const } };
+  const email = reportEmail({ view: { ...v, model }, parentName: "Priya", url: URL, unsubscribeUrl: UNSUB });
+  expect(email.subject).toContain("retake");
+  for (const body of [email.text, email.html]) {
+    expect(body).toContain("Maya answered many questions very quickly, so please have Maya take the test again.");
+    expect(body).not.toContain("Grade 3");
+    expect(body).not.toContain("working level");
+    expect(body).not.toContain("workbook");
+  }
 });

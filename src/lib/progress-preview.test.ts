@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import type { Level } from "@/lib/assessment";
-import { GRADE_SKILLS, SKILL_AREAS, goalGrade, progressPreview, skillRows } from "@/lib/progress-preview";
+import { GRADE_SKILLS, SKILL_AREAS, createProgressPreview, goalGrade, skillRows } from "@/lib/progress-preview";
 import type { BookOne } from "@/lib/report-book-one";
 import type { ReportView } from "@/lib/report-view";
 import { sampleReportWithBook } from "@/lib/sample-book-one";
@@ -9,6 +9,7 @@ import { sampleReportView } from "@/lib/sample-children";
 import { curriculumFor } from "@/lib/workbook-curriculum";
 
 const BC = curriculumFor("bc")!;
+const progressPreview = createProgressPreview(true);
 // The first level of a grade: where Book 1 starts for a child working at that grade.
 const firstLevel = (g: number) => BC.levels.find((l) => l.schoolGrade === g)!.number;
 const book = (level: number): BookOne => ({
@@ -36,7 +37,11 @@ describe("goalGrade", () => {
   });
 });
 
-describe("progressPreview", () => {
+it("returns null with the goal panel off, even for a report that would have a preview", () => {
+  expect(createProgressPreview(false)(sampleReportWithBook())).toBeNull();
+});
+
+describe("progressPreview with the panel enabled", () => {
   it("counts every planned book from the start level to the goal grade, a book every 2 weeks from 5 weeks after the test", () => {
     const p = progressPreview(view(1, 3))!;
     // Grades 1 and 2 hold 10 books each; Book 1 starts on 16 December 2026; 20 books later is 22 September 2027.

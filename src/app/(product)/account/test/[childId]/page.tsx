@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { userAgent } from "next/server";
-import { bandFor, createAdaptiveSession, readsAloudFirst, type Grade } from "@/lib/assessment";
+import { bandFor, createAdaptiveSession, type Grade } from "@/lib/assessment";
 import { stateFor } from "@/lib/test-attempt";
 import { parentStartStates } from "@/lib/test-attempt-server";
 import { pageMetadata } from "@/lib/metadata";
@@ -51,5 +51,5 @@ export default async function TestPage(props: PageProps<"/account/test/[childId]
   const afterBreak = state.kind === "resume" && state.afterBreak === true;
   // #253: every answer is in and the next step is the part 2 grid: "Check your answers, then press Done checking."
   const checkGrid = state.kind === "finish" && state.checkGrid === true;
-  return <TakeTest childId={child.id} name={child.first_name} breakAfter={band.stage1} ready={ready} done={state.kind === "wait"} mode={mode} typing={band.whiteboardTyping} afterBreak={afterBreak} checkGrid={checkGrid} readFirst={readsAloudFirst(grade)} />;
+  return <TakeTest childId={child.id} name={child.first_name} breakAfter={band.stage1} ready={ready} done={state.kind === "wait"} mode={mode} typing={band.whiteboardTyping} afterBreak={afterBreak} checkGrid={checkGrid} />;
 }

@@ -1,0 +1,24 @@
+{
+  "issue": 1173,
+  "data": "Invented assessment and family fixtures. Report and Parent home use the same sample data with legacy and v2 wording. The email was rendered locally.",
+  "browser": "Aside, account u0, against npm run dev",
+  "before": {
+    "report": "before-report.png",
+    "reportEmail": "before-email.png",
+    "parentHome": "before-home.png"
+  },
+  "after": {
+    "report": "after-report.png",
+    "reportRetake": "after-report-retake.png",
+    "reportEmail": "after-email.png",
+    "parentHome": "after-home.png"
+  },
+  "flow": [
+    { "image": "flow-01.png", "description": "Review after question 12 with eight correct at the starting grade." },
+    { "image": "flow-02.png", "description": "Question 13 starts six more questions at that grade." },
+    { "image": "flow-03.png", "description": "Review after question 36." },
+    { "image": "flow-04.png", "description": "The second break before question 37, with 36 completed questions shown against the 72-question cap." },
+    { "image": "flow-05.png", "description": "Question 37 resumes the assessment." }
+  ],
+  "flowMethod": "Numbered snapshots of the actual test components using states from a scripted version 2 attempt. Intermediate questions are omitted."
+}

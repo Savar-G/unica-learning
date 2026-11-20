@@ -115,6 +115,7 @@ export function checkAreaLevels(tests: readonly CheckedTest[]): AreaLevelCheck {
     const counts = groups[t.group];
     counts.tests++;
     if (!answersAddUp(t.answers, t.placement)) inputMismatches.push(t.id);
+    if (t.placement.workingLevel === null) continue;
     const unreliable = t.placement.pace?.unreliable === true;
     for (const bar of areaLevels({ answers: t.answers, schoolGrade: t.placement.grade, workingLevel: t.placement.workingLevel })) {
       const reported = t.placement.strands.find((s) => s.strand === bar.area);

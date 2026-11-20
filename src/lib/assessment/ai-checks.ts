@@ -213,7 +213,7 @@ export function reportFacts(m: ReportModel) {
   return {
     child: REPORT_TEXT_NAME,
     school_grade: LEVEL(m.level.grade),
-    working_level: LEVEL(m.level.working),
+    working_level: m.level.working === null ? null : LEVEL(m.level.working),
     // A Grade 9 test from before D-158 checked up to grade 8 only, so its level is compared with grade 8, never grade 9.
     ...(m.level.grade > comparedGrade(m.level)
       ? { highest_level_the_test_checks: LEVEL(comparedGrade(m.level)), working_level_against_highest_level_tested: m.howWeHelp === "on-grade" ? "the same" : "below" }

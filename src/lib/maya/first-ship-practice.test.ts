@@ -1,18 +1,22 @@
-// The controller faults the first-ship paid practice run found (PR #698, traces first-ship-68eb43d4, D-298). Each script
-// replays the run's child words on the scripted model; `{ throws: true }` is the run's 402: Maya's model gave no proposal.
 import { describe, expect, it } from "vitest";
-import { readAnswer, readOptionsFor } from "@/lib/maya";
+import { createSession, drawOffers, fallbacks, lineOffers, PHRASE_ACTS, PHRASE_GROUPS, phraseOffers, PHRASES, type Proposal, PROPOSAL_SCHEMA, readAnswer, readOptionsFor, SAFETY_GUIDANCE, type Session, type SessionEvent, step, type StepResult, TEMPLATES, valuesIn } from "@/lib/maya";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
+import { type Behaviour, judge, memoryTraceStore, type Plan, type Read, runBehaviour, scenarioModel, type Step } from "@/lib/maya-gate/gate";
+import { fakeMayaModel } from "@/lib/maya-model-fake";
 import { createTextSession } from "@/lib/maya-text";
-import { checkQuestionPackage, workedSteps, type Operation } from "@/lib/question-package";
-import { judge, memoryTraceStore, runBehaviour, scenarioModel, type Behaviour, type Plan, type Read, type Step } from "@/lib/maya-gate/gate";
-import type { OperationPackage } from "@/lib/question-package";
+import { CALM_PHRASES, FEELING_SMALLTALK, hardFeeling, NEUTRAL_SMALLTALK } from "@/lib/maya/phrases";
+import { ACTS } from "@/lib/maya/proposal";
+import { celebratoryTemplate, firstShipWordings } from "@/lib/maya/session";
+import { checkQuestionPackage, type Operation, type OperationPackage, workedSteps } from "@/lib/question-package";
 
 const THROWS: Plan[] = [{ throws: true }];
+
 const down = (text: string): Step => ({ child: text, maya: THROWS });
+
 const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
 
 interface Told { act: string | undefined; step: string | undefined; level: number | undefined; lines: string[]; say: string }
+
 async function play(fixture: Behaviour["fixture"], steps: Step[]) {
   const b: Behaviour = { id: "first-ship", title: "first ship", fixture, status: "passing", steps, expect: { outcome: {} } };
   const store = memoryTraceStore();
@@ -631,5 +635,518 @@ describe("C04: the fallback path keeps to the hint ladder", () => {
     const close = told.find((t) => t.act === "close")!;
     expect(close.lines).toEqual(["close.stuck", "close.together"]);
     expect(close.say).not.toMatch(/\b66\b/);
+  });
+});
+
+describe("backup handling", () => {
+  const n=(value:number)=>({type:'number',value});
+
+  function rig(pkg=FIXTURES.A, grade?:number){
+   let s=createSession({grade,callId:'independent-r3',package:pkg});let at=1000;const trace:unknown[]=[];
+   const send=(e:Record<string, unknown>)=>{at=(e.at as number|undefined)??at;const before={state:s.state,ladder:s.ladder,finalMisses:s.finalMisses,done:s.done,passed:s.passed,exampleShown:s.exampleShown};const r=step(s,{at,...e} as SessionEvent);s=r.session;trace.push({event:e,before,refusal:r.refusal,effects:r.effects});return r;};
+   const child=(text:string,extra={})=>send({type:'child_turn',at:at+4000,text,...extra});
+   const prop=(p:Record<string, unknown>,extra={})=>send({type:'proposal',proposal:{version:2,...p},...extra});
+   const fb=(refused:unknown[]=[]): {act:string; text?:string; proposal?:Proposal; effects?:unknown[]; rejects?:unknown[]}=>{const rejects=[];for(const p of fallbacks(s,refused as Parameters<typeof fallbacks>[1])){const r=prop(p as unknown as Record<string, unknown>,{fallback:true});if(!r.refusal)return {act:p.act,text:r.effects.filter(e=>e.kind==='say').map(e=>e.text).join(' '),effects:r.effects,proposal:p};rejects.push(r.refusal);}return {act:'DEAD',rejects};};
+   const show=(id:string)=>{expect(prop({act:'guide',step:id,level:3,parts:[{line:'step.show',slots:{step:id}}],reading:{help:'show'}}).refusal).toBeNull();};
+   send({type:'start'});expect(fb().act).toBe('open');
+   return {get s(){return s},trace,send,child,prop,fb,show};
+  }
+
+  function setup(stage:string){const r=rig();if(stage==='h3'||stage==='passed'||stage==='example'){r.child('Show me the ones.');r.show('ones');}
+   if(stage==='passed'||stage==='example'){r.child('16.');r.fb();r.child('Show me the tens.');r.show('tens');r.child('6.');r.fb();expect(r.s.passed).toEqual(['ones','tens']);}
+   if(stage==='done'){r.child('7 plus 9 is 16.');r.fb();r.child('2 plus 3 plus 1 is 6.');r.fb();expect(r.s.done).toEqual(['ones','tens']);}
+   if(stage==='example'){r.child("I'm stuck.");for(let i=0;i<8&&r.s.expect==='maya'&&!r.s.outcome;i++)expect(r.fb().act).not.toBe('DEAD');expect(r.s.exampleShown).toBe(FIXTURES.A.easierExample!.steps.length);}
+   return r;}
+
+  it('refuses the answer after a wrong shown column', () => {
+   const r=setup('h3'); r.child('15.');
+   const p={act:'give_answer',parts:[],reading:{answers:[{value:n(15),step:'ones',verdict:'wrong'}]}};
+   expect(r.prop(p).refusal).not.toBeNull();
+   const out=r.fb([p]); expect(out.act).toBe('close'); expect(out.text ?? '').not.toMatch(/\b66\b/); expect(r.s.assistance).not.toContain('answer_given');
+  });
+
+  it('does not count repeated operand lists as committed answers', () => {
+   const r=setup('passed');
+   for(let i=0;i<2;i++){r.child('27 39');const p={act:'give_answer',parts:[],reading:{answers:[{value:n(39),step:'result',verdict:'wrong'}]}};const direct=r.prop(p);expect(direct.refusal).not.toBeNull();const out=r.fb([p]);expect(out.text ?? '').not.toMatch(/\b66\b/);}
+   expect(r.s.finalMisses).toBe(0);
+  });
+
+  it.each(["A", "B", "C"] as const)("does not release the %s answer on model, retained and fallback paths", (id) => {
+   const pkg = FIXTURES[id];
+   const answer = pkg.answer!.value;
+   expect(answer.type).toBe("number");
+   for (const turn of ["Help.", "I'm stuck.", "Is it 15?", "Maybe 15.", "You said 15.", "15.", "27 39"]) {
+    for (const mode of ["model", "kept", "fallback"] as const) {
+     const r = rig(pkg); r.child(turn);
+     const proposal = { act: "give_answer", parts: [], reading: { answers: [{ value: n(15), step: "result", verdict: "wrong" }] } };
+     const rejected = r.prop(proposal); expect(rejected.refusal).not.toBeNull();
+     const out = r.fb(mode === "fallback" ? [] : [proposal]);
+     expect(out.act).not.toBe("give_answer");
+     expect(out.act).not.toBe("DEAD");
+     const text = out.text ?? "";
+     expect(valuesIn(text).some((v) => v.type === "number" && answer.type === "number" && v.value === answer.value)).toBe(false);
+    }
+   }
+  });
+
+  it('closes after two committed final misses without the answer', () => {
+   const r=setup('done');
+   for(const value of [56,65]) {
+    r.child(`${value}.`);
+    const p={act:'give_answer',parts:[],reading:{answers:[{value:n(value),step:'result',verdict:'wrong'}]}};
+    expect(r.prop(p).refusal).not.toBeNull();
+    const out=r.fb([p]);
+    expect(out.act).toBe(value===65 ? 'close' : 'guide');
+    expect(out.text ?? '').not.toMatch(/\b66\b/);
+   }
+   expect(r.s.finalMisses).toBe(2);
+   expect(r.s.outcome?.reason).toBe('maya_closed');
+   expect(r.s.assistance).not.toContain('answer_given');
+  });
+
+  it("does not expose give_answer to the model schema", () => {
+   expect(PROPOSAL_SCHEMA.properties.act.enum).not.toContain("give_answer");
+  });
+
+  it.each(["A", "B", "C"] as const)("keeps the %s answer private in the closing minute", (id) => {
+   const pkg=FIXTURES[id]; const answer=pkg.answer!.value; const r=rig(pkg);
+   r.send({type:"tick",at:542000}); r.child("I'm stuck.");
+   const p={act:"give_answer",parts:[],reading:{answers:[{value:n(15),step:"result",verdict:"wrong"}]}};
+   expect(r.prop(p).refusal).not.toBeNull();
+   const out=r.fb([p]); expect(out.act).not.toBe("DEAD");
+   expect(valuesIn(out.text ?? "").some(v => v.type === "number" && answer.type === "number" && v.value === answer.value)).toBe(false);
+  });
+
+  it('uses only close.stuck when the expression contains the answer', async () => {
+   const { workedSteps, checkQuestionPackage } = await import('@/lib/question-package');
+   const operation={kind:'add' as const, operands:[3,0] as [number,number]};
+   const easier={kind:'add' as const, operands:[1,0] as [number,number]};
+   const pkg={...FIXTURES.A,text:'3 + 0 = ?',operation,steps:workedSteps(operation),wrongAnswers:[{value:n(4) as {type:'number';value:number},cause:'O3',description:'Wrong sum',step:null}],answer:{value:n(3) as {type:'number';value:number},accepted:[],unit:null},easierExample:{text:'1 + 0 = ?',operation:easier,answer:n(1) as {type:'number';value:number},steps:workedSteps(easier)}};
+   expect(checkQuestionPackage(pkg), JSON.stringify(checkQuestionPackage(pkg))).toMatchObject({ok:true});
+   const r=rig(pkg); r.send({type:'tick',at:542000}); r.child("I'm stuck.");
+   const out=r.fb(); expect(out.act).toBe('close');
+   expect(out.proposal?.parts.map((p)=>('line' in p ? p.line : undefined))).toEqual(['close.stuck']);
+   expect(out.text ?? '').not.toMatch(/\b3\b/);
+  });
+
+  it('uses both approved close lines when the expression does not contain the answer', () => {
+   const r=setup('done');
+   for(const value of [56,65]) {
+    r.child(`${value}.`);
+    const p={act:'give_answer',parts:[],reading:{answers:[{value:n(value),step:'result',verdict:'wrong'}]}};
+    r.prop(p); const out=r.fb([p]);
+    if(value===65) expect(out.proposal?.parts.map((part)=>('line' in part ? part.line : undefined))).toEqual(['close.stuck','close.together']);
+   }
+  });
+
+  it('requires both honest close lines in the closing minute after work', () => {
+   const r=setup('done');
+   r.send({type:'tick',at:542000}); r.child("I'm stuck.");
+   const alone={act:'close',parts:[{line:'close.stuck'}]};
+   expect(r.prop(alone).refusal).not.toBeNull();
+   expect(r.prop({act:'close',parts:[{line:'close.stuck'},{line:'close.together'}]}).refusal).toBeNull();
+  });
+
+  it.each([
+   ['add',3,0,1,0], ['subtract',2,1,1,1], ['multiply',6,1,2,1],
+   ['add',0,1,0,0], ['multiply',9,4,2,2], ['add',7,7,2,2],
+  ] as const)('does not offer a final-answer show for %s %i %i', async (kind,a,b,x,y) => {
+   const { workedSteps, checkQuestionPackage } = await import('@/lib/question-package');
+   const operation={kind,operands:[a,b] as [number,number]};
+   const easier={kind,operands:[x,y] as [number,number]};
+   const calculate=(k:string,u:number,v:number)=> k==='add'?u+v:k==='subtract'?u-v:u*v;
+   const answer=calculate(kind,a,b); const easyAnswer=calculate(kind,x,y);
+   const pkg={...FIXTURES.A,text:`${a} ? ${b}`,operation,steps:workedSteps(operation),answer:{value:n(answer) as {type:'number';value:number},accepted:[],unit:null},wrongAnswers:[{value:n(answer+2) as {type:'number';value:number},cause:'O3',description:'Wrong result',step:null}],easierExample:{text:`${x} ? ${y}`,operation:easier,answer:n(easyAnswer) as {type:'number';value:number},steps:workedSteps(easier)}};
+   expect(checkQuestionPackage(pkg),JSON.stringify(checkQuestionPackage(pkg))).toMatchObject({ok:true});
+   const r=rig(pkg); const id=pkg.steps[0].id; r.child('Show me.');
+   expect(lineOffers(r.s).guide?.some(o=>o.line==='step.show' && o.slots.step===id) ?? false).toBe(false);
+   expect(drawOffers(r.s).guide?.some(o=>o.id==='line.step.show') ?? false).toBe(false);
+   for (const draw of [undefined,[{offer:'line.step.show'}]]) {
+     expect(r.prop({act:'guide',step:id,level:3,parts:[{line:'step.show',slots:{step:id}}],reading:{help:'show'},...(draw?{draw}:{})}).refusal).not.toBeNull();
+   }
+   const out=r.fb(); expect(out.act).not.toBe('DEAD');
+   expect(out.proposal?.parts.some(p=>'line' in p && p.line==='step.show')).toBe(false);
+  });
+
+  it('accepts the honest close for answer one in the closing minute', async () => {
+   const { workedSteps } = await import('@/lib/question-package');
+   const operation={kind:'subtract' as const,operands:[2,1] as [number,number]};
+   const easier={kind:'subtract' as const,operands:[1,1] as [number,number]};
+   const pkg={...FIXTURES.B,text:'2 - 1 = ?',operation,steps:workedSteps(operation),answer:{value:n(1) as {type:'number';value:number},accepted:[],unit:null},wrongAnswers:[{value:n(3) as {type:'number';value:number},cause:'O3',description:'Wrong difference',step:null}],easierExample:{text:'1 - 1 = ?',operation:easier,answer:n(0) as {type:'number';value:number},steps:workedSteps(easier)}};
+   const r=rig(pkg,2); r.send({type:'tick',at:542000}); r.child('I am stuck.');
+   const out=r.fb(); expect(out.act).toBe('close'); expect(out.proposal?.parts.map(p=>'line' in p && p.line)).toEqual(['close.stuck']);
+   expect(r.s.outcome?.reason).not.toBe('technical_issue');
+  });
+
+  it('still offers the non-final ones show for 27 + 39', () => {
+   const r=rig(); r.child('Show me.');
+   expect(lineOffers(r.s).guide?.some(o=>o.line==='step.show' && o.slots.step==='ones')).toBe(true);
+   r.show('ones');
+  });
+
+  it('refuses a math slot that equals the answer', async () => {
+   const { workedSteps } = await import('@/lib/question-package');
+   const operation = { kind: 'add' as const, operands: [3, 0] as [number, number] };
+   const easier = { kind: 'add' as const, operands: [0, 0] as [number, number] };
+   const pkg = { ...FIXTURES.A, operation, steps: workedSteps(operation), text: '3 + 0',
+    answer: { value: { type: 'number' as const, value: 3 }, accepted: [], unit: null },
+    wrongAnswers: [{ value: { type: 'number' as const, value: 4 }, cause: 'O3', description: 'Wrong sum', step: null }],
+    easierExample: { text: '0 + 0', operation: easier, answer: { type: 'number' as const, value: 0 }, steps: workedSteps(easier) } };
+   const r = rig(pkg); r.child('Help.');
+   expect(r.prop({ act: 'guide', step: pkg.steps[0].id, level: 1, parts: [{ line: 'step.point', slots: { step: pkg.steps[0].id } }] }).refusal).toMatchObject({ code: 'reveals_answer' });
+  });
+});
+
+describe("calm tone", () => {
+  function after(text: string) {
+    let s = createSession({ callId: "calm-698", package: FIXTURES.A, grade: 2, random: 1 });
+    s = step(s, { type: "start", at: 1000 }).session;
+    for (const proposal of fallbacks(s)) {
+      const result = step(s, { type: "proposal", at: 1000, proposal, fallback: true });
+      s = result.session;
+      if (!result.refusal) break;
+    }
+    return step(s, { type: "child_turn", at: 5000, text }).session;
+  }
+
+  it.each(["I love my puppy but we had to give him away.", "I am happy for my friend but I feel left out.", "I won a prize but my friends call me names."])("withholds happy phrases after %s", (text) => {
+    expect(phraseOffers(after(text), "happy")).toEqual([]);
+  });
+
+  it("withholds the fun question reply on a miserable turn", () => {
+    expect(phraseOffers(after("I feel miserable."), "aboutmaya").map((offer) => offer.pick)).not.toContain(12);
+  });
+
+  it("classifies every position and keeps all allow-list positions valid and unique", () => {
+    expect(Object.keys(CALM_PHRASES).sort()).toEqual([...PHRASE_GROUPS].sort());
+    for (const group of PHRASE_GROUPS) {
+      const calm = CALM_PHRASES[group];
+      expect(new Set(calm).size).toBe(calm.length);
+      expect(calm.every((pick) => Number.isInteger(pick) && pick >= 1 && pick <= PHRASES[group].length)).toBe(true);
+      expect(PHRASES[group].map((_, i) => calm.includes(i + 1) ? "calm" : "not calm")).toHaveLength(PHRASES[group].length);
+    }
+  });
+
+  it.each(["I'm so happy!", "I won!", "I feel great!", "Yay!", "I'm excited!"])("withholds happy replies after %s", (text) => {
+    expect(phraseOffers(after(text), "happy")).toEqual([]);
+  });
+
+  it.each(["I am happy but I am alone.", "I am happy, but alone.", "I am happy. I am alone.", "I am happy because I have a puppy today.", "I am not happy.", "I don't feel happy.", "I am happy although alone."])("withholds cheer after %s", (text) => {
+    expect(phraseOffers(after(text), "happy")).toEqual([]);
+  });
+
+  it("offers only calm choices on sad, mixed, and neutral turns across the bank", () => {
+    for (const text of ["I feel sad.", "I feel miserable.", "I love my puppy but we had to give him away.", "I am happy for my friend but I feel left out.", "I won a prize but my friends call me names.", "Hello there."]) {
+      const s = after(text);
+      for (const group of PHRASE_GROUPS) {
+        expect(phraseOffers(s, group).every(({ pick }) => CALM_PHRASES[group].includes(pick)), `${text}: ${group}`).toBe(true);
+      }
+    }
+  });
+
+  // One case per child turn (CI took 95 s for the whole walk in one test): the same full walk, split so each case is short.
+  it.each(["I feel sad.", "I feel miserable.", "I love my puppy but we had to give him away.", "I am happy for my friend but I feel left out.", "I won a prize but my friends call me names.", "Hello there.", "I'm happy and heartbroken.", "I'm proud despite my grief.", "I love my dad in heaven.", "I love my dog 😭", "I'm so happy!", "I won!", "Yay!"])("never emits a non-calm bank phrase across warm acts, choices, and echoes after %s", (text) => {
+    {
+      const s = after(text);
+      for (const act of ACTS) for (const group of PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(act))) {
+        for (let pick = 0; pick <= PHRASES[group].length; pick++) for (const echo of PHRASES[group].some((p) => p.includes("{echo}")) ? [undefined, "my puppy"] : [undefined]) {
+          const parts: Record<string, unknown>[] = [{ warm: group, ...(pick ? { pick } : {}), ...(echo ? { echo } : {}) }];
+          if (act === "redirect") parts.push({ line: "redirect.back" });
+          if (act === "guide") parts.push({ line: "step.invite", slots: { step: "ones" } });
+          if (act === "open") parts.push({ line: "open.hello" });
+          const proposal = { version: 2, act, parts, ...(act === "redirect" ? { reading: { offTopic: true } } : act === "close" ? { reading: { stop: true } } : act === "wait" ? { reading: { writing: true } } : {}), ...(act === "guide" ? { step: "ones", level: 0 } : {}) };
+          const result = step(s, { type: "proposal", at: 6000, proposal } as Parameters<typeof step>[1]);
+          if (result.refusal) continue;
+          const said = result.effects.filter((e) => e.kind === "say").map((e) => e.text).join(" ");
+          const eligible = [...CALM_PHRASES[group].map((i) => PHRASES[group][i - 1]), ...FEELING_SMALLTALK, ...NEUTRAL_SMALLTALK];
+          const matches = eligible.some((phrase) => {
+            const pattern = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\\\{echo\\\}/g, ".+?").replace(/,? \\\{name\\\}/g, "(?:,? .+?)?");
+            return new RegExp(pattern, "i").test(said);
+          });
+          expect(matches, `${text}: ${act} ${group}.${pick} echo=${echo}: ${said}`).toBe(true);
+        }
+      }
+    }
+  });
+});
+
+describe("example collision", () => {
+  it.each([
+    { target: [52, 48], answer: 4, example: [4, 1], exampleAnswer: 3 },
+    { target: [52, 28], answer: 24, example: [24, 7], exampleAnswer: 17 },
+    { target: [52, 48], answer: 4, example: [52, 28], exampleAnswer: 24 },
+  ])("closes safely when an example operand is the answer: $answer", async (c) => {
+    const operation = { kind: "subtract" as const, operands: c.target as [number, number] };
+    const easier = { kind: "subtract" as const, operands: c.example as [number, number] };
+    const pkg = { ...FIXTURES.B, text: `${c.target[0]} - ${c.target[1]} = ?`, operation,
+      answer: { value: { type: "number" as const, value: c.answer }, accepted: [], unit: null }, steps: workedSteps(operation),
+      easierExample: { text: `${c.example[0]} - ${c.example[1]} = ?`, operation: easier,
+        answer: { type: "number" as const, value: c.exampleAnswer }, steps: workedSteps(easier) } };
+    expect(checkQuestionPackage(pkg).ok).toBe(true);
+    let at = 1000;
+    const session = createTextSession({ callId: "collision", package: pkg, grade: 2, clock: () => at,
+      model: fakeMayaModel({ answer: () => { throw new Error("model unavailable"); } }) });
+    await session.start();
+    let output;
+    for (let i = 0; i < 12; i++) {
+      at += 4000;
+      output = await session.child("I'm stuck.");
+      if (output.ended) break;
+    }
+    expect(output?.ended?.reason).toBe("maya_closed");
+    expect(output?.say.join(" ")).toContain("We worked on");
+  });
+
+  it.each(Object.entries(FIXTURES))("has a fallback for help sequences on fixture %s", async (_id, pkg) => {
+    const help = ["I'm stuck.", "Help.", "Show me."];
+    for (const first of help) for (const second of help) for (const third of help) {
+      let at = 1000;
+      const session = createTextSession({ callId: "help-invariant", package: pkg, grade: 2, clock: () => at,
+        model: fakeMayaModel({ answer: () => { throw new Error("model unavailable"); } }) });
+      let output = await session.start();
+      const turns = [first, second, third];
+      for (let i = 0; i < 20 && !output.ended; i++) {
+        at += 4000;
+        output = await session.child(turns[i] ?? "I'm stuck.");
+      }
+      expect(output.ended, turns.join(" / ")).not.toBeNull();
+      expect(output.ended?.reason, turns.join(" / ")).not.toBe("technical_issue");
+    }
+  }, 30000);
+
+  it("has a fallback when the model reads no start before an unsafe example", async () => {
+    const operation = { kind: "subtract" as const, operands: [52, 48] as [number, number] };
+    const easier = { kind: "subtract" as const, operands: [4, 1] as [number, number] };
+    const pkg = { ...FIXTURES.B, text: "52 - 48 = ?", operation,
+      answer: { value: { type: "number" as const, value: 4 }, accepted: [], unit: null }, steps: workedSteps(operation),
+      easierExample: { text: "4 - 1 = ?", operation: easier, answer: { type: "number" as const, value: 3 }, steps: workedSteps(easier) } };
+    let at = 1000;
+    const model = fakeMayaModel({ answer: () => ({ version: 2, act: "example_step", parts: [], reading: { start: "no_start" } }) });
+    const session = createTextSession({ callId: "collision-no-start", package: pkg, grade: 2, clock: () => at, model });
+    await session.start(); at += 4000;
+    const out = await session.child("I don't know how to start.");
+    expect(out.ended?.reason).toBe("maya_closed");
+    expect(out.say.join(" ")).toContain("We worked on");
+  });
+
+  it.each(["Help.", "Help!", "help me"])("escapes repeated bare %s requests with the model down", async (help) => {
+    let at = 1000;
+    const session = createTextSession({ callId: "bare-help", package: FIXTURES.A, grade: 2, clock: () => at,
+      model: fakeMayaModel({ answer: () => { throw new Error("model unavailable"); } }) });
+    let output = await session.start();
+    for (let i = 0; i < 20 && !output.ended; i++) {
+      at += 4000;
+      output = await session.child(help);
+    }
+    expect(output.ended?.reason).toBe("maya_closed");
+  });
+
+  it.each([[2, 1], [12, 11]])("closes safely with answer 1 for %i - %i when the model is down", async (a, b) => {
+    const operation = { kind: "subtract" as const, operands: [a, b] as [number, number] };
+    const easier = { kind: "subtract" as const, operands: (a === 2 ? [1, 1] : [4, 2]) as [number, number] };
+    const pkg = { ...FIXTURES.B, text: `${a} - ${b} = ?`, operation, steps: workedSteps(operation),
+      answer: { value: { type: "number" as const, value: 1 }, accepted: [], unit: null },
+      wrongAnswers: [{ value: { type: "number" as const, value: 3 }, cause: "O3" as const, description: "Wrong difference", step: null }],
+      easierExample: { text: `${easier.operands[0]} - ${easier.operands[1]} = ?`, operation: easier, answer: { type: "number" as const, value: easier.operands[0] - easier.operands[1] }, steps: workedSteps(easier) } };
+    expect(checkQuestionPackage(pkg), JSON.stringify(checkQuestionPackage(pkg))).toMatchObject({ ok: true });
+    let at = 1000;
+    const session = createTextSession({ callId: "answer-one", package: pkg, grade: 2, clock: () => at,
+      model: fakeMayaModel({ answer: () => { throw new Error("model unavailable"); } }) });
+    let output = await session.start();
+    for (let i = 0; i < 20 && !output.ended; i++) { at += 4000; output = await session.child("I'm stuck."); }
+    expect(output.ended?.reason).toBe("maya_closed");
+    expect(output.say.join(" ")).toMatch(/stop/i);
+  });
+
+  it.each([[3, 0], [0, 1]])("advances on repeated help for %i + %i with the model down", async (a, b) => {
+    const operation = { kind: "add" as const, operands: [a, b] as [number, number] };
+    const easier = { kind: "add" as const, operands: [0, 0] as [number, number] };
+    const pkg = { ...FIXTURES.A, text: `${a} + ${b}`, operation, steps: workedSteps(operation),
+      answer: { value: { type: "number" as const, value: a + b }, accepted: [], unit: null },
+      wrongAnswers: [{ value: { type: "number" as const, value: 9 }, cause: "O3", description: "Wrong sum", step: null }],
+      easierExample: { text: "0 + 0", operation: easier, answer: { type: "number" as const, value: 0 }, steps: workedSteps(easier) } };
+    expect(checkQuestionPackage(pkg), JSON.stringify(checkQuestionPackage(pkg))).toMatchObject({ ok: true });
+    let at = 1000;
+    const session = createTextSession({ callId: "help-zero", package: pkg, grade: 2, clock: () => at,
+      model: fakeMayaModel({ answer: () => { throw new Error("offline"); } }) });
+    let output = await session.start();
+    for (let i = 0; i < 20 && !output.ended; i++) { at += 4000; output = await session.child("Help."); }
+    expect(output.ended?.reason).toBe("maya_closed");
+  });
+});
+
+describe("feelings phrases", () => {
+  describe("hard feelings", () => {
+    it.each(["I'm not happy.", "I'm not good.", "I don't feel good.", "I'm not okay.", "I feel down.", "Nobody likes me.", "I have no friends.", "I'm lonely."])("reads %s as hard", (text) => {
+      expect(hardFeeling(text)).toBe(true);
+    });
+    it("reads a resolved worry as resolved", () => {
+      expect(hardFeeling("I am not worried anymore!")).toBe(false);
+    });
+    it("keeps a separate hard feeling after a resolved worry", () => {
+      expect(hardFeeling("I am not worried anymore, but I am sad.")).toBe(true);
+    });
+  });
+
+  it.each(["I am not very happy.", "I am not feeling good.", "I do not feel so good.", "I feel really down.", "No one likes me.", "I don’t feel good."])("recognizes a hard feeling: %s", (text) => {
+    expect(hardFeeling(text)).toBe(true);
+  });
+
+  it.each(["I feel really bad.", "I am not at all happy.", "I feel bad.", "I feel so bad.", "I am feeling bad.", "I am not even happy.", "I am not really good."])("reads negative feeling %s", (text) => {
+    expect(hardFeeling(text)).toBe(true);
+  });
+
+  it.each(["I'm not sad anymore!", "I won!"])("keeps positive or resolved feeling %s", (text) => {
+    expect(hardFeeling(text)).toBe(false);
+  });
+});
+
+describe("first-ship cheer off", () => {
+  function after(text: string, freeTalk = false) {
+    let s = createSession({ callId: "first-ship-cheer", package: FIXTURES.A, grade: 2, random: 1, freeTalk });
+    s = step(s, { type: "start", at: 1000 }).session;
+    for (const proposal of fallbacks(s)) {
+      const result = step(s, { type: "proposal", at: 1000, proposal, fallback: true });
+      s = result.session;
+      if (!result.refusal) break;
+    }
+    return step(s, { type: "child_turn", at: 5000, text }).session;
+  }
+
+  it.each(["I'm happy and heartbroken.", "I'm proud despite my grief.", "I love my dad in heaven.", "I love my dog 😭"])("withholds cheer after %s", (text) => {
+    const s = after(text);
+    expect(phraseOffers(s, "happy")).toEqual([]);
+    const result = step(s, { type: "proposal", at: 6000, proposal: { version: 2, act: "clarify", parts: [{ warm: "happy" }] } });
+    expect(result.effects.filter((e) => e.kind === "say").map((e) => e.text).join(" ")).not.toMatch(/yay|happy mood/i);
+  });
+
+  it("offers only calm positions for positive turns in every group", () => {
+    for (const text of ["I'm so happy!", "I won!", "Yay!"]) for (const group of PHRASE_GROUPS) {
+      expect(phraseOffers(after(text), group).every(({ pick }) => CALM_PHRASES[group].includes(pick)), `${text}: ${group}`).toBe(true);
+    }
+  });
+
+  it.each(["Yay!", "What a happy day!", "How nice!", "How wonderful!", "Lovely to hear!", "Have a great day!"])("replaces reviewed cheerful free talk %s", (talk) => {
+    const s = after("I love my dog 😭", true);
+    const result = step(s, { type: "proposal", at: 6000, proposal: { version: 2, act: "clarify", parts: [{ talk }] }, talkReviews: [{ text: talk, result: { verdict: "pass" } }] });
+    expect(result.refusal).toBeNull();
+    const said = result.effects.find((e) => e.kind === "say");
+    expect(said?.text).not.toContain(talk);
+  });
+
+  it("keeps a calm pool and an accepted fallback for each turn type", () => {
+    for (const text of ["I'm so happy!", "I won!", "Yay!", "Hello there.", "I am sad.", "I am happy but alone.", "Do you have a dog?", "", "Help.", "I'm happy and heartbroken.", "I'm proud despite my grief.", "I love my dad in heaven.", "I love my dog 😭"]) {
+      const s = after(text);
+      for (const group of PHRASE_GROUPS) {
+        const offers = phraseOffers(s, group);
+        expect(offers.every(({ pick }) => CALM_PHRASES[group].includes(pick)), `${text}: ${group}`).toBe(true);
+        // Empty or echo-only groups use one of the smalltalk replacements.
+        const direct = offers.filter(({ text: phrase }) => !phrase.includes("{echo}"));
+        expect(direct.length || CALM_PHRASES.smalltalk.length, `${text}: ${group}`).toBeGreaterThan(0);
+      }
+      const accepted = fallbacks(s).map((proposal) => step(s, { type: "proposal", at: 6000, proposal, fallback: true })).find((result) => !result.refusal);
+      expect(accepted, text).toBeDefined();
+      expect(accepted?.session.outcome?.reason, text).not.toBe("technical_issue");
+    }
+  });
+});
+
+describe("first-ship close", () => {
+  // Final #698 review (D-310): with first-ship cheer off, the solved close is calm (close.checked), never close.solved.
+  const say = (r: StepResult) => r.effects.flatMap((e) => (e.kind === "say" ? [e.text] : [])).join(" ");
+
+  const CHEERFUL_CLOSES = TEMPLATES["close.solved"].map((t) => t.replace("{expr}", "27 + 39"));
+
+  describe("first-ship solved close is calm", () => {
+    it.each([1, 2, 3, 4, 5, 6, 7, 8])("seed %i: a child-solved close never says a close.solved wording", (random) => {
+      let s: Session = step(createSession({ callId: "fixed-close", package: FIXTURES.A, grade: 2, random }), { type: "start", at: 1000 }).session;
+      const fb = () => {
+        for (const p of fallbacks(s)) {
+          const r = step(s, { type: "proposal", at: s.now!, proposal: p, fallback: true });
+          if (!r.refusal) { s = r.session; return r; }
+        }
+        throw Error("no fallback");
+      };
+      const child = (text: string) => { s = step(s, { type: "child_turn", at: s.now! + 4000, text }).session; };
+      fb(); child("Seven plus nine is sixteen."); fb(); child("Two plus three plus one is six."); fb(); child("66."); fb(); child("I'm done.");
+      const close = say(fb());
+      for (const cheer of CHEERFUL_CLOSES) expect(close).not.toContain(cheer);
+      expect(close).not.toMatch(/Great job|Well done|Nice work|You did it/i);
+    });
+  });
+});
+
+describe("first-ship calm templates", () => {
+  // Final #698 re-check (D-310): with first-ship cheer off, no fixed template wording that celebrates is said.
+  const say = (r: StepResult) => r.effects.flatMap((e) => (e.kind === "say" ? [e.text] : [])).join(" ");
+
+  const num = (value: number) => ({ type: "number" as const, value });
+
+  describe("first-ship template wordings are calm", () => {
+    it("every template keeps at least one calm wording, so no line loses all its wordings", () => {
+      const empty = Object.entries(TEMPLATES).filter(([, ws]) => firstShipWordings(ws as readonly string[]).length === 0).map(([k]) => k);
+      expect(empty).toEqual([]);
+    });
+
+    it("no celebratory wording is ever chosen while cheer is off", () => {
+      for (const [key, ws] of Object.entries(TEMPLATES)) {
+        for (const i of firstShipWordings(ws as readonly string[])) expect(celebratoryTemplate((ws as readonly string[])[i]), `${key}#${i}`).toBe(false);
+      }
+    });
+
+    it("correctness feedback is not treated as celebration", () => {
+      expect(celebratoryTemplate("That's right: 27 + 39 = 66.")).toBe(false);
+      expect(celebratoryTemplate("Tell me how you did it.")).toBe(false);
+      expect(celebratoryTemplate("Well done! 27 + 39 = 66.")).toBe(true);
+      expect(celebratoryTemplate("You did it: 27 + 39 is done!")).toBe(true);
+    });
+
+    it.each([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])("seed %i: an accepted right answer never says a celebratory answer.right wording", (random) => {
+      let s: Session = step(createSession({ callId: "template-recheck", package: FIXTURES.A, grade: 4, random }), { type: "start", at: 1000 }).session;
+      for (const p of fallbacks(s)) { const r = step(s, { type: "proposal", at: 1000, proposal: p, fallback: true }); if (!r.refusal) { s = r.session; break; } }
+      s = step(s, { type: "child_turn", at: 5000, text: "66." }).session;
+      const r = step(s, { type: "proposal", at: 5000, proposal: { version: 2, act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [{ value: num(66), step: "result", verdict: "right" }] } } });
+      expect(r.refusal, JSON.stringify(r.refusal)).toBeNull();
+      expect(say(r)).not.toMatch(/Well done|Nice!|Smart!|Great job/);
+    });
+  });
+});
+
+describe("retained copy and safety close", () => {
+  describe("#698 round 5 review regressions", () => {
+    it("keeps a safe next step when a refused reading credits a copied H3 step", async () => {
+      const model = scenarioModel();
+      const raw = { version: 2, act: "guide", step: "tens", level: 0,
+          parts: [{ line: "check.right_step", slots: { step: "ones" } }, { line: "step.invite", slots: { step: "tens" } }],
+          reading: { answers: [{ value: { type: "number", value: 16 }, step: "ones", verdict: "right" }] } };
+      let now = 1000;
+      const session = createTextSession({ callId: "retained-copy", package: FIXTURES.A, model, clock: () => now, random: 1 });
+      await session.start();
+      model.next([{ act: "guide", step: "ones", level: 3, lines: ["step.show"] }], { help: "show" });
+      now += 4000; await session.child("Show me the ones.");
+      expect(session.session.ladder.hint).toBe(3);
+      model.next([{ throws: true }], undefined);
+      now += 4000; await session.child("Um.");
+      model.next([{ raw, repair: { throws: true } }], undefined);
+      now += 4000;
+      const output = await session.child("I get 16 for the ones.");
+      expect(output.ended?.reason).not.toBe("technical_issue");
+      expect(session.session.passed).toContain("ones");
+      expect(session.session.done).not.toContain("ones");
+      expect(output.say.join(" ")).not.toContain("66");
+    });
+
+    it.each([false, true])("closes after safety guidance without model or bank words, free talk %s", async (freeTalk) => {
+      const model = fakeMayaModel({ answer(_input, n) {
+        if (n === 0) return { version: 2, act: "open", parts: [{ line: "open.hello" }] };
+        if (n === 1) return { version: 2, act: "safety", parts: [], reading: { safety: "concern" } };
+        return { version: 2, act: "close", parts: [{ warm: "smalltalk", pick: PHRASES.smalltalk.indexOf("Let's save the stories for later.") + 1 }] };
+      } });
+      const session = createTextSession({ callId: "safety-close", package: FIXTURES.A, model, clock: () => 1000, random: 1, freeTalk });
+      await session.start();
+      const output = await session.child("Someone at home hits me. Don't tell.");
+      expect(output.ended).toMatchObject({ reason: "safety", safetyFlag: true });
+      expect(output.say).toEqual([SAFETY_GUIDANCE.concern]);
+    });
   });
 });

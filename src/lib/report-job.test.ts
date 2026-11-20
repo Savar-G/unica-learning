@@ -72,7 +72,7 @@ const cohort: ComparisonTest[] = [
  * (#126, #195). `comparison` counts the comparison reads.
  */
 function database({
-  unsubscribed = false, parent = PRIYA as (typeof PRIYA & { phone?: string | null }) | null, child = true, helped = false, rushed = false, learning = null as ProfileLearning | null,
+  unsubscribed = false, parent = PRIYA as (typeof PRIYA & { phone?: string | null }) | null, child = true, helped = false, rushed = false, retake = false, learning = null as ProfileLearning | null,
 } = {}) {
   const tables: MemoryReportTables = {
     reports: [],
@@ -80,6 +80,7 @@ function database({
       id: TEST, parentId: "parent-1", childId: "child-1", status: "completed", grade: 4, province: "BC", completedAt: "2026-10-10T12:00:00Z",
       placement: {
         ...placement,
+        ...(retake && { workingLevel: null, adaptiveVersion: 2 as const }),
         ...(helped ? { flags: [{ kind: "helped" as const, answer: "yes" as const }] } : {}),
         // #189: 12 of 36 answers very fast, 3 of them wrong ones in a run.
         ...(rushed ? { pace: { veryFast: 12, answers: 36, leftOut: ["s1-0", "s1-1", "s1-2"], unreliable: true } } : {}),
@@ -1058,4 +1059,23 @@ describe("the learner profile's AI parts", () => {
       for (const secret of ["short daily sets", MODEL, "buildId"]) expect(body).not.toContain(secret);
     }
   });
+});
+
+it("sends a retake report without publishing a level, learner profile or first pages", async () => {
+  const db = database({ rushed: true, retake: true });
+  const mail = memoryTransport();
+  const firstPages = vi.fn();
+  await runReportJob(TEST, ORIGIN, {
+    reader: db.readers.key(), comparison: db.comparison, store: db.job.store,
+    profiles: db.profiles.store, reviewer: null, transport: mail.transport,
+    ledger: memoryReportLedger().ledger, firstPages,
+  });
+  expect(db.tables.reports?.[0]?.model.level.working).toBeNull();
+  expect(db.profiles.rows()).toHaveLength(0);
+  expect(firstPages).not.toHaveBeenCalled();
+  expect(db.comparison).not.toHaveBeenCalled();
+  expect(mail.delivered[0].subject).toContain("retake");
+  const page = await reportPage(db);
+  expect(page.text).toContain("Please retake the test");
+  expect(page.text).not.toContain("Working level:");
 });

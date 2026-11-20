@@ -8,18 +8,14 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "rea
 import { Button } from "@/ds";
 import type { HelpAnswer } from "@/lib/assessment";
 import { Choices, type ChoiceOption } from "./test-choices";
-import { ReadAloud } from "./test-read-aloud";
 import "./test-base.css";
 import "./test-help.css";
 
-// The read-aloud text names the choices in the same order as the rows.
 const CHOICES: ChoiceOption<HelpAnswer>[] = [
   { value: "yes", label: "Yes" },
   { value: "a-little", label: "A little" },
   { value: "no", label: "No" },
 ];
-
-const READ_ALOUD = "One last question. Did anyone help you? Any answer is fine. Choose yes, a little, or no.";
 
 export interface TestHelpProps {
   /** Sends the answer and finishes the test. Resolves false when it failed and the child can press Finish again. */
@@ -47,7 +43,6 @@ export function TestHelp({ onAnswer, problem }: TestHelpProps) {
       <div className="test-pane test-pane-l">
         <p className="test-kicker">One last question</p>
         <div className="test-qrow">
-          <ReadAloud text={READ_ALOUD} />
           <h1 id="test-help-title" ref={heading} tabIndex={-1} className="test-prompt">Did anyone help you?</h1>
         </div>
         <p className="test-help-lead">Any answer is fine. It helps us pick the right level for you.</p>

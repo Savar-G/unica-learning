@@ -188,7 +188,7 @@ describe("a finished test's answers", () => {
   it("give a full-marks child no bar below the school grade", () => {
     const session = take(4, 11, 1);
     const placement = finish(session);
-    const bars = areaLevels({ answers: testAreaAnswers(session), schoolGrade: 4, workingLevel: placement.workingLevel });
+    const bars = areaLevels({ answers: testAreaAnswers(session), schoolGrade: 4, workingLevel: placement.workingLevel! });
     expect(bars.map((b) => b.area)).toEqual(["number", "fractions", "algebra", "shapes"]);
     expect(bars.filter((b) => b.label === "building-up")).toEqual([]);
   });

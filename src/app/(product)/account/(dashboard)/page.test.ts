@@ -1,10 +1,13 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Account from "./page";
 import StartScreen from "../start/[child]/page";
 import type { ParentNote } from "@/lib/parent-maya-notes";
 import type { ChildView } from "@/lib/parent-view";
+import * as preview from "@/lib/progress-preview";
+import * as progressServer from "@/lib/progress-preview-server";
+import { sampleReportWithBook } from "@/lib/sample-book-one";
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ usePathname: () => "/account", useRouter: () => ({}), redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); } }));
@@ -22,8 +25,23 @@ vi.mock("@/components/plan-closed-note", () => ({
 }));
 const scanning = vi.hoisted(() => ({ enabled: false }));
 vi.mock("@/lib/scan-pages-access", () => ({ scanPagesAccess: async () => scanning.enabled }));
-const progress = vi.hoisted(() => ({ value: new Map<string, import("@/lib/progress-preview-server").HomeProgress>(), reads: null as string[][] | null }));
-vi.mock("@/lib/progress-preview-server", () => ({ homeProgress: async (_db: unknown, _parent: string, reports: { child_id: string }[]) => { progress.reads?.push(reports.map((r) => r.child_id)); return new Map([...progress.value].filter(([id]) => reports.some((r) => r.child_id === id))); } }));
+vi.mock("@/lib/report-loading-server", () => ({ parentReportReader: () => ({}) }));
+vi.mock("@/lib/report-loading", () => ({
+  loadReportView: async () => {
+    const sample = sampleReportWithBook();
+    const level = family.reportVersion === 2
+      ? { ...sample.model.level, adaptiveVersion: family.reportVersion, working: 1 as const, mastered: true }
+      : sample.model.level;
+    const model = family.retakeReport
+      ? { ...sample.model, level: { ...level, working: null }, reliability: { veryFast: 18, answers: 30 } }
+      : { ...sample.model, level };
+    return {
+      view: { ...sample, model, childName: family.retakeReport ? "Asha" : "Sample child", completedAt: new Date().toISOString() },
+      childId: "c1",
+      assessmentId: "a1",
+    };
+  },
+}));
 const notes = vi.hoisted(() => ({ latest: new Map<string, ParentNote>() }));
 vi.mock("@/lib/parent-maya-notes", async (original) => ({ ...await original<typeof import("@/lib/parent-maya-notes")>(), latestParentMayaNotes: async () => notes.latest }));
 
@@ -33,12 +51,16 @@ vi.mock("@/lib/parent-dashboard-server", () => ({
   parentDashboard: async () => dashboard.value,
   dashboardOverview: async () => { overview.reads++; return overview.value; },
 }));
-const family = vi.hoisted(() => ({ postal: "V3S 1A1" as string | null, timeZone: null as string | null, olderChild: false, card: false, signedOut: false, report: false }));
+const family = vi.hoisted(() => ({ postal: "V3S 1A1" as string | null, timeZone: null as string | null, olderChild: false, card: false, signedOut: false, report: false, reportVersion: null as 2 | null, retakeReport: false }));
 const opensAt = Date.parse("2026-11-18T04:29:00Z");
+const start = vi.hoisted(() => ({
+  state: { kind: "wait", completedAt: Date.parse("2026-10-19T04:29:00Z"), opensAt: Date.parse("2026-11-18T04:29:00Z") } as import("@/lib/assessment").StartState,
+}));
 vi.mock("@/lib/test-attempt-server", () => ({
-  parentStartStates: async () => new Map([["c1", { kind: "wait", completedAt: Date.parse("2026-10-19T04:29:00Z"), opensAt: Date.parse("2026-11-18T04:29:00Z") }]]),
+  parentStartStates: async () => new Map([["c1", start.state]]),
 }));
 vi.mock("@/lib/supabase-auth", () => ({
+  adminClient: () => null,
   parentId: async () => (family.signedOut ? null : "p1"),
   sessionClient: async () => ({
     from: (table: string) => ({
@@ -47,12 +69,12 @@ vi.mock("@/lib/supabase-auth", () => ({
         const rows: Record<string, Record<string, unknown>[]> = {
           parents: [{ name: "Alex Family", email: "alex@example.com", postal: family.postal, time_zone: family.timeZone }],
           children: [{ id: "c1", parent_id: "p1", created_at: "2021-01-01", first_name: "Asha", grade: 3, province: "BC" }, ...(family.olderChild ? [{ id: "z-old", parent_id: "p1", created_at: "2020-01-01", first_name: "Sam", grade: 4, province: "ON" }] : [])],
-          reports: family.report ? [{ id: "r1", child_id: "c1" }] : [],
+          reports: family.report ? [{ id: "r1", child_id: "c1", adaptive_version: family.reportVersion }] : [],
           // Both children have a test, so the goals step (D-325) does not stop the start screen.
           assessments: [{ child_id: "c1" }, { child_id: "z-old" }],
           card_setups: family.card ? [{ card_saved_at: "2026-11-01T00:00:00Z" }] : [{ card_saved_at: null }],
         };
-        let data = (rows[table] ?? []).map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => columns.split(/,\s*/).includes(key))));
+        let data = (rows[table] ?? []).map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => columns.split(/,\s*/).some(column => column === key || column.startsWith(`${key}:`)))));
         const query = {
           order: (key: string) => { if (key === "created_at") data.sort((a, b) => String(a[key]).localeCompare(String(b[key]))); return query; },
           eq: (key: string, value: string) => { if (key === "id") data = data.filter((r) => r.id === value); return query; },
@@ -67,7 +89,24 @@ vi.mock("@/lib/supabase-auth", () => ({
   }),
 }));
 
-beforeEach(() => { chats.value = new Map(); dashboard.value = null; overview.value = null; overview.reads = 0; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; family.report = false; family.signedOut = false; scanning.enabled = false; notes.latest = new Map(); progress.value = new Map(); progress.reads = null; });
+beforeEach(() => {
+  start.state = { kind: "wait", completedAt: Date.parse("2026-10-19T04:29:00Z"), opensAt };
+  chats.value = new Map();
+  dashboard.value = null;
+  overview.value = null;
+  overview.reads = 0;
+  family.postal = "V3S 1A1";
+  family.timeZone = null;
+  family.olderChild = false;
+  family.card = false;
+  family.report = false;
+  family.reportVersion = null;
+  family.retakeReport = false;
+  family.signedOut = false;
+  scanning.enabled = false;
+  notes.latest = new Map();
+});
+afterEach(() => vi.restoreAllMocks());
 
 it("a signed-out parent signs in and comes back to the child the link named (#563)", async () => {
   family.signedOut = true;
@@ -158,29 +197,32 @@ it("R425M-3: account and a younger child's start use the oldest sibling's provin
   }
 });
 
-it("shows the goal sentence from the child's newest report, with a link to the report's plan", async () => {
+it.each([false, true])("shows the goal sentence and its link on Parent home only when enabled: %s", async (enabled) => {
   family.report = true;
-  const render = async () => renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
-  expect(await render()).not.toContain("We can help");
-  progress.value = new Map([["c1", { href: "/account/report/r1#rpt-progress", preview: {
-    name: "Asha", today: 1, goal: 3, todayLabel: "Grade 1 level", goalLabel: "Grade 3 level", goalMonth: "September 2027",
-    sentence: { lead: "We can help Asha reach a ", goal: "grade 3 level", by: "September 2027" }, rows: [], books: [1, 1, 2], stages: [],
-    steps: [{ title: "A new workbook every 2 weeks", text: "" }, { title: "8 pages a day, 5 days a week", text: "" }, { title: "We mark the finished pages", text: "" }], basis: "",
-  } }]]);
-  const out = await render();
-  expect(out).toContain("We can help Asha reach a <b>grade 3 level</b> by <b>September 2027</b>.");
-  expect(out).toContain("3 workbooks, 8 pages a day, 5 days a week.");
-  expect(out).toContain('href="/account/report/r1#rpt-progress"');
+  vi.spyOn(preview, "progressPreview").mockImplementation(preview.createProgressPreview(enabled));
+  const out = renderToStaticMarkup(await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) }));
+  expect(out).toContain('class="acct-kids"');
+  if (enabled) {
+    expect(out).toContain("We can help Sample child reach a <b>grade 3 level</b> by <b>");
+    expect(out).toContain('href="/account/report/r1#rpt-progress"');
+  } else {
+    expect(out).not.toMatch(/acct-goal|rpt-progress|#goal|We can help|See how .* gets there|See the plan/i);
+  }
+});
+
+it("keeps the v2 placement and report link on Parent home with the goal panel hidden", async () => {
+  family.report = true;
+  family.reportVersion = 2;
+  const out = renderToStaticMarkup(await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) }));
+  expect(out).toContain("Sample child has mastered Grade 1 work");
+  expect(out).toContain('href="/account/report/r1"');
+  expect(out).not.toMatch(/rpt-progress|#goal|We can help|See the plan|take the test again/i);
 });
 
 it("shows no goal sentence once the child has a shipped workbook, and reads only the shown child's report on the dashboard", async () => {
   family.report = true;
-  const asked: string[][] = [];
-  progress.reads = asked;
-  progress.value = new Map([["c1", { href: "/account/report/r1#rpt-progress", preview: {
-    name: "Asha", today: 1, goal: 3, todayLabel: "", goalLabel: "", goalMonth: "September 2027", sentence: { lead: "We can help Asha reach a ", goal: "grade 3 level", by: "September 2027" },
-    rows: [], books: [1], stages: [], steps: [{ title: "", text: "" }, { title: "8 pages a day, 5 days a week", text: "" }, { title: "", text: "" }], basis: "",
-  } }]]);
+  const loadProgress = vi.spyOn(progressServer, "homeProgress");
+  vi.spyOn(preview, "progressPreview").mockImplementation(preview.createProgressPreview(true));
   mayaNotice.books = [{ id: "w1", childId: "c1", number: 1, status: "shipped" }];
   let out: string;
   try {
@@ -189,7 +231,7 @@ it("shows no goal sentence once the child has a shipped workbook, and reads only
     mayaNotice.books = [];
   }
   // The loader is told to skip a child with a shipped workbook (the real one is never called for it).
-  expect(asked.at(-1)).toEqual([]);
+  expect(loadProgress.mock.lastCall?.[2]).toEqual([]);
   expect(out).not.toContain("We can help");
 });
 
@@ -451,6 +493,17 @@ describe("a family the switch opens to", () => {
       for (const gone of ["Level by area", "Working at", "po-bar", "po-maya", "Notes from Maya", "po-action", "Tell us how", "po-summary", "Monthly summary", "We can help", "pd-test", "On the desk"]) expect(out).not.toContain(gone);
     });
 
+    it("lets a parent start an eligible v2 retake beside an active workbook", async () => {
+      family.report = true;
+      family.reportVersion = 2;
+      family.retakeReport = true;
+      start.state = { kind: "start", retake: true };
+      const out = await render(full());
+      expect(out).toContain("Workbook 2</p>");
+      expect(out).toContain('href="/account/test/c1"');
+      expect(out).toContain("The next test is open. It has new questions.");
+    });
+
     it("links the Today row to the Workbooks page at today's day (#1031), and leaves no link once the book's last day has passed", async () => {
       const out = await render(full());
       expect(out).toContain('<a class="po-today" href="/account/workbooks/c1?day=4#day-4">');
@@ -577,4 +630,26 @@ it("tells a closed family why the product is closed; a family with no plan reads
   const out = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
   planNote.closed = null;
   expect(out).toContain("Your plan is closed, on home");
+});
+
+it("shows a v2 retake on Parent home after a workbook has shipped", async () => {
+  family.report = true;
+  family.reportVersion = 2;
+  family.retakeReport = true;
+  start.state = { kind: "start", retake: true };
+  mayaNotice.books = [{ id: "w1", childId: "c1", number: 1, status: "shipped" }];
+  try {
+    const page = await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) });
+    const out = renderToStaticMarkup(createElement("div", null, page));
+    expect(out).toContain("please have Asha take the test again.");
+    expect(out).toContain('href="/account/report/r1"');
+    expect(out).not.toContain("We can help");
+    expect(out).toContain('href="/account/test/c1"');
+    const screen = await StartScreen({ params: Promise.resolve({ child: "c1" }), searchParams: Promise.resolve({}) });
+    const html = renderToStaticMarkup(screen);
+    expect(html).toContain('href="/account/test/c1"');
+    expect(html).toContain("The next test is open. It has new questions.");
+  } finally {
+    mayaNotice.books = [];
+  }
 });

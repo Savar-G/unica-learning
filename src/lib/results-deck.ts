@@ -161,6 +161,13 @@ export function bookLevelNote(name: string, working: number, bookGrade: number):
 function childOf({ view: v, pages = [] }: DeckInput): DeckChild {
   const name = v.childName;
   const { working, grade } = v.model.level;
+  if (working === null) return {
+    name, schoolGrade: gradeName(grade), working: "Retake",
+    stats: `${v.questions} questions · ${v.minutes} min`,
+    rushed: v.model.leftOut ?? 0,
+    ladder: [], areas: [], strong: [], fill: [], answers: [],
+    levelNote: "Please retake the test.", book: null, chat: false, pages: [],
+  };
   const book = bookOf(v);
   const start = v.bookOne?.next.grade ?? working;
   const goal = Math.max(grade, start + 1);

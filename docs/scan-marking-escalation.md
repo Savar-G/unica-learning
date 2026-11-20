@@ -19,7 +19,7 @@ Decision 2026-11-13 (Cedric): the answers scan marking leaves unsure get one mor
 
 ## Safety gate (D-267), 2026-11-14
 
-Script: `scripts/scan-marking-escalation-eval.mjs`. Raw results: `docs/scan-marking-escalation-results-20261114.json`. All inputs are made-up Robin data, and the model call is the one production makes: Opus 5.5 with the second-look rule, on the production route, one attempt.
+Script: `scripts/scan-marking-escalation-eval.mjs`. Raw results: `docs/archive/scan-marking-escalation-results-20261114.json`. All inputs are made-up Robin data, and the model call is the one production makes: Opus 5.5 with the second-look rule, on the production route, one attempt.
 
 | Part | What was asked | Asked | Marked by Opus | Wrong marks | Wrong answer marked right |
 |---|---|---|---|---|---|

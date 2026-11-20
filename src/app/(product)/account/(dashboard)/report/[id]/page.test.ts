@@ -1,10 +1,15 @@
-import { createElement } from "react";
+import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import SampleReportPage from "@/app/(site)/sample-report/page";
+import AdminReportPage from "@/app/(product)/admin/reports/[id]/page";
 import ReportPage from "./page";
 import type { ParentDashboard } from "@/lib/parent-dashboard-server";
 import type { ChildView } from "@/lib/parent-view";
+import * as preview from "@/lib/progress-preview";
+import { sampleReportWithBook } from "@/lib/sample-book-one";
 import { sampleReportView } from "@/lib/sample-children";
+import type { LoadedReport } from "@/lib/report-loading";
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ usePathname: () => "/account/report/sample-report",
@@ -17,16 +22,23 @@ const ID = "11111111-1111-4111-8111-111111111111";
 const CHILD = "22222222-2222-4222-8222-222222222222";
 const state = vi.hoisted(() => ({
   dashboard: null as ParentDashboard | null,
-  report: null as { view: ReturnType<typeof import("@/lib/sample-children").sampleReportView>; childId: string } | null,
+  report: null as (Omit<LoadedReport, "assessmentId"> & { assessmentId?: string }) | null,
   retake: null as Awaited<ReturnType<typeof import("@/lib/test-attempt-server").parentRetakeState>>,
   offer: { monthly: 79.99, window: "new" } as import("@/lib/family-plan-words").FamilyPlanOffer | null,
   saved: false,
   joined: false,
 }));
-vi.mock("@/lib/family-plan-offer-server", () => ({ loadFamilyPlanOffer: async () => state.offer }));
+const { planOffer, firstPages } = vi.hoisted(() => ({
+  planOffer: vi.fn(async () => state.offer),
+  firstPages: vi.fn<() => Promise<import("@/components/report-first-pages").FirstPagesView["pages"] | null>>(async () => null),
+}));
+vi.mock("@/lib/family-plan-offer-server", () => ({ loadFamilyPlanOffer: planOffer }));
+vi.mock("@/lib/first-pages-server", () => ({ firstPagesForReport: firstPages }));
 vi.mock("@/lib/parent-dashboard-server", () => ({ parentDashboard: async () => state.dashboard }));
 vi.mock("@/lib/report-loading", () => ({ loadReportView: async () => state.report }));
-vi.mock("@/lib/report-loading-server", () => ({ parentReportReader: () => ({}) }));
+vi.mock("@/lib/report-loading-server", () => ({ parentReportReader: () => ({}), adminReportReader: () => ({}) }));
+vi.mock("@/lib/admin-store", () => ({ requireAdmin: async () => ({ email: "admin@example.test" }) }));
+vi.mock("@/components/admin-frame", () => ({ AdminFrame: ({ children }: { children: ReactNode }) => children }));
 vi.mock("@/lib/email-clicks", () => ({ recordReportEmailClick: async () => undefined }));
 vi.mock("@/lib/test-attempt-server", () => ({ parentRetakeState: async () => state.retake }));
 vi.mock("@/lib/supabase-auth", () => ({
@@ -50,13 +62,43 @@ vi.mock("@/lib/supabase-auth", () => ({
 const open = async (query: Record<string, string> = {}) =>
   renderToStaticMarkup(createElement("div", null, await ReportPage({ params: Promise.resolve({ id: ID }), searchParams: Promise.resolve(query) })));
 
+afterEach(() => vi.restoreAllMocks());
+
 beforeEach(() => {
+  planOffer.mockClear();
+  firstPages.mockReset();
+  firstPages.mockResolvedValue(null);
   state.dashboard = null;
   state.report = { view: { ...sampleReportView(), id: ID }, childId: CHILD };
   state.retake = null;
   state.offer = { monthly: 79.99, window: "new" };
   state.saved = false;
   state.joined = false;
+});
+
+describe.each([false, true])("report goal panel enabled: %s", (enabled) => {
+  beforeEach(() => {
+    vi.spyOn(preview, "progressPreview").mockImplementation(preview.createProgressPreview(enabled));
+    state.report = { view: { ...sampleReportWithBook(), id: ID }, childId: CHILD, assessmentId: ID };
+  });
+
+  it.each([
+    ["parent", () => open()],
+    ["admin", async () => renderToStaticMarkup(await AdminReportPage({ params: Promise.resolve({ id: ID }), searchParams: Promise.resolve({}) }))],
+    ["public sample", () => renderToStaticMarkup(createElement(SampleReportPage))],
+  ])("renders the %s report with the goal section only when enabled", async (_report, render) => {
+    const html = await render();
+    expect(html).toContain('id="rpt-book-one"');
+    expect(html).toContain("The details");
+    if (enabled) {
+      expect(html).toContain('id="rpt-progress"');
+      expect(html).toContain("We can help");
+      expect(html).toContain('class="rpt-goal-t"');
+      expect(html).toContain('class="rpt-goal-legend"');
+    } else {
+      expect(html).not.toMatch(/rpt-goal|rpt-progress|#goal|We can help|How we get .* there|See the plan/i);
+    }
+  });
 });
 
 // The golden files were written from the page before the rail existed (#552). They may change only with a change to the
@@ -102,6 +144,15 @@ describe("a family the switch opens to", () => {
 
   describe("report_ready_bc", () => {
     beforeEach(() => family());
+
+    it("has no goal panel or link to it when the parent dashboard is open", async () => {
+      vi.spyOn(preview, "progressPreview").mockImplementation(preview.createProgressPreview(false));
+      state.report = { view: { ...sampleReportWithBook(), id: ID }, childId: CHILD, assessmentId: ID };
+      const out = await open();
+      expect(main(out)).toContain('id="rpt-book-one"');
+      expect(main(out)).toContain("The details");
+      expect(out).not.toMatch(/rpt-goal|rpt-progress|#goal|We can help|How we get .* there|See the plan/i);
+    });
 
     it("shows the whole report, with one Start plan button beside it and none in it", async () => {
       const out = await open();
@@ -243,6 +294,27 @@ describe("a family the switch opens to", () => {
       state.retake = { kind: "opens", at: Date.parse("2026-11-04T23:12:00Z") };
       expect(await open()).not.toContain("The next test opens");
     });
+  });
+
+  it.each([false, true])("shows only the retake report and skips plan and first-page reads (dashboard: %s)", async (dashboard) => {
+    if (dashboard) family();
+    const sampled = sampleReportWithBook();
+    state.report = {
+      childId: CHILD,
+      view: {
+        ...sampled, id: ID,
+        model: { ...sampled.model, level: { ...sampled.model.level, adaptiveVersion: 2, working: null },
+          reliability: { veryFast: 18, answers: 30 } },
+      },
+    };
+    state.retake = { kind: "open", resume: false };
+    firstPages.mockResolvedValueOnce([{ number: 1, kind: "cover", url: "/fixture-cover.png", width: 400, height: 500 }]);
+    const out = await open({ step: "plan" });
+    expect(out).toContain("Please retake the test");
+    expect(out).toContain(`href="/account/start/${CHILD}"`);
+    expect(out).not.toMatch(/rpt-next|rpt-plans|Checking your card|Workbook 1|first pages|rpt-call|Results call|Working level/);
+    expect(planOffer).not.toHaveBeenCalled();
+    expect(firstPages).not.toHaveBeenCalled();
   });
 
   it("keeps today's page for a child who is not in the family's list", async () => {

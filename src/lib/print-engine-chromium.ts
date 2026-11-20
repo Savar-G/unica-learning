@@ -306,6 +306,61 @@ export function stoppableStart<T extends { close(): Promise<void> }>(start: () =
   });
 }
 
+async function printWithPage(page: Awaited<ReturnType<Awaited<ReturnType<typeof puppeteer.launch>>["newPage"]>>, job: Parameters<PrintEngine["print"]>[0], timeoutMs: number) {
+  await page.setViewport({ width: job.page.width, height: job.page.height, deviceScaleFactor: job.scale });
+  await page.emulateMediaType("print");
+  await page.setContent(job.html, { waitUntil: "load", timeout: timeoutMs });
+  await page.evaluate("document.fonts.ready.then(() => true)");
+  const found = await page.evaluate(MEASURE) as (Omit<MeasuredElement, "textPrinted"> & { runs: Run[] })[];
+  const tops = await page.evaluate(SHEET_TOPS) as number[];
+  if (tops.length !== job.sheets) throw new Error(`print engine: ${tops.length} sheets for ${job.sheets}`);
+  const shoot = (top: number) => page.screenshot({
+    type: "png", captureBeyondViewport: true, clip: { x: 0, y: top, width: job.page.width, height: job.page.height },
+  });
+  const images = [];
+  for (const [i, top] of tops.entries()) {
+    const png = await shoot(top);
+    const qr = found.find((m) => m.sheet === i && m.name === "qr");
+    images.push({ png, ...pngSize(png), qrText: await readQr(png, qr, job.scale) });
+  }
+  const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
+
+  // Then the ink check: the PDF and the page images above are done.
+  const spreads = await page.evaluate(SPREADS) as boolean[];
+  // Each piece's lines, once: a piece inside nested marked elements is measured once for each.
+  const lines = new Map<number, Map<string, Rect>>();
+  for (const m of found) {
+    for (const { node, x, y, width, height } of m.runs) {
+      if (!lines.has(node)) lines.set(node, new Map());
+      if (width > 0) lines.get(node)!.set(lineKey({ node, x, y, width, height }), { x, y, width, height });
+    }
+  }
+  const after = await page.evaluate(INK_SPANS) as Rect[][];
+  for (const [node, rs] of lines) {
+    if (![...rs.values()].every((r, i) => sameRect(r, after[node][i])) || rs.size !== after[node].length) {
+      throw new Error(`print engine: text moved when put in a span for the ink check (piece ${node})`);
+    }
+  }
+  const hide = await page.addStyleTag({ content: "/* ink check */" });
+  const inkedLines = new Set<string>();
+  for (const [i, top] of tops.entries()) {
+    const pieces = new Map([...lines]
+      .filter(([node]) => found.some((m) => m.sheet === i && m.runs.some((r) => r.node === node)))
+      .map(([node, rs]) => [node, [...rs.values()]]));
+    if (!pieces.size) continue;
+    const withText = await grey(images[i].png);
+    for (const set of inkSets(pieces, spreads[i])) {
+      await hide.evaluate((el, css) => { el.textContent = css; }, `${set.map((n) => `[data-ink="${n}"]`).join(",")}{opacity:0!important}`);
+      const withoutText = await grey(await shoot(top));
+      for (const node of set) {
+        for (const r of pieces.get(node)!) if (inked(r, withText, withoutText, job.scale)) inkedLines.add(lineKey({ ...r, node }));
+      }
+    }
+  }
+  const measured = found.map(({ runs, ...m }) => ({ ...m, textPrinted: textPrinted(runs, inkedLines) }));
+  return { pdf, pdfPages: pdfPageCount(pdf), images, measured };
+}
+
 export function chromiumPrintEngine(): PrintEngine {
   return {
     async print(job) {
@@ -322,60 +377,85 @@ export function chromiumPrintEngine(): PrintEngine {
       try {
         job.signal?.throwIfAborted();
         const page = await browser.newPage();
-        await page.setViewport({ width: job.page.width, height: job.page.height, deviceScaleFactor: job.scale });
-        await page.emulateMediaType("print");
-        await page.setContent(job.html, { waitUntil: "load", timeout: timeoutMs });
-        await page.evaluate("document.fonts.ready.then(() => true)");
-        const found = await page.evaluate(MEASURE) as (Omit<MeasuredElement, "textPrinted"> & { runs: Run[] })[];
-        const tops = await page.evaluate(SHEET_TOPS) as number[];
-        if (tops.length !== job.sheets) throw new Error(`print engine: ${tops.length} sheets for ${job.sheets}`);
-        const shoot = (top: number) => page.screenshot({
-          type: "png", captureBeyondViewport: true, clip: { x: 0, y: top, width: job.page.width, height: job.page.height },
-        });
-        const images = [];
-        for (const [i, top] of tops.entries()) {
-          const png = await shoot(top);
-          const qr = found.find((m) => m.sheet === i && m.name === "qr");
-          images.push({ png, ...pngSize(png), qrText: await readQr(png, qr, job.scale) });
-        }
-        const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
-
-        // Then the ink check: the PDF and the page images above are done.
-        const spreads = await page.evaluate(SPREADS) as boolean[];
-        // Each piece's lines, once: a piece inside nested marked elements is measured once for each.
-        const lines = new Map<number, Map<string, Rect>>();
-        for (const m of found) {
-          for (const { node, x, y, width, height } of m.runs) {
-            if (!lines.has(node)) lines.set(node, new Map());
-            if (width > 0) lines.get(node)!.set(lineKey({ node, x, y, width, height }), { x, y, width, height });
-          }
-        }
-        const after = await page.evaluate(INK_SPANS) as Rect[][];
-        for (const [node, rs] of lines) {
-          if (![...rs.values()].every((r, i) => sameRect(r, after[node][i])) || rs.size !== after[node].length) {
-            throw new Error(`print engine: text moved when put in a span for the ink check (piece ${node})`);
-          }
-        }
-        const hide = await page.addStyleTag({ content: "/* ink check */" });
-        const inkedLines = new Set<string>();
-        for (const [i, top] of tops.entries()) {
-          const pieces = new Map([...lines]
-            .filter(([node]) => found.some((m) => m.sheet === i && m.runs.some((r) => r.node === node)))
-            .map(([node, rs]) => [node, [...rs.values()]]));
-          if (!pieces.size) continue;
-          const withText = await grey(images[i].png);
-          for (const set of inkSets(pieces, spreads[i])) {
-            await hide.evaluate((el, css) => { el.textContent = css; }, `${set.map((n) => `[data-ink="${n}"]`).join(",")}{opacity:0!important}`);
-            const withoutText = await grey(await shoot(top));
-            for (const node of set) {
-              for (const r of pieces.get(node)!) if (inked(r, withText, withoutText, job.scale)) inkedLines.add(lineKey({ ...r, node }));
-            }
-          }
-        }
-        const measured = found.map(({ runs, ...m }) => ({ ...m, textPrinted: textPrinted(runs, inkedLines) }));
-        return { pdf, pdfPages: pdfPageCount(pdf), images, measured };
+        return await printWithPage(page, job, timeoutMs);
       } finally {
         await browser.close().catch((e: unknown) => { if (!job.signal?.aborted) throw e; });
+      }
+    },
+  };
+}
+
+/**
+ * Print engine that reuses one headless Chromium process across print calls, opening and closing a fresh tab per job
+ * (avoiding `createBrowserContext`, which disconnects `@sparticuz/chromium`'s `--single-process` headless shell on
+ * Linux). Intended for test suites that print many pages in one file; call `close()` in `afterAll`.
+ */
+export function sharedChromiumPrintEngine(): PrintEngine & { close(): Promise<void> } {
+  type Browser = Awaited<ReturnType<typeof puppeteer.launch>>;
+  let browserPromise: Promise<Browser> | null = null;
+  let closed = false;
+
+  const close = async () => {
+    closed = true;
+    const current = browserPromise;
+    browserPromise = null;
+    if (!current) return;
+    const browser = await current.catch(() => null);
+    if (!browser) return;
+    const proc = browser.process();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        browser.close().catch(() => undefined),
+        new Promise<void>((resolve) => { timer = setTimeout(resolve, 3_000); }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+      if (proc && proc.exitCode === null) {
+        try { proc.kill("SIGKILL"); } catch { /* process already exited */ }
+      }
+    }
+  };
+
+  const getBrowser = async (timeoutMs: number, waitsMs: number[]): Promise<Browser> => {
+    if (closed) closed = false;
+    if (browserPromise) {
+      const existing = await browserPromise.catch(() => null);
+      if (existing && existing.connected) return existing;
+      browserPromise = null;
+    }
+    const chromium = await findChromium();
+    if (!chromium) throw new Error("print engine: no Chromium here; set CHROMIUM_PATH");
+    const launched = startBrowser(() => puppeteer.launch({ ...chromium, headless: true, timeout: timeoutMs }), waitsMs);
+    browserPromise = launched;
+    try {
+      const browser = await launched;
+      browser.once("disconnected", () => { if (browserPromise === launched) browserPromise = null; });
+      return browser;
+    } catch (e) {
+      if (browserPromise === launched) browserPromise = null;
+      throw e;
+    }
+  };
+
+  return {
+    close,
+    async print(job) {
+      job.signal?.throwIfAborted();
+      const { timeoutMs, waitsMs } = browserStartPlan();
+      const browser = await stoppableStart(() => getBrowser(timeoutMs, waitsMs), job.signal);
+      job.signal?.throwIfAborted();
+      const page = await browser.newPage();
+      const onAbort = () => { void page.close().catch(() => undefined); };
+      job.signal?.addEventListener("abort", onAbort, { once: true });
+      try {
+        job.signal?.throwIfAborted();
+        return await printWithPage(page, job, timeoutMs);
+      } finally {
+        job.signal?.removeEventListener("abort", onAbort);
+        if (!page.isClosed()) {
+          await page.close().catch(() => undefined);
+        }
       }
     },
   };
