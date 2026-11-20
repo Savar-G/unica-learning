@@ -614,8 +614,11 @@ export interface BoardSender {
   release(batchId: string, scope: SpeechScope): Promise<SendResult>;
   /** Priority interruption, including requests still in flight. Does not wait for the serial request queue. */
   interrupt(scope: SpeechScope, options?: { prior?: SpeechScope; recover?: boolean }): Promise<ConnectionResult>;
-  /** Drops staged batches and reads the resulting log. Shown strokes stay. */
-  cancel(scope: SpeechScope): Promise<{ ok: true; cancelled: string[] } | SenderFailure>;
+  /**
+   * Drops staged batches and reads the resulting log. Shown strokes stay. `through`: only the staged batches up to that
+   * batch (the receiver also drops a later batch that built on them); default every batch sent so far.
+   */
+  cancel(scope: SpeechScope, through?: string): Promise<{ ok: true; cancelled: string[] } | SenderFailure>;
   /** Reads the board log since the last sync: what the child saw and wrote, and where each batch is. */
   sync(): Promise<boolean>;
   batchState(batchId: string): BatchState | undefined;
@@ -657,6 +660,8 @@ export function createBoardSender(options: { sessionId: string; senderId: string
   };
   /** The sequence number of the next new batch. */
   let sequence = 1;
+  /** The sequence number each batch of this epoch was sent with. */
+  const sentAs = new Map<string, number>();
   let cancels = 0;
   /** The revision of the board Maya plans on. Only complete reads and her own accepted batches move it. */
   let revision = 0;
@@ -781,6 +786,7 @@ export function createBoardSender(options: { sessionId: string; senderId: string
       for (const [id, state] of states) if (state === "accepted") states.set(id, "cancelled");
       epoch = r.epoch;
       sequence = 1;
+      sentAs.clear();
       // The child may have written after the reset acted (its answer may have come on a retry): Maya plans only on a
       // board she has read to the end.
       const synced = await pull(current);
@@ -804,7 +810,7 @@ export function createBoardSender(options: { sessionId: string; senderId: string
     const r = await request(req, current);
     if (!current() || !r) return UNREACHABLE;
     // The receiver decided this batch: the next one gets the next number.
-    if (r.ok || r.code === "refused") sequence++;
+    if (r.ok || r.code === "refused") sentAs.set(batch.transactionId, sequence++);
     if (!r.ok) return { ok: false, code: r.code, reason: r.reason, refusal: r.refusal };
     if (r.type !== "apply") return WRONG_ANSWER;
     // Still staged, nothing else can have changed the board since it was accepted. A retry that finds it shown or
@@ -816,13 +822,15 @@ export function createBoardSender(options: { sessionId: string; senderId: string
     return { ok: true, batchId: r.batchId, state: r.state };
   }
 
-  async function cancel(scope: SpeechScope): Promise<{ ok: true; cancelled: string[] } | SenderFailure> {
+  async function cancel(scope: SpeechScope, throughBatch?: string): Promise<{ ok: true; cancelled: string[] } | SenderFailure> {
     if (stopped) return SUPERSEDED;
     if (!connected) return UNREACHABLE;
     // The batches sent so far, under one id: a late copy of this cancel never touches a batch sent after it.
     const cancelId = `cancel-${++cancels}`;
     const current = ownConnection();
-    const r = await request({ type: "cancel", sessionId, epoch, cancelId, through: sequence - 1, scope }, current);
+    const through = throughBatch === undefined ? sequence - 1 : sentAs.get(throughBatch);
+    if (through === undefined) return { ok: true, cancelled: [] };
+    const r = await request({ type: "cancel", sessionId, epoch, cancelId, through, scope }, current);
     if (!current() || !r) return UNREACHABLE;
     if (!r.ok) return { ok: false, code: r.code, reason: r.reason };
     if (r.type !== "cancel" || r.cancelId !== cancelId) return WRONG_ANSWER;
@@ -870,7 +878,7 @@ export function createBoardSender(options: { sessionId: string; senderId: string
       if (!(await pull(current)) || !current()) return UNREACHABLE;
       return { ok: true, batchId, state: r.state };
     }),
-    cancel: scope => serial(() => cancel(scope)),
+    cancel: (scope, through) => serial(() => cancel(scope, through)),
     sync: () => serial(async () => (await pull()) !== null),
     useTransport(next) {
       connection++;

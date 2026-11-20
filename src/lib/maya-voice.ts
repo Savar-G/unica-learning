@@ -214,6 +214,18 @@ export interface VoiceTuning {
   /** LiveKit interruption `minWords`: words the speech-to-text must have heard before speech stops Maya; 0 is none. */
   interruptMinWords: number;
   /**
+   * LiveKit interruption `mode`, set on every real call so local, self-hosted and LiveKit Cloud workers behave the same.
+   * `vad` (the default, #1147): speech alone pauses Maya, and the worker's backchannel rule lets "mm-hmm" resume her.
+   * `adaptive` runs LiveKit's barge-in model; on 2026-11-20 it was 250 to 400 ms slower at p95 and classed every test
+   * backchannel as an interruption (docs/maya-voice.md, "Backchannels and a faster pause").
+   */
+  interruptMode: "adaptive" | "vad";
+  /**
+   * LiveKit `falseInterruptionTimeout` (ms): after the child's sound ends with no words for Maya (a backchannel, a noise),
+   * how long LiveKit waits before it resumes her paused speech.
+   */
+  falseInterruptionMs: number;
+  /**
    * A final transcript is dropped (never a child turn) only when the local voice activity detector heard no speech at
    * all since the previous final AND the input's peak stayed below this level (dBFS): words "heard" in digital silence
    * (a phantom "Yes!" on a silent microphone). Null: the rule is off. A quiet real answer has detector speech or a
@@ -248,8 +260,12 @@ export const VOICE_TUNING_DEFAULTS: VoiceTuning = {
   sttNumberSilenceMs: 2500,
   turnMinDelayMs: 100,
   numberContinueMs: 1500,
-  interruptMinMs: 300,
+  // #1147 (2026-11-20, real audio): 30 ms pauses Maya with p95 286 ms from the child's sound (300 ms gave 541 ms). A false
+  // pause resumes after 1000 ms with no words (2000 ms left about 3 s of silence after a "mm-hmm").
+  interruptMinMs: 30,
   interruptMinWords: 0,
+  interruptMode: "vad",
+  falseInterruptionMs: 1000,
   // Real speech in two real calls peaked at -2.7 and -2.9 dBFS (mean level -26 and -29.3): -50 is far below any voice.
   dropSilentPeakDbfs: -50,
   // LiveKit Agents 1.9.5's local VAD default (inference/vad.js), set here so a call can change it (2026-11-13).
@@ -264,10 +280,12 @@ const TUNING_SETTINGS = [
   { env: "MAYA_STT_NUMBER_SILENCE_MS", field: "sttNumberSilenceMs", min: 100, max: 10_000 },
   { env: "MAYA_TURN_MIN_DELAY_MS", field: "turnMinDelayMs", min: 0, max: 2000 },
   { env: "MAYA_NUMBER_CONTINUE_MS", field: "numberContinueMs", min: 0, max: 3000 },
-  { env: "MAYA_INTERRUPT_MIN_MS", field: "interruptMinMs", min: 0, max: 2000 },
+  // At 0 every voice activity reading passes LiveKit's minimum, so Maya is cut before she is heard (2026-11-20).
+  { env: "MAYA_INTERRUPT_MIN_MS", field: "interruptMinMs", min: 10, max: 2000 },
+  { env: "MAYA_FALSE_INTERRUPTION_MS", field: "falseInterruptionMs", min: 500, max: 5000 },
   { env: "MAYA_INTERRUPT_MIN_WORDS", field: "interruptMinWords", min: 0, max: 5 },
   { env: "MAYA_DETECTOR_MIN_SILENCE_MS", field: "detectorMinSilenceMs", min: 100, max: 2000 },
-] as const satisfies readonly { env: string; field: Exclude<keyof VoiceTuning, "dropSilentPeakDbfs">; min: number; max: number }[];
+] as const satisfies readonly { env: string; field: Exclude<keyof VoiceTuning, "dropSilentPeakDbfs" | "interruptMode">; min: number; max: number }[];
 
 /** AssemblyAI's two end-of-turn silences (ms): `min_turn_silence` and `max_turn_silence`. */
 export interface TurnSilence {
@@ -296,6 +314,9 @@ export function voiceTuning(env: Readonly<Record<string, string | undefined>>): 
     if (!/^\d+$/.test(raw) || !Number.isSafeInteger(n) || n < min || n > max) problems.push(`${name} must be a whole number from ${min} to ${max}, not "${raw}"`);
     else tuning[field] = n;
   }
+  const mode = value(env, "MAYA_INTERRUPT_MODE");
+  if (mode === "adaptive" || mode === "vad") tuning.interruptMode = mode;
+  else if (mode) problems.push(`MAYA_INTERRUPT_MODE must be "adaptive" or "vad", not "${mode}"`);
   // `off` turns the silent-transcript rule off; else a level from -120 to 0 dBFS.
   const drop = value(env, "MAYA_DROP_SILENT_PEAK_DBFS");
   if (drop === "off") tuning.dropSilentPeakDbfs = null;

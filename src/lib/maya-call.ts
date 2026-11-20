@@ -577,6 +577,8 @@ export interface VoiceCall {
   observeBoard(snapshot: BoardSnapshot): Promise<void>;
   /** Reports worker playout for a checked turn. A finished handle does not prove the child heard it. */
   exchangePlayback?(turnId: string, playback: "finished" | "interrupted"): Promise<void>;
+  /** A lone backchannel said over Maya (#1147): saved in the trace only, never a child turn. */
+  backchannel?(text: string): Promise<void>;
   reconcileExchange?(retiredTurns: readonly string[]): Promise<void>;
   /** B1: batches the board core refused at staging (board-speech `refused`): the session counts them as skipped. */
   boardRefused?(batchIds: readonly string[]): void;
@@ -1918,6 +1920,21 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           if (session.session.checkedExchange?.turns.some((turn) => turn.actions.some((a) => batchIds.includes(a.batchId)))) {
             later(() => persistExchangeEvidence((s) => s.boardFates(fates)));
           }
+        },
+        async backchannel(text) {
+          // One id for the event in the live session and in the saved copy: a save that already holds it keeps it once.
+          const id = seams.newId();
+          if (inactive() || !session.backchannel(text, id)) return;
+          later(async () => {
+            const live = record.live;
+            if (inactive() || !live) return;
+            const saved = textSession(record, pkg, idleModel(record), name, live.text);
+            saved.backchannel(text, id);
+            const change: CallChange = { live: { ...live, text: await saved.saved() } };
+            if (!(await store.update(record.id, record.revision, change))) { lose(true); return; }
+            record = { ...record, ...change, revision: record.revision + 1 };
+          });
+          await queue;
         },
         async exchangePlayback(turnId, playback) {
           if (inactive() || !session.exchangePlayback(turnId, playback)) return;

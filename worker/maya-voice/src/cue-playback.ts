@@ -16,17 +16,22 @@ class PlaybackAdapter extends voice.AudioOutput {
     admit(): void;
     scope(): SpeechScope | null;
     clear(scope: SpeechScope): void;
-    pause(scope: SpeechScope): void;
-  }) { super(output.sampleRate, output); }
+    /** The scope that is playing or being sent; null before the first frame of a speech. */
+    playing(): SpeechScope | null;
+    pause(scope: SpeechScope | null): void;
+    resume(): void;
+    dropPendingPause(): void;
+    // Declares pause, so LiveKit pauses Maya on a possible interruption and resumes her after a false one.
+  }) { super(output.sampleRate, output, { pause: true }); }
   override captureFrame(frame: AudioFrame) { return this.hooks.capture(frame); }
   admitFrame(frame: AudioFrame) { super.flush(); void super.captureFrame(frame); }
   seal() { super.flush(); }
   override onPlaybackStarted(at: number) { this.hooks.admit(); super.onPlaybackStarted(at); }
   override onPlaybackFinished(event: voice.PlaybackFinishedEvent) { this.hooks.admit(); super.onPlaybackFinished(event); }
   override flush() { super.flush(); this.output.flush(); }
-  override clearBuffer() { const scope = this.hooks.scope(); if (scope) this.hooks.clear(scope); }
-  override pause() { const scope = this.hooks.scope(); if (scope) this.hooks.pause(scope); }
-  override resume() { this.output.resume(); }
+  override clearBuffer() { this.hooks.dropPendingPause(); const scope = this.hooks.scope(); if (scope) this.hooks.clear(scope); }
+  override pause() { this.hooks.pause(this.hooks.playing()); }
+  override resume() { this.hooks.resume(); }
 }
 
 /** Pace cues against the actual output start. Each native playback segment retains its original owner. */
@@ -42,6 +47,10 @@ export class CuePlaybackOutput {
   private bufferedMs = 0;
   private timer: unknown = null;
   private suspended = false;
+  /** LiveKit paused the output: the cue clock stops, and the plan keeps its scope. */
+  private paused = false;
+  /** The audio position the child had heard when the pause came; null for a pause before the speech's first frame. */
+  private pausedAt: number | null = null;
   private generation = 0;
   private forwarding: { scope: SpeechScope; frame: AudioFrame } | null = null;
   private segments: { scope: SpeechScope; started: boolean }[] = [];
@@ -59,7 +68,10 @@ export class CuePlaybackOutput {
       admit: () => { if (this.forwarding) this.admit(this.forwarding.scope, this.forwarding.frame); },
       scope: () => this.segments[0]?.scope ?? this.forwarding?.scope ?? this.scope,
       clear: scope => this.clearBuffer(scope),
-      pause: scope => this.pause(scope),
+      playing: () => this.segments[0]?.scope ?? this.forwarding?.scope ?? null,
+      pause: scope => this.pauseOutput(scope),
+      resume: () => this.resume(),
+      dropPendingPause: () => { if (!this.segments.length && !this.forwarding && this.paused) { this.paused = false; this.pausedAt = null; } },
     });
     this.adapter.on(voice.AudioOutput.EVENT_PLAYBACK_STARTED, (ev: voice.PlaybackStartedEvent) => {
       const segment = this.segments.find(s => !s.started);
@@ -94,11 +106,11 @@ export class CuePlaybackOutput {
   }
 
   private schedule(scope: SpeechScope) {
-    if (this.timer !== null || this.suspended || !this.board.owns(scope)) return;
+    if (this.timer !== null || this.suspended || this.paused || !this.board.owns(scope)) return;
     const generation = this.generation;
     const run = () => {
       this.timer = null;
-      if (this.suspended || generation !== this.generation || !this.board.owns(scope)) return;
+      if (this.suspended || this.paused || generation !== this.generation || !this.board.owns(scope)) return;
       const position = Math.min(this.bufferedMs, Math.max(0, this.clock.now() - this.anchor));
       if (position > 0) this.task(this.board.played(scope, position, this.anchor), scope);
       if (position < this.bufferedMs) this.timer = this.clock.set(Math.min(10, this.bufferedMs - position), run);
@@ -148,16 +160,50 @@ export class CuePlaybackOutput {
   flush() { this.adapter.flush(); }
   clearBuffer(scope: SpeechScope) {
     if (!same(this.segments[0]?.scope ?? this.forwarding?.scope ?? this.scope, scope)) return;
+    this.paused = false;
+    this.pausedAt = null;
     this.cancelPending(scope);
     this.interrupted(scope);
     this.adapter.seal();
     this.output.clearBuffer();
   }
+  /**
+   * A pause is not an interruption: LiveKit resumes the speech when no words follow, or clears it when they do. Stop the
+   * cue clock and keep the plan, its staged batches and its synthesis.
+   */
   pause(scope: SpeechScope) {
-    if (!this.board.owns(scope) || !same(this.segments[0]?.scope ?? null, scope)) return;
-    this.cancelPending(scope);
-    this.interrupted(scope);
+    if (!same(this.segments[0]?.scope ?? this.forwarding?.scope ?? null, scope)) return;
+    this.pauseOutput(scope);
+  }
+  /**
+   * LiveKit's pause, for what is playing now or, before a speech's first frame (synthesis pending), for the speech that
+   * starts next: no frame of it plays and no cue releases until the resume. A cut of that speech clears it.
+   */
+  private pauseOutput(scope: SpeechScope | null) {
+    if (scope && !this.board.owns(scope)) return;
+    if (!this.paused) {
+      this.paused = true;
+      this.pausedAt = scope && same(this.scope, scope) ? Math.min(this.bufferedMs, Math.max(0, this.clock.now() - this.anchor)) : null;
+      if (this.timer !== null) this.clock.clear(this.timer);
+      this.timer = null;
+    }
     this.output.pause();
   }
-  resume() { this.output.resume(); }
+  /**
+   * The native output drops the audio it held at the pause (at most its queue), so the next sound is the next audio
+   * sent. The cue clock goes on from there, and a cue whose word was dropped is released at once.
+   */
+  resume() {
+    this.output.resume();
+    if (!this.paused) return;
+    this.paused = false;
+    const heard = this.pausedAt;
+    this.pausedAt = null;
+    const scope = this.scope;
+    if (!scope || this.suspended || !this.board.owns(scope)) return;
+    // The child never heard the audio between the pause and what was sent: its cues are cancelled, not shown.
+    if (heard !== null && this.bufferedMs > heard) this.task(this.board.skip(scope, heard, this.bufferedMs), scope);
+    this.anchor = this.clock.now() - this.bufferedMs;
+    this.schedule(scope);
+  }
 }

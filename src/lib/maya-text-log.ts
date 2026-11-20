@@ -35,6 +35,8 @@ export type TextLogEvent =
   | { kind: "part_confirmed"; at: number; requestId: number }
   | { kind: "part_discarded"; at: number; requestId: number }
   | { kind: "stream_interrupted"; at: number; requestId: number; detail: string }
+  /** #1147: a lone backchannel said over Maya's speech. Trace only: no session input, child turn, help or credit. */
+  | { kind: "backchannel"; at: number; text: string; id: string }
   /** A binding stream hold. Recovery must settle this admitted turn, even if no sentence went out. */
   | { kind: "stream_hold"; at: number; requestId: number; priority?: Record<string, unknown> }
   /** `mathReviews`: two-layer true math (2026-11-15); absent in an event written before the math-truth review existed. */
@@ -539,6 +541,10 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
       break;
     case "part_discarded":
       if (s.pendingPart?.requestId === e.requestId) delete s.pendingPart;
+      break;
+    case "backchannel":
+      // The same event can reach a saved copy twice (a concurrent save already holds it): its id keeps it once.
+      if (!s.session.outcome && !s.turns.some((t) => t.kind === "backchannel" && t.id === e.id)) s.turns.push({ kind: "backchannel", at: e.at, text: e.text, id: e.id });
       break;
     case "stream_interrupted": {
       if (s.request?.id !== e.requestId || s.candidate) break;

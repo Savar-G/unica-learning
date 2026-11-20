@@ -290,6 +290,42 @@ it("keeps shown work through worker replacement and retries only the cancelled e
   expect(checkTrace(store.rows()[0].trace)).toMatchObject({ ok: true });
 });
 
+it("ignores the replaced worker's repeated and older acknowledgements after the replacement opens", async () => {
+  const { calls, events, store } = setup();
+  const voice = ok(await calls.startVoice({ ...input, kind: "family", package: {
+    ...SAMPLE_PACKAGES["subtract-52-28"], ref: { source: "workbook", workbookId: "33333333-3333-4333-8333-333333333333", page: 1, question: 1 },
+  } }));
+  const open = async () => {
+    const result = await calls.openVoice(voice.view.id, { speechToText: "fake", voice: "fake" }, null);
+    if (!result.ok) throw new Error(result.error);
+    return result.call;
+  };
+  const old = await open();
+  const opening = (await old.start()).boardCues![0].batch;
+  const first = await old.child("Can you show me how to regroup?");
+  const [show, trade] = first.boardCues!.map((cue) => cue.batch);
+  const shown = [opening, show].map((b) => ({ kind: "batch" as const, batchId: b.transactionId, commands: [...b.commands] }));
+  const confirmed = { events: [...shown, { kind: "presented" as const, batchId: show.transactionId }, { kind: "cancelled" as const, batchIds: [trade.transactionId] }] };
+  await old.observeBoard(confirmed);
+  await old.exchangePlayback!(first.exchangeTurnId!, "interrupted");
+  const [resumed] = await Promise.all([open(), old.observeBoard(confirmed).catch(() => "lost")]);
+  const history = store.rows()[0].boardHistory;
+  const late = await Promise.allSettled([old.observeBoard({ events: shown }), old.observeBoard(confirmed)]);
+  expect(late.map((r) => r.status)).toEqual(["rejected", "rejected"]);
+  await old.exchangePlayback!(first.exchangeTurnId!, "finished").catch(() => "lost");
+  await resumed.observeBoard(confirmed);
+  await resumed.observeBoard(confirmed);
+  expect(store.rows()[0].boardHistory).toEqual(history);
+  expect(resumed.session.checkedExchange!.turns).toMatchObject([{ playback: "interrupted", actions: [
+    { fate: "shown", presented: true }, { fate: "cancelled" },
+  ] }]);
+  expect(resumed.session.assistance).not.toContain("guided");
+  expect(resumed.session.done).toEqual([]);
+  await resumed.end({ reason: "child_stopped" });
+  const logged = await events.read(childId, { from: new Date(clock() - 1).toISOString(), to: new Date(clock() + 1).toISOString() });
+  expect(logged).toMatchObject([{ result: "blank", evidence: { kind: "call", id: voice.view.id } }]);
+});
+
 it("uses a separate example when one of the target's shown quantities would give away the answer", async () => {
   const { calls } = setup();
   const operation: Operation = { kind: "subtract", operands: [52, 48] };

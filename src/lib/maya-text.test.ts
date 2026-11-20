@@ -1030,3 +1030,21 @@ describe("the prompt names only real lines and groups (practice runs 6 and 7)", 
     expect(SYSTEM_PROMPT).toMatch(/plain-language rules \(D-202\).*Never "in all", "altogether", "all together", "total" or "left over": a code check refuses them/);
   });
 });
+
+describe("a backchannel said over Maya (#1147)", () => {
+  it("is one trace turn per id, also when a saved copy that already holds it gets it again", async () => {
+    const options = { callId: "backchannel-once", package: PKG, model: ruleMayaModel(), clock: () => T0, random: 7 };
+    const session = createTextSession(options);
+    await session.start();
+    expect(session.backchannel("Okay.", "bc-1")).toBe(true);
+    expect(session.backchannel("Okay.", "bc-1")).toBe(true);
+    expect(session.backchannel("Okay.", "bc-2")).toBe(true);
+    const saved = JSON.parse(JSON.stringify(await session.saved()));
+    const restored = createTextSession({ ...options, resume: saved });
+    restored.backchannel("Okay.", "bc-1");
+    const turns = (t: ReturnType<typeof session.trace>) => t.turns.filter((x) => x.kind === "backchannel");
+    expect(turns(session.trace())).toHaveLength(2);
+    expect(turns(restored.trace())).toEqual(turns(session.trace()));
+    expect(checkTrace(JSON.parse(JSON.stringify(restored.trace())))).toMatchObject({ ok: true });
+  });
+});

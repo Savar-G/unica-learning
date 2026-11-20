@@ -264,6 +264,32 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
       for (const t of active.timings) if (t.reachedAt === undefined && t.audioMs <= active.position) t.reachedAt = anchorAt === undefined ? active.playedAt : anchorAt + t.audioMs;
       return serial(release);
     },
+    /**
+     * The audio from `fromMs` to `toMs` of this plan was sent and then dropped (LiveKit discards what its output held when
+     * it pauses), so the child never heard it. Cancels the staged batches whose cue word ends in that span; the receiver
+     * also drops a later batch built on them. Later cues release as usual.
+     */
+    skip(scope: SpeechScope, fromMs: number, toMs: number) {
+      return serial(async () => {
+        const a = active;
+        if (!a || !owns(scope) || a.generation !== scope.generation || !(toMs > fromMs)) return;
+        const dropped: BoardCue[] = [];
+        while (a.cues.length) {
+          const timing = a.timings.find(t => t.word >= a.cues[0].word);
+          if (!timing || timing.audioMs <= fromMs || timing.audioMs > toMs) break;
+          dropped.push(a.cues.shift()!);
+        }
+        if (!dropped.length) return;
+        const result = await sender.cancel(scope, dropped.at(-1)!.batch.transactionId);
+        if (!owns(scope)) return;
+        check(result);
+        if (result.ok) {
+          const gone = new Set(result.cancelled);
+          a.cues = a.cues.filter(c => !gone.has(c.batch.transactionId));
+        }
+        await options.observe?.(sender.snapshot());
+      });
+    },
     /** Invalidate first, before any await. A late timing or playout callback cannot release old work. */
     /** A lost peer cannot receive a stop. Invalidate locally; reconnect will retire its staged work. */
     detach(scope: SpeechScope) {
