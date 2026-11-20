@@ -1,13 +1,14 @@
 name: CI
 
-# The done gate's test and lint steps on every pull request and every push to main. The tests run in two vitest shards
-# (`unit`, a matrix) beside one `checks` job (lint and the SQL comparison) and the Maya behaviour/word-count job; the final job,
-# named exactly `test`, needs them all and fails if any failed. Vercel lists the `test` job as a
-# Deployment Check (Settings → Build and Deployment), so a main commit whose tests fail is built but not promoted to
-# production. Branches get no Vercel build (main-only deploys, #774), so the `checks` job runs the type check that
-# needs: `next typegen` (route types), then the native TypeScript check. The build retains TypeScript 5.
-# Every main commit needs this check, or its production deploy waits forever. A push made with GITHUB_TOKEN starts no
-# workflow, so the blog publish job (blog-publish.yml) starts this one with workflow_dispatch after it pushes main.
+# The done gate's test, lint and type checks on every pull request and every push to main. The unit suite runs across
+# five duration-balanced vitest shards (`unit`, a matrix) beside parallel jobs for `maya-behaviour`, `family-zones`
+# (the only job that needs Postgres), `lint-and-types`, and `voice-worker`. The final job, named exactly `test`, needs
+# them all and fails if any failed. Vercel lists `test` as a Deployment Check (Settings → Build and Deployment), so a
+# main commit whose checks fail is built but not promoted to production. Branches get no Vercel build (main-only
+# deploys, #774), so `lint-and-types` runs the app type check (`next typegen` + native TypeScript). The build retains
+# TypeScript 5. Every main commit needs this check, or its production deploy waits forever. A push made with
+# GITHUB_TOKEN starts no workflow, so the blog publish job (blog-publish.yml) starts this one with workflow_dispatch
+# after it pushes main.
 
 on:
   pull_request:
@@ -24,36 +25,23 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Half of the vitest files each. The suite outgrew one 22-minute step on the 2-core runner (main run 42452867626,
-  # 2026-11-08), so it runs as two shards in parallel.
+  # Five duration-balanced vitest shards (.github/scripts/vitest-ci.config.mjs + unit-shards.mjs).
+  # Shard 1 is pinned to hold src/lib/workbook-book1-recovery.test.ts (#472), which loads pinned planners from Git
+  # commits, so only shard 1 needs full history (`fetch-depth: 0`); shards 2–5 use a shallow checkout.
   unit:
-    name: unit (${{ matrix.shard }}/2)
+    name: unit (${{ matrix.shard }}/5)
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
-    # Supabase uses PostgreSQL 17. This database contains synthetic rows only; it is here in case a test file needs it.
-    services:
-      postgres:
-        image: postgres:17.11-bookworm@sha256:839fbb5a4942a7758dd93e18b42ea5649807491a0545b5eeeb8f0b8bb11857a5
-        env:
-          POSTGRES_PASSWORD: maya-ci-only
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+        shard: [1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         timeout-minutes: 4
         with:
           persist-credentials: false
-          # Full history: the Book 1 recovery tests (#472) load pinned planners from their own Git commits.
-          fetch-depth: 0
+          fetch-depth: ${{ matrix.shard == 1 && '0' || '1' }}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         timeout-minutes: 4
         with:
@@ -61,26 +49,25 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
         timeout-minutes: 5
-      # The 2-core runner is slower than a laptop: the assessment bank tests can pass the 5 s default locally but not here.
-      # The timed Maya files run below, in separate processes without other unit files competing on their runner.
-      - run: npm test -- --exclude='src/lib/maya-gate/{gate,word-count-grade-1,word-count-grade-4}.test.ts' --testTimeout=60000 --shard=${{ matrix.shard }}/2
-        timeout-minutes: 25
-        env:
-          PGPORT: '5432'
-          PGDATABASE: postgres
-          PGUSER: postgres
-          PGPASSWORD: maya-ci-only
+      # Unpack @sparticuz/chromium once before parallel workers start so concurrent Chromium test files never race
+      # on writing /tmp/chromium (spawn ETXTBSY).
+      - name: Unpack Chromium
+        run: node -e 'import("@sparticuz/chromium").then(async (m) => console.log(await m.default.executablePath()))'
+        timeout-minutes: 2
+      # The timed Maya files run below on their own runner without other unit files competing for CPU.
+      - run: npm test -- --config .github/scripts/vitest-ci.config.mjs --exclude='src/lib/maya-gate/{gate,word-count-grade-1,word-count-grade-4}.test.ts' --testTimeout=60000 --shard=${{ matrix.shard }}/5
+        timeout-minutes: 20
 
   maya-behaviour:
     name: Maya behaviour and word limits
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         timeout-minutes: 4
         with:
           persist-credentials: false
-          fetch-depth: 0
+          fetch-depth: 1
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         timeout-minutes: 4
         with:
@@ -88,21 +75,18 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
         timeout-minutes: 5
-      # Keep every behaviour and the same deadline. Other unit files must not compete with this timed check.
-      - run: npm test -- src/lib/maya-gate/gate.test.ts --testTimeout=60000 --maxWorkers=2
-        timeout-minutes: 25
-      # Each grade retains all three seeds and the same 60 s timeout. Run the files one at a time.
-      - name: Grade 1 word limits (seeds 1, 9 and 31)
-        run: npm test -- src/lib/maya-gate/word-count-grade-1.test.ts --testTimeout=60000 --maxWorkers=2
-        timeout-minutes: 25
-      - name: Grade 4 word limits (seeds 1, 9 and 31)
-        run: npm test -- src/lib/maya-gate/word-count-grade-4.test.ts --testTimeout=60000 --maxWorkers=2
-        timeout-minutes: 25
+      # Public ubuntu-24.04 runners have 4 vCPUs; running all three independent files with --maxWorkers=3 gives each
+      # file its own CPU core while retaining every behaviour, all three seeds and the same 60 s test timeout.
+      - name: Maya behaviour gate and Grade 1 / Grade 4 word limits
+        run: npm test -- src/lib/maya-gate/gate.test.ts src/lib/maya-gate/word-count-grade-1.test.ts src/lib/maya-gate/word-count-grade-4.test.ts --testTimeout=60000 --maxWorkers=3
+        timeout-minutes: 15
 
-  # Lint (the only place it runs) and the SQL comparison of the family windows.
-  checks:
+  # SQL comparison of family windows and concurrent quota probes (the only CI job that needs Postgres).
+  family-zones:
+    name: Family zones SQL
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 20
+    # Supabase uses PostgreSQL 17. This database contains synthetic rows only.
     services:
       postgres:
         image: postgres:17.11-bookworm@sha256:839fbb5a4942a7758dd93e18b42ea5649807491a0545b5eeeb8f0b8bb11857a5
@@ -120,7 +104,7 @@ jobs:
         timeout-minutes: 4
         with:
           persist-credentials: false
-          fetch-depth: 0
+          fetch-depth: 1
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         timeout-minutes: 4
         with:
@@ -138,32 +122,76 @@ jobs:
           PGDATABASE: postgres
           PGUSER: postgres
           PGPASSWORD: maya-ci-only
+
+  # Lint, app type check, retention worker bundle check, and CI script self-tests.
+  lint-and-types:
+    name: Lint and app types
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        timeout-minutes: 4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        timeout-minutes: 4
+        with:
+          node-version: '22.23.1'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+        timeout-minutes: 5
       - run: npx eslint src
         timeout-minutes: 5
       - name: App type check
         run: npm run typecheck
-        timeout-minutes: 8
-      # The root tsconfig.json excludes worker/, so the Maya voice worker's own type check and tests run here.
-      - name: Voice worker type check
-        run: npm run voice:typecheck
-        timeout-minutes: 5
-      - name: Voice worker tests
-        run: npm run voice:test
         timeout-minutes: 8
       # The daily Family retention workflow runs a bundle that plain Node must load. Build it and load it with --help
       # (no credentials, no database), so an import Node cannot resolve fails here and not at 15:17 UTC (2026-11-06).
       - name: Retention worker loads
         run: node scripts/build-retention-worker.mjs && node --conditions=react-server .retention/worker.mjs --help
         timeout-minutes: 2
+      - name: CI tooling self-tests
+        run: node --test .github/scripts/unit-shards.test.mjs scripts/ci-audit.test.mjs
+        timeout-minutes: 2
+
+  # The root tsconfig.json excludes worker/, so the Maya voice worker's own type check and tests run here.
+  voice-worker:
+    name: Voice worker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        timeout-minutes: 4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        timeout-minutes: 4
+        with:
+          node-version: '22.23.1'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+        timeout-minutes: 5
+      - name: Voice worker type check
+        run: npm run voice:typecheck
+        timeout-minutes: 5
+      - name: Voice worker tests
+        run: npm run voice:test
+        timeout-minutes: 8
 
   # The required check. Keep this name exactly `test`: Vercel's Deployment Check and branch rules use it.
   test:
-    needs: [unit, checks, maya-behaviour]
+    needs: [unit, maya-behaviour, family-zones, lint-and-types, voice-worker]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Both test shards, the Maya behaviour and word limits, and the checks passed
+      - name: All unit shards, Maya behaviour, family zones, lint/types, and voice worker passed
         run: |
-          echo "unit: ${{ needs.unit.result }}, checks: ${{ needs.checks.result }}, maya-behaviour: ${{ needs.maya-behaviour.result }}"
-          test "${{ needs.unit.result }}" = "success" && test "${{ needs.checks.result }}" = "success" && test "${{ needs.maya-behaviour.result }}" = "success"
+          echo "unit: ${{ needs.unit.result }}, maya-behaviour: ${{ needs.maya-behaviour.result }}, family-zones: ${{ needs.family-zones.result }}, lint-and-types: ${{ needs.lint-and-types.result }}, voice-worker: ${{ needs.voice-worker.result }}"
+          test "${{ needs.unit.result }}" = "success" \
+            && test "${{ needs.maya-behaviour.result }}" = "success" \
+            && test "${{ needs.family-zones.result }}" = "success" \
+            && test "${{ needs.lint-and-types.result }}" = "success" \
+            && test "${{ needs.voice-worker.result }}" = "success"
