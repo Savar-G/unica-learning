@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { inference, initializeLogger } from "@livekit/agents";
 import { BackgroundVoiceCancellation, NoiseCancellation } from "@livekit/noise-cancellation-node";
 import { voiceProviders } from "@/lib/maya-voice";
-import { voiceSession } from "./agent";
+import { voiceSession, type TurnTuning } from "./agent";
 import { makeProviders } from "./providers";
 import { labInput, stagingLab, type StagingLab } from "./staging";
 
@@ -33,7 +33,7 @@ describe("a deployment's lab settings", () => {
 });
 
 describe("a voice session on a lab deployment", () => {
-  const session = async (lab?: StagingLab, turn?: Parameters<typeof voiceSession>[1]["turn"]) => {
+  const session = async (lab?: StagingLab, turn?: TurnTuning) => {
     const config = voiceProviders({});
     if (!config.ok) throw new Error("fake providers");
     return voiceSession(await makeProviders(config, { fakeMsPerChar: 1 }), { lab, turn });
