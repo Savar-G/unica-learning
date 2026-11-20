@@ -11,7 +11,7 @@ const PHASES = [
   "chatDispatch", "chatFinished", "chatBoardDispatch", "speechEndToFinal", "finalToTurn", "admission",
   "modelFirstChunk", "firstCheckedSentence", "voiceCallFinished", "workerReply", "turnToWorkerReply", "workerFiller", "synthesisFirstFrame",
   "frameToWorkerPlayout", "boardPlanReady", "boardCueAcknowledgement", "requestModel", "requestRepair", "requestReview",
-  "deviceUseful", "deviceBoard", "deviceInterruptionStop",
+  "workerQueue", "deviceFirstSound", "deviceUseful", "deviceBoard", "deviceInterruptionStop",
 ] as const;
 const COUNTS = [
   "model", "repair", "talkReview", "mathReview", "reviewUnclassified", "requestFailed", "requestTimeout",
@@ -59,6 +59,33 @@ export function baselineTeaching(checkedExchange: boolean, checkedRoutine: boole
   return checkedRoutine ? "checked-routine" : "existing";
 }
 
+export interface DeviceObservation {
+  group: BaselineGroup;
+  /** End of the child's last loud input frame. All times use one machine clock. */
+  inputEnd: number;
+  /** Received output energy, merged across short gaps. */
+  bursts: readonly { start: number; end: number }[];
+  /** The worker's answer playout start, or null when no answer played. */
+  answerPlayback: number | null;
+  /** The first board update received for this turn. */
+  boardAt: number | null;
+  /** Onset of an intentional interruption. */
+  interruptionAt?: number;
+}
+
+/** Join device output energy with worker playout marks. Filler can be the first sound; only the answer is useful. */
+export function deviceTurn(o: DeviceObservation): BaselineTurn {
+  const ms: BaselineTurn["ms"] = {};
+  const first = o.bursts.find(b => b.start >= o.inputEnd);
+  if (first) ms.deviceFirstSound = first.start - o.inputEnd;
+  const answer = o.answerPlayback === null ? undefined : o.bursts.find(b => b.start >= o.answerPlayback! - 50 && b.start >= o.inputEnd);
+  if (answer) ms.deviceUseful = answer.start - o.inputEnd;
+  if (o.boardAt !== null && o.boardAt >= o.inputEnd) ms.deviceBoard = o.boardAt - o.inputEnd;
+  const cut = o.interruptionAt === undefined ? undefined : o.bursts.find(b => b.start <= o.interruptionAt! && b.end >= o.interruptionAt!);
+  if (cut) ms.deviceInterruptionStop = cut.end - o.interruptionAt!;
+  return { v: 1, ...o.group, outcome: answer ? "completed" : "timeout", ms, counts: {} };
+}
+
 export function logBaselineTurn(turn: BaselineTurn) {
   console.log(BASELINE_PREFIX + JSON.stringify(turn));
 }
@@ -89,4 +116,73 @@ export function baselineReport(turns: readonly BaselineTurn[]) {
       return [kind, { n: values.length, total: values.length ? values.reduce((a, b) => a + b, 0) : null }];
     })),
   }));
+}
+
+const MIN_BUDGET_SAMPLES = 5;
+const roundUp = (ms: number) => Math.ceil(ms / 100) * 100;
+
+/**
+ * The complex-explanation budget (#1137): useful device output of complex turns on the existing path, rounded up to
+ * 100 ms. Percentiles use completed turns; every other attempted turn is a failure that a candidate must not exceed.
+ */
+export function complexBudget(turns: readonly BaselineTurn[]) {
+  const rows = turns.filter(t => t.evidence === "device" && t.turnType === "complex" && (t.teaching ?? "existing") === "existing");
+  const useful = rows.flatMap(t => t.outcome === "completed" && t.ms.deviceUseful !== undefined ? [t.ms.deviceUseful] : []);
+  const counts = { n: rows.length, completed: useful.length, failed: rows.length - useful.length };
+  if (useful.length < MIN_BUDGET_SAMPLES) return { ok: false as const, ...counts, reason: `needs at least ${MIN_BUDGET_SAMPLES} completed complex device turns` };
+  const { p50, p95 } = distribution(useful);
+  return { ok: true as const, ...counts, p50Ms: roundUp(p50!), p95Ms: roundUp(p95!) };
+}
+
+export const BASELINE_COST_PREFIX = "[maya baseline cost] ";
+const WORK = ["model", "repair", "review", "discardedPreparation", "stt", "tts", "transport"] as const;
+const BASES = ["provider", "estimate", "unknown"] as const;
+const UNITS = ["minutes", "characters", "requests", "participantMinutes"] as const;
+
+export interface BaselineCost {
+  v: 1;
+  mode: typeof MODES[number];
+  teaching?: typeof TEACHING[number];
+  concurrency: number | "unknown";
+  work: typeof WORK[number];
+  model: string;
+  effort: string;
+  /** provider: the provider reported the cost. estimate: a configured rate. unknown: no price. */
+  basis: typeof BASES[number];
+  calls: number;
+  usd: number | null;
+  quantity?: { unit: typeof UNITS[number]; value: number };
+}
+
+export function readBaselineCost(value: unknown): BaselineCost {
+  const q = isObject(value) ? value.quantity : undefined;
+  if (!isObject(value) || value.v !== 1 || !allowed(value.mode, MODES) || !allowed(value.work, WORK) || !allowed(value.basis, BASES) ||
+    (value.teaching !== undefined && !allowed(value.teaching, TEACHING)) || !label(value.model) || !label(value.effort) ||
+    !(value.concurrency === "unknown" || (Number.isSafeInteger(value.concurrency) && (value.concurrency as number) > 0)) ||
+    !(Number.isSafeInteger(value.calls) && (value.calls as number) >= 0) || !(value.usd === null || elapsed(value.usd)) ||
+    (value.basis === "unknown") !== (value.usd === null) ||
+    !(q === undefined || (isObject(q) && allowed(q.unit, UNITS) && elapsed(q.value)))) {
+    throw Error("Invalid Maya baseline cost");
+  }
+  return value as unknown as BaselineCost;
+}
+
+export function logBaselineCost(row: BaselineCost) {
+  console.log(BASELINE_COST_PREFIX + JSON.stringify(row));
+}
+
+/** Sum by run conditions, work, model, effort and basis. A missing price stays null; it is never a zero. */
+export function baselineCostReport(rows: readonly BaselineCost[]) {
+  const sums = new Map<string, Omit<BaselineCost, "v">>();
+  for (const row of rows) {
+    const { calls, usd, quantity, ...rest } = row;
+    const key: Omit<BaselineCost, "v" | "calls" | "usd" | "quantity"> = { mode: rest.mode, ...(rest.teaching ? { teaching: rest.teaching } : {}), concurrency: rest.concurrency, work: rest.work, model: rest.model, effort: rest.effort, basis: rest.basis };
+    const id = JSON.stringify([key, quantity?.unit ?? null]);
+    const sum = sums.get(id);
+    if (!sum) { sums.set(id, { ...key, calls, usd, ...(quantity ? { quantity: { ...quantity } } : {}) }); continue; }
+    sum.calls += calls;
+    sum.usd = sum.usd === null || usd === null ? null : Math.round((sum.usd + usd) * 1e9) / 1e9;
+    if (sum.quantity && quantity) sum.quantity.value = Math.round((sum.quantity.value + quantity.value) * 1e6) / 1e6;
+  }
+  return [...sums.values()];
 }

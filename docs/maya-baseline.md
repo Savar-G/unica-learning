@@ -55,7 +55,7 @@ A faster result fails the comparison if it cuts off the child, uses filler as th
 
 ## First matched browser samples
 
-On November 19, 2026, a MacBook M4 Pro ran the existing tutor path and the checked exchange from the source tree of `7c5f92599`. The real admin voice panel and board renderer connected to an isolated LiveKit room on the same machine. Both runs used the same 1.660-second synthetic prompt, AssemblyAI Universal 3.6 Pro and Cartesia Sonic 3.6 through LiveKit Inference. The viewport was 1440 by 900. Each run had one call and one child turn. The clock was the browser performance clock, from the last 20 ms input window above the audio threshold. The audio marks measure energy in the received stream. The board marks measure changes to the rendered SVG.
+On November 19, 2026, a MacBook M4 Pro ran the existing tutor path from the source tree of `7c5f92599`. That commit does not contain the checked exchange (#1143, `29cca6dfd`). The checked run needed #1143 at `29cca6dfd` or a later commit. Its exact source commit was not recorded. The real admin voice panel and board renderer connected to an isolated LiveKit room on the same machine. Both runs used the same 1.660-second synthetic prompt, AssemblyAI Universal 3.6 Pro and Cartesia Sonic 3.6 through LiveKit Inference. The viewport was 1440 by 900. Each run had one call and one child turn. The clock was the browser performance clock, from the last 20 ms input window above the audio threshold. The audio marks measure energy in the received stream. The board marks measure changes to the rendered SVG.
 
 | Path | First received sound | Next sound | Board changes | Tutor requests |
 |---|---:|---:|---|---|
