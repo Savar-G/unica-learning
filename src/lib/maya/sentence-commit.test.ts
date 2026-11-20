@@ -1,24 +1,22 @@
-// Sentence-level commit rule for an addition column (2026-11-12, approved by Savar). Real children talk in several
-// sentences: a turn commits the step's value when ONE sentence or clause of it is a committing template (the value, the
-// step's own sum, a first-person claim such as "that's 16" or "I already got 16 for that", or a checked written-digit
-// claim) and every other sentence is harmless: no other number than the step's own operands, no other person, no question
-// about the value, no hedge. A trailing question about the value ("Is that right?") goes to the step's confirm question.
-// The model's reading and code's fallback use the one check (stepTurnHeard), so they cannot disagree. FIXTURES.A is 27 + 39.
 import { describe, expect, it } from "vitest";
 import { createSession, step } from "@/lib/maya";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
-import { judge, memoryTraceStore, runBehaviour, type Behaviour, type Plan, type Step } from "@/lib/maya-gate/gate";
+import { type Behaviour, judge, memoryTraceStore, type Plan, type Read, runBehaviour, type Step } from "@/lib/maya-gate/gate";
 
 const THROWS: Plan[] = [{ throws: true }];
+
 const down = (text: string): Step => ({ child: text, maya: THROWS });
+
 /** The child's turn, read by a model as the ones step right, and the model's next step; its repair call fails. */
 const named = (text: string): Step => ({
   child: text, read: { answers: [[16, "ones", "right"]] },
   maya: [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }],
 });
+
 const NEXT = { act: "guide", step: "tens", lines: ["check.right_step", "step.invite"] };
 
 interface Told { act: string | undefined; step: string | undefined; lines: string[]; say: string }
+
 async function play(steps: Step[]) {
   const b: Behaviour = { id: "sentence-commit", title: "sentence commit", fixture: "A", status: "passing", steps, expect: { outcome: {} } };
   const store = memoryTraceStore();
@@ -123,5 +121,108 @@ describe("sentence-level commit: a turn with any harmful sentence is not credite
       expect(told.slice(1).flatMap((x) => x.lines), text).not.toContain("check.right_step");
       expect(told[1].step, text).not.toBe("tens");
     }
+  });
+});
+
+describe("sentence commit regressions", () => {
+  const THROWS: Plan[] = [{ throws: true }];
+
+  const down = (text: string): Step => ({ child: text, maya: THROWS });
+
+  /** The child's turn, read by a model as this step right (its value), and the model's next step; its repair call fails. */
+  const named = (text: string, value = 16, step = "ones"): Step => ({
+    child: text, read: { answers: [[value, step, "right"]] },
+    maya: [{ act: "guide", step: step === "ones" ? "tens" : "result", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }],
+  });
+
+  const ONES = named("7 plus 9 is 16.");
+
+  interface Told { act: string | undefined; step: string | undefined; lines: string[]; say: string }
+
+  async function play(steps: Step[]) {
+    const b: Behaviour = { id: "sentence-commit-review", title: "review", fixture: "A", status: "passing", steps, expect: { outcome: {} } };
+    const store = memoryTraceStore();
+    await runBehaviour(b, store);
+    const trace = JSON.parse(store.load(b.id)!) as { turns: { kind: string; output?: { act: string; say: string[] }; attempts?: { proposal?: { step?: string; parts?: { line?: string }[] } }[] }[] };
+    return trace.turns.filter((t) => t.kind === "maya" && t.output).map((t): Told => {
+      const p = t.attempts!.at(-1)!.proposal ?? {};
+      return { act: t.output!.act, step: p.step, lines: (p.parts ?? []).flatMap((x) => (x.line ? [x.line] : [])), say: t.output!.say.join(" ") };
+    });
+  }
+
+  const rightLines = (told: Told[]) => told.flatMap((t) => t.lines).filter((l) => l === "check.right_step").length;
+
+  describe("P1: each operand at most once in the whole turn", () => {
+    it.each([
+      ["I add 9. I add 9. That's 16.", "ones"], ["I add 7. I add 7. That's 16.", "ones"], ["Add 9, add 9. That's 16.", "ones"],
+      ["I add 3. I add 3. That's 6.", "tens"], ["I add 2. I add 2. That's 6.", "tens"],
+    ])("does not credit %j (%s)", async (text, step) => {
+      const value = step === "ones" ? 16 : 6;
+      const before = step === "ones" ? [] : [ONES];
+      for (const first of [named(text, value, step), down(text)]) {
+        const told = await play([...before, first]);
+        expect(rightLines(told), text).toBe(before.length);
+        expect(told.at(-1)!.step ?? step, text).toBe(step);
+      }
+    });
+
+    it("gives no confirm whose yes credits for 'I add 9. I add 9. That's 16. Is that right?'", async () => {
+      for (const first of [named("I add 9. I add 9. That's 16. Is that right?"), down("I add 9. I add 9. That's 16. Is that right?")]) {
+        const told = await play([first, down("Yes.")]);
+        expect(told[1].act).not.toBe("confirm");
+        expect(rightLines(told)).toBe(0);
+      }
+    });
+
+    it("still credits each operand said once across clauses: 'I add 7. I add 9. That's 16.'", async () => {
+      for (const first of [named("I add 7. I add 9. That's 16."), down("I add 7. I add 9. That's 16.")]) {
+        expect((await play([first]))[1]).toMatchObject({ act: "guide", step: "tens", lines: ["check.right_step", "step.invite"] });
+      }
+    });
+  });
+
+  describe("P2: a request to Maya is not harmless", () => {
+    it.each(["Show me. That's 16.", "You show me. 16.", "Now you add. 16.", "Show me the ones. That's 16.", "You add 7 and 9. That's 16.",
+      "Then you add 9. 16.", "Okay, you start. 16.", "I add 7 and 9. That's 16. Show me.", "7 and 9. You add. That's 16.", "Can you check? 7 + 9 is 16.",
+      "7 + 9 is 16. Can you check?", "Now show me. That's 16.",
+      // Re-check of 6965a1dd: a lead word does not turn a request into narration.
+      "Then show me. 16.", "Then show me. That's 16.", "So show me. That's 16.", "So, show me. 16.", "And show me. 16.", "First show me. 16.",
+      "7 and 9, then show me. 16.", "I add 7 and 9. Then show me. 16.", "So add. 16."])("does not credit %j", async (text) => {
+      for (const first of [named(text), down(text)]) {
+        const told = await play([first]);
+        expect(rightLines(told), text).toBe(0);
+        expect(told[1].step ?? "ones", text).toBe("ones");
+      }
+    });
+
+    // Re-review (2026-11-12): only a bare present imperative at the start of a clause, or "you" before a verb, is a request.
+    // A past or -ing form, or a verb after "then", is the child's own description.
+    it.each(["Added 7 and 9. That's 16.", "I add 7, then add 9. That's 16.", "First I add 7, then add 9, that's 16.", "I added 7, then added 9, so 16.",
+      "Adding 7 and 9, I got 16.", "Started with 7. That's 16.", "You taught me this. 16.",
+      "And then add 9. That's 16.", "I add 7, then add the ones. That's 16.", "I add 9, then start with 7. That's 16."])("credits the ones for %j", async (text) => {
+      for (const first of [named(text), down(text)]) {
+        expect((await play([first]))[1], text).toMatchObject({ act: "guide", step: "tens", lines: ["check.right_step", "step.invite"] });
+      }
+    });
+
+    it("still credits 'Like you showed me, I add the ones first. 7 + 9 is 16.'", async () => {
+      const text = "Like you showed me, I add the ones first. 7 + 9 is 16.";
+      for (const first of [named(text), down(text)]) {
+        expect((await play([first]))[1]).toMatchObject({ act: "guide", step: "tens", lines: ["check.right_step", "step.invite"] });
+      }
+    });
+  });
+
+  describe("P3: no step confirm for a step Maya showed", () => {
+    const SHOW: Step = { child: "Show me the ones.", read: { help: "show" }, maya: [{ act: "guide", step: "ones", level: 3, lines: ["step.show"] }] };
+    // The ones shown at H3, then the easier example (way out) and the new try, on code's fallback: the ladder is below H3.
+    const AFTER_EXAMPLE: Step[] = [SHOW, down("Um."), down("Okay.")];
+    const read: Read = { answers: [[16, "ones", "right"]] };
+    it.each(["Is it 16?", "7 + 9 is 16. Is that right?"])("asks no confirm for %j after the show and the example", async (text) => {
+      const before = await play(AFTER_EXAMPLE);
+      const told = await play([...AFTER_EXAMPLE, { child: text, read, maya: [{ act: "confirm", heard: "16", repair: { throws: true } }] }, down("Yes.")]);
+      expect(told[before.length].act, JSON.stringify(told[before.length])).not.toBe("confirm");
+      expect(rightLines(told)).toBe(0);
+    });
   });
 });

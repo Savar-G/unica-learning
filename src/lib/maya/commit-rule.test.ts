@@ -1,17 +1,12 @@
-// The commit rule as a block-list (2026-11-12, approved by Savar through the Chief of Staff). A step, or the final answer, is
-// credited when the child's turn states its value as the child's own and the turn has no blocker: another person's number,
-// a hedge, a question about the value, a different value for the same step, an operand counted twice, a request to Maya,
-// or a copy of a step Maya showed. Several steps said in order credit each one. The model's reading and code's fallback
-// use the one check. After Maya's confirm, "Yes" with the same value credits it. "You said X" is the child's echo only
-// when X holds that step's own numbers and Maya has not shown the step. A turn held back only by its form never counts
-// toward the loop guard or the honest close: Maya asks her confirm. FIXTURES.A is 27 + 39; FIXTURES.B is 52 - 28.
 import { describe, expect, it } from "vitest";
+import { type FixtureId, FIXTURES } from "@/lib/maya-gate/fixtures";
+import { CHILD_MS, GATE_T0, type Plan, type Read, scenarioModel } from "@/lib/maya-gate/gate";
 import { createTextSession } from "@/lib/maya-text";
-import { FIXTURES, type FixtureId } from "@/lib/maya-gate/fixtures";
-import { CHILD_MS, GATE_T0, scenarioModel, type Plan, type Read } from "@/lib/maya-gate/gate";
 
 const THROWS: Plan[] = [{ throws: true }];
+
 type Turn = { text: string; read?: Read | null; plans?: Plan[] };
+
 interface After { done: string[]; solved: boolean; acts: (string | null)[]; say: string[]; outcome: string | null }
 
 /** Plays turns on a fresh call. A turn with `read: null` is a failed model call (code's fallback decides). */
@@ -36,11 +31,17 @@ async function play(turns: Turn[], fixture: FixtureId = "A"): Promise<After> {
 }
 
 const ones = (text: string, value = 16): Turn => ({ text, read: { answers: [[value, "ones", "right"]] } });
+
 const tens = (text: string, value = 6): Turn => ({ text, read: { answers: [[value, "tens", "right"]] } });
+
 const result = (text: string, value = 66): Turn => ({ text, read: { answers: [[value, "result", "right"]] } });
+
 const down = (text: string): Turn => ({ text, read: null });
+
 const SHOW: Turn = { text: "Show me the ones.", read: { help: "show" }, plans: [{ act: "guide", step: "ones", level: 3, lines: ["step.show"] }] };
+
 const ONES_DONE = ones("16.");
+
 const TENS_DONE = tens("6.");
 
 /** Both paths: the model's reading, and a failed model call. */
@@ -204,5 +205,187 @@ describe("rule D: a turn held back only by its form does not count toward the ho
     const help = Array.from({ length: 10 }, () => down("I'm stuck. Help me."));
     const after = await play(help);
     expect(after.outcome).not.toBeNull();
+  });
+});
+
+describe("commit rule refusals and take-backs", () => {
+  const THROWS: Plan[] = [{ throws: true }];
+
+  type Turn = { text: string; read?: Read | null };
+
+  async function play(turns: Turn[], fixture: FixtureId) {
+    let now = GATE_T0;
+    const model = scenarioModel("review3");
+    const call = createTextSession({ callId: "review3", package: FIXTURES[fixture], model, clock: () => now, random: 1, grade: 4, freeTalk: false });
+    model.next([], undefined);
+    await call.start();
+    for (const t of turns) {
+      now += CHILD_MS;
+      model.next(t.read === null ? THROWS : [], t.read ?? undefined);
+      await call.child(t.text);
+    }
+    return { done: [...call.session.done], solved: call.session.solved !== null };
+  }
+
+  const read = (value: number, step: string): Read => ({ answers: [[value, step, "right"]] });
+
+  const A_ONES: Turn = { text: "16.", read: read(16, "ones") };
+
+  const A_TENS: Turn = { text: "6.", read: read(6, "tens") };
+
+  const B_ONES: Turn = { text: "4.", read: read(4, "ones") };
+
+  // [fixture, steps done first, the step, its value, the turns]
+  const CASES: [FixtureId, Turn[], string, number, string[]][] = [
+    ["A", [], "ones", 16, [
+      "Sam said 16.", "Alex got 16.", "Mia told me 16.", "Siri said 16.", "My iPad got 16.", "My partner got 16.", "My workbook has 16.", "The answer sheet has 16.",
+      "The answer key: 16.", "I copied 16 from the board.", "I looked at the back and it's 16.", "The app showed 16.", "Maya said 16.", "It said 16 on the screen.",
+      "I feel like it's 16.", "16, I reckon.", "It's about 16.", "Around 16.", "Roughly 16.", "Something like 16.", "Uh, 16-ish.", "Pretty sure it's 16.",
+      "Just say if it's 16.", "16. Let me know.", "Tell me if it's 16.", "Say if it's right. 16.",
+      "16, that's the answer.", "16. Done!", "16, I'm finished.",
+      "You said 16 and 66.", "You said 6 and 16. So 16.",
+    ]],
+    ["A", [A_ONES], "tens", 6, ["Sam said 6.", "About 6.", "6, that's the answer.", "Just say if it's 6."]],
+    ["B", [], "ones", 4, ["Sam got 4.", "Just say if it's 4.", "I feel like it's 4.", "Around 4."]],
+    ["B", [B_ONES], "tens", 2, ["Sam got 2.", "Roughly 2."]],
+    ["A", [A_ONES, A_TENS], "result", 66, ["Sam said 66.", "About 66.", "I feel like it's 66."]],
+    ["A", [A_ONES], "result", 66, ["You said 66.", "You told me 66.", "Maya said 66."]],
+    ["A", [], "result", 66, ["You told me it's 66.", "Okay! You said 66 is right, so I wrote it. I'm done!"]],
+  ];
+
+  describe("review of the commit rule: each of these turns is refused on both paths", () => {
+    for (const [fixture, before, step, value, turns] of CASES) {
+      it.each(turns)(`${fixture} ${step}: %j`, async (text) => {
+        for (const turn of [{ text, read: read(value, step) }, { text, read: null }]) {
+          const r = await play([...before, turn], fixture);
+          expect(step === "result" ? r.solved : r.done.includes(step), `${text} (${turn.read ? "model" : "fallback"})`).toBe(false);
+        }
+      });
+    }
+
+    it("still credits a take-back to the right value: '15. No wait, 16.'", async () => {
+      for (const turn of [{ text: "15. No wait, 16.", read: read(16, "ones") }, { text: "15. No wait, 16.", read: null }]) {
+        expect((await play([turn], "A")).done).toContain("ones");
+      }
+    });
+  });
+});
+
+describe("commit rule honest turns and hedges", () => {
+  const THROWS: Plan[] = [{ throws: true }];
+
+  type Turn = { text: string; read?: Read | null };
+
+  async function play(turns: Turn[]) {
+    let now = GATE_T0;
+    const model = scenarioModel("review4");
+    const call = createTextSession({ callId: "review4", package: FIXTURES.A, model, clock: () => now, random: 1, grade: 4, freeTalk: false });
+    model.next([], undefined);
+    await call.start();
+    for (const t of turns) {
+      now += CHILD_MS;
+      model.next(t.read === null ? THROWS : [], t.read ?? undefined);
+      await call.child(t.text);
+    }
+    return { done: [...call.session.done], solved: call.session.solved !== null };
+  }
+
+  const read = (value: number, step: string): Read => ({ answers: [[value, step, "right"]] });
+
+  const ONES: Turn = { text: "16.", read: read(16, "ones") };
+
+  const TENS: Turn = { text: "6.", read: read(6, "tens") };
+
+  const HONEST: [Turn[], string, number, string[]][] = [
+    [[], "ones", 16, ["7 and 9 gives 16.", "Adding them gives 16.", "That gives 16.", "The ones have 16.", "The ones got 16.", "The ones column has 16.",
+      "I'm done with the ones, it's 16.", "The ones are done. 16.", "16. Now the tens, then the answer.", "It has to be 16."]],
+    [[ONES], "tens", 6, ["2 plus 3 plus 1 gives 6.", "The tens have 6.", "The tens got 6.", "That gives 6."]],
+    [[ONES, TENS], "result", 66, ["27 plus 39 gives 66.", "That gives 66."]],
+  ];
+
+  const REFUSED: [Turn[], string, number, string[]][] = [
+    [[], "ones", 16, ["We got 16 in class.", "Sam: 16.", "16, according to Sam.", "From the board, 16.", "On the poster it's 16.", "I peeked, 16.",
+      "Most likely 16.", "Let's say 16.", "16 is the whole answer.", "16, the end.", "16, Sam said.", "16. Sam says so."]],
+    [[ONES, TENS], "result", 66, ["66, like you said.", "66, as you said.", "66, you told me."]],
+  ];
+
+  const credited = async (before: Turn[], step: string, value: number, text: string) =>
+    Promise.all([{ text, read: read(value, step) }, { text, read: null }].map(async (turn) => {
+      const r = await play([...before, turn]);
+      return step === "result" ? r.solved : r.done.includes(step);
+    }));
+
+  describe("re-review of the commit rule", () => {
+    for (const [before, step, value, turns] of HONEST) {
+      it.each(turns)(`credits ${step} for %j on both paths`, async (text) => expect(await credited(before, step, value, text)).toEqual([true, true]));
+    }
+    for (const [before, step, value, turns] of REFUSED) {
+      it.each(turns)(`refuses ${step} for %j on both paths`, async (text) => expect(await credited(before, step, value, text)).toEqual([false, false]));
+    }
+  });
+});
+
+describe("commit rule edge cases", () => {
+  const THROWS: Plan[] = [{ throws: true }];
+
+  type Turn = { text: string; read?: Read | null };
+
+  async function play(turns: Turn[]) {
+    let now = GATE_T0;
+    const model = scenarioModel("review5");
+    const call = createTextSession({ callId: "review5", package: FIXTURES.A, model, clock: () => now, random: 1, grade: 4, freeTalk: false });
+    model.next([], undefined);
+    await call.start();
+    for (const t of turns) {
+      now += CHILD_MS;
+      model.next(t.read === null ? THROWS : [], t.read ?? undefined);
+      await call.child(t.text);
+    }
+    return { done: [...call.session.done], solved: call.session.solved !== null };
+  }
+
+  const read = (value: number, step: string): Read => ({ answers: [[value, step, "right"]] });
+
+  const ONES: Turn = { text: "16.", read: read(16, "ones") };
+
+  const TENS: Turn = { text: "6.", read: read(6, "tens") };
+
+  const HONEST: [Turn[], string, number, string[]][] = [
+    [[], "ones", 16, ["They make 16.", "Together they make 16.", "7 and 9, they make 16.", "They add up to 16.", "Those two make 16.", "I say 16."]],
+    [[ONES], "tens", 6, ["They make 6."]],
+    [[ONES, TENS], "result", 66, ["They add up to 66.", "Result: 66."]],
+  ];
+
+  const REFUSED: [Turn[], string, number, string[]][] = [
+    [[], "ones", 16, ["Sam did 16.", "Sam made 16.", "Sam answered 16.", "Sam worked out 16.", "Sam counted 16.", "Sam was like, 16.", "Sam goes 16.",
+      "Sam is saying 16.", "Sam reckons 16.", "Sam's is 16.", "Sam's answer was 16.", "The girl next to me got 16.", "I heard Sam got 16.", "I saw Sam got 16.",
+      "I know Sam got 16.", "They got 16.", "They said 16.", "Let's go with 16."]],
+  ];
+
+  const credited = async (before: Turn[], step: string, value: number, text: string) =>
+    Promise.all([{ text, read: read(value, step) }, { text, read: null }].map(async (turn) => {
+      const r = await play([...before, turn]);
+      return step === "result" ? r.solved : r.done.includes(step);
+    }));
+
+  describe("the subject allow-list", () => {
+    for (const [before, step, value, turns] of HONEST) {
+      it.each(turns)(`credits ${step} for %j on both paths`, async (text) => expect(await credited(before, step, value, text)).toEqual([true, true]));
+    }
+    for (const [before, step, value, turns] of REFUSED) {
+      it.each(turns)(`refuses ${step} for %j on both paths`, async (text) => expect(await credited(before, step, value, text)).toEqual([false, false]));
+    }
+    it("does not refuse a product said with a colon: 'Product: 48.' on 6 x 4 is no name", async () => {
+      // FIXTURES.C is 6 × 4 = 24; a colon after a math word is no speaker.
+      let now = GATE_T0;
+      const model = scenarioModel("review5-c");
+      const call = createTextSession({ callId: "review5-c", package: FIXTURES.C, model, clock: () => now, random: 1, grade: 4, freeTalk: false });
+      model.next([], undefined);
+      await call.start();
+      now += CHILD_MS;
+      model.next(THROWS, undefined);
+      await call.child("Product: 24.");
+      expect(call.session.solved).not.toBeNull();
+    });
   });
 });
