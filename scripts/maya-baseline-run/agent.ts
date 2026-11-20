@@ -6,7 +6,7 @@ import { defineAgent, type JobContext } from "@livekit/agents";
 import { flushAiUsage } from "@/lib/ai-usage";
 import { boardRpcTransport } from "@/lib/board-rpc";
 import { createBoardSender } from "@/lib/board-protocol";
-import { createBoardSpeech, type CueMeasurement } from "@/lib/board-speech";
+import { createBoardSpeech, type CueMeasurement, type CueSource } from "@/lib/board-speech";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { memoryWordingHistoryStore } from "@/lib/maya";
@@ -44,15 +44,35 @@ export interface BaselineJob {
   device: string;
 }
 
+/** One released board cue observed during a turn: whether it fired on a word timestamp or sentence fallback. */
+export interface ReportedCue {
+  batchId: string;
+  source: CueSource;
+  state: string;
+  audioMs: number;
+  acknowledgementMs: number;
+}
+
+/** One child turn transcript received by the controller. */
+export interface ReportedChildTranscript {
+  at: number;
+  text: string;
+  uncertain: boolean;
+  alternatives: string[];
+}
+
 /** What the child receives at close: one message per RPC, each well under the RPC payload limit. */
 export type ReportMessage =
-  | { kind: "turn"; row: ReturnType<typeof voiceBaselineTurn>; t0: number | null; answerPlayback: number | null; ackPlayback: number | null }
-  | { kind: "call"; workerQueueMs: number; profile: Record<string, unknown> | null; discardedPreparation: unknown; speechUsd: { stt: number; tts: number } }
+  | { kind: "turn"; row: ReturnType<typeof voiceBaselineTurn>; t0: number | null; turnStart: number | null; answerPlayback: number | null; ackPlayback: number | null; ttsChars: number; cues: ReportedCue[]; childText: string | null }
+  | { kind: "call"; workerQueueMs: number; profile: Record<string, unknown> | null; discardedPreparation: unknown; speechUsd: { stt: number; tts: number }; ttsChars: number; openingTtsChars: number; models: { stt: string; tts: string }; childTranscripts: ReportedChildTranscript[] }
   | { kind: "done" };
 
 export default defineAgent({
   entry: async (ctx: JobContext) => {
     const entryAt = Date.now();
+    // Never write to hosted Supabase or override the baseline agent name from a caller shell.
+    for (const key of Object.keys(process.env)) if (key.startsWith("SUPABASE_")) delete process.env[key];
+    delete process.env.LIVEKIT_AGENT_NAME_OVERRIDE;
     const job = JSON.parse(ctx.job.metadata) as BaselineJob;
     process.env.AI_USAGE_RECEIPT_FILE = job.receipts;
     globalThis.fetch = markedFetch(globalThis.fetch);
@@ -83,6 +103,18 @@ export default defineAgent({
     if (!started.ok) throw Error(started.error);
     const opened = await calls.openVoice(job.callId, providers.ids, null);
     if (!opened.ok) throw Error(opened.error);
+    const spokenEvents: { at: number; chars: number }[] = [];
+    const origSpoken = opened.call.spoken.bind(opened.call);
+    opened.call.spoken = (said: string) => {
+      spokenEvents.push({ at: clock(), chars: said.length });
+      return origSpoken(said);
+    };
+    const childTranscripts: ReportedChildTranscript[] = [];
+    const origChild = opened.call.child.bind(opened.call);
+    opened.call.child = (text, options, say) => {
+      childTranscripts.push({ at: clock(), text, uncertain: Boolean(options?.uncertain), alternatives: [...(options?.alternatives ?? [])] });
+      return origChild(text, options, say);
+    };
     const made = await makeProviders(providers, { keyterms: callKeyterms(opened.call.session.package) });
     const { tuning } = providers;
     const session = voiceSession(made, made.fake ? {} : { turn: tuning });
@@ -117,16 +149,48 @@ export default defineAgent({
       closed: async () => {
         try {
           // Read request marks at close: a review or repair can finish after playout starts.
-          for (const sample of turns) {
-            const turnClock = telemetry().turnClock(sample.turnId);
+          const clocks = turns.map(sample => telemetry().turnClock(sample.turnId));
+          const turnStarts = clocks.map(tc => tc && typeof tc.turnStart === "number" ? tc.t0 + tc.turnStart : tc?.t0 ?? null);
+          const firstTurnStart = turnStarts.find((t): t is number => t !== null) ?? Infinity;
+          const openingTtsChars = spokenEvents.filter(e => e.at < firstTurnStart).reduce((n, e) => n + e.chars, 0);
+          const totalTtsChars = spokenEvents.reduce((n, e) => n + e.chars, 0);
+          for (let i = 0; i < turns.length; i++) {
+            const sample = turns[i];
+            const turnClock = clocks[i];
             const cues = samples.filter(c => { const o = owners.get(c.utteranceId); return !!o && o.turnId === sample.turnId && o.batchIds.includes(c.batchId); });
             const at = (kind: "answer" | "ack") => {
               const u = turnClock?.utterances.find(x => x.kind === kind && typeof x.playbackStarted === "number");
               return u && turnClock ? turnClock.t0 + (u.playbackStarted as number) : null;
             };
-            await send({ kind: "turn", row: voiceBaselineTurn(group, sample, turnClock, cues), t0: turnClock?.t0 ?? null, answerPlayback: at("answer"), ackPlayback: at("ack") });
+            const startAt = turnStarts[i];
+            const nextStartAt = turnStarts.slice(i + 1).find((t): t is number => t !== null) ?? Infinity;
+            const ttsChars = startAt === null ? 0 : spokenEvents.filter(e => e.at >= startAt && e.at < nextStartAt).reduce((n, e) => n + e.chars, 0);
+            const matchedChild = startAt === null ? null : childTranscripts.find(c => c.at >= startAt - 500 && c.at < nextStartAt)?.text ?? null;
+            await send({
+              kind: "turn",
+              row: voiceBaselineTurn(group, sample, turnClock, cues),
+              t0: turnClock?.t0 ?? null,
+              turnStart: startAt,
+              answerPlayback: at("answer"),
+              ackPlayback: at("ack"),
+              ttsChars,
+              cues: cues.map(c => ({ batchId: c.batchId, source: c.source, state: c.state, audioMs: c.audioMs, acknowledgementMs: c.acknowledgementMs })),
+              childText: matchedChild,
+            });
           }
-          await send({ kind: "call", workerQueueMs: entryAt - job.dispatchAt, profile: profile ? profile() : null, discardedPreparation: telemetry().discardedPreparationSummary(), speechUsd: speechUsd() });
+          const sttModel = providers.speechToText.provider === "inference" ? providers.speechToText.model : providers.ids.speechToText;
+          const ttsModel = providers.voice.provider === "inference" ? providers.voice.model : providers.ids.voice;
+          await send({
+            kind: "call",
+            workerQueueMs: entryAt - job.dispatchAt,
+            profile: profile ? profile() : null,
+            discardedPreparation: telemetry().discardedPreparationSummary(),
+            speechUsd: speechUsd(),
+            ttsChars: totalTtsChars,
+            openingTtsChars,
+            models: { stt: sttModel, tts: ttsModel },
+            childTranscripts,
+          });
           await send({ kind: "done" });
         } finally {
           await flushAiUsage();

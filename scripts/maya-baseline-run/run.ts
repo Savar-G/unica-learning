@@ -233,21 +233,52 @@ function write(capture: string, cases: string, job: BaselineJob, steps: Step[], 
   steps.forEach((s, i) => {
     const end = steps[i + 1]?.inputEnd ?? Infinity;
     const mine = turns.filter(t => stepOf(t.t0) === i);
+    const allCues = mine.flatMap(t => t.cues);
+    const cueSources = { word: allCues.filter(c => c.source === "word").length, sentence: allCues.filter(c => c.source === "sentence").length };
+    const ttsChars = mine.reduce((n, t) => n + t.ttsChars, 0);
+    const transcripts = mine.map(t => t.childText).filter((x): x is string => x !== null);
+    let deviceRow: BaselineTurn | null = null;
+    if (s.turnType !== "background" && !fake) {
+      const provider = turns[0]?.row.provider ?? "unknown";
+      deviceRow = deviceTurn({
+        group: { evidence: "device", mode: "voice", turnType: s.turnType, provider, teaching, device: job.device, network: job.network, concurrency: job.concurrency },
+        inputEnd: s.inputEnd, bursts: c.bursts.filter(b => b.start < end), answerPlayback: mine.find(t => t.answerPlayback !== null)?.answerPlayback ?? null,
+        boardAt: c.board.find(at => at >= s.inputEnd && at < end) ?? null, ...(s.interruptionAt ? { interruptionAt: s.interruptionAt } : {}),
+      });
+      lines.push(BASELINE_PREFIX + JSON.stringify(deviceRow));
+    }
     // Background speech should get no reply: any Maya sound before the next step is a false response.
-    caseRows.push({ case: s.prompt, workerTurns: mine.length, outcomes: mine.map(t => t.row.outcome), answered: mine.some(t => t.answerPlayback !== null),
-      ...(s.turnType === "background" ? { falseResponse: c.bursts.some(b => b.start >= s.inputEnd && b.start < end) } : {}) });
-    if (s.turnType === "background" || fake) return;
-    const provider = turns[0]?.row.provider ?? "unknown";
-    lines.push(BASELINE_PREFIX + JSON.stringify(deviceTurn({
-      group: { evidence: "device", mode: "voice", turnType: s.turnType, provider, teaching, device: job.device, network: job.network, concurrency: job.concurrency },
-      inputEnd: s.inputEnd, bursts: c.bursts.filter(b => b.start < end), answerPlayback: mine.find(t => t.answerPlayback !== null)?.answerPlayback ?? null,
-      boardAt: c.board.find(at => at >= s.inputEnd && at < end) ?? null, ...(s.interruptionAt ? { interruptionAt: s.interruptionAt } : {}),
-    })));
+    const stepBursts = c.bursts.filter(b => b.start >= s.inputEnd - 250 && b.start < end);
+    caseRows.push({
+      case: s.prompt,
+      turnType: s.turnType,
+      inputEnd: s.inputEnd,
+      answerPlayback: mine.find(t => t.answerPlayback !== null)?.answerPlayback ?? null,
+      ackPlayback: mine.find(t => t.ackPlayback !== null)?.ackPlayback ?? null,
+      boardAt: c.board.find(at => at >= s.inputEnd && at < end) ?? null,
+      ...(s.interruptionAt !== undefined ? { interruptionAt: s.interruptionAt } : {}),
+      bursts: stepBursts,
+      workerTurns: mine.length,
+      outcomes: mine.map(t => t.row.outcome),
+      answered: mine.some(t => t.answerPlayback !== null),
+      transcripts,
+      ttsChars,
+      cueCount: allCues.length,
+      cueSources,
+      workerMs: mine.map(t => ({
+        speechEndToFinal: t.row.ms.speechEndToFinal ?? null,
+        finalToTurn: t.row.ms.finalToTurn ?? null,
+        synthesisFirstFrame: t.row.ms.synthesisFirstFrame ?? null,
+        workerReply: t.row.ms.workerReply ?? null,
+      })),
+      ...(deviceRow ? { deviceMs: deviceRow.ms, deviceOutcome: deviceRow.outcome } : {}),
+      ...(s.turnType === "background" ? { falseResponse: c.bursts.some(b => b.start >= s.inputEnd && b.start < end) } : {}),
+    });
   });
   // Machine load biases CPU and event-loop figures: record it beside them.
   const machine = { loadAverage1m: Math.round(loadavg()[0] * 100) / 100, cores: cpus().length };
   if (call?.profile) lines.push(BASELINE_PROFILE_PREFIX + JSON.stringify({ teaching, concurrency: job.concurrency, machine, workerQueueMs: call.workerQueueMs, ...call.profile, discardedPreparation: call.discardedPreparation }));
-  lines.push(...costs(job, teaching, callMinutes, fake, call?.speechUsd ?? null).map(r => BASELINE_COST_PREFIX + JSON.stringify(r)));
+  lines.push(...costs(job, teaching, callMinutes, fake, call ?? null).map(r => BASELINE_COST_PREFIX + JSON.stringify(r)));
   // Discarded preparation is already inside the provider receipts. These rows only make its share visible.
   const d = call?.discardedPreparation as { decisions: number; reported: number; estimated: number; unknown: number; reportedUsd: number; estimatedUsd: number } | undefined;
   if (d?.decisions) {
@@ -257,11 +288,23 @@ function write(capture: string, cases: string, job: BaselineJob, steps: Step[], 
     if (d.unknown) lines.push(BASELINE_COST_PREFIX + JSON.stringify({ ...base, basis: "unknown", calls: d.unknown, usd: null }));
   }
   appendFileSync(capture, lines.join("\n") + "\n");
-  appendFileSync(cases, JSON.stringify({ callId: job.callId, teaching, concurrency: job.concurrency, reported: c.messages.some(m => m.kind === "done"), cases: caseRows }) + "\n");
+  appendFileSync(cases, JSON.stringify({
+    callId: job.callId,
+    teaching,
+    concurrency: job.concurrency,
+    reported: c.messages.some(m => m.kind === "done"),
+    callMinutes: Math.round(callMinutes * 1e4) / 1e4,
+    models: call?.models ?? null,
+    ttsChars: call?.ttsChars ?? null,
+    openingTtsChars: call?.openingTtsChars ?? null,
+    speechUsd: call?.speechUsd ?? null,
+    childTranscripts: call?.childTranscripts ?? [],
+    cases: caseRows,
+  }) + "\n");
 }
 
 /** Provider receipts for model work; configured-rate estimates for speech; transport has no local price. */
-function costs(job: BaselineJob, teaching: BaselineCost["teaching"], callMinutes: number, fake: boolean, speech: { stt: number; tts: number } | null): BaselineCost[] {
+function costs(job: BaselineJob, teaching: BaselineCost["teaching"], callMinutes: number, fake: boolean, call: Extract<ReportMessage, { kind: "call" }> | null): BaselineCost[] {
   const base = { v: 1 as const, mode: "voice" as const, teaching, concurrency: job.concurrency };
   const rows: BaselineCost[] = [];
   if (existsSync(job.receipts)) for (const line of readFileSync(job.receipts, "utf8").split("\n").filter(Boolean)) {
@@ -271,23 +314,32 @@ function costs(job: BaselineJob, teaching: BaselineCost["teaching"], callMinutes
   }
   if (fake) return rows;
   const minutes = Math.round(callMinutes * 1e4) / 1e4;
+  const speech = call?.speechUsd ?? null;
+  const sttModel = call?.models?.stt ?? "assemblyai/universal-3-6-pro";
+  const ttsModel = call?.models?.tts ?? "cartesia/sonic-3.6";
+  const ttsQuantity = call ? { quantity: { unit: "characters" as const, value: call.ttsChars } } : {};
   // The worker ledger's own estimates: speech-to-text by covered minute block, voice by characters returned as audio.
   rows.push(speech
-    ? { ...base, work: "stt", model: "assemblyai/universal-3-6-pro", effort: "none", basis: "estimate", calls: 1, usd: speech.stt, quantity: { unit: "minutes", value: minutes } }
-    : { ...base, work: "stt", model: "assemblyai/universal-3-6-pro", effort: "none", basis: "unknown", calls: 1, usd: null, quantity: { unit: "minutes", value: minutes } });
+    ? { ...base, work: "stt", model: sttModel, effort: "none", basis: "estimate", calls: 1, usd: speech.stt, quantity: { unit: "minutes", value: minutes } }
+    : { ...base, work: "stt", model: sttModel, effort: "none", basis: "unknown", calls: 1, usd: null, quantity: { unit: "minutes", value: minutes } });
   rows.push(speech
-    ? { ...base, work: "tts", model: "cartesia/sonic-3.6", effort: "none", basis: "estimate", calls: 1, usd: speech.tts }
-    : { ...base, work: "tts", model: "cartesia/sonic-3.6", effort: "none", basis: "unknown", calls: 1, usd: null });
+    ? { ...base, work: "tts", model: ttsModel, effort: "none", basis: "estimate", calls: 1, usd: speech.tts, ...ttsQuantity }
+    : { ...base, work: "tts", model: ttsModel, effort: "none", basis: "unknown", calls: 1, usd: null, ...ttsQuantity });
   rows.push({ ...base, work: "transport", model: "livekit-server-dev", effort: "none", basis: "unknown", calls: 1, usd: null, quantity: { unit: "participantMinutes", value: Math.round(minutes * 2 * 1e4) / 1e4 } });
   return rows;
 }
 
 export async function main(o: { url: string; agent: string; out: string; teachings: ("existing" | "checked")[]; calls: number; concurrency: number; network: string; device: string; healthPort: number; fake: boolean }) {
+  // Never post receipts to hosted Supabase or allow an env override to hijack the worker's agent name.
+  for (const key of Object.keys(process.env)) if (key.startsWith("SUPABASE_")) delete process.env[key];
+  delete process.env.LIVEKIT_AGENT_NAME_OVERRIDE;
   initializeLogger({ pretty: false, level: "warn" });
   const prompts = new Map(Object.keys(TURN_TYPES).map(name => [name, pcm(join(o.out, "prompts", `${name}.wav`))]));
   // Background speech plays 18 dB below the child's prompts.
   prompts.set("background", prompts.get("background")!.map(x => Math.round(x * 10 ** (-18 / 20))));
-  const server = new AgentServer(new ServerOptions({ agent: o.agent, agentName: BASELINE_AGENT, wsURL: o.url, apiKey: "devkey", apiSecret: "secret", numIdleProcesses: o.concurrency, loadThreshold: 1, port: o.healthPort }));
+  const serverOpts = new ServerOptions({ agent: o.agent, agentName: BASELINE_AGENT, wsURL: o.url, apiKey: "devkey", apiSecret: "secret", numIdleProcesses: o.concurrency, loadThreshold: 1, port: o.healthPort });
+  console.log(`[maya baseline] starting local worker agentName=${serverOpts.agentName} wsURL=${o.url} healthPort=${o.healthPort}`);
+  const server = new AgentServer(serverOpts);
   void server.run();
   await pause(3000);
   const dispatch = new AgentDispatchClient(o.url.replace(/^ws/, "http"), "devkey", "secret");

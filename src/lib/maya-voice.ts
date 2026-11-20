@@ -150,7 +150,13 @@ export const TTS_DEFAULT_MODEL = "inworld-tts-2";
  * checked is refused, never passed on. Each is listed on https://docs.livekit.io/agents/models/inference/ (read
  * 2026-11-04) and in the `inference.STT` model types of LiveKit Agents for Node 1.9.5.
  */
-export const INFERENCE_STT_MODELS = ["assemblyai/universal-3-6-pro", "assemblyai/universal-3-5-pro", "assemblyai/universal-streaming", "deepgram/flux-general-en"] as const;
+export const INFERENCE_STT_MODELS = [
+  "assemblyai/universal-3-6-pro",
+  "assemblyai/assemblyai-stt-3-7-realtime-agent",
+  "assemblyai/universal-3-5-pro",
+  "assemblyai/universal-streaming",
+  "deepgram/flux-general-en",
+] as const;
 export type InferenceSttModel = (typeof INFERENCE_STT_MODELS)[number];
 export const INFERENCE_STT_DEFAULT: InferenceSttModel = "assemblyai/universal-3-6-pro";
 
@@ -165,6 +171,7 @@ export const INFERENCE_STT_DEFAULT: InferenceSttModel = "assemblyai/universal-3-
  */
 export const INFERENCE_TTS_MODELS = {
   "inworld/inworld-tts-2": { timestamp_type: "WORD" },
+  "inworld/inworld-tts-2-flash": { timestamp_type: "WORD" },
   "cartesia/sonic-3.6": { add_timestamps: true },
 } as const satisfies Record<string, Readonly<Record<string, string | boolean>>>;
 export type InferenceTtsModel = keyof typeof INFERENCE_TTS_MODELS;
@@ -228,6 +235,8 @@ export interface VoiceTuning {
    * changed.
    */
   detectorMinSilenceMs: number;
+  /** Optional AssemblyAI `voice_focus` setting through Inference (`near-field` or `far-field`). Unset: omitted. */
+  sttVoiceFocus?: "near-field" | "far-field";
 }
 
 /**
@@ -304,6 +313,9 @@ export function voiceTuning(env: Readonly<Record<string, string | undefined>>): 
     if (!/^-?\d+(?:\.\d+)?$/.test(drop) || n < -120 || n > 0) problems.push(`MAYA_DROP_SILENT_PEAK_DBFS must be "off" or a level from -120 to 0 (dBFS), not "${drop}"`);
     else tuning.dropSilentPeakDbfs = n;
   }
+  const focus = value(env, "MAYA_STT_VOICE_FOCUS");
+  if (focus === "near-field" || focus === "far-field") tuning.sttVoiceFocus = focus;
+  else if (focus) problems.push(`MAYA_STT_VOICE_FOCUS must be "near-field" or "far-field", not "${focus}"`);
   if (!problems.length) {
     if (tuning.sttMaxSilenceMs < tuning.sttMinSilenceMs) problems.push("MAYA_STT_MAX_SILENCE_MS must not be less than MAYA_STT_MIN_SILENCE_MS");
     if (tuning.sttNumberSilenceMs < tuning.sttMaxSilenceMs) problems.push("MAYA_STT_NUMBER_SILENCE_MS must not be less than MAYA_STT_MAX_SILENCE_MS");

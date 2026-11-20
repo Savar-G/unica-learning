@@ -94,6 +94,16 @@ describe("providers by configuration", () => {
     }
     const cartesia = voiceProviders({ ...LK, MAYA_TTS: "inference", MAYA_TTS_MODEL: "cartesia/sonic-3.6", MAYA_VOICE: "a0e99841-438c-4a64-b679-ae501e7d6091", MAYA_STT: "inference", MAYA_STT_MODEL: "deepgram/flux-general-en", MAYA_VOICE_PRIVACY_CONFIRMED: INFERENCE_OK });
     expect(cartesia).toMatchObject({ ok: true, voice: { modelOptions: { add_timestamps: true } }, ids: { speechToText: "inference/deepgram/flux-general-en", voice: "inference/cartesia/sonic-3.6/a0e99841-438c-4a64-b679-ae501e7d6091" } });
+    // AssemblyAI 3.7 and Inworld TTS-2 Flash are allowlisted behind explicit settings; defaults stay unchanged.
+    const nextGen = voiceProviders({ ...LK, MAYA_STT: "inference", MAYA_STT_MODEL: "assemblyai/assemblyai-stt-3-7-realtime-agent", MAYA_TTS: "inference", MAYA_TTS_MODEL: "inworld/inworld-tts-2-flash", MAYA_VOICE: "Ashley", MAYA_VOICE_PRIVACY_CONFIRMED: INFERENCE_OK });
+    expect(nextGen).toMatchObject({
+      ok: true,
+      speechToText: { provider: "inference", model: "assemblyai/assemblyai-stt-3-7-realtime-agent" },
+      voice: { provider: "inference", model: "inworld/inworld-tts-2-flash", voice: "Ashley", modelOptions: { timestamp_type: "WORD" } },
+      ids: { speechToText: "inference/assemblyai/assemblyai-stt-3-7-realtime-agent", voice: "inference/inworld/inworld-tts-2-flash/Ashley" },
+    });
+    if (nextGen.ok) expect(asksWordTimings(nextGen.voice)).toBe(true);
+    expect(voiceProviders({ ...LK, MAYA_TTS: "inference", MAYA_TTS_MODEL: "inworld/inworld-tts-2-flash", MAYA_VOICE_PRIVACY_CONFIRMED: INFERENCE_OK })).toMatchObject({ ok: false, problems: ["MAYA_TTS is inference, but MAYA_VOICE (the voice id) is not set"] });
     // Every voice on the allow list asks for word timings.
     for (const options of Object.values(INFERENCE_TTS_MODELS)) expect(Object.keys(options).length).toBeGreaterThan(0);
   });
@@ -286,6 +296,12 @@ describe("the tuning settings", () => {
 
   it("turn the silent-transcript rule off with MAYA_DROP_SILENT_PEAK_DBFS=off", () => {
     expect(voiceTuning({ MAYA_DROP_SILENT_PEAK_DBFS: "off" })).toMatchObject({ tuning: { dropSilentPeakDbfs: null }, problems: [] });
+  });
+
+  it("read optional MAYA_STT_VOICE_FOCUS and refuse unknown values", () => {
+    expect(voiceTuning({ MAYA_STT_VOICE_FOCUS: "near-field" })).toMatchObject({ tuning: { sttVoiceFocus: "near-field" }, problems: [] });
+    expect(voiceTuning({ MAYA_STT_VOICE_FOCUS: "far-field" })).toMatchObject({ tuning: { sttVoiceFocus: "far-field" }, problems: [] });
+    expect(voiceTuning({ MAYA_STT_VOICE_FOCUS: "mid-field" }).problems).toEqual(['MAYA_STT_VOICE_FOCUS must be "near-field" or "far-field", not "mid-field"']);
   });
 
   it("refuse a value outside its bounds, or not a whole number, instead of using a default", () => {
