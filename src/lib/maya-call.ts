@@ -610,6 +610,12 @@ export interface VoiceCall {
   end(how: FinishOptions): Promise<void>;
   /** Waits until every save so far is done. */
   settled(): Promise<void>;
+  /**
+   * #1203: waits, at most BLOCK_DRAIN_MS (src/lib/maya-spend-block.ts), until the call's budget blocks are written with
+   * their real totals: a prepared reply may still be asking its provider's receipt after the end. For the worker's exit,
+   * after the media closed and the child was told. Never throws.
+   */
+  spendSettled(): Promise<void>;
 }
 
 export type OpenVoiceResult = { ok: true; call: VoiceCall } | { ok: false; error: "not_found" | "not_voice" | "ended" | "conflict" | "model_unavailable" | "unavailable" };
@@ -2042,6 +2048,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           await settledBudget;
         },
         settled: () => queue,
+        spendSettled: () => (budget ? budget.drained().catch(() => {}) : Promise.resolve()),
       };
       return { ok: true, call };
     },

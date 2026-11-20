@@ -16,20 +16,19 @@ export interface SpendSeam {
   /** Permission for one request, at once, with no I/O. Null: no money for it, so the session sends nothing. */
   take(kind: SpendKind): SpendHandle | null;
   /**
-   * The request ended or was aborted: its cost in US dollars (the provider's own figure, else an estimate). Once per handle,
-   * except after `{ provisional: true }` (#1203): that figure counts at once, and one more settle gives the final figure.
+   * The request ended or was aborted: its cost in US dollars, the provider's own figure. Null (#1203): the provider gave
+   * none, so the attempt stays counted at its reservation. Once per handle.
    */
-  settle(handle: SpendHandle, usd: number, how?: { used?: boolean; provisional?: boolean }): void;
+  settle(handle: SpendHandle, usd: number | null, how?: { used?: boolean }): void;
   /** The request was never sent. Once per handle, in place of `settle`. */
   giveBack(handle: SpendHandle): void;
 }
 
 /** An in-memory seam for tests and the command line: it counts handles and cost. `limit`: the most handles it gives. */
-export function memorySpendSeam(limit = Number.POSITIVE_INFINITY): SpendSeam & { taken: SpendHandle[]; settled: { handle: SpendHandle; usd: number }[]; givenBack: SpendHandle[]; usd(): number } {
+export function memorySpendSeam(limit = Number.POSITIVE_INFINITY): SpendSeam & { taken: SpendHandle[]; settled: { handle: SpendHandle; usd: number | null }[]; givenBack: SpendHandle[]; usd(): number } {
   const taken: SpendHandle[] = [];
-  const settled: { handle: SpendHandle; usd: number }[] = [];
+  const settled: { handle: SpendHandle; usd: number | null }[] = [];
   const givenBack: SpendHandle[] = [];
-  const provisional: SpendHandle[] = [];
   return {
     taken, settled, givenBack,
     take(kind) {
@@ -38,14 +37,8 @@ export function memorySpendSeam(limit = Number.POSITIVE_INFINITY): SpendSeam & {
       taken.push(handle);
       return handle;
     },
-    settle(handle, usd, how) {
-      // A final figure after a provisional one replaces it: each handle keeps one entry.
-      const at = provisional.indexOf(handle);
-      if (at >= 0) { provisional.splice(at, 1); settled.splice(settled.findIndex((x) => x.handle === handle), 1, { handle, usd }); return; }
-      if (how?.provisional) provisional.push(handle);
-      settled.push({ handle, usd });
-    },
+    settle(handle, usd) { settled.push({ handle, usd }); },
     giveBack(handle) { givenBack.push(handle); },
-    usd: () => settled.reduce((n, x) => n + x.usd, 0),
+    usd: () => settled.reduce((n, x) => n + (x.usd ?? 0), 0),
   };
 }

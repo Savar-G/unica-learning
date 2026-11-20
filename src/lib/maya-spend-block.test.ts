@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { openRouterClient } from "@/lib/ai-openrouter";
 import { callSpend, createSpendLedger, spendConfig, usdToMicros, RESERVATION_TTL_MS, RESERVE_USD, WEEK_MICROS, type Charge, type SpendCall } from "@/lib/maya-spend";
 import { meteredAi, SpendRefused } from "@/lib/maya-spend-ai";
-import { BLOCK_ATTEMPTS, BLOCK_RENEW_MS, BLOCK_RETIRE_MS, SPECULATIVE_PER_TURN } from "@/lib/maya-spend-block";
+import { BLOCK_ATTEMPTS, BLOCK_DRAIN_MS, BLOCK_RENEW_MS, BLOCK_RETIRE_MS, SPECULATIVE_PER_TURN } from "@/lib/maya-spend-block";
 import { memorySpendStore } from "@/lib/maya-spend-memory";
 import { preparedReplies } from "@/lib/maya-prepared";
 import type { MayaModel, TurnBrief } from "@/lib/maya-model";
@@ -377,27 +377,6 @@ describe("the seam the text session gets (agreed with the Maya lead)", () => {
     expect(b.totals()).toMatchObject({ speculative: 2 * usdToMicros(0.01, t.config), speculativeUsed: usdToMicros(0.01, t.config) });
   });
 
-  it("frees room at a provisional settle, holds the block's row until the final figure, and takes the final figure once (#1203)", async () => {
-    const t = setup();
-    const b = t.spend.budget(voice);
-    await b.open();
-    b.newTurn();
-    const h = b.seam.take("speculative")!;
-    b.seam.settle(h, 0.05, { provisional: true });
-    // The room is free at once: the provisional figure, not the reservation, is counted in memory.
-    expect(b.attempts()).toBe(BLOCK_ATTEMPTS - 1);
-    await b.stop();
-    // The call ended, but the block's row waits for the final figure.
-    expect(t.blocks()).toMatchObject([{ settled: false }]);
-    b.seam.settle(h, 0.004);
-    await t.flush();
-    expect(t.blocks()).toMatchObject([{ settled: true, cost: usdToMicros(0.004, t.config) }]);
-    b.seam.settle(h, 0.09);
-    await t.flush();
-    expect(t.blocks()).toMatchObject([{ settled: true, cost: usdToMicros(0.004, t.config) }]);
-    expect(b.totals()).toMatchObject({ speculative: usdToMicros(0.004, t.config) });
-  });
-
   it("counts the speculative attempts per turn", async () => {
     const t = setup();
     const b = t.spend.budget(voice);
@@ -425,33 +404,53 @@ describe("aborted prepared replies with no reported cost (#1203)", () => {
     cache.start("k", {} as TurnBrief, { text: "6", reason: "interim" }, handle);
     cache.discard(cache.get("k")!, "text", 0);
   };
+  const later = (ms: number, usd: number | null) => () => new Promise<number | null>((r) => setTimeout(() => r(usd), ms));
 
-  it("a block of 4 aborted prepares with no stats settles near their streamed size, far below its CAD 0.84", async () => {
+  it("a block of 4 aborted prepares settles at their receipts, far below its CAD 0.84; with no receipts it keeps its reservation", async () => {
     vi.useFakeTimers();
     try {
-      const t = setup();
-      const b = t.spend.budget(voice);
-      await b.open();
-      b.newTurn();
-      const handles = [b.seam.take("speculative")!, b.seam.take("speculative")!, b.take("model")!, b.take("model")!];
-      for (const h of handles) abortedPrepare(b, h, async () => null);
-      await vi.advanceTimersByTimeAsync(30_000);
-      await b.stop();
-      await vi.advanceTimersByTimeAsync(0);
-      const [row] = t.blocks();
-      expect(row).toMatchObject({ reserved: BLOCK_ATTEMPTS * t.m, settled: true });
-      // Each: an empty brief's input (USD 0.016004) plus 200 streamed characters and the 300-token margin.
-      expect(row.cost).toBeGreaterThanOrEqual(4 * usdToMicros(0.018004, t.config));
-      expect(row.cost).toBeLessThanOrEqual(4 * usdToMicros(0.021004, t.config));
-      expect(row.cost).toBeLessThan(BLOCK_ATTEMPTS * t.m / 5);
+      for (const receipt of [0.005, null]) {
+        const t = setup();
+        const b = t.spend.budget(voice);
+        await b.open();
+        b.newTurn();
+        const handles = [b.seam.take("speculative")!, b.seam.take("speculative")!, b.take("model")!, b.take("model")!];
+        for (const h of handles) abortedPrepare(b, h, async () => receipt);
+        const drained = b.drained();
+        await vi.advanceTimersByTimeAsync(30_000);
+        await drained;
+        const [row] = t.blocks();
+        expect(row).toMatchObject({ reserved: BLOCK_ATTEMPTS * t.m, settled: true, cost: receipt === null ? BLOCK_ATTEMPTS * t.m : 4 * usdToMicros(0.005, t.config) });
+      }
     } finally { vi.useRealTimers(); }
   });
 
-  it("keeps the week under the cap with two calls of one child at once, while stats are owed and after they arrive", async () => {
+  it("keeps an owed receipt's reservation, so a live request cannot run past the week (2 prepares at USD 0.09 each)", async () => {
     vi.useFakeTimers();
     try {
       const t = setup();
-      // Room for one block of 4 and one more attempt.
+      t.leave(BLOCK_ATTEMPTS * t.m);
+      const b = t.spend.budget(voice);
+      await b.open();
+      b.newTurn();
+      for (const h of [b.seam.take("speculative")!, b.seam.take("speculative")!]) abortedPrepare(b, h, later(1_500, 0.09));
+      await vi.advanceTimersByTimeAsync(0);
+      // While their receipts are owed, the two prepares still hold their reservations: two live attempts are left.
+      const live = [b.take("model"), b.take("model"), b.take("model")];
+      expect(live.filter(Boolean)).toHaveLength(2);
+      for (const h of live) if (h) b.finish(h, usdToMicros(0.15, t.config));
+      const drained = b.drained();
+      await vi.advanceTimersByTimeAsync(30_000);
+      await drained;
+      expect(t.blocks()).toMatchObject([{ settled: true }]);
+      expect(await t.week()).toBeLessThanOrEqual(WEEK_MICROS);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("keeps the week under the cap with two calls of one child at once", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = setup();
       t.leave(BLOCK_ATTEMPTS * t.m + t.m);
       const other: SpendCall = { ...voice, id: "77777777-7777-4777-8777-777777777777" };
       const [a, b] = [t.spend.budget(voice), t.spend.budget(other)];
@@ -463,21 +462,61 @@ describe("aborted prepared replies with no reported cost (#1203)", () => {
         const h = budget.take("model");
         if (!h) break;
         sent++;
-        abortedPrepare(budget, h, async () => 0.02);
+        abortedPrepare(budget, h, later(1_000, 0.12));
         await vi.advanceTimersByTimeAsync(0);
         expect(await t.week()).toBeLessThanOrEqual(WEEK_MICROS);
       }
-      // Each attempt counts at most its full allowance (~CAD 0.043), so a block holds more of them than 4 reservations.
-      expect(sent).toBeGreaterThan(BLOCK_ATTEMPTS + 1);
-      await Promise.all([a.stop(), b.stop()]);
-      expect(await t.week()).toBeLessThanOrEqual(WEEK_MICROS);
-      await vi.advanceTimersByTimeAsync(30_000);
+      expect(sent).toBe(BLOCK_ATTEMPTS + 1);
+      await Promise.all([a.drained(), b.drained(), vi.advanceTimersByTimeAsync(30_000)]);
       expect(t.store.rows().filter((r) => r.what === "model").every((r) => r.settled)).toBe(true);
       expect(await t.week()).toBeLessThanOrEqual(WEEK_MICROS);
-      // A later call of the child finds no room.
-      const c = t.spend.budget({ ...voice, id: "88888888-8888-4888-8888-888888888888" });
-      await c.open();
-      expect(await t.week()).toBeLessThanOrEqual(WEEK_MICROS);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("drains at the call's end: waits for a receipt still owed and its row, at most BLOCK_DRAIN_MS", async () => {
+    vi.useFakeTimers();
+    try {
+      for (const receipt of [0.004, "never"] as const) {
+        const t = setup();
+        const b = t.spend.budget(voice);
+        await b.open();
+        b.newTurn();
+        abortedPrepare(b, b.seam.take("speculative")!, receipt === "never" ? () => new Promise(() => {}) : later(1_000, receipt));
+        await b.stop();
+        // Stop returns at once: the block's row waits for the owed receipt.
+        expect(t.blocks()).toMatchObject([{ settled: false }]);
+        let drained = false;
+        void b.drained().then(() => { drained = true; });
+        if (receipt === "never") {
+          // The prepared request gives up after its last ask and settles as unknown (the reservation): still well inside the bound.
+          await vi.advanceTimersByTimeAsync(BLOCK_DRAIN_MS);
+          expect(drained).toBe(true);
+          expect(t.blocks()).toMatchObject([{ settled: true, cost: t.m }]);
+        } else {
+          // The first wait, then the ask.
+          await vi.advanceTimersByTimeAsync(2_000);
+          expect(drained).toBe(true);
+          expect(t.blocks()).toMatchObject([{ settled: true, cost: usdToMicros(0.004, t.config) }]);
+        }
+      }
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("stops draining at BLOCK_DRAIN_MS when an attempt is never finished, leaving the block counted at its reservation", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = setup();
+      const b = t.spend.budget(voice);
+      await b.open();
+      b.newTurn();
+      expect(b.seam.take("speculative")).not.toBeNull();
+      let drained = false;
+      void b.drained().then(() => { drained = true; });
+      await vi.advanceTimersByTimeAsync(BLOCK_DRAIN_MS - 1);
+      expect(drained).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(drained).toBe(true);
+      expect(t.blocks()).toMatchObject([{ settled: false }]);
     } finally { vi.useRealTimers(); }
   });
 });

@@ -160,10 +160,10 @@ describe("prepare then commit", () => {
     expect(spend.settled[0].usd).toBe(0.123);
     expect(settled).toEqual([{ used: false }]);
   });
-  it("counts the full output allowance, never the reservation read as dollars, when an aborted provider never ends or reports a bill", async () => {
+  it("keeps the reservation, never the reservation read as dollars, when an aborted provider never ends or reports a bill", async () => {
     vi.useFakeTimers();
     try {
-      const amounts: number[] = [];
+      const amounts: (number | null)[] = [];
       const model: MayaModel = { id: "unresponsive", promptVersion: "test", output: 3, propose: () => new Promise(() => {}) };
       const { session } = setup({ model, spend: { take: (kind) => ({ kind, micros: 50_000 }), settle: (_handle, usd) => { amounts.push(usd); }, giveBack: () => { throw new Error("sent attempt must not be refunded"); } } });
       await session.start();
@@ -171,14 +171,13 @@ describe("prepare then commit", () => {
       await session.finish();
       expect(amounts).toEqual([]);
       await vi.advanceTimersByTimeAsync(6_000);
-      expect(amounts).toHaveLength(1);
-      // The handle's 50,000 CAD micros are not USD 0.05 (#1203): the figure is the input plus the 1,500-token allowance.
-      expect(amounts[0]).toBeGreaterThan(0.015);
-      expect(amounts[0]).toBeLessThan(0.05);
-      // No stats and a provider that never ended: the final figure keeps the full allowance.
+      expect(amounts).toEqual([]);
+      // No receipt and a provider that never ended: the cost is unknown (#1203), so the reservation stays. The handle's
+      // 50,000 CAD micros are never read as USD 0.05.
       await vi.advanceTimersByTimeAsync(30_000);
-      expect(amounts).toEqual([amounts[0], amounts[0]]);
-      expect(session.trace().preparations).toMatchObject([{ status: "discarded", estimated: true }]);
+      expect(amounts).toEqual([null]);
+      expect(session.trace().preparations).toMatchObject([{ status: "discarded" }]);
+      expect(session.trace().preparations?.[0]).not.toHaveProperty("usd");
     } finally { vi.useRealTimers(); }
   });
   it("settles an expired equal-key prepare once and calls the live model", async () => {
@@ -196,12 +195,15 @@ describe("prepare then commit", () => {
       const out = await session.child("6");
       expect(out.prepared).toBe("miss");
       expect(requests).toBe(2);
+      // A provider still running owes its receipt: the reservation holds until the last ask, then stays (unknown).
+      await vi.advanceTimersByTimeAsync(30_000);
       expect(spend.settled).toHaveLength(1);
-      expect(spend.settled[0].usd).toBeGreaterThan(0);
+      expect(spend.settled[0].usd).toBeNull();
       expect(spend.givenBack).toEqual([]);
       await session.finish();
       expect(spend.settled).toHaveLength(1);
-      expect(session.trace().preparations).toMatchObject([{ status: "discarded", reason: "stale", estimated: true }]);
+      expect(session.trace().preparations).toMatchObject([{ status: "discarded", reason: "stale" }]);
+      expect(session.trace().preparations?.[0]).not.toHaveProperty("usd");
     } finally { vi.useRealTimers(); }
   });
   it("does not prepare while child runs; concurrent input cancels a prepared hit without late output", async () => {
@@ -228,70 +230,77 @@ describe("prepare then commit", () => {
 });
 
 describe("the cost of an aborted prepare with no reported cost (#1203)", () => {
-  // An empty brief: the input estimate is (2 + 8,000) tokens at USD 2 a million = USD 0.016004. The full 1,500-token
-  // output allowance adds USD 0.015 (USD 10 a million); 200 streamed characters add at most USD 0.002, and the abort
-  // margin of 300 tokens at most USD 0.003.
   const brief = {} as TurnBrief;
-  const FULL = 0.031004;
-  /** A model that streams `chars` characters, reports no cost, and stops at the abort, like OpenRouter's stream. */
-  const streaming = (chars: number, lookup?: () => Promise<number | null>): MayaModel => ({ id: "m", promptVersion: "t", output: 3,
+  /** A model that streams 200 characters, reports no cost, offers its stats (`lookup`), and stops at the abort. */
+  const streaming = (lookup?: () => Promise<number | null>): MayaModel => ({ id: "m", promptVersion: "t", output: 3,
     propose: (_input, signal, onText, _onCost, onGeneration) => new Promise((_, reject) => {
       if (lookup) onGeneration?.(lookup);
-      onText?.("x".repeat(chars));
+      onText?.("x".repeat(200));
       signal.addEventListener("abort", () => reject(new Error("time is up")), { once: true });
     }) });
-  const run = (model: MayaModel) => {
+  const run = (model: MayaModel, discard = true) => {
     const seam = memorySpendSeam();
-    const calls: { usd: number; provisional?: boolean }[] = [];
-    const spend = { ...seam, settle: (h: Parameters<typeof seam.settle>[0], usd: number, how?: { used?: boolean; provisional?: boolean }) => { calls.push({ usd, ...(how?.provisional ? { provisional: true } : {}) }); seam.settle(h, usd, how); } };
+    const calls: (number | null)[] = [];
+    const spend = { ...seam, settle: (h: Parameters<typeof seam.settle>[0], usd: number | null, how?: { used?: boolean }) => { calls.push(usd); seam.settle(h, usd, how); } };
     const cache = preparedReplies(model, spend, () => 0);
     expect(cache.start("k", brief, { text: "6", reason: "interim" }, seam.take("speculative")!)).toBe(true);
     const reply = cache.get("k")!;
-    cache.discard(reply, "text", 0);
-    return { seam, calls, reply };
+    if (discard) cache.discard(reply, "text", 0);
+    return { calls, reply };
   };
 
-  it("settles once near its streamed size when the provider gives no stats to ask", async () => {
-    vi.useFakeTimers();
-    try {
-      const { seam, calls, reply } = run(streaming(200));
-      await vi.advanceTimersByTimeAsync(30_000);
-      expect(calls).toHaveLength(1);
-      expect(calls[0].provisional).toBeUndefined();
-      expect(seam.settled).toHaveLength(1);
-      expect(seam.settled[0].usd).toBeGreaterThanOrEqual(0.018004);
-      expect(seam.settled[0].usd).toBeLessThanOrEqual(0.021004);
-      expect(reply.cost()).toEqual({ usd: seam.settled[0].usd, estimated: true });
-    } finally { vi.useRealTimers(); }
-  });
-
-  it("replaces the estimate once with the provider's real cost when its stats arrive", async () => {
+  it("holds the reservation until the provider's receipt, then settles once with the real cost", async () => {
     vi.useFakeTimers();
     try {
       const answers = [null, 0.0045, 0.9];
       const lookup = vi.fn(async () => answers.shift() ?? null);
-      const { seam, calls, reply } = run(streaming(200, lookup));
+      const { calls, reply } = run(streaming(lookup));
+      await vi.advanceTimersByTimeAsync(0);
+      // Nothing is settled while the receipt is owed: the attempt still counts at its reservation.
+      expect(calls).toEqual([]);
       await vi.advanceTimersByTimeAsync(30_000);
       expect(lookup).toHaveBeenCalledTimes(2);
-      expect(calls).toEqual([{ usd: FULL, provisional: true }, { usd: 0.0045 }]);
-      expect(seam.settled.map((x) => x.usd)).toEqual([0.0045]);
+      expect(calls).toEqual([0.0045]);
       expect(reply.cost()).toEqual({ usd: 0.0045 });
     } finally { vi.useRealTimers(); }
   });
 
-  it("falls back to the streamed estimate when the stats never answer with a cost", async () => {
+  it("keeps the reservation when no receipt comes: settles once as unknown, never with an estimate", async () => {
     vi.useFakeTimers();
     try {
       const lookup = vi.fn(() => new Promise<number | null>(() => {}));
-      const { seam, calls } = run(streaming(200, lookup));
-      await vi.advanceTimersByTimeAsync(0);
-      expect(calls).toEqual([{ usd: FULL, provisional: true }]);
+      const { calls, reply } = run(streaming(lookup));
       await vi.advanceTimersByTimeAsync(60_000);
       expect(lookup.mock.calls.length).toBeGreaterThan(0);
       expect(lookup.mock.calls.length).toBeLessThanOrEqual(3);
-      expect(calls).toHaveLength(2);
-      expect(seam.settled[0].usd).toBeGreaterThanOrEqual(0.018004);
-      expect(seam.settled[0].usd).toBeLessThanOrEqual(0.021004);
+      expect(calls).toEqual([null]);
+      expect(reply.cost()).toBeNull();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("settles at once as unknown when the provider ended with no cost and no stats to ask", async () => {
+    vi.useFakeTimers();
+    try {
+      const { calls } = run(streaming());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(calls).toEqual([null]);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("still takes the real cost of a provider that ignored the abort and ended after the 6-second timer", async () => {
+    vi.useFakeTimers();
+    try {
+      for (const late of [{ lookup: true, usd: 0.004 }, { lookup: false, usd: 0.007 }]) {
+        const model: MayaModel = { id: "m", promptVersion: "t", output: 3, propose: (_input, _signal, _onText, onCost, onGeneration) => {
+          if (late.lookup) onGeneration?.(async () => 0.004);
+          return new Promise((resolve) => setTimeout(() => { if (!late.lookup) onCost?.(0.007); resolve(reply("late", "guide")); }, 7_000));
+        } };
+        const { calls } = run(model);
+        await vi.advanceTimersByTimeAsync(6_000);
+        expect(calls).toEqual([]);
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(calls).toEqual([late.usd]);
+      }
     } finally { vi.useRealTimers(); }
   });
 });

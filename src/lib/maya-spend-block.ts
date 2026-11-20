@@ -36,6 +36,12 @@ export const BLOCK_RETIRE_MS = 8 * 60_000;
 export const SPECULATIVE_PER_TURN = 3;
 /** A speculative attempt must leave this many attempts free for live work. */
 export const SPECULATIVE_KEEP = 2;
+/**
+ * #1203: the call's end waits at most this long for attempts still owed their cost (a prepared reply asking its
+ * provider's receipt, about 13 s at most, src/lib/maya-prepared.ts) and for the rows written with them, before the
+ * process may exit. A block still open then stays counted at its reservation until the expiry.
+ */
+export const BLOCK_DRAIN_MS = 20_000;
 
 /** What an attempt from the block is: Maya's model, a prepared reply that may not be used, or a free-talk review. */
 export type BlockKind = "model" | "speculative" | "review";
@@ -53,12 +59,11 @@ export interface Handle {
  * SPECULATIVE_KEEP or fewer attempts are free, and the week's cap. `settle` gives the attempt's real cost in US
  * dollars; `{ used: true }` marks a speculative attempt whose reply was used (it stays kind "speculative"). `giveBack`:
  * the attempt was never sent and costs nothing. Each handle is settled or given back once; a second call changes nothing.
- * `{ provisional: true }` (#1203): a first figure that counts at once, while the block's row waits for the final figure,
- * which the next settle gives once.
+ * `usd` null (#1203): the cost is not known, so the attempt stays counted at its reservation.
  */
 export interface BlockSeam {
   take(kind: "model" | "speculative"): Handle | null;
-  settle(handle: Handle, usd: number, how?: { used?: boolean; provisional?: boolean }): void;
+  settle(handle: Handle, usd: number | null, how?: { used?: boolean }): void;
   giveBack(handle: Handle): void;
 }
 
@@ -92,11 +97,8 @@ export interface CallBudget {
   claim(micros: number): Handle | null;
   /** The claimed attempt may still dispatch now. No await may separate this check from dispatch. */
   canSend(handle: Handle): boolean;
-  /**
-   * The attempt's real cost in micros; null: not known, it stays at its reservation. `provisional`: the figure counts at
-   * once, the attempt stays open (its block's row waits), and the next finish gives the final figure once.
-   */
-  finish(handle: Handle, micros: number | null, how?: { used?: boolean; provisional?: boolean }): void;
+  /** The attempt's real cost in micros; null: not known, it stays at its reservation. */
+  finish(handle: Handle, micros: number | null, how?: { used?: boolean }): void;
   /** Whole model attempts free now. */
   attempts(): number;
   /**
@@ -109,6 +111,11 @@ export interface CallBudget {
   tick(): void;
   /** The call's end: no more takes; every block is settled with its real total once its open attempts end. */
   stop(): Promise<void>;
+  /**
+   * #1203: `stop`, then waits until every block is written with its real total, at most BLOCK_DRAIN_MS: an attempt may
+   * still be owed its cost after the call's end. For the process's exit, after the media closed and the child was told.
+   */
+  drained(): Promise<void>;
   totals(): BlockTotals;
 }
 
@@ -140,8 +147,6 @@ interface Block {
 interface Ticket extends Handle {
   block: Block;
   done: boolean;
-  /** The figure a provisional finish counted, while the final figure is owed. */
-  provisional?: { micros: number; used: boolean };
 }
 
 export function createBudget(seams: BudgetSeams): CallBudget {
@@ -171,7 +176,14 @@ export function createBudget(seams: BudgetSeams): CallBudget {
       console.error("[maya spend] a block not settled", b.id, e instanceof Error ? e.message : String(e));
     });
     settles.add(p);
-    void p.finally(() => settles.delete(p));
+    void p.finally(() => { settles.delete(p); wake(); });
+  }
+
+  /** Callers of `drained` waiting for every block's row. */
+  const drainers: (() => void)[] = [];
+  const isDrained = () => stopped && !refilling && settles.size === 0 && blocks.every((b) => b.settled);
+  function wake() {
+    if (isDrained()) for (const d of drainers.splice(0)) d();
   }
 
   function retire(b: Block) {
@@ -210,6 +222,7 @@ export function createBudget(seams: BudgetSeams): CallBudget {
       refused = "paused";
     } finally {
       refilling = null;
+      wake();
     }
   }
 
@@ -239,27 +252,17 @@ export function createBudget(seams: BudgetSeams): CallBudget {
     return t;
   }
 
-  function finish(handle: Handle, micros: number | null, how?: { used?: boolean; provisional?: boolean }) {
+  function finish(handle: Handle, micros: number | null, how?: { used?: boolean }) {
     const t = handle as Ticket;
-    const was = t.provisional;
-    if (t.done && !was) return;
+    if (t.done) return;
     t.done = true;
-    t.provisional = undefined;
     const i = pending.indexOf(t);
     if (i >= 0) pending.splice(i, 1);
     const cost = micros === null ? t.micros : Math.max(0, Math.ceil(micros));
-    const used = how?.used ?? was?.used ?? false;
-    // The figure counted before is replaced: the reservation, or the provisional figure.
-    const before = was ? was.micros : t.micros;
-    t.block.spent += cost - before;
-    totals[t.kind] += cost - (was ? was.micros : 0);
-    if (t.kind === "speculative") totals.speculativeUsed += (used ? cost : 0) - (was?.used ? was.micros : 0);
-    if (how?.provisional && !was) {
-      // The attempt stays open: its block is not written until the final figure comes.
-      t.provisional = { micros: cost, used };
-      return;
-    }
+    t.block.spent += cost - t.micros;
     t.block.open--;
+    totals[t.kind] += cost;
+    if (t.kind === "speculative" && how?.used) totals.speculativeUsed += cost;
     if (!t.block.retired && t.block.open === 0 && freeOf(t.block) < m && active().at(-1) !== t.block) retire(t.block);
     settleIfDone(t.block);
   }
@@ -270,7 +273,7 @@ export function createBudget(seams: BudgetSeams): CallBudget {
         if (kind === "model") return budget.claim(m) ?? budget.take("model", m);
         return budget.take("speculative", m);
       },
-      settle: (handle, usd, how) => finish(handle, seams.usdToMicros(usd), how),
+      settle: (handle, usd, how) => finish(handle, usd === null ? null : seams.usdToMicros(usd), how),
       giveBack: (handle) => finish(handle, 0),
     },
     open() {
@@ -336,6 +339,15 @@ export function createBudget(seams: BudgetSeams): CallBudget {
       for (const b of blocks) if (!b.retired) retire(b);
       await refilling;
       await Promise.all([...settles]);
+    },
+    async drained() {
+      await budget.stop();
+      if (isDrained()) return;
+      await new Promise<void>((resolve) => {
+        const done = () => { clearTimeout(timer); resolve(); };
+        const timer = setTimeout(() => { const i = drainers.indexOf(done); if (i >= 0) drainers.splice(i, 1); resolve(); }, BLOCK_DRAIN_MS);
+        drainers.push(done);
+      });
     },
     totals: () => ({ ...totals }),
   };
