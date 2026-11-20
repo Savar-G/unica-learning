@@ -10,7 +10,7 @@
 // in the bank are skipped and named in the result.
 // Pure TypeScript: no Next.js, React, network, database or clock. The Supabase reader of a test's answers is in
 // src/lib/learning-events-assessment-store.ts.
-import { BANKS, templateSkills } from "@/lib/assessment";
+import { ASSESSMENT_TEMPLATES, templateSkills } from "@/lib/assessment";
 import { MAX_TIME_MS, type LearningEvents, type NewLearningEvent } from "@/lib/learning-events";
 
 /** An answer of a stored test (public.answers), with the columns the events need. */
@@ -39,7 +39,7 @@ export interface BackfillResult {
   skipped: { answerId: string; reason: string }[];
 }
 
-const TEMPLATES = new Map(Object.values(BANKS).flat().map((t) => [t.id, t]));
+const TEMPLATES = new Map(ASSESSMENT_TEMPLATES.map((t) => [t.id, t]));
 
 /** The event for one answer, or why it has none. */
 export function assessmentAnswerEvent(test: AssessmentOwner, answer: AssessmentAnswer): NewLearningEvent | { skip: string } {

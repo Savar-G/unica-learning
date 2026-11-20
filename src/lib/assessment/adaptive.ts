@@ -1,9 +1,10 @@
 // Six-question blocks. All questions are drawn at start; a lock alone advances the search.
-import { ALL_TEMPLATES, difficultyOf } from "./bank";
+import { adaptiveBank, adaptiveDifficultyOf, difficultyOf } from "./bank";
+import { balanceBlock } from "./block-difficulty";
 import { atLeast, bandFor, REPORTED_STRAND, STRAND_MINIMUM_QUESTIONS, WORKING_LEVEL_PERCENT } from "./constants";
 import { leftOutOfScore, paceOf } from "./rushing";
 import { rngFor } from "./rng";
-import { fillTemplate, levelFor, sameQuestion } from "./session";
+import { fillTemplate, levelFor, sameQuestion, scoredAgainst } from "./session";
 import type { AdaptiveBlock, AdaptiveTest, Answer, ChildProfile, Level, Question, Session, StoredTest, Template } from "./types";
 
 export const BLOCK_SIZE = 6;
@@ -20,13 +21,20 @@ export const UNKNOWN_WAIT_MS = 15_000;
 export const adaptiveQuestions = (a: AdaptiveTest): Question[] => a.blocks.flatMap(b => b.questions);
 export const adaptiveTop = (profile: ChildProfile): Level => profile.grade === 9 ? 9 : 8;
 
-export function createAdaptiveSession(profile: ChildProfile, seed: number, bank: readonly Template[] = ALL_TEMPLATES): Session {
+export function createAdaptiveSession(profile: ChildProfile, seed: number, bank: readonly Template[] = adaptiveBank(scoredAgainst(profile.province))): Session {
   if (!Number.isInteger(seed)) throw new Error("The seed must be a whole number");
   const rng = rngFor(seed, "blocks");
+  const province = scoredAgainst(profile.province);
   const pool = rng.shuffle(bank.filter(t => levelFor(t, profile.province) <= adaptiveTop(profile)))
-    .map((t, i) => fillTemplate(t, seed, profile.province, `bq-${i}`));
+    .map((t, i) => {
+      const question = fillTemplate(t, seed, profile.province, `bq-${i}`);
+      return {
+        ...question, difficulty: adaptiveDifficultyOf(t.id, province),
+        ...(question.format === "number" && { numberGrading: question.numberGrading ?? {} }),
+      };
+    });
   const adaptive: AdaptiveTest = {
-    version: 2, placementRules: "above-grade-confirmation", pool, blocks: [],
+    version: 2, placementRules: "above-grade-confirmation", bankCalibration: 1, pool, blocks: [],
     locked: 0, complete: false, sufficientEvidence: false,
   };
   const first = selectBlock(adaptive, profile, profile.grade, "search");
@@ -35,26 +43,35 @@ export function createAdaptiveSession(profile: ChildProfile, seed: number, bank:
   return { profile, seed, stage1: [], stage2: { up: [], stay: [], down: [] }, route: "stay", answers: [], adaptive };
 }
 
-function available(a: AdaptiveTest): Question[] {
+function available(a: AdaptiveTest, eligible: readonly Question[]): Question[] {
   const asked = adaptiveQuestions(a);
   const ids = new Set(asked.map(q => q.templateId));
   const seen = new Set(asked.map(sameQuestion));
-  return a.pool.filter(q => !ids.has(q.templateId) && !seen.has(sameQuestion(q)));
+  return eligible.filter(q => {
+    const key = sameQuestion(q);
+    if (ids.has(q.templateId) || seen.has(key)) return false;
+    if (a.bankCalibration === 1) seen.add(key);
+    return true;
+  });
 }
 
-function selectBlock(a: AdaptiveTest, profile: ChildProfile, level: Level, purpose: AdaptiveBlock["purpose"]): AdaptiveBlock {
-  const pool = available(a).filter(q => q.level === level);
+function selectBlock(a: AdaptiveTest, profile: ChildProfile, level: Level, purpose: AdaptiveBlock["purpose"], limit = BLOCK_SIZE): AdaptiveBlock {
+  const pool = available(a, a.pool.filter(q => q.level === level));
   const strands = bandFor(profile.grade).strands.filter(s => pool.some(q => REPORTED_STRAND[q.strand] === s));
   const chosen: Question[] = [];
   const rank = { easy: 0, medium: 1, hard: 2 };
-  for (let i = 0; i < BLOCK_SIZE; i++) {
+  for (let i = 0; i < limit; i++) {
     const strand = strands[(i + a.blocks.length * BLOCK_SIZE) % strands.length];
     const q = pool.find(q => REPORTED_STRAND[q.strand] === strand && !chosen.includes(q))
       ?? pool.find(q => !chosen.includes(q));
     if (!q) break;
     chosen.push(q);
   }
-  return { level, purpose, questions: chosen.sort((a,b) => rank[difficultyOf(a.templateId)] - rank[difficultyOf(b.templateId)]) };
+  const strandOf = (q: Question) => REPORTED_STRAND[q.strand];
+  const questions = a.bankCalibration === 1
+    ? balanceBlock(chosen, pool, strandOf)
+    : chosen.sort((a,b) => rank[difficultyOf(a.templateId)] - rank[difficultyOf(b.templateId)]);
+  return { level, purpose, questions };
 }
 
 /** Legacy v1 placement, including its coverage answers and 70% bar. */
@@ -135,14 +152,19 @@ function coverageBlock(a: AdaptiveTest, profile: ChildProfile, scored: readonly 
     return Array.from({ length: Math.max(0, required - count) }, () => strand);
   });
   if (!missing.length) return null;
-  const pool = available(a).filter(q => q.level <= profile.grade)
+  const eligible = a.pool.filter(q => q.level <= profile.grade)
     .sort((x, y) => Math.abs(x.level - level) - Math.abs(y.level - level));
+  const pool = available(a, eligible);
   const chosen: Question[] = [];
   for (const strand of missing.slice(0, limit)) {
     const q = pool.find(q => REPORTED_STRAND[q.strand] === strand && !chosen.includes(q));
     if (q) chosen.push(q);
   }
-  return { level, purpose: "coverage", questions: chosen };
+  // Coverage keeps the required strands and the nearest available levels. Balance only within those slots.
+  const questions = a.bankCalibration === 1
+    ? balanceBlock(chosen, pool, (q) => `${REPORTED_STRAND[q.strand]}:${q.level}`)
+    : chosen;
+  return { level, purpose: "coverage", questions };
 }
 
 function placementEvidence(test: AdaptiveTest, answers: readonly Answer[]) {
@@ -267,8 +289,9 @@ function lockPlacementBlock(session: Session, a: AdaptiveTest, questions: Questi
   const room = ADAPTIVE_QUESTION_LIMIT - questions.length;
   const searchCount = a.blocks.filter(b => b.purpose === "search").reduce((n, b) => n + b.questions.length, 0);
   const select = (level: Level, purpose: "search" | "confirm", limit = BLOCK_SIZE) => {
-    const block = selectBlock(a, profile, level, purpose);
-    block.questions = block.questions.slice(0, Math.min(limit, room));
+    const size = Math.min(BLOCK_SIZE, limit, room);
+    const block = selectBlock(a, profile, level, purpose, a.bankCalibration === 1 ? size : BLOCK_SIZE);
+    block.questions = block.questions.slice(0, size);
     return block;
   };
   let next: AdaptiveBlock | null = null;

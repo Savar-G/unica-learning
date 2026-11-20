@@ -51,6 +51,8 @@ export interface Filled {
   /** Plain words for "read it to me": no symbols the browser voice reads badly. */
   readAloud: string;
   answer: string;
+  /** Exact rounded alternatives offered by the prompt. */
+  roundedAnswers?: readonly string[];
   /** For "choice" these are the other choices. For "number" they are typed answers we recognise. */
   wrong: CodedWrong[];
   /**
@@ -94,6 +96,10 @@ export interface Template {
 export interface Question {
   id: string;
   templateId: string;
+  /** Frozen for adaptive tests that select blocks by difficulty. */
+  difficulty?: Difficulty;
+  /** A numeric question that accepts a trailing decimal point and the listed rounded alternatives. */
+  numberGrading?: { rounded?: string[] };
   /** The question's level for this child's province. */
   level: Level;
   strand: Strand;
@@ -279,6 +285,8 @@ export interface AdaptiveTest {
   version: 1 | 2;
   /** Absent on v2 attempts started before the above-grade confirmation rule. */
   placementRules?: "above-grade-confirmation";
+  /** Absent on attempts that use the original block selector. */
+  bankCalibration?: 1;
   pool: Question[];
   blocks: AdaptiveBlock[];
   locked: number;

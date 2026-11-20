@@ -2,7 +2,7 @@
 // versioned JSON. It is the contract for the admin profile page and for a later AI workbook generator (#197 adds the AI
 // parts, each labelled with its model id). Pure, like the session: the report job passes the stored placement, the
 // answers with their questions, and the parent's questionnaire answers. No network, database or clock.
-import { BANKS } from "./bank";
+import { ASSESSMENT_TEMPLATES } from "./bank";
 import { parentTextProblem } from "./ai-checks";
 import { REPORTED_STRAND, REPORTED_STRAND_NAMES, bandFor } from "./constants";
 import { levelCertainty, storedLevelCertainty, strandCertainty, strandStatus, workingLevelOf, type Certainty } from "./certainty";
@@ -242,7 +242,7 @@ export interface LearnerProfile {
 }
 
 /** Every bank template, by id: its BC standard. */
-const TEMPLATES = new Map(Object.values(BANKS).flat().map((t) => [t.id, t]));
+const TEMPLATES = new Map(ASSESSMENT_TEMPLATES.map((t) => [t.id, t]));
 // Every standard of the map, grade 9 too: a Grade 9 test asks level 9 questions (D-158).
 const STANDARDS = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s]));
 const standardOf = (a: ProfileAnswer) => TEMPLATES.get(a.question.templateId)?.standard;

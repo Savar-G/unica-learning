@@ -8,7 +8,7 @@
 // the family. Pure: the source is what the database function family_copy_sources returns for one test
 // (supabase/migrations/20261016_test_copies_without_names.sql).
 import { UNKNOWN_RESPONSE } from "./adaptive";
-import { BANKS } from "./bank";
+import { ASSESSMENT_TEMPLATES } from "./bank";
 import { isGrade } from "./grades";
 import { fromRemovedRound } from "./session";
 import { INTERESTS, LEARNING_GOALS, LEARNING_STYLES, MATH_FEELINGS, WEEKLY_TIMES } from "@/lib/learning-style";
@@ -152,7 +152,7 @@ const ROUTES: readonly Route[] = ["up", "stay", "down"];
 const HELP = ["yes", "a-little", "no"] as const;
 
 /** Every bank template, by id: the copy records its standard and wording as they were. */
-const TEMPLATES = new Map(Object.values(BANKS).flat().map((t) => [t.id, t]));
+const TEMPLATES = new Map(ASSESSMENT_TEMPLATES.map((t) => [t.id, t]));
 
 /** What the number pad sends: digits with one decimal point (an optional minus). Empty is a cleared answer. */
 const NUMBER = /^-?(\d+\.?\d*|\.\d+)$/;

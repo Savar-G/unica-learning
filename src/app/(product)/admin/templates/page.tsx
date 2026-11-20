@@ -1,6 +1,6 @@
 import { AdminFrame } from "@/components/admin-frame";
 import { TemplateTableView } from "@/components/admin-templates";
-import { BANKS } from "@/lib/assessment";
+import { ASSESSMENT_TEMPLATES } from "@/lib/assessment";
 import { requireAdmin, templateStats } from "@/lib/admin-store";
 import { showTestFamilies } from "@/lib/admin-test-families-server";
 import { ADMIN_TEMPLATES_PATH, parseTemplateFilters, templateStats as countAnswers, templateTable } from "@/lib/admin-templates";
@@ -22,7 +22,7 @@ export default async function TemplatesPage({ searchParams }: PageProps<"/admin/
   const stats = admin ? await templateStats(admin, filters) : countAnswers(demoAnswers(), filters);
   return (
     <AdminFrame email={admin?.email ?? "demo data"} title="Question templates" lead="How children answer each question type." testNote={filters.withTests && "Test families are showing, and on this page they are counted in the numbers."}>
-      <TemplateTableView table={templateTable(stats, Object.values(BANKS).flat())} filters={filters} demo={demo} />
+      <TemplateTableView table={templateTable(stats, ASSESSMENT_TEMPLATES)} filters={filters} demo={demo} />
     </AdminFrame>
   );
 }

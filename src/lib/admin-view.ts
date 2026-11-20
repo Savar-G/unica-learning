@@ -4,7 +4,7 @@ import { ATTEMPT_STATUSES, UNKNOWN_RESPONSE } from "@/lib/assessment";
 // it handles correct answers, which a parent's browser must never get.
 import { partsInZone, PACIFIC_ZONE } from "@/lib/family-time";
 import {
-  BANKS,
+  ASSESSMENT_TEMPLATES,
   MISCONCEPTIONS,
   SAMPLE_BANK,
   PAUSE_WINDOW,
@@ -202,7 +202,7 @@ export interface AnswerLineTimeline {
 }
 
 /** The BC learning standard of each template, by id, from every bank (an id in two bands has one standard). */
-const STANDARDS = new Map([...Object.values(BANKS).flat(), ...SAMPLE_BANK].map((t) => [t.id, t.standard]));
+const STANDARDS = new Map([...ASSESSMENT_TEMPLATES, ...SAMPLE_BANK].map((t) => [t.id, t.standard]));
 
 function timelineOf(a: AnswerRecord): AnswerLineTimeline {
   const shownAt = a.shown_at ?? null;
