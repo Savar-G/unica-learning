@@ -43,6 +43,8 @@ Personalized, mailed math and reading workbooks for ages 5 to 14 (Kindergarten t
 - Use plain language in all customer text. Keep development notes and draft labels out of public pages. Give provider names only in the privacy disclosure, with a plain explanation.
 - In marketing copy (social posts, ads, share images, headlines, kickers), call the product "a personalized math learning program". Do not call it "workbooks".
 
+- Admin Social (#913, `docs/social-metrics.md`): `social_accounts` and `social_posts` hold channels, posts and editable UTM tags. `social_post_snapshots`, `social_daily_snapshots` and `social_audience_snapshots` append provider reads. `social_refreshes` and `social_refresh_results` hold the shared cooldown and outcomes. Admins read; the server writes. The daily `/api/social-metrics` cron uses `CRON_SECRET`. Optional server env: `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN`, `META_PAGE_ACCESS_TOKEN`, `META_PAGE_ID`, `META_IG_USER_ID`.
+
 ## Tools and services
 
 | Tool | What we use it for | Notes |

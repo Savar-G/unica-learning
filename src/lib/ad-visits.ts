@@ -24,7 +24,7 @@ export const TAG_MAX = 100;
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
 
 /** A UTM value as stored: trimmed and at most TAG_MAX characters; null when absent or not text. */
-function tag(v: unknown): string | null {
+export function adVisitTag(v: unknown): string | null {
   if (typeof v !== "string") return null;
   const t = v.trim().slice(0, TAG_MAX).trim();
   return t && !CONTROL.test(t) ? t : null;
@@ -40,10 +40,10 @@ export function adVisitRow(body: unknown): AdVisitRow | null {
   if (typeof b.visitId !== "string" || !UUID.test(b.visitId)) return null;
   const row: AdVisitRow = {
     visit_id: b.visitId.toLowerCase(),
-    utm_source: tag(b.utm_source),
-    utm_medium: tag(b.utm_medium),
-    utm_campaign: tag(b.utm_campaign),
-    utm_content: tag(b.utm_content),
+    utm_source: adVisitTag(b.utm_source),
+    utm_medium: adVisitTag(b.utm_medium),
+    utm_campaign: adVisitTag(b.utm_campaign),
+    utm_content: adVisitTag(b.utm_content),
     has_gclid: b.has_gclid === true,
     has_fbclid: b.has_fbclid === true,
   };

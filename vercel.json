@@ -22,6 +22,10 @@
     {
       "path": "/api/scan-marking",
       "schedule": "37 15 * * *"
+    },
+    {
+      "path": "/api/social-metrics",
+      "schedule": "0 16 * * *"
     }
   ],
   "ignoreCommand": "bash scripts/vercel-ignore-build.sh"

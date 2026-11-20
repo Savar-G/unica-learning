@@ -21,6 +21,7 @@ export const CRON_MONITORS = {
   "scan-progress": { schedule: "*/15 * * * *", maxRuntime: 2 },
   "workbook-emails": { schedule: "7,22,37,52 * * * *", maxRuntime: 2 },
   keepalive: { schedule: "0 15 * * *", maxRuntime: 2 },
+  "social-metrics": { schedule: "0 16 * * *", maxRuntime: 4 },
   "child-deletions": { schedule: "15 15 * * *", maxRuntime: 2 },
 } as const satisfies Record<string, Monitor>;
 export type CronSlug = keyof typeof CRON_MONITORS;
