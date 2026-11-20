@@ -19,7 +19,7 @@
 //   --clips <dir with int*.wav, mmhm.wav, okay.wav> --out <file.json> [--cues word|sentence] [--trials 25]
 //
 // Not measured: a device speaker, echo cancellation, the browser's output buffer, paint, or a child's voice.
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { cpus, loadavg } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -58,16 +58,17 @@ initializeLogger({ pretty: false, level: "warn" });
 
 interface Row {
   kind: "intentional" | "incidental"; clip: string; onsetAt: number; speaking: boolean; stopMs: number | null; vadMs: number | null; agentListeningMs: number | null;
-  speechInterrupted: boolean | null; output: string[]; cut?: boolean; falseStop?: boolean; lost?: boolean; split?: boolean; reachedTurn?: boolean; wordShare?: number;
+  speechInterrupted: boolean | null; output: string[]; resumed?: boolean; cut?: boolean; falseStop?: boolean; lost?: boolean; split?: boolean; reachedTurn?: boolean; wordShare?: number;
 }
-const INCIDENTAL = ["mmhm", "okay", "noise-burst", "request-at-minus-26-db"];
+const INCIDENTAL = ["mmhm", "okay", "noise-burst", "request-at-minus-26-db", "hum"];
 /** Scores the trials: a stop counts only when the child's sound cut Maya (interrupt-measure.ts, `cutByChild`). */
 function summarize(rows: Row[]) {
   for (const [i, r] of rows.entries()) {
     // A later trial's sound owns what follows its onset.
     const limit = (rows[i + 1]?.onsetAt ?? Infinity) - r.onsetAt;
     const own = (ms: number | null) => (ms !== null && ms < limit ? ms : null);
-    r.cut = cutByChild({ vadMs: own(r.vadMs), agentListeningMs: own(r.agentListeningMs), cleared: r.output.some(o => !o.startsWith("resume")) || r.speechInterrupted === true });
+    const calls = r.output.filter(o => Number(o.split("@")[1]) < limit);
+    r.cut = cutByChild({ vadMs: own(r.vadMs), agentListeningMs: own(r.agentListeningMs), cleared: calls.some(o => !o.startsWith("resume")) });
     if (r.kind === "incidental") r.falseStop = r.cut;
   }
   const intent = rows.filter(r => r.kind === "intentional" && r.speaking && r.cut);
@@ -78,8 +79,13 @@ function summarize(rows: Row[]) {
       vadMs: interruptReport(intent.map(r => ({ stopMs: r.vadMs })), 300), cutMs: interruptReport(intent.map(r => ({ stopMs: r.agentListeningMs })), 300) },
     lostSpeech: { n: intent.length, lost: intent.filter(r => r.lost).length, split: intent.filter(r => r.split).length, notATurn: intent.filter(r => !r.reachedTurn).length,
       meanWordShare: intent.length ? Math.round(intent.reduce((sum, r) => sum + (r.wordShare ?? 0), 0) / intent.length * 100) / 100 : null },
-    falseStops: { n: incid.length, stopped: incid.filter(r => r.falseStop).length,
-      byClip: INCIDENTAL.map(clip => ({ clip, n: incid.filter(r => r.clip === clip).length, stopped: incid.filter(r => r.clip === clip && r.falseStop).length })) },
+    // A false stop is resumed when LiveKit reports the false interruption as resumed; else it ended Maya's speech.
+    falseStops: { n: incid.length, stopped: incid.filter(r => r.falseStop).length, resumed: incid.filter(r => r.falseStop && r.resumed).length,
+      permanent: incid.filter(r => r.falseStop && !r.resumed).length,
+      byClip: INCIDENTAL.map(clip => {
+        const of = incid.filter(r => r.clip === clip);
+        return { clip, n: of.length, stopped: of.filter(r => r.falseStop).length, resumed: of.filter(r => r.falseStop && r.resumed).length };
+      }) },
   };
 }
 if (args.rescore) {
@@ -129,6 +135,8 @@ const noise = Int16Array.from({ length: RATE * 0.15 }, () => Math.round((random(
 const incidental = [
   { name: INCIDENTAL[0], pcm: wav(join(args.clips!, "mmhm.wav")) }, { name: INCIDENTAL[1], pcm: wav(join(args.clips!, "okay.wav")) },
   { name: INCIDENTAL[2], pcm: noise }, { name: INCIDENTAL[3], pcm: Int16Array.from(quietRequest) },
+  // A wordless hum: long enough to pause Maya, with no words for the speech-to-text (where a resume can happen).
+  ...(existsSync(join(args.clips!, "hum.wav")) ? [{ name: INCIDENTAL[4], pcm: wav(join(args.clips!, "hum.wav")) }] : []),
 ];
 
 // ---------- the call ----------
@@ -251,11 +259,14 @@ session.on(voice.AgentSessionEventTypes.SpeechCreated, e => {
 const states: { who: "user" | "agent"; state: string; at: number }[] = [];
 session.on(voice.AgentSessionEventTypes.UserStateChanged, e => { states.push({ who: "user", state: e.newState, at: clock() }); });
 session.on(voice.AgentSessionEventTypes.AgentStateChanged, e => { states.push({ who: "agent", state: e.newState, at: clock() }); });
+const overlaps: { at: number; isInterruption: boolean }[] = [];
+session.on(voice.AgentSessionEventTypes.OverlappingSpeech, e => { overlaps.push({ at: clock(), isInterruption: Boolean((e as { isInterruption?: boolean }).isInterruption) }); });
 session.on(voice.AgentSessionEventTypes.AgentFalseInterruption, e => { falseInterruptions.push({ at: clock(), resumed: Boolean((e as { resumed?: boolean }).resumed) }); });
 await run.agentJoined();
 await session.start({ agent: run.agent, room: workerRoom, inputOptions: { participantIdentity: identity, textEnabled: false, closeOnDisconnect: false }, record: false });
 run.attachBoardAudio();
 run.attachTurnTiming();
+const detectorOn = Boolean((session as unknown as { _activity?: { isInterruptionDetectionEnabled?: boolean } })._activity?.isInterruptionDetectionEnabled);
 const outputs: { kind: "pause" | "clear" | "resume"; at: number }[] = [];
 const out = session.output.audio!;
 for (const kind of ["pause", "clear", "resume"] as const) {
@@ -344,6 +355,8 @@ const rows: Row[] = trials.map((t, i) => {
   const row: Row = { ...t, speaking: stop.speaking, stopMs: stop.stopMs, vadMs: after("user", "speaking"), agentListeningMs: after("agent", "listening"),
     speechInterrupted: done?.interrupted ?? null, output: output.map(o => `${o.kind}@${o.at - t.onsetAt}`) };
   Object.assign(row, { transcripts: heard.map(h => h.text) });
+  Object.assign(row, { overlaps: overlaps.filter(o => o.at >= t.onsetAt && o.at < Math.min(until, t.onsetAt + 3000)).map(o => `${o.isInterruption ? "barge-in" : "backchannel"}@${o.at - t.onsetAt}`) });
+  row.resumed = falseInterruptions.some(f => f.resumed && f.at >= t.onsetAt && f.at < Math.min(until, t.onsetAt + 5000));
   if (t.kind === "incidental") return row;
   const expected = words(clipText[t.clip]);
   const got = new Set(heard.flatMap(h => words(h.text)));
@@ -357,19 +370,23 @@ const delays = starts.map(at => levels.find(l => l.at >= at && l.db >= -45)?.at)
 const delay = delays.length ? delays[Math.floor(delays.length / 2)] : NaN;
 const cueRows = cues.map(c => {
   const release = releases.find(r => r.batchId === c.batchId && r.ok);
-  return { source: c.source, state: c.state, audioMs: c.audioMs, boardMinusHeardMs: release ? Math.round(release.at - (c.reachedAt + delay)) : null };
+  // A cue released after a resumed false interruption of the same speech (within 10 s) shows sync after the resume.
+  const afterResume = falseInterruptions.some(f => f.resumed && f.at < c.reachedAt && c.reachedAt - f.at < 10_000);
+  return { source: c.source, state: c.state, audioMs: c.audioMs, afterResume, boardMinusHeardMs: release ? Math.round(release.at - (c.reachedAt + delay)) : null };
 });
-const cueSummary = (["word", "sentence"] as const).map(s => {
-  const lags = cueRows.filter(r => r.source === s && r.boardMinusHeardMs !== null).map(r => r.boardMinusHeardMs!).sort((a, b) => a - b);
+const cueSummary = (["word", "sentence", "after-resume"] as const).map(s => {
+  const of = cueRows.filter(r => (s === "after-resume" ? r.afterResume : r.source === s));
+  const lags = of.filter(r => r.boardMinusHeardMs !== null).map(r => r.boardMinusHeardMs!).sort((a, b) => a - b);
   const at = (p: number) => (lags.length ? lags[Math.max(0, Math.ceil(p * lags.length) - 1)] : null);
-  return { source: s, n: cueRows.filter(r => r.source === s).length, shown: lags.length, p50: at(0.5), p95: at(0.95), min: lags[0] ?? null, max: lags.at(-1) ?? null };
+  return { source: s, n: of.length, shown: lags.length, p50: at(0.5), p95: at(0.95), min: lags[0] ?? null, max: lags.at(-1) ?? null };
 });
 const checked = call.session.checkedExchange?.turns.map(t => ({ playback: t.playback, prompt: Boolean(t.prompt), actions: t.actions.map(a => a.fate) }));
 const report = {
-  at: new Date().toISOString(), load: { start: loadAtStart, end: loadavg()[0], cores: cpus().length }, cues: args.cues, adaptive: process.env.LIVEKIT_DEV_MODE === "1", providers: speech.ids, restarts,
+  at: new Date().toISOString(), load: { start: loadAtStart, end: loadavg()[0], cores: cpus().length }, cues: args.cues, interruptMode: speech.tuning.interruptMode ?? "unset", devMode: process.env.LIVEKIT_DEV_MODE === "1", providers: speech.ids, restarts,
   ...summarize(rows),
   workerToChildAudioMs: { n: delays.length, median: delay },
-  cueSummary, falseInterruptionEvents: falseInterruptions.length,
+  cueSummary, falseInterruptionEvents: falseInterruptions.length, detectorOn,
+  overlapEvents: { n: overlaps.length, bargeIns: overlaps.filter(o => o.isInterruption).length },
   speeches: { n: speeches.length, interrupted: speeches.filter(s => s.interrupted).length },
   checked, boardEvents: receiver.snapshot().events.map(e => e.kind),
   rows, cueRows,

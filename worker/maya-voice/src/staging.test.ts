@@ -33,10 +33,10 @@ describe("a deployment's lab settings", () => {
 });
 
 describe("a voice session on a lab deployment", () => {
-  const session = async (lab?: StagingLab) => {
+  const session = async (lab?: StagingLab, turn?: Parameters<typeof voiceSession>[1]["turn"]) => {
     const config = voiceProviders({});
     if (!config.ok) throw new Error("fake providers");
-    return voiceSession(await makeProviders(config, { fakeMsPerChar: 1 }), { lab });
+    return voiceSession(await makeProviders(config, { fakeMsPerChar: 1 }), { lab, turn });
   };
 
   it("is production's without lab settings: the speech-to-text ends the turn and no interruption mode is set", async () => {
@@ -52,6 +52,12 @@ describe("a voice session on a lab deployment", () => {
     expect((await session({ interruption: "vad" })).interruptionDetection).toBe("vad");
     expect((await session({ turnDetection: "multimodal" })).turnDetection).toBeInstanceOf(inference.TurnDetector);
     expect((await session({ turnDetection: "stt" })).turnDetection).toBe("stt");
+  });
+
+  it("keeps a real call's interruption mode, and lets the lab's mode win over it", async () => {
+    const turn = { turnMinDelayMs: 100, interruptMinMs: 300, interruptMinWords: 0, interruptMode: "adaptive" as const };
+    expect((await session(undefined, turn)).interruptionDetection).toBe("adaptive");
+    expect((await session({ interruption: "vad" }, turn)).interruptionDetection).toBe("vad");
   });
 
   it("filters the child's audio with the lab's Krisp model", async () => {

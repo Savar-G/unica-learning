@@ -1780,9 +1780,10 @@ it("R450-9 an interrupt before native forwarding leaves no unmatched playback se
     const frame = new AudioFrame(new Int16Array(2400), 24000, 1, 2400);
     frame.userdata["unica.maya.speechScope"] = c.board.capture(stages.mock.calls.at(-1)![0])!;
     const capture = output.captureFrame(frame);
+    // On an output that can pause, the interruption is LiveKit's clear, not the raw start of the child's speech.
     session.emit(voice.AgentSessionEventTypes.UserStateChanged, { newState: "speaking" });
-    await capture;
     output.clearBuffer();
+    await capture;
     expect(native.capturedPlayoutSegments).toBe(0);
     expect(output.capturedPlayoutSegments).toBe(native.capturedPlayoutSegments);
     expect(output.pendingPlayoutSegments).toBe(0);
@@ -1803,6 +1804,49 @@ it("R450-9 an interrupt before native forwarding leaves no unmatched playback se
     expect(output.pendingPlayoutSegments).toBe(0);
     await output.waitForPlayout();
     expect(c.board.owns(scope)).toBe(true);
+  } finally { await run.hangUp(); native.clearBuffer(); await native.close(); }
+});
+
+it("keeps ordinary speech and its board when the child starts to speak, until LiveKit cuts it", async () => {
+  const c = await voiceCall();
+  const native = new voice.ParticipantAudioOutput({ localParticipant: { publishTrack: async () => ({ sid: "local", waitForSubscription: async () => {} }) } } as unknown as ConstructorParameters<typeof voice.ParticipantAudioOutput>[0],
+    { sampleRate: 24000, numChannels: 1, queueSizeMs: 100, trackPublishOptions: new TrackPublishOptions() });
+  await native.start(new AbortController().signal);
+  const stages = vi.spyOn(c.board, "stage");
+  const session = Object.assign(controlSession(), { output: { audio: native } });
+  const run = new VoiceCallRun(session as unknown as voice.AgentSession, c.call, { board: c.board, timers: c.clock.timers, notify() {} });
+  run.attachBoardAudio();
+  try {
+    await run.childJoined();
+    const context = new llm.ChatContext();
+    context.addMessage({ role: "user", content: "I don't know." });
+    await readReply(await run.agent.llmNode(context, {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {}));
+    await c.board.settled();
+    const staged = c.receiver.staged().map(b => b.batchId);
+    expect(staged.length).toBeGreaterThan(0);
+    const scope = c.board.capture(stages.mock.calls.at(-1)![0])!;
+    const output = session.output.audio;
+    expect(output.canPause).toBe(true);
+    const frame = new AudioFrame(new Int16Array(2400), 24000, 1, 2400);
+    frame.userdata["unica.maya.speechScope"] = scope;
+    const capture = output.captureFrame(frame);
+    // A sound of any length: LiveKit decides whether it is an interruption, and pauses Maya first.
+    session.emit(voice.AgentSessionEventTypes.UserStateChanged, { newState: "speaking", oldState: "listening" });
+    output.pause();
+    session.emit(voice.AgentSessionEventTypes.UserStateChanged, { newState: "listening", oldState: "speaking" });
+    await c.board.settled();
+    expect(c.board.owns(scope)).toBe(true);
+    expect(c.receiver.staged().map(b => b.batchId)).toEqual(staged);
+    output.resume();
+    await capture;
+    expect(c.board.owns(scope)).toBe(true);
+    // Words followed: LiveKit interrupts the paused speech, which clears the output and retires the plan.
+    output.pause();
+    output.clearBuffer();
+    output.resume();
+    await c.board.settled();
+    expect(c.board.owns(scope)).toBe(false);
+    expect(c.receiver.staged()).toEqual([]);
   } finally { await run.hangUp(); native.clearBuffer(); await native.close(); }
 });
 
