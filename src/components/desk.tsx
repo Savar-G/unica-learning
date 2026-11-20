@@ -145,6 +145,12 @@ export function Desk(props: DeskProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!voice.engaged) return;
+    if (picker.current?.open) picker.current.close();
+    if (books.current?.open) books.current.close();
+  }, [voice.engaged]);
+
   // A new card goes to the end of the conversation: show it there (the column scrolls on a laptop or tablet only).
   // #1107: also as Maya's streamed message grows.
   const lastLine = chat.chat?.transcript.at(-1)?.text.length;
@@ -163,7 +169,7 @@ export function Desk(props: DeskProps) {
     window.history.replaceState(null, "", deskHref({ w: ready.book.id, p: ready.page.number, q: n }));
   };
   const pick = (n: number) => {
-    if (!ready) return;
+    if (!ready || voice.engaged) return;
     if (n === picked) { picker.current?.close(); return; }
     if (chat.chat && !chat.chat.ended) {
       void chat.act("end").then((ok) => { if (ok) keepPick(n) });
@@ -195,7 +201,7 @@ export function Desk(props: DeskProps) {
               : <p className="desk-question-none">{props.problem ? "No question yet" : "Pick a question from your page."}</p>}
           </div>
           {ready && <div className="desk-question-actions">
-            {chatOpen && <button type="button" className={card ? "desk-quiet" : "desk-pick"} onClick={() => picker.current?.showModal()}>
+            {chatOpen && <button type="button" className={card ? "desk-quiet" : "desk-pick"} disabled={voice.engaged} onClick={() => { if (!voice.engaged) picker.current?.showModal(); }}>
               <Icon name="page" />{card ? "Pick another question" : "Pick from my page"}
             </button>}
             {card && <button type="button" className="desk-quiet" aria-pressed={paper} onClick={() => setPaper(!paper)}>{paper ? "Show board" : "Use paper"}</button>}
@@ -241,7 +247,7 @@ export function Desk(props: DeskProps) {
           {!props.problem && (props.chatUsage || props.voice) && !seenTip && !mayaStarted && <p className="desk-event">{SAFETY_TIP}</p>}
           <p className="desk-cue" aria-live="polite">{latest}</p>
           {!!chat.chat?.hint && <p className="desk-event">Hint {chat.chat.hint} of 3</p>}
-          {!!chat.chat?.batches.length && <button className="desk-quiet" type="button" onClick={() => document.getElementById("chat-board")?.scrollIntoView({ behavior: still ? "instant" : "smooth", block: "center" })}>Show me on the board</button>}
+          {!paper && !voice.showBoard && !!chat.chat?.batches.length && <button className="desk-quiet" type="button" onClick={() => document.getElementById("chat-board")?.scrollIntoView({ behavior: still ? "instant" : "smooth", block: "center" })}>Show me on the board</button>}
           {(chatOpen || props.problem) && <details className="desk-transcript">
             <summary>Transcript</summary>
             <div ref={talk} className="desk-talk">
@@ -256,7 +262,7 @@ export function Desk(props: DeskProps) {
         <details className="desk-nav">
           <summary>Workbook navigation</summary>
           <nav aria-label="Desk">
-            <button type="button" className="desk-quiet" onClick={() => books.current?.showModal()} disabled={!ready}><Icon name="book" />Workbooks</button>
+            <button type="button" className="desk-quiet" onClick={() => { if (!voice.engaged) books.current?.showModal(); }} disabled={!ready || voice.engaged}><Icon name="book" />Workbooks</button>
             <button type="button" className="desk-quiet" disabled title="Coming soon"><Icon name="chart" />Progress</button>
           </nav>
         </details>
@@ -271,7 +277,7 @@ export function Desk(props: DeskProps) {
               </div>
               <button type="button" className="desk-x" onClick={() => picker.current?.close()} aria-label="Close"><Icon name="close" /></button>
             </header>
-            <PagePicker ready={ready} picked={picked} onPick={pick} />
+            <PagePicker ready={ready} picked={picked} disabled={voice.engaged} onPick={pick} />
           </dialog>
           <dialog ref={books} className="desk-books-dialog" aria-labelledby="desk-books-title">
             <header>
@@ -287,6 +293,7 @@ export function Desk(props: DeskProps) {
                     aria-current={b.id === ready.book.id ? "page" : undefined}
                     // The open workbook: no new page, so the desk would not start again. Go straight to its page.
                     onClick={(e) => {
+                      if (voice.engaged) { e.preventDefault(); return; }
                       if (b.id !== ready.book.id) return;
                       e.preventDefault();
                       books.current?.close();
@@ -326,9 +333,10 @@ function QuestionCard({ card, image }: { card: DeskCard; image: { url: string } 
 }
 
 /** The page image with a tap area on each question, and the arrows to the pages before and after. */
-function PagePicker({ ready, picked, onPick }: {
+function PagePicker({ ready, picked, disabled, onPick }: {
   ready: Extract<DeskProps, { problem?: undefined }>;
   picked: number | null;
+  disabled: boolean;
   onPick: (n: number) => void;
 }) {
   const { page, image, areas, book } = ready;
@@ -350,9 +358,10 @@ function PagePicker({ ready, picked, onPick }: {
                 type="button"
                 className="desk-area"
                 style={{ left: `${a.left}%`, top: `${a.top}%`, width: `${a.width}%`, height: `${a.height}%` }}
+                disabled={disabled}
                 aria-pressed={picked === a.question}
                 aria-label={`Question ${a.question}`}
-                onClick={() => onPick(a.question)}
+                onClick={() => { if (!disabled) onPick(a.question); }}
               />
             ))}
           </div>

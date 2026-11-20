@@ -6,7 +6,7 @@
 
 .desk-root {
   --desk-pick: var(--tang); --desk-warn: #b8410f; --desk-bubble: #f1f1f3; --desk-bg: #f5f5f6;
-  height: 100dvh; display: grid; background: var(--desk-bg); color: var(--ink);
+  min-height: 100dvh; display: grid; background: var(--desk-bg); color: var(--ink);
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas: "top" "body";
@@ -32,7 +32,7 @@
 /* ---------- the lesson: question, board, reply, Maya says, navigation ---------- */
 .desk-body { grid-area: body; min-height: 0; display: grid; gap: 12px; padding: 12px clamp(12px, 1.6vw, 20px);
   grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto minmax(460px, 1fr) auto auto;
   grid-template-areas: "question question" "board help" "controls controls" "nav nav"; }
 .desk-question, .desk-maya, .desk-say, .desk-nav { min-width: 0; background: #fff; border: 1px solid var(--line); border-radius: 14px; }
 
@@ -52,7 +52,7 @@
 [data-look="warm"] .desk-card-text { margin: 0; font: 600 24px/1.2 var(--sans); letter-spacing: 0.02em; font-variant-numeric: tabular-nums; }
 
 /* Maya says: her latest words, the limits, then the whole conversation in a disclosure. */
-.desk-maya { grid-area: help; min-height: 0; overflow: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 14px; }
+.desk-maya { grid-area: help; height: 0; min-height: 100%; overflow: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 14px; }
 [data-look="warm"] .desk-maya h2 { margin: 0; font: 600 15px/1.2 var(--sans); }
 .desk-cue { margin: 0; font: 400 16px/1.45 var(--sans); color: var(--ink); }
 .desk-limits { margin: 0; display: flex; flex-wrap: wrap; gap: 6px; }
@@ -80,8 +80,9 @@
 .desk-say.is-calling > .desk-voice { flex: 1 1 100%; }
 .desk-say .desk-call { min-height: 44px; padding: 0 16px; font-size: 15px; }
 .desk-pick { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; padding: 0 18px; border: 0; border-radius: 12px; background: var(--ink); color: #fff; font: 500 17px/1 var(--sans); cursor: pointer; transition: transform 0.15s; }
-.desk-pick:hover { background: #26262b; }
-.desk-pick:active { transform: scale(0.98); }
+.desk-pick:hover:not(:disabled) { background: #26262b; }
+.desk-pick:active:not(:disabled) { transform: scale(0.98); }
+.desk-pick:disabled { opacity: 0.55; }
 .desk-soon { margin: 0; font: 400 14px/1.4 var(--sans); color: var(--ink-2); text-align: center; }
 .desk-compose { display: flex; align-items: center; gap: 8px; }
 .desk-compose input { flex: 1; min-width: 0; width: 100%; min-height: 44px; padding: 0 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--desk-bg); font: 400 16px/1 var(--sans); color: var(--ink); }
@@ -93,7 +94,7 @@
 .desk-nav nav { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 12px 12px; }
 
 /* ---------- the board ---------- */
-.desk-main { grid-area: board; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+.desk-main { grid-area: board; min-width: 0; height: 0; min-height: 100%; display: flex; flex-direction: column; gap: 10px; }
 /* Paper (#1151): the board stays mounted under the paper note; only its canvas hides, so nothing of the step is lost. */
 .desk-paper-note { margin: 0; padding: 12px 14px; border: 1px solid var(--desk-warn); border-radius: 12px; background: var(--accent-soft); font: 500 15px/1.4 var(--sans); color: var(--ink); }
 .desk-root[data-paper="true"] .desk-board-body, .desk-root[data-paper="true"] .desk-pen { display: none; }
@@ -116,7 +117,7 @@
   background-color: #fff; background-image: radial-gradient(#d6d8de 1.2px, transparent 1.4px); background-size: 22px 22px; }
 .desk-canvas .maya-board { width: auto; max-width: min(100%, 560px); height: auto; max-height: 100%; border: 0; border-radius: 0; background: none; }
 .desk-caption { position: absolute; left: 14px; bottom: 14px; margin: 0; max-width: calc(100% - 28px); padding: 9px 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 6px 18px -12px rgba(12, 12, 14, 0.4); font: 500 15px/1.35 var(--sans); color: var(--ink); }
-.desk-tools { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px 0; border: 1px solid var(--line-soft); border-radius: 12px; }
+.desk-tools { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px 0; min-height: 0; overflow-y: auto; border: 1px solid var(--line-soft); border-radius: 12px; }
 .desk-tools button { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 10px; background: none; color: var(--ink-3); }
 .desk-tools button:not(:disabled) { color: var(--ink); cursor: pointer; transition: background-color 0.15s; }
 .desk-tools button:not(:disabled):hover { background: var(--desk-bg); }
@@ -220,7 +221,8 @@
   .desk-question-actions { width: 100%; }
   .desk-question-actions > * { flex: 1 1 auto; }
   .desk-crop { flex-basis: auto; width: min(264px, 100%); }
-  .desk-maya { overflow: visible; }
+  .desk-maya { height: auto; min-height: 0; overflow: visible; }
+  .desk-main { height: auto; min-height: 0; }
   .desk-board { flex: none; }
   .desk-board-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; padding: 0 10px 10px; }
   .desk-canvas { min-height: 340px; padding: 16px 12px 64px; }

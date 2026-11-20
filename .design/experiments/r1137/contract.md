@@ -43,7 +43,9 @@ Browser checks ran on 2026-11-20 in Aside (Chromium) and in iOS Safari on the iP
 | Contrast | 41 text runs checked. Lowest ratio 8.85:1. None below 4.5:1. |
 | Reduced motion | 0 running animations during the exchange. No partly drawn strokes. Transitions are 0 s. The 4 tens and 12 ones state showed at once. |
 | Targets | Every control is 44 px or more after the pen buttons went from 40 to 44 px. |
+| Tall crop 900 x 580 | With the 382 x 392 question crop (271 px high), the board row stays 460 px high (394 px board, 278 px canvas with Exchange one ten, 334 px without; tools unclipped) and the page scrolls vertically with no sideways scroll. |
+| Call picker and board link | While a call is engaged (mic check through after-call), Pick another question and Workbooks are disabled and the picker ignores selections. Show me on the board hides in paper mode and while the call board replaces the chat board. Checked across 1280 x 800, 900 x 580, 820 x 1180 and 390 x 844. |
 
-Screens: [desktop chat](impl-desktop-chat.jpg), [desktop paper](impl-desktop-paper.jpg), [desktop after the exchange](impl-desktop-exchanged.jpg), [tablet](impl-tablet-chat.jpg), [phone with reduced motion](impl-phone-chat-reduced.jpg), [phone paper](impl-phone-paper.jpg).
+Screens: [desktop chat](impl-desktop-chat.jpg), [desktop paper](impl-desktop-paper.jpg), [desktop after the exchange](impl-desktop-exchanged.jpg), [tall crop 900 x 580](impl-tall-crop-900x580.jpg), [tablet](impl-tablet-chat.jpg), [phone with reduced motion](impl-phone-chat-reduced.jpg), [phone paper](impl-phone-paper.jpg).
 
-Not checked here: a physical iPhone or iPad, a live call (the call screens and the Hang up row at the bottom of a phone), and screen reader output beyond the iOS accessibility tree.
+Not checked here: a physical iPhone or iPad, a live call with a real voice worker (and resuming a voice call from a chat's confirmed lesson state, which requires server-side session handoff), and screen reader output beyond the iOS accessibility tree.
