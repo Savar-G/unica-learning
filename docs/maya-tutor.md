@@ -181,7 +181,7 @@ Measured on 2026-11-15 (real Maya model `anthropic/claude-sonnet-5.5`, real talk
 
 ### Final check 6 (2026-11-15)
 
-Rules, not word lists. Each failure found on `b02df0da9` has a binding test in `src/lib/maya/tutor-final6.test.ts` or `src/lib/maya-final-check6.test.ts`.
+Rules, not word lists. Each failure found on `b02df0da9` has a binding test in `src/lib/maya/tutor-regressions.test.ts` or `src/lib/maya-text-math-review.test.ts`.
 
 - **Exact values only.** An operation with a value that is not a whole number (a quotient such as 1 ÷ 10,000,000,000, a fraction in a sum or a product) or that is not a safe integer leaves its side unread: no code-only pass, no "true" and no refusal from code. The sentence goes to the math review. A lone spoken fraction ("five sixths") is still read.
 - **A review holds the rest of the message.** A sentence passes on code alone only when every sentence before it in the same message (and in the stream prefix) also passed on code alone. After the first sentence that needs the math review, every later sentence of that message needs it too ("Let us try the easier example. Write 4 in the ones.").
@@ -229,7 +229,7 @@ Rules, not word lists; the defaults are inverted and fail closed. Each failure f
 
 ### Final check 10 (2026-11-15)
 
-Rules, not word lists; they fail closed. Each failure found on `484f5b9bc` has a binding test in `src/lib/maya-final-check10.test.ts` (credit and help records) or `src/lib/maya-final-check10-math.test.ts` (true math).
+Rules, not word lists; they fail closed. Each failure found on `484f5b9bc` has a binding test in `src/lib/maya-call-regressions.test.ts` (credit and help records) or `src/lib/maya-text-math-review.test.ts` (true math).
 
 - **The child's whole answer phrase is read in full** (`answerPhraseWhole` in `session.ts`). Final-answer credit, and a step credit whose value is the whole answer, need each place the turn says the value to be the whole answer: no operator just before it, and after it, to the end of its sentence (commas too), only the question's unit (each word once) and answer words that are not operators ("is my answer"). A number, an operator, any other word or any token code cannot place after it ("18, bags.", "24 plus 1.", "24 plus.", "6, with a negative sign.") makes the read incomplete: no credit, and the review's verdict is "unknown". A later sentence that starts with an operator continues the answer; a later sentence with no number may hold only answer words and the unit ("18. Bags." gets no credit).
 - **The help record of a turn comes from every sentence Maya streamed in it**, decided before the turn's priority routing (identity, scope, safety, a stop) commits (`streamedHelp` in `session.ts`). Routing can add help, never take it away: "52 minus 28 is 24." streamed before a disclosure records `answer_given`.
@@ -239,7 +239,7 @@ Rules, not word lists; they fail closed. Each failure found on `484f5b9bc` has a
 
 ### Final check 11 (2026-11-15)
 
-Each failure found on `7958a012a` has a binding test in `src/lib/maya-final-check11.test.ts` (credit and help records) or `src/lib/maya-final-check11-math.test.ts` (true math).
+Each failure found on `7958a012a` has a binding test in `src/lib/maya-call-regressions.test.ts` (credit and help records) or `src/lib/maya-text-math-review.test.ts` (true math).
 
 - **One whole-phrase reader for every credited value** (`answerPhraseWhole` in `session.ts`): the final answer, a step, a column and a digit, through `checkAnswers`. Each place the turn says the value is either an operand of another complete claim ("4 minus 2 is 2"), which the phrase leaves to that claim, or the child's answer phrase. That phrase must be whole: the value, at most its unit, answer words that are not operators and, for a step, place and carrying words. It ends at the end of its sentence or at a joint that starts another clause of the child's own. Anything else ("I got 4 plus 1.", "I got 4, with a negative sign.") gives no credit, and the verdict is "unknown". Code never credits a matching operand.
 - **Emitted help is applied where each streamed sentence is accepted** (`withEmittedHelp`): in the text adapter's response that carries the sentences, and again in the proposal that carries them. This happens before any routing (identity, scope, safety, a stop, an error, the end) builds an outcome, so every outcome builder reads it. Help only rises.
@@ -249,7 +249,7 @@ Each failure found on `7958a012a` has a binding test in `src/lib/maya-final-chec
 
 ### Final check 12 (2026-11-15)
 
-Each class is fixed at one point. Each failure found on `0c74423ea` has a binding test in `src/lib/maya-final-check12.test.ts` (parent records) or `src/lib/maya-final-check12-math.test.ts` (true math).
+Each class is fixed at one point. Each failure found on `0c74423ea` has a binding test in `src/lib/maya-call-regressions.test.ts` (parent records) or `src/lib/maya-text-math-review.test.ts` (true math).
 
 - **The answer state** (`session.ts`, the `child_turn` event). A tutor call reconciles the result on every child turn, before any routing (identity, safety, a stop, scope, the end) or outcome reads it. A turn that holds an explicit answer attempt (`answerAttempt`: an answer sentence, or a committed number that is not a value of the work) clears a standing success, unless code's whole-phrase read credits a right final answer in that turn. Unread or wrong: no success. "My answer is 24 plus 1." and "My answer is 36. Are you a person?" after a right 24 are no longer saved as solved.
 - **The help ledger** (`emittedHelpKind`, the `help` session event, `withHelpLedger`). The text adapter writes the help of each sentence the moment it emits that sentence to the child. The help is a session event, so a cancellation or a replay never takes it back. The live voice call keeps the same ledger, and every restore for the end (a hang-up, the deadline, the cap) folds it in first. Help only rises.
@@ -260,7 +260,7 @@ Each class is fixed at one point. Each failure found on `0c74423ea` has a bindin
 
 ### Final check 13: one table of operator and relation words (#1086, 2026-11-15)
 
-The claim reader (`tutor-math.ts`) and the review key (`sentenceKey`) read operator and relation words from one table, `src/lib/maya/math-words.ts`. So "minus", "take away" and "-" are one operator in the key, and "is", "is equal to", "equals", "is the same as" and "=" are one relation, exactly as the reader parses them. A division of two whole numbers in words ("6 divided by 2") has the key of the fraction the number reader reads in "6 / 2". A repair that changes only the operator or relation wording keeps the terminal review result. Binding test: `src/lib/maya-final-check13.test.ts`.
+The claim reader (`tutor-math.ts`) and the review key (`sentenceKey`) read operator and relation words from one table, `src/lib/maya/math-words.ts`. So "minus", "take away" and "-" are one operator in the key, and "is", "is equal to", "equals", "is the same as" and "=" are one relation, exactly as the reader parses them. A division of two whole numbers in words ("6 divided by 2") has the key of the fraction the number reader reads in "6 / 2". A repair that changes only the operator or relation wording keeps the terminal review result. Binding test: `src/lib/maya-text-math-review.test.ts`.
 
 ### The repair always runs; agreeing with a child's fact (#1072, 2026-11-15)
 

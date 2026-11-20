@@ -1,7 +1,7 @@
 // Gate cases from the re-review of #741 (C3b) on the scale, minute-hand and money claims: another person's or a copied
 // ", so" answer with a model that proposes accept or a confirm (P1-1), and a wrong word right after the easier example,
 // with the model down and with a model that proposes "not yet" and the question, at grades 3, 4 and 5 (P1-2). Added to
-// BEHAVIOURS (behaviours.ts); c3b-review-cases.test.ts runs them on their own.
+// BEHAVIOURS (behaviours.ts); gate.test.ts runs them with the full gate.
 import type { Act } from "@/lib/maya";
 import type { Behaviour, Plan, Step } from "./gate";
 

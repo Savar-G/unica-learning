@@ -1,14 +1,14 @@
-// The help ladder's way out (#735, the controller's decision (a)): help requests alone never lead to the given answer.
-// After the top hint, the easier example; after the example, an honest close with no answer (close.stuck). A real miss
-// keeps D-199. Each call here is driven by code's own fallbacks, as when the model is down, unless a test says otherwise.
 import { describe, expect, it } from "vitest";
-import { createSession, fallbacks, learningEvent, step, type Proposal, type Session, type SessionEvent } from "@/lib/maya";
-import { TEMPLATES } from "@/lib/maya/lines";
-import { modelInput } from "@/lib/maya-model";
+import { createSession, fallbacks, learningEvent, type Proposal, type Session, type SessionEvent, step } from "@/lib/maya";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
-import { checkQuestionPackage, workedSteps, type Operation, type QuestionPackage } from "@/lib/question-package";
+import { modelInput } from "@/lib/maya-model";
+import { fakeMayaModel } from "@/lib/maya-model-fake";
+import { createTextSession } from "@/lib/maya-text";
+import { TEMPLATES } from "@/lib/maya/lines";
+import { checkQuestionPackage, type Operation, type QuestionPackage, workedSteps } from "@/lib/question-package";
 
 const num = (value: number) => ({ type: "number" as const, value });
+
 function pkgOf(text: string, operation: Operation, answer: number, easier: { text: string; operation: Operation; answer: number }): QuestionPackage {
   const pkg: QuestionPackage = {
     ...FIXTURES.A, id: `help-ladder-${text}`, text, operation, steps: workedSteps(operation), answer: { value: num(answer), accepted: [], unit: null },
@@ -18,11 +18,14 @@ function pkgOf(text: string, operation: Operation, answer: number, easier: { tex
   expect(checkQuestionPackage(pkg)).toMatchObject({ ok: true });
   return pkg;
 }
+
 /** The two reproductions of #735: a question with more than one step, and one whose only column is its final step. */
 const DIVIDE = () => pkgOf("8 ÷ 2 = ?", { kind: "divide", operands: [8, 2] }, 4, { text: "6 ÷ 2 = ?", operation: { kind: "divide", operands: [6, 2] }, answer: 3 });
+
 const ADD = () => pkgOf("2 + 1 = ?", { kind: "add", operands: [2, 1] }, 3, { text: "1 + 1 = ?", operation: { kind: "add", operands: [1, 1] }, answer: 2 });
 
 const FAMILY = { parentId: "p", childId: "c" };
+
 interface Said { act: string; text: string }
 
 /** A call where code's fallbacks say every Maya turn, and the child says `turns` one by one. */
@@ -49,6 +52,7 @@ function byCode(pkg: QuestionPackage, turns: string[]): { said: Said[]; session:
 }
 
 const STUCK = Array.from({ length: 12 }, () => "I'm stuck.");
+
 const CLOSES: readonly string[] = TEMPLATES["close.stuck"];
 
 describe("help requests alone: the easier example, then an honest close (#735, decision (a))", () => {
@@ -258,7 +262,6 @@ describe("numbers in help questions", () => {
   });
 });
 
-
 describe("model input after a shown column", () => {
   it("exposes the passed step and current ladder step without offering passed help", () => {
     let s = createSession({ callId: "model-passed", package: FIXTURES.A });
@@ -275,5 +278,48 @@ describe("model input after a shown column", () => {
     const guide = input.offers.find((o) => o.act === "guide");
     expect(guide?.lines.some((o) => o.line === "step.invite" && o.slots.step === "tens")).toBe(true);
     expect(guide?.lines.some((o) => o.slots.step === "ones")).toBe(false);
+  });
+});
+
+describe("help progression regression", () => {
+  const forms = ["help", "help me", "I need help", "can you help", "can you help me", "could you help", "could you help me", "will you help", "will you help me", "please help", "please help me", "help please", "help me please", "I'm stuck", "I am stuck", "show me", "I don't know how", "I don't get it", "um okay please can you help me?"];
+
+  const operation = { kind: "add" as const, operands: [3, 0] as [number, number] };
+
+  const easier = { kind: "add" as const, operands: [0, 0] as [number, number] };
+
+  const small = { ...FIXTURES.A, text: "3 + 0", operation, steps: workedSteps(operation),
+    answer: { value: { type: "number" as const, value: 3 }, accepted: [], unit: null },
+    wrongAnswers: [{ value: { type: "number" as const, value: 4 }, cause: "O3", description: "Wrong sum", step: null }],
+    easierExample: { text: "0 + 0", operation: easier, answer: { type: "number" as const, value: 0 }, steps: workedSteps(easier) } };
+
+  it.each(forms.flatMap((form) => [[form, small], [form, FIXTURES.A]] as const))("advances for %s on %s with the model down", async (form, pkg) => {
+    let at = 1000;
+    const session = createTextSession({ callId: "round7-help", package: pkg, confirmWorkbook: true, grade: 2, clock: () => at,
+      model: fakeMayaModel({ answer: () => { throw new Error("offline"); } }) });
+    let output = await session.start();
+    for (let i = 0; i < 12 && !output.ended; i++) { at += 4000; output = await session.child(form); }
+    expect(session.session.ladder.hint > 0 || session.session.exampleShown > 0 || !!output.ended).toBe(true);
+  });
+});
+
+describe("opening turn regression", () => {
+  it.each([[2, 1, 1, 1], [12, 11, 1, 1], [3, 2, 6, 2]])("opens workbook %i and %i on page %i question %i", async (a, b, page, question) => {
+    const multiply = page === 6;
+    const operation = { kind: multiply ? "multiply" as const : "subtract" as const, operands: [a, b] as [number, number] };
+    const value = multiply ? a * b : a - b;
+    const easier = { kind: operation.kind, operands: (multiply ? [2, 2] : [1, 1]) as [number, number] };
+    const base = multiply ? FIXTURES.C : FIXTURES.B;
+    const pkg = { ...base, ref: { source: "workbook" as const, workbookId: "book", page, question }, operation, text: `${a} ${multiply ? "×" : "−"} ${b}`, steps: workedSteps(operation), answer: { value: { type: "number" as const, value }, accepted: [], unit: null }, easierExample: { text: "example", operation: easier, answer: { type: "number" as const, value: multiply ? 4 : 0 }, steps: workedSteps(easier) }, wrongAnswers: [{ value: { type: "number" as const, value: value + 100 }, cause: "O3", description: "Wrong answer", step: null }] };
+    expect(checkQuestionPackage(pkg), JSON.stringify(checkQuestionPackage(pkg))).toMatchObject({ ok: true });
+    for (const fallback of [false, true]) {
+      const model = fakeMayaModel({ answer: () => { if (fallback) throw new Error("offline"); return { version: 2, act: "open", parts: [{ line: "open.hello" }, { line: "question.problem" }] }; } });
+      const session = createTextSession({ callId: "opening", package: pkg, confirmWorkbook: true, model, grade: 3, clock: () => 1000 });
+      const output = await session.start();
+      const turn = session.trace().turns.find((item) => item.kind === "maya");
+      expect(turn?.kind === "maya" && turn.attempts.at(-1)?.source).toBe(fallback ? "fallback" : "model");
+      expect(output.ended).toBeNull();
+      expect(output.say.join(" ")).toContain(`page ${page}, number ${question}`);
+    }
   });
 });
