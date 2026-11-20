@@ -59,72 +59,80 @@ The child and the worker share the machine clock. `inputEnd` is the end of the l
 
 Cost rows use the provider receipts (`AI_USAGE_RECEIPT_FILE`) for model and review requests, and the worker's own spend ledger for speech estimates. Transport has no local price. Discarded preparation is already inside the receipts; its rows only show that share.
 
-The Cloud project's LiveKit Inference quota is shared with production. On the Build plan it is 5 STT and 5 TTS connections and USD 2.50 of credits a month (LiveKit docs, read 2026-11-20). The plan of `unica-ai-teacher` was not verified. Run real-speech calls one at a time. Do not run them beside another real-speech run. Check that no family voice call is live first.
+The Cloud project's LiveKit Inference quota is shared with production. Since November 20, 2026 the project is on the Scale plan with 50 concurrent connections each for `cartesia/sonic-3.6` and `assemblyai/universal-3-6-pro`. Check that no family voice call is live first, and keep the machine's 1-minute load under 12. Make one probe connection before a run; stop on any HTTP 429. If a room connection times out (`wait_pc_connection`), the server has no UDP candidate the client can reach: use `rtc.udp_port` and no fixed `node_ip`.
 
 ## Baseline of November 20, 2026
 
-Source: branch `site/maya-1139-baseline` from `fee7814e6`, on a MacBook M4 Pro (12 cores). Other agents loaded the same machine; the 1-minute load average was 4 to 90 during the runs. The capture is `docs/maya-baseline-runs/2026-11-20.log`; `node scripts/maya-baseline-report.mjs docs/maya-baseline-runs/2026-11-20.log` reproduces every figure below. Median and p95 are nearest rank. "n" counts samples.
+Source: branch `site/maya-1139-baseline` from `fee7814e6`, on a MacBook M4 Pro (12 cores). Two raw logs hold every row; the report reproduces every figure below.
 
-**Provider block.** LiveKit Inference returned HTTP 429 to every STT and TTS connection after the first real-speech call. At 2026-11-20T18:03:52Z, one probe connection with retries off returned `Unexpected server response: 429`, while no other real-speech run was active on the machine. A lone refused connection points to a spent monthly allowance, not only to parallel use. The project plan was not verified. Production voice uses the same account. All real-speech and hosted runs stopped there. The real-speech matrix below therefore has one completed call and one failed call.
+```sh
+node scripts/maya-baseline-report.mjs docs/maya-baseline-runs/2026-11-20-real.log  # real speech, hosted call, concurrency
+node scripts/maya-baseline-report.mjs docs/maya-baseline-runs/2026-11-20.log       # first real call, speech doubles under load
+```
 
-### Real speech, one call each, self-hosted room
+Median and p95 are nearest rank. "n" counts measured samples; failed turns are listed beside them. Useful sound is measured at the synthetic child on the machine clock and never counts filler. The 1-minute load average was 1.97 to 5.57 during the real-speech runs.
 
-| Path | Turn type | Outcomes | Useful sound at the child (p50 / p95, n) | Worker reply from its speech-end estimate | First checked sentence from turn start |
-|---|---|---|---|---|---|
-| Checked exchange and routine | Routine | 5 completed | 3,669 / 5,579 ms, n 5 | 2,667 / 3,095 ms, n 5 | 2,128 / 2,491 ms, n 5 |
-| Checked exchange and routine | Complex | 3 completed | 3,420 / 3,779 ms, n 3 | 2,842 / 3,131 ms, n 3 | 2,130 / 2,507 ms, n 3 |
-| Existing tutor | All 9 | 9 timeouts | none | none | none |
+**Provider history.** At 2026-11-20T18:03:52Z, LiveKit Inference refused a single connection with HTTP 429. After the project moved to the Scale plan, single STT and TTS probes succeeded at 18:28:13Z and 18:28:14Z. LiveKit then raised both models to 50 concurrent connections. No real-speech run after that saw a 429. Runs before the fix are kept apart: one existing-path call that failed on 429 (in `2026-11-20.log`), five calls that failed to connect after a reboot changed the LAN address, and one call that the runner cut short with a 2-second wait. None of those is in `2026-11-20-real.log`.
 
-The existing-tutor call failed at its start: Inference returned 429 to both speech services, and the worker ended the call as a provider failure. The child heard no answer. These nine rows stay in the counts as failures.
+### Real speech, one call at a time
 
-In the checked call, a routine turn waited for the whole Sonnet 5.5 response before it spoke. Its first checked sentence (2,128 ms) matches the full model request (2,082 ms). The code-written exchange turn needed no model request: 797 ms worker reply and 1,233 ms useful sound at the child. A filler came first in 6 of 8 turns, at 310 to 393 ms on the worker clock.
+| Path | Turn type | Turns | Answered | Useful sound at the child (p50 / p95, n) | Worker reply from its speech-end estimate |
+|---|---|---:|---:|---|---|
+| Existing tutor | Routine | 18 | 15 | 4,803 / 8,308 ms, n 15 | 2,484 / 7,720 ms, n 17 |
+| Existing tutor | Complex | 9 | 7 | 2,764 / 3,545 ms, n 7 | 2,288 / 2,988 ms, n 7 |
+| Checked exchange and routine | Routine | 12 | 11 | 4,713 / 6,223 ms, n 11 | 2,817 / 4,959 ms, n 11 |
+| Checked exchange and routine | Complex | 6 | 6 | 3,090 / 3,610 ms, n 6 | 2,568 / 3,097 ms, n 6 |
 
-The child clock was later than the worker's speech-end estimate by 436 to 707 ms on six turns. On the two turns that ended in a number word ("four", and "four. no, fourteen") it was later by 2,912 and 2,874 ms. The worker's reply interval does not include that wait. The number-word hold is the likely cause; it is not proven.
+Three existing-path calls and two checked calls. A turn without an answer is one where Maya stayed silent for 6 s after her filler, so the child spoke again; the worker records it as interrupted. No routine or complex turn had useful sound within 2 s at the child: 2 of 148 completed turns across all real runs were under 2 s, and none was under 1 s. The #1137 routine targets (median below 1,000 ms, p95 below 2,000 ms) are not met by either path.
 
-Background speech in another voice, 18 dB below the prompts, produced a final transcript and a Maya reply (1 of 1 calls). The interruption case did not run: the first call used "stop", which ends a call by design, and later calls were blocked. Board display on the child was not measured in the completed call; that build stamped every board message instead of the release, so its board times are left out.
+Where the time goes, on the worker clock: the speech-to-text final arrives 241 ms (p50) after the worker's speech-end estimate, and the worker takes the turn 105 ms later. The Sonnet 5.5 request then runs about 2.0 s (p50) before the first checked sentence, on both paths. A filler plays at about 340 ms on the worker clock. On turns that end in a number word, the child waits about 2.4 to 2.9 s longer than the worker's own reply interval (first call, `2026-11-20.log`); the number-word hold is the likely cause and is not proven.
 
-### Hosted worker decision time
+The existing path sent 36 talk reviews and 49 math reviews over 21 routine turns, and 35 of its requests were aborted. The checked path sent no review request. The checked exchange board showed its change 3,976 and 4,000 ms after the child stopped (n 2), about 2.7 s after the explanation began; the cue waits for the spoken exchange. Board display for the existing path was seen once (12,665 ms).
 
-Production admin test voice calls from November 12 to 20 (42 calls, test children only) store a time for each child turn and each Maya turn. The Maya time is the moment the full proposal returns. The interval excludes endpointing, synthesis and playback. Streamed speech can start before it ends.
+**Interruption.** "Wait, I have a question" was played while the answer was audible in 16 of 19 calls. Across all real runs, Maya's sound stopped 331 ms (p50) and 382 ms (p95) after the interruption onset, n 16. The #1137 target is p95 within 300 ms. Seven of the 16 stops were under 200 ms; some of those may be a natural pause in Maya's speech, because sounds merge only across gaps under 250 ms. False stops and lost child speech were not measured.
 
-| Child turns | Maya replied next | Another child turn came first | p50 | p95 | Range |
-|---:|---:|---:|---:|---:|---:|
-| 132 | 127 | 5 | 2,626 ms | 5,368 ms | 0 to 10,585 ms |
+**Background speech.** Another voice, 18 dB below the child, produced a final transcript and a Maya reply in 19 of 19 calls.
 
-No browser sample on the hosted path was taken. The hosted runner (`hosted.mjs`) is written but has not run yet; it waits for Inference to accept connections. Its filler rule (a sound shorter than 1 s followed by a longer one) is a guess until it is checked against worker playout marks.
+### Real speech, 2, 4 and 8 calls at once (existing tutor)
 
-### Worker queue, CPU, event loop and memory (speech doubles)
+| Calls at once | Load (1 min) | Calls that reported | Routine useful (p50 / p95, n of turns) | Complex useful (p50 / p95, n of turns) | Queue: dispatch to job entry |
+|---:|---|---:|---|---|---|
+| 1 | 2.9 to 4.8 | 3 of 3 | 4,803 / 8,308 ms, 15 of 18 | 2,764 / 3,545 ms, 7 of 9 | 217 / 221 ms, n 3 |
+| 2 | 2.1 to 5.6 | 2 of 2 | 4,628 / 7,541 ms, 10 of 12 | 2,888 / 7,318 ms, 5 of 6 | 220 / 221 ms, n 2 |
+| 4 | 2.0 to 2.4 | 4 of 4 | 4,619 / 5,976 ms, 23 of 24 | 3,060 / 7,460 ms, 9 of 12 | 229 / 231 ms, n 4 |
+| 8 | 2.9 to 3.5 | 8 of 8 | 4,345 / 5,624 ms, 44 of 48 | 2,574 / 7,655 ms, 18 of 24 | 222 / 313 ms, n 8 |
 
-These calls use the real model and reviews but the speech doubles, so they use no Inference. The doubles have no voice detector and send silence, so they show the model path and the job scheduler, not the cost of real audio. The 1-minute load average was 48 to 90 during the 8-call batch.
+Useful time did not grow with concurrency up to 8 calls on an idle host. Unanswered complex turns grew from 2 of 9 to 6 of 24. The earlier 8-call run with the speech doubles, on a host at load 48 to 90, failed 6 of 8 calls at connection; that result reflects host contention.
 
-| Parallel calls | Calls that reported | Queue: dispatch to job entry | Turn to worker reply, routine (p50 / p95, n) | Failed turns |
-|---:|---:|---|---|---:|
-| 1 | 2 of 3 | 253 / 307 ms, n 2 | 2,222 / 5,399 ms, n 12 | 9 |
-| 4 | 4 of 4 | 217 / 2,392 ms, n 4 | 2,927 / 4,564 ms, n 25 | 0 |
-| 8 | 2 of 8 | 1,375 and 6,060 ms | 1,795 / 9,565 ms, n 12 | 54 |
+### Process profile and the native-component question
 
-At 8 parallel calls, 2 child connections timed out (`wait_pc_connection timed out`) and 4 jobs did not connect to their rooms within 10 s. The agent SDK logged "process not scheduled" (CPU contention) and 17 event-loop stalls. The host was already loaded, so this run does not separate Maya's own work from other load. Repeat it on an idle host before drawing a capacity limit.
+With real speech, one job process used 15.4 to 32.7 s of CPU over 117 to 177 s of call (about 10 to 20% of one core). Event-loop delay p95 was 11.3 to 12.1 ms. GC paused 249 to 402 times per call, 193 to 417 ms in total; the longest pause was 30 ms. RSS ended at 253 to 332 MB. These figures did not change between 1 and 8 calls at once. The 162 ms GC pause in the earlier run came from the heavily loaded host.
 
-Per job process, one call used 7.9 to 10.8 s of CPU over 76 to 83 s with the doubles, and 16.1 s over 107 s with real speech (about 15% of one core). Event-loop delay p95 was 12.1 to 17.8 ms. GC paused 98 to 215 times per call, 206 to 1,170 ms in total; the longest single pause was 162 ms. Heap ended at 96 to 130 MB and RSS at 221 to 268 MB.
+**Native component:** not proposed. The large waits are remote and in the turn design: the full model request (about 2 s) before the first checked sentence, the reviews on the existing path, the 6 s silences after a filler, and the number-word hold. Local CPU, event-loop delay and GC pauses are small and flat under 8 concurrent calls.
 
-**Native component:** not proposed. The largest measured waits are remote: the full model response (about 2 s), the number-word hold (about 2.4 s) and the job queue under load. Local CPU is about 15% of a core per call. A GC pause of up to 162 ms is the largest local stall seen; reduce allocation in the call loop before considering a native component.
+### Hosted admin test call
+
+One production admin test call (test child, 52 − 28), through the Aside browser on home Wi-Fi, at 2026-11-20T19:13Z. The call ended as `child_stopped` after 57 s, and the stored trace has two child turns and two Maya replies. First sound at the browser was 1,131 ms (routine) and 1,194 ms (complex). Useful sound is not measured on the hosted path: no worker playout mark reaches the browser clock, so a filler cannot be told from the answer. That call also used a 2-second wait, so its second prompt may have cut the first answer short. The runner now uses the 6-second rule and keeps every sound.
+
+The stored production traces of test calls from November 12 to 20 (42 calls) give the hosted worker's decision time: child turn record to the full Maya proposal. Over 132 child turns, 127 got a reply, p50 2,626 ms, p95 5,368 ms. This excludes endpointing, synthesis and playback.
 
 ### Cost and call frequency, measured
 
-| Path | Work | Requests | USD | Basis |
+| Run | Work | Requests | USD | Basis |
 |---|---|---:|---:|---|
-| Checked, real speech, 9 turns | Sonnet 5.5 proposals | 8 | 0.0549 | OpenRouter receipts |
-| Checked, real speech, 9 turns | Reviews | 0 | 0 | none sent |
-| Existing, doubles, 4 parallel, 36 turns | Sonnet 5.5 proposals and repairs, including 35 discarded preparations | 71 | 0.3416 | OpenRouter receipts |
-| Existing, doubles, 4 parallel, 36 turns | Haiku 5.5 talk and math reviews (111 talk and 144 math sends by worker count, 91 aborted requests) | 168 | 0.0714 | OpenRouter receipts |
-| Real-speech calls | STT, 7.2 call minutes | 2 calls | 0.0720 | Ledger estimate at USD 0.01 a minute |
-| Real-speech calls | Transport, 14.4 participant minutes | 2 calls | unknown | Self-hosted; LiveKit Cloud price not applied |
+| Existing, 3 calls, 33 worker turns | Sonnet 5.5 proposals and repairs, including 45 discarded preparations | 63 | 0.3042 | OpenRouter receipts |
+| Existing, 3 calls | Haiku 5.5 talk and math reviews (72 talk and 103 math sends by worker count, 68 aborted) | 120 | 0.0523 | OpenRouter receipts |
+| Checked, 2 calls, 23 worker turns | Sonnet 5.5 proposals | 18 | 0.0843 | OpenRouter receipts |
+| Checked, 2 calls | Reviews | 0 | 0 | none sent |
+| Existing, 3 calls | STT 7.4 min; TTS | 3 each | 0.0743; 0.0965 | Ledger estimates |
+| Checked, 2 calls | STT 4.0 min; TTS | 2 each | 0.0401; 0.0473 | Ledger estimates |
+| All real calls | Transport | 19 calls | unknown | Self-hosted; LiveKit Cloud price not applied |
 
-Per turn, the existing tutor sent about 2 Sonnet requests and 4.7 Haiku reviews and cost USD 0.0115 in model work. The checked path sent 0.9 Sonnet requests, no reviews, and cost USD 0.0061. Reviews are counted on refused and aborted attempts. The worker counts 255 review sends against 168 receipts; aborted sends have no receipt. Discarded preparation cost is "unknown" in the worker's own summary, but its requests are inside the receipts. TTS spend was not captured for the completed real call: the ledger seam was added after it ran. The #1045 and #1048 regression cases pass (`-t '#1045|#1048'`, 2 tests).
+Per worker turn, the existing tutor cost USD 0.0108 in model work (1.9 Sonnet requests and 3.6 Haiku receipts), and the checked path cost USD 0.0037 (0.8 Sonnet requests, no reviews). Speech estimates add about USD 0.0052 per turn on the existing path. The worker counts more review sends than receipts because aborted sends have no receipt. Discarded preparation cost is inside the receipts; the worker's own summary has no price for it. The #1045 and #1048 regression cases pass (`-t '#1045|#1048'`, 2 tests).
 
 ### Complex-explanation budget
 
-Not set. The budget needs at least five completed complex turns on the existing path with real speech, measured at the child. There are none: the three attempted turns failed on Inference 429. `complexBudget` in `src/lib/maya-baseline.ts` computes it from the capture when those turns exist: the p50 and p95 of useful sound, rounded up to 100 ms, with the failure count as a separate limit. Set it from the next real-speech run.
+From the one-call existing-path runs: **useful sound at the child within 2,800 ms at the median and 3,600 ms at p95**, with no more than 2 of 9 complex turns unanswered (the baseline failure rate). `complexBudget` computes it from `2026-11-20-real.log`. It uses one-call runs only and rounds up to 100 ms. A candidate must meet both percentiles and must not answer fewer complex turns.
 
 ## Cost and call frequency
 
@@ -142,12 +150,12 @@ These are code defaults and request scopes. Record the actual model, effort, pro
 
 ## Evidence still required
 
-- Real-speech calls on the existing tutor, and enough complex turns to set the complex-explanation budget. They are blocked while LiveKit Inference returns 429. Rerun `run.mjs --teaching existing,checked --calls 4` one call at a time when a single probe connection succeeds.
-- Hosted browser samples (`hosted.mjs`), interruption stop with real speech, false stops and lost child speech, and board display at the child. The background-speech false reply needs more than one sample.
-- The same cases on physical phones and tablets and on other networks. No physical device was connected.
-- A concurrency run with real speech, and the 8-call batch again on an idle host. Real-speech concurrency needs an Inference plan whose connection limits allow it without touching production calls.
-- TTS characters from the ledger for a real call, billed Inference usage, and LiveKit Cloud transport usage.
-- Keep the routine targets from #1137 at median below 1,000 ms and p95 below 2,000 ms for useful audible output. The checked routine turn measured 3,669 / 5,579 ms at the child (n 5), so the current path does not meet them.
+- Physical phones and tablets, and other networks. No physical device was connected; the device rows are a synthetic Node child on loopback and one Mac browser.
+- Useful sound on the hosted path. It needs a worker playout mark that reaches the browser, or captured audio that is transcribed, to tell the filler from the answer.
+- False stops and lost child speech during interruption, and the stops under 200 ms checked against captured audio.
+- Board display in a real browser for each turn, not only the loopback board release.
+- Billed Inference usage and LiveKit Cloud transport usage, to compare with the ledger estimates.
+- The routine targets from #1137 (median below 1,000 ms, p95 below 2,000 ms for useful audible output) are not met. The interruption target (p95 stop within 300 ms) is not met: 382 ms, n 16.
 
 A faster result fails the comparison if it cuts off the child, uses filler as the endpoint, loses a required board update, or excludes failures.
 

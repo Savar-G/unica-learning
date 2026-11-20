@@ -122,11 +122,13 @@ const MIN_BUDGET_SAMPLES = 5;
 const roundUp = (ms: number) => Math.ceil(ms / 100) * 100;
 
 /**
- * The complex-explanation budget (#1137): useful device output of complex turns on the existing path, rounded up to
- * 100 ms. Percentiles use completed turns; every other attempted turn is a failure that a candidate must not exceed.
+ * The complex-explanation budget (#1137): useful device output of complex turns on the existing path, one call at a
+ * time, rounded up to 100 ms. Percentiles use completed turns; every other attempted turn is a failure that a candidate must not exceed.
  */
 export function complexBudget(turns: readonly BaselineTurn[]) {
-  const rows = turns.filter(t => t.evidence === "device" && t.turnType === "complex" && (t.teaching ?? "existing") === "existing");
+  // One call at a time, as the matched comparison runs. A completed row without a useful mark measured first sound only.
+  const rows = turns.filter(t => t.evidence === "device" && t.turnType === "complex" && (t.teaching ?? "existing") === "existing" &&
+    t.concurrency === 1 && !(t.outcome === "completed" && t.ms.deviceUseful === undefined));
   const useful = rows.flatMap(t => t.outcome === "completed" && t.ms.deviceUseful !== undefined ? [t.ms.deviceUseful] : []);
   const counts = { n: rows.length, completed: useful.length, failed: rows.length - useful.length };
   if (useful.length < MIN_BUDGET_SAMPLES) return { ok: false as const, ...counts, reason: `needs at least ${MIN_BUDGET_SAMPLES} completed complex device turns` };

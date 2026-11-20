@@ -21,10 +21,12 @@ const clips = ${JSON.stringify(clips)};
 const order = ${JSON.stringify(prompts)};
 const h1139 = await openTab(${JSON.stringify(values.site + "/admin/maya")});
 try {
+  await h1139.getByRole("heading", { name: "Start a test call" }).waitFor({ timeout: 15000 });
   await h1139.getByText("Speak", { exact: true }).click();
   const child = h1139.getByRole("combobox", { name: "Test child" });
   await child.selectOption({ label: ${JSON.stringify(values.child)} });
-  await h1139.getByRole("button", { name: "Call Maya" }).first().click();
+  // In Speak mode the button opens the call page, which checks the microphone first.
+  await h1139.getByRole("button", { name: "Talk to Maya" }).first().click();
   await h1139.getByRole("button", { name: "Check the microphone", exact: true }).waitFor({ timeout: 20000 });
   await h1139.evaluate(async (clips) => {
     const ctx = new AudioContext();
@@ -72,8 +74,10 @@ try {
   await h1139.getByRole("button", { name: "Connect", exact: true }).click();
   await h1139.getByRole("button", { name: "Hang up", exact: true }).waitFor({ timeout: 15000 });
   const quiet = (after, limit) => h1139.waitForFunction(([after]) => {
+    // The runner's rule: 2 s of quiet after a sound of at least 1 s, or 6 s of quiet after any sound.
     const s = window.b1139, last = s.bursts.at(-1);
-    return !!last && last.start >= after && performance.now() - last.end > 2000;
+    const answered = s.bursts.some(b => b.start >= after && b.end - b.start >= 1000);
+    return !!last && last.start >= after && performance.now() - last.end > (answered ? 2000 : 6000);
   }, [after], { timeout: limit }).then(() => true, () => false);
   await quiet(0, 30000);
   for (const [name] of order) {
@@ -111,16 +115,15 @@ const { bursts, rendered, marks } = JSON.parse(line.slice(line.indexOf("HOSTED11
 const rows = marks.map((m, i) => {
   const end = marks[i + 1]?.inputEnd ?? Infinity;
   const mine = bursts.filter(b => b.start >= m.inputEnd && b.start < end);
-  // Without worker playout marks on the hosted path, filler is a sound shorter than 1 s followed by a longer one.
-  const answer = mine.find((b, k) => b.end - b.start >= 1000 || k === mine.length - 1);
+  // The hosted path gives no worker playout mark on the browser clock, so a filler cannot be told from the answer.
+  // Record the first sound only. The full sound list is kept in hosted.jsonl.
   const board = rendered.find(at => at >= m.inputEnd && at < end);
   const ms = {};
   if (mine[0]) ms.deviceFirstSound = Math.round(mine[0].start - m.inputEnd);
-  if (answer) ms.deviceUseful = Math.round(answer.start - m.inputEnd);
   if (board !== undefined) ms.deviceBoard = Math.round(board - m.inputEnd);
   return { v: 1, evidence: "device", mode: "voice", turnType: prompts[i][1], provider: values.provider, teaching: "existing",
-    device: values.device, network: values.network, concurrency: 1, outcome: answer ? "completed" : "timeout", ms, counts: {} };
+    device: values.device, network: values.network, concurrency: 1, outcome: mine.length ? "completed" : "timeout", ms, counts: {} };
 });
 appendFileSync(join(out, "capture.log"), rows.map(r => "[maya baseline] " + JSON.stringify(r)).join("\n") + "\n");
-appendFileSync(join(out, "hosted.jsonl"), JSON.stringify({ at: new Date().toISOString(), bursts: bursts.length, rendered: rendered.length, marks }) + "\n");
+appendFileSync(join(out, "hosted.jsonl"), JSON.stringify({ at: new Date().toISOString(), bursts, rendered, marks }) + "\n");
 console.log(JSON.stringify(rows.map(r => [r.turnType, r.outcome, r.ms])));

@@ -78,6 +78,13 @@ describe("#1139 complex-explanation budget", () => {
     expect(budget).toEqual({ ok: true, n: 7, completed: 6, failed: 1, p50Ms: 2300, p95Ms: 4000 });
   });
 
+  it("uses one-call runs only and leaves out rows that never measured useful output", () => {
+    const turns = [2010, 2290, 2550, 3120, 3990].map(ms => row(ms));
+    const parallel = { ...row(9000), concurrency: 8 };
+    const firstSoundOnly: BaselineTurn = { ...row(null), outcome: "completed", ms: { deviceFirstSound: 1100 } };
+    expect(complexBudget([...turns, parallel, firstSoundOnly])).toEqual({ ok: true, n: 5, completed: 5, failed: 0, p50Ms: 2600, p95Ms: 4000 });
+  });
+
   it("refuses a budget from too few completed samples", () => {
     expect(complexBudget([row(2000), row(2100), row(null)])).toEqual({ ok: false, n: 3, completed: 2, failed: 1, reason: "needs at least 5 completed complex device turns" });
   });

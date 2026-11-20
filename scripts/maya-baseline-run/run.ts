@@ -137,8 +137,12 @@ async function child(o: { url: string; job: BaselineJob; prompts: Map<string, In
   const quiet = async (after: number, limit = TURN_LIMIT_MS) => {
     const until = Date.now() + limit;
     while (Date.now() < until) {
+      // A filler is short and the answer can come seconds later. The turn is over after 2 s of quiet that follows a
+      // sound of at least 1 s (an answer), or after 6 s of quiet that follows any sound.
       const last = bursts.at(-1);
-      if (last && last.start >= after && Date.now() - last.end >= QUIET_MS) return true;
+      const silent = last ? Date.now() - last.end : 0;
+      const answered = bursts.some(b => b.start >= after && b.end - b.start >= 1000);
+      if (last && last.start >= after && silent >= (answered ? QUIET_MS : 3 * QUIET_MS)) return true;
       await pause(50);
     }
     return false;
