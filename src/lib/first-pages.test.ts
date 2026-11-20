@@ -87,12 +87,13 @@ describe("first pages", () => {
     const inputs = child({ instructions: undefined, profile: { revision: 1, profile: bookPersona("ahead").profile } });
     const s = setup({ inputs });
     const target = { childId: CHILD, parentId: PARENT, number: 1, workbookId: `00000000-0000-4000-8000-${String(seed).padStart(12, "0")}` };
-    const frame = await makeRunFrame(target, s.deps, inputs.name, inputs);
+    const solver = keySolver();
+    const frame = await makeRunFrame(target, { ...s.deps, ai: s.ai, solver }, inputs.name, inputs);
     expect(frame.plan.level).toBe(17);
     expect(frame.plan.days).toHaveLength(10);
 
     const result = await generateWorkbook(frameInput(target, frame, inputs.name), {
-      ...s.deps, fit: fits, store: s.drafts,
+      ai: s.ai, solver, fit: fits, store: s.drafts, qrToken: s.deps.qrToken,
     });
     if (result.status !== "stored") throw new Error(JSON.stringify(result));
 
