@@ -1,0 +1,536 @@
+{
+  "issue": 1208,
+  "base": "3b35cbc9f3c08ebeb0933dde6a78d2fe0833485b",
+  "branch": "site/parent-dashboard-branding",
+  "designSources": [
+    "DESIGN.md",
+    ".design/decisions.md (D-346)",
+    "src/ds"
+  ],
+  "evidence": "README.md",
+  "browser": "Aside u0, localhost, invented data",
+  "screenshots": {
+    "before": [
+      "before-overview-desktop.png",
+      "before-overview-phone.png",
+      "before-overview-phone-detail.png",
+      "before-progress-desktop.png",
+      "before-progress-phone.png",
+      "before-workbooks-desktop.png",
+      "before-workbooks-phone.png",
+      "before-workbooks-phone-detail.png",
+      "before-scan-desktop.png",
+      "before-scan-phone.png",
+      "before-account-desktop.png",
+      "before-account-phone.png",
+      "before-account-phone-detail.png",
+      "before-workbook_answers-desktop.png",
+      "before-workbook_answers-phone.png",
+      "before-scan-sheet-desktop.png",
+      "before-scan-sheet-phone.png"
+    ],
+    "after": [
+      "after-overview-desktop.png",
+      "after-overview-phone.png",
+      "after-overview-phone-detail.png",
+      "after-progress-desktop.png",
+      "after-progress-phone.png",
+      "after-workbooks-desktop.png",
+      "after-workbooks-phone.png",
+      "after-workbooks-phone-detail.png",
+      "after-scan-desktop.png",
+      "after-scan-phone.png",
+      "after-account-desktop.png",
+      "after-account-phone.png",
+      "after-account-phone-detail.png",
+      "after-workbook_answers-desktop.png",
+      "after-workbook_answers-phone.png",
+      "after-scan-sheet-desktop.png",
+      "after-scan-sheet-phone.png"
+    ]
+  },
+  "measurements": {
+    "before": [
+      {
+        "view": "overview",
+        "size": "desktop",
+        "headlineWeight": "700",
+        "headlineTracking": "-1.2px",
+        "markerSize": [
+          "auto",
+          "auto"
+        ],
+        "markerColor": "rgba(0, 0, 0, 0)",
+        "panelBorder": "rgb(17, 17, 17)",
+        "panelShadow": "rgb(17, 17, 17) 0px 0px 0px 2px",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "overview",
+        "size": "phone",
+        "headlineWeight": "700",
+        "headlineTracking": "-1.2px",
+        "markerSize": [
+          "auto",
+          "auto"
+        ],
+        "markerColor": "rgba(0, 0, 0, 0)",
+        "panelBorder": "rgb(17, 17, 17)",
+        "panelShadow": "rgb(17, 17, 17) 0px 0px 0px 2px",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "progress",
+        "size": "desktop",
+        "headlineWeight": "700",
+        "headlineTracking": "-0.48px",
+        "markerSize": [
+          "9px",
+          "9px"
+        ],
+        "markerColor": "rgb(255, 106, 61)",
+        "panelBorder": "rgb(17, 17, 17)",
+        "panelShadow": "rgba(17, 17, 17, 0.04) 0px 1px 2px 0px, rgba(17, 17, 17, 0.06) 0px 6px 20px 0px",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "progress",
+        "size": "phone",
+        "headlineWeight": "700",
+        "headlineTracking": "-0.48px",
+        "markerSize": [
+          "9px",
+          "9px"
+        ],
+        "markerColor": "rgb(255, 106, 61)",
+        "panelBorder": "rgb(17, 17, 17)",
+        "panelShadow": "rgba(17, 17, 17, 0.04) 0px 1px 2px 0px, rgba(17, 17, 17, 0.06) 0px 6px 20px 0px",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "workbooks",
+        "size": "desktop",
+        "headlineWeight": "600",
+        "headlineTracking": "normal",
+        "markerSize": [
+          "auto",
+          "auto"
+        ],
+        "markerColor": "rgba(0, 0, 0, 0)",
+        "panelBorder": "rgb(17, 17, 17)",
+        "panelShadow": "rgba(17, 17, 17, 0.04) 0px 1px 2px 0px, rgba(17, 17, 17, 0.06) 0px 6px 20px 0px",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "workbooks",
+        "size": "phone",
+        "headlineWeight": "600",
+        "headlineTracking": "normal",
+        "markerSize": [
+          "auto",
+          "auto"
+        ],
+        "markerColor": "rgba(0, 0, 0, 0)",
+        "panelBorder": "rgb(17, 17, 17)",
+        "panelShadow": "rgba(17, 17, 17, 0.04) 0px 1px 2px 0px, rgba(17, 17, 17, 0.06) 0px 6px 20px 0px",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "scan",
+        "size": "desktop",
+        "headlineWeight": "300",
+        "headlineTracking": "-0.7px",
+        "markerSize": [
+          "9px",
+          "9px"
+        ],
+        "markerColor": "rgb(255, 106, 61)",
+        "panelBorder": "rgb(12, 12, 14)",
+        "panelShadow": "none",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "scan",
+        "size": "phone",
+        "headlineWeight": "300",
+        "headlineTracking": "-0.665px",
+        "markerSize": [
+          "9px",
+          "9px"
+        ],
+        "markerColor": "rgb(255, 106, 61)",
+        "panelBorder": "rgb(12, 12, 14)",
+        "panelShadow": "none",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "account",
+        "size": "desktop",
+        "headlineWeight": "500",
+        "headlineTracking": "normal",
+        "markerSize": [
+          "9px",
+          "9px"
+        ],
+        "markerColor": "rgb(255, 106, 61)",
+        "panelBorder": "rgb(12, 12, 14)",
+        "panelShadow": "rgba(17, 17, 17, 0.04) 0px 1px 2px 0px, rgba(17, 17, 17, 0.06) 0px 6px 20px 0px",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "account",
+        "size": "phone",
+        "headlineWeight": "500",
+        "headlineTracking": "normal",
+        "markerSize": [
+          "9px",
+          "9px"
+        ],
+        "markerColor": "rgb(255, 106, 61)",
+        "panelBorder": "rgb(12, 12, 14)",
+        "panelShadow": "rgba(17, 17, 17, 0.04) 0px 1px 2px 0px, rgba(17, 17, 17, 0.06) 0px 6px 20px 0px",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "workbook_answers",
+        "size": "desktop",
+        "headlineWeight": "300",
+        "headlineTracking": "-0.665px",
+        "markerSize": [
+          "9px",
+          "9px"
+        ],
+        "markerColor": "rgb(255, 106, 61)",
+        "panelBorder": "rgb(12, 12, 14)",
+        "panelShadow": "rgba(17, 17, 17, 0.04) 0px 1px 2px 0px, rgba(17, 17, 17, 0.06) 0px 6px 20px 0px",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "workbook_answers",
+        "size": "phone",
+        "headlineWeight": "300",
+        "headlineTracking": "-0.665px",
+        "markerSize": [
+          "9px",
+          "9px"
+        ],
+        "markerColor": "rgb(255, 106, 61)",
+        "panelBorder": "rgb(12, 12, 14)",
+        "panelShadow": "rgba(17, 17, 17, 0.04) 0px 1px 2px 0px, rgba(17, 17, 17, 0.06) 0px 6px 20px 0px",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "scan",
+        "size": "desktop",
+        "detail": "sheet",
+        "headlineWeight": "300",
+        "headlineTracking": "-0.735px",
+        "markerSize": [
+          "auto",
+          "auto"
+        ],
+        "markerColor": "rgba(0, 0, 0, 0)",
+        "panelBorder": "rgb(12, 12, 14)",
+        "panelShadow": "none",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "scan",
+        "size": "phone",
+        "detail": "sheet",
+        "headlineWeight": "300",
+        "headlineTracking": "-0.735px",
+        "markerSize": [
+          "auto",
+          "auto"
+        ],
+        "markerColor": "rgba(0, 0, 0, 0)",
+        "panelBorder": "rgb(12, 12, 14)",
+        "panelShadow": "none",
+        "horizontalOverflow": 0
+      }
+    ],
+    "after": [
+      {
+        "view": "overview",
+        "size": "desktop",
+        "headlineWeight": "300",
+        "headlineTracking": "-1.4px",
+        "markerSize": [
+          "9px",
+          "9px"
+        ],
+        "markerColor": "rgb(255, 106, 61)",
+        "panelBorder": "rgb(168, 86, 0)",
+        "panelShadow": "none",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "overview",
+        "size": "phone",
+        "headlineWeight": "300",
+        "headlineTracking": "-1.4px",
+        "markerSize": [
+          "9px",
+          "9px"
+        ],
+        "markerColor": "rgb(255, 106, 61)",
+        "panelBorder": "rgb(168, 86, 0)",
+        "panelShadow": "none",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "progress",
+        "size": "desktop",
+        "headlineWeight": "300",
+        "headlineTracking": "-0.84px",
+        "markerSize": [
+          "9px",
+          "9px"
+        ],
+        "markerColor": "rgb(255, 106, 61)",
+        "panelBorder": "rgb(228, 228, 231)",
+        "panelShadow": "none",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "progress",
+        "size": "phone",
+        "headlineWeight": "300",
+        "headlineTracking": "-0.84px",
+        "markerSize": [
+          "9px",
+          "9px"
+        ],
+        "markerColor": "rgb(255, 106, 61)",
+        "panelBorder": "rgb(228, 228, 231)",
+        "panelShadow": "none",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "workbooks",
+        "size": "desktop",
+        "headlineWeight": "300",
+        "headlineTracking": "-0.56px",
+        "markerSize": [
+          "9px",
+          "9px"
+        ],
+        "markerColor": "rgb(255, 106, 61)",
+        "panelBorder": "rgb(228, 228, 231)",
+        "panelShadow": "none",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "workbooks",
+        "size": "phone",
+        "headlineWeight": "300",
+        "headlineTracking": "-0.56px",
+        "markerSize": [
+          "9px",
+          "9px"
+        ],
+        "markerColor": "rgb(255, 106, 61)",
+        "panelBorder": "rgb(228, 228, 231)",
+        "panelShadow": "none",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "scan",
+        "size": "desktop",
+        "headlineWeight": "300",
+        "headlineTracking": "-0.7px",
+        "markerSize": [
+          "9px",
+          "9px"
+        ],
+        "markerColor": "rgb(255, 106, 61)",
+        "panelBorder": "rgb(228, 228, 231)",
+        "panelShadow": "none",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "scan",
+        "size": "phone",
+        "headlineWeight": "300",
+        "headlineTracking": "-0.665px",
+        "markerSize": [
+          "9px",
+          "9px"
+        ],
+        "markerColor": "rgb(255, 106, 61)",
+        "panelBorder": "rgb(228, 228, 231)",
+        "panelShadow": "none",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "account",
+        "size": "desktop",
+        "headlineWeight": "300",
+        "headlineTracking": "-0.665px",
+        "markerSize": [
+          "9px",
+          "9px"
+        ],
+        "markerColor": "rgb(255, 106, 61)",
+        "panelBorder": "rgb(228, 228, 231)",
+        "panelShadow": "none",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "account",
+        "size": "phone",
+        "headlineWeight": "300",
+        "headlineTracking": "-0.665px",
+        "markerSize": [
+          "9px",
+          "9px"
+        ],
+        "markerColor": "rgb(255, 106, 61)",
+        "panelBorder": "rgb(228, 228, 231)",
+        "panelShadow": "none",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "workbook_answers",
+        "size": "desktop",
+        "headlineWeight": "300",
+        "headlineTracking": "-0.665px",
+        "markerSize": [
+          "9px",
+          "9px"
+        ],
+        "markerColor": "rgb(255, 106, 61)",
+        "panelBorder": "rgb(228, 228, 231)",
+        "panelShadow": "none",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "workbook_answers",
+        "size": "phone",
+        "headlineWeight": "300",
+        "headlineTracking": "-0.665px",
+        "markerSize": [
+          "9px",
+          "9px"
+        ],
+        "markerColor": "rgb(255, 106, 61)",
+        "panelBorder": "rgb(228, 228, 231)",
+        "panelShadow": "none",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "scan",
+        "size": "desktop",
+        "detail": "sheet",
+        "headlineWeight": "300",
+        "headlineTracking": "-0.735px",
+        "markerSize": [
+          "9px",
+          "9px"
+        ],
+        "markerColor": "rgb(255, 106, 61)",
+        "panelBorder": "rgb(228, 228, 231)",
+        "panelShadow": "none",
+        "horizontalOverflow": 0
+      },
+      {
+        "view": "scan",
+        "size": "phone",
+        "detail": "sheet",
+        "headlineWeight": "300",
+        "headlineTracking": "-0.735px",
+        "markerSize": [
+          "9px",
+          "9px"
+        ],
+        "markerColor": "rgb(255, 106, 61)",
+        "panelBorder": "rgb(228, 228, 231)",
+        "panelShadow": "none",
+        "horizontalOverflow": 0
+      }
+    ]
+  },
+  "responsive": [
+    {
+      "view": "overview",
+      "size": "phone",
+      "width": 375,
+      "height": 812,
+      "viewportOverflow": false,
+      "contentOverflow": false
+    },
+    {
+      "view": "overview",
+      "size": "tablet",
+      "width": 768,
+      "height": 1024,
+      "viewportOverflow": false,
+      "contentOverflow": false
+    },
+    {
+      "view": "progress",
+      "size": "phone",
+      "width": 375,
+      "height": 812,
+      "viewportOverflow": false,
+      "contentOverflow": false
+    },
+    {
+      "view": "progress",
+      "size": "tablet",
+      "width": 768,
+      "height": 1024,
+      "viewportOverflow": false,
+      "contentOverflow": false
+    },
+    {
+      "view": "workbooks",
+      "size": "phone",
+      "width": 375,
+      "height": 812,
+      "viewportOverflow": false,
+      "contentOverflow": false
+    },
+    {
+      "view": "workbooks",
+      "size": "tablet",
+      "width": 768,
+      "height": 1024,
+      "viewportOverflow": false,
+      "contentOverflow": false
+    },
+    {
+      "view": "scan",
+      "size": "phone",
+      "width": 375,
+      "height": 812,
+      "viewportOverflow": false,
+      "contentOverflow": false
+    },
+    {
+      "view": "scan",
+      "size": "tablet",
+      "width": 768,
+      "height": 1024,
+      "viewportOverflow": false,
+      "contentOverflow": false
+    },
+    {
+      "view": "account",
+      "size": "phone",
+      "width": 375,
+      "height": 812,
+      "viewportOverflow": false,
+      "contentOverflow": false
+    },
+    {
+      "view": "account",
+      "size": "tablet",
+      "width": 768,
+      "height": 1024,
+      "viewportOverflow": false,
+      "contentOverflow": false
+    }
+  ]
+}

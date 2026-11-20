@@ -2,19 +2,18 @@
    when the tab itself is wide enough, the four tiles go in one row and the topics in two columns. */
 .pp { gap: 14px; }
 
-.pp-seg { display: flex; background: var(--pa-soft); border-radius: 11px; padding: 3px; }
-.pp-seg button { flex: 1; min-height: 44px; border: 0; background: none; border-radius: 9px; padding: 8px 4px; font-size: 14px; font-weight: 600; color: var(--pa-tx3); }
-.pp-seg button[aria-pressed="true"] { background: #fff; color: var(--pa-tx); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); }
+.pp-seg { display: flex; background: var(--pa-soft); border: 1px solid var(--pa-line); border-radius: 10px; padding: 3px; }
+.pp-seg button { flex: 1; min-height: 44px; border: 1px solid transparent; background: none; border-radius: 6px; padding: 8px 4px; font-size: 14px; font-weight: 600; color: var(--pa-tx3); }
+.pp-seg button[aria-pressed="true"] { background: #fff; color: var(--pa-tx); border-color: var(--pa-line); }
 
 .pp-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.pp-tile { background: var(--pa-soft); border-radius: 18px; padding: 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pp-tile { background: var(--pa-soft); border: 1px solid var(--pa-line); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .pp-k { font-size: 13px; color: var(--pa-tx2); font-weight: 500; }
-.pp-v { display: flex; align-items: center; gap: 8px; font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+.pp-v { display: flex; align-items: center; gap: 8px; font-size: 24px; font-weight: 300; letter-spacing: -0.035em; }
 .pp-v i { font-style: normal; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; background: #fff; color: var(--pa-tx2); }
 .pp-s { font-size: 12.5px; color: var(--pa-tx2); }
-.pp-tile.is-hot { background: var(--pa-g); color: #fff; }
-.pp-tile.is-hot .pp-k, .pp-tile.is-hot .pp-s { color: rgba(255, 255, 255, 0.88); }
-.pp-tile.is-hot .pp-v i { background: rgba(255, 255, 255, 0.22); color: #fff; }
+.pp-tile.is-hot { background: var(--pa-gs); }
+.pp-tile.is-hot .pp-v { color: var(--pa-gt); }
 
 /* The line: a small drawing for a phone and a wide one for a laptop; the page shows the one that fits. */
 .pp-chart { padding: 18px 14px 10px; }

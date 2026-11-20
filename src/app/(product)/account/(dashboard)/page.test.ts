@@ -467,7 +467,7 @@ describe("a family the switch opens to", () => {
       const out = await render(full());
       expect(out).toContain('<div class="pd-name-row"><h1>Asha</h1><form class="pd-desk-form" action="/api/desk/open" method="post"><input type="hidden" name="child" value="c1"/>');
       expect(out.match(/<h1/g)).toHaveLength(1);
-      expect(out).not.toContain('class="eyebrow"');
+      expect(out).toMatch(/<main[^>]*><div class="pd-name-row">/);
       for (const [i, word] of ["Mon: done", "Tue: done", "Wed: done", "Thu: today, not done yet", "Fri: coming up"].entries()) expect(out.split('class="pa-vh"')[i + 1]).toContain(word);
       expect(out).toContain("Workbook 2</p>");
       expect(out).toMatch(/Day 4<small> of 10<\/small>/);

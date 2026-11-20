@@ -1123,7 +1123,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const sheetImage = openTile ? (fullImage && fullImage.id === openTile.photoId ? fullImage.url : thumbOf(openTile)) : undefined;
   const tileSheet = openTile && <Sheet label={openTile.title} onClose={() => setSheet(null)}>
     <div className="scan-sheet-ph">{sheetImage ? <Image unoptimized width={600} height={800} src={sheetImage} alt={`Photo of ${openTile.title} for ${name}`} /> : <span className="scan-ph-empty" />}</div>
-    <p className="scan-sheet-eyebrow">{openTile.title}</p>
+    <p className="eyebrow">{openTile.title}</p>
     {openTile.status === "refused" && openTile.refusal ? <>
       <h2>{refusalCopy(openTile.refusal).title}</h2>
       <p>{refusalCopy(openTile.refusal).action}</p>

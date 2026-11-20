@@ -84,7 +84,7 @@ export function WorkbookDaysView({ book, weeks, openDay = null, state, pages, ch
   return <div id="page-history" className="wd">
     {checking > 0 && <p className="wd-check" role="status">Our team is checking {checking === 1 ? "1 page" : `${checking} pages`}</p>}
     {weeks.map((rows, w) => rows.length > 0 && <section key={w} aria-labelledby={`wd-week-${w + 1}`}>
-      <h3 className="wd-wk" id={`wd-week-${w + 1}`}>Week {w + 1}</h3>
+      <h3 className="eyebrow wd-wk" id={`wd-week-${w + 1}`}>Week {w + 1}</h3>
       <div className="pa-card wd-card">
         {rows.map(row => <DayItem key={row.day} row={row} open={openDay === row.day} book={book} state={state} pages={pages} extra={extra.get(row.day) ?? []} onToggle={onToggle} />)}
       </div>
@@ -99,7 +99,7 @@ function DayItem({ row, open, book, state, pages, extra, onToggle }: { row: DayR
     onToggle={event => onToggle?.(row.day, event.currentTarget.open)}>
     <summary>
       <span className="wd-c" aria-hidden="true">{circle}</span>
-      <span className="wd-t"><b>Day {row.day} · {row.topic}</b><span>Pages {row.pages[0]}–{row.pages[1]}</span></span>
+      <span className="wd-t"><span className="wd-title">Day {row.day} · {row.topic}</span><span>Pages {row.pages[0]}–{row.pages[1]}</span></span>
       {status && <span className={`wd-st is-${row.status}`}>{status}</span>}
       {row.today && <span className="pa-vh">Today</span>}
       <span className="wd-chev" aria-hidden="true">›</span>

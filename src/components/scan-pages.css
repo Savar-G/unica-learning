@@ -111,11 +111,11 @@
 .scan-sheet-x { width: 44px; height: 44px; margin: 8px 8px 0 0; padding: 0; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: #fff; color: var(--ink); font: 400 26px/1 var(--sans, inherit); cursor: pointer; }
 .scan-sheet-body h2 { padding-right: 44px; }
 .scan-sheet-body h2 { margin: 0; font-size: 21px; font-weight: 300; letter-spacing: -0.035em; }
-.scan-sheet-body p { margin: 0; font-size: 16px; line-height: 1.5; }
+.scan-sheet-body p { margin: 0; }
+.scan-sheet-body p:not(.eyebrow) { font-size: 16px; line-height: 1.5; }
 .scan-sheet-body .btn { min-height: 52px; justify-content: center; }
 .scan-sheet-ph { border-radius: 8px; overflow: hidden; background: #b9ad99; }
 .scan-sheet-ph img { display: block; width: 100%; height: auto; max-height: 40dvh; object-fit: contain; }
-.scan-sheet-eyebrow { font: 400 12.5px/1.2 var(--mono) !important; color: var(--ink-2); }
 .scan-sheet-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 24px; }
 .scan-sheet .scan-preview { margin-top: 0; }
 @media (min-width: 700px) { .scan-sheet { margin: auto; border-radius: 16px; } .scan-sheet-body { padding: 26px; } }
@@ -185,7 +185,7 @@
 .scan-dock-row .btn svg { width: 22px; height: 22px; margin-right: 8px; }
 
 /* The day strip */
-.scan-strip { display: grid; gap: 10px; }
+.scan-strip { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); }
 .scan-strip p { margin: 0; }
 .scan-strip-h { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
 .scan-strip-h h2 { display: inline-flex; align-items: center; gap: 8px; font-size: 19px; font-weight: 300; letter-spacing: -0.035em; }
@@ -203,7 +203,7 @@
 .scan-strip-tile button { display: grid; justify-items: center; gap: 3px; width: 100%; min-height: 44px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
 .scan-strip-tile button:disabled { cursor: default; }
 .scan-strip-tile button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 6px; }
-.scan-strip-page { position: relative; display: grid; place-items: center; width: 100%; max-width: 64px; aspect-ratio: 3 / 4; background: #fff; border: 1.5px solid var(--ink-2); border-radius: 5px; }
+.scan-strip-page { position: relative; display: grid; place-items: center; width: 100%; max-width: 64px; aspect-ratio: 3 / 4; background: #fff; border: 1px solid var(--line); border-radius: 5px; }
 .scan-strip-tile.is-todo .scan-strip-page { border-style: dashed; background: transparent; }
 .scan-strip-tile.is-marked .scan-strip-page { border-color: var(--scan-leaf-ink); }
 .scan-strip-tile.is-retake .scan-strip-page { border: 2px solid var(--scan-accent-ink); }

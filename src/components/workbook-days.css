@@ -1,9 +1,9 @@
-/* The 10 days of a workbook (#1031): Week 1 and Week 2, one white card each, one row per day (the approved prototype,
+/* The 10 days of a workbook (#1031): Week 1 and Week 2, one card each, one row per day (the approved prototype,
    2026-11-15). The circles are Home's: a green disc with a tick when the day is scanned, the day number otherwise, a dark
    ring for today. A row opens in place to show its pages. */
 #page-history { scroll-margin-top: 72px; }
 .wd { display: grid; gap: 14px; min-width: 0; }
-.support-page .pa .wd-wk { margin: 0 0 -6px 4px; font: 400 12px/1.4 var(--mono); letter-spacing: 0.02em; text-transform: uppercase; color: var(--pa-tx3); }
+.support-page .pa .wd-wk { margin: 0 0 -6px 4px; }
 .support-page .pa .wd-check { margin: 0 0 -4px 4px; font-size: 13px; line-height: 1.4; color: var(--pa-tx2); }
 .pa .wd-card { padding: 4px 14px; }
 
@@ -18,8 +18,8 @@
 .wd-row.is-now .wd-c { border: 2px solid var(--pa-tx); }
 .wd-row.is-ok.is-now .wd-c { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--pa-tx); }
 .wd-t { flex: 1; min-width: 0; display: grid; }
-.support-page .pa .wd-t b { font-size: 14.5px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
-.wd-t span { font-size: 12.5px; color: var(--pa-tx3); }
+.wd-t .wd-title { font-size: 16px; font-weight: 300; line-height: 1.3; letter-spacing: -0.035em; overflow-wrap: anywhere; }
+.wd-t span:not(.wd-title) { font-size: 12.5px; color: var(--pa-tx3); }
 .wd-st { font-size: 12px; font-weight: 600; white-space: nowrap; }
 .wd-st.is-scanned { color: var(--pa-gt); }
 .wd-st.is-to_scan { color: var(--pa-at); }

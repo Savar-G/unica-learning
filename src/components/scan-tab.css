@@ -1,7 +1,7 @@
 /* The Scan pages tab (#564): the desktop screen (the QR code and its words beside the pages from the phone, D-273; stacked
    on a narrower screen). The phone's stack has its own dock (scan-pages.css). */
 .scan-away { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 40px; align-items: start; margin-top: 8px; }
-.scan-away-qr { width: 196px; padding: 14px; background: #fff; border: 1px solid var(--line); border-radius: 14px; }
+.scan-away-qr { width: 196px; padding: 14px; background: #fff; border: 1px solid var(--line); border-radius: 10px; }
 .scan-away-qr svg { display: block; width: 100%; height: auto; }
 .scan-away-text { display: grid; gap: 16px; }
 .scan-away-text h2 { margin: 4px 0 0; font-size: 20px; font-weight: 300; letter-spacing: -0.035em; }

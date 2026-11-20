@@ -16,9 +16,8 @@
 /* The workbook card */
 .po-book { display: grid; gap: 16px; padding: 20px; }
 .po-book-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.support-page .pa .po-k { font: 400 12.5px/1.2 var(--mono); color: var(--pa-tx3); text-transform: uppercase; letter-spacing: 0.02em; }
-.support-page .pa .po-n { font-size: 40px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; margin-top: 6px; }
-.po-n small { font-size: 20px; color: var(--pa-tx3); font-weight: 600; }
+.support-page .pa .po-n { font-size: 40px; line-height: 1.05; margin-top: 6px; }
+.po-n small { font-size: 20px; color: var(--pa-tx2); }
 .po-ring { position: relative; flex: 0 0 auto; width: 96px; height: 96px; }
 .po-ring svg { display: block; }
 .po-ring-in { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; font-size: 11.5px; font-weight: 600; line-height: 1.15; color: var(--pa-tx2); align-content: center; }
@@ -43,10 +42,12 @@
 
 /* Skills: three counts, then the list of the one picked */
 .po-trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.po-count { background: #fff; border: 0; border-radius: 18px; box-shadow: var(--pa-shadow); padding: 14px 12px; text-align: left; display: flex; flex-direction: column; gap: 10px; min-height: 44px; }
-.po-count b { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; }
+.po-count { background: var(--pa-soft); border: 1px solid var(--pa-line); border-radius: 10px; padding: 14px 12px; text-align: left; display: flex; flex-direction: column; gap: 10px; min-height: 44px; }
+.po-count b { font-size: 26px; font-weight: 300; letter-spacing: -0.035em; line-height: 1; }
 .po-count span { font-size: 12.5px; font-weight: 600; }
-.po-count[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--pa-tx); }
+.po-count.is-g[aria-pressed="true"] { background: var(--pa-gs); border-color: var(--pa-gt); }
+.po-count.is-s[aria-pressed="true"] { background: var(--pa-ss); border-color: var(--pa-st); }
+.po-count.is-a[aria-pressed="true"] { background: var(--pa-as); border-color: var(--pa-at); }
 .po-count.is-g span { color: var(--pa-gt); }
 .po-count.is-s span { color: var(--pa-st); }
 .po-count.is-a span { color: var(--pa-at); }
@@ -63,7 +64,7 @@
 .support-page .pa .po-line { margin: 2px 4px 0; font-size: 15px; line-height: 1.4; }
 .po-line b { font-weight: 600; }
 
-/* Highlights (#990): one white card, a short sentence each, a small blue dot beside it. */
+/* Highlights (#990): one card, a short sentence each, a small blue dot beside it. */
 .po-hl { display: flex; flex-direction: column; gap: 12px; }
 .support-page .pa .po-hl p { display: flex; gap: 12px; align-items: flex-start; margin: 0; font-size: 15px; line-height: 1.4; }
 .po-hl-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--pa-s); margin-top: 7px; }

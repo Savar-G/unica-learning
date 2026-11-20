@@ -1,15 +1,11 @@
-/* The parent dashboard's Home and Progress (Option A v9, #1003, #1004, #1005): the shared look. The tokens are the approved
-   prototype's (round 2026-11-14): Geist, the brand colours (#FFD23F, #3366F0, #FF6430, #16A06A, #B8B3AA, white), white cards
-   with a soft shadow, and the darker text colours of the audit pass for AA contrast. Every rule starts with .support-page so
-   it beats the page's own element rules (h2, p, ul, li). */
+/* Shared dashboard styles. Use the warm theme for neutral surfaces and keep the skill and progress colours. */
 .pa {
   --pa-g: #16a06a; --pa-gs: #e7f6ee; --pa-gt: #0f7a50;
   --pa-a: #d9770b; --pa-as: #fdf1e2; --pa-at: #a85600;
   --pa-s: #3366f0; --pa-ss: #ebf0fe; --pa-st: #2a55d6;
   --pa-sun: #ffd23f; --pa-stone: #b8b3aa;
-  --pa-tx: #111; --pa-tx2: #50505a; --pa-tx3: #6b6b73;
-  --pa-line: #efeee9; --pa-soft: #f5f4f1; --pa-ring: #dedbd4;
-  --pa-shadow: 0 1px 2px rgba(17, 17, 17, 0.04), 0 6px 20px rgba(17, 17, 17, 0.06);
+  --pa-tx: var(--ink); --pa-tx2: var(--ink-2); --pa-tx3: #6b6b73;
+  --pa-line: var(--line); --pa-soft: var(--soft); --pa-ring: #dedbd4;
   display: grid; gap: 14px; min-width: 0; color: var(--pa-tx); font-family: var(--sans);
 }
 /* The wrapper is the container the laptop layouts ask about (a container cannot restyle itself): about 1040 px at most. */
@@ -21,16 +17,10 @@
 .pa button { font: inherit; color: inherit; cursor: pointer; }
 .pa :is(button, a):focus-visible { outline: 2px solid var(--pa-s); outline-offset: 2px; }
 
-.pa-card { background: #fff; border-radius: 20px; box-shadow: var(--pa-shadow); padding: 18px; min-width: 0; }
+.pa-card { background: var(--pa-soft); border: 1px solid var(--pa-line); border-radius: 10px; padding: 18px; min-width: 0; }
 /* A section heading, with its small note on the right ("Since Leah started"). Never a count. */
 .support-page .pa .pa-sh { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px 10px; margin: 8px 4px 0; }
 .support-page .pa .pa-sh span { font-size: 13px; color: var(--pa-tx3); }
-
-.pa-tag { flex: 0 0 auto; width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; }
-.pa-tag svg { width: 18px; height: 18px; }
-.pa-tag.is-g { background: var(--pa-gs); color: var(--pa-g); }
-.pa-tag.is-s { background: var(--pa-ss); color: var(--pa-s); }
-.pa-tag.is-a { background: var(--pa-as); color: var(--pa-a); }
 
 /* The orange Scan button: white text (2026-11-14). */
 .support-page .pa .pa-scanbtn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 6px; background: var(--tang-ink); color: #fff; font-weight: 500; font-size: 15px; text-decoration: none; white-space: nowrap; }

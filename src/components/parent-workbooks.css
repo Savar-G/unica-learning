@@ -12,7 +12,7 @@
 .wb-bar i { display: block; height: 100%; background: var(--pa-g); border-radius: 4px; }
 .support-page .pa .wb-cover .wb-bar + .wb-sub { margin-top: 6px; }
 
-.wb-tile { width: 72px; height: 94px; border-radius: 10px; flex: 0 0 auto; background: #f6f5f2; border: 1px solid var(--pa-line); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+.wb-tile { width: 72px; height: 94px; border-radius: 10px; flex: 0 0 auto; background: var(--card); border: 1px solid var(--pa-line); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
 .wb-tile .wb-mark { width: 34px; height: 34px; border-radius: 7px; display: block; }
 .wb-tile b { font-size: 11px; font-weight: 700; color: var(--pa-tx2); }
 .wb-tile.is-small { width: 44px; height: 56px; gap: 4px; border-radius: 8px; }
@@ -23,9 +23,8 @@
 .support-page .pa .wb-facts { font-size: 13.5px; line-height: 1.4; color: var(--pa-tx2); margin: 0 4px; }
 
 /* The orange row of a day with pages still to scan */
-.pa .wb-scan { display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 14px; border-radius: 16px; }
+.pa .wb-scan { display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 14px; }
 .wb-scan > div { flex: 1; min-width: 0; }
-.wb-scan b { display: block; font-size: 14px; font-weight: 600; }
 .wb-scan span { display: block; font-size: 13px; color: var(--pa-tx2); margin-top: 2px; }
 
 /* "How to follow the 10 days": one card that opens in place */
@@ -51,7 +50,7 @@
 .support-page .pa .wb-view { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; border-radius: 6px; background: var(--pa-soft); color: var(--pa-tx); font-size: 14px; font-weight: 500; text-decoration: none; white-space: nowrap; }
 
 /* Older workbooks: one row each, opening that book's page */
-.support-page .pa .wb-label { margin: 0 0 8px 4px; font: 400 12px/1.4 var(--mono); letter-spacing: 0.02em; text-transform: uppercase; color: var(--pa-tx3); }
+.support-page .pa .wb-label { margin: 0 0 8px 4px; }
 /* Beats `.support-page .pa ul { padding: 0 }`, which has more weight than `.pa .wb-older`. */
 .support-page .pa .wb-older { padding: 4px 14px; }
 .support-page .pa .wb-older li { margin: 0; }

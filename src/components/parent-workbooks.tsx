@@ -69,7 +69,7 @@ export function BookPanel({ book, days, list, showDay, delivery = null, scanOpen
       {below}
       {days && delivered && scanOpen && days.gap && (
         <div className="pa-card wb-scan">
-          <div><b>Day {days.gap.day} still to scan</b><span>Pages {pageList(days.gap.pages)}</span></div>
+          <div><h2>Day {days.gap.day} still to scan</h2><span>Pages {pageList(days.gap.pages)}</span></div>
           <Link className="pa-scanbtn" href={scanPagePath(book.id, days.gap.pages[0])} aria-label={`Scan Day ${days.gap.day}`}>Scan</Link>
         </div>
       )}
@@ -136,7 +136,7 @@ export function ParentWorkbooks({ view, days, list, scanOpen }: { view: Workbook
             </section>
             {others.length > 0 && (
               <section aria-labelledby="wb-older">
-                <h3 className="wb-label" id="wb-older">Older workbooks</h3>
+                <h3 className="eyebrow wb-label" id="wb-older">Older workbooks</h3>
                 <ul className="pa-card wb-older">
                   {others.map(b => (
                     <li key={b.id}>

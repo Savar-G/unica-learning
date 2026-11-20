@@ -1,7 +1,7 @@
 /* The parent dashboard's frame (#551, #1024): a white sidebar with only the logo and the tabs, one header (the top bar on a
    laptop; the sticky top of the page on a phone), and the page centred at about 1040 px. Type follows DESIGN.md: light
-   Geist headings and Geist Mono labels. White cards keep a soft shadow and a 20 px radius, with colour for meaning: orange
-   for scan actions, green for done, blue for learning, amber for needs help. Below 900 px the tabs are a bottom bar. */
+   Geist headings and Geist Mono labels, with colour for meaning: orange for scan actions, green for done, blue for
+   learning, amber for needs help. Below 900 px the tabs are a bottom bar. */
 .pd-shell.look-root { --pd-side: 248px; --pd-col: 1040px; --pd-shadow: 0 1px 2px rgba(17, 17, 17, 0.04), 0 6px 20px rgba(17, 17, 17, 0.06); display: grid; grid-template-columns: var(--pd-side) minmax(0, 1fr); min-height: 100dvh; background: #fff; }
 .pd-side { position: sticky; top: 0; align-self: start; height: 100dvh; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding: 22px 16px; border-right: 1px solid var(--line); background: #fff; }
 .pd-side .logo, .pd-top .logo { font: 600 19px/1 var(--sans); letter-spacing: -0.03em; text-decoration: none; display: inline-flex; align-items: baseline; gap: 1px; color: var(--ink); }
@@ -66,8 +66,9 @@
 .pd-main .support-page.support-wide { width: min(100%, var(--pd-col)); }
 [data-look="warm"] .pd-main .support-page h1 { font-size: clamp(30px, 3.4vw, 44px); font-weight: 300; letter-spacing: -0.035em; }
 .pd-main .acct-alert + .acct-kids, .pd-main h1 + .acct-kids { margin-top: 28px; }
-/* Cards in the frame: white, a soft shadow and a 20 px radius, never a grey bordered box. */
-.pd-shell .pd-main .support-page :is(.pw-card, .acct-card, .acct-kid.acct-plan, .acd-child, .ps-table-wrap, .rpt-call):not(.acct-goal, .acct-phone) { border: 0; border-radius: 20px; background: #fff; box-shadow: var(--pd-shadow); }
+/* Quiet panels for workbook answers and account details. */
+.pd-shell .pd-main .support-page :is(.pw-card, .pd-plans .acct-plan, .acd-child, .acct-referral) { border: 1px solid var(--line); border-radius: 10px; background: var(--soft); }
+.pd-shell .pd-main .support-page :is(.acct-card, .acct-kid.acct-plan, .ps-table-wrap, .rpt-call):not(.acct-goal, .acct-phone):not(.pd-plans .acct-plan, .acct-referral) { border: 0; border-radius: 20px; background: #fff; box-shadow: var(--pd-shadow); }
 /* Two cards keep their own tint (support.css): the light-yellow goal and the grey phone note; only the corners match. */
 .pd-shell .pd-main .support-page :is(.acct-goal, .acct-phone) { border-radius: 20px; }
 .support-page .pd-links { list-style: none; margin: 28px 0 24px; padding: 0; border-top: 1px solid var(--line-soft); }
@@ -204,7 +205,7 @@
 
 /* The Account tab's billing (#554) */
 .support-page .pd-plans { margin: 12px 0 0; }
-.pd-plans .acct-plan b { font-size: 19px; font-weight: 500; }
+.pd-plans .acct-plan > div > b, [data-look="warm"] .pd-main .acd-child h3 { font-size: 19px; font-weight: 300; letter-spacing: -0.035em; }
 .support-page .pd-invoices { list-style: none; margin: 12px 0 0; padding: 0; border-top: 1px solid var(--line-soft); }
 .support-page .pd-invoices li { display: grid; grid-template-columns: minmax(150px, 1.3fr) minmax(70px, 1fr) minmax(90px, 1fr) minmax(80px, 1fr) minmax(64px, auto); gap: 4px 16px; align-items: center; margin: 0; padding: 14px 0; border-bottom: 1px solid var(--line-soft); }
 .pd-invoice-amount { font-variant-numeric: tabular-nums; }
