@@ -555,6 +555,36 @@ it.each(["interrupted", "finished"] as const)("preserves the evidence for %s voi
   if (playback === "interrupted") expect(codeSentences(finished).join(" ")).toContain("gave the correct answer");
 });
 
+it("keeps the original question's help unconfirmed when the child cut off a demonstration and then had a hint", async () => {
+  const { calls, events, store } = setup();
+  const question = { ...SAMPLE_PACKAGES["subtract-52-28"], ref: { source: "workbook" as const, workbookId: parentId, page: 1, question: 1 } };
+  const started = ok(await calls.startVoice({ ...input, kind: "family", package: question }));
+  const opened = await calls.openVoice(started.view.id, { speechToText: "fake", voice: "fake" }, null);
+  if (!opened.ok) throw Error(opened.error);
+  const call = opened.call;
+  await call.start();
+  const show = await call.child("Show me how to regroup.");
+  await call.exchangePlayback!(show.exchangeTurnId!, "interrupted");
+  const hint = await call.child("4 tens and 12 ones.");
+  await call.exchangePlayback!(hint.exchangeTurnId!, "finished");
+  await call.child("My answer is 24.");
+  await call.end({ reason: "child_stopped" });
+  const record = store.rows()[0];
+  expect(checkTrace(record.trace)).toMatchObject({ ok: true });
+  const observation = record.trace?.checkedExchange?.turns.find(t => t.observation?.skill === "difference")?.observation;
+  expect(observation).toMatchObject({ result: "correct", assistance: "uncertain" });
+  expect(record.outcome).toMatchObject({ reason: "solved", assistance: "hint", helpUnconfirmed: true });
+  const learned = await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" });
+  // The hint is confirmed help: the answer is right with help, whatever the demonstration added.
+  expect(learned).toMatchObject([{ result: "right_with_help" }]);
+  expect(learned[0]).not.toHaveProperty("assistance");
+  const facts = noteFacts({ outcome: record.outcome!, event: learned[0], package: question, question: question.ref });
+  expect(facts).toMatchObject({ finished: "help_unconfirmed", help: "unconfirmed" });
+  const sentences = codeSentences(facts).join(" ");
+  expect(sentences).toContain("gave the correct answer. The amount of help is unknown.");
+  expect(sentences).not.toMatch(/small hint/);
+});
+
 it("does not credit a place value count with an unresolved transcript alternative", async () => {
   const { calls } = setup();
   const started = ok(await calls.startVoice({ ...input, kind: "family" }));
