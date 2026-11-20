@@ -152,7 +152,7 @@ Scores: U = user experience value, D = developer experience value, A = agent exp
 | SC11 | Child profile build | child_profiles.build_token | stored build; findings stored, late, failed, off | child-profile.ts + store (3 save paths) + SQL | token CAS + unique | Marking rebuild wipes AI findings | 1 | 1 | 2 |
 | SC12 | Skill state history | skill_state_history | mastered, working_on, needs_review, not_started | skill-state.ts (1 place); reason list in SQL + TS | checks + append-only trigger | - | 1 | 1 | 1 |
 | SC13 | Learner profile build (also in assessments inventory) | learner_profiles.profile.buildId | absent, facts, facts + AI | learner-profile.ts + child-profile-server.ts (2 copies) | unique + JSON path CAS | Plain facts upsert is last writer wins | 1 | 1 | 1 |
-| SC14 | Learning events | learning_events | none (append only) | learning-events.ts; source/result lists in SQL + TS | checks + unique key + append-only trigger | Assessment-source events have no live writer | 1 | 1 | 1 |
+| SC14 | Learning events | learning_events | none (append only) | learning-events.ts; source/result lists in SQL + TS; question source and related-question help lists (#1144) | checks + unique key + append-only trigger + related event key | Assessment-source events have no live writer | 1 | 1 | 1 |
 | SC15 | Scan progress and reminder tables (adjacent) | workbook_scan_reminder_messages/attempts | reserved, admitted, sent, refused, unknown, released | not traced | checks | Not traced | 1 | 1 | 1 |
 
 ### Money, plan access, deletion and retention

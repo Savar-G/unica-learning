@@ -1,7 +1,9 @@
 import type { Command } from "@/lib/board";
 import type { OperationPackage } from "@/lib/question-package";
+import { readTransferOperands, TRANSFER_GOODBYE, TRANSFER_OFFER, transferRetryWords, transferStartWords, type TransferOperands } from "./transfer";
 
-type ActionKind = "show" | "exchange";
+/** "question": the related question's board (#1144), tracked like the exchange so a lost batch is shown again. */
+type ActionKind = "show" | "exchange" | "question";
 
 export const EXCHANGE_OBJECT = "exchange-before";
 export const EXCHANGE_RPC = "maya.exchange";
@@ -64,14 +66,31 @@ export interface ExchangeTurn {
   support?: "hinted" | "demonstrated";
   /** A checked child response. The learning event refers to the call that stores this observation. */
   observation?: RegroupingObservation;
+  /** A turn of the related question (#1144). Its help and evidence never change the original question's record. */
+  transfer?: true;
+}
+
+/** The optional related question after the original question is solved (#1144). */
+export interface TransferTask {
+  operands: TransferOperands;
+  state: "offered" | "declined" | "started" | "finished";
+  /** Columns the child finished in the related question. */
+  done: ("ones" | "tens")[];
+  /** When the related question started (#1144: its learning event's time spent). */
+  startedAt?: number;
+  /** The idempotency key of the related question's learning event, set when it starts (#1145 reads the event by it). */
+  eventKey?: string;
 }
 
 export interface CheckedExchangeLesson {
   version: 1;
   /** Older saved sessions continue with the original exchange interaction. */
   progression?: 1;
+  /** #1144: offers the related question. A lesson saved without it replays its old "correct" step unchanged. */
+  transfers?: 1;
   id: string;
   turns: ExchangeTurn[];
+  transfer?: TransferTask;
 }
 
 export interface ExchangeProposal {
@@ -87,8 +106,11 @@ export interface ExchangeProposal {
 
 export interface RegroupingInstruction {
   step: "check_place" | "check_exchange" | "independent" | "guide_exchange" | "place_gap" | "reversal" |
-    "connect" | "ones" | "recheck_ones" | "tens" | "combine" | "correct";
+    "connect" | "ones" | "recheck_ones" | "tens" | "combine" | "correct" |
+    "offer" | "decline" | "transfer" | "transfer_retry" | "transfer_correct";
   usePlaceValueTerms?: true;
+  /** The related question's operands, on every turn of it (#1144). */
+  transfer?: TransferOperands;
   /** Omitted when naming the quantity would disclose the target answer. */
   subtrahend?: number;
 }
@@ -108,6 +130,9 @@ export function regroupingOffersAction(instruction: RegroupingInstruction | unde
 export function regroupingWords(facts: ExchangeFacts, instruction: unknown, show: boolean): string[] | null {
   if (!instruction || typeof instruction !== "object") return null;
   const { step, usePlaceValueTerms, subtrahend } = instruction as RegroupingInstruction;
+  const related = (instruction as RegroupingInstruction).transfer === undefined ? null : readTransferOperands((instruction as RegroupingInstruction).transfer);
+  if ((instruction as RegroupingInstruction).transfer !== undefined && (!related || related[0] !== facts.value || facts.example ||
+    (subtrahend !== undefined && subtrahend !== related[1]))) return null;
   if (subtrahend !== undefined && (facts.example || !Number.isInteger(subtrahend) || subtrahend <= 0 ||
     subtrahend >= facts.value || subtrahend % 10 <= facts.before.ones)) return null;
   const ones = subtrahend === undefined ? "the bottom ones" : `${subtrahend % 10} ones`;
@@ -148,6 +173,16 @@ export function regroupingWords(facts: ExchangeFacts, instruction: unknown, show
       return ["Put your tens and ones together. What is the whole difference?"];
     case "correct":
       return ["You found the difference."];
+    case "offer":
+      return ["You found the difference.", TRANSFER_OFFER];
+    case "decline":
+      return [`Okay. ${TRANSFER_GOODBYE}`];
+    case "transfer":
+      return related ? transferStartWords(related) : null;
+    case "transfer_retry":
+      return related ? transferRetryWords(related) : null;
+    case "transfer_correct":
+      return related ? [`You found the difference. ${TRANSFER_GOODBYE}`] : null;
     default:
       return null;
   }
@@ -195,7 +230,7 @@ function notation(value: number, { tens, ones }: ExchangeAmounts): string {
   return `${value} = ${tens * 10} + ${ones}`;
 }
 
-export function exchangeCommands(action: ActionKind, facts: ExchangeFacts): Command[] {
+export function exchangeCommands(action: Exclude<ActionKind, "question">, facts: ExchangeFacts): Command[] {
   if (action === "show") return [
     { op: "model", id: EXCHANGE_OBJECT, model: { kind: "base_ten", hundreds: 0, ...facts.before }, place: { region: "main" } },
     { op: "write", id: "exchange-before-notation", text: notation(facts.value, facts.before), place: { below: EXCHANGE_OBJECT } },
