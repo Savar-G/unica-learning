@@ -8,9 +8,10 @@ import { FIRST_DAY_PAGES, firstPagesProblem, runFirstPagesJob, type FirstPagesJo
 import { memoryFirstPagesStore } from "@/lib/first-pages-memory";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { memoryRunStore } from "@/lib/workbook-job-memory";
-import { FIRST_PAGES_CHANGED, makeRunFrame, runWorkbookJob, startWorkbookRun, STALE_SECONDS, type ChildInputs, type WorkbookJobDeps } from "@/lib/workbook-job";
-import type { FitCheck, GeneratedPage } from "@/lib/workbook-generator";
+import { FIRST_PAGES_CHANGED, frameInput, makeRunFrame, runWorkbookJob, startWorkbookRun, STALE_SECONDS, type ChildInputs, type WorkbookJobDeps } from "@/lib/workbook-job";
+import { generateWorkbook, type FitCheck, type GeneratedPage } from "@/lib/workbook-generator";
 import { memoryWorkbookFiles } from "@/lib/workbook-store-memory";
+import { printedForm, taskIdentity } from "@/lib/workbook-task-identity";
 import { workbookTemplate } from "@/lib/workbook-template";
 import { keySolver } from "@/lib/workbook-solve-check";
 import { bookPersona, firstCustomerProfile } from "@/lib/workbook-sample-profiles";
@@ -82,28 +83,48 @@ function setup(o: { inputs?: ChildInputs; itemPolicy?: "approved-v1" | "legacy";
 const printed = (p: GeneratedPage) => ({ number: p.number, type: p.type, qrToken: p.qrToken, questions: p.questions.map((q) => ({ slot: q.slot, number: q.number, package: q.package, check: q.check })), content: p.content });
 
 describe("first pages", () => {
-  it("plans three distinct Challenge questions when Ahead starts automatically at U17", async () => {
+  it.each([2, 4])("fills the full auto-placed U17 Ahead plan for seed %i", async (seed) => {
     const inputs = child({ instructions: undefined, profile: { revision: 1, profile: bookPersona("ahead").profile } });
-    const target = { childId: CHILD, parentId: PARENT, number: 1, workbookId: "00000000-0000-4000-8000-000000000002" };
-    let challengeForms: string[] = [];
-    const frame = await makeRunFrame(target, {
-      source: {
-        inputs: async () => inputs,
-        prepareProfile: async () => ({ ok: true, profile: inputs.profile }),
-      },
-      ai: { model: "fake" }, solver: keySolver(),
-      fit: () => ({
-        async fits(page) {
-          if (page.type === "challenge" && page.content?.kind === "day" && page.content.day === 1) {
-            challengeForms = page.questions.map(q => q.package.text.replace(/\d[\d,]*/g, "#"));
-          }
-          return { ok: true };
-        },
-      }),
-    }, inputs.name, inputs);
+    const s = setup({ inputs });
+    const target = { childId: CHILD, parentId: PARENT, number: 1, workbookId: `00000000-0000-4000-8000-${String(seed).padStart(12, "0")}` };
+    const frame = await makeRunFrame(target, s.deps, inputs.name, inputs);
     expect(frame.plan.level).toBe(17);
-    expect(challengeForms).toHaveLength(3);
-    expect(new Set(challengeForms).size).toBe(3);
+    expect(frame.plan.days).toHaveLength(10);
+
+    const result = await generateWorkbook(frameInput(target, frame, inputs.name), {
+      ...s.deps, fit: fits, store: s.drafts,
+    });
+    if (result.status !== "stored") throw new Error(JSON.stringify(result));
+
+    const quality = result.draft.quality;
+    if (!quality) throw new Error("the generated book has no quality report");
+    const gaps = quality.issues.map(issue => `page ${issue.page} (${issue.kind}): ${issue.reason}`);
+    const challenges = result.draft.pages.filter(p => p.type === "challenge");
+    expect(challenges.map(p => p.day)).toEqual(frame.plan.days.map(d => d.day));
+    for (const page of result.draft.pages) {
+      const at = `day ${page.day}, page ${page.number} (${page.type})`;
+      const filled = new Set(page.questions.filter(q => q.package && q.check.status === "checked").map(q => q.slot));
+      for (const slot of page.expected ?? []) {
+        if (!filled.has(slot.slot)) gaps.push(`${at}, ${slot.place} ${slot.slot}: missing or failed`);
+      }
+      for (const omission of [...page.omissions ?? [], ...page.leftOut ?? []]) {
+        gaps.push(`${at}: ${JSON.stringify(omission)}`);
+      }
+      if (page.type !== "challenge") continue;
+      const planned = frame.plan.days.find(d => d.day === page.day)?.pages
+        .find(p => p.number === page.pageOfDay)?.parts.find(p => p.kind === "challenge")?.step;
+      const cards = page.questions.filter(q => q.place === "challenge");
+      const contracts = cards.flatMap(q => q.itemPlan?.template ? [q.itemPlan.template] : []);
+      const packages = cards.flatMap(q => q.package ? [q.package] : []);
+      if (cards.length !== 3 || contracts.length !== 3 || contracts.some(t => t.difficulty !== "hard")
+        || contracts.some(t => t.skill !== planned?.skill || t.step !== planned?.step)
+        || new Set(contracts.map(t => t.index)).size !== 3
+        || new Set(packages.map(taskIdentity)).size !== 3 || new Set(packages.map(printedForm)).size !== 3) {
+        gaps.push(`${at}: expected three distinct hard template cards, got ${contracts.map(t => `${t.skill}#${t.step}:${t.index} (${t.difficulty})`).join(", ")}. Printed forms: ${packages.map(p => `${printedForm(p)} (${p.text})`).join(", ")}`);
+      }
+    }
+    // Report all gaps from the real selector, writer and solver seams in one run.
+    expect(gaps).toEqual([]);
   });
 
   it("writes only the cover, the first lesson and its two practice pages, prints them, and Workbook 1 keeps them exactly", async () => {

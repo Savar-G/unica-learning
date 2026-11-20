@@ -7910,3 +7910,9 @@ The U10 estimate new-idea pages for steps 2 and 3 reserve four practice cells be
 ## U17 Day 1 Challenge coverage (#1174, proposed)
 
 Two house templates join the existing egg-crate story on `5.6-multiply-2-digit`, step 1. One subtracts a small amount from a two-digit product. The other asks for the missing addend that completes a two-digit product. Both use the step's existing ranges and checked numeric answers. They supply distinct forms for the three required Challenge cards and stay out of ordinary practice and page routing. The source template positions remain intact. The questions are proposed for Savar's sample review.
+
+## U17 Days 2–10 Challenge coverage (#1174, proposed)
+
+The automatically placed Ahead workbook now has enough hard forms for all ten Challenge pages. The two division steps ask children to recover a quotient or remainder, compare the two, or interpret a partly filled group. Step 2 keeps a zero in the tens place of every quotient. The multiplication steps ask for a difference of products, a missing partial product or a two-step story. The fraction steps ask children to scale equivalent fractions, check missing parts or count equal pieces. Explain equivalence also asks children to show why the scale works. The expression step asks children to substitute into one-operation expressions and compare or combine their results.
+
+The forms use the steps' existing number ranges. They enter Challenge and Show what you know through the same house-template rules as Day 1. The original curriculum keeps its template positions and difficulty labels. A two-seed regression runs the public planner and generator across all ten days with an in-memory writer and solver. It checks each required slot and all 30 Challenge cards per seed. Independent answer checks fill each proposed form 200 times.
