@@ -55,12 +55,13 @@ export interface ExchangeTurn {
   id: string;
   facts: ExchangeFacts;
   actions: ExchangeAction[];
+  sent?: true;
   playback?: "finished" | "interrupted";
   prompt?: ExchangeTarget;
   childAction?: ExchangeTarget;
   instruction?: RegroupingInstruction;
-  /** Acknowledged board work or completed playback. Sending a turn does not set this field. */
-  support?: Exclude<RegroupingObservation["assistance"], "independent">;
+  /** Help sent in chat, shown by the board, or confirmed by voice playback. */
+  support?: "hinted" | "demonstrated";
   /** A checked child response. The learning event refers to the call that stores this observation. */
   observation?: RegroupingObservation;
 }
@@ -95,7 +96,7 @@ export interface RegroupingInstruction {
 export interface RegroupingObservation {
   skill: "identify_tens" | "explain_exchange" | "perform_exchange" | "subtract_ones" | "subtract_tens" | "difference" | "reversal";
   result: "correct" | "incorrect";
-  assistance: "independent" | "hinted" | "demonstrated";
+  assistance: "independent" | "hinted" | "demonstrated" | "uncertain";
   at: number;
 }
 

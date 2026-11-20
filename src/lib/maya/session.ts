@@ -843,7 +843,9 @@ export function learningEvent(session: Session, family: { parentId: string; chil
   // A held question (#527) records nothing: Maya taught nothing she could trust, so the call says nothing about the child.
   // Any stored content problem counts, whatever the final reason (a safety concern after the hold ends as "safety").
   if (!outcome || !pkg || session.startedAt === null || session.contentProblem !== null || outcome.reason === "content_issue") return null;
-  const right = session.lastResult === "right";
+  // A correct answer with unconfirmed voice help is not evidence of independent work.
+  const right = session.lastResult === "right" &&
+    (outcome.assistance !== "independent" || !hasUnconfirmedRegroupingHelp(session));
   const result = right ? (outcome.assistance === "independent" ? "right" : "right_with_help") : "blank";
   const first = workSteps(pkg)[0]?.id ?? null;
   return {
@@ -2756,12 +2758,16 @@ function notClear(s: Session, reading: Reading): boolean {
     if (comparisonConfirm(s)) return true;
     if (comparisonEligible(s) && (comparisonWord(s)?.committed || comparisonSemantic(s, s.package!.steps.find(st => st.id === s.ladder.step)))) return false;
   }
-  const last = s.turns.map((t) => t.speaker).lastIndexOf("maya");
-  if (s.turns.slice(last + 1).some((t) => t.speaker === "child" && (t.alternatives?.length ?? 0) > 0)) return true;
+  if (hasTranscriptAlternatives(s)) return true;
   // A claim's word the child committed to is their answer, whatever the numbers of their reason (claim.ts).
   if (turnRead(s).final?.type === "choice") return false;
   const read = readAnswer(s.turn.text, readOptionsIn(s));
   return read.choice || (read.final !== null && (!read.sure || hedgedTurn(s)));
+}
+
+function hasTranscriptAlternatives(s: Session): boolean {
+  const last = s.turns.findLastIndex((turn) => turn.speaker === "maya");
+  return s.turns.slice(last + 1).some((turn) => (turn.alternatives?.length ?? 0) > 0);
 }
 
 /** A hedge ("I think it's 66", "maybe", a question) is not clear, though the reader may find it sure: the one doubt check. */
@@ -4738,6 +4744,8 @@ function nextHint(s: Session): number | null {
 function heardAnswers(session: Session): ChildAnswer[] {
   const pkg = session.package;
   if (!pkg || !session.turn || session.scopeDue) return [];
+  if (session.checkedExchange?.progression && pkg.operation.kind === "subtract" &&
+    regroupingReversal(session.turn.text, ...pkg.operation.operands)) return [];
   const read = turnRead(session);
   if (read.choice) return [];
   const found: ChildAnswer[] = [];
@@ -5534,15 +5542,22 @@ const REPEAT_REGROUPING = /^(?:what did you say|(?:can|could) you repeat (?:that
 function regroupingReversal(text: string, top: number, bottom: number): boolean {
   const body = wholeTurn(text);
   if (!body || saysGuess(text)) return false;
-  // Read just one equation, with an optional preceding claim of the whole difference.
-  const parts = /^(?:(?:my (?:final )?answer is |i got )?([\w -]+) because )?([\w -]+?)\s*(?:minus|take away|-)\s*([\w -]+?)\s*(?:is|equals|makes|=)\s*([\w -]+)$/.exec(body);
-  if (!parts || (parts[1] && plainNumber(parts[1]) === null)) return false;
-  const [, , left, right, difference] = parts;
-  const [a, b, result] = [left, right, difference].map((part) => plainNumber(part.trim()));
+  const prefix = /^(?:(?:my (?:final )?answer is |i got )?([\w -]+) because )/.exec(body);
+  if (prefix && plainNumber(prefix[1]) === null) return false;
+  const reason = body.slice(prefix?.[0].length ?? 0);
   const topOnes = top % 10;
   const bottomOnes = bottom % 10;
-  return result === bottomOnes - topOnes &&
-    ((a === topOnes && b === bottomOnes) || (a === bottomOnes && b === topOnes));
+  const sameDigits = (a: number | null, b: number | null) =>
+    (a === topOnes && b === bottomOnes) || (a === bottomOnes && b === topOnes);
+  const equation = /^([\w -]+?)\s*(?:minus|take away|-)\s*([\w -]+?)\s*(?:is|equals|makes|=)\s*([\w -]+)$/.exec(reason);
+  if (equation) {
+    const [, left, right, difference] = equation;
+    return sameDigits(plainNumber(left), plainNumber(right)) && plainNumber(difference) === bottomOnes - topOnes;
+  }
+  const swapped = /^(?:(?:i|we) )?(?:swapped|switched|reversed) (?:the )?([\w -]+?) and (?:the )?([\w -]+)$/.exec(reason);
+  if (swapped) return sameDigits(plainNumber(swapped[1]), plainNumber(swapped[2]));
+  const from = /^(?:(?:i|we) )?(?:took (?:the )?([\w -]+?) away|subtracted (?:the )?([\w -]+?)) from (?:the )?([\w -]+)$/.exec(reason);
+  return !!from && plainNumber(from[1] ?? from[2]) === topOnes && plainNumber(from[3]) === bottomOnes;
 }
 
 function sessionScopeReason(s: Session, pkg: OperationPackage, text: string, reading?: ScopeReading) {
@@ -5565,7 +5580,8 @@ function regroupingObservation(s: Session, skill: RegroupingObservation["skill"]
   const demonstrated = turns.some((turn) => turn.support === "demonstrated");
   const hinted = turns.some((turn) => turn.support === "hinted") || s.assistance.includes("hint");
   const assistedElsewhere = s.assistance.some((kind) => kind !== "independent" && kind !== "hint");
-  const assistance = demonstrated ? "demonstrated" : hinted ? "hinted" : assistedElsewhere ? "demonstrated" : "independent";
+  const assistance = demonstrated || assistedElsewhere ? "demonstrated" : hinted ? "hinted" :
+    hasUnconfirmedRegroupingHelp(s) ? "uncertain" : "independent";
   return { skill, result, assistance, at: s.now! };
 }
 
@@ -5649,7 +5665,7 @@ function checkedExchangePlan(s: Session, afterFailure: boolean): ExchangeTurn | 
   const lesson = s.checkedExchange;
   const pkg = s.package;
   if (lesson?.version !== 1 || pkg?.operation.kind !== "subtract" || !tutorTeachingNow(s) || s.scopeDue || s.noBoard ||
-    s.solved !== null || !s.turn || s.turn.uncertain || s.stopRequested) return null;
+    s.solved !== null || !s.turn || s.turn.uncertain || hasTranscriptAlternatives(s) || s.stopRequested) return null;
   const text = s.turn.text.trim();
   const [before, bottom] = pkg.operation.operands;
   const turns = lesson.turns;
@@ -5785,11 +5801,13 @@ function exchangeDelivery(session: Session, event: Extract<SessionEvent, { type:
   } else {
     const turn = s.checkedExchange?.turns.find((turn) => turn.id === event.turnId);
     if (event.type === "exchange_sent" && turn) {
+      turn.sent = true;
       for (const action of turn.actions) action.delivery = "sent";
+      if (s.checkedExchange?.progression && s.channel === "chat") recordRegroupingDelivery(s, turn);
     }
     if (event.type === "exchange_playback" && turn && !turn.playback && turn.actions.every((action) => action.delivery === "sent")) {
       turn.playback = event.playback;
-      if (event.playback === "finished") recordRegroupingPlayback(s, turn);
+      if (event.playback === "finished") recordRegroupingDelivery(s, turn);
     }
   }
   return { session: s, effects: [], refusal: null };
@@ -5811,12 +5829,21 @@ function recordRegroupingSupport(s: Session, turn: ExchangeTurn, support: "hinte
   recordExchangeHelp(s, support === "hinted" ? "hint" : "guided");
 }
 
-function recordRegroupingPlayback(s: Session, turn: ExchangeTurn) {
+function regroupingHelp(turn: ExchangeTurn): ExchangeTurn["support"] {
   const step = turn.instruction?.step;
-  if (step === "connect" || (!step && !turn.prompt)) recordRegroupingSupport(s, turn, "demonstrated");
-  else if (turn.prompt || step === "ones" || step === "recheck_ones" || step === "tens") {
-    recordRegroupingSupport(s, turn, "hinted");
-  }
+  if (step === "connect" || (!step && !turn.prompt)) return "demonstrated";
+  if (turn.prompt || step === "ones" || step === "recheck_ones" || step === "tens") return "hinted";
+}
+
+function hasUnconfirmedRegroupingHelp(s: Session): boolean {
+  const lesson = s.checkedExchange;
+  return lesson?.progression === 1 && lesson.turns.some((turn) =>
+    turn.sent && !turn.support && turn.playback !== "finished" && regroupingHelp(turn) !== undefined);
+}
+
+function recordRegroupingDelivery(s: Session, turn: ExchangeTurn) {
+  const support = regroupingHelp(turn);
+  if (support) recordRegroupingSupport(s, turn, support);
 }
 
 /**

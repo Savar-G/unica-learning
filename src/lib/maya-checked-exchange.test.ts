@@ -504,6 +504,65 @@ it("clears a correct difference when the child replaces its reasoning with a fal
   expect(ended.view.outcome?.reason).toBe("child_stopped");
 });
 
+it.each(["I swapped 2 and 8", "I took two away from eight"])("does not credit 24 with reversed reasoning: %s", async (reason) => {
+  const { calls, store } = setup();
+  const started = ok(await calls.start(input));
+  const turn = ok(await calls.input(started.view.id, started.view.revision, { type: "child", text: `My answer is 24 because ${reason}.` }, null));
+  expect(turn.output.say.join(" ")).toMatch(/swapping the numbers changes the problem/i);
+  const ended = ok(await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null));
+  expect(ended.view.outcome?.reason).toBe("child_stopped");
+  expect(store.rows()[0].trace?.checkedExchange?.turns.some(t => t.observation?.skill === "difference")).toBe(false);
+});
+
+it("records sent chat help even if the board has not acknowledged it", async () => {
+  const { calls } = setup();
+  let turn = ok(await calls.start(input));
+  for (const text of ["I don't know how to start.", "Five tens.", "I don't know.", "My answer is 24."]) {
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text }, null));
+  }
+  const ended = ok(await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null));
+  expect(ended.view.outcome).toMatchObject({ reason: "solved", assistance: "hint" });
+});
+
+it.each(["interrupted", "finished"] as const)("preserves the evidence for %s voice help after replacement", async (playback) => {
+  const { calls, events, store } = setup();
+  const question = { ...SAMPLE_PACKAGES["subtract-52-28"], ref: { source: "workbook" as const, workbookId: parentId, page: 1, question: 1 } };
+  const started = ok(await calls.startVoice({ ...input, kind: "family", package: question }));
+  const open = async () => {
+    const result = await calls.openVoice(started.view.id, { speechToText: "fake", voice: "fake" }, null);
+    if (!result.ok) throw Error(result.error);
+    return result.call;
+  };
+  const call = await open();
+  await call.start();
+  const reply = await call.child("Show me how to regroup.");
+  await call.exchangePlayback!(reply.exchangeTurnId!, playback);
+  await call.settled();
+  const resumed = await open();
+  await resumed.child("My answer is 24.");
+  await resumed.end({ reason: "child_stopped" });
+  const record = store.rows()[0];
+  const observation = record.trace?.checkedExchange?.turns.find(t => t.observation?.skill === "difference")?.observation;
+  expect(observation).toMatchObject({ result: "correct", assistance: playback === "finished" ? "demonstrated" : "uncertain" });
+  const learned = await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" });
+  expect(learned).toMatchObject([{ result: playback === "finished" ? "right_with_help" : "blank" }]);
+});
+
+it("does not credit a place value count with an unresolved transcript alternative", async () => {
+  const { calls } = setup();
+  const started = ok(await calls.startVoice({ ...input, kind: "family" }));
+  const result = await calls.openVoice(started.view.id, { speechToText: "fake", voice: "fake" }, null);
+  if (!result.ok) throw Error(result.error);
+  const call = result.call;
+  await call.start();
+  const prompt = await call.child("I don't know how to start.");
+  await call.exchangePlayback!(prompt.exchangeTurnId!, "finished");
+  const reply = await call.child("Five tens.", { alternatives: ["Four tens."] });
+  expect(reply.say.join(" ")).not.toMatch(/what can you trade/i);
+  expect(call.session.checkedExchange?.turns.some(t => t.observation?.skill === "identify_tens")).toBe(false);
+  await call.end({ reason: "child_stopped" });
+});
+
 it("does not start a subtraction lesson when the child asks to learn an unrelated subject", async () => {
   const { calls, answer } = setup();
   const started = ok(await calls.start(input));
