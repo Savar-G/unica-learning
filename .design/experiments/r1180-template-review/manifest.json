@@ -1,0 +1,15 @@
+{
+  "round": "1180-template-review",
+  "issue": 1180,
+  "baseline": "97963a33",
+  "browser": "Aside CLI (u0) against the two local admin demo routes",
+  "data": "Invented attempts for k-count-shapes. Grade 3 BC has 29 answers, one unanswered serve and one excluded test-family answer. Grade 4 BC has 30 answers. Grade 5 BC has no attempts.",
+  "screenshots": [
+    { "file": "grade-3-list.png", "scene": "30 shown and 29 answered. The row is below the review threshold." },
+    { "file": "grade-4-list.png", "scene": "Selecting Grade 4 shows the manual review cue at 30 answers." },
+    { "file": "grade-4-detail.png", "scene": "The detail link preserves Grade 4 and British Columbia." },
+    { "file": "grade-5-empty.png", "scene": "The detail shows zero answers and waits for more." }
+  ],
+  "walkthrough": "review-walkthrough.mp4",
+  "walkthroughMethod": "A stepped clip made from Aside screenshots taken during the filter and detail flow."
+}

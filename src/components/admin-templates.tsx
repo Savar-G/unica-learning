@@ -3,7 +3,7 @@
 // most. A server component with no JavaScript; the filters are a GET form.
 import Link from "next/link";
 import { STRAND_NAMES, gradeLabel, type Level } from "@/lib/assessment";
-import { ADMIN_TEMPLATES_PATH, type TemplateFilters, type TemplateLine, type TemplateTable, type WrongLine } from "@/lib/admin-templates";
+import { ADMIN_TEMPLATES_PATH, TEMPLATE_REVIEW_MIN_ANSWERS, templateReview, type TemplateFilters, type TemplateLine, type TemplateTable, type WrongLine } from "@/lib/admin-templates";
 import { GRADES, PROVINCES, duration } from "@/lib/admin-view";
 import { CURRICULA } from "@/lib/signup";
 import { Table } from "@/components/admin";
@@ -59,6 +59,21 @@ export function CountedNote({ filters }: { filters: TemplateFilters }) {
   return <p className="adm-note">Counts {who}{which ? `; ${which}` : ""}. Shown includes served questions without an answer. Correct and median time use answered questions only. Time: the thinking time the browser measured. Older answers count as shown when no serve record exists.</p>;
 }
 
+const REVIEW_READY = "Ready for manual review";
+
+export function TemplateReviewNote({ filters, answered }: { filters: TemplateFilters; answered?: number }) {
+  const review = templateReview(answered ?? 0, filters);
+  return (
+    <p className="adm-note">
+      {review === "ready" && <><strong>{REVIEW_READY}.</strong>{" "}</>}
+      {review === "waiting" && answered !== undefined && "Waiting for more answers. "}
+      Manual difficulty review starts at {TEMPLATE_REVIEW_MIN_ANSWERS} answered attempts per template in one school grade.
+      {review === "exclude-tests" && " Turn off Show test families to review difficulty."}
+      {review === "select-grade" && " Select a school grade to check readiness."}
+    </p>
+  );
+}
+
 export function WrongList({ wrong, more }: { wrong: readonly WrongLine[]; more?: TemplateLine["moreWrong"] }) {
   if (wrong.length === 0) return <span className="adm-note">-</span>;
   return (
@@ -84,7 +99,10 @@ function Rows({ lines, filters, demo, label }: { lines: TemplateLine[]; filters:
             <span className="adm-sub">{l.strand ? STRAND_NAMES[l.strand] : "Not in the bank"}{l.standard && l.standardHref && <> · <Link href={demoHref(l.standardHref, demo)}>{l.standard}</Link></>}</span>
           </td>
           <td><PercentBar percent={l.percentCorrect} label={l.percentCorrect === null ? "Never answered" : `${l.percentCorrect}% correct of ${l.answered} answered`} /></td>
-          <td className="adm-nowrap">{l.shown}<span className="adm-sub">{l.answered} answered</span></td>
+          <td className="adm-nowrap">
+            {l.shown}<span className="adm-sub">{l.answered} answered</span>
+            {l.level !== null && templateReview(l.answered, filters) === "ready" && <strong className="adm-sub">{REVIEW_READY}</strong>}
+          </td>
           <td className="adm-num adm-nowrap">{l.medianMs === null ? "-" : duration(l.medianMs)}</td>
           <td className="adm-wide"><WrongList wrong={l.wrong} more={l.moreWrong} /></td>
         </tr>
@@ -114,6 +132,7 @@ export function TemplateTableView({ table, filters, demo }: { table: TemplateTab
         { key: "unseen", label: "Never shown", value: unseen, sub: unseen ? "Still listed, so gaps show" : "Every template was shown", tone: null },
       ]} />
       <CountedNote filters={filters} />
+      <TemplateReviewNote filters={filters} />
       <nav className="ap-jump" aria-label="Grades">
         {table.grades.map((g) => <a key={g.level} href={`#grade-${g.level}`}>{gradeName(g.level)}</a>)}
         {table.retired.length > 0 && <a href="#retired">Not in the bank</a>}

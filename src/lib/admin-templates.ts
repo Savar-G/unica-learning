@@ -38,6 +38,15 @@ export interface TemplateFilters {
   province: Province | null;
 }
 
+export const TEMPLATE_REVIEW_MIN_ANSWERS = 30;
+
+/** Eligibility for a manual review of one school-grade cohort, using the displayed answer count. */
+export function templateReview(answered: number, filters: TemplateFilters) {
+  if (filters.withTests) return "exclude-tests";
+  if (filters.grade === null) return "select-grade";
+  return answered >= TEMPLATE_REVIEW_MIN_ANSWERS ? "ready" : "waiting";
+}
+
 export interface WrongCount {
   response: string;
   misconception: string | null;
