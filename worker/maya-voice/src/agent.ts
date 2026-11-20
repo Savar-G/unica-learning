@@ -26,6 +26,7 @@ import type { Batch } from "@/lib/board";
 import type { FinishOptions } from "@/lib/maya-text";
 import type { VoiceCall, VoiceSay, VoiceTurn } from "@/lib/maya-call";
 import { sameExchangeTarget, type ExchangeTarget } from "@/lib/maya/checked-exchange";
+import type { SelectionTarget } from "@/lib/maya/board-selection";
 import { childExchangeTarget } from "@/lib/maya/session";
 import { speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-speech";
 import { CuePlaybackOutput } from "./cue-playback";
@@ -1735,6 +1736,55 @@ export class VoiceCallRun {
         }
       }
       return batch ? "accepted" : "stale";
+    } finally {
+      release();
+    }
+  }
+
+  /**
+   * #1152: the child pointed to a board object. Like the exchange, the tap is admitted alone: it stops what Maya had
+   * left to say or draw, then Maya answers in code's checked words. A tap already answered is "done".
+   */
+  async select(target: SelectionTarget): Promise<"accepted" | "busy" | "done" | "stale"> {
+    if (!this.childHere || this.finishing || this.deadlineFinish || !this.call.select) return "stale";
+    if (this.call.session.boardSelections?.some((record) => record.selectionId === target.selectionId)) return "done";
+    if (this.exchangeAdmission || this.exchangeBoard) return "busy";
+    const generation = this.generation;
+    const replies = this.replies;
+    const words = this.wordCount;
+    const prompt = { scope: this.boardScope, speech: this.speech, pace: this.pace };
+    let settled!: () => void;
+    const admission = new Promise<void>((resolve) => { settled = resolve; });
+    this.exchangeAdmission = admission;
+    const release = () => {
+      if (this.exchangeAdmission === admission) this.exchangeAdmission = null;
+      settled();
+    };
+    try {
+      // The screen may have drawn the object a moment ago: read its acknowledgement before the call checks the tap.
+      if (this.options.board && !this.call.boardSnapshot.events.some((e) => e.kind === "batch" && e.batchId === target.batchId)) {
+        await this.options.board.settled();
+      }
+      if (this.finishing || this.deadlineFinish || !this.childHere || generation !== this.generation) return "stale";
+      const turn = await this.call.select(target, () => {
+        if (prompt.scope) this.stopBoard(prompt.scope);
+        prompt.pace?.handle?.interrupt(true);
+        prompt.pace?.early.speech?.interrupt(true);
+        prompt.pace?.end();
+        this.closeTurn(prompt.pace);
+        if (prompt.speech && !prompt.speech.interrupted) prompt.speech.interrupt(true);
+      });
+      if (!turn) return this.call.session.boardSelections?.some((record) => record.selectionId === target.selectionId) ? "done" : "stale";
+      release();
+      if (generation === this.generation && this.childHere && !this.finishing && !this.deadlineFinish) {
+        const current = () => generation === this.generation && this.childHere && !this.finishing && !this.deadlineFinish &&
+          (turn.ended || (!this.call.session.safety.flagged && replies === this.replies &&
+            words === this.wordCount && this.session.userState !== "speaking"));
+        if (!(await this.sayFirst(null, [{ ...turn, boardCues: [] }], { current }))) {
+          this.options.notify({ revision: this.call.revision, segment: this.segment, ended: false });
+        }
+      }
+      return "accepted";
     } finally {
       release();
     }

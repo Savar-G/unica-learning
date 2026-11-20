@@ -5,6 +5,7 @@ import type { CallView, TranscriptLine } from "@/lib/maya-call";
 import type { WorkbookQuestionRef } from "@/lib/question-package";
 import { childSpendLine, type SpendState } from "@/lib/maya-spend";
 import type { ExchangeTarget } from "@/lib/maya/checked-exchange";
+import type { SelectedObject, SelectionOffer } from "@/lib/maya/board-selection";
 
 export const CHAT_MESSAGES = 60;
 export interface ChatUsage {
@@ -22,6 +23,9 @@ export interface ChatView {
   pending?: boolean;
   exchange?: ExchangeTarget;
   exchangeResult?: string;
+  /** #1152: what the child may point to now, and the object their last answered tap named. */
+  selection?: SelectionOffer;
+  selected?: SelectedObject;
   hint: number; safetyMessage: string | null;
 }
 export interface ChatReply { usage: ChatUsage; chat: ChatView | null; error?: string; errorLine?: string; admission?: "accepted" | "refused" }
@@ -54,6 +58,8 @@ export function childChatView(view: CallView, childName?: string | null): ChatVi
     transcript: view.transcript.filter((t) => t.speaker !== "note").map((t) => ({ ...t, text: showName(t.text, childName) })), batches: view.batches,
     ...(view.exchange ? { exchange: view.exchange } : {}),
     ...(view.exchangeResult ? { exchangeResult: view.exchangeResult } : {}),
+    ...(view.selection ? { selection: view.selection } : {}),
+    ...(view.selected ? { selected: view.selected } : {}),
     hint: Math.min(3, view.outcome?.highestHint ?? 0),
     safetyMessage: view.outcome?.safetyFlag ? SAFETY_GUIDANCE[view.outcome.safetySeverity ?? "concern"] : null,
   };

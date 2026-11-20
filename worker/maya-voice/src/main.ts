@@ -29,6 +29,7 @@ import type { Database } from "@/lib/database";
 import { callSeams } from "@/lib/maya-call-seams";
 import { mayaCalls } from "@/lib/maya-call";
 import { EXCHANGE_RPC, readExchangeTarget } from "@/lib/maya/checked-exchange";
+import { SELECT_RPC, readSelectionTarget } from "@/lib/maya/board-selection";
 import { voiceOpening } from "./opening";
 import { mayaCallStore } from "@/lib/maya-call-store";
 import { asksWordTimings, callKeyterms, callOfRoom, childIdentity, HANG_UP_BOARD_DRAIN, turnSilences, VOICE_AGENT_NAME, voiceProviders, type TurnSilence, type VoiceCallFacts } from "@/lib/maya-voice";
@@ -211,6 +212,13 @@ export default defineAgent({
       try { if (data.payload.length <= 1000) target = readExchangeTarget(JSON.parse(data.payload)); } catch { /* Invalid JSON. */ }
       if (!target) throw new RpcError(1400, "invalid exchange target");
       return run.exchange(target);
+    });
+    if (opened.call.session.checkedExchange) local.registerRpcMethod(SELECT_RPC, async (data) => {
+      if (data.callerIdentity !== identity) throw new RpcError(1403, "not this call's child");
+      let target = null;
+      try { if (data.payload.length <= 1000) target = readSelectionTarget(JSON.parse(data.payload)); } catch { /* Invalid JSON. */ }
+      if (!target) throw new RpcError(1400, "invalid selection target");
+      return run.select(target);
     });
     if (made.fakeSpeech) {
       const speech = made.fakeSpeech;

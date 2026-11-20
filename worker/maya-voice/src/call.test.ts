@@ -561,6 +561,40 @@ it("interrupts a regrouping prompt in playout and shows the child's exchange onc
   } finally { speaker.finishPlayback(); }
 });
 
+it("cuts a regrouping prompt in playout when the child points to the blocks, and answers the tap once", async () => {
+  let now = () => T0;
+  const speaker = new HeldSpeaker(() => now());
+  const c = await voiceCall({ speaker, model: ruleConversationalModel(), board: true, timestamps: true, exchange: true });
+  now = c.clock.now;
+  try {
+    await c.run.childJoined();
+    await waitFor(() => c.said().length > 0 && c.session.agentState === "listening", "opening");
+    speaker.held = true;
+    const stopped = vi.spyOn(speaker, "clearBuffer");
+    await c.childSays("How do I regroup?");
+    await waitFor(() => speaker.pendingPlayoutSegments > 0, "the prompt audio to reach the speaker");
+    await c.clock.advance(1);
+    await waitFor(() => c.session.agentState === "speaking" && c.receiver.snapshot().events.some(
+      e => e.kind === "batch" && JSON.stringify(e.commands).includes("52 = 50 + 2"),
+    ), "the shown tens while the prompt is playing");
+    const view = (await c.calls.view(c.id))!;
+    const blocks = c.receiver.snapshot().events.find(e => e.kind === "batch" && JSON.stringify(e.commands).includes("exchange-before"));
+    const target = { ...view.selection!, objectId: "exchange-before", batchId: blocks!.kind === "batch" ? blocks!.batchId : "", selectionId: "tap-1" };
+    const batchesBefore = c.receiver.snapshot().events.filter(e => e.kind === "batch").length;
+    expect(stopped).not.toHaveBeenCalled();
+    const taps = await Promise.all([c.run.select(target), c.run.select(target)]);
+    expect(taps.sort()).toEqual(["accepted", "busy"]);
+    expect(stopped).toHaveBeenCalled();
+    await waitFor(() => c.said().join(" ").includes("They show 5 tens and 2 ones, which is 52."), "Maya's answer about the blocks");
+    expect(c.call.session.checkedExchange?.turns.find(t => t.prompt)?.playback).toBe("interrupted");
+    expect(c.receiver.snapshot().events.filter(e => e.kind === "batch")).toHaveLength(batchesBefore);
+    expect(c.call.session.done).toEqual([]);
+    expect(c.call.session.solved).toBeNull();
+    expect(await c.run.select(target)).toBe("done");
+    expect(c.call.session.boardSelections).toHaveLength(1);
+  } finally { speaker.finishPlayback(); }
+});
+
 it("drops deadline audio when the child starts speaking before the first frame reaches output", async () => {
   const speaker = new Speaker();
   const c = await voiceCall({ speaker, board: true, timestamps: true });

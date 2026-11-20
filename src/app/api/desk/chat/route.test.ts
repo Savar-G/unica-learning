@@ -57,6 +57,21 @@ it("checks the selected desk before passing a structured board action", async ()
   expect((await POST(request(action))).status).toBe(403);
   expect(run).not.toHaveBeenCalled();
 });
+it("checks the selected desk before passing a board selection", async () => {
+  const action = { type: "select", id, revision: 2,
+    target: { lessonId: "a-lesson", turnId: "a-lesson:m2", boardRevision: 2, question: "52 - 28 = ?", objectId: "exchange-before", batchId: "call-b2", selectionId: "tap-1" },
+    fates: [{ batchId: "call-b2", fate: "shown" }] };
+  run.mockResolvedValue(done);
+  const res = await POST(streaming(action));
+  expect(res.headers.get("content-type")).toMatch(/^application\/json/);
+  expect(run).toHaveBeenCalledWith({ child: "selected-child" }, action);
+  run.mockClear();
+  expect((await POST(request({ ...action, target: { ...action.target, objectId: "../x" } }))).status).toBe(400);
+  expect((await POST(request({ ...action, revision: -1 }))).status).toBe(400);
+  gate.mockResolvedValue({ ok: false, error: "forbidden", status: 403 });
+  expect((await POST(request(action))).status).toBe(403);
+  expect(run).not.toHaveBeenCalled();
+});
 it("streams an admitted turn's checked sentences, then its one final reply", async () => {
   // Falsifier: the JSON-only route answers one JSON body after the whole turn.
   const batch = { transactionId: "call-b2", commands: [{ op: "highlight", id: "h1" }] };
