@@ -54,7 +54,7 @@ describe("#1139 device turns on one machine clock", () => {
     expect(readBaselineTurn(turn)).toEqual(turn);
   });
 
-  it("marks a sound that starts before the answer's playout as ambiguous, never as useful (review repro 1)", () => {
+  it("marks a sound that starts before the answer's playout as ambiguous, never as useful", () => {
     // A filler-only sound from 1,970 to 2,150 ms around an answer mark at 2,000 ms: its part after the mark could be either.
     const turn = deviceTurn({ group, inputEnd: 1000, bursts: [{ start: 1970, end: 2150 }], answerPlayback: 2000, otherPlayouts: [{ start: 1400, end: 1990 }], boardAt: null });
     expect(turn).toMatchObject({ outcome: "ambiguous", ms: { deviceFirstSound: 970 } });
@@ -63,7 +63,7 @@ describe("#1139 device turns on one machine clock", () => {
     expect(deviceTurn({ group, inputEnd: 1000, bursts: [{ start: 1340, end: 5200 }], answerPlayback: 2100, otherPlayouts: [{ start: 1300, end: 2050 }], boardAt: null }).outcome).toBe("ambiguous");
   });
 
-  it("counts a short answer heard just after its playout mark when no other playout can reach it (review repro 2)", () => {
+  it("counts a short answer heard just after its playout mark when no other playout can reach it", () => {
     // The filler played from 1,200 to 1,600 ms and was heard from 1,230 ms: transit is at most 30 ms.
     const filler = { start: 1230, end: 1630 };
     const turn = deviceTurn({ group, inputEnd: 1000, bursts: [filler, { start: 2020, end: 2090 }], answerPlayback: 2000, otherPlayouts: [{ start: 1200, end: 1600 }], boardAt: null });
@@ -75,6 +75,22 @@ describe("#1139 device turns on one machine clock", () => {
   it("marks a sound after the mark as ambiguous when another playout's sound could still be arriving", () => {
     // No onset bounds the transit here, so the filler that ended at 1,990 ms could still be heard at 2,020 ms.
     expect(deviceTurn({ group, inputEnd: 1000, bursts: [{ start: 2020, end: 2090 }], answerPlayback: 2000, otherPlayouts: [{ start: 1400, end: 1990 }], boardAt: null }).outcome).toBe("ambiguous");
+  });
+
+  it("bounds the transit per playout, never from a later unrelated playout", () => {
+    // The filler played 1,800 to 1,990 ms and was heard 2,015 to 2,180 ms; the answer marked at 2,000 ms was not heard.
+    // A later playout heard 20 ms after its start says nothing about how late the filler's sound arrived.
+    const turn = deviceTurn({ group, inputEnd: 1000, bursts: [{ start: 2015, end: 2180 }, { start: 2520, end: 3000 }], answerPlayback: 2000,
+      otherPlayouts: [{ start: 1800, end: 1990 }, { start: 2500, end: 2900 }], boardAt: null });
+    expect(turn.outcome).toBe("ambiguous");
+    expect(turn.ms.deviceUseful).toBeUndefined();
+  });
+
+  it("matches a sound by its onset, so a second answer merged into it does not make it ambiguous", () => {
+    // The first answer played at 2,000 ms and was heard from 2,020 ms; a second answer started at 2,200 ms and the
+    // receiver merged both into one sound across the short gap.
+    const turn = deviceTurn({ group, inputEnd: 1000, bursts: [{ start: 2020, end: 2600 }], answerPlayback: 2000, otherPlayouts: [{ start: 2200, end: 2560 }], boardAt: null });
+    expect(turn).toMatchObject({ outcome: "completed", ms: { deviceUseful: 1020 } });
   });
 
   it("counts ambiguous turns in the report and keeps them out of the percentiles", () => {

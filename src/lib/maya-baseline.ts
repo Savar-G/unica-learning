@@ -97,11 +97,11 @@ const MAX_TRANSIT_MS = 250;
 
 /**
  * Join device output energy with the worker's playouts. Filler can be the first sound; only the answer is useful.
- * Received sound is matched to the playout it can belong to: nothing heard before the answer's playout start is the
- * answer, and a sound heard after it is the answer only when no other playout's sound can still be arriving. The
- * transit time is at most the delay from another playout's start to its first heard sound (and never more than
- * MAX_TRANSIT_MS). When a sound could belong to the answer or to another playout, the turn is `ambiguous`: it has no
- * useful time, and the report counts it apart from completed and failed turns.
+ * A received sound is matched by its onset. Nothing that starts before the answer's playout start is the answer. A
+ * sound that starts after it is the answer unless its onset falls where another playout's sound can still be arriving:
+ * from that playout's start to its finish plus its own transit bound. A playout's transit bound is the delay from its
+ * start to the first sound that starts during it, and MAX_TRANSIT_MS when no sound starts during it. Any such overlap
+ * makes the turn `ambiguous`: no useful time, counted apart from completed and failed turns in the report.
  */
 export function deviceTurn(o: DeviceObservation): BaselineTurn {
   const ms: BaselineTurn["ms"] = {};
@@ -111,9 +111,11 @@ export function deviceTurn(o: DeviceObservation): BaselineTurn {
   const p = o.answerPlayback;
   const heard = p === null ? undefined : o.bursts.find(b => b.end > p && b.end >= o.inputEnd);
   if (p !== null && heard) {
-    const onsets = o.otherPlayouts.flatMap(x => o.bursts.filter(b => b.start >= x.start && b.start <= x.end).slice(0, 1).map(b => b.start - x.start));
-    const transit = Math.min(MAX_TRANSIT_MS, ...onsets);
-    const other = o.otherPlayouts.some(x => heard.start < x.end + transit && heard.end > x.start);
+    const transit = (x: { start: number; end: number }) => {
+      const onset = o.bursts.find(b => b.start >= x.start && b.start <= x.end);
+      return onset ? Math.min(MAX_TRANSIT_MS, onset.start - x.start) : MAX_TRANSIT_MS;
+    };
+    const other = o.otherPlayouts.some(x => heard.start >= x.start && heard.start < x.end + transit(x));
     if (heard.start < p || other) outcome = "ambiguous";
     else {
       outcome = "completed";
