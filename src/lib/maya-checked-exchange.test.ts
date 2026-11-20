@@ -4,6 +4,7 @@ import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { memoryWordingHistoryStore } from "@/lib/maya";
 import { mayaCalls, type CallInput, type CallResult, type CallSeams, type StartInput } from "@/lib/maya-call";
+import { codeSentences, noteFacts } from "@/lib/maya-call-note";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { fakeMathReviewer } from "@/lib/maya-math-review";
@@ -546,6 +547,9 @@ it.each(["interrupted", "finished"] as const)("preserves the evidence for %s voi
   expect(observation).toMatchObject({ result: "correct", assistance: playback === "finished" ? "demonstrated" : "uncertain" });
   const learned = await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" });
   expect(learned).toMatchObject([{ result: playback === "finished" ? "right_with_help" : "blank" }]);
+  const finished = noteFacts({ outcome: record.outcome!, event: learned[0], package: question, question: question.ref });
+  expect(finished.finished).toBe(playback === "finished" ? "with_help" : "help_unconfirmed");
+  if (playback === "interrupted") expect(codeSentences(finished).join(" ")).toContain("gave the correct answer");
 });
 
 it("does not credit a place value count with an unresolved transcript alternative", async () => {

@@ -640,6 +640,8 @@ function checkOutcome(o: unknown, path: string) {
   const x = o as Record<string, unknown>;
   need(oneOf(REASONS, x.reason), `${path}.reason`, "a reason");
   need(oneOf(ASSISTANCE, x.assistance), `${path}.assistance`, "an assistance level");
+  need(x.helpUnconfirmed === undefined || (x.helpUnconfirmed === true && x.assistance === "independent"),
+    `${path}.helpUnconfirmed`, "true when no help is confirmed");
   need(oneOf(PAPER, x.paperStatus), `${path}.paperStatus`, "a paper status");
   need(oneOf(UNDERSTANDING, x.understanding), `${path}.understanding`, "an understanding");
   need(x.highestHint === null || oneOf([0, 1, 2, 3, 4], x.highestHint), `${path}.highestHint`, "0 to 4 or null");

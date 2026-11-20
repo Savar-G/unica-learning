@@ -223,6 +223,8 @@ export interface Outcome {
    */
   reason: Reason;
   assistance: Assistance;
+  /** Some voice help may have played, but no source confirmed how much. */
+  helpUnconfirmed?: true;
   paperStatus: PaperStatus;
   understanding: Understanding;
   /** The highest hint level Maya gave on the target, or null. */
@@ -844,8 +846,7 @@ export function learningEvent(session: Session, family: { parentId: string; chil
   // Any stored content problem counts, whatever the final reason (a safety concern after the hold ends as "safety").
   if (!outcome || !pkg || session.startedAt === null || session.contentProblem !== null || outcome.reason === "content_issue") return null;
   // A correct answer with unconfirmed voice help is not evidence of independent work.
-  const right = session.lastResult === "right" &&
-    (outcome.assistance !== "independent" || !hasUnconfirmedRegroupingHelp(session));
+  const right = session.lastResult === "right" && !outcome.helpUnconfirmed;
   const result = right ? (outcome.assistance === "independent" ? "right" : "right_with_help") : "blank";
   const first = workSteps(pkg)[0]?.id ?? null;
   return {
@@ -7210,6 +7211,7 @@ function outcomeOf(s: Session, cause: Reason): Outcome {
   return {
     reason,
     assistance,
+    ...(assistance === "independent" && hasUnconfirmedRegroupingHelp(s) ? { helpUnconfirmed: true } : {}),
     paperStatus: s.paper,
     understanding: s.understanding,
     highestHint: s.highestHint,

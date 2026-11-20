@@ -53,7 +53,7 @@ const TRACE_NAME = "{name}";
 export const NOTE_CALL_KINDS = ["family", "chat"] as const;
 
 /** Whether the child finished the question, as code read it. */
-export type Finished = "on_own" | "with_help" | "answer_given" | "not_finished";
+export type Finished = "on_own" | "with_help" | "help_unconfirmed" | "answer_given" | "not_finished";
 
 /** Every fact a note holds: all written by code. */
 export interface NoteFacts {
@@ -61,7 +61,7 @@ export interface NoteFacts {
   question: { source: QuestionRef["source"]; page: number | null; number: number | null; text: string | null };
   finished: Finished;
   reason: Outcome["reason"];
-  help: Outcome["assistance"];
+  help: Outcome["assistance"] | "unconfirmed";
   /** The step the child got stuck on, in plain words without numbers ("adding the tens"), or null. */
   stuckOn: string | null;
   paper: Outcome["paperStatus"];
@@ -234,6 +234,7 @@ export function noteFacts(input: { outcome: Outcome; event: NewLearningEvent | n
     : outcome.assistance === "answer_given" && (result !== "blank" || outcome.reason === "solved") ? "answer_given"
     : result === "right" ? "on_own"
     : result === "right_with_help" ? "with_help"
+    : outcome.reason === "solved" && outcome.helpUnconfirmed ? "help_unconfirmed"
     : "not_finished";
   const step = event?.stuckStep && pkg ? pkg.steps.find((s) => s.id === event.stuckStep) : undefined;
   return {
@@ -245,8 +246,8 @@ export function noteFacts(input: { outcome: Outcome; event: NewLearningEvent | n
     },
     finished,
     reason: outcome.reason,
-    help: outcome.assistance,
-    stuckOn: finished === "on_own" || outcome.safetyFlag || !step ? null : stepWords(step),
+    help: outcome.helpUnconfirmed ? "unconfirmed" : outcome.assistance,
+    stuckOn: finished === "on_own" || finished === "help_unconfirmed" || outcome.safetyFlag || !step ? null : stepWords(step),
     paper: outcome.paperStatus,
     minutes: Math.max(1, Math.round(outcome.seconds / 60)),
     safety: outcome.safetyFlag,
@@ -282,6 +283,9 @@ export function codeSentences(f: NoteFacts, heldSaid = false): string[] {
   }
   if (f.stuckOn) lines.push(`${CHILD} got stuck on ${f.stuckOn}.`);
   if (f.finished === "on_own") lines.push(`${CHILD} finished it with no help.`);
+  else if (f.finished === "help_unconfirmed") {
+    lines.push(`${CHILD} gave the correct answer. The amount of help is unknown.`);
+  }
   else if (f.finished === "with_help") {
     lines.push(f.help === "hint" ? `${CHILD} finished it after a small hint.` : f.help === "worked_example" ? `Maya showed an easier example first. Then ${CHILD} finished it.` : `Maya helped one step at a time, and ${CHILD} finished it.`);
   } else if (f.finished === "answer_given") lines.push(`Maya helped step by step, then gave the answer.`);
