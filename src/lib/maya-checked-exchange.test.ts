@@ -843,6 +843,33 @@ it("keeps a correct answer saved by the code before the related question when th
   expect(byKey(learned)).toMatchObject([{ key: `call:${chat.id}`, result: "right" }, { key: `call:${voice.id}`, result: "right" }]);
 });
 
+it.each([["36.", "right"], ["I'm done.", "blank"]] as const)("closes with a valid trace on %s right after a reconnect lost the related board", async (text, result) => {
+  const { calls, events, store } = setup();
+  const question = { ...SAMPLE_PACKAGES["subtract-52-28"], ref: { source: "workbook" as const, workbookId: parentId, page: 1, question: 1 } };
+  const voice = ok(await calls.startVoice({ ...input, kind: "family", package: question }));
+  const open = async () => {
+    const opened = await calls.openVoice(voice.view.id, { speechToText: "fake", voice: "fake" }, null);
+    if (!opened.ok) throw Error(opened.error);
+    return opened.call;
+  };
+  const call = await open();
+  const opening = (await call.start()).boardCues![0].batch;
+  await call.child("My answer is 24.");
+  const related = (await call.child("Yes.")).boardCues![0].batch;
+  await call.settled();
+  const resumed = await open();
+  await resumed.observeBoard({ events: [
+    { kind: "batch", batchId: opening.transactionId, commands: [...opening.commands] }, { kind: "cancelled", batchIds: [related.transactionId] },
+  ] });
+  const closing = await resumed.child(text);
+  expect(closing.ended).toBe(true);
+  expect(closing.boardCues ?? []).toEqual([]);
+  await resumed.end({ reason: "child_stopped" });
+  expect(checkTrace(store.rows()[0].trace)).toMatchObject({ ok: true });
+  expect(byKey(await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" })))
+    .toMatchObject([{ result: "right" }, { result, question: { source: "transfer" } }]);
+});
+
 it("shows the related question again when a voice reconnect lost its board batch", async () => {
   const { calls, events } = setup();
   const question = { ...SAMPLE_PACKAGES["subtract-52-28"], ref: { source: "workbook" as const, workbookId: parentId, page: 1, question: 1 } };

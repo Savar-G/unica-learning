@@ -5999,7 +5999,9 @@ function relatedPlan(s: Session): ExchangeTurn {
   if (tells(regroupingWords(facts, instruction, false))) instruction = { step: "transfer_retry", transfer: transfer.operands };
   // A related question the board skipped or cancelled (a reconnect, a closed tab) goes out again with this turn.
   const question = lesson.turns.flatMap((turn) => turn.actions).findLast((action) => action.kind === "question");
-  const missed = question?.fate === "cancelled" || question?.fate === "skipped";
+  // Only a turn that keeps the related question open draws it again: a close sends no board.
+  const closes = instruction.step === "decline" || instruction.step === "transfer_correct";
+  const missed = !closes && (question?.fate === "cancelled" || question?.fate === "skipped");
   return {
     id: `${lesson.id}:${lesson.turns.length + 1}`,
     facts,

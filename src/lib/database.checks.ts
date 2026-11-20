@@ -208,6 +208,7 @@ export const DATABASE_CHECKS: readonly { table: string; name: string; definition
   {"table":"learning_events","name":"learning_events_stuck_step_check","definition":"CHECK (((length(stuck_step) >= 1) AND (length(stuck_step) <= 40)))"},
   {"table":"learning_events","name":"learning_events_time_ms_check","definition":"CHECK (((time_ms >= 0) AND (time_ms <= 86400000)))"},
   {"table":"learning_events","name":"learning_events_transfer_check","definition":"CHECK ((((question_source = 'transfer'::text) = (related_event_id IS NOT NULL)) AND ((question_source = 'transfer'::text) = (generated_question IS NOT NULL)) AND ((question_source <> 'transfer'::text) OR ((source = 'call'::text) AND (evidence_kind = 'call'::text) AND (assistance IS NOT NULL)))))"},
+  {"table":"learning_events","name":"learning_events_transfer_evidence_check","definition":"CHECK (((question_source <> 'transfer'::text) OR ((evidence_kind IS NOT NULL) AND (evidence_id IS NOT NULL) AND (evidence_kind = 'call'::text))))"},
   {"table":"learning_events","name":"learning_events_workbook_page_check","definition":"CHECK (((workbook_page >= 1) AND (workbook_page <= 9999)))"},
   {"table":"learning_events","name":"learning_events_workbook_question_check","definition":"CHECK (((workbook_question >= 1) AND (workbook_question <= 9999)))"},
   {"table":"maya_call_alerts","name":"maya_call_alerts_check","definition":"CHECK (((status <> 'sent'::text) OR (email_id IS NOT NULL)))"},
