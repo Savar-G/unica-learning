@@ -540,7 +540,10 @@ function checkedExchangeOutput(proposal: unknown, output: unknown): boolean {
   if (!isObject(proposal) || proposal.checkedExchange !== 1 || typeof proposal.value !== "number" ||
     typeof proposal.example !== "boolean" || typeof proposal.show !== "boolean" || !isObject(output)) return false;
   const facts = exchangeFacts(proposal.value, proposal.example);
-  if (!facts || output.act !== "guide" || !Array.isArray(output.say) || output.say.length !== 1 || !Array.isArray(output.board)) return false;
+  if (!facts || !Array.isArray(output.say) || output.say.length !== 1 || !Array.isArray(output.board)) return false;
+  // #1144: a declined offer and a finished related question close the call; the related question's start shows it.
+  const step = isObject(proposal.instruction) ? proposal.instruction.step : undefined;
+  if (output.act !== (step === "decline" || step === "transfer_correct" ? "close" : "guide")) return false;
   if (proposal.instruction !== undefined) {
     const words = regroupingWords(facts, proposal.instruction, proposal.show);
     return !!words && output.say[0] === words.join(" ") &&
@@ -649,6 +652,9 @@ function checkOutcome(o: unknown, path: string) {
   need(oneOf(ASSISTANCE, x.assistance), `${path}.assistance`, "an assistance level");
   need(x.helpUnconfirmed === undefined || (x.helpUnconfirmed === true && x.assistance === "independent"),
     `${path}.helpUnconfirmed`, "true when no help is confirmed");
+  const t = x.transfer;
+  need(t === undefined || (isObject(t) && oneOf(["right", "unfinished"], t.result) &&
+    oneOf(["independent", "hinted", "demonstrated", "uncertain"], t.assistance)), `${path}.transfer`, "a related question result");
   need(oneOf(PAPER, x.paperStatus), `${path}.paperStatus`, "a paper status");
   need(oneOf(UNDERSTANDING, x.understanding), `${path}.understanding`, "an understanding");
   need(x.highestHint === null || oneOf([0, 1, 2, 3, 4], x.highestHint), `${path}.highestHint`, "0 to 4 or null");

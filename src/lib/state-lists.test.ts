@@ -14,6 +14,7 @@ import { FLAG_LEVELS } from "@/lib/maya-call";
 import { AI_FEATURES } from "@/lib/ai-usage";
 import { AI_USAGE_CONTEXTS, AI_KEY_ALIASES } from "@/lib/ai-usage-context";
 import { ASSISTANCE } from "@/lib/maya/session";
+import { QUESTION_SOURCES, TRANSFER_ASSISTANCE } from "@/lib/learning-events";
 import { DELIVERY_TYPES } from "@/lib/resend-webhook";
 import { SCAN_BLOCKED_REASONS, SCAN_CALIBRATION_STATES, SCAN_CLEAN_FAILURES, SCAN_JOB_STATES, SCAN_PHOTO_STATES } from "@/lib/scan-states";
 import { REFERRAL_RISKS, REFERRAL_OPERATION_STATES, REFERRAL_REWARD_KINDS, REFERRAL_EMAIL_STATES } from "@/lib/referrals";
@@ -32,6 +33,9 @@ const LISTS: { name: string; list: readonly string[]; table: string; column: str
   { name: "FLAG_LEVELS", list: FLAG_LEVELS, table: "maya_calls", column: "flag" },
   { name: "FLAG_LEVELS", list: FLAG_LEVELS, table: "maya_call_alerts", column: "level" },
   { name: "ASSISTANCE", list: ASSISTANCE, table: "maya_calls", column: "assistance" },
+  // #1144: a related question after a call has its own event and help (migration 20261120185003_learning_events_transfer_questions).
+  { name: "QUESTION_SOURCES", list: QUESTION_SOURCES, table: "learning_events", column: "question_source" },
+  { name: "TRANSFER_ASSISTANCE", list: TRANSFER_ASSISTANCE, table: "learning_events", column: "assistance" },
   { name: "FAMILY_BUCKETS", list: FAMILY_BUCKETS, table: "child_deleted_folders", column: "bucket" },
   { name: "LOG_KINDS", list: LOG_KINDS, table: "email_log", column: "kind" },
   { name: "LOG_STATUSES", list: LOG_STATUSES, table: "email_log", column: "status" },

@@ -1,0 +1,4 @@
+{
+  "extends": "../../worker/maya-voice/tsconfig.json",
+  "include": ["./*.ts"]
+}

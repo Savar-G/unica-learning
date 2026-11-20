@@ -12,7 +12,7 @@ import type { LearningEvent, LearningEventStore, NewLearningEvent } from "@/lib/
 /** The columns the store reads: every column but the time the row was stored. */
 type Row = Omit<Database["public"]["Tables"]["learning_events"]["Row"], "created_at">;
 
-const COLUMNS = "id, idempotency_key, parent_id, child_id, source, question_source, workbook_id, workbook_page, workbook_question, assessment_id, assessment_question_id, skill_standard, skills, result, stuck_step, mistake, hints, time_ms, occurred_at, evidence_kind, evidence_id";
+const COLUMNS = "id, idempotency_key, parent_id, child_id, source, question_source, workbook_id, workbook_page, workbook_question, assessment_id, assessment_question_id, skill_standard, skills, result, stuck_step, mistake, hints, time_ms, occurred_at, evidence_kind, evidence_id, related_event_id, generated_question, assistance";
 
 /**
  * PostgREST answers at most 1000 rows a request (the project's max rows), so a range read pages, until a page is empty
@@ -34,6 +34,9 @@ function toRow(e: NewLearningEvent): Database["public"]["Tables"]["learning_even
     workbook_question: q.source === "workbook" ? q.question : null,
     assessment_id: q.source === "assessment" ? q.assessmentId : null,
     assessment_question_id: q.source === "assessment" ? q.questionId : null,
+    related_event_id: q.source === "transfer" ? q.relatedEventId : null,
+    generated_question: q.source === "transfer" ? q.text : null,
+    assistance: e.assistance ?? null,
     skill_standard: e.skill.standard,
     skills: e.skill.skills,
     result: e.result,
@@ -50,6 +53,7 @@ function toRow(e: NewLearningEvent): Database["public"]["Tables"]["learning_even
 function fromRow(r: Row): LearningEvent {
   const question: NewLearningEvent["question"] = r.question_source === "workbook"
     ? { source: "workbook", workbookId: r.workbook_id!, page: r.workbook_page!, question: r.workbook_question! }
+    : r.question_source === "transfer" ? { source: "transfer", relatedEventId: r.related_event_id!, text: r.generated_question! }
     : { source: "assessment", assessmentId: r.assessment_id!, questionId: r.assessment_question_id! };
   return {
     id: r.id,
@@ -67,6 +71,7 @@ function fromRow(r: Row): LearningEvent {
     // Postgres writes "+00:00"; the module's times are ISO strings in UTC.
     occurredAt: new Date(r.occurred_at).toISOString(),
     evidence: r.evidence_kind && r.evidence_id ? { kind: r.evidence_kind, id: r.evidence_id } : null,
+    ...(r.assistance ? { assistance: r.assistance } : {}),
   };
 }
 
