@@ -14,20 +14,31 @@ if (!values.out) throw Error("Usage: node scripts/maya-baseline-run/hosted.mjs -
 const out = resolve(values.out);
 const prompts = [["first", "routine"], ["regroup", "complex"]];
 const clips = Object.fromEntries(prompts.map(([name]) => [name, readFileSync(join(out, "prompts", `${name}.wav`)).toString("base64")]));
+// Aside's REPL stops a script after 120 s; this process stops Aside after OUTER_MS. The measurements stop at MEASURE_MS,
+// which leaves time to hang up and close the tab inside the script.
+const OUTER_MS = 150_000;
+const MEASURE_MS = 85_000;
 
 // Runs inside Aside's REPL. Everything it needs is in this string.
 const script = `
 const clips = ${JSON.stringify(clips)};
 const order = ${JSON.stringify(prompts)};
+const end1139 = Date.now() + ${MEASURE_MS};
+// A wait never runs past the measurement deadline, so the cleanup below always has its time.
+const left1139 = (limit) => Math.max(500, Math.min(limit, end1139 - Date.now()));
+const before1139 = new Set((await listBrowserTabs()).map(t => t.targetId));
 const h1139 = await openTab(${JSON.stringify(values.site + "/admin/maya")});
+// The tab's id goes out at once: if this script is stopped, the runner closes the tab with it.
+const tab1139 = (await listBrowserTabs()).find(t => !before1139.has(t.targetId))?.targetId ?? null;
+console.log("HOSTED1139_TAB " + JSON.stringify(tab1139));
 try {
-  await h1139.getByRole("heading", { name: "Start a test call" }).waitFor({ timeout: 15000 });
+  await h1139.getByRole("heading", { name: "Start a test call" }).waitFor({ timeout: left1139(15000) });
   await h1139.getByText("Speak", { exact: true }).click();
   const child = h1139.getByRole("combobox", { name: "Test child" });
   await child.selectOption({ label: ${JSON.stringify(values.child)} });
   // In Speak mode the button opens the call page, which checks the microphone first.
   await h1139.getByRole("button", { name: "Talk to Maya" }).first().click();
-  await h1139.getByRole("button", { name: "Check the microphone", exact: true }).waitFor({ timeout: 20000 });
+  await h1139.getByRole("button", { name: "Check the microphone", exact: true }).waitFor({ timeout: left1139(20000) });
   await h1139.evaluate(async (clips) => {
     const ctx = new AudioContext();
     const decoded = {};
@@ -43,7 +54,7 @@ try {
     window.b1139 = { ctx, rows, decoded, bursts: [], rendered: [], marks: [] };
   }, clips);
   await h1139.getByRole("button", { name: "Check the microphone", exact: true }).click();
-  await h1139.getByRole("status").filter({ hasText: "The microphone works" }).waitFor({ timeout: 8000 });
+  await h1139.getByRole("status").filter({ hasText: "The microphone works" }).waitFor({ timeout: left1139(8000) });
   await h1139.evaluate(() => {
     const s = window.b1139;
     const silent = s.ctx.createGain(); silent.gain.value = 0; silent.connect(s.ctx.destination);
@@ -72,15 +83,16 @@ try {
     }).observe(region, { subtree: true, childList: true, attributes: true });
   });
   await h1139.getByRole("button", { name: "Connect", exact: true }).click();
-  await h1139.getByRole("button", { name: "Hang up", exact: true }).waitFor({ timeout: 15000 });
+  await h1139.getByRole("button", { name: "Hang up", exact: true }).waitFor({ timeout: left1139(15000) });
   const quiet = (after, limit) => h1139.waitForFunction(([after]) => {
     // The runner's rule: 2 s of quiet after a sound of at least 1 s, or 6 s of quiet after any sound.
     const s = window.b1139, last = s.bursts.at(-1);
     const answered = s.bursts.some(b => b.start >= after && b.end - b.start >= 1000);
     return !!last && last.start >= after && performance.now() - last.end > (answered ? 2000 : 6000);
-  }, [after], { timeout: limit }).then(() => true, () => false);
+  }, [after], { timeout: left1139(limit) }).then(() => true, () => false);
   await quiet(0, 30000);
   for (const [name] of order) {
+    if (Date.now() >= end1139) break;
     const inputEnd = await h1139.evaluate((name) => {
       const s = window.b1139;
       const mic = s.rows.findLast(d => d.stream.getAudioTracks().some(t => t.readyState === "live"));
@@ -100,15 +112,45 @@ try {
   }
   const result = await h1139.evaluate(() => ({ bursts: window.b1139.bursts, rendered: window.b1139.rendered, marks: window.b1139.marks }));
   console.log("HOSTED1139 " + JSON.stringify(result));
-  await h1139.getByRole("button", { name: "Hang up", exact: true }).click();
-  await h1139.getByRole("status").filter({ hasText: "The call has ended" }).waitFor({ timeout: 15000 }).catch(() => {});
 } finally {
+  // Hang up first, then close the tab: a call left open keeps the test child's room busy.
+  const hang1139 = h1139.getByRole("button", { name: "Hang up", exact: true });
+  if (await hang1139.isVisible().catch(() => false)) {
+    await hang1139.click({ timeout: 5000 }).catch(() => {});
+    await h1139.getByRole("status").filter({ hasText: "The call has ended" }).waitFor({ timeout: 8000 }).catch(() => {});
+  }
   await closeTab(h1139);
 }
 `;
+
+/** After a failed or stopped script: hang up and close the tab this run opened, found by its id, never another tab. */
+function cleanUp(targetId) {
+  const file = join(out, "hosted-aside-cleanup.js");
+  writeFileSync(file, `
+const tab = await attachBrowserTab(${JSON.stringify(targetId)});
+const hang = tab.getByRole("button", { name: "Hang up", exact: true });
+if (await hang.isVisible().catch(() => false)) {
+  await hang.click({ timeout: 5000 }).catch(() => {});
+  await tab.getByRole("status").filter({ hasText: "The call has ended" }).waitFor({ timeout: 8000 }).catch(() => {});
+}
+await closeTab(tab);
+console.log("HOSTED1139_CLOSED");
+`);
+  return execFileSync("aside", ["repl", "--account", "u0", "--file", file], { encoding: "utf8", timeout: 60_000 }).includes("HOSTED1139_CLOSED");
+}
 const file = join(out, "hosted-aside.js");
 writeFileSync(file, script);
-const output = execFileSync("aside", ["repl", "--account", "u0", "--file", file], { encoding: "utf8", timeout: 150_000 });
+let output;
+try {
+  output = execFileSync("aside", ["repl", "--account", "u0", "--file", file], { encoding: "utf8", timeout: OUTER_MS });
+} catch (e) {
+  const partial = String(e.stdout ?? "");
+  const tabLine = partial.split("\n").find(l => l.includes("HOSTED1139_TAB "));
+  const targetId = tabLine ? JSON.parse(tabLine.slice(tabLine.indexOf("HOSTED1139_TAB ") + 15)) : null;
+  let closed = false;
+  if (targetId) { try { closed = cleanUp(targetId); } catch { closed = false; } }
+  throw Error(`The hosted script failed (${e.message}). ${targetId ? (closed ? "Its tab was closed." : `Close tab ${targetId} by hand.`) : "No tab id was printed: check Aside for an open admin call tab."}\n${partial.slice(-2000)}`);
+}
 const line = output.split("\n").find(l => l.includes("HOSTED1139 "));
 if (!line) throw Error(`No hosted result:\n${output.slice(-2000)}`);
 const { bursts, rendered, marks } = JSON.parse(line.slice(line.indexOf("HOSTED1139 ") + 11));

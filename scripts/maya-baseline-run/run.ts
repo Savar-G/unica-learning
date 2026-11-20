@@ -11,9 +11,12 @@ import { AudioFrame, AudioSource, AudioStream, LocalAudioTrack, Room, RoomEvent,
 import { AccessToken, AgentDispatchClient } from "livekit-server-sdk";
 import { BOARD_RPC, boardRpcHandler } from "@/lib/board-rpc";
 import { createBoardReceiver } from "@/lib/board-protocol";
-import { BASELINE_COST_PREFIX, BASELINE_PREFIX, BASELINE_PROFILE_PREFIX, deviceTurn, type BaselineCost, type BaselineTurn } from "@/lib/maya-baseline";
-import { ATTR, childGrant, childIdentity, HANG_UP_BOARD_DRAIN, voiceRoom } from "@/lib/maya-voice";
-import { BASELINE_AGENT, REPORT_RPC, type BaselineJob, type ReportMessage } from "./agent";
+import {
+  BASELINE_COST_PREFIX, BASELINE_PREFIX, BASELINE_PROFILE_PREFIX, baselineAgentName, deviceTurn, plannedTurns, prepareBaselineEnv, receiptCost,
+  speechCosts, type BaselineCost, type BaselineGroup, type BaselineReceipt, type BaselineTurn, type DeviceObservation, type SpeechProvider,
+} from "@/lib/maya-baseline";
+import { ATTR, childGrant, childIdentity, HANG_UP_BOARD_DRAIN, voiceProviders, voiceRoom } from "@/lib/maya-voice";
+import { BASELINE_AGENT, baselineProvider, REPORT_RPC, type BaselineJob, type ReportMessage } from "./agent";
 
 export interface Prompt { name: string; turnType: "routine" | "complex"; file: string; leadMs?: number }
 /** The matched speech cases (#1137). `interrupt` plays its second prompt while the answer to the first is playing. */
@@ -37,15 +40,15 @@ const FAKE_TURN_MS = 9000;
 
 /** Every child turn a call plans, in order. Background speech is not a turn. */
 const PLANNED = CASES.flatMap(c => c.kind === "background" ? [] : c.kind === "interrupt" ? [c.prompt, c.cut] : [c.prompt]);
+const PLANNED_TYPES = PLANNED.map(prompt => TURN_TYPES[prompt]);
 
-/** A call that never reported still counts: each planned turn it did not finish is a failed attempt. */
-function failedRows(job: BaselineJob, fake: boolean, done: number): BaselineTurn[] {
-  const teaching = job.teaching === "checked" ? "checked-exchange+checked-routine" as const : "existing" as const;
-  return PLANNED.slice(done).map(prompt => ({
-    v: 1, evidence: fake ? "simulated" : "device", mode: "voice", turnType: TURN_TYPES[prompt], provider: "unreported", teaching,
-    device: job.device, network: job.network, concurrency: job.concurrency, outcome: "failed", ms: {}, counts: {},
-  }));
-}
+/** What the run resolved before any call: one provider label for every row, and the speech providers its costs name. */
+export interface RunSettings { provider: string; speech: { stt: SpeechProvider; tts: SpeechProvider } }
+
+const teachingOf = (job: BaselineJob) => job.teaching === "checked" ? "checked-exchange+checked-routine" as const : "existing" as const;
+const groupOf = (job: BaselineJob, run: RunSettings, evidence: BaselineGroup["evidence"]): Omit<BaselineGroup, "turnType"> => ({
+  evidence, mode: "voice", provider: run.provider, teaching: teachingOf(job), device: job.device, network: job.network, concurrency: job.concurrency,
+});
 
 const RATE = 24_000;
 const FRAME = RATE / 100;
@@ -87,15 +90,28 @@ async function child(o: { url: string; job: BaselineJob; prompts: Map<string, In
     return response;
   } } as typeof receiver;
   const handle = boardRpcHandler(stamped, { allowed: () => true, changed: () => {} });
+  // A reader per received track (the site's typecheck has no async iterator on ReadableStream). stop() cancels them.
+  const readers: ReadableStreamDefaultReader<AudioFrame>[] = [];
+  const listening: Promise<void>[] = [];
   room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => {
     if (track.kind !== TrackKind.KIND_AUDIO) return;
-    void (async () => {
-      for await (const frame of new AudioStream(track, { sampleRate: RATE, numChannels: 1 })) {
-        if (!loud(frame.data)) continue;
-        const at = Date.now(), last = bursts.at(-1);
-        if (last && at - last.end < MERGE_MS) last.end = at; else bursts.push({ start: at, end: at });
+    const reader = new AudioStream(track, { sampleRate: RATE, numChannels: 1 }).getReader();
+    readers.push(reader);
+    listening.push((async () => {
+      try {
+        for (;;) {
+          const { done, value: frame } = await reader.read();
+          if (done) return;
+          if (!loud(frame.data)) continue;
+          const at = Date.now(), last = bursts.at(-1);
+          if (last && at - last.end < MERGE_MS) last.end = at; else bursts.push({ start: at, end: at });
+        }
+      } catch {
+        // A cancelled or closed stream ends the listener.
+      } finally {
+        reader.releaseLock();
       }
-    })();
+    })());
   });
   await room.connect(o.url, await token.toJwt(), { autoSubscribe: true, dynacast: false });
   const local = room.localParticipant!;
@@ -147,15 +163,24 @@ async function child(o: { url: string; job: BaselineJob; prompts: Map<string, In
     }
     return false;
   };
-  return { room, local, bursts, board, messages, reported, play, quiet, stop: async () => { running = false; await pump; } };
+  const stop = async () => {
+    running = false;
+    await pump;
+    await Promise.all(readers.map(r => r.cancel().catch(() => {})));
+    await Promise.all(listening);
+  };
+  return { room, local, bursts, board, messages, reported, play, quiet, stop };
 }
 
-async function runCall(o: { url: string; dispatch: AgentDispatchClient; job: Omit<BaselineJob, "dispatchAt">; prompts: Map<string, Int16Array>; capture: string; cases: string; fake: boolean }) {
+async function runCall(o: { url: string; dispatch: AgentDispatchClient; job: Omit<BaselineJob, "dispatchAt">; prompts: Map<string, Int16Array>; capture: string; cases: string; fake: boolean; run: RunSettings }) {
   const job: BaselineJob = { ...o.job, dispatchAt: Date.now() };
-  await o.dispatch.createDispatch(voiceRoom(job.callId), BASELINE_AGENT, { metadata: JSON.stringify(job) });
   let c: Awaited<ReturnType<typeof child>>;
-  try { c = await child({ url: o.url, job, prompts: o.prompts }); } catch (e) {
-    appendFileSync(o.capture, failedRows(job, o.fake, 0).map(r => BASELINE_PREFIX + JSON.stringify(r)).join("\n") + "\n");
+  try {
+    await o.dispatch.createDispatch(voiceRoom(job.callId), BASELINE_AGENT, { metadata: JSON.stringify(job) });
+    c = await child({ url: o.url, job, prompts: o.prompts });
+  } catch (e) {
+    // A refused dispatch or a failed connection still counts each planned turn once, for the worker and the child.
+    appendFileSync(o.capture, turnRows(job, o.run, o.fake, null, []).map(r => BASELINE_PREFIX + JSON.stringify(r)).join("\n") + "\n");
     throw e;
   }
   const steps: Step[] = [];
@@ -209,85 +234,90 @@ async function runCall(o: { url: string; dispatch: AgentDispatchClient; job: Omi
     await Promise.race([c.reported, pause(60_000)]);
     await c.stop();
     await c.room.disconnect();
-    write(o.capture, o.cases, job, steps, c, caseRows, callMinutes, o.fake);
+    write(o.capture, o.cases, job, o.run, steps, c, caseRows, callMinutes, o.fake);
   }
 }
 
-function write(capture: string, cases: string, job: BaselineJob, steps: Step[], c: Awaited<ReturnType<typeof child>>, caseRows: unknown[], callMinutes: number, fake: boolean) {
+/**
+ * The turn rows of one call. Worker rows are the worker's own turns, or a failed row for each planned turn when the worker
+ * never reported. Device rows (real speech only) are one per planned turn: what the child observed, or a failure.
+ */
+function turnRows(job: BaselineJob, run: RunSettings, fake: boolean, reported: BaselineTurn[] | null, observed: (BaselineTurn | undefined)[]): BaselineTurn[] {
+  const worker = reported ?? plannedTurns(groupOf(job, run, fake ? "simulated" : "worker"), PLANNED_TYPES, []);
+  return fake ? worker : [...worker, ...plannedTurns(groupOf(job, run, "device"), PLANNED_TYPES, observed)];
+}
+
+function write(capture: string, cases: string, job: BaselineJob, run: RunSettings, steps: Step[], c: Awaited<ReturnType<typeof child>>, caseRows: unknown[], callMinutes: number, fake: boolean) {
   const lines: string[] = [];
   const turns = c.messages.filter((m): m is Extract<ReportMessage, { kind: "turn" }> => m.kind === "turn");
-  if (!c.messages.some(m => m.kind === "done")) {
-    // No worker report: the device rows below still show what the child heard; the worker rows are failures.
-    lines.push(...failedRows(job, true, 0).map(r => BASELINE_PREFIX + JSON.stringify({ ...r, evidence: fake ? "simulated" : "worker" })));
-  }
+  const reported = c.messages.some(m => m.kind === "done");
   const call = c.messages.find((m): m is Extract<ReportMessage, { kind: "call" }> => m.kind === "call");
-  const teaching = job.teaching === "checked" ? "checked-exchange+checked-routine" as const : "existing" as const;
+  const teaching = teachingOf(job);
   const stepOf = (t0: number | null) => t0 === null ? -1 : steps.findLastIndex(s => s.inputEnd - 3000 <= t0);
   let first = true;
-  for (const t of turns) {
+  const workerRows = turns.map(t => {
     const s = steps[stepOf(t.t0)];
     const row: BaselineTurn = { ...t.row, turnType: s && s.turnType !== "background" ? s.turnType : "unknown" };
     if (first && call) { row.ms = { ...row.ms, workerQueue: call.workerQueueMs }; first = false; }
-    lines.push(BASELINE_PREFIX + JSON.stringify(row));
-  }
+    return row;
+  });
+  const observed: BaselineTurn[] = [];
   steps.forEach((s, i) => {
     const end = steps[i + 1]?.inputEnd ?? Infinity;
     const mine = turns.filter(t => stepOf(t.t0) === i);
-    // Background speech should get no reply: any Maya sound before the next step is a false response.
-    caseRows.push({ case: s.prompt, workerTurns: mine.length, outcomes: mine.map(t => t.row.outcome), answered: mine.some(t => t.answerPlayback !== null),
-      ...(s.turnType === "background" ? { falseResponse: c.bursts.some(b => b.start >= s.inputEnd && b.start < end) } : {}) });
-    if (s.turnType === "background" || fake) return;
-    const provider = turns[0]?.row.provider ?? "unknown";
-    lines.push(BASELINE_PREFIX + JSON.stringify(deviceTurn({
-      group: { evidence: "device", mode: "voice", turnType: s.turnType, provider, teaching, device: job.device, network: job.network, concurrency: job.concurrency },
-      inputEnd: s.inputEnd, bursts: c.bursts.filter(b => b.start < end), answerPlayback: mine.find(t => t.answerPlayback !== null)?.answerPlayback ?? null,
+    const device: Omit<DeviceObservation, "group"> = {
+      inputEnd: s.inputEnd, bursts: c.bursts.filter(b => b.start < end && b.end >= s.inputEnd), answerPlayback: mine.find(t => t.answerPlayback !== null)?.answerPlayback ?? null,
       boardAt: c.board.find(at => at >= s.inputEnd && at < end) ?? null, ...(s.interruptionAt ? { interruptionAt: s.interruptionAt } : {}),
-    })));
+    };
+    // Background speech should get no reply: any Maya sound before the next step is a false response. The raw device
+    // observation is kept so that a later classifier can be run again on the same call.
+    caseRows.push({ case: s.prompt, workerTurns: mine.length, outcomes: mine.map(t => t.row.outcome), answered: mine.some(t => t.answerPlayback !== null),
+      ...(s.turnType === "background" ? { falseResponse: c.bursts.some(b => b.start >= s.inputEnd && b.start < end) } : {}),
+      ...(fake ? {} : { device: { ...device, ackPlayback: mine.find(t => t.ackPlayback !== null)?.ackPlayback ?? null } }) });
+    if (s.turnType === "background" || fake) return;
+    observed.push(deviceTurn({ group: { ...groupOf(job, run, "device"), turnType: s.turnType }, ...device }));
   });
+  lines.push(...turnRows(job, run, fake, reported ? workerRows : null, observed).map(r => BASELINE_PREFIX + JSON.stringify(r)));
   // Machine load biases CPU and event-loop figures: record it beside them.
   const machine = { loadAverage1m: Math.round(loadavg()[0] * 100) / 100, cores: cpus().length };
   if (call?.profile) lines.push(BASELINE_PROFILE_PREFIX + JSON.stringify({ teaching, concurrency: job.concurrency, machine, workerQueueMs: call.workerQueueMs, ...call.profile, discardedPreparation: call.discardedPreparation }));
-  lines.push(...costs(job, teaching, callMinutes, fake, call?.speechUsd ?? null).map(r => BASELINE_COST_PREFIX + JSON.stringify(r)));
+  lines.push(...costs(job, run, teaching, callMinutes, fake, call?.speechUsd ?? null).map(r => BASELINE_COST_PREFIX + JSON.stringify(r)));
   // Discarded preparation is already inside the provider receipts. These rows only make its share visible.
   const d = call?.discardedPreparation as { decisions: number; reported: number; estimated: number; unknown: number; reportedUsd: number; estimatedUsd: number } | undefined;
   if (d?.decisions) {
-    const base = { v: 1 as const, mode: "voice" as const, teaching, concurrency: job.concurrency, work: "discardedPreparation" as const, model: "lesson-model", effort: "code-default" };
+    const base = { v: 1 as const, mode: "voice" as const, teaching, concurrency: job.concurrency, work: "discardedPreparation" as const, model: run.provider.split("+")[0], effort: "unknown" };
     if (d.reported) lines.push(BASELINE_COST_PREFIX + JSON.stringify({ ...base, basis: "provider", calls: d.reported, usd: d.reportedUsd }));
     if (d.estimated) lines.push(BASELINE_COST_PREFIX + JSON.stringify({ ...base, basis: "estimate", calls: d.estimated, usd: d.estimatedUsd }));
     if (d.unknown) lines.push(BASELINE_COST_PREFIX + JSON.stringify({ ...base, basis: "unknown", calls: d.unknown, usd: null }));
   }
   appendFileSync(capture, lines.join("\n") + "\n");
-  appendFileSync(cases, JSON.stringify({ callId: job.callId, teaching, concurrency: job.concurrency, reported: c.messages.some(m => m.kind === "done"), cases: caseRows }) + "\n");
+  appendFileSync(cases, JSON.stringify({ callId: job.callId, teaching, concurrency: job.concurrency, reported, cases: caseRows }) + "\n");
 }
 
-/** Provider receipts for model work; configured-rate estimates for speech; transport has no local price. */
-function costs(job: BaselineJob, teaching: BaselineCost["teaching"], callMinutes: number, fake: boolean, speech: { stt: number; tts: number } | null): BaselineCost[] {
+/** Provider receipts for model work, with each request's role and effort; configured-rate estimates for speech; transport has no local price. */
+function costs(job: BaselineJob, run: RunSettings, teaching: BaselineCost["teaching"], callMinutes: number, fake: boolean, speech: { stt: number; tts: number } | null): BaselineCost[] {
   const base = { v: 1 as const, mode: "voice" as const, teaching, concurrency: job.concurrency };
   const rows: BaselineCost[] = [];
-  if (existsSync(job.receipts)) for (const line of readFileSync(job.receipts, "utf8").split("\n").filter(Boolean)) {
-    const r = JSON.parse(line) as { feature: string; model: string; cost_usd: number | null; cost_basis: BaselineCost["basis"]; calls: number };
-    const basis = r.cost_usd === null ? "unknown" : r.cost_basis === "unknown" ? "provider" : r.cost_basis;
-    rows.push({ ...base, work: r.feature.includes("review") ? "review" : "model", model: r.model, effort: "code-default", basis, calls: r.calls, usd: r.cost_usd });
-  }
-  if (fake) return rows;
-  const minutes = Math.round(callMinutes * 1e4) / 1e4;
-  // The worker ledger's own estimates: speech-to-text by covered minute block, voice by characters returned as audio.
-  rows.push(speech
-    ? { ...base, work: "stt", model: "assemblyai/universal-3-6-pro", effort: "none", basis: "estimate", calls: 1, usd: speech.stt, quantity: { unit: "minutes", value: minutes } }
-    : { ...base, work: "stt", model: "assemblyai/universal-3-6-pro", effort: "none", basis: "unknown", calls: 1, usd: null, quantity: { unit: "minutes", value: minutes } });
-  rows.push(speech
-    ? { ...base, work: "tts", model: "cartesia/sonic-3.6", effort: "none", basis: "estimate", calls: 1, usd: speech.tts }
-    : { ...base, work: "tts", model: "cartesia/sonic-3.6", effort: "none", basis: "unknown", calls: 1, usd: null });
-  rows.push({ ...base, work: "transport", model: "livekit-server-dev", effort: "none", basis: "unknown", calls: 1, usd: null, quantity: { unit: "participantMinutes", value: Math.round(minutes * 2 * 1e4) / 1e4 } });
-  return rows;
+  if (existsSync(job.receipts)) for (const line of readFileSync(job.receipts, "utf8").split("\n").filter(Boolean)) rows.push(receiptCost(JSON.parse(line) as BaselineReceipt, base));
+  return fake ? rows : [...rows, ...speechCosts(base, run.speech, callMinutes, speech)];
 }
 
 export async function main(o: { url: string; agent: string; out: string; teachings: ("existing" | "checked")[]; calls: number; concurrency: number; network: string; device: string; healthPort: number; fake: boolean }) {
   initializeLogger({ pretty: false, level: "warn" });
+  // No hosted row and no other agent name: the job processes inherit this environment.
+  const removed = prepareBaselineEnv(process.env);
+  if (removed.length) console.log(`Removed from the baseline environment: ${removed.join(", ")}`);
+  const providers = voiceProviders(process.env);
+  if (!providers.ok) throw Error(providers.problems.join("; "));
+  // Names only: never a key.
+  const named = (p: { provider: string; model?: string }): SpeechProvider => ({ provider: p.provider, ...(p.model ? { model: p.model } : {}) });
+  const run: RunSettings = { provider: baselineProvider(process.env), speech: { stt: named(providers.speechToText), tts: named(providers.voice) } };
   const prompts = new Map(Object.keys(TURN_TYPES).map(name => [name, pcm(join(o.out, "prompts", `${name}.wav`))]));
   // Background speech plays 18 dB below the child's prompts.
   prompts.set("background", prompts.get("background")!.map(x => Math.round(x * 10 ** (-18 / 20))));
-  const server = new AgentServer(new ServerOptions({ agent: o.agent, agentName: BASELINE_AGENT, wsURL: o.url, apiKey: "devkey", apiSecret: "secret", numIdleProcesses: o.concurrency, loadThreshold: 1, port: o.healthPort }));
+  const options = new ServerOptions({ agent: o.agent, agentName: BASELINE_AGENT, wsURL: o.url, apiKey: "devkey", apiSecret: "secret", numIdleProcesses: o.concurrency, loadThreshold: 1, port: o.healthPort });
+  baselineAgentName(options, BASELINE_AGENT);
+  const server = new AgentServer(options);
   void server.run();
   await pause(3000);
   const dispatch = new AgentDispatchClient(o.url.replace(/^ws/, "http"), "devkey", "secret");
@@ -296,7 +326,7 @@ export async function main(o: { url: string; agent: string; out: string; teachin
     for (let start = 0; start < o.calls; start += o.concurrency) {
       const batch = Array.from({ length: Math.min(o.concurrency, o.calls - start) }, () => {
         const callId = randomUUID();
-        return runCall({ url: o.url, dispatch, prompts, capture, cases, fake: o.fake, job: {
+        return runCall({ url: o.url, dispatch, prompts, capture, cases, fake: o.fake, run, job: {
           callId, parentId: randomUUID(), childId: randomUUID(), teaching, receipts: join(o.out, "receipts", `${callId}.jsonl`),
           concurrency: o.concurrency, network: o.network, device: o.device,
         } }).catch(e => { console.error(`call ${callId} failed:`, e); appendFileSync(cases, JSON.stringify({ callId, teaching, concurrency: o.concurrency, error: String(e) }) + "\n"); });

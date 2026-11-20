@@ -2,15 +2,17 @@
 // VoiceCallRun with real speech and model providers and in-memory call stores. It registers as `maya-baseline`, never as
 // `maya-voice`, and reads no database. Its rows go to the synthetic child over RPC when the call closes.
 import { randomUUID } from "node:crypto";
+import { appendFileSync } from "node:fs";
 import { defineAgent, type JobContext } from "@livekit/agents";
-import { flushAiUsage } from "@/lib/ai-usage";
+import { configureAiUsage, flushAiUsage } from "@/lib/ai-usage";
 import { boardRpcTransport } from "@/lib/board-rpc";
 import { createBoardSender } from "@/lib/board-protocol";
 import { createBoardSpeech, type CueMeasurement } from "@/lib/board-speech";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { memoryWordingHistoryStore } from "@/lib/maya";
-import { baselineTeaching, type BaselineGroup } from "@/lib/maya-baseline";
+import { baselineTeaching, requestEffort, type BaselineGroup, type BaselineReceipt } from "@/lib/maya-baseline";
+import { requestContext } from "@/lib/maya-request-trace";
 import { mayaCalls, type CallModelOptions } from "@/lib/maya-call";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import { callMathReviewer, callModel, callReviewer } from "@/lib/maya-call-seams";
@@ -30,6 +32,32 @@ import { configureDelivery } from "../../worker/maya-voice/src/voice-delivery";
 
 export const BASELINE_AGENT = "maya-baseline";
 export const REPORT_RPC = "maya.baseline.report";
+
+/** The provider label of every row of a run: the call's model and both speech providers, as the worker resolves them. */
+export function baselineProvider(env: Readonly<Record<string, string | undefined>>): string {
+  const providers = voiceProviders(env);
+  if (!providers.ok) throw Error(providers.problems.join("; "));
+  return `${callModel(null, env)?.id ?? "default"}+${providers.ids.speechToText}+${providers.ids.voice}`;
+}
+
+/**
+ * Local-only AI usage for one job: no hosted write, even with a Supabase key in the environment. Each receipt gets the
+ * request's role and the effort its body asked for. Both are read in the request's own context: the metered client
+ * opens a new context for each request, so the fetch and the receipt of one request share it.
+ */
+function localUsage(receipts: string) {
+  const efforts = new WeakMap<object, string>();
+  const inner = globalThis.fetch;
+  globalThis.fetch = (input, init) => {
+    efforts.set(requestContext(), requestEffort(init?.body));
+    return inner(input, init);
+  };
+  configureAiUsage({ local: row => {
+    const ctx = requestContext();
+    const receipt: BaselineReceipt & typeof row = { ...row, role: ctx.source ?? "unlabelled", effort: efforts.get(ctx) ?? "unknown" };
+    appendFileSync(receipts, JSON.stringify(receipt) + "\n", { mode: 0o600 });
+  } });
+}
 
 export interface BaselineJob {
   callId: string;
@@ -54,7 +82,7 @@ export default defineAgent({
   entry: async (ctx: JobContext) => {
     const entryAt = Date.now();
     const job = JSON.parse(ctx.job.metadata) as BaselineJob;
-    process.env.AI_USAGE_RECEIPT_FILE = job.receipts;
+    localUsage(job.receipts);
     globalThis.fetch = markedFetch(globalThis.fetch);
     setTelemetry(new CallTelemetry({ callId: job.callId, scopeId: ctx.job.id }));
     configureDelivery({ callId: job.callId });
@@ -93,7 +121,7 @@ export default defineAgent({
     const sender = createBoardSender({ sessionId: job.callId, senderId: randomUUID(), snapshot: opened.call.boardSnapshot, transport: boardRpcTransport(local, identity, randomUUID) });
     const board = createBoardSpeech({ sender, now: clock, observe: s => opened.call.observeBoard(s), measure: s => samples.push(s) });
     const group: BaselineGroup = {
-      evidence: made.fake ? "simulated" : "worker", mode: "voice", turnType: "unknown", provider: `${store.rows()[0]?.model ?? "default"}+${providers.ids.speechToText}+${providers.ids.voice}`,
+      evidence: made.fake ? "simulated" : "worker", mode: "voice", turnType: "unknown", provider: baselineProvider(process.env),
       teaching: baselineTeaching(checked, checked), device: job.device, network: job.network, concurrency: job.concurrency,
     };
     // The ledger's speech estimates (configured rates, CAD micro-units) in USD.
