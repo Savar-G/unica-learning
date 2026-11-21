@@ -6,7 +6,7 @@ import { browserReferralStorage, keepReferralDraft, referralDraft } from "@/lib/
 
 export interface ReferralEntryHandle { confirm(): Promise<boolean> }
 /** The same input serves plan choice and Account. Errors retain the parent's exact text. */
-export function ReferralCard({ entryOnly = false, ref }: { entryOnly?: boolean; ref?: Ref<ReferralEntryHandle> }) {
+export function ReferralCard({ entryOnly = false, ref, className = "" }: { entryOnly?: boolean; ref?: Ref<ReferralEntryHandle>; className?: string }) {
   const [overview, setOverview] = useState<ReferralOverview | null>(null);
   const [input, setInput] = useState("");
   const [message, setMessage] = useState("");
@@ -46,7 +46,7 @@ export function ReferralCard({ entryOnly = false, ref }: { entryOnly?: boolean; 
     try { await navigator.clipboard.writeText(value); setMessage("Copied."); }
     catch { setMessage("We could not copy it. Select the code or link and copy it."); }
   }
-  return <section className="acct-card acct-saved" aria-label="Family referrals">
+  return <section className={`acct-card acct-saved ${className}`.trimEnd()} aria-label="Family referrals">
     <h2>{entryOnly ? "Have a referral code?" : "Family referrals"}</h2>
     {!entryOnly && <><p>{REFERRAL_OFFER}</p><p>{REFERRAL_SCOPE} <Link href="/terms#referrals">Referral rules</Link>.</p></>}
     {loading && <p role="status">Loading referral details...</p>}

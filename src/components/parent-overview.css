@@ -7,46 +7,47 @@
 /* This week: Mon to Fri. A done day is a green disc with a tick, today is ringed, coming up is an empty circle. */
 .support-page .pa .po-week { display: flex; justify-content: space-between; padding: 4px 2px; }
 .po-day { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 56px; font-size: 12px; color: var(--pa-tx3); position: relative; }
-.po-dot { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-size: 14px; font-weight: 600; border: 1.5px solid var(--pa-ring); background: #fff; color: #fff; }
+.po-dot { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-size: 14px; font-weight: var(--parent-status-weight); border: 1.5px solid var(--pa-ring); background: #fff; color: #fff; }
 .po-day.is-done .po-dot, .po-day.is-today_done .po-dot { border: 0; background: var(--pa-g); }
 .po-day.is-today .po-dot { border: 2px solid var(--pa-tx); }
 .po-day.is-today_done .po-dot { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--pa-tx); }
-.po-day.is-today, .po-day.is-today_done { color: var(--pa-tx); font-weight: 600; }
+.po-day.is-today, .po-day.is-today_done { color: var(--pa-tx); font-weight: var(--parent-status-weight); }
 
 /* The workbook card */
 .po-book { display: grid; gap: 16px; padding: 20px; }
 .po-book-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.support-page .pa .po-k { font: 400 12.5px/1.2 var(--mono); color: var(--pa-tx3); text-transform: uppercase; letter-spacing: 0.02em; }
-.support-page .pa .po-n { font-size: 40px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; margin-top: 6px; }
-.po-n small { font-size: 20px; color: var(--pa-tx3); font-weight: 600; }
+.support-page .pa .po-n { font-weight: var(--parent-number-weight); font-size: 40px; line-height: 1.05; letter-spacing: -0.035em; margin-top: 6px; }
+.po-n small { font-size: 20px; color: var(--pa-tx2); }
 .po-ring { position: relative; flex: 0 0 auto; width: 96px; height: 96px; }
 .po-ring svg { display: block; }
-.po-ring-in { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; font-size: 11.5px; font-weight: 600; line-height: 1.15; color: var(--pa-tx2); align-content: center; }
-.po-ring-in b { display: block; font-size: 18px; color: var(--pa-tx); }
+.po-ring-in { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; font-size: 11.5px; font-weight: var(--parent-support-weight); line-height: 1.15; color: var(--pa-tx2); align-content: center; }
+.po-ring-in > span > b { font-weight: var(--parent-body-weight); display: block; font-size: 20px; color: var(--pa-tx); }
 /* The row opens the Workbooks page at today's day (#1031). */
 .support-page .pa .po-today { border-top: 1px solid var(--pa-line); padding-top: 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; color: inherit; text-decoration: none; min-height: 44px; }
 .po-today:focus-visible { outline: 2px solid var(--pa-s); outline-offset: 2px; border-radius: 8px; }
 .support-page .pa .po-today .po-chev { flex: 0 0 auto; margin: 0; color: #b0aea8; font-size: 18px; line-height: 1; }
 .po-today > div { min-width: 0; }
-.po-today b { display: block; font-size: 15px; font-weight: 600; }
-.po-today span { display: block; font-size: 13.5px; color: var(--pa-tx2); margin-top: 2px; }
-.support-page .pa .po-today .po-pp { font-size: 14px; font-weight: 600; white-space: nowrap; margin-top: 0; color: var(--pa-tx); }
+.po-today b { display: block; font-size: var(--parent-body-size); font-weight: var(--parent-item-weight); }
+.po-today span { display: block; font-size: var(--parent-support-size); font-weight: var(--parent-support-weight); color: var(--pa-tx2); margin-top: 2px; }
+.support-page .pa .po-today .po-pp { font-size: 14px; font-weight: var(--parent-status-weight); white-space: nowrap; margin-top: 0; color: var(--pa-tx); }
 
 /* "Scan the first pages when they're done": only before the family's first scan */
 .po-scan { display: flex; align-items: center; gap: 12px; padding: 14px 14px 14px 18px; }
 .po-scan > div { flex: 1; min-width: 0; }
-.po-scan b { display: block; font-size: 15.5px; font-weight: 600; }
-.po-scan span { display: block; font-size: 13.5px; color: var(--pa-tx2); margin-top: 2px; }
+.po-scan b { display: block; font-size: var(--parent-body-size); font-weight: var(--parent-item-weight); }
+.po-scan span { display: block; font-size: var(--parent-support-size); font-weight: var(--parent-support-weight); color: var(--pa-tx2); margin-top: 2px; }
 
 .support-page .pa .po-preparing { font-size: 15px; line-height: 1.45; color: var(--pa-tx); }
 .support-page .pa .po-preparing a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
 
 /* Skills: three counts, then the list of the one picked */
 .po-trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.po-count { background: #fff; border: 0; border-radius: 18px; box-shadow: var(--pa-shadow); padding: 14px 12px; text-align: left; display: flex; flex-direction: column; gap: 10px; min-height: 44px; }
-.po-count b { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; }
-.po-count span { font-size: 12.5px; font-weight: 600; }
-.po-count[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--pa-tx); }
+.po-count { background: var(--pa-soft); border: 1px solid var(--pa-line); border-radius: 10px; padding: 14px 12px; text-align: left; display: flex; flex-direction: column; gap: 10px; min-height: 44px; }
+.po-trio .po-count b { font-size: 26px; font-weight: var(--parent-number-weight); letter-spacing: -0.035em; line-height: 1; }
+.po-count span { font-size: 12.5px; font-weight: var(--parent-control-weight); }
+.po-count.is-g[aria-pressed="true"] { background: var(--pa-gs); border-color: var(--pa-gt); }
+.po-count.is-s[aria-pressed="true"] { background: var(--pa-ss); border-color: var(--pa-st); }
+.po-count.is-a[aria-pressed="true"] { background: var(--pa-as); border-color: var(--pa-at); }
 .po-count.is-g span { color: var(--pa-gt); }
 .po-count.is-s span { color: var(--pa-st); }
 .po-count.is-a span { color: var(--pa-at); }
@@ -55,21 +56,21 @@
 .support-page .pa .po-list li:first-child { border-top: 0; padding-top: 0; }
 .support-page .pa .po-list li:last-child { padding-bottom: 0; }
 .po-skill { flex: 1; min-width: 0; }
-.po-skill b { display: block; font-weight: 600; font-size: 15.5px; line-height: 1.3; overflow-wrap: anywhere; }
-.po-skill small { display: block; font-size: 13.5px; color: var(--pa-tx2); margin-top: 2px; }
+.po-skill b { display: block; font-weight: var(--parent-item-weight); font-size: var(--parent-body-size); line-height: 1.3; overflow-wrap: anywhere; }
+.po-skill small { display: block; font-size: var(--parent-support-size); font-weight: var(--parent-support-weight); color: var(--pa-tx2); margin-top: 2px; }
 .support-page .pa .po-none { color: var(--pa-tx2); }
 
-/* "On track this week." (#990): plain text under the workbook card with a bold lead; no card, icon or pill. */
-.support-page .pa .po-line { margin: 2px 4px 0; font-size: 15px; line-height: 1.4; }
-.po-line b { font-weight: 600; }
+/* "On track this week." (#990): plain text under the workbook card with a medium-weight lead; no card, icon or pill. */
+.support-page .pa .po-line { font-weight: var(--parent-body-weight); margin: 2px 4px 0; font-size: 15px; line-height: 1.4; }
+.po-line b { font-weight: var(--parent-item-weight); color: var(--pa-tx); }
 
-/* Highlights (#990): one white card, a short sentence each, a small blue dot beside it. */
+/* Highlights (#990): one card, a short sentence each, a small blue dot beside it. */
 .po-hl { display: flex; flex-direction: column; gap: 12px; }
 .support-page .pa .po-hl p { display: flex; gap: 12px; align-items: flex-start; margin: 0; font-size: 15px; line-height: 1.4; }
 .po-hl-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--pa-s); margin-top: 7px; }
 
 /* "Workbook N is on its way": one plain line above the week while a newer book is in the mail. */
-.po-way { margin: 0; font-size: 14.5px; font-weight: 600; color: var(--pa-tx2, #50505a); }
+.po-way { margin: 0; font-size: 14.5px; font-weight: var(--parent-body-weight); color: var(--pa-tx2, #50505a); }
 
 /* The laptop: two columns when the Home itself is wide enough. */
 @container (min-width: 760px) {

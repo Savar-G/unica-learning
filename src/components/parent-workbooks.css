@@ -6,26 +6,26 @@
 
 .pa .wb-cover { display: flex; align-items: center; gap: 14px; padding: 14px; }
 .wb-cover-text { flex: 1; min-width: 0; }
+.support-page .pa .wb-cover-text h2 { font-size: var(--parent-body-size); font-weight: var(--parent-item-weight); letter-spacing: normal; }
 .support-page .pa .wb-sub { margin: 0; font-size: 13px; line-height: 1.4; color: var(--pa-tx2); }
 .support-page .pa .wb-cover .wb-sub + .wb-sub { margin-top: 6px; }
 .wb-bar { height: 8px; border-radius: 4px; background: var(--pa-soft); overflow: hidden; margin: 10px 0 0; }
 .wb-bar i { display: block; height: 100%; background: var(--pa-g); border-radius: 4px; }
 .support-page .pa .wb-cover .wb-bar + .wb-sub { margin-top: 6px; }
 
-.wb-tile { width: 72px; height: 94px; border-radius: 10px; flex: 0 0 auto; background: #f6f5f2; border: 1px solid var(--pa-line); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+.wb-tile { width: 72px; height: 94px; border-radius: 10px; flex: 0 0 auto; background: var(--card); border: 1px solid var(--pa-line); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
 .wb-tile .wb-mark { width: 34px; height: 34px; border-radius: 7px; display: block; }
-.wb-tile b { font-size: 11px; font-weight: 700; color: var(--pa-tx2); }
+.wb-tile b { font-size: 11px; font-weight: var(--parent-item-weight); color: var(--pa-tx2); }
 .wb-tile.is-small { width: 44px; height: 56px; gap: 4px; border-radius: 8px; }
 .wb-tile.is-small .wb-mark { width: 22px; height: 22px; border-radius: 5px; }
 .wb-tile.is-small b { font-size: 9px; }
 
-.support-page .pa .wb-unknown { margin: 8px 0 0; font-size: 13px; line-height: 1.4; color: var(--pa-tx2); }
+.support-page .pa .wb-unknown { font-weight: var(--parent-status-weight); margin: 8px 0 0; font-size: 13px; line-height: 1.4; color: var(--pa-tx2); }
 .support-page .pa .wb-facts { font-size: 13.5px; line-height: 1.4; color: var(--pa-tx2); margin: 0 4px; }
 
 /* The orange row of a day with pages still to scan */
-.pa .wb-scan { display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 14px; border-radius: 16px; }
+.pa .wb-scan { display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 14px; }
 .wb-scan > div { flex: 1; min-width: 0; }
-.wb-scan b { display: block; font-size: 14px; font-weight: 600; }
 .wb-scan span { display: block; font-size: 13px; color: var(--pa-tx2); margin-top: 2px; }
 
 /* "How to follow the 10 days": one card that opens in place */
@@ -33,25 +33,24 @@
 .support-page .pa .wb-guide > summary { text-decoration: none; }
 .wb-guide > summary { list-style: none; display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 11px 0; cursor: pointer; }
 .wb-guide > summary::-webkit-details-marker { display: none; }
-.wb-guide > summary b { flex: 1; font-size: 14.5px; font-weight: 600; }
+.wb-guide > summary b { flex: 1; font-size: var(--parent-body-size); font-weight: var(--parent-control-weight); }
 .wb-guide > summary:focus-visible { outline: 2px solid var(--pa-s); outline-offset: 2px; border-radius: 8px; }
 .support-page .pa .wb-guide p { padding: 0 0 13px; font-size: 13.5px; line-height: 1.45; color: var(--pa-tx2); }
 .wb-chev { flex: 0 0 auto; color: #b0aea8; font-size: 18px; line-height: 1; transition: transform 0.15s ease; }
 .wb-guide[open] > summary .wb-chev { transform: rotate(90deg); }
 
-.support-page .pa .wb-back { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; font-size: 14px; font-weight: 600; color: var(--pa-st); text-decoration: none; }
+.support-page .pa .wb-back { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; font-size: 14px; font-weight: var(--parent-control-weight); color: var(--pa-st); text-decoration: none; }
 
 /* Answer keys */
 .pa .wb-keys { display: grid; gap: 6px; padding: 14px 14px 6px; }
-.support-page .pa .wb-keys h2 { font-size: 16px; }
 .support-page .pa .wb-note { font-size: 13px; line-height: 1.4; color: var(--pa-tx2); }
 .support-page .pa .wb-keys ul { margin-top: 4px; }
 .support-page .pa .wb-keys li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; border-top: 1px solid var(--pa-line); margin: 0; }
-.wb-keys li b { font-size: 14.5px; font-weight: 600; }
-.support-page .pa .wb-view { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; border-radius: 6px; background: var(--pa-soft); color: var(--pa-tx); font-size: 14px; font-weight: 500; text-decoration: none; white-space: nowrap; }
+.wb-keys li b { font-size: var(--parent-body-size); font-weight: var(--parent-item-weight); }
+.support-page .pa .wb-view { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; border-radius: 6px; background: var(--pa-soft); color: var(--pa-tx); font-size: 14px; font-weight: var(--parent-control-weight); text-decoration: none; white-space: nowrap; }
 
 /* Older workbooks: one row each, opening that book's page */
-.support-page .pa .wb-label { margin: 0 0 8px 4px; font: 400 12px/1.4 var(--mono); letter-spacing: 0.02em; text-transform: uppercase; color: var(--pa-tx3); }
+.support-page .pa .wb-label { margin: 0 0 8px 4px; }
 /* Beats `.support-page .pa ul { padding: 0 }`, which has more weight than `.pa .wb-older`. */
 .support-page .pa .wb-older { padding: 4px 14px; }
 .support-page .pa .wb-older li { margin: 0; }
@@ -59,12 +58,11 @@
 .support-page .pa .wb-older a { display: flex; align-items: center; gap: 12px; min-height: 68px; padding: 8px 0; color: inherit; text-decoration: none; }
 .wb-older a:focus-visible { outline: 2px solid var(--pa-s); outline-offset: 2px; border-radius: 8px; }
 .wb-older-t { flex: 1; min-width: 0; display: grid; }
-.wb-older-t b { font-size: 14.5px; font-weight: 600; }
+.wb-older-t b { font-size: var(--parent-body-size); font-weight: var(--parent-item-weight); }
 .wb-older-t span { font-size: 12.5px; color: var(--pa-tx3); }
 
 /* Tracking */
 .pa .wb-track { display: grid; gap: 10px; }
-.support-page .pa .wb-track h2 { font-size: 16px; }
 .wb-track dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 16px; margin: 0; font-size: 14px; }
 .wb-track dt { color: var(--pa-tx2); }
 .wb-track dd { margin: 0; overflow-wrap: anywhere; }
@@ -74,13 +72,13 @@
 .support-page .pw-answers { list-style: none; margin: 0; padding: 0; }
 .support-page .pw-answers > li { border-top: 1px solid var(--line-soft); padding: 16px 0; }
 .support-page .pw-answers > li:first-child { border-top: 0; padding-top: 0; }
-.support-page .pw-answers h3 { margin: 0 0 8px; font: 500 16px/1.4 var(--sans); }
+.support-page .pw-answers h3 { margin: 0 0 8px; font: var(--parent-item-weight) var(--parent-body-size)/1.4 var(--sans); }
 .support-page .pw-answer-parts { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .support-page .pw-answer-parts li { margin: 0; overflow-wrap: anywhere; }
 .pw-answer-label { color: var(--ink-2); font-size: 14px; }
 .pw-card { padding: 20px 22px; border: 1px solid var(--line); border-radius: 14px; background: #fff; min-width: 0; }
 .pw-section { margin-top: 14px; }
-.support-page .pw-card h2 { margin: 0 0 14px; font-size: 19px; font-weight: 300; letter-spacing: -0.035em; }
+.support-page .pw-card h2 { margin: 0 0 14px; font-size: var(--parent-section-size); font-weight: var(--parent-section-weight); letter-spacing: -0.02em; }
 .support-page .pw-sub { margin: 8px 0 0; font-size: 15px; line-height: 1.45; color: var(--ink-2); }
 
 /* A laptop: the book on the left, the keys and older books on the right (the Home's container query). */

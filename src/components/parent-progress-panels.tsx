@@ -26,13 +26,13 @@ function Chart({ points, width, height, className }: { points: ChartPoint[]; wid
     <svg className={className} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
       {[0, max].map((t) => (
         <g key={t}>
-          <line x1={L} x2={width - R} y1={y(t)} y2={y(t)} stroke="#efeee9" />
+          <line x1={L} x2={width - R} y1={y(t)} y2={y(t)} stroke="var(--pa-line)" />
           <text x={L - 8} y={y(t) + 4} textAnchor="end">{t}</text>
         </g>
       ))}
-      {points.length > 1 && <path d={`${path}L${x(last)},${y(0)}L${x(0)},${y(0)}Z`} fill="#e7f6ee" />}
-      <path d={path} fill="none" stroke="#16a06a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-      {points.map((p, i) => <circle key={i} cx={x(i)} cy={y(p.value)} r={i === last ? 5 : 3} fill={i === last ? "#16a06a" : "#fff"} stroke="#16a06a" strokeWidth="2" />)}
+      {points.length > 1 && <path d={`${path}L${x(last)},${y(0)}L${x(0)},${y(0)}Z`} fill="var(--pa-gs)" />}
+      <path d={path} fill="none" stroke="var(--pa-g)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      {points.map((p, i) => <circle key={i} cx={x(i)} cy={y(p.value)} r={i === last ? 5 : 3} fill={i === last ? "var(--pa-g)" : "#fff"} stroke="var(--pa-g)" strokeWidth="2" />)}
       {points.map((p, i) => labelled(i) && <text key={`l${i}`} x={x(i)} y={height - 8} textAnchor={i === 0 ? "start" : i === last ? "end" : "middle"}>{p.label}</text>)}
     </svg>
   );

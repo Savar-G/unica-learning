@@ -1,0 +1,80 @@
+{
+  "issue": 1208,
+  "base": "9129f7b78aa14a10ea1979d8b3c32cdaf472a177",
+  "browser": "Aside u0 on localhost with invented data",
+  "viewport": {
+    "desktop": [
+      1440,
+      1000
+    ],
+    "phone": [
+      390,
+      844
+    ]
+  },
+  "captures": {
+    "Overview, catching up": "overview-catching-up",
+    "Overview, on track": "overview-on-track",
+    "Progress": "progress",
+    "Workbooks": "workbooks"
+  },
+  "screenshots": [
+    "after-overview-catching-up-desktop.png",
+    "after-overview-catching-up-phone-detail.png",
+    "after-overview-catching-up-phone.png",
+    "after-overview-on-track-desktop.png",
+    "after-overview-on-track-phone-detail.png",
+    "after-overview-on-track-phone.png",
+    "after-overview-ring-desktop.png",
+    "after-overview-ring-phone.png",
+    "after-progress-desktop.png",
+    "after-progress-phone-detail.png",
+    "after-progress-phone.png",
+    "after-workbooks-desktop.png",
+    "after-workbooks-phone-detail.png",
+    "after-workbooks-phone.png",
+    "before-overview-catching-up-desktop.png",
+    "before-overview-catching-up-phone-detail.png",
+    "before-overview-catching-up-phone.png",
+    "before-overview-on-track-desktop.png",
+    "before-overview-on-track-phone-detail.png",
+    "before-overview-on-track-phone.png",
+    "before-overview-ring-desktop.png",
+    "before-overview-ring-phone.png",
+    "before-progress-desktop.png",
+    "before-progress-phone-detail.png",
+    "before-progress-phone.png",
+    "before-workbooks-desktop.png",
+    "before-workbooks-phone-detail.png",
+    "before-workbooks-phone.png"
+  ],
+  "ringFollowUp": {
+    "base": "004989a5ec295ec9ee3474a6fbb45fab966d0c7b",
+    "fixture": "Overview, on track (38%)",
+    "crop": [96, 96]
+  },
+  "audit": {
+    "renders": 128,
+    "rendersByFixture": {
+      "overview": 14,
+      "progress": 8,
+      "workbooks": 14,
+      "workbook_answers": 6,
+      "scan": 10,
+      "scan_results": 10,
+      "maya": 12,
+      "assessment": 12,
+      "report": 14,
+      "account": 12,
+      "plan": 10,
+      "feedback": 6
+    },
+    "textWeightsObserved": [
+      "300",
+      "400",
+      "500"
+    ],
+    "controlsOutside500": 0,
+    "horizontalOverflow": 0
+  }
+}

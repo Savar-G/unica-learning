@@ -124,6 +124,21 @@ The email is one 600 px column in the same order as the page (D-305): greeting, 
 
 **Typography:** Geist for headlines (light 300, sentence case, tight tracking) and text; Geist Mono for labels, with an orange square marker. In the hero, "Personalized. Delivered." is grey and "Mastered." is ink with the yellow highlighter.
 
+### Parent dashboard typography
+
+Use the named roles in `src/ds/styles/parent-type.css` across Overview, Progress, Workbooks, Scan pages, Maya, Assessment and Account. **No weight above 500.** The only weights in Parent are 300, 400 and 500, including nested controls and `b` or `strong` text.
+
+| Role | Size and weight |
+| --- | --- |
+| Page title | 30–44 px, 300, with tight tracking |
+| Large number | 300. Size follows the display, for example 40 px for the current day and 24–26 px for summary counts. The ring uses 18 px at 300 for the number and regular weight for its small label. |
+| Section heading | 20 px and 500 in ink. Use size and ink to establish hierarchy. |
+| Named item | 16 px and at most 500. A skill, topic, workbook row or day row stays at body size and never exceeds its section heading in size or weight. |
+| Body and lead phrase | 16 px and 400 for body text. Use darker ink or 500 for a short lead such as “Catching up this week.” |
+| Supporting text | Around 13 px and 400 in muted ink. |
+| Status and control | 500, including statuses, buttons and disclosure controls. |
+| Mono label | Keep the existing Geist Mono style and orange square marker on eyebrows. |
+
 **Delight (Ello):** Micro animations on scroll: a mono word chip that swaps (fractions, reading, long division, new words); photos and workbook pages that drift; cards that lift; sections that rise in; the hero colour field moves slowly.
 
 **Connection (Squirrel AI, Outschool):** An orange pencil line runs down the page margin and draws itself on scroll.

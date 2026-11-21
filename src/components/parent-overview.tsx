@@ -25,8 +25,8 @@ function Ring({ percent, book }: { percent: number; book: number }) {
   return (
     <div className="po-ring" role="img" aria-label={`${percent}% of Workbook ${book}'s pages scanned`}>
       <svg width={size} height={size} aria-hidden="true">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#f5f4f1" strokeWidth="9" />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#16a06a" strokeWidth="9" strokeLinecap="round" strokeDasharray={`${(c * percent) / 100} ${c}`} transform={`rotate(-90 ${size / 2} ${size / 2})`} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--card)" strokeWidth="9" />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--pa-g)" strokeWidth="9" strokeLinecap="round" strokeDasharray={`${(c * percent) / 100} ${c}`} transform={`rotate(-90 ${size / 2} ${size / 2})`} />
       </svg>
       <div className="po-ring-in" aria-hidden="true"><span><b>{percent}%</b>done</span></div>
     </div>
@@ -72,8 +72,8 @@ export function ParentOverview({ overview }: { overview: OverviewView }) {
             <section className="pa-card po-book" aria-labelledby="po-book-k">
               <div className="po-book-top">
                 <div>
-                  <p className="po-k" id="po-book-k">Workbook {workbook.number}</p>
-                  <p className="po-n">Day {workbook.day}<small> of {workbook.days}</small></p>
+                  <p className="eyebrow" id="po-book-k">Workbook {workbook.number}</p>
+                  <h2 className="po-n">Day {workbook.day}<small> of {workbook.days}</small></h2>
                 </div>
                 {workbook.percent !== null && <Ring percent={workbook.percent} book={workbook.number} />}
               </div>

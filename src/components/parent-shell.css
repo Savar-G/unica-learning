@@ -1,10 +1,10 @@
 /* The parent dashboard's frame (#551, #1024): a white sidebar with only the logo and the tabs, one header (the top bar on a
    laptop; the sticky top of the page on a phone), and the page centred at about 1040 px. Type follows DESIGN.md: light
-   Geist headings and Geist Mono labels. White cards keep a soft shadow and a 20 px radius, with colour for meaning: orange
-   for scan actions, green for done, blue for learning, amber for needs help. Below 900 px the tabs are a bottom bar. */
+   Geist page titles and Geist Mono labels, with colour for meaning: orange for scan actions, green for done, blue for
+   learning, amber for needs help. Below 900 px the tabs are a bottom bar. */
 .pd-shell.look-root { --pd-side: 248px; --pd-col: 1040px; --pd-shadow: 0 1px 2px rgba(17, 17, 17, 0.04), 0 6px 20px rgba(17, 17, 17, 0.06); display: grid; grid-template-columns: var(--pd-side) minmax(0, 1fr); min-height: 100dvh; background: #fff; }
 .pd-side { position: sticky; top: 0; align-self: start; height: 100dvh; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding: 22px 16px; border-right: 1px solid var(--line); background: #fff; }
-.pd-side .logo, .pd-top .logo { font: 600 19px/1 var(--sans); letter-spacing: -0.03em; text-decoration: none; display: inline-flex; align-items: baseline; gap: 1px; color: var(--ink); }
+.pd-side .logo, .pd-top .logo { font: var(--parent-item-weight) 19px/1 var(--sans); letter-spacing: -0.03em; text-decoration: none; display: inline-flex; align-items: baseline; gap: 1px; color: var(--ink); }
 .pd-side .logo { padding: 0 8px; }
 .pd-side .logo b, .pd-top .logo b { display: inline-block; width: 0.36em; height: 0.36em; background: var(--accent); margin-left: 2px; }
 
@@ -12,7 +12,7 @@
 .pd-top { width: min(100%, var(--pd-col)); margin: 0 auto; padding: 28px clamp(24px, 3.5vw, 56px) 0; }
 .pd-top-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .pd-top .logo, .pd-top-feedback { display: none; }
-.pd-top-name { margin: 0; min-width: 0; font: 300 32px/1.1 var(--sans); letter-spacing: -0.035em; color: var(--ink); overflow-wrap: anywhere; }
+.pd-top-name { margin: 0; min-width: 0; font: var(--parent-title-weight) 32px/1.1 var(--sans); letter-spacing: -0.035em; color: var(--ink); overflow-wrap: anywhere; }
 .pd-top-acts { display: flex; align-items: center; gap: 10px; margin-left: auto; flex: none; }
 .pd-top-empty { display: none; }
 /* The phone's tab links (a child whose tabs are only Assessment and Account): the sidebar holds those tabs on a laptop. */
@@ -20,9 +20,9 @@
 @media (min-width: 900px) { .pd-top-links { display: none; } }
 
 /* The child pill: the avatar and the name. Several children: it opens the switcher (a plain list, so it works without JavaScript). */
-.pd-kid { display: inline-flex; align-items: center; gap: 7px; min-width: 0; padding: 5px 10px 5px 5px; border-radius: 999px; background: var(--soft); font: 600 14px/1 var(--sans); color: var(--ink); }
-.pd-kid-av { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--sun); font: 700 12px/1 var(--sans); }
-.pd-kid b { min-width: 0; max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.pd-kid { display: inline-flex; align-items: center; gap: 7px; min-width: 0; padding: 5px 10px 5px 5px; border-radius: 999px; background: var(--soft); font: var(--parent-control-weight) 14px/1 var(--sans); color: var(--ink); }
+.pd-kid-av { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--sun); font: var(--parent-item-weight) 12px/1 var(--sans); }
+.pd-kid b { min-width: 0; max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--parent-item-weight); }
 .pd-switch { position: relative; }
 .pd-switch summary { cursor: pointer; list-style: none; text-decoration: none; min-height: 40px; }
 .pd-switch summary::-webkit-details-marker { display: none; }
@@ -30,14 +30,14 @@
 .pd-chev { flex: none; color: var(--ink-2); transition: transform 0.15s ease; }
 .pd-switch[open] .pd-chev { transform: rotate(180deg); }
 .pd-switch-list { position: absolute; z-index: 20; right: 0; top: calc(100% + 8px); min-width: 220px; max-height: min(60dvh, 420px); overflow-y: auto; list-style: none; margin: 0; padding: 6px; background: #fff; border-radius: 16px; box-shadow: var(--pd-shadow), 0 16px 32px -12px rgba(17, 17, 17, 0.25); }
-.pd-switch-list a { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 44px; padding: 6px 12px; border-radius: 10px; color: var(--ink); text-decoration: none; font: 600 15px/1.2 var(--sans); }
+.pd-switch-list a { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 44px; padding: 6px 12px; border-radius: 10px; color: var(--ink); text-decoration: none; font: var(--parent-control-weight) 15px/1.2 var(--sans); }
 .pd-switch-list a span { font: 400 12.5px/1.3 var(--sans); color: var(--ink-2); }
 .pd-switch-list a:hover { background: var(--soft); }
 .pd-switch-list a[aria-current="true"] { background: var(--soft); }
 
 /* Open the desk: a small outline button, never a bar. */
 .pd-desk-form { margin: 0; flex: none; }
-.pd-desk { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 36px; padding: 0 14px; border: 1.5px solid #b8b3aa; border-radius: 999px; background: #fff; color: var(--ink); font: 600 13px/1 var(--sans); white-space: nowrap; text-decoration: none; cursor: pointer; }
+.pd-desk { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 36px; padding: 0 14px; border: 1.5px solid #b8b3aa; border-radius: 999px; background: #fff; color: var(--ink); font: var(--parent-control-weight) 13px/1 var(--sans); white-space: nowrap; text-decoration: none; cursor: pointer; }
 .pd-desk:hover { border-color: var(--ink); }
 .pd-desk:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
 
@@ -45,7 +45,7 @@
    clipped for screen readers, and its desk is not shown at all (display: none, so it is not focusable either): one desk
    button per page at every width. */
 .pd-name-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-[data-look="warm"] .pd-main .support-page .pd-name-row h1 { margin: 0; min-width: 0; font: 300 30px/1.1 var(--sans); letter-spacing: -0.035em; overflow-wrap: anywhere; }
+[data-look="warm"] .pd-main .support-page .pd-name-row h1 { margin: 0; min-width: 0; font: var(--parent-title-weight) 30px/1.1 var(--sans); letter-spacing: -0.035em; overflow-wrap: anywhere; }
 @media (min-width: 900px) {
   .pd-name-row :is(.pd-desk-form, a.pd-desk) { display: none; }
   [data-look="warm"] .pd-main .support-page .pd-name-row h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -55,7 +55,7 @@
 .pd-nav { display: grid; gap: 2px; }
 .pd-nav a { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); text-decoration: none; font-size: 15px; }
 .pd-nav a:hover { background: var(--soft); color: var(--ink); }
-.pd-nav a[aria-current="page"] { background: var(--soft); color: var(--ink); font-weight: 600; }
+.pd-nav a[aria-current="page"] { background: var(--soft); color: var(--ink); font-weight: var(--parent-control-weight); }
 .pd-nav svg, .pd-bar svg, .pd-sheet svg { flex: none; }
 
 /* The page inside the frame: the site's nav gives way to the sidebar. */
@@ -64,10 +64,11 @@
 .pd-main .support-root > .nav { display: none; }
 .pd-main .support-page { width: min(100%, var(--pd-col)); margin: 0 auto; padding: 20px clamp(24px, 3.5vw, 56px) 72px; }
 .pd-main .support-page.support-wide { width: min(100%, var(--pd-col)); }
-[data-look="warm"] .pd-main .support-page h1 { font-size: clamp(30px, 3.4vw, 44px); font-weight: 300; letter-spacing: -0.035em; }
+[data-look="warm"] .pd-main .support-page h1 { font-size: var(--parent-title-size); font-weight: var(--parent-title-weight); letter-spacing: -0.035em; }
 .pd-main .acct-alert + .acct-kids, .pd-main h1 + .acct-kids { margin-top: 28px; }
-/* Cards in the frame: white, a soft shadow and a 20 px radius, never a grey bordered box. */
-.pd-shell .pd-main .support-page :is(.pw-card, .acct-card, .acct-kid.acct-plan, .acd-child, .ps-table-wrap, .rpt-call):not(.acct-goal, .acct-phone) { border: 0; border-radius: 20px; background: #fff; box-shadow: var(--pd-shadow); }
+/* Quiet panels for workbook answers and account details. */
+.pd-shell .pd-main .support-page :is(.pw-card, .pd-plans .acct-plan, .acd-child, .acct-referral) { border: 1px solid var(--line); border-radius: 10px; background: var(--soft); }
+.pd-shell .pd-main .support-page :is(.acct-card, .acct-kid.acct-plan, .ps-table-wrap, .rpt-call):not(.acct-goal, .acct-phone):not(.pd-plans .acct-plan, .acct-referral) { border: 0; border-radius: 20px; background: #fff; box-shadow: var(--pd-shadow); }
 /* Two cards keep their own tint (support.css): the light-yellow goal and the grey phone note; only the corners match. */
 .pd-shell .pd-main .support-page :is(.acct-goal, .acct-phone) { border-radius: 20px; }
 .support-page .pd-links { list-style: none; margin: 28px 0 24px; padding: 0; border-top: 1px solid var(--line-soft); }
@@ -102,7 +103,7 @@
 .pd-k { font: 400 12px/1.3 var(--mono); letter-spacing: 0.02em; text-transform: uppercase; color: var(--ink-2); }
 .pd-after { display: grid; gap: 14px; padding: 0 4px; }
 .pd-card { border-radius: 20px; background: #fff; box-shadow: var(--pd-shadow); padding: clamp(20px, 2.2vw, 28px); }
-[data-look="warm"] .pd-card h2 { margin: 0 0 14px; font: 300 19px/1.3 var(--sans); letter-spacing: -0.035em; }
+[data-look="warm"] .pd-card h2 { margin: 0 0 14px; font: var(--parent-section-weight) var(--parent-section-size)/1.3 var(--sans); letter-spacing: -0.02em; }
 .support-page .pd-card p { margin: 0; color: var(--ink-2); }
 .support-page .pd-card p.small { margin-top: 16px; }
 .support-page .pd-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; counter-reset: s; }
@@ -183,13 +184,13 @@
   .pd-top-empty { display: block; }
   .pd-top-links { padding-top: 2px; }
   .pd-top-links a { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink-2); font: 500 15px/1 var(--sans); text-decoration: none; }
-  .pd-top-links a[aria-current="page"] { color: var(--ink); font-weight: 600; }
+  .pd-top-links a[aria-current="page"] { color: var(--ink); font-weight: var(--parent-control-weight); }
   .pd-main .support-page { padding: 16px 16px 40px; }
   .pd-has-bar .pd-main { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
 
   .pd-bar { position: fixed; z-index: 40; left: 0; right: 0; bottom: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); background: #fff; border-top: 1px solid var(--line); }
   .pd-bar a, .pd-bar button { display: grid; justify-items: center; align-content: start; gap: 3px; min-height: 52px; padding: 6px 2px 0; border: 0; background: none; color: var(--ink-2); text-decoration: none; font: 500 11.5px/1.15 var(--sans); text-align: center; border-radius: 10px; cursor: pointer; }
-  .pd-bar a[aria-current="page"], .pd-bar button.is-current { color: var(--ink); font-weight: 600; }
+  .pd-bar a[aria-current="page"], .pd-bar button.is-current { color: var(--ink); font-weight: var(--parent-control-weight); }
   .pd-bar button[aria-expanded="true"] { color: var(--ink); background: var(--soft); }
   /* The cookie choice sits at the bottom of the page until it is answered. */
   body:has([data-cookie-banner]) .pd-bar { display: none; }
@@ -199,16 +200,16 @@
   .pd-sheet ul { list-style: none; margin: 0; padding: 0; }
   .pd-sheet li + li { border-top: 1px solid var(--line-soft); }
   .pd-sheet a { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 10px; border-radius: 10px; color: var(--ink); text-decoration: none; font-size: 15.5px; }
-  .pd-sheet a[aria-current="page"] { font-weight: 600; background: var(--soft); }
+  .pd-sheet a[aria-current="page"] { font-weight: var(--parent-control-weight); background: var(--soft); }
 }
 
 /* The Account tab's billing (#554) */
 .support-page .pd-plans { margin: 12px 0 0; }
-.pd-plans .acct-plan b { font-size: 19px; font-weight: 500; }
+.pd-plans .acct-plan > div > b, [data-look="warm"] .pd-main .acd-child h3 { font-size: var(--parent-body-size); font-weight: var(--parent-item-weight); letter-spacing: normal; }
 .support-page .pd-invoices { list-style: none; margin: 12px 0 0; padding: 0; border-top: 1px solid var(--line-soft); }
 .support-page .pd-invoices li { display: grid; grid-template-columns: minmax(150px, 1.3fr) minmax(70px, 1fr) minmax(90px, 1fr) minmax(80px, 1fr) minmax(64px, auto); gap: 4px 16px; align-items: center; margin: 0; padding: 14px 0; border-bottom: 1px solid var(--line-soft); }
 .pd-invoice-amount { font-variant-numeric: tabular-nums; }
-.pd-invoice-status { color: var(--ink-2); }
+.pd-invoice-status { font-weight: var(--parent-status-weight); color: var(--ink-2); }
 .pd-invoice-link { justify-self: end; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 
 @media (max-width: 599px) {

@@ -23,7 +23,7 @@ export function ParentAccountSettings({ card, billing, details, hasCard, provinc
       {note}
       <CardNote card={card} />
       {billing}
-      <ReferralCard />
+      <ReferralCard className="acct-referral" />
       <h2>Settings</h2>
       <ul className="pd-links">
         {hasCard && <li><Link href="/account/plan">Manage or cancel plan</Link></li>}

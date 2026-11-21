@@ -17,3 +17,7 @@
 .support-page .acd-child .pd-delete h2 { font-size: 19px; }
 .support-page .acd-child .pd-delete h3 { margin-top: 24px; font-size: 16px; }
 .support-page .acd-child .pd-delete p { margin: 0 0 16px; }
+
+.pd-shell .support-page .acd-child h4 {
+  font: var(--parent-section-weight) var(--parent-body-size)/1.4 var(--sans);
+}

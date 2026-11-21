@@ -220,7 +220,8 @@ it("shows the Overview's first line as the child's name once, with the desk besi
   const headings = [...output.querySelectorAll("h1")];
   expect(headings.map(h => h.textContent)).toEqual(["Leah"]);
   expect(headings[0].closest(".pd-name-row")?.querySelector('.pd-desk-form button')?.textContent).toContain("Open the desk");
-  expect(output.querySelector(".support-page .eyebrow")).toBeNull();
+  expect(output.querySelector(".support-page > .eyebrow")).toBeNull();
+  expect(output.querySelector(".po-book .eyebrow")?.textContent).toBe("Workbook 3");
   expect(output.querySelector(".pd-top .pd-kid b")?.textContent).toBe("Leah");
 });
 

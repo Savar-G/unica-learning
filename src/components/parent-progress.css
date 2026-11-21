@@ -2,19 +2,18 @@
    when the tab itself is wide enough, the four tiles go in one row and the topics in two columns. */
 .pp { gap: 14px; }
 
-.pp-seg { display: flex; background: var(--pa-soft); border-radius: 11px; padding: 3px; }
-.pp-seg button { flex: 1; min-height: 44px; border: 0; background: none; border-radius: 9px; padding: 8px 4px; font-size: 14px; font-weight: 600; color: var(--pa-tx3); }
-.pp-seg button[aria-pressed="true"] { background: #fff; color: var(--pa-tx); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); }
+.pp-seg { display: flex; background: var(--pa-soft); border: 1px solid var(--pa-line); border-radius: 10px; padding: 3px; }
+.pp-seg button { flex: 1; min-height: 44px; border: 1px solid transparent; background: none; border-radius: 6px; padding: 8px 4px; font-size: 14px; font-weight: var(--parent-control-weight); color: var(--pa-tx3); }
+.pp-seg button[aria-pressed="true"] { background: #fff; color: var(--pa-tx); border-color: var(--pa-line); }
 
 .pp-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.pp-tile { background: var(--pa-soft); border-radius: 18px; padding: 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.pp-k { font-size: 13px; color: var(--pa-tx2); font-weight: 500; }
-.pp-v { display: flex; align-items: center; gap: 8px; font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+.pp-tile { background: var(--pa-soft); border: 1px solid var(--pa-line); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pp-k { font-size: var(--parent-support-size); color: var(--pa-tx2); font-weight: var(--parent-support-weight); }
+.pp-v { display: flex; align-items: center; gap: 8px; font-size: 24px; font-weight: var(--parent-number-weight); letter-spacing: -0.035em; }
 .pp-v i { font-style: normal; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; background: #fff; color: var(--pa-tx2); }
-.pp-s { font-size: 12.5px; color: var(--pa-tx2); }
-.pp-tile.is-hot { background: var(--pa-g); color: #fff; }
-.pp-tile.is-hot .pp-k, .pp-tile.is-hot .pp-s { color: rgba(255, 255, 255, 0.88); }
-.pp-tile.is-hot .pp-v i { background: rgba(255, 255, 255, 0.22); color: #fff; }
+.pp-s { font-weight: var(--parent-support-weight); font-size: 12.5px; color: var(--pa-tx2); }
+.pp-tile.is-hot { background: var(--pa-gs); }
+.pp-tile.is-hot .pp-v { color: var(--pa-gt); }
 
 /* The line: a small drawing for a phone and a wide one for a laptop; the page shows the one that fits. */
 .pp-chart { padding: 18px 14px 10px; }
@@ -27,8 +26,8 @@
 .support-page .pa .pp-topics li:first-child { border-top: 0; padding-top: 0; }
 .support-page .pa .pp-topics li:last-child { padding-bottom: 0; }
 .pp-topic-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
-.pp-topic-row b { font-weight: 600; }
-.pp-topic-row span { font-size: 13.5px; font-weight: 600; white-space: nowrap; }
+.pp-topic-row b { font-size: var(--parent-body-size); font-weight: var(--parent-item-weight); }
+.pp-topic-row span { font-size: 13.5px; font-weight: var(--parent-status-weight); white-space: nowrap; }
 .pp-topic-row .is-g { color: var(--pa-gt); }
 .pp-topic-row .is-s { color: var(--pa-st); }
 .pp-topic-row .is-a { color: var(--pa-at); }
@@ -39,7 +38,7 @@
 .pp-track .is-a { background: var(--pa-a); }
 
 .pp-empty { display: grid; gap: 8px; justify-items: start; }
-.support-page .pa .pp-empty b { font-size: 17px; }
+.support-page .pa .pp-empty b { font-weight: var(--parent-item-weight); font-size: var(--parent-body-size); }
 .support-page .pa .pp-empty p { color: var(--pa-tx2); }
 .pp-empty .pa-scanbtn { margin-top: 6px; }
 
