@@ -34,7 +34,7 @@ import { VoiceCallRun, voiceSession, type CallUpdate } from "./agent";
 import { CallTelemetry, markedFetch, telemetry, setTelemetry } from "./telemetry";
 import { presenceOf, waitForChild } from "./child-wait";
 import { voiceTurnReport, type VoiceTurnSample } from "./turn-timing";
-import { makeProviders } from "./providers";
+import { makeProviders, voiceSpendEnv } from "./providers";
 import { configureDelivery } from "./voice-delivery";
 import { referenceJob, referenceRoomName } from "@/lib/maya-workbook-speech";
 import { runWorkbookReference } from "./workbook-reference";
@@ -114,7 +114,7 @@ export default defineAgent({
     const mark = (name: string) => { marks[name] = Date.now() - childAt; };
     // The opening needs no model call (D-341): the worker speaks code's own line, and the call's start records it
     // (`start({ openingSpoken: true })`, ./opening.ts).
-    const calls = mayaCalls(callSeams(db));
+    const calls = mayaCalls(callSeams(db, { env: voiceSpendEnv(providers.voice, process.env) }));
     // The child's first name from the database, never from the room (a participant's name is the browser's to set).
     // Maya says the name her session's start was given; this one hides the name in what the call stores (openVoice).
     const childName = await db.from("children").select("first_name").eq("id", record.childId).eq("parent_id", record.parentId).maybeSingle()
