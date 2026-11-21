@@ -276,7 +276,7 @@ export function openRouterClient({
   feature?: string;
   usage?: AiUsageTag;
   keyLabel?: AiKeyAlias;
-  /** The provider of the usage records and the Sentry span: "livekit" when `fetch` sends to LiveKit Inference (D-348). */
+  /** The provider of the usage records and the Sentry span: "livekit" when `fetch` sends to LiveKit Inference (D-349). */
   usageProvider?: AiProviderKind;
 }): AiClient {
   return {

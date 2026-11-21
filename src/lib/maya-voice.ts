@@ -6,7 +6,7 @@
 //   variables. `fake` speech-to-text and voice need no account (local runs and tests). `inference` routes them through
 //   LiveKit Inference with the LiveKit project's own key (D-238's preferred route); `assemblyai` and `inworld` are the
 //   direct LiveKit plugins, kept as options. The model is Maya's turn model (`MAYA_MODEL`, default GPT-5.4 mini on LiveKit
-//   Inference, D-348), or the fake rule player when the worker has no MAYA_OPENROUTER_API_KEY (src/lib/maya-call-seams.ts).
+//   Inference, D-349), or the fake rule player when the worker has no MAYA_OPENROUTER_API_KEY (src/lib/maya-call-seams.ts).
 // - One call, one room: the room's name holds the call id, and a token admits one participant, the child, to that room
 //   only (src/lib/maya-voice-token.ts). The worker checks the joiner again against the call before it listens.
 // - Connected time: the worker records when the child and Maya join and leave; the call's connected seconds are the

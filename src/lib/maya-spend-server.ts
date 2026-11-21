@@ -88,7 +88,7 @@ export function meteredClient(env: Env, ledger: SpendLedger, meter: { charge: Ch
   if (!mayaAiClient(env, model)) return null;
   // Each answer's usage also goes to the AI usage ledger (D-330): the family, the child and the call, never the words.
   const usage: AiUsageTag = { feature: what === "model" ? "maya" : what === "review" ? "maya_review" : "maya_note", parentId: meter.charge.parentId, childId: meter.charge.childId, source: meter.callId ? { kind: "maya_call", id: meter.callId } : null };
-  // D-348: the ledger's fetch wraps Maya's network fetch (LiveKit Inference for a `livekit/` model).
+  // D-349: the ledger's fetch wraps Maya's network fetch (LiveKit Inference for a `livekit/` model).
   return meteredAi((hooks) => mayaAiClient(env, model, { ...hooks, usage })!, { ledger, ...meter }, what, mayaTransport(env, model));
 }
 

@@ -15,7 +15,7 @@ import { createSpendLedger, spendConfig, usdToMicros } from "@/lib/maya-spend";
 import { memorySpendStore } from "@/lib/maya-spend-memory";
 import { TUTOR_OUTPUT_SCHEMA } from "@/lib/maya/tutor-prompt";
 
-// D-348: Maya's turn model is GPT-5.4 mini on LiveKit Inference by default, paid from the LiveKit Cloud credits.
+// D-349: Maya's turn model is GPT-5.4 mini on LiveKit Inference by default, paid from the LiveKit Cloud credits.
 // MAYA_MODEL names another model; MAYA_MODEL=anthropic/claude-sonnet-5.5 goes back to Sonnet through OpenRouter.
 
 const base = { MAYA_OPENROUTER_API_KEY: "test-key", AI_MODEL: "anthropic/claude-sonnet-5.5", NODE_ENV: "test", LIVEKIT_API_KEY: "lk-key", LIVEKIT_API_SECRET: "lk-secret-that-is-long-enough-for-hs256" };
@@ -54,7 +54,7 @@ function meter() {
 beforeEach(() => { sent = []; usageRows.length = 0; });
 afterEach(() => vi.unstubAllGlobals());
 
-describe("Maya's turn model on LiveKit Inference (D-348)", () => {
+describe("Maya's turn model on LiveKit Inference (D-349)", () => {
   it("is GPT-5.4 mini on LiveKit by default; its reviews stay on OpenRouter's Maya route", async () => {
     answer(whole);
     const model = callModel(null, base)!;

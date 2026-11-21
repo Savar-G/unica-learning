@@ -26,7 +26,7 @@ export const MAYA_PROVIDER: OpenRouterProvider = {
 type Env = Readonly<Record<string, string | undefined>>;
 
 /**
- * Maya's turn model when MAYA_MODEL is not set (D-348, 2026-11-20): OpenAI's GPT-5.4 mini on LiveKit Inference, paid
+ * Maya's turn model when MAYA_MODEL is not set (D-349, 2026-11-20): OpenAI's GPT-5.4 mini on LiveKit Inference, paid
  * from the LiveKit Cloud credits. MAYA_MODEL=anthropic/claude-sonnet-5.5 goes back to Sonnet through OpenRouter.
  */
 export const MAYA_DEFAULT_MODEL = "livekit/openai/gpt-5.4-mini";
@@ -34,7 +34,7 @@ export const MAYA_DEFAULT_MODEL = "livekit/openai/gpt-5.4-mini";
 let warnedNoLivekitKey = false;
 
 /**
- * Maya's own turn model (D-348): MAYA_MODEL (an OpenRouter id, or a `livekit/` id for LiveKit Inference), else
+ * Maya's own turn model (D-349): MAYA_MODEL (an OpenRouter id, or a `livekit/` id for LiveKit Inference), else
  * MAYA_DEFAULT_MODEL. A `livekit/` model with no LiveKit key in this process gives AI_MODEL through OpenRouter instead,
  * so Maya never falls back to the rule player because one key is missing. Only the turn model (and its safety read)
  * reads MAYA_MODEL: the reviews, the call note and every other feature keep their own models.
@@ -61,7 +61,7 @@ export function mayaTransport(env: Env, model: string | undefined, base: typeof 
 
 /**
  * The AI client for a Maya request, on her route; null when the AI is off. Same arguments as `aiClient`. A `livekit/`
- * model goes to LiveKit Inference (D-348): with `hooks.fetch` (the spending ledger's), that fetch must already end in
+ * model goes to LiveKit Inference (D-349): with `hooks.fetch` (the spending ledger's), that fetch must already end in
  * `mayaTransport`; without it, the client sends through `mayaTransport` itself. No LiveKit key: no client.
  */
 export function mayaAiClient(env: Env = process.env, model?: string, hooks?: Omit<NonNullable<Parameters<typeof aiClient>[2]>, "provider" | "usageProvider">): AiClient | null {

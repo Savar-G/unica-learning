@@ -12,7 +12,7 @@ const PAGE = {
 
 /** The company that makes Maya's voice (D-238 listening test). */
 const VOICE_COMPANY = "Cartesia";
-/** Maya's turn model and the companies LiveKit sends it to (D-348, MAYA_DEFAULT_MODEL in src/lib/maya-ai-route.ts). */
+/** Maya's turn model and the companies LiveKit sends it to (D-349, MAYA_DEFAULT_MODEL in src/lib/maya-ai-route.ts). */
 const MAYA_MODEL_NAME = "GPT-5.4 mini, made by OpenAI";
 const MAYA_MODEL_COMPANIES = "Microsoft Azure or OpenAI";
 

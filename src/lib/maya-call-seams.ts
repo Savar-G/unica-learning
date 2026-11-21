@@ -42,7 +42,7 @@ const siteOrigin = (env: Env) => env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/+$/
 
 /**
  * The model a call uses: null asks for the one a new call uses now (Maya's turn model, `mayaTurnModel`: MAYA_MODEL, else
- * GPT-5.4 mini on LiveKit Inference, D-348; the fake rule player without MAYA_OPENROUTER_API_KEY); an id asks for that
+ * GPT-5.4 mini on LiveKit Inference, D-349; the fake rule player without MAYA_OPENROUTER_API_KEY); an id asks for that
  * model again, so a call keeps the model it started with when the setting changes, or null when it is gone.
  */
 export function callModel(id: string | null, env: Env = process.env, metered?: { ledger: SpendLedger; call: SpendCall; newId: () => string } & CallModelOptions): MayaModel | null {

@@ -1,4 +1,4 @@
-// LiveKit Inference behind the AI client, for Maya's models (#1137, D-348). A model id that starts with
+// LiveKit Inference behind the AI client, for Maya's models (#1137, D-349). A model id that starts with
 // `livekit/` (for example `livekit/google/gemma-4-31b-it`) goes to LiveKit Cloud's OpenAI-compatible chat completions
 // gateway instead of OpenRouter, authorized with a short LiveKit access token that has the inference grant (the
 // worker's LIVEKIT_API_KEY and LIVEKIT_API_SECRET, or LIVEKIT_INFERENCE_API_KEY and LIVEKIT_INFERENCE_API_SECRET, as in
