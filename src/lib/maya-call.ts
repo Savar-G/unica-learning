@@ -93,7 +93,7 @@ import { type QuestionPackage, type QuestionRef } from "@/lib/question-package";
 import { teachingPackage } from "@/lib/maya-teaching";
 import { BOARD_CLOSE_SETTLE_MS, connectedSeconds, VOICE_CALL_STALE_MS, type ConnectionEvent, type ConnectionKind } from "@/lib/maya-voice";
 import { spendCloseOf, SPEND_CLOSE, type CallSpend, type SpendCall, type SpendState, type VoiceMeter } from "@/lib/maya-spend";
-import type { CallBudget, Handle } from "@/lib/maya-spend-block";
+import { BLOCK_DRAIN_MS, type CallBudget, type Handle } from "@/lib/maya-spend-block";
 import { SpendRefused } from "@/lib/maya-spend-ai";
 export type { SpendCall } from "@/lib/maya-spend";
 
@@ -611,6 +611,13 @@ export interface VoiceCall {
   end(how: FinishOptions): Promise<void>;
   /** Waits until every save so far is done. */
   settled(): Promise<void>;
+  /**
+   * #1203: waits, under one deadline of BLOCK_DRAIN_MS (src/lib/maya-spend-block.ts), until the call's spend is written:
+   * the budget blocks with their real totals (a prepared reply may still be asking its provider's receipt) and the
+   * speech-to-text and voice rows. `end`, `limit` and the guidance close do not wait for these writes. For the worker's
+   * exit, after the media closed and the child was told. Never throws.
+   */
+  spendSettled(): Promise<void>;
 }
 
 export type OpenVoiceResult = { ok: true; call: VoiceCall } | { ok: false; error: "not_found" | "not_voice" | "ended" | "conflict" | "model_unavailable" | "unavailable" };
@@ -1019,10 +1026,10 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   /** The model, telling `refused` when the ledger refuses one of its requests in the middle of a turn. */
   const watched = (model: MayaModel, refused: (state: Exclude<SpendState, "open">) => void): MayaModel => ({
     ...model,
-    // D-341: `onText` goes through, so a voice call's reply can stream (a chat passes none).
-    async propose(input, signal, onText, onCost) {
+    // D-341: `onText` goes through, so a voice call's reply can stream (a chat passes none). #1203: so does `onGeneration`.
+    async propose(input, signal, onText, onCost, onGeneration) {
       try {
-        return await model.propose(input, signal, onText, onCost);
+        return await model.propose(input, signal, onText, onCost, onGeneration);
       } catch (e) {
         if (e instanceof SpendRefused) refused(e.state);
         throw e;
@@ -1839,7 +1846,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             await queue;
           },
           async deferGuidance() {
-            const settledBudget = stopBudget();
+            // #1203: admission closes now; the block rows are written in the background and drained before the
+            // process exits (`spendSettled`), so the child's notice never waits for the ledger.
+            void stopBudget();
             await queue;
             if (lost || record.status !== "live" || !record.live) return false;
             const { safety } = record.live.text.session;
@@ -1851,8 +1860,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
               record = { ...record, flag, revision: record.revision + 1 };
             }
             await alert(record);
-            await meter?.stop();
-            await settledBudget;
+            // #1203: the speech-to-text and voice writes are drained before the process exits (`spendSettled`).
+            void stopMeter();
             return true;
           },
         } : {}),
@@ -1974,7 +1983,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             if (fixed?.safetyMessage && await call.deferGuidance!()) return;
           }
           const settleUntil = seams.clock() + BOARD_CLOSE_SETTLE_MS;
-          const settledMeter = stopMeter();
+          // #1203: the meter's and the budget's writes are drained before the process exits (`spendSettled`).
+          void stopMeter();
           void stopBudget();
           later(async () => {
             if (lost || record.status === "ended" || !record.live) return;
@@ -1990,7 +2000,6 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             }
           });
           await queue;
-          await settledMeter;
         },
         async connection(kind) {
           const event: ConnectionEvent = { kind, at: seams.clock() };
@@ -2025,12 +2034,12 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         },
         spoken: (text) => meter?.spoken(text) ?? Promise.resolve(),
         async end(how) {
-          // Stop admissions before waiting for a save or the STT meter.
-          const settledBudget = stopBudget();
-          const settledMeter = stopMeter();
+          // Stop admissions before waiting for a save or the STT meter. #1203: the block rows are written in the
+          // background and drained before the process exits (`spendSettled`), so the child's notice never waits for them.
+          void stopBudget();
+          void stopMeter();
           await queue;
-          await settledMeter;
-          if (lost) { await settledBudget; return; }
+          if (lost) return;
           if (record.status === "live") {
             later(async () => {
               // A fatal close or hang-up must not wait for an unfinished model turn.
@@ -2046,9 +2055,13 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             });
           }
           await queue;
-          await settledBudget;
         },
         settled: () => queue,
+        // #1203: one deadline over the model budget's drain and the speech-to-text and voice writes.
+        spendSettled: () => new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, BLOCK_DRAIN_MS);
+          void Promise.all([budget?.drained(), stopMeter()]).catch(() => {}).then(() => { clearTimeout(timer); resolve(); });
+        }),
       };
       return { ok: true, call };
     },
