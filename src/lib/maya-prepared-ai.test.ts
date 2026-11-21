@@ -35,6 +35,26 @@ const stream = (usd: number) => {
 };
 
 describe("one prepared request uses one existing budget handle", () => {
+  it("asks an aborted request's real cost from its stats on the network fetch, past the one-dispatch gate (#1203)", async () => {
+    const t = setup(); await t.budget.open();
+    const handle = t.budget.seam.take("speculative")!;
+    const urls: string[] = [];
+    const net = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      urls.push(String(input));
+      if (String(input).startsWith("https://openrouter.ai/api/v1/generation")) return new Response(JSON.stringify({ data: { total_cost: 0.0042 } }));
+      return new Response(new ReadableStream({ start(c) {
+        c.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ id: "gen-p1", choices: [{ delta: { content: "{" } }] })}\n\n`));
+        init?.signal?.addEventListener("abort", () => c.error(new DOMException("aborted", "AbortError")), { once: true });
+      } }), { headers: { "content-type": "text/event-stream" } });
+    }) as unknown as typeof globalThis.fetch;
+    const lookups: (() => Promise<number | null>)[] = [];
+    const controller = new AbortController();
+    const client = preparedAi(make, t.budget, handle, net);
+    await expect(client.json({ ...request, onText: () => controller.abort(), onGeneration: (cost) => lookups.push(cost) }, controller.signal)).rejects.toThrow();
+    expect(lookups).toHaveLength(1);
+    await expect(lookups[0]()).resolves.toBe(0.0042);
+    expect(urls).toEqual(["https://openrouter.ai/api/v1/chat/completions", "https://openrouter.ai/api/v1/generation?id=gen-p1"]);
+  });
   it("does not dispatch a retry or a second request on the same handle", async () => {
     const t = setup(); await t.budget.open();
     const handle = t.budget.seam.take("speculative")!;

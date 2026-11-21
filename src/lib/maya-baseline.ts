@@ -128,6 +128,44 @@ export function deviceTurn(o: DeviceObservation): BaselineTurn {
   return { v: 1, ...o.group, outcome, ms, counts: {} };
 }
 
+/** What the synthetic child knows while it waits for Maya's reply: its received sound and the worker's live reports. */
+export interface ReplyWatch {
+  /** The end of the child's prompt (0 for the opening). */
+  after: number;
+  now: number;
+  bursts: readonly { start: number; end: number }[];
+  /** The worker's answer playout starts, reported with their turn as each answer starts to play. */
+  answers: readonly { turnId: string; at: number }[];
+  /** When the worker reported a turn's reply done: its own last speech played, after any board between its speeches. */
+  replies: readonly { turnId: string; at: number }[];
+  /** The worker's playouts so far; `end` is null while one is playing. */
+  playouts: readonly { start: number; end: number | null }[];
+  /** A child turn waits for an answer; the opening has none, only its playouts. */
+  needsAnswer: boolean;
+}
+
+/** Quiet after the reply's last playout and last received sound before the child speaks again. */
+const REPLY_QUIET_MS = 2000;
+/** An answer report and its playout come from one output event, a few ms apart at most. */
+const SAME_EVENT_MS = 20;
+
+/**
+ * The reply is over when the worker's answer for this turn has started, the worker then reported that turn's reply done
+ * (matched by turn id: an older turn's report can come during this reply's pause), every
+ * playout since the answer has finished, and nothing was heard or played for REPLY_QUIET_MS. The opening has no answer
+ * and no done report: any playout counts. Filler alone never ends a turn (an answer can come many seconds after it),
+ * and neither does a pause between a reply's two speeches. The caller keeps its own timeout for a reply that never ends.
+ */
+export function replyOver(o: ReplyWatch): boolean {
+  const answer = o.answers.find(a => a.at >= o.after);
+  if (o.needsAnswer && (answer === undefined || !o.replies.some(r => r.turnId === answer.turnId && r.at >= answer.at))) return false;
+  const from = (answer?.at ?? o.after) - SAME_EVENT_MS;
+  const reply = o.playouts.filter(p => p.start >= from);
+  if (!reply.length || reply.some(p => p.end === null)) return false;
+  const lastSound = Math.max(...reply.map(p => p.end!), o.bursts.at(-1)?.end ?? 0);
+  return o.now - lastSound >= REPLY_QUIET_MS;
+}
+
 /**
  * One row for each planned child turn of a call, in order: the observed row where the call reached the turn, else a
  * failed attempt under the run's own group. A call that was refused, never connected or never reported still counts.

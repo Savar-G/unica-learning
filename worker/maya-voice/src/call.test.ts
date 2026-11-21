@@ -144,7 +144,7 @@ afterEach(async () => {
   vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs();
 });
 
-async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["spend"]; speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel; board?: boolean; timestamps?: boolean; workbookReference?: string; measureBaseline?: boolean; exchange?: boolean; pausePlayback?: boolean; transport?: (receiver: BoardReceiver) => BoardTransport } = {}) {
+async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["spend"]; speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel; board?: boolean; timestamps?: boolean; workbookReference?: string; measureBaseline?: boolean; exchange?: boolean; pausePlayback?: boolean; transport?: (receiver: BoardReceiver) => BoardTransport; spendSettled?: () => Promise<void> } = {}) {
   const clock = handTimers();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -190,7 +190,10 @@ async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["
   const board = createBoardSpeech({ sender, now: clock.now, observe: snapshot => opened.call.observeBoard(snapshot), measure: s => samples.push(s) });
   const turns: VoiceTurnSample[] = [];
   const boardPlans = new Map<string, { turnId: string; batchIds: readonly string[] }>();
-  const run = new VoiceCallRun(session, opened.call, {
+  // The call as the worker sees it; a test may hold the end-of-call spend drain (#1203).
+  const spendSettled = options.spendSettled;
+  const call = spendSettled ? new Proxy(opened.call, { get: (t, k) => k === "spendSettled" ? spendSettled : Reflect.get(t, k, t) }) : opened.call;
+  const run = new VoiceCallRun(session, call, {
     ...(options.board ? { board } : {}), pausePlayback: options.pausePlayback, timers: clock.timers, notify: (u) => updates.push(u), closed,
     ...(options.measureBaseline ? {
       measureTurn: sample => turns.push(sample),
@@ -219,6 +222,20 @@ async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["
 }
 
 describe("a voice call through LiveKit with the fake providers", () => {
+  it("tells the child the call ended, then waits for the call's spend rows before the worker may exit (#1203)", async () => {
+    let drain!: () => void;
+    const spendSettled = vi.fn(() => new Promise<void>((resolve) => { drain = resolve; }));
+    const c = await voiceCall({ spendSettled });
+    await c.run.childJoined();
+    await waitFor(() => c.said().length > 0, "the opening");
+    const finished = c.run.finish({ detail: "test over" });
+    await waitFor(() => spendSettled.mock.calls.length === 1, "the spend drain");
+    expect(c.updates.at(-1)).toMatchObject({ ended: true });
+    expect(c.closed).not.toHaveBeenCalled();
+    drain();
+    await finished;
+    expect(c.closed).toHaveBeenCalledTimes(1);
+  });
   it("confirms a spoken workbook reference before teaching through fake audio and board transport", async () => {
     const c = await voiceCall({ workbookReference: "page four, number three", board: true });
     await c.run.childJoined();

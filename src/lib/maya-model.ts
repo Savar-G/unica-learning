@@ -84,9 +84,10 @@ export interface MayaModel {
   readonly output?: 3;
   /**
    * One proposal (untrusted). Throws when the model gives none. A version 3 model (`output: 3`) gets a TurnBrief here
-   * (see conversationalMayaModel and conversationalFake).
+   * (see conversationalMayaModel and conversationalFake). `onGeneration` (#1203): a lookup of the request's final cost
+   * at the provider, also after an abort (src/lib/ai-client.ts).
    */
-  propose(input: ModelInput, signal: AbortSignal, onText?: (soFar: string) => void, onCost?: (usd: number) => void): Promise<unknown>;
+  propose(input: ModelInput, signal: AbortSignal, onText?: (soFar: string) => void, onCost?: (usd: number) => void, onGeneration?: (cost: () => Promise<number | null>) => void): Promise<unknown>;
 }
 
 const TRANSCRIPT_TURNS = 12;
@@ -407,7 +408,7 @@ export function conversationalMayaModel(client: AiClient, options: { timeoutMs?:
     id: client.model,
     promptVersion: CONVERSATION_PROMPT_VERSION,
     output: 3,
-    propose: (input: unknown, signal: AbortSignal, onText?: (soFar: string) => void, onCost?: (usd: number) => void) =>
+    propose: (input: unknown, signal: AbortSignal, onText?: (soFar: string) => void, onCost?: (usd: number) => void, onGeneration?: (cost: () => Promise<number | null>) => void) =>
       withTimeLimit(timeoutMs, (limit) => {
         const both = AbortSignal.any([signal, limit]);
         // C1: the prompt and the stable part of the brief are cached by the provider (two breakpoints); what changes
@@ -417,7 +418,7 @@ export function conversationalMayaModel(client: AiClient, options: { timeoutMs?:
         const [stable, turn] = tutor ? tutorBriefParts(input) : briefParts(input as TurnBrief);
         const content: AiPart[] = stable ? [{ type: "text", text: stable, cache: true }, { type: "text", text: turn }] : [{ type: "text", text: turn }];
         return client.json(
-          { name: "maya_reply", system: tutor ? TUTOR_PROMPT : CONVERSATION_PROMPT, cacheSystem: true, content, schema: tutor ? tutorSchema : outputSchema, effort: options.effort ?? CONVERSATION_EFFORT, maxTokens: 1_500, ...(onText ? { onText } : {}), ...(onCost ? { onCost } : {}) },
+          { name: "maya_reply", system: tutor ? TUTOR_PROMPT : CONVERSATION_PROMPT, cacheSystem: true, content, schema: tutor ? tutorSchema : outputSchema, effort: options.effort ?? CONVERSATION_EFFORT, maxTokens: 1_500, ...(onText ? { onText } : {}), ...(onCost ? { onCost } : {}), ...(onGeneration ? { onGeneration } : {}) },
           both,
         );
       }),
