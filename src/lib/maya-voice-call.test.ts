@@ -418,6 +418,20 @@ describe("R408 recovery and privacy", () => {
     expect((await call.start()).say.join(" ")).not.toContain("Leah");
   });
 
+  it("allows only one worker to claim a call when both dispatches open it together", async () => {
+    const s = setup();
+    const view = await newVoiceCall(s);
+    const first = s.calls.openVoice(view.id, PROVIDERS, "Leah");
+    const second = s.calls.openVoice(view.id, PROVIDERS, "Leah");
+    const outcomes = await Promise.all([first, second]);
+    const opened = outcomes.filter(r => r.ok);
+    expect(opened).toHaveLength(1);
+    expect(outcomes.filter(r => !r.ok)).toEqual([{ ok: false, error: "conflict" }]);
+    await opened[0].call.connection("agent_joined");
+    await opened[0].call.connection("child_joined");
+    expect(s.connections.rows().map(row => row.kind)).toEqual(["agent_joined", "child_joined"]);
+  });
+
   it("R408-7 R408-11: refuses connection renewals and leave events from a replaced worker", async () => {
     const s = setup();
     const view = await newVoiceCall(s);

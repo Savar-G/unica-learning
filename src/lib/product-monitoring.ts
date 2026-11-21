@@ -1,4 +1,6 @@
-// No SDK or platform imports. Standalone workers have no observer until their host registers one.
+import { AsyncLocalStorage } from "node:async_hooks";
+
+// Standalone workers have no observer until their host registers one.
 export const PRODUCT_EVENTS = {
   "scan.upload_committed": { failure: false, alert: true },
   "scan.upload_failed": { failure: true, alert: true },
@@ -33,6 +35,7 @@ export type ProductCode = keyof typeof PRODUCT_EVENTS;
 export interface ProductEvent { code: ProductCode; attributes: Record<string, string | number> }
 export type ProductObserver = (event: ProductEvent) => void | Promise<void>;
 const holder = globalThis as typeof globalThis & { __unicaProductObserver?: ProductObserver };
+const quiet = new AsyncLocalStorage<boolean>();
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ENUMS: Record<string, readonly string[]> = {
   mode: ["text", "voice"], kind: ["chat", "family", "admin_test"],
@@ -61,8 +64,12 @@ export function productEvent(code: ProductCode, input: Record<string, unknown> =
 }
 export function setProductObserver(observer: ProductObserver | null): void { holder.__unicaProductObserver = observer ?? undefined; }
 
+export function withoutProductMonitoring<T>(work: () => T): T { return quiet.run(true, work); }
+export function productMonitoringSuppressed(): boolean { return quiet.getStore() === true; }
+
 /** Monitoring cannot change the product result, even if registration or the observer fails. */
 export function monitorProduct(code: ProductCode, input: Record<string, unknown> = {}): void {
+  if (productMonitoringSuppressed()) return;
   const observer = holder.__unicaProductObserver;
   if (!observer) {
     // Standalone workers retain a content-free failure diagnostic without loading a platform SDK.

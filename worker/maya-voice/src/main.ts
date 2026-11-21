@@ -43,8 +43,8 @@ import { runWorkbookReference } from "./workbook-reference";
 import { monitoredVoiceJob } from "./monitoring";
 import { monitorProduct } from "@/lib/product-monitoring";
 import { startVoiceBaselineProfile, voiceBaselineTurn } from "./baseline";
-import { labInput, stagingLab } from "./staging";
-import { attachStopTiming } from "./stop-timing";
+import { authorizedStagingCall, labInput, stagingLab } from "./staging";
+import { attachStopTiming, STAGING_STOP_TOPIC } from "./stop-timing";
 
 const log = (...a: unknown[]) => console.log("[maya voice]", ...a);
 
@@ -69,6 +69,8 @@ function database() {
 
 export default defineAgent({
   entry: (ctx: JobContext) => monitoredVoiceJob(ctx, async (monitoring) => {
+    const staging = stagingLab(process.env, ctx.job.metadata);
+    if (staging === false) return ctx.shutdown("not a staging dispatch");
     process.env.AI_USAGE_CONTEXT = "production";
     const jobAt = Date.now();
     // Marks on the model provider's requests, for the turn's clock times (./marks.ts).
@@ -76,6 +78,7 @@ export default defineAgent({
     let selection = null;
     try { selection = referenceJob(JSON.parse(ctx.job.metadata || "{}").reference); } catch { /* Not a reference job. */ }
     if (selection) {
+      if (staging) return ctx.shutdown("staging takes admin test calls only");
       if (ctx.job.room?.name !== referenceRoomName(selection.id)) return ctx.shutdown("wrong reference room");
       return runWorkbookReference(ctx, selection, database());
     }
@@ -91,20 +94,21 @@ export default defineAgent({
       log("refused a job whose room is not its call's");
       return ctx.shutdown("not a call room");
     }
-    configureDelivery({ callId });
-    // This call's telemetry: ids and clock times by turn, request and speech (./telemetry.ts).
-    setTelemetry(new CallTelemetry({ callId, scopeId: ctx.job.id }));
-    const providers = voiceProviders(process.env);
-    if (!providers.ok) {
-      monitorProduct("maya.worker_failed", { callId, step: "voice" });
-      log("the speech-to-text or voice is not set up:", providers.problems.join("; "));
-      return ctx.shutdown("providers not set up");
-    }
     const db = database();
     const record = await mayaCallStore(db).get(callId);
     if (!record || record.mode !== "voice" || record.status !== "live") {
       log("no live voice call", callId);
       return ctx.shutdown("no live voice call");
+    }
+    if (staging && !(await authorizedStagingCall(db, record))) return ctx.shutdown("staging call not authorized");
+    configureDelivery({ callId });
+    // This call's telemetry: ids and clock times by turn, request and speech (./telemetry.ts).
+    setTelemetry(new CallTelemetry({ callId, scopeId: ctx.job.id }));
+    const providers = voiceProviders(process.env, { staging: !!staging });
+    if (!providers.ok) {
+      monitorProduct("maya.worker_failed", { callId, step: "voice" });
+      log("the speech-to-text or voice is not set up:", providers.problems.join("; "));
+      return ctx.shutdown("providers not set up");
     }
     const facts: VoiceCallFacts = { id: record.id, parentId: record.parentId, childId: record.childId, mode: record.mode, status: record.status };
 
@@ -137,8 +141,6 @@ export default defineAgent({
     // The turn delay and interruption settings are for real providers. The fakes keep LiveKit's defaults, as the tests do.
     mark("providers");
     const { tuning } = providers;
-    // A non-production deployment reads an admin test call's lab settings from the job (./staging.ts); production: null.
-    const staging = stagingLab(process.env, ctx.job.metadata || "{}");
     const session = voiceSession(made, { ...(made.fake ? {} : { turn: tuning }), ...(staging ? { lab: staging.lab } : {}) });
     if (staging) {
       log("staging lab", { callId, deployment: staging.deployment, lab: staging.lab, hosted: process.env.LIVEKIT_REMOTE_EOT_URL !== undefined, interruptionMode: session.interruptionDetection ?? "unset" });
@@ -156,6 +158,7 @@ export default defineAgent({
       setTimeout(() => log("opening marks", { callId, marks }), 9000);
     });
     const encoder = new TextEncoder();
+    const stopReports = new Set<Promise<void>>();
     const notify = (update: CallUpdate) => {
       ctx.room.localParticipant?.publishData(encoder.encode(JSON.stringify(update)), { reliable: true, topic: "maya.call", destination_identities: [identity] }).catch(() => {});
     };
@@ -177,7 +180,7 @@ export default defineAgent({
     const boardOwners = new Map<string, { turnId: string; batchIds: readonly string[] }>();
     let profile: ReturnType<typeof startVoiceBaselineProfile> | null = null;
     const ackLimit = Number(process.env.MAYA_ACK_LIMIT_MS);
-    const run = new VoiceCallRun(session, opened.call, { board, notify, ...(openingText ? { opening: openingText, openingMark: mark } : {}),
+    const run = new VoiceCallRun(session, opened.call, { board, notify, pausePlayback: !!staging, ...(openingText ? { opening: openingText, openingMark: mark } : {}),
       ...(made.fake ? {} : { numberContinueMs: tuning.numberContinueMs, dropSilentPeakDbfs: tuning.dropSilentPeakDbfs, detectorMinSilenceMs: tuning.detectorMinSilenceMs }),
       ...(patience ? { patience: { ...turnSilences(tuning), set: (limits: TurnSilence) => patience.setSilence(limits) } } : {}),
       ...(process.env.MAYA_ACK_LIMIT_MS?.trim() && Number.isFinite(ackLimit) && ackLimit >= 0 ? { ackLimitMs: ackLimit } : {}),
@@ -202,6 +205,7 @@ export default defineAgent({
             ...baseline, ...profile(), discardedPreparation: telemetry().discardedPreparationSummary(),
           }));
         }
+        if (staging) await Promise.all(stopReports);
         await monitoring.flush();
         await ctx.shutdown("call ended");
       } });
@@ -209,7 +213,8 @@ export default defineAgent({
     let live = false;
     const local = ctx.room.localParticipant!;
     // What the child's screen shows: whether to offer the typed stand-in for speech.
-    await local.setAttributes({ "maya.speech": made.fakeSpeech ? "fake" : "live", "maya.segment": String(run.segment) });
+    await local.setAttributes({ "maya.speech": made.fakeSpeech ? "fake" : "live", "maya.segment": String(run.segment),
+      ...(staging ? { [STAGING_STOP_TOPIC]: "1" } : {}) });
     local.registerRpcMethod("maya.hang_up", async (data) => {
       if (data.callerIdentity !== identity) throw new RpcError(1403, "not this call's child");
       void run.hangUp();
@@ -261,7 +266,13 @@ export default defineAgent({
     run.attachTurnTiming();
     // A named deployment only: when Maya's output was asked to pause or clear, and when its audio stopped (./stop-timing.ts).
     if (staging) {
-      const stopTiming = attachStopTiming(session, record => log("staging stop timing", { callId, ...record }));
+      const stopTiming = attachStopTiming(session, record => {
+        log("staging stop timing", { callId, ...record });
+        const sent = local.publishData(encoder.encode(JSON.stringify(record)), {
+          reliable: true, topic: STAGING_STOP_TOPIC, destination_identities: [identity],
+        }).catch(() => log("staging stop report not delivered", callId)).finally(() => { stopReports.delete(sent); });
+        stopReports.add(sent);
+      });
       session.on(voice.AgentSessionEventTypes.Close, () => stopTiming.flush());
     }
     made.tts.prewarm();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { audibleStop, cutByChild, interruptReport, pace, readWav, scoreTrials, type TrialRow } from "./interrupt-measure";
+import { audibleStop, cutByChild, interruptReport, pace, readWav, scoreTrials, stagingStop, type TrialRow } from "./interrupt-measure";
 
 /** 10 ms level frames of Maya's audio as the child receives it: loud until `stopAt`, then quiet. */
 function levels(from: number, to: number, stopAt: number, loud = -20, quiet = -80) {
@@ -7,6 +7,15 @@ function levels(from: number, to: number, stopAt: number, loud = -20, quiet = -8
   for (let at = from; at < to; at += 10) frames.push({ at, db: at < stopAt ? loud : quiet, ms: 10 });
   return frames;
 }
+
+it("only scores received silence with a matching control from the same trial", () => {
+  const trial = { onsetAt: 1000, ...audibleStop(levels(0, 4000, 1240), 1000) };
+  const heard = { speakingAt: 1050, pauseAt: null, clearAt: null, outputStoppedAt: null };
+  expect(stagingStop(trial, [heard], 1500)).toBeNull();
+  expect(stagingStop(trial, [{ ...heard, speakingAt: 1500, pauseAt: 1510 }], 1500)).toBeNull();
+  expect(stagingStop(trial, [{ ...heard, clearAt: 1950 }], 2000)).toBeNull();
+  expect(stagingStop(trial, [{ ...heard, pauseAt: 1110, outputStoppedAt: 1150 }], 1500)).toBe(240);
+});
 
 describe("audibleStop", () => {
   it("measures from the child's speech onset to the end of Maya's last audible frame", () => {

@@ -5,6 +5,8 @@
 // child-side stop on LiveKit Cloud then splits into the worker's reaction and the network plus playout.
 import { voice } from "@livekit/agents";
 
+export const STAGING_STOP_TOPIC = "maya.staging.stop";
+
 export interface StopTiming {
   speakingAt: number;
   pauseAt: number | null;
@@ -18,7 +20,7 @@ export interface StopTiming {
   outputMs: number | null;
 }
 
-type Output = { pause(): void; clearBuffer(): void; resume(): void; on(event: string, listener: (ev: { startedAt: number; duration: number }) => void): unknown };
+type Output = { pendingPlayoutSegments: number; pause(): void; clearBuffer(): void; resume(): void; on(event: string, listener: (ev: { startedAt: number; duration: number }) => void): unknown };
 type Session = { on(event: string, listener: (ev: { newState: string; createdAt: number }) => void): unknown; output: { audio: Output | null } };
 
 /** Watches the session's audio output and its user state. `flush` emits the open record (call it at the session's end). */
@@ -28,9 +30,9 @@ export function attachStopTiming(session: Session, emit: (record: StopTiming) =>
   let open: Omit<StopTiming, "reactionMs" | "outputMs"> | null = null;
   const flush = () => {
     if (!open) return;
-    const first = open.pauseAt ?? open.clearAt;
-    emit({ ...open, reactionMs: first === null ? null : first - open.speakingAt,
-      outputMs: first === null || open.outputStoppedAt === null ? null : open.outputStoppedAt - first });
+    const first = Math.min(open.pauseAt ?? Infinity, open.clearAt ?? Infinity);
+    emit({ ...open, reactionMs: Number.isFinite(first) ? first - open.speakingAt : null,
+      outputMs: !Number.isFinite(first) || open.outputStoppedAt === null ? null : open.outputStoppedAt - first });
     open = null;
   };
   /** The open record, while `at` is inside its window. */
@@ -45,8 +47,11 @@ export function attachStopTiming(session: Session, emit: (record: StopTiming) =>
   const mark = (field: "pauseAt" | "clearAt" | "resumeAt", method: "pause" | "clearBuffer" | "resume") => {
     const original = audio[method].bind(audio);
     audio[method] = () => {
-      const record = current(now());
-      if (record && record[field] === null) record[field] = now();
+      const at = now();
+      const record = current(at);
+      // The SDK can call clear on an idle output. Only the first control that can affect active audio counts.
+      const affectsPlayout = record?.pauseAt != null || (method !== "resume" && audio.pendingPlayoutSegments > 0);
+      if (record && record[field] === null && affectsPlayout) record[field] = at;
       return original();
     };
   };

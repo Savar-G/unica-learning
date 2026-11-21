@@ -18,8 +18,7 @@ class PlaybackAdapter extends voice.AudioOutput {
     clear(scope: SpeechScope): void;
     pause(scope: SpeechScope): void;
     resume(): void;
-    // Declares pause, so LiveKit pauses Maya on a possible interruption and resumes her after a false one.
-  }) { super(output.sampleRate, output, { pause: true }); }
+  }, pausePlayback: boolean) { super(output.sampleRate, output, { pause: pausePlayback }); }
   override captureFrame(frame: AudioFrame) { return this.hooks.capture(frame); }
   admitFrame(frame: AudioFrame) { super.flush(); void super.captureFrame(frame); }
   seal() { super.flush(); }
@@ -58,6 +57,7 @@ export class CuePlaybackOutput {
     private readonly clock: Clock,
     private readonly task: (work: Promise<unknown>, scope: SpeechScope) => void,
     private readonly interrupted: (scope: SpeechScope) => void,
+    private readonly pausePlayback = false,
   ) {
     this.adapter = new PlaybackAdapter(output, {
       capture: frame => this.captureFrame(frame),
@@ -66,7 +66,7 @@ export class CuePlaybackOutput {
       clear: scope => this.clearBuffer(scope),
       pause: scope => this.pause(scope),
       resume: () => this.resume(),
-    });
+    }, pausePlayback);
     this.adapter.on(voice.AudioOutput.EVENT_PLAYBACK_STARTED, (ev: voice.PlaybackStartedEvent) => {
       const segment = this.segments.find(s => !s.started);
       if (!segment) return;
@@ -165,7 +165,14 @@ export class CuePlaybackOutput {
    * cue clock and keep the plan, its staged batches and its synthesis.
    */
   pause(scope: SpeechScope) {
-    if (!this.board.owns(scope) || !same(this.segments[0]?.scope ?? this.forwarding?.scope ?? null, scope)) return;
+    const active = this.segments[0]?.scope ?? (this.pausePlayback ? this.forwarding?.scope : null);
+    if (!this.board.owns(scope) || !same(active ?? null, scope)) return;
+    if (!this.pausePlayback) {
+      this.cancelPending(scope);
+      this.interrupted(scope);
+      this.output.pause();
+      return;
+    }
     if (!this.paused) {
       this.paused = true;
       if (this.timer !== null) this.clock.clear(this.timer);

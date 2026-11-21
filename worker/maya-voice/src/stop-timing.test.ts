@@ -11,6 +11,7 @@ import { attachStopTiming, type StopTiming } from "./stop-timing";
 function fakeSession(clock: { now: number }) {
   const calls: string[] = [];
   const audio = Object.assign(new EventEmitter(), {
+    pendingPlayoutSegments: 1,
     pause: () => { calls.push(`pause@${clock.now}`); },
     clearBuffer: () => { calls.push(`clear@${clock.now}`); },
     resume: () => { calls.push(`resume@${clock.now}`); },
@@ -61,5 +62,17 @@ describe("the staging stop timing", () => {
     t.speaking(200);
     clock.now = 1_300; t.timing.flush();
     expect(t.records).toEqual([{ speakingAt: 200, pauseAt: null, clearAt: null, outputStoppedAt: null, resumeAt: null, reactionMs: null, outputMs: null }]);
+  });
+
+  it("ignores a clear issued after an ordinary end of playout", () => {
+    const clock = { now: 2_000 };
+    const t = attach(clock);
+    t.speaking(2_000);
+    t.progressed(1_800, 300);
+    t.audio.pendingPlayoutSegments = 0;
+    clock.now = 2_150;
+    t.audio.clearBuffer();
+    t.timing.flush();
+    expect(t.records).toEqual([expect.objectContaining({ clearAt: null, reactionMs: null })]);
   });
 });

@@ -107,7 +107,7 @@ const clock = Date.now;
 const parentId = randomUUID();
 const childId = randomUUID();
 const store = memoryCallStore({ clock, testFamilies: [parentId] });
-const speech = voiceProviders(process.env);
+const speech = voiceProviders(process.env, { staging: true });
 if (!speech.ok) throw new Error(speech.problems.join(", "));
 if (args.cues === "sentence" && speech.voice.provider === "inference") {
   (speech.voice as { modelOptions: Record<string, unknown> }).modelOptions = {};
@@ -154,8 +154,15 @@ const levels: Level[] = [];
 childRoom.on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => {
   if (track.kind !== TrackKind.KIND_AUDIO) return;
   void (async () => {
-    for await (const frame of new AudioStream(track, { sampleRate: RATE, numChannels: 1 })) levels.push({ at: clock(), db: db(frame.data), ms: frame.samplesPerChannel / frame.sampleRate * 1000 });
-  })();
+    const reader = new AudioStream(track, { sampleRate: RATE, numChannels: 1 }).getReader();
+    try {
+      for (;;) {
+        const { done, value: frame } = await reader.read();
+        if (done) return;
+        levels.push({ at: clock(), db: db(frame.data), ms: frame.samplesPerChannel / frame.sampleRate * 1000 });
+      }
+    } finally { reader.releaseLock(); }
+  })().catch(error => console.warn("could not read Maya's audio", error));
 });
 const source = new AudioSource(RATE, 1);
 const mic = LocalAudioTrack.createAudioTrack("microphone", source);
@@ -202,7 +209,7 @@ const cues: CueMeasurement[] = [];
 const board = createBoardSpeech({ sender, now: clock, observe: s => call.observeBoard(s), measure: cue => cues.push(cue) });
 const session = voiceSession(providers, { turn: speech.tuning, aecWarmupDuration: 0 });
 const run = new VoiceCallRun(session, call, {
-  board, notify: () => {}, measureTurn: () => {},
+  board, pausePlayback: true, notify: () => {}, measureTurn: () => {},
   closed: async () => {},
 });
 await local.setAttributes({ "maya.speech": "live", "maya.segment": String(run.segment) });

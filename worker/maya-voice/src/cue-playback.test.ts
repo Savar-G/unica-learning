@@ -213,7 +213,7 @@ it("forwards each 20 ms part in its own buffer, with its own samples (rtc-node s
 
 
 /** The SDK's own room output, with a 100 ms queue, on real time: pause holds forwarding and drops what is queued. */
-async function nativeSetup() {
+async function nativeSetup(pausePlayback = true) {
   const native = new voice.ParticipantAudioOutput({ localParticipant: { publishTrack: async () => ({ sid: "local", waitForSubscription: async () => {} }) } } as unknown as ConstructorParameters<typeof voice.ParticipantAudioOutput>[0],
     { sampleRate: 24000, numChannels: 1, queueSizeMs: 100, trackPublishOptions: new TrackPublishOptions() });
   await native.start(new AbortController().signal);
@@ -228,13 +228,26 @@ async function nativeSetup() {
   const failure = vi.fn();
   const interrupted = vi.fn((s: SpeechScope) => { void board.interrupt(s); });
   const output = new CuePlaybackOutput(native, board, { now: () => Date.now(), set: (ms, run) => setTimeout(run, ms), clear: h => clearTimeout(h as ReturnType<typeof setTimeout>) },
-    p => { void p.catch(failure); }, interrupted);
+    p => { void p.catch(failure); }, interrupted, pausePlayback);
   const shown = () => receiver.snapshot().events.filter(e => e.kind === "batch").map(e => e.batchId);
   const capture = output.captureFrame(frame(1200, scope)).then(() => output.flush());
   const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
   const close = async () => { output.cancelPending(scope); native.clearBuffer(); await capture; await native.close(); };
   return { native, receiver, board, scope, output, shown, capture, failure, interrupted, wait, close };
 }
+
+it("keeps production playback non-pausable even on a native output that supports pause", async () => {
+  const c = await nativeSetup(false);
+  try {
+    expect(c.native.canPause).toBe(true);
+    expect(c.output.audio.canPause).toBe(false);
+    await c.wait(400);
+    c.output.audio.clearBuffer();
+    await c.board.settled();
+    expect(c.interrupted).toHaveBeenCalledOnce();
+    expect(c.receiver.staged()).toEqual([]);
+  } finally { await c.close(); }
+});
 
 it("pauses Maya without ending her speech, and resumes the audio and its cues together", async () => {
   const c = await nativeSetup();

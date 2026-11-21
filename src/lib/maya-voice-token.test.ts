@@ -161,8 +161,8 @@ describe("the deployment that takes a voice call", () => {
       dispatch: async (room, metadata, deployment) => { sent.push({ room, metadata, deployment }); } });
     const token = await dispatchOf(r);
     expect(token.deployment).toBe("staging");
-    expect(JSON.parse(token.metadata)).toEqual({ callId: A.id, lab: { interruption: "adaptive" } });
-    expect(sent).toEqual([{ room: voiceRoom(A.id), metadata: JSON.stringify({ callId: A.id, lab: { interruption: "adaptive" } }), deployment: "staging" }]);
+    expect(JSON.parse(token.metadata)).toEqual({ callId: A.id, deployment: "staging", lab: { interruption: "adaptive" } });
+    expect(sent).toEqual([{ room: voiceRoom(A.id), metadata: JSON.stringify({ callId: A.id, deployment: "staging", lab: { interruption: "adaptive" } }), deployment: "staging" }]);
   });
 
   it("never sends a family call to another deployment", async () => {
@@ -173,7 +173,7 @@ describe("the deployment that takes a voice call", () => {
   });
 
   it("refuses a name that is not a non-production deployment", async () => {
-    for (const deployment of ["", "production", "-staging", "stag ing", "a".repeat(64)]) {
+    for (const deployment of ["", "production", "Production", "-staging", "stag ing", "a".repeat(64)]) {
       await expect(mintVoiceToken({ ...base, call: { ...A, kind: "admin_test" }, staging: { deployment }, dispatch: null })).rejects.toThrow(/deployment/);
     }
   });

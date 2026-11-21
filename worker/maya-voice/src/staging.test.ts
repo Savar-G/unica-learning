@@ -1,15 +1,17 @@
 import { describe, expect, it } from "vitest";
+import { createClient } from "@supabase/supabase-js";
 import { inference, initializeLogger } from "@livekit/agents";
 import { BackgroundVoiceCancellation, NoiseCancellation } from "@livekit/noise-cancellation-node";
+import type { Database } from "@/lib/database";
 import { voiceProviders } from "@/lib/maya-voice";
 import { voiceSession, type TurnTuning } from "./agent";
 import { makeProviders } from "./providers";
-import { labInput, stagingLab, type StagingLab } from "./staging";
+import { authorizedStagingCall, labInput, stagingLab, type StagingLab } from "./staging";
 
 // The lab settings of a non-production deployment (docs/maya-voice-deploy.md): a staging worker reads them from the
 // job of an admin test call; production (LIVEKIT_AGENT_DEPLOYMENT empty) never does, whatever the job says.
 initializeLogger({ pretty: false, level: "warn" });
-const job = (lab: unknown) => JSON.stringify({ callId: "c", lab });
+const job = (lab: unknown) => JSON.stringify({ callId: "c", deployment: "staging", lab });
 const all = { interruption: "adaptive", turnDetection: "multimodal", noise: "krisp-bvc" };
 
 describe("a deployment's lab settings", () => {
@@ -33,8 +35,42 @@ describe("a deployment's lab settings", () => {
 
   it("keep production's behaviour for a setting the job leaves out or names wrongly", () => {
     expect(stagingLab({ LIVEKIT_AGENT_DEPLOYMENT: "staging" }, job({ interruption: "loud", turnDetection: 3, extra: "x" }))).toEqual({ deployment: "staging", lab: {} });
-    expect(stagingLab({ LIVEKIT_AGENT_DEPLOYMENT: "staging" }, "not json")).toEqual({ deployment: "staging", lab: {} });
-    expect(stagingLab({ LIVEKIT_AGENT_DEPLOYMENT: "staging" }, JSON.stringify({ callId: "c" }))).toEqual({ deployment: "staging", lab: {} });
+    expect(stagingLab({ LIVEKIT_AGENT_DEPLOYMENT: "staging" }, "not json")).toBe(false);
+    expect(stagingLab({ LIVEKIT_AGENT_DEPLOYMENT: "staging" }, JSON.stringify({ callId: "c" }))).toBe(false);
+    expect(stagingLab({ LIVEKIT_AGENT_DEPLOYMENT: "different" }, job(all))).toBe(false);
+  });
+});
+
+describe("staging call grants", () => {
+  const live = { kind: "admin_test", mode: "voice", status: "live", startedBy: "admin", parentId: "test" } as const;
+  const db = (grants: { admin?: boolean; family?: boolean; error?: boolean } = {}) => createClient<Database>("https://example.invalid", "fake-key", {
+    global: { fetch: async input => {
+      const url = new URL(String(input));
+      if (grants.error) return Response.json({ message: "lookup failed" }, { status: 500 });
+      if (url.pathname.endsWith("/admin_users") && url.searchParams.get("user_id") === "eq.admin" && grants.admin) return Response.json([{ user_id: "admin" }]);
+      if (url.pathname.endsWith("/test_accounts") && url.searchParams.get("parent_id") === "eq.test" && grants.family) return Response.json([{ parent_id: "test" }]);
+      return Response.json([]);
+    } },
+  });
+
+  it("allows the two dispatches of an authorized call to check grants independently", async () => {
+    const saved = db({ admin: true, family: true });
+    expect(await Promise.all([authorizedStagingCall(saved, live), authorizedStagingCall(saved, live)])).toEqual([true, true]);
+  });
+
+  it("refuses missing grants, failed lookups, and calls other than a live admin voice test", async () => {
+    const allowed = db({ admin: true, family: true });
+    const results = await Promise.all([
+      authorizedStagingCall(allowed, { ...live, kind: "family" }),
+      authorizedStagingCall(allowed, { ...live, kind: "chat" }),
+      authorizedStagingCall(allowed, { ...live, mode: "text" }),
+      authorizedStagingCall(allowed, { ...live, status: "ended" }),
+      authorizedStagingCall(allowed, { ...live, startedBy: null }),
+      authorizedStagingCall(db({ family: true }), live),
+      authorizedStagingCall(db({ admin: true }), live),
+      authorizedStagingCall(db({ error: true }), live),
+    ]);
+    expect(results).toEqual(Array(8).fill(false));
   });
 });
 

@@ -512,6 +512,8 @@ export class VoiceCallRun {
     private readonly options: {
       timers?: Timers;
       board?: BoardSpeech;
+      /** A staging experiment: hold speech and board cues until LiveKit confirms or cancels the interruption. */
+      pausePlayback?: boolean;
       notify(update: CallUpdate): void;
       closed?(): Promise<void>;
       /** The turn reaching the worker to the acknowledgement, for a turn that can stream. Default ACK_LIMIT_MS; 0 turns it off. */
@@ -552,7 +554,8 @@ export class VoiceCallRun {
     this.segment = call.revision;
     this.agent = new MayaVoiceAgent(call, turn => this.after(turn), options.board ? { sync: options.board, scope: () => this.boardScope } : undefined,
       (stoppedAt, work, mark, finalIds) => this.reply(stoppedAt, work, mark, finalIds),
-      { greetingOver: () => this.greetingOver(), childWentOn: text => this.childWentOn(text), prepare: text => this.prepareHint(text), backchannel: text => this.backchannel(text) });
+      { greetingOver: () => this.greetingOver(), childWentOn: text => this.childWentOn(text), prepare: text => this.prepareHint(text),
+        ...(options.pausePlayback ? { backchannel: (text: string) => this.backchannel(text) } : {}) });
     this.agent.hearing = { dropSilentPeakDbfs: options.dropSilentPeakDbfs ?? null, ...(options.heardVad ? { vad: options.heardVad } : {}), detectorMinSilenceMs: options.detectorMinSilenceMs ?? null };
     this.agent.onSilent = speech => this.silentSpeech(speech);
     this.agent.requireSpokenCues = scope => this.exchangeScope?.scope.generation === scope.generation;
@@ -573,7 +576,7 @@ export class VoiceCallRun {
         if (audioScope) this.stopBoard(audioScope);
         // An output that can pause leaves the decision to LiveKit: it pauses Maya, then resumes her when no words
         // follow (a "mm-hm" or a noise) or clears her speech, which retires the plan, when they do.
-        if (this.boardScope && !this.exchangeScope && !this.exchangeBoard && !this.session.output.audio?.canPause) this.stopBoard(this.boardScope);
+        if (this.boardScope && !this.exchangeScope && !this.exchangeBoard && !(this.options.pausePlayback && this.session.output.audio?.canPause)) this.stopBoard(this.boardScope);
       } else if (ev.oldState === "speaking") {
         this.childStoppedAt = this.timers.now();
         this.speechEndSeenAt = ev.createdAt;
@@ -599,7 +602,7 @@ export class VoiceCallRun {
     const audio = this.session.output.audio;
     if (!audio || !this.options.board) return;
     this.boardAudio = new CuePlaybackOutput(audio, this.options.board, this.timers,
-      (work, scope) => this.boardTask(work, scope), scope => this.stopBoard(scope));
+      (work, scope) => this.boardTask(work, scope), scope => this.stopBoard(scope), this.options.pausePlayback);
     this.session.output.audio = this.boardAudio.audio;
   }
 

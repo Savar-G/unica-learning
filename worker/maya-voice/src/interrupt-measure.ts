@@ -60,6 +60,25 @@ export function interruptReport(trials: readonly { stopMs: number | null }[], ta
   };
 }
 
+/** Match the child's received silence to a worker control for this clip. The clocks must be NTP synchronized. */
+export function stagingStop(
+  trial: { onsetAt: number; stopMs: number | null; speaking: boolean },
+  controls: readonly { speakingAt: number; pauseAt: number | null; clearAt: number | null; outputStoppedAt: number | null }[],
+  nextOnset: number,
+): number | null {
+  if (!trial.speaking || trial.stopMs === null) return null;
+  const end = trial.onsetAt + trial.stopMs;
+  // Leave room for Cloud transport, output buffering, and clock skew, but never take a later clip's control.
+  const transitMs = 500;
+  const confirmed = controls.some(record => {
+    const control = Math.min(record.pauseAt ?? Infinity, record.clearAt ?? Infinity);
+    return record.speakingAt >= trial.onsetAt && record.speakingAt <= end + transitMs &&
+      control >= record.speakingAt && control < nextOnset &&
+      Math.abs((record.outputStoppedAt ?? control) - end) <= transitMs && Number.isFinite(control);
+  });
+  return confirmed ? trial.stopMs : null;
+}
+
 /**
  * Whether the child's sound stopped Maya. The worker can stop her audio by retiring the speech scope, and the speech
  * handle then reports no interruption, so the test is the agent going to listening after the child's speech started

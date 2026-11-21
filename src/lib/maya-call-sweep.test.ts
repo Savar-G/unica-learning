@@ -9,6 +9,7 @@ import { abandonedAt, SWEEP_BATCH, SWEEP_GRACE_MS, SWEEP_PAGES, SWEEP_START_MS, 
 import type { MayaModel } from "@/lib/maya-model";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
+import { setProductObserver } from "@/lib/product-monitoring";
 
 // The sweep of abandoned Maya chats and calls (#528), through its public interface, the call module's public interface,
 // the in-memory stores and a passed-in clock.
@@ -85,6 +86,7 @@ function setup() {
     store, connections, history: memoryWordingHistoryStore(), events, rebuild, note,
     model: (id) => (id === null || id === model.id ? model : null),
     isTestFamily: async (p) => p === PARENT,
+    canCallVoice: async () => true,
     canChat: async () => true,
     alerts: { send: async () => {}, list: async () => [] },
     clock,
@@ -106,6 +108,22 @@ function setup() {
 const total = (rs: SweepResult[], key: Exclude<keyof SweepResult, "cut">) => rs.reduce((sum, r) => sum + r[key], 0);
 
 describe("the sweep of abandoned calls", () => {
+  it("ends test and family voice calls in one pass and reports only the family's end", async () => {
+    const s = setup();
+    const input = { parentId: PARENT, childId: CHILD, childName: "Leah", package: PKG, startedBy: PARENT };
+    const test = ok(await s.calls.startVoice({ ...input, kind: "admin_test" })).view;
+    const family = ok(await s.calls.startVoice({ ...input, kind: "family" })).view;
+    s.set(T0 + DUE_MS);
+    const observer = vi.fn();
+    setProductObserver(observer);
+    try {
+      expect(await s.sweep()).toMatchObject({ due: 2, ended: 2 });
+      expect(s.row(test.id).status).toBe("ended");
+      expect(s.row(family.id).status).toBe("ended");
+      expect(observer.mock.calls.map(([e]) => [e.code, e.attributes.callId])).toEqual([["maya.ended", family.id]]);
+    } finally { setProductObserver(null); }
+  });
+
   it("never touches a live chat before its own end plus the grace, however quiet the child is", async () => {
     // Wrong if: the sweep ends the chat, or raises its revision, at any time before start + 10 minutes + 5 minutes.
     const s = setup();

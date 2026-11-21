@@ -50,7 +50,7 @@ export async function mintVoiceToken(input: {
   });
   const grant = childGrant(call.id);
   at.addGrant({ ...grant, canPublishSources: [TrackSource.MICROPHONE] });
-  const metadata = JSON.stringify({ callId: call.id, ...(deployment && input.staging?.lab ? { lab: input.staging.lab } : {}) });
+  const metadata = JSON.stringify({ callId: call.id, ...(deployment ? { deployment, lab: input.staging?.lab } : {}) });
   at.roomConfig = new RoomConfiguration({
     agents: [new RoomAgentDispatch({ agentName: VOICE_AGENT_NAME, metadata, deployment })],
   });
@@ -71,11 +71,15 @@ export async function mintVoiceToken(input: {
 /** LiveKit's deployment names (docs.livekit.io/deploy/agents/deployments): `production` is the default, never named. */
 const DEPLOYMENT_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,61}[A-Za-z0-9])?$/;
 
+export function assertStagingDeploymentName(name: string): void {
+  if (name.toLowerCase() === "production" || !DEPLOYMENT_NAME.test(name)) throw new Error("not a non-production deployment name");
+}
+
 /** The deployment that takes the call: "" (production) unless an admin test call names a non-production one. */
 function stagingDeployment(kind: string, staging: { deployment: string } | undefined): string {
   if (!staging) return "";
   if (kind !== "admin_test") throw new Error("a non-production deployment takes admin test calls only");
-  if (staging.deployment === "production" || !DEPLOYMENT_NAME.test(staging.deployment)) throw new Error("not a non-production deployment name");
+  assertStagingDeploymentName(staging.deployment);
   return staging.deployment;
 }
 
@@ -87,7 +91,7 @@ function earlyDispatch(project: { url: string; apiKey: string; apiSecret: string
   return async (room: string, metadata: string, deployment: string) => {
     const client = new AgentDispatchClient(project.url.replace(/^ws/, "http"), project.apiKey, project.apiSecret);
     const existing = await client.listDispatch(room).catch(() => []);
-    if (existing.some(d => d.agentName === VOICE_AGENT_NAME)) return;
+    if (existing.some(d => d.agentName === VOICE_AGENT_NAME && d.deployment === deployment)) return;
     await client.createDispatch(room, VOICE_AGENT_NAME, { metadata, ...(deployment ? { deployment } : {}) });
   };
 }
