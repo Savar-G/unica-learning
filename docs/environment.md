@@ -1,6 +1,6 @@
 # Environment variables reference
 
-Complete reference for application, worker, and script environment variables. Copy `.env.example` to `.env.local` for local development. Production and Preview values live in Vercel (`unica-learning-landing-page`, team `unica-learning`); Mac worker settings live in `~/.config/unica/workbook-worker.env`; LiveKit voice worker secrets live in LiveKit Cloud (`docs/maya-voice-deploy.md`).
+Complete reference for application, worker, and script environment variables. Copy `.env.example` to `.env.local` for local web development. Production and Preview values live in Vercel (`unica-learning-landing-page`, team `unica-learning`); Mac worker settings live in `~/.config/unica/workbook-worker.env` (template: `scripts/workbook-worker.env.example`); LiveKit voice worker secrets live in LiveKit Cloud (`docs/maya-voice-deploy.md`, template: `worker/maya-voice/.env.example`).
 
 ## Core, Supabase, and Auth
 

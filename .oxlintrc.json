@@ -124,5 +124,52 @@
     "react/no-string-refs": "error",
     "react/no-unescaped-entities": "error",
     "react/require-render-return": "error"
-  }
+  },
+  "overrides": [
+    {
+      "files": [
+        "worker/maya-voice/src/**/*.{ts,tsx,mts}",
+        "scripts/workbook-worker.ts",
+        "scripts/retention-worker.ts",
+        "src/ds/**/*.{ts,tsx}",
+        "src/lib/maya/**/*.{ts,tsx}",
+        "src/lib/maya-*.ts",
+        "src/lib/maya.ts",
+        "src/lib/board/**/*.{ts,tsx}",
+        "src/lib/board-*.ts",
+        "src/lib/board.ts",
+        "src/lib/workbook-curriculum/**/*.{ts,tsx}",
+        "src/lib/workbook-worker.ts",
+        "src/lib/workbook-ai.ts",
+        "src/lib/workbook-job*.ts",
+        "src/lib/workbook-plan*.ts",
+        "src/lib/workbook-render*.ts",
+        "src/lib/workbook-generator*.ts",
+        "src/lib/workbook-template*.ts",
+        "src/lib/assessment/**/*.{ts,tsx}",
+        "src/lib/question-package*.ts",
+        "src/lib/learning-events*.ts",
+        "src/lib/database*.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@sentry/nextjs",
+                "message": "Shared domain, design-system, and worker modules must not import @sentry/nextjs; use @sentry/node or runtime-agnostic monitoring helpers."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["next", "next/*"],
+                "message": "Shared domain, design-system, and worker modules must not import Next.js runtime APIs (keep Next.js coupling in src/app or *-server.ts adapters)."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

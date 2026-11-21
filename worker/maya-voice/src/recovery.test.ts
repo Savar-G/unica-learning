@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { llm, voice, initializeLogger } from '@livekit/agents';
+import { voice, initializeLogger } from '@livekit/agents';
 import { describe, it, expect, vi } from 'vitest';
 import { templateSkills } from '@/lib/assessment';
 import { learningEvents } from '@/lib/learning-events';
@@ -11,7 +11,7 @@ import { memoryCallStore, memoryConnectionLog } from '@/lib/maya-call-memory';
 import { ruleMayaModel } from '@/lib/maya-model-fake';
 import { SAMPLE_PACKAGES } from '@/lib/maya-samples';
 import type { QuestionPackage } from '@/lib/question-package';
-import { VoiceCallRun, voiceSession, type Timers, type CallUpdate } from './agent';
+import { VoiceCallRun, type Timers, type CallUpdate } from './agent';
 import { CallTelemetry, setTelemetry, type Emitted } from './telemetry';
 
 initializeLogger({ pretty: false, level: 'silent' });
