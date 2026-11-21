@@ -225,6 +225,9 @@ export function divisionLessonPlan(s: DivisionSessionState, deps: DivisionSessio
     deps.wholeValue(body.replace(/^(?:there (?:are|is)|i have|each group (?:has|gets)) /, "").replace(new RegExp(` ${place}s?$`), ""));
   const heard = deps.heardAnswers();
   const prevStep = previous?.instruction?.step as DivisionStep | undefined;
+  // #1155 review: a step question is graded against the problem Maya asked it about (the target or a separate example).
+  const prevDiv = previous ? divisionFactsFromExchange(previous.facts) : null;
+  const askedFacts = prevDiv ?? targetFacts;
   const choice = lesson.progression
     ? divisionChoice({
         text,
@@ -246,7 +249,7 @@ export function divisionLessonPlan(s: DivisionSessionState, deps: DivisionSessio
         onesCount: count("one"),
         heardTens: heard.some((a) => a.step === "tens" && a.verdict === "right"),
         heardOnes: heard.some((a) => a.step === "ones" && a.verdict === "right"),
-      }, targetFacts)
+      }, askedFacts)
     : undefined;
 
   if (choice?.step === "div_correct" && divisionTransferFor(s, deps)) choice.step = "offer";
@@ -286,16 +289,18 @@ export function divisionLessonPlan(s: DivisionSessionState, deps: DivisionSessio
       }
     : undefined;
 
-  const prevDiv = previous ? divisionFactsFromExchange(previous.facts) : null;
-  const candidates: TransferOperands[] = prevDiv
+  // #1155 review: the lesson keeps its problem once a board shows it. Before that, a turn that brings a board may move to
+  // a separate example. Each candidate is checked on the speech and board this turn sends, plus the board steps still due.
+  const fresh: TransferOperands[] = [[dividend, divisor], ...divisionExampleCandidates(targetFacts.remainingTens === 1)];
+  const candidates: TransferOperands[] = prevDiv && (shownAction || !withBoard)
     ? [[prevDiv.dividend, prevDiv.divisor]]
-    : [[dividend, divisor], ...divisionExampleCandidates(targetFacts.remainingTens === 1)];
+    : [...(prevDiv ? [[prevDiv.dividend, prevDiv.divisor] as TransferOperands] : []), ...fresh];
 
   const chosen = candidates
     .map(([a, b]) => divisionFacts(a, b, a !== dividend || b !== divisor))
     .find((candidate): candidate is DivisionFacts => {
       if (!candidate) return false;
-      const cmds = (withBoard || step === "div_check_place")
+      const cmds = withBoard
         ? [
             ...divisionCommands("show", candidate),
             ...divisionCommands("share", candidate),
@@ -304,7 +309,7 @@ export function divisionLessonPlan(s: DivisionSessionState, deps: DivisionSessio
         : [];
       const words = [
         ...(instruction ? (divisionWords(candidate, instruction, true, !!sharedAction) ?? []) : []),
-        ...(withBoard || step === "div_check_place"
+        ...(withBoard
           ? [
               ...divisionPromptWords(candidate, true, "share"),
               ...divisionDemoWords(candidate, true, false),

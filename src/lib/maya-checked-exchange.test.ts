@@ -1293,3 +1293,19 @@ it("checks every supported division: the first demonstration never shows the quo
   }
   expect(leaks).toEqual([]);
 });
+
+it("30 ÷ 3: asks the tens check about the question it shows and grades the child against that question", async () => {
+  const { calls } = setup();
+  let turn = ok(await calls.start({ ...input, package: divisionPackage(30, 3) }));
+  const say = async (text: string) => {
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text }, null));
+    return turn.output.say.join(" ");
+  };
+  expect(await say("I don't know how to start.")).toMatch(/how many tens are in 30\?/i);
+  expect(await say("3 tens.")).toMatch(/share 3 tens equally into 3 groups/i);
+  expect(await say("1 ten.")).toMatch(/try the whole division on your own/i);
+  // A board demonstration later moves to a separate example, because the 30 ÷ 3 board would show 10.
+  const demo = await say("Show me how to divide.");
+  expect(demo).toMatch(/separate example/i);
+  expect(demo).not.toMatch(/\b10\b/);
+});
