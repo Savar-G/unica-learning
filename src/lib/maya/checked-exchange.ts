@@ -121,12 +121,13 @@ export function readLessonBrief(value: unknown): LessonBrief | null {
 /**
  * The lesson's first step when the child says they are stuck (#1145). With no brief: check the tens. The tens known on
  * the child's own: go straight to the exchange question. A tens gap: show the blocks with the trade, and once the child
- * has worked with them (`recheck`), check the tens again on the child's own so the gap can be revised. The blocks
- * helped before: start with them.
+ * has worked with them (`recheck`), check the tens again on the child's own so the gap can be revised.
+ * A help-only success or unfinished independent transfer starts with a guided trade, as do blocks that helped before.
  */
-export function stuckStart(brief: LessonBrief | undefined): "check_place" | "check_exchange" | "place_gap" | "guide_exchange" {
-  if (brief?.prerequisite === "secure") return "check_exchange";
+export function stuckStart(brief: LessonBrief | undefined, reviewStart?: true): "check_place" | "check_exchange" | "place_gap" | "guide_exchange" {
   if (brief?.prerequisite === "gap") return brief.recheck ? "check_place" : "place_gap";
+  if (reviewStart && (brief?.reviews.includes("assisted_only") || brief?.reviews.includes("transfer_not_independent"))) return "guide_exchange";
+  if (brief?.prerequisite === "secure") return "check_exchange";
   return brief?.blocks === "helped" ? "guide_exchange" : "check_place";
 }
 
@@ -136,6 +137,8 @@ export interface CheckedExchangeLesson {
   progression?: 1;
   /** #1144: offers the related question. A lesson saved without it replays its old "correct" step unchanged. */
   transfers?: 1;
+  /** Saved sessions keep their original first-step policy. */
+  reviewStart?: true;
   id: string;
   turns: ExchangeTurn[];
   transfer?: TransferTask;

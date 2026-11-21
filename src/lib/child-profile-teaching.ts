@@ -22,16 +22,16 @@
 //   without ("words"). "helped" when the newest observation with it is correct, "not_yet" otherwise.
 // - Review targets: a standard right only with help since its newest own right answer, a related question not done on
 //   the child's own, a prerequisite gap, a likely misconception; each with its sources, uncertainty and route. Routes
-//   are existing ones. "workbook_plan": the workbook planner reviews the standard (src/lib/workbook-plan.ts): it is not
-//   secure, or the target is a gap or a likely misconception, which the placement hands to the planner as not secure
-//   (src/lib/workbook-placement.ts). "next_call": only Maya's next call reads it (the brief): a standard above the
+//   are existing ones. "workbook_plan": the standard is not secure, or the target is a gap or a likely misconception.
+//   Placement passes these targets separately from mastery to the existing spaced review planner.
+//   "next_call": only Maya's next call reads it (the brief): a standard above the
 //   school grade (never a weakness, D-084), one the profile has no tally for, or help-only work on a secure standard.
 //   No new scheduler exists.
 // Each note keeps the evidence that decided its view and the newest other pieces, at most MAX_EVIDENCE, oldest first;
 // `since` is its newest evidence and `uncertainty` is high from one occasion, medium from two or three, low from more.
 // The teaching brief (teachingBrief): the compact part of one standard's evidence that Maya's next call reads at its start
 // (src/lib/maya-call.ts, the `brief` seam): the prerequisite's view and recheck, whether the blocks helped, the open
-// misconceptions and the review reasons. The lesson's first step after a stuck child follows it, and a likely reversal
+// misconceptions and the review reasons. The lesson's first step after a stuck child follows it, and an open reversal
 // adds a reminder to the first ones step (stuckStart, src/lib/maya/checked-exchange.ts).
 // Pure TypeScript: no Next.js, React, network, database or clock.
 import type { LearningEvent, LessonObservation, TransferAssistance } from "@/lib/learning-events";
@@ -45,6 +45,7 @@ export type EvidenceSource = "call" | "transfer" | "marking" | "assessment";
 
 /** One piece of a note's evidence: the learning event, where it came from, when, and what it showed. */
 export interface TeachingEvidence {
+  /** Learning event id, or the test id when evidence comes from its scored profile. */
   event: string;
   source: EvidenceSource;
   at: string;
@@ -91,6 +92,12 @@ export interface StandardTally {
   aboveGrade: boolean;
 }
 
+interface TeachingAssessment {
+  id: string;
+  completedAt: string;
+  correctStandards: readonly string[];
+}
+
 type Seen = { e: LearningEvent; o: LessonObservation };
 
 const sourceOf = (e: LearningEvent): EvidenceSource => (e.question.source === "transfer" ? "transfer" : e.source);
@@ -100,8 +107,12 @@ const piece = (e: LearningEvent, result: TeachingEvidence["result"], assistance:
   ({ event: e.id, source: sourceOf(e), at: e.occurredAt, result, assistance });
 const pieceOf = ({ e, o }: Seen) => piece(e, o.result, o.assistance);
 const uncertaintyOf = (occasions: number): Uncertainty => (occasions <= 1 ? "high" : occasions <= 3 ? "medium" : "low");
-/** One call is one occasion, its related question included; any other event is its own. */
-const occasion = (e: LearningEvent) => (e.evidence?.kind === "call" ? `call:${e.evidence.id}` : `event:${e.id}`);
+/** A call and its related question share an occasion, as do the answers of one assessment. */
+const occasion = (e: LearningEvent) => {
+  if (e.evidence?.kind === "call") return `call:${e.evidence.id}`;
+  if (e.source === "assessment" && e.question.source === "assessment") return `test:${e.question.assessmentId}`;
+  return `event:${e.id}`;
+};
 const occasions = (events: readonly LearningEvent[]) => new Set(events.map(occasion)).size;
 const lastIndex = <T>(list: readonly T[], test: (item: T) => boolean) => list.reduce((at, item, i) => (test(item) ? i : at), -1);
 const unique = (events: readonly LearningEvent[]) => [...new Map(events.map((e) => [e.id, e])).values()];
@@ -151,7 +162,7 @@ function prerequisite(standard: string, events: readonly LearningEvent[]): Built
   };
 }
 
-function misconceptions(standard: string, events: readonly LearningEvent[]): Built[] {
+function misconceptions(standard: string, events: readonly LearningEvent[], assessment: TeachingAssessment | undefined): Built[] {
   type Mark = { e: LearningEvent; assistance: TransferAssistance | null; at: number };
   const found = new Map<string, Mark[]>();
   events.forEach((e, at) => {
@@ -159,17 +170,25 @@ function misconceptions(standard: string, events: readonly LearningEvent[]): Bui
     if (e.mistake) add(e.mistake, markHelp(e));
     for (const o of e.observations ?? []) if (o.skill === "reversal" && o.result === "incorrect") add("reversal", o.assistance);
   });
+  const scored = assessment?.correctStandards.includes(standard) ? assessment : undefined;
+  const scoreTime = scored ? Date.parse(scored.completedAt) : -Infinity;
   return [...found].map(([id, shown]): Built => {
     // The child's own work that shows otherwise: an own right answer, or for a reversal an own correct ones column or difference.
     const counter = (e: LearningEvent) => ownRight(e) || (id === "reversal" && (e.observations ?? []).some((o) =>
       (o.skill === "subtract_ones" || o.skill === "difference") && o.result === "correct" && o.assistance === "independent"));
     const lastCounter = lastIndex(events, counter);
-    const fixed = lastCounter > shown.at(-1)!.at ? events[lastCounter] : null;
-    const open = shown.filter((m) => m.at > lastCounter);
+    const correction = lastCounter > shown.at(-1)!.at ? events[lastCounter] : null;
+    const lastMistake = shown.at(-1)!.e;
+    const fixed = correction ? piece(correction, "correct", "independent")
+      : scored && Date.parse(lastMistake.occurredAt) < scoreTime
+        ? { event: scored.id, source: "assessment" as const, at: scored.completedAt, result: "correct" as const, assistance: "independent" as const }
+        : null;
+    const stillOpen = (mark: Mark) => mark.at > lastCounter && !(Date.parse(mark.e.occurredAt) < scoreTime);
+    const open = shown.filter(stillOpen);
     const openCalls = occasions(open.map((m) => m.e));
     const view = fixed ? "resolved" : openCalls >= 2 ? "likely" : "suspected";
-    const pieces = [...shown.map((m) => piece(m.e, "incorrect", m.assistance)), ...(fixed ? [piece(fixed, "correct", "independent")] : [])];
-    const deciding = new Set(fixed ? [pieces.at(-1)!] : pieces.filter((_, i) => i < shown.length && shown[i].at > lastCounter));
+    const pieces = [...shown.map((m) => piece(m.e, "incorrect", m.assistance)), ...(fixed ? [fixed] : [])];
+    const deciding = new Set(fixed ? [fixed] : pieces.filter((_, i) => stillOpen(shown[i])));
     const evidence = kept(pieces, deciding);
     return {
       note: { kind: "misconception", id, standard, view, uncertainty: uncertaintyOf(fixed ? 1 : openCalls), since: evidence.at(-1)!.at, evidence },
@@ -182,12 +201,13 @@ function representations(standard: string, events: readonly LearningEvent[]): Bu
   const work: Seen[] = events.flatMap((e) => (e.observations ?? []).filter((o) => o.skill !== "identify_tens").map((o) => ({ e, o })));
   return (["blocks", "words"] as const).flatMap((id): Built[] => {
     const mine = work.filter(({ o }) => o.board === (id === "blocks"));
-    const right = mine.filter(({ o }) => o.result === "correct");
-    if (right.length === 0) return [];
+    if (!mine.some(({ o }) => o.result === "correct")) return [];
     const pieces = mine.map(pieceOf);
     const evidence = kept(pieces, new Set());
-    const view = mine.at(-1)!.o.result === "correct" ? "helped" : "not_yet";
-    return [{ note: { kind: "representation", id, standard, view, uncertainty: uncertaintyOf(right.length), since: evidence.at(-1)!.at, evidence }, shownBy: [] }];
+    const latest = mine.at(-1)!.o.result;
+    const view = latest === "correct" ? "helped" : "not_yet";
+    const supporting = mine.filter(({ o }) => o.result === latest);
+    return [{ note: { kind: "representation", id, standard, view, uncertainty: uncertaintyOf(occasions(supporting.map(({ e }) => e))), since: evidence.at(-1)!.at, evidence }, shownBy: [] }];
   });
 }
 
@@ -215,15 +235,15 @@ function reviews(standard: string, events: readonly LearningEvent[], built: read
 
 /**
  * The teaching evidence of the child's events, by BC standard. `standards`: the profile's tally of each standard (a
- * review's route). Assessment answers the profile already counts may be left out by the caller.
+ * review's route). The latest scored assessment can supply a correction even without backfilled answer events.
  */
-export function teachingEvidence(events: readonly LearningEvent[], standards: readonly StandardTally[]): TeachingEvidenceSummary {
+export function teachingEvidence(events: readonly LearningEvent[], standards: readonly StandardTally[], assessment?: TeachingAssessment): TeachingEvidenceSummary {
   const ordered = inOrder(events);
   const notes: TeachingNote[] = [];
   const out: ReviewTarget[] = [];
   for (const standard of [...new Set(ordered.map((e) => e.skill.standard))]) {
     const mine = ordered.filter((e) => e.skill.standard === standard);
-    const built = [prerequisite(standard, mine), ...misconceptions(standard, mine), ...representations(standard, mine)].filter((b): b is Built => b !== null);
+    const built = [prerequisite(standard, mine), ...misconceptions(standard, mine, assessment), ...representations(standard, mine)].filter((b): b is Built => b !== null);
     notes.push(...built.map((b) => b.note));
     out.push(...reviews(standard, mine, built, standards.find((s) => s.code === standard)));
   }
@@ -231,8 +251,8 @@ export function teachingEvidence(events: readonly LearningEvent[], standards: re
 }
 
 /** The standards the workbook plan reviews because of the teaching evidence (route "workbook_plan"), for the placement. */
-export function plannedReviews(teaching: TeachingEvidenceSummary | undefined): Set<string> {
-  return new Set((teaching?.reviews ?? []).filter((r) => r.route === "workbook_plan").map((r) => r.standard));
+export function plannedReviews(teaching: TeachingEvidenceSummary | undefined): string[] {
+  return [...new Set((teaching?.reviews ?? []).filter((r) => r.route === "workbook_plan").map((r) => r.standard))];
 }
 
 /**

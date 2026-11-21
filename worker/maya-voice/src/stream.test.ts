@@ -189,7 +189,7 @@ class ProbeStream extends stt.SpeechStream {
   }
 }
 
-async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; speech?: ProbeSTT; numberContinueMs?: number; dropSilentPeakDbfs?: number; heardVad?: VAD; childName?: string | null; note?: CallSeams["note"]; reviewer?: ReturnType<typeof fakeTalkReviewer> }) {
+async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; speech?: ProbeSTT; numberContinueMs?: number; dropSilentPeakDbfs?: number; heardVad?: VAD; replyDone?: (turnId: string) => void; childName?: string | null; note?: CallSeams["note"]; reviewer?: ReturnType<typeof fakeTalkReviewer> }) {
   const clock = handClock();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -229,6 +229,7 @@ async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; speec
   const samples: VoiceTurnSample[] = [];
   const run = new VoiceCallRun(session, opened.call, {
     board, timers: clock.timers, notify: () => {}, measureTurn: (s) => samples.push(s), ackLimitMs: options.ackLimitMs ?? 0, numberContinueMs: options.numberContinueMs ?? 0, dropSilentPeakDbfs: options.dropSilentPeakDbfs ?? null, ...(options.heardVad ? { heardVad: options.heardVad } : {}),
+    ...(options.replyDone ? { replyDone: options.replyDone } : {}),
   });
   await run.agentJoined();
   await session.start({ agent: run.agent });
@@ -450,7 +451,9 @@ describe("the parts of a turn as the worker hears them (VoiceSay)", () => {
   });
 
   it("says a turn's batches after the early sentence, with each cue moved, and the board ends as the turn says", async () => {
-    const c = await voiceCall({ model: ruleConversationalModel() });
+    // #1139: the reply is done only when its last speech has played, not when its first sentence played.
+    const done: { turnId: string; said: string[]; samples: number }[] = [];
+    const c: Awaited<ReturnType<typeof voiceCall>> = await voiceCall({ model: ruleConversationalModel(), replyDone: (turnId) => done.push({ turnId, said: [...c.said()], samples: c.samples.length }) });
     // The question the opening drew (one batch), and a note below it that this turn draws.
     const question = (await c.store.get(c.id))!.live!.text.board[0];
     const target = (question.commands[0] as { id: string }).id;
@@ -480,8 +483,55 @@ describe("the parts of a turn as the worker hears them (VoiceSay)", () => {
     const shown = c.receiver.snapshot().events.flatMap((e) => (e.kind === "batch" ? [e.batchId] : []));
     expect(shown).toEqual([question.transactionId, note.transactionId]);
     expect(c.receiver.staged()).toEqual([]);
+    const reply = done.filter((d) => d.said.length > before);
+    expect(reply).toHaveLength(1);
+    expect(reply[0].said.slice(before)).toEqual([FIRST, SECOND, third]);
+    // The report names the same turn as the turn's sample, so the child can match the answer and the report by turn.
+    expect(reply[0].turnId).toBe(c.samples.at(-1)!.turnId);
   });
 });
+
+  it("#1139 drops the rest when the child interrupts while its board waits, and reports the turn done once", async () => {
+    const done: { turnId: string; said: string[] }[] = [];
+    const c: Awaited<ReturnType<typeof voiceCall>> = await voiceCall({ model: ruleConversationalModel(), replyDone: (turnId) => done.push({ turnId, said: [...c.said()] }) });
+    const question = (await c.store.get(c.id))!.live!.text.board[0];
+    const note: Batch = { transactionId: `${c.id}-note`, commands: [{ op: "write", id: "note-ones", text: "ones", place: { below: (question.commands[0] as { id: string }).id } }] };
+    const third = "Start with the seven.";
+    const queued: string[] = [];
+    const realSay = c.session.say.bind(c.session);
+    vi.spyOn(c.session, "say").mockImplementation((text, options) => {
+      if (typeof text === "string") queued.push(text);
+      return realSay(text, options);
+    });
+    let finish = () => {};
+    const held = new Promise<void>((resolve) => { finish = resolve; });
+    vi.spyOn(c.call, "child").mockImplementationOnce(async (_text, _options, say) => {
+      say!.part!(FIRST, 0);
+      await held;
+      return { say: [`${FIRST} ${SECOND} ${third}`], newBatches: 1, boardCues: [{ batch: note, word: 16 }], safetyMessage: null, ended: false };
+    });
+    const before = c.said().length;
+    c.say("I got 56.");
+    await waitFor(() => c.said().slice(before).includes(FIRST), "the first sentence");
+    // The board waits for an exchange before it stages the rest (stageBoard). The test releases that wait.
+    let release = () => {};
+    (c.run as unknown as { exchangeBoard: Promise<void> | null }).exchangeBoard = new Promise<void>((resolve) => { release = resolve; });
+    finish();
+    await pause();
+    // The child speaks while the board waits: the turn closes.
+    c.say("Wait, I have a question.");
+    await waitFor(() => done.length >= 1, "the turn's report");
+    (c.run as unknown as { exchangeBoard: Promise<void> | null }).exchangeBoard = null;
+    release();
+    await waitFor(() => c.session.agentState === "listening", "the call to settle");
+    await pause();
+    // The rest is never queued after the turn closed, so Maya cannot say it after the child spoke.
+    expect(queued.filter((text) => text.includes(third))).toEqual([]);
+    expect(c.said().slice(before)).not.toContain(third);
+    expect(c.receiver.snapshot().events.some((e) => e.kind === "batch" && e.batchId === note.transactionId)).toBe(false);
+    const first = done[0].turnId;
+    expect(done.filter((d) => d.turnId === first)).toHaveLength(1);
+  });
 
 describe("what is left of a turn after its early sentences (earlyRest)", () => {
   const batch = (id: string): Batch => ({ transactionId: id, commands: [] });

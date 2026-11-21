@@ -10,6 +10,8 @@ import { fakeAiClient } from "@/lib/ai-client-fake";
 import { fakeWorkbookItems } from "@/lib/workbook-ai-fake";
 import { keySolver } from "@/lib/workbook-solve-check";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
+import type { LearningEvent } from "@/lib/learning-events";
+import type { WorkbookInstructions } from "@/lib/workbook-instructions";
 
 const BC=curriculumFor("bc")!;
 const input=(profile: ChildLearnerProfile | null=firstCustomerProfile(),grade:Grade=4):PlacementInput=>({curriculum:BC,grade,profile,workbooks:[]});
@@ -153,12 +155,46 @@ describe("placement P0 to P9",()=>{
 });
 
 describe("teaching evidence in the plan (#1145)",()=>{
-  it("hands a gap or a likely misconception on a secure standard to the planner as not secure, and nothing else",()=>{
-    const statusOf=(p:ChildLearnerProfile)=>{const r=prepareNextWorkbookInput({...input(p),number:1});if(!r.ok)throw new Error(r.reason);return r.input.profile.standards.find(s=>s.code==="3.3")?.status;};
-    const target=(route:"workbook_plan"|"next_call",reason:"misconception"|"assisted_only")=>({standard:"3.3",reason,since:"2026-11-20T10:00:00.000Z",events:["e1","e2"],sources:["call" as const],uncertainty:"medium" as const,route});
-    const p=changed([["3.3",2,2]],4);
-    expect(statusOf(p)).toBe("secure");
-    expect(statusOf({...p,teaching:{notes:[],reviews:[target("next_call","assisted_only")]}})).toBe("secure");
-    expect(statusOf({...p,teaching:{notes:[],reviews:[target("workbook_plan","misconception")]}})).toBe("developing");
+  const code = "3.3";
+  const calls: LearningEvent[] = [1, 2].map((n) => ({
+    id: `e${n}`, key: `call:${n}`, parentId: "parent", childId: "child", source: "call",
+    question: { source: "workbook", workbookId: "book", page: 1, question: n },
+    skill: { standard: code, skills: ["3.3-subtract-within-1000"] },
+    result: "wrong", stuckStep: "ones", mistake: null, hints: 0, timeMs: null,
+    occurredAt: `2026-11-20T10:0${n}:00.000Z`, evidence: { kind: "call", id: `call-${n}` },
+    observations: [{ skill: "reversal", result: "incorrect", assistance: "independent", board: false }],
+  }));
+  const scheduled = (plan: PersonalWorkbookPlan) => plan.days.flatMap(d => d.pages.flatMap(p => p.parts.flatMap(part => part.reviews ?? [])));
+  const startAt = (level: string): WorkbookInstructions => ({ version: 1, startLevel: level, teachMore: [], teachLess: [], addReview: [], difficulty: null });
+
+  it("schedules an actual review for a secure first-book unit and preserves the teaching sequence",()=>{
+    const learner = changed([[code, 20, 20]], 3, 3);
+    const profile = childProfileFacts({ grade: 3, learning: null, assessment: learner.assessment, events: calls })!;
+    const before = { ...input({ ...profile, teaching: learner.teaching }, 3), instructions: startAt("U10") };
+    const after = { ...before, profile, number: 1 };
+    expect(profile.teaching.reviews).toContainEqual(expect.objectContaining({ standard: code, route: "workbook_plan" }));
+    const capture = prepareNextWorkbookInput(after);
+    expect(capture).toMatchObject({ ok: true, input: { teachingReviews: [code], profile: { standards: [expect.objectContaining({ code, status: "secure" })] } } });
+    const baseline = planned(before);
+    const reviewed = planned(after);
+    expect(reviewed.newSteps.some(s => s.unit === code)).toBe(false);
+    expect(reviewed.newSteps).toEqual(baseline.newSteps);
+    expect(scheduled(reviewed)).toContainEqual({ skill: "3.3-subtract-within-1000", step: 1, interval: 0 });
+    const reviewSteps = reviewed.days.flatMap(d => d.pages.flatMap(p => p.parts.filter(part => part.items > 0 && part.reviews?.length).flatMap(part => part.reviewSteps ?? [])));
+    expect(reviewSteps).toContainEqual({ skill: "3.3-subtract-within-1000", step: 1 });
+    if (!capture.ok) throw new Error(capture.reason);
+    expect(planWorkbook(capture.input)).toMatchObject({ ok: true, plan: { days: reviewed.days } });
+  });
+
+  it("uses call-only evidence for an earlier level and skips a future or above-grade target",()=>{
+    const profile = childProfileFacts({ grade: 3, learning: null, assessment: null, events: calls })!;
+    expect(profile.teaching.reviews).toContainEqual(expect.objectContaining({ standard: code, route: "workbook_plan" }));
+    const relatedReview = (level: string, grade: Grade, evidence: ChildLearnerProfile) =>
+      scheduled(planned({ ...input(evidence, grade), instructions: startAt(level) })).filter(r => r.skill.startsWith(`${code}-`));
+    expect(relatedReview("U11", 3, profile)).toContainEqual(expect.objectContaining({ skill: "3.3-subtract-within-1000", interval: 0 }));
+    expect(relatedReview("U9", 3, profile)).toEqual([]);
+    const above = childProfileFacts({ grade: 2, learning: null, assessment: null, events: calls })!;
+    expect(above.teaching.reviews).toContainEqual(expect.objectContaining({ standard: code, route: "next_call" }));
+    expect(relatedReview("U11", 2, above)).toEqual([]);
   });
 });

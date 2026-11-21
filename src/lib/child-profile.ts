@@ -190,15 +190,15 @@ const newest = (times: readonly string[]) => times.reduce<string | null>((last, 
 
 /**
  * The child's profile facts (see the header for the rules), or null when there is nothing to build from: no
- * assessment profile this version reads and no event.
+ * assessment profile this version reads, no event and no separately supplied review targets.
  */
-export function childProfileFacts(input: ChildProfileInput): ChildLearnerProfile | null {
-  const facts = buildFacts(input);
-  return facts.assessment || facts.events.counted > 0 ? facts : null;
+export function childProfileFacts(input: ChildProfileInput, teaching?: TeachingEvidenceSummary): ChildLearnerProfile | null {
+  const facts = buildFacts(input, teaching);
+  return facts.assessment || facts.events.counted > 0 || teaching?.reviews.length ? facts : null;
 }
 
 /** The facts, also when there is nothing to build from (no standard): a rebuild stores that over an older profile. */
-function buildFacts(input: ChildProfileInput): ChildLearnerProfile {
+function buildFacts(input: ChildProfileInput, teaching?: TeachingEvidenceSummary): ChildLearnerProfile {
   const base = input.assessment ? storedProfile(input.assessment.profile) : null;
   const baseId = base ? input.assessment!.assessmentId : null;
   const inProfile = (e: LearningEvent) => e.source === "assessment" && e.question.source === "assessment" && e.question.assessmentId === baseId;
@@ -244,6 +244,11 @@ function buildFacts(input: ChildProfileInput): ChildLearnerProfile {
   }).sort(curriculumOrder);
 
   const { learning } = input;
+  const completedAt = input.assessment?.completedAt;
+  const help = base?.behaviour?.help;
+  const assessmentEvidence = base && baseId && completedAt && help?.answer === "no" && !help.likely && !base.behaviour.unreliable
+    ? { id: baseId, completedAt, correctStandards: base.standards.filter((s) => s.total > 0 && s.correct === s.total).map((s) => s.code) }
+    : undefined;
   return {
     schemaVersion: CHILD_PROFILE_SCHEMA_VERSION,
     grade: input.grade,
@@ -260,7 +265,7 @@ function buildFacts(input: ChildProfileInput): ChildLearnerProfile {
     events: { counted: counted.length, inAssessmentProfile: input.events.filter(inProfile).length, lastAt: newest(counted.map((e) => e.occurredAt)) },
     ai: null,
     // Related questions count here: they are teaching evidence, not answers toward a standard.
-    teaching: teachingEvidence(input.events.filter((e) => !inProfile(e)), standards.map((s) => ({ code: s.code, secure: s.status === "secure", aboveGrade: s.aboveGrade }))),
+    teaching: teaching ?? teachingEvidence(input.events, standards.map((s) => ({ code: s.code, secure: s.status === "secure", aboveGrade: s.aboveGrade })), assessmentEvidence),
   };
 }
 

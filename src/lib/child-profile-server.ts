@@ -130,7 +130,9 @@ export async function prepareChildProfileForWorkbook(childId: string, seams: Wor
     const afterMarks = marks ? await seams.child.profiles.marks!(childId) : undefined;
     if (!source || afterProfile?.buildToken !== before.buildToken || (marks && marks.revision !== afterMarks?.revision)) return { ok: false };
     const nonCall = events.filter((event) => event.source !== "call");
-    const facts = childProfileFacts({ ...source, events: nonCall });
+    // The call exclusion applies to placement tallies and AI findings. Checked lesson targets feed spaced review.
+    const reviews = profile.profile.teaching.reviews.filter((review) => review.route === "workbook_plan");
+    const facts = childProfileFacts({ ...source, events: nonCall }, { notes: [], reviews });
     const nonCallIds = new Set([...raw, ...nonCall].filter((event) => event.source !== "call").map((event) => event.id));
     const ai = profile.profile.ai;
     const filteredAi = ai ? { ...ai, findings: ai.findings.filter((finding) =>

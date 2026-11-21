@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { learnerProfile, type LearnerProfile } from "@/lib/assessment";
 import { knowsUpTo, takeTest } from "@/lib/assessment/scripted-child";
 import { childProfileFacts, type ChildProfileInput } from "@/lib/child-profile";
@@ -12,6 +12,7 @@ const CHILD = "00000000-0000-4000-8000-0000000000c1";
 const WORKBOOK = "00000000-0000-4000-8000-0000000000b1";
 
 let next = 0;
+beforeEach(() => { next = 0; });
 /** One event on a workbook question of standard 3.3, from a call. */
 const event = (over: Partial<LearningEvent> = {}): LearningEvent => {
   next += 1;
@@ -208,6 +209,9 @@ describe("the child's teaching evidence (#1145)", () => {
     expect(note([swapped[0], fixed, swapped[1]], "misconception", "reversal")).toMatchObject({
       view: "resolved", since: fixed.occurredAt, evidence: [{}, {}, { event: fixed.id, source: "transfer", result: "correct", assistance: "independent" }],
     });
+    const right = call([], { result: "right", stuckStep: null, hints: 0 });
+    const laterMistake = relatedTo(right, { result: "wrong", stuckStep: "ones", observations: [seen("reversal", "incorrect")] });
+    expect(note([laterMistake, right], "misconception", "reversal")).toMatchObject({ view: "suspected", since: laterMistake.occurredAt });
   });
 
   it("reads marked pages in time order and resolves a misconception only with the child's own work", () => {
@@ -225,9 +229,37 @@ describe("the child's teaching evidence (#1145)", () => {
     expect(note([ownRight, older, olderToo], "misconception", "O3")).toMatchObject({ view: "resolved", since: ownRight.occurredAt });
   });
 
+  it("uses the latest assessment to clear an older misconception without counting its answers twice", () => {
+    const errors = [1, 2].map((day) => call([seen("reversal", "incorrect")], { occurredAt: `2026-10-0${day}T10:00:00.000Z`, result: "wrong" }));
+    const completedAt = "2026-10-10T10:00:00.000Z";
+    const tested = {
+      ...assessment, completedAt, profile: {
+        ...BASE, standards: [{ ...STRUGGLE, code: "3.3", correct: 1, total: 1, status: "secure" as const }],
+        behaviour: { ...BASE.behaviour, unreliable: false, help: { answer: "no" as const, flags: [], likely: false } },
+      },
+    };
+    const answer = event({ source: "assessment", question: { source: "assessment", assessmentId: TEST, questionId: "q-1" }, occurredAt: completedAt });
+    for (const [events, evidenceId] of [[errors, TEST], [[...errors, answer], answer.id]] as const) {
+      const profile = childProfileFacts(input({ assessment: tested, events }))!;
+      expect(profile.standards.find((s) => s.code === "3.3")).toMatchObject({ correct: 1, total: 3 });
+      expect(profile.teaching.notes).toContainEqual(expect.objectContaining({
+        kind: "misconception", id: "reversal", view: "resolved", since: completedAt, uncertainty: "high",
+        evidence: [expect.objectContaining({ source: "call" }), expect.objectContaining({ source: "call" }),
+          { event: evidenceId, at: completedAt, source: "assessment", result: "correct", assistance: "independent" }],
+      }));
+      expect(profile.teaching.reviews).toEqual([]);
+    }
+    const laterError = call([seen("reversal", "incorrect")], { occurredAt: "2026-10-11T10:00:00.000Z" });
+    expect(childProfileFacts(input({ assessment: tested, events: [...errors, laterError] }))!.teaching.notes)
+      .toContainEqual(expect.objectContaining({ id: "reversal", view: "suspected", uncertainty: "high", since: laterError.occurredAt }));
+  });
+
   it("records which board representation the child worked with, and review targets with their source, uncertainty and route", () => {
     const helped = call([seen("perform_exchange", "correct", { assistance: "demonstrated", board: true }), seen("subtract_ones", "correct", { board: true })]);
-    expect(note([helped], "representation", "blocks")).toMatchObject({ view: "helped", uncertainty: "medium" });
+    const sameCall = relatedTo(helped, { observations: [seen("difference", "correct", { board: true })] });
+    const separate = call([seen("perform_exchange", "correct", { board: true })]);
+    expect(note([helped, sameCall], "representation", "blocks")).toMatchObject({ view: "helped", uncertainty: "high" });
+    expect(note([helped, sameCall, separate], "representation", "blocks")).toMatchObject({ view: "helped", uncertainty: "medium" });
     expect(note([helped], "representation", "words")).toBeUndefined();
     const related = relatedTo(helped, { result: "right_with_help", stuckStep: "ones", assistance: "hinted" });
     expect(teaching([helped, related]).reviews).toEqual([

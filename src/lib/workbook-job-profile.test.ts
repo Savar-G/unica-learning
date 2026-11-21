@@ -396,6 +396,29 @@ it.each(["marking", "assessment"] as const)("keeps %s events in the workbook pla
   expect((await withEvents.runs.frame(eventId))!.plan).not.toEqual((await plain.runs.frame(plainId))!.plan);
 });
 
+it.each([
+  { standard: "3.3", review: true },
+  { standard: "8.5", review: false },
+])("uses checked call evidence for workbook review only when $standard is eligible", async ({ standard, review }) => {
+  const s = setup({ test: false });
+  for (const n of [1, 2]) {
+    const inserted = await s.events.insert({ key: `call:checked:${n}`, parentId: PARENT, childId: CHILD, source: "call",
+      question: { source: "workbook", workbookId: TEST, page: 1, question: n },
+      skill: { standard, skills: [] }, result: "wrong", stuckStep: "ones", mistake: null,
+      hints: 0, timeMs: 1000, occurredAt: COMPLETED, evidence: { kind: "call", id: `checked:${n}` },
+      observations: [{ skill: "reversal", result: "incorrect", assistance: "independent", board: false }] });
+    expect(inserted).toHaveProperty("created", true);
+  }
+  const id = await s.start();
+  expect(await runWorkbookJob(id, s.deps)).toBe("handed-on");
+  const frame = (await s.runs.frame(id))!;
+  expect(frame.countsCallEvents).toBe(false);
+  expect(frame.planning?.input.profile.standards).toEqual([]);
+  expect(frame.planning?.input.teachingReviews).toEqual(review ? [standard] : undefined);
+  const reviews = frame.plan.days.flatMap(d => d.pages.flatMap(p => p.parts.flatMap(part => part.reviews ?? [])));
+  expect(reviews.some(r => r.skill.startsWith(`${standard}-`))).toBe(review);
+});
+
 it("counts calls when enabled and keeps the stored profile unchanged by the filtered read", async () => {
   const s = setup({ test: false });
   const plain = setup({ test: false });
