@@ -235,6 +235,9 @@ async function runCall(o: { url: string; dispatch: AgentDispatchClient; job: Omi
     await c.stop();
     await c.room.disconnect();
     write(o.capture, o.cases, job, o.run, steps, c, caseRows, callMinutes, o.fake);
+    // #1146: a row is evidence for the settings it names only when the worker loaded exactly those settings.
+    const problems = settingsCheck(c.messages);
+    if (problems.length) { console.error(`call ${job.callId}: worker settings differ from the run's:`, problems); process.exitCode = 1; }
   }
 }
 
@@ -258,6 +261,13 @@ function otherPlayouts(playouts: Playout[] | undefined, answer: number | null, f
 function turnRows(job: BaselineJob, run: RunSettings, fake: boolean, reported: BaselineTurn[] | null, observed: (BaselineTurn | undefined)[]): BaselineTurn[] {
   const worker = reported ?? plannedTurns(groupOf(job, run, fake ? "simulated" : "worker"), PLANNED_TYPES, []);
   return fake ? worker : [...worker, ...plannedTurns(groupOf(job, run, "device"), PLANNED_TYPES, observed)];
+}
+
+/** Why a call's rows do not stand for the run's settings: the worker loaded others, or never said what it loaded. */
+export function settingsCheck(messages: readonly ReportMessage[]): string[] {
+  const call = messages.find((m): m is Extract<ReportMessage, { kind: "call" }> => m.kind === "call");
+  if (!call) return [];
+  return call.settings ? call.settings.problems : ["the worker reported no loaded settings"];
 }
 
 function write(capture: string, cases: string, job: BaselineJob, run: RunSettings, steps: Step[], c: Awaited<ReturnType<typeof child>>, caseRows: unknown[], callMinutes: number, fake: boolean) {
@@ -335,6 +345,7 @@ function write(capture: string, cases: string, job: BaselineJob, run: RunSetting
     reported,
     callMinutes: Math.round(callMinutes * 1e4) / 1e4,
     models: call?.models ?? null,
+    settings: call?.settings ?? null,
     ttsChars: call?.ttsChars ?? null,
     openingTtsChars: call?.openingTtsChars ?? null,
     speechUsd: call?.speechUsd ?? null,

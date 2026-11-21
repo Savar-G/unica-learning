@@ -931,7 +931,7 @@ describe("#605 Maya claims no feelings (C24-r2: 'I had fun working with you' pas
 // a sound-alike ("Sixteen." with "Sixty.") or a teen split by a pause ("Six teen.", uncertain). On 27 + 39 the ones step is
 // 16: Maya confirms before any credit, and the child's yes or plain repeat then credits it.
 describe("#1146 a step answer heard two ways is confirmed before credit", () => {
-  const credit = { act: "guide" as const, step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { answers: [ans(16, "ones", "right")] } };
+  const credit: Draft = { act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { answers: [ans(16, "ones", "right")] } };
   const asked = () => {
     const c = call();
     c.child("What do I do first?");

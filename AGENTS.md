@@ -82,7 +82,7 @@ Personalized math learning program with mailed paper workbooks for ages 5–14 (
 | Workbook rendering & print contract | `docs/workbook-rendering.md` (`src/lib/workbook-print-contract.ts`) |
 | Mac workbook worker & Book 1 previews | `docs/workbook-worker.md`, `docs/first-pages.md` |
 | Maya tutor, chat, practice & spend | `docs/maya-tutor.md`, `docs/maya-chat.md`, `docs/maya-practice.md`, `docs/maya-spend.md` |
-| Maya voice worker (`worker/maya-voice/`) | `worker/maya-voice/AGENTS.md`, `docs/maya-voice.md`, `docs/maya-voice-deploy.md` |
+| Maya voice worker (`worker/maya-voice/`) | `worker/maya-voice/AGENTS.md`, `docs/maya-voice.md`, `docs/maya-voice-endpointing.md`, `docs/maya-voice-deploy.md` |
 | Parent dashboard, plan gate & billing | `docs/parent-dashboard.md` (`src/lib/plan-access.ts`), `docs/stripe-webhook.md` |
 | Family time zones & date math | `docs/family-postal-time.md` (`src/lib/family-time.ts`) |
 | Page scans, crops & AI marking | `docs/scan-pages.md`, `docs/scan-marking.md`, `docs/scan-marking-escalation.md` |

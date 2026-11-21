@@ -25,12 +25,15 @@ import { VoiceCallRun, voiceSession } from "../../worker/maya-voice/src/agent";
 import { startVoiceBaselineProfile, voiceBaselineTurn } from "../../worker/maya-voice/src/baseline";
 import { waitForChild } from "../../worker/maya-voice/src/child-wait";
 import { voiceOpening } from "../../worker/maya-voice/src/opening";
+import { logLoadedSettings } from "../../worker/maya-voice/src/loaded-settings";
 import { makeProviders } from "../../worker/maya-voice/src/providers";
 import { CallTelemetry, markedFetch, setTelemetry, telemetry } from "../../worker/maya-voice/src/telemetry";
 import type { VoiceTurnSample } from "../../worker/maya-voice/src/turn-timing";
 import { configureDelivery } from "../../worker/maya-voice/src/voice-delivery";
 
 export const BASELINE_AGENT = "maya-baseline";
+/** What the worker loaded and how it differs from the configuration (worker/maya-voice/src/loaded-settings.ts). */
+export type LoadedReport = ReturnType<typeof logLoadedSettings>;
 export const REPORT_RPC = "maya.baseline.report";
 
 /** The provider label of every row of a run: the call's model and both speech providers, as the worker resolves them. */
@@ -97,7 +100,7 @@ const MAX_PLAYOUTS = 300;
 /** What the child receives at close: one message per RPC, each well under the RPC payload limit. */
 export type ReportMessage =
   | { kind: "turn"; row: ReturnType<typeof voiceBaselineTurn>; t0: number | null; turnStart: number | null; answerPlayback: number | null; ackPlayback: number | null; ttsChars: number; cues: ReportedCue[]; childText: string | null }
-  | { kind: "call"; workerQueueMs: number; profile: Record<string, unknown> | null; discardedPreparation: unknown; speechUsd: { stt: number; tts: number }; playouts: Playout[]; ttsChars: number; openingTtsChars: number; models: { stt: string; tts: string }; childTranscripts: ReportedChildTranscript[] }
+  | { kind: "call"; workerQueueMs: number; profile: Record<string, unknown> | null; discardedPreparation: unknown; speechUsd: { stt: number; tts: number }; playouts: Playout[]; ttsChars: number; openingTtsChars: number; models: { stt: string; tts: string }; childTranscripts: ReportedChildTranscript[]; settings: LoadedReport }
   | { kind: "done" };
 
 export default defineAgent({
@@ -151,6 +154,8 @@ export default defineAgent({
     const made = await makeProviders(providers, { keyterms: callKeyterms(opened.call.session.package) });
     const { tuning } = providers;
     const session = voiceSession(made, made.fake ? {} : { turn: tuning });
+    // #1146: the settings this worker actually loaded, read back from the built objects; the runner checks them.
+    const settings = logLoadedSettings(job.callId, session, made, providers);
     await ctx.connect();
     const identity = childIdentity(job.childId);
     const local = ctx.room.localParticipant!;
@@ -225,6 +230,7 @@ export default defineAgent({
             openingTtsChars,
             models: { stt: sttModel, tts: ttsModel },
             childTranscripts,
+            settings,
           });
           await send({ kind: "done" });
         } finally {
