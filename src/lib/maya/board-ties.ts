@@ -110,7 +110,7 @@ export function deriveDrawings(pkg: OperationPackage, sentences: readonly string
       // Review of #1094 (f4c382735): every other clause that carries a place or a value is about the same step of the
       // active problem as this action (a reason may be about an earlier step); else the action draws nothing.
       if (!together(c.k, c.action)) { reads.push({ sentence: at, clause: c.text, drew: false, reason: "other_step" }); continue; }
-      const tried = drawClause(c.action);
+      const tried = drawClause(c.action, c.k);
       if ("reason" in tried) { reads.push({ sentence: at, clause: c.text, drew: false, reason: tried.reason }); continue; }
       reads.push({ sentence: at, clause: c.text, drew: true });
       commands.push(...tried.commands);
@@ -165,12 +165,18 @@ export function deriveDrawings(pkg: OperationPackage, sentences: readonly string
     }
 
     /** One clause's action as one of the kind's own actions, or why it draws nothing. */
-    function drawClause(a: Action): { commands: TutorCommand[]; keys: string[]; needs: string[] } | { reason: ReadReason } {
+    function drawClause(a: Action, k: number): { commands: TutorCommand[]; keys: string[]; needs: string[] } | { reason: ReadReason } {
+      // #1096 review: the steps the sentence's other action clauses name. A long-division row draws only for that step.
+      const sentenceSteps = parsed.clauses.reduce<number[] | null>((acc, c, j) => {
+        if (j === k || (c.read?.type !== "action" && c.read?.type !== "equation")) return acc;
+        const st = stepsOf(c.read.action, facts);
+        return !st?.length ? acc : acc ? acc.filter((x) => st.includes(x)) : st;
+      }, null);
       const matchesAction = (key: string, cs: TutorCommand[]): boolean => {
         if (cs.length !== 1) return false;
         const ca = commandAction(cs[0]);
         if (!ca) return false;
-        if (ca.key === a.key) return true;
+        if (ca.key === a.key) return a.at === undefined || (a.at === "above") === (ca.at === "above");
         // #1096: atomic long-division row actions bind to their step's exact value, place and combined quantity.
         const [aType] = a.key.split("|");
         const [cType, cVal, cStep] = ca.key.split("|");
@@ -179,6 +185,7 @@ export function deriveDrawings(pkg: OperationPackage, sentences: readonly string
         if (!step || Number(cVal) !== a.values[0]) return false;
         if (a.places[0] && a.places[0] !== step.place) return false;
         if (aType === "div_combine" && a.values[1] !== undefined && a.values[1] !== step.current) return false;
+        if (sentenceSteps && !sentenceSteps.includes(divStepIndex(facts, step))) return false;
         return key.startsWith("div:");
       };
       const candidates = [...actions].filter(([key, cs]) => matchesAction(key, cs));
@@ -242,15 +249,21 @@ function stepsOf(a: Action, f: ProblemFacts): number[] | null {
   }
   if (type === "place") return at(a.places[0]);
   if (type === "div_product") {
-    return f.divStepInfo.flatMap((st) => (st.product === a.values[0] && (!a.places[0] || st.place === a.places[0]) ? [st.step - 1] : []));
+    return f.divStepInfo.flatMap((st) => (st.product === a.values[0] && (!a.places[0] || st.place === a.places[0]) ? [divStepIndex(f, st)] : []));
   }
   if (type === "div_diff") {
-    return f.divStepInfo.flatMap((st) => (st.remainder === a.values[0] && (!a.places[0] || st.place === a.places[0]) ? [st.step - 1] : []));
+    return f.divStepInfo.flatMap((st) => (st.remainder === a.values[0] && (!a.places[0] || st.place === a.places[0]) ? [divStepIndex(f, st)] : []));
   }
   if (type === "div_combine") {
-    return f.divStepInfo.flatMap((st) => (st.step > 1 && st.digit === a.values[0] && st.current === a.values[1] && (!a.places[0] || st.place === a.places[0]) ? [st.step - 1] : []));
+    return f.divStepInfo.flatMap((st) => (st.step > 1 && st.digit === a.values[0] && st.current === a.values[1] && (!a.places[0] || st.place === a.places[0]) ? [divStepIndex(f, st)] : []));
   }
   return null;
+}
+
+/** A long-division step as an index of `stepInfo` (by its place), so it compares with the steps of a written digit. */
+function divStepIndex(f: ProblemFacts, st: { step: number; place: string }): number {
+  const i = f.stepInfo.findIndex((x) => x.place === st.place);
+  return i >= 0 ? i : st.step - 1;
 }
 
 /** The places a kind's drawing may name, and none. */
@@ -311,6 +324,8 @@ interface Action {
   places: string[];
   /** An equation's parts, in order. */
   eq?: { operands: number[]; ops: string[]; result: number };
+  /** #1096 review: where a written digit goes. "above" is the quotient row over a bracket; "below" is never that row. */
+  at?: "above" | "below";
 }
 
 const PLACES = ["ones", "tens", "hundreds", "thousands", "ten thousands", "hundred thousands"] as const;
@@ -367,8 +382,11 @@ function equationAction(expression: string, result: string): Action | null {
   return { key, values: [...(operands as number[]), r], places: [], eq: { operands: operands as number[], ops, result: r } };
 }
 
-const write = (value: number | null, place: string | null | undefined): Action | null =>
-  value === null || (place !== undefined && place !== null && !placeOf(place)) ? null : { key: `write|${value}|${place ? placeOf(place) : "-"}`, values: [value], places: place ? [placeOf(place)!] : [] };
+const write = (value: number | null, place: string | null | undefined, prep?: string): Action | null =>
+  value === null || (place !== undefined && place !== null && !placeOf(place)) ? null : {
+    key: `write|${value}|${place ? placeOf(place) : "-"}`, values: [value], places: place ? [placeOf(place)!] : [],
+    ...(prep === "above" || prep === "over" ? { at: "above" as const } : prep === "under" || prep === "below" ? { at: "below" as const } : {}),
+  };
 
 const trade = (fromPlace: string, give: number | null, toPlace: string, get: number | null): Action | null => {
   const from = placeOf(fromPlace);
@@ -393,8 +411,8 @@ const FORMS: { re: RegExp; read: (m: RegExpMatchArray) => Action | null }[] = [
   // An equation: "12 minus 8 is 4", "6 times 870 is 5220".
   { re: new RegExp(String.raw`^((?:${N.slice(1, -1)})(?: (?:${OP_WORDS}) (?:${N.slice(1, -1)}))+) (?:is|equals|makes|gives|=) ${N}$`), read: (m) => equationAction(m[1], m[2]) },
   // Writing a value: "write 4 in the ones", "write 2 above the tens", "4 goes in the ones place", "the ones digit is 4", "write 240".
-  { re: new RegExp(String.raw`^${WHO}(?:write|put) (?:a |the )?${N}(?: (?:in|into|above|over|under|below) the ${PL}${AT})?$`), read: (m) => write(toNumber(m[1]), m[2] ?? null) },
-  { re: new RegExp(String.raw`^(?:the )?${N} goes (?:in|into|above|over) the ${PL}${AT}$`), read: (m) => write(toNumber(m[1]), m[2]) },
+  { re: new RegExp(String.raw`^${WHO}(?:write|put) (?:a |the )?${N}(?: (in|into|above|over|under|below) the ${PL}${AT})?$`), read: (m) => write(toNumber(m[1]), m[3] ?? null, m[2]) },
+  { re: new RegExp(String.raw`^(?:the )?${N} goes (in|into|above|over) the ${PL}${AT}$`), read: (m) => write(toNumber(m[1]), m[3], m[2]) },
   { re: new RegExp(String.raw`^the ${PL} digit is ${N}$`), read: (m) => write(toNumber(m[2]), m[1]) },
   // A trade with both of its quantities: "we trade 1 ten for 10 ones", "we trade 10 ones for 1 ten".
   { re: new RegExp(String.raw`^${WHO}(?:trade|regroup|exchange|borrow|carry) (?:a |the )?${N} ${PL} (?:for|into) ${N} ${PL}$`), read: (m) => trade(m[2], toNumber(m[1]), m[4], toNumber(m[3])) },
@@ -664,7 +682,8 @@ function commandAction(c: TutorCommand): Action | null {
         const bring = /^bring(\d+)$/.exec(target.rowId);
         if (bring) return { key: `div_combine|${v}|${bring[1]}`, values: [v], places: [] };
       }
-      return write(v, target.part === "cell" ? (placeOf(target.column) ?? "?") : null);
+      const cell = write(v, target.part === "cell" ? (placeOf(target.column) ?? "?") : null);
+      return cell && target.rowId === "quotient" ? { ...cell, at: "above" } : cell;
     }
     case "write": {
       const m = typeof c.text === "string" ? /^(.+?) = (\d+)$/.exec(c.text) : null;

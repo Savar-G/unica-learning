@@ -243,6 +243,41 @@ describe("#1096: long-division steps draw from explicit clauses and dependencies
   });
 });
 
+describe("#1096 review: a long-division clause keeps its placement and its sentence's step", () => {
+  const divPkg = (a: number, b: number): OperationPackage => {
+    const op: Operation = { kind: "divide", operands: [a, b] };
+    return {
+      ...SUB,
+      id: `divide-${a}-${b}`,
+      text: `${a} ÷ ${b} = ?`,
+      level: 12,
+      skill: { standard: "4.8", skills: ["4.8-division-facts"] },
+      operation: op,
+      steps: workedSteps(op),
+      answer: { value: { type: "number", value: a / b }, accepted: [], unit: null },
+      wrongAnswers: [{ value: { type: "number", value: a / b + 1 }, cause: "careless", description: "One more.", step: null }],
+      easierExample: { text: "8 ÷ 2 = ?", operation: { kind: "divide", operands: [8, 2] }, steps: workedSteps({ kind: "divide", operands: [8, 2] }), answer: { type: "number", value: 4 } },
+    } as OperationPackage;
+  };
+
+  it("96 ÷ 4: \"write 2 below the tens\" never writes 2 above the bracket", () => {
+    const r = derive(divPkg(96, 4), "Write 2 below the tens.", ["division"]);
+    expect(r.drawings).toEqual([]);
+    expect(derive(divPkg(96, 4), "Write 2 above the tens.", ["division"]).drawings[0].commands)
+      .toMatchObject([{ op: "put", target: { rowId: "quotient", column: "tens" }, value: "2" }]);
+  });
+
+  it("84 ÷ 4: a repeated tens sentence never writes the ones remainder", () => {
+    const shown = ["division", "div:quotient:1", "div:product:1", "div:diff:1", "div:combine:2", "div:quotient:2", "div:product:2"];
+    const r = derive(divPkg(84, 4), "Write 2 above the tens, leaving 0.", shown);
+    expect(r.drawings).toEqual([]);
+  });
+
+  it("column subtraction still writes a digit said below its place", () => {
+    expect(derive(SUB, "We trade 1 ten for 10 ones. Write 4 below the ones.").drawings).toHaveLength(2);
+  });
+});
+
 describe("sentenceCueWord", () => {
   const TEXT = "You can't take 8 from 2, so we trade 1 ten for 10 ones. Write 4 in the ones. What is 4 tens minus 2 tens?";
   it("is the last word of the sentence, counted over the whole message", () => {
