@@ -70,6 +70,8 @@ export interface NoteFacts {
   safety: boolean;
   /** The optional related question after the call's question (#1144): never part of the question's own result. */
   transfer?: NonNullable<Outcome["transfer"]>;
+  /** The checked operation of the question, so a related-question note names its own help (#1155 review). */
+  operation?: "divide" | "other";
 }
 
 /** One line of the transcript as the parent reads it: what the child and Maya said, and a few plain notes. */
@@ -253,7 +255,7 @@ export function noteFacts(input: { outcome: Outcome; event: NewLearningEvent | n
     paper: outcome.paperStatus,
     minutes: Math.max(1, Math.round(outcome.seconds / 60)),
     safety: outcome.safetyFlag,
-    ...(outcome.transfer && !outcome.safetyFlag ? { transfer: outcome.transfer } : {}),
+    ...(outcome.transfer && !outcome.safetyFlag ? { transfer: outcome.transfer, operation: pkg?.operation?.kind === "divide" ? "divide" as const : "other" as const } : {}),
   };
 }
 
@@ -306,7 +308,7 @@ export function codeSentences(f: NoteFacts, heldSaid = false): string[] {
     else if (f.help === "hint") lines.push("Maya gave a small hint.");
   }
   if (f.paper === "child_confirmed") lines.push(`${CHILD} said the answer is on paper now.`);
-  if (f.transfer) lines.push(transferSentence(f.transfer, f.question.text?.includes("÷") === true));
+  if (f.transfer) lines.push(transferSentence(f.transfer, f.operation === "divide"));
   return lines;
 }
 

@@ -1214,6 +1214,10 @@ it("uses a separate division example when showing the target would disclose the 
   await say("23.");
   const note = codeSentences(noteFacts({ outcome: t.view.outcome!, event: null, package: pkg84, question: pkg84.ref })).join(" ");
   expect(note).toContain("Then Maya showed the sharing steps again, and {child} got a related question right.");
+  // The note follows the checked operation, not a ÷ sign in the printed question.
+  const slash = { ...pkg84, text: "84 / 4 = ?" };
+  expect(codeSentences(noteFacts({ outcome: t.view.outcome!, event: null, package: slash, question: slash.ref })).join(" "))
+    .toContain("Then Maya showed the sharing steps again, and {child} got a related question right.");
 });
 
 it("96 ÷ 4: handles misconception after sharing without naming a missing button, withholds bad free-form claims, preserves interrupted help evidence, and answers identity during transfer", async () => {
