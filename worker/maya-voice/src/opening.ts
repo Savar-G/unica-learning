@@ -21,10 +21,10 @@ export const CONTINUE_ID = "continue.lesson";
 /**
  * #1200: the line a call that goes on with a chat's lesson says when the child joins, instead of the opening: a short
  * continuation, then the last question Maya asked in the chat (words she already said there), so the child knows what
- * to answer. Null for any other call, and once the call has taken the lesson over (a rejoin or a new worker).
+ * to answer. A replacement worker can recover the cue if it was not acknowledged.
  */
-export function voiceContinuation(call: { readonly resumed?: boolean; readonly session: Session }): string | null {
-  if (!call.resumed) return null;
+export function voiceContinuation(call: { readonly resumed?: boolean; readonly continuedFromChat?: boolean; readonly acknowledged?: readonly string[]; readonly session: Session }): string | null {
+  if ((!call.resumed && !call.continuedFromChat) || call.acknowledged?.includes(CONTINUE_ID)) return null;
   const last = call.session.turns.findLast((t) => t.speaker === "maya")?.text ?? "";
   const question = last.match(/[^.!?]*\?/g)?.at(-1)?.trim();
   return question ? `Let's keep going. ${question}` : "Let's keep going from where we were.";

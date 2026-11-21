@@ -127,6 +127,7 @@ export function mayaCallStore(admin: SupabaseClient<Database>): CallStore {
         prompt_version: c.promptVersion,
         versions: c.versions,
         live: c.live,
+        board_history: c.boardHistory,
         speech_to_text: c.speechToText,
         voice: c.voice,
         connected_seconds: c.connectedSeconds,

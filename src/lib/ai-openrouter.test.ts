@@ -210,3 +210,47 @@ describe("the OpenRouter AI client: no output is an error, never a result (#183)
     expect(sent).toHaveLength(1);
   });
 });
+
+describe("the cost of an aborted stream (#1203)", () => {
+  /** A stream that sends one chunk with the generation id and some text, then stays open until the caller aborts. */
+  const openStream = (id: unknown): typeof globalThis.fetch => (async (_input: string | URL | Request, init?: RequestInit) => new Response(new ReadableStream({
+    start(c) {
+      c.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ id, choices: [{ delta: { content: "{\"answer\": \"8" } }] })}\n\n`));
+      init?.signal?.addEventListener("abort", () => c.error(new DOMException("aborted", "AbortError")), { once: true });
+    },
+  }), { status: 200, headers: { "content-type": "text/event-stream" } })) as typeof globalThis.fetch;
+
+  it("gives a lookup of the generation's real cost from the stats endpoint, with the key, after an abort", async () => {
+    const asked: { url: string; auth: string | null }[] = [];
+    const statsFetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      asked.push({ url: String(input), auth: new Headers(init?.headers).get("authorization") });
+      return new Response(JSON.stringify({ data: { id: "gen-abc-1", total_cost: 0.0041, cancelled: true } }), { status: 200 });
+    }) as typeof globalThis.fetch;
+    const lookups: (() => Promise<number | null>)[] = [];
+    const controller = new AbortController();
+    const ai = openRouterClient({ apiKey: "sk-or-test", model: "m", fetch: openStream("gen-abc-1"), statsFetch, maxRetries: 0 });
+    const pending = ai.json(request({ onText: () => controller.abort(), onGeneration: (cost) => lookups.push(cost) }), controller.signal);
+    await expect(pending).rejects.toThrow();
+    expect(lookups).toHaveLength(1);
+    expect(asked).toEqual([]);
+    await expect(lookups[0]()).resolves.toBe(0.0041);
+    expect(asked).toEqual([{ url: "https://openrouter.ai/api/v1/generation?id=gen-abc-1", auth: "Bearer sk-or-test" }]);
+  });
+
+  it("answers null when the stats are not there yet or give no cost, and gives no lookup for an id it cannot trust", async () => {
+    const replies = [new Response(JSON.stringify({ error: { code: 404 } }), { status: 404 }), new Response(JSON.stringify({ data: { total_cost: "x" } }), { status: 200 })];
+    const statsFetch = (async () => replies.shift()!) as unknown as typeof globalThis.fetch;
+    const lookups: (() => Promise<number | null>)[] = [];
+    const run = async (id: unknown) => {
+      const controller = new AbortController();
+      const ai = openRouterClient({ apiKey: "k", model: "m", fetch: openStream(id), statsFetch, maxRetries: 0 });
+      await expect(ai.json(request({ onText: () => controller.abort(), onGeneration: (cost) => lookups.push(cost) }), controller.signal)).rejects.toThrow();
+    };
+    await run("gen-404");
+    await expect(lookups[0]()).resolves.toBeNull();
+    await expect(lookups[0]()).resolves.toBeNull();
+    await run("not a generation id");
+    await run(42);
+    expect(lookups).toHaveLength(1);
+  });
+});

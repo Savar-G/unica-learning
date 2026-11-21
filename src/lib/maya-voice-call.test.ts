@@ -1,3 +1,4 @@
+import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
 import { boardPaths } from "@/lib/board";
 import { boardScene, replayFrame } from "@/lib/board-history";
@@ -10,6 +11,8 @@ import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { limitsOf, memoryWordingHistoryStore, TIME_LIMITS } from "@/lib/maya";
 import { mayaCalls, recordView, boardHistoryOf, type CallResult, type CallSeams } from "@/lib/maya-call";
+import { mayaCallStore } from "@/lib/maya-call-store";
+import type { Database } from "@/lib/database";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import { conversationalFake, reply, ruleConversationalModel, ruleMayaModel } from "@/lib/maya-model-fake";
 import type { TurnBrief } from "@/lib/maya-model";
@@ -20,6 +23,8 @@ import { BOARD_CLOSE_SETTLE_MS, VOICE_CALL_STALE_MS } from "@/lib/maya-voice";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { checkTrace } from "@/lib/maya-trace";
 import type { QuestionPackage } from "@/lib/question-package";
+
+vi.mock("server-only", () => ({}));
 
 // Maya's voice calls (#326) in the call module, through its public interface on the in-memory seams: the web server
 // makes the call, the worker opens it, speaks with the child, stores the connection events, and ends it. What is
@@ -631,6 +636,16 @@ describe("a chat that becomes a call", () => {
     expect(made.transcript.map((l) => l.text)).toEqual(chat.transcript.map((l) => l.text));
     expect(made.batches.map((b) => b.transactionId)).toEqual(shownIds);
     expect(made.startedAt).toBeNull();
+    const voiceRow = (await s.store.get(made.id))!;
+    const insert = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(JSON.parse(String(init?.body))).toMatchObject({ board_history: voiceRow.boardHistory });
+      return new Response(null, { status: 201 });
+    });
+    const admin = createClient<Database>("https://fixture.invalid", "key", {
+      auth: { persistSession: false }, global: { fetch: insert },
+    });
+    await mayaCallStore(admin).insert(voiceRow);
+    expect(insert).toHaveBeenCalledOnce();
     // The chat is untouched until the call starts: a child who closes the microphone check goes back to it.
     expect((await s.store.get(chat.id))!).toMatchObject({ status: "live", revision: chat.revision });
 
@@ -721,7 +736,7 @@ describe("a chat that becomes a call", () => {
     // Another tab answers in the chat after the call was made: the call's copy is no longer the chat's lesson.
     chat = ok(await s.calls.input(chat.id, chat.revision, { type: "child", text: "What next?", fates: shown(chat) }, "Leah")).view;
     const call = await open(s, made.id);
-    expect(await call.resume!()).toBe(true);
+    expect(await call.resume!()).toBe(false);
     expect((await s.store.get(chat.id))!).toMatchObject({ status: "live", revision: chat.revision });
     await call.end({ reason: "child_stopped" });
     await call.settled();
@@ -730,17 +745,64 @@ describe("a chat that becomes a call", () => {
     expect((await s.events()).map((e) => e.key)).toEqual([`call:${chat.id}`]);
   });
 
-  it("carries a board selection only while its object is on the call's board (the #1152 seam)", async () => {
+  it("recovers from an ended chat when the previous worker lost its voice write", async () => {
+    const s = family();
+    const chat = await chatWithWork(s);
+    const made = ok(await s.calls.startVoice(voiceInput({ fromChat: chat.id }))).view;
+    const first = await open(s, made.id);
+    const update = s.store.update.bind(s.store);
+    const loseStart = vi.spyOn(s.store, "update").mockImplementation(async (id, revision, change) =>
+      id === made.id && change.startedAt ? false : update(id, revision, change));
+    expect(await first.resume!()).toBe(false);
+    loseStart.mockRestore();
+    expect(await s.store.get(chat.id)).toMatchObject({ status: "ended", live: null, trace: { handedToCallId: made.id } });
+    const replacement = await open(s, made.id);
+    s.advance(40);
+    expect(await replacement.resume!()).toBe(true);
+    expect(replacement.session.startedAt).toBe(s.now());
+    const afterStart = await open(s, made.id);
+    expect(afterStart.resumed).toBe(false);
+    expect(afterStart.continuedFromChat).toBe(true);
+    await afterStart.end({ reason: "child_stopped" });
+    expect((await s.events()).map((e) => e.key)).toEqual(["call:" + made.id]);
+  });
+
+  it("starts fresh from an independently ended chat and keeps its single learning event", async () => {
+    const s = family();
+    const chat = await chatWithWork(s);
+    ok(await s.calls.input(chat.id, chat.revision, { type: "end" }, "Leah"));
+    const made = ok(await s.calls.startVoice(voiceInput({ fromChat: chat.id }))).view;
+    const call = await open(s, made.id);
+    expect(call.resumed).toBe(false);
+    expect(call.session.startedAt).toBeNull();
+    expect((await call.start()).say.length).toBeGreaterThan(0);
+    await call.end({ reason: "child_stopped" });
+    expect((await s.events()).map((e) => e.key)).toEqual(["call:" + chat.id]);
+  });
+
+  it.each(["visible", "selection-only", "wrong-id", "removed", "stale-revision"])("carries a selection only for a current drawing (%s)", async (kind) => {
     const s = family();
     const chat = await chatWithWork(s);
     const row = (await s.store.get(chat.id))!;
-    const onBoard = row.live!.text.board.find((b) => b.fate === "shown")?.transactionId ?? "none";
-    const selections = [{ selectionId: "a", batchId: onBoard }, { selectionId: "b", batchId: "gone" }];
-    const session = { ...row.live!.text.session, boardSelections: selections };
-    expect(await s.store.update(chat.id, row.revision, { live: { ...row.live!, text: { ...row.live!.text, session, initial: { ...row.live!.text.initial!, session } } } })).toBe(true);
+    const live = row.live!;
+    const batch = { transactionId: "sample-drawing", utteranceId: "sample", sentence: 0, fate: "shown" as const, commands: [{ op: "write", id: "example-number", place: { region: "main" }, text: "52" }] };
+    const board = [batch, ...(kind === "removed" ? [{ ...batch, transactionId: "remove-drawing", commands: [{ op: "remove", objectId: "example-number" }] }] : [])];
+    const selection = {
+      selectionId: "a", batchId: batch.transactionId, objectId: kind === "wrong-id" ? "other-number" : "example-number",
+      boardRevision: live.text.session.batches - (kind === "stale-revision" ? 1 : 0), result: "answer",
+    };
+    const session = {
+      ...live.text.session,
+      turns: kind === "selection-only" ? live.text.session.turns.filter((turn) => turn.speaker !== "child") : live.text.session.turns,
+      boardSelections: [selection],
+    };
+    const text = { ...live.text, board, session, initial: { ...live.text.initial!, board, session }, log: [] };
+    expect(await s.store.update(chat.id, row.revision, { live: { ...live, text } })).toBe(true);
     const made = ok(await s.calls.startVoice(voiceInput({ fromChat: chat.id }))).view;
-    const carried = (await s.store.get(made.id))!.live!.text.session as { boardSelections?: { selectionId: string }[] };
-    expect(carried.boardSelections?.map((x) => x.selectionId)).toEqual(onBoard === "none" ? [] : ["a"]);
+    const call = await open(s, made.id);
+    expect(call.resumed).toBe(true);
+    expect(await call.resume!()).toBe(true);
+    expect(call.session).toMatchObject({ boardSelections: kind === "visible" || kind === "selection-only" ? [selection] : [] });
   });
 
   it("keeps the drawing the desk showed in a board-led lesson: the call's board has it and Maya does not draw it again", async () => {

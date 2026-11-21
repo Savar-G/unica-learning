@@ -290,6 +290,8 @@ export interface MayaTrace {
   /** The shape's version: this code writes TRACE_VERSION and reads every one of TRACE_VERSIONS. */
   version: (typeof TRACE_VERSIONS)[number];
   callId: string;
+  /** On an ended chat, the voice call that owns its continued lesson and learning evidence. */
+  handedToCallId?: string;
   /** What ran the session: the text adapter alone, the text adapter inside LiveKit Agents (no room), or a voice call. */
   runner: "text" | "livekit-text" | "voice";
   startedAt: string | null;
@@ -643,8 +645,8 @@ function checkOutcome(o: unknown, path: string) {
   const x = o as Record<string, unknown>;
   need(oneOf(REASONS, x.reason), `${path}.reason`, "a reason");
   need(oneOf(ASSISTANCE, x.assistance), `${path}.assistance`, "an assistance level");
-  need(x.helpUnconfirmed === undefined || (x.helpUnconfirmed === true && x.assistance === "independent"),
-    `${path}.helpUnconfirmed`, "true when no help is confirmed");
+  need(x.helpUnconfirmed === undefined || (x.helpUnconfirmed === true && (x.assistance === "independent" || x.assistance === "hint")),
+    `${path}.helpUnconfirmed`, "true when no help, or only a hint, is confirmed");
   const t = x.transfer;
   need(t === undefined || (isObject(t) && oneOf(["right", "unfinished"], t.result) &&
     oneOf(["independent", "hinted", "demonstrated", "uncertain"], t.assistance)), `${path}.transfer`, "a related question result");

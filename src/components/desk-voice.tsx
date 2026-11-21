@@ -200,9 +200,9 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
    * asked once more. Otherwise the answer is the refusal.
    */
   const startCall = useCallback(async (id: string, question: VoiceQuestion) => {
+    const from = fromChat.current ? { fromChatId: fromChat.current } : {};
     await Promise.race([cancelling.current, wait(CANCEL_WAIT_MS)]);
     try { voiceStartTrace().mark(id, null, "call_start_begin"); } catch {}
-    const from = fromChat.current ? { fromChatId: fromChat.current } : {};
     const r = await post({ type: "start", id, question, ...from }).then((a) => {
       try { voiceStartTrace().mark(id, null, "call_start_end", { ok: !!a?.ticket }); } catch {}
       return a;

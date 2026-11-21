@@ -263,7 +263,7 @@ describe("the board-led lesson (#1151)", () => {
     stubMic();
     const id = "45100000-0000-4000-8000-000000000022";
     const show = { transactionId: "show-tens", commands: [{ op: "model", id: EXCHANGE_OBJECT, model: { kind: "base_ten", hundreds: 0, tens: 5, ones: 2 }, place: { region: "main" } }] };
-    const chat = (ended = false) => ({ id, revision: ended ? 3 : 2, pending: false, ended, transcript: [{ speaker: "maya", text: "Look at the blocks." }], batches: [show], hint: 0, safetyMessage: null });
+    const chat = (ended = false) => ({ id, revision: ended ? 3 : 2, pending: false, ended, question: { source: "workbook", workbookId: BOOK.id, page: 4, question: 3 }, transcript: [{ speaker: "maya", text: "Look at the blocks." }], batches: [show], hint: 0, safetyMessage: null });
     let voiceId = "v2";
     vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
       const body = JSON.parse(String(options?.body ?? "{}")) as { type?: string; id?: string };

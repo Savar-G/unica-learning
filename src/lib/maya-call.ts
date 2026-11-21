@@ -90,10 +90,10 @@ import { createTextSession, readFateReports, withHelpLedger, type BoardFateRepor
 import { packageHash, type MayaTrace } from "@/lib/maya-trace";
 import { type QuestionPackage, type QuestionRef } from "@/lib/question-package";
 import { teachingPackage } from "@/lib/maya-teaching";
-import { resumedAt, resumePlan, type ResumeFrom, type ResumePlan } from "@/lib/maya-call-resume";
+import { ownsChat, resumedAt, resumePlan, withoutEvidence, type ResumeFrom, type ResumePlan } from "@/lib/maya-call-resume";
 import { BOARD_CLOSE_SETTLE_MS, connectedSeconds, VOICE_CALL_STALE_MS, type ConnectionEvent, type ConnectionKind } from "@/lib/maya-voice";
 import { spendCloseOf, SPEND_CLOSE, type CallSpend, type SpendCall, type SpendState, type VoiceMeter } from "@/lib/maya-spend";
-import type { CallBudget, Handle } from "@/lib/maya-spend-block";
+import { BLOCK_DRAIN_MS, type CallBudget, type Handle } from "@/lib/maya-spend-block";
 import { SpendRefused } from "@/lib/maya-spend-ai";
 export type { SpendCall } from "@/lib/maya-spend";
 
@@ -196,7 +196,7 @@ export interface CallRecord {
   outcome: Outcome | null;
   counts: { mayaTurns: number; childTurns: number; fallbacks: number } | null;
   /** While live: what the text adapter needs to go on, with the package it runs on. Null once ended. */
-  live: { package: QuestionPackage; text: SavedTextSession; cancelled?: true; pendingVoice?: VoiceTurn; acknowledged?: string[]; guidancePlayed?: Severity; resumedFrom?: ResumeFrom } | null;
+  live: { package: QuestionPackage; text: SavedTextSession; cancelled?: true; pendingVoice?: VoiceTurn; acknowledged?: string[]; guidancePlayed?: Severity; resumedFrom?: ResumeFrom; continuedFromChat?: true } | null;
   trace: MayaTrace | null;
   boardHistory: BoardHistory | null;
   /**
@@ -574,6 +574,8 @@ export interface VoiceCall {
    * there, instead of the opening: the chat ends handed on and the call's own time starts. Absent on older handles.
    */
   readonly resumed?: boolean;
+  /** The lesson moved here on an earlier worker; its continuation cue can still be pending. */
+  readonly continuedFromChat?: boolean;
   /** Takes the chat's lesson over (see `resumed`); safe to call again. False: this handle no longer owns the call. */
   resume?(): Promise<boolean>;
   /** The acknowledgement phrases this call has said (#532), kept across a worker replacement. */
@@ -623,6 +625,13 @@ export interface VoiceCall {
   end(how: FinishOptions): Promise<void>;
   /** Waits until every save so far is done. */
   settled(): Promise<void>;
+  /**
+   * #1203: waits, under one deadline of BLOCK_DRAIN_MS (src/lib/maya-spend-block.ts), until the call's spend is written:
+   * the budget blocks with their real totals (a prepared reply may still be asking its provider's receipt) and the
+   * speech-to-text and voice rows. `end`, `limit` and the guidance close do not wait for these writes. For the worker's
+   * exit, after the media closed and the child was told. Never throws.
+   */
+  spendSettled(): Promise<void>;
 }
 
 export type OpenVoiceResult = { ok: true; call: VoiceCall } | { ok: false; error: "not_found" | "not_voice" | "ended" | "conflict" | "model_unavailable" | "unavailable" };
@@ -1025,10 +1034,10 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   /** The model, telling `refused` when the ledger refuses one of its requests in the middle of a turn. */
   const watched = (model: MayaModel, refused: (state: Exclude<SpendState, "open">) => void): MayaModel => ({
     ...model,
-    // D-341: `onText` goes through, so a voice call's reply can stream (a chat passes none).
-    async propose(input, signal, onText, onCost) {
+    // D-341: `onText` goes through, so a voice call's reply can stream (a chat passes none). #1203: so does `onGeneration`.
+    async propose(input, signal, onText, onCost, onGeneration) {
       try {
-        return await model.propose(input, signal, onText, onCost);
+        return await model.propose(input, signal, onText, onCost, onGeneration);
       } catch (e) {
         if (e instanceof SpendRefused) refused(e.state);
         throw e;
@@ -1193,8 +1202,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   }
 
   /** Stores the outcome of a call that has just ended, then writes its event and rebuilds the profile. Null on a conflict. */
-  async function end(record: CallRecord, pkg: QuestionPackage, session: TextSession, how: FinishOptions = {}, extra?: (endedAt: number) => Promise<CallChange>, noEvent = false, capped = false, noNote = false): Promise<CallRecord | null> {
+  async function end(record: CallRecord, pkg: QuestionPackage, session: TextSession, how: FinishOptions = {}, extra?: (endedAt: number) => Promise<CallChange>, noEvent = false, capped = false, noNote = false, handedToCallId?: string): Promise<CallRecord | null> {
     const trace = await session.finish(how);
+    if (handedToCallId) trace.handedToCallId = handedToCallId;
     // The cap's close reads as a call that ran out of time, unless safety, content or a solved question comes first.
     const outcome = capped && trace.outcome?.reason === "technical_issue" ? { ...trace.outcome, reason: "time_limit" as const } : trace.outcome;
     const endedAt = trace.endedAt ?? iso(seams.clock());
@@ -1412,33 +1422,43 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       told = session.trace().turns.length;
       // #1200: the chat this call came from, until the call's start hands it on (once per call: the claim keeps it).
       let from = found.live.resumedFrom ?? null;
-      /**
-       * Ends the chat handed on, with no learning event and no note of its own: the call's event counts the question.
-       * True when this call ended it. A chat that moved on (a newer revision) or ended by itself keeps its own.
-       */
-      const handOff = async (f: ResumeFrom): Promise<boolean> => {
+      /** The chat CAS settles which call owns the lesson. Its trace marker survives clearing the chat snapshot. */
+      const handOff = async (f: ResumeFrom): Promise<"taken" | "chat_kept"> => {
         const chat = await store.get(f.id);
-        if (!chat?.live || chat.status !== "live" || chat.revision !== f.revision || chat.kind !== "chat" || chat.parentId !== record.parentId || chat.childId !== record.childId) return false;
+        if (!chat || !ownsChat(chat, record)) return "chat_kept";
+        if (chat.status === "ended") return chat.trace?.handedToCallId === record.id ? "taken" : "chat_kept";
+        if (!chat.live || chat.revision !== f.revision || chat.live.cancelled) return "chat_kept";
+        const source = chat.live.text.session;
+        if (chat.flag || source.turn !== null || source.outcome || source.stopRequested ||
+          source.safety.flagged || source.contentProblem !== null) return "chat_kept";
         const text = textSession(chat, chat.live.package, idleModel(chat), savedName(chat.live.text) ?? name, chat.live.text);
-        return (await end(chat, chat.live.package, text, { reason: "child_stopped" }, undefined, true, false, true)) !== null;
+        const ended = await end(chat, chat.live.package, text, { reason: "child_stopped" }, undefined, true, false, true, record.id);
+        return ended ? "taken" : "chat_kept";
       };
-      /** The call's start takes over the chat: once, saved with the call, so a new worker never hands it on again. */
-      const takeOver = async (rebase: boolean): Promise<boolean> => {
-        const f = from;
-        if (!f) return !lost;
-        from = null;
+      const takeOver = async (): Promise<boolean> => {
         let ok = false;
         later(async () => {
           if (inactive()) return;
-          const took = await handOff(f);
+          const f = from;
+          if (!f) { ok = true; return; }
+          const taken = await handOff(f) === "taken";
+          // A newer chat revision may contain different work. Do not teach from the old copy.
+          if (f.seeded && !taken) return;
           const at = seams.clock();
-          const text = rebase ? resumedAt(await session.saved(), at, took) : await session.saved();
-          if (rebase) { session = makeSession(text); told = session.trace().turns.length; }
+          const saved = await session.saved();
+          const text = f.seeded ? resumedAt(saved, at) : taken ? saved : withoutEvidence(saved);
           const { resumedFrom: _handed, ...live } = record.live!;
           void _handed;
-          const change: CallChange = { live: { ...live, text }, ...(rebase ? { startedAt: iso(at) } : {}) };
+          const change: CallChange = {
+            live: { ...live, text, ...(f.seeded ? { continuedFromChat: true } : {}) },
+            ...(f.seeded ? { startedAt: iso(at) } : {}),
+          };
           if (!(await store.update(record.id, record.revision, change))) { lose(true); return; }
+          monitorCallChange(record, change);
           record = { ...record, ...change, revision: record.revision + 1 };
+          from = null;
+          session = makeSession(text);
+          told = session.trace().turns.length;
           ok = true;
         });
         await queue;
@@ -1507,7 +1527,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       };
       const none: VoiceTurn = { say: [], newBatches: 0, safetyMessage: null, ended: false };
       const inactive = () => lost || record.status === "ended" || forcedClose || deadlineStarted;
-      const admitting = () => mediaCutAt === null && !inactive();
+      const admitting = () => mediaCutAt === null && !from?.seeded && !inactive();
       let forcedClose = false;
       let deadlineStarted = false;
       let deadline: Promise<VoiceTurn | null> | undefined;
@@ -1896,7 +1916,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             await queue;
           },
           async deferGuidance() {
-            const settledBudget = stopBudget();
+            // #1203: admission closes now; the block rows are written in the background and drained before the
+            // process exits (`spendSettled`), so the child's notice never waits for the ledger.
+            void stopBudget();
             await queue;
             if (lost || record.status !== "live" || !record.live) return false;
             const { safety } = record.live.text.session;
@@ -1908,8 +1930,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
               record = { ...record, flag, revision: record.revision + 1 };
             }
             await alert(record);
-            await meter?.stop();
-            await settledBudget;
+            // #1203: the speech-to-text and voice writes are drained before the process exits (`spendSettled`).
+            void stopMeter();
             return true;
           },
         } : {}),
@@ -1921,7 +1943,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         get boardSnapshot() { return structuredClone(record.boardHistory?.delivery ?? { events: [] }); },
         get pendingExchange() {
           const saved = record.live?.text;
-          if (inactive() || !saved) return undefined;
+          if (inactive() || from?.seeded || !saved) return undefined;
           // The child's exchange, then the related question's board (#1144): a saved batch the board never confirmed.
           const turns = saved.session.checkedExchange?.turns ?? [];
           const pending = [turns.find((t) => t.childAction)?.actions[0], turns.flatMap((t) => t.actions).findLast((a) => a.kind === "question")]
@@ -2009,9 +2031,13 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           await queue;
         },
         // A fresh call from a chat with no confirmed state hands the chat on at its start too (#1200).
-        start: async (options) => { if (from && !from.seeded) await takeOver(false); return turn(() => session.start(options)); },
+        start: async (options) => {
+          if (from && (from.seeded || !(await takeOver()))) return none;
+          return turn(() => session.start(options));
+        },
         get resumed() { return !!from?.seeded; },
-        resume: () => (from?.seeded ? takeOver(true) : Promise.resolve(!lost)),
+        get continuedFromChat() { return !!record.live?.continuedFromChat; },
+        resume: () => (from?.seeded ? takeOver() : Promise.resolve(!lost)),
         child: (text, options, say) => {
           const hearing = { text: text.trim().slice(0, MAX_CHILD_TEXT), uncertain: options?.uncertain, alternatives: options?.alternatives?.slice() };
           return turn(() => session.child(hearing.text, hearing), hearing.text ? hearing : undefined, say);
@@ -2034,7 +2060,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             if (fixed?.safetyMessage && await call.deferGuidance!()) return;
           }
           const settleUntil = seams.clock() + BOARD_CLOSE_SETTLE_MS;
-          const settledMeter = stopMeter();
+          // #1203: the meter's and the budget's writes are drained before the process exits (`spendSettled`).
+          void stopMeter();
           void stopBudget();
           later(async () => {
             if (lost || record.status === "ended" || !record.live) return;
@@ -2050,7 +2077,6 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             }
           });
           await queue;
-          await settledMeter;
         },
         async connection(kind) {
           const event: ConnectionEvent = { kind, at: seams.clock() };
@@ -2085,12 +2111,12 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         },
         spoken: (text) => meter?.spoken(text) ?? Promise.resolve(),
         async end(how) {
-          // Stop admissions before waiting for a save or the STT meter.
-          const settledBudget = stopBudget();
-          const settledMeter = stopMeter();
+          // Stop admissions before waiting for a save or the STT meter. #1203: the block rows are written in the
+          // background and drained before the process exits (`spendSettled`), so the child's notice never waits for them.
+          void stopBudget();
+          void stopMeter();
           await queue;
-          await settledMeter;
-          if (lost) { await settledBudget; return; }
+          if (lost) return;
           if (record.status === "live") {
             later(async () => {
               // A fatal close or hang-up must not wait for an unfinished model turn.
@@ -2106,9 +2132,13 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             });
           }
           await queue;
-          await settledBudget;
         },
         settled: () => queue,
+        // #1203: one deadline over the model budget's drain and the speech-to-text and voice writes.
+        spendSettled: () => new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, BLOCK_DRAIN_MS);
+          void Promise.all([budget?.drained(), stopMeter()]).catch(() => {}).then(() => { clearTimeout(timer); resolve(); });
+        }),
       };
       return { ok: true, call };
     },
