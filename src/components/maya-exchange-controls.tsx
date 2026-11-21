@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useLessonPaper } from "@/components/lesson-paper";
-import type { ExchangeTarget } from "@/lib/maya/checked-exchange";
+import { exchangeControlCopy, type ExchangeTarget } from "@/lib/maya/checked-exchange";
 
 export interface ExchangeControl {
   target: ExchangeTarget;
@@ -15,6 +15,8 @@ export function ExchangeControls({ target, disabled, submit }: ExchangeControl) 
   const { paper, setPaper, shared } = useLessonPaper();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
+  const copy = exchangeControlCopy(target);
+  const status = paper ? copy.paper : error ? "The board could not take that move. Try again." : "";
   const exchange = async () => {
     setBusy(true);
     setError(false);
@@ -24,11 +26,10 @@ export function ExchangeControls({ target, disabled, submit }: ExchangeControl) 
   };
 
   return (
-    <div className="desk-exchange" role="group" aria-label="Trade a ten">
-      {!paper && <button type="button" className="desk-exchange-go" disabled={disabled || busy} onClick={() => void exchange()}>Exchange one ten</button>}
+    <div className="desk-exchange" role="group" aria-label={copy.label}>
+      {!paper && <button type="button" className="desk-exchange-go" disabled={disabled || busy} onClick={() => void exchange()}>{copy.button}</button>}
       {!shared && <button type="button" disabled={busy} onClick={() => setPaper(!paper)}>{paper ? "Use board" : "Use paper"}</button>}
-      {paper && <p role="status">Show the trade on your paper. Then tell Maya what changed.</p>}
-      {!paper && error && <p role="status">The board could not take that move. Try again.</p>}
+      <p className={status ? undefined : "sr-only"} role="status">{status}</p>
     </div>
   );
 }

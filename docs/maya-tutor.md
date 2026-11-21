@@ -331,6 +331,19 @@ When the checked regrouping lesson (`MAYA_CHECKED_EXCHANGE`) credits the child's
 - The parent note adds one sentence for the related question, with its help: no help, hints, the trade shown again, help unknown, or not finished.
 - Known limit: "24 plus 1." after a right answer still keeps the original success (#1089). It cannot answer the offer.
 
+## Checked multiplication lesson through equal groups and arrays (#1154)
+
+When `MAYA_CHECKED_EXCHANGE` is on, whole-number multiplication facts and equal-groups or array word problems with factors from 2 to 10 run on a code-owned checked lesson (`src/lib/maya/checked-multiply.ts`, `src/lib/maya/multiply-lesson.ts`). Unsupported shapes (larger factors, multi-step stories, division stories) stay on the existing tutor path.
+
+- **Lesson map (`MULTIPLY_LESSON_MAP`).**
+  - **Prerequisites:** identifying equal groups (how many groups and how many in each group) and connecting equal groups to repeated addition.
+  - **Common mistakes:** adding the two factors instead of multiplying (`additive_error`), swapping group count and group size in a word-problem context (`swapped_factors`), counting one group too many or too few (`off_by_one_group`), and attaching a wrong unit or group noun instead of the counted item or area unit (`wrong_unit`).
+  - **Worked and partial examples:** a separate small worked example (for example `2 × 3`, skipped automatically when any number or product would disclose the target answer) shows one row, then the full array and equation. On the target question, a partial array starts with `max(1, groups - 2)` equal rows and partial repeated-addition notation, never writing the target product.
+  - **Child group actions:** the board offers a structured `Add 1 group of N` action (`GROUPS_OBJECT = "multiply-groups"`) through the shared exchange transport in voice and chat, with a paper-work option. Every action validates lesson, turn, board revision, batch, object, group size and next group count against the shown board. Each accepted move updates the checked array state and Maya's explanation until the array reaches all groups and links to written multiplication notation (`groups × size = ?`).
+  - **Context protection:** in contextual stories (such as 3 bags with 4 apples in each bag, or 4 toy cars in each jar with 3 jars), `groups` is always the container or row count and `size` is items per group, regardless of operand order. Swapped group reasoning (such as "12 because there are 4 bags of 3") is never silently credited.
+  - **Visual fading and transfer:** a learner who identifies the equal groups and repeated addition fades directly to independent work with no array drawn. After solving, Maya offers one optional related multiplication question on a cleared board (`visualSupport: "faded"`) when at least 2 minutes remain and no candidate leaks an earlier worked example or answer. Assistance (`independent`, `hinted`, `demonstrated`, `uncertain`) and transfer outcomes are recorded separately in voice and chat, with a `call:<id>:transfer` learning event and parent note line.
+  - **Regression inputs (#1088):** negated remainder claims in `multiply.ts` pass through `fullRead` with their span, and unread leading unary arithmetic operators (`half`, `double`, `twice`, `triple`) in `tutor-math.ts` stay unread for math review rather than causing false code refusals.
+
 ## Credit, the learning event and the parent note
 
 Code's credit of the child decides the saved result, never the model's reading (part C of the pre-launch review, 2026-11-15; tests: `src/lib/maya-call-tutor-credit.test.ts`, `src/lib/maya/tutor-credit.test.ts`):

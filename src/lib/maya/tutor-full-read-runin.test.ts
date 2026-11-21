@@ -53,6 +53,10 @@ describe("the claim reader refuses only a claim read in full", () => {
     "2 × 4 is 8, and the carried 1 makes 9.",
     // 52 − 28 (read as 4 = 24: "4 ones and 4 tens minus 2 tens" as one side).
     "You found 12 minus 8 is 4 ones and 4 tens minus 2 tens is 2 tens, so 24 is right.",
+    // #1088: leading unary arithmetic operators leave the inner comparison unread for the math review.
+    "Half of 1340 is 670.",
+    "Double 670 is 1340.",
+    "Triple 4 is 12.",
   ])("%s: no refusal, the math review reads it", (sentence) => {
     expect(falseClaims(sentence)).toEqual([]);
     const v = checkTutorSay(sentence, ctx);

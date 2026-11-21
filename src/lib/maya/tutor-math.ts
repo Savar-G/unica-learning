@@ -410,7 +410,7 @@ export function fullRead(text: string, at: number, end: number): boolean {
 export function guardedProblems(reads: readonly (string | KindRead)[]): string[] {
   return reads.flatMap((r) => (typeof r === "string" ? [r] : fullRead(r.text, r.at, r.end) ? [r.problem] : []));
 }
-const RELATION_WORDS = new Set(["greater", "less", "more", "fewer", "bigger", "smaller", "larger", "higher", "lower", "than", "same", "equal", "twice", "double", "half"]);
+const RELATION_WORDS = new Set(["greater", "less", "more", "fewer", "bigger", "smaller", "larger", "higher", "lower", "than", "same", "equal", "twice", "thrice", "double", "doubles", "doubled", "triple", "triples", "tripled", "quadruple", "half", "halves", "halved"]);
 
 /**
  * The claim reader with its coverage (two-layer true math, CoS design of 2026-11-15). `problems`: the claims that do not

@@ -596,10 +596,10 @@ function claimReads(pkg: OperationPackage, sentence: string): (string | KindRead
     // What the sentence says after this claim, up to its end or the next "goes into".
     const after = text.slice(m.index! + m[0].length).split(/[.;!?]|\bgo(?:es)? into\b/)[0];
     if (d === 0 || Math.floor(n / d) !== q) problems.push({ problem: `it says ${d} goes into ${n} ${q} times, but it is ${d === 0 ? "no" : Math.floor(n / d)} times`, text, at: m.index!, end: m.index! + m[0].length });
-    else if (r !== undefined && Number(r) !== n % d) problems.push(`it says ${d} goes into ${n} with ${r} left, but ${n % d} is left`);
+    else if (r !== undefined && Number(r) !== n % d) problems.push({ problem: `it says ${d} goes into ${n} with ${r} left, but ${n % d} is left`, text, at: m.index!, end: m.index! + m[0].length });
     // A remainder said in a form not read above ("and 2 left over" as "and there are 2 left over", "so the remainder
     // is 2", "with 2 more") is refused: the whole remainder clause is read or refused (pre-launch review B, F07).
-    else if (r === undefined && (/^\s*,?\s*with\b/.test(after) || /\b(?:left|leftover|over|remainders?|r|rest|leaving|spare)\b/.test(after))) problems.push("it says a remainder in a form code cannot read");
+    else if (r === undefined && (/^\s*,?\s*with\b/.test(after) || /\b(?:left|leftover|over|remainders?|r|rest|leaving|spare)\b/.test(after))) problems.push({ problem: "it says a remainder in a form code cannot read", text, at: m.index!, end: m.index! + m[0].length });
   }
   if (!goes.whole) problems.push("it says \"goes into\" in a form code cannot read");
 

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatBoard, ChatControls, useDeskChat, type DeskChatState } from "@/components/desk-chat";
 import { boardDraftKey, chatBoardKey, childStrokes, createHistory, drawStroke, encodeHistory, inkLog, mayaWrites, penHolder, saveDraft, takePen, type BoardHistory, type Change, type DraftStore } from "@/lib/board-history";
 import type { ChatReply, ChatView } from "@/lib/maya-chat";
-import { EXCHANGE_OBJECT, type ExchangeTarget } from "@/lib/maya/checked-exchange";
+import { EXCHANGE_OBJECT, GROUPS_OBJECT, type ExchangeTarget } from "@/lib/maya/checked-exchange";
 import { LEASE_SETTLE_MS, OPEN_RETRY_MS, OPEN_TRIES } from "@/lib/board-tab";
 
 const book = "45100000-0000-4000-8000-000000000031";
@@ -227,6 +227,31 @@ describe("#534: the board in a chat", () => {
       await act(async () => other.unmount());
       otherHost.remove();
     }
+  });
+
+  it("renders the multiplication add-group control with keyboard/touch button and paper alternative", async () => {
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    const target: ExchangeTarget = {
+      lessonId: "lesson", turnId: "prompt", boardRevision: 2, objectId: GROUPS_OBJECT, batchId: "show-groups", groupSize: 4, nextGroups: 2,
+    };
+    const show = {
+      transactionId: target.batchId,
+      commands: [{ op: "model", id: target.objectId, model: { kind: "array", rows: 1, columns: 4 }, place: { region: "main" } }],
+    };
+    const onExchange = vi.fn(async () => true);
+    const board = createElement(ChatBoard, { chat: { ...view(2), batches: [show], exchange: target }, still: true, onExchange });
+    await act(async () => root.render(board));
+    await advance(LEASE_SETTLE_MS);
+    const addBtn = button("Add 1 group of 4");
+    expect(addBtn?.type).toBe("button");
+    const feedback = addBtn!.parentElement!.querySelector('[role="status"]');
+    expect(feedback?.textContent).toBe("");
+    await act(async () => button("Use paper").click());
+    expect(button("Add 1 group of 4")).toBeUndefined();
+    expect(feedback?.textContent).toContain("Draw the equal groups on your paper.");
+    await act(async () => button("Use board").click());
+    await act(async () => button("Add 1 group of 4").click());
+    expect(onExchange).toHaveBeenCalledExactlyOnceWith(target);
   });
 
   it("keeps the pen on the chat's board: Maya's work shows, then the pen passes to the child, and each change goes to the call", async () => {

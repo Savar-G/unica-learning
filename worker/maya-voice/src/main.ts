@@ -205,7 +205,7 @@ export default defineAgent({
       void run.hangUp();
       return data.payload === HANG_UP_BOARD_DRAIN ? HANG_UP_BOARD_DRAIN : "ok";
     });
-    if (opened.call.session.checkedExchange) local.registerRpcMethod(EXCHANGE_RPC, async (data) => {
+    if (opened.call.session.checkedExchange || opened.call.session.checkedMultiply) local.registerRpcMethod(EXCHANGE_RPC, async (data) => {
       if (data.callerIdentity !== identity) throw new RpcError(1403, "not this call's child");
       let target = null;
       try { if (data.payload.length <= 1000) target = readExchangeTarget(JSON.parse(data.payload)); } catch { /* Invalid JSON. */ }

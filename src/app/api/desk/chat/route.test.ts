@@ -53,6 +53,11 @@ it("checks the selected desk before passing a structured board action", async ()
   expect(run).toHaveBeenCalledWith({ child: "selected-child" }, action);
   run.mockClear();
   expect((await POST(request({ ...action, target: { ...action.target, boardRevision: 0 } }))).status).toBe(400);
+  const groupAction = { ...action, target: { lessonId: "a-lesson", turnId: "a-turn", boardRevision: 2, objectId: "multiply-groups", batchId: "call-b2", groupSize: 4, nextGroups: 2 } };
+  expect((await POST(request(groupAction))).status).toBe(200);
+  expect(run).toHaveBeenCalledWith({ child: "selected-child" }, groupAction);
+  run.mockClear();
+  expect((await POST(request({ ...groupAction, target: { ...groupAction.target, groupSize: 1 } }))).status).toBe(400);
   gate.mockResolvedValue({ ok: false, error: "forbidden", status: 403 });
   expect((await POST(request(action))).status).toBe(403);
   expect(run).not.toHaveBeenCalled();
