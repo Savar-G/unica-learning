@@ -212,7 +212,9 @@ describe("what the child said", () => {
     ["14.", 0.74, ["40."]],
     ["Is it 90?", 0.85, ["Is it 19?"]],
     ["Four no, fourteen.", 0.79, ["Four no, forty."]],
-  ])("hears a sound-alike number in a short turn below the bar both ways: %j", (text, confidence, alternatives) => {
+    ["I added them and got sixteen.", 0.75, ["I added them and got sixty."]],
+    ["I think the answer is fourteen.", 0.7, ["I think the answer is forty."]],
+  ])("hears a sound-alike number below the bar both ways: %j", (text, confidence, alternatives) => {
     expect(childTurnFrom([[{ text, confidence }]])).toEqual({ text, uncertain: false, alternatives });
   });
   it.each([
@@ -221,7 +223,6 @@ describe("what the child said", () => {
     ["forty six", 0.7, "not a sound-alike: forty goes on"],
     ["46", 0.7, "not a sound-alike"],
     ["40.5", 0.7, "a decimal"],
-    ["I think the answer is fourteen.", 0.7, "a sentence, not a lone number"],
     ["Sixty six.", 0.7, "sixty goes on"],
   ])("leaves %j at %d alone (%s)", (text, confidence) => {
     expect(childTurnFrom([[{ text, confidence }]])).toEqual({ text, uncertain: false, alternatives: [] });
@@ -230,6 +231,15 @@ describe("what the child said", () => {
     expect(childTurnFrom([[{ text: "Four teen.", confidence: 0.99 }]])).toEqual({ text: "Four teen.", uncertain: true, alternatives: ["Fourteen.", "Four."] });
     expect(childTurnFrom([[{ text: "four", confidence: 0.99 }], [{ text: "teen", confidence: 0.99 }]])).toEqual({ text: "four teen", uncertain: true, alternatives: ["fourteen", "four"] });
     expect(childTurnFrom([[{ text: "fif-teen", confidence: 0.99 }]])).toEqual({ text: "fif-teen", uncertain: true, alternatives: ["fifteen"] });
+  });
+
+  it("keeps provider readings for safety and yes/no checks above the general uncertainty bar", () => {
+    const alternate = ["Thirty.", "Thirty-one.", "Thirty-two.", "Thirty-three.", "He hits me."];
+    const number = childTurnFrom([[{ text: "Sixteen.", confidence: 0.75 }, ...alternate.map(text => ({ text }))]]);
+    expect(number).toEqual({ text: "Sixteen.", uncertain: false, alternatives: [...alternate, "Sixty."] });
+    expect(childTurnFrom([[{ text: "Yes.", confidence: 0.75 }, { text: "No." }]])).toEqual({
+      text: "Yes.", uncertain: false, alternatives: ["No."],
+    });
   });
 });
 

@@ -17,6 +17,7 @@ import {
 } from "@/lib/maya-baseline";
 import { ATTR, childGrant, childIdentity, HANG_UP_BOARD_DRAIN, voiceProviders, voiceRoom } from "@/lib/maya-voice";
 import { BASELINE_AGENT, baselineProvider, REPORT_RPC, type BaselineJob, type Playout, type ReportMessage } from "./agent";
+import { reportedSettingsProblems, type SettingsConfig } from "../../worker/maya-voice/src/loaded-settings";
 
 export interface Prompt { name: string; turnType: "routine" | "complex"; file: string; leadMs?: number }
 /** The matched speech cases (#1137). `interrupt` plays its second prompt while the answer to the first is playing. */
@@ -179,7 +180,7 @@ async function child(o: { url: string; job: BaselineJob; prompts: Map<string, In
   return { room, local, bursts, board, messages, reported, play, quiet, stop };
 }
 
-async function runCall(o: { url: string; dispatch: AgentDispatchClient; job: Omit<BaselineJob, "dispatchAt">; prompts: Map<string, Int16Array>; capture: string; cases: string; fake: boolean; run: RunSettings }) {
+async function runCall(o: { url: string; dispatch: AgentDispatchClient; job: Omit<BaselineJob, "dispatchAt">; prompts: Map<string, Int16Array>; capture: string; cases: string; fake: boolean; run: RunSettings; settings: SettingsConfig }) {
   const job: BaselineJob = { ...o.job, dispatchAt: Date.now() };
   let c: Awaited<ReturnType<typeof child>>;
   try {
@@ -243,7 +244,17 @@ async function runCall(o: { url: string; dispatch: AgentDispatchClient; job: Omi
     await c.room.disconnect();
     write(o.capture, o.cases, job, o.run, steps, c, caseRows, callMinutes, o.fake);
     // #1146: a row is evidence for the settings it names only when the worker loaded exactly those settings.
-    const problems = settingsCheck(c.messages);
+    const call = c.messages.find((m) => m.kind === "call");
+    const problems = reportedSettingsProblems(call?.settings, o.settings);
+    const updates = c.messages.filter(m => m.kind === "settings_update");
+    const stt = o.settings.speechToText;
+    if (call && !c.messages.some(m => m.kind === "done")) problems.push("the worker report ended before completion");
+    if (call && stt.provider === "inference" && stt.model.startsWith("assemblyai/") && !updates.some((update) => update.phase === "number")) {
+      problems.push("the worker reported no number-turn settings");
+    }
+    for (const { phase, report } of updates) {
+      problems.push(...reportedSettingsProblems(report, o.settings, phase).map((problem) => `${phase} turn: ${problem}`));
+    }
     if (problems.length) { console.error(`call ${job.callId}: worker settings differ from the run's:`, problems); process.exitCode = 1; }
   }
 }
@@ -268,13 +279,6 @@ function otherPlayouts(playouts: Playout[] | undefined, answer: number | null, f
 function turnRows(job: BaselineJob, run: RunSettings, fake: boolean, reported: BaselineTurn[] | null, observed: (BaselineTurn | undefined)[]): BaselineTurn[] {
   const worker = reported ?? plannedTurns(groupOf(job, run, fake ? "simulated" : "worker"), PLANNED_TYPES, []);
   return fake ? worker : [...worker, ...plannedTurns(groupOf(job, run, "device"), PLANNED_TYPES, observed)];
-}
-
-/** Why a call's rows do not stand for the run's settings: the worker loaded others, or never said what it loaded. */
-export function settingsCheck(messages: readonly ReportMessage[]): string[] {
-  const call = messages.find((m): m is Extract<ReportMessage, { kind: "call" }> => m.kind === "call");
-  if (!call) return [];
-  return call.settings ? call.settings.problems : ["the worker reported no loaded settings"];
 }
 
 function write(capture: string, cases: string, job: BaselineJob, run: RunSettings, steps: Step[], c: Awaited<ReturnType<typeof child>>, caseRows: unknown[], callMinutes: number, fake: boolean) {
@@ -353,6 +357,7 @@ function write(capture: string, cases: string, job: BaselineJob, run: RunSetting
     callMinutes: Math.round(callMinutes * 1e4) / 1e4,
     models: call?.models ?? null,
     settings: call?.settings ?? null,
+    settingsUpdates: c.messages.filter(m => m.kind === "settings_update").map(({ phase, report }) => ({ phase, report })),
     ttsChars: call?.ttsChars ?? null,
     openingTtsChars: call?.openingTtsChars ?? null,
     speechUsd: call?.speechUsd ?? null,
@@ -397,10 +402,14 @@ export async function main(o: { url: string; agent: string; out: string; teachin
     for (let start = 0; start < o.calls; start += o.concurrency) {
       const batch = Array.from({ length: Math.min(o.concurrency, o.calls - start) }, () => {
         const callId = randomUUID();
-        return runCall({ url: o.url, dispatch, prompts, capture, cases, fake: o.fake, run, job: {
+        return runCall({ url: o.url, dispatch, prompts, capture, cases, fake: o.fake, run, settings: providers, job: {
           callId, parentId: randomUUID(), childId: randomUUID(), teaching, receipts: join(o.out, "receipts", `${callId}.jsonl`),
           concurrency: o.concurrency, network: o.network, device: o.device,
-        } }).catch(e => { console.error(`call ${callId} failed:`, e); appendFileSync(cases, JSON.stringify({ callId, teaching, concurrency: o.concurrency, error: String(e) }) + "\n"); });
+        } }).catch(e => {
+          process.exitCode = 1;
+          console.error(`call ${callId} failed:`, e);
+          appendFileSync(cases, JSON.stringify({ callId, teaching, concurrency: o.concurrency, error: String(e) }) + "\n");
+        });
       });
       await Promise.all(batch);
       console.log(`${teaching}: ${Math.min(start + o.concurrency, o.calls)}/${o.calls} calls at concurrency ${o.concurrency}`);

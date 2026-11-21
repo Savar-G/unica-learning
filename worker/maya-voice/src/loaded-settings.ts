@@ -7,7 +7,7 @@
 // LiveKit Agents 1.9.5 keeps the Inference model options on the object (`opts` in inference/stt.js and tts.js, private
 // in its types only); the direct AssemblyAI plugin keeps them in a true private field, so for it only the model shows.
 import type { voice } from "@livekit/agents";
-import type { SpeechToTextConfig, VoiceConfig, VoiceTuning } from "@/lib/maya-voice";
+import { turnSilences, type SpeechToTextConfig, type VoiceConfig, type VoiceTuning } from "@/lib/maya-voice";
 import type { Providers } from "./providers";
 
 export const LOADED_SETTINGS_PREFIX = "[maya voice] loaded settings ";
@@ -27,6 +27,9 @@ export interface LoadedSettings {
   /** The LiveKit session's resolved turn handling (ms). */
   turn: { detection: unknown; minDelayMs: number | null; maxDelayMs: number | null; interruption: Record<string, number | string | boolean> };
 }
+
+export type SettingsConfig = { speechToText: SpeechToTextConfig; voice: VoiceConfig; tuning: VoiceTuning };
+export type LoadedReport = { callId: string; problems: string[] } & Partial<LoadedSettings>;
 
 type Held = { model?: unknown; voice?: unknown; modelOptions?: Record<string, unknown> };
 const held = (o: unknown): Held => ((o as { opts?: Held }).opts ?? {});
@@ -67,7 +70,7 @@ export function loadedSettings(session: voice.AgentSession, providers: Pick<Prov
  * Each loaded setting that differs from the configuration, in words ("speech-to-text max_turn_silence is 2500, not
  * 1400"). Empty when the worker runs what it was asked to. The fakes take no tuning, so only their models are checked.
  */
-export function settingsProblems(loaded: LoadedSettings, config: { speechToText: SpeechToTextConfig; voice: VoiceConfig; tuning: VoiceTuning }): string[] {
+export function settingsProblems(loaded: LoadedSettings, config: SettingsConfig, phase: "normal" | "number" = "normal"): string[] {
   const problems: string[] = [];
   const check = (what: string, got: unknown, want: unknown) => { if (got !== want) problems.push(`${what} is ${String(got)}, not ${String(want)}`); };
   const { speechToText: stt, voice: tts, tuning } = config;
@@ -75,10 +78,12 @@ export function settingsProblems(loaded: LoadedSettings, config: { speechToText:
   check("voice model", loaded.tts.model, tts.provider === "fake" ? "fake" : tts.model);
   if (tts.provider === "inference") check("voice id", loaded.tts.voice, tts.voice);
   if (stt.provider === "inference" && stt.model.startsWith("assemblyai/")) {
-    check("speech-to-text min_turn_silence", loaded.stt.minTurnSilenceMs, tuning.sttMinSilenceMs);
-    check("speech-to-text max_turn_silence", loaded.stt.maxTurnSilenceMs, tuning.sttMaxSilenceMs);
+    const { minMs, maxMs } = turnSilences(tuning)[phase];
+    check("speech-to-text min_turn_silence", loaded.stt.minTurnSilenceMs, minMs);
+    check("speech-to-text max_turn_silence", loaded.stt.maxTurnSilenceMs, maxMs);
     check("speech-to-text voice_focus", loaded.stt.voiceFocus, tuning.sttVoiceFocus ?? null);
   }
+  check("turn detection", loaded.turn.detection, "stt");
   if (stt.provider !== "fake" || tts.provider !== "fake") {
     check("turn endpointing minDelay", loaded.turn.minDelayMs, tuning.turnMinDelayMs);
     check("interruption minDuration", loaded.turn.interruption.minDuration, tuning.interruptMinMs);
@@ -87,20 +92,36 @@ export function settingsProblems(loaded: LoadedSettings, config: { speechToText:
   return problems;
 }
 
+/** Read the settings for the requested turn, with a fixed error if the SDK read fails. */
+export function readLoadedSettings(callId: string, session: voice.AgentSession, providers: Pick<Providers, "stt" | "tts">, config: SettingsConfig, phase: "normal" | "number" = "normal"): LoadedReport {
+  try {
+    const loaded = loadedSettings(session, providers);
+    return { callId, ...loaded, problems: settingsProblems(loaded, config, phase) };
+  } catch {
+    return { callId, problems: ["the loaded settings could not be read"] };
+  }
+}
+
+/** Compare the worker's readback with the runner's own settings. */
+export function reportedSettingsProblems(report: LoadedReport | undefined, config: SettingsConfig, phase: "normal" | "number" = "normal"): string[] {
+  if (!report) return ["the worker reported no loaded settings"];
+  const { stt, tts, turn } = report;
+  if (!stt || !tts || !turn) return report.problems.length ? report.problems : ["the loaded settings report is incomplete"];
+  return [...new Set([...report.problems, ...settingsProblems({ stt, tts, turn }, config, phase)])];
+}
+
 /**
  * Logs what the call's worker loaded, as one JSON line after LOADED_SETTINGS_PREFIX with the differences from the
  * configuration (`problems`), and a warning when there is any. Returns the line's content. A read that fails (an SDK
  * that holds its options elsewhere) is reported as a problem and never stops the call.
  */
-export function logLoadedSettings(callId: string, session: voice.AgentSession, providers: Pick<Providers, "stt" | "tts">, config: Parameters<typeof settingsProblems>[1]): { callId: string; problems: string[] } & Partial<LoadedSettings> {
-  let report: { callId: string; problems: string[] } & Partial<LoadedSettings>;
+export function logLoadedSettings(callId: string, session: voice.AgentSession, providers: Pick<Providers, "stt" | "tts">, config: SettingsConfig): LoadedReport {
+  const report = readLoadedSettings(callId, session, providers, config);
   try {
-    const loaded = loadedSettings(session, providers);
-    report = { callId, ...loaded, problems: settingsProblems(loaded, config) };
-  } catch (e) {
-    report = { callId, problems: [`the loaded settings could not be read: ${e instanceof Error ? e.message : String(e)}`] };
-  }
-  console.info(LOADED_SETTINGS_PREFIX + JSON.stringify(report));
-  if (report.problems.length) console.warn("[maya voice] loaded settings differ from the configuration", callId, report.problems);
+    console.info(LOADED_SETTINGS_PREFIX + JSON.stringify(report));
+  } catch { /* The log sink must not affect the call. */ }
+  try {
+    if (report.problems.length) console.warn("[maya voice] loaded settings differ from the configuration", callId, report.problems);
+  } catch { /* The warning sink must not affect the call. */ }
   return report;
 }

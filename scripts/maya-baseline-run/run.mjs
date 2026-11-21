@@ -47,4 +47,4 @@ await build({ ...common, entryPoints: [join(root, "scripts/maya-baseline-run/run
 const { main } = await import(join(dist, "run.mjs"));
 await main({ url: values.url, agent: join(dist, "agent.mjs"), out, teachings: values.teaching.split(","), calls: Number(values.calls),
   concurrency: Number(values.concurrency), network: values.network, device: values.device, healthPort: Number(values["health-port"]), fake: values.speech === "fake" });
-process.exit(0);
+process.exit(process.exitCode ?? 0);

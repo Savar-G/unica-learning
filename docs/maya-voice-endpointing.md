@@ -40,17 +40,14 @@ The speech-to-text gives one transcript. Two cases can give the wrong number:
 
 The rule (`childTurnFrom` in `src/lib/maya-voice.ts`, with `src/lib/maya-voice-heard.ts`):
 
-- A short turn (4 words or fewer) with a sound-alike number and a confidence below `SOUND_ALIKE_CONFIDENCE` (0.9) gets the partner as another reading ("Fourteen." also reads "Forty."). A number that goes on ("forty-six", "forty six"), a decimal ("40.5") and a longer sentence are left alone.
+- A sound-alike number below `SOUND_ALIKE_CONFIDENCE` (0.9) gets a second reading, including when the number is in a full sentence. For example, "I added them and got sixteen" also reads "I added them and got sixty". The rule skips compound numbers such as "forty-six" and decimals such as "40.5".
 - A split teen ("four teen", "six-teen", "fif teen") is uncertain at any confidence, with two readings: the teen and the first word ("Fourteen.", "Four.").
-- The worker now sends the other readings with the turn even when no part was below `UNSURE_CONFIDENCE` (0.6). Before, it sent them only for an uncertain turn.
+- The worker also sends provider alternatives at any confidence. Safety checks and checks for answers such as "yes" and "no" can use these readings.
 
 What the session does (`src/lib/maya/session.ts`):
 
-- A turn with another reading earns no credit. Maya may confirm ("Did you say 16?" or "16 or 60?").
-- The confirm is offered also when the turn's own reading answers another step and its other reading answers the current one. Example: on 27 + 39, "Six teen." reads as 6 (the tens total), and its other reading 16 is the ones step.
-- A plain yes credits the number that Maya named. A plain repeat of that number ("Sixteen.") also credits it, though the speech-to-text hears it two ways again. Without this, a child who said "sixteen" twice would be asked a third time. A repeat that is a split teen again is still uncertain.
-
-Cost: every lone sound-alike answer below 0.9 now gets one confirm turn. On the comparison data that is every lone "fourteen". The confirm protects the credit. It does not make the turn shorter.
+- Maya asks for confirmation when the readings change the grade or the step that can earn credit. For 27 + 39, the reading "Six teen" can give the tens total of 6 or the ones total of 16.
+- A clear yes or a clear repeat can confirm a correct answer. After "Did you say 60?", a clear "No, sixteen" rules out 60. If the readings still disagree after confirmation, Maya offers another input method.
 
 Tests: `src/lib/maya-voice.test.ts` ("what the child said"), `src/lib/maya/controller-fixes.test.ts` ("#1146 a step answer heard two ways is confirmed before credit") and `worker/maya-voice/src/call.test.ts` ("a spoken number the speech-to-text could hear two ways", through the worker's LiveKit pipeline with the fake speech-to-text).
 
@@ -65,7 +62,7 @@ At the start of each call the worker logs one line (`worker/maya-voice/src/loade
 - The values are read back from the objects the worker built, not from the configuration: the speech-to-text model, `min_turn_silence`, `max_turn_silence`, `voice_focus` and the number of keyterms; the voice model and voice id; and the LiveKit session's resolved turn detection, endpointing delays and interruption options.
 - `problems` names each value that differs from the configuration, for example `speech-to-text max_turn_silence is 2500, not 1400`. A difference also logs a warning.
 - No key or secret is read. The keyterms are counted, not logged, because they are the call's numbers.
-- The baseline harness (`scripts/maya-baseline-run`) gets the same report from its worker, writes it to `cases.jsonl` as `settings`, and exits with code 1 when a call's worker loaded other settings or reported none.
+- The baseline harness (`scripts/maya-baseline-run`) records the initial readback as `settings` in `cases.jsonl`. It records later silence readbacks as `settingsUpdates`. It compares the reports with the runner's configuration and exits with code 1 if a required report is missing or a setting differs.
 - Limit: the direct AssemblyAI plugin keeps its options in a private field, so on that route only the model shows. Production uses LiveKit Inference, where every value shows.
 
 ## Not verified

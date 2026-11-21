@@ -25,16 +25,15 @@ import { VoiceCallRun, voiceSession } from "../../worker/maya-voice/src/agent";
 import { startVoiceBaselineProfile, voiceBaselineTurn } from "../../worker/maya-voice/src/baseline";
 import { waitForChild } from "../../worker/maya-voice/src/child-wait";
 import { voiceOpening } from "../../worker/maya-voice/src/opening";
-import { logLoadedSettings } from "../../worker/maya-voice/src/loaded-settings";
+import { logLoadedSettings, readLoadedSettings, type LoadedReport } from "../../worker/maya-voice/src/loaded-settings";
 import { makeProviders } from "../../worker/maya-voice/src/providers";
 import { CallTelemetry, markedFetch, setTelemetry, telemetry } from "../../worker/maya-voice/src/telemetry";
 import type { VoiceTurnSample } from "../../worker/maya-voice/src/turn-timing";
 import { configureDelivery } from "../../worker/maya-voice/src/voice-delivery";
 
 export const BASELINE_AGENT = "maya-baseline";
-/** What the worker loaded and how it differs from the configuration (worker/maya-voice/src/loaded-settings.ts). */
-export type LoadedReport = ReturnType<typeof logLoadedSettings>;
 export const REPORT_RPC = "maya.baseline.report";
+type SettingsUpdate = { kind: "settings_update"; phase: "normal" | "number"; report: LoadedReport };
 
 /** The provider label of every row of a run: the call's model and both speech providers, as the worker resolves them. */
 export function baselineProvider(env: Readonly<Record<string, string | undefined>>): string {
@@ -108,6 +107,7 @@ export type ReportMessage =
   | { kind: "playout"; start: number; end: number | null }
   | { kind: "turn"; row: ReturnType<typeof voiceBaselineTurn>; t0: number | null; turnStart: number | null; answerPlayback: number | null; ackPlayback: number | null; ttsChars: number; cues: ReportedCue[]; childText: string | null }
   | { kind: "call"; workerQueueMs: number; profile: Record<string, unknown> | null; discardedPreparation: unknown; speechUsd: { stt: number; tts: number }; playouts: Playout[]; ttsChars: number; openingTtsChars: number; models: { stt: string; tts: string }; childTranscripts: ReportedChildTranscript[]; settings: LoadedReport }
+  | SettingsUpdate
   | { kind: "done" };
 
 export default defineAgent({
@@ -163,6 +163,7 @@ export default defineAgent({
     const session = voiceSession(made, made.fake ? {} : { turn: tuning });
     // #1146: the settings this worker actually loaded, read back from the built objects; the runner checks them.
     const settings = logLoadedSettings(job.callId, session, made, providers);
+    const settingsUpdates: SettingsUpdate[] = [];
     await ctx.connect();
     const identity = childIdentity(job.childId);
     const local = ctx.room.localParticipant!;
@@ -185,11 +186,19 @@ export default defineAgent({
     const send = (message: ReportMessage) => local.performRpc({ destinationIdentity: identity, method: REPORT_RPC, payload: JSON.stringify(message), responseTimeout: 10_000 });
     const encoder = new TextEncoder();
     const patience = made.patience;
+    const silences = turnSilences(tuning);
     const run = new VoiceCallRun(session, opened.call, {
       board, ...(voiceOpening(opened.call.session) ? { opening: voiceOpening(opened.call.session)! } : {}),
       notify: update => { void local.publishData(encoder.encode(JSON.stringify(update)), { reliable: true, topic: "maya.call", destination_identities: [identity] }).catch(() => {}); },
       ...(made.fake ? {} : { numberContinueMs: tuning.numberContinueMs, dropSilentPeakDbfs: tuning.dropSilentPeakDbfs, detectorMinSilenceMs: tuning.detectorMinSilenceMs }),
-      ...(patience ? { patience: { ...turnSilences(tuning), set: limits => patience.setSilence(limits) } } : {}),
+      ...(patience ? { patience: { ...silences, set: limits => {
+        const phase = limits === silences.number ? "number" : "normal";
+        let failed = false;
+        try { patience.setSilence(limits); } catch { failed = true; }
+        const report = readLoadedSettings(job.callId, session, made, providers, phase);
+        if (failed) report.problems.push("the speech-to-text silence update failed");
+        settingsUpdates.push({ kind: "settings_update", phase, report });
+      } } } : {}),
       measureTurn: sample => {
         turns.push(sample);
         // An answered turn is measured when its answer starts to play.
@@ -245,6 +254,7 @@ export default defineAgent({
             childTranscripts,
             settings,
           });
+          for (const update of settingsUpdates) await send(update);
           await send({ kind: "done" });
         } finally {
           await flushAiUsage();

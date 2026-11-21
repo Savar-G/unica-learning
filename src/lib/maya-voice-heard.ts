@@ -1,6 +1,5 @@
 // What else the child may have said, when a spoken number can be heard two ways (#1146). The speech-to-text gives one
-// transcript; these rules add the other reading so the session confirms before it credits (src/lib/maya/session.ts
-// refuses credit for a turn with alternatives and offers a confirmation). They read only the transcript's words.
+// transcript; these rules add other readings so the session can check whether they change the result.
 
 /** The teen and tens words that sound alike, and the same numbers in digits: "fourteen" and "forty", "14" and "40". */
 const SOUND_ALIKE: Readonly<Record<string, string>> = Object.fromEntries(
@@ -21,8 +20,6 @@ const TEEN_OF: Readonly<Record<string, string>> = {
 };
 /** A teen split by a pause: "four teen", "six-teen", "fif teen". */
 const SPLIT_TEEN = new RegExp(`(?<![\\p{L}\\d])(${Object.keys(TEEN_OF).join("|")})[\\s-]+teens?(?![\\p{L}\\d])`, "giu");
-/** A lone number: a turn this short is the answer itself, not a sentence around it. */
-const SHORT_TURN_WORDS = 4;
 
 /** `word` in the case of `like`: "Forty" for "Fourteen", "forty" for "fourteen". */
 function caseOf(like: string, word: string): string {
@@ -31,8 +28,7 @@ function caseOf(like: string, word: string): string {
 
 /**
  * The other readings of a turn's text: a teen split by a pause is heard as the teen and as its first word, and makes
- * the turn uncertain; in a short turn the speech-to-text was not sure of (`confidence` below `bar`), a sound-alike
- * number is heard as its partner.
+ * the turn uncertain. Below the confidence bar, a sound-alike number is also heard as its partner.
  */
 export function otherReadings(text: string, confidence: number, bar: number): { uncertain: boolean; alternatives: string[] } {
   const alternatives: string[] = [];
@@ -45,8 +41,7 @@ export function otherReadings(text: string, confidence: number, bar: number): { 
     // "four teen" may be "four" and a word lost: a part that is a number of its own is the other reading.
     if (new RegExp(`^(?:${ONES})$`, "i").test(first)) alternatives.push(before + first + after);
   }
-  const words = text.trim().split(/\s+/).filter(Boolean).length;
-  if (words <= SHORT_TURN_WORDS && confidence < bar) {
+  if (confidence < bar) {
     for (const m of text.matchAll(SOUND_ALIKE_WORD)) {
       const word = m[1];
       alternatives.push(text.slice(0, m.index) + caseOf(word, SOUND_ALIKE[word.toLowerCase()]) + text.slice(m.index + word.length));

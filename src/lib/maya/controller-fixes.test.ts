@@ -4,6 +4,7 @@ import {
   type Effect, type LineId, type Proposal, type Reading, type SessionEvent, type Slots,
 } from "@/lib/maya";
 import { workedSteps, type OperationPackage, type QuestionPackage } from "@/lib/question-package";
+import { childTurnFrom } from "@/lib/maya-voice";
 
 // The controller defects of the first full practice run (#605; the investigation's section 5), through the session's
 // public interface. The fixtures are the research's 27 + 39 = 66 and 52 - 28 = 24.
@@ -891,9 +892,9 @@ describe("#605 a clear carry goes straight on: no 'Did you say 1?' (F01-r3, F02-
     c.child(turn);
     expect(c.acts).toContain("confirm");
   });
-  it("still confirms what speech heard two ways", () => {
+  it("still confirms when the alternate changes the grade of the final answer", () => {
     const c = call();
-    c.send({ type: "child_turn", at: T0 + 4000, text: "15", alternatives: ["50"] });
+    c.send({ type: "child_turn", at: T0 + 4000, text: "66", alternatives: ["56"] });
     expect(c.acts).toContain("confirm");
   });
 });
@@ -953,12 +954,67 @@ describe("#1146 a step answer heard two ways is confirmed before credit", () => 
     c.maya(credit);
     expect(c.session.done).toContain("ones");
   });
-  it("credits the child's repeat of the number Maya asked about, though it is heard two ways again", () => {
+  it("credits a clear repeat of the number Maya asked about", () => {
     const c = asked();
     c.send({ type: "child_turn", at: T0 + 20_000, text: "Sixteen.", alternatives: ["Sixty."] });
     c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "16" })] });
-    c.send({ type: "child_turn", at: T0 + 30_000, text: "Sixteen.", alternatives: ["Sixty."] });
+    c.child("Sixteen.");
     c.maya(credit);
     expect(c.session.done).toContain("ones");
+  });
+
+  it.each([
+    { text: "Sixteen.", alternatives: ["Sixty."] },
+    { text: "Six teen.", uncertain: true, alternatives: ["Sixteen.", "Six."] },
+    { text: "Yes.", alternatives: ["No."] },
+  ])("offers another input after an unresolved confirmation of $text", turn => {
+    const c = asked();
+    c.send({ type: "child_turn", at: T0 + 20_000, text: "Sixteen.", alternatives: ["Sixty."] });
+    c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "16" })] });
+    c.send({ type: "child_turn", at: T0 + 30_000, ...turn });
+    expect(c.firstFallback().proposal.act).toBe("offer_other_input");
+    expect(c.session.done).not.toContain("ones");
+  });
+
+  it("uses an explicit denial to rule out the number Maya just asked about", () => {
+    const c = asked();
+    c.send({ type: "child_turn", at: T0 + 20_000, text: "Sixty.", alternatives: ["Sixteen."] });
+    c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "60" })] });
+    c.send({ type: "child_turn", at: T0 + 30_000, text: "No, sixteen.", alternatives: ["No, sixty."] });
+    expect(c.firstFallback().proposal.act).toBe("guide");
+    expect(c.session.done).toContain("ones");
+  });
+
+  it("gives help without a hearing question when neither reading earns credit", () => {
+    const c = asked();
+    c.send({ type: "child_turn", at: T0 + 20_000, text: "Fourteen.", alternatives: ["Forty."] });
+    expect(c.acts).not.toContain("confirm");
+    expect(c.firstFallback().proposal.act).toBe("guide");
+    expect(c.session.done).not.toContain("ones");
+  });
+
+  it("credits equivalent word and digit readings without confirmation", () => {
+    const c = asked();
+    c.send({ type: "child_turn", at: T0 + 20_000, text: "Sixteen.", alternatives: ["16."] });
+    expect(c.acts).not.toContain("confirm");
+    c.maya(credit);
+    expect(c.session.done).toContain("ones");
+  });
+
+  it("checks the reading of a number stated in a full sentence", () => {
+    const c = asked();
+    const hearing = childTurnFrom([[{ text: "I added them and got sixteen.", confidence: 0.75 }]])!;
+    c.send({ type: "child_turn", at: T0 + 20_000, ...hearing });
+    expect(c.firstFallback().proposal.act).toBe("confirm");
+    expect(c.session.done).not.toContain("ones");
+  });
+
+  it("does not give step credit after a yes to a wrong number", () => {
+    const c = asked();
+    c.send({ type: "child_turn", at: T0 + 20_000, text: "Sixty.", alternatives: ["Sixteen."] });
+    c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "60" })] });
+    c.child("Yes.");
+    expect(c.firstFallback().proposal.act).toBe("guide");
+    expect(c.session.done).not.toContain("ones");
   });
 });

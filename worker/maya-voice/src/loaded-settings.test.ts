@@ -1,8 +1,8 @@
 import { initializeLogger } from "@livekit/agents";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { voiceProviders } from "@/lib/maya-voice";
+import { turnSilences, voiceProviders } from "@/lib/maya-voice";
 import { voiceSession } from "./agent";
-import { LOADED_SETTINGS_PREFIX, loadedSettings, logLoadedSettings, settingsProblems } from "./loaded-settings";
+import { LOADED_SETTINGS_PREFIX, loadedSettings, logLoadedSettings, readLoadedSettings, reportedSettingsProblems, settingsProblems } from "./loaded-settings";
 import { makeProviders } from "./providers";
 
 // #1146: the worker reports the speech settings it actually loaded, read back from the built speech-to-text, voice and
@@ -63,6 +63,23 @@ describe("the settings a worker loaded", () => {
     await made.tts.close();
   });
 
+  it("checks the reported settings against the runner's number-turn settings", async () => {
+    const { config, made, session } = await build({ ...INFERENCE, ...STAGING, MAYA_STT_NUMBER_SILENCE_MS: "2500" });
+    const expected = voiceProviders({ ...PRIVACY, ...INFERENCE, ...STAGING });
+    if (!expected.ok) throw new Error(expected.problems.join("; "));
+    expect(reportedSettingsProblems(undefined, expected)).toEqual(["the worker reported no loaded settings"]);
+    expect(reportedSettingsProblems(readLoadedSettings("call", session, made, config), expected)).toEqual([]);
+    made.patience!.setSilence(turnSilences(config.tuning).number);
+    const number = readLoadedSettings("call", session, made, config, "number");
+    expect(number.problems).toEqual([]);
+    expect(reportedSettingsProblems(number, expected, "number")).toEqual(["speech-to-text max_turn_silence is 2500, not 1400"]);
+    session.updateOptions({ turnHandling: { turnDetection: "manual" } });
+    expect(reportedSettingsProblems(readLoadedSettings("call", session, made, config, "number"), config, "number"))
+      .toEqual(["turn detection is manual, not stt"]);
+    await made.stt.close();
+    await made.tts.close();
+  });
+
   it("logs one line a harness can read at the call's start, and a warning for each difference", async () => {
     const { config, made, session } = await build({ ...INFERENCE, ...STAGING });
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
@@ -87,6 +104,15 @@ describe("the settings a worker loaded", () => {
     const report = logLoadedSettings("call-3", {} as never, made, config);
     expect(report).toMatchObject({ callId: "call-3", problems: [expect.stringMatching(/^the loaded settings could not be read/)] });
     expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not expose read exceptions or stop the call if either log sink throws", async () => {
+    const { config, made, session } = await build({});
+    vi.spyOn(console, "info").mockImplementation(() => { throw new Error("info unavailable"); });
+    vi.spyOn(console, "warn").mockImplementation(() => { throw new Error("warn unavailable"); });
+    expect(logLoadedSettings("call-4", session, made, config).problems).toEqual([]);
+    const unreadable = { get sessionOptions() { throw new Error("private provider detail"); } } as never;
+    expect(logLoadedSettings("call-4", unreadable, made, config).problems).toEqual(["the loaded settings could not be read"]);
   });
 
   it("reports the fakes, which take no tuning", async () => {
