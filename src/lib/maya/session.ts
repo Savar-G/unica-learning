@@ -73,7 +73,7 @@ import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
 import { answersOwnQuestion, askedStep, doneReply, firstTimeTurn, yesReply, type AskedRead } from "./teaching-reads";
 import { deriveDrawings, type BoardRead, type TiedDrawing } from "./board-ties";
 import { chooseTransfer, relatedChoice, TRANSFER_MIN_MS, TRANSFER_OFFER, transferBoard, transferPackage, type RelatedStep, type TransferOperands } from "./transfer";
-import { divisionMisconception, divisionTransferPackage, supportsCheckedDivision, type DivisionInstruction } from "./checked-division";
+import { divisionMisconception, divisionTransferPackage, divisionWorkTalk, supportsCheckedDivision, type DivisionInstruction } from "./checked-division";
 import { childDivisionPlan, divisionBatchSentence, divisionHelp, divisionLessonPlan, divisionSharedBefore, divisionTransferFor, divisionTurnCommands, divisionTurnWords, divisionWaitingForBoard, matchesDivisionInstruction, type DivisionSessionDeps } from "./checked-division-session";
 import { EXCHANGE_OBJECT, exchangeChildWords, exchangeCommands, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingOffersAction, regroupingWords, sameExchangeTarget, supportsCheckedExchange, type CheckedExchangeLesson, type ExchangeAction, type ExchangeProposal, type ExchangeTarget, type ExchangeTurn, type LessonInstruction, type RegroupingInstruction, type RegroupingObservation } from "./checked-exchange";
 import { agreementClause, askedStep as askedOperationStep, bindingReview, checkedSubtractionQuestion, checkTutorSay, continuedSay, stepsStated, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, FINAL_ASK, TUTOR_FIRST_TIME_WORD_LIMIT, TUTOR_REVIEW_IGNORED } from "./tutor";
@@ -5623,7 +5623,7 @@ function sessionScopeReason(s: Session, original: OperationPackage, text: string
   if (reason === "changed_problem" && s.checkedExchange?.progression && operation.kind === "subtract" &&
     regroupingReversal(text, ...operation.operands)) return null;
   if (reason === "changed_problem" && s.checkedExchange?.kind === "divide" && operation.kind === "divide" &&
-    divisionMisconception(wholeTurn(text), text, ...operation.operands, plainNumber, saysGuess) !== null) return null;
+    divisionWorkTalk(wholeTurn(text), text, ...operation.operands, plainNumber, saysGuess)) return null;
   return reason;
 }
 

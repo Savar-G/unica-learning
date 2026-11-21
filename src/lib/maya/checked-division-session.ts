@@ -18,6 +18,8 @@ import {
   divisionMisconception,
   divisionOffersAction,
   divisionPromptWords,
+  divisionReason,
+  divisionBecauseAnswer,
   divisionShownTexts,
   divisionRelatedChoice,
   divisionTransferBoard,
@@ -163,13 +165,14 @@ function divisionRelatedPlan(s: DivisionSessionState, deps: DivisionSessionDeps)
           asksDemo: DIVISION_DEMO_REQUEST.test(text) || DIVISION_CHILD_REQUEST.test(text),
           knowsExchange: !!body && DIVISION_KNOWS_EXCHANGE.test(body),
           stuck: DIVISION_START.test(text) || DIVISION_HELP.test(text),
-          rightWhole: right("result") && !deps.childSaysFalse(text),
+          rightWhole: !deps.childSaysFalse(text) && !deps.saysGuess(text) && (right("result") || divisionBecauseAnswer(body, deps.plainNumber) === facts.quotient),
           saysWhole: /\b(?:my (?:final )?answer|(?:whole|final) (?:answer|quotient))\b/i.test(text),
           wrongWhole: !s.scopeDue && said !== null && said !== facts.quotient,
           tens: count("ten"),
           ones: count("one"),
           heardTens: right("tens"),
           heardOnes: right("ones"),
+          reason: divisionReason(body, dividend, divisor, deps.plainNumber, previous === "div_explain"),
         }, facts);
   let instruction: DivisionInstruction = {
     step: choice.step,
@@ -239,7 +242,8 @@ export function divisionLessonPlan(s: DivisionSessionState, deps: DivisionSessio
         shared,
         exchanged,
         misconception: divisionMisconception(body, text, dividend, divisor, deps.plainNumber, deps.saysGuess),
-        rightWhole: !deps.childSaysFalse(text) && heard.some((a) => a.step === "result" && a.verdict === "right"),
+        rightWhole: !deps.childSaysFalse(text) && !deps.saysGuess(text) && (heard.some((a) => a.step === "result" && a.verdict === "right") ||
+          divisionBecauseAnswer(body, deps.plainNumber) === targetFacts.quotient),
         saysWhole: /\b(?:my (?:final )?answer|(?:whole|final) (?:answer|quotient))\b/i.test(text),
         wrongWhole: !deps.saysGuess(text) && body !== null && (() => {
           const v = deps.wholeValue(body.replace(/^(?:my (?:final )?answer is|i got|it'?s|it is) /, ""));
@@ -249,6 +253,7 @@ export function divisionLessonPlan(s: DivisionSessionState, deps: DivisionSessio
         onesCount: count("one"),
         heardTens: heard.some((a) => a.step === "tens" && a.verdict === "right"),
         heardOnes: heard.some((a) => a.step === "ones" && a.verdict === "right"),
+        reason: divisionReason(body, dividend, divisor, deps.plainNumber, prevStep === "div_explain"),
       }, askedFacts)
     : undefined;
 

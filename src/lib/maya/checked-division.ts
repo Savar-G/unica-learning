@@ -32,6 +32,7 @@ export type DivisionStep =
   | "div_connect_exchange"
   | "div_ones"
   | "div_combine"
+  | "div_explain"
   | "div_correct"
   | "offer"
   | "decline"
@@ -322,6 +323,8 @@ export function divisionWords(facts: DivisionFacts, instruction: unknown, show: 
       return [`Share ${unit(facts.onesAfterExchange, "one", "ones")} into ${facts.divisor} equal groups. How many ones go in each group?`];
     case "div_combine":
       return ["Put the tens and ones for each group together. What is the whole quotient?"];
+    case "div_explain":
+      return ["How did you get that? Tell me how many tens and how many ones go in each group."];
     case "div_correct":
       return ["You found the quotient."];
     case "offer":
@@ -441,6 +444,10 @@ export function divisionMisconception(
     if (/^(?:i )?(?:added|put) (?:the )?(?:1|one) (?:and|to) /.test(reason) && reason.includes(String(facts.ones))) {
       return "ten_as_one";
     }
+    // "I counted the leftover ten as a one", "I used the 1 ten as 1 one"
+    if (/\b(?:count|treat|use|turn|made|ma[dk]e)\w*\s+(?:the\s+|that\s+)?(?:remaining\s+|leftover\s+|extra\s+|other\s+)?(?:1\s+|one\s+)?ten\s+(?:as|into)\s+(?:a|1|one)\s+one\b/.test(reason)) {
+      return "ten_as_one";
+    }
     // Dropping the remaining ten: dividing just the printed ones digit by divisor (e.g. "6 divided by 4 is ...")
     const divEq = /^([\w -]+?)\s*(?:divided by|shared (?:by|into)|÷|\/)\s*([\w -]+?)\s*(?:is|equals|makes|=)\s*([\w -]+)$/.exec(reason);
     if (divEq) {
@@ -465,6 +472,60 @@ export function divisionMisconception(
   if (bare !== null && ((bare === dividend - divisor && (explicitAnswer || bare !== facts.tens * 10)) || bare === dividend * divisor)) return "wrong_op";
   if (/^(?:i )?(?:subtracted|took away|multiplied)\b/.test(reason)) return "wrong_op";
   return null;
+}
+
+/**
+ * #1155 review: the child's reason for a quotient. `null`: no reason given. `valid`: a reason code checks against the
+ * division facts (a product, a quotient of the whole or of a place, or the tens and ones in each group). `unclear`: a
+ * reason code cannot check, so Maya asks how before she records success. `whole` reads the whole turn as the reason.
+ */
+export function divisionReason(
+  body: string | null,
+  dividend: number,
+  divisor: number,
+  plainNumber: (s: string) => number | null,
+  whole = false,
+): "valid" | "unclear" | null {
+  const facts = divisionFacts(dividend, divisor, false);
+  if (!body || !facts) return null;
+  const prefix = /^(?:(?:my (?:final )?answer is |i got |it'?s |it is )?([\w -]+?) because )/.exec(body);
+  if (!prefix && !whole) return null;
+  const reason = body.slice(prefix?.[0].length ?? 0).replace(/[.!]+$/, "").trim();
+  const n = (x: string) => plainNumber(x.trim());
+  const mul = /^([\w -]+?)\s*(?:times|multiplied by|×|x|\*)\s*([\w -]+?)\s*(?:is|equals|makes|=)\s*([\w -]+)$/.exec(reason);
+  if (mul) {
+    const [a, b, c] = [n(mul[1]), n(mul[2]), n(mul[3])];
+    if (c === dividend && ((a === divisor && b === facts.quotient) || (a === facts.quotient && b === divisor))) return "valid";
+  }
+  const div = /^([\w -]+?)\s*(?:divided by|shared (?:by|into)|÷)\s*([\w -]+?)(?: (?:equal )?groups)?\s*(?:is|equals|makes|gives|=)\s*([\w -]+)$/.exec(reason);
+  if (div) {
+    const [a, b, c] = [n(div[1].replace(/ (?:tens?|ones?)$/, "")), n(div[2]), n(div[3].replace(/ (?:tens?|ones?)$/, "").replace(/ (?:in )?each(?: group)?$/, ""))];
+    const sharedOnes = facts.remainingTens === 1 || facts.ones > 0;
+    if (b === divisor && ((a === dividend && c === facts.quotient) ||
+      (sharedOnes && a === facts.onesAfterExchange && c === facts.onesPerGroup))) return "valid";
+  }
+  const places = /^(?:each group (?:gets|has) |there (?:are|is) )?([\w -]+?) tens? and ([\w -]+?) ones?(?: (?:in|for) each(?: group)?)?$/.exec(reason);
+  if (places && n(places[1]) === facts.tensPerGroup && n(places[2]) === facts.onesPerGroup) return "valid";
+  return "unclear";
+}
+
+/** The answer the child states before "because" ("My answer is 24 because ..."), or null. */
+export function divisionBecauseAnswer(body: string | null, plainNumber: (s: string) => number | null): number | null {
+  const prefix = body ? /^(?:(?:my (?:final )?answer is |i got |it'?s |it is )?([\w -]+?) because )/.exec(body) : null;
+  return prefix ? plainNumber(prefix[1].trim()) : null;
+}
+
+/** #1155 review: a misconception or a checked reason about this division is the child's own work, never another problem. */
+export function divisionWorkTalk(
+  body: string | null,
+  rawText: string,
+  dividend: number,
+  divisor: number,
+  plainNumber: (s: string) => number | null,
+  saysGuess: (s: string) => boolean,
+): boolean {
+  return divisionMisconception(body, rawText, dividend, divisor, plainNumber, saysGuess) !== null ||
+    divisionReason(body, dividend, divisor, plainNumber, true) === "valid";
 }
 
 export function divisionOffersAction(instruction: DivisionInstruction | undefined): "share" | "exchange" | null {
@@ -499,6 +560,7 @@ export interface DivisionTurnReads {
   onesCount: number | null;
   heardTens: boolean;
   heardOnes: boolean;
+  reason: "valid" | "unclear" | null;
 }
 
 export interface DivisionChoiceResult {
@@ -543,8 +605,14 @@ export function divisionChoice(r: DivisionTurnReads, facts: DivisionFacts): Divi
     step === "div_ones" ||
     ((step === "div_connect_share" || step === "div_connect_exchange") && !r.previousWasExample);
 
+  if (step === "div_explain") {
+    if (r.reason === "valid") return { step: "div_correct", observation: ["quotient", "correct"] };
+    if (stuck) return r.shared ? { step: "div_ones" } : { step: "div_guide_share", offerAction: "share" };
+    return { step: "div_explain" };
+  }
+
   if (r.rightWhole && (!stepQuestion || r.saysWhole)) {
-    return { step: "div_correct", observation: ["quotient", "correct"] };
+    return r.reason === "unclear" ? { step: "div_explain" } : { step: "div_correct", observation: ["quotient", "correct"] };
   }
 
   if (step === "div_check_place") {
@@ -631,6 +699,7 @@ export interface DivisionRelatedReads {
   ones: number | null;
   heardTens: boolean;
   heardOnes: boolean;
+  reason: "valid" | "unclear" | null;
 }
 
 export function divisionRelatedChoice(
@@ -644,9 +713,14 @@ export function divisionRelatedChoice(
   if (r.repeat) return { step: again };
   if (r.asksDemo) return { step: facts.remainingTens === 1 ? "div_connect_exchange" : "div_connect_share" };
 
+  if (r.previous === "div_explain") {
+    if (r.reason === "valid") return { step: "transfer_correct", observation: ["quotient", "correct"] };
+    if (r.stuck) return { step: "div_ones" };
+    return { step: "div_explain" };
+  }
   const stepQuestion = ["div_check_share", "div_check_exchange", "div_connect_share", "div_connect_exchange", "div_ones", "div_drop_remainder", "div_ten_as_one"].includes(r.previous);
   if (r.rightWhole && (!stepQuestion || r.saysWhole)) {
-    return { step: "transfer_correct", observation: ["quotient", "correct"] };
+    return r.reason === "unclear" ? { step: "div_explain" } : { step: "transfer_correct", observation: ["quotient", "correct"] };
   }
   if (r.previous === "div_check_share") {
     if (r.tens === facts.tensPerGroup || r.heardTens) {

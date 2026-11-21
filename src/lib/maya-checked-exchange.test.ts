@@ -1108,6 +1108,7 @@ it.each([
   ["drop remainder ten with right quotient", "My answer is 24 because 6 divided by 4 is 4.", /cannot leave the remaining ten out.*16 ones/i],
   ["treat remaining ten as 1 one", "My answer is 24 because 1 plus 6 is 7.", /1 ten, not 1 one.*16 ones/i],
   ["subtract instead of divide", "My answer is 92.", /shares 96 into 4 equal groups/i],
+  ["count the leftover ten as a one", "My answer is 24 because I counted the leftover ten as a one.", /1 ten, not 1 one.*16 ones/i],
 ])("96 ÷ 4: gives division misconception feedback for %s without crediting wrong reasoning", async (_label, childText, expectedFeedback) => {
   const { calls, store } = setup();
   const started = ok(await calls.start({ ...input, package: divisionPackage(96, 4) }));
@@ -1308,4 +1309,26 @@ it("30 ÷ 3: asks the tens check about the question it shows and grades the chil
   const demo = await say("Show me how to divide.");
   expect(demo).toMatch(/separate example/i);
   expect(demo).not.toMatch(/\b10\b/);
+});
+
+it("96 ÷ 4: credits a right quotient only after its reason checks, and asks how when the reason cannot be checked", async () => {
+  const { calls, store } = setup();
+  let turn = ok(await calls.start({ ...input, package: divisionPackage(96, 4) }));
+  const say = async (text: string) => {
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text }, null));
+    return turn.output.say.join(" ");
+  };
+  const unclear = await say("My answer is 24 because it looks right.");
+  expect(unclear).toMatch(/how did you get that/i);
+  expect(unclear).not.toMatch(/you found the quotient|\b24\b/i);
+  expect(turn.view.outcome).toBeNull();
+  expect(await say("4 times 24 is 96.")).toMatch(/you found the quotient/i);
+  await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null);
+  const turns = store.rows()[0].trace!.checkedExchange!.turns;
+  expect(turns.filter((t) => t.observation?.skill === "quotient").map((t) => t.observation?.result)).toEqual(["correct"]);
+  expect(checkTrace(store.rows()[0].trace)).toMatchObject({ ok: true });
+
+  let direct = ok(await calls.start({ ...input, package: divisionPackage(96, 4) }));
+  direct = ok(await calls.input(direct.view.id, direct.view.revision, { type: "child", text: "My answer is 24 because each group gets 2 tens and 4 ones." }, null));
+  expect(direct.output.say.join(" ")).toMatch(/you found the quotient/i);
 });
