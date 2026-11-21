@@ -14,6 +14,7 @@ import { childChatView, type ChatView } from "@/lib/maya-chat";
 import type { CallStatus, CallView } from "@/lib/maya-call";
 import type { VoiceTicket } from "@/lib/maya-voice";
 export type { VoiceTicket };
+import type { BoardFateReport } from "@/lib/maya-text";
 import type { WorkbookQuestionRef } from "@/lib/question-package";
 
 /** The most voice time one child has in a family week (seconds). */
@@ -91,7 +92,7 @@ export function voiceSwitchOpen(family: { test: boolean }, env: Readonly<Record<
  * `fromChatId` (#1200): the desk chat on the same question the child switched from; the call goes on with its lesson.
  */
 export type VoiceAction =
-  | { type: "start"; id: string; question: WorkbookQuestionRef; fromChatId?: string }
+  | { type: "start"; id: string; question: WorkbookQuestionRef; fromChatId?: string; fromChatFates?: BoardFateReport[] }
   | { type: "token"; id: string }
   | { type: "read"; id: string }
   | { type: "cancel"; id: string };

@@ -47,6 +47,7 @@ describe("POST /api/desk/voice", () => {
     ["a start with a huge question", { type: "start", id: ID, question: { ...question, question: 2 ** 60 } }],
     ["a body that is too long", { type: "read", id: ID, pad: "x".repeat(2100) }],
     ["a start from a chat with a bad id", { type: "start", id: ID, question, fromChatId: "not-a-uuid" }],
+    ["board receipts with no chat", { type: "start", id: ID, question, fromChatFates: [{ batchId: "latest", fate: "shown" }] }],
     ["a start from a chat with the call's own id", { type: "start", id: ID, question, fromChatId: ID }],
   ])("answers 400 for %s and runs nothing", async (_name, body) => {
     const r = await post(body);
@@ -75,8 +76,10 @@ describe("POST /api/desk/voice", () => {
 
   it("passes the chat a start comes from (#1200), and nothing of it on any other action", async () => {
     const CHAT = "66666666-6666-4666-8666-666666666666";
-    await post({ type: "start", id: ID, question, fromChatId: CHAT });
-    expect(state.ran[0]).toEqual({ type: "start", id: ID, question, fromChatId: CHAT });
+    const receipt = { batchId: "latest", fate: "shown" };
+    expect((await post({ type: "start", id: ID, question, fromChatId: CHAT, fromChatFates: [{ ...receipt, fate: "unknown" }] })).status).toBe(400);
+    await post({ type: "start", id: ID, question, fromChatId: CHAT, fromChatFates: [{ ...receipt, commands: [] }] });
+    expect(state.ran[0]).toEqual({ type: "start", id: ID, question, fromChatId: CHAT, fromChatFates: [receipt] });
     await post({ type: "read", id: ID, fromChatId: CHAT });
     expect(state.ran[1]).toEqual({ type: "read", id: ID });
   });

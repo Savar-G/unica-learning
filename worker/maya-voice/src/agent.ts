@@ -1898,7 +1898,8 @@ export class VoiceCallRun {
   }
 
   private scheduleLimit(startedAt = this.call.session.startedAt) {
-    if (this.limitTimer !== null || this.finishing || this.deadlineFinish || startedAt === null) return;
+    // A pending handoff still has the chat clock. Child join starts the voice clock after the handoff succeeds.
+    if (this.call.resumed || this.limitTimer !== null || this.finishing || this.deadlineFinish || startedAt === null) return;
     const left = startedAt + limitsOf(this.call.session).endAtMs - this.timers.now();
     if (left <= 0 && this.call.safetyDeadline && this.call.pendingFinal?.safetyMessage && !this.replayingFinal) return;
     this.limitTimer = this.timers.set(left, () => void this.finish({}, true));

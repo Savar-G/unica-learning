@@ -805,7 +805,7 @@ describe("a chat that becomes a call", () => {
     expect(call.session).toMatchObject({ boardSelections: kind === "visible" || kind === "selection-only" ? [selection] : [] });
   });
 
-  it("keeps the drawing the desk showed in a board-led lesson: the call's board has it and Maya does not draw it again", async () => {
+  it("keeps the latest drawing reported during the switch, before a second chat message", async () => {
     const s = setup();
     const TRADE = reply("You can't take 8 from 2, so we trade 1 ten for 10 ones. How many ones are there now?", "guide", { draw: [{ offer: "trade", place: "" }] });
     const model = conversationalFake({ id: "fake-v3", answer: (() => TRADE) as unknown as (brief: TurnBrief, n: number) => unknown });
@@ -814,15 +814,14 @@ describe("a chat that becomes a call", () => {
     let chat = ok(await calls.start({ kind: "chat", parentId: PARENT, childId: CHILD, childName: "Leah", grade: 3, package: pkg, startedBy: PARENT })).view;
     s.advance(5);
     chat = ok(await calls.input(chat.id, chat.revision, { type: "child", text: "I don't get 2 minus 8.", fates: shown(chat) }, "Leah")).view;
-    s.advance(5);
-    // The desk reports the trade drawing as shown with the next message.
-    chat = ok(await calls.input(chat.id, chat.revision, { type: "child", text: "12?", fates: shown(chat) }, "Leah")).view;
     const trade = chat.batches.filter((b) => b.commands.some((c) => (c as { op?: string }).op === "regroup"));
     expect(trade).toHaveLength(1);
-    const confirmedIds = (await s.store.get(chat.id))!.live!.text.board.filter((b) => b.fate === "shown").map((b) => b.transactionId);
-    expect(confirmedIds).toContain(trade[0].transactionId);
-
-    const made = ok(await calls.startVoice(voiceInput({ package: pkg, fromChat: chat.id }))).view;
+    const before = (await s.store.get(chat.id))!;
+    expect(before.live!.text.board.find((b) => b.transactionId === trade[0].transactionId)?.fate).toBeUndefined();
+    const fromChatFates = [{ batchId: trade[0].transactionId, fate: "shown" as const }, { batchId: "not-sent", fate: "shown" as const }];
+    const made = ok(await calls.startVoice(voiceInput({ package: pkg, fromChat: chat.id, fromChatFates }))).view;
+    expect(await s.store.get(chat.id)).toEqual(before);
+    const confirmedIds = before.live!.text.board.filter((b) => b.fate === "shown" || b.transactionId === trade[0].transactionId).map((b) => b.transactionId);
     expect(made.batches.map((b) => b.transactionId)).toEqual(confirmedIds);
     const opened = await calls.openVoice(made.id, PROVIDERS, "Leah");
     if (!opened.ok) throw new Error(opened.error);
@@ -830,6 +829,7 @@ describe("a chat that becomes a call", () => {
     // The worker's board sends this log on connect: the child sees the chat's drawing at once.
     expect(call.boardSnapshot.events.flatMap((e) => e.kind === "batch" ? [e.batchId] : [])).toEqual(confirmedIds);
     expect(await call.resume!()).toBe(true);
+    expect((await s.store.get(chat.id))?.trace?.board).toContainEqual(expect.objectContaining({ transactionId: trade[0].transactionId, fate: "shown" }));
     s.advance(5);
     const turn = await call.child("I still don't get it.");
     // The next brief counts the trade as drawn, so the call does not draw it a second time.

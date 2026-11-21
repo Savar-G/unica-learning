@@ -314,8 +314,8 @@ it("a replacement registry and segment cannot borrow the old run's origin", asyn
 });
 
 describe('a call that goes on with a chat lesson (#1200)', () => {
-  it('takes the chat over when the child joins and says a short continuation line instead of the opening', async () => {
-    const now = T0;
+  it('takes the chat over with a fresh voice deadline and says one continuation when the child joins', async () => {
+    let now = T0;
     let n = 0;
     const store = memoryCallStore({ testFamilies: [] }), connections = memoryConnectionLog(store, () => now);
     const eventStore = memoryLearningEventStore({ children: [{ id: C, parentId: P }] });
@@ -326,6 +326,7 @@ describe('a call that goes on with a chat lesson (#1200)', () => {
     if (!chat.ok) throw Error(chat.error);
     const answered = await calls.input(chat.view.id, chat.view.revision, { type: 'child', text: '7 plus 9 is 16.' }, 'Leah');
     if (!answered.ok) throw Error(answered.error);
+    now += 8 * 60_000;
     const made = await calls.startVoice({ kind: 'family', parentId: P, childId: C, childName: 'Leah', package: book, startedBy: P, fromChat: chat.view.id });
     if (!made.ok) throw Error(made.error);
     const opened = await calls.openVoice(made.view.id, { speechToText: 'fake', voice: 'fake' }, 'Leah');
@@ -334,9 +335,13 @@ describe('a call that goes on with a chat lesson (#1200)', () => {
     const continuation = voiceContinuation(opened.call);
     expect(continuation).toMatch(/^Let's keep going\./);
     const session = Object.assign(new EventEmitter(), { agentState: 'listening', userState: 'listening', generateReply: vi.fn(), say: vi.fn((_text: string) => ({ waitForPlayout: async () => {} })), close: vi.fn(async () => {}) });
-    const timers: Timers = { now: () => now, set: () => 0, clear: () => {} };
+    const set = vi.fn((_delay: number, _callback: () => void) => 0);
+    const timers: Timers = { now: () => now, set, clear: () => {} };
     const run = new VoiceCallRun(session as unknown as voice.AgentSession, opened.call, { timers, notify: () => {}, closed: vi.fn(async () => {}), ...(continuation ? { continuation } : {}) });
+    await run.agentJoined();
+    expect(set).not.toHaveBeenCalledWith(TIME_LIMITS.endAtMs - (now - T0), expect.any(Function));
     await run.childJoined();
+    expect(set).toHaveBeenCalledWith(TIME_LIMITS.endAtMs, expect.any(Function));
     await flush();
     await opened.call.settled();
     expect(session.generateReply).not.toHaveBeenCalled();

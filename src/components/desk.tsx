@@ -240,7 +240,7 @@ export function Desk(props: DeskProps) {
           {/* The microphone first, as in the selected layout; then the chat controls. */}
           {/* #1200: a chat on this question goes on in the call (its lesson moves there when the call starts); a chat on
               another question ends first, as before. */}
-          <VoiceControls state={voice} {...(chatHere ? { fromChatId: chatHere } : { beforeOpen: chat.chat && !chat.chat.ended ? () => chat.act("end") : undefined })} />
+          <VoiceControls state={voice} {...(chatHere ? { fromChatId: chatHere, chatFates: () => chat.fatesFor(chatHere).fates } : { beforeOpen: chat.chat && !chat.chat.ended ? () => chat.act("end") : undefined })} />
           {props.chatUsage ? <ChatControls key={picked} state={chat} picked={picked !== null} held={card?.held} /> : <>
           <p className="desk-soon">{props.noticeLine ?? props.chatNote ?? (props.voice ? "Chat with Maya starts soon." : "Chat and calls with Maya start soon.")}</p>
           <div className="desk-compose">

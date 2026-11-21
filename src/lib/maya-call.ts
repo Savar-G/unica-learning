@@ -468,6 +468,7 @@ export interface StartInput {
    * A chat of another parent, child or question, or no such chat, refuses the start (`not_found`).
    */
   fromChat?: string;
+  fromChatFates?: BoardFateReport[];
 }
 
 export type CallResult =
@@ -1273,12 +1274,22 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     const session = textSession({ id, kind: input.kind, parentId: input.parentId, childId: input.childId }, pkg, model, input.childName, undefined, seams.seed(), await readHistory(input.childId), input.limitMs, input.grade, input.confirmWorkbook);
     let resumed: Extract<ResumePlan, { ok: true }> | null = null;
     if (input.fromChat !== undefined) {
-      const plan = resumePlan(chat, { id, parentId: input.parentId, childId: input.childId, question: pkg.ref, packageHash: packageHash(pkg), limits: session.session.limits }, seams.clock());
+      if (!ownsChat(chat, { parentId: input.parentId, childId: input.childId, question: pkg.ref })) return { ok: false, error: "not_found" };
+      const fates = input.fromChatFates;
+      let source = chat;
+      if (chat.status === "live" && chat.live && !chat.live.cancelled && fates?.length) {
+        const live = chat.live;
+        // Replay only known batch receipts in a copy. Cancelling prejoin leaves the chat revision untouched.
+        const withReceipts = textSession(chat, live.package, idleModel(chat), savedName(live.text) ?? input.childName, live.text);
+        withReceipts.boardFates(fates);
+        source = { ...chat, live: { ...live, text: await withReceipts.saved() } };
+      }
+      const plan = resumePlan(source, { id, parentId: input.parentId, childId: input.childId, question: pkg.ref, packageHash: packageHash(pkg), limits: session.session.limits }, seams.clock());
       if (!plan.ok) return { ok: false, error: "not_found" };
-      resumed = plan;
+      resumed = { ...plan, from: plan.from && { ...plan.from, ...(fates?.length ? { fates } : {}) } };
       // A copy the session cannot go on from starts the call fresh.
       try { if (plan.text) textSession({ id, kind: input.kind, parentId: input.parentId, childId: input.childId }, pkg, model, input.childName, plan.text); }
-      catch { resumed = { ...plan, text: null, board: null, from: plan.from && { ...plan.from, seeded: false } }; }
+      catch { resumed = { ...resumed, text: null, board: null, from: resumed.from && { ...resumed.from, seeded: false } }; }
     }
     const empty = session.trace();
     const record: CallRecord = {
@@ -1432,6 +1443,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         if (chat.flag || source.turn !== null || source.outcome || source.stopRequested ||
           source.safety.flagged || source.contentProblem !== null) return "chat_kept";
         const text = textSession(chat, chat.live.package, idleModel(chat), savedName(chat.live.text) ?? name, chat.live.text);
+        if (f.fates?.length) text.boardFates(f.fates);
         const ended = await end(chat, chat.live.package, text, { reason: "child_stopped" }, undefined, true, false, true, record.id);
         return ended ? "taken" : "chat_kept";
       };

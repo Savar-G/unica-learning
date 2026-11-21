@@ -190,7 +190,7 @@ export async function runVoice(ctx: ChatContext, action: VoiceAction, deps: Voic
   let started: Awaited<ReturnType<MayaCalls["startVoice"]>>;
   try {
     // #1200: a chat of another parent, child or question refuses the start (not_found), in the call module.
-    started = await deps.calls.startVoice({ id: action.id, kind: "family", parentId: parent, childId: child, childName: name, grade: ctx.grade, startedBy: parent, package: question.package, limitMs, ...(action.fromChatId ? { fromChat: action.fromChatId } : {}) });
+    started = await deps.calls.startVoice({ id: action.id, kind: "family", parentId: parent, childId: child, childName: name, grade: ctx.grade, startedBy: parent, package: question.package, limitMs, ...(action.fromChatId ? { fromChat: action.fromChatId, fromChatFates: action.fromChatFates } : {}) });
   } catch (e) {
     // A second request with the same id may have made the call first: that call is the answer.
     const raced = await deps.store.get(action.id);

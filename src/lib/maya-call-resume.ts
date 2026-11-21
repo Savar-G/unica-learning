@@ -15,11 +15,11 @@ import { voiceBoardHistory } from "@/lib/voice-board-history";
 import type { BoardHistory } from "@/lib/board-history";
 import type { BoardEvent } from "@/lib/board-protocol";
 import type { Session } from "@/lib/maya";
-import type { SavedTextSession } from "@/lib/maya-text";
+import type { BoardFateReport, SavedTextSession } from "@/lib/maya-text";
 import type { QuestionRef } from "@/lib/question-package";
 
 /** The chat a call came from, and the chat revision its copy was taken at. `seeded`: the call holds the chat's lesson. */
-export interface ResumeFrom { id: string; revision: number; seeded: boolean }
+export interface ResumeFrom { id: string; revision: number; seeded: boolean; fates?: BoardFateReport[] }
 
 /** The fields of a stored call the resume reads. */
 export interface ChatRow {
