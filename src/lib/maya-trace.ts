@@ -1,5 +1,5 @@
 import { SCOPE_REASONS } from "@/lib/maya/scope";
-import { checkDivisionOutput } from "@/lib/maya/checked-division";
+import { checkDivisionOutput, divisionOutputBoards } from "@/lib/maya/checked-division";
 import { exchangeChildWords, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingWords, type CheckedExchangeLesson } from "@/lib/maya/checked-exchange";
 // Maya's trace format (#322, spec #297): one versioned record of one Maya session, written by every session (the text
 // adapter now, the voice agent #326, the test bench #323 and the admin demo #324 later). It records the model and
@@ -43,13 +43,13 @@ export interface TraceRefusal {
  * fate. Version 15 (B2, "draw while speaking") adds, on a board batch, `sentence`: the sentence of its turn's words the
  * batch is tied to (0-based; absent: the end of the turn) and `after` (the batches of the same turn it builds on), and,
  * on an accepted attempt, `boardReads`: each clause code read as a board action, drawn or why not (the drawings are read
- * from Maya's sentences), with the counts `clausesDrawn` and `clausesNotDrawn`. Version 16 (#1155) adds checked
- * division: the lesson's `kind: "divide"`, and on a checked exchange proposal `divisor` and `shared`; each such turn's board
- * batches must be the commands of its recorded action. `checkTrace` reads all sixteen versions.
+ * from Maya's sentences), with the counts `clausesDrawn` and `clausesNotDrawn`. Version 16 (#1147) records a voice
+ * backchannel that did not interrupt Maya. Version 17 (#1155) checks division board batches against their action and
+ * dependencies. Earlier traces remain readable.
  */
-export const TRACE_VERSION = 16;
+export const TRACE_VERSION = 17;
 /** The trace versions `checkTrace` reads. */
-export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] as const;
+export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17] as const;
 /**
  * The held turn as version 8 traces stored it, before D-327 (line sets 11 to 13). Frozen here: stored admin test
  * calls from preview deployments may hold it, and they stay readable.
@@ -243,6 +243,8 @@ export type TraceTurn =
   | { kind: "partial"; at: number; text: string; cancelled: true }
   /** Version 4: what Maya actually said. `cancelled`: it was not her approved text, so her output stopped and a repair started. */
   | { kind: "maya_said"; at: number; text: string; cancelled: boolean }
+  /** Version 16: voice did not treat this backchannel as an interruption or a child turn. */
+  | { kind: "backchannel"; at: number; text: string }
   /**
    * Version 4: the package turned out wrong during the call (`detail` is wording code wrote). `cancelled`: the call
    * went to the content hold and Maya's output stopped; false when the safety state kept the call.
@@ -583,6 +585,9 @@ function checkTurn(t: unknown, path: string, version: number): Record<string, un
       need(isText(x.text), `${path}.text`, "text");
       need(typeof x.cancelled === "boolean", `${path}.cancelled`, "a boolean");
       break;
+    case "backchannel":
+      need(version >= 16 && isText(x.text), `${path}.text`, "backchannel text from version 16");
+      break;
     case "content_problem":
       need(isText(x.detail), `${path}.detail`, "text");
       need(typeof x.cancelled === "boolean", `${path}.cancelled`, "a boolean");
@@ -662,6 +667,36 @@ function checkOutcome(o: unknown, path: string) {
   need(isNum(x.seconds) && x.seconds >= 0, `${path}.seconds`, "seconds");
 }
 
+function checkDivisionBoards(turns: readonly Record<string, unknown>[], batches: ReadonlyMap<string, TraceBoardBatch>) {
+  const prior = new Map<string, { kind: string; value: unknown; divisor: unknown }>();
+  for (const [i, turn] of turns.entries()) {
+    if (turn.kind !== "maya" || turn.output === null) continue;
+    const proposal = (turn.attempts as Record<string, unknown>[]).at(-1)?.proposal;
+    if (!isObject(proposal) || proposal.checkedExchange !== 1 || proposal.divisor === undefined) continue;
+    const output = turn.output as { board: string[] };
+    const path = `turns[${i}].output`;
+    need(checkDivisionOutput(proposal, output, readExchangeTarget), path, "the checked division's own words and batch count");
+    const child = readExchangeTarget(proposal.childAction);
+    const expected = divisionOutputBoards(proposal, child);
+    for (const [index, { kind, commands }] of expected.entries()) {
+      const id = output.board[index];
+      const batch = batches.get(id);
+      need(batch?.turn === i && canonical(batch.commands) === canonical(commands), path, `the checked ${kind} commands`);
+      const after = batch!.after ?? [];
+      if (kind === "show" || kind === "question") {
+        need(Array.isArray(after) && after.length === 0, path, `no dependency for ${kind}`);
+      } else {
+        const previousKind = kind === "share" ? "show" : "share";
+        const dependency = Array.isArray(after) && after.length === 1 ? prior.get(after[0]) : undefined;
+        const required = child?.batchId ?? output.board[index - 1];
+        need(dependency?.kind === previousKind && dependency.value === proposal.value && dependency.divisor === proposal.divisor &&
+          (required === undefined || after[0] === required), path, `the ${previousKind} batch that ${kind} depends on`);
+      }
+      prior.set(id, { kind, value: proposal.value, divisor: proposal.divisor });
+    }
+  }
+}
+
 function check(raw: unknown): MayaTrace {
   need(isObject(raw) && raw.kind === TRACE_KIND, "trace", "not a Maya trace");
   const r = raw as Record<string, unknown>;
@@ -730,7 +765,7 @@ function check(raw: unknown): MayaTrace {
   });
 
   need(Array.isArray(r.board), "board", "a list");
-  const sent = new Set<string>();
+  const sent = new Map<string, TraceBoardBatch>();
   (r.board as unknown[]).forEach((b, i) => {
     const path = `board[${i}]`;
     need(isObject(b), path, "a board batch");
@@ -746,25 +781,14 @@ function check(raw: unknown): MayaTrace {
     // Version 15 (B2): a sentence of that turn's own words.
     const say = (out as { say?: unknown } | null)?.say;
     need(x.sentence === undefined || ((r.version as number) >= 15 && Number.isInteger(x.sentence) && (x.sentence as number) >= 0 && Array.isArray(say) && (x.sentence as number) < sentencesOf(say.join(" ")).length), `${path}.sentence`, "absent, or (version 15) a sentence of that turn's words");
-    sent.add(x.transactionId as string);
+    sent.set(x.transactionId as string, x as unknown as TraceBoardBatch);
   });
   turns.forEach((t, i) => {
     const out = t.kind === "maya" ? (t.output as { board: string[] } | null) : null;
     out?.board.forEach((id) => need(sent.has(id), `turns[${i}].output.board`, `batch ${id} in the board list`));
   });
 
-  // Version 16 (#1155): checked division, with each turn's board batches checked against its recorded action.
-  const lesson = r.checkedExchange as { kind?: unknown } | undefined;
-  need(lesson?.kind === undefined || ((r.version as number) >= 16 && lesson.kind === "divide"), "checkedExchange.kind", "absent, or (version 16) divide");
-  turns.forEach((t, i) => {
-    if (t.kind !== "maya" || t.output === null) return;
-    const proposal = (t.attempts as Record<string, unknown>[]).at(-1)?.proposal;
-    if (!isObject(proposal) || proposal.checkedExchange !== 1 || proposal.divisor === undefined) return;
-    need((r.version as number) >= 16, `turns[${i}].attempts`, "a checked division only from version 16");
-    const out = t.output as { board: string[] };
-    const boards = out.board.map((id) => ((r.board as Record<string, unknown>[]).find((b) => b.transactionId === id)?.commands ?? []) as unknown[]);
-    need(checkDivisionOutput(proposal, out, readExchangeTarget, boards), `turns[${i}].output`, "the checked division's own words and board commands");
-  });
+  if ((r.version as number) >= 17) checkDivisionBoards(turns, sent);
 
   checkOutcome(r.outcome, "outcome");
   need((r.outcome === null) === (r.endedAt === null), "endedAt", "set exactly when the call has an outcome");
@@ -921,6 +945,7 @@ export function redactTrace(trace: MayaTrace, childName: string | null): MayaTra
       case "child":
       case "partial":
       case "maya_said":
+      case "backchannel":
         return { ...t, text: redactText(t.text, childName) };
       case "content_problem":
         return { ...t, detail: redactText(t.detail, childName) };

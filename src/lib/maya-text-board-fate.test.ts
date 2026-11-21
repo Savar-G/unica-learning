@@ -46,7 +46,7 @@ describe("a drawing counts as drawn only when the child's screen showed it (B1)"
     expect(briefs[1].sent).toEqual(["trade:ones"]);
     const trace = await session.finish({ reason: "child_stopped" });
     expect(trace.version).toBe(TRACE_VERSION);
-    expect(TRACE_VERSION).toBe(16);
+    expect(TRACE_VERSION).toBe(17);
     expect(trace.board.every((b) => b.fate === undefined)).toBe(true);
     expect(trace.counts.boardFates).toEqual({ shown: 0, skipped: 0, cancelled: 0, unreported: trace.board.length });
     expect(checkTrace(trace).ok).toBe(true);

@@ -231,6 +231,9 @@ export function divisionLessonPlan(s: DivisionSessionState, deps: DivisionSessio
   // #1155 review: a step question is graded against the problem Maya asked it about (the target or a separate example).
   const prevDiv = previous ? divisionFactsFromExchange(previous.facts) : null;
   const askedFacts = prevDiv ?? targetFacts;
+  const heardSteps = askedFacts.example
+    ? deps.heardAnswers(divisionTransferPackage(pkg, [askedFacts.dividend, askedFacts.divisor]))
+    : heard;
   const choice = lesson.progression
     ? divisionChoice({
         text,
@@ -251,8 +254,8 @@ export function divisionLessonPlan(s: DivisionSessionState, deps: DivisionSessio
         })(),
         tensCount: count("ten"),
         onesCount: count("one"),
-        heardTens: heard.some((a) => a.step === "tens" && a.verdict === "right"),
-        heardOnes: heard.some((a) => a.step === "ones" && a.verdict === "right"),
+        heardTens: heardSteps.some((a) => a.step === "tens" && a.verdict === "right"),
+        heardOnes: heardSteps.some((a) => a.step === "ones" && a.verdict === "right"),
         reason: divisionReason(body, dividend, divisor, deps.plainNumber, prevStep === "div_explain"),
       }, askedFacts)
     : undefined;

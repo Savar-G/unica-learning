@@ -355,7 +355,7 @@ export function divisionCommands(action: "show" | "share" | "exchange", facts: D
       return [
         { op: "remove", objectId: "division-share-notation" },
         { op: "remove", objectId: SHARE_OBJECT },
-        { op: "model", id: "division-shared", model: { kind: "base_ten", hundreds: 0, tens: facts.tens, ones: facts.ones }, place: { region: "main" } },
+        { op: "model", id: "division-shared", model: { kind: "base_ten", hundreds: 0, tens: facts.tens, ones: facts.ones, tenGroups: facts.divisor }, place: { region: "main" } },
         { op: "write", id: "division-shared-notation", text: `${facts.dividend} = ${facts.divisor} × ${facts.tensPerGroup * 10} + ${facts.ones}`, place: { below: "division-shared" } },
         { op: "division", id: "division-written", dividend: String(facts.dividend), divisor: String(facts.divisor), place: { rightOf: "division-shared" } },
         { op: "put", target: { objectId: "division-written", part: "cell", rowId: "quotient", column: "tens" }, value: String(facts.tensPerGroup) },
@@ -367,7 +367,7 @@ export function divisionCommands(action: "show" | "share" | "exchange", facts: D
     return [
       { op: "remove", objectId: "division-share-notation" },
       { op: "remove", objectId: SHARE_OBJECT },
-      { op: "model", id: EXCHANGE_OBJECT, model: { kind: "base_ten", hundreds: 0, tens: facts.tens, ones: facts.ones }, place: { region: "main" } },
+      { op: "model", id: EXCHANGE_OBJECT, model: { kind: "base_ten", hundreds: 0, tens: facts.tens, ones: facts.ones, tenGroups: facts.divisor }, place: { region: "main" } },
       { op: "write", id: "exchange-before-notation", text: `${facts.dividend} = ${facts.sharedTens * 10} + 10 + ${facts.ones}`, place: { below: EXCHANGE_OBJECT } },
       { op: "focus", target: { objectId: EXCHANGE_OBJECT, part: "piece", piece: `ten-${facts.tens}` } },
       { op: "division", id: "division-written", dividend: String(facts.dividend), divisor: String(facts.divisor), place: { rightOf: EXCHANGE_OBJECT } },
@@ -379,7 +379,7 @@ export function divisionCommands(action: "show" | "share" | "exchange", facts: D
   return [
     { op: "remove", objectId: "exchange-before-notation" },
     { op: "remove", objectId: EXCHANGE_OBJECT },
-    { op: "model", id: "exchange-after", model: { kind: "base_ten", hundreds: 0, tens: facts.sharedTens, ones: facts.onesAfterExchange }, place: { region: "main" } },
+    { op: "model", id: "exchange-after", model: { kind: "base_ten", hundreds: 0, tens: facts.sharedTens, ones: facts.onesAfterExchange, tenGroups: facts.divisor }, place: { region: "main" } },
     { op: "write", id: "exchange-after-notation", text: `${facts.dividend} = ${facts.sharedTens * 10} + ${facts.onesAfterExchange}`, place: { below: "exchange-after" } },
     { op: "put", target: { objectId: "division-written", part: "row", rowId: "bring2" }, value: String(facts.ones) },
   ];
@@ -504,11 +504,13 @@ export function divisionReason(
     const [a, b, c] = [n(mul[1]), n(mul[2]), n(mul[3])];
     if (c === dividend && ((a === divisor && b === facts.quotient) || (a === facts.quotient && b === divisor))) return "valid";
   }
-  const div = /^([\w -]+?)\s*(?:divided by|shared (?:by|into)|÷)\s*([\w -]+?)(?: (?:equal )?groups)?\s*(?:is|equals|makes|gives|=)\s*([\w -]+)$/.exec(reason);
+  const div = /^([\w -]+?)(?: (tens?|ones?))?\s*(?:divided by|shared (?:by|into)|÷)\s*([\w -]+?)(?: (?:equal )?groups)?\s*(?:is|equals|makes|gives|=)\s*([\w -]+?)(?: (tens?|ones?))?(?: (?:in|for) each(?: group)?)?$/.exec(reason);
   if (div) {
-    const [a, b, c] = [n(div[1].replace(/ (?:tens?|ones?)$/, "")), n(div[2]), n(div[3].replace(/ (?:tens?|ones?)$/, "").replace(/ (?:in )?each(?: group)?$/, ""))];
+    const [, left, leftPlace, groups, right, rightPlace] = div;
+    const [a, b, c] = [n(left), n(groups), n(right)];
+    const countsOnes = !leftPlace?.startsWith("ten") && !rightPlace?.startsWith("ten");
     const sharedOnes = facts.remainingTens === 1 || facts.ones > 0;
-    if (b === divisor && ((a === dividend && c === facts.quotient) ||
+    if (countsOnes && b === divisor && ((a === dividend && c === facts.quotient) ||
       (sharedOnes && a === facts.onesAfterExchange && c === facts.onesPerGroup))) return "valid";
   }
   const places = /^(?:each group (?:gets|has) |there (?:are|is) )?([\w -]+?) tens? and ([\w -]+?) ones?(?: (?:in|for) each(?: group)?)?$/.exec(reason);
@@ -758,43 +760,31 @@ export function divisionRelatedChoice(
   return { step: again };
 }
 
-/**
- * #1155 review: the board commands a checked division proposal sends, batch by batch, from its recorded action: the
- * child's action, the related question, the shown blocks, or a demonstration's show, share and exchange.
- */
-function divisionOutputBoards(proposal: Record<string, unknown>, facts: DivisionFacts, child: ExchangeTarget | null): Command[][] {
+type DivisionBoardAction = "show" | "share" | "exchange" | "question";
+
+/** The board batches a validated division proposal sends, in order. */
+export function divisionOutputBoards(
+  proposal: Record<string, unknown>,
+  child: ExchangeTarget | null,
+): { kind: DivisionBoardAction; commands: Command[] }[] {
+  const facts = divisionFacts(proposal.value as number, proposal.divisor as number, proposal.example as boolean)!;
   const instruction = proposal.instruction as DivisionInstruction | undefined;
-  if (child) return [divisionCommands(child.objectId === SHARE_OBJECT ? "share" : "exchange", facts)];
+  const board = (kind: Exclude<DivisionBoardAction, "question">) => ({ kind, commands: divisionCommands(kind, facts) });
+  if (child) return [board(child.objectId === SHARE_OBJECT ? "share" : "exchange")];
   if (instruction !== undefined || proposal.prompt === true) {
     if (!proposal.show) return [];
     const related = instruction?.transfer === undefined ? null : readDivisionTransferOperands(instruction.transfer);
-    return [related ? divisionTransferBoard(related) : divisionCommands("show", facts)];
+    return related ? [{ kind: "question", commands: divisionTransferBoard(related) }] : [board("show")];
   }
   return [
-    ...(proposal.show ? [divisionCommands("show", facts)] : []),
-    ...(proposal.shared === true ? [] : [divisionCommands("share", facts)]),
-    ...(facts.remainingTens > 0 ? [divisionCommands("exchange", facts)] : []),
+    ...(proposal.show ? [board("show")] : []),
+    ...(proposal.shared === true ? [] : [board("share")]),
+    ...(facts.remainingTens > 0 ? [board("exchange")] : []),
   ];
 }
 
-/**
- * Validates a division ExchangeProposal against the expected output in maya-trace.ts. With `boards` (each sent batch's
- * commands, in output order), every batch must be the commands of the recorded action.
- */
+/** Validates a division proposal against the words and batch count it can send. */
 export function checkDivisionOutput(
-  proposal: Record<string, unknown>,
-  output: { act?: unknown; say?: unknown; board?: unknown },
-  readTarget: (v: unknown) => ExchangeTarget | null,
-  boards?: readonly (readonly unknown[])[],
-): boolean {
-  if (!checkDivisionWords(proposal, output, readTarget)) return false;
-  if (!boards) return true;
-  const facts = divisionFacts(proposal.value as number, proposal.divisor as number, proposal.example as boolean)!;
-  const expected = divisionOutputBoards(proposal, facts, readTarget(proposal.childAction));
-  return boards.length === expected.length && boards.every((b, i) => JSON.stringify(b) === JSON.stringify(expected[i]));
-}
-
-function checkDivisionWords(
   proposal: Record<string, unknown>,
   output: { act?: unknown; say?: unknown; board?: unknown },
   readTarget: (v: unknown) => ExchangeTarget | null,

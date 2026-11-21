@@ -67,7 +67,7 @@ describe("default on: the board draws what Maya says (B2)", () => {
     expect(digit.after).toEqual([trade.transactionId]);
     const trace = await session.finish({ reason: "child_stopped" });
     expect(trace.version).toBe(TRACE_VERSION);
-    expect(TRACE_VERSION).toBe(16);
+    expect(TRACE_VERSION).toBe(17);
     expect(out.board.map((b) => trace.board.find((x) => x.transactionId === b.transactionId)?.sentence)).toEqual([0, 1]);
     expect(trace.board[0].sentence).toBeUndefined();
     expect(attempts(trace).flatMap((a) => a.boardReads ?? [])).toEqual([

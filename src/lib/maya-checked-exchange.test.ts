@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { applyBatch, boardTargets, createScene, type Batch } from "@/lib/board";
+import { applyBatch, boardPaths, boardTargets, createScene, type Batch } from "@/lib/board";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { memoryWordingHistoryStore } from "@/lib/maya";
@@ -1053,6 +1053,24 @@ function applyAll(batches: readonly Batch[]) {
   return scene;
 }
 
+function expectFourGroupsOfTwo(scene: ReturnType<typeof createScene>, objectId: string, leftover: boolean) {
+  const paths = boardPaths(scene).filter((p) => p.objectId === objectId);
+  const pieces = paths.filter((p) => p.target?.part === "piece");
+  const points = (piece: string) => pieces.flatMap((p) => p.target?.part === "piece" && p.target.piece === piece ? p.pts : []);
+  const rods = Array.from({ length: leftover ? 9 : 8 }, (_, i) => points(`ten-${i + 1}`));
+  expect(rods.every((pts) => pts.length > 0)).toBe(true);
+  for (let i = 0; i < 4; i++) {
+    const outline = points(`ten-group-${i + 1}`);
+    expect(outline).toHaveLength(5);
+    const xs = outline.map(([x]) => x);
+    const ys = outline.map(([, y]) => y);
+    const within = ([x, y]: readonly [number, number]) => x > Math.min(...xs) && x < Math.max(...xs) && y > Math.min(...ys) && y < Math.max(...ys);
+    expect(rods.flatMap((rod, n) => rod.every(within) ? [n + 1] : [])).toEqual([2 * i + 1, 2 * i + 2]);
+    if (leftover) expect(rods[8].some(within)).toBe(false);
+  }
+  expect(points("ten-group-5")).toEqual([]);
+}
+
 it("84 ÷ 4: checks prerequisites, lets a proficient child solve independently, and guides a struggling child with Share the tens without bring-down", async () => {
   const { calls, answer, store, events } = setup();
   const pkg = divisionPackage(84, 4, parentId);
@@ -1099,6 +1117,7 @@ it("84 ÷ 4: checks prerequisites, lets a proficient child solve independently, 
   expect(shared).toMatch(/2 tens in each group.*written division.*4 ones/i);
   expect(shared).not.toMatch(/bring down|\b21\b|twenty.one|\b1 one\b/i);
   const scene = applyAll(guided.view.batches);
+  expectFourGroupsOfTwo(scene, "division-shared", false);
   expect(boardTargets(scene).some((t) => t.target.objectId === "division-written" && t.target.part === "cell" && t.target.rowId === "quotient" && t.target.column === "tens" && t.value === "2")).toBe(true);
   expect(await send({ type: "child", text: "1 one.", fates: [{ batchId: guided.view.batches.at(-1)!.transactionId, fate: "shown" }] })).toMatch(/whole quotient/i);
   expect(await send({ type: "child", text: "21." })).toMatch(/you found the quotient/i);
@@ -1125,6 +1144,7 @@ it("96 ÷ 4: guides Share the tens then Exchange one ten, preserves value 96 on 
   expect(afterShare).toMatch(/2 tens in each group.*1 ten left over.*written division.*exchange one ten/i);
   expect(afterShare).not.toMatch(/bring down|\b24\b|twenty.four|\b4 ones\b/i);
   const midScene = applyAll(turn.view.batches);
+  expectFourGroupsOfTwo(midScene, "exchange-before", true);
   expect(boardTargets(midScene).find((t) => t.target.objectId === "exchange-before" && t.target.part === "whole")?.value).toBe("96");
   expect(boardTargets(midScene).find((t) => t.target.objectId === "division-written" && t.target.part === "row" && t.target.rowId === "bring2")?.value).toBeNull();
   const exchangeTarget = turn.view.exchange!;
@@ -1138,6 +1158,7 @@ it("96 ÷ 4: guides Share the tens then Exchange one ten, preserves value 96 on 
   expect(afterExchange).not.toMatch(/bring down|\b24\b|twenty.four|\b4 ones\b/i);
   expect(turn.view.exchange).toBeUndefined();
   const finalScene = applyAll(turn.view.batches);
+  expectFourGroupsOfTwo(finalScene, "exchange-after", false);
   expect(boardTargets(finalScene).find((t) => t.target.objectId === "exchange-after" && t.target.part === "whole")?.value).toBe("96");
   expect(boardTargets(finalScene).find((t) => t.target.objectId === "exchange-after" && t.target.part === "piece" && t.target.piece === "ones")?.value).toBe("16");
   expect(boardTargets(finalScene).find((t) => t.target.objectId === "division-written" && t.target.part === "row" && t.target.rowId === "bring2")?.value).toBe("6");
@@ -1383,6 +1404,7 @@ it("96 ÷ 4: credits a right quotient only after its reason checks, and asks how
   expect(unclear).toMatch(/how did you get that/i);
   expect(unclear).not.toMatch(/you found the quotient|\b24\b/i);
   expect(turn.view.outcome).toBeNull();
+  expect(await say("16 tens divided by 4 is 4 tens.")).toMatch(/how did you get that/i);
   expect(await say("4 times 24 is 96.")).toMatch(/you found the quotient/i);
   await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null);
   const turns = store.rows()[0].trace!.checkedExchange!.turns;
@@ -1410,19 +1432,45 @@ it("96 ÷ 4: corrects a wrong operation only when it was applied to 96 and 4", a
   expect(traces).toEqual([false, true]);
 });
 
-it("checks a division trace's board commands against each recorded action, from trace version 16", async () => {
+it("checks division trace commands and dependencies while reading earlier traces", async () => {
   const { calls, store } = setup();
-  let turn = ok(await calls.start({ ...input, package: divisionPackage(84, 4) }));
+  let turn = ok(await calls.start({ ...input, package: divisionPackage(84, 4, parentId) }));
+  turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text: "Show me how to divide." }, null));
   for (const text of ["My answer is 21.", "Yes."]) turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text }, null));
   await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null);
   const trace = store.rows()[0].trace!;
-  expect(trace.version).toBe(16);
   expect(checkTrace(trace)).toMatchObject({ ok: true });
   const edited = structuredClone(trace);
   const question = edited.board.flatMap((b) => b.commands as { op: string; text?: string }[]).find((c) => c.text === "69 ÷ 3 = ?")!;
   question.text = "23";
   expect(checkTrace(edited)).toMatchObject({ ok: false });
-  expect(checkTrace({ ...structuredClone(trace), version: 15 })).toMatchObject({ ok: false });
+  const missingDependency = structuredClone(trace);
+  const share = missingDependency.board.find((b) => b.after?.length)!;
+  delete share.after;
+  expect(checkTrace(missingDependency)).toMatchObject({ ok: false });
+  const wrongDependency = structuredClone(trace);
+  const wrongShare = wrongDependency.board.find((b) => b.after?.length)!;
+  wrongShare.after = [wrongShare.transactionId];
+  expect(checkTrace(wrongDependency)).toMatchObject({ ok: false });
+  const reordered = structuredClone(trace);
+  for (const batch of reordered.board) {
+    batch.commands = batch.commands.map((c) => Object.fromEntries(Object.entries(c as object).reverse()));
+  }
+  expect(checkTrace(reordered)).toMatchObject({ ok: true });
+  for (const version of [15, 16]) {
+    const earlier = { ...structuredClone(trace), version };
+    for (const batch of earlier.board) {
+      for (const command of batch.commands as { model?: { tenGroups?: number } }[]) {
+        if (command.model) delete command.model.tenGroups;
+      }
+    }
+    expect(checkTrace(earlier)).toMatchObject({ ok: true });
+  }
+  const prior = { ...structuredClone(trace), version: 16, turns: [...trace.turns] };
+  prior.turns.splice(-1, 0, { kind: "backchannel", at: prior.turns.at(-1)!.at, text: "mm-hmm" });
+  expect(checkTrace(prior)).toMatchObject({ ok: true });
+  expect(checkTrace({ ...prior, version: 15 })).toMatchObject({ ok: false });
+  expect(trace.version).toBe(17);
 });
 
 it("draws the related question again when the child's interruption cancelled its board batch in the same call", async () => {
