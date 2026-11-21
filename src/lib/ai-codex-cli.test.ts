@@ -6,7 +6,7 @@ import type { AiJsonRequest } from "@/lib/ai-client";
 import { CODEX_SUBSCRIPTION_MODEL, codexCliClient, codexCliPreflight } from "@/lib/ai-codex-cli";
 import { fallbackAiClient, newGate, type AiCallRecord } from "@/lib/ai-fallback";
 import type { Spawner, SpawnResult } from "@/lib/ai-claude-cli";
-import { sampleAiCache } from "../../scripts/workbook-sample-cache";
+import { sampleAiCache } from "@/lib/workbook-sample-cache";
 
 const request: AiJsonRequest = {
   name: "sample", system: "Write a sample.", content: [{ type: "text", text: "Two counters." }],

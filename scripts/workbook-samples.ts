@@ -32,9 +32,9 @@
 // layout: its books are marked FAKE in index.md and are never stored. The secret key: SUPABASE_SECRET_KEY, else the
 // Supabase Management API with SUPABASE_ACCESS_TOKEN or the Keychain item "supabase-pagewise". No key is printed.
 import { flushAiUsage, type AiFeature, type AiUsageTag } from "@/lib/ai-usage";
-import { sampleAiCache } from "./workbook-sample-cache";
-import { renderSamplePages, samplePrintCache } from "./workbook-sample-render";
-import { samplePages, pagesMarkdown, writePageDiff, mayaCoverage, mayaCoverageMarkdown, masteryCoverageMarkdown } from "./workbook-sample-pages";
+import { sampleAiCache } from "@/lib/workbook-sample-cache";
+import { renderSamplePages, samplePrintCache } from "@/lib/workbook-sample-render";
+import { samplePages, pagesMarkdown, writePageDiff, mayaCoverage, mayaCoverageMarkdown, masteryCoverageMarkdown } from "@/lib/workbook-sample-pages";
 import { browserStats, closeSampleBrowser } from "./workbook-sample-browser";
 import { execFileSync } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";

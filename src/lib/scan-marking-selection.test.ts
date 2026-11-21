@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import evidence from "../../data/scan-marking-endpoint-evidence-20261106.json";
 import { COMPARISON_MODELS, COMPARISON_SETTINGS, assertSelectedComparisonResults, hashValue, preflightEndpoint, selectComparisonModels, type ComparisonModel, type ComparisonResult, type EndpointSnapshot } from "./scan-marking-comparison";
-import { refreshEvidence } from "../../scripts/scan-marking-comparison-cli";
+import { refreshEvidence } from "@/lib/scan-marking-comparison-io";
 const qwen = "qwen/qwen3.8-flash";
 const twelve = COMPARISON_MODELS.filter(m => m.model !== qwen).map(m => m.model);
 const snapshot = (m: ComparisonModel) => evidence.snapshots[m.model as keyof typeof evidence.snapshots] as EndpointSnapshot;

@@ -127,11 +127,33 @@
   },
   "overrides": [
     {
+      "files": ["src/**/*.{ts,tsx,mts}"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../scripts/*", "../../scripts/*", "../../../scripts/*", "../../../../scripts/*"],
+                "message": "Do not import from scripts/ inside src/; move reusable helpers into src/lib/ so scripts/ stays decoupled from the web build."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "files": [
         "worker/maya-voice/src/**/*.{ts,tsx,mts}",
         "scripts/workbook-worker.ts",
         "scripts/retention-worker.ts",
         "src/ds/**/*.{ts,tsx}",
+        "src/lib/supabase-admin.ts",
+        "src/lib/family-retention-node.ts",
+        "src/lib/family-deletion-client.ts",
+        "src/lib/family-deletion-store.ts",
+        "src/lib/retention-stripe.ts",
+        "src/lib/card-reconcile-server.ts",
         "src/lib/maya/**/*.{ts,tsx}",
         "src/lib/maya-*.ts",
         "src/lib/maya.ts",
@@ -165,6 +187,10 @@
               {
                 "group": ["next", "next/*"],
                 "message": "Shared domain, design-system, and worker modules must not import Next.js runtime APIs (keep Next.js coupling in src/app or *-server.ts adapters)."
+              },
+              {
+                "group": ["../scripts/*", "../../scripts/*", "../../../scripts/*", "../../../../scripts/*"],
+                "message": "Do not import from scripts/ inside src/; move reusable helpers into src/lib/ so scripts/ stays decoupled from the web build."
               }
             ]
           }

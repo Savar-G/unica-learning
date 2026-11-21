@@ -1,4 +1,6 @@
+import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
+import { build } from "esbuild";
 import Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
 
@@ -184,4 +186,25 @@ describe("the copy without names before a deletion", () => {
     expect(f.calls.some((c) => c.includes("/storage/") || c.includes("/auth/") || c === "complete_family_deletion")).toBe(false);
     expect(f.calls.at(-1)).toBe("release_family_deletion");
   });
+});
+
+it("bundles the retention worker without reaching @sentry/nextjs or Next.js runtime modules", async () => {
+  const result = await build({
+    absWorkingDir: fileURLToPath(new URL("../../", import.meta.url)),
+    entryPoints: ["scripts/retention-worker.ts"],
+    outfile: "retention-worker.mjs",
+    bundle: true,
+    platform: "node",
+    target: "node22",
+    format: "esm",
+    packages: "external",
+    conditions: ["react-server"],
+    write: false,
+    metafile: true,
+    logLevel: "silent",
+  });
+  const output = Object.values(result.metafile.outputs)[0];
+  const externals = output.imports.filter((imp) => imp.external).map((imp) => imp.path);
+  const forbidden = externals.filter((spec) => spec === "@sentry/nextjs" || spec === "next" || spec.startsWith("next/"));
+  expect(forbidden).toEqual([]);
 });

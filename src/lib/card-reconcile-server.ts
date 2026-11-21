@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CardRecord, CardRow, CardRows, CardSettle, PlanEmail, PlanStart, PlanStartState } from "@/lib/card-reconcile";
 import type { Database } from "@/lib/database";
-import { adminClient } from "@/lib/supabase-auth";
+import { adminClient } from "@/lib/supabase-admin";
 
 // The row's seam on the live site: the service-only functions of migrations card_row_reconcile and plan_starts.
 
