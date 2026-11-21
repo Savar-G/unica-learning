@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "lint:fast": "oxlint src worker/maya-voice/src",
+    "lint:fast": "oxlint src worker/maya-voice/src scripts/workbook-worker.ts scripts/retention-worker.ts",
     "check:fast": "node scripts/pre-push-check.mjs",
     "hooks:install": "git config core.hooksPath .githooks",
     "test": "vitest run",

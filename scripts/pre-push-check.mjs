@@ -33,7 +33,7 @@ export function buildChecks(rootDir) {
   return [
     {
       name: "oxlint",
-      steps: [{ cmd: binPath(rootDir, "oxlint"), args: ["src", "worker/maya-voice/src"] }],
+      steps: [{ cmd: binPath(rootDir, "oxlint"), args: ["src", "worker/maya-voice/src", "scripts/workbook-worker.ts", "scripts/retention-worker.ts"] }],
     },
     {
       name: "app-typecheck",
