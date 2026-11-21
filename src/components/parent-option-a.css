@@ -10,7 +10,7 @@
 }
 /* The wrapper is the container the laptop layouts ask about (a container cannot restyle itself): about 1040 px at most. */
 .pa-wrap { container-type: inline-size; max-width: 1040px; margin: 24px 0 8px; min-width: 0; }
-.support-page .pa h2 { margin: 0; font-size: 18px; font-weight: 300; letter-spacing: -0.035em; line-height: 1.25; }
+.support-page .pa h2 { margin: 0; font-size: var(--parent-section-size); font-weight: var(--parent-section-weight); letter-spacing: -0.02em; color: var(--pa-tx); line-height: 1.25; }
 .support-page .pa p { margin: 0; }
 .support-page .pa ul, .support-page .pa ol { margin: 0; padding: 0; list-style: none; }
 .support-page .pa li + li { margin-top: 0; }
@@ -20,10 +20,10 @@
 .pa-card { background: var(--pa-soft); border: 1px solid var(--pa-line); border-radius: 10px; padding: 18px; min-width: 0; }
 /* A section heading, with its small note on the right ("Since Leah started"). Never a count. */
 .support-page .pa .pa-sh { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px 10px; margin: 8px 4px 0; }
-.support-page .pa .pa-sh span { font-size: 13px; color: var(--pa-tx3); }
+.support-page .pa .pa-sh span { font-size: var(--parent-support-size); font-weight: var(--parent-support-weight); color: var(--pa-tx3); }
 
 /* The orange Scan button: white text (2026-11-14). */
-.support-page .pa .pa-scanbtn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 6px; background: var(--tang-ink); color: #fff; font-weight: 500; font-size: 15px; text-decoration: none; white-space: nowrap; }
+.support-page .pa .pa-scanbtn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 6px; background: var(--tang-ink); color: #fff; font-weight: var(--parent-control-weight); font-size: 15px; text-decoration: none; white-space: nowrap; }
 .pa-scanbtn svg { width: 18px; height: 18px; }
 
 .pa-vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

@@ -1,0 +1,38 @@
+/* Parent dashboard type scale. Roles share weights even where their sizes differ. */
+:root {
+  --parent-title-size: clamp(30px, 3.4vw, 44px);
+  --parent-title-weight: 300;
+  --parent-number-weight: 300;
+  --parent-section-size: 20px;
+  --parent-section-weight: 500;
+  --parent-body-size: 16px;
+  --parent-body-weight: 400;
+  --parent-item-weight: 500;
+  --parent-support-size: 13px;
+  --parent-support-weight: 400;
+  --parent-status-weight: 500;
+  --parent-control-weight: 500;
+}
+
+/* Shared components and browser defaults only take on these roles inside Parent. */
+.pd-shell[data-look="warm"],
+.pd-shell .support-root {
+  font-size: var(--parent-body-size);
+  font-weight: var(--parent-body-weight);
+}
+
+.pd-shell .support-page :where(h2, h3, h4):not(:where(.eyebrow)) {
+  font-weight: var(--parent-section-weight);
+}
+
+.pd-shell .support-page > h2 {
+  font-size: var(--parent-section-size);
+}
+
+.pd-shell :is(b, strong, th) {
+  font-weight: var(--parent-item-weight);
+}
+
+.pd-shell :is(button, .btn, summary, select, [role="button"]) {
+  font-weight: var(--parent-control-weight);
+}

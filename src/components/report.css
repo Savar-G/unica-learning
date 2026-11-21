@@ -358,3 +358,21 @@
 .rpt-calendar-consent { margin-top: 18px; padding: 20px; background: #f5f4f2; border-radius: 8px; }
 .rpt-calendar-link { display: inline-block; margin-top: 16px; text-decoration: underline; }
 @media (max-width: 520px) { .rpt-calendar { height: 760px; } }
+
+/* Assessment uses the Parent scale. The report is also rendered on the public sample and outside the dashboard. */
+.pd-shell .rpt .rpt-overall h2 { font-weight: var(--parent-number-weight); }
+.pd-shell[data-look="warm"] .rpt :is(.rpt-row-h, .rpt-help-warning) h2 {
+  font-size: var(--parent-section-size);
+  font-weight: var(--parent-section-weight);
+  letter-spacing: -0.02em;
+}
+.pd-shell .rpt :is(.rpt-word, .rpt-topic-t, .rpt-next-t, .rpt-areas tbody th) {
+  font-size: var(--parent-body-size);
+  font-weight: var(--parent-item-weight);
+}
+.pd-shell .rpt :is(.rpt-tick.is-work, .rpt-answer :is(.is-wrong, .is-right) dd) {
+  font-weight: var(--parent-status-weight);
+}
+.pd-shell .rpt :is(.rpt-def b, .rpt-fp-pages figcaption b) {
+  font-weight: var(--parent-item-weight);
+}

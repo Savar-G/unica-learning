@@ -5,13 +5,13 @@
 /* Which child's pages show (F4): a small "Showing: Leah ▾" switch, not a form field. Photos need no choice of child. */
 .scan-child { display: inline-flex; align-items: center; gap: 2px; justify-self: start; font-size: 15px; color: var(--ink-2); }
 .scan-child-pick { position: relative; display: inline-flex; align-items: center; }
-.scan-child select { appearance: none; -webkit-appearance: none; min-height: 44px; padding: 0 22px 0 6px; border: 0; border-radius: 6px; background: none; color: var(--ink); font: inherit; font-weight: 600; cursor: pointer; }
+.scan-child select { appearance: none; -webkit-appearance: none; min-height: 44px; padding: 0 22px 0 6px; border: 0; border-radius: 6px; background: none; color: var(--ink); font: inherit; font-weight: var(--parent-control-weight); cursor: pointer; }
 .scan-child select:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .scan-child select:disabled { color: var(--ink-2); cursor: default; }
 .scan-child-pick > span { position: absolute; right: 6px; pointer-events: none; color: var(--ink); }
 /* A site rule spaces every list item after the first (.support-page li + li): the screen's grids and lists keep their own gaps (F8). */
 .support-page .scan-pages :is(.scan-strip-tiles, .scan-tiles, .scan-shots, .scan-tips, .scan-results) > li { margin: 0; }
-.scan-link { display: inline-flex; align-items: center; min-height: 44px; border: 0; background: none; padding: 0; color: inherit; font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.scan-link { display: inline-flex; align-items: center; min-height: 44px; border: 0; background: none; padding: 0; color: inherit; font: inherit; font-weight: var(--parent-control-weight); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .scan-link:focus-visible, .scan-tile-button:focus-visible, .scan-one-ph:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 .scan-privacy-line { margin: 0; display: flex; flex-wrap: wrap; align-items: center; column-gap: 6px; }
 .scan-focus { margin: 0; padding: 12px 14px; background: var(--accent-soft); border-radius: 10px; font-weight: 500; }
@@ -52,7 +52,7 @@
 .scan-dup { display: grid; gap: 8px; }
 .scan-group { display: grid; gap: 10px; }
 .scan-group-h { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.scan-group-h h2 { font-size: 17px; font-weight: 300; letter-spacing: -0.035em; }
+.scan-group-h h2 { font-size: var(--parent-section-size); font-weight: var(--parent-section-weight); letter-spacing: -0.02em; }
 .scan-count { font: 400 12.5px/1 var(--mono); color: var(--ink-2); }
 .scan-gap { margin: 0; font-size: 15px; color: var(--ink-2); }
 .scan-empty { margin: 0; padding: 18px; background: var(--card); border-radius: 12px; color: var(--ink-2); }
@@ -61,7 +61,7 @@
 @media (min-width: 1200px) { .scan-pages .scan-tiles { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
 .scan-pages.is-desktop .scan-tiles { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
 .scan-pages .scan-tile { margin: 0; min-width: 0; }
-.scan-tile-button { display: grid; gap: 5px; width: 100%; min-height: 44px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.scan-tile-button { display: grid; gap: 5px; width: 100%; min-height: 44px; padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: var(--parent-control-weight); text-align: left; cursor: pointer; }
 .scan-ph { position: relative; display: block; aspect-ratio: 3 / 4; overflow: hidden; background: #b9ad99; border: 1px solid var(--line); border-radius: 6px; }
 .scan-ph img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .scan-ph-empty { display: block; width: 100%; height: 100%; min-height: 60px; background: var(--card); }
@@ -69,7 +69,7 @@
 .scan-tile-l { font-size: 14px; font-weight: 500; line-height: 1.25; overflow-wrap: anywhere; }
 .scan-tile-s { font-size: 13px; color: var(--ink-2); line-height: 1.25; }
 .scan-tile.is-refused .scan-tile-s { color: var(--scan-accent-ink); font-weight: 500; }
-.scan-flag { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .12); font: 700 14px/1 var(--sans); }
+.scan-flag { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .12); font: var(--parent-status-weight) 14px/1 var(--sans); }
 .scan-flag:empty { display: none; }
 .scan-flag svg { width: 14px; height: 14px; }
 .scan-flag.is-ready { background: var(--scan-leaf); color: #fff; box-shadow: 0 0 0 2px #fff; }
@@ -81,7 +81,7 @@
 
 /* Refused pages first, in a soft tangerine card */
 .scan-need { display: grid; gap: 12px; padding: 14px; background: var(--accent-soft); border-radius: 12px; }
-.scan-need h2 { font-size: 17px; font-weight: 300; letter-spacing: -0.035em; }
+.scan-need h2 { font-size: var(--parent-section-size); font-weight: var(--parent-section-weight); letter-spacing: -0.02em; }
 /* The retake is the main thing to do here (F5): a primary button. */
 .scan-need .btn { min-height: 48px; justify-content: center; }
 .scan-need .small { margin: 0; }
@@ -94,7 +94,7 @@
 .scan-one-t { display: grid; gap: 10px; align-content: start; }
 .scan-one-t .small { margin: 0; }
 .scan-one-id { margin: 0; display: grid; gap: 2px; }
-.scan-one-id b { font-size: 19px; font-weight: 500; letter-spacing: -.01em; }
+.scan-one-id b { font-size: var(--parent-body-size); font-weight: 500; letter-spacing: -.01em; }
 .scan-one-id span { color: var(--ink-2); }
 .scan-state { margin: 0; display: inline-flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 500; }
 .scan-state.is-ready { color: var(--scan-leaf-ink); }
@@ -108,9 +108,9 @@
 .scan-sheet::backdrop { background: rgba(12, 12, 14, .45); }
 .scan-sheet-body { display: grid; gap: 14px; padding: 22px 18px max(22px, env(safe-area-inset-bottom)); }
 .scan-sheet-bar { position: sticky; top: 0; height: 0; display: flex; justify-content: flex-end; z-index: 1; }
-.scan-sheet-x { width: 44px; height: 44px; margin: 8px 8px 0 0; padding: 0; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: #fff; color: var(--ink); font: 400 26px/1 var(--sans, inherit); cursor: pointer; }
+.scan-sheet-x { width: 44px; height: 44px; margin: 8px 8px 0 0; padding: 0; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: #fff; color: var(--ink); font: var(--parent-control-weight) 26px/1 var(--sans, inherit); cursor: pointer; }
 .scan-sheet-body h2 { padding-right: 44px; }
-.scan-sheet-body h2 { margin: 0; font-size: 21px; font-weight: 300; letter-spacing: -0.035em; }
+.scan-sheet-body h2 { margin: 0; font-size: var(--parent-section-size); font-weight: var(--parent-section-weight); letter-spacing: -0.02em; }
 .scan-sheet-body p { margin: 0; }
 .scan-sheet-body p:not(.eyebrow) { font-size: 16px; line-height: 1.5; }
 .scan-sheet-body .btn { min-height: 52px; justify-content: center; }
@@ -139,7 +139,7 @@
 .scan-answers { display: grid; gap: 12px; }
 .scan-preview ol.scan-crops { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px; }
 .scan-preview .scan-crops li { display: grid; gap: 6px; align-content: start; margin: 0; }
-.scan-number { font-size: 14px; font-weight: 600; color: var(--ink); }
+.scan-number { font-size: 14px; font-weight: var(--parent-item-weight); color: var(--ink); }
 .scan-crops img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; }
 .scan-holder { display: block; width: 100%; background: var(--card); border: 1px solid var(--line); border-radius: 4px; }
 @media (max-width: 700px) { .scan-preview-layout { grid-template-columns: minmax(0, 1fr); } .scan-preview ol.scan-crops { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); } }
@@ -156,7 +156,7 @@
 .scan-history ul { display: grid; gap: 12px; margin: 0; padding-left: 20px; }
 .scan-history li { overflow-wrap: anywhere; }
 .scan-history .scan-link { margin-left: 12px; }
-.scan-history select { min-height: 44px; font: inherit; padding: 8px; max-width: 100%; }
+.scan-history select { min-height: 44px; font: inherit; font-weight: var(--parent-control-weight); padding: 8px; max-width: 100%; }
 
 .scan-explanation { margin: 8px 0; }
 .scan-explanation > [role="status"]:empty { display: none; }
@@ -177,8 +177,8 @@
 
 /* The new scan screen (#915, round r915-scan-flow). Text is --ink or --ink-2 on white or --card (4.5:1 or more); every
    state has a glyph and a word, never a colour alone; every control is at least 44 px. */
-.scan-pages .scan-start-h { font-size: 21px; font-weight: 300; letter-spacing: -0.035em; }
-.scan-pages .scan-tips li span b { display: block; font-weight: 600; }
+.scan-pages .scan-start-h { font-size: var(--parent-section-size); font-weight: var(--parent-section-weight); letter-spacing: -0.02em; }
+.scan-pages .scan-tips li span b { display: block; font-weight: var(--parent-item-weight); }
 .scan-pages .scan-tips li span { color: var(--ink-2); }
 .scan-pages .scan-tips li span b { color: var(--ink); }
 .scan-dock-row.is-choice .scan-link { justify-content: center; }
@@ -188,11 +188,11 @@
 .scan-strip { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); }
 .scan-strip p { margin: 0; }
 .scan-strip-h { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
-.scan-strip-h h2 { display: inline-flex; align-items: center; gap: 8px; font-size: 19px; font-weight: 300; letter-spacing: -0.035em; }
+.scan-strip-h h2 { display: inline-flex; align-items: center; gap: 8px; font-size: var(--parent-section-size); font-weight: var(--parent-section-weight); letter-spacing: -0.02em; }
 .scan-strip-count { font-size: 15px; color: var(--ink-2); }
 /* The strip's ‹ and › (2026-11-14): small, quiet, a 44px target, beside the day's name. */
 .scan-strip-day { display: inline-flex; align-items: center; gap: 2px; margin-left: -12px; }
-.scan-strip-step { width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--ink-2); font: inherit; font-size: 24px; line-height: 1; cursor: pointer; }
+.scan-strip-step { width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--ink-2); font: inherit; font-weight: var(--parent-control-weight); font-size: 24px; line-height: 1; cursor: pointer; }
 .scan-strip-step:hover:not(:disabled) { background: var(--line-soft); color: var(--ink); }
 .scan-strip-step:focus-visible { outline: 2px solid currentColor; outline-offset: -4px; }
 .scan-strip-step:disabled { opacity: .3; cursor: default; }
@@ -200,14 +200,14 @@
 .scan-done-tick svg { width: 13px; height: 13px; }
 .scan-pages .scan-strip-tiles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 10px 8px; }
 .scan-strip-tile { margin: 0; }
-.scan-strip-tile button { display: grid; justify-items: center; gap: 3px; width: 100%; min-height: 44px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.scan-strip-tile button { display: grid; justify-items: center; gap: 3px; width: 100%; min-height: 44px; padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: var(--parent-control-weight); cursor: pointer; }
 .scan-strip-tile button:disabled { cursor: default; }
 .scan-strip-tile button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 6px; }
 .scan-strip-page { position: relative; display: grid; place-items: center; width: 100%; max-width: 64px; aspect-ratio: 3 / 4; background: #fff; border: 1px solid var(--line); border-radius: 5px; }
 .scan-strip-tile.is-todo .scan-strip-page { border-style: dashed; background: transparent; }
 .scan-strip-tile.is-marked .scan-strip-page { border-color: var(--scan-leaf-ink); }
 .scan-strip-tile.is-retake .scan-strip-page { border: 2px solid var(--scan-accent-ink); }
-.scan-strip-glyph { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; font: 700 15px/1 var(--sans, inherit); color: var(--ink); background: var(--card); }
+.scan-strip-glyph { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; font: var(--parent-status-weight) 15px/1 var(--sans, inherit); color: var(--ink); background: var(--card); }
 .scan-strip-glyph:empty { display: none; }
 .scan-strip-glyph svg { width: 15px; height: 15px; }
 .scan-strip-tile.is-marked .scan-strip-glyph { background: var(--scan-leaf-ink); color: #fff; }
@@ -217,7 +217,7 @@
 .scan-strip-tile.is-ready .scan-strip-glyph svg { width: 17px; height: 17px; }
 .scan-strip-n { font: 500 13px/1.1 var(--mono); color: var(--ink); }
 .scan-strip-w { font-size: 12px; line-height: 1.1; color: var(--ink-2); }
-.scan-strip-tile.is-retake .scan-strip-w { color: var(--scan-accent-ink); font-weight: 600; }
+.scan-strip-tile.is-retake .scan-strip-w { color: var(--scan-accent-ink); font-weight: var(--parent-status-weight); }
 
 /* Notes, the Undo bar, offline */
 .scan-still, .scan-offline { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--card); color: var(--ink); font-size: 15px; }
@@ -226,7 +226,7 @@
 .scan-undo span { display: inline-flex; align-items: center; gap: 10px; font-weight: 500; }
 .scan-undo i { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--scan-leaf); color: #fff; }
 .scan-undo i svg { width: 14px; height: 14px; }
-.scan-undo .scan-link { padding: 0 12px; color: #fff; font-weight: 600; }
+.scan-undo .scan-link { padding: 0 12px; color: #fff; font-weight: var(--parent-control-weight); }
 .scan-undo .scan-link:focus-visible { outline-color: #fff; }
 @media (max-width: 699px) {
   .scan-pages > .scan-undo { position: sticky; z-index: 31; bottom: 170px; }
@@ -240,7 +240,7 @@
 .scan-need-title { font-size: 16px; }
 .scan-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 150px)); gap: 12px; }
 .scan-pair figure { margin: 0; display: grid; gap: 6px; }
-.scan-pair figcaption { font-size: 14px; font-weight: 600; color: var(--ink); }
+.scan-pair figcaption { font-size: 14px; font-weight: var(--parent-item-weight); color: var(--ink); }
 .scan-pair-ph { display: block; width: 100%; aspect-ratio: 3 / 4; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: #b9ad99; cursor: pointer; }
 span.scan-pair-ph { cursor: default; }
 .scan-pair-ph img, .scan-pair-ph svg { display: block; width: 100%; height: 100%; object-fit: cover; }
@@ -256,7 +256,7 @@ span.scan-pair-ph { cursor: default; }
 .scan-results a > span:first-child, .scan-results-row { display: grid; gap: 2px; }
 .scan-results b { font-weight: 500; }
 .scan-results span span, .scan-results-row span { font-size: 14px; color: var(--ink-2); }
-.scan-results .is-good { color: var(--scan-leaf-ink); font-weight: 600; }
+.scan-results .is-good { color: var(--scan-leaf-ink); font-weight: var(--parent-status-weight); }
 .scan-results a > span:last-child { font-size: 22px; color: var(--ink-2); }
 .scan-results a:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
@@ -267,12 +267,12 @@ span.scan-pair-ph { cursor: default; }
 .scan-cam p { margin: 0; }
 .scan-cam > * { flex: none; }
 .scan-cam-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.scan-cam-top b { font-weight: 600; }
+.scan-cam-top b { font-weight: var(--parent-item-weight); }
 .scan-cam-x { width: 44px; height: 44px; padding: 0; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: #fff; color: var(--ink); font-size: 16px; cursor: pointer; }
-.scan-cam-done { min-height: 44px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--ink); color: #fff; font: 600 15px var(--sans, inherit); cursor: pointer; }
+.scan-cam-done { min-height: 44px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--ink); color: #fff; font: var(--parent-control-weight) 15px var(--sans, inherit); cursor: pointer; }
 .scan-cam .scan-spread-note, .scan-cam .scan-offline { background: #fff; }
 .scan-tray-msg { display: grid; gap: 2px; }
-.scan-tray-msg b { font-size: 17px; font-weight: 600; }
+.scan-tray-msg b { font-size: var(--parent-body-size); font-weight: var(--parent-item-weight); }
 .scan-tray-msg span { font-size: 14px; color: var(--ink-2); }
 .scan-pages .scan-shots { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 10px; }
 .scan-shots li { margin: 0; display: grid; gap: 4px; align-content: start; }
@@ -286,7 +286,7 @@ span.scan-pair-ph { cursor: default; }
 .scan-shot-note { font-size: 13px; line-height: 1.3; color: var(--ink); }
 .scan-cam .scan-shot-fix { justify-self: start; min-height: 44px; font-size: 14px; }
 .scan-cam-foot { margin-top: auto; display: grid; gap: 4px; padding-top: 6px; }
-.scan-tray-go { min-height: 56px; display: flex; align-items: center; justify-content: center; gap: 10px; border: 0; border-radius: 14px; background: var(--ink); color: #fff; font: 600 16.5px var(--sans, inherit); cursor: pointer; }
+.scan-tray-go { min-height: 56px; display: flex; align-items: center; justify-content: center; gap: 10px; border: 0; border-radius: 14px; background: var(--ink); color: #fff; font: var(--parent-control-weight) 16.5px var(--sans, inherit); cursor: pointer; }
 .scan-cam-foot .scan-link { justify-self: center; font-size: 15px; }
 .scan-cam button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 

@@ -11,6 +11,7 @@ import type { ChildView } from "@/lib/parent-view";
 import { activeTab, addressChild, childSwitchPath, lastChildCookie, overviewDesk, phoneNav, pickChild, tabLinks, type TabLink } from "@/lib/parent-shell";
 import { feedbackLink } from "@/lib/feedback";
 import { BRAND } from "@/lib/site";
+import "@/ds/styles/parent-type.css";
 import "./parent-shell.css";
 
 // The dashboard's frame (#551, spec #544; the cleaner frame of #1024): a sidebar with only the logo and the tabs, and one
