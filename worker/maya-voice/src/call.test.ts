@@ -408,6 +408,44 @@ describe("a leave the child's screen sent (#992)", () => {
   });
 });
 
+// #1146: a number that sounds like another ("sixteen" or "sixty") or a teen split by a pause ("six teen") goes to the
+// session with its other reading, so no credit comes before a confirm (src/lib/maya/controller-fixes.test.ts has the
+// confirm and the yes). 27 + 39: the ones step is 16. Real AssemblyAI finals for a clearly said lone "fourteen" scored
+// 0.63 to 0.86 (2026-11-20 comparison round): below 0.9 a lone sound-alike number is heard both ways.
+describe("a spoken number the speech-to-text could hear two ways", () => {
+  const rule = ruleConversationalModel();
+  const right = { answers: [{ value: { type: "number", value: 16 }, step: "ones", problem: "target", verdict: "right" }] };
+  /** A model that credits every sixteen it is given: the session decides whether the credit may stand. */
+  const credits: MayaModel = { ...rule, propose: async (input, signal, onText) => /teen/i.test((input as { childTurn?: string | null }).childTurn ?? "")
+    ? v3Reply("That's it: 7 + 9 = 16. Now the tens.", "guide", { step: "tens", reading: right }) : rule.propose(input, signal, onText) };
+  const opened = async () => {
+    const c = await voiceCall({ model: credits });
+    await c.run.childJoined();
+    await waitFor(() => c.said().length === 1, "Maya's opening");
+    await c.clock.advance(5);
+    // Maya asks for the ones column first.
+    expect(await c.childSays("What do I do first?")).toMatch(/7 plus 9/);
+    await c.clock.advance(5);
+    return c;
+  };
+  const lastChild = (c: Awaited<ReturnType<typeof opened>>) => c.call.session.turns.findLast(t => t.speaker === "child");
+  it("credits a lone sixteen the speech-to-text is sure of", async () => {
+    const c = await opened();
+    await c.childSays("Sixteen.", { confidence: 0.95 });
+    expect(lastChild(c)).not.toHaveProperty("alternatives");
+    expect(c.call.session.done).toContain("ones");
+  });
+  it.each([
+    ["a lone sixteen below the bar", "Sixteen.", 0.75, ["Sixty."]],
+    ["a teen split by a pause", "Six teen.", 0.95, ["Sixteen.", "Six."]],
+  ])("credits nothing for %s, and gives the session its other reading", async (_, text, confidence, alternatives) => {
+    const c = await opened();
+    await c.childSays(text, { confidence });
+    expect(lastChild(c)).toMatchObject({ text, alternatives });
+    expect(c.call.session.done).not.toContain("ones");
+  });
+});
+
 
 // preflight.ts: a speculative transcript differs from the completed turn.
 class ProbeSTT extends stt.STT {

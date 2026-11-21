@@ -1187,7 +1187,7 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   {
     id: "C17",
-    title: "Unclear 15 or 50: a neutral confirmation before any judgement",
+    title: "Unclear 15 or 16: a neutral confirmation before any judgement",
     fixture: "A",
     status: "passing",
     steps: [
@@ -1195,9 +1195,9 @@ export const BEHAVIOURS: Behaviour[] = [
       {
         child: "fifteen",
         uncertain: true,
-        alternatives: ["fifty"],
+        alternatives: ["sixteen"],
         read: { answers: [[15, "ones", "wrong"]] },
-        maya: [{ act: "guide", level: 1, repair: { act: "confirm", heard: "15", other: "50", read: {} } }],
+        maya: [{ act: "guide", level: 1, repair: { act: "confirm", heard: "15", other: "16", read: {} } }],
       },
       child("Fifteen.", { answers: [[15, "ones", "wrong"]] }, [{ act: "guide", level: 1, lines: ["check.not_yet", "step.point"] }]),
       child("I want to stop now.", { stop: true }),
@@ -1211,19 +1211,18 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   {
     id: "C18",
-    title: "Two failed confirmations: another way to answer, then an unresolved close",
+    title: "An ambiguous confirmation reply: another way to answer, then an unresolved close",
     fixture: "A",
     status: "passing",
     steps: [
-      { child: "fifteen", uncertain: true, alternatives: ["fifty"] },
-      { child: "fifteen", uncertain: true, alternatives: ["fifty"] },
-      { child: "fifteen", uncertain: true, alternatives: ["fifty"], maya: [{ act: "offer_other_input" }] },
-      { child: "fifteen", uncertain: true, alternatives: ["fifty"] },
+      { child: "sixty-six", uncertain: true, alternatives: ["fifty-six"] },
+      { child: "sixty-six", uncertain: true, alternatives: ["fifty-six"], maya: [{ act: "offer_other_input" }] },
+      { child: "sixty-six", uncertain: true, alternatives: ["fifty-six"] },
     ],
     expect: {
       outcome: { reason: "technical_issue", assistance: "independent" },
-      acts: [OPEN, "confirm", "confirm", "offer_other_input", "close"],
-      counts: { confirmations: 2 },
+      acts: [OPEN, "confirm", "offer_other_input", "close"],
+      counts: { confirmations: 1 },
     },
   },
   {
@@ -1316,7 +1315,7 @@ export const BEHAVIOURS: Behaviour[] = [
     fixture: "A",
     status: "passing",
     steps: [
-      { child: "fifteen", uncertain: true, alternatives: ["fifty"] },
+      { child: "sixty-six", uncertain: true, alternatives: ["fifty-six"] },
       child("Stop, I want to stop.", { stop: true }),
     ],
     expect: { outcome: { reason: "child_stopped" }, acts: [OPEN, "confirm", "close"] },

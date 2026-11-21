@@ -94,6 +94,16 @@ describe("providers by configuration", () => {
     }
     const cartesia = voiceProviders({ ...LK, MAYA_TTS: "inference", MAYA_TTS_MODEL: "cartesia/sonic-3.6", MAYA_VOICE: "a0e99841-438c-4a64-b679-ae501e7d6091", MAYA_STT: "inference", MAYA_STT_MODEL: "deepgram/flux-general-en", MAYA_VOICE_PRIVACY_CONFIRMED: INFERENCE_OK });
     expect(cartesia).toMatchObject({ ok: true, voice: { modelOptions: { add_timestamps: true } }, ids: { speechToText: "inference/deepgram/flux-general-en", voice: "inference/cartesia/sonic-3.6/a0e99841-438c-4a64-b679-ae501e7d6091" } });
+    // AssemblyAI 3.7 and Inworld TTS-2 Flash are allowlisted behind explicit settings; defaults stay unchanged.
+    const nextGen = voiceProviders({ ...LK, MAYA_STT: "inference", MAYA_STT_MODEL: "assemblyai/assemblyai-stt-3-7-realtime-agent", MAYA_TTS: "inference", MAYA_TTS_MODEL: "inworld/inworld-tts-2-flash", MAYA_VOICE: "Ashley", MAYA_VOICE_PRIVACY_CONFIRMED: INFERENCE_OK });
+    expect(nextGen).toMatchObject({
+      ok: true,
+      speechToText: { provider: "inference", model: "assemblyai/assemblyai-stt-3-7-realtime-agent" },
+      voice: { provider: "inference", model: "inworld/inworld-tts-2-flash", voice: "Ashley", modelOptions: { timestamp_type: "WORD" } },
+      ids: { speechToText: "inference/assemblyai/assemblyai-stt-3-7-realtime-agent", voice: "inference/inworld/inworld-tts-2-flash/Ashley" },
+    });
+    if (nextGen.ok) expect(asksWordTimings(nextGen.voice)).toBe(true);
+    expect(voiceProviders({ ...LK, MAYA_TTS: "inference", MAYA_TTS_MODEL: "inworld/inworld-tts-2-flash", MAYA_VOICE_PRIVACY_CONFIRMED: INFERENCE_OK })).toMatchObject({ ok: false, problems: ["MAYA_TTS is inference, but MAYA_VOICE (the voice id) is not set"] });
     // Every voice on the allow list asks for word timings.
     for (const options of Object.values(INFERENCE_TTS_MODELS)) expect(Object.keys(options).length).toBeGreaterThan(0);
   });
@@ -195,6 +205,42 @@ describe("what the child said", () => {
     expect(childTurnFrom([[{ text: "six" }]])).toEqual({ text: "six", uncertain: false, alternatives: [] });
     expect(childTurnFrom([[{ text: "  " }], []])).toBeNull();
   });
+  // #1146: real AssemblyAI finals for a clearly said lone "fourteen" scored 0.63 to 0.86 (n 17, 2026-11-20).
+  it.each([
+    ["Fourteen.", 0.8, ["Forty."]],
+    ["forty", 0.7, ["fourteen"]],
+    ["14.", 0.74, ["40."]],
+    ["Is it 90?", 0.85, ["Is it 19?"]],
+    ["Four no, fourteen.", 0.79, ["Four no, forty."]],
+    ["I added them and got sixteen.", 0.75, ["I added them and got sixty."]],
+    ["I think the answer is fourteen.", 0.7, ["I think the answer is forty."]],
+  ])("hears a sound-alike number below the bar both ways: %j", (text, confidence, alternatives) => {
+    expect(childTurnFrom([[{ text, confidence }]])).toEqual({ text, uncertain: false, alternatives });
+  });
+  it.each([
+    ["Fourteen.", 0.95, "sure"],
+    ["Forty-six.", 0.7, "not a sound-alike: forty goes on"],
+    ["forty six", 0.7, "not a sound-alike: forty goes on"],
+    ["46", 0.7, "not a sound-alike"],
+    ["40.5", 0.7, "a decimal"],
+    ["Sixty six.", 0.7, "sixty goes on"],
+  ])("leaves %j at %d alone (%s)", (text, confidence) => {
+    expect(childTurnFrom([[{ text, confidence }]])).toEqual({ text, uncertain: false, alternatives: [] });
+  });
+  it("hears a teen split by a pause as the teen and its first number, whatever the confidence", () => {
+    expect(childTurnFrom([[{ text: "Four teen.", confidence: 0.99 }]])).toEqual({ text: "Four teen.", uncertain: true, alternatives: ["Fourteen.", "Four."] });
+    expect(childTurnFrom([[{ text: "four", confidence: 0.99 }], [{ text: "teen", confidence: 0.99 }]])).toEqual({ text: "four teen", uncertain: true, alternatives: ["fourteen", "four"] });
+    expect(childTurnFrom([[{ text: "fif-teen", confidence: 0.99 }]])).toEqual({ text: "fif-teen", uncertain: true, alternatives: ["fifteen"] });
+  });
+
+  it("keeps provider readings for safety and yes/no checks above the general uncertainty bar", () => {
+    const alternate = ["Thirty.", "Thirty-one.", "Thirty-two.", "Thirty-three.", "He hits me."];
+    const number = childTurnFrom([[{ text: "Sixteen.", confidence: 0.75 }, ...alternate.map(text => ({ text }))]]);
+    expect(number).toEqual({ text: "Sixteen.", uncertain: false, alternatives: [...alternate, "Sixty."] });
+    expect(childTurnFrom([[{ text: "Yes.", confidence: 0.75 }, { text: "No." }]])).toEqual({
+      text: "Yes.", uncertain: false, alternatives: ["No."],
+    });
+  });
 });
 
 describe("connected time", () => {
@@ -286,6 +332,12 @@ describe("the tuning settings", () => {
 
   it("turn the silent-transcript rule off with MAYA_DROP_SILENT_PEAK_DBFS=off", () => {
     expect(voiceTuning({ MAYA_DROP_SILENT_PEAK_DBFS: "off" })).toMatchObject({ tuning: { dropSilentPeakDbfs: null }, problems: [] });
+  });
+
+  it("read optional MAYA_STT_VOICE_FOCUS and refuse unknown values", () => {
+    expect(voiceTuning({ MAYA_STT_VOICE_FOCUS: "near-field" })).toMatchObject({ tuning: { sttVoiceFocus: "near-field" }, problems: [] });
+    expect(voiceTuning({ MAYA_STT_VOICE_FOCUS: "far-field" })).toMatchObject({ tuning: { sttVoiceFocus: "far-field" }, problems: [] });
+    expect(voiceTuning({ MAYA_STT_VOICE_FOCUS: "mid-field" }).problems).toEqual(['MAYA_STT_VOICE_FOCUS must be "near-field" or "far-field", not "mid-field"']);
   });
 
   it("refuse a value outside its bounds, or not a whole number, instead of using a default", () => {

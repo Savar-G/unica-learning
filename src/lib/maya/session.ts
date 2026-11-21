@@ -517,6 +517,7 @@ export interface Session {
    * act clears it. A saved session from before has no field.
    */
   heardAsked?: AnswerValue | null;
+  hearingConfirm?: true;
   /** The column total Maya asked about in that confirmation (stepConfirmable): the only number a yes credits for a step. */
   stepAsked?: AnswerValue | null;
   /**
@@ -1137,6 +1138,14 @@ function gate(s: Session, reading: Reading): Allowed | null {
   if (s.replies?.length) return { acts: ["redirect"], code: "fixed_reply_first", reason: "Say only the next code reply, with no warm or free talk." };
   if (s.silence === "close_due") return { acts: ["close"], code: "act_not_allowed", reason: "No answer after the check-in: close." };
   if (s.silence === "check_due" && !s.turn) return { acts: ["check_in"], code: "act_not_allowed", reason: "The child has been quiet: one short check-in, with no new help." };
+  const readingsDiffer = s.opened && hearingChangesAnswer(s);
+  if (readingsDiffer || (s.hearingConfirm && s.turn?.uncertain)) {
+    if (s.package && s.turn && outsideConfirmation(s.package, s.turn.text, s.exampleIntroduced === true || s.exampleShown > 0)) {
+      return { acts: ["clarify"], code: "confirm_first", reason: "Read the stored question instead of confirming outside arithmetic." };
+    }
+    const acts: Act[] = s.offeredOtherInput ? ["close"] : s.hearingConfirm ? ["offer_other_input", "close"] : ["confirm"];
+    return { acts, code: "confirm_first", reason: "The readings give different results. Do not judge the answer until the hearing is clear." };
+  }
   // A bare final comparison label needs its exact say-back before it can be committed.
   // This semantic confirmation is required even when the conversational fallback offers ordinary help.
   if (s.opened && s.solved === null && comparisonConfirm(s) !== null && workSteps(s.package!).every(st => behind(s).includes(st.id))) {
@@ -1151,7 +1160,7 @@ function gate(s: Session, reading: Reading): Allowed | null {
   // with the 20?") has no number to confirm, whatever "unclear" says: the tutor prompt says a question or a request for
   // help is not an answer. The model's message teaches, as for any help request. Code's own unclear reading still holds.
   const helpOnly = !!s.tutor && reading.help !== undefined && !reading.answers?.length;
-  if (s.opened && (s.turn?.uncertain || (reading.unclear && s.solved === null && !helpOnly))) {
+  if (s.opened && !hasTranscriptAlternatives(s) && (s.turn?.uncertain || (reading.unclear && s.solved === null && !helpOnly))) {
     if (s.turn && s.package && outsideConfirmation(s.package, s.turn.text, s.exampleIntroduced === true || s.exampleShown > 0)) {
       return { acts: ["clarify"], code: "confirm_first", reason: "This turn contains outside arithmetic. Read the stored question instead of confirming any number from the turn." };
     }
@@ -1406,7 +1415,7 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   // ...and only for what was not clear (#605: "I carry the 1 to the tens" got "Was that 1?"): a turn code or the model
   // read as unclear, numbers speech heard two ways, a choice, or a final answer the child is not sure of.
   const confirm: Act[] = s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !again && !claimJudgedWrong(s) && !claimResultUnconfirmable(s) &&
-    (stepSaidUnheard(s) || claimResultUnheard(s) || (notClear(s, reading) && !stepOnlyTurn(s))) ? ["confirm"] : [];
+    !hasTranscriptAlternatives(s) && (stepSaidUnheard(s) || claimResultUnheard(s) || (notClear(s, reading) && !stepOnlyTurn(s))) ? ["confirm"] : [];
   if (s.state === "TIME_CLOSE") {
     const acts: Act[] = s.solved !== null ? (s.writeAsked ? ["close"] : ["ask_write", "close"])
       : rightResult ? ["accept_answer", "close"] : misses >= 2 ? ["close"] : (s.workAttempts ?? 0) > 0 ? ["ask_write", "close"] : ["close"];
@@ -2343,6 +2352,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     case "confirm": {
       s.confirmTries += 1;
       s.mishearing.confirmations += 1;
+      if (hearingChangesAnswer(base)) s.hearingConfirm = true;
       const asked = spoken.chosen.filter((o) => o.line === "confirm.heard" || o.line === "confirm.which");
       // After a claim judged wrong (a confirm only an unclear hearing allows), a yes gives no number.
       s.heardAsked = !claimJudgedWrong(s) && asked.length === 1 && asked[0].line === "confirm.heard" && asked[0].slots.heard ? valuesIn(asked[0].slots.heard, readOptionsFor(pkg))[0] ?? null : null;
@@ -2350,7 +2360,9 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       // The loop guard's confirm asks the column's total, the one number its yes credits.
       if (guarded && !(s.heardAsked && saidAs(guarded, s.heardAsked))) return no("line_not_offered", `Ask if the child said ${valueText(guarded)}: confirm.heard with ${valueText(guarded)}.`, allowedNow);
       const total = stepSaidUnheard(s) ? stepConfirmable(s) : guarded;
-      s.stepAsked = total && s.heardAsked && saidAs(total, s.heardAsked) ? s.heardAsked : null;
+      // #1146: a confirm of the other reading of a turn heard two ways ("Six teen.": "Did you say 16?") asks that step too.
+      const hearingStep = s.hearingConfirm && s.heardAsked && currentSteps(s).some((st) => answersStep(st, s.heardAsked!));
+      s.stepAsked = (total && s.heardAsked && saidAs(total, s.heardAsked)) || hearingStep ? s.heardAsked : null;
       const result = claimResultAsked(s);
       s.resultAsked = result && s.heardAsked && saidAs(result, s.heardAsked) ? s.heardAsked : null;
       // A claim's bare word said back (claim.ts): a plain yes to it commits that word.
@@ -2497,6 +2509,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   if (p.act !== "confirm" && p.act !== "offer_other_input") {
     s.confirmTries = 0;
     s.offeredOtherInput = false;
+    delete s.hearingConfirm;
   }
   s.boardRoles = { ...s.boardRoles, ...roles };
   // Repairs and the AI disclosure do not answer the child's pending turn.
@@ -2615,7 +2628,7 @@ function namedMethod(s: Session): LineOffer | null {
 function yesValue(s: Session): AnswerValue | null {
   // Only a whole turn of plain yes. "Yes, 66." is read by readAnswer as usual; any other yes ("Yes, I think 66 is
   // right.") is not sure, so Maya asks again (PR #624 review: a wider yes accepted "Yes, I have no clue if 66 is right.").
-  return s.heardAsked && s.turn && saysYes(s.turn.text) ? s.heardAsked : null;
+  return s.heardAsked && s.turn && !s.turn.uncertain && saysYes(s.turn.text) && !hearingChangesAnswer(s) ? s.heardAsked : null;
 }
 
 /**
@@ -2811,6 +2824,40 @@ function hasTranscriptAlternatives(s: Session): boolean {
   return s.turns.slice(last + 1).some((turn) => (turn.alternatives?.length ?? 0) > 0);
 }
 
+/** A clear "no, sixteen" rules out the single number Maya just said back. */
+function correctionValue(text: string): number | null {
+  const body = wholeTurn(text);
+  const correction = body && /^(?:no|nope|nah)[,.]?\s+(.+)$/.exec(body);
+  return correction ? wholeValue(correction[1]) : null;
+}
+
+/** Compare the checked results of the transcripts before judging any of them. */
+function hearingChangesAnswer(s: Session): boolean {
+  if (!s.turn || !s.package || !hasTranscriptAlternatives(s)) return false;
+  const pkg = s.package;
+  const start = s.turns.findLastIndex((t) => t.speaker === "maya") + 1;
+  const pending = s.turns.slice(start).filter((t) => t.speaker === "child");
+  const primary = pending.map((t) => t.text);
+  const denied = s.heardAsked?.type === "number" ? s.heardAsked.value : null;
+  const correction = !s.turn.uncertain && denied !== null ? correctionValue(s.turn.text) : null;
+  const signature = (text: string) => {
+    // Use the same readers as the real turn. Clear the pending alternatives in this view so the readers judge
+    // this transcript on its own; the actual turn keeps its uncertainty and all readings for safety.
+    const view: Session = {
+      ...s, turns: s.turns.slice(0, start), turn: { ...s.turn!, text, uncertain: false },
+      scopeDue: sessionScopeReason(s, pkg, text) ?? undefined,
+    };
+    const yes = yesAnswer(view);
+    return (yes ? [yes] : heardAnswers(view)).map((a) => `${a.step}:${a.verdict}`).join(",");
+  };
+  const expected = signature(s.turn.text);
+  return pending.some((turn, i) => turn.alternatives?.some((reading) => {
+    const text = primary.with(i, reading).join("\n");
+    if (correction !== null && correction !== denied && correctionValue(text) === denied) return false;
+    return signature(text) !== expected;
+  }));
+}
+
 /** A hedge ("I think it's 66", "maybe", a question) is not clear, though the reader may find it sure: the one doubt check. */
 function hedgedTurn(s: Session): boolean {
   if (!s.turn) return false;
@@ -3003,6 +3050,7 @@ const stuckCloseLine = (s: Session): string => honestCloseLines(s)[0]?.line ?? "
 function checkAnswers(s: Session, given: ChildAnswer[], checked: Checked[], before: readonly string[] = []): { code: RefusalCode; reason: string; unheard?: boolean; held?: boolean } | null {
   const pkg = s.package!;
   if (!s.turn) return { code: "answer_not_heard", reason: "There is no child turn to read an answer from." };
+  if (given.length && hearingChangesAnswer(s)) return { code: "answer_not_committed", reason: "The transcripts give different results. Confirm the answer before judging it." };
   const read = turnRead(s);
   if (read.choice) return { code: "answer_not_committed", reason: "The child offered more than one answer: ask which one they mean." };
   const heard = read.kept;
@@ -3357,7 +3405,7 @@ function keptAnswers(session: Session, refused: readonly unknown[]): ChildAnswer
  */
 function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue, earlier: readonly string[] = []): boolean {
   const pkg = s.package;
-  if (!pkg || !s.turn || s.turn.uncertain) return false;
+  if (!pkg || !s.turn || s.turn.uncertain || hearingChangesAnswer(s)) return false;
   if (step.kind === "comparison" || step.kind === "comparison-count") return comparisonEligible(s) && !shownStep(s, step) &&
     workSteps(pkg).find(st => !behind(s).includes(st.id) && !earlier.includes(st.id))?.id === step.id && comparisonSame(comparisonSemantic(s, step), value) && answersStep(step, value);
   // Rule A for a step of these kinds, after its own recognizer: in order, not after Maya showed it.
@@ -3943,9 +3991,7 @@ function ownTurn(s: Session, target: WorkedStep | null, value: AnswerValue, opti
   const { earlier = [], shownToo = true, formToo = true, ordered = true } = options;
   const pkg = s.package;
   if (!pkg || !s.turn) return "not_said";
-  if (s.turn.uncertain) return "uncertain";
-  const last = s.turns.map((t) => t.speaker).lastIndexOf("maya");
-  if (s.turns.slice(last + 1).some((t) => t.speaker === "child" && (t.alternatives?.length ?? 0) > 0)) return "uncertain";
+  if (s.turn.uncertain || hearingChangesAnswer(s)) return "uncertain";
   const opts = readOptionsFor(pkg);
   const raw = (options.text ?? s.turn.text).trim().replace(/[’‘]/g, "'").replace(/[“”]/g, "\"").replace(/'cause\b/gi, "because")
     // A stutter ("s-s-sixty-six") is the word it starts.

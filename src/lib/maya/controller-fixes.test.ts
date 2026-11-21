@@ -4,6 +4,7 @@ import {
   type Effect, type LineId, type Proposal, type Reading, type SessionEvent, type Slots,
 } from "@/lib/maya";
 import { workedSteps, type OperationPackage, type QuestionPackage } from "@/lib/question-package";
+import { childTurnFrom } from "@/lib/maya-voice";
 
 // The controller defects of the first full practice run (#605; the investigation's section 5), through the session's
 // public interface. The fixtures are the research's 27 + 39 = 66 and 52 - 28 = 24.
@@ -891,9 +892,9 @@ describe("#605 a clear carry goes straight on: no 'Did you say 1?' (F01-r3, F02-
     c.child(turn);
     expect(c.acts).toContain("confirm");
   });
-  it("still confirms what speech heard two ways", () => {
+  it("still confirms when the alternate changes the grade of the final answer", () => {
     const c = call();
-    c.send({ type: "child_turn", at: T0 + 4000, text: "15", alternatives: ["50"] });
+    c.send({ type: "child_turn", at: T0 + 4000, text: "66", alternatives: ["56"] });
     expect(c.acts).toContain("confirm");
   });
 });
@@ -924,5 +925,96 @@ describe("#605 Maya claims no feelings (C24-r2: 'I had fun working with you' pas
     expect(NEVER_SAY.find((e) => e.id === "feelings")?.examples).toContain("I had fun working with you.");
     expect(NOT_OK_TALK.every((x) => feelingClaim(x.line) === null)).toBe(true);
     for (const x of OK_TALK) expect(feelingClaim(x.line), x.line).toBeNull();
+  });
+});
+
+// #1146: the worker adds the other reading of a number the speech-to-text could hear two ways (src/lib/maya-voice-heard.ts):
+// a sound-alike ("Sixteen." with "Sixty.") or a teen split by a pause ("Six teen.", uncertain). On 27 + 39 the ones step is
+// 16: Maya confirms before any credit, and the child's yes or plain repeat then credits it.
+describe("#1146 a step answer heard two ways is confirmed before credit", () => {
+  const credit: Draft = { act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { answers: [ans(16, "ones", "right")] } };
+  const asked = () => {
+    const c = call();
+    c.child("What do I do first?");
+    c.maya({ act: "guide", step: "ones", level: 0, parts: [ln("step.invite", { step: "ones" })] });
+    return c;
+  };
+  const heardTwoWays: [string, Partial<Extract<SessionEvent, { type: "child_turn" }>>][] = [
+    ["a sound-alike", { text: "Sixteen.", alternatives: ["Sixty."] }],
+    ["a split teen", { text: "Six teen.", uncertain: true, alternatives: ["Sixteen.", "Six."] }],
+  ];
+  it.each(heardTwoWays)("asks about %s, refuses the credit until then, and credits it after a yes", (_, turn) => {
+    const c = asked();
+    c.send({ type: "child_turn", at: T0 + 20_000, text: "", ...turn });
+    expect(c.acts).toContain("confirm");
+    expect(c.propose(credit).refusal).not.toBeNull();
+    expect(c.session.done).not.toContain("ones");
+    expect(c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "16" })] })).toContain("16");
+    c.child("Yes.");
+    c.maya(credit);
+    expect(c.session.done).toContain("ones");
+  });
+  it("credits a clear repeat of the number Maya asked about", () => {
+    const c = asked();
+    c.send({ type: "child_turn", at: T0 + 20_000, text: "Sixteen.", alternatives: ["Sixty."] });
+    c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "16" })] });
+    c.child("Sixteen.");
+    c.maya(credit);
+    expect(c.session.done).toContain("ones");
+  });
+
+  it.each([
+    { text: "Sixteen.", alternatives: ["Sixty."] },
+    { text: "Six teen.", uncertain: true, alternatives: ["Sixteen.", "Six."] },
+    { text: "Yes.", alternatives: ["No."] },
+  ])("offers another input after an unresolved confirmation of $text", turn => {
+    const c = asked();
+    c.send({ type: "child_turn", at: T0 + 20_000, text: "Sixteen.", alternatives: ["Sixty."] });
+    c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "16" })] });
+    c.send({ type: "child_turn", at: T0 + 30_000, ...turn });
+    expect(c.firstFallback().proposal.act).toBe("offer_other_input");
+    expect(c.session.done).not.toContain("ones");
+  });
+
+  it("uses an explicit denial to rule out the number Maya just asked about", () => {
+    const c = asked();
+    c.send({ type: "child_turn", at: T0 + 20_000, text: "Sixty.", alternatives: ["Sixteen."] });
+    c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "60" })] });
+    c.send({ type: "child_turn", at: T0 + 30_000, text: "No, sixteen.", alternatives: ["No, sixty."] });
+    expect(c.firstFallback().proposal.act).toBe("guide");
+    expect(c.session.done).toContain("ones");
+  });
+
+  it("gives help without a hearing question when neither reading earns credit", () => {
+    const c = asked();
+    c.send({ type: "child_turn", at: T0 + 20_000, text: "Fourteen.", alternatives: ["Forty."] });
+    expect(c.acts).not.toContain("confirm");
+    expect(c.firstFallback().proposal.act).toBe("guide");
+    expect(c.session.done).not.toContain("ones");
+  });
+
+  it("credits equivalent word and digit readings without confirmation", () => {
+    const c = asked();
+    c.send({ type: "child_turn", at: T0 + 20_000, text: "Sixteen.", alternatives: ["16."] });
+    expect(c.acts).not.toContain("confirm");
+    c.maya(credit);
+    expect(c.session.done).toContain("ones");
+  });
+
+  it("checks the reading of a number stated in a full sentence", () => {
+    const c = asked();
+    const hearing = childTurnFrom([[{ text: "I added them and got sixteen.", confidence: 0.75 }]])!;
+    c.send({ type: "child_turn", at: T0 + 20_000, ...hearing });
+    expect(c.firstFallback().proposal.act).toBe("confirm");
+    expect(c.session.done).not.toContain("ones");
+  });
+
+  it("does not give step credit after a yes to a wrong number", () => {
+    const c = asked();
+    c.send({ type: "child_turn", at: T0 + 20_000, text: "Sixty.", alternatives: ["Sixteen."] });
+    c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "60" })] });
+    c.child("Yes.");
+    expect(c.firstFallback().proposal.act).toBe("guide");
+    expect(c.session.done).not.toContain("ones");
   });
 });

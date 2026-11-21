@@ -17,6 +17,7 @@ import {
 } from "@/lib/maya-baseline";
 import { ATTR, childGrant, childIdentity, HANG_UP_BOARD_DRAIN, voiceProviders, voiceRoom } from "@/lib/maya-voice";
 import { BASELINE_AGENT, baselineProvider, REPORT_RPC, type BaselineJob, type Playout, type ReportMessage } from "./agent";
+import { reportedSettingsProblems, type SettingsConfig } from "../../worker/maya-voice/src/loaded-settings";
 
 export interface Prompt { name: string; turnType: "routine" | "complex"; file: string; leadMs?: number }
 /** The matched speech cases (#1137). `interrupt` plays its second prompt while the answer to the first is playing. */
@@ -179,7 +180,7 @@ async function child(o: { url: string; job: BaselineJob; prompts: Map<string, In
   return { room, local, bursts, board, messages, reported, play, quiet, stop };
 }
 
-async function runCall(o: { url: string; dispatch: AgentDispatchClient; job: Omit<BaselineJob, "dispatchAt">; prompts: Map<string, Int16Array>; capture: string; cases: string; fake: boolean; run: RunSettings }) {
+async function runCall(o: { url: string; dispatch: AgentDispatchClient; job: Omit<BaselineJob, "dispatchAt">; prompts: Map<string, Int16Array>; capture: string; cases: string; fake: boolean; run: RunSettings; settings: SettingsConfig }) {
   const job: BaselineJob = { ...o.job, dispatchAt: Date.now() };
   let c: Awaited<ReturnType<typeof child>>;
   try {
@@ -242,6 +243,19 @@ async function runCall(o: { url: string; dispatch: AgentDispatchClient; job: Omi
     await c.stop();
     await c.room.disconnect();
     write(o.capture, o.cases, job, o.run, steps, c, caseRows, callMinutes, o.fake);
+    // #1146: a row is evidence for the settings it names only when the worker loaded exactly those settings.
+    const call = c.messages.find((m) => m.kind === "call");
+    const problems = reportedSettingsProblems(call?.settings, o.settings);
+    const updates = c.messages.filter(m => m.kind === "settings_update");
+    const stt = o.settings.speechToText;
+    if (call && !c.messages.some(m => m.kind === "done")) problems.push("the worker report ended before completion");
+    if (call && stt.provider === "inference" && stt.model.startsWith("assemblyai/") && !updates.some((update) => update.phase === "number")) {
+      problems.push("the worker reported no number-turn settings");
+    }
+    for (const { phase, report } of updates) {
+      problems.push(...reportedSettingsProblems(report, o.settings, phase).map((problem) => `${phase} turn: ${problem}`));
+    }
+    if (problems.length) { console.error(`call ${job.callId}: worker settings differ from the run's:`, problems); process.exitCode = 1; }
   }
 }
 
@@ -285,24 +299,47 @@ function write(capture: string, cases: string, job: BaselineJob, run: RunSetting
   steps.forEach((s, i) => {
     const end = steps[i + 1]?.inputEnd ?? Infinity;
     const mine = turns.filter(t => stepOf(t.t0) === i);
+    const allCues = mine.flatMap(t => t.cues);
+    const cueSources = { word: allCues.filter(c => c.source === "word").length, sentence: allCues.filter(c => c.source === "sentence").length };
+    const ttsChars = mine.reduce((n, t) => n + t.ttsChars, 0);
+    const transcripts = mine.map(t => t.childText).filter((x): x is string => x !== null);
     const answerPlayback = mine.find(t => t.answerPlayback !== null)?.answerPlayback ?? null;
     const device: Omit<DeviceObservation, "group"> = {
       inputEnd: s.inputEnd, bursts: c.bursts.filter(b => b.start < end && b.end >= s.inputEnd), answerPlayback, otherPlayouts: otherPlayouts(call?.playouts, answerPlayback, s.inputEnd, Number.isFinite(end) ? end : Date.now()),
       boardAt: c.board.find(at => at >= s.inputEnd && at < end) ?? null, ...(s.interruptionAt ? { interruptionAt: s.interruptionAt } : {}),
     };
+    const deviceRow = s.turnType !== "background" && !fake
+      ? deviceTurn({ group: { ...groupOf(job, run, "device"), turnType: s.turnType }, ...device })
+      : null;
+    if (deviceRow) observed.push(deviceRow);
     // Background speech should get no reply: any Maya sound before the next step is a false response. The raw device
     // observation is kept so that a later classifier can be run again on the same call.
-    caseRows.push({ case: s.prompt, workerTurns: mine.length, outcomes: mine.map(t => t.row.outcome), answered: mine.some(t => t.answerPlayback !== null),
+    caseRows.push({
+      case: s.prompt,
+      turnType: s.turnType,
+      workerTurns: mine.length,
+      outcomes: mine.map(t => t.row.outcome),
+      answered: mine.some(t => t.answerPlayback !== null),
+      transcripts,
+      ttsChars,
+      cueCount: allCues.length,
+      cueSources,
+      workerMs: mine.map(t => ({
+        speechEndToFinal: t.row.ms.speechEndToFinal ?? null,
+        finalToTurn: t.row.ms.finalToTurn ?? null,
+        synthesisFirstFrame: t.row.ms.synthesisFirstFrame ?? null,
+        workerReply: t.row.ms.workerReply ?? null,
+      })),
+      ...(deviceRow ? { deviceMs: deviceRow.ms, deviceOutcome: deviceRow.outcome } : {}),
       ...(s.turnType === "background" ? { falseResponse: c.bursts.some(b => b.start >= s.inputEnd && b.start < end) } : {}),
-      ...(fake ? {} : { device: { ...device, ackPlayback: mine.find(t => t.ackPlayback !== null)?.ackPlayback ?? null } }) });
-    if (s.turnType === "background" || fake) return;
-    observed.push(deviceTurn({ group: { ...groupOf(job, run, "device"), turnType: s.turnType }, ...device }));
+      ...(fake ? {} : { device: { ...device, ackPlayback: mine.find(t => t.ackPlayback !== null)?.ackPlayback ?? null } }),
+    });
   });
   lines.push(...turnRows(job, run, fake, reported ? workerRows : null, observed).map(r => BASELINE_PREFIX + JSON.stringify(r)));
   // Machine load biases CPU and event-loop figures: record it beside them.
   const machine = { loadAverage1m: Math.round(loadavg()[0] * 100) / 100, cores: cpus().length };
   if (call?.profile) lines.push(BASELINE_PROFILE_PREFIX + JSON.stringify({ teaching, concurrency: job.concurrency, machine, workerQueueMs: call.workerQueueMs, ...call.profile, discardedPreparation: call.discardedPreparation }));
-  lines.push(...costs(job, run, teaching, callMinutes, fake, call?.speechUsd ?? null).map(r => BASELINE_COST_PREFIX + JSON.stringify(r)));
+  lines.push(...costs(job, run, teaching, callMinutes, fake, call?.speechUsd ?? null, call?.ttsChars ?? null).map(r => BASELINE_COST_PREFIX + JSON.stringify(r)));
   // Discarded preparation is already inside the provider receipts. These rows only make its share visible.
   const d = call?.discardedPreparation as { decisions: number; reported: number; estimated: number; unknown: number; reportedUsd: number; estimatedUsd: number } | undefined;
   if (d?.decisions) {
@@ -312,15 +349,32 @@ function write(capture: string, cases: string, job: BaselineJob, run: RunSetting
     if (d.unknown) lines.push(BASELINE_COST_PREFIX + JSON.stringify({ ...base, basis: "unknown", calls: d.unknown, usd: null }));
   }
   appendFileSync(capture, lines.join("\n") + "\n");
-  appendFileSync(cases, JSON.stringify({ callId: job.callId, teaching, concurrency: job.concurrency, reported, cases: caseRows }) + "\n");
+  appendFileSync(cases, JSON.stringify({
+    callId: job.callId,
+    teaching,
+    concurrency: job.concurrency,
+    reported,
+    callMinutes: Math.round(callMinutes * 1e4) / 1e4,
+    models: call?.models ?? null,
+    settings: call?.settings ?? null,
+    settingsUpdates: c.messages.filter(m => m.kind === "settings_update").map(({ phase, report }) => ({ phase, report })),
+    ttsChars: call?.ttsChars ?? null,
+    openingTtsChars: call?.openingTtsChars ?? null,
+    speechUsd: call?.speechUsd ?? null,
+    childTranscripts: call?.childTranscripts ?? [],
+    cases: caseRows,
+  }) + "\n");
 }
 
 /** Provider receipts for model work, with each request's role and effort; configured-rate estimates for speech; transport has no local price. */
-function costs(job: BaselineJob, run: RunSettings, teaching: BaselineCost["teaching"], callMinutes: number, fake: boolean, speech: { stt: number; tts: number } | null): BaselineCost[] {
+function costs(job: BaselineJob, run: RunSettings, teaching: BaselineCost["teaching"], callMinutes: number, fake: boolean, speech: { stt: number; tts: number } | null, ttsChars: number | null): BaselineCost[] {
   const base = { v: 1 as const, mode: "voice" as const, teaching, concurrency: job.concurrency };
   const rows: BaselineCost[] = [];
   if (existsSync(job.receipts)) for (const line of readFileSync(job.receipts, "utf8").split("\n").filter(Boolean)) rows.push(receiptCost(JSON.parse(line) as BaselineReceipt, base));
-  return fake ? rows : [...rows, ...speechCosts(base, run.speech, callMinutes, speech)];
+  if (fake) return rows;
+  const speechRows = speechCosts(base, run.speech, callMinutes, speech).map(r =>
+    r.work === "tts" && ttsChars !== null ? { ...r, quantity: { unit: "characters" as const, value: ttsChars } } : r);
+  return [...rows, ...speechRows];
 }
 
 export async function main(o: { url: string; agent: string; out: string; teachings: ("existing" | "checked")[]; calls: number; concurrency: number; network: string; device: string; healthPort: number; fake: boolean }) {
@@ -337,7 +391,8 @@ export async function main(o: { url: string; agent: string; out: string; teachin
   // Background speech plays 18 dB below the child's prompts.
   prompts.set("background", prompts.get("background")!.map(x => Math.round(x * 10 ** (-18 / 20))));
   const options = new ServerOptions({ agent: o.agent, agentName: BASELINE_AGENT, wsURL: o.url, apiKey: "devkey", apiSecret: "secret", numIdleProcesses: o.concurrency, loadThreshold: 1, port: o.healthPort });
-  baselineAgentName(options, BASELINE_AGENT);
+  const resolvedName = baselineAgentName(options, BASELINE_AGENT);
+  console.log(`[maya baseline] starting local worker agentName=${resolvedName} wsURL=${o.url} healthPort=${o.healthPort}`);
   const server = new AgentServer(options);
   void server.run();
   await pause(3000);
@@ -347,10 +402,14 @@ export async function main(o: { url: string; agent: string; out: string; teachin
     for (let start = 0; start < o.calls; start += o.concurrency) {
       const batch = Array.from({ length: Math.min(o.concurrency, o.calls - start) }, () => {
         const callId = randomUUID();
-        return runCall({ url: o.url, dispatch, prompts, capture, cases, fake: o.fake, run, job: {
+        return runCall({ url: o.url, dispatch, prompts, capture, cases, fake: o.fake, run, settings: providers, job: {
           callId, parentId: randomUUID(), childId: randomUUID(), teaching, receipts: join(o.out, "receipts", `${callId}.jsonl`),
           concurrency: o.concurrency, network: o.network, device: o.device,
-        } }).catch(e => { console.error(`call ${callId} failed:`, e); appendFileSync(cases, JSON.stringify({ callId, teaching, concurrency: o.concurrency, error: String(e) }) + "\n"); });
+        } }).catch(e => {
+          process.exitCode = 1;
+          console.error(`call ${callId} failed:`, e);
+          appendFileSync(cases, JSON.stringify({ callId, teaching, concurrency: o.concurrency, error: String(e) }) + "\n");
+        });
       });
       await Promise.all(batch);
       console.log(`${teaching}: ${Math.min(start + o.concurrency, o.calls)}/${o.calls} calls at concurrency ${o.concurrency}`);

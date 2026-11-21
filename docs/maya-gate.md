@@ -100,8 +100,8 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | C14 | A | passing | 'Wait, I need more time.': back to waiting; a check-in only after the writing pause | solved, independent |  |
 | C15 | A | partial | Talks over Maya with a partial 'No, I meant', then 'No, I meant sixty-six.': the output stops, the partial is not judged, 66 is | solved, independent | The real stop of Maya's audio when the child talks over her is the voice agent's test (#326). |
 | C16 | A | passing | 'sixty... no... sixty-six': the abandoned number is not judged | solved, independent |  |
-| C17 | A | passing | Unclear 15 or 50: a neutral confirmation before any judgement | child_stopped, hint |  |
-| C18 | A | passing | Two failed confirmations: another way to answer, then an unresolved close | technical_issue, independent |  |
+| C17 | A | passing | Unclear 15 or 16: a neutral confirmation before any judgement | child_stopped, hint |  |
+| C18 | A | passing | An ambiguous confirmation reply: another way to answer, then an unresolved close | technical_issue, independent |  |
 | C19 | A | passing | Age 6, 'I put the one up there': one concrete question at a time, no guessing what is on paper | solved, independent |  |
 | C20 | A | passing | ESL, 'I make ten extra, where put?': the math meaning, no grammar correction | solved, hint |  |
 | C21 | A | partial | Stutter and fillers: the whole turn is read, the number judged once | solved, independent | Recognition of real stuttered speech needs consented audio tests with the voice agent (#326); text checks the policy only. |

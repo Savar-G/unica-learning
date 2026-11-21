@@ -176,6 +176,8 @@ Open `/admin/maya` as an admin, choose **Speak**, and start a call on a test que
 
 ## Tuning for children
 
+The measured end-of-turn settings, the staging recommendation, the confirm for a number heard two ways, and the loaded-settings log are in `docs/maya-voice-endpointing.md` (#1146).
+
 Source: the research report `.design/research/maya-voice-2026-11-12/voice-research-stt.md` and LiveKit Agents for Node 1.9.5 as installed. All numbers below are starting points. No real call has run, so no number is measured. Check each one with the 40-answer test and with children's calls.
 
 **Speech-to-text silence limits.** Before this work the worker set no silence limit.

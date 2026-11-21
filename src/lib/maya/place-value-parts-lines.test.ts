@@ -22,6 +22,23 @@ const BUILD = made(storedBuild({ wholes: 6, tenths: 4, page: 62, question: 12 })
 const ALL = [COMPARE, SUM, BUILD];
 
 describe("B1b's lines", () => {
+  it("confirms a place worth when an alternate would change credit", () => {
+    let s = createSession({ callId: "pv-hearing", package: SUM });
+    s = step(s, { type: "start", at: 0 }).session;
+    const respond = (session: Session, at: number) => step(session, {
+      type: "proposal", at, proposal: fallbacks(session)[0], fallback: true,
+    }).session;
+    s = respond(s, 1);
+    s = step(s, { type: "child_turn", at: 2, text: "What do I do first?" }).session;
+    s = respond(s, 3);
+    const worth = "Nine hundred thousand.";
+    const clear = step(s, { type: "child_turn", at: 4, text: worth }).session;
+    expect(respond(clear, 5).done).toContain("worth-1");
+    const ambiguous = step(s, { type: "child_turn", at: 4, text: worth, alternatives: ["Eight hundred thousand."] }).session;
+    expect(fallbacks(ambiguous)[0].act).toBe("confirm");
+    expect(respond(ambiguous, 5).done).not.toContain("worth-1");
+  });
+
   it("fill every slot, five wordings a key", () => {
     for (const [key, wordings] of Object.entries(PLACE_PARTS_TEMPLATES)) expect(wordings.length, key).toBe(5);
     for (const p of ALL) for (const t of allLineTexts(p)) expect(t, t).not.toMatch(/\{|\}|undefined|NaN/);

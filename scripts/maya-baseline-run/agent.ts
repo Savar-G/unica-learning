@@ -7,7 +7,7 @@ import { defineAgent, voice, type JobContext } from "@livekit/agents";
 import { configureAiUsage, flushAiUsage } from "@/lib/ai-usage";
 import { boardRpcTransport } from "@/lib/board-rpc";
 import { createBoardSender } from "@/lib/board-protocol";
-import { createBoardSpeech, type CueMeasurement } from "@/lib/board-speech";
+import { createBoardSpeech, type CueMeasurement, type CueSource } from "@/lib/board-speech";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { memoryWordingHistoryStore } from "@/lib/maya";
@@ -25,6 +25,7 @@ import { VoiceCallRun, voiceSession } from "../../worker/maya-voice/src/agent";
 import { startVoiceBaselineProfile, voiceBaselineTurn } from "../../worker/maya-voice/src/baseline";
 import { waitForChild } from "../../worker/maya-voice/src/child-wait";
 import { voiceOpening } from "../../worker/maya-voice/src/opening";
+import { logLoadedSettings, readLoadedSettings, type LoadedReport } from "../../worker/maya-voice/src/loaded-settings";
 import { makeProviders } from "../../worker/maya-voice/src/providers";
 import { CallTelemetry, markedFetch, setTelemetry, telemetry } from "../../worker/maya-voice/src/telemetry";
 import type { VoiceTurnSample } from "../../worker/maya-voice/src/turn-timing";
@@ -32,6 +33,7 @@ import { configureDelivery } from "../../worker/maya-voice/src/voice-delivery";
 
 export const BASELINE_AGENT = "maya-baseline";
 export const REPORT_RPC = "maya.baseline.report";
+type SettingsUpdate = { kind: "settings_update"; phase: "normal" | "number"; report: LoadedReport };
 
 /** The provider label of every row of a run: the call's model and both speech providers, as the worker resolves them. */
 export function baselineProvider(env: Readonly<Record<string, string | undefined>>): string {
@@ -72,6 +74,23 @@ export interface BaselineJob {
   device: string;
 }
 
+/** One released board cue observed during a turn: whether it fired on a word timestamp or sentence fallback. */
+export interface ReportedCue {
+  batchId: string;
+  source: CueSource;
+  state: string;
+  audioMs: number;
+  acknowledgementMs: number;
+}
+
+/** One child turn transcript received by the controller. */
+export interface ReportedChildTranscript {
+  at: number;
+  text: string;
+  uncertain: boolean;
+  alternatives: string[];
+}
+
 /** One playout of the room's audio output on the machine clock, from its start event to its finish event. */
 export interface Playout { start: number; end: number | null }
 /** Enough for a call's fillers and answers, and well under the RPC payload limit. */
@@ -86,13 +105,17 @@ export type ReportMessage =
   | { kind: "answer"; turnId: string; at: number }
   | { kind: "reply_done"; turnId: string; at: number }
   | { kind: "playout"; start: number; end: number | null }
-  | { kind: "turn"; row: ReturnType<typeof voiceBaselineTurn>; t0: number | null; answerPlayback: number | null; ackPlayback: number | null }
-  | { kind: "call"; workerQueueMs: number; profile: Record<string, unknown> | null; discardedPreparation: unknown; speechUsd: { stt: number; tts: number }; playouts: Playout[] }
+  | { kind: "turn"; row: ReturnType<typeof voiceBaselineTurn>; t0: number | null; turnStart: number | null; answerPlayback: number | null; ackPlayback: number | null; ttsChars: number; cues: ReportedCue[]; childText: string | null }
+  | { kind: "call"; workerQueueMs: number; profile: Record<string, unknown> | null; discardedPreparation: unknown; speechUsd: { stt: number; tts: number }; playouts: Playout[]; ttsChars: number; openingTtsChars: number; models: { stt: string; tts: string }; childTranscripts: ReportedChildTranscript[]; settings: LoadedReport }
+  | SettingsUpdate
   | { kind: "done" };
 
 export default defineAgent({
   entry: async (ctx: JobContext) => {
     const entryAt = Date.now();
+    // Never write to hosted Supabase or override the baseline agent name from a caller shell.
+    for (const key of Object.keys(process.env)) if (key.startsWith("SUPABASE_")) delete process.env[key];
+    delete process.env.LIVEKIT_AGENT_NAME_OVERRIDE;
     const job = JSON.parse(ctx.job.metadata) as BaselineJob;
     localUsage(job.receipts);
     globalThis.fetch = markedFetch(globalThis.fetch);
@@ -123,9 +146,24 @@ export default defineAgent({
     if (!started.ok) throw Error(started.error);
     const opened = await calls.openVoice(job.callId, providers.ids, null);
     if (!opened.ok) throw Error(opened.error);
+    const spokenEvents: { at: number; chars: number }[] = [];
+    const origSpoken = opened.call.spoken.bind(opened.call);
+    opened.call.spoken = (said: string) => {
+      spokenEvents.push({ at: clock(), chars: said.length });
+      return origSpoken(said);
+    };
+    const childTranscripts: ReportedChildTranscript[] = [];
+    const origChild = opened.call.child.bind(opened.call);
+    opened.call.child = (text, options, say) => {
+      childTranscripts.push({ at: clock(), text, uncertain: Boolean(options?.uncertain), alternatives: [...(options?.alternatives ?? [])] });
+      return origChild(text, options, say);
+    };
     const made = await makeProviders(providers, { keyterms: callKeyterms(opened.call.session.package) });
     const { tuning } = providers;
     const session = voiceSession(made, made.fake ? {} : { turn: tuning });
+    // #1146: the settings this worker actually loaded, read back from the built objects; the runner checks them.
+    const settings = logLoadedSettings(job.callId, session, made, providers);
+    const settingsUpdates: SettingsUpdate[] = [];
     await ctx.connect();
     const identity = childIdentity(job.childId);
     const local = ctx.room.localParticipant!;
@@ -148,11 +186,19 @@ export default defineAgent({
     const send = (message: ReportMessage) => local.performRpc({ destinationIdentity: identity, method: REPORT_RPC, payload: JSON.stringify(message), responseTimeout: 10_000 });
     const encoder = new TextEncoder();
     const patience = made.patience;
+    const silences = turnSilences(tuning);
     const run = new VoiceCallRun(session, opened.call, {
       board, ...(voiceOpening(opened.call.session) ? { opening: voiceOpening(opened.call.session)! } : {}),
       notify: update => { void local.publishData(encoder.encode(JSON.stringify(update)), { reliable: true, topic: "maya.call", destination_identities: [identity] }).catch(() => {}); },
       ...(made.fake ? {} : { numberContinueMs: tuning.numberContinueMs, dropSilentPeakDbfs: tuning.dropSilentPeakDbfs, detectorMinSilenceMs: tuning.detectorMinSilenceMs }),
-      ...(patience ? { patience: { ...turnSilences(tuning), set: limits => patience.setSilence(limits) } } : {}),
+      ...(patience ? { patience: { ...silences, set: limits => {
+        const phase = limits === silences.number ? "number" : "normal";
+        let failed = false;
+        try { patience.setSilence(limits); } catch { failed = true; }
+        const report = readLoadedSettings(job.callId, session, made, providers, phase);
+        if (failed) report.problems.push("the speech-to-text silence update failed");
+        settingsUpdates.push({ kind: "settings_update", phase, report });
+      } } } : {}),
       measureTurn: sample => {
         turns.push(sample);
         // An answered turn is measured when its answer starts to play.
@@ -164,16 +210,51 @@ export default defineAgent({
       closed: async () => {
         try {
           // Read request marks at close: a review or repair can finish after playout starts.
-          for (const sample of turns) {
-            const turnClock = telemetry().turnClock(sample.turnId);
+          const clocks = turns.map(sample => telemetry().turnClock(sample.turnId));
+          const turnStarts = clocks.map(tc => tc && typeof tc.turnStart === "number" ? tc.t0 + tc.turnStart : tc?.t0 ?? null);
+          const firstTurnStart = turnStarts.find((t): t is number => t !== null) ?? Infinity;
+          const openingTtsChars = spokenEvents.filter(e => e.at < firstTurnStart).reduce((n, e) => n + e.chars, 0);
+          const totalTtsChars = spokenEvents.reduce((n, e) => n + e.chars, 0);
+          for (let i = 0; i < turns.length; i++) {
+            const sample = turns[i];
+            const turnClock = clocks[i];
             const cues = samples.filter(c => { const o = owners.get(c.utteranceId); return !!o && o.turnId === sample.turnId && o.batchIds.includes(c.batchId); });
             const at = (kind: "answer" | "ack") => {
               const u = turnClock?.utterances.find(x => x.kind === kind && typeof x.playbackStarted === "number");
               return u && turnClock ? turnClock.t0 + (u.playbackStarted as number) : null;
             };
-            await send({ kind: "turn", row: voiceBaselineTurn(group, sample, turnClock, cues), t0: turnClock?.t0 ?? null, answerPlayback: at("answer"), ackPlayback: at("ack") });
+            const startAt = turnStarts[i];
+            const nextStartAt = turnStarts.slice(i + 1).find((t): t is number => t !== null) ?? Infinity;
+            const ttsChars = startAt === null ? 0 : spokenEvents.filter(e => e.at >= startAt && e.at < nextStartAt).reduce((n, e) => n + e.chars, 0);
+            const matchedChild = startAt === null ? null : childTranscripts.find(c => c.at >= startAt - 500 && c.at < nextStartAt)?.text ?? null;
+            await send({
+              kind: "turn",
+              row: voiceBaselineTurn(group, sample, turnClock, cues),
+              t0: turnClock?.t0 ?? null,
+              turnStart: startAt,
+              answerPlayback: at("answer"),
+              ackPlayback: at("ack"),
+              ttsChars,
+              cues: cues.map(c => ({ batchId: c.batchId, source: c.source, state: c.state, audioMs: c.audioMs, acknowledgementMs: c.acknowledgementMs })),
+              childText: matchedChild,
+            });
           }
-          await send({ kind: "call", workerQueueMs: entryAt - job.dispatchAt, profile: profile ? profile() : null, discardedPreparation: telemetry().discardedPreparationSummary(), speechUsd: speechUsd(), playouts: playouts.slice(-MAX_PLAYOUTS) });
+          const sttModel = providers.speechToText.provider === "inference" ? providers.speechToText.model : providers.ids.speechToText;
+          const ttsModel = providers.voice.provider === "inference" ? providers.voice.model : providers.ids.voice;
+          await send({
+            kind: "call",
+            workerQueueMs: entryAt - job.dispatchAt,
+            profile: profile ? profile() : null,
+            discardedPreparation: telemetry().discardedPreparationSummary(),
+            speechUsd: speechUsd(),
+            playouts: playouts.slice(-MAX_PLAYOUTS),
+            ttsChars: totalTtsChars,
+            openingTtsChars,
+            models: { stt: sttModel, tts: ttsModel },
+            childTranscripts,
+            settings,
+          });
+          for (const update of settingsUpdates) await send(update);
           await send({ kind: "done" });
         } finally {
           await flushAiUsage();

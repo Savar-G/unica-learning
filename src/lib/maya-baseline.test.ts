@@ -1,8 +1,42 @@
 import { ServerOptions } from "@livekit/agents";
+import { spawnSync } from "node:child_process";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { baselineAgentName, baselineCostReport, baselineReport, complexBudget, prepareBaselineEnv, readBaselineCost, deviceTurn, plannedTurns, readBaselineTurn, receiptCost, replyOver, requestEffort, speechCosts, type BaselineTurn } from "./maya-baseline";
 
 describe("#1139 baseline report", () => {
+  it.each([0, 1])("returns runner exit code %i from the baseline launcher", code => {
+    const temp = mkdtempSync(join(tmpdir(), "maya-baseline-launcher-"));
+    try {
+      const script = join(temp, "scripts/maya-baseline-run/run.mjs");
+      const esbuild = join(temp, "node_modules/esbuild");
+      const prompts = join(temp, "out/prompts");
+      mkdirSync(join(script, ".."), { recursive: true });
+      mkdirSync(esbuild, { recursive: true });
+      mkdirSync(prompts, { recursive: true });
+      copyFileSync("scripts/maya-baseline-run/run.mjs", script);
+      for (const name of ["first", "regroup", "four", "fourteen-pause", "correction", "why", "thinking", "question", "background"]) {
+        writeFileSync(join(prompts, `${name}.wav`), "");
+      }
+      // Run the real launcher with a local runner double. There is no speech, LiveKit server or provider request.
+      writeFileSync(join(esbuild, "package.json"), JSON.stringify({ main: "index.mjs" }));
+      writeFileSync(join(esbuild, "index.mjs"), `
+        import { mkdirSync, writeFileSync } from "node:fs";
+        import { dirname } from "node:path";
+        export function build({ outfile }) {
+          mkdirSync(dirname(outfile), { recursive: true });
+          writeFileSync(outfile, "export function main() { process.exitCode = ${code}; }");
+        }
+      `);
+      const result = spawnSync(process.execPath, [script, "--out", join(temp, "out")], { encoding: "utf8" });
+      expect(result.status, result.stderr).toBe(code);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
   it("separates matched measurements by the active teaching settings", () => {
     const base = {
       v: 1, evidence: "device", mode: "voice", turnType: "complex", provider: "same-providers",

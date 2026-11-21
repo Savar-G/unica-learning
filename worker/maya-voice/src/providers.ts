@@ -55,6 +55,7 @@ export async function makeProviders(
     if (c.model.startsWith("assemblyai/")) {
       modelOptions.min_turn_silence = tuning.sttMinSilenceMs;
       modelOptions.max_turn_silence = tuning.sttMaxSilenceMs;
+      if (tuning.sttVoiceFocus) modelOptions.voice_focus = tuning.sttVoiceFocus;
       if (keyterms.length) modelOptions.keyterms_prompt = [...keyterms];
     } else if (c.model.startsWith("deepgram/") && keyterms.length) modelOptions.keyterm = [...keyterms];
     const inferenceStt = new inference.STT({ model: c.model, language: "en", apiKey: c.apiKey, apiSecret: c.apiSecret, modelOptions: modelOptions as never });

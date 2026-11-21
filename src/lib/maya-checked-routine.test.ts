@@ -13,6 +13,7 @@ import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
 import { createTextSession } from "@/lib/maya-text";
 import { checkTrace } from "@/lib/maya-trace";
+import { childTurnFrom } from "@/lib/maya-voice";
 
 beforeEach(() => { vi.clearAllMocks(); });
 
@@ -235,7 +236,8 @@ it.each([
 
 it("does not release the STT alternative's sensitive words or automatically flag an unclear hearing", async () => {
   const s = await setup("voice");
-  const out = await s.turn("It's 37.", {}, { uncertain: true, alternatives: ["He hits me."] });
+  const hearing = childTurnFrom([[{ text: "It's 37.", confidence: 0.75 }, { text: "He hits me." }]])!;
+  const out = await s.turn(hearing.text, {}, hearing);
   expect(out.said.join(" ")).toContain("You don't have to share private details");
   expect(s.store.rows()[0].flag).toBeNull();
   expect(s.counts().model).toBe(0);

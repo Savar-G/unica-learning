@@ -93,6 +93,16 @@ function partTurn(pkg: OperationPackage, before: [string, number, string, string
 const ids = (steps: readonly WorkedStep[]) => steps.map((s) => s.id);
 
 describe("evaluate parts (Wave A, A2)", () => {
+  it("confirms an expression part when one reading would give credit", async () => {
+    const pkg = evaluatePackage("8 × 5 + 2", "What is 8 × 5 + 2?", "2 × 3 + 1");
+    const t = createTextSession({ callId: "evaluate-hearing", package: pkg, model: scenarioModel(), clock: () => 1000 });
+    await t.start();
+    const reply = await t.child("Forty.", { alternatives: ["Fourteen."] });
+    expect(reply.say.join(" ")).toMatch(/\b(?:40|forty)\b/i);
+    expect(t.session.turns.at(-1)?.act).toBe("confirm");
+    expect(t.session.done).toEqual([]);
+  });
+
   it("works a two-part expression part by part: each part's columns, then the part; the last part's columns, then the result", () => {
     const pkg = op(FIXTURES.EV_TWO);
     expect(ids(evaluateSteps(pkg)!)).toEqual([

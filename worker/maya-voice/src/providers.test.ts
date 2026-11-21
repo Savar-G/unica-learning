@@ -68,6 +68,14 @@ describe("the worker's providers", () => {
     expect(cartesia.providers.tts.capabilities.alignedTranscript).toBe(true);
     await cartesia.providers.tts.close();
     await cartesia.providers.stt.close();
+
+    const flash = await build({ ...lk, MAYA_STT_MODEL: "assemblyai/assemblyai-stt-3-7-realtime-agent", MAYA_TTS_MODEL: "inworld/inworld-tts-2-flash", MAYA_STT_VOICE_FOCUS: "near-field" });
+    expect(flash.providers.stt.model).toBe("assemblyai/assemblyai-stt-3-7-realtime-agent");
+    expect((flash.providers.stt as unknown as { opts: { modelOptions: Record<string, unknown> } }).opts.modelOptions.voice_focus).toBe("near-field");
+    expect(flash.providers.tts.model).toBe("inworld/inworld-tts-2-flash");
+    expect(flash.providers.tts.capabilities.alignedTranscript).toBe(true);
+    await flash.providers.tts.close();
+    await flash.providers.stt.close();
   });
 
   it("send the silence limits and the call's keyterms to AssemblyAI through Inference, and change the limit during the call", async () => {

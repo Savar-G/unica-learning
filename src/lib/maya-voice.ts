@@ -15,6 +15,8 @@
 //   the time limits), never while Maya is still speaking.
 import { limitsOf, PAUSES, TIME_LIMITS, type Session } from "@/lib/maya";
 import type { AnswerValue, QuestionPackage } from "@/lib/question-package";
+import { otherReadings } from "@/lib/maya-voice-heard";
+import { sensitiveInput } from "@/lib/maya/sensitive-input";
 
 /** The worker's agent name: LiveKit sends a job to this worker only when the token's room asks for it. */
 export const VOICE_AGENT_NAME = "maya-voice";
@@ -42,6 +44,11 @@ export const JOIN_WAIT_MS = 2 * 60_000;
 export const MIC_WAIT_MS = VOICE_TOKEN_TTL_SECONDS * 1000;
 /** A transcript the speech-to-text is less sure of than this is uncertain: Maya confirms a number in it. */
 export const UNSURE_CONFIDENCE = 0.6;
+/**
+ * Below this bar, add the other reading of a sound-alike number ("fourteen", "forty", "14"). Real AssemblyAI
+ * finals for a clearly spoken lone "fourteen" scored 0.63 to 0.86 (n 17, 2026-11-20).
+ */
+export const SOUND_ALIKE_CONFIDENCE = 0.9;
 /** A started voice call cannot still be running after this long (ms): the admin may end it by hand. */
 export const VOICE_CALL_STALE_MS = TIME_LIMITS.endAtMs + 60_000;
 
@@ -150,7 +157,13 @@ export const TTS_DEFAULT_MODEL = "inworld-tts-2";
  * checked is refused, never passed on. Each is listed on https://docs.livekit.io/agents/models/inference/ (read
  * 2026-11-04) and in the `inference.STT` model types of LiveKit Agents for Node 1.9.5.
  */
-export const INFERENCE_STT_MODELS = ["assemblyai/universal-3-6-pro", "assemblyai/universal-3-5-pro", "assemblyai/universal-streaming", "deepgram/flux-general-en"] as const;
+export const INFERENCE_STT_MODELS = [
+  "assemblyai/universal-3-6-pro",
+  "assemblyai/assemblyai-stt-3-7-realtime-agent",
+  "assemblyai/universal-3-5-pro",
+  "assemblyai/universal-streaming",
+  "deepgram/flux-general-en",
+] as const;
 export type InferenceSttModel = (typeof INFERENCE_STT_MODELS)[number];
 export const INFERENCE_STT_DEFAULT: InferenceSttModel = "assemblyai/universal-3-6-pro";
 
@@ -165,6 +178,7 @@ export const INFERENCE_STT_DEFAULT: InferenceSttModel = "assemblyai/universal-3-
  */
 export const INFERENCE_TTS_MODELS = {
   "inworld/inworld-tts-2": { timestamp_type: "WORD" },
+  "inworld/inworld-tts-2-flash": { timestamp_type: "WORD" },
   "cartesia/sonic-3.6": { add_timestamps: true },
 } as const satisfies Record<string, Readonly<Record<string, string | boolean>>>;
 export type InferenceTtsModel = keyof typeof INFERENCE_TTS_MODELS;
@@ -228,6 +242,8 @@ export interface VoiceTuning {
    * changed.
    */
   detectorMinSilenceMs: number;
+  /** Optional AssemblyAI `voice_focus` setting through Inference (`near-field` or `far-field`). Unset: omitted. */
+  sttVoiceFocus?: "near-field" | "far-field";
 }
 
 /**
@@ -304,6 +320,9 @@ export function voiceTuning(env: Readonly<Record<string, string | undefined>>): 
     if (!/^-?\d+(?:\.\d+)?$/.test(drop) || n < -120 || n > 0) problems.push(`MAYA_DROP_SILENT_PEAK_DBFS must be "off" or a level from -120 to 0 (dBFS), not "${drop}"`);
     else tuning.dropSilentPeakDbfs = n;
   }
+  const focus = value(env, "MAYA_STT_VOICE_FOCUS");
+  if (focus === "near-field" || focus === "far-field") tuning.sttVoiceFocus = focus;
+  else if (focus) problems.push(`MAYA_STT_VOICE_FOCUS must be "near-field" or "far-field", not "${focus}"`);
   if (!problems.length) {
     if (tuning.sttMaxSilenceMs < tuning.sttMinSilenceMs) problems.push("MAYA_STT_MAX_SILENCE_MS must not be less than MAYA_STT_MIN_SILENCE_MS");
     if (tuning.sttNumberSilenceMs < tuning.sttMaxSilenceMs) problems.push("MAYA_STT_NUMBER_SILENCE_MS must not be less than MAYA_STT_MAX_SILENCE_MS");
@@ -421,15 +440,25 @@ export interface Heard {
 }
 
 /**
- * A child turn from the final transcripts of one turn: the words joined, uncertain when any part was below
- * UNSURE_CONFIDENCE, with the other alternatives of the unsure parts (so the session can confirm what it heard).
+ * Join the finals and preserve the provider's alternate readings for safety and confirmation. A split teen or a
+ * final below UNSURE_CONFIDENCE marks the turn uncertain. A sound-alike below SOUND_ALIKE_CONFIDENCE adds a reading.
  */
 export function childTurnFrom(finals: readonly (readonly Heard[])[]): { text: string; uncertain: boolean; alternatives: string[] } | null {
-  const best = finals.map((alts) => alts[0]).filter((h): h is Heard => !!h && h.text.trim().length > 0);
-  if (best.length === 0) return null;
-  const unsure = finals.filter((alts) => alts[0] && alts[0].text.trim() && typeof alts[0].confidence === "number" && alts[0].confidence < UNSURE_CONFIDENCE);
-  const alternatives = [...new Set(unsure.flatMap((alts) => alts.slice(1).map((h) => h.text.trim()).filter(Boolean)))].slice(0, 4);
-  return { text: best.map((h) => h.text.trim()).join(" "), uncertain: unsure.length > 0, alternatives };
+  const parts = finals.filter(alts => alts[0]?.text.trim());
+  if (parts.length === 0) return null;
+  const best = parts.map(alts => alts[0].text.trim());
+  const text = best.join(" ");
+  const lowest = Math.min(...parts.map(([first]) => first.confidence ?? 1));
+  const other = otherReadings(text, lowest, SOUND_ALIKE_CONFIDENCE);
+  // A sensitive fragment can lose its meaning when joined to another final. Keep it for the safety read too.
+  const provider = parts.flatMap((alts, i) => alts.slice(1).flatMap(({ text: raw }) => {
+    const part = raw.trim();
+    if (!part) return [];
+    const joined = best.with(i, part).join(" ");
+    return parts.length > 1 && sensitiveInput(part) ? [joined, part] : [joined];
+  }));
+  const alternatives = [...new Set([...provider, ...other.alternatives])];
+  return { text, uncertain: lowest < UNSURE_CONFIDENCE || other.uncertain, alternatives };
 }
 
 /**

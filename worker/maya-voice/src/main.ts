@@ -43,6 +43,7 @@ import { runWorkbookReference } from "./workbook-reference";
 import { monitoredVoiceJob } from "./monitoring";
 import { monitorProduct } from "@/lib/product-monitoring";
 import { startVoiceBaselineProfile, voiceBaselineTurn } from "./baseline";
+import { logLoadedSettings } from "./loaded-settings";
 
 const log = (...a: unknown[]) => console.log("[maya voice]", ...a);
 
@@ -136,6 +137,9 @@ export default defineAgent({
     mark("providers");
     const { tuning } = providers;
     const session = voiceSession(made, made.fake ? {} : { turn: tuning });
+    // #1146: what this call's worker actually loaded (models, silences, voice focus, turn handling), read back from the
+    // built objects, with any difference from the configuration (docs/maya-voice-endpointing.md).
+    logLoadedSettings(callId, session, made, providers);
     const patience = made.patience;
     // The opening's speed: the child's microphone published (or the job, when it was there first) to Maya's first sound.
     let firstSound = false;
