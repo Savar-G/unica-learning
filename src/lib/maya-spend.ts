@@ -369,7 +369,7 @@ export function callSpend(ledger: SpendLedger, seams: { clock: () => number; new
       let block: { id: string; from: number } | null = null;
       let coveredUntil = 0;
       let refused: "week_used" | "paused" | null = null;
-      let stopped = false;
+      let stoppedAt: number | null = null;
       const counting = new Set<Promise<void>>();
       let queue: Promise<unknown> = Promise.resolve();
       const inOrder = <T>(work: () => Promise<T>): Promise<T> => {
@@ -384,10 +384,10 @@ export function callSpend(ledger: SpendLedger, seams: { clock: () => number; new
         await ledger.settleUsd(b.id, Math.max(0, at - b.from) * perMs);
       };
       return {
-        state: () => stopped ? "paused" : refused ?? (seams.clock() < coveredUntil ? "open" : null),
+        state: () => stoppedAt !== null ? "paused" : refused ?? (seams.clock() < coveredUntil ? "open" : null),
         ensure: () => inOrder(async (): Promise<SpendState> => {
           if (refused) return refused;
-          if (stopped) return "open";
+          if (stoppedAt !== null) return "open";
           const now = seams.clock();
           if (block && now < block.from + VOICE_BLOCK_MS - VOICE_RENEW_EARLY_MS) return "open";
           const micros = usdToMicros(VOICE_BLOCK_MS * perMs, ledger.config);
@@ -438,15 +438,17 @@ export function callSpend(ledger: SpendLedger, seams: { clock: () => number; new
           void work.finally(() => counting.delete(work));
           return work;
         },
-        stop: () => inOrder(async () => {
-          stopped = true;
-          try {
-            await close(seams.clock());
-          } catch (e) {
-            console.error("[maya spend] speech-to-text not settled", call.id, e instanceof Error ? e.message : String(e));
-          }
-          await Promise.all(counting);
-        }),
+        stop() {
+          const at = stoppedAt ??= seams.clock();
+          return inOrder(async () => {
+            try {
+              await close(at);
+            } catch (e) {
+              console.error("[maya spend] speech-to-text not settled", call.id, e instanceof Error ? e.message : String(e));
+            }
+            await Promise.all(counting);
+          });
+        },
       };
     },
   };

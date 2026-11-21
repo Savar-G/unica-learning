@@ -196,7 +196,8 @@ function buildFacts(input: ChildProfileInput): ChildLearnerProfile {
   const base = input.assessment ? storedProfile(input.assessment.profile) : null;
   const baseId = base ? input.assessment!.assessmentId : null;
   const inProfile = (e: LearningEvent) => e.source === "assessment" && e.question.source === "assessment" && e.question.assessmentId === baseId;
-  const counted = input.events.filter((e) => !inProfile(e));
+  // #1144: a related question after a call is its own evidence for later teaching, never a count toward a standard.
+  const counted = input.events.filter((e) => !inProfile(e) && e.question.source !== "transfer");
 
   const fromTest = new Map((base?.standards ?? []).map((s) => [s.code, s]));
   const codes = [...new Set([...fromTest.keys(), ...counted.map((e) => e.skill.standard)])].filter((code) => STANDARDS.has(code));
@@ -250,7 +251,7 @@ function buildFacts(input: ChildProfileInput): ChildLearnerProfile {
     // Field by field, so the free text never comes along.
     preferences: { styles: [...(learning?.styles ?? [])], interests: [...(learning?.interests ?? [])] },
     parent: { feeling: learning?.feeling ?? null, goal: learning?.goal ?? null, weeklyTime: learning?.weeklyTime ?? null },
-    events: { counted: counted.length, inAssessmentProfile: input.events.length - counted.length, lastAt: newest(counted.map((e) => e.occurredAt)) },
+    events: { counted: counted.length, inAssessmentProfile: input.events.filter(inProfile).length, lastAt: newest(counted.map((e) => e.occurredAt)) },
     ai: null,
   };
 }

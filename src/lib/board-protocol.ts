@@ -590,6 +590,7 @@ export function restoreScene(snapshot: BoardSnapshot, options: SceneOptions = {}
  */
 export type SenderFailure = { ok: false; code: ProtocolCode | "unreachable" | "superseded"; reason: string; refusal?: Refusal };
 export type SendResult = { ok: true; batchId: string; state: BatchState } | SenderFailure;
+type ConnectionResult = { ok: true } | SenderFailure;
 
 export interface BoardSender {
   /**
@@ -598,7 +599,7 @@ export interface BoardSender {
    * epoch after the one it read, and reads the whole log again before Maya plans. Batches staged and not shown are
    * dropped: the speech they belonged to is over. `superseded`: another sender claimed the board; this one stops.
    */
-  connect(): Promise<{ ok: true } | SenderFailure>;
+  connect(): Promise<ConnectionResult>;
   /** Talks through another line from now on, for a reconnect. Call `connect` next. */
   useTransport(transport: BoardTransport): void;
   /** The board log as far as the sender has read it: what a reconnect restores, and what the call stores. */
@@ -612,7 +613,7 @@ export interface BoardSender {
   /** Releases a batch once its speech cue has played. Retries do not duplicate shown work. */
   release(batchId: string, scope: SpeechScope): Promise<SendResult>;
   /** Priority interruption, including requests still in flight. Does not wait for the serial request queue. */
-  interrupt(scope: SpeechScope): Promise<{ ok: true } | SenderFailure>;
+  interrupt(scope: SpeechScope, options?: { prior?: SpeechScope; recover?: boolean }): Promise<ConnectionResult>;
   /** Drops staged batches and reads the resulting log. Shown strokes stay. */
   cancel(scope: SpeechScope): Promise<{ ok: true; cancelled: string[] } | SenderFailure>;
   /** Reads the board log since the last sync: what the child saw and wrote, and where each batch is. */
@@ -648,6 +649,12 @@ export function createBoardSender(options: { sessionId: string; senderId: string
   let connected = false;
   /** Another sender took the board: this one never acts again. */
   let stopped = false;
+  let connection = 0;
+  let recovery: Promise<ConnectionResult> | null = null;
+  const ownConnection = () => {
+    const owner = connection;
+    return () => owner === connection && !stopped;
+  };
   /** The sequence number of the next new batch. */
   let sequence = 1;
   let cancels = 0;
@@ -656,6 +663,7 @@ export function createBoardSender(options: { sessionId: string; senderId: string
   let pen: PenHolder = "maya";
   const log: BoardEvent[] = [];
   const states = new Map<string, BatchState>();
+  const cancelledInPriorEpoch = new Set<string>();
 
   function record(events: BoardEvent[]) {
     for (const e of events) {
@@ -670,23 +678,27 @@ export function createBoardSender(options: { sessionId: string; senderId: string
   /** One operation at a time: the next request goes only after the answer to the one before it. */
   let queue: Promise<unknown> = Promise.resolve();
   function serial<T>(op: () => Promise<T>): Promise<T> {
-    const run = queue.then(op);
+    const run = queue.then(async () => {
+      if (recovery) await recovery;
+      return op();
+    });
     queue = run.catch(() => undefined);
     return run;
   }
 
   /** Sends one request, and the same request again when its answer is lost: every request is safe to repeat. */
-  async function request(req: BoardRequest): Promise<BoardResponse | null> {
-    for (let attempt = 0; attempt <= retries; attempt++) {
+  async function request(req: BoardRequest, current = ownConnection()): Promise<BoardResponse | null> {
+    for (let attempt = 0; attempt <= retries && current(); attempt++) {
       try {
         const r = await transport.call(req);
+        if (!current()) return null;
         pen = r.pen;
         return r;
       } catch {
         // Lost or timed out: the receiver may have acted, or may still get it later. The same request again is safe.
       }
     }
-    connected = false;
+    if (current()) connected = false;
     return null;
   }
 
@@ -701,12 +713,12 @@ export function createBoardSender(options: { sessionId: string; senderId: string
    * Returns the last answer when the sender has read the whole log, else null. Only a complete read of the epoch the
    * sender has moves the revision Maya plans on.
    */
-  async function pull(): Promise<StatusAnswer | null> {
+  async function pull(current = ownConnection()): Promise<StatusAnswer | null> {
     let parts: string[] = [];
     let partDigest = "";
     for (;;) {
-      const r = await request(parts.length > 0 ? { type: "status", sessionId, since: log.length, part: parts.length } : { type: "status", sessionId, since: log.length });
-      if (!r || !r.ok || r.type !== "status") return null;
+      const r = await request(parts.length > 0 ? { type: "status", sessionId, since: log.length, part: parts.length } : { type: "status", sessionId, since: log.length }, current);
+      if (!current() || !r || !r.ok || r.type !== "status") return null;
       if (r.part) {
         const p = r.part;
         if (p.index !== parts.length || p.index >= p.count || (parts.length > 0 && p.digest !== partDigest)) return null;
@@ -737,14 +749,18 @@ export function createBoardSender(options: { sessionId: string; senderId: string
     }
   }
 
-  async function connect(): Promise<{ ok: true } | SenderFailure> {
+  async function connect(failed?: { epoch: number; scope: SpeechScope }): Promise<ConnectionResult> {
     if (stopped) return SUPERSEDED;
+    connection++;
+    const current = ownConnection();
     connected = false;
     for (let tries = 0; tries < MAX_CONNECT_TRIES; tries++) {
       // A receiver that still answers holds the log from where the sender's ends; a fresh one answers with nothing.
-      const read = await pull();
-      if (!read) return UNREACHABLE;
+      const read = await pull(current);
+      if (!current() || !read) return UNREACHABLE;
       const seen = read.epoch;
+      if (failed && seen !== failed.epoch && seen !== pending?.epoch) return seen > claimed ? supersede() : UNREACHABLE;
+      if (failed && read.scope && read.scope.generation >= failed.scope.generation && !sameScope(read.scope, failed.scope)) return WRONG_ANSWER;
       // The reset sent before still fits what the board shows: send it again. Else claim the epoch after the one read.
       if (!pending || (seen !== pending.epoch && seen !== pending.observedEpoch)) {
         // A sender that has claimed the board and finds a newer epoch was replaced: it never takes the board back.
@@ -752,8 +768,8 @@ export function createBoardSender(options: { sessionId: string; senderId: string
         pending = { epoch: Math.max(claimed, seen) + 1, observedEpoch: seen };
         claimed = pending.epoch;
       }
-      const r = await request({ type: "reset", sessionId, senderId, epoch: pending.epoch, observedEpoch: pending.observedEpoch, scope: read.scope, snapshot: { events: [...log] } });
-      if (!r) return UNREACHABLE;
+      const r = await request({ type: "reset", sessionId, senderId, epoch: pending.epoch, observedEpoch: pending.observedEpoch, scope: read.scope, snapshot: { events: [...log] } }, current);
+      if (!current() || !r) return UNREACHABLE;
       if (!r.ok) {
         if (r.code === "behind") continue;
         // Another sender claimed the board after this one read it, or before its retry.
@@ -767,10 +783,12 @@ export function createBoardSender(options: { sessionId: string; senderId: string
       sequence = 1;
       // The child may have written after the reset acted (its answer may have come on a retry): Maya plans only on a
       // board she has read to the end.
-      const synced = await pull();
-      if (!synced) return UNREACHABLE;
+      const synced = await pull(current);
+      if (!current() || !synced) return UNREACHABLE;
       if (synced.epoch > epoch) return supersede();
       if (synced.epoch !== epoch) continue;
+      cancelledInPriorEpoch.clear();
+      for (const [id, state] of states) if (state === "cancelled") cancelledInPriorEpoch.add(id);
       connected = true;
       return { ok: true };
     }
@@ -782,8 +800,9 @@ export function createBoardSender(options: { sessionId: string; senderId: string
     if (!connected) return UNREACHABLE;
     const req: BoardRequest = { type: "apply", sessionId, epoch, sequence, baseRevision: revision, batchId: batch.transactionId, utteranceId: opts.utteranceId ?? opts.scope.utteranceId, scope: opts.scope, commands: [...batch.commands] };
     if (byteSize(req) > MAX_BATCH_BYTES) return { ok: false, code: "too_large", reason: `A batch takes at most ${MAX_BATCH_BYTES} bytes: split it.` };
-    const r = await request(req);
-    if (!r) return UNREACHABLE;
+    const current = ownConnection();
+    const r = await request(req, current);
+    if (!current() || !r) return UNREACHABLE;
     // The receiver decided this batch: the next one gets the next number.
     if (r.ok || r.code === "refused") sequence++;
     if (!r.ok) return { ok: false, code: r.code, reason: r.reason, refusal: r.refusal };
@@ -791,8 +810,9 @@ export function createBoardSender(options: { sessionId: string; senderId: string
     // Still staged, nothing else can have changed the board since it was accepted. A retry that finds it shown or
     // cancelled may carry later changes of the child's: Maya reads those with `sync`.
     if (r.state === "accepted") revision = r.revision;
-    // A retry may answer with a later state the sender has read already: never move a batch back.
-    if (r.state !== "accepted" || !states.has(r.batchId)) states.set(r.batchId, r.state);
+    // A batch cancelled before this epoch may be staged again. Within an epoch, keep any later fate already read.
+    const retried = cancelledInPriorEpoch.delete(r.batchId);
+    if (r.state !== "accepted" || !states.has(r.batchId) || retried) states.set(r.batchId, r.state);
     return { ok: true, batchId: r.batchId, state: r.state };
   }
 
@@ -801,12 +821,13 @@ export function createBoardSender(options: { sessionId: string; senderId: string
     if (!connected) return UNREACHABLE;
     // The batches sent so far, under one id: a late copy of this cancel never touches a batch sent after it.
     const cancelId = `cancel-${++cancels}`;
-    const r = await request({ type: "cancel", sessionId, epoch, cancelId, through: sequence - 1, scope });
-    if (!r) return UNREACHABLE;
+    const current = ownConnection();
+    const r = await request({ type: "cancel", sessionId, epoch, cancelId, through: sequence - 1, scope }, current);
+    if (!current() || !r) return UNREACHABLE;
     if (!r.ok) return { ok: false, code: r.code, reason: r.reason };
     if (r.type !== "cancel" || r.cancelId !== cancelId) return WRONG_ANSWER;
     // Maya plans the next step on what the child saw: read it now. The log holds what this cancel dropped.
-    if (!(await pull())) return UNREACHABLE;
+    if (!(await pull(current)) || !current()) return UNREACHABLE;
     if (r.at === null) return { ok: true, cancelled: [] };
     const event = log[r.at];
     if (event?.kind !== "cancelled" || event.cancelId !== cancelId) return WRONG_ANSWER;
@@ -816,27 +837,43 @@ export function createBoardSender(options: { sessionId: string; senderId: string
   return {
     connect: () => serial(connect),
     send: (batch, opts) => serial(() => send(batch, opts)),
-    interrupt: async (scope) => {
+    interrupt: async (scope, options) => {
       if (stopped) return SUPERSEDED;
       if (!connected) return UNREACHABLE;
-      const r = await request({ type: "stop", sessionId, epoch, scope });
-      if (!r) return UNREACHABLE;
-      if (!r.ok) return { ok: false, code: r.code, reason: r.reason };
-      return r.type === "stop" ? { ok: true } : WRONG_ANSWER;
+      const current = ownConnection();
+      const oldEpoch = epoch;
+      const prior = options?.prior;
+      for (const target of prior && !sameScope(prior, scope) ? [prior, scope] : [scope]) {
+        const r = await request({ type: "stop", sessionId, epoch: oldEpoch, scope: target }, current);
+        if (stopped) return SUPERSEDED;
+        if (!current()) return connected && epoch > oldEpoch ? { ok: true } : UNREACHABLE;
+        if (!r) {
+          if (!options?.recover) return UNREACHABLE;
+          const reconnect = connect({ epoch: oldEpoch, scope });
+          recovery = reconnect;
+          try { return await reconnect; }
+          finally { if (recovery === reconnect) recovery = null; }
+        }
+        if (!r.ok) return { ok: false, code: r.code, reason: r.reason };
+        if (r.type !== "stop") return WRONG_ANSWER;
+      }
+      return { ok: true };
     },
     release: (batchId, scope) => serial(async () => {
       if (stopped) return SUPERSEDED;
       if (!connected) return UNREACHABLE;
-      const r = await request({ type: "release", sessionId, epoch, batchId, scope });
-      if (!r) return UNREACHABLE;
+      const current = ownConnection();
+      const r = await request({ type: "release", sessionId, epoch, batchId, scope }, current);
+      if (!current() || !r) return UNREACHABLE;
       if (!r.ok) return { ok: false, code: r.code, reason: r.reason };
       if (r.type !== "release" || r.batchId !== batchId) return WRONG_ANSWER;
-      if (!(await pull())) return UNREACHABLE;
+      if (!(await pull(current)) || !current()) return UNREACHABLE;
       return { ok: true, batchId, state: r.state };
     }),
     cancel: scope => serial(() => cancel(scope)),
     sync: () => serial(async () => (await pull()) !== null),
     useTransport(next) {
+      connection++;
       transport = next;
     },
     snapshot: () => ({ events: [...log] }),

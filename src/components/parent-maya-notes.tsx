@@ -7,7 +7,8 @@ import { SupportPage } from "@/components/support-page";
 import "./parent-maya-notes.css";
 
 const RESULTS: Record<Finished, string> = {
-  on_own: "Finished alone", with_help: "Finished with help", answer_given: "Maya gave the answer", not_finished: "Not finished",
+  on_own: "Finished alone", with_help: "Finished with help", help_unconfirmed: "Answer checked",
+  answer_given: "Maya gave the answer", not_finished: "Not finished",
 };
 
 export function NoteResult({ note }: { note: ParentNote }) {

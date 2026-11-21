@@ -50,6 +50,8 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
   const { sender } = options;
   let generation = 0;
   let plannedScope: SpeechScope | null = null;
+  let speechAbort: AbortController | null = null;
+  let audioOnly: { scope: SpeechScope; controller: AbortController } | null = null;
   let deliveryScope: SpeechScope | null = null;
   let cancellation: ReturnType<BoardSender["interrupt"]> | null = null;
   let retired = false;
@@ -61,8 +63,16 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
   let sending: { scope: SpeechScope; done: Promise<void> } | null = null;
   let queue: Promise<unknown> = Promise.resolve();
   const serial = <T>(op: () => Promise<T>) => { const run = queue.then(op); queue = run.catch(() => {}); return run; };
-  const matches = (scope: SpeechScope | null) => !!scope && plannedScope?.utteranceId === scope.utteranceId && plannedScope.generation === scope.generation;
-  const owns = (scope: SpeechScope | null) => matches(scope) && !retired;
+  const same = (a: SpeechScope | null | undefined, b: SpeechScope | null) => !!b && a?.utteranceId === b.utteranceId && a.generation === b.generation;
+  const matches = (scope: SpeechScope | null) => same(plannedScope, scope);
+  const owns = (scope: SpeechScope | null) => (matches(scope) && !retired) || same(audioOnly?.scope, scope);
+  const retireAudio = (scope: SpeechScope) => {
+    if (!audioOnly || !same(audioOnly.scope, scope)) return false;
+    const { controller } = audioOnly;
+    audioOnly = null;
+    controller.abort();
+    return true;
+  };
   // The code says why, for the worker's log: a refusal, an unreachable board, or another sender (Savar's call, 2026-11-13).
   const check = (r: { ok: boolean; code?: string }) => { if (!r.ok) throw new Error(`The board did not accept the speech operation (${r.code ?? "unknown"}).`); };
   const release = async () => {
@@ -75,6 +85,7 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
       a.cues.shift();
       const reachedAt = timing.reachedAt ?? options.now();
       const result = await sender.release(cue.batch.transactionId, a.scope);
+      if (!owns(a.scope) && !result.ok) return;
       check(result);
       const acknowledgedAt = options.now();
       await options.observe?.(sender.snapshot());
@@ -101,6 +112,16 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
       return plannedScope?.utteranceId === utteranceId && !retired ? { ...plannedScope } : null;
     },
     owns,
+    signal(scope: SpeechScope): AbortSignal {
+      if (audioOnly && same(audioOnly.scope, scope)) return audioOnly.controller.signal;
+      return owns(scope) && speechAbort ? speechAbort.signal : AbortSignal.abort();
+    },
+    openAudio(id: string): SpeechScope {
+      if (audioOnly) retireAudio(audioOnly.scope);
+      const scope = { utteranceId: id, generation: ++generation };
+      audioOnly = { scope, controller: new AbortController() };
+      return scope;
+    },
     /**
      * Plans must be on the receiver before their speech is heard: the audio of a plan waits for `sent(scope)`. A new plan
      * invalidates callbacks from the previous speech. The returned promise also covers the save of the receiver's
@@ -108,6 +129,8 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
      * never waits for that save.
      */
     stage(id: string, cues: readonly BoardCue[]) {
+      speechAbort?.abort();
+      speechAbort = new AbortController();
       const gen = ++generation;
       const scope: SpeechScope = { utteranceId: id, generation: gen };
       plannedScope = scope;
@@ -126,10 +149,15 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
       const sent = serial(async () => {
         try {
           if (!owns(scope)) return;
-          if (cancellation) check(await cancellation);
+          const stopped = cancellation && await cancellation;
           if (!owns(scope)) return;
-          if (deliveryScope) { changed = true; check(await sender.cancel(deliveryScope)); }
-          if (!owns(scope)) return;
+          if (stopped) check(stopped);
+          if (deliveryScope) {
+            changed = true;
+            const cancelled = await sender.cancel(deliveryScope);
+            if (!owns(scope)) return;
+            check(cancelled);
+          }
           const plan: NonNullable<typeof active> = { scope, id, cues: copy, timings: [], position: null, playedAt: options.now(), generation: gen };
           active = plan;
           for (const [index, cue] of copy.entries()) {
@@ -137,6 +165,7 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
             deliveryScope = scope;
             changed = true;
             const result = await sender.send(cue.batch, { scope });
+            if (!owns(scope)) return;
             // The board core refused the batch (#326, call 01f456de: it was placed below a note of a batch the child's
             // board never showed). The receiver decided it, so the connection is sound and the call can go on: the words
             // are said, and neither this batch nor the batches planned after it go to the board.
@@ -149,6 +178,7 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
             check(result);
           }
         } catch (e) {
+          if (!owns(scope)) return;
           failSent(e);
           throw e;
         } finally {
@@ -169,7 +199,7 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
      * them too. A cancel here would leave the next plan, built on these batches, to be refused (call 01f456de).
      */
     show(scope: SpeechScope) {
-      if (!owns(scope)) return Promise.resolve();
+      if (!matches(scope) || !owns(scope)) return Promise.resolve();
       return serial(async () => {
         const a = active;
         if (!owns(scope) || !a || a.generation !== scope.generation) return;
@@ -191,7 +221,7 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
      * must give the batches another way. A batch the board core refuses is not drawn, nor are the ones after it.
      */
     showWith(scope: SpeechScope, batches: readonly Batch[]): Promise<{ shown: boolean; refused: StageRefusal[] }> {
-      if (!owns(scope)) return Promise.resolve({ shown: false, refused: [] });
+      if (!matches(scope) || !owns(scope)) return Promise.resolve({ shown: false, refused: [] });
       const copy = structuredClone([...batches]);
       return serial(async () => {
         const a = active;
@@ -237,27 +267,45 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
     /** Invalidate first, before any await. A late timing or playout callback cannot release old work. */
     /** A lost peer cannot receive a stop. Invalidate locally; reconnect will retire its staged work. */
     detach(scope: SpeechScope) {
+      if (retireAudio(scope)) return;
       if (!owns(scope)) return;
       retired = true;
       active = null;
+      speechAbort?.abort();
     },
-    interrupt(scope: SpeechScope) {
+    interrupt(scope: SpeechScope, recover = true) {
+      if (retireAudio(scope)) return Promise.resolve();
       if (!owns(scope)) return Promise.resolve();
       retired = true;
       active = null;
+      speechAbort?.abort();
       // Send the stop outside the serial queue. A stalled release must not delay the interruption.
+      const epoch = sender.epoch();
       const previous = deliveryScope;
       deliveryScope = scope;
-      const stop = () => previous && (previous.generation !== scope.generation || previous.utteranceId !== scope.utteranceId)
-        ? sender.interrupt(previous).then(result => { check(result); return sender.interrupt(scope); })
-        : sender.interrupt(scope);
-      const stopping = cancellation ? cancellation.then(result => { check(result); return stop(); }) : stop();
+      const stop = () => sender.epoch() === epoch ? sender.interrupt(scope, { prior: previous ?? undefined, recover }) : Promise.resolve({ ok: true } as const);
+      const sent = cancellation ? cancellation.then(result => { if (sender.epoch() === epoch) check(result); return stop(); }) : stop();
+      const stopping = sent.then(async result => {
+        if (result.ok && sender.epoch() !== epoch && cancellation === stopping) {
+          deliveryScope = null;
+          await options.observe?.(sender.snapshot());
+        }
+        return result;
+      });
       cancellation = stopping;
       // Keep priority acknowledgement independent of any release still in flight.
       // The next serial observation waits for that release and then reads the receiver's decision.
       const observed = stopping.then(async result => {
+        if (cancellation !== stopping) return;
         check(result);
-        await serial(async () => { check({ ok: await sender.sync() }); await options.observe?.(sender.snapshot()); });
+        if (sender.epoch() !== epoch) return;
+        await serial(async () => {
+          if (cancellation !== stopping || sender.epoch() !== epoch) return;
+          const synced = await sender.sync();
+          if (cancellation !== stopping || sender.epoch() !== epoch) return;
+          check({ ok: synced });
+          await options.observe?.(sender.snapshot());
+        });
       });
       observation = observed;
       void observed.catch(() => {});
@@ -267,10 +315,17 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
     connect,
     reconnect(scope: SpeechScope) {
       if (!matches(scope)) return Promise.resolve();
+      speechAbort?.abort();
       plannedScope = null;
       return connect();
     },
-    settled: async () => { await observation; await queue; await stagedObservation; },
+    settled: async ({ drainOnFailure = false } = {}) => {
+      await (drainOnFailure ? observation.catch(async () => {
+        if (await sender.sync()) await options.observe?.(sender.snapshot());
+      }) : observation);
+      await queue;
+      await stagedObservation;
+    },
   };
 }
 export type BoardSpeech = ReturnType<typeof createBoardSpeech>;

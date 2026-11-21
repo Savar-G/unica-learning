@@ -22,8 +22,8 @@
 // Logs hold ids, closed reason codes and clock times only: no words, prompts, model output, audio, keys, URLs or
 // provider error text. Memory and output are bounded (`LIMITS`).
 import { randomUUID } from "node:crypto";
-import { requestContext, withRequestContext, type RequestSource } from "@/lib/maya-request-trace";
 import type { PrepareRecord } from "@/lib/maya-prepared";
+import { requestContext, withRequestContext, type RequestSource } from "@/lib/maya-request-trace";
 
 export const TELEMETRY_VERSION = 1;
 
@@ -82,16 +82,19 @@ const KINDS: readonly string[] = ["interim", "expected"];
 const STATUSES: readonly string[] = ["used", "discarded"];
 const REASONS: readonly string[] = ["key", "text", "not_plain", "stale", "ended"];
 
+type FinalClockMark = "sttFinal" | "detectorEnd" | "detectorHeard" | "levelEnd" | "prepare";
+
 interface FinalRecord {
   id: string;
   at: number;
-  marks: Record<string, number>;
+  marks: Partial<Record<FinalClockMark, number>>;
 }
 interface TurnRecord {
   id: string;
   finalIds: string[];
+  admissionMs?: number;
   /** Copies of the last final's marks at the turn's creation, plus the turn's own later marks. */
-  marks: Record<string, number>;
+  marks: Partial<Record<FinalClockMark | TurnMark | "turnStart", number>>;
   requestIds: string[];
   utteranceIds: string[];
   decisionIds: string[];
@@ -114,11 +117,13 @@ interface DecisionRecord {
 interface RequestRecord {
   id: string;
   source: RequestSource | "unlabelled";
+  reviewKind?: "talk" | "math";
   turnId: string | null;
   prepareId: string | null;
   handleId: string | null;
   marks: Partial<Record<RequestMark, number>>;
   status: StatusClass | null;
+  timedOut?: true;
   outcome: RequestOutcome | null;
 }
 interface UtteranceRecord {
@@ -174,6 +179,7 @@ export class CallTelemetry {
   /** Hints given since the last final, and prepared requests sent with no turn since the last final. */
   private hintsSince: string[] = [];
   private unboundPrepared: string[] = [];
+  private discardedPreparation = { decisions: 0, reported: 0, estimated: 0, unknown: 0, reportedUsd: 0, estimatedUsd: 0 };
 
   constructor(private readonly options: { callId?: string | null; scopeId?: string; now?: () => number; sink?: (event: Emitted) => void } = {}) {
     // Only a closed job identity or a random diagnostic scope can enter the log.
@@ -231,7 +237,7 @@ export class CallTelemetry {
   /** One final transcript reached the worker. Its marks are its own for good. */
   final(input: { at: number; detectorEndAt?: number | null; detectorHeardAt?: number | null; levelEndAt?: number | null; prepareAt?: number | null }): string {
     const id = this.id("f");
-    const marks: Record<string, number> = { sttFinal: input.at };
+    const marks: FinalRecord["marks"] = { sttFinal: input.at };
     if (input.detectorEndAt != null) marks.detectorEnd = input.detectorEndAt;
     if (input.detectorHeardAt != null) marks.detectorHeard = input.detectorHeardAt;
     if (input.levelEndAt != null) marks.levelEnd = input.levelEndAt;
@@ -253,7 +259,7 @@ export class CallTelemetry {
     const id = this.id("t");
     const ids = finalIds.filter((x): x is string => typeof x === "string");
     const last = ids.length ? this.finals.get(ids[ids.length - 1]) : undefined;
-    this.turns.set(id, { id, finalIds: ids, marks: { ...(last?.marks ?? {}) }, requestIds: [], utteranceIds: [], decisionIds: [], decisionCount: 0, sentences: 0 });
+    this.turns.set(id, { id, finalIds: ids, marks: { ...(last?.marks ?? {}), turnStart: at }, requestIds: [], utteranceIds: [], decisionIds: [], decisionCount: 0, sentences: 0 });
     bounded(this.turns, LIMITS.turns);
     this.emit({ ev: "turn", turnId: id, finalIds: ids, at });
     return id;
@@ -282,6 +288,7 @@ export class CallTelemetry {
   admission(turnId: string | null | undefined, sample: AdmissionSample) {
     const turn = turnId ? this.turns.get(turnId) : undefined;
     if (!turn) return;
+    turn.admissionMs = Math.max(0, sample.endedAt - sample.startedAt);
     this.emit({ ev: "admission", turnId: turn.id, startedAt: sample.startedAt, endedAt: sample.endedAt, ms: Math.max(0, sample.endedAt - sample.startedAt), stt: sample.stt, sttMs: Math.max(0, sample.sttMs), block: sample.block, blockMs: Math.max(0, sample.blockMs), outcome: sample.outcome });
   }
 
@@ -317,6 +324,7 @@ export class CallTelemetry {
         throw e;
       }
       record.status = statusClass(response.status);
+      if (response.status === 408 || response.status === 504) record.timedOut = true;
       this.requestMark(record, "headers");
       if (!response.body) { finish("ok", record.status); return response; }
       let seen = false;
@@ -344,7 +352,8 @@ export class CallTelemetry {
     const ctx = requestContext();
     const id = this.id("r");
     const turnId = ctx.turnId && this.turns.has(ctx.turnId) ? ctx.turnId : null;
-    const record: RequestRecord = { id, source: ctx.source ?? "unlabelled", turnId, prepareId: ctx.prepareId ?? null, handleId: closedId(ctx.diagnosticHandleId), marks: {}, status: null, outcome: null };
+    const reviewKind = ctx.source === "review" && (ctx.reviewKind === "math" || ctx.reviewKind === "talk") ? ctx.reviewKind : undefined;
+    const record: RequestRecord = { id, source: ctx.source ?? "unlabelled", reviewKind, turnId, prepareId: ctx.prepareId ?? null, handleId: closedId(ctx.diagnosticHandleId), marks: {}, status: null, outcome: null };
     this.requests.set(id, record);
     bounded(this.requests, LIMITS.requests);
     const turn = turnId ? this.turns.get(turnId) : undefined;
@@ -407,6 +416,13 @@ export class CallTelemetry {
     const matched = handleId ? this.requestOfHandle(handleId) : { binding: "none" as const, requestId: null };
     const binding: DecisionBinding = matched.binding;
     const d: DecisionRecord = { id: this.id("d"), kind: r.kind as PrepareRecord["kind"], status: r.status as PrepareRecord["status"], leadMs: r.leadMs, reason, handleId, usd, estimated: r.estimated === true ? true : null, turnId, requestId: matched.requestId, binding };
+    if (d.status === "discarded") {
+      const totals = this.discardedPreparation;
+      totals.decisions++;
+      if (usd === null) totals.unknown++;
+      else if (d.estimated) { totals.estimated++; totals.estimatedUsd += usd; }
+      else { totals.reported++; totals.reportedUsd += usd; }
+    }
     this.decisions.set(d.id, d);
     bounded(this.decisions, LIMITS.decisions);
     if (turnId) {
@@ -483,13 +499,16 @@ export class CallTelemetry {
 
   // ----- views -----
 
+  /** Call level, including discarded work with no owning turn. Known amounts only. */
+  discardedPreparationSummary() { return { ...this.discardedPreparation }; }
+
   /**
    * One turn's own clock for the "voice turn" log line: its own entities only, in milliseconds after its earliest
    * mark. Nothing of another turn can appear in it, however the finals interleaved. The legacy first-only names
    * (`modelSent`, `ttsRequest`...) are the turn's FIRST bound request and its first ANSWER speech: an acknowledgement's
    * audio is under `ackTts*`. Null when the turn has no marks.
    */
-  turnClock(turnId: string | null | undefined): Record<string, unknown> | null {
+  turnClock(turnId: string | null | undefined) {
     const turn = turnId ? this.turns.get(turnId) : undefined;
     if (!turn) return null;
     const requests = turn.requestIds.map(id => this.requests.get(id)).filter((r): r is RequestRecord => !!r);
@@ -499,7 +518,8 @@ export class CallTelemetry {
     for (const id of turn.finalIds) times.push(...Object.values(this.finals.get(id)?.marks ?? {}));
     if (!times.length) return null;
     const t0 = Math.min(...times);
-    const rel = (m: Record<string, number | undefined>) => Object.fromEntries(Object.entries(m).filter(([, v]) => v !== undefined).map(([k, v]) => [k, (v as number) - t0]));
+    const rel = <Key extends string>(m: Partial<Record<Key, number>>) =>
+      Object.fromEntries(Object.entries(m).filter(([, v]) => v !== undefined).map(([k, v]) => [k, (v as number) - t0])) as Partial<Record<Key, number>>;
     const first = requests[0];
     const answer = utterances.find(u => u.kind === "answer");
     const ack = utterances.find(u => u.kind === "ack");
@@ -508,6 +528,7 @@ export class CallTelemetry {
       turnId: turn.id,
       finals: turn.finalIds.map(id => ({ id, ...rel(this.finals.get(id)?.marks ?? {}) })),
       ...rel(turn.marks),
+      ...(turn.admissionMs !== undefined ? { admissionMs: turn.admissionMs } : {}),
       ...(first ? { modelSent: first.marks.sent !== undefined ? first.marks.sent - t0 : null, modelHeaders: first.marks.headers !== undefined ? first.marks.headers - t0 : null, modelFirstChunk: first.marks.firstBodyChunk !== undefined ? first.marks.firstBodyChunk - t0 : null } : {}),
       ...(answer ? { ttsRequest: answer.marks.ttsRequest !== undefined ? answer.marks.ttsRequest - t0 : null, ttsFirstFrame: answer.marks.ttsFirstFrame !== undefined ? answer.marks.ttsFirstFrame - t0 : null } : {}),
       ...(ack ? { ackTtsRequest: ack.marks.ttsRequest !== undefined ? ack.marks.ttsRequest - t0 : null, ackTtsFirstFrame: ack.marks.ttsFirstFrame !== undefined ? ack.marks.ttsFirstFrame - t0 : null } : {}),
@@ -515,11 +536,13 @@ export class CallTelemetry {
       preparationSelection: turn.decisionCount ? "reported" : "unreported",
       preparationDecisionCount: turn.decisionCount,
       preparationDetailsEvicted: Math.max(0, turn.decisionCount - decisions.length),
+      requestDetailsEvicted: turn.requestIds.length - requests.length,
+      utteranceDetailsEvicted: turn.utteranceIds.length - utterances.length,
       preparations: decisions.map(d => {
         const q = d.requestId ? this.requests.get(d.requestId) : undefined;
         return { id: d.id, kind: d.kind, status: d.status, leadMs: d.leadMs, reason: d.reason, handleId: d.handleId, usd: d.usd, estimated: d.estimated, binding: d.binding, requestId: q ? q.id : null, ...(q ? { request: { source: q.source, status: q.status, outcome: q.outcome, ...rel(q.marks) } } : {}) };
       }),
-      requests: requests.map(r => ({ id: r.id, source: r.source, prepareId: r.prepareId, handleId: r.handleId, status: r.status, outcome: r.outcome, ...rel(r.marks) })),
+      requests: requests.map(r => ({ id: r.id, source: r.source, reviewKind: r.reviewKind, prepareId: r.prepareId, handleId: r.handleId, status: r.status, outcome: r.outcome, timedOut: r.timedOut, ...rel(r.marks) })),
       utterances: utterances.map(u => ({ id: u.id, kind: u.kind, speechId: u.speechId, sentenceId: u.sentenceId, sentenceIndex: u.sentenceIndex, ttsRequests: u.ttsRequests, ...rel(u.marks) })),
     };
   }

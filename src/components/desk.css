@@ -1,13 +1,15 @@
-/* The child's desk (#301, D-184), after the guidance demo video: a slim rail, Maya's column, then the tabs and the shared
-   board. One screen high on a laptop or tablet; on a phone Maya's column comes first, the board under it, and the rail
-   becomes a bar at the bottom. Every tap target is 44 px or more; with reduced motion nothing moves. */
+/* The child's desk (#301, D-184), board-led since #1151 (round r1137, option A): a top bar with Maya and Leave desk, the
+   current question, the shared board as the main work area, compact reply controls, "Maya says" with the transcript in a
+   disclosure, and the workbook navigation in a disclosure. One screen high on a laptop or tablet; on a phone the
+   question, the board and the reply controls come before the transcript and the navigation. Every tap target is 44 px
+   or more; with reduced motion nothing moves. */
 
 .desk-root {
   --desk-pick: var(--tang); --desk-warn: #b8410f; --desk-bubble: #f1f1f3; --desk-bg: #f5f5f6;
-  height: 100dvh; display: grid; background: var(--desk-bg);
-  grid-template-columns: 76px minmax(300px, 360px) minmax(0, 1fr);
-  grid-template-rows: 52px minmax(0, 1fr);
-  grid-template-areas: "top top top" "rail maya main";
+  min-height: 100dvh; display: grid; background: var(--desk-bg); color: var(--ink);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas: "top" "body";
 }
 .desk-root button { font-family: inherit; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .desk-root button:disabled { cursor: not-allowed; }
@@ -15,64 +17,92 @@
 .desk-icon { flex: none; display: block; }
 .desk-avatar { flex: none; display: block; border-radius: 50%; background: var(--accent-soft); }
 
-/* ---------- top bar: the child's desk in the middle, Sound on at the right ---------- */
-.desk-top { grid-area: top; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 16px; background: #fff; border-bottom: 1px solid var(--line); }
-.desk-title { grid-column: 2; margin: 0; display: flex; align-items: center; gap: 8px; font: 500 15px/1 var(--sans); color: var(--ink-2); }
-.desk-title-name { color: var(--ink); }
-.desk-brand::before { content: "·"; margin-right: 8px; color: var(--ink-3); }
-.desk-brand b { display: inline-block; width: 6px; height: 6px; margin-left: 3px; background: var(--tang); }
-.desk-sound { justify-self: end; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border: 1px solid var(--line-soft); border-radius: 8px; background: #fff; color: var(--ink-3); font: 500 14px/1 var(--sans); }
+/* ---------- top bar: Maya and the mode at the left, Leave desk at the right ---------- */
+.desk-top { grid-area: top; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 60px; padding: 8px 16px; background: #fff; border-bottom: 1px solid var(--line); }
+.desk-person { margin: 0; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.desk-person-name { font: 600 17px/1.2 var(--sans); letter-spacing: -0.01em; }
+.desk-status { padding: 4px 10px; border-radius: 999px; background: var(--desk-bg); font: 500 13px/1.2 var(--sans); color: var(--ink-2); }
+.desk-root.is-calling .desk-status { background: var(--accent-soft); color: var(--ink); }
+.desk-leave-open, .desk-quiet { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); font: 500 15px/1.2 var(--sans); cursor: pointer; transition: border-color 0.15s, background-color 0.15s; }
+.desk-leave-open { flex: none; }
+.desk-leave-open:hover, .desk-quiet:not(:disabled):hover { border-color: var(--ink-3); background: var(--desk-bg); }
+.desk-quiet[aria-pressed="true"] { border-color: var(--desk-warn); background: var(--accent-soft); color: var(--desk-warn); }
+.desk-quiet:disabled { color: var(--ink-3); }
 
-/* ---------- the rail ---------- */
-.desk-rail { grid-area: rail; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 8px; background: #fff; border-right: 1px solid var(--line); }
-.desk-rail-item { display: grid; justify-items: center; align-content: center; gap: 4px; width: 60px; min-height: 58px; padding: 6px 0; border: 0; border-radius: 12px; background: none; color: var(--ink-2); font: 500 11px/1 var(--sans); text-decoration: none; cursor: pointer; transition: background-color 0.15s, color 0.15s; }
-.desk-rail-item:not(:disabled):hover { background: var(--desk-bg); color: var(--ink); }
-.desk-rail-item[aria-current="page"] { background: var(--accent-soft); color: var(--tang); cursor: default; }
-.desk-rail-item:disabled { color: var(--ink-3); }
-.desk-root .desk-lock { margin-top: auto; }
+/* ---------- the lesson: question, board, reply, Maya says, navigation ---------- */
+.desk-body { grid-area: body; min-height: 0; display: grid; gap: 12px; padding: 12px clamp(12px, 1.6vw, 20px);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  grid-template-rows: auto minmax(460px, 1fr) auto auto;
+  grid-template-areas: "question question" "board help" "controls controls" "nav nav"; }
+.desk-question, .desk-maya, .desk-say, .desk-nav { min-width: 0; background: #fff; border: 1px solid var(--line); border-radius: 14px; }
 
-/* ---------- Maya's column ---------- */
-.desk-maya { grid-area: maya; min-height: 0; display: flex; flex-direction: column; background: #fff; border-right: 1px solid var(--line); }
-.desk-maya-head { flex: none; display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 10px 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
-.desk-who h1 { margin: 0; font: 600 18px/1.2 var(--sans); letter-spacing: -0.01em; }
-.desk-who p { margin: 2px 0 0; font: 400 14px/1.3 var(--sans); color: var(--ink-2); }
-.desk-limits { grid-column: 1 / -1; margin: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.desk-question { grid-area: question; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 12px 14px; }
+.desk-question-text { min-width: 0; display: grid; gap: 4px; }
+.desk-where { margin: 0; font: 400 13.5px/1.3 var(--sans); color: var(--ink-2); }
+.desk-question-none { margin: 0; font: 500 18px/1.3 var(--sans); }
+.desk-question-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.desk-question-actions .desk-pick { min-height: 48px; font-size: 16px; }
+
+/* The question: the number on a yellow tile and the question cut from the printed page, or its text in large type. */
+.desk-card { margin: 0; display: flex; align-items: center; gap: 12px; min-width: 0; }
+.desk-card figcaption { flex: none; }
+.desk-card figcaption b { display: grid; place-items: center; min-width: 30px; height: 30px; padding: 0 6px; border-radius: 7px; background: var(--sun); font: 600 15px/1 var(--sans); color: var(--ink); }
+.desk-crop { position: relative; flex: 0 1 264px; width: 264px; max-width: 100%; overflow: hidden; border-radius: 8px; border: 1px solid var(--line-soft); background: #fff; }
+.desk-crop img { position: absolute; max-width: none; height: auto; display: block; }
+[data-look="warm"] .desk-card-text { margin: 0; font: 600 24px/1.2 var(--sans); letter-spacing: 0.02em; font-variant-numeric: tabular-nums; }
+
+/* Maya says: her latest words, the limits, then the whole conversation in a disclosure. */
+.desk-maya { grid-area: help; height: 0; min-height: 100%; overflow: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 14px; }
+[data-look="warm"] .desk-maya h2 { margin: 0; font: 600 15px/1.2 var(--sans); }
+.desk-cue { margin: 0; font: 400 16px/1.45 var(--sans); color: var(--ink); }
+.desk-limits { margin: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .desk-limits div { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; background: var(--desk-bg); font: 400 12.5px/1.2 var(--sans); color: var(--ink-2); }
 .desk-limits dt { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; color: var(--ink); }
 .desk-limits dd { margin: 0; }
+.desk-transcript, .desk-nav { align-self: stretch; }
+.desk-transcript { border: 1px solid var(--line); border-radius: 10px; }
+.desk-root summary { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; list-style: none; font: 500 15px/1.2 var(--sans); cursor: pointer; border-radius: 10px; }
+.desk-root summary::-webkit-details-marker { display: none; }
+.desk-root summary::after { content: ""; margin-left: auto; width: 8px; height: 8px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(45deg); }
+.desk-root details[open] > summary::after { transform: translateY(2px) rotate(-135deg); }
 
-.desk-talk { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 18px; }
+.desk-talk { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 4px 12px 12px; }
 .desk-bubble { margin: 0; max-width: 92%; padding: 11px 15px; border-radius: 16px; background: var(--desk-bubble); font: 400 16px/1.45 var(--sans); color: var(--ink); }
 .desk-event { align-self: center; margin: 0; display: inline-flex; align-items: center; gap: 6px; font: 400 13px/1.3 var(--sans); color: var(--ink-2); text-align: center; }
 .desk-event.warn { align-self: stretch; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); color: var(--ink); justify-content: center; }
+.desk-maya > .desk-event { align-self: stretch; justify-content: flex-start; text-align: left; }
 
-/* The question card: the number on a yellow tile, the workbook and day, and the question cut from the printed page. */
-.desk-card { margin: 0; width: min(100%, 264px); padding: 10px 12px 12px; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: 0 1px 2px rgba(12, 12, 14, 0.05), 0 10px 24px -18px rgba(12, 12, 14, 0.35); }
-.desk-card figcaption { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font: 400 13.5px/1.2 var(--sans); color: var(--ink-2); }
-.desk-card figcaption b { display: grid; place-items: center; min-width: 28px; height: 28px; padding: 0 6px; border-radius: 7px; background: var(--sun); font: 600 15px/1 var(--sans); color: var(--ink); }
-.desk-crop { position: relative; overflow: hidden; border-radius: 8px; border: 1px solid var(--line-soft); background: #fff; }
-.desk-crop img { position: absolute; max-width: none; height: auto; display: block; }
-[data-look="warm"] .desk-card-text { margin: 0; font: 500 26px/1.2 var(--sans); letter-spacing: -0.01em; }
-
-.desk-say { flex: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 14px 18px 18px; border-top: 1px solid var(--line); }
+/* The reply controls: one compact row under the board; the call's own screens take the whole row. */
+.desk-say { grid-area: controls; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 12px; }
+.desk-say > p, .desk-say > .desk-bubble { flex: 1 1 100%; max-width: none; }
+.desk-say > .desk-compose { flex: 1 1 240px; }
+.desk-say > .desk-pick { min-height: 44px; padding: 0 16px; font-size: 15px; }
+.desk-say.is-calling > .desk-voice { flex: 1 1 100%; }
+.desk-say .desk-call { min-height: 44px; padding: 0 16px; font-size: 15px; }
 .desk-pick { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; padding: 0 18px; border: 0; border-radius: 12px; background: var(--ink); color: #fff; font: 500 17px/1 var(--sans); cursor: pointer; transition: transform 0.15s; }
-.desk-pick:hover { background: #26262b; }
-.desk-pick:active { transform: scale(0.98); }
+.desk-pick:hover:not(:disabled) { background: #26262b; }
+.desk-pick:active:not(:disabled) { transform: scale(0.98); }
+.desk-pick:disabled { opacity: 0.55; }
 .desk-soon { margin: 0; font: 400 14px/1.4 var(--sans); color: var(--ink-2); text-align: center; }
 .desk-compose { display: flex; align-items: center; gap: 8px; }
 .desk-compose input { flex: 1; min-width: 0; width: 100%; min-height: 44px; padding: 0 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--desk-bg); font: 400 16px/1 var(--sans); color: var(--ink); }
-.desk-compose input::placeholder { color: var(--ink-3); }
-.desk-compose button { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 50%; background: var(--line-soft); color: var(--ink-3); }
+.desk-compose input::placeholder { color: var(--ink-2); }
+.desk-compose button { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 50%; background: var(--line-soft); color: var(--ink-2); }
 
-/* ---------- the tabs and the board ---------- */
-.desk-body { display: contents; }
-.desk-main { grid-area: main; min-width: 0; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 14px clamp(14px, 1.6vw, 24px) 14px; }
-.desk-modes { flex: none; display: inline-flex; gap: 2px; padding: 4px; border-radius: 12px; background: #e9e9ec; }
-.desk-modes button { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 0 16px; border: 0; border-radius: 9px; background: none; font: 500 15px/1 var(--sans); color: var(--ink-2); }
-.desk-modes button:nth-child(1) .desk-icon { color: #c98a00; }
-.desk-modes button:nth-child(2) .desk-icon { color: var(--leaf); }
-.desk-modes button:nth-child(3) .desk-icon { color: var(--sky); }
-.desk-modes button[aria-pressed="true"] { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(12, 12, 14, 0.12); }
+/* The workbook navigation: collapsed under the lesson. */
+.desk-nav { grid-area: nav; }
+.desk-nav nav { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 12px 12px; }
+
+/* ---------- the board ---------- */
+.desk-main { grid-area: board; min-width: 0; height: 0; min-height: 100%; display: flex; flex-direction: column; gap: 10px; }
+/* Paper (#1151): the board stays mounted under the paper note; only its canvas hides, so nothing of the step is lost. */
+.desk-paper-note { margin: 0; padding: 12px 14px; border: 1px solid var(--desk-warn); border-radius: 12px; background: var(--accent-soft); font: 500 15px/1.4 var(--sans); color: var(--ink); }
+.desk-root[data-paper="true"] .desk-board-body, .desk-root[data-paper="true"] .desk-pen { display: none; }
+.desk-root[data-paper="true"] .desk-board { flex: none; }
+/* With the drawing hidden, the board row needs no floor: keep the reply controls on the first screen. */
+@media (min-width: 701px) and (min-height: 561px) {
+  .desk-root[data-paper="true"] .desk-body { grid-template-rows: auto minmax(0, 1fr) auto auto; }
+}
 
 .desk-board { position: relative; flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
 /* The thin colour bar of the D-037 colours, as in the video. */
@@ -80,12 +110,18 @@
 .desk-board > header { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px 10px; }
 [data-look="warm"] .desk-board h2 { margin: 0; font: 600 17px/1.2 var(--sans); letter-spacing: -0.01em; }
 .desk-board > header p { margin: 0; display: inline-flex; align-items: center; gap: 8px; font: 400 14px/1.2 var(--sans); color: var(--ink-2); }
+.desk-exchange { display: flex; flex: none; align-items: center; flex-wrap: wrap; gap: 8px; padding: 0 12px 12px; }
+.desk-exchange button { min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); font: 600 15px/1.2 var(--sans); cursor: pointer; }
+.desk-exchange .desk-exchange-go { border-color: var(--ink); background: var(--ink); color: #fff; }
+.desk-exchange button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.desk-exchange button:disabled { opacity: 0.55; cursor: default; }
+.desk-exchange p { margin: 0; color: var(--ink-2); font: 500 14px/1.4 var(--sans); }
 .desk-board-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 64px; gap: 10px; padding: 0 12px 12px; }
 .desk-canvas { position: relative; min-height: 0; display: grid; place-items: center; overflow: hidden; padding: 24px 24px 72px; border: 1px solid var(--line-soft); border-radius: 12px;
   background-color: #fff; background-image: radial-gradient(#d6d8de 1.2px, transparent 1.4px); background-size: 22px 22px; }
 .desk-canvas .maya-board { width: auto; max-width: min(100%, 560px); height: auto; max-height: 100%; border: 0; border-radius: 0; background: none; }
 .desk-caption { position: absolute; left: 14px; bottom: 14px; margin: 0; max-width: calc(100% - 28px); padding: 9px 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 6px 18px -12px rgba(12, 12, 14, 0.4); font: 500 15px/1.35 var(--sans); color: var(--ink); }
-.desk-tools { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px 0; border: 1px solid var(--line-soft); border-radius: 12px; }
+.desk-tools { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px 0; min-height: 0; overflow-y: auto; border: 1px solid var(--line-soft); border-radius: 12px; }
 .desk-tools button { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 10px; background: none; color: var(--ink-3); }
 .desk-tools button:not(:disabled) { color: var(--ink); cursor: pointer; transition: background-color 0.15s; }
 .desk-tools button:not(:disabled):hover { background: var(--desk-bg); }
@@ -98,7 +134,7 @@
 .desk-ink.you i { background: var(--ink); }
 
 .desk-pen { flex: none; display: inline-flex; align-items: center; gap: 10px; padding: 5px 5px 5px 8px; border: 1px solid var(--line); border-radius: 999px; background: #fff; font: 500 14px/1 var(--sans); }
-.desk-pen button { min-height: 40px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--tang); color: #fff; font: 600 14px/1 var(--sans); cursor: pointer; transition: transform 0.15s; }
+.desk-pen button { min-height: 44px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--tang); color: #fff; font: 600 14px/1 var(--sans); cursor: pointer; transition: transform 0.15s; }
 .desk-pen button:active { transform: scale(0.97); }
 .desk-pen button.give { border: 1px solid var(--line); background: #fff; color: var(--ink); font-weight: 500; }
 .desk-pen-tab { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--desk-bg); color: var(--ink-2); }
@@ -172,34 +208,28 @@
 .desk-dialog-btns .btn:not(.ghost) { color: #fff; }
 .desk-forgot { justify-self: start; display: inline-flex; align-items: center; min-height: 44px; color: var(--ink); text-underline-offset: 3px; }
 
-/* ---------- tablet in portrait: a narrower column for Maya ---------- */
+/* ---------- tablet in portrait: a narrower Maya says ---------- */
 @media (max-width: 1023px) and (min-width: 701px) {
-  .desk-root { grid-template-columns: 72px minmax(270px, 300px) minmax(0, 1fr); }
-  .desk-rail-item { width: 56px; }
-  .desk-modes button { padding: 0 12px; font-size: 14px; }
+  .desk-body { grid-template-columns: minmax(0, 1fr) minmax(230px, 0.45fr); }
   .desk-board-body { grid-template-columns: minmax(0, 1fr) 56px; padding: 0 10px 10px; }
   .desk-canvas { padding: 16px 16px 64px; }
 }
 
-/* ---------- phone, and a phone on its side: Maya's column, then the board; the rail is a bar at the bottom ---------- */
+/* ---------- phone, and a phone on its side: question, board and reply first; Maya says and navigation after ---------- */
 @media (max-width: 700px), (max-height: 560px) {
-  .desk-root { height: auto; min-height: 100dvh; grid-template-columns: minmax(0, 1fr); grid-template-rows: 52px auto auto;
-    grid-template-areas: "top" "maya" "main"; padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
-  .desk-top { grid-template-columns: 1fr auto; }
-  .desk-title { grid-column: 1; }
-  .desk-brand { display: none; }
-  .desk-rail { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; flex-direction: row; justify-content: space-around; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); border-right: 0; border-top: 1px solid var(--line); }
-  .desk-root .desk-lock { margin-top: 0; }
-  .desk-rail-item { width: 72px; }
-  .desk-maya { border-right: 0; border-bottom: 1px solid var(--line); }
-  .desk-talk { overflow: visible; padding: 16px; }
-  .desk-say { padding: 12px 16px 16px; }
-  .desk-main { padding: 14px 12px 16px; }
-  .desk-modes { width: 100%; }
-  .desk-modes button { flex: 1; justify-content: center; gap: 5px; padding: 0 6px; font-size: 14px; white-space: nowrap; }
+  .desk-root { height: auto; min-height: 100dvh; }
+  .desk-top { padding: 8px 12px; }
+  .desk-body { gap: 8px; padding: 8px; grid-template-columns: minmax(0, 1fr); grid-template-rows: none;
+    grid-template-areas: "question" "board" "controls" "help" "nav"; }
+  .desk-question { padding: 10px 12px; }
+  .desk-question-actions { width: 100%; }
+  .desk-question-actions > * { flex: 1 1 auto; }
+  .desk-crop { flex-basis: auto; width: min(264px, 100%); }
+  .desk-maya { height: auto; min-height: 0; overflow: visible; }
+  .desk-main { height: auto; min-height: 0; }
   .desk-board { flex: none; }
   .desk-board-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; padding: 0 10px 10px; }
-  .desk-canvas { min-height: 420px; padding: 16px 12px 64px; }
+  .desk-canvas { min-height: 340px; padding: 16px 12px 64px; }
   .desk-tools { flex-direction: row; flex-wrap: wrap; justify-content: center; padding: 4px 8px; }
   .desk-ink:first-of-type { margin-top: 0; margin-left: 6px; }
   .desk-pen { font-size: 13px; }
@@ -208,15 +238,8 @@
   .desk-stage { container-type: normal; display: block; }
   .desk-sheet { width: 100%; }
   .desk-pagebar a { padding: 0 12px; }
-  /* A voice call on a phone: Maya's board goes above the talk and stays in view while the talk scrolls under it. */
-  .desk-root.is-calling { grid-template-areas: "top" "main" "maya"; }
-  .desk-root.is-calling .desk-main { position: sticky; top: 0; z-index: 20; padding: 8px 12px; background: var(--desk-bg); border-bottom: 1px solid var(--line); }
-  .desk-root.is-calling .desk-modes { display: none; }
-  .desk-root.is-calling .desk-maya-head { display: none; }
-  .desk-root.is-calling .desk-board > header { padding: 10px 14px 6px; }
-  .desk-root.is-calling .desk-canvas { min-height: 0; height: 34dvh; padding: 8px 10px 40px; }
-  /* The call's controls (Hang up) stay in reach above the rail. */
-  .desk-root.is-calling .desk-say { position: sticky; bottom: calc(72px + env(safe-area-inset-bottom)); z-index: 20; background: #fff; border-top: 1px solid var(--line); }
+  /* A call on a phone: the call's controls (Hang up) stay in reach at the bottom of the screen. */
+  .desk-root.is-calling .desk-say { position: sticky; bottom: 0; z-index: 20; padding-bottom: calc(10px + env(safe-area-inset-bottom)); box-shadow: 0 -8px 20px -16px rgba(12, 12, 14, 0.5); }
 }
 
 @media (prefers-reduced-motion: reduce) {

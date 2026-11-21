@@ -21,6 +21,7 @@ import type { QuestionBoard } from "@/lib/desk-board";
 import { newPalmGuard, pointerDown, pointerUp, type PalmGuard } from "@/lib/whiteboard";
 import { Avatar, Icon } from "@/components/desk-icons";
 import { MayaBoard } from "@/components/maya-board";
+import { ExchangeControls, type ExchangeControl } from "@/components/maya-exchange-controls";
 
 /** The pen and the eraser, in CSS pixels. */
 const PEN_W = 5;
@@ -144,7 +145,7 @@ export interface OurBoardProps {
   /** Where the board's draft is kept: the workbook, its page and the question. */
   at: { book: string; page: number; question: number | null };
   /** A chat with Maya (#534): the board is the chat's, with her replies' batches; its draft is kept by the chat's id. */
-  chat?: { id: string; batches: readonly Batch[]; carry?: { book: string; page: number; question: number | null } };
+  chat?: { id: string; batches: readonly Batch[]; carry?: { book: string; page: number; question: number | null }; exchange?: ExchangeControl; exchangeResult?: string };
   /** Hears every change of the board this tab holds (a chat sends it to the call). */
   onChange?: (history: BoardHistory) => void;
   /**
@@ -357,9 +358,11 @@ function LiveBoard({ question, chat, onChange, restore, label, caption, still, d
     if (written > 0) {
       const all = mayaSteps(session.view().history);
       const before = all.length - written;
-      const drawing = still ? 0 : timeline(all).durationMs - (before > 0 ? timeline(all.slice(0, before)).durationMs + BATCH_GAP_MS : 0);
+      const last = session.view().history.events.findLast((e) => e.kind === "maya")?.batchId;
+      const immediate = still || last === chat.exchange?.target.batchId || last === chat.exchangeResult;
+      const drawing = immediate ? 0 : timeline(all).durationMs - (before > 0 ? timeline(all.slice(0, before)).durationMs + BATCH_GAP_MS : 0);
       handAt.current = performance.now() + Math.max(0, drawing);
-      queueMicrotask(() => setPlayed(still ? Infinity : before));
+      queueMicrotask(() => setPlayed(immediate ? Infinity : before));
       clearTimeout(handTimer.current);
       handTimer.current = undefined;
     } else if (handAt.current === null && !penHasMoved(session.view().history)) handAt.current = performance.now();
@@ -487,6 +490,10 @@ function LiveBoard({ question, chat, onChange, restore, label, caption, still, d
   }
   const layers = inkLayers(pieces);
   const childHas = pen === "child" && role === "holder";
+  const lastMaya = history.events.findLast((e) => e.kind === "maya");
+  const exchange = chat?.exchange;
+  const canExchange = exchange && lastMaya?.batchId === exchange.target.batchId;
+  const showExchangeResult = chat?.exchangeResult && lastMaya?.batchId === chat.exchangeResult;
   return (
     <>
       <section className="desk-board" id={chat ? "chat-board" : undefined} aria-labelledby="desk-board-title">
@@ -497,7 +504,7 @@ function LiveBoard({ question, chat, onChange, restore, label, caption, still, d
         <div className="desk-board-body">
           <div ref={canvas} className="desk-canvas" data-pen={pen}>
             {steps && chatView ? (
-              <MayaBoard steps={steps} viewBox={chatView} instant={still} shown={played} label={label} />
+              <MayaBoard steps={steps} viewBox={chatView} instant={still || !!canExchange || !!showExchangeResult} shown={played} label={label} />
             ) : question ? (
               // A restored board shows Maya's work at once: she wrote it before the reload.
               <MayaBoard steps={question.steps} viewBox={question.viewBox} instant={still || restored !== null} label={label} />
@@ -530,6 +537,11 @@ function LiveBoard({ question, chat, onChange, restore, label, caption, still, d
             <span className="desk-ink you"><i />You</span>
           </div>
         </div>
+        {canExchange && role === "holder" && <ExchangeControls
+          key={exchange.target.turnId}
+          {...exchange}
+          submit={(target) => tab.current?.owns() ? exchange.submit(target) : Promise.resolve(false)}
+        />}
       </section>
 
       {role === "reader" ? (

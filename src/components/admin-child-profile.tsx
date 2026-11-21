@@ -59,6 +59,9 @@ export function AdminChildProfile({ email, detail }: { email: string; detail: Ch
           <td className="adm-nowrap">{when(e.occurred_at)}</td>
           <td>{SOURCE[e.source]}</td>
           <td>{e.question_source === "workbook" ? <>Workbook page {e.workbook_page}, question {e.workbook_question}<span className="adm-sub adm-mono">{e.workbook_id}</span></>
+            : e.question_source === "transfer" ? <>Related question <span className="adm-mono">{e.generated_question}</span>
+              {e.related_event_id && <> after <a href={`#${eventAnchor(e.related_event_id)}`}>its call question</a></>}
+              <span className="adm-sub">Help: {e.assistance}. Not counted in the profile.</span></>
             : <>{e.assessment_id && <Link href={adminTestPath(e.assessment_id)}>Test</Link>} question <span className="adm-mono">{e.assessment_question_id}</span></>}</td>
           <td className="adm-mono">{e.skill_standard}</td>
           <td>{RESULT[e.result]}</td>

@@ -94,6 +94,19 @@ describe("the child's profile AI findings", () => {
     });
   });
 
+  it("never sends a related question after a call to the AI, so no finding can rest on it (#1144)", async () => {
+    const f = family();
+    const helped = await f.add(call());
+    const related = await f.add(call({
+      key: "call:transfer", result: "right", stuckStep: null, hints: 0,
+      question: { source: "transfer", relatedEventId: helped.id, text: "63 - 27 = ?" }, assistance: "independent",
+    }));
+    const ai = fakeAiClient({ answer: () => ({ findings: [finding([related.id]), finding([helped.id])] }) });
+    const result = await rebuildChildProfile(CHILD, { ...f, ai });
+    expect(result).toMatchObject({ built: true, findings: { outcome: "stored", kept: 1 } });
+    expect((await readChildProfile(f.profiles, CHILD))?.profile.ai?.findings.map((x) => x.events)).toEqual([[helped.id]]);
+  });
+
   it("drops a finding that links an event of another child or an id that does not exist, and keeps the rest", async () => {
     const f = family();
     const mine = await f.add(call());

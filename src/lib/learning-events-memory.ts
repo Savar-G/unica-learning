@@ -23,6 +23,7 @@ export function memoryLearningEventStore(families: MemoryFamilies): LearningEven
       if (!families.children.some((c) => c.id === event.childId && c.parentId === event.parentId)) return { refused: "the child is not under that parent" };
       const q = event.question;
       if (q.source === "assessment" && !families.tests?.some((t) => t.id === q.assessmentId && t.childId === event.childId)) return { refused: "the test is not the child's" };
+      if (q.source === "transfer" && !rows.some((r) => r.id === q.relatedEventId && r.childId === event.childId)) return { refused: "the related event is not the child's" };
       const stored = rows.find((r) => r.key === event.key);
       if (stored) return { created: false, event: structuredClone(stored) };
       const row = { ...structuredClone(event), id: randomUUID() };

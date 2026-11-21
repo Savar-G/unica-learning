@@ -21,8 +21,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Room as LkRoom } from "livekit-client";
 import { createBoardReceiver, type BoardSnapshot } from "@/lib/board-protocol";
 import { BOARD_RPC, boardRpcHandler } from "@/lib/board-rpc";
+import { EXCHANGE_RPC, type ExchangeTarget } from "@/lib/maya/checked-exchange";
 import { voiceDisconnectReason } from "@/lib/maya-voice-close-reason";
-import type { VoiceTicket } from "@/lib/maya-voice";
+import { BOARD_CLOSE_SETTLE_MS, HANG_UP_BOARD_DRAIN, type VoiceTicket } from "@/lib/maya-voice";
 import { newAttemptId, voiceStartTrace, type PrejoinDropReason, type PrejoinReason, type PrejoinStage, type VoiceStartDetail, type VoiceStartEvent, type VoiceTapLabel } from "@/lib/maya-voice-start-trace";
 import { addHeard, childTranscription, clearHeard, heardFinals, heardSegment, heardText, TRANSCRIPTION_TOPIC, type HeardSegment } from "@/lib/maya-voice-hearing";
 
@@ -164,6 +165,7 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
   const [seconds, setSeconds] = useState(0);
   const [fakeSpeech, setFakeSpeech] = useState(false);
   const [sending, setSending] = useState(false);
+  const exchanging = useRef(false);
   // The child's words as Maya hears them (src/lib/maya-voice-hearing.ts): on this screen only, never saved, and cleared
   // when the saved call is read again after Maya's turn.
   const [heard, setHeard] = useState<HeardSegment[]>([]);
@@ -172,7 +174,7 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
   const room = useRef<LkRoom | null>(null);
   const latest = useRef(options);
   useEffect(() => { latest.current = options; });
-  const endNotification = useRef<{ room: LkRoom; notify(): Promise<void> } | null>(null);
+  const endNotification = useRef<{ room: LkRoom; freeze(identity: string): void; notify(): Promise<void> } | null>(null);
   const agent = useRef<string | null>(null);
   const host = useRef<HTMLDivElement | null>(null);
   /** Put this on a hidden div: Maya's voice plays from audio elements kept in it. */
@@ -288,6 +290,8 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
     const onEnded = () => latest.current.onEnded();
     const r = new Room({ adaptiveStream: false, dynacast: false });
     let terminal = false;
+    let frozen = false;
+    let drain: { identity: string; until: number; timer: ReturnType<typeof setTimeout> } | null = null;
     let closed = false;
     let used = false;
     const once = new Set<VoiceStartEvent>();
@@ -309,8 +313,34 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
       const n = raw === undefined || raw === "" ? -1 : Number(raw);
       return Number.isSafeInteger(n) && n >= 0 ? n : -1;
     };
+    const clearDrain = () => {
+      if (drain) clearTimeout(drain.timer);
+      drain = null;
+    };
+    const endDrain = () => {
+      clearDrain();
+      if (room.current === r) void r.disconnect();
+    };
+    const stopMic = () => {
+      const mic = r.localParticipant.getTrackPublication(Track.Source.Microphone)?.track;
+      if (!mic) return;
+      mic.stop();
+      void r.localParticipant.unpublishTrack(mic, false).catch(() => {});
+    };
+    const freeze = (identity: string) => {
+      if (frozen) return;
+      frozen = true;
+      drain = { identity, until: Date.now() + BOARD_CLOSE_SETTLE_MS, timer: setTimeout(endDrain, BOARD_CLOSE_SETTLE_MS) };
+      agent.current = null;
+      liveSince.current = null;
+      setMaya(null);
+      stopMic();
+      for (const p of r.remoteParticipants.values()) {
+        for (const publication of p.audioTrackPublications?.values() ?? []) publication.track?.detach().forEach(el => el.remove());
+      }
+    };
     const mayaGone = () => {
-      if (room.current !== r || terminal || liveSince.current === null) return;
+      if (room.current !== r || terminal || frozen || liveSince.current === null) return;
       // ConnectionState.Reconnecting and SignalReconnecting, by value (a room without a state reads as not reconnecting).
       if (["reconnecting", "signalReconnecting"].includes(String(r.state))) return;
       if ([...r.remoteParticipants.values()].some((p) => isMaya(p) && segmentOf(p) >= newestSegment)) return;
@@ -320,8 +350,13 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
       void onUpdate();
     };
     const readMaya = () => {
-      if (room.current !== r || terminal) return;
+      if (room.current !== r) return;
       const candidates = [...r.remoteParticipants.values()].filter((p) => isMaya(p) && segmentOf(p) >= newestSegment);
+      if (terminal || frozen) {
+        if (drain && (!candidates.some(p => p.identity === drain?.identity && segmentOf(p) === newestSegment)
+          || candidates.some(p => segmentOf(p) > newestSegment))) endDrain();
+        return;
+      }
       const p = candidates.sort((a, b) => segmentOf(b) - segmentOf(a) || Number(b.identity === agent.current) - Number(a.identity === agent.current))[0];
       agent.current = p?.identity ?? null;
       if (!p) {
@@ -355,33 +390,41 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
       try { sessionStorage.setItem(storageKey, JSON.stringify({ epoch: receiver.epoch(), snapshot })); } catch {}
       latest.current.onBoard?.(snapshot, restored);
     };
-    const handleBoard = boardRpcHandler(receiver, { changed, allowed: identity => {
-      const p = [...r.remoteParticipants.values()].find(p => p.identity === identity);
-      return room.current === r && !terminal && identity === agent.current && isMaya(p) && !!p && segmentOf(p) === newestSegment;
-    } });
+    const handleBoard = boardRpcHandler(receiver, {
+      changed,
+      readOnly: () => terminal || frozen,
+      allowed(identity) {
+        const p = r.remoteParticipants.get(identity);
+        if (room.current !== r || !p || !isMaya(p) || segmentOf(p) !== newestSegment) return false;
+        return terminal || frozen ? drain?.identity === identity && Date.now() < drain.until : identity === agent.current;
+      },
+    });
     r.localParticipant.registerRpcMethod(BOARD_RPC, async data => handleBoard(data.callerIdentity, data.payload));
     // The child's words as LiveKit's worker hears them, interim and final, from this device's microphone only.
     r.registerTextStreamHandler(TRANSCRIPTION_TOPIC, (reader, from) => {
       void (async () => {
-        if (room.current !== r || terminal) return;
+        if (room.current !== r || terminal || frozen) return;
         const microphone = r.localParticipant.getTrackPublication(Track.Source.Microphone)?.trackSid ?? null;
         const attributes = reader.info.attributes;
         if (!childTranscription({ identity: from.identity, attributes, child: r.localParticipant.identity, maya: agent.current, microphone })) return;
         let text = "";
         try { text = await reader.readAll(); } catch { return; }
         const segment = heardSegment(attributes, text);
-        if (segment && room.current === r && !terminal) setLine(addHeard(heardLine.current, segment));
+        if (segment && room.current === r && !terminal && !frozen) setLine(addHeard(heardLine.current, segment));
       })();
     });
     // Maya's voice plays only in the call's room: a room joined before the tap keeps her track subscribed, not attached.
     r.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
       if (track.kind === Track.Kind.Audio && isMaya(participant)) markOnce("agent_track_subscribed");
-      if (room.current !== r || track.kind !== Track.Kind.Audio) return;
+      if (room.current !== r || terminal || frozen || track.kind !== Track.Kind.Audio) return;
       const el = track.attach();
       watchPlayback(el);
       host.current?.appendChild(el);
     });
     r.on(RoomEvent.TrackUnsubscribed, (track) => track.detach().forEach((el) => el.remove()));
+    r.on(RoomEvent.LocalTrackPublished, publication => {
+      if (room.current === r && (terminal || frozen) && publication.source === Track.Source.Microphone) stopMic();
+    });
     r.on(RoomEvent.ParticipantConnected, (p) => {
       if (isMaya(p)) markOnce("agent_present");
       readMaya();
@@ -389,13 +432,14 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
     r.on(RoomEvent.ParticipantDisconnected, readMaya);
     r.on(RoomEvent.ParticipantAttributesChanged, readMaya);
     r.on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
-      if (room.current !== r || topic !== "maya.call" || !isMaya(participant) || !participant || participant.identity !== agent.current) return;
-      let update: { ended?: boolean; error?: string; segment?: number } = {};
+      if (room.current !== r || terminal || topic !== "maya.call" || !isMaya(participant) || !participant
+        || participant.identity !== (drain?.identity ?? agent.current)) return;
+      let update: { ended?: boolean; error?: string; segment?: number; boardDrain?: boolean } = {};
       try {
         update = JSON.parse(new TextDecoder().decode(payload));
       } catch {}
       // Fatal messages require the current worker's immutable claim, including messages delayed across replacement.
-      if (segmentOf(participant) < 0 || update.segment !== segmentOf(participant)) { void onUpdate(); return; }
+      if (newestSegment < 0 || segmentOf(participant) !== newestSegment || update.segment !== newestSegment) { void onUpdate(); return; }
       if (update.error === "technical_issue") {
         setError("technical_issue");
         setPhase("failed");
@@ -403,12 +447,16 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
         refreshEnded();
       } else if (update.ended) {
         terminal = true;
+        agent.current = null;
+        liveSince.current = null;
+        setMaya(null);
         setLine([]);
         setError(null);
         setPhase("ended");
-        void r.disconnect();
+        if (update.boardDrain === true) freeze(participant.identity);
+        else endDrain();
         refreshEnded();
-      } else {
+      } else if (!frozen) {
         // A saved turn: once the screen has read it, its final words are in the transcript, so the heard line drops
         // them. Words heard after this message stay.
         const saved = heardFinals(heardLine.current);
@@ -422,6 +470,7 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
     r.on(RoomEvent.SignalReconnecting, () => roomMark("sdk_signal_reconnecting"));
     r.on(RoomEvent.Reconnected, () => { roomMark("sdk_reconnected"); readMaya(); });
     r.on(RoomEvent.Disconnected, reason => {
+      clearDrain();
       roomMark("sdk_disconnected", { disconnectReason: voiceDisconnectReason(reason) });
       closed = true;
       // A room joined before the tap that drops is forgotten: the tap joins in full.
@@ -449,7 +498,7 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
         room.current = r;
         roomCall.current = callId;
         roomAttempt.current = attempt;
-        endNotification.current = { room: r, notify: refreshEnded };
+        endNotification.current = { room: r, freeze, notify: refreshEnded };
         changed(true);
         // Maya's voice tracks the room subscribed before the tap.
         for (const p of r.remoteParticipants.values()) {
@@ -465,7 +514,7 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
       readMaya,
       watchJoin() {
         setTimeout(() => {
-          if (liveSince.current === null && room.current === r) {
+          if (!terminal && !frozen && liveSince.current === null && room.current === r) {
             setError("no_maya");
             setPhase("failed");
             void r.disconnect();
@@ -684,14 +733,20 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
     invalidate();
     const r = room.current;
     if (!r) return;
-    const notify = endNotification.current?.room === r ? endNotification.current.notify : null;
+    const ending = endNotification.current?.room === r ? endNotification.current : null;
+    const destination = agent.current;
+    const boardDrain = source === "button" && ending !== null;
     setPhase("ending");
     try {
-      if (agent.current) {
+      if (destination) {
+        if (boardDrain) ending.freeze(destination);
         closeMark("hang_up_rpc_begin");
         try {
-          await r.localParticipant.performRpc({ destinationIdentity: agent.current, method: "maya.hang_up", payload: "", responseTimeout: 5000 });
+          const reply = await r.localParticipant.performRpc({
+            destinationIdentity: destination, method: "maya.hang_up", payload: boardDrain ? HANG_UP_BOARD_DRAIN : "", responseTimeout: 5000,
+          });
           closeMark("hang_up_rpc_end", { ok: true });
+          if (boardDrain && reply === HANG_UP_BOARD_DRAIN) return;
         } catch (e) { closeMark("hang_up_rpc_end", { ok: false }); throw e; }
       }
     } catch {}
@@ -707,7 +762,7 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
         setPhase("failed");
         setError("disconnected");
       }
-      await notify?.();
+      await ending?.notify();
     }
   }, [invalidate, callId]);
 
@@ -727,7 +782,23 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
     }
   }, [sending]);
 
+  const exchange = useCallback(async (target: ExchangeTarget): Promise<boolean> => {
+    const current = room.current;
+    const owner = agent.current;
+    if (phase !== "live" || !current || roomCall.current !== callId || !owner || exchanging.current) return false;
+    exchanging.current = true;
+    try {
+      const answer = await current.localParticipant.performRpc({
+        destinationIdentity: owner, method: EXCHANGE_RPC, payload: JSON.stringify(target), responseTimeout: 5000,
+      });
+      if (room.current !== current) return false;
+      await latest.current.onUpdate();
+      return answer === "accepted" || answer === "done";
+    } catch { return false; }
+    finally { exchanging.current = false; }
+  }, [callId, phase]);
+
   /** The child's words Maya is hearing now, for the child's last bubble in light text; null when there are none. */
   const hearing = heardText(heard);
-  return { phase, maya, error, seconds, fakeSpeech, sending, hearing, audioHost, prepare, leave, connect, hangUp, say, markTap };
+  return { phase, maya, error, seconds, fakeSpeech, sending, hearing, audioHost, prepare, leave, connect, hangUp, say, exchange, markTap };
 }

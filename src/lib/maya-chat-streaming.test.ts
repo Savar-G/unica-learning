@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Batch } from "@/lib/board";
 import { learningEvents } from "@/lib/learning-events";
+import { logBaselineTurn, type BaselineTurn } from "@/lib/maya-baseline";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { memoryWordingHistoryStore, type MathReviewInput, type MathReviewResult, type TalkReviewInput, type TalkReviewResult } from "@/lib/maya";
 import { mayaCalls, type CallRecord, type CallResult, type CallSeams, type CallStore } from "@/lib/maya-call";
@@ -37,7 +38,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const WEEK = { childId: CHILD, week: "2026-11-09", month: "2026-11-01" };
 
 /** Maya's outputs for a child's words: the first, then the repair. */
-type Script = Record<string, (string | Record<string, unknown>)[]>;
+type Script = Record<string, (string | Record<string, unknown> | Error)[]>;
 type Heard = { text: string; board: Batch[] };
 
 function setup(script: Script, opts: { kind?: "chat" | "admin_test"; streamChat?: boolean | null; math?: (i: MathReviewInput) => MathReviewResult; talk?: (i: TalkReviewInput) => TalkReviewResult; store?: (base: CallStore) => CallStore; extra?: Parameters<typeof reply>[2] } = {}) {
@@ -61,6 +62,7 @@ function setup(script: Script, opts: { kind?: "chat" | "admin_test"; streamChat?
         const k = calls.get(child) ?? 0;
         calls.set(child, k + 1);
         const out = script[child]?.[k] ?? script[child]?.at(-1) ?? NEXT;
+        if (out instanceof Error) throw out;
         return typeof out === "string" ? reply(out, "guide", opts.extra ?? {}) : out;
       },
       stream: { chunk: 9, beforeEnd: () => (hold ? new Promise<void>((r) => { release = r; }) : Promise.resolve()) },
@@ -127,6 +129,44 @@ async function stored(store: CallStore, id: string) {
 }
 
 describe("#1107: a chat child turn streams its checked sentences, each saved first", () => {
+  it("#1139 measures concurrent call-boundary dispatch and retains a provider timeout after fallback", async () => {
+    const run = async (turnType: "complex" | "routine", line: string | Error): Promise<BaselineTurn> => {
+      const s = setup({ [STUCK]: [line] });
+      const view = await s.begin();
+      const start = performance.now();
+      const ms: BaselineTurn["ms"] = {};
+      const result = await s.first.api.input(view.id, view.revision, { type: "child", text: STUCK }, "Leah", {
+        part: (_text, _index, board) => {
+          ms.chatDispatch ??= performance.now() - start;
+          if (board?.some(isTrade)) ms.chatBoardDispatch ??= performance.now() - start;
+        },
+      });
+      ms.chatFinished = performance.now() - start;
+      const out = ok(result);
+      const { session } = await stored(s.store, view.id);
+      const errors = session.trace().turns.flatMap(t => t.kind === "maya" ? t.attempts.flatMap(a => a.error ?? []) : []);
+      const repair = s.first.briefs().filter(b => b.repair !== null).length;
+      return {
+        v: 1, evidence: "simulated", mode: "chat", turnType, provider: "fake-v3",
+        device: "none", network: "in-process", concurrency: 2,
+        outcome: out.output.say.length ? "completed" : "no_output", ms,
+        counts: {
+          model: s.first.briefs().length - repair, repair, talkReview: s.first.talk.requests.length,
+          mathReview: s.first.math.requests.length, requestFailed: errors.length,
+          requestTimeout: errors.filter(e => e.code === "timeout" || e.code === "http_408").length,
+        },
+      };
+    };
+    const [complex, routine] = await Promise.all([
+      run("complex", `${TRADE} ${FIRST} ${NEXT}`),
+      run("routine", Error("the model did not answer in time")),
+    ]);
+    expect(complex).toMatchObject({ outcome: "completed", ms: { chatDispatch: expect.any(Number), chatBoardDispatch: expect.any(Number) }, counts: { model: 1, requestTimeout: 0 } });
+    expect(complex.ms.chatDispatch!).toBeLessThanOrEqual(complex.ms.chatBoardDispatch!);
+    expect(complex.ms.chatBoardDispatch!).toBeLessThanOrEqual(complex.ms.chatFinished!);
+    expect(routine).toMatchObject({ outcome: "completed", counts: { model: 1, requestFailed: 1, requestTimeout: 1 } });
+    if (process.env.MAYA_BASELINE_LOG === "on") [complex, routine].forEach(logBaselineTurn);
+  });
   it.each([null, false])("a writer without server permission (streamChat=%s) never saves parts, even with a streaming listener", async (streamChat) => {
     // Falsifier: enabling writes by a header or a listener creates a checkpoint a supported old reader cannot read.
     const checkpoint = vi.fn(async () => true);

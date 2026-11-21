@@ -22,7 +22,7 @@ export interface TurnParts {
 }
 export const TURN_PARTS = ["heardMs", "modelMs", "repairMs", "reviewMs", "codeMs", "ackHoldMs", "boardMs", "voiceMs"] as const satisfies readonly (keyof TurnParts)[];
 
-export type TurnOutcome = "answered" | "no_words" | "interrupted";
+export type TurnOutcome = "answered" | "no_words" | "interrupted" | "failed";
 /** `streamed`: Maya's first sentence came before the phrase could start (D-341). */
 export type AckSkip = "child_talking" | "child_away" | "closing" | "bank_used" | "board" | "save" | "streamed";
 /**
@@ -119,6 +119,10 @@ export interface VoiceTurnSample {
    * holds AssemblyAI's end-of-turn silence. Null when the worker saw no end of speech.
    */
   sttWaitMs: number | null;
+  /** Final transcript receipt to the worker taking the turn, including any SDK endpoint hold. */
+  finalToTurnMs: number | null;
+  /** Worker taking the turn to answer playout. Available without a speech-end mark. */
+  turnToAnswerMs: number | null;
   speechEnd: SpeechEndSource | null;
   /**
    * The speech-to-text's hold by the worker's own detector alone: its end of speech to the final transcript. It uses no
@@ -235,6 +239,8 @@ export class TurnClock {
         voiceMs: this.answerSoundAt! - this.stagedAt!,
       } : null,
       sttWaitMs: end !== null && finalAt !== null ? Math.max(0, finalAt - end) : null,
+      finalToTurnMs: finalAt !== null && finalAt <= this.heardAt ? this.heardAt - finalAt : null,
+      turnToAnswerMs: answered ? this.answerSoundAt! - this.heardAt : null,
       speechEnd: end !== null ? this.heard.source : null,
       sttHoldMs: this.heard.detectorEndAt != null && finalAt !== null ? Math.max(0, finalAt - this.heard.detectorEndAt) : null,
       interimWordsAtEnd: this.extras.prepare?.interimWordsAtEnd ?? null,
@@ -267,6 +273,7 @@ export function voiceTurnReport(samples: readonly VoiceTurnSample[]) {
     turns: samples.length,
     answered: samples.filter((s) => s.outcome === "answered").length,
     interrupted: samples.filter((s) => s.outcome === "interrupted").length,
+    failed: samples.filter((s) => s.outcome === "failed").length,
     noWords: samples.filter((s) => s.outcome === "no_words").length,
     streamed: samples.filter((s) => s.streamed).length,
     firstPart: spread(samples.flatMap((s) => (s.firstPartMs === null ? [] : [s.firstPartMs]))),

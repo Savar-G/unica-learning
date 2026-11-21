@@ -380,3 +380,8 @@ Savar selected option B for AI usage and rejected the standalone prototype styli
 ### 2026-11-16: customer activity scope accepted
 
 Savar approved team actions with saved actor identity and private contact notes. Savar also approved page visits and unfinished scanner and Maya attempts. Extend the existing admin system through the direct design route. Optional telemetry follows the existing consent setting. Retained source records supply historical product facts. A missing completion is not proof of abandonment. Canonical required-page scan completion suppresses inactivity; marking stays separate.
+
+
+### 2026-11-17: Maya lesson layout and lettering selected
+
+Savar selected A, Board-led, and kept Relief SingleLine for board math. A keeps the model and written step together and lets the child switch to paper. The paper-companion layout puts the board lower on phones. The interactive-practice layout puts the action before the model. See the [comparison and checks](experiments/r1137/contract.md) and [#1150](https://github.com/Savar-G/unica-learning/issues/1150).

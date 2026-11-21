@@ -1,0 +1,67 @@
+{
+  "round": 1137,
+  "issue": "https://github.com/Savar-G/unica-learning/issues/1150",
+  "decision": "Select the primary lesson layout and the board lettering.",
+  "primary_axis": "Order and placement of the question, board, prompt, and next action",
+  "invariants": [
+    "Use 52 minus 28 and 84 divided by 4 in each layout.",
+    "Keep the current question visible in the lesson.",
+    "Support paper work, touch, keyboard, and reduced motion.",
+    "Keep the interface type constant while comparing math lettering."
+  ],
+  "options": [
+    {
+      "id": "A",
+      "artifact": "preview.html",
+      "evidence": [
+        "a-desktop.png",
+        "a-phone.png"
+      ],
+      "bet": "Keep the shared board open as the main work surface.",
+      "benefit": "The child sees the model and the written step together.",
+      "tradeoff": "A child using a workbook must select paper mode."
+    },
+    {
+      "id": "B",
+      "artifact": "preview.html",
+      "evidence": [
+        "b-desktop.png",
+        "b-phone.png"
+      ],
+      "bet": "Lead with the current question and Maya's prompt.",
+      "benefit": "The child can follow Maya while working in the workbook.",
+      "tradeoff": "On a phone, the prompt moves the board lower."
+    },
+    {
+      "id": "C",
+      "artifact": "preview.html",
+      "evidence": [
+        "c-desktop.png",
+        "c-phone.png"
+      ],
+      "bet": "Put the child's next action above the model.",
+      "benefit": "The child can act as soon as the instruction appears.",
+      "tradeoff": "The child can press the action before reading the model."
+    }
+  ],
+  "recommended_option": "A",
+  "selection": {
+    "option": "A",
+    "math_lettering": "Relief SingleLine",
+    "selected_by": "Savar",
+    "selected_on": "2026-11-17"
+  },
+  "open_decisions": [],
+  "implementation": {
+    "issue": "https://github.com/Savar-G/unica-learning/issues/1151",
+    "checked_on": "2026-11-20",
+    "evidence": [
+      "impl-desktop-chat.jpg",
+      "impl-desktop-paper.jpg",
+      "impl-desktop-exchanged.jpg",
+      "impl-tablet-chat.jpg",
+      "impl-phone-chat-reduced.jpg",
+      "impl-phone-paper.jpg"
+    ]
+  }
+}

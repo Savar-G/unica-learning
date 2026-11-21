@@ -13,6 +13,7 @@ export type RequestSource = "model" | "prepared_interim" | "prepared_expected" |
 export interface RequestContext {
   /** Absent: the code that made the request did not say. */
   source?: RequestSource;
+  reviewKind?: "talk" | "math";
   /** The worker turn that owns the request. `null`: no turn is known (a prepared request before the final). */
   turnId?: string | null;
   /** The worker's id of the interim hint that prepared the request. */

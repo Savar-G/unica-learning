@@ -60,6 +60,8 @@ import {
 import { modelInput, turnBrief, type MayaModel, type ModelInput, type TurnBrief } from "@/lib/maya-model";
 import { tutorBrief } from "@/lib/maya/tutor-prompt";
 import { continuedSay } from "@/lib/maya/tutor";
+import { checkedExchangeProposal, checkedExchangeWaitingForBoard, childExchangeProposal } from "@/lib/maya/session";
+import type { ExchangeTarget } from "@/lib/maya/checked-exchange";
 import { preparedReplies, preparedKey, preparedKeys, sameTurn, MAX_PREPARES_PER_TURN, type PrepareHypothesis, type PreparedReply, type PrepareRecord } from "@/lib/maya-prepared";
 import type { SpendHandle, SpendSeam } from "@/lib/maya-spend-seam";
 import { readReuse, withReadReuse } from "@/lib/maya/read-reuse";
@@ -433,6 +435,8 @@ export interface TextSessionOptions {
    * what it started with. On a tutor teaching turn a refused message gets one repair, also in voice.
    */
   tutor?: boolean;
+  checkedExchange?: boolean;
+  checkedRoutine?: boolean;
   /** The free-talk review (src/lib/maya-talk-review.ts), or null. D-341: it reads each reply that is not plain math talk. */
   reviewer?: TalkReviewer | null;
   /**
@@ -485,6 +489,7 @@ export interface TextSessionOptions {
   persist?: () => Promise<boolean>;
   onSayCancel?: (fromIndex: number) => void;
   onSayEnd?: () => void;
+  checkedBoardSettled?: () => Promise<void> | undefined;
   /** The time limit of one review (default REVIEW_TIME_LIMIT_MS); a late review fails the line. */
   reviewTimeLimitMs?: number;
   /**
@@ -543,6 +548,7 @@ export interface TextOutput {
   preparedKind?: "interim" | "expected";
   say: string[];
   board: Batch[];
+  exchangeTurnId?: string;
   /** The outcome when the call ended with this input. */
   ended: Outcome | null;
   /** The safety guidance to keep on screen after the call, or null. */
@@ -572,6 +578,8 @@ export interface TextSession {
   cancelPending(): void;
   /** One child turn as text. */
   child(text: string, options?: { uncertain?: boolean; alternatives?: string[] }): Promise<TextOutput>;
+  /** Accepts an exchange on the shown board and commits its checked reply as one input. */
+  exchange(target: ExchangeTarget): TextOutput | null;
   /**
    * A partial transcript of the child, who talks over Maya (`child_turn` with `final: false`): Maya's output stops
    * (`cancelled`) and nothing is judged. The full turn comes later through `child`.
@@ -596,6 +604,8 @@ export interface TextSession {
    * nothing. A skipped or cancelled drawing is no longer counted as drawn; a drawing with no word stays "sent".
    */
   boardFates(fates: readonly BoardFateReport[]): void;
+  exchangePresented(batchIds: readonly string[]): void;
+  exchangePlayback(turnId: string, playback: "finished" | "interrupted"): boolean;
   /** The child starts or stops writing. */
   writing(status: "started" | "done"): Promise<TextOutput>;
   /** The connection or a service failed: the call ends. */
@@ -680,7 +690,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   if (resume?.v === 6 && (!resume.initial || !Array.isArray(resume.log))) throw new Error("maya text: the saved event log is missing");
   if (resume && (![1, 6].includes(resume.v) || (resume.v === 6 ? resume.initial!.session.callId : resume.session.callId) !== options.callId)) throw new Error("maya text: the saved session is not this call's");
   const initial: TextLogInitial = resume?.v === 6 && resume.initial ? structuredClone(resume.initial) : {
-    session: resume ? structuredClone(resume.session) : createSession({ callId: options.callId, confirmWorkbook: options.confirmWorkbook, channel: options.channel, package: options.package, random: options.random, grade: options.grade, history: options.history, childName: options.childName, freeTalk: options.freeTalk === true, limitMs: options.limitMs, conversational: model.output === 3, tutor: options.tutor === true }),
+    session: resume ? structuredClone(resume.session) : createSession({ callId: options.callId, confirmWorkbook: options.confirmWorkbook, channel: options.channel, package: options.package, random: options.random, grade: options.grade, history: options.history, childName: options.childName, freeTalk: options.freeTalk === true, limitMs: options.limitMs, conversational: model.output === 3, tutor: options.tutor === true, checkedExchange: options.checkedExchange, checkedRoutine: options.checkedRoutine }),
     endedAt: resume?.endedAt ?? null, turns: resume?.turns ?? [], board: resume?.board ?? [],
     approved: resume?.approved, obligations: resume?.obligations, childState: resume?.childState, problems: resume?.problems,
   };
@@ -693,7 +703,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   const read = <T>(run: () => T): T => withReadReuse(reads, run);
   let folded: TextFold = checkpoint ? restoreTextCheckpoint(checkpoint) : initialTextState(initial);
   for (const e of log) folded = read(() => foldTextEvent(folded, e));
-  let needsRecovery = folded.request !== null;
+  let needsRecovery = folded.request !== null || !!folded.output.exchangeTurnId;
   let settlingInterrupted = false;
   let active: AbortController | null = null;
   let generation = 0;
@@ -721,7 +731,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   let preparationStopped = false;
   const preparations: PrepareRecord[] = structuredClone(resume?.preparations ?? []);
   const costs = new Map<PrepareRecord, PreparedReply>();
-  const cache = options.spend && model.output === 3 ? preparedReplies(model, options.spend, () => now(), options.prepareModel, options.prepareHandleId) : null;
+  const checkedRoutine = initial.session.checkedRoutine === true;
+  const cache = options.spend && model.output === 3 && !checkedRoutine ? preparedReplies(model, options.spend, () => now(), options.prepareModel, options.prepareHandleId) : null;
   let committing: { generation: number; entries: Map<string, PreparedReply>; at: number } | null = null;
   let preparedOutput: Pick<TextOutput, "prepared" | "preparedLeadMs" | "preparedKind"> = {};
   function record(entry: PreparedReply, value: PrepareRecord) {
@@ -747,7 +758,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     if (!h.text.trim() || h.text.length > 1_000) return false;
     const at = now();
     const copy = foldTextEvent(restoreTextCheckpoint(saveTextCheckpoint(folded)), { kind: "input", at, event: { type: "child_turn", at, text: h.text } });
-    if (!plainMathTurn(copy.session) || copy.session.outcome) return false;
+    if (!plainMathTurn(copy.session) || copy.session.outcome || checkedExchangeProposal(copy.session)) return false;
     // D-345: a tutor call prepares its own brief; the reply still goes through the whole-message check.
     const brief = copy.session.tutor ? tutorBrief(copy.session) as unknown as TurnBrief : turnBrief(copy.session);
     const key = preparedKey(copy.session, brief);
@@ -810,7 +821,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   const streamReviews = new Map<string, { requestId: number; result: Promise<TalkReviewResult>; stop?: AbortController }>();
   const reviewKey = (input: TalkReviewInput) => JSON.stringify(input);
   /** Math-truth reviews the stream started (two-layer true math), by their whole input, used once by the whole-reply check. */
-  const streamMathReviews = new Map<string, { requestId: number; result: Promise<MathReviewResult>; stop?: AbortController }>();
+  type StreamMathReview = { requestId: number; result: Promise<MathReviewResult>; stop: AbortController; observed: MathReview | null };
+  const streamMathReviews = new Map<string, StreamMathReview>();
   /**
    * Review of #1109 (money): the reviews a model request started while it streamed end when no one will read them: the
    * request was dropped, failed or ran out of time, the whole check stopped waiting for one, or the check is done. A
@@ -823,6 +835,13 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     for (const [id, c] of reviewStops) if (requestId === undefined || id === requestId) { c.abort(); reviewStops.delete(id); }
   };
   const mathKey = (input: MathReviewInput) => JSON.stringify(input);
+  function startStreamMath(input: MathReviewInput, requestId: number, turn: number, ms: number, own: { stop: AbortController; signal: AbortSignal }) {
+    const result = reviewMath(input, turn, ms, undefined, own.signal);
+    const entry: StreamMathReview = { requestId, result, stop: own.stop, observed: null };
+    streamMathReviews.set(mathKey(input), entry);
+    void result.then(review => { if (!own.signal.aborted) entry.observed = { text: input.sentence, result: review }; });
+    return result;
+  }
   /**
    * Final check 9 (2026-11-15): every terminal math review result that is not "true" (false, unsure after its retry,
    * malformed, an error, a time-out) is final for its sentence for the rest of the child turn: no second call of any
@@ -1062,7 +1081,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     // D-345: a tutor message streams too. A plain teaching sentence goes out once every check passes on the words so
     // far; any other sentence is held, alone, while its safety review runs in parallel; a refused review or a failed
     // check stops the stream, and the rest waits for the whole message and its whole check.
-    const tutor = model.output === 3 && options.onSayPart && !folded.sent?.length && folded.pending.length === 0 ? read(() => tutorStream(folded.session)) : null;
+    const tutor = model.output === 3 && options.onSayPart && !checkedRoutine && !folded.session.checkedExchange && !folded.sent?.length && folded.pending.length === 0 ? read(() => tutorStream(folded.session)) : null;
     // Final check 3: a refusal of a sentence that judges correctness is binding, whatever rules it names.
     const passes = (r: TalkReviewResult, sentence: string) => r.verdict === "pass" || (r.verdict === "fail" && r.rules.length > 0 && r.rules.every((id) => TUTOR_REVIEW_IGNORED.includes(id)) && !bindingReview(sentence, tutor?.wordAnswer, tutor?.stance));
     const flushTutor = () => {
@@ -1121,8 +1140,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
           if (how.math) {
             const input = read(() => mathReviewInput(session, sentence, before));
             const own = reviewStop();
-            const started = reviewMath(input, session.turns.length, earlyLimit(mathLimit(true)), undefined, own.signal);
-            streamMathReviews.set(mathKey(input), { requestId, result: started, stop: own.stop });
+            const started = startStreamMath(input, requestId, session.turns.length, earlyLimit(mathLimit(true)), own);
             checks.push(started.then((r) => r.verdict === "true"));
           }
           void Promise.all(checks).then((ok) => {
@@ -1140,7 +1158,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     // Which reviews a sentence needs is read as the stream reads it; a sentence that fails code's own check ends it.
     // A continuation's sentences start their reviews early too, each read after the fixed sentences (`lead`).
     // #1107: voice only. A chat turn reviews what its stream holds, and the whole check the rest, as before.
-    const early = model.output === 3 && voice && folded.session.tutor && (!folded.sent?.length || lead.length > 0) && folded.pending.length === 0 ? read(() => tutorStream(session, true)) : null;
+    const early = model.output === 3 && voice && !checkedRoutine && folded.session.tutor && (!folded.sent?.length || lead.length > 0) && folded.pending.length === 0 ? read(() => tutorStream(session, true)) : null;
     const earlyStance = early && session.conversational ? read(() => codeStance(session)) : "none";
     let earlySeen = 0;
     let earlyDone = false;
@@ -1175,7 +1193,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
           const input = read(() => mathReviewInput(session, sentence, before));
           if (!streamMathReviews.has(mathKey(input))) {
             const own = reviewStop();
-            streamMathReviews.set(mathKey(input), { requestId, result: reviewMath(input, session.turns.length, earlyLimit(mathLimit(true)), undefined, own.signal), stop: own.stop });
+            startStreamMath(input, requestId, session.turns.length, earlyLimit(mathLimit(true)), own);
           }
         }
       }
@@ -1288,10 +1306,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     // 2026-11-15 (voice fallbacks): a tutor repair after streamed sentences continues them (as the fold steps it).
     const continuation = candidate.continuation === true && candidate.source === "repair" && !!folded.sent?.length && !!folded.session.tutor;
     const first = read(() => step(folded.session, { type: "proposal", at: now(), proposal: candidate.proposal, ...(folded.sent?.length ? { sent: [...folded.sent] } : {}), ...(continuation ? { continuation: true } : {}) }));
-    const texts = [...new Set(first.refusal ? [] : first.effects.flatMap((e) => e.kind === "say" ? e.talk ?? [] : []).filter((t) => t.code === null && t.review === "not_run").map((t) => t.proposed))];
+    const texts = [...new Set(checkedRoutine || first.refusal ? [] : first.effects.flatMap((e) => e.kind === "say" ? e.talk ?? [] : []).filter((t) => t.code === null && t.review === "not_run").map((t) => t.proposed))];
     // Two-layer true math: the tutor sentences code did not read whole, each with the sentences before it in the message.
     const said = first.refusal ? [] : first.effects.flatMap((e) => (e.kind === "say" ? [e] : []));
-    const mathTexts = [...new Set(said.flatMap((e) => (e.math ?? []).filter((m) => m.verdict === "not_run").map((m) => m.sentence)))];
+    const mathTexts = checkedRoutine ? [] : [...new Set(said.flatMap((e) => (e.math ?? []).filter((m) => m.verdict === "not_run").map((m) => m.sentence)))];
     const t0 = now();
     const before = folded.session;
     const stance = before.conversational ? read(() => codeStance(before)) : "none";
@@ -1331,7 +1349,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const reviewed = Promise.all([reviews, mathReviews]).then(([results, maths]) => {
       for (const key of used) streamReviews.delete(key);
       for (const key of mathUsed) streamMathReviews.delete(key);
-      append({ kind: "review", at: now(), requestId, reviews: results, mathReviews: maths, ...((texts.length && options.reviewer) || (mathTexts.length && options.mathReviewer) ? { reviewMs: now() - t0 } : {}), drawMode: "derive" });
+      // #1045: a complete review can be left unused when a later sentence fails the code check.
+      const unusedMath = [...streamMathReviews.values()].flatMap(r => r.requestId === requestId && r.observed ? [r.observed] : []);
+      append({ kind: "review", at: now(), requestId, reviews: results, mathReviews: maths, ...(unusedMath.length ? { unusedMath } : {}), ...((texts.length && options.reviewer) || (mathTexts.length && options.mathReviewer) ? { reviewMs: now() - t0 } : {}), drawMode: "derive" });
     });
     try { await wait(reviewed, controller); } finally { stopReviews(requestId); }
   }
@@ -1358,8 +1378,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const urgent = folded.session.safety.flagged || folded.session.contentProblem !== null;
       if (folded.childState === "child_speaking" && !urgent) break;
       if (read(() => nextActs(folded.session)).expect !== "maya") break;
-      const { state, safety } = folded.session;
-      if (options.channel === "chat" && state === "SAFETY" && safety.guided && !folded.candidate && !folded.attempts.length) {
+      const { state, safety, sensitiveHold, silence } = folded.session;
+      const fixedClose = ((checkedRoutine || options.channel === "chat") && state === "SAFETY" && safety.guided) ||
+        (sensitiveHold && silence === "close_due");
+      if (fixedClose && !folded.candidate && !folded.attempts.length) {
         closeByCode();
         break;
       }
@@ -1395,6 +1417,15 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         sendGuidance();
         continue;
       }
+      if (n === 0 && !urgent && options.checkedBoardSettled && read(() => checkedExchangeWaitingForBoard(folded.session))) {
+        const board = options.checkedBoardSettled();
+        if (board && await wait(board, controller) === stopped) break;
+      }
+      const exchange = !folded.candidate && !folded.attempts.length ? read(() => checkedExchangeProposal(folded.session)) : null;
+      if (exchange) {
+        append({ kind: "checked_exchange", at: now(), proposal: exchange });
+        if (folded.output.exchangeTurnId) continue;
+      }
       // D-345: on a tutor call, only a tutor teaching turn gets a repair (also in voice); any other turn is code's own line.
       const tutorTurn = folded.session.tutor ? read(() => tutorTeachingNow(folded.session)) : null;
       if (folded.candidate) await reviewCandidate(controller);
@@ -1404,7 +1435,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const safetyDue = folded.session.safety.flagged && !folded.session.safety.guided;
       // Words already streamed cannot be taken back: on a controller turn a refusal then goes straight to code's line after
       // them; on a tutor teaching turn the repair continues them (below). A turn a priority gate took after the model's reading (a scope redirect, a confirmation) is code's own line.
-      const repairs = tutorTurn === null ? options.modelRepair !== false : tutorTurn && read(() => tutorTeachingNow(folded.session));
+      const repairs = !checkedRoutine && (tutorTurn === null ? options.modelRepair !== false : tutorTurn && read(() => tutorTeachingNow(folded.session)));
       // 2026-11-15 (voice fallbacks): on a tutor teaching turn, words already streamed no longer end the turn in code's
       // line: the repair continues them (continuedSay), and the whole message is checked as one. The controller's turns
       // (and the AI disclosure, safety guidance and a stop, which are code's own and never stream) keep code's line.
@@ -1437,6 +1468,11 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       } else if (refusedFirst && Date.now() < turnEndsAt) await request("repair", controller);
       if (controller.signal.aborted) break;
       if (folded.attempts.length && !folded.session.outcome) {
+        const exchange = read(() => checkedExchangeProposal(folded.session, true));
+        if (exchange) {
+          append({ kind: "checked_exchange", at: now(), proposal: exchange });
+          if (folded.output.exchangeTurnId) continue;
+        }
         const refused = folded.attempts.filter((a) => a.refusal !== null).map((a) => a.proposal);
         for (const proposal of read(() => fallbacks(folded.session, refused))) {
           append({ kind: "fallback", at: now(), proposal, drawMode: "derive" });
@@ -1495,6 +1531,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     if (quietOpening) { quietOpening = false; return; }
     // #1107: a chat that saves its parts sends only saved parts; the rest reaches the desk with the saved reply.
     if (options.persist) return;
+    // Return the checked speech and its cues together, after the caller's save.
+    if (out.exchangeTurnId || (checkedRoutine && options.onGuidance)) { options.onSayEnd?.(); return; }
     if (!options.onSayPart && !options.onSayEnd) return;
     // Sentences streamed while the reply came in were sent already, in order: the rest follow them.
     const queue = [...streamedSentences];
@@ -1538,10 +1576,11 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       startedAt: iso(session.startedAt), endedAt: iso(outcome ? endedAt ?? session.now : null),
       model: { id: model.id, promptVersion: model.promptVersion }, versions: { proposal: PROPOSAL_VERSION, lines: LINES_VERSION, session: session.version },
       question: { id: typeof raw.id === "string" ? raw.id : null, ref: raw.ref ?? null, text: typeof raw.text === "string" ? raw.text : null, hash: packageHash(options.package) },
-      freeTalk: session.freeTalk, reviewer: options.reviewer ? { id: options.reviewer.id, promptVersion: options.reviewer.promptVersion } : null,
-      ...(session.tutor ? { mathReviewer: options.mathReviewer ? { id: options.mathReviewer.id, promptVersion: options.mathReviewer.promptVersion, ...(options.mathReviewer.retry ? { retryId: options.mathReviewer.retry.id } : {}) } : null } : {}),
+      freeTalk: session.freeTalk, reviewer: !checkedRoutine && options.reviewer ? { id: options.reviewer.id, promptVersion: options.reviewer.promptVersion } : null,
+      ...(session.tutor ? { mathReviewer: !checkedRoutine && options.mathReviewer ? { id: options.mathReviewer.id, promptVersion: options.mathReviewer.promptVersion, ...(options.mathReviewer.retry ? { retryId: options.mathReviewer.retry.id } : {}) } : null } : {}),
       scopeRefusals: structuredClone(session.scopeRefusals ?? []),
       ...(preparations.length ? { preparations: preparationRecords() } : {}),
+      ...(session.checkedExchange ? { checkedExchange: structuredClone(session.checkedExchange) } : {}),
       obligations: structuredClone(obligations), turns: structuredClone(turns), board: structuredClone(board), outcome, counts: { ...traceCounts(turns), boardFates: boardFateCounts(board) },
     }, options.childName ?? null);
   }
@@ -1560,6 +1599,20 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const version = generation;
       return pending.then((out) => { if (version === generation && !out.cancelled) { if (committing) { discard(committing.entries, "not_plain"); committing = null; } prepareNext(); } return out; });
     },
+    exchange(target) {
+      recover();
+      const at = now();
+      const proposal = childExchangeProposal(folded.session, target, at);
+      if (!proposal || folded.childState === "child_speaking" || folded.pending.length) return null;
+      generation++;
+      active?.abort();
+      clearPrepares("stale");
+      append({ kind: "checked_exchange", at, proposal });
+      const out = textOutput(folded);
+      if (!out.exchangeTurnId) return null;
+      append({ kind: "delivered", at });
+      return out;
+    },
     partial: (text) => receive({ type: "child_turn", at: now(), text, final: false }, false),
     mayaSaid: (text) => receive({ type: "maya_said", at: now(), text }),
     contentProblem: (detail) => receive({ type: "content_problem", at: now(), detail: redactText(detail) }),
@@ -1570,6 +1623,21 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       // Only batches the call sent and has no word for yet (the fold checks again): no log entry for anything else.
       const known = read.filter((f) => folded.board.some((b) => b.transactionId === f.batchId && !b.fate) || folded.pending.some((p) => p.batches.some((b) => b.transactionId === f.batchId)));
       if (known.length) append({ kind: "fates", at: now(), fates: known });
+    },
+    exchangePlayback: (turnId, playback) => {
+      const turn = folded.session.checkedExchange?.turns.find((turn) => turn.id === turnId);
+      if (folded.session.outcome || !turn || turn.playback || !turn.actions.every((a) => a.delivery === "sent")) return false;
+      append({ kind: "exchange_playback", at: Math.max(now(), folded.session.now ?? 0), turnId, playback });
+      return true;
+    },
+    exchangePresented: (batchIds) => {
+      if (folded.session.outcome || !folded.session.checkedExchange) return;
+      for (const turn of folded.session.checkedExchange.turns) for (const action of turn.actions) {
+        if (!action.presented && batchIds.includes(action.batchId) && (action.fate === "shown" ||
+          folded.lateFates?.some((f) => f.batchId === action.batchId && f.fate === "shown"))) {
+          append({ kind: "exchange_presented", at: Math.max(now(), folded.session.now ?? 0), batchId: action.batchId });
+        }
+      }
     },
     writing: (status) => receive({ type: "writing", at: now(), status }),
     technical: (detail) => receive({ type: "technical", at: now(), detail: redactText(detail) }, false),

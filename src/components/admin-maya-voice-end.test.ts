@@ -16,7 +16,12 @@ vi.mock("livekit-client", () => {
   class Room {
     remoteParticipants = new Map<string, Participant>();
     handlers = new Map<string, Array<(...args: unknown[]) => void>>();
-    localParticipant = { registerRpcMethod: vi.fn(), setMicrophoneEnabled: vi.fn(async () => {}), performRpc: vi.fn(async () => {}) };
+    localParticipant = {
+      registerRpcMethod: vi.fn(),
+      setMicrophoneEnabled: vi.fn(async () => {}),
+      getTrackPublication: () => undefined,
+      performRpc: vi.fn(async () => {}),
+    };
     registerTextStreamHandler() {}
     constructor() { rooms.push(this); }
     on(event: string, fn: (...args: unknown[]) => void) { this.handlers.set(event, [...this.handlers.get(event) ?? [], fn]); }
@@ -25,7 +30,12 @@ vi.mock("livekit-client", () => {
     async startAudio() {}
     disconnect = vi.fn(async () => { this.emit("Disconnected"); });
   }
-  return { Room, RoomEvent: new Proxy({}, { get: (_, key) => key }), Track: { Kind: { Audio: "audio" } }, ParticipantKind: { AGENT: 4 } };
+  return {
+    Room,
+    RoomEvent: new Proxy({}, { get: (_, key) => key }),
+    Track: { Kind: { Audio: "audio" }, Source: { Microphone: "microphone" } },
+    ParticipantKind: { AGENT: 4 },
+  };
 });
 let root: Root | undefined;
 let host: HTMLDivElement;
@@ -72,6 +82,8 @@ it("keeps the terminal outcome when its packet arrives during Hang up", async ()
   let release!: () => void; const held = new Promise<void>((resolve) => { release = resolve; });
   f.room.localParticipant.performRpc.mockImplementation(() => held);
   await f.click("Hang up");
+  expect(f.room.localParticipant.performRpc).toHaveBeenCalledWith(expect.objectContaining({ method: "maya.hang_up", destinationIdentity: p.identity }));
+  expect(f.room.disconnect).not.toHaveBeenCalled();
   await act(async () => f.room.emit("DataReceived", new TextEncoder().encode(JSON.stringify({ segment: 1, ended: true })), p, undefined, "maya.call"));
   await act(async () => release());
   expect(f.onEnded).toHaveBeenCalledOnce(); expect(host.textContent).toContain("The call has ended.");
@@ -82,7 +94,10 @@ it("does not notify twice or clear a replacement while the old Hang up is held",
   const f = await mount(); await join(f.room);
   let release!: () => void; const held = new Promise<void>((resolve) => { release = resolve; });
   f.room.localParticipant.performRpc.mockImplementation(() => held);
-  await f.click("Hang up"); await act(async () => f.room.emit("Disconnected"));
+  await f.click("Hang up");
+  expect(f.room.localParticipant.performRpc).toHaveBeenCalledOnce();
+  expect(f.room.disconnect).not.toHaveBeenCalled();
+  await act(async () => f.room.emit("Disconnected"));
   await f.click("Connect again"); const current = rooms[1]; await join(current, worker("B", 9));
   await act(async () => release());
   expect(f.onEnded).toHaveBeenCalledOnce(); expect(current.disconnect).not.toHaveBeenCalled();
