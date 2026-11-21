@@ -82,6 +82,14 @@ it("marks imported rows without changing receipt identity or the original timest
   expect(row).not.toHaveProperty("imported_at");
 });
 
+it("accepts a LiveKit receipt and preserves its estimated cost", () => {
+  const row = usageRow({ feature: "maya" }, {
+    provider: "livekit", model: "livekit/openai/gpt-5.4-mini", costUsd: 0.001, costBasis: "estimate",
+  })!;
+  expect(parseUsageReceipt(row)).toEqual(row);
+  expect(() => parseUsageReceipt({ ...row, provider: "unknown" })).toThrow("Invalid usage receipt");
+});
+
 for (const feature of ["marking", "explain"] as const) {
   for (const context of ["production", "unknown", "practice", "evaluation", "test"] as const) {
     it(`holds ${feature}/${context} imports before any write, while live recording remains available`, async () => {
