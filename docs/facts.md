@@ -44,9 +44,9 @@ Checked date for every row: 2026-11-14.
 | The questions start at the child's school grade and adapt to their answers. It also checks number facts. | `src/app/(site)/math-assessment/page.tsx:24` | 2026-11-14 |
 | It covers numbers and operations, fractions, patterns, and shapes and measurement. | `src/app/(site)/math-assessment/page.tsx:24` | 2026-11-14 |
 | The report shows the child's math level and gaps. It arrives by email and stays in the parent's account. | `src/lib/faq.ts:18`, `src/app/(site)/math-assessment/page.tsx:21` | 2026-11-14 |
-| A sample report is public at `/sample-report`. | `DESIGN.md:33` (proof the page has), `src/app/(site)/sample-report` | 2026-11-14 |
+| A sample report is public at `/sample-report`. | `DESIGN.md:203` (proof the page has), `src/app/(site)/sample-report` | 2026-11-14 |
 | A parent can book a free 15-minute results call with a founder. unverified: flag state (`NEXT_PUBLIC_BOOKING_URL` can switch it off). | `src/lib/contact.ts:14` | 2026-11-14 |
-| A progress preview on the report says "We can help [Name] reach a grade [n] level by [Month Year]". Code works out the grade and the date from the child's test and the real plan pace. Agents may quote this sentence form for a named child only from the code's number. Agents do not write their own outcome promise. | `DESIGN.md:34` (D-323), `src/lib/progress-preview.ts` | 2026-11-14 |
+| A progress preview on the report says "We can help [Name] reach a grade [n] level by [Month Year]". Code works out the grade and the date from the child's test and the real plan pace. Agents may quote this sentence form for a named child only from the code's number. Agents do not write their own outcome promise. | `DESIGN.md:204` (D-323), `src/lib/progress-preview.ts` | 2026-11-14 |
 
 The child takes the assessment alone, in one sitting (Savar, 2026-11-14). If the child is interrupted, the saved answers wait for them; say "pick up where they left off" only for an interruption, never as a way to split the test.
 
@@ -107,7 +107,7 @@ Voice calls with Maya are not released to families. See "Never say" below. Do no
 | Unica emails the parent 7 days before the first charge, with a link to manage or cancel the plan, when the plan starts with at least 7 days of free time left. | `src/app/(site)/terms/page.tsx:37`, `src/lib/plan-reminder.ts:6`, D-222 | 2026-11-14 |
 | Nothing is charged when the parent adds a card. A card is added after the report, only if the family wants to continue. | `src/app/(site)/pricing/page.tsx:45`, `src/lib/faq.ts:25` | 2026-11-14 |
 | A sibling who starts inside the family's free window gets only the time that is left in it. A sibling who starts after the window pays at once. | `docs/plan-controls.md` (Family admission, D-306), D-324 | 2026-11-14 |
-| Unica Learning costs less than a typical learning centre. BC learning centre pages list about CAD 170 to 220 per subject a month. | `src/lib/faq.ts:9`, `DESIGN.md:41` (D-114) | 2026-11-14 |
+| Unica Learning costs less than a typical learning centre. BC learning centre pages list about CAD 170 to 220 per subject a month. | `src/lib/faq.ts:9`, `DESIGN.md:205` (D-114) | 2026-11-14 |
 
 Do not write "money-back guarantee". The free month replaced it (`src/lib/site.ts:26`).
 
@@ -133,12 +133,12 @@ Use the pricing page wording. Keep the full rules on `/terms#referrals`. Do not 
 
 | Claim you may use | Source | Checked |
 |---|---|---|
-| Card details are held by the payment provider. Unica does not store them. | `DESIGN.md:35` | 2026-11-14 |
+| Card details are held by the payment provider. Unica does not store them. | `DESIGN.md:210` | 2026-11-14 |
 | Unica uses a child's work to plan the next book and to show progress. Unica does not sell it. A parent can ask for it to be deleted at any time. | `src/lib/faq.ts:24` | 2026-11-14 |
-| The signup collects the parent's name, email and password (or Google sign-in), and each child's first name, grade and curriculum. | `DESIGN.md:35` (D-082) | 2026-11-14 |
-| A child's drawings are stored privately. The parent and the authorized Unica team can see them after sign-in. | `src/app/(site)/privacy/page.tsx:35`, `DESIGN.md:35` (D-084) | 2026-11-14 |
+| The signup collects the parent's name, email and password (or Google sign-in), and each child's first name, grade and curriculum. | `DESIGN.md:210` (D-082) | 2026-11-14 |
+| A child's drawings are stored privately. The parent and the authorized Unica team can see them after sign-in. | `src/app/(site)/privacy/page.tsx:35`, `DESIGN.md:210` (D-084) | 2026-11-14 |
 | A private photo of a finished workbook page loses its location and camera details. Unica does not keep the original camera file. The parent can delete the photo at any time. | `src/app/(site)/privacy/page.tsx:32` | 2026-11-14 |
-| Before a family is deleted, a copy of each test is kept without names, contact details, drawings, typed work or free text, and with no link to the family. | `DESIGN.md:35` (D-119) | 2026-11-14 |
+| Before a family is deleted, a copy of each test is kept without names, contact details, drawings, typed work or free text, and with no link to the family. | `DESIGN.md:210` (D-119) | 2026-11-14 |
 | Unica counts visits to public pages with no cookie and no IP address. | `src/app/(site)/privacy/page.tsx:59` | 2026-11-14 |
 | Unica does not send account names, email addresses or account identifiers to the AI that reviews a child's work. | `src/app/(site)/privacy/page.tsx:39` | 2026-11-14 |
 
@@ -151,16 +151,16 @@ Name no provider outside `/privacy`. Write "our payment provider" and "an AI ser
 | The brand is Unica Learning. | `src/lib/site.ts:2` (BRAND), `src/lib/contact.ts:1` | 2026-11-14 |
 | The mailing address is 16557 87A Ave, Surrey, BC V4N 5B2. | `src/lib/contact.ts:3` (MAILING_ADDRESS) | 2026-11-14 |
 | The support email is contact@unicalearning.com. The website is unicalearning.com. | `src/lib/contact.ts:7`, `src/lib/contact.ts:6` | 2026-11-14 |
-| The founders are Savar and Cedric. Their names go on `/our-story` and on founder-signed emails only, not on the home page. | `src/lib/contact.ts:5` (FOUNDERS_SENDER_NAME), `DESIGN.md:33` (D-060) | 2026-11-14 |
+| The founders are Savar and Cedric. Their names go on `/our-story` and on founder-signed emails only, not on the home page. | `src/lib/contact.ts:5` (FOUNDERS_SENDER_NAME), `DESIGN.md:206` (D-060) | 2026-11-14 |
 | The company was incorporated as Unica Learning Inc. in November 2026 (federal corporation, effective 2026-11-06). The site and legal pages still say "Unica Learning" with no "Inc.". Use "Unica Learning" in all copy until `/terms` and `/privacy` name the legal entity. | vault note on the incorporation, `src/lib/contact.ts:1` | 2026-11-14 |
 
 ## Never say
 
 ### Copy rules (binding, from `DESIGN.md`)
 
-- No proof we do not have: no ratings, review counts, family counts, press logos, outcome percentages or testimonials. The one exception is the home page parent reviews strip, with exact words, a role label and no name (D-338). (`DESIGN.md:33`)
-- Outcome claims are allowed (D-323) only as the code-computed progress preview. Do not invent a result, a grade gain or a date. (`DESIGN.md:34`)
-- Name no competitor brand outside `/resources` and `/blog`. Compare against categories: learning centres, private tutors and online practice apps. Where a competitor is named, cite their own page, give a date, and do not disparage them. (`DESIGN.md:41`, `DESIGN.md:42`, D-064, D-074, D-152)
+- No proof we do not have: no ratings, review counts, family counts, press logos, outcome percentages or testimonials. The one exception is the home page parent reviews strip, with exact words, a role label and no name (D-338). (`DESIGN.md:203`)
+- Outcome claims are allowed (D-323) only as the code-computed progress preview. Do not invent a result, a grade gain or a date. (`DESIGN.md:204`)
+- Name no competitor brand outside `/resources` and `/blog`. Compare against categories: learning centres, private tutors and online practice apps. Where a competitor is named, cite their own page, give a date, and do not disparage them. (`DESIGN.md:205`, D-064, D-074, D-152)
 - Never write "Pagewise". The brand is Unica Learning. (`AGENTS.md`)
 - Do not map one curriculum level to one grade. Show a grade only as a rough band. (`src/lib/curriculum.ts:1`)
 - Do not write "money-back guarantee". Do not promise a delivery time. Do not call the plan "workbooks" in marketing copy.
@@ -178,7 +178,7 @@ Each row below has a feature that exists in the repo and is off, held for approv
 | Parent dashboard for every family | The switch stays off until Savar approves. Today families with an open plan and test families get it. unverified: flag state (`PARENT_DASHBOARD_ENABLED`). | `AGENTS.md`, D-249 |
 | Monthly summary email | Off until Savar approves real-parent email. | `AGENTS.md` (`MONTHLY_SUMMARY_EMAIL_ENABLED`) |
 | Scan reminder emails | Test-only until the family launch. The privacy page says "when scan reminders become available". | `AGENTS.md` (`WORKBOOK_SCAN_REMINDERS_ENABLED`), `src/app/(site)/privacy/page.tsx:34` |
-| Fix mistakes with Maya after a marked page | Stays disabled until S9 and #337 are released. | `DESIGN.md:101` |
+| Fix mistakes with Maya after a marked page | Stays disabled until S9 and #337 are released. | `docs/scan-pages.md:248` |
 | Reading program | Planned for later. Math only today. | `src/lib/faq.ts:17` |
 | Workbooks for curricula outside BC | Waitlist only. | `src/lib/faq.ts:18` |
 | A first-month discount stacked with the free month for a referred family beyond what the pricing page says | The rules are in the terms. Do not paraphrase them. | `docs/referrals.md` |
