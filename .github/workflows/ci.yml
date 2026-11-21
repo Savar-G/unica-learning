@@ -220,7 +220,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
         timeout-minutes: 5
       - name: Fast lint (Oxlint)
-        run: npx oxlint src
+        run: npx oxlint src worker/maya-voice/src
         timeout-minutes: 2
       # Full runs (main pushes, workflow_dispatch, high-blast-radius PRs including lint config edits) also run ESLint
       # to enforce the 4 ESLint-only rules not yet implemented in Oxlint (docs/ci/README.md).
@@ -260,6 +260,9 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
         timeout-minutes: 5
+      - name: Voice worker lint (Oxlint)
+        run: npx oxlint worker/maya-voice/src
+        timeout-minutes: 2
       - name: Voice worker type check
         run: npm run voice:typecheck
         timeout-minutes: 3

@@ -33,7 +33,7 @@ export function buildChecks(rootDir) {
   return [
     {
       name: "oxlint",
-      steps: [{ cmd: binPath(rootDir, "oxlint"), args: ["src"] }],
+      steps: [{ cmd: binPath(rootDir, "oxlint"), args: ["src", "worker/maya-voice/src"] }],
     },
     {
       name: "app-typecheck",
@@ -41,6 +41,10 @@ export function buildChecks(rootDir) {
         { cmd: binPath(rootDir, "next"), args: ["typegen"] },
         { cmd: binPath(rootDir, "tsgo"), args: ["--noEmit"] },
       ],
+    },
+    {
+      name: "scripts-typecheck",
+      steps: [{ cmd: binPath(rootDir, "tsgo"), args: ["-p", "tsconfig.scripts.json"] }],
     },
     {
       name: "voice-typecheck",

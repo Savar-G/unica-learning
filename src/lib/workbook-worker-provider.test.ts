@@ -92,4 +92,24 @@ describe("worker subscription checks before claims", () => {
     expect(result.events).toEqual(["client", "queue", "claim synthetic-run false"]);
     expect(result.output).toContain("the API first");
   });
+
+  it("bundles without reaching @sentry/nextjs or Next.js runtime modules", async () => {
+    const result = await build({
+      absWorkingDir: fileURLToPath(new URL("../../", import.meta.url)),
+      entryPoints: ["scripts/workbook-worker.ts"],
+      outfile: "workbook-worker.mjs",
+      bundle: true,
+      platform: "node",
+      target: "node22",
+      format: "esm",
+      packages: "external",
+      write: false,
+      metafile: true,
+      logLevel: "silent",
+    });
+    const output = Object.values(result.metafile.outputs)[0];
+    const externals = output.imports.filter((imp) => imp.external).map((imp) => imp.path);
+    const forbidden = externals.filter((spec) => spec === "@sentry/nextjs" || spec === "next" || spec.startsWith("next/"));
+    expect(forbidden).toEqual([]);
+  });
 });

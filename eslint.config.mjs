@@ -2,9 +2,57 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 
+const WORKER_AND_SHARED_DOMAIN_FILES = [
+  "worker/maya-voice/src/**/*.{ts,tsx,mts}",
+  "scripts/workbook-worker.ts",
+  "scripts/retention-worker.ts",
+  "src/ds/**/*.{ts,tsx}",
+  "src/lib/maya/**/*.{ts,tsx}",
+  "src/lib/maya-*.ts",
+  "src/lib/maya.ts",
+  "src/lib/board/**/*.{ts,tsx}",
+  "src/lib/board-*.ts",
+  "src/lib/board.ts",
+  "src/lib/workbook-curriculum/**/*.{ts,tsx}",
+  "src/lib/workbook-worker.ts",
+  "src/lib/workbook-ai.ts",
+  "src/lib/workbook-job*.ts",
+  "src/lib/workbook-plan*.ts",
+  "src/lib/workbook-render*.ts",
+  "src/lib/workbook-generator*.ts",
+  "src/lib/workbook-template*.ts",
+  "src/lib/assessment/**/*.{ts,tsx}",
+  "src/lib/question-package*.ts",
+  "src/lib/learning-events*.ts",
+  "src/lib/database*.ts",
+];
+
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  // Keep runtime-agnostic domain, design-system, and worker modules free of Next.js and @sentry/nextjs.
+  {
+    files: WORKER_AND_SHARED_DOMAIN_FILES,
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@sentry/nextjs",
+              message: "Shared domain, design-system, and worker modules must not import @sentry/nextjs; use @sentry/node or runtime-agnostic monitoring helpers.",
+            },
+          ],
+          patterns: [
+            {
+              group: ["next", "next/*"],
+              message: "Shared domain, design-system, and worker modules must not import Next.js runtime APIs (keep Next.js coupling in src/app or *-server.ts adapters).",
+            },
+          ],
+        },
+      ],
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
