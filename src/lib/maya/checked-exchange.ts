@@ -7,14 +7,26 @@ type ActionKind = "show" | "exchange" | "question";
 
 export const EXCHANGE_OBJECT = "exchange-before";
 export const GROUPS_OBJECT = "multiply-groups";
+/** Every board object a child can act on through the shared exchange transport. */
+export type ExchangeObjectId = typeof EXCHANGE_OBJECT | typeof GROUPS_OBJECT;
 export const EXCHANGE_RPC = "maya.exchange";
+
+/** The words on the child's control for each acting object: one row per lesson, so lessons do not share branches. */
+export function exchangeControlCopy(target: ExchangeTarget): { label: string; button: string; paper: string } {
+  if (target.objectId === GROUPS_OBJECT) return {
+    label: "Add one equal group",
+    button: `Add 1 group of ${target.groupSize}`,
+    paper: "Draw the equal groups on your paper. Then tell Maya how many groups you have and how many are in each.",
+  };
+  return { label: "Trade a ten", button: "Exchange one ten", paper: "Show the trade on your paper. Then tell Maya what changed." };
+}
 
 /** A revision names the lesson board at the time this object was offered. */
 export interface ExchangeTarget {
   lessonId: string;
   turnId: string;
   boardRevision: number;
-  objectId: typeof EXCHANGE_OBJECT | typeof GROUPS_OBJECT;
+  objectId: ExchangeObjectId;
   batchId: string;
   /** Multiplication equal-groups action (#1154): group size and next group count. */
   groupSize?: number;
