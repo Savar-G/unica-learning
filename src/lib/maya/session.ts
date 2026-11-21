@@ -72,6 +72,7 @@ import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
 import { answersOwnQuestion, askedStep, doneReply, firstTimeTurn, yesReply, type AskedRead } from "./teaching-reads";
 import { deriveDrawings, type BoardRead, type TiedDrawing } from "./board-ties";
+import { hasFalseFractionWork } from "./fraction-equations";
 import { chooseTransfer, relatedChoice, TRANSFER_MIN_MS, TRANSFER_OFFER, transferBoard, transferPackage, type RelatedStep, type TransferOperands } from "./transfer";
 import { EXCHANGE_OBJECT, exchangeChildWords, exchangeCommands, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingOffersAction, regroupingWords, sameExchangeTarget, supportsCheckedExchange, type CheckedExchangeLesson, type ExchangeAction, type ExchangeProposal, type ExchangeTarget, type ExchangeTurn, type RegroupingInstruction, type RegroupingObservation } from "./checked-exchange";
 import { agreementClause, askedStep as askedOperationStep, bindingReview, checkedSubtractionQuestion, checkTutorSay, continuedSay, stepsStated, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, FINAL_ASK, TUTOR_FIRST_TIME_WORD_LIMIT, TUTOR_REVIEW_IGNORED } from "./tutor";
@@ -4102,7 +4103,7 @@ function ownTurn(s: Session, target: WorkedStep | null, value: AnswerValue, opti
     return whole !== null ? String(whole) : run.replace(NUMBER_RUN, part => String(plainNumber(part) ?? MATH_LITERALS[part] ?? part));
   }).replace(/\b(?:equal\s+)?groups?\s+of\b/g, " times ");
   const math = groupMath(kept);
-  if (opts.fractions ? falseEquationResults(math, opts).length > 0 : [...math.matchAll(EQUATION)].some((m) => !trueEquation(m))) return "false_sum";
+  if (opts.fractions ? falseEquationResults(math, opts).length > 0 || hasFalseFractionWork(kept, opts) : [...math.matchAll(EQUATION)].some((m) => !trueEquation(m))) return "false_sum";
   // One number said to be another ("16 is 66.", "9 is 16."); a listed sum ("2, 3, 1 is 6") is a sum.
   // Read overlapping pairs too: an operand suffix ("1 is 6") must not hide a later false equality ("6 equals 5").
   for (const m of joined.matchAll(/(?=\b(\d+)\s+(?:is|equals|makes?|=)\s+(\d+)(?!\d|[./]\d))/g)) {
