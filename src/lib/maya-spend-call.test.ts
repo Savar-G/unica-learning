@@ -12,6 +12,7 @@ import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { callSpend, chargeOf, createSpendLedger, spendConfig, usdToMicros, RESERVE_USD, SPEND_CLOSE, WEEK_MICROS, type CallSpend } from "@/lib/maya-spend";
 import { SpendRefused } from "@/lib/maya-spend-ai";
 import { memorySpendStore } from "@/lib/maya-spend-memory";
+import { BLOCK_DRAIN_MS } from "@/lib/maya-spend-block";
 import { checkTrace } from "@/lib/maya-trace";
 import type { QuestionPackage } from "@/lib/question-package";
 
@@ -210,6 +211,32 @@ describe("an admin test call", () => {
   });
 });
 
+describe("the end of a voice call (#1203)", () => {
+  it.each(["end", "limit"] as const)("%s: closes and saves without waiting for model, speech-to-text or voice writes; the drain stops at BLOCK_DRAIN_MS", async (how) => {
+    const t = setup();
+    const view = ok(await t.calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: TEST_PKG, startedBy: "admin-1" })).view;
+    const opened = await t.calls.openVoice(view.id, { speechToText: "fake", voice: "fake" }, "Leah");
+    if (!opened.ok) throw new Error(opened.error);
+    await opened.call.start();
+    // The ledger stops answering every settle: the model block, the speech-to-text block and the voice.
+    vi.spyOn(t.spendStore, "settle").mockImplementation(() => new Promise(() => {}));
+    void opened.call.spoken("x".repeat(100));
+    let closed = false;
+    void (how === "end" ? opened.call.end({ reason: "child_stopped" }) : opened.call.limit()).then(() => { closed = true; });
+    await vi.waitFor(() => expect(closed).toBe(true));
+    await vi.waitFor(() => expect(t.store.rows()[0]).toMatchObject({ status: "ended" }));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      let drained = false;
+      void opened.call.spendSettled().then(() => { drained = true; });
+      await vi.advanceTimersByTimeAsync(BLOCK_DRAIN_MS - 1);
+      expect(drained).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(drained).toBe(true);
+    } finally { vi.useRealTimers(); }
+  });
+});
+
 describe("a voice call at the cap", () => {
   it("counts its speech-to-text, closes with code's line after one safety read, and is refused when new", async () => {
     const t = setup({ voiceIsTheChilds: true });
@@ -231,6 +258,8 @@ describe("a voice call at the cap", () => {
     await call.end({ reason: "child_stopped" });
     await call.settled();
     expect(t.store.rows()[0]).toMatchObject({ status: "ended" });
+    // #1203: the spend rows are written after the child is told, before the worker exits.
+    await call.spendSettled();
     expect(t.spendStore.rows().filter((r) => r.what === "speech_to_text").every((r) => r.settled)).toBe(true);
     // Budget block: the block gave its unused room back at the call's end, so the week is used up again for this check.
     t.leave(0);

@@ -1990,6 +1990,9 @@ export class VoiceCallRun {
       });
       await closing;
       if (limit && !deferred) await settling;
+      // #1203: the child was told; the process may exit after this. A prepared reply's receipt and the budget rows it
+      // completes are written first, at most BLOCK_DRAIN_MS, or the week would keep the full reservation until expiry.
+      await this.call.spendSettled();
       await this.options.closed?.();
     });
     return this.finishing;
