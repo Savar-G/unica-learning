@@ -26,6 +26,7 @@ import {
   type VisualSupport,
 } from "./checked-multiply";
 import { readExchangeTarget, sameExchangeTarget, type ExchangeTarget } from "./checked-exchange";
+import { committedText, saysGuess, wholeTurn, withoutExplanations } from "./numbers";
 import { TRANSFER_MIN_MS, TRANSFER_OFFER, type TransferOperands } from "./transfer";
 
 const EXAMPLE_REQUEST = /^(?:(?:can|could|would) you )?(?:please )?(?:show me (?:an? )?(?:example|how to multiply|equal groups|an array)|show me how)[.?!]*$/i;
@@ -154,7 +155,15 @@ export function multiplyExplainsMeaning(text: string, facts: MultiplyFacts): boo
     const by = smallNumber(countBy[1]);
     return by === size || (!facts.context.contextual && by === groups);
   }
-  if (/\b(?:skip[- ]?count(?:ing)?|repeated addition|add equal groups)\b/.test(lower)) return true;
+  const skipSequence = /\bskip[- ]?count(?:ing)?\s+(.*)/.exec(lower);
+  if (skipSequence) {
+    const counts = [...skipSequence[1].matchAll(new RegExp(String.raw`\b${NUMBER_PHRASE}\b`, "g"))].map((m) => smallNumber(m[0]));
+    const follows = (by: number, steps: number) =>
+      counts.length >= 2 && counts.length <= steps && counts.every((value, i) => value === (i + 1) * by);
+    return follows(size, groups) || (!facts.context.contextual && follows(groups, size));
+  }
+  if (/\b(?:repeated addition|add equal groups)\b/.test(lower) &&
+    !new RegExp(String.raw`\b${NUMBER_PHRASE}\b`).test(lower)) return true;
   const mulPair = new RegExp(
     String.raw`\bmultiply\s+(?:(${NUM_PAT})\s+(?:by|and|times)\s+(${NUM_PAT})|(?:the\s+)?(?:groups?|rows?|numbers?|them|both))\b`,
   ).exec(lower);
@@ -221,18 +230,18 @@ const UNIT_FORMS: readonly [string, string][] = [
   ["g", String.raw`g|grams?`],
   ["L", String.raw`l|lit(?:re|er)s?`],
 ];
-const MEASURE_RE = new RegExp(String.raw`(?<![\w.])(${NUMBER_PHRASE})\s*(${UNIT_FORMS.map(([, form]) => form).join("|")})(?![\w²])`, "gi");
+const MEASURE_RE = new RegExp(String.raw`^(?:my (?:final )?answer is\s+|i (?:already )?got\s+|it(?:'s| is)\s+)?(${NUMBER_PHRASE})\s*(${UNIT_FORMS.map(([, form]) => form).join("|")})$`, "i");
 const MEASURE_UNITS = new Set(UNIT_FORMS.map(([unit]) => unit));
 
-/** Each number said with a measure unit, the unit in its canonical form ("12 sq cm" and "twelve cm2" are 12 cm²). */
-function measuresSaid(text: string): { value: number; unit: string }[] {
-  const found: { value: number; unit: string }[] = [];
-  for (const m of text.matchAll(MEASURE_RE)) {
-    const value = smallNumber(m[1]);
-    const unit = UNIT_FORMS.find(([, form]) => new RegExp(`^(?:${form})$`, "i").test(m[2]))?.[0];
-    if (value !== null && unit) found.push({ value, unit });
-  }
-  return found;
+/** The number and unit the child kept, after explanations and corrections are applied. */
+function committedMeasure(text: string): { value: number; unit: string } | null {
+  if (text.includes("?") || saysGuess(text)) return null;
+  const body = wholeTurn(committedText(withoutExplanations(text)).trim().replace(/,$/, ""));
+  const match = body && MEASURE_RE.exec(body);
+  if (!match) return null;
+  const value = smallNumber(match[1]);
+  const unit = UNIT_FORMS.find(([, form]) => new RegExp(`^(?:${form})$`, "i").test(match[2]))?.[0];
+  return value !== null && unit ? { value, unit } : null;
 }
 
 /**
@@ -243,7 +252,8 @@ export function multiplyWrongUnit(text: string, facts: MultiplyFacts): boolean {
   const { product, context } = facts;
   const lower = text.toLowerCase();
   if (context.unit && MEASURE_UNITS.has(context.unit)) {
-    return measuresSaid(text).some((m) => m.value === product && m.unit !== context.unit);
+    const measure = committedMeasure(text);
+    return measure?.value === product && measure.unit !== context.unit;
   }
   const prodRe = new RegExp(String.raw`(?<![\w.])(${NUMBER_PHRASE})(?![\w.])`, "gi");
   if (![...text.matchAll(prodRe)].some((m) => smallNumber(m[1]) === product)) return false;
@@ -263,10 +273,9 @@ export function multiplyWrongUnit(text: string, facts: MultiplyFacts): boolean {
 /** Whether the child stated the right product with the question's measure unit in any written form ("12 sq cm"). */
 export function multiplyRightWithUnit(text: string, facts: MultiplyFacts): boolean {
   const { product, context } = facts;
-  if (!context.unit || !MEASURE_UNITS.has(context.unit) || NEGATION.test(text.toLowerCase()) || /\?\s*$/.test(text) ||
-    /\b(?:wrong|guess)\b/i.test(text)) return false;
-  const said = measuresSaid(text).filter((m) => m.value === product);
-  return said.length > 0 && said.every((m) => m.unit === context.unit);
+  if (!context.unit || !MEASURE_UNITS.has(context.unit)) return false;
+  const measure = committedMeasure(text);
+  return measure?.value === product && measure.unit === context.unit;
 }
 
 export function initCheckedMultiply(callId: string, pkg: OperationPackage): CheckedMultiplyLesson | undefined {
@@ -297,22 +306,13 @@ export function multiplyHelp(turn: MultiplyTurn): MultiplyTurn["support"] {
   return undefined;
 }
 
-export function hasUnconfirmedMultiplyHelp(lesson: CheckedMultiplyLesson | undefined): boolean {
-  if (!lesson) return false;
-  return lesson.turns.some((turn) => {
-    if (turn.transfer || !turn.sent || turn.playback === "finished") return false;
-    const expected = multiplyHelp(turn);
-    if (!expected) return false;
-    if (!turn.support) return true;
-    return expected === "demonstrated" && turn.support === "hinted" &&
-      turn.actions.some((a) => a.kind === "complete_example" && !a.fate);
-  });
+function unconfirmedMultiplyHelp(turn: MultiplyTurn): MultiplyTurn["support"] {
+  if (!turn.sent || turn.playback === "finished") return undefined;
+  const help = multiplyHelp(turn);
+  if (!turn.support || (turn.support === "hinted" && help === "demonstrated")) return help;
 }
 
-/**
- * The base lesson's precedence, so the observation agrees with the call outcome: confirmed demonstrated > confirmed
- * hinted > unconfirmed help (uncertain) > independent. The outcome cannot hold a hint and unconfirmed help together.
- */
+/** Keep the observation and call outcome in agreement with the regrouping lesson's help precedence. */
 export function multiplyAssistance(
   lesson: CheckedMultiplyLesson,
   sessionAssistance: readonly string[],
@@ -321,15 +321,19 @@ export function multiplyAssistance(
   const demonstrated = turns.some((t) => t.support === "demonstrated") ||
     sessionAssistance.some((k) => k !== "independent" && k !== "hint");
   if (demonstrated) return "demonstrated";
-  if (turns.some((t) => t.support === "hinted") || sessionAssistance.includes("hint")) return "hinted";
-  if (hasUnconfirmedMultiplyHelp(lesson)) return "uncertain";
+  const hinted = turns.some((t) => t.support === "hinted") || sessionAssistance.includes("hint");
+  if (turns.some((t) => {
+    const help = unconfirmedMultiplyHelp(t);
+    return help === "demonstrated" || (help === "hinted" && !hinted);
+  })) return "uncertain";
+  if (hinted) return "hinted";
   return "independent";
 }
 
 export function multiplyTransferAssistance(lesson: CheckedMultiplyLesson | undefined): MultiplyObservation["assistance"] {
   const turns = lesson?.turns.filter((t) => t.transfer) ?? [];
   if (turns.some((t) => t.support === "demonstrated")) return "demonstrated";
-  if (turns.some((t) => t.sent && !t.support && t.playback !== "finished" && multiplyHelp(t) !== undefined)) return "uncertain";
+  if (turns.some((t) => unconfirmedMultiplyHelp(t) !== undefined)) return "uncertain";
   if (turns.some((t) => t.support === "hinted")) return "hinted";
   // The related question's batch clears the lesson board; work done before the screen confirms it is not independent.
   const question = lesson?.turns.flatMap((t) => t.actions).findLast((a) => a.kind === "question");

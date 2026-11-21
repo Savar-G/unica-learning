@@ -487,7 +487,7 @@ export function multiplyWords(facts: MultiplyFacts, instruction: unknown, show: 
   const nextActionLines = canAddGroup
     ? [
         ...(show ? [`Start with ${builtGroups} ${gWord(builtGroups)} of ${size}.`] : []),
-        `Use the Add 1 group of ${size} button on the board, or draw 1 more ${gSing} of ${size} on your paper.`,
+        `Use the Add 1 group of ${size} button on the board, or draw all ${groups} ${gNoun} of ${size} on your paper.`,
       ]
     : [`Count all ${groups} rows of ${size} on the board.`, totalAsk];
 

@@ -244,9 +244,11 @@ describe("#534: the board in a chat", () => {
     await advance(LEASE_SETTLE_MS);
     const addBtn = button("Add 1 group of 4");
     expect(addBtn?.type).toBe("button");
+    const feedback = addBtn!.parentElement!.querySelector('[role="status"]');
+    expect(feedback?.textContent).toBe("");
     await act(async () => button("Use paper").click());
     expect(button("Add 1 group of 4")).toBeUndefined();
-    expect(host.textContent).toContain("Draw the equal groups on your paper.");
+    expect(feedback?.textContent).toContain("Draw the equal groups on your paper.");
     await act(async () => button("Use board").click());
     await act(async () => button("Add 1 group of 4").click());
     expect(onExchange).toHaveBeenCalledExactlyOnceWith(target);

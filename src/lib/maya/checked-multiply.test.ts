@@ -605,6 +605,7 @@ describe("explanations, prerequisite checks and answers with units", () => {
     expect(await say("There are not 3 bags of 4.")).not.toMatch(/how can you find the total/i);
     expect(await say("3 bags of 4 apples.")).toMatch(/how can you find the total/i);
     expect(await say("Skip count by 9.")).not.toMatch(/on your own/i);
+    expect(await say("Skip count 9, 18, 27.")).not.toMatch(/on your own/i);
     expect(await say("Skip count by 4.")).toMatch(/on your own/i);
     await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null);
     const skills = store.rows()[0].trace!.checkedMultiply!.turns.flatMap((t) => t.observation ? [t.observation.skill] : []);
@@ -612,7 +613,7 @@ describe("explanations, prerequisite checks and answers with units", () => {
   });
 
   it("accepts every written form of the area unit and asks for the unit when the number is said in words", async () => {
-    for (const text of ["12 cm2.", "12 sq cm.", "12cm².", "12 square centimeters.", "Twelve square centimetres."]) {
+    for (const text of ["12 cm2.", "12 sq cm.", "12cm².", "12 square centimeters.", "Twelve square centimetres.", "I got 12cm2 because I counted 3 groups of 4."]) {
       const { calls } = setup();
       const chat = ok(await calls.start(startInput(AREA_3X4)));
       const turn = ok(await calls.input(chat.view.id, chat.view.revision, { type: "child", text }, null));
@@ -623,10 +624,22 @@ describe("explanations, prerequisite checks and answers with units", () => {
     const turn = ok(await calls.input(chat.view.id, chat.view.revision, { type: "child", text: "Twelve centimetres." }, null));
     expect(turn.output.say.join(" ")).toMatch(/check the unit.*square centimetres/i);
   });
+
+  it.each(["I got 11 because I first counted 12 cm2.", "12 cm2, no, 11 cm2."])(
+    "does not credit an area number outside the committed answer: %s", async (text) => {
+      const { calls } = setup();
+      const chat = ok(await calls.start(startInput(AREA_3X4)));
+      const turn = ok(await calls.input(chat.view.id, chat.view.revision, { type: "child", text }, null));
+      expect(turn.output.say.join(" ")).not.toMatch(/you found the product/i);
+    },
+  );
 });
 
 describe("help records and the related question's board", () => {
-  it("records a confirmed hint the same way in the observation and the outcome when later help is unconfirmed", async () => {
+  it.each([
+    { reply: "7.", assistance: "hinted", unconfirmed: undefined },
+    { reply: "Show me an example.", assistance: "uncertain", unconfirmed: true },
+  ])("records interrupted help after a confirmed hint: $reply", async ({ reply, assistance, unconfirmed }) => {
     const { calls, store } = setup();
     const voice = ok(await calls.startVoice(startInput(PLAIN_3X4, { kind: "family" })));
     const opened = await calls.openVoice(voice.view.id, { speechToText: "fake", voice: "fake" }, null);
@@ -637,15 +650,15 @@ describe("help records and the related question's board", () => {
     const prompt = await call.child("How do I build the groups?");
     await call.exchangePlayback!(prompt.exchangeTurnId!, "finished");
     await call.observeBoard({ events: [opening, prompt.boardCues![0].batch].map(observe) });
-    const additive = await call.child("7.");
-    await call.exchangePlayback!(additive.exchangeTurnId!, "interrupted");
+    const moreHelp = await call.child(reply);
+    await call.exchangePlayback!(moreHelp.exchangeTurnId!, "interrupted");
     await call.child("12.");
     await call.end({ reason: "child_stopped" });
     const record = store.rows()[0];
     const product = record.trace!.checkedMultiply!.turns.find((t) => t.observation?.skill === "product")!.observation!;
     expect(record.outcome).toMatchObject({ assistance: "hint" });
-    expect(record.outcome?.helpUnconfirmed).toBeUndefined();
-    expect(product.assistance).toBe("hinted");
+    expect(record.outcome?.helpUnconfirmed).toBe(unconfirmed);
+    expect(product.assistance).toBe(assistance);
   });
 
   it("never picks a related question whose product is still written on the board", async () => {
@@ -703,7 +716,7 @@ describe("worked examples, repeats and paper work", () => {
     const { calls, store } = setup();
     let turn = ok(await calls.start(startInput(APPLES_STORY)));
     turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text: "How do I build the groups?" }, null));
-    expect(turn.output.say.join(" ")).toMatch(/button on the board, or draw 1 more bag of 4 on your paper/i);
+    expect(turn.output.say.join(" ")).toMatch(/button on the board, or draw all 3 bags of 4 on your paper/i);
     turn = ok(await calls.input(turn.view.id, turn.view.revision, {
       type: "child", text: "I drew 3 bags of 4 apples.", fates: [{ batchId: turn.view.exchange!.batchId, fate: "shown" }],
     }, null));

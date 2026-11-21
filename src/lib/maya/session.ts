@@ -75,7 +75,7 @@ import { deriveDrawings, type BoardRead, type TiedDrawing } from "./board-ties";
 import { chooseTransfer, relatedChoice, TRANSFER_MIN_MS, TRANSFER_OFFER, transferBoard, transferPackage, type RelatedStep, type TransferOperands } from "./transfer";
 import { EXCHANGE_OBJECT, exchangeChildWords, exchangeCommands, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingOffersAction, regroupingWords, sameExchangeTarget, supportsCheckedExchange, type CheckedExchangeLesson, type ExchangeAction, type ExchangeProposal, type ExchangeTarget, type ExchangeTurn, type RegroupingInstruction, type RegroupingObservation } from "./checked-exchange";
 import { asBoardActions, multiplyTransferPackage, supportsCheckedMultiply, type CheckedMultiplyLesson, type MultiplyProposal, type MultiplyTurn } from "./checked-multiply";
-import { childMultiplyTarget, hasUnconfirmedMultiplyHelp, initCheckedMultiply, matchesMultiplyProposal, multiplyProposalOf, multiplyTransferFor, multiplyTransferOutcome, multiplyWaitingForBoard, planMultiplyChildAction, planMultiplyTurn, type MultiplySessionHost } from "./multiply-lesson";
+import { childMultiplyTarget, initCheckedMultiply, matchesMultiplyProposal, multiplyAssistance, multiplyProposalOf, multiplyTransferFor, multiplyTransferOutcome, multiplyWaitingForBoard, planMultiplyChildAction, planMultiplyTurn, type MultiplySessionHost } from "./multiply-lesson";
 import { applyMultiplyTurn, multiplyBoardFate, multiplySessionHost, multiplyCommittedNumber, multiplyDelivery, multiplyHidesAnswer, multiplyKeepsProblem, multiplyTransferEvent, type MultiplyHelpPort } from "./multiply-session";
 import { agreementClause, askedStep as askedOperationStep, bindingReview, checkedSubtractionQuestion, checkTutorSay, continuedSay, stepsStated, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, FINAL_ASK, TUTOR_FIRST_TIME_WORD_LIMIT, TUTOR_REVIEW_IGNORED } from "./tutor";
 import { placeDigitsSaid } from "./tutor-math";
@@ -6052,6 +6052,7 @@ function unconfirmedHelp(turn: ExchangeTurn): ExchangeTurn["support"] {
  * demonstration after no more than a hint.
  */
 function helpUnconfirmed(s: Session, assistance: Assistance): boolean {
+  if (s.checkedMultiply) return multiplyAssistance(s.checkedMultiply, s.assistance) === "uncertain";
   const unconfirmed = unconfirmedRegroupingHelp(s);
   return assistance === "independent" ? unconfirmed.length > 0 : assistance === "hint" && unconfirmed.includes("demonstrated");
 }
