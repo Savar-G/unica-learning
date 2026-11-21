@@ -21,6 +21,7 @@ import type { ChatSpend } from "@/lib/maya-chat";
 import type { WorkbookQuestionRef } from "@/lib/question-package";
 import { familyWorkbookIsShipped, selectFamilyWorkbookQuestion, type FamilyWorkbookReader } from "@/lib/maya-workbook-question";
 import type { ExchangeTarget } from "@/lib/maya/checked-exchange";
+import type { SelectionTarget } from "@/lib/maya/board-selection";
 
 type DB = SupabaseClient<Database>;
 
@@ -162,6 +163,7 @@ export type ChatAction = { type: "start"; id: string; question: WorkbookQuestion
   { type: "start"; id: string; workbookId: string; reference: string; question?: never } | { type: "read"; id: string } |
   { type: "child"; id: string; messageId: string; revision: number; text: string; fates?: BoardFateReport[] } |
   { type: "exchange"; id: string; revision: number; target: ExchangeTarget; fates?: BoardFateReport[] } |
+  { type: "select"; id: string; revision: number; target: SelectionTarget; fates?: BoardFateReport[] } |
   { type: "end"; id: string; revision: number };
 
 /**
@@ -300,6 +302,12 @@ export async function runChat(ctx: ChatContext, action: ChatAction, options: { s
     // It is not a typed message and cannot use a message claim or generate a model request.
     if (record.status === "live" && (await usage()).left === 0) return reply(record, "cap");
     const result = await calls.input(record.id, action.revision, { type: "exchange", target: action.target, fates: action.fates }, name);
+    return reply(await store.get(record.id), result.ok ? undefined : result.error);
+  }
+  if (action.type === "select") {
+    // #1152: pointing at the board uses the same access and limits as the conversation. Code answers it, with no model.
+    if (record.status === "live" && (await usage()).left === 0) return reply(record, "cap");
+    const result = await calls.input(record.id, action.revision, { type: "select", target: action.target, fates: action.fates }, name);
     return reply(await store.get(record.id), result.ok ? undefined : result.error);
   }
   const result = await calls.input(record.id, action.revision, { type: "end" }, name);

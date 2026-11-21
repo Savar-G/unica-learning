@@ -1,4 +1,5 @@
 import { SCOPE_REASONS } from "@/lib/maya/scope";
+import { selectionWords, type SelectionReply } from "@/lib/maya/board-selection";
 import { exchangeChildWords, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingWords, type CheckedExchangeLesson } from "@/lib/maya/checked-exchange";
 // Maya's trace format (#322, spec #297): one versioned record of one Maya session, written by every session (the text
 // adapter now, the voice agent #326, the test bench #323 and the admin demo #324 later). It records the model and
@@ -550,6 +551,21 @@ function checkedExchangeOutput(proposal: unknown, output: unknown): boolean {
   return output.say[0] === exchangeWords(facts, proposal.show).join(" ") && output.board.length === (proposal.show ? 2 : 1);
 }
 
+/** Keep only the checked reply fields that can account for the words Maya said. */
+function keptProposal(proposal: unknown): unknown {
+  if (!isObject(proposal) || proposal.boardSelection !== 1) return proposal;
+  const { boardSelection, result, facts, detail } = proposal;
+  return { boardSelection, result, ...(facts === undefined ? {} : { facts }), ...(detail === undefined ? {} : { detail }) };
+}
+
+/** #1152: code's reply to a board selection, recomputed from its proposal. It never draws. */
+function boardSelectionOutput(proposal: unknown, output: unknown): boolean {
+  if (!isObject(proposal) || proposal.boardSelection !== 1 || !isObject(output) || output.act !== "guide" ||
+    !Array.isArray(output.say) || output.say.length !== 1 || !Array.isArray(output.board) || output.board.length !== 0) return false;
+  const words = selectionWords(proposal as unknown as SelectionReply);
+  return !!words && output.say[0] === words.join(" ");
+}
+
 function checkTurn(t: unknown, path: string, version: number): Record<string, unknown> {
   need(isObject(t), path, "a turn");
   const x = t as Record<string, unknown>;
@@ -605,7 +621,7 @@ function checkTurn(t: unknown, path: string, version: number): Record<string, un
         const fixed = attempts[0].proposal === null && Array.isArray(o?.say) && o.say.length === 1 &&
           (opening || patient || (exact.includes(o.say[0] as string) && Array.isArray(o?.board) && o.board.length === 0));
         need(attempts.length === 1 && attempts[0].refusal === null && attempts[0].error === undefined &&
-          (fixed || checkedExchangeOutput(attempts[0].proposal, o)), path, "controller output is exact safety guidance, the exact held lines, the code opening, a patient line or a checked exchange");
+          (fixed || checkedExchangeOutput(attempts[0].proposal, o) || boardSelectionOutput(attempts[0].proposal, o)), path, "controller output is exact safety guidance, the exact held lines, the code opening, a patient line, a checked exchange or a board selection reply");
       }
       // A chat's close after the safety guidance is code's own: no model is asked for it (#589).
       // D-341, round 3: also a plain stop, closed in code's approved words with no model call.
@@ -911,12 +927,12 @@ export function redactTrace(trace: MayaTrace, childName: string | null): MayaTra
         return { ...t, detail: redactText(t.detail, childName) };
       case "maya": {
         const last = t.attempts.at(-1);
-        const fixedExchange = (last?.source === "controller" || last?.source === "fallback") && checkedExchangeOutput(last.proposal, t.output);
+        const fixedExchange = (last?.source === "controller" || last?.source === "fallback") && (checkedExchangeOutput(last.proposal, t.output) || boardSelectionOutput(last.proposal, t.output));
         return {
           ...t,
           attempts: t.attempts.map((a) => ({
             ...a,
-            proposal: a === last && fixedExchange ? a.proposal : redactDeep(a.proposal, childName),
+            proposal: a === last && fixedExchange ? keptProposal(a.proposal) : redactDeep(keptProposal(a.proposal), childName),
             refusal: a.refusal ? { ...a.refusal, reason: redactText(a.refusal.reason, childName) } : null,
             ...(a.talk ? { talk: a.talk.map((x) => redactDeep(x, childName) as TraceTalk) } : {}),
             ...(a.math ? { math: a.math.map((x) => ({ ...x, sentence: redactText(x.sentence, childName), reason: redactText(x.reason, childName) })) } : {}),

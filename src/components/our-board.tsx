@@ -22,6 +22,7 @@ import { newPalmGuard, pointerDown, pointerUp, type PalmGuard } from "@/lib/whit
 import { Avatar, Icon } from "@/components/desk-icons";
 import { MayaBoard } from "@/components/maya-board";
 import { ExchangeControls, type ExchangeControl } from "@/components/maya-exchange-controls";
+import { useBoardSelection, type SelectionControl } from "@/components/maya-board-selection";
 
 /** The pen and the eraser, in CSS pixels. */
 const PEN_W = 5;
@@ -145,7 +146,7 @@ export interface OurBoardProps {
   /** Where the board's draft is kept: the workbook, its page and the question. */
   at: { book: string; page: number; question: number | null };
   /** A chat with Maya (#534): the board is the chat's, with her replies' batches; its draft is kept by the chat's id. */
-  chat?: { id: string; batches: readonly Batch[]; carry?: { book: string; page: number; question: number | null }; exchange?: ExchangeControl; exchangeResult?: string };
+  chat?: { id: string; batches: readonly Batch[]; carry?: { book: string; page: number; question: number | null }; exchange?: ExchangeControl; exchangeResult?: string; selection?: Omit<SelectionControl, "steps"> };
   /** Hears every change of the board this tab holds (a chat sends it to the call). */
   onChange?: (history: BoardHistory) => void;
   /**
@@ -494,6 +495,9 @@ function LiveBoard({ question, chat, onChange, restore, label, caption, still, d
   const exchange = chat?.exchange;
   const canExchange = exchange && lastMaya?.batchId === exchange.target.batchId;
   const showExchangeResult = chat?.exchangeResult && lastMaya?.batchId === chat.exchangeResult;
+  const selection = chat?.selection;
+  const pick = useBoardSelection(selection && role === "holder"
+    ? { ...selection, steps: steps ?? [], submit: (target) => tab.current?.owns() ? selection.submit(target) : Promise.resolve(false) } : undefined);
   return (
     <>
       <section className="desk-board" id={chat ? "chat-board" : undefined} aria-labelledby="desk-board-title">
@@ -502,9 +506,9 @@ function LiveBoard({ question, chat, onChange, restore, label, caption, still, d
           <p><Avatar size={22} />Maya draws here</p>
         </header>
         <div className="desk-board-body">
-          <div ref={canvas} className="desk-canvas" data-pen={pen}>
+          <div ref={canvas} className="desk-canvas" data-pen={pen} data-pointing={pick.pointing || undefined}>
             {steps && chatView ? (
-              <MayaBoard steps={steps} viewBox={chatView} instant={still || !!canExchange || !!showExchangeResult} shown={played} label={label} />
+              <MayaBoard steps={steps} viewBox={chatView} instant={still || !!canExchange || !!showExchangeResult} shown={played} label={label} overlay={pick.overlay} />
             ) : question ? (
               // A restored board shows Maya's work at once: she wrote it before the reload.
               <MayaBoard steps={question.steps} viewBox={question.viewBox} instant={still || restored !== null} label={label} />
@@ -542,6 +546,7 @@ function LiveBoard({ question, chat, onChange, restore, label, caption, still, d
           {...exchange}
           submit={(target) => tab.current?.owns() ? exchange.submit(target) : Promise.resolve(false)}
         />}
+        {pick.panel}
       </section>
 
       {role === "reader" ? (

@@ -1,7 +1,8 @@
 // The tutor core's prompt, output schema and brief (D-345). Savar approves the principles, not single lines: the 12
 // tutor rules below come from the approved teaching design (2026-11-14, section 3) and its research.
 import { MODEL_OUTPUT_SCHEMA, TUTOR_GATES } from "./proposal";
-import { askedRead, childAnswerOf, childTurnFacts, firstTimeLearner, type Session } from "./session";
+import { askedRead, childAnswerOf, childTurnFacts, firstTimeLearner, pointedObject, type Session } from "./session";
+import { pointedNote } from "./board-selection";
 import { saysGuess } from "./numbers";
 import { FINAL_ASK, TUTOR_FIRST_TIME_WORD_LIMIT, tutorKind, stepFacts, TUTOR_WORD_LIMIT } from "./tutor";
 import type { TutorDrawing, TutorStepFact } from "./tutor-kind";
@@ -86,6 +87,8 @@ export function tutorBrief(s: Session, repair: TutorBrief["repair"] = null): Tut
   } else if (s.turn && saysGuess(s.turn.text) && now?.verdict === "right") {
     notes.push("The child's right answer sounded like a guess (code's read): ask once how they got it.");
   }
+  const pointed = pointedObject(s);
+  if (pointed) notes.push(pointedNote(pointed));
   if (s.state === "TIME_CLOSE") notes.push("Time is almost up: finish kindly.");
   return {
     promptVersion: TUTOR_PROMPT_VERSION,

@@ -578,6 +578,125 @@ it("interrupts a regrouping prompt in playout and shows the child's exchange onc
   } finally { speaker.finishPlayback(); }
 });
 
+it("cuts a regrouping prompt in playout when the child points to the blocks, and answers the tap once", async () => {
+  let now = () => T0;
+  const speaker = new HeldSpeaker(() => now());
+  const c = await voiceCall({ speaker, model: ruleConversationalModel(), board: true, timestamps: true, exchange: true });
+  now = c.clock.now;
+  try {
+    await c.run.childJoined();
+    await waitFor(() => c.said().length > 0 && c.session.agentState === "listening", "opening");
+    speaker.held = true;
+    const stopped = vi.spyOn(speaker, "clearBuffer");
+    await c.childSays("How do I regroup?");
+    await waitFor(() => speaker.pendingPlayoutSegments > 0, "the prompt audio to reach the speaker");
+    await c.clock.advance(1);
+    await waitFor(() => c.session.agentState === "speaking" && c.receiver.snapshot().events.some(
+      e => e.kind === "batch" && JSON.stringify(e.commands).includes("52 = 50 + 2"),
+    ), "the shown tens while the prompt is playing");
+    const view = (await c.calls.view(c.id))!;
+    const blocks = c.receiver.snapshot().events.find(e => e.kind === "batch" && JSON.stringify(e.commands).includes("exchange-before"));
+    const target = { ...view.selection!, objectId: "exchange-before", batchId: blocks!.kind === "batch" ? blocks!.batchId : "", selectionId: "tap-1" };
+    const batchesBefore = c.receiver.snapshot().events.filter(e => e.kind === "batch").length;
+    expect(stopped).not.toHaveBeenCalled();
+    const taps = await Promise.all([c.run.select(target), c.run.select(target)]);
+    expect(taps.sort()).toEqual(["accepted", "busy"]);
+    expect(stopped).toHaveBeenCalled();
+    await waitFor(() => c.said().join(" ").includes("They show 5 tens and 2 ones, which is 52."), "Maya's answer about the blocks");
+    expect(c.call.session.checkedExchange?.turns.find(t => t.prompt)?.playback).toBe("interrupted");
+    expect(c.receiver.snapshot().events.filter(e => e.kind === "batch")).toHaveLength(batchesBefore);
+    expect(c.call.session.done).toEqual([]);
+    expect(c.call.session.solved).toBeNull();
+    expect(await c.run.select(target)).toBe("done");
+    expect(c.call.session.boardSelections).toHaveLength(1);
+  } finally { speaker.finishPlayback(); }
+});
+
+it("lets Maya finish her reply when the child taps a stale object, then asks once to point again", async () => {
+  let now = () => T0;
+  const speaker = new HeldSpeaker(() => now());
+  const c = await voiceCall({ speaker, model: ruleConversationalModel(), board: true, timestamps: true, exchange: true });
+  now = c.clock.now;
+  const saveEntered = Promise.withResolvers<void>();
+  const releaseSave = Promise.withResolvers<void>();
+  try {
+    await c.run.childJoined();
+    await waitFor(() => c.said().length > 0 && c.session.agentState === "listening", "opening");
+    await c.childSays("How do I regroup?");
+    await c.clock.advance(1);
+    await waitFor(() => c.session.agentState === "listening" && c.receiver.snapshot().events.some(
+      e => e.kind === "batch" && JSON.stringify(e.commands).includes("52 = 50 + 2"),
+    ), "the prompt and its blocks");
+    const view = (await c.calls.view(c.id))!;
+    const blocks = c.receiver.snapshot().events.find(e => e.kind === "batch" && JSON.stringify(e.commands).includes('"exchange-before"'));
+    const old = { ...view.selection!, objectId: "exchange-before", batchId: blocks!.kind === "batch" ? blocks!.batchId : "" };
+    speaker.held = true;
+    const cut = vi.spyOn(speaker, "clearBuffer");
+    const move = c.run.exchange(view.exchange!);
+    await waitFor(() => speaker.pendingPlayoutSegments > 0 && c.session.agentState === "speaking" &&
+      c.said().join(" ").includes("4 tens and 12 ones"), "the exchange reply in playout");
+    // The blocks the child taps are gone: the tap is stale and must not stop the reply.
+    expect(await c.run.select({ ...old, selectionId: "stale-1" })).toBe("accepted");
+    const silent = { ...old, selectionId: "stale-2" };
+    const update = c.store.update.bind(c.store);
+    vi.spyOn(c.store, "update").mockImplementation(async (id, revision, change) => {
+      if (change.live?.text.session.boardSelectionIds?.includes(silent.selectionId)) {
+        saveEntered.resolve();
+        await releaseSave.promise;
+      }
+      return update(id, revision, change);
+    });
+    const repeated = c.run.select(silent);
+    await saveEntered.promise;
+    expect(await c.run.select(silent)).toBe("busy");
+    releaseSave.resolve();
+    expect(await repeated).toBe("done");
+    expect(await c.run.select(silent)).toBe("done");
+    await c.clock.advance(1);
+    expect(cut).not.toHaveBeenCalled();
+    expect(c.said().join(" ")).not.toContain("That part is not on the board now");
+    speaker.finishPlayback();
+    await move;
+    await waitFor(() => c.said().join(" ").includes("That part is not on the board now"), "the request to point again");
+    expect(cut).not.toHaveBeenCalled();
+    const spoken = c.said().join(" ");
+    expect(spoken.indexOf("That part is not on the board now")).toBeGreaterThan(spoken.indexOf("4 tens and 12 ones"));
+    expect(spoken.split("That part is not on the board now")).toHaveLength(2);
+    expect(c.call.session.checkedExchange?.turns.find(t => t.childAction)?.playback).toBe("finished");
+    expect(c.call.session.boardSelections?.map(s => s.result)).toEqual(["removed"]);
+    expect(c.call.session.done).toEqual([]);
+    expect(c.call.session.solved).toBeNull();
+  } finally { releaseSave.resolve(); speaker.finishPlayback(); }
+});
+
+it("finishes the optional transfer offer before a stale tap reply and accepts the child's yes", async () => {
+  let now = () => T0;
+  const speaker = new HeldSpeaker(() => now());
+  const c = await voiceCall({ speaker, model: ruleConversationalModel(), board: true, timestamps: true, exchange: true });
+  now = c.clock.now;
+  try {
+    await c.run.childJoined();
+    await waitFor(() => c.said().length > 0 && c.session.agentState === "listening", "opening");
+    const view = (await c.calls.view(c.id))!;
+    const old = { ...view.selection!, objectId: "question", batchId: view.batches[0].transactionId, selectionId: "stale-offer" };
+    speaker.held = true;
+    const cut = vi.spyOn(speaker, "clearBuffer");
+    const pointAgain = /point to (?:the part again|something on the board)/i;
+    expect(await c.childSays("My answer is 24.")).toContain("Do you want to try one more like this on your own?");
+    await waitFor(() => speaker.pendingPlayoutSegments > 0, "transfer offer in playout");
+    expect(await c.run.select(old)).toBe("accepted");
+    expect(cut).not.toHaveBeenCalled();
+    expect(c.said().join(" ")).not.toMatch(pointAgain);
+    speaker.finishPlayback();
+    await waitFor(() => c.said().some(text => pointAgain.test(text)), "the request to point again");
+    await waitFor(() => c.session.agentState === "listening", "point-again reply finished");
+    expect(cut).not.toHaveBeenCalled();
+    expect(c.call.session.checkedExchange?.turns.find(t => t.instruction?.step === "offer")?.playback).toBe("finished");
+    expect(await c.childSays("Yes.")).toMatch(/63 minus 27/i);
+    expect(c.call.session.checkedExchange?.transfer?.state).toBe("started");
+  } finally { speaker.finishPlayback(); }
+});
+
 it("drops deadline audio when the child starts speaking before the first frame reaches output", async () => {
   const speaker = new Speaker();
   const c = await voiceCall({ speaker, board: true, timestamps: true });

@@ -122,7 +122,7 @@ export function boardOfSnapshot(snapshot: BoardSnapshot): { steps: PlayStep[]; v
     const r = applyBatch(scene, { transactionId: event.batchId, commands: event.commands });
     if (!r.ok) return null;
     scene = r.scene;
-    steps.push({ drawn: r.drawn, erased: r.erased, view: boardView(scene) });
+    steps.push({ batchId: event.batchId, drawn: r.drawn, erased: r.erased, view: boardView(scene) });
   }
   return { steps, viewBox: fitView(steps.flatMap((s) => s.drawn), 0.03) };
 }

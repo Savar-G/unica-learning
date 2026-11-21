@@ -3,7 +3,7 @@ import { act, createElement, useLayoutEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatBoard, ChatControls, useDeskChat, type DeskChatState } from "@/components/desk-chat";
-import { boardDraftKey, chatBoardKey, childStrokes, createHistory, drawStroke, encodeHistory, inkLog, mayaWrites, penHolder, saveDraft, takePen, type BoardHistory, type Change, type DraftStore } from "@/lib/board-history";
+import { boardDraftKey, chatBoardKey, childStrokes, createHistory, drawStroke, encodeHistory, inkLog, mayaSkipped, mayaWrites, penHolder, saveDraft, takePen, type BoardHistory, type Change, type DraftStore } from "@/lib/board-history";
 import type { ChatReply, ChatView } from "@/lib/maya-chat";
 import { EXCHANGE_OBJECT, type ExchangeTarget } from "@/lib/maya/checked-exchange";
 import { LEASE_SETTLE_MS, OPEN_RETRY_MS, OPEN_TRIES } from "@/lib/board-tab";
@@ -50,6 +50,25 @@ describe("chat message admission at the public hook", () => {
     expect([...host.querySelectorAll("button")].some(b => b.textContent === "Chat with Maya")).toBe(false);
     expect(host.querySelector('input[aria-label="Page and question number"]')?.hasAttribute("disabled")).toBe(false);
     expect(host.textContent).not.toMatch(/cannot|can't|unable/i);
+  });
+
+  it("sends a board tap with the board's own receipt, and reports a tap read from an older view as a changed board", async () => {
+    await render();
+    expect(await send("start")).toBe(true);
+    const offer = { lessonId: "l", turnId: "l:m1", boardRevision: 2, question: "52 - 28 = ?" };
+    const skipped = mayaSkipped(createHistory(), "b2", 0);
+    await act(async () => state.saveBoard(id, skipped.ok ? skipped.history : createHistory()));
+    const tapOn = { ...offer, objectId: "exchange-before", batchId: "b2", selectionId: "tap-a" };
+    let result: boolean | "changed" = false;
+    await act(async () => { result = await state.select(tapOn); });
+    expect(requests.at(-1)).toMatchObject({ type: "select", fates: [{ batchId: "b2", fate: "skipped" }] });
+    expect(result).toBe(true);
+    answer = async () => reply(3, { error: "board_changed" });
+    await act(async () => { result = await state.select({ ...tapOn, batchId: "b3", selectionId: "tap-b" }); });
+    expect(result).toBe("changed");
+    expect(requests.at(-1)).toMatchObject({ fates: expect.arrayContaining([{ batchId: "b3", fate: "shown" }]) });
+    expect(state.error).toBeNull();
+    expect(state.chat?.revision).toBe(3);
   });
 
   it("starts a typed page reference in the selected workbook without using the old picked number", async () => {
@@ -223,6 +242,35 @@ describe("#534: the board in a chat", () => {
       expect(onExchange).not.toHaveBeenCalled();
       await act(async () => otherButton("Exchange one ten")!.click());
       expect(onExchange).toHaveBeenCalledExactlyOnceWith(target);
+    } finally {
+      await act(async () => other.unmount());
+      otherHost.remove();
+    }
+  });
+
+  it("offers pointing at Maya's objects only in the tab that holds the shown board", async () => {
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    const offer = { lessonId: "lesson", turnId: "lesson:m2", boardRevision: 1, question: "52 - 28 = ?" };
+    const show = { transactionId: "show-tens", commands: [{ op: "model", id: "exchange-before",
+      model: { kind: "base_ten", hundreds: 0, tens: 5, ones: 2 }, place: { region: "main" } }] };
+    const onSelect = vi.fn(async () => true);
+    // The board refuses this batch (its anchor is missing): its object is not offered.
+    const orphan = { transactionId: "orphan", commands: [{ op: "write", id: "orphan-note", text: "12", place: { below: "missing" } }] };
+    const board = createElement(ChatBoard, { chat: { ...view(2), batches: [show, orphan], selection: offer }, still: true, onSelect });
+    const otherHost = document.createElement("div");
+    document.body.append(otherHost);
+    const other = createRoot(otherHost);
+    try {
+      await act(async () => root.render(board));
+      await advance(500);
+      await act(async () => other.render(board));
+      await advance(500);
+      expect(otherHost.textContent).not.toContain("Point to a part");
+      await act(async () => button("Point to a part").click());
+      expect(host.querySelector(".desk-canvas")!.hasAttribute("data-pointing")).toBe(true);
+      expect(button("12")).toBeUndefined();
+      await act(async () => button("Blocks").click());
+      expect(onSelect).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ ...offer, objectId: "exchange-before", batchId: "show-tens" }));
     } finally {
       await act(async () => other.unmount());
       otherHost.remove();

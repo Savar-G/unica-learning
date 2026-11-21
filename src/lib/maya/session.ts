@@ -72,6 +72,7 @@ import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
 import { answersOwnQuestion, askedStep, doneReply, firstTimeTurn, yesReply, type AskedRead } from "./teaching-reads";
 import { deriveDrawings, type BoardRead, type TiedDrawing } from "./board-ties";
+import { pointedFollowUp, readSelectionTarget, selectionWords, type ObjectFacts, type SelectedObject, type SelectionOffer, type SelectionProposal, type SelectionTarget } from "./board-selection";
 import { chooseTransfer, relatedChoice, TRANSFER_MIN_MS, TRANSFER_OFFER, transferBoard, transferPackage, type RelatedStep, type TransferOperands } from "./transfer";
 import { EXCHANGE_OBJECT, exchangeChildWords, exchangeCommands, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingOffersAction, regroupingWords, sameExchangeTarget, supportsCheckedExchange, type CheckedExchangeLesson, type ExchangeAction, type ExchangeProposal, type ExchangeTarget, type ExchangeTurn, type RegroupingInstruction, type RegroupingObservation } from "./checked-exchange";
 import { agreementClause, askedStep as askedOperationStep, bindingReview, checkedSubtractionQuestion, checkTutorSay, continuedSay, stepsStated, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, FINAL_ASK, TUTOR_FIRST_TIME_WORD_LIMIT, TUTOR_REVIEW_IGNORED } from "./tutor";
@@ -196,6 +197,7 @@ export type SessionEvent =
    * starts REPAIR_MAYA.
    */
   | { type: "maya_said"; at: number; text: string; approvedTurn?: number }
+  | { type: "selection_repeat"; at: number; proposal: SelectionProposal }
   /** The question's math turned out not to be trustworthy during the call. */
   | { type: "content_problem"; at: number; detail: string }
   /** The connection or a service failed: the call ends. */
@@ -579,6 +581,10 @@ export interface Session {
    */
   tutor?: { help: number; drawn: string[]; sent?: { batch: string; keys: string[] }[]; offer?: true; childFirst?: string[] };
   checkedExchange?: CheckedExchangeLesson;
+  /** #1152: the child's recent board selections, newest last. Selection is context only and never earns credit. */
+  boardSelections?: BoardSelection[];
+  /** #1152: every handled tap id, including silent repeats, for the life of the call. */
+  boardSelectionIds?: string[];
   checkedRoutine?: true;
   sensitiveHold?: true;
   unsafeRequestAt?: number;
@@ -1847,6 +1853,12 @@ export function step(session: Session, event: SessionEvent): StepResult {
       break;
     case "safety":
       break;
+    case "selection_repeat": {
+      const checked = checkSelection(s, event.proposal);
+      if (!checked || !selectionRepeat(s, checked)) return refuse(session, "invalid_event", "No repeated stale selection is due.");
+      rememberSelection(s, checked.target.selectionId);
+      break;
+    }
     case "help":
       if (!ASSISTANCE.includes(event.assistance)) return refuse(session, "invalid_event", "A help event needs a known help kind.");
       if (!s.outcome && !s.assistance.includes(event.assistance)) s.assistance.push(event.assistance);
@@ -1899,6 +1911,10 @@ export function step(session: Session, event: SessionEvent): StepResult {
           return refuse(s, "act_not_allowed", "No matching checked exchange is due.");
         }
         return deliverExchange(s, plan, effects);
+      }
+      if (event.fallback && isObject(event.proposal) && event.proposal.boardSelection === 1) {
+        const checked = checkSelection(s, event.proposal);
+        return checked ? deliverSelection(s, checked, effects) : refuse(s, "act_not_allowed", "No matching board selection is due.");
       }
       if (shape) return { session: s, effects, refusal: { code: "invalid_proposal", reason: shape, allowed: (gate(s, {}) ?? actsNow(s, {}, false)).acts } };
       {
@@ -5809,6 +5825,99 @@ export function childExchangeProposal(s: Session, target: ExchangeTarget, at: nu
   return plan ? { checkedExchange: 1, value: plan.facts.value, example: plan.facts.example, show: false, childAction: plan.childAction, ...(plan.instruction ? { instruction: plan.instruction } : {}) } : null;
 }
 
+export interface BoardSelection { selectionId: string; objectId: string; batchId: string; boardRevision: number; result: SelectionProposal["result"]; mayaTurn: number; facts?: ObjectFacts }
+const MAX_BOARD_SELECTIONS = 20;
+
+/** #1152: the child may point to a board object while Maya waits for them in a checked lesson. */
+export function selectionOffer(s: Session): SelectionOffer | undefined {
+  const lesson = s.checkedExchange;
+  if (!lesson || !s.package || s.startedAt === null || s.outcome || s.safety.flagged || s.sensitiveHold || s.stopRequested ||
+    s.noBoard || !isTeaching(s.state) || s.expect !== "child" || s.turn) return;
+  const mayaTurns = s.turns.filter((t) => t.speaker === "maya").length;
+  return { lessonId: lesson.id, turnId: `${lesson.id}:m${mayaTurns}`, boardRevision: s.batches, question: s.package.text };
+}
+
+/** The object the child's last answered selection names, while the board is still the one they pointed at. */
+export function selectedObject(s: Session): SelectedObject | undefined {
+  const last = s.boardSelections?.at(-1);
+  if (last?.result === "answer" && last.boardRevision === s.batches) return { objectId: last.objectId, batchId: last.batchId, boardRevision: last.boardRevision };
+}
+
+export function selectionSeen(s: Session, selectionId: string): boolean {
+  return !!s.boardSelectionIds?.includes(selectionId) || !!s.boardSelections?.some((record) => record.selectionId === selectionId);
+}
+
+/**
+ * The checked reply to one tap. `found`: the object as the child's screen shows it on the current board (its facts, from
+ * the command that drew it), or null when it is not there. A revision or turn the board has moved past asks again.
+ */
+export function boardSelectionProposal(s: Session, target: SelectionTarget, found: ObjectFacts | null, at: number): SelectionProposal | null {
+  const offer = selectionOffer(s);
+  if (!offer || selectionSeen(s, target.selectionId) || at - s.startedAt! >= limitsOf(s).closingAtMs ||
+    target.lessonId !== offer.lessonId || target.question !== offer.question) return null;
+  if (!found) return { boardSelection: 1, target, result: "removed" };
+  if (target.boardRevision !== offer.boardRevision || target.turnId !== offer.turnId) return { boardSelection: 1, target, result: "changed" };
+  const words = selectionWords({ boardSelection: 1, result: "answer", facts: found, detail: true })!;
+  const detail = !tellsAnswer(s, s.package!, words, [], false);
+  if (!detail && tellsAnswer(s, s.package!, selectionWords({ boardSelection: 1, result: "answer", facts: found, detail: false })!, [], false)) return null;
+  return { boardSelection: 1, target, result: "answer", facts: found, detail };
+}
+
+/**
+ * A stale tap after Maya's last words already asked the child to point again: she says nothing new. Without this, a child
+ * tapping an old object again and again would hear the same request each time.
+ */
+export function selectionRepeat(s: Session, proposal: SelectionProposal): boolean {
+  const last = s.boardSelections?.at(-1);
+  return proposal.result !== "answer" && last !== undefined && last.result !== "answer" &&
+    s.turns.findLastIndex((t) => t.speaker === "maya") === last.mayaTurn && !s.turns.slice(last.mayaTurn).some((t) => t.speaker === "child");
+}
+
+function checkSelection(s: Session, value: unknown): SelectionProposal | null {
+  if (!isObject(value)) return null;
+  const target = readSelectionTarget(value.target);
+  const result = value.result;
+  if (!target || (result !== "answer" && result !== "changed" && result !== "removed")) return null;
+  const facts = result === "answer" ? value.facts as ObjectFacts | undefined : undefined;
+  if (result === "answer" && (!isObject(facts) || typeof value.detail !== "boolean")) return null;
+  const proposal = boardSelectionProposal(s, target, result === "removed" ? null : facts ?? { kind: "named", name: "that part" }, s.now ?? 0);
+  if (!proposal || proposal.result !== result) return null;
+  if (result !== "answer") return proposal;
+  // The detail flag is code's own answer check, run again on replay.
+  return proposal.detail === value.detail ? proposal : null;
+}
+
+function deliverSelection(s: Session, proposal: SelectionProposal, effects: Effect[]): StepResult {
+  const text = selectionWords(proposal)!.join(" ");
+  // A tap on a current object replaces what Maya had left to say or draw. A stale tap does not: she finishes first.
+  if (proposal.result === "answer") effects.push({ kind: "cancel_output" });
+  const { target } = proposal;
+  s.boardSelections = [...(s.boardSelections ?? []), {
+    selectionId: target.selectionId, objectId: target.objectId, batchId: target.batchId, boardRevision: target.boardRevision,
+    result: proposal.result, mayaTurn: s.turns.length, ...(proposal.facts ? { facts: structuredClone(proposal.facts) } : {}),
+  }].slice(-MAX_BOARD_SELECTIONS);
+  rememberSelection(s, target.selectionId);
+  effects.push({ kind: "say", act: "guide", text });
+  s.turns.push({ at: s.now!, speaker: "maya", text, state: s.state, act: "guide" });
+  if (proposal.result === "answer") {
+    delete s.tutor?.offer;
+    delete s.mathClaim;
+  }
+  waitForChild(s);
+  return { session: s, effects, refusal: null };
+}
+
+function rememberSelection(s: Session, selectionId: string) {
+  s.boardSelectionIds = [...(s.boardSelectionIds ?? []), selectionId];
+}
+
+/** For the tutor brief: what the child pointed to, when Maya's last message answered that selection. */
+export function pointedObject(s: Session): ObjectFacts | undefined {
+  const last = s.boardSelections?.at(-1);
+  if (last?.result !== "answer" || s.turns.findLastIndex((t) => t.speaker === "maya") !== last.mayaTurn) return;
+  return last.facts;
+}
+
 /** The turn first shows a board: the exchange blocks, or the related question (#1144). */
 const leadsWithBoard = (plan: ExchangeTurn) => plan.actions[0]?.kind === "show" || plan.actions[0]?.kind === "question";
 
@@ -5959,9 +6068,11 @@ function transferFor(s: Session): TransferOperands | null {
 }
 
 function transferOfferPending(s: Session): boolean {
-  // A patient line ("Take your time.") or a silence check-in keeps the offer open: neither asks anything new.
-  const last = s.turns.findLast((turn) => turn.speaker === "maya" && turn.act !== "wait" && turn.act !== "check_in");
-  return s.checkedExchange?.transfer?.state === "offered" && s.lastResult === "right" && !!last?.text.endsWith(TRANSFER_OFFER);
+  if (s.checkedExchange?.transfer?.state !== "offered" || s.lastResult !== "right") return false;
+  // Patient lines, check-ins and stale taps keep the last teaching question open.
+  const last = s.turns.findLast((turn, index) => turn.speaker === "maya" && turn.act !== "wait" && turn.act !== "check_in" &&
+    !s.boardSelections?.some((selection) => selection.mayaTurn === index && selection.result !== "answer"));
+  return !!last?.text.endsWith(TRANSFER_OFFER);
 }
 
 /** A yes starts the related question; a no closes the call as before. Any other reply keeps the existing path. */
@@ -6707,8 +6818,11 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   // After streamed words tell a step, ask the next open step. Otherwise preserve the question the child missed.
   const stated = sent.length ? stepsStated(pkg, sent) : [];
   const done = [...new Set([...s.done, ...stated])];
+  const pointed = base.checkedRoutine && stance === "none" && !progress && base.turn && !base.turn.uncertain &&
+    !hasTranscriptAlternatives(base) ? pointedObject(base) : undefined;
+  const aboutPointed = pointed && base.turn ? pointedFollowUp(pointed, base.turn.text).join(" ") : "";
   const honest = endNow === "yes" ? TUTOR_GOODBYE_YES : endNow === "no" ? TUTOR_GOODBYE : base.checkedRoutine && s.solved === null
-    ? checkedSubtractionQuestion(pkg, done, stance === "wrong" ? "Not quite." : progress ? "That's right." : null,
+    ? (aboutPointed ? `${aboutPointed} ` : "") + checkedSubtractionQuestion(pkg, done, stance === "wrong" ? "Not quite." : progress ? "That's right." : null,
       !!base.turn && (ASKS_TUTOR.test(base.turn.text) || /\b(?:regroup|borrow|exchange|trade)\b/i.test(base.turn.text) || saysStuck(base.turn.text)))
     : tutorFallbackText(pkg, done, s.solved !== null, stated.length ? null : openAsked(base));
   // A continuation supplies only the rest; its checks still read the fixed sentences and the rest together.

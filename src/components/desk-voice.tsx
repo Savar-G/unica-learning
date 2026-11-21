@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { Avatar, Icon } from "@/components/desk-icons";
 import { MayaBoard } from "@/components/maya-board";
 import { ExchangeControls } from "@/components/maya-exchange-controls";
+import { useBoardSelection } from "@/components/maya-board-selection";
 import { clock, useMayaVoiceRoom, useMicCheck, type MayaState } from "@/components/maya-voice-room";
 import type { BoardSnapshot } from "@/lib/board-protocol";
 import type { PlayStep } from "@/lib/board-svg";
@@ -429,7 +430,7 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
   const screen = voiceScreen({ flow, phase: room.phase, callEnded: call?.ended === true, hungUp, error: room.error });
   return {
     enabled: initial !== null, usage, liveLeft, flow, screen, call, mic, room: { phase: room.phase, maya: room.maya, error: room.error, seconds: room.seconds, fakeSpeech: room.fakeSpeech, sending: room.sending, hearing: room.hearing, say: room.say },
-    audioHost: room.audioHost, startError, board, shown, boardBatch, exchange: room.exchange,
+    audioHost: room.audioHost, startError, board, shown, boardBatch, exchange: room.exchange, select: room.select,
     /** A call is under way or just ended: the desk's own controls give way to the call's. */
     engaged: flow !== "idle",
     /** Maya's board shows for the call and until the child is back on the page. */
@@ -468,6 +469,9 @@ export function VoiceBoard({ state, still }: { state: DeskVoiceState; still: boo
   const { board, shown, call, boardBatch } = state;
   const exchange = state.screen === "live" && call?.exchange?.batchId === boardBatch ? call.exchange : undefined;
   const showExchangeResult = !!call?.exchangeResult && call.exchangeResult === boardBatch;
+  const live = state.screen === "live" && !!call && !call.ended;
+  const pick = useBoardSelection(live && (call.selection || call.selected)
+    ? { offer: call.selection, selected: call.selected, batches: call.batches, steps: board.steps, submit: state.select } : undefined);
   return (
     <section className="desk-board" id="voice-board" aria-labelledby="desk-board-title">
       <header>
@@ -475,12 +479,13 @@ export function VoiceBoard({ state, still }: { state: DeskVoiceState; still: boo
         <p><Avatar size={22} />Maya draws here</p>
       </header>
       <div className="desk-board-body desk-board-solo">
-        <div className="desk-canvas">
-          {board.steps.length > 0 && <MayaBoard steps={board.steps} viewBox={board.viewBox} instant={still || showExchangeResult} shown={shown} label="Maya's drawing for your question" />}
+        <div className="desk-canvas" data-pointing={pick.pointing || undefined}>
+          {board.steps.length > 0 && <MayaBoard steps={board.steps} viewBox={board.viewBox} instant={still || showExchangeResult} shown={shown} label="Maya's drawing for your question" overlay={pick.overlay} />}
           <p className="desk-caption">{board.steps.length > 0 ? "Follow each step. Then write on your paper." : "Maya writes here while she talks."}</p>
         </div>
       </div>
       {exchange && <ExchangeControls key={exchange.turnId} target={exchange} submit={state.exchange} />}
+      {pick.panel}
     </section>
   );
 }
