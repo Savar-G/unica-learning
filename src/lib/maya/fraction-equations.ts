@@ -19,16 +19,16 @@ const BOUND_BEFORE = new Set(["of", "to", "from", "by", "and", "plus", "minus", 
 const isNumberWord = (w: string) => CARDINAL.test(w) || PART.test(w) || NUMERAL.test(w) || w === "and";
 
 function gcd(a: bigint, b: bigint): bigint {
-  let [x, y] = [a < 0n ? -a : a, b < 0n ? -b : b];
+  let [x, y] = [a < BigInt(0) ? -a : a, b < BigInt(0) ? -b : b];
   while (y) [x, y] = [y, x % y];
-  return x || 1n;
+  return x || BigInt(1);
 }
 const norm = ([n, d]: Q): Q => { const g = gcd(n, d); return [n / g, d / g]; };
 const apply = (a: Q, op: "+" | "-" | "*", b: Q): Q =>
-  norm(op === "*" ? [a[0] * b[0], a[1] * b[1]] : [a[0] * b[1] + (op === "+" ? 1n : -1n) * b[0] * a[1], a[1] * b[1]]);
+  norm(op === "*" ? [a[0] * b[0], a[1] * b[1]] : [a[0] * b[1] + (op === "+" ? BigInt(1) : -BigInt(1)) * b[0] * a[1], a[1] * b[1]]);
 
 function exact(v: AnswerValue): Q | null {
-  if (v.type === "number") return Number.isSafeInteger(v.value) ? [BigInt(v.value), 1n] : null;
+  if (v.type === "number") return Number.isSafeInteger(v.value) ? [BigInt(v.value), BigInt(1)] : null;
   if (v.type === "fraction" || v.type === "mixed") {
     const whole = v.type === "mixed" ? v.whole : 0;
     return v.denominator > 0 ? norm([BigInt(whole) * BigInt(v.denominator) + BigInt(v.numerator), BigInt(v.denominator)]) : null;
@@ -45,7 +45,7 @@ function phraseValue(words: string[], options: ReadOptions): Q | null {
   // "three fourths and one eighth": two values joined by "and" are a sum, as the whole-number reader takes them.
   const parts = trimmed.split(/\s+and\s+/);
   if (parts.length < 2) return null;
-  let total: Q = [0n, 1n];
+  let total: Q = [BigInt(0), BigInt(1)];
   for (const part of parts) {
     const one = readNumbers(part, { ...options, fractions: true });
     if (one.unreadable || one.values.length !== 1) return null;

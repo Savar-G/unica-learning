@@ -1,5 +1,6 @@
 import { SCOPE_REASONS } from "@/lib/maya/scope";
 import { exchangeChildWords, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingWords, type CheckedExchangeLesson } from "@/lib/maya/checked-exchange";
+import { checkedFractionOutput, type CheckedFractionLesson } from "@/lib/maya/checked-fraction-session";
 // Maya's trace format (#322, spec #297): one versioned record of one Maya session, written by every session (the text
 // adapter now, the voice agent #326, the test bench #323 and the admin demo #324 later). It records the model and
 // prompt version, the question package hash, every turn with each proposal, its refusal and repair and the final
@@ -284,6 +285,7 @@ export function boardFateCounts(board: readonly TraceBoardBatch[]): TraceBoardFa
 
 export interface MayaTrace {
   checkedExchange?: CheckedExchangeLesson;
+  checkedFraction?: CheckedFractionLesson;
   /** C2: committed preparation decisions. No hypothetical child text is stored. */
   preparations?: import("@/lib/maya-prepared").PrepareRecord[];
   kind: typeof TRACE_KIND;
@@ -605,7 +607,7 @@ function checkTurn(t: unknown, path: string, version: number): Record<string, un
         const fixed = attempts[0].proposal === null && Array.isArray(o?.say) && o.say.length === 1 &&
           (opening || patient || (exact.includes(o.say[0] as string) && Array.isArray(o?.board) && o.board.length === 0));
         need(attempts.length === 1 && attempts[0].refusal === null && attempts[0].error === undefined &&
-          (fixed || checkedExchangeOutput(attempts[0].proposal, o)), path, "controller output is exact safety guidance, the exact held lines, the code opening, a patient line or a checked exchange");
+          (fixed || checkedExchangeOutput(attempts[0].proposal, o) || checkedFractionOutput(attempts[0].proposal, o)), path, "controller output is exact safety guidance, the exact held lines, the code opening, a patient line or a checked exchange");
       }
       // A chat's close after the safety guidance is code's own: no model is asked for it (#589).
       // D-341, round 3: also a plain stop, closed in code's approved words with no model call.
@@ -911,7 +913,8 @@ export function redactTrace(trace: MayaTrace, childName: string | null): MayaTra
         return { ...t, detail: redactText(t.detail, childName) };
       case "maya": {
         const last = t.attempts.at(-1);
-        const fixedExchange = (last?.source === "controller" || last?.source === "fallback") && checkedExchangeOutput(last.proposal, t.output);
+        const fixedExchange = (last?.source === "controller" || last?.source === "fallback") &&
+          (checkedExchangeOutput(last.proposal, t.output) || checkedFractionOutput(last.proposal, t.output));
         return {
           ...t,
           attempts: t.attempts.map((a) => ({
