@@ -86,7 +86,31 @@ lk agent update-secrets \
   --secrets "MAYA_VOICE_PRIVACY_CONFIRMED=livekit-inference-zdr,child-use-approved"
 ```
 
+That is the first setting (Cartesia "Katie", D-338, still the code default). The production voice is Inworld "Sarah" with a steering tag (D-348): see [Maya's production voice](#mayas-production-voice) below.
+
 Then run one admin test call and read `lk agent logs`: the `call running` line shows the provider ids and `wordTimings: "requested"`, and each `board cue` line shows `source` `word` (word timings came back) or `sentence` (they did not, and the board followed sentence ends).
+
+## Maya's production voice
+
+Production uses Inworld TTS-2 "Sarah" through LiveKit Inference with a steering tag (D-348). It needs a worker built from a `main` commit that reads `MAYA_VOICE_STYLE` (the D-348 change): deploy the worker first (`npm run voice:stage`, `lk agent deploy`), then set the voice. An older worker ignores `MAYA_VOICE_STYLE` and would speak as Sarah without the tag. The privacy markers stay as they are: it is the same Inference route.
+
+```sh
+cd worker/maya-voice
+lk agent update-secrets \
+  --secrets "MAYA_TTS_MODEL=inworld/inworld-tts-2" \
+  --secrets "MAYA_VOICE=Sarah" \
+  --secrets "MAYA_VOICE_STYLE=speak like a warm friendly and upbeat tutor who is happily teaching a young child"
+```
+
+Updating secrets restarts the agent servers one at a time; a call that is running keeps its voice. Check one admin test call: the `call running` line shows `inference/inworld/inworld-tts-2/Sarah`, each `board cue` line shows `source` `word`, and the transcript has no `[speak like ...]` text.
+
+**Rollback to Katie.** One command; `MAYA_VOICE_STYLE` can stay, because a Cartesia voice ignores it:
+
+```sh
+lk agent update-secrets --secrets "MAYA_TTS_MODEL=cartesia/sonic-3.6" --secrets "MAYA_VOICE=f786b574-daa5-4673-aa0c-cbe3e8534c02"
+```
+
+After a rollback, set `VOICE_COMPANY` on the privacy page back to Cartesia.
 
 ## Listening test
 

@@ -146,7 +146,7 @@ const GREETED = { greeting: GREETING_TEXT } as const;
 const heard = (said: readonly string[]) => said.join(" ");
 const times = (text: string, part: string) => text.split(part).length - 1;
 
-async function voiceCall(options: { greeting?: boolean; numberContinueMs?: number; patience?: { normal: TurnSilence; number: TurnSilence; set(limits: TurnSilence): void }; speech?: ProbeSTT; opening?: boolean; workerOpening?: boolean | string; model?: MayaModel; beforeJoin?(call: VoiceCall): void } = {}) {
+async function voiceCall(options: { greeting?: boolean; numberContinueMs?: number; patience?: { normal: TurnSilence; number: TurnSilence; set(limits: TurnSilence): void }; speech?: ProbeSTT; opening?: boolean; workerOpening?: boolean | string; model?: MayaModel; voiceStyle?: string; beforeJoin?(call: VoiceCall): void } = {}) {
   const clock = handClock();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -188,6 +188,7 @@ async function voiceCall(options: { greeting?: boolean; numberContinueMs?: numbe
     ...(options.numberContinueMs !== undefined ? { numberContinueMs: options.numberContinueMs } : {}),
     ...(options.patience ? { patience: options.patience } : {}),
     ...(workerOpening ? { opening: workerOpening } : {}),
+    ...(options.voiceStyle ? { voiceStyle: options.voiceStyle } : {}),
   });
   await run.agentJoined();
   await session.start({ agent: run.agent });
@@ -231,6 +232,20 @@ describe("the turn and interruption settings of a session", () => {
   it("let a test's own endpointing win", async () => {
     const t = await options({ endpointingMs: 20, turn: { turnMinDelayMs: 100, interruptMinMs: 300, interruptMinWords: 0 } });
     expect(t.endpointing).toMatchObject({ minDelay: 20, maxDelay: 20 });
+  });
+});
+
+describe("an Inworld steering tag (MAYA_VOICE_STYLE, D-348)", () => {
+  it("starts every speech request of the call with the tag, and keeps it out of what Maya said", async () => {
+    const c = await voiceCall({ greeting: true, voiceStyle: "[warm]" });
+    await waitFor(() => heard(c.said()).includes(GREETING_TEXT), "the greeting");
+    c.providers.fakeSpeech!.say("I got 56.");
+    const opened = c.said().length;
+    await waitFor(() => c.said().length > opened && c.session.agentState === "listening", "the answer");
+    expect(c.said().length).toBeGreaterThan(2);
+    for (const request of c.said()) expect(request.startsWith("[warm] ")).toBe(true);
+    const view = (await c.calls.view(c.id))!;
+    expect(view.transcript.map((l) => l.text).join(" ")).not.toContain("[warm]");
   });
 });
 

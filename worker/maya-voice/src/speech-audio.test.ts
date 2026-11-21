@@ -351,6 +351,70 @@ describe("math is spoken as words", () => {
     expect(p.received).toEqual(["Find it: what", "minus 28 equals 24."]);
   });
 
+  describe("an Inworld steering tag (D-348)", () => {
+    const TAG = "[speak like a warm friendly and upbeat tutor who is happily teaching a young child]";
+    /**
+     * Inworld through LiveKit Inference, as the 2026-11-20 runs measured it: the tag at the start of a request is not
+     * spoken (speech starts at 0 s), but comes back as one timed token before the first word. The real token is timed
+     * 0-0 s; here it gets 10 ms, so it would reach the board's word matcher if it were not taken out.
+     */
+    function inworld(times: [string, number][][]) {
+      const received: string[] = [];
+      const counted: string[] = [];
+      const transcripts: string[][] = [];
+      const synthesize = (input: ReadableStream<string> | AsyncIterable<string>) => countedSynthesis(input, async (text) => {
+        let said = "";
+        for await (const chunk of text) said += chunk;
+        const words = timed(times[received.length]);
+        received.push(said);
+        const tag = said.startsWith("[") ? [voice.createTimedString({ text: said.slice(0, said.indexOf("]") + 1), startTime: 0, endTime: 0.01 })] : [];
+        return new ReadableStream<AudioFrame>({ start(c) {
+          const frame = new AudioFrame(new Int16Array(24000), 24000, 1, 24000);
+          frame.userdata[USERDATA_TIMED_TRANSCRIPT] = [...tag, ...words];
+          c.enqueue(frame); c.close();
+        } });
+      }, (text) => counted.push(text), undefined, TAG);
+      /** The words of each frame's timed transcript, as the session reads them for Maya's transcript. */
+      const heard = async (frames: ReadableStream<AudioFrame>) => {
+        for await (const frame of frames) transcripts.push(((frame.userdata[USERDATA_TIMED_TRANSCRIPT] ?? []) as voice.TimedString[]).map(t => t.text.trim()));
+      };
+      return { received, counted, transcripts, synthesize, heard };
+    }
+
+    it("starts every sentence's request with the tag, counts it, and keeps the cue on its word", async () => {
+      // Words: We're(1) doing(2) 52(3) −(4) 28(5) =(6) 24(7) today.(8) Ready?(9)
+      const c = await setup(7);
+      const p = inworld([
+        [["We're ", 0.1], ["doing ", 0.2], ["52 ", 0.3], ["minus ", 0.4], ["28 ", 0.5], ["equals ", 0.6], ["24 ", 0.7], ["today.", 0.9]],
+        [["Ready?", 0.4]],
+      ]);
+      await p.heard(boardAudio(inputText("We're doing 52 − 28 = 24 today. Ready?"), p.synthesize, c.board, c.scope));
+      expect(p.received).toEqual([`${TAG} We're doing 52 minus 28 equals 24 today.`, `${TAG} Ready?`]);
+      // The provider bills the tag's characters too.
+      expect(p.counted).toEqual(p.received);
+      // The tag is never part of Maya's transcript.
+      expect(p.transcripts).toEqual([["We're", "doing", "52", "minus", "28", "equals", "24", "today."], ["Ready?"]]);
+      // The cue on 24 fires when 24 is said, not at the sentence's end (1 s).
+      await c.board.played(c.scope, 699);
+      expect(shown(c)).toBe(false);
+      await c.board.played(c.scope, 700);
+      expect(shown(c)).toBe(true);
+    });
+
+    it("starts a line without a board with the tag once", async () => {
+      const p = inworld([[["Nice ", 0.2], ["thinking!", 0.5]]]);
+      await p.heard((await p.synthesize(inputText("Nice thinking!")))!);
+      expect(p.received).toEqual([`${TAG} Nice thinking!`]);
+      expect(p.transcripts).toEqual([["Nice", "thinking!"]]);
+    });
+
+    it("sends no tag without a style", async () => {
+      const p = provider([null]);
+      for await (const frame of (await p.synthesize(inputText("Nice thinking!")))!) void frame;
+      expect(p.received).toEqual(["Nice thinking!"]);
+    });
+  });
+
   it("sends a line without a board as words too", async () => {
     const p = provider([null]);
     const out = await p.synthesize(inputText("Let's do 52 − 28. It is 25% of $4."));

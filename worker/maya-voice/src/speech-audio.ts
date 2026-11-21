@@ -13,6 +13,10 @@ import { delivery, deliveryLog, LeadTrim } from "./voice-delivery";
  * Every line Maya says reaches the provider here, so here its math signs become words (`spokenMath`, a sentence at a
  * time): "52 − 28" goes to the provider as "52 minus 28". `count` gets that spoken text, which is what the provider
  * receives and bills. Text that is already spoken (from `boardAudio`) does not change again.
+ *
+ * `style` (an Inworld voice with MAYA_VOICE_STYLE, D-348) is a bracketed steering tag put at the start of this request.
+ * Inworld does not say it, but bills it and times it as one token before the first word: that token is taken out of the
+ * audio's timed transcript here, so Maya's transcript never shows it and board cues count only spoken words.
  */
 export async function countedSynthesis(
   text: ReadableStream<string> | AsyncIterable<string>,
@@ -20,6 +24,7 @@ export async function countedSynthesis(
   count: (text: string) => void,
   /** The telemetry of this speech: the first words given to the voice, and its first audio frame (./telemetry.ts). */
   probe?: UtteranceProbe,
+  style?: string,
 ): Promise<ReadableStream<AudioFrame> | null> {
   let sent = "";
   const chunks = text[Symbol.asyncIterator]();
@@ -30,9 +35,13 @@ export async function countedSynthesis(
         const { value, done } = await chunks.next();
         const said = done ? spoken.end() : spoken.push(value);
         if (said) {
-          if (!sent) probe?.request();
-          sent += said;
-          controller.enqueue(said);
+          let out = said;
+          if (!sent) {
+            probe?.request();
+            if (style) out = `${style} ${said}`;
+          }
+          sent += out;
+          controller.enqueue(out);
         }
         if (done) return controller.close();
         if (said) return;
@@ -44,6 +53,8 @@ export async function countedSynthesis(
   const reader = frames.getReader();
   let heard = false;
   let counted = false;
+  /** A spoken word was timed already: a bracketed token after it is Maya's own text, never the tag. */
+  let wordTimed = !style;
   const charge = () => {
     if (!heard || counted) return;
     counted = true;
@@ -56,6 +67,7 @@ export async function countedSynthesis(
         if (done) { charge(); return controller.close(); }
         if (!heard) probe?.firstFrame();
         heard = true;
+        if (!wordTimed) wordTimed = withoutStyleTag(value);
         controller.enqueue(value);
       } catch (e) {
         charge();
@@ -68,6 +80,28 @@ export async function countedSynthesis(
       await reader.cancel(reason);
     },
   });
+}
+
+const STYLE_TAG = /^\s*\[[^\]]*\]\s*/;
+
+/**
+ * Takes the steering tag out of a frame's timed transcript: leading tokens that are a bracketed tag, or the tag in front
+ * of the first word in the same token. True once a spoken word is timed (later frames are left as they are).
+ */
+function withoutStyleTag(frame: AudioFrame): boolean {
+  const times = frame.userdata[USERDATA_TIMED_TRANSCRIPT] as voice.TimedString[] | undefined;
+  if (!times?.length) return false;
+  const kept: voice.TimedString[] = [];
+  let word = false;
+  for (const t of times) {
+    if (word) { kept.push(t); continue; }
+    const rest = t.text.replace(STYLE_TAG, "");
+    if (!rest.trim()) continue;
+    word = true;
+    kept.push(rest === t.text ? t : voice.createTimedString({ ...t, text: rest }));
+  }
+  frame.userdata[USERDATA_TIMED_TRANSCRIPT] = kept;
+  return word;
 }
 
 /** A speech whose audio did not come, or stopped coming, for its own reason: not a cut. */
