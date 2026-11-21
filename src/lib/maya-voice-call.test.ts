@@ -785,7 +785,7 @@ describe("a chat that becomes a call", () => {
     const chat = await chatWithWork(s);
     const row = (await s.store.get(chat.id))!;
     const live = row.live!;
-    const batch = { transactionId: "sample-drawing", utteranceId: "sample", sentence: 0, fate: "shown" as const, commands: [{ op: "write", id: "example-number", place: { region: "main" }, text: "52" }] };
+    const batch = { transactionId: "sample-drawing", at: s.now(), turn: 0, utteranceId: "sample", sentence: 0, fate: "shown" as const, commands: [{ op: "write", id: "example-number", place: { region: "main" }, text: "52" }] };
     const board = [batch, ...(kind === "removed" ? [{ ...batch, transactionId: "remove-drawing", commands: [{ op: "remove", objectId: "example-number" }] }] : [])];
     const selection = {
       selectionId: "a", batchId: batch.transactionId, objectId: kind === "wrong-id" ? "other-number" : "example-number",
