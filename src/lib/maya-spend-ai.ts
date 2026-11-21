@@ -33,6 +33,8 @@ export interface Meter {
 export interface MeterHooks {
   fetch: typeof globalThis.fetch;
   onRequest: () => Promise<void>;
+  /** The fetch of a generation's stats (#1203): not metered, since it asks the cost of a request already sent. */
+  statsFetch?: typeof globalThis.fetch;
 }
 
 /**

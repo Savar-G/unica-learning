@@ -2,8 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { openRouterClient } from "@/lib/ai-openrouter";
 import { callSpend, createSpendLedger, spendConfig, usdToMicros, RESERVATION_TTL_MS, RESERVE_USD, WEEK_MICROS, type Charge, type SpendCall } from "@/lib/maya-spend";
 import { meteredAi, SpendRefused } from "@/lib/maya-spend-ai";
-import { BLOCK_ATTEMPTS, BLOCK_RENEW_MS, BLOCK_RETIRE_MS, SPECULATIVE_PER_TURN } from "@/lib/maya-spend-block";
+import { createBudget, BLOCK_ATTEMPTS, BLOCK_DRAIN_MS, BLOCK_RENEW_MS, BLOCK_RETIRE_MS, SPECULATIVE_PER_TURN } from "@/lib/maya-spend-block";
 import { memorySpendStore } from "@/lib/maya-spend-memory";
+import { preparedReplies } from "@/lib/maya-prepared";
+import type { MayaModel, TurnBrief } from "@/lib/maya-model";
+import type { Handle } from "@/lib/maya-spend-block";
 
 // The voice budget block (latency plan V1, 2026-11-13) through the ledger's public interface on the in-memory store,
 // whose `log` holds one entry per database request: one atomic reservation of a block of model attempts for a voice
@@ -384,5 +387,157 @@ describe("the seam the text session gets (agreed with the Maya lead)", () => {
     expect(SPECULATIVE_PER_TURN).toBe(3);
     b.newTurn();
     expect(takes()).toBe(true);
+  });
+});
+
+describe("aborted prepared replies with no reported cost (#1203)", () => {
+  /** A model that streams 200 characters, reports no cost, stops at the abort, and offers its stats (`stats`). */
+  const streaming = (stats: () => Promise<number | null>): MayaModel => ({ id: "m", promptVersion: "t", output: 3,
+    propose: (_input, signal, onText, _onCost, onGeneration) => new Promise((_, reject) => {
+      onGeneration?.(stats);
+      onText?.("x".repeat(200));
+      signal.addEventListener("abort", () => reject(new Error("time is up")), { once: true });
+    }) });
+  /** Prepares one reply on `handle` and aborts it, as a turn whose words changed does. */
+  const abortedPrepare = (b: ReturnType<ReturnType<typeof setup>["spend"]["budget"]>, handle: Handle, stats: () => Promise<number | null>) => {
+    const cache = preparedReplies(streaming(stats), b.seam, () => 0);
+    cache.start("k", {} as TurnBrief, { text: "6", reason: "interim" }, handle);
+    cache.discard(cache.get("k")!, "text", 0);
+  };
+  const later = (ms: number, usd: number | null) => () => new Promise<number | null>((r) => setTimeout(() => r(usd), ms));
+
+  it("a block of 4 aborted prepares settles at their receipts, far below its CAD 0.84; with no receipts it keeps its reservation", async () => {
+    vi.useFakeTimers();
+    try {
+      for (const receipt of [0.005, null]) {
+        const t = setup();
+        const b = t.spend.budget(voice);
+        await b.open();
+        b.newTurn();
+        const handles = [b.seam.take("speculative")!, b.seam.take("speculative")!, b.take("model")!, b.take("model")!];
+        for (const h of handles) abortedPrepare(b, h, async () => receipt);
+        const drained = b.drained();
+        await vi.advanceTimersByTimeAsync(30_000);
+        await drained;
+        const [row] = t.blocks();
+        expect(row).toMatchObject({ reserved: BLOCK_ATTEMPTS * t.m, settled: true, cost: receipt === null ? BLOCK_ATTEMPTS * t.m : 4 * usdToMicros(0.005, t.config) });
+      }
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("keeps an owed receipt's reservation, so a live request cannot run past the week (2 prepares at USD 0.09 each)", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = setup();
+      t.leave(BLOCK_ATTEMPTS * t.m);
+      const b = t.spend.budget(voice);
+      await b.open();
+      b.newTurn();
+      for (const h of [b.seam.take("speculative")!, b.seam.take("speculative")!]) abortedPrepare(b, h, later(1_500, 0.09));
+      await vi.advanceTimersByTimeAsync(0);
+      // While their receipts are owed, the two prepares still hold their reservations: two live attempts are left.
+      const live = [b.take("model"), b.take("model"), b.take("model")];
+      expect(live.filter(Boolean)).toHaveLength(2);
+      for (const h of live) if (h) b.finish(h, usdToMicros(0.15, t.config));
+      const drained = b.drained();
+      await vi.advanceTimersByTimeAsync(30_000);
+      await drained;
+      expect(t.blocks()).toMatchObject([{ settled: true }]);
+      expect(await t.week()).toBeLessThanOrEqual(WEEK_MICROS);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("keeps the week under the cap with two calls of one child at once", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = setup();
+      t.leave(BLOCK_ATTEMPTS * t.m + t.m);
+      const other: SpendCall = { ...voice, id: "77777777-7777-4777-8777-777777777777" };
+      const [a, b] = [t.spend.budget(voice), t.spend.budget(other)];
+      await Promise.all([a.open(), b.open()]);
+      expect(await t.week()).toBe(WEEK_MICROS);
+      let sent = 0;
+      for (const budget of [a, b]) for (;;) {
+        budget.newTurn();
+        const h = budget.take("model");
+        if (!h) break;
+        sent++;
+        abortedPrepare(budget, h, later(1_000, 0.12));
+        await vi.advanceTimersByTimeAsync(0);
+        expect(await t.week()).toBeLessThanOrEqual(WEEK_MICROS);
+      }
+      expect(sent).toBe(BLOCK_ATTEMPTS + 1);
+      await Promise.all([a.drained(), b.drained(), vi.advanceTimersByTimeAsync(30_000)]);
+      expect(t.store.rows().filter((r) => r.what === "model").every((r) => r.settled)).toBe(true);
+      expect(await t.week()).toBeLessThanOrEqual(WEEK_MICROS);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("drains at the call's end: waits for a receipt still owed and its row, at most BLOCK_DRAIN_MS", async () => {
+    vi.useFakeTimers();
+    try {
+      for (const receipt of [0.004, "never"] as const) {
+        const t = setup();
+        const b = t.spend.budget(voice);
+        await b.open();
+        b.newTurn();
+        abortedPrepare(b, b.seam.take("speculative")!, receipt === "never" ? () => new Promise(() => {}) : later(1_000, receipt));
+        await b.stop();
+        // Stop returns at once: the block's row waits for the owed receipt.
+        expect(t.blocks()).toMatchObject([{ settled: false }]);
+        let drained = false;
+        void b.drained().then(() => { drained = true; });
+        if (receipt === "never") {
+          // The prepared request gives up after its last ask and settles as unknown (the reservation): still well inside the bound.
+          await vi.advanceTimersByTimeAsync(BLOCK_DRAIN_MS);
+          expect(drained).toBe(true);
+          expect(t.blocks()).toMatchObject([{ settled: true, cost: t.m }]);
+        } else {
+          // The first wait, then the ask.
+          await vi.advanceTimersByTimeAsync(2_000);
+          expect(drained).toBe(true);
+          expect(t.blocks()).toMatchObject([{ settled: true, cost: usdToMicros(0.004, t.config) }]);
+        }
+      }
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("applies one deadline from its call to the whole drain, also over a refill and a row write that never answer", async () => {
+    vi.useFakeTimers();
+    try {
+      for (const hang of ["settle", "refill"] as const) {
+        let reserves = 0;
+        const b = createBudget({ modelMicros: 100, reviewMicros: 10, clock: () => Date.now(), newId: () => String(++reserves), usdToMicros: (usd) => Math.ceil(usd * 1e6),
+          reserve: async () => (hang === "refill" && reserves > 1 ? new Promise(() => {}) : { ok: true }),
+          settle: async () => (hang === "settle" ? new Promise(() => {}) : undefined) });
+        await b.open();
+        // Free attempts down to the refill line: a refill starts and, for "refill", never answers.
+        for (let i = 0; i < BLOCK_ATTEMPTS - 1; i++) b.finish(b.take("model")!, 100);
+        let drained = false;
+        void b.drained().then(() => { drained = true; });
+        await vi.advanceTimersByTimeAsync(BLOCK_DRAIN_MS - 1);
+        expect(drained).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(drained).toBe(true);
+      }
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("stops draining at BLOCK_DRAIN_MS when an attempt is never finished, leaving the block counted at its reservation", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = setup();
+      const b = t.spend.budget(voice);
+      await b.open();
+      b.newTurn();
+      expect(b.seam.take("speculative")).not.toBeNull();
+      let drained = false;
+      void b.drained().then(() => { drained = true; });
+      await vi.advanceTimersByTimeAsync(BLOCK_DRAIN_MS - 1);
+      expect(drained).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(drained).toBe(true);
+      expect(t.blocks()).toMatchObject([{ settled: false }]);
+    } finally { vi.useRealTimers(); }
   });
 });

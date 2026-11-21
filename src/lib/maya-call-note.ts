@@ -235,8 +235,9 @@ export function noteFacts(input: { outcome: Outcome; event: NewLearningEvent | n
     outcome.safetyFlag ? "not_finished"
     : outcome.assistance === "answer_given" && (result !== "blank" || outcome.reason === "solved") ? "answer_given"
     : result === "right" ? "on_own"
-    : result === "right_with_help" ? "with_help"
+    // Unconfirmed help comes before "with help": the note never names a smaller help than the child may have had.
     : outcome.reason === "solved" && outcome.helpUnconfirmed ? "help_unconfirmed"
+    : result === "right_with_help" ? "with_help"
     : "not_finished";
   const step = event?.stuckStep && pkg ? pkg.steps.find((s) => s.id === event.stuckStep) : undefined;
   return {

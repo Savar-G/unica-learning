@@ -13,7 +13,7 @@ import { BOARD_RPC, boardRpcHandler } from "@/lib/board-rpc";
 import { createBoardReceiver } from "@/lib/board-protocol";
 import {
   BASELINE_COST_PREFIX, BASELINE_PREFIX, BASELINE_PROFILE_PREFIX, baselineAgentName, deviceTurn, plannedTurns, prepareBaselineEnv, receiptCost,
-  speechCosts, type BaselineCost, type BaselineGroup, type BaselineReceipt, type BaselineTurn, type DeviceObservation, type SpeechProvider,
+  replyOver, speechCosts, type BaselineCost, type BaselineGroup, type BaselineReceipt, type BaselineTurn, type DeviceObservation, type SpeechProvider,
 } from "@/lib/maya-baseline";
 import { ATTR, childGrant, childIdentity, HANG_UP_BOARD_DRAIN, voiceProviders, voiceRoom } from "@/lib/maya-voice";
 import { BASELINE_AGENT, baselineProvider, REPORT_RPC, type BaselineJob, type Playout, type ReportMessage } from "./agent";
@@ -54,7 +54,6 @@ const RATE = 24_000;
 const FRAME = RATE / 100;
 const LOUD = 0.008 * 32768;
 const MERGE_MS = 250;
-const QUIET_MS = 2000;
 const TURN_LIMIT_MS = 25_000;
 
 function pcm(file: string): Int16Array {
@@ -80,6 +79,10 @@ async function child(o: { url: string; job: BaselineJob; prompts: Map<string, In
   const bursts: { start: number; end: number }[] = [];
   const board: number[] = [];
   const messages: ReportMessage[] = [];
+  // The worker's live reports: answer playout starts, reply-done times, and each playout's end (null while it plays).
+  const answers: { turnId: string; at: number }[] = [];
+  const replies: { turnId: string; at: number }[] = [];
+  const live = new Map<number, number | null>();
   let done!: () => void;
   const reported = new Promise<void>(resolve => { done = resolve; });
   // The board shows a staged batch at its release. Stamp the receipt of each accepted release.
@@ -119,6 +122,10 @@ async function child(o: { url: string; job: BaselineJob; prompts: Map<string, In
   local.registerRpcMethod(REPORT_RPC, async data => {
     const m = JSON.parse(data.payload) as ReportMessage;
     messages.push(m);
+    if (m.kind === "answer") answers.push({ turnId: m.turnId, at: m.at });
+    if (m.kind === "reply_done") replies.push({ turnId: m.turnId, at: m.at });
+    // RPCs can arrive out of order: a finish is never undone by its own start.
+    if (m.kind === "playout" && !(m.end === null && live.get(m.start) != null)) live.set(m.start, m.end);
     if (m.kind === "done") done();
     return "ok";
   });
@@ -150,15 +157,15 @@ async function child(o: { url: string; job: BaselineJob; prompts: Map<string, In
     await pause(150);
     return { first: firstLoud || started, end: lastLoud || Date.now() };
   };
-  const quiet = async (after: number, limit = TURN_LIMIT_MS) => {
+  /**
+   * Waits until the worker reports the reply to the prompt that ended at `after` done and it is quiet (replyOver),
+   * or `limit` passes. Filler never ends the wait: an answer can come many seconds after it. The opening has no answer.
+   */
+  const quiet = async (after: number, limit = TURN_LIMIT_MS, needsAnswer = true) => {
     const until = Date.now() + limit;
     while (Date.now() < until) {
-      // A filler is short and the answer can come seconds later. The turn is over after 2 s of quiet that follows a
-      // sound of at least 1 s (an answer), or after 6 s of quiet that follows any sound.
-      const last = bursts.at(-1);
-      const silent = last ? Date.now() - last.end : 0;
-      const answered = bursts.some(b => b.start >= after && b.end - b.start >= 1000);
-      if (last && last.start >= after && silent >= (answered ? QUIET_MS : 3 * QUIET_MS)) return true;
+      const playouts = [...live].map(([start, end]) => ({ start, end }));
+      if (replyOver({ after, now: Date.now(), bursts, answers, replies, playouts, needsAnswer })) return true;
       await pause(50);
     }
     return false;
@@ -203,7 +210,7 @@ async function runCall(o: { url: string; dispatch: AgentDispatchClient; job: Omi
       }
       return;
     }
-    await c.quiet(0, 30_000);
+    await c.quiet(0, 30_000, false);
     for (const item of CASES) {
       if (item.kind === "background") {
         const at = Date.now();
