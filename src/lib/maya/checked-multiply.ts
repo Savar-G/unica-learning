@@ -1,6 +1,6 @@
-import type { Command } from "@/lib/board";
+import { applyBatch, createScene, type Command } from "@/lib/board";
 import { workedSteps, type OperationPackage } from "@/lib/question-package";
-import { GROUPS_OBJECT, type ExchangeAction, type ExchangeTarget } from "./checked-exchange";
+import { GROUPS_OBJECT, readExchangeTarget, type ExchangeAction, type ExchangeTarget } from "./checked-exchange";
 import { TRANSFER_GOODBYE, TRANSFER_OFFER, type TransferOperands } from "./transfer";
 
 export { GROUPS_OBJECT };
@@ -46,7 +46,9 @@ export interface MultiplyFacts {
   context: MultiplyContext;
 }
 
-export type MultiplyBoardKind = "show" | "replace" | "add_group" | "complete_example" | "question";
+/** "clear": removes a solved worked example before the child works alone. */
+export type MultiplyBoardKind = "show" | "replace" | "add_group" | "complete_example" | "clear" | "question";
+const BOARD_KINDS: readonly MultiplyBoardKind[] = ["show", "replace", "add_group", "complete_example", "clear", "question"];
 
 export interface MultiplyAction {
   id: string;
@@ -58,27 +60,13 @@ export interface MultiplyAction {
   presented?: true;
 }
 
-export type MultiplyStep =
-  | "check_groups"
-  | "check_meaning"
-  | "independent"
-  | "worked_example"
-  | "guide_groups"
-  | "additive_error"
-  | "swapped_factors"
-  | "off_by_one"
-  | "group_added"
-  | "connect_notation"
-  | "skip_count"
-  | "wrong_unit"
-  | "correct"
-  | "offer"
-  | "decline"
-  | "transfer"
-  | "transfer_retry"
-  | "transfer_hint"
-  | "transfer_show"
-  | "transfer_correct";
+export const MULTIPLY_STEPS = [
+  "check_groups", "check_meaning", "independent", "worked_example", "guide_groups", "additive_error", "swapped_factors",
+  "off_by_one", "group_added", "paper_groups", "connect_notation", "skip_count", "wrong_unit", "correct", "offer", "decline",
+  "transfer", "transfer_retry", "transfer_hint", "transfer_show", "transfer_correct",
+] as const;
+
+export type MultiplyStep = (typeof MULTIPLY_STEPS)[number];
 
 export interface MultiplyInstruction {
   step: MultiplyStep;
@@ -241,6 +229,10 @@ function questionItemNoun(text: string): string | null {
   return m ? cleanItemNoun(m[1]) : null;
 }
 
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function otherFactor(a: number, b: number, known: number): number | null {
   if (known === a) return b;
   if (known === b) return a;
@@ -295,13 +287,22 @@ export function multiplyContext(pkg: OperationPackage): MultiplyContext | null {
     }
   }
 
+  // The group count must name the same container ("3 trays") or refer to it when it is the only container named ("3 of them").
+  const countsContainer = (count: number, singular: string): boolean => {
+    const names = `(?:${escapeRe(singular)}|${escapeRe(GROUP_PLURAL[singular])})`;
+    if (new RegExp(String.raw`\b${count}\s+(?:[a-z]+\s+)?${names}\b`, "i").test(text)) return true;
+    const others = [...text.matchAll(new RegExp(String.raw`\b(${GROUP_PATTERN})\b`, "gi"))]
+      .some((m) => GROUP_SINGULAR[m[1].toLowerCase()] !== singular);
+    return !others && new RegExp(String.raw`\b${count}\s+of\s+(?:them|these|those)\b`, "i").test(text);
+  };
+
   // Pattern 2: "Each jar has 4 toy cars. Amara has 3 of them." / "A tray holds 4 muffins. There are 3 trays."
   const p2 = new RegExp(String.raw`\b(?:each|every|a|one)\s+(${GROUP_PATTERN})\s+(?:has|holds|carries|contains|gets)\s+(\d+)\s+([a-z]+(?:\s+[a-z]+)?)\b`, "i").exec(text);
   if (p2) {
     const size = Number(p2[2]);
     const groups = otherFactor(a, b, size);
-    if (groups !== null) {
-      const singular = GROUP_SINGULAR[p2[1].toLowerCase()];
+    const singular = GROUP_SINGULAR[p2[1].toLowerCase()];
+    if (groups !== null && countsContainer(groups, singular)) {
       const itemNoun = askedItem ?? cleanItemNoun(p2[3]);
       return { groups, size, contextual: true, groupNoun: GROUP_PLURAL[singular], groupSingular: singular, itemNoun, unit };
     }
@@ -312,8 +313,8 @@ export function multiplyContext(pkg: OperationPackage): MultiplyContext | null {
   if (p3) {
     const size = Number(p3[1]);
     const groups = otherFactor(a, b, size);
-    if (groups !== null) {
-      const singular = GROUP_SINGULAR[p3[3].toLowerCase()];
+    const singular = GROUP_SINGULAR[p3[3].toLowerCase()];
+    if (groups !== null && countsContainer(groups, singular)) {
       const itemNoun = askedItem ?? cleanItemNoun(p3[2]);
       return { groups, size, contextual: true, groupNoun: GROUP_PLURAL[singular], groupSingular: singular, itemNoun, unit };
     }
@@ -369,22 +370,44 @@ function repeatedSum(count: number, size: number): string {
   return Array.from({ length: count }, () => String(size)).join(" + ");
 }
 
+/** The board writes at most 24 characters, so a long repeated sum is written as a product of the rows so far. */
+const BOARD_TEXT_MAX = 24;
+
 function notationText(facts: MultiplyFacts): string {
   const { groups, size, builtGroups, example, product } = facts;
   if (example && builtGroups === groups) return `${groups} × ${size} = ${product}`;
   if (builtGroups === groups) return `${groups} × ${size} = ?`;
   if (builtGroups <= 1) return `1 × ${size} = ${size}`;
-  return `${repeatedSum(builtGroups, size)} = ${builtGroups * size}`;
+  const sum = `${repeatedSum(builtGroups, size)} = ${builtGroups * size}`;
+  return sum.length <= BOARD_TEXT_MAX ? sum : `${builtGroups} × ${size} = ${builtGroups * size}`;
+}
+
+const CLEAR_GROUPS: Command[] = [
+  { op: "remove", objectId: "multiply-notation" },
+  { op: "remove", objectId: GROUPS_OBJECT },
+];
+
+/** Whether the board can draw this array now and after every remaining group the child adds. */
+export function multiplyBoardFits(facts: MultiplyFacts): boolean {
+  let scene = createScene();
+  const batches: Command[][] = [multiplyCommands("show", facts)];
+  for (let built = Math.max(1, facts.builtGroups) + 1; built <= facts.groups; built++) {
+    batches.push(multiplyCommands("add_group", { ...facts, builtGroups: built }));
+  }
+  for (const [index, commands] of batches.entries()) {
+    const applied = applyBatch(scene, { transactionId: `fit-${index}`, commands });
+    if (!applied.ok) return false;
+    scene = applied.scene;
+  }
+  return true;
 }
 
 export function multiplyCommands(kind: Exclude<MultiplyBoardKind, "question">, facts: MultiplyFacts): Command[] {
+  if (kind === "clear") return CLEAR_GROUPS.map((c) => ({ ...c }));
   const rows = kind === "complete_example" ? facts.groups : Math.max(1, facts.builtGroups);
   const drawFacts = kind === "complete_example" ? { ...facts, builtGroups: facts.groups } : facts;
   const base: Command[] = [
-    ...(kind === "show" ? [] : [
-      { op: "remove" as const, objectId: "multiply-notation" },
-      { op: "remove" as const, objectId: GROUPS_OBJECT },
-    ]),
+    ...(kind === "show" ? [] : CLEAR_GROUPS.map((c) => ({ ...c }))),
     { op: "model", id: GROUPS_OBJECT, model: { kind: "array", rows, columns: facts.size }, place: { region: "main" } },
     { op: "write", id: "multiply-notation", text: notationText(drawFacts), place: { below: GROUPS_OBJECT } },
   ];
@@ -464,7 +487,7 @@ export function multiplyWords(facts: MultiplyFacts, instruction: unknown, show: 
   const nextActionLines = canAddGroup
     ? [
         ...(show ? [`Start with ${builtGroups} ${gWord(builtGroups)} of ${size}.`] : []),
-        `Use the Add 1 group of ${size} button on the board.`,
+        `Use the Add 1 group of ${size} button on the board, or draw 1 more ${gSing} of ${size} on your paper.`,
       ]
     : [`Count all ${groups} rows of ${size} on the board.`, totalAsk];
 
@@ -529,6 +552,13 @@ export function multiplyWords(facts: MultiplyFacts, instruction: unknown, show: 
         : `Now we have ${builtGroups} ${gNoun} of ${size}: ${repeatedSum(builtGroups, size)} = ${builtGroups * size}.`;
       return [countLine, `Add 1 more group of ${size} to reach ${groups} ${gNoun}.`];
     }
+
+    case "paper_groups":
+      return [
+        `You drew ${groups} ${gNoun} of ${thingInGroup}.`,
+        `That matches ${repeatedSum(groups, size)} and ${groups} times ${size}.`,
+        totalAsk,
+      ];
 
     case "connect_notation": {
       const sum = repeatedSum(groups, size);
@@ -621,3 +651,56 @@ export function multiplyRelatedChoice(
 /** Keeps checked action shape compatible with ExchangeAction for shared transport helpers. */
 export const asBoardActions = (actions: readonly MultiplyAction[]): readonly ExchangeAction[] =>
   actions as unknown as readonly ExchangeAction[];
+
+const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+const isId = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 160;
+const SKILLS: readonly MultiplySkill[] = ["equal_groups", "repeated_addition", "group_structure", "build_group", "product", "additive_error", "swapped_factors", "off_by_one_group", "unit_missing"];
+const ASSISTANCE: readonly MultiplyObservation["assistance"][] = ["independent", "hinted", "demonstrated", "uncertain"];
+
+function validFacts(raw: unknown): boolean {
+  if (!isRecord(raw)) return false;
+  const f = multiplyFacts(raw.groups as number, raw.size as number, raw.builtGroups as number, raw.example as boolean, raw.visualSupport as VisualSupport, raw.context as MultiplyContext);
+  return !!f && typeof raw.example === "boolean" && raw.product === f.product;
+}
+
+function validObservation(raw: unknown): boolean {
+  return isRecord(raw) && SKILLS.includes(raw.skill as MultiplySkill) && (raw.result === "correct" || raw.result === "incorrect") &&
+    ASSISTANCE.includes(raw.assistance as MultiplyObservation["assistance"]) && typeof raw.at === "number" && Number.isFinite(raw.at);
+}
+
+/**
+ * A saved multiplication lesson, or null when any record is not this shape: each turn's facts, instruction, help and
+ * observation, each board action's kind and delivery, unique batch ids, and each `after` link to an earlier batch.
+ */
+export function readCheckedMultiplyLesson(raw: unknown): CheckedMultiplyLesson | null {
+  if (!isRecord(raw) || raw.version !== 1 || raw.transfers !== 1 || !isId(raw.id) || !isValidMultiplyContext(raw.context) ||
+    !["full", "partial", "faded"].includes(raw.visualSupport as string) || !Number.isInteger(raw.builtGroups) ||
+    (raw.builtGroups as number) < 0 || (raw.builtGroups as number) > raw.context.groups || !Array.isArray(raw.turns)) return null;
+  const batches = new Set<string>();
+  for (const turn of raw.turns as unknown[]) {
+    if (!isRecord(turn) || !isId(turn.id) || !validFacts(turn.facts) || !Array.isArray(turn.actions) || !isRecord(turn.instruction) ||
+      !MULTIPLY_STEPS.includes(turn.instruction.step as MultiplyStep) ||
+      (turn.instruction.transfer !== undefined && !readMultiplyTransferOperands(turn.instruction.transfer)) ||
+      (turn.sent !== undefined && turn.sent !== true) || (turn.transfer !== undefined && turn.transfer !== true) ||
+      (turn.playback !== undefined && turn.playback !== "finished" && turn.playback !== "interrupted") ||
+      (turn.support !== undefined && turn.support !== "hinted" && turn.support !== "demonstrated") ||
+      (turn.prompt !== undefined && !readExchangeTarget(turn.prompt)) ||
+      (turn.childAction !== undefined && !readExchangeTarget(turn.childAction)) ||
+      (turn.observation !== undefined && !validObservation(turn.observation))) return null;
+    for (const action of turn.actions as unknown[]) {
+      if (!isRecord(action) || !isId(action.id) || !BOARD_KINDS.includes(action.kind as MultiplyBoardKind) || !isId(action.batchId) ||
+        batches.has(action.batchId) || (action.after !== undefined && (!isId(action.after) || !batches.has(action.after))) ||
+        (action.delivery !== "generated" && action.delivery !== "sent") ||
+        (action.fate !== undefined && action.fate !== "shown" && action.fate !== "skipped" && action.fate !== "cancelled") ||
+        (action.presented !== undefined && action.presented !== true)) return null;
+      batches.add(action.batchId);
+    }
+  }
+  const t = raw.transfer;
+  if (t !== undefined && (!isRecord(t) || !readMultiplyTransferOperands(t.operands) ||
+    !["offered", "declined", "started", "finished"].includes(t.state as string) || !Array.isArray(t.done) ||
+    !(t.done as unknown[]).every((d) => d === "groups" || d === "product") ||
+    (t.startedAt !== undefined && (typeof t.startedAt !== "number" || !Number.isFinite(t.startedAt))) ||
+    (t.eventKey !== undefined && !isId(t.eventKey)))) return null;
+  return raw as unknown as CheckedMultiplyLesson;
+}

@@ -75,7 +75,7 @@ import { deriveDrawings, type BoardRead, type TiedDrawing } from "./board-ties";
 import { chooseTransfer, relatedChoice, TRANSFER_MIN_MS, TRANSFER_OFFER, transferBoard, transferPackage, type RelatedStep, type TransferOperands } from "./transfer";
 import { EXCHANGE_OBJECT, exchangeChildWords, exchangeCommands, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingOffersAction, regroupingWords, sameExchangeTarget, supportsCheckedExchange, type CheckedExchangeLesson, type ExchangeAction, type ExchangeProposal, type ExchangeTarget, type ExchangeTurn, type RegroupingInstruction, type RegroupingObservation } from "./checked-exchange";
 import { asBoardActions, multiplyFacts, multiplyTransferPackage, multiplyWords, supportsCheckedMultiply, unitDisplay, type CheckedMultiplyLesson, type MultiplyProposal, type MultiplyTurn } from "./checked-multiply";
-import { childMultiplyTarget, hasUnconfirmedMultiplyHelp, initCheckedMultiply, matchesMultiplyProposal, multiplyAdditiveError, multiplyBatchCommands, multiplyHelp, multiplyProposalOf, multiplySwappedContext, multiplyTransferFor, multiplyTransferOutcome, multiplyWaitingForBoard, planMultiplyChildAction, planMultiplyTurn, type MultiplySessionHost } from "./multiply-lesson";
+import { childMultiplyTarget, hasUnconfirmedMultiplyHelp, initCheckedMultiply, matchesMultiplyProposal, multiplyAdditiveError, multiplyBatchCommands, multiplyClaimConflict, multiplyHelp, multiplyProposalOf, multiplySwappedContext, multiplyTransferFor, multiplyTransferOutcome, multiplyWaitingForBoard, planMultiplyChildAction, planMultiplyTurn, type MultiplySessionHost } from "./multiply-lesson";
 import { agreementClause, askedStep as askedOperationStep, bindingReview, checkedSubtractionQuestion, checkTutorSay, continuedSay, stepsStated, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, FINAL_ASK, TUTOR_FIRST_TIME_WORD_LIMIT, TUTOR_REVIEW_IGNORED } from "./tutor";
 import { placeDigitsSaid } from "./tutor-math";
 import { MATH_REVIEW_PROMPT_VERSION, mathReviewsOf, type MathReview, type MathReviewInput } from "./math-review";
@@ -4821,7 +4821,7 @@ function heardAnswers(session: Session): ChildAnswer[] {
   if (session.checkedMultiply && pkg.operation.kind === "multiply") {
     const ctx = session.checkedMultiply.context;
     const f = multiplyFacts(ctx.groups, ctx.size, session.checkedMultiply.builtGroups, false, session.checkedMultiply.visualSupport, ctx);
-    if (f && (multiplySwappedContext(session.turn.text, f) || multiplyAdditiveError(session.turn.text, ctx.groups, ctx.size, null))) return [];
+    if (f && (multiplyClaimConflict(session.turn.text, f) || multiplyAdditiveError(session.turn.text, ctx.groups, ctx.size, null))) return [];
   }
   const read = turnRead(session);
   if (read.choice) return [];

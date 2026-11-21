@@ -3,7 +3,7 @@ import { applyBatch, boardTargets, createScene, type Batch } from "@/lib/board";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { memoryWordingHistoryStore } from "@/lib/maya";
-import { mayaCalls, type CallResult, type CallSeams, type StartInput } from "@/lib/maya-call";
+import { boardHistoryOf, mayaCalls, type CallResult, type CallSeams, type StartInput } from "@/lib/maya-call";
 import { codeSentences, noteFacts } from "@/lib/maya-call-note";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import { conversationalFake, reply } from "@/lib/maya-model-fake";
@@ -32,7 +32,7 @@ function mulPkg(
   options: { unit?: string | null; id?: string; workbook?: boolean } = {},
 ): OperationPackage {
   const operation: Operation = { kind: "multiply", operands };
-  const easier: Operation = { kind: "multiply", operands: [2, 2] };
+  const easier: Operation = { kind: "multiply", operands: operands[0] === 2 && operands[1] === 2 ? [1, 2] : [2, 2] };
   return {
     id: options.id ?? `mul-${operands[0]}-${operands[1]}`,
     ref: {
@@ -49,11 +49,11 @@ function mulPkg(
     skill: { standard: "4.8", skills: ["4.8-multiplication-facts"] },
     level: 12,
     difficulty: 2,
-    wrongAnswers: [{ value: { type: "number", value: operands[0] + operands[1] }, cause: "careless", description: "Added instead of multiplying.", step: null }],
+    wrongAnswers: [{ value: { type: "number", value: operands[0] + operands[1] === operands[0] * operands[1] ? operands[0] * operands[1] + 1 : operands[0] + operands[1] }, cause: "careless", description: "Added instead of multiplying.", step: null }],
     easierExample: {
-      text: "2 × 2 = ?",
+      text: `${easier.operands[0]} × ${easier.operands[1]} = ?`,
       operation: easier,
-      answer: { type: "number", value: 4 },
+      answer: { type: "number", value: easier.operands[0] * easier.operands[1] },
       steps: workedSteps(easier),
     },
   };
@@ -531,6 +531,206 @@ describe("units, answer restrictions, cancellation, and #1088 regressions", () =
       const turn = ok(await calls.input(chat.view.id, chat.view.revision, { type: "child", text: "Can you explain?" }, null));
       expect(turn.output.say.join(" "), sentence).toBe(sentence);
       expect(math.requests.map((r) => r.sentence), sentence).toContain(sentence);
+    }
+  });
+});
+
+async function buildAll(calls: ReturnType<typeof setup>["calls"], pkg: OperationPackage) {
+  const started = await calls.start(startInput(pkg));
+  if (!started.ok) throw new Error(`${pkg.text}: ${started.error}`);
+  let turn = started;
+  turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text: "How do I build the groups?" }, null));
+  const offered = turn.view.exchange;
+  for (let i = 0; i < 10 && turn.view.exchange; i++) {
+    const target = turn.view.exchange;
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, {
+      type: "exchange", target, fates: [{ batchId: target.batchId, fate: "shown" }],
+    }, null));
+  }
+  return { turn, offered };
+}
+
+describe("every eligible array fits the board", () => {
+  it("offers the group action and completes the array for every factor pair from 2 to 10 in chat", async () => {
+    const failed: string[] = [];
+    for (let g = 2; g <= 10; g++) {
+      for (let s = 2; s <= 10; s++) {
+        const { calls } = setup();
+        const built = await buildAll(calls, mulPkg(`${g} × ${s} = ?`, [g, s], { workbook: true })).catch((e: Error) => e);
+        if (built instanceof Error) { failed.push(built.message); continue; }
+        const { turn, offered } = built;
+        const scene = (() => { try { return applyAll(turn.view.batches); } catch { return null; } })();
+        const whole = scene && boardTargets(scene).find((t) => t.target.objectId === GROUPS_OBJECT && t.target.part === "whole");
+        if (!offered || turn.view.exchange || !whole?.label.includes(`${g} rows of ${s}`)) failed.push(`${g}x${s}`);
+      }
+    }
+    expect(failed).toEqual([]);
+  });
+});
+
+describe("stories with an unclear container count", () => {
+  it("reads the group count only from the same container or an unambiguous reference", () => {
+    expect(supportsCheckedMultiply(mulPkg("Each box has 4 books. There are 3 bags. How many books are there?", [4, 3]))).toBe(false);
+    expect(supportsCheckedMultiply(mulPkg("Sam puts 4 muffins on each tray. There are 3 plates. How many muffins are there?", [4, 3]))).toBe(false);
+    expect(multiplyContext(mulPkg("Each box has 4 books. There are 3 boxes. How many books are there?", [4, 3])))
+      .toMatchObject({ groups: 3, size: 4, groupNoun: "boxes", itemNoun: "books" });
+    expect(multiplyContext(mulPkg("Sam puts 4 muffins on each tray. He fills 3 trays. How many muffins are there?", [4, 3])))
+      .toMatchObject({ groups: 3, size: 4, groupNoun: "trays" });
+    expect(multiplyContext(JARS_REVERSED_STORY)).toMatchObject({ groups: 3, size: 4 });
+  });
+});
+
+describe("explanations, prerequisite checks and answers with units", () => {
+  it("does not credit a right product whose explanation states the wrong group size", async () => {
+    const { calls, store } = setup();
+    let turn = ok(await calls.start(startInput(APPLES_STORY)));
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text: "12 apples because each bag has 3 apples." }, null));
+    expect(turn.output.say.join(" ")).not.toMatch(/you found the product/i);
+    expect(turn.view.outcome).toBeNull();
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text: "12 apples because there are 3 bags with 4 apples in each." }, null));
+    expect(turn.output.say.join(" ")).toMatch(/you found the product/i);
+    await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null);
+    const observations = store.rows()[0].trace!.checkedMultiply!.turns.flatMap((t) => t.observation ? [t.observation] : []);
+    expect(observations.map((o) => [o.skill, o.result])).toEqual([["swapped_factors", "incorrect"], ["product", "correct"]]);
+  });
+
+  it("refuses negated group statements and skip counting by the wrong number in the prerequisite checks", async () => {
+    const { calls, store } = setup();
+    let turn = ok(await calls.start(startInput(APPLES_STORY)));
+    const say = async (text: string) => {
+      turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text }, null));
+      return turn.output.say.join(" ");
+    };
+    await say("I don't know how to start.");
+    expect(await say("There are not 3 bags of 4.")).not.toMatch(/how can you find the total/i);
+    expect(await say("3 bags of 4 apples.")).toMatch(/how can you find the total/i);
+    expect(await say("Skip count by 9.")).not.toMatch(/on your own/i);
+    expect(await say("Skip count by 4.")).toMatch(/on your own/i);
+    await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null);
+    const skills = store.rows()[0].trace!.checkedMultiply!.turns.flatMap((t) => t.observation ? [t.observation.skill] : []);
+    expect(skills).toEqual(["equal_groups", "repeated_addition"]);
+  });
+
+  it("accepts every written form of the area unit and asks for the unit when the number is said in words", async () => {
+    for (const text of ["12 cm2.", "12 sq cm.", "12cm².", "12 square centimeters.", "Twelve square centimetres."]) {
+      const { calls } = setup();
+      const chat = ok(await calls.start(startInput(AREA_3X4)));
+      const turn = ok(await calls.input(chat.view.id, chat.view.revision, { type: "child", text }, null));
+      expect(turn.output.say.join(" "), text).toMatch(/you found the product/i);
+    }
+    const { calls } = setup();
+    const chat = ok(await calls.start(startInput(AREA_3X4)));
+    const turn = ok(await calls.input(chat.view.id, chat.view.revision, { type: "child", text: "Twelve centimetres." }, null));
+    expect(turn.output.say.join(" ")).toMatch(/check the unit.*square centimetres/i);
+  });
+});
+
+describe("help records and the related question's board", () => {
+  it("records a confirmed hint the same way in the observation and the outcome when later help is unconfirmed", async () => {
+    const { calls, store } = setup();
+    const voice = ok(await calls.startVoice(startInput(PLAIN_3X4, { kind: "family" })));
+    const opened = await calls.openVoice(voice.view.id, { speechToText: "fake", voice: "fake" }, null);
+    if (!opened.ok) throw Error(opened.error);
+    const { call } = opened;
+    const observe = (b: Batch) => ({ kind: "batch" as const, batchId: b.transactionId, commands: [...b.commands] });
+    const opening = (await call.start()).boardCues![0].batch;
+    const prompt = await call.child("How do I build the groups?");
+    await call.exchangePlayback!(prompt.exchangeTurnId!, "finished");
+    await call.observeBoard({ events: [opening, prompt.boardCues![0].batch].map(observe) });
+    const additive = await call.child("7.");
+    await call.exchangePlayback!(additive.exchangeTurnId!, "interrupted");
+    await call.child("12.");
+    await call.end({ reason: "child_stopped" });
+    const record = store.rows()[0];
+    const product = record.trace!.checkedMultiply!.turns.find((t) => t.observation?.skill === "product")!.observation!;
+    expect(record.outcome).toMatchObject({ assistance: "hint" });
+    expect(record.outcome?.helpUnconfirmed).toBeUndefined();
+    expect(product.assistance).toBe("hinted");
+  });
+
+  it("never picks a related question whose product is still written on the board", async () => {
+    const { calls } = setup();
+    const six = mulPkg("6 × 6 = ?", [6, 6], { workbook: true });
+    let turn = ok(await calls.start(startInput(six)));
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text: "How do I build the groups?" }, null));
+    const written = turn.view.batches.flatMap((b) => b.commands.flatMap((c) => (c as { op?: string; text?: string }).op === "write" ? [(c as { text: string }).text] : []));
+    expect(written).toContain("6 + 6 + 6 + 6 = 24");
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, {
+      type: "child", text: "36.", fates: [{ batchId: turn.view.exchange!.batchId, fate: "shown" }],
+    }, null));
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text: "Yes." }, null));
+    const question = turn.view.batches.at(-1)!.commands.find((c) => (c as { id?: string }).id === "transfer-question") as { text: string };
+    const [a, b] = question.text.match(/\d+/g)!.map(Number);
+    expect(written.join(" ")).not.toMatch(new RegExp(`\\b${a * b}\\b`));
+  });
+
+  it("gives independent credit for the related question only after the screen confirms the old board was cleared", async () => {
+    for (const fate of ["cancelled", "shown"] as const) {
+      const { calls } = setup();
+      let turn = ok(await calls.start(startInput(PLAIN_3X4)));
+      turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text: "12." }, null));
+      turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text: "Yes." }, null));
+      const question = turn.view.batches.at(-1)!;
+      turn = ok(await calls.input(turn.view.id, turn.view.revision, {
+        type: "child", text: "24.", fates: [{ batchId: question.transactionId, fate }],
+      }, null));
+      expect(turn.view.outcome?.transfer, fate).toEqual({ result: "right", assistance: fate === "shown" ? "independent" : "uncertain" });
+    }
+  });
+});
+
+describe("worked examples, repeats and paper work", () => {
+  it("clears the solved example before independent work and repeats the example when asked", async () => {
+    const { calls } = setup();
+    let turn = ok(await calls.start(startInput(PLAIN_3X2)));
+    const say = async (text: string, fates?: { batchId: string; fate: "shown" }[]) => {
+      turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text, ...(fates ? { fates } : {}) }, null));
+      return turn.output.say.join(" ");
+    };
+    const example = await say("Show me an example.");
+    const shown = turn.view.batches.slice(-2).map((b) => ({ batchId: b.transactionId, fate: "shown" as const }));
+    const repeated = await say("Can you repeat that?", shown);
+    expect(repeated).toMatch(/2 equal rows of 4: 4 \+ 4 = 8/i);
+    expect(example).toContain(repeated);
+    expect(turn.output.newBatches).toBe(0);
+    expect(await say("3 groups of 2.")).toMatch(/how can you find the total/i);
+    expect(await say("Add 2 three times.")).toMatch(/on your own/i);
+    const scene = applyAll(turn.view.batches);
+    expect(boardTargets(scene).some((t) => t.target.objectId === GROUPS_OBJECT)).toBe(false);
+  });
+
+  it("offers paper as well as the button and accepts a report of correctly drawn groups", async () => {
+    const { calls, store } = setup();
+    let turn = ok(await calls.start(startInput(APPLES_STORY)));
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text: "How do I build the groups?" }, null));
+    expect(turn.output.say.join(" ")).toMatch(/button on the board, or draw 1 more bag of 4 on your paper/i);
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, {
+      type: "child", text: "I drew 3 bags of 4 apples.", fates: [{ batchId: turn.view.exchange!.batchId, fate: "shown" }],
+    }, null));
+    expect(turn.output.say.join(" ")).toMatch(/you drew 3 bags of 4 apples.*4 \+ 4 \+ 4 and 3 times 4.*how many apples/i);
+    expect(turn.output.say.join(" ")).not.toMatch(/\b12\b|twelve/i);
+    await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null);
+    expect(store.rows()[0].trace!.checkedMultiply!.turns.at(-1)?.observation?.skill).toBe("build_group");
+  });
+});
+
+describe("saved lesson records", () => {
+  it("refuses a trace whose multiplication lesson record is malformed and replays such a board without throwing", async () => {
+    const { calls, store } = setup();
+    const { turn } = await buildAll(calls, PLAIN_3X4);
+    await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null);
+    const trace = store.rows()[0].trace!;
+    expect(checkTrace(trace)).toMatchObject({ ok: true });
+    const lesson = trace.checkedMultiply!;
+    const broken: unknown[] = [
+      { anything: true },
+      { ...lesson, turns: "none" },
+      { ...lesson, turns: [{ ...lesson.turns[0], actions: [{ kind: "explode", batchId: "x" }] }] },
+      { ...lesson, turns: lesson.turns.map((t, i) => i === 1 ? { ...t, actions: t.actions.map((a) => ({ ...a, after: "missing-batch" })) } : t) },
+    ];
+    for (const checkedMultiply of broken) {
+      expect(checkTrace({ ...trace, checkedMultiply }), JSON.stringify(checkedMultiply).slice(0, 80)).toMatchObject({ ok: false });
+      expect(() => boardHistoryOf({ ...trace, checkedMultiply } as never)).not.toThrow();
     }
   });
 });

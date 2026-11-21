@@ -86,6 +86,7 @@ import { snapshotFates } from "@/lib/board-fate";
 import { checkedExchangeProposal, checkedLessonTurns, childExchangeProposal, childExchangeTarget, fixedSafetyDisclosure, hasCheckedLesson } from "@/lib/maya/session";
 import { needsSafetyRead, SAFETY_PAUSE, sensitiveHearing, type ChildHearing } from "@/lib/maya/sensitive-input";
 import { readExchangeTarget, sameExchangeTarget, type ExchangeTarget } from "@/lib/maya/checked-exchange";
+import { readCheckedMultiplyLesson } from "@/lib/maya/checked-multiply";
 import { createTextSession, readFateReports, withHelpLedger, type BoardFateReport, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession, type TextSessionOptions } from "@/lib/maya-text";
 import { packageHash, type MayaTrace } from "@/lib/maya-trace";
 import { type QuestionPackage, type QuestionRef } from "@/lib/question-package";
@@ -657,9 +658,13 @@ export const FAKE_MODEL_ID = "fake";
 // B2: `after` goes with a batch, so the desk can skip a batch whose earlier batch it skipped.
 const batchesOf = (board: readonly { transactionId: string; commands: readonly unknown[]; after?: readonly string[] }[]): Batch[] => board.map((b) => ({ transactionId: b.transactionId, commands: b.commands, ...(b.after?.length ? { after: [...b.after] } : {}) }));
 
+/** A saved checked lesson's turns; a malformed multiplication record replays as no lesson. */
+function traceLessonTurns(trace: MayaTrace): readonly { actions: readonly { batchId: string; fate?: string }[]; childAction?: ExchangeTarget }[] | undefined {
+  return trace.checkedExchange?.turns ?? readCheckedMultiplyLesson(trace.checkedMultiply)?.turns;
+}
+
 function replayableBoard(trace: MayaTrace): MayaTrace["board"] {
-  const turns: readonly { actions: readonly { batchId: string; fate?: string }[] }[] | undefined =
-    trace.checkedExchange?.turns ?? trace.checkedMultiply?.turns;
+  const turns = traceLessonTurns(trace);
   if (!turns) return trace.board;
   const excluded = new Set(turns.flatMap((turn) => turn.actions)
     .filter((action) => action.fate === "skipped" || action.fate === "cancelled").map((action) => action.batchId));
@@ -746,7 +751,7 @@ export function callView(record: CallRecord, trace: MayaTrace, alerts: AlertStat
   const window = { endMs: inkWindowEnd(trace) };
   const history = record.mode !== "text" ? recorded : ink.length > 0 ? withInkLog(recorded, ink, window) : withChildInk(recorded, record.childInk ?? null, window);
   const exchange = record.status === "live" && record.live ? childExchangeTarget(record.live.text.session) : undefined;
-  const exchangeResult = (trace.checkedExchange?.turns ?? trace.checkedMultiply?.turns)?.findLast((t) => t.childAction)?.actions[0]?.batchId;
+  const exchangeResult = traceLessonTurns(trace)?.findLast((t) => t.childAction)?.actions[0]?.batchId;
   return {
     id: record.id,
     kind: record.kind,
@@ -2053,7 +2058,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const record = await store.get(id);
       if (!record) return { ok: false, error: "not_found" };
       if (input.type === "exchange" && record.mode === "text" && record.kind === "chat" &&
-        (record.live ? checkedLessonTurns(record.live.text.session) : (record.trace?.checkedExchange?.turns ?? record.trace?.checkedMultiply?.turns ?? []))
+        (record.live ? checkedLessonTurns(record.live.text.session) : (record.trace ? traceLessonTurns(record.trace) ?? [] : []))
           .some((t) => sameExchangeTarget(t.childAction, input.target))) {
         const view = recordView(record);
         if (view) return { ok: true, view, output: { say: [], newBatches: 0, safetyMessage: null } };

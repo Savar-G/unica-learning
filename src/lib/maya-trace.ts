@@ -1,6 +1,6 @@
 import { SCOPE_REASONS } from "@/lib/maya/scope";
 import { exchangeChildWords, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingWords, type CheckedExchangeLesson } from "@/lib/maya/checked-exchange";
-import type { CheckedMultiplyLesson } from "@/lib/maya/checked-multiply";
+import { readCheckedMultiplyLesson, type CheckedMultiplyLesson } from "@/lib/maya/checked-multiply";
 import { checkedMultiplyOutput } from "@/lib/maya/multiply-lesson";
 // Maya's trace format (#322, spec #297): one versioned record of one Maya session, written by every session (the text
 // adapter now, the voice agent #326, the test bench #323 and the admin demo #324 later). It records the model and
@@ -821,6 +821,14 @@ function check(raw: unknown): MayaTrace {
   // Version 14: a quick read of the board's fates, like the other counts; boardFateCounts recounts them from `board`.
   const bf = (c as Record<string, unknown>).boardFates;
   need(bf === undefined || (isObject(bf) && Object.keys(bf).length === 4 && ["shown", "skipped", "cancelled", "unreported"].every((k) => isCount((bf as Record<string, unknown>)[k]))), "counts.boardFates", "absent, or four counts: shown, skipped, cancelled and unreported");
+  // #1154: a multiplication lesson record is read back by replay and the call view, so its shape and links are checked.
+  if (r.checkedMultiply !== undefined) {
+    const lesson = readCheckedMultiplyLesson(r.checkedMultiply);
+    need(lesson !== null, "checkedMultiply", "a checked multiplication lesson: turns, board actions and links to earlier batches");
+    const drawn = new Set((r.board as { transactionId?: unknown }[]).map((b) => b.transactionId));
+    need(lesson!.turns.every((turn) => turn.actions.every((action) => action.delivery !== "sent" || drawn.has(action.batchId))),
+      "checkedMultiply", "each sent board action is a board batch in the trace");
+  }
   return raw as unknown as MayaTrace;
 }
 
