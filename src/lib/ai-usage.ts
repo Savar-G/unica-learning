@@ -20,7 +20,7 @@ export const AI_FEATURES = [
 ] as const;
 export type AiFeature = (typeof AI_FEATURES)[number];
 
-export type AiProviderKind = "openrouter" | "anthropic" | "subscription";
+export type AiProviderKind = "openrouter" | "anthropic" | "subscription" | "livekit";
 
 /** Who and what a call is for. Ids only. */
 export interface AiUsageTag {

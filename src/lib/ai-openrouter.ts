@@ -4,7 +4,7 @@
 // provider.require_parameters: only providers that support every parameter sent (the JSON schema above all) get the
 // request. Which providers may train on inputs is an account setting on OpenRouter (#182), not a request field.
 import type { AiClient, AiJsonRequest, AiPart } from "@/lib/ai-client";
-import { recordAiUsage, type AiUsageTag, type AiFeature } from "@/lib/ai-usage";
+import { recordAiUsage, type AiUsageTag, type AiFeature, type AiProviderKind } from "@/lib/ai-usage";
 import { keyAlias, keyIdentity, type AiKeyAlias } from "@/lib/ai-usage-context";
 import { noteFenced } from "@/lib/ai-fenced";
 import { openRouterJsonOutput } from "@/lib/ai-openrouter-schema";
@@ -255,6 +255,7 @@ export function openRouterClient({
   feature = "other",
   usage,
   keyLabel,
+  usageProvider = "openrouter",
 }: {
   apiKey: string;
   model: string;
@@ -275,6 +276,8 @@ export function openRouterClient({
   feature?: string;
   usage?: AiUsageTag;
   keyLabel?: AiKeyAlias;
+  /** The provider of the usage records and the Sentry span: "livekit" when `fetch` sends to LiveKit Inference (D-348). */
+  usageProvider?: AiProviderKind;
 }): AiClient {
   return {
     model,
@@ -288,10 +291,10 @@ export function openRouterClient({
       // A request with `response_format` keeps its strict reading: a fenced output stays not JSON.
       const strict = "response_format" in sent;
       // One Sentry span for the request and its retries, with tokens and cost; never the prompt or the answer.
-      return observeAiCall({ model, feature, provider: "openrouter" }, async (observe) => {
+      return observeAiCall({ model, feature, provider: usageProvider }, async (observe) => {
         const used = (u: OpenRouterUsage) => {
           recordAiUsage(usage ?? { feature: feature as AiFeature }, {
-            provider: "openrouter", model, inputTokens: u.inputTokens, outputTokens: u.outputTokens,
+            provider: usageProvider, model, inputTokens: u.inputTokens, outputTokens: u.outputTokens,
             costUsd: u.costUsd, generationId: u.id, keyAlias: keyLabel ?? keyAlias(apiKey), keyId: keyIdentity(apiKey), costBasis: "provider",
           });
           observe(u); onUsage?.(u);

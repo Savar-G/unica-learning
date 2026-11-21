@@ -1,6 +1,7 @@
 import { aiClient, type AiClient } from "@/lib/ai-client";
 import type { OpenRouterProvider } from "@/lib/ai-openrouter";
 import { featureProduct } from "@/lib/ai-product-keys";
+import { isLivekitModel, livekitCredentials, livekitInferenceFetch } from "@/lib/ai-livekit-inference";
 
 // Maya's OpenRouter route (D-337). Every request that carries a child's words for Maya (her model and its safety read, the
 // free-talk review and the call note) goes only to Anthropic and Azure, never to Google: Google Cloud's Service Specific Terms (section 20(d),
@@ -22,9 +23,54 @@ export const MAYA_PROVIDER: OpenRouterProvider = {
   require_parameters: true,
 };
 
-/** The AI client for a Maya request, on her route; null when the AI is off. Same arguments as `aiClient`. */
-export function mayaAiClient(env: Readonly<Record<string, string | undefined>> = process.env, model?: string, hooks?: Omit<NonNullable<Parameters<typeof aiClient>[2]>, "provider">): AiClient | null {
+type Env = Readonly<Record<string, string | undefined>>;
+
+/**
+ * Maya's turn model when MAYA_MODEL is not set (D-348, 2026-11-20): OpenAI's GPT-5.4 mini on LiveKit Inference, paid
+ * from the LiveKit Cloud credits. MAYA_MODEL=anthropic/claude-sonnet-5.5 goes back to Sonnet through OpenRouter.
+ */
+export const MAYA_DEFAULT_MODEL = "livekit/openai/gpt-5.4-mini";
+
+let warnedNoLivekitKey = false;
+
+/**
+ * Maya's own turn model (D-348): MAYA_MODEL (an OpenRouter id, or a `livekit/` id for LiveKit Inference), else
+ * MAYA_DEFAULT_MODEL. A `livekit/` model with no LiveKit key in this process gives AI_MODEL through OpenRouter instead,
+ * so Maya never falls back to the rule player because one key is missing. Only the turn model (and its safety read)
+ * reads MAYA_MODEL: the reviews, the call note and every other feature keep their own models.
+ */
+export function mayaTurnModel(env: Env = process.env): string | undefined {
+  const chosen = env.MAYA_MODEL?.trim() || MAYA_DEFAULT_MODEL;
+  if (isLivekitModel(chosen) && !livekitCredentials(env)) {
+    if (!warnedNoLivekitKey) console.error(`[maya] ${chosen} needs LIVEKIT_API_KEY and LIVEKIT_API_SECRET; using AI_MODEL through OpenRouter`);
+    warnedNoLivekitKey = true;
+    return undefined;
+  }
+  return chosen;
+}
+
+/**
+ * The network fetch of a Maya request for `model` (or AI_MODEL): LiveKit Inference for a `livekit/` model, else `base`.
+ * The spending ledger's fetch wraps it, so each attempt is reserved before and settled with the cost it reads after.
+ */
+export function mayaTransport(env: Env, model: string | undefined, base: typeof globalThis.fetch = globalThis.fetch): typeof globalThis.fetch {
+  const chosen = model?.trim() || env.AI_MODEL?.trim() || "";
+  const credentials = isLivekitModel(chosen) ? livekitCredentials(env) : null;
+  return credentials ? livekitInferenceFetch(credentials, base) : base;
+}
+
+/**
+ * The AI client for a Maya request, on her route; null when the AI is off. Same arguments as `aiClient`. A `livekit/`
+ * model goes to LiveKit Inference (D-348): with `hooks.fetch` (the spending ledger's), that fetch must already end in
+ * `mayaTransport`; without it, the client sends through `mayaTransport` itself. No LiveKit key: no client.
+ */
+export function mayaAiClient(env: Env = process.env, model?: string, hooks?: Omit<NonNullable<Parameters<typeof aiClient>[2]>, "provider" | "usageProvider">): AiClient | null {
   const usage = hooks?.usage ?? { feature: "maya" as const };
   if (featureProduct(usage.feature) !== "maya") return null;
+  const chosen = model?.trim() || env.AI_MODEL?.trim() || "";
+  if (isLivekitModel(chosen)) {
+    if (!livekitCredentials(env)) return null;
+    return aiClient(env, chosen, { ...hooks, usage, provider: MAYA_PROVIDER, usageProvider: "livekit", fetch: hooks?.fetch ?? mayaTransport(env, chosen) });
+  }
   return aiClient(env, model, { ...hooks, usage, provider: MAYA_PROVIDER });
 }

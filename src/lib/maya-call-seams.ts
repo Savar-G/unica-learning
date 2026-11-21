@@ -3,7 +3,7 @@ import { monitorProduct } from "@/lib/product-monitoring";
 import { randomInt, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { aiClient } from "@/lib/ai-client";
-import { mayaAiClient } from "@/lib/maya-ai-route";
+import { mayaAiClient, mayaTurnModel } from "@/lib/maya-ai-route";
 import { assessmentQuestionReader } from "@/lib/assessment-questions";
 import { rebuildChildProfile } from "@/lib/child-profile";
 import { childProfileAiClient, type QuestionReader } from "@/lib/child-profile-ai";
@@ -41,13 +41,15 @@ type Env = Readonly<Record<string, string | undefined>>;
 const siteOrigin = (env: Env) => env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/+$/, "") || "https://unicalearning.com";
 
 /**
- * The model a call uses: null asks for the one a new call uses now (Maya's model through OpenRouter, `AI_MODEL`, when
- * MAYA_OPENROUTER_API_KEY is set, else the fake rule player); an id asks for that model again, or null when it is gone.
+ * The model a call uses: null asks for the one a new call uses now (Maya's turn model, `mayaTurnModel`: MAYA_MODEL, else
+ * GPT-5.4 mini on LiveKit Inference, D-348; the fake rule player without MAYA_OPENROUTER_API_KEY); an id asks for that
+ * model again, so a call keeps the model it started with when the setting changes, or null when it is gone.
  */
 export function callModel(id: string | null, env: Env = process.env, metered?: { ledger: SpendLedger; call: SpendCall; newId: () => string } & CallModelOptions): MayaModel | null {
+  const model = id !== null && id !== FAKE_MODEL_ID ? id : mayaTurnModel(env);
   const client = metered?.prepared
-    ? preparedClient(env, metered.prepared.budget, metered.prepared.handle, { charge: chargeOf(metered.call), callId: metered.call.id, diagnosticHandleId: metered.prepared.diagnosticHandleId })
-    : metered ? meteredClient(env, metered.ledger, { charge: chargeOf(metered.call), callId: metered.call.id, budgetKey: metered.call.budgetKey, newId: metered.newId, safetyRead: metered.safetyRead }, "model") : mayaAiClient(env);
+    ? preparedClient(env, metered.prepared.budget, metered.prepared.handle, { charge: chargeOf(metered.call), callId: metered.call.id, diagnosticHandleId: metered.prepared.diagnosticHandleId }, model)
+    : metered ? meteredClient(env, metered.ledger, { charge: chargeOf(metered.call), callId: metered.call.id, budgetKey: metered.call.budgetKey, newId: metered.newId, safetyRead: metered.safetyRead }, "model", model) : mayaAiClient(env, model);
   if (id === null) return client ? conversationalMayaModel(client) : ruleConversationalModel();
   if (id === FAKE_MODEL_ID) return ruleConversationalModel();
   return client && client.model === id ? conversationalMayaModel(client) : null;

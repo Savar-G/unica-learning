@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import type { AiClient } from "@/lib/ai-client";
-import { mayaAiClient } from "@/lib/maya-ai-route";
+import { mayaAiClient, mayaTransport } from "@/lib/maya-ai-route";
 import type { AiUsageTag } from "@/lib/ai-usage";
 import { resendTransport } from "@/lib/email-resend";
 import { sendEmail, type MailTransport } from "@/lib/email-delivery";
@@ -88,12 +88,13 @@ export function meteredClient(env: Env, ledger: SpendLedger, meter: { charge: Ch
   if (!mayaAiClient(env, model)) return null;
   // Each answer's usage also goes to the AI usage ledger (D-330): the family, the child and the call, never the words.
   const usage: AiUsageTag = { feature: what === "model" ? "maya" : what === "review" ? "maya_review" : "maya_note", parentId: meter.charge.parentId, childId: meter.charge.childId, source: meter.callId ? { kind: "maya_call", id: meter.callId } : null };
-  return meteredAi((hooks) => mayaAiClient(env, model, { ...hooks, usage })!, { ledger, ...meter }, what);
+  // D-348: the ledger's fetch wraps Maya's network fetch (LiveKit Inference for a `livekit/` model).
+  return meteredAi((hooks) => mayaAiClient(env, model, { ...hooks, usage })!, { ledger, ...meter }, what, mayaTransport(env, model));
 }
 
 /** A speculative request uses its existing handle. It retains Maya's provider route and the AI usage log. */
 export function preparedClient(env: Env, budget: CallBudget, handle: Handle, meter: { charge: Charge; callId: string | null; diagnosticHandleId?: string }, model?: string): AiClient | null {
   if (!budget.canSend(handle) || !mayaAiClient(env, model)) return null;
   const usage: AiUsageTag = { feature: "maya", parentId: meter.charge.parentId, childId: meter.charge.childId, source: meter.callId ? { kind: "maya_call", id: meter.callId } : null };
-  return preparedAi((hooks) => mayaAiClient(env, model, { ...hooks, usage })!, budget, handle, undefined, meter.diagnosticHandleId);
+  return preparedAi((hooks) => mayaAiClient(env, model, { ...hooks, usage })!, budget, handle, mayaTransport(env, model), meter.diagnosticHandleId);
 }

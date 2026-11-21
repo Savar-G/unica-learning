@@ -6,7 +6,7 @@
 // Behind a switch: on only with the feature's dedicated product key. Missing or conflicting bindings make no client.
 // For the server only. No "server-only" import so that its tests can run, as src/lib/sign-in-link.ts.
 import { openRouterClient, type OpenRouterProvider } from "@/lib/ai-openrouter";
-import type { AiUsageTag } from "@/lib/ai-usage";
+import type { AiProviderKind, AiUsageTag } from "@/lib/ai-usage";
 import { productKey } from "@/lib/ai-product-keys";
 
 /** The model when AI_MODEL is not set: an OpenRouter model id with image input, structured output and reasoning. */
@@ -82,7 +82,7 @@ export const NO_GOOGLE_PROVIDER: OpenRouterProvider = { ignore: ["google-vertex"
  * D-330); a call with no assigned feature has no client. Recording never fails or slows the call. `hooks.provider`: the
  * OpenRouter route; none gives NO_GOOGLE_PROVIDER (Maya sets a narrower route, src/lib/maya-ai-route.ts).
  */
-export function aiClient(env: Readonly<Record<string, string | undefined>> = process.env, model?: string, hooks?: { fetch?: typeof globalThis.fetch; onRequest?: () => Promise<void>; usage?: AiUsageTag; provider?: OpenRouterProvider }): AiClient | null {
+export function aiClient(env: Readonly<Record<string, string | undefined>> = process.env, model?: string, hooks?: { fetch?: typeof globalThis.fetch; onRequest?: () => Promise<void>; usage?: AiUsageTag; provider?: OpenRouterProvider; usageProvider?: AiProviderKind }): AiClient | null {
   const binding = productKey(hooks?.usage?.feature, env);
   if (!binding) return null;
   const chosen = model?.trim() || env.AI_MODEL?.trim() || AI_DEFAULT_MODEL;
