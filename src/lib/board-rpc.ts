@@ -22,7 +22,7 @@ export function boardRpcTransport(peer: RpcPeer, destinationIdentity: string, ne
 }
 
 /** One authenticated worker at a time. Authentication occurs before assembly, including on each part. */
-export function boardRpcHandler(receiver: BoardReceiver, options: { allowed(identity: string): boolean; changed(restored: boolean): void }) {
+export function boardRpcHandler(receiver: BoardReceiver, options: { allowed(identity: string): boolean; changed(restored: boolean): void; readOnly?(): boolean }) {
   const transfers = new Map<string, { caller: string; count: number; parts: string[] }>();
   return (caller: string, payload: string): string => {
     if (!options.allowed(caller)) throw new Error("This worker does not own the board.");
@@ -31,8 +31,11 @@ export function boardRpcHandler(receiver: BoardReceiver, options: { allowed(iden
     let transfer = transfers.get(p.id);
     if (p.commit === true) {
       if (!transfer || transfer.caller !== caller || transfer.parts.length !== transfer.count) throw new Error("Incomplete board request.");
-      const response = receiver.handle(JSON.parse(transfer.parts.join("")));
-      options.changed(response.ok && response.type === "reset");
+      const request = JSON.parse(transfer.parts.join(""));
+      const readOnly = options.readOnly?.() === true;
+      if (readOnly && request?.type !== "status") throw new Error("The board is read-only.");
+      const response = receiver.handle(request);
+      if (!readOnly) options.changed(response.ok && response.type === "reset");
       return JSON.stringify(response);
     }
     if (!Number.isSafeInteger(p.index) || !Number.isSafeInteger(p.count) || p.index < 0 || p.count < 1 || p.count > MAX_PARTS || p.index >= p.count || typeof p.data !== "string" || p.data.length > PART_CHARS) throw new Error("Invalid board part.");

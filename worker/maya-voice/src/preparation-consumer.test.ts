@@ -180,6 +180,11 @@ describe("decisions, through the registry's public interface", () => {
     const d = r.of("preparation_decision");
     expect(d.map((x) => [x.kind, x.status, x.reason, x.leadMs])).toEqual([["interim", "used", null, 77], ["expected", "used", null, 77], ["interim", "discarded", "key", 77], ["interim", "discarded", "text", 77], ["expected", "discarded", "stale", 77], ["expected", "discarded", "ended", 77], ["interim", "discarded", "not_plain", 77]]);
     expect(new Set(d.map((x) => x.decisionId)).size).toBe(7);
+    r.t.preparationDecision(rec({ status: "discarded", reason: "ended", usd: 0.01, estimated: true }));
+    r.t.preparationDecision(rec({ status: "discarded", reason: "ended", usd: 0 }));
+    expect(r.t.discardedPreparationSummary()).toEqual({
+      decisions: 7, reported: 1, estimated: 1, unknown: 5, reportedUsd: 0, estimatedUsd: 0.01,
+    });
   });
 
   it("drops malformed records and never copies other fields, text or malformed ids into the log", () => {

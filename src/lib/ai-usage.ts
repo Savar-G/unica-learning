@@ -144,18 +144,21 @@ export async function insertUsageRow(row: AiUsageRow, o: { url: string; key: str
   return false;
 }
 
-let configured: { url: string; key: string } | null = null;
+/** A local-only process: each row goes to `local`, synchronously in the caller's context, and never to the database. */
+type LocalOnly = { local: (row: AiUsageRow) => void };
+let configured: { url: string; key: string } | LocalOnly | null = null;
 /**
  * For a process that gets its secret key some other way than the environment (the workbook worker on the Mac reads it
  * from the Keychain and the Management API, and never puts it in process.env): the url and key the live sink uses.
+ * `{ local }` makes the process local-only (the #1139 baseline): no hosted write, even with SUPABASE_SECRET_KEY set.
  */
-export function configureAiUsage(target: { url: string; key: string } | null): void {
+export function configureAiUsage(target: { url: string; key: string } | LocalOnly | null): void {
   configured = target;
 }
 
 /** The live sink. With no secret key (a local run) or in a test run, nothing is written. Tests give their own sink. */
 const supabaseSink: AiUsageSink = async (row) => {
-  if (process.env.VITEST) return;
+  if (process.env.VITEST || (configured && "local" in configured)) return;
   const key = configured?.key ?? process.env.SUPABASE_SECRET_KEY?.trim();
   if (!key) return;
   await insertUsageRow(row, { url: configured?.url ?? (process.env.SUPABASE_URL?.trim() || SUPABASE_URL), key });
@@ -181,7 +184,9 @@ export function recordAiUsage(tag: AiUsageTag | null | undefined, reading: AiUsa
     if (!row) return;
     // Local scripts retain a receipt before they can exit. This does not enable a hosted write. Production uses its
     // existing sink. Local receipts contain only the same bounded metadata as the ledger, with no credentials or text.
-    if (sink === supabaseSink && !process.env.VITEST && !process.env.VERCEL) {
+    if (sink === supabaseSink && configured && "local" in configured) {
+      try { configured.local(row); } catch { console.error("[ai-usage] local receipt write failed"); }
+    } else if (sink === supabaseSink && !process.env.VITEST && !process.env.VERCEL) {
       try {
         const path = resolve(process.env.AI_USAGE_RECEIPT_FILE?.trim() || ".ai-usage/receipts.jsonl");
         mkdirSync(dirname(path), { recursive: true, mode: 0o700 });

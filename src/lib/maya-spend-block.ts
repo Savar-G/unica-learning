@@ -36,6 +36,13 @@ export const BLOCK_RETIRE_MS = 8 * 60_000;
 export const SPECULATIVE_PER_TURN = 3;
 /** A speculative attempt must leave this many attempts free for live work. */
 export const SPECULATIVE_KEEP = 2;
+/**
+ * #1203: one deadline for the whole drain at the call's end, from `drained`'s call: a refill under way, attempts still
+ * owed their cost (a prepared reply's receipt, by PREPARE_RECEIPT_BY_MS = 25 s after its abort, src/lib/maya-prepared.ts)
+ * and the block rows written with them, before the process may exit. Well below LiveKit's 60-second job shutdown
+ * timeout. A block still open then stays counted at its reservation until the expiry.
+ */
+export const BLOCK_DRAIN_MS = 35_000;
 
 /** What an attempt from the block is: Maya's model, a prepared reply that may not be used, or a free-talk review. */
 export type BlockKind = "model" | "speculative" | "review";
@@ -53,10 +60,11 @@ export interface Handle {
  * SPECULATIVE_KEEP or fewer attempts are free, and the week's cap. `settle` gives the attempt's real cost in US
  * dollars; `{ used: true }` marks a speculative attempt whose reply was used (it stays kind "speculative"). `giveBack`:
  * the attempt was never sent and costs nothing. Each handle is settled or given back once; a second call changes nothing.
+ * `usd` null (#1203): the cost is not known, so the attempt stays counted at its reservation.
  */
 export interface BlockSeam {
   take(kind: "model" | "speculative"): Handle | null;
-  settle(handle: Handle, usd: number, how?: { used?: boolean }): void;
+  settle(handle: Handle, usd: number | null, how?: { used?: boolean }): void;
   giveBack(handle: Handle): void;
 }
 
@@ -104,6 +112,12 @@ export interface CallBudget {
   tick(): void;
   /** The call's end: no more takes; every block is settled with its real total once its open attempts end. */
   stop(): Promise<void>;
+  /**
+   * #1203: stops, then waits until every block is written with its real total: an attempt may still be owed its cost
+   * after the call's end. One deadline, BLOCK_DRAIN_MS from this call, covers a refill, the receipts and the writes. For
+   * the process's exit, after the media closed and the child was told. Never throws.
+   */
+  drained(): Promise<void>;
   totals(): BlockTotals;
 }
 
@@ -164,7 +178,14 @@ export function createBudget(seams: BudgetSeams): CallBudget {
       console.error("[maya spend] a block not settled", b.id, e instanceof Error ? e.message : String(e));
     });
     settles.add(p);
-    void p.finally(() => settles.delete(p));
+    void p.finally(() => { settles.delete(p); wake(); });
+  }
+
+  /** Callers of `drained` waiting for every block's row. */
+  const drainers: (() => void)[] = [];
+  const isDrained = () => stopped && !refilling && settles.size === 0 && blocks.every((b) => b.settled);
+  function wake() {
+    if (isDrained()) for (const d of drainers.splice(0)) d();
   }
 
   function retire(b: Block) {
@@ -203,6 +224,7 @@ export function createBudget(seams: BudgetSeams): CallBudget {
       refused = "paused";
     } finally {
       refilling = null;
+      wake();
     }
   }
 
@@ -253,7 +275,7 @@ export function createBudget(seams: BudgetSeams): CallBudget {
         if (kind === "model") return budget.claim(m) ?? budget.take("model", m);
         return budget.take("speculative", m);
       },
-      settle: (handle, usd, how) => finish(handle, seams.usdToMicros(usd), how),
+      settle: (handle, usd, how) => finish(handle, usd === null ? null : seams.usdToMicros(usd), how),
       giveBack: (handle) => finish(handle, 0),
     },
     open() {
@@ -319,6 +341,16 @@ export function createBudget(seams: BudgetSeams): CallBudget {
       for (const b of blocks) if (!b.retired) retire(b);
       await refilling;
       await Promise.all([...settles]);
+    },
+    drained() {
+      return new Promise<void>((resolve) => {
+        const done = () => { clearTimeout(timer); const i = drainers.indexOf(done); if (i >= 0) drainers.splice(i, 1); resolve(); };
+        const timer = setTimeout(done, BLOCK_DRAIN_MS);
+        drainers.push(done);
+        // `stop` closes admission at once; its waits (a refill, the writes) are under the one deadline above.
+        void budget.stop().then(wake, wake);
+        wake();
+      });
     },
     totals: () => ({ ...totals }),
   };

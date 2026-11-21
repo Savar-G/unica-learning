@@ -6,6 +6,7 @@ import { saysGuess } from "./numbers";
 import { FINAL_ASK, TUTOR_FIRST_TIME_WORD_LIMIT, tutorKind, stepFacts, TUTOR_WORD_LIMIT } from "./tutor";
 import type { TutorDrawing, TutorStepFact } from "./tutor-kind";
 import { valueText } from "@/lib/question-package";
+import { shareableTutorTurn } from "./sensitive-input";
 
 // Version 12 combines the first-time teaching rules and the streamed continuation repair.
 // Version 13 (#1107): "noDraw" comes before "say" (same meaning), so chat can draw each sentence as it streams.
@@ -68,10 +69,12 @@ const hide = (text: string, name: string | null | undefined) => {
 
 /** The brief for the tutor's next message. */
 export function tutorBrief(s: Session, repair: TutorBrief["repair"] = null): TutorBrief {
+  if (s.checkedRoutine) s = { ...s, turns: s.turns.filter((t) => !t.excludedFromTutor) };
   const pkg = s.package;
   const name = s.variety.name;
   const done = new Set(s.done);
   const notes: string[] = [];
+  if (s.checkedRoutine) notes.push("Code writes the math reply and draws the board. Leave say empty and omit draw. Read the child's current turn for safety and other priority needs. If a child reports danger, set the safety gate and severity. Do not write guidance.");
   if ((s.thinking ?? 0) > 0) notes.push("The child took time to think before this turn: be patient, and answer what they say now.");
   // Savar's call 2 (version 11): no explain-back after the right final answer.
   const answer = pkg?.answer.value.type === "number" ? pkg.answer.value.value : null;
@@ -97,7 +100,9 @@ export function tutorBrief(s: Session, repair: TutorBrief["repair"] = null): Tut
     childAnswer: committed(s, (t) => hide(t, name)),
     learner: firstTimeLearner(s) ? "first_time" : null,
     asked: askedOf(s, (t) => hide(t, name)),
-    transcript: s.turns.slice(-TUTOR_TRANSCRIPT_TURNS).map((t) => ({ speaker: t.speaker, text: hide(t.text, name) })),
+    transcript: s.turns.slice(-TUTOR_TRANSCRIPT_TURNS)
+      .filter((t) => !s.checkedRoutine || shareableTutorTurn(t))
+      .map((t) => ({ speaker: t.speaker, text: hide(t.text, name) })),
     noBoard: s.noBoard === true,
     drawings: pkg && s.tutor ? tutorKind(pkg).drawings(pkg) : [],
     ...boardKeys(s),

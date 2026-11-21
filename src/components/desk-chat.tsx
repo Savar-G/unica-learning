@@ -6,6 +6,7 @@ import { chatBoardFates, type ScreenFateReport } from "@/lib/board-fate";
 import { chatCapLine, chatSpendLine, type ChatUsage, type ChatView, type ChatReply } from "@/lib/maya-chat";
 import { CHAT_STREAM_TYPE, isChatStream, readChatStream } from "@/lib/maya-chat-stream";
 import type { Batch } from "@/lib/board";
+import type { ExchangeTarget } from "@/lib/maya/checked-exchange";
 import { OurBoard } from "@/components/our-board";
 import { Icon } from "@/components/desk-icons";
 
@@ -463,6 +464,20 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
       return false;
     } finally { requestBusy.current = false; if (generation === epoch.current) setBusy(false); }
   };
+  const exchange = async (target: ExchangeTarget): Promise<boolean> => {
+    if (!chat || chat.ended || chat.pending || pending.current || requestBusy.current || usage?.left === 0) return false;
+    requestBusy.current = true;
+    setBusy(true);
+    const generation = epoch.current;
+    const reported = fatesFor(chat.id).fates ?? [];
+    // The action is offered only after the tab holding the board draws this batch.
+    const fates = [...reported.filter((f) => f.batchId !== target.batchId), { batchId: target.batchId, fate: "shown" }];
+    try {
+      const reply = await request({ type: "exchange", id: chat.id, revision: chat.revision, target, fates }, generation);
+      return !!reply?.chat?.exchangeResult;
+    } catch { return false; }
+    finally { requestBusy.current = false; if (generation === epoch.current) setBusy(false); }
+  };
   // #1107: the saved conversation, then the turn in flight: the child's words and Maya's one message as it grows.
   const shown = useMemo(() => {
     if (!chat || !live || live.id !== chat.id) return chat;
@@ -471,7 +486,7 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
     const batches = [...chat.batches, ...live.batches.filter((b) => !chat.batches.some((x) => x.transactionId === b.transactionId))];
     return { ...chat, batches, transcript: [...chat.transcript, { speaker: "child" as const, text: live.child, second }, ...(said ? [{ speaker: "maya" as const, text: said, second }] : [])] };
   }, [chat, live]);
-  return { usage, chat: ownerKey === key ? shown : null, busy, error, act, retry: refresh, uncertain, saveBoard, callInk };
+  return { usage, chat: ownerKey === key ? shown : null, busy, error, act, exchange, retry: refresh, uncertain, saveBoard, callInk };
 }
 export type DeskChatState = ReturnType<typeof useDeskChat>;
 
@@ -512,7 +527,7 @@ export function ChatControls({ state, picked, held = false }: { state: DeskChatS
  * picked up again starts from the ink the call holds and the ink on this device (`restore`), unless a draft holds all of
  * it; until the call answers, the board says it is coming.
  */
-export function ChatBoard({ chat, still, carry, restore, onBoard }: {
+export function ChatBoard({ chat, still, carry, restore, onBoard, onExchange, exchangeDisabled }: {
   chat: ChatView;
   still: boolean;
   /** The question's board the chat started from: its ink comes onto the chat's board. */
@@ -520,6 +535,8 @@ export function ChatBoard({ chat, still, carry, restore, onBoard }: {
   /** The ink log the call holds for this chat with the ink on this device, "loading" while the desk asks, or null for a new chat. */
   restore?: InkEvent[] | "loading" | null;
   onBoard?: (history: BoardHistory) => void;
+  onExchange?: (target: ExchangeTarget) => Promise<boolean>;
+  exchangeDisabled?: boolean;
 }) {
   // Read once, when the board starts: the board takes it only then.
   const restored = useMemo(() => (Array.isArray(restore) && restore.length > 0 ? historyFromLog(restore, chat.batches) : null), [restore, chat.batches]);
@@ -533,7 +550,8 @@ export function ChatBoard({ chat, still, carry, restore, onBoard }: {
     key={chat.id}
     question={null}
     at={{ book: "chat", page: 0, question: null }}
-    chat={{ id: chat.id, batches: chat.batches, carry }}
+    chat={{ id: chat.id, batches: chat.batches, carry, exchangeResult: chat.exchangeResult,
+      ...(chat.exchange && onExchange && !chat.ended ? { exchange: { target: chat.exchange, disabled: exchangeDisabled, submit: onExchange } } : {}) }}
     onChange={onBoard}
     restore={restored}
     still={still}

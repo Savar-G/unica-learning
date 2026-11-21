@@ -49,7 +49,7 @@ function changeColumns(c: CallChange): Update {
     const o = c.outcome;
     Object.assign(u, {
       outcome_reason: o?.reason ?? null,
-      assistance: o?.assistance ?? null,
+      assistance: o?.helpUnconfirmed ? null : o?.assistance ?? null,
       paper_status: o?.paperStatus ?? null,
       understanding: o?.understanding ?? null,
       highest_hint: o?.highestHint ?? null,

@@ -357,7 +357,7 @@ async function countMonthly(o: Options, s: Spending): Promise<void> {
 
 const spent = (o: Options, s: Spending) => (o.fake || o.provider === "subscription" ? `cost USD 0${o.provider === "subscription" && !o.fake ? " (claude -p on the Claude subscription)" : ""}` : `spent about ${usd(s.spent)}`);
 function printEstimate(e: CostEstimate, cases: number, runs: number) {
-  console.log(`-- cost estimate for ${cases} cases × ${runs} runs (a dry run with the fakes, ×1.5 margin, worst-case output; the review at one call per Maya call):`);
+  console.log(`-- cost estimate for ${cases} cases × ${runs} runs (fake run, ×1.5 margin, includes observed tutor math reviews):`);
   for (const [role, r] of Object.entries(e.roles)) if (r) console.log(`   ${role.padEnd(9)} ${r.model.padEnd(28)} ${String(r.calls).padStart(5)} calls ${String(r.inputTokens).padStart(9)} in ${String(r.outputTokens).padStart(8)} out  ${usd(r.usd)}`);
   console.log(`   total ${usd(e.usd)}`);
 }

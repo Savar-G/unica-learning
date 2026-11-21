@@ -43,8 +43,8 @@ async function job() {
   f.get.mockResolvedValue(record); f.open.mockResolvedValue({ ok: true, call: { session: {}, boardSnapshot: null } });
   f.session.mockReturnValue(Object.assign(new EventEmitter(), { start: async () => {} }));
   const room = Object.assign(new EventEmitter(), { remoteParticipants: new Map([[identity, { identity }]]),
-    localParticipant: { setAttributes: async () => {}, registerRpcMethod: (name: string, fn: (data: { callerIdentity: string }) => Promise<string>) => rpc.set(name, fn) } });
-  const rpc = new Map<string, (data: { callerIdentity: string }) => Promise<string>>();
+    localParticipant: { setAttributes: async () => {}, registerRpcMethod: (name: string, fn: (data: { callerIdentity: string; payload?: string }) => Promise<string>) => rpc.set(name, fn) } });
+  const rpc = new Map<string, (data: { callerIdentity: string; payload?: string }) => Promise<string>>();
   let stop!: () => Promise<void>;
   const context = { job: { id: "close-job", room: { name: voiceRoom(id) }, metadata: JSON.stringify({ callId: id }) }, room,
     connect: async () => {}, shutdown: async () => {}, addShutdownCallback: (fn: () => Promise<void>) => { stop = fn; } };
@@ -64,4 +64,11 @@ it("accepts only the bound child's RPC and forwards the actual protocol reason w
   j.room.emit(RoomEvent.ParticipantDisconnected, { identity: j.identity, disconnectReason: DisconnectReason.SIGNAL_CLOSE });
   expect(f.childLeft.mock.calls).toEqual([["hang_up", DisconnectReason.CLIENT_INITIATED], ["dropped", DisconnectReason.SIGNAL_CLOSE]]);
   await j.stop(); expect(f.shutdown).toHaveBeenCalledOnce();
+});
+
+it("acknowledges an explicit hang-up with the read-only desk drain when requested", async () => {
+  const j = await job();
+  await expect(j.rpc.get("maya.hang_up")!({ callerIdentity: "other", payload: "board-status" })).rejects.toThrow();
+  expect(await j.rpc.get("maya.hang_up")!({ callerIdentity: j.identity, payload: "board-status" })).toBe("board-status");
+  expect(f.hangUp).toHaveBeenCalledOnce();
 });

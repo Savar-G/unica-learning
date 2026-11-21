@@ -45,6 +45,8 @@ export class CuePlaybackOutput {
   private generation = 0;
   private forwarding: { scope: SpeechScope; frame: AudioFrame } | null = null;
   private segments: { scope: SpeechScope; started: boolean }[] = [];
+  private readonly capturedScopes = new WeakSet<SpeechScope>();
+  captured(scope: SpeechScope) { return this.capturedScopes.has(scope); }
   constructor(
     private readonly output: voice.AudioOutput,
     private readonly board: BoardSpeech,
@@ -77,6 +79,7 @@ export class CuePlaybackOutput {
   /** Count a segment only after the downstream output has admitted it. */
   private admit(scope: SpeechScope, frame: AudioFrame) {
     if (this.capturedPlayoutSegments >= this.output.capturedPlayoutSegments) return;
+    this.capturedScopes.add(scope);
     this.segments.push({ scope, started: false });
     this.adapter.admitFrame(frame);
   }
@@ -146,6 +149,7 @@ export class CuePlaybackOutput {
   clearBuffer(scope: SpeechScope) {
     if (!same(this.segments[0]?.scope ?? this.forwarding?.scope ?? this.scope, scope)) return;
     this.cancelPending(scope);
+    this.interrupted(scope);
     this.adapter.seal();
     this.output.clearBuffer();
   }

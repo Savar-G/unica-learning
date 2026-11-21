@@ -54,6 +54,18 @@ const input = (over: Partial<ChildProfileInput> = {}): ChildProfileInput => ({ g
 const standard = (code: string, i: ChildProfileInput) => childProfileFacts(i)?.standards.find((s) => s.code === code);
 
 describe("the child's profile facts", () => {
+  it("never counts a related question after a call toward a standard (#1144)", () => {
+    const helped = event({ result: "right_with_help", hints: 1, stuckStep: "tens" });
+    const related = [1, 2, 3, 4].map(() => event({
+      question: { source: "transfer", relatedEventId: helped.id, text: "63 - 27 = ?" }, assistance: "independent",
+    }));
+    const facts = childProfileFacts(input({ events: [helped, ...related] }));
+    expect(facts?.standards.find((s) => s.code === "3.3")).toMatchObject({ correct: 0, total: 1, evidence: { events: [helped.id] } });
+    expect(facts?.secure).toEqual([]);
+    expect(facts?.events).toMatchObject({ counted: 1, inAssessmentProfile: 0 });
+    expect(childProfileFacts(input({ events: related }))).toBeNull();
+  });
+
   it("counts a right answer with help as not yet secure", () => {
     const helped = [1, 2, 3, 4].map(() => event({ result: "right_with_help", hints: 2, stuckStep: "tens" }));
     const s = standard("3.3", input({ events: helped }));

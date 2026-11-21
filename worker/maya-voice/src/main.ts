@@ -17,6 +17,7 @@
 // each saved turn; the screen reads the call from the web server then.
 import { randomUUID } from "node:crypto";
 import { flushAiUsage } from "@/lib/ai-usage";
+import { BASELINE_PROFILE_PREFIX, baselineTeaching, logBaselineTurn, type BaselineGroup } from "@/lib/maya-baseline";
 import { createBoardSender } from "@/lib/board-protocol";
 import { boardRpcTransport } from "@/lib/board-rpc";
 import { createBoardSpeech, cueReport, type CueMeasurement } from "@/lib/board-speech";
@@ -27,9 +28,10 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { callSeams } from "@/lib/maya-call-seams";
 import { mayaCalls } from "@/lib/maya-call";
+import { EXCHANGE_RPC, readExchangeTarget } from "@/lib/maya/checked-exchange";
 import { voiceOpening } from "./opening";
 import { mayaCallStore } from "@/lib/maya-call-store";
-import { asksWordTimings, callKeyterms, callOfRoom, childIdentity, turnSilences, VOICE_AGENT_NAME, voiceProviders, type TurnSilence, type VoiceCallFacts } from "@/lib/maya-voice";
+import { asksWordTimings, callKeyterms, callOfRoom, childIdentity, HANG_UP_BOARD_DRAIN, turnSilences, VOICE_AGENT_NAME, voiceProviders, type TurnSilence, type VoiceCallFacts } from "@/lib/maya-voice";
 import { VoiceCallRun, voiceSession, type CallUpdate } from "./agent";
 import { CallTelemetry, markedFetch, telemetry, setTelemetry } from "./telemetry";
 import { presenceOf, waitForChild } from "./child-wait";
@@ -40,6 +42,7 @@ import { referenceJob, referenceRoomName } from "@/lib/maya-workbook-speech";
 import { runWorkbookReference } from "./workbook-reference";
 import { monitoredVoiceJob } from "./monitoring";
 import { monitorProduct } from "@/lib/product-monitoring";
+import { startVoiceBaselineProfile, voiceBaselineTurn } from "./baseline";
 
 const log = (...a: unknown[]) => console.log("[maya voice]", ...a);
 
@@ -153,6 +156,16 @@ export default defineAgent({
       log("board cue", { callId, fakeAudio: made.tts.provider === "fake", ...sample });
     } });
     const turnSamples: VoiceTurnSample[] = [];
+    const teaching = opened.call.session;
+    const baseline: BaselineGroup = {
+      mode: "voice", evidence: made.stt.provider === "fake" || made.tts.provider === "fake" ? "simulated" : "worker",
+      turnType: "unknown", provider: `${record.model}+${providers.ids.speechToText}+${providers.ids.voice}`,
+      teaching: baselineTeaching(!!teaching.checkedExchange, teaching.checkedRoutine === true),
+      device: "unknown", network: "unknown", concurrency: "unknown",
+    };
+    const baselineEnabled = process.env.MAYA_BASELINE_LOG === "on";
+    const boardOwners = new Map<string, { turnId: string; batchIds: readonly string[] }>();
+    let profile: ReturnType<typeof startVoiceBaselineProfile> | null = null;
     const ackLimit = Number(process.env.MAYA_ACK_LIMIT_MS);
     const run = new VoiceCallRun(session, opened.call, { board, notify, ...(openingText ? { opening: openingText, openingMark: mark } : {}),
       ...(made.fake ? {} : { numberContinueMs: tuning.numberContinueMs, dropSilentPeakDbfs: tuning.dropSilentPeakDbfs, detectorMinSilenceMs: tuning.detectorMinSilenceMs }),
@@ -162,9 +175,23 @@ export default defineAgent({
         turnSamples.push(sample);
         log("voice turn", { callId, fakeProviders: { speechToText: made.stt.provider === "fake", voice: made.tts.provider === "fake" }, ...sample, clock: telemetry().turnClock(sample.turnId) });
       },
+      ...(baselineEnabled ? { measureBoardPlan: (utteranceId, turnId, batchIds) => { boardOwners.set(utteranceId, { turnId, batchIds }); } } : {}),
       closed: async () => {
         log("board cue report", { callId, fakeAudio: made.tts.provider === "fake", groups: cueReport(samples) });
         log("voice turn report", { callId, fakeProviders: { speechToText: made.stt.provider === "fake", voice: made.tts.provider === "fake" }, ...voiceTurnReport(turnSamples) });
+        if (baselineEnabled) {
+          // Wait until close to read request marks. Streamed playout can start before a review or repair finishes.
+          for (const sample of turnSamples) {
+            const cues = samples.filter(cue => {
+              const owner = boardOwners.get(cue.utteranceId);
+              return owner && owner.turnId === sample.turnId && owner.batchIds.includes(cue.batchId);
+            });
+            logBaselineTurn(voiceBaselineTurn(baseline, sample, telemetry().turnClock(sample.turnId), cues));
+          }
+          if (profile) console.log(BASELINE_PROFILE_PREFIX + JSON.stringify({
+            ...baseline, ...profile(), discardedPreparation: telemetry().discardedPreparationSummary(),
+          }));
+        }
         await monitoring.flush();
         await ctx.shutdown("call ended");
       } });
@@ -176,7 +203,14 @@ export default defineAgent({
     local.registerRpcMethod("maya.hang_up", async (data) => {
       if (data.callerIdentity !== identity) throw new RpcError(1403, "not this call's child");
       void run.hangUp();
-      return "ok";
+      return data.payload === HANG_UP_BOARD_DRAIN ? HANG_UP_BOARD_DRAIN : "ok";
+    });
+    if (opened.call.session.checkedExchange) local.registerRpcMethod(EXCHANGE_RPC, async (data) => {
+      if (data.callerIdentity !== identity) throw new RpcError(1403, "not this call's child");
+      let target = null;
+      try { if (data.payload.length <= 1000) target = readExchangeTarget(JSON.parse(data.payload)); } catch { /* Invalid JSON. */ }
+      if (!target) throw new RpcError(1400, "invalid exchange target");
+      return run.exchange(target);
     });
     if (made.fakeSpeech) {
       const speech = made.fakeSpeech;
@@ -243,6 +277,7 @@ export default defineAgent({
     }
     // The child is here: their microphone is published. `sinceChildMs` in "opening first sound" counts from now.
     childAt = Date.now();
+    if (baselineEnabled) profile = startVoiceBaselineProfile();
     marks.readyBeforeChild = childAt - readyAt;
     ctx.addShutdownCallback(async () => { try { await run.workerShutdown(); } finally { await Promise.all([flushAiUsage(), monitoring.flush()]); } });
     // The connection rows and the session start do not wait for each other.

@@ -552,7 +552,7 @@ function OutcomeStrip({ view }: { view: CallView }) {
   return (
     <dl className="mc-outcome" aria-label="Outcome">
       <div><dt>Outcome</dt><dd><span className={`adm-chip ${o.reason === "solved" ? "is-ok" : o.reason === "safety" ? "is-bad" : "is-muted"}`}>{REASON_TEXT[o.reason]}</span></dd></div>
-      <div><dt>Help</dt><dd>{ASSISTANCE_TEXT[o.assistance]}</dd></div>
+      <div><dt>Help</dt><dd>{o.helpUnconfirmed ? "Unconfirmed" : ASSISTANCE_TEXT[o.assistance]}</dd></div>
       <div><dt>Strongest hint</dt><dd>{o.highestHint === null ? "None" : HINT_TEXT[o.highestHint]}</dd></div>
       <div><dt>Call time</dt><dd>{clock(Math.round(o.seconds))}</dd></div>
     </dl>

@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maya lesson layout comparison</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.4 Geist, system-ui, sans-serif; }
+  main { display: grid; gap: 14px; }
+  h1, h2, h3, p { margin: 0; }
+  h2 { font-size: 17px; }
+  button, select, input { font: inherit; }
+  button, select, summary { cursor: pointer; }
+  :is(button, summary, input, select):focus-visible { outline: 3px solid #2457d6; outline-offset: 3px; }
+  .options { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .options > label { display: grid; gap: 2px; }
+  .options button, .options select {
+    min-height: 44px; padding: 6px 10px; border-radius: 8px;
+    border: 1px solid var(--border, #d4d4d8); background: var(--card, white); color: inherit;
+  }
+  .options button[aria-pressed="true"] { background: var(--primary, #151515); color: var(--primary-foreground, white); }
+  .choice-copy { font-size: 14px; }
+  .screen {
+    --ink: #0c0c0e; --subtle: #44444c; --line: #e4e4e7; --canvas: #f5f5f6;
+    --peach: #fff1ea; --red: #b43d12; --blue: #244c9d;
+    margin: auto; width: 100%; container-type: inline-size; color: var(--ink); background: var(--canvas);
+    border: 1px solid #d3d3d8; border-radius: 14px; overflow: clip;
+  }
+  .screen[data-size="phone"] { max-width: 390px; }
+  .desk-top, .desk-footer {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; background: white;
+  }
+  .desk-top { border-bottom: 1px solid var(--line); }
+  .desk-top .leave { margin-left: auto; }
+  .desk-footer { grid-area: controls; border: 1px solid var(--line); border-radius: 11px; }
+  .person { display: flex; align-items: center; gap: 8px; font-weight: 650; }
+  .person img { width: 32px; height: 32px; border-radius: 50%; }
+  .desk-status { font-size: 13px; color: var(--subtle); }
+  .screen button, .screen summary, .screen input {
+    min-height: 44px; border: 1px solid var(--line); border-radius: 9px;
+    padding: 8px 12px; background: white; color: var(--ink);
+  }
+  .screen summary { display: flex; align-items: center; gap: 8px; }
+  .screen summary::after { content: "▾"; margin-left: auto; }
+  .screen details[open] summary::after { content: "▴"; }
+  .screen .primary { background: var(--ink); border-color: var(--ink); color: white; font-weight: 600; }
+  .screen button[aria-pressed="true"] { background: var(--peach); border-color: var(--red); color: var(--red); }
+  .desk-workspace {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, 0.52fr);
+    grid-template-areas: "question question" "board help" "controls controls" "nav nav"; gap: 12px; padding: 12px;
+  }
+  .question, .teaching, .prompt, .desk-nav {
+    min-width: 0; background: white; border: 1px solid var(--line); border-radius: 11px; padding: 12px;
+  }
+  .question { grid-area: question; display: flex; align-items: center; gap: 12px; justify-content: space-between; }
+  .question small { color: var(--subtle); display: block; }
+  .equation { font-variant-numeric: tabular-nums; font-size: 24px; letter-spacing: .04em; }
+  .teaching { grid-area: board; display: grid; gap: 10px; align-content: start; }
+  .prompt { grid-area: help; display: grid; gap: 8px; align-content: start; }
+  .prompt h3, .teaching h3 { font-size: 15px; }
+  .prompt details p { padding: 8px 2px 0; }
+  .desk-nav { grid-area: nav; padding: 0; }
+  .desk-nav summary { border: 0; }
+  .nav-items { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 10px 10px; }
+  .canvas {
+    display: grid; gap: 4px; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 10px;
+    background: radial-gradient(#d6d8de 1px, transparent 1.2px) 6px 6px / 18px 18px #fff;
+  }
+  .block-zones { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .zone, .groups {
+    min-width: 0; padding: 6px; border-radius: 8px; background: #f6f8ff;
+    border: 1px solid #c6d2f2; color: #18377d; font-size: 13px;
+  }
+  .zone strong { display: block; padding-bottom: 4px; }
+  .rods, .ones { display: flex; gap: 4px; flex-wrap: wrap; align-content: start; }
+  .rod { width: 9px; height: 44px; border: 1px solid #335cc0; border-radius: 2px; background: #dbe6ff; }
+  .one { width: 11px; height: 11px; border: 1px solid #335cc0; border-radius: 2px; background: #dbe6ff; }
+  .rods .move-origin { background: #ffbf98; border-color: #96320d; }
+  .ones, .rods { min-height: 44px; }
+  .groups { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 4px; }
+  .group { min-width: 0; min-height: 54px; border-radius: 5px; background: white; border: 1px solid #a9bae7; padding: 4px; }
+  .group .rods { min-height: 24px; gap: 2px; }
+  .group .rod { height: 22px; width: 5px; }
+  .notation { justify-self: center; text-align: right; font-size: 20px; font-variant-numeric: tabular-nums; }
+  .notation span { display: block; }
+  .notation .hint { color: var(--blue); font-size: 14px; }
+  .subtract { border-bottom: 2px solid var(--ink); padding: 0 3px; }
+  .long-division strong { padding: 3px; border-left: 2px solid var(--ink); border-top: 2px solid var(--ink); }
+  .action { display: grid; gap: 6px; }
+  .desk-footer label { flex: 1; min-width: 140px; }
+  .desk-footer input { width: 100%; min-width: 0; }
+  .desk-footer output { width: 100%; color: var(--subtle); font-size: 13px; }
+  .screen[data-layout="paper"] .desk-workspace { grid-template-areas: "question question" "help board" "controls controls" "nav nav"; }
+  .screen[data-layout="paper"] .question { padding-block: 20px; background: var(--peach); }
+  .screen[data-layout="practice"] .action { grid-row: 2; padding: 8px; background: var(--peach); border-radius: 8px; }
+  .screen[data-paper="true"] .canvas { display: none; }
+  .screen[data-paper="true"] .action { grid-row: auto; }
+  .screen [hidden] { display: none; }
+  .fonts { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+  .sample { margin: 0; padding: 9px; border: 1px solid var(--border, #d4d4d8); border-radius: 8px; min-width: 0; }
+  .sample figcaption { font-size: 13px; }
+  .sample svg { display: block; width: 100%; max-width: 215px; margin: auto; color: #1b3371; background: white; border-radius: 6px; }
+  .sample text { font-family: Arial, sans-serif; font-variant-numeric: tabular-nums; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  @container (max-width: 550px) {
+    .screen[data-layout] .desk-workspace { grid-template-columns: minmax(0, 1fr); grid-template-areas: "question" "board" "controls" "help" "nav"; gap: 8px; padding: 8px; }
+    .screen[data-layout="paper"] .question { padding-block: 12px; }
+    .screen[data-layout="paper"] .desk-workspace { grid-template-areas: "question" "help" "board" "controls" "nav"; }
+    .desk-top, .desk-footer { padding: 6px 8px; }
+  }
+</style>
+<main>
+  <h2>Lesson layout</h2>
+  <div class="options" aria-label="Layout options" role="group">
+    <button type="button" data-option="board" aria-pressed="true">A · Board-led</button>
+    <button type="button" data-option="paper" aria-pressed="false">B · Paper companion</button>
+    <button type="button" data-option="practice" aria-pressed="false">C · Interactive practice</button>
+  </div>
+  <p class="choice-copy" id="choice-copy">The board stays open. The child can switch to paper at any step.</p>
+  <div class="options">
+    <label>Example <select id="scenario"><option value="subtract">52 − 28</option><option value="divide">84 ÷ 4</option></select></label>
+    <label>Screen <select id="size"><option value="desktop">Desktop</option><option value="phone">Phone</option></select></label>
+    <label>Motion <select id="motion"><option value="system">Device setting</option><option value="reduce">Reduced</option></select></label>
+  </div>
+
+  <section class="screen" aria-label="Lesson prototype" data-layout="board" data-size="desktop" data-paper="false">
+    <header class="desk-top">
+      <span class="person"><img src="../../../public/desk/maya.webp" alt="">Maya</span>
+      <span class="desk-status" id="desk-status" role="status">Chat</span>
+      <button class="leave" type="button" id="leave">Leave desk</button>
+    </header>
+    <div class="desk-workspace">
+      <section class="question" aria-label="Current question">
+        <div><small>Workbook 1</small><h3 class="equation" id="equation">52 − 28</h3></div>
+        <button type="button" id="paper-toggle" aria-pressed="false">Use paper</button>
+      </section>
+
+      <section class="teaching" aria-labelledby="board-title">
+        <h3 id="board-title">Our board</h3>
+        <div class="canvas" id="canvas">
+          <div id="representation"></div>
+          <p id="notation" class="notation"></p>
+        </div>
+        <p id="paper-note" hidden>Write this step in your workbook. You can still ask Maya for help.</p>
+        <div class="action"><p id="instruction"></p><button type="button" class="primary" id="step"></button></div>
+      </section>
+
+      <footer class="desk-footer">
+        <button type="button" id="mic" aria-pressed="false">Microphone</button>
+        <label><span class="sr-only">Reply</span><input id="reply" placeholder="Write to Maya"></label>
+        <button type="button" id="send">Send</button>
+        <output id="status" role="status"></output>
+      </footer>
+
+      <aside class="prompt">
+        <h3>Maya says</h3>
+        <p id="cue"></p>
+        <details><summary>Transcript</summary><p id="transcript"></p></details>
+      </aside>
+
+      <details class="desk-nav">
+        <summary>Workbook navigation</summary>
+        <div class="nav-items">
+          <button type="button" data-example="subtract">52 − 28</button>
+          <button type="button" data-example="divide">84 ÷ 4</button>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <h2>Math lettering</h2>
+  <div class="fonts" id="fonts"></div>
+</main>
+<script>
+  const screen = document.querySelector(".screen");
+  const byId = (id) => document.getElementById(id);
+  const choices = {
+    board: "The board stays open. The child can switch to paper at any step.",
+    paper: "The question and Maya’s prompt lead. The board sits beside the prompt or below it on a phone.",
+    practice: "The child’s next action sits directly below the board title. The child can review the model at the same step."
+  };
+  const problems = {
+    subtract: {
+      equation: "52 − 28",
+      instruction: "Trade one ten for ten ones.",
+      action: "Trade 1 ten",
+      after: "Now you have 4 tens and 12 ones. The total is still 52.",
+      cue: "There are two ones. How can you get enough ones to take away eight?"
+    },
+    divide: {
+      equation: "84 ÷ 4",
+      instruction: "Share the eight tens among four groups.",
+      action: "Share the tens",
+      after: "Each group now has 2 tens. Four ones still need to be shared.",
+      cue: "Start with the tens. How many tens can each of the four groups get?"
+    }
+  };
+  let completed = false;
+  let finished = false;
+
+  function blocks(count, type, highlightLast = false) {
+    return Array.from({ length: count }, (_, index) =>
+      '<i aria-hidden="true" class="' + type + (highlightLast && index === count - 1 ? ' move-origin' : '') + '"></i>'
+    ).join("");
+  }
+
+  function drawProblem() {
+    const key = byId("scenario").value;
+    const problem = problems[key];
+    const paper = screen.dataset.paper === "true";
+    byId("equation").textContent = problem.equation;
+    byId("cue").textContent = completed ? problem.after : problem.cue;
+    byId("transcript").textContent = problem.cue + (completed ? " " + problem.after : "");
+    byId("instruction").textContent = completed ? problem.after : problem.instruction;
+    byId("step").textContent = completed ? "Reset example" : paper ? "I did this on paper" : problem.action;
+    if (key === "subtract") {
+      const tens = completed ? 4 : 5;
+      const ones = completed ? 12 : 2;
+      byId("representation").innerHTML = '<div class="block-zones"><div class="zone"><strong>' + tens +
+        ' tens</strong><div class="rods">' + blocks(tens, "rod", !completed) +
+        '</div></div><div class="zone"><strong>' + ones + ' ones</strong><div class="ones">' +
+        blocks(ones, "one") + '</div></div></div>';
+      byId("notation").innerHTML = '<span class="hint">' + (completed ? "4 tens · 12 ones" : "Tens · ones") +
+        '</span><span>5&nbsp;2</span><span class="subtract">−&nbsp;2&nbsp;8</span>';
+    } else {
+      const unshared = completed ? 0 : 8;
+      const groups = Array.from({ length: 4 }, (_, index) =>
+        '<div class="group"><span class="sr-only">Group ' + (index + 1) + (completed ? ', 2 tens' : ', empty') +
+        '</span><div class="rods">' + blocks(completed ? 2 : 0, "rod") + '</div></div>'
+      ).join("");
+      byId("representation").innerHTML =
+        '<div class="zone"><strong>' + unshared + ' tens and 4 ones to share</strong><div class="rods">' +
+        blocks(unshared, "rod", !completed) + blocks(4, "one") + '</div></div>' +
+        '<div class="groups" aria-label="Four groups">' + groups + '</div>';
+      byId("notation").innerHTML = '<span class="hint">' + (completed ? "2 tens in each group" : "Four equal groups") +
+        '</span><span class="long-division">4 <strong>84</strong></span>';
+    }
+  }
+
+  for (const button of document.querySelectorAll("[data-option]")) {
+    button.addEventListener("click", () => {
+      screen.dataset.layout = button.dataset.option;
+      byId("choice-copy").textContent = choices[button.dataset.option];
+      for (const option of document.querySelectorAll("[data-option]")) {
+        option.setAttribute("aria-pressed", String(button === option));
+      }
+    });
+  }
+
+  byId("size").addEventListener("change", () => { screen.dataset.size = byId("size").value; });
+  byId("scenario").addEventListener("change", () => {
+    completed = false;
+    byId("status").textContent = "";
+    drawProblem();
+  });
+  for (const button of document.querySelectorAll("[data-example]")) {
+    button.addEventListener("click", () => {
+      byId("scenario").value = button.dataset.example;
+      byId("scenario").dispatchEvent(new Event("change"));
+    });
+  }
+  byId("paper-toggle").addEventListener("click", () => {
+    const paper = screen.dataset.paper !== "true";
+    screen.dataset.paper = String(paper);
+    byId("paper-toggle").setAttribute("aria-pressed", String(paper));
+    byId("paper-toggle").textContent = paper ? "Show board" : "Use paper";
+    byId("paper-note").hidden = !paper;
+    drawProblem();
+  });
+  byId("step").addEventListener("click", () => {
+    const origin = byId("representation").querySelector(".move-origin")?.getBoundingClientRect();
+    const noMotion = matchMedia("(prefers-reduced-motion: reduce)").matches || byId("motion").value === "reduce";
+    completed = !completed;
+    drawProblem();
+    byId("status").textContent = completed ? problems[byId("scenario").value].after : "";
+    if (completed && !noMotion && origin && screen.dataset.paper === "false") {
+      const destination = byId("representation").querySelector(".ones .one:nth-child(3), .group .rod");
+      const next = destination?.getBoundingClientRect();
+      if (next) {
+        destination.animate([
+          { transform: "translate(" + (origin.x - next.x) + "px," + (origin.y - next.y) + "px)", backgroundColor: "#ffbf98" },
+          { transform: "translate(0,0)" }
+        ], { duration: 260, easing: "ease-out" });
+      }
+    }
+  });
+  byId("mic").addEventListener("click", () => {
+    const pressed = byId("mic").getAttribute("aria-pressed") !== "true";
+    byId("mic").setAttribute("aria-pressed", String(pressed));
+    byId("desk-status").textContent = pressed ? "Call · Listening" : "Chat";
+  });
+  function sendReply() {
+    const reply = byId("reply");
+    if (reply.value.trim()) {
+      byId("status").textContent = "Reply sent in prototype";
+      reply.value = "";
+    }
+  }
+  byId("send").addEventListener("click", sendReply);
+  byId("reply").addEventListener("keydown", (event) => { if (event.key === "Enter") sendReply(); });
+  byId("leave").addEventListener("click", () => {
+    finished = !finished;
+    byId("leave").textContent = finished ? "Resume preview" : "Leave desk";
+    screen.querySelector(".desk-workspace").hidden = finished;
+    byId("desk-status").textContent = finished ? "Lesson ended in prototype" : "Chat";
+    byId("mic").setAttribute("aria-pressed", "false");
+  });
+
+  // Filled from the existing board font paths for a fixed set of numerals.
+  const lettering = [{"0":[[[0.499,0.1],[0.438,0.108],[0.385,0.132],[0.34,0.169],[0.304,0.218],[0.276,0.278],[0.256,0.346],[0.244,0.422],[0.24,0.504],[0.244,0.585],[0.256,0.661],[0.276,0.728],[0.304,0.786],[0.341,0.834],[0.385,0.87],[0.438,0.892],[0.5,0.9],[0.562,0.892],[0.615,0.87],[0.659,0.834],[0.696,0.786],[0.724,0.728],[0.744,0.661],[0.756,0.585],[0.76,0.504],[0.756,0.422],[0.744,0.346],[0.724,0.278],[0.696,0.218],[0.66,0.169],[0.615,0.132],[0.562,0.108],[0.501,0.1]]],"1":[[[0.372,0.289],[0.624,0.112],[0.628,0.112],[0.628,0.9]]],"2":[[[0.287,0.262],[0.322,0.194],[0.373,0.143],[0.437,0.111],[0.511,0.1],[0.584,0.112],[0.647,0.147],[0.69,0.206],[0.706,0.289],[0.699,0.35],[0.679,0.406],[0.65,0.458],[0.613,0.509],[0.571,0.558],[0.527,0.607],[0.265,0.895],[0.265,0.9],[0.735,0.9]]],"3":[[[0.294,0.219],[0.326,0.174],[0.372,0.136],[0.432,0.11],[0.509,0.1],[0.6,0.115],[0.663,0.154],[0.7,0.212],[0.712,0.281],[0.706,0.332],[0.687,0.379],[0.656,0.419],[0.611,0.45],[0.552,0.47],[0.481,0.478]],[[0.444,0.478],[0.481,0.478],[0.56,0.486],[0.623,0.511],[0.669,0.547],[0.7,0.591],[0.718,0.642],[0.724,0.694],[0.717,0.751],[0.696,0.801],[0.663,0.843],[0.618,0.874],[0.562,0.894],[0.497,0.901],[0.418,0.891],[0.352,0.861],[0.304,0.815],[0.276,0.755]]],"4":[[[0.761,0.712],[0.239,0.712],[0.239,0.707],[0.604,0.112],[0.615,0.112],[0.615,0.9]]],"5":[[[0.698,0.112],[0.331,0.112],[0.319,0.458],[0.359,0.438],[0.404,0.423],[0.449,0.415],[0.492,0.412],[0.557,0.42],[0.613,0.444],[0.658,0.482],[0.691,0.531],[0.712,0.589],[0.719,0.655],[0.711,0.724],[0.689,0.784],[0.655,0.832],[0.609,0.869],[0.555,0.892],[0.494,0.9],[0.425,0.889],[0.365,0.858],[0.317,0.807],[0.281,0.738]]],"6":[[[0.581,0.1],[0.394,0.349],[0.333,0.439],[0.293,0.517],[0.27,0.589],[0.264,0.659],[0.269,0.718],[0.286,0.774],[0.317,0.824],[0.362,0.864],[0.423,0.89],[0.501,0.9],[0.571,0.892],[0.629,0.869],[0.675,0.834],[0.709,0.787],[0.729,0.731],[0.736,0.667],[0.728,0.598],[0.704,0.539],[0.668,0.492],[0.621,0.457],[0.567,0.436],[0.508,0.428],[0.446,0.436],[0.385,0.458],[0.328,0.496],[0.281,0.551]]],"7":[[[0.262,0.112],[0.738,0.112],[0.738,0.116],[0.363,0.9]]],"8":[[[0.496,0.1],[0.411,0.114],[0.351,0.152],[0.315,0.206],[0.303,0.268],[0.315,0.328],[0.347,0.375],[0.394,0.415],[0.451,0.449],[0.513,0.48],[0.575,0.513],[0.632,0.549],[0.679,0.592],[0.711,0.644],[0.723,0.709],[0.704,0.792],[0.653,0.851],[0.581,0.888],[0.498,0.9],[0.416,0.888],[0.345,0.851],[0.296,0.791],[0.277,0.709],[0.289,0.643],[0.321,0.59],[0.368,0.547],[0.424,0.511],[0.486,0.478],[0.548,0.447],[0.605,0.413],[0.652,0.374],[0.684,0.327],[0.696,0.268],[0.681,0.202],[0.641,0.148],[0.578,0.113],[0.498,0.1]]],"9":[[[0.719,0.449],[0.672,0.504],[0.615,0.542],[0.554,0.564],[0.492,0.572],[0.433,0.564],[0.379,0.543],[0.332,0.508],[0.296,0.461],[0.272,0.402],[0.264,0.333],[0.271,0.269],[0.291,0.213],[0.325,0.166],[0.371,0.131],[0.429,0.108],[0.499,0.1],[0.577,0.11],[0.638,0.136],[0.683,0.176],[0.714,0.226],[0.731,0.282],[0.736,0.341],[0.73,0.411],[0.707,0.483],[0.667,0.561],[0.606,0.651],[0.419,0.9]]],"−":[[[0.22,0.5],[0.78,0.5]]],"÷":[[[0.499,0.228],[0.481,0.232],[0.466,0.242],[0.456,0.258],[0.452,0.276],[0.456,0.295],[0.466,0.311],[0.482,0.321],[0.501,0.325],[0.519,0.321],[0.534,0.311],[0.544,0.295],[0.548,0.276],[0.544,0.258],[0.534,0.242],[0.52,0.232],[0.502,0.228]],[[0.226,0.509],[0.774,0.509]],[[0.499,0.694],[0.481,0.698],[0.466,0.708],[0.456,0.723],[0.452,0.742],[0.456,0.761],[0.466,0.777],[0.482,0.787],[0.501,0.791],[0.519,0.787],[0.534,0.777],[0.544,0.761],[0.548,0.742],[0.544,0.723],[0.534,0.708],[0.52,0.698],[0.502,0.694]]]},{"0":[[[0.528,0.122],[0.605,0.129],[0.7,0.17],[0.773,0.258],[0.811,0.357],[0.828,0.47],[0.811,0.614],[0.758,0.728],[0.664,0.83],[0.56,0.878],[0.403,0.889],[0.271,0.852],[0.202,0.779],[0.172,0.687],[0.19,0.523],[0.234,0.376],[0.311,0.24],[0.377,0.17],[0.454,0.126],[0.528,0.122]]],"1":[[[0.511,0.119],[0.489,0.882]]],"2":[[[0.241,0.25],[0.322,0.182],[0.406,0.134],[0.508,0.108],[0.568,0.108],[0.626,0.148],[0.648,0.207],[0.637,0.291],[0.608,0.376],[0.542,0.504],[0.453,0.647],[0.347,0.775],[0.255,0.878],[0.373,0.878],[0.52,0.863],[0.644,0.838],[0.759,0.808]]],"3":[[[0.26,0.192],[0.304,0.185],[0.455,0.134],[0.564,0.115],[0.656,0.112],[0.711,0.122],[0.74,0.163],[0.736,0.225],[0.7,0.284],[0.598,0.371],[0.469,0.46],[0.359,0.518],[0.502,0.46],[0.627,0.441],[0.707,0.47],[0.74,0.518],[0.736,0.591],[0.675,0.687],[0.576,0.779],[0.473,0.845],[0.347,0.889],[0.304,0.896]]],"4":[[[0.755,0.478],[0.6,0.504],[0.245,0.518],[0.318,0.416],[0.505,0.177],[0.586,0.115],[0.615,0.156],[0.626,0.28],[0.63,0.9]]],"5":[[[0.774,0.122],[0.619,0.17],[0.469,0.211],[0.366,0.221],[0.245,0.233],[0.252,0.112],[0.226,0.515],[0.308,0.508],[0.446,0.482],[0.579,0.478],[0.675,0.489],[0.743,0.559],[0.755,0.647],[0.733,0.724],[0.644,0.794],[0.531,0.845],[0.402,0.874],[0.23,0.889],[0.23,0.856]]],"6":[[[0.543,0.122],[0.447,0.151],[0.359,0.218],[0.278,0.313],[0.22,0.397],[0.179,0.511],[0.176,0.629],[0.194,0.713],[0.26,0.805],[0.355,0.867],[0.425,0.889],[0.505,0.893],[0.612,0.882],[0.725,0.823],[0.803,0.731],[0.824,0.676],[0.821,0.61],[0.792,0.566],[0.729,0.562],[0.63,0.603],[0.527,0.683],[0.462,0.738],[0.403,0.797],[0.363,0.845]]],"7":[[[0.221,0.159],[0.394,0.156],[0.599,0.119],[0.779,0.1],[0.713,0.177],[0.625,0.35],[0.555,0.504],[0.519,0.658],[0.5,0.746],[0.493,0.845]]],"8":[[[0.47,0.122],[0.349,0.177],[0.279,0.247],[0.254,0.332],[0.269,0.397],[0.32,0.441],[0.39,0.46],[0.496,0.427],[0.562,0.409],[0.665,0.397],[0.764,0.438],[0.83,0.533],[0.822,0.639],[0.745,0.757],[0.643,0.838],[0.525,0.882],[0.382,0.889],[0.272,0.867],[0.184,0.782],[0.17,0.699],[0.199,0.622],[0.261,0.544],[0.339,0.478],[0.385,0.456],[0.628,0.397],[0.72,0.335],[0.782,0.284],[0.789,0.218],[0.76,0.163],[0.716,0.134],[0.602,0.108],[0.47,0.122]]],"9":[[[0.767,0.371],[0.625,0.409],[0.508,0.427],[0.386,0.434],[0.291,0.416],[0.236,0.379],[0.233,0.32],[0.265,0.25],[0.375,0.166],[0.492,0.129],[0.603,0.119],[0.673,0.151],[0.728,0.207],[0.764,0.291],[0.76,0.434],[0.731,0.548],[0.683,0.661],[0.614,0.775],[0.533,0.845],[0.467,0.878]]],"−":[[[0.22,0.5],[0.78,0.5]]],"÷":[[[0.471,0.376],[0.49,0.371]],[[0.205,0.518],[0.551,0.497],[0.795,0.485]],[[0.486,0.669],[0.505,0.665]]]}];
+  const sampleLabels = ["Relief SingleLine · Current board", "EMS Tech · Stroke alternative", "Tabular digits · Typeset alternative"];
+  const row = ["1", "7", "6", "9", "8", "0", "−", "÷"];
+  const positions = [
+    ...row.map((symbol, index) => [symbol, 11 + index * 19, 9]),
+    ["5", 33, 31], ["2", 52, 31], ["−", 14, 50], ["2", 33, 50], ["8", 52, 50],
+    ["3", 84, 32], ["8", 84, 53], ["4", 120, 47], ["8", 139, 47], ["4", 156, 47]
+  ];
+  function fontSample(index) {
+    const shapes = positions.map(([symbol, x, y]) => {
+      const lines = lettering[index]?.[symbol];
+      if (!lines) return '<text x="' + (x + 7.5) + '" y="' + (y + 14) + '" text-anchor="middle" font-size="16">' + symbol + '</text>';
+      return '<g transform="translate(' + x + ',' + y + ') scale(15,17)" fill="none" stroke="currentColor" stroke-width=".085" stroke-linecap="round" stroke-linejoin="round">' +
+        lines.map((line) => '<polyline points="' + line.map((point) => point.join(",")).join(" ") + '"/>').join("") + '</g>';
+    }).join("");
+    return '<figure class="sample"><figcaption>' + sampleLabels[index] + '</figcaption>' +
+      '<svg viewBox="0 0 174 76" role="img" aria-label="Digits one, seven, six, nine, eight and zero; minus and division signs; 52 minus 28, three eighths, and 84 divided by 4">' +
+      '<path d="M 15 69 H 69 M 84 51 H 100 M 137 65 V 44 H 173" stroke="currentColor" fill="none"/>' +
+      shapes + '</svg></figure>';
+  }
+  byId("fonts").innerHTML = sampleLabels.map((_, i) => fontSample(i)).join("");
+  drawProblem();
+</script>
+</html>

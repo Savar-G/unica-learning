@@ -4,13 +4,14 @@
 // money spent, plus the next call's estimate, would pass it; the runs it cuts are saved as nothing, so the report
 // counts them missing and the suite fails.
 import type { AiClient, AiJsonRequest } from "@/lib/ai-client";
-import { PROPOSAL_SCHEMA, TALK_REVIEW_SCHEMA, TALK_REVIEW_SYSTEM } from "@/lib/maya";
+import { MATH_REVIEW_SCHEMA, MATH_REVIEW_SYSTEM, PROPOSAL_SCHEMA, TALK_REVIEW_SCHEMA, TALK_REVIEW_SYSTEM } from "@/lib/maya";
 import { TUTOR_OUTPUT_SCHEMA, TUTOR_PROMPT } from "@/lib/maya";
 import { SYSTEM_PROMPT, type MayaModel } from "@/lib/maya-model";
 import { ruleConversationalModel } from "@/lib/maya-model-fake";
 import { DIMENSION_IDS, type PracticeCase } from "./cases";
 import { fakeJudge, judgeSchema, JUDGE_SYSTEM, type AiJudge } from "./judge";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
+import { fakeMathReviewer } from "@/lib/maya-math-review";
 import { fakeTeachingJudge, TEACHING_JUDGE_SYSTEM, teachingJudgeSchema, type TeachingJudge } from "./teaching-judge";
 import { fakeTutorModel } from "./tutor-fake";
 import { BudgetReached, memoryPracticeStore, planSuite, runSuite, type ExecutionOptions } from "./practice";
@@ -22,7 +23,7 @@ export interface Price {
   input: number;
   output: number;
 }
-/** The models of a suite. "reviewer" is Maya's free-talk review (D-197); a suite may run without one. */
+/** The models of a suite. Tutor practice uses the reviewer model for both talk and math. */
 export type Role = "maya" | "simulator" | "validity" | "judge" | "reviewer";
 export const ROLES: readonly Role[] = ["maya", "simulator", "validity", "judge", "reviewer"];
 /** The roles every suite has. */
@@ -75,12 +76,13 @@ export async function measureSuite(cases: readonly PracticeCase[], runs: number,
   const teaching0 = fakeTeachingJudge();
   // The tutor core reviews every sentence about the child, so one Maya call can make several reviews: the dry run counts each request.
   const reviewer = fakeTalkReviewer();
+  const mathReviewer = fakeMathReviewer();
   const teachingJudge: TeachingJudge = { id: "estimate", promptVersion: teaching0.promptVersion, judge: (input, s) => { const chars = teachFixed + JSON.stringify(input).length; teach.calls++; teach.inputChars += chars; teach.largestChars = Math.max(teach.largestChars, chars); return teaching0.judge(input, s); } };
   for (const c of cases) {
     const sim0 = scriptedSimulator(c.fakeScript);
     const simulator: ChildSimulator = { id: "estimate", promptVersion: sim0.promptVersion, next: (input, s) => { measure("simulator", fixed.simulator + JSON.stringify(input).length); return sim0.next(input, s); } };
     const plan = planSuite([c], { maya: { model: "estimate", promptVersion: "" }, simulator: { model: "estimate", promptVersion: "" }, validity: { model: "estimate", promptVersion: "" }, judge: { model: "estimate", promptVersion: "" }, meta: {} }, { runs: 1, ...execution });
-    await runSuite([c], plan, { maya, simulator, validity, judge, ...(execution.tutor ? { teachingJudge, reviewer } : {}), store: memoryPracticeStore() });
+    await runSuite([c], plan, { maya, simulator, validity, judge, ...(execution.tutor ? { teachingJudge, reviewer, mathReviewer } : {}), store: memoryPracticeStore() });
   }
   // Every run of a case sends about what its first run sends. Both judges are asked once for every run in a real
   // suite (the fakes skip the runs code finds invalid, so count them all).
@@ -106,6 +108,13 @@ export async function measureSuite(cases: readonly PracticeCase[], runs: number,
   // A tutor run: the reviews the dry run made, for every run; never fewer than one per Maya call.
   const reviews = execution.tutor ? Math.max(m.maya.calls, reviewer.requests.length * runs) : m.maya.calls;
   m.reviewer = { calls: reviews, inputChars: reviews * reviewChars, largestChars: reviewChars };
+  const mathFixed = MATH_REVIEW_SYSTEM.length + JSON.stringify(MATH_REVIEW_SCHEMA).length;
+  for (const input of mathReviewer.requests) {
+    const chars = mathFixed + JSON.stringify(input).length;
+    m.reviewer.calls += runs;
+    m.reviewer.inputChars += chars * runs;
+    m.reviewer.largestChars = Math.max(m.reviewer.largestChars, chars);
+  }
   return m;
 }
 

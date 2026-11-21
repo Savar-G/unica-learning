@@ -13,6 +13,7 @@ import type { RetryTime } from "@/lib/family-time";
 import { FamilyTime } from "@/components/family-time";
 import { Avatar, Icon } from "@/components/desk-icons";
 import { OurBoard } from "@/components/our-board";
+import { PaperContext } from "@/components/lesson-paper";
 import { useDeskChat, ChatControls, ChatBoard } from "@/components/desk-chat";
 import { useDeskVoice, VoiceBoard, VoiceControls, VoiceLimit, VoiceTranscript } from "@/components/desk-voice";
 import { chatLimitLabel, type ChatUsage } from "@/lib/maya-chat";
@@ -110,6 +111,8 @@ export function Desk(props: DeskProps) {
   const router = useRouter();
   const ready = props.problem === undefined ? props : null;
   const [picked, setPicked] = useState<number | null>(ready?.picked ?? null);
+  // "Use paper" (#1151): the board stays mounted underneath, so its ink, the question and a completed step come back.
+  const [paper, setPaper] = useState(false);
   const picker = useRef<HTMLDialogElement>(null);
   const books = useRef<HTMLDialogElement>(null);
   const talk = useRef<HTMLDivElement>(null);
@@ -142,11 +145,19 @@ export function Desk(props: DeskProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!voice.engaged) return;
+    if (picker.current?.open) picker.current.close();
+    if (books.current?.open) books.current.close();
+  }, [voice.engaged]);
+
   // A new card goes to the end of the conversation: show it there (the column scrolls on a laptop or tablet only).
   // #1107: also as Maya's streamed message grows.
   const lastLine = chat.chat?.transcript.at(-1)?.text.length;
   useEffect(() => {
-    if (picked !== null && talk.current) talk.current.scrollTop = talk.current.scrollHeight;
+    // The "Maya says" column scrolls, not the transcript inside it.
+    const column = talk.current?.closest<HTMLElement>(".desk-maya");
+    if (picked !== null && column) column.scrollTop = column.scrollHeight;
   }, [picked, chat.chat?.transcript.length, lastLine, voice.call?.transcript.length]);
 
   const ref = chat.chat?.question;
@@ -160,7 +171,7 @@ export function Desk(props: DeskProps) {
     window.history.replaceState(null, "", deskHref({ w: ready.book.id, p: ready.page.number, q: n }));
   };
   const pick = (n: number) => {
-    if (!ready) return;
+    if (!ready || voice.engaged) return;
     if (n === picked) { picker.current?.close(); return; }
     if (chat.chat && !chat.chat.ended) {
       void chat.act("end").then((ok) => { if (ok) keepPick(n) });
@@ -170,84 +181,94 @@ export function Desk(props: DeskProps) {
   };
 
   const greeting = `Hi${props.name ? ` ${props.name}` : ""}! Which question are you on? Pick it from your page.`;
+  // Maya's latest words lead "Maya says"; the whole conversation stays in the transcript (#1151).
+  const talkLines = voice.call && voice.flow !== "idle" ? voice.call.transcript : chat.chat?.transcript ?? [];
+  const latest = [...talkLines].reverse().find((line) => line.speaker !== "child")?.text ?? props.problem ?? greeting;
+  const status = voice.engaged ? "Call" : props.chatUsage ? "Chat" : null;
 
   return (
-    <div className={`look-root desk-root${voice.showBoard ? " is-calling" : ""}`} data-look="warm">
+    <div className={`look-root desk-root${voice.engaged ? " is-calling" : ""}`} data-look="warm" data-paper={paper ? "true" : undefined}>
       <AnnounceDesk />
       <header className="desk-top">
-        <p className="desk-title"><Avatar size={24} /><span className="desk-title-name">{props.name ? `${props.name}'s desk` : "Your desk"}</span><span className="desk-brand">Unica<b /></span></p>
-        <button type="button" className="desk-sound" disabled><Icon name="sound" size={18} />Sound on</button>
+        <p className="desk-person"><Avatar size={32} /><span className="desk-person-name">Maya</span>{status && <span className="desk-status">{status}</span>}</p>
+        <LeaveDesk />
       </header>
 
-      <nav className="desk-rail" aria-label="Desk">
-        <span className="desk-rail-item" aria-current="page"><Icon name="home" /><span>Desk</span></span>
-        <button type="button" className="desk-rail-item" onClick={() => books.current?.showModal()} disabled={!ready}><Icon name="book" /><span>Workbooks</span></button>
-        <button type="button" className="desk-rail-item" disabled title="Coming soon"><Icon name="chart" /><span>Progress</span></button>
-        <LeaveDesk />
-      </nav>
-
       <main id="main" className="desk-body">
-      <section className="desk-maya" aria-label="Maya">
-        <header className="desk-maya-head">
-          <Avatar size={48} />
-          <div className="desk-who"><h1>Maya</h1>{where && <p>{where}</p>}</div>
-          <dl className="desk-limits" aria-label="Help from Maya">
-            {/* A Calls row only while voice calls are open for this child: the desk never promises call minutes it cannot give. */}
-            <div><dt><Icon name="chat" size={14} />Chat</dt><dd>{chatLimitLabel(chat.usage, props.chatNote ?? null, props.chatPlanClosed === true)}</dd></div>
-            <VoiceLimit state={voice} />
-          </dl>
-        </header>
-
-        {(chatOpen || props.problem) && <div ref={talk} className="desk-talk" aria-live="polite">
-          {props.notice && <p className="desk-event warn">{props.notice}</p>}
-          {ready?.fromQr && <p className="desk-event"><Icon name="qr" size={15} />Opened from Workbook {ready.book.number} · QR code</p>}
-          {props.problem ? (
-            <p className="desk-bubble">{props.problem}</p>
-          ) : (
-            <p className="desk-bubble">{greeting}</p>
-          )}
-          {!props.problem && (props.chatUsage || props.voice) && !seenTip && !mayaStarted && <p className="desk-event">{SAFETY_TIP}</p>}
-          {card && ready && <QuestionCard card={card} where={where!} image={ready.image} />}
-          {chat.chat?.transcript.map((line, i) => <p key={`${chat.chat!.id}-${i}`} className={`desk-bubble${line.speaker === "child" ? " desk-child-bubble" : ""}`}><span className="sr-only">{line.speaker === "child" ? "You" : "Maya"}: </span>{line.text}</p>)}
-          <VoiceTranscript state={voice} />
-          {!!chat.chat?.hint && <p className="desk-event">Hint {chat.chat.hint} of 3</p>}
-          {!!chat.chat?.batches.length && <button className="desk-pick" type="button" onClick={() => document.getElementById("chat-board")?.scrollIntoView({ behavior: still ? "instant" : "smooth", block: "center" })}>Show me on the board</button>}
-        </div>}
-
-        <footer className={`desk-say${voice.engaged ? " is-calling" : ""}`}>
-          {ready && chatOpen && (
-            <button type="button" className="desk-pick" onClick={() => picker.current?.showModal()}>
+        <h1 className="sr-only">{props.name ? `${props.name}'s desk` : "Your desk"}</h1>
+        <section className="desk-question" aria-label="Current question">
+          <div className="desk-question-text">
+            {where && <p className="desk-where">{where}</p>}
+            {card && ready ? <QuestionCard card={card} image={ready.image} />
+              : <p className="desk-question-none">{props.problem ? "No question yet" : "Pick a question from your page."}</p>}
+          </div>
+          {ready && <div className="desk-question-actions">
+            {chatOpen && <button type="button" className={card ? "desk-quiet" : "desk-pick"} disabled={voice.engaged} onClick={() => { if (!voice.engaged) picker.current?.showModal(); }}>
               <Icon name="page" />{card ? "Pick another question" : "Pick from my page"}
-            </button>
-          )}
+            </button>}
+            {card && <button type="button" className="desk-quiet" aria-pressed={paper} onClick={() => setPaper(!paper)}>{paper ? "Show board" : "Use paper"}</button>}
+          </div>}
+        </section>
+
+        <div className="desk-main">
+          {paper && <p className="desk-paper-note" role="status">Write this step in your workbook. You can still ask Maya for help.</p>}
+          <PaperContext value={{ paper, setPaper }}>
+            {voice.showBoard ? <VoiceBoard state={voice} still={still} /> : chat.chat ? <ChatBoard chat={chat.chat} still={still} carry={{ book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: card?.number ?? null }}
+              restore={chat.callInk?.id === chat.chat.id ? chat.callInk.log : null} onBoard={(h) => chat.saveBoard(chat.chat!.id, h)}
+              onExchange={chat.exchange} exchangeDisabled={chat.busy || chat.chat.pending || chat.uncertain || chat.usage?.left === 0} /> : <OurBoard
+              key={`${ready?.book.id ?? "none"}:${ready?.page.number ?? 0}:${card?.number ?? "none"}`}
+              question={card?.board ?? null}
+              at={{ book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: card?.number ?? null }}
+              still={still}
+              label={card ? `Question ${card.number}${card.text ? `: ${card.text}` : ""}, written in columns` : "Our board"}
+              caption={!ready ? "Our board" : !card ? "Pick a question from your page. It shows here."
+                : card.board ? `Number ${card.number}, from your page.` : `Number ${card.number} is on your card.`}
+            />}
+          </PaperContext>
+        </div>
+
+        <footer className={`desk-say${voice.engaged ? " is-calling" : ""}`} aria-label="Reply to Maya">
+          {/* The microphone first, as in the selected layout; then the chat controls. */}
+          <VoiceControls state={voice} beforeOpen={chat.chat && !chat.chat.ended ? () => chat.act("end") : undefined} />
           {props.chatUsage ? <ChatControls key={picked} state={chat} picked={picked !== null} held={card?.held} /> : <>
           <p className="desk-soon">{props.noticeLine ?? props.chatNote ?? (props.voice ? "Chat with Maya starts soon." : "Chat and calls with Maya start soon.")}</p>
           <div className="desk-compose">
             <input type="text" disabled placeholder="Write to Maya" aria-label="Write to Maya" />
             <button type="button" disabled aria-label="Send"><Icon name="send" size={20} /></button>
           </div></>}
-          <VoiceControls state={voice} beforeOpen={chat.chat && !chat.chat.ended ? () => chat.act("end") : undefined} />
         </footer>
-      </section>
 
-      <div className="desk-main">
-        {chatOpen && <div className="desk-modes" role="group" aria-label="How Maya helps">
-          <button type="button" disabled={!props.chatUsage} aria-pressed={!!props.chatUsage}><Icon name="chat" size={18} />Chat</button>
-        </div>}
+        <aside className="desk-maya" aria-label="Maya says">
+          <h2>Maya says</h2>
+          <dl className="desk-limits" aria-label="Help from Maya">
+            {/* A Calls row only while voice calls are open for this child: the desk never promises call minutes it cannot give. */}
+            <div><dt><Icon name="chat" size={14} />Chat</dt><dd>{chatLimitLabel(chat.usage, props.chatNote ?? null, props.chatPlanClosed === true)}</dd></div>
+            <VoiceLimit state={voice} />
+          </dl>
+          {props.notice && <p className="desk-event warn">{props.notice}</p>}
+          {!props.problem && (props.chatUsage || props.voice) && !seenTip && !mayaStarted && <p className="desk-event">{SAFETY_TIP}</p>}
+          <p className="desk-cue" aria-live="polite">{latest}</p>
+          {!!chat.chat?.hint && <p className="desk-event">Hint {chat.chat.hint} of 3</p>}
+          {!paper && !voice.showBoard && !!chat.chat?.batches.length && <button className="desk-quiet" type="button" onClick={() => document.getElementById("chat-board")?.scrollIntoView({ behavior: still ? "instant" : "smooth", block: "center" })}>Show me on the board</button>}
+          {(chatOpen || props.problem) && <details className="desk-transcript">
+            <summary>Transcript</summary>
+            <div ref={talk} className="desk-talk">
+              {ready?.fromQr && <p className="desk-event"><Icon name="qr" size={15} />Opened from Workbook {ready.book.number} · QR code</p>}
+              <p className="desk-bubble">{props.problem ?? greeting}</p>
+              {chat.chat?.transcript.map((line, i) => <p key={`${chat.chat!.id}-${i}`} className={`desk-bubble${line.speaker === "child" ? " desk-child-bubble" : ""}`}><span className="sr-only">{line.speaker === "child" ? "You" : "Maya"}: </span>{line.text}</p>)}
+              <VoiceTranscript state={voice} />
+            </div>
+          </details>}
+        </aside>
 
-        {voice.showBoard ? <VoiceBoard state={voice} still={still} /> : chat.chat ? <ChatBoard chat={chat.chat} still={still} carry={{ book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: card?.number ?? null }}
-          restore={chat.callInk?.id === chat.chat.id ? chat.callInk.log : null} onBoard={(h) => chat.saveBoard(chat.chat!.id, h)} /> : <OurBoard
-          key={`${ready?.book.id ?? "none"}:${ready?.page.number ?? 0}:${card?.number ?? "none"}`}
-          question={card?.board ?? null}
-          at={{ book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: card?.number ?? null }}
-          still={still}
-          label={card ? `Question ${card.number}${card.text ? `: ${card.text}` : ""}, written in columns` : "Our board"}
-          caption={!ready ? "Our board" : !card ? "Pick a question from your page. It shows here."
-            : card.board ? `Number ${card.number}, from your page.` : `Number ${card.number} is on your card.`}
-        />}
-      </div>
+        <details className="desk-nav">
+          <summary>Workbook navigation</summary>
+          <nav aria-label="Desk">
+            <button type="button" className="desk-quiet" onClick={() => { if (!voice.engaged) books.current?.showModal(); }} disabled={!ready || voice.engaged}><Icon name="book" />Workbooks</button>
+            <button type="button" className="desk-quiet" disabled title="Coming soon"><Icon name="chart" />Progress</button>
+          </nav>
+        </details>
       </main>
-
       {ready && (
         <>
           <dialog ref={picker} className="desk-sheet-dialog" aria-labelledby="desk-picker-title">
@@ -258,7 +279,7 @@ export function Desk(props: DeskProps) {
               </div>
               <button type="button" className="desk-x" onClick={() => picker.current?.close()} aria-label="Close"><Icon name="close" /></button>
             </header>
-            <PagePicker ready={ready} picked={picked} onPick={pick} />
+            <PagePicker ready={ready} picked={picked} disabled={voice.engaged} onPick={pick} />
           </dialog>
           <dialog ref={books} className="desk-books-dialog" aria-labelledby="desk-books-title">
             <header>
@@ -274,6 +295,7 @@ export function Desk(props: DeskProps) {
                     aria-current={b.id === ready.book.id ? "page" : undefined}
                     // The open workbook: no new page, so the desk would not start again. Go straight to its page.
                     onClick={(e) => {
+                      if (voice.engaged) { e.preventDefault(); return; }
                       if (b.id !== ready.book.id) return;
                       e.preventDefault();
                       books.current?.close();
@@ -292,12 +314,12 @@ export function Desk(props: DeskProps) {
   );
 }
 
-/** The picked question as a card: its number, the workbook and day, and the question cut from the printed page. */
-function QuestionCard({ card, where, image }: { card: DeskCard; where: string; image: { url: string } | null }) {
+/** The picked question as a card: its number and the question cut from the printed page, or its text. */
+function QuestionCard({ card, image }: { card: DeskCard; image: { url: string } | null }) {
   const { crop } = card;
   return (
     <figure className="desk-card">
-      <figcaption><b>{card.number}</b><span>{where}</span></figcaption>
+      <figcaption><b>{card.number}</b><span className="sr-only">Question {card.number}</span></figcaption>
       {crop && image ? (
         <div className="desk-crop" style={{ aspectRatio: `${crop.box.width} / ${crop.box.height}` }}>
           {/* A private, short-lived link: the image cannot go through the image optimizer. */}
@@ -313,9 +335,10 @@ function QuestionCard({ card, where, image }: { card: DeskCard; where: string; i
 }
 
 /** The page image with a tap area on each question, and the arrows to the pages before and after. */
-function PagePicker({ ready, picked, onPick }: {
+function PagePicker({ ready, picked, disabled, onPick }: {
   ready: Extract<DeskProps, { problem?: undefined }>;
   picked: number | null;
+  disabled: boolean;
   onPick: (n: number) => void;
 }) {
   const { page, image, areas, book } = ready;
@@ -337,9 +360,10 @@ function PagePicker({ ready, picked, onPick }: {
                 type="button"
                 className="desk-area"
                 style={{ left: `${a.left}%`, top: `${a.top}%`, width: `${a.width}%`, height: `${a.height}%` }}
+                disabled={disabled}
                 aria-pressed={picked === a.question}
                 aria-label={`Question ${a.question}`}
-                onClick={() => onPick(a.question)}
+                onClick={() => { if (!disabled) onPick(a.question); }}
               />
             ))}
           </div>
@@ -414,7 +438,7 @@ export function LeaveDesk() {
 
   return (
     <>
-      <button type="button" className="desk-rail-item desk-lock" onClick={open} aria-label="Leave the desk"><Icon name="lock" /><span>Leave</span></button>
+      <button type="button" className="desk-leave-open" onClick={open}><Icon name="lock" size={18} />Leave desk</button>
       <dialog ref={dialog} className="desk-leave" aria-labelledby="desk-leave-title" onClose={() => setBusy(false)}>
         <form onSubmit={submit} noValidate>
           <h2 id="desk-leave-title">Leave the desk</h2>

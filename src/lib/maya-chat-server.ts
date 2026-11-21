@@ -20,6 +20,7 @@ import { mayaSpendLedger } from "@/lib/maya-spend-server";
 import type { ChatSpend } from "@/lib/maya-chat";
 import type { WorkbookQuestionRef } from "@/lib/question-package";
 import { familyWorkbookIsShipped, selectFamilyWorkbookQuestion, type FamilyWorkbookReader } from "@/lib/maya-workbook-question";
+import type { ExchangeTarget } from "@/lib/maya/checked-exchange";
 
 type DB = SupabaseClient<Database>;
 
@@ -159,7 +160,9 @@ export async function deskChat(session: DB, parent: string, child: { id: string;
 export interface ChatContext { db: DB; parent: string; child: string; name: string; grade?: number; zone: FamilyZone }
 export type ChatAction = { type: "start"; id: string; question: WorkbookQuestionRef; workbookId?: never; reference?: never } |
   { type: "start"; id: string; workbookId: string; reference: string; question?: never } | { type: "read"; id: string } |
-  { type: "child"; id: string; messageId: string; revision: number; text: string; fates?: BoardFateReport[] } | { type: "end"; id: string; revision: number };
+  { type: "child"; id: string; messageId: string; revision: number; text: string; fates?: BoardFateReport[] } |
+  { type: "exchange"; id: string; revision: number; target: ExchangeTarget; fates?: BoardFateReport[] } |
+  { type: "end"; id: string; revision: number };
 
 /**
  * The child's ink events of a chat from the desk (#534, #635): appended to the call's log at sequences `from`, `from + 1`,
@@ -292,6 +295,13 @@ export async function runChat(ctx: ChatContext, action: ChatAction, options: { s
   const { data: pending, error: pendingError } = await db.from("maya_chat_messages").select("id").eq("call_id", record.id).eq("claim_revision", record.revision).limit(1);
   if (pendingError) throw Error(pendingError.message);
   if (record.status === "live" && pending?.length) return reply(record, "busy");
+  if (action.type === "exchange") {
+    // A board move uses the call's revision and the same access and limits as its conversation.
+    // It is not a typed message and cannot use a message claim or generate a model request.
+    if (record.status === "live" && (await usage()).left === 0) return reply(record, "cap");
+    const result = await calls.input(record.id, action.revision, { type: "exchange", target: action.target, fates: action.fates }, name);
+    return reply(await store.get(record.id), result.ok ? undefined : result.error);
+  }
   const result = await calls.input(record.id, action.revision, { type: "end" }, name);
   return reply(await store.get(record.id), result.ok ? undefined : result.error);
 }
