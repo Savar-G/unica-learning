@@ -44,14 +44,17 @@ export interface SelectableObject {
 }
 
 /** The session's checked decision. Maya's words are a pure function of it (`selectionWords`). */
-export interface SelectionProposal {
+export interface SelectionReply {
   boardSelection: 1;
-  target: SelectionTarget;
   /** answer: the object is on the current board. changed: the board moved on. removed: the object is gone. */
   result: "answer" | "changed" | "removed";
   facts?: ObjectFacts;
   /** False when the description would say the protected answer. */
   detail?: boolean;
+}
+
+export interface SelectionProposal extends SelectionReply {
+  target: SelectionTarget;
 }
 
 const ID = /^[\w:.-]{1,160}$/;
@@ -171,20 +174,29 @@ export function pointedNote(facts: ObjectFacts): string {
 }
 
 /**
- * Code's checked routine (`checkedRoutine`) writes Maya's reply itself. When the child's next words follow a tap, it
- * explains the object they pointed to before the step question. No digits: only place-value words code owns.
+ * Answer a supported question about the pointed object with checked place-value words.
  */
-export function pointedFollowUp(facts: ObjectFacts): string[] {
+export function pointedFollowUp(facts: ObjectFacts, question: string): string[] {
+  if (!/\b(?:what(?:'s| (?:is|are|do|does))|why (?:is|are)|how (?:big|long|small)|explain|understand|mean\w*|confus\w*)\b/i.test(question)) return [];
   switch (facts.kind) {
-    case "base_ten": return ["The long blocks are tens.", "Each long block is ten small squares joined together.", "The small squares are ones."];
-    case "write": return ["That line shows the same amount two ways: the whole number, then its tens and ones."];
-    case "columns": return ["Each column holds one place: tens on the left and ones on the right."];
+    case "base_ten": {
+      const long = /\b(?:long|tens)\b/i.test(question);
+      const small = /\b(?:small|squares?|ones)\b/i.test(question);
+      return [
+        ...(long ? ["The long blocks are tens.", "Each long block is ten small squares joined together."] : []),
+        ...(small ? ["The small squares are ones."] : []),
+      ];
+    }
+    case "write": return /\b(?:line|writing|notation|equals?|plus|two ways)\b/i.test(question)
+      ? ["That line shows the same amount two ways: the whole number, then its tens and ones."] : [];
+    case "columns": return /\b(?:columns?|places?|left|right|line up|tens|ones)\b/i.test(question)
+      ? ["Each column holds one place: tens on the left and ones on the right."] : [];
     case "named": return [];
   }
 }
 
 /** Maya's words for a checked selection. Code owns every quantity: they come from the command that drew the object. */
-export function selectionWords(proposal: SelectionProposal): string[] | null {
+export function selectionWords(proposal: SelectionReply): string[] | null {
   if (proposal.result === "changed") return ["The board changed after you pointed.", "Point to the part again, or tell me which part you mean."];
   if (proposal.result === "removed") return ["That part is not on the board now.", "Point to something on the board, or tell me which part you mean."];
   if (!proposal.facts) return null;

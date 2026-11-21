@@ -23,7 +23,7 @@ const steps: PlayStep[] = [];
     const r = applyBatch(scene, batch);
     if (!r.ok) throw Error(r.refusal.reason);
     scene = r.scene;
-    steps.push({ drawn: r.drawn, erased: r.erased, view: boardView(scene) });
+    steps.push({ batchId: batch.transactionId, drawn: r.drawn, erased: r.erased, view: boardView(scene) });
   }
 }
 
@@ -96,18 +96,18 @@ it("leaves pointing mode with Escape, says when a tap fails, and offers nothing 
 });
 
 it("lists only objects the board drew, says when the board changed, and lets the child reselect the outlined object", async () => {
-  // The board refuses this batch: its anchor is not on the board. Its object must not be offered.
-  const refused: Batch = { transactionId: "call-b3", commands: [{ op: "write", id: "orphan-note", text: "12", place: { below: "missing" } }] };
+  // The board refuses the duplicate id. The original label, selection, and batch still apply.
+  const refused: Batch = { transactionId: "call-b3", commands: [{ op: "write", id: "exchange-before", text: "12", place: { region: "main" } }] };
   const submit = vi.fn<SelectionControl["submit"]>(async () => "changed");
   await render({ offer, batches: [...batches, refused], steps, submit, selected: { objectId: "exchange-before", batchId: "call-b2", boardRevision: 2 } });
   await act(async () => button("Point to a part")!.click());
   expect(button("Ask about 12")).toBeUndefined();
-  expect(host.querySelector('[data-object="orphan-note"]')).toBeNull();
+  expect(button("Ask about Blocks")).toBeDefined();
   // The outlined object takes a tap again in pointing mode.
   const outlined = host.querySelector<SVGRectElement>('rect[data-object="exchange-before"]')!;
   expect(outlined.classList.contains("board-pick-target")).toBe(true);
   await act(async () => outlined.dispatchEvent(new PointerEvent("pointerup", { bubbles: true })));
-  expect(submit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ objectId: "exchange-before" }));
+  expect(submit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ objectId: "exchange-before", batchId: "call-b2" }));
   expect(host.textContent).toContain("The board changed. Point to the part again.");
   expect(host.textContent).not.toContain("That didn't work");
   expect(button("Stop pointing")?.getAttribute("aria-pressed")).toBe("true");

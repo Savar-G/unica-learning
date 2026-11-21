@@ -1,5 +1,5 @@
 import { SCOPE_REASONS } from "@/lib/maya/scope";
-import { selectionWords, type SelectionProposal } from "@/lib/maya/board-selection";
+import { selectionWords, type SelectionReply } from "@/lib/maya/board-selection";
 import { exchangeChildWords, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingWords, type CheckedExchangeLesson } from "@/lib/maya/checked-exchange";
 // Maya's trace format (#322, spec #297): one versioned record of one Maya session, written by every session (the text
 // adapter now, the voice agent #326, the test bench #323 and the admin demo #324 later). It records the model and
@@ -551,20 +551,18 @@ function checkedExchangeOutput(proposal: unknown, output: unknown): boolean {
   return output.say[0] === exchangeWords(facts, proposal.show).join(" ") && output.board.length === (proposal.show ? 2 : 1);
 }
 
-/**
- * A fixed exchange or selection reply keeps the facts its words are checked against. A selection's request fields
- * (`target`: ids and the tap id the screen sent) are not facts: they are redacted like any other input.
- */
-function keptProposal(proposal: unknown, childName: string | null): unknown {
+/** Keep only the checked reply fields that can account for the words Maya said. */
+function keptProposal(proposal: unknown): unknown {
   if (!isObject(proposal) || proposal.boardSelection !== 1) return proposal;
-  return { ...proposal, target: redactDeep(proposal.target, childName) };
+  const { boardSelection, result, facts, detail } = proposal;
+  return { boardSelection, result, ...(facts === undefined ? {} : { facts }), ...(detail === undefined ? {} : { detail }) };
 }
 
 /** #1152: code's reply to a board selection, recomputed from its proposal. It never draws. */
 function boardSelectionOutput(proposal: unknown, output: unknown): boolean {
   if (!isObject(proposal) || proposal.boardSelection !== 1 || !isObject(output) || output.act !== "guide" ||
     !Array.isArray(output.say) || output.say.length !== 1 || !Array.isArray(output.board) || output.board.length !== 0) return false;
-  const words = selectionWords(proposal as unknown as SelectionProposal);
+  const words = selectionWords(proposal as unknown as SelectionReply);
   return !!words && output.say[0] === words.join(" ");
 }
 
@@ -934,7 +932,7 @@ export function redactTrace(trace: MayaTrace, childName: string | null): MayaTra
           ...t,
           attempts: t.attempts.map((a) => ({
             ...a,
-            proposal: a === last && fixedExchange ? keptProposal(a.proposal, childName) : redactDeep(a.proposal, childName),
+            proposal: a === last && fixedExchange ? keptProposal(a.proposal) : redactDeep(keptProposal(a.proposal), childName),
             refusal: a.refusal ? { ...a.refusal, reason: redactText(a.refusal.reason, childName) } : null,
             ...(a.talk ? { talk: a.talk.map((x) => redactDeep(x, childName) as TraceTalk) } : {}),
             ...(a.math ? { math: a.math.map((x) => ({ ...x, sentence: redactText(x.sentence, childName), reason: redactText(x.reason, childName) })) } : {}),

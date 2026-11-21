@@ -171,7 +171,8 @@ it("lets Maya finish when a tap is stale, and asks to point again once for repea
   const stale = ok(await calls.input(prompt.view.id, exchanged.view.revision, { type: "select", target: target("exchange-before") }, null));
   expect(pointAgain(stale.output.say)).toBe(1);
   // The child taps the old blocks again: Maya has already asked, so she says nothing new.
-  const again = ok(await calls.input(prompt.view.id, stale.view.revision, { type: "select", target: { ...offer, objectId: "exchange-before", batchId: show.transactionId, selectionId: tap() } }, null));
+  const repeated = { ...offer, objectId: "exchange-before", batchId: show.transactionId, selectionId: tap() };
+  const again = ok(await calls.input(prompt.view.id, stale.view.revision, { type: "select", target: repeated }, null));
   expect(again.output.say).toEqual([]);
   expect(again.view.transcript.filter((t) => t.speaker === "maya" && t.text.startsWith("That part is not on the board now"))).toHaveLength(1);
   expect(again.view.transcript.some((t) => t.speaker === "maya" && t.text.includes("4 tens and 12 ones"))).toBe(true);
@@ -179,7 +180,27 @@ it("lets Maya finish when a tap is stale, and asks to point again once for repea
   const after = exchanged.view.batches.at(-1)!.transactionId;
   const current = ok(await calls.input(prompt.view.id, again.view.revision, { type: "select", target: { ...again.view.selection!, objectId: "exchange-after", batchId: after, selectionId: tap() }, fates: [{ batchId: after, fate: "shown" }] }, null));
   expect(current.output.say.join(" ")).toContain("They show 4 tens and 12 ones");
+  // Another answer means the last line is no longer a repeat prompt. Retrying the silently handled tap still does nothing.
+  const retry = ok(await calls.input(prompt.view.id, stale.view.revision, { type: "select", target: repeated }, null));
+  expect(retry.output.say).toEqual([]);
+  expect(retry.view.revision).toBe(current.view.revision);
   expect(answer).not.toHaveBeenCalled();
+});
+
+it.each(["Yes.", "No."])("keeps the optional related question open through a stale tap before %s", async (reply) => {
+  const { calls, chat, prompt, target, store } = await shownBlocks();
+  const solved = ok(await calls.input(chat.view.id, prompt.view.revision, { type: "child", text: "My answer is 24." }, null));
+  expect(solved.output.say.join(" ")).toMatch(/one more like this on your own\?$/);
+  const stale = ok(await calls.input(chat.view.id, solved.view.revision, { type: "select", target: target("exchange-before") }, null));
+  expect(stale.output.say[0]).toMatch(/point to something on the board/i);
+  const decision = ok(await calls.input(chat.view.id, stale.view.revision, { type: "child", text: reply }, null));
+  if (reply === "Yes.") {
+    expect(decision.output.say.join(" ")).toMatch(/63 minus 27/i);
+    expect(store.rows()[0].live?.text.session.checkedExchange?.transfer?.state).toBe("started");
+  } else {
+    expect(decision.view.outcome?.reason).toBe("solved");
+    expect(store.rows()[0].trace?.checkedExchange?.transfer?.state).toBe("declined");
+  }
 });
 
 it("tells the voice worker to stop Maya only for a tap on a current object", async () => {
@@ -197,9 +218,15 @@ it("tells the voice worker to stop Maya only for a tap on a current object", asy
   expect((await call.select!({ ...blocks, selectionId: tap() }, (stop) => { stops.push(stop); }))!.say[0]).toMatch(/^You pointed to the blocks/);
   const stale = await call.select!({ ...blocks, selectionId: tap() }, (stop) => { stops.push(stop); });
   expect(stale!.say[0]).toMatch(/^The board changed after you pointed/);
-  expect((await call.select!({ ...blocks, selectionId: tap() }, (stop) => { stops.push(stop); }))!.say).toEqual([]);
+  const silent = { ...blocks, selectionId: tap() };
+  expect((await call.select!(silent, (stop) => { stops.push(stop); }))!.say).toEqual([]);
   expect(stops).toEqual([true, false]);
   expect(call.session.boardSelections?.map((s) => s.result)).toEqual(["answer", "changed"]);
+  const replacement = await calls.openVoice(started.view.id, { speechToText: "fake", voice: "fake" }, null);
+  if (!replacement.ok) throw Error(replacement.error);
+  const next = (await calls.view(started.view.id))!.selection!;
+  expect((await replacement.call.select!({ ...blocks, ...next, selectionId: tap() }))?.say[0]).toMatch(/^You pointed to the blocks/);
+  expect(await replacement.call.select!(silent)).toBeNull();
 });
 
 it("answers each tap once for the whole call, even after more than twenty newer taps", async () => {
@@ -229,7 +256,12 @@ it("keeps the child's name out of the saved trace when it is in a tap's request 
   expect(answered.output.say[0]).toMatch(/^You pointed to the blocks\./);
   ok(await calls.input(chat.view.id, answered.view.revision, { type: "end" }, "Zebulon"));
   const trace = store.rows()[0].trace!;
-  expect(JSON.stringify(trace)).not.toContain("Zebulon");
+  const selection = trace.turns.flatMap((turn) => turn.kind === "maya" ? turn.attempts : [])
+    .find((attempt) => (attempt.proposal as { boardSelection?: number } | null)?.boardSelection === 1);
+  expect(selection?.proposal).toEqual({
+    boardSelection: 1, result: "answer", detail: true, facts: { kind: "base_ten", hundreds: 0, tens: 5, ones: 2 },
+  });
+  expect(JSON.stringify(trace)).not.toContain(picked.selectionId);
   expect(checkTrace(trace)).toMatchObject({ ok: true });
   expect(JSON.stringify(trace)).toContain("They show 5 tens and 2 ones, which is 52.");
 });
@@ -244,21 +276,28 @@ it("tells a tap sent at an old call revision that the board changed, without app
   expect(await calls.input(prompt.view.id, prompt.view.revision, { type: "child", text: "Hi" }, null)).toEqual({ ok: false, error: "conflict" });
 });
 
-it("answers a follow-up about the pointed object in code's checked routine", async () => {
+it.each([
+  ["Why are some of them long?", "The long blocks are tens.", "The small squares are ones."],
+  ["What are the small squares?", "The small squares are ones.", "The long blocks are tens."],
+])("answers the specific question %s about the pointed blocks in the checked routine", async (question, wanted, unwanted) => {
   const { calls, answer, store } = setup({ checkedRoutine: true });
   const chat = ok(await calls.start(input));
   const prompt = ok(await calls.input(chat.view.id, chat.view.revision, { type: "child", text: "How do I regroup?" }, null));
   const fates = prompt.view.batches.map((b) => ({ batchId: b.transactionId, fate: "shown" as const }));
   const picked = { ...prompt.view.selection!, objectId: "exchange-before", batchId: prompt.view.batches.at(-1)!.transactionId, selectionId: tap() };
   const answered = ok(await calls.input(chat.view.id, prompt.view.revision, { type: "select", target: picked, fates }, null));
-  const followUp = ok(await calls.input(chat.view.id, answered.view.revision, { type: "child", text: "Why are some of them long?" }, null));
+  const followUp = ok(await calls.input(chat.view.id, answered.view.revision, { type: "child", text: question }, null));
   const said = followUp.output.say.join(" ");
-  expect(said).toMatch(/^The long blocks are tens\. Each long block is ten small squares joined together\. The small squares are ones\./);
+  expect(said.startsWith(wanted)).toBe(true);
+  expect(said).not.toContain(unwanted);
   expect(said).not.toContain("Start with the ones.");
   expect(said).not.toMatch(/\b(?:24|twenty-four)\b/i);
   // Without the tap just before, the same words get the plain checked step question.
-  const plain = ok(await calls.input(chat.view.id, followUp.view.revision, { type: "child", text: "Why are some of them long?" }, null));
-  expect(plain.output.say.join(" ")).not.toContain("The long blocks are tens");
+  const again = ok(await calls.input(chat.view.id, followUp.view.revision, { type: "select", target: { ...picked, ...followUp.view.selection!, selectionId: tap() } }, null));
+  const procedure = ok(await calls.input(chat.view.id, again.view.revision, { type: "child", text: "How do I subtract the ones?" }, null));
+  expect(procedure.output.say.join(" ")).not.toMatch(/The (?:long blocks|small squares) are/);
+  const plain = ok(await calls.input(chat.view.id, procedure.view.revision, { type: "child", text: question }, null));
+  expect(plain.output.say.join(" ")).not.toContain(wanted);
   ok(await calls.input(chat.view.id, plain.view.revision, { type: "end" }, null));
   expect(checkTrace(store.rows()[0].trace)).toMatchObject({ ok: true });
   void answer;

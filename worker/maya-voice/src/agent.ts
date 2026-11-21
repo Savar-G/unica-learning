@@ -1759,9 +1759,10 @@ export class VoiceCallRun {
    * left to say or draw, then Maya answers in code's checked words. A tap already answered is "done".
    */
   async select(target: SelectionTarget): Promise<"accepted" | "busy" | "done" | "stale"> {
-    if (!this.childHere || this.finishing || this.deadlineFinish || !this.call.select) return "stale";
-    if (selectionSeen(this.call.session, target.selectionId)) return "done";
+    if (!this.childHere || this.finishing || this.deadlineFinish || this.call.lost || !this.call.select) return "stale";
+    // A retry can be acknowledged once the first request has finished saving.
     if (this.exchangeAdmission || this.exchangeBoard) return "busy";
+    if (selectionSeen(this.call.session, target.selectionId)) return "done";
     const generation = this.generation;
     const replies = this.replies;
     const words = this.wordCount;
@@ -1791,7 +1792,7 @@ export class VoiceCallRun {
         this.closeTurn(prompt.pace);
         if (prompt.speech && !prompt.speech.interrupted) prompt.speech.interrupt(true);
       });
-      if (!turn) return selectionSeen(this.call.session, target.selectionId) ? "done" : "stale";
+      if (!turn) return !this.call.lost && selectionSeen(this.call.session, target.selectionId) ? "done" : "stale";
       // Maya already asked the child to point again: a repeated stale tap adds nothing.
       if (!turn.say.length && !turn.ended) return "done";
       release();

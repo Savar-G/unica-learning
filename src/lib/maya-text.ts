@@ -583,8 +583,6 @@ export interface TextSession {
   exchange(target: ExchangeTarget): TextOutput | null;
   /** #1152: the child points to a board object. Code answers in checked words, or asks again when the board moved on. */
   select(target: SelectionTarget): TextOutput | null;
-  /** A stale tap after Maya already asked the child to point again (no new words). */
-  selectionRepeat(target: SelectionTarget): boolean;
   /**
    * A partial transcript of the child, who talks over Maya (`child_turn` with `final: false`): Maya's output stops
    * (`cancelled`) and nothing is judged. The full turn comes later through `child`.
@@ -1618,16 +1616,21 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       append({ kind: "delivered", at });
       return out;
     },
-    selectionRepeat: (target) => selectionRepeat(folded.session, target, shownObject(folded.board, target), now()),
     select(target) {
       recover();
       const at = now();
       if (folded.childState === "child_speaking" || folded.pending.length) return null;
       const proposal = boardSelectionProposal(folded.session, target, shownObject(folded.board, target), at);
       if (!proposal) return null;
-      generation++;
-      active?.abort();
-      clearPrepares("stale");
+      if (selectionRepeat(folded.session, proposal)) {
+        append({ kind: "board_selection_repeat", at, proposal });
+        return textOutput(folded);
+      }
+      if (proposal.result === "answer") {
+        generation++;
+        active?.abort();
+        clearPrepares("stale");
+      }
       append({ kind: "board_selection", at, proposal });
       const out = textOutput(folded);
       if (!out.say.length) return null;

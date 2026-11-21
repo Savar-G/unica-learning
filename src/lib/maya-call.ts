@@ -1980,13 +1980,16 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         async select(raw, onAccepted) {
           const target = readSelectionTarget(raw);
           if (inactive() || !target || selectionSeen(session.session, target.selectionId)) return null;
-          if (session.selectionRepeat(target)) return { ...none };
+          let silent = false;
           const out = await turn(async () => {
             const accepted = session.select(target);
-            if (accepted) onAccepted?.(accepted.cancelled === true);
+            if (accepted) {
+              silent = !accepted.say.length && !accepted.ended;
+              if (!silent) onAccepted?.(accepted.cancelled === true);
+            }
             return accepted;
           });
-          return out.say.length || out.ended ? out : null;
+          return out.say.length || out.ended || (silent && !inactive()) ? out : null;
         },
         tick: () => turn(() => session.tick(), undefined, undefined, 2),
         writing: (status) => turn(() => session.writing(status), undefined, undefined, 2),
@@ -2177,7 +2180,6 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const session = textSession(record, pkg, model, name, saved, undefined, undefined, undefined, undefined, undefined, undefined, hear);
       let out: TextOutput | null = null;
       let saved2: CallRecord | null = null;
-      let repeat = false;
       if (input.type === "end") {
         saved2 = await end(record, pkg, session, { reason: "child_stopped" });
       } else {
@@ -2185,18 +2187,10 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           // B1: the screen's word on Maya's batches first, so this turn's brief counts only what the child saw.
           if ((input.type === "child" || input.type === "exchange" || input.type === "select") && input.fates?.length) session.boardFates(input.fates);
           if (input.type === "exchange") out = session.exchange(readExchangeTarget(input.target)!);
-          else if (input.type === "select") {
-            const target = readSelectionTarget(input.target)!;
-            if (session.selectionRepeat(target)) repeat = true;
-            else out = session.select(target);
-          }
+          else if (input.type === "select") out = session.select(readSelectionTarget(input.target)!);
           else out = input.type === "child" ? await session.child(input.text.trim()) : input.type === "tick" ? await session.tick() : await session.writing(input.status);
         } finally {
           if ((input.type !== "exchange" && input.type !== "select") || out) saved2 = await save(record, pkg, session);
-        }
-        if (repeat) {
-          const view = recordView(record);
-          if (view) return { ok: true, view, output: { say: [], newBatches: 0, safetyMessage: null } };
         }
       }
       if (!saved2) return { ok: false, error: "conflict" };

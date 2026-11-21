@@ -197,6 +197,7 @@ export type SessionEvent =
    * starts REPAIR_MAYA.
    */
   | { type: "maya_said"; at: number; text: string; approvedTurn?: number }
+  | { type: "selection_repeat"; at: number; proposal: SelectionProposal }
   /** The question's math turned out not to be trustworthy during the call. */
   | { type: "content_problem"; at: number; detail: string }
   /** The connection or a service failed: the call ends. */
@@ -582,7 +583,7 @@ export interface Session {
   checkedExchange?: CheckedExchangeLesson;
   /** #1152: the child's recent board selections, newest last. Selection is context only and never earns credit. */
   boardSelections?: BoardSelection[];
-  /** #1152: every tap id this call answered, for its whole life (the history above keeps only the latest 20). */
+  /** #1152: every handled tap id, including silent repeats, for the life of the call. */
   boardSelectionIds?: string[];
   checkedRoutine?: true;
   sensitiveHold?: true;
@@ -1851,6 +1852,12 @@ export function step(session: Session, event: SessionEvent): StepResult {
       break;
     case "safety":
       break;
+    case "selection_repeat": {
+      const checked = checkSelection(s, event.proposal);
+      if (!checked || !selectionRepeat(s, checked)) return refuse(session, "invalid_event", "No repeated stale selection is due.");
+      rememberSelection(s, checked.target.selectionId);
+      break;
+    }
     case "help":
       if (!ASSISTANCE.includes(event.assistance)) return refuse(session, "invalid_event", "A help event needs a known help kind.");
       if (!s.outcome && !s.assistance.includes(event.assistance)) s.assistance.push(event.assistance);
@@ -5848,9 +5855,9 @@ export function boardSelectionProposal(s: Session, target: SelectionTarget, foun
     target.lessonId !== offer.lessonId || target.question !== offer.question) return null;
   if (!found) return { boardSelection: 1, target, result: "removed" };
   if (target.boardRevision !== offer.boardRevision || target.turnId !== offer.turnId) return { boardSelection: 1, target, result: "changed" };
-  const words = selectionWords({ boardSelection: 1, target, result: "answer", facts: found, detail: true })!;
+  const words = selectionWords({ boardSelection: 1, result: "answer", facts: found, detail: true })!;
   const detail = !tellsAnswer(s, s.package!, words, [], false);
-  if (!detail && tellsAnswer(s, s.package!, selectionWords({ boardSelection: 1, target, result: "answer", facts: found, detail: false })!, [], false)) return null;
+  if (!detail && tellsAnswer(s, s.package!, selectionWords({ boardSelection: 1, result: "answer", facts: found, detail: false })!, [], false)) return null;
   return { boardSelection: 1, target, result: "answer", facts: found, detail };
 }
 
@@ -5858,14 +5865,14 @@ export function boardSelectionProposal(s: Session, target: SelectionTarget, foun
  * A stale tap after Maya's last words already asked the child to point again: she says nothing new. Without this, a child
  * tapping an old object again and again would hear the same request each time.
  */
-export function selectionRepeat(s: Session, target: SelectionTarget, found: ObjectFacts | null, at: number): boolean {
-  const proposal = boardSelectionProposal(s, target, found, at);
+export function selectionRepeat(s: Session, proposal: SelectionProposal): boolean {
   const last = s.boardSelections?.at(-1);
-  return proposal !== null && proposal.result !== "answer" && last !== undefined && last.result !== "answer" &&
+  return proposal.result !== "answer" && last !== undefined && last.result !== "answer" &&
     s.turns.findLastIndex((t) => t.speaker === "maya") === last.mayaTurn && !s.turns.slice(last.mayaTurn).some((t) => t.speaker === "child");
 }
 
-function checkSelection(s: Session, value: Record<string, unknown>): SelectionProposal | null {
+function checkSelection(s: Session, value: unknown): SelectionProposal | null {
+  if (!isObject(value)) return null;
   const target = readSelectionTarget(value.target);
   const result = value.result;
   if (!target || (result !== "answer" && result !== "changed" && result !== "removed")) return null;
@@ -5887,13 +5894,19 @@ function deliverSelection(s: Session, proposal: SelectionProposal, effects: Effe
     selectionId: target.selectionId, objectId: target.objectId, batchId: target.batchId, boardRevision: target.boardRevision,
     result: proposal.result, mayaTurn: s.turns.length, ...(proposal.facts ? { facts: structuredClone(proposal.facts) } : {}),
   }].slice(-MAX_BOARD_SELECTIONS);
-  s.boardSelectionIds = [...(s.boardSelectionIds ?? []), target.selectionId];
+  rememberSelection(s, target.selectionId);
   effects.push({ kind: "say", act: "guide", text });
   s.turns.push({ at: s.now!, speaker: "maya", text, state: s.state, act: "guide" });
-  delete s.tutor?.offer;
-  delete s.mathClaim;
+  if (proposal.result === "answer") {
+    delete s.tutor?.offer;
+    delete s.mathClaim;
+  }
   waitForChild(s);
   return { session: s, effects, refusal: null };
+}
+
+function rememberSelection(s: Session, selectionId: string) {
+  s.boardSelectionIds = [...(s.boardSelectionIds ?? []), selectionId];
 }
 
 /** For the tutor brief: what the child pointed to, when Maya's last message answered that selection. */
@@ -6033,9 +6046,11 @@ function transferFor(s: Session): TransferOperands | null {
 }
 
 function transferOfferPending(s: Session): boolean {
-  // A patient line ("Take your time.") or a silence check-in keeps the offer open: neither asks anything new.
-  const last = s.turns.findLast((turn) => turn.speaker === "maya" && turn.act !== "wait" && turn.act !== "check_in");
-  return s.checkedExchange?.transfer?.state === "offered" && s.lastResult === "right" && !!last?.text.endsWith(TRANSFER_OFFER);
+  if (s.checkedExchange?.transfer?.state !== "offered" || s.lastResult !== "right") return false;
+  // Patient lines, check-ins and stale taps keep the last teaching question open.
+  const last = s.turns.findLast((turn, index) => turn.speaker === "maya" && turn.act !== "wait" && turn.act !== "check_in" &&
+    !s.boardSelections?.some((selection) => selection.mayaTurn === index && selection.result !== "answer"));
+  return !!last?.text.endsWith(TRANSFER_OFFER);
 }
 
 /** A yes starts the related question; a no closes the call as before. Any other reply keeps the existing path. */
@@ -6778,9 +6793,9 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   // After streamed words tell a step, ask the next open step. Otherwise preserve the question the child missed.
   const stated = sent.length ? stepsStated(pkg, sent) : [];
   const done = [...new Set([...s.done, ...stated])];
-  // #1152: words that follow a tap are about the object the child pointed to, unless they give an answer.
-  const pointed = base.checkedRoutine && stance === "none" && !progress ? pointedObject(base) : undefined;
-  const aboutPointed = pointed ? pointedFollowUp(pointed).join(" ") : "";
+  const pointed = base.checkedRoutine && stance === "none" && !progress && base.turn && !base.turn.uncertain &&
+    !hasTranscriptAlternatives(base) ? pointedObject(base) : undefined;
+  const aboutPointed = pointed && base.turn ? pointedFollowUp(pointed, base.turn.text).join(" ") : "";
   const honest = endNow === "yes" ? TUTOR_GOODBYE_YES : endNow === "no" ? TUTOR_GOODBYE : base.checkedRoutine && s.solved === null
     ? (aboutPointed ? `${aboutPointed} ` : "") + checkedSubtractionQuestion(pkg, done, stance === "wrong" ? "Not quite." : progress ? "That's right." : null,
       !!base.turn && (ASKS_TUTOR.test(base.turn.text) || /\b(?:regroup|borrow|exchange|trade)\b/i.test(base.turn.text) || saysStuck(base.turn.text)))

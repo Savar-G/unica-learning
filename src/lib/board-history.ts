@@ -378,7 +378,7 @@ export function mayaSteps(h: BoardHistory): PlayStep[] {
       const r = applyBatch(scene, { transactionId: e.batchId, commands: e.commands });
       if (!r.ok) continue;
       scene = r.scene;
-      steps.push({ drawn: r.drawn, erased: r.erased, view: boardView(r.scene) });
+      steps.push({ batchId: e.batchId, drawn: r.drawn, erased: r.erased, view: boardView(r.scene) });
     } else if (e.kind === "stroke" || e.kind === "recovered") {
       try {
         scene = addChildInk(scene, { page: e.page, stroke: { erase: e.erase, w: e.w, pts: e.pts.map(([x, y]) => [x, y]) }, boardWidth: e.boardWidth }).scene;

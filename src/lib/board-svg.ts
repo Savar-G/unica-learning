@@ -36,6 +36,7 @@ export function fitView(paths: readonly BoardPath[], pad: number): string {
  * batch that only changes the view turns the page at its start.
  */
 export interface PlayStep {
+  batchId?: string;
   drawn: readonly TimedPath[];
   erased?: readonly string[];
   view?: View;

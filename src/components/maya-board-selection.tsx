@@ -46,8 +46,11 @@ export function useBoardSelection(control: SelectionControl | undefined): {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<"error" | "changed" | null>(null);
   const objects = useMemo(() => {
-    const drawn = drawnObjects(control?.steps ?? []);
-    return selectableObjects(control?.batches ?? []).filter((o) => drawn.has(o.objectId));
+    const steps = control?.steps ?? [];
+    const drawn = drawnObjects(steps);
+    const applied = new Set(steps.map((step) => step.batchId));
+    const batches = control?.batches.filter((batch) => applied.has(batch.transactionId)) ?? [];
+    return selectableObjects(batches).filter((o) => drawn.has(o.objectId));
   }, [control?.batches, control?.steps]);
   const offer = control?.offer;
   const active = !!control && !!offer && objects.length > 0;
@@ -113,5 +116,5 @@ export function useBoardSelection(control: SelectionControl | undefined): {
       {problem === "error" && <p role="status">{"That didn't work. Tap it again."}</p>}
     </div>
   );
-  return { pointing: pointingNow, ...(active || selected ? { overlay } : {}), panel };
+  return { pointing: pointingNow, ...(pointingNow || selected ? { overlay } : {}), panel };
 }
