@@ -77,8 +77,15 @@ export interface Playout { start: number; end: number | null }
 /** Enough for a call's fillers and answers, and well under the RPC payload limit. */
 const MAX_PLAYOUTS = 300;
 
-/** What the child receives at close: one message per RPC, each well under the RPC payload limit. */
+/**
+ * What the child receives: during the call, each answer's playout start and each playout's start and finish (the child
+ * waits for the answer to finish before it speaks again); at close, the turn rows. One message per RPC, each well under
+ * the RPC payload limit.
+ */
 export type ReportMessage =
+  | { kind: "answer"; turnId: string; at: number }
+  | { kind: "reply_done"; turnId: string; at: number }
+  | { kind: "playout"; start: number; end: number | null }
   | { kind: "turn"; row: ReturnType<typeof voiceBaselineTurn>; t0: number | null; answerPlayback: number | null; ackPlayback: number | null }
   | { kind: "call"; workerQueueMs: number; profile: Record<string, unknown> | null; discardedPreparation: unknown; speechUsd: { stt: number; tts: number }; playouts: Playout[] }
   | { kind: "done" };
@@ -146,7 +153,13 @@ export default defineAgent({
       notify: update => { void local.publishData(encoder.encode(JSON.stringify(update)), { reliable: true, topic: "maya.call", destination_identities: [identity] }).catch(() => {}); },
       ...(made.fake ? {} : { numberContinueMs: tuning.numberContinueMs, dropSilentPeakDbfs: tuning.dropSilentPeakDbfs, detectorMinSilenceMs: tuning.detectorMinSilenceMs }),
       ...(patience ? { patience: { ...turnSilences(tuning), set: limits => patience.setSilence(limits) } } : {}),
-      measureTurn: sample => { turns.push(sample); },
+      measureTurn: sample => {
+        turns.push(sample);
+        // An answered turn is measured when its answer starts to play.
+        if (sample.outcome === "answered" && sample.turnId) void send({ kind: "answer", turnId: sample.turnId, at: Date.now() }).catch(() => {});
+      },
+      // The child speaks again only after this: a reply of two speeches can pause between them for its board.
+      replyDone: turnId => { void send({ kind: "reply_done", turnId, at: Date.now() }).catch(() => {}); },
       measureBoardPlan: (utteranceId, turnId, batchIds) => { owners.set(utteranceId, { turnId, batchIds }); },
       closed: async () => {
         try {
@@ -183,8 +196,17 @@ export default defineAgent({
     run.attachTurnTiming();
     // The same output events as the turn timing: the child matches received sound to these playouts.
     const output = session.output.audio;
-    output?.on(voice.AudioOutput.EVENT_PLAYBACK_STARTED, () => { playouts.push({ start: Date.now(), end: null }); });
-    output?.on(voice.AudioOutput.EVENT_PLAYBACK_FINISHED, () => { const last = playouts.at(-1); if (last && last.end === null) last.end = Date.now(); });
+    output?.on(voice.AudioOutput.EVENT_PLAYBACK_STARTED, () => {
+      const playout = { start: Date.now(), end: null };
+      playouts.push(playout);
+      void send({ kind: "playout", ...playout }).catch(() => {});
+    });
+    output?.on(voice.AudioOutput.EVENT_PLAYBACK_FINISHED, () => {
+      const last = playouts.at(-1);
+      if (!last || last.end !== null) return;
+      last.end = Date.now();
+      void send({ kind: "playout", ...last }).catch(() => {});
+    });
     made.tts.prewarm();
     const waited = await waitForChild(ctx.room, { id: job.callId, parentId: job.parentId, childId: job.childId, mode: "voice", status: "live" });
     if (!waited.child) { await run.standDown(); return ctx.shutdown(waited.why); }

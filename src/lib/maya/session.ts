@@ -852,8 +852,9 @@ export function learningEvent(session: Session, family: { parentId: string; chil
   // A held question (#527) records nothing: Maya taught nothing she could trust, so the call says nothing about the child.
   // Any stored content problem counts, whatever the final reason (a safety concern after the hold ends as "safety").
   if (!outcome || !pkg || session.startedAt === null || session.contentProblem !== null || outcome.reason === "content_issue") return null;
-  // A correct answer with unconfirmed voice help is not evidence of independent work.
-  const right = session.lastResult === "right" && !outcome.helpUnconfirmed;
+  // A correct answer with unconfirmed voice help is not evidence of independent work. After a confirmed hint it is still
+  // right with help, whatever the unconfirmed demonstration added.
+  const right = session.lastResult === "right" && !(outcome.helpUnconfirmed && outcome.assistance === "independent");
   const result = right ? (outcome.assistance === "independent" ? "right" : "right_with_help") : "blank";
   const first = workSteps(pkg)[0]?.id ?? null;
   return {
@@ -5659,28 +5660,14 @@ function divisionDeps(s: Session): DivisionSessionDeps {
 
 type RegroupingChoice = { step: RegroupingInstruction["step"]; observation?: RegroupingObservation };
 
-function unconfirmedRegroupingLevel(turns: readonly ExchangeTurn[]): ExchangeTurn["support"] {
-  let level: ExchangeTurn["support"];
-  for (const turn of turns) {
-    if (!turn.sent || turn.support || turn.playback === "finished") continue;
-    const h = regroupingHelp(turn);
-    if (h === "demonstrated") return "demonstrated";
-    if (h === "hinted") level = "hinted";
-  }
-  return level;
-}
-
 function regroupingObservation(s: Session, skill: RegroupingObservation["skill"], result: RegroupingObservation["result"]): RegroupingObservation {
   const turns = s.checkedExchange!.turns.filter((turn) => !turn.transfer);
   const demonstrated = turns.some((turn) => turn.support === "demonstrated");
   const hinted = turns.some((turn) => turn.support === "hinted") || s.assistance.includes("hint");
   const assistedElsewhere = s.assistance.some((kind) => kind !== "independent" && kind !== "hint");
-  const unconfirmed = s.checkedExchange?.progression === 1 ? unconfirmedRegroupingLevel(turns) : undefined;
-  const assistance = demonstrated || assistedElsewhere ? "demonstrated"
-    : unconfirmed === "demonstrated" ? "uncertain"
-    : hinted ? "hinted"
-    : unconfirmed === "hinted" ? "uncertain"
-    : "independent";
+  // A demonstration the child may have heard part of is stronger help than a hint: the help is unknown.
+  const assistance = demonstrated || assistedElsewhere ? "demonstrated" : unconfirmedRegroupingHelp(s).includes("demonstrated") ? "uncertain" :
+    hinted ? "hinted" : unconfirmedRegroupingHelp(s).length ? "uncertain" : "independent";
   return { skill, result, assistance, at: s.now! };
 }
 
@@ -6007,10 +5994,30 @@ function regroupingHelp(turn: ExchangeTurn): ExchangeTurn["support"] {
   if (turn.prompt || step === "ones" || step === "recheck_ones" || step === "tens") return "hinted";
 }
 
-function hasUnconfirmedRegroupingHelp(s: Session): boolean {
+/** The original question's help that was sent but that the child may not have heard (voice playback not finished). */
+function unconfirmedRegroupingHelp(s: Session): NonNullable<ExchangeTurn["support"]>[] {
   const lesson = s.checkedExchange;
-  return lesson?.progression === 1 && lesson.turns.some((turn) => !turn.transfer &&
-    turn.sent && !turn.support && turn.playback !== "finished" && regroupingHelp(turn) !== undefined);
+  if (lesson?.progression !== 1) return [];
+  return lesson.turns.filter((turn) => !turn.transfer).map(unconfirmedHelp).filter((help) => help !== undefined);
+}
+
+/**
+ * Help a sent reply may have given beyond what is confirmed, while its voice playback has not finished. A shown board
+ * batch confirms only its own part: the starting blocks confirm a hint, not the trade drawing the child cut off.
+ */
+function unconfirmedHelp(turn: ExchangeTurn): ExchangeTurn["support"] {
+  if (!turn.sent || turn.playback === "finished") return undefined;
+  const help = regroupingHelp(turn);
+  return help && (!turn.support || (turn.support === "hinted" && help === "demonstrated")) ? help : undefined;
+}
+
+/**
+ * The outcome cannot name the original question's help: help the child may not have heard is the only help, or it is a
+ * demonstration after no more than a hint.
+ */
+function helpUnconfirmed(s: Session, assistance: Assistance): boolean {
+  const unconfirmed = unconfirmedRegroupingHelp(s);
+  return assistance === "independent" ? unconfirmed.length > 0 : assistance === "hint" && unconfirmed.includes("demonstrated");
 }
 
 /** #1144: the related question's package once it started, else null. */
@@ -6120,10 +6127,11 @@ function transferQuestionAction(s: Session): ExchangeAction {
 function transferAssistance(s: Session): RegroupingObservation["assistance"] {
   const turns = s.checkedExchange?.turns.filter((turn) => turn.transfer) ?? [];
   if (turns.some((turn) => turn.support === "demonstrated")) return "demonstrated";
-  const unconfirmed = unconfirmedRegroupingLevel(turns);
-  if (unconfirmed === "demonstrated") return "uncertain";
+  const unconfirmed = turns.map(unconfirmedHelp);
+  // A demonstration the child may have heard part of is stronger help than a finished hint: the help is unknown.
+  if (unconfirmed.includes("demonstrated")) return "uncertain";
   if (turns.some((turn) => turn.support === "hinted")) return "hinted";
-  return unconfirmed === "hinted" ? "uncertain" : "independent";
+  return unconfirmed.some(Boolean) ? "uncertain" : "independent";
 }
 
 function transferOutcome(s: Session): Pick<Outcome, "transfer"> {
@@ -7503,7 +7511,7 @@ function outcomeOf(s: Session, cause: Reason): Outcome {
   return {
     reason,
     assistance,
-    ...(assistance === "independent" && hasUnconfirmedRegroupingHelp(s) ? { helpUnconfirmed: true } : {}),
+    ...(helpUnconfirmed(s, assistance) ? { helpUnconfirmed: true } : {}),
     ...transferOutcome(s),
     paperStatus: s.paper,
     understanding: s.understanding,

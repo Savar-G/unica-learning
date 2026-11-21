@@ -6,7 +6,8 @@
 //
 // A prepared reply is single-use and belongs to one child turn. Equal keys share one model request. A reply not used
 // is aborted when the turn commits or the session ends. Each request holds one spend handle (src/lib/maya-spend-seam.ts),
-// settled exactly once: with the provider's cost, else an estimate from the text sizes.
+// settled once with the provider's cost: the one it reports, else (#1203) the one its generation stats give. Until then
+// the handle holds its reservation; with no receipt, the cost stays unknown and the reservation stays counted.
 import { codeStance, codeVerdicts, type Session } from "@/lib/maya";
 import { confirmNote, type MayaModel, type ModelInput, type TurnBrief } from "@/lib/maya-model";
 import type { SpendHandle, SpendSeam } from "@/lib/maya-spend-seam";
@@ -21,11 +22,20 @@ export interface PrepareHypothesis {
 export const MAX_PREPARES_PER_TURN = 3;
 
 /**
- * The estimate of a request's cost when the provider reported none (an aborted stream): US dollars per million tokens,
- * using the full output allowance when no cost returns. Claude Sonnet 5.5 through OpenRouter, measured 2026-11-13 (3,120 tokens in and 286 out
- * cost USD 0.0091). The trace marks such a cost `estimated`.
+ * #1203: when an aborted request's receipt is asked (OpenRouter's generation stats; a 404 means not yet), in ms after the
+ * request stopped: its abort or the provider's end, whichever came first. Live probe, 2026-11-20 (8 aborted Sonnet 5.5
+ * streams on Maya's route, all Azure): the stats appeared after 1 to 7.5 s, and once only after 12 to 20 s. No estimate
+ * frees room: no bound on what the provider bills (model, route, reasoning tokens) is verified here.
  */
-export const PREPARE_ESTIMATE_USD_PER_M = { input: 2, output: 10 } as const;
+export const PREPARE_STATS_ASK_AT_MS = [1_000, 3_000, 7_000, 15_000, 22_000] as const;
+/**
+ * The receipt is settled by this long after the request stopped (or, for a completed reply discarded later, one ask of
+ * at most PREPARE_STATS_ASK_MS after the discard): with no receipt, the cost is unknown and the reservation stays
+ * counted. The call's end leaves time after it for the block row's write (BLOCK_DRAIN_MS).
+ */
+export const PREPARE_RECEIPT_BY_MS = 25_000;
+/** One ask for the receipt stops after this long (or at PREPARE_RECEIPT_BY_MS). */
+const PREPARE_STATS_ASK_MS = 2_000;
 
 const UNITS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
 const TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
@@ -123,8 +133,9 @@ export interface PrepareRecord {
   status: "used" | "discarded";
   /** Why it was not used: another key, the texts differ, not a plain math turn, the session moved on or ended. */
   reason?: "key" | "text" | "not_plain" | "stale" | "ended";
-  /** The cost in US dollars; `estimated` when the provider reported none. */
+  /** The cost in US dollars, the provider's own figure. None when it gave none (#1203): the reservation stays counted. */
   usd?: number;
+  /** Before #1203 only: a cost estimated from text sizes. */
   estimated?: true;
   /** Diagnostic only: the call-local id of the spend handle that paid for this request (from `prepareHandleId`). */
   diagnosticHandleId?: string;
@@ -139,8 +150,8 @@ export interface PreparedReply {
   available(): boolean;
   /** The reply for the real turn: `onText` gets the text so far at once, then as it grows. Single-use. */
   use(onText: ((soFar: string) => void) | undefined, signal: AbortSignal): Promise<unknown>;
-  /** The cost, once known. */
-  cost(): { usd: number; estimated?: true } | null;
+  /** The provider's cost once settled with it; null before, or when it gave none (the reservation stays counted). */
+  cost(): { usd: number } | null;
   /** Diagnostic only: the id the session's `prepareHandleId` gave this entry's own handle object, when it gave one. */
   readonly diagnosticHandleId?: string;
 }
@@ -172,24 +183,66 @@ export function preparedReplies(model: MayaModel, spend: SpendSeam, clock: () =>
       if (!asked || asked.output !== 3) { spend.giveBack(handle); return false; }
       const controller = new AbortController();
       let soFar = "";
+      let lookup: (() => Promise<number | null>) | null = null;
+      // The provider's request ended (it answered or failed). Apart from `done`: our timer can end the reply first.
+      let providerEnded = false;
+      // When the request stopped: its abort or the provider's end, whichever came first. The receipt clock starts here.
+      let stoppedAt: number | null = null;
       let listener: ((text: string) => void) | undefined;
-      let settled: { usd: number; estimated?: true } | null = null;
+      let settled: { usd: number } | null = null;
+      let settling = false;
       let reported: number | null = null;
       let used = false;
       let decision: boolean | null = null;
       let done = false;
-      // Upper bound when the provider gives no price: one token per character of input, plus the full 1,500-token
-      // output allowance. Abort does not prove that the provider stopped generating.
-      const upperCost = Math.max(handle.micros / 1_000_000, ((JSON.stringify(brief).length + 8_000) * PREPARE_ESTIMATE_USD_PER_M.input + 1_500 * PREPARE_ESTIMATE_USD_PER_M.output) / 1_000_000);
+      // The provider's receipt: a late reported cost, or the generation stats' cost; null when none came by the last
+      // ask, or at once when the provider ended with no cost and offered no stats (nothing more can come).
+      const receipt = async (): Promise<number | null> => {
+        const origin = stoppedAt ?? Date.now();
+        let asked = false;
+        const ask = async (ms: number) => {
+          asked = true;
+          const lookUp = lookup!;
+          return Promise.race([lookUp().catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), ms))]);
+        };
+        const valid = (usd: number | null): usd is number => typeof usd === "number" && Number.isFinite(usd) && usd >= 0;
+        for (const at of PREPARE_STATS_ASK_AT_MS) {
+          if (reported !== null) return reported;
+          if (providerEnded && !lookup) return null;
+          await new Promise((r) => setTimeout(r, Math.max(0, origin + at - Date.now())));
+          if (reported !== null) return reported;
+          // A provider still running may report its cost when it ends.
+          if (!lookup) continue;
+          const left = Math.min(PREPARE_STATS_ASK_MS, origin + PREPARE_RECEIPT_BY_MS - Date.now());
+          if (left <= 0) break;
+          const usd = await ask(left);
+          if (reported !== null) return reported;
+          if (valid(usd)) return usd;
+        }
+        // A completed reply that waited in the cache past the schedule is still asked once: its receipt is likely there.
+        if (!asked && lookup && reported === null) {
+          const usd = await ask(PREPARE_STATS_ASK_MS);
+          if (valid(usd)) return usd;
+        }
+        return reported;
+      };
       const settle = () => {
-        if (settled || decision === null || !done) return;
-        settled = reported !== null ? { usd: reported } : { usd: upperCost, estimated: true };
-        spend.settle(handle, settled.usd, { used: decision });
+        if (settling || decision === null || !done) return;
+        settling = true;
+        const used = decision;
+        const pay = (usd: number | null) => {
+          settled = usd === null ? null : { usd };
+          spend.settle(handle, usd, { used });
+        };
+        if (reported !== null) { pay(reported); return; }
+        // No cost came back (an aborted stream sends no usage chunk). The handle keeps its reservation until the receipt.
+        void receipt().then(pay);
       };
       let end: (value: { proposal: unknown } | { error: unknown }) => void;
       const result = new Promise<{ proposal: unknown } | { error: unknown }>((resolve) => { end = resolve; });
       const finish = (got: { proposal: unknown } | { error: unknown }) => {
         clearTimeout(timer);
+        if (done) return;
         done = true;
         settle();
         end(got);
@@ -205,7 +258,8 @@ export function preparedReplies(model: MayaModel, spend: SpendSeam, clock: () =>
           used = true;
           decision = true;
           settle();
-          const abort = () => { listener = undefined; controller.abort(); };
+          // An abort in use stops the request too: the receipt clock starts here.
+          const abort = () => { listener = undefined; stoppedAt ??= Date.now(); controller.abort(); };
           signal.addEventListener("abort", abort, { once: true });
           listener = onText;
           if (soFar) listener?.(soFar);
@@ -215,9 +269,10 @@ export function preparedReplies(model: MayaModel, spend: SpendSeam, clock: () =>
         discard() { decision ??= false; entry.abort(); settle(); },
         abort() {
           listener = undefined;
+          stoppedAt ??= Date.now();
           controller.abort();
-          // Give an abort-ignoring provider time to report the actual bill. The bounded timer settles the full
-          // allowance if it never returns. No late callback can reach the child.
+          // Give an abort-ignoring provider time to report the actual bill. The bounded timer ends the reply; the
+          // receipt is still asked. No late callback can reach the child.
         },
       };
       const timer = setTimeout(() => { entry.abort(); finish({ error: new Error("prepared request timed out") }); }, 6_000);
@@ -225,9 +280,10 @@ export function preparedReplies(model: MayaModel, spend: SpendSeam, clock: () =>
       try {
         void Promise.resolve(asked.propose(brief as unknown as ModelInput, controller.signal,
           (text) => { if (!controller.signal.aborted) { soFar = text; listener?.(text); } },
-          (usd) => { if (Number.isFinite(usd) && usd >= 0) reported = usd; }))
-          .then((proposal) => finish({ proposal }), (error: unknown) => finish({ error }));
-      } catch (error) { finish({ error }); }
+          (usd) => { if (Number.isFinite(usd) && usd >= 0) reported = usd; },
+          (cost) => { lookup = cost; }))
+          .then((proposal) => { providerEnded = true; stoppedAt ??= Date.now(); finish({ proposal }); }, (error: unknown) => { providerEnded = true; stoppedAt ??= Date.now(); finish({ error }); });
+      } catch (error) { providerEnded = true; stoppedAt ??= Date.now(); finish({ error }); }
       return true;
     },
     takeAll(): Map<string, PreparedReply> { const taken = open; open = new Map(); return taken; },

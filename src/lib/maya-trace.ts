@@ -647,8 +647,8 @@ function checkOutcome(o: unknown, path: string) {
   const x = o as Record<string, unknown>;
   need(oneOf(REASONS, x.reason), `${path}.reason`, "a reason");
   need(oneOf(ASSISTANCE, x.assistance), `${path}.assistance`, "an assistance level");
-  need(x.helpUnconfirmed === undefined || (x.helpUnconfirmed === true && x.assistance === "independent"),
-    `${path}.helpUnconfirmed`, "true when no help is confirmed");
+  need(x.helpUnconfirmed === undefined || (x.helpUnconfirmed === true && (x.assistance === "independent" || x.assistance === "hint")),
+    `${path}.helpUnconfirmed`, "true when no help, or only a hint, is confirmed");
   const t = x.transfer;
   need(t === undefined || (isObject(t) && oneOf(["right", "unfinished"], t.result) &&
     oneOf(["independent", "hinted", "demonstrated", "uncertain"], t.assistance)), `${path}.transfer`, "a related question result");
