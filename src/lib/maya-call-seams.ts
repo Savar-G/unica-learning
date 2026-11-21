@@ -41,9 +41,8 @@ type Env = Readonly<Record<string, string | undefined>>;
 const siteOrigin = (env: Env) => env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/+$/, "") || "https://unicalearning.com";
 
 /**
- * The model a call uses: null asks for the one a new call uses now (Maya's turn model, `mayaTurnModel`: MAYA_MODEL, else
- * GPT-5.4 mini on LiveKit Inference, D-349; the fake rule player without MAYA_OPENROUTER_API_KEY); an id asks for that
- * model again, so a call keeps the model it started with when the setting changes, or null when it is gone.
+ * A new call uses MAYA_MODEL when configured, else AI_MODEL through OpenRouter (D-349).
+ * An existing call keeps its saved model, or gets null if that model is unavailable.
  */
 export function callModel(id: string | null, env: Env = process.env, metered?: { ledger: SpendLedger; call: SpendCall; newId: () => string } & CallModelOptions): MayaModel | null {
   const model = id !== null && id !== FAKE_MODEL_ID ? id : mayaTurnModel(env);

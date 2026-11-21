@@ -295,7 +295,9 @@ export function openRouterClient({
         const used = (u: OpenRouterUsage) => {
           recordAiUsage(usage ?? { feature: feature as AiFeature }, {
             provider: usageProvider, model, inputTokens: u.inputTokens, outputTokens: u.outputTokens,
-            costUsd: u.costUsd, generationId: u.id, keyAlias: keyLabel ?? keyAlias(apiKey), keyId: keyIdentity(apiKey), costBasis: "provider",
+            costUsd: u.costUsd, generationId: u.id, keyAlias: keyLabel ?? keyAlias(apiKey),
+            keyId: usageProvider === "livekit" ? undefined : keyIdentity(apiKey),
+            costBasis: usageProvider === "livekit" ? (u.costUsd === null ? "unknown" : "estimate") : "provider",
           });
           observe(u); onUsage?.(u);
         };

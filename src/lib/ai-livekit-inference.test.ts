@@ -1,24 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-const usageRows = vi.hoisted(() => [] as { provider: string; model: string; costUsd: number | null }[]);
+const usageRows = vi.hoisted(() => [] as import("@/lib/ai-usage").AiUsageReading[]);
 vi.mock("@/lib/ai-usage", async (load) => ({
   ...(await load<typeof import("@/lib/ai-usage")>()),
-  recordAiUsage: (_tag: unknown, reading: { provider: string; model: string; costUsd: number | null }) => { usageRows.push({ provider: reading.provider, model: reading.model, costUsd: reading.costUsd }); },
+  recordAiUsage: (_tag: unknown, reading: import("@/lib/ai-usage").AiUsageReading) => { usageRows.push(reading); },
 }));
 
 import { callModel, callReviewer } from "@/lib/maya-call-seams";
-import { mayaAiClient, MAYA_DEFAULT_MODEL, MAYA_PROVIDER } from "@/lib/maya-ai-route";
+import { mayaAiClient, MAYA_PROVIDER } from "@/lib/maya-ai-route";
 import { LIVEKIT_INFERENCE_URL, livekitCost } from "@/lib/ai-livekit-inference";
 import { OPENROUTER_URL } from "@/lib/ai-openrouter";
-import { createSpendLedger, spendConfig, usdToMicros } from "@/lib/maya-spend";
+import { chargeOf, createSpendLedger, spendConfig, usdToMicros } from "@/lib/maya-spend";
 import { memorySpendStore } from "@/lib/maya-spend-memory";
 import { TUTOR_OUTPUT_SCHEMA } from "@/lib/maya/tutor-prompt";
 
-// D-349: Maya's turn model is GPT-5.4 mini on LiveKit Inference by default, paid from the LiveKit Cloud credits.
-// MAYA_MODEL names another model; MAYA_MODEL=anthropic/claude-sonnet-5.5 goes back to Sonnet through OpenRouter.
-
 const base = { MAYA_OPENROUTER_API_KEY: "test-key", AI_MODEL: "anthropic/claude-sonnet-5.5", NODE_ENV: "test", LIVEKIT_API_KEY: "lk-key", LIVEKIT_API_SECRET: "lk-secret-that-is-long-enough-for-hs256" };
+const MINI = "livekit/openai/gpt-5.4-mini";
+const miniEnv = { ...base, MAYA_MODEL: MINI };
 const gemma = { ...base, MAYA_MODEL: "livekit/google/gemma-4-31b-it" };
 const request = { name: "maya_reply", system: "s", cacheSystem: true as const, content: [{ type: "text" as const, text: "stable", cache: true as const }, { type: "text" as const, text: "turn" }], schema: { type: "object", additionalProperties: false, properties: { say: { type: "string" } }, required: ["say"] }, effort: "low" as const, maxTokens: 1_500 };
 const usage = { prompt_tokens: 1_000, completion_tokens: 100, prompt_tokens_details: { cached_tokens: 400 } };
@@ -55,23 +54,22 @@ beforeEach(() => { sent = []; usageRows.length = 0; });
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Maya's turn model on LiveKit Inference (D-349)", () => {
-  it("is GPT-5.4 mini on LiveKit by default; its reviews stay on OpenRouter's Maya route", async () => {
+  it("routes the configured LiveKit turn model and keeps its reviews on OpenRouter's Maya route", async () => {
     answer(whole);
-    const model = callModel(null, base)!;
-    expect(model.id).toBe(MAYA_DEFAULT_MODEL);
-    expect(MAYA_DEFAULT_MODEL).toBe("livekit/openai/gpt-5.4-mini");
+    const model = callModel(null, miniEnv)!;
+    expect(model.id).toBe(MINI);
     await model.propose({} as never, signal()).catch(() => {});
     expect(sent.map((s) => s.url)).toEqual([LIVEKIT_INFERENCE_URL]);
     expect(sent[0].body.model).toBe("openai/gpt-5.4-mini");
     sent = [];
-    await callReviewer(model.id, base)!.review({} as never, signal()).catch(() => {});
+    await callReviewer(model.id, miniEnv)!.review({} as never, signal()).catch(() => {});
     expect(sent.map((s) => s.url)).toEqual([OPENROUTER_URL]);
     expect(sent[0].body.provider).toEqual(MAYA_PROVIDER);
   });
 
-  it("MAYA_MODEL=anthropic/claude-sonnet-5.5 goes back to Sonnet through OpenRouter's Maya route", async () => {
+  it("uses the existing Sonnet default even when LiveKit credentials are present", async () => {
     answer(whole);
-    const model = callModel(null, { ...base, MAYA_MODEL: "anthropic/claude-sonnet-5.5" })!;
+    const model = callModel(null, { ...base, AI_MODEL: undefined })!;
     expect(model.id).toBe("anthropic/claude-sonnet-5.5");
     await model.propose({} as never, signal()).catch(() => {});
     expect(sent.map((s) => s.url)).toEqual([OPENROUTER_URL]);
@@ -80,7 +78,7 @@ describe("Maya's turn model on LiveKit Inference (D-349)", () => {
 
   it("without a LiveKit key, a new call uses AI_MODEL through OpenRouter, never the rule player", async () => {
     answer(whole);
-    const model = callModel(null, { ...base, LIVEKIT_API_KEY: undefined })!;
+    const model = callModel(null, { ...miniEnv, LIVEKIT_API_KEY: undefined })!;
     expect(model.id).toBe("anthropic/claude-sonnet-5.5");
     await model.propose({} as never, signal()).catch(() => {});
     expect(sent.map((s) => s.url)).toEqual([OPENROUTER_URL]);
@@ -93,8 +91,8 @@ describe("Maya's turn model on LiveKit Inference (D-349)", () => {
     await sonnet.propose({} as never, signal()).catch(() => {});
     expect(sent.map((s) => s.url)).toEqual([OPENROUTER_URL]);
     sent = [];
-    const mini = callModel(MAYA_DEFAULT_MODEL, { ...base, MAYA_MODEL: "anthropic/claude-sonnet-5.5" })!;
-    expect(mini.id).toBe(MAYA_DEFAULT_MODEL);
+    const mini = callModel(MINI, { ...base, MAYA_MODEL: "anthropic/claude-sonnet-5.5" })!;
+    expect(mini.id).toBe(MINI);
     await mini.propose({} as never, signal()).catch(() => {});
     expect(sent.map((s) => s.url)).toEqual([LIVEKIT_INFERENCE_URL]);
   });
@@ -102,7 +100,7 @@ describe("Maya's turn model on LiveKit Inference (D-349)", () => {
   it("a metered turn reserves before the attempt and settles it with LiveKit's cost; the usage record says livekit", async () => {
     answer(whole);
     const m = meter();
-    const model = callModel(null, base, { ...m, call })!;
+    const model = callModel(null, miniEnv, { ...m, call })!;
     await model.propose({} as never, signal()).catch(() => {});
     expect(sent.map((s) => s.url)).toEqual([LIVEKIT_INFERENCE_URL]);
     // The ledger's own field never reaches the gateway.
@@ -112,7 +110,9 @@ describe("Maya's turn model on LiveKit Inference (D-349)", () => {
     const rows = m.store.rows();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ what: "model", settled: true, cost: usdToMicros(usd, m.ledger.config) });
-    expect(usageRows).toEqual([{ provider: "livekit", model: MAYA_DEFAULT_MODEL, costUsd: usd }]);
+    expect(usageRows).toHaveLength(1);
+    expect(usageRows[0]).toMatchObject({ provider: "livekit", model: MINI, costUsd: usd, costBasis: "estimate" });
+    expect(usageRows[0].keyId).toBeUndefined();
   });
 
   it("sends a livekit/ model to the gateway with an inference token and OpenAI parameters, and prices the answer", async () => {
@@ -135,11 +135,29 @@ describe("Maya's turn model on LiveKit Inference (D-349)", () => {
     expect(costs[0]).toBeCloseTo((600 * 0.4 + 400 * 0.2 + 100 * 1.2) / 1e6, 12);
   });
 
+  it("uses the existing voice preparation reservation and reports the final stream cost", async () => {
+    answer(streamed);
+    const m = meter();
+    const voice = { ...call, kind: "voice" as const };
+    const budget = m.ledger.block({ charge: chargeOf(voice), callId: voice.id, budgetKey: "prepared", newId: m.newId });
+    await budget.open();
+    const handle = budget.seam.take("speculative")!;
+    const costs: number[] = [];
+    const model = callModel(MINI, miniEnv, { ...m, call: voice, prepared: { budget, handle } })!;
+    await model.propose({} as never, signal(), () => {}, (cost) => costs.push(cost)).catch(() => {});
+    expect(sent.map((s) => s.url)).toEqual([LIVEKIT_INFERENCE_URL]);
+    expect(costs).toEqual([livekitCost("openai/gpt-5.4-mini", usage)]);
+    expect(m.store.log().filter((operation) => operation === "reserve")).toHaveLength(1);
+    budget.seam.settle(handle, costs[0], { used: true });
+    await budget.stop();
+    expect(m.store.rows()[0].cost).toBe(usdToMicros(costs[0], m.ledger.config));
+  });
+
   it("reads a streamed answer with its usage priced", async () => {
     answer(streamed);
     const costs: number[] = [];
     const texts: string[] = [];
-    const out = await mayaAiClient(base, MAYA_DEFAULT_MODEL)!.json({ ...request, onText: (t) => texts.push(t), onCost: (usd) => costs.push(usd) }, signal());
+    const out = await mayaAiClient(base, MINI)!.json({ ...request, onText: (t) => texts.push(t), onCost: (usd) => costs.push(usd) }, signal());
     expect(out).toEqual({ say: "Hi" });
     expect(sent[0].body.stream).toBe(true);
     expect(sent[0].body.stream_options).toEqual({ include_usage: true });
@@ -149,7 +167,7 @@ describe("Maya's turn model on LiveKit Inference (D-349)", () => {
 
   it("gives every const and single-kind enum a type, as OpenAI's strict mode needs, and changes nothing else in Maya's tutor schema", async () => {
     answer(whole);
-    await mayaAiClient(base, MAYA_DEFAULT_MODEL)!.json({ ...request, schema: TUTOR_OUTPUT_SCHEMA as unknown as Record<string, unknown> }, signal()).catch(() => {});
+    await mayaAiClient(base, MINI)!.json({ ...request, schema: TUTOR_OUTPUT_SCHEMA as unknown as Record<string, unknown> }, signal()).catch(() => {});
     const schema = (sent[0].body.response_format as { json_schema: { schema: Record<string, unknown> } }).json_schema.schema;
     const untyped: string[] = [];
     const walk = (node: unknown, at: string) => {
@@ -174,11 +192,16 @@ describe("Maya's turn model on LiveKit Inference (D-349)", () => {
     answer(whole);
     await mayaAiClient(gemma, gemma.MAYA_MODEL)!.json(request, signal());
     expect(sent.at(-1)!.body).not.toHaveProperty("reasoning_effort");
-    await mayaAiClient(base, MAYA_DEFAULT_MODEL)!.json(request, signal());
+    await mayaAiClient(base, MINI)!.json(request, signal());
     expect(sent.at(-1)!.body.reasoning_effort).toBe("low");
   });
 
   it("a livekit/ model without a LiveKit key makes no client", () => {
     expect(mayaAiClient({ ...gemma, LIVEKIT_API_KEY: undefined }, gemma.MAYA_MODEL)).toBeNull();
+  });
+
+  it("leaves cost unknown when the gateway does not report complete token counts", () => {
+    expect(livekitCost("openai/gpt-5.4-mini", { prompt_tokens: 1_000 })).toBeNull();
+    expect(livekitCost("openai/gpt-5.4-mini", { prompt_tokens: 0, completion_tokens: 0 })).toBe(0);
   });
 });

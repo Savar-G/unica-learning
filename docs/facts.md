@@ -141,7 +141,7 @@ Use the pricing page wording. Keep the full rules on `/terms#referrals`. Do not 
 | Before a family is deleted, a copy of each test is kept without names, contact details, drawings, typed work or free text, and with no link to the family. | `DESIGN.md:35` (D-119) | 2026-11-14 |
 | Unica counts visits to public pages with no cookie and no IP address. | `src/app/(site)/privacy/page.tsx:59` | 2026-11-14 |
 | Unica does not send account names, email addresses or account identifiers to the AI that reviews a child's work. | `src/app/(site)/privacy/page.tsx:39` | 2026-11-14 |
-| Maya's chat and call requests go through LiveKit to the company that runs Maya's AI model. LiveKit says that neither it nor these companies log, store or train on these requests. | `src/app/(site)/privacy/page.tsx` (Companies that help us), LiveKit Inference docs (zero data retention, read 2026-11-20), D-349 | 2026-11-20 |
+| When enabled for Maya's turn model, LiveKit sends requests to the company that runs the selected model. LiveKit says that it and its model providers do not log, store or train on these requests. | `src/app/(site)/privacy/page.tsx` (Companies that help us), LiveKit Inference docs (zero data retention, read 2026-11-20), D-349 | 2026-11-20 |
 
 Name no provider outside `/privacy`. Write "our payment provider" and "an AI service", not the company names.
 

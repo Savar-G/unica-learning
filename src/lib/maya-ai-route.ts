@@ -25,28 +25,20 @@ export const MAYA_PROVIDER: OpenRouterProvider = {
 
 type Env = Readonly<Record<string, string | undefined>>;
 
-/**
- * Maya's turn model when MAYA_MODEL is not set (D-349, 2026-11-20): OpenAI's GPT-5.4 mini on LiveKit Inference, paid
- * from the LiveKit Cloud credits. MAYA_MODEL=anthropic/claude-sonnet-5.5 goes back to Sonnet through OpenRouter.
- */
-export const MAYA_DEFAULT_MODEL = "livekit/openai/gpt-5.4-mini";
-
 let warnedNoLivekitKey = false;
 
 /**
- * Maya's own turn model (D-349): MAYA_MODEL (an OpenRouter id, or a `livekit/` id for LiveKit Inference), else
- * MAYA_DEFAULT_MODEL. A `livekit/` model with no LiveKit key in this process gives AI_MODEL through OpenRouter instead,
- * so Maya never falls back to the rule player because one key is missing. Only the turn model (and its safety read)
- * reads MAYA_MODEL: the reviews, the call note and every other feature keep their own models.
+ * Maya's turn model override (D-349). With no override, keep the existing AI_MODEL route through OpenRouter.
+ * A LiveKit override also uses that route when this process has no LiveKit credentials.
  */
 export function mayaTurnModel(env: Env = process.env): string | undefined {
-  const chosen = env.MAYA_MODEL?.trim() || MAYA_DEFAULT_MODEL;
-  if (isLivekitModel(chosen) && !livekitCredentials(env)) {
+  const chosen = env.MAYA_MODEL?.trim();
+  if (chosen && isLivekitModel(chosen) && !livekitCredentials(env)) {
     if (!warnedNoLivekitKey) console.error(`[maya] ${chosen} needs LIVEKIT_API_KEY and LIVEKIT_API_SECRET; using AI_MODEL through OpenRouter`);
     warnedNoLivekitKey = true;
     return undefined;
   }
-  return chosen;
+  return chosen || undefined;
 }
 
 /**

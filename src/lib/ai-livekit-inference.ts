@@ -6,7 +6,7 @@
 // is a fetch that rewrites the request for the gateway and adds each answer's cost from LiveKit's price list, so the
 // strict JSON reading, streaming, retries and usage records stay the same. Docs read 2026-11-20:
 // https://docs.livekit.io/agents/models/inference/ (zero data retention on every model and plan).
-// Only Maya's clients use it (src/lib/maya-ai-route.ts): her turn model (MAYA_MODEL, default MAYA_DEFAULT_MODEL) and any
+// Only Maya's clients use it (src/lib/maya-ai-route.ts): her turn model (MAYA_MODEL) and any
 // review model set to a `livekit/` id. Usage records carry provider "livekit"; the spending ledger settles each attempt
 // with the cost added here.
 import { AccessToken } from "livekit-server-sdk";
@@ -45,15 +45,17 @@ export function livekitCredentials(env: Env): LivekitCredentials | null {
 }
 
 interface Usage { prompt_tokens?: unknown; completion_tokens?: unknown; prompt_tokens_details?: { cached_tokens?: unknown } | null; cost?: unknown }
-const count = (n: unknown) => (typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : 0);
+const count = (n: unknown) => (typeof n === "number" && Number.isSafeInteger(n) && n >= 0 ? n : null);
 
 /** The cost of one answer in USD from its token counts; null for a model with no price here. */
 export function livekitCost(model: string, usage: Usage): number | null {
   const price = LIVEKIT_LLM_PRICES[model];
   if (!price) return null;
   const input = count(usage.prompt_tokens);
-  const cached = Math.min(input, count(usage.prompt_tokens_details?.cached_tokens));
-  return ((input - cached) * price.input + cached * price.cachedInput + count(usage.completion_tokens) * price.output) / 1e6;
+  const output = count(usage.completion_tokens);
+  if (input === null || output === null) return null;
+  const cached = Math.min(input, count(usage.prompt_tokens_details?.cached_tokens) ?? 0);
+  return ((input - cached) * price.input + cached * price.cachedInput + output * price.output) / 1e6;
 }
 
 /**
@@ -171,6 +173,8 @@ export function livekitInferenceFetch(credentials: LivekitCredentials, base: typ
     const model = String(body.model);
     const res = await base(LIVEKIT_INFERENCE_URL, {
       ...init,
+      cache: "no-store",
+      redirect: "error",
       headers: { authorization: `Bearer ${await jwt()}`, "content-type": "application/json" },
       body: JSON.stringify(body),
     });
