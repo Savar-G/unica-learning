@@ -215,8 +215,8 @@ These rules govern all customer-facing pages, emails, ads, and blog posts. All f
 - **Breakpoints:** Mobile-first from `375px` up to `1440px`:
   - `< 700px` (phone): sticky mobile assessment bar (with reserved bottom padding), 1-col stacked layouts, How it works collapses to numbered rows without pictures, Promise cards & Closing beliefs hide, FAQ shows first 6 items + 44 px `"More questions"` button (after JS loads), Compare keeps 3 columns with row labels spanning cols 1–2 and Unica spanning 2 rows so the grainy field never breaks.
   - `< 860px`: Admin sidebar becomes a slide-over drawer behind a `56px` top bar.
-  - `< 900px`: Parent dashboard switches from `248px` sidebar to sticky header + bottom tab bar; Guidance switches to board-only video; For parents stacks card under list; `/compare` 5-col table switches to 2-col picker.
-  - `< 980px`: Hero stacks workbook below text; desktop nav links collapse.
+  - `< 900px`: Desktop nav links collapse; Parent dashboard switches from `248px` sidebar to sticky header + bottom tab bar; Guidance switches to board-only video; For parents stacks card under list; `/compare` 5-col table switches to 2-col picker.
+  - `< 980px`: Hero stacks workbook below text.
 - **Accessibility (WCAG 2.2 AA):**
   - Contrast: never put white text on `--accent` (`#ff6a3d`) or `--sun` (`#ffc93c`); use `--tang-ink` (`#b43d12`) for white-on-orange buttons and `--ink` on yellow.
   - Focus: visible `2px` (`3px` on child/page-results views) `--sky` or `--ink` `:focus-visible` outlines on every interactive element.
