@@ -2,11 +2,22 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 
+const SCRIPTS_IMPORT_PATTERN = {
+  group: ["../scripts/*", "../../scripts/*", "../../../scripts/*", "../../../../scripts/*"],
+  message: "Do not import from scripts/ inside src/; move reusable helpers into src/lib/ so scripts/ stays decoupled from the web build.",
+};
+
 const WORKER_AND_SHARED_DOMAIN_FILES = [
   "worker/maya-voice/src/**/*.{ts,tsx,mts}",
   "scripts/workbook-worker.ts",
   "scripts/retention-worker.ts",
   "src/ds/**/*.{ts,tsx}",
+  "src/lib/supabase-admin.ts",
+  "src/lib/family-retention-node.ts",
+  "src/lib/family-deletion-client.ts",
+  "src/lib/family-deletion-store.ts",
+  "src/lib/retention-stripe.ts",
+  "src/lib/card-reconcile-server.ts",
   "src/lib/maya/**/*.{ts,tsx}",
   "src/lib/maya-*.ts",
   "src/lib/maya.ts",
@@ -30,6 +41,18 @@ const WORKER_AND_SHARED_DOMAIN_FILES = [
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  // Keep src/ decoupled from standalone scripts/ so Vercel can skip script-only changes.
+  {
+    files: ["src/**/*.{ts,tsx,mts}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [SCRIPTS_IMPORT_PATTERN],
+        },
+      ],
+    },
+  },
   // Keep runtime-agnostic domain, design-system, and worker modules free of Next.js and @sentry/nextjs.
   {
     files: WORKER_AND_SHARED_DOMAIN_FILES,
@@ -48,6 +71,7 @@ const eslintConfig = defineConfig([
               group: ["next", "next/*"],
               message: "Shared domain, design-system, and worker modules must not import Next.js runtime APIs (keep Next.js coupling in src/app or *-server.ts adapters).",
             },
+            SCRIPTS_IMPORT_PATTERN,
           ],
         },
       ],

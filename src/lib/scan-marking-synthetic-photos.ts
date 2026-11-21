@@ -1,12 +1,12 @@
 // Deterministic synthetic ink on the final Robin render. No browser, font service, generator, inference or storage.
-import { suppliedMethodText } from "../src/lib/scan-marking-methods";
+import { suppliedMethodText } from "@/lib/scan-marking-methods";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import sharp, { type OverlayOptions } from "sharp";
-import type { WorkbookInput } from "../src/lib/workbook-content";
-import { markingRegions, type MarkingRegion } from "../src/lib/scan-marking-regions";
-import { COMPARISON_FORMATS, SYNTHETIC_IDS, comparisonItemFormat, hashBytes, syntheticPrintRevision, validateComparisonManifest, type ComparisonManifest, type ComparisonPhoto, type LabelledReading } from "../src/lib/scan-marking-comparison";
-import { durableJson, loadComparisonAssets } from "./scan-marking-comparison-cli";
+import type { WorkbookInput } from "@/lib/workbook-content";
+import { markingRegions, type MarkingRegion } from "@/lib/scan-marking-regions";
+import { COMPARISON_FORMATS, SYNTHETIC_IDS, comparisonItemFormat, hashBytes, syntheticPrintRevision, validateComparisonManifest, type ComparisonManifest, type ComparisonPhoto, type LabelledReading } from "@/lib/scan-marking-comparison";
+import { durableJson, loadComparisonAssets } from "@/lib/scan-marking-comparison-io";
 
 // Each coordinate is a single-line code-drawn glyph. This is not real handwriting evidence.
 const GLYPHS: Record<string, number[][][]> = {

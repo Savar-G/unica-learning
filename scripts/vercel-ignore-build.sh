@@ -5,13 +5,12 @@
 # Skips a build only when every file changed since the branch's last
 # successful deployment is one the site never ships or type-checks:
 # design records, .design-sync/ (excluded from tsconfig.json), docs, agent
-# config, CI config, SQL migrations, the Maya voice worker (worker/:
-# tsconfig.json excludes it and nothing in src imports it) and Markdown
-# outside src/ and public/. scripts/ still builds: several src tests import
-# helper modules from scripts/, so next build type-checks them transitively.
-# Anything else, or any doubt (no earlier deployment, commit missing from the
-# shallow clone, git error), builds. Test files still build: next build
-# type-checks them.
+# config, CI config, SQL migrations, standalone scripts (scripts/: excluded
+# from tsconfig.json and lint-blocked from src/ imports), the Maya voice
+# worker (worker/: tsconfig.json excludes it and nothing in src imports it)
+# and Markdown outside src/ and public/. Anything else, or any doubt (no
+# earlier deployment, commit missing from the shallow clone, git error),
+# builds. Test files still build: next build type-checks them.
 
 set -u
 
@@ -44,7 +43,7 @@ fi
 needs_build=""
 while IFS= read -r file; do
   case "$file" in
-    .design/*|.design-sync/*|docs/*|.claude/*|.github/*|supabase/*|worker/*) ;;
+    .design/*|.design-sync/*|docs/*|.claude/*|.github/*|scripts/*|supabase/*|worker/*) ;;
     src/*|public/*) needs_build="$file"; break ;;
     *.md) ;;
     *) needs_build="$file"; break ;;

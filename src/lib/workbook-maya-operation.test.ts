@@ -15,7 +15,7 @@ import { sampleBook } from "./workbook-sample-book";
 import { workbookQuality } from "./workbook-quality";
 import { readNumbers } from "./number-words";
 import { taskIdentity } from "./workbook-task-identity";
-import { mayaCoverage, samplePages, changedPages } from "../../scripts/workbook-sample-pages";
+import { mayaCoverage, samplePages, changedPages } from "@/lib/workbook-sample-pages";
 
 function question(expression = "a - b", a = 9, b = 3, key = 6): QuestionPackage {
   return {

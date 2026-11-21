@@ -23,7 +23,7 @@ import { THINGS } from "@/lib/workbook-wording";
 import { curriculumVersion } from "@/lib/workbook-curriculum";
 import { skillUnits } from "@/lib/workbook-teaching-frame";
 import { teachingContext } from "@/lib/workbook-print-contract";
-import { masteryCoverageMarkdown } from "../../scripts/workbook-sample-pages";
+import { masteryCoverageMarkdown } from "@/lib/workbook-sample-pages";
 
 const BC = curriculumFor("bc")!;
 const DAYS = "1,6,9";

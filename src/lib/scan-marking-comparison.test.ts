@@ -12,8 +12,8 @@ import { markingRegions } from "@/lib/scan-marking-regions";
 import { expectedItems } from "@/lib/scan-observation";
 import publicEvidence from "../../data/scan-marking-endpoint-evidence-20261106.json";
 import routeEvidence from "../../data/scan-marking-route-evidence-20261114.json";
-import { fileJournal, refreshEvidence, rpcEvaluationBudget } from "../../scripts/scan-marking-comparison-cli";
-import { syntheticChoiceCenters, syntheticReading, syntheticTextSvg } from "../../scripts/scan-marking-synthetic-photos";
+import { fileJournal, refreshEvidence, rpcEvaluationBudget } from "@/lib/scan-marking-comparison-io";
+import { syntheticChoiceCenters, syntheticReading, syntheticTextSvg } from "@/lib/scan-marking-synthetic-photos";
 import fixtures from "./scan-marking-comparison.test-fixtures.json";
 
 const copy = <T>(v: T): T => structuredClone(v);
