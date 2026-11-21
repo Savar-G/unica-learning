@@ -113,14 +113,15 @@ Agents create no accounts. Create these, then set the values below.
 | `MAYA_STT_MODEL` | No | Optional | With `inference`: one of `assemblyai/universal-3-6-pro` (default), `assemblyai/universal-3-5-pro`, `assemblyai/universal-streaming`, `deepgram/flux-general-en`. With `assemblyai`: default `universal-3-6-pro`; other ids `universal-streaming-english`, `universal-3-5-pro`. |
 | `MAYA_TTS` | No | Yes | `inference` (LiveKit Inference), `inworld` (direct), or `fake` (default). |
 | `INWORLD_API_KEY` | No | Yes | Needed when `MAYA_TTS=inworld`. |
-| `MAYA_VOICE` | No | Optional | The voice id. Maya's voice is Cartesia "Katie", `f786b574-daa5-4673-aa0c-cbe3e8534c02` (D-338), the default with the default model. Needed with another Inference model or with `inworld`. |
-| `MAYA_TTS_MODEL` | No | Optional | With `inference`: `cartesia/sonic-3.6` (default, D-338) or `inworld/inworld-tts-2`. With `inworld`: default `inworld-tts-2`; `inworld-tts-2-flash` is the cheaper option. |
+| `MAYA_VOICE` | No | Optional | The voice id, as the provider names it. Production: Inworld `Sarah` (D-348). The code default is Cartesia "Katie", `f786b574-daa5-4673-aa0c-cbe3e8534c02` (D-338), with the default model. Needed with another Inference model or with `inworld`. |
+| `MAYA_TTS_MODEL` | No | Optional | With `inference`: `cartesia/sonic-3.6` (code default, D-338) or `inworld/inworld-tts-2` (production, D-348). With `inworld`: default `inworld-tts-2`; `inworld-tts-2-flash` is the cheaper option. |
+| `MAYA_VOICE_STYLE` | No | Optional | Only `inworld/inworld-tts-2` through Inference and `inworld-tts-2` through the direct plugin use this tag (D-348). Enter one line of at most 200 characters, with optional outer brackets. The tag text cannot contain brackets. See "Inworld steering tag" below. |
 | `MAYA_OPENROUTER_API_KEY`, `AI_MODEL` | Root configures before release | Yes | Maya's model. Without the key the worker uses the fake rule player. |
 | `PROFILE_OPENROUTER_API_KEY` | Optional | Optional | Child profile findings after calls. Use a credential distinct from Maya's. The receipt retains the call, family and child IDs. |
 | `MAYA_REVIEW_MODEL` | Already optional | Optional | The free-talk review model. |
 | `MAYA_MATH_REVIEW_MODEL` | Optional | Optional | The tutor core's math-truth review model (default `anthropic/claude-haiku-5.5`, `docs/maya-tutor.md`). It uses `MAYA_OPENROUTER_API_KEY`; without the key a tutor sentence code did not read whole is refused. |
 | `MAYA_MATH_REVIEW_RETRY_MODEL` | Optional | Optional | The model asked once when the math review is "unsure" (default `anthropic/claude-sonnet-5.5`, `docs/maya-tutor.md`). Same key. |
-| `MAYA_USD_TO_CAD`, `MAYA_MONTHLY_ALERT_CAD`, `MAYA_STT_USD_PER_MINUTE`, `MAYA_VOICE_USD_PER_1K_CHARS` | Optional | Optional | Maya's spending cap (`docs/maya-spend.md`). Use the same values as the web app. |
+| `MAYA_USD_TO_CAD`, `MAYA_MONTHLY_ALERT_CAD`, `MAYA_STT_USD_PER_MINUTE`, `MAYA_VOICE_USD_PER_1K_CHARS` | Optional | Optional | [Maya's spending cap](maya-spend.md). Set the voice rate for the worker's model and plan. |
 | `SUPABASE_URL` | No | Yes | `https://cdjobwsyzndtltzfpyqa.supabase.co`. |
 | `SUPABASE_SECRET_KEY` | Already set | Yes | The worker's own key `maya_voice_worker` (step 4), not the web app's. |
 | `MAYA_ACK_LIMIT_MS` | No | Optional | The child's turn reaching the worker to the acknowledgement, for a reply that can stream, in ms. Default 2600 (1500 before 2026-11-13). `0` turns it off. A turn that cannot stream gets the phrase at once. |
@@ -140,7 +141,9 @@ A real provider set without its privacy confirmation, key or voice, or with an I
 
 **Word timings through Inference.** The board draws in time with Maya's words when the voice returns word timings. With `inference`, the worker asks for them with each model's option (Inworld `timestamp_type: "WORD"`, Cartesia `add_timestamps: true`), the options LiveKit Agents for Node 1.9.5 checks before it reads the gateway's word alignment into timed transcripts (`hasAlignedTranscript`, `inference/tts.js`). The Inference page does not mention word timings, so whether the gateway sends them to the Node worker is not verified. Where they do not come, the board follows sentence ends (below). The listening test reports it per voice, and each `board cue` log line says `word` or `sentence`.
 
-Deploying the worker: [Deploying Maya's voice worker](maya-voice-deploy.md). The delay measurements are #327. The privacy page and terms hold only a marked paragraph for voice, with no company named (#529); replace it, and raise `MAYA_NOTICE_VERSION`, before the first family call. `mintVoiceToken` refuses a family call without the parent's agreement; an admin test call is exempt (D-251).
+**Inworld steering tag (D-348).** With Inworld TTS-2 and `MAYA_VOICE_STYLE`, each speech request starts with the tag. A board speech sends one request per sentence. The worker removes one matching tag from the start of the timed transcript, even when the timing data splits it across frames. The first spoken word keeps its time and text, including brackets. The spending meter counts the tag and the space after it for each request. `speech-audio.test.ts` checks the request, transcript, billed text and board cue. `tuning.test.ts` checks tag placement through a call. In a two-line Sarah sample on 2026-11-20, LiveKit Inference returned the tag as one token at 0 seconds. Speech also began at 0 seconds. [Supported steering models](https://docs.inworld.ai/tts/capabilities/steering)
+
+The privacy page names both companies that can make Maya's voice through LiveKit Inference. The parent notice covers voice calls (D-336). `mintVoiceToken` checks the parent's agreement for a family call. An admin test call is exempt (D-251). [Deploying Maya's voice worker](maya-voice-deploy.md)
 
 ## Commands
 

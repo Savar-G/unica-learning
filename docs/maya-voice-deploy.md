@@ -73,7 +73,7 @@ npm run voice:stage -- --out ~/unica-maya-voice-deploy
 cd ~/unica-maya-voice-deploy && lk agent deploy
 ```
 
-Change one setting with `lk agent update-secrets --secrets "MAYA_TTS=inference"`; settings you do not name stay. `lk agent rollback` returns to the previous version.
+Change a setting with `lk agent update-secrets --secrets "MAYA_TTS=inference"`. To roll back the worker image, find the version with `lk agent versions`. Run `lk agent rollback --version "<version>"`.
 
 ## Turn on LiveKit Inference
 
@@ -86,7 +86,51 @@ lk agent update-secrets \
   --secrets "MAYA_VOICE_PRIVACY_CONFIRMED=livekit-inference-zdr,child-use-approved"
 ```
 
+Those settings select Cartesia "Katie" (D-338), the code default. See [Maya's production voice](#mayas-production-voice) for the D-348 switch to Inworld "Sarah".
+
 Then run one admin test call and read `lk agent logs`: the `call running` line shows the provider ids and `wordTimings: "requested"`, and each `board cue` line shows `source` `word` (word timings came back) or `sentence` (they did not, and the board followed sentence ends).
+
+## Maya's production voice
+
+D-348 selects Inworld TTS-2 "Sarah" through LiveKit Inference with a steering tag. After the change merges, verify that the live privacy page names Inworld and Cartesia. Record the active worker version and the current Cartesia spending estimate before deployment. Run the commands from the repository root. Stage the approved merge commit from `main`.
+
+```sh
+lk agent status --project unica-ai-teacher worker/maya-voice
+lk agent versions --project unica-ai-teacher worker/maya-voice
+npm run voice:stage -- --ref "<approved-main-commit>" --out ~/unica-maya-voice-deploy
+lk agent deploy --project unica-ai-teacher ~/unica-maya-voice-deploy
+lk agent status --project unica-ai-teacher worker/maya-voice
+```
+
+Wait until the new version is running. Check the LiveKit plan before setting the rate. LiveKit lists Inworld TTS-2 at USD 15 per million characters on Scale (USD 0.015 per 1,000) and USD 25 per million on Build or Ship (USD 0.025 per 1,000). Use the rate for the project. The command below uses Scale. The estimate includes the tag and its following space. [LiveKit pricing](https://livekit.io/pricing/inference#tts) · [Inworld character counting](https://docs.inworld.ai/portal/billing#text-to-speech)
+
+```sh
+lk agent update-secrets --project unica-ai-teacher \
+  --secrets "MAYA_TTS=inference" \
+  --secrets "MAYA_TTS_MODEL=inworld/inworld-tts-2" \
+  --secrets "MAYA_VOICE=Sarah" \
+  --secrets "MAYA_VOICE_STYLE=speak like a warm friendly and upbeat tutor who is happily teaching a young child" \
+  --secrets "MAYA_VOICE_USD_PER_1K_CHARS=0.015" worker/maya-voice
+```
+
+The secrets update restarts the agent servers in order. An active call keeps its voice. In a new admin test call, check that the `call running` log shows `inference/inworld/inworld-tts-2/Sarah`, a cue at a spoken word logs `source: word`, and the saved transcript contains the spoken words without the steering tag. Check the voice charge against the request's character count, including the tag and its separator.
+
+**Rollback to Katie.** Restore the Cartesia model, voice, and previous spending estimate in one update. This command uses the previous default of USD 0.03 per 1,000 characters. If the worker had a different Cartesia rate, use the recorded value. Start a new admin test call and check for Katie's provider ID and the restored rate.
+
+```sh
+lk agent update-secrets --project unica-ai-teacher \
+  --secrets "MAYA_TTS=inference" \
+  --secrets "MAYA_TTS_MODEL=cartesia/sonic-3.6" \
+  --secrets "MAYA_VOICE=f786b574-daa5-4673-aa0c-cbe3e8534c02" \
+  --secrets "MAYA_VOICE_USD_PER_1K_CHARS=0.03" worker/maya-voice
+```
+
+If the worker image also needs a rollback, use the version recorded before deployment after restoring the Cartesia settings.
+
+```sh
+lk agent rollback --project unica-ai-teacher --version "<previous-version>" worker/maya-voice
+lk agent status --project unica-ai-teacher worker/maya-voice
+```
 
 ## Listening test
 

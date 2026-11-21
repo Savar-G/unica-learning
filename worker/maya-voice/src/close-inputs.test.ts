@@ -15,7 +15,10 @@ vi.mock("@/lib/maya-call-store", () => ({ mayaCallStore: () => ({ get: f.get }) 
 vi.mock("@/lib/maya-call-seams", () => ({ callSeams: () => ({}) }));
 vi.mock("@/lib/maya-call", () => ({ mayaCalls: () => ({ openVoice: f.open }) }));
 vi.mock("./opening", () => ({ voiceOpening: () => null }));
-vi.mock("./providers", () => ({ makeProviders: async () => ({ fake: true, stt: { provider: "fake" }, tts: { provider: "fake", prewarm() {} } }) }));
+vi.mock("./providers", async (importOriginal) => ({
+  ...await importOriginal<typeof import("./providers")>(),
+  makeProviders: async () => ({ fake: true, stt: { provider: "fake" }, tts: { provider: "fake", prewarm() {} } }),
+}));
 vi.mock("./child-wait", () => ({ waitForChild: async () => ({ child: {} }), presenceOf: () => "here" }));
 vi.mock("@/lib/board-protocol", () => ({ createBoardSender: () => ({}) }));
 vi.mock("@/lib/board-rpc", () => ({ boardRpcTransport: () => ({}) }));

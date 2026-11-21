@@ -89,7 +89,9 @@ All switches fail closed unless set to the exact value documented below. Do not 
 |---|---|
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | Server-only. Web app mints 5-min call tokens and shows the Speak option only when all three are set. Voice worker uses LiveKit-injected values (`docs/maya-voice.md`, `docs/maya-voice-deploy.md`). |
 | `MAYA_STT`, `MAYA_TTS` | Voice worker only: `fake`, `inference`, `assemblyai` (STT) / `inworld` (TTS). |
-| `MAYA_USD_TO_CAD`, `MAYA_MONTHLY_ALERT_CAD`, `MAYA_STT_USD_PER_MINUTE`, `MAYA_VOICE_USD_PER_1K_CHARS` | Maya spending estimates and monthly CAD alert threshold (`docs/maya-spend.md`; defaults `1.40`, `400`, `0.01`, `0.03`). Site and voice worker. |
+| `MAYA_TTS_MODEL`, `MAYA_VOICE`, `MAYA_VOICE_STYLE` | Voice worker only. D-348 selects `inworld/inworld-tts-2`, `Sarah` and the tag text. Only Inworld TTS-2 accepts the style. Cartesia Katie is the code default. See [Maya's production voice](maya-voice-deploy.md#mayas-production-voice). |
+| `MAYA_USD_TO_CAD`, `MAYA_MONTHLY_ALERT_CAD`, `MAYA_STT_USD_PER_MINUTE` | Site and voice worker. Maya spending settings. Defaults are `1.40`, `400` and `0.01`. See [Maya's spending cap](maya-spend.md). |
+| `MAYA_VOICE_USD_PER_1K_CHARS` | Voice worker spending estimate. The worker defaults to `0.015` for Inworld TTS-2 through LiveKit Inference and `0.03` otherwise. Set an override for a different plan or agreed rate. See [Maya's spending cap](maya-spend.md). |
 
 ## Observability, Analytics, and Ads
 
