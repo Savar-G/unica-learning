@@ -29,6 +29,8 @@ import { sameExchangeTarget, type ExchangeTarget } from "@/lib/maya/checked-exch
 import { childExchangeTarget } from "@/lib/maya/session";
 import { speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-speech";
 import { CuePlaybackOutput } from "./cue-playback";
+import { isBackchannel } from "./backchannel";
+import { labTurnHandling, type StagingLab } from "./staging";
 import { earlyRest, type EarlyRest } from "./early-speech";
 import { detectorVad, HeardSignals, PrepareSignal, silentFinal } from "./heard-signals";
 import { voiceDisconnectReason } from "@/lib/maya-voice-close-reason";
@@ -51,7 +53,7 @@ const stoppedSpeakingAt = (ctx: llm.ChatContext) => {
 };
 
 /** The turn and interruption settings a real call sets (src/lib/maya-voice.ts `VoiceTuning`). */
-export type TurnTuning = Pick<VoiceTuning, "turnMinDelayMs" | "interruptMinMs" | "interruptMinWords">;
+export type TurnTuning = Pick<VoiceTuning, "turnMinDelayMs" | "interruptMinMs" | "interruptMinWords"> & Partial<Pick<VoiceTuning, "interruptMode" | "falseInterruptionMs">>;
 
 /**
  * A session for a voice call: LiveKit's pipeline with Maya's agent. `fake` turns off voice activity detection. `tuning`
@@ -59,7 +61,19 @@ export type TurnTuning = Pick<VoiceTuning, "turnMinDelayMs" | "interruptMinMs" |
  * LiveKit adds after the speech-to-text end of turn (its default is 500 ms), and when the child's speech stops Maya
  * (`minDuration`, `minWords`). A test's `endpointingMs` wins over `turn.turnMinDelayMs`.
  */
-export function voiceSession(providers: { stt: stt.STT; tts: tts.TTS; fake: boolean }, tuning: { endpointingMs?: number; aecWarmupDuration?: number; turn?: TurnTuning } = {}) {
+export function voiceSession(providers: { stt: stt.STT; tts: tts.TTS; fake: boolean }, tuning: { endpointingMs?: number; aecWarmupDuration?: number; turn?: TurnTuning; lab?: StagingLab } = {}) {
+  // A non-production deployment's lab settings (./staging.ts); production has none and keeps the settings below.
+  const lab = labTurnHandling(tuning.lab);
+  // Speech this long stops Maya, and (with `minWords` above 0) only once the speech-to-text has heard that many words.
+  // The other options (the false interruption timeout and its resume) keep LiveKit's defaults. `mode` is set on real
+  // calls only: the fakes run no VAD, and LiveKit refuses adaptive detection without one. A lab's mode wins.
+  const interruption = {
+    ...(tuning.turn ? { minDuration: tuning.turn.interruptMinMs, minWords: tuning.turn.interruptMinWords } : {}),
+    ...(tuning.turn?.interruptMode ? { mode: tuning.turn.interruptMode } : {}),
+    ...(tuning.turn?.falseInterruptionMs !== undefined ? { falseInterruptionTimeout: tuning.turn.falseInterruptionMs } : {}),
+    ...(lab.interruptionMode ? { mode: lab.interruptionMode } : {}),
+    ...(lab.falseInterruptionMs !== undefined ? { falseInterruptionTimeout: lab.falseInterruptionMs } : {}),
+  };
   return new voice.AgentSession({
     stt: providers.stt,
     tts: providers.tts,
@@ -69,13 +83,11 @@ export function voiceSession(providers: { stt: stt.STT; tts: tts.TTS; fake: bool
     ...(providers.fake ? { vad: null } : {}),
     // The speech-to-text says when the child's turn ends (AssemblyAI's end of turn; the fake's end of speech).
     turnHandling: {
-      turnDetection: "stt",
+      turnDetection: lab.turnDetection ?? "stt",
       preemptiveGeneration: { enabled: false },
       ...(tuning.endpointingMs !== undefined ? { endpointing: { minDelay: tuning.endpointingMs, maxDelay: tuning.endpointingMs } }
         : tuning.turn ? { endpointing: { minDelay: tuning.turn.turnMinDelayMs } } : {}),
-      // Speech this long stops Maya, and (with `minWords` above 0) only once the speech-to-text has heard that many words.
-      // The other options (the false interruption timeout and its resume) keep LiveKit's defaults.
-      ...(tuning.turn ? { interruption: { minDuration: tuning.turn.interruptMinMs, minWords: tuning.turn.interruptMinWords } } : {}),
+      ...(Object.keys(interruption).length ? { interruption } : {}),
     },
     ...(tuning.aecWarmupDuration !== undefined ? { aecWarmupDuration: tuning.aecWarmupDuration } : {}),
     // The session's own pause policy (src/lib/maya) decides about silence, not LiveKit's away timer.
@@ -89,6 +101,11 @@ interface AgentHooks {
   greetingOver(): Promise<void>;
   /** True when the child went on speaking within the wait; `text` ends in a number word that can go on. */
   childWentOn(text: string): Promise<boolean>;
+  /**
+   * True when a final transcript is a lone backchannel said while Maya speaks (#1147): the run records it, and the
+   * transcript never reaches LiveKit, so a paused speech resumes. Absent: every transcript goes on.
+   */
+  backchannel?(text: string): boolean;
   /** Gives the call a prepare hint (`PrepareSignal`). False: dropped (no `prepare`, or a child turn runs). */
   prepare?(text: string): boolean;
 }
@@ -171,6 +188,7 @@ export class MayaVoiceAgent extends voice.Agent {
     const finals = this.finals;
     const marks = this.marks;
     const callId = this.call.id;
+    const hooks = this.hooks;
     /**
      * A start of speech held back while the input is silent (no detector speech, a low peak): a phantom transcript then
      * leaves the session's user state alone. It goes on as soon as anything of the speech is kept.
@@ -196,6 +214,11 @@ export class MayaVoiceAgent extends voice.Agent {
             if (silentFinal(heard, limit)) {
               // Words in digital silence: not a child turn, never answered. The signals go in the log, no words.
               console.warn("[maya voice] dropped transcript", callId, heard);
+              return;
+            }
+            if (hooks.backchannel?.(event.alternatives[0]?.text ?? "")) {
+              // Maya goes on: LiveKit never reads the words, so its pause ends in a resume. The signals go in the log, no words.
+              console.info("[maya voice] backchannel over Maya", callId, heard);
               return;
             }
             finals.push(event.alternatives.map((a) => ({ text: a.text, confidence: a.confidence })));
@@ -489,6 +512,8 @@ export class VoiceCallRun {
     private readonly options: {
       timers?: Timers;
       board?: BoardSpeech;
+      /** A staging experiment: hold speech and board cues until LiveKit confirms or cancels the interruption. */
+      pausePlayback?: boolean;
       notify(update: CallUpdate): void;
       closed?(): Promise<void>;
       /** The turn reaching the worker to the acknowledgement, for a turn that can stream. Default ACK_LIMIT_MS; 0 turns it off. */
@@ -534,7 +559,8 @@ export class VoiceCallRun {
     this.segment = call.revision;
     this.agent = new MayaVoiceAgent(call, turn => this.after(turn), options.board ? { sync: options.board, scope: () => this.boardScope } : undefined,
       (stoppedAt, work, mark, finalIds) => this.reply(stoppedAt, work, mark, finalIds),
-      { greetingOver: () => this.greetingOver(), childWentOn: text => this.childWentOn(text), prepare: text => this.prepareHint(text) });
+      { greetingOver: () => this.greetingOver(), childWentOn: text => this.childWentOn(text), prepare: text => this.prepareHint(text),
+        ...(options.pausePlayback ? { backchannel: (text: string) => this.backchannel(text) } : {}) });
     this.agent.hearing = { dropSilentPeakDbfs: options.dropSilentPeakDbfs ?? null, ...(options.heardVad ? { vad: options.heardVad } : {}), detectorMinSilenceMs: options.detectorMinSilenceMs ?? null };
     this.agent.onSilent = speech => this.silentSpeech(speech);
     this.agent.requireSpokenCues = scope => this.exchangeScope?.scope.generation === scope.generation;
@@ -553,7 +579,9 @@ export class VoiceCallRun {
         this.speechEndSeenAt = null;
         if (this.pace) this.cutAck(this.pace);
         if (audioScope) this.stopBoard(audioScope);
-        if (this.boardScope && !this.exchangeScope && !this.exchangeBoard) this.stopBoard(this.boardScope);
+        // An output that can pause leaves the decision to LiveKit: it pauses Maya, then resumes her when no words
+        // follow (a "mm-hm" or a noise) or clears her speech, which retires the plan, when they do.
+        if (this.boardScope && !this.exchangeScope && !this.exchangeBoard && !(this.options.pausePlayback && this.session.output.audio?.canPause)) this.stopBoard(this.boardScope);
       } else if (ev.oldState === "speaking") {
         this.childStoppedAt = this.timers.now();
         this.speechEndSeenAt = ev.createdAt;
@@ -579,7 +607,7 @@ export class VoiceCallRun {
     const audio = this.session.output.audio;
     if (!audio || !this.options.board) return;
     this.boardAudio = new CuePlaybackOutput(audio, this.options.board, this.timers,
-      (work, scope) => this.boardTask(work, scope), scope => this.stopBoard(scope));
+      (work, scope) => this.boardTask(work, scope), scope => this.stopBoard(scope), this.options.pausePlayback);
     this.session.output.audio = this.boardAudio.audio;
   }
 
@@ -613,6 +641,21 @@ export class VoiceCallRun {
   }
 
   /** The speech-to-text gave words: a child who went on speaking ends the wait of `childWentOn`. */
+  /** Backchannels said over Maya and ignored in this run (#1147). */
+  backchannels = 0;
+
+  /** Maya's audio plays, or LiveKit paused it for the child's sound and may resume it. */
+  private mayaSpeaking() {
+    return this.session.agentState === "speaking" || this.boardAudio?.isPaused === true;
+  }
+
+  private backchannel(text: string) {
+    if (!isBackchannel(text) || !this.mayaSpeaking()) return false;
+    this.backchannels++;
+    void this.call.backchannel?.(text).catch(() => { /* the trace record never stops Maya */ });
+    return true;
+  }
+
   private wordsHeard() {
     this.wordCount++;
     this.wordWaiter?.();

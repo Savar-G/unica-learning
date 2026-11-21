@@ -75,6 +75,50 @@ cd ~/unica-maya-voice-deploy && lk agent deploy
 
 Change one setting with `lk agent update-secrets --secrets "MAYA_TTS=inference"`; settings you do not name stay. `lk agent rollback` returns to the previous version.
 
+## The staging deployment (#1137)
+
+A non-production copy of the agent, named `staging`, measures what only LiveKit Cloud runs: adaptive interruption, the multimodal turn detector and Krisp filters ([Non-production deployments](https://docs.livekit.io/deploy/agents/deployments.md), read 2026-11-20). Savar approved it on 2026-11-20. It sleeps when idle and costs nothing then.
+
+- **Only admin test calls reach it.** A dispatch with no deployment name goes to `production`. The named worker requires a dispatch that names its deployment. Before it joins the room, it checks that the call is live and that an authorized admin started it for a test family. The site uses the default deployment: `mintVoiceToken` takes a `staging` option for an admin test call only and throws for any other kind, and no route passes it. LiveKit Agents for Node 1.9.5 registers each worker under `LIVEKIT_AGENT_DEPLOYMENT`, which LiveKit Cloud sets (empty in production). Versions before 1.7.1 register a staging worker as production, so never deploy one there.
+- **Secrets are shared with production.** Never run `lk agent update-secrets` for a staging test, and never pass `--secrets` or `--secrets-file` to a staging deploy. Staging-only settings come from the job: `worker/maya-voice/src/staging.ts` reads a `lab` object from the job's metadata only when `LIVEKIT_AGENT_DEPLOYMENT` is not empty. Production ignores it. The settings are `interruption` (`adaptive` or `vad`), `turnDetection` (`stt` or `multimodal`), `noise` (`krisp-nc` or `krisp-bvc`) and `falseInterruptionMs` (the resume wait: 500, 700, 1000, 1500 or 2000).
+- **Stop timing, staging only.** On a named deployment the worker logs one `staging stop timing` line per start of the child's speech (`worker/maya-voice/src/stop-timing.ts`): when it heard the child, when LiveKit asked Maya's output to pause or clear, when the room output's audio actually stopped, and any resume, on the worker's clock. Joined with the child's own onset and stop, a Cloud stop splits into the network up, the worker's reaction, the output's own stop and the network down plus playout. The runner counts an audible stop only when it receives a matching pause or clear for active playback. The worker sends timing only to the test participant.
+- **Deploy** (staged as above, from the staged folder): `lk agent deploy --deployment staging --project unica-ai-teacher --no-default-attributes --attribute git_commit=<sha> --attribute git_branch=<branch> -y .`. A redeploy drops a live staging call at once.
+- **Run one test call**: `node scripts/maya-staging-call.mjs` (usage in the file). It makes a real admin test call of a test family, names the deployment in the token, joins as a headless child and plays recorded clips. It refuses to start while a family voice call is live. It validates lab settings and clips before it creates the call. It hangs up or cancels the call and disconnects its room on exit. Read the worker's lines with `lk agent logs --deployment staging`: `registered worker` shows `deployment: staging`, and `staging lab` shows the call's settings.
+- **Monitoring is off on it.** The shared secret `MAYA_VOICE_MONITORING` would make staging report to Sentry and Slack as production. With `LIVEKIT_AGENT_DEPLOYMENT` named, `worker/maya-voice/src/monitoring.ts` starts no Sentry client and no product alerts. Read `lk agent logs --deployment staging` for worker diagnostics. The web sweep recovers abandoned admin voice tests without product or safety alerts. The call records do not identify the deployment, so this rule covers admin voice tests on either deployment.
+- **End a test call with a hang-up.** A headless child that is stopped without one ends the call as `technical_issue` after the reconnect grace, and before the fix above that raised a production alert (2026-11-20).
+- **Remove it**: `lk agent delete --deployment staging`. Without `--deployment`, `lk agent delete` deletes the whole agent, production included. Never run `lk agent promote`: it puts the staging image into production.
+
+**State (2026-11-20).** Version `yMnQ5aC4PayZ`, built from `b2b67251c` on `site/maya-staging-cloud` (with #1147 at `2fc4e3bf1`: the backchannel rule, `vad`, 30 ms, 1000 ms), region `us-east`, 2 CPU and 4 GB, at most 1 replica (production: 8 CPU, 16 GB). Idle, so asleep. Production stayed on `cVzyNNt59kL2` through every staging deploy. The #1147 values measured on it are in `docs/maya-voice.md` ("The same values on LiveKit Cloud"). A harness started with `MAYA_CHECKED_EXCHANGE=on` in its own environment makes a checked-exchange call: the session keeps the flag it was started with, so no secret changes.
+
+### Results (2026-11-20)
+
+One admin test call at a time on the staging worker, test family, question 52 − 28, existing tutor path (checked exchange off, as on the production site). The child is `scripts/maya-staging-call.ts` on Savar's MacBook, playing macOS `say` clips (#1147's clips and #1139's prompts). Times are at the child, so they include the network from the Mac to `us-east` and back. On Cloud the worker sees `hosted: true`, so LiveKit Agents 1.9.5 runs the adaptive interruption detector even with no `mode` set: production already uses it.
+
+| Interruption | Local, VAD only (#1147) | Cloud, `vad` | Cloud, adaptive |
+|---|---|---|---|
+| Audible stop after a request (ms) | p50 549, p95 649, n 44 | p50 629, p95 728, n 20 | p50 592, p95 954, n 20 |
+| Stops within 300 ms | 1 of 44 | 0 of 20 | 2 of 20 |
+| False stops | 16 of 21 | 16 of 21 | 14 of 19 |
+| "mm hm" / "okay" / -26 dB request / noise burst | 6/6, 6/6, 4/4, 0/5 | 6/6, 5/5, 5/5, 0/5 | 5/5, 4/5, 4/4, 1/5 |
+| Resumed after a false stop | 0 (no pause then) | 0 | 0: no false-interruption event; Maya's sound came back 1.5 to 3.7 s later as a new reply |
+
+The adaptive detector reported 31 overlaps: 26 interruptions, 4 backchannels, 1 ended by Maya; detection delay p50 315 ms, p95 609 ms. Three of the four backchannel verdicts ("okay") still stopped Maya: the speech-to-text made the word a child turn, and that turn's reply cleared her speech.
+
+| Turn end on a number answer (n 3 each) | Speech-to-text (production) | Multimodal turn detector |
+|---|---|---|
+| "four": child's last sound to Maya's first sound (ms, p50 / max) | 2,226 / 2,359 | 3,329 / 3,591 |
+| "four ... teen" (1 s pause) | 1,170 / 5,680; Maya spoke in the pause 0 of 3 | 3,181 / 8,632; 0 of 3 |
+| "twenty ... four" (0.7 s pause) | 1,969 / 5,100; 1 of 3 | 961 / 12,471; 1 of 3 |
+| "um ... is it thirty four?" (3 s pause) | 4,789; 2 of 3 | none after the clip; 3 of 3 |
+
+The time includes the model's reply (about 2 s). The detector's own decision came p50 1,192 ms after the end of speech (n 17).
+
+**Background voice.** Another voice 18 dB below the child level, with no child speech (#1139: 19 of 19 replies). Maya replied 5 of 5 with no filter, 5 of 5 with Krisp NC and 5 of 5 with Krisp BVC. Each time the call stored the voice's words as child turns. The clip is a clean, close voice, and no louder child voice played with it, so BVC had no primary speaker to keep. A mixed clip is a better BVC test.
+
+**Limits.** n is small. Staging has a quarter of production's CPU: in the adaptive run the worker logged "at full capacity" 27 times and "event loop blocked" 15 times, so Cloud stop times may be high. The earlier warm-up (`d91ec277`) and the first adaptive run (`9538f82d`) overlapped another real-audio job and are left out. No device speaker, echo cancellation, browser or child voice.
+
+**Spend.** 10 calls, about 20 call minutes: model USD 2.03 (provider receipts in `ai_usage_events`), speech-to-text and voice USD 0.83 and profiles USD 0.67 (ledger), LiveKit agent minutes inside the Scale plan. The ledger's `maya_spend` model rows for the same calls add up to USD 36.16, about 18 times the receipts. The four #1147 calls later that day (warm-up and three batches, 14 call minutes) added model USD 1.59 and speech-to-text and voice USD 0.63.
+
 ## Turn on LiveKit Inference
 
 The worker sends speech-to-text and the voice through LiveKit Inference with `MAYA_STT=inference` and `MAYA_TTS=inference` (D-238). It uses the project's own key, which LiveKit Cloud injects, so no other account is needed. Only after every check of the [privacy gate](maya-voice.md#privacy-gate):

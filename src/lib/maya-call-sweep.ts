@@ -59,6 +59,7 @@
 import { limitsOf } from "@/lib/maya";
 import type { CallRecord, CallSeams, MayaCalls } from "@/lib/maya-call";
 import { VOICE_CALL_STALE_MS } from "@/lib/maya-voice";
+import { productMonitoringSuppressed, withoutProductMonitoring } from "@/lib/product-monitoring";
 
 /** How long after its own end time a live call counts as abandoned, and after its end an unfinished call is retried. */
 export const SWEEP_GRACE_MS = 5 * 60_000;
@@ -143,6 +144,7 @@ export function sweepSeams(seams: CallSeams): CallSeams {
       };
     },
     reviewer: () => null,
+    alerts: { ...seams.alerts, send: async call => { if (!productMonitoringSuppressed()) await seams.alerts.send(call); } },
   };
 }
 
@@ -190,7 +192,9 @@ export async function sweepAbandonedCalls(o: SweepOptions): Promise<SweepResult>
   /** Sends "end" to one call. False when the time limit stopped the wait. */
   async function end(record: CallRecord, kind: "ended" | "retried"): Promise<boolean> {
     try {
-      const r = await bounded(o.calls.input(record.id, record.revision, { type: "end" }, null));
+      const close = () => o.calls.input(record.id, record.revision, { type: "end" }, null);
+      // Staging uses admin voice tests, and older call rows do not record the deployment. Keep their recovery quiet.
+      const r = await bounded(record.kind === "admin_test" && record.mode === "voice" ? withoutProductMonitoring(close) : close());
       if (r === LATE) return false;
       if (r.ok) result[kind]++;
       else if (r.error === "conflict") result.conflicts++;

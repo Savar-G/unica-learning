@@ -74,6 +74,26 @@ async function open(s: ReturnType<typeof setup>, id: string) {
   return r.call;
 }
 
+it("records a backchannel said over Maya in the trace, with no child turn, help or credit, and keeps it after a reopen", async () => {
+  const s = setup();
+  const view = await newVoiceCall(s);
+  const call = await open(s, view.id);
+  await call.start();
+  await call.child("I don't know.");
+  const before = structuredClone(call.session);
+  await call.backchannel!("Mm-hmm.");
+  await call.backchannel!("Okay.");
+  // Nothing of the session changes: no child turn, state, help level, hint or credit.
+  expect({ ...call.session, now: null }).toEqual({ ...before, now: null });
+  const reopened = await open(s, view.id);
+  expect(reopened.session.turns).toEqual(before.turns);
+  await reopened.end({ reason: "child_stopped" });
+  const trace = s.store.rows()[0].trace!;
+  expect(trace.turns.filter(t => t.kind === "backchannel")).toMatchObject([{ kind: "backchannel", text: "Mm-hmm." }, { kind: "backchannel", text: "Okay." }]);
+  expect(trace.turns.filter(t => t.kind === "child")).toHaveLength(1);
+  expect(checkTrace(trace)).toMatchObject({ ok: true });
+});
+
 describe("a voice call", () => {
   it("says how long a child's input spent on the model, and keeps the acknowledgements said across a new worker (#532)", async () => {
     const s = setup();
@@ -396,6 +416,20 @@ describe("R408 recovery and privacy", () => {
     const call = await open(s, view.id);
     expect(call.session.variety.name).toBeNull();
     expect((await call.start()).say.join(" ")).not.toContain("Leah");
+  });
+
+  it("allows only one worker to claim a call when both dispatches open it together", async () => {
+    const s = setup();
+    const view = await newVoiceCall(s);
+    const first = s.calls.openVoice(view.id, PROVIDERS, "Leah");
+    const second = s.calls.openVoice(view.id, PROVIDERS, "Leah");
+    const outcomes = await Promise.all([first, second]);
+    const opened = outcomes.filter(r => r.ok);
+    expect(opened).toHaveLength(1);
+    expect(outcomes.filter(r => !r.ok)).toEqual([{ ok: false, error: "conflict" }]);
+    await opened[0].call.connection("agent_joined");
+    await opened[0].call.connection("child_joined");
+    expect(s.connections.rows().map(row => row.kind)).toEqual(["agent_joined", "child_joined"]);
   });
 
   it("R408-7 R408-11: refuses connection renewals and leave events from a replaced worker", async () => {

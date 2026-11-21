@@ -15,12 +15,19 @@ function safeRecord(code: unknown, input: Record<string, unknown> = {}) {
   return Object.hasOwn(PRODUCT_EVENTS, code) ? productEvent(code as ProductCode, input) : null;
 }
 
+/**
+ * A non-production LiveKit deployment (LIVEKIT_AGENT_DEPLOYMENT named, docs/maya-voice-deploy.md) shares production's
+ * secrets, MAYA_VOICE_MONITORING included. Its test calls must not report as production or raise product alerts.
+ */
+const nonProductionDeployment = (env: Env) => { const name = env.LIVEKIT_AGENT_DEPLOYMENT?.trim() ?? ""; return name !== "" && name !== "production"; };
+
 /** No automatic content collection. Fatal process errors become one fixed diagnostic with no exception content. */
 export function voiceMonitoringOptions(env: Env) {
+  const staging = nonProductionDeployment(env);
   return {
     dsn: env.SENTRY_DSN ?? SENTRY_DSN,
-    enabled: env.MAYA_VOICE_MONITORING === "production" || env.MAYA_VOICE_MONITORING === "preview",
-    environment: env.MAYA_VOICE_MONITORING,
+    enabled: !staging && (env.MAYA_VOICE_MONITORING === "production" || env.MAYA_VOICE_MONITORING === "preview"),
+    environment: staging ? "staging" : env.MAYA_VOICE_MONITORING,
     release: env.MAYA_MONITORING_RELEASE,
     defaultIntegrations: false as const,
     integrations: [Sentry.onUncaughtExceptionIntegration(), Sentry.onUnhandledRejectionIntegration()],

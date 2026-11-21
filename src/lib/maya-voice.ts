@@ -214,6 +214,18 @@ export interface VoiceTuning {
   /** LiveKit interruption `minWords`: words the speech-to-text must have heard before speech stops Maya; 0 is none. */
   interruptMinWords: number;
   /**
+   * LiveKit interruption `mode`, set on every real call so local, self-hosted and LiveKit Cloud workers behave the same.
+   * `vad` (the default, #1147): speech alone pauses Maya, and the worker's backchannel rule lets "mm-hmm" resume her.
+   * `adaptive` runs LiveKit's barge-in model; on 2026-11-20 it was 250 to 400 ms slower at p95 and classed every test
+   * backchannel as an interruption (docs/maya-voice.md, "Backchannels and a faster pause").
+   */
+  interruptMode?: "adaptive" | "vad";
+  /**
+   * LiveKit `falseInterruptionTimeout` (ms): after the child's sound ends with no words for Maya (a backchannel, a noise),
+   * how long LiveKit waits before it resumes her paused speech.
+   */
+  falseInterruptionMs?: number;
+  /**
    * A final transcript is dropped (never a child turn) only when the local voice activity detector heard no speech at
    * all since the previous final AND the input's peak stayed below this level (dBFS): words "heard" in digital silence
    * (a phantom "Yes!" on a silent microphone). Null: the rule is off. A quiet real answer has detector speech or a
@@ -265,9 +277,10 @@ const TUNING_SETTINGS = [
   { env: "MAYA_TURN_MIN_DELAY_MS", field: "turnMinDelayMs", min: 0, max: 2000 },
   { env: "MAYA_NUMBER_CONTINUE_MS", field: "numberContinueMs", min: 0, max: 3000 },
   { env: "MAYA_INTERRUPT_MIN_MS", field: "interruptMinMs", min: 0, max: 2000 },
+  { env: "MAYA_FALSE_INTERRUPTION_MS", field: "falseInterruptionMs", min: 500, max: 5000 },
   { env: "MAYA_INTERRUPT_MIN_WORDS", field: "interruptMinWords", min: 0, max: 5 },
   { env: "MAYA_DETECTOR_MIN_SILENCE_MS", field: "detectorMinSilenceMs", min: 100, max: 2000 },
-] as const satisfies readonly { env: string; field: Exclude<keyof VoiceTuning, "dropSilentPeakDbfs">; min: number; max: number }[];
+] as const satisfies readonly { env: string; field: Exclude<keyof VoiceTuning, "dropSilentPeakDbfs" | "interruptMode">; min: number; max: number }[];
 
 /** AssemblyAI's two end-of-turn silences (ms): `min_turn_silence` and `max_turn_silence`. */
 export interface TurnSilence {
@@ -286,16 +299,21 @@ export function turnSilences(tuning: VoiceTuning): { normal: TurnSilence; number
 }
 
 /** The tuning from the worker's environment, or the problems with it. An unset or empty variable keeps its default. */
-export function voiceTuning(env: Readonly<Record<string, string | undefined>>): { tuning: VoiceTuning; problems: string[] } {
-  const tuning: VoiceTuning = { ...VOICE_TUNING_DEFAULTS };
+export function voiceTuning(env: Readonly<Record<string, string | undefined>>, { staging = false } = {}): { tuning: VoiceTuning; problems: string[] } {
+  const tuning: VoiceTuning = { ...VOICE_TUNING_DEFAULTS, ...(staging ? { interruptMinMs: 30, interruptMode: "vad", falseInterruptionMs: 1000 } : {}) };
   const problems: string[] = [];
   for (const { env: name, field, min, max } of TUNING_SETTINGS) {
+    if (!staging && field === "falseInterruptionMs") continue;
     const raw = value(env, name);
     if (!raw) continue;
     const n = Number(raw);
-    if (!/^\d+$/.test(raw) || !Number.isSafeInteger(n) || n < min || n > max) problems.push(`${name} must be a whole number from ${min} to ${max}, not "${raw}"`);
+    const minimum = staging && field === "interruptMinMs" ? 10 : min;
+    if (!/^\d+$/.test(raw) || !Number.isSafeInteger(n) || n < minimum || n > max) problems.push(`${name} must be a whole number from ${minimum} to ${max}, not "${raw}"`);
     else tuning[field] = n;
   }
+  const mode = staging ? value(env, "MAYA_INTERRUPT_MODE") : "";
+  if (mode === "adaptive" || mode === "vad") tuning.interruptMode = mode;
+  else if (mode) problems.push(`MAYA_INTERRUPT_MODE must be "adaptive" or "vad", not "${mode}"`);
   // `off` turns the silent-transcript rule off; else a level from -120 to 0 dBFS.
   const drop = value(env, "MAYA_DROP_SILENT_PEAK_DBFS");
   if (drop === "off") tuning.dropSilentPeakDbfs = null;
@@ -338,7 +356,7 @@ const has = <T extends string>(list: readonly T[], v: string): v is T => (list a
  * outside its bounds is a problem, never a silent fallback to the fake. The ids are what the call row stores; they hold
  * no key.
  */
-export function voiceProviders(env: Readonly<Record<string, string | undefined>>): ProvidersResult {
+export function voiceProviders(env: Readonly<Record<string, string | undefined>>, options: { staging?: boolean } = {}): ProvidersResult {
   const problems: string[] = [];
   let speechToText: SpeechToTextConfig = { provider: "fake" };
   let voice: VoiceConfig = { provider: "fake" };
@@ -377,7 +395,7 @@ export function voiceProviders(env: Readonly<Record<string, string | undefined>>
     if (has(Object.keys(INFERENCE_TTS_MODELS) as InferenceTtsModel[], model)) voice = { provider: "inference", model, voice: id, apiKey, apiSecret, modelOptions: INFERENCE_TTS_MODELS[model] };
     else problems.push(`MAYA_TTS is inference, but MAYA_TTS_MODEL "${model}" is not one of ${Object.keys(INFERENCE_TTS_MODELS).join(", ")}`);
   } else if (tts !== "fake") problems.push(`MAYA_TTS must be fake, inference or inworld, not "${tts}"`);
-  const { tuning, problems: tuningProblems } = voiceTuning(env);
+  const { tuning, problems: tuningProblems } = voiceTuning(env, options);
   problems.push(...tuningProblems);
   const listed = value(env, "MAYA_VOICE_PRIVACY_CONFIRMED").split(",").map(s => s.trim()).filter(Boolean);
   for (const m of listed) if (!has(PRIVACY_MARKERS, m)) problems.push(`MAYA_VOICE_PRIVACY_CONFIRMED has an unknown marker "${m}"`);

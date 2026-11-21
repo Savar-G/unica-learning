@@ -284,6 +284,18 @@ describe("the tuning settings", () => {
     expect(voiceProviders(env)).toMatchObject({ ok: true, tuning: { sttMaxSilenceMs: 3500 } });
   });
 
+  it("keeps production tuning and applies the faster interruption settings only when selected for a lab", () => {
+    const env = { MAYA_INTERRUPT_MODE: "adaptive", MAYA_FALSE_INTERRUPTION_MS: "750", MAYA_INTERRUPT_MIN_MS: "0" };
+    expect(voiceTuning(env)).toEqual({ tuning: { ...VOICE_TUNING_DEFAULTS, interruptMinMs: 0 }, problems: [] });
+    expect(voiceTuning({}, { staging: true })).toMatchObject({ tuning: { interruptMode: "vad", interruptMinMs: 30, falseInterruptionMs: 1000 }, problems: [] });
+    expect(voiceTuning({ ...env, MAYA_INTERRUPT_MIN_MS: "40" }, { staging: true })).toMatchObject({ tuning: { interruptMode: "adaptive", interruptMinMs: 40, falseInterruptionMs: 750 }, problems: [] });
+    expect(voiceTuning({ MAYA_INTERRUPT_MODE: "off" }, { staging: true }).problems).toEqual(['MAYA_INTERRUPT_MODE must be "adaptive" or "vad", not "off"']);
+  });
+
+  it.each([["MAYA_INTERRUPT_MIN_MS", "0"], ["MAYA_INTERRUPT_MIN_MS", "9"], ["MAYA_FALSE_INTERRUPTION_MS", "499"], ["MAYA_FALSE_INTERRUPTION_MS", "5001"]])("refuses an invalid lab setting %s=%s", (name, setting) => {
+    expect(voiceProviders({ [name]: setting }, { staging: true })).toMatchObject({ ok: false, problems: [expect.stringContaining(name)] });
+  });
+
   it("turn the silent-transcript rule off with MAYA_DROP_SILENT_PEAK_DBFS=off", () => {
     expect(voiceTuning({ MAYA_DROP_SILENT_PEAK_DBFS: "off" })).toMatchObject({ tuning: { dropSilentPeakDbfs: null }, problems: [] });
   });
