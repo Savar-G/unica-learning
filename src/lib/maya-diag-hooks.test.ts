@@ -205,7 +205,7 @@ describe("defaults and the trace contract", () => {
     const trace = session.trace();
     // Version 12 (two-layer true math, #1044) adds the math reviews, version 13 the voice repair's thinking phrase,
     // version 14 (B1) the board fates and version 15 (B2) the sentence ties; this file's own field came in version 11.
-    expect(TRACE_VERSION).toBe(15); expect(trace.version).toBe(15);
+    expect(TRACE_VERSION).toBe(17); expect(trace.version).toBe(17);
     expect(checkTrace(trace).ok).toBe(true);
     for (const v of [9, 10, 11, 12]) expect(checkTrace({ ...trace, version: v } as never).ok).toBe(true);
   });

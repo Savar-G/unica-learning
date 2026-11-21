@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { applyBatch, boardTargets, createScene, type Batch } from "@/lib/board";
+import { applyBatch, boardPaths, boardTargets, createScene, type Batch } from "@/lib/board";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { memoryWordingHistoryStore } from "@/lib/maya";
@@ -11,6 +11,7 @@ import { fakeMathReviewer } from "@/lib/maya-math-review";
 import { workedSteps, type Operation } from "@/lib/question-package";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { checkTrace } from "@/lib/maya-trace";
+import { divisionFacts } from "@/lib/maya/checked-division";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
 
 vi.mock("server-only", () => ({}));
@@ -1019,6 +1020,457 @@ it("answers who Maya is during the related question and comes back to that quest
   await calls.input(closing.view.id, closing.view.revision, { type: "end" }, null);
   expect(byKey(await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" })))
     .toMatchObject([{ result: "right" }, { result: "right", assistance: "independent", question: { source: "transfer" } }]);
+});
+
+// ---------- #1155: Checked division through sharing and exchange ----------
+
+function divisionPackage(a: number, b: number, workbookId = "sample") {
+  const operation: Operation = { kind: "divide", operands: [a, b] };
+  const easier: Operation = { kind: "divide", operands: [8, 2] };
+  return {
+    id: `divide-${a}-${b}`,
+    ref: { source: "workbook" as const, workbookId, page: 1, question: 1 },
+    templateId: null,
+    text: `${a} ÷ ${b} = ?`,
+    answer: { value: { type: "number" as const, value: a / b }, accepted: [], unit: null },
+    operation,
+    steps: workedSteps(operation),
+    skill: { standard: "4.5", skills: ["4.5-divide-1-digit"] },
+    level: 14,
+    difficulty: 2 as const,
+    wrongAnswers: [{ value: { type: "number" as const, value: a - b }, cause: "wrong-op", description: "Subtracted instead of dividing", step: null }],
+    easierExample: { text: "8 ÷ 2 = ?", operation: easier, answer: { type: "number" as const, value: 4 }, steps: workedSteps(easier) },
+  };
+}
+
+function applyAll(batches: readonly Batch[]) {
+  let scene = createScene();
+  for (const batch of batches) {
+    const applied = applyBatch(scene, batch);
+    if (!applied.ok) throw new Error(`${batch.transactionId}: ${applied.refusal.reason}`);
+    scene = applied.scene;
+  }
+  return scene;
+}
+
+function expectFourGroupsOfTwo(scene: ReturnType<typeof createScene>, objectId: string, leftover: boolean) {
+  const paths = boardPaths(scene).filter((p) => p.objectId === objectId);
+  const pieces = paths.filter((p) => p.target?.part === "piece");
+  const points = (piece: string) => pieces.flatMap((p) => p.target?.part === "piece" && p.target.piece === piece ? p.pts : []);
+  const rods = Array.from({ length: leftover ? 9 : 8 }, (_, i) => points(`ten-${i + 1}`));
+  expect(rods.every((pts) => pts.length > 0)).toBe(true);
+  for (let i = 0; i < 4; i++) {
+    const outline = points(`ten-group-${i + 1}`);
+    expect(outline).toHaveLength(5);
+    const xs = outline.map(([x]) => x);
+    const ys = outline.map(([, y]) => y);
+    const within = ([x, y]: readonly [number, number]) => x > Math.min(...xs) && x < Math.max(...xs) && y > Math.min(...ys) && y < Math.max(...ys);
+    expect(rods.flatMap((rod, n) => rod.every(within) ? [n + 1] : [])).toEqual([2 * i + 1, 2 * i + 2]);
+    if (leftover) expect(rods[8].some(within)).toBe(false);
+  }
+  expect(points("ten-group-5")).toEqual([]);
+}
+
+it("84 ÷ 4: checks prerequisites, lets a proficient child solve independently, and guides a struggling child with Share the tens without bring-down", async () => {
+  const { calls, answer, store, events } = setup();
+  const pkg = divisionPackage(84, 4, parentId);
+  // Proficient path: answers tens and equal-sharing checks -> skips demo -> solves -> optional transfer 69 ÷ 3
+  let turn = ok(await calls.start({ ...input, package: pkg, grade: 4 }));
+  const say = async (text: string) => {
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text }, null));
+    return turn.output.say.join(" ");
+  };
+  expect(await say("I don't know how to start.")).toMatch(/how many tens.*84/i);
+  expect(await say("8 tens.")).toMatch(/share 8 tens equally into 4 groups/i);
+  expect(await say("2 tens.")).toMatch(/try the whole division on your own/i);
+  expect(turn.view.exchange).toBeUndefined();
+  expect(await say("My answer is 21.")).toMatch(/you found the quotient.*one more like this on your own\?$/i);
+  const transferStart = await say("Yes.");
+  expect(transferStart).toMatch(/69 divided by 3/i);
+  expect(transferStart).not.toMatch(/\b23\b|twenty.three/i);
+  expect(turn.view.batches.at(-1)?.commands).toEqual([
+    { op: "clear", scope: "maya_objects" },
+    expect.objectContaining({ op: "write", text: "69 ÷ 3 = ?" }),
+  ]);
+  const transferDone = await say("23.");
+  expect(transferDone).toMatch(/you found the quotient/i);
+  expect(turn.view.outcome).toMatchObject({ reason: "solved", assistance: "independent", transfer: { result: "right", assistance: "independent" } });
+  await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null);
+  expect(checkTrace(store.rows()[0].trace)).toMatchObject({ ok: true });
+  expect(byKey(await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" }))).toMatchObject([
+    { result: "right" },
+    { result: "right", assistance: "independent", question: { source: "transfer", text: "69 ÷ 3 = ?" } },
+  ]);
+
+  // Struggling path: Share the tens action connects blocks to written division without saying "bring down" or revealing 21
+  let guided = ok(await calls.start({ ...input, package: divisionPackage(84, 4), grade: 4 }));
+  const send = async (event: CallInput) => {
+    guided = ok(await calls.input(guided.view.id, guided.view.revision, event, null));
+    return guided.output.say.join(" ");
+  };
+  await send({ type: "child", text: "I don't know how to start." });
+  const gap = await send({ type: "child", text: "I don't know." });
+  expect(gap).toMatch(/8 tens and 4 ones.*share the tens/i);
+  const shareTarget = guided.view.exchange!;
+  expect(shareTarget).toMatchObject({ objectId: "division-share" });
+  const shared = await send({ type: "exchange", target: shareTarget, fates: [{ batchId: shareTarget.batchId, fate: "shown" }] });
+  expect(shared).toMatch(/2 tens in each group.*written division.*4 ones/i);
+  expect(shared).not.toMatch(/bring down|\b21\b|twenty.one|\b1 one\b/i);
+  const scene = applyAll(guided.view.batches);
+  expectFourGroupsOfTwo(scene, "division-shared", false);
+  expect(boardTargets(scene).some((t) => t.target.objectId === "division-written" && t.target.part === "cell" && t.target.rowId === "quotient" && t.target.column === "tens" && t.value === "2")).toBe(true);
+  expect(await send({ type: "child", text: "1 one.", fates: [{ batchId: guided.view.batches.at(-1)!.transactionId, fate: "shown" }] })).toMatch(/whole quotient/i);
+  expect(await send({ type: "child", text: "21." })).toMatch(/you found the quotient/i);
+  expect(await send({ type: "child", text: "No thanks." })).toMatch(/bye for now/i);
+  expect(guided.view.outcome).toMatchObject({ reason: "solved", assistance: "guided" });
+  expect(checkTrace(store.rows()[1].trace)).toMatchObject({ ok: true });
+  expect(answer).not.toHaveBeenCalled();
+});
+
+it("96 ÷ 4: guides Share the tens then Exchange one ten, preserves value 96 on the board, explains written 16 ones without bring-down, and offers an exchange transfer", async () => {
+  const { calls, answer, store, events } = setup();
+  const pkg = divisionPackage(96, 4, parentId);
+  let turn = ok(await calls.start({ ...input, package: pkg, grade: 4 }));
+  const send = async (event: CallInput) => {
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, event, null));
+    return turn.output.say.join(" ");
+  };
+  const prompt = await send({ type: "child", text: "How do I divide?" });
+  expect(prompt).toMatch(/9 tens and 6 ones.*share the tens/i);
+  const shareTarget = turn.view.exchange!;
+  expect(shareTarget).toMatchObject({ objectId: "division-share" });
+  // Step 1 child action: Share the tens -> 1 remaining ten highlighted + written bracket shows 2, 8, 1 (no bring2 yet)
+  const afterShare = await send({ type: "exchange", target: shareTarget, fates: [{ batchId: shareTarget.batchId, fate: "shown" }] });
+  expect(afterShare).toMatch(/2 tens in each group.*1 ten left over.*written division.*exchange one ten/i);
+  expect(afterShare).not.toMatch(/bring down|\b24\b|twenty.four|\b4 ones\b/i);
+  const midScene = applyAll(turn.view.batches);
+  expectFourGroupsOfTwo(midScene, "exchange-before", true);
+  expect(boardTargets(midScene).find((t) => t.target.objectId === "exchange-before" && t.target.part === "whole")?.value).toBe("96");
+  expect(boardTargets(midScene).find((t) => t.target.objectId === "division-written" && t.target.part === "row" && t.target.rowId === "bring2")?.value).toBeNull();
+  const exchangeTarget = turn.view.exchange!;
+  expect(exchangeTarget).toMatchObject({ objectId: "exchange-before" });
+  // Duplicate submit of share target is idempotent
+  const dupShare = ok(await calls.input(turn.view.id, turn.view.revision, { type: "exchange", target: shareTarget }, null));
+  expect(dupShare.output.newBatches).toBe(0);
+  // Step 2 child action: Exchange one ten -> 8 tens and 16 ones = still 96, and written bracket records 6 beside 1
+  const afterExchange = await send({ type: "exchange", target: exchangeTarget, fates: [{ batchId: exchangeTarget.batchId, fate: "shown" }] });
+  expect(afterExchange).toMatch(/8 tens and 16 ones.*still 96.*written division.*16 ones/i);
+  expect(afterExchange).not.toMatch(/bring down|\b24\b|twenty.four|\b4 ones\b/i);
+  expect(turn.view.exchange).toBeUndefined();
+  const finalScene = applyAll(turn.view.batches);
+  expectFourGroupsOfTwo(finalScene, "exchange-after", false);
+  expect(boardTargets(finalScene).find((t) => t.target.objectId === "exchange-after" && t.target.part === "whole")?.value).toBe("96");
+  expect(boardTargets(finalScene).find((t) => t.target.objectId === "exchange-after" && t.target.part === "piece" && t.target.piece === "ones")?.value).toBe("16");
+  expect(boardTargets(finalScene).find((t) => t.target.objectId === "division-written" && t.target.part === "row" && t.target.rowId === "bring2")?.value).toBe("6");
+  // Ones -> combine -> solved -> optional related exchange division (75 ÷ 3)
+  expect(await send({ type: "child", text: "4 ones.", fates: [{ batchId: turn.view.batches.at(-1)!.transactionId, fate: "shown" }] })).toMatch(/whole quotient/i);
+  expect(await send({ type: "child", text: "My answer is 24." })).toMatch(/you found the quotient.*one more like this/i);
+  const related = await send({ type: "child", text: "Yes." });
+  expect(related).toMatch(/75 divided by 3/i);
+  expect(related).not.toMatch(/\b25\b|twenty.five/i);
+  expect(await send({ type: "child", text: "I don't know." })).toMatch(/share 7 tens equally into 3 groups/i);
+  expect(await send({ type: "child", text: "2 tens." })).toMatch(/1 ten left over/i);
+  expect(await send({ type: "child", text: "Trade 1 ten for 10 ones." })).toMatch(/share 15 ones into 3 equal groups/i);
+  expect(await send({ type: "child", text: "5 ones." })).toMatch(/whole quotient/i);
+  expect(await send({ type: "child", text: "25." })).toMatch(/you found the quotient/i);
+  expect(turn.view.outcome).toMatchObject({ reason: "solved", assistance: "guided", transfer: { result: "right", assistance: "hinted" } });
+  await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null);
+  expect(checkTrace(store.rows()[0].trace)).toMatchObject({ ok: true });
+  const [origEvent, transEvent] = byKey(await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" }));
+  expect(origEvent).toMatchObject({ result: "right_with_help", stuckStep: "tens" });
+  expect(transEvent).toMatchObject({ result: "right_with_help", assistance: "hinted", question: { source: "transfer", text: "75 ÷ 3 = ?" } });
+  expect(answer).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["drop remainder ten with right quotient", "My answer is 24 because 6 divided by 4 is 4.", /cannot leave the remaining ten out.*16 ones/i],
+  ["treat remaining ten as 1 one", "My answer is 24 because 1 plus 6 is 7.", /1 ten, not 1 one.*16 ones/i],
+  ["subtract instead of divide", "My answer is 92.", /shares 96 into 4 equal groups/i],
+  ["count the leftover ten as a one", "My answer is 24 because I counted the leftover ten as a one.", /1 ten, not 1 one.*16 ones/i],
+])("96 ÷ 4: gives division misconception feedback for %s without crediting wrong reasoning", async (_label, childText, expectedFeedback) => {
+  const { calls, store } = setup();
+  const started = ok(await calls.start({ ...input, package: divisionPackage(96, 4) }));
+  const reply = ok(await calls.input(started.view.id, started.view.revision, { type: "child", text: childText }, null));
+  expect(reply.output.say.join(" ")).toMatch(expectedFeedback);
+  expect(reply.output.say.join(" ")).not.toMatch(/bring down|\b24\b|twenty.four/i);
+  const ended = ok(await calls.input(reply.view.id, reply.view.revision, { type: "end" }, null));
+  expect(ended.view.outcome?.reason).toBe("child_stopped");
+  expect(store.rows()[0].trace?.checkedExchange?.turns.some((t) => t.observation?.skill === "quotient")).toBe(false);
+  expect(store.rows()[0].trace?.checkedExchange?.turns.some((t) => t.observation?.skill === "division_misconception")).toBe(true);
+});
+
+it("96 ÷ 4 in voice: staggers show/share/exchange cues, recovers interrupted demo and pending child exchange across worker replacement, and runs transfer in voice", async () => {
+  const { calls, store, events } = setup();
+  const pkg = divisionPackage(96, 4, parentId);
+  const voice = ok(await calls.startVoice({ ...input, kind: "family", package: pkg }));
+  const open = async () => {
+    const opened = await calls.openVoice(voice.view.id, { speechToText: "fake", voice: "fake" }, null);
+    if (!opened.ok) throw new Error(opened.error);
+    return opened.call;
+  };
+  const observe = (board: Batch) => ({ kind: "batch" as const, batchId: board.transactionId, commands: [...board.commands] });
+
+  // Part 1: Demo interruption cancels unshown share and exchange; replacement retries only cancelled batches in order
+  const call = await open();
+  await call.start();
+  const demo = await call.child("Show me how to divide.");
+  expect(demo.boardCues).toHaveLength(3);
+  expect(demo.boardCues![0].word).toBeLessThan(demo.boardCues![1].word);
+  expect(demo.boardCues![1].word).toBeLessThan(demo.boardCues![2].word);
+  const [show, share, exchange] = demo.boardCues!.map((c) => c.batch);
+  expect(share.after).toEqual([show.transactionId]);
+  expect(exchange.after).toEqual([share.transactionId]);
+  await call.observeBoard({ events: [observe(show), { kind: "cancelled", batchIds: [share.transactionId, exchange.transactionId] }] });
+  await call.exchangePlayback!(demo.exchangeTurnId!, "interrupted");
+  const resumed = await open();
+  const retry = await resumed.child("Show me how to divide again.");
+  expect(retry.boardCues).toHaveLength(2);
+  expect(retry.boardCues![0].batch.after).toEqual([show.transactionId]);
+  expect(retry.boardCues![1].batch.after).toEqual([retry.boardCues![0].batch.transactionId]);
+  await resumed.exchangePlayback!(retry.exchangeTurnId!, "finished");
+  expect((await resumed.child("My answer is 24.")).say.join(" ")).toMatch(/one more like this/i);
+  const startedTransfer = await resumed.child("Yes.");
+  expect(startedTransfer.say.join(" ")).toMatch(/75 divided by 3/i);
+  const doneTransfer = await resumed.child("25.");
+  expect(doneTransfer.ended).toBe(true);
+  await resumed.end({ reason: "child_stopped" });
+  expect(checkTrace(store.rows()[0].trace)).toMatchObject({ ok: true });
+  expect(byKey(await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" }))).toMatchObject([
+    { result: "right_with_help" },
+    { result: "right", assistance: "independent", question: { source: "transfer", text: "75 ÷ 3 = ?" } },
+  ]);
+
+  // Part 2: Pending second child action (Exchange one ten) survives worker replacement
+  const voice2 = ok(await calls.startVoice({ ...input, kind: "family", package: divisionPackage(96, 4) }));
+  const open2 = async () => {
+    const opened = await calls.openVoice(voice2.view.id, { speechToText: "fake", voice: "fake" }, null);
+    if (!opened.ok) throw new Error(opened.error);
+    return opened.call;
+  };
+  const c2 = await open2();
+  await c2.start();
+  const p = await c2.child("How do I divide?");
+  const bShow = p.boardCues![0].batch;
+  await c2.observeBoard({ events: [observe(bShow)] });
+  const tShare = (await calls.view(voice2.view.id))!.exchange!;
+  const rShare = (await c2.exchange!(tShare))!;
+  const bShare = rShare.boardCues![0].batch;
+  await c2.observeBoard({ events: [observe(bShow), observe(bShare)] });
+  const tEx = (await calls.view(voice2.view.id))!.exchange!;
+  expect(tEx).toMatchObject({ objectId: "exchange-before" });
+  const rEx = (await c2.exchange!(tEx))!;
+  const bEx = rEx.boardCues![0].batch;
+  // Worker disconnects before bEx is confirmed on the screen
+  const recovered = await open2();
+  expect(recovered.pendingExchange).toEqual(bEx);
+  await recovered.observeBoard({ events: [observe(bShow), observe(bShare), observe(bEx)] });
+  expect(recovered.pendingExchange).toBeUndefined();
+  await recovered.end({ reason: "child_stopped" });
+  expect(checkTrace(store.rows()[1].trace)).toMatchObject({ ok: true });
+});
+
+it("uses a separate division example when showing the target would disclose the answer, and formats division transfer parent notes accurately", async () => {
+  const { calls } = setup();
+  // 30 ÷ 3 = 10: showing "1 ten" and "0 ones" would disclose 10, so Maya picks a separate example without disclosing 10.
+  const pkg30 = divisionPackage(30, 3);
+  const chat = ok(await calls.start({ ...input, package: pkg30 }));
+  const turn = ok(await calls.input(chat.view.id, chat.view.revision, { type: "child", text: "Show me how to divide." }, null));
+  expect(turn.output.say.join(" ")).toMatch(/separate example: 84/i);
+  expect(turn.output.say.join(" ")).not.toMatch(/\b10\b|\bten\b(?=\s|$)/i);
+
+  // Demonstrated division transfer note says "sharing steps", not "the trade"
+  const pkg84 = divisionPackage(84, 4);
+  let t = ok(await calls.start({ ...input, package: pkg84 }));
+  const say = async (text: string) => {
+    t = ok(await calls.input(t.view.id, t.view.revision, { type: "child", text }, null));
+    return t.output.say.join(" ");
+  };
+  await say("My answer is 21.");
+  await say("Yes.");
+  expect(await say("Show me how to divide.")).toMatch(/6 tens shared into 3 equal groups/i);
+  await say("3 ones.");
+  await say("23.");
+  const note = codeSentences(noteFacts({ outcome: t.view.outcome!, event: null, package: pkg84, question: pkg84.ref })).join(" ");
+  expect(note).toContain("Then Maya showed the sharing steps again, and {child} got a related question right.");
+  // The note follows the checked operation, not a ÷ sign in the printed question.
+  const slash = { ...pkg84, text: "84 / 4 = ?" };
+  expect(codeSentences(noteFacts({ outcome: t.view.outcome!, event: null, package: slash, question: slash.ref })).join(" "))
+    .toContain("Then Maya showed the sharing steps again, and {child} got a related question right.");
+});
+
+it("96 ÷ 4: handles misconception after sharing without naming a missing button, withholds bad free-form claims, preserves interrupted help evidence, and answers identity during transfer", async () => {
+  // 1. Misconception typed right after Share the tens (before fate arrives) still gives feedback and never names Share the tens button
+  const { calls, store, events } = setup();
+  let turn = ok(await calls.start({ ...input, package: divisionPackage(96, 4) }));
+  turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text: "How do I divide?" }, null));
+  const shareTarget = turn.view.exchange!;
+  turn = ok(await calls.input(turn.view.id, turn.view.revision, {
+    type: "exchange", target: shareTarget, fates: [{ batchId: shareTarget.batchId, fate: "shown" }],
+  }, null));
+  const misc = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text: "1 plus 6 is 7." }, null));
+  expect(misc.output.say.join(" ")).toMatch(/1 ten, not 1 one.*16 ones/i);
+  expect(misc.output.say.join(" ")).not.toMatch(/share the tens button/i);
+
+  // 2. Bad free-form model answer on 96 ÷ 4 falls back to checked division demo without leaking 24
+  const badModel = conversationalFake({ answer: () => reply("Trade 1 ten for 20 ones and write 24.", "guide"), stream: { chunk: 8 } });
+  const { calls: guardedCalls } = setup({ model: () => badModel, mathReviewer: () => fakeMathReviewer(), streamChat: true });
+  const gStart = ok(await guardedCalls.start({ ...input, package: divisionPackage(96, 4) }));
+  const gReply = ok(await guardedCalls.input(gStart.view.id, gStart.view.revision, { type: "child", text: "I need help." }, null));
+  expect(gReply.output.say.join(" ")).not.toMatch(/20 ones|\b24\b/i);
+  expect(gReply.output.say.join(" ")).toMatch(/9 tens and 6 ones.*1 remaining ten for 10 ones/i);
+
+  // 3. Interrupted voice demo on 96 ÷ 4 preserves uncertain help evidence and help_unconfirmed note
+  const pkg96 = divisionPackage(96, 4, parentId);
+  const voice = ok(await calls.startVoice({ ...input, kind: "family", package: pkg96 }));
+  const opened = await calls.openVoice(voice.view.id, { speechToText: "fake", voice: "fake" }, null);
+  if (!opened.ok) throw new Error(opened.error);
+  await opened.call.start();
+  const demo = await opened.call.child("Show me how to divide.");
+  await opened.call.exchangePlayback!(demo.exchangeTurnId!, "interrupted");
+  await opened.call.child("My answer is 24.");
+  await opened.call.end({ reason: "child_stopped" });
+  const rec = store.rows().find((r) => r.id === voice.view.id)!;
+  expect(rec.trace?.checkedExchange?.turns.find((x) => x.observation?.skill === "quotient")?.observation)
+    .toMatchObject({ result: "correct", assistance: "uncertain" });
+  const learned = await events.read(childId, { from: "2026-11-17T00:00:00Z", to: "2026-11-18T00:00:00Z" });
+  expect(learned).toMatchObject([{ result: "blank" }]);
+  expect(noteFacts({ outcome: rec.outcome!, event: learned[0], package: pkg96, question: pkg96.ref }).finished).toBe("help_unconfirmed");
+
+  // 4. Identity question during division transfer discloses AI and restates 69 ÷ 3 (not 84 ÷ 4)
+  let idTurn = ok(await calls.start({ ...input, package: divisionPackage(84, 4) }));
+  idTurn = ok(await calls.input(idTurn.view.id, idTurn.view.revision, { type: "child", text: "My answer is 21." }, null));
+  idTurn = ok(await calls.input(idTurn.view.id, idTurn.view.revision, { type: "child", text: "Yes." }, null));
+  const ai = ok(await calls.input(idTurn.view.id, idTurn.view.revision, { type: "child", text: "Are you a real person?" }, null));
+  expect(ai.output.say.join(" ")).toMatch(/\bAI\b.*69\s*÷\s*3/);
+  expect(ai.output.say.join(" ")).not.toMatch(/84/);
+});
+
+/** Every text a board command shows (structural ids left out). */
+function shownTexts(value: unknown, key = ""): string[] {
+  if (/^(?:op|id|ids|transactionId|[a-z]+Id|region|scope|part|rowId|column|piece|kind)$/.test(key)) return [];
+  if (typeof value === "string") return [value];
+  if (typeof value === "number") return [String(value)];
+  if (Array.isArray(value)) return value.flatMap((x) => shownTexts(x, key));
+  if (value && typeof value === "object") return Object.entries(value).flatMap(([k, v]) => shownTexts(v, k));
+  return [];
+}
+
+const supportedDivisions = Array.from({ length: 90 }, (_, i) => i + 10)
+  .flatMap((a) => [2, 3, 4, 5, 6, 7, 8, 9].map((b) => [a, b] as const))
+  .filter(([a, b]) => divisionFacts(a, b, false) !== null);
+
+it("checks every supported division: the first demonstration never shows the quotient in speech or on the board", async () => {
+  expect(supportedDivisions.length).toBeGreaterThanOrEqual(80);
+  const { calls } = setup();
+  const leaks: string[] = [];
+  for (const [a, b] of supportedDivisions) {
+    const q = a / b;
+    const chat = ok(await calls.start({ ...input, package: divisionPackage(a, b) }));
+    const turn = ok(await calls.input(chat.view.id, chat.view.revision, { type: "child", text: "Show me how to divide." }, null));
+    const texts = [...turn.output.say, ...turn.view.batches.flatMap((batch) => shownTexts(batch.commands))];
+    const all = texts.join(" | ");
+    const whole = new RegExp(`(?<![\\d])${q}(?![\\d])`);
+    const perGroup = (n: number, place: string) => new RegExp(`\\b${n} ${place}s? (?:go )?(?:in|for) each\\b|each group (?:has|gets) ${n} ${place}`).test(all);
+    const places = perGroup(Math.floor(q / 10), "ten") && perGroup(q % 10, "one");
+    if (texts.some((t) => whole.test(t)) || places) leaks.push(`${a} ÷ ${b}: ${all}`);
+  }
+  expect(leaks).toEqual([]);
+});
+
+it("30 ÷ 3: asks the tens check about the question it shows and grades the child against that question", async () => {
+  const { calls } = setup();
+  let turn = ok(await calls.start({ ...input, package: divisionPackage(30, 3) }));
+  const say = async (text: string) => {
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text }, null));
+    return turn.output.say.join(" ");
+  };
+  expect(await say("I don't know how to start.")).toMatch(/how many tens are in 30\?/i);
+  expect(await say("3 tens.")).toMatch(/share 3 tens equally into 3 groups/i);
+  expect(await say("1 ten.")).toMatch(/try the whole division on your own/i);
+  // A board demonstration later moves to a separate example, because the 30 ÷ 3 board would show 10.
+  const demo = await say("Show me how to divide.");
+  expect(demo).toMatch(/separate example/i);
+  expect(demo).not.toMatch(/\b10\b/);
+});
+
+it("96 ÷ 4: credits a right quotient only after its reason checks, and asks how when the reason cannot be checked", async () => {
+  const { calls, store } = setup();
+  let turn = ok(await calls.start({ ...input, package: divisionPackage(96, 4) }));
+  const say = async (text: string) => {
+    turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text }, null));
+    return turn.output.say.join(" ");
+  };
+  const unclear = await say("My answer is 24 because it looks right.");
+  expect(unclear).toMatch(/how did you get that/i);
+  expect(unclear).not.toMatch(/you found the quotient|\b24\b/i);
+  expect(turn.view.outcome).toBeNull();
+  expect(await say("16 tens divided by 4 is 4 tens.")).toMatch(/how did you get that/i);
+  expect(await say("4 times 24 is 96.")).toMatch(/you found the quotient/i);
+  await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null);
+  const turns = store.rows()[0].trace!.checkedExchange!.turns;
+  expect(turns.filter((t) => t.observation?.skill === "quotient").map((t) => t.observation?.result)).toEqual(["correct"]);
+  expect(checkTrace(store.rows()[0].trace)).toMatchObject({ ok: true });
+
+  let direct = ok(await calls.start({ ...input, package: divisionPackage(96, 4) }));
+  direct = ok(await calls.input(direct.view.id, direct.view.revision, { type: "child", text: "My answer is 24 because each group gets 2 tens and 4 ones." }, null));
+  expect(direct.output.say.join(" ")).toMatch(/you found the quotient/i);
+});
+
+it("96 ÷ 4: corrects a wrong operation only when it was applied to 96 and 4", async () => {
+  const { calls, store } = setup();
+  const reply = async (text: string) => {
+    const started = ok(await calls.start({ ...input, package: divisionPackage(96, 4) }));
+    const turn = ok(await calls.input(started.view.id, started.view.revision, { type: "child", text }, null));
+    await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null);
+    return turn.output.say.join(" ");
+  };
+  const valid = await reply("My answer is 24 because I subtracted 8 from 9.");
+  expect(valid).not.toMatch(/rather than subtracting/i);
+  expect(valid).toMatch(/how did you get that/i);
+  expect(await reply("My answer is 92 because I subtracted 4 from 96.")).toMatch(/rather than subtracting or multiplying/i);
+  const traces = store.rows().map((row) => row.trace?.checkedExchange?.turns.some((t) => t.observation?.skill === "division_misconception"));
+  expect(traces).toEqual([false, true]);
+});
+
+it("checks division trace commands and dependencies while reading earlier traces", async () => {
+  const { calls, store } = setup();
+  let turn = ok(await calls.start({ ...input, package: divisionPackage(84, 4, parentId) }));
+  turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text: "Show me how to divide." }, null));
+  for (const text of ["My answer is 21.", "Yes."]) turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text }, null));
+  await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null);
+  const trace = store.rows()[0].trace!;
+  expect(checkTrace(trace)).toMatchObject({ ok: true });
+  const edited = structuredClone(trace);
+  const question = edited.board.flatMap((b) => b.commands as { op: string; text?: string }[]).find((c) => c.text === "69 ÷ 3 = ?")!;
+  question.text = "23";
+  expect(checkTrace(edited)).toMatchObject({ ok: false });
+  const missingDependency = structuredClone(trace);
+  const share = missingDependency.board.find((b) => b.after?.length)!;
+  delete share.after;
+  expect(checkTrace(missingDependency)).toMatchObject({ ok: false });
+  const wrongDependency = structuredClone(trace);
+  const wrongShare = wrongDependency.board.find((b) => b.after?.length)!;
+  wrongShare.after = [wrongShare.transactionId];
+  expect(checkTrace(wrongDependency)).toMatchObject({ ok: false });
+  const reordered = structuredClone(trace);
+  for (const batch of reordered.board) {
+    batch.commands = batch.commands.map((c) => Object.fromEntries(Object.entries(c as object).reverse()));
+  }
+  expect(checkTrace(reordered)).toMatchObject({ ok: true });
+  for (const version of [15, 16]) {
+    const earlier = { ...structuredClone(trace), version };
+    for (const batch of earlier.board) {
+      for (const command of batch.commands as { model?: { tenGroups?: number } }[]) {
+        if (command.model) delete command.model.tenGroups;
+      }
+    }
+    expect(checkTrace(earlier)).toMatchObject({ ok: true });
+  }
+  const prior = { ...structuredClone(trace), version: 16, turns: [...trace.turns] };
+  prior.turns.splice(-1, 0, { kind: "backchannel", at: prior.turns.at(-1)!.at, text: "mm-hmm" });
+  expect(checkTrace(prior)).toMatchObject({ ok: true });
+  expect(checkTrace({ ...prior, version: 15 })).toMatchObject({ ok: false });
+  expect(trace.version).toBe(17);
 });
 
 it("draws the related question again when the child's interruption cancelled its board batch in the same call", async () => {

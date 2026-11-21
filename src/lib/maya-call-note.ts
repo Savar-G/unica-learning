@@ -70,6 +70,8 @@ export interface NoteFacts {
   safety: boolean;
   /** The optional related question after the call's question (#1144): never part of the question's own result. */
   transfer?: NonNullable<Outcome["transfer"]>;
+  /** The checked operation of the question, so a related-question note names its own help (#1155 review). */
+  operation?: "divide" | "other";
 }
 
 /** One line of the transcript as the parent reads it: what the child and Maya said, and a few plain notes. */
@@ -254,7 +256,7 @@ export function noteFacts(input: { outcome: Outcome; event: NewLearningEvent | n
     paper: outcome.paperStatus,
     minutes: Math.max(1, Math.round(outcome.seconds / 60)),
     safety: outcome.safetyFlag,
-    ...(outcome.transfer && !outcome.safetyFlag ? { transfer: outcome.transfer } : {}),
+    ...(outcome.transfer && !outcome.safetyFlag ? { transfer: outcome.transfer, operation: pkg?.operation?.kind === "divide" ? "divide" as const : "other" as const } : {}),
   };
 }
 
@@ -307,16 +309,20 @@ export function codeSentences(f: NoteFacts, heldSaid = false): string[] {
     else if (f.help === "hint") lines.push("Maya gave a small hint.");
   }
   if (f.paper === "child_confirmed") lines.push(`${CHILD} said the answer is on paper now.`);
-  if (f.transfer) lines.push(transferSentence(f.transfer));
+  if (f.transfer) lines.push(transferSentence(f.transfer, f.operation === "divide"));
   return lines;
 }
 
 /** One related question says how it went, with its help. It never claims more than that one result. */
-function transferSentence(t: NonNullable<NoteFacts["transfer"]>): string {
+function transferSentence(t: NonNullable<NoteFacts["transfer"]>, isDivision: boolean): string {
   if (t.result === "unfinished") return `Then ${CHILD} started a related question but did not finish it.`;
   if (t.assistance === "independent") return `Then ${CHILD} tried a related question with no help and got it right.`;
   if (t.assistance === "hinted") return `Then ${CHILD} tried a related question and got it right with hints.`;
-  if (t.assistance === "demonstrated") return `Then Maya showed the trade again, and ${CHILD} got a related question right.`;
+  if (t.assistance === "demonstrated") {
+    return isDivision
+      ? `Then Maya showed the sharing steps again, and ${CHILD} got a related question right.`
+      : `Then Maya showed the trade again, and ${CHILD} got a related question right.`;
+  }
   return `Then ${CHILD} gave the correct answer to a related question. The amount of help is unknown.`;
 }
 

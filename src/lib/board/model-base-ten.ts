@@ -11,6 +11,8 @@ export interface BaseTenSpec {
   hundreds: number;
   tens: number;
   ones: number;
+  /** Share the rods into this many equal groups. Extra rods stay outside the outlines. */
+  tenGroups?: number;
 }
 
 /** The most blocks of each place: up to 19 tens or ones shows a group before or after an exchange. */
@@ -21,6 +23,8 @@ const U = 0.3;
 const PAD = 0.2;
 const GROUP_GAP = 1;
 const ROW_GAP = 0.5;
+const TEN_GROUP_GAP = 0.8;
+const TEN_GROUP_PAD = 0.15;
 const GROUPS = [
   { group: "hundreds", unit: "hundred", w: 10 * U, h: 10 * U, gap: 0.5, perRow: 3 },
   { group: "tens", unit: "ten", w: U, h: 10 * U, gap: U, perRow: 10 },
@@ -35,26 +39,38 @@ interface Block {
 }
 
 /** Every block with its rectangle, and the size of the whole model. */
-function arrange(spec: BaseTenSpec): { blocks: Block[]; w: number; h: number } {
+function arrange(spec: BaseTenSpec): { blocks: Block[]; tenGroups: Rect[]; w: number; h: number } {
+  const rodsPerGroup = spec.tenGroups === undefined ? 0 : Math.floor(spec.tens / spec.tenGroups);
+  const gapCount = spec.tenGroups === undefined ? 0 : Math.min(spec.tenGroups, Math.floor((spec.tens - 1) / rodsPerGroup));
   const used = GROUPS.filter((g) => spec[g.group] > 0).map((g) => {
     const n = spec[g.group];
     const cols = Math.min(n, g.perRow);
     const rows = Math.ceil(n / g.perRow);
-    return { ...g, n, w: cols * g.w + (cols - 1) * g.gap, h: rows * g.h + (rows - 1) * ROW_GAP, unitW: g.w, unitH: g.h };
+    return { ...g, n, w: cols * g.w + (cols - 1) * g.gap + (g.group === "tens" ? gapCount * TEN_GROUP_GAP : 0), h: rows * g.h + (rows - 1) * ROW_GAP, unitW: g.w, unitH: g.h };
   });
   const height = Math.max(...used.map((g) => g.h));
   const blocks: Block[] = [];
+  const tenGroups: Rect[] = [];
   let x = PAD;
   for (const g of used) {
     const top = PAD + height - g.h;
     for (let i = 0; i < g.n; i++) {
       const row = Math.floor(i / g.perRow);
       const col = i % g.perRow;
-      blocks.push({ name: `${g.unit}-${i + 1}`, group: g.group, rect: { x: x + col * (g.unitW + g.gap), y: top + row * (g.unitH + ROW_GAP), w: g.unitW, h: g.unitH } });
+      const offset = g.group === "tens" && rodsPerGroup > 0
+        ? Math.min(gapCount, Math.floor(i / rodsPerGroup)) * TEN_GROUP_GAP : 0;
+      blocks.push({ name: `${g.unit}-${i + 1}`, group: g.group, rect: { x: x + col * (g.unitW + g.gap) + offset, y: top + row * (g.unitH + ROW_GAP), w: g.unitW, h: g.unitH } });
+    }
+    if (g.group === "tens" && spec.tenGroups !== undefined) {
+      for (let group = 0; group < spec.tenGroups; group++) {
+        const start = blocks.length - g.n + group * rodsPerGroup;
+        const bounds = union(blocks.slice(start, start + rodsPerGroup).map((block) => block.rect));
+        tenGroups.push(grow(bounds, TEN_GROUP_PAD));
+      }
     }
     x += g.w + GROUP_GAP;
   }
-  return { blocks, w: Math.ceil(x - GROUP_GAP + PAD), h: Math.ceil(height + 2 * PAD) };
+  return { blocks, tenGroups, w: Math.ceil(x - GROUP_GAP + PAD), h: Math.ceil(height + 2 * PAD) };
 }
 
 /** The inner lines of a block: one per cube it is made of. */
@@ -68,7 +84,7 @@ function innerLines(r: Rect): { across: [Point, Point][]; down: [Point, Point][]
 
 export const baseTen: ModelKind<BaseTenSpec> = {
   parse(raw) {
-    const o = fields(raw, "base_ten model", ["kind", "hundreds", "tens", "ones"]);
+    const o = fields(raw, "base_ten model", ["kind", "hundreds", "tens", "ones"], ["tenGroups"]);
     const spec: BaseTenSpec = {
       kind: "base_ten",
       hundreds: int(o.hundreds, "hundreds", 0, BASE_TEN_LIMITS.hundreds),
@@ -76,6 +92,10 @@ export const baseTen: ModelKind<BaseTenSpec> = {
       ones: int(o.ones, "ones", 0, BASE_TEN_LIMITS.ones),
     };
     if (spec.hundreds + spec.tens + spec.ones === 0) invalid("A base_ten model needs at least one block.");
+    if (o.tenGroups !== undefined) {
+      if (spec.tens < 2 || spec.tens > 9) invalid("Grouped tens need 2 to 9 rods.");
+      spec.tenGroups = int(o.tenGroups, "tenGroups", 2, spec.tens);
+    }
     return spec;
   },
   layout(spec) {
@@ -83,7 +103,7 @@ export const baseTen: ModelKind<BaseTenSpec> = {
     return { w, h };
   },
   targets(spec, objectId) {
-    const { blocks, w, h } = arrange(spec);
+    const { blocks, tenGroups, w, h } = arrange(spec);
     const out: LocalTarget[] = [
       {
         target: { objectId, part: "whole" },
@@ -98,13 +118,20 @@ export const baseTen: ModelKind<BaseTenSpec> = {
       if (mine.length === 0) continue;
       out.push({ target: { objectId, part: "piece", piece: g.group }, label: `${objectId} ${g.group}`, writable: false, value: String(mine.length), rect: grow(union(mine.map((b) => b.rect)), 0.25) });
     }
+    for (const [i, rect] of tenGroups.entries()) {
+      out.push({ target: { objectId, part: "piece", piece: `ten-group-${i + 1}` }, label: `Group ${i + 1}`, writable: false, value: String(Math.floor(spec.tens / tenGroups.length)), rect });
+    }
     for (const b of blocks)
       out.push({ target: { objectId, part: "piece", piece: b.name }, label: `${objectId} ${b.name.replace("-", " ")}`, writable: false, value: null, rect: b.rect });
     return out;
   },
   draw(spec, pen) {
-    const out: LocalStroke[] = [];
-    for (const b of arrange(spec).blocks) {
+    const { blocks, tenGroups } = arrange(spec);
+    const out: LocalStroke[] = tenGroups.map((rect, i) => {
+      const name = `ten-group-${i + 1}`;
+      return { objectId: pen.objectId, target: { objectId: pen.objectId, part: "piece", piece: name }, kind: "rule", layer: "math", ink: pen.ink, seq: pen.seq, key: `${name}/outline`, width: 0.05, pts: rectOutline(rect) };
+    });
+    for (const b of blocks) {
       const base = { objectId: pen.objectId, target: { objectId: pen.objectId, part: "piece" as const, piece: b.name }, kind: "rule" as const, layer: "math" as const, ink: pen.ink, seq: pen.seq };
       out.push({ ...base, key: `${b.name}/outline`, width: 0.05, pts: rectOutline(b.rect) });
       const { across, down } = innerLines(b.rect);

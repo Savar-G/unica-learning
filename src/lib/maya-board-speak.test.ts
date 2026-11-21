@@ -67,7 +67,7 @@ describe("default on: the board draws what Maya says (B2)", () => {
     expect(digit.after).toEqual([trade.transactionId]);
     const trace = await session.finish({ reason: "child_stopped" });
     expect(trace.version).toBe(TRACE_VERSION);
-    expect(TRACE_VERSION).toBe(15);
+    expect(TRACE_VERSION).toBe(17);
     expect(out.board.map((b) => trace.board.find((x) => x.transactionId === b.transactionId)?.sentence)).toEqual([0, 1]);
     expect(trace.board[0].sentence).toBeUndefined();
     expect(attempts(trace).flatMap((a) => a.boardReads ?? [])).toEqual([
@@ -405,6 +405,25 @@ describe("review of #1094 (65c39133f): the board-state check, and the sentence a
   it("84 ÷ 4: a layout with other values stops the right one; the right one alone draws", async () => {
     expect((await one(div(84, 4), "Share 84 into 5 groups, then share 84 into 4 groups. What comes next?")).board).toEqual([]);
     expect((await one(div(84, 4), "Share 84 into 4 groups. What comes next?")).board.length).toBeGreaterThan(0);
+  });
+  it("#1096: 96 ÷ 4 draws long-division clauses in order with explicit after dependencies and refuses wrong or unexplained steps", async () => {
+    const out = await one(
+      div(96, 4),
+      "Share 96 into 4 groups. Write 2 above the tens, subtract 8, leaving 1 ten. Combine the 6 ones to make 16 ones. What is 16 divided by 4?",
+    );
+    expect(out.board).toHaveLength(3);
+    expect(out.board[0].commands).toMatchObject([{ op: "division", dividend: "96", divisor: "4" }]);
+    expect(out.board[1].after).toEqual([out.board[0].transactionId]);
+    expect(out.board[1].commands).toMatchObject([
+      { op: "put", target: { rowId: "quotient", column: "tens" }, value: "2" },
+      { op: "put", target: { rowId: "product1" }, value: "8" },
+      { op: "put", target: { rowId: "difference1" }, value: "1" },
+    ]);
+    expect(out.board[2].after).toEqual([out.board[1].transactionId]);
+    expect(out.board[2].commands).toMatchObject([{ op: "put", target: { rowId: "bring2" }, value: "6" }]);
+    // Unexplained bring-down draws nothing on top of step 1.
+    const bad = await one(div(96, 4), "Share 96 into 4 groups. Write 2 above the tens, subtract 8, leaving 1 ten. Bring down 6. What comes next?");
+    expect(bad.board).toHaveLength(2);
   });
 });
 

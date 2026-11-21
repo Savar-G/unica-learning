@@ -751,7 +751,7 @@ export function callView(record: CallRecord, trace: MayaTrace, alerts: AlertStat
   const window = { endMs: inkWindowEnd(trace) };
   const history = record.mode !== "text" ? recorded : ink.length > 0 ? withInkLog(recorded, ink, window) : withChildInk(recorded, record.childInk ?? null, window);
   const exchange = record.status === "live" && record.live ? childExchangeTarget(record.live.text.session) : undefined;
-  const exchangeResult = trace.checkedExchange?.turns.find((t) => t.childAction)?.actions[0]?.batchId;
+  const exchangeResult = trace.checkedExchange?.turns.findLast((t) => t.childAction)?.actions[0]?.batchId;
   return {
     id: record.id,
     kind: record.kind,
@@ -1867,10 +1867,12 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         get pendingExchange() {
           const saved = record.live?.text;
           if (inactive() || !saved) return undefined;
-          // The child's exchange, then the related question's board (#1144): a saved batch the board never confirmed.
+          // The child's actions (share, exchange), then the related question's board (#1144): a saved batch the board never confirmed.
           const turns = saved.session.checkedExchange?.turns ?? [];
-          const pending = [turns.find((t) => t.childAction)?.actions[0], turns.flatMap((t) => t.actions).findLast((a) => a.kind === "question")]
-            .find((action) => action && action.fate !== "shown" && !record.boardHistory?.delivery?.events.some(e => e.kind === "batch" && e.batchId === action.batchId));
+          const pending = [
+            ...turns.filter((t) => t.childAction).map((t) => t.actions[0]),
+            turns.flatMap((t) => t.actions).findLast((a) => a.kind === "question"),
+          ].find((action) => action && action.fate !== "shown" && !record.boardHistory?.delivery?.events.some(e => e.kind === "batch" && e.batchId === action.batchId));
           return pending ? batchesOf(saved.board.filter((b) => b.transactionId === pending.batchId))[0] : undefined;
         },
         get acknowledged() { return [...acknowledged]; },
@@ -1890,8 +1892,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         },
         async observeBoard(snapshot) {
           const copy = structuredClone(snapshot);
-          const childBatch = session.session.checkedExchange?.turns.find((t) => t.childAction)?.actions[0]?.batchId;
-          const fates = snapshotFates(copy).filter((f) => f.fate === "shown" || f.batchId !== childBatch).slice(-32);
+          const childBatches = new Set(session.session.checkedExchange?.turns.filter((t) => t.childAction).map((t) => t.actions[0]?.batchId).filter(Boolean));
+          const fates = snapshotFates(copy).filter((f) => f.fate === "shown" || !childBatches.has(f.batchId)).slice(-32);
           const presented = copy.events.flatMap((e) => e.kind === "presented" ? [e.batchId] : []);
           const observe = (s: TextSession) => { s.boardFates(fates); s.exchangePresented(presented); };
           // B1: the screen's word on each batch reaches the session at once (the next turn's brief reads it).

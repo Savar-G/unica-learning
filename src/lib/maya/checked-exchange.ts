@@ -1,11 +1,14 @@
 import type { Command } from "@/lib/board";
 import type { OperationPackage } from "@/lib/question-package";
+import type { DivisionInstruction, DivisionSkill } from "./checked-division";
 import { readTransferOperands, TRANSFER_GOODBYE, TRANSFER_OFFER, transferRetryWords, transferStartWords, type TransferOperands } from "./transfer";
 
 /** "question": the related question's board (#1144), tracked like the exchange so a lost batch is shown again. */
-type ActionKind = "show" | "exchange" | "question";
+type ActionKind = "show" | "share" | "exchange" | "question";
 
 export const EXCHANGE_OBJECT = "exchange-before";
+export const SHARE_OBJECT = "division-share";
+export type ExchangeObjectId = typeof EXCHANGE_OBJECT | typeof SHARE_OBJECT;
 export const EXCHANGE_RPC = "maya.exchange";
 
 /** A revision names the lesson board at the time this object was offered. */
@@ -13,7 +16,7 @@ export interface ExchangeTarget {
   lessonId: string;
   turnId: string;
   boardRevision: number;
-  objectId: typeof EXCHANGE_OBJECT;
+  objectId: ExchangeObjectId;
   batchId: string;
 }
 
@@ -22,7 +25,8 @@ export function readExchangeTarget(value: unknown): ExchangeTarget | null {
   const { lessonId, turnId, boardRevision, objectId, batchId } = value as Partial<ExchangeTarget>;
   const id = (field: unknown): field is string => typeof field === "string" && field.length > 0 && field.length <= 160;
   if (!id(lessonId) || !id(turnId) || !id(batchId) || typeof boardRevision !== "number" ||
-    !Number.isSafeInteger(boardRevision) || boardRevision < 1 || objectId !== EXCHANGE_OBJECT) return null;
+    !Number.isSafeInteger(boardRevision) || boardRevision < 1 ||
+    (objectId !== EXCHANGE_OBJECT && objectId !== SHARE_OBJECT)) return null;
   return { lessonId, turnId, boardRevision, objectId, batchId };
 }
 
@@ -38,6 +42,8 @@ export interface ExchangeAmounts {
 
 export interface ExchangeFacts {
   value: number;
+  /** Present for checked division lessons (#1155). */
+  divisor?: number;
   before: ExchangeAmounts;
   after: ExchangeAmounts;
   example: boolean;
@@ -61,7 +67,7 @@ export interface ExchangeTurn {
   playback?: "finished" | "interrupted";
   prompt?: ExchangeTarget;
   childAction?: ExchangeTarget;
-  instruction?: RegroupingInstruction;
+  instruction?: LessonInstruction;
   /** Help sent in chat, shown by the board, or confirmed by voice playback. */
   support?: "hinted" | "demonstrated";
   /** A checked child response. The learning event refers to the call that stores this observation. */
@@ -84,6 +90,8 @@ export interface TransferTask {
 
 export interface CheckedExchangeLesson {
   version: 1;
+  /** Omitted on older saved subtraction sessions (defaults to subtraction). */
+  kind?: "subtract" | "divide";
   /** Older saved sessions continue with the original exchange interaction. */
   progression?: 1;
   /** #1144: offers the related question. A lesson saved without it replays its old "correct" step unchanged. */
@@ -96,13 +104,17 @@ export interface CheckedExchangeLesson {
 export interface ExchangeProposal {
   checkedExchange: 1;
   value: number;
+  divisor?: number;
   example: boolean;
   show: boolean;
+  shared?: true;
   prompt?: true;
   childAction?: ExchangeTarget;
   afterFailure?: true;
-  instruction?: RegroupingInstruction;
+  instruction?: LessonInstruction;
 }
+
+export type LessonInstruction = RegroupingInstruction | DivisionInstruction;
 
 export interface RegroupingInstruction {
   step: "check_place" | "check_exchange" | "independent" | "guide_exchange" | "place_gap" | "reversal" |
@@ -116,13 +128,13 @@ export interface RegroupingInstruction {
 }
 
 export interface RegroupingObservation {
-  skill: "identify_tens" | "explain_exchange" | "perform_exchange" | "subtract_ones" | "subtract_tens" | "difference" | "reversal";
+  skill: "identify_tens" | "explain_exchange" | "perform_exchange" | "subtract_ones" | "subtract_tens" | "difference" | "reversal" | DivisionSkill;
   result: "correct" | "incorrect";
   assistance: "independent" | "hinted" | "demonstrated" | "uncertain";
   at: number;
 }
 
-export function regroupingOffersAction(instruction: RegroupingInstruction | undefined): boolean {
+export function regroupingOffersAction(instruction: LessonInstruction | undefined): boolean {
   return instruction?.step === "guide_exchange" || instruction?.step === "place_gap" || instruction?.step === "reversal";
 }
 
@@ -230,7 +242,7 @@ function notation(value: number, { tens, ones }: ExchangeAmounts): string {
   return `${value} = ${tens * 10} + ${ones}`;
 }
 
-export function exchangeCommands(action: Exclude<ActionKind, "question">, facts: ExchangeFacts): Command[] {
+export function exchangeCommands(action: "show" | "exchange", facts: ExchangeFacts): Command[] {
   if (action === "show") return [
     { op: "model", id: EXCHANGE_OBJECT, model: { kind: "base_ten", hundreds: 0, ...facts.before }, place: { region: "main" } },
     { op: "write", id: "exchange-before-notation", text: notation(facts.value, facts.before), place: { below: EXCHANGE_OBJECT } },
