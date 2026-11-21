@@ -26,7 +26,7 @@ import type { Batch } from "@/lib/board";
 import type { FinishOptions } from "@/lib/maya-text";
 import type { VoiceCall, VoiceSay, VoiceTurn } from "@/lib/maya-call";
 import { sameExchangeTarget, type ExchangeTarget } from "@/lib/maya/checked-exchange";
-import { childExchangeTarget } from "@/lib/maya/session";
+import { checkedLessonTurns, childExchangeTarget } from "@/lib/maya/session";
 import { speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-speech";
 import { CuePlaybackOutput } from "./cue-playback";
 import { earlyRest, type EarlyRest } from "./early-speech";
@@ -1585,9 +1585,9 @@ export class VoiceCallRun {
     const opens = !this.openingSaid && !!this.options.opening && this.call.session.startedAt === null && !this.call.pendingFinal && !this.guidanceOwed && !this.finalOwed;
     let said: voice.SpeechHandle | null = null;
     const connectingScope = this.boardScope;
-    const retiredExchanges = this.call.session.checkedExchange?.turns
+    const retiredExchanges = checkedLessonTurns(this.call.session)
       .filter(turn => !turn.playback || (!turn.childAction && turn.actions.some(action => !action.fate)))
-      .map(turn => turn.id) ?? [];
+      .map(turn => turn.id);
     // The connection row does not wait for the board's answer (the opening's speed, 2026-11-13).
     const row = this.call.connection("child_joined");
     try {
@@ -1711,7 +1711,7 @@ export class VoiceCallRun {
   async exchange(target: ExchangeTarget): Promise<"accepted" | "busy" | "done" | "stale"> {
     if (!this.childHere || this.finishing || this.deadlineFinish || !this.options.board || !this.call.exchange) return "stale";
     if (this.exchangeAdmission || this.exchangeBoard) return "busy";
-    const completed = this.call.session.checkedExchange?.turns.some((t) => sameExchangeTarget(t.childAction, target));
+    const completed = checkedLessonTurns(this.call.session).some((t) => sameExchangeTarget(t.childAction, target));
     if (completed) {
       const pending = this.call.pendingExchange;
       if (pending && !this.call.session.safety.flagged) {
@@ -1735,7 +1735,7 @@ export class VoiceCallRun {
     try {
       const state = this.call.session;
       if (sameExchangeTarget(childExchangeTarget(state), target) &&
-        !state.checkedExchange?.turns.some(t => t.actions.some(a => a.batchId === target.batchId && a.fate === "shown"))) {
+        !checkedLessonTurns(state).some(t => t.actions.some(a => a.batchId === target.batchId && a.fate === "shown"))) {
         await this.options.board.settled();
       }
       if (this.finishing || this.deadlineFinish || !this.childHere || generation !== this.generation) return "stale";

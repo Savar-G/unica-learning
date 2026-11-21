@@ -59,3 +59,14 @@ it.each([
 ] as const)("checks compound scalar claims beside a whole-number final: %s", async (work, accepted) => {
   expect(await solved(work, false)).toBe(accepted ? "child" : null);
 });
+
+// #959: a right final fraction never hides false mixed-number or worded scalar working. Each false case has a true control.
+it.each([
+  ["one and one eighth minus two eighths is seven eighths", "one and one eighth minus one eighth is seven eighths"],
+  ["twenty and seven eighths minus twenty is seven eighths", "twenty and seven eighths minus nineteen is seven eighths"],
+  ["one hundred and two plus one is one hundred and three", "one hundred and two is one hundred and three"],
+  ["six eighths plus one eighth is seven eighths", "six eighths plus two eighths is seven eighths"],
+] as const)("checks mixed-number and worded scalar working beside a fraction final: %s", async (correct, wrong) => {
+  expect(await solved(correct, true)).toBe("child");
+  expect(await solved(wrong, true)).toBeNull();
+});

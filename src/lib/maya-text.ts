@@ -60,7 +60,7 @@ import {
 import { modelInput, turnBrief, type MayaModel, type ModelInput, type TurnBrief } from "@/lib/maya-model";
 import { tutorBrief } from "@/lib/maya/tutor-prompt";
 import { continuedSay } from "@/lib/maya/tutor";
-import { checkedExchangeProposal, checkedExchangeWaitingForBoard, childExchangeProposal } from "@/lib/maya/session";
+import { checkedExchangeProposal, checkedExchangeWaitingForBoard, checkedLessonTurns, childExchangeProposal, hasCheckedLesson } from "@/lib/maya/session";
 import type { ExchangeTarget } from "@/lib/maya/checked-exchange";
 import { preparedReplies, preparedKey, preparedKeys, sameTurn, MAX_PREPARES_PER_TURN, type PrepareHypothesis, type PreparedReply, type PrepareRecord } from "@/lib/maya-prepared";
 import type { SpendHandle, SpendSeam } from "@/lib/maya-spend-seam";
@@ -1081,7 +1081,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     // D-345: a tutor message streams too. A plain teaching sentence goes out once every check passes on the words so
     // far; any other sentence is held, alone, while its safety review runs in parallel; a refused review or a failed
     // check stops the stream, and the rest waits for the whole message and its whole check.
-    const tutor = model.output === 3 && options.onSayPart && !checkedRoutine && !folded.session.checkedExchange && !folded.sent?.length && folded.pending.length === 0 ? read(() => tutorStream(folded.session)) : null;
+    const tutor = model.output === 3 && options.onSayPart && !checkedRoutine && !hasCheckedLesson(folded.session) && !folded.sent?.length && folded.pending.length === 0 ? read(() => tutorStream(folded.session)) : null;
     // Final check 3: a refusal of a sentence that judges correctness is binding, whatever rules it names.
     const passes = (r: TalkReviewResult, sentence: string) => r.verdict === "pass" || (r.verdict === "fail" && r.rules.length > 0 && r.rules.every((id) => TUTOR_REVIEW_IGNORED.includes(id)) && !bindingReview(sentence, tutor?.wordAnswer, tutor?.stance));
     const flushTutor = () => {
@@ -1581,6 +1581,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       scopeRefusals: structuredClone(session.scopeRefusals ?? []),
       ...(preparations.length ? { preparations: preparationRecords() } : {}),
       ...(session.checkedExchange ? { checkedExchange: structuredClone(session.checkedExchange) } : {}),
+      ...(session.checkedFraction ? { checkedFraction: structuredClone(session.checkedFraction) } : {}),
       obligations: structuredClone(obligations), turns: structuredClone(turns), board: structuredClone(board), outcome, counts: { ...traceCounts(turns), boardFates: boardFateCounts(board) },
     }, options.childName ?? null);
   }
@@ -1625,14 +1626,14 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       if (known.length) append({ kind: "fates", at: now(), fates: known });
     },
     exchangePlayback: (turnId, playback) => {
-      const turn = folded.session.checkedExchange?.turns.find((turn) => turn.id === turnId);
+      const turn = checkedLessonTurns(folded.session).find((turn) => turn.id === turnId);
       if (folded.session.outcome || !turn || turn.playback || !turn.actions.every((a) => a.delivery === "sent")) return false;
       append({ kind: "exchange_playback", at: Math.max(now(), folded.session.now ?? 0), turnId, playback });
       return true;
     },
     exchangePresented: (batchIds) => {
-      if (folded.session.outcome || !folded.session.checkedExchange) return;
-      for (const turn of folded.session.checkedExchange.turns) for (const action of turn.actions) {
+      if (folded.session.outcome || !hasCheckedLesson(folded.session)) return;
+      for (const turn of checkedLessonTurns(folded.session)) for (const action of turn.actions) {
         if (!action.presented && batchIds.includes(action.batchId) && (action.fate === "shown" ||
           folded.lateFates?.some((f) => f.batchId === action.batchId && f.fate === "shown"))) {
           append({ kind: "exchange_presented", at: Math.max(now(), folded.session.now ?? 0), batchId: action.batchId });

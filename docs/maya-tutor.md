@@ -331,6 +331,31 @@ When the checked regrouping lesson (`MAYA_CHECKED_EXCHANGE`) credits the child's
 - The parent note adds one sentence for the related question, with its help: no help, hints, the trade shown again, help unknown, or not finished.
 - Known limit: "24 plus 1." after a right answer still keeps the original success (#1089). It cannot answer the offer.
 
+## Checked fraction lesson (#1156)
+
+With `MAYA_CHECKED_EXCHANGE` on a conversational call, a supported fraction question gets a checked lesson (`src/lib/maya/checked-fraction.ts`, planner `checked-fraction-session.ts`, session hooks `checked-fraction-hooks.ts`). Fractions have no tutor kind, so any turn the lesson does not plan stays on the existing fraction route.
+
+Supported forms: `fraction-add` and `fraction-subtract` of two proper fractions with the same denominator (2/5 + 1/5) or related denominators where one divides the other (3/4 + 1/8, 5/6 - 1/3); common denominator at most 12; result above 0 and below 1; no unit. Everything else (unrelated denominators such as 1/3 + 1/4, mixed or whole operands, results of 1 or more, multiply, divide, simplify-only, equivalent-only) keeps the existing route.
+
+Lesson map (one small step at a time; support rises only with evidence):
+
+| Child turn | Maya's step | Board |
+|---|---|---|
+| Right final answer (no false working) | "You found the answer." plus the optional related question | none |
+| Stuck or asks how | Strips: each strip is one whole; the denominator is the number of equal parts; the numerator is the shaded parts | two strips with their fractions |
+| Related denominators | "Fourths and eighths are different sizes. Split each fourth into 2 equal parts to make eighths." | the child's Split button |
+| Child presses Split | The split keeps the amount: "3/4 = 6/8". Then "How many eighths are there altogether?" | split strip, written 6/8 |
+| Still stuck after the strips | Maya splits the parts herself (a demonstration) | split strip |
+| Tops and bottoms combined (4/12) | Names the mistake: the bottom number is the size of the parts | strips |
+| Tops combined over unlike parts (4/8) | "Fourths and eighths are different sizes" | strips |
+| Other wrong answer | Diagnosis first: "How many eighths make one whole?", then "How many eighths are the same as 3/4?" | none |
+| Right count (7) | "Write it as a fraction. What is the whole answer?" | none |
+| Equal but not simplest, when the question asks | "That is equal to the answer. The question asks for the simplest form." | none |
+
+Each planned turn passes the answer-release check before Maya speaks or draws. The related question has the same form and operation (`chooseFractionTransfer`) and starts with only the written equation. Maya states the simplest-form requirement when it applies. A wrong answer or request for help gets a hint first, then a demonstration with the strips. A cancelled question redraws once on the next related turn. Repeating the question does not count as help. The record follows the #1144 rules above. A confirmed demonstration takes precedence. A demonstration with unconfirmed playback makes the help uncertain even after a confirmed hint. A confirmed hint takes precedence over an unconfirmed hint.
+
+Own working (#959): in every fraction call, a right final fraction beside a false equation of number phrases ("one and one eighth minus one eighth is seven eighths", "twenty and seven eighths minus nineteen", "one hundred and two is one hundred and three") gets no credit (`fraction-equations.ts`).
+
 ## Credit, the learning event and the parent note
 
 Code's credit of the child decides the saved result, never the model's reading (part C of the pre-launch review, 2026-11-15; tests: `src/lib/maya-call-tutor-credit.test.ts`, `src/lib/maya/tutor-credit.test.ts`):

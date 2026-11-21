@@ -1,5 +1,6 @@
 import type { Command } from "@/lib/board";
 import type { OperationPackage } from "@/lib/question-package";
+import { FRACTION_OBJECT } from "./checked-fraction";
 import { readTransferOperands, TRANSFER_GOODBYE, TRANSFER_OFFER, transferRetryWords, transferStartWords, type TransferOperands } from "./transfer";
 
 /** "question": the related question's board (#1144), tracked like the exchange so a lost batch is shown again. */
@@ -13,22 +14,28 @@ export interface ExchangeTarget {
   lessonId: string;
   turnId: string;
   boardRevision: number;
-  objectId: typeof EXCHANGE_OBJECT;
+  objectId: typeof EXCHANGE_OBJECT | typeof FRACTION_OBJECT;
   batchId: string;
+  /** #1156: the fraction split's common parts (the strip it makes), only for FRACTION_OBJECT. */
+  parts?: number;
 }
 
 export function readExchangeTarget(value: unknown): ExchangeTarget | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
-  const { lessonId, turnId, boardRevision, objectId, batchId } = value as Partial<ExchangeTarget>;
+  const { lessonId, turnId, boardRevision, objectId, batchId, parts } = value as Partial<ExchangeTarget>;
   const id = (field: unknown): field is string => typeof field === "string" && field.length > 0 && field.length <= 160;
   if (!id(lessonId) || !id(turnId) || !id(batchId) || typeof boardRevision !== "number" ||
-    !Number.isSafeInteger(boardRevision) || boardRevision < 1 || objectId !== EXCHANGE_OBJECT) return null;
-  return { lessonId, turnId, boardRevision, objectId, batchId };
+    !Number.isSafeInteger(boardRevision) || boardRevision < 1) return null;
+  if (objectId === EXCHANGE_OBJECT && parts === undefined) return { lessonId, turnId, boardRevision, objectId, batchId };
+  if (objectId === FRACTION_OBJECT && typeof parts === "number" && Number.isSafeInteger(parts) && parts >= 2 && parts <= 12) {
+    return { lessonId, turnId, boardRevision, objectId, batchId, parts };
+  }
+  return null;
 }
 
 export function sameExchangeTarget(a: ExchangeTarget | undefined, b: ExchangeTarget): boolean {
   return !!a && a.lessonId === b.lessonId && a.turnId === b.turnId && a.boardRevision === b.boardRevision &&
-    a.objectId === b.objectId && a.batchId === b.batchId;
+    a.objectId === b.objectId && a.batchId === b.batchId && a.parts === b.parts;
 }
 
 export interface ExchangeAmounts {

@@ -52,7 +52,7 @@ import { compensations, findOffer, normalSlots, openingLine, packageLines, stepE
 import { freeTalkProblem, hardFeeling, CALM_PHRASES, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { kindOf, writtenFractions, claimWordsOnly, committedText, confirmWordsOnly, echoedClaim, echoesShown, falseEquationResults, nextStepQuestion, numberSentences, onlyNextStepQuestions, plainNumber, stepTurnBody, withoutNextStepQuestions, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, withoutExplanations, type AnswerRead, type ReadOptions } from "./numbers";
-import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
+import { asksSimplest, isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
 import { patternOf, patternRows } from "./pattern";
 import { frameOwed, topicQuestion } from "./topic-frame";
 import { clockAnswers, clockValues } from "./clock-lines";
@@ -72,6 +72,10 @@ import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
 import { answersOwnQuestion, askedStep, doneReply, firstTimeTurn, yesReply, type AskedRead } from "./teaching-reads";
 import { deriveDrawings, type BoardRead, type TiedDrawing } from "./board-ties";
+import { hasFalseFractionWork } from "./fraction-equations";
+import { supportsCheckedFraction } from "./checked-fraction";
+import { checkedFractionHost, deliverFractionTurn, fractionBoardFate, fractionDeliveryEvent, fractionTransferEvent, fractionTransferOutcome, type FractionSessionHooks } from "./checked-fraction-hooks";
+import { childFractionTarget, fractionProposalOf, fractionWaitingForBoard, hasUnconfirmedFractionHelp, initCheckedFraction, matchesFractionProposal, planFractionChildAction, planFractionTurn, relatedPackage, type CheckedFractionLesson, type FractionProposal } from "./checked-fraction-session";
 import { chooseTransfer, relatedChoice, TRANSFER_MIN_MS, TRANSFER_OFFER, transferBoard, transferPackage, type RelatedStep, type TransferOperands } from "./transfer";
 import { EXCHANGE_OBJECT, exchangeChildWords, exchangeCommands, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingOffersAction, regroupingWords, sameExchangeTarget, supportsCheckedExchange, type CheckedExchangeLesson, type ExchangeAction, type ExchangeProposal, type ExchangeTarget, type ExchangeTurn, type RegroupingInstruction, type RegroupingObservation } from "./checked-exchange";
 import { agreementClause, askedStep as askedOperationStep, bindingReview, checkedSubtractionQuestion, checkTutorSay, continuedSay, stepsStated, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, FINAL_ASK, TUTOR_FIRST_TIME_WORD_LIMIT, TUTOR_REVIEW_IGNORED } from "./tutor";
@@ -579,6 +583,8 @@ export interface Session {
    */
   tutor?: { help: number; drawn: string[]; sent?: { batch: string; keys: string[] }[]; offer?: true; childFirst?: string[] };
   checkedExchange?: CheckedExchangeLesson;
+  /** #1156: the checked fraction lesson (fraction-add and fraction-subtract in the supported forms). */
+  checkedFraction?: CheckedFractionLesson;
   checkedRoutine?: true;
   sensitiveHold?: true;
   unsafeRequestAt?: number;
@@ -670,6 +676,9 @@ export function createSession(input: {
     ...(tutor ? { tutor: { help: 0, drawn: [] } } : {}),
     ...(input.checkedExchange === true && tutor && pkg && supportsCheckedExchange(pkg) ? { checkedExchange: { version: 1, progression: 1, transfers: 1, id: `${input.callId}:regrouping`, turns: [] } } : {}),
     ...(input.checkedRoutine === true && tutor && pkg && supportsCheckedExchange(pkg) ? { checkedRoutine: true } : {}),
+    // #1156: fractions have no tutor kind; the same switches start the checked fraction lesson on a conversational call.
+    ...(input.checkedExchange === true && input.tutor === true && input.conversational === true && teachable && pkg && supportsCheckedFraction(pkg)
+      ? { checkedFraction: initCheckedFraction(input.callId, pkg, asksSimplest(pkg))! } : {}),
   };
 }
 
@@ -881,6 +890,7 @@ export const transferEventKey = (callId: string) => `call:${callId}:transfer`;
 
 export function transferLearningEvent(session: Session, family: { parentId: string; childId: string }, relatedEventId: string): NewLearningEvent | null {
   const original = learningEvent(session, family);
+  if (session.checkedFraction) return original && fractionTransferEvent(session, original, relatedEventId, transferEventKey(session.callId), endTime(session));
   const transfer = session.checkedExchange?.transfer;
   if (!original || !transfer || (transfer.state !== "started" && transfer.state !== "finished")) return null;
   const turns = session.checkedExchange!.turns.filter((turn) => turn.transfer);
@@ -1899,6 +1909,13 @@ export function step(session: Session, event: SessionEvent): StepResult {
           return refuse(s, "act_not_allowed", "No matching checked exchange is due.");
         }
         return deliverExchange(s, plan, effects);
+      }
+      if (event.fallback && isObject(event.proposal) && event.proposal.checkedFraction === 1 && s.checkedFraction) {
+        const target = readExchangeTarget(event.proposal.childAction);
+        const host = checkedFractionHost(s, fractionHooks);
+        const plan = host && (target ? planFractionChildAction(host, target) : planFractionTurn(host));
+        if (!plan || !matchesFractionProposal(event.proposal, s.checkedFraction, plan)) return refuse(s, "act_not_allowed", "No matching checked fraction turn is due.");
+        return deliverFractionTurn(s, plan, effects, fractionHooks);
       }
       if (shape) return { session: s, effects, refusal: { code: "invalid_proposal", reason: shape, allowed: (gate(s, {}) ?? actsNow(s, {}, false)).acts } };
       {
@@ -4103,7 +4120,7 @@ function ownTurn(s: Session, target: WorkedStep | null, value: AnswerValue, opti
     return whole !== null ? String(whole) : run.replace(NUMBER_RUN, part => String(plainNumber(part) ?? MATH_LITERALS[part] ?? part));
   }).replace(/\b(?:equal\s+)?groups?\s+of\b/g, " times ");
   const math = groupMath(kept);
-  if (opts.fractions ? falseEquationResults(math, opts).length > 0 : [...math.matchAll(EQUATION)].some((m) => !trueEquation(m))) return "false_sum";
+  if (opts.fractions ? falseEquationResults(math, opts).length > 0 || hasFalseFractionWork(kept, opts) : [...math.matchAll(EQUATION)].some((m) => !trueEquation(m))) return "false_sum";
   // One number said to be another ("16 is 66.", "9 is 16."); a listed sum ("2, 3, 1 is 6") is a sum.
   // Read overlapping pairs too: an operand suffix ("1 is 6") must not hide a later false equality ("6 equals 5").
   for (const m of joined.matchAll(/(?=\b(\d+)\s+(?:is|equals|makes?|=)\s+(\d+)(?!\d|[./]\d))/g)) {
@@ -5692,13 +5709,67 @@ function regroupingChoice(s: Session, previous: ExchangeTurn | undefined, top: n
   if (!previous && REGROUPING_START.test(text)) return { step: "check_place" };
 }
 
-export function checkedExchangeProposal(s: Session, afterFailure = false): ExchangeProposal | null {
+export const hasCheckedLesson = (s: Session): boolean => !!(s.checkedExchange || s.checkedFraction);
+
+/** The checked lesson's turns as the adapters read them: ids, board actions, playback and child actions. */
+export function checkedLessonTurns(s: Session): readonly { id: string; actions: readonly { batchId: string; kind: string; delivery: "generated" | "sent"; fate?: "shown" | "skipped" | "cancelled"; presented?: true }[]; playback?: "finished" | "interrupted"; childAction?: ExchangeTarget }[] {
+  return s.checkedExchange?.turns ?? s.checkedFraction?.turns ?? [];
+}
+
+/** #1156: the session internals the fraction lesson reads and writes, passed so session.ts keeps only the hooks. */
+const fractionHooks: FractionSessionHooks<Session> = {
+  teachingNow: (s) => !!s.package && !s.outcome && s.expect === "maya" && isTeaching(s.state) && s.state !== "OPEN" && gate(s, {}) === null,
+  childMove: (s) => !s.outcome && !s.safety.flagged && !s.sensitiveHold && isTeaching(s.state) && s.expect === "child" && !s.turn,
+  closingAtMs: (s) => limitsOf(s).closingAtMs,
+  unclear: (s) => !!s.turn && (s.turn.uncertain || hasTranscriptAlternatives(s)),
+  view: (s, pkg) => (pkg === s.package ? s : { ...s, package: pkg, done: [], solved: null, lastResult: null, passed: [] }),
+  heardRight: (s) => !!s.turn && !childSaysFalse(s.turn.text) && heardAnswers(s).some((a) => a.step === "result" && a.verdict === "right"),
+  final: (s) => {
+    if (!s.turn || saysGuess(s.turn.text)) return null;
+    const read = turnRead(s);
+    return read.sure && !read.choice ? read.final : null;
+  },
+  tells: (s, pkg, texts) => tellsAnswer(s, pkg, texts, [], false),
+  boardTexts: (command) => boardTexts(command),
+  yes: (s) => !!s.turn && yesReply(s.turn.text),
+  done: (s) => !!s.turn && doneReply(s.turn.text),
+  recordHelp: (s, kind) => {
+    if (kind === "hint") s.hints += 1;
+    if (!s.assistance.includes(kind)) s.assistance.push(kind);
+    s.stuckStep ??= workSteps(s.package!)[0]?.id ?? "result";
+  },
+  close: (s, text, effects) => {
+    s.turns.push({ at: s.now!, speaker: "maya", text, state: "CLOSE", act: "close" });
+    delete s.tutor?.offer;
+    delete s.mathClaim;
+    end(s, closeCause(s), effects, false);
+  },
+  guide: (s, text) => {
+    s.turns.push({ at: s.now!, speaker: "maya", text, state: s.state, act: "guide" });
+    s.turn = null;
+    delete s.tutor?.offer;
+    delete s.mathClaim;
+    waitForChild(s);
+  },
+  eventKey: (s) => transferEventKey(s.callId),
+};
+
+export function checkedExchangeProposal(s: Session, afterFailure = false): ExchangeProposal | FractionProposal | null {
+  if (s.checkedFraction) {
+    const host = checkedFractionHost(s, fractionHooks);
+    const turn = host && planFractionTurn(host);
+    return turn ? fractionProposalOf(s.checkedFraction, turn, afterFailure) : null;
+  }
   const plan = checkedExchangePlan(s, afterFailure);
   if (!plan) return null;
   return { checkedExchange: 1, value: plan.facts.value, example: plan.facts.example, show: leadsWithBoard(plan), ...(plan.prompt ? { prompt: true } : {}), ...(plan.instruction ? { instruction: plan.instruction } : {}), ...(afterFailure ? { afterFailure: true } : {}) };
 }
 
 export function checkedExchangeWaitingForBoard(s: Session): boolean {
+  if (s.checkedFraction) {
+    const host = checkedFractionHost(s, fractionHooks);
+    return !!host && fractionWaitingForBoard(host);
+  }
   const turn = s.turn;
   return !!turn && !turn.uncertain && tutorTeachingNow(s) &&
     !!s.checkedExchange?.turns.at(-1)?.actions.some(action => !action.fate) &&
@@ -5770,6 +5841,10 @@ function checkedExchangePlan(s: Session, afterFailure: boolean): ExchangeTurn | 
 
 /** The screen offers this target once it has drawn its show batch. */
 export function childExchangeTarget(s: Session): ExchangeTarget | undefined {
+  if (s.checkedFraction) {
+    const host = checkedFractionHost(s, fractionHooks);
+    return host ? childFractionTarget(host) : undefined;
+  }
   const prompt = s.checkedExchange?.turns.at(-1)?.prompt;
   if (!prompt || prompt.boardRevision !== s.batches || s.outcome || s.safety.flagged || s.sensitiveHold || s.stopRequested ||
     s.solved !== null || s.done.includes("ones") || s.noBoard || !isTeaching(s.state) || s.expect !== "child" || s.turn) return;
@@ -5803,8 +5878,13 @@ function childExchangePlan(s: Session, target: ExchangeTarget): ExchangeTurn | n
   };
 }
 
-export function childExchangeProposal(s: Session, target: ExchangeTarget, at: number): ExchangeProposal | null {
+export function childExchangeProposal(s: Session, target: ExchangeTarget, at: number): ExchangeProposal | FractionProposal | null {
   if (s.startedAt === null || at - s.startedAt >= limitsOf(s).closingAtMs) return null;
+  if (s.checkedFraction) {
+    const host = checkedFractionHost(s, fractionHooks);
+    const turn = host && planFractionChildAction(host, target);
+    return turn ? fractionProposalOf(s.checkedFraction, turn) : null;
+  }
   const plan = childExchangePlan(s, target);
   return plan ? { checkedExchange: 1, value: plan.facts.value, example: plan.facts.example, show: false, childAction: plan.childAction, ...(plan.instruction ? { instruction: plan.instruction } : {}) } : null;
 }
@@ -5869,6 +5949,10 @@ function deliverExchange(s: Session, plan: ExchangeTurn, effects: Effect[]): Ste
 
 function exchangeDelivery(session: Session, event: Extract<SessionEvent, { type: "exchange_sent" | "exchange_playback" | "exchange_presented" }>): StepResult {
   const s = structuredClone(session);
+  if (s.checkedFraction) {
+    fractionDeliveryEvent(s, event, fractionHooks);
+    return { session: s, effects: [], refusal: null };
+  }
   if (event.type === "exchange_presented") {
     const action = s.checkedExchange?.turns.flatMap((turn) => turn.actions).find((action) => action.batchId === event.batchId);
     if (action?.fate === "shown") action.presented = true;
@@ -5937,12 +6021,17 @@ function unconfirmedHelp(turn: ExchangeTurn): ExchangeTurn["support"] {
  * demonstration after no more than a hint.
  */
 function helpUnconfirmed(s: Session, assistance: Assistance): boolean {
+  if (s.checkedFraction) {
+    return (assistance === "independent" || assistance === "hint") &&
+      hasUnconfirmedFractionHelp(s.checkedFraction, assistance === "hint");
+  }
   const unconfirmed = unconfirmedRegroupingHelp(s);
   return assistance === "independent" ? unconfirmed.length > 0 : assistance === "hint" && unconfirmed.includes("demonstrated");
 }
 
 /** #1144: the related question's package once it started, else null. */
 function transferNow(s: Session): OperationPackage | null {
+  if (s.checkedFraction && s.package) return relatedPackage({ lesson: s.checkedFraction, package: s.package });
   const transfer = s.checkedExchange?.transfer;
   return transfer?.state === "started" && s.package ? transferPackage(s.package, transfer.operands) : null;
 }
@@ -6053,6 +6142,7 @@ function transferAssistance(s: Session): RegroupingObservation["assistance"] {
 }
 
 function transferOutcome(s: Session): Pick<Outcome, "transfer"> {
+  if (s.checkedFraction) return fractionTransferOutcome(s.checkedFraction);
   const transfer = s.checkedExchange?.transfer;
   if (transfer?.state !== "started" && transfer?.state !== "finished") return {};
   const solved = s.checkedExchange!.turns.find((turn) => turn.transfer && turn.observation?.skill === "difference" && turn.observation.result === "correct");
@@ -6971,6 +7061,7 @@ export function streamedDrawing(session: Session, sentences: readonly string[], 
  */
 function boardFate(session: Session, e: Extract<SessionEvent, { type: "board_fate" }>): StepResult {
   const s: Session = structuredClone(session);
+  if (s.checkedFraction && fractionBoardFate(s, e, fractionHooks)) return { session: s, effects: [], refusal: null };
   const turns = s.checkedExchange?.turns ?? [];
   const actions = turns.flatMap((turn) => turn.actions);
   const action = actions.find((action) => action.batchId === e.batch);

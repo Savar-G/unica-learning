@@ -83,7 +83,7 @@ import { modelInput, type MayaModel } from "@/lib/maya-model";
 import type { TalkReviewer } from "@/lib/maya-talk-review";
 import type { MathReviewer } from "@/lib/maya-math-review";
 import { snapshotFates } from "@/lib/board-fate";
-import { checkedExchangeProposal, childExchangeProposal, childExchangeTarget, fixedSafetyDisclosure } from "@/lib/maya/session";
+import { checkedExchangeProposal, checkedLessonTurns, childExchangeProposal, childExchangeTarget, fixedSafetyDisclosure, hasCheckedLesson } from "@/lib/maya/session";
 import { needsSafetyRead, SAFETY_PAUSE, sensitiveHearing, type ChildHearing } from "@/lib/maya/sensitive-input";
 import { readExchangeTarget, sameExchangeTarget, type ExchangeTarget } from "@/lib/maya/checked-exchange";
 import { createTextSession, readFateReports, withHelpLedger, type BoardFateReport, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession, type TextSessionOptions } from "@/lib/maya-text";
@@ -665,8 +665,10 @@ export const FAKE_MODEL_ID = "fake";
 const batchesOf = (board: readonly { transactionId: string; commands: readonly unknown[]; after?: readonly string[] }[]): Batch[] => board.map((b) => ({ transactionId: b.transactionId, commands: b.commands, ...(b.after?.length ? { after: [...b.after] } : {}) }));
 
 function replayableBoard(trace: MayaTrace): MayaTrace["board"] {
-  if (!trace.checkedExchange) return trace.board;
-  const excluded = new Set(trace.checkedExchange.turns.flatMap((turn) => turn.actions)
+  const turns: readonly { actions: readonly { batchId: string; fate?: string }[] }[] | undefined =
+    trace.checkedExchange?.turns ?? trace.checkedFraction?.turns;
+  if (!turns) return trace.board;
+  const excluded = new Set(turns.flatMap((turn) => turn.actions)
     .filter((action) => action.fate === "skipped" || action.fate === "cancelled").map((action) => action.batchId));
   for (const batch of trace.board) {
     if (batch.after?.some((id) => excluded.has(id))) excluded.add(batch.transactionId);
@@ -751,7 +753,7 @@ export function callView(record: CallRecord, trace: MayaTrace, alerts: AlertStat
   const window = { endMs: inkWindowEnd(trace) };
   const history = record.mode !== "text" ? recorded : ink.length > 0 ? withInkLog(recorded, ink, window) : withChildInk(recorded, record.childInk ?? null, window);
   const exchange = record.status === "live" && record.live ? childExchangeTarget(record.live.text.session) : undefined;
-  const exchangeResult = trace.checkedExchange?.turns.find((t) => t.childAction)?.actions[0]?.batchId;
+  const exchangeResult = (trace.checkedExchange?.turns ?? trace.checkedFraction?.turns)?.findLast((t) => t.childAction)?.actions[0]?.batchId;
   return {
     id: record.id,
     kind: record.kind,
@@ -1485,7 +1487,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       // durable session, so an in-flight request or an output that has yet to pass its save cannot leak into storage.
       const saveExchangeEvidence = async (observe: (saved: TextSession) => void): Promise<CallChange> => {
         const live = record.live;
-        if (!live?.text.session.checkedExchange) return {};
+        if (!live || !hasCheckedLesson(live.text.session)) return {};
         const saved = textSession(record, pkg, idleModel(record), name, live.text);
         observe(saved);
         return { live: { ...live, text: await saved.saved() } };
@@ -1657,7 +1659,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         const codeStop = s.conversational === true && s.stopRequested && !s.safety.flagged && !!s.turn && clearStop(s.turn.text);
         const codeClose = codeStop || (s.checkedRoutine && s.safety.flagged) || (s.sensitiveHold && s.silence === "close_due");
         const asks = s.outcome === null && nextActs(s).expect === "maya" && !codeClose && !checkedExchangeProposal(s);
-        return { model: asks, conversational: model.output === 3, streams: asks && !s.checkedRoutine && !s.checkedExchange && model.output === 3 && streamPlan(s) !== null };
+        return { model: asks, conversational: model.output === 3, streams: asks && !s.checkedRoutine && !hasCheckedLesson(s) && model.output === 3 && streamPlan(s) !== null };
       };
       /**
        * One input. `need`: free model attempts the gate asks for, 2 for a turn with no child words (a check-in), so the
@@ -1868,8 +1870,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           const saved = record.live?.text;
           if (inactive() || !saved) return undefined;
           // The child's exchange, then the related question's board (#1144): a saved batch the board never confirmed.
-          const turns = saved.session.checkedExchange?.turns ?? [];
-          const pending = [turns.find((t) => t.childAction)?.actions[0], turns.flatMap((t) => t.actions).findLast((a) => a.kind === "question")]
+          const turns = checkedLessonTurns(saved.session);
+          const pending = [turns.findLast((t) => t.childAction)?.actions[0], turns.flatMap((t) => t.actions).findLast((a) => a.kind === "question")]
             .find((action) => action && action.fate !== "shown" && !record.boardHistory?.delivery?.events.some(e => e.kind === "batch" && e.batchId === action.batchId));
           return pending ? batchesOf(saved.board.filter((b) => b.transactionId === pending.batchId))[0] : undefined;
         },
@@ -1890,8 +1892,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         },
         async observeBoard(snapshot) {
           const copy = structuredClone(snapshot);
-          const childBatch = session.session.checkedExchange?.turns.find((t) => t.childAction)?.actions[0]?.batchId;
-          const fates = snapshotFates(copy).filter((f) => f.fate === "shown" || f.batchId !== childBatch).slice(-32);
+          const childBatches = new Set(checkedLessonTurns(session.session).filter((t) => t.childAction).map((t) => t.actions[0]?.batchId));
+          const fates = snapshotFates(copy).filter((f) => f.fate === "shown" || !childBatches.has(f.batchId)).slice(-32);
           const presented = copy.events.flatMap((e) => e.kind === "presented" ? [e.batchId] : []);
           const observe = (s: TextSession) => { s.boardFates(fates); s.exchangePresented(presented); };
           // B1: the screen's word on each batch reaches the session at once (the next turn's brief reads it).
@@ -1924,7 +1926,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           if (inactive() || session.ended) return;
           const fates = batchIds.slice(-32).map((batchId) => ({ batchId, fate: "skipped" as const }));
           session.boardFates(fates);
-          if (session.session.checkedExchange?.turns.some((turn) => turn.actions.some((a) => batchIds.includes(a.batchId)))) {
+          if (checkedLessonTurns(session.session).some((turn) => turn.actions.some((a) => batchIds.includes(a.batchId)))) {
             later(() => persistExchangeEvidence((s) => s.boardFates(fates)));
           }
         },
@@ -1937,12 +1939,12 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           if (inactive() || !retiredTurns.length) return;
           later(async () => {
             if (inactive()) return;
-            const waitingTurns = session.session.checkedExchange?.turns.filter(turn =>
+            const waitingTurns = checkedLessonTurns(session.session).filter(turn =>
               retiredTurns.includes(turn.id) && (!turn.playback || (!turn.childAction && turn.actions.some(action => !action.fate)))
             );
-            if (!waitingTurns?.length) return;
+            if (!waitingTurns.length) return;
             const reconcile = (text: TextSession) => {
-              for (const turn of text.session.checkedExchange?.turns ?? []) {
+              for (const turn of checkedLessonTurns(text.session)) {
                 if (!waitingTurns.some(waiting => waiting.id === turn.id)) continue;
                 if (!turn.childAction) text.boardFates(turn.actions.filter(a => !a.fate).map(a => ({ batchId: a.batchId, fate: "cancelled" })));
                 text.exchangePlayback(turn.id, "interrupted");
@@ -2064,7 +2066,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const record = await store.get(id);
       if (!record) return { ok: false, error: "not_found" };
       if (input.type === "exchange" && record.mode === "text" && record.kind === "chat" &&
-        (record.live?.text.session.checkedExchange ?? record.trace?.checkedExchange)?.turns.some((t) => sameExchangeTarget(t.childAction, input.target))) {
+        (record.live ? checkedLessonTurns(record.live.text.session) : (record.trace?.checkedExchange?.turns ?? record.trace?.checkedFraction?.turns ?? []))
+          .some((t) => sameExchangeTarget(t.childAction, input.target))) {
         const view = recordView(record);
         if (view) return { ok: true, view, output: { say: [], newBatches: 0, safetyMessage: null } };
       }
