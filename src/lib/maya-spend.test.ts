@@ -225,6 +225,21 @@ describe("a metered AI client", () => {
 });
 
 describe("a voice call's meter", () => {
+  it.each([
+    { model: "inworld/inworld-tts-2", rate: undefined, cost: 210_000 },
+    { model: "inworld/inworld-tts-2", rate: "0.025", cost: 350_000 },
+    { model: "cartesia/sonic-3.6", rate: undefined, cost: 420_000 },
+  ])("settles 10,000 billed characters for $model with rate override $rate", async ({ model, rate, cost }) => {
+    const t = setup({ env: {
+      MAYA_TTS: "inference", MAYA_TTS_MODEL: model, ...(rate ? { MAYA_VOICE_USD_PER_1K_CHARS: rate } : {}),
+    } });
+    const meter = callSpend(t.ledger, { clock: Date.now, newId: t.newId }).voice({ id: "call-1", kind: "chat", parentId: P, childId: C });
+    const text = model.startsWith("inworld/") ? "[warm] " + "x".repeat(9_991) + "😊" : "x".repeat(10_000);
+    await meter.spoken(text);
+    await meter.stop();
+    expect(t.store.rows()).toMatchObject([{ what: "voice", cost, settled: true }]);
+  });
+
   it("reserves speech-to-text a block ahead, counts the voice of each line, and settles the last block at the time used", async () => {
     const t = setup({ env: { MAYA_STT_USD_PER_MINUTE: "0.01", MAYA_VOICE_USD_PER_1K_CHARS: "0.03" } });
     let elapsed = 0;

@@ -339,9 +339,6 @@ function voiceStyle(env: Readonly<Record<string, string | undefined>>, problems:
   }
   return `[${text}]`;
 }
-/** Whether a voice model takes the steering tag: Inworld models only. Cartesia would read it out. */
-const takesStyle = (model: string) => model.startsWith("inworld");
-
 const has = <T extends string>(list: readonly T[], v: string): v is T => (list as readonly string[]).includes(v);
 
 /**
@@ -353,8 +350,8 @@ const has = <T extends string>(list: readonly T[], v: string): v is T => (list a
  *
  * `MAYA_TTS`: `fake` (default); `inference` (the LiveKit key, voice `MAYA_VOICE`, model `MAYA_TTS_MODEL` from
  * INFERENCE_TTS_MODELS, default cartesia/sonic-3.6 with Katie's voice, D-338); or `inworld` (the direct plugin, `INWORLD_API_KEY`, voice
- * `MAYA_VOICE`, model `MAYA_TTS_MODEL`, default inworld-tts-2). `MAYA_VOICE_STYLE`: the steering text an Inworld voice
- * gets at the start of each speech request (D-348); ignored for Cartesia.
+ * `MAYA_VOICE`, model `MAYA_TTS_MODEL`, default inworld-tts-2). Only Inworld TTS-2 uses `MAYA_VOICE_STYLE`
+ * at the start of each speech request (D-348).
  *
  * The tuning settings (`voiceTuning`: the silence limits, the turn delay and the interruption options) are read here too.
  *
@@ -390,7 +387,7 @@ export function voiceProviders(env: Readonly<Record<string, string | undefined>>
     if (!apiKey) problems.push("MAYA_TTS is inworld, but INWORLD_API_KEY is not set");
     if (!id) problems.push("MAYA_TTS is inworld, but MAYA_VOICE (the Inworld voice id) is not set");
     const model = value(env, "MAYA_TTS_MODEL") || TTS_DEFAULT_MODEL;
-    const style = takesStyle(model) ? voiceStyle(env, problems) : undefined;
+    const style = model === "inworld-tts-2" ? voiceStyle(env, problems) : undefined;
     voice = { provider: "inworld", model, voice: id, apiKey, ...(style ? { style } : {}) };
   } else if (tts === "inference") {
     const { apiKey, apiSecret, missing } = livekit();
@@ -400,7 +397,7 @@ export function voiceProviders(env: Readonly<Record<string, string | undefined>>
     const id = value(env, "MAYA_VOICE") || (model === INFERENCE_TTS_DEFAULT ? INFERENCE_VOICE_DEFAULT : "");
     if (!id) problems.push("MAYA_TTS is inference, but MAYA_VOICE (the voice id) is not set");
     else if (!VOICE_ID.test(id)) problems.push("MAYA_VOICE must be a voice id: letters, digits, '.', '_' or '-', at most 100");
-    const style = takesStyle(model) ? voiceStyle(env, problems) : undefined;
+    const style = model === "inworld/inworld-tts-2" ? voiceStyle(env, problems) : undefined;
     if (has(Object.keys(INFERENCE_TTS_MODELS) as InferenceTtsModel[], model)) voice = { provider: "inference", model, voice: id, apiKey, apiSecret, modelOptions: INFERENCE_TTS_MODELS[model], ...(style ? { style } : {}) };
     else problems.push(`MAYA_TTS is inference, but MAYA_TTS_MODEL "${model}" is not one of ${Object.keys(INFERENCE_TTS_MODELS).join(", ")}`);
   } else if (tts !== "fake") problems.push(`MAYA_TTS must be fake, inference or inworld, not "${tts}"`);

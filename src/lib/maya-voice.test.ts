@@ -98,7 +98,7 @@ describe("providers by configuration", () => {
     for (const options of Object.values(INFERENCE_TTS_MODELS)) expect(Object.keys(options).length).toBeGreaterThan(0);
   });
 
-  it("gives an Inworld voice the steering text of MAYA_VOICE_STYLE as one bracketed tag, and never a Cartesia voice", () => {
+  it("gives only documented TTS-2 models the steering text of MAYA_VOICE_STYLE", () => {
     const sarah = { ...LK, MAYA_STT: "inference", MAYA_TTS: "inference", MAYA_TTS_MODEL: "inworld/inworld-tts-2", MAYA_VOICE: "Sarah", MAYA_VOICE_PRIVACY_CONFIRMED: INFERENCE_OK };
     const style = "speak like a warm friendly and upbeat tutor who is happily teaching a young child";
     // With or without its brackets, the setting is one tag.
@@ -107,6 +107,11 @@ describe("providers by configuration", () => {
     // The direct Inworld plugin takes it too.
     const direct = voiceProviders({ MAYA_TTS: "inworld", INWORLD_API_KEY: "k", MAYA_VOICE: "Sarah", MAYA_VOICE_STYLE: style, MAYA_VOICE_PRIVACY_CONFIRMED: "inworld-retention,child-use-approved" });
     expect(direct).toMatchObject({ ok: true, voice: { provider: "inworld", style: `[${style}]` } });
+    for (const model of ["inworld-tts-2-flash", "inworld-tts-1.5-max", "inworld/inworld-tts-2"]) {
+      const unsupported = voiceProviders({ MAYA_TTS: "inworld", MAYA_TTS_MODEL: model, INWORLD_API_KEY: "k", MAYA_VOICE: "Sarah", MAYA_VOICE_STYLE: style, MAYA_VOICE_PRIVACY_CONFIRMED: "inworld-retention,child-use-approved" });
+      expect(unsupported.ok).toBe(true);
+      expect(unsupported.ok && unsupported.voice).not.toHaveProperty("style");
+    }
     // Not set: no tag. Cartesia (the default, and by name): ignored.
     const none = voiceProviders(sarah);
     expect(none.ok && none.voice.provider === "inference" && none.voice.style).toBeFalsy();

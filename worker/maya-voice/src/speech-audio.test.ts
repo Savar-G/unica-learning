@@ -408,6 +408,35 @@ describe("math is spoken as words", () => {
       expect(p.transcripts).toEqual([["Nice", "thinking!"]]);
     });
 
+    it.each([
+      { name: "a split echo", frames: [["[speak", "like a warm friendly "], ["and upbeat tutor who is happily"], ["teaching a young child] [Ten]", " is right."]] },
+      { name: "a whole echo", frames: [[TAG, " ", "[Ten]", " is right."]] },
+      { name: "no echo", frames: [["[Ten]", " is right."]] },
+    ])("keeps the bracketed first word with $name", async ({ frames }) => {
+      const out = await countedSynthesis(inputText("[Ten] is right."), async (input) => {
+        for await (const chunk of input) void chunk;
+        return new ReadableStream<AudioFrame>({ start(controller) {
+          for (const words of frames) {
+            const frame = new AudioFrame(new Int16Array(2400), 24000, 1, 2400);
+            frame.userdata[USERDATA_TIMED_TRANSCRIPT] = words.map(text => voice.createTimedString({
+              text, startTime: text.includes("[Ten]") ? 0.3 : 0, endTime: text.includes("[Ten]") ? 0.4 : 0,
+            }));
+            controller.enqueue(frame);
+          }
+          controller.close();
+        } });
+      }, vi.fn(), undefined, TAG);
+      const heard: voice.TimedString[] = [];
+      let audioFrames = 0;
+      for await (const frame of out!) {
+        audioFrames++;
+        heard.push(...(frame.userdata[USERDATA_TIMED_TRANSCRIPT] as voice.TimedString[]));
+      }
+      expect(audioFrames).toBe(frames.length);
+      expect(heard.map(t => t.text).join("")).toBe("[Ten] is right.");
+      expect(heard[0]).toMatchObject({ startTime: 0.3, endTime: 0.4 });
+    });
+
     it("sends no tag without a style", async () => {
       const p = provider([null]);
       for await (const frame of (await p.synthesize(inputText("Nice thinking!")))!) void frame;

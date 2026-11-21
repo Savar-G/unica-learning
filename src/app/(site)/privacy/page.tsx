@@ -10,13 +10,10 @@ const PAGE = {
   description: `How ${BUSINESS_NAME} uses your information and cookies, and how to contact us about your privacy.`,
 };
 
-/** The company that makes Maya's voice (D-348: Inworld, through LiveKit Inference). */
-const VOICE_COMPANY = "Inworld";
-
 export const metadata = pageMetadata(PAGE);
 
 export default function Privacy() {
-  return <SupportPage label="Updated 13 November 2026" title="Privacy policy">
+  return <SupportPage label="Updated 20 November 2026" title="Privacy policy">
     <JsonLd data={pageJsonLd(PAGE)} />
     <p className="lead">{BUSINESS_NAME} is responsible for the information you share through this website. This policy explains what we collect, why we use it, and the choices you have.</p>
     <h2>What you share with us</h2>
@@ -50,10 +47,10 @@ export default function Privacy() {
     <p>A chat has no audio. We do not send the words of a chat or a call to our analytics or advertising tools.</p>
     <p>If your child writes something that suggests they may not be safe, Maya stops the math and tells your child to talk to a grown-up they trust. In a more urgent case, Maya tells your child to go to a safe grown-up now, and to call 911 if they are in danger. If your child asks for harmful content, we also flag the chat. For these flags, our team gets an email with the time and a link to the chat, but not your child&apos;s words. Your note says when Maya stopped the math. Maya cannot call for help, and Maya is not an emergency service.</p>
     <p>Chat is for Grade 3 and up, because it needs typing. A child can send Maya up to 60 messages a day, by your family&apos;s time. Maya can make a mistake. If something does not add up, send us the page and question.</p>
-    {/* #337, D-336. VOICE_COMPANY is the production voice (D-348). Keep this in step with docs/maya-voice.md. */}
+    {/* D-336, D-338, D-348. Disclose both voices used during the change and a rollback. */}
     <h2>Voice calls with Maya</h2>
     <p>Your child can also call Maya and talk out loud. A call is about one workbook question, as a chat is. A call lasts at most 10 minutes, and each child can talk with Maya for at most 30 minutes a week, by your family&apos;s time. Calls open when your family&apos;s plan starts, are for Grade 3 and up, and need the same agreement as a chat.</p>
-    <p>In a call, the sound of your child&apos;s voice goes to LiveKit, the company that runs the call. LiveKit sends it to AssemblyAI, which turns your child&apos;s speech into text. We send that text to the AI model, as we do in a chat. In a call, Maya can say your child&apos;s first name. Maya&apos;s words, with that first name when she says it, go to {VOICE_COMPANY}, which turns them into Maya&apos;s voice. LiveKit says that neither it nor these companies log, store or train on the audio or the words. We turned off call recording in LiveKit. Our own systems do not save any audio.</p>
+    <p>In a call, the sound of your child&apos;s voice goes to LiveKit, the company that runs the call. LiveKit sends it to AssemblyAI, which turns your child&apos;s speech into text. We send that text to the AI model, as we do in a chat. LiveKit sends Maya&apos;s words to Inworld or Cartesia, depending on which voice we use. That company turns the words into Maya&apos;s voice. The words can include your child&apos;s first name. LiveKit says that neither it nor these companies log, store or train on the audio or the words. We turned off call recording in LiveKit. Our own systems do not save any audio.</p>
     <p>From a call we keep the same records as from a chat: what your child said, as text, what Maya said and drew on the board, how the call ended, the length of the call, a note and a learning record. Speech-to-text can mishear a word. When it is not sure of a number, Maya asks your child to say it again. Please ask your child not to say full names, addresses or phone numbers in a call. If your child says something that suggests they may not be safe, Maya does the same as in a chat, and our team gets the same alert.</p>
     <h2>Cookies and your choice</h2>
     <p>We also count how many people visit our public pages, so we know what is working. We do not use a cookie for this count, and it does not depend on your cookie choice. When you open a page, we keep the page, the time, the website you came from (only its name, not the full address), and the tags on your link, if there are any. We also keep the kind of device (phone, tablet or computer), the kind of browser, and your country and province, which our host works out from your connection. We do not keep your IP address, your browser&apos;s full description, your name or your email address. These public-page counts do not include the pages you open after you sign in or the pages your child uses. Your browser keeps a random visit number until you close the tab, so we can tell that several page views belong to one visit. We cannot tell who you are from it.</p>

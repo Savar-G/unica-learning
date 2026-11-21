@@ -10,9 +10,11 @@ Decisions D-290 and D-291. Savar decided the amount: CAD 10 per child per week (
 | Team alert, all of Maya, one month | CAD 400. It stops nobody. | `MAYA_MONTHLY_ALERT_CAD` |
 | US dollars to CAD | 1.40 | `MAYA_USD_TO_CAD` |
 | Speech-to-text | USD 0.01 a minute | `MAYA_STT_USD_PER_MINUTE` |
-| Maya's voice | USD 0.03 per 1,000 characters | `MAYA_VOICE_USD_PER_1K_CHARS` |
+| Maya's voice | USD 0.015 per 1,000 characters for Inworld TTS-2 through LiveKit Inference (Scale). Previous Cartesia estimate: USD 0.03 per 1,000. | `MAYA_VOICE_USD_PER_1K_CHARS` |
 
 OpenRouter reports each attempt's cost in US dollars. The ledger turns it into CAD with the one configured rate, and keeps whole micro-units of CAD (1 CAD = 1,000,000). The rate is not looked up: change `MAYA_USD_TO_CAD` in Vercel and in the voice worker's settings when the dollar moves. The speech-to-text and voice rates are estimates, because the voice providers report no cost per call; set them from the providers' price pages.
+
+The worker selects the Inworld rate when `MAYA_TTS=inference` and `MAYA_TTS_MODEL=inworld/inworld-tts-2`. A positive `MAYA_VOICE_USD_PER_1K_CHARS` overrides the estimate. Set it when the project uses another plan or an agreed rate. For Build or Ship, the published Inworld TTS-2 rate is USD 0.025 per 1,000 characters. Set the rate with the model and voice during the [switch or rollback](maya-voice-deploy.md#mayas-production-voice). [LiveKit pricing](https://livekit.io/pricing/inference#tts)
 
 The week is the family's week: Monday 00:00 to Monday 00:00 in the family's time zone (`src/lib/family-time.ts`). The month is the calendar month in Pacific time.
 
@@ -26,7 +28,7 @@ Each provider attempt is reserved before it is sent, retries included, and settl
 - The call note's AI pick, USD 0.05.
 - The child profile's AI findings after a call, USD 0.30. The sweep of abandoned calls goes the same way.
 - A voice call's speech-to-text, a minute at a time. The worker asks every 10 seconds, whatever the child is doing, and the next block is reserved 20 seconds before the current one ends. A block settles at the time used.
-- A voice call's voice, counted when audio comes back from the provider (`ttsNode` in `worker/maya-voice/src/agent.ts`). This covers replies, acknowledgement phrases and guidance said again. Output that gives no audio counts nothing. The count never holds audio back.
+- A voice call's voice, counted when audio comes back from the provider (`ttsNode` in `worker/maya-voice/src/agent.ts`). This covers replies, acknowledgement phrases and guidance said again. The estimate uses the text sent for synthesis, including spaces, punctuation and the Inworld steering tag in each request. Inworld counts UTF-16 code units. Output that gives no audio counts nothing. The count never holds audio back. [Inworld billing](https://docs.inworld.ai/portal/billing#text-to-speech)
 
 An attempt whose cost is not known (no answer, a time-out, an answer with no cost) stays counted at its reservation. An attempt that gets an HTTP error with no cost, or that was never sent, counts nothing. A reservation left open for 10 minutes (a crash) stops counting, so it cannot lock a child out; a late settle still writes its cost.
 

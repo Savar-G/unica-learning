@@ -15,8 +15,8 @@ import { delivery, deliveryLog, LeadTrim } from "./voice-delivery";
  * receives and bills. Text that is already spoken (from `boardAudio`) does not change again.
  *
  * `style` (an Inworld voice with MAYA_VOICE_STYLE, D-348) is a bracketed steering tag put at the start of this request.
- * Inworld does not say it, but bills it and times it as one token before the first word: that token is taken out of the
- * audio's timed transcript here, so Maya's transcript never shows it and board cues count only spoken words.
+ * Inworld bills the tag and can echo it in the audio's timed transcript. Remove the echo before the transcript and
+ * board cues read the timings.
  */
 export async function countedSynthesis(
   text: ReadableStream<string> | AsyncIterable<string>,
@@ -53,8 +53,7 @@ export async function countedSynthesis(
   const reader = frames.getReader();
   let heard = false;
   let counted = false;
-  /** A spoken word was timed already: a bracketed token after it is Maya's own text, never the tag. */
-  let wordTimed = !style;
+  const filterStyle = style ? styleTimingFilter(style) : undefined;
   const charge = () => {
     if (!heard || counted) return;
     counted = true;
@@ -67,7 +66,7 @@ export async function countedSynthesis(
         if (done) { charge(); return controller.close(); }
         if (!heard) probe?.firstFrame();
         heard = true;
-        if (!wordTimed) wordTimed = withoutStyleTag(value);
+        filterStyle?.(value);
         controller.enqueue(value);
       } catch (e) {
         charge();
@@ -82,26 +81,45 @@ export async function countedSynthesis(
   });
 }
 
-const STYLE_TAG = /^\s*\[[^\]]*\]\s*/;
-
 /**
- * Takes the steering tag out of a frame's timed transcript: leading tokens that are a bracketed tag, or the tag in front
- * of the first word in the same token. True once a spoken word is timed (later frames are left as they are).
+ * Match one configured tag at the start of each request. Alignment can split it across tokens and audio frames,
+ * with or without spaces. Hold only the candidate timings so audio can continue while the prefix is checked.
  */
-function withoutStyleTag(frame: AudioFrame): boolean {
-  const times = frame.userdata[USERDATA_TIMED_TRANSCRIPT] as voice.TimedString[] | undefined;
-  if (!times?.length) return false;
-  const kept: voice.TimedString[] = [];
-  let word = false;
-  for (const t of times) {
-    if (word) { kept.push(t); continue; }
-    const rest = t.text.replace(STYLE_TAG, "");
-    if (!rest.trim()) continue;
-    word = true;
-    kept.push(rest === t.text ? t : voice.createTimedString({ ...t, text: rest }));
-  }
-  frame.userdata[USERDATA_TIMED_TRANSCRIPT] = kept;
-  return word;
+function styleTimingFilter(style: string): (frame: AudioFrame) => void {
+  // An empty remainder means the tag matched. Null means the rest of the transcript passes through.
+  let remaining: string | null = style.replace(/\s/g, "");
+  const pending: voice.TimedString[] = [];
+  return (frame) => {
+    const times = frame.userdata[USERDATA_TIMED_TRANSCRIPT] as voice.TimedString[] | undefined;
+    if (remaining === null || !times?.length) return;
+    const kept: voice.TimedString[] = [];
+    for (const t of times) {
+      if (remaining === null) { kept.push(t); continue; }
+      let text = t.text;
+      if (remaining) {
+        const fragment = text.replace(/\s/g, "");
+        if (fragment.length < remaining.length && remaining.startsWith(fragment)) {
+          pending.push(t);
+          remaining = remaining.slice(fragment.length);
+          continue;
+        }
+        if (!fragment.startsWith(remaining)) {
+          kept.push(...pending, t);
+          pending.length = 0;
+          remaining = null;
+          continue;
+        }
+        pending.length = 0;
+        remaining = "";
+        text = text.slice(text.indexOf("]") + 1);
+      }
+      text = text.trimStart();
+      if (!text) continue;
+      kept.push(text === t.text ? t : voice.createTimedString({ ...t, text }));
+      remaining = null;
+    }
+    frame.userdata[USERDATA_TIMED_TRANSCRIPT] = kept;
+  };
 }
 
 /** A speech whose audio did not come, or stopped coming, for its own reason: not a cut. */

@@ -54,6 +54,8 @@ export const VOICE_RENEW_EARLY_MS = 20_000;
 export const VOICE_METER_TICK_MS = 10_000;
 export const DEFAULT_STT_USD_PER_MINUTE = 0.01;
 export const DEFAULT_VOICE_USD_PER_1K_CHARS = 0.03;
+/** LiveKit Inference Scale: USD 15 per million characters. https://livekit.io/pricing/inference#tts */
+const INWORLD_TTS_2_SCALE_USD_PER_1K_CHARS = 0.015;
 
 export type SpendWhat = "model" | "review" | "note" | "profile" | "speech_to_text" | "voice";
 export type SpendState = "open" | "week_used" | "paused";
@@ -72,11 +74,14 @@ const positive = (value: string | undefined, fallback: number) => {
 
 /** The settings: MAYA_USD_TO_CAD, MAYA_MONTHLY_ALERT_CAD, MAYA_STT_USD_PER_MINUTE, MAYA_VOICE_USD_PER_1K_CHARS. */
 export function spendConfig(env: Readonly<Record<string, string | undefined>> = process.env): SpendConfig {
+  const inworldInference = env.MAYA_TTS?.trim().toLowerCase() === "inference"
+    && env.MAYA_TTS_MODEL?.trim() === "inworld/inworld-tts-2";
+  const voiceRate = inworldInference ? INWORLD_TTS_2_SCALE_USD_PER_1K_CHARS : DEFAULT_VOICE_USD_PER_1K_CHARS;
   return {
     usdToCad: positive(env.MAYA_USD_TO_CAD, DEFAULT_USD_TO_CAD),
     monthlyAlertMicros: Math.round(positive(env.MAYA_MONTHLY_ALERT_CAD, DEFAULT_MONTHLY_ALERT_CAD) * MICROS_PER_CAD),
     sttUsdPerMinute: positive(env.MAYA_STT_USD_PER_MINUTE, DEFAULT_STT_USD_PER_MINUTE),
-    voiceUsdPer1kChars: positive(env.MAYA_VOICE_USD_PER_1K_CHARS, DEFAULT_VOICE_USD_PER_1K_CHARS),
+    voiceUsdPer1kChars: positive(env.MAYA_VOICE_USD_PER_1K_CHARS, voiceRate),
   };
 }
 
