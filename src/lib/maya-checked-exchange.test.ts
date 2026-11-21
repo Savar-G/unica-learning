@@ -1352,3 +1352,18 @@ it("96 ÷ 4: corrects a wrong operation only when it was applied to 96 and 4", a
   const traces = store.rows().map((row) => row.trace?.checkedExchange?.turns.some((t) => t.observation?.skill === "division_misconception"));
   expect(traces).toEqual([false, true]);
 });
+
+it("checks a division trace's board commands against each recorded action, from trace version 16", async () => {
+  const { calls, store } = setup();
+  let turn = ok(await calls.start({ ...input, package: divisionPackage(84, 4) }));
+  for (const text of ["My answer is 21.", "Yes."]) turn = ok(await calls.input(turn.view.id, turn.view.revision, { type: "child", text }, null));
+  await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null);
+  const trace = store.rows()[0].trace!;
+  expect(trace.version).toBe(16);
+  expect(checkTrace(trace)).toMatchObject({ ok: true });
+  const edited = structuredClone(trace);
+  const question = edited.board.flatMap((b) => b.commands as { op: string; text?: string }[]).find((c) => c.text === "69 ÷ 3 = ?")!;
+  question.text = "23";
+  expect(checkTrace(edited)).toMatchObject({ ok: false });
+  expect(checkTrace({ ...structuredClone(trace), version: 15 })).toMatchObject({ ok: false });
+});

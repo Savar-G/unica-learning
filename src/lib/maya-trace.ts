@@ -43,11 +43,13 @@ export interface TraceRefusal {
  * fate. Version 15 (B2, "draw while speaking") adds, on a board batch, `sentence`: the sentence of its turn's words the
  * batch is tied to (0-based; absent: the end of the turn) and `after` (the batches of the same turn it builds on), and,
  * on an accepted attempt, `boardReads`: each clause code read as a board action, drawn or why not (the drawings are read
- * from Maya's sentences), with the counts `clausesDrawn` and `clausesNotDrawn`. `checkTrace` reads all fifteen versions.
+ * from Maya's sentences), with the counts `clausesDrawn` and `clausesNotDrawn`. Version 16 (#1155) adds checked
+ * division: the lesson's `kind: "divide"`, and on a checked exchange proposal `divisor` and `shared`; each such turn's board
+ * batches must be the commands of its recorded action. `checkTrace` reads all sixteen versions.
  */
-export const TRACE_VERSION = 15;
+export const TRACE_VERSION = 16;
 /** The trace versions `checkTrace` reads. */
-export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] as const;
+export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] as const;
 /**
  * The held turn as version 8 traces stored it, before D-327 (line sets 11 to 13). Frozen here: stored admin test
  * calls from preview deployments may hold it, and they stay readable.
@@ -749,6 +751,19 @@ function check(raw: unknown): MayaTrace {
   turns.forEach((t, i) => {
     const out = t.kind === "maya" ? (t.output as { board: string[] } | null) : null;
     out?.board.forEach((id) => need(sent.has(id), `turns[${i}].output.board`, `batch ${id} in the board list`));
+  });
+
+  // Version 16 (#1155): checked division, with each turn's board batches checked against its recorded action.
+  const lesson = r.checkedExchange as { kind?: unknown } | undefined;
+  need(lesson?.kind === undefined || ((r.version as number) >= 16 && lesson.kind === "divide"), "checkedExchange.kind", "absent, or (version 16) divide");
+  turns.forEach((t, i) => {
+    if (t.kind !== "maya" || t.output === null) return;
+    const proposal = (t.attempts as Record<string, unknown>[]).at(-1)?.proposal;
+    if (!isObject(proposal) || proposal.checkedExchange !== 1 || proposal.divisor === undefined) return;
+    need((r.version as number) >= 16, `turns[${i}].attempts`, "a checked division only from version 16");
+    const out = t.output as { board: string[] };
+    const boards = out.board.map((id) => ((r.board as Record<string, unknown>[]).find((b) => b.transactionId === id)?.commands ?? []) as unknown[]);
+    need(checkDivisionOutput(proposal, out, readExchangeTarget, boards), `turns[${i}].output`, "the checked division's own words and board commands");
   });
 
   checkOutcome(r.outcome, "outcome");

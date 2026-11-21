@@ -758,8 +758,43 @@ export function divisionRelatedChoice(
   return { step: again };
 }
 
-/** Validates a division ExchangeProposal against the expected output in maya-trace.ts. */
+/**
+ * #1155 review: the board commands a checked division proposal sends, batch by batch, from its recorded action: the
+ * child's action, the related question, the shown blocks, or a demonstration's show, share and exchange.
+ */
+function divisionOutputBoards(proposal: Record<string, unknown>, facts: DivisionFacts, child: ExchangeTarget | null): Command[][] {
+  const instruction = proposal.instruction as DivisionInstruction | undefined;
+  if (child) return [divisionCommands(child.objectId === SHARE_OBJECT ? "share" : "exchange", facts)];
+  if (instruction !== undefined || proposal.prompt === true) {
+    if (!proposal.show) return [];
+    const related = instruction?.transfer === undefined ? null : readDivisionTransferOperands(instruction.transfer);
+    return [related ? divisionTransferBoard(related) : divisionCommands("show", facts)];
+  }
+  return [
+    ...(proposal.show ? [divisionCommands("show", facts)] : []),
+    ...(proposal.shared === true ? [] : [divisionCommands("share", facts)]),
+    ...(facts.remainingTens > 0 ? [divisionCommands("exchange", facts)] : []),
+  ];
+}
+
+/**
+ * Validates a division ExchangeProposal against the expected output in maya-trace.ts. With `boards` (each sent batch's
+ * commands, in output order), every batch must be the commands of the recorded action.
+ */
 export function checkDivisionOutput(
+  proposal: Record<string, unknown>,
+  output: { act?: unknown; say?: unknown; board?: unknown },
+  readTarget: (v: unknown) => ExchangeTarget | null,
+  boards?: readonly (readonly unknown[])[],
+): boolean {
+  if (!checkDivisionWords(proposal, output, readTarget)) return false;
+  if (!boards) return true;
+  const facts = divisionFacts(proposal.value as number, proposal.divisor as number, proposal.example as boolean)!;
+  const expected = divisionOutputBoards(proposal, facts, readTarget(proposal.childAction));
+  return boards.length === expected.length && boards.every((b, i) => JSON.stringify(b) === JSON.stringify(expected[i]));
+}
+
+function checkDivisionWords(
   proposal: Record<string, unknown>,
   output: { act?: unknown; say?: unknown; board?: unknown },
   readTarget: (v: unknown) => ExchangeTarget | null,
