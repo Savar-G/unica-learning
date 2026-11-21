@@ -435,6 +435,8 @@ export interface PlanInput {
   workbook: { number: number; inLevel: number };
   /** The spaced reviews carried from earlier workbooks. */
   reviews: readonly SpacedReview[];
+  /** Standards flagged for review by the child's teaching evidence. Placement and mastery are independent of these. */
+  teachingReviews?: readonly string[];
   /** Last time's spaced reviews marked below 80%: back in Fix it (4.4). */
   missedReviews: readonly SpacedReview[];
   /** The previous workbook's unresolved misses, up to its day-7 snapshot. */
@@ -1097,10 +1099,37 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
   for (const s of earlyBelow) for (const skill of s.skills) {
     if (!input.reviews.some(r => r.skill === skill)) place({ skill, step: 1, interval: 0, due: 2 });
   }
-  for (const skill of secureBelow) if (!input.reviews.some(r => r.skill === skill)) place({ skill, step: 1, interval: 2, due: 15 });
+  const teachingSteps = new Map<string, number>();
+  const teachingScheduled = new Map<string, number>();
+  for (const code of new Set(input.teachingReviews ?? [])) {
+    const standard = STANDARDS.get(code);
+    if (!standard || standard.grade > input.grade) continue;
+    for (const { id: skill } of standard.skills) {
+      if (input.reviews.some(r => r.skill === skill) || placed.some(r => r.skill === skill)) continue;
+      const own = levelSkills.find(s => s.id === skill);
+      const start = sim.starts.find(s => s.skill === skill);
+      const step = own
+        ? (input.passed[skill] || (secureUnits.includes(code) ? 1 : start?.step))
+        : level.codeReviewSteps?.[skill]?.[0];
+      if (!step) continue;
+      // Current teaching can only be reviewed after the starting step has been taught.
+      const due = own && !input.passed[skill] && !secureUnits.includes(code) && start ? start.day + 1 : 2;
+      const reviewStep = own ? Math.min(step, stepCount(own)) : step;
+      place({ skill, step: reviewStep, interval: 0, due });
+      teachingScheduled.set(skill, reviewStep);
+      // Review-only units already have evidence for this step.
+      if (own && secureUnits.includes(code)) teachingSteps.set(skill, 1);
+    }
+  }
+  for (const skill of secureBelow) if (!input.reviews.some(r => r.skill === skill) && !teachingScheduled.has(skill)) {
+    place({ skill, step: 1, interval: 2, due: 15 });
+  }
   for (const track of ["A", "B"] as const) {
     const mine = sim.starts.filter((s) => s.track === track);
-    mine.forEach((s, i) => place({ skill: s.skill, step: s.step, interval: 0, due: (weak.has(s.unit) ? s.day : (mine[i + 1]?.day ?? DAYS + 1) - 1) + SPACED_INTERVALS[0] }));
+    mine.forEach((s, i) => {
+      if (teachingScheduled.get(s.skill) === s.step) return;
+      place({ skill: s.skill, step: s.step, interval: 0, due: (weak.has(s.unit) ? s.day : (mine[i + 1]?.day ?? DAYS + 1) - 1) + SPACED_INTERVALS[0] });
+    });
   }
 
   // The rest of Remember these?: every unit (test workbook), weak then secure standards, the level's secure units and
@@ -1122,7 +1151,7 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
   const earlier = filler.length > 0 ? filler : level.units.map((u) => u.skills[0]?.id).filter((x): x is string => !!x);
   const stepsBefore = (day: number) => sim.starts.filter((s) => s.day < day).map((s) => s.skill);
   const supportSkills = support ? STANDARDS.get(support)!.skills.map((k) => k.id) : [];
-  const taughtStep = (skill: string, day: number) => Math.max(input.passed[skill] ?? 0,
+  const taughtStep = (skill: string, day: number) => Math.max(input.passed[skill] ?? 0, teachingSteps.get(skill) ?? 0,
     ...decisions.filter(d => d.selection.skill === skill).map(d => d.selection.step),
     ...sim.starts.filter(s => s.skill === skill && s.day < day).map(s => s.step),
     ...[...input.reviews, ...input.missedReviews].filter(r => r.skill === skill).map(r => r.step));

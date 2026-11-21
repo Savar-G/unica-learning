@@ -1,4 +1,5 @@
 import type { Command } from "@/lib/board";
+import { MAX_OBSERVATIONS, type LessonObservation } from "@/lib/learning-events";
 import type { OperationPackage } from "@/lib/question-package";
 import { readTransferOperands, TRANSFER_GOODBYE, TRANSFER_OFFER, transferRetryWords, transferStartWords, type TransferOperands } from "./transfer";
 
@@ -82,15 +83,67 @@ export interface TransferTask {
   eventKey?: string;
 }
 
+/**
+ * #1145: what the child's versioned profile said about this lesson's standard when the call started (made by
+ * teachingBrief, src/lib/child-profile-teaching.ts). It changes only the first step after the child says they are stuck.
+ * A lesson saved without it, or with an empty one, teaches as before.
+ */
+export interface LessonBrief {
+  standard: string;
+  /** The profile revision it was read from. */
+  revision: number;
+  /** The tens prerequisite: null with no evidence. */
+  prerequisite: "unsure" | "gap" | "secure" | null;
+  /** A gap the child has worked on with the blocks or help since its last error: check the tens again on the child's own. */
+  recheck?: true;
+  /** The base-ten blocks on the board: null with no evidence. */
+  blocks: "helped" | "not_yet" | null;
+  /** Misconceptions still open (suspected or likely), by id ("reversal", "O3"). */
+  misconceptions: string[];
+  /** The open review targets' reasons. */
+  reviews: string[];
+}
+
+const BRIEF_VIEWS = { prerequisite: ["unsure", "gap", "secure"], blocks: ["helped", "not_yet"] } as const;
+
+/** The brief a seam gave, checked; null when it is not one. */
+export function readLessonBrief(value: unknown): LessonBrief | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const b = value as Partial<LessonBrief>;
+  const ids = (list: unknown): list is string[] => Array.isArray(list) && list.length <= 20 && list.every((id) => typeof id === "string" && id.length >= 1 && id.length <= 40);
+  if (typeof b.standard !== "string" || b.standard.length > 20 || !Number.isSafeInteger(b.revision) || b.revision! < 1 ||
+    !(b.prerequisite === null || BRIEF_VIEWS.prerequisite.includes(b.prerequisite!)) || !(b.blocks === null || BRIEF_VIEWS.blocks.includes(b.blocks!)) ||
+    !ids(b.misconceptions) || !ids(b.reviews)) return null;
+  if (b.recheck !== undefined && (b.recheck !== true || b.prerequisite !== "gap")) return null;
+  return { standard: b.standard, revision: b.revision!, prerequisite: b.prerequisite!, ...(b.recheck ? { recheck: true as const } : {}), blocks: b.blocks!, misconceptions: [...b.misconceptions], reviews: [...b.reviews] };
+}
+
+/**
+ * The lesson's first step when the child says they are stuck (#1145). With no brief: check the tens. The tens known on
+ * the child's own: go straight to the exchange question. A tens gap: show the blocks with the trade, and once the child
+ * has worked with them (`recheck`), check the tens again on the child's own so the gap can be revised.
+ * A help-only success or unfinished independent transfer starts with a guided trade, as do blocks that helped before.
+ */
+export function stuckStart(brief: LessonBrief | undefined, reviewStart?: true): "check_place" | "check_exchange" | "place_gap" | "guide_exchange" {
+  if (brief?.prerequisite === "gap") return brief.recheck ? "check_place" : "place_gap";
+  if (reviewStart && (brief?.reviews.includes("assisted_only") || brief?.reviews.includes("transfer_not_independent"))) return "guide_exchange";
+  if (brief?.prerequisite === "secure") return "check_exchange";
+  return brief?.blocks === "helped" ? "guide_exchange" : "check_place";
+}
+
 export interface CheckedExchangeLesson {
   version: 1;
   /** Older saved sessions continue with the original exchange interaction. */
   progression?: 1;
   /** #1144: offers the related question. A lesson saved without it replays its old "correct" step unchanged. */
   transfers?: 1;
+  /** Saved sessions keep their original first-step policy. */
+  reviewStart?: true;
   id: string;
   turns: ExchangeTurn[];
   transfer?: TransferTask;
+  /** #1145: the child's teaching brief at the call's start, when the profile had one for this standard. */
+  brief?: LessonBrief;
 }
 
 export interface ExchangeProposal {
@@ -111,6 +164,8 @@ export interface RegroupingInstruction {
   usePlaceValueTerms?: true;
   /** The related question's operands, on every turn of it (#1144). */
   transfer?: TransferOperands;
+  /** #1145: the brief's open swapped-digit mistake: the first ones step starts with the reminder. */
+  remind?: "reversal";
   /** Omitted when naming the quantity would disclose the target answer. */
   subtrahend?: number;
 }
@@ -122,6 +177,25 @@ export interface RegroupingObservation {
   at: number;
 }
 
+/**
+ * The lesson's checked observations for one question's learning event (#1145): the original question's turns, or the
+ * related question's (`transfer`), oldest first, the newest MAX_OBSERVATIONS. `board`: the blocks were on the child's board
+ * (a show or exchange batch the screen showed in an earlier turn of the same question, or the child's own exchange).
+ */
+export function lessonObservations(lesson: CheckedExchangeLesson | undefined, transfer: boolean): LessonObservation[] {
+  let blocks = false;
+  const found: LessonObservation[] = [];
+  for (const turn of lesson?.turns ?? []) {
+    if ((turn.transfer === true) !== transfer) continue;
+    if (turn.observation) {
+      const { skill, result, assistance } = turn.observation;
+      found.push({ skill, result, assistance, board: blocks || !!turn.childAction });
+    }
+    if (turn.childAction || turn.actions.some((a) => a.kind !== "question" && a.fate === "shown")) blocks = true;
+  }
+  return found.slice(-MAX_OBSERVATIONS);
+}
+
 export function regroupingOffersAction(instruction: RegroupingInstruction | undefined): boolean {
   return instruction?.step === "guide_exchange" || instruction?.step === "place_gap" || instruction?.step === "reversal";
 }
@@ -129,9 +203,19 @@ export function regroupingOffersAction(instruction: RegroupingInstruction | unde
 /** Code-owned lesson prompts. The only quantities here come from checked exchange facts. */
 export function regroupingWords(facts: ExchangeFacts, instruction: unknown, show: boolean): string[] | null {
   if (!instruction || typeof instruction !== "object") return null;
-  const { step, usePlaceValueTerms, subtrahend } = instruction as RegroupingInstruction;
-  const related = (instruction as RegroupingInstruction).transfer === undefined ? null : readTransferOperands((instruction as RegroupingInstruction).transfer);
-  if ((instruction as RegroupingInstruction).transfer !== undefined && (!related || related[0] !== facts.value || facts.example ||
+  const { step, usePlaceValueTerms, subtrahend, remind } = instruction as RegroupingInstruction;
+  if (remind !== undefined && (remind !== "reversal" || (step !== "connect" && step !== "ones"))) return null;
+  const words = stepWords(facts, instruction as RegroupingInstruction, show, step, usePlaceValueTerms, subtrahend);
+  return words && remind ? [REVERSAL_REMINDER, ...words] : words;
+}
+
+/** #1145: said once before the first ones step when the child's brief has an open swapped-digit mistake. */
+export const REVERSAL_REMINDER = "Start with the top number in each column. Swapping the numbers changes the problem.";
+
+function stepWords(facts: ExchangeFacts, instruction: RegroupingInstruction, show: boolean, step: RegroupingInstruction["step"],
+  usePlaceValueTerms: true | undefined, subtrahend: number | undefined): string[] | null {
+  const related = instruction.transfer === undefined ? null : readTransferOperands(instruction.transfer);
+  if (instruction.transfer !== undefined && (!related || related[0] !== facts.value || facts.example ||
     (subtrahend !== undefined && subtrahend !== related[1]))) return null;
   if (subtrahend !== undefined && (facts.example || !Number.isInteger(subtrahend) || subtrahend <= 0 ||
     subtrahend >= facts.value || subtrahend % 10 <= facts.before.ones)) return null;
@@ -148,7 +232,7 @@ export function regroupingWords(facts: ExchangeFacts, instruction: unknown, show
     case "reversal":
     case "guide_exchange":
       return [
-        ...(step === "reversal" ? ["Start with the top number in each column. Swapping the numbers changes the problem."] : []),
+        ...(step === "reversal" ? [REVERSAL_REMINDER] : []),
         ...(show || step === "place_gap" ? exchangePromptWords(facts, true).slice(0, 1) : []),
         "We need more ones. We can trade a ten for ten ones and keep the same amount.",
         "Use the Exchange one ten button to make the trade.",

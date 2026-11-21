@@ -1,6 +1,7 @@
 // Workbook personalization P0-P9 (D-233). Pure TypeScript: no network, database, clock or randomness.
 import type { Grade } from "@/lib/assessment";
 import type { ChildLearnerProfile } from "@/lib/child-profile";
+import { plannedReviews } from "@/lib/child-profile-teaching";
 import type { Curriculum, CurriculumLevel } from "@/lib/workbook-curriculum";
 import { planLevel, planWorkbook, type WorkbookPlan, type PlanInput } from "@/lib/workbook-plan";
 import { bookSignals, type BookSignals, type BookStandard } from "@/lib/workbook-signals";
@@ -142,13 +143,15 @@ function preparePlacement(o: PlacementInput & { number: number }) {
   };
   const known = new Set((o.profile?.standards ?? []).map(s => s.code));
   const own = new Set(place.level.units);
-  const standards = (o.profile?.standards ?? []).map(s => signals.hasAssessment && place.first && own.has(s.code) && s.status === "secure" && s.certainty !== "clear" ? { code: s.code, status: "developing" as const } : s);
+  const teachingReviews = plannedReviews(o.profile?.teaching);
+  const standards = (o.profile?.standards ?? []).map(s => s.status === "secure" && signals.hasAssessment && place.first && own.has(s.code) && s.certainty !== "clear" ? { code: s.code, status: "developing" as const } : s);
   const unassessedUnits = place.first ? place.level.units.filter(u => !known.has(u)) : [];
   const planning: PlanInput = {
     profile: { standards }, grade: o.grade, level, passed: {},
     ...(signals.hasAssessment ? { personal: signals } : {}),
     workbook: { number: o.number, inLevel: place.inLevel },
     reviews: [], missedReviews: [], misses: [], pausedWeeks: 0,
+    ...(teachingReviews.length ? { teachingReviews } : {}),
     support: place.support, unassessedUnits,
     ...(ins ? { instructions: { teachMore: [...ins.teachMore], teachLess: [...ins.teachLess], addReview: [...ins.addReview],
       ...secureLess(ins.teachLess), ...(place.trace.rule === "I1" ? { weakBelowChecks: true } : {}) } } : {}),

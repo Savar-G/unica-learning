@@ -189,7 +189,7 @@ describe.each([["Supabase", fakePostgrest], ["in-memory", memory]] as const)("th
     expect(second.buildToken).not.toBe(first.buildToken);
     // The same revision with an older build token is another build: nothing is stored over it.
     expect(await store.save(row, { revision: 2, buildToken: first.buildToken })).toBe("changed");
-    expect(await store.current(CHILD)).toEqual({ revision: 2, buildToken: second.buildToken, builtAt: expect.any(String), schemaVersion: 2, profile: PROFILE });
+    expect(await store.current(CHILD)).toEqual({ revision: 2, buildToken: second.buildToken, builtAt: expect.any(String), schemaVersion: PROFILE.schemaVersion, profile: PROFILE });
   });
 
   it("refuses a save for a family being deleted, or a child under another parent", async () => {

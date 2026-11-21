@@ -5,7 +5,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { aiClient } from "@/lib/ai-client";
 import { mayaAiClient } from "@/lib/maya-ai-route";
 import { assessmentQuestionReader } from "@/lib/assessment-questions";
-import { rebuildChildProfile } from "@/lib/child-profile";
+import { readChildProfile, rebuildChildProfile } from "@/lib/child-profile";
+import { teachingBrief } from "@/lib/child-profile-teaching";
 import { childProfileAiClient, type QuestionReader } from "@/lib/child-profile-ai";
 import { childProfileStore } from "@/lib/child-profile-store";
 import type { Database } from "@/lib/database";
@@ -123,6 +124,11 @@ export function callSeams(db: SupabaseClient<Database>, options: { env?: Env; or
     store: mayaCallStore(db),
     connections: mayaConnectionLog(db),
     history: wordingHistoryStore(db),
+    // #1145: after the call's family and question checks, the child's teaching brief from the versioned profile.
+    brief: async (childId, standard) => {
+      const read = await readChildProfile(childProfileStore(db), childId);
+      return read && teachingBrief(read, standard);
+    },
     events: learningEvents(learningEventStore(db)),
     rebuild: options.rebuild ?? ((childId, o) => rebuild(db, env, ledger, childId, o)),
     model: (id, call, how) => callModel(id, env, meter(call, how)),

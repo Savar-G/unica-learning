@@ -269,6 +269,25 @@ describe.each([["Supabase", () => fakePostgrest(2)], ["in-memory", memory]] as c
     expect(await events.read(CHILD, DAY)).toEqual([first.event]);
   });
 
+  it("keeps a call's checked lesson observations, and refuses them from another source or malformed (#1145)", async () => {
+    const events = open();
+    const observations = [
+      { skill: "identify_tens" as const, result: "incorrect" as const, assistance: "independent" as const, board: false },
+      { skill: "perform_exchange" as const, result: "correct" as const, assistance: "demonstrated" as const, board: true },
+    ];
+    const appended = await events.append(callEvent({ observations }));
+    if (!appended.ok) throw new Error(appended.error);
+    expect(await events.read(CHILD, DAY)).toEqual([{ ...callEvent({ observations }), id: appended.event.id }]);
+    expect(await events.append(callEvent({ observations: [observations[0]] }))).toMatchObject({ ok: false, error: "key_conflict" });
+    for (const over of [
+      { source: "marking" as const, evidence: { kind: "scan" as const, id: "scan-1" } }, { observations: [] },
+      { observations: [{ ...observations[0], skill: "guess" }] }, { observations: [{ ...observations[0], board: undefined }] },
+      { observations: Array(21).fill(observations[0]) },
+    ]) {
+      expect(await events.append(callEvent({ key: "other", observations, ...over } as Partial<NewLearningEvent>))).toMatchObject({ ok: false, error: "invalid" });
+    }
+  });
+
   it("refuses a range that does not end after it starts", async () => {
     const events = open();
     await expect(events.read(CHILD, { from: DAY.to, to: DAY.from })).rejects.toThrow(RangeError);

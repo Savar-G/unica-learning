@@ -23,6 +23,9 @@
 // - A related question after a call (#1144): right on the child's own; right_with_help after hints, a demonstration or
 //   help nobody confirmed; blank when unfinished. Its help is in `assistance`. It names the call question's event
 //   (`question.relatedEventId`), never a workbook or assessment question, and the child profile does not count it.
+// - A call's checked lesson observations (#1145): each check code made of the child's response in the call's lesson (the
+//   prerequisite "identify_tens", the misconception "reversal", the work steps), with its help and whether the blocks
+//   were on the board. The child profile reads them as teaching evidence (src/lib/child-profile-teaching.ts).
 // The stuck step is the worked step id (WorkedStep.id, "tens") where the child got stuck; a right answer with no help
 // has none, and only a wrong answer has a mistake.
 //
@@ -56,6 +59,23 @@ export const QUESTION_SOURCES = ["workbook", "assessment", "transfer"] as const;
 /** The help on a related question: uncertain when some voice help may have played but no source confirmed it. */
 export const TRANSFER_ASSISTANCE = ["independent", "hinted", "demonstrated", "uncertain"] as const;
 export type TransferAssistance = (typeof TRANSFER_ASSISTANCE)[number];
+/** The checked lesson steps a call can observe (#1145): the regrouping lesson's prerequisite, misconception and work checks. */
+export const OBSERVED_SKILLS = ["identify_tens", "explain_exchange", "perform_exchange", "subtract_ones", "subtract_tens", "difference", "reversal"] as const;
+export type ObservedSkill = (typeof OBSERVED_SKILLS)[number];
+/** At most this many observations on one event. */
+export const MAX_OBSERVATIONS = 20;
+
+/**
+ * One checked observation of a call's lesson (#1145), in the order the call made them: what code checked in the child's
+ * response, whether it was correct, the help the child had by then, and whether the base-ten blocks were on the board
+ * (`board`: the representation the child worked with). Code reads it from the lesson, never from a model.
+ */
+export interface LessonObservation {
+  skill: ObservedSkill;
+  result: "correct" | "incorrect";
+  assistance: TransferAssistance;
+  board: boolean;
+}
 
 export interface NewLearningEvent {
   /** The writer's id for this logical event, the same on every retry ("assessment-answer:<answer id>"). */
@@ -80,10 +100,17 @@ export interface NewLearningEvent {
   evidence: { kind: EvidenceKind; id: string } | null;
   /** Only on a related question (#1144): the help the child had. Its result never makes a standard secure by itself. */
   assistance?: TransferAssistance;
+  /** Only from a call (#1145): the lesson's checked observations for this question, 1 to MAX_OBSERVATIONS. */
+  observations?: LessonObservation[];
 }
 
 export interface LearningEvent extends NewLearningEvent {
   id: string;
+  /**
+   * Only on a marked page's effective event in memory (effectiveMarkingEvents, src/lib/scan-marking.ts), never stored:
+   * whether anyone helped with the math (#1145). A stored marking event read without the projection has none: unknown.
+   */
+  markedHelp?: "none" | "math-help" | "unknown";
 }
 
 export type AppendResult =
@@ -145,6 +172,7 @@ function content(e: NewLearningEvent) {
       : q.source === "assessment" ? [q.source, q.assessmentId, q.questionId] : [q.source, q.relatedEventId, q.text],
     e.skill.standard, e.skill.skills, e.result, e.stuckStep, e.mistake, e.hints, e.timeMs, new Date(e.occurredAt).toISOString(),
     e.evidence && [e.evidence.kind, e.evidence.id], e.assistance ?? null,
+    (e.observations ?? []).map((o) => [o.skill, o.result, o.assistance, o.board]),
   ];
 }
 
@@ -214,5 +242,15 @@ function checkEvent(e: NewLearningEvent): NewLearningEvent | string {
   const occurredAt = utc(e.occurredAt);
   if (!occurredAt) return "the time it happened must be an ISO time with its time zone";
   if (e.evidence !== null && (!EVIDENCE.includes(e.evidence?.kind) || !text(e.evidence.id, 100))) return "the evidence needs its kind and its id";
+  const observed = e.observations === undefined ? null : observationsProblem(e);
+  if (observed) return observed;
   return { ...e, parentId: e.parentId.toLowerCase(), childId: e.childId.toLowerCase(), question: lowerRef(e.question), occurredAt };
+}
+
+function observationsProblem(e: NewLearningEvent): string | null {
+  const list = e.observations;
+  if (e.source !== "call" || !Array.isArray(list) || list.length < 1 || list.length > MAX_OBSERVATIONS) return `only a call has observations, 1 to ${MAX_OBSERVATIONS}`;
+  const fine = list.every((o) => typeof o === "object" && o !== null && Object.keys(o).length === 4 && OBSERVED_SKILLS.includes(o.skill) &&
+    (o.result === "correct" || o.result === "incorrect") && TRANSFER_ASSISTANCE.includes(o.assistance) && typeof o.board === "boolean");
+  return fine ? null : "each observation needs a known skill, its result, its help and whether the board showed the blocks";
 }

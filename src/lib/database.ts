@@ -2,7 +2,7 @@ import type { Database as Generated, Json } from "@/lib/database.types";
 import type { AdStep } from "@/lib/ad-visit-steps";
 import type { MathHelp } from "@/lib/learning-style";
 import type { AnswerChange } from "@/lib/answer-events";
-import type { EventQuestion, EventResult, EventSource, EvidenceKind, TransferAssistance } from "@/lib/learning-events";
+import type { EventQuestion, EventResult, EventSource, EvidenceKind, LessonObservation, TransferAssistance } from "@/lib/learning-events";
 import type { QuestionRef } from "@/lib/question-package";
 import type { AnonymousTestCopy, AttemptStatus, FactsTest, HelpAnswer, Placement, Province, ReportModel, Route, SkillEvidence, SkillState, SkillStateReason, Stage3Route, StoredTest } from "@/lib/assessment";
 import type { KnownPlan } from "@/lib/parent-plan";
@@ -53,7 +53,7 @@ type ColumnTypes = KnownColumns<{
   children: { province: Province; math_help: MathHelp | null };
   email_log: { kind: LogKind; status: LogStatus | null };
   email_sends: { kind: SendKind; outcome: SendOutcome };
-  learning_events: { source: EventSource; question_source: EventQuestion["source"]; result: EventResult; evidence_kind: EvidenceKind | null; assistance: TransferAssistance | null };
+  learning_events: { source: EventSource; question_source: EventQuestion["source"]; result: EventResult; evidence_kind: EvidenceKind | null; assistance: TransferAssistance | null; observations: LessonObservation[] | null };
   maya_calls: {
     kind: CallKind; mode: CallRecord["mode"]; question_source: QuestionRef["source"]; status: CallStatus; versions: CallRecord["versions"];
     outcome_reason: Outcome["reason"] | null; assistance: Outcome["assistance"] | null; paper_status: Outcome["paperStatus"] | null;

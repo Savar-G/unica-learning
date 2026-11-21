@@ -12,7 +12,7 @@ import type { LearningEvent, LearningEventStore, NewLearningEvent } from "@/lib/
 /** The columns the store reads: every column but the time the row was stored. */
 type Row = Omit<Database["public"]["Tables"]["learning_events"]["Row"], "created_at">;
 
-const COLUMNS = "id, idempotency_key, parent_id, child_id, source, question_source, workbook_id, workbook_page, workbook_question, assessment_id, assessment_question_id, skill_standard, skills, result, stuck_step, mistake, hints, time_ms, occurred_at, evidence_kind, evidence_id, related_event_id, generated_question, assistance";
+const COLUMNS = "id, idempotency_key, parent_id, child_id, source, question_source, workbook_id, workbook_page, workbook_question, assessment_id, assessment_question_id, skill_standard, skills, result, stuck_step, mistake, hints, time_ms, occurred_at, evidence_kind, evidence_id, related_event_id, generated_question, assistance, observations";
 
 /**
  * PostgREST answers at most 1000 rows a request (the project's max rows), so a range read pages, until a page is empty
@@ -37,6 +37,7 @@ function toRow(e: NewLearningEvent): Database["public"]["Tables"]["learning_even
     related_event_id: q.source === "transfer" ? q.relatedEventId : null,
     generated_question: q.source === "transfer" ? q.text : null,
     assistance: e.assistance ?? null,
+    observations: e.observations ?? null,
     skill_standard: e.skill.standard,
     skills: e.skill.skills,
     result: e.result,
@@ -72,6 +73,7 @@ function fromRow(r: Row): LearningEvent {
     occurredAt: new Date(r.occurred_at).toISOString(),
     evidence: r.evidence_kind && r.evidence_id ? { kind: r.evidence_kind, id: r.evidence_id } : null,
     ...(r.assistance ? { assistance: r.assistance } : {}),
+    ...(r.observations ? { observations: r.observations } : {}),
   };
 }
 

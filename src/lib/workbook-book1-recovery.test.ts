@@ -20,6 +20,15 @@ beforeAll(async () => {
 }, 240_000);
 
 const report = { howWeHelp: "behind" as const, minutes: 31 };
+/**
+ * A persona's profile as the pinned planners stored and read it: schema version 2, before the teaching evidence (#1145).
+ * The current planner reads today's version.
+ */
+function historical(persona: BookPersona): unknown {
+  const profile = JSON.parse(JSON.stringify(bookPersona(persona).profile));
+  delete profile.teaching;
+  return { ...profile, schemaVersion: 2 };
+}
 const device = { deviceClass: "tablet", input: "touch", screenWidth: 1024, screenHeight: 768, browser: "safari" };
 /** A synthetic frame as the pinned job stored it: its plan, then the capacity step's own days and extra practice. */
 function frameOf(engine: PinnedPlanningEngine, profile: unknown, grade = 4, o: { capacity?: boolean } = {}): RunFrame {
@@ -48,7 +57,7 @@ describe("recoverBook1PlanningInput with the pinned original planner", () => {
     expect(Object.keys(original.files).every(f => f.startsWith("src/") || f.startsWith("data/"))).toBe(true);
   });
   it.each(["on-level", "catch-up", "ahead", "rushed"] as BookPersona[])("recovers the exact PlanInput of a %s Book 1 and its hash", persona => {
-    const profile = JSON.parse(JSON.stringify(bookPersona(persona).profile));
+    const profile = historical(persona);
     const frame = frameOf(original, profile);
     const r = recoverBook1PlanningInput(sourcesOf(frame, profile), original);
     expect(r.ok, JSON.stringify(r)).toBe(true);
@@ -82,13 +91,13 @@ describe("recoverBook1PlanningInput with the pinned original planner", () => {
     ["capacity fields on a legacy-policy frame", s => { delete s.frame.value.itemPolicy; return original; }, "plan-mismatch"],
   ];
   it.each(refusals)("refuses %s", (_name, change, reason) => {
-    const profile = JSON.parse(JSON.stringify(bookPersona("on-level").profile));
+    const profile = historical("on-level");
     const s = sourcesOf(frameOf(original, profile), profile);
     const engine = change(s);
     expect(recoverBook1PlanningInput(s, engine)).toEqual({ ok: false, reason });
   });
   it("never reads a profile it was not given", () => {
-    const profile = JSON.parse(JSON.stringify(bookPersona("catch-up").profile)), today = JSON.parse(JSON.stringify(bookPersona("ahead").profile));
+    const profile = historical("catch-up"), today = historical("ahead");
     const s = sourcesOf(frameOf(original, profile), profile);
     s.profile!.value = today;
     expect(recoverBook1PlanningInput(s, original)).toEqual({ ok: false, reason: "plan-mismatch" });
@@ -104,9 +113,10 @@ describe("public planning contracts against the base pin", () => {
     { name: "rushed book 2", grade: 4, persona: "rushed", workbooks: [{ number: 1, levels: [13] }], number: 2 },
   ];
   it.each(cases)("planNextWorkbook preserves scheduling and planner input for $name", c => {
+    // The base pin reads the version 2 snapshot; the current planner reads today's version 3 profile of the same child.
     const profile = c.persona ? JSON.parse(JSON.stringify(bookPersona(c.persona).profile)) : null;
     const facts = profile ? { report, device } : {};
-    const pinned = base.plan({ curriculumKey: "bc", grade: c.grade, profile, ...facts, workbooks: c.workbooks, number: c.number });
+    const pinned = base.plan({ curriculumKey: "bc", grade: c.grade, profile: c.persona ? historical(c.persona) : null, ...facts, workbooks: c.workbooks, number: c.number });
     const input = { ...(facts as object), curriculum: curriculumFor("bc")!, grade: c.grade as never, profile, workbooks: c.workbooks, number: c.number } as Parameters<typeof planNextWorkbook>[0];
     const captured: PlanInput[] = [];
     const withCapture = planNextWorkbook(input, i => { captured.push(i); });

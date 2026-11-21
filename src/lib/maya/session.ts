@@ -73,7 +73,7 @@ import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
 import { answersOwnQuestion, askedStep, doneReply, firstTimeTurn, yesReply, type AskedRead } from "./teaching-reads";
 import { deriveDrawings, type BoardRead, type TiedDrawing } from "./board-ties";
 import { chooseTransfer, relatedChoice, TRANSFER_MIN_MS, TRANSFER_OFFER, transferBoard, transferPackage, type RelatedStep, type TransferOperands } from "./transfer";
-import { EXCHANGE_OBJECT, exchangeChildWords, exchangeCommands, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingOffersAction, regroupingWords, sameExchangeTarget, supportsCheckedExchange, type CheckedExchangeLesson, type ExchangeAction, type ExchangeProposal, type ExchangeTarget, type ExchangeTurn, type RegroupingInstruction, type RegroupingObservation } from "./checked-exchange";
+import { EXCHANGE_OBJECT, lessonObservations, readLessonBrief, stuckStart, type LessonBrief, exchangeChildWords, exchangeCommands, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingOffersAction, regroupingWords, sameExchangeTarget, supportsCheckedExchange, type CheckedExchangeLesson, type ExchangeAction, type ExchangeProposal, type ExchangeTarget, type ExchangeTurn, type RegroupingInstruction, type RegroupingObservation } from "./checked-exchange";
 import { agreementClause, askedStep as askedOperationStep, bindingReview, checkedSubtractionQuestion, checkTutorSay, continuedSay, stepsStated, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, FINAL_ASK, TUTOR_FIRST_TIME_WORD_LIMIT, TUTOR_REVIEW_IGNORED } from "./tutor";
 import { placeDigitsSaid } from "./tutor-math";
 import { MATH_REVIEW_PROMPT_VERSION, mathReviewsOf, type MathReview, type MathReviewInput } from "./math-review";
@@ -613,10 +613,12 @@ export function createSession(input: {
   tutor?: boolean;
   checkedExchange?: boolean;
   checkedRoutine?: boolean;
+  /** #1145: the child's teaching brief for this question's standard, read at the call's start; null or left out: none. */
+  brief?: LessonBrief | null;
 }): Session {
   const { pkg, held } = teachableOf(input.package);
   const teachable = held === null;
-  const tutor = input.tutor === true && input.conversational === true && teachable && isTutorQuestion(pkg);
+  const tutor = tutorTeaches(input.package, input);
   return {
     version: 4,
     callId: input.callId,
@@ -668,9 +670,27 @@ export function createSession(input: {
     outcome: null,
     ...shorterLimits(input.limitMs),
     ...(tutor ? { tutor: { help: 0, drawn: [] } } : {}),
-    ...(input.checkedExchange === true && tutor && pkg && supportsCheckedExchange(pkg) ? { checkedExchange: { version: 1, progression: 1, transfers: 1, id: `${input.callId}:regrouping`, turns: [] } } : {}),
+    ...(checkedLessonFor(input.package, input) && pkg ? { checkedExchange: { version: 1, progression: 1, transfers: 1, reviewStart: true, id: `${input.callId}:regrouping`, turns: [], ...briefFor(input.brief, pkg) } } : {}),
     ...(input.checkedRoutine === true && tutor && pkg && supportsCheckedExchange(pkg) ? { checkedRoutine: true } : {}),
   };
+}
+
+/** D-345: the tutor core teaches this question on this call. */
+function tutorTeaches(raw: unknown, o: { tutor?: boolean; conversational?: boolean }): boolean {
+  const { pkg, held } = teachableOf(raw);
+  return o.tutor === true && o.conversational === true && held === null && isTutorQuestion(pkg);
+}
+
+/** A new session with these options teaches the checked regrouping lesson (#1145: only then is a brief read). */
+export function checkedLessonFor(raw: unknown, o: { tutor?: boolean; conversational?: boolean; checkedExchange?: boolean }): boolean {
+  const { pkg } = teachableOf(raw);
+  return o.checkedExchange === true && tutorTeaches(raw, o) && !!pkg && supportsCheckedExchange(pkg);
+}
+
+/** The brief, when it is one and is about this question's standard. */
+function briefFor(value: unknown, pkg: OperationPackage): { brief?: LessonBrief } {
+  const brief = readLessonBrief(value);
+  return brief && brief.standard === pkg.skill.standard ? { brief } : {};
 }
 
 /**
@@ -867,7 +887,14 @@ export function learningEvent(session: Session, family: { parentId: string; chil
     timeMs: Math.min(endTime(session) - session.startedAt, MAX_TIME_MS),
     occurredAt: isoTime(endTime(session)),
     evidence: { kind: "call", id: session.callId },
+    ...observationsOf(session, false),
   };
+}
+
+/** #1145: the call's checked lesson observations, when it made any. */
+function observationsOf(session: Session, transfer: boolean): Pick<NewLearningEvent, "observations"> {
+  const observations = lessonObservations(session.checkedExchange, transfer);
+  return observations.length > 0 ? { observations } : {};
 }
 
 /**
@@ -890,8 +917,11 @@ export function transferLearningEvent(session: Session, family: { parentId: stri
   const helped = turns.find((turn) => turn.support);
   const open = !transfer.done.includes("ones") ? "ones" : !transfer.done.includes("tens") ? "tens" : "result";
   const started = transfer.startedAt ?? session.startedAt!;
+  // The related question's own observations, never the call question's.
+  const base: NewLearningEvent = { ...original };
+  delete base.observations;
   return {
-    ...original,
+    ...base,
     key: transferEventKey(session.callId),
     question: { source: "transfer", relatedEventId, text: transferPackage(session.package!, transfer.operands).text },
     result,
@@ -899,6 +929,7 @@ export function transferLearningEvent(session: Session, family: { parentId: stri
     hints: Math.min(turns.filter((turn) => turn.support === "hinted").length, MAX_HINTS),
     timeMs: Math.min(Math.max(0, endTime(session) - started), MAX_TIME_MS),
     assistance: outcome.assistance,
+    ...observationsOf(session, true),
   };
 }
 
@@ -5610,9 +5641,19 @@ function sessionScopeReason(s: Session, original: OperationPackage, text: string
     regroupingReversal(text, ...operation.operands) ? null : reason;
 }
 
+/**
+ * #1145: the first ones step of the call's own question starts with the swapped-digit reminder when the brief names
+ * that mistake as open. Once per lesson; never on the related question.
+ */
+function remindOfReversal(s: Session, instruction: RegroupingInstruction): void {
+  const lesson = s.checkedExchange!;
+  if ((instruction.step === "connect" || instruction.step === "ones") && !instruction.transfer &&
+    lesson.brief?.misconceptions.includes("reversal") && !lesson.turns.some((turn) => turn.instruction?.remind)) instruction.remind = "reversal";
+}
+
 function matchesRegroupingInstruction(value: unknown, expected: RegroupingInstruction | undefined): boolean {
   if (!expected) return value === undefined;
-  return isObject(value) && value.step === expected.step && value.usePlaceValueTerms === expected.usePlaceValueTerms &&
+  return isObject(value) && value.step === expected.step && value.usePlaceValueTerms === expected.usePlaceValueTerms && value.remind === expected.remind &&
     value.subtrahend === expected.subtrahend && JSON.stringify(value.transfer) === JSON.stringify(expected.transfer);
 }
 
@@ -5689,7 +5730,8 @@ function regroupingChoice(s: Session, previous: ExchangeTurn | undefined, top: n
     if (tens !== null) return observed("tens", "subtract_tens", "incorrect");
     if (stuck) return { step: "tens" };
   }
-  if (!previous && REGROUPING_START.test(text)) return { step: "check_place" };
+  // #1145: the saved teaching evidence picks the first step of a stuck child.
+  if (!previous && REGROUPING_START.test(text)) return { step: stuckStart(s.checkedExchange!.brief, s.checkedExchange!.reviewStart) };
 }
 
 export function checkedExchangeProposal(s: Session, afterFailure = false): ExchangeProposal | null {
@@ -5735,6 +5777,7 @@ function checkedExchangePlan(s: Session, afterFailure: boolean): ExchangeTurn | 
   if (withBoard && (turns.some((t) => t.actions.some((action) => !action.fate)) || held.some((action) => action.kind === "exchange"))) return null;
   const shown = held.find((action) => action.kind === "show");
   const instruction: RegroupingInstruction | undefined = step ? { step, ...((s.grade ?? 0) >= 5 ? { usePlaceValueTerms: true } : {}) } : undefined;
+  if (instruction) remindOfReversal(s, instruction);
   // A worked example uses a different number if any speech or block quantity would disclose the target.
   const facts = (previous ? [previous.facts.value] : [before, 52, 63, 74, 85])
     .map((value) => exchangeFacts(value, value !== before))
@@ -5788,6 +5831,7 @@ function childExchangePlan(s: Session, target: ExchangeTarget): ExchangeTurn | n
   const instruction: RegroupingInstruction | undefined = lesson.progression && operation.kind === "subtract"
     ? { step: "connect", ...((s.grade ?? 0) >= 5 ? { usePlaceValueTerms: true } : {}) }
     : undefined;
+  if (instruction) remindOfReversal(s, instruction);
   if (instruction && !facts.example && operation.kind === "subtract") {
     const explicit = { ...instruction, subtrahend: operation.operands[1] };
     if (!tellsAnswer(s, s.package, regroupingWords(facts, explicit, false) ?? [], [], false)) instruction.subtrahend = operation.operands[1];

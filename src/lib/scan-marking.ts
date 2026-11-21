@@ -598,7 +598,9 @@ export function effectiveMarkingEvents(raw: readonly LearningEvent[], marks: rea
     return d.publish && m.originalEvent && m.eventId ? [{ ...m.originalEvent, id: m.eventId, result: d.result,
       // A person's mark (parent or team) cannot carry an old or inferred mistake cause into the effective facts.
       mistake: m.observation.actor === "system" ? m.originalEvent.mistake : null,
-      stuckStep: m.observation.actor === "system" ? m.originalEvent.stuckStep : null }] : [];
+      stuckStep: m.observation.actor === "system" ? m.originalEvent.stuckStep : null,
+      // #1145: the teaching evidence counts a marked answer as the child's own only when nobody helped with the math.
+      markedHelp: m.observation.help }] : [];
   })];
 }
 // Corrections replace a result at its original time; evidence_at records the edit, not new practice.
