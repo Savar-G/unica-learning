@@ -54,7 +54,7 @@ Personalized math learning program with mailed paper workbooks for ages 5–14 (
 
 ## Copy, brand & SEO
 
-- Copy rules in `DESIGN.md` are binding. Customer-facing claims come from `docs/facts.md`—add a sourced fact there before using a new one.
+- Copy & visual rules in `DESIGN.md` are binding (keep it present-tense and under ~300 lines; put feature flows in `docs/<topic>.md` and history in `.design/decisions.md`). Customer-facing claims come from `docs/facts.md`—add a sourced fact there before using a new one.
 - Plain language in customer text; no dev/draft labels; provider names only in `/privacy`.
 - In marketing copy (ads, social, headlines, kickers), say **"a personalized math learning program"**—not "workbooks". No competitor names outside `/resources` and `/blog`.
 - **SEO (D-319):** When changing visible copy on a page in `src/app/sitemap.ts`, update its `updated` date (blog posts: `meta.updated`). Never add FAQPage, HowTo, or review markup. Run `scripts/seo-guard.mjs` before changing robots, noindex, or canonicals.
