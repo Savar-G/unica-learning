@@ -18,6 +18,7 @@ import {
   divisionMisconception,
   divisionOffersAction,
   divisionPromptWords,
+  divisionShownTexts,
   divisionRelatedChoice,
   divisionTransferBoard,
   divisionTransferPackage,
@@ -63,7 +64,6 @@ export interface DivisionSessionDeps {
   closingAtMs: number;
   tellsAnswer: (pkg: OperationPackage, words: readonly string[], boardTexts: readonly string[]) => boolean;
   heardAnswers: (pkgOverride?: OperationPackage, doneOverride?: string[]) => { step: string; verdict: string }[];
-  boardTexts: (cmd: Command) => string[];
   wholeTurn: (text: string) => string | null;
   wholeValue: (text: string) => number | null;
   plainNumber: (text: string) => number | null;
@@ -311,7 +311,7 @@ export function divisionLessonPlan(s: DivisionSessionState, deps: DivisionSessio
             ]
           : []),
       ];
-      return !deps.tellsAnswer(pkg, words, cmds.flatMap((c) => deps.boardTexts(c)));
+      return !deps.tellsAnswer(pkg, words, divisionShownTexts(cmds));
     });
   if (!chosen) return null;
 
@@ -385,7 +385,7 @@ export function childDivisionPlan(
     };
     const words = divisionWords(facts, instruction, false) ?? [];
     const cmds = divisionCommands("share", facts);
-    if (deps.tellsAnswer(pkg, words, cmds.flatMap((c) => deps.boardTexts(c)))) return null;
+    if (deps.tellsAnswer(pkg, words, divisionShownTexts(cmds))) return null;
     return {
       id,
       facts: previous.facts,
@@ -414,7 +414,7 @@ export function childDivisionPlan(
     };
     const words = divisionWords(facts, instruction, false) ?? [];
     const cmds = divisionCommands("exchange", facts);
-    if (deps.tellsAnswer(pkg, words, cmds.flatMap((c) => deps.boardTexts(c)))) return null;
+    if (deps.tellsAnswer(pkg, words, divisionShownTexts(cmds))) return null;
     return {
       id,
       facts: previous.facts,

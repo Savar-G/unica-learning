@@ -11,6 +11,7 @@ import { fakeMathReviewer } from "@/lib/maya-math-review";
 import { workedSteps, type Operation } from "@/lib/question-package";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { checkTrace } from "@/lib/maya-trace";
+import { divisionFacts } from "@/lib/maya/checked-division";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
 
 vi.mock("server-only", () => ({}));
@@ -1259,4 +1260,36 @@ it("96 ÷ 4: handles misconception after sharing without naming a missing button
   const ai = ok(await calls.input(idTurn.view.id, idTurn.view.revision, { type: "child", text: "Are you a real person?" }, null));
   expect(ai.output.say.join(" ")).toMatch(/\bAI\b.*69\s*÷\s*3/);
   expect(ai.output.say.join(" ")).not.toMatch(/84/);
+});
+
+/** Every text a board command shows (structural ids left out). */
+function shownTexts(value: unknown, key = ""): string[] {
+  if (/^(?:op|id|ids|transactionId|[a-z]+Id|region|scope|part|rowId|column|piece|kind)$/.test(key)) return [];
+  if (typeof value === "string") return [value];
+  if (typeof value === "number") return [String(value)];
+  if (Array.isArray(value)) return value.flatMap((x) => shownTexts(x, key));
+  if (value && typeof value === "object") return Object.entries(value).flatMap(([k, v]) => shownTexts(v, k));
+  return [];
+}
+
+const supportedDivisions = Array.from({ length: 90 }, (_, i) => i + 10)
+  .flatMap((a) => [2, 3, 4, 5, 6, 7, 8, 9].map((b) => [a, b] as const))
+  .filter(([a, b]) => divisionFacts(a, b, false) !== null);
+
+it("checks every supported division: the first demonstration never shows the quotient in speech or on the board", async () => {
+  expect(supportedDivisions.length).toBeGreaterThanOrEqual(80);
+  const { calls } = setup();
+  const leaks: string[] = [];
+  for (const [a, b] of supportedDivisions) {
+    const q = a / b;
+    const chat = ok(await calls.start({ ...input, package: divisionPackage(a, b) }));
+    const turn = ok(await calls.input(chat.view.id, chat.view.revision, { type: "child", text: "Show me how to divide." }, null));
+    const texts = [...turn.output.say, ...turn.view.batches.flatMap((batch) => shownTexts(batch.commands))];
+    const all = texts.join(" | ");
+    const whole = new RegExp(`(?<![\\d])${q}(?![\\d])`);
+    const perGroup = (n: number, place: string) => new RegExp(`\\b${n} ${place}s? (?:go )?(?:in|for) each\\b|each group (?:has|gets) ${n} ${place}`).test(all);
+    const places = perGroup(Math.floor(q / 10), "ten") && perGroup(q % 10, "one");
+    if (texts.some((t) => whole.test(t)) || places) leaks.push(`${a} ÷ ${b}: ${all}`);
+  }
+  expect(leaks).toEqual([]);
 });

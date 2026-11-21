@@ -5642,9 +5642,9 @@ function divisionDeps(s: Session): DivisionSessionDeps {
     tutorTeachingNow: () => tutorTeachingNow(s),
     hasTranscriptAlternatives: () => hasTranscriptAlternatives(s),
     closingAtMs: limitsOf(s).closingAtMs,
-    tellsAnswer: (pkg, words, texts) => tellsAnswer(s, pkg, words, texts, false),
+    // #1155 review: board values are visible text. Check them with the planned speech in one text check.
+    tellsAnswer: (pkg, words, texts) => tellsAnswer(s, pkg, [...words, ...texts], [], false),
     heardAnswers: (pkgOverride, doneOverride) => heardAnswers(pkgOverride ? { ...s, package: pkgOverride, done: doneOverride ?? [], solved: null, lastResult: null, passed: [] } : s),
-    boardTexts,
     wholeTurn,
     wholeValue,
     plainNumber,

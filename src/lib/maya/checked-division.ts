@@ -382,6 +382,23 @@ export function divisionCommands(action: "show" | "share" | "exchange", facts: D
   ];
 }
 
+/**
+ * #1155 review: the values a child sees from division board commands, as text for the answer check. Structural fields
+ * (ids, model kind, places) are left out: "base_ten" is not a visible "ten".
+ */
+export function divisionShownTexts(commands: readonly Command[]): string[] {
+  return commands.flatMap((cmd): string[] => {
+    if (cmd.op === "write") return [cmd.text];
+    if (cmd.op === "put") return cmd.value === undefined ? [] : [cmd.value];
+    if (cmd.op === "division") return [`${cmd.dividend} ÷ ${cmd.divisor}`];
+    if (cmd.op === "model" && cmd.model.kind === "base_ten") {
+      const { hundreds, tens, ones } = cmd.model as { hundreds: number; tens: number; ones: number };
+      return [String(100 * hundreds + 10 * tens + ones)];
+    }
+    return [];
+  });
+}
+
 export const DIVISION_DEMO_REQUEST = /^(?:(?:can|could|would) you (?:show|tell) me |(?:please )?show me )?(?:how (?:do (?:i|we) |to )?|why (?:do (?:i|we) |to )?)?(?:divide|share(?: the tens)?|split(?: the tens)?|regroup(?:ing)?|(?:trade|exchange) (?:a|one|1) ten)(?: again)?[.?!]*$/i;
 export const DIVISION_CHILD_REQUEST = /^(?:how do (?:i|we) (?:divide|share(?: the tens)?|(?:trade|exchange) (?:a|one|1) ten)|(?:can i|i want to) (?:try (?:dividing|sharing)|share(?: the tens)?|(?:trade|exchange) (?:a|one|1) ten))(?: again)?[.?!]*$/i;
 export const DIVISION_START = /^(?:i (?:still )?(?:don'?t|do not) (?:know(?: how to (?:start|divide|share|regroup))?|get it|understand(?: (?:division|dividing|sharing))?)|i(?:'m| am) (?:still )?(?:stuck|confused|new to (?:division|dividing|sharing))|i(?:'ve| have) never (?:divided|done this before)|(?:can you )?(?:teach me|explain) how to (?:divide|share))[.?!]*$/i;
