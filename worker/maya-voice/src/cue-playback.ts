@@ -11,6 +11,8 @@ const same = (a: SpeechScope | null, b: SpeechScope) => !!b && a?.utteranceId ==
 
 /** The SDK requires no-argument media controls. Keep that interface at this adapter boundary. */
 class PlaybackAdapter extends voice.AudioOutput {
+  private pausedFinish: voice.PlaybackFinishedEvent | null = null;
+
   constructor(private readonly output: voice.AudioOutput, private readonly hooks: {
     capture(frame: AudioFrame): Promise<void>;
     admit(): void;
@@ -20,16 +22,27 @@ class PlaybackAdapter extends voice.AudioOutput {
     playing(): SpeechScope | null;
     pause(scope: SpeechScope | null): void;
     resume(): void;
-    dropPendingPause(): void;
+    paused(): boolean;
+    reset(): void;
     // Declares pause, so LiveKit pauses Maya on a possible interruption and resumes her after a false one.
   }) { super(output.sampleRate, output, { pause: true }); }
   override captureFrame(frame: AudioFrame) { return this.hooks.capture(frame); }
   admitFrame(frame: AudioFrame) { super.flush(); void super.captureFrame(frame); }
   seal() { super.flush(); }
   override onPlaybackStarted(at: number) { this.hooks.admit(); super.onPlaybackStarted(at); }
-  override onPlaybackFinished(event: voice.PlaybackFinishedEvent) { this.hooks.admit(); super.onPlaybackFinished(event); }
+  override onPlaybackFinished(event: voice.PlaybackFinishedEvent) {
+    this.hooks.admit();
+    if (this.hooks.paused() && !event.interrupted) this.pausedFinish = event;
+    else super.onPlaybackFinished(event);
+  }
+  get finishedWhilePaused() { return this.pausedFinish !== null; }
+  finishPaused(interrupted: boolean) {
+    const event = this.pausedFinish;
+    this.pausedFinish = null;
+    if (event) super.onPlaybackFinished({ ...event, interrupted });
+  }
   override flush() { super.flush(); this.output.flush(); }
-  override clearBuffer() { this.hooks.dropPendingPause(); const scope = this.hooks.scope(); if (scope) this.hooks.clear(scope); }
+  override clearBuffer() { const scope = this.hooks.scope(); if (scope) this.hooks.clear(scope); else this.hooks.reset(); }
   override pause() { this.hooks.pause(this.hooks.playing()); }
   override resume() { this.hooks.resume(); }
 }
@@ -71,7 +84,8 @@ export class CuePlaybackOutput {
       playing: () => this.segments[0]?.scope ?? this.forwarding?.scope ?? null,
       pause: scope => this.pauseOutput(scope),
       resume: () => this.resume(),
-      dropPendingPause: () => { if (!this.segments.length && !this.forwarding && this.paused) { this.paused = false; this.pausedAt = null; } },
+      paused: () => this.paused,
+      reset: () => this.resetOutput(),
     });
     this.adapter.on(voice.AudioOutput.EVENT_PLAYBACK_STARTED, (ev: voice.PlaybackStartedEvent) => {
       const segment = this.segments.find(s => !s.started);
@@ -160,12 +174,19 @@ export class CuePlaybackOutput {
   flush() { this.adapter.flush(); }
   clearBuffer(scope: SpeechScope) {
     if (!same(this.segments[0]?.scope ?? this.forwarding?.scope ?? this.scope, scope)) return;
-    this.paused = false;
-    this.pausedAt = null;
     this.cancelPending(scope);
     this.interrupted(scope);
+    this.resetOutput();
+  }
+  private resetOutput() {
     this.adapter.seal();
+    // Invalidate a native capture waiting behind the pause before reopening its gate.
     this.output.clearBuffer();
+    const wasPaused = this.paused;
+    this.paused = false;
+    this.pausedAt = null;
+    this.adapter.finishPaused(true);
+    if (wasPaused) this.output.resume();
   }
   /**
    * A pause is not an interruption: LiveKit resumes the speech when no words follow, or clears it when they do. Stop the
@@ -191,19 +212,20 @@ export class CuePlaybackOutput {
   }
   /**
    * The native output drops the audio it held at the pause (at most its queue), so the next sound is the next audio
-   * sent. The cue clock goes on from there, and a cue whose word was dropped is released at once.
+   * sent. If the final queue already drained, its completion was held until this resume.
    */
   resume() {
-    this.output.resume();
-    if (!this.paused) return;
-    this.paused = false;
+    if (!this.paused) { this.output.resume(); return; }
     const heard = this.pausedAt;
     this.pausedAt = null;
     const scope = this.scope;
-    if (!scope || this.suspended || !this.board.owns(scope)) return;
-    // The child never heard the audio between the pause and what was sent: its cues are cancelled, not shown.
-    if (heard !== null && this.bufferedMs > heard) this.task(this.board.skip(scope, heard, this.bufferedMs), scope);
-    this.anchor = this.clock.now() - this.bufferedMs;
-    this.schedule(scope);
+    if (!this.adapter.finishedWhilePaused && scope && !this.suspended && this.board.owns(scope)) {
+      if (heard !== null && this.bufferedMs > heard) this.task(this.board.skip(scope, heard, this.bufferedMs), scope);
+      this.anchor = this.clock.now() - this.bufferedMs;
+    }
+    this.paused = false;
+    this.output.resume();
+    this.adapter.finishPaused(false);
+    if (scope) this.schedule(scope);
   }
 }

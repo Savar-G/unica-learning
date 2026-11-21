@@ -55,7 +55,7 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
   let deliveryScope: SpeechScope | null = null;
   let cancellation: ReturnType<BoardSender["interrupt"]> | null = null;
   let retired = false;
-  let active: { scope: SpeechScope; id: string; cues: BoardCue[]; timings: { word: number; audioMs: number; source: CueSource; reachedAt?: number }[]; position: number | null; playedAt: number; anchorAt?: number; generation: number } | null = null;
+  let active: { scope: SpeechScope; id: string; cues: BoardCue[]; timings: { word: number; audioMs: number; source: CueSource; reachedAt?: number }[]; skipped: { fromMs: number; toMs: number }[]; position: number | null; playedAt: number; anchorAt?: number; generation: number } | null = null;
   let observation: Promise<unknown> = Promise.resolve();
   /** The save of the receiver's snapshot after the newest plan went out. It is outside the serial order (below). */
   let stagedObservation: Promise<unknown> = Promise.resolve();
@@ -77,11 +77,31 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
   const check = (r: { ok: boolean; code?: string }) => { if (!r.ok) throw new Error(`The board did not accept the speech operation (${r.code ?? "unknown"}).`); };
   const release = async () => {
     const a = active;
-    if (!a || !owns(a.scope) || a.position === null) return;
+    if (!a || !owns(a.scope)) return;
     while (a.cues.length && owns(a.scope)) {
       const cue = a.cues[0];
-      const timing = a.timings.find(t => t.word >= cue.word && t.audioMs <= (a.position ?? -1));
+      const position = a.position ?? -1;
+      const timing = a.skipped.length
+        ? a.timings.find(t => t.word === cue.word && t.source === "word") ??
+          a.timings.find(t => t.word >= cue.word && t.source === "sentence")
+        : a.timings.find(t => t.word >= cue.word && t.audioMs <= position);
       if (!timing) break;
+      // A later word can arrive before the cue's own timing. For sentence fallback, require the possible cue span
+      // to be audible, from the last known earlier word or sentence end.
+      const earliest = timing.source === "sentence" && a.skipped.length
+        ? a.timings.reduce((ms, t) => t.word < cue.word && t.audioMs <= timing.audioMs ? Math.max(ms, t.audioMs) : ms, 0)
+        : timing.audioMs;
+      if (a.skipped.some(({ fromMs, toMs }) => timing.audioMs > fromMs && earliest <= toMs)) {
+        const result = await sender.cancel(a.scope, cue.batch.transactionId);
+        if (!owns(a.scope)) return;
+        check(result);
+        if (!result.ok) return;
+        const gone = new Set([cue.batch.transactionId, ...result.cancelled]);
+        a.cues = a.cues.filter(c => !gone.has(c.batch.transactionId));
+        await options.observe?.(sender.snapshot());
+        continue;
+      }
+      if (timing.audioMs > position) break;
       a.cues.shift();
       const reachedAt = timing.reachedAt ?? options.now();
       const result = await sender.release(cue.batch.transactionId, a.scope);
@@ -158,7 +178,7 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
             if (!owns(scope)) return;
             check(cancelled);
           }
-          const plan: NonNullable<typeof active> = { scope, id, cues: copy, timings: [], position: null, playedAt: options.now(), generation: gen };
+          const plan: NonNullable<typeof active> = { scope, id, cues: copy, timings: [], skipped: [], position: null, playedAt: options.now(), generation: gen };
           active = plan;
           for (const [index, cue] of copy.entries()) {
             if (!owns(scope)) return;
@@ -270,25 +290,9 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
      * also drops a later batch built on them. Later cues release as usual.
      */
     skip(scope: SpeechScope, fromMs: number, toMs: number) {
-      return serial(async () => {
-        const a = active;
-        if (!a || !owns(scope) || a.generation !== scope.generation || !(toMs > fromMs)) return;
-        const dropped: BoardCue[] = [];
-        while (a.cues.length) {
-          const timing = a.timings.find(t => t.word >= a.cues[0].word);
-          if (!timing || timing.audioMs <= fromMs || timing.audioMs > toMs) break;
-          dropped.push(a.cues.shift()!);
-        }
-        if (!dropped.length) return;
-        const result = await sender.cancel(scope, dropped.at(-1)!.batch.transactionId);
-        if (!owns(scope)) return;
-        check(result);
-        if (result.ok) {
-          const gone = new Set(result.cancelled);
-          a.cues = a.cues.filter(c => !gone.has(c.batch.transactionId));
-        }
-        await options.observe?.(sender.snapshot());
-      });
+      if (!active || !owns(scope) || active.generation !== scope.generation || !(toMs > fromMs)) return Promise.resolve();
+      active.skipped.push({ fromMs, toMs });
+      return serial(release);
     },
     /** Invalidate first, before any await. A late timing or playout callback cannot release old work. */
     /** A lost peer cannot receive a stop. Invalidate locally; reconnect will retire its staged work. */

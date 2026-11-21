@@ -75,6 +75,19 @@ describe("one batch", () => {
   });
 });
 
+it("rechecks every later batch after a partial cancel and keeps independent work", async () => {
+  const { receiver, sender } = await setup();
+  const independent = sum("c", "46", "27");
+  for (const batch of [sum("a", "27", "39"), put("b", "a", "ones", "6"), independent, put("d", "c", "ones", "3")]) {
+    expect(await sender.send(batch, { scope: SCOPE })).toMatchObject({ ok: true, state: "accepted" });
+  }
+  expect(await sender.cancel(SCOPE, "a")).toEqual({ ok: true, cancelled: ["a", "b"] });
+  expect(receiver.staged().map(batch => batch.batchId)).toEqual(["c", "d"]);
+  expect(await sender.release("c", SCOPE)).toMatchObject({ ok: true, state: "shown" });
+  expect(await sender.release("d", SCOPE)).toMatchObject({ ok: true, state: "shown" });
+  expect(ids(receiver.scene())).toEqual(ids(direct(independent, put("d", "c", "ones", "3"))));
+});
+
 describe("a lost acknowledgement", () => {
   it("after the receiver applied the batch does not duplicate strokes when the sender retries", async () => {
     const { receiver, transport, sender } = await setup();

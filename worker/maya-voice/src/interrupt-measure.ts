@@ -17,6 +17,8 @@ export interface StopOptions {
   speakingMs: number;
   /** The longest stop the trial looks for. */
   windowMs: number;
+  /** Exclusive end of the capture, such as the next microphone clip's onset. */
+  untilAt?: number;
 }
 
 export const STOP_DEFAULTS: StopOptions = { audibleDb: -45, quietMs: 700, speakingMs: 300, windowMs: 3000 };
@@ -28,19 +30,21 @@ export const STOP_DEFAULTS: StopOptions = { audibleDb: -45, quietMs: 700, speaki
  */
 export function audibleStop(levels: readonly Level[], onsetAt: number, options: Partial<StopOptions> = {}) {
   const o = { ...STOP_DEFAULTS, ...options };
-  const loud = levels.filter(l => l.db >= o.audibleDb);
-  const speaking = loud.some(l => l.at < onsetAt && l.at >= onsetAt - o.speakingMs);
-  if (!speaking) return { speaking, stopMs: 0 };
-  let last = loud.filter(l => l.at < onsetAt).at(-1)!;
-  for (const l of loud) {
-    if (l.at < onsetAt) continue;
-    if (l.at - last.at > o.quietMs) break;
-    last = l;
+  const untilAt = Math.min(o.untilAt ?? Infinity, onsetAt + o.windowMs + o.quietMs);
+  let last: Level | undefined;
+  let coveredUntil = -Infinity;
+  for (const frame of levels) {
+    if (frame.at < onsetAt - o.speakingMs) continue;
+    if (frame.at >= untilAt) break;
+    coveredUntil = Math.max(coveredUntil, Math.min(frame.at + frame.ms, untilAt));
+    if (frame.db < o.audibleDb) continue;
+    if (frame.at >= onsetAt && (!last || frame.at - (last.at + last.ms) >= o.quietMs)) break;
+    last = frame;
   }
+  if (!last) return { speaking: false, stopMs: 0 };
   const end = last.at + last.ms;
-  const covered = levels.length > 0 && levels.at(-1)!.at >= end + o.quietMs;
-  if (end - onsetAt > o.windowMs || !covered) return { speaking, stopMs: null };
-  return { speaking, stopMs: Math.max(0, end - onsetAt) };
+  if (end - onsetAt > o.windowMs || coveredUntil < end + o.quietMs) return { speaking: true, stopMs: null };
+  return { speaking: true, stopMs: Math.max(0, end - onsetAt) };
 }
 
 /** Nearest-rank percentile; a missing stop sorts last, and a rank that lands on one gives null. */
@@ -115,21 +119,26 @@ export interface TrialRow {
   speechInterrupted: boolean | null;
   /** LiveKit's calls on Maya's output, as "pause@ms", "clear@ms" or "resume@ms". */
   output: string[];
-  /** The final transcripts of this trial's window. */
-  transcripts: string[];
   resumed: boolean;
 }
 
+export interface SpeechEvidence {
+  finals: readonly { id: string; text: string; at: number; fromAt: number | null; toAt: number | null }[];
+  turns: readonly { finalIds: readonly string[]; text: string; at: number }[];
+}
+
+/** Trials and restart clips end the preceding capture, even when it has too little audio to confirm a stop. */
+export function trialEndAt(onsetAt: number, nextOnsetAt = Infinity, restarts: readonly number[] = []) {
+  return Math.min(onsetAt + 10_000, nextOnsetAt, ...restarts.filter(at => at > onsetAt));
+}
+
 /**
- * Scores the trials. Each trial owns only what happens before the next clip's onset: the next trial or a restart clip
- * (`boundaries`). A stop counts only when the child's sound cut Maya (`cutByChild`) within that window. Every request
- * Maya was speaking over counts: one she talked through is a missed stop, unless her speech ended before the child was
- * heard. Lost speech counts every request, and a request is delivered only when a child turn of its own window holds its
- * whole transcript.
+ * Score stops within each capture window. Assign finals by the time of their audio, and match child turns by the
+ * IDs of the finals they used. Receipt time and repeated text cannot give one clip's turn to another.
  */
-export function scoreTrials(rows: readonly TrialRow[], childTurns: readonly { at: number; text: string }[], targetMs = 300, kinds: readonly string[] = [], boundaries: readonly number[] = []) {
+export function scoreTrials(rows: readonly TrialRow[], evidence?: SpeechEvidence, targetMs = 300, kinds: readonly string[] = [], boundaries: readonly number[] = []) {
   const scored = rows.map((r, i) => {
-    const next = Math.min(rows[i + 1]?.onsetAt ?? Infinity, ...boundaries.filter(b => b > r.onsetAt));
+    const next = trialEndAt(r.onsetAt, rows[i + 1]?.onsetAt, boundaries);
     const limit = next - r.onsetAt;
     const own = (ms: number | null) => (ms !== null && ms < limit ? ms : null);
     const output = r.output.filter(o => Number(o.split("@")[1]) < limit);
@@ -137,11 +146,19 @@ export function scoreTrials(rows: readonly TrialRow[], childTurns: readonly { at
     const cut = cutByChild({ vadMs, agentListeningMs, cleared: output.some(o => !o.startsWith("resume")) });
     const endedOnItsOwn = !cut && agentListeningMs !== null && vadMs !== null && agentListeningMs < vadMs;
     const stopMs = r.stopMs !== null && r.stopMs < limit ? r.stopMs : null;
-    const heard = normalizeTranscript(r.transcripts.join(" "));
-    // Split or merged, the child turns of the window must hold exactly the trial's words.
-    const said = normalizeTranscript(childTurns.filter(t => t.at >= r.onsetAt && t.at < next).map(t => t.text).join(" "));
-    const reachedTurn = heard.length > 0 && said === heard;
-    return { ...r, output, vadMs, agentListeningMs, stopMs, cut, endedOnItsOwn, reachedTurn };
+    const finals = evidence?.finals.filter(f => f.fromAt !== null && f.toAt !== null &&
+      f.fromAt >= r.onsetAt && f.toAt > f.fromAt && f.toAt <= next && f.toAt <= f.at) ?? [];
+    const transcripts = finals.map(f => f.text);
+    const byId = new Map(finals.map(f => [f.id, f]));
+    const matched = new Set<string>();
+    for (const turn of evidence?.turns ?? []) {
+      const owned = turn.finalIds.map(id => byId.get(id));
+      if (!owned.length || !owned.every(f => f && f.at <= turn.at)) continue;
+      if (normalizeTranscript(owned.map(f => f!.text).join(" ")) !== normalizeTranscript(turn.text)) continue;
+      turn.finalIds.forEach(id => matched.add(id));
+    }
+    const reachedTurn = evidence ? finals.length > 0 && finals.every(f => matched.has(f.id)) : null;
+    return { ...r, output, vadMs, agentListeningMs, stopMs, cut, endedOnItsOwn, transcripts, reachedTurn };
   });
   const intent = scored.filter(r => r.kind === "intentional");
   const eligible = intent.filter(r => r.speaking && !r.endedOnItsOwn);
@@ -154,8 +171,9 @@ export function scoreTrials(rows: readonly TrialRow[], childTurns: readonly { at
     stop: { ...interruptReport(eligible.map(r => ({ stopMs: r.cut ? r.stopMs : null })), targetMs), missed: eligible.filter(r => !r.cut).length,
       endedOnTheirOwn: intent.filter(r => r.speaking && r.endedOnItsOwn).length, notSpeaking: intent.filter(r => !r.speaking).length,
       vadMs: interruptReport(stops.map(r => ({ stopMs: r.vadMs })), targetMs), cutMs: interruptReport(stops.map(r => ({ stopMs: r.agentListeningMs })), targetMs) },
-    lostSpeech: { n: intent.length, lost: intent.filter(r => r.transcripts.length === 0).length, split: intent.filter(r => r.transcripts.length > 1).length,
-      notATurn: intent.filter(r => !r.reachedTurn).length },
+    lostSpeech: { n: intent.length, lost: evidence ? intent.filter(r => r.transcripts.length === 0).length : null,
+      split: evidence ? intent.filter(r => r.transcripts.length > 1).length : null,
+      notATurn: evidence ? intent.filter(r => !r.reachedTurn).length : null },
     // The silence a resumed false stop left: from LiveKit's first pause to its resume.
     resumeGapMs: interruptReport(incid.filter(r => r.cut && r.resumed).map(r => {
       const paused = at(r, "pause"), resumed = at(r, "resume");

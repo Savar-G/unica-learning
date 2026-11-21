@@ -329,9 +329,53 @@ it("clears a pause asked for before the first frame when that speech is cut", as
   try {
     c.output.audio.pause();
     c.output.audio.clearBuffer();
-    c.output.audio.resume();
     void c.start();
     await c.wait(450);
+    await c.board.settled();
+    expect(c.shown()).toEqual(["b1"]);
+  } finally { c.output.audio.resume(); await c.close(); }
+});
+
+it("clears a frame held by a pause before reconnecting on the same audio output", async () => {
+  const c = await nativeSetup({ start: false });
+  try {
+    const started = vi.fn();
+    c.native.on(voice.AudioOutput.EVENT_PLAYBACK_STARTED, started);
+    c.output.audio.pause();
+    const old = c.output.captureFrame(frame(20, c.scope));
+    await c.wait(20);
+    expect(started).not.toHaveBeenCalled();
+    c.board.detach(c.scope);
+    c.output.audio.clearBuffer();
+    await c.board.reconnect(c.scope);
+    await c.board.stage("next", []);
+    const scope = c.board.capture("next")!;
+    let forwarded = false;
+    const fresh = c.output.captureFrame(frame(20, scope)).then(() => { forwarded = true; });
+    try {
+      await c.wait(100);
+      expect(forwarded).toBe(true);
+      expect(started).toHaveBeenCalledTimes(1);
+      expect(c.shown()).toEqual([]);
+    } finally {
+      c.output.audio.resume();
+      await Promise.all([old, fresh]);
+    }
+  } finally { await c.close(); }
+});
+
+it("holds the final cue after native drain until LiveKit resumes", async () => {
+  const c = await nativeSetup({ start: false, cues: [70] });
+  try {
+    await c.output.captureFrame(frame(80, c.scope));
+    c.output.flush();
+    c.output.audio.pause();
+    await c.native.waitForPlayout();
+    await c.board.settled();
+    expect(c.shown()).toEqual([]);
+    expect(c.output.pendingPlayoutSegments).toBe(1);
+    c.output.audio.resume();
+    await c.output.waitForPlayout();
     await c.board.settled();
     expect(c.shown()).toEqual(["b1"]);
   } finally { await c.close(); }

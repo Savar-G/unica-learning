@@ -14,6 +14,7 @@
 // - When the worker gives the session a tick (`nextTickAt`): only when the session can act on it (the pause policy or
 //   the time limits), never while Maya is still speaking.
 import { limitsOf, PAUSES, TIME_LIMITS, type Session } from "@/lib/maya";
+import { sensitiveHearing } from "@/lib/maya/sensitive-input";
 import type { AnswerValue, QuestionPackage } from "@/lib/question-package";
 
 /** The worker's agent name: LiveKit sends a job to this worker only when the token's room asks for it. */
@@ -443,14 +444,28 @@ export interface Heard {
 
 /**
  * A child turn from the final transcripts of one turn: the words joined, uncertain when any part was below
- * UNSURE_CONFIDENCE, with the other alternatives of the unsure parts (so the session can confirm what it heard).
+ * UNSURE_CONFIDENCE. Keep safety-related alternatives at any confidence, then other readings of unsure parts.
  */
 export function childTurnFrom(finals: readonly (readonly Heard[])[]): { text: string; uncertain: boolean; alternatives: string[] } | null {
-  const best = finals.map((alts) => alts[0]).filter((h): h is Heard => !!h && h.text.trim().length > 0);
-  if (best.length === 0) return null;
-  const unsure = finals.filter((alts) => alts[0] && alts[0].text.trim() && typeof alts[0].confidence === "number" && alts[0].confidence < UNSURE_CONFIDENCE);
-  const alternatives = [...new Set(unsure.flatMap((alts) => alts.slice(1).map((h) => h.text.trim()).filter(Boolean)))].slice(0, 4);
-  return { text: best.map((h) => h.text.trim()).join(" "), uncertain: unsure.length > 0, alternatives };
+  const words: string[] = [];
+  const sensitive: string[] = [];
+  const other: string[] = [];
+  let uncertain = false;
+  for (const [best, ...alternates] of finals) {
+    const text = best?.text.trim();
+    if (!text) continue;
+    words.push(text);
+    const unsure = typeof best.confidence === "number" && best.confidence < UNSURE_CONFIDENCE;
+    uncertain ||= unsure;
+    for (const alternate of alternates) {
+      const reading = alternate.text.trim();
+      if (!reading) continue;
+      if (sensitiveHearing({ text: "", alternatives: [reading] })) sensitive.push(reading);
+      else if (unsure) other.push(reading);
+    }
+  }
+  if (!words.length) return null;
+  return { text: words.join(" "), uncertain, alternatives: [...new Set([...sensitive, ...other])].slice(0, 4) };
 }
 
 /**

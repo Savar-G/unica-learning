@@ -89,6 +89,11 @@ export function voiceSession(providers: { stt: stt.STT; tts: tts.TTS; fake: bool
   });
 }
 
+/** Local proof events. Transcript text stays out of worker telemetry. */
+export type VoiceInputObservation =
+  | { kind: "final"; id: string; text: string; at: number; fromAt: number | null; toAt: number | null }
+  | { kind: "turn"; finalIds: string[]; text: string; at: number };
+
 /** What the run gives the agent around a turn: the greeting to wait for, and the wait for a number that may go on. */
 interface AgentHooks {
   /** Resolves when the greeting is over (at once when there is none). The opening is staged after it. */
@@ -102,6 +107,7 @@ interface AgentHooks {
   backchannel?(alternatives: readonly Heard[]): boolean;
   /** Gives the call a prepare hint (`PrepareSignal`). False: dropped (no `prepare`, or a child turn runs). */
   prepare?(text: string): boolean;
+  observeInput?(observation: VoiceInputObservation): void;
 }
 
 /** The hint the worker gives the call when the child's speech ends (V2b, agreed with the Maya lead, 2026-11-13). */
@@ -221,7 +227,16 @@ export class MayaVoiceAgent extends voice.Agent {
             // The detector's end of speech (put back by its minimum silence), when it reported it, and the last loud input
             // frame before it: the browser's audio end lines up with `levelEnd` (docs/maya-voice.md, "Clock marks").
             const finalId = telemetry().final({ at: finalAt, detectorEndAt: detectorEnd?.endAt ?? null, detectorHeardAt: detectorEnd?.heardAt ?? null, levelEndAt: detectorEnd?.levelEndAt ?? null, prepareAt: prepared.firstPrepareAt });
-            marks.push({ ...finalMark(event.alternatives[0], inputStartedAt, finalAt, detectorEndAt), prepare: prepared, finalId });
+            const best = event.alternatives[0];
+            const mark = finalMark(best, inputStartedAt, finalAt, detectorEndAt);
+            marks.push({ ...mark, prepare: prepared, finalId });
+            if (hooks.observeInput && best?.text.trim()) {
+              const start = best.words?.[0]?.startTime;
+              const fromAt = inputStartedAt !== null && typeof start === "number" && Number.isFinite(start) && start >= 0 ? inputStartedAt + start * 1000 : null;
+              try {
+                hooks.observeInput({ kind: "final", id: finalId, text: best.text, at: finalAt, fromAt, toAt: mark.wordEndAt });
+              } catch { /* Diagnostics never block a final transcript. */ }
+            }
             console.info("[maya voice] final transcript", callId, heard);
           }
           // Kept speech: a start held back goes first.
@@ -313,10 +328,17 @@ export class MayaVoiceAgent extends voice.Agent {
       }
       this.extended = false;
       // The reply's first sentences may stream (D-341), unless the call's own start runs in the same work.
-      return this.reply(stoppedSpeakingAt(chatCtx), async (say) => [
-        ...((await this.starting, opening) ? [await this.call.start()] : []),
-        await this.call.child(heard.text, heard.uncertain ? { uncertain: true, alternatives: heard.alternatives } : undefined, opening ? undefined : say),
-      ], heldMarks.at(-1) ?? null, heldMarks.map(m => m.finalId));
+      const finalIds = heldMarks.flatMap(m => m.finalId ? [m.finalId] : []);
+      const observeInput = this.hooks.observeInput;
+      const hearing = heard.uncertain || heard.alternatives.length ? { uncertain: heard.uncertain, alternatives: heard.alternatives } : undefined;
+      return this.reply(stoppedSpeakingAt(chatCtx), async (say) => {
+        await this.starting;
+        const turns = opening ? [await this.call.start()] : [];
+        let listener = opening ? undefined : say;
+        if (observeInput) listener = { ...listener, childHeard: text => observeInput({ kind: "turn", finalIds, text, at: Date.now() }) };
+        turns.push(await this.call.child(heard.text, hearing, listener));
+        return turns;
+      }, heldMarks.at(-1) ?? null, finalIds);
     }
     if (!opening) return null;
     const turn = await this.call.start();
@@ -512,6 +534,8 @@ export class VoiceCallRun {
       ackLimitMs?: number;
       /** One sample per child turn (./turn-timing.ts). */
       measureTurn?(sample: VoiceTurnSample): void;
+      /** Local proof of which final transcripts produced a recorded child turn. */
+      observeInput?(observation: VoiceInputObservation): void;
       /** Associates later board cue acknowledgements with the turn that staged the batches. */
       measureBoardPlan?(utteranceId: string, turnId: string, batchIds: readonly string[]): void;
       /**
@@ -546,7 +570,8 @@ export class VoiceCallRun {
     this.segment = call.revision;
     this.agent = new MayaVoiceAgent(call, turn => this.after(turn), options.board ? { sync: options.board, scope: () => this.boardScope } : undefined,
       (stoppedAt, work, mark, finalIds) => this.reply(stoppedAt, work, mark, finalIds),
-      { greetingOver: () => this.greetingOver(), childWentOn: text => this.childWentOn(text), prepare: text => this.prepareHint(text), backchannel: alternatives => this.backchannel(alternatives) });
+      { greetingOver: () => this.greetingOver(), childWentOn: text => this.childWentOn(text), prepare: text => this.prepareHint(text),
+        backchannel: alternatives => this.backchannel(alternatives), observeInput: options.observeInput });
     this.agent.hearing = { dropSilentPeakDbfs: options.dropSilentPeakDbfs ?? null, ...(options.heardVad ? { vad: options.heardVad } : {}), detectorMinSilenceMs: options.detectorMinSilenceMs ?? null };
     this.agent.onSilent = speech => this.silentSpeech(speech);
     this.agent.requireSpokenCues = scope => this.exchangeScope?.scope.generation === scope.generation;
@@ -561,13 +586,14 @@ export class VoiceCallRun {
     session.on(voice.AgentSessionEventTypes.UserInputTranscribed, ev => { if (ev.transcript.trim()) this.wordsHeard(); });
     session.on(voice.AgentSessionEventTypes.UserStateChanged, ev => {
       if (ev.newState === "speaking") {
-        const audioScope = this.ungatedSpeech;
         this.speechEndSeenAt = null;
         if (this.pace) this.cutAck(this.pace);
-        if (audioScope) this.stopBoard(audioScope);
         // An output that can pause leaves the decision to LiveKit: it pauses Maya, then resumes her when no words
         // follow (a "mm-hm" or a noise) or clears her speech, which retires the plan, when they do.
-        if (this.boardScope && !this.exchangeScope && !this.exchangeBoard && !this.session.output.audio?.canPause) this.stopBoard(this.boardScope);
+        if (!this.session.output?.audio?.canPause) {
+          if (this.ungatedSpeech) this.stopBoard(this.ungatedSpeech);
+          if (this.boardScope && !this.exchangeScope && !this.exchangeBoard) this.stopBoard(this.boardScope);
+        }
       } else if (ev.oldState === "speaking") {
         this.childStoppedAt = this.timers.now();
         this.speechEndSeenAt = ev.createdAt;
@@ -1702,6 +1728,7 @@ export class VoiceCallRun {
     if (this.call.guidancePlayback && this.guidance) this.guidance.cut = true;
     if (this.ungatedSpeech) this.stopBoard(this.ungatedSpeech);
     if (this.boardScope) this.stopBoard(this.boardScope);
+    this.boardAudio?.audio.clearBuffer();
     if (this.tickTimer !== null) this.timers.clear(this.tickTimer);
     this.tickTimer = null;
     await this.call.connection("child_left");

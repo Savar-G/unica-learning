@@ -520,6 +520,8 @@ export interface AdmissionSample {
 export interface VoiceSay {
   /** The turn's admission interval, once, when the gate is done (also when it refuses the turn). */
   admission?(sample: AdmissionSample): void;
+  /** The child text recorded synchronously by this input, for local proof runs. */
+  childHeard?(text: string): void;
   begun?(plan: { model: boolean; streams: boolean; conversational: boolean }): void;
   part?(sentence: string, index: number): void;
   cancel?(fromIndex: number): void;
@@ -1761,7 +1763,12 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         listener = say ?? null;
         try {
           // The input is in the session once `input` returns its promise, before any model call.
+          const turnsBefore = say?.childHeard && hearing ? session.session.turns.length : undefined;
           const running = input();
+          if (turnsBefore !== undefined) {
+            const added = session.session.turns.slice(turnsBefore).find(t => t.speaker === "child");
+            if (added) { try { say?.childHeard?.(added.text); } catch { /* Diagnostics never fail a turn. */ } }
+          }
           if (say?.begun) { try { say.begun(planOf()); } catch { /* the worker's ear never fails the turn */ } }
           out = await running;
         } finally { working--; listener = null; }

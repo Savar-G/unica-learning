@@ -31,6 +31,12 @@ describe("audibleStop", () => {
   it("reports no stop when Maya is still audible at the end of the window", () => {
     expect(audibleStop(levels(0, 3000, 9000), 1000)).toEqual({ speaking: true, stopMs: null });
   });
+
+  it("cannot use frames from the next clip to confirm a stop", () => {
+    const frames = levels(0, 4000, 1240);
+    expect(audibleStop(frames, 1000, { untilAt: 1800 })).toEqual({ speaking: true, stopMs: null });
+    expect(audibleStop(frames, 1000, { untilAt: 2000 })).toEqual({ speaking: true, stopMs: 240 });
+  });
 });
 
 describe("interruptReport", () => {
@@ -102,70 +108,91 @@ describe("pace", () => {
 describe("scoreTrials", () => {
   const row = (r: Partial<TrialRow> & Pick<TrialRow, "kind" | "onsetAt">): TrialRow => ({
     clip: r.kind === "intentional" ? "int1.wav" : "mmhm", speaking: true, stopMs: 400, vadMs: 180, agentListeningMs: 420,
-    speechInterrupted: null, output: [], transcripts: [], resumed: false, ...r,
+    speechInterrupted: null, output: [], resumed: false, ...r,
   });
+  const final = (id: string, fromAt: number, text = "Show me.") => ({ id, text, fromAt, toAt: fromAt + 300, at: fromAt + 700 });
+  const turn = (f: ReturnType<typeof final>, text = f.text) => ({ finalIds: [f.id], text, at: f.at + 100 });
 
   it("gives a later trial's clear to that trial, not to the incidental sound before it", () => {
     const rows = [
       row({ kind: "incidental", onsetAt: 0, vadMs: null, agentListeningMs: null, output: ["clear@900"] }),
-      row({ kind: "intentional", onsetAt: 700, output: ["clear@200"], transcripts: ["Wait."] }),
+      row({ kind: "intentional", onsetAt: 700, output: ["clear@200"] }),
     ];
-    const scored = scoreTrials(rows, [{ at: 1500, text: "Wait." }]);
+    const scored = scoreTrials(rows);
     expect(scored.falseStops).toMatchObject({ n: 1, stopped: 0 });
     expect(scored.stop.n).toBe(1);
   });
 
   it("counts lost speech over every request, also one Maya did not stop for", () => {
     const rows = [
-      row({ kind: "intentional", onsetAt: 0, transcripts: ["Show me."] }),
-      row({ kind: "intentional", onsetAt: 5000, vadMs: null, agentListeningMs: null, transcripts: [] }),
-      row({ kind: "intentional", onsetAt: 9000, speaking: false, transcripts: ["Show me."] }),
+      row({ kind: "intentional", onsetAt: 0 }),
+      row({ kind: "intentional", onsetAt: 5000, vadMs: null, agentListeningMs: null }),
+      row({ kind: "intentional", onsetAt: 9000, speaking: false }),
     ];
-    const scored = scoreTrials(rows, [{ at: 800, text: "Show me." }, { at: 9800, text: "Show me." }]);
+    const finals = [final("first", 100), final("third", 9100)];
+    const scored = scoreTrials(rows, { finals, turns: finals.map(f => turn(f)) });
     // The second request was not heard and Maya talked through it: a missed stop.
     expect(scored.stop).toMatchObject({ n: 2, stopped: 1, missed: 1 });
     expect(scored.lostSpeech).toMatchObject({ n: 3, lost: 1, notATurn: 1 });
   });
 
-  it("matches each request to a child turn of its own window, so an earlier identical turn cannot hide a later drop", () => {
+  it("keeps a late final and its turn with the clip that produced them", () => {
     const rows = [
-      row({ kind: "intentional", onsetAt: 0, transcripts: ["Show me."] }),
-      row({ kind: "intentional", onsetAt: 5000, transcripts: ["Show me."] }),
+      row({ kind: "intentional", onsetAt: 0 }),
+      row({ kind: "intentional", onsetAt: 1500 }),
     ];
-    const scored = scoreTrials(rows, [{ at: 800, text: "Show me." }]);
-    expect(scored.lostSpeech).toMatchObject({ n: 2, lost: 0, notATurn: 1 });
+    const evidence = {
+      finals: [
+        { id: "earlier", text: "Show me.", fromAt: 100, toAt: 600, at: 1700 },
+        { id: "later", text: "Show me.", fromAt: 1550, toAt: 2000, at: 2400 },
+      ],
+      turns: [{ finalIds: ["earlier"], text: "Show me.", at: 2500 }],
+    };
+    const scored = scoreTrials(rows, evidence);
+    expect(scored.rows.map(r => [r.transcripts, r.reachedTurn])).toEqual([
+      [["Show me."], true], [["Show me."], false],
+    ]);
+    expect(scoreTrials(rows, { ...evidence, finals: evidence.finals.slice(0, 1) }).rows[1]).toMatchObject({ transcripts: [], reachedTurn: false });
+  });
+
+  it("leaves old captures without source timing or final IDs unverified", () => {
+    const rows = [row({ kind: "intentional", onsetAt: 0 })];
+    expect(scoreTrials(rows).lostSpeech).toEqual({ n: 1, lost: null, split: null, notATurn: null });
   });
 
   it("counts a request Maya talked through as a missed stop, so one stop and one miss do not pass", () => {
     const rows = [
-      row({ kind: "intentional", onsetAt: 0, stopMs: 200, transcripts: ["Show me."] }),
-      row({ kind: "intentional", onsetAt: 5000, stopMs: null, vadMs: 180, agentListeningMs: null, transcripts: ["Show me."] }),
+      row({ kind: "intentional", onsetAt: 0, stopMs: 200 }),
+      row({ kind: "intentional", onsetAt: 5000, stopMs: null, vadMs: 180, agentListeningMs: null }),
     ];
-    const scored = scoreTrials(rows, [{ at: 800, text: "Show me." }, { at: 5800, text: "Show me." }]);
+    const scored = scoreTrials(rows);
     expect(scored.stop).toMatchObject({ n: 2, stopped: 1, neverStopped: 1, p95: null, missed: 1 });
   });
 
   it("keeps a speech that ended before the child was heard out of the stop count", () => {
-    const rows = [row({ kind: "intentional", onsetAt: 0, stopMs: 40, vadMs: 180, agentListeningMs: 30, transcripts: ["Show me."] })];
-    expect(scoreTrials(rows, [{ at: 800, text: "Show me." }]).stop).toMatchObject({ n: 0, endedOnTheirOwn: 1, missed: 0 });
+    const rows = [row({ kind: "intentional", onsetAt: 0, stopMs: 40, vadMs: 180, agentListeningMs: 30 })];
+    expect(scoreTrials(rows).stop).toMatchObject({ n: 0, endedOnTheirOwn: 1, missed: 0 });
   });
 
   it("credits no stop that lands after the next clip began, a restart clip included", () => {
-    const rows = [row({ kind: "intentional", onsetAt: 0, stopMs: 610, agentListeningMs: 560, transcripts: ["Show me."] })];
-    const scored = scoreTrials(rows, [{ at: 500, text: "Show me." }], 300, [], [550]);
+    const rows = [row({ kind: "intentional", onsetAt: 0, stopMs: 610, agentListeningMs: 560 })];
+    const f = final("before-restart", 300);
+    const scored = scoreTrials(rows, { finals: [f], turns: [turn(f)] }, 300, [], [550]);
     expect(scored.stop).toMatchObject({ n: 1, stopped: 0, missed: 1 });
+    expect(scored.lostSpeech).toMatchObject({ lost: 1, notATurn: 1 });
   });
 
   it("counts a request as delivered only when a child turn holds its whole transcript", () => {
-    const rows = [row({ kind: "intentional", onsetAt: 0, transcripts: ["Okay four."] })];
-    expect(scoreTrials(rows, [{ at: 800, text: "Okay." }]).lostSpeech).toMatchObject({ notATurn: 1 });
-    expect(scoreTrials(rows, [{ at: 800, text: "okay, four" }]).lostSpeech).toMatchObject({ notATurn: 0 });
+    const rows = [row({ kind: "intentional", onsetAt: 0 })];
+    const f = final("number", 100, "Okay four.");
+    expect(scoreTrials(rows, { finals: [f], turns: [turn(f, "Okay.")] }).lostSpeech).toMatchObject({ notATurn: 1 });
+    expect(scoreTrials(rows, { finals: [f], turns: [turn(f, "okay, four")] }).lostSpeech).toMatchObject({ notATurn: 0 });
   });
 
   it("counts a request split into two finals as delivered when its turns hold the same words", () => {
-    const rows = [row({ kind: "intentional", onsetAt: 0, transcripts: ["What does that mean?", "Show me."] })];
-    expect(scoreTrials(rows, [{ at: 800, text: "What does that mean?" }, { at: 1100, text: "Show me." }]).lostSpeech).toMatchObject({ split: 1, notATurn: 0 });
-    expect(scoreTrials(rows, [{ at: 800, text: "What does that mean?" }]).lostSpeech).toMatchObject({ notATurn: 1 });
+    const rows = [row({ kind: "intentional", onsetAt: 0 })];
+    const finals = [final("part-one", 100, "What does that mean?"), final("part-two", 400)];
+    expect(scoreTrials(rows, { finals, turns: finals.map(f => turn(f)) }).lostSpeech).toMatchObject({ split: 1, notATurn: 0 });
+    expect(scoreTrials(rows, { finals, turns: [turn(finals[0])] }).lostSpeech).toMatchObject({ notATurn: 1 });
   });
 });
-

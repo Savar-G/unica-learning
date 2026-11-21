@@ -19,6 +19,22 @@ async function setup() {
 }
 
 describe("board speech through the real receiver and fake transport", () => {
+  it("cancels a late cue in dropped audio and its dependent batch, then shows independent work", async () => {
+    const c = await setup();
+    const note: Batch = { transactionId: "note", commands: [{ op: "write", id: "note", text: "6", place: { region: "main" } }] };
+    await c.speech.stage("one", [{ batch: columns, word: 1 }, { batch: answer, word: 2 }, { batch: note, word: 3 }]);
+    const scope = c.speech.capture("one")!;
+    await c.speech.played(scope, 380);
+    await c.speech.skip(scope, 380, 480);
+    await c.speech.timing(scope, 3, 600, "word");
+    await c.speech.played(scope, 600);
+    expect(c.receiver.snapshot().events.filter(e => e.kind === "batch")).toEqual([]);
+    await c.speech.timing(scope, 1, 440, "word");
+    expect(c.sender.batchState("columns")).toBe("cancelled");
+    expect(c.sender.batchState("answer")).toBe("cancelled");
+    expect(c.receiver.snapshot().events.filter(e => e.kind === "batch").map(e => e.batchId)).toEqual(["note"]);
+  });
+
   it("retires audio-only scopes without changing or releasing the board plan", async () => {
     const c = await setup();
     await c.speech.stage("plan", [{ batch: columns, word: 1 }]);

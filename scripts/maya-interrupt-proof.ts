@@ -46,7 +46,7 @@ import { ruleConversationalModel } from "@/lib/maya-model-fake";
 import { VoiceCallRun, voiceSession } from "../worker/maya-voice/src/agent";
 import { waitForChild } from "../worker/maya-voice/src/child-wait";
 import { makeProviders } from "../worker/maya-voice/src/providers";
-import { audibleStop, pace, readWav, scoreTrials, type Level, type TrialRow } from "../worker/maya-voice/src/interrupt-measure";
+import { audibleStop, pace, readWav, scoreTrials, trialEndAt, type Level, type SpeechEvidence, type TrialRow } from "../worker/maya-voice/src/interrupt-measure";
 
 const { values: args } = parseArgs({ options: {
   url: { type: "string" }, key: { type: "string" }, secret: { type: "string" }, clips: { type: "string" }, out: { type: "string" },
@@ -59,9 +59,9 @@ initializeLogger({ pretty: false, level: "warn" });
 const INCIDENTAL = ["mmhm", "okay", "noise-burst", "request-at-minus-26-db", "hum"];
 if (args.rescore) {
   const saved = JSON.parse(readFileSync(args.rescore, "utf8"));
-  // Runs saved before 2026-11-20 kept no child turns with times: their turn match cannot be scored again.
-  const result = scoreTrials(saved.rows.map((r: TrialRow) => ({ ...r, transcripts: r.transcripts ?? [], resumed: r.resumed ?? false })), saved.childTurns ?? [], 300, INCIDENTAL, saved.restartOnsets ?? []);
-  const scored = { ...saved, ...result, lostSpeech: { ...result.lostSpeech, notATurn: saved.childTurns ? result.lostSpeech.notATurn : null } };
+  // Old captures lack both bounded audio evidence and the source timestamps and IDs needed to verify child delivery.
+  const result = scoreTrials(saved.rows.map((r: TrialRow) => ({ ...r, resumed: r.resumed ?? false })), saved.speechEvidence, 300, INCIDENTAL, saved.restartOnsets ?? []);
+  const scored = { ...saved, ...result };
   writeFileSync(args.rescore, JSON.stringify(scored, null, 2));
   console.log(JSON.stringify({ stop: scored.stop, lostSpeech: scored.lostSpeech, falseStops: scored.falseStops, cueSummary: scored.cueSummary }, null, 1));
   process.exit(0);
@@ -201,15 +201,19 @@ const sender = createBoardSender({ sessionId: callId, senderId: randomUUID(), sn
 const cues: CueMeasurement[] = [];
 const board = createBoardSpeech({ sender, now: clock, observe: s => call.observeBoard(s), measure: cue => cues.push(cue) });
 const session = voiceSession(providers, { turn: speech.tuning, aecWarmupDuration: 0 });
+const finals: SpeechEvidence["finals"][number][] = [];
+const childTurns: SpeechEvidence["turns"][number][] = [];
 const run = new VoiceCallRun(session, call, {
-  board, notify: () => {}, measureTurn: () => {},
+  board, notify: () => {},
   closed: async () => {},
+  observeInput: observation => {
+    if (observation.kind === "final") finals.push(observation);
+    else childTurns.push(observation);
+  },
 });
 await local.setAttributes({ "maya.speech": "live", "maya.segment": String(run.segment) });
-const finals: { text: string; at: number }[] = [];
 const speeches: { id: string; createdAt: number; doneAt?: number; interrupted?: boolean }[] = [];
 const falseInterruptions: { at: number; resumed: boolean }[] = [];
-session.on(voice.AgentSessionEventTypes.UserInputTranscribed, e => { if (e.isFinal) finals.push({ text: e.transcript, at: clock() }); });
 session.on(voice.AgentSessionEventTypes.SpeechCreated, e => {
   const row: (typeof speeches)[number] = { id: e.speechHandle.id, createdAt: clock() };
   speeches.push(row);
@@ -302,24 +306,23 @@ await childRoom.disconnect();
 await workerRoom.disconnect();
 
 // ---------- report ----------
-const childTurns = call.session.turns.filter(t => t.speaker === "child").map(t => ({ at: t.at, text: t.text }));
+const speechEvidence: SpeechEvidence = { finals, turns: childTurns };
 const rows: TrialRow[] = trials.map((t, i) => {
   // A trial owns what happens before the next trial's onset, and at most 10 s.
   // The next clip, a trial or a restart request, owns what follows its onset.
-  const until = Math.min(trials[i + 1]?.onsetAt ?? Infinity, ...restartOnsets.filter(at => at > t.onsetAt), t.onsetAt + 10_000);
+  const until = trialEndAt(t.onsetAt, trials[i + 1]?.onsetAt, restartOnsets);
   const within = (at: number) => at >= t.onsetAt && at < until;
-  const heard = finals.filter(f => within(f.at));
-  const stop = audibleStop(levels, t.onsetAt);
+  const stop = audibleStop(levels, t.onsetAt, { untilAt: until });
   const after = (who: string, state: string) => { const hit = states.find(x => x.who === who && x.state === state && within(x.at)); return hit ? hit.at - t.onsetAt : null; };
   const done = speeches.find(x => x.doneAt !== undefined && within(x.doneAt) && x.createdAt < t.onsetAt);
   return {
     ...t, speaking: stop.speaking, stopMs: stop.stopMs, vadMs: after("user", "speaking"), agentListeningMs: after("agent", "listening"),
     speechInterrupted: done?.interrupted ?? null, output: outputs.filter(o => within(o.at)).map(o => `${o.kind}@${o.at - t.onsetAt}`),
-    transcripts: heard.map(h => h.text), resumed: falseInterruptions.some(f => f.resumed && within(f.at)),
+    resumed: falseInterruptions.some(f => f.resumed && within(f.at)),
     overlaps: overlaps.filter(o => within(o.at)).map(o => `${o.isInterruption ? "barge-in" : "backchannel"}@${o.at - t.onsetAt}`),
   };
 });
-const scored = scoreTrials(rows, childTurns, 300, INCIDENTAL, restartOnsets);
+const scored = scoreTrials(rows, speechEvidence, 300, INCIDENTAL, restartOnsets);
 // Worker-to-child audio delay: each utterance's first audible frame at the child against the worker's playback start.
 const starts = telemetry.filter(t => t.ev === "mark" && t.name === "playbackStarted").map(t => t.at);
 const delays = starts.map(at => levels.find(l => l.at >= at && l.db >= -45)?.at).map((at, i) => (at === undefined ? NaN : at - starts[i])).filter(d => d >= 0 && d < 1000).sort((a, b) => a - b);
@@ -345,7 +348,7 @@ const report = {
   overlapEvents: { n: overlaps.length, bargeIns: overlaps.filter(o => o.isInterruption).length },
   speeches: { n: speeches.length, interrupted: speeches.filter(s => s.interrupted).length },
   checked, boardEvents: receiver.snapshot().events.map(e => e.kind),
-  rows: scored.rows, childTurns, restartOnsets, cueRows,
+  rows: scored.rows, speechEvidence, restartOnsets, cueRows,
 };
 writeFileSync(args.out!, JSON.stringify(report, null, 2));
 log(JSON.stringify({ stop: report.stop, lostSpeech: report.lostSpeech, falseStops: report.falseStops, cueSummary, workerToChildAudioMs: report.workerToChildAudioMs }, null, 1));

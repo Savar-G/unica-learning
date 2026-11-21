@@ -26,7 +26,7 @@ import type { QuestionPackage } from "@/lib/question-package";
 import { mayaWorkbookFixture } from "@/lib/maya-workbook-fixture";
 import { selectWorkbookQuestion } from "@/lib/maya-workbook-question";
 import { spokenMath } from "@/lib/maya-voice-spoken";
-import { VoiceCallRun, voiceSession, type CallUpdate, type Timers } from "./agent";
+import { VoiceCallRun, voiceSession, type CallUpdate, type Timers, type VoiceInputObservation } from "./agent";
 import { voiceBaselineTurn } from "./baseline";
 import type { VoiceTurnSample } from "./turn-timing";
 import { FakeTTS } from "./fake-providers";
@@ -144,7 +144,7 @@ afterEach(async () => {
   vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs();
 });
 
-async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["spend"]; speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel; board?: boolean; timestamps?: boolean; workbookReference?: string; measureBaseline?: boolean; exchange?: boolean; transport?: (receiver: BoardReceiver) => BoardTransport } = {}) {
+async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["spend"]; speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel; board?: boolean; timestamps?: boolean; workbookReference?: string; measureBaseline?: boolean; exchange?: boolean; checkedRoutine?: boolean; observeInput?(observation: VoiceInputObservation): void; transport?: (receiver: BoardReceiver) => BoardTransport } = {}) {
   const clock = handTimers();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -161,6 +161,7 @@ async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["
     model: (id) => (id === null || id === "fake" ? options.model ?? ruleMayaModel() : null),
     isTestFamily: async (p) => p === PARENT,
     checkedExchange: options.exchange,
+    checkedRoutine: options.checkedRoutine,
     ...(options.spend ? { spend: options.spend(clock.now) } : {}),
     clock: clock.now,
     newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`,
@@ -170,7 +171,7 @@ async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["
   const fixture = options.workbookReference ? await mayaWorkbookFixture() : null;
   const selected = fixture ? await selectWorkbookQuestion({ childId: fixture.ids.child, workbookId: fixture.ids.workbook, reference: options.workbookReference }, fixture.reader) : null;
   if (selected && !selected.ok) throw Error(selected.error);
-  const pkg = selected?.ok ? selected.package : options.exchange ? { ...SAMPLE_PACKAGES["subtract-52-28"], ref: PKG.ref } : PKG;
+  const pkg = selected?.ok ? selected.package : (options.exchange || options.checkedRoutine) ? { ...SAMPLE_PACKAGES["subtract-52-28"], ref: PKG.ref } : PKG;
   const started = await calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: pkg, confirmWorkbook: !!selected?.ok, startedBy: "admin-1" });
   if (!started.ok) throw new Error(started.error);
   const config = voiceProviders({});
@@ -192,6 +193,7 @@ async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["
   const boardPlans = new Map<string, { turnId: string; batchIds: readonly string[] }>();
   const run = new VoiceCallRun(session, opened.call, {
     ...(options.board ? { board } : {}), timers: clock.timers, notify: (u) => updates.push(u), closed,
+    observeInput: options.observeInput,
     ...(options.measureBaseline ? {
       measureTurn: sample => turns.push(sample),
       measureBoardPlan: (id, turnId, batchIds) => { boardPlans.set(id, { turnId, batchIds }); },
@@ -723,7 +725,9 @@ it("accepts an immediate exchange while the shown batch acknowledgement is still
     await Promise.resolve();
     releaseAnswer.resolve();
     expect(await action).toBe("accepted");
+    const stopped = vi.spyOn(speaker, "clearBuffer");
     expect(await c.run.exchange({ ...target, boardRevision: target.boardRevision + 1 })).toBe("stale");
+    expect(stopped).not.toHaveBeenCalled();
     expect(await c.run.exchange(target)).toBe("done");
     expect(c.receiver.snapshot().events.filter(e => e.kind === "presented" && e.batchId === targetBatch)).toHaveLength(1);
     expect(c.call.session.checkedExchange?.turns.filter(t => t.childAction)).toHaveLength(1);
@@ -1873,6 +1877,31 @@ it.each([true, false])("passes an unsure or number-bearing \"okay\" over Maya to
       speaker.held = false;
       await c.call.settled();
     }
+  } finally { speaker.finishPlayback(); }
+});
+
+it("clarifies a possible disclosure when the primary transcript over Maya is a confident backchannel", async () => {
+  let now = () => T0;
+  const speaker = new HeldSpeaker(() => now(), true);
+  const observations: VoiceInputObservation[] = [];
+  const c = await voiceCall({ speaker, board: true, checkedRoutine: true, model: ruleConversationalModel(), observeInput: event => observations.push(event) });
+  now = c.clock.now;
+  expect(c.call.session.checkedRoutine).toBe(true);
+  try {
+    await c.run.childJoined();
+    await waitFor(() => c.said().length > 0 && c.session.agentState === "listening", "opening");
+    speaker.held = true;
+    expect(c.speech.say("How do I regroup?")).toBe(true);
+    await waitFor(() => c.session.agentState === "speaking", "Maya's reply in playout");
+    expect(c.speech.say("Okay.", { confidence: 0.95, alternatives: ["Okay, he hits me."] })).toBe(true);
+    await waitFor(() => c.call.session.sensitiveHold === true, "the safety clarification");
+    expect(c.run.backchannels).toBe(0);
+    expect(c.call.session.safety.flagged).toBeFalsy();
+    const final = observations.find(event => event.kind === "final" && event.text === "Okay.");
+    expect(final).toMatchObject({ kind: "final", id: expect.any(String) });
+    expect(observations).toContainEqual(expect.objectContaining({
+      kind: "turn", finalIds: [final?.kind === "final" && final.id], text: "Okay.",
+    }));
   } finally { speaker.finishPlayback(); }
 });
 

@@ -189,6 +189,15 @@ describe("rooms and joiners", () => {
 });
 
 describe("what the child said", () => {
+  it("keeps a possible disclosure ahead of ordinary alternatives to a clear backchannel", () => {
+    expect(childTurnFrom([
+      [{ text: "Okay.", confidence: 0.95 }, { text: "Okay, he hits me." }],
+      [{ text: "Fine.", confidence: 0.4 }, ...["Find", "Five", "Time", "Line"].map(text => ({ text }))],
+    ])).toEqual({ text: "Okay. Fine.", uncertain: true, alternatives: ["Okay, he hits me.", "Find", "Five", "Time"] });
+    expect(childTurnFrom([[{ text: "Okay.", confidence: 0.95 }, { text: "Okay, he hits me." }]]))
+      .toEqual({ text: "Okay.", uncertain: false, alternatives: ["Okay, he hits me."] });
+  });
+
   it("joins the final transcripts of a turn and marks it uncertain below the confidence bar, with the alternatives", () => {
     expect(childTurnFrom([[{ text: "I got", confidence: 0.95 }], [{ text: "66.", confidence: 0.9 }]])).toEqual({ text: "I got 66.", uncertain: false, alternatives: [] });
     expect(childTurnFrom([[{ text: "fourteen", confidence: 0.4 }, { text: "forty" }, { text: "fourteen" }]])).toEqual({ text: "fourteen", uncertain: true, alternatives: ["forty", "fourteen"] });

@@ -374,9 +374,8 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
    * one gets "cancelled" and changes nothing. Returns where the `cancelled` event is in the log, or null.
    *
    * Each staged batch's result was worked out on the batches staged before it. The batches kept after a partial cancel
-   * are worked out again on the shown board, in order, so a release never shows a cancelled command. The first one the
-   * core now refuses (it built on a cancelled batch) is dropped with every batch after it, since those were planned on
-   * it: they go in the same `cancelled` event, so the sender reads them as cancelled too.
+   * are worked out again on the shown board, in order. Drop each batch the core now refuses, then try the next batch
+   * on the surviving scene. Independent work can still be released.
    */
   function cancelStaged(scope: SpeechScope, through = Infinity, cancelId?: string): number | null {
     if (!sameScope(currentScope, scope)) return null;
@@ -384,16 +383,17 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
     if (dropped.length === 0) return null;
     const kept: Staged[] = [];
     let scene = shown;
-    let rest = staged.filter((s) => s.sequence > through);
-    while (rest.length > 0) {
-      const [next, ...after] = rest;
+    for (const next of staged) {
+      if (next.sequence <= through) continue;
       const result = applyBatch(scene, { transactionId: next.batchId, commands: next.commands });
-      if (!result.ok) break;
+      if (!result.ok) {
+        dropped.push(next);
+        continue;
+      }
       kept.push({ ...next, result });
       scene = result.scene;
-      rest = after;
     }
-    const cancelled = [...dropped, ...rest].map((s) => s.batchId);
+    const cancelled = dropped.map((s) => s.batchId);
     for (const id of cancelled) states.set(id, "cancelled");
     staged = kept;
     append(cancelId === undefined ? { kind: "cancelled", batchIds: cancelled } : { kind: "cancelled", batchIds: cancelled, cancelId });
