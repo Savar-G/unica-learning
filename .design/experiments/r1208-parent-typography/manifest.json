@@ -25,6 +25,8 @@
     "after-overview-on-track-desktop.png",
     "after-overview-on-track-phone-detail.png",
     "after-overview-on-track-phone.png",
+    "after-overview-ring-desktop.png",
+    "after-overview-ring-phone.png",
     "after-progress-desktop.png",
     "after-progress-phone-detail.png",
     "after-progress-phone.png",
@@ -37,6 +39,8 @@
     "before-overview-on-track-desktop.png",
     "before-overview-on-track-phone-detail.png",
     "before-overview-on-track-phone.png",
+    "before-overview-ring-desktop.png",
+    "before-overview-ring-phone.png",
     "before-progress-desktop.png",
     "before-progress-phone-detail.png",
     "before-progress-phone.png",
@@ -44,6 +48,11 @@
     "before-workbooks-phone-detail.png",
     "before-workbooks-phone.png"
   ],
+  "ringFollowUp": {
+    "base": "004989a5ec295ec9ee3474a6fbb45fab966d0c7b",
+    "fixture": "Overview, on track (38%)",
+    "crop": [96, 96]
+  },
   "audit": {
     "renders": 128,
     "rendersByFixture": {
