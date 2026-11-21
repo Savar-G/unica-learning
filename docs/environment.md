@@ -69,6 +69,7 @@ All switches fail closed unless set to the exact value documented below. Do not 
 | `TEAM_DIGEST_EMAIL_ENABLED` | Exact `on` sends the daily 7 a.m. Pacific team digest to `SIGNUP_NOTIFY_EMAIL` (`docs/team-digest.md`). |
 | `WORKBOOK_SCAN_PROGRESS_ENABLED`, `WORKBOOK_SCAN_REMINDERS_ENABLED`, `WORKBOOK_SCAN_TEST_PARENT_IDS`, `NEXT_BOOK_PREPARE_ENABLED` | Scan progress, inactivity reminders, and next-book prep (`docs/workbook-scan-progress.md`, `docs/next-book-snapshot.md`). Off when unset. Reminders `families` requires progress `families` and reads no plan gate. |
 | `MAYA_TUTOR_FAMILIES` | Exact `on` enables the tutor core for family desk chat and voice calls (`docs/maya-tutor.md`, `src/lib/maya-call-seams.ts`). On in Production and voice worker secrets since 2026-11-15. Admin test calls always use tutor core. |
+| `MAYA_CHECKED_ADDITION` | Exact `on` alongside `MAYA_CHECKED_EXCHANGE=on` enables checked two-digit addition with one regrouping step for new tutor sessions. Off when unset. |
 | `MAYA_CHAT_ENABLED` | Unset: open-plan children + test families. Exact `on`: also families on the admin chat list with a running plan. Exact `off`: emergency stop for all non-test families (`docs/maya-chat.md`). |
 | `RENDER_CHECK` | Exact `on` opens `/api/workbook-render-check` in production (`docs/workbook-rendering.md`). Off otherwise. |
 | `ASSESSMENT_COMPARISON_EXCLUDED_EMAILS` | Comma-separated test emails excluded from assessment comparison (`docs/assessment-comparison.md`). |

@@ -436,6 +436,8 @@ export interface TextSessionOptions {
    */
   tutor?: boolean;
   checkedExchange?: boolean;
+  /** #1153: teach addition with regrouping as a checked lesson too. */
+  checkedAddition?: boolean;
   checkedRoutine?: boolean;
   /** The free-talk review (src/lib/maya-talk-review.ts), or null. D-341: it reads each reply that is not plain math talk. */
   reviewer?: TalkReviewer | null;
@@ -690,7 +692,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   if (resume?.v === 6 && (!resume.initial || !Array.isArray(resume.log))) throw new Error("maya text: the saved event log is missing");
   if (resume && (![1, 6].includes(resume.v) || (resume.v === 6 ? resume.initial!.session.callId : resume.session.callId) !== options.callId)) throw new Error("maya text: the saved session is not this call's");
   const initial: TextLogInitial = resume?.v === 6 && resume.initial ? structuredClone(resume.initial) : {
-    session: resume ? structuredClone(resume.session) : createSession({ callId: options.callId, confirmWorkbook: options.confirmWorkbook, channel: options.channel, package: options.package, random: options.random, grade: options.grade, history: options.history, childName: options.childName, freeTalk: options.freeTalk === true, limitMs: options.limitMs, conversational: model.output === 3, tutor: options.tutor === true, checkedExchange: options.checkedExchange, checkedRoutine: options.checkedRoutine }),
+    session: resume ? structuredClone(resume.session) : createSession({ callId: options.callId, confirmWorkbook: options.confirmWorkbook, channel: options.channel, package: options.package, random: options.random, grade: options.grade, history: options.history, childName: options.childName, freeTalk: options.freeTalk === true, limitMs: options.limitMs, conversational: model.output === 3, tutor: options.tutor === true, checkedExchange: options.checkedExchange, checkedAddition: options.checkedAddition, checkedRoutine: options.checkedRoutine }),
     endedAt: resume?.endedAt ?? null, turns: resume?.turns ?? [], board: resume?.board ?? [],
     approved: resume?.approved, obligations: resume?.obligations, childState: resume?.childState, problems: resume?.problems,
   };

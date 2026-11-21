@@ -1,5 +1,5 @@
 import { SCOPE_REASONS } from "@/lib/maya/scope";
-import { exchangeChildWords, exchangeFacts, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingWords, type CheckedExchangeLesson } from "@/lib/maya/checked-exchange";
+import { checkedFacts, exchangeChildWords, exchangePromptWords, exchangeWords, readExchangeTarget, regroupingWords, type CheckedExchangeLesson } from "@/lib/maya/checked-exchange";
 // Maya's trace format (#322, spec #297): one versioned record of one Maya session, written by every session (the text
 // adapter now, the voice agent #326, the test bench #323 and the admin demo #324 later). It records the model and
 // prompt version, the question package hash, every turn with each proposal, its refusal and repair and the final
@@ -535,7 +535,7 @@ function checkOrder(attempts: Record<string, unknown>[], path: string) {
 function checkedExchangeOutput(proposal: unknown, output: unknown): boolean {
   if (!isObject(proposal) || proposal.checkedExchange !== 1 || typeof proposal.value !== "number" ||
     typeof proposal.example !== "boolean" || typeof proposal.show !== "boolean" || !isObject(output)) return false;
-  const facts = exchangeFacts(proposal.value, proposal.example);
+  const facts = checkedFacts(proposal.value, proposal.example, proposal.add);
   if (!facts || !Array.isArray(output.say) || output.say.length !== 1 || !Array.isArray(output.board)) return false;
   // #1144: a declined offer and a finished related question close the call; the related question's start shows it.
   const step = isObject(proposal.instruction) ? proposal.instruction.step : undefined;

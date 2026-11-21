@@ -331,6 +331,20 @@ When the checked regrouping lesson (`MAYA_CHECKED_EXCHANGE`) credits the child's
 - The parent note adds one sentence for the related question, with its help: no help, hints, the trade shown again, help unknown, or not finished.
 - Known limit: "24 plus 1." after a right answer still keeps the original success (#1089). It cannot answer the offer.
 
+## Addition with regrouping as a checked lesson (#1153)
+
+The addition lesson uses the same checked turns, board actions and related question as the subtraction lesson. It runs only when `MAYA_CHECKED_EXCHANGE` and `MAYA_CHECKED_ADDITION` are both `on`, for a new call whose question adds two 2-digit numbers whose ones make one ten and whose sum is below 100 (`supportsCheckedAddition` in `src/lib/maya/checked-addition.ts`). Every other addition, and every call saved before, keeps the existing path.
+
+For 38 plus 45:
+
+- **Prerequisite.** A child who says the idea is new ("I don't know how to start.") gets "Start with the ones. How many ones do 8 ones and 5 ones make?". A right "13 ones." gets "The ones make more than 9, which is too many ones for one place. What can you trade?". A child who answers "Trade ten ones for one ten." goes on alone ("Try the whole addition on your own."), with no demonstration. Prerequisite questions are not counted as help.
+- **Guided action.** A stuck child gets the board: thirteen ones with "8 + 5 = 13", then "Use the Exchange ten ones button to make the trade." The button (`maya-exchange-controls.tsx`) says "Exchange ten ones" for this lesson. The child's exchange replaces the thirteen ones with 1 ten and 3 ones, writes "13 = 10 + 3", then shows a small 1 above the tens column of the written addition with both answer cells blank, and Maya says "Now we have 1 ten and 3 ones, which is still 13 ones. Carry the new ten to the tens column. Write a small 1 above the tens. How many ones are left to write in the ones place?". Code checks that the exchange keeps the value: 13 ones before, 1 ten and 3 ones after.
+- **Less support.** After the exchange Maya only asks: the ones left, then "Now add the tens: 3 tens, 4 tens and the 1 ten you carried. How many tens?", then "Put your tens and ones together. What is the whole sum?". No sentence or board note names the sum or its tens digit. The addend's tens are named only when code proves they do not give the answer away.
+- **Mistake feedback.** "73" (the carried ten left out) gets "The ten you made from the ones still counts in the tens." and "713" (the whole ones total in the ones place) gets "Only one digit fits in each place. That is too many ones for the ones place." Each then shows the thirteen ones and offers the exchange. After the exchange, the same mistakes and "7 tens" get "The carried ten still counts in the tens column." and the tens question again. "13" for the ones left gets "Ten of the 13 ones make the carried ten." Neither gets credit, and a right sum with a false reason ("83 because 3 plus 4 is 8") is not credited either.
+- **Related question.** A right sum gets "You found the sum. Do you want to try one more like this on your own?" under the same rules as subtraction. The first choice for 38 plus 45 is 27 plus 46. Its learning event, help evidence (independent, hinted, demonstrated or uncertain) and board batch work as in the section above.
+- **Voice and chat.** Both use the same code-written words and board batches, and the voice reconnect, interruption, stop and retry rules of the subtraction lesson apply unchanged.
+- Code: `src/lib/maya/checked-addition.ts` (facts, words, board, step choice), `src/lib/maya/regrouping-reads.ts` (what the child's turn says), `src/lib/maya/regrouping-help.ts` (help evidence), `src/lib/maya/transfer.ts` (related questions). Tests: `src/lib/maya-checked-exchange.test.ts`.
+
 ## Credit, the learning event and the parent note
 
 Code's credit of the child decides the saved result, never the model's reading (part C of the pre-launch review, 2026-11-15; tests: `src/lib/maya-call-tutor-credit.test.ts`, `src/lib/maya/tutor-credit.test.ts`):
