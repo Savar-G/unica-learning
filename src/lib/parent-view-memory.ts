@@ -275,11 +275,6 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
         if (!shipped) return [];
         return [...new Set(own(tables.questions).filter((q) => q.workbookId === workbookId).flatMap((q) => q.standard ?? []))];
       },
-      async workbookQuestions(workbookId) {
-        read("questions");
-        const shipped = own(tables.workbooks).some((w) => (w.id ?? `wb-${w.childId}-${w.number}`) === workbookId && w.status === "shipped");
-        return shipped ? own(tables.questions).filter((q) => q.workbookId === workbookId).map((q) => ({ pageId: q.pageId ?? "", standard: q.standard })) : [];
-      },
       async planTopics(childId, workbookId) {
         read("planTopics");
         const rows = own(tables.planTopics).filter((r) => r.childId === childId && r.workbookId === workbookId);

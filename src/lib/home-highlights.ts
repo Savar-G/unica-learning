@@ -73,7 +73,7 @@ export function weekLine({ name, week, scansThisWeek, openDay, newlyMastered }: 
   if (week.done === 0) {
     return { lead: "A quiet week so far.", text: `${scansThisWeek === 0 ? "Nothing scanned yet." : "No full day done yet."}${ready}` };
   }
-  if (week.catchingUp) return { lead: "Catching up.", text: `${days(week.done)} done${mastered}.${ready}` };
+  if (week.catchingUp) return { lead: "Catching up this week.", text: `${days(week.done)} done${mastered}.${ready}` };
   return { lead: "A quieter week.", text: `${days(week.done)} done${mastered}.${ready}` };
 }
 

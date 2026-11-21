@@ -16,7 +16,7 @@ import { nextBook, type NextBook } from "@/lib/next-book";
 import type { ParentPlan } from "@/lib/parent-plan";
 import type { CurriculumId } from "@/lib/signup";
 import { planDayTopic } from "@/lib/workbook-days";
-import { WORKBOOK_DAYS, bookToday, dayNumber, doneStreak, earliestOpenDay, weekCircles, weekProgress, workbookDay, type WeekDay } from "@/lib/parent-week";
+import { WORKBOOK_DAYS, bookToday, dayNumber, doneStreak, earliestOpenDay, weekCircles, workbookWeek, type BookToday, type WeekDay } from "@/lib/parent-week";
 import { firstBatchAt, masteredSince, progressSummary, type ProgressSummary, type StateChange } from "@/lib/progress-series";
 import { skillMapView, topicBars, type TopicBarView } from "@/lib/skill-map-view";
 import { confirmedWorkbookDelivery } from "@/lib/workbook-delivery-access";
@@ -136,8 +136,6 @@ export interface ParentViewReader {
   overviewProgress(childId: string): Promise<OverviewProgress | null>;
   /** The BC standards of one of the family's shipped workbooks. */
   workbookStandards(workbookId: string): Promise<string[]>;
-  /** The standard of each question of one of the family's shipped workbooks, with the page it is on (null: no standard). */
-  workbookQuestions(workbookId: string): Promise<{ pageId: string; standard: string | null }[]>;
   /**
    * The topic each day of one of the family's shipped workbooks has in its printed plan (the Workbooks tab's day names,
    * src/lib/parent-schedule.ts); null when the plan cannot be read (not frozen yet, or a failed check). Home says these
@@ -286,8 +284,8 @@ export interface WorkbooksView {
   /** Every shipped book, newest first. */
   books: ShippedBookView[];
   /**
-   * Home's count for the child's current book (the newest with a confirmed delivery), so the Workbooks cover says the same
-   * number: saved, unexpired photos over the book's day pages. Null when there is no such book or it cannot be read.
+   * Page counts for the newest delivered book's cover, using the same saved, unexpired scans that determine
+   * day completion on Home. Null when there is no delivered book or the counts cannot be read.
    */
   homeScan: { bookId: string; scanned: number; total: number } | null;
 }
@@ -329,8 +327,7 @@ export async function readWorkbooks(reader: ParentViewReader, childId: string, n
     ? { kind: "none" }
     : nextBook({ shippedOn: current?.shippedOn ?? null, deliveredOn: current?.deliveredOn ?? null, today: localDay(now, zone), ended: child.readOnly, pausedWeeks });
   const shown = books.map((w) => ({ id: w.id, number: w.number, shippedOn: day(w.shippedAt), deliveredOn: day(confirmedWorkbookDelivery(deliveries, corrections, child.id, w.id, now)) }));
-  // Home's book: the newest with a confirmed delivery. Its count is Home's: day pages (a page with a "Day N" label) that have
-  // a saved photo that has not expired.
+  // The Workbooks cover counts saved, unexpired scans of day-labeled pages in the newest delivered book.
   const home = shown.find((b) => b.deliveredOn !== null);
   let homeScan: WorkbooksView["homeScan"] = null;
   if (home) {
@@ -398,23 +395,11 @@ export interface HomeSkillsView {
 /** The workbook card on Home. */
 export interface WorkbookCardView {
   number: number;
-  /** The workbook day the child is on, 1 to `days`. */
-  day: number;
-  days: number;
-  /** Pages scanned of the book's day pages, as a whole percent; null before any page is scanned. */
-  percent: number | null;
-  /**
-   * The day row; null once the book's last day has passed or the plan has ended: the card then shows only the book and its
-   * percent done.
-   */
-  today: {
-    /** "Today"; "Friday" on a weekend; "Day 1 · Monday" before the book's first weekday (a weekend delivery). */
-    label: string;
-    /** The day's topic in the book's printed plan, as the Workbooks tab names it; else the skill most of the day's questions are on; null when neither can be read. */
-    topic: string | null;
-    scanned: number;
-    pages: number;
-  } | null;
+  /** Days of this book whose every page has a saved, unexpired scan. */
+  doneDays: number;
+  totalDays: number;
+  /** The scheduled day link and its printed title, when that title is available. */
+  today: (BookToday & { title: string | null }) | null;
 }
 
 export interface OverviewView {
@@ -489,14 +474,6 @@ async function readBookDays(
 const standardPhrase = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, plainSkillName(s.text)]));
 const standardText = new Map([...standardPhrase].map(([code, name]) => [code, capitalName(name)]));
 
-/** The standard most of a day's questions are on (the first on a tie, in page order); its text from the skill map. */
-function dayTopic(pageIds: readonly string[], questions: readonly { pageId: string; standard: string | null }[]): string | null {
-  const counts = new Map<string, number>();
-  for (const id of pageIds) for (const q of questions) if (q.pageId === id && q.standard && standardText.has(q.standard)) counts.set(q.standard, (counts.get(q.standard) ?? 0) + 1);
-  const best = [...counts].reduce<[string, number] | null>((top, entry) => (!top || entry[1] > top[1] ? entry : top), null);
-  return best ? standardText.get(best[0])! : null;
-}
-
 /** "today", a weekday within the last week, else "Nov 3": a day in family time. */
 function dayWords(day: string, today: string): string {
   if (day >= today) return "today";
@@ -531,7 +508,7 @@ async function readSkillStates(reader: ParentViewReader, child: ChildView, book:
  * counts) and `skill_state_history.changed_at` (the date a skill was mastered). No percent right, no count of wrong
  * answers and nothing from a raw profile, a Maya call, an AI finding or a parent's judgement (D-303).
  *
- * The workbook day is a calendar rule (src/lib/parent-week.ts): Day 1 is the delivery day (or the next Monday-to-Friday
+ * The Today link uses a calendar rule (src/lib/parent-week.ts): Day 1 is the delivery day (or the next Monday-to-Friday
  * day), and each later Monday-to-Friday day is the next. Skills show whether or not the Progress tab is
  * on (Cedric, 2026-11-14); only the tab stays behind PROGRESS_TAB_ENABLED.
  *
@@ -555,33 +532,25 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
   const late = resultPreparing && resultLate(latest!.completedAt!, now);
 
   const days = await readBookDays(reader, child, now, zone, { workbooks, deliveries, corrections, scans });
-  let week: OverviewView["week"] = null;
+  const week = days ? workbookWeek(today, days.start, days.doneDays, { ended: child.readOnly }) : null;
   let workbook: OverviewView["workbook"] = null;
   let scanPrompt: OverviewView["scanPrompt"] = null;
   // A newer shipped book than the delivered one is in the mail: it has no confirmed delivery, or `days` would be it.
   const newest = workbooks.filter((w) => w.childId === child.id).sort((a, b) => b.number - a.number)[0];
   const onTheWay = newest && newest.id !== days?.id ? newest.number : null;
   if (days) {
-    week = weekCircles(today, days.start, days.doneDays, { ended: child.readOnly });
     const row = bookToday(days.start, today, { ended: child.readOnly });
-    // With no row (the book is over, or the plan ended) the card still shows the book at its last day.
-    const day = row?.day ?? workbookDay(days.start, today) ?? 1;
-    const dayPages = days.pages.get(day) ?? [];
-    // The printed plan's topic for the day, as the Workbooks tab names it. Only when the plan cannot be read does the topic
-    // come from the day's questions (the standard most of them are on).
     const plan = row ? await reader.planTopics(child.id, days.id).catch(() => null) : null;
-    const planned = planDayTopic(plan, day);
-    const questions = row && planned === null ? await reader.workbookQuestions(days.id).catch(() => []) : [];
-    const all = [...days.pages.values()].flat();
-    const scanned = all.filter((id) => days.saved.has(id)).length;
     workbook = {
-      number: days.number, day, days: WORKBOOK_DAYS,
-      // Floor, never round: a ring never says "100% done" with a page left.
-      percent: scanned > 0 && all.length > 0 ? Math.floor((scanned / all.length) * 100) : null,
-      today: row && { label: row.label, topic: planned ?? dayTopic(dayPages, questions), scanned: dayPages.filter((id) => days.saved.has(id)).length, pages: dayPages.length },
+      number: days.number,
+      doneDays: [...days.doneDays].filter((day) => day >= 1 && day <= WORKBOOK_DAYS).length,
+      totalDays: WORKBOOK_DAYS,
+      today: row && { ...row, title: planDayTopic(plan, row.day)?.trim() || null },
     };
     // The Scan tab covers scanning; only a family with no saved photo at all gets this prompt, and only where the tab is.
-    if (row && scans.length === 0 && child.tabs.includes("scan_pages")) scanPrompt = { day, pages: dayPages.length };
+    if (row && scans.length === 0 && child.tabs.includes("scan_pages")) {
+      scanPrompt = { day: row.day, pages: days.pages.get(row.day)?.length ?? 0 };
+    }
   }
 
   // Home shows the skills whether or not the Progress tab is on (Cedric, 2026-11-14); only the tab stays behind its switch.
@@ -626,7 +595,7 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
   const scanning = child.tabs.includes("scan_pages") && scanPrompt === null;
   const story = homeStory({
     name: child.firstName,
-    week: days && scanning ? weekProgress(today, days.start, days.doneDays, { ended: child.readOnly }) : null,
+    week: scanning ? week?.progress ?? null : null,
     // Every one of this child's books counts: a new book delivered mid-week must not hide the pages scanned earlier in the week.
     scansThisWeek: scans.filter((s) => childBooks.has(s.workbookId) && Date.parse(s.expiresAt) > now && localDay(s.takenAt, zone) >= monday && localDay(s.takenAt, zone) <= today).length,
     openDay: days ? earliestOpenDay(days.start, today, days.pages, days.saved, { ended: child.readOnly }) : null,
@@ -635,7 +604,7 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
   });
 
   const summaryMonth = offeredSummaryMonth(await readFirstDeliveryMonth(reader, child.id, zone), now, zone);
-  return { child, resultPreparing, resultLate: late, week, workbook, onTheWay, scanPrompt, skills, weekLine: story.line, highlights: story.highlights, summaryMonth };
+  return { child, resultPreparing, resultLate: late, week: week?.circles ?? null, workbook, onTheWay, scanPrompt, skills, weekLine: story.line, highlights: story.highlights, summaryMonth };
 }
 
 /** The three lists: every BC standard by its state now. Mastered newest first, the others in the skill map's order. */

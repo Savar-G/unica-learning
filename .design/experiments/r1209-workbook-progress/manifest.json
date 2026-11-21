@@ -1,0 +1,147 @@
+{
+  "issue": 1209,
+  "base": "004989a5ec295ec9ee3474a6fbb45fab966d0c7b",
+  "browser": "Aside u0",
+  "render": "Local Next.js /account with ParentShell, ParentOverview and readOverview over invented workbook records",
+  "fixture": {
+    "workbookNumber": 3,
+    "timeZone": "America/Vancouver",
+    "deliveredOn": "2026-11-02",
+    "today": "2026-11-05",
+    "fullDays": [
+      1,
+      3
+    ],
+    "partialDays": [
+      2,
+      4
+    ],
+    "savedPages": 18,
+    "dayPages": 80,
+    "todayTitle": "Making change from ten dollars"
+  },
+  "captures": [
+    {
+      "before": "before-desktop.png",
+      "after": "after-desktop.png",
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "before": "before-phone.png",
+      "after": "after-phone.png",
+      "width": 390,
+      "height": 844
+    }
+  ],
+  "computedTypography": {
+    "before": [
+      {
+        "size": "desktop",
+        "count": [
+          "Day 4 of 10",
+          "40px",
+          "300"
+        ],
+        "lead": [
+          "Catching up.",
+          "15px",
+          "500"
+        ],
+        "sentence": [
+          "Catching up. 2 days done. Day 2 is ready when Leah is.",
+          "15px",
+          "400"
+        ],
+        "todayTitle": [
+          "Making change from ten dollars",
+          "13px",
+          "400"
+        ],
+        "todayLink": "/account/workbooks/sample-child?day=4#day-4",
+        "ring": "22% of Workbook 3's pages scanned",
+        "overflow": false
+      },
+      {
+        "size": "phone",
+        "count": [
+          "Day 4 of 10",
+          "40px",
+          "300"
+        ],
+        "lead": [
+          "Catching up.",
+          "15px",
+          "500"
+        ],
+        "sentence": [
+          "Catching up. 2 days done. Day 2 is ready when Leah is.",
+          "15px",
+          "400"
+        ],
+        "todayTitle": [
+          "Making change from ten dollars",
+          "13px",
+          "400"
+        ],
+        "todayLink": "/account/workbooks/sample-child?day=4#day-4",
+        "ring": "22% of Workbook 3's pages scanned",
+        "overflow": false
+      }
+    ],
+    "after": [
+      {
+        "size": "desktop",
+        "count": [
+          "2 of 10 days done",
+          "40px",
+          "300"
+        ],
+        "lead": [
+          "Catching up this week.",
+          "15px",
+          "500"
+        ],
+        "sentence": [
+          "Catching up this week. 2 days done. Day 2 is ready when Leah is.",
+          "15px",
+          "400"
+        ],
+        "todayTitle": [
+          "Making change from ten dollars",
+          "13px",
+          "400"
+        ],
+        "todayLink": "/account/workbooks/sample-child?day=4#day-4",
+        "ring": null,
+        "overflow": false
+      },
+      {
+        "size": "phone",
+        "count": [
+          "2 of 10 days done",
+          "40px",
+          "300"
+        ],
+        "lead": [
+          "Catching up this week.",
+          "15px",
+          "500"
+        ],
+        "sentence": [
+          "Catching up this week. 2 days done. Day 2 is ready when Leah is.",
+          "15px",
+          "400"
+        ],
+        "todayTitle": [
+          "Making change from ten dollars",
+          "13px",
+          "400"
+        ],
+        "todayLink": "/account/workbooks/sample-child?day=4#day-4",
+        "ring": null,
+        "overflow": false
+      }
+    ]
+  }
+}

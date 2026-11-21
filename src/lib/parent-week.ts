@@ -82,24 +82,6 @@ export function workbookDay(start: string, day: string, days = WORKBOOK_DAYS): n
 }
 
 /**
- * The five circles of the week `today` is in. `start`: the book's first possible day; null before it is delivered, which
- * leaves every circle open. `doneDays`: the day numbers whose every page has a saved photo. A circle is a book day only
- * on a Monday-to-Friday day from `start` through the book's last day; any other circle stays open. Today's circle is ringed
- * only while the book is on: not after its last day and not once the plan `ended`.
- */
-export function weekCircles(today: string, start: string | null, doneDays: ReadonlySet<number>, { days = WORKBOOK_DAYS, ended = false }: { days?: number; ended?: boolean } = {}): WeekDay[] {
-  const monday = weekStartFor(today);
-  const ringed = !ended && !(start !== null && bookOver(start, today, days));
-  return WEEK_LABELS.map((label, i): WeekDay => {
-    const date = addDays(monday, i);
-    const count = start === null || date < start ? 0 : weekdaysThrough(start, date);
-    const done = count >= 1 && count <= days && doneDays.has(count);
-    const state: WeekDayState = ringed && date === today ? (done ? "today_done" : "today") : done ? "done" : "open";
-    return { label, state };
-  });
-}
-
-/**
  * How this week is going, from the same rule as the circles (#990). Only book days count: a Monday-to-Friday day of this
  * week from the book's first day through its last. `due` is how many of them are before `today` (today is not late until
  * it is over; a weekend has every weekday behind it). `done` counts every done book day of the week, today's and an early
@@ -113,28 +95,38 @@ export interface WeekProgress {
   catchingUp: boolean;
 }
 
-/** Null before the book is delivered, once the plan `ended`, and when no day of the book falls in this week (before it starts or after it ends). */
-export function weekProgress(today: string, start: string | null, doneDays: ReadonlySet<number>, { days = WORKBOOK_DAYS, ended = false }: { days?: number; ended?: boolean } = {}): WeekProgress | null {
-  if (ended || start === null) return null;
+type WeekOptions = { days?: number; ended?: boolean };
+
+/** Build the five circles and the completion summary from the same family-local calendar days. */
+export function workbookWeek(today: string, start: string | null, doneDays: ReadonlySet<number>, { days = WORKBOOK_DAYS, ended = false }: WeekOptions = {}): { circles: WeekDay[]; progress: WeekProgress | null } {
   const monday = weekStartFor(today);
-  let done = 0, due = 0, bookDays = 0, todayDone = false, latestDueDone = false;
-  const missed: number[] = [];
-  for (let i = 0; i < WEEK_LABELS.length; i++) {
+  const ringed = !ended && (start === null || !bookOver(start, today, days));
+  const dates = WEEK_LABELS.map((label, i) => {
     const date = addDays(monday, i);
-    const count = date < start ? 0 : weekdaysThrough(start, date);
-    if (count < 1 || count > days) continue;
-    bookDays++;
-    const isDone = doneDays.has(count);
-    if (isDone) done++;
-    if (date === today) todayDone = isDone;
-    if (date < today) {
-      due++;
-      latestDueDone = isDone;
-      if (!isDone) missed.push(count);
-    }
-  }
-  if (bookDays === 0) return null;
-  return { done, due, missed, catchingUp: missed.length > 0 && (todayDone || latestDueDone) };
+    const count = start === null ? 0 : weekdaysThrough(start, date);
+    const day = count >= 1 && count <= days ? count : null;
+    const done = day !== null && doneDays.has(day);
+    const state: WeekDayState = ringed && date === today ? (done ? "today_done" : "today") : done ? "done" : "open";
+    return { date, day, done, circle: { label, state } };
+  });
+
+  const circles = dates.map(({ circle }) => circle);
+  const scheduled = dates.filter(({ day }) => day !== null);
+  if (ended || scheduled.length === 0) return { circles, progress: null };
+
+  const due = scheduled.filter(({ date }) => date < today);
+  const missed = due.flatMap(({ day, done }) => day !== null && !done ? [day] : []);
+  const done = scheduled.filter((day) => day.done).length;
+  const catchingUp = missed.length > 0 && (due.at(-1)?.done === true || scheduled.some((day) => day.date === today && day.done));
+  return { circles, progress: { done, due: due.length, missed, catchingUp } };
+}
+
+export function weekCircles(today: string, start: string | null, doneDays: ReadonlySet<number>, options?: WeekOptions): WeekDay[] {
+  return workbookWeek(today, start, doneDays, options).circles;
+}
+
+export function weekProgress(today: string, start: string | null, doneDays: ReadonlySet<number>, options?: WeekOptions): WeekProgress | null {
+  return workbookWeek(today, start, doneDays, options).progress;
 }
 
 /**
