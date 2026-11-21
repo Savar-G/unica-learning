@@ -133,21 +133,30 @@ export function fractionTurnWords(l: CheckedFractionLesson, turn: Pick<FractionT
 
 const allActions = (l: CheckedFractionLesson) => l.turns.flatMap((t) => t.actions);
 
-/** Help precedence: a confirmed demonstration, then help nobody confirmed, then a confirmed hint, then none. */
-function assistanceOf(h: FractionHost, turns: FractionTurn[], elsewhere: boolean): FractionObservation["assistance"] {
-  if (turns.some((t) => t.support === "demonstrated") || (elsewhere && h.assistedElsewhere)) return "demonstrated";
-  if (turns.some(unconfirmedHelp)) return "uncertain";
-  if (turns.some((t) => t.support === "hinted") || (elsewhere && h.hintedElsewhere)) return "hinted";
-  return "independent";
+export const helpOf = (turn: FractionTurn) => fractionHelp(turn.instruction.step, !!turn.childAction);
+
+function unconfirmedHelp(turn: FractionTurn): FractionTurn["support"] {
+  if (!turn.sent || turn.playback === "finished") return undefined;
+  const help = helpOf(turn);
+  return !turn.support || (turn.support === "hinted" && help === "demonstrated") ? help : undefined;
 }
 
-export const helpOf = (turn: FractionTurn) => fractionHelp(turn.instruction.step, !!turn.childAction);
-const unconfirmedHelp = (t: FractionTurn) => !!t.sent && !t.support && t.playback !== "finished" && helpOf(t) !== undefined;
-export const hasUnconfirmedFractionHelp = (l: CheckedFractionLesson | undefined) => !!l?.turns.some((t) => !t.transfer && unconfirmedHelp(t));
+export function hasUnconfirmedFractionHelp(lesson: CheckedFractionLesson, afterHint: boolean): boolean {
+  return lesson.turns.some((turn) => !turn.transfer && (afterHint ? unconfirmedHelp(turn) === "demonstrated" : !!unconfirmedHelp(turn)));
+}
+
+export function fractionAssistance(turns: FractionTurn[], elsewhere?: FractionTurn["support"]): FractionObservation["assistance"] {
+  if (elsewhere === "demonstrated" || turns.some((turn) => turn.support === "demonstrated")) return "demonstrated";
+  const unconfirmed = turns.map(unconfirmedHelp);
+  if (unconfirmed.includes("demonstrated")) return "uncertain";
+  if (elsewhere === "hinted" || turns.some((turn) => turn.support === "hinted")) return "hinted";
+  return unconfirmed.some(Boolean) ? "uncertain" : "independent";
+}
 
 function observe(h: FractionHost, transfer: boolean, skill: FractionObservation["skill"], result: FractionObservation["result"]): FractionObservation {
   const turns = h.lesson.turns.filter((t) => !!t.transfer === transfer);
-  return { skill, result, assistance: assistanceOf(h, turns, !transfer), at: h.now };
+  const elsewhere = transfer ? undefined : h.assistedElsewhere ? "demonstrated" : h.hintedElsewhere ? "hinted" : undefined;
+  return { skill, result, assistance: fractionAssistance(turns, elsewhere), at: h.now };
 }
 
 export function fractionTransferFor(h: FractionHost): Quad | null {
@@ -195,11 +204,12 @@ export function planFractionTurn(h: FractionHost): FractionTurn | null {
   const final = h.final(h.package);
   const split = own.some((t) => t.childAction || t.actions.some((a) => a.kind === "split" && a.fate === "shown"));
   const right = h.heardRight(h.package);
+  const mistake = !right && final && !rightForQuestion(h.package, final) ? fractionMistake(f, final) : null;
   const choice = fractionChoice(f, {
     previous: previous?.instruction.step,
     rightWhole: right,
     unsimplified: !right && !!final && isEqualForm(h.package, final) && !rightForQuestion(h.package, final),
-    mistake: !right && final && !rightForQuestion(h.package, final) ? fractionMistake(f, final) : null,
+    mistake,
     wrongWhole: !right && !!final && !rightForQuestion(h.package, final) && !isEqualForm(h.package, final),
     count: count(final, f.common),
     stuck: STUCK.test(text),
@@ -210,11 +220,14 @@ export function planFractionTurn(h: FractionHost): FractionTurn | null {
   if (!choice) return null;
   let step: FractionStep = choice.step;
   if (step === "correct" && fractionTransferFor(h)) step = "offer";
+  const actions = own.flatMap((t) => t.actions);
+  const shown = actions.find((a) => a.kind === "show" && a.fate === "shown");
+  if (step === "demonstrate" && !shown) step = "show";
   const shows = step === "show" || step === "misconception";
-  const shown = allActions(l).find((a) => !l.turns.find((t) => t.actions.includes(a))?.transfer && a.kind === "show" && a.fate === "shown");
   // An unknown delivery may have reached the board: wait for its fate before drawing again.
-  if ((shows || step === "demonstrate") && allActions(l).some((a) => !a.fate)) return null;
-  const turn = newTurn(h, { step }, choice.observation ? { observation: observe(h, false, choice.observation[0], choice.observation[1]) } : {});
+  if ((shows || step === "demonstrate") && actions.some((a) => !a.fate)) return null;
+  const namedMistake = step === "misconception" ? mistake ?? previous?.instruction.mistake : undefined;
+  const turn = newTurn(h, { step, ...(namedMistake ? { mistake: namedMistake } : {}) }, choice.observation ? { observation: observe(h, false, choice.observation[0], choice.observation[1]) } : {});
   if (shows) {
     const show = shown ?? action(h, "show", 1);
     if (!shown) turn.actions.push(show);
@@ -222,10 +235,7 @@ export function planFractionTurn(h: FractionHost): FractionTurn | null {
       turn.prompt = { lessonId: l.id, turnId: turn.id, boardRevision: h.batches + (shown ? 0 : 1), objectId: FRACTION_OBJECT, batchId: show.batchId, parts: f.common };
     }
   }
-  if (step === "demonstrate") {
-    if (!shown) return null;
-    turn.actions.push(action(h, "split", 1, shown.batchId));
-  }
+  if (step === "demonstrate" && shown && !split) turn.actions.push(action(h, "split", 1, shown.batchId));
   return discloses(h, h.package, turn) ? null : turn;
 }
 
@@ -251,10 +261,13 @@ export function planFractionChildAction(h: FractionHost, target: ExchangeTarget)
   return discloses(h, h.package, turn) ? null : turn;
 }
 
+function transferInstruction(h: FractionHost, step: FractionStep): FractionInstruction {
+  return { step, transfer: h.lesson.transfer!.quad, ...(step === "transfer" && h.lesson.asksSimplest ? { asksSimplest: true } : {}) };
+}
+
 function offerReply(h: FractionHost): FractionTurn | null {
-  const quad = h.lesson.transfer!.quad;
   if (h.yes) {
-    const turn = newTurn(h, { step: "transfer", transfer: quad }, { transfer: true });
+    const turn = newTurn(h, transferInstruction(h, "transfer"), { transfer: true });
     turn.actions.push(action(h, "question", 1));
     return turn;
   }
@@ -264,7 +277,6 @@ function offerReply(h: FractionHost): FractionTurn | null {
 /** Every turn of a started related question is code's own: the model brief knows only the original question. */
 function relatedPlan(h: FractionHost): FractionTurn {
   const l = h.lesson;
-  const quad = l.transfer!.quad;
   const pkg = relatedPackage(h)!;
   const own = l.turns.filter((t) => t.transfer);
   const previous = own.at(-1)?.instruction.step ?? "transfer";
@@ -274,7 +286,8 @@ function relatedPlan(h: FractionHost): FractionTurn {
   const right = !unclear && h.heardRight(pkg);
   const stuck = STUCK.test(text) || HOW.test(text);
   const quit = !unclear && h.done && !/^(?:no|nope|nah)[.!]*$/i.test(text);
-  const showed = own.some((t) => t.instruction.step === "transfer_show");
+  const demonstration = own.flatMap((t) => t.actions).findLast((a) => a.kind === "show");
+  const showed = demonstration && demonstration.fate !== "cancelled" && demonstration.fate !== "skipped";
   let step: FractionStep;
   let observation: FractionObservation | undefined;
   if (quit) step = "decline";
@@ -284,14 +297,14 @@ function relatedPlan(h: FractionHost): FractionTurn {
     step = previous === "transfer" ? "transfer_retry" : showed ? "count_hint" : "transfer_show";
     observation = observe(h, true, "result", "incorrect");
   } else if (stuck) step = previous === "transfer" ? "transfer_retry" : showed ? "count_hint" : "transfer_show";
-  else step = previous === "transfer" ? "transfer_retry" : previous;
-  const turn = newTurn(h, { step, transfer: quad }, { transfer: true, ...(observation ? { observation } : {}) });
+  else step = previous;
+  const turn = newTurn(h, transferInstruction(h, step), { transfer: true, ...(observation ? { observation } : {}) });
   const closes = step === "decline" || step === "transfer_correct";
   const question = allActions(l).findLast((a) => a.kind === "question");
   if (!closes && (question?.fate === "cancelled" || question?.fate === "skipped")) turn.actions.push(action(h, "question", 1));
-  if (step === "transfer_show") turn.actions.push(action(h, "show", turn.actions.length + 1));
+  if (step === "transfer_show" && !showed) turn.actions.push(action(h, "show", turn.actions.length + 1));
   // A step that would give the related answer away falls back to asking it again.
-  if (discloses(h, pkg, turn)) return newTurn(h, { step: "transfer_retry", transfer: quad }, { transfer: true });
+  if (discloses(h, pkg, turn)) return newTurn(h, transferInstruction(h, "transfer_retry"), { transfer: true });
   return turn;
 }
 

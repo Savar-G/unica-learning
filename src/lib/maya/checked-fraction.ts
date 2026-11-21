@@ -38,6 +38,7 @@ export type FractionMistake = "add_across" | "unlike_parts";
 export interface FractionInstruction {
   step: FractionStep;
   mistake?: FractionMistake;
+  asksSimplest?: true;
   /** The related question's operands on each turn of it: [a numerator, a denominator, b numerator, b denominator]. */
   transfer?: [number, number, number, number];
 }
@@ -139,7 +140,9 @@ export function fractionQuestionCommands(f: FractionFacts): Command[] {
   return [
     { op: "clear", scope: "maya_objects" } as Command,
     { op: "fraction", id: "transfer-a", numerator: String(f.a[0]), denominator: String(f.a[1]), place: { region: "main" } } as Command,
-    { op: "fraction", id: "transfer-b", numerator: String(f.b[0]), denominator: String(f.b[1]), place: { rightOf: "transfer-a" } } as Command,
+    { op: "write", id: "transfer-op", text: sign(f.op), place: { rightOf: "transfer-a" } },
+    { op: "fraction", id: "transfer-b", numerator: String(f.b[0]), denominator: String(f.b[1]), place: { rightOf: "transfer-op" } } as Command,
+    { op: "write", id: "transfer-ask", text: "= ?", place: { rightOf: "transfer-b" } },
   ];
 }
 
@@ -211,7 +214,8 @@ export function fractionWords(f: FractionFacts, instruction: FractionInstruction
     case "decline":
       return [`Okay. ${FRACTION_GOODBYE}`];
     case "transfer":
-      return [`Here is one more: ${written(f.a)} ${f.op === "add" ? "plus" : "minus"} ${written(f.b)}.`, "Try it on your own. What is the answer?"];
+      return [`Here is one more: ${written(f.a)} ${f.op === "add" ? "plus" : "minus"} ${written(f.b)}.`, "Try it on your own. What is the answer?",
+        ...(instruction.asksSimplest ? ["Write your answer in simplest form."] : [])];
     case "transfer_retry":
       return [f.renamed ? "Make the parts the same size first. Then count the parts." : "The parts are the same size. Count the parts.", `What is ${written(f.a)} ${f.op === "add" ? "plus" : "minus"} ${written(f.b)}?`];
     case "transfer_show":
@@ -317,6 +321,7 @@ export function fractionChoice(f: FractionFacts, r: FractionReads): { step: Frac
   if (r.rightWhole) return { step: "correct", observation: ["result", "correct"] };
   if (r.unsimplified) return { step: "simplify", observation: ["simplify", "incorrect"] };
   if (r.mistake) return { step: "misconception", observation: [r.mistake, "incorrect"] };
+  if (p === "demonstrate" && !r.split && (r.stuck || r.asksHow)) return { step: "demonstrate" };
   const counting = p === "count" || p === "count_hint" || p === "renamed" || p === "demonstrate" || (p === "show" && !f.renamed) ||
     (p === "misconception" && !f.renamed);
   if (counting) {
@@ -324,7 +329,7 @@ export function fractionChoice(f: FractionFacts, r: FractionReads): { step: Frac
     if (r.count !== null) return { step: "count_hint", observation: ["count", "incorrect"] };
     if (r.stuck) return { step: "count_hint" };
   }
-  if ((p === "show" || p === "misconception") && f.renamed && !r.split && r.stuck) return { step: "demonstrate" };
+  if ((p === "show" || p === "misconception") && f.renamed && !r.split && (r.stuck || r.asksHow)) return { step: "demonstrate" };
   if (p === "check_parts") {
     if (r.count === f.common) return { step: f.renamed ? "rename_ask" : "count", observation: ["unit", "correct"] };
     if (r.count !== null || r.stuck) return { step: "show", ...(r.count !== null ? { observation: ["unit", "incorrect"] as [FractionSkill, "incorrect"] } : {}) };

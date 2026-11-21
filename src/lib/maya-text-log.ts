@@ -1,6 +1,6 @@
 // Persistent transition rules for the text adapter. No provider, clock, promise or abort signal enters this fold.
 import { applyBatch, createScene, type Batch, type Scene } from "@/lib/board";
-import { withEmittedHelp, type Assistance } from "@/lib/maya/session";
+import { checkedLessonTurns, withEmittedHelp, type Assistance } from "@/lib/maya/session";
 import type { ExchangeProposal } from "@/lib/maya/checked-exchange";
 import type { FractionProposal } from "@/lib/maya/checked-fraction-session";
 import { BOARD_FATES, nextActs, speechKey, step, TIME_LIMITS, SAFETY_GUIDANCE, type Act, type BoardFate, type Effect, type MathReview, type Session, type SessionEvent, type TalkReview, type TiedDrawing } from "@/lib/maya";
@@ -409,7 +409,7 @@ function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt
 function applyFates(s: TextFold, fates: readonly { at: number; batchId: string; fate: BoardFate }[]) {
   if (s.pending.length) { s.lateFates = [...(s.lateFates ?? []), ...fates]; return; }
   const order = (id: string) => s.board.findIndex((b) => b.transactionId === id);
-  const checked = new Set(s.session.checkedExchange?.turns.flatMap((turn) => turn.actions.map((action) => action.batchId)));
+  const checked = new Set(checkedLessonTurns(s.session).flatMap((turn) => turn.actions.map((action) => action.batchId)));
   // The checked plan requires proof each prerequisite was shown. Legacy drawings use the original reverse order.
   for (const f of [...fates].sort((a, b) => checked.size ? order(a.batchId) - order(b.batchId) : order(b.batchId) - order(a.batchId))) {
     const b = s.board.find((x) => x.transactionId === f.batchId);

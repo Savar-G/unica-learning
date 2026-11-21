@@ -10,7 +10,6 @@ import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
 import { checkTrace } from "@/lib/maya-trace";
 import { workedSteps, type AnswerValue, type Operation, type QuestionPackage } from "@/lib/question-package";
-import { FRACTION_OFFER as FRACTION_OFFER_TEXT, supportsCheckedFraction } from "./checked-fraction";
 
 vi.mock("server-only", () => ({}));
 beforeEach(() => { vi.clearAllMocks(); });
@@ -99,16 +98,27 @@ async function chat(pkg: QuestionPackage = D, overrides: Partial<CallSeams> = {}
   return { ...s, say, split, end, view: () => view };
 }
 
-it("supports only same and related denominators with a proper result, and keeps other fraction questions on the existing route", async () => {
-  expect(supportsCheckedFraction(D)).toBe(true);
-  expect(supportsCheckedFraction(fractionPackage("add", [2, 5], [1, 5], frac(3, 5)))).toBe(true);
-  expect(supportsCheckedFraction(fractionPackage("subtract", [5, 6], [1, 3], frac(1, 2)))).toBe(true);
-  expect(supportsCheckedFraction(fractionPackage("add", [1, 3], [1, 4], frac(7, 12)))).toBe(false);
-  expect(supportsCheckedFraction(fractionPackage("add", [3, 4], [3, 8], frac(9, 8)))).toBe(false);
-  const { say, answer, view } = await chat(fractionPackage("add", [1, 3], [1, 4], frac(7, 12)));
+it.each([
+  fractionPackage("add", [1, 3], [1, 4], frac(7, 12)),
+  fractionPackage("add", [3, 4], [3, 8], frac(9, 8)),
+])("keeps $text on the existing route", async (pkg) => {
+  const { say, answer, view } = await chat(pkg);
   await say("I don't know how to start.");
   expect(answer).toHaveBeenCalled();
   expect(view().exchange).toBeUndefined();
+});
+
+it("shows like-sized tenths and asks for the difference without a split", async () => {
+  const { say, end, view, answer } = await chat(fractionPackage("subtract", [7, 10], [2, 10], frac(1, 2)));
+  const shown = await say("Help me.");
+  expect(shown.output.say.join(" ")).toContain("Both strips are cut into tenths, so the parts are the same size. Take away 2 tenths.");
+  expect(shown.view.exchange).toBeUndefined();
+  expect(values(draw(shown.view.batches))).toEqual(expect.arrayContaining(["7/10", "2/10"]));
+  expect(values(draw(shown.view.batches))).not.toContain("5/10");
+  await say("Five tenths.");
+  await end();
+  expect(view().outcome).toMatchObject({ reason: "solved", assistance: "hint" });
+  expect(answer).not.toHaveBeenCalled();
 });
 
 it("links the whole, denominator and numerator to strips, lets the child split the parts, and never shows the result", async () => {
@@ -152,13 +162,27 @@ it("names the add-across mistake and shows the strips, and checks a wrong answer
   expect(other.answer).not.toHaveBeenCalled();
 });
 
-it("does not let a right final fraction hide false working (#959)", async () => {
+it.each([
+  ["one and one eighth minus two eighths is seven eighths", "one and one eighth minus one eighth is seven eighths"],
+  ["twenty and seven eighths minus twenty is seven eighths", "twenty and seven eighths minus nineteen is seven eighths"],
+  ["one hundred and two plus one is one hundred and three", "one hundred and two is one hundred and three"],
+  ["six eighths plus one eighth is seven eighths", "six eighths plus two eighths is seven eighths"],
+])("checks work beside a right final fraction: %s", async (trueWork, falseWork) => {
   const wrong = await chat();
-  const refused = await wrong.say("I got 7/8 because one and one eighth minus one eighth is seven eighths.");
+  const refused = await wrong.say(`I got 7/8 because ${falseWork}.`);
   expect(refused.output.say.join(" ")).not.toContain("You found the answer.");
+  await wrong.end();
+  expect(wrong.view().outcome?.reason).not.toBe("solved");
   const right = await chat();
-  const accepted = await right.say("I got 7/8 because six eighths plus one eighth is seven eighths.");
-  expect(accepted.output.say.join(" ")).toContain("You found the answer.");
+  await right.say(`I got 7/8 because ${trueWork}.`);
+  await right.end();
+  expect(right.view().outcome).toMatchObject({ reason: "solved", assistance: "independent" });
+});
+
+it("names the unlike-parts error when the child combines the numerators over eight", async () => {
+  const { say } = await chat();
+  const result = await say("4/8.");
+  expect(result.output.say.join(" ")).toContain("Fourths and eighths are different sizes, so we cannot count them together yet.");
 });
 
 it("asks for the simplest form when the question requires it, without saying the answer", async () => {
@@ -178,7 +202,7 @@ it("offers an independent related question that keeps its own record apart from 
   expect(offer.output.say.join(" ")).toBe("You found the answer. Do you want to try one more like this on your own?");
   const start = await say("Yes.");
   expect(start.output.say.join(" ")).toBe("Here is one more: 1/2 plus 1/4. Try it on your own. What is the answer?");
-  expect(values(draw(start.view.batches.slice(-1)))).toEqual(["1/2", "1/4"]);
+  expect(values(draw(start.view.batches.slice(-1)))).toEqual(["1/2", "+", "1/4", "= ?"]);
   const retry = await say("2/6.");
   expect(retry.output.say.join(" ")).toBe("Make the parts the same size first. Then count the parts. What is 1/2 plus 1/4?");
   const closed = await say("Three fourths.");
@@ -190,6 +214,16 @@ it("offers an independent related question that keeps its own record apart from 
     { result: "right_with_help", question: { source: "workbook" } },
     { result: "right_with_help", assistance: "hinted", question: { source: "transfer", text: "1/2 + 1/4 = ?" } },
   ]);
+});
+
+it("states and checks the simplest-form requirement on the related question", async () => {
+  const { say, view } = await chat({ ...D, text: `${D.text} Write your answer in simplest form.` });
+  await say("Seven eighths.");
+  expect((await say("Yes.")).output.say.join(" ")).toContain("Write your answer in simplest form.");
+  expect((await say("Six eighths.")).output.say.join(" ")).toContain("The question asks for the simplest form.");
+  expect(view().outcome).toBeFalsy();
+  await say("Three fourths.");
+  expect(view().outcome?.transfer).toEqual({ result: "right", assistance: "hinted" });
 });
 
 it("closes when the child declines the related question", async () => {
@@ -213,11 +247,17 @@ it("describes a demonstrated related question with the fraction strips in the pa
 async function voice(pkg: QuestionPackage = D) {
   const s = setup();
   const started = ok(await s.calls.startVoice({ ...input(pkg), kind: "family" }));
-  const opened = await s.calls.openVoice(started.view.id, { speechToText: "fake", voice: "fake" }, null);
-  if (!opened.ok) throw new Error(opened.error);
-  await opened.call.start();
-  return { ...s, call: opened.call, id: started.view.id };
+  const reopen = async () => {
+    const opened = await s.calls.openVoice(started.view.id, { speechToText: "fake", voice: "fake" }, null);
+    if (!opened.ok) throw new Error(opened.error);
+    return opened.call;
+  };
+  const call = await reopen();
+  await call.start();
+  return { ...s, call, reopen, id: started.view.id };
 }
+
+const observedBatch = (batch: Batch) => ({ kind: "batch" as const, batchId: batch.transactionId, commands: [...batch.commands] });
 
 it("teaches subtraction with the same words in chat and voice, and Maya splits the parts when the child stays stuck", async () => {
   const pkg = fractionPackage("subtract", [5, 6], [1, 3], frac(1, 2));
@@ -250,12 +290,12 @@ it("applies one split for duplicate submits and refuses a stale target", async (
   expect(both.filter((r) => r.ok && r.output.newBatches === 1)).toHaveLength(1);
   const again = ok(await s.calls.input(start.id, prompt.view.revision, action, null));
   expect(again.output.newBatches).toBe(0);
-  expect(again.view.batches.filter((b) => b.commands.some((c) => c.op === "remove"))).toHaveLength(1);
+  expect(again.view.batches.filter((b) => b.commands.some((c) => c && typeof c === "object" && "op" in c && c.op === "remove"))).toHaveLength(1);
 });
 
 it("keeps help nobody confirmed above a confirmed hint on the related question in voice", async () => {
   const { call } = await voice(fractionPackage("add", [5, 12], [2, 12], frac(7, 12)));
-  expect((await call.child("Seven twelfths.")).say.join(" ")).toContain(FRACTION_OFFER_TEXT);
+  expect((await call.child("Seven twelfths.")).say.join(" ")).toContain("Do you want to try one more like this on your own?");
   await call.child("Yes.");
   const retry = await call.child("3/10.");
   await call.exchangePlayback!(retry.exchangeTurnId!, "finished");
@@ -264,6 +304,63 @@ it("keeps help nobody confirmed above a confirmed hint on the related question i
   const done = await call.child("Three fifths.");
   expect(done.say.join(" ")).toContain("You found the answer.");
   expect(call.session.outcome?.transfer).toEqual({ result: "right", assistance: "uncertain" });
+});
+
+it("keeps an interrupted split demonstration unconfirmed after a shown hint and reconnect", async () => {
+  const { call, reopen, id, store, events } = await voice();
+  const show = await call.child("Help me.");
+  const strips = show.boardCues![0].batch;
+  const drawn = [observedBatch(strips)];
+  await call.observeBoard({ events: drawn });
+  const demo = await call.child("I don't know.");
+  const split = demo.boardCues![0].batch;
+  const cancelled = { kind: "cancelled" as const, batchIds: [split.transactionId] };
+  await call.observeBoard({ events: [...drawn, cancelled] });
+  await call.exchangePlayback!(demo.exchangeTurnId!, "interrupted");
+  const resumed = await reopen();
+  await resumed.child("Seven eighths.");
+  await resumed.end({ reason: "child_stopped" });
+  const record = store.rows().find((row) => row.id === id)!;
+  expect(record.outcome).toMatchObject({ reason: "solved", assistance: "hint", helpUnconfirmed: true });
+  const learned = await events.read(childId, { from: new Date(clock() - 1).toISOString(), to: new Date(clock() + 1).toISOString() });
+  expect(learned).toMatchObject([{ result: "right_with_help" }]);
+  expect(checkTrace(record.trace)).toMatchObject({ ok: true });
+});
+
+it("redraws a cancelled related question once and keeps its independent result", async () => {
+  const { call, reopen, store } = await voice();
+  await call.child("Seven eighths.");
+  const start = await call.child("Yes.");
+  const question = start.boardCues![0].batch;
+  const drawn = [{ kind: "cancelled" as const, batchIds: [question.transactionId] }];
+  await call.observeBoard({ events: drawn });
+  await call.exchangePlayback!(start.exchangeTurnId!, "interrupted");
+  const resumed = await reopen();
+  const repeated = await resumed.child("What did you say?");
+  const redrawn = repeated.boardCues![0].batch;
+  expect(redrawn.transactionId).not.toBe(question.transactionId);
+  expect(redrawn.commands).toEqual(question.commands);
+  await resumed.observeBoard({ events: [...drawn, observedBatch(redrawn)] });
+  expect((await resumed.child("What did you say?")).boardCues ?? []).toHaveLength(0);
+  await resumed.child("Three fourths.");
+  await resumed.end({ reason: "child_stopped" });
+  expect(store.rows()[0].outcome).toMatchObject({ reason: "solved", transfer: { result: "right", assistance: "independent" } });
+  expect(checkTrace(store.rows()[0].trace)).toMatchObject({ ok: true });
+});
+
+it("redraws cancelled starting strips before it can split them", async () => {
+  const { call } = await voice();
+  const first = await call.child("Help me.");
+  const strips = first.boardCues![0].batch;
+  const cancelled = { kind: "cancelled" as const, batchIds: [strips.transactionId] };
+  await call.observeBoard({ events: [cancelled] });
+  await call.exchangePlayback!(first.exchangeTurnId!, "interrupted");
+  const redrawn = (await call.child("I still don't know.")).boardCues![0].batch;
+  expect(redrawn.commands).toEqual(strips.commands);
+  expect(redrawn.transactionId).not.toBe(strips.transactionId);
+  await call.observeBoard({ events: [cancelled, observedBatch(redrawn)] });
+  const demo = await call.child("I still don't know.");
+  expect(demo.boardCues!.map((cue) => cue.batch.after)).toEqual([[redrawn.transactionId]]);
 });
 
 it("waits in voice for the board to confirm the strips before Maya splits them", async () => {

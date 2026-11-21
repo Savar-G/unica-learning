@@ -4,7 +4,7 @@ import type { Command } from "@/lib/board";
 import { MAX_HINTS, MAX_TIME_MS, type NewLearningEvent } from "@/lib/learning-events";
 import type { AnswerValue, OperationPackage } from "@/lib/question-package";
 import type { Effect, Outcome, Session, SessionEvent, StepResult } from "./session";
-import { fractionCommands, fractionTransferFor, fractionTurnWords, helpOf, relatedPackage, type CheckedFractionLesson, type FractionHost, type FractionTurn } from "./checked-fraction-session";
+import { fractionAssistance, fractionCommands, fractionTransferFor, fractionTurnWords, helpOf, relatedPackage, type CheckedFractionLesson, type FractionHost, type FractionTurn } from "./checked-fraction-session";
 
 export interface FractionSessionHooks<S = Session> {
   teachingNow: (s: S) => boolean;
@@ -62,7 +62,9 @@ export function deliverFractionTurn(s: Session, plan: FractionTurn, effects: Eff
   }
   if (step === "offer") lesson.transfer = { quad: transferQuad(s, h)!, state: "offered" };
   if (step === "decline" && lesson.transfer?.state === "offered") lesson.transfer.state = "declined";
-  if (step === "transfer") Object.assign(lesson.transfer!, { state: "started", startedAt: s.now!, eventKey: h.eventKey(s) });
+  if (step === "transfer" && lesson.transfer?.state === "offered") {
+    Object.assign(lesson.transfer, { state: "started", startedAt: s.now!, eventKey: h.eventKey(s) });
+  }
   if (step === "transfer_correct") lesson.transfer!.state = "finished";
   if (plan.childAction) {
     h.recordHelp(s, "guided");
@@ -132,18 +134,11 @@ export function fractionBoardFate(s: Session, e: Extract<SessionEvent, { type: "
   return true;
 }
 
-/** The help the related question had, from its own turns only (unconfirmed help wins over a confirmed hint). */
-function relatedAssistance(l: CheckedFractionLesson): NonNullable<Outcome["transfer"]>["assistance"] {
-  const turns = l.turns.filter((t) => t.transfer);
-  if (turns.some((t) => t.support === "demonstrated")) return "demonstrated";
-  if (turns.some((t) => t.sent && !t.support && t.playback !== "finished" && helpOf(t))) return "uncertain";
-  return turns.some((t) => t.support === "hinted") ? "hinted" : "independent";
-}
-
 export function fractionTransferOutcome(l: CheckedFractionLesson): Pick<Outcome, "transfer"> {
   if (l.transfer?.state !== "started" && l.transfer?.state !== "finished") return {};
-  const solved = l.turns.find((t) => t.transfer && t.observation?.skill === "result" && t.observation.result === "correct");
-  return { transfer: { result: solved ? "right" : "unfinished", assistance: solved?.observation?.assistance ?? relatedAssistance(l) } };
+  const turns = l.turns.filter((t) => t.transfer);
+  const solved = turns.find((t) => t.observation?.skill === "result" && t.observation.result === "correct");
+  return { transfer: { result: solved ? "right" : "unfinished", assistance: solved?.observation?.assistance ?? fractionAssistance(turns) } };
 }
 
 /** The related question's learning event, beside the call question's (#1144 rules: it names that event, never the workbook). */
