@@ -470,7 +470,14 @@ export function divisionMisconception(
   const bare = plainNumber(body.replace(/^(?:my (?:final )?answer is |i got |it'?s |it is )/, ""));
   const explicitAnswer = /^(?:my (?:final )?answer is |i got )/.test(body);
   if (bare !== null && ((bare === dividend - divisor && (explicitAnswer || bare !== facts.tens * 10)) || bare === dividend * divisor)) return "wrong_op";
-  if (/^(?:i )?(?:subtracted|took away|multiplied)\b/.test(reason)) return "wrong_op";
+  // #1155 review: a named operation is wrong only on the original operands ("I subtracted 4 from 96"). "I subtracted
+  // 8 from 9" is the written division's own step.
+  const original = (x: string, y: string) => {
+    const [a, b] = [plainNumber(x.trim()), plainNumber(y.trim())];
+    return (a === dividend && b === divisor) || (a === divisor && b === dividend);
+  };
+  const named = /^(?:i )?(?:subtracted|took(?: away)?|multiplied) (?:the )?([\w -]+?) (?:from|away from|by|and|with|times) (?:the )?([\w -]+)$/.exec(reason);
+  if (named && original(named[1], named[2])) return "wrong_op";
   return null;
 }
 

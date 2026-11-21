@@ -1332,3 +1332,19 @@ it("96 ÷ 4: credits a right quotient only after its reason checks, and asks how
   direct = ok(await calls.input(direct.view.id, direct.view.revision, { type: "child", text: "My answer is 24 because each group gets 2 tens and 4 ones." }, null));
   expect(direct.output.say.join(" ")).toMatch(/you found the quotient/i);
 });
+
+it("96 ÷ 4: corrects a wrong operation only when it was applied to 96 and 4", async () => {
+  const { calls, store } = setup();
+  const reply = async (text: string) => {
+    const started = ok(await calls.start({ ...input, package: divisionPackage(96, 4) }));
+    const turn = ok(await calls.input(started.view.id, started.view.revision, { type: "child", text }, null));
+    await calls.input(turn.view.id, turn.view.revision, { type: "end" }, null);
+    return turn.output.say.join(" ");
+  };
+  const valid = await reply("My answer is 24 because I subtracted 8 from 9.");
+  expect(valid).not.toMatch(/rather than subtracting/i);
+  expect(valid).toMatch(/how did you get that/i);
+  expect(await reply("My answer is 92 because I subtracted 4 from 96.")).toMatch(/rather than subtracting or multiplying/i);
+  const traces = store.rows().map((row) => row.trace?.checkedExchange?.turns.some((t) => t.observation?.skill === "division_misconception"));
+  expect(traces).toEqual([false, true]);
+});
