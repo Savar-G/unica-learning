@@ -1,4 +1,5 @@
 "use client";
+import type { ScreenFateReport } from "@/lib/board-fate";
 import { recordActivity } from "@/lib/customer-activity-client";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Avatar, Icon } from "@/components/desk-icons";
@@ -38,7 +39,7 @@ const CANCEL_WAIT_MS = 5000;
 
 type VoiceQuestion = { source: "workbook"; workbookId: string; page: number; question: number };
 type VoiceRequest =
-  | { type: "start"; id: string; question: VoiceQuestion }
+  | { type: "start"; id: string; question: VoiceQuestion; fromChatId?: string; fromChatFates?: ScreenFateReport[] }
   | { type: "token" | "read" | "cancel"; id: string };
 
 /** A call made when the microphone check opened, until "Start the call" takes it or the check drops it. */
@@ -92,6 +93,8 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
   const cancelling = useRef<Promise<unknown>>(Promise.resolve());
   /** Calls this screen made whose end it has not seen: a "busy" start asks about them. */
   const loose = useRef(new Set<string>());
+  /** #1200: the open chat on this question the call goes on from (its lesson moves to the call when it starts), or null. */
+  const fromChat = useRef<{ fromChatId: string; fromChatFates?: ScreenFateReport[] } | null>(null);
   /** The question the microphone check was opened for. */
   const opened = useRef("");
   const questionKey = `${at.book}:${at.page}:${at.question}`;
@@ -198,9 +201,10 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
    * asked once more. Otherwise the answer is the refusal.
    */
   const startCall = useCallback(async (id: string, question: VoiceQuestion) => {
+    const from = fromChat.current ?? {};
     await Promise.race([cancelling.current, wait(CANCEL_WAIT_MS)]);
     try { voiceStartTrace().mark(id, null, "call_start_begin"); } catch {}
-    const r = await post({ type: "start", id, question }).then((a) => {
+    const r = await post({ type: "start", id, question, ...from }).then((a) => {
       try { voiceStartTrace().mark(id, null, "call_start_end", { ok: !!a?.ticket }); } catch {}
       return a;
     });
@@ -212,7 +216,7 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
       if (seen?.call?.status === "live" && !seen.call.started) freed = (await cancel(other))?.call?.status === "ended" || freed;
       else if (seen?.call || seen?.error === "not_found") loose.current.delete(other);
     }
-    return freed ? post({ type: "start", id, question }) : r;
+    return freed ? post({ type: "start", id, question, ...from }) : r;
   }, [cancel]);
 
   /** A start the server refused or did not answer: its words, and back to the Call Maya control. */
@@ -267,12 +271,16 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
     setJoinEarly(null);
   };
 
-  /** Opens the microphone check, and makes the call. `before` runs first (the desk ends an open chat); false from it stops here. */
-  const open = async (before?: () => Promise<boolean>) => {
+  /**
+   * Opens the microphone check, and makes the call. `before` runs first (the desk ends an open chat on another question);
+   * false from it stops here. `chatId` (#1200): the open chat on this question, whose lesson the call goes on with.
+   */
+  const open = async (before?: () => Promise<boolean>, chatId?: string, chatFates?: ScreenFateReport[]) => {
     if (at.child) recordActivity("maya_voice_attempt", "desk", at.child, at.book);
     const q = at.question;
     if (!initial || flow !== "idle" || q === null || voiceWeekUsed(usage)) return;
     if (before && !(await before())) return;
+    fromChat.current = chatId ? { fromChatId: chatId, ...(chatFates?.length ? { fromChatFates: chatFates } : {}) } : null;
     forget();
     const id = renew();
     opened.current = questionKey;
@@ -491,7 +499,7 @@ function AudioHost({ attach }: { attach: (el: HTMLDivElement | null) => void }) 
 }
 
 /** The call control and every screen of a call, in Maya's column. While a call is under way the desk's other controls are hidden (desk.css). */
-export function VoiceControls({ state, beforeOpen }: { state: DeskVoiceState; beforeOpen?: () => Promise<boolean> }) {
+export function VoiceControls({ state, beforeOpen, fromChatId, chatFates }: { state: DeskVoiceState; beforeOpen?: () => Promise<boolean>; fromChatId?: string; chatFates?: () => ScreenFateReport[] | undefined }) {
   const { screen, usage, mic, room, call } = state;
   const [said, setSaid] = useState("");
   if (!state.enabled) return null;
@@ -510,7 +518,7 @@ export function VoiceControls({ state, beforeOpen }: { state: DeskVoiceState; be
       {screen === "idle" && <>
         {state.startError && <p className="desk-error" role="alert">{state.startError}</p>}
         {used && usage ? <p className="desk-bubble" role="status">{voiceWeekUsedLine(usage)}</p>
-          : <button type="button" className="desk-call" disabled={!state.picked} onClick={() => void state.open(beforeOpen)}><Icon name="phone" />Call Maya</button>}
+          : <button type="button" className="desk-call" disabled={!state.picked} onClick={() => void state.open(beforeOpen, fromChatId, chatFates?.())}><Icon name="phone" />Call Maya</button>}
       </>}
 
       {screen === "mic" && <>

@@ -193,7 +193,7 @@ function setup(over: { used?: number; accepted?: boolean; project?: typeof PROJE
     clock: () => now, newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`, seed: () => 42,
     ...(over.note ? { note: over.note } : {}),
   };
-  const calls = mayaCalls({ ...base, canCallVoice: async (p, c) => over.canCall !== false && p === PARENT && c === CHILD });
+  const calls = mayaCalls({ ...base, canChat: async (p, c) => p === PARENT && c === CHILD, canCallVoice: async (p, c) => over.canCall !== false && p === PARENT && c === CHILD });
   const used = { seconds: over.used ?? 0 };
   const accepted = { value: over.accepted !== false };
   const deps = {
@@ -209,7 +209,7 @@ function setup(over: { used?: number; accepted?: boolean; project?: typeof PROJE
   };
   /** The child's learning events of the whole call day: a cancelled call must write none. */
   const events = () => eventStore.range(CHILD, { from: "2026-11-01T00:00:00Z", to: "2026-12-01T00:00:00Z" });
-  return { deps, store, calls, used, accepted, alerts, events, run: (action: Parameters<typeof runVoice>[1], c = ctx()) => runVoice(c, action, deps) };
+  return { deps, store, calls, base, used, accepted, alerts, events, run: (action: Parameters<typeof runVoice>[1], c = ctx()) => runVoice(c, action, deps) };
 }
 const ID = "55555555-5555-4555-8555-555555555555";
 const start = (id = ID, question = REF) => ({ type: "start" as const, id, question });
@@ -517,5 +517,40 @@ describe("a desk voice request", () => {
       return real(id, revision, input, name);
     } };
     expect(await s.run({ type: "cancel", id: ID })).toMatchObject({ error: "already_started", call: { status: "live" } });
+  });
+
+  describe("a call from the child's chat on the same question (#1200)", () => {
+    const OTHER = "77777777-7777-4777-8777-777777777777";
+    const CHAT_ID = "66666666-6666-4666-8666-666666666666";
+    /** A chat with some work in it, of this desk's family unless `parent` says another. */
+    async function chat(s: ReturnType<typeof setup>, parent = PARENT) {
+      const calls = mayaCalls({ ...s.base, newId: () => CHAT_ID, canChat: async () => true });
+      const started = await calls.start({ kind: "chat", parentId: parent, childId: CHILD, childName: "Leah", grade: 4, package: PKG, startedBy: parent });
+      if (!started.ok) throw Error(started.error);
+      const shown = started.view.batches.map((b) => ({ batchId: b.transactionId, fate: "shown" as const }));
+      const answered = await calls.input(CHAT_ID, started.view.revision, { type: "child", text: "7 plus 9 is 16.", fates: shown }, "Leah");
+      if (!answered.ok) throw Error(answered.error);
+      return answered.view;
+    }
+
+    it("starts the call with the chat's lesson and transcript, and a ticket", async () => {
+      const s = setup();
+      const view = await chat(s);
+      const r = await s.run({ ...start(), fromChatId: CHAT_ID });
+      expect(r.error).toBeUndefined();
+      expect(r.ticket?.room).toBe(voiceRoom(ID));
+      expect(r.call!.transcript.map((l) => l.text)).toEqual(view.transcript.map((l) => l.text));
+      expect(r.call!.transcript.length).toBeGreaterThan(1);
+      expect(s.store.rows().find((row) => row.id === ID)!.live!.resumedFrom).toEqual({ id: CHAT_ID, revision: view.revision, seeded: true });
+    });
+
+    it("refuses another family's chat id on the server, and makes no call", async () => {
+      const s = setup();
+      await chat(s, OTHER);
+      const r = await s.run({ ...start(), fromChatId: CHAT_ID });
+      expect(r).toMatchObject({ call: null, error: "not_found" });
+      expect(r.ticket).toBeUndefined();
+      expect(s.store.rows().map((row) => row.id)).toEqual([CHAT_ID]);
+    });
   });
 });

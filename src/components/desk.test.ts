@@ -228,11 +228,42 @@ describe("the board-led lesson (#1151)", () => {
     expect(host.querySelector('[aria-label="Current question"]')!.textContent).toContain("63 − 27");
   });
 
+  it("hands a chat on this question to the call instead of ending it, and reads the chat again after the call (#1200)", async () => {
+    stubMic();
+    const id = "45100000-0000-4000-8000-000000000023";
+    const sent: Array<{ url: string; body: { type?: string; id?: string; fromChatId?: string } }> = [];
+    const chat = { id, revision: 2, pending: false, ended: false, question: { source: "workbook", workbookId: BOOK.id, page: 4, question: 3 }, transcript: [{ speaker: "maya", text: "What is 12 minus 8?" }], batches: [], hint: 0, safetyMessage: null };
+    vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
+      const body = JSON.parse(String(options?.body ?? "{}")) as { type?: string; id?: string; fromChatId?: string };
+      sent.push({ url, body });
+      if (url === "/api/desk/chat") return Response.json({ usage: { used: 1, left: 59, resetsAt: Date.now() + 86_400_000, backAt: "tomorrow" }, chat });
+      if (url === "/api/desk/voice") {
+        return Response.json({
+          call: { id: body.id, revision: 1, ended: body.type === "cancel", transcript: [], batches: [], hint: 0, safetyMessage: null, mode: "voice", started: false, status: body.type === "cancel" ? "ended" : "live" },
+          usage: VOICE_USAGE,
+          ...(body.type === "start" ? { ticket: { url: "ws://fake", token: "t1", room: "r", identity: "child", expiresAt: "x" } } : {}),
+        });
+      }
+      return Response.json({ ok: true, held: 0 });
+    }));
+    await render(props({ voice: { usage: VOICE_USAGE } }));
+    await act(async () => button("Chat with Maya")!.click());
+    await act(async () => button("Call Maya")!.click());
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    expect(sent.filter((s) => s.url === "/api/desk/chat" && s.body.type === "end")).toEqual([]);
+    expect(sent.find((s) => s.url === "/api/desk/voice" && s.body.type === "start")?.body.fromChatId).toBe(id);
+    // The child closes the microphone check: the chat is read again (it may have moved into a call).
+    const reads = sent.filter((s) => s.url === "/api/desk/chat").length;
+    await act(async () => button("Not now")?.click());
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    expect(sent.filter((s) => s.url === "/api/desk/chat").length).toBeGreaterThan(reads);
+  });
+
   it("shows 'Show me on the board' only when the chat board drawing is visible", async () => {
     stubMic();
     const id = "45100000-0000-4000-8000-000000000022";
     const show = { transactionId: "show-tens", commands: [{ op: "model", id: EXCHANGE_OBJECT, model: { kind: "base_ten", hundreds: 0, tens: 5, ones: 2 }, place: { region: "main" } }] };
-    const chat = (ended = false) => ({ id, revision: ended ? 3 : 2, pending: false, ended, transcript: [{ speaker: "maya", text: "Look at the blocks." }], batches: [show], hint: 0, safetyMessage: null });
+    const chat = (ended = false) => ({ id, revision: ended ? 3 : 2, pending: false, ended, question: { source: "workbook", workbookId: BOOK.id, page: 4, question: 3 }, transcript: [{ speaker: "maya", text: "Look at the blocks." }], batches: [show], hint: 0, safetyMessage: null });
     let voiceId = "v2";
     vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
       const body = JSON.parse(String(options?.body ?? "{}")) as { type?: string; id?: string };

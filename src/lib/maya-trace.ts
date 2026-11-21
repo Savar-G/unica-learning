@@ -290,6 +290,8 @@ export interface MayaTrace {
   /** The shape's version: this code writes TRACE_VERSION and reads every one of TRACE_VERSIONS. */
   version: (typeof TRACE_VERSIONS)[number];
   callId: string;
+  /** On an ended chat, the voice call that owns its continued lesson and learning evidence. */
+  handedToCallId?: string;
   /** What ran the session: the text adapter alone, the text adapter inside LiveKit Agents (no room), or a voice call. */
   runner: "text" | "livekit-text" | "voice";
   startedAt: string | null;

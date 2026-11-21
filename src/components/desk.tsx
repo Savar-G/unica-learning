@@ -124,6 +124,15 @@ export function Desk(props: DeskProps) {
   const chatOpen = chat.usage?.left !== 0 || voice.enabled;
   const seenTip = useSyncExternalStore(subscribeTip, () => tipSeen(props.childId), () => true);
   const mayaStarted = !!chat.chat || voice.flow !== "idle";
+  const chatQuestion = chat.chat?.question;
+  const chatHere = chat.chat && !chat.chat.ended && chatQuestion && chatQuestion.workbookId === ready?.book.id && chatQuestion.page === ready?.page.number && chatQuestion.question === picked ? chat.chat.id : undefined;
+  // #1200: after a call the chat may have moved into it (ended on the server): read it again so the desk shows that.
+  const wasCalling = useRef(false);
+  const readChat = chat.retry;
+  useEffect(() => {
+    if (voice.engaged) wasCalling.current = true;
+    else if (wasCalling.current) { wasCalling.current = false; void readChat(); }
+  }, [voice.engaged, readChat]);
   useEffect(() => {
     if (!mayaStarted) return;
     try { localStorage.setItem(tipKey(props.childId), "seen"); } catch { /* Shown again next time: no harm. */ }
@@ -229,7 +238,9 @@ export function Desk(props: DeskProps) {
 
         <footer className={`desk-say${voice.engaged ? " is-calling" : ""}`} aria-label="Reply to Maya">
           {/* The microphone first, as in the selected layout; then the chat controls. */}
-          <VoiceControls state={voice} beforeOpen={chat.chat && !chat.chat.ended ? () => chat.act("end") : undefined} />
+          {/* #1200: a chat on this question goes on in the call (its lesson moves there when the call starts); a chat on
+              another question ends first, as before. */}
+          <VoiceControls state={voice} {...(chatHere ? { fromChatId: chatHere, chatFates: () => chat.fatesFor(chatHere).fates } : { beforeOpen: chat.chat && !chat.chat.ended ? () => chat.act("end") : undefined })} />
           {props.chatUsage ? <ChatControls key={picked} state={chat} picked={picked !== null} held={card?.held} /> : <>
           <p className="desk-soon">{props.noticeLine ?? props.chatNote ?? (props.voice ? "Chat with Maya starts soon." : "Chat and calls with Maya start soon.")}</p>
           <div className="desk-compose">

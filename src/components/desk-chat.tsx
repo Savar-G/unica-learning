@@ -486,7 +486,7 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
     const batches = [...chat.batches, ...live.batches.filter((b) => !chat.batches.some((x) => x.transactionId === b.transactionId))];
     return { ...chat, batches, transcript: [...chat.transcript, { speaker: "child" as const, text: live.child, second }, ...(said ? [{ speaker: "maya" as const, text: said, second }] : [])] };
   }, [chat, live]);
-  return { usage, chat: ownerKey === key ? shown : null, busy, error, act, exchange, retry: refresh, uncertain, saveBoard, callInk };
+  return { usage, chat: ownerKey === key ? shown : null, busy, error, act, exchange, retry: refresh, uncertain, saveBoard, fatesFor, callInk };
 }
 export type DeskChatState = ReturnType<typeof useDeskChat>;
 

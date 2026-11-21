@@ -90,6 +90,7 @@ import { createTextSession, readFateReports, withHelpLedger, type BoardFateRepor
 import { packageHash, type MayaTrace } from "@/lib/maya-trace";
 import { type QuestionPackage, type QuestionRef } from "@/lib/question-package";
 import { teachingPackage } from "@/lib/maya-teaching";
+import { ownsChat, resumedAt, resumePlan, withoutEvidence, type ResumeFrom, type ResumePlan } from "@/lib/maya-call-resume";
 import { BOARD_CLOSE_SETTLE_MS, connectedSeconds, VOICE_CALL_STALE_MS, type ConnectionEvent, type ConnectionKind } from "@/lib/maya-voice";
 import { spendCloseOf, SPEND_CLOSE, type CallSpend, type SpendCall, type SpendState, type VoiceMeter } from "@/lib/maya-spend";
 import { BLOCK_DRAIN_MS, type CallBudget, type Handle } from "@/lib/maya-spend-block";
@@ -195,7 +196,7 @@ export interface CallRecord {
   outcome: Outcome | null;
   counts: { mayaTurns: number; childTurns: number; fallbacks: number } | null;
   /** While live: what the text adapter needs to go on, with the package it runs on. Null once ended. */
-  live: { package: QuestionPackage; text: SavedTextSession; cancelled?: true; pendingVoice?: VoiceTurn; acknowledged?: string[]; guidancePlayed?: Severity } | null;
+  live: { package: QuestionPackage; text: SavedTextSession; cancelled?: true; pendingVoice?: VoiceTurn; acknowledged?: string[]; guidancePlayed?: Severity; resumedFrom?: ResumeFrom; continuedFromChat?: true } | null;
   trace: MayaTrace | null;
   boardHistory: BoardHistory | null;
   /**
@@ -462,6 +463,12 @@ export interface StartInput {
   id?: string;
   /** The call's end when it is shorter than 10 minutes (ms). A family voice call passes it when the child's week has less than 10 minutes left; tests use it for short calls. */
   limitMs?: number;
+  /**
+   * #1200, a family voice call only: the desk chat on the same question the child switched from (src/lib/maya-call-resume.ts).
+   * A chat of another parent, child or question, or no such chat, refuses the start (`not_found`).
+   */
+  fromChat?: string;
+  fromChatFates?: BoardFateReport[];
 }
 
 export type CallResult =
@@ -563,6 +570,15 @@ export interface VoiceCall {
   /** Saved last words and unplayed guidance when this handle restored a safety close. */
   readonly pendingFinal: VoiceTurn | null;
   readonly boardSnapshot: BoardSnapshot;
+  /**
+   * #1200: the call holds a chat's lesson that has not moved here yet. The worker then calls `resume` when the child is
+   * there, instead of the opening: the chat ends handed on and the call's own time starts. Absent on older handles.
+   */
+  readonly resumed?: boolean;
+  /** The lesson moved here on an earlier worker; its continuation cue can still be pending. */
+  readonly continuedFromChat?: boolean;
+  /** Takes the chat's lesson over (see `resumed`); safe to call again. False: this handle no longer owns the call. */
+  resume?(): Promise<boolean>;
   /** The acknowledgement phrases this call has said (#532), kept across a worker replacement. */
   readonly acknowledged: readonly string[];
   /**
@@ -1187,8 +1203,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   }
 
   /** Stores the outcome of a call that has just ended, then writes its event and rebuilds the profile. Null on a conflict. */
-  async function end(record: CallRecord, pkg: QuestionPackage, session: TextSession, how: FinishOptions = {}, extra?: (endedAt: number) => Promise<CallChange>, noEvent = false, capped = false, noNote = false): Promise<CallRecord | null> {
+  async function end(record: CallRecord, pkg: QuestionPackage, session: TextSession, how: FinishOptions = {}, extra?: (endedAt: number) => Promise<CallChange>, noEvent = false, capped = false, noNote = false, handedToCallId?: string): Promise<CallRecord | null> {
     const trace = await session.finish(how);
+    if (handedToCallId) trace.handedToCallId = handedToCallId;
     // The cap's close reads as a call that ran out of time, unless safety, content or a solved question comes first.
     const outcome = capped && trace.outcome?.reason === "technical_issue" ? { ...trace.outcome, reason: "time_limit" as const } : trace.outcome;
     const endedAt = trace.endedAt ?? iso(seams.clock());
@@ -1232,6 +1249,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
 
   /** Checks a new call's family and question, and stores its record with the session not started. */
   async function newCall(input: Parameters<MayaCalls["start"]>[0], mode: CallRecord["mode"]): Promise<{ ok: true; record: CallRecord; session: TextSession; pkg: QuestionPackage } | Extract<CallResult, { ok: false }>> {
+    // #1200: only a family voice call takes a chat's lesson; the chat is read before anything is stored.
+    if (input.fromChat !== undefined && (input.kind !== "family" || mode !== "voice")) return { ok: false, error: "not_found" };
+    const chat = input.fromChat !== undefined ? await store.get(input.fromChat) : null;
     if (input.kind === "chat") {
       if (mode !== "text" || !(await seams.canChat?.(input.parentId, input.childId))) return { ok: false, error: "not_test_family" };
     } else if (input.kind === "family") {
@@ -1252,6 +1272,25 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     const model = seams.model(null, call);
     if (!model) return { ok: false, error: "model_unavailable" };
     const session = textSession({ id, kind: input.kind, parentId: input.parentId, childId: input.childId }, pkg, model, input.childName, undefined, seams.seed(), await readHistory(input.childId), input.limitMs, input.grade, input.confirmWorkbook);
+    let resumed: Extract<ResumePlan, { ok: true }> | null = null;
+    if (input.fromChat !== undefined) {
+      if (!ownsChat(chat, { parentId: input.parentId, childId: input.childId, question: pkg.ref })) return { ok: false, error: "not_found" };
+      const fates = input.fromChatFates;
+      let source = chat;
+      if (chat.status === "live" && chat.live && !chat.live.cancelled && fates?.length) {
+        const live = chat.live;
+        // Replay only known batch receipts in a copy. Cancelling prejoin leaves the chat revision untouched.
+        const withReceipts = textSession(chat, live.package, idleModel(chat), savedName(live.text) ?? input.childName, live.text);
+        withReceipts.boardFates(fates);
+        source = { ...chat, live: { ...live, text: await withReceipts.saved() } };
+      }
+      const plan = resumePlan(source, { id, parentId: input.parentId, childId: input.childId, question: pkg.ref, packageHash: packageHash(pkg), limits: session.session.limits }, seams.clock());
+      if (!plan.ok) return { ok: false, error: "not_found" };
+      resumed = { ...plan, from: plan.from && { ...plan.from, ...(fates?.length ? { fates } : {}) } };
+      // A copy the session cannot go on from starts the call fresh.
+      try { if (plan.text) textSession({ id, kind: input.kind, parentId: input.parentId, childId: input.childId }, pkg, model, input.childName, plan.text); }
+      catch { resumed = { ...resumed, text: null, board: null, from: resumed.from && { ...resumed.from, seeded: false } }; }
+    }
     const empty = session.trace();
     const record: CallRecord = {
       id,
@@ -1275,9 +1314,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       versions: { ...empty.versions, trace: empty.version },
       outcome: null,
       counts: null,
-      live: { package: pkg, text: await session.saved() },
+      live: { package: pkg, text: resumed?.text ?? await session.saved(), ...(resumed?.from ? { resumedFrom: resumed.from } : {}) },
       trace: null,
-      boardHistory: mode === "voice" ? { ...createHistory(), delivery: { events: [] } } : null,
+      boardHistory: mode === "voice" ? resumed?.board ?? { ...createHistory(), delivery: { events: [] } } : null,
       learningEventId: null,
       profileRebuiltAt: null,
       notePending: null,
@@ -1315,7 +1354,10 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     async startVoice(input) {
       const made = await newCall(input, "voice");
       if (!made.ok) return made;
-      return result(made.record, made.session.trace(), null);
+      // A call that took a chat's lesson shows it from the start: its transcript and board are the chat's.
+      const live = made.record.live!;
+      const trace = live.resumedFrom?.seeded ? textSession(made.record, made.pkg, idleModel(made.record), savedName(live.text) ?? input.childName, live.text).trace() : made.session.trace();
+      return result(made.record, trace, null);
     },
 
     async openVoice(id, providers, childName) {
@@ -1373,7 +1415,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           }
         }
       };
-      const session = textSession(record, pkg, model, name, restored, undefined, undefined, undefined, undefined, undefined, guidanceNow, {
+      const makeSession = (saved: SavedTextSession) => textSession(record, pkg, model, name, saved, undefined, undefined, undefined, undefined, undefined, guidanceNow, {
         onSayPart: (sentence, index) => listener?.part?.(sentence, index),
         onSayCancel: (fromIndex) => listener?.cancel?.(fromIndex),
         onSayEnd: () => listener?.end?.(),
@@ -1386,7 +1428,54 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         onPreparation: (record) => hearPreparation?.(record),
         withModelAttempt: (source, run) => withRequestContext({ source, prepareId: null, diagnosticHandleId: null }, run),
       }, voiceSpend, budget ? { spend: budget.seam, prepareHandleId, prepareModel: (handle) => seams.model(record.model, voiceSpend, { prepared: { budget, handle, diagnosticHandleId: prepareHandleId(handle) } }) } : undefined);
+      // #1200: `resume` makes the session again, from the copy whose own time starts when the call starts.
+      let session = makeSession(restored);
       told = session.trace().turns.length;
+      // #1200: the chat this call came from, until the call's start hands it on (once per call: the claim keeps it).
+      let from = found.live.resumedFrom ?? null;
+      /** The chat CAS settles which call owns the lesson. Its trace marker survives clearing the chat snapshot. */
+      const handOff = async (f: ResumeFrom): Promise<"taken" | "chat_kept"> => {
+        const chat = await store.get(f.id);
+        if (!chat || !ownsChat(chat, record)) return "chat_kept";
+        if (chat.status === "ended") return chat.trace?.handedToCallId === record.id ? "taken" : "chat_kept";
+        if (!chat.live || chat.revision !== f.revision || chat.live.cancelled) return "chat_kept";
+        const source = chat.live.text.session;
+        if (chat.flag || source.turn !== null || source.outcome || source.stopRequested ||
+          source.safety.flagged || source.contentProblem !== null) return "chat_kept";
+        const text = textSession(chat, chat.live.package, idleModel(chat), savedName(chat.live.text) ?? name, chat.live.text);
+        if (f.fates?.length) text.boardFates(f.fates);
+        const ended = await end(chat, chat.live.package, text, { reason: "child_stopped" }, undefined, true, false, true, record.id);
+        return ended ? "taken" : "chat_kept";
+      };
+      const takeOver = async (): Promise<boolean> => {
+        let ok = false;
+        later(async () => {
+          if (inactive()) return;
+          const f = from;
+          if (!f) { ok = true; return; }
+          const taken = await handOff(f) === "taken";
+          // A newer chat revision may contain different work. Do not teach from the old copy.
+          if (f.seeded && !taken) return;
+          const at = seams.clock();
+          const saved = await session.saved();
+          const text = f.seeded ? resumedAt(saved, at) : taken ? saved : withoutEvidence(saved);
+          const { resumedFrom: _handed, ...live } = record.live!;
+          void _handed;
+          const change: CallChange = {
+            live: { ...live, text, ...(f.seeded ? { continuedFromChat: true } : {}) },
+            ...(f.seeded ? { startedAt: iso(at) } : {}),
+          };
+          if (!(await store.update(record.id, record.revision, change))) { lose(true); return; }
+          monitorCallChange(record, change);
+          record = { ...record, ...change, revision: record.revision + 1 };
+          from = null;
+          session = makeSession(text);
+          told = session.trace().turns.length;
+          ok = true;
+        });
+        await queue;
+        return ok && !lost;
+      };
       const last = restored.turns.at(-1);
       const savedFinal: VoiceTurn | null = restored.session.outcome ? record.live?.pendingVoice ?? {
         say: last?.kind === "maya" && last.stateAfter === "CLOSE" ? [...(last.output?.say ?? [])] : [],
@@ -1450,7 +1539,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       };
       const none: VoiceTurn = { say: [], newBatches: 0, safetyMessage: null, ended: false };
       const inactive = () => lost || record.status === "ended" || forcedClose || deadlineStarted;
-      const admitting = () => mediaCutAt === null && !inactive();
+      const admitting = () => mediaCutAt === null && !from?.seeded && !inactive();
       let forcedClose = false;
       let deadlineStarted = false;
       let deadline: Promise<VoiceTurn | null> | undefined;
@@ -1866,7 +1955,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         get boardSnapshot() { return structuredClone(record.boardHistory?.delivery ?? { events: [] }); },
         get pendingExchange() {
           const saved = record.live?.text;
-          if (inactive() || !saved) return undefined;
+          if (inactive() || from?.seeded || !saved) return undefined;
           // The child's exchange, then the related question's board (#1144): a saved batch the board never confirmed.
           const turns = saved.session.checkedExchange?.turns ?? [];
           const pending = [turns.find((t) => t.childAction)?.actions[0], turns.flatMap((t) => t.actions).findLast((a) => a.kind === "question")]
@@ -1953,7 +2042,14 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           });
           await queue;
         },
-        start: (options) => turn(() => session.start(options)),
+        // A fresh call from a chat with no confirmed state hands the chat on at its start too (#1200).
+        start: async (options) => {
+          if (from && (from.seeded || !(await takeOver()))) return none;
+          return turn(() => session.start(options));
+        },
+        get resumed() { return !!from?.seeded; },
+        get continuedFromChat() { return !!record.live?.continuedFromChat; },
+        resume: () => (from?.seeded ? takeOver() : Promise.resolve(!lost)),
         child: (text, options, say) => {
           const hearing = { text: text.trim().slice(0, MAX_CHILD_TEXT), uncertain: options?.uncertain, alternatives: options?.alternatives?.slice() };
           return turn(() => session.child(hearing.text, hearing), hearing.text ? hearing : undefined, say);

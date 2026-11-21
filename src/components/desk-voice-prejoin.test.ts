@@ -3,6 +3,7 @@ import { act, createElement, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { PREMADE_LIFE_MS, useDeskVoice, VoiceControls, VoiceLimit } from "./desk-voice";
+import type { ScreenFateReport } from "@/lib/board-fate";
 import type { DeskVoiceCall, DeskVoiceReply, VoiceUsage } from "@/lib/maya-voice-desk";
 
 // The desk makes the call when the microphone check opens, and joins its room before "Start the call"
@@ -59,6 +60,9 @@ const server = {
   held: [] as Array<() => void>,
   /** The start's answer when the week is used or the server refuses. */
   refuse: null as DeskVoiceReply | null,
+  /** The chat each start came from (#1200), or null. */
+  from: [] as Array<string | null>,
+  fromFates: [] as Array<ScreenFateReport[] | undefined>,
 };
 const view = (id: string, over: Partial<DeskVoiceCall> = {}): DeskVoiceCall => ({ id, revision: 1, ended: server.ended.has(id), transcript: [], batches: [], hint: 0, safetyMessage: null, mode: "voice", started: false, status: server.live.has(id) ? "live" : "ended", ...over });
 function route(body: { type: string; id: string }): DeskVoiceReply {
@@ -88,26 +92,30 @@ let visibility: DocumentVisibilityState = "visible";
 afterEach(async () => {
   await act(async () => root?.unmount());
   root = undefined; host?.remove(); rooms.length = 0; lk.connect.length = 0; lk.held.length = 0;
-  Object.assign(server, { live: new Set(), ended: new Set(), tickets: 0, sent: [], lose: [], hold: [], held: [], refuse: null });
+  Object.assign(server, { live: new Set(), ended: new Set(), tickets: 0, sent: [], lose: [], hold: [], held: [], refuse: null, from: [], fromFates: [] });
   visibility = "visible";
   vi.unstubAllGlobals(); vi.useRealTimers();
 });
 
 const settle = () => act(async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); });
 
-function Harness({ question = 2, usage = USAGE }: { question?: number | null; usage?: VoiceUsage }) {
+function Harness({ question = 2, usage = USAGE, fromChatId, fates }: { question?: number | null; usage?: VoiceUsage; fromChatId?: string; fates?: ScreenFateReport[] }) {
   const state = useDeskVoice({ usage }, { book: "wb1", page: 3, question });
-  return createElement("div", null, createElement("dl", null, createElement(VoiceLimit, { state })), createElement(VoiceControls, { state }));
+  return createElement("div", null, createElement("dl", null, createElement(VoiceLimit, { state })), createElement(VoiceControls, { state, ...(fromChatId ? { fromChatId, chatFates: () => fates } : {}) }));
 }
 
 let micMode: "ok" | "none" = "ok";
-async function mount(opts: { strict?: boolean; mic?: "ok" | "none"; usage?: VoiceUsage } = {}) {
+async function mount(opts: { strict?: boolean; mic?: "ok" | "none"; usage?: VoiceUsage; fromChatId?: string; fates?: ScreenFateReport[] } = {}) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("requestAnimationFrame", vi.fn(() => 1));
   vi.stubGlobal("cancelAnimationFrame", vi.fn());
   vi.stubGlobal("fetch", vi.fn(async (_url: string, init: { body: string; keepalive?: boolean }) => {
-    const body = JSON.parse(init.body) as { type: string; id: string };
+    const body = JSON.parse(init.body) as { type: string; id: string; fromChatId?: string; fromChatFates?: ScreenFateReport[] };
     server.sent.push({ type: body.type, id: body.id, keepalive: init.keepalive === true });
+    if (body.type === "start") {
+      server.from.push(body.fromChatId ?? null);
+      server.fromFates.push(body.fromChatFates);
+    }
     if (server.hold.includes(body.type)) {
       server.hold.splice(server.hold.indexOf(body.type), 1);
       await new Promise<void>((resolve) => server.held.push(resolve));
@@ -134,7 +142,7 @@ async function mount(opts: { strict?: boolean; mic?: "ok" | "none"; usage?: Voic
   } });
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   const render = (question: number | null = 2) => {
-    const app = createElement(Harness, { question, usage: opts.usage ?? USAGE });
+    const app = createElement(Harness, { question, usage: opts.usage ?? USAGE, ...(opts.fromChatId ? { fromChatId: opts.fromChatId, fates: opts.fates } : {}) });
     return act(async () => root!.render(opts.strict ? createElement(StrictMode, null, app) : app));
   };
   await render();
@@ -166,6 +174,24 @@ it("makes the call and its ticket when the microphone check opens, and joins the
   expect(rooms[0].startAudio).toHaveBeenCalledOnce();
   expect(host.textContent).toContain("Maya is joining…");
   expect(host.textContent).toContain("Calls20 minutes left this week");
+});
+
+it("sends the chat and its board receipts again when the prejoin call is remade", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const fates: ScreenFateReport[] = [{ batchId: "latest-drawing", fate: "shown" }];
+  const f = await mount({ fromChatId: "66666666-6666-4666-8666-666666666666", fates });
+  await f.click("Call Maya");
+  await act(async () => { vi.advanceTimersByTime(PREMADE_LIFE_MS); });
+  await settle();
+  await f.click("Start the call");
+  expect(server.from).toEqual(["66666666-6666-4666-8666-666666666666", "66666666-6666-4666-8666-666666666666"]);
+  expect(server.fromFates).toEqual([fates, fates]);
+});
+
+it("sends no chat with a start when the desk gives none", async () => {
+  const f = await mount();
+  await f.click("Call Maya");
+  expect(server.from).toEqual([null]);
 });
 
 it("cancels a call made for the check after 60 s with no tap; Start the call then starts in full with a new call", async () => {

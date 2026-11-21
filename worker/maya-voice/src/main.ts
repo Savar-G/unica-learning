@@ -29,7 +29,7 @@ import type { Database } from "@/lib/database";
 import { callSeams } from "@/lib/maya-call-seams";
 import { mayaCalls } from "@/lib/maya-call";
 import { EXCHANGE_RPC, readExchangeTarget } from "@/lib/maya/checked-exchange";
-import { voiceOpening } from "./opening";
+import { voiceContinuation, voiceOpening } from "./opening";
 import { mayaCallStore } from "@/lib/maya-call-store";
 import { asksWordTimings, callKeyterms, callOfRoom, childIdentity, HANG_UP_BOARD_DRAIN, turnSilences, VOICE_AGENT_NAME, voiceProviders, type TurnSilence, type VoiceCallFacts } from "@/lib/maya-voice";
 import { VoiceCallRun, voiceSession, type CallUpdate } from "./agent";
@@ -129,6 +129,8 @@ export default defineAgent({
     }
     mark("opened");
     const openingText = voiceOpening(opened.call.session);
+    // #1200: a call that goes on with a chat's lesson says a continuation line instead of the opening.
+    const continuation = voiceContinuation(opened.call);
     // The call's question is known now: its answer and its likely wrong answers go to the speech-to-text as keyterms
     // (numbers only, never the question's text or a name).
     const made = await makeProviders(providers, { keyterms: callKeyterms(opened.call.session.package) });
@@ -167,7 +169,7 @@ export default defineAgent({
     const boardOwners = new Map<string, { turnId: string; batchIds: readonly string[] }>();
     let profile: ReturnType<typeof startVoiceBaselineProfile> | null = null;
     const ackLimit = Number(process.env.MAYA_ACK_LIMIT_MS);
-    const run = new VoiceCallRun(session, opened.call, { board, notify, ...(openingText ? { opening: openingText, openingMark: mark } : {}),
+    const run = new VoiceCallRun(session, opened.call, { board, notify, ...(openingText ? { opening: openingText, openingMark: mark } : {}), ...(continuation ? { continuation } : {}),
       ...(made.fake ? {} : { numberContinueMs: tuning.numberContinueMs, dropSilentPeakDbfs: tuning.dropSilentPeakDbfs, detectorMinSilenceMs: tuning.detectorMinSilenceMs }),
       ...(patience ? { patience: { ...turnSilences(tuning), set: (limits: TurnSilence) => patience.setSilence(limits) } } : {}),
       ...(process.env.MAYA_ACK_LIMIT_MS?.trim() && Number.isFinite(ackLimit) && ackLimit >= 0 ? { ackLimitMs: ackLimit } : {}),
