@@ -2358,7 +2358,8 @@ function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuesti
       const circle = !!circleLine, boxes = formats.has("boxes"), write = [...formats].some(f => !["circle", "boxes"].includes(f));
       const writes = questions.some(q => q.package && q.place !== "warm-up" && packageItem(q.package).regions.some(r => r.kind === "box"));
       const boxLine = writes && write ? (input.plan.level === 4 ? "Fill in the boxes." : "Fill in the missing numbers and write the answers in the boxes.") : "Fill in the missing numbers.";
-      const parts = [boxes ? boxLine : writes ? "Write the answer in the box." : null, circle ? circleLine : null].filter(Boolean);
+      const onLines = questions.some(q => q.package && q.place !== "warm-up" && packageItem(q.package).regions.some(r => r.kind === "lines")); // (lines-only writing, #1215)
+      const parts = [boxes ? boxLine : writes ? "Write the answer in the box." : onLines ? "Write on the lines." : null, circle ? circleLine : null].filter(Boolean);
       if (parts.length) content.subtitle = parts.join(" ");
     // (A warm-up page names no choice: its choice questions print their own cue, isWarmUpPage.)
     } else if (choiceAddOn(questions) && !isWarmUpPage(content) && !/\bcircle\b/i.test(content.subtitle ?? "")) content.subtitle = `${content.subtitle ? `${content.subtitle.replace(/\s*$/, "")} ` : ""}${choiceAddOn(questions)}`;

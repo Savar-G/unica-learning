@@ -168,6 +168,10 @@ describe("the layout checks", () => {
     expect(choicePageInstruction([truth, truth])).toBe("Circle true or false.");
     expect(choicePageInstruction([truth, letters])).toBe("Circle your answers.");
     expect(choicePageInstruction([written, truth])).toBe("Write in boxes. Circle one choice.");
+    // Writing on lines counts as writing, and the instruction says where.
+    const onLines = withRegions([{ kind: "lines", id: "why", label: "How do you know?" }]);
+    expect(choicePageInstruction([onLines, truth])).toBe("Write on the lines. Circle one choice.");
+    expect(choiceAddOn([onLines, truth])).toBe("Write or circle.");
     // A package with no stored item has the default answer box, so it is a question to write on.
     const defaultBox = { place: "on-your-own", package: { ...base, item: undefined } } as { place: string; package: typeof base };
     expect(choicePageInstruction([defaultBox, truth])).toBe("Write in boxes. Circle one choice.");
