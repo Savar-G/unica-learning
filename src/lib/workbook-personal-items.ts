@@ -168,12 +168,13 @@ export interface WarmUpFact {
   kind: "add" | "subtract" | "multiply" | "divide";
   operands: [number, number];
   text: string;
+  difficulty?: 1 | 2 | 3;
   /** Present only when the step-specific generator constructed this fact from the requested step. */
   declaration?: StepDeclaration;
 }
 
 /** Build the requested mixed-multiplication step, using its own operand and result domains. */
-function recallMultiplicationFact(step: CurriculumStep, unit: string, tables: readonly number[], seed: number): WarmUpFact | null {
+function recallMultiplicationFact(step: CurriculumStep, unit: string, tables: readonly number[], seed: number, day?: number): WarmUpFact | null {
   const { operand1, operand2, result } = step.numbers ?? {};
   if (step.skill !== "5.9-recall-facts" || step.number !== 1 || !operand1 || !operand2 || !result || !tables.length) return null;
   const left = seed % 2 ? operand1 : operand2;
@@ -181,39 +182,54 @@ function recallMultiplicationFact(step: CurriculumStep, unit: string, tables: re
   const stepTables = tables.filter(t => domainContains(right, BigInt(t)));
   if (!stepTables.length) return null;
   const t = stepTables[seed % stepTables.length];
-  const factors = Array.from({ length: 9 }, (_, i) => i + 2).filter(f => domainContains(left, BigInt(f)) && domainContains(result, BigInt(t * f)));
+  const allFactors = Array.from({ length: 9 }, (_, i) => i + 2).filter(f => domainContains(left, BigInt(f)) && domainContains(result, BigInt(t * f)));
+  const dayFactors = day === undefined ? allFactors : day <= 2 ? allFactors.filter(f => f <= 6) : day === 3 ? allFactors.filter(f => f >= 3 && f <= 8) : allFactors.filter(f => f >= 5);
+  const factors = dayFactors.length ? dayFactors : allFactors;
   if (!factors.length) return null;
   const f = factors[Math.floor(seed / stepTables.length) % factors.length];
   const operands: [number, number] = seed % 2 ? [f, t] : [t, f];
+  const difficulty: 1 | 2 = day !== undefined && day >= 4 && seed % 2 === 1 ? 2 : 1;
   return { skill: step.skill, kind: "multiply", operands, text: `${operands[0]} × ${operands[1]} = ?`,
+    ...(day !== undefined ? { difficulty } : {}),
     declaration: { source: "warm-up", reference: { unit, skill: step.skill, step: step.number } } };
 }
 
 /**
  * The fact a personal warm-up slot prints (item 4), chosen by code from the aimed skill's family, or null for today's
- * writer: the slot's turn `seed` picks the table and the other factor; `taken` holds the page's facts so far.
+ * writer: the slot's turn `seed` picks the table and the other factor; `taken` holds the page's facts so far. When
+ * `day` (1..5) is supplied, operand magnitude and difficulty rise gently from Day 1 to Day 5.
  */
-export function warmUpFact(curriculum: Curriculum, plan: Plan, skill: string, seed: number, taken: ReadonlySet<string>): WarmUpFact | null {
+export function warmUpFact(curriculum: Curriculum, plan: Plan, skill: string, seed: number, taken: ReadonlySet<string>, day?: number): WarmUpFact | null {
   const kind = factKind(skill);
   if (!signalsOf(plan) || !kind) return null;
   const tables = skillTables(curriculum, plan, skill);
+  const pickFactor = (n: number, useDay: boolean) => {
+    if (!useDay || day === undefined) return 2 + (n % 9);
+    if (day <= 2) return 2 + (n % 5);
+    if (day === 3) return 3 + (n % 6);
+    return 5 + (n % 6);
+  };
   for (let k = 0; k < 90; k++) {
     const n = seed + k;
-    const a = 2 + (n % 9), b = 2 + (Math.floor(n / 9) % 9);
+    const useDay = day !== undefined && k < 36;
+    const difficulty: 1 | 2 | undefined = day === undefined ? undefined : day >= 4 && n % 2 === 1 ? 2 : 1;
+    const a = pickFactor(n, useDay), b = pickFactor(Math.floor(n / 9), useDay);
     let fact: WarmUpFact;
     if (kind === "multiply" || kind === "divide") {
-      const t = tables[n % tables.length], f = 2 + (Math.floor(n / tables.length) % 9);
+      const t = tables[n % tables.length], f = pickFactor(Math.floor(n / tables.length), useDay);
       fact = kind === "multiply" ? (n % 2 ? { skill, kind, operands: [f, t], text: `${f} × ${t} = ?` } : { skill, kind, operands: [t, f], text: `${t} × ${f} = ?` })
         : { skill, kind, operands: [t * f, t], text: `${t * f} ÷ ${t} = ?` };
       // This branch requests an exact step before construction. Other family builders make no step declaration.
       if (skill === "5.9-recall-facts" && kind === "multiply") {
         const requested = curriculum.skillSteps(skill)?.find(s => s.number === 1);
         const unit = curriculum.skill(skill)?.unit;
-        if (requested && unit) fact = recallMultiplicationFact(requested, unit, tables, n) ?? fact;
+        if (requested && unit) fact = recallMultiplicationFact(requested, unit, tables, n, useDay ? day : undefined) ?? fact;
       }
     } else if (kind === "extend") {
-      fact = n % 2 ? { skill, kind: "subtract", operands: [(a + b) * 10, b * 10], text: `${(a + b) * 10} − ${b * 10} = ?` } : { skill, kind: "add", operands: [a * 10, b * 10], text: `${a * 10} + ${b * 10} = ?` };
+      const scale = useDay && day! >= 4 ? 100 : 10;
+      fact = n % 2 ? { skill, kind: "subtract", operands: [(a + b) * scale, b * scale], text: `${(a + b) * scale} − ${b * scale} = ?` } : { skill, kind: "add", operands: [a * scale, b * scale], text: `${a * scale} + ${b * scale} = ?` };
     } else fact = kind === "add" ? { skill, kind, operands: [a, b], text: `${a} + ${b} = ?` } : { skill, kind, operands: [a + b, b], text: `${a + b} − ${b} = ?` };
+    if (difficulty !== undefined && fact.difficulty === undefined) fact = { ...fact, difficulty };
     if (!taken.has(fact.text)) return fact;
   }
   return null;

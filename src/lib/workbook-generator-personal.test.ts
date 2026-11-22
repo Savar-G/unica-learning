@@ -95,9 +95,17 @@ describe("G1 persona books", () => {
       if (persona === "ahead") {
         const frame = { curriculum: "bc", curriculumVersion: curriculumVersion("bc")!, plan, units: skillUnits(BC) };
         const facts = draft.pages.flatMap(p => p.questions.filter(q => q.place === "warm-up" && q.package?.operation?.kind === "multiply").map(q => ({ p, q })));
-        expect(facts.length).toBeGreaterThan(0);
-        for (const { p, q } of facts) {
+        const earlyFacts = facts.filter(({ p }) => (p.day ?? 99) <= 5);
+        const lateFacts = facts.filter(({ p }) => (p.day ?? 0) > 5);
+        expect(earlyFacts.length).toBeGreaterThan(0);
+        for (const { p, q } of earlyFacts) {
           expect(q.itemStep).toEqual({ unit: "5.9", skill: "5.9-recall-facts", step: 1 });
+          expect(teachingContext(frame, p, { ...q, package: q.package! })).toMatchObject({ plannedStep: null, itemStep: q.itemStep, eligibility: { mastery: true } });
+        }
+        // Days 6-10 warm-ups advance through curriculum steps while staying mastery-eligible.
+        expect(lateFacts.some(({ q }) => q.itemStep?.skill === "5.9-recall-facts" && q.itemStep.step >= 2)).toBe(true);
+        for (const { p, q } of lateFacts) {
+          expect(q.itemStep).not.toBeNull();
           expect(teachingContext(frame, p, { ...q, package: q.package! })).toMatchObject({ plannedStep: null, itemStep: q.itemStep, eligibility: { mastery: true } });
         }
         const all = draft.pages.flatMap(p => p.questions.map(q => q.package ? teachingContext(frame, p, { ...q, package: q.package }) : null));
@@ -105,7 +113,7 @@ describe("G1 persona books", () => {
         const excluded = all.filter(t => !t?.eligibility.mastery).length;
         expect(report).toContain(`| All | ${all.length} | ${excluded} |`);
         expect(report.split("### Each excluded item")[1].split("\n").filter(line => /^\| \d+ \| \d+ \|/.test(line))).toHaveLength(excluded);
-        expect(report).toContain("declared curriculum step");
+        expect(report).toContain("declare a curriculum step");
       }
       // No personal choice fails a question the same plan's book without them passes.
       const failed = (d: GeneratedWorkbook) => d.pages.flatMap((p) => p.questions.filter((q) => q.check.status === "failed").map((q) => `${p.type} d${p.day} ${q.place}: ${(q.check as { reason: string }).reason}`)).sort();
@@ -123,7 +131,7 @@ describe("G1 persona books", () => {
     const count = (warmUp: string, key: string) => Number(warmUp.split(",").find((x) => x.startsWith(`${key}:`))?.split(":")[1] ?? 0);
     const total = (warmUp: string) => warmUp.split(",").reduce((n, x) => n + Number(x.split(":")[1] ?? 0), 0);
     expect(count(f.ahead.warmUp, "×3/4") * 2).toBeGreaterThanOrEqual(total(f.ahead.warmUp));
-    expect(count(today.ahead.warmUp, "×3/4")).toBe(0);
+    expect(count(today.ahead.warmUp, "×3/4")).toBeLessThan(count(f.ahead.warmUp, "×3/4"));
     // Catch up: reads with help (short stories where the step has them), under an hour a week (Extra blocks).
     expect(f["catch-up"].longStories).toBeLessThanOrEqual(today["catch-up"].longStories);
     expect(f["catch-up"].storyWords).toBeLessThanOrEqual(today["catch-up"].storyWords);
