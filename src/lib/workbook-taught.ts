@@ -49,6 +49,8 @@ function needs(ledger: Ledger, slot: string, asked: readonly Asked[], taken: rea
 export function introIssues(pages: readonly GeneratedPage[], levels: ReadonlySet<number> = ENFORCED_LEVELS): BookIssue[] {
   // (A lone page is not a book: the page-fit checks run the quality check on one page at a time.)
   if (!pages.some((p) => p.type === "cover")) return [];
+  // (No checked level in the book: nothing to read. The quality check runs this many times a book.)
+  if (!pages.some((p) => p.content?.kind === "day" && levels.has(p.content.level))) return [];
   const ledger = emptyLedger();
   const issues: BookIssue[] = [];
   // (An example's answer is printed: no question of the book may ask the example's task.)

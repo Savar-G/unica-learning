@@ -126,7 +126,9 @@ export const exampleTaken = (question: string, taken: readonly (readonly number[
 export function methodIntro(pair: MethodPair, avoid: readonly number[], taken: readonly (readonly number[])[] = []): Intro | null {
   const list = candidates(pair);
   const free = (e: Example) => !exampleTaken(e.question, taken);
-  const example = list?.find((e) => free(e) && e.nums.every((n) => !avoid.includes(n))) ?? list?.find(free);
+  // (Every number the example prints counts, the steps between as well: "47 + 28" must not show "40 + 20" to "40 + 27".)
+  const printed = (e: Example) => numbersOf([e.question, ...e.methods.flatMap((m) => m.lines)].join(" "));
+  const example = list?.find((e) => free(e) && printed(e).every((n) => !avoid.includes(n))) ?? list?.find((e) => free(e) && e.nums.every((n) => !avoid.includes(n))) ?? list?.find(free);
   if (!example) return null;
   return { kind: "methods", ids: [pairKey(pair)], question: example.question, methods: example.methods.map((m) => ({ label: m.label, lines: m.lines })) };
 }

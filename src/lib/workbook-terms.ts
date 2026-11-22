@@ -17,7 +17,7 @@ export interface Term {
 }
 
 export const TERMS: readonly Term[] = [
-  { id: "acute-obtuse", pattern: /\b(?:acute|obtuse)\b/i, taughtBy: "6.13-classify-angles#1", term: "acute, right and obtuse angles",
+  { id: "acute-obtuse", pattern: /\b(?:acute|obtuse)\b|\bright angles?\b/i, taughtBy: "6.13-classify-angles#1", term: "acute, right and obtuse angles",
     meaning: "Acute is smaller than a square corner. Right is a square corner. Obtuse is bigger than a square corner, under half a turn." },
   { id: "straight-reflex", pattern: /\breflex\b|\bstraight angles?\b/i, taughtBy: "6.13-classify-angles#2", term: "straight and reflex angles",
     meaning: "A straight angle is half a turn: a straight line. A reflex angle is more than half a turn and less than a full turn." },

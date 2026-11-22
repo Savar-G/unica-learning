@@ -61,6 +61,12 @@ describe("a method pair's worked example", () => {
     expect(methodIntro(pair, [], all)).toBeNull();
   });
 
+  it("keeps the steps between out too: 40 + 27 is not shown 40 + 20", () => {
+    const intro = methodIntro(["add the tens, then the ones", "make a friendly number first"], [40, 27])!;
+    expect(intro.question).toBe("36 + 29 = ?");
+    expect(JSON.stringify(intro.methods)).not.toMatch(/\b(?:40|27)\b/);
+  });
+
   it("keeps a question's numbers out when it can", () => {
     const first = methodIntro(["add the tens, then the ones", "make a friendly number first"], [])!;
     const again = methodIntro(["add the tens, then the ones", "make a friendly number first"], [47, 28, 75])!;

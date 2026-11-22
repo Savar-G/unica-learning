@@ -90,8 +90,12 @@ export function twoWaysMethods(p: TwoWaysInput): MethodPair | null {
   // From U10 a sum or difference of numbers under 20 is a fact to know, not one to work out two ways (the U19 proof's
   // "4 + 15", Luis 2026-11-18). (U4 to U9 keep earlyMethods, where these small facts are the point.)
   if (["add", "subtract", "missing-addend"].includes(kind) && Math.max(0, ...numbers) < 20) return null;
-  // A times-table fact (7 × 8, 56 ÷ 7, 7 × ? = 56) is a fact to know, not one to work out two ways (Cedric, 2026-11-21).
-  if (["multiply", "divide", "missing-factor"].includes(kind) && timesFact(kind, numbers)) return null;
+  // A times-table fact (7 × 8, 56 ÷ 7, 7 × ? = 56, 56 = 7 × ?) is a fact to know, not one to work out two ways (Cedric,
+  // 2026-11-21). The factors are found from the equation, not from the order the numbers print in; unclear ones give no pair.
+  if (["multiply", "divide", "missing-factor"].includes(kind)) {
+    const parts = kind === "multiply" ? factorsOf(p, numbers) : kind === "divide" ? divideOperands(p.text, numbers) : missingFactorOperands(p.text, numbers);
+    if (!parts || timesFact(kind, parts)) return null;
+  }
   switch (kind) {
     case "add": case "missing-addend":
       return ["add the tens, then the ones", "make a friendly number first"];
@@ -122,13 +126,26 @@ function factorsOf(p: Pick<TwoWaysInput, "text" | "operation">, numbers: readonl
   return numbers.length === 2 ? [numbers[0], numbers[1]] : null;
 }
 
-/** A times-table fact: both factors, or the divisor and the quotient, are 12 or less. */
-function timesFact(kind: string, numbers: readonly number[]): boolean {
-  if (numbers.length < 2) return false;
-  if (kind === "multiply") return numbers.every((n) => n <= 12);
-  const [a, b] = numbers;
-  const [by, whole] = kind === "divide" ? [b, a] : [a, b];
-  return whole % by === 0 && by <= 12 && whole / by <= 12;
+/** The dividend and the divisor of a division: "a ÷ b" in the text, else the question's only two numbers; null when unclear. */
+function divideOperands(text: string, numbers: readonly number[]): [number, number] | null {
+  const m = /(\d[\d,]*)\s*÷\s*(\d[\d,]*)/.exec(text);
+  if (m) return [Number(m[1].replace(/,/g, "")), Number(m[2].replace(/,/g, ""))];
+  return numbers.length === 2 ? [numbers[0], numbers[1]] : null;
+}
+
+/** The known factor and the total of "k × ? = t", "? × k = t" or "t = k × ?", wherever the numbers print; null when unclear. */
+function missingFactorOperands(text: string, numbers: readonly number[]): [number, number] | null {
+  const m = /(\d[\d,]*)\s*×\s*\?|\?\s*×\s*(\d[\d,]*)/.exec(text);
+  const known = m ? Number((m[1] ?? m[2]).replace(/,/g, "")) : NaN;
+  const rest = numbers.filter((n) => n !== known);
+  return Number.isNaN(known) || rest.length !== 1 ? null : [known, rest[0]];
+}
+
+/** A times-table fact: both factors, or the divisor and the quotient (`parts`: factors; dividend then divisor; known factor then total), are 12 or less. */
+function timesFact(kind: string, parts: readonly [number, number]): boolean {
+  if (kind === "multiply") return parts.every((n) => n <= 12);
+  const [whole, by] = kind === "divide" ? parts : [parts[1], parts[0]];
+  return by > 0 && whole % by === 0 && by <= 12 && whole / by <= 12;
 }
 
 /**

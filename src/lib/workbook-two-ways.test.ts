@@ -14,7 +14,10 @@ describe("the two methods of a Use 2 ways question fit the question", () => {
   });
 
   it("leaves times-table facts to be known, not worked two ways, from U10", () => {
-    for (const text of ["7 × 8 = ?", "56 ÷ 7 = ?", "7 × ? = 56"]) expect(twoWaysMethods(q(text))).toBeNull();
+    for (const text of ["7 × 8 = ?", "56 ÷ 7 = ?", "7 × ? = 56", "56 = 7 × ?", "? × 7 = 56"]) expect(twoWaysMethods(q(text)), text).toBeNull();
+    expect(twoWaysMethods(q("56 = 17 × ?"))).toEqual(["divide", "count up in groups"]);
+    // A division story with more numbers than its two is unclear: no pair.
+    expect(twoWaysMethods(q("Mia has 120 stickers and 3 albums. She shares them equally among 4 friends. How many does each get?"))).toBeNull();
     expect(twoWaysMethods(q("4,368 ÷ 6 = ?"))).toEqual(["share in groups", "use a times fact"]);
   });
 
