@@ -106,10 +106,18 @@ function patternExamples(key: string, ways: (a: string[], b: string[]) => [Metho
   return out;
 }
 
-/** The "Use 2 ways" strip of a pair: its first example that prints none of the question's numbers, or null. */
-export function methodIntro(pair: MethodPair, avoid: readonly number[]): Intro | null {
+/** A question's text as the book's tasks compare it: no spaces, one minus sign. */
+export const taskText = (text: string): string => text.toLowerCase().replace(/\s+/g, "").replace(/[−–]/g, "-");
+
+/**
+ * The "Use 2 ways" strip of a pair: its first example that prints none of the question's numbers and is no question of the
+ * book (`taken`, by taskText: a printed answer must never be another question's), else the first that is no question
+ * of the book, else the first; null for a pair with no example.
+ */
+export function methodIntro(pair: MethodPair, avoid: readonly number[], taken: ReadonlySet<string> = new Set()): Intro | null {
   const list = candidates(pair);
-  const example = list?.find((e) => e.nums.every((n) => !avoid.includes(n))) ?? list?.[0];
+  const free = (e: Example) => !taken.has(taskText(e.question));
+  const example = list?.find((e) => free(e) && e.nums.every((n) => !avoid.includes(n))) ?? list?.find(free) ?? list?.[0];
   if (!example) return null;
   return { kind: "methods", ids: [pairKey(pair)], question: example.question, methods: example.methods.map((m) => ({ label: m.label, lines: m.lines })) };
 }

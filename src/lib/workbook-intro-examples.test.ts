@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
-import { methodIntro, pairKey } from "./workbook-intro-examples";
+import { methodIntro, pairKey, taskText } from "./workbook-intro-examples";
 import { twoWaysMethods, type MethodPair } from "./workbook-two-ways";
 
 /** Every pair a question of U10 and up can be given, found by asking about one question of each kind. */
@@ -48,6 +48,14 @@ describe("a method pair's worked example", () => {
       expect(intro.methods!.map((m) => m.label)).toEqual([...pair]);
       for (const m of intro.methods!) for (const line of m.lines) expect(wrongEquation(line), `${pairKey(pair)}: ${line}`).toBeNull();
     }), { numRuns: 200 });
+  });
+
+  it("never prints another question of the book as its example", () => {
+    const pair: MethodPair = ["add the tens, then the ones", "make a friendly number first"];
+    const taken = new Set([taskText("47 + 28 = ?"), taskText("36 + 29 = ?")]);
+    const intro = methodIntro(pair, [], taken)!;
+    expect(taken.has(taskText(intro.question!))).toBe(false);
+    expect(intro.question).toBe("58 + 25 = ?");
   });
 
   it("keeps a question's numbers out when it can", () => {

@@ -99,15 +99,27 @@ export function twoWaysMethods(p: TwoWaysInput): MethodPair | null {
       return ["take away the tens, then the ones", "count up from the smaller number"];
     case "multiply": {
       // A tens product (60 × 7) strips the zeros; a number just under a ten (19 × 6) rounds up. Any other product has no
-      // second method here (Cedric, 2026-11-21: "round up, then take away" for non-round factors only).
-      if (numbers.some((n) => n >= 20 && n % 10 === 0)) return ["split a number into parts", "use a fact you know, then the zeros"];
-      if (numbers.some((n) => n >= 18 && n < 100 && n % 10 >= 8)) return ["split a number into parts", "round up, then take away"];
+      // second method here (Cedric, 2026-11-21: "round up, then take away" for non-round factors only). Only the two
+      // factors count: "13 boxes with 14 books each" is not a tens product because the story also says 20.
+      const factors = factorsOf(p, numbers);
+      if (!factors) return null;
+      if (factors.some((n) => n >= 20 && n % 10 === 0)) return ["split a number into parts", "use a fact you know, then the zeros"];
+      if (factors.some((n) => n >= 18 && n < 100 && n % 10 >= 8)) return ["split a number into parts", "round up, then take away"];
       return null;
     }
     case "divide": return ["share in groups", "use a times fact"];
     case "missing-factor": return ["divide", "count up in groups"];
     default: return null;
   }
+}
+
+/** The two factors of a product: its operation's, else "a × b" in the text, else the question's only two numbers; null when unclear. */
+function factorsOf(p: Pick<TwoWaysInput, "text" | "operation">, numbers: readonly number[]): [number, number] | null {
+  const op = p.operation;
+  if (op && op.kind === "multiply" && typeof op.operands[0] === "number" && typeof op.operands[1] === "number") return [op.operands[0], op.operands[1]];
+  const times = /(\d[\d,]*)\s*×\s*(\d[\d,]*)/.exec(p.text);
+  if (times) return [Number(times[1].replace(/,/g, "")), Number(times[2].replace(/,/g, ""))];
+  return numbers.length === 2 ? [numbers[0], numbers[1]] : null;
 }
 
 /** A times-table fact: both factors, or the divisor and the quotient, are 12 or less. */

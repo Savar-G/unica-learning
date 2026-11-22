@@ -7,7 +7,7 @@ import type { GeneratedPage } from "./workbook-generator";
 import type { Intro, PageContent } from "./workbook-page";
 import type { QuestionPackage } from "./question-package";
 import type { BookIssue } from "./workbook-quality";
-import { methodIntro, pairKey } from "./workbook-intro-examples";
+import { methodIntro, pairKey, taskText } from "./workbook-intro-examples";
 import { termsIntro, TERMS } from "./workbook-terms";
 import { TWO_WAYS_LEVELS, twoWaysByKind, twoWaysMethods } from "./workbook-two-ways";
 
@@ -24,13 +24,13 @@ const emptyLedger = (): Ledger => ({ methods: new Set(), words: new Set(), taugh
 type Asked = { n: number; text: string; templateId: string | null; operation: QuestionPackage["operation"]; level: number };
 
 /** The strips a block's questions need beyond what the ledger holds (and the ledger takes them), with why; and the questions that have no pair. */
-function needs(ledger: Ledger, slot: string, asked: readonly Asked[]): { strips: Intro[]; reasons: string[]; noPair: Asked[] } {
+function needs(ledger: Ledger, slot: string, asked: readonly Asked[], taken: ReadonlySet<string>): { strips: Intro[]; reasons: string[]; noPair: Asked[] } {
   const strips: Intro[] = [], reasons: string[] = [], noPair: Asked[] = [];
   if (slot === "solve-it-two-ways") for (const q of asked) {
     const pair = twoWaysMethods(q);
     if (!pair && twoWaysByKind(q)) noPair.push(q);
     if (!pair || ledger.methods.has(pairKey(pair))) continue;
-    const strip = methodIntro(pair, (q.text.match(/\d+/g) ?? []).map(Number));
+    const strip = methodIntro(pair, (q.text.match(/\d+/g) ?? []).map(Number), taken);
     if (!strip) continue;
     strips.push(strip);
     ledger.methods.add(pairKey(pair));
@@ -51,6 +51,8 @@ export function introIssues(pages: readonly GeneratedPage[], levels: ReadonlySet
   if (!pages.some((p) => p.type === "cover")) return [];
   const ledger = emptyLedger();
   const issues: BookIssue[] = [];
+  // (An example's answer is printed: no other question of the book may be the example's task.)
+  const taken = new Set(pages.flatMap((p) => p.questions.flatMap((q) => (q.package ? [taskText(q.package.text)] : []))));
   for (const p of [...pages].sort((a, b) => a.number - b.number)) {
     const c = p.content;
     if (c?.kind !== "day") continue;
@@ -62,7 +64,7 @@ export function introIssues(pages: readonly GeneratedPage[], levels: ReadonlySet
       for (const intro of b.intro ?? []) if (!unused.includes(intro)) for (const id of intro.ids) (intro.kind === "methods" ? ledger.methods : ledger.words).add(id);
       if (b.step && TEACHING.has(b.slot)) ledger.taught.add(b.step);
       if (!levels.has(c.level)) return;
-      const { strips, reasons, noPair } = needs(ledger, b.slot, asked);
+      const { strips, reasons, noPair } = needs(ledger, b.slot, asked, taken);
       const replace = strips.some((s) => s.kind === "methods") ? unused : [];
       for (const intro of unused) if (!replace.includes(intro)) for (const id of intro.ids) ledger.methods.add(id);
       for (const q of noPair) issues.push({ page: p.number, kind: "coverage", reason: `question ${q.n} asks for 2 ways but has no two methods of its kind ("${q.text}")` });
@@ -100,6 +102,7 @@ export function withPlanned<C extends PageContent | null>(content: C, work: obje
  */
 export function planIntros<W extends PlannedWork>(work: readonly W[], level: number, packageOf: (w: W, slot: W["slots"][number]) => QuestionPackage | null): void {
   const ledger = emptyLedger();
+  const taken = new Set(work.flatMap((w) => w.slots.flatMap((s) => { const q = packageOf(w, s); return q ? [taskText(q.text)] : []; })));
   for (const w of [...work].sort((a, b) => a.number - b.number)) {
     planned.delete(w);
     for (const [k, x] of (w.layout?.slots ?? []).entries()) {
@@ -111,7 +114,7 @@ export function planIntros<W extends PlannedWork>(work: readonly W[], level: num
       const guess: Asked = { n: 1, text: "47 + 28 = ?", templateId: null, operation: null, level };
       const asked = slots.flatMap((s, n) => { const q = packageOf(w, s); return q ? [{ ...q, n: n + 1 }] : x.slot === "solve-it-two-ways" ? [guess] : []; });
       // (Methods only: a word's strip is the whole-book repair's, so a page that has no room for it is reported, never a capacity error.)
-      const strips = needs(ledger, x.slot, asked).strips.filter((t) => t.kind === "methods");
+      const strips = needs(ledger, x.slot, asked, taken).strips.filter((t) => t.kind === "methods");
       if (strips.length) planned.set(w, [...(planned.get(w) ?? []), ...strips.map((intro) => ({ layoutSlot: k, intro }))]);
     }
   }

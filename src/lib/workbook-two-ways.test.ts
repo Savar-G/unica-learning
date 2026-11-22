@@ -24,6 +24,12 @@ describe("the two methods of a Use 2 ways question fit the question", () => {
     expect(twoWaysMethods(q("318 × 7 = ?"))).toBeNull();
   });
 
+  it("reads the zeros method off the factors, not off every number a story prints", () => {
+    expect(twoWaysMethods(q("Mia has 20 boxes. She fills 13 boxes with 14 books each. How many books does she pack?"))).toBeNull();
+    expect(twoWaysMethods({ text: "Mia has 20 boxes. She packs 13 boxes of 14 books.", level: 10, templateId: null, operation: { kind: "multiply", operands: [13, 14] } })).toBeNull();
+    expect(twoWaysMethods(q("Each box holds 60 pens. How many pens are in 7 boxes? 60 × 7"))?.[1]).toBe("use a fact you know, then the zeros");
+  });
+
   it("pairs sums, differences and pattern jumps by their kind", () => {
     expect(twoWaysMethods(q("47 + 28 = ?"))?.[0]).toBe("add the tens, then the ones");
     expect(twoWaysMethods(q("74 − 38 = ?"))?.[1]).toBe("count up from the smaller number");

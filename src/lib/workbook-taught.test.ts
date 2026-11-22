@@ -119,5 +119,10 @@ describe("the word list", () => {
     expect(termsIn("Is 15 a common multiple of 3 and 5? Circle yes or no.").map((t) => t.id)).toEqual(["multiple"]);
     expect(termsIn("Which is prime? A) 26 B) 7")[0].id).toBe("prime-composite");
     expect(termsIn("Go straight ahead, then turn right.")).toEqual([]);
+    expect(termsIn("Least Common Multiple of 4 and 6?").map((t) => t.id)).toContain("lcm");
+    expect(termsIn("Greatest common factor of 12 and 18?").map((t) => t.id)).toContain("gcf");
+    const [theory] = termsIn("What is the theoretical probability of red?");
+    expect(theory.id).toBe("theoretical");
+    expect(theory.meaning).toMatch(/equally likely/);
   });
 });

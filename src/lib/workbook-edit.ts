@@ -7,6 +7,7 @@ import { personalBookIssues, reviseWorkbookPage, withPersonalIssues, WriterPersi
 import type { DraftRendering, RunActor, RunRunner, RunSolve } from "@/lib/workbook-job";
 import type { RenderProblem } from "@/lib/workbook-render";
 import { LAYOUT_REVIEW_MESSAGE, UNCHANGED_COMMENT_MESSAGE, workbookCommentChanged, workbookCommentRoute, type CommentRoute } from "@/lib/workbook-comment-route";
+import { introIssues } from "@/lib/workbook-taught";
 
 export interface ReviewComment {
   route?: CommentRoute;
@@ -110,6 +111,9 @@ export async function runWorkbookEdit(id: string, deps: EditJobDeps): Promise<"d
         const had = new Set(personalBookIssues(snapshot.input, draft.pages).map((i) => i.page));
         const added = personalBookIssues(snapshot.input, pagesNext).filter((i) => !had.has(i.page));
         if (added.length) throw new Error(`This edit was not saved: ${added[0].reason}.`);
+        // A question that would use a method or word no earlier block of the book shows is refused (workbook-taught.ts, #1214).
+        const gaps = introIssues(draft.pages), gapAdded = introIssues(pagesNext).filter((i) => !gaps.some((g) => g.page === i.page && g.kind === i.kind));
+        if (gapAdded.length) throw new Error(`This edit was not saved: ${gapAdded[0].reason}.`);
         const candidate = { ...draft, pages: pagesNext, quality: withPersonalIssues(snapshot.input, pagesNext, workbookQuality(pagesNext)) };
         const rendered = await deps.renderPage(snapshot, candidate, number);
         images.set(number, rendered.page); draft = candidate; changed++;
