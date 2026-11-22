@@ -529,10 +529,10 @@ describe.skipIf(!chromium)("answer box positions in Chromium (#1212)", () => {
     // Question 2 (a long text answer) and question 4 share the right column.
     expect(Math.abs(right(m.get("question-2-answer")) - right(m.get("question-4-answer")))).toBeLessThan(1.5);
   }, 60_000);
-  // #1215 review: long lettered options wrap below the stem in a test card, on the measured layout and on a saved legacy page.
-  it.each([true, false])("prints long lettered options below the stem of a test card (measured layout: %s)", async (consistentLayout) => {
+  // #1215 review: long lettered options wrap below the stem in a test or Challenge card, and on a saved legacy page.
+  it.each([["show-what-you-know", true], ["show-what-you-know", false], ["challenge", true]] as const)("prints long lettered options below the stem of a %s card (measured layout: %s)", async (type, consistentLayout) => {
     const draft = book("U12", 5);
-    const found = draft.pages.find((p) => p.type === "show-what-you-know" && p.content?.kind === "day")!;
+    const found = draft.pages.find((p) => p.type === type && p.content?.kind === "day")!;
     if (found.content?.kind !== "day") throw new Error("not a day page");
     const original = found.questions[0];
     const text = "Two shops sell the same jacket. Shop A has it at 25% off a $60 price and Shop B has it $12 off a $64 price. Which shop is cheaper? A) Shop A, because 25% of 60 is 15  B) Shop B, because 12 is taken off 64  Write A or B.";
