@@ -1,6 +1,6 @@
 # #1215 Asking questions clearly: before and after
 
-Synthetic pages only (made-up questions, no family data), rendered with the real template in Chromium at level 19 on the measured layout. Each `before-*` image is `origin/main` (`dcaaab8a`); each `after-*` is this branch.
+Synthetic pages only (made-up questions, no family data), rendered with the real template in Chromium at level 19 on the measured layout. Each `before-*` image is `origin/main` (`13427448`, after #1212 and #1213); each `after-*` is this branch.
 
 | Item | Before | After |
 |---|---|---|
