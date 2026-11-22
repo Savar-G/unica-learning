@@ -1,7 +1,8 @@
+import fc from "fast-check";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  addMonths, effectiveZone, familyMoment, familyZone, familyZoneName, familyTime, familyWhen, formatCalendarDate, localDay, localMonth, localWeekStart,
-  monthOf, PACIFIC_ZONE, warnIfTimeZoneDataIsOld, zoneFor,
+  addDays, addMonths, effectiveZone, familyMoment, familyZone, familyZoneName, familyTime, familyWhen, formatCalendarDate, localDateTime, localDay, localMonth, localWeekStart,
+  monthOf, PACIFIC_ZONE, warnIfTimeZoneDataIsOld, weekStartFor, zoneFor,
 } from "@/lib/family-time";
 
 afterEach(() => vi.restoreAllMocks());
@@ -322,5 +323,57 @@ describe("calendar months in family time (monthly summary, #562)", () => {
     expect(addMonths("2026-05", 0)).toBe("2026-05");
     expect(() => addMonths("2026-13", 1)).toThrow(RangeError);
     expect(() => addMonths("26-01", 1)).toThrow(RangeError);
+  });
+});
+
+describe("property invariants across Canadian zones and DST boundaries", () => {
+  const ZONES = [
+    PACIFIC_ZONE,
+    "America/Edmonton",
+    "America/Regina",
+    "America/Winnipeg",
+    "America/Toronto",
+    "America/Halifax",
+    "America/St_Johns",
+    "America/Yellowknife",
+  ] as const;
+  const arbZone = fc.constantFrom(...ZONES);
+  const arbDay = fc
+    .integer({ min: Date.UTC(2025, 0, 1), max: Date.UTC(2028, 11, 31) })
+    .map((ms) => new Date(ms).toISOString().slice(0, 10));
+
+  it("addDays is invertible and weekStartFor always lands on Monday <= day within 6 days", () => {
+    fc.assert(
+      fc.property(arbDay, fc.integer({ min: -400, max: 400 }), (day, delta) => {
+        expect(addDays(addDays(day, delta), -delta)).toBe(day);
+        const start = weekStartFor(day);
+        expect(new Date(`${start}T12:00:00Z`).getUTCDay()).toBe(1);
+        expect(start <= day).toBe(true);
+        const diffDays = Math.round((Date.parse(`${day}T12:00:00Z`) - Date.parse(`${start}T12:00:00Z`)) / 86_400_000);
+        expect(diffDays).toBeGreaterThanOrEqual(0);
+        expect(diffDays).toBeLessThanOrEqual(6);
+      }),
+      { numRuns: 150 },
+    );
+  });
+
+  it("localDay is monotonic across instants and localDateTime always resolves to a finite instant on that local day", () => {
+    fc.assert(
+      fc.property(
+        arbZone,
+        fc.integer({ min: Date.UTC(2025, 0, 1), max: Date.UTC(2028, 11, 31) }),
+        fc.integer({ min: 0, max: 30 * 86_400_000 }),
+        arbDay,
+        fc.integer({ min: 0, max: 23 }),
+        fc.integer({ min: 0, max: 59 }),
+        (zone, t1, step, day, hour, minute) => {
+          expect(localDay(t1, zone) <= localDay(t1 + step, zone)).toBe(true);
+          const resolved = localDateTime(day, zone, hour, minute);
+          expect(Number.isFinite(resolved)).toBe(true);
+          expect(localDay(resolved, zone)).toBe(day);
+        },
+      ),
+      { numRuns: 150 },
+    );
   });
 });

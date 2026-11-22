@@ -32,6 +32,10 @@ function binPath(rootDir, name) {
 export function buildChecks(rootDir) {
   return [
     {
+      name: "repo-guard",
+      steps: [{ cmd: process.execPath, args: ["scripts/repo-guard.mjs"] }],
+    },
+    {
       name: "oxlint",
       steps: [{ cmd: binPath(rootDir, "oxlint"), args: ["src", "worker/maya-voice/src", "scripts/workbook-worker.ts", "scripts/retention-worker.ts"] }],
     },

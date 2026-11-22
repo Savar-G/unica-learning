@@ -219,6 +219,9 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
         timeout-minutes: 5
+      - name: Architectural guardrails
+        run: npm run check:guard
+        timeout-minutes: 1
       - name: Fast lint (Oxlint)
         run: npx oxlint src worker/maya-voice/src scripts/workbook-worker.ts scripts/retention-worker.ts
         timeout-minutes: 2
@@ -237,7 +240,7 @@ jobs:
         run: node scripts/build-retention-worker.mjs && node --conditions=react-server .retention/worker.mjs --help
         timeout-minutes: 2
       - name: CI tooling self-tests
-        run: node --test .github/scripts/unit-shards.test.mjs .github/scripts/pr-scope.test.mjs scripts/ci-audit.test.mjs scripts/pre-push-check.test.mjs
+        run: node --test .github/scripts/unit-shards.test.mjs .github/scripts/pr-scope.test.mjs scripts/ci-audit.test.mjs scripts/pre-push-check.test.mjs scripts/repo-guard.test.mjs
         timeout-minutes: 2
 
   # The root tsconfig.json excludes worker/, so the Maya voice worker's own type check and tests run here.
@@ -260,6 +263,9 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
         timeout-minutes: 5
+      - name: Architectural guardrails
+        run: npm run check:guard
+        timeout-minutes: 1
       - name: Voice worker lint (Oxlint)
         run: npx oxlint worker/maya-voice/src
         timeout-minutes: 2
