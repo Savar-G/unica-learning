@@ -45,6 +45,17 @@ function oneOfEach(draft: WorkbookDraft): WorkbookDraft {
   return { ...draft, pages };
 }
 
+/** The options row of the first question sits inside the question and below its first line: stacked under the stem, never beside it. */
+function expectOptionsBelowStem(result: Awaited<ReturnType<typeof renderWorkbook>>) {
+  if (result.status !== "rendered") throw new Error("not rendered");
+  const q = result.workbook.pages[0].questions[0];
+  const options = q.regions?.find((r) => r.id === "answer")?.box;
+  if (!q.box || !options) throw new Error("the options row was not measured");
+  expect(options.y).toBeGreaterThan(q.box.y + q.box.height * 0.1);
+  expect(options.y + options.height).toBeLessThanOrEqual(q.box.y + q.box.height + 1);
+  expect(options.x).toBeGreaterThanOrEqual(q.box.x);
+}
+
 describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
   it.each([3, 5, 7].flatMap(reviewFrom => [0, 4, 12].map(extraGap => [reviewFrom, extraGap])))("keeps split practice labels consistent (review from %i, extra gap %i)", async (reviewFrom, extraGap) => {
     const draft = book("U4", 1);
@@ -409,6 +420,7 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
       regions: [{ id: "answer", kind: "choice" as const, mark: "circle" as const, label: null, choices: ["A", "B"], answer: "A" }] } } };
     const result = await renderWorkbook({ draft: { ...draft, pages: [{ ...page, questions: [lettered, ...page.questions.slice(1)] }] }, parentId: PARENT, template, engine });
     expect(result.status, JSON.stringify(result.status === "failed" ? result.problems : null)).toBe("rendered");
+    expectOptionsBelowStem(result);
   }, 120_000);
 });
 
@@ -544,5 +556,6 @@ describe.skipIf(!chromium)("answer box positions in Chromium (#1212)", () => {
       blocks: found.content.blocks.map((b) => ({ ...b, items: b.items.filter((n) => keep.includes(n)) })).filter((b) => b.items.length) } };
     const result = await renderWorkbook({ draft: { ...draft, pages: [page] }, parentId: PARENT, template, engine });
     expect(result.status, JSON.stringify(result.status === "failed" ? result.problems : null)).toBe("rendered");
+    expectOptionsBelowStem(result);
   }, 120_000);
 });
