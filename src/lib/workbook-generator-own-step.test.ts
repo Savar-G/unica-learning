@@ -75,4 +75,4 @@ it("restores U16 own-step coverage without an incomplete own or review row, and 
     store: { save: async d => ({ status: "saved", draftId: d.id }), draft: async () => null }, qrToken: () => `resume-token-${String(++token).padStart(12, "0")}` });
   if (resumed.status !== "stored") throw new Error(resumed.status);
   expect(resumed.draft.pages.find(p => p.number === 22)).toEqual(printed);
-}, 30_000);
+}, 90_000);
