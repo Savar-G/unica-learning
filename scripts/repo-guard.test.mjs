@@ -135,7 +135,7 @@ test("ignores useEffect mentions inside comments and ignores generated DB files"
   }
 });
 
-test("preserves string literals containing /* when stripping comments so following code stays checked", () => {
+test("preserves string and regex literals when stripping comments", () => {
   const root = makeTempRepo({
     ...CLEAN_FILES,
     "src/components/upload.tsx": [
@@ -143,6 +143,10 @@ test("preserves string literals containing /* when stripping comments so followi
       'const mime = "image/*";',
       "export function Upload() { useEffect(() => {}, []); return <input accept={mime} />; }",
       "/* Upload UI */",
+    ].join("\n"),
+    "src/components/regex-comment.tsx": [
+      'export const quote = /"/;',
+      "// useEffect(() => {}, []);",
     ].join("\n"),
     "src/lib/mime-escape.ts": [
       'const mime = "image/*";',

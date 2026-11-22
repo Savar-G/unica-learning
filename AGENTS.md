@@ -16,18 +16,17 @@ Personalized math learning program with mailed paper workbooks for ages 5–14 (
 
 ## Agent skills
 
-- **Installed skills:** `.agents/skills/` (symlinked in `.claude/skills/`, pinned in `skills-lock.json`; update with `npx skills update`, link other harnesses with `npx skills experimental_install -a <agent>`).
-- **Issue tracker:** GitHub Issues on `Savar-G/unica-learning` via `gh` CLI (`docs/agents/issue-tracker.md`).
+- **Installed skills:** `.agents/skills/` (symlinked in `.claude/skills/`, `skills-lock.json`; `npx skills update`).
+- **Issue tracker:** `Savar-G/unica-learning` via `gh` (`docs/agents/issue-tracker.md`).
 - **Triage labels:** `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix` (`docs/agents/triage-labels.md`).
 - **Domain docs:** `.design/decisions.md` (ADRs), `DESIGN.md`, `CONTEXT.md` (`docs/agents/domain.md`).
-- **Delegates:** Read `docs/agents/delegate-brief.md` before delegated PR work.
-- **Feature map & verification:** `docs/feature-map.md` (canonical route map), `docs/agents/verify-app.md` (cold-start runtime checks).
+- **Delegates, routes & verification:** `docs/agents/delegate-brief.md`, `docs/feature-map.md`, `docs/agents/verify-app.md`.
 
 ## Code & test discipline
 
-- **Small, modular code:** Prefer minimal, direct edits and focused files; `npm run check:guard` (`scripts/repo-guard.mjs`) enforces monolith ceilings, `useEffect`/suppression ratchets, route mapping, and banned patterns.
-- **Tests (Vitest, `src/**/*.test.ts`):** Test public interfaces with in-memory seams, injected clocks, and `fast-check` for pure invariants. Clear mocks/storage before each test, restore stubs after, and run changed tests shuffled (`--sequence.shuffle`).
-- **No test sprawl:** Add tests to the module's existing `<name>.test.ts` (never ticket-, fix-, or regression-named files; enforced by `check:guard`). Test behavior and real invariants—no duplicate assertions or prose-grepping tests.
+- **Small, modular code:** Prefer minimal edits and focused files; `npm run check:guard` (`scripts/repo-guard.mjs`) enforces monolith ceilings, `useEffect`/suppression ratchets, route mapping, and banned patterns.
+- **Tests (`src/**/*.test.ts`):** Test public interfaces with in-memory seams, injected clocks, and `fast-check` for pure invariants. Clear mocks/storage before each test, restore stubs after, and run changed tests shuffled (`--sequence.shuffle`).
+- **No test sprawl:** Add tests to the module's existing `<name>.test.ts` (never ticket-, fix-, or regression-named files; enforced by `check:guard`). Test behavior and real invariants—no duplicate assertions or prose-grepping.
 - **Concise plans:** Sacrifice grammar for concision; end every plan with unresolved questions.
 
 ## Git, PRs & Vercel

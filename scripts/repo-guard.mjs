@@ -19,6 +19,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import ts from "typescript";
 
 export const DEFAULT_MAX_LINES = 600;
 export const AGENTS_MD_MAX_LINES = 150;
@@ -57,77 +58,19 @@ function walkFiles(rootDir, relDir, out = []) {
   return out;
 }
 
-export function stripCommentsPreservingStrings(text) {
-  let out = "";
-  let i = 0;
-  let quote = null;
-  let templateDepth = 0;
-  const braceStack = [];
+const COMMENT_FREE_PRINTER = ts.createPrinter({ removeComments: true });
 
-  while (i < text.length) {
-    const ch = text[i];
-    const next = text[i + 1];
-
-    if (quote) {
-      out += ch;
-      if (ch === "\\" && i + 1 < text.length) {
-        out += next;
-        i += 2;
-        continue;
-      }
-      if (quote === "`" && ch === "$" && next === "{") {
-        out += next;
-        templateDepth++;
-        braceStack.push(0);
-        quote = null;
-        i += 2;
-        continue;
-      }
-      if (ch === quote) quote = null;
-      i++;
-      continue;
-    }
-
-    if (ch === "/" && next === "/") {
-      i += 2;
-      while (i < text.length && text[i] !== "\n") i++;
-      continue;
-    }
-    if (ch === "/" && next === "*") {
-      i += 2;
-      while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) {
-        if (text[i] === "\n") out += "\n";
-        i++;
-      }
-      i += 2;
-      continue;
-    }
-
-    if (ch === "'" || ch === '"' || ch === "`") {
-      quote = ch;
-      out += ch;
-      i++;
-      continue;
-    }
-
-    if (templateDepth > 0) {
-      if (ch === "{") {
-        braceStack[braceStack.length - 1]++;
-      } else if (ch === "}") {
-        if (braceStack[braceStack.length - 1] === 0) {
-          braceStack.pop();
-          templateDepth--;
-          quote = "`";
-        } else {
-          braceStack[braceStack.length - 1]--;
-        }
-      }
-    }
-
-    out += ch;
-    i++;
-  }
-  return out;
+export function stripCommentsPreservingStrings(text, fileName = "file.tsx") {
+  if (!text.includes("//") && !text.includes("/*")) return text;
+  const scriptKind = fileName.endsWith(".tsx")
+    ? ts.ScriptKind.TSX
+    : fileName.endsWith(".jsx")
+      ? ts.ScriptKind.JSX
+      : fileName.endsWith(".js") || fileName.endsWith(".mjs")
+        ? ts.ScriptKind.JS
+        : ts.ScriptKind.TS;
+  const sourceFile = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, false, scriptKind);
+  return COMMENT_FREE_PRINTER.printFile(sourceFile);
 }
 
 export function pageFileToRoute(relPath) {
@@ -178,7 +121,11 @@ export function scanRepo(rootDir) {
     const lines = raw.length === 0 ? 0 : raw.split(/\r?\n/).length;
     lineCounts[relPath] = lines;
 
-    const stripped = stripCommentsPreservingStrings(raw);
+    const isUiFile = /^src\/(app|components)\//.test(relPath);
+    const needsCommentStrip = BANNED_DB_ESCAPE_RE.test(raw) || (isUiFile && USE_EFFECT_RE.test(raw));
+    USE_EFFECT_RE.lastIndex = 0;
+    const stripped = needsCommentStrip ? stripCommentsPreservingStrings(raw, relPath) : raw;
+
     const dbMatch = BANNED_DB_ESCAPE_RE.exec(stripped);
     if (dbMatch) {
       bannedDbEscapes.push({ file: relPath, match: dbMatch[0] });
@@ -188,7 +135,7 @@ export function scanRepo(rootDir) {
       brandLeaks.push(relPath);
     }
 
-    if (/^src\/(app|components)\//.test(relPath)) {
+    if (isUiFile) {
       const count = (stripped.match(USE_EFFECT_RE) ?? []).length;
       if (count > 0) useEffectCounts[relPath] = count;
     }
