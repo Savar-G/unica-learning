@@ -24,7 +24,7 @@
 // Pure TypeScript: no Next.js, React, network, database or clock.
 import type { DayContent, SlotName } from "@/lib/workbook-page";
 import type { DraftPage, FitProblem, MeasuredElement } from "@/lib/workbook-render";
-import type { QuestionPackage } from "@/lib/question-package";
+import { packageItem, type QuestionPackage } from "@/lib/question-package";
 import type { PagePlan } from "@/lib/workbook-template";
 import { questionWorkSpace } from "./workbook-work-space";
 import { answerInstruction, isWarmUpPage, workbookPageInstruction, workbookWorkLine, mergeWarmUp, WARM_UP_INSTRUCTION } from "@/lib/workbook-page-instructions";
@@ -338,6 +338,32 @@ export function choiceInstruction(questions: ChoiceQuestions): string | null {
   return kinds.length === 1 ? `Circle ${kinds[0]}.` : "Circle your answers.";
 }
 
+/** Whether a page has a question the child writes on (an answer box or writing lines), warm-up facts aside. */
+const writesAnswers = (questions: ChoiceQuestions) =>
+  questions.some(q => q.package && q.place !== "warm-up" && packageItem(q.package).regions.some(r => r.kind === "box" || r.kind === "lines"));
+
+/**
+ * The instruction for a page with choices, null with none (#1215). A page of choices only names its choice kind ("Circle
+ * true or false."); a page that also has questions to write on says what each kind asks ("Write in boxes. Circle one
+ * choice."), never the choice alone: "Circle true or false." printed over a page with one true or false question.
+ */
+export function choicePageInstruction(questions: ChoiceQuestions): string | null {
+  const choice = choiceInstruction(questions);
+  return choice && writesAnswers(questions) ? answerInstruction(questions) : choice;
+}
+
+/**
+ * The short form of the same instruction, to follow a line the page already has ("Things you learned before, then five
+ * with no hints. Write or circle."): the large type's one line has no room for the long form (#1215).
+ */
+export function choiceAddOn(questions: ChoiceQuestions): string | null {
+  const choice = choiceInstruction(questions);
+  if (!choice || !writesAnswers(questions)) return choice;
+  const tick = questions.some(q => q.package && q.place !== "warm-up" && packageItem(q.package).regions.some(r => r.kind === "choice" && r.mark === "tick"));
+  const circle = circled(questions).length > 0;
+  return circle && tick ? "Write, circle or tick." : tick ? "Write or tick." : "Write or circle.";
+}
+
 /** Check 5: every circled page says "circle" and names each printed choice kind (true or false, yes or no, any other). */
 export function circleProblem(content: DayContent | null | undefined, questions: readonly { package: QuestionPackage | null; place?: string | null }[]): string | null {
   if (!content) return null;
@@ -353,6 +379,10 @@ export function circleProblem(content: DayContent | null | undefined, questions:
       : "the page instruction does not match its boxed, circled and ticked answers";
   }
   if (warmUp) return null;
+  // (The instruction that names every kind of answer the page prints: "Write in boxes. Circle one choice.")
+  if (choiceKinds(questions).length && [answerInstruction(questions), choiceAddOn(questions)].some(line => line && instruction.includes(line))) return null;
+  if (circled(questions).length && writesAnswers(questions) && !/\b(?:write|fill|boxes|box|lines?|spaces?)\b/i.test(instruction))
+    return "the page has questions to write on, but its instruction names only circling";
   if (circled(questions).length && !/\bcircle\b/i.test(instruction)) return "the page has a question to circle, but its instruction does not say to circle";
   // (Every kind, other choices too: "Circle true or false" on a page that also prints never/sometimes/always passed,
   // Codex on #633.)

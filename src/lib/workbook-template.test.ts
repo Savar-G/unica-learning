@@ -590,6 +590,51 @@ describe("a pattern item's choices", () => {
   });
 });
 
+// #1215: "Which is prime? A) 22 B) 17 Write A or B." printed its options inline with a loose "A B" beside it.
+describe("lettered choices", () => {
+  const lettered = (text: string, answer: "A" | "B") => {
+    const draft = book("U16"), p = first(draft, "practice");
+    if (p.content?.kind !== "day") throw new Error("not a day");
+    const original = p.questions[0];
+    const question = { ...original, package: { ...original.package, text, item: { format: "circle" as const, scorable: true, parentChecked: false, error: null, checks: [],
+      regions: [{ id: "answer", kind: "choice" as const, mark: "circle" as const, label: null, choices: ["A", "B"], answer }] } } };
+    const page = { ...p, questions: [question, ...p.questions.slice(1)] };
+    return { root: parsedPage(workbookTemplate().page(page, { qr: "", qrUrl: "" }, draft)!), n: question.number };
+  };
+
+  it("prints the question once and each option as its own circle target", () => {
+    const { root, n } = lettered("Which is prime? A) 22  B) 17  Write A or B.", "B");
+    const words = root.querySelector(`[data-measure="question-${n}-content"]`)?.textContent;
+    expect(words).toBe("Which is prime?");
+    const targets = [...root.querySelectorAll(`[data-measure="question-${n}-answer"] .co`)].map(x => x.textContent);
+    expect(targets).toEqual(["A)22", "B)17"]);
+    expect(root.querySelector(`[data-measure="question-${n}"]`)?.textContent).not.toMatch(/Write A or B/);
+  });
+
+  // CodeRabbit on #1230: a warm-up fact row has no room for an options row, so it keeps the sentence whole and circles A or B.
+  it.each(["Which is prime? A) 22  B) 17  Write A or B.", "Which is prime? A) 22  B) 17  Circle A or B."])("keeps a lettered warm-up fact whole: %s", (text) => {
+    const draft = book("U8"), p = draft.pages.find((x) => x.content?.kind === "day" && x.content.blocks.some((b) => b.slot === "warm-up"))!;
+    if (p.content?.kind !== "day") throw new Error("not a day");
+    const n = p.content.blocks.find((b) => b.slot === "warm-up")!.items[0];
+    const original = p.questions.find((q) => q.number === n)!;
+    const question = { ...original, package: { ...original.package, text, item: { format: "circle" as const, scorable: true, parentChecked: false, error: null, checks: [],
+      regions: [{ id: "answer", kind: "choice" as const, mark: "circle" as const, label: null, choices: ["A", "B"], answer: "B" }] } } };
+    const page = { ...p, questions: p.questions.map((q) => (q.number === n ? question : q)) };
+    for (const consistentLayout of [false, true]) {
+      const root = parsedPage(workbookTemplate().page({ ...page, content: { ...p.content, consistentLayout } }, { qr: "", qrUrl: "" }, draft)!);
+      const row = root.querySelector(`[data-measure="question-${n}"]`)?.textContent ?? "";
+      expect(row, `consistent: ${consistentLayout}`).toContain(text);
+      expect([...root.querySelectorAll(`[data-measure="question-${n}-answer"] .co`)].map((x) => x.textContent)).toEqual(["A", "B"]);
+      expect(row.includes("Circle one"), `consistent: ${consistentLayout}`).toBe(!/circle/i.test(text));
+    }
+  });
+
+  it("prints a question that names its choices in the sentence as written", () => {
+    const { root, n } = lettered("Pattern A starts at 3. Pattern B starts at 4. Which is greater after 5 steps? Write A or B.", "A");
+    expect(root.querySelector(`[data-measure="question-${n}-content"]`)?.textContent).toContain("Write A or B.");
+  });
+});
+
 it("prints a period after each question number in every page family",()=>{
   const template=workbookTemplate();
   for(const level of ["U2","U6","U12","U22"]) {

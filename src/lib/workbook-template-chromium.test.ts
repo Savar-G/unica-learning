@@ -45,6 +45,13 @@ function oneOfEach(draft: WorkbookDraft): WorkbookDraft {
   return { ...draft, pages };
 }
 
+/** The first question's options row starts at or below the bottom of its stem's text, as printed: stacked under it, never beside it. */
+function expectOptionsBelowStem(measured: readonly { name: string; y: number; height: number }[]) {
+  const [stem, options] = ["question-1-content", "question-1-answer"].map((name) => measured.find((m) => m.name === name));
+  if (!stem || !options) throw new Error("the stem or the options row was not measured");
+  expect(options.y).toBeGreaterThanOrEqual(stem.y + stem.height - 1);
+}
+
 describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
   it.each([3, 5, 7].flatMap(reviewFrom => [0, 4, 12].map(extraGap => [reviewFrom, extraGap])))("keeps split practice labels consistent (review from %i, extra gap %i)", async (reviewFrom, extraGap) => {
     const draft = book("U4", 1);
@@ -395,6 +402,28 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
     const { data } = await sharp(proof.png).extract({ left: 0, top: 4, width: 40, height: 10 }).raw().toBuffer({ resolveWithObject: true });
     expect([data[0], data[1], data[2]]).toEqual([0xb4, 0x23, 0x18]);
   }, 120_000);
+  // #1215 review: lettered options sit above a calculation's work space, never beside it past the question column.
+  it("prints lettered options above the work space of a calculation", async () => {
+    const draft = book("U12", 4);
+    const found = draft.pages.find((p) => p.type === "practice" && p.content?.kind === "day")!;
+    if (found.content?.kind !== "day") throw new Error("not a day page");
+    // (The page keeps its first four questions: the taller question 1 would push the last ones off a full page.)
+    const keep = found.questions.slice(0, 4).map((q) => q.number);
+    const page = { ...found, questions: found.questions.filter((q) => keep.includes(q.number)),
+      content: { ...found.content, consistentLayout: true, blocks: found.content.blocks.map((b) => ({ ...b, items: b.items.filter((n) => keep.includes(n)) })).filter((b) => b.items.length) } };
+    const original = page.questions[0];
+    const lettered = { ...original, package: { ...original.package, text: "What is 468 + 357? A) 825  B) 815  Write A or B.", item: { format: "circle" as const, scorable: true, parentChecked: false, error: null, checks: [],
+      regions: [{ id: "answer", kind: "choice" as const, mark: "circle" as const, label: null, choices: ["A", "B"], answer: "A" }] } } };
+    const withOptions = { ...page, questions: [lettered, ...page.questions.slice(1)] };
+    const result = await renderWorkbook({ draft: { ...draft, pages: [withOptions] }, parentId: PARENT, template, engine });
+    expect(result.status, JSON.stringify(result.status === "failed" ? result.problems : null)).toBe("rendered");
+    // Measured on the page: the options row is below the stem's text and ends above the calculation's work space.
+    const drawn = (await printPage(withOptions, { ...draft, pages: [withOptions] })).measured;
+    expectOptionsBelowStem(drawn);
+    const at = (name: string) => drawn.find((m) => m.name === name)!;
+    const [options, space] = [at("question-1-answer"), at("workspace-1")];
+    expect(space.y).toBeGreaterThanOrEqual(options.y + options.height - 1);
+  }, 120_000);
 });
 
 // #1212: where the answer boxes print. Synthetic pages (src/lib/workbook-answer-layout-fixture.ts) in real Chromium.
@@ -514,4 +543,21 @@ describe.skipIf(!chromium)("answer box positions in Chromium (#1212)", () => {
     // Question 2 (a long text answer) and question 4 share the right column.
     expect(Math.abs(right(m.get("question-2-answer")) - right(m.get("question-4-answer")))).toBeLessThan(1.5);
   }, 60_000);
+  // #1215 review: long lettered options wrap below the stem in a test or Challenge card, and on a saved legacy page.
+  it.each([["show-what-you-know", true], ["show-what-you-know", false], ["challenge", true]] as const)("prints long lettered options below the stem of a %s card (measured layout: %s)", async (type, consistentLayout) => {
+    const draft = book("U12", 5);
+    const found = draft.pages.find((p) => p.type === type && p.content?.kind === "day")!;
+    if (found.content?.kind !== "day") throw new Error("not a day page");
+    const original = found.questions[0];
+    const text = "Two shops sell the same jacket. Shop A has it at 25% off a $60 price and Shop B has it $12 off a $64 price. Which shop is cheaper? A) Shop A, because 25% of 60 is 15  B) Shop B, because 12 is taken off 64  Write A or B.";
+    const lettered = { ...original, package: { ...original.package, text, item: { format: "circle" as const, scorable: true, parentChecked: false, error: null, checks: [],
+      regions: [{ id: "answer", kind: "choice" as const, mark: "circle" as const, label: null, choices: ["A", "B"], answer: "A" }] } } };
+    // (Three questions: the taller question 1 would push the later ones off a full page.)
+    const keep = found.questions.slice(0, 3).map((q) => q.number);
+    const page = { ...found, questions: [lettered, ...found.questions.slice(1, 3)], content: { ...found.content, consistentLayout,
+      blocks: found.content.blocks.map((b) => ({ ...b, items: b.items.filter((n) => keep.includes(n)) })).filter((b) => b.items.length) } };
+    const result = await renderWorkbook({ draft: { ...draft, pages: [page] }, parentId: PARENT, template, engine });
+    expect(result.status, JSON.stringify(result.status === "failed" ? result.problems : null)).toBe("rendered");
+    expectOptionsBelowStem((await printPage(page, { ...draft, pages: [page] })).measured);
+  }, 120_000);
 });

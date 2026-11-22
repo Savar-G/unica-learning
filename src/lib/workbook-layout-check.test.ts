@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fakePrintEngine } from "@/lib/print-engine-fake";
-import { bottomGapLimit, choiceInstruction, circleProblem, layoutProblems, repeatedInstruction } from "@/lib/workbook-layout-check";
+import { bottomGapLimit, choiceAddOn, choiceInstruction, choicePageInstruction, circleProblem, layoutProblems, repeatedInstruction } from "@/lib/workbook-layout-check";
 import type { DayContent } from "@/lib/workbook-page";
 import { renderWorkbook, type DraftPage, type MeasuredElement } from "@/lib/workbook-render";
 import { sampleBook } from "@/lib/workbook-sample-book";
@@ -157,6 +157,34 @@ describe("the layout checks", () => {
       expect(circleProblem(c, [{ package: tick, place: "spot-the-error" }]), type).toMatch(/instruction does not name yes or no/);
       expect(circleProblem({ ...c, subtitle: "Circle yes or no." }, [{ package: tick, place: "spot-the-error" }]), type).toBeNull();
     }
+  });
+
+  // #1215: "Circle true or false." printed over a page with one true or false question and written answers.
+  it("names the written answers too on a page that mixes them with choices", () => {
+    const withRegions = (regions: unknown[], place = "on-your-own") => ({ place, package: { ...base, item: { ...base.item!, regions } } }) as { place: string; package: typeof base };
+    const circle = (choices: string[]) => ({ kind: "choice", id: "c", choices, mark: "circle", label: null, answer: choices[0] });
+    const written = withRegions([{ kind: "box", id: "answer", label: null, answer: { type: "number", value: 4 } }, { kind: "work", id: "work", label: null }]);
+    const truth = withRegions([circle(["true", "false"])]), letters = withRegions([circle(["A", "B"])]);
+    expect(choicePageInstruction([truth, truth])).toBe("Circle true or false.");
+    expect(choicePageInstruction([truth, letters])).toBe("Circle your answers.");
+    expect(choicePageInstruction([written, truth])).toBe("Write in boxes. Circle one choice.");
+    // Writing on lines counts as writing, and the instruction says where.
+    const onLines = withRegions([{ kind: "lines", id: "why", label: "How do you know?" }]);
+    expect(choicePageInstruction([onLines, truth])).toBe("Write on the lines. Circle one choice.");
+    expect(choiceAddOn([onLines, truth])).toBe("Write or circle.");
+    // A package with no stored item has the default answer box, so it is a question to write on.
+    const defaultBox = { place: "on-your-own", package: { ...base, item: undefined } } as { place: string; package: typeof base };
+    expect(choicePageInstruction([defaultBox, truth])).toBe("Write in boxes. Circle one choice.");
+    expect(choicePageInstruction([written, written])).toBeNull();
+    const c = { ...(page().content as DayContent) };
+    expect(circleProblem({ ...c, subtitle: "Circle true or false." }, [written, truth])).toMatch(/names only circling/);
+    expect(circleProblem({ ...c, subtitle: "Circle your answers." }, [written, truth, letters])).toMatch(/names only circling/);
+    expect(circleProblem({ ...c, subtitle: choicePageInstruction([written, truth])! }, [written, truth])).toBeNull();
+    // The short form for a page whose instruction line already says something else.
+    expect(choiceAddOn([written, truth])).toBe("Write or circle.");
+    expect(choiceAddOn([truth, truth])).toBe("Circle true or false.");
+    expect(circleProblem({ ...c, subtitle: "Five with no hints. Write or circle." }, [written, truth, letters])).toBeNull();
+    expect(circleProblem({ ...c, subtitle: "Circle true or false." }, [truth, truth])).toBeNull();
   });
 
   it("names each choice kind, keeps single-kind wording, and excludes warm-up and operation ticks", () => {

@@ -1,3 +1,4 @@
+import { LETTERED_CSS } from "@/lib/workbook-lettered-choices";
 // The workbook templates' style sheet (see src/lib/workbook-template.ts). Split out so the template keeps to its line limit.
 
 /** Writing lines: the first at least 36 px under its prompt, the next at least 34 px under it (DESIGN.md section 4). */
@@ -113,7 +114,6 @@ export const CSS = `
 /* A comparison: the answer box between its two numbers. */
 .cmp{display:inline-flex;align-items:flex-start;gap:10px;height:1.4em;vertical-align:top;white-space:nowrap}
 .pg{--cmp:var(--box)}
-.pg.consistent.older-extra{--cmp:88px}
 .pg.consistent .q .cmp .ab{height:var(--cmp);min-width:48px;width:48px}
 /* The row reserves the box's height under its one line of text, so the next row starts below the box. */
 .q.cmp-item{padding-bottom:calc(var(--cmp) - 1.4em + 6px)}
@@ -354,7 +354,6 @@ export const CSS = `
 .pg.consistent .chs.side3 .act{flex-direction:column;align-items:stretch;gap:8px}
 .pg.consistent .chs.side3 .act .wb{width:100%;min-width:0}
 .pg.consistent .chs.side3 .act .rg{align-self:flex-end}
-.pg.consistent.older-extra .ab{height:88px}
 /* The shading is the question's only: the work space under it is white paper. A layer behind the question paints it,
    from the card's edge to half the gap under the question, so no box moves: the card and its work space keep their size. */
 .pg.consistent .chc.plain{background:#fff}.pg.consistent .chc.plain>.top{position:relative;z-index:0}
@@ -403,4 +402,4 @@ export const CSS = `
 .pg.consistent.stretch .chs>.chc.nowork{flex:1 0 auto}
 .pg.consistent .story .act{flex:1}
 .pg.consistent .story .act .wb,.pg.consistent .chc .act .wb{height:auto!important;min-height:var(--work-min);align-self:stretch}
-`;
+` + LETTERED_CSS;

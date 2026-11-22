@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Window } from "happy-dom";
-import { answerInstruction, printedInstruction, WARM_UP_INSTRUCTION, workbookPageInstruction, workbookWorkLine, workLine, workQuestionNumbers } from "@/lib/workbook-page-instructions";
+import { answerInstruction, practiceInstruction, printedInstruction, WARM_UP_INSTRUCTION, workbookPageInstruction, workbookWorkLine, workLine, workQuestionNumbers } from "@/lib/workbook-page-instructions";
 import { circleProblem } from "@/lib/workbook-layout-check";
 import { sampleBook } from "@/lib/workbook-sample-book";
 import { workbookTemplate } from "@/lib/workbook-template";
@@ -29,6 +29,16 @@ describe("truthful printed U16 instructions",()=>{
   const p=page(qs);
   expect(circleProblem(p.content,qs)).toMatch(/does not match/);
   expect(circleProblem({...p.content,subtitle:workbookPageInstruction(p)!},qs)).toBeNull();
+ });
+ // #1215: a practice page names each kind of written answer it has, boxes and lines on their own.
+ it("names boxes, writing lines and circling separately on a practice page",()=>{
+  const lines: AnswerRegion={id:"why",kind:"lines",label:"How do you know?"};
+  const boxed=question(1,"Read the digit.",[box],"boxes"), reasoned=question(2,"Is 9 prime? How do you know?",[lines],"written-reason"), truth=question(3,"True or false?",[circle],"circle");
+  expect(practiceInstruction([boxed,truth],16,"Circle true or false.")).toEqual(["Fill in the missing numbers.","Circle true or false."]);
+  expect(practiceInstruction([reasoned,truth],16,"Circle true or false.")).toEqual(["Write on the lines.","Circle true or false."]);
+  expect(practiceInstruction([boxed,reasoned,truth],16,"Circle true or false.")).toEqual(["Fill in the missing numbers and write the answers in the boxes.","Write on the lines.","Circle true or false."]);
+  expect(practiceInstruction([boxed,reasoned],4,null)).toEqual(["Fill in the boxes.","Write on the lines."]);
+  expect(practiceInstruction([{...reasoned,place:"warm-up"} as never],16,null)).toEqual([]);
  });
  it("requires written work only for the numbered calculation and method questions",()=>{
   const p=page([question(1,"Which digit is in the tens place?",[box]),question(2,"True or false?",[circle],"circle"),question(7,"245 + 126 = ?",[box]),question(8,"Use two methods.",[{id:"method",kind:"work",label:"Method 1"},box],"two-ways")]);
