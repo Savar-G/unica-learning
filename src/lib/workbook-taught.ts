@@ -6,6 +6,7 @@
 import type { GeneratedPage } from "./workbook-generator";
 import type { Intro, PageContent } from "./workbook-page";
 import type { QuestionPackage } from "./question-package";
+import { printedWorkbookQuestion } from "./workbook-maya-operation";
 import type { BookIssue } from "./workbook-quality";
 import { exampleTaken, methodIntro, numbersOf, pairKey } from "./workbook-intro-examples";
 import { termsIntro, TERMS } from "./workbook-terms";
@@ -126,8 +127,16 @@ export function planIntros<W extends PlannedWork>(work: readonly W[], level: num
   }
 }
 
-/** What an intro issue is about, for telling a new gap from an old one: its page, and the methods and words, or the question. */
-export const gapKey = (i: BookIssue): string => `${i.page}|${i.kind}|${i.fix ? i.fix.intro.flatMap((s) => s.ids).join(",") : i.reason}`;
+/**
+ * The intro gaps `after` has that `before` did not, one method or word at a time, read on the printed questions as the
+ * book check reads them (a gap left in place while another is fixed is not new; an edit refused only for a new one).
+ */
+export function newIntroGaps(before: readonly GeneratedPage[], after: readonly GeneratedPage[]): BookIssue[] {
+  const printed = (pages: readonly GeneratedPage[]) => pages.map((p) => ({ ...p, questions: p.questions.map((q) => ({ ...q, package: q.package ? printedWorkbookQuestion(q.package) : null })) }));
+  const keys = (i: BookIssue) => i.fix ? i.fix.intro.flatMap((s) => s.ids).map((id) => `${i.page}|${i.kind}|${id}`) : [`${i.page}|${i.kind}|${i.reason}`];
+  const old = new Set(introIssues(printed(before)).flatMap(keys));
+  return introIssues(printed(after)).filter((i) => keys(i).some((k) => !old.has(k)));
+}
 
 /** A page's content with the strips its intro issues carry attached to their blocks. */
 export function withIntros(content: PageContent | null, issues: readonly BookIssue[]): PageContent | null {

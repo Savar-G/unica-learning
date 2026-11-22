@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { GeneratedPage } from "./workbook-generator";
 import type { Block, DayContent } from "./workbook-page";
 import { curriculumFor } from "./workbook-curriculum";
-import { ENFORCED_LEVELS, gapKey, introIssues, planIntros, withIntros, withPlanned } from "./workbook-taught";
+import { ENFORCED_LEVELS, introIssues, newIntroGaps, planIntros, withIntros, withPlanned } from "./workbook-taught";
 import { methodIntro } from "./workbook-intro-examples";
 import { TERMS, termsIn } from "./workbook-terms";
 
@@ -94,12 +94,13 @@ describe("methods and words are shown before a question uses them", () => {
     expect(issues.some((i) => i.kind === "coverage" && /every worked example/.test(i.reason))).toBe(true);
   });
 
-  it("tells a new gap from an old one on the same page by what it is about", () => {
-    const gapsOf = (...asks: string[]) => introIssues(book(dayPage(3, 19, [{ slot: "challenge", asks }]))).map(gapKey);
-    const old = gapsOf("Is it a reflex angle? Circle yes or no.");
-    const both = gapsOf("Is it a reflex angle? Circle yes or no.", "Is 7 prime? Circle yes or no.");
-    expect(both.filter((k) => !old.includes(k))).toHaveLength(1);
-    expect(old).toHaveLength(1);
+  it("tells a new gap from an old one on the same page, one word at a time", () => {
+    const pages = (...asks: string[]) => book(dayPage(3, 19, [{ slot: "challenge", asks }]));
+    const reflex = "Is it a reflex angle? Circle yes or no.", prime = "Is 7 prime? Circle yes or no.";
+    // A new word beside an old gap is new; fixing one gap while another stays is not.
+    expect(newIntroGaps(pages(reflex), pages(reflex, prime)).map((i) => i.page)).toEqual([3]);
+    expect(newIntroGaps(pages(reflex, prime), pages(reflex))).toEqual([]);
+    expect(newIntroGaps(pages(reflex), pages(reflex))).toEqual([]);
   });
 
   it("checks only U10 and U19, and only a whole book", () => {
