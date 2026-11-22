@@ -69,15 +69,14 @@ describe("where answer boxes print (#1212)", () => {
     expect(second).toBe("True or false: every even number is a multiple of 4. How do you know?");
   });
 
-  it("prints no label in a test card's work space, on a saved legacy page too, and puts its box in the foot of a card with work space", () => {
+  it("puts every answer box of a test card in its foot, with no work label, and keeps a saved legacy page's layout", () => {
     const { root } = html("show-what-you-know");
     expect(root.querySelectorAll(".tc .lab")).toHaveLength(0);
     const cards = [...root.querySelectorAll(".tc")];
-    // The cards that ask for work (1, 4 and 6) have their box at the foot; the others beside the question.
-    const worked = cards.filter((c) => c.querySelector(".act .ab"));
-    expect(worked.map((c) => c.querySelector(".badge")?.textContent)).toEqual(["1.", "4.", "6."]);
-    for (const c of cards.filter((card) => !worked.includes(card))) expect(c.querySelector(".q .rgs .ab")).not.toBeNull();
-    // A saved legacy page keeps its layout, minus the label its work space used to print.
+    // Every card, with or without work space, has its box in the action row at the foot; none beside the question.
+    expect(cards.filter((c) => c.querySelector(".act .ab"))).toHaveLength(cards.length);
+    expect(root.querySelectorAll(".tc .q .rgs .ab")).toHaveLength(0);
+    // A saved legacy page keeps its layout (the box beside the question), minus the label its work space used to print.
     const legacy = html("show-what-you-know", 12, false).root;
     expect(legacy.querySelectorAll(".tc .lab")).toHaveLength(0);
     expect(legacy.querySelectorAll(".tc .q .rgs .ab")).toHaveLength(6);

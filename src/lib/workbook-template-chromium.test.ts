@@ -440,17 +440,24 @@ describe.skipIf(!chromium)("answer box positions in Chromium (#1212)", () => {
     expect(printedLabels(m.byName, /how do you know/i)).toEqual([]);
   }, 60_000);
 
-  it.each([12, 6])("lines up every answer box of a Show what you know page at the card's right (U%i)", async (level) => {
+  it.each([12, 6])("puts every answer box of a Show what you know page at the bottom right of its card, in line and one size (U%i)", async (level) => {
     const page = pages(level, true)["show-what-you-know"];
     const m = await measure(page, level);
     expect(m.fit).toEqual([]);
-    const withWork = new Set([1, 4, 6]);
-    for (const q of page.questions) {
-      const card = m.get(`question-${q.number}`), box = m.get(`question-${q.number}-answer`);
-      // (A text answer's box is wider, never the left edge's concern: every box ends at the card's right edge.)
-      edge(right(card) - right(box), `question ${q.number}`);
-      if (withWork.has(q.number)) edge(bottom(card) - bottom(box), `question ${q.number} bottom`);
+    const boxes = page.questions.map((q) => ({ q: q.number, card: m.get(`question-${q.number}`), box: m.get(`question-${q.number}-answer`) }));
+    for (const { q, card, box } of boxes) {
+      // With or without work space, every box is in the card's bottom right corner.
+      edge(right(card) - right(box), `question ${q} right`);
+      edge(bottom(card) - bottom(box), `question ${q} bottom`);
     }
+    // The boxes of a row line up (cards share a row when their tops match), and so do the right edges of a column.
+    for (const a of boxes) for (const b of boxes) {
+      if (a.q < b.q && Math.abs(a.card.y - b.card.y) < 1) expect(Math.abs(bottom(a.box) - bottom(b.box)), `questions ${a.q} and ${b.q}`).toBeLessThan(1.5);
+    }
+    // One size: every number answer has the standard box; only the expanded form (question 3) has a wider one.
+    const standard = boxes.filter(({ q }) => q !== 3);
+    for (const { q, box } of standard) { expect(box.width, `question ${q} width`).toBeCloseTo(standard[0].box.width, 0); expect(box.height).toBeCloseTo(standard[0].box.height, 0); }
+    expect(boxes.find(({ q }) => q === 3)!.box.width).toBeGreaterThan(standard[0].box.width);
     // The work boxes of the cards that ask for work have no label of their own.
     expect(printedLabels(m.byName, /show your work/i)).toEqual([]);
   }, 60_000);

@@ -651,11 +651,6 @@ export function comparisonOf(q: DraftQuestion): { prefix: string; left: string; 
   return m && boxes.length === 1 ? { prefix: m[1], left: m[2], right: m[3], region: boxes[0].id } : null;
 }
 
-/** A test card on the measured layout with a work space of its own (a work region or calculation space). A saved legacy page keeps its box beside the question. */
-function cardHasWork(q: DraftQuestion, band: Band): boolean {
-  return !!band.consistentLayout && (regionNames(q).some((x) => x.region.kind === "work") || questionWorkSpace(q.package) > 0);
-}
-
 /** A comparison's question with its answer box between the two numbers: the box is inside the question's content. */
 function comparisonHtml(q: DraftQuestion, band: Band): { html: string; region: string } | null {
   // (A saved legacy page keeps its layout and its printed answer order.)
@@ -976,14 +971,17 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       }
       return chip() + `<div class="fill" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${qs.map((q, k) => {
         const compare = comparisonHtml(q, band);
-        const { inline, full: area } = regionsSplit(q, { band, work: "fill", labels: true, skip: compare?.region, answerLast: !!c.consistentLayout });
+        const measured = !!c.consistentLayout;
+        const { inline, full: area } = regionsSplit(q, { band, work: "fill", labels: true, skip: compare?.region, answerLast: measured, choices: measured ? "skip" : undefined });
         // A work area only for an item that needs working (the U4 review, item 10), on the measured layout. It carries no
         // label: the page's work line says it (#1212).
-        const hasWork = cardHasWork(q, band);
-        const work = area || (c.consistentLayout ? "" : `<div class="wb"></div>`);
-        // A card with work space has its answer box at the bottom right of it, like a Challenge card; one without has it
-        // beside its question.
-        return `<div class="tc"${wide[k] || full.has(k) ? ` style="grid-column:1/-1"` : ""} ${mark.question(q.number)}><div class="q"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${compare?.html ?? qtext(q)}</span>${hasWork ? "" : `<span class="rgs">${inline}</span>`}</div>${hasWork ? `<div class="act">${work}${inline}</div>` : work}</div>`;
+        const work = area || (measured ? "" : `<div class="wb"></div>`);
+        if (!measured) return `<div class="tc"${wide[k] || full.has(k) ? ` style="grid-column:1/-1"` : ""} ${mark.question(q.number)}><div class="q"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${qtext(q)}</span><span class="rgs">${inline}</span></div>${work}</div>`;
+        // Measured layout: the question, any choices at its right, then every answer box at the bottom right of the card,
+        // beside the work space when it has one (#1212: one place for the boxes of every card).
+        const choices = regionsSplit(q, { band, labels: true, choices: "only" });
+        const act = work + inline;
+        return `<div class="tc"${wide[k] || full.has(k) ? ` style="grid-column:1/-1"` : ""} ${mark.question(q.number)}><div class="q"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${compare?.html ?? qtext(q)}</span>${choices.inline + choices.full ? `<span class="rgs">${choices.inline}${choices.full}</span>` : ""}</div>${act ? `<div class="act">${act}</div>` : ""}</div>`;
       }).join("")}</div>`;
     }
     case "challenge": {
@@ -1081,12 +1079,12 @@ export function pagePlan(page: DraftPage): PagePlan | null {
   const rows: number[][] = [];
   const beside = new Map<number, BesideAnswers>();
   const incomplete: number[] = [];
-  const answers = (n: number, align: BesideAnswers["align"], inset: number) => {
+  const answers = (n: number, align: BesideAnswers["align"], inset: number, kind?: AnswerRegion["kind"]) => {
     const q = byNumber.get(n);
     // (A comparison prints its box between its numbers: it is not beside its first line.)
     if (!q || comparisonOf(q)) return;
     const terms = termRegions(q);
-    const regions = regionNames(q).filter((x) => !terms.has(x.region.id) && inRow(x.region)).map((x) => x.name);
+    const regions = regionNames(q).filter((x) => !terms.has(x.region.id) && inRow(x.region) && (!kind || x.region.kind === kind)).map((x) => x.name);
     if (regions.length) beside.set(n, { regions, align, inset });
   };
   const line = (n: number) => {
@@ -1146,8 +1144,8 @@ export function pagePlan(page: DraftPage): PagePlan | null {
         const cols = items.length <= 3 ? 1 : 2;
         // (blockHtml: a wide count takes its row, and a half card left alone in its row takes the row too.)
         rows.push(...gridRows(items, cols, (n) => wideSequence(byNumber.get(n)!)));
-        // (A card with work space has its box at the foot of the card, not beside its first line.)
-        items.filter((n) => !cardHasWork(byNumber.get(n)!, band)).forEach((n) => answers(n, "top", 15));
+        // (Every answer box is at the foot of its card; only choices print beside the first line.)
+        items.forEach((n) => answers(n, "top", 15, "choice"));
         break;
       }
       case "challenge":

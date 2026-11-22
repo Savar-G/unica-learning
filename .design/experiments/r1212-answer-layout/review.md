@@ -13,6 +13,7 @@ node scripts/render-workbook-templates.mjs <folder> U6 U12 --all        # whole 
 |---|---|---|---|
 | 1. Show your work: answer box at the bottom right of a card, no label | Show what you know, U6 | 01-show-your-work-test-card-U6-before.png | 01-show-your-work-test-card-U6-after.png |
 | 2. Every answer box lines up (a long word answer sat at the left of its row) | Practice, U12 | 02-aligned-boxes-before.png | 02-aligned-boxes-after.png |
+| 2. Page 76 equivalent: every box at the bottom right of its card, with or without work space (before = the previous push, where cards without work had the box at the top right) | Show what you know, U12 and U6 | 02-page76-U12-before.png, 02-page76-U6-before.png | 02-page76-U12-after.png, 02-page76-U6-after.png |
 | 3. Yes/no and true/false on the right, no "How do you know?" label in the box | Challenge, U12 | 03-yes-no-challenge-before.png | 03-yes-no-challenge-after.png |
 | 4. Comparison with the box between the numbers | Quick check, U12 | 04-comparison-before.png | 04-comparison-after.png |
 | 5. Five-skill check header without "No hints." | Friday 5, U12 | 05-five-skill-check-before.png | 05-five-skill-check-after.png |
@@ -35,3 +36,10 @@ one-pixel-row noise.
 (`npm run workbooks:samples -- --fake --levels U16 --days 1,5,10`). Cost 0; nothing stored. The strict fit check passed on all 28 pages (0 failed, 0 do not fit).
 Page 10 (Challenge): box at the bottom right, no label. Page 17 (Friday 5): header says "5 from earlier days." Page 20 (Show what you know): every card with work
 space has its box at the bottom right, no label. The wording is fake-AI wording, so this checks layout, not question quality.
+
+## Box position and size on card pages (extra round)
+
+On Show what you know and level-test cards, every answer box is in the bottom right corner of its card, with or without work space; choices stay beside the question.
+Boxes in a row line up. The size is the standard one for the answer's length (the existing rule: 64 px for up to three digits, 96 px for four); a wider box is kept only
+where the answer needs the room (an expanded form), and a long word answer in a half-width card shrinks to what fits rather than overflowing.
+Practice grids and rows keep the box beside the question, in line down each column; a wide answer's box there sits on its own row at the right.
