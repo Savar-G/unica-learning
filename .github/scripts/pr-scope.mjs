@@ -46,6 +46,8 @@ const SKIPPABLE_DOC_PATTERNS = [
   /^\.design\//,
   /^docs\//,
   /^\.claude\//,
+  /^\.agents\//,
+  /^skills-lock\.json$/,
   /^[^/]+\.md$/,
 ];
 

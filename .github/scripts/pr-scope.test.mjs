@@ -16,7 +16,14 @@ test("push to main and workflow_dispatch always run full suite", () => {
 test("docs-only and design-only PRs skip when no dynamic-read file is touched", () => {
   const scope = classifyScope({
     eventName: "pull_request",
-    changedFiles: ["docs/ci/README.md", ".design/mockups/dashboard.html", "DESIGN.md"],
+    changedFiles: [
+      "docs/ci/README.md",
+      ".design/mockups/dashboard.html",
+      "DESIGN.md",
+      ".agents/skills/tdd/SKILL.md",
+      ".claude/skills/tdd",
+      "skills-lock.json",
+    ],
   });
   assert.equal(scope.mode, "skip");
   assert.equal(scope.runPrUnit, false);
