@@ -11,7 +11,7 @@ name: CI
 #   Vercel lists `test` as a Deployment Check (Settings → Build and Deployment), so a main commit whose full suite fails
 #   is built but never promoted to production. Branches get no Vercel build (main-only deploys, #774), so `lint-and-types`
 #   runs the native app type check (`next typegen && tsgo --noEmit`). A push made with GITHUB_TOKEN starts no workflow, so
-#   the blog publish job (blog-publish.yml) starts this one with workflow_dispatch after it pushes main.
+#   the blog publish job (blog-publish.yml) starts this one with workflow_dispatch on its merge commit before pushing main.
 
 on:
   pull_request:
@@ -240,7 +240,7 @@ jobs:
         run: node scripts/build-retention-worker.mjs && node --conditions=react-server .retention/worker.mjs --help
         timeout-minutes: 2
       - name: CI tooling self-tests
-        run: node --test .github/scripts/unit-shards.test.mjs .github/scripts/pr-scope.test.mjs scripts/ci-audit.test.mjs scripts/pre-push-check.test.mjs scripts/repo-guard.test.mjs
+        run: node --test .github/scripts/blog-publish.test.mjs .github/scripts/unit-shards.test.mjs .github/scripts/pr-scope.test.mjs scripts/ci-audit.test.mjs scripts/pre-push-check.test.mjs scripts/repo-guard.test.mjs
         timeout-minutes: 2
 
   # The root tsconfig.json excludes worker/, so the Maya voice worker's own type check and tests run here.

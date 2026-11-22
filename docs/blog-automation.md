@@ -64,7 +64,7 @@ and pushes `main`. Vercel then deploys production. You never push to `main` your
    git push -u origin "claude/blog-$SLUG"
    ```
 
-10. **Confirm it went live (advisory, does not undo the push).** Every 60 seconds for up to 20 minutes,
+10. **Confirm it went live (advisory, does not undo the push).** Every 60 seconds for up to 30 minutes,
     run `git fetch -q origin main && git log origin/main --oneline -5` and look for
     "Blog: publish claude/blog-<slug>". When it appears, wait 3 minutes for the Vercel deploy, then
     `curl -s -o /dev/null -w '%{http_code}' https://unicalearning.com/blog/<slug>` every 60 seconds for up
