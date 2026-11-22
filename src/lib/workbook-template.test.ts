@@ -539,6 +539,24 @@ describe("lettered choices", () => {
     expect(root.querySelector(`[data-measure="question-${n}"]`)?.textContent).not.toMatch(/Write A or B/);
   });
 
+  // CodeRabbit on #1230: a warm-up fact row has no room for an options row, so it keeps the sentence whole and circles A or B.
+  it.each(["Which is prime? A) 22  B) 17  Write A or B.", "Which is prime? A) 22  B) 17  Circle A or B."])("keeps a lettered warm-up fact whole: %s", (text) => {
+    const draft = book("U8"), p = draft.pages.find((x) => x.content?.kind === "day" && x.content.blocks.some((b) => b.slot === "warm-up"))!;
+    if (p.content?.kind !== "day") throw new Error("not a day");
+    const n = p.content.blocks.find((b) => b.slot === "warm-up")!.items[0];
+    const original = p.questions.find((q) => q.number === n)!;
+    const question = { ...original, package: { ...original.package, text, item: { format: "circle" as const, scorable: true, parentChecked: false, error: null, checks: [],
+      regions: [{ id: "answer", kind: "choice" as const, mark: "circle" as const, label: null, choices: ["A", "B"], answer: "B" }] } } };
+    const page = { ...p, questions: p.questions.map((q) => (q.number === n ? question : q)) };
+    for (const consistentLayout of [false, true]) {
+      const root = parsedPage(workbookTemplate().page({ ...page, content: { ...p.content, consistentLayout } }, { qr: "", qrUrl: "" }, draft)!);
+      const row = root.querySelector(`[data-measure="question-${n}"]`)?.textContent ?? "";
+      expect(row, `consistent: ${consistentLayout}`).toContain(text);
+      expect([...root.querySelectorAll(`[data-measure="question-${n}-answer"] .co`)].map((x) => x.textContent)).toEqual(["A", "B"]);
+      expect(row.includes("Circle one"), `consistent: ${consistentLayout}`).toBe(!/circle/i.test(text));
+    }
+  });
+
   it("prints a question that names its choices in the sentence as written", () => {
     const { root, n } = lettered("Pattern A starts at 3. Pattern B starts at 4. Which is greater after 5 steps? Write A or B.", "A");
     expect(root.querySelector(`[data-measure="question-${n}-content"]`)?.textContent).toContain("Write A or B.");

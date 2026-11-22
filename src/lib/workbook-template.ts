@@ -866,7 +866,7 @@ export { regionNames };
 const measureAttr = (name: string) => `data-measure="${name}"`;
 
 interface RegionOpts {
-  band: Band;
+  band: Band; fact?: boolean; // fact: a one-line fact row keeps lettered options in its sentence (#1215)
   /** Work box height: a number, or "fill" for the rest of a card. */
   work?: number | "fill";
   /** Calculation space in a practice or review grid. */
@@ -902,9 +902,9 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
         // Choices in words ("less than 5", "not equal", "cats") stack in the body type: a card has no room for them in
         // a row at the size of a fact.
         const words = !shapes && r.choices.some((c) => /[a-z]{2}/i.test(c));
-        const circled = letteredHtml(q.package.text, r, at, (w) => keepHyphens(bcNumbers(escape(printedMinus(singularPlaces(w)))))) ?? `<span class="circ${words ? " words" : ""}${likelihood(r) ? " likelihood" : ""}" ${at}>${r.choices.map((c) => `<span class="co">${choice(c)}</span>`).join("")}</span>`;
+        const circled = (o.fact ? null : letteredHtml(q.package.text, r, at, (w) => keepHyphens(bcNumbers(escape(printedMinus(singularPlaces(w))))))) ?? `<span class="circ${words ? " words" : ""}${likelihood(r) ? " likelihood" : ""}" ${at}>${r.choices.map((c) => `<span class="co">${choice(c)}</span>`).join("")}</span>`;
         // (Unless the question says it: "Circle yes or no.")
-        return o.band.cueChoices && !/\bcircle\b/i.test(q.package.text) ? `<span class="rg"><span class="t1" data-measure="cue-${q.number}-${r.id}"><span>Circle one</span></span>${circled}</span>` : circled;
+        return o.band.cueChoices && !/\bcircle\b/i.test((o.fact ? null : letteredRegion(q.package.text, r))?.stem ?? q.package.text) ? `<span class="rg"><span class="t1" data-measure="cue-${q.number}-${r.id}"><span>Circle one</span></span>${circled}</span>` : circled;
       }
       const choices = r.choices.map((c) => `<span class="ch"><i class="tb"></i><span>${escape(c)}</span></span>`).join("");
       const words = (s: string) => ` ${s.toLowerCase().replace(/[?!.:;,]/g, " ").replace(/\s+/g, " ").trim()} `;
@@ -997,7 +997,7 @@ function regionsSplit(q: DraftQuestion, o: RegionOpts): { inline: string; full: 
   for (const { region, name } of names) {
     if (inSequence.has(region.id)) continue;
     const html = regionHtml(q, region, name, o);
-    if (inRow(region) && !letteredRegion(q.package.text, region)) inline += html;
+    if (inRow(region) && (o.fact || !letteredRegion(q.package.text, region))) inline += html;
     else full += html;
   }
   const space = o.band.consistentLayout && !names.some(x => x.region.kind === "work") ? questionWorkSpace(q.package) : 0;
@@ -1008,7 +1008,7 @@ function regionsSplit(q: DraftQuestion, o: RegionOpts): { inline: string; full: 
 /** The question's text, marked as its content. */
 /** A word with a hyphen ("ten-frame") never breaks at it: the line breaks before the word. */
 const keepHyphens = (html: string) => html.replace(/\b([A-Za-z]+(?:-[A-Za-z]+)+)\b/g, `<span style="white-space:nowrap">$1</span>`);
-const text = (q: DraftQuestion, cls = "qt") => `<span class="${cls}" ${mark.questionContent(q.number)}>${keepHyphens(bcNumbers(escape(printedMinus(singularPlaces(letteredStem(q.package.text, packageItem(q.package).regions))))))}</span>`;
+const text = (q: DraftQuestion, cls = "qt", whole = false) => `<span class="${cls}" ${mark.questionContent(q.number)}>${keepHyphens(bcNumbers(escape(printedMinus(singularPlaces(whole ? q.package.text : letteredStem(q.package.text, packageItem(q.package).regions))))))}</span>`;
 const isMath = (s: string) => /^[\d\s+−×÷=?.,()/$¢a-z]*$/i.test(s) && /\d/.test(s) && !/[a-z]{3,}/i.test(s);
 const qtext = (q: DraftQuestion) => text(q, isMath(q.package.text) ? "qm" : "qt");
 
@@ -1030,10 +1030,10 @@ function lineItem(q: DraftQuestion, band: Band, hint?: WorkedLine | null, work =
 
 /** A fact in a grid: small grey number, the fact, the box. */
 function factItem(q: DraftQuestion, band: Band): string {
-  const { inline } = regionsSplit(q, { band });
+  const { inline } = regionsSplit(q, { band, fact: true }); // (a fact row keeps its lettered question whole, #1215)
   // (The measured layout: the number in the page's number style, on the fact's baseline.)
-  if (band.consistentLayout) return `<div class="q" ${mark.question(q.number)}><span class="fl"><span class="n">${questionNumber(q.number)}</span>${text(q, "qm")}</span>${inline}</div>`;
-  return `<div class="q" ${mark.question(q.number)}><span class="gn">${questionNumber(q.number)}</span>${text(q, "qm")}${inline}</div>`;
+  if (band.consistentLayout) return `<div class="q" ${mark.question(q.number)}><span class="fl"><span class="n">${questionNumber(q.number)}</span>${text(q, "qm", true)}</span>${inline}</div>`;
+  return `<div class="q" ${mark.question(q.number)}><span class="gn">${questionNumber(q.number)}</span>${text(q, "qm", true)}${inline}</div>`;
 }
 
 /** A sum in columns (whole-number add, subtract and multiply), the answer box under the rule. */
