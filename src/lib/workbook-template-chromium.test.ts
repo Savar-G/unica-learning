@@ -394,4 +394,19 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
     const { data } = await sharp(proof.png).extract({ left: 0, top: 4, width: 40, height: 10 }).raw().toBuffer({ resolveWithObject: true });
     expect([data[0], data[1], data[2]]).toEqual([0xb4, 0x23, 0x18]);
   }, 120_000);
+  // #1215 review: lettered options sit above a calculation's work space, never beside it past the question column.
+  it("prints lettered options above the work space of a calculation", async () => {
+    const draft = book("U12", 4);
+    const found = draft.pages.find((p) => p.type === "practice" && p.content?.kind === "day")!;
+    if (found.content?.kind !== "day") throw new Error("not a day page");
+    // (The page keeps its first four questions: the taller question 1 would push the last ones off a full page.)
+    const keep = found.questions.slice(0, 4).map((q) => q.number);
+    const page = { ...found, questions: found.questions.filter((q) => keep.includes(q.number)),
+      content: { ...found.content, consistentLayout: true, blocks: found.content.blocks.map((b) => ({ ...b, items: b.items.filter((n) => keep.includes(n)) })).filter((b) => b.items.length) } };
+    const original = page.questions[0];
+    const lettered = { ...original, package: { ...original.package, text: "What is 468 + 357? A) 825  B) 815  Write A or B.", item: { format: "circle" as const, scorable: true, parentChecked: false, error: null, checks: [],
+      regions: [{ id: "answer", kind: "choice" as const, mark: "circle" as const, label: null, choices: ["A", "B"], answer: "A" }] } } };
+    const result = await renderWorkbook({ draft: { ...draft, pages: [{ ...page, questions: [lettered, ...page.questions.slice(1)] }] }, parentId: PARENT, template, engine });
+    expect(result.status, JSON.stringify(result.status === "failed" ? result.problems : null)).toBe("rendered");
+  }, 120_000);
 });
