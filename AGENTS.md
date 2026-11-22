@@ -16,6 +16,7 @@ Personalized math learning program with mailed paper workbooks for ages 5–14 (
 
 ## Agent skills
 
+- **Installed skills:** `.agents/skills/` (symlinked in `.claude/skills/`, pinned in `skills-lock.json`; update with `npx skills update`, link other harnesses with `npx skills experimental_install -a <agent>`).
 - **Issue tracker:** GitHub Issues on `Savar-G/unica-learning` via `gh` CLI (`docs/agents/issue-tracker.md`).
 - **Triage labels:** `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix` (`docs/agents/triage-labels.md`).
 - **Domain docs:** `.design/decisions.md` (ADRs), `DESIGN.md`, `CONTEXT.md` (`docs/agents/domain.md`).
