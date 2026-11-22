@@ -127,3 +127,14 @@ test("high-blast-radius, unknown, empty, and large PRs fall back to full suite",
   const many = Array.from({ length: MAX_AFFECTED_FILES + 1 }, (_, i) => `src/components/c${i}.tsx`);
   assert.equal(classifyScope({ eventName: "pull_request", changedFiles: many }).mode, "full");
 });
+
+test("bulk skill-only updates over MAX_AFFECTED_FILES still skip CI", () => {
+  const manySkills = Array.from({ length: MAX_AFFECTED_FILES + 20 }, (_, i) => `.agents/skills/s${i}/SKILL.md`);
+  const scope = classifyScope({
+    eventName: "pull_request",
+    changedFiles: [...manySkills, "skills-lock.json"],
+  });
+  assert.equal(scope.mode, "skip");
+  assert.equal(scope.runPrUnit, false);
+  assert.equal(scope.runLintAndTypes, false);
+});
