@@ -4,6 +4,7 @@ import {
   cleanupTempBranchesFromManifest,
   deleteRemoteBranchAtSha,
   findMatchingCiRunId,
+  isNonFastForwardPushError,
   parseLsRemoteSha,
   publishBlogBranch,
   TEMP_BRANCHES_FILENAME,
@@ -457,4 +458,133 @@ test("validateConfig rejects non-blog branches and malformed SHAs", () => {
     () => validateConfig({ branch: BRANCH, headSha: "not-a-sha", runId: "1", runAttempt: "1", runnerTemp: "/tmp" }),
     /Invalid HEAD_SHA/,
   );
+});
+
+test("does not retry a branch-protection push rejection even if main also moved", async () => {
+  const h = makeHarness([
+    [(c, a) => c === "git" && a[0] === "config", { status: 0, stdout: "", stderr: "" }],
+    ["git fetch --no-tags origin main", { status: 0, stdout: "", stderr: "" }],
+    ["git rev-parse origin/main", { status: 0, stdout: `${MAIN_A}\n`, stderr: "" }],
+    [`git merge-base --is-ancestor ${BLOG_SHA} ${MAIN_A}`, { status: 1, stdout: "", stderr: "" }],
+    [`git show ${MAIN_A}:scripts/blog-publish-guard.mjs`, { status: 0, stdout: "// guard\n", stderr: "" }],
+    [`node /tmp/runner/blog-publish-guard.mjs ${MAIN_A} ${BLOG_SHA}`, { status: 0, stdout: "", stderr: "" }],
+    [`git checkout -B publish ${MAIN_A}`, { status: 0, stdout: "", stderr: "" }],
+    [`git merge --no-ff --no-edit -m Blog: publish ${BRANCH} ${BLOG_SHA}`, { status: 0, stdout: "", stderr: "" }],
+    ["git rev-parse HEAD", { status: 0, stdout: `${MERGE_1}\n`, stderr: "" }],
+    ["git push origin HEAD:refs/heads/site/blog-publish-99-1-a1", { status: 0, stdout: "", stderr: "" }],
+    ["gh workflow run ci.yml --ref site/blog-publish-99-1-a1", { status: 0, stdout: "", stderr: "" }],
+    [
+      (c, a) => c === "gh" && a[0] === "run" && a[1] === "list",
+      { status: 0, stdout: JSON.stringify([{ databaseId: 8501, headSha: MERGE_1 }]), stderr: "" },
+    ],
+    ["gh run watch 8501 --exit-status --interval 15", { status: 0, stdout: "", stderr: "" }],
+    [
+      "git push origin HEAD:main",
+      { status: 1, stdout: "", stderr: "remote: error: GH006: Protected branch update failed for refs/heads/main.\n! [remote rejected] HEAD -> main (protected branch hook declined)" },
+    ],
+    ["git ls-remote origin refs/heads/main", { status: 0, stdout: `${MAIN_B}\trefs/heads/main\n`, stderr: "" }],
+    ["git ls-remote --exit-code origin refs/heads/site/blog-publish-99-1-a1", { status: 0, stdout: `${MERGE_1}\trefs/heads/site/blog-publish-99-1-a1\n`, stderr: "" }],
+    [`git push --force-with-lease=refs/heads/site/blog-publish-99-1-a1:${MERGE_1} origin :refs/heads/site/blog-publish-99-1-a1`, { status: 0, stdout: "", stderr: "" }],
+  ]);
+
+  await assert.rejects(
+    () =>
+      publishBlogBranch({
+        branch: BRANCH,
+        headSha: BLOG_SHA,
+        runId: "99",
+        runAttempt: "1",
+        runnerTemp: "/tmp/runner",
+        exec: h.exec,
+        sleep: h.sleep,
+        log: h.log,
+        writeFile: h.writeFile,
+        appendFile: h.appendFile,
+      }),
+    /GH006: Protected branch update failed/,
+  );
+  assert.equal(h.calls.filter((c) => c[0] === "git" && c[1] === "fetch").length, 1);
+  assert.equal(isNonFastForwardPushError("! [rejected] HEAD -> main (non-fast-forward)"), true);
+  assert.equal(isNonFastForwardPushError("GH006: Protected branch update failed"), false);
+});
+
+test("continues retrying when inline temporary branch cleanup hits a transient error", async () => {
+  let fetchCount = 0;
+  let pushMainCount = 0;
+  let revParseHeadCount = 0;
+
+  const h = makeHarness([
+    [(c, a) => c === "git" && a[0] === "config", { status: 0, stdout: "", stderr: "" }],
+    [
+      "git fetch --no-tags origin main",
+      () => {
+        fetchCount += 1;
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    ],
+    ["git rev-parse origin/main", () => ({ status: 0, stdout: `${fetchCount === 1 ? MAIN_A : MAIN_B}\n`, stderr: "" })],
+    [(c, a) => c === "git" && a[0] === "merge-base", { status: 1, stdout: "", stderr: "" }],
+    [(c, a) => c === "git" && a[0] === "show", { status: 0, stdout: "// guard\n", stderr: "" }],
+    [(c, a) => c === "node" && a[0] === "/tmp/runner/blog-publish-guard.mjs", { status: 0, stdout: "", stderr: "" }],
+    [(c, a) => c === "git" && a[0] === "checkout", { status: 0, stdout: "", stderr: "" }],
+    [(c, a) => c === "git" && a[0] === "merge", { status: 0, stdout: "", stderr: "" }],
+    [
+      "git rev-parse HEAD",
+      () => {
+        revParseHeadCount += 1;
+        return { status: 0, stdout: `${revParseHeadCount === 1 ? MERGE_1 : MERGE_2}\n`, stderr: "" };
+      },
+    ],
+    [(c, a) => c === "git" && a[0] === "push" && a[2]?.startsWith("HEAD:refs/heads/site/blog-publish-"), { status: 0, stdout: "", stderr: "" }],
+    [(c, a) => c === "gh" && a[0] === "workflow" && a[1] === "run", { status: 0, stdout: "", stderr: "" }],
+    [
+      (c, a) => c === "gh" && a[0] === "run" && a[1] === "list",
+      (c, a) => {
+        const isFirst = a.includes("site/blog-publish-99-1-a1");
+        return {
+          status: 0,
+          stdout: JSON.stringify([{ databaseId: isFirst ? 9101 : 9102, headSha: isFirst ? MERGE_1 : MERGE_2 }]),
+          stderr: "",
+        };
+      },
+    ],
+    [(c, a) => c === "gh" && a[0] === "run" && a[1] === "watch", { status: 0, stdout: "", stderr: "" }],
+    [
+      "git push origin HEAD:main",
+      () => {
+        pushMainCount += 1;
+        if (pushMainCount === 1) return { status: 1, stdout: "", stderr: "! [rejected] HEAD -> main (fetch first)" };
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    ],
+    ["git ls-remote origin refs/heads/main", { status: 0, stdout: `${MAIN_B}\trefs/heads/main\n`, stderr: "" }],
+    // Attempt 1 temp-branch cleanup fails transiently (network error) — must NOT abort attempt 2!
+    ["git ls-remote --exit-code origin refs/heads/site/blog-publish-99-1-a1", { status: 128, stdout: "", stderr: "fatal: unable to access: Could not resolve host" }],
+    [
+      (c, a) => c === "git" && a[0] === "ls-remote" && a[1] === "--exit-code",
+      (c, a) => {
+        const ref = a[3];
+        const sha = ref.endsWith("-a2") ? MERGE_2 : BLOG_SHA;
+        return { status: 0, stdout: `${sha}\t${ref}\n`, stderr: "" };
+      },
+    ],
+    [(c, a) => c === "git" && a[0] === "push" && a[1]?.startsWith("--force-with-lease="), { status: 0, stdout: "", stderr: "" }],
+  ]);
+
+  const result = await publishBlogBranch({
+    branch: BRANCH,
+    headSha: BLOG_SHA,
+    runId: "99",
+    runAttempt: "1",
+    runnerTemp: "/tmp/runner",
+    exec: h.exec,
+    sleep: h.sleep,
+    log: h.log,
+    writeFile: h.writeFile,
+    appendFile: h.appendFile,
+  });
+
+  assert.equal(result.status, "published");
+  assert.equal(result.attempt, 2);
+  assert.ok(h.logs.some((line) => line.includes("deferred to cleanup step")));
 });

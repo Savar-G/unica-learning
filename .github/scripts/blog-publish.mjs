@@ -25,6 +25,14 @@ export const TEMP_BRANCHES_FILENAME = "blog-publish-temp-branches.txt";
 const BLOG_BRANCH_RE = /^claude\/blog-[a-z0-9][a-z0-9._/-]*$/;
 const SHA40_RE = /^[0-9a-f]{40}$/;
 const DIGITS_RE = /^\d+$/;
+const NON_FAST_FORWARD_RE = /(?:\bnon-fast-forward\b|\(fetch first\)|cannot lock ref ['"]?refs\/heads\/main['"]?|\bstale info\b)/i;
+const PROTECTED_BRANCH_RE = /(?:\bGH006\b|protected branch hook declined)/i;
+
+export function isNonFastForwardPushError(stderr, stdout = "") {
+  const combined = `${stderr ?? ""}\n${stdout ?? ""}`;
+  if (PROTECTED_BRANCH_RE.test(combined)) return false;
+  return NON_FAST_FORWARD_RE.test(combined);
+}
 
 function defaultExec(cmd, args, { stream = false } = {}) {
   try {
@@ -265,7 +273,8 @@ export async function publishBlogBranch({
 
       const remoteMain = exec("git", ["ls-remote", "origin", "refs/heads/main"]);
       const latestMain = remoteMain.status === 0 ? parseLsRemoteSha(remoteMain.stdout) : null;
-      if (latestMain && latestMain !== baseMain) {
+      const isRace = isNonFastForwardPushError(pushMain.stderr, pushMain.stdout) && Boolean(latestMain && latestMain !== baseMain);
+      if (isRace) {
         if (attempt < maxAttempts) {
           log(`main moved from ${baseMain} to ${latestMain} while CI ran (attempt ${attempt}/${maxAttempts}); re-merging and retrying.`);
           continue;
@@ -274,9 +283,15 @@ export async function publishBlogBranch({
       }
 
       const detail = [pushMain.stderr.trim(), pushMain.stdout.trim()].filter(Boolean).join("\n");
-      throw new Error(`Failed to push ${mergeSha} to main (origin/main stayed at ${baseMain})${detail ? `:\n${detail}` : ""}`);
+      const mainNote = latestMain && latestMain !== baseMain ? `origin/main moved to ${latestMain}` : `origin/main stayed at ${baseMain}`;
+      throw new Error(`Failed to push ${mergeSha} to main (${mainNote})${detail ? `:\n${detail}` : ""}`);
     } finally {
-      deleteRemoteBranchAtSha({ branch: testBranch, expectedSha: mergeSha, exec, log });
+      try {
+        deleteRemoteBranchAtSha({ branch: testBranch, expectedSha: mergeSha, exec, log });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log(`Warning: failed to delete temporary branch ${testBranch} inline (deferred to cleanup step): ${msg}`);
+      }
     }
   }
 
