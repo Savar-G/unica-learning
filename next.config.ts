@@ -10,11 +10,16 @@ const nextConfig: NextConfig = {
     // 90 is for photos of people (the founders photo on /our-story), where 75 looks soft.
     qualities: [75, 90],
   },
-  // First-party proxy so ad blockers do not drop funnel events.
+  // First-party proxies so ad blockers do not drop funnel events or Sentry reports.
+  // /monitoring goes through our own Next.js rewrite to /sentry-tunnel (src/app/sentry-tunnel/route.ts) instead of
+  // withSentryConfig's deprecated tunnelRoute: in @sentry/nextjs 11.14+, tunnelRoute enables Node http.Server emit
+  // interception that swallows POST /monitoring before Next.js/Vercel sees it, bypassing bareRequest() privacy
+  // scrubbing and hanging Vercel Fluid Compute functions until their 300 s timeout after returning HTTP 200.
   async rewrites() {
     return [
       { source: "/ingest/static/:path*", destination: `${POSTHOG_ASSETS}/static/:path*` },
       { source: "/ingest/:path*", destination: `${POSTHOG}/:path*` },
+      { source: "/monitoring", destination: "/sentry-tunnel" },
     ];
   },
   skipTrailingSlashRedirect: true,
@@ -46,8 +51,8 @@ const nextConfig: NextConfig = {
 
 // Sentry (docs/sentry.md): source maps go up during the Vercel build, with SENTRY_AUTH_TOKEN (Production only; without
 // it the build skips the upload and still passes), and are deleted from the deployment after. The browser sends to
-// Sentry through /monitoring on our own site (src/app/sentry-tunnel/route.ts), so ad blockers keep error reports and
-// Sentry never sees a visitor's address.
+// Sentry through /monitoring (tunnel in src/instrumentation-client.ts, rewritten above to src/app/sentry-tunnel/route.ts),
+// so ad blockers keep error reports and Sentry never sees a visitor's IP, Referer, or unscrubbed replay URLs.
 export default withSentryConfig(nextConfig, {
   org: "unica-learning",
   project: "unica-web",
@@ -55,5 +60,4 @@ export default withSentryConfig(nextConfig, {
   silent: !process.env.CI,
   telemetry: false,
   widenClientFileUpload: true,
-  tunnelRoute: "/monitoring",
 });

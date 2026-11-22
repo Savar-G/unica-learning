@@ -11,6 +11,9 @@ import { scrubEvent, scrubLog, scrubMetric, scrubSpan } from "@/lib/sentry-scrub
  */
 export const SENTRY_DSN = "https://10064fe995f8eb573cd252a4327265d0@o4512437890842624.ingest.us.sentry.io/4512438134308864";
 
+/** Same-origin path the browser sends Sentry envelopes to; rewritten in next.config.ts to /sentry-tunnel. */
+export const SENTRY_TUNNEL_PATH = "/monitoring";
+
 type Env = Readonly<Record<string, string | undefined>>;
 
 /** The DSN in use, or "" when Sentry is off. */

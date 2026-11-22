@@ -43,8 +43,8 @@ Children use this site, so Sentry gets no personal values and no child work. Two
    - Logs keep the cleaned message only, not the printed arguments.
    - Spans lose AI input and output, database statements, bodies and headers.
 
-The browser sends to Sentry through `/monitoring` on our own site (`tunnelRoute` and `src/app/sentry-tunnel/route.ts`),
-so ad blockers do not drop error reports. Sentry's own tunnel handler forwards the visitor's IP address and the
+The browser sends to Sentry through `/monitoring` on our own site (`tunnel: SENTRY_TUNNEL_PATH` in `src/instrumentation-client.ts`, rewritten in `next.config.ts` to `src/app/sentry-tunnel/route.ts`),
+so ad blockers do not drop error reports. Do **not** enable `withSentryConfig`'s deprecated `tunnelRoute` or `serveTunnelIntegration` interception: in `@sentry/nextjs` 11.14+, server-level `http.Server` interception swallows `POST /monitoring` before Next.js/Vercel sees it, bypassing `bareRequest` and causing Vercel Fluid Compute functions to hang for 300 s after returning HTTP 200. Sentry's own tunnel handler forwards the visitor's IP address and the
 `Referer` (on the desk, an address with a QR token), so the route first rebuilds the request with the body, the content
 headers and the user agent only (`bareRequest` in `src/lib/sentry-tunnel.ts`). The tunnel is also where the replay
 address rules hold whatever the SDK does inside: every address in a replay's details (its page list) and in its recording

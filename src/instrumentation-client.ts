@@ -9,7 +9,7 @@
 import * as Sentry from "@sentry/nextjs";
 import { getAnalytics } from "@/lib/analytics";
 import { getConsent, subscribeConsent } from "@/lib/consent";
-import { sharedOptions } from "@/lib/sentry-options";
+import { SENTRY_TUNNEL_PATH, sharedOptions } from "@/lib/sentry-options";
 import { replaySwitch, type ReplayHandle } from "@/lib/sentry-replay";
 import { scrubRecordingEvent } from "@/lib/sentry-scrub";
 
@@ -54,6 +54,8 @@ const replay = replaySwitch({
 if (options.enabled) {
   Sentry.init({
     ...options,
+    // Browser reports go through our own /monitoring rewrite -> /sentry-tunnel (bareRequest scrubs IP, Referer, replays).
+    tunnel: SENTRY_TUNNEL_PATH,
     // Never a whole visit. The error rate keeps the buffer on; which errors send it is REPLAY_ERROR_SAMPLE
     // (src/lib/sentry-replay.ts).
     replaysSessionSampleRate: 0,
