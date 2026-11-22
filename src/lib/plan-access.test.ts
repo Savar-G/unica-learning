@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => null }));
@@ -56,6 +57,39 @@ describe("planAccessRule", () => {
     [{ kind: "unknown" }, false, "unknown"],
   ])("%j reads open=%s because %s", (plan, open, reason) => {
     expect(planAccessRule(plan, NOW)).toEqual({ open, reason });
+  });
+
+  it("preserves access-gate invariants across arbitrary timestamps and plan shapes", () => {
+    const arbIso = fc.integer({ min: Date.UTC(2024, 0, 1), max: Date.UTC(2030, 11, 31) }).map((ms) => new Date(ms).toISOString());
+    const arbNow = fc.integer({ min: Date.UTC(2024, 0, 1), max: Date.UTC(2030, 11, 31) });
+    const arbPlan: fc.Arbitrary<ParentPlan | null> = fc.oneof(
+      fc.constant(null),
+      fc.constant<ParentPlan>({ kind: "not_started" }),
+      fc.record({ kind: fc.constant("free_month" as const), firstCharge: arbIso, monthly: fc.option(fc.double({ min: 0, max: 500, noNaN: true }), { nil: null }) }),
+      fc.record({ kind: fc.constant("paying" as const), nextCharge: fc.option(arbIso, { nil: null }), monthly: fc.option(fc.double({ min: 0, max: 500, noNaN: true }), { nil: null }) }),
+      fc.record({ kind: fc.constant("ending" as const), endsOn: fc.option(arbIso, { nil: null }), free: fc.boolean() }),
+      fc.record({ kind: fc.constant("ended" as const), endedOn: fc.option(arbIso, { nil: undefined }) }),
+      fc.constant<ParentPlan>({ kind: "payment_failed" }),
+      fc.record({ kind: fc.constant("paused" as const), resumesOn: fc.option(arbIso, { nil: null }), monthly: fc.option(fc.double({ min: 0, max: 500, noNaN: true }), { nil: null }) }),
+      fc.constant<ParentPlan>({ kind: "unknown" }),
+    );
+
+    fc.assert(
+      fc.property(arbPlan, arbNow, (plan, now) => {
+        const res = planAccessRule(plan, now);
+        if (plan === null || plan.kind === "not_started" || plan.kind === "ended" || plan.kind === "payment_failed" || plan.kind === "paused" || plan.kind === "unknown") {
+          expect(res.open).toBe(false);
+        } else if (plan.kind === "free_month" || plan.kind === "paying") {
+          expect(res).toEqual({ open: true, reason: "open" });
+        } else if (plan.kind === "ending") {
+          const end = plan.endsOn ? Date.parse(plan.endsOn) : Number.NaN;
+          if (Number.isNaN(end)) expect(res).toEqual({ open: false, reason: "unknown" });
+          else if (now < end) expect(res).toEqual({ open: true, reason: "ending_until_end" });
+          else expect(res).toEqual({ open: false, reason: "ended" });
+        }
+      }),
+      { numRuns: 200 },
+    );
   });
 
   it("closes a kind the code does not know", () => {

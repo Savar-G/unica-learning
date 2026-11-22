@@ -49,7 +49,7 @@ const SKIPPABLE_DOC_PATTERNS = [
   /^[^/]+\.md$/,
 ];
 
-const CODE_LINT_PATTERN = /^(src\/|scripts\/).*\.[cm]?[jt]sx?$/;
+const CODE_LINT_PATTERN = /^(?:(src\/|scripts\/).*\.[cm]?[jt]sx?|docs\/feature-map\.md|AGENTS\.md)$/;
 const MAYA_BEHAVIOUR_PATTERN = /^(src\/lib\/(maya|number-words|question-package)|docs\/maya-gate\.md)/;
 const FAMILY_ZONES_PATTERN = /^(supabase\/|src\/lib\/(family-time|canada-postal-zones|supported-time-zones)|scripts\/generate-family-zones)/;
 const VOICE_WORKER_PATTERN = /^(worker\/|src\/lib\/maya)/;
