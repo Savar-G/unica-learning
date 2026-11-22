@@ -2,7 +2,7 @@
 
 This runbook takes one family from "the parent saved a card" to "the free month started". A new team member can follow it. The team runs it once for the first paying customer, records what happens in the run log at the end, and later turns it into an agent skill.
 
-Spec: GitHub #932 and its tickets #933 to #937 (`Savar-G/unica-learning`). Those tickets prove the release. This runbook is the procedure for the real delivery.
+Spec: Linear `UNI-8` and its tickets `UNI-72` to `UNI-76` (imported from legacy GitHub #932 and #933–#937). Those tickets prove the release. This runbook is the procedure for the real delivery.
 
 Written from the code at commit `4d47b0720` (origin/main, 2026-11-14). Each step names its source files. A later agent must check each source again before it trusts a step. Where a doc and the code disagree, this runbook follows the code and lists the mismatch in "Mismatches found".
 

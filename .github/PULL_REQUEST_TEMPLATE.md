@@ -29,6 +29,6 @@ Write everything above <details> for a human skimming this PR in 10 seconds:
 <!-- Final verification results only (skip intermediate failed-run diaries and known pre-existing warnings). Explicitly list anything not verified. -->
 
 ### Refs
-<!-- Closes #... / Refs #... / Stacked on #... -->
+<!-- Fixes UNI-... / Refs UNI-... / Stacked on #... -->
 
 </details>

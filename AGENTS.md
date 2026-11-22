@@ -17,7 +17,7 @@ Personalized math learning program with mailed paper workbooks for ages 5–14 (
 ## Agent skills
 
 - **Installed skills:** `.agents/skills/` (symlinked in `.claude/skills/`, `skills-lock.json`; `npx skills update`).
-- **Issue tracker:** `Savar-G/unica-learning` via `gh` (`docs/agents/issue-tracker.md`).
+- **Issue tracker:** Linear `unica-learning` (`UNI`, sole source of truth; `docs/agents/issue-tracker.md`).
 - **Triage labels:** `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix` (`docs/agents/triage-labels.md`).
 - **Domain docs:** `.design/decisions.md` (ADRs), `DESIGN.md`, `CONTEXT.md` (`docs/agents/domain.md`).
 - **Delegates, routes & verification:** `docs/agents/delegate-brief.md`, `docs/feature-map.md`, `docs/agents/verify-app.md`.
@@ -64,11 +64,12 @@ Personalized math learning program with mailed paper workbooks for ages 5–14 (
 
 | Service | Key IDs / Gotchas |
 |---|---|
-| Next.js 16 + React 19 | Route groups: `src/app/(site)` (marketing), `src/app/(product)` (app/admin); APIs/auth at top of `src/app`. Never duplicate a URL. Design system: `src/ds` (`npm run build:ds`). |
-| Vercel | Project `unica-learning-landing-page`, team `unica-learning` (`--scope unica-learning`), region `sfo1`. Deployment Check requires CI `test`. Keep `package.json` name `unica-learning-landing-page` for `.design-sync`. |
-| Supabase | Project `pagewise` (`cdjobwsyzndtltzfpyqa`, `us-west-1`), Keychain `supabase-pagewise`. Details: `docs/supabase-ops.md`. |
-| GitHub | `Savar-G/unica-learning` (`gh` account `Savar-G`). Retention workflow: `.github/workflows/retention.yml`. |
-| PostHog | Project `650128` (US). **Gotcha:** MCP defaults to Unify (`250953`)—run `switch-project` to `650128` first. Keep parent PII & child grade out of analytics. |
+| Next.js 16 + React 19 | `src/app/(site)` (marketing), `src/app/(product)` (app/admin); APIs/auth at `src/app` root. No duplicate URLs. DS: `src/ds` (`npm run build:ds`). |
+| Vercel | `unica-learning-landing-page`, `--scope unica-learning`, `sfo1`. Deployment Check requires CI `test`. Keep `package.json` name for `.design-sync`. |
+| Supabase | `pagewise` (`cdjobwsyzndtltzfpyqa`, `us-west-1`), Keychain `supabase-pagewise` (`docs/supabase-ops.md`). |
+| GitHub | `Savar-G/unica-learning` (`gh` `Savar-G`, PRs/CI only). Retention: `.github/workflows/retention.yml`. |
+| Linear | `linear.app/unica-learning`, team `UNI`, Keychain `linear-unica` (`docs/agents/issue-tracker.md`). |
+| PostHog | Project `650128` (US). **Gotcha:** MCP defaults to Unify (`250953`)—`switch-project` to `650128` first. No parent PII or child grade. |
 | Sentry | Org `unica-learning` (US), project `unica-web`. Never remove keys from `DATA_COLLECTION` (`src/lib/sentry-options.ts`). |
 | Google Ads | Account `517-988-8609` (Vancouver time). Plan: `.design/ads/2026-10-bc-launch/ads-plan.md`, `docs/ad-tracking.md`. |
 | Mac Workbook Worker | LaunchAgent `com.unicalearning.workbook-worker`, checkout `~/.unica-workbook-worker`, env `~/.config/unica/workbook-worker.env`. |
