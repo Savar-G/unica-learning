@@ -361,6 +361,12 @@ const CSS = `
 .q .qb{flex:1 1 0;min-width:min-content}
 .q .rgs{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .q .full{flex-basis:100%;display:flex;gap:12px}
+/* An answer box on its own row (a long word answer) sits at the right, in line with the page's other boxes (#1212). */
+.q .full>.rg{margin-left:auto}
+/* A comparison: the answer box between its two numbers. */
+.cmp{display:inline-flex;align-items:flex-start;gap:10px;height:1.4em;vertical-align:top;white-space:nowrap}
+.pg.consistent .cmp .ab{height:48px;min-width:48px;width:48px}
+.q.cmp-item{padding-bottom:28px}
 .work-space{width:100%;background:#fff;flex:1 0 auto}
 .list{display:flex;flex:1;flex-direction:column;justify-content:space-evenly;gap:10px}
 .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px;row-gap:12px;align-items:stretch;flex:1;grid-auto-rows:1fr}
@@ -418,9 +424,18 @@ const CSS = `
 .chc .top{display:flex;gap:16px;align-items:flex-start}
 .chc .top .qb{flex:1 1 0}
 .chc .wb{display:block;flex:1 1 auto;min-height:120px}
+/* A Challenge card: its choices at the right of the question, its work space with the answer box at the bottom right (#1212). */
+.chc .top .rgs{flex:none;display:flex;align-items:flex-start;gap:12px}
+.chc .act{display:flex;gap:16px;align-items:flex-end;flex:1 1 auto}
+.chc .act>:is(.rg,.circ,.seq,.obx){margin-left:auto}
+.chc .act>.wb{margin-left:0}
 .fill{flex:1 1 auto;display:grid;gap:12px 16px;grid-auto-rows:minmax(0,1fr)}
 .tc{border:1px solid #D4D4DA;border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-height:0}
 .tc .wb{display:block;flex:1 1 auto;min-height:${WORK_MIN}px}
+/* A test card with work space: the answer box at the bottom right of it, like a Challenge card (#1212). */
+.tc .act{display:flex;gap:16px;align-items:flex-end;flex:1 1 auto;min-height:0}
+.tc .act>:is(.wb,.work-space){width:auto;flex:1 1 auto;align-self:stretch}
+.tc .act>.rg{margin-left:auto}
 .pcards.fill{grid-template-columns:repeat(2,minmax(0,1fr))}
 .pcards.fill .pcard .pb{flex:1 1 auto;align-items:center}
 .tw{display:flex;flex-direction:column;gap:10px}
@@ -678,7 +693,7 @@ const NOTES: Partial<Record<SlotName, string>> = {
   // says what it is (WARM_UP_INSTRUCTION): its chip has no note either, never a counting one.
   "spot-the-error": "One move is wrong. Find it, then write the fix.",
   "mixed-set": "Tick the operation, then write the answer.",
-  "friday-5": "5 from earlier days. No hints.",
+  "friday-5": "5 from earlier days.",
   "show-what-you-know": "One of each, and the hardest ones again.",
   "level-test": "No hints. Do your best.",
 };
@@ -882,6 +897,10 @@ interface RegionOpts {
   figure?: Figure | null;
   /** Leave out the "Tick one" hint beside a tick strip (Spot the error at U1 to U9). */
   noTick?: boolean;
+  /** Only the choice regions ("only"), or everything but them ("skip"): a Challenge card prints its choices beside its question. */
+  choices?: "only" | "skip";
+  /** A region printed elsewhere (a comparison's box sits between its two numbers). */
+  skip?: string;
 }
 
 function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOpts): string {
@@ -977,7 +996,7 @@ function regionsSplit(q: DraftQuestion, o: RegionOpts): { inline: string; full: 
   const names = regionNames(q);
   const sequence = packageItem(q.package).checks.find((c) => c.kind === "sequence");
   const inSequence = new Set<string>();
-  if (sequence) {
+  if (sequence && o.choices !== "only") {
     const terms = sequence.terms.map((t) => {
       if (!("region" in t)) return `<span class="qm">${escape(valueText(t))}</span>`;
       const x = names.find((n) => n.region.id === t.region);
@@ -988,19 +1007,20 @@ function regionsSplit(q: DraftQuestion, o: RegionOpts): { inline: string; full: 
     inline += `<span class="seq">${terms.join(`<span class="qm">,</span>`)}</span>`;
   }
   const order = packageItem(q.package).checks.find((c) => c.kind === "order");
-  if (order) {
+  if (order && o.choices !== "only") {
     // The numbers, then the boxes in one row that never breaks: a parent-led card has room for 4 (the generator's limit).
     const boxes = order.regions.flatMap((id) => names.filter((n) => n.region.id === id)).map((x) => regionHtml(q, x.region, x.name, o)).join("");
     order.regions.forEach((id) => inSequence.add(id));
     inline += `<span class="seq"><span class="qm">${escape(order.numbers.map(valueText).join(", "))}</span><span class="qm">→</span></span><span class="obx">${boxes}</span>`;
   }
   for (const { region, name } of names) {
-    if (inSequence.has(region.id)) continue;
+    if (inSequence.has(region.id) || o.skip === region.id) continue;
+    if (o.choices && (o.choices === "only") !== (region.kind === "choice")) continue;
     const html = regionHtml(q, region, name, o);
     if (inRow(region)) inline += html;
     else full += html;
   }
-  const space = o.band.consistentLayout && !names.some(x => x.region.kind === "work") ? questionWorkSpace(q.package) : 0;
+  const space = o.band.consistentLayout && o.choices !== "only" && !names.some(x => x.region.kind === "work") ? questionWorkSpace(q.package) : 0;
   if (space) full += `<div class="work-space" data-measure="workspace-${q.number}" style="min-height:${space}px"></div>`;
   return { inline, full };
 }
@@ -1008,9 +1028,34 @@ function regionsSplit(q: DraftQuestion, o: RegionOpts): { inline: string; full: 
 /** The question's text, marked as its content. */
 /** A word with a hyphen ("ten-frame") never breaks at it: the line breaks before the word. */
 const keepHyphens = (html: string) => html.replace(/\b([A-Za-z]+(?:-[A-Za-z]+)+)\b/g, `<span style="white-space:nowrap">$1</span>`);
-const text = (q: DraftQuestion, cls = "qt") => `<span class="${cls}" ${mark.questionContent(q.number)}>${keepHyphens(bcNumbers(escape(printedMinus(singularPlaces(q.package.text)))))}</span>`;
+const text = (q: DraftQuestion, cls = "qt", more = "") => `<span class="${cls}" ${mark.questionContent(q.number)}>${keepHyphens(bcNumbers(escape(printedMinus(singularPlaces(q.package.text)))))}${more ? ` ${escape(more)}` : ""}</span>`;
 const isMath = (s: string) => /^[\d\s+−×÷=?.,()/$¢a-z]*$/i.test(s) && /\d/.test(s) && !/[a-z]{3,}/i.test(s);
 const qtext = (q: DraftQuestion) => text(q, isMath(q.package.text) ? "qm" : "qt");
+
+/**
+ * A comparison written "Write < or >: 278 ? 578" with one answer box (#1212): the box prints between the two numbers
+ * ("278 [ ] 578"), so a child sees which number each side of the symbol means. Null for any other question.
+ */
+export function comparisonOf(q: DraftQuestion): { prefix: string; left: string; right: string; region: string } | null {
+  const m = /^([^?:]*[<>][^?:]*:)\s*(\S+)\s*\?\s*(\S+)$/.exec(q.package.text.trim());
+  const boxes = packageItem(q.package).regions.filter((r) => r.kind === "box");
+  return m && boxes.length === 1 ? { prefix: m[1], left: m[2], right: m[3], region: boxes[0].id } : null;
+}
+
+/** A test card on the measured layout with a work space of its own (a work region or calculation space). A saved legacy page keeps its box beside the question. */
+function cardHasWork(q: DraftQuestion, band: Band): boolean {
+  return !!band.consistentLayout && (regionNames(q).some((x) => x.region.kind === "work") || questionWorkSpace(q.package) > 0);
+}
+
+/** A comparison's question with its answer box between the two numbers: the box is inside the question's content. */
+function comparisonHtml(q: DraftQuestion, band: Band): { html: string; region: string } | null {
+  const cmp = comparisonOf(q);
+  const named = cmp && regionNames(q).find((x) => x.region.id === cmp.region);
+  if (!cmp || !named) return null;
+  const num = (n: string) => `<span>${bcNumbers(escape(n))}</span>`;
+  const box = regionHtml(q, named.region, named.name, { band });
+  return { region: cmp.region, html: `<span class="qt" ${mark.questionContent(q.number)}>${escape(cmp.prefix)} <span class="cmp">${num(cmp.left)}${box}${num(cmp.right)}</span></span>` };
+}
 
 /** A count with five terms or more (four boxes): half a page's width does not hold it. */
 const wideSequence = (q: DraftQuestion) => ((packageItem(q.package).checks.find((c) => c.kind === "sequence") as { terms?: unknown[] } | undefined)?.terms?.length ?? 0) >= 5;
@@ -1020,11 +1065,12 @@ function lineItem(q: DraftQuestion, band: Band, hint?: WorkedLine | null, work =
   const pictured = packageItem(q.package).regions.some((r) => r.kind === "picture");
   const { sequence, places, placesWide, below, wide } = lineShape(q, band);
   const columns = Math.min(placesWide ? 9 : 4,packageItem(q.package).regions.length);
-  const split = regionsSplit(q, { band, work, compactWork: true, labels: true, bare: packageItem(q.package).format === "written-reason", figure: pictured ? figure : null });
+  const compare = comparisonHtml(q, band);
+  const split = regionsSplit(q, { band, work, compactWork: true, labels: true, bare: packageItem(q.package).format === "written-reason", figure: pictured ? figure : null, skip: compare?.region });
   // A picture the child reads (dots to count, a pattern) sits under the question, before any work box.
   const inline = split.inline;
   const full = (figure && !pictured ? `<div class="picr">${figureSvg(figure,1,band.consistentLayout ? 40 : 30)}</div>` : "") + split.full;
-  return `<div class="q${sequence ? " seq-item" : ""}${below ? " seq-below" : ""}${wide ? " seq-wide" : ""}${places ? " places-item" : ""}${placesWide ? " places-wide" : ""}" ${mark.question(q.number)}><span class="n">${questionNumber(q.number)}</span><span class="qb">${qtext(q)}${hint ? ` <span class="qm">${worked(hint)}</span>` : ""}</span>`
+  return `<div class="q${compare ? " cmp-item" : ""}${sequence ? " seq-item" : ""}${below ? " seq-below" : ""}${wide ? " seq-wide" : ""}${places ? " places-item" : ""}${placesWide ? " places-wide" : ""}" ${mark.question(q.number)}><span class="n">${questionNumber(q.number)}</span><span class="qb">${compare?.html ?? qtext(q)}${hint ? ` <span class="qm">${worked(hint)}</span>` : ""}</span>`
     + `<span class="rgs"${places ? ` style="--places:${columns}"` : ""}>${inline}</span>${full ? `<div class="full">${full}</div>` : ""}</div>`;
 }
 
@@ -1319,35 +1365,28 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
         });
       }
       return chip() + `<div class="fill" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${qs.map((q, k) => {
-        const { inline, full: area } = regionsSplit(q, { band, work: "fill", labels: true });
-        // A work area only for an item that needs working (the U4 review, item 10), on the measured layout.
-        const work = area || (c.consistentLayout ? "" : `<div class="wb"><span class="lab">Show your work</span></div>`);
-        return `<div class="tc"${wide[k] || full.has(k) ? ` style="grid-column:1/-1"` : ""} ${mark.question(q.number)}><div class="q"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${qtext(q)}</span><span class="rgs">${inline}</span></div>${work}</div>`;
+        const compare = comparisonHtml(q, band);
+        const { inline, full: area } = regionsSplit(q, { band, work: "fill", labels: true, skip: compare?.region });
+        // A work area only for an item that needs working (the U4 review, item 10), on the measured layout. It carries no
+        // label: the page's work line says it (#1212).
+        const hasWork = cardHasWork(q, band);
+        const work = area || (c.consistentLayout ? "" : `<div class="wb"></div>`);
+        // A card with work space has its answer box at the bottom right of it, like a Challenge card; one without has it
+        // beside its question.
+        return `<div class="tc"${wide[k] || full.has(k) ? ` style="grid-column:1/-1"` : ""} ${mark.question(q.number)}><div class="q"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${compare?.html ?? qtext(q)}</span>${hasWork ? "" : `<span class="rgs">${inline}</span>`}</div>${hasWork ? `<div class="act">${work}${inline}</div>` : work}</div>`;
       }).join("")}</div>`;
     }
     case "challenge": {
+      const side = ctx.six && qs.length === 2;
       if (!c.consistentLayout) {
-
-      const side = ctx.six && qs.length === 2;
-      const work = "fill" as const;
-      return chip() + `<div class="chs${side ? " side2" : ""}">${qs.map((q) => {
-        const { inline, full } = regionsSplit(q, { band, work });
-        return `<div class="chc" ${mark.question(q.number)}><div class="top"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${text(q)}</span>${inline}</div>${full}</div>`;
-      }).join("")}</div>`;
-
+        // A saved legacy page keeps its layout (its printed answer order is what the parent answer key reads).
+        return chip() + `<div class="chs${side ? " side2" : ""}">${qs.map((q) => {
+          const { inline, full } = regionsSplit(q, { band, work: "fill" });
+          return `<div class="chc" ${mark.question(q.number)}><div class="top"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${text(q)}</span>${inline}</div>${full}</div>`;
+        }).join("")}</div>`;
       }
-
-      const side = ctx.six && qs.length === 2;
       const three = ctx.six && qs.length === 3;
-      const work = c.consistentLayout ? workMinimum(c.level) : "fill" as const;
-      return chip() + `<div class="chs${side ? " side2" : three ? " side3" : ""}">${qs.map((q) => {
-        const { inline, full } = regionsSplit(q, { band, work });
-        // (A card with nothing to work in, a count with boxes, keeps its height: its boxes sit under the question, never at
-        // the foot of an empty card, the real U4 sample.)
-        // A card whose work the instruction asks for: its question shaded, its work space white (Savar, book 1 review).
-        const plain = full && band.instructed?.has(q.number) ? " plain" : "";
-        return `<div class="chc${full ? plain : " nowork"}" ${mark.question(q.number)}><div class="top"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${text(q)}</span></div><div class="act">${full}${inline}</div></div>`;
-      }).join("")}</div>`;
+      return chip() + `<div class="chs${side ? " side2" : three ? " side3" : ""}">${qs.map((q) => challengeCard(q, band, workMinimum(c.level))).join("")}</div>`;
     }
     case "math-in-the-world": {
       const info = (b.info ?? []).map((x) => `<div class="ic"><span class="lab">${escape(x.label)}</span><span class="v">${escape(x.value)}</span></div>`).join("");
@@ -1362,6 +1401,23 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       }).join("");
     }
   }
+}
+
+/**
+ * A Challenge card (#1212): the question at the top, any yes or no and true or false choices at its right, then the
+ * work space with the answer box at the bottom right. The box carries no label ("Show your work" is on the page's work
+ * line), and a written reason's prompt ("How do you know?") is part of the question, never a label inside the card.
+ */
+function challengeCard(q: DraftQuestion, band: Band, work: number | "fill"): string {
+  const asked = q.package.text.toLowerCase();
+  const prompts = regionNames(q).flatMap((x) => x.region.kind === "lines" && !asked.includes(x.region.label.toLowerCase()) ? [x.region.label] : []);
+  const beside = regionsSplit(q, { band, work, choices: "only" });
+  const { inline, full } = regionsSplit(q, { band, work, choices: "skip", bare: true });
+  // A card whose work the instruction asks for: its question shaded, its work space white (Savar, book 1 review).
+  const plain = full && band.instructed?.has(q.number) ? " plain" : "";
+  const choices = beside.inline + beside.full;
+  const act = full + inline;
+  return `<div class="chc${full ? plain : " nowork"}" ${mark.question(q.number)}><div class="top"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${text(q, "qt", prompts.join(" "))}</span>${choices ? `<span class="rgs">${choices}</span>` : ""}</div>${act ? `<div class="act">${act}</div>` : ""}</div>`;
 }
 
 // ---------- The page plan (what the layout checks know from the template) ----------
@@ -1417,7 +1473,8 @@ export function pagePlan(page: DraftPage): PagePlan | null {
   const incomplete: number[] = [];
   const answers = (n: number, align: BesideAnswers["align"], inset: number) => {
     const q = byNumber.get(n);
-    if (!q) return;
+    // (A comparison prints its box between its numbers: it is not beside its first line.)
+    if (!q || comparisonOf(q)) return;
     const terms = termRegions(q);
     const regions = regionNames(q).filter((x) => !terms.has(x.region.id) && inRow(x.region)).map((x) => x.name);
     if (regions.length) beside.set(n, { regions, align, inset });
@@ -1479,7 +1536,8 @@ export function pagePlan(page: DraftPage): PagePlan | null {
         const cols = items.length <= 3 ? 1 : 2;
         // (blockHtml: a wide count takes its row, and a half card left alone in its row takes the row too.)
         rows.push(...gridRows(items, cols, (n) => wideSequence(byNumber.get(n)!)));
-        items.forEach((n) => answers(n, "top", 15));
+        // (A card with work space has its box at the foot of the card, not beside its first line.)
+        items.filter((n) => !cardHasWork(byNumber.get(n)!, band)).forEach((n) => answers(n, "top", 15));
         break;
       }
       case "challenge":
@@ -1765,7 +1823,7 @@ export function fitProblems(page: DraftPage, measured: ReadonlyMap<string, Measu
     for (const { region, name } of regionNames(q)) {
       const m = measured.get(name);
       if (!m) continue;
-      if (content && (region.kind === "box" || region.kind === "choice") && overlap(m, content) > 1) {
+      if (content && (region.kind === "box" || region.kind === "choice") && overlap(m, content) > 1 && comparisonOf(q)?.region !== region.id) {
         problems.push({ question: q.number, slot: slotOf(q.number), reason: `${at}: question ${q.number}'s ${region.kind === "box" ? "answer box covers" : "choices cover"} its own text` });
       }
       const small = (what: string, size: number, min: number) =>
