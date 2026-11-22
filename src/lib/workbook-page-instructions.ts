@@ -30,6 +30,21 @@ export function answerInstruction(questions: readonly Pick<InstructionQuestion, 
 }
 
 /**
+ * The sentences of a practice or review page's instruction: what to fill in, where to write, what to circle. Each kind of
+ * written answer the page has is named on its own: boxes and writing lines, never one in place of the other (#1215). A
+ * warm-up's facts are left out.
+ */
+export function practiceInstruction(questions: readonly InstructionQuestion[], level: number, circleLine: string | null): string[] {
+  const own = questions.filter(q => q.package && q.place !== "warm-up");
+  const formats = new Set(own.map(q => q.package!.item?.format ?? "write-number"));
+  const regions = own.flatMap(q => packageItem(q.package!).regions);
+  const writes = regions.some(r => r.kind === "box"), lines = regions.some(r => r.kind === "lines");
+  const write = [...formats].some(f => !["circle", "boxes"].includes(f));
+  const boxLine = writes && write ? (level === 4 ? "Fill in the boxes." : "Fill in the missing numbers and write the answers in the boxes.") : "Fill in the missing numbers.";
+  return [formats.has("boxes") ? boxLine : writes ? "Write the answer in the box." : null, lines ? "Write on the lines." : null, circleLine].filter((x): x is string => !!x);
+}
+
+/**
  * Only questions with an allocated calculation or method region require written work: a work region of their own, or
  * the white space the consistent layout draws under a calculation (questionWorkSpace).
  */

@@ -1,6 +1,6 @@
 import { reviewMasteryStep } from "./workbook-review-level";
 import { questionWorkSpace } from "./workbook-work-space";
-import { answerInstruction, isWarmUpPage } from "./workbook-page-instructions";
+import { answerInstruction, isWarmUpPage, practiceInstruction } from "./workbook-page-instructions";
 import type { EditCall } from "@/lib/workbook-edit-calls";
 import { choiceInstruction, choicePageInstruction, choiceAddOn } from "@/lib/workbook-layout-check";
 // The workbook generator (#311, spec #296): a two-week plan (#308, src/lib/workbook-plan.ts) in, one coherent draft
@@ -60,7 +60,7 @@ import { choiceInstruction, choicePageInstruction, choiceAddOn } from "@/lib/wor
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { withTimeLimit, type AiClient } from "@/lib/ai-client";
 import { WorkbookAiUnavailable } from "@/lib/workbook-ai-unavailable";
-import { checkQuestionPackage, packageItem, type QuestionPackage } from "@/lib/question-package";
+import { checkQuestionPackage, type QuestionPackage } from "@/lib/question-package";
 import { isQrToken, isUuid } from "@/lib/workbook-content";
 import type { Curriculum } from "@/lib/workbook-curriculum";
 import { buildQuestion, isCodeWorded, ITEMS_SCHEMA, kindProblem, relationWordings, selectedItemStep, type BuiltQuestion, type QuestionCheck, type SlotWording } from "@/lib/workbook-generator-items";
@@ -2354,12 +2354,7 @@ function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuesti
     // (A new idea page's chip says "Read how it works, then try it.": its instruction line says what to write and circle,
     // never the same words twice, Savar 2026-11-04.)
     if (["practice", "practice-2", "remember-these", "remember-these-mixed-set", "new-idea"].includes(w.page.type)) {
-      const formats = new Set(questions.filter(q => q.package && q.place !== "warm-up").map(q => q.package!.item?.format ?? "write-number"));
-      const circle = !!circleLine, boxes = formats.has("boxes"), write = [...formats].some(f => !["circle", "boxes"].includes(f));
-      const writes = questions.some(q => q.package && q.place !== "warm-up" && packageItem(q.package).regions.some(r => r.kind === "box"));
-      const boxLine = writes && write ? (input.plan.level === 4 ? "Fill in the boxes." : "Fill in the missing numbers and write the answers in the boxes.") : "Fill in the missing numbers.";
-      const onLines = questions.some(q => q.package && q.place !== "warm-up" && packageItem(q.package).regions.some(r => r.kind === "lines")); // (lines-only writing, #1215)
-      const parts = [boxes ? boxLine : writes ? "Write the answer in the box." : onLines ? "Write on the lines." : null, circle ? circleLine : null].filter(Boolean);
+      const parts = practiceInstruction(questions, input.plan.level, circleLine);
       if (parts.length) content.subtitle = parts.join(" ");
     // (A warm-up page names no choice: its choice questions print their own cue, isWarmUpPage.)
     } else if (choiceAddOn(questions) && !isWarmUpPage(content) && !/\bcircle\b/i.test(content.subtitle ?? "")) content.subtitle = `${content.subtitle ? `${content.subtitle.replace(/\s*$/, "")} ` : ""}${choiceAddOn(questions)}`;
