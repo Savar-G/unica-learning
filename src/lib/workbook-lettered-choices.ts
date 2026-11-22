@@ -38,3 +38,23 @@ export function letteredChoices(text: string, choices: readonly string[]): Lette
 export function letteredRegion(text: string, region: AnswerRegion): LetteredChoices | null {
   return region.kind === "choice" && region.mark === "circle" ? letteredChoices(text, region.choices) : null;
 }
+
+/** The question's words as printed: its stem when its options print as choices of their own, else its whole text. */
+export const letteredStem = (text: string, regions: readonly AnswerRegion[]): string =>
+  regions.map(r => letteredRegion(text, r)).find(x => x)?.stem ?? text;
+
+/** The circle-target row of lettered options, or null for any other region. `words` prints an option's text as the page prints a question's. */
+export function letteredHtml(text: string, region: AnswerRegion, measure: string, words: (s: string) => string): string | null {
+  const lettered = letteredRegion(text, region);
+  return lettered && `<span class="circ opts" ${measure}>${lettered.options.map(o => `<span class="co"><b>${o.letter})</b><span>${words(o.text)}</span></span>`).join("")}</span>`;
+}
+
+/** Each option is its own target, letter first, in a row under the question's words; wrapped cards keep the row below the words. */
+export const LETTERED_CSS = `
+.pg.consistent .circ.opts{display:flex;flex:1 1 100%;flex-wrap:wrap;align-items:center;gap:6px 32px;width:100%;min-height:44px;padding:0}
+.pg.consistent :is(.head,.top,.act):has(>.circ.opts){flex-wrap:wrap}
+.pg.consistent .story.nowork .head:has(>.circ.opts){align-items:baseline}
+.pg.consistent .chc .act:has(>.circ.opts){align-items:flex-start}
+.circ.opts .co{display:inline-flex;align-items:baseline;gap:10px;padding:4px 14px;font-family:"Unica Sans",Helvetica,Arial,sans-serif;font-size:var(--body);line-height:1.3}
+.circ.opts .co b{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-weight:500}
+`;

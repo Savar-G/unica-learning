@@ -32,7 +32,7 @@ import type { TemplateFonts } from "@/lib/workbook-template-fixed";
 import { instructionProblem, feedbackItemProblem, generatedDayTime } from "@/lib/workbook-feedback-check";
 import { titleProblem } from "@/lib/workbook-titles";
 import { printedMinus, singularPlaces } from "@/lib/workbook-wording";
-import { letteredRegion } from "@/lib/workbook-lettered-choices";
+import { letteredHtml, letteredRegion, letteredStem, LETTERED_CSS } from "@/lib/workbook-lettered-choices";
 import { bottomGapLimit, layoutProblems } from "@/lib/workbook-layout-check";
 import { printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
 import { curriculumFor } from "@/lib/workbook-curriculum";
@@ -587,13 +587,6 @@ const CSS = `
 .pg.consistent .chs.side3 .act{flex-direction:column;align-items:stretch;gap:8px}
 .pg.consistent .chs.side3 .act .wb{width:100%;min-width:0}
 .pg.consistent .chs.side3 .act .rg{align-self:flex-end}
-/* Lettered choices (#1215): each option its own target, letter first, in a row under the question's words. */
-.pg.consistent .circ.opts{display:flex;flex:1 1 100%;flex-wrap:wrap;align-items:center;gap:6px 32px;width:100%;min-height:44px;padding:0}
-.pg.consistent :is(.head,.top,.act):has(>.circ.opts){flex-wrap:wrap}
-.pg.consistent .story.nowork .head:has(>.circ.opts){align-items:baseline}
-.pg.consistent .chc .act:has(>.circ.opts){align-items:flex-start}
-.circ.opts .co{display:inline-flex;align-items:baseline;gap:10px;padding:4px 14px;font-family:"Unica Sans",Helvetica,Arial,sans-serif;font-size:var(--body);line-height:1.3}
-.circ.opts .co b{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-weight:500}
 /* The shading is the question's only: the work space under it is white paper. A layer behind the question paints it,
    from the card's edge to half the gap under the question, so no box moves: the card and its work space keep their size. */
 .pg.consistent .chc.plain{background:#fff}.pg.consistent .chc.plain>.top{position:relative;z-index:0}
@@ -642,7 +635,7 @@ const CSS = `
 .pg.consistent.stretch .chs>.chc.nowork{flex:1 0 auto}
 .pg.consistent .story .act{flex:1}
 .pg.consistent .story .act .wb,.pg.consistent .chc .act .wb{height:auto!important;min-height:var(--work-min);align-self:stretch}
-`;
+` + LETTERED_CSS;
 
 // ---------- Icons ----------
 
@@ -902,9 +895,6 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
     }
     case "choice": {
       if (r.mark === "circle") {
-        // Lettered options: each its own circle target, letter first, in a row under the question's words (#1215).
-        const lettered = letteredRegion(q.package.text, r);
-        if (lettered) return `<span class="circ opts" ${at}>${lettered.options.map((o) => `<span class="co"><b>${o.letter})</b><span>${printedWords(o.text)}</span></span>`).join("")}</span>`;
         // A pattern's choices are its shapes: drawn, not written (a word such as "triangle" at the fact size is too wide
         // for a card, and a child circles the shape).
         const shapes = r.choices.every((c) => (PATTERN_SHAPES as readonly string[]).includes(c));
@@ -912,7 +902,7 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
         // Choices in words ("less than 5", "not equal", "cats") stack in the body type: a card has no room for them in
         // a row at the size of a fact.
         const words = !shapes && r.choices.some((c) => /[a-z]{2}/i.test(c));
-        const circled = `<span class="circ${words ? " words" : ""}${likelihood(r) ? " likelihood" : ""}" ${at}>${r.choices.map((c) => `<span class="co">${choice(c)}</span>`).join("")}</span>`;
+        const circled = letteredHtml(q.package.text, r, at, (w) => keepHyphens(bcNumbers(escape(printedMinus(singularPlaces(w)))))) ?? `<span class="circ${words ? " words" : ""}${likelihood(r) ? " likelihood" : ""}" ${at}>${r.choices.map((c) => `<span class="co">${choice(c)}</span>`).join("")}</span>`;
         // (Unless the question says it: "Circle yes or no.")
         return o.band.cueChoices && !/\bcircle\b/i.test(q.package.text) ? `<span class="rg"><span class="t1" data-measure="cue-${q.number}-${r.id}"><span>Circle one</span></span>${circled}</span>` : circled;
       }
@@ -950,9 +940,6 @@ const likelihood = (region: AnswerRegion) => region.kind === "choice" && region.
  * their own row under the question, never a narrow column of text. */
 const inRow = (region: AnswerRegion) => (region.kind === "box" || region.kind === "choice")
   && !(region.kind === "box" && region.answer?.type === "text" && region.answer.value.length > 8) && !likelihood(region);
-
-/** A region in the question's row: `inRow`, and not lettered options (they take their own row under the words, #1215). */
-const besideText = (q: DraftQuestion, region: AnswerRegion) => inRow(region) && !letteredRegion(q.package.text, region);
 
 /** The regions of a question in a count or an order: printed among its terms, not beside its text. */
 function termRegions(q: DraftQuestion): Set<string> {
@@ -1010,7 +997,7 @@ function regionsSplit(q: DraftQuestion, o: RegionOpts): { inline: string; full: 
   for (const { region, name } of names) {
     if (inSequence.has(region.id)) continue;
     const html = regionHtml(q, region, name, o);
-    if (besideText(q, region)) inline += html;
+    if (inRow(region) && !letteredRegion(q.package.text, region)) inline += html;
     else full += html;
   }
   const space = o.band.consistentLayout && !names.some(x => x.region.kind === "work") ? questionWorkSpace(q.package) : 0;
@@ -1021,10 +1008,7 @@ function regionsSplit(q: DraftQuestion, o: RegionOpts): { inline: string; full: 
 /** The question's text, marked as its content. */
 /** A word with a hyphen ("ten-frame") never breaks at it: the line breaks before the word. */
 const keepHyphens = (html: string) => html.replace(/\b([A-Za-z]+(?:-[A-Za-z]+)+)\b/g, `<span style="white-space:nowrap">$1</span>`);
-const printedWords = (s: string) => keepHyphens(bcNumbers(escape(printedMinus(singularPlaces(s)))));
-/** A question's lettered options ("A) 22  B) 17"), which print as choices of their own under its stem (#1215). */
-const lettersOf = (q: DraftQuestion) => packageItem(q.package).regions.map((r) => letteredRegion(q.package.text, r)).find((x) => x) ?? null;
-const text = (q: DraftQuestion, cls = "qt") => `<span class="${cls}" ${mark.questionContent(q.number)}>${printedWords(lettersOf(q)?.stem ?? q.package.text)}</span>`;
+const text = (q: DraftQuestion, cls = "qt") => `<span class="${cls}" ${mark.questionContent(q.number)}>${keepHyphens(bcNumbers(escape(printedMinus(singularPlaces(letteredStem(q.package.text, packageItem(q.package).regions))))))}</span>`;
 const isMath = (s: string) => /^[\d\s+−×÷=?.,()/$¢a-z]*$/i.test(s) && /\d/.test(s) && !/[a-z]{3,}/i.test(s);
 const qtext = (q: DraftQuestion) => text(q, isMath(q.package.text) ? "qm" : "qt");
 
@@ -1435,7 +1419,7 @@ export function pagePlan(page: DraftPage): PagePlan | null {
     const q = byNumber.get(n);
     if (!q) return;
     const terms = termRegions(q);
-    const regions = regionNames(q).filter((x) => !terms.has(x.region.id) && besideText(q, x.region)).map((x) => x.name);
+    const regions = regionNames(q).filter((x) => !terms.has(x.region.id) && inRow(x.region) && !letteredRegion(q.package.text, x.region)).map((x) => x.name);
     if (regions.length) beside.set(n, { regions, align, inset });
   };
   const line = (n: number) => {
