@@ -8,6 +8,8 @@ describe("enumCheck", () => {
     expect(enumCheck("CHECK ((status = ANY (ARRAY['claimed'::text, 'sent'::text, 'failed'::text])))")).toEqual({ column: "status", values: ["claimed", "sent", "failed"] });
     expect(enumCheck("CHECK ((made_by = 'maya-demo-child'::text))")).toEqual({ column: "made_by", values: ["maya-demo-child"] });
     expect(enumCheck("CHECK ((note = ANY (ARRAY['it''s'::text])))")).toEqual({ column: "note", values: ["it's"] });
+    expect(enumCheck("CHECK (((status = 'queued'::text) OR (status = 'done'::text)))")).toEqual({ column: "status", values: ["queued", "done"] });
+    expect(enumCheck("CHECK ((((status = 'queued'::text) OR (status = 'running'::text)) OR (status = 'done'::text)))")).toEqual({ column: "status", values: ["queued", "running", "done"] });
   });
 
   it("is null for every other kind of check", () => {
@@ -15,6 +17,8 @@ describe("enumCheck", () => {
     expect(enumCheck("CHECK (((kind = ANY (ARRAY['continue'::text, 'come_back'::text])) = (assessment_id IS NOT NULL)))")).toBeNull();
     expect(enumCheck("CHECK (((observation ->> 'state'::text) = ANY (ARRAY['pending'::text])))")).toBeNull();
     expect(enumCheck("CHECK ((jsonb_typeof(versions) = 'object'::text))")).toBeNull();
+    expect(enumCheck("CHECK (((status = 'queued'::text) OR (other = 'done'::text)))")).toBeNull();
+    expect(enumCheck("CHECK (((status = 'queued'::text) OR (ended_at IS NOT NULL)))")).toBeNull();
   });
 });
 

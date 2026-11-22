@@ -16,7 +16,14 @@ test("push to main and workflow_dispatch always run full suite", () => {
 test("docs-only and design-only PRs skip when no dynamic-read file is touched", () => {
   const scope = classifyScope({
     eventName: "pull_request",
-    changedFiles: ["docs/ci/README.md", ".design/mockups/dashboard.html", "DESIGN.md"],
+    changedFiles: [
+      "docs/ci/README.md",
+      ".design/mockups/dashboard.html",
+      "DESIGN.md",
+      ".agents/skills/tdd/SKILL.md",
+      ".claude/skills/tdd",
+      "skills-lock.json",
+    ],
   });
   assert.equal(scope.mode, "skip");
   assert.equal(scope.runPrUnit, false);
@@ -42,6 +49,12 @@ test("dynamically-read docs trigger their exact consumer tests instead of skippi
   const agents = classifyScope({ eventName: "pull_request", changedFiles: ["AGENTS.md"] });
   assert.equal(agents.mode, "affected");
   assert.deepEqual(agents.extraTests, ["src/lib/maya-practice/practice.test.ts"]);
+  assert.equal(agents.runLintAndTypes, true);
+
+  const featureMap = classifyScope({ eventName: "pull_request", changedFiles: ["docs/feature-map.md"] });
+  assert.equal(featureMap.mode, "affected");
+  assert.equal(featureMap.runLintAndTypes, true);
+  assert.equal(featureMap.runPrUnit, false);
 
   const research = classifyScope({ eventName: "pull_request", changedFiles: [".design/research/foo.csv"] });
   assert.equal(research.mode, "affected");
@@ -119,4 +132,15 @@ test("high-blast-radius, unknown, empty, and large PRs fall back to full suite",
 
   const many = Array.from({ length: MAX_AFFECTED_FILES + 1 }, (_, i) => `src/components/c${i}.tsx`);
   assert.equal(classifyScope({ eventName: "pull_request", changedFiles: many }).mode, "full");
+});
+
+test("bulk skill-only updates over MAX_AFFECTED_FILES still skip CI", () => {
+  const manySkills = Array.from({ length: MAX_AFFECTED_FILES + 20 }, (_, i) => `.agents/skills/s${i}/SKILL.md`);
+  const scope = classifyScope({
+    eventName: "pull_request",
+    changedFiles: [...manySkills, "skills-lock.json"],
+  });
+  assert.equal(scope.mode, "skip");
+  assert.equal(scope.runPrUnit, false);
+  assert.equal(scope.runLintAndTypes, false);
 });
