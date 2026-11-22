@@ -49,6 +49,12 @@ test("dynamically-read docs trigger their exact consumer tests instead of skippi
   const agents = classifyScope({ eventName: "pull_request", changedFiles: ["AGENTS.md"] });
   assert.equal(agents.mode, "affected");
   assert.deepEqual(agents.extraTests, ["src/lib/maya-practice/practice.test.ts"]);
+  assert.equal(agents.runLintAndTypes, true);
+
+  const featureMap = classifyScope({ eventName: "pull_request", changedFiles: ["docs/feature-map.md"] });
+  assert.equal(featureMap.mode, "affected");
+  assert.equal(featureMap.runLintAndTypes, true);
+  assert.equal(featureMap.runPrUnit, false);
 
   const research = classifyScope({ eventName: "pull_request", changedFiles: [".design/research/foo.csv"] });
   assert.equal(research.mode, "affected");

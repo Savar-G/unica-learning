@@ -9,6 +9,7 @@ import { sampleBook } from "@/lib/workbook-sample-book";
 import { titleProblem, UNIT_TITLES } from "@/lib/workbook-titles";
 import { SKILL_TITLES } from "@/lib/workbook-skill-titles";
 import { workbookTemplate } from "@/lib/workbook-template";
+import { ANSWER_LAYOUT_BOOK, answerLayoutPages } from "@/lib/workbook-answer-layout-fixture";
 import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
 
 // The workbook templates (#310) laid out in real Chromium: one page of each type from sample books at U2 (parent-led),
@@ -394,4 +395,123 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
     const { data } = await sharp(proof.png).extract({ left: 0, top: 4, width: 40, height: 10 }).raw().toBuffer({ resolveWithObject: true });
     expect([data[0], data[1], data[2]]).toEqual([0xb4, 0x23, 0x18]);
   }, 120_000);
+});
+
+// #1212: where the answer boxes print. Synthetic pages (src/lib/workbook-answer-layout-fixture.ts) in real Chromium.
+describe.skipIf(!chromium)("answer box positions in Chromium (#1212)", () => {
+  const pages = (level: number, consistent: boolean) => answerLayoutPages(level, consistent);
+  const draftOf = (page: DraftPage, level: number): WorkbookDraft => ({ ...ANSWER_LAYOUT_BOOK, levels: [level], pages: [page] });
+  const measure = async (page: DraftPage, level: number) => {
+    const { measured } = await printPage(page, draftOf(page, level));
+    const byName = new Map(measured.map(m => [m.name, m]));
+    return { byName, fit: template.fit?.(page, byName, draftOf(page, level)) ?? [], get: (name: string) => byName.get(name)! };
+  };
+  const right = (m: MeasuredElement) => m.x + m.width;
+  /** The measured labels and regions (never a question's own text) that print a phrase. */
+  const printedLabels = (byName: Map<string, MeasuredElement>, phrase: RegExp) => [...byName].filter(([name, x]) => /^(?:label-|region-|question-\d+-answer)/.test(name) && phrase.test(x.text)).map(([name]) => name);
+  const bottom = (m: MeasuredElement) => m.y + m.height;
+  /** The gap between a box's edge and its card's: inside the card (a pixel of rounding allowed), and close to the edge. */
+  const edge = (gap: number, label?: string) => { expect(gap, label).toBeGreaterThanOrEqual(-1); expect(gap, label).toBeLessThan(30); };
+
+  it.each([[6, true], [12, true]])("puts a Challenge card's answer box at its bottom right (U%i, measured layout %s)", async (level, consistent) => {
+    const page = pages(level, consistent).challenge;
+    const m = await measure(page, level);
+    expect(m.fit).toEqual([]);
+    for (const q of page.questions) {
+      const card = m.get(`question-${q.number}`), box = m.get(`question-${q.number}-answer`);
+      edge(right(card) - right(box), `question ${q.number} right`);
+      edge(bottom(card) - bottom(box), `question ${q.number} bottom`);
+      expect(box.y - card.y, `question ${q.number} is below the question`).toBeGreaterThan(60);
+    }
+  }, 60_000);
+
+  it("puts a Challenge card's choices at the right of its question, with no label for its reason lines", async () => {
+    const page = pages(12, true)["challenge-yes-no"];
+    const m = await measure(page, 12);
+    expect(m.fit).toEqual([]);
+    for (const n of [1, 2]) {
+      const card = m.get(`question-${n}`), choices = m.get(`question-${n}-answer`), text = m.get(`question-${n}-content`);
+      expect(right(card) - right(choices)).toBeLessThan(40);
+      expect(choices.x).toBeGreaterThan(text.x + text.width / 2);
+      expect(choices.y).toBeLessThan(text.y + 40);
+    }
+    // The prompt is in the question's own text, once.
+    expect(m.get("question-1-content").text).toMatch(/How do you know\?$/);
+    expect(printedLabels(m.byName, /how do you know/i)).toEqual([]);
+  }, 60_000);
+
+  it.each([12, 6])("puts every answer box of a Show what you know page at the bottom right of its card, in line and one size (U%i)", async (level) => {
+    const page = pages(level, true)["show-what-you-know"];
+    const m = await measure(page, level);
+    expect(m.fit).toEqual([]);
+    const boxes = page.questions.map((q) => ({ q: q.number, card: m.get(`question-${q.number}`), box: m.get(`question-${q.number}-answer`) }));
+    for (const { q, card, box } of boxes) {
+      // With or without work space, every box is in the card's bottom right corner.
+      edge(right(card) - right(box), `question ${q} right`);
+      edge(bottom(card) - bottom(box), `question ${q} bottom`);
+    }
+    // The boxes of a row line up (cards share a row when their tops match), and so do the right edges of a column.
+    for (const a of boxes) for (const b of boxes) {
+      if (a.q < b.q && Math.abs(a.card.y - b.card.y) < 1) expect(Math.abs(bottom(a.box) - bottom(b.box)), `questions ${a.q} and ${b.q}`).toBeLessThan(1.5);
+    }
+    // One size: every number answer has the standard box; only the expanded form (question 3) has a wider one.
+    const standard = boxes.filter(({ q }) => q !== 3);
+    for (const { q, box } of standard) { expect(box.width, `question ${q} width`).toBeCloseTo(standard[0].box.width, 0); expect(box.height).toBeCloseTo(standard[0].box.height, 0); }
+    expect(boxes.find(({ q }) => q === 3)!.box.width).toBeGreaterThan(standard[0].box.width);
+    // The work boxes of the cards that ask for work have no label of their own.
+    expect(printedLabels(m.byName, /show your work/i)).toEqual([]);
+  }, 60_000);
+
+  it("prints a comparison's answer box between its two numbers", async () => {
+    const page = pages(12, true)["quick-check"];
+    const m = await measure(page, 12);
+    expect(m.fit).toEqual([]);
+    for (const n of [2, 4]) {
+      const box = m.get(`question-${n}-answer`), content = m.get(`question-${n}-content`);
+      expect(content.text).toMatch(/^Write < or >: \d+\s*\d+$/);
+      // The box is inside the question's own line, with a number on each side.
+      expect(box.x).toBeGreaterThan(content.x + 100);
+      expect(right(box)).toBeLessThan(right(content) - 20);
+    }
+  }, 60_000);
+
+  it.each([[6, 56], [12, 48]])("prints a comparison's box at the level's box height (U%i: %i px)", async (level, height) => {
+    const page = pages(level, true)["quick-check"];
+    const m = await measure(page, level);
+    expect(m.fit).toEqual([]);
+    for (const n of [2, 4]) expect(m.get(`question-${n}-answer`).height).toBeGreaterThanOrEqual(height - 0.5);
+  }, 60_000);
+
+  it("puts a long word answer's box at the bottom right of a card with work space", async () => {
+    const page = structuredClone(pages(12, true).challenge);
+    const q = page.questions[0], item = q.package.item!;
+    q.package = { ...q.package, item: { ...item, regions: [{ id: "answer", kind: "box", label: null, answer: { type: "text", value: "six hundred twelve" } }, ...item.regions.filter(r => r.kind === "work")] } };
+    const m = await measure(page, 12);
+    const card = m.get("question-1"), box = m.get("question-1-answer");
+    edge(right(card) - right(box));
+    edge(bottom(card) - bottom(box));
+  }, 60_000);
+
+  it.each([6, 12])("keeps a long word answer's box and its work space inside a half-width test card (U%i)", async (level) => {
+    const page = structuredClone(pages(level, true)["show-what-you-know"]);
+    const q = page.questions[0], item = q.package.item!;
+    q.package = { ...q.package, item: { ...item, regions: [{ id: "answer", kind: "box", label: null, answer: { type: "text", value: "six hundred twelve thousand" } }, ...item.regions.filter(r => r.kind === "work")] } };
+    const m = await measure(page, level);
+    expect(m.fit).toEqual([]);
+    const card = m.get("question-1"), box = m.get("question-1-answer");
+    edge(right(card) - right(box));
+    edge(bottom(card) - bottom(box));
+    // The work space beside it keeps at least its minimum width.
+    const work = [...m.byName.values()].find((x) => x.name === "region-1-work")!;
+    expect(work.width).toBeGreaterThanOrEqual(120);
+    expect(right(work)).toBeLessThanOrEqual(box.x);
+  }, 60_000);
+
+  it("puts the box of a long word answer on its own row at the right, in line with the page's other boxes", async () => {
+    const page = pages(12, true)["mixed-answers"];
+    const m = await measure(page, 12);
+    expect(m.fit).toEqual([]);
+    // Question 2 (a long text answer) and question 4 share the right column.
+    expect(Math.abs(right(m.get("question-2-answer")) - right(m.get("question-4-answer")))).toBeLessThan(1.5);
+  }, 60_000);
 });

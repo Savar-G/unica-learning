@@ -105,7 +105,7 @@ Challenge, wrench for Fix it. The Challenge chip is 31 tall with its 1.5 px bord
 
 **Answer box** (white, 1.2 px `#0C0C0E`, radius 6): height 40 (44 beside 17 px maths, 46 for large inline answers; 56 at
 U1 to U3); width by the characters of its expected answer, without its unit: 40 to 48 for one or two, 64 for three, 96 for
-four to seven (a child's four digits need about an inch), 140 up to twelve, 204 for words. Every answer box is an item
+four to seven (a child's four digits need about an inch), 140 up to twelve, 204 for words. The standard size is the default; a wider box is only for an answer that needs the room (an expanded form), and in a half-width card a long word answer's box gives way to what fits beside the work space (Cedric, 2026-11-22). Every answer box is an item
 answer region with a stored position (#309).
 
 **Tick box** (20 by 20, radius 3, 2 px `#0C0C0E`, white) inside a **choice strip** (`#F4F4F5`, radius 8, height 42,
@@ -150,8 +150,10 @@ answer boxes with "WORK IT HERE" boxes below.
 
 **Mixed set item**: use the standard's mastered step and its number range. Print the question and its answer region in the same grid as the review. Keep story text in code.
 
-**Challenge card**: `#F4F2F0`, 1.5 px `#2B2622`, radius 12, padding 16; the question at the top left, an answer box
-(88 by 40) at the top right, then a white work box filling the rest. On the 8-page day: 1 or 2 full-width cards (688 wide, gap 16); on the
+**Challenge card**: `#F4F2F0`, 1.5 px `#2B2622`, radius 12, padding 16; the question at the top left, any yes or no or
+true or false choices at its right, then a white work box filling the rest with the answer box at its bottom right. A card has no
+label inside it ("Show your work" is on the page's work line); a written reason's prompt ("How do you know?") is part of the
+question text. A Show what you know card with work space puts its answer box at the bottom right the same way. On the 8-page day: 1 or 2 full-width cards (688 wide, gap 16); on the
 6-page day: 2 cards side by side (336 wide). The samples' 2 by 2 grid of four is not used.
 
 **Math in the world**: an info row of cards (`#FFEDE5`, radius 8, label `#7A2E0E`: for example EDGING $4 per metre, SOIL,
@@ -228,7 +230,7 @@ the Try this first card from U19. On Days 5 and 10 the Friday 5 replaces the Mix
   or writing one numeral; 6 to 10 items a page; large boxes (at least 56 px). Until Cedric's sample exists, the
   generator does not build these levels (CONTEXT.md, open question 3).
 - **Friday 5 (Days 5 and 10):** replaces the Mixed set block on page 7: a FRIDAY 5 chip (Mixed set colours) with "5
-  from the last 3 weeks. No hints.", then 5 numbered items, each with its answer box. No sample yet.
+  from the last 3 weeks.", then 5 numbered items, each with its answer box. No sample yet.
 - **Show what you know (Day 10):** one of each of the workbook's steps, and the hardest ones again, framed as a
   celebration (Review colours). No sample yet.
 - **Level test (Day 7 of a test workbook):** its own page type; every unit, no hints, at least one context question;
@@ -316,7 +318,7 @@ same counts and colours as the text. The real fit check refuses any card with mo
 
 Issue #479 updates the workbook print contract. Name and Date print only on each day's first page. Keep at least 18 px of extra separation before the day label. Use the same question and answer grid across rows. Story-card answer areas align at the bottom of each row.
 
-Answer boxes are at least 56 px high at U1 to U9 and 48 px from U10. Calculation space is white and sits under the question. Use 32 px for a short calculation with round numbers, 64 px for other multi-digit calculations, and 96 px for multi-step calculations. A digit recall needs no calculation space, and neither does a question that is only its calculation ("834 − 121 = ?") with no carrying or borrowing: the child would copy it again, so it is not on the "Show your work" line. One that carries or borrows keeps its space, and so does one whose decimals have different numbers of places ("12 + 0.5 = ?"): lining up the decimal point is the skill. Two-method regions include space for their method labels. Larger story and Challenge areas grow into the available room. Calculation pages can use six questions when their work areas require the room. A calculation Practice 2 page with both an error question and a two-method question can use four ordinary questions, for six tasks in total. Other practice pages keep at least eight. A calculation New idea page can keep two practice questions beside its worked example. A calculation practice page can use a short reminder to make room for work. Complete every two-column row. Friday 5 keeps five questions and uses a full-width final row. Add questions while they fit, up to about 33 minutes a day. Every day must stay below 35 minutes. Challenge keeps three cards. Strict overflow checks stay in force.
+Answer boxes are at least 56 px high at U1 to U9 and 48 px from U10. Calculation space is white and sits under the question. Use 32 px for a short calculation with round numbers, 64 px for other multi-digit calculations, and 96 px for multi-step calculations. A digit recall needs no calculation space, and neither does a question that is only its calculation ("834 − 121 = ?") with no carrying or borrowing: the child would copy it again, so it is not on the "Show your work" line. One that carries or borrows keeps its space, and so does one whose decimals have different numbers of places ("12 + 0.5 = ?"): lining up the decimal point is the skill. Two-method regions include space for their method labels. Larger story and Challenge areas grow into the available room. Calculation pages can use six questions when their work areas require the room. A calculation Practice 2 page with both an error question and a two-method question can use four ordinary questions, for six tasks in total. Other practice pages keep at least eight. A calculation New idea page can keep two practice questions beside its worked example. A calculation practice page can use a short reminder to make room for work. Complete every two-column row. A comparison ("Write < or >: 278 ? 578") prints its answer box between the two numbers ("278 [ ] 578"). An answer box that does not fit beside its question (a long word answer) takes its own row at the right. Friday 5 keeps five questions and uses a full-width final row. Add questions while they fit, up to about 33 minutes a day. Every day must stay below 35 minutes. Challenge keeps three cards. Strict overflow checks stay in force.
 
 Every day page has a short, plain instruction. A page with calculation space prints, on its own line under the instruction, bold on the yellow `#FFD23F` highlight, "Show your work under questions 7 and 8." with the real question numbers (Savar, 2026-11-09); the instruction does not say it too, and those work spaces print no label. Keep its circle instruction. A review section is labelled "Review", at most once a page and never under a title that says Review; a reminder box under the "Remember" chip has no "Remember" label of its own. Adult guidance is only for Kindergarten. Use "Read how it works, then try it." for a new idea and "Test yourself." under "Challenge". The error card shows "SPOT THE ERROR", the worked answer, "Is it right?", Yes and No, then "If it's not right, fix it:" and an answer box. Do not print a person's work label.
 

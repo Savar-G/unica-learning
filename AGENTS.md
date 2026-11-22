@@ -16,38 +16,38 @@ Personalized math learning program with mailed paper workbooks for ages 5–14 (
 
 ## Agent skills
 
-- **Installed skills:** `.agents/skills/` (symlinked in `.claude/skills/`, pinned in `skills-lock.json`; update with `npx skills update`, link other harnesses with `npx skills experimental_install -a <agent>`).
-- **Issue tracker:** GitHub Issues on `Savar-G/unica-learning` via `gh` CLI (`docs/agents/issue-tracker.md`).
+- **Installed skills:** `.agents/skills/` (symlinked in `.claude/skills/`, `skills-lock.json`; `npx skills update`).
+- **Issue tracker:** `Savar-G/unica-learning` via `gh` (`docs/agents/issue-tracker.md`).
 - **Triage labels:** `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix` (`docs/agents/triage-labels.md`).
 - **Domain docs:** `.design/decisions.md` (ADRs), `DESIGN.md`, `CONTEXT.md` (`docs/agents/domain.md`).
-- **Delegates:** Read `docs/agents/delegate-brief.md` before delegated PR work.
+- **Delegates, routes & verification:** `docs/agents/delegate-brief.md`, `docs/feature-map.md`, `docs/agents/verify-app.md`.
 
 ## Code & test discipline
 
-- **Small, modular code:** Prefer minimal, direct edits and focused files. Do not grow monoliths (`src/lib/maya/session.ts`, `src/lib/workbook-generator.ts`); extract helpers when adding substantial logic.
-- **Tests (Vitest, `src/**/*.test.ts`):** Test public interfaces with in-memory seams and injected clocks. Clear mocks and browser storage before each test, restore env/global stubs after, and run changed tests shuffled (`--sequence.shuffle`).
-- **No test sprawl:** Add tests to the module's existing `<name>.test.ts`. Never create ticket-, PR-, or review-round-named test files (`*-final-check*`, `*-698`, `*-fixes`, `*-review*`). Test behavior and real invariants—no duplicate assertions or prose-grepping tests.
+- **Small, modular code:** Prefer minimal edits and focused files; `npm run check:guard` (`scripts/repo-guard.mjs`) enforces monolith ceilings, `useEffect`/suppression ratchets, route mapping, and banned patterns.
+- **Tests (`src/**/*.test.ts`):** Test public interfaces with in-memory seams, injected clocks, and `fast-check` for pure invariants. Clear mocks/storage before each test, restore stubs after, and run changed tests shuffled (`--sequence.shuffle`).
+- **No test sprawl:** Add tests to the module's existing `<name>.test.ts` (never ticket-, fix-, or regression-named files; enforced by `check:guard`). Test behavior and real invariants—no duplicate assertions or prose-grepping.
 - **Concise plans:** Sacrifice grammar for concision; end every plan with unresolved questions.
 
 ## Git, PRs & Vercel
 
 - **Branches & worktrees:** Work in your own worktree on `site/<topic>` from `origin/main`. Never switch branches in the main checkout (`git worktree list`). Never commit `worker/*/node_modules`. Never name non-blog branches `claude/blog-*`.
 - **PRs & merges:** Open a PR yourself when done—do not ask first. **Never merge to `main` unless Savar asks** (merging deploys production).
-- **PR format:** Write for human reviewers using `.github/PULL_REQUEST_TEMPLATE.md`—plain-English title, 1–2 line summary, short Before/After table, optional preview link, and all technical/agent details inside `<details>`.
-- **Post-merge ("merge and clean up"):** Delete merged remote & local branches, remove the task worktree, fast-forward local `main`, and verify the `test` CI check + live production behavior (and LiveKit deploy if `worker/maya-voice/` changed).
-- **Vercel Hobby cap (~100/day):** Only `main` auto-deploys (`vercel.json`); CI checks branches. Push once per review round; merge `main` only for conflicts or right before merge; never push empty commits (use `npx vercel@latest redeploy <url>` for infra failures). Manual previews only when needed (`npx vercel@latest deploy --scope unica-learning`).
+- **PR format:** Use `.github/PULL_REQUEST_TEMPLATE.md`—plain-English title, 1–2 line summary, Before/After table, optional preview link, and technical/agent details inside `<details>`.
+- **Post-merge ("merge and clean up"):** Delete merged remote & local branches, remove the task worktree, fast-forward local `main`, and verify `test` CI + live production (and LiveKit deploy if `worker/maya-voice/` changed).
+- **Vercel Hobby cap (~100/day):** Only `main` auto-deploys (`vercel.json`); CI checks branches. Push once per review round; merge `main` only for conflicts or pre-merge; never push empty commits (use `npx vercel@latest redeploy <url>` for infra failures). Manual previews only when needed (`npx vercel@latest deploy --scope unica-learning`).
 - **Git LFS:** `.design/` media uses LFS (`git lfs install`; `git add --renormalize .design` if dirty after merge). Never put `src/` or `public/` assets in LFS (Vercel builds with LFS off).
 
 ## Verification & done gate
 
-- **Done gate:** Run `npm test && npx eslint src && npm run typecheck && npm run build` once before pushing (`npm run typecheck` runs `next typegen && tsgo --noEmit`).
+- **Done gate:** Run `npm run check:fast` in the inner loop; run `npm test && npm run check:guard && npx eslint src && npm run typecheck && npm run build` once before pushing.
 - **Maya / worker:** When touching `src/lib/maya/` or `worker/`, also run `npm run voice:test && npm run voice:typecheck` and `src/lib/maya-text*.test.ts`. Maya changes merge on green CI; run `npm run maya:practice` after a batch lands on `main` (`docs/maya-practice.md`).
 - **Evidence before confidence:** A green build is not proof for routes, webhooks, crons, or UI. Verify observable runtime behavior (401 vs 200, browser check, hosted DB probe) and explicitly state anything unverified.
 - **Browser checks:** Use `aside --account u0` (`aside exec` / `aside repl`; run `aside guide repl` once) for authenticated dashboards, email, E2E, and local checks—never Playwright/Puppeteer (except `src/lib/print-engine-chromium.ts`). Use T3 `preview_*` when asked to show work in T3 Preview.
 
 ## Database, keys & production safety
 
-- **Migrations:** Apply yourself via Supabase MCP `apply_migration` (`cdjobwsyzndtltzfpyqa`) or Management API (Keychain `supabase-pagewise`; never `supabase login`). Additive only, filename `supabase/migrations/<yyyymmddHHMMSS>_<name>.sql`, verify via `list_migrations` + probe. Run `npm run db:types` (and `npm run db:checks` on check constraints) and commit in the same PR. Never hand-edit `src/lib/database.types.ts` (overrides go in `src/lib/database.ts`) or add `overrideTypes`/`returns<T>()`/`maybeSingle<T>()`. See `docs/supabase-ops.md`.
+- **Migrations:** Apply via Supabase MCP `apply_migration` (`cdjobwsyzndtltzfpyqa`) or Management API (Keychain `supabase-pagewise`; never `supabase login`). Additive only (`supabase/migrations/<yyyymmddHHMMSS>_<name>.sql`); verify via `list_migrations` + probe. Run `npm run db:types` (and `db:checks` on check constraints) in the same PR. Never hand-edit `src/lib/database.types.ts` (use `src/lib/database.ts`) or add `overrideTypes`/`returns<T>()`/`maybeSingle<T>()` (`docs/supabase-ops.md`).
 - **AI keys & switches:** Each AI product needs its own OpenRouter key (`src/lib/ai-product-keys.ts`, `docs/ai-product-keys.md`). Shared `OPENROUTER_API_KEY` is disabled; duplicate keys disable all clients. Keep production feature switches off until Savar approves (`docs/environment.md`).
 - **Real-family safety:** Exclude `public.test_accounts` and `admin_team_ids()` from customer metrics/queues. Never write test data or destructive probes to real families.
 - **Admin polling & incidents:** Never leave prod admin pages open polling (open once, then close). On stuck-page reports, check site-wide 5xx and route traffic first (`npx vercel@latest logs requests`). Keep timeouts and non-looping retries on the child test screen (`src/components/test-save-failure.test.ts`).

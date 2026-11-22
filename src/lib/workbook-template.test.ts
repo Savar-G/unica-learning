@@ -4,7 +4,8 @@ import { packageItem } from "@/lib/question-package";
 import { workbookProblem } from "@/lib/workbook-content";
 import { renderWorkbook, type DraftPage, type PrintEngine, type WorkbookDraft } from "@/lib/workbook-render";
 import { sampleBook } from "@/lib/workbook-sample-book";
-import { bandOf, COVER_FOR_CHARS, coverForLine, pagePlan, reviewLayout, workbookTemplate } from "@/lib/workbook-template";
+import { bandOf, COVER_FOR_CHARS, coverForLine, comparisonOf, pagePlan, reviewLayout, workbookTemplate } from "@/lib/workbook-template";
+import { ANSWER_LAYOUT_BOOK, answerLayoutPages } from "@/lib/workbook-answer-layout-fixture";
 import { generatedDayTime } from "@/lib/workbook-feedback-check";
 import { Window } from "happy-dom";
 import type { Block, DayContent } from "@/lib/workbook-page";
@@ -31,6 +32,77 @@ const parsedPage = (html: string) => {
   root.innerHTML = html;
   return root;
 };
+
+describe("where answer boxes print (#1212)", () => {
+  const html = (name: string, level = 12, consistent = true) => {
+    const page = answerLayoutPages(level, consistent)[name];
+    return { page, root: parsedPage(workbookTemplate().page(page, { qr: "", qrUrl: "" }, { ...ANSWER_LAYOUT_BOOK, pages: [page] })!) };
+  };
+
+  it("says the five-skill check is 5 from earlier days, with no No hints", () => {
+    const { root } = html("friday-5");
+    expect(root.querySelector(".chiprow .side")?.textContent).toBe("5 from earlier days.");
+    expect(root.textContent).not.toMatch(/no hints/i);
+  });
+
+  it("prints no work label in a Challenge card, the box after the work space, choices beside the question", () => {
+    const { root } = html("challenge");
+    expect(root.textContent).not.toMatch(/show your work\s*$/i);
+    for (const card of root.querySelectorAll(".chc")) {
+      expect(card.querySelector(".top .ab")).toBeNull();
+      expect(card.querySelector(".act > .rg:last-child .ab")).not.toBeNull();
+      expect(card.querySelector(".lab")).toBeNull();
+    }
+    const choices = html("challenge-yes-no").root;
+    for (const card of [...choices.querySelectorAll(".chc")].slice(0, 2)) {
+      expect(card.querySelector(".top .rgs .circ")).not.toBeNull();
+      expect(card.querySelector(".act .circ")).toBeNull();
+      expect(card.querySelector(".ln .lp")).toBeNull();
+    }
+  });
+
+  it("asks a Challenge card's written reason in the question, once", () => {
+    const { root } = html("challenge-yes-no");
+    const [first, second] = [...root.querySelectorAll('[data-measure^="question-"][data-measure$="-content"]')].map((e) => e.textContent);
+    // (The first question's text lacks the prompt: it is added. The second already asks it: it is not repeated.)
+    expect(first).toBe("Is 24 a multiple of 6? How do you know?");
+    expect(second).toBe("True or false: every even number is a multiple of 4. How do you know?");
+  });
+
+  it("puts every answer box of a test card in its foot, with no work label, and keeps a saved legacy page's layout", () => {
+    const { root } = html("show-what-you-know");
+    expect(root.querySelectorAll(".tc .lab")).toHaveLength(0);
+    const cards = [...root.querySelectorAll(".tc")];
+    // Every card, with or without work space, has its box in the action row at the foot; none beside the question.
+    expect(cards.filter((c) => c.querySelector(".act .ab"))).toHaveLength(cards.length);
+    expect(root.querySelectorAll(".tc .q .rgs .ab")).toHaveLength(0);
+    // A saved legacy page keeps its layout (the box beside the question), minus the label its work space used to print.
+    const legacy = html("show-what-you-know", 12, false).root;
+    expect(legacy.querySelectorAll(".tc .lab")).toHaveLength(0);
+    expect(legacy.querySelectorAll(".tc .q .rgs .ab")).toHaveLength(6);
+  });
+
+  it("recognises a comparison and prints its box between the numbers", () => {
+    const { page, root } = html("quick-check");
+    expect(comparisonOf(page.questions[1])).toMatchObject({ prefix: "Write < or >:", left: "278", right: "578" });
+    expect(comparisonOf(page.questions[0])).toBeNull();
+    const cmp = root.querySelector(".q.cmp-item .cmp")!;
+    expect([...cmp.children].map((e) => e.classList.contains("rg") ? "box" : e.textContent)).toEqual(["278", "box", "578"]);
+    expect(root.querySelector(".q.cmp-item .rgs")?.children.length ?? 0).toBe(0);
+    // A saved legacy page keeps its layout: the box stays among the answers beside the question.
+    const legacy = html("quick-check", 12, false).root;
+    expect(legacy.querySelector(".cmp")).toBeNull();
+    expect(legacy.querySelector(".cmp-item")).toBeNull();
+    expect(comparisonOf({ ...page.questions[1], package: { ...page.questions[1].package, text: "Which is greater: 278 or 578?" } })).toBeNull();
+  });
+
+  it("right-aligns a long word answer's box on its own row", () => {
+    const css = workbookTemplate().css;
+    expect(css).toMatch(/\.q \.full>\.rg\{margin-left:auto\}/);
+    const { root } = html("mixed-answers");
+    expect(root.querySelector(".q .full > .rg .ab")).not.toBeNull();
+  });
+});
 
 describe("the workbook templates", () => {
   // Cedric's printed pages (2026-11-13, #1116): a child's four digits did not fit a 64 px box. A 4-digit answer prints
