@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { checkQuestionPackage, type ItemCheck } from "@/lib/question-package";
 import { BC_CURRICULUM, curriculumFor, curriculumFromData } from "@/lib/workbook-curriculum";
-import { buildStepItem, choicesFor, sequenceOf, stepBounds, stepOf, stepRangeProblem, stepRank, stepTemplateItem, templateProblem } from "@/lib/workbook-step-items";
+import { choicesFor, sequenceOf } from "@/lib/workbook-template-text";
+import { buildStepItem, stepBounds, stepOf, stepRangeProblem, stepRank, stepTemplateItem, templateProblem } from "@/lib/workbook-step-items";
 import { itemNumber, planItem } from "@/lib/workbook-item-plan";
 import { buildQuestion, selectedItemStep, type AiItem } from "@/lib/workbook-generator-items";
 

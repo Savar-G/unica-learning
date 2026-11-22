@@ -63,7 +63,7 @@ import { WorkbookAiUnavailable } from "@/lib/workbook-ai-unavailable";
 import { checkQuestionPackage, type QuestionPackage } from "@/lib/question-package";
 import { isQrToken, isUuid } from "@/lib/workbook-content";
 import type { Curriculum } from "@/lib/workbook-curriculum";
-import { buildQuestion, isCodeWorded, ITEMS_SCHEMA, kindProblem, relationWordings, selectedItemStep, type AiItem, type BuiltQuestion, type QuestionCheck, type SlotWording } from "@/lib/workbook-generator-items";
+import { buildQuestion, isCodeWorded, ITEMS_SCHEMA, kindProblem, relationWordings, selectedItemStep, type BuiltQuestion, type QuestionCheck, type SlotWording } from "@/lib/workbook-generator-items";
 import { attachWorkbookMayaOperations, withWorkbookMayaOperation, printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
 import { isOneMoreLessSkill } from "@/lib/number-words";
 import { solveCheck, solveReason, toSolve, type SolveLog, type Solver, type SolveVerdict } from "@/lib/workbook-solve-check";
@@ -90,6 +90,8 @@ import { COMPACT_STORY_FRAMES } from "@/lib/workbook-story-bank";
 import { childSamMistakes, difficultyDay, daySchedule, INTEREST_SHARE, interestEligible, interestShareProblems, interestWords, printsInterest, shortStories, SHORT_STORY_WORDS, storyThings, styleKinds, templateSpotShown, warmUpFact, warmUpShareProblems, warmUpSkill, type WarmUpFact } from "@/lib/workbook-personal-items";
 import { isTwoStep, routingTemplates } from "@/lib/workbook-curriculum/house-templates";
 import { buildStepItem, mixedTemplateSign, NO_TEMPLATE_PLACES, STEP_STORY_PLACES, stepAiItem, stepBounds, stepOf, stepRank, stepTemplateItem, stepTemplateOf, sumTemplate, templateProblem } from "@/lib/workbook-step-items";
+import { easiestWarmUpSlot, warmUpAllowedSteps, warmUpMaxChars, warmUpSlotTarget } from "@/lib/workbook-warm-up";
+import { factItem } from "@/lib/workbook-warm-up-fact";
 import type { StepDeclaration, StepReference } from "@/lib/workbook-print-contract";
 
 /** A replacement must retain the practice page's own-step minimum before it can borrow review work. */
@@ -162,14 +164,16 @@ function slotStep(input: GenerateInput, slot: Slot, attempt: number, level: numb
 }
 
 /**
- * A slot's step template item (#489), or undefined when the slot is not one templates fill (no step, a warm-up fact,
- * or a book before #489), or null when its step has no template that prints there. A question on a
+ * A slot's step template item (#489), or undefined when the slot is not one templates fill (no step, an uncovered
+ * warm-up, or a book before #489), or null when its step has no template that prints there. A question on a
  * ten-frame step keeps #482's "colour in N" builder on every third slot, with the step's own count range.
  */
 function templateContractFor(input: GenerateInput, w: PageWork, slot: Slot, attempt: number): ItemPlan | null | undefined {
   if (input.itemPolicy !== "approved-v1" || !input.curriculum.contexts) return undefined;
   if (slot.place && NO_TEMPLATE_PLACES.has(slot.place) && slot.place !== "how-do-you-know") return undefined;
-  const selected = slotStep(input, slot, attempt, input.plan.level, w.day, needsOwnPractice(input, w, slot));
+  const warmUp = slot.place === "warm-up";
+  const { ordinal: warmUpOrdinal, target: warmUpTarget } = warmUp ? warmUpSlotTarget(input.curriculum, input.plan, w.day, w.slots, slot, attempt) : { ordinal: 0, target: null };
+  const selected = warmUp ? (warmUpTarget && { skill: warmUpTarget.skill, step: warmUpTarget.step }) : slotStep(input, slot, attempt, input.plan.level, w.day, needsOwnPractice(input, w, slot));
   const own = selected && slot.part.step?.skill === selected.skill && slot.part.step.step === selected.step;
   const at = selected && slot.place !== "warm-up" && !own ? { ...selected, step: reviewMasteryStep(input.curriculum, input.plan.level, selected.skill) ?? selected.step } : selected;
   if (!at) return undefined;
@@ -183,8 +187,8 @@ function templateContractFor(input: GenerateInput, w: PageWork, slot: Slot, atte
     const item = stepAiItem(slot.id, { skill: at.skill, step: at.step, index: 0, format: "explain", difficulty: "medium", kind: "box", source: { answer: "0", check: null, derived: [], slots: [], values: null }, answer: "", frame: "", drill: false, rank: 0, bounds: null, hardest: false }, "How can you check the first story on this page?");
     return { type: "template", source: "explain", item: { ...item, format: "written-reason" }, numbers: [], dayRange };
   }
-  const ordinal = (Number(slot.id.split(".")[1]) || 1) - 1;
-  const frameStep = /ten-frame/i.test(`${step.name} ${step.representation}`) && approvedQuestionTypes(at.skill).includes("count") && level >= 4;
+  const ordinal = warmUp ? warmUpOrdinal : (Number(slot.id.split(".")[1]) || 1) - 1;
+  const frameStep = !warmUp && /ten-frame/i.test(`${step.name} ${step.representation}`) && approvedQuestionTypes(at.skill).includes("count") && level >= 4;
   // (Early attempts only: a later one, the capacity stage looking for a shorter question, takes a template.)
   if (frameStep && attempt < 8 && ordinal % 3 === 2 && slot.place && !STEP_STORY_PLACES.has(slot.place) && !["spot-the-error", "solve-it-two-ways"].includes(slot.place)) {
     const count = step.numbers?.count;
@@ -206,10 +210,13 @@ function templateContractFor(input: GenerateInput, w: PageWork, slot: Slot, atte
   // then plans the page.
   // (A Show what you know card holds 3 lines, D-201: its room is 3 of its lines, not twice its 2-line room.)
   const card = slot.place === "show-what-you-know" || slot.place === "level-test";
-  const room = drill && slot.place !== "spot-the-error" ? (card ? drill.perLine * 3 : Math.round(Math.max(drill.characters * 2, drill.perLine * 3) * (attempt >= 128 && LONGER_PLACES.has(slot.place!) ? 1.6 : 1))) : undefined;
+  const room = warmUp ? warmUpMaxChars(level)
+    : drill && slot.place !== "spot-the-error" ? (card ? drill.perLine * 3 : Math.round(Math.max(drill.characters * 2, drill.perLine * 3) * (attempt >= 128 && LONGER_PLACES.has(slot.place!) ? 1.6 : 1))) : undefined;
   const fill = stepTemplateItem({
-    curriculum: input.curriculum, skill: at.skill, step: at.step, place: panel ? "worked-example" : slot.place, level, day: difficultyDay(input.plan, w.day),
+    curriculum: input.curriculum, skill: at.skill, step: at.step, place: panel ? "worked-example" : slot.place, level, day: warmUp ? w.day : difficultyDay(input.plan, w.day),
     seed: hashOf(`${input.workbookId}:${w.number}:${slot.id}`) % 1_000_000_007, attempt, ordinal, usedOnPage: used, room, avoid: input.book?.child || null,
+    ...(warmUpTarget?.maxDifficulty ? { maxDifficulty: warmUpTarget.maxDifficulty } : {}),
+    ...(warmUpTarget?.noColumnWork ? { noColumnWork: true } : {}),
     ...(slot.interest ? { interests: interestWords(input.plan) } : {}),
   });
   if (!fill) return null;
@@ -380,6 +387,10 @@ function tooEasyStory(input: GenerateInput, slot: Slot, c: ItemPlan, p: Question
 
 /** The steps a slot's question may come from (#489): its part's step, or the steps its review part draws from. */
 function slotSteps(input: GenerateInput, slot: Slot, day = 0): { steps?: string[]; bounds?: { min: number; max: number } } {
+  if (slot.place === "warm-up" && day > 0) {
+    const steps = warmUpAllowedSteps(input.curriculum, input.plan, day, slot.part.skills);
+    return steps.length ? { steps } : {};
+  }
   if (slot.part.step) {
     const stories = storySteps(input, slot, day, input.plan.level).map((x) => `${x.skill}#${x.step}`);
     // A Challenge may take any way of its list, and a slot whose tasks ran out a taught step: the step it printed.
@@ -566,19 +577,6 @@ export function personalBookIssues(input: Pick<GenerateInput, "curriculum" | "pl
 export function withPersonalIssues(input: Pick<GenerateInput, "curriculum" | "plan">, pages: readonly GeneratedPage[], quality: BookQuality): BookQuality {
   const personal = personalBookIssues(input, pages);
   return personal.length ? { ...quality, ready: false, issues: [...quality.issues, ...personal] } : quality;
-}
-
-/** A code fact as the writer's item shape (G1, item 4): code's operation, operands, text and one careless wrong answer. */
-function factItem(id: string, f: WarmUpFact): AiItem {
-  const [a, b] = f.operands;
-  const right = f.kind === "add" ? a + b : f.kind === "subtract" ? a - b : f.kind === "multiply" ? a * b : a / b;
-  const op = (x: number, y: number) => ({ kind: f.kind, operands: [itemNumber(x), itemNumber(y)], expression: null, unit: null, denominator: null, values: [] });
-  const sign = { add: "+", subtract: "−", multiply: "×", divide: "÷" }[f.kind];
-  return {
-    slot: id, skill: f.skill, difficulty: 1, text: f.text, format: "write-number", figure: null, numbers: [], places: null, direction: null, sequence: null, pattern: null, relation: null, figureShows: null, name: null, thing: null,
-    operation: op(a, b), easier: f.kind === "divide" ? { text: "4 ÷ 2 = ?", operation: op(4, 2) } : { text: `2 ${sign} ${f.kind === "multiply" ? 2 : 1} = ?`, operation: op(2, f.kind === "multiply" ? 2 : 1) },
-    wrongAnswers: [{ value: itemNumber(right + 1), cause: "careless", description: "One more than the answer.", step: null }], shownWrong: null,
-  };
 }
 
 const wordsIn = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
@@ -1123,7 +1121,7 @@ function planBook(input: GenerateInput, work: PageWork[]) {
       const fact = FLUENCY_PLACES.has(slot.place) ? warmUpSkill(curriculum, plan, w.day, slot.part.skills, k, slot.place) : null;
       if (fact) slot.aim = { skill: fact, kind: "fact", orElse: [] };
       // (A warm-up fact is code's: its operation and operands come from the aimed family, never from the writer.)
-      const chosen = fact && slot.place === "warm-up" ? warmUpFact(curriculum, plan, fact, hashOf(`${w.day}:${w.page.number}:${slot.id}`) % 997, pageFacts) : null;
+      const chosen = fact && slot.place === "warm-up" ? warmUpFact(curriculum, plan, fact, hashOf(`${w.day}:${w.page.number}:${slot.id}`) % 997, pageFacts, w.day) : null;
       if (chosen) { slot.fact = chosen; pageFacts.add(chosen.text); }
       if (slot.place === "spot-the-error") {
         // Sam's sum: on the slot's skill with the widest range, so the sum fits each of its rules.
@@ -2664,7 +2662,7 @@ function layOut(input: GenerateInput) {
         // (Never for a Challenge: #482's builders are not on the day's hardest step.)
         // A page that still needs a third form, and whose step's templates print no other, takes #482's builder for the
         // skill when it prints one (#482 review at 3134252: valid alternatives before a repeated form).
-        const builder = templated && slot.place !== "challenge" ? slot.part.step?.skill ?? skill : null;
+        const builder = templated && slot.place !== "challenge" && slot.place !== "warm-up" ? slot.part.step?.skill ?? skill : null;
         // (Last, a review card whose part reviews one exhausted step takes the page's practice part, its earlier steps'
         // hard review items: the full U4 book's Day 9 "Remember these" had no likelihood task left, Savar 2026-11-04.)
         const practicePart = slot.place === "remember-these" ? w.slots.find((s) => s.part !== slot.part && s.part.step && ["on-your-own", "finish-these", "practice-row"].includes(s.place ?? ""))?.part : undefined;
@@ -2694,7 +2692,7 @@ function layOut(input: GenerateInput) {
             const type = c.template ? printedForm(p) : ["word-problems","challenge"].includes(w.page.type) && c.source === "story" ? storyFrame(c.item.text) : p ? taskType(p) : c.type;
             // A Challenge page asks the step's few hardest templates: it may print fewer forms (the book check agrees).
             const fewChallenge = w.page.type === "challenge" && slot.place === "challenge" && (c.template?.challengeTemplates ?? 3) < 3;
-            if (w.slots.length >= 3 && !fewChallenge && (pageTypes.get(type) ?? 0) >= Math.ceil(w.slots.length / 2)) continue;
+            if (w.slots.length >= 3 && !fewChallenge && slot.place !== "warm-up" && (pageTypes.get(type) ?? 0) >= Math.ceil(w.slots.length / 2)) continue;
             // (And half of its own part while the part has 4 or more: a Mixed set is the page when its other part plans away,
             // the full U16 book's Day 2 printed three "then 17 more" stories of four.)
             const partSlots = w.slots.filter((x) => x.part === slot.part && x.place !== "warm-up").length;
@@ -2931,6 +2929,7 @@ const DROP_PLACES: ReadonlySet<string> = new Set(["remember-these", "on-your-own
 
 /** The page's last practice item that can go above its type's minimum, a template item first; never a teaching item. */
 const droppable = (w: PageWork, level = 0) => {
+  if (w.page.type === "warm-up") return w.slots.filter((s) => s.place === "warm-up").length > minimumFor(w, level) ? easiestWarmUpSlot(w.slots) : undefined;
   // The page's practice questions count (Cedric's table), not its warm-up, explanation, Spot the error or two ways.
   const storyTwoWays = twoWaysCountsAsStory(level, w.page.type);
   const counted = w.slots.reduce((n, s) => n + (s.place === "how-do-you-know" || s.place === "warm-up" || NUMBER_PLACES.has(s.place ?? "") && !(storyTwoWays && s.place === "solve-it-two-ways") ? 0 : 1), 0);
@@ -3277,8 +3276,8 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
       // A day over its time budget plans one template practice item fewer on this page, and again (#489).
       // (Never Show what you know: the book's test keeps one of each step; the day's practice pages give the time.)
       for (let trimmed = 0; trimmed < 6 && w.layout && !w.page.extraPractice && w.page.type !== "show-what-you-know" && plannedDayMinutes(input, work, w.day) > DAY_MINUTES_MOST; trimmed++) {
-        // (A warm-up page's facts too, down to 8, when the day's other pages keep their adopted counts: the U16 sample.)
-        const drop = droppable(w, input.plan.level) ?? (w.page.type === "warm-up" && w.slots.filter(s => s.place === "warm-up").length > 8 ? w.slots.findLast(s => s.place === "warm-up") : undefined);
+        // (A warm-up page's facts too, down to its floor, preserving its harder and earlier-taught slots.)
+        const drop = droppable(w, input.plan.level);
         if (!drop) break;
         w.slots = w.slots.filter(s => s !== drop);
         w.layout.slots[drop.layoutSlot].items--;
@@ -3290,7 +3289,7 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         else w.layout.omissions.push({ part, kind: drop.part.kind, requested: w.slots.filter(x => x.part === drop.part).length + 1, placed: w.slots.filter(x => x.part === drop.part).length, reason: "left out to keep the day under 30 minutes", time: true });
       }
       if (w.page.type === "warm-up" && w.layout && w.slots.filter(s => s.place === "warm-up").length % 2) {
-        const drop = w.slots.findLast(s => s.place === "warm-up")!;
+        const drop = easiestWarmUpSlot(w.slots)!;
         w.slots = w.slots.filter(s => s !== drop); w.layout.slots[drop.layoutSlot].items--;
         w.page.timeLimited = true;
       }
@@ -4185,7 +4184,7 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
           if(!b.package || b.check.status==="failed" || levelRange(b.package, input) || dayProblem(input, b.package, w.day,slot.place ?? "")) continue;
           if(keys.has(keyOf(b.package)) || repairKeys.has(keyOf(b.package)) || wordedTask(b.package) && !c.template && (frames.has(storyFrame(b.package.text)) || repairFrames.has(storyFrame(b.package.text)))) continue;
           const type=kindOf({itemPlan:c,package:b.package}),old=q.package ? kindOf(q) : "";
-          if(current.length>=3 && (counts.get(type) ?? 0)-(type===old ? 1 : 0)>=limit) continue;
+          if(slot.place!=="warm-up" && current.length>=3 && (counts.get(type) ?? 0)-(type===old ? 1 : 0)>=limit) continue;
           if(fewForms && forms().has(printedForm(b.package))) continue;
           const sentence=sentenceFrameOf(b.package);
           if(sentence && current.some((o,k)=>k!==index && o.package && sentenceFrameOf(o.package)===sentence)) continue;

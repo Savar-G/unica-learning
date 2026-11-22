@@ -249,9 +249,14 @@ it("keeps uncovered U14 skills on the existing writer and preserves their policy
   const result=planWorkbook(samplePlanInput(c,sampleChild(c,"U14")!,"first"));
   if(!result.ok)throw new Error(result.reason);
   o.input.plan={...result.plan,days:result.plan.days.slice(0,1)};
+  // Make the warm-up fluency skill uncovered (no step templates) so it stays on the existing writer.
+  const uncovered=new Set(result.plan.days[0].pages[0].parts.find(p=>p.kind==="warm-up")!.skills);
+  o.input.curriculum=Object.assign(Object.create(c),{
+    skillSteps:(id:string)=>uncovered.has(id) ? (c.skillSteps(id) ?? []).map(s=>({...s,templates:[]})) : c.skillSteps(id),
+  });
   const {draft}=await make(o);
   const questions=draft.pages.flatMap(p=>p.questions);
-  // #489: the level's skills come from their step templates; the warm-up's fluency facts keep the existing writer.
+  // #489: the level's covered skills come from their step templates; an uncovered skill keeps the existing writer.
   expect(questions.some(q=>q.itemPlan?.template && q.package?.skill.skills.includes("4.5-multiply-1-digit"))).toBe(true);
   expect(questions.some(q=>q.existing && q.place==="warm-up")).toBe(true);
   expect(questions.filter(q=>q.check.status==="failed").map(q=>q.check)).toEqual([]);

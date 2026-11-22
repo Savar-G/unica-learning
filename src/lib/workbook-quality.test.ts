@@ -348,6 +348,24 @@ it("fails a stories page of one kind of story and a worked example with no metho
   expect(taskIdentity(a.questions[0].package!)).toBe(taskIdentity(b.questions[0].package!));
 });
 
+it("flags template warm-ups that stay flat from early days to late days (#1213)", () => {
+  const warmPage = (number: number, day: number, step: number, difficulty: "easy" | "medium", text: string, answer: string) => {
+    const p = page(number, day, 1);
+    p.type = "warm-up";
+    p.questions = [{
+      ...p.questions[0],
+      place: "warm-up",
+      package: { ...p.questions[0].package!, text, difficulty: difficulty === "easy" ? 1 : 2 },
+      itemPlan: { template: { skill: "5.8-extend-facts", step, index: 0, difficulty, rank: 160120 + step, answer } } as unknown as typeof p.questions[0]["itemPlan"],
+    }];
+    return p;
+  };
+  const flat = [warmPage(3, 1, 1, "easy", "200 + 300 = ?", "500"), warmPage(75, 10, 1, "easy", "200 + 300 = ?", "500")];
+  expect(workbookQuality(flat).issues.some((i) => i.kind === "progress" && /warm-ups/.test(i.reason))).toBe(true);
+  const rising = [warmPage(3, 1, 1, "easy", "200 + 300 = ?", "500"), warmPage(75, 10, 2, "medium", "5000 − ? = 4000", "1000")];
+  expect(workbookQuality(rising).issues.some((i) => i.kind === "progress" && /warm-ups/.test(i.reason))).toBe(false);
+});
+
 it("fails a take-away story that keeps its things, a drill on a stories page and a card frame printed too often", () => {
   const p = page(7, 1, 2);
   p.type = "word-problems";
