@@ -39,10 +39,12 @@ Helper pattern (all examples assume `$LINEAR_KEY` is loaded):
 
 ```sh
 linear_gql() {
+  local payload
+  payload=$(jq -n --arg query "$1" --argjson variables "${2:-{}}" '{query: $query, variables: $variables}')
   curl -sS -X POST https://api.linear.app/graphql \
     -H "Content-Type: application/json" \
     -H "Authorization: $LINEAR_KEY" \
-    -d "$1"
+    -d "$payload"
 }
 ```
 
