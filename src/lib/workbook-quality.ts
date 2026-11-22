@@ -20,8 +20,14 @@ import { storyFrame, wordedTask, taskType, reasoningSteps, taskIdentity, printed
 import { printedWorkbookQuestion } from "./workbook-maya-operation";
 import { dayDifficulty } from "./workbook-plan";
 import { circleProblem, repeatedInstruction } from "./workbook-layout-check";
+import { introIssues } from "./workbook-taught";
+import type { Intro } from "./workbook-page";
 
-export interface BookIssue { page: number; kind: "repeat" | "progress" | "variety" | "time" | "coverage" | "challenge" | "step" | "range"; reason: string }
+export interface BookIssue {
+  page: number; kind: "repeat" | "progress" | "variety" | "time" | "coverage" | "challenge" | "step" | "range" | "intro"; reason: string;
+  /** An intro issue: the strips to print above this block of the page (workbook-taught.ts). */
+  fix?: { block: number; intro: Intro[]; drop?: string[] };
+}
 export interface DayQuality { day: number; minutes: number; formats: number; largestNumber: number; requiredMinutes?: number; requiredTimeTarget?: number }
 export interface BookQuality {
   /**
@@ -92,7 +98,7 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     return subtitle !== null && printed.content?.kind === "day"
       ? { ...printed, content: { ...printed.content, subtitle } } : printed;
   });
-  const issues: BookIssue[] = [];
+  const issues: BookIssue[] = [...introIssues(pages)];
   const days: DayQuality[] = [];
   const seen = new Map<string, number[]>();
   let extraRepeats = 0;

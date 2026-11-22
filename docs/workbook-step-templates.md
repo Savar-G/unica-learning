@@ -388,6 +388,32 @@ backwards") does not print.
   pair one box high, and shorter claim wording ("Right? If not, fix it.").
 - **Open:** the full U4 book (fixed seed) still has practice pages short of 8.
 
+## Methods and words before they are used (#1214, U10 and U19)
+
+- **The rule:** no question names a Use 2 ways method pair, or uses a word of
+  `src/lib/workbook-terms.ts`, that an earlier block of the book has not shown.
+  `introIssues` (`src/lib/workbook-taught.ts`) walks the pages in order; a block
+  shows a pair or a word with a teaching strip, and a step with a worked example
+  or Watch one panel (`Block.step`). Only U10 and U19 are checked
+  (`ENFORCED_LEVELS`); the other levels keep today's pages.
+- **The fix:** the whole-book repair prints a strip above the first block that
+  needs it (`Block.intro`, drawn by `introHtml` in the template): "Use 2 ways"
+  with one question worked both ways (`workbook-intro-examples.ts`, code-written,
+  never a number of the question it comes before), or "Words to know". A page
+  with no room for the strip stays failed and the book reports it.
+- **Fit:** at U10 and U19 `workbook-two-ways.ts` chooses the pair from the kind
+  of question, never from words such as "times". No pair, no Use 2 ways: a
+  probability story, a times-table fact, a product with no round factor, a sum
+  under 20. A missing factor ("$17 × ? = $578") is a division (divide / count
+  up in groups). Every other level keeps the methods it printed before (U4 to
+  U9 as tuned, D-226).
+- **Room:** the capacity stage plans the method strips with their page
+  (`planIntros`), so a page fits fewer practice questions to hold one. A words
+  strip is the repair's: a page with no room for it stays failed and is
+  reported.
+- **Marking** reads the child's own work, not the printed names, so the names
+  can change without touching `scan-marking-methods.ts`.
+
 ## Report
 
 The sample index's quality row adds step progression (each day's average

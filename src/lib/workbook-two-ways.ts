@@ -9,6 +9,8 @@
 import type { QuestionPackage } from "./question-package";
 
 export type MethodPair = readonly [string, string];
+/** What the pair is chosen from: a built question, or a step template's filled text before it is built. */
+export type TwoWaysInput = Pick<QuestionPackage, "text" | "templateId" | "operation"> & { level?: number | null };
 
 /**
  * Skills whose questions have no two methods worth writing out. Probability and experiments too (the U19 proof's
@@ -18,13 +20,14 @@ const NO_TWO_WAYS = /place-value|expanded|digit|estimate|round|compare|order|cou
 /** Probability wording in a question of another skill. */
 const PROBABILITY_TEXT = /\bspin(?:s|ner)?\b|\bprobability\b|\bchance\b|\bpredict(?:ion|s|ed)?\b|\boutcomes?\b|\bat random\b/;
 
-const skillOf = (p: QuestionPackage): string => p.templateId?.split("#")[0] ?? "";
+const skillOf = (p: Pick<QuestionPackage, "templateId">): string => p.templateId?.split("#")[0] ?? "";
 const numbersIn = (text: string): number[] => (text.replace(/(\d),(?=\d{3}\b)/g, "$1").match(/\d+/g) ?? []).map(Number);
 
 /** A sum or difference with no second method: adding or taking away 0, all small facts, or all whole tens or hundreds. */
 export function trivialCalculation(numbers: readonly number[]): boolean {
   if (numbers.length < 2) return true;
-  if (numbers.some((n) => n === 0)) return true;
+  // (Adding or taking away 0 or 1 is one step: "50 + 1".)
+  if (numbers.some((n) => n === 0 || n === 1)) return true;
   // A teen fact around 10: "10 + ? = 17" is one step.
   if (numbers.includes(10) && numbers.every((n) => n < 20)) return true;
   const big = numbers.filter((n) => n >= 10);
@@ -37,7 +40,7 @@ export function trivialCalculation(numbers: readonly number[]): boolean {
  * U4 to U9's methods, unchanged (D-226 puts their Use 2 ways on the Number stories page; their small facts are the
  * point there): by the words the question uses.
  */
-function earlyMethods(p: QuestionPackage): MethodPair | null {
+function earlyMethods(p: Pick<TwoWaysInput, "text" | "operation">): MethodPair | null {
   const t = `${p.operation?.kind ?? ""} ${p.text}`.toLowerCase();
   const small = Math.max(0, ...(p.text.match(/\d+/g) ?? []).map(Number)) < 20;
   if (small && /subtract|−|\s-\s|left|take|eats|gives|fewer|less|the rest/.test(t)) return ["count back", "count up from the smaller number"];
@@ -51,11 +54,15 @@ function earlyMethods(p: QuestionPackage): MethodPair | null {
   return null;
 }
 
-/** Whether a question's Use 2 ways follows the kind-of-question rules below: from U10 (U4 to U9 keep earlyMethods). */
-export const twoWaysByKind = (p: QuestionPackage): boolean => (p.level ?? 0) >= 10;
+/**
+ * Whether a question's Use 2 ways follows the kind-of-question rules below: U10 and U19 only, the levels with a family
+ * (Cedric, 2026-11-21); every other level keeps the methods it printed before (earlyMethods).
+ */
+export const TWO_WAYS_LEVELS: ReadonlySet<number> = new Set([10, 19]);
+export const twoWaysByKind = (p: Pick<TwoWaysInput, "level">): boolean => TWO_WAYS_LEVELS.has(p.level ?? 0);
 
 /** The two methods of a question, or null when it has no sensible pair (then it is not a Use 2 ways question). */
-export function twoWaysMethods(p: QuestionPackage): MethodPair | null {
+export function twoWaysMethods(p: TwoWaysInput): MethodPair | null {
   if (!twoWaysByKind(p)) return p.templateId?.startsWith("6.4-lcm#") ? ["list both sets of multiples", "test multiples of the larger number"] : earlyMethods(p);
   const skill = skillOf(p);
   if (skill === "6.4-lcm") return ["list both sets of multiples", "test multiples of the larger number"];
@@ -73,7 +80,7 @@ export function twoWaysMethods(p: QuestionPackage): MethodPair | null {
     return null;
   }
   if (NO_TWO_WAYS.test(skill) || PROBABILITY_TEXT.test(text)) return null;
-  const kind = p.operation?.kind ?? (/[×]|\btimes\b|groups? of|each (?:box|bag|row|pack)/.test(text) ? "multiply"
+  const kind = p.operation?.kind ?? (/[×]\s*\?|\?\s*[×]/.test(text) ? "missing-factor" : /[×]|\btimes\b|groups? of|each (?:box|bag|row|pack)/.test(text) ? "multiply"
     : /[÷]|\bshare|equally\b/.test(text) ? "divide"
     : /−|\s-\s|\bleft\b|\btake(?:s)? away\b|\bfewer\b|\bless than\b|\bgives?\b|\beats?\b/.test(text) ? "subtract"
     : /\+|\bmore\b|\bin all\b|\btogether\b|\bgets\b/.test(text) ? "add" : null);
@@ -83,15 +90,33 @@ export function twoWaysMethods(p: QuestionPackage): MethodPair | null {
   // From U10 a sum or difference of numbers under 20 is a fact to know, not one to work out two ways (the U19 proof's
   // "4 + 15", Luis 2026-11-18). (U4 to U9 keep earlyMethods, where these small facts are the point.)
   if (["add", "subtract", "missing-addend"].includes(kind) && Math.max(0, ...numbers) < 20) return null;
+  // A times-table fact (7 × 8, 56 ÷ 7, 7 × ? = 56) is a fact to know, not one to work out two ways (Cedric, 2026-11-21).
+  if (["multiply", "divide", "missing-factor"].includes(kind) && timesFact(kind, numbers)) return null;
   switch (kind) {
     case "add": case "missing-addend":
-      return ["add the tens, then the ones", numbers.some((n) => n % 10 >= 5) ? "make a friendly number first" : "count on in tens, then in ones"];
+      return ["add the tens, then the ones", "make a friendly number first"];
     case "subtract":
       return ["take away the tens, then the ones", "count up from the smaller number"];
-    case "multiply": return ["split a number into parts", "use a fact you know, then the zeros"];
+    case "multiply": {
+      // A tens product (60 × 7) strips the zeros; a number just under a ten (19 × 6) rounds up. Any other product has no
+      // second method here (Cedric, 2026-11-21: "round up, then take away" for non-round factors only).
+      if (numbers.some((n) => n >= 20 && n % 10 === 0)) return ["split a number into parts", "use a fact you know, then the zeros"];
+      if (numbers.some((n) => n >= 18 && n < 100 && n % 10 >= 8)) return ["split a number into parts", "round up, then take away"];
+      return null;
+    }
     case "divide": return ["share in groups", "use a times fact"];
+    case "missing-factor": return ["divide", "count up in groups"];
     default: return null;
   }
+}
+
+/** A times-table fact: both factors, or the divisor and the quotient, are 12 or less. */
+function timesFact(kind: string, numbers: readonly number[]): boolean {
+  if (numbers.length < 2) return false;
+  if (kind === "multiply") return numbers.every((n) => n <= 12);
+  const [a, b] = numbers;
+  const [by, whole] = kind === "divide" ? [b, a] : [a, b];
+  return whole % by === 0 && by <= 12 && whole / by <= 12;
 }
 
 /**
@@ -99,7 +124,7 @@ export function twoWaysMethods(p: QuestionPackage): MethodPair | null {
  * reviews no adding or subtracting skill the slot goes to the writer, whose "4 + 15 = ?" the book check then failed (the
  * U19 sweep's Day 8, Luis 2026-11-19). The writer's redo is asked again with this reason.
  */
-export function writtenTwoWaysProblem(level: number, place: string | null | undefined, p: QuestionPackage): string | null {
-  if (place !== "solve-it-two-ways" || level < 10 || twoWaysMethods(p)) return null;
-  return "Use 2 ways needs a sum or product with two methods: numbers of 20 or more, not a fact, not all whole tens or hundreds";
+export function writtenTwoWaysProblem(level: number, place: string | null | undefined, p: TwoWaysInput): string | null {
+  if (place !== "solve-it-two-ways" || !TWO_WAYS_LEVELS.has(level) || twoWaysMethods({ ...p, level })) return null;
+  return "Use 2 ways needs a sum or product with two methods: numbers of 20 or more, not a times-table fact, not a probability story";
 }

@@ -75,12 +75,12 @@ import {
   type DayLayout, type NumberRange,
 } from "@/lib/workbook-book";
 import { pageId, type Omission, type PageContent, type SlotName } from "@/lib/workbook-page";
+import { planIntros, withIntros, withPlanned, writtenTwoWaysProblem } from "@/lib/workbook-taught";
 import { dayDifficulty, type PageType, type PlannedPage, type PlannedPart, type WorkbookPlan } from "@/lib/workbook-plan";
 import { estimatedDayMinutes, generatedDayTime, scheduledItemProblem } from "@/lib/workbook-feedback-check";
 import { workbookEditItem } from "@/lib/workbook-edit-item";
 import type { DraftPage } from "@/lib/workbook-render";
 import { textRoom, slotMax, pagePlan } from "@/lib/workbook-template";
-
 import { checkWholeBook, workbookQuality, pageMinimum, questionMinutes, typeKey, type BookQuality } from "@/lib/workbook-quality";
 import { extraPracticeRepeats, twoWaysCountsAsStory } from "@/lib/workbook-early-levels";
 import { approvedQuestionTypes, buildPlannedItem, planItem, itemExamples, itemNumber, ITEM_EXAMPLES, STORY_EXPLAIN, type ItemPlan } from "@/lib/workbook-item-plan";
@@ -1817,7 +1817,7 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
     }
     // Every number fits the level and slot: the range of the item's skill (an earlier skill's under review).
     if (slot.place && b.check.status !== "failed" && b.package) {
-      const problem = levelRange(b.package, input) ?? (input.itemPolicy === "approved-v1" ? dayProblem(input, b.package, w.day, slot.place ?? "") : null);
+      const problem = levelRange(b.package, input) ?? (input.itemPolicy === "approved-v1" ? dayProblem(input, b.package, w.day, slot.place ?? "") : null) ?? writtenTwoWaysProblem(input.plan.level, slot.place, b.package);
       if (problem) b.check = { status: "failed", reason: problem };
     }
     return b;
@@ -2301,14 +2301,14 @@ function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuesti
   if (!input.book || !w.layout) return null;
   const layoutSlot = (q: GeneratedQuestion) => w.slots.find((x) => x.id === q.slot)!.layoutSlot;
   const keep = w.layout.slots.flatMap((x, k) => (PANEL_SLOTS.includes(x.slot) || questions.some((q) => layoutSlot(q) === k) ? [k] : []));
-  const content = dayPageContent({
+  const content = withPlanned(dayPageContent({
     curriculum: input.curriculum, plan: input.plan, day: w.day, page: w.page, layout: { ...w.layout, slots: keep.map((k) => w.layout!.slots[k]) },
     child: input.book.child, workbook: input.number,
     questions: questions.map((q) => ({
       number: q.number, slot: keep.indexOf(layoutSlot(q)), package: q.package, ...(q.check.status === "failed" ? { failed: q.check.reason } : {}),
     })),
     examples: w.panels.flatMap((x, k) => (examples[k] ? [{ slot: keep.indexOf(x.layoutSlot), package: examples[k]! }] : [])),
-  });
+  }), w, keep);
   if (input.itemPolicy === "approved-v1" && content.kind === "day") {
     content.blocks.forEach((block, index) => {
       const part = w.page.parts[w.layout!.slots[keep[index]]?.part];
@@ -3246,7 +3246,7 @@ async function restoreOwnPractice(input: GenerateInput, w: PageWork, work: PageW
 
 /** A measured capacity is saved before any writer call or run fingerprint. */
 async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: PageWork[], filling = true, reserved = false): Promise<string | null> {
-  if (input.itemPolicy === "approved-v1" && input.book && input.plan.level >= 4 && filling && !reserved && work.some(w => !w.page.capacityChecked)) {
+  planIntros(work, input.plan.level, (w, s) => (s.contract ? contractPackage(input, w, s.contract) : null)); if (input.itemPolicy === "approved-v1" && input.book && input.plan.level >= 4 && filling && !reserved && work.some(w => !w.page.capacityChecked)) {
     // Reserve complete required rows across the small task pool before optional fill consumes the spare tasks.
     const required = await fitWorkBudget(input, fitCheck, work, false, true);
     if (required) return required;
@@ -4155,7 +4155,7 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
         // Issues that each name their question change only those questions (a repeat, a Challenge card, a story too easy).
         // (A day's time estimate names no question, and a new question does not fix it.)
         const named=(i:{reason:string})=>/\bquestion \d+ /.test(i.reason);
-        const fixable=issues.filter(i=>i.kind!=="time");
+        const fixable=issues.filter(i=>i.kind!=="time" && i.kind!=="intro");
         if (fixable.every(i=>i.kind === "repeat" || named(i)) && !fixable.some(i=>i.reason.includes(`question ${q.number} `))) return q;
         const slot=w.slots.find(s=>s.id===q.slot);
         if(!slot || q.existing) return q;
@@ -4202,7 +4202,7 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
         return q;
       });
       const finalQuestions = await repairFinalRows(input, w, work, questions, examples, deps.fit, book);
-      const content = contentOf(input, w, finalQuestions, examples);
+      const content = withIntros(contentOf(input, w, finalQuestions, examples), issues);
       // Older checkpoints keep the checked teaching blocks, even if their
       // separate example packages predate panelExamples. (Not a panel whose example was just swapped: it prints the new one.)
       const swappedPlaces = new Set([...swapped].map((k) => w.page.compactPanel && w.panels[k].place === "watch-one" ? "reminder" : w.panels[k].place));
@@ -4352,7 +4352,7 @@ export async function reviseWorkbookPage(input: GenerateInput, deps: GenerateDep
     const format = b.package.item?.format;
     if (slot.place && STRICT_SLOTS.includes(slot.place) && format && !SLOT_FORMATS[slot.place]?.includes(format)) throw new Error("The question does not fit this part of the page.");
     const problem = levelRange(b.package, input)
-      ?? (input.itemPolicy === "approved-v1" ? dayProblem(input, b.package, w.day, slot.place ?? "") : null)
+      ?? (input.itemPolicy === "approved-v1" ? dayProblem(input, b.package, w.day, slot.place ?? "") : null) ?? writtenTwoWaysProblem(input.plan.level, slot.place, b.package)
       ?? (slot.place === "spot-the-error" && !isStepItem(b.package) ? samProblem(b.package, input.plan.level) : null);
     if (problem) throw new Error(problem);
   }
@@ -4375,7 +4375,7 @@ export async function reviseWorkbookPage(input: GenerateInput, deps: GenerateDep
   if (change.question === null) {
     const made = contentOf(input, w, questions, examples);
     if (!made || made.kind !== "day") throw new Error("The page could not be laid out.");
-    content.blocks = made.blocks;
+    content.blocks = made.blocks.map((b, k) => (content.blocks[k]?.intro ? { ...b, intro: content.blocks[k].intro } : b)); // (teaching strips stay: workbook-taught.ts)
   } else {
     const { pageFigure } = await import("@/lib/workbook-book");
     for (const block of content.blocks) {

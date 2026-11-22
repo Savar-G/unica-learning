@@ -146,6 +146,7 @@ export const CSS = `
 .wk{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-size:var(--math);line-height:1.5}
 .ways{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 .ways .in{background:#fff;border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.intro{display:flex;flex-direction:column;gap:4px;padding:8px 12px;margin-bottom:6px}.intro .wk{font-size:calc(var(--math)*.8);line-height:1.35}.intro .ways{gap:10px}.intro .ways .in{padding:6px 10px;gap:2px}
 .fig2{display:flex;gap:26px;align-items:flex-start}
 .fig2 .why{flex:1 1 0;display:flex;flex-direction:column;gap:6px}
 .inner{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:10px}

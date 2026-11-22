@@ -16,8 +16,7 @@ import { takeAwayProblem } from "./workbook-wording";
 import { commaNumbers } from "./workbook-template";
 import { choicesFor, cleanTemplateText, disallowedFactorOne, integerAnswer, MOST_ANSWER_WORDS, needsColumnWork, NUMERIC, plausibleGroups, plausibleWrong, sequenceOf, UNIT_NUMBER } from "./workbook-template-text";
 import { BC_SKILL_MAP } from "@/lib/assessment";
-import type { AnswerRegion, Item, ItemCheck, QuestionPackage } from "@/lib/question-package";
-import { checkQuestionPackage } from "@/lib/question-package";
+import { checkQuestionPackage, type AnswerRegion, type Item, type ItemCheck, type QuestionPackage } from "@/lib/question-package";
 import { storedDomain, templateAnswerValue, templateScalar, type TemplateScalar, type TemplateSource } from "@/lib/question-package-template";
 import type { Curriculum, CurriculumStep, NumberDomain, NumberRange, StepTemplate, TemplateDifficulty } from "@/lib/workbook-curriculum";
 import { prepareTemplate, seededRandom, slotDomain } from "@/lib/workbook-curriculum/template";
@@ -25,6 +24,7 @@ import { isChallengeOnly, isTwoStep, templateAtLevel } from "@/lib/workbook-curr
 import type { AiItem, BuiltQuestion, SlotPlace } from "@/lib/workbook-generator-items";
 import type { SlotName } from "@/lib/workbook-page";
 import type { StepDeclaration } from "@/lib/workbook-print-contract";
+import { TWO_WAYS_LEVELS, twoWaysMethods } from "@/lib/workbook-two-ways";
 
 /** How the question is answered on the page. */
 export type StepItemKind = "box" | "story" | "choice" | "spot" | "two-ways" | "sequence" | "mixed";
@@ -491,7 +491,7 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
       }
       const at = labels ? { kind: "choice" as const, choices: labels.map(([, word]) => word) }
         : seq && r.place !== "spot-the-error" && r.place !== "solve-it-two-ways" ? { kind: "sequence" as const } : kindAt(r.place, answer, text);
-      if (!at) break;
+      if (!at) break; if (r.place === "solve-it-two-ways" && TWO_WAYS_LEVELS.has(r.level) && !twoWaysMethods({ text, templateId: `${step.skill}#${step.number}.${index}`, operation: null, level: r.level })) continue; // (Use 2 ways needs a pair that fits: workbook-two-ways.ts)
       if (r.place === "warm-up" && (at.kind !== "box" || !NUMERIC.test(answer))) break;
       if (r.place === "challenge" && at.kind === "choice" && /str\(/.test(t.answer) && /['"](?:yes|no)['"]/.test(t.answer)) continue;
       // A circled answer is circled, never written (the U4 review: "Write true or false" beside a circle).
