@@ -147,6 +147,29 @@ describe("G1 warm-up facts are code's (item 4)", () => {
     expect(warmUpShareProblems(BC, plain("U16"), day(Array.from({ length: 12 }, () => ["add", 56, 15])))).toEqual([]);
     expect(warmUpSkill(BC, plan, 1, skills, 0)).toBe("5.9-recall-facts");
   });
+  it("scales personal Days 1-5 warm-up facts in magnitude and difficulty while keeping family rules intact", () => {
+    const collect = (skill: string, d: number) => {
+      const taken = new Set<string>();
+      return Array.from({ length: 8 }, (_, k) => {
+        const f = warmUpFact(BC, plan, skill, 13 + k * 7, taken, d)!;
+        taken.add(f.text);
+        return f;
+      });
+    };
+    const mulD1 = collect("5.9-recall-facts", 1);
+    const mulD5 = collect("5.9-recall-facts", 5);
+    const avgMax = (facts: ReturnType<typeof collect>) => facts.reduce((s, f) => s + Math.max(...f.operands), 0) / facts.length;
+    expect(mulD5.every((f) => f.kind === "multiply" && f.operands.some((x) => x === 3 || x === 4))).toBe(true);
+    expect(mulD5.every((f) => f.declaration?.source === "warm-up" && f.declaration.reference.step === 1)).toBe(true);
+    expect(avgMax(mulD5)).toBeGreaterThan(avgMax(mulD1));
+    expect(mulD5.some((f) => (f.difficulty ?? 1) >= 2)).toBe(true);
+
+    const extD1 = collect("5.8-extend-facts", 1);
+    const extD5 = collect("5.8-extend-facts", 5);
+    expect(extD5.every((f) => f.operands.every((x) => x % 10 === 0) && f.declaration === undefined)).toBe(true);
+    expect(avgMax(extD5)).toBeGreaterThan(avgMax(extD1));
+    expect(extD5.some((f) => (f.difficulty ?? 1) >= 2)).toBe(true);
+  });
 });
 
 describe("G1 interests (item 5)", () => {

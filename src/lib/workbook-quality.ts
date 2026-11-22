@@ -1,5 +1,6 @@
 import { printedInstruction, workbookWorkLine } from "@/lib/workbook-page-instructions";
 import { mixedTemplateSign, stepTemplateOf } from "./workbook-step-items";
+import { warmUpProgressionProblem } from "./workbook-warm-up";
 import { checkQuestionPackage } from "./question-package";
 import { bcStepProgressions } from "./workbook-curriculum";
 import { reviewMasteryStep } from "./workbook-review-level";
@@ -489,6 +490,8 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     return ranks.length ? [{ day, average: Math.round(ranks.reduce((a, b) => a + b, 0) / ranks.length * 10) / 10 }] : [];
   });
   if (steps.length >= 2 && steps.at(-1)!.average <= steps[0].average) for (const p of pages.filter(p => p.day === steps.at(-1)!.day)) issues.push({ page: p.number, kind: "progress", reason: `Day ${steps.at(-1)!.day}'s steps (average ${steps.at(-1)!.average}) are not above Day ${steps[0].day}'s (${steps[0].average})` });
+  const warmUpIssue = warmUpProgressionProblem(pages);
+  if (warmUpIssue) issues.push({ page: warmUpIssue.page, kind: "progress", reason: warmUpIssue.reason });
   const counted = pages.flatMap(p => p.questions.filter(q => q.package && q.place !== "warm-up"));
   const sources = { template: counted.filter(q => q.itemPlan?.template).length, handBuilt: counted.filter(q => q.itemPlan && !q.itemPlan.template).length, existing: counted.filter(q => q.existing).length, total: counted.length };
   const questions = pages.flatMap(p => p.questions);
