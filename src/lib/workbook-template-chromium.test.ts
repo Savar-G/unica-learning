@@ -410,6 +410,8 @@ describe.skipIf(!chromium)("answer box positions in Chromium (#1212)", () => {
   /** The measured labels and regions (never a question's own text) that print a phrase. */
   const printedLabels = (byName: Map<string, MeasuredElement>, phrase: RegExp) => [...byName].filter(([name, x]) => /^(?:label-|region-|question-\d+-answer)/.test(name) && phrase.test(x.text)).map(([name]) => name);
   const bottom = (m: MeasuredElement) => m.y + m.height;
+  /** The gap between a box's edge and its card's: inside the card (a pixel of rounding allowed), and close to the edge. */
+  const edge = (gap: number, label?: string) => { expect(gap, label).toBeGreaterThanOrEqual(-1); expect(gap, label).toBeLessThan(30); };
 
   it.each([[6, true], [12, true]])("puts a Challenge card's answer box at its bottom right (U%i, measured layout %s)", async (level, consistent) => {
     const page = pages(level, consistent).challenge;
@@ -417,8 +419,8 @@ describe.skipIf(!chromium)("answer box positions in Chromium (#1212)", () => {
     expect(m.fit).toEqual([]);
     for (const q of page.questions) {
       const card = m.get(`question-${q.number}`), box = m.get(`question-${q.number}-answer`);
-      expect(right(card) - right(box), `question ${q.number} right`).toBeLessThan(30);
-      expect(bottom(card) - bottom(box), `question ${q.number} bottom`).toBeLessThan(30);
+      edge(right(card) - right(box), `question ${q.number} right`);
+      edge(bottom(card) - bottom(box), `question ${q.number} bottom`);
       expect(box.y - card.y, `question ${q.number} is below the question`).toBeGreaterThan(60);
     }
   }, 60_000);
@@ -446,8 +448,8 @@ describe.skipIf(!chromium)("answer box positions in Chromium (#1212)", () => {
     for (const q of page.questions) {
       const card = m.get(`question-${q.number}`), box = m.get(`question-${q.number}-answer`);
       // (A text answer's box is wider, never the left edge's concern: every box ends at the card's right edge.)
-      expect(right(card) - right(box), `question ${q.number}`).toBeLessThan(30);
-      if (withWork.has(q.number)) expect(bottom(card) - bottom(box), `question ${q.number} bottom`).toBeLessThan(30);
+      edge(right(card) - right(box), `question ${q.number}`);
+      if (withWork.has(q.number)) edge(bottom(card) - bottom(box), `question ${q.number} bottom`);
     }
     // The work boxes of the cards that ask for work have no label of their own.
     expect(printedLabels(m.byName, /show your work/i)).toEqual([]);
@@ -479,8 +481,8 @@ describe.skipIf(!chromium)("answer box positions in Chromium (#1212)", () => {
     q.package = { ...q.package, item: { ...item, regions: [{ id: "answer", kind: "box", label: null, answer: { type: "text", value: "six hundred twelve" } }, ...item.regions.filter(r => r.kind === "work")] } };
     const m = await measure(page, 12);
     const card = m.get("question-1"), box = m.get("question-1-answer");
-    expect(right(card) - right(box)).toBeLessThan(30);
-    expect(bottom(card) - bottom(box)).toBeLessThan(30);
+    edge(right(card) - right(box));
+    edge(bottom(card) - bottom(box));
   }, 60_000);
 
   it("puts the box of a long word answer on its own row at the right, in line with the page's other boxes", async () => {

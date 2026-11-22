@@ -112,8 +112,11 @@ export const CSS = `
 .q .full>.rg{margin-left:auto}
 /* A comparison: the answer box between its two numbers. */
 .cmp{display:inline-flex;align-items:flex-start;gap:10px;height:1.4em;vertical-align:top;white-space:nowrap}
-.pg.consistent .cmp .ab{height:var(--box);min-width:48px;width:48px}
-.q.cmp-item{padding-bottom:28px}
+.pg{--cmp:var(--box)}
+.pg.consistent.older-extra{--cmp:88px}
+.pg.consistent .q .cmp .ab{height:var(--cmp);min-width:48px;width:48px}
+/* The row reserves the box's height under its one line of text, so the next row starts below the box. */
+.q.cmp-item{padding-bottom:calc(var(--cmp) - 1.4em + 6px)}
 .work-space{width:100%;background:#fff;flex:1 0 auto}
 .list{display:flex;flex:1;flex-direction:column;justify-content:space-evenly;gap:10px}
 .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px;row-gap:12px;align-items:stretch;flex:1;grid-auto-rows:1fr}
