@@ -28,3 +28,10 @@ that also appears when the same code is rendered twice (Chromium anti-aliasing).
 The same books forced onto the measured layout: sample content is not built for it, so many pages fail the strict fit check on both sides. The set of failing pages is
 identical before and after, except U6 page 76 (Show what you know), which fails before and passes after. Passing pages differ only by Friday 5's header note and
 one-pixel-row noise.
+
+## A freshly generated book
+
+`fresh-book-U16-*.png`: a Workbook 1 for a synthetic U16 profile (days 1, 5 and 10) made by the real generator and templates with the fake AI for wording
+(`npm run workbooks:samples -- --fake --levels U16 --days 1,5,10`). Cost 0; nothing stored. The strict fit check passed on all 28 pages (0 failed, 0 do not fit).
+Page 10 (Challenge): box at the bottom right, no label. Page 17 (Friday 5): header says "5 from earlier days." Page 20 (Show what you know): every card with work
+space has its box at the bottom right, no label. The wording is fake-AI wording, so this checks layout, not question quality.
