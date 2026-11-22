@@ -7,6 +7,7 @@ import type { ComponentType } from "react";
 import { blogPath, type ArticleFaq, type ArticleSource, type CardItem } from "@/lib/resource-format";
 import { RESOURCES, resourcePath } from "@/lib/resources";
 
+import * as doesMyChildNeedATutor from "@/content/blog/does-my-child-need-a-tutor";
 import * as emergingInMathReportCard from "@/content/blog/emerging-in-math-report-card";
 import * as isSpiritOfMathWorthIt from "@/content/blog/is-spirit-of-math-worth-it";
 import * as mathnasiumCostBc from "@/content/blog/mathnasium-cost-bc";
@@ -43,7 +44,7 @@ export type BlogPost = { meta: BlogMeta; Body: ComponentType };
 
 type BlogModule = { meta: BlogMeta; default: ComponentType };
 
-const BLOG_MODULES: BlogModule[] = [emergingInMathReportCard, isSpiritOfMathWorthIt, mathnasiumCostBc, oxfordLearningCostBc, sylvanVsKumon];
+const BLOG_MODULES: BlogModule[] = [doesMyChildNeedATutor, emergingInMathReportCard, isSpiritOfMathWorthIt, mathnasiumCostBc, oxfordLearningCostBc, sylvanVsKumon];
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 

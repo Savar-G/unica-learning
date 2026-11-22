@@ -25,7 +25,7 @@ The weekly routine (`docs/blog-automation.md`) takes the first `todo` row from t
 | 4 | done 2026-11-01 `/blog/is-spirit-of-math-worth-it` | is spirit of math worth it | Is Spirit of Math worth it? A guide for BC parents | Comparing options | any | kumon-alternatives, /compare |
 | 5 | done 2026-11-15 `/blog/oxford-learning-cost-bc` | oxford learning cost per month | Oxford Learning cost per month in BC | Comparing options | any | tutor-cost-bc, kumon-alternatives |
 | 6 | todo | is mathnasium worth it | Is Mathnasium worth it? What to check first | Comparing options | any | /blog/mathnasium-cost-bc, kumon-vs-mathnasium |
-| 7 | todo | does my child need a tutor | Does my child need a tutor, a learning centre or practice at home? | Math at home | any | bc-proficiency-scale, tutor-cost-bc, /compare |
+| 7 | done 2026-11-22 `/blog/does-my-child-need-a-tutor` | does my child need a tutor | Does my child need a tutor, a learning centre or practice at home? | Math at home | any | bc-proficiency-scale, tutor-cost-bc, /compare |
 | 8 | todo | sylvan learning cost per month | Sylvan Learning cost in BC: Surrey, Vancouver, Victoria | Comparing options | any | /blog/sylvan-vs-kumon, tutor-cost-bc |
 | 9 | todo | is tutoring tax deductible canada | Is tutoring tax deductible in Canada? What counts for a math program | Comparing options | Dec, Jan, Feb, Mar, Apr | tutor-cost-bc, kumon-cost-bc |
 | 10 | todo | grade 3 math workbook canada | Math workbooks for BC kids, grade by grade: how to choose one | Math at home | any | grade guides |
