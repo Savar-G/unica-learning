@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { boardPaths, boardView, childInk, type Batch } from "@/lib/board";
 import {
@@ -652,5 +653,77 @@ describe("the child's ink as an event log (#635)", () => {
     const [x, y, w, hh] = chatBoardView(kept).split(" ").map(Number);
     expect(0.95 * 1000).toBeLessThan(x + w);
     expect(0.97 * 1000).toBeLessThan(y + hh);
+  });
+
+  it("preserves encode/decode round-trip, monotonic revision/clock, and growInkLog idempotence for arbitrary board ops", () => {
+    type Op =
+      | { kind: "takePen"; dt: number }
+      | { kind: "givePen"; dt: number }
+      | { kind: "stroke"; dt: number; x: number; y: number; erase: boolean }
+      | { kind: "undo"; dt: number }
+      | { kind: "clear"; dt: number };
+
+    const arbOp: fc.Arbitrary<Op> = fc.oneof(
+      fc.record({ kind: fc.constant("takePen" as const), dt: fc.integer({ min: 1, max: 500 }) }),
+      fc.record({ kind: fc.constant("givePen" as const), dt: fc.integer({ min: 1, max: 500 }) }),
+      fc.record({
+        kind: fc.constant("stroke" as const),
+        dt: fc.integer({ min: 1, max: 500 }),
+        x: fc.integer({ min: 5, max: 85 }).map((n) => n / 100),
+        y: fc.integer({ min: 5, max: 85 }).map((n) => n / 100),
+        erase: fc.boolean(),
+      }),
+      fc.record({ kind: fc.constant("undo" as const), dt: fc.integer({ min: 1, max: 500 }) }),
+      fc.record({ kind: fc.constant("clear" as const), dt: fc.integer({ min: 1, max: 500 }) }),
+    );
+
+    const runOps = (ops: readonly Op[]): BoardHistory => {
+      let h = createHistory();
+      let t = 0;
+      for (const op of ops) {
+        t += op.dt;
+        const prevRev = h.revision;
+        const prevLen = historyLength(h);
+        let res: Change;
+        if (op.kind === "takePen") res = takePen(h, t);
+        else if (op.kind === "givePen") res = givePen(h, t);
+        else if (op.kind === "undo") res = undo(h, t);
+        else if (op.kind === "clear") res = clear(h, t);
+        else {
+          res = drawStroke(h, {
+            erase: op.erase,
+            w: op.erase ? 24 : 5,
+            boardWidth: 800,
+            page: 1,
+            pts: [[op.x, op.y, t], [op.x + 0.05, op.y + 0.05, t + 10]],
+          });
+        }
+        if (res.ok) {
+          expect(res.history.revision).toBeGreaterThanOrEqual(prevRev);
+          expect(historyLength(res.history)).toBeGreaterThanOrEqual(prevLen);
+          h = res.history;
+        }
+      }
+      return h;
+    };
+
+    fc.assert(
+      fc.property(fc.array(arbOp, { maxLength: 20 }), fc.array(arbOp, { maxLength: 15 }), (opsA, opsB) => {
+        const a = runOps(opsA);
+        const b = runOps(opsB);
+
+        const encoded = encodeHistory(a);
+        const decoded = decodeHistory(encoded);
+        expect(decoded).toEqual(a);
+        expect(() => boardScene(a)).not.toThrow();
+
+        const logA = inkLog(a);
+        const logB = inkLog(b);
+        const grown = growInkLog(logA, logB);
+        expect(grown.length).toBeGreaterThanOrEqual(logA.length);
+        expect(growInkLog(grown, logB)).toEqual(grown);
+      }),
+      { numRuns: 100 },
+    );
   });
 });

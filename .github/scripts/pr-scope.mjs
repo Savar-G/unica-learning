@@ -46,10 +46,12 @@ const SKIPPABLE_DOC_PATTERNS = [
   /^\.design\//,
   /^docs\//,
   /^\.claude\//,
+  /^\.agents\//,
+  /^skills-lock\.json$/,
   /^[^/]+\.md$/,
 ];
 
-const CODE_LINT_PATTERN = /^(src\/|scripts\/).*\.[cm]?[jt]sx?$/;
+const CODE_LINT_PATTERN = /^(?:(src\/|scripts\/).*\.[cm]?[jt]sx?|docs\/feature-map\.md|AGENTS\.md)$/;
 const MAYA_BEHAVIOUR_PATTERN = /^(src\/lib\/(maya|number-words|question-package)|docs\/maya-gate\.md)/;
 const FAMILY_ZONES_PATTERN = /^(supabase\/|src\/lib\/(family-time|canada-postal-zones|supported-time-zones)|scripts\/generate-family-zones)/;
 const VOICE_WORKER_PATTERN = /^(worker\/|src\/lib\/maya)/;
@@ -75,8 +77,8 @@ function fullScope(reason) {
  *
  * - Non-PR events (`push` to `main`, `workflow_dispatch`, etc.) ALWAYS run `full`.
  * - PRs touching high-blast-radius configs, CI, DB migrations, data, scripts, or core shared modules ALWAYS run `full`.
- * - PRs touching >40 files or with an empty/unreadable diff ALWAYS fall back to `full`.
- * - PRs touching only non-tested docs/design files run `skip`.
+ * - PRs touching only non-tested docs/design/skill files run `skip` (even when >40 files).
+ * - PRs touching >40 non-skippable files or with an empty/unreadable diff ALWAYS fall back to `full`.
  * - Scoped PRs run `affected`: `vitest --changed` (plus any explicit dynamically-read consumer tests), full
  *   `lint-and-types` when code changed, and path-scoped `maya-behaviour` / `family-zones` / `voice-worker`.
  */
@@ -87,9 +89,6 @@ export function classifyScope({ eventName, changedFiles }) {
   const files = [...new Set((changedFiles ?? []).map((f) => f.trim()).filter(Boolean))].sort();
   if (files.length === 0) {
     return fullScope("empty-diff-fallback");
-  }
-  if (files.length > MAX_AFFECTED_FILES) {
-    return fullScope(`large-pr:${files.length}-files`);
   }
 
   for (const file of files) {
@@ -130,6 +129,11 @@ export function classifyScope({ eventName, changedFiles }) {
       runVoiceWorker: false,
       needsFullHistory: false,
     };
+  }
+
+  const nonSkippableCount = files.filter((f) => !SKIPPABLE_DOC_PATTERNS.some((re) => re.test(f))).length;
+  if (nonSkippableCount > MAX_AFFECTED_FILES) {
+    return fullScope(`large-pr:${nonSkippableCount}-files`);
   }
 
   // Unknown top-level files outside src/, worker/, or skippable docs/design fall back to full.
