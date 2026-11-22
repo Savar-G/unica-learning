@@ -24,7 +24,7 @@ A violation is a Use 2 ways question that names methods no earlier page shows (b
 
 | Level | Use 2 ways questions | Violations before | Strips printed after | Violations after | Book check |
 |---|---|---|---|---|---|
-| U10 | 6 | 6 (2 method pairs, 0 words) | 2 | 0 | ready, 84 pages, 643 questions (rebased on main with #1228) |
+| U10 | 6 | 6 (2 method pairs, 0 words) | 2 | 0 | ready, 84 pages, 639 questions (rebased on main with #1228, #1229, #1230 and #1232) |
 | U19 | not measured | not measured | not measured | not measured | see below |
 | U4 (report only, out of scope) | 6 | 6 | 0 | 6 (unchanged) | ready |
 | U16 (report only, out of scope) | 7 | 7 | 0 | 7 (unchanged) | ready, same as main |
