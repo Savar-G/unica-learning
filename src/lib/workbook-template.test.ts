@@ -90,6 +90,10 @@ describe("where answer boxes print (#1212)", () => {
     const cmp = root.querySelector(".q.cmp-item .cmp")!;
     expect([...cmp.children].map((e) => e.classList.contains("rg") ? "box" : e.textContent)).toEqual(["278", "box", "578"]);
     expect(root.querySelector(".q.cmp-item .rgs")?.children.length ?? 0).toBe(0);
+    // A saved legacy page keeps its layout: the box stays among the answers beside the question.
+    const legacy = html("quick-check", 12, false).root;
+    expect(legacy.querySelector(".cmp")).toBeNull();
+    expect(legacy.querySelector(".cmp-item")).toBeNull();
     expect(comparisonOf({ ...page.questions[1], package: { ...page.questions[1].package, text: "Which is greater: 278 or 578?" } })).toBeNull();
   });
 

@@ -112,7 +112,7 @@ export const CSS = `
 .q .full>.rg{margin-left:auto}
 /* A comparison: the answer box between its two numbers. */
 .cmp{display:inline-flex;align-items:flex-start;gap:10px;height:1.4em;vertical-align:top;white-space:nowrap}
-.pg.consistent .cmp .ab{height:48px;min-width:48px;width:48px}
+.pg.consistent .cmp .ab{height:var(--box);min-width:48px;width:48px}
 .q.cmp-item{padding-bottom:28px}
 .work-space{width:100%;background:#fff;flex:1 0 auto}
 .list{display:flex;flex:1;flex-direction:column;justify-content:space-evenly;gap:10px}

@@ -466,6 +466,23 @@ describe.skipIf(!chromium)("answer box positions in Chromium (#1212)", () => {
     }
   }, 60_000);
 
+  it.each([[6, 56], [12, 48]])("prints a comparison's box at the level's box height (U%i: %i px)", async (level, height) => {
+    const page = pages(level, true)["quick-check"];
+    const m = await measure(page, level);
+    expect(m.fit).toEqual([]);
+    for (const n of [2, 4]) expect(m.get(`question-${n}-answer`).height).toBeGreaterThanOrEqual(height - 0.5);
+  }, 60_000);
+
+  it("puts a long word answer's box at the bottom right of a card with work space", async () => {
+    const page = structuredClone(pages(12, true).challenge);
+    const q = page.questions[0], item = q.package.item!;
+    q.package = { ...q.package, item: { ...item, regions: [{ id: "answer", kind: "box", label: null, answer: { type: "text", value: "six hundred twelve" } }, ...item.regions.filter(r => r.kind === "work")] } };
+    const m = await measure(page, 12);
+    const card = m.get("question-1"), box = m.get("question-1-answer");
+    expect(right(card) - right(box)).toBeLessThan(30);
+    expect(bottom(card) - bottom(box)).toBeLessThan(30);
+  }, 60_000);
+
   it("puts the box of a long word answer on its own row at the right, in line with the page's other boxes", async () => {
     const page = pages(12, true)["mixed-answers"];
     const m = await measure(page, 12);

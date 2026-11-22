@@ -505,6 +505,8 @@ interface RegionOpts {
   choices?: "only" | "skip";
   /** A region printed elsewhere (a comparison's box sits between its two numbers). */
   skip?: string;
+  /** A card's action row: a long word answer's box comes after the work space, at the right (#1212). */
+  answerLast?: boolean;
 }
 
 function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOpts): string {
@@ -597,6 +599,7 @@ function lineShape(q: DraftQuestion, band: Band) {
 function regionsSplit(q: DraftQuestion, o: RegionOpts): { inline: string; full: string } {
   let inline = "";
   let full = "";
+  let answers = "";
   const names = regionNames(q);
   const sequence = packageItem(q.package).checks.find((c) => c.kind === "sequence");
   const inSequence = new Set<string>();
@@ -622,10 +625,12 @@ function regionsSplit(q: DraftQuestion, o: RegionOpts): { inline: string; full: 
     if (o.choices && (o.choices === "only") !== (region.kind === "choice")) continue;
     const html = regionHtml(q, region, name, o);
     if (inRow(region)) inline += html;
+    else if (o.answerLast && region.kind === "box") answers += html;
     else full += html;
   }
   const space = o.band.consistentLayout && o.choices !== "only" && !names.some(x => x.region.kind === "work") ? questionWorkSpace(q.package) : 0;
   if (space) full += `<div class="work-space" data-measure="workspace-${q.number}" style="min-height:${space}px"></div>`;
+  full += answers;
   return { inline, full };
 }
 
@@ -653,7 +658,8 @@ function cardHasWork(q: DraftQuestion, band: Band): boolean {
 
 /** A comparison's question with its answer box between the two numbers: the box is inside the question's content. */
 function comparisonHtml(q: DraftQuestion, band: Band): { html: string; region: string } | null {
-  const cmp = comparisonOf(q);
+  // (A saved legacy page keeps its layout and its printed answer order.)
+  const cmp = band.consistentLayout ? comparisonOf(q) : null;
   const named = cmp && regionNames(q).find((x) => x.region.id === cmp.region);
   if (!cmp || !named) return null;
   const num = (n: string) => `<span>${bcNumbers(escape(n))}</span>`;
@@ -970,7 +976,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       }
       return chip() + `<div class="fill" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${qs.map((q, k) => {
         const compare = comparisonHtml(q, band);
-        const { inline, full: area } = regionsSplit(q, { band, work: "fill", labels: true, skip: compare?.region });
+        const { inline, full: area } = regionsSplit(q, { band, work: "fill", labels: true, skip: compare?.region, answerLast: !!c.consistentLayout });
         // A work area only for an item that needs working (the U4 review, item 10), on the measured layout. It carries no
         // label: the page's work line says it (#1212).
         const hasWork = cardHasWork(q, band);
@@ -1016,7 +1022,7 @@ function challengeCard(q: DraftQuestion, band: Band, work: number | "fill"): str
   const asked = q.package.text.toLowerCase();
   const prompts = regionNames(q).flatMap((x) => x.region.kind === "lines" && !asked.includes(x.region.label.toLowerCase()) ? [x.region.label] : []);
   const beside = regionsSplit(q, { band, work, choices: "only" });
-  const { inline, full } = regionsSplit(q, { band, work, choices: "skip", bare: true });
+  const { inline, full } = regionsSplit(q, { band, work, choices: "skip", bare: true, answerLast: true });
   // A card whose work the instruction asks for: its question shaded, its work space white (Savar, book 1 review).
   const plain = full && band.instructed?.has(q.number) ? " plain" : "";
   const choices = beside.inline + beside.full;
@@ -1427,7 +1433,7 @@ export function fitProblems(page: DraftPage, measured: ReadonlyMap<string, Measu
     for (const { region, name } of regionNames(q)) {
       const m = measured.get(name);
       if (!m) continue;
-      if (content && (region.kind === "box" || region.kind === "choice") && overlap(m, content) > 1 && comparisonOf(q)?.region !== region.id) {
+      if (content && (region.kind === "box" || region.kind === "choice") && overlap(m, content) > 1 && !(c.consistentLayout && comparisonOf(q)?.region === region.id)) {
         problems.push({ question: q.number, slot: slotOf(q.number), reason: `${at}: question ${q.number}'s ${region.kind === "box" ? "answer box covers" : "choices cover"} its own text` });
       }
       const small = (what: string, size: number, min: number) =>
