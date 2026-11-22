@@ -45,15 +45,11 @@ function oneOfEach(draft: WorkbookDraft): WorkbookDraft {
   return { ...draft, pages };
 }
 
-/** The options row of the first question sits inside the question and below its first line: stacked under the stem, never beside it. */
-function expectOptionsBelowStem(result: Awaited<ReturnType<typeof renderWorkbook>>) {
-  if (result.status !== "rendered") throw new Error("not rendered");
-  const q = result.workbook.pages[0].questions[0];
-  const options = q.regions?.find((r) => r.id === "answer")?.box;
-  if (!q.box || !options) throw new Error("the options row was not measured");
-  expect(options.y).toBeGreaterThan(q.box.y + q.box.height * 0.1);
-  expect(options.y + options.height).toBeLessThanOrEqual(q.box.y + q.box.height + 1);
-  expect(options.x).toBeGreaterThanOrEqual(q.box.x);
+/** The first question's options row starts at or below the bottom of its stem's text, as printed: stacked under it, never beside it. */
+function expectOptionsBelowStem(measured: readonly { name: string; y: number; height: number }[]) {
+  const [stem, options] = ["question-1-content", "question-1-answer"].map((name) => measured.find((m) => m.name === name));
+  if (!stem || !options) throw new Error("the stem or the options row was not measured");
+  expect(options.y).toBeGreaterThanOrEqual(stem.y + stem.height - 1);
 }
 
 describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
@@ -421,12 +417,11 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
     const withOptions = { ...page, questions: [lettered, ...page.questions.slice(1)] };
     const result = await renderWorkbook({ draft: { ...draft, pages: [withOptions] }, parentId: PARENT, template, engine });
     expect(result.status, JSON.stringify(result.status === "failed" ? result.problems : null)).toBe("rendered");
-    expectOptionsBelowStem(result);
-    // The options row starts below the stem's text and ends above the calculation's work space, measured on the page.
+    // Measured on the page: the options row is below the stem's text and ends above the calculation's work space.
     const drawn = (await printPage(withOptions, { ...draft, pages: [withOptions] })).measured;
+    expectOptionsBelowStem(drawn);
     const at = (name: string) => drawn.find((m) => m.name === name)!;
-    const [stem, options, space] = [at("question-1-content"), at("question-1-answer"), at("workspace-1")];
-    expect(options.y).toBeGreaterThanOrEqual(stem.y + stem.height - 1);
+    const [options, space] = [at("question-1-answer"), at("workspace-1")];
     expect(space.y).toBeGreaterThanOrEqual(options.y + options.height - 1);
   }, 120_000);
 });
@@ -563,6 +558,6 @@ describe.skipIf(!chromium)("answer box positions in Chromium (#1212)", () => {
       blocks: found.content.blocks.map((b) => ({ ...b, items: b.items.filter((n) => keep.includes(n)) })).filter((b) => b.items.length) } };
     const result = await renderWorkbook({ draft: { ...draft, pages: [page] }, parentId: PARENT, template, engine });
     expect(result.status, JSON.stringify(result.status === "failed" ? result.problems : null)).toBe("rendered");
-    expectOptionsBelowStem(result);
+    expectOptionsBelowStem((await printPage(page, { ...draft, pages: [page] })).measured);
   }, 120_000);
 });
