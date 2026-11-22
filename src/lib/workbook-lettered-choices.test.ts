@@ -21,6 +21,9 @@ describe("lettered choices", () => {
     expect(letteredChoices("Which is prime? A) 22", choices)).toBeNull();
     expect(letteredChoices("A) 22  B) 17", choices)).toBeNull();
     expect(letteredChoices("Which is prime? A) 22  B)", choices)).toBeNull();
+    // Text after the last option is question text, not part of the option.
+    expect(letteredChoices("Which number is prime? A) 22  B) 17. Explain how you know.", choices)).toBeNull();
+    expect(letteredChoices("Which is prime? A) 22  B) 17  Write A or B. Then explain.", choices)).toBeNull();
     expect(letteredChoices("True or false: 3 is prime.", ["true", "false"])).toBeNull();
     expect(letteredChoices("Which is prime? A) 22  B) 17", ["B", "A"])).toBeNull();
   });

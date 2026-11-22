@@ -31,7 +31,8 @@ export function letteredChoices(text: string, choices: readonly string[]): Lette
   const parts = body.slice(first.index + first[1].length).split(/\s+(?=[B-D]\)\s)/);
   if (parts.length !== choices.length) return null;
   const options = parts.map((part, i) => ({ letter: LETTERS[i], text: part.startsWith(`${LETTERS[i]})`) ? part.slice(2).trim() : "" }));
-  return options.every(o => o.text) ? { stem, options } : null;
+  // An option is a phrase: a second sentence after it ("B) 17. Explain how you know.") is question text, which stays as written.
+  return options.every(o => o.text && !/[.?!]\s+\S/.test(o.text)) ? { stem, options } : null;
 }
 
 /** The lettered choices of a circled region of a question, or null. */
