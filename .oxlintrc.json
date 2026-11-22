@@ -17,6 +17,7 @@
     "next-env.d.ts",
     ".design/**",
     ".claude/**",
+    ".agents/**",
     ".design-sync/**",
     "src/vendor/**"
   ],

@@ -2,5 +2,7 @@
 .next
 node_modules
 .claude
+.agents
+skills-lock.json
 .playwright-cli
 .env*

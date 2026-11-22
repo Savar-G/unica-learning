@@ -43,7 +43,7 @@ fi
 needs_build=""
 while IFS= read -r file; do
   case "$file" in
-    .design/*|.design-sync/*|docs/*|.claude/*|.github/*|scripts/*|supabase/*|worker/*) ;;
+    .design/*|.design-sync/*|docs/*|.claude/*|.agents/*|skills-lock.json|.github/*|scripts/*|supabase/*|worker/*) ;;
     src/*|public/*) needs_build="$file"; break ;;
     *.md) ;;
     *) needs_build="$file"; break ;;
