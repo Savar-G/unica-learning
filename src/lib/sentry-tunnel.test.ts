@@ -121,3 +121,28 @@ describe("bareRequest", () => {
     expect(sent[0].body).not.toContain("SECRET");
   });
 });
+
+describe("tunnel routing", () => {
+  it("routes /monitoring to /sentry-tunnel via Next rewrites without enabling Sentry server interception", async () => {
+    const { default: config } = await import("../../next.config");
+    const resolved = typeof config === "function"
+      ? await (config as (phase: string, ctx: unknown) => Promise<Record<string, unknown>>)("phase-production-build", { defaultConfig: {} })
+      : (config as Record<string, unknown>);
+    const env = (resolved.env ?? {}) as Record<string, string | undefined>;
+    // @sentry/nextjs 11.14+ hooks node:http Server.emit when _sentryTunnelRoute is injected, swallowing /monitoring
+    // before Next.js/Vercel sees it (bypassing bareRequest and causing 300 s Fluid Compute timeouts after HTTP 200).
+    expect(env._sentryTunnelRoute).toBeUndefined();
+    const rewritesFn = resolved.rewrites as (() => Promise<unknown>) | undefined;
+    const raw = rewritesFn ? await rewritesFn() : [];
+    const list = Array.isArray(raw) ? raw : [...((raw as { beforeFiles?: unknown[]; afterFiles?: unknown[] }).beforeFiles ?? []), ...((raw as { afterFiles?: unknown[] }).afterFiles ?? [])];
+    expect(list).toContainEqual({ source: "/monitoring", destination: "/sentry-tunnel" });
+  });
+
+  it("caps the tunnel route handler duration and scrubs incoming requests", async () => {
+    const route = await import("@/app/sentry-tunnel/route");
+    expect(route.maxDuration).toBeGreaterThan(0);
+    expect(route.maxDuration).toBeLessThanOrEqual(60);
+    const bad = await route.POST(new Request("https://unicalearning.com/monitoring", { method: "POST", body: "not an envelope" }));
+    expect(bad.status).toBe(400);
+  });
+});
