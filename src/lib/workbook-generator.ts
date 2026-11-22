@@ -2,7 +2,7 @@ import { reviewMasteryStep } from "./workbook-review-level";
 import { questionWorkSpace } from "./workbook-work-space";
 import { answerInstruction, isWarmUpPage } from "./workbook-page-instructions";
 import type { EditCall } from "@/lib/workbook-edit-calls";
-import { choiceInstruction } from "@/lib/workbook-layout-check";
+import { choiceInstruction, choicePageInstruction, choiceAddOn } from "@/lib/workbook-layout-check";
 // The workbook generator (#311, spec #296): a two-week plan (#308, src/lib/workbook-plan.ts) in, one coherent draft
 // workbook out, stored as one unit through the draft store. The plan fixes every page and part; the AI fills the
 // question slots of each page with content only (src/lib/workbook-generator-items.ts), one call per page; code
@@ -2353,6 +2353,8 @@ function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuesti
     // other pages keep their own line.
     // Name every choice kind, including Spot the error's yes/no beside true/false practice.
     const circleLine = choiceInstruction(questions);
+    // (On a page that also asks for written answers the instruction names those too, never the choice alone, #1215.)
+    const pageLine = choiceAddOn(questions);
     // (A new idea page's chip says "Read how it works, then try it.": its instruction line says what to write and circle,
     // never the same words twice, Savar 2026-11-04.)
     if (["practice", "practice-2", "remember-these", "remember-these-mixed-set", "new-idea"].includes(w.page.type)) {
@@ -2363,13 +2365,13 @@ function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuesti
       const parts = [boxes ? boxLine : writes ? "Write the answer in the box." : null, circle ? circleLine : null].filter(Boolean);
       if (parts.length) content.subtitle = parts.join(" ");
     // (A warm-up page names no choice: its choice questions print their own cue, isWarmUpPage.)
-    } else if (circleLine && !isWarmUpPage(content) && !/\bcircle\b/i.test(content.subtitle ?? "")) content.subtitle = `${content.subtitle ? `${content.subtitle.replace(/\s*$/, "")} ` : ""}${circleLine}`;
-    if (w.page.extraPractice) Object.assign(content, { extraPractice: true, title: "Extra practice", subtitle: `Answer questions from this workbook.${circleLine ? ` ${circleLine}` : ""}` });
+    } else if (pageLine && !isWarmUpPage(content) && !/\bcircle\b/i.test(content.subtitle ?? "")) content.subtitle = `${content.subtitle ? `${content.subtitle.replace(/\s*$/, "")} ` : ""}${pageLine}`;
+    if (w.page.extraPractice) Object.assign(content, { extraPractice: true, title: "Extra practice", subtitle: `Answer questions from this workbook.${pageLine ? ` ${pageLine}` : ""}` });
   }
   if (content.kind === "day" && !isWarmUpPage(content) && questions.some(q => q.package && (questionWorkSpace(q.package, q.place) > 0 || q.package.item?.regions.some(r => r.kind === "work")))) {
     // The work line under the instruction names the questions to work (workbookWorkLine): the instruction says only
     // what to circle, or else where to write (Savar, 2026-11-09).
-    content.subtitle = choiceInstruction(questions) ?? answerInstruction(questions);
+    content.subtitle = choicePageInstruction(questions) ?? answerInstruction(questions);
   }
   return content;
 }
