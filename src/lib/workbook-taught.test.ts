@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { GeneratedPage } from "./workbook-generator";
 import type { Block, DayContent } from "./workbook-page";
 import { curriculumFor } from "./workbook-curriculum";
-import { ENFORCED_LEVELS, introIssues, planIntros, withIntros, withPlanned } from "./workbook-taught";
+import { ENFORCED_LEVELS, gapKey, introIssues, planIntros, withIntros, withPlanned } from "./workbook-taught";
 import { methodIntro } from "./workbook-intro-examples";
 import { TERMS, termsIn } from "./workbook-terms";
 
@@ -68,7 +68,7 @@ describe("methods and words are shown before a question uses them", () => {
   });
 
   it("replaces a planned strip whose pair the written question does not use, and keeps one it does", () => {
-    const planned = methodIntro(["add the tens, then the ones", "make a friendly number first"], [])!;
+    const planned = methodIntro(["add the tens, then the ones", "make a friendly number first"], [47, 28])!;
     const withStrip = (text: string) => { const p = dayPage(3, 10, [{ slot: "solve-it-two-ways", asks: [text], intro: [planned] }]); return book(p); };
     expect(introIssues(withStrip("47 + 28 = ?"))).toEqual([]);
     const pages = withStrip("74 − 38 = ?");
@@ -76,6 +76,30 @@ describe("methods and words are shown before a question uses them", () => {
     expect(issue.fix!.drop).toEqual(planned.ids);
     const fixed = withIntros(structuredClone(pages[1].content!), [issue]);
     expect(fixed?.kind === "day" && fixed.blocks[0].intro?.map((s) => s.ids[0])).toEqual(["take away the tens, then the ones|count up from the smaller number"]);
+  });
+
+  it("replaces a strip whose example is a task a question of the book asks", () => {
+    const strip = methodIntro(["add the tens, then the ones", "make a friendly number first"], [])!;
+    expect(strip.question).toBe("47 + 28 = ?");
+    // The writer's question after planning is the strip's own task, in other words.
+    const pages = book(dayPage(3, 10, [{ slot: "solve-it-two-ways", asks: ["28 + 47 = ?"], intro: [strip] }]));
+    const [issue] = introIssues(pages);
+    expect(issue.fix!.drop).toEqual(strip.ids);
+    expect(issue.fix!.intro[0].question).not.toBe(strip.question);
+  });
+
+  it("reports a pair whose every example is a task the book asks", () => {
+    const asks = ["47 + 28 = ?", "36 + 29 = ?", "58 + 25 = ?", "64 + 38 = ?", "73 + 19 = ?", "74 + 23 = ?"];
+    const issues = introIssues(book(dayPage(3, 10, [{ slot: "solve-it-two-ways", asks: [asks[5]] }, { slot: "practice-row", asks: asks.slice(0, 5) }])));
+    expect(issues.some((i) => i.kind === "coverage" && /every worked example/.test(i.reason))).toBe(true);
+  });
+
+  it("tells a new gap from an old one on the same page by what it is about", () => {
+    const gapsOf = (...asks: string[]) => introIssues(book(dayPage(3, 19, [{ slot: "challenge", asks }]))).map(gapKey);
+    const old = gapsOf("Is it a reflex angle? Circle yes or no.");
+    const both = gapsOf("Is it a reflex angle? Circle yes or no.", "Is 7 prime? Circle yes or no.");
+    expect(both.filter((k) => !old.includes(k))).toHaveLength(1);
+    expect(old).toHaveLength(1);
   });
 
   it("checks only U10 and U19, and only a whole book", () => {

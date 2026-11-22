@@ -7,7 +7,7 @@ import type { GeneratedPage } from "./workbook-generator";
 import type { Intro, PageContent } from "./workbook-page";
 import type { QuestionPackage } from "./question-package";
 import type { BookIssue } from "./workbook-quality";
-import { methodIntro, pairKey, taskText } from "./workbook-intro-examples";
+import { exampleTaken, methodIntro, numbersOf, pairKey } from "./workbook-intro-examples";
 import { termsIntro, TERMS } from "./workbook-terms";
 import { TWO_WAYS_LEVELS, twoWaysByKind, twoWaysMethods } from "./workbook-two-ways";
 
@@ -24,14 +24,14 @@ const emptyLedger = (): Ledger => ({ methods: new Set(), words: new Set(), taugh
 type Asked = { n: number; text: string; templateId: string | null; operation: QuestionPackage["operation"]; level: number };
 
 /** The strips a block's questions need beyond what the ledger holds (and the ledger takes them), with why; and the questions that have no pair. */
-function needs(ledger: Ledger, slot: string, asked: readonly Asked[], taken: ReadonlySet<string>): { strips: Intro[]; reasons: string[]; noPair: Asked[] } {
-  const strips: Intro[] = [], reasons: string[] = [], noPair: Asked[] = [];
+function needs(ledger: Ledger, slot: string, asked: readonly Asked[], taken: readonly (readonly number[])[]): { strips: Intro[]; reasons: string[]; noPair: Asked[]; noExample: Asked[] } {
+  const strips: Intro[] = [], reasons: string[] = [], noPair: Asked[] = [], noExample: Asked[] = [];
   if (slot === "solve-it-two-ways") for (const q of asked) {
     const pair = twoWaysMethods(q);
     if (!pair && twoWaysByKind(q)) noPair.push(q);
     if (!pair || ledger.methods.has(pairKey(pair))) continue;
-    const strip = methodIntro(pair, (q.text.match(/\d+/g) ?? []).map(Number), taken);
-    if (!strip) continue;
+    const strip = methodIntro(pair, numbersOf(q.text), taken);
+    if (!strip) { noExample.push(q); continue; }
     strips.push(strip);
     ledger.methods.add(pairKey(pair));
     reasons.push(`question ${q.n} names "${pair[0]}" and "${pair[1]}" before the book shows them`);
@@ -42,7 +42,7 @@ function needs(ledger: Ledger, slot: string, asked: readonly Asked[], taken: Rea
     for (const t of missing) ledger.words.add(t.id);
     reasons.push(`a question uses ${missing.map((t) => `"${t.term}"`).join(", ")} before the book teaches it`);
   }
-  return { strips, reasons, noPair };
+  return { strips, reasons, noPair, noExample };
 }
 
 /** The book's issues of methods and words used before they are shown, each with the strips that fix it (`levels`: an audit may count other levels). */
@@ -51,8 +51,8 @@ export function introIssues(pages: readonly GeneratedPage[], levels: ReadonlySet
   if (!pages.some((p) => p.type === "cover")) return [];
   const ledger = emptyLedger();
   const issues: BookIssue[] = [];
-  // (An example's answer is printed: no other question of the book may be the example's task.)
-  const taken = new Set(pages.flatMap((p) => p.questions.flatMap((q) => (q.package ? [taskText(q.package.text)] : []))));
+  // (An example's answer is printed: no question of the book may ask the example's task.)
+  const taken = pages.flatMap((p) => p.questions.flatMap((q) => (q.package ? [numbersOf(q.package.text)] : [])));
   for (const p of [...pages].sort((a, b) => a.number - b.number)) {
     const c = p.content;
     if (c?.kind !== "day") continue;
@@ -60,11 +60,13 @@ export function introIssues(pages: readonly GeneratedPage[], levels: ReadonlySet
       const asked = b.items.flatMap((n) => { const q = p.questions.find((x) => x.number === n)?.package; return q ? [{ ...q, n }] : []; });
       const keys = new Set(b.slot === "solve-it-two-ways" ? asked.flatMap((q) => { const pair = twoWaysMethods(q); return pair ? [pairKey(pair)] : []; }) : []);
       // A planned strip whose pair no question here uses (the plan guessed a writer's question): replaced if one is needed.
-      const unused = (b.intro ?? []).filter((s) => s.kind === "methods" && !s.ids.some((id) => keys.has(id)));
+      // (Or whose example is a task another question of the book asks: its printed answer would give that one away.)
+      const unused = (b.intro ?? []).filter((s) => s.kind === "methods" && (!s.ids.some((id) => keys.has(id)) || (s.question !== undefined && exampleTaken(s.question, taken))));
       for (const intro of b.intro ?? []) if (!unused.includes(intro)) for (const id of intro.ids) (intro.kind === "methods" ? ledger.methods : ledger.words).add(id);
       if (b.step && TEACHING.has(b.slot)) ledger.taught.add(b.step);
       if (!levels.has(c.level)) return;
-      const { strips, reasons, noPair } = needs(ledger, b.slot, asked, taken);
+      const { strips, reasons, noPair, noExample } = needs(ledger, b.slot, asked, taken);
+      for (const q of noExample) issues.push({ page: p.number, kind: "coverage", reason: `question ${q.n} names two methods, but every worked example of them is a task the book asks ("${q.text}")` });
       const replace = strips.some((s) => s.kind === "methods") ? unused : [];
       for (const intro of unused) if (!replace.includes(intro)) for (const id of intro.ids) ledger.methods.add(id);
       for (const q of noPair) issues.push({ page: p.number, kind: "coverage", reason: `question ${q.n} asks for 2 ways but has no two methods of its kind ("${q.text}")` });
@@ -101,8 +103,10 @@ export function withPlanned<C extends PageContent | null>(content: C, work: obje
  * fit fewer questions. A question that differs when written is caught by the whole-book check (introIssues).
  */
 export function planIntros<W extends PlannedWork>(work: readonly W[], level: number, packageOf: (w: W, slot: W["slots"][number]) => QuestionPackage | null): void {
+  // (Other levels plan nothing, and build no packages for it: this runs in every capacity pass.)
+  if (!ENFORCED_LEVELS.has(level)) { for (const w of work) planned.delete(w); return; }
   const ledger = emptyLedger();
-  const taken = new Set(work.flatMap((w) => w.slots.flatMap((s) => { const q = packageOf(w, s); return q ? [taskText(q.text)] : []; })));
+  const taken = work.flatMap((w) => w.slots.flatMap((s) => { const q = packageOf(w, s); return q ? [numbersOf(q.text)] : []; }));
   for (const w of [...work].sort((a, b) => a.number - b.number)) {
     planned.delete(w);
     for (const [k, x] of (w.layout?.slots ?? []).entries()) {
@@ -119,6 +123,9 @@ export function planIntros<W extends PlannedWork>(work: readonly W[], level: num
     }
   }
 }
+
+/** What an intro issue is about, for telling a new gap from an old one: its page, and the methods and words, or the question. */
+export const gapKey = (i: BookIssue): string => `${i.page}|${i.kind}|${i.fix ? i.fix.intro.flatMap((s) => s.ids).join(",") : i.reason}`;
 
 /** A page's content with the strips its intro issues carry attached to their blocks. */
 export function withIntros(content: PageContent | null, issues: readonly BookIssue[]): PageContent | null {

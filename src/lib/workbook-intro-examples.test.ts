@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
-import { methodIntro, pairKey, taskText } from "./workbook-intro-examples";
+import { exampleTaken, methodIntro, numbersOf, pairKey } from "./workbook-intro-examples";
 import { twoWaysMethods, type MethodPair } from "./workbook-two-ways";
 
 /** Every pair a question of U10 and up can be given, found by asking about one question of each kind. */
@@ -50,12 +50,15 @@ describe("a method pair's worked example", () => {
     }), { numRuns: 200 });
   });
 
-  it("never prints another question of the book as its example", () => {
+  it("never prints a task another question of the book asks, however it is worded, and gives none when the book asks them all", () => {
     const pair: MethodPair = ["add the tens, then the ones", "make a friendly number first"];
-    const taken = new Set([taskText("47 + 28 = ?"), taskText("36 + 29 = ?")]);
+    // "47 + 28" and "28 plus 47" are one task; so is a story with both numbers.
+    const taken = [numbersOf("28 plus 47 = ?"), numbersOf("Mia has 36 stickers and gets 29 more.")];
     const intro = methodIntro(pair, [], taken)!;
-    expect(taken.has(taskText(intro.question!))).toBe(false);
+    expect(exampleTaken(intro.question!, taken)).toBe(false);
     expect(intro.question).toBe("58 + 25 = ?");
+    const all = [[47, 28], [36, 29], [58, 25], [64, 38], [73, 19]];
+    expect(methodIntro(pair, [], all)).toBeNull();
   });
 
   it("keeps a question's numbers out when it can", () => {

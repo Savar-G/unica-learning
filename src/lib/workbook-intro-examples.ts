@@ -106,18 +106,27 @@ function patternExamples(key: string, ways: (a: string[], b: string[]) => [Metho
   return out;
 }
 
-/** A question's text as the book's tasks compare it: no spaces, one minus sign. */
-export const taskText = (text: string): string => text.toLowerCase().replace(/\s+/g, "").replace(/[−–]/g, "-");
+/** The numbers a text prints. */
+export const numbersOf = (text: string): number[] => (text.replace(/(\d),(?=\d{3}\b)/g, "$1").match(/\d+/g) ?? []).map(Number);
+
+/** Whether a question of the book (its numbers) asks the example's task: it prints both of the example's two operands. */
+const asksTask = (operands: readonly number[], question: readonly number[]) => operands.every((n) => question.includes(n));
+
+/** The first two numbers of a strip's example question: its operands. */
+export const operandsOf = (question: string): number[] => numbersOf(question).slice(0, 2);
+
+/** Whether a strip's example is a task a question of the book asks (`taken`: each question's numbers): its printed answer must not be another question's. */
+export const exampleTaken = (question: string, taken: readonly (readonly number[])[]): boolean => taken.some((t) => asksTask(operandsOf(question), t));
 
 /**
- * The "Use 2 ways" strip of a pair: its first example that prints none of the question's numbers and is no question of the
- * book (`taken`, by taskText: a printed answer must never be another question's), else the first that is no question
- * of the book, else the first; null for a pair with no example.
+ * The "Use 2 ways" strip of a pair: its first example that prints none of the question's numbers and is no task of the
+ * book's other questions (`taken`), else the first that is no task of the book; null when the pair has no example or the
+ * book asks them all (the book check then reports it).
  */
-export function methodIntro(pair: MethodPair, avoid: readonly number[], taken: ReadonlySet<string> = new Set()): Intro | null {
+export function methodIntro(pair: MethodPair, avoid: readonly number[], taken: readonly (readonly number[])[] = []): Intro | null {
   const list = candidates(pair);
-  const free = (e: Example) => !taken.has(taskText(e.question));
-  const example = list?.find((e) => free(e) && e.nums.every((n) => !avoid.includes(n))) ?? list?.find(free) ?? list?.[0];
+  const free = (e: Example) => !exampleTaken(e.question, taken);
+  const example = list?.find((e) => free(e) && e.nums.every((n) => !avoid.includes(n))) ?? list?.find(free);
   if (!example) return null;
   return { kind: "methods", ids: [pairKey(pair)], question: example.question, methods: example.methods.map((m) => ({ label: m.label, lines: m.lines })) };
 }
