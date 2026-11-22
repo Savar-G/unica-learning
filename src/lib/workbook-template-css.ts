@@ -186,6 +186,9 @@ export const CSS = `
 .tc .act{display:flex;gap:16px;align-items:flex-end;flex:1 1 auto;min-height:0}
 .tc .act>:is(.wb,.work-space){width:auto;flex:1 1 auto;align-self:stretch}
 .tc .act>.rg{margin-left:auto}
+/* In a half-width card a long word answer's box gives way (down to the minimum box size) before the work space does. */
+.tc .act>.rg{min-width:0;flex:0 1 auto}
+.tc .act .ab{flex:0 1 auto}
 .pcards.fill{grid-template-columns:repeat(2,minmax(0,1fr))}
 .pcards.fill .pcard .pb{flex:1 1 auto;align-items:center}
 .tw{display:flex;flex-direction:column;gap:10px}

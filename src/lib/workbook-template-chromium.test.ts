@@ -485,6 +485,21 @@ describe.skipIf(!chromium)("answer box positions in Chromium (#1212)", () => {
     edge(bottom(card) - bottom(box));
   }, 60_000);
 
+  it.each([6, 12])("keeps a long word answer's box and its work space inside a half-width test card (U%i)", async (level) => {
+    const page = structuredClone(pages(level, true)["show-what-you-know"]);
+    const q = page.questions[0], item = q.package.item!;
+    q.package = { ...q.package, item: { ...item, regions: [{ id: "answer", kind: "box", label: null, answer: { type: "text", value: "six hundred twelve thousand" } }, ...item.regions.filter(r => r.kind === "work")] } };
+    const m = await measure(page, level);
+    expect(m.fit).toEqual([]);
+    const card = m.get("question-1"), box = m.get("question-1-answer");
+    edge(right(card) - right(box));
+    edge(bottom(card) - bottom(box));
+    // The work space beside it keeps at least its minimum width.
+    const work = [...m.byName.values()].find((x) => x.name === "region-1-work")!;
+    expect(work.width).toBeGreaterThanOrEqual(120);
+    expect(right(work)).toBeLessThanOrEqual(box.x);
+  }, 60_000);
+
   it("puts the box of a long word answer on its own row at the right, in line with the page's other boxes", async () => {
     const page = pages(12, true)["mixed-answers"];
     const m = await measure(page, 12);
