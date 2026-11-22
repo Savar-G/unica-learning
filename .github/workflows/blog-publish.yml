@@ -1,14 +1,17 @@
 name: Blog publish
 
 # The weekly blog routine (docs/blog-automation.md) pushes one post on a claude/blog-<slug> branch.
-# validate: checks that the branch only adds or fixes a post, merges it into main and runs the done gate,
-#   with read-only access (post code runs here, so it gets no write token).
-# publish: runs no post code. It confirms main has not moved, checks the guard again, makes the same merge
-#   and tests that exact merge on a temporary branch before pushing main. A branch ending in -dryrun stops after validate.
+# validate: runs with read-only access (post code runs here, so it gets no write token). It runs main's guard,
+#   merges into main locally, and verifies blog contract tests, lint, types, and next build (~3-4 min).
+# publish: runs no post code. It loads main's publish script and guard, merges onto the latest origin/main,
+#   dispatches full CI (ci.yml, read-only) on that exact merge commit on a temporary site/blog-publish-* branch,
+#   and pushes main once CI passes. If main moves while CI runs, it re-merges and retries automatically.
+#   A branch ending in -dryrun stops after validate.
 
 on:
   push:
     branches: ['claude/blog-**']
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,27 +21,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  prepare:
-    runs-on: ubuntu-24.04
-    outputs:
-      main_sha: ${{ steps.pin.outputs.main_sha }}
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - id: pin
-        run: echo "main_sha=$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
-
   validate:
-    needs: prepare
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, maya]
+    if: ${{ startsWith(github.ref_name, 'claude/blog-') }}
     runs-on: ubuntu-24.04
-    # Above the sum of its step limits (checkout 2, setup 1, npm ci 5, Chromium 2, tests 35, eslint 5, build 10).
-    timeout-minutes: 65
+    timeout-minutes: 20
     permissions:
       contents: read
     env:
@@ -49,108 +35,92 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
-        timeout-minutes: 1
-        with:
-          node-version: '22.23.1'
-          package-manager-cache: false
-      - name: Only blog files changed
-        # Runs main's copy of the guard, so a branch cannot loosen the guard it is checked by.
+      - name: Check if already published
+        id: merged
         run: |
-          git show ${{ needs.prepare.outputs.main_sha }}:scripts/blog-publish-guard.mjs > "$RUNNER_TEMP/blog-publish-guard.mjs"
-          node "$RUNNER_TEMP/blog-publish-guard.mjs" ${{ needs.prepare.outputs.main_sha }} "$GITHUB_SHA"
-      - name: Merge into main
-        id: merge
-        run: |
-          git config user.name "unica-blog-bot"
-          git config user.email "unica-blog-bot@users.noreply.github.com"
-          git checkout -B publish ${{ needs.prepare.outputs.main_sha }}
-          git merge --no-ff --no-edit -m "Blog: publish $BRANCH" "$GITHUB_SHA"
-      - run: npm ci
-        timeout-minutes: 5
-      # Unpack @sparticuz/chromium to /tmp/chromium once, before the tests. Otherwise two Chromium test files unpack it at
-      # the same time in parallel workers, and one starts Chromium while the other still writes it (spawn ETXTBSY).
-      - name: Unpack Chromium
-        run: node -e 'import("@sparticuz/chromium").then(async (m) => console.log(await m.default.executablePath()))'
-        timeout-minutes: 2
-      # The 2-core runner is slower than a laptop: the assessment bank tests pass the 5 s default locally but not here.
-      # Both shards validate the same pinned main commit and blog commit before publication.
-      - if: ${{ matrix.shard != 'maya' }}
-        run: npm test -- --exclude='src/lib/maya-gate/{gate,word-count-grade-1,word-count-grade-4}.test.ts' --testTimeout=60000 --shard=${{ matrix.shard }}/2
-        timeout-minutes: 35
-      - if: ${{ matrix.shard == 'maya' }}
-        run: |
-          npm test -- src/lib/maya-gate/gate.test.ts --testTimeout=60000 --maxWorkers=2
-          npm test -- src/lib/maya-gate/word-count-grade-1.test.ts --testTimeout=60000 --maxWorkers=2
-          npm test -- src/lib/maya-gate/word-count-grade-4.test.ts --testTimeout=60000 --maxWorkers=2
-        timeout-minutes: 35
-      - run: npx eslint src
-        timeout-minutes: 5
-      - run: npm run build
-        timeout-minutes: 10
-
-  publish:
-    needs: [prepare, validate]
-    if: ${{ !endsWith(github.ref_name, '-dryrun') }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    permissions:
-      contents: write
-      actions: write
-    env:
-      BRANCH: ${{ github.ref_name }}
-      MAIN_SHA: ${{ needs.prepare.outputs.main_sha }}
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        timeout-minutes: 2
-        with:
-          fetch-depth: 0
-      - name: Main is where validate left it
-        run: |
-          if [ "$(git rev-parse origin/main)" != "$MAIN_SHA" ]; then
-            echo "main moved after validation; re-run this workflow" >&2
-            exit 1
+          if git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "already_merged=true" >> "$GITHUB_OUTPUT"
+            echo "$BRANCH ($GITHUB_SHA) is already merged into origin/main; skipping validation."
+          else
+            echo "already_merged=false" >> "$GITHUB_OUTPUT"
           fi
       - name: Only blog files changed
+        if: ${{ steps.merged.outputs.already_merged != 'true' }}
+        # Runs main's copy of the guard, so a branch cannot loosen the guard it is checked by.
         run: |
           git show origin/main:scripts/blog-publish-guard.mjs > "$RUNNER_TEMP/blog-publish-guard.mjs"
           node "$RUNNER_TEMP/blog-publish-guard.mjs" origin/main "$GITHUB_SHA"
-      - name: Test the exact merge and publish it
-        id: publish_merge
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Merge into main
+        if: ${{ steps.merged.outputs.already_merged != 'true' }}
         run: |
           git config user.name "unica-blog-bot"
           git config user.email "unica-blog-bot@users.noreply.github.com"
           git checkout -B publish origin/main
           git merge --no-ff --no-edit -m "Blog: publish $BRANCH" "$GITHUB_SHA"
-          merge_sha=$(git rev-parse HEAD)
-          test_branch="site/blog-publish-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          echo "branch=$test_branch" >> "$GITHUB_OUTPUT"
-          echo "sha=$merge_sha" >> "$GITHUB_OUTPUT"
-          git push origin "HEAD:refs/heads/$test_branch"
-          gh workflow run ci.yml --ref "$test_branch"
-          run_id=""
-          attempt=0
-          while [ "$attempt" -lt 60 ]; do
-            attempt=$((attempt + 1))
-            run_id=$(gh run list --workflow ci.yml --branch "$test_branch" --event workflow_dispatch --json databaseId,headSha --jq ".[] | select(.headSha == \"$merge_sha\") | .databaseId" | head -n 1)
-            if [ -n "$run_id" ]; then break; fi
-            sleep 5
-          done
-          if [ -z "$run_id" ]; then echo "CI run was not found" >&2; exit 1; fi
-          gh run watch "$run_id" --exit-status --interval 30
-          git push origin HEAD:main
-      - name: Delete the published branch if it has not changed
-        run: git push --force-with-lease="refs/heads/$BRANCH:$GITHUB_SHA" origin ":refs/heads/$BRANCH"
-      - name: Delete the temporary branch if it has not changed
-        if: ${{ always() && steps.publish_merge.outputs.branch != '' }}
-        env:
-          TEST_BRANCH: ${{ steps.publish_merge.outputs.branch }}
-          TEST_SHA: ${{ steps.publish_merge.outputs.sha }}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        if: ${{ steps.merged.outputs.already_merged != 'true' }}
+        timeout-minutes: 2
+        with:
+          node-version: '22.23.1'
+          cache: npm
+      - if: ${{ steps.merged.outputs.already_merged != 'true' }}
+        run: npm ci --no-audit --no-fund
+        timeout-minutes: 5
+      - name: Architectural guardrails
+        if: ${{ steps.merged.outputs.already_merged != 'true' }}
+        run: npm run check:guard
+        timeout-minutes: 1
+      - name: Blog contract tests
+        if: ${{ steps.merged.outputs.already_merged != 'true' }}
+        run: npm test -- src/lib/blog.test.ts src/lib/site-hits.test.ts
+        timeout-minutes: 3
+      - name: Lint blog changes
+        if: ${{ steps.merged.outputs.already_merged != 'true' }}
         run: |
-          remote_ref=$(git ls-remote --exit-code origin "refs/heads/$TEST_BRANCH") || status=$?
-          if [ "${status:-0}" -eq 2 ]; then exit 0; fi
-          if [ "${status:-0}" -ne 0 ]; then exit "$status"; fi
-          [ -n "$remote_ref" ]
-          git push --force-with-lease="refs/heads/$TEST_BRANCH:$TEST_SHA" origin ":refs/heads/$TEST_BRANCH"
+          npm run lint:fast
+          npx eslint src/lib/blog.ts src/content/blog
+        timeout-minutes: 3
+      - name: App type check
+        if: ${{ steps.merged.outputs.already_merged != 'true' }}
+        run: npm run typecheck
+        timeout-minutes: 4
+      - name: Production build
+        if: ${{ steps.merged.outputs.already_merged != 'true' }}
+        run: npm run build
+        timeout-minutes: 10
+
+  publish:
+    needs: [validate]
+    if: ${{ startsWith(github.ref_name, 'claude/blog-') && !endsWith(github.ref_name, '-dryrun') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      actions: write
+    env:
+      BRANCH: ${{ github.ref_name }}
+      HEAD_SHA: ${{ github.sha }}
+      RUN_ID: ${{ github.run_id }}
+      RUN_ATTEMPT: ${{ github.run_attempt }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        timeout-minutes: 2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        timeout-minutes: 2
+        with:
+          node-version: '22.23.1'
+          package-manager-cache: false
+      - name: Test the exact merge and publish it
+        # Loads main's publish script so untrusted blog branches cannot modify publish logic.
+        run: |
+          git show origin/main:.github/scripts/blog-publish.mjs > "$RUNNER_TEMP/blog-publish.mjs"
+          node "$RUNNER_TEMP/blog-publish.mjs"
+      - name: Clean up temporary branches
+        if: ${{ always() }}
+        run: |
+          if [ -f "$RUNNER_TEMP/blog-publish.mjs" ] && [ -f "$RUNNER_TEMP/blog-publish-temp-branches.txt" ]; then
+            node "$RUNNER_TEMP/blog-publish.mjs" --cleanup-only
+          fi
