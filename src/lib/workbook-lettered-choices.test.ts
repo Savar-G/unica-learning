@@ -10,6 +10,10 @@ describe("lettered choices", () => {
       .toEqual([{ letter: "A", text: "12 ÷ 4 = n" }, { letter: "B", text: "12 × 4 = n" }]);
   });
 
+  it("lets an earlier option run to more than one sentence", () => {
+    expect(letteredChoices("Which is right? A) Add 5. Then double.  B) Subtract 5", ["A", "B"])?.options.map(o => o.text)).toEqual(["Add 5. Then double.", "Subtract 5"]);
+  });
+
   it("reads three options and options made of words", () => {
     expect(letteredChoices("Which had more? A) the first  B) the second  C) the same  Write A, B or C.", ["A", "B", "C"])?.options.map(o => o.text))
       .toEqual(["the first", "the second", "the same"]);
