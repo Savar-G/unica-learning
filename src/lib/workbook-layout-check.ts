@@ -24,7 +24,7 @@
 // Pure TypeScript: no Next.js, React, network, database or clock.
 import type { DayContent, SlotName } from "@/lib/workbook-page";
 import type { DraftPage, FitProblem, MeasuredElement } from "@/lib/workbook-render";
-import type { QuestionPackage } from "@/lib/question-package";
+import { packageItem, type QuestionPackage } from "@/lib/question-package";
 import type { PagePlan } from "@/lib/workbook-template";
 import { questionWorkSpace } from "./workbook-work-space";
 import { answerInstruction, isWarmUpPage, workbookPageInstruction, workbookWorkLine, mergeWarmUp, WARM_UP_INSTRUCTION } from "@/lib/workbook-page-instructions";
@@ -340,7 +340,7 @@ export function choiceInstruction(questions: ChoiceQuestions): string | null {
 
 /** Whether a page has a question the child writes on (an answer box or writing lines), warm-up facts aside. */
 const writesAnswers = (questions: ChoiceQuestions) =>
-  questions.some(q => q.package && q.place !== "warm-up" && (q.package.item?.regions ?? []).some(r => r.kind === "box" || r.kind === "lines"));
+  questions.some(q => q.package && q.place !== "warm-up" && packageItem(q.package).regions.some(r => r.kind === "box" || r.kind === "lines"));
 
 /**
  * The instruction for a page with choices, null with none (#1215). A page of choices only names its choice kind ("Circle
@@ -359,7 +359,7 @@ export function choicePageInstruction(questions: ChoiceQuestions): string | null
 export function choiceAddOn(questions: ChoiceQuestions): string | null {
   const choice = choiceInstruction(questions);
   if (!choice || !writesAnswers(questions)) return choice;
-  const tick = questions.some(q => q.package && q.place !== "warm-up" && (q.package.item?.regions ?? []).some(r => r.kind === "choice" && r.mark === "tick"));
+  const tick = questions.some(q => q.package && q.place !== "warm-up" && packageItem(q.package).regions.some(r => r.kind === "choice" && r.mark === "tick"));
   const circle = circled(questions).length > 0;
   return circle && tick ? "Write, circle or tick." : tick ? "Write or tick." : "Write or circle.";
 }

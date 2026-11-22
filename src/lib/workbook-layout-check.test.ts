@@ -168,6 +168,9 @@ describe("the layout checks", () => {
     expect(choicePageInstruction([truth, truth])).toBe("Circle true or false.");
     expect(choicePageInstruction([truth, letters])).toBe("Circle your answers.");
     expect(choicePageInstruction([written, truth])).toBe("Write in boxes. Circle one choice.");
+    // A package with no stored item has the default answer box, so it is a question to write on.
+    const defaultBox = { place: "on-your-own", package: { ...base, item: undefined } } as { place: string; package: typeof base };
+    expect(choicePageInstruction([defaultBox, truth])).toBe("Write in boxes. Circle one choice.");
     expect(choicePageInstruction([written, written])).toBeNull();
     const c = { ...(page().content as DayContent) };
     expect(circleProblem({ ...c, subtitle: "Circle true or false." }, [written, truth])).toMatch(/names only circling/);
