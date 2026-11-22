@@ -63,7 +63,7 @@ import { WorkbookAiUnavailable } from "@/lib/workbook-ai-unavailable";
 import { checkQuestionPackage, type QuestionPackage } from "@/lib/question-package";
 import { isQrToken, isUuid } from "@/lib/workbook-content";
 import type { Curriculum } from "@/lib/workbook-curriculum";
-import { buildQuestion, isCodeWorded, ITEMS_SCHEMA, kindProblem, relationWordings, selectedItemStep, type AiItem, type BuiltQuestion, type QuestionCheck, type SlotWording } from "@/lib/workbook-generator-items";
+import { buildQuestion, isCodeWorded, ITEMS_SCHEMA, kindProblem, relationWordings, selectedItemStep, type BuiltQuestion, type QuestionCheck, type SlotWording } from "@/lib/workbook-generator-items";
 import { attachWorkbookMayaOperations, withWorkbookMayaOperation, printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
 import { isOneMoreLessSkill } from "@/lib/number-words";
 import { solveCheck, solveReason, toSolve, type SolveLog, type Solver, type SolveVerdict } from "@/lib/workbook-solve-check";
@@ -90,7 +90,8 @@ import { COMPACT_STORY_FRAMES } from "@/lib/workbook-story-bank";
 import { childSamMistakes, difficultyDay, daySchedule, INTEREST_SHARE, interestEligible, interestShareProblems, interestWords, printsInterest, shortStories, SHORT_STORY_WORDS, storyThings, styleKinds, templateSpotShown, warmUpFact, warmUpShareProblems, warmUpSkill, type WarmUpFact } from "@/lib/workbook-personal-items";
 import { isTwoStep, routingTemplates } from "@/lib/workbook-curriculum/house-templates";
 import { buildStepItem, mixedTemplateSign, NO_TEMPLATE_PLACES, STEP_STORY_PLACES, stepAiItem, stepBounds, stepOf, stepRank, stepTemplateItem, stepTemplateOf, sumTemplate, templateProblem } from "@/lib/workbook-step-items";
-import { warmUpAllowedSteps, warmUpMaxChars, warmUpStepForSlot } from "@/lib/workbook-warm-up";
+import { easiestWarmUpSlot, warmUpAllowedSteps, warmUpMaxChars, warmUpSlotTarget } from "@/lib/workbook-warm-up";
+import { factItem } from "@/lib/workbook-warm-up-fact";
 import type { StepDeclaration, StepReference } from "@/lib/workbook-print-contract";
 
 /** A replacement must retain the practice page's own-step minimum before it can borrow review work. */
@@ -171,14 +172,8 @@ function templateContractFor(input: GenerateInput, w: PageWork, slot: Slot, atte
   if (input.itemPolicy !== "approved-v1" || !input.curriculum.contexts) return undefined;
   if (slot.place && NO_TEMPLATE_PLACES.has(slot.place) && slot.place !== "how-do-you-know") return undefined;
   const warmUp = slot.place === "warm-up";
-  const warmUpSlots = warmUp ? w.slots.filter((s) => s.place === "warm-up") : [];
-  const warmUpOrdinal = warmUp ? Math.max(0, warmUpSlots.findIndex((s) => s.id === slot.id)) : 0;
-  const warmUpTarget = warmUp
-    ? warmUpStepForSlot(input.curriculum, input.plan, w.day, warmUpSlots.length, warmUpOrdinal, attempt, slot.part.skills)
-    : null;
-  const selected = warmUp
-    ? (warmUpTarget ? { skill: warmUpTarget.skill, step: warmUpTarget.step } : null)
-    : slotStep(input, slot, attempt, input.plan.level, w.day, needsOwnPractice(input, w, slot));
+  const { ordinal: warmUpOrdinal, target: warmUpTarget } = warmUp ? warmUpSlotTarget(input.curriculum, input.plan, w.day, w.slots, slot, attempt) : { ordinal: 0, target: null };
+  const selected = warmUp ? (warmUpTarget && { skill: warmUpTarget.skill, step: warmUpTarget.step }) : slotStep(input, slot, attempt, input.plan.level, w.day, needsOwnPractice(input, w, slot));
   const own = selected && slot.part.step?.skill === selected.skill && slot.part.step.step === selected.step;
   const at = selected && slot.place !== "warm-up" && !own ? { ...selected, step: reviewMasteryStep(input.curriculum, input.plan.level, selected.skill) ?? selected.step } : selected;
   if (!at) return undefined;
@@ -582,26 +577,6 @@ export function personalBookIssues(input: Pick<GenerateInput, "curriculum" | "pl
 export function withPersonalIssues(input: Pick<GenerateInput, "curriculum" | "plan">, pages: readonly GeneratedPage[], quality: BookQuality): BookQuality {
   const personal = personalBookIssues(input, pages);
   return personal.length ? { ...quality, ready: false, issues: [...quality.issues, ...personal] } : quality;
-}
-
-/** A code fact as the writer's item shape (G1, item 4): code's operation, operands, text and one careless wrong answer. */
-function factItem(id: string, f: WarmUpFact): AiItem {
-  const [a, b] = f.operands;
-  const right = f.kind === "add" ? a + b : f.kind === "subtract" ? a - b : f.kind === "multiply" ? a * b : a / b;
-  const op = (x: number, y: number) => ({ kind: f.kind, operands: [itemNumber(x), itemNumber(y)], expression: null, unit: null, denominator: null, values: [] });
-  const easier =
-    f.kind === "divide"
-      ? (right === 2 ? { text: "6 ÷ 2 = ?", operation: op(6, 2) } : { text: "4 ÷ 2 = ?", operation: op(4, 2) })
-      : f.kind === "multiply"
-        ? (right === 4 ? { text: "2 × 3 = ?", operation: op(2, 3) } : { text: "2 × 2 = ?", operation: op(2, 2) })
-        : f.kind === "add"
-          ? (right === 3 ? { text: "1 + 1 = ?", operation: op(1, 1) } : { text: "2 + 1 = ?", operation: op(2, 1) })
-          : (right === 1 ? { text: "3 − 1 = ?", operation: op(3, 1) } : { text: "2 − 1 = ?", operation: op(2, 1) });
-  return {
-    slot: id, skill: f.skill, difficulty: f.difficulty ?? 1, text: f.text, format: "write-number", figure: null, numbers: [], places: null, direction: null, sequence: null, pattern: null, relation: null, figureShows: null, name: null, thing: null,
-    operation: op(a, b), easier,
-    wrongAnswers: [{ value: itemNumber(right + 1), cause: "careless", description: "One more than the answer.", step: null }], shownWrong: null,
-  };
 }
 
 const wordsIn = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
@@ -2952,20 +2927,9 @@ function minimumFor(w: PageWork, level: number): number {
 /** Places whose items capacity may plan fewer of: practice and review, never a teaching panel, Friday 5 or a test. */
 const DROP_PLACES: ReadonlySet<string> = new Set(["remember-these", "on-your-own", "finish-these", "practice-row", "unit-b-practice", "now-you", "word-problems", "challenge", "picture-stories", "show-what-you-know", "mixed-set", "math-in-the-world"]);
 
-/** The easiest warm-up slot on a page (preserving harder fluency and earlier-taught slots when trimming). */
-const easiestWarmUpSlot = (slots: readonly Slot[]): Slot | undefined => {
-  const warmUps = slots.filter((s) => s.place === "warm-up");
-  if (!warmUps.length) return undefined;
-  const fluency = new Set(warmUps[0].part.skills);
-  return warmUps.find((s) => !s.contract?.template || fluency.has(s.contract.template.skill)) ?? warmUps[0];
-};
-
 /** The page's last practice item that can go above its type's minimum, a template item first; never a teaching item. */
 const droppable = (w: PageWork, level = 0) => {
-  if (w.page.type === "warm-up") {
-    const warmUps = w.slots.filter((s) => s.place === "warm-up");
-    return warmUps.length > minimumFor(w, level) ? easiestWarmUpSlot(w.slots) : undefined;
-  }
+  if (w.page.type === "warm-up") return w.slots.filter((s) => s.place === "warm-up").length > minimumFor(w, level) ? easiestWarmUpSlot(w.slots) : undefined;
   // The page's practice questions count (Cedric's table), not its warm-up, explanation, Spot the error or two ways.
   const storyTwoWays = twoWaysCountsAsStory(level, w.page.type);
   const counted = w.slots.reduce((n, s) => n + (s.place === "how-do-you-know" || s.place === "warm-up" || NUMBER_PLACES.has(s.place ?? "") && !(storyTwoWays && s.place === "solve-it-two-ways") ? 0 : 1), 0);

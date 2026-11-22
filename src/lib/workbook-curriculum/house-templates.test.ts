@@ -3,7 +3,8 @@ import { BC_CURRICULUM, bcStepProgressions } from "@/lib/workbook-curriculum";
 import { HOUSE_TEMPLATES, isChallengeOnly, isTwoStep, withHouseTemplates } from "./house-templates";
 import { stepFieldProblems } from "./step-source";
 import { prepareTemplate, seededRandom } from "./template";
-import { challengeTemplateCount, choicesFor, sequenceOf, stepRangeProblem } from "@/lib/workbook-step-items";
+import { challengeTemplateCount, stepRangeProblem } from "@/lib/workbook-step-items";
+import { choicesFor, sequenceOf } from "@/lib/workbook-template-text";
 import { takeAwayProblem } from "@/lib/workbook-wording";
 
 describe("Unica Challenge templates", () => {

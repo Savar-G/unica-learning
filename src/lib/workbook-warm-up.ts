@@ -6,11 +6,8 @@ import { isChallengeOnly, isTwoStep, templateAtLevel } from "@/lib/workbook-curr
 import { prepareTemplate, seededRandom } from "@/lib/workbook-curriculum/template";
 import { warmUpSkill } from "@/lib/workbook-personal-items";
 import type { WorkbookPlan } from "@/lib/workbook-plan";
+import { cleanTemplateText, disallowedFactorOne, needsColumnWork, NUMERIC } from "@/lib/workbook-template-text";
 import {
-  cleanTemplateText,
-  disallowedFactorOne,
-  needsColumnWork,
-  NUMERIC,
   printedNumbersOf,
   stepRank,
   stepRangeProblem,
@@ -302,6 +299,28 @@ export function warmUpStepForSlot(
   }
   const round = Math.floor(attempt / 32);
   return fallback[round % fallback.length];
+}
+
+/** A warm-up slot's place among the page's warm-up slots and its target step (#1213). */
+export function warmUpSlotTarget(
+  curriculum: Curriculum,
+  plan: PlanLike,
+  day: number,
+  slots: readonly { id: string; place?: string | null }[],
+  slot: { id: string; part: { skills: readonly string[] } },
+  attempt: number,
+): { ordinal: number; target: WarmUpTarget | null } {
+  const warmUps = slots.filter((s) => s.place === "warm-up");
+  const ordinal = Math.max(0, warmUps.findIndex((s) => s.id === slot.id));
+  return { ordinal, target: warmUpStepForSlot(curriculum, plan, day, warmUps.length, ordinal, attempt, slot.part.skills) };
+}
+
+/** The easiest warm-up slot on a page (preserving harder fluency and earlier-taught slots when trimming). */
+export function easiestWarmUpSlot<S extends { place?: string | null; part: { skills: readonly string[] }; contract?: { template?: { skill: string } } | null }>(slots: readonly S[]): S | undefined {
+  const warmUps = slots.filter((s) => s.place === "warm-up");
+  if (!warmUps.length) return undefined;
+  const fluency = new Set(warmUps[0].part.skills);
+  return warmUps.find((s) => !s.contract?.template || fluency.has(s.contract.template.skill)) ?? warmUps[0];
 }
 
 /** Every `<skill>#<step>` a warm-up slot on `day` is allowed to print (for `expected.steps` validation). */

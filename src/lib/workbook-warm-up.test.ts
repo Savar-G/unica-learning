@@ -9,7 +9,8 @@ import { workbookQuality } from "@/lib/workbook-quality";
 import { bookPersona, firstCustomerProfile, sampleChild, samplePlanInput } from "@/lib/workbook-sample-profiles";
 import { planNextWorkbook } from "@/lib/workbook-placement";
 import { keySolver } from "@/lib/workbook-solve-check";
-import { buildStepItem, needsColumnWork, stepRank, stepTemplateItem } from "@/lib/workbook-step-items";
+import { buildStepItem, stepRank, stepTemplateItem } from "@/lib/workbook-step-items";
+import { needsColumnWork } from "@/lib/workbook-template-text";
 import { commaNumbers } from "@/lib/workbook-template";
 import {
   warmUpAllowedSteps,
