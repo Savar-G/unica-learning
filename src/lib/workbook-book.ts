@@ -1217,7 +1217,7 @@ export function dayPageContent(o: {
         const ex = own ? exampleOf(own, plan.level) : taught ? null : panel();
         const lines = ex?.lines.length ? ex.lines : taught?.lines ?? [];
         return {
-          slot: s.slot, items: [], label: taught ? step?.name : ex?.label,
+          slot: s.slot, items: [], label: taught ? step?.name : ex?.label, ...(part?.step ? { step: `${part.step.skill}#${part.step.step}` } : {}),
           note: "Read how it works, then try it.",
           methods: lines.length ? [{ label: taught ? taught.label : "Step by step", lines }] : [],
           // #489: the imported steps' change notes are for builders; the page names the step plainly, and with Cedric's
@@ -1240,7 +1240,7 @@ export function dayPageContent(o: {
         const relation = !!own?.item?.checks.some((c) => c.kind === "relation");
         const asked = taught && own && ex?.lines.length && !relation && !ex.lines.some((l) => l.replace(/[[\]]/g, "").includes(own.text.trim())) ? [own.text] : [];
         const lines = ex?.lines.length ? [...asked, ...ex.lines] : taught?.lines ?? [];
-        return { slot: s.slot, items: [], label: ex?.lines.length ? ex.label : taught ? "How it works" : undefined, note: "Read the example, then try it.", lines, ...(taught?.remember ? { explain: `Watch out: ${taught.remember}` } : {}) };
+        return { slot: s.slot, items: [], ...(part?.step ? { step: `${part.step.skill}#${part.step.step}` } : {}), label: ex?.lines.length ? ex.label : taught ? "How it works" : undefined, note: "Read the example, then try it.", lines, ...(taught?.remember ? { explain: `Watch out: ${taught.remember}` } : {}) };
       }
       case "reminder": {
         const ex = panel();

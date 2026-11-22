@@ -46,8 +46,27 @@ export type Figure =
  */
 export type WorkedLine = string;
 
+/**
+ * A short teaching strip above a block's questions, printed the first time the book uses a method pair or a term
+ * (src/lib/workbook-taught.ts, #1214): "Use 2 ways" with one question worked both ways, or "Words to know".
+ */
+export interface Intro {
+  kind: "methods" | "terms";
+  /** What the book's ledger records as shown: the method pair's key, or the term ids. */
+  ids: string[];
+  /** methods: the example question, worked two ways. */
+  question?: string;
+  methods?: { label: string; lines: WorkedLine[] }[];
+  /** terms: each word and what it means. */
+  terms?: { term: string; meaning: string }[];
+}
+
 /** One slot's content on a page. Which fields a slot reads is in the template; the rest are left out. */
 export interface Block {
+  /** The curriculum step a worked-example or Watch one panel teaches ("6.13-classify-angles#2"). */
+  step?: string;
+  /** Teaching strips printed above the block's questions. */
+  intro?: Intro[];
   /** L1/G1 contract: copy PlannedPart.extra to every block of that part. */
   extra?: boolean;
   slot: SlotName;

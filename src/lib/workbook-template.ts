@@ -37,6 +37,7 @@ import { bottomGapLimit, layoutProblems } from "@/lib/workbook-layout-check";
 import { printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
 import { curriculumFor } from "@/lib/workbook-curriculum";
 import { CSS, LINE_FIRST, LINE_NEXT, WORK_MIN } from "@/lib/workbook-template-css";
+import { twoWaysMethods } from "@/lib/workbook-two-ways";
 
 /** A review page's title, as a child reads it: "Remember these?" prints "Review" (Savar, 2026-11-09). */
 export const reviewTitle = (title: string) => title === "Remember these?" ? "Review" : title;
@@ -459,22 +460,6 @@ function boxWidth(v: AnswerValue | null, band: Band): number {
 }
 
 /** The unit word after an answer box ("tiles", "cm"), or "". */
-/** Two ways to work a question, by what it asks: add, take away, multiply, share, or null. */
-function twoWays(p: QuestionPackage): [string, string] | null {
-  const t = `${p.operation?.kind ?? ""} ${p.text}`.toLowerCase();
-  const small = Math.max(0, ...(p.text.match(/\d+/g) ?? []).map(Number)) < 20;
-  if (small && /subtract|−|\s-\s|left|take|eats|gives|fewer|less|the rest/.test(t)) return ["count back", "count up from the smaller number"];
-  // (Making a ten helps only when the sum passes 10: "6 + 1" counts on, or uses fingers.)
-  const numbers = (p.text.match(/\d+/g) ?? []).map(Number);
-  const pastTen = numbers.length >= 2 && numbers.reduce((a, b) => a + b, 0) > 10;
-  if (small && /add|\+|more|in all|together|gets/.test(t)) return ["count on from the bigger number", pastTen ? "make a ten first" : "use your fingers"];
-  if (/multiply|×|\beach\b|groups? of|packs? of|times/.test(t)) return ["split a number into parts", "use a fact you know, then the zeros"];
-  if (/divide|÷|share|equally/.test(t)) return ["share in groups", "use a times fact"];
-  if (/subtract|−|\s-\s|left|take|eats|gives|fewer|less/.test(t)) return ["take away the tens, then the ones", "count up from the smaller number"];
-  if (/add|\+|more|in all|together|gets/.test(t)) return ["add the tens, then the ones", "make a ten first"];
-  return null;
-}
-
 function unitAfter(p: QuestionPackage): string {
   const v = p.answer?.value;
   if (v?.type === "quantity" && v.unit !== "$") return v.unit;
@@ -782,6 +767,14 @@ export function reviewLayout(page: DraftPage): ReviewLayout[] {
   });
 }
 
+/** A block's teaching strips (#1214): a method pair worked on one question, or the words a question uses. */
+function introHtml(b: Block, i: number): string {
+  const way = (m: { label: string; lines: string[] }, n: number) => `<div class="in"><div class="lab">Method ${n + 1} · ${escape(m.label)}</div><div class="wk">${m.lines.map((l) => worked(l.replace(/\.$/, ""))).join(" · ")}</div></div>`;
+  return (b.intro ?? []).map((s, k) => `<div class="panel p-ni intro" data-measure="panel-intro-${i}-${k}">${s.kind === "methods"
+    ? `<div class="lab">Use 2 ways · ${escape(s.question ?? "")}</div><div class="ways">${(s.methods ?? []).map(way).join("")}</div>`
+    : `<div class="lab">Words to know</div>${(s.terms ?? []).map((t) => `<div class="wk"><b>${escape(t.term)}:</b> ${escape(t.meaning)}</div>`).join("")}`}</div>`).join("");
+}
+
 function blockHtml(b: Block, i: number, ctx: Ctx): string {
   const { band, c } = ctx;
   const qs = b.items.map(ctx.q);
@@ -907,7 +900,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       return qs.map((q) => {
         const names = regionNames(q);
         // Each work area names a way to do it (#482 review at db3b1a0: two methods asked, none shown).
-        const ways = twoWays(q.package);
+        const ways = twoWaysMethods(q.package);
         const works = names.filter((x) => x.region.kind === "work").map((x, k) => regionHtml(q, ways && x.region.kind === "work" ? { ...x.region, label: `Method ${k + 1}: ${ways[k] ?? ""}`.trim() } : x.region, x.name, { band, work: 110, ...(c.consistentLayout ? { minimumWork: Math.max(102, questionWorkSpace(q.package) + 38) } : {}) })).join("");
         const boxes = names.filter((x) => x.region.kind === "box").map((x) => regionHtml(q, x.region, x.name, { band, labels: true })).join("");
         return `<div class="tw" ${mark.question(q.number)}><div class="q"><span class="n">${questionNumber(q.number)}</span><span class="lab" style="color:#0C0C0E">${c.consistentLayout ? "Use 2 ways" : "Solve it two ways"}</span><span class="qb">${qtext(q)}</span></div><div class="ways2">${works}${boxes}</div></div>`;
@@ -1216,7 +1209,7 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
     }
     // Teaching panels already enclose their content. Other optional blocks need a visible boundary around all sections.
     const outline = partialExtra && !["worked-example", "watch-one", "reminder"].includes(b.slot);
-    return [b, i, html, outline] as const;
+    return [b, i, introHtml(b, i) + html, outline] as const;
   }).map(([b, i, html, outline]) => `<section class="blk${outline ? " optional-block" : ""}${GROW.has(b.slot) || c.consistentLayout && b.slot === "word-problems" ? " grow" : ""}" style="--rows:${blockRows(html)}${b.slot === "in-your-head" ? `;flex:0 0 auto` : ""}" data-slot="${b.slot}" data-measure="block-${i}">${html.replace(/<div class="chiprow">([\s\S]*?)<\/div>/g, (_row, inner: string, at: number) => `<div class="chiprow" data-measure="chip-${i}-${at}">${inner.replace('<span class="chip ', `<span data-measure="chipbadge-${i}-${at}" class="chip `).replace('<span class="side">', `<span data-measure="chipnote-${i}-${at}" class="side">`)}</div>`).replace(/<div class="lab"([^>]*)>/g, (tag, attrs: string, at: number) => attrs.includes("data-measure") ? tag : `<div class="lab" data-measure="label-${i}-${at}"${attrs}>`).replace(NUMBER_SPAN, (_tag, cls: string, n: string) => `<span class="${cls}" data-measure="number-${n}">${n}.</span>`).replace(FRAME, (_tag, cls: string, at: number) => `<div class="${cls}" data-measure="frame-${i}-${at}"`)}${missingHtml(b)}</section>`).join("");
   // Finished rows share the remaining page space. Two-method pages keep their explicit writing allocation unless
   // their existing plan requires stretching. No new question or answer enters this rendering step.
