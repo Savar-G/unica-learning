@@ -49,10 +49,11 @@ export function letteredHtml(text: string, region: AnswerRegion, measure: string
   return lettered && `<span class="circ opts" ${measure}>${lettered.options.map(o => `<span class="co"><b>${o.letter})</b><span>${words(o.text)}</span></span>`).join("")}</span>`;
 }
 
-/** Each option is its own target, letter first, in a row under the question's words; wrapped cards keep the row below the words. */
+/** Each option is its own target, letter first, in a row under the question's words, on consistent and legacy pages; cards keep the row below the words. */
 export const LETTERED_CSS = `
-.pg.consistent .circ.opts{display:flex;flex:1 1 100%;flex-wrap:wrap;align-items:center;gap:6px 32px;width:100%;min-height:44px;padding:0}
-.pg.consistent :is(.head,.top,.act,.full):has(>.circ.opts){flex-wrap:wrap}
+.circ.opts,.pg.consistent .circ.opts{display:flex;flex:1 1 100%;flex-wrap:wrap;align-items:center;gap:6px 32px;width:100%;min-height:44px;padding:0}
+:is(.head,.top,.act,.full):has(>.circ.opts),.q:has(>.rgs>.circ.opts){flex-wrap:wrap}
+.q>.rgs:has(>.circ.opts){flex:1 1 100%;margin-left:0}
 .pg.consistent .story.nowork .head:has(>.circ.opts){align-items:baseline}
 .pg.consistent .chc .act:has(>.circ.opts){align-items:flex-start}
 .circ.opts .co{display:inline-flex;align-items:baseline;gap:10px;padding:4px 14px;font-family:"Unica Sans",Helvetica,Arial,sans-serif;font-size:var(--body);line-height:1.3}

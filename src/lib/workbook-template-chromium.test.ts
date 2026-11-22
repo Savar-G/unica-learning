@@ -529,4 +529,20 @@ describe.skipIf(!chromium)("answer box positions in Chromium (#1212)", () => {
     // Question 2 (a long text answer) and question 4 share the right column.
     expect(Math.abs(right(m.get("question-2-answer")) - right(m.get("question-4-answer")))).toBeLessThan(1.5);
   }, 60_000);
+  // #1215 review: long lettered options wrap below the stem in a test card, on the measured layout and on a saved legacy page.
+  it.each([true, false])("prints long lettered options below the stem of a test card (measured layout: %s)", async (consistentLayout) => {
+    const draft = book("U12", 5);
+    const found = draft.pages.find((p) => p.type === "show-what-you-know" && p.content?.kind === "day")!;
+    if (found.content?.kind !== "day") throw new Error("not a day page");
+    const original = found.questions[0];
+    const text = "Two shops sell the same jacket. Shop A has it at 25% off a $60 price and Shop B has it $12 off a $64 price. Which shop is cheaper? A) Shop A, because 25% of 60 is 15  B) Shop B, because 12 is taken off 64  Write A or B.";
+    const lettered = { ...original, package: { ...original.package, text, item: { format: "circle" as const, scorable: true, parentChecked: false, error: null, checks: [],
+      regions: [{ id: "answer", kind: "choice" as const, mark: "circle" as const, label: null, choices: ["A", "B"], answer: "A" }] } } };
+    // (Three questions: the taller question 1 would push the later ones off a full page.)
+    const keep = found.questions.slice(0, 3).map((q) => q.number);
+    const page = { ...found, questions: [lettered, ...found.questions.slice(1, 3)], content: { ...found.content, consistentLayout,
+      blocks: found.content.blocks.map((b) => ({ ...b, items: b.items.filter((n) => keep.includes(n)) })).filter((b) => b.items.length) } };
+    const result = await renderWorkbook({ draft: { ...draft, pages: [page] }, parentId: PARENT, template, engine });
+    expect(result.status, JSON.stringify(result.status === "failed" ? result.problems : null)).toBe("rendered");
+  }, 120_000);
 });
