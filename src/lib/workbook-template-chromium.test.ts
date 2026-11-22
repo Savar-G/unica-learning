@@ -418,9 +418,16 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
     const original = page.questions[0];
     const lettered = { ...original, package: { ...original.package, text: "What is 468 + 357? A) 825  B) 815  Write A or B.", item: { format: "circle" as const, scorable: true, parentChecked: false, error: null, checks: [],
       regions: [{ id: "answer", kind: "choice" as const, mark: "circle" as const, label: null, choices: ["A", "B"], answer: "A" }] } } };
-    const result = await renderWorkbook({ draft: { ...draft, pages: [{ ...page, questions: [lettered, ...page.questions.slice(1)] }] }, parentId: PARENT, template, engine });
+    const withOptions = { ...page, questions: [lettered, ...page.questions.slice(1)] };
+    const result = await renderWorkbook({ draft: { ...draft, pages: [withOptions] }, parentId: PARENT, template, engine });
     expect(result.status, JSON.stringify(result.status === "failed" ? result.problems : null)).toBe("rendered");
     expectOptionsBelowStem(result);
+    // The options row starts below the stem's text and ends above the calculation's work space, measured on the page.
+    const drawn = (await printPage(withOptions, { ...draft, pages: [withOptions] })).measured;
+    const at = (name: string) => drawn.find((m) => m.name === name)!;
+    const [stem, options, space] = [at("question-1-content"), at("question-1-answer"), at("workspace-1")];
+    expect(options.y).toBeGreaterThanOrEqual(stem.y + stem.height - 1);
+    expect(space.y).toBeGreaterThanOrEqual(options.y + options.height - 1);
   }, 120_000);
 });
 
