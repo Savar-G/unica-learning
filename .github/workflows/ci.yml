@@ -263,6 +263,9 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
         timeout-minutes: 5
+      - name: Architectural guardrails
+        run: npm run check:guard
+        timeout-minutes: 1
       - name: Voice worker lint (Oxlint)
         run: npx oxlint worker/maya-voice/src
         timeout-minutes: 2

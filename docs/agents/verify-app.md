@@ -45,7 +45,7 @@ Use `aside --account u0` (never Playwright/Puppeteer, except `src/lib/print-engi
 ## 6. Done gate & PR proof artifacts
 
 Before pushing a PR:
-1. Run the done gate once: `npm test && npx eslint src && npm run typecheck && npm run build` (plus `npm run voice:test && npm run voice:typecheck` if `src/lib/maya/` or `worker/` changed).
-2. Put observable proof in `.github/PULL_REQUEST_TEMPLATE.md`:
+1. Run the done gate once: `npm test && npm run check:guard && npx eslint src && npm run typecheck && npm run build` (plus `npm run voice:test && npm run voice:typecheck` if `src/lib/maya/` or `worker/` changed).
+2. Include observable proof in the PR description (following `.github/PULL_REQUEST_TEMPLATE.md`—do not edit the template file itself):
    - UI changes: Before / After screenshots in the top table.
    - Non-UI changes: concise Before / After behavior rows plus exact command results and **explicitly list anything not verified** inside `<details>`.

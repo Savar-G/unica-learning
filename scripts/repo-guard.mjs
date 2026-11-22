@@ -32,9 +32,9 @@ const GENERATED_FILES = new Set([
 ]);
 const SKIP_DIRS = new Set(["node_modules", ".next", "dist", "out", "build", "vendor"]);
 
-const BANNED_DB_ESCAPE_RE = /\.overrideTypes\s*\(|\.returns\s*<|\.maybeSingle\s*</;
+const BANNED_DB_ESCAPE_RE = /\.overrideTypes\s*[<(]|\.returns\s*<|\.maybeSingle\s*</;
 const PAGEWISE_RE = /\bpagewise\b/i;
-const TEST_SPRAWL_RE = /(?:-\d{3,}|-(?:fixes|final|final-check|pr-\d+|round-?\d+|regressions?))\.test\.[cm]?[jt]sx?$/i;
+const TEST_SPRAWL_RE = /(?:-\d{3,}|-(?:fix(?:es)?|final|final-check|pr-\d+|round-?\d+|regressions?))\.test\.[cm]?[jt]sx?$/i;
 const USE_EFFECT_RE = /\buseEffect\s*\(/g;
 const SUPPRESSION_RE = /eslint-disable|oxlint-disable|@ts-ignore|@ts-expect-error/g;
 
@@ -57,8 +57,77 @@ function walkFiles(rootDir, relDir, out = []) {
   return out;
 }
 
-function stripLineAndBlockComments(text) {
-  return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
+export function stripCommentsPreservingStrings(text) {
+  let out = "";
+  let i = 0;
+  let quote = null;
+  let templateDepth = 0;
+  const braceStack = [];
+
+  while (i < text.length) {
+    const ch = text[i];
+    const next = text[i + 1];
+
+    if (quote) {
+      out += ch;
+      if (ch === "\\" && i + 1 < text.length) {
+        out += next;
+        i += 2;
+        continue;
+      }
+      if (quote === "`" && ch === "$" && next === "{") {
+        out += next;
+        templateDepth++;
+        braceStack.push(0);
+        quote = null;
+        i += 2;
+        continue;
+      }
+      if (ch === quote) quote = null;
+      i++;
+      continue;
+    }
+
+    if (ch === "/" && next === "/") {
+      i += 2;
+      while (i < text.length && text[i] !== "\n") i++;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      i += 2;
+      while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) {
+        if (text[i] === "\n") out += "\n";
+        i++;
+      }
+      i += 2;
+      continue;
+    }
+
+    if (ch === "'" || ch === '"' || ch === "`") {
+      quote = ch;
+      out += ch;
+      i++;
+      continue;
+    }
+
+    if (templateDepth > 0) {
+      if (ch === "{") {
+        braceStack[braceStack.length - 1]++;
+      } else if (ch === "}") {
+        if (braceStack[braceStack.length - 1] === 0) {
+          braceStack.pop();
+          templateDepth--;
+          quote = "`";
+        } else {
+          braceStack[braceStack.length - 1]--;
+        }
+      }
+    }
+
+    out += ch;
+    i++;
+  }
+  return out;
 }
 
 export function pageFileToRoute(relPath) {
@@ -94,18 +163,22 @@ export function scanRepo(rootDir) {
   const brandLeaks = [];
 
   for (const relPath of codeFiles) {
+    if (GENERATED_FILES.has(relPath)) continue;
+
+    const raw = readFileSync(join(rootDir, relPath), "utf8");
+    const supCount = (raw.match(SUPPRESSION_RE) ?? []).length;
+    if (supCount > 0) suppressionCounts[relPath] = supCount;
+
     const isTest = TEST_FILE.test(relPath);
     if (isTest) {
       if (TEST_SPRAWL_RE.test(relPath)) sprawlTests.push(relPath);
       continue;
     }
-    if (GENERATED_FILES.has(relPath)) continue;
 
-    const raw = readFileSync(join(rootDir, relPath), "utf8");
     const lines = raw.length === 0 ? 0 : raw.split(/\r?\n/).length;
     lineCounts[relPath] = lines;
 
-    const stripped = stripLineAndBlockComments(raw);
+    const stripped = stripCommentsPreservingStrings(raw);
     const dbMatch = BANNED_DB_ESCAPE_RE.exec(stripped);
     if (dbMatch) {
       bannedDbEscapes.push({ file: relPath, match: dbMatch[0] });
@@ -119,9 +192,6 @@ export function scanRepo(rootDir) {
       const count = (stripped.match(USE_EFFECT_RE) ?? []).length;
       if (count > 0) useEffectCounts[relPath] = count;
     }
-
-    const supCount = (raw.match(SUPPRESSION_RE) ?? []).length;
-    if (supCount > 0) suppressionCounts[relPath] = supCount;
   }
 
   const pageFiles = [

@@ -48,10 +48,14 @@ test("checkRepo catches every injected guardrail violation with actionable messa
     "AGENTS.md": "line\n".repeat(160),
     "src/lib/huge.ts": "export const x = 1;\n".repeat(605),
     "src/lib/escape.ts": "export const q = (db: any) => db.from('x').select('*').returns<string[]>();\n",
+    "src/lib/override.ts": "export const r = (db: any) => db.from('x').select('*').overrideTypes<Array<{ id: string }>>();\n",
     "src/components/bad-copy.tsx": "export const C = () => <div>Welcome to Pagewise</div>;\n",
     "src/components/effectful.tsx": "import { useEffect } from 'react';\nexport function E() { useEffect(() => {}, []); return null; }\n",
     "src/lib/suppressed.ts": "// eslint-disable-next-line no-unused-vars\nexport const v = 1;\n",
+    "src/lib/suppressed.test.ts": "// oxlint-disable-next-line no-unused-vars\nexport const t = 1;\n",
     "src/lib/feature-999.test.ts": "export {};\n",
+    "src/lib/math-fix.test.ts": "export {};\n",
+    "src/lib/math-fixes.test.ts": "export {};\n",
     "src/app/(site)/unmapped/page.tsx": "export default function U() { return null; }\n",
   });
   try {
@@ -72,6 +76,12 @@ test("checkRepo catches every injected guardrail violation with actionable messa
         "no-test-sprawl",
       ],
     );
+    const dbFiles = res.violations.filter((v) => v.rule === "banned-db-escapes").map((v) => v.file).sort();
+    assert.deepEqual(dbFiles, ["src/lib/escape.ts", "src/lib/override.ts"]);
+    const supFiles = res.violations.filter((v) => v.rule === "no-new-suppressions").map((v) => v.file).sort();
+    assert.deepEqual(supFiles, ["src/lib/suppressed.test.ts", "src/lib/suppressed.ts"]);
+    const sprawlFiles = res.violations.filter((v) => v.rule === "no-test-sprawl").map((v) => v.file).sort();
+    assert.deepEqual(sprawlFiles, ["src/lib/feature-999.test.ts", "src/lib/math-fix.test.ts", "src/lib/math-fixes.test.ts"]);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -120,6 +130,34 @@ test("ignores useEffect mentions inside comments and ignores generated DB files"
     const emptyBaseline = { maxLines: {}, useEffectCounts: {}, suppressionCounts: {}, sprawlTests: [] };
     const res = checkRepo(root, emptyBaseline);
     assert.equal(res.ok, true, JSON.stringify(res.violations));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("preserves string literals containing /* when stripping comments so following code stays checked", () => {
+  const root = makeTempRepo({
+    ...CLEAN_FILES,
+    "src/components/upload.tsx": [
+      "import { useEffect } from 'react';",
+      'const mime = "image/*";',
+      "export function Upload() { useEffect(() => {}, []); return <input accept={mime} />; }",
+      "/* Upload UI */",
+    ].join("\n"),
+    "src/lib/mime-escape.ts": [
+      'const mime = "image/*";',
+      "export const bad = (db: any) => db.from('x').select('*').overrideTypes<string[]>();",
+      "/* done */",
+    ].join("\n"),
+  });
+  try {
+    const emptyBaseline = { maxLines: {}, useEffectCounts: {}, suppressionCounts: {}, sprawlTests: [] };
+    const res = checkRepo(root, emptyBaseline);
+    assert.equal(res.ok, false);
+    assert.deepEqual(
+      res.violations.map((v) => `${v.rule}:${v.file}`).sort(),
+      ["banned-db-escapes:src/lib/mime-escape.ts", "no-new-use-effect:src/components/upload.tsx"],
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
