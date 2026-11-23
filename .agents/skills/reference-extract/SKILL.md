@@ -41,16 +41,19 @@ Use one work folder for the level: `~/unica-reference/level-<LEVEL>` (for exampl
    `npm run reference:board -- --pick --out <work>`
    It copies one image for each photo to `<work>/photos-in` and lists each photo that is too small to read and each photo with no image.
 
-5. **Run the extraction.** It takes about half a minute for each photo, so start it in the background or with a long timeout. If it stops, run the same command again: it continues and reads only the photos that have no reading yet.
+5. **Run the extraction.** It takes about half a minute for each photo, so start it in the background or with a long timeout. If it stops, run the same command again: it continues and reads only the photos that have no reading yet. After an update of the kit that changes the reader instructions, rename the old `<work>/run` folder first (for example to `run-old`), so that every photo is read again.
    `npm run reference:extract -- --photos <work>/photos-in --out <work>/run --source <source key from step 2>`
 
 6. **Tell the person the result.** Give the summary line, the path of `<work>/run/final/report.md`, and:
    - the photos that were too small, by name: the person must put the full-size photo on the board. Then delete the files of that photo in `<work>/downloads` (its `stem` is in `board-plan.json`) and run steps 3 to 5 again. The run reads only what is new and keeps the other pages;
    - the number of pages that are `double_read` (both readers agree) and `machine_read` (a difference to resolve, or one reading only).
 
-7. **Help the person check pages, when asked.** The report lists each difference with both values. The person looks at the photo (`<work>/run/photos/`, the report gives the file of each page), corrects the record in `<work>/run/final/`, and then marks the page:
-   `npm run reference:check -- --work <work>/run --page <source_ref>`
-   One page for each command. Never mark a page that the person did not check.
+7. **Help the person check pages, when asked.** A page that is `machine_read` needs a person. The report lists each difference with both values, each entry that only one reader has (with the JSON to copy), and each empty answer. For each such page:
+   - Open the photo for the person: `open "<work>/run/photos/<file>"` (the report gives the file of each page). The person compares each listed item with the photo and tells you the correct value. Do not decide a value yourself, and do not decide from the two readings alone.
+   - Correct the record in `<work>/run/final/`. When an answer is wrong, correct the expression of the question, because code computes the answer from it. Pencil or pen writing on the photo is not part of the record.
+   - Ask the person: "Did you compare this page with the photo?" Only after a yes, mark the page:
+   `npm run reference:check -- --work <work>/run --page <source_ref> --photo-compared`
+   One page for each command. Never pass `--photo-compared` for a page that the person did not compare with the photo. When the command stops with a list of items, show the list to the person and correct the record with them.
 
 8. **Load into the database, only when the person asks.** It needs `SUPABASE_URL` and `SUPABASE_SECRET_KEY`. When both are in the repository's `.env.local`, load that file for the command. Never print the key. Run a dry run first and show its summary:
    `node --env-file=.env.local scripts/reference-import.mjs --records <work>/run/final --photos <work>/run/photos --dry-run`
