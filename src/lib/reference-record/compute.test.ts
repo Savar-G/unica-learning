@@ -117,6 +117,8 @@ describe("computeExprAnswer", () => {
     expect(
       computeExprAnswer({ kind: "arith", op: "mul", operands: ["unclear", 4] }),
     ).toBeNull();
+    // A decimal operand has no exact binary result, so code gives no answer for it.
+    expect(computeExprAnswer({ kind: "arith", op: "add", operands: [0.1, 0.2] })).toBeNull();
     expect(
       computeExprAnswer({
         kind: "word",
@@ -263,6 +265,17 @@ describe("computeItemFeatures", () => {
     );
     expect(acrossZero.arith?.borrows).toContain("tens_to_ones");
     expect(acrossZero.arith?.borrows).toContain("borrow_across_zero");
+
+    const threeOperands = computeItemFeatures(
+      makeItem(3, { kind: "arith", op: "sub", operands: [302, 4, 1] }),
+    );
+    expect(threeOperands.arith?.has_borrow).toBe(true);
+    expect(threeOperands.arith?.borrows).toContain("borrow_across_zero");
+
+    const threeOperandsNoBorrow = computeItemFeatures(
+      makeItem(4, { kind: "arith", op: "sub", operands: [89, 5, 3] }),
+    );
+    expect(threeOperandsNoBorrow.arith?.has_borrow).toBe(false);
   });
 
   it("computes remainder flag and repeated operands", () => {

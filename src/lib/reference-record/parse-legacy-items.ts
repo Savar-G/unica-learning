@@ -450,12 +450,27 @@ export function buildSingleSectionItems(
         });
       }
     } else {
-      responses.push({
-        position: defaultPos,
-        cue: NOT_STATED,
-        answer: row.answer || null,
-        answer_source: "unchecked",
-      });
+      // A chain that code cannot compute still has one writing place for each blank.
+      const chainParts =
+        expr && expr.kind === "chain" ? splitPartFileAnswers(expr, row.answer ?? "") : [];
+      const blankCount = expr && expr.kind === "chain" ? exprBlankCount(expr) : 1;
+      if (blankCount > 1 && chainParts.length === blankCount) {
+        for (const part of chainParts) {
+          responses.push({
+            position: defaultPos,
+            cue: NOT_STATED,
+            answer: part,
+            answer_source: "unchecked",
+          });
+        }
+      } else {
+        responses.push({
+          position: defaultPos,
+          cue: NOT_STATED,
+          answer: row.answer || null,
+          answer_source: "unchecked",
+        });
+      }
     }
 
     if (itemComputed) computedItems += 1;

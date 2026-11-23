@@ -90,6 +90,9 @@ function computeArith(expr: ArithExpr): ComputedSingleAnswer | null {
     if (!isConcreteNumber(opVal)) return null;
     nums.push(opVal);
   }
+  // Only whole numbers are computed. A decimal operand would give an inexact binary result,
+  // so the answer stays a reader value.
+  if (nums.some((n) => !Number.isSafeInteger(n))) return null;
   switch (expr.op) {
     case "add":
       return { kind: "single", value: String(nums.reduce((a, b) => a + b, 0)) };
@@ -302,6 +305,18 @@ function computeSubtractionBorrows(a: number, b: number): BorrowKind[] {
   return [...borrows];
 }
 
+// Borrows of a subtraction taken one step at a time from the left: 302 - 4 - 1 is 302 - 4, then 298 - 1.
+function computeSubtractionChainBorrows(operands: number[]): BorrowKind[] {
+  if (operands.length < 2) return [];
+  const borrows = new Set<BorrowKind>();
+  let acc = operands[0];
+  for (let i = 1; i < operands.length; i += 1) {
+    for (const b of computeSubtractionBorrows(acc, operands[i])) borrows.add(b);
+    acc -= operands[i];
+  }
+  return [...borrows];
+}
+
 function computeBinaryMultiplicationCarries(rawA: number, rawB: number): CarryKind[] {
   if (!Number.isInteger(rawA) || !Number.isInteger(rawB) || rawA < 0 || rawB < 0) return [];
   const [multiplicand, multiplier] =
@@ -353,8 +368,7 @@ function computeArithFeatures(expr: ArithExpr): ArithFeatures | undefined {
       : expr.op === "mul"
         ? computeMultiplicationCarries(nums)
         : [];
-  const borrows =
-    expr.op === "sub" && nums.length === 2 ? computeSubtractionBorrows(nums[0], nums[1]) : [];
+  const borrows = expr.op === "sub" ? computeSubtractionChainBorrows(nums) : [];
   const has_remainder =
     expr.op === "div" && nums.length === 2 && nums[1] !== 0 && nums[0] % nums[1] !== 0;
 

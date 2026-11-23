@@ -345,6 +345,7 @@ describe("parseLegacyMarkdown", () => {
 |---|---|---|---|
 | 1.1 | 15 - 20 - 25 - [ ] - [ ] | 30, 35 | pattern |
 | 1.2 | 25 - 30 - 35 - [ ] - [ ] | 40, 45 | pattern |
+| 1.3 | 3 - 8 - 14 - [ ] - [ ] | 21, 29 | pattern |
 | 2.1 | 14 x 2 | 28 | stacked |
 | 2.2 | 16 x 2 | 32 | stacked |
 `;
@@ -354,6 +355,13 @@ describe("parseLegacyMarkdown", () => {
     expect(validateReferenceRecord(record).ok).toBe(true);
     expect(record.sections[0].items[0].expr?.kind).toBe("chain");
     expect(record.sections[0].items[0].responses.map((r) => r.answer)).toEqual(["30", "35"]);
+    // A chain with no fixed step is not computed, and it keeps one response for each blank.
+    expect(
+      record.sections[0].items[2].responses.map((r) => [r.answer, r.answer_source]),
+    ).toEqual([
+      ["21", "unchecked"],
+      ["29", "unchecked"],
+    ]);
     expect(record.sections[1].items[0].responses.map((r) => [r.place, r.answer])).toEqual([
       ["tens", "2"],
       ["ones", "8"],
