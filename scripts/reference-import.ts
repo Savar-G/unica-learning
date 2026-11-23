@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createHash } from "node:crypto";
 import { parseArgs } from "node:util";
 import type { Database, Json } from "@/lib/database";
 import {
@@ -60,26 +61,38 @@ function createSupabaseReferenceStore(db: SupabaseClient<Database>): ReferenceSt
       return existing;
     },
 
-    async insertRow(row: ReferenceRow): Promise<void> {
-      const { error } = await db.from(REFERENCE_TABLE).upsert(
-        {
-          source_ref: row.source_ref,
-          kind: row.kind,
-          path: row.path,
-          transcript: toJsonValue(row.transcript),
-          transcript_status: row.transcript_status,
-          note: row.note ?? null,
-        },
-        { onConflict: "source_ref", ignoreDuplicates: true },
-      );
+    async insertRow(row: ReferenceRow): Promise<boolean> {
+      const { data, error } = await db
+        .from(REFERENCE_TABLE)
+        .upsert(
+          {
+            source_ref: row.source_ref,
+            kind: row.kind,
+            path: row.path,
+            transcript: toJsonValue(row.transcript),
+            transcript_status: row.transcript_status,
+            note: row.note ?? null,
+          },
+          { onConflict: "source_ref", ignoreDuplicates: true },
+        )
+        .select("source_ref");
       if (error) {
         throw new Error(`Failed inserting ${row.source_ref}: ${error.message}`);
       }
+      return (data?.length ?? 0) > 0;
     },
 
-    async objectExists(path: string): Promise<boolean> {
-      const { data } = await db.storage.from(REFERENCE_BUCKET).exists(path);
-      return data;
+    async objectSha256(path: string): Promise<string | null> {
+      const { data: exists } = await db.storage.from(REFERENCE_BUCKET).exists(path);
+      if (!exists) return null;
+      const { data, error } = await db.storage.from(REFERENCE_BUCKET).download(path);
+      if (error || !data) {
+        throw new Error(
+          `Failed downloading existing object ${path}: ${error?.message ?? "empty body"}`,
+        );
+      }
+      const bytes = new Uint8Array(await data.arrayBuffer());
+      return createHash("sha256").update(bytes).digest("hex");
     },
 
     async uploadObject(path: string, bytes: Uint8Array, contentType: string): Promise<void> {

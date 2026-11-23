@@ -1,12 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  buildReferencePhotoPath,
   deepEqualJson,
   formatImportResult,
   importReferenceRecords,
@@ -88,16 +87,19 @@ class MemoryReferenceStore implements ReferenceStore {
     return out;
   }
 
-  async insertRow(row: ReferenceRow): Promise<void> {
+  async insertRow(row: ReferenceRow): Promise<boolean> {
     this.calls.push(`insertRow:${row.source_ref}`);
-    if (!this.rows.has(row.source_ref)) {
-      this.rows.set(row.source_ref, structuredClone(row));
+    if (this.rows.has(row.source_ref)) {
+      return false;
     }
+    this.rows.set(row.source_ref, structuredClone(row));
+    return true;
   }
 
-  async objectExists(path: string): Promise<boolean> {
-    this.calls.push(`objectExists:${path}`);
-    return this.objects.has(path);
+  async objectSha256(path: string): Promise<string | null> {
+    this.calls.push(`objectSha256:${path}`);
+    const existing = this.objects.get(path);
+    return existing ? sha256Hex(existing.bytes) : null;
   }
 
   async uploadObject(path: string, bytes: Uint8Array, contentType: string): Promise<void> {
@@ -136,38 +138,6 @@ describe("deepEqualJson", () => {
         expect(deepEqualJson(val, shuffleKeys(val))).toBe(true);
       }),
     );
-  });
-});
-
-describe("buildReferencePhotoPath", () => {
-  it("builds <source>/<level>/<page>.<ext> for jpg, jpeg, png and webp", () => {
-    expect(buildReferencePhotoPath("sample:M:3a", "IMG_0001.JPG")).toEqual({
-      ok: true,
-      path: "sample/M/3a.jpg",
-      contentType: "image/jpeg",
-    });
-    expect(buildReferencePhotoPath("sample:M:3b", "photo.jpeg")).toEqual({
-      ok: true,
-      path: "sample/M/3b.jpeg",
-      contentType: "image/jpeg",
-    });
-    expect(buildReferencePhotoPath("sample:M:contents", "chart.png")).toEqual({
-      ok: true,
-      path: "sample/M/contents.png",
-      contentType: "image/png",
-    });
-    expect(buildReferencePhotoPath("sample:M:4a", "scan.webp")).toEqual({
-      ok: true,
-      path: "sample/M/4a.webp",
-      contentType: "image/webp",
-    });
-  });
-
-  it("rejects invalid path segments and unsupported extensions", () => {
-    expect(buildReferencePhotoPath("sample:../M:3a", "IMG_0001.jpg").ok).toBe(false);
-    expect(buildReferencePhotoPath("sample:M:3a/x", "IMG_0001.jpg").ok).toBe(false);
-    expect(buildReferencePhotoPath("sample:M:3a", "IMG_0001.gif").ok).toBe(false);
-    expect(buildReferencePhotoPath("sample:M:3a", "IMG_0001").ok).toBe(false);
   });
 });
 
@@ -370,9 +340,9 @@ describe("importReferenceRecords", () => {
       ],
     });
 
-    // Pre-populate object for sample/M/3b.png so import must not overwrite it.
+    // Pre-populate matching object for sample/M/3b.png so import reuses it without overwriting.
     store.objects.set("sample/M/3b.png", {
-      bytes: new Uint8Array([99]),
+      bytes: new Uint8Array(img2),
       contentType: "image/png",
     });
 
@@ -389,7 +359,7 @@ describe("importReferenceRecords", () => {
     expect(store.rows.get("sample:M:3b")?.path).toBe("sample/M/3b.png");
     expect(store.rows.get("sample:M:4a")?.path).toBeNull();
     expect(store.objects.get("sample/M/3a.jpg")?.contentType).toBe("image/jpeg");
-    expect(store.objects.get("sample/M/3b.png")?.bytes).toEqual(new Uint8Array([99]));
+    expect(store.objects.get("sample/M/3b.png")?.bytes).toEqual(img2);
     expect(store.objects.has("sample/M/99a.jpg")).toBe(false);
 
     // Upload must happen before row insert for sample:M:3a.
@@ -520,6 +490,66 @@ describe("importReferenceRecords", () => {
     expect(formatImportResult(res)).toContain("Dry run");
   });
 
+  it("refuses prototype property keys and values in status.json before any write", async () => {
+    writeJson(recordsDir, "sample-M-3a.json", makePage("sample:M:3a"));
+    writeFileSync(
+      join(recordsDir, "status.json"),
+      '{"__proto__":"machine_read","constructor":"double_read","toString":"human_checked","sample:M:3a":"toString"}\n',
+      "utf8",
+    );
+
+    const res = await importReferenceRecords({ recordsDir, store });
+    expect(res.ok).toBe(false);
+    expect(store.rows.size).toBe(0);
+    expect(store.calls).toEqual([]);
+    expect(res.problems.some((p) => p.includes("__proto__"))).toBe(true);
+    expect(res.problems.some((p) => p.includes("constructor"))).toBe(true);
+    expect(res.problems.some((p) => p.includes("toString"))).toBe(true);
+  });
+
+  it("reclassifies concurrent duplicate inserts as skipped or skipped_different instead of inflating inserted", async () => {
+    const page1 = makePage("sample:M:3a", "Same title");
+    const page2 = makePage("sample:M:4a", "Local title");
+    writeJson(recordsDir, "p1.json", page1);
+    writeJson(recordsDir, "p2.json", page2);
+
+    // Simulate another writer inserting both rows after initial findExisting returns empty.
+    let initialLookupDone = false;
+    const baseFindExisting = store.findExisting.bind(store);
+    store.findExisting = async (sourceRefs: string[]) => {
+      const result = await baseFindExisting(sourceRefs);
+      if (!initialLookupDone) {
+        initialLookupDone = true;
+        store.rows.set("sample:M:3a", {
+          source_ref: "sample:M:3a",
+          kind: "page",
+          path: null,
+          transcript: structuredClone(page1),
+          transcript_status: "machine_read",
+        });
+        store.rows.set("sample:M:4a", {
+          source_ref: "sample:M:4a",
+          kind: "page",
+          path: null,
+          transcript: makePage("sample:M:4a", "Concurrent different title"),
+          transcript_status: "machine_read",
+        });
+      }
+      return result;
+    };
+
+    const res = await importReferenceRecords({ recordsDir, store });
+    expect(res.ok).toBe(true);
+    expect(res.counts).toEqual({
+      recordsRead: 2,
+      inserted: 0,
+      skipped: 1,
+      skippedDifferent: 1,
+      photosUploaded: 0,
+    });
+    expect(res.skippedDifferentRefs).toEqual(["sample:M:4a"]);
+  });
+
   it("CLI fails with a clear error before reading files when SUPABASE_URL or SUPABASE_SECRET_KEY is missing", () => {
     const scriptPath = resolve(process.cwd(), "scripts/reference-import.mjs");
     let failed = false;
@@ -539,5 +569,17 @@ describe("importReferenceRecords", () => {
     expect(failed).toBe(true);
     expect(stderr).toContain("SUPABASE_URL");
     expect(stderr).toContain("SUPABASE_SECRET_KEY");
+  });
+});
+
+describe("bank_reference_images migration", () => {
+  it("forces an existing curriculum-reference bucket to stay private with the same limits on conflict", () => {
+    const sql = readFileSync(
+      resolve(process.cwd(), "supabase/migrations/20261123170312_bank_reference_images.sql"),
+      "utf8",
+    );
+    expect(sql).toMatch(
+      /on conflict\s*\(\s*id\s*\)\s*do update\s+set\s+public\s*=\s*false,\s*file_size_limit\s*=\s*excluded\.file_size_limit,\s*allowed_mime_types\s*=\s*excluded\.allowed_mime_types;/i,
+    );
   });
 });

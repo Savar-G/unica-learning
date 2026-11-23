@@ -1,9 +1,16 @@
-import { createHash } from "node:crypto";
-import { lstat, readdir, readFile, realpath, stat } from "node:fs/promises";
-import { extname, isAbsolute, join, resolve } from "node:path";
-import { isPathInsideDir } from "./output-guard";
+import { readdir, realpath } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import {
+  buildReferencePhotoPath,
+  isPlainObject,
+  readPlannedPhotos,
+  readRegularFileNoFollow,
+  type PlannedPhoto,
+} from "./import-photos";
 import type { ReferenceRecord } from "./types";
 import { validateReferenceRecord } from "./validate";
+
+export { buildReferencePhotoPath };
 
 export const REFERENCE_RECORD_KINDS = ["page", "contents"] as const;
 export type ReferenceRecordKind = (typeof REFERENCE_RECORD_KINDS)[number];
@@ -19,15 +26,7 @@ export const REFERENCE_TABLE = "bank_reference_images" as const;
 export const REFERENCE_BUCKET = "curriculum-reference" as const;
 
 const RESERVED_RECORD_FILES = new Set(["status.json", "report.json"]);
-const PATH_SEGMENT_RE = /^[A-Za-z0-9_-]+$/;
-const SHA256_HEX_RE = /^[0-9a-f]{64}$/i;
-
-const EXT_TO_CONTENT_TYPE: Record<string, string> = {
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  png: "image/png",
-  webp: "image/webp",
-};
+const TRANSCRIPT_STATUS_SET = new Set<string>(TRANSCRIPT_STATUSES);
 
 export interface ReferenceRow {
   source_ref: string;
@@ -46,8 +45,8 @@ export interface ExistingReferenceRow {
 
 export interface ReferenceStore {
   findExisting(sourceRefs: string[]): Promise<Map<string, ExistingReferenceRow>>;
-  insertRow(row: ReferenceRow): Promise<void>;
-  objectExists(path: string): Promise<boolean>;
+  insertRow(row: ReferenceRow): Promise<boolean>;
+  objectSha256(path: string): Promise<string | null>;
   uploadObject(path: string, bytes: Uint8Array, contentType: string): Promise<void>;
 }
 
@@ -74,21 +73,8 @@ export interface ImportResult {
   problems: string[];
 }
 
-interface PlannedPhoto {
-  storagePath: string;
-  contentType: string;
-  bytes: Uint8Array;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function isTranscriptStatus(value: unknown): value is TranscriptStatus {
-  return (
-    typeof value === "string" &&
-    (TRANSCRIPT_STATUSES as readonly string[]).includes(value)
-  );
+  return typeof value === "string" && TRANSCRIPT_STATUS_SET.has(value);
 }
 
 export function deepEqualJson(a: unknown, b: unknown): boolean {
@@ -111,41 +97,12 @@ export function deepEqualJson(a: unknown, b: unknown): boolean {
   if (keysA.length !== keysB.length) return false;
 
   for (const key of keysA) {
-    if (!Object.prototype.hasOwnProperty.call(objB, key) || objB[key] === undefined) {
+    if (!Object.hasOwn(objB, key) || objB[key] === undefined) {
       return false;
     }
     if (!deepEqualJson(objA[key], objB[key])) return false;
   }
   return true;
-}
-
-export function buildReferencePhotoPath(
-  sourceRef: string,
-  fileName: string,
-): { ok: true; path: string; contentType: string } | { ok: false; error: string } {
-  const segments = sourceRef.split(":");
-  if (segments.length === 0 || !segments.every((seg) => PATH_SEGMENT_RE.test(seg))) {
-    return {
-      ok: false,
-      error: `invalid storage path segment in source_ref "${sourceRef}" (each segment must match [A-Za-z0-9_-]+)`,
-    };
-  }
-
-  const rawExt = extname(fileName).toLowerCase();
-  const ext = rawExt.startsWith(".") ? rawExt.slice(1) : "";
-  const contentType = EXT_TO_CONTENT_TYPE[ext];
-  if (!contentType) {
-    return {
-      ok: false,
-      error: `unsupported photo extension "${rawExt || "(none)"}" for "${fileName}" (expected jpg, jpeg, png, or webp)`,
-    };
-  }
-
-  return {
-    ok: true,
-    path: `${segments.join("/")}.${ext}`,
-    contentType,
-  };
 }
 
 function refusedResult(recordsRead: number, dryRun: boolean, problems: string[]): ImportResult {
@@ -167,20 +124,27 @@ function refusedResult(recordsRead: number, dryRun: boolean, problems: string[])
 async function readRecords(
   recordsDir: string,
   problems: string[],
-): Promise<{ recordsRead: number; records: ReferenceRecord[]; seenRefs: Map<string, string> }> {
+): Promise<{
+  realRecordsDir: string | null;
+  recordsRead: number;
+  records: ReferenceRecord[];
+  seenRefs: Map<string, string>;
+}> {
+  let realRecordsDir: string;
   let entries;
   try {
-    entries = await readdir(recordsDir, { withFileTypes: true });
+    realRecordsDir = await realpath(recordsDir);
+    entries = await readdir(realRecordsDir, { withFileTypes: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     problems.push(`records folder "${recordsDir}" could not be read: ${msg}`);
-    return { recordsRead: 0, records: [], seenRefs: new Map() };
+    return { realRecordsDir: null, recordsRead: 0, records: [], seenRefs: new Map() };
   }
 
   const recordFiles = entries
     .filter(
       (entry) =>
-        (entry.isFile() || entry.isSymbolicLink()) &&
+        !entry.isDirectory() &&
         entry.name.endsWith(".json") &&
         !RESERVED_RECORD_FILES.has(entry.name),
     )
@@ -191,10 +155,22 @@ async function readRecords(
   const seenRefs = new Map<string, string>();
 
   for (const fileName of recordFiles) {
-    const filePath = join(recordsDir, fileName);
+    const filePath = join(realRecordsDir, fileName);
+    const fileRead = await readRegularFileNoFollow(filePath);
+    if (!fileRead.ok) {
+      const detail =
+        fileRead.kind === "symlink"
+          ? "refusing symlink"
+          : fileRead.kind === "not_file"
+            ? "not a regular file"
+            : `could not be read (${fileRead.message})`;
+      problems.push(`${fileName}: ${detail}`);
+      continue;
+    }
+
     let parsed: unknown;
     try {
-      const raw = await readFile(filePath, "utf8");
+      const raw = Buffer.from(fileRead.bytes).toString("utf8");
       parsed = JSON.parse(raw) as unknown;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -221,7 +197,7 @@ async function readRecords(
     records.push(check.record);
   }
 
-  return { recordsRead: recordFiles.length, records, seenRefs };
+  return { realRecordsDir, recordsRead: recordFiles.length, records, seenRefs };
 }
 
 async function readStatusMap(
@@ -232,21 +208,24 @@ async function readStatusMap(
   const statusByRef = new Map<string, TranscriptStatus>();
   const statusPath = join(recordsDir, "status.json");
 
-  let rawText: string;
-  try {
-    rawText = await readFile(statusPath, "utf8");
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+  const statusRead = await readRegularFileNoFollow(statusPath);
+  if (!statusRead.ok) {
+    if (statusRead.kind === "missing") {
       return statusByRef;
     }
-    const msg = err instanceof Error ? err.message : String(err);
-    problems.push(`status.json: could not be read (${msg})`);
+    const detail =
+      statusRead.kind === "symlink"
+        ? "refusing symlink"
+        : statusRead.kind === "not_file"
+          ? "not a regular file"
+          : `could not be read (${statusRead.message})`;
+    problems.push(`status.json: ${detail}`);
     return statusByRef;
   }
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(rawText) as unknown;
+    parsed = JSON.parse(Buffer.from(statusRead.bytes).toString("utf8")) as unknown;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     problems.push(`status.json: invalid JSON (${msg})`);
@@ -275,167 +254,18 @@ async function readStatusMap(
   return statusByRef;
 }
 
-async function readPlannedPhotos(
-  photosDir: string,
-  records: ReferenceRecord[],
-  problems: string[],
-): Promise<Map<string, PlannedPhoto>> {
-  const planned = new Map<string, PlannedPhoto>();
-  const resolvedPhotosDir = resolve(photosDir);
-
-  let realPhotosDir: string;
-  try {
-    const dirStat = await stat(resolvedPhotosDir);
-    if (!dirStat.isDirectory()) {
-      problems.push(`photos path "${photosDir}" is not a directory`);
-      return planned;
-    }
-    realPhotosDir = await realpath(resolvedPhotosDir);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    problems.push(`photos folder "${photosDir}" could not be read: ${msg}`);
-    return planned;
-  }
-
-  const manifestPath = join(realPhotosDir, "masked-manifest.json");
-  let parsedManifest: unknown;
-  try {
-    parsedManifest = JSON.parse(await readFile(manifestPath, "utf8")) as unknown;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    problems.push(`masked-manifest.json: could not be read or parsed (${msg})`);
-    return planned;
-  }
-
-  if (
-    !isPlainObject(parsedManifest) ||
-    parsedManifest.version !== 1 ||
-    !Array.isArray(parsedManifest.photos)
-  ) {
-    problems.push("masked-manifest.json: must be an object with version: 1 and a photos array");
-    return planned;
-  }
-
-  const entriesByRef = new Map<string, Record<string, unknown>>();
-  for (let i = 0; i < parsedManifest.photos.length; i += 1) {
-    const entry = parsedManifest.photos[i];
-    if (!isPlainObject(entry)) {
-      problems.push(`masked-manifest.json: photos[${i}] must be an object`);
-      continue;
-    }
-    if (entry.source_ref === undefined || entry.source_ref === null) {
-      continue;
-    }
-    if (typeof entry.source_ref !== "string" || entry.source_ref.trim() === "") {
-      problems.push(`masked-manifest.json: photos[${i}].source_ref must be a non-empty string`);
-      continue;
-    }
-    if (entriesByRef.has(entry.source_ref)) {
-      problems.push(`masked-manifest.json: duplicate source_ref "${entry.source_ref}"`);
-      continue;
-    }
-    entriesByRef.set(entry.source_ref, entry);
-  }
-
-  for (const record of records) {
-    const entry = entriesByRef.get(record.source_ref);
-    if (!entry) continue;
-
-    let entryValid = true;
-    const fileLabel = typeof entry.file === "string" ? entry.file : "(missing file)";
-
-    if (entry.confirmed !== true) {
-      problems.push(
-        `masked-manifest.json: ${record.source_ref} (${fileLabel}): confirmed must be strictly true`,
-      );
-      entryValid = false;
-    }
-
-    if (typeof entry.file !== "string" || entry.file.trim() === "" || isAbsolute(entry.file)) {
-      problems.push(
-        `masked-manifest.json: ${record.source_ref}: file must be a relative path inside the photos folder`,
-      );
-      continue;
-    }
-
-    const candidateFile = resolve(realPhotosDir, entry.file);
-    if (!isPathInsideDir(candidateFile, realPhotosDir)) {
-      problems.push(
-        `masked-manifest.json: ${record.source_ref} (${entry.file}): file resolves outside the photos folder`,
-      );
-      continue;
-    }
-
-    const pathCheck = buildReferencePhotoPath(record.source_ref, entry.file);
-    if (!pathCheck.ok) {
-      problems.push(`masked-manifest.json: ${record.source_ref}: ${pathCheck.error}`);
-      entryValid = false;
-    }
-
-    const expectedSha =
-      typeof entry.sha256 === "string" && SHA256_HEX_RE.test(entry.sha256)
-        ? entry.sha256.toLowerCase()
-        : null;
-    if (!expectedSha) {
-      problems.push(
-        `masked-manifest.json: ${record.source_ref} (${entry.file}): sha256 must be a 64-character hex string`,
-      );
-      entryValid = false;
-    }
-
-    let bytes: Uint8Array;
-    try {
-      const fileLstat = await lstat(candidateFile);
-      if (fileLstat.isSymbolicLink() && !isPathInsideDir(candidateFile, realPhotosDir)) {
-        problems.push(
-          `photos: ${record.source_ref} (${entry.file}): symlink target is outside the photos folder`,
-        );
-        continue;
-      }
-      const fileStat = await stat(candidateFile);
-      if (!fileStat.isFile()) {
-        problems.push(`photos: ${record.source_ref} (${entry.file}): not a regular file`);
-        continue;
-      }
-      bytes = new Uint8Array(await readFile(candidateFile));
-    } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
-      const reason = code === "ENOENT" ? "missing file" : `could not read file (${String(err)})`;
-      problems.push(`photos: ${record.source_ref} (${entry.file}): ${reason}`);
-      continue;
-    }
-
-    if (expectedSha) {
-      const actualSha = createHash("sha256").update(bytes).digest("hex");
-      if (actualSha !== expectedSha) {
-        problems.push(
-          `photos: ${record.source_ref} (${entry.file}): sha256 mismatch (expected ${expectedSha}, got ${actualSha})`,
-        );
-        entryValid = false;
-      }
-    }
-
-    if (entryValid && pathCheck.ok) {
-      planned.set(record.source_ref, {
-        storagePath: pathCheck.path,
-        contentType: pathCheck.contentType,
-        bytes,
-      });
-    }
-  }
-
-  return planned;
-}
-
 export async function importReferenceRecords(options: ImportOptions): Promise<ImportResult> {
   const dryRun = options.dryRun ?? false;
   const problems: string[] = [];
+  const resolvedRecordsDir = resolve(options.recordsDir);
 
-  const { recordsRead, records, seenRefs } = await readRecords(
-    resolve(options.recordsDir),
+  const { realRecordsDir, recordsRead, records, seenRefs } = await readRecords(
+    resolvedRecordsDir,
     problems,
   );
-  const statusByRef = await readStatusMap(resolve(options.recordsDir), seenRefs, problems);
+  const statusByRef = realRecordsDir
+    ? await readStatusMap(realRecordsDir, seenRefs, problems)
+    : new Map<string, TranscriptStatus>();
   const plannedPhotos = options.photosDir
     ? await readPlannedPhotos(options.photosDir, records, problems)
     : new Map<string, PlannedPhoto>();
@@ -445,6 +275,27 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
   }
 
   const existing = await options.store.findExisting(records.map((r) => r.source_ref));
+
+  const reusablePhotoPaths = new Set<string>();
+  for (const record of records) {
+    if (existing.has(record.source_ref)) continue;
+    const photo = plannedPhotos.get(record.source_ref);
+    if (!photo) continue;
+
+    const storedSha = await options.store.objectSha256(photo.storagePath);
+    if (storedSha === null) continue;
+    if (storedSha.toLowerCase() === photo.sha256) {
+      reusablePhotoPaths.add(photo.storagePath);
+    } else {
+      problems.push(
+        `storage: ${record.source_ref} (${photo.storagePath}): existing object sha256 (${storedSha}) does not match planned photo (${photo.sha256}); a person must remove the old object at "${photo.storagePath}" by hand before retrying`,
+      );
+    }
+  }
+
+  if (problems.length > 0) {
+    return refusedResult(recordsRead, dryRun, problems);
+  }
 
   let inserted = 0;
   let skipped = 0;
@@ -468,8 +319,7 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
     let storagePath: string | null = null;
     if (photo) {
       storagePath = photo.storagePath;
-      const alreadyStored = await options.store.objectExists(photo.storagePath);
-      if (!alreadyStored) {
+      if (!reusablePhotoPaths.has(photo.storagePath)) {
         if (!dryRun) {
           await options.store.uploadObject(photo.storagePath, photo.bytes, photo.contentType);
         }
@@ -477,16 +327,30 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
       }
     }
 
-    if (!dryRun) {
-      await options.store.insertRow({
-        source_ref: record.source_ref,
-        kind: record.kind,
-        path: storagePath,
-        transcript: record,
-        transcript_status: statusByRef.get(record.source_ref) ?? "machine_read",
-      });
+    if (dryRun) {
+      inserted += 1;
+      continue;
     }
-    inserted += 1;
+
+    const wasInserted = await options.store.insertRow({
+      source_ref: record.source_ref,
+      kind: record.kind,
+      path: storagePath,
+      transcript: record,
+      transcript_status: statusByRef.get(record.source_ref) ?? "machine_read",
+    });
+    if (wasInserted) {
+      inserted += 1;
+    } else {
+      const reread = await options.store.findExisting([record.source_ref]);
+      const concurrent = reread.get(record.source_ref);
+      if (concurrent !== undefined && deepEqualJson(concurrent.transcript, record)) {
+        skipped += 1;
+      } else {
+        skippedDifferent += 1;
+        skippedDifferentRefs.push(record.source_ref);
+      }
+    }
   }
 
   return {
