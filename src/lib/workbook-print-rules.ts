@@ -59,7 +59,10 @@ export function pageWarnings(page: GeneratedPage, quality: BookQuality | undefin
  * day page, or a page whose questions all failed (it keeps them, so approval refuses it).
  */
 export function withoutFailedQuestions(page: GeneratedPage): GeneratedPage | null {
-  const failed = (q: GeneratedQuestion) => q.check.status === "failed" || !q.package;
+  const own = (q: GeneratedQuestion) => q.check.status === "failed" || !q.package;
+  // An explanation names the question it explains ("How did you work out question 2?"): it goes with that question.
+  const dropped = new Set(page.questions.filter(own).map((q) => q.number));
+  const failed = (q: GeneratedQuestion) => own(q) || dropped.has(explainedQuestion(q) ?? -1);
   if (page.content?.kind !== "day" || !page.questions.some(failed) || page.questions.every(failed)) return null;
   const kept = page.questions.filter((q) => !failed(q));
   const number = new Map(kept.map((q, k) => [q.number, k + 1]));
@@ -80,9 +83,27 @@ export function withoutFailedQuestions(page: GeneratedPage): GeneratedPage | nul
   const reason = (q: GeneratedQuestion) => `failed its check: ${q.check.status === "failed" ? q.check.reason : "code could build no question"}`;
   return {
     ...page, content,
-    questions: kept.map((q, k) => ({ ...q, number: k + 1, package: q.package ? { ...q.package, ref: { ...q.package.ref, question: k + 1 } } : null })),
+    questions: kept.map((q, k) => {
+      const next = { ...q, number: k + 1, package: q.package ? { ...q.package, ref: { ...q.package.ref, question: k + 1 } } : null } as GeneratedQuestion;
+      return renumberedExplanation(next, number);
+    }),
     leftOut: [...(page.leftOut ?? []), ...page.questions.filter(failed).map((q) => ({ slot: q.slot, part: q.part, text: q.package?.text ?? null, reason: reason(q) }))],
   };
+}
+
+/** The generated explanation wordings (`explainFirstStory` in workbook-generator.ts) and the question each one names. */
+const EXPLAIN_REF = /^(How did you work out question |How can you check your answer to question |Explain how you worked out question )(\d+)([.?])$/;
+const explainedQuestion = (q: GeneratedQuestion): number | null => {
+  const m = q.package?.text.match(EXPLAIN_REF);
+  return m ? Number(m[2]) : null;
+};
+/** An explanation kept on the page names its question by the question's new number, in its text and its saved plan. */
+function renumberedExplanation(q: GeneratedQuestion, number: ReadonlyMap<number, number>): GeneratedQuestion {
+  const was = explainedQuestion(q), now = was === null ? undefined : number.get(was);
+  if (!q.package || now === undefined || now === was) return q;
+  const text = q.package.text.replace(EXPLAIN_REF, `$1${now}$3`);
+  return { ...q, package: { ...q.package, text },
+    ...(q.itemPlan ? { itemPlan: { ...q.itemPlan, item: { ...q.itemPlan.item, text }, numbers: (text.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number) } } : {}) };
 }
 
 /**

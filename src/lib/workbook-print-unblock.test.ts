@@ -67,8 +67,15 @@ describe("a generated book", () => {
     const warned = draft.pages.filter((p) => p.fit.status === "fits" && p.fit.warnings?.length);
     expect(warned.length).toBeGreaterThan(0);
     expect(draft.pages.every((p) => p.fit.status !== "failed")).toBe(true);
-    // Whole-book issues stay in the quality (not ready) and on the page's warnings, never in its fit.
-    for (const issue of draft.quality?.issues ?? []) expect(pageWarnings(draft.pages.find((p) => p.number === issue.page)!, draft.quality)).toContain(`whole-book check: ${issue.reason}`);
+    // Whole-book issues stay in the quality (not ready) and on the page's warnings, never in its fit. One issue is
+    // added here so the check never passes on an empty list.
+    const target = draft.pages.find((p) => p.questions.length > 0)!;
+    const issue = { kind: "coverage" as const, page: target.number, reason: "required planned slot 2.1 (solve-it-two-ways) is missing or failed" };
+    draft.quality = { ...draft.quality!, ready: false, issues: [...(draft.quality?.issues ?? []), issue] };
+    expect(draft.quality.ready).toBe(false);
+    expect(draft.quality.issues.length).toBeGreaterThan(0);
+    for (const i of draft.quality.issues) expect(pageWarnings(draft.pages.find((p) => p.number === i.page)!, draft.quality)).toContain(`whole-book check: ${i.reason}`);
+    expect(target.fit.status).not.toBe("failed");
     expect(draftReviewProblems(draft)).toEqual([]);
     expect(approvalProblems(approval(draft))).toEqual([]);
   });
@@ -115,6 +122,23 @@ describe("a failed question", () => {
     expect(blocks[0]).toMatchObject({ slot: "worked-example", lines: ["2 + 2 = [4]"] });
     expect(blocks[1]).toEqual({ slot: "on-your-own", items: [1, 2], hints: ["a", "c"], reviewFrom: 2 });
     expect(next.leftOut).toEqual([{ slot: "1.2", part: "practice", text: "Question 2", reason: "failed its check: the answer is wrong" }]);
+  });
+
+  it("renumbers an explanation to the question it names, and leaves it off with that question", () => {
+    const explain = (n: number, about: number) => ({ number: n, slot: `2.${n}`, part: "practice", attempts: 1, check: { status: "checked" },
+      package: { id: `e${n}`, text: `How did you work out question ${about}?`, ref: { question: n } },
+      itemPlan: { item: { text: `How did you work out question ${about}?` }, numbers: [about] } }) as unknown as GeneratedPage["questions"][number];
+    const withExplain = { ...page, questions: [...page.questions, explain(4, 3)],
+      content: { kind: "day", blocks: [{ slot: "on-your-own", items: [1, 2, 3, 4] }] } } as unknown as GeneratedPage;
+    const next = withoutFailedQuestions(withExplain)!;
+    const e = next.questions.find((q) => q.package!.id === "e4")!;
+    expect(e.number).toBe(3);
+    expect(e.package!.text).toBe("How did you work out question 2?");
+    expect((e as unknown as { itemPlan: { item: { text: string }; numbers: number[] } }).itemPlan).toMatchObject({ item: { text: "How did you work out question 2?" }, numbers: [2] });
+    // An explanation of the failed question goes with it.
+    const gone = withoutFailedQuestions({ ...withExplain, questions: [...page.questions, explain(4, 2)] } as GeneratedPage)!;
+    expect(gone.questions.map((q) => q.package!.id)).toEqual(["q1", "q3"]);
+    expect(gone.leftOut?.map((l) => l.slot)).toEqual(["1.2", "2.4"]);
   });
 
   it("keeps a page whose questions all failed as it is, so approval refuses it", () => {

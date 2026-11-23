@@ -429,7 +429,7 @@ function Approval({ detail, name }: { detail: RunDetail; name: string }) {
     </>;
   }
   const flagged = draft.workbook.pages.flatMap((p) => p.questions).filter((q) => q.gate);
-  const flaggedPages = (draft.rendering?.pages ?? []).filter((p) => p.layoutGate), warned = draft.workbook.pages.filter((p) => pageWarnings(p, draft.workbook.quality).length > 0 || (p.leftOut ?? []).length > 0);
+  const flaggedPages = (draft.rendering?.pages ?? []).filter((p) => p.layoutGate), warned = draft.workbook.pages.filter((p) => pageWarnings(p, draft.workbook.quality).length > 0 || (p.leftOut ?? []).length > 0 || (p.omissions ?? []).length > 0);
   const flagLine = flagged.length || flaggedPages.length || warned.length
     ? <p>{flagged.length > 0 && <b>{flagged.length} {flagged.length === 1 ? "question is" : "questions are"} flagged by a quality gate. </b>}{flaggedPages.length > 0 && <b>{flaggedPages.length} {flaggedPages.length === 1 ? "page is" : "pages are"} flagged by the page layout gate. </b>}{warned.length > 0 && <b>{warned.length} {warned.length === 1 ? "page has" : "pages have"} warnings or questions left off (page {warned.map((p) => p.number).join(", ")}). </b>}Read each flag before you approve.</p>
     : null;
