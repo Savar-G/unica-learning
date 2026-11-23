@@ -150,7 +150,8 @@ jobs:
       - run: npm ci --no-audit --no-fund
         timeout-minutes: 5
       # Public ubuntu-24.04 runners have 4 vCPUs; running all three independent files with --maxWorkers=3 gives each
-      # file its own CPU core while retaining every behaviour, all three seeds and the same 60 s test timeout.
+      # file its own CPU core while retaining every behaviour and all three seeds. Each word-count seed carries its own
+      # measured speed budget and a 240 s hang guard (word-count-cases.ts); --testTimeout is for gate.test.ts alone.
       - name: Maya behaviour gate and Grade 1 / Grade 4 word limits
         run: npm test -- src/lib/maya-gate/gate.test.ts src/lib/maya-gate/word-count-grade-1.test.ts src/lib/maya-gate/word-count-grade-4.test.ts --testTimeout=60000 --maxWorkers=3
         timeout-minutes: 6

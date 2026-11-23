@@ -90,6 +90,30 @@ The gate's own work is the cost of `src/lib/maya-gate` in the unit shard, and it
 
 The test now budgets each behaviour: `ms / BEHAVIOURS.length < 150` ms, four times the 36 ms median. A behaviour added to the gate no longer spends the budget, and a gate made ten times slower measures about 360 ms a behaviour, which fails with the measurement in the message ("332 ms a behaviour, over 564: expected 332 to be less than 150" when a 300 ms spin was put in `runBehaviour`). The hook that wraps the block is now 240 s and is a hang guard, not the speed gate, so a budget failure reports the number instead of a hook timeout. The test logs `perBehaviourMs` beside `wallMs` and `cpuMs` on CI; read that line before moving this budget.
 
+## The word-count seeds' budget: 2026-11-23
+
+`src/lib/maya-gate/word-count-cases.ts` walks all 564 behaviours once for each of the seeds 1, 9 and 31, in a file per grade, to prove that no emitted turn or fallback is over the grade's spoken limit. The job runs those two files and `gate.test.ts` with `--maxWorkers=3` on four vCPUs, and each seed carried the same bare 60 s timeout, which nothing had measured.
+
+On 2026-11-21 (run 44849275869, attempt 1) seed 1 of both grade files timed out: 78,631 ms and 71,724 ms against the 60 s limit. Seeds 9 and 31 passed in the same run at 41,101 to 47,796 ms, and attempt 2 passed on the same commit. All six units recorded `outputs` 3,148 or 3,243 and `fallbacks` 554 to 753, the same work as every run before it.
+
+Where the cost is, measured locally on 2026-11-23: one seed takes 32.1 s, of which 28.1 s is `runGateBehaviour` across all 564 behaviours, 4.0 s is judging them and word counting rounds to nothing, with no behaviour over 252 ms. The cost is one gate run a behaviour, evenly spread, so it cannot be made cheaper without dropping behaviours or seeds. The seeds are load-bearing: the seed picks which wording variant of each line Maya says (`src/lib/maya/variety.ts`), and variants differ in length, so a seed is a sample of the word-length space the test exists to bound. Nothing was cut, retried or skipped.
+
+Five consecutive runs of the job's own command, locally, four cores, same commit:
+
+| Run | Grade 1 s1 / s9 / s31 (s) | Grade 4 s1 / s9 / s31 (s) | Seed tests |
+| ---: | --- | --- | --- |
+| 1 | 42.57 / 32.00 / 29.81 | 38.65 / 30.05 / 27.31 | 239.5 s |
+| 2 | 35.49 / 30.20 / 28.62 | 33.41 / 27.80 / 26.15 | 214.5 s |
+| 3 | 36.13 / 29.20 / 29.47 | 33.19 / 26.67 / 27.59 | 216.0 s |
+| 4 | 37.83 / 29.34 / 27.16 | 34.51 / 27.66 / 24.33 | 216.1 s |
+| 5 | 33.46 / 29.11 / 28.16 | 31.26 / 24.82 / 25.02 | 202.9 s |
+
+That is 24.3 to 42.6 s a seed, 43 to 75 ms a behaviour, median 52 ms. The first seed of each file is the slowest, and by position rather than by number: the same two files run with the seeds written as 31, 9, 1 took 46.2 s and 48.4 s for seed 31 and 35.8 s and 37.0 s for seed 1. So the first test in a file pays the module and JIT warm-up, about 10 s here and about 30 s on the hosted runner, which is why the 2026-11-21 failure landed on seed 1 in both files and on no later seed. The CI units above were 73 to 139 ms a behaviour, so the hosted runner is 1.9x this machine on the same work.
+
+The test now budgets each seed at `wallMs / 564 < 300` ms a behaviour: 2.2x the slowest CI seed and 5.8x the local median. A gate made four times slower measures about 556 ms a behaviour on that same slow seed and fails with the measurement in the message. The per-seed timeout is 240 s and is a hang guard, 1.4x the point where the budget fails (169 s), so a slow run reports a number instead of a timeout. Both live in `word-count-cases.ts`; `--testTimeout=60000` in the workflow now governs `gate.test.ts` alone.
+
+Raising that timeout is not meeting a speed target: the 60 s was never the budget for this work, and the budget that replaces it is measured and asserted. Read the seed's `perBehaviourMs` log line on CI before moving either number, and move them from a fresh distribution, not from one failure.
+
 ## Remaining acceptance work
 
 The targets remain unmet. No hosted after-change distribution exists yet.
