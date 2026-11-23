@@ -139,5 +139,67 @@ describe("assertOutsideRepo", () => {
     const outFile = join(outDir, "record.json");
     writeSafeOutputFile(outFile, "{\"ok\":true}\n", root);
     expect(statSync(outFile).mode & 0o777).toBe(0o600);
+
+    const binFile = join(outDir, "photo.jpg");
+    const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+    writeSafeOutputFile(binFile, bytes, root);
+    expect(statSync(binFile).mode & 0o777).toBe(0o600);
+    expect(new Uint8Array(readFileSync(binFile))).toEqual(bytes);
+  });
+
+  it("refuses output paths inside another git repository (.git folder or .git file) while allowing normal temp folders", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-guard-repo-"));
+    const otherGitDir = mkdtempSync(join(tmpdir(), "ref-guard-othergit-"));
+    const otherWorktree = mkdtempSync(join(tmpdir(), "ref-guard-worktree-"));
+    const normalOutside = mkdtempSync(join(tmpdir(), "ref-guard-plain-"));
+    tempDirs.push(repo, otherGitDir, otherWorktree, normalOutside);
+
+    mkdirSync(join(otherGitDir, ".git"));
+    writeFileSync(join(otherWorktree, ".git"), "gitdir: /tmp/example-gitdir\n", "utf8");
+
+    expect(() => assertOutsideRepo(join(otherGitDir, "nested", "out"), repo)).toThrow(
+      /inside a git repository/i,
+    );
+    expect(() => prepareSafeOutputDir(join(otherGitDir, "nested", "out"), repo)).toThrow(
+      /inside a git repository/i,
+    );
+    expect(() => assertOutsideRepo(join(otherWorktree, "out"), repo)).toThrow(
+      /inside a git repository/i,
+    );
+    expect(() => prepareSafeOutputDir(join(otherWorktree, "out"), repo)).toThrow(
+      /inside a git repository/i,
+    );
+    expect(() => assertOutsideRepo(join(normalOutside, "private-out"), repo)).not.toThrow();
+  });
+
+  it("refuses output paths inside a bare git repository, which has no .git entry", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-guard-repo-"));
+    const bare = mkdtempSync(join(tmpdir(), "ref-guard-bare-"));
+    const lookalike = mkdtempSync(join(tmpdir(), "ref-guard-lookalike-"));
+    tempDirs.push(repo, bare, lookalike);
+    writeFileSync(join(bare, "HEAD"), "ref: refs/heads/main\n", "utf8");
+    mkdirSync(join(bare, "objects"));
+    mkdirSync(join(bare, "refs"));
+    // A folder that only has a file named HEAD is not a repository.
+    writeFileSync(join(lookalike, "HEAD"), "notes\n", "utf8");
+
+    expect(() => assertOutsideRepo(join(bare, "reference-work"), repo)).toThrow(
+      /inside a git repository/i,
+    );
+    expect(() => prepareSafeOutputDir(join(bare, "reference-work"), repo)).toThrow(
+      /inside a git repository/i,
+    );
+    expect(() => assertOutsideRepo(join(lookalike, "out"), repo)).not.toThrow();
+
+    // A bare repository whose refs folder is a link to another place is still a repository.
+    const linked = mkdtempSync(join(tmpdir(), "ref-guard-bare-linked-"));
+    const elsewhere = mkdtempSync(join(tmpdir(), "ref-guard-refs-"));
+    tempDirs.push(linked, elsewhere);
+    writeFileSync(join(linked, "HEAD"), "ref: refs/heads/main\n", "utf8");
+    mkdirSync(join(linked, "objects"));
+    symlinkSync(elsewhere, join(linked, "refs"));
+    expect(() => assertOutsideRepo(join(linked, "reference-work"), repo)).toThrow(
+      /inside a git repository/i,
+    );
   });
 });

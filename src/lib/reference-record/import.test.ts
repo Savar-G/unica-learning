@@ -262,14 +262,15 @@ describe("importReferenceRecords", () => {
     writeJson(recordsDir, "p2.json", makePage("sample:M:4a", "Changed title"));
     const img = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
     writeBytes(photosDir, "IMG_0002.jpg", img);
-    writeJson(photosDir, "masked-manifest.json", {
+    writeJson(photosDir, "photos-manifest.json", {
       version: 1,
       photos: [
         {
           file: "IMG_0002.jpg",
           sha256: sha256Hex(img),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "IMG_0002.jpg",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:4a",
         },
       ],
@@ -292,7 +293,7 @@ describe("importReferenceRecords", () => {
     expect(formatImportResult(third)).toContain("sample:M:4a");
   });
 
-  it("uploads matched confirmed photos before row insert, ignores unmanifested or unidentified photos, and never overwrites existing objects", async () => {
+  it("uploads matched photos before row insert, ignores unmanifested or unidentified photos, and never overwrites existing objects", async () => {
     writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
     writeJson(recordsDir, "p2.json", makePage("sample:M:3b"));
     writeJson(recordsDir, "p3.json", makePage("sample:M:4a"));
@@ -305,37 +306,41 @@ describe("importReferenceRecords", () => {
     writeBytes(photosDir, "IMG_0002.png", img2);
     writeBytes(photosDir, "OTHER.jpg", other);
     writeBytes(photosDir, "UNLISTED.jpg", loose);
-    writeJson(photosDir, "masked-manifest.json", {
+    writeJson(photosDir, "photos-manifest.json", {
       version: 1,
       photos: [
         {
           file: "IMG_0001.jpg",
           sha256: sha256Hex(img1),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "IMG_0001.jpg",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:3a",
         },
         {
           file: "IMG_0002.png",
           sha256: sha256Hex(img2),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "IMG_0002.png",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:3b",
         },
         {
           // Manifest entry for a record not in this batch: ignored
           file: "OTHER.jpg",
           sha256: sha256Hex(other),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "OTHER.jpg",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:99a",
         },
         {
           // No source_ref yet: ignored
           file: "UNIDENTIFIED.jpg",
           sha256: "0".repeat(64),
-          confirmed: false,
-          confirmed_at: null,
+          original_name: "UNIDENTIFIED.jpg",
+          width: 3024,
+          height: 4032,
         },
       ],
     });
@@ -369,37 +374,29 @@ describe("importReferenceRecords", () => {
     expect(insertIdx).toBeGreaterThan(uploadIdx);
   });
 
-  it("refuses the whole run when photo hash mismatches, confirmed is not strictly true, or photo file is missing", async () => {
+  it("refuses the whole run when photo hash mismatches or photo file is missing", async () => {
     writeJson(recordsDir, "p1.json", makePage("sample:M:1a"));
-    writeJson(recordsDir, "p2.json", makePage("sample:M:2a"));
     writeJson(recordsDir, "p3.json", makePage("sample:M:3a"));
 
     const img1 = new Uint8Array([1, 2, 3]);
-    const img2 = new Uint8Array([4, 5, 6]);
     writeBytes(photosDir, "bad-hash.jpg", img1);
-    writeBytes(photosDir, "unconfirmed.jpg", img2);
-    writeJson(photosDir, "masked-manifest.json", {
+    writeJson(photosDir, "photos-manifest.json", {
       version: 1,
       photos: [
         {
           file: "bad-hash.jpg",
           sha256: "a".repeat(64),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "bad-hash.jpg",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:1a",
-        },
-        {
-          file: "unconfirmed.jpg",
-          sha256: sha256Hex(img2),
-          confirmed: "true",
-          confirmed_at: "2026-01-01T00:00:00.000Z",
-          source_ref: "sample:M:2a",
         },
         {
           file: "missing.jpg",
           sha256: "b".repeat(64),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "missing.jpg",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:3a",
         },
       ],
@@ -411,33 +408,34 @@ describe("importReferenceRecords", () => {
     expect(store.objects.size).toBe(0);
     expect(store.calls).toEqual([]);
     expect(res.problems.some((p) => p.includes("sample:M:1a") && p.includes("sha256"))).toBe(true);
-    expect(res.problems.some((p) => p.includes("sample:M:2a") && p.includes("confirmed"))).toBe(true);
     expect(res.problems.some((p) => p.includes("sample:M:3a") && p.includes("missing"))).toBe(true);
   });
 
-  it("refuses when masked-manifest.json is missing, has traversal paths, or has duplicate source_ref entries", async () => {
+  it("refuses when photos-manifest.json is missing, has traversal paths, or has duplicate source_ref entries", async () => {
     writeJson(recordsDir, "p1.json", makePage("sample:M:1a"));
     mkdirSync(photosDir, { recursive: true });
 
     const missingManifest = await importReferenceRecords({ recordsDir, photosDir, store });
     expect(missingManifest.ok).toBe(false);
-    expect(missingManifest.problems.some((p) => p.includes("masked-manifest.json"))).toBe(true);
+    expect(missingManifest.problems.some((p) => p.includes("photos-manifest.json"))).toBe(true);
 
-    writeJson(photosDir, "masked-manifest.json", {
+    writeJson(photosDir, "photos-manifest.json", {
       version: 1,
       photos: [
         {
           file: "../escape.jpg",
           sha256: "a".repeat(64),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "escape.jpg",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:1a",
         },
         {
           file: "dup.jpg",
           sha256: "b".repeat(64),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "dup.jpg",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:1a",
         },
       ],
@@ -454,14 +452,15 @@ describe("importReferenceRecords", () => {
     writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
     const img = new Uint8Array([10, 20, 30]);
     writeBytes(photosDir, "IMG_0001.jpg", img);
-    writeJson(photosDir, "masked-manifest.json", {
+    writeJson(photosDir, "photos-manifest.json", {
       version: 1,
       photos: [
         {
           file: "IMG_0001.jpg",
           sha256: sha256Hex(img),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "IMG_0001.jpg",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:3a",
         },
       ],

@@ -87,10 +87,53 @@ export function isPathInsideDir(candidatePath: string, containerDir: string): bo
   return firstComponent !== "..";
 }
 
+// A bare repository has no ".git" entry: the folder itself holds HEAD, objects and refs.
+function looksLikeBareGitRepo(dir: string): boolean {
+  try {
+    // statSync follows a link: git accepts linked objects and refs folders.
+    return (
+      statSync(join(dir, "HEAD")).isFile() &&
+      statSync(join(dir, "objects")).isDirectory() &&
+      statSync(join(dir, "refs")).isDirectory()
+    );
+  } catch {
+    return false;
+  }
+}
+
+function findGitAncestor(candidatePath: string): string | null {
+  let cursor = resolveRealPath(candidatePath);
+  while (true) {
+    try {
+      const stat = lstatSync(cursor);
+      if (stat.isDirectory()) {
+        try {
+          lstatSync(join(cursor, ".git"));
+          return cursor;
+        } catch {
+          // no .git entry in this ancestor
+        }
+        if (looksLikeBareGitRepo(cursor)) return cursor;
+      }
+    } catch {
+      // ancestor does not exist yet; keep walking up
+    }
+    const parent = dirname(cursor);
+    if (parent === cursor) return null;
+    cursor = parent;
+  }
+}
+
 export function assertOutsideRepo(outPath: string, repoRoot: string): void {
   if (isPathInsideDir(outPath, repoRoot)) {
     throw new Error(
       `Refusing to write reference records inside the repository (${resolve(outPath)}). Choose an --out folder outside ${resolve(repoRoot)}.`,
+    );
+  }
+  const gitRoot = findGitAncestor(outPath);
+  if (gitRoot) {
+    throw new Error(
+      `Refusing to write reference records to ${resolve(outPath)}: the output folder is inside a git repository (${gitRoot}).`,
     );
   }
 }
@@ -127,7 +170,11 @@ export function assertSafeOutputFile(filePath: string, repoRoot: string): void {
   assertOutsideRepo(absFile, repoRoot);
 }
 
-export function writeSafeOutputFile(filePath: string, content: string, repoRoot: string): void {
+export function writeSafeOutputFile(
+  filePath: string,
+  content: string | Uint8Array,
+  repoRoot: string,
+): void {
   assertSafeOutputFile(filePath, repoRoot);
   const absFile = resolve(filePath);
   const realDir = realpathSync(dirname(absFile));
@@ -141,7 +188,11 @@ export function writeSafeOutputFile(filePath: string, content: string, repoRoot:
   const fd = openSync(tempPath, flags, 0o600);
   try {
     fchmodSync(fd, 0o600);
-    writeFileSync(fd, content, "utf8");
+    if (typeof content === "string") {
+      writeFileSync(fd, content, "utf8");
+    } else {
+      writeFileSync(fd, content);
+    }
   } catch (err) {
     try {
       closeSync(fd);

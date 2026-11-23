@@ -329,6 +329,10 @@ describe("parseLegacyMarkdown", () => {
         "not_stated",
         "not_stated",
       ]);
+      expect(record.examples[0].steps).toEqual([
+        { n: 1, shows: "not_stated", printed: "Row one: 11 x 1 = 11" },
+        { n: 2, shows: "not_stated", printed: "Row two: 11 x 2 = 22" },
+      ]);
     }
   });
 

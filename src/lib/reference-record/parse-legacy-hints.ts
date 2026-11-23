@@ -3,6 +3,7 @@ import {
   NOT_STATED,
   type Example,
   type ExamplePart,
+  type ExampleStep,
   type ItemForm,
   type ReaderValue,
   type Scaffold,
@@ -31,7 +32,7 @@ export function parseWorkedExampleJson(raw: string): Example | null {
         : NOT_STATED;
 
     const steps = Array.isArray(parsed.steps_shown)
-      ? parsed.steps_shown.filter((s): s is string => typeof s === "string")
+      ? parsed.steps_shown.filter((s): s is string => typeof s === "string" && s.trim().length > 0)
       : [];
     const parts: ExamplePart[] = [];
     for (const step of steps) {
@@ -52,6 +53,12 @@ export function parseWorkedExampleJson(raw: string): Example | null {
     }
     if (parts.length === 0) return null;
 
+    const exampleSteps: ExampleStep[] = steps.map((text, idx) => ({
+      n: idx + 1,
+      shows: NOT_STATED,
+      printed: text.trim(),
+    }));
+
     const isTable =
       (typeof parsed.problem === "string" && /table|chart/i.test(parsed.problem)) ||
       posStr.includes("table");
@@ -60,6 +67,7 @@ export function parseWorkedExampleJson(raw: string): Example | null {
       position,
       relation: isTable ? "table" : "sequence",
       parts,
+      ...(exampleSteps.length > 0 ? { steps: exampleSteps } : {}),
       ...(typeof parsed.problem === "string" ? { label: parsed.problem } : {}),
     };
   } catch {

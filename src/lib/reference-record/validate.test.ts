@@ -357,4 +357,81 @@ describe("validateReferenceRecord", () => {
       expect(res.errors.some((e) => e.path === "score_bands[1][1]")).toBe(true);
     }
   });
+
+  it("validates example steps and marks including contiguous n, shows_other rules, mark.step references, and optionality on older records", () => {
+    const valid = makeValidPage();
+    if (Array.isArray(valid.examples)) {
+      valid.examples[0].steps = [
+        { n: 1, shows: "setup", printed: "24 x 3" },
+        { n: 2, shows: "carry", printed: "1", note: "Carry 1 to the tens place." },
+        { n: 3, shows: "other", shows_other: "split into tens and ones", printed: "20 x 3 + 4 x 3" },
+        { n: 4, shows: "not_stated", printed: "72" },
+        { n: 5, shows: "unclear", printed: null, note: "unclear" },
+      ];
+      valid.examples[0].marks = [
+        { kind: "arrow", step: 2, description: "Points from 12 to carried 1" },
+        { kind: "helper_digit", step: 2 },
+        { kind: "other", step: 3, description: "Dotted line separating tens and ones" },
+        { kind: "unclear" },
+      ];
+    }
+    expect(validateReferenceRecord(valid)).toEqual({ ok: true, record: valid });
+
+    // Whole steps list may be unclear or empty
+    const unclearSteps = makeValidPage();
+    if (Array.isArray(unclearSteps.examples)) {
+      unclearSteps.examples[0].steps = "unclear";
+      unclearSteps.examples[0].marks = [];
+    }
+    expect(validateReferenceRecord(unclearSteps).ok).toBe(true);
+
+    // Invalid step numbering, missing shows_other on other, forbidden shows_other on non-other, bad mark.step, missing mark.description on other
+    const bad = makeValidPage();
+    if (Array.isArray(bad.examples)) {
+      (bad.examples[0] as unknown as Record<string, unknown>).steps = [
+        { n: 2, shows: "other", printed: "10" }, // n must start at 1, missing shows_other
+        { n: 3, shows: "carry", shows_other: "extra", printed: "1" }, // shows_other not allowed unless other
+      ];
+      (bad.examples[0] as unknown as Record<string, unknown>).marks = [
+        { kind: "arrow", step: 99 }, // step 99 does not exist
+        { kind: "other", step: 2 }, // missing description
+      ];
+    }
+    const badRes = validateReferenceRecord(bad);
+    expect(badRes.ok).toBe(false);
+    if (!badRes.ok) {
+      const paths = badRes.errors.map((e) => e.path);
+      expect(paths).toContain("examples[0].steps[0].n");
+      expect(paths).toContain("examples[0].steps[0].shows_other");
+      expect(paths).toContain("examples[0].steps[1].shows_other");
+      expect(paths).toContain("examples[0].marks[0].step");
+      expect(paths).toContain("examples[0].marks[1].description");
+    }
+  });
+
+  it("validates new practice hint scaffold kinds (helper_digit, partial_working, worked_item, other)", () => {
+    const valid = makeValidPage();
+    valid.sections[0].scaffolds = [
+      { kind: "helper_digit", applies_to: [1], description: "Small carry box above tens" },
+      { kind: "partial_working", applies_to: [1, 2], description: "First partial product printed" },
+      { kind: "worked_item", applies_to: [2] },
+      { kind: "other", applies_to: "all", description: "Shaded place-value column guide" },
+    ];
+    expect(validateReferenceRecord(valid).ok).toBe(true);
+
+    const bad = makeValidPage();
+    (bad.sections[0].scaffolds as unknown[]) = [
+      { kind: "other", applies_to: [1] },
+      { kind: "other", applies_to: [1], description: "   " },
+      { kind: "helper_digit", applies_to: [1], description: "" },
+    ];
+    const res = validateReferenceRecord(bad);
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      const paths = res.errors.map((e) => e.path);
+      expect(paths).toContain("sections[0].scaffolds[0].description");
+      expect(paths).toContain("sections[0].scaffolds[1].description");
+      expect(paths).toContain("sections[0].scaffolds[2].description");
+    }
+  });
 });

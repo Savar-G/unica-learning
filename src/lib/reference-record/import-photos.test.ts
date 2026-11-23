@@ -170,21 +170,23 @@ describe("importReferenceRecords photo and file safety", () => {
     const img2 = new Uint8Array([4, 5, 6]);
     writeBytes(photosDir, "ok.jpg", img1);
     writeBytes(photosDir, "mask.constructor", img2);
-    writeJson(photosDir, "masked-manifest.json", {
+    writeJson(photosDir, "photos-manifest.json", {
       version: 1,
       photos: [
         {
           file: "ok.jpg",
           sha256: sha256Hex(img1),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "IMG_0001.jpg",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:1a",
         },
         {
           file: "mask.constructor",
           sha256: sha256Hex(img2),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "IMG_0002.jpg",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:2a",
         },
       ],
@@ -205,21 +207,23 @@ describe("importReferenceRecords photo and file safety", () => {
     const empty = new Uint8Array(0);
     writeBytes(photosDir, "big.jpg", tooLarge);
     writeBytes(photosDir, "empty.png", empty);
-    writeJson(photosDir, "masked-manifest.json", {
+    writeJson(photosDir, "photos-manifest.json", {
       version: 1,
       photos: [
         {
           file: "big.jpg",
           sha256: sha256Hex(tooLarge),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "big.jpg",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:3a",
         },
         {
           file: "empty.png",
           sha256: sha256Hex(empty),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "empty.png",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:3b",
         },
       ],
@@ -240,21 +244,23 @@ describe("importReferenceRecords photo and file safety", () => {
     const img2 = new Uint8Array([5, 6, 7, 8]);
     writeBytes(photosDir, "one.jpg", img1);
     writeBytes(photosDir, "two.png", img2);
-    writeJson(photosDir, "masked-manifest.json", {
+    writeJson(photosDir, "photos-manifest.json", {
       version: 1,
       photos: [
         {
           file: "one.jpg",
           sha256: sha256Hex(img1),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "one.jpg",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:3a",
         },
         {
           file: "two.png",
           sha256: sha256Hex(img2),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "two.png",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:3b",
         },
       ],
@@ -286,14 +292,15 @@ describe("importReferenceRecords photo and file safety", () => {
     writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
     const img = new Uint8Array([1, 2, 3, 4]);
     writeBytes(photosDir, "one.jpg", img);
-    writeJson(photosDir, "masked-manifest.json", {
+    writeJson(photosDir, "photos-manifest.json", {
       version: 1,
       photos: [
         {
           file: "one.jpg",
           sha256: sha256Hex(img),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "one.jpg",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:3a",
         },
       ],
@@ -320,21 +327,23 @@ describe("importReferenceRecords photo and file safety", () => {
     const img2New = new Uint8Array([5, 6, 7, 8]);
     writeBytes(photosDir, "IMG_0001.jpg", img1);
     writeBytes(photosDir, "IMG_0002.png", img2New);
-    writeJson(photosDir, "masked-manifest.json", {
+    writeJson(photosDir, "photos-manifest.json", {
       version: 1,
       photos: [
         {
           file: "IMG_0001.jpg",
           sha256: sha256Hex(img1),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "IMG_0001.jpg",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:3a",
         },
         {
           file: "IMG_0002.png",
           sha256: sha256Hex(img2New),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "IMG_0002.png",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:3b",
         },
       ],
@@ -359,7 +368,7 @@ describe("importReferenceRecords photo and file safety", () => {
     ).toBe(true);
   });
 
-  it("refuses symlinks for record files, status.json, masked-manifest.json, and photos before any write", async () => {
+  it("refuses symlinks for record files, status.json, photos-manifest.json, and photos before any write", async () => {
     mkdirSync(recordsDir, { recursive: true });
     mkdirSync(photosDir, { recursive: true });
     mkdirSync(outsideDir, { recursive: true });
@@ -385,43 +394,45 @@ describe("importReferenceRecords photo and file safety", () => {
     );
     rmSync(join(recordsDir, "status.json"));
 
-    // 3. Symlink masked-manifest.json
+    // 3. Symlink photos-manifest.json
     const img = new Uint8Array([1, 2, 3, 4]);
     writeBytes(photosDir, "IMG_0001.jpg", img);
-    writeJson(outsideDir, "masked-manifest.json", {
+    writeJson(outsideDir, "photos-manifest.json", {
       version: 1,
       photos: [
         {
           file: "IMG_0001.jpg",
           sha256: sha256Hex(img),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "IMG_0001.jpg",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:1a",
         },
       ],
     });
-    symlinkSync(join(outsideDir, "masked-manifest.json"), join(photosDir, "masked-manifest.json"));
+    symlinkSync(join(outsideDir, "photos-manifest.json"), join(photosDir, "photos-manifest.json"));
     const manifestRes = await importReferenceRecords({ recordsDir, photosDir, store });
     expect(manifestRes.ok).toBe(false);
     expect(store.calls).toEqual([]);
     expect(
       manifestRes.problems.some(
-        (p) => p.includes("masked-manifest.json") && p.includes("symlink"),
+        (p) => p.includes("photos-manifest.json") && p.includes("symlink"),
       ),
     ).toBe(true);
-    rmSync(join(photosDir, "masked-manifest.json"));
+    rmSync(join(photosDir, "photos-manifest.json"));
 
     // 4. Symlink photo file (even when target is inside photosDir)
     writeBytes(photosDir, "real.jpg", img);
     symlinkSync(join(photosDir, "real.jpg"), join(photosDir, "link.jpg"));
-    writeJson(photosDir, "masked-manifest.json", {
+    writeJson(photosDir, "photos-manifest.json", {
       version: 1,
       photos: [
         {
           file: "link.jpg",
           sha256: sha256Hex(img),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "link.jpg",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:1a",
         },
       ],
@@ -442,28 +453,31 @@ describe("importReferenceRecords photo and file safety", () => {
     const img = new Uint8Array([1, 2, 3, 4]);
     writeBytes(join(photosDir, "sub"), "nested.jpg", img);
     mkdirSync(join(photosDir, "dir-as-photo.jpg"), { recursive: true });
-    writeJson(photosDir, "masked-manifest.json", {
+    writeJson(photosDir, "photos-manifest.json", {
       version: 1,
       photos: [
         {
           file: "sub/nested.jpg",
           sha256: sha256Hex(img),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "nested.jpg",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:1a",
         },
         {
           file: "a..b.jpg",
           sha256: sha256Hex(img),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "a..b.jpg",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:2a",
         },
         {
           file: "dir-as-photo.jpg",
           sha256: sha256Hex(img),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "dir-as-photo.jpg",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:3a",
         },
       ],
@@ -483,14 +497,15 @@ describe("importReferenceRecords photo and file safety", () => {
     writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
     const original = new Uint8Array([11, 22, 33, 44]);
     writeBytes(photosDir, "IMG_0001.jpg", original);
-    writeJson(photosDir, "masked-manifest.json", {
+    writeJson(photosDir, "photos-manifest.json", {
       version: 1,
       photos: [
         {
           file: "IMG_0001.jpg",
           sha256: sha256Hex(original),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "IMG_0001.jpg",
+          width: 3024,
+          height: 4032,
           source_ref: "sample:M:3a",
         },
       ],
@@ -508,28 +523,31 @@ describe("importReferenceRecords photo and file safety", () => {
 
   it("handles prototype property names as manifest source_ref entries without inherited-key collisions", async () => {
     writeJson(recordsDir, "p1.json", makePage("sample:M:1a"));
-    writeJson(photosDir, "masked-manifest.json", {
+    writeJson(photosDir, "photos-manifest.json", {
       version: 1,
       photos: [
         {
           file: "a.jpg",
           sha256: "a".repeat(64),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "a.jpg",
+          width: 3024,
+          height: 4032,
           source_ref: "__proto__",
         },
         {
           file: "b.jpg",
           sha256: "b".repeat(64),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "b.jpg",
+          width: 3024,
+          height: 4032,
           source_ref: "constructor",
         },
         {
           file: "c.jpg",
           sha256: "c".repeat(64),
-          confirmed: true,
-          confirmed_at: "2026-01-01T00:00:00.000Z",
+          original_name: "c.jpg",
+          width: 3024,
+          height: 4032,
           source_ref: "toString",
         },
       ],

@@ -8,6 +8,7 @@ import {
   type ValidationError,
   type ValidationResult,
 } from "./types";
+import { validateExample } from "./validate-example";
 import {
   checkAllowedKeys,
   checkIntRange,
@@ -20,15 +21,14 @@ import {
   isSentinel,
   joinPath,
   pushError,
-  validateExample,
   validateExpr,
   validateResponse,
   validateScaffold,
   validateScoreBands,
 } from "./validate-parts";
 
-const PAGE_SOURCE_REF_RE = /^[a-z0-9_-]+:[A-Za-z0-9_-]+:\d+[a-z]$/;
-const CONTENTS_SOURCE_REF_RE = /^[a-z0-9_-]+:[A-Za-z0-9_-]+:contents$/;
+const PAGE_SOURCE_REF_RE = /^[A-Za-z0-9_-]+:[A-Za-z0-9_-]+:\d+[a-z]$/;
+const CONTENTS_SOURCE_REF_RE = /^[A-Za-z0-9_-]+:[A-Za-z0-9_-]+:contents$/;
 
 function validateReaders(v: unknown, path: string, errors: ValidationError[]): void {
   if (!Array.isArray(v) || v.length === 0 || !v.every((r) => isNonEmptyString(r))) {

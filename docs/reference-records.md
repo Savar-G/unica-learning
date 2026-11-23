@@ -2,6 +2,8 @@
 
 Structured evidence records for curriculum reference pages (`src/lib/reference-record/`). These records capture what a reference page teaches and asks-items, presentation form, response positions, scaffolds, examples, and score bands-without copying page layout, free-text type labels, or personal marks.
 
+To read photos of reference pages into these records, see `docs/reference-kit.md` (the photo kit and the `reference-extract` skill).
+
 ## Record Kinds
 
 Validated by `validateReferenceRecord(value)` (`src/lib/reference-record/validate.ts`), which rejects unknown keys at every level and returns field-path errors:
@@ -10,8 +12,8 @@ Validated by `validateReferenceRecord(value)` (`src/lib/reference-record/validat
   - **Item `expr`**: `arith` (operator + operand list), `chain` (sequence with `null` blanks), `missing` (equation with `null` blank), `linked` (two expressions printed as a pair), `word` (text + reader-supplied expression), `notation` (LaTeX + optional figure description), or `null` (non-question action item such as a read-aloud checkbox).
   - **Item `form`**: `horizontal`, `vertical`, or `bracket` (may be `null` only when `expr` is `null`).
   - **Responses**: Ordered list of writing places (`after_equals`, `under_line`, `box`, `above_bracket`, `line_with_unit`, `work_area`, `checkbox`), printed `cue`, `answer`, and `answer_source` (`computed`, `reader`, `unchecked`).
-  - **Scaffolds**: Fixed kinds `answer_boxes`, `number_strip`, `table_read_aloud`, `equation_frame`, `arrow`, and `caption` with typed settings and `applies_to`.
-  - **Examples**: `position` (`top`, `foot`, `inline`), `relation` (`compare`, `sequence`, `table`), and ordered `parts` each with its own `form`.
+  - **Scaffolds**: Fixed kinds `answer_boxes`, `number_strip`, `table_read_aloud`, `equation_frame`, `arrow`, `caption`, `helper_digit`, `partial_working`, `worked_item`, and `other` with typed settings and `applies_to` (`description` is required and non-empty for `other`).
+  - **Examples**: `position` (`top`, `foot`, `inline`), `relation` (`compare`, `sequence`, `table`), ordered `parts` each with its own `form`, optional ordered `steps` (`n` starting at 1, `shows` from `EXAMPLE_STEP_KINDS` plus sentinels, `printed`, optional `note`, and `shows_other` required iff `shows` is `other`), and optional `marks` (`kind` from `EXAMPLE_MARK_KINDS` plus sentinels, optional `step` referencing a step `n`, and optional `description`, required when `kind` is `other`).
 - **`contents`**: One record per level contents chart (`source_ref` matches `<source>:<level>:contents`). Lists ordered `topics` with `n`, `title`, `sheets` range, and `std_time_min` range. The converter reads these three columns from the first table of the legacy file that has a topic, a sheets and a standard-time column. That table is the only place where a legacy file holds the chart. The converter ignores every other column of that table, and it takes no page fact from it.
 
 Reader-filled fields may hold `"unclear"`. Converters write `"not_stated"` where their source is silent. Structural fields (`kind`, `source_ref`, `n`, `expr.kind`, `answer_source`) never accept sentinels.
@@ -40,15 +42,15 @@ Pure helpers in `src/lib/reference-record/compute.ts` derive values on demand (n
 
 ## Import into the database
 
-Import validated records (and optional masked photos) into `public.bank_reference_images` and the private Storage bucket `curriculum-reference`:
+Import validated records (and optional prepared photos) into `public.bank_reference_images` and the private Storage bucket `curriculum-reference`:
 
 ```bash
-SUPABASE_URL=... SUPABASE_SECRET_KEY=... npm run reference:import -- --records /path/to/private/records [--photos /path/to/private/photos] [--dry-run]
+SUPABASE_URL=... SUPABASE_SECRET_KEY=... npm run reference:import -- --records /path/to/private/final [--photos /path/to/private/photos] [--dry-run]
 ```
 
 - **Records folder (`--records`)**: holds one `*.json` file per record (`page` or `contents`). Reserved files `status.json` and `report.json` are not treated as records. An optional `status.json` maps each `source_ref` to `machine_read`, `double_read`, or `human_checked`; records omitted from `status.json` default to `machine_read`.
-- **Photos folder (`--photos`, optional)**: must contain `masked-manifest.json` (`{ "version": 1, "photos": [{ "file", "sha256", "confirmed", "confirmed_at", "source_ref" }] }`). Entries without `source_ref` are ignored until identified, and photo files not listed in the manifest are never uploaded. Matched photos are uploaded to `<source>/<level>/<sheet><side>.<ext>` (only `jpg`/`jpeg`, `png`, `webp`) before the row insert, without overwriting an existing object; records without a photo store `path` as `null`.
-- **Refusal rules**: the command checks all inputs before writing anything and exits non-zero with zero writes if `SUPABASE_URL` or `SUPABASE_SECRET_KEY` is missing, any record fails `validateReferenceRecord`, two files share a `source_ref`, `status.json` has an unknown status or orphan `source_ref`, `masked-manifest.json` is missing or malformed, or any matched photo has `confirmed !== true`, a missing file, an unsupported extension, an invalid path segment, or a SHA-256 mismatch.
+- **Photos folder (`--photos`, optional)**: must contain `photos-manifest.json` (`{ "version": 1, "photos": [{ "file", "sha256", "original_name", "width", "height", "source_ref" }] }`). Entries without `source_ref` are ignored until identified, and photo files not listed in the manifest are never uploaded. Matched photos are uploaded to `<source>/<level>/<sheet><side>.<ext>` (only `jpg`/`jpeg`, `png`, `webp`) before the row insert, without overwriting an existing object; records without a photo store `path` as `null`.
+- **Refusal rules**: the command checks all inputs before writing anything and exits non-zero with zero writes if `SUPABASE_URL` or `SUPABASE_SECRET_KEY` is missing, any record fails `validateReferenceRecord`, two files share a `source_ref`, `status.json` has an unknown status or orphan `source_ref`, `photos-manifest.json` is missing or malformed, or any matched photo has a missing file, a symlink, an unsupported extension, an invalid path segment, a size over the bucket limit, or a SHA-256 mismatch.
 - **Idempotency and dry run**: existing `source_ref` rows are left unchanged (no update and no photo upload) and counted as `skipped`, or `skipped_different` (named in the output) if the stored transcript differs. `--dry-run` validates and reports the plan without calling any write method.
 - **Access rule**: `public.bank_reference_images` has row level security enabled with no policies, all privileges revoked from `anon` and `authenticated`, and access granted only to `service_role`. The private `curriculum-reference` bucket has no `storage.objects` policies, so browser roles cannot read or write either the table or the bucket; admin code reads and writes through the server service role.
 
