@@ -131,6 +131,13 @@ export const spawnCli: RunCli = (cmd, args, opts) => {
     let settled = false;
     let timedOut = false;
 
+    // When this process stops (also after Ctrl-C), a reader that still runs is stopped too.
+    const killOnExit = (): void => {
+      child.kill("SIGTERM");
+    };
+    process.once("exit", killOnExit);
+    child.once("close", () => process.off("exit", killOnExit));
+
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill("SIGTERM");

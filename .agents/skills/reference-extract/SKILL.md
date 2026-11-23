@@ -31,7 +31,7 @@ Use one work folder for the level: `~/unica-reference/level-<LEVEL>` (for exampl
 
 2. **Plan the download.**
    `npm run reference:board -- --plan --listing <listing file> --level <LEVEL> --out <work>`
-   It finds the section whose name holds "Level <LEVEL>", writes `<work>/board-plan.json` and prints the number of photos and the source key. If it finds no section, it prints the sections that have a level: the link then points to another page of the board, so ask the person for the link of the page that holds the photos.
+   It finds the section whose name holds "Level <LEVEL>", writes `<work>/board-plan.json` and prints the number of photos and the source key. If it finds no section, it prints the sections that have a level: the link then points to another page of the board, so ask the person for the link of the page that holds the photos. If it prints no source key, ask the person for one (letters and digits only, for example the short name of the publisher) and use it in step 5.
 
 3. **Download the photos.** Read `<work>/board-plan.json`. For each entry of `photos`, call `download_assets` with the file key and the entry's `nodeId`. One photo can hold two images: a full-size original and a small preview. Save every entry of `rawImages`, in order, at once (the links stop working after a short time):
    `curl -sf -L -o "<work>/downloads/<stem>__<n>" "<url>"` with `<n>` = 1, 2, ...
@@ -41,17 +41,17 @@ Use one work folder for the level: `~/unica-reference/level-<LEVEL>` (for exampl
    `npm run reference:board -- --pick --out <work>`
    It copies one image for each photo to `<work>/photos-in` and lists each photo that is too small to read and each photo with no image.
 
-5. **Run the extraction.** It takes about half a minute for each photo, so start it in the background or with a long timeout. If it stops, run the same command again: it continues.
+5. **Run the extraction.** It takes about half a minute for each photo, so start it in the background or with a long timeout. If it stops, run the same command again: it continues and reads only the photos that have no reading yet.
    `npm run reference:extract -- --photos <work>/photos-in --out <work>/run --source <source key from step 2>`
 
 6. **Tell the person the result.** Give the summary line, the path of `<work>/run/final/report.md`, and:
-   - the photos that were too small, by name: the person must put the full-size photo on the board, then you run steps 3 to 5 again;
+   - the photos that were too small, by name: the person must put the full-size photo on the board. Then delete the files of that photo in `<work>/downloads` (its `stem` is in `board-plan.json`) and run steps 3 to 5 again. The run reads only what is new and keeps the other pages;
    - the number of pages that are `double_read` (both readers agree) and `machine_read` (a difference to resolve, or one reading only).
 
 7. **Help the person check pages, when asked.** The report lists each difference with both values. The person looks at the photo (`<work>/run/photos/`, the report gives the file of each page), corrects the record in `<work>/run/final/`, and then marks the page:
    `npm run reference:check -- --work <work>/run --page <source_ref>`
    One page for each command. Never mark a page that the person did not check.
 
-8. **Load into the database, only when the person asks.** It needs `SUPABASE_URL` and `SUPABASE_SECRET_KEY` in the environment. Run a dry run first and show its summary:
-   `npm run reference:import -- --records <work>/run/final --photos <work>/run/photos --dry-run`
+8. **Load into the database, only when the person asks.** It needs `SUPABASE_URL` and `SUPABASE_SECRET_KEY`. When both are in the repository's `.env.local`, load that file for the command. Never print the key. Run a dry run first and show its summary:
+   `node --env-file=.env.local scripts/reference-import.mjs --records <work>/run/final --photos <work>/run/photos --dry-run`
    Then run the same command without `--dry-run`. A second run changes nothing for a page that is already loaded.

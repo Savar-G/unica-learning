@@ -311,6 +311,16 @@ async function readOnePhoto(ctx: RunContext, photo: ReadyPhoto, prefix: string):
   });
   let outcomeA: SlotOutcome;
   let outcomeB: SlotOutcome;
+  // Ctrl-C or a stop signal while a reader runs: put the old files of this page back, then stop.
+  const onSignal = (signal: NodeJS.Signals): void => {
+    try {
+      shelter.close();
+    } finally {
+      process.exit(signal === "SIGINT" ? 130 : 143);
+    }
+  };
+  process.once("SIGINT", onSignal);
+  process.once("SIGTERM", onSignal);
   try {
     // Isolation rule: the readers run at the same time; results are written only after both finish.
     const [resA, resB] = await Promise.all([
@@ -322,6 +332,8 @@ async function readOnePhoto(ctx: RunContext, photo: ReadyPhoto, prefix: string):
     outcomeB = settleSlot({ ...common, category: "slotB", result: resB, old: oldB, oldValid: validB });
     shelter.markCommitted();
   } finally {
+    process.off("SIGINT", onSignal);
+    process.off("SIGTERM", onSignal);
     shelter.close();
   }
 
