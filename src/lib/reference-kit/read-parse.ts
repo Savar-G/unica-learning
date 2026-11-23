@@ -109,7 +109,7 @@ function foldTopicNumber(obj: Record<string, unknown>): void {
     const tokens = title.trim().split(/\s+/);
     // The number is already there as the last token (also as "#2" or "No.2"), or in round brackets
     // at the end (with or without a space before the brackets).
-    const last = tokens[tokens.length - 1].replace(/^(?:#|no\.?)/i, "");
+    const last = tokens[tokens.length - 1].replace(/^(?:#|no\.)/i, "");
     const present = last === String(number) || title.trim().endsWith(`(${number})`);
     if (!present) rest.title = `${title.trim()} ${number}`;
   }

@@ -42,7 +42,7 @@ Computed answers: code computes the answer of each item from its expression and 
 - In all other cases the stored answers are kept and the report has a note.
 - An answer with `answer_source: "printed"` keeps its value and source; a printed answer that is not the computed value gets a note.
 - A division never gets one value in several answer places with no `place`: the places can be a quotient and a remainder, so the stored answers are kept.
-- Remainder answers such as "4r1", "4 r 1", and "4 R1" are equal. A whole number with thousands separators ("1,000") equals the same number without them.
+- Remainder answers such as "4r1", "4 r 1", and "4 R1" are equal. A whole number with thousands separators ("1,000") equals the same number without them. The kit reads numbers in the English format: a comma groups thousands and a point is the decimal mark. It is not for sheets that use a decimal comma.
 
 ## Running Again
 
