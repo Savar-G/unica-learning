@@ -19,6 +19,7 @@ import { DELIVERY_TYPES } from "@/lib/resend-webhook";
 import { SCAN_BLOCKED_REASONS, SCAN_CALIBRATION_STATES, SCAN_CLEAN_FAILURES, SCAN_JOB_STATES, SCAN_PHOTO_STATES } from "@/lib/scan-states";
 import { REFERRAL_RISKS, REFERRAL_OPERATION_STATES, REFERRAL_REWARD_KINDS, REFERRAL_EMAIL_STATES } from "@/lib/referrals";
 import { GATE_OUTCOMES } from "@/lib/workbook-run-gates";
+import { REFERENCE_RECORD_KINDS, TRANSCRIPT_STATUSES } from "@/lib/reference-record/import";
 
 const LISTS: { name: string; list: readonly string[]; table: string; column: string }[] = [
   { name: "CUSTOMER_ACTIVITY_KINDS", list: CUSTOMER_ACTIVITY_KINDS, table: "customer_activity", column: "event" },
@@ -50,6 +51,8 @@ const LISTS: { name: string; list: readonly string[]; table: string; column: str
   { name: "MATH_FEELINGS", list: MATH_FEELINGS.map((f) => f.id), table: "children", column: "math_feeling" },
   { name: "MATH_HELPS", list: MATH_HELPS.map((h) => h.id), table: "children", column: "math_help" },
   { name: "GATE_OUTCOMES", list: GATE_OUTCOMES, table: "workbook_run_gates", column: "outcome" },
+  { name: "REFERENCE_RECORD_KINDS", list: REFERENCE_RECORD_KINDS, table: "bank_reference_images", column: "kind" },
+  { name: "TRANSCRIPT_STATUSES", list: TRANSCRIPT_STATUSES, table: "bank_reference_images", column: "transcript_status" },
   { name: "AI_USAGE_CONTEXTS", list: AI_USAGE_CONTEXTS, table: "ai_usage_events", column: "usage_context" },
   { name: "AI_KEY_ALIASES", list: AI_KEY_ALIASES, table: "ai_usage_events", column: "key_alias" },
   // D-330: what made an AI call.

@@ -522,6 +522,42 @@ export type Database = {
           },
         ]
       }
+      bank_reference_images: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          note: string | null
+          path: string | null
+          source_ref: string
+          transcript: Json | null
+          transcript_status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: string
+          note?: string | null
+          path?: string | null
+          source_ref: string
+          transcript?: Json | null
+          transcript_status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          note?: string | null
+          path?: string | null
+          source_ref?: string
+          transcript?: Json | null
+          transcript_status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       booking_family_links: {
         Row: {
           hold_id: string
