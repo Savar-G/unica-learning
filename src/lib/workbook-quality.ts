@@ -514,7 +514,8 @@ export async function checkWholeBook(pages: GeneratedPage[], rewrite: (page: Gen
   for (const number of [...new Set(first.issues.map(i => i.page))]) {
     const index = result.findIndex(p => p.number === number);
     const fresh = await rewrite(result[index], first.issues.filter(i => i.page === number));
-    if (!fresh || fresh.fit.status === "failed" || fresh.questions.length !== result[index].questions.length || fresh.questions.some((q, i) => q.slot !== result[index].questions[i].slot)) continue;
+    // (A rewrite with room left is refused, as when room left failed a page's fit, #1248.)
+    if (!fresh || fresh.fit.status === "failed" || fresh.fit.status === "fits" && !!fresh.fit.warnings?.length || fresh.questions.length !== result[index].questions.length || fresh.questions.some((q, i) => q.slot !== result[index].questions[i].slot)) continue;
     const candidate = result.map((p, i) => i === index ? fresh : p);
     const next = workbookQuality(candidate);
     const oldFailures = result[index].questions.filter(q => q.check.status === "failed").length;

@@ -74,6 +74,7 @@ import {
   bookPageContent, dayPageContent, layoutDayPage, mistakesFor, rangeProblem, samAnswer, skillSigns, levelSigns, samFix, samProblem, skillRange, slotRanges, templateMethod, PANEL_SLOTS, SLOT_FORMATS, STRICT_SLOTS,
   type DayLayout, type NumberRange,
 } from "@/lib/workbook-book";
+import { floorOmission, leaveOffFailed, pageFitOf } from "@/lib/workbook-print-rules";
 import { pageId, type Omission, type PageContent, type SlotName } from "@/lib/workbook-page";
 import { planIntros, withIntros, withPlanned, writtenTwoWaysProblem } from "@/lib/workbook-taught";
 import { dayDifficulty, type PageType, type PlannedPage, type PlannedPart, type WorkbookPlan } from "@/lib/workbook-plan";
@@ -665,7 +666,8 @@ export interface GeneratedQuestion {
   gate?: QuestionGateMark;
 }
 
-export type PageFit = { status: "fits" } | { status: "failed"; problems: FitProblem[] } | { status: "not-needed" };
+/** A page's fit (#1248, src/lib/workbook-print-rules.ts): room left on a page with a question is a warning. */
+export type PageFit = { status: "fits"; warnings?: FitProblem[] } | { status: "failed"; problems: FitProblem[] } | { status: "not-needed" };
 
 export interface GeneratedPage {
   /** From 1 at the cover; runs through the whole book. */
@@ -3726,12 +3728,14 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
           w.page.extraGap = extra;
           checked = await check();
         }
-        if (!checked.ok) return `Page ${w.number}: its last complete grid does not fit: ${checked.problems.map(p => p.reason).join(" ")}`;
+        if (!checked.ok && !(w.slots.length > 0 && checked.problems.every(p => p.kind === "fullness"))) return /* #1248: room left warns */ `Page ${w.number}: its last complete grid does not fit: ${checked.problems.map(p => p.reason).join(" ")}`;
       }
       if (!w.page.extraPractice && ["practice", "practice-2", "remember-these", "show-what-you-know"].includes(w.page.type)) {
         const count = w.slots.filter(s => !["spot-the-error", "solve-it-two-ways", "warm-up", "how-do-you-know"].includes(s.place ?? "")).length;
         const floor = minimumFor(w, input.plan.level);
-        if (count < floor) return `Page ${w.number}: capacity could not restore ${floor} planned practice questions; ${count} remain (${w.page.type}, day ${w.day})`;
+        // #1248: below the floor is a warning (an omission on the page), not a failed plan.
+        if (count < floor && w.layout) floorOmission(w.layout, w.page.parts, floor, count);
+        else if (count < floor) return `Page ${w.number}: capacity could not restore ${floor} planned practice questions; ${count} remain (${w.page.type}, day ${w.day})`;
       }
       const oldSlots = w.slots;
       w.page = { ...w.page, parts: w.page.parts.map((p, i) => ({ ...p, items: (w.layout?.slots ?? []).filter(s => s.part === i && s.slot !== "how-do-you-know").reduce((n,s)=>n+s.items,0) + (p.kind === "practice" ? p.faded?.watch ?? 0 : 0) })), capacity: w.layout?.slots, capacityChecked: true };
@@ -4050,7 +4054,7 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
       const content = contentOf(input, w, questions, examples);
       const omissions = omissionsWith(w, leftOut);
       result = {
-        ...page, fit: fit.ok ? { status: "fits" } : { status: "failed", problems: fit.problems }, attempts, questions,
+        ...page, fit: pageFitOf(fit, questions), attempts, questions,
         panelExamples: examples,
         ...(input.itemPolicy === "approved-v1" ? { expected: w.slots.map(s => ({ slot: s.id, part: s.part.kind, place: s.place, ...slotSteps(input, s, w.day) })) } : {}),
         ...(content ? { content } : {}), ...(omissions.length ? { omissions } : {}),
@@ -4214,16 +4218,16 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
         }
       }
       const fit = await deps.fit.fits(fitPage(w, page.qrToken, finalQuestions, content), book);
-      return { ...page, questions: finalQuestions, ...(swapped.size ? { panelExamples: examples } : {}), ...(content ? { content } : {}), fit: fit.ok ? { status: "fits" } : { status: "failed", problems: fit.problems } };
+      return { ...page, questions: finalQuestions, ...(swapped.size ? { panelExamples: examples } : {}), ...(content ? { content } : {}), fit: pageFitOf(fit, finalQuestions) };
     });
     quality = reviewed.quality;
     // G1: the personal book checks read the printed book: the warm-up's fact families (item 4) and the interest share
     // (item 5). A failure is a whole-book issue on its page; with no signals there are none.
     quality = withPersonalIssues(input, reviewed.pages, quality);
-    pages = reviewed.pages.map(p => {
-      const issues = quality!.issues.filter(i => i.page === p.number);
-      return issues.length ? { ...p, fit: { status: "failed" as const, problems: [...(p.fit.status === "failed" ? p.fit.problems : []), ...issues.map(i => ({ question: null, reason: `whole-book check: ${i.reason}` }))] } } : p;
-    });
+    // #1248: whole-book issues are warnings (in the quality, never in a page's fit); a failed question is left off its page.
+    const printed = await leaveOffFailed(reviewed.pages, (p) => { const w = byNumber.get(p.number); return w ? deps.fit.fits(fitPage(w, p.qrToken, p.questions, p.content ?? null), book) : null; });
+    pages = printed.pages;
+    if (printed.changed) quality = withPersonalIssues(input, pages, workbookQuality(pages));
     // Checkpoints keep pre-review pages. These code-only repairs are deterministic
     // and repeat after a resume without spending another provider call.
     // The plan page says "about N minutes" from the book's own day estimates, their mean to the nearest five (D-229: a
@@ -4404,6 +4408,7 @@ export async function reviseWorkbookPage(input: GenerateInput, deps: GenerateDep
   const fit = await deps.fit.fits(fitPage(w, page.qrToken, questions, content), {
     id: input.workbookId, childId: input.childId, number: input.number, levels: [input.plan.level], profileBuild: input.profileBuild,
   });
-  if (!fit.ok) throw new Error(`The page does not fit: ${fit.problems.map((p) => p.reason).join(" ")}`);
-  return next;
+  const pageFit = pageFitOf(fit, questions);
+  if (pageFit.status === "failed") throw new Error(`The page does not fit: ${pageFit.problems.map((p) => p.reason).join(" ")}`);
+  return { ...next, fit: pageFit };
 }

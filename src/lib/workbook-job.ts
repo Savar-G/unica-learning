@@ -64,6 +64,7 @@ import {
   type WorkbookDraftStore,
 } from "@/lib/workbook-generator";
 import { planNextWorkbook } from "@/lib/workbook-placement";
+import { draftReviewProblems } from "@/lib/workbook-print-rules";
 import { instructionsEmpty, type WorkbookInstructions } from "@/lib/workbook-instructions";
 import { skillUnits } from "@/lib/workbook-teaching-frame";
 import type { WorkbookPlan, PlanInput } from "@/lib/workbook-plan";
@@ -509,17 +510,7 @@ const PROOF_SIZE = { width: Math.round(PRINT_PAGE.width * IMAGE_SCALE), height: 
  * Renders the draft and stores the files: the pages that render, with their PDF, and a proof image of each page that
  * does not, with its problems. Returns the paths stored, so a refused finish removes them.
  */
-/**
- * The failures a reviewer must see on a page besides the render's, as the sample books mark them (#380, R379-4-1):
- * each failed question (one with no package names no question: its slot has a placeholder) and each fit check failure.
- */
-export function draftReviewProblems(draft: GeneratedWorkbook): RenderProblem[] {
-  return [
-    ...draft.pages.flatMap((p) => p.questions.flatMap((q) => (q.check.status === "failed"
-      ? [{ page: p.number, question: q.package ? q.number : null, reason: `question ${q.number} failed: ${q.check.reason}` }] : []))),
-    ...draft.pages.flatMap((p) => (p.fit.status === "failed" ? p.fit.problems.map((x) => ({ page: p.number, question: x.question, reason: `fit check: ${x.reason}` })) : [])),
-  ];
-}
+export { draftReviewProblems };
 
 async function renderDraft(draft: GeneratedWorkbook, parentId: string, deps: WorkbookJobDeps) {
   // A page with a failed question or a failed fit check is shown as a proof, even when it renders (R379-4-1).
