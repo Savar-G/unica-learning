@@ -6,6 +6,7 @@ import {
   type PageRecord,
   type ReferenceRecord,
 } from "@/lib/reference-record";
+import { findEmptyAnswers } from "./answers";
 import {
   collectUnnamedTeachingMarks,
   compareExamples,
@@ -32,6 +33,7 @@ export interface PageComparisonSummary {
   once_read: RecordDifference[];
   both_unclear: RecordDifference[];
   one_unclear: RecordDifference[];
+  empty_answer: RecordDifference[];
   needs_person_read: boolean;
 }
 
@@ -110,7 +112,10 @@ function comparePageRecords(a: PageRecord, b: PageRecord, diffs: RecordDifferenc
       { teaching: true, mode: "prose" },
       diffs,
     );
-    compareScaffolds(`${sPath}.scaffolds`, sa.scaffolds, sb.scaffolds, diffs);
+    compareScaffolds(`${sPath}.scaffolds`, sa.scaffolds, sb.scaffolds, diffs, {
+      a: sa.items.map((item) => item.n),
+      b: sb.items.map((item) => item.n),
+    });
     comparePageItems(`${sPath}.items`, sa.items, sb.items, diffs);
   }
 }
@@ -191,6 +196,57 @@ export function needsPersonRead(record: ReferenceRecord | null | undefined): boo
   return false;
 }
 
+const PATH_TOKEN_RE = /([A-Za-z_]+)|\[(\d+)\]|\[n=(\d+)\]|\[b:(\d+)\]/g;
+
+// Follows a comparison path (with "[n=3]" item and step keys and "[b:1]" reader-b-only entries)
+// through a record. Returns the JSON path of the place in that record and the value there.
+function resolveDiffPath(record: unknown, path: string): { jsonPath: string; value: unknown } {
+  let node: unknown = record;
+  let out = "";
+  for (const m of path.matchAll(PATH_TOKEN_RE)) {
+    const [, name, index, keyN, bIndex] = m;
+    if (name !== undefined) {
+      out += out ? `.${name}` : name;
+      node = typeof node === "object" && node !== null ? (node as Record<string, unknown>)[name] : undefined;
+    } else if (index !== undefined) {
+      out += `[${index}]`;
+      node = Array.isArray(node) ? node[Number(index)] : undefined;
+    } else if (keyN !== undefined) {
+      const n = Number(keyN);
+      const found = Array.isArray(node)
+        ? node.findIndex((e) => typeof e === "object" && e !== null && (e as { n?: unknown }).n === n)
+        : -1;
+      // Steps are numbered from 1 without gaps, so a missing step n belongs at index n - 1.
+      out += `[${found === -1 ? n - 1 : found}]`;
+      node = found === -1 ? undefined : (node as unknown[])[found];
+    } else if (bIndex !== undefined) {
+      out += "[]";
+      node = undefined;
+    }
+  }
+  return { jsonPath: out, value: node };
+}
+
+// The final record holds reader a's content. A once-read entry says which reader has it and where
+// it belongs in the final record, so that a person can copy it after a look at the photo.
+function locateOnceRead(d: RecordDifference, finalRecord: ReferenceRecord): RecordDifference {
+  const reader: "a" | "b" = d.a !== null && d.a !== undefined ? "a" : "b";
+  return { ...d, reader, final_path: resolveDiffPath(finalRecord, d.path).jsonPath };
+}
+
+export function emptyAnswerDiffs(
+  finalRecord: ReferenceRecord | null,
+  a: ReferenceRecord | null,
+  b: ReferenceRecord | null,
+): RecordDifference[] {
+  return findEmptyAnswers(finalRecord).map((path) => ({
+    path,
+    a: a ? (resolveDiffPath(a, `${path}.answer`).value ?? null) : null,
+    b: b ? (resolveDiffPath(b, `${path}.answer`).value ?? null) : null,
+    kind: "empty_answer",
+  }));
+}
+
 export function classifyComparison(
   a: ReferenceRecord | null,
   b: ReferenceRecord | null,
@@ -200,7 +256,9 @@ export function classifyComparison(
   const differences = allDiffs.filter(
     (d) => d.kind === "value" || d.kind === "order" || d.kind === "one_unclear",
   );
-  const onceRead = allDiffs.filter((d) => d.kind === "once_read");
+  const onceRead = allDiffs
+    .filter((d) => d.kind === "once_read")
+    .map((d) => (a ? locateOnceRead(d, a) : d));
   const bothUnclear = allDiffs.filter((d) => d.kind === "both_unclear");
 
   return {
@@ -208,6 +266,7 @@ export function classifyComparison(
     once_read: onceRead,
     both_unclear: bothUnclear,
     one_unclear: oneUnclear,
+    empty_answer: emptyAnswerDiffs(a ?? b, a, b),
     needs_person_read: needsPersonRead(a) || needsPersonRead(b),
   };
 }
@@ -230,7 +289,9 @@ export function decideStatus(input: {
       d.kind === "value" ||
       d.kind === "order" ||
       d.kind === "one_unclear" ||
-      d.kind === "once_read",
+      d.kind === "both_unclear" ||
+      d.kind === "once_read" ||
+      d.kind === "empty_answer",
   );
   return hasBlocking ? "machine_read" : "double_read";
 }

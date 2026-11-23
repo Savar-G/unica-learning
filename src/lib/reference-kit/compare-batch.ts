@@ -162,6 +162,13 @@ function syncManifestSourceRefs(
   }
 }
 
+// The final record holds reader a's content. When both readers read the same photo, it names both.
+function withBothReaders(chosen: ReferenceRecord, pair: PairedPage): ReferenceRecord {
+  if (!pair.recA || !pair.recB || !pair.sameDigest) return chosen;
+  const readers = [...new Set([...(pair.recA.readers ?? []), ...(pair.recB.readers ?? [])])];
+  return readers.length > 0 ? { ...chosen, readers } : chosen;
+}
+
 export function compareWorkFolder(opts: {
   workDir: string;
   repoRoot: string;
@@ -251,6 +258,7 @@ export function compareWorkFolder(opts: {
         once_read: classified.once_read,
         both_unclear: classified.both_unclear,
         one_unclear: classified.one_unclear,
+        empty_answer: classified.empty_answer,
         needs_person_read: classified.needs_person_read,
         unnamed_teaching_marks: unnamedTeachingMarks,
         reader_notes: { a: pair.notesA, b: pair.notesB },
@@ -283,6 +291,7 @@ export function compareWorkFolder(opts: {
         once_read: classified.once_read,
         both_unclear: classified.both_unclear,
         one_unclear: classified.one_unclear,
+        empty_answer: classified.empty_answer,
         needs_person_read: classified.needs_person_read,
         unnamed_teaching_marks: unnamedTeachingMarks,
         reader_notes: { a: pair.notesA, b: pair.notesB },
@@ -295,7 +304,7 @@ export function compareWorkFolder(opts: {
       hasB: pair.recB !== null,
       familyA: slotA.meta?.family ?? null,
       familyB: slotB.meta?.family ?? null,
-      diffs: allDiffs,
+      diffs: [...allDiffs, ...classified.empty_answer],
       sameDigest: pair.sameDigest,
     });
 
@@ -306,7 +315,8 @@ export function compareWorkFolder(opts: {
       previousHash !== undefined &&
       existsSync(finalRecordPath) &&
       sha256OfFile(finalRecordPath) !== previousHash;
-    const finalText = `${JSON.stringify(chosen, null, 2)}\n`;
+    const finalRecord = withBothReaders(chosen, pair);
+    const finalText = `${JSON.stringify(finalRecord, null, 2)}\n`;
     const pageStatus: PageStatus = editedByPerson ? "machine_read" : status;
     statusMap[sourceRef] = pageStatus;
 
@@ -314,7 +324,7 @@ export function compareWorkFolder(opts: {
       writeSafeOutputFile(finalRecordPath, finalText, repoRoot);
       writeSafeOutputFile(
         join(viewDir, `${slug}.md`),
-        `${renderRecordToMarkdown(chosen)}\n`,
+        `${renderRecordToMarkdown(finalRecord)}\n`,
         repoRoot,
       );
     }
@@ -335,6 +345,7 @@ export function compareWorkFolder(opts: {
       once_read: classified.once_read,
       both_unclear: classified.both_unclear,
       one_unclear: classified.one_unclear,
+      empty_answer: classified.empty_answer,
       needs_person_read: classified.needs_person_read,
       unnamed_teaching_marks: unnamedTeachingMarks,
       reader_notes: { a: pair.notesA, b: pair.notesB },

@@ -55,6 +55,8 @@ export interface PageCompareReport {
   once_read: RecordDifference[];
   both_unclear: RecordDifference[];
   one_unclear: RecordDifference[];
+  // Answer places of the final record with no answer. Absent in reports of older runs.
+  empty_answer?: RecordDifference[];
   needs_person_read: boolean;
   unnamed_teaching_marks: UnnamedTeachingMark[];
   reader_notes: { a: string[]; b: string[] };
@@ -98,12 +100,14 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
 
   lines.push("## Summary");
   lines.push("");
-  lines.push("| Page | Photo | Status | Differences | Once-read | Both unclear | Person read |");
-  lines.push("|---|---|---|---:|---:|---:|---|");
+  lines.push(
+    "| Page | Photo | Status | Differences | Once-read | Both unclear | Empty answers | Person read |",
+  );
+  lines.push("|---|---|---|---:|---:|---:|---:|---|");
   for (const p of report.pages) {
     const photoCol = p.original_name ?? p.photo ?? "-";
     lines.push(
-      `| ${p.source_ref} | ${photoCol} | ${p.status} | ${p.differences.length} | ${p.once_read.length} | ${p.both_unclear.length} | ${p.needs_person_read ? "yes" : "no"} |`,
+      `| ${p.source_ref} | ${photoCol} | ${p.status} | ${p.differences.length} | ${p.once_read.length} | ${p.both_unclear.length} | ${(p.empty_answer ?? []).length} | ${p.needs_person_read ? "yes" : "no"} |`,
     );
   }
   lines.push("");
@@ -269,16 +273,37 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
     }
 
     if (p.once_read.length > 0) {
-      lines.push("- Once-read teaching fields:");
+      lines.push(
+        "- Once-read teaching fields (look at the photo; copy an entry that is on the page into the final record at the given path, where \"[]\" means the end of that list):",
+      );
       for (const d of p.once_read) {
-        lines.push(`  - \`${d.path}\`: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
+        if (d.reader && d.final_path !== undefined) {
+          const entry = d.reader === "a" ? d.a : d.b;
+          const where =
+            d.reader === "a" ? "already in the final record at" : "belongs in the final record at";
+          lines.push(
+            `  - \`${d.path}\`: only reader ${d.reader} has it; ${where} \`${d.final_path}\`: ${formatVal(entry)}`,
+          );
+        } else {
+          lines.push(`  - \`${d.path}\`: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
+        }
       }
     }
 
     if (p.both_unclear.length > 0) {
-      lines.push("- Both readers marked unclear:");
+      lines.push(
+        '- Both readers marked unclear (look at the photo and write the value, or keep "unclear" and mark the page checked):',
+      );
       for (const d of p.both_unclear) {
         lines.push(`  - \`${d.path}\``);
+      }
+    }
+
+    const emptyAnswers = p.empty_answer ?? [];
+    if (emptyAnswers.length > 0) {
+      lines.push('- Answer places with no answer (write the answer from the photo, or "unclear"):');
+      for (const d of emptyAnswers) {
+        lines.push(`  - \`${d.path}\`: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
       }
     }
 
@@ -292,6 +317,7 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
       p.differences.length === 0 &&
       p.once_read.length === 0 &&
       p.both_unclear.length === 0 &&
+      emptyAnswers.length === 0 &&
       p.unnamed_teaching_marks.length === 0 &&
       !p.only_in_reader &&
       !p.digest_mismatch &&

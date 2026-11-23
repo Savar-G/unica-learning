@@ -80,10 +80,12 @@ describe("renderRecordToMarkdown", () => {
       topics: [
         { n: 1, title: "Warmup sums", sheets: [1, 10], std_time_min: [2, 3] },
         { n: 2, title: "Equal groups", sheets: [11, 20], std_time_min: [3, 5] },
+        { n: 3, title: "Sharing out", sheets: null, std_time_min: [4, 6] },
       ],
     };
 
     const md = renderRecordToMarkdown(contents);
+    expect(md).toContain("| 3 | Sharing out | not printed | 4–6 min |");
     expect(md).toContain("# demo:Z:contents");
     expect(md).toContain("Warmup sums");
     expect(md).toContain("1–10");

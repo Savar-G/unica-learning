@@ -1,5 +1,6 @@
 import {
   NOT_STATED,
+  UNCLEAR,
   validateReferenceRecord,
   type ReferenceRecord,
   type ValidationError,
@@ -93,6 +94,24 @@ export function extractJsonFromModelOutput(
   return { ok: false, error: "Could not extract a valid JSON object from model output" };
 }
 
+// topic.title is the full printed title with any number at its end. A reader that still splits
+// off a positive integer number gets it put back at the end of the title, and topic.number is
+// dropped. A null or sentinel number is left as it is.
+function foldTopicNumber(obj: Record<string, unknown>): void {
+  const topic = obj.topic;
+  if (typeof topic !== "object" || topic === null || Array.isArray(topic)) return;
+  const { number, ...rest } = topic as Record<string, unknown>;
+  if (typeof number !== "number" || !Number.isInteger(number) || number < 1) return;
+  const title = rest.title;
+  if (title === null || title === undefined || (typeof title === "string" && !title.trim())) {
+    rest.title = String(number);
+  } else if (typeof title === "string" && title !== UNCLEAR && title !== NOT_STATED) {
+    const tokens = title.trim().split(/\s+/);
+    if (tokens[tokens.length - 1] !== String(number)) rest.title = `${title.trim()} ${number}`;
+  }
+  obj.topic = rest;
+}
+
 export function assembleCandidateRecord(
   parsed: unknown,
   sourceKey: string,
@@ -156,6 +175,7 @@ export function assembleCandidateRecord(
     }
   }
 
+  if (obj.kind === "page") foldTopicNumber(obj);
   obj.readers = [readerLabel];
   return { candidate: obj, extraErrors };
 }

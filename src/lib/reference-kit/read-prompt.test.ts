@@ -145,4 +145,24 @@ describe("REFERENCE_READ_PROMPT", () => {
     expect(REFERENCE_READ_PROMPT).toMatch(/shows_other.*never.*"unclear"|never.*"unclear".*shows_other/i);
     expect(REFERENCE_READ_PROMPT).toMatch(/other.*scaffold.*never.*"unclear"|other.*mark.*never.*"unclear"|real descriptive text/i);
   });
+
+  it("states the title, printed answer, pencil, divider, and unprinted sheet range rules", () => {
+    expect(REFERENCE_READ_PROMPT).toMatch(/full printed title, exactly as printed, with any number at its end/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/never write `topic\.number`/i);
+    expect(REFERENCE_READ_PROMPT).toMatch(/pencil or pen writing in an answer place .* NEVER recorded/i);
+    expect(REFERENCE_READ_PROMPT).toMatch(/answer_source "printed" only when it is clearly printed type/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/divider or border lines .* not record them as example marks or scaffolds/i);
+    expect(REFERENCE_READ_PROMPT).toMatch(/null when the chart does not print a sheet range/);
+
+    const jsonBlocks = extractJsonBlocksFromPrompt(REFERENCE_READ_PROMPT) as Array<
+      Record<string, unknown>
+    >;
+    const pageExample = jsonBlocks.find((obj) => obj.kind === "page");
+    expect(pageExample?.topic).not.toHaveProperty("number");
+    const contentsExample = jsonBlocks.find((obj) => obj.kind === "contents");
+    const topics = contentsExample?.topics as Array<Record<string, unknown>>;
+    expect(topics.some((t) => t.sheets === null)).toBe(true);
+    expect(JSON.stringify(jsonBlocks)).not.toContain('"answer_source":"reader"');
+  });
 });
+

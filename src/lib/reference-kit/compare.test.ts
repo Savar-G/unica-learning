@@ -1,7 +1,8 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { NOT_STATED, UNCLEAR, type PageRecord } from "@/lib/reference-record";
+import { NOT_STATED, UNCLEAR, type ContentsRecord, type PageRecord } from "@/lib/reference-record";
 import {
+  classifyComparison,
   compareRecords,
   decideStatus,
   needsPersonRead,
@@ -773,22 +774,119 @@ describe("compareRecords", () => {
   });
 });
 
+describe("answer sources, scaffold lists, once-read places, empty answers, and unprinted sheet ranges", () => {
+  it("reports printed against not printed as a difference, but not reader against unchecked or computed", () => {
+    const withSource = (source: "printed" | "reader" | "unchecked" | "computed") => {
+      const page = makePage();
+      page.sections[0].items[0].responses[0].answer_source = source;
+      return page;
+    };
+    expect(compareRecords(withSource("reader"), withSource("unchecked"))).toEqual([]);
+    expect(compareRecords(withSource("reader"), withSource("computed"))).toEqual([]);
+    expect(compareRecords(withSource("printed"), withSource("computed"))).toEqual([
+      {
+        path: "sections[0].items[n=1].responses[0].answer_source",
+        a: "printed",
+        b: "computed",
+        kind: "value",
+      },
+    ]);
+  });
+
+  it("treats a scaffold list that names every item of its section as \"all\"", () => {
+    const strip = (appliesTo: number[] | "all") => ({
+      kind: "number_strip" as const,
+      applies_to: appliesTo,
+      values: [1, 2, 3],
+    });
+    const a = makePage();
+    const b = makePage();
+    a.sections[0].scaffolds = [strip([3, 1, 2])];
+    b.sections[0].scaffolds = [strip("all")];
+    expect(compareRecords(a, b)).toEqual([]);
+
+    a.sections[0].scaffolds = [strip([1, 2])];
+    expect(compareRecords(a, b).map((d) => d.path)).toEqual(["sections[0].scaffolds[0].applies_to"]);
+  });
+
+  it("gives each once-read entry its reader and its JSON path in the final record", () => {
+    const a = makePage();
+    const b = makePage();
+    const arrow = { kind: "arrow" as const, applies_to: [2], label: "carry" };
+    b.sections[0].scaffolds = [arrow];
+    b.sections[0].items[2].responses[0].cue = "Sample cue";
+    a.examples = [
+      {
+        position: "top",
+        relation: "compare",
+        parts: [{ form: "horizontal", expr: null }],
+        steps: [{ n: 1, shows: "setup", printed: "1 + 1" }],
+      },
+    ];
+    b.examples = [
+      {
+        position: "top",
+        relation: "compare",
+        parts: [{ form: "horizontal", expr: null }],
+        steps: [
+          { n: 1, shows: "setup", printed: "1 + 1" },
+          { n: 2, shows: "answer", printed: "2" },
+        ],
+      },
+    ];
+    const once = classifyComparison(a, b).once_read;
+    expect(once).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "sections[0].scaffolds[b:0]", reader: "b", final_path: "sections[0].scaffolds[]", b: arrow }),
+        expect.objectContaining({ path: "sections[0].items[n=3].responses[0].cue", reader: "b", final_path: "sections[0].items[2].responses[0].cue", b: "Sample cue" }),
+        expect.objectContaining({ path: "examples[0].steps[n=2]", reader: "b", final_path: "examples[0].steps[1]" }),
+      ]),
+    );
+    expect(once).toHaveLength(3);
+  });
+
+  it("lists empty answer places of the final record with both readers' answers", () => {
+    const a = makePage();
+    const b = makePage();
+    a.sections[0].items[1].responses[0] = { position: "after_equals", cue: null, answer: null, answer_source: "unchecked" };
+    const summary = classifyComparison(a, b);
+    expect(summary.empty_answer).toEqual([
+      { path: "sections[0].items[n=2].responses[0]", a: null, b: "26", kind: "empty_answer" },
+    ]);
+    expect(classifyComparison(b, a).empty_answer).toEqual([]);
+  });
+
+  it("compares unprinted sheet ranges (null) of a contents chart", () => {
+    const contents = (sheets: [number, number] | null): ContentsRecord => ({
+      kind: "contents",
+      source_ref: "sample:M:contents",
+      topics: [{ n: 1, title: "Sample Topic", sheets, std_time_min: [2, 3] }],
+    });
+    expect(compareRecords(contents(null), contents(null))).toEqual([]);
+    expect(compareRecords(contents(null), contents([1, 10]))).toEqual([
+      { path: "topics[n=1].sheets", a: null, b: [1, 10], kind: "value" },
+    ]);
+  });
+});
+
 describe("decideStatus", () => {
   it("returns double_read only for two different families with no open diffs or once_read", () => {
     expect(
       decideStatus({ hasA: true, hasB: true, familyA: "claude", familyB: "codex", diffs: [] }),
     ).toBe("double_read");
 
-    // both_unclear still allows double_read
-    expect(
-      decideStatus({
-        hasA: true,
-        hasB: true,
-        familyA: "claude",
-        familyB: "codex",
-        diffs: [{ path: "topic.title", a: UNCLEAR, b: UNCLEAR, kind: "both_unclear" }],
-      }),
-    ).toBe("double_read");
+    // A value that both readers mark unclear, or an empty answer place, is not a double read
+    for (const kind of ["both_unclear", "empty_answer"] as const) {
+      expect(
+        decideStatus({
+          hasA: true,
+          hasB: true,
+          familyA: "claude",
+          familyB: "codex",
+          diffs: [{ path: "topic.title", a: UNCLEAR, b: UNCLEAR, kind }],
+        }),
+      ).toBe("machine_read");
+    }
 
     // same family -> machine_read
     expect(

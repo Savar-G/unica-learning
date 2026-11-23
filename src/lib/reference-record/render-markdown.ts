@@ -221,7 +221,11 @@ function renderContentsMarkdown(contents: ContentsRecord): string {
   lines.push("| # | Topic | Sheets | Std time |");
   lines.push("|---:|---|---|---|");
   for (const t of contents.topics) {
-    const sheets = Array.isArray(t.sheets) ? `${t.sheets[0]}–${t.sheets[1]}` : String(t.sheets);
+    const sheets = Array.isArray(t.sheets)
+      ? `${t.sheets[0]}–${t.sheets[1]}`
+      : t.sheets === null
+        ? "not printed"
+        : String(t.sheets);
     const time =
       t.std_time_min === null
         ? "-"

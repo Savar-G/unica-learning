@@ -32,9 +32,22 @@ describe("formatCompareReportMarkdown", () => {
           only_in_reader: null,
           digest_mismatch: { a: "1".repeat(64), b: "2".repeat(64) },
           differences: [{ path: "topic.title", a: "Add", b: "Sub", kind: "value" }],
-          once_read: [{ path: "examples[0]", a: {}, b: null, kind: "once_read" }],
+          once_read: [
+            { path: "examples[0]", a: {}, b: null, kind: "once_read" },
+            {
+              path: "sections[0].scaffolds[b:1]",
+              a: null,
+              b: { kind: "arrow", applies_to: [2], label: "carry" },
+              kind: "once_read",
+              reader: "b",
+              final_path: "sections[0].scaffolds[]",
+            },
+          ],
           both_unclear: [{ path: "topic.number", a: "unclear", b: "unclear", kind: "both_unclear" }],
           one_unclear: [],
+          empty_answer: [
+            { path: "sections[0].items[n=2].responses[0]", a: null, b: "9", kind: "empty_answer" },
+          ],
           needs_person_read: true,
           unnamed_teaching_marks: [
             { kind: "step", path: "examples[0].steps[n=1]", description: "split tens", reader: "both" },
@@ -81,8 +94,13 @@ describe("formatCompareReportMarkdown", () => {
     };
 
     const md = formatCompareReportMarkdown(report);
-    expect(md).toContain("| sample:M:3a | IMG_0001.jpg | double_read | 0 | 0 | 0 | no |");
-    expect(md).toContain("| sample:M:4a | IMG_0002.jpg | machine_read | 1 | 1 | 1 | yes |");
+    expect(md).toContain("| sample:M:3a | IMG_0001.jpg | double_read | 0 | 0 | 0 | 0 | no |");
+    expect(md).toContain("| sample:M:4a | IMG_0002.jpg | machine_read | 1 | 2 | 1 | 1 | yes |");
+    expect(md).toContain(
+      '`sections[0].scaffolds[b:1]`: only reader b has it; belongs in the final record at `sections[0].scaffolds[]`: {"kind":"arrow","applies_to":[2],"label":"carry"}',
+    );
+    expect(md).toContain('keep "unclear" and mark the page checked');
+    expect(md).toContain('`sections[0].items[n=2].responses[0]`: a=null | b="9"');
     expect(md).toContain("## Too small to read");
     expect(md).toContain("IMG_0004.jpg");
     expect(md).toContain("800 x 600");
