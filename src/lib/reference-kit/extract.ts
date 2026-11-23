@@ -6,6 +6,7 @@ import {
   writeSafeOutputFile,
 } from "@/lib/reference-record";
 import { compareWorkFolder, type CompareWorkReport } from "./compare-batch";
+import { killActiveReaders } from "./read-cli";
 import { openPageShelter, type PageShelter, type ShelterCategory } from "./extract-shelter";
 import {
   findHumanCheckedRefs,
@@ -314,6 +315,8 @@ async function readOnePhoto(ctx: RunContext, photo: ReadyPhoto, prefix: string):
   // Ctrl-C or a stop signal while a reader runs: put the old files of this page back, then stop.
   const onSignal = (signal: NodeJS.Signals): void => {
     try {
+      // First stop the readers, then put the files back: a reader must not see a restored record.
+      killActiveReaders();
       shelter.close();
     } finally {
       process.exit(signal === "SIGINT" ? 130 : 143);

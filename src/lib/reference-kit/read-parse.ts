@@ -111,7 +111,9 @@ export function assembleCandidateRecord(
   const hasSheet = "sheet" in obj && obj.sheet !== undefined;
 
   if (hasLevel || hasSheet) {
-    const level = typeof obj.level === "string" ? obj.level.trim() : "";
+    // The level is stored in upper case: "m" and "M" are one level, and file names must not differ
+    // only in letter case.
+    const level = typeof obj.level === "string" ? obj.level.trim().toUpperCase() : "";
     const sheet = typeof obj.sheet === "string" ? obj.sheet.trim() : "";
     delete obj.level;
     delete obj.sheet;

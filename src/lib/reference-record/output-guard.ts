@@ -87,6 +87,19 @@ export function isPathInsideDir(candidatePath: string, containerDir: string): bo
   return firstComponent !== "..";
 }
 
+// A bare repository has no ".git" entry: the folder itself holds HEAD, objects and refs.
+function looksLikeBareGitRepo(dir: string): boolean {
+  try {
+    return (
+      lstatSync(join(dir, "HEAD")).isFile() &&
+      lstatSync(join(dir, "objects")).isDirectory() &&
+      lstatSync(join(dir, "refs")).isDirectory()
+    );
+  } catch {
+    return false;
+  }
+}
+
 function findGitAncestor(candidatePath: string): string | null {
   let cursor = resolveRealPath(candidatePath);
   while (true) {
@@ -99,6 +112,7 @@ function findGitAncestor(candidatePath: string): string | null {
         } catch {
           // no .git entry in this ancestor
         }
+        if (looksLikeBareGitRepo(cursor)) return cursor;
       }
     } catch {
       // ancestor does not exist yet; keep walking up

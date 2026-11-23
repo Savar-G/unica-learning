@@ -171,4 +171,24 @@ describe("assertOutsideRepo", () => {
     );
     expect(() => assertOutsideRepo(join(normalOutside, "private-out"), repo)).not.toThrow();
   });
+
+  it("refuses output paths inside a bare git repository, which has no .git entry", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-guard-repo-"));
+    const bare = mkdtempSync(join(tmpdir(), "ref-guard-bare-"));
+    const lookalike = mkdtempSync(join(tmpdir(), "ref-guard-lookalike-"));
+    tempDirs.push(repo, bare, lookalike);
+    writeFileSync(join(bare, "HEAD"), "ref: refs/heads/main\n", "utf8");
+    mkdirSync(join(bare, "objects"));
+    mkdirSync(join(bare, "refs"));
+    // A folder that only has a file named HEAD is not a repository.
+    writeFileSync(join(lookalike, "HEAD"), "notes\n", "utf8");
+
+    expect(() => assertOutsideRepo(join(bare, "reference-work"), repo)).toThrow(
+      /inside a git repository/i,
+    );
+    expect(() => prepareSafeOutputDir(join(bare, "reference-work"), repo)).toThrow(
+      /inside a git repository/i,
+    );
+    expect(() => assertOutsideRepo(join(lookalike, "out"), repo)).not.toThrow();
+  });
 });

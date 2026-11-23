@@ -372,8 +372,9 @@ export function pickPageWinners(pairs: readonly PairedPage[]): {
   const conflicts: SamePageIdConflict[] = [];
   for (const [ref, group] of byRef) {
     if (group.length < 2) continue;
+    // Agreement counts only when both readings come from the same photo.
     const agreeing = group.filter(
-      (p) => p.recA?.source_ref === ref && p.recB?.source_ref === ref,
+      (p) => !p.digestMismatch && p.recA?.source_ref === ref && p.recB?.source_ref === ref,
     );
     const winner = [...(agreeing.length > 0 ? agreeing : group)].sort(compareByOriginalName)[0];
     for (const pair of [...group].sort(compareByOriginalName)) {

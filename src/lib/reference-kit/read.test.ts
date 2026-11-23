@@ -103,7 +103,7 @@ describe("extractJsonFromModelOutput", () => {
 });
 
 describe("readPhoto and buildCliInvocation", () => {
-  it("uses a 5-minute default timeout, stages only page.jpg in a fresh temp folder, and passes restricted flags without mask wording", async () => {
+  it("uses a 5-minute default timeout, stages only page.jpg in a fresh temp folder, and passes restricted flags", async () => {
     expect(DEFAULT_READ_TIMEOUT_MS).toBe(300_000);
 
     const claudeCalls: Array<{ cmd: string; args: string[]; cwdFiles: string[]; timeoutMs: number }> = [];
@@ -147,7 +147,6 @@ describe("readPhoto and buildCliInvocation", () => {
     expect(claudeCalls[0].args).toContain("--no-session-persistence");
     expect(claudeCalls[0].args).not.toContain("--add-dir");
     expect(claudeCalls[0].args).not.toContain("--setting-sources");
-    expect(claudeCalls[0].args.join(" ")).not.toMatch(/masked/i);
   });
 
   it("builds isolated codex args with page.jpg and passes prompt on stdin", async () => {

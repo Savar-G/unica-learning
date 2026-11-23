@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { join } from "node:path";
 
 export type ReaderFamily = "claude" | "codex";
@@ -118,6 +118,15 @@ export function buildCliInvocation(opts: {
   return { cmd: "codex", args, stdin: opts.prompt };
 }
 
+const activeReaders = new Set<ChildProcess>();
+
+// Stops every reader process at once. A stopped reader cannot read anything that the kit puts
+// back on disk afterwards.
+export function killActiveReaders(): void {
+  for (const child of activeReaders) child.kill("SIGKILL");
+  activeReaders.clear();
+}
+
 export const spawnCli: RunCli = (cmd, args, opts) => {
   return new Promise((resolveRun) => {
     const child = spawn(cmd, args, {
@@ -133,10 +142,14 @@ export const spawnCli: RunCli = (cmd, args, opts) => {
 
     // When this process stops (also after Ctrl-C), a reader that still runs is stopped too.
     const killOnExit = (): void => {
-      child.kill("SIGTERM");
+      child.kill("SIGKILL");
     };
+    activeReaders.add(child);
     process.once("exit", killOnExit);
-    child.once("close", () => process.off("exit", killOnExit));
+    child.once("close", () => {
+      activeReaders.delete(child);
+      process.off("exit", killOnExit);
+    });
 
     const timer = setTimeout(() => {
       timedOut = true;
