@@ -8,9 +8,9 @@ import { fakeWorkbookItems } from "@/lib/workbook-ai-fake";
 import { curriculumFor } from "@/lib/workbook-curriculum";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import {
-  generateWorkbook, pageFitOf, pageWarnings, prepareWorkbookCapacity, withoutFailedQuestions, workbookCapacityPlan,
-  type FitCheck, type FitResult, type GeneratedPage, type GeneratedWorkbook, type GenerateInput,
+  generateWorkbook, prepareWorkbookCapacity, workbookCapacityPlan, type FitCheck, type FitResult, type GeneratedPage, type GeneratedWorkbook, type GenerateInput,
 } from "@/lib/workbook-generator";
+import { pageFitOf, pageWarnings, withoutFailedQuestions } from "@/lib/workbook-print-rules";
 import { draftReviewProblems, type DraftRendering } from "@/lib/workbook-job";
 import { planNextWorkbook } from "@/lib/workbook-placement";
 import { reviewDays } from "@/lib/workbook-review-days";

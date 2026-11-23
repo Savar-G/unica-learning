@@ -74,7 +74,8 @@ import {
   bookPageContent, dayPageContent, layoutDayPage, mistakesFor, rangeProblem, samAnswer, skillSigns, levelSigns, samFix, samProblem, skillRange, slotRanges, templateMethod, PANEL_SLOTS, SLOT_FORMATS, STRICT_SLOTS,
   type DayLayout, type NumberRange,
 } from "@/lib/workbook-book";
-import { pageId, type Block, type Omission, type PageContent, type SlotName } from "@/lib/workbook-page";
+import { floorOmission, leaveOffFailed, pageFitOf } from "@/lib/workbook-print-rules";
+import { pageId, type Omission, type PageContent, type SlotName } from "@/lib/workbook-page";
 import { planIntros, withIntros, withPlanned, writtenTwoWaysProblem } from "@/lib/workbook-taught";
 import { dayDifficulty, type PageType, type PlannedPage, type PlannedPart, type WorkbookPlan } from "@/lib/workbook-plan";
 import { estimatedDayMinutes, generatedDayTime, scheduledItemProblem } from "@/lib/workbook-feedback-check";
@@ -665,40 +666,8 @@ export interface GeneratedQuestion {
   gate?: QuestionGateMark;
 }
 
-/**
- * A page's fit (#1248): failed only by what prints wrong (content past the content area or the page, a layout check, a
- * page with no question). Room left on a page with a question (the fit check's "fullness") is a warning: the page
- * fits and prints, and the admin reads the warning. Whole-book content checks never touch a page's fit; they stay in
- * the draft's quality as warnings.
- */
+/** A page's fit (#1248, src/lib/workbook-print-rules.ts): room left on a page with a question is a warning. */
 export type PageFit = { status: "fits"; warnings?: FitProblem[] } | { status: "failed"; problems: FitProblem[] } | { status: "not-needed" };
-
-/**
- * What fails a stored page's fit and blocks its print (#1248). A draft stored before #1248 can hold whole-book issues
- * ("whole-book check: ...") and room left as fit failures; they are warnings now, read from pageWarnings.
- */
-export function blockingFit(page: GeneratedPage): FitProblem[] {
-  if (page.fit.status !== "failed") return [];
-  const printed = page.questions.some((q) => q.package && q.check.status !== "failed");
-  return page.fit.problems.filter((p) => !p.reason.startsWith(WHOLE_BOOK) && !(printed && p.kind === "fullness"));
-}
-
-/** The prefix of a whole-book issue stored as a page's fit problem before #1248. */
-const WHOLE_BOOK = "whole-book check: ";
-
-/** A page's warnings (#1248), for the admin to read before approving: room left, and the book's issues on the page. */
-export function pageWarnings(page: GeneratedPage, quality: BookQuality | undefined): string[] {
-  const fit = page.fit.status === "fits" ? page.fit.warnings ?? [] : page.fit.status === "failed" ? page.fit.problems.filter((p) => !blockingFit(page).includes(p)) : [];
-  const book = (quality?.issues ?? []).filter((i) => i.page === page.number).map((i) => `${WHOLE_BOOK}${i.reason}`);
-  return [...new Set([...fit.map((p) => (p.reason.startsWith(WHOLE_BOOK) ? p.reason : `room: ${p.reason}`)), ...book])];
-}
-
-/** The stored fit of a page from its fit check: room left warns on a page that prints a question (#1248). */
-export function pageFitOf(fit: FitResult, questions: readonly GeneratedQuestion[]): PageFit {
-  if (fit.ok) return { status: "fits" };
-  if (questions.some((q) => q.package) && fit.problems.every((p) => p.kind === "fullness")) return { status: "fits", warnings: fit.problems };
-  return { status: "failed", problems: fit.problems };
-}
 
 export interface GeneratedPage {
   /** From 1 at the cover; runs through the whole book. */
@@ -2411,39 +2380,6 @@ const fitPage = (w: PageWork, qrToken: string, questions: GeneratedQuestion[], c
 });
 
 /**
- * The page as it prints without its failed questions (#1248): a question whose own check failed (or that code could
- * build nothing for) is left off the printed page and listed in `leftOut`; the others are numbered again from 1, and the
- * page's content is changed in place (its teaching strips and panels stay), with no red placeholder. A question slot
- * left with no question is not printed. Null when nothing changes: no failed question, a page that is not a laid-out
- * day page, or a page whose questions all failed (it keeps them, so approval refuses it).
- */
-export function withoutFailedQuestions(page: GeneratedPage): GeneratedPage | null {
-  const failed = (q: GeneratedQuestion) => q.check.status === "failed" || !q.package;
-  if (page.content?.kind !== "day" || !page.questions.some(failed) || page.questions.every(failed)) return null;
-  const kept = page.questions.filter((q) => !failed(q));
-  const number = new Map(kept.map((q, k) => [q.number, k + 1]));
-  const content = structuredClone(page.content);
-  content.blocks = content.blocks.flatMap((b) => {
-    const at = b.items.flatMap((n, k) => (number.has(n) ? [k] : []));
-    if (!PANEL_SLOTS.includes(b.slot) && b.items.length > 0 && at.length === 0) return [];
-    const next: Block = { ...b, items: at.map((k) => number.get(b.items[k])!) };
-    delete next.missing;
-    if (b.hints) next.hints = at.map((k) => b.hints![k] ?? null);
-    if (b.figures) next.figures = at.map((k) => b.figures![k] ?? null);
-    if (b.reviewFrom !== undefined) {
-      const from = b.items.slice(b.items.indexOf(b.reviewFrom)).find((n) => number.has(n));
-      if (from === undefined) delete next.reviewFrom; else next.reviewFrom = number.get(from)!;
-    }
-    return [next];
-  });
-  const reason = (q: GeneratedQuestion) => `failed its check: ${q.check.status === "failed" ? q.check.reason : "code could build no question"}`;
-  return {
-    ...page, content, questions: renumbered(kept),
-    leftOut: [...(page.leftOut ?? []), ...page.questions.filter(failed).map((q) => ({ slot: q.slot, part: q.part, text: q.package?.text ?? null, reason: reason(q) }))],
-  };
-}
-
-/**
  * Runs `run` on the items, at most `limit` at once, in item order, and stops taking items once `stop` says so. On the
  * first error no new item starts, and every item in flight settles before the error is thrown (#312, R379-2), so
  * nothing of this call is still writing when its caller tries again.
@@ -3792,21 +3728,14 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
           w.page.extraGap = extra;
           checked = await check();
         }
-        // #1248: room left is a warning (the page's own fit check reports it); anything else that does not fit fails.
-        if (!checked.ok && !(w.slots.length > 0 && checked.problems.every(p => p.kind === "fullness"))) return `Page ${w.number}: its last complete grid does not fit: ${checked.problems.map(p => p.reason).join(" ")}`;
+        if (!checked.ok && !(w.slots.length > 0 && checked.problems.every(p => p.kind === "fullness"))) return /* #1248: room left warns */ `Page ${w.number}: its last complete grid does not fit: ${checked.problems.map(p => p.reason).join(" ")}`;
       }
       if (!w.page.extraPractice && ["practice", "practice-2", "remember-these", "show-what-you-know"].includes(w.page.type)) {
         const count = w.slots.filter(s => !["spot-the-error", "solve-it-two-ways", "warm-up", "how-do-you-know"].includes(s.place ?? "")).length;
         const floor = minimumFor(w, input.plan.level);
-        // #1248: below the floor is a warning, not a failed plan: the page keeps its last complete grid and reports the
-        // shortfall as an omission (as a forced drop does). Its physical fit and fullness are checked as before.
-        if (count < floor && w.layout) {
-          const index = Math.max(0, w.page.parts.findIndex(p => p.kind === "practice"));
-          const reason = `capacity could not restore ${floor} planned practice questions; ${count} remain`;
-          const had = w.layout.omissions.find(o => o.part === index);
-          if (had) { had.requested = Math.max(had.requested, had.placed + floor - count); had.reason = `${had.reason}; ${reason}`; }
-          else w.layout.omissions.push({ part: index, kind: w.page.parts[index]?.kind ?? "practice", requested: floor, placed: count, reason });
-        } else if (count < floor) return `Page ${w.number}: capacity could not restore ${floor} planned practice questions; ${count} remain (${w.page.type}, day ${w.day})`;
+        // #1248: below the floor is a warning (an omission on the page), not a failed plan.
+        if (count < floor && w.layout) floorOmission(w.layout, w.page.parts, floor, count);
+        else if (count < floor) return `Page ${w.number}: capacity could not restore ${floor} planned practice questions; ${count} remain (${w.page.type}, day ${w.day})`;
       }
       const oldSlots = w.slots;
       w.page = { ...w.page, parts: w.page.parts.map((p, i) => ({ ...p, items: (w.layout?.slots ?? []).filter(s => s.part === i && s.slot !== "how-do-you-know").reduce((n,s)=>n+s.items,0) + (p.kind === "practice" ? p.faded?.watch ?? 0 : 0) })), capacity: w.layout?.slots, capacityChecked: true };
@@ -4295,19 +4224,10 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
     // G1: the personal book checks read the printed book: the warm-up's fact families (item 4) and the interest share
     // (item 5). A failure is a whole-book issue on its page; with no signals there are none.
     quality = withPersonalIssues(input, reviewed.pages, quality);
-    // #1248: whole-book issues are warnings. They stay in the draft's quality (quality.ready still means none) for the
-    // admin to read before approving, and never fail a page's fit, so the page renders into the PDF.
-    pages = reviewed.pages;
-    // #1248: a failed question is left off its printed page; the page is checked again as it now prints (the gap it
-    // leaves is a fullness warning). Code only, after the checkpoints: a resume repeats it exactly.
-    let dropped = false;
-    pages = await Promise.all(pages.map(async (p) => {
-      const w = byNumber.get(p.number), next = w && withoutFailedQuestions(p);
-      if (!w || !next) return p;
-      dropped = true;
-      return { ...next, fit: pageFitOf(await deps.fit.fits(fitPage(w, next.qrToken, next.questions, next.content ?? null), book), next.questions) };
-    }));
-    if (dropped) quality = withPersonalIssues(input, pages, workbookQuality(pages));
+    // #1248: whole-book issues are warnings (in the quality, never in a page's fit); a failed question is left off its page.
+    const printed = await leaveOffFailed(reviewed.pages, (p) => { const w = byNumber.get(p.number); return w ? deps.fit.fits(fitPage(w, p.qrToken, p.questions, p.content ?? null), book) : null; });
+    pages = printed.pages;
+    if (printed.changed) quality = withPersonalIssues(input, pages, workbookQuality(pages));
     // Checkpoints keep pre-review pages. These code-only repairs are deterministic
     // and repeat after a resume without spending another provider call.
     // The plan page says "about N minutes" from the book's own day estimates, their mean to the nearest five (D-229: a
@@ -4488,7 +4408,6 @@ export async function reviseWorkbookPage(input: GenerateInput, deps: GenerateDep
   const fit = await deps.fit.fits(fitPage(w, page.qrToken, questions, content), {
     id: input.workbookId, childId: input.childId, number: input.number, levels: [input.plan.level], profileBuild: input.profileBuild,
   });
-  // #1248: as a generated page, room left is a warning on the page; anything else that does not fit refuses the edit.
   const pageFit = pageFitOf(fit, questions);
   if (pageFit.status === "failed") throw new Error(`The page does not fit: ${pageFit.problems.map((p) => p.reason).join(" ")}`);
   return { ...next, fit: pageFit };

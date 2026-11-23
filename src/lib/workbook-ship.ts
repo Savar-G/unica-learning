@@ -25,7 +25,9 @@
 // Pure TypeScript: no Next.js, React, network, database or clock. Adapters: Supabase (src/lib/workbook-ship-store.ts)
 // and in memory (src/lib/workbook-ship-memory.ts).
 import type { WorkbookInput, WorkbookStatus } from "@/lib/workbook-content";
-import { blockingFit, type GeneratedWorkbook } from "@/lib/workbook-generator";
+import type { GeneratedWorkbook } from "@/lib/workbook-generator";
+import { blockingFit } from "@/lib/workbook-print-rules";
+export { blockingFit, pageWarnings } from "@/lib/workbook-print-rules";
 import type { DraftRendering } from "@/lib/workbook-job";
 import {
   pageContentFingerprint,
