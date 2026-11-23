@@ -71,6 +71,9 @@ describe("normalisers", () => {
     expect(normalizeProseText("  Write 'yes'  ")).toBe(normalizeProseText("write 'yes'"));
     expect(normalizeProseText("Draw a box!")).toBe(normalizeProseText("Draw a box."));
     expect(normalizeProseText("Draw a box?")).toBe(normalizeProseText("Draw a box"));
+    // A raised digit is not a plain digit: "2 cubed" must not read as "23".
+    expect(normalizeProseText("Evaluate 2\u00B3.")).not.toBe(normalizeProseText("Evaluate 23."));
+    expect(normalizeProseText("Evaluate 2\u00B3.")).toBe(normalizeProseText("evaluate 2^3"));
     expect(normalizeProseText("Measure 3.5 cm.")).not.toBe(normalizeProseText("Measure 35 cm."));
     expect(normalizeProseText("3.5")).not.toBe(normalizeProseText("35"));
   });

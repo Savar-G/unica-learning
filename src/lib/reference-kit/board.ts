@@ -175,6 +175,8 @@ export interface PickResult {
   tooSmall: PickedPhoto[];
   // Stems of the plan with no usable download.
   missing: string[];
+  // Files that were in the photos folder for a photo that is not in the plan any more.
+  removed: string[];
 }
 
 const FORMAT_EXT = new Map<string, string>([
@@ -203,9 +205,24 @@ export async function pickLargestDownloads(
     groups.set(match[1], list);
   }
 
+  // With a plan, only the photos of the plan are kept: a photo that left the board leaves the folder.
+  const planned = new Set(plannedStems);
+  const removed: string[] = [];
+  if (planned.size > 0) {
+    for (const existing of readdirSync(photosDir)) {
+      const stem = existing.replace(/\.[A-Za-z0-9]+$/, "");
+      const path = join(photosDir, existing);
+      if (!planned.has(stem) && lstatSync(path).isFile()) {
+        unlinkSync(path);
+        removed.push(existing);
+      }
+    }
+  }
+
   const picked: PickedPhoto[] = [];
   const tooSmall: PickedPhoto[] = [];
   for (const [stem, files] of groups) {
+    if (planned.size > 0 && !planned.has(stem)) continue;
     let best: { file: string; width: number; height: number; ext: string } | null = null;
     for (const file of files) {
       let meta;
@@ -239,5 +256,5 @@ export async function pickLargestDownloads(
 
   const have = new Set(picked.map((p) => p.stem));
   const missing = plannedStems.filter((stem) => !have.has(stem));
-  return { picked, tooSmall, missing };
+  return { picked, tooSmall, missing, removed };
 }

@@ -787,4 +787,23 @@ describe("extractFolder (reference:extract)", () => {
     expect(imported.ok).toBe(true);
     expect(imported.counts.inserted).toBe(1);
   });
+
+  it("refuses a work folder that holds readings with another source key", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-ext-src-repo-"));
+    const photosDir = mkdtempSync(join(tmpdir(), "ref-ext-src-in-"));
+    const outDir = mkdtempSync(join(tmpdir(), "ref-ext-src-out-"));
+    tempDirs.push(repo, photosDir, outDir);
+    writeFileSync(join(photosDir, "01.jpg"), await makePhotoBytes(1600, 1200, 77));
+    const runCli = async () => ({ code: 0, stdout: JSON.stringify(makeReaderPayload("3a")), stderr: "" });
+
+    const first = await extractFolder({ photosDir, outDir, source: "sample", repoRoot: repo, runCli });
+    expect(first.counts.double_read).toBe(1);
+
+    await expect(
+      extractFolder({ photosDir, outDir, source: "other", repoRoot: repo, runCli }),
+    ).rejects.toThrow(/source key "sample", not "other"/);
+    // Nothing changed: the page is still there under its first source key.
+    const status = JSON.parse(readFileSync(join(outDir, "final", "status.json"), "utf8")) as Record<string, string>;
+    expect(Object.keys(status)).toEqual(["sample:M:3a"]);
+  });
 });

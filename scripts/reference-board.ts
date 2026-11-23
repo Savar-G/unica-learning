@@ -54,6 +54,9 @@ async function main(): Promise<void> {
   for (const p of result.tooSmall) {
     console.log(`  too small: ${nameOf.get(p.stem) ?? p.stem} (${p.width} x ${p.height})`);
   }
+  for (const file of result.removed) {
+    console.log(`  removed (not on the board any more): ${file}`);
+  }
   for (const stem of result.missing) {
     console.log(`  no image downloaded: ${nameOf.get(stem) ?? stem}`);
   }

@@ -11,9 +11,13 @@ const SUPERSCRIPT_DIGITS: Record<string, string> = {
   "\u2079": "^9",
 };
 
+const SUPERSCRIPT_RE = /[\u2070\u00B9\u00B2\u00B3\u2074-\u2079]/g;
+
 export function normalizeProseText(text: string): string {
+  // NFC, not NFKC: a compatibility form would turn a raised 3 into a plain 3 ("2 cubed" into "23").
   return text
-    .normalize("NFKC")
+    .replace(SUPERSCRIPT_RE, (ch) => SUPERSCRIPT_DIGITS[ch] ?? ch)
+    .normalize("NFC")
     .toLowerCase()
     .replace(/[\u2018\u2019\u2032]/g, "'")
     .replace(/[\u201C\u201D\u2033]/g, '"')

@@ -27,6 +27,8 @@ export interface KeptHumanCheckedReport {
   differs_from_reader_b: boolean;
   diff_count_a: number;
   diff_count_b: number;
+  // The checked file could not be read as a valid record. It is kept as it is.
+  invalid?: boolean;
 }
 
 // A photo that claims a page id that another photo won. It gets no final record and keeps its readings.
@@ -56,6 +58,11 @@ export interface PageCompareReport {
   needs_person_read: boolean;
   unnamed_teaching_marks: UnnamedTeachingMark[];
   reader_notes: { a: string[]; b: string[] };
+  // sha256 of the final record file as the compare step wrote it. A file with another hash was
+  // changed by a person.
+  final_record_sha256?: string | null;
+  // The final record was changed by a person and is not checked yet. The compare step kept it.
+  edited_by_person?: boolean;
 }
 
 export interface CompareWorkReport {
@@ -175,7 +182,11 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
     lines.push("## Kept: checked by a person");
     lines.push("");
     for (const k of report.kept_human_checked) {
-      if (!k.in_current_batch) {
+      if (k.invalid) {
+        lines.push(
+          `- ${k.source_ref}: kept as it is, but the file is not a valid record now. Correct it, then run reference:check for this page.`,
+        );
+      } else if (!k.in_current_batch) {
         lines.push(`- ${k.source_ref}: stale human_checked page kept (not in current batch)`);
       } else if (k.differs_from_reader_a || k.differs_from_reader_b) {
         const parts: string[] = [];
@@ -223,6 +234,11 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
   lines.push("");
   for (const p of report.pages) {
     lines.push(`### ${p.source_ref} (${p.status})`);
+    if (p.edited_by_person) {
+      lines.push(
+        "- A person changed the final record and it is not checked yet. The file was kept. Run reference:check for this page.",
+      );
+    }
     if (p.original_name && p.photo && p.original_name !== p.photo) {
       lines.push(`- Photo: \`${p.original_name}\` (\`${p.photo}\`)`);
     } else if (p.original_name ?? p.photo) {

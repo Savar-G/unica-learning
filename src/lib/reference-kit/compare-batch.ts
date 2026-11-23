@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
@@ -65,6 +66,10 @@ function readStoredSourceRef(filePath: string): string | null {
   } catch {
     return null;
   }
+}
+
+function sha256OfFile(filePath: string): string {
+  return createHash("sha256").update(readFileSync(filePath)).digest("hex");
 }
 
 function loadExistingFinalRecord(filePath: string): ReferenceRecord | null {
@@ -178,6 +183,15 @@ export function compareWorkFolder(opts: {
 
   const existingStatus =
     readJsonIfExists<Record<string, PageStatus>>(join(finalDir, "status.json")) ?? {};
+  // The hash of each final record as the last compare wrote it. Another hash on disk means that a
+  // person changed the file.
+  const previousHashes = new Map<string, string>();
+  const previousReport = readJsonIfExists<Partial<CompareWorkReport>>(join(finalDir, "report.json"));
+  for (const page of previousReport?.pages ?? []) {
+    if (typeof page.final_record_sha256 === "string") {
+      previousHashes.set(page.source_ref, page.final_record_sha256);
+    }
+  }
 
   assertNoFileCollisions(pairs, existingStatus, finalDir);
 
@@ -210,8 +224,39 @@ export function compareWorkFolder(opts: {
     const classified = classifyComparison(pair.recA, pair.recB);
     const unnamedTeachingMarks = collectUnnamedTeachingMarks(pair.recA, pair.recB);
 
-    const existingKept =
-      existingStatus[sourceRef] === "human_checked" ? loadExistingFinalRecord(finalRecordPath) : null;
+    const isChecked = existingStatus[sourceRef] === "human_checked" && existsSync(finalRecordPath);
+    const existingKept = isChecked ? loadExistingFinalRecord(finalRecordPath) : null;
+
+    if (isChecked && !existingKept) {
+      // A person checked this page and the file is not a valid record now: never write over it.
+      statusMap[sourceRef] = "human_checked";
+      keptHumanChecked.push({
+        source_ref: sourceRef,
+        in_current_batch: true,
+        differs_from_reader_a: false,
+        differs_from_reader_b: false,
+        diff_count_a: 0,
+        diff_count_b: 0,
+        invalid: true,
+      });
+      pages.push({
+        source_ref: sourceRef,
+        photo: pair.photo,
+        original_name: pair.originalName,
+        photo_sha256: pair.photoSha256,
+        status: "human_checked",
+        only_in_reader: onlyIn,
+        digest_mismatch: pair.digestMismatch,
+        differences: classified.differences,
+        once_read: classified.once_read,
+        both_unclear: classified.both_unclear,
+        one_unclear: classified.one_unclear,
+        needs_person_read: classified.needs_person_read,
+        unnamed_teaching_marks: unnamedTeachingMarks,
+        reader_notes: { a: pair.notesA, b: pair.notesB },
+      });
+      continue;
+    }
 
     if (existingKept) {
       statusMap[sourceRef] = "human_checked";
@@ -254,21 +299,36 @@ export function compareWorkFolder(opts: {
       sameDigest: pair.sameDigest,
     });
 
-    statusMap[sourceRef] = status;
+    // A final record that a person changed since the last compare is kept until the person
+    // checks it. The page is then not double_read: the file is no longer what the readers wrote.
+    const previousHash = previousHashes.get(sourceRef);
+    const editedByPerson =
+      previousHash !== undefined &&
+      existsSync(finalRecordPath) &&
+      sha256OfFile(finalRecordPath) !== previousHash;
+    const finalText = `${JSON.stringify(chosen, null, 2)}\n`;
+    const pageStatus: PageStatus = editedByPerson ? "machine_read" : status;
+    statusMap[sourceRef] = pageStatus;
 
-    writeSafeOutputFile(finalRecordPath, `${JSON.stringify(chosen, null, 2)}\n`, repoRoot);
-    writeSafeOutputFile(
-      join(viewDir, `${slug}.md`),
-      `${renderRecordToMarkdown(chosen)}\n`,
-      repoRoot,
-    );
+    if (!editedByPerson) {
+      writeSafeOutputFile(finalRecordPath, finalText, repoRoot);
+      writeSafeOutputFile(
+        join(viewDir, `${slug}.md`),
+        `${renderRecordToMarkdown(chosen)}\n`,
+        repoRoot,
+      );
+    }
 
     pages.push({
       source_ref: sourceRef,
       photo: pair.photo,
       original_name: pair.originalName,
       photo_sha256: pair.photoSha256,
-      status,
+      final_record_sha256: editedByPerson
+        ? (previousHash ?? null)
+        : createHash("sha256").update(finalText, "utf8").digest("hex"),
+      ...(editedByPerson ? { edited_by_person: true } : {}),
+      status: pageStatus,
       only_in_reader: onlyIn,
       digest_mismatch: pair.digestMismatch,
       differences: classified.differences,

@@ -641,4 +641,73 @@ describe("compareWorkFolder", () => {
     expect(bySha.get(SHA_2)).toBe("sample:M:3a");
     expect(bySha.get(SHA_3)).toBeUndefined();
   });
+
+  it("keeps a final record that a person changed, and a checked record that is not valid any more", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-cmp-edit-repo-"));
+    const work = mkdtempSync(join(tmpdir(), "ref-cmp-edit-work-"));
+    tempDirs.push(repo, work);
+    const dirA = join(work, "reader-a");
+    const dirB = join(work, "reader-b");
+    mkdirSync(dirA, { recursive: true });
+    mkdirSync(dirB, { recursive: true });
+    const pages = [
+      { sha: SHA_1, ref: "sample:M:3a", file: "sample-M-3a.json" },
+      { sha: SHA_2, ref: "sample:M:4a", file: "sample-M-4a.json" },
+    ];
+    for (const [dir, slot, family] of [[dirA, "a", "claude"], [dirB, "b", "codex"]] as const) {
+      writeFileSync(join(dir, "reader.json"), JSON.stringify({ family, model: "m1" }));
+      for (const p of pages) {
+        writeFileSync(join(dir, p.file), JSON.stringify(makePage({ source_ref: p.ref }), null, 2));
+      }
+      writeFileSync(
+        join(dir, "run.json"),
+        JSON.stringify({
+          slot,
+          reader: { family, model: "m1" },
+          source: "sample",
+          photos: pages.map((p) => ({
+            photo: `${p.sha.slice(0, 12)}.jpg`,
+            photo_sha256: p.sha,
+            status: "ok",
+            source_ref: p.ref,
+            record_file: p.file,
+            notes: [],
+          })),
+        }),
+      );
+    }
+    const first = compareWorkFolder({ workDir: work, repoRoot: repo });
+    expect(first.pages.map((p) => p.status)).toEqual(["double_read", "double_read"]);
+
+    // A person corrects page 3a by hand and does not run the check yet.
+    const edited = makePage({ source_ref: "sample:M:3a", topic: { title: "Corrected by hand", number: 1 } });
+    const editedText = JSON.stringify(edited, null, 2);
+    writeFileSync(join(work, "final", "sample-M-3a.json"), editedText);
+    // A person checks page 4a, and a later edit leaves the file broken.
+    checkAndMarkPage({ workDir: work, page: "sample:M:4a", repoRoot: repo });
+    writeFileSync(join(work, "final", "sample-M-4a.json"), "{ not json");
+
+    for (const round of [1, 2]) {
+      const again = compareWorkFolder({ workDir: work, repoRoot: repo });
+      expect(readFileSync(join(work, "final", "sample-M-3a.json"), "utf8"), `round ${round}`).toBe(editedText);
+      const page3a = again.pages.find((p) => p.source_ref === "sample:M:3a");
+      expect(page3a?.edited_by_person).toBe(true);
+      expect(page3a?.status).toBe("machine_read");
+      expect(readFileSync(join(work, "final", "sample-M-4a.json"), "utf8")).toBe("{ not json");
+      expect(again.kept_human_checked.find((k) => k.source_ref === "sample:M:4a")?.invalid).toBe(true);
+    }
+    const status = JSON.parse(readFileSync(join(work, "final", "status.json"), "utf8")) as Record<string, string>;
+    expect(status).toEqual({ "sample:M:3a": "machine_read", "sample:M:4a": "human_checked" });
+    const reportMd = readFileSync(join(work, "final", "report.md"), "utf8");
+    expect(reportMd).toContain("A person changed the final record");
+    expect(reportMd).toContain("not a valid record now");
+
+    // After the person checks 3a, the corrected record is the checked record.
+    checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo });
+    const afterCheck = compareWorkFolder({ workDir: work, repoRoot: repo });
+    expect(afterCheck.pages.find((p) => p.source_ref === "sample:M:3a")?.status).toBe("human_checked");
+    expect(JSON.parse(readFileSync(join(work, "final", "sample-M-3a.json"), "utf8")).topic.title).toBe(
+      "Corrected by hand",
+    );
+  });
 });

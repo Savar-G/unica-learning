@@ -97,6 +97,10 @@ Nothing else named `*.json` is written in `final/` besides the page records, `st
 - **`double_read`**: Two valid readings from two different model families read the exact same prepared photo digest (`photo_sha256`) and agree with no open differences, no `one_unclear` fields, and no once-read teaching fields. Pages with `both_unclear` fields can still be `double_read`; those fields are listed in the report.
 - **`human_checked`**: Set only by `reference:check` after a person reviews and validates a specific page. Preserved across future `reference:compare` runs.
 
+A final record that a person changed by hand is never written over. Until the person runs `reference:check` for that page, the page stays `machine_read` and the report says that the file was changed and kept. A checked record that is no longer a valid record is also kept, and the report names it.
+
+One work folder belongs to one `--source` key. A run with another key is refused; use the same key or a new `--out` folder.
+
 ## Same Page Id for Two Photos
 
 The compare step uses every valid reading in `reader-a/` and `reader-b/`, not only the photos of the last run, and never stops for content. The page id of a photo is reader A's id (reader B's when reader A has none). When several photos claim one page id, the photo where both readers give that id wins the final record; when several such photos exist (or none), the first by original name wins. Each other photo is listed under "Same page id for two photos" with its original name and both readers' ids. It gets no final record and no `source_ref` in the manifest, and it keeps its readings. The manifest holds at most one entry for each `source_ref`.

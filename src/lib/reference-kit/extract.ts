@@ -406,6 +406,15 @@ export async function extractFolder(opts: ExtractFolderOptions): Promise<Extract
     entriesB: loadRunEntries(slotDirB, readerB),
     humanCheckedRefs: findHumanCheckedRefs(workDir),
   };
+  // A work folder belongs to one source key. Old readings under another key would stay as they are.
+  const foreign = [...ctx.entriesA, ...ctx.entriesB].find(
+    (e) => typeof e.source_ref === "string" && !e.source_ref.startsWith(`${opts.source}:`),
+  );
+  if (foreign?.source_ref) {
+    throw new Error(
+      `The work folder holds readings with the source key "${foreign.source_ref.split(":")[0]}", not "${opts.source}". Use the same --source or a new --out folder.`,
+    );
+  }
   const metaA: ReaderMeta = { family: readerA, model: opts.modelA ?? "default" };
   const metaB: ReaderMeta = { family: readerB, model: opts.modelB ?? "default" };
   writeSafeOutputFile(join(slotDirA, "reader.json"), `${JSON.stringify(metaA, null, 2)}\n`, repoRoot);

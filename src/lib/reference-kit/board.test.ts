@@ -183,4 +183,24 @@ describe("pickLargestDownloads", () => {
       pickLargestDownloads(downloads, insideRepoPhotos, ["a-10-2"], repo),
     ).rejects.toThrow(/inside the repository/i);
   });
+
+  it("with a plan, keeps only the photos of the plan and removes a photo that left the board", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-board-plan-repo-"));
+    const root = mkdtempSync(join(tmpdir(), "ref-board-plan-"));
+    tempDirs.push(repo, root);
+    const downloads = join(root, "downloads");
+    const photos = join(root, "photos");
+    mkdirSync(downloads);
+    mkdirSync(photos);
+    // An earlier run kept a photo that is no longer on the board, and its download is still there.
+    writeFileSync(join(photos, "gone-10-9.jpg"), await image(1800, 2400, "jpeg"));
+    writeFileSync(join(downloads, "gone-10-9__1.jpg"), await image(1800, 2400, "jpeg"));
+    writeFileSync(join(downloads, "a-10-2__1.jpg"), await image(1800, 2400, "jpeg"));
+
+    const result = await pickLargestDownloads(downloads, photos, ["a-10-2"], repo);
+
+    expect(result.picked.map((p) => p.stem)).toEqual(["a-10-2"]);
+    expect(result.removed).toEqual(["gone-10-9.jpg"]);
+    expect(readdirSync(photos)).toEqual(["a-10-2.jpg"]);
+  });
 });
