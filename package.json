@@ -40,7 +40,9 @@
     "workbooks:book1-recover": "node scripts/book1-baseline-recover.mjs",
     "workbooks:worker": "node scripts/workbook-worker.mjs",
     "generate:family-zones": "node scripts/generate-family-zones.mjs",
-    "test:family-zones": "node --expose-gc supabase/tests/maya_window_zones.cjs --bootstrap"
+    "test:family-zones": "node --expose-gc supabase/tests/maya_window_zones.cjs --bootstrap",
+    "reference:convert": "node scripts/reference-convert.mjs",
+    "reference:view": "node scripts/reference-view.mjs"
   },
   "dependencies": {
     "@sentry/nextjs": "11.14.0",

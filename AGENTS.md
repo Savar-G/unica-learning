@@ -74,15 +74,16 @@ Personalized math learning program with mailed paper workbooks for ages 5–14 (
 | Google Ads | Account `517-988-8609` (Vancouver time). Plan: `.design/ads/2026-10-bc-launch/ads-plan.md`, `docs/ad-tracking.md`. |
 | Mac Workbook Worker | LaunchAgent `com.unicalearning.workbook-worker`, checkout `~/.unica-workbook-worker`, env `~/.config/unica/workbook-worker.env`. |
 
-## Topic Map (read on demand)
+## Topic Map
 
 | When touching... | Read... |
 |---|---|
 | Supabase auth, `pg_cron`, Vault, storage, email logs | `docs/supabase-ops.md` |
 | Environment variables & feature switches | `docs/environment.md`, `docs/ai-product-keys.md` |
-| Workbook generator loop, rounds & context | `docs/workbook-fast-loop.md`, `docs/workbook-rounds.md`, `.design/workbooks/CONTEXT.md` |
+| Workbook loop, rounds & context | `docs/workbook-fast-loop.md`, `docs/workbook-rounds.md`, `.design/workbooks/CONTEXT.md` |
 | Workbook rendering & print contract | `docs/workbook-rendering.md` (`src/lib/workbook-print-contract.ts`) |
-| Mac workbook worker & Book 1 previews | `docs/workbook-worker.md`, `docs/first-pages.md` |
+| Workbook worker & Book 1 previews | `docs/workbook-worker.md`, `docs/first-pages.md` |
+| Reference records & converter | `docs/reference-records.md` |
 | Maya tutor, chat, practice & spend | `docs/maya-tutor.md`, `docs/maya-chat.md`, `docs/maya-practice.md`, `docs/maya-spend.md` |
 | Maya voice worker (`worker/maya-voice/`) | `worker/maya-voice/AGENTS.md`, `docs/maya-voice.md`, `docs/maya-voice-deploy.md` |
 | Parent dashboard, plan gate & billing | `docs/parent-dashboard.md` (`src/lib/plan-access.ts`), `docs/stripe-webhook.md` |
@@ -91,5 +92,5 @@ Personalized math learning program with mailed paper workbooks for ages 5–14 (
 | Family deletion & retention | `docs/assessment-deletion.md` |
 | State machines & DB checks | `docs/state-machines.md` |
 | Blog posts & weekly publish | `docs/blog-style.md`, `docs/blog-topics.md`, `docs/blog-automation.md` |
-| Design mockups & brand decisions | `/design`, `DESIGN.md`, `.design/decisions.md` (search with `rg`) |
+| Design mockups & brand decisions | `/design`, `DESIGN.md`, `.design/decisions.md` (`rg`) |
 | Sentry, monitoring & web analytics | `docs/sentry.md`, `docs/product-monitoring.md`, `docs/web-analytics.md` |
