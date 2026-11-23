@@ -149,8 +149,9 @@ describe("REFERENCE_READ_PROMPT", () => {
   it("states the title, printed answer, pencil, divider, and unprinted sheet range rules", () => {
     expect(REFERENCE_READ_PROMPT).toMatch(/full printed title, exactly as printed, with any number at its end/);
     expect(REFERENCE_READ_PROMPT).toMatch(/never write `topic\.number`/i);
-    expect(REFERENCE_READ_PROMPT).toMatch(/pencil or pen writing in an answer place .* NEVER recorded/i);
-    expect(REFERENCE_READ_PROMPT).toMatch(/answer_source "printed" only when it is clearly printed type/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/work out the correct answer yourself .* answer_source "reader"/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/pencil or pen writing in an answer place .* NEVER copied/i);
+    expect(REFERENCE_READ_PROMPT).toMatch(/answer_source "printed" only when the publisher printed the answer/);
     expect(REFERENCE_READ_PROMPT).toMatch(/divider or border lines .* not record them as example marks or scaffolds/i);
     expect(REFERENCE_READ_PROMPT).toMatch(/null when the chart does not print a sheet range/);
 
@@ -162,7 +163,6 @@ describe("REFERENCE_READ_PROMPT", () => {
     const contentsExample = jsonBlocks.find((obj) => obj.kind === "contents");
     const topics = contentsExample?.topics as Array<Record<string, unknown>>;
     expect(topics.some((t) => t.sheets === null)).toBe(true);
-    expect(JSON.stringify(jsonBlocks)).not.toContain('"answer_source":"reader"');
   });
 });
 
