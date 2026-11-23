@@ -37,7 +37,9 @@ it.each(["normal", "recover", "blocked"])("checks the U4 review floor before gen
   });
   if (scenario === "blocked") {
     expect(result.status).toBe("refused");
-    if (result.status === "refused") expect(result.reason).toMatch(/capacity could not restore 8/);
+    // #1248: below the floor is a warning now; the seven questions that fit leave an empty cell in the grid, which
+    // still refuses the plan.
+    if (result.status === "refused") expect(result.reason).toMatch(/cannot complete the question grid/);
     expect(saves).toBe(0);
     return;
   }

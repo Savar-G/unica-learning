@@ -264,8 +264,9 @@ describe("generated Maya coverage by print band", () => {
     });
     if (result.status !== "stored") throw new Error(result.status);
     const draft = result.draft;
-    // The existing fake U3 writer leaves one failed question. Keep it in the coverage denominator.
-    expect(draft.counts.failed).toBe(level === "U3" ? 1 : 0);
+    // The existing fake U3 writer leaves one failed question. #1248: it is left off its printed page and listed.
+    expect(draft.counts.failed).toBe(0);
+    expect(draft.pages.flatMap(p => p.leftOut ?? []).filter(x => x.reason.startsWith("failed its check"))).toHaveLength(level === "U3" ? 1 : 0);
     if (level === "U16") {
       const trials = draft.pages.flatMap(p => p.questions).flatMap(q => q.package?.steps.some(st => st.kind === "operate" && st.op === "÷" && st.right >= 100) ? [q.package] : []);
       expect(trials.map(pkg => pkg.text)).toEqual(["942 × ? = 8448 + 30", "941 × ? = 8449 + 20"]);

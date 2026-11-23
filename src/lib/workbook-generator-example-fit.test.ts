@@ -85,7 +85,9 @@ it.each(["fits", "fullness", "overflow"] as const)("rechecks a shorter writer-bu
   expect(generated.status).toBe("stored");
   if (generated.status !== "stored") return;
   const page = generated.draft.pages.find(p => p.day === 8 && p.type === "practice")!;
-  expect(page.fit.status).toBe(outcome === "fits" ? "fits" : "failed");
+  // #1248: room left is a warning on the page; overflow still fails.
+  expect(page.fit.status).toBe(outcome === "overflow" ? "failed" : "fits");
+  if (outcome === "fullness") expect(page.fit).toMatchObject({ warnings: [{ kind: "fullness" }] });
   expect(finalChecks.length).toBeGreaterThan(1);
   expect(finalChecks.at(-1)?.content).toMatchObject({ fillingComplete: true, extraGap: outcome === "fullness" ? 48 : 4 });
   expect(finalChecks.at(-1)?.questions).toEqual(finalChecks[0].questions);

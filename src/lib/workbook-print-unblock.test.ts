@@ -110,8 +110,8 @@ describe("a failed question", () => {
 
   it("is left off the printed page; the others are numbered again and listed for the admin", () => {
     const next = withoutFailedQuestions(page)!;
-    expect(next.questions.map((q) => [q.number, q.package!.id, q.package!.ref.question])).toEqual([[1, "q1", 1], [2, "q3", 2]]);
-    const blocks = next.content!.kind === "day" ? next.content.blocks : [];
+    expect(next.questions.map((q) => [q.number, q.package!.id, (q.package!.ref as { question?: number }).question])).toEqual([[1, "q1", 1], [2, "q3", 2]]);
+    const blocks = next.content?.kind === "day" ? next.content.blocks : [];
     expect(blocks[0]).toMatchObject({ slot: "worked-example", lines: ["2 + 2 = [4]"] });
     expect(blocks[1]).toEqual({ slot: "on-your-own", items: [1, 2], hints: ["a", "c"], reviewFrom: 2 });
     expect(next.leftOut).toEqual([{ slot: "1.2", part: "practice", text: "Question 2", reason: "failed its check: the answer is wrong" }]);
