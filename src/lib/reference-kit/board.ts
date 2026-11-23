@@ -1,7 +1,8 @@
-import { chmodSync, copyFileSync, lstatSync, readdirSync } from "node:fs";
+import { lstatSync, readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import sharp from "sharp";
-import { MIN_LONG_SIDE_PX } from "./prepare";
+import { assertSafeOutputFile, writeSafeOutputFile } from "@/lib/reference-record/output-guard";
+import { MIN_LONG_SIDE_PX, readRegularFileNoFollow } from "./prepare";
 
 // A design board holds one section for each level. Each photo on the board is one node.
 // This module reads the text listing of a board page (as the board connector returns it),
@@ -33,12 +34,33 @@ const ATTR_RE = /([A-Za-z:-]+)="([^"]*)"/g;
 const PHOTO_TAGS = new Set(["rounded-rectangle", "rectangle", "image"]);
 
 function decodeEntities(text: string): string {
-  return text
-    .replace(/&#(\d+);/g, (_m, code: string) => String.fromCodePoint(Number(code)))
-    .replace(/&quot;/g, '"')
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&");
+  return text.replace(
+    /&(?:#x([0-9a-fA-F]+)|#(\d+)|(quot|apos|lt|gt|amp));/gi,
+    (match, hex: string | undefined, dec: string | undefined, named: string | undefined) => {
+      if (hex !== undefined) {
+        const cp = Number.parseInt(hex, 16);
+        return Number.isFinite(cp) && cp >= 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : match;
+      }
+      if (dec !== undefined) {
+        const cp = Number.parseInt(dec, 10);
+        return Number.isFinite(cp) && cp >= 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : match;
+      }
+      switch (named?.toLowerCase()) {
+        case "quot":
+          return '"';
+        case "apos":
+          return "'";
+        case "lt":
+          return "<";
+        case "gt":
+          return ">";
+        case "amp":
+          return "&";
+        default:
+          return match;
+      }
+    },
+  );
 }
 
 function readAttrs(raw: string): Map<string, string> {
@@ -163,12 +185,13 @@ const FORMAT_EXT = new Map<string, string>([
 ]);
 
 // One board photo can hold a full-size original and a small preview. The downloads of one photo are
-// named "<stem>__<n>.<anything>". This keeps the image with the most pixels of each stem and copies
-// it to the photos folder as "<stem>.<ext>".
+// named "<stem>__<n>.<anything>". This keeps the image with the most pixels of each stem and writes
+// it to the photos folder as "<stem>.<ext>" with mode 0600, removing older "<stem>.*" files first.
 export async function pickLargestDownloads(
   downloadsDir: string,
   photosDir: string,
-  plannedStems: string[] = [],
+  plannedStems: string[],
+  repoRoot: string,
 ): Promise<PickResult> {
   const groups = new Map<string, string[]>();
   for (const entry of readdirSync(downloadsDir).sort()) {
@@ -199,8 +222,16 @@ export async function pickLargestDownloads(
     }
     if (!best) continue;
     const outName = `${stem}.${best.ext}`;
-    copyFileSync(join(downloadsDir, best.file), join(photosDir, outName));
-    chmodSync(join(photosDir, outName), 0o600);
+    const outPath = join(photosDir, outName);
+    assertSafeOutputFile(outPath, repoRoot);
+    const bytes = readRegularFileNoFollow(join(downloadsDir, best.file));
+    const stemPrefix = `${stem}.`;
+    for (const existing of readdirSync(photosDir)) {
+      if (existing !== outName && existing.startsWith(stemPrefix)) {
+        unlinkSync(join(photosDir, existing));
+      }
+    }
+    writeSafeOutputFile(outPath, bytes, repoRoot);
     const entry: PickedPhoto = { stem, file: outName, width: best.width, height: best.height };
     picked.push(entry);
     if (Math.max(best.width, best.height) < MIN_LONG_SIDE_PX) tooSmall.push(entry);

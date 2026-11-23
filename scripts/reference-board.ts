@@ -47,6 +47,7 @@ async function main(): Promise<void> {
     downloadsDir,
     photosDir,
     plan.photos.map((p) => p.stem),
+    repoRoot,
   );
   const nameOf = new Map(plan.photos.map((p) => [p.stem, p.name]));
   console.log(`Photos kept: ${result.picked.length} of ${plan.photos.length} in ${photosDir}`);

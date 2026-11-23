@@ -1,5 +1,10 @@
 import type { PageStatus, RecordDifference, UnnamedTeachingMark } from "./compare";
-import type { TooSmallPhotoReport, UnreadablePhotoReport } from "./prepare";
+import type {
+  DuplicatePhotoReport,
+  RemovedPhotoReport,
+  TooSmallPhotoReport,
+  UnreadablePhotoReport,
+} from "./prepare";
 import type { ReaderMeta } from "./read";
 
 export interface FailedPhotoReport {
@@ -22,6 +27,18 @@ export interface KeptHumanCheckedReport {
   differs_from_reader_b: boolean;
   diff_count_a: number;
   diff_count_b: number;
+}
+
+// A photo that claims a page id that another photo won. It gets no final record and keeps its readings.
+export interface SamePageIdConflict {
+  source_ref: string;
+  winner_original_name: string | null;
+  winner_photo: string | null;
+  photo: string | null;
+  original_name: string | null;
+  photo_sha256: string | null;
+  reader_a_source_ref: string | null;
+  reader_b_source_ref: string | null;
 }
 
 export interface PageCompareReport {
@@ -51,6 +68,9 @@ export interface CompareWorkReport {
   could_not_read_photos: UnreadablePhotoReport[];
   kept_human_checked: KeptHumanCheckedReport[];
   removed_stale_pages: string[];
+  duplicate_photos: DuplicatePhotoReport[];
+  removed_photos: RemovedPhotoReport[];
+  same_page_id_conflicts: SamePageIdConflict[];
 }
 
 function formatVal(v: unknown): string {
@@ -95,6 +115,43 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
     lines.push("");
     for (const item of report.could_not_read_photos) {
       lines.push(`- \`${item.original_name}\`: ${item.reason}`);
+    }
+    lines.push("");
+  }
+
+  if (report.duplicate_photos.length > 0) {
+    lines.push("## Duplicate photos");
+    lines.push("");
+    for (const item of report.duplicate_photos) {
+      lines.push(
+        `- \`${item.original_name}\`: duplicate_photo, the same photo as \`${item.duplicate_of}\` (not read)`,
+      );
+    }
+    lines.push("");
+  }
+
+  if (report.removed_photos.length > 0) {
+    lines.push("## Removed photos");
+    lines.push("");
+    for (const item of report.removed_photos) {
+      const ref = item.source_ref ? ` (${item.source_ref})` : "";
+      const outcome = item.kept_human_checked
+        ? "kept: checked by a person"
+        : "no longer in the photos folder; its readings and final record were removed";
+      lines.push(`- \`${item.original_name}\`${ref}: ${outcome}`);
+    }
+    lines.push("");
+  }
+
+  if (report.same_page_id_conflicts.length > 0) {
+    lines.push("## Same page id for two photos");
+    lines.push("");
+    for (const c of report.same_page_id_conflicts) {
+      const name = c.original_name ?? c.photo ?? "unknown photo";
+      const winner = c.winner_original_name ?? c.winner_photo ?? "another photo";
+      lines.push(
+        `- \`${name}\` also claims ${c.source_ref} (reader a: ${c.reader_a_source_ref ?? "none"}, reader b: ${c.reader_b_source_ref ?? "none"}). The final record comes from \`${winner}\`. This photo has no final record; its readings are kept.`,
+      );
     }
     lines.push("");
   }

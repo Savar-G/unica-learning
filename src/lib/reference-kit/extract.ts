@@ -1,20 +1,22 @@
-import {
-  existsSync,
-  readdirSync,
-  readFileSync,
-  statSync,
-  unlinkSync,
-} from "node:fs";
-import { basename, extname, join, resolve } from "node:path";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 import {
   assertOutsideRepo,
   prepareSafeOutputDir,
-  validateReferenceRecord,
   writeSafeOutputFile,
-  type ValidationError,
 } from "@/lib/reference-record";
-import { fileSlugFromRef } from "./answers";
 import { compareWorkFolder, type CompareWorkReport } from "./compare-batch";
+import { openPageShelter, type PageShelter, type ShelterCategory } from "./extract-shelter";
+import {
+  findHumanCheckedRefs,
+  isValidReading,
+  loadRunEntries,
+  mergeRunEntries,
+  persistSlotResult,
+  pruneRemovedPhotos,
+  readJsonIfExists,
+  refsForDigest,
+} from "./extract-state";
 import {
   createEmptyManifest,
   isSupportedPhotoFile,
@@ -26,11 +28,12 @@ import {
   preparePhoto,
   readRegularFileNoFollow,
   resolveSafeChildPath,
+  sha256Hex,
   upsertManifestPhoto,
+  type DuplicatePhotoReport,
   type PhotosManifest,
   type PrepareReportFile,
-  type TooSmallPhotoReport,
-  type UnreadablePhotoReport,
+  type RemovedPhotoReport,
 } from "./prepare";
 import {
   assertModelMatchesFamily,
@@ -39,7 +42,6 @@ import {
   type PhotoRunEntry,
   type ReaderFamily,
   type ReaderMeta,
-  type ReaderSlot,
   type ReadPhotoResult,
   type ReadRunReport,
   type RunCli,
@@ -77,215 +79,49 @@ export interface ExtractFolderResult {
   report: CompareWorkReport;
 }
 
-function readJsonIfExists<T>(filePath: string): T | null {
-  if (!existsSync(filePath)) return null;
-  try {
-    return JSON.parse(readFileSync(filePath, "utf8")) as T;
-  } catch {
-    return null;
-  }
+interface SizedPhoto {
+  name: string;
+  sha256: string;
+  width: number;
+  height: number;
 }
 
-function safeUnlink(filePath: string): void {
-  if (existsSync(filePath)) {
-    unlinkSync(filePath);
-  }
+type ReadyPhoto = SizedPhoto & { kind: "ready" };
+
+type ScannedPhoto =
+  | { name: string; kind: "unreadable"; reason: string }
+  | (SizedPhoto & { kind: "too_small" })
+  | ReadyPhoto
+  | { name: string; kind: "duplicate"; sha256: string; duplicateOf: string };
+
+interface SlotOutcome {
+  entry: PhotoRunEntry | undefined;
+  label: string;
 }
 
-function loadCachedSlotEntries(
-  slotDir: string,
-  expectedFamily: ReaderFamily,
-): Map<string, PhotoRunEntry> {
-  const validByDigest = new Map<string, PhotoRunEntry>();
-  const meta = readJsonIfExists<Partial<ReaderMeta>>(join(slotDir, "reader.json"));
-  if (!meta || meta.family !== expectedFamily) return validByDigest;
-
-  const run = readJsonIfExists<Partial<ReadRunReport>>(join(slotDir, "run.json"));
-  if (!run || !Array.isArray(run.photos)) return validByDigest;
-
-  for (const entry of run.photos) {
-    if (
-      entry.status !== "ok" ||
-      typeof entry.photo_sha256 !== "string" ||
-      typeof entry.record_file !== "string" ||
-      typeof entry.source_ref !== "string"
-    ) {
-      continue;
-    }
-    const recordPath = join(slotDir, entry.record_file);
-    if (!existsSync(recordPath)) continue;
-    const raw = readJsonIfExists<unknown>(recordPath);
-    const check = validateReferenceRecord(raw);
-    if (!check.ok || check.record.source_ref !== entry.source_ref) continue;
-    validByDigest.set(entry.photo_sha256, entry);
-  }
-  return validByDigest;
-}
-
-function deleteOldFilesForDigest(opts: {
+interface RunContext {
+  opts: ExtractFolderOptions;
+  readerA: ReaderFamily;
+  readerB: ReaderFamily;
+  repoRoot: string;
   workDir: string;
+  preparedPhotosDir: string;
   slotDirA: string;
   slotDirB: string;
-  sha256: string;
   manifest: PhotosManifest;
-  deleteFinal: boolean;
-  repoRoot: string;
-}): void {
-  const oldRefs = new Set<string>();
-  const manifestEntry = opts.manifest.photos.find((p) => p.sha256 === opts.sha256);
-  if (manifestEntry?.source_ref) {
-    oldRefs.add(manifestEntry.source_ref);
-  }
-
-  for (const slotDir of [opts.slotDirA, opts.slotDirB]) {
-    const runPath = join(slotDir, "run.json");
-    const run = readJsonIfExists<ReadRunReport>(runPath);
-    if (!run || !Array.isArray(run.photos)) continue;
-
-    const kept: PhotoRunEntry[] = [];
-    let changed = false;
-    for (const entry of run.photos) {
-      if (entry.photo_sha256 === opts.sha256) {
-        changed = true;
-        if (entry.source_ref) oldRefs.add(entry.source_ref);
-        if (entry.record_file) safeUnlink(join(slotDir, entry.record_file));
-        if (entry.invalid_file) safeUnlink(join(slotDir, entry.invalid_file));
-      } else {
-        kept.push(entry);
-      }
-    }
-    if (changed) {
-      writeSafeOutputFile(
-        runPath,
-        `${JSON.stringify({ ...run, photos: kept }, null, 2)}\n`,
-        opts.repoRoot,
-      );
-    }
-  }
-
-  if (!opts.deleteFinal) return;
-
-  const finalDir = join(opts.workDir, "final");
-  const viewDir = join(opts.workDir, "final-view");
-  const statusPath = join(finalDir, "status.json");
-  const statusMap = readJsonIfExists<Record<string, string>>(statusPath);
-  let statusChanged = false;
-
-  for (const ref of oldRefs) {
-    const slug = fileSlugFromRef(ref);
-    safeUnlink(join(finalDir, `${slug}.json`));
-    safeUnlink(join(viewDir, `${slug}.md`));
-    if (statusMap && Object.prototype.hasOwnProperty.call(statusMap, ref)) {
-      delete statusMap[ref];
-      statusChanged = true;
-    }
-  }
-  if (statusChanged && statusMap) {
-    writeSafeOutputFile(statusPath, `${JSON.stringify(statusMap, null, 2)}\n`, opts.repoRoot);
-  }
+  entriesA: PhotoRunEntry[];
+  entriesB: PhotoRunEntry[];
+  humanCheckedRefs: Set<string>;
 }
 
-function persistSlotResult(opts: {
-  slot: ReaderSlot;
-  slotDir: string;
-  preparedFile: string;
-  originalName: string;
-  sha256: string;
-  result: ReadPhotoResult;
-  writtenSourceRefs: Set<string>;
-  repoRoot: string;
-}): PhotoRunEntry {
-  const { slot, slotDir, preparedFile, originalName, sha256, result, writtenSourceRefs, repoRoot } = opts;
-
-  if (result.status === "cli_error") {
-    return {
-      photo: preparedFile,
-      original_name: originalName,
-      photo_sha256: sha256,
-      status: "cli_error",
-      reason: result.reason,
-      notes: [],
-    };
+function formatPhotoProgress(prefix: string, a: SlotOutcome, b: SlotOutcome): string {
+  const refA = a.entry?.status === "ok" ? a.entry.source_ref : undefined;
+  const refB = b.entry?.status === "ok" ? b.entry.source_ref : undefined;
+  if (refA && refB && refA !== refB) {
+    return `${prefix} a ${a.label} (${refA}), b ${b.label} (${refB})`;
   }
-
-  if (result.status === "invalid") {
-    const photoBase = basename(preparedFile, extname(preparedFile));
-    const invalidFile = `${photoBase}.invalid.json`;
-    writeSafeOutputFile(
-      join(slotDir, invalidFile),
-      `${JSON.stringify({ photo: preparedFile, original_name: originalName, errors: result.errors, raw: result.raw }, null, 2)}\n`,
-      repoRoot,
-    );
-    return {
-      photo: preparedFile,
-      original_name: originalName,
-      photo_sha256: sha256,
-      status: "invalid",
-      invalid_file: invalidFile,
-      errors: result.errors,
-      notes: [],
-    };
-  }
-
-  const sourceRef = result.record.source_ref;
-  if (writtenSourceRefs.has(sourceRef)) {
-    const photoBase = basename(preparedFile, extname(preparedFile));
-    const invalidFile = `${photoBase}.invalid.json`;
-    const dupErr: ValidationError = {
-      path: "source_ref",
-      message: `duplicate source_ref "${sourceRef}" in slot ${slot}`,
-    };
-    writeSafeOutputFile(
-      join(slotDir, invalidFile),
-      `${JSON.stringify({ photo: preparedFile, original_name: originalName, errors: [dupErr], raw: JSON.stringify(result.record) }, null, 2)}\n`,
-      repoRoot,
-    );
-    return {
-      photo: preparedFile,
-      original_name: originalName,
-      photo_sha256: sha256,
-      status: "invalid",
-      invalid_file: invalidFile,
-      errors: [dupErr],
-      notes: [],
-    };
-  }
-
-  writtenSourceRefs.add(sourceRef);
-  const recordFile = `${fileSlugFromRef(sourceRef)}.json`;
-  writeSafeOutputFile(
-    join(slotDir, recordFile),
-    `${JSON.stringify(result.record, null, 2)}\n`,
-    repoRoot,
-  );
-  return {
-    photo: preparedFile,
-    original_name: originalName,
-    photo_sha256: sha256,
-    status: "ok",
-    source_ref: sourceRef,
-    record_file: recordFile,
-    notes: result.notes,
-  };
-}
-
-function formatPhotoProgress(
-  index: number,
-  total: number,
-  originalName: string,
-  entryA: PhotoRunEntry,
-  entryB: PhotoRunEntry,
-): string {
-  const prefix = `[${index}/${total}] ${originalName}:`;
-  if (entryA.status === "ok" && entryB.status === "ok") {
-    if (entryA.source_ref === entryB.source_ref) {
-      return `${prefix} a ok, b ok -> ${entryA.source_ref}`;
-    }
-    return `${prefix} a ok (${entryA.source_ref}), b ok (${entryB.source_ref})`;
-  }
-  const ref = entryA.source_ref ?? entryB.source_ref;
-  const tail = ref ? ` -> ${ref}` : "";
-  return `${prefix} a ${entryA.status}, b ${entryB.status}${tail}`;
+  const ref = refA ?? refB;
+  return `${prefix} a ${a.label}, b ${b.label}${ref ? ` -> ${ref}` : ""}`;
 }
 
 function validateExtractOptions(opts: ExtractFolderOptions): {
@@ -314,6 +150,212 @@ function validateExtractOptions(opts: ExtractFolderOptions): {
   return { readerA, readerB };
 }
 
+// Prepares every photo of the folder to learn its digest (the photos folder is the truth, also
+// with --limit). Only the selected photos (the first selectedCount) are written to photos/.
+async function scanPhotoFolder(opts: {
+  photosDir: string;
+  names: string[];
+  selectedCount: number;
+  allowSmall: boolean;
+  preparedPhotosDir: string;
+  repoRoot: string;
+}): Promise<ScannedPhoto[]> {
+  const firstNameByDigest = new Map<string, string>();
+  const scanned: ScannedPhoto[] = [];
+  for (let i = 0; i < opts.names.length; i += 1) {
+    const name = opts.names[i];
+    const candidatePath = resolveSafeChildPath(opts.photosDir, name);
+    if (!candidatePath) {
+      scanned.push({ name, kind: "unreadable", reason: `unreadable_image: invalid file name "${name}"` });
+      continue;
+    }
+    let prepared;
+    try {
+      prepared = await preparePhoto(readRegularFileNoFollow(candidatePath));
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      scanned.push({ name, kind: "unreadable", reason: `unreadable_image: ${detail}` });
+      continue;
+    }
+    const { sha256, width, height } = prepared;
+    const duplicateOf = firstNameByDigest.get(sha256);
+    if (duplicateOf !== undefined) {
+      scanned.push({ name, kind: "duplicate", sha256, duplicateOf });
+      continue;
+    }
+    firstNameByDigest.set(sha256, name);
+    if (Math.max(width, height) < MIN_LONG_SIDE_PX && !opts.allowSmall) {
+      scanned.push({ name, kind: "too_small", sha256, width, height });
+      continue;
+    }
+    scanned.push({ name, kind: "ready", sha256, width, height });
+    if (i < opts.selectedCount) {
+      const file = join(opts.preparedPhotosDir, preparedFileNameForHash(sha256));
+      writeSafeOutputFile(file, prepared.bytes, opts.repoRoot);
+    }
+  }
+  return scanned;
+}
+
+function withPhotoName(
+  entry: PhotoRunEntry | undefined,
+  photo: string,
+  originalName: string,
+): PhotoRunEntry | undefined {
+  return entry ? { ...entry, photo, original_name: originalName } : undefined;
+}
+
+// Decides the run.json entry of one reader after its read. A failed read never replaces an older
+// valid reading; any other new result replaces the reader's old files of this digest.
+function settleSlot(opts: {
+  ctx: RunContext;
+  category: ShelterCategory;
+  shelter: PageShelter;
+  result: ReadPhotoResult | null;
+  old: PhotoRunEntry | undefined;
+  oldValid: boolean;
+  photo: ReadyPhoto;
+}): SlotOutcome {
+  const { ctx, category, result, photo } = opts;
+  const preparedFile = preparedFileNameForHash(photo.sha256);
+  const old = withPhotoName(opts.old, preparedFile, photo.name);
+  if (!result) return { entry: old, label: "kept" };
+  if (result.status !== "ok" && opts.oldValid) {
+    return { entry: old, label: `${result.status} (older reading kept)` };
+  }
+  const slotDir = category === "slotA" ? ctx.slotDirA : ctx.slotDirB;
+  const entry = persistSlotResult({
+    slotDir,
+    preparedFile,
+    originalName: photo.name,
+    sha256: photo.sha256,
+    result,
+    existingEntries: category === "slotA" ? ctx.entriesA : ctx.entriesB,
+    repoRoot: ctx.repoRoot,
+  });
+  const written = entry.record_file ?? entry.invalid_file;
+  opts.shelter.markReplaced(category, written ? [join(slotDir, written)] : []);
+  return { entry, label: entry.status };
+}
+
+function readerCall(ctx: RunContext, family: ReaderFamily, model: string | undefined, bytes: Buffer) {
+  return readPhoto({
+    photoBytes: bytes,
+    source: ctx.opts.source,
+    reader: family,
+    model,
+    timeoutMs: ctx.opts.timeoutMs,
+    runCli: ctx.opts.runCli,
+  });
+}
+
+// Reads one photo. A reader with a valid reading for this digest is not run again unless --force,
+// and a page checked by a person is never read again without --force. While any reader runs, the
+// page's old files wait in a private shelter folder.
+async function readOnePhoto(ctx: RunContext, photo: ReadyPhoto, prefix: string): Promise<string> {
+  const { sha256 } = photo;
+  const force = ctx.opts.force ?? false;
+  const preparedFile = preparedFileNameForHash(sha256);
+  const manifestEntry = {
+    file: preparedFile,
+    sha256,
+    original_name: photo.name,
+    width: photo.width,
+    height: photo.height,
+  };
+  ctx.manifest = upsertManifestPhoto(ctx.manifest, manifestEntry);
+  const oldA = ctx.entriesA.find((e) => e.photo_sha256 === sha256);
+  const oldB = ctx.entriesB.find((e) => e.photo_sha256 === sha256);
+  const refs = refsForDigest(sha256, ctx.manifest, ctx.entriesA, ctx.entriesB);
+  const keepAsIs = (): void => {
+    const renamedA = withPhotoName(oldA, preparedFile, photo.name);
+    const renamedB = withPhotoName(oldB, preparedFile, photo.name);
+    if (renamedA) ctx.entriesA = mergeRunEntries(ctx.entriesA, [renamedA]);
+    if (renamedB) ctx.entriesB = mergeRunEntries(ctx.entriesB, [renamedB]);
+  };
+
+  const checkedRef = refs.find((ref) => ctx.humanCheckedRefs.has(ref));
+  if (checkedRef && !force) {
+    keepAsIs();
+    return `${prefix} kept: checked by a person -> ${checkedRef}`;
+  }
+
+  const validA = isValidReading(ctx.slotDirA, oldA);
+  const validB = isValidReading(ctx.slotDirB, oldB);
+  const runA = force || !validA;
+  const runB = force || !validB;
+  if (!runA && !runB) {
+    keepAsIs();
+    const ref = oldA?.source_ref ?? oldB?.source_ref;
+    if (ref && !ctx.manifest.photos.find((p) => p.sha256 === sha256)?.source_ref) {
+      ctx.manifest = upsertManifestPhoto(ctx.manifest, { ...manifestEntry, source_ref: ref });
+    }
+    return `${prefix} skipped (cached) -> ${ref}`;
+  }
+
+  const bytes = readRegularFileNoFollow(join(ctx.preparedPhotosDir, preparedFile));
+  if (sha256Hex(bytes) !== sha256) {
+    throw new Error(`Prepared photo ${preparedFile} changed during the run; run the command again.`);
+  }
+  const filesOf = (entry: PhotoRunEntry | undefined): string[] =>
+    [entry?.record_file, entry?.invalid_file].filter((f): f is string => typeof f === "string");
+  const shelter = openPageShelter({
+    workDir: ctx.workDir,
+    slotDirA: ctx.slotDirA,
+    slotDirB: ctx.slotDirB,
+    repoRoot: ctx.repoRoot,
+    sha256,
+    slotAFiles: filesOf(oldA),
+    slotBFiles: filesOf(oldB),
+    finalSourceRefs: refs,
+  });
+  let outcomeA: SlotOutcome;
+  let outcomeB: SlotOutcome;
+  try {
+    // Isolation rule: the readers run at the same time; results are written only after both finish.
+    const [resA, resB] = await Promise.all([
+      runA ? readerCall(ctx, ctx.readerA, ctx.opts.modelA, bytes) : Promise.resolve(null),
+      runB ? readerCall(ctx, ctx.readerB, ctx.opts.modelB, bytes) : Promise.resolve(null),
+    ]);
+    const common = { ctx, shelter, photo };
+    outcomeA = settleSlot({ ...common, category: "slotA", result: resA, old: oldA, oldValid: validA });
+    outcomeB = settleSlot({ ...common, category: "slotB", result: resB, old: oldB, oldValid: validB });
+    shelter.markCommitted();
+  } finally {
+    shelter.close();
+  }
+
+  if (outcomeA.entry) ctx.entriesA = mergeRunEntries(ctx.entriesA, [outcomeA.entry]);
+  if (outcomeB.entry) ctx.entriesB = mergeRunEntries(ctx.entriesB, [outcomeB.entry]);
+  const okRef = [outcomeA.entry, outcomeB.entry].find((e) => e?.status === "ok")?.source_ref;
+  if (okRef) {
+    ctx.manifest = upsertManifestPhoto(ctx.manifest, { ...manifestEntry, source_ref: okRef });
+  }
+  return formatPhotoProgress(prefix, outcomeA, outcomeB);
+}
+
+function writeRunState(ctx: RunContext, metaA: ReaderMeta, metaB: ReaderMeta): void {
+  const runA: ReadRunReport = { slot: "a", reader: metaA, source: ctx.opts.source, photos: ctx.entriesA };
+  const runB: ReadRunReport = { slot: "b", reader: metaB, source: ctx.opts.source, photos: ctx.entriesB };
+  writeSafeOutputFile(join(ctx.slotDirA, "run.json"), `${JSON.stringify(runA, null, 2)}\n`, ctx.repoRoot);
+  writeSafeOutputFile(join(ctx.slotDirB, "run.json"), `${JSON.stringify(runB, null, 2)}\n`, ctx.repoRoot);
+  writeSafeOutputFile(
+    join(ctx.preparedPhotosDir, PHOTOS_MANIFEST_FILE),
+    `${JSON.stringify(ctx.manifest, null, 2)}\n`,
+    ctx.repoRoot,
+  );
+}
+
+function loadManifest(manifestPath: string): PhotosManifest {
+  const raw = readJsonIfExists<unknown>(manifestPath);
+  if (!raw) return createEmptyManifest();
+  try {
+    return parsePhotosManifest(raw);
+  } catch {
+    return createEmptyManifest();
+  }
+}
+
 export async function extractFolder(opts: ExtractFolderOptions): Promise<ExtractFolderResult> {
   const { readerA, readerB } = validateExtractOptions(opts);
   const repoRoot = resolve(opts.repoRoot);
@@ -328,216 +370,88 @@ export async function extractFolder(opts: ExtractFolderOptions): Promise<Extract
     .filter((entry) => !entry.isDirectory() && isSupportedPhotoFile(entry.name))
     .map((entry) => entry.name)
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-
-  const photoNames =
-    opts.limit !== undefined ? allPhotoNames.slice(0, opts.limit) : allPhotoNames;
+  const selectedCount = Math.min(opts.limit ?? allPhotoNames.length, allPhotoNames.length);
 
   const workDir = prepareSafeOutputDir(opts.outDir, repoRoot);
   const preparedPhotosDir = prepareSafeOutputDir(join(workDir, "photos"), repoRoot);
   const slotDirA = prepareSafeOutputDir(join(workDir, "reader-a"), repoRoot);
   const slotDirB = prepareSafeOutputDir(join(workDir, "reader-b"), repoRoot);
 
+  const ctx: RunContext = {
+    opts,
+    readerA,
+    readerB,
+    repoRoot,
+    workDir,
+    preparedPhotosDir,
+    slotDirA,
+    slotDirB,
+    manifest: loadManifest(join(preparedPhotosDir, PHOTOS_MANIFEST_FILE)),
+    entriesA: loadRunEntries(slotDirA, readerA),
+    entriesB: loadRunEntries(slotDirB, readerB),
+    humanCheckedRefs: findHumanCheckedRefs(workDir),
+  };
   const metaA: ReaderMeta = { family: readerA, model: opts.modelA ?? "default" };
   const metaB: ReaderMeta = { family: readerB, model: opts.modelB ?? "default" };
-
-  const manifestPath = join(preparedPhotosDir, PHOTOS_MANIFEST_FILE);
-  let manifest: PhotosManifest = createEmptyManifest();
-  const existingManifestRaw = readJsonIfExists<unknown>(manifestPath);
-  if (existingManifestRaw) {
-    try {
-      manifest = parsePhotosManifest(existingManifestRaw);
-    } catch {
-      manifest = createEmptyManifest();
-    }
-  }
-
-  const cachedA = loadCachedSlotEntries(slotDirA, readerA);
-  const cachedB = loadCachedSlotEntries(slotDirB, readerB);
-
   writeSafeOutputFile(join(slotDirA, "reader.json"), `${JSON.stringify(metaA, null, 2)}\n`, repoRoot);
   writeSafeOutputFile(join(slotDirB, "reader.json"), `${JSON.stringify(metaB, null, 2)}\n`, repoRoot);
 
-  const entriesA: PhotoRunEntry[] = [];
-  const entriesB: PhotoRunEntry[] = [];
-  const writtenRefsA = new Set<string>();
-  const writtenRefsB = new Set<string>();
-  const tooSmall: TooSmallPhotoReport[] = [];
-  const unreadable: UnreadablePhotoReport[] = [];
+  const scanned = await scanPhotoFolder({
+    photosDir,
+    names: allPhotoNames,
+    selectedCount,
+    allowSmall: opts.allowSmall ?? false,
+    preparedPhotosDir,
+    repoRoot,
+  });
 
-  const allowSmall = opts.allowSmall ?? false;
-  const force = opts.force ?? false;
-  const log = opts.onProgress ?? (() => {});
-  let preparedCount = 0;
-
-  const writeSlotRuns = (): void => {
-    const runA: ReadRunReport = { slot: "a", reader: metaA, source: opts.source, photos: entriesA };
-    const runB: ReadRunReport = { slot: "b", reader: metaB, source: opts.source, photos: entriesB };
-    writeSafeOutputFile(join(slotDirA, "run.json"), `${JSON.stringify(runA, null, 2)}\n`, repoRoot);
-    writeSafeOutputFile(join(slotDirB, "run.json"), `${JSON.stringify(runB, null, 2)}\n`, repoRoot);
-    writeSafeOutputFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, repoRoot);
-  };
-
-  for (let i = 0; i < photoNames.length; i += 1) {
-    const originalName = photoNames[i];
-    const index = i + 1;
-    const total = photoNames.length;
-    const candidatePath = resolveSafeChildPath(photosDir, originalName);
-    if (!candidatePath) {
-      const reason = `unreadable_image: invalid file name "${originalName}"`;
-      unreadable.push({ original_name: originalName, reason });
-      log(`[${index}/${total}] ${originalName}: ${reason}`);
-      continue;
-    }
-
-    let rawBytes: Buffer;
-    try {
-      rawBytes = readRegularFileNoFollow(candidatePath);
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
-      const reason = `unreadable_image: ${detail}`;
-      unreadable.push({ original_name: originalName, reason });
-      log(`[${index}/${total}] ${originalName}: ${reason}`);
-      continue;
-    }
-
-    let prepared;
-    try {
-      prepared = await preparePhoto(rawBytes);
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
-      const reason = `unreadable_image: ${detail}`;
-      unreadable.push({ original_name: originalName, reason });
-      log(`[${index}/${total}] ${originalName}: ${reason}`);
-      continue;
-    }
-
-    const longSide = Math.max(prepared.width, prepared.height);
-    if (longSide < MIN_LONG_SIDE_PX && !allowSmall) {
-      tooSmall.push({ original_name: originalName, width: prepared.width, height: prepared.height });
-      log(`[${index}/${total}] ${originalName}: too_small (${prepared.width}x${prepared.height})`);
-      continue;
-    }
-
-    preparedCount += 1;
-    const preparedFile = preparedFileNameForHash(prepared.sha256);
-    writeSafeOutputFile(join(preparedPhotosDir, preparedFile), prepared.bytes, repoRoot);
-
-    const prevA = cachedA.get(prepared.sha256);
-    const prevB = cachedB.get(prepared.sha256);
-    if (
-      !force &&
-      prevA?.source_ref &&
-      prevB?.source_ref &&
-      !writtenRefsA.has(prevA.source_ref) &&
-      !writtenRefsB.has(prevB.source_ref)
-    ) {
-      writtenRefsA.add(prevA.source_ref);
-      writtenRefsB.add(prevB.source_ref);
-      entriesA.push({ ...prevA, photo: preparedFile, original_name: originalName });
-      entriesB.push({ ...prevB, photo: preparedFile, original_name: originalName });
-      manifest = upsertManifestPhoto(manifest, {
-        file: preparedFile,
-        sha256: prepared.sha256,
-        original_name: originalName,
-        width: prepared.width,
-        height: prepared.height,
-        source_ref: prevA.source_ref,
-      });
-      writeSlotRuns();
-      log(`[${index}/${total}] ${originalName}: skipped (cached) -> ${prevA.source_ref}`);
-      continue;
-    }
-
-    deleteOldFilesForDigest({
-      workDir,
-      slotDirA,
-      slotDirB,
-      sha256: prepared.sha256,
-      manifest,
-      deleteFinal: force,
-      repoRoot,
-    });
-    cachedA.delete(prepared.sha256);
-    cachedB.delete(prepared.sha256);
-
-    manifest = upsertManifestPhoto(
-      manifest,
-      {
-        file: preparedFile,
-        sha256: prepared.sha256,
-        original_name: originalName,
-        width: prepared.width,
-        height: prepared.height,
-      },
-      { clearSourceRef: force },
-    );
-
-    // Isolation rule: run both readers in parallel, keep results in memory, write only after BOTH finish.
-    const [resA, resB] = await Promise.all([
-      readPhoto({
-        photoBytes: prepared.bytes,
-        source: opts.source,
-        reader: readerA,
-        model: opts.modelA,
-        timeoutMs: opts.timeoutMs,
-        runCli: opts.runCli,
-      }),
-      readPhoto({
-        photoBytes: prepared.bytes,
-        source: opts.source,
-        reader: readerB,
-        model: opts.modelB,
-        timeoutMs: opts.timeoutMs,
-        runCli: opts.runCli,
-      }),
-    ]);
-
-    const entryA = persistSlotResult({
-      slot: "a",
-      slotDir: slotDirA,
-      preparedFile,
-      originalName,
-      sha256: prepared.sha256,
-      result: resA,
-      writtenSourceRefs: writtenRefsA,
-      repoRoot,
-    });
-    const entryB = persistSlotResult({
-      slot: "b",
-      slotDir: slotDirB,
-      preparedFile,
-      originalName,
-      sha256: prepared.sha256,
-      result: resB,
-      writtenSourceRefs: writtenRefsB,
-      repoRoot,
-    });
-
-    entriesA.push(entryA);
-    entriesB.push(entryB);
-
-    const identifiedRef = entryA.source_ref ?? entryB.source_ref;
-    if (identifiedRef) {
-      manifest = upsertManifestPhoto(manifest, {
-        file: preparedFile,
-        sha256: prepared.sha256,
-        original_name: originalName,
-        width: prepared.width,
-        height: prepared.height,
-        source_ref: identifiedRef,
-      });
-    }
-
-    writeSlotRuns();
-    log(formatPhotoProgress(index, total, originalName, entryA, entryB));
+  // An empty or unreadable photos folder (a wrong --photos path) never deletes earlier work.
+  const presentDigests = new Set(scanned.flatMap((p) => ("sha256" in p ? [p.sha256] : [])));
+  let removedPhotos: RemovedPhotoReport[] = [];
+  if (presentDigests.size > 0) {
+    const pruned = pruneRemovedPhotos({ ...ctx, presentDigests });
+    ctx.manifest = pruned.manifest;
+    ctx.entriesA = pruned.entriesA;
+    ctx.entriesB = pruned.entriesB;
+    removedPhotos = pruned.removedPhotos;
+    writeRunState(ctx, metaA, metaB);
   }
 
-  writeSlotRuns();
+  const log = opts.onProgress ?? (() => {});
+  let preparedCount = 0;
+  for (let i = 0; i < selectedCount; i += 1) {
+    const photo = scanned[i];
+    const prefix = `[${i + 1}/${selectedCount}] ${photo.name}:`;
+    if (photo.kind === "unreadable") {
+      log(`${prefix} ${photo.reason}`);
+    } else if (photo.kind === "too_small") {
+      log(`${prefix} too_small (${photo.width}x${photo.height})`);
+    } else if (photo.kind === "duplicate") {
+      log(`${prefix} duplicate_photo (same as ${photo.duplicateOf}), not read`);
+    } else {
+      preparedCount += 1;
+      const line = await readOnePhoto(ctx, photo, prefix);
+      writeRunState(ctx, metaA, metaB);
+      log(line);
+    }
+  }
+  writeRunState(ctx, metaA, metaB);
 
+  const duplicates: DuplicatePhotoReport[] = scanned.flatMap((p) =>
+    p.kind === "duplicate"
+      ? [{ original_name: p.name, duplicate_of: p.duplicateOf, photo_sha256: p.sha256 }]
+      : [],
+  );
   const prepareData: PrepareReportFile = {
     version: 1,
-    too_small: tooSmall,
-    unreadable,
+    too_small: scanned.flatMap((p) =>
+      p.kind === "too_small" ? [{ original_name: p.name, width: p.width, height: p.height }] : [],
+    ),
+    unreadable: scanned.flatMap((p) =>
+      p.kind === "unreadable" ? [{ original_name: p.name, reason: p.reason }] : [],
+    ),
+    duplicates,
+    removed_photos: removedPhotos,
   };
   writeSafeOutputFile(
     join(workDir, PREPARE_REPORT_FILE),
@@ -546,8 +460,6 @@ export async function extractFolder(opts: ExtractFolderOptions): Promise<Extract
   );
 
   const report = compareWorkFolder({ workDir, repoRoot });
-  const reportPath = join(workDir, "final", "report.md");
-
   const counts: ExtractCounts = {
     double_read: report.pages.filter((p) => p.status === "double_read").length,
     machine_read: report.pages.filter((p) => p.status === "machine_read").length,
@@ -559,7 +471,7 @@ export async function extractFolder(opts: ExtractFolderOptions): Promise<Extract
     exitCode: preparedCount === 0 ? 1 : 0,
     preparedCount,
     counts,
-    reportPath,
+    reportPath: join(workDir, "final", "report.md"),
     report,
   };
 }

@@ -139,10 +139,10 @@ describe("REFERENCE_READ_PROMPT", () => {
     expect(Array.isArray(examples[0]?.marks)).toBe(true);
   });
 
-  it("includes the What teaches section, removes mask rules, and instructs always writing steps and marks", () => {
+  it("includes the What teaches section, instructs always writing steps and marks, and forbids unclear on other descriptions and shows_other", () => {
     expect(REFERENCE_READ_PROMPT).toContain("What teaches");
-    expect(REFERENCE_READ_PROMPT).not.toMatch(/masked/i);
-    expect(REFERENCE_READ_PROMPT).not.toMatch(/black blocks/i);
     expect(REFERENCE_READ_PROMPT).toMatch(/always.*steps.*marks|steps.*marks.*every example/i);
+    expect(REFERENCE_READ_PROMPT).toMatch(/shows_other.*never.*"unclear"|never.*"unclear".*shows_other/i);
+    expect(REFERENCE_READ_PROMPT).toMatch(/other.*scaffold.*never.*"unclear"|other.*mark.*never.*"unclear"|real descriptive text/i);
   });
 });

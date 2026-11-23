@@ -59,6 +59,25 @@ describe("formatCompareReportMarkdown", () => {
         },
       ],
       removed_stale_pages: ["sample:M:9a"],
+      duplicate_photos: [
+        { original_name: "IMG_0006.jpg", duplicate_of: "IMG_0001.jpg", photo_sha256: "1".repeat(64) },
+      ],
+      removed_photos: [
+        { original_name: "IMG_OLD.jpg", photo: "999999999999.jpg", photo_sha256: "9".repeat(64), source_ref: "sample:M:8a", kept_human_checked: false },
+        { original_name: "IMG_KEEP.jpg", photo: "888888888888.jpg", photo_sha256: "8".repeat(64), source_ref: "sample:M:2a", kept_human_checked: true },
+      ],
+      same_page_id_conflicts: [
+        {
+          source_ref: "sample:M:3a",
+          winner_original_name: "IMG_0001.jpg",
+          winner_photo: "111111111111.jpg",
+          photo: "777777777777.jpg",
+          original_name: "IMG_DUP_ID.jpg",
+          photo_sha256: "7".repeat(64),
+          reader_a_source_ref: "sample:M:3a",
+          reader_b_source_ref: "sample:M:4a",
+        },
+      ],
     };
 
     const md = formatCompareReportMarkdown(report);
@@ -70,6 +89,16 @@ describe("formatCompareReportMarkdown", () => {
     expect(md).toContain("## Could not be read");
     expect(md).toContain("IMG_0005.jpg");
     expect(md).toContain("corrupt JPEG");
+    expect(md).toContain("## Duplicate photos");
+    expect(md).toContain("IMG_0006.jpg");
+    expect(md).toContain("IMG_0001.jpg");
+    expect(md).toContain("## Removed photos");
+    expect(md).toContain("IMG_OLD.jpg");
+    expect(md).toContain("IMG_KEEP.jpg");
+    expect(md).toContain("## Same page id for two photos");
+    expect(md).toContain("IMG_DUP_ID.jpg");
+    expect(md).toContain("sample:M:3a");
+    expect(md).toContain("sample:M:4a");
     expect(md).toContain("## Unnamed teaching marks");
     expect(md).toContain("split tens");
     expect(md).toContain("dotted divider");

@@ -1,4 +1,14 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
@@ -25,7 +35,7 @@ const LISTING = `<canvas id="1:1" name="Reference pages" x="0" y="0" width="0" h
     <rounded-rectangle id="11:2" name="IMG_0002 1" x="10" y="10" width="360" height="480" />
   </section>
   <section id="12:1" name="Visuals" x="0" y="14000" width="9000" height="6000">
-    <rounded-rectangle id="12:2" name="Chart &#39;A&#39;" x="10" y="10" width="360" height="480" />
+    <rounded-rectangle id="12:2" name="Chart &#39;A&#39; &#x26; &#X42;" x="10" y="10" width="360" height="480" />
   </section>
 </canvas>`;
 
@@ -52,7 +62,7 @@ describe("board sections", () => {
       ["Visuals", 1],
     ]);
     expect(sections[0].photos.map((p) => p.nodeId)).toEqual(["10:2", "10:3", "10:21"]);
-    expect(sections[3].photos[0].name).toBe("Chart 'A'");
+    expect(sections[3].photos[0].name).toBe("Chart 'A' & B");
   });
 
   it("gives each photo a unique, file-name-safe stem even when two photos share a name", () => {
@@ -88,9 +98,10 @@ describe("board sections", () => {
 });
 
 describe("pickLargestDownloads", () => {
-  it("keeps the image with the most pixels of each photo, names small ones, and names missing ones", async () => {
+  it("keeps the image with the most pixels of each photo, names small ones, names missing ones, and sets mode 0600", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-board-repo-"));
     const root = mkdtempSync(join(tmpdir(), "ref-board-"));
-    tempDirs.push(root);
+    tempDirs.push(repo, root);
     const downloads = join(root, "downloads");
     const photos = join(root, "photos");
     mkdirSync(downloads);
@@ -105,7 +116,12 @@ describe("pickLargestDownloads", () => {
     writeFileSync(join(downloads, "c-10-21__1.jpeg"), "not an image");
     writeFileSync(join(downloads, "notes.txt"), "ignore me");
 
-    const result = await pickLargestDownloads(downloads, photos, ["a-10-2", "b-10-3", "c-10-21"]);
+    const result = await pickLargestDownloads(
+      downloads,
+      photos,
+      ["a-10-2", "b-10-3", "c-10-21"],
+      repo,
+    );
 
     expect(result.picked.map((p) => [p.file, p.width, p.height])).toEqual([
       ["a-10-2.jpg", 1800, 2400],
@@ -114,8 +130,57 @@ describe("pickLargestDownloads", () => {
     expect(result.tooSmall.map((p) => p.stem)).toEqual(["b-10-3"]);
     expect(result.missing).toEqual(["c-10-21"]);
     expect(readdirSync(photos).sort()).toEqual(["a-10-2.jpg", "b-10-3.jpg"]);
+    expect(statSync(join(photos, "a-10-2.jpg")).mode & 0o777).toBe(0o600);
     const kept = await sharp(join(photos, "a-10-2.jpg")).metadata();
     expect([kept.width, kept.height]).toEqual([1800, 2400]);
     expect(existsSync(join(photos, "notes.txt"))).toBe(false);
+  });
+
+  it("removes an older file of the same stem with a different extension before writing the new larger file", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-board-ext-repo-"));
+    const root = mkdtempSync(join(tmpdir(), "ref-board-ext-"));
+    tempDirs.push(repo, root);
+    const downloads = join(root, "downloads");
+    const photos = join(root, "photos");
+    mkdirSync(downloads);
+    mkdirSync(photos);
+
+    // First pick writes a-10-2.png (smaller preview) and a-10-20.png (distinct stem that must stay).
+    writeFileSync(join(downloads, "a-10-2__1.png"), await image(400, 500, "png"));
+    writeFileSync(join(downloads, "a-10-20__1.png"), await image(1700, 1200, "png"));
+    await pickLargestDownloads(downloads, photos, ["a-10-2", "a-10-20"], repo);
+    expect(readdirSync(photos).sort()).toEqual(["a-10-2.png", "a-10-20.png"]);
+
+    // Second pick has a larger JPEG for a-10-2: old a-10-2.png must be removed while a-10-20.png stays.
+    writeFileSync(join(downloads, "a-10-2__2.bin"), await image(1800, 2400, "jpeg"));
+    await pickLargestDownloads(downloads, photos, ["a-10-2", "a-10-20"], repo);
+    expect(readdirSync(photos).sort()).toEqual(["a-10-2.jpg", "a-10-20.png"]);
+  });
+
+  it("refuses to write through a symlink at the destination or inside the repo root", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-board-sym-repo-"));
+    const root = mkdtempSync(join(tmpdir(), "ref-board-sym-"));
+    const outside = mkdtempSync(join(tmpdir(), "ref-board-sym-out-"));
+    tempDirs.push(repo, root, outside);
+    const downloads = join(root, "downloads");
+    const photos = join(root, "photos");
+    mkdirSync(downloads);
+    mkdirSync(photos);
+
+    const targetFile = join(outside, "victim.txt");
+    writeFileSync(targetFile, "do-not-overwrite");
+    symlinkSync(targetFile, join(photos, "a-10-2.jpg"));
+    writeFileSync(join(downloads, "a-10-2__1.jpg"), await image(1800, 2400, "jpeg"));
+
+    await expect(
+      pickLargestDownloads(downloads, photos, ["a-10-2"], repo),
+    ).rejects.toThrow(/symlink/i);
+    expect(readFileSync(targetFile, "utf8")).toBe("do-not-overwrite");
+
+    const insideRepoPhotos = join(repo, "photos-in");
+    mkdirSync(insideRepoPhotos);
+    await expect(
+      pickLargestDownloads(downloads, insideRepoPhotos, ["a-10-2"], repo),
+    ).rejects.toThrow(/inside the repository/i);
   });
 });

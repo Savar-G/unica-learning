@@ -27,10 +27,21 @@ npm run reference:extract -- \
 - `--source`: source slug matching `^[A-Za-z0-9]+$`.
 - `--reader-a` (default `codex`) and `--reader-b` (default `claude`): must be two different model families. Passing a `--model-a` or `--model-b` id that belongs to the other family is refused.
 - `--allow-small`: read photos whose long side is under 1600 px anyway.
-- `--force`: delete old readings and the old final record for each photo before reading it again.
-- `--limit <n>`: process only the first `n` sorted photos in the folder.
+- `--force`: run both readers again, also when valid readings exist. A new valid reading replaces the old one; a failed read keeps the old valid reading. A page checked by a person is read again, but its checked record stays.
+- `--limit <n>`: read only the first `n` sorted photos in the folder. The other photos and their readings stay as they are.
 
-Each photo is prepared, read by both readers in parallel (5-minute timeout per call, one validation retry, computed answers applied where exact, `not_stated` refused from readers), and compared once all photos finish. Re-running without `--force` resumes an interrupted run by skipping photos that already have valid readings in both readers for the same photo digest. Exit code is `0` when the run completes (even if some photos fail) and `1` for a usage error or when no photo could be prepared.
+Each photo is prepared, read by both readers in parallel (5-minute timeout per call, one validation retry, computed answers applied where exact, `not_stated` refused from readers), and compared once all photos finish. Exit code is `0` when the run completes (even if some photos fail) and `1` for a usage error or when no photo could be prepared. A reader folder that holds readings of another model family is refused; use a new `--out` folder.
+
+## Running Again
+
+A person runs the command again after a failure, after adding photos, after replacing a photo, or with `--limit`. A second run never loses earlier work:
+
+- A reader that has a valid reading for the photo digest is not run again (unless `--force`). Only the missing reader runs.
+- A page with status `human_checked` is not read again without `--force`. The run output and the report say "kept: checked by a person".
+- While a reader of a photo runs, that page's readings, final record, and view wait in a new private folder (mode `0700`) in the OS temp folder, and the photo is taken out of both `run.json` files. When the readers finish, every old file that a new reading did not replace goes back, also after an error. If the process is killed, the files stay in that folder (`unica-ref-shelter-*`); its `paths.json` lists where each file belongs.
+- `run.json` of each reader is merged by photo digest, so a run changes only the photos it selected.
+- Two photos with the same bytes: the later one gets status `duplicate_photo`, is not read, and is listed in the report with both original names.
+- The photos folder is the truth. At the start, every photo of the folder (not only the `--limit` selection) is prepared to learn its digest. A photo that has readings or a manifest entry but is no longer in the folder (removed, or replaced by a new photo) loses its prepared file, manifest entry, readings, final record, and view, and is listed under "Removed photos". A photo of a page checked by a person is kept. A photos folder with no readable photo deletes nothing.
 
 ## Photos From a Design Board
 
@@ -63,6 +74,7 @@ For each photo, reader A and reader B run at the same time (`Promise.all`), each
     reader.json                 # { family, model }
     run.json                    # per-photo status, photo_sha256, original_name, notes
     <source>-<level>-<sheet>.json
+    <source>-<level>-<sheet>-<12hex>.json  # when another photo already has the first name
     <12hex>.invalid.json        # written only when invalid twice
   reader-b/
     reader.json
@@ -85,12 +97,17 @@ Nothing else named `*.json` is written in `final/` besides the page records, `st
 - **`double_read`**: Two valid readings from two different model families read the exact same prepared photo digest (`photo_sha256`) and agree with no open differences, no `one_unclear` fields, and no once-read teaching fields. Pages with `both_unclear` fields can still be `double_read`; those fields are listed in the report.
 - **`human_checked`**: Set only by `reference:check` after a person reviews and validates a specific page. Preserved across future `reference:compare` runs.
 
+## Same Page Id for Two Photos
+
+The compare step uses every valid reading in `reader-a/` and `reader-b/`, not only the photos of the last run, and never stops for content. The page id of a photo is reader A's id (reader B's when reader A has none). When several photos claim one page id, the photo where both readers give that id wins the final record; when several such photos exist (or none), the first by original name wins. Each other photo is listed under "Same page id for two photos" with its original name and both readers' ids. It gets no final record and no `source_ref` in the manifest, and it keeps its readings. The manifest holds at most one entry for each `source_ref`.
+
 ## What the Report Shows and Next Steps
 
 `final/report.md` starts with a summary table showing every page, its original photo name, status, difference count, once-read count, both-unclear count, and whether a person must read prose. It then lists:
 
 - **Too small to read**: original file names and pixel sizes below 1600 px on the long side.
 - **Could not be read**: unreadable images and photos where neither reader produced a valid record, with reasons.
+- **Duplicate photos**, **Removed photos**, and **Same page id for two photos**: see "Running Again" and "Same Page Id for Two Photos".
 - **Unnamed teaching marks**: every `other` example step, example mark, and practice scaffold with its description, so a person sees what the fixed lists did not name.
 - **Kept: checked by a person** and **Removed stale pages**: existing `human_checked` records kept on re-compare and stale non-checked pages cleaned up.
 - **Per-page details**: differences, once-read teaching fields (including steps, marks, and scaffolds), both-unclear fields, reader answer notes, and `A person must read the prose on this page` whenever a page has an example, example step, word problem, scaffold caption, or figure.

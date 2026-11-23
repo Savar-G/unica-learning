@@ -491,4 +491,154 @@ describe("compareWorkFolder", () => {
     );
     expect(() => compareWorkFolder({ workDir: work2, repoRoot: repo })).toThrow(/collid|map to/i);
   });
+
+  it("compares every valid reading file in reader-a and reader-b even when run.json only lists a subset", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-cmp-all-repo-"));
+    const work = mkdtempSync(join(tmpdir(), "ref-cmp-all-work-"));
+    tempDirs.push(repo, work);
+
+    const dirA = join(work, "reader-a");
+    const dirB = join(work, "reader-b");
+    mkdirSync(dirA, { recursive: true });
+    mkdirSync(dirB, { recursive: true });
+
+    const page3a = makePage({ source_ref: "sample:M:3a" });
+    const page4a = makePage({ source_ref: "sample:M:4a" });
+
+    writeFileSync(join(dirA, "reader.json"), JSON.stringify({ family: "claude", model: "c1" }));
+    writeFileSync(join(dirB, "reader.json"), JSON.stringify({ family: "codex", model: "x1" }));
+    writeFileSync(join(dirA, "sample-M-3a.json"), JSON.stringify(page3a, null, 2));
+    writeFileSync(join(dirB, "sample-M-3a.json"), JSON.stringify(page3a, null, 2));
+    writeFileSync(join(dirA, "sample-M-4a.json"), JSON.stringify(page4a, null, 2));
+    writeFileSync(join(dirB, "sample-M-4a.json"), JSON.stringify(page4a, null, 2));
+
+    // run.json only lists 3a, while 4a files also exist in reader-a and reader-b
+    writeFileSync(
+      join(dirA, "run.json"),
+      JSON.stringify({
+        slot: "a",
+        reader: { family: "claude", model: "c1" },
+        source: "sample",
+        photos: [
+          { photo: "111111111111.jpg", photo_sha256: SHA_1, status: "ok", source_ref: "sample:M:3a", record_file: "sample-M-3a.json", notes: [] },
+        ],
+      }),
+    );
+    writeFileSync(
+      join(dirB, "run.json"),
+      JSON.stringify({
+        slot: "b",
+        reader: { family: "codex", model: "x1" },
+        source: "sample",
+        photos: [
+          { photo: "111111111111.jpg", photo_sha256: SHA_1, status: "ok", source_ref: "sample:M:3a", record_file: "sample-M-3a.json", notes: [] },
+        ],
+      }),
+    );
+
+    const report = compareWorkFolder({ workDir: work, repoRoot: repo });
+    expect(report.pages.map((p) => p.source_ref).sort()).toEqual(["sample:M:3a", "sample:M:4a"]);
+    expect(existsSync(join(work, "final", "sample-M-4a.json"))).toBe(true);
+  });
+
+  it("never throws when two photos claim the same source_ref: picks the double-agreeing photo (or first by original name), lists losers, clears loser manifest source_ref, and writes a report", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-cmp-sameid-repo-"));
+    const work = mkdtempSync(join(tmpdir(), "ref-cmp-sameid-work-"));
+    tempDirs.push(repo, work);
+
+    const dirA = join(work, "reader-a");
+    const dirB = join(work, "reader-b");
+    const photosDir = join(work, "photos");
+    mkdirSync(dirA, { recursive: true });
+    mkdirSync(dirB, { recursive: true });
+    mkdirSync(photosDir, { recursive: true });
+
+    const page3aPhoto1 = makePage({ source_ref: "sample:M:3a", topic: { title: "Photo 1 A", number: 1 } });
+    const page4aPhoto1 = makePage({ source_ref: "sample:M:4a", topic: { title: "Photo 1 B", number: 1 } });
+    const page3aPhoto2 = makePage({ source_ref: "sample:M:3a", topic: { title: "Photo 2 Both", number: 1 } });
+    const page3aPhoto3 = makePage({ source_ref: "sample:M:3a", topic: { title: "Photo 3 Both", number: 1 } });
+
+    writeFileSync(join(dirA, "reader.json"), JSON.stringify({ family: "codex", model: "x1" }));
+    writeFileSync(join(dirB, "reader.json"), JSON.stringify({ family: "claude", model: "c1" }));
+    writeFileSync(join(dirA, "sample-M-3a.json"), JSON.stringify(page3aPhoto1, null, 2));
+    writeFileSync(join(dirB, "sample-M-4a.json"), JSON.stringify(page4aPhoto1, null, 2));
+    writeFileSync(join(dirA, `sample-M-3a-${SHA_2.slice(0, 12)}.json`), JSON.stringify(page3aPhoto2, null, 2));
+    writeFileSync(join(dirB, "sample-M-3a.json"), JSON.stringify(page3aPhoto2, null, 2));
+    writeFileSync(join(dirA, `sample-M-3a-${SHA_3.slice(0, 12)}.json`), JSON.stringify(page3aPhoto3, null, 2));
+    writeFileSync(join(dirB, `sample-M-3a-${SHA_3.slice(0, 12)}.json`), JSON.stringify(page3aPhoto3, null, 2));
+
+    writeFileSync(
+      join(photosDir, "photos-manifest.json"),
+      JSON.stringify({
+        version: 1,
+        photos: [
+          { file: `${SHA_1.slice(0, 12)}.jpg`, sha256: SHA_1, original_name: "01_mixed.jpg", width: 1600, height: 1200, source_ref: "sample:M:3a" },
+          { file: `${SHA_2.slice(0, 12)}.jpg`, sha256: SHA_2, original_name: "02_first_both.jpg", width: 1600, height: 1200, source_ref: "sample:M:3a" },
+          { file: `${SHA_3.slice(0, 12)}.jpg`, sha256: SHA_3, original_name: "03_second_both.jpg", width: 1600, height: 1200, source_ref: "sample:M:3a" },
+        ],
+      }),
+    );
+
+    writeFileSync(
+      join(dirA, "run.json"),
+      JSON.stringify({
+        slot: "a",
+        reader: { family: "codex", model: "x1" },
+        source: "sample",
+        photos: [
+          { photo: `${SHA_1.slice(0, 12)}.jpg`, original_name: "01_mixed.jpg", photo_sha256: SHA_1, status: "ok", source_ref: "sample:M:3a", record_file: "sample-M-3a.json", notes: [] },
+          { photo: `${SHA_2.slice(0, 12)}.jpg`, original_name: "02_first_both.jpg", photo_sha256: SHA_2, status: "ok", source_ref: "sample:M:3a", record_file: `sample-M-3a-${SHA_2.slice(0, 12)}.json`, notes: [] },
+          { photo: `${SHA_3.slice(0, 12)}.jpg`, original_name: "03_second_both.jpg", photo_sha256: SHA_3, status: "ok", source_ref: "sample:M:3a", record_file: `sample-M-3a-${SHA_3.slice(0, 12)}.json`, notes: [] },
+        ],
+      }),
+    );
+    writeFileSync(
+      join(dirB, "run.json"),
+      JSON.stringify({
+        slot: "b",
+        reader: { family: "claude", model: "c1" },
+        source: "sample",
+        photos: [
+          { photo: `${SHA_1.slice(0, 12)}.jpg`, original_name: "01_mixed.jpg", photo_sha256: SHA_1, status: "ok", source_ref: "sample:M:4a", record_file: "sample-M-4a.json", notes: [] },
+          { photo: `${SHA_2.slice(0, 12)}.jpg`, original_name: "02_first_both.jpg", photo_sha256: SHA_2, status: "ok", source_ref: "sample:M:3a", record_file: "sample-M-3a.json", notes: [] },
+          { photo: `${SHA_3.slice(0, 12)}.jpg`, original_name: "03_second_both.jpg", photo_sha256: SHA_3, status: "ok", source_ref: "sample:M:3a", record_file: `sample-M-3a-${SHA_3.slice(0, 12)}.json`, notes: [] },
+        ],
+      }),
+    );
+
+    const report = compareWorkFolder({ workDir: work, repoRoot: repo });
+    // Photo 2 wins (both agree, first by original name among agreeing photos)
+    expect(report.pages).toHaveLength(1);
+    expect(report.pages[0].source_ref).toBe("sample:M:3a");
+    expect(report.pages[0].original_name).toBe("02_first_both.jpg");
+    expect(report.pages[0].status).toBe("double_read");
+
+    const final3a = JSON.parse(readFileSync(join(work, "final", "sample-M-3a.json"), "utf8"));
+    expect(final3a.topic.title).toBe("Photo 2 Both");
+    expect(existsSync(join(work, "final", "sample-M-4a.json"))).toBe(false);
+
+    // Losers keep their readings on disk and are reported under "Same page id for two photos"
+    expect(existsSync(join(dirA, "sample-M-3a.json"))).toBe(true);
+    expect(existsSync(join(dirB, "sample-M-4a.json"))).toBe(true);
+    expect(existsSync(join(dirA, `sample-M-3a-${SHA_3.slice(0, 12)}.json`))).toBe(true);
+    expect(report.same_page_id_conflicts).toHaveLength(2);
+    expect(report.same_page_id_conflicts.map((c) => c.original_name).sort()).toEqual([
+      "01_mixed.jpg",
+      "03_second_both.jpg",
+    ]);
+
+    const md = readFileSync(join(work, "final", "report.md"), "utf8");
+    expect(md).toContain("## Same page id for two photos");
+    expect(md).toContain("01_mixed.jpg");
+    expect(md).toContain("sample:M:3a");
+    expect(md).toContain("sample:M:4a");
+    expect(md).toContain("03_second_both.jpg");
+
+    // Manifest has source_ref ONLY on the winner (Photo 2)
+    const manifest = JSON.parse(readFileSync(join(photosDir, "photos-manifest.json"), "utf8"));
+    const bySha = new Map(manifest.photos.map((p: { sha256: string; source_ref?: string }) => [p.sha256, p.source_ref]));
+    expect(bySha.get(SHA_1)).toBeUndefined();
+    expect(bySha.get(SHA_2)).toBe("sample:M:3a");
+    expect(bySha.get(SHA_3)).toBeUndefined();
+  });
 });

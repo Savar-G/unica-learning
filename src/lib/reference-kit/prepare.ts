@@ -51,10 +51,26 @@ export interface UnreadablePhotoReport {
   reason: string;
 }
 
+export interface DuplicatePhotoReport {
+  original_name: string;
+  duplicate_of: string;
+  photo_sha256: string;
+}
+
+export interface RemovedPhotoReport {
+  original_name: string;
+  photo: string;
+  photo_sha256: string;
+  source_ref?: string;
+  kept_human_checked: boolean;
+}
+
 export interface PrepareReportFile {
   version: 1;
   too_small: TooSmallPhotoReport[];
   unreadable: UnreadablePhotoReport[];
+  duplicates?: DuplicatePhotoReport[];
+  removed_photos?: RemovedPhotoReport[];
 }
 
 export function sha256Hex(bytes: Uint8Array): string {

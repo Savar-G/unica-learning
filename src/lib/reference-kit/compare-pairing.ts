@@ -1,12 +1,14 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { validateReferenceRecord, type ReferenceRecord } from "@/lib/reference-record";
-import type { DigestMismatchInfo, FailedPhotoReport } from "./compare-report";
+import type { DigestMismatchInfo, FailedPhotoReport, SamePageIdConflict } from "./compare-report";
 import {
   PHOTOS_MANIFEST_FILE,
   PREPARE_REPORT_FILE,
+  type DuplicatePhotoReport,
   type PhotosManifest,
   type PrepareReportFile,
+  type RemovedPhotoReport,
   type TooSmallPhotoReport,
   type UnreadablePhotoReport,
 } from "./prepare";
@@ -20,7 +22,9 @@ export interface LoadedSlot {
 }
 
 interface OkSlotReading {
-  entry: PhotoRunEntry;
+  photo: string | null;
+  originalName: string | null;
+  notes: string[];
   record: ReferenceRecord;
   sha256: string | null;
 }
@@ -61,11 +65,15 @@ export function loadOriginalNamesByDigest(workDir: string): Map<string, string> 
 export function loadPrepareReport(workDir: string): {
   tooSmall: TooSmallPhotoReport[];
   unreadable: UnreadablePhotoReport[];
+  duplicates: DuplicatePhotoReport[];
+  removedPhotos: RemovedPhotoReport[];
 } {
   const raw = readJsonIfExists<Partial<PrepareReportFile>>(join(workDir, PREPARE_REPORT_FILE));
   return {
     tooSmall: Array.isArray(raw?.too_small) ? raw.too_small : [],
     unreadable: Array.isArray(raw?.unreadable) ? raw.unreadable : [],
+    duplicates: Array.isArray(raw?.duplicates) ? raw.duplicates : [],
+    removedPhotos: Array.isArray(raw?.removed_photos) ? raw.removed_photos : [],
   };
 }
 
@@ -109,6 +117,8 @@ function resolveOriginalName(
   return null;
 }
 
+// Every valid reading in the reader folder: the "ok" entries of run.json, then each valid record
+// file that no run.json entry names (it is paired by page id, as it has no photo digest).
 function collectOkReadings(
   slot: LoadedSlot,
   slotLabel: "a" | "b",
@@ -116,7 +126,9 @@ function collectOkReadings(
   failedPhotos: FailedPhotoReport[],
 ): OkSlotReading[] {
   const ok: OkSlotReading[] = [];
+  const namedFiles = new Set<string>();
   for (const p of slot.run?.photos ?? []) {
+    if (p.record_file) namedFiles.add(p.record_file);
     if (p.status !== "ok") {
       failedPhotos.push({
         slot: slotLabel,
@@ -130,7 +142,17 @@ function collectOkReadings(
     const rec = p.record_file ? (slot.recordsByFile.get(p.record_file) ?? null) : null;
     if (!rec) continue;
     const sha = typeof p.photo_sha256 === "string" && p.photo_sha256.length > 0 ? p.photo_sha256 : null;
-    ok.push({ entry: p, record: rec, sha256: sha });
+    ok.push({
+      photo: p.photo,
+      originalName: resolveOriginalName(p, originalNamesByDigest),
+      notes: p.notes ?? [],
+      record: rec,
+      sha256: sha,
+    });
+  }
+  for (const [file, rec] of slot.recordsByFile) {
+    if (namedFiles.has(file)) continue;
+    ok.push({ photo: null, originalName: null, notes: [], record: rec, sha256: null });
   }
   return ok;
 }
@@ -206,17 +228,15 @@ export function pairSlotPages(
         const itemB = okB[bIdx];
         usedB.add(bIdx);
         pairs.push({
-          photo: itemA.entry.photo,
-          originalName:
-            resolveOriginalName(itemA.entry, originalNamesByDigest) ??
-            resolveOriginalName(itemB.entry, originalNamesByDigest),
+          photo: itemA.photo,
+          originalName: itemA.originalName ?? itemB.originalName,
           photoSha256: itemA.sha256,
           sameDigest: true,
           digestMismatch: null,
           recA: itemA.record,
           recB: itemB.record,
-          notesA: itemA.entry.notes ?? [],
-          notesB: itemB.entry.notes ?? [],
+          notesA: itemA.notes,
+          notesB: itemB.notes,
         });
       } else {
         unmatchedA.push(itemA);
@@ -238,26 +258,26 @@ export function pairSlotPages(
         const itemB = unmatchedB[bIdx];
         usedUnmatchedB.add(bIdx);
         pairs.push({
-          photo: itemA.entry.photo,
-          originalName: resolveOriginalName(itemA.entry, originalNamesByDigest),
+          photo: itemA.photo ?? itemB.photo,
+          originalName: itemA.originalName ?? itemB.originalName,
           photoSha256: null,
           sameDigest: false,
           digestMismatch: { a: itemA.sha256, b: itemB.sha256 },
           recA: itemA.record,
           recB: itemB.record,
-          notesA: itemA.entry.notes ?? [],
-          notesB: itemB.entry.notes ?? [],
+          notesA: itemA.notes,
+          notesB: itemB.notes,
         });
       } else {
         pairs.push({
-          photo: itemA.entry.photo,
-          originalName: resolveOriginalName(itemA.entry, originalNamesByDigest),
+          photo: itemA.photo,
+          originalName: itemA.originalName,
           photoSha256: itemA.sha256,
           sameDigest: false,
           digestMismatch: null,
           recA: itemA.record,
           recB: null,
-          notesA: itemA.entry.notes ?? [],
+          notesA: itemA.notes,
           notesB: [],
         });
       }
@@ -266,15 +286,15 @@ export function pairSlotPages(
     unmatchedB.forEach((itemB, idx) => {
       if (usedUnmatchedB.has(idx)) return;
       pairs.push({
-        photo: itemB.entry.photo,
-        originalName: resolveOriginalName(itemB.entry, originalNamesByDigest),
+        photo: itemB.photo,
+        originalName: itemB.originalName,
         photoSha256: itemB.sha256,
         sameDigest: false,
         digestMismatch: null,
         recA: null,
         recB: itemB.record,
         notesA: [],
-        notesB: itemB.entry.notes ?? [],
+        notesB: itemB.notes,
       });
     });
 
@@ -314,4 +334,62 @@ export function pairSlotPages(
     });
   }
   return { pairs, failedPhotos, bothFailedPhotos: [] };
+}
+
+// The page id of a pair: reader A's id, or reader B's when reader A has no reading.
+export function pairSourceRef(pair: PairedPage): string | null {
+  return (pair.recA ?? pair.recB)?.source_ref ?? null;
+}
+
+// The photo digest that a pair's final record belongs to.
+export function pairDigest(pair: PairedPage): string | null {
+  return pair.photoSha256 ?? pair.digestMismatch?.a ?? pair.digestMismatch?.b ?? null;
+}
+
+function compareByOriginalName(x: PairedPage, y: PairedPage): number {
+  const nx = x.originalName ?? x.photo;
+  const ny = y.originalName ?? y.photo;
+  if (nx === null || ny === null) return nx === ny ? 0 : nx === null ? 1 : -1;
+  return nx.localeCompare(ny, undefined, { numeric: true });
+}
+
+// Among the photos that claim one page id, the photo where both readers give that id wins; when
+// several such photos exist (or none), the first by original name wins. Every other photo is a
+// conflict: it gets no final record and keeps its readings.
+export function pickPageWinners(pairs: readonly PairedPage[]): {
+  winners: PairedPage[];
+  conflicts: SamePageIdConflict[];
+} {
+  const byRef = new Map<string, PairedPage[]>();
+  for (const pair of pairs) {
+    const ref = pairSourceRef(pair);
+    if (!ref) continue;
+    const group = byRef.get(ref) ?? [];
+    group.push(pair);
+    byRef.set(ref, group);
+  }
+  const losers = new Set<PairedPage>();
+  const conflicts: SamePageIdConflict[] = [];
+  for (const [ref, group] of byRef) {
+    if (group.length < 2) continue;
+    const agreeing = group.filter(
+      (p) => p.recA?.source_ref === ref && p.recB?.source_ref === ref,
+    );
+    const winner = [...(agreeing.length > 0 ? agreeing : group)].sort(compareByOriginalName)[0];
+    for (const pair of [...group].sort(compareByOriginalName)) {
+      if (pair === winner) continue;
+      losers.add(pair);
+      conflicts.push({
+        source_ref: ref,
+        winner_original_name: winner.originalName,
+        winner_photo: winner.photo,
+        photo: pair.photo,
+        original_name: pair.originalName,
+        photo_sha256: pairDigest(pair),
+        reader_a_source_ref: pair.recA?.source_ref ?? null,
+        reader_b_source_ref: pair.recB?.source_ref ?? null,
+      });
+    }
+  }
+  return { winners: pairs.filter((p) => !losers.has(p)), conflicts };
 }

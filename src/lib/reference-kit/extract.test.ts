@@ -22,6 +22,7 @@ import {
   type ReferenceRow,
   type ReferenceStore,
 } from "@/lib/reference-record";
+import { checkAndMarkPage } from "./check";
 import { extractFolder } from "./extract";
 import { PHOTOS_MANIFEST_FILE, preparePhoto } from "./prepare";
 import type { RunCli } from "./read";
@@ -494,5 +495,296 @@ describe("extractFolder (reference:extract)", () => {
       failedEmpty = (err as { status?: number }).status === 1;
     }
     expect(failedEmpty).toBe(true);
+  });
+
+  it("retries only the missing reader while sheltering existing page files, preserves old valid readings on failed retry, and skips human_checked pages without --force", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-ext-r1-repo-"));
+    const photosDir = mkdtempSync(join(tmpdir(), "ref-ext-r1-in-"));
+    const outDir = mkdtempSync(join(tmpdir(), "ref-ext-r1-out-"));
+    tempDirs.push(repo, photosDir, outDir);
+
+    const img = await makePhotoBytes(1600, 1200, 21);
+    const prep = await preparePhoto(img);
+    writeFileSync(join(photosDir, "IMG_0001.jpg"), img);
+
+    // Run 1: codex (A) succeeds, claude (B) fails
+    const run1Calls: string[] = [];
+    const run1 = await extractFolder({
+      photosDir,
+      outDir,
+      source: "sample",
+      repoRoot: repo,
+      runCli: async (cmd) => {
+        run1Calls.push(cmd);
+        if (cmd === "claude") return { code: 124, stdout: "", stderr: "timeout" };
+        return { code: 0, stdout: JSON.stringify(makeReaderPayload("3a")), stderr: "" };
+      },
+    });
+    expect(run1.exitCode).toBe(0);
+    expect(run1Calls.sort()).toEqual(["claude", "codex"]);
+    expect(run1.counts.machine_read).toBe(1);
+    expect(existsSync(join(outDir, "reader-a", "sample-M-3a.json"))).toBe(true);
+    expect(existsSync(join(outDir, "final", "sample-M-3a.json"))).toBe(true);
+    expect(existsSync(join(outDir, "final-view", "sample-M-3a.md"))).toBe(true);
+
+    // Run 2 (no --force): only claude (B) runs; during its call no page files are in outDir; B fails again -> A's reading survives!
+    const run2Calls: string[] = [];
+    let sawCleanDuringRetry = true;
+    const run2 = await extractFolder({
+      photosDir,
+      outDir,
+      source: "sample",
+      repoRoot: repo,
+      runCli: async (cmd) => {
+        run2Calls.push(cmd);
+        if (
+          workDirHasDigestReading(outDir, prep.sha256) ||
+          existsSync(join(outDir, "reader-a", "sample-M-3a.json")) ||
+          existsSync(join(outDir, "final", "sample-M-3a.json")) ||
+          existsSync(join(outDir, "final-view", "sample-M-3a.md"))
+        ) {
+          sawCleanDuringRetry = false;
+        }
+        return { code: 1, stdout: "", stderr: "network error" };
+      },
+    });
+    expect(run2.exitCode).toBe(0);
+    expect(run2Calls).toEqual(["claude"]);
+    expect(sawCleanDuringRetry).toBe(true);
+    expect(existsSync(join(outDir, "reader-a", "sample-M-3a.json"))).toBe(true);
+    expect(existsSync(join(outDir, "final", "sample-M-3a.json"))).toBe(true);
+    expect(run2.counts.machine_read).toBe(1);
+
+    // Run 3 (with --force, both fail): old valid reading in A still survives!
+    const run3Calls: string[] = [];
+    const run3 = await extractFolder({
+      photosDir,
+      outDir,
+      source: "sample",
+      force: true,
+      repoRoot: repo,
+      runCli: async (cmd) => {
+        run3Calls.push(cmd);
+        return { code: 1, stdout: "", stderr: "cli down" };
+      },
+    });
+    expect(run3.exitCode).toBe(0);
+    expect(run3Calls.sort()).toEqual(["claude", "codex"]);
+    expect(existsSync(join(outDir, "reader-a", "sample-M-3a.json"))).toBe(true);
+    expect(run3.counts.machine_read).toBe(1);
+
+    // Mark 3a as human_checked (even though B is still missing): Run 4 (no --force) skips reading and reports "kept: checked by a person"
+    checkAndMarkPage({ workDir: outDir, page: "sample:M:3a", repoRoot: repo });
+    const run4Calls: string[] = [];
+    const run4Progress: string[] = [];
+    const run4 = await extractFolder({
+      photosDir,
+      outDir,
+      source: "sample",
+      repoRoot: repo,
+      onProgress: (line) => run4Progress.push(line),
+      runCli: async (cmd) => {
+        run4Calls.push(cmd);
+        return { code: 0, stdout: JSON.stringify(makeReaderPayload("3a")), stderr: "" };
+      },
+    });
+    expect(run4.exitCode).toBe(0);
+    expect(run4Calls).toEqual([]);
+    expect(run4Progress.some((line) => line.toLowerCase().includes("kept: checked by a person"))).toBe(true);
+    const reportMd = readFileSync(join(outDir, "final", "report.md"), "utf8");
+    expect(reportMd).toContain("## Kept: checked by a person");
+  });
+
+  it("marks a second photo with identical bytes as duplicate_photo without deleting the first photo's readings", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-ext-dup-repo-"));
+    const photosDir = mkdtempSync(join(tmpdir(), "ref-ext-dup-in-"));
+    const outDir = mkdtempSync(join(tmpdir(), "ref-ext-dup-out-"));
+    tempDirs.push(repo, photosDir, outDir);
+
+    const img = await makePhotoBytes(1600, 1200, 31);
+    writeFileSync(join(photosDir, "01_first.jpg"), img);
+    writeFileSync(join(photosDir, "02_copy.jpg"), img);
+
+    let cliCalls = 0;
+    const progress: string[] = [];
+    const result = await extractFolder({
+      photosDir,
+      outDir,
+      source: "sample",
+      repoRoot: repo,
+      onProgress: (line) => progress.push(line),
+      runCli: async () => {
+        cliCalls += 1;
+        return { code: 0, stdout: JSON.stringify(makeReaderPayload("3a")), stderr: "" };
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(cliCalls).toBe(2);
+    expect(result.counts.double_read).toBe(1);
+    expect(progress.some((l) => l.includes("02_copy.jpg") && l.includes("duplicate_photo"))).toBe(true);
+    expect(result.report.duplicate_photos).toHaveLength(1);
+    expect(result.report.duplicate_photos[0]).toMatchObject({
+      original_name: "02_copy.jpg",
+      duplicate_of: "01_first.jpg",
+    });
+    const reportMd = readFileSync(join(outDir, "final", "report.md"), "utf8");
+    expect(reportMd).toContain("02_copy.jpg");
+    expect(reportMd).toContain("01_first.jpg");
+    expect(reportMd).toContain("duplicate_photo");
+  });
+
+  it("preserves untouched pages in run.json and final/ when a second run uses --limit", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-ext-lim-repo-"));
+    const photosDir = mkdtempSync(join(tmpdir(), "ref-ext-lim-in-"));
+    const outDir = mkdtempSync(join(tmpdir(), "ref-ext-lim-out-"));
+    tempDirs.push(repo, photosDir, outDir);
+
+    const img1 = await makePhotoBytes(1600, 1200, 41);
+    const img2 = await makePhotoBytes(1600, 1200, 42);
+    const prep1 = await preparePhoto(img1);
+    const prep2 = await preparePhoto(img2);
+    writeFileSync(join(photosDir, "01_page.jpg"), img1);
+    writeFileSync(join(photosDir, "02_page.jpg"), img2);
+
+    const fakeCli: RunCli = async (_cmd, _args, opts) => {
+      const hash = createHash("sha256").update(readFileSync(join(opts.cwd, "page.jpg"))).digest("hex");
+      const sheet = hash === prep1.sha256 ? "3a" : "4a";
+      return { code: 0, stdout: JSON.stringify(makeReaderPayload(sheet)), stderr: "" };
+    };
+
+    const full = await extractFolder({ photosDir, outDir, source: "sample", repoRoot: repo, runCli: fakeCli });
+    expect(full.counts.double_read).toBe(2);
+
+    const limited = await extractFolder({
+      photosDir,
+      outDir,
+      source: "sample",
+      limit: 1,
+      force: true,
+      repoRoot: repo,
+      runCli: fakeCli,
+    });
+    expect(limited.exitCode).toBe(0);
+    expect(limited.counts.double_read).toBe(2);
+    expect(existsSync(join(outDir, "final", "sample-M-4a.json"))).toBe(true);
+    const runA = JSON.parse(readFileSync(join(outDir, "reader-a", "run.json"), "utf8"));
+    const runB = JSON.parse(readFileSync(join(outDir, "reader-b", "run.json"), "utf8"));
+    expect(runA.photos.map((p: { photo_sha256: string }) => p.photo_sha256).sort()).toEqual(
+      [prep1.sha256, prep2.sha256].sort(),
+    );
+    expect(runB.photos.map((p: { photo_sha256: string }) => p.photo_sha256).sort()).toEqual(
+      [prep1.sha256, prep2.sha256].sort(),
+    );
+  });
+
+  it("cleans up removed or replaced photos while keeping human_checked removed photos, and keeps manifest import-valid", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-ext-rm-repo-"));
+    const photosDir = mkdtempSync(join(tmpdir(), "ref-ext-rm-in-"));
+    const outDir = mkdtempSync(join(tmpdir(), "ref-ext-rm-out-"));
+    tempDirs.push(repo, photosDir, outDir);
+
+    const img1Old = await makePhotoBytes(1600, 1200, 51);
+    const img1New = await makePhotoBytes(1600, 1200, 52);
+    const img2 = await makePhotoBytes(1600, 1200, 53);
+    const prep1Old = await preparePhoto(img1Old);
+    const prep1New = await preparePhoto(img1New);
+    const prep2 = await preparePhoto(img2);
+
+    writeFileSync(join(photosDir, "01_page.jpg"), img1Old);
+    writeFileSync(join(photosDir, "02_page.jpg"), img2);
+
+    const fakeCli: RunCli = async (_cmd, _args, opts) => {
+      const hash = createHash("sha256").update(readFileSync(join(opts.cwd, "page.jpg"))).digest("hex");
+      const sheet = hash === prep2.sha256 ? "4a" : "3a";
+      return { code: 0, stdout: JSON.stringify(makeReaderPayload(sheet)), stderr: "" };
+    };
+
+    await extractFolder({ photosDir, outDir, source: "sample", repoRoot: repo, runCli: fakeCli });
+    // Mark 4a as human_checked
+    checkAndMarkPage({ workDir: outDir, page: "sample:M:4a", repoRoot: repo });
+
+    // Replace 01_page.jpg with a new photo (new digest) and delete 02_page.jpg
+    writeFileSync(join(photosDir, "01_page.jpg"), img1New);
+    rmSync(join(photosDir, "02_page.jpg"));
+
+    const second = await extractFolder({ photosDir, outDir, source: "sample", repoRoot: repo, runCli: fakeCli });
+    expect(second.exitCode).toBe(0);
+
+    // Old 01_page.jpg prepared file is gone; new one is present; human_checked 02_page.jpg photo is kept!
+    expect(existsSync(join(outDir, "photos", `${prep1Old.sha256.slice(0, 12)}.jpg`))).toBe(false);
+    expect(existsSync(join(outDir, "photos", `${prep1New.sha256.slice(0, 12)}.jpg`))).toBe(true);
+    expect(existsSync(join(outDir, "photos", `${prep2.sha256.slice(0, 12)}.jpg`))).toBe(true);
+
+    const reportMd = readFileSync(join(outDir, "final", "report.md"), "utf8");
+    expect(reportMd).toContain("## Removed photos");
+    expect(reportMd).toContain("`01_page.jpg` (sample:M:3a): no longer in the photos folder");
+    expect(reportMd).toContain("`02_page.jpg` (sample:M:4a): kept: checked by a person");
+
+    // Manifest has at most one entry per source_ref and reference:import succeeds
+    const manifest = JSON.parse(readFileSync(join(outDir, "photos", PHOTOS_MANIFEST_FILE), "utf8"));
+    const refs = manifest.photos.map((p: { source_ref?: string }) => p.source_ref).filter(Boolean);
+    expect(new Set(refs).size).toBe(refs.length);
+
+    const store = new MemoryImportStore();
+    const imported = await importReferenceRecords({
+      recordsDir: join(outDir, "final"),
+      photosDir: join(outDir, "photos"),
+      store,
+    });
+    expect(imported.ok).toBe(true);
+    expect(imported.counts.inserted).toBe(2);
+
+    // A photos folder with no readable photo (a wrong --photos path) never deletes earlier work.
+    rmSync(join(photosDir, "01_page.jpg"));
+    const emptyRun = await extractFolder({ photosDir, outDir, source: "sample", repoRoot: repo, runCli: fakeCli });
+    expect(emptyRun.exitCode).toBe(1);
+    expect(existsSync(join(outDir, "final", "sample-M-3a.json"))).toBe(true);
+    expect(existsSync(join(outDir, "photos", `${prep1New.sha256.slice(0, 12)}.jpg`))).toBe(true);
+  });
+
+  it("handles two photos claiming the same page id without throwing and keeps manifest import-valid", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-ext-cid-repo-"));
+    const photosDir = mkdtempSync(join(tmpdir(), "ref-ext-cid-in-"));
+    const outDir = mkdtempSync(join(tmpdir(), "ref-ext-cid-out-"));
+    tempDirs.push(repo, photosDir, outDir);
+
+    const img1 = await makePhotoBytes(1600, 1200, 61);
+    const img2 = await makePhotoBytes(1600, 1200, 62);
+    const prep1 = await preparePhoto(img1);
+    writeFileSync(join(photosDir, "01_conflict.jpg"), img1);
+    writeFileSync(join(photosDir, "02_agreed.jpg"), img2);
+
+    const fakeCli: RunCli = async (cmd, _args, opts) => {
+      const hash = createHash("sha256").update(readFileSync(join(opts.cwd, "page.jpg"))).digest("hex");
+      if (hash === prep1.sha256) {
+        const sheet = cmd === "codex" ? "3a" : "4a";
+        return { code: 0, stdout: JSON.stringify(makeReaderPayload(sheet)), stderr: "" };
+      }
+      return { code: 0, stdout: JSON.stringify(makeReaderPayload("3a")), stderr: "" };
+    };
+
+    const result = await extractFolder({ photosDir, outDir, source: "sample", repoRoot: repo, runCli: fakeCli });
+    expect(result.exitCode).toBe(0);
+    expect(result.counts.double_read).toBe(1);
+    expect(result.report.same_page_id_conflicts).toHaveLength(1);
+    expect(result.report.same_page_id_conflicts[0]).toMatchObject({
+      original_name: "01_conflict.jpg",
+      reader_a_source_ref: "sample:M:3a",
+      reader_b_source_ref: "sample:M:4a",
+    });
+
+    const reportMd = readFileSync(join(outDir, "final", "report.md"), "utf8");
+    expect(reportMd).toContain("## Same page id for two photos");
+    expect(reportMd).toContain("01_conflict.jpg");
+
+    const store = new MemoryImportStore();
+    const imported = await importReferenceRecords({
+      recordsDir: join(outDir, "final"),
+      photosDir: join(outDir, "photos"),
+      store,
+    });
+    expect(imported.ok).toBe(true);
+    expect(imported.counts.inserted).toBe(1);
   });
 });

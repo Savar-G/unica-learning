@@ -92,7 +92,7 @@ describe("normalisers", () => {
     );
   });
 
-  it("keeps distinct mathematics unequal including superscripts and fraction grouping", () => {
+  it("keeps distinct mathematics unequal including superscripts, mixed numbers, and fraction grouping", () => {
     expect(normalizeNotationText("2\u00B2")).not.toBe(normalizeNotationText("22"));
     expect(normalizeNotationText("2\u00B2")).toBe(normalizeNotationText("2^2"));
     expect(normalizeNotationText("\\frac{1}{2}x")).not.toBe(
@@ -101,9 +101,17 @@ describe("normalisers", () => {
     expect(normalizeNotationText("\\frac{1}{2}x")).toBe("((1)/(2))x");
     expect(normalizeNotationText("\\frac{1}{2x}")).toBe("((1)/(2x))");
     expect(normalizeNotationText("(x)")).not.toBe(normalizeNotationText("x"));
+
+    // Mixed numbers must stay distinct from whole-number fractions, while operator spaces collapse.
+    expect(normalizeNotationText("2 1/2")).toBe("2 1/2");
+    expect(normalizeNotationText("2  1/2")).toBe("2 1/2");
+    expect(normalizeNotationText("2 1/2")).not.toBe(normalizeNotationText("21/2"));
+    expect(normalizeNotationText("1 2/5")).toBe("1 2/5");
+    expect(normalizeNotationText("1 2/5")).not.toBe(normalizeNotationText("12/5"));
+    expect(normalizeNotationText("24 + 5")).toBe("24+5");
   });
 
-  it("satisfies the fast-check invariant that equal normalized notation implies equal whitespace-stripped sign-mapped strings", () => {
+  it("satisfies the fast-check invariant that equal normalized notation preserves spaces separating letters or digits", () => {
     const alphabet = [
       ..."0123456789",
       ..."abcxyzXYZ",
@@ -156,7 +164,8 @@ describe("normalisers", () => {
         .replace(/[\u00F7\u2044\u2215]/g, "/")
         .replace(/[\u2010-\u2015\u2212]/g, "-")
         .replace(/[\u2070\u00B9\u00B2\u00B3\u2074-\u2079]/g, (ch) => supMap[ch] ?? ch)
-        .replace(/\s+/g, "");
+        .replace(/(?<=[\p{L}\p{N}])\s+(?=[\p{L}\p{N}])/gu, " ")
+        .replace(/(?<![\p{L}\p{N}])\s+|\s+(?![\p{L}\p{N}])/gu, "");
 
     const arbStr = fc.string({ unit: fc.constantFrom(...alphabet), maxLength: 6 });
     const compactAlphabet = [..."012x+*/-^(){} ", "\u00B2", "\u00B3", "\u00D7", "\u00F7", "\u2212"];
@@ -176,6 +185,18 @@ describe("normalisers", () => {
         }
       }),
       { numRuns: 1000 },
+    );
+    // Inserting whitespace between two letters or digits must never compare equal to no whitespace.
+    const arbAlnum = fc.constantFrom(..."0123456789abcxyzXYZ");
+    const arbSpaces = fc.string({ unit: fc.constantFrom(" ", "\t"), minLength: 1, maxLength: 3 });
+    fc.assert(
+      fc.property(arbAlnum, arbSpaces, arbAlnum, (left, ws, right) => {
+        expect(normalizeNotationText(`${left}${ws}${right}`)).toBe(`${left} ${right}`);
+        expect(normalizeNotationText(`${left}${ws}${right}`)).not.toBe(
+          normalizeNotationText(`${left}${right}`),
+        );
+      }),
+      { numRuns: 300 },
     );
   });
 });
@@ -358,6 +379,75 @@ describe("compareRecords", () => {
     c.sections[0].items[0].printed = "12 + 5 =";
     d.sections[0].items[0].printed = "12+5=";
     expect(compareRecords(c, d)).toEqual([]);
+  });
+
+  it("reports mixed numbers versus joined fractions as value differences in both item printed and example step printed", () => {
+    for (const [mixed, joined] of [
+      ["2 1/2", "21/2"],
+      ["1 2/5", "12/5"],
+    ] as const) {
+      const itemA = makePage();
+      const itemB = makePage();
+      itemA.sections[0].items[0].printed = mixed;
+      itemB.sections[0].items[0].printed = joined;
+      const itemDiffs = compareRecords(itemA, itemB);
+      expect(itemDiffs).toContainEqual({
+        path: "sections[0].items[n=1].printed",
+        a: mixed,
+        b: joined,
+        kind: "value",
+      });
+      expect(
+        decideStatus({
+          hasA: true,
+          hasB: true,
+          familyA: "claude",
+          familyB: "codex",
+          diffs: itemDiffs,
+        }),
+      ).toBe("machine_read");
+
+      const stepA = makePage({
+        examples: [
+          {
+            position: "top",
+            relation: "sequence",
+            label: "Example 1",
+            parts: [{ form: "horizontal", expr: null }],
+            steps: [{ n: 1, shows: "setup", printed: mixed }],
+            marks: [],
+          },
+        ],
+      });
+      const stepB = makePage({
+        examples: [
+          {
+            position: "top",
+            relation: "sequence",
+            label: "Example 1",
+            parts: [{ form: "horizontal", expr: null }],
+            steps: [{ n: 1, shows: "setup", printed: joined }],
+            marks: [],
+          },
+        ],
+      });
+      const stepDiffs = compareRecords(stepA, stepB);
+      expect(stepDiffs).toContainEqual({
+        path: "examples[0].steps[n=1].printed",
+        a: mixed,
+        b: joined,
+        kind: "value",
+      });
+      expect(
+        decideStatus({
+          hasA: true,
+          hasB: true,
+          familyA: "claude",
+          familyB: "codex",
+          diffs: stepDiffs,
+        }),
+      ).toBe("machine_read");
+    }
   });
 
   it("detects both_unclear and one_unclear inside nested lists such as number_strip values", () => {

@@ -37,13 +37,15 @@ export function normalizeNotationText(text: string): string {
     );
   }
 
-  // Map the fixed list of equivalent signs and remove only whitespace.
+  // Map the fixed list of equivalent signs and remove whitespace except one space between
+  // two characters that are both letters or digits (so "2 1/2" stays distinct from "21/2").
   out = out
     .replace(/\\times(?![A-Za-z])|\\cdot(?![A-Za-z])|[\u00D7\u00B7\u2217]/g, "*")
     .replace(/\\div(?![A-Za-z])|[\u00F7\u2044\u2215]/g, "/")
     .replace(/[\u2010-\u2015\u2212]/g, "-")
     .replace(/[\u2070\u00B9\u00B2\u00B3\u2074-\u2079]/g, (ch) => SUPERSCRIPT_DIGITS[ch] ?? ch)
-    .replace(/\s+/g, "");
+    .replace(/(?<=[\p{L}\p{N}])\s+(?=[\p{L}\p{N}])/gu, " ")
+    .replace(/(?<![\p{L}\p{N}])\s+|\s+(?![\p{L}\p{N}])/gu, "");
 
   return out;
 }

@@ -20,7 +20,9 @@ import {
   loadOriginalNamesByDigest,
   loadPrepareReport,
   loadSlot,
+  pairDigest,
   pairSlotPages,
+  pickPageWinners,
   readJsonIfExists,
   type PairedPage,
 } from "./compare-pairing";
@@ -31,7 +33,9 @@ import {
   type FailedPhotoReport,
   type KeptHumanCheckedReport,
   type PageCompareReport,
+  type SamePageIdConflict,
 } from "./compare-report";
+import { parsePhotosManifest, PHOTOS_MANIFEST_FILE } from "./prepare";
 
 export {
   formatCompareReportMarkdown,
@@ -40,6 +44,7 @@ export {
   type FailedPhotoReport,
   type KeptHumanCheckedReport,
   type PageCompareReport,
+  type SamePageIdConflict,
 };
 
 const FINAL_META_FILES = new Set(["status.json", "report.json"]);
@@ -79,16 +84,11 @@ function assertNoFileCollisions(
   finalDir: string,
 ): void {
   const fileToRef = new Map<string, string>();
-  const seenBatchRefs = new Set<string>();
 
   for (const pair of pairs) {
     const chosen = pair.recA ?? pair.recB;
     if (!chosen) continue;
     const sourceRef = chosen.source_ref;
-    if (seenBatchRefs.has(sourceRef)) {
-      throw new Error(`Duplicate final source_ref "${sourceRef}" across multiple photos`);
-    }
-    seenBatchRefs.add(sourceRef);
 
     const fileName = `${fileSlugFromRef(sourceRef)}.json`;
     const prior = fileToRef.get(fileName);
@@ -119,6 +119,44 @@ function assertNoFileCollisions(
   }
 }
 
+// The manifest gives a page id only to the photo whose readings made the final record, so it holds
+// at most one entry for each page id. A kept human_checked page with no current readings keeps the
+// page id it already has.
+function syncManifestSourceRefs(
+  workDir: string,
+  winners: readonly PairedPage[],
+  keptStaleRefs: ReadonlySet<string>,
+  repoRoot: string,
+): void {
+  const manifestPath = join(workDir, "photos", PHOTOS_MANIFEST_FILE);
+  if (!existsSync(manifestPath)) return;
+  let manifest;
+  try {
+    manifest = parsePhotosManifest(JSON.parse(readFileSync(manifestPath, "utf8")) as unknown);
+  } catch {
+    return;
+  }
+  const refByDigest = new Map<string, string>();
+  for (const pair of winners) {
+    const digest = pairDigest(pair);
+    const ref = (pair.recA ?? pair.recB)?.source_ref;
+    if (digest && ref && !refByDigest.has(digest)) refByDigest.set(digest, ref);
+  }
+  const assigned = new Set<string>();
+  const photos = manifest.photos.map((entry) => {
+    const { source_ref: oldRef, ...rest } = entry;
+    const winnerRef = refByDigest.get(entry.sha256);
+    const ref = winnerRef ?? (oldRef && keptStaleRefs.has(oldRef) ? oldRef : undefined);
+    if (!ref || assigned.has(ref)) return rest;
+    assigned.add(ref);
+    return { ...rest, source_ref: ref };
+  });
+  const next = `${JSON.stringify({ version: 1, photos }, null, 2)}\n`;
+  if (next !== `${JSON.stringify(manifest, null, 2)}\n`) {
+    writeSafeOutputFile(manifestPath, next, repoRoot);
+  }
+}
+
 export function compareWorkFolder(opts: {
   workDir: string;
   repoRoot: string;
@@ -131,11 +169,9 @@ export function compareWorkFolder(opts: {
   const prepareReport = loadPrepareReport(workDir);
   const slotA = loadSlot(join(workDir, "reader-a"));
   const slotB = loadSlot(join(workDir, "reader-b"));
-  const { pairs, failedPhotos, bothFailedPhotos } = pairSlotPages(
-    slotA,
-    slotB,
-    originalNamesByDigest,
-  );
+  const paired = pairSlotPages(slotA, slotB, originalNamesByDigest);
+  const { failedPhotos, bothFailedPhotos } = paired;
+  const { winners: pairs, conflicts } = pickPageWinners(paired.pairs);
 
   const finalDir = prepareSafeOutputDir(join(workDir, "final"), repoRoot);
   const viewDir = prepareSafeOutputDir(join(workDir, "final-view"), repoRoot);
@@ -158,9 +194,6 @@ export function compareWorkFolder(opts: {
     if (!chosen) continue;
 
     const sourceRef = chosen.source_ref;
-    if (seenFinalRefs.has(sourceRef)) {
-      throw new Error(`Duplicate final source_ref "${sourceRef}" across multiple photos`);
-    }
     seenFinalRefs.add(sourceRef);
     const slug = fileSlugFromRef(sourceRef);
     const finalFileName = `${slug}.json`;
@@ -287,6 +320,13 @@ export function compareWorkFolder(opts: {
     removedStalePages.push(label);
   }
 
+  syncManifestSourceRefs(
+    workDir,
+    pairs,
+    new Set(keptHumanChecked.filter((k) => !k.in_current_batch).map((k) => k.source_ref)),
+    repoRoot,
+  );
+
   const report: CompareWorkReport = {
     reader_a: slotA.meta,
     reader_b: slotB.meta,
@@ -297,6 +337,9 @@ export function compareWorkFolder(opts: {
     could_not_read_photos: [...prepareReport.unreadable, ...bothFailedPhotos],
     kept_human_checked: keptHumanChecked,
     removed_stale_pages: removedStalePages,
+    duplicate_photos: prepareReport.duplicates,
+    removed_photos: prepareReport.removedPhotos,
+    same_page_id_conflicts: conflicts,
   };
 
   writeSafeOutputFile(
