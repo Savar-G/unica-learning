@@ -29,7 +29,11 @@ export interface PlannedPhoto {
 
 export type SafeReadResult =
   | { ok: true; bytes: Uint8Array }
-  | { ok: false; kind: "missing" | "symlink" | "not_file" | "error"; message: string };
+  | {
+      ok: false;
+      kind: "missing" | "symlink" | "not_file" | "too_large" | "error";
+      message: string;
+    };
 
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -44,7 +48,12 @@ export function isPlainFileName(fileName: string): boolean {
   return true;
 }
 
-export async function readRegularFileNoFollow(filePath: string): Promise<SafeReadResult> {
+// Reads a regular file without following a symlink. The size is checked on the open file before any
+// byte is read, so a very large file chosen by mistake never enters memory.
+export async function readRegularFileNoFollow(
+  filePath: string,
+  maxBytes: number = MAX_REFERENCE_PHOTO_BYTES,
+): Promise<SafeReadResult> {
   if (NOFOLLOW_FLAG === 0) {
     try {
       const lst = await lstat(filePath);
@@ -92,6 +101,13 @@ export async function readRegularFileNoFollow(filePath: string): Promise<SafeRea
     const fileStat = await handle.stat();
     if (!fileStat.isFile()) {
       return { ok: false, kind: "not_file", message: "not a regular file" };
+    }
+    if (fileStat.size > maxBytes) {
+      return {
+        ok: false,
+        kind: "too_large",
+        message: `file size ${fileStat.size} bytes is above the limit of ${maxBytes} bytes`,
+      };
     }
     const buf = await handle.readFile();
     return { ok: true, bytes: new Uint8Array(buf) };
@@ -257,7 +273,9 @@ export async function readPlannedPhotos(
             ? "refusing symlink"
             : photoRead.kind === "not_file"
               ? "not a regular file"
-              : `could not read file (${photoRead.message})`;
+              : photoRead.kind === "too_large"
+                ? photoRead.message
+                : `could not read file (${photoRead.message})`;
       problems.push(`photos: ${record.source_ref} (${entry.file}): ${reason}`);
       continue;
     }
