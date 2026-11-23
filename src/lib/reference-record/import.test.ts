@@ -507,6 +507,18 @@ describe("importReferenceRecords", () => {
     expect(res.problems.some((p) => p.includes("toString"))).toBe(true);
   });
 
+  it("refuses every record before any write when one record holds a null character", async () => {
+    writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
+    writeJson(recordsDir, "p2.json", makePage("sample:M:3b", "Bad\u0000title"));
+
+    const res = await importReferenceRecords({ recordsDir, store });
+    expect(res.ok).toBe(false);
+    expect(res.problems.some((p) => p.includes("p2.json") && p.includes("null character"))).toBe(
+      true,
+    );
+    expect(store.rows.size).toBe(0);
+  });
+
   it("reclassifies concurrent duplicate inserts as skipped or skipped_different instead of inflating inserted", async () => {
     const page1 = makePage("sample:M:3a", "Same title");
     const page2 = makePage("sample:M:4a", "Local title");

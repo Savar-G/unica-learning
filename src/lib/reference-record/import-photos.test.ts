@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   buildReferencePhotoPath,
+  formatImportResult,
   importReferenceRecords,
   MAX_REFERENCE_PHOTO_BYTES,
   type ExistingReferenceRow,
@@ -279,6 +280,35 @@ describe("importReferenceRecords photo and file safety", () => {
     expect(second.ok).toBe(true);
     expect(second.counts).toMatchObject({ inserted: 1, skipped: 1, photosUploaded: 0 });
     expect(store.rows.get("sample:M:3b")?.path).toBe("sample/M/3b.png");
+  });
+
+  it("names an uploaded photo that no row points to when another run writes the row first", async () => {
+    writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
+    const img = new Uint8Array([1, 2, 3, 4]);
+    writeBytes(photosDir, "one.jpg", img);
+    writeJson(photosDir, "masked-manifest.json", {
+      version: 1,
+      photos: [
+        {
+          file: "one.jpg",
+          sha256: sha256Hex(img),
+          confirmed: true,
+          confirmed_at: "2026-01-01T00:00:00.000Z",
+          source_ref: "sample:M:3a",
+        },
+      ],
+    });
+
+    // Another run wins the insert with a photo at a different path.
+    store.insertRow = async (row) => {
+      store.rows.set(row.source_ref, { ...structuredClone(row), path: "sample/M/3a.png" });
+      return false;
+    };
+    const res = await importReferenceRecords({ recordsDir, photosDir, store });
+    expect(res.ok).toBe(true);
+    expect(res.counts).toMatchObject({ inserted: 0, skipped: 1, photosUploaded: 1 });
+    expect(res.unreferencedPhotos).toEqual(["sample/M/3a.jpg"]);
+    expect(formatImportResult(res)).toContain('unreferenced_photo: "sample/M/3a.jpg"');
   });
 
   it("refuses before any write when a stored object at the planned path has a different sha256", async () => {

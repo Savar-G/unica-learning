@@ -73,6 +73,8 @@ export interface ImportResult {
   dryRun: boolean;
   counts: ImportCounts;
   skippedDifferentRefs: string[];
+  // Storage paths that hold a photo no row points to. A person must remove them by hand.
+  unreferencedPhotos?: string[];
   problems: string[];
 }
 
@@ -106,6 +108,26 @@ export function deepEqualJson(a: unknown, b: unknown): boolean {
     if (!deepEqualJson(objA[key], objB[key])) return false;
   }
   return true;
+}
+
+// Path of the first string (key or value) that holds U+0000, or null. A jsonb column refuses that character.
+export function findNulCharacterPath(value: unknown, path = "$"): string | null {
+  if (typeof value === "string") return value.includes("\u0000") ? path : null;
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i += 1) {
+      const found = findNulCharacterPath(value[i], `${path}[${i}]`);
+      if (found !== null) return found;
+    }
+    return null;
+  }
+  if (value !== null && typeof value === "object") {
+    for (const [key, child] of Object.entries(value)) {
+      if (key.includes("\u0000")) return `${path}.<key>`;
+      const found = findNulCharacterPath(child, `${path}.${key}`);
+      if (found !== null) return found;
+    }
+  }
+  return null;
 }
 
 function refusedResult(recordsRead: number, dryRun: boolean, problems: string[]): ImportResult {
@@ -186,6 +208,14 @@ async function readRecords(
       for (const e of check.errors) {
         problems.push(`${fileName}: ${e.path}: ${e.message}`);
       }
+      continue;
+    }
+
+    const nulPath = findNulCharacterPath(parsed);
+    if (nulPath !== null) {
+      problems.push(
+        `${fileName}: ${nulPath}: text holds a null character, which the database cannot store`,
+      );
       continue;
     }
 
@@ -305,6 +335,8 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
   let skippedDifferent = 0;
   let photosUploaded = 0;
   const skippedDifferentRefs: string[] = [];
+  // Photos this run uploaded for a row that another run wrote first with a different photo path.
+  const unreferencedPhotos: string[] = [];
 
   for (const record of records) {
     const prev = existing.get(record.source_ref);
@@ -352,11 +384,11 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
       const stopProblems = [`write failed at ${record.source_ref}: ${message}`];
       if (uploadedNow && storagePath) {
         stopProblems.push(
-          `the photo for ${record.source_ref} is in storage at "${storagePath}" but its row is not written; run the command again with the same files and it reuses that photo`,
+          `the photo for ${record.source_ref} is in storage at "${storagePath}" and its row may not be written; run the command again with the same files and it reuses that photo`,
         );
       }
       stopProblems.push(
-        `rows written before the failure stay (${inserted}); run the command again with the same files to write the remaining rows`,
+        `rows written before the failure stay (${inserted}); the row for ${record.source_ref} may or may not be written; run the command again with the same files to finish`,
       );
       return {
         ok: false,
@@ -364,6 +396,7 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
         dryRun,
         counts: { recordsRead, inserted, skipped, skippedDifferent, photosUploaded },
         skippedDifferentRefs,
+        unreferencedPhotos,
         problems: stopProblems,
       };
     }
@@ -372,6 +405,9 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
     } else {
       const reread = await options.store.findExisting([record.source_ref]);
       const concurrent = reread.get(record.source_ref);
+      if (uploadedNow && storagePath && concurrent?.path !== storagePath) {
+        unreferencedPhotos.push(storagePath);
+      }
       if (concurrent !== undefined && deepEqualJson(concurrent.transcript, record)) {
         skipped += 1;
       } else {
@@ -392,6 +428,7 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
       photosUploaded,
     },
     skippedDifferentRefs,
+    unreferencedPhotos,
     problems: [],
   };
 }
@@ -410,6 +447,11 @@ export function formatImportResult(result: ImportResult): string {
   ];
   for (const ref of result.skippedDifferentRefs) {
     lines.push(`skipped_different: ${ref} (stored transcript differs from file)`);
+  }
+  for (const path of result.unreferencedPhotos ?? []) {
+    lines.push(
+      `unreferenced_photo: "${path}" was uploaded, but another run wrote the row first; remove this object by hand`,
+    );
   }
   for (const problem of result.problems) {
     lines.push(`problem: ${problem}`);

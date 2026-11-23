@@ -87,15 +87,22 @@ function createSupabaseReferenceStore(db: SupabaseClient<Database>): ReferenceSt
       const slash = path.lastIndexOf("/");
       const folder = slash >= 0 ? path.slice(0, slash) : "";
       const name = slash >= 0 ? path.slice(slash + 1) : path;
-      const { data: listed, error: listError } = await db.storage
-        .from(REFERENCE_BUCKET)
-        .list(folder, { search: name, limit: 1000 });
-      if (listError || !listed) {
-        throw new Error(
-          `Failed checking for an existing object at ${path}: ${listError?.message ?? "no listing"}`,
-        );
+      // `search` is a substring match, so read every page until the exact name is found or the list ends.
+      const pageSize = 1000;
+      let found = false;
+      for (let offset = 0; !found; offset += pageSize) {
+        const { data: listed, error: listError } = await db.storage
+          .from(REFERENCE_BUCKET)
+          .list(folder, { search: name, limit: pageSize, offset });
+        if (listError || !listed) {
+          throw new Error(
+            `Failed checking for an existing object at ${path}: ${listError?.message ?? "no listing"}`,
+          );
+        }
+        found = listed.some((entry) => entry.name === name);
+        if (listed.length < pageSize) break;
       }
-      if (!listed.some((entry) => entry.name === name)) return null;
+      if (!found) return null;
       const { data, error } = await db.storage.from(REFERENCE_BUCKET).download(path);
       if (error || !data) {
         throw new Error(
