@@ -69,15 +69,18 @@ it.each([false, true])("keeps unapproved slots missing in final grid checks (spa
   expect(last.content?.kind === "day" ? last.content.blocks.flatMap(b => b.missing ?? []) : []).toHaveLength(missing);
 });
 
-it("refuses a complete fallback grid when all permitted gaps still fail fullness", async () => {
+it("keeps a complete fallback grid with room left after spreading its gaps to the limit (#1248)", async () => {
   const gaps: number[] = [];
-  await expect(prepareWorkbookCapacity(input(2), { fits: async page => {
+  const plan = await prepareWorkbookCapacity(input(2), { fits: async page => {
     if (page.type !== "remember-these-mixed-set") return { ok: true };
     if (page.content?.kind === "day") gaps.push(page.content.extraGap ?? 0);
     return fullness;
-  } })).rejects.toThrow("its last complete grid does not fit");
+  } });
+  // The space is spread first (up to 48 px); room left is then a warning on the page's own fit, not a failed plan.
   expect(Math.max(...gaps)).toBe(48);
   expect(gaps.every(gap => gap >= 0 && gap <= 48)).toBe(true);
+  const page = plan.days[0].pages.find(p => p.type === "remember-these-mixed-set")!;
+  expect(page).toMatchObject({ capacityChecked: true, fillingComplete: true, extraGap: 48 });
 });
 
 it("refuses a fallback grid when spreading its gaps causes overflow", async () => {

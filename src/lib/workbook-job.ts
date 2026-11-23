@@ -53,6 +53,7 @@ import {
   pagesDigest,
   ResumeMismatch,
   CapacityProblem,
+  blockingFit,
   type AttemptLedger,
   type CallStore,
   type FitCheck,
@@ -517,7 +518,7 @@ export function draftReviewProblems(draft: GeneratedWorkbook): RenderProblem[] {
   return [
     ...draft.pages.flatMap((p) => p.questions.flatMap((q) => (q.check.status === "failed"
       ? [{ page: p.number, question: q.package ? q.number : null, reason: `question ${q.number} failed: ${q.check.reason}` }] : []))),
-    ...draft.pages.flatMap((p) => (p.fit.status === "failed" ? p.fit.problems.map((x) => ({ page: p.number, question: x.question, reason: `fit check: ${x.reason}` })) : [])),
+    ...draft.pages.flatMap((p) => blockingFit(p).map((x) => ({ page: p.number, question: x.question, reason: `fit check: ${x.reason}` }))),
   ];
 }
 

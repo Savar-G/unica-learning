@@ -11,7 +11,8 @@ import { WorkbookCommentReviewer } from "@/components/workbook-comment-reviewer"
 import type { ReactNode } from "react";
 import type { DraftCounts, RunDetail, RunListRow, WorkerStatus } from "@/lib/admin-store";
 import { adminWorkbookPath, adminWorkbookRunPath, draftPdfPath, when } from "@/lib/admin-view";
-import type { GeneratedPage, GeneratedQuestion } from "@/lib/workbook-generator";
+import { blockingFit, pageWarnings, type GeneratedPage, type GeneratedQuestion } from "@/lib/workbook-generator";
+import type { BookQuality } from "@/lib/workbook-quality";
 import { isCodeWorded } from "@/lib/workbook-generator-items";
 import { runState, STALE_SECONDS, type DraftRendering, type RunSolve, type RunState, type WorkbookRun } from "@/lib/workbook-job";
 import { plainRunError, runProgress, type RunActivity } from "@/lib/workbook-run-progress";
@@ -185,13 +186,15 @@ const typeText = (t: string) => PAGE_TYPE[t] ?? t;
 const partText = (p: string) => p.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
 
 /** What a page needs from the reviewer: its failed questions, fit problems, render problems and unchecked questions. */
-function pageIssues(page: GeneratedPage, problems: RenderProblem[]) {
+function pageIssues(page: GeneratedPage, problems: RenderProblem[], quality?: BookQuality) {
   const failed = page.questions.filter((q) => q.check.status === "failed");
   const notChecked = page.questions.filter((q) => q.check.status === "not-checked");
-  const fit = page.fit.status === "failed" ? page.fit.problems : [];
+  // #1248: only what prints wrong fails a page; room left and the whole-book checks are warnings.
+  const fit = blockingFit(page);
+  const warnings = pageWarnings(page, quality);
   // A draft made before the page layouts (shape version 1) has no omissions.
   const omitted = (page.omissions ?? []).length > 0 || (page.leftOut ?? []).length > 0;
-  return { failed, notChecked, fit, render: problems, bad: failed.length > 0 || fit.length > 0 || problems.length > 0, warn: notChecked.length > 0 || omitted };
+  return { failed, notChecked, fit, warnings, render: problems, bad: failed.length > 0 || fit.length > 0 || problems.length > 0, warn: notChecked.length > 0 || omitted || warnings.length > 0 };
 }
 
 const NO_LAYOUT = /^the template has no layout for a .+ page$/;
@@ -364,14 +367,15 @@ function DraftPageImage({ page, image, url }: { page: GeneratedPage; image: Draf
 function DraftPageSection({ page, detail, solves }: { page: GeneratedPage; detail: NonNullable<RunDetail["draft"]> & { images: Record<string, string> }; solves: Map<string, RunSolve[]> }) {
   const image = detail.rendering?.pages.find((p) => p.number === page.number);
   const problems = detail.problems.filter((p) => p.page === page.number);
-  const issues = pageIssues(page, problems);
+  const issues = pageIssues(page, problems, detail.workbook.quality);
   const noLayout = problems.length > 0 && problems.every((p) => NO_LAYOUT.test(p.reason));
   return (
     <section id={`page-${page.number}`} className={`adm-wb-section adm-wb-draft${issues.bad ? " is-bad" : issues.warn ? " is-warn" : ""}`} aria-labelledby={`page-${page.number}-title`}>
       <h2 id={`page-${page.number}-title`}>Page {page.number} <span className="adm-wb-type">{[page.dayLabel, typeText(page.type)].filter(Boolean).join(" · ")}</span></h2>
       <p className="adm-wb-flags">
-        {page.fit.status === "failed" && <Chip tone="bad">Does not fit the template</Chip>}
-        {page.fit.status === "fits" && !noLayout && <Chip tone="ok">Fits</Chip>}
+        {issues.fit.length > 0 && <Chip tone="bad">Does not fit the template</Chip>}
+        {issues.fit.length === 0 && page.fit.status !== "not-needed" && !noLayout && <Chip tone="ok">Fits</Chip>}
+        {issues.warnings.length > 0 && <Chip tone="warn">{issues.warnings.length} {issues.warnings.length === 1 ? "warning" : "warnings"} to read</Chip>}
         {issues.failed.length > 0 && <Chip tone="bad">{issues.failed.length} {issues.failed.length === 1 ? "question needs" : "questions need"} fixing</Chip>}
         {page.questions.some((q) => q.gate) && <Chip tone="warn">{page.questions.filter((q) => q.gate).length} flagged by a quality gate</Chip>}
         {image?.layoutGate && <span title={image.layoutGate.reason}><Chip tone={image.layoutGate.outcome === "unknown" ? "warn" : "bad"}>{image.layoutGate.outcome === "unknown" ? "Page layout gate did not answer" : "Page layout gate flagged this page"}</Chip></span>}
@@ -382,8 +386,9 @@ function DraftPageSection({ page, detail, solves }: { page: GeneratedPage; detai
       </p>
       <ProblemList problems={[...issues.fit.map((p) => ({ question: p.question, reason: `fit check: ${p.reason}` })), ...problems]} />
       {image?.layoutGate && <p className="adm-sub">{image.layoutGate.reason}</p>}
+      {issues.warnings.length > 0 && <ul className="adm-wb-problems adm-sub" aria-label={`Warnings on page ${page.number}`}>{issues.warnings.map((w) => <li key={w}>Warning, {w}</li>)}</ul>}
       {(page.omissions ?? []).length > 0 && <ul className="adm-wb-problems adm-sub">{(page.omissions ?? []).map((o, i) => <li key={`o${i}`}>{partText(o.kind)}: {o.placed} of {o.requested} placed ({o.reason})</li>)}</ul>}
-      {(page.leftOut ?? []).length > 0 && <ul className="adm-wb-problems adm-sub" aria-label={`Questions left out of page ${page.number}`}>{(page.leftOut ?? []).map((q) => <li key={`l${q.slot}`} title={`Slot ${q.slot}: ${q.reason}`}>Left out to make room: {partText(q.part)}, {q.text ? `"${q.text}"` : "a question with no text"}</li>)}</ul>}
+      {(page.leftOut ?? []).length > 0 && <ul className="adm-wb-problems adm-sub" aria-label={`Questions left out of page ${page.number}`}>{(page.leftOut ?? []).map((q) => <li key={`l${q.slot}`} title={`Slot ${q.slot}: ${q.reason}`}>{q.reason.startsWith("failed its check") ? `Left off the printed page (${q.reason})` : "Left out to make room"}: {partText(q.part)}, {q.text ? `"${q.text}"` : "a question with no text"}</li>)}</ul>}
       <div className={page.questions.length ? "adm-wb-grid" : "adm-wb-solo"}>
         {image ? (
           <div className="adm-wb-figure">
@@ -430,8 +435,10 @@ function Approval({ detail, name }: { detail: RunDetail; name: string }) {
   }
   const flagged = draft.workbook.pages.flatMap((p) => p.questions).filter((q) => q.gate);
   const flaggedPages = (draft.rendering?.pages ?? []).filter((p) => p.layoutGate);
-  const flagLine = flagged.length || flaggedPages.length
-    ? <p>{flagged.length > 0 && <b>{flagged.length} {flagged.length === 1 ? "question is" : "questions are"} flagged by a quality gate. </b>}{flaggedPages.length > 0 && <b>{flaggedPages.length} {flaggedPages.length === 1 ? "page is" : "pages are"} flagged by the page layout gate. </b>}Read each flag before you approve.</p>
+  // #1248: the whole-book checks and room left warn; they never block approval, so the admin reads them here first.
+  const warned = draft.workbook.pages.filter((p) => pageWarnings(p, draft.workbook.quality).length > 0 || (p.leftOut ?? []).length > 0);
+  const flagLine = flagged.length || flaggedPages.length || warned.length
+    ? <p>{flagged.length > 0 && <b>{flagged.length} {flagged.length === 1 ? "question is" : "questions are"} flagged by a quality gate. </b>}{flaggedPages.length > 0 && <b>{flaggedPages.length} {flaggedPages.length === 1 ? "page is" : "pages are"} flagged by the page layout gate. </b>}{warned.length > 0 && <b>{warned.length} {warned.length === 1 ? "page has" : "pages have"} warnings or questions left off (page {warned.map((p) => p.number).join(", ")}). </b>}Read each flag before you approve.</p>
     : null;
   const problems = approvalProblems({
     runId: run.id, runDone: run.status === "done", draftId: draft.workbook.id, revision: draft.revision, oldFormat: false,
@@ -455,14 +462,14 @@ const many = (n: number, one: string, more: string) => `${n} ${n === 1 ? one : m
 function DraftThumb({ page, detail, href = `#page-${page.number}` }: { page: GeneratedPage; detail: NonNullable<RunDetail["draft"]> & { images: Record<string, string> }; href?: string }) {
   const image = detail.rendering?.pages.find((p) => p.number === page.number);
   const problems = detail.problems.filter((p) => p.page === page.number);
-  const i = pageIssues(page, problems);
+  const i = pageIssues(page, problems, detail.workbook.quality);
   const noLayout = problems.length > 0 && problems.every((p) => NO_LAYOUT.test(p.reason));
   const marks: { tone: "ok" | "warn" | "bad"; text: string }[] = [
     ...(i.failed.length ? [{ tone: "bad" as const, text: `${i.failed.length} to fix` }] : []),
     ...(i.fit.length ? [{ tone: "bad" as const, text: "Does not fit" }] : []),
     ...(problems.length ? [{ tone: "bad" as const, text: noLayout ? "No layout" : "Not in the PDF" }] : []),
     ...(i.notChecked.length ? [{ tone: "warn" as const, text: `${i.notChecked.length} by hand` }] : []),
-    ...(!i.bad && !i.notChecked.length && i.warn ? [{ tone: "warn" as const, text: "Items left out" }] : []),
+    ...(!i.bad && !i.notChecked.length && i.warn ? [{ tone: "warn" as const, text: (page.omissions ?? []).length || (page.leftOut ?? []).length ? "Items left out" : "Warnings" }] : []),
   ];
   if (!marks.length) marks.push({ tone: "ok", text: page.questions.length ? "Checks passed" : "Fits" });
   return <li className={`bk-thumb${i.bad ? " is-bad" : i.warn ? " is-warn" : ""}`}>
@@ -488,7 +495,7 @@ export function AdminWorkbookRun({ email, detail, now, only, worker, why, book1 
   const name = child?.first_name ?? "Child";
   const pages = draft?.workbook.pages ?? [];
   const attention = pages.filter((p) => {
-    const i = pageIssues(p, draft!.problems.filter((x) => x.page === p.number));
+    const i = pageIssues(p, draft!.problems.filter((x) => x.page === p.number), draft!.workbook.quality);
     return i.bad || i.warn;
   });
   const failedPages = attention.filter((p) => pageIssues(p, []).bad);

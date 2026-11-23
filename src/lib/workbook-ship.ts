@@ -4,8 +4,11 @@
 //
 // Approval is refused, on the server, while anything fails (approvalProblems): the run is not done, the draft is in an
 // old format or not laid out for the real templates (a page with no template content), a question failed its check
-// (code or the solve check), a page failed the fit check, a page did not render (a proof image, or no rendering or
-// PDF at all), a question has no measured box, or the admin approves a revision that is no longer the current one.
+// (code or the solve check) and is still on its page, a page failed the fit check, a day page has no question, a page did
+// not render (a proof image, or no rendering or PDF at all), a question has no measured box, or the admin approves a
+// revision that is no longer the current one. #1248: only these block. Whole-book content checks and room left on a
+// page with a question are warnings, and the generator leaves a failed question off its printed page (`leftOut`), so
+// it blocks only on a page whose questions all failed (or in a draft made before #1248).
 // The store (migration workbook_ship) checks again what only the database knows (the current revision, the number and
 // ids already used) and writes the workbook, its status and the audit entry in one step.
 //
@@ -22,7 +25,7 @@
 // Pure TypeScript: no Next.js, React, network, database or clock. Adapters: Supabase (src/lib/workbook-ship-store.ts)
 // and in memory (src/lib/workbook-ship-memory.ts).
 import type { WorkbookInput, WorkbookStatus } from "@/lib/workbook-content";
-import type { GeneratedWorkbook } from "@/lib/workbook-generator";
+import { blockingFit, type GeneratedWorkbook } from "@/lib/workbook-generator";
 import type { DraftRendering } from "@/lib/workbook-job";
 import {
   pageContentFingerprint,
@@ -97,8 +100,10 @@ export function approvalProblems(d: DraftForApproval, seenRevision: number = d.r
   const noTemplate = pages.filter((p) => !p.content);
   if (noTemplate.length) problems.push(`${plural(noTemplate.length, "page")} ${noTemplate.length === 1 ? "is" : "are"} not laid out with the real templates.`);
   const failed = pages.flatMap((p) => p.questions.filter((q) => q.check.status === "failed" || !q.package));
-  if (failed.length) problems.push(`${plural(failed.length, "question")} failed ${failed.length === 1 ? "its check" : "their checks"}.`);
-  const unfit = pages.filter((p) => p.fit.status === "failed");
+  if (failed.length) problems.push(`${plural(failed.length, "question")} failed ${failed.length === 1 ? "its check" : "their checks"} and ${failed.length === 1 ? "is" : "are"} still on the page.`);
+  const empty = pages.filter((p) => p.content?.kind === "day" && !p.questions.some((q) => q.package && q.check.status !== "failed"));
+  if (empty.length) problems.push(`${plural(empty.length, "day page")} ${empty.length === 1 ? "has" : "have"} no question to print.`);
+  const unfit = pages.filter((p) => blockingFit(p).length > 0);
   if (unfit.length) problems.push(`${plural(unfit.length, "page")} failed the fit check.`);
   const r = d.rendering;
   if (!r || !r.pdfPath) {
@@ -145,7 +150,8 @@ export function approvedWorkbook(d: DraftForApproval): WorkbookInput {
       return {
         number: p.number, dayLabel: p.dayLabel, type: p.type, image: page.image, qrToken: p.qrToken,
         printContract: whole ? page.printContract : null,
-        questions: p.questions.map((q) => ({
+        // Only the questions on paper (#1248): scan marking never expects a question that did not print.
+        questions: p.questions.filter((q) => q.package && q.check.status !== "failed" && boxes.has(q.number)).map((q) => ({
           number: q.number, box: boxes.get(q.number)!.box, package: q.package!,
           regions: whole ? boxes.get(q.number)!.regions ?? null : null,
           teaching: d.frame ? teachingContext(d.frame, p, { ...q, package: q.package! }) : null,

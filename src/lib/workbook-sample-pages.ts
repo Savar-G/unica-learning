@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { Window } from "happy-dom";
 import sharp, { type OverlayOptions } from "sharp";
 import { renderableDraft } from "@/lib/workbook-fit";
-import type { GeneratedWorkbook } from "@/lib/workbook-generator";
+import { blockingFit, pageWarnings, type GeneratedWorkbook } from "@/lib/workbook-generator";
 import type { RenderProblem, WorkbookTemplate } from "@/lib/workbook-render";
 import { createSession } from "@/lib/maya/session";
 import { teachingContext, type TeachingFrame } from "@/lib/workbook-print-contract";
@@ -117,7 +117,8 @@ export async function samplePages(draft: GeneratedWorkbook, template: WorkbookTe
     });
     const warnings = [
       ...problems.filter(p => p.page === page.number).map(p => p.reason),
-      ...(source.fit.status === "failed" ? source.fit.problems.map(p => p.reason) : []),
+      ...blockingFit(source).map(p => p.reason),
+      ...pageWarnings(source, draft.quality),
       ...source.questions.filter(q => q.check.status !== "checked").map(q => `Question ${q.number}: ${JSON.stringify(q.check)}`),
       ...(source.omissions ?? []).map(o => `Omission: ${JSON.stringify(o)}`),
       ...(source.leftOut ?? []).map(o => `Left out: ${JSON.stringify(o)}`),
