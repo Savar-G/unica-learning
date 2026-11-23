@@ -173,6 +173,7 @@ export const REFERENCE_READ_PROMPT = [
   `  - form: ItemForm or "${UNCLEAR}"; null is allowed ONLY when expr is null.`,
   "  - responses: array of response objects. MUST contain at least 1 response when expr is not null (may be [] only when expr is null).",
   `- Each response has keys: position, cue (non-empty string | null | "${UNCLEAR}"), answer (non-empty string | null | "${UNCLEAR}"), answer_source ("reader", "printed" or "unchecked"; NEVER "computed"), unit? (optional), place? (optional non-empty string | null | "${UNCLEAR}").`,
+  '  - Place rule: when an item has one box for each digit of the answer, each response of a digit box MUST carry `place` (for example "tens", "ones").',
   `  - Unit rule: when position is "line_with_unit", unit is REQUIRED and must be a non-empty string or "${UNCLEAR}" (never null or omitted). For all other positions, omit unit if no unit is printed, or write a non-empty string, null, or "${UNCLEAR}".`,
   "",
   "SimpleExpr vs Expr (strict keys only):",

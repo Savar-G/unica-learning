@@ -167,7 +167,7 @@ describe("checkAndMarkPage", () => {
     expectNothingWritten(finalDir, before);
   });
 
-  it("stops on a printed answer that the expression does not give, and on answers that do not fit the answer places", () => {
+  it("stops on a printed answer that the expression does not give", () => {
     const printed = makeFinalPage();
     printed.sections[0].items[0].responses[0] = {
       position: "after_equals",
@@ -181,24 +181,38 @@ describe("checkAndMarkPage", () => {
       checkAndMarkPage({ workDir: one.work, page: "sample:M:3a", repoRoot: one.repo, photoCompared: true }),
     ).toThrow(/page prints "32", computed "23"/);
     expectNothingWritten(one.finalDir, beforeOne);
+  });
 
-    const misfit = makeFinalPage();
-    misfit.sections[0].items[0] = {
+  it("passes answers that do not fit the answer places, remainder forms, and a digit in a named place, keeping the stored answers", () => {
+    const item = (responses: PageRecord["sections"][0]["items"][0]["responses"], operands = [13, 3], op: "div" | "add" = "div") => ({
       n: 1,
-      printed: "13 / 3 =",
-      form: "horizontal",
-      expr: { kind: "arith", op: "div", operands: [13, 3] },
-      responses: [
-        { position: "box", cue: "Q", answer: "4", answer_source: "reader" },
-        { position: "box", cue: "R", answer: "1", answer_source: "reader" },
-      ],
-    };
-    const two = setUpWork(misfit);
-    const beforeTwo = readFileSync(join(two.finalDir, "sample-M-3a.json"), "utf8");
-    expect(() =>
-      checkAndMarkPage({ workDir: two.work, page: "sample:M:3a", repoRoot: two.repo, photoCompared: true }),
-    ).toThrow(/kept reader answers/);
-    expectNothingWritten(two.finalDir, beforeTwo);
+      printed: "sample",
+      form: "horizontal" as const,
+      expr: { kind: "arith" as const, op, operands },
+      responses,
+    });
+    const cases = [
+      { name: "quotient and remainder boxes", item: item([
+        { position: "box", cue: null, answer: "4", answer_source: "reader" },
+        { position: "box", cue: null, answer: "1", answer_source: "reader" },
+      ]), answers: ["4", "1"] },
+      { name: "remainder without spaces", item: item([
+        { position: "after_equals", cue: null, answer: "4r1", answer_source: "reader" },
+      ]), answers: ["4 R1"] },
+      { name: "ones box", item: item([
+        { position: "box", cue: null, answer: "5", answer_source: "reader", place: "ones" },
+      ], [10, 5], "add"), answers: ["5"] },
+    ];
+    for (const c of cases) {
+      const page = makeFinalPage();
+      page.sections[0].items[0] = c.item;
+      const { repo, work, finalDir } = setUpWork(page);
+      checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: true });
+      const saved = JSON.parse(readFileSync(join(finalDir, "sample-M-3a.json"), "utf8")) as PageRecord;
+      expect(saved.sections[0].items[0].responses.map((r) => r.answer), c.name).toEqual(c.answers);
+      const status = JSON.parse(readFileSync(join(finalDir, "status.json"), "utf8"));
+      expect(status["sample:M:3a"], c.name).toBe("human_checked");
+    }
   });
 
   it("refuses an empty answer place and lists it, but accepts an answer place marked unclear", () => {

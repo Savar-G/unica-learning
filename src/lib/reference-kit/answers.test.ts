@@ -132,11 +132,11 @@ describe("applyComputedAnswers", () => {
       },
       responses: [
         { position: "box", cue: null, answer: null, answer_source: "unchecked" },
-        { position: "line_with_unit", cue: "Ans.", answer: "25", answer_source: "reader", unit: "cards" },
+        { position: "line_with_unit", cue: "Ans.", answer: "24", answer_source: "reader", unit: "cards" },
         { position: "work_area", cue: null, answer: null, answer_source: "unchecked" },
       ],
     });
-    const { record, notes, details } = applyComputedAnswers(page);
+    const { record, details } = applyComputedAnswers(page);
     if (record.kind !== "page") throw new Error("page expected");
     const responses = record.sections[0].items[0].responses;
     expect(responses.map((r) => [r.answer, r.answer_source])).toEqual([
@@ -144,8 +144,122 @@ describe("applyComputedAnswers", () => {
       ["24", "computed"],
       [null, "unchecked"],
     ]);
-    expect(details.map((d) => d.kind)).toEqual(["answer_differs"]);
-    expect(notes[0]).toContain('reader gave "25", computed "24"');
+    expect(details).toEqual([]);
+
+    // A stored answer that is not the value: the places may be digit boxes, so all answers stay.
+    const differing = structuredClone(page);
+    differing.sections[0].items[0].responses[1].answer = "25";
+    const kept = applyComputedAnswers(differing);
+    if (kept.record.kind !== "page") throw new Error("page expected");
+    expect(kept.record.sections[0].items[0].responses).toEqual(differing.sections[0].items[0].responses);
+    expect(kept.details.map((d) => d.kind)).toEqual(["places_do_not_fit"]);
+  });
+
+  it("digit boxes with no place: uses the places of an answer_boxes scaffold, or keeps the answers when a scaffold prints several boxes", () => {
+    const digitBoxes = (answers: Array<string | null>): ItemResponse[] =>
+      answers.map((answer) => ({
+        position: "box",
+        cue: null,
+        answer,
+        answer_source: answer === null ? "unchecked" : "reader",
+      }));
+    for (const appliesTo of [[1], "all"] as const) {
+      const page = makePageWithItem({
+        n: 1,
+        printed: "12 + 3",
+        form: "vertical",
+        expr: { kind: "arith", op: "add", operands: [12, 3] },
+        responses: digitBoxes(["1", "5"]),
+      });
+      page.sections[0].scaffolds = [
+        { kind: "answer_boxes", applies_to: appliesTo === "all" ? "all" : [...appliesTo], places: ["tens", "ones"] },
+      ];
+      const { record, details } = applyComputedAnswers(page);
+      if (record.kind !== "page") throw new Error("page expected");
+      const out = record.sections[0].items[0].responses;
+      expect(out.map((r) => [r.answer, r.answer_source]), String(appliesTo)).toEqual([
+        ["1", "computed"],
+        ["5", "computed"],
+      ]);
+      // The scaffold places are used, not written into the record.
+      expect(out.every((r) => r.place === undefined)).toBe(true);
+      expect(details).toEqual([]);
+    }
+
+    const boxCountOnly = makePageWithItem({
+      n: 1,
+      printed: "12 + 3",
+      form: "vertical",
+      expr: { kind: "arith", op: "add", operands: [12, 3] },
+      responses: digitBoxes([null, null]),
+    });
+    boxCountOnly.sections[0].scaffolds = [{ kind: "answer_boxes", applies_to: [1], box_count: 2 }];
+    const kept = applyComputedAnswers(boxCountOnly);
+    if (kept.record.kind !== "page") throw new Error("page expected");
+    expect(kept.record.sections[0].items[0].responses).toEqual(boxCountOnly.sections[0].items[0].responses);
+    expect(kept.details.map((d) => d.kind)).toEqual(["places_do_not_fit"]);
+  });
+
+  it("one box with a decimal place gets the digit of that place, and a leading 0 in an unreached place is correct", () => {
+    const oneBox = (operands: number[], place: string, answer: string) =>
+      makePageWithItem({
+        n: 1,
+        printed: "sample",
+        form: "vertical",
+        expr: { kind: "arith", op: "add", operands },
+        responses: [{ position: "box", cue: null, answer, answer_source: "reader", place }],
+      });
+    for (const [operands, place, answer] of [[[10, 5], "ones", "5"], [[15, 30], "tens", "4"]] as const) {
+      const { record, details } = applyComputedAnswers(oneBox([...operands], place, answer));
+      if (record.kind !== "page") throw new Error("page expected");
+      expect(record.sections[0].items[0].responses[0].answer).toBe(answer);
+      expect(record.sections[0].items[0].responses[0].answer_source).toBe("computed");
+      expect(details).toEqual([]);
+    }
+
+    const zero = makePageWithItem({
+      n: 1,
+      printed: "23 x 3",
+      form: "vertical",
+      expr: { kind: "arith", op: "mul", operands: [23, 3] },
+      responses: [
+        { position: "box", cue: null, answer: "0", answer_source: "printed", place: "hundreds" },
+        { position: "box", cue: null, answer: "6", answer_source: "reader", place: "tens" },
+        { position: "box", cue: null, answer: "9", answer_source: "reader", place: "ones" },
+      ],
+    });
+    expect(applyComputedAnswers(zero).details).toEqual([]);
+  });
+
+  it("treats remainder answers written with or without spaces and in either case as equal", () => {
+    for (const answer of ["4r1", "4 r 1", "4 R1", "4R1"]) {
+      const page = makePageWithItem({
+        n: 1,
+        printed: "13 / 3",
+        form: "horizontal",
+        expr: { kind: "arith", op: "div", operands: [13, 3] },
+        responses: [{ position: "after_equals", cue: null, answer, answer_source: "reader" }],
+      });
+      expect(applyComputedAnswers(page).details, answer).toEqual([]);
+    }
+  });
+
+  it("keeps the reader answer of a word problem with a division that is not exact", () => {
+    const page = makePageWithItem({
+      n: 1,
+      printed: "Sample sharing problem",
+      form: "horizontal",
+      expr: { kind: "word", text: "Sample sharing problem", expr: { kind: "arith", op: "div", operands: [7, 2] } },
+      responses: [{ position: "after_equals", cue: null, answer: "3.5", answer_source: "reader" }],
+    });
+    const { record, details } = applyComputedAnswers(page);
+    expect(record).toEqual(page);
+    expect(details).toEqual([]);
+    expect(findEmptyAnswers(record)).toEqual([]);
+
+    page.sections[0].items[0].responses[0] = { position: "after_equals", cue: null, answer: null, answer_source: "unchecked" };
+    expect(applyComputedAnswers(page).details).toEqual([]);
+    expect(findEmptyAnswers(page)).toEqual(["sections[0].items[n=1].responses[0]"]);
   });
 
   it("writes one digit into each named decimal place and notes a higher place that the value does not reach", () => {

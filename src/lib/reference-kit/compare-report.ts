@@ -277,12 +277,21 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
         "- Once-read teaching fields (look at the photo; copy an entry that is on the page into the final record at the given path, where \"[]\" means the end of that list):",
       );
       for (const d of p.once_read) {
+        // A record that a person edited or checked is kept; reader a's indexes may not fit it.
+        const keptRecord = p.edited_by_person === true || p.status === "human_checked";
+        const entry = d.reader === "a" ? d.a : d.b;
         if (d.reader && d.final_path !== undefined) {
-          const entry = d.reader === "a" ? d.a : d.b;
-          const where =
-            d.reader === "a" ? "already in the final record at" : "belongs in the final record at";
+          const where = keptRecord
+            ? "found in the kept final record at"
+            : d.reader === "a"
+              ? "already in the final record at"
+              : "belongs in the final record at";
           lines.push(
             `  - \`${d.path}\`: only reader ${d.reader} has it; ${where} \`${d.final_path}\`: ${formatVal(entry)}`,
+          );
+        } else if (d.reader && keptRecord) {
+          lines.push(
+            `  - \`${d.path}\`: only reader ${d.reader} has it; a person changed the final record, so find the place in that record: ${formatVal(entry)}`,
           );
         } else {
           lines.push(`  - \`${d.path}\`: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);

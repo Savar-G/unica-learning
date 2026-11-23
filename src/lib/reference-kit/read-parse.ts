@@ -107,7 +107,9 @@ function foldTopicNumber(obj: Record<string, unknown>): void {
     rest.title = String(number);
   } else if (typeof title === "string" && title !== UNCLEAR && title !== NOT_STATED) {
     const tokens = title.trim().split(/\s+/);
-    if (tokens[tokens.length - 1] !== String(number)) rest.title = `${title.trim()} ${number}`;
+    // The number is already there as the last token, with or without round brackets.
+    const last = tokens[tokens.length - 1];
+    if (last !== String(number) && last !== `(${number})`) rest.title = `${title.trim()} ${number}`;
   }
   obj.topic = rest;
 }

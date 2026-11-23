@@ -126,6 +126,14 @@ describe("computeExprAnswer", () => {
         expr: "not_stated",
       }),
     ).toBeNull();
+    // A word problem with a division that is not exact: the wanted form (decimal or remainder)
+    // is not known. An exact division is computed.
+    expect(
+      computeExprAnswer({ kind: "word", text: "Sample sharing problem", expr: { kind: "arith", op: "div", operands: [7, 2] } }),
+    ).toBeNull();
+    expect(
+      computeExprAnswer({ kind: "word", text: "Sample sharing problem", expr: { kind: "arith", op: "div", operands: [8, 2] } }),
+    ).toEqual({ kind: "single", value: "4", quotient: 4, remainder: 0 });
   });
 
   it("returns null for invalid or non-unique missing-value equations such as 0 / [] = 5", () => {

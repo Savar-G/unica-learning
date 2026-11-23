@@ -241,7 +241,11 @@ export function computeExprAnswer(expr: Expr | null): ComputedAnswer | null {
     }
     case "word": {
       if (expr.expr === null || expr.expr === UNCLEAR || expr.expr === NOT_STATED) return null;
-      return computeExprAnswer(expr.expr);
+      const inner = computeExprAnswer(expr.expr);
+      // A word problem with a division that is not exact may want "2.5" or "2 R1"; code cannot
+      // know which, so the reader answer stays.
+      if (inner?.kind === "single" && (inner.remainder ?? 0) > 0) return null;
+      return inner;
     }
     case "notation":
       return null;

@@ -15,6 +15,7 @@ import {
   collectUnnamedTeachingMarks,
   compareRecords,
   decideStatus,
+  locateOnceReadInKeptRecord,
   type PageStatus,
 } from "./compare";
 import {
@@ -255,7 +256,7 @@ export function compareWorkFolder(opts: {
         only_in_reader: onlyIn,
         digest_mismatch: pair.digestMismatch,
         differences: classified.differences,
-        once_read: classified.once_read,
+        once_read: locateOnceReadInKeptRecord(classified.once_read, null),
         both_unclear: classified.both_unclear,
         one_unclear: classified.one_unclear,
         empty_answer: classified.empty_answer,
@@ -288,7 +289,7 @@ export function compareWorkFolder(opts: {
         only_in_reader: onlyIn,
         digest_mismatch: pair.digestMismatch,
         differences: classified.differences,
-        once_read: classified.once_read,
+        once_read: locateOnceReadInKeptRecord(classified.once_read, existingKept),
         both_unclear: classified.both_unclear,
         one_unclear: classified.one_unclear,
         empty_answer: classified.empty_answer,
@@ -342,7 +343,9 @@ export function compareWorkFolder(opts: {
       only_in_reader: onlyIn,
       digest_mismatch: pair.digestMismatch,
       differences: classified.differences,
-      once_read: classified.once_read,
+      once_read: editedByPerson
+        ? locateOnceReadInKeptRecord(classified.once_read, loadExistingFinalRecord(finalRecordPath))
+        : classified.once_read,
       both_unclear: classified.both_unclear,
       one_unclear: classified.one_unclear,
       empty_answer: classified.empty_answer,

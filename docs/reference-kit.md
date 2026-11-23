@@ -32,7 +32,16 @@ npm run reference:extract -- \
 
 Each photo is prepared, read by both readers in parallel (5-minute timeout per call, one validation retry, computed answers applied where exact, `not_stated` refused from readers), and compared once all photos finish.
 
-Computed answers: code computes the answer of each item from its expression and writes it into the answer places (not `work_area` or `checkbox`) with `answer_source: "computed"`. One computed value goes into one answer place, or into every answer place when no place has a `place` name (an equation box and an answer line). When every answer place names a different decimal place (`ones`, `tens`, `hundreds`, `thousands`, `ten thousands`) and the value is a whole number that fits, each place gets its digit; a higher place that the value does not reach stays as it is. In all other cases the reader answers are kept and the report has a note. An answer with `answer_source: "printed"` keeps its value and source; a printed answer that is not the computed value gets a note. Exit code is `0` when the run completes (even if some photos fail) and `1` for a usage error or when no photo could be prepared. A reader folder that holds readings of another model family is refused; use a new `--out` folder.
+Exit code is `0` when the run completes (even if some photos fail) and `1` for a usage error or when no photo could be prepared. A reader folder that holds readings of another model family is refused; use a new `--out` folder.
+
+Computed answers: code computes the answer of each item from its expression and writes it into the answer places (not `work_area` or `checkbox`) with `answer_source: "computed"`. A word problem with a division that is not exact is not computed (it may want a decimal or a remainder); its reader answer stays.
+
+- One answer place gets the value. When that place names a decimal place (`ones`, `tens`, `hundreds`, `thousands`, `ten thousands`), it gets the digit of that place.
+- Several answer places that each name a different decimal place get one digit each, when the value is a whole number that fits. A higher place that the value does not reach stays as it is; a "0" there is correct.
+- Several answer places with no `place`: when an `answer_boxes` scaffold that applies to the item lists as many `places`, those places are used in order (they are not written into the record). Otherwise every place gets the value only when no `answer_boxes` scaffold of the item prints more than one box and every stored answer in those places already is the value (empty places are allowed).
+- In all other cases the stored answers are kept and the report has a note.
+- An answer with `answer_source: "printed"` keeps its value and source; a printed answer that is not the computed value gets a note.
+- Remainder answers such as "4r1", "4 r 1", and "4 R1" are equal.
 
 ## Running Again
 
@@ -120,7 +129,7 @@ The compare step uses every valid reading in `reader-a/` and `reader-b/`, not on
 - **Unnamed teaching marks**: every `other` example step, example mark, and practice scaffold with its description, so a person sees what the fixed lists did not name.
 - **Kept: checked by a person** and **Removed stale pages**: existing `human_checked` records kept on re-compare and stale non-checked pages cleaned up.
 - **Per-page details**: differences, once-read teaching fields (including steps, marks, and scaffolds), both-unclear fields, empty answer places (with both readers' answers), reader answer notes, and `A person must read the prose on this page` whenever a page has an example, example step, word problem, scaffold caption, or figure.
-- **Once-read entries**: each one gives the reader that has it, the JSON path where it belongs in the final record (`final_path` in `report.json`; a path that ends in `[]` means the end of that list), and the full JSON of the entry. After a look at the photo, a person copies an entry that is on the page into the final record.
+- **Once-read entries**: each one gives the reader that has it, the JSON path where it belongs in the final record (`final_path` in `report.json`; a path that ends in `[]` means the end of that list), and the full JSON of the entry. After a look at the photo, a person copies an entry that is on the page into the final record. When the final record is one that a person edited or checked, `final_path` is given only when the entry is in that record with equal content; otherwise the person finds the place.
 - **Both-unclear fields**: a person looks at the photo and writes the value, or keeps `"unclear"` and marks the page checked.
 
 What a person does next:
@@ -133,7 +142,7 @@ What a person does next:
    ```bash
    npm run reference:check -- --work /private/work --page <source_ref> --photo-compared
    ```
-   `--photo-compared` states that a person compared the record with the photo. Without it the command changes nothing, names the photo of the page, and exits with an error. The command also changes nothing and lists the items when a stored answer is not the computed value (correct the expression so that it gives the right answer, or correct the answer), when the computed answers do not fit the answer places, or when an answer place is empty (write the answer from the photo, or `"unclear"`). It never writes a computed answer over a stored one.
+   `--photo-compared` states that a person compared the record with the photo. Without it the command changes nothing, names the photo of the page, and exits with an error. The command also changes nothing and lists the items when a stored concrete answer is not what code would write in that place (correct the expression so that it gives the right answer, or correct the answer), or when an answer place is empty (write the answer from the photo, or `"unclear"`). Stored answers that do not fit the computed answer are kept and do not stop the check. It never writes a computed answer over a stored one.
 3. Import the finished records and prepared photos into Supabase:
    ```bash
    SUPABASE_URL=... SUPABASE_SECRET_KEY=... npm run reference:import -- \

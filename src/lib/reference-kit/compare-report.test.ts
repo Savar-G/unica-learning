@@ -35,6 +35,13 @@ describe("formatCompareReportMarkdown", () => {
           once_read: [
             { path: "examples[0]", a: {}, b: null, kind: "once_read" },
             {
+              path: "sections[0].scaffolds[b:2]",
+              a: null,
+              b: { kind: "arrow", applies_to: [1] },
+              kind: "once_read",
+              reader: "b",
+            },
+            {
               path: "sections[0].scaffolds[b:1]",
               a: null,
               b: { kind: "arrow", applies_to: [2], label: "carry" },
@@ -95,7 +102,7 @@ describe("formatCompareReportMarkdown", () => {
 
     const md = formatCompareReportMarkdown(report);
     expect(md).toContain("| sample:M:3a | IMG_0001.jpg | double_read | 0 | 0 | 0 | 0 | no |");
-    expect(md).toContain("| sample:M:4a | IMG_0002.jpg | machine_read | 1 | 2 | 1 | 1 | yes |");
+    expect(md).toContain("| sample:M:4a | IMG_0002.jpg | machine_read | 1 | 3 | 1 | 1 | yes |");
     expect(md).toContain(
       '`sections[0].scaffolds[b:1]`: only reader b has it; belongs in the final record at `sections[0].scaffolds[]`: {"kind":"arrow","applies_to":[2],"label":"carry"}',
     );
@@ -128,5 +135,17 @@ describe("formatCompareReportMarkdown", () => {
     expect(md).toContain("A person must read the prose on this page");
     expect(md).toContain("Photo digest mismatch");
     expect(md).toContain("Exact match across both readers.");
+
+    // A record that a person edited is kept: a path is given only where the entry was found.
+    const edited = formatCompareReportMarkdown({
+      ...report,
+      pages: [{ ...report.pages[1], edited_by_person: true }],
+    });
+    expect(edited).toContain(
+      "`sections[0].scaffolds[b:1]`: only reader b has it; found in the kept final record at `sections[0].scaffolds[]`",
+    );
+    expect(edited).toContain(
+      '`sections[0].scaffolds[b:2]`: only reader b has it; a person changed the final record, so find the place in that record: {"kind":"arrow","applies_to":[1]}',
+    );
   });
 });

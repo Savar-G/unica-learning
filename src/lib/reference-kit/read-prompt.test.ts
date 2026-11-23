@@ -154,6 +154,7 @@ describe("REFERENCE_READ_PROMPT", () => {
     expect(REFERENCE_READ_PROMPT).toMatch(/answer_source "printed" only when the publisher printed the answer/);
     expect(REFERENCE_READ_PROMPT).toMatch(/divider or border lines .* not record them as example marks or scaffolds/i);
     expect(REFERENCE_READ_PROMPT).toMatch(/null when the chart does not print a sheet range/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/each response of a digit box MUST carry `place`/);
 
     const jsonBlocks = extractJsonBlocksFromPrompt(REFERENCE_READ_PROMPT) as Array<
       Record<string, unknown>

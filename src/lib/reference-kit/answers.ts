@@ -3,8 +3,11 @@ import {
   NOT_STATED,
   UNCLEAR,
   type ComputedAnswer,
+  type ComputedSingleAnswer,
+  type AnswerBoxesScaffold,
   type ItemResponse,
   type PageItem,
+  type PageSection,
   type PageRecord,
   type ReferenceRecord,
 } from "@/lib/reference-record";
@@ -62,7 +65,7 @@ function normalizeAnswerCompare(raw: string): string {
   return raw
     .trim()
     .replace(/\s+/g, " ")
-    .replace(/\b[rR]\s*(\d+)/g, "R$1");
+    .replace(/(\d)\s*[rR]\s*(\d+)/g, "$1 R$2");
 }
 
 function isConcreteAnswer(answer: ItemResponse["answer"]): answer is string {
@@ -88,23 +91,37 @@ type ItemAnswerPlan =
   | { kind: "fill"; values: Map<number, string>; unreached: number[] }
   | { kind: "misfit"; message: string };
 
-function planPlaceDigits(
-  item: PageItem,
+// The decimal place power of each answer index, from the given place names. Null when a name is
+// not a known decimal place or two names give one place.
+function placePowers(
   answerIndices: readonly number[],
-  value: string,
-): { values: Map<number, string>; unreached: number[] } | null {
-  if (!/^\d+$/.test(value)) return null;
+  names: readonly unknown[],
+): Map<number, number> | null {
   const powerByIndex = new Map<number, number>();
   const seen = new Set<number>();
-  for (const idx of answerIndices) {
-    const power = decimalPlacePower(item.responses[idx].place);
+  for (let i = 0; i < answerIndices.length; i += 1) {
+    const power = decimalPlacePower(names[i]);
     if (power === null || seen.has(power)) return null;
     seen.add(power);
-    powerByIndex.set(idx, power);
+    powerByIndex.set(answerIndices[i], power);
   }
+  return powerByIndex;
+}
+
+// One digit of a whole number in each decimal place box. With `requireFit`, every digit of the
+// value must have a box.
+function planPlaceDigits(
+  powerByIndex: Map<number, number>,
+  value: string,
+  requireFit: boolean,
+): { values: Map<number, string>; unreached: number[] } | null {
+  if (!/^\d+$/.test(value)) return null;
   const digits = value.replace(/^0+(?=\d)/, "");
-  for (let p = 0; p < digits.length; p += 1) {
-    if (!seen.has(p)) return null;
+  const powers = new Set(powerByIndex.values());
+  if (requireFit) {
+    for (let p = 0; p < digits.length; p += 1) {
+      if (!powers.has(p)) return null;
+    }
   }
   const values = new Map<number, string>();
   const unreached: number[] = [];
@@ -118,7 +135,67 @@ function planPlaceDigits(
   return { values, unreached };
 }
 
-function planItemAnswers(item: PageItem, computed: ComputedAnswer | null): ItemAnswerPlan {
+function scaffoldsFor(scaffolds: PageSection["scaffolds"], n: number): AnswerBoxesScaffold[] {
+  if (!Array.isArray(scaffolds)) return [];
+  return scaffolds.filter(
+    (sc): sc is AnswerBoxesScaffold =>
+      sc.kind === "answer_boxes" &&
+      (sc.applies_to === "all" || (Array.isArray(sc.applies_to) && sc.applies_to.includes(n))),
+  );
+}
+
+function isMultiBox(sc: AnswerBoxesScaffold): boolean {
+  return (
+    (typeof sc.box_count === "number" && sc.box_count > 1) ||
+    (Array.isArray(sc.places) && sc.places.length > 1)
+  );
+}
+
+function planSingleInPlaces(
+  item: PageItem,
+  answerIndices: readonly number[],
+  computed: ComputedSingleAnswer,
+  boxScaffolds: readonly AnswerBoxesScaffold[],
+): ItemAnswerPlan | null {
+  const responses = answerIndices.map((idx) => item.responses[idx]);
+  // Every place names a decimal place: one digit in each.
+  if (responses.every((r) => !hasNoPlace(r))) {
+    const powers = placePowers(answerIndices, responses.map((r) => r.place));
+    const byPlace = powers && planPlaceDigits(powers, computed.value, true);
+    return byPlace ? { kind: "fill", ...byPlace } : null;
+  }
+  if (!responses.every(hasNoPlace)) return null;
+  // The digit boxes have no place, but a scaffold names the places in order.
+  const named = boxScaffolds.find(
+    (sc) => Array.isArray(sc.places) && sc.places.length === answerIndices.length,
+  );
+  if (named && Array.isArray(named.places)) {
+    const powers = placePowers(answerIndices, named.places);
+    const byPlace = powers && planPlaceDigits(powers, computed.value, true);
+    return byPlace ? { kind: "fill", ...byPlace } : null;
+  }
+  // One value in several places (an equation box and an answer line): only when no scaffold
+  // prints digit boxes and every stored answer already is that value.
+  const value = normalizeAnswerCompare(computed.value);
+  if (
+    (computed.remainder ?? 0) === 0 &&
+    !boxScaffolds.some(isMultiBox) &&
+    responses.every((r) => !isConcreteAnswer(r.answer) || normalizeAnswerCompare(r.answer) === value)
+  ) {
+    return {
+      kind: "fill",
+      values: new Map(answerIndices.map((idx) => [idx, computed.value])),
+      unreached: [],
+    };
+  }
+  return null;
+}
+
+function planItemAnswers(
+  item: PageItem,
+  computed: ComputedAnswer | null,
+  sectionScaffolds: PageSection["scaffolds"],
+): ItemAnswerPlan {
   if (!computed) return { kind: "none" };
   const answerIndices: number[] = [];
   item.responses.forEach((resp, idx) => {
@@ -127,25 +204,26 @@ function planItemAnswers(item: PageItem, computed: ComputedAnswer | null): ItemA
 
   if (computed.kind === "single") {
     if (answerIndices.length === 1) {
-      return { kind: "fill", values: new Map([[answerIndices[0], computed.value]]), unreached: [] };
-    }
-    if (answerIndices.length > 1) {
-      const hasRemainder = (computed.remainder ?? 0) > 0;
-      // One value in several unnamed places (an equation box and an answer line).
-      if (!hasRemainder && answerIndices.every((idx) => hasNoPlace(item.responses[idx]))) {
-        return {
-          kind: "fill",
-          values: new Map(answerIndices.map((idx) => [idx, computed.value])),
-          unreached: [],
-        };
+      const only = answerIndices[0];
+      const power = decimalPlacePower(item.responses[only].place);
+      if (power === null) {
+        return { kind: "fill", values: new Map([[only, computed.value]]), unreached: [] };
       }
-      // One digit in each decimal place box.
-      const byPlace = planPlaceDigits(item, answerIndices, computed.value);
+      // One box with a decimal place gets the digit of that place.
+      const byPlace = planPlaceDigits(new Map([[only, power]]), computed.value, false);
       if (byPlace) return { kind: "fill", ...byPlace };
+    } else if (answerIndices.length > 1) {
+      const plan = planSingleInPlaces(
+        item,
+        answerIndices,
+        computed,
+        scaffoldsFor(sectionScaffolds, item.n),
+      );
+      if (plan) return plan;
     }
     return {
       kind: "misfit",
-      message: `computed single answer "${computed.value}" but item has ${answerIndices.length} answer-bearing response(s); kept reader answers`,
+      message: `computed single answer "${computed.value}" but it does not fit the ${answerIndices.length} answer-bearing response(s); kept reader answers`,
     };
   }
 
@@ -195,8 +273,13 @@ function fillResponse(
   return { ...resp, answer: value, answer_source: "computed" };
 }
 
-function processItemAnswers(item: PageItem, sectionIndex: number, notes: AnswerNote[]): PageItem {
-  const plan = planItemAnswers(item, computeExprAnswer(item.expr));
+function processItemAnswers(
+  item: PageItem,
+  section: PageSection,
+  sectionIndex: number,
+  notes: AnswerNote[],
+): PageItem {
+  const plan = planItemAnswers(item, computeExprAnswer(item.expr), section.scaffolds);
   const itemPath = itemPathOf(sectionIndex, item);
   if (plan.kind === "none") return item;
   if (plan.kind === "misfit") {
@@ -207,6 +290,8 @@ function processItemAnswers(item: PageItem, sectionIndex: number, notes: AnswerN
   for (const idx of plan.unreached) {
     const resp = item.responses[idx];
     const path = `${itemPath}.responses[${idx}]`;
+    // A leading "0" in a place that the value does not reach is correct.
+    if (isConcreteAnswer(resp.answer) && resp.answer.trim() === "0") continue;
     if (isConcreteAnswer(resp.answer)) {
       notes.push({
         kind: "answer_differs",
@@ -243,7 +328,7 @@ export function applyComputedAnswers(record: ReferenceRecord): {
     ...record,
     sections: record.sections.map((section, si) => ({
       ...section,
-      items: section.items.map((item) => processItemAnswers(item, si, details)),
+      items: section.items.map((item) => processItemAnswers(item, section, si, details)),
     })),
   };
   return { record: nextPage, notes: details.map((d) => d.message), details };
@@ -261,7 +346,7 @@ export function findEmptyAnswers(record: ReferenceRecord | null | undefined): st
   record.sections.forEach((section, si) => {
     for (const item of section.items) {
       if (item.expr === null) continue;
-      const plan = planItemAnswers(item, computeExprAnswer(item.expr));
+      const plan = planItemAnswers(item, computeExprAnswer(item.expr), section.scaffolds);
       const unreached = new Set(plan.kind === "fill" ? plan.unreached : []);
       item.responses.forEach((resp, ri) => {
         if (!isAnswerBearingResponse(resp) || unreached.has(ri)) return;

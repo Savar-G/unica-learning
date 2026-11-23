@@ -64,7 +64,7 @@ export function checkSentinels(
   return false;
 }
 
-function deepEqual(a: unknown, b: unknown): boolean {
+export function deepEqual(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
   if (Array.isArray(a) && Array.isArray(b)) {
     return a.length === b.length && a.every((item, idx) => deepEqual(item, b[idx]));
@@ -392,12 +392,19 @@ function compareSingleScaffold(
   }
 }
 
-// A list that names every item of the section says the same as "all".
+// A list that names every item of the section says the same as "all". Other lists are sorted.
 function withAllItems(sc: Scaffold, itemNs: readonly number[] | undefined): Scaffold {
-  if (!itemNs || itemNs.length === 0 || !Array.isArray(sc.applies_to)) return sc;
+  if (!Array.isArray(sc.applies_to)) return sc;
   const listed = new Set(sc.applies_to);
-  if (listed.size !== new Set(itemNs).size || !itemNs.every((n) => listed.has(n))) return sc;
-  return { ...sc, applies_to: "all" };
+  if (
+    itemNs &&
+    itemNs.length > 0 &&
+    listed.size === new Set(itemNs).size &&
+    itemNs.every((n) => listed.has(n))
+  ) {
+    return { ...sc, applies_to: "all" };
+  }
+  return { ...sc, applies_to: [...sc.applies_to].sort((x, y) => x - y) };
 }
 
 export function compareScaffolds(
@@ -417,8 +424,18 @@ export function compareScaffolds(
   const matchedBForA = new Map<number, number>();
   const usedB = new Set<number>();
 
+  // Pass 0: match scaffolds with equal content (after the applies_to normalisation)
+  aList.forEach((scA, idxA) => {
+    const matchIdx = bList.findIndex((scB, j) => !usedB.has(j) && deepEqual(scA, scB));
+    if (matchIdx !== -1) {
+      matchedBForA.set(idxA, matchIdx);
+      usedB.add(matchIdx);
+    }
+  });
+
   // Pass 1: match by kind + applies_to (+ target for caption)
   aList.forEach((scA, idxA) => {
+    if (matchedBForA.has(idxA)) return;
     const keyA = scaffoldPrimaryKey(scA);
     const matchIdx = bList.findIndex((scB, j) => !usedB.has(j) && scaffoldPrimaryKey(scB) === keyA);
     if (matchIdx !== -1) {

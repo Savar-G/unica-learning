@@ -18,6 +18,7 @@ import {
   compareResponses,
   compareScaffolds,
   compareScoreBands,
+  deepEqual,
   type DiffKind,
   type RecordDifference,
 } from "./compare-parts";
@@ -232,6 +233,45 @@ function resolveDiffPath(record: unknown, path: string): { jsonPath: string; val
 function locateOnceRead(d: RecordDifference, finalRecord: ReferenceRecord): RecordDifference {
   const reader: "a" | "b" = d.a !== null && d.a !== undefined ? "a" : "b";
   return { ...d, reader, final_path: resolveDiffPath(finalRecord, d.path).jsonPath };
+}
+
+function findEqualNode(node: unknown, target: unknown, path: string): string | null {
+  if (path && deepEqual(node, target)) return path;
+  if (Array.isArray(node)) {
+    for (let i = 0; i < node.length; i += 1) {
+      const found = findEqualNode(node[i], target, `${path}[${i}]`);
+      if (found !== null) return found;
+    }
+  } else if (typeof node === "object" && node !== null) {
+    for (const [key, value] of Object.entries(node)) {
+      const found = findEqualNode(value, target, path ? `${path}.${key}` : key);
+      if (found !== null) return found;
+    }
+  }
+  return null;
+}
+
+// The final record on disk is one that a person edited or checked, so reader a's indexes may not
+// fit it. A once-read entry keeps a final_path only when the entry is in that record with equal
+// content; otherwise the person finds the place.
+export function locateOnceReadInKeptRecord(
+  onceRead: readonly RecordDifference[],
+  kept: ReferenceRecord | null,
+): RecordDifference[] {
+  return onceRead.map((d) => {
+    const next: RecordDifference = { path: d.path, a: d.a, b: d.b, kind: d.kind };
+    if (d.reader) next.reader = d.reader;
+    if (!kept || !d.reader) return next;
+    const entry = d.reader === "a" ? d.a : d.b;
+    const at = resolveDiffPath(kept, d.path);
+    if (at.value !== undefined && deepEqual(at.value, entry)) {
+      next.final_path = at.jsonPath;
+    } else if (typeof entry === "object" && entry !== null) {
+      const found = findEqualNode(kept, entry, "");
+      if (found !== null) next.final_path = found;
+    }
+    return next;
+  });
 }
 
 export function emptyAnswerDiffs(

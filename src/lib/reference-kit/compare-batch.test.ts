@@ -791,6 +791,18 @@ describe("compareWorkFolder", () => {
     expect(md).toContain("only reader b has it; belongs in the final record at `sections[0].scaffolds[]`");
     expect(md).toContain("Answer places with no answer");
     expect(md).toContain("`sections[0].items[n=1].responses[0]`");
+    // A person edits the final record of 3a. Its once-read path is given only where the entry is.
+    const edited = finalOf("sample-M-3a");
+    edited.sections[0].scaffolds = [{ kind: "caption", applies_to: "all", text: "Sample caption" }, arrow];
+    writeFileSync(join(work, "final", "sample-M-3a.json"), JSON.stringify(edited, null, 2));
+    const withCopy = compareWorkFolder({ workDir: work, repoRoot: repo }).pages.find((p) => p.source_ref === "sample:M:3a");
+    expect(withCopy?.edited_by_person).toBe(true);
+    expect(withCopy?.once_read[0].final_path).toBe("sections[0].scaffolds[1]");
+    edited.sections[0].scaffolds = [];
+    writeFileSync(join(work, "final", "sample-M-3a.json"), JSON.stringify(edited, null, 2));
+    const without = compareWorkFolder({ workDir: work, repoRoot: repo }).pages.find((p) => p.source_ref === "sample:M:3a");
+    expect(without?.once_read[0].reader).toBe("b");
+    expect(without?.once_read[0]).not.toHaveProperty("final_path");
   });
 });
 

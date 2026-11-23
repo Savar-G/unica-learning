@@ -4,6 +4,7 @@ import { NOT_STATED, UNCLEAR, type ContentsRecord, type PageRecord } from "@/lib
 import {
   classifyComparison,
   compareRecords,
+  locateOnceReadInKeptRecord,
   decideStatus,
   needsPersonRead,
   normalizeNotationText,
@@ -807,6 +808,38 @@ describe("answer sources, scaffold lists, once-read places, empty answers, and u
 
     a.sections[0].scaffolds = [strip([1, 2])];
     expect(compareRecords(a, b).map((d) => d.path)).toEqual(["sections[0].scaffolds[0].applies_to"]);
+  });
+
+  it("pairs scaffolds with equal content first, so two readers that list them in opposite order agree", () => {
+    const onlyOneItem = (scaffolds: PageRecord["sections"][0]["scaffolds"]) => {
+      const page = makePage();
+      page.sections[0].items = [page.sections[0].items[0]];
+      page.sections[0].scaffolds = scaffolds;
+      return page;
+    };
+    const first = { kind: "arrow" as const, from: "tens", to: "ones", label: "carry" };
+    const second = { kind: "arrow" as const, from: "ones", to: "answer", label: "write" };
+    const a = onlyOneItem([{ ...first, applies_to: [1] }, { ...second, applies_to: "all" }]);
+    const b = onlyOneItem([{ ...second, applies_to: "all" }, { ...first, applies_to: [1] }]);
+    expect(compareRecords(a, b)).toEqual([]);
+  });
+
+  it("keeps a once-read final_path for an edited or checked record only when the entry is there with equal content", () => {
+    const arrow = { kind: "arrow" as const, applies_to: [2], label: "carry" };
+    const onceRead = [
+      { path: "sections[0].scaffolds[b:0]", a: null, b: arrow, kind: "once_read" as const, reader: "b" as const, final_path: "sections[0].scaffolds[]" },
+      { path: "sections[0].items[n=3].responses[0].cue", a: null, b: "Sample cue", kind: "once_read" as const, reader: "b" as const, final_path: "sections[0].items[2].responses[0].cue" },
+    ];
+    // The person copied the arrow in as the second scaffold and removed item 1.
+    const kept = makePage();
+    kept.sections[0].scaffolds = [{ kind: "arrow", applies_to: [1], label: "other" }, arrow];
+    kept.sections[0].items = kept.sections[0].items.slice(1);
+    expect(locateOnceReadInKeptRecord(onceRead, kept)).toEqual([
+      { ...onceRead[0], final_path: "sections[0].scaffolds[1]" },
+      { path: onceRead[1].path, a: null, b: "Sample cue", kind: "once_read", reader: "b" },
+    ]);
+    // A kept record that cannot be read: no path.
+    expect(locateOnceReadInKeptRecord(onceRead, null).every((d) => d.final_path === undefined)).toBe(true);
   });
 
   it("gives each once-read entry its reader and its JSON path in the final record", () => {

@@ -139,10 +139,8 @@ export function checkAndMarkPage(opts: {
 
   const { record: recomputed, notes, details } = applyComputedAnswers(check.record);
   // A check never replaces a stored answer: a person may have corrected the answer and not the
-  // expression.
-  const conflicts = details.filter(
-    (d) => d.kind === "answer_differs" || d.kind === "places_do_not_fit",
-  );
+  // expression. Answers that do not fit the answer places are kept as they are.
+  const conflicts = details.filter((d) => d.kind === "answer_differs");
   const emptyAnswers = findEmptyAnswers(recomputed);
   if (conflicts.length > 0 || emptyAnswers.length > 0) {
     const lines = [`Not marked: ${page} has answers to correct. Nothing was written.`];
