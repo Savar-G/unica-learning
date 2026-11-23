@@ -33,7 +33,8 @@ For table-level behavior, read the generated types and the domain doc for that s
 
 - **`shown-work`**: holds assessment drawings (`.png`) and whiteboard strokes (`<parent>/<assessment>/<question>-<random>.strokes.json`). Parents may read `.png` only; admins read strokes. Never include strokes in parent reports or anonymized copies (`public.anonymous_tests`).
 - **`workbook-pages`**: private bucket holding rendered workbook PDFs, page images, proof images, and first-pages previews (`<parent>/<workbook-or-draft-id>/<name>`). Parents read only their own family's **shipped** workbooks (`workbooks_parent_shipped_only`); admins read all.
-- Family deletion empties both buckets (`docs/assessment-deletion.md`).
+- **`curriculum-reference`**: private bucket holding masked reference page photos (`<source>/<level>/<sheet><side>.<ext>`), paired with `public.bank_reference_images`. Service-role only (no browser-role table grants or storage policies); not family data.
+- Family deletion empties the family buckets (`docs/assessment-deletion.md`).
 
 ## Cross-cutting database conventions
 
@@ -57,4 +58,5 @@ For table-level behavior, read the generated types and the domain doc for that s
 | Parent feedback | `docs/parent-feedback.md` |
 | Traffic, ads & flyers | `docs/web-analytics.md`, `docs/ad-tracking.md`, `docs/flyer-tracking.md` |
 | Team digest & monitoring | `docs/team-digest.md`, `docs/product-monitoring.md` |
+| Reference records & bucket | `docs/reference-records.md` |
 | State machines | `docs/state-machines.md` |
