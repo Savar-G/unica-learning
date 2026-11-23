@@ -42,7 +42,8 @@
     "generate:family-zones": "node scripts/generate-family-zones.mjs",
     "test:family-zones": "node --expose-gc supabase/tests/maya_window_zones.cjs --bootstrap",
     "reference:convert": "node scripts/reference-convert.mjs",
-    "reference:view": "node scripts/reference-view.mjs"
+    "reference:view": "node scripts/reference-view.mjs",
+    "reference:import": "node scripts/reference-import.mjs"
   },
   "dependencies": {
     "@sentry/nextjs": "11.16.0",
