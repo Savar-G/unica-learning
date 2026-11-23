@@ -822,6 +822,17 @@ describe("answer sources, scaffold lists, once-read places, empty answers, and u
     const a = onlyOneItem([{ ...first, applies_to: [1] }, { ...second, applies_to: "all" }]);
     const b = onlyOneItem([{ ...second, applies_to: "all" }, { ...first, applies_to: [1] }]);
     expect(compareRecords(a, b)).toEqual([]);
+
+    // Prose fields compare with the prose normalisation, also when the scaffolds are paired.
+    const helpA = onlyOneItem([
+      { kind: "helper_digit", applies_to: "all", description: "Carry the ones." },
+      { kind: "helper_digit", applies_to: "all", description: "Carry the tens." },
+    ]);
+    const helpB = onlyOneItem([
+      { kind: "helper_digit", applies_to: "all", description: "carry the tens" },
+      { kind: "helper_digit", applies_to: "all", description: "carry the ones" },
+    ]);
+    expect(compareRecords(helpA, helpB)).toEqual([]);
   });
 
   it("keeps a once-read final_path for an edited or checked record only when the entry is there with equal content", () => {
@@ -840,6 +851,24 @@ describe("answer sources, scaffold lists, once-read places, empty answers, and u
     ]);
     // A kept record that cannot be read: no path.
     expect(locateOnceReadInKeptRecord(onceRead, null).every((d) => d.final_path === undefined)).toBe(true);
+
+    // Reader a has the arrow in two sections; the kept record has it only in the second section.
+    // The entry of the first section is not pointed at the second section.
+    const twoSections = makePage();
+    twoSections.sections = [
+      { ...twoSections.sections[0], scaffolds: [{ kind: "caption", applies_to: "all", text: "Sample caption" }] },
+      { ...twoSections.sections[0], scaffolds: [arrow] },
+    ];
+    const fromA = [
+      { path: "sections[0].scaffolds[1]", a: arrow, b: null, kind: "once_read" as const, reader: "a" as const },
+      { path: "sections[1].scaffolds[b:0]", a: null, b: arrow, kind: "once_read" as const, reader: "b" as const },
+      { path: "topic.title", a: "Sample", b: null, kind: "once_read" as const, reader: "a" as const },
+    ];
+    expect(locateOnceReadInKeptRecord(fromA, twoSections).map((d) => d.final_path)).toEqual([
+      undefined,
+      "sections[1].scaffolds[0]",
+      undefined,
+    ]);
   });
 
   it("gives each once-read entry its reader and its JSON path in the final record", () => {
@@ -881,12 +910,21 @@ describe("answer sources, scaffold lists, once-read places, empty answers, and u
   it("lists empty answer places of the final record with both readers' answers", () => {
     const a = makePage();
     const b = makePage();
+    // Code cannot compute a notation item, so its empty answer place stays empty.
+    for (const page of [a, b]) {
+      page.sections[0].items[1].expr = { kind: "notation", latex: "x + 6 = 26" };
+    }
     a.sections[0].items[1].responses[0] = { position: "after_equals", cue: null, answer: null, answer_source: "unchecked" };
     const summary = classifyComparison(a, b);
     expect(summary.empty_answer).toEqual([
       { path: "sections[0].items[n=2].responses[0]", a: null, b: "26", kind: "empty_answer" },
     ]);
     expect(classifyComparison(b, a).empty_answer).toEqual([]);
+
+    // A computable item: code writes the answer, as reference:check does, so it is not empty.
+    const c = makePage();
+    c.sections[0].items[0].responses[0] = { position: "after_equals", cue: null, answer: null, answer_source: "unchecked" };
+    expect(classifyComparison(c, b).empty_answer).toEqual([]);
   });
 
   it("compares unprinted sheet ranges (null) of a contents chart", () => {

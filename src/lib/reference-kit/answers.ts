@@ -164,16 +164,25 @@ function planSingleInPlaces(
     const byPlace = powers && planPlaceDigits(powers, computed.value, true);
     return byPlace ? { kind: "fill", ...byPlace } : null;
   }
-  if (!responses.every(hasNoPlace)) return null;
-  // The digit boxes have no place, but a scaffold names the places in order.
+  // Some digit boxes have no place, but a scaffold names the places in order. It fills the
+  // missing names when every name that is present agrees with it.
   const named = boxScaffolds.find(
     (sc) => Array.isArray(sc.places) && sc.places.length === answerIndices.length,
   );
   if (named && Array.isArray(named.places)) {
-    const powers = placePowers(answerIndices, named.places);
+    const scaffoldPlaces = named.places;
+    const agrees = responses.every((r, i) => {
+      if (hasNoPlace(r)) return true;
+      const power = decimalPlacePower(r.place);
+      return power !== null && power === decimalPlacePower(scaffoldPlaces[i]);
+    });
+    if (!agrees) return null;
+    const names = responses.map((r, i) => (hasNoPlace(r) ? scaffoldPlaces[i] : r.place));
+    const powers = placePowers(answerIndices, names);
     const byPlace = powers && planPlaceDigits(powers, computed.value, true);
     return byPlace ? { kind: "fill", ...byPlace } : null;
   }
+  if (!responses.every(hasNoPlace)) return null;
   // One value in several places (an equation box and an answer line): only when no scaffold
   // prints digit boxes and every stored answer already is that value.
   const value = normalizeAnswerCompare(computed.value);

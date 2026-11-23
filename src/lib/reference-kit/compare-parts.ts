@@ -424,9 +424,15 @@ export function compareScaffolds(
   const matchedBForA = new Map<number, number>();
   const usedB = new Set<number>();
 
-  // Pass 0: match scaffolds with equal content (after the applies_to normalisation)
+  // Pass 0: match scaffolds with equal content (after the applies_to normalisation), by the same
+  // field rules as the comparison itself (prose fields with the prose normalisation)
+  const sameContent = (x: Scaffold, y: Scaffold): boolean => {
+    const probe: RecordDifference[] = [];
+    compareSingleScaffold("probe", x, y, probe);
+    return probe.length === 0;
+  };
   aList.forEach((scA, idxA) => {
-    const matchIdx = bList.findIndex((scB, j) => !usedB.has(j) && deepEqual(scA, scB));
+    const matchIdx = bList.findIndex((scB, j) => !usedB.has(j) && sameContent(scA, scB));
     if (matchIdx !== -1) {
       matchedBForA.set(idxA, matchIdx);
       usedB.add(matchIdx);

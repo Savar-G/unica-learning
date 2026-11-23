@@ -6,7 +6,7 @@ import {
   type PageRecord,
   type ReferenceRecord,
 } from "@/lib/reference-record";
-import { findEmptyAnswers } from "./answers";
+import { applyComputedAnswers, findEmptyAnswers } from "./answers";
 import {
   collectUnnamedTeachingMarks,
   compareExamples,
@@ -251,9 +251,21 @@ function findEqualNode(node: unknown, target: unknown, path: string): string | n
   return null;
 }
 
+// The part of a record that a once-read path belongs to: the same section or example index (or
+// the whole list, for a whole section or example). Null when the path names no such part.
+function onceReadParent(record: ReferenceRecord, path: string): { path: string; node: unknown } | null {
+  const m = /^(sections|examples)(?:\[(\d+)\](?=[.[]))?/.exec(path);
+  if (!m) return null;
+  const list = (record as unknown as Record<string, unknown>)[m[1]];
+  if (!Array.isArray(list)) return null;
+  if (m[2] === undefined) return { path: m[1], node: list };
+  const index = Number(m[2]);
+  return index < list.length ? { path: `${m[1]}[${index}]`, node: list[index] } : null;
+}
+
 // The final record on disk is one that a person edited or checked, so reader a's indexes may not
 // fit it. A once-read entry keeps a final_path only when the entry is in that record with equal
-// content; otherwise the person finds the place.
+// content, inside the same section or example; otherwise the person finds the place.
 export function locateOnceReadInKeptRecord(
   onceRead: readonly RecordDifference[],
   kept: ReferenceRecord | null,
@@ -263,11 +275,13 @@ export function locateOnceReadInKeptRecord(
     if (d.reader) next.reader = d.reader;
     if (!kept || !d.reader) return next;
     const entry = d.reader === "a" ? d.a : d.b;
+    const parent = onceReadParent(kept, d.path);
+    if (!parent) return next;
     const at = resolveDiffPath(kept, d.path);
     if (at.value !== undefined && deepEqual(at.value, entry)) {
       next.final_path = at.jsonPath;
     } else if (typeof entry === "object" && entry !== null) {
-      const found = findEqualNode(kept, entry, "");
+      const found = findEqualNode(parent.node, entry, parent.path);
       if (found !== null) next.final_path = found;
     }
     return next;
@@ -279,7 +293,9 @@ export function emptyAnswerDiffs(
   a: ReferenceRecord | null,
   b: ReferenceRecord | null,
 ): RecordDifference[] {
-  return findEmptyAnswers(finalRecord).map((path) => ({
+  // The same rule as reference:check: answer places are judged after computed answers are applied.
+  const computed = finalRecord ? applyComputedAnswers(finalRecord).record : null;
+  return findEmptyAnswers(computed).map((path) => ({
     path,
     a: a ? (resolveDiffPath(a, `${path}.answer`).value ?? null) : null,
     b: b ? (resolveDiffPath(b, `${path}.answer`).value ?? null) : null,

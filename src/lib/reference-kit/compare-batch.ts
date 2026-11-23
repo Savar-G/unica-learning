@@ -15,6 +15,7 @@ import {
   collectUnnamedTeachingMarks,
   compareRecords,
   decideStatus,
+  emptyAnswerDiffs,
   locateOnceReadInKeptRecord,
   type PageStatus,
 } from "./compare";
@@ -259,7 +260,8 @@ export function compareWorkFolder(opts: {
         once_read: locateOnceReadInKeptRecord(classified.once_read, null),
         both_unclear: classified.both_unclear,
         one_unclear: classified.one_unclear,
-        empty_answer: classified.empty_answer,
+        // The kept file is not a valid record, so its answer places cannot be read.
+        empty_answer: [],
         needs_person_read: classified.needs_person_read,
         unnamed_teaching_marks: unnamedTeachingMarks,
         reader_notes: { a: pair.notesA, b: pair.notesB },
@@ -292,7 +294,7 @@ export function compareWorkFolder(opts: {
         once_read: locateOnceReadInKeptRecord(classified.once_read, existingKept),
         both_unclear: classified.both_unclear,
         one_unclear: classified.one_unclear,
-        empty_answer: classified.empty_answer,
+        empty_answer: emptyAnswerDiffs(existingKept, pair.recA, pair.recB),
         needs_person_read: classified.needs_person_read,
         unnamed_teaching_marks: unnamedTeachingMarks,
         reader_notes: { a: pair.notesA, b: pair.notesB },
@@ -300,12 +302,13 @@ export function compareWorkFolder(opts: {
       continue;
     }
 
+    const finalRecord = withBothReaders(chosen, pair);
     const status = decideStatus({
       hasA: pair.recA !== null,
       hasB: pair.recB !== null,
       familyA: slotA.meta?.family ?? null,
       familyB: slotB.meta?.family ?? null,
-      diffs: [...allDiffs, ...classified.empty_answer],
+      diffs: [...allDiffs, ...emptyAnswerDiffs(finalRecord, pair.recA, pair.recB)],
       sameDigest: pair.sameDigest,
     });
 
@@ -316,7 +319,8 @@ export function compareWorkFolder(opts: {
       previousHash !== undefined &&
       existsSync(finalRecordPath) &&
       sha256OfFile(finalRecordPath) !== previousHash;
-    const finalRecord = withBothReaders(chosen, pair);
+    // The record that stays on disk: the edited file, or the record that compare writes.
+    const editedRecord = editedByPerson ? loadExistingFinalRecord(finalRecordPath) : null;
     const finalText = `${JSON.stringify(finalRecord, null, 2)}\n`;
     const pageStatus: PageStatus = editedByPerson ? "machine_read" : status;
     statusMap[sourceRef] = pageStatus;
@@ -344,11 +348,13 @@ export function compareWorkFolder(opts: {
       digest_mismatch: pair.digestMismatch,
       differences: classified.differences,
       once_read: editedByPerson
-        ? locateOnceReadInKeptRecord(classified.once_read, loadExistingFinalRecord(finalRecordPath))
+        ? locateOnceReadInKeptRecord(classified.once_read, editedRecord)
         : classified.once_read,
       both_unclear: classified.both_unclear,
       one_unclear: classified.one_unclear,
-      empty_answer: classified.empty_answer,
+      empty_answer: editedByPerson
+        ? emptyAnswerDiffs(editedRecord, pair.recA, pair.recB)
+        : emptyAnswerDiffs(finalRecord, pair.recA, pair.recB),
       needs_person_read: classified.needs_person_read,
       unnamed_teaching_marks: unnamedTeachingMarks,
       reader_notes: { a: pair.notesA, b: pair.notesB },

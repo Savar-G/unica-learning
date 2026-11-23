@@ -186,6 +186,34 @@ describe("applyComputedAnswers", () => {
       expect(details).toEqual([]);
     }
 
+    // Some boxes name their place: the scaffold fills the missing names when the present ones agree.
+    const partlyNamed = (tensPlace: string) => {
+      const page = makePageWithItem({
+        n: 1,
+        printed: "12 + 3",
+        form: "vertical",
+        expr: { kind: "arith", op: "add", operands: [12, 3] },
+        responses: [
+          { position: "box", cue: null, answer: "1", answer_source: "reader", place: tensPlace },
+          { position: "box", cue: null, answer: "4", answer_source: "reader" },
+        ],
+      });
+      page.sections[0].scaffolds = [{ kind: "answer_boxes", applies_to: [1], places: ["tens", "ones"] }];
+      return page;
+    };
+    const agreed = applyComputedAnswers(partlyNamed("tens"));
+    if (agreed.record.kind !== "page") throw new Error("page expected");
+    expect(agreed.record.sections[0].items[0].responses.map((r) => [r.answer, r.answer_source, r.place])).toEqual([
+      ["1", "computed", "tens"],
+      ["5", "computed", undefined],
+    ]);
+    expect(agreed.notes).toEqual(['sections[0].items[n=1].responses[1]: reader gave "4", computed "5"']);
+    const disagreeing = partlyNamed("ones");
+    const keptAnswers = applyComputedAnswers(disagreeing);
+    if (keptAnswers.record.kind !== "page") throw new Error("page expected");
+    expect(keptAnswers.record.sections[0].items[0].responses).toEqual(disagreeing.sections[0].items[0].responses);
+    expect(keptAnswers.details.map((d) => d.kind)).toEqual(["places_do_not_fit"]);
+
     const boxCountOnly = makePageWithItem({
       n: 1,
       printed: "12 + 3",

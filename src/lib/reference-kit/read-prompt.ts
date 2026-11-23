@@ -37,7 +37,8 @@ export const PROMPT_EXAMPLE_PAGE = {
           form: "horizontal",
           expr: { kind: "arith", op: "add", operands: [12, 5] },
           responses: [
-            { position: "after_equals", cue: null, answer: "17", answer_source: "reader" },
+            { position: "box", cue: null, answer: "1", answer_source: "reader", place: "tens" },
+            { position: "box", cue: null, answer: "7", answer_source: "reader", place: "ones" },
           ],
         },
         {

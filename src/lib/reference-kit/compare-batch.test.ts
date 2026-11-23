@@ -803,6 +803,28 @@ describe("compareWorkFolder", () => {
     const without = compareWorkFolder({ workDir: work, repoRoot: repo }).pages.find((p) => p.source_ref === "sample:M:3a");
     expect(without?.once_read[0].reader).toBe("b");
     expect(without?.once_read[0]).not.toHaveProperty("final_path");
+    // Empty answer places follow the record that stays on disk.
+    const page4aOf = () =>
+      compareWorkFolder({ workDir: work, repoRoot: repo }).pages.find((p) => p.source_ref === "sample:M:4a");
+    const record4a = finalOf("sample-M-4a");
+    record4a.sections[0].items[0].responses[0] = { position: "box", cue: null, answer: "3", answer_source: "reader" };
+    writeFileSync(join(work, "final", "sample-M-4a.json"), JSON.stringify(record4a, null, 2));
+    const filled = page4aOf();
+    expect(filled?.edited_by_person).toBe(true);
+    expect(filled?.empty_answer).toEqual([]);
+    expect(readFileSync(join(work, "final", "report.md"), "utf8")).toMatch(/\| sample:M:4a \| [^|]+ \| machine_read \| 0 \| 0 \| 0 \| 0 \|/);
+
+    checkAndMarkPage({ workDir: work, page: "sample:M:4a", repoRoot: repo, photoCompared: true });
+    // The person clears the answer of the checked record: compare lists it, and check refuses.
+    const cleared = finalOf("sample-M-4a");
+    cleared.sections[0].items[0].responses[0] = { position: "box", cue: null, answer: null, answer_source: "unchecked" };
+    writeFileSync(join(work, "final", "sample-M-4a.json"), JSON.stringify(cleared, null, 2));
+    const afterClear = page4aOf();
+    expect(afterClear?.status).toBe("human_checked");
+    expect(afterClear?.empty_answer?.map((d) => d.path)).toEqual(["sections[0].items[n=1].responses[0]"]);
+    expect(() =>
+      checkAndMarkPage({ workDir: work, page: "sample:M:4a", repoRoot: repo, photoCompared: true }),
+    ).toThrow(/Answer places with no answer/);
   });
 });
 
