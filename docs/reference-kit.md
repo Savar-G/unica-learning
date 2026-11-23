@@ -41,7 +41,8 @@ Computed answers: code computes the answer of each item from its expression and 
 - Several answer places with no `place` (or only some with a `place`): when an `answer_boxes` scaffold that applies to the item lists as many `places`, those places are used in order for the places that have no name, provided every name that is present agrees with the scaffold (the names are not written into the record). Otherwise every place gets the value only when no `answer_boxes` scaffold of the item prints more than one box and every stored answer in those places already is the value (empty places are allowed).
 - In all other cases the stored answers are kept and the report has a note.
 - An answer with `answer_source: "printed"` keeps its value and source; a printed answer that is not the computed value gets a note.
-- Remainder answers such as "4r1", "4 r 1", and "4 R1" are equal.
+- A division never gets one value in several answer places with no `place`: the places can be a quotient and a remainder, so the stored answers are kept.
+- Remainder answers such as "4r1", "4 r 1", and "4 R1" are equal. A whole number with thousands separators ("1,000") equals the same number without them.
 
 ## Running Again
 

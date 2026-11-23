@@ -272,6 +272,36 @@ describe("applyComputedAnswers", () => {
     }
   });
 
+  it("treats a whole number with thousands separators as the same number", () => {
+    const pageWith = (answer: string) =>
+      makePageWithItem({
+        n: 1,
+        printed: "750 + 250",
+        form: "horizontal",
+        expr: { kind: "arith", op: "add", operands: [750, 250] },
+        responses: [{ position: "after_equals", cue: null, answer, answer_source: "reader" }],
+      });
+    expect(applyComputedAnswers(pageWith("1,000")).details).toEqual([]);
+    expect(applyComputedAnswers(pageWith("1,001")).details.map((d) => d.kind)).toEqual(["answer_differs"]);
+  });
+
+  it("never copies the quotient of an exact division into a second unnamed place (it can be a remainder place)", () => {
+    const page = makePageWithItem({
+      n: 1,
+      printed: "40 / 4",
+      form: "horizontal",
+      expr: { kind: "arith", op: "div", operands: [40, 4] },
+      responses: [
+        { position: "after_equals", cue: null, answer: "10", answer_source: "reader" },
+        { position: "after_equals", cue: "R", answer: null, answer_source: "unchecked" },
+      ],
+    });
+    const { record, details } = applyComputedAnswers(page);
+    expect(record).toEqual(page);
+    expect(details.map((d) => d.kind)).toEqual(["places_do_not_fit"]);
+    expect(findEmptyAnswers(record)).toEqual(["sections[0].items[n=1].responses[1]"]);
+  });
+
   it("keeps the reader answer of a word problem with a division that is not exact", () => {
     const page = makePageWithItem({
       n: 1,

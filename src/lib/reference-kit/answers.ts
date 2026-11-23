@@ -65,7 +65,18 @@ function normalizeAnswerCompare(raw: string): string {
   return raw
     .trim()
     .replace(/\s+/g, " ")
+    .replace(/\b\d{1,3}(?:,\d{3})+\b/g, (grouped) => grouped.replace(/,/g, ""))
     .replace(/(\d)\s*[rR]\s*(\d+)/g, "$1 R$2");
+}
+
+// A division can print a quotient place and a remainder place. One value must not go into both.
+function isDivisionExpr(expr: PageItem["expr"]): boolean {
+  if (!expr) return false;
+  if (expr.kind === "word") {
+    const inner = expr.expr;
+    return typeof inner === "object" && inner !== null && isDivisionExpr(inner);
+  }
+  return (expr.kind === "arith" || expr.kind === "missing") && expr.op === "div";
 }
 
 function isConcreteAnswer(answer: ItemResponse["answer"]): answer is string {
@@ -184,10 +195,12 @@ function planSingleInPlaces(
   }
   if (!responses.every(hasNoPlace)) return null;
   // One value in several places (an equation box and an answer line): only when no scaffold
-  // prints digit boxes and every stored answer already is that value.
+  // prints digit boxes, every stored answer already is that value, and the item is not a division
+  // (its places can be a quotient and a remainder).
   const value = normalizeAnswerCompare(computed.value);
   if (
     (computed.remainder ?? 0) === 0 &&
+    !isDivisionExpr(item.expr) &&
     !boxScaffolds.some(isMultiBox) &&
     responses.every((r) => !isConcreteAnswer(r.answer) || normalizeAnswerCompare(r.answer) === value)
   ) {
