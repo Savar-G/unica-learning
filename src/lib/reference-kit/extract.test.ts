@@ -574,7 +574,7 @@ describe("extractFolder (reference:extract)", () => {
     expect(run3.counts.machine_read).toBe(1);
 
     // Mark 3a as human_checked (even though B is still missing): Run 4 (no --force) skips reading and reports "kept: checked by a person"
-    checkAndMarkPage({ workDir: outDir, page: "sample:M:3a", repoRoot: repo });
+    checkAndMarkPage({ workDir: outDir, page: "sample:M:3a", repoRoot: repo, photoCompared: true });
     const run4Calls: string[] = [];
     const run4Progress: string[] = [];
     const run4 = await extractFolder({
@@ -702,7 +702,7 @@ describe("extractFolder (reference:extract)", () => {
 
     await extractFolder({ photosDir, outDir, source: "sample", repoRoot: repo, runCli: fakeCli });
     // Mark 4a as human_checked
-    checkAndMarkPage({ workDir: outDir, page: "sample:M:4a", repoRoot: repo });
+    checkAndMarkPage({ workDir: outDir, page: "sample:M:4a", repoRoot: repo, photoCompared: true });
 
     // Replace 01_page.jpg with a new photo (new digest) and delete 02_page.jpg
     writeFileSync(join(photosDir, "01_page.jpg"), img1New);

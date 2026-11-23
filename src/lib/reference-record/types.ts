@@ -35,7 +35,8 @@ export const RESPONSE_POSITIONS = [
 ] as const;
 export type ResponsePosition = (typeof RESPONSE_POSITIONS)[number];
 
-export const ANSWER_SOURCES = ["computed", "reader", "unchecked"] as const;
+// "printed": the publisher prints the answer in the answer place (a traced digit, a solved question).
+export const ANSWER_SOURCES = ["computed", "reader", "unchecked", "printed"] as const;
 export type AnswerSource = (typeof ANSWER_SOURCES)[number];
 
 export const SCAFFOLD_KINDS = [
@@ -268,7 +269,9 @@ export type ScoreBand = ScoreBandRange | null | ReaderSentinel;
 export type ScoreBands = [ScoreBand, ScoreBand, ScoreBand, ScoreBand, ScoreBand];
 
 export interface PageTopic {
+  // The full printed title, exactly as printed, with any number at its end.
   title: ReaderNullable<string>;
+  // Only older records hold a separate number. Readers do not write it.
   number?: ReaderNullable<number>;
 }
 
@@ -301,7 +304,8 @@ export type IntRange = [number, number];
 export interface ContentsTopic {
   n: number;
   title: ReaderValue<string>;
-  sheets: ReaderValue<IntRange>;
+  // null: the chart does not print sheet ranges.
+  sheets: ReaderNullable<IntRange>;
   std_time_min: ReaderNullable<IntRange>;
 }
 

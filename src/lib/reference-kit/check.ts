@@ -7,8 +7,9 @@ import {
   validateReferenceRecord,
   writeSafeOutputFile,
 } from "@/lib/reference-record";
-import { applyComputedAnswers, fileSlugFromRef } from "./answers";
+import { applyComputedAnswers, fileSlugFromRef, findEmptyAnswers } from "./answers";
 import type { PageStatus } from "./compare";
+import { parsePhotosManifest, PHOTOS_MANIFEST_FILE } from "./prepare";
 
 export interface CheckPageResult {
   sourceRef: string;
@@ -18,10 +19,40 @@ export interface CheckPageResult {
   notes: string[];
 }
 
+// The photo of a page: the photos manifest names it; an older work folder may name it only in the
+// report. Without either, the photos folder is named.
+function describePagePhoto(workDir: string, page: string): string {
+  const photosDir = join(workDir, "photos");
+  try {
+    const manifest = parsePhotosManifest(
+      JSON.parse(readFileSync(join(photosDir, PHOTOS_MANIFEST_FILE), "utf8")) as unknown,
+    );
+    const entry = manifest.photos.find((p) => p.source_ref === page);
+    if (entry) return `${join(photosDir, entry.file)} (original name ${entry.original_name})`;
+  } catch {
+    // No readable manifest: try the report.
+  }
+  try {
+    const report = JSON.parse(readFileSync(join(workDir, "final", "report.json"), "utf8")) as {
+      pages?: Array<{ source_ref?: unknown; photo?: unknown; original_name?: unknown }>;
+    };
+    const entry = report.pages?.find((p) => p.source_ref === page);
+    if (entry && typeof entry.photo === "string") {
+      const original = typeof entry.original_name === "string" ? ` (original name ${entry.original_name})` : "";
+      return `${join(photosDir, entry.photo)}${original}`;
+    }
+  } catch {
+    // No readable report: name the folder.
+  }
+  return `the photo of this page in ${photosDir}`;
+}
+
 export function checkAndMarkPage(opts: {
   workDir: string;
   page: string;
   repoRoot: string;
+  // A person compared the final record with the photo of the page.
+  photoCompared: boolean;
 }): CheckPageResult {
   const page = opts.page.trim();
   if (!page || page.toLowerCase() === "all") {
@@ -33,6 +64,18 @@ export function checkAndMarkPage(opts: {
   const repoRoot = resolve(opts.repoRoot);
   const workDir = resolve(opts.workDir);
   assertOutsideRepo(workDir, repoRoot);
+
+  if (opts.photoCompared !== true) {
+    throw new Error(
+      [
+        `A person must compare the record of ${page} with the photo first.`,
+        `Photo: ${describePagePhoto(workDir, page)}`,
+        `Record: ${join(workDir, "final", `${fileSlugFromRef(page)}.json`)}`,
+        "After the comparison, run the command again with --photo-compared:",
+        `  npm run reference:check -- --work ${opts.workDir} --page ${page} --photo-compared`,
+      ].join("\n"),
+    );
+  }
 
   const finalDir = join(workDir, "final");
   const statusPath = join(finalDir, "status.json");
@@ -94,7 +137,27 @@ export function checkAndMarkPage(opts: {
     );
   }
 
-  const { record: recomputed, notes } = applyComputedAnswers(check.record);
+  const { record: recomputed, notes, details } = applyComputedAnswers(check.record);
+  // A check never replaces a stored answer: a person may have corrected the answer and not the
+  // expression. Answers that do not fit the answer places are kept as they are.
+  const conflicts = details.filter((d) => d.kind === "answer_differs");
+  const emptyAnswers = findEmptyAnswers(recomputed);
+  if (conflicts.length > 0 || emptyAnswers.length > 0) {
+    const lines = [`Not marked: ${page} has answers to correct. Nothing was written.`];
+    if (conflicts.length > 0) {
+      lines.push("Stored answers that the code does not compute the same way:");
+      for (const c of conflicts) lines.push(`  ${c.message}`);
+      lines.push(
+        "Correct the expression so that it gives the right answer, or correct the answer.",
+      );
+    }
+    if (emptyAnswers.length > 0) {
+      lines.push("Answer places with no answer:");
+      for (const path of emptyAnswers) lines.push(`  ${path}`);
+      lines.push('Write the answer from the photo, or write "unclear".');
+    }
+    throw new Error(lines.join("\n"));
+  }
   const recheck = validateReferenceRecord(recomputed);
   if (!recheck.ok) {
     const details = recheck.errors.map((e) => `  ${e.path}: ${e.message}`).join("\n");

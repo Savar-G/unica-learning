@@ -21,7 +21,7 @@ export const PROMPT_EXAMPLE_PAGE = {
   kind: "page",
   level: "M",
   sheet: "3a",
-  topic: { title: "Adding Two-Digit Numbers", number: 1 },
+  topic: { title: "Adding Two-Digit Numbers 1" },
   sections: [
     {
       instruction: "Add the numbers.",
@@ -37,7 +37,8 @@ export const PROMPT_EXAMPLE_PAGE = {
           form: "horizontal",
           expr: { kind: "arith", op: "add", operands: [12, 5] },
           responses: [
-            { position: "after_equals", cue: null, answer: "17", answer_source: "reader" },
+            { position: "box", cue: null, answer: "1", answer_source: "reader", place: "tens" },
+            { position: "box", cue: null, answer: "7", answer_source: "reader", place: "ones" },
           ],
         },
         {
@@ -103,6 +104,7 @@ export const PROMPT_EXAMPLE_CONTENTS = {
   topics: [
     { n: 1, title: "Adding Two-Digit Numbers", sheets: [1, 20], std_time_min: [2, 3] },
     { n: 2, title: "Subtracting Two-Digit Numbers", sheets: [21, 40], std_time_min: null },
+    { n: 3, title: "Number Lines", sheets: null, std_time_min: [3, 4] },
   ],
 } as const;
 
@@ -113,6 +115,7 @@ export const REFERENCE_READ_PROMPT = [
   "- Output ONE JSON object only. No prose before or after, no markdown code fences.",
   "- Read only printed content on the page.",
   "- Never write any person's name, date, time, handwritten score, handwritten answers, or other handwriting.",
+  '- Answers: for each answer place, work out the correct answer yourself from the printed question and write it with answer_source "reader". These are photos of completed sheets: pencil or pen writing in an answer place is the child\'s or the marker\'s, can be wrong, and is NEVER copied. Write answer_source "printed" only when the publisher printed the answer in the answer place (the same ink and typeface as the question, or a grey or dotted trace digit). When you cannot tell whether a digit in an answer place is printed or handwritten, work the answer out and write "reader".',
   "- Keep the exact printed order of sections and items. Copy printed instructions and captions verbatim.",
   "- No unknown keys are allowed on any object.",
   "",
@@ -120,6 +123,8 @@ export const REFERENCE_READ_PROMPT = [
   '- `printed` of an item is ONE line of text: the question as an expression with one space around each operator, for example "24 + 5" for a stacked sum, "134 - 13" for a stacked difference and "9) 76" for a division bracket. Never draw the layout with line breaks, spaces or rule lines. The layout goes in `form`.',
   '- A number printed in front of an instruction ("1.", "2.") is not part of the instruction text. Write "Multiply.", not "2. Multiply.".',
   "- A section is the group of questions under one printed instruction. Start a new section only where a new instruction is printed. A dividing line, a new column or a new block alone does not start a section.",
+  '- `topic.title` is the full printed title, exactly as printed, with any number at its end. Never split a number off the title and never write `topic.number`. For example, a header "Sample Topic With Remainders 2" is title "Sample Topic With Remainders 2", and a header "Facts up to 3" is title "Facts up to 3".',
+  "- Plain divider or border lines that only separate parts of the page are layout. Do not record them as example marks or scaffolds.",
   '- `applies_to` lists the numbers of the questions that a hint is printed for. Write "all" only when it is printed for every question of the section.',
   '- A table that the child reads aloud (for example a times table with a tick box): record the table ONCE as an example with relation "table" and one part for each row. Record the action as one item with `expr: null`, `printed` = the printed words of the action (or the instruction text when no other words are printed), and one response with position "checkbox" when a tick box is printed. Do not copy the rows of the table into an item.',
   "",
@@ -150,7 +155,7 @@ export const REFERENCE_READ_PROMPT = [
   `- arith/missing op: ${quoteList(ARITH_OPS)}`,
   `- item.form: ${quoteList(ITEM_FORMS)} | "${UNCLEAR}" (or null ONLY when item.expr is null; example part.form is NEVER null)`,
   `- response.position: ${quoteList(RESPONSE_POSITIONS)}`,
-  `- response.answer_source: allowed in schema are ${quoteList(ANSWER_SOURCES)}, but as a reader you must NEVER write "computed" (which requires a concrete computed answer set by code). Always write "reader" (or "unchecked" when no answer is filled, such as work_area/checkbox).`,
+  `- response.answer_source: allowed in schema are ${quoteList(ANSWER_SOURCES)}, but as a reader you must NEVER write "computed" (which requires a concrete computed answer set by code). Write "reader" for an answer that you work out, "printed" for an answer that the publisher printed in the answer place, and "unchecked" with answer null only for work_area and checkbox, or when you cannot work the answer out.`,
   `- scaffold.kind: ${quoteList(SCAFFOLD_KINDS)}`,
   `- example.position: ${quoteList(EXAMPLE_POSITIONS)}`,
   `- example.relation: ${quoteList(EXAMPLE_RELATIONS)}`,
@@ -159,7 +164,7 @@ export const REFERENCE_READ_PROMPT = [
   "",
   'Page record rules (kind = "page"):',
   "- Allowed top-level keys: kind, level, sheet, topic, sections, examples, score_bands.",
-  `- topic: { title: non-empty string | null | "${UNCLEAR}", number?: positive integer | null | "${UNCLEAR}" } (omit number when no topic number is printed).`,
+  `- topic: { title: non-empty string | null | "${UNCLEAR}" } (the full printed title with any number at its end; never write number).`,
   "- sections: MUST be a non-empty array of section objects.",
   `- Each section has keys: instruction (non-empty string | null | "${UNCLEAR}"), scaffolds (array of scaffold objects, [] if none printed, or "${UNCLEAR}"), items (array of item objects).`,
   "- Each item has keys: n, printed, form, expr, responses.",
@@ -168,7 +173,8 @@ export const REFERENCE_READ_PROMPT = [
   `  - expr: an Expr object or null (never "${UNCLEAR}").`,
   `  - form: ItemForm or "${UNCLEAR}"; null is allowed ONLY when expr is null.`,
   "  - responses: array of response objects. MUST contain at least 1 response when expr is not null (may be [] only when expr is null).",
-  `- Each response has keys: position, cue (non-empty string | null | "${UNCLEAR}"), answer (non-empty string | null | "${UNCLEAR}"), answer_source ("reader" or "unchecked"; NEVER "computed"), unit? (optional), place? (optional non-empty string | null | "${UNCLEAR}").`,
+  `- Each response has keys: position, cue (non-empty string | null | "${UNCLEAR}"), answer (non-empty string | null | "${UNCLEAR}"), answer_source ("reader", "printed" or "unchecked"; NEVER "computed"), unit? (optional), place? (optional non-empty string | null | "${UNCLEAR}").`,
+  '  - Place rule: when an item has one box for each digit of the answer, each response of a digit box MUST carry `place` (for example "tens", "ones").',
   `  - Unit rule: when position is "line_with_unit", unit is REQUIRED and must be a non-empty string or "${UNCLEAR}" (never null or omitted). For all other positions, omit unit if no unit is printed, or write a non-empty string, null, or "${UNCLEAR}".`,
   "",
   "SimpleExpr vs Expr (strict keys only):",
@@ -217,7 +223,7 @@ export const REFERENCE_READ_PROMPT = [
   "  - n: positive integer strictly greater than the previous topic's n.",
   `  - title: non-empty string or "${UNCLEAR}".`,
   "  - A contents range bound is always a positive integer number (no sentinel inside a [min, max] range).",
-  `  - sheets: [min, max] of positive integers with min <= max, or "${UNCLEAR}" for the whole range (never null).`,
+  `  - sheets: [min, max] of positive integers with min <= max, null when the chart does not print a sheet range for the topic, or "${UNCLEAR}" only when a range is printed but cannot be read.`,
   `  - std_time_min: [min, max] of positive integers with min <= max, null, or "${UNCLEAR}" for the whole range.`,
   "",
   "Complete example page record (invented content):",

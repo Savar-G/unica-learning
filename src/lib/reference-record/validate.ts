@@ -189,7 +189,7 @@ function validateContentsRecord(obj: Record<string, unknown>, errors: Validation
         prevN = topic.n;
       }
       checkReaderString(topic.title, joinPath(tPath, "title"), errors, false);
-      checkIntRange(topic.sheets, joinPath(tPath, "sheets"), errors, false);
+      checkIntRange(topic.sheets, joinPath(tPath, "sheets"), errors, true);
       checkIntRange(topic.std_time_min, joinPath(tPath, "std_time_min"), errors, true);
     });
   }

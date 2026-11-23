@@ -289,6 +289,19 @@ describe("validateReferenceRecord", () => {
     }
   });
 
+  it("accepts a contents topic whose sheet range is not printed (null) and a printed answer source", () => {
+    const contents = makeValidContents();
+    contents.topics[0].sheets = null;
+    expect(validateReferenceRecord(contents).ok).toBe(true);
+
+    const page = makeValidPage();
+    page.sections[0].items[0].responses[0] = {
+      ...page.sections[0].items[0].responses[0],
+      answer_source: "printed",
+    };
+    expect(validateReferenceRecord(page).ok).toBe(true);
+  });
+
   it("refuses invalid contents record fields with exact paths", () => {
     const contents = makeValidContents();
     contents.source_ref = "demo:Z:1a";

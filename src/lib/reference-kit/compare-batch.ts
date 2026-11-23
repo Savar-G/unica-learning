@@ -15,6 +15,8 @@ import {
   collectUnnamedTeachingMarks,
   compareRecords,
   decideStatus,
+  emptyAnswerDiffs,
+  locateOnceReadInKeptRecord,
   type PageStatus,
 } from "./compare";
 import {
@@ -162,6 +164,13 @@ function syncManifestSourceRefs(
   }
 }
 
+// The final record holds reader a's content. When both readers read the same photo, it names both.
+function withBothReaders(chosen: ReferenceRecord, pair: PairedPage): ReferenceRecord {
+  if (!pair.recA || !pair.recB || !pair.sameDigest) return chosen;
+  const readers = [...new Set([...(pair.recA.readers ?? []), ...(pair.recB.readers ?? [])])];
+  return readers.length > 0 ? { ...chosen, readers } : chosen;
+}
+
 export function compareWorkFolder(opts: {
   workDir: string;
   repoRoot: string;
@@ -248,9 +257,11 @@ export function compareWorkFolder(opts: {
         only_in_reader: onlyIn,
         digest_mismatch: pair.digestMismatch,
         differences: classified.differences,
-        once_read: classified.once_read,
+        once_read: locateOnceReadInKeptRecord(classified.once_read, null),
         both_unclear: classified.both_unclear,
         one_unclear: classified.one_unclear,
+        // The kept file is not a valid record, so its answer places cannot be read.
+        empty_answer: [],
         needs_person_read: classified.needs_person_read,
         unnamed_teaching_marks: unnamedTeachingMarks,
         reader_notes: { a: pair.notesA, b: pair.notesB },
@@ -280,9 +291,10 @@ export function compareWorkFolder(opts: {
         only_in_reader: onlyIn,
         digest_mismatch: pair.digestMismatch,
         differences: classified.differences,
-        once_read: classified.once_read,
+        once_read: locateOnceReadInKeptRecord(classified.once_read, existingKept),
         both_unclear: classified.both_unclear,
         one_unclear: classified.one_unclear,
+        empty_answer: emptyAnswerDiffs(existingKept, pair.recA, pair.recB),
         needs_person_read: classified.needs_person_read,
         unnamed_teaching_marks: unnamedTeachingMarks,
         reader_notes: { a: pair.notesA, b: pair.notesB },
@@ -290,12 +302,13 @@ export function compareWorkFolder(opts: {
       continue;
     }
 
+    const finalRecord = withBothReaders(chosen, pair);
     const status = decideStatus({
       hasA: pair.recA !== null,
       hasB: pair.recB !== null,
       familyA: slotA.meta?.family ?? null,
       familyB: slotB.meta?.family ?? null,
-      diffs: allDiffs,
+      diffs: [...allDiffs, ...emptyAnswerDiffs(finalRecord, pair.recA, pair.recB)],
       sameDigest: pair.sameDigest,
     });
 
@@ -306,7 +319,9 @@ export function compareWorkFolder(opts: {
       previousHash !== undefined &&
       existsSync(finalRecordPath) &&
       sha256OfFile(finalRecordPath) !== previousHash;
-    const finalText = `${JSON.stringify(chosen, null, 2)}\n`;
+    // The record that stays on disk: the edited file, or the record that compare writes.
+    const editedRecord = editedByPerson ? loadExistingFinalRecord(finalRecordPath) : null;
+    const finalText = `${JSON.stringify(finalRecord, null, 2)}\n`;
     const pageStatus: PageStatus = editedByPerson ? "machine_read" : status;
     statusMap[sourceRef] = pageStatus;
 
@@ -314,7 +329,7 @@ export function compareWorkFolder(opts: {
       writeSafeOutputFile(finalRecordPath, finalText, repoRoot);
       writeSafeOutputFile(
         join(viewDir, `${slug}.md`),
-        `${renderRecordToMarkdown(chosen)}\n`,
+        `${renderRecordToMarkdown(finalRecord)}\n`,
         repoRoot,
       );
     }
@@ -332,9 +347,14 @@ export function compareWorkFolder(opts: {
       only_in_reader: onlyIn,
       digest_mismatch: pair.digestMismatch,
       differences: classified.differences,
-      once_read: classified.once_read,
+      once_read: editedByPerson
+        ? locateOnceReadInKeptRecord(classified.once_read, editedRecord)
+        : classified.once_read,
       both_unclear: classified.both_unclear,
       one_unclear: classified.one_unclear,
+      empty_answer: editedByPerson
+        ? emptyAnswerDiffs(editedRecord, pair.recA, pair.recB)
+        : emptyAnswerDiffs(finalRecord, pair.recA, pair.recB),
       needs_person_read: classified.needs_person_read,
       unnamed_teaching_marks: unnamedTeachingMarks,
       reader_notes: { a: pair.notesA, b: pair.notesB },

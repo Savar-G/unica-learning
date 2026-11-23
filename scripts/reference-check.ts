@@ -7,12 +7,14 @@ async function main(): Promise<void> {
     options: {
       work: { type: "string" },
       page: { type: "string" },
+      "photo-compared": { type: "boolean" },
     },
   });
 
   if (!values.work || !values.page) {
     throw new Error(
-      "Usage: npm run reference:check -- --work <work-folder> --page <source_ref>",
+      "Usage: npm run reference:check -- --work <work-folder> --page <source_ref> --photo-compared\n" +
+        "--photo-compared states that a person compared the final record with the photo of the page.",
     );
   }
 
@@ -21,6 +23,7 @@ async function main(): Promise<void> {
     workDir: values.work,
     page: values.page,
     repoRoot,
+    photoCompared: values["photo-compared"] === true,
   });
 
   console.log(`Marked ${result.sourceRef} as human_checked.`);

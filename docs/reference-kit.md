@@ -30,7 +30,19 @@ npm run reference:extract -- \
 - `--force`: run both readers again, also when valid readings exist. A new valid reading replaces the old one; a failed read keeps the old valid reading. A page checked by a person is read again, but its checked record stays.
 - `--limit <n>`: read only the first `n` sorted photos in the folder. The other photos and their readings stay as they are.
 
-Each photo is prepared, read by both readers in parallel (5-minute timeout per call, one validation retry, computed answers applied where exact, `not_stated` refused from readers), and compared once all photos finish. Exit code is `0` when the run completes (even if some photos fail) and `1` for a usage error or when no photo could be prepared. A reader folder that holds readings of another model family is refused; use a new `--out` folder.
+Each photo is prepared, read by both readers in parallel (5-minute timeout per call, one validation retry, computed answers applied where exact, `not_stated` refused from readers), and compared once all photos finish.
+
+Exit code is `0` when the run completes (even if some photos fail) and `1` for a usage error or when no photo could be prepared. A reader folder that holds readings of another model family is refused; use a new `--out` folder.
+
+Computed answers: code computes the answer of each item from its expression and writes it into the answer places (not `work_area` or `checkbox`) with `answer_source: "computed"`. A word problem with a division that is not exact is not computed (it may want a decimal or a remainder); its reader answer stays.
+
+- One answer place gets the value. When that place names a decimal place (`ones`, `tens`, `hundreds`, `thousands`, `ten thousands`), it gets the digit of that place.
+- Several answer places that each name a different decimal place get one digit each, when the value is a whole number that fits. A higher place that the value does not reach stays as it is; a "0" there is correct.
+- Several answer places with no `place` (or only some with a `place`): when an `answer_boxes` scaffold that applies to the item lists as many `places`, those places are used in order for the places that have no name, provided every name that is present agrees with the scaffold (the names are not written into the record). Otherwise every place gets the value only when no `answer_boxes` scaffold of the item prints more than one box and every stored answer in those places already is the value (empty places are allowed).
+- In all other cases the stored answers are kept and the report has a note.
+- An answer with `answer_source: "printed"` keeps its value and source; a printed answer that is not the computed value gets a note.
+- A division never gets one value in several answer places with no `place`: the places can be a quotient and a remainder, so the stored answers are kept.
+- Remainder answers such as "4r1", "4 r 1", and "4 R1" are equal. A whole number with thousands separators ("1,000") equals the same number without them. The kit reads numbers in the English format: a comma groups thousands and a point is the decimal mark. It is not for sheets that use a decimal comma.
 
 ## Running Again
 
@@ -93,9 +105,12 @@ Nothing else named `*.json` is written in `final/` besides the page records, `st
 
 ## Page Statuses
 
-- **`machine_read`**: Only one valid reading exists, both readers used the same model family, the two readings came from different photo digests, or there is at least one open difference, `one_unclear` field, or once-read teaching field.
-- **`double_read`**: Two valid readings from two different model families read the exact same prepared photo digest (`photo_sha256`) and agree with no open differences, no `one_unclear` fields, and no once-read teaching fields. Pages with `both_unclear` fields can still be `double_read`; those fields are listed in the report.
+- **`machine_read`**: Only one valid reading exists, both readers used the same model family, the two readings came from different photo digests, or there is at least one open difference, `one_unclear` field, `both_unclear` field, once-read teaching field, or empty answer place.
+- **`double_read`**: Two valid readings from two different model families read the exact same prepared photo digest (`photo_sha256`) and agree with no open differences, no `one_unclear` or `both_unclear` fields, no once-read teaching fields, and no empty answer places.
+- An **empty answer place** (`empty_answer`) is an answer place (not `work_area` or `checkbox`) of a question item (`expr` not null) in the final record that holds no answer and no `"unclear"` marker after computed answers are applied (the same rule as `reference:check`). For a record that a person edited or checked, the kept record on disk is used. A higher decimal place that the computed value does not reach is not an empty answer place.
 - **`human_checked`**: Set only by `reference:check` after a person reviews and validates a specific page. Preserved across future `reference:compare` runs.
+
+The final record holds reader A's content (reader B's when reader A has none). When both readers read the same photo, its `readers` list names both readers, reader A first. Entries that only reader B has stay in the report; they are never merged into the final record.
 
 A final record that a person changed by hand is never written over. Until the person runs `reference:check` for that page, the page stays `machine_read` and the report says that the file was changed and kept. A checked record that is no longer a valid record is also kept, and the report names it.
 
@@ -107,14 +122,16 @@ The compare step uses every valid reading in `reader-a/` and `reader-b/`, not on
 
 ## What the Report Shows and Next Steps
 
-`final/report.md` starts with a summary table showing every page, its original photo name, status, difference count, once-read count, both-unclear count, and whether a person must read prose. It then lists:
+`final/report.md` starts with a summary table showing every page, its original photo name, status, difference count, once-read count, both-unclear count, empty-answer count, and whether a person must read prose. It then lists:
 
 - **Too small to read**: original file names and pixel sizes below 1600 px on the long side.
 - **Could not be read**: unreadable images and photos where neither reader produced a valid record, with reasons.
 - **Duplicate photos**, **Removed photos**, and **Same page id for two photos**: see "Running Again" and "Same Page Id for Two Photos".
 - **Unnamed teaching marks**: every `other` example step, example mark, and practice scaffold with its description, so a person sees what the fixed lists did not name.
 - **Kept: checked by a person** and **Removed stale pages**: existing `human_checked` records kept on re-compare and stale non-checked pages cleaned up.
-- **Per-page details**: differences, once-read teaching fields (including steps, marks, and scaffolds), both-unclear fields, reader answer notes, and `A person must read the prose on this page` whenever a page has an example, example step, word problem, scaffold caption, or figure.
+- **Per-page details**: differences, once-read teaching fields (including steps, marks, and scaffolds), both-unclear fields, empty answer places (with both readers' answers), reader answer notes, and `A person must read the prose on this page` whenever a page has an example, example step, word problem, scaffold caption, or figure.
+- **Once-read entries**: each one gives the reader that has it, the JSON path where it belongs in the final record (`final_path` in `report.json`; a path that ends in `[]` means the end of that list), and the full JSON of the entry. After a look at the photo, a person copies an entry that is on the page into the final record. When the final record is one that a person edited or checked, `final_path` is given only when the entry is in that record with equal content, inside the same section or example; otherwise the person finds the place.
+- **Both-unclear fields**: a person looks at the photo and writes the value, or keeps `"unclear"` and marks the page checked.
 
 What a person does next:
 
@@ -122,10 +139,11 @@ What a person does next:
    ```bash
    npm run reference:compare -- --work /private/work
    ```
-2. Edit any page in `/private/work/final/<slug>.json` that has open differences, unclear fields, or prose to verify, then validate and mark it individually (`--page all` is refused):
+2. Compare each page in `/private/work/final/<slug>.json` with its photo, and edit any page that has open differences, unclear fields, empty answer places, or prose to verify. Then validate and mark it individually (`--page all` is refused):
    ```bash
-   npm run reference:check -- --work /private/work --page <source_ref>
+   npm run reference:check -- --work /private/work --page <source_ref> --photo-compared
    ```
+   `--photo-compared` states that a person compared the record with the photo. Without it the command changes nothing, names the photo of the page, and exits with an error. The command also changes nothing and lists the items when a stored concrete answer is not what code would write in that place (correct the expression so that it gives the right answer, or correct the answer), or when an answer place is empty (write the answer from the photo, or `"unclear"`). Stored answers that do not fit the computed answer are kept and do not stop the check. It never writes a computed answer over a stored one.
 3. Import the finished records and prepared photos into Supabase:
    ```bash
    SUPABASE_URL=... SUPABASE_SECRET_KEY=... npm run reference:import -- \

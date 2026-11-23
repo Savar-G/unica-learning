@@ -14,6 +14,7 @@ import {
   UNCLEAR,
   validateReferenceRecord,
 } from "@/lib/reference-record";
+import { applyComputedAnswers } from "./answers";
 import { REFERENCE_READ_PROMPT } from "./read-prompt";
 
 function extractJsonBlocksFromPrompt(prompt: string): unknown[] {
@@ -145,4 +146,37 @@ describe("REFERENCE_READ_PROMPT", () => {
     expect(REFERENCE_READ_PROMPT).toMatch(/shows_other.*never.*"unclear"|never.*"unclear".*shows_other/i);
     expect(REFERENCE_READ_PROMPT).toMatch(/other.*scaffold.*never.*"unclear"|other.*mark.*never.*"unclear"|real descriptive text/i);
   });
+
+  it("states the title, printed answer, pencil, divider, and unprinted sheet range rules", () => {
+    expect(REFERENCE_READ_PROMPT).toMatch(/full printed title, exactly as printed, with any number at its end/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/never write `topic\.number`/i);
+    expect(REFERENCE_READ_PROMPT).toMatch(/work out the correct answer yourself .* answer_source "reader"/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/pencil or pen writing in an answer place .* NEVER copied/i);
+    expect(REFERENCE_READ_PROMPT).toMatch(/answer_source "printed" only when the publisher printed the answer/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/divider or border lines .* not record them as example marks or scaffolds/i);
+    expect(REFERENCE_READ_PROMPT).toMatch(/null when the chart does not print a sheet range/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/each response of a digit box MUST carry `place`/);
+    // The example follows the digit box rule: item 1 has tens and ones boxes, one digit each.
+    const examplePage = (extractJsonBlocksFromPrompt(REFERENCE_READ_PROMPT) as Array<Record<string, unknown>>).find(
+      (obj) => obj.kind === "page",
+    ) as { sections: Array<{ items: Array<{ responses: Array<Record<string, unknown>> }> }> };
+    expect(examplePage.sections[0].items[0].responses).toEqual([
+      { position: "box", cue: null, answer: "1", answer_source: "reader", place: "tens" },
+      { position: "box", cue: null, answer: "7", answer_source: "reader", place: "ones" },
+    ]);
+    // Every answer of the example is what code computes, so the example gives no answer notes.
+    const checked = validateReferenceRecord(toRecordWithSourceRef(examplePage as unknown as Record<string, unknown>));
+    if (!checked.ok) throw new Error("the example page must validate");
+    expect(applyComputedAnswers(checked.record).details).toEqual([]);
+
+    const jsonBlocks = extractJsonBlocksFromPrompt(REFERENCE_READ_PROMPT) as Array<
+      Record<string, unknown>
+    >;
+    const pageExample = jsonBlocks.find((obj) => obj.kind === "page");
+    expect(pageExample?.topic).not.toHaveProperty("number");
+    const contentsExample = jsonBlocks.find((obj) => obj.kind === "contents");
+    const topics = contentsExample?.topics as Array<Record<string, unknown>>;
+    expect(topics.some((t) => t.sheets === null)).toBe(true);
+  });
 });
+

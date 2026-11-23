@@ -10,13 +10,24 @@ import {
 } from "@/lib/reference-record";
 import { normalizeNotationText, normalizeProseText } from "./normalize";
 
-export type DiffKind = "value" | "order" | "once_read" | "both_unclear" | "one_unclear";
+// empty_answer: an answer place of the final record holds no answer and no "unclear" marker.
+export type DiffKind =
+  | "value"
+  | "order"
+  | "once_read"
+  | "both_unclear"
+  | "one_unclear"
+  | "empty_answer";
 
 export interface RecordDifference {
   path: string;
   a: unknown;
   b: unknown;
   kind: DiffKind;
+  // once_read only: the reader that has the entry, and the JSON path of the entry in the final
+  // record. A path that ends in "[]" means: add the entry at the end of that list.
+  reader?: "a" | "b";
+  final_path?: string;
 }
 
 export type FieldCompareMode = "exact" | "prose" | "notation";
@@ -53,7 +64,7 @@ export function checkSentinels(
   return false;
 }
 
-function deepEqual(a: unknown, b: unknown): boolean {
+export function deepEqual(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
   if (Array.isArray(a) && Array.isArray(b)) {
     return a.length === b.length && a.every((item, idx) => deepEqual(item, b[idx]));
@@ -264,6 +275,16 @@ export function compareResponses(
     compareField(`${rPath}.unit`, ra.unit, rb.unit, { teaching: true, mode: "prose" }, diffs);
     compareField(`${rPath}.place`, ra.place, rb.place, { teaching: true, mode: "prose" }, diffs);
     compareField(`${rPath}.answer`, ra.answer, rb.answer, {}, diffs);
+    // "reader" against "unchecked" or "computed" is no difference; an answer that one reader
+    // reads as printed on the page and the other does not is one.
+    if ((ra.answer_source === "printed") !== (rb.answer_source === "printed")) {
+      diffs.push({
+        path: `${rPath}.answer_source`,
+        a: ra.answer_source,
+        b: rb.answer_source,
+        kind: "value",
+      });
+    }
   }
 }
 
@@ -371,22 +392,56 @@ function compareSingleScaffold(
   }
 }
 
+// A list that names every item of the section says the same as "all". Other lists are sorted.
+function withAllItems(sc: Scaffold, itemNs: readonly number[] | undefined): Scaffold {
+  if (!Array.isArray(sc.applies_to)) return sc;
+  const listed = new Set(sc.applies_to);
+  if (
+    itemNs &&
+    itemNs.length > 0 &&
+    listed.size === new Set(itemNs).size &&
+    itemNs.every((n) => listed.has(n))
+  ) {
+    return { ...sc, applies_to: "all" };
+  }
+  return { ...sc, applies_to: [...sc.applies_to].sort((x, y) => x - y) };
+}
+
 export function compareScaffolds(
   path: string,
   a: Scaffold[] | typeof UNCLEAR | typeof NOT_STATED,
   b: Scaffold[] | typeof UNCLEAR | typeof NOT_STATED,
   diffs: RecordDifference[],
+  itemNs?: { a: readonly number[]; b: readonly number[] },
 ): void {
   if (checkSentinels(path, a, b, diffs)) return;
-  const aList = Array.isArray(a) ? a : [];
-  const bList = Array.isArray(b) ? b : [];
+  const aOrig = Array.isArray(a) ? a : [];
+  const bOrig = Array.isArray(b) ? b : [];
+  const aList = aOrig.map((sc) => withAllItems(sc, itemNs?.a));
+  const bList = bOrig.map((sc) => withAllItems(sc, itemNs?.b));
   if (aList.length === 0 && bList.length === 0) return;
 
   const matchedBForA = new Map<number, number>();
   const usedB = new Set<number>();
 
+  // Pass 0: match scaffolds with equal content (after the applies_to normalisation), by the same
+  // field rules as the comparison itself (prose fields with the prose normalisation)
+  const sameContent = (x: Scaffold, y: Scaffold): boolean => {
+    const probe: RecordDifference[] = [];
+    compareSingleScaffold("probe", x, y, probe);
+    return probe.length === 0;
+  };
+  aList.forEach((scA, idxA) => {
+    const matchIdx = bList.findIndex((scB, j) => !usedB.has(j) && sameContent(scA, scB));
+    if (matchIdx !== -1) {
+      matchedBForA.set(idxA, matchIdx);
+      usedB.add(matchIdx);
+    }
+  });
+
   // Pass 1: match by kind + applies_to (+ target for caption)
   aList.forEach((scA, idxA) => {
+    if (matchedBForA.has(idxA)) return;
     const keyA = scaffoldPrimaryKey(scA);
     const matchIdx = bList.findIndex((scB, j) => !usedB.has(j) && scaffoldPrimaryKey(scB) === keyA);
     if (matchIdx !== -1) {
@@ -421,13 +476,13 @@ export function compareScaffolds(
   aList.forEach((scA, idxA) => {
     const matchIdx = matchedBForA.get(idxA);
     if (matchIdx === undefined) {
-      diffs.push({ path: `${path}[${idxA}]`, a: scA, b: null, kind: "once_read" });
+      diffs.push({ path: `${path}[${idxA}]`, a: aOrig[idxA], b: null, kind: "once_read" });
     } else {
       compareSingleScaffold(`${path}[${idxA}]`, scA, bList[matchIdx], diffs);
     }
   });
 
-  bList.forEach((scB, idxB) => {
+  bOrig.forEach((scB, idxB) => {
     if (!usedB.has(idxB)) {
       diffs.push({ path: `${path}[b:${idxB}]`, a: null, b: scB, kind: "once_read" });
     }

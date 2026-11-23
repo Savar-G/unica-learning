@@ -329,8 +329,8 @@ describe("compareWorkFolder", () => {
       topic: { title: "Hand Corrected Title", number: 1 },
     });
     writeFileSync(join(work, "final", "sample-M-3a.json"), JSON.stringify(edited3a, null, 2));
-    checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo });
-    checkAndMarkPage({ workDir: work, page: "sample:M:4a", repoRoot: repo });
+    checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: true });
+    checkAndMarkPage({ workDir: work, page: "sample:M:4a", repoRoot: repo, photoCompared: true });
 
     // Next batch contains ONLY 3a (with original unedited reader output) and a new 6a.
     const page6a = makePage({ source_ref: "sample:M:6a" });
@@ -684,7 +684,7 @@ describe("compareWorkFolder", () => {
     const editedText = JSON.stringify(edited, null, 2);
     writeFileSync(join(work, "final", "sample-M-3a.json"), editedText);
     // A person checks page 4a, and a later edit leaves the file broken.
-    checkAndMarkPage({ workDir: work, page: "sample:M:4a", repoRoot: repo });
+    checkAndMarkPage({ workDir: work, page: "sample:M:4a", repoRoot: repo, photoCompared: true });
     writeFileSync(join(work, "final", "sample-M-4a.json"), "{ not json");
 
     for (const round of [1, 2]) {
@@ -703,11 +703,128 @@ describe("compareWorkFolder", () => {
     expect(reportMd).toContain("not a valid record now");
 
     // After the person checks 3a, the corrected record is the checked record.
-    checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo });
+    checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: true });
     const afterCheck = compareWorkFolder({ workDir: work, repoRoot: repo });
     expect(afterCheck.pages.find((p) => p.source_ref === "sample:M:3a")?.status).toBe("human_checked");
     expect(JSON.parse(readFileSync(join(work, "final", "sample-M-3a.json"), "utf8")).topic.title).toBe(
       "Corrected by hand",
     );
   });
+
+  it("names both readers in the final record, locates once-read entries for copying, and blocks double_read on an empty answer place", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-cmp-both-repo-"));
+    const work = mkdtempSync(join(tmpdir(), "ref-cmp-both-work-"));
+    tempDirs.push(repo, work);
+    const arrow = { kind: "arrow" as const, applies_to: [1], label: "carry" };
+    const emptyAnswer = () =>
+      makePage({
+        source_ref: "sample:M:4a",
+        sections: [
+          {
+            instruction: "Sample instruction.",
+            scaffolds: [],
+            items: [
+              {
+                n: 1,
+                printed: "x + 2 = 5",
+                form: "horizontal",
+                expr: { kind: "notation", latex: "x + 2 = 5" },
+                responses: [{ position: "box", cue: null, answer: null, answer_source: "unchecked" }],
+              },
+            ],
+          },
+        ],
+      });
+    const readings = {
+      a: [
+        { sha: SHA_1, rec: makePage({ readers: ["claude:c1"] }) },
+        { sha: SHA_2, rec: { ...emptyAnswer(), readers: ["claude:c1"] } },
+        { sha: SHA_3, rec: makePage({ source_ref: "sample:M:5a", readers: ["claude:c1"] }) },
+      ],
+      b: [
+        {
+          sha: SHA_1,
+          rec: makePage({
+            readers: ["codex:x1"],
+            sections: [{ ...makePage().sections[0], scaffolds: [arrow] }],
+          }),
+        },
+        { sha: SHA_2, rec: { ...emptyAnswer(), readers: ["codex:x1"] } },
+      ],
+    };
+    for (const slot of ["a", "b"] as const) {
+      const dir = join(work, `reader-${slot}`);
+      mkdirSync(dir, { recursive: true });
+      const family = slot === "a" ? "claude" : "codex";
+      writeFileSync(join(dir, "reader.json"), JSON.stringify({ family, model: "m1" }));
+      const photos = readings[slot].map(({ sha, rec }) => {
+        const file = `${rec.source_ref.replace(/:/g, "-")}.json`;
+        writeFileSync(join(dir, file), JSON.stringify(rec, null, 2));
+        return { photo: `${sha.slice(0, 12)}.jpg`, photo_sha256: sha, status: "ok", source_ref: rec.source_ref, record_file: file, notes: [] };
+      });
+      writeFileSync(join(dir, "run.json"), JSON.stringify({ slot, reader: { family, model: "m1" }, source: "sample", photos }));
+    }
+
+    const report = compareWorkFolder({ workDir: work, repoRoot: repo });
+    const finalOf = (slug: string) => JSON.parse(readFileSync(join(work, "final", `${slug}.json`), "utf8")) as PageRecord;
+
+    const page3a = report.pages.find((p) => p.source_ref === "sample:M:3a");
+    expect(finalOf("sample-M-3a").readers).toEqual(["claude:c1", "codex:x1"]);
+    expect(finalOf("sample-M-3a").sections[0].scaffolds).toEqual([]);
+    expect(page3a?.status).toBe("machine_read");
+    expect(page3a?.once_read).toEqual([
+      { path: "sections[0].scaffolds[b:0]", a: null, b: arrow, kind: "once_read", reader: "b", final_path: "sections[0].scaffolds[]" },
+    ]);
+
+    const page4a = report.pages.find((p) => p.source_ref === "sample:M:4a");
+    expect(page4a?.differences).toEqual([]);
+    expect(page4a?.empty_answer).toEqual([
+      { path: "sections[0].items[n=1].responses[0]", a: null, b: null, kind: "empty_answer" },
+    ]);
+    expect(page4a?.status).toBe("machine_read");
+
+    expect(finalOf("sample-M-5a").readers).toEqual(["claude:c1"]);
+
+    const saved = JSON.parse(readFileSync(join(work, "final", "report.json"), "utf8")) as typeof report;
+    expect(saved.pages.find((p) => p.source_ref === "sample:M:4a")?.empty_answer).toHaveLength(1);
+    const md = readFileSync(join(work, "final", "report.md"), "utf8");
+    expect(md).toContain("only reader b has it; belongs in the final record at `sections[0].scaffolds[]`");
+    expect(md).toContain("Answer places with no answer");
+    expect(md).toContain("`sections[0].items[n=1].responses[0]`");
+    // A person edits the final record of 3a. Its once-read path is given only where the entry is.
+    const edited = finalOf("sample-M-3a");
+    edited.sections[0].scaffolds = [{ kind: "caption", applies_to: "all", text: "Sample caption" }, arrow];
+    writeFileSync(join(work, "final", "sample-M-3a.json"), JSON.stringify(edited, null, 2));
+    const withCopy = compareWorkFolder({ workDir: work, repoRoot: repo }).pages.find((p) => p.source_ref === "sample:M:3a");
+    expect(withCopy?.edited_by_person).toBe(true);
+    expect(withCopy?.once_read[0].final_path).toBe("sections[0].scaffolds[1]");
+    edited.sections[0].scaffolds = [];
+    writeFileSync(join(work, "final", "sample-M-3a.json"), JSON.stringify(edited, null, 2));
+    const without = compareWorkFolder({ workDir: work, repoRoot: repo }).pages.find((p) => p.source_ref === "sample:M:3a");
+    expect(without?.once_read[0].reader).toBe("b");
+    expect(without?.once_read[0]).not.toHaveProperty("final_path");
+    // Empty answer places follow the record that stays on disk.
+    const page4aOf = () =>
+      compareWorkFolder({ workDir: work, repoRoot: repo }).pages.find((p) => p.source_ref === "sample:M:4a");
+    const record4a = finalOf("sample-M-4a");
+    record4a.sections[0].items[0].responses[0] = { position: "box", cue: null, answer: "3", answer_source: "reader" };
+    writeFileSync(join(work, "final", "sample-M-4a.json"), JSON.stringify(record4a, null, 2));
+    const filled = page4aOf();
+    expect(filled?.edited_by_person).toBe(true);
+    expect(filled?.empty_answer).toEqual([]);
+    expect(readFileSync(join(work, "final", "report.md"), "utf8")).toMatch(/\| sample:M:4a \| [^|]+ \| machine_read \| 0 \| 0 \| 0 \| 0 \|/);
+
+    checkAndMarkPage({ workDir: work, page: "sample:M:4a", repoRoot: repo, photoCompared: true });
+    // The person clears the answer of the checked record: compare lists it, and check refuses.
+    const cleared = finalOf("sample-M-4a");
+    cleared.sections[0].items[0].responses[0] = { position: "box", cue: null, answer: null, answer_source: "unchecked" };
+    writeFileSync(join(work, "final", "sample-M-4a.json"), JSON.stringify(cleared, null, 2));
+    const afterClear = page4aOf();
+    expect(afterClear?.status).toBe("human_checked");
+    expect(afterClear?.empty_answer?.map((d) => d.path)).toEqual(["sections[0].items[n=1].responses[0]"]);
+    expect(() =>
+      checkAndMarkPage({ workDir: work, page: "sample:M:4a", repoRoot: repo, photoCompared: true }),
+    ).toThrow(/Answer places with no answer/);
+  });
 });
+
