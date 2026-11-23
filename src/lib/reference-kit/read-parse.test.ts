@@ -10,6 +10,17 @@ describe("assembleCandidateRecord", () => {
     expect((upper.candidate as { source_ref: string }).source_ref).toBe("sample:M:1a");
   });
 
+  it("stores the level in upper case when the reader gives the whole page id", () => {
+    const given = assembleCandidateRecord({ kind: "page", source_ref: "sample:m:1a" }, "sample", "codex");
+    expect(given.extraErrors).toEqual([]);
+    expect((given.candidate as { source_ref: string }).source_ref).toBe("sample:M:1a");
+  });
+
+  it("refuses a level whose upper case form would be other letters", () => {
+    const sharp = assembleCandidateRecord({ kind: "page", level: "\u00df", sheet: "1a" }, "sample", "codex");
+    expect(sharp.extraErrors.map((e) => e.path)).toEqual(["level"]);
+  });
+
   it("reports a level with other characters as an error for the retry", () => {
     const bad = assembleCandidateRecord({ kind: "page", level: "M-2", sheet: "1a" }, "sample", "codex");
     expect(bad.extraErrors.map((e) => e.path)).toEqual(["level"]);

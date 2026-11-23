@@ -190,5 +190,16 @@ describe("assertOutsideRepo", () => {
       /inside a git repository/i,
     );
     expect(() => assertOutsideRepo(join(lookalike, "out"), repo)).not.toThrow();
+
+    // A bare repository whose refs folder is a link to another place is still a repository.
+    const linked = mkdtempSync(join(tmpdir(), "ref-guard-bare-linked-"));
+    const elsewhere = mkdtempSync(join(tmpdir(), "ref-guard-refs-"));
+    tempDirs.push(linked, elsewhere);
+    writeFileSync(join(linked, "HEAD"), "ref: refs/heads/main\n", "utf8");
+    mkdirSync(join(linked, "objects"));
+    symlinkSync(elsewhere, join(linked, "refs"));
+    expect(() => assertOutsideRepo(join(linked, "reference-work"), repo)).toThrow(
+      /inside a git repository/i,
+    );
   });
 });

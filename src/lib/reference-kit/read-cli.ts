@@ -120,19 +120,34 @@ export function buildCliInvocation(opts: {
 
 const activeReaders = new Set<ChildProcess>();
 
+// Sends the signal to the reader and to every process of its group. Falls back to the reader alone.
+function killReaderTree(child: ChildProcess, signal: NodeJS.Signals): void {
+  if (typeof child.pid === "number") {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch {
+      // the group is gone or cannot be signalled; try the process itself
+    }
+  }
+  child.kill(signal);
+}
+
 // Stops every reader process at once. A stopped reader cannot read anything that the kit puts
 // back on disk afterwards.
 export function killActiveReaders(): void {
-  for (const child of activeReaders) child.kill("SIGKILL");
+  for (const child of activeReaders) killReaderTree(child, "SIGKILL");
   activeReaders.clear();
 }
 
 export const spawnCli: RunCli = (cmd, args, opts) => {
   return new Promise((resolveRun) => {
+    // The reader gets its own process group, so that a stop also ends every helper it started.
     const child = spawn(cmd, args, {
       cwd: opts.cwd,
       stdio: ["pipe", "pipe", "pipe"],
       shell: false,
+      detached: true,
     });
 
     const stdoutChunks: Buffer[] = [];
@@ -142,7 +157,7 @@ export const spawnCli: RunCli = (cmd, args, opts) => {
 
     // When this process stops (also after Ctrl-C), a reader that still runs is stopped too.
     const killOnExit = (): void => {
-      child.kill("SIGKILL");
+      killReaderTree(child, "SIGKILL");
     };
     activeReaders.add(child);
     process.once("exit", killOnExit);
@@ -153,9 +168,9 @@ export const spawnCli: RunCli = (cmd, args, opts) => {
 
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGTERM");
+      killReaderTree(child, "SIGTERM");
       setTimeout(() => {
-        if (!settled) child.kill("SIGKILL");
+        if (!settled) killReaderTree(child, "SIGKILL");
       }, 2000).unref();
     }, opts.timeoutMs);
 

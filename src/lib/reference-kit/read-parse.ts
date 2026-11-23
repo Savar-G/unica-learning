@@ -113,7 +113,9 @@ export function assembleCandidateRecord(
   if (hasLevel || hasSheet) {
     // The level is stored in upper case: "m" and "M" are one level, and file names must not differ
     // only in letter case.
-    const level = typeof obj.level === "string" ? obj.level.trim().toUpperCase() : "";
+    // The characters are checked before the change of case ("ß" would become "SS").
+    const rawLevel = typeof obj.level === "string" ? obj.level.trim() : "";
+    const level = KIT_REF_SEGMENT_RE.test(rawLevel) ? rawLevel.toUpperCase() : rawLevel;
     const sheet = typeof obj.sheet === "string" ? obj.sheet.trim() : "";
     delete obj.level;
     delete obj.sheet;
@@ -148,6 +150,9 @@ export function assembleCandidateRecord(
         path: "source_ref",
         message: "source, level, and sheet in source_ref must each match ^[A-Za-z0-9]+$",
       });
+    } else {
+      // Same rule as above: the level of a page id is stored in upper case.
+      obj.source_ref = `${parts[0]}:${parts[1].toUpperCase()}:${parts[2]}`;
     }
   }
 

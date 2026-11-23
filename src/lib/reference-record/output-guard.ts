@@ -90,10 +90,11 @@ export function isPathInsideDir(candidatePath: string, containerDir: string): bo
 // A bare repository has no ".git" entry: the folder itself holds HEAD, objects and refs.
 function looksLikeBareGitRepo(dir: string): boolean {
   try {
+    // statSync follows a link: git accepts linked objects and refs folders.
     return (
-      lstatSync(join(dir, "HEAD")).isFile() &&
-      lstatSync(join(dir, "objects")).isDirectory() &&
-      lstatSync(join(dir, "refs")).isDirectory()
+      statSync(join(dir, "HEAD")).isFile() &&
+      statSync(join(dir, "objects")).isDirectory() &&
+      statSync(join(dir, "refs")).isDirectory()
     );
   } catch {
     return false;
