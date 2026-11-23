@@ -507,16 +507,24 @@ describe("importReferenceRecords", () => {
     expect(res.problems.some((p) => p.includes("toString"))).toBe(true);
   });
 
-  it("refuses every record before any write when one record holds a null character", async () => {
-    writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
-    writeJson(recordsDir, "p2.json", makePage("sample:M:3b", "Bad\u0000title"));
+  it("refuses every record before any write when one record holds text the database cannot store", async () => {
+    // A null character, then half of a two-unit character (what a naive length cut leaves behind).
+    for (const badTitle of ["Bad\u0000title", "Compare \u{1D465} and y".slice(0, 9)]) {
+      store.rows.clear();
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
+      writeJson(recordsDir, "p2.json", makePage("sample:M:3b", badTitle));
 
-    const res = await importReferenceRecords({ recordsDir, store });
-    expect(res.ok).toBe(false);
-    expect(res.problems.some((p) => p.includes("p2.json") && p.includes("null character"))).toBe(
-      true,
-    );
-    expect(store.rows.size).toBe(0);
+      const res = await importReferenceRecords({ recordsDir, store });
+      expect(res.ok).toBe(false);
+      expect(res.problems.some((p) => p.includes("p2.json") && p.includes("cannot store"))).toBe(
+        true,
+      );
+      expect(store.rows.size).toBe(0);
+    }
+    // A whole two-unit character is fine.
+    store.rows.clear();
+    writeJson(recordsDir, "p2.json", makePage("sample:M:3b", "Compare \u{1D465} and y"));
+    expect((await importReferenceRecords({ recordsDir, store })).ok).toBe(true);
   });
 
   it("reclassifies concurrent duplicate inserts as skipped or skipped_different instead of inflating inserted", async () => {

@@ -110,20 +110,27 @@ export function deepEqualJson(a: unknown, b: unknown): boolean {
   return true;
 }
 
-// Path of the first string (key or value) that holds U+0000, or null. A jsonb column refuses that character.
-export function findNulCharacterPath(value: unknown, path = "$"): string | null {
-  if (typeof value === "string") return value.includes("\u0000") ? path : null;
+// A high surrogate with no low surrogate after it, or a low surrogate with no high surrogate before it.
+const UNPAIRED_SURROGATE_RE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
+function isUnstorableText(text: string): boolean {
+  return text.includes("\u0000") || UNPAIRED_SURROGATE_RE.test(text);
+}
+
+// Path of the first string (key or value) that a jsonb column refuses: U+0000 or half of a split character.
+export function findUnstorableTextPath(value: unknown, path = "$"): string | null {
+  if (typeof value === "string") return isUnstorableText(value) ? path : null;
   if (Array.isArray(value)) {
     for (let i = 0; i < value.length; i += 1) {
-      const found = findNulCharacterPath(value[i], `${path}[${i}]`);
+      const found = findUnstorableTextPath(value[i], `${path}[${i}]`);
       if (found !== null) return found;
     }
     return null;
   }
   if (value !== null && typeof value === "object") {
     for (const [key, child] of Object.entries(value)) {
-      if (key.includes("\u0000")) return `${path}.<key>`;
-      const found = findNulCharacterPath(child, `${path}.${key}`);
+      if (isUnstorableText(key)) return `${path}.<key>`;
+      const found = findUnstorableTextPath(child, `${path}.${key}`);
       if (found !== null) return found;
     }
   }
@@ -211,10 +218,10 @@ async function readRecords(
       continue;
     }
 
-    const nulPath = findNulCharacterPath(parsed);
+    const nulPath = findUnstorableTextPath(parsed);
     if (nulPath !== null) {
       problems.push(
-        `${fileName}: ${nulPath}: text holds a null character, which the database cannot store`,
+        `${fileName}: ${nulPath}: text holds a null character or half of a split character, which the database cannot store`,
       );
       continue;
     }
