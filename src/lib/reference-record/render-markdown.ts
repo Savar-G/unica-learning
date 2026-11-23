@@ -88,6 +88,12 @@ function formatScaffold(s: Scaffold): string {
       return `\`arrow\` (items ${applies}): ${s.from ?? "?"} → ${s.to ?? "?"}${s.label ? ` (${s.label})` : ""}`;
     case "caption":
       return `\`caption\` (items ${applies}): "${s.text}"${s.target ? ` on \`${s.target}\`` : ""}`;
+    case "helper_digit":
+    case "partial_working":
+    case "worked_item":
+      return `\`${s.kind}\` (items ${applies})${s.description ? `: ${s.description}` : ""}`;
+    case "other":
+      return `\`other\` (items ${applies}): ${s.description}`;
   }
 }
 
@@ -100,6 +106,42 @@ function formatExample(ex: Example, idx: number): string[] {
     const exprText = part.expr ? JSON.stringify(part.expr) : "none";
     const shown = part.shown_answer ? ` = ${part.shown_answer}` : "";
     out.push(`- ${cap}[${part.form}] \`${exprText}\`${shown}`);
+  }
+  if (ex.steps !== undefined) {
+    if (Array.isArray(ex.steps)) {
+      if (ex.steps.length > 0) {
+        out.push("- Steps:");
+        for (const step of ex.steps) {
+          const showsLabel =
+            step.shows === "other" && step.shows_other
+              ? `other (${step.shows_other})`
+              : String(step.shows);
+          const printedText = step.printed === null ? "-" : `\`${step.printed}\``;
+          const noteSuffix =
+            step.note !== undefined && step.note !== null ? ` (note: ${step.note})` : "";
+          out.push(`  ${step.n}. [${showsLabel}] ${printedText}${noteSuffix}`);
+        }
+      }
+    } else {
+      out.push(`- Steps: ${ex.steps}`);
+    }
+  }
+  if (ex.marks !== undefined) {
+    if (Array.isArray(ex.marks)) {
+      if (ex.marks.length > 0) {
+        out.push("- Marks:");
+        for (const mark of ex.marks) {
+          const stepSuffix = mark.step !== undefined ? ` (step ${mark.step})` : "";
+          const descSuffix =
+            mark.description !== undefined && mark.description !== null
+              ? `: ${mark.description}`
+              : "";
+          out.push(`  - \`${mark.kind}\`${stepSuffix}${descSuffix}`);
+        }
+      }
+    } else {
+      out.push(`- Marks: ${ex.marks}`);
+    }
   }
   if (ex.text) out.push(`- Text: ${ex.text}`);
   if (ex.cross_ref) out.push(`- Cross-ref: ${ex.cross_ref}`);

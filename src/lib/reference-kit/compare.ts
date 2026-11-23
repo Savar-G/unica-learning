@@ -1,0 +1,236 @@
+import {
+  NOT_STATED,
+  type ContentsRecord,
+  type Expr,
+  type PageItem,
+  type PageRecord,
+  type ReferenceRecord,
+} from "@/lib/reference-record";
+import {
+  collectUnnamedTeachingMarks,
+  compareExamples,
+  type UnnamedTeachingMark,
+} from "./compare-examples";
+import {
+  compareExpr,
+  compareField,
+  compareResponses,
+  compareScaffolds,
+  compareScoreBands,
+  type DiffKind,
+  type RecordDifference,
+} from "./compare-parts";
+import { normalizeNotationText, normalizeProseText } from "./normalize";
+
+export type { DiffKind, RecordDifference, UnnamedTeachingMark };
+export { collectUnnamedTeachingMarks, normalizeNotationText, normalizeProseText };
+
+export type PageStatus = "machine_read" | "double_read" | "human_checked";
+
+export interface PageComparisonSummary {
+  differences: RecordDifference[];
+  once_read: RecordDifference[];
+  both_unclear: RecordDifference[];
+  one_unclear: RecordDifference[];
+  needs_person_read: boolean;
+}
+
+function comparePageItems(
+  path: string,
+  aItems: readonly PageItem[],
+  bItems: readonly PageItem[],
+  diffs: RecordDifference[],
+): void {
+  const aMap = new Map<number, PageItem>();
+  const bMap = new Map<number, PageItem>();
+  const orderedNs: number[] = [];
+
+  for (const item of aItems) {
+    aMap.set(item.n, item);
+    orderedNs.push(item.n);
+  }
+  for (const item of bItems) {
+    bMap.set(item.n, item);
+    if (!aMap.has(item.n)) orderedNs.push(item.n);
+  }
+
+  const aCommonOrder = aItems.filter((item) => bMap.has(item.n)).map((item) => item.n);
+  const bCommonOrder = bItems.filter((item) => aMap.has(item.n)).map((item) => item.n);
+  if (aCommonOrder.some((n, idx) => n !== bCommonOrder[idx])) {
+    diffs.push({
+      path,
+      a: aItems.map((item) => item.n),
+      b: bItems.map((item) => item.n),
+      kind: "order",
+    });
+  }
+
+  for (const n of orderedNs) {
+    const iPath = `${path}[n=${n}]`;
+    const ia = aMap.get(n);
+    const ib = bMap.get(n);
+    if (!ia || !ib) {
+      diffs.push({ path: iPath, a: ia ?? null, b: ib ?? null, kind: "value" });
+      continue;
+    }
+
+    compareField(
+      `${iPath}.printed`,
+      ia.printed,
+      ib.printed,
+      { mode: ia.expr === null && ib.expr === null ? "prose" : "notation" },
+      diffs,
+    );
+
+    compareField(`${iPath}.form`, ia.form, ib.form, {}, diffs);
+    compareExpr(`${iPath}.expr`, ia.expr, ib.expr, diffs);
+    compareResponses(`${iPath}.responses`, ia.responses, ib.responses, diffs);
+  }
+}
+
+function comparePageRecords(a: PageRecord, b: PageRecord, diffs: RecordDifference[]): void {
+  compareField("topic.title", a.topic.title, b.topic.title, { mode: "prose" }, diffs);
+  compareField("topic.number", a.topic.number, b.topic.number, {}, diffs);
+  compareScoreBands("score_bands", a.score_bands, b.score_bands, diffs);
+  compareExamples("examples", a.examples, b.examples, diffs);
+
+  const maxSections = Math.max(a.sections.length, b.sections.length);
+  for (let si = 0; si < maxSections; si += 1) {
+    const sPath = `sections[${si}]`;
+    const sa = a.sections[si];
+    const sb = b.sections[si];
+    if (!sa || !sb) {
+      diffs.push({ path: sPath, a: sa ?? null, b: sb ?? null, kind: "value" });
+      continue;
+    }
+    compareField(
+      `${sPath}.instruction`,
+      sa.instruction,
+      sb.instruction,
+      { teaching: true, mode: "prose" },
+      diffs,
+    );
+    compareScaffolds(`${sPath}.scaffolds`, sa.scaffolds, sb.scaffolds, diffs);
+    comparePageItems(`${sPath}.items`, sa.items, sb.items, diffs);
+  }
+}
+
+function compareContentsRecords(
+  a: ContentsRecord,
+  b: ContentsRecord,
+  diffs: RecordDifference[],
+): void {
+  const aMap = new Map(a.topics.map((t) => [t.n, t]));
+  const bMap = new Map(b.topics.map((t) => [t.n, t]));
+  const orderedNs = [...a.topics.map((t) => t.n)];
+  for (const t of b.topics) {
+    if (!aMap.has(t.n)) orderedNs.push(t.n);
+  }
+
+  for (const n of orderedNs) {
+    const tPath = `topics[n=${n}]`;
+    const ta = aMap.get(n);
+    const tb = bMap.get(n);
+    if (!ta || !tb) {
+      diffs.push({ path: tPath, a: ta ?? null, b: tb ?? null, kind: "value" });
+      continue;
+    }
+    compareField(`${tPath}.title`, ta.title, tb.title, { mode: "prose" }, diffs);
+    compareField(`${tPath}.sheets`, ta.sheets, tb.sheets, {}, diffs);
+    compareField(`${tPath}.std_time_min`, ta.std_time_min, tb.std_time_min, {}, diffs);
+  }
+}
+
+export function compareRecords(a: ReferenceRecord, b: ReferenceRecord): RecordDifference[] {
+  const diffs: RecordDifference[] = [];
+  compareField("source_ref", a.source_ref, b.source_ref, {}, diffs);
+  if (a.kind !== b.kind) {
+    diffs.push({ path: "kind", a: a.kind, b: b.kind, kind: "value" });
+    return diffs;
+  }
+  if (a.kind === "page" && b.kind === "page") {
+    comparePageRecords(a, b, diffs);
+  } else if (a.kind === "contents" && b.kind === "contents") {
+    compareContentsRecords(a, b, diffs);
+  }
+  return diffs;
+}
+
+function exprHasWordOrFigure(expr: Expr | null | undefined): boolean {
+  if (!expr) return false;
+  switch (expr.kind) {
+    case "word":
+      return true;
+    case "notation":
+      return (
+        typeof expr.figure === "string" &&
+        expr.figure.trim().length > 0 &&
+        expr.figure !== NOT_STATED
+      );
+    case "linked":
+      return exprHasWordOrFigure(expr.pair[0]) || exprHasWordOrFigure(expr.pair[1]);
+    default:
+      return false;
+  }
+}
+
+export function needsPersonRead(record: ReferenceRecord | null | undefined): boolean {
+  if (!record || record.kind !== "page") return false;
+  if (Array.isArray(record.examples) && record.examples.length > 0) return true;
+
+  for (const section of record.sections) {
+    if (Array.isArray(section.scaffolds)) {
+      for (const sc of section.scaffolds) {
+        if (sc.kind === "caption") return true;
+      }
+    }
+    for (const item of section.items) {
+      if (exprHasWordOrFigure(item.expr)) return true;
+    }
+  }
+  return false;
+}
+
+export function classifyComparison(
+  a: ReferenceRecord | null,
+  b: ReferenceRecord | null,
+): PageComparisonSummary {
+  const allDiffs = a && b ? compareRecords(a, b) : [];
+  const oneUnclear = allDiffs.filter((d) => d.kind === "one_unclear");
+  const differences = allDiffs.filter(
+    (d) => d.kind === "value" || d.kind === "order" || d.kind === "one_unclear",
+  );
+  const onceRead = allDiffs.filter((d) => d.kind === "once_read");
+  const bothUnclear = allDiffs.filter((d) => d.kind === "both_unclear");
+
+  return {
+    differences,
+    once_read: onceRead,
+    both_unclear: bothUnclear,
+    one_unclear: oneUnclear,
+    needs_person_read: needsPersonRead(a) || needsPersonRead(b),
+  };
+}
+
+export function decideStatus(input: {
+  hasA: boolean;
+  hasB: boolean;
+  familyA: string | null;
+  familyB: string | null;
+  diffs: readonly RecordDifference[];
+  sameDigest?: boolean;
+}): PageStatus {
+  if (!input.hasA || !input.hasB) return "machine_read";
+  if (input.sameDigest === false) return "machine_read";
+  if (!input.familyA || !input.familyB || input.familyA === input.familyB) {
+    return "machine_read";
+  }
+  const hasBlocking = input.diffs.some(
+    (d) =>
+      d.kind === "value" ||
+      d.kind === "order" ||
+      d.kind === "one_unclear" ||
+      d.kind === "once_read",
+  );
+  return hasBlocking ? "machine_read" : "double_read";
+}

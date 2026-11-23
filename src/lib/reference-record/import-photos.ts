@@ -173,7 +173,7 @@ export async function readPlannedPhotos(
     return planned;
   }
 
-  const manifestPath = join(realPhotosDir, "masked-manifest.json");
+  const manifestPath = join(realPhotosDir, "photos-manifest.json");
   const manifestRead = await readRegularFileNoFollow(manifestPath);
   if (!manifestRead.ok) {
     const detail =
@@ -182,7 +182,7 @@ export async function readPlannedPhotos(
         : manifestRead.kind === "not_file"
           ? "not a regular file"
           : `could not be read (${manifestRead.message})`;
-    problems.push(`masked-manifest.json: ${detail}`);
+    problems.push(`photos-manifest.json: ${detail}`);
     return planned;
   }
 
@@ -191,7 +191,7 @@ export async function readPlannedPhotos(
     parsedManifest = JSON.parse(Buffer.from(manifestRead.bytes).toString("utf8")) as unknown;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    problems.push(`masked-manifest.json: could not be read or parsed (${msg})`);
+    problems.push(`photos-manifest.json: could not be read or parsed (${msg})`);
     return planned;
   }
 
@@ -200,7 +200,7 @@ export async function readPlannedPhotos(
     parsedManifest.version !== 1 ||
     !Array.isArray(parsedManifest.photos)
   ) {
-    problems.push("masked-manifest.json: must be an object with version: 1 and a photos array");
+    problems.push("photos-manifest.json: must be an object with version: 1 and a photos array");
     return planned;
   }
 
@@ -208,18 +208,18 @@ export async function readPlannedPhotos(
   for (let i = 0; i < parsedManifest.photos.length; i += 1) {
     const entry = parsedManifest.photos[i];
     if (!isPlainObject(entry)) {
-      problems.push(`masked-manifest.json: photos[${i}] must be an object`);
+      problems.push(`photos-manifest.json: photos[${i}] must be an object`);
       continue;
     }
     if (entry.source_ref === undefined || entry.source_ref === null) {
       continue;
     }
     if (typeof entry.source_ref !== "string" || entry.source_ref.trim() === "") {
-      problems.push(`masked-manifest.json: photos[${i}].source_ref must be a non-empty string`);
+      problems.push(`photos-manifest.json: photos[${i}].source_ref must be a non-empty string`);
       continue;
     }
     if (entriesByRef.has(entry.source_ref)) {
-      problems.push(`masked-manifest.json: duplicate source_ref "${entry.source_ref}"`);
+      problems.push(`photos-manifest.json: duplicate source_ref "${entry.source_ref}"`);
       continue;
     }
     entriesByRef.set(entry.source_ref, entry);
@@ -232,23 +232,16 @@ export async function readPlannedPhotos(
     let entryValid = true;
     const fileLabel = typeof entry.file === "string" ? entry.file : "(missing file)";
 
-    if (entry.confirmed !== true) {
-      problems.push(
-        `masked-manifest.json: ${record.source_ref} (${fileLabel}): confirmed must be strictly true`,
-      );
-      entryValid = false;
-    }
-
     if (typeof entry.file !== "string" || !isPlainFileName(entry.file)) {
       problems.push(
-        `masked-manifest.json: ${record.source_ref} (${fileLabel}): file must be a plain file name inside the photos folder (no path separators or ".."; cannot reference paths outside the photos folder)`,
+        `photos-manifest.json: ${record.source_ref} (${fileLabel}): file must be a plain file name inside the photos folder (no path separators or ".."; cannot reference paths outside the photos folder)`,
       );
       continue;
     }
 
     const pathCheck = buildReferencePhotoPath(record.source_ref, entry.file);
     if (!pathCheck.ok) {
-      problems.push(`masked-manifest.json: ${record.source_ref}: ${pathCheck.error}`);
+      problems.push(`photos-manifest.json: ${record.source_ref}: ${pathCheck.error}`);
       entryValid = false;
     }
 
@@ -258,7 +251,7 @@ export async function readPlannedPhotos(
         : null;
     if (!expectedSha) {
       problems.push(
-        `masked-manifest.json: ${record.source_ref} (${entry.file}): sha256 must be a 64-character hex string`,
+        `photos-manifest.json: ${record.source_ref} (${entry.file}): sha256 must be a 64-character hex string`,
       );
       entryValid = false;
     }

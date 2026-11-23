@@ -45,6 +45,10 @@ export const SCAFFOLD_KINDS = [
   "equation_frame",
   "arrow",
   "caption",
+  "helper_digit",
+  "partial_working",
+  "worked_item",
+  "other",
 ] as const;
 export type ScaffoldKind = (typeof SCAFFOLD_KINDS)[number];
 
@@ -53,6 +57,39 @@ export type ExamplePosition = (typeof EXAMPLE_POSITIONS)[number];
 
 export const EXAMPLE_RELATIONS = ["compare", "sequence", "table"] as const;
 export type ExampleRelation = (typeof EXAMPLE_RELATIONS)[number];
+
+export const EXAMPLE_STEP_KINDS = [
+  "setup",
+  "partial_product",
+  "partial_sum",
+  "carry",
+  "borrow",
+  "regroup",
+  "estimate_quotient",
+  "multiply_back",
+  "subtract",
+  "bring_down",
+  "remainder",
+  "answer",
+  "check",
+  "rule_statement",
+  "other",
+] as const;
+export type ExampleStepKind = (typeof EXAMPLE_STEP_KINDS)[number];
+
+export const EXAMPLE_MARK_KINDS = [
+  "arrow",
+  "box",
+  "circle",
+  "underline",
+  "helper_digit",
+  "crossed_digit",
+  "shading",
+  "bracket",
+  "label",
+  "other",
+] as const;
+export type ExampleMarkKind = (typeof EXAMPLE_MARK_KINDS)[number];
 
 export interface ArithExpr {
   kind: "arith";
@@ -154,13 +191,41 @@ export interface CaptionScaffold {
   target?: ReaderNullable<string>;
 }
 
+export interface HelperDigitScaffold {
+  kind: "helper_digit";
+  applies_to: ScaffoldAppliesTo;
+  description?: ReaderNullable<string>;
+}
+
+export interface PartialWorkingScaffold {
+  kind: "partial_working";
+  applies_to: ScaffoldAppliesTo;
+  description?: ReaderNullable<string>;
+}
+
+export interface WorkedItemScaffold {
+  kind: "worked_item";
+  applies_to: ScaffoldAppliesTo;
+  description?: ReaderNullable<string>;
+}
+
+export interface OtherScaffold {
+  kind: "other";
+  applies_to: ScaffoldAppliesTo;
+  description: string;
+}
+
 export type Scaffold =
   | AnswerBoxesScaffold
   | NumberStripScaffold
   | TableReadAloudScaffold
   | EquationFrameScaffold
   | ArrowScaffold
-  | CaptionScaffold;
+  | CaptionScaffold
+  | HelperDigitScaffold
+  | PartialWorkingScaffold
+  | WorkedItemScaffold
+  | OtherScaffold;
 
 export interface ExamplePart {
   caption?: ReaderNullable<string>;
@@ -169,11 +234,27 @@ export interface ExamplePart {
   shown_answer?: ReaderNullable<string>;
 }
 
+export interface ExampleStep {
+  n: number;
+  shows: ReaderValue<ExampleStepKind>;
+  printed: ReaderNullable<string>;
+  note?: ReaderNullable<string>;
+  shows_other?: string;
+}
+
+export interface ExampleMark {
+  kind: ReaderValue<ExampleMarkKind>;
+  step?: number;
+  description?: ReaderNullable<string>;
+}
+
 export interface Example {
   position: ReaderValue<ExamplePosition>;
   relation: ReaderValue<ExampleRelation>;
   label?: ReaderNullable<string>;
   parts: ExamplePart[];
+  steps?: ExampleStep[] | ReaderSentinel;
+  marks?: ExampleMark[] | ReaderSentinel;
   text?: ReaderNullable<string>;
   cross_ref?: ReaderNullable<string>;
 }

@@ -153,4 +153,67 @@ describe("renderRecordToMarkdown", () => {
       expect(unescapedPipes).toHaveLength(6);
     }
   });
+
+  it("renders example steps, example marks, and the new practice scaffold kinds", () => {
+    const page: PageRecord = {
+      kind: "page",
+      source_ref: "demo:Z:15a",
+      topic: { title: "Carrying in vertical multiplication", number: 2 },
+      sections: [
+        {
+          instruction: "Multiply.",
+          scaffolds: [
+            { kind: "helper_digit", applies_to: [1], description: "Carry slot above tens" },
+            { kind: "partial_working", applies_to: [1], description: "Ones row pre-filled" },
+            { kind: "worked_item", applies_to: [1] },
+            { kind: "other", applies_to: "all", description: "Dotted guide line" },
+          ],
+          items: [
+            {
+              n: 1,
+              printed: "26 x 3",
+              form: "vertical",
+              expr: { kind: "arith", op: "mul", operands: [26, 3] },
+              responses: [
+                { position: "under_line", cue: null, answer: "78", answer_source: "computed" },
+              ],
+            },
+          ],
+        },
+      ],
+      examples: [
+        {
+          position: "top",
+          relation: "sequence",
+          label: "Example",
+          parts: [
+            {
+              form: "vertical",
+              expr: { kind: "arith", op: "mul", operands: [24, 3] },
+              shown_answer: "72",
+            },
+          ],
+          steps: [
+            { n: 1, shows: "carry", printed: "4 x 3 = 12, carry 1", note: "Write 2, carry 1." },
+            { n: 2, shows: "other", shows_other: "combine tens", printed: "2 x 3 + 1 = 7" },
+          ],
+          marks: [
+            { kind: "arrow", step: 1, description: "Points from 12 to carry digit 1" },
+            { kind: "helper_digit", step: 1 },
+          ],
+        },
+      ],
+      score_bands: [[0, 0], [1, 1], [2, 2], [3, 3], [4, "open"]],
+    };
+
+    const md = renderRecordToMarkdown(page);
+    expect(md).toContain("`helper_digit` (items [1]): Carry slot above tens");
+    expect(md).toContain("`partial_working` (items [1]): Ones row pre-filled");
+    expect(md).toContain("`worked_item` (items [1])");
+    expect(md).toContain("`other` (items all): Dotted guide line");
+    expect(md).toContain("1. [carry] `4 x 3 = 12, carry 1` (note: Write 2, carry 1.)");
+    expect(md).toContain("2. [other (combine tens)] `2 x 3 + 1 = 7`");
+    expect(md).toContain("`arrow` (step 1): Points from 12 to carry digit 1");
+    expect(md).toContain("`helper_digit` (step 1)");
+  });
 });

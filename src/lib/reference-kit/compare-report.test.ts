@@ -1,0 +1,85 @@
+import { describe, expect, it } from "vitest";
+import { formatCompareReportMarkdown, type CompareWorkReport } from "./compare-report";
+
+describe("formatCompareReportMarkdown", () => {
+  it("renders summary table, kept human_checked, stale pages, failed photos, and per-page details", () => {
+    const report: CompareWorkReport = {
+      reader_a: { family: "claude", model: "c1" },
+      reader_b: { family: "codex", model: "x1" },
+      pages: [
+        {
+          source_ref: "sample:M:3a",
+          photo: "111111111111.jpg",
+          original_name: "IMG_0001.jpg",
+          photo_sha256: "1".repeat(64),
+          status: "double_read",
+          only_in_reader: null,
+          digest_mismatch: null,
+          differences: [],
+          once_read: [],
+          both_unclear: [],
+          one_unclear: [],
+          needs_person_read: false,
+          unnamed_teaching_marks: [],
+          reader_notes: { a: [], b: [] },
+        },
+        {
+          source_ref: "sample:M:4a",
+          photo: "222222222222.jpg",
+          original_name: "IMG_0002.jpg",
+          photo_sha256: null,
+          status: "machine_read",
+          only_in_reader: null,
+          digest_mismatch: { a: "1".repeat(64), b: "2".repeat(64) },
+          differences: [{ path: "topic.title", a: "Add", b: "Sub", kind: "value" }],
+          once_read: [{ path: "examples[0]", a: {}, b: null, kind: "once_read" }],
+          both_unclear: [{ path: "topic.number", a: "unclear", b: "unclear", kind: "both_unclear" }],
+          one_unclear: [],
+          needs_person_read: true,
+          unnamed_teaching_marks: [
+            { kind: "step", path: "examples[0].steps[n=1]", description: "split tens", reader: "both" },
+            { kind: "mark", path: "examples[0].marks[0]", description: "dotted divider", reader: "a" },
+            { kind: "scaffold", path: "sections[0].scaffolds[0]", description: "shaded column", reader: "both" },
+          ],
+          reader_notes: { a: ["note a"], b: ["note b"] },
+        },
+      ],
+      single_reader_pages: [{ source_ref: "sample:M:5a", reader: "a" }],
+      failed_photos: [{ slot: "b", photo: "333333333333.jpg", original_name: "IMG_0003.jpg", status: "cli_error", reason: "timeout" }],
+      too_small_photos: [{ original_name: "IMG_0004.jpg", width: 800, height: 600 }],
+      could_not_read_photos: [{ original_name: "IMG_0005.jpg", reason: "unreadable_image: corrupt JPEG" }],
+      kept_human_checked: [
+        {
+          source_ref: "sample:M:2a",
+          in_current_batch: true,
+          differs_from_reader_a: true,
+          differs_from_reader_b: false,
+          diff_count_a: 2,
+          diff_count_b: 0,
+        },
+      ],
+      removed_stale_pages: ["sample:M:9a"],
+    };
+
+    const md = formatCompareReportMarkdown(report);
+    expect(md).toContain("| sample:M:3a | IMG_0001.jpg | double_read | 0 | 0 | 0 | no |");
+    expect(md).toContain("| sample:M:4a | IMG_0002.jpg | machine_read | 1 | 1 | 1 | yes |");
+    expect(md).toContain("## Too small to read");
+    expect(md).toContain("IMG_0004.jpg");
+    expect(md).toContain("800 x 600");
+    expect(md).toContain("## Could not be read");
+    expect(md).toContain("IMG_0005.jpg");
+    expect(md).toContain("corrupt JPEG");
+    expect(md).toContain("## Unnamed teaching marks");
+    expect(md).toContain("split tens");
+    expect(md).toContain("dotted divider");
+    expect(md).toContain("shaded column");
+    expect(md).toContain("## Kept: checked by a person");
+    expect(md).toContain("reader a differs (2)");
+    expect(md).toContain("## Removed stale pages");
+    expect(md).toContain("- sample:M:9a");
+    expect(md).toContain("A person must read the prose on this page");
+    expect(md).toContain("Photo digest mismatch");
+    expect(md).toContain("Exact match across both readers.");
+  });
+});

@@ -1,9 +1,6 @@
 import {
   ANSWER_SOURCES,
   ARITH_OPS,
-  EXAMPLE_POSITIONS,
-  EXAMPLE_RELATIONS,
-  ITEM_FORMS,
   NOT_STATED,
   RESPONSE_POSITIONS,
   SCAFFOLD_KINDS,
@@ -437,52 +434,26 @@ export function validateScaffold(
       }
       return;
     }
-  }
-}
-
-export function validateExample(v: unknown, path: string, errors: ValidationError[]): void {
-  if (!isPlainObject(v)) {
-    pushError(errors, path, "must be an example object");
-    return;
-  }
-  checkAllowedKeys(
-    v,
-    ["position", "relation", "label", "parts", "text", "cross_ref"],
-    path,
-    errors,
-  );
-  checkReaderEnum(v.position, EXAMPLE_POSITIONS, joinPath(path, "position"), errors);
-  checkReaderEnum(v.relation, EXAMPLE_RELATIONS, joinPath(path, "relation"), errors);
-  if ("label" in v && v.label !== undefined) {
-    checkReaderString(v.label, joinPath(path, "label"), errors, true);
-  }
-  if ("text" in v && v.text !== undefined) {
-    checkReaderString(v.text, joinPath(path, "text"), errors, true);
-  }
-  if ("cross_ref" in v && v.cross_ref !== undefined) {
-    checkReaderString(v.cross_ref, joinPath(path, "cross_ref"), errors, true);
-  }
-  if (!Array.isArray(v.parts) || v.parts.length === 0) {
-    pushError(errors, joinPath(path, "parts"), "must be a non-empty list of example parts");
-  } else {
-    v.parts.forEach((part, i) => {
-      const pPath = `${path}.parts[${i}]`;
-      if (!isPlainObject(part)) {
-        pushError(errors, pPath, "must be an example part object");
-        return;
+    case "helper_digit":
+    case "partial_working":
+    case "worked_item": {
+      checkAllowedKeys(v, ["kind", "applies_to", "description"], path, errors);
+      if ("description" in v && v.description !== undefined) {
+        checkReaderString(v.description, joinPath(path, "description"), errors, true);
       }
-      checkAllowedKeys(part, ["caption", "form", "expr", "shown_answer"], pPath, errors);
-      if ("caption" in part && part.caption !== undefined) {
-        checkReaderString(part.caption, joinPath(pPath, "caption"), errors, true);
+      return;
+    }
+    case "other": {
+      checkAllowedKeys(v, ["kind", "applies_to", "description"], path, errors);
+      if (!isNonEmptyString(v.description) || isSentinel(v.description)) {
+        pushError(
+          errors,
+          joinPath(path, "description"),
+          'description is required and must be a non-empty string when kind is "other"',
+        );
       }
-      checkReaderEnum(part.form, ITEM_FORMS, joinPath(pPath, "form"), errors);
-      if (part.expr !== null) {
-        validateExpr(part.expr, joinPath(pPath, "expr"), errors, true);
-      }
-      if ("shown_answer" in part && part.shown_answer !== undefined) {
-        checkReaderString(part.shown_answer, joinPath(pPath, "shown_answer"), errors, true);
-      }
-    });
+      return;
+    }
   }
 }
 
