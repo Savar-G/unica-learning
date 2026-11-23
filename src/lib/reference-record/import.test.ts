@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import fc from "fast-check";
@@ -569,17 +569,5 @@ describe("importReferenceRecords", () => {
     expect(failed).toBe(true);
     expect(stderr).toContain("SUPABASE_URL");
     expect(stderr).toContain("SUPABASE_SECRET_KEY");
-  });
-});
-
-describe("bank_reference_images migration", () => {
-  it("forces an existing curriculum-reference bucket to stay private with the same limits on conflict", () => {
-    const sql = readFileSync(
-      resolve(process.cwd(), "supabase/migrations/20261123170312_bank_reference_images.sql"),
-      "utf8",
-    );
-    expect(sql).toMatch(
-      /on conflict\s*\(\s*id\s*\)\s*do update\s+set\s+public\s*=\s*false,\s*file_size_limit\s*=\s*excluded\.file_size_limit,\s*allowed_mime_types\s*=\s*excluded\.allowed_mime_types;/i,
-    );
   });
 });

@@ -83,8 +83,19 @@ function createSupabaseReferenceStore(db: SupabaseClient<Database>): ReferenceSt
     },
 
     async objectSha256(path: string): Promise<string | null> {
-      const { data: exists } = await db.storage.from(REFERENCE_BUCKET).exists(path);
-      if (!exists) return null;
+      // List the folder instead of a HEAD request: a listing error is an error, never "no object".
+      const slash = path.lastIndexOf("/");
+      const folder = slash >= 0 ? path.slice(0, slash) : "";
+      const name = slash >= 0 ? path.slice(slash + 1) : path;
+      const { data: listed, error: listError } = await db.storage
+        .from(REFERENCE_BUCKET)
+        .list(folder, { search: name, limit: 1000 });
+      if (listError || !listed) {
+        throw new Error(
+          `Failed checking for an existing object at ${path}: ${listError?.message ?? "no listing"}`,
+        );
+      }
+      if (!listed.some((entry) => entry.name === name)) return null;
       const { data, error } = await db.storage.from(REFERENCE_BUCKET).download(path);
       if (error || !data) {
         throw new Error(

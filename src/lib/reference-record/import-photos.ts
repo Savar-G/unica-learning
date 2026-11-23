@@ -14,6 +14,9 @@ const EXT_TO_CONTENT_TYPE = new Map<string, string>([
   ["webp", "image/webp"],
 ]);
 
+// Same limit as the bucket (file_size_limit in the migration). A larger file is refused before any write.
+export const MAX_REFERENCE_PHOTO_BYTES = 20 * 1024 * 1024;
+
 const NOFOLLOW_FLAG = typeof fsConstants.O_NOFOLLOW === "number" ? fsConstants.O_NOFOLLOW : 0;
 const NONBLOCK_FLAG = typeof fsConstants.O_NONBLOCK === "number" ? fsConstants.O_NONBLOCK : 0;
 
@@ -260,6 +263,12 @@ export async function readPlannedPhotos(
     }
 
     const bytes = photoRead.bytes;
+    if (bytes.length === 0 || bytes.length > MAX_REFERENCE_PHOTO_BYTES) {
+      problems.push(
+        `photos: ${record.source_ref} (${entry.file}): file size ${bytes.length} bytes is not allowed (1 to ${MAX_REFERENCE_PHOTO_BYTES} bytes)`,
+      );
+      entryValid = false;
+    }
     const actualSha = createHash("sha256").update(bytes).digest("hex");
     if (expectedSha && actualSha !== expectedSha) {
       problems.push(

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   buildReferencePhotoPath,
   importReferenceRecords,
+  MAX_REFERENCE_PHOTO_BYTES,
   type ExistingReferenceRow,
   type ReferenceRow,
   type ReferenceStore,
@@ -194,6 +195,90 @@ describe("importReferenceRecords photo and file safety", () => {
     expect(store.objects.size).toBe(0);
     expect(store.calls).toEqual([]);
     expect(res.problems.some((p) => p.includes("mask.constructor"))).toBe(true);
+  });
+
+  it("refuses an empty photo and a photo above the bucket size limit before any write", async () => {
+    writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
+    writeJson(recordsDir, "p2.json", makePage("sample:M:3b"));
+    const tooLarge = new Uint8Array(MAX_REFERENCE_PHOTO_BYTES + 1);
+    const empty = new Uint8Array(0);
+    writeBytes(photosDir, "big.jpg", tooLarge);
+    writeBytes(photosDir, "empty.png", empty);
+    writeJson(photosDir, "masked-manifest.json", {
+      version: 1,
+      photos: [
+        {
+          file: "big.jpg",
+          sha256: sha256Hex(tooLarge),
+          confirmed: true,
+          confirmed_at: "2026-01-01T00:00:00.000Z",
+          source_ref: "sample:M:3a",
+        },
+        {
+          file: "empty.png",
+          sha256: sha256Hex(empty),
+          confirmed: true,
+          confirmed_at: "2026-01-01T00:00:00.000Z",
+          source_ref: "sample:M:3b",
+        },
+      ],
+    });
+
+    const res = await importReferenceRecords({ recordsDir, photosDir, store, dryRun: true });
+    expect(res.ok).toBe(false);
+    expect(res.problems.filter((p) => p.includes("file size"))).toHaveLength(2);
+    expect(store.calls.some((c) => c.startsWith("insertRow:") || c.startsWith("uploadObject:"))).toBe(
+      false,
+    );
+  });
+
+  it("stops with a plain message when a row insert fails after its photo upload, and a second run finishes the work", async () => {
+    writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
+    writeJson(recordsDir, "p2.json", makePage("sample:M:3b"));
+    const img1 = new Uint8Array([1, 2, 3, 4]);
+    const img2 = new Uint8Array([5, 6, 7, 8]);
+    writeBytes(photosDir, "one.jpg", img1);
+    writeBytes(photosDir, "two.png", img2);
+    writeJson(photosDir, "masked-manifest.json", {
+      version: 1,
+      photos: [
+        {
+          file: "one.jpg",
+          sha256: sha256Hex(img1),
+          confirmed: true,
+          confirmed_at: "2026-01-01T00:00:00.000Z",
+          source_ref: "sample:M:3a",
+        },
+        {
+          file: "two.png",
+          sha256: sha256Hex(img2),
+          confirmed: true,
+          confirmed_at: "2026-01-01T00:00:00.000Z",
+          source_ref: "sample:M:3b",
+        },
+      ],
+    });
+
+    const realInsert = store.insertRow.bind(store);
+    store.insertRow = async (row) => {
+      if (row.source_ref === "sample:M:3b") throw new Error("database is not reachable");
+      return realInsert(row);
+    };
+    const first = await importReferenceRecords({ recordsDir, photosDir, store });
+    expect(first.ok).toBe(false);
+    expect(first.stopped).toBe(true);
+    expect(first.counts.inserted).toBe(1);
+    expect(first.problems.some((p) => p.includes("sample/M/3b.png") && p.includes("reuses"))).toBe(
+      true,
+    );
+    expect(store.objects.has("sample/M/3b.png")).toBe(true);
+    expect(store.rows.has("sample:M:3b")).toBe(false);
+
+    store.insertRow = realInsert;
+    const second = await importReferenceRecords({ recordsDir, photosDir, store });
+    expect(second.ok).toBe(true);
+    expect(second.counts).toMatchObject({ inserted: 1, skipped: 1, photosUploaded: 0 });
+    expect(store.rows.get("sample:M:3b")?.path).toBe("sample/M/3b.png");
   });
 
   it("refuses before any write when a stored object at the planned path has a different sha256", async () => {

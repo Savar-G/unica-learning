@@ -11,6 +11,7 @@ import type { ReferenceRecord } from "./types";
 import { validateReferenceRecord } from "./validate";
 
 export { buildReferencePhotoPath };
+export { MAX_REFERENCE_PHOTO_BYTES } from "./import-photos";
 
 export const REFERENCE_RECORD_KINDS = ["page", "contents"] as const;
 export type ReferenceRecordKind = (typeof REFERENCE_RECORD_KINDS)[number];
@@ -67,6 +68,8 @@ export interface ImportCounts {
 
 export interface ImportResult {
   ok: boolean;
+  // True when a write failed part of the way through. Rows and photos written before the failure stay.
+  stopped?: boolean;
   dryRun: boolean;
   counts: ImportCounts;
   skippedDifferentRefs: string[];
@@ -317,28 +320,53 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
 
     const photo = plannedPhotos.get(record.source_ref);
     let storagePath: string | null = null;
-    if (photo) {
-      storagePath = photo.storagePath;
-      if (!reusablePhotoPaths.has(photo.storagePath)) {
-        if (!dryRun) {
-          await options.store.uploadObject(photo.storagePath, photo.bytes, photo.contentType);
+    let uploadedNow = false;
+    let wasInserted: boolean;
+    try {
+      if (photo) {
+        storagePath = photo.storagePath;
+        if (!reusablePhotoPaths.has(photo.storagePath)) {
+          if (!dryRun) {
+            await options.store.uploadObject(photo.storagePath, photo.bytes, photo.contentType);
+            uploadedNow = true;
+          }
+          photosUploaded += 1;
         }
-        photosUploaded += 1;
       }
-    }
 
-    if (dryRun) {
-      inserted += 1;
-      continue;
-    }
+      if (dryRun) {
+        inserted += 1;
+        continue;
+      }
 
-    const wasInserted = await options.store.insertRow({
-      source_ref: record.source_ref,
-      kind: record.kind,
-      path: storagePath,
-      transcript: record,
-      transcript_status: statusByRef.get(record.source_ref) ?? "machine_read",
-    });
+      wasInserted = await options.store.insertRow({
+        source_ref: record.source_ref,
+        kind: record.kind,
+        path: storagePath,
+        transcript: record,
+        transcript_status: statusByRef.get(record.source_ref) ?? "machine_read",
+      });
+    } catch (err) {
+      // A write failed after validation. Say what is already written and that a second run is safe.
+      const message = err instanceof Error ? err.message : String(err);
+      const stopProblems = [`write failed at ${record.source_ref}: ${message}`];
+      if (uploadedNow && storagePath) {
+        stopProblems.push(
+          `the photo for ${record.source_ref} is in storage at "${storagePath}" but its row is not written; run the command again with the same files and it reuses that photo`,
+        );
+      }
+      stopProblems.push(
+        `rows written before the failure stay (${inserted}); run the command again with the same files to write the remaining rows`,
+      );
+      return {
+        ok: false,
+        stopped: true,
+        dryRun,
+        counts: { recordsRead, inserted, skipped, skippedDifferent, photosUploaded },
+        skippedDifferentRefs,
+        problems: stopProblems,
+      };
+    }
     if (wasInserted) {
       inserted += 1;
     } else {
@@ -370,8 +398,10 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
 
 export function formatImportResult(result: ImportResult): string {
   const { recordsRead, inserted, skipped, skippedDifferent, photosUploaded } = result.counts;
-  const prefix = !result.ok
-    ? "Import refused"
+  const prefix = result.stopped
+    ? "Import stopped after a write error"
+    : !result.ok
+      ? "Import refused"
     : result.dryRun
       ? "Dry run summary"
       : "Import summary";
