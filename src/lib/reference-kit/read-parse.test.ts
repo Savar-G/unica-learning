@@ -46,6 +46,7 @@ describe("assembleCandidateRecord", () => {
     expect(topicOf({ title: "Sample Exercise (12)", number: 2 })).toEqual({ title: "Sample Exercise (12) 2" });
     expect(topicOf({ title: "Facts up to 13", number: 3 })).toEqual({ title: "Facts up to 13 3" });
     expect(topicOf({ title: "Sample Topic" })).toEqual({ title: "Sample Topic" });
+    expect(topicOf({ title: "unclear", number: 2 })).toEqual({ title: "unclear", number: 2 });
     // A null or sentinel number is not folded; validation still sees it.
     expect(topicOf({ title: "Sample Topic", number: null })).toEqual({ title: "Sample Topic", number: null });
     expect(topicOf({ title: "Sample Topic", number: "unclear" })).toEqual({

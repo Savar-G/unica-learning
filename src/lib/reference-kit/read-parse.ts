@@ -96,16 +96,18 @@ export function extractJsonFromModelOutput(
 
 // topic.title is the full printed title with any number at its end. A reader that still splits
 // off a positive integer number gets it put back at the end of the title, and topic.number is
-// dropped. A null or sentinel number is left as it is.
+// dropped. A null or sentinel number is left as it is, and so is the number of an unclear title.
 function foldTopicNumber(obj: Record<string, unknown>): void {
   const topic = obj.topic;
   if (typeof topic !== "object" || topic === null || Array.isArray(topic)) return;
   const { number, ...rest } = topic as Record<string, unknown>;
   if (typeof number !== "number" || !Number.isInteger(number) || number < 1) return;
   const title = rest.title;
+  // A title that could not be read keeps the number apart: the number is the readable part.
+  if (title === UNCLEAR || title === NOT_STATED) return;
   if (title === null || title === undefined || (typeof title === "string" && !title.trim())) {
     rest.title = String(number);
-  } else if (typeof title === "string" && title !== UNCLEAR && title !== NOT_STATED) {
+  } else if (typeof title === "string") {
     const tokens = title.trim().split(/\s+/);
     // The number is already there as the last token (also as "#2" or "No.2"), or in round brackets
     // at the end (with or without a space before the brackets).
