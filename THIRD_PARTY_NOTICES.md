@@ -13,3 +13,5 @@ The render function's deployment carries this file and the packages' own licence
 | `jsqr` | Reads each page's QR code back from its image | Apache 2.0 (`node_modules/jsqr/LICENSE`) |
 | `sharp` (and libvips) | Crops page images to read the QR code | Apache 2.0 (`node_modules/sharp/LICENSE`); libvips LGPL 3.0 or later |
 | Geist and Geist Mono (`src/ds/fonts`) | Embedded in the workbook PDF and page images | SIL Open Font License 1.1 (https://github.com/vercel/geist-font/blob/main/OFL.txt) |
+| Geist (`src/lib/workbook-v2/render/fonts`) | Embedded in the PDF and page images of the v2 workbook engine | SIL Open Font License 1.1 (`src/lib/workbook-v2/render/fonts/OFL.txt`) |
+| Typst (installed by `npm run typst:install`, not in the repository) | Draws the pages of the v2 workbook engine | Apache 2.0 (https://github.com/typst/typst/blob/main/LICENSE) |

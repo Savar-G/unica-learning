@@ -166,3 +166,115 @@ test("preserves string and regex literals when stripping comments", () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+const ENGINE = "src/lib/workbook-v2";
+const ENGINE_CLEAN = {
+  ...CLEAN_FILES,
+  [`${ENGINE}/contract.ts`]: "export interface Rect { x: number }\nexport const EDGE = 36;\n",
+  [`${ENGINE}/hash.ts`]: "import { createHash } from 'node:crypto';\nexport const h = (t: string) => createHash('sha256').update(t).digest('hex');\n",
+  [`${ENGINE}/layout/pages.ts`]: "import QRCode from 'qrcode';\nimport { EDGE, type Rect } from '../contract';\nimport raw from '../fixtures/a.json';\nexport const p = (r: Rect, level: { name: string } | null) => (level === null ? raw : [QRCode, r.x + EDGE, Math.max(1, 2), `Level ${level.name}`, { date: 1, errorCorrectionLevel: 'M' }]);\n",
+  [`${ENGINE}/renderer.ts`]: "export interface Renderer { render(): Promise<void> }\n",
+  [`${ENGINE}/render/typst.ts`]: "import { execFile } from 'node:child_process';\nimport { readFile } from 'node:fs/promises';\nimport type { Renderer } from '../renderer';\nexport const r: Renderer = { render: async () => { execFile('typst'); await readFile('a'); } };\n",
+  [`${ENGINE}/render/page.typ`]: "// Draws a level page.\n#let model = json(\"pages.json\")\n",
+  [`${ENGINE}/testing/sample.ts`]: "import { existsSync } from 'node:fs';\nexport const ci = existsSync('a') && process.env.CI;\n",
+  [`${ENGINE}/layout/pages.test.ts`]: "import { expect, it } from 'vitest';\nimport fc from 'fast-check';\nimport { p } from './pages';\nimport { ci } from '../testing/sample';\nit('x', () => expect([p, fc, ci, new Date()]).toBeTruthy());\n",
+};
+
+function engineViolations(files) {
+  const root = makeTempRepo({ ...ENGINE_CLEAN, ...files });
+  try {
+    return checkRepo(root, { maxLines: {}, useEffectCounts: {}, suppressionCounts: {}, sprawlTests: [] }).violations.map(({ rule, file }) => `${rule} ${file}`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+test("the workbook engine may use its own modules and its allowed packages", () => {
+  assert.deepEqual(engineViolations({}), []);
+});
+
+test("the workbook engine imports nothing from the app", () => {
+  const layout = `${ENGINE}/layout/bad.ts`;
+  const imports = [
+    [layout, "import { a } from '@/lib/math';"],
+    [layout, "import type { A } from '@/lib/math';"],
+    [layout, "import { add } from '../../math';"],
+    [layout, "export { add } from '../../math';"],
+    [layout, "export * from '../../../app/page';"],
+    [layout, "import { cookies } from 'next/headers';"],
+    [layout, "import next from 'next';"],
+    [layout, "import React from 'react';"],
+    [layout, "import { createClient } from '@supabase/supabase-js';"],
+    [layout, "import 'server-only';"],
+    [layout, "import sharp from 'sharp';"],
+    [layout, "const m = await import('@/lib/math');"],
+    [layout, "const m = await import(name);"],
+    [layout, "const m = require('../../math');"],
+    [layout, "let a: import('@/lib/math').A;"],
+    [layout, "import { ci } from '../testing/sample';"],
+    [layout, "import { it } from './pages.test';"],
+    [layout, "import { r } from '../render/typst';"],
+    [layout, "import type { R } from '../render/typst';"],
+    [layout, "import { readFile } from 'node:fs/promises';"],
+    [layout, "import fs from 'fs';"],
+    [layout, "import { execFile } from 'node:child_process';"],
+    [layout, "import { randomUUID } from 'node:crypto';"],
+    [layout, "import crypto from 'node:crypto';"],
+    [layout, "import * as crypto from 'node:crypto';"],
+    [`${ENGINE}/render/bad.ts`, "import { a } from '@/lib/math';"],
+    [`${ENGINE}/render/bad.ts`, "import https from 'node:https';"],
+    [`${ENGINE}/render/bad.ts`, "import { randomUUID } from 'node:crypto';"],
+    [`${ENGINE}/layout/bad.test.ts`, "import { a } from '@/lib/math';"],
+    [`${ENGINE}/layout/bad.test.ts`, "import { add } from '../../math';"],
+    [`${ENGINE}/testing/bad.ts`, "import { createClient } from '@supabase/supabase-js';"],
+  ];
+  for (const [file, line] of imports) assert.deepEqual(engineViolations({ [file]: `${line}\nexport {};\n` }), [`engine-imports ${file}`], line);
+});
+
+test("the pure part of the workbook engine has no clock, random source, network, files or settings", () => {
+  const layout = `${ENGINE}/layout/bad.ts`;
+  const render = `${ENGINE}/render/bad.ts`;
+  const lines = [
+    [layout, "export const a = new Date();"],
+    [layout, "export const a = Date.now();"],
+    [layout, "export const a = Math.random();"],
+    [layout, "export const a = Math['random']();"],
+    [layout, "export const { random } = Math;"],
+    [layout, "export const a = crypto.randomUUID();"],
+    [layout, "export const a = fetch('https://example.com');"],
+    [layout, "export const a = globalThis.fetch;"],
+    [layout, "export const a = performance.now();"],
+    [layout, "export const a = process.env.X;"],
+    [layout, "export const a = (n: number) => n.toLocaleString();"],
+    [layout, "export const a = (s: string[]) => s.sort((x, y) => x.localeCompare(y));"],
+    [layout, "export const a = new Intl.NumberFormat();"],
+    [layout, "export const a = setTimeout(() => {}, 1);"],
+    [layout, "export const a = eval('1');"],
+    [render, "export const a = new Date();"],
+    [render, "export const a = Math.random();"],
+    [render, "export const a = fetch('https://example.com');"],
+    [render, "export const a = process.env.X;"],
+  ];
+  for (const [file, line] of lines) assert.deepEqual(engineViolations({ [file]: `${line}\n` }), [`engine-purity ${file}`], line);
+});
+
+test("the workbook engine has no level branch", () => {
+  const file = `${ENGINE}/layout/bad.ts`;
+  const lines = [
+    "export const a = (level: string) => level === '3';",
+    "export const a = (s: { level: { name: string } }) => s.level.name !== `3`;",
+    "export const a = (level: { number: number }) => (level.number >= 7 ? 48 : 56);",
+    "export const a = (level: { name: string }) => Number(level.name) < 7;",
+    "const LAST = '6';\nexport const a = (levelName: string) => levelName === LAST;",
+    "export const a = (grade: number) => grade > 3;",
+    "export const a = (level: string) => { switch (level) { case '3': return 1; default: return 2; } };",
+    "const HEIGHT: Record<string, number> = { 3: 56 };\nexport const a = (levelName: string) => HEIGHT[levelName];",
+    "export const a = (m: Map<string, number>, level: { id: string }) => m.get(level.id);",
+    "export const a = (level: { name: string }) => ['3', '4'].includes(level.name);",
+    "export const a = (level: { name: string }) => level.name.startsWith('Calc');",
+    "export const a = (level: { name: string }) => /^[3-6]$/.test(level.name);",
+    "export const a = (id: string) => id === 'level-3';",
+  ];
+  for (const line of lines) assert.deepEqual(engineViolations({ [file]: `${line}\n` }), [`engine-level-branch ${file}`], line);
+  assert.deepEqual(engineViolations({ [`${ENGINE}/render/bad.typ`]: "#if sheet.level == 3 { }\n" }), [`engine-level-branch ${ENGINE}/render/bad.typ`]);
+});
