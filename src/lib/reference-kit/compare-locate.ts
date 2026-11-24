@@ -1,6 +1,6 @@
-import type { ReferenceRecord } from "@/lib/reference-record";
+import type { PageItem, PageSection, ReferenceRecord } from "@/lib/reference-record";
 import { deepEqual, type RecordDifference } from "./compare-parts";
-import { normalizeProseText } from "./normalize";
+import { normalizeNotationText, normalizeProseText } from "./normalize";
 
 const PATH_TOKEN_RE = /([A-Za-z_]+)|\[(\d+)\]|\[n=(\d+)\]|\[b:(\d+)\]/g;
 const NUMBERED_LIST_ENTRY_RE = /^(sections\[(\d+)\]\.items|topics)\[n=(\d+)\]$/;
@@ -127,9 +127,29 @@ function normalizeSectionInstruction(instruction: unknown): unknown {
   return typeof instruction === "string" ? normalizeProseText(instruction) : instruction;
 }
 
+function sectionsShareShape(a: PageSection, b: PageSection): boolean {
+  if (normalizeSectionInstruction(a.instruction) !== normalizeSectionInstruction(b.instruction)) {
+    return false;
+  }
+  if (a.items.length === 0 || b.items.length === 0) return true;
+  const bNs = new Set(b.items.map((item) => item.n));
+  return a.items.some((item) => bNs.has(item.n));
+}
+
+function itemsMatchPrinted(a: PageItem, b: PageItem): boolean {
+  if (a.n !== b.n) return false;
+  if (a.expr === null && b.expr === null) {
+    return normalizeProseText(a.printed) === normalizeProseText(b.printed);
+  }
+  return normalizeNotationText(a.printed) === normalizeNotationText(b.printed);
+}
+
 // True when section `sectionIndex` in the kept record can be matched to reader A's section at the
 // same index with certainty: same section count, and for multi-section pages every section keeps
-// its normalized instruction and shares at least one item number when both have items.
+// its normalized instruction and shares at least one item number when both have items. If another
+// section in reader A cannot be told from the target by that test, the kept section must also keep
+// at least one item (same n and normalized printed text) from reader A's target that is absent from
+// every look-alike section.
 function sectionsMatchPosition(
   kept: ReferenceRecord,
   readerA: ReferenceRecord | null | undefined,
@@ -142,15 +162,20 @@ function sectionsMatchPosition(
   if (kept.sections.length !== readerA.sections.length) return false;
   if (kept.sections.length > 1) {
     for (let i = 0; i < kept.sections.length; i += 1) {
-      const ks = kept.sections[i];
-      const as = readerA.sections[i];
-      if (normalizeSectionInstruction(ks.instruction) !== normalizeSectionInstruction(as.instruction)) {
-        return false;
-      }
-      if (ks.items.length > 0 && as.items.length > 0) {
-        const aNs = new Set(as.items.map((item) => item.n));
-        if (!ks.items.some((item) => aNs.has(item.n))) return false;
-      }
+      if (!sectionsShareShape(kept.sections[i], readerA.sections[i])) return false;
+    }
+    const targetA = readerA.sections[sectionIndex];
+    const lookAlikes = readerA.sections.filter(
+      (sec, idx) => idx !== sectionIndex && sectionsShareShape(sec, targetA),
+    );
+    if (lookAlikes.length > 0) {
+      const keptTarget = kept.sections[sectionIndex];
+      const hasUniqueTargetItem = keptTarget.items.some(
+        (keptItem) =>
+          targetA.items.some((aItem) => itemsMatchPrinted(keptItem, aItem)) &&
+          !lookAlikes.some((other) => other.items.some((oItem) => itemsMatchPrinted(keptItem, oItem))),
+      );
+      if (!hasUniqueTargetItem) return false;
     }
   }
   return true;

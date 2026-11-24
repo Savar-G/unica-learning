@@ -2131,5 +2131,174 @@ describe("compareWorkFolder", () => {
     expect(swappedLine).toContain("location not known after the edit");
     expect(swappedLine).not.toMatch(/`sections\[0\]\.items\[(?:\d+)?\]`/);
   });
+
+  it("omits section locations when look-alike sections are swapped or identical, while keeping them on ordinary edits", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-cmp-lookalike-repo-"));
+    tempDirs.push(repo);
+
+    const proseItem = (n: number, printed: string) => ({
+      n,
+      printed,
+      form: null,
+      expr: null,
+      responses: [],
+    });
+    const scaffoldA = { kind: "caption" as const, text: "Note", applies_to: "all" as const };
+
+    const setupWork = (name: string, recA: PageRecord, recB: PageRecord) => {
+      const work = mkdtempSync(join(tmpdir(), `ref-cmp-lookalike-${name}-`));
+      tempDirs.push(work);
+      const file = `${recA.source_ref.replace(/:/g, "-")}.json`;
+      for (const [slot, family, rec] of [
+        ["a", "codex", recA],
+        ["b", "claude", recB],
+      ] as const) {
+        const dir = join(work, `reader-${slot}`);
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, "reader.json"), JSON.stringify({ family, model: "m1" }));
+        writeFileSync(join(dir, file), JSON.stringify(rec, null, 2));
+        writeFileSync(
+          join(dir, "run.json"),
+          JSON.stringify({
+            slot,
+            reader: { family, model: "m1" },
+            source: "sample",
+            photos: [
+              {
+                photo: `${SHA_1.slice(0, 12)}.jpg`,
+                photo_sha256: SHA_1,
+                status: "ok",
+                source_ref: rec.source_ref,
+                record_file: file,
+                notes: [],
+              },
+            ],
+          }),
+        );
+      }
+      return {
+        work,
+        finalPath: join(work, "final", file),
+        reportMdPath: join(work, "final", "report.md"),
+      };
+    };
+
+    const topItems = [proseItem(1, "Top line one"), proseItem(3, "Top line three")];
+    const topItemsWith2 = [topItems[0], proseItem(2, "Top line two"), topItems[1]];
+    const bottomItems = [proseItem(1, "Bottom line one"), proseItem(3, "Bottom line three")];
+
+    const distinctContentA = makePage({
+      source_ref: "sample:M:16a",
+      sections: [
+        { instruction: "Read.", scaffolds: [scaffoldA], items: topItems },
+        { instruction: "Read.", scaffolds: [], items: bottomItems },
+      ],
+    });
+    const distinctContentB = makePage({
+      source_ref: "sample:M:16a",
+      sections: [
+        { instruction: "Read.", scaffolds: [], items: topItemsWith2 },
+        { instruction: "Read.", scaffolds: [], items: bottomItems },
+      ],
+    });
+
+    // (a) Look-alike sections swapped -> no final_path, no insert_before, "location not known after the edit"
+    // on both an edited rerun and after checkAndMarkPage(..., photoCompared: true).
+    const swappedWork = setupWork("swapped", distinctContentA, distinctContentB);
+    compareWorkFolder({ workDir: swappedWork.work, repoRoot: repo });
+    const swappedRecord = JSON.parse(readFileSync(swappedWork.finalPath, "utf8")) as PageRecord;
+    swappedRecord.sections.reverse();
+    writeFileSync(swappedWork.finalPath, JSON.stringify(swappedRecord, null, 2));
+
+    const swappedEdited = compareWorkFolder({ workDir: swappedWork.work, repoRoot: repo }).pages[0];
+    expect(swappedEdited.status).toBe("machine_read");
+    const swappedEditedDiff = swappedEdited.differences.find((d) => d.path === "sections[0].items[n=2]");
+    expect(swappedEditedDiff?.final_path).toBeUndefined();
+    expect(swappedEditedDiff?.insert_before).toBeUndefined();
+    expect(swappedEditedDiff?.location_unknown).toBe(true);
+    const swappedEditedOnce = swappedEdited.once_read.find((d) => d.path === "sections[0].scaffolds[0]");
+    expect(swappedEditedOnce?.final_path).toBeUndefined();
+    expect(swappedEditedOnce?.location_unknown).toBe(true);
+    const swappedEditedMd = readFileSync(swappedWork.reportMdPath, "utf8");
+    const swappedEditedDiffLine = swappedEditedMd.split("\n").find((l) => l.includes("sections[0].items[n=2]"));
+    expect(swappedEditedDiffLine).toContain("location not known after the edit");
+    expect(swappedEditedDiffLine).not.toMatch(/`sections\[0\]\.items\[(?:\d+)?\]`/);
+    const swappedEditedOnceLine = swappedEditedMd.split("\n").find((l) => l.includes("sections[0].scaffolds[0]"));
+    expect(swappedEditedOnceLine).toContain("location not known after the edit");
+
+    checkAndMarkPage({
+      workDir: swappedWork.work,
+      repoRoot: repo,
+      page: "sample:M:16a",
+      photoCompared: true,
+    });
+    const swappedChecked = compareWorkFolder({ workDir: swappedWork.work, repoRoot: repo }).pages[0];
+    expect(swappedChecked.status).toBe("human_checked");
+    const swappedCheckedDiff = swappedChecked.differences.find((d) => d.path === "sections[0].items[n=2]");
+    expect(swappedCheckedDiff?.final_path).toBeUndefined();
+    expect(swappedCheckedDiff?.insert_before).toBeUndefined();
+    expect(swappedCheckedDiff?.location_unknown).toBe(true);
+    const swappedCheckedOnce = swappedChecked.once_read.find((d) => d.path === "sections[0].scaffolds[0]");
+    expect(swappedCheckedOnce?.final_path).toBeUndefined();
+    expect(swappedCheckedOnce?.location_unknown).toBe(true);
+    const swappedCheckedMd = readFileSync(swappedWork.reportMdPath, "utf8");
+    const swappedCheckedDiffLine = swappedCheckedMd.split("\n").find((l) => l.includes("sections[0].items[n=2]"));
+    expect(swappedCheckedDiffLine).toContain("location not known after the edit");
+    expect(swappedCheckedDiffLine).not.toMatch(/`sections\[0\]\.items\[(?:\d+)?\]`/);
+
+    // (b) Look-alike sections, not swapped, ordinary edit of one item -> location is still given.
+    const ordinaryWork = setupWork("ordinary", distinctContentA, distinctContentB);
+    compareWorkFolder({ workDir: ordinaryWork.work, repoRoot: repo });
+    const ordinaryEditedRecord = JSON.parse(readFileSync(ordinaryWork.finalPath, "utf8")) as PageRecord;
+    ordinaryEditedRecord.sections[0].items[0].printed = "Corrected top line";
+    writeFileSync(ordinaryWork.finalPath, JSON.stringify(ordinaryEditedRecord, null, 2));
+
+    const ordinaryPage = compareWorkFolder({ workDir: ordinaryWork.work, repoRoot: repo }).pages[0];
+    expect(ordinaryPage.differences.find((d) => d.path === "sections[0].items[n=2]")).toMatchObject({
+      reader: "b",
+      insert_before: 1,
+      final_path: "sections[0].items[1]",
+    });
+    expect(ordinaryPage.once_read.find((d) => d.path === "sections[0].scaffolds[0]")).toMatchObject({
+      reader: "a",
+      final_path: "sections[0].scaffolds[0]",
+    });
+
+    // (c) Look-alike sections with identical items -> location unknown.
+    const identicalItems = [proseItem(1, "Same line one"), proseItem(3, "Same line three")];
+    const identicalItemsWith2 = [identicalItems[0], proseItem(2, "Same line two"), identicalItems[1]];
+    const identicalA = makePage({
+      source_ref: "sample:M:17a",
+      sections: [
+        { instruction: "Read.", scaffolds: [scaffoldA], items: identicalItems },
+        { instruction: "Read.", scaffolds: [], items: identicalItems },
+      ],
+    });
+    const identicalB = makePage({
+      source_ref: "sample:M:17a",
+      sections: [
+        { instruction: "Read.", scaffolds: [], items: identicalItemsWith2 },
+        { instruction: "Read.", scaffolds: [], items: identicalItems },
+      ],
+    });
+    const identicalWork = setupWork("identical", identicalA, identicalB);
+    compareWorkFolder({ workDir: identicalWork.work, repoRoot: repo });
+    const identicalEdited = JSON.parse(readFileSync(identicalWork.finalPath, "utf8")) as PageRecord;
+    identicalEdited.topic.title = "Edited topic title";
+    writeFileSync(identicalWork.finalPath, JSON.stringify(identicalEdited, null, 2));
+
+    const identicalPage = compareWorkFolder({ workDir: identicalWork.work, repoRoot: repo }).pages[0];
+    const identicalDiff = identicalPage.differences.find((d) => d.path === "sections[0].items[n=2]");
+    expect(identicalDiff?.final_path).toBeUndefined();
+    expect(identicalDiff?.insert_before).toBeUndefined();
+    expect(identicalDiff?.location_unknown).toBe(true);
+    const identicalOnce = identicalPage.once_read.find((d) => d.path === "sections[0].scaffolds[0]");
+    expect(identicalOnce?.final_path).toBeUndefined();
+    expect(identicalOnce?.location_unknown).toBe(true);
+    const identicalLine = readFileSync(identicalWork.reportMdPath, "utf8")
+      .split("\n")
+      .find((l) => l.includes("sections[0].items[n=2]"));
+    expect(identicalLine).toContain("location not known after the edit");
+  });
 });
 
