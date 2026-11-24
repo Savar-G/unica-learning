@@ -4,12 +4,15 @@ import fc from "fast-check";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import {
+  EXPR_KINDS,
   NOT_STATED,
   recordPathResolves,
   UNCLEAR,
   type ContentsRecord,
   type ExampleMark,
   type ExampleStep,
+  type Expr,
+  type ExprKind,
   type PageRecord,
   type ReferenceRecord,
   type Scaffold,
@@ -23,7 +26,9 @@ import {
   compareRecordsWithCounts,
   decidePageOutcome,
   decideStatus,
+  EXPRESSION_DISAGREEMENT_REASON,
   findAnswerDisagreements,
+  findExpressionDisagreements,
   meetsAgreementThreshold,
   needsPersonRead,
   normalizeNotationText,
@@ -1977,6 +1982,15 @@ describe("90% reader agreement rule", () => {
         },
       },
       {
+        reason: EXPRESSION_DISAGREEMENT_REASON,
+        label: "item expression disagreement",
+        at95: {
+          diffs: [
+            { path: "sections[0].items[n=1].expr.operands[0]", a: 2, b: 1, kind: "value" },
+          ],
+        },
+      },
+      {
         reason: "no compared fields",
         label: "zero compared fields",
         custom: { ...base100, counts: { agreed: 0, compared: 0 } },
@@ -2403,7 +2417,10 @@ describe("90% reader agreement rule", () => {
         recordA: missingItemA,
         recordB: base,
       }),
-    ).toEqual({ status: "machine_read", stopReasons: [ANSWER_DISAGREEMENT_REASON] });
+    ).toEqual({
+      status: "machine_read",
+      stopReasons: [ANSWER_DISAGREEMENT_REASON, EXPRESSION_DISAGREEMENT_REASON],
+    });
 
     const onceReadItemOutcome = decidePageOutcome({
       hasA: true,
@@ -2422,7 +2439,7 @@ describe("90% reader agreement rule", () => {
     });
     expect(onceReadItemOutcome).toEqual({
       status: "machine_read",
-      stopReasons: [ANSWER_DISAGREEMENT_REASON],
+      stopReasons: [ANSWER_DISAGREEMENT_REASON, EXPRESSION_DISAGREEMENT_REASON],
     });
 
     // One-sided action item with no answer (checkbox, answer: null) does NOT trigger the answer stop rule.
@@ -2846,6 +2863,788 @@ describe("90% reader agreement rule", () => {
         recordB: soleWorkB,
       }),
     ).toEqual({ status: "machine_read", stopReasons: [ANSWER_DISAGREEMENT_REASON] });
+  });
+
+  it("stops a page at any agreement percentage when readers disagree on any part of an expression across every Expr kind, place, and difference kind", () => {
+    const makePlacePages = (
+      place: "item" | "example_part",
+      exprA: Expr | null,
+      exprB: Expr | null,
+    ): { a: PageRecord; b: PageRecord; prefix: string } => {
+      const a = makeGridPage(12);
+      if (place === "item") {
+        a.sections[0].items[0] = {
+          n: 1,
+          printed: "2 + 3 =",
+          form: "horizontal",
+          expr: exprA,
+          responses: [{ position: "after_equals", cue: null, answer: "5", answer_source: "reader" }],
+        };
+        const b = structuredClone(a);
+        b.sections[0].items[0].expr = exprB;
+        return { a, b, prefix: "sections[0].items[n=1].expr" };
+      }
+      a.examples = [
+        {
+          position: "top",
+          relation: "compare",
+          parts: [{ form: "horizontal", expr: exprA, shown_answer: "5" }],
+        },
+      ];
+      const b = structuredClone(a);
+      if (Array.isArray(b.examples)) {
+        b.examples[0].parts[0].expr = exprB;
+      }
+      return { a, b, prefix: "examples[0].parts[0].expr" };
+    };
+
+    const decide = (a: PageRecord, b: PageRecord) => {
+      const cmp = compareRecordsWithCounts(a, b);
+      const outcome = decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        sameDigest: true,
+        diffs: cmp.diffs,
+        counts: cmp.counts,
+        recordA: a,
+        recordB: b,
+      });
+      return { cmp, outcome };
+    };
+
+    // Real bug reproduction: printed "2 + 3 =", reader A stores 1 x 5, reader B stores 2 + 3, both answers are 5 (>= 90% agreement).
+    const repro = makePlacePages(
+      "item",
+      { kind: "arith", op: "mul", operands: [1, 5] },
+      { kind: "arith", op: "add", operands: [2, 3] },
+    );
+    const reproRes = decide(repro.a, repro.b);
+    expect(agreementPercentage(reproRes.cmp.counts.agreed, reproRes.cmp.counts.compared)).toBeGreaterThanOrEqual(90);
+    expect(reproRes.cmp.counts.compared - reproRes.cmp.counts.agreed).toBe(3);
+    expect(findExpressionDisagreements(reproRes.cmp.diffs)).toEqual([
+      "sections[0].items[n=1].expr.op",
+      "sections[0].items[n=1].expr.operands[0]",
+      "sections[0].items[n=1].expr.operands[1]",
+    ]);
+    expect(reproRes.outcome).toEqual({
+      status: "machine_read",
+      stopReasons: [EXPRESSION_DISAGREEMENT_REASON],
+    });
+
+    // Both answer and expression disagreement on the same page shows both reasons (E3).
+    const bothA = structuredClone(repro.a);
+    const bothB = structuredClone(repro.b);
+    bothB.sections[0].items[0].responses[0].answer = "6";
+    const bothRes = decide(bothA, bothB);
+    expect(bothRes.outcome.status).toBe("machine_read");
+    expect(bothRes.outcome.stopReasons).toEqual([
+      ANSWER_DISAGREEMENT_REASON,
+      EXPRESSION_DISAGREEMENT_REASON,
+    ]);
+
+    // Table over every Expr kind in EXPR_KINDS x both places x every reachable difference kind.
+    const exprCases: Array<{
+      exprKind: ExprKind;
+      label: string;
+      a: Expr;
+      b: Expr;
+      expectedKind: "value" | "one_unclear" | "both_unclear" | "once_read";
+      expectedSuffix: string;
+    }> = [
+      // arith
+      {
+        exprKind: "arith",
+        label: "arith op value",
+        a: { kind: "arith", op: "add", operands: [2, 3] },
+        b: { kind: "arith", op: "mul", operands: [2, 3] },
+        expectedKind: "value",
+        expectedSuffix: ".op",
+      },
+      {
+        exprKind: "arith",
+        label: "arith operand value",
+        a: { kind: "arith", op: "add", operands: [2, 3] },
+        b: { kind: "arith", op: "add", operands: [2, 4] },
+        expectedKind: "value",
+        expectedSuffix: ".operands[1]",
+      },
+      {
+        exprKind: "arith",
+        label: "arith operand one_unclear",
+        a: { kind: "arith", op: "add", operands: [2, 3] },
+        b: { kind: "arith", op: "add", operands: [2, UNCLEAR] },
+        expectedKind: "one_unclear",
+        expectedSuffix: ".operands[1]",
+      },
+      {
+        exprKind: "arith",
+        label: "arith op both_unclear",
+        a: { kind: "arith", op: UNCLEAR, operands: [2, 3] },
+        b: { kind: "arith", op: UNCLEAR, operands: [2, 3] },
+        expectedKind: "both_unclear",
+        expectedSuffix: ".op",
+      },
+      // chain
+      {
+        exprKind: "chain",
+        label: "chain term value",
+        a: { kind: "chain", terms: [2, 4, null], step: 2 },
+        b: { kind: "chain", terms: [2, 6, null], step: 2 },
+        expectedKind: "value",
+        expectedSuffix: ".terms[1]",
+      },
+      {
+        exprKind: "chain",
+        label: "chain step value",
+        a: { kind: "chain", terms: [2, 4, null], step: 2 },
+        b: { kind: "chain", terms: [2, 4, null], step: 3 },
+        expectedKind: "value",
+        expectedSuffix: ".step",
+      },
+      {
+        exprKind: "chain",
+        label: "chain term one_unclear",
+        a: { kind: "chain", terms: [2, 4, null], step: 2 },
+        b: { kind: "chain", terms: [2, UNCLEAR, null], step: 2 },
+        expectedKind: "one_unclear",
+        expectedSuffix: ".terms[1]",
+      },
+      {
+        exprKind: "chain",
+        label: "chain step both_unclear",
+        a: { kind: "chain", terms: [2, 4, null], step: UNCLEAR },
+        b: { kind: "chain", terms: [2, 4, null], step: UNCLEAR },
+        expectedKind: "both_unclear",
+        expectedSuffix: ".step",
+      },
+      // missing
+      {
+        exprKind: "missing",
+        label: "missing result value",
+        a: { kind: "missing", op: "add", operands: [3, null], result: 8 },
+        b: { kind: "missing", op: "add", operands: [3, null], result: 9 },
+        expectedKind: "value",
+        expectedSuffix: ".result",
+      },
+      {
+        exprKind: "missing",
+        label: "missing operand one_unclear",
+        a: { kind: "missing", op: "add", operands: [3, null], result: 8 },
+        b: { kind: "missing", op: "add", operands: [UNCLEAR, null], result: 8 },
+        expectedKind: "one_unclear",
+        expectedSuffix: ".operands[0]",
+      },
+      {
+        exprKind: "missing",
+        label: "missing result both_unclear",
+        a: { kind: "missing", op: "add", operands: [3, null], result: UNCLEAR },
+        b: { kind: "missing", op: "add", operands: [3, null], result: UNCLEAR },
+        expectedKind: "both_unclear",
+        expectedSuffix: ".result",
+      },
+      // linked
+      {
+        exprKind: "linked",
+        label: "linked pair[0] value",
+        a: {
+          kind: "linked",
+          pair: [
+            { kind: "arith", op: "add", operands: [2, 3] },
+            { kind: "arith", op: "sub", operands: [5, 3] },
+          ],
+          connector: "then",
+        },
+        b: {
+          kind: "linked",
+          pair: [
+            { kind: "arith", op: "add", operands: [2, 4] },
+            { kind: "arith", op: "sub", operands: [5, 3] },
+          ],
+          connector: "then",
+        },
+        expectedKind: "value",
+        expectedSuffix: ".pair[0].operands[1]",
+      },
+      {
+        exprKind: "linked",
+        label: "linked pair[1] one_unclear",
+        a: {
+          kind: "linked",
+          pair: [
+            { kind: "arith", op: "add", operands: [2, 3] },
+            { kind: "arith", op: "sub", operands: [5, 3] },
+          ],
+          connector: "then",
+        },
+        b: {
+          kind: "linked",
+          pair: [
+            { kind: "arith", op: "add", operands: [2, 3] },
+            { kind: "arith", op: UNCLEAR, operands: [5, 3] },
+          ],
+          connector: "then",
+        },
+        expectedKind: "one_unclear",
+        expectedSuffix: ".pair[1].op",
+      },
+      {
+        exprKind: "linked",
+        label: "linked pair[0] both_unclear",
+        a: {
+          kind: "linked",
+          pair: [
+            { kind: "arith", op: UNCLEAR, operands: [2, 3] },
+            { kind: "arith", op: "sub", operands: [5, 3] },
+          ],
+        },
+        b: {
+          kind: "linked",
+          pair: [
+            { kind: "arith", op: UNCLEAR, operands: [2, 3] },
+            { kind: "arith", op: "sub", operands: [5, 3] },
+          ],
+        },
+        expectedKind: "both_unclear",
+        expectedSuffix: ".pair[0].op",
+      },
+      {
+        exprKind: "linked",
+        label: "linked connector once_read",
+        a: {
+          kind: "linked",
+          pair: [
+            { kind: "arith", op: "add", operands: [2, 3] },
+            { kind: "arith", op: "sub", operands: [5, 3] },
+          ],
+          connector: "and",
+        },
+        b: {
+          kind: "linked",
+          pair: [
+            { kind: "arith", op: "add", operands: [2, 3] },
+            { kind: "arith", op: "sub", operands: [5, 3] },
+          ],
+        },
+        expectedKind: "once_read",
+        expectedSuffix: ".connector",
+      },
+      {
+        exprKind: "linked",
+        label: "linked nested notation figure with different numbers",
+        a: {
+          kind: "linked",
+          pair: [
+            { kind: "notation", latex: "x + 1", figure: "Bar with 3 boxes" },
+            { kind: "arith", op: "add", operands: [1, 2] },
+          ],
+        },
+        b: {
+          kind: "linked",
+          pair: [
+            { kind: "notation", latex: "x + 1", figure: "Bar with 4 boxes" },
+            { kind: "arith", op: "add", operands: [1, 2] },
+          ],
+        },
+        expectedKind: "value",
+        expectedSuffix: ".pair[0].figure",
+      },
+      // word
+      {
+        exprKind: "word",
+        label: "word text value",
+        a: { kind: "word", text: "Add two apples", expr: { kind: "arith", op: "add", operands: [2, 3] }, unit: "apples" },
+        b: { kind: "word", text: "Add two pears", expr: { kind: "arith", op: "add", operands: [2, 3] }, unit: "apples" },
+        expectedKind: "value",
+        expectedSuffix: ".text",
+      },
+      {
+        exprKind: "word",
+        label: "word nested expr value",
+        a: { kind: "word", text: "Find the total", expr: { kind: "arith", op: "add", operands: [2, 3] } },
+        b: { kind: "word", text: "Find the total", expr: { kind: "arith", op: "add", operands: [2, 4] } },
+        expectedKind: "value",
+        expectedSuffix: ".expr.operands[1]",
+      },
+      {
+        exprKind: "word",
+        label: "word expr one_unclear",
+        a: { kind: "word", text: "Find the total", expr: { kind: "arith", op: "add", operands: [2, 3] } },
+        b: { kind: "word", text: "Find the total", expr: UNCLEAR },
+        expectedKind: "one_unclear",
+        expectedSuffix: ".expr",
+      },
+      {
+        exprKind: "word",
+        label: "word expr both_unclear",
+        a: { kind: "word", text: "Find the total", expr: UNCLEAR },
+        b: { kind: "word", text: "Find the total", expr: UNCLEAR },
+        expectedKind: "both_unclear",
+        expectedSuffix: ".expr",
+      },
+      {
+        exprKind: "word",
+        label: "word unit once_read",
+        a: { kind: "word", text: "Find the total", expr: null, unit: "cm" },
+        b: { kind: "word", text: "Find the total", expr: null },
+        expectedKind: "once_read",
+        expectedSuffix: ".unit",
+      },
+      {
+        exprKind: "word",
+        label: "word nested notation figure with different numbers",
+        a: { kind: "word", text: "Find x", expr: { kind: "notation", latex: "x + 1", figure: "Circle with 2 halves" } },
+        b: { kind: "word", text: "Find x", expr: { kind: "notation", latex: "x + 1", figure: "Circle with 3 halves" } },
+        expectedKind: "value",
+        expectedSuffix: ".expr.figure",
+      },
+      // notation
+      {
+        exprKind: "notation",
+        label: "notation latex value",
+        a: { kind: "notation", latex: "\\frac{1}{2} + \\frac{1}{4}" },
+        b: { kind: "notation", latex: "\\frac{1}{2} + \\frac{1}{3}" },
+        expectedKind: "value",
+        expectedSuffix: ".latex",
+      },
+      {
+        exprKind: "notation",
+        label: "notation latex one_unclear",
+        a: { kind: "notation", latex: "x + 1" },
+        b: { kind: "notation", latex: UNCLEAR },
+        expectedKind: "one_unclear",
+        expectedSuffix: ".latex",
+      },
+      {
+        exprKind: "notation",
+        label: "notation latex both_unclear",
+        a: { kind: "notation", latex: UNCLEAR },
+        b: { kind: "notation", latex: UNCLEAR },
+        expectedKind: "both_unclear",
+        expectedSuffix: ".latex",
+      },
+      {
+        exprKind: "notation",
+        label: "notation figure once_read",
+        a: { kind: "notation", latex: "x + 1", figure: "Number line" },
+        b: { kind: "notation", latex: "x + 1" },
+        expectedKind: "once_read",
+        expectedSuffix: ".figure",
+      },
+      {
+        exprKind: "notation",
+        label: "notation figure with different numbers",
+        a: { kind: "notation", latex: "x + 1", figure: "Bar with 4 squares" },
+        b: { kind: "notation", latex: "x + 1", figure: "Bar with 5 squares" },
+        expectedKind: "value",
+        expectedSuffix: ".figure",
+      },
+    ];
+
+    // Guard: every ExprKind in types.ts is covered in the table.
+    expect([...new Set(exprCases.map((c) => c.exprKind))].sort()).toEqual([...EXPR_KINDS].sort());
+
+    for (const place of ["item", "example_part"] as const) {
+      for (const c of exprCases) {
+        const { a, b, prefix } = makePlacePages(place, c.a, c.b);
+        const { cmp, outcome } = decide(a, b);
+        const tag = `${place}:${c.label}`;
+        expect(cmp.diffs, tag).toHaveLength(1);
+        expect(cmp.diffs[0]?.kind, tag).toBe(c.expectedKind);
+        expect(cmp.diffs[0]?.path, tag).toBe(`${prefix}${c.expectedSuffix}`);
+        // One expression difference counts 1 disagreement; the stop rule never changes the counts.
+        expect(cmp.counts.compared - cmp.counts.agreed, tag).toBe(1);
+        expect(agreementPercentage(cmp.counts.agreed, cmp.counts.compared), tag).toBeGreaterThanOrEqual(95);
+        expect(findExpressionDisagreements(cmp.diffs), tag).toEqual([`${prefix}${c.expectedSuffix}`]);
+        expect(outcome, tag).toEqual({
+          status: "machine_read",
+          stopReasons: [EXPRESSION_DISAGREEMENT_REASON],
+        });
+      }
+
+      // Kind mismatch and null vs Expr in both places
+      const kindPair = makePlacePages(
+        place,
+        { kind: "arith", op: "add", operands: [2, 3] },
+        { kind: "missing", op: "add", operands: [2, null], result: 5 },
+      );
+      const kindRes = decide(kindPair.a, kindPair.b);
+      expect(findExpressionDisagreements(kindRes.cmp.diffs), `${place}:kind`).toEqual([`${kindPair.prefix}.kind`]);
+      expect(kindRes.outcome, `${place}:kind`).toEqual({
+        status: "machine_read",
+        stopReasons: [EXPRESSION_DISAGREEMENT_REASON],
+      });
+
+      const nullPair = makePlacePages(place, { kind: "arith", op: "add", operands: [2, 3] }, null);
+      const nullRes = decide(nullPair.a, nullPair.b);
+      expect(findExpressionDisagreements(nullRes.cmp.diffs), `${place}:null`).toEqual([nullPair.prefix]);
+      expect(nullRes.outcome, `${place}:null`).toEqual({
+        status: "machine_read",
+        stopReasons: [EXPRESSION_DISAGREEMENT_REASON],
+      });
+
+      // Direct order difference on an expression path also stops (E1).
+      const orderPath = `${kindPair.prefix}.operands`;
+      expect(
+        findExpressionDisagreements([{ path: orderPath, a: [2, 3], b: [3, 2], kind: "order" }]),
+        `${place}:order`,
+      ).toEqual([orderPath]);
+      expect(
+        decidePageOutcome({
+          hasA: true,
+          hasB: true,
+          familyA: "codex",
+          familyB: "claude",
+          sameDigest: true,
+          diffs: [{ path: orderPath, a: [2, 3], b: [3, 2], kind: "order" }],
+          counts: { agreed: 19, compared: 20 },
+        }),
+        `${place}:order`,
+      ).toEqual({ status: "machine_read", stopReasons: [EXPRESSION_DISAGREEMENT_REASON] });
+    }
+
+    // Must-pass controls: equal expressions after compare's normalisations stay double_read.
+    const normCases: Array<{ label: string; a: Expr; b: Expr }> = [
+      {
+        label: "notation latex spacing and operator normalisation",
+        a: { kind: "notation", latex: "2 × 3" },
+        b: { kind: "notation", latex: "2  \\times  3" },
+      },
+      {
+        label: "notation figure prose normalisation",
+        a: { kind: "notation", latex: "x = 1", figure: "Shaded bar." },
+        b: { kind: "notation", latex: "x = 1", figure: "shaded   bar" },
+      },
+      {
+        label: "word text and unit prose normalisation",
+        a: { kind: "word", text: "Find the total.", expr: { kind: "arith", op: "add", operands: [2, 3] }, unit: "Apples." },
+        b: { kind: "word", text: "find  the total", expr: { kind: "arith", op: "add", operands: [2, 3] }, unit: "apples" },
+      },
+      {
+        label: "linked connector prose normalisation",
+        a: {
+          kind: "linked",
+          pair: [
+            { kind: "arith", op: "add", operands: [2, 3] },
+            { kind: "arith", op: "sub", operands: [5, 3] },
+          ],
+          connector: "Then.",
+        },
+        b: {
+          kind: "linked",
+          pair: [
+            { kind: "arith", op: "add", operands: [2, 3] },
+            { kind: "arith", op: "sub", operands: [5, 3] },
+          ],
+          connector: "then",
+        },
+      },
+    ];
+    for (const nc of normCases) {
+      for (const place of ["item", "example_part"] as const) {
+        const { a, b } = makePlacePages(place, nc.a, nc.b);
+        const res = decide(a, b);
+        expect(res.cmp.diffs, `${place}:${nc.label}`).toEqual([]);
+        expect(findExpressionDisagreements(res.cmp.diffs), `${place}:${nc.label}`).toEqual([]);
+        expect(res.outcome, `${place}:${nc.label}`).toEqual({ status: "double_read", stopReasons: [] });
+      }
+    }
+
+    // Must-pass controls: wording on expr.figure (same figure, same numbers and math symbols) never stops a page.
+    const wordingCases: Array<{ label: string; a: Expr; b: Expr; suffix: string }> = [
+      {
+        label: "notation figure wording",
+        a: { kind: "notation", latex: "x + 1", figure: "Bar with 4 squares" },
+        b: { kind: "notation", latex: "x + 1", figure: "Strip of 4 boxes" },
+        suffix: ".figure",
+      },
+      {
+        label: "word nested notation figure wording",
+        a: { kind: "word", text: "Find x", expr: { kind: "notation", latex: "x + 1", figure: "Circle with 2 halves" } },
+        b: { kind: "word", text: "Find x", expr: { kind: "notation", latex: "x + 1", figure: "Round shape in 2 parts" } },
+        suffix: ".expr.figure",
+      },
+      {
+        label: "linked nested notation figure wording",
+        a: {
+          kind: "linked",
+          pair: [
+            { kind: "notation", latex: "x + 1", figure: "Bar with 3 boxes" },
+            { kind: "arith", op: "add", operands: [1, 2] },
+          ],
+        },
+        b: {
+          kind: "linked",
+          pair: [
+            { kind: "notation", latex: "x + 1", figure: "Strip showing 3 boxes" },
+            { kind: "arith", op: "add", operands: [1, 2] },
+          ],
+        },
+        suffix: ".pair[0].figure",
+      },
+    ];
+    for (const wc of wordingCases) {
+      for (const place of ["item", "example_part"] as const) {
+        const tag = `${place}:${wc.label}`;
+        const { a, b, prefix } = makePlacePages(place, wc.a, wc.b);
+        const only = decide(a, b);
+        expect(only.cmp.diffs.map((d) => [d.path, d.kind]), tag).toEqual([[`${prefix}${wc.suffix}`, "wording"]]);
+        expect(only.cmp.counts.agreed, tag).toBe(only.cmp.counts.compared);
+        expect(findExpressionDisagreements(only.cmp.diffs), tag).toEqual([]);
+        expect(only.outcome, tag).toEqual({ status: "double_read", stopReasons: [] });
+
+        // At 99% (one more difference, outside expr) the page stays agreement_accepted.
+        b.sections[0].instruction = "Subtract.";
+        const at99 = decide(a, b);
+        expect(at99.cmp.diffs.map((d) => d.kind).sort(), tag).toEqual(["value", "wording"]);
+        expect(agreementPercentage(at99.cmp.counts.agreed, at99.cmp.counts.compared), tag).toBeGreaterThanOrEqual(99);
+        expect(findExpressionDisagreements(at99.cmp.diffs), tag).toEqual([]);
+        expect(at99.outcome, tag).toEqual({ status: "agreement_accepted", stopReasons: [] });
+      }
+    }
+
+    // Must-pass controls: differences and wording outside expr, plus paths containing "expr" elsewhere.
+    const outsideBase = makeGridPage(12);
+    outsideBase.examples = [
+      {
+        position: "top",
+        relation: "compare",
+        parts: [{ form: "horizontal", caption: "Part A", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "5" }],
+        steps: [{ n: 1, shows: "setup", printed: "2 + 3" }],
+        marks: [{ kind: "box", step: 1, description: "Box around 2" }],
+      },
+    ];
+    const outsideDiff = structuredClone(outsideBase);
+    outsideDiff.topic.title = "expr heading";
+    outsideDiff.sections[0].items[0].printed = "2 + 3 = ?";
+    if (Array.isArray(outsideDiff.examples)) {
+      outsideDiff.examples[0].parts[0].caption = "Part B";
+      if (Array.isArray(outsideDiff.examples[0].marks)) {
+        outsideDiff.examples[0].marks[0].description = "Frame around 2";
+      }
+    }
+    const outsideRes = decide(outsideBase, outsideDiff);
+    expect(findExpressionDisagreements(outsideRes.cmp.diffs)).toEqual([]);
+    expect(outsideRes.outcome).toEqual({ status: "agreement_accepted", stopReasons: [] });
+
+    // Wording outside expr only -> double_read.
+    const nonExprWordingB = structuredClone(outsideBase);
+    if (Array.isArray(nonExprWordingB.examples) && Array.isArray(nonExprWordingB.examples[0].marks)) {
+      nonExprWordingB.examples[0].marks[0].description = "Frame around 2";
+    }
+    const nonExprWordingRes = decide(outsideBase, nonExprWordingB);
+    expect(findExpressionDisagreements(nonExprWordingRes.cmp.diffs)).toEqual([]);
+    expect(nonExprWordingRes.outcome).toEqual({ status: "double_read", stopReasons: [] });
+
+    // Paths that merely contain the substring "expr" elsewhere never match.
+    const decoyPaths = [
+      "expr",
+      "topic.expr",
+      "sections[0].items[n=1].expr_note",
+      "sections[0].scaffolds[0].expr",
+      "examples[0].expr",
+      "examples[0].parts[0].expression",
+      "examples[0].steps[n=1].expr",
+      "topics[n=1].expr",
+    ];
+    expect(
+      findExpressionDisagreements(
+        decoyPaths.map((path) => ({ path, a: "expr A", b: "expr B", kind: "value" as const })),
+      ),
+    ).toEqual([]);
+  });
+
+  it("stops on any one-reader-only or unmatched container holding an expression (even with no answer) and passes entries with no expression", () => {
+    const exprItemNoAns = {
+      n: 99,
+      printed: "2 + 3",
+      form: "horizontal" as const,
+      expr: { kind: "arith" as const, op: "add" as const, operands: [2, 3] },
+      responses: [{ position: "work_area" as const, cue: null, answer: null, answer_source: "unchecked" as const }],
+    };
+    const nullExprItem = {
+      n: 99,
+      printed: "Read aloud",
+      form: null,
+      expr: null,
+      responses: [{ position: "checkbox" as const, cue: null, answer: null, answer_source: "unchecked" as const }],
+    };
+    const exprPartNoAns = {
+      form: "horizontal" as const,
+      expr: { kind: "arith" as const, op: "add" as const, operands: [1, 2] },
+    };
+    const nullExprPart = {
+      form: "horizontal" as const,
+      expr: null,
+    };
+    const exprExampleNoAns = {
+      position: "top" as const,
+      relation: "compare" as const,
+      parts: [exprPartNoAns],
+      steps: [{ n: 1, shows: "setup" as const, printed: "1 + 2" }],
+      marks: [],
+    };
+    const nullExprExample = {
+      position: "top" as const,
+      relation: "compare" as const,
+      parts: [nullExprPart],
+      steps: [{ n: 1, shows: "setup" as const, printed: "Read" }],
+      marks: [],
+    };
+    const exprSection = { instruction: "Extra.", scaffolds: [], items: [exprItemNoAns] };
+    const nullExprSection = { instruction: "Extra.", scaffolds: [], items: [nullExprItem] };
+
+    // Real compareRecordsWithCounts cases at >= 90% agreement (and with NO answer in the one-sided entry)
+    const realContainerCases: Array<{
+      label: string;
+      mutateB: (b: PageRecord) => void;
+      expectedExprPaths: string[];
+      expectedStatus: "machine_read" | "agreement_accepted";
+    }> = [
+      {
+        label: "one-sided section with expr (no answer)",
+        mutateB: (b) => {
+          b.sections.push(exprSection);
+        },
+        expectedExprPaths: ["sections[1]"],
+        expectedStatus: "machine_read",
+      },
+      {
+        label: "one-sided section with only expr: null",
+        mutateB: (b) => {
+          b.sections.push(nullExprSection);
+        },
+        expectedExprPaths: [],
+        expectedStatus: "agreement_accepted",
+      },
+      {
+        label: "one-sided item with expr (no answer)",
+        mutateB: (b) => {
+          b.sections[0].items.push(exprItemNoAns);
+        },
+        expectedExprPaths: ["sections[0].items[n=99]"],
+        expectedStatus: "machine_read",
+      },
+      {
+        label: "one-sided item with expr: null",
+        mutateB: (b) => {
+          b.sections[0].items.push(nullExprItem);
+        },
+        expectedExprPaths: [],
+        expectedStatus: "agreement_accepted",
+      },
+      {
+        label: "one-sided example with expr (no answer)",
+        mutateB: (b) => {
+          b.examples = [exprExampleNoAns];
+        },
+        expectedExprPaths: ["examples[b:0]"],
+        expectedStatus: "machine_read",
+      },
+      {
+        label: "one-sided example with expr: null",
+        mutateB: (b) => {
+          b.examples = [nullExprExample];
+        },
+        expectedExprPaths: [],
+        expectedStatus: "agreement_accepted",
+      },
+      {
+        label: "one-sided example part with expr (no answer)",
+        mutateB: (b) => {
+          if (Array.isArray(b.examples)) {
+            b.examples[0].parts.push(exprPartNoAns);
+          }
+        },
+        expectedExprPaths: ["examples[0].parts[1]"],
+        expectedStatus: "machine_read",
+      },
+      {
+        label: "one-sided example part with expr: null",
+        mutateB: (b) => {
+          if (Array.isArray(b.examples)) {
+            b.examples[0].parts.push(nullExprPart);
+          }
+        },
+        expectedExprPaths: [],
+        expectedStatus: "agreement_accepted",
+      },
+      {
+        label: "examples list with expr vs unclear sentinel",
+        mutateB: (b) => {
+          b.examples = UNCLEAR;
+        },
+        expectedExprPaths: ["examples"],
+        expectedStatus: "machine_read",
+      },
+      {
+        label: "item order diff on sections[0].items is not an expression disagreement",
+        mutateB: (b) => {
+          const [first, second, ...rest] = b.sections[0].items;
+          b.sections[0].items = [second, first, ...rest];
+        },
+        expectedExprPaths: [],
+        expectedStatus: "agreement_accepted",
+      },
+    ];
+
+    for (const c of realContainerCases) {
+      const a = makeGridPage(12);
+      if (c.label.includes("example part") || c.label.includes("examples list")) {
+        a.examples = [structuredClone(exprExampleNoAns)];
+      }
+      const b = structuredClone(a);
+      c.mutateB(b);
+      const cmp = compareRecordsWithCounts(a, b);
+      expect(agreementPercentage(cmp.counts.agreed, cmp.counts.compared), c.label).toBeGreaterThanOrEqual(90);
+      expect(findAnswerDisagreements(cmp.diffs, { a, b }), `${c.label}: no answer diff`).toEqual([]);
+      expect(findExpressionDisagreements(cmp.diffs), c.label).toEqual(c.expectedExprPaths);
+      const outcome = decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        sameDigest: true,
+        diffs: cmp.diffs,
+        counts: cmp.counts,
+        recordA: a,
+        recordB: b,
+      });
+      expect(outcome.status, c.label).toBe(c.expectedStatus);
+      if (c.expectedStatus === "machine_read") {
+        expect(outcome.stopReasons, c.label).toEqual([EXPRESSION_DISAGREEMENT_REASON]);
+      } else {
+        expect(outcome.stopReasons, c.label).toEqual([]);
+      }
+    }
+
+    // Containing lists (sections, sections[i].items, examples, examples[i].parts) with and without expr.
+    const listContainerCases: Array<{
+      label: string;
+      path: string;
+      withExpr: unknown;
+      withoutExpr: unknown;
+    }> = [
+      { label: "sections list", path: "sections", withExpr: [exprSection], withoutExpr: [nullExprSection] },
+      { label: "items list", path: "sections[0].items", withExpr: [exprItemNoAns], withoutExpr: [nullExprItem] },
+      { label: "examples list", path: "examples", withExpr: [exprExampleNoAns], withoutExpr: [nullExprExample] },
+      { label: "example parts list", path: "examples[0].parts", withExpr: [exprPartNoAns], withoutExpr: [nullExprPart] },
+    ];
+    for (const lc of listContainerCases) {
+      expect(
+        findExpressionDisagreements([{ path: lc.path, a: lc.withExpr, b: null, kind: "value" }]),
+        `${lc.label}: with expr`,
+      ).toEqual([lc.path]);
+      expect(
+        findExpressionDisagreements([{ path: lc.path, a: null, b: lc.withExpr, kind: "once_read" }]),
+        `${lc.label}: b-only with expr`,
+      ).toEqual([lc.path]);
+      expect(
+        findExpressionDisagreements([{ path: lc.path, a: lc.withoutExpr, b: null, kind: "value" }]),
+        `${lc.label}: without expr`,
+      ).toEqual([]);
+    }
   });
 
   it("gives missing items and contents topics their insertion location in the final record", () => {
@@ -3578,12 +4377,18 @@ describe("90% reader agreement rule", () => {
       );
 
     const typesWithExprAndAnswer: string[] = [];
+    const typesWithDirectExpr: string[] = [];
     for (const [typeName, fields] of objectTypes) {
-      if (hasDirectExpr(fields) && hasAnswerWithinOneHop(fields)) {
-        typesWithExprAndAnswer.push(typeName);
+      if (hasDirectExpr(fields)) {
+        typesWithDirectExpr.push(typeName);
+        if (hasAnswerWithinOneHop(fields)) {
+          typesWithExprAndAnswer.push(typeName);
+        }
       }
     }
     expect(typesWithExprAndAnswer.sort()).toEqual(["ExamplePart", "PageItem"]);
+    // Guard against any new type in types.ts holding an Expr without updating findExpressionDisagreements.
+    expect(typesWithDirectExpr.sort()).toEqual(["ExamplePart", "LinkedExpr", "PageItem", "WordExpr"]);
 
     // Also classify every top-level key of PageRecord and ContentsRecord from types.ts AST.
     // Any new key added to either interface without an explicit classification fails here.
@@ -3669,5 +4474,41 @@ describe("90% reader agreement rule", () => {
         },
       ),
     );
+  });
+
+  it("finds and locates an expression difference on the largest item number that a record can hold", () => {
+    const n = Number.MAX_SAFE_INTEGER;
+    const makePage = (operands: number[]): PageRecord => ({
+      kind: "page",
+      source_ref: "sample:M:3a",
+      topic: { title: "Adding" },
+      sections: [
+        {
+          instruction: "Add.",
+          scaffolds: [],
+          items: [
+            {
+              n,
+              printed: "2 + 3 =",
+              form: "horizontal",
+              expr: { kind: "arith", op: "add", operands },
+              responses: [{ position: "after_equals", cue: null, answer: "5", answer_source: "reader" }],
+            },
+          ],
+        },
+      ],
+      examples: [],
+      score_bands: [null, null, null, null, null],
+    });
+    const a = makePage([1, 4]);
+    const diffs = compareRecords(a, makePage([2, 3]));
+    expect(findExpressionDisagreements(diffs)).toEqual([
+      `sections[0].items[n=${n}].expr.operands[0]`,
+      `sections[0].items[n=${n}].expr.operands[1]`,
+    ]);
+    expect(resolveSingleReadPaths(a, diffs)).toEqual([
+      "sections[0].items[0].expr.operands[0]",
+      "sections[0].items[0].expr.operands[1]",
+    ]);
   });
 });

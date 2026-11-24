@@ -9,9 +9,11 @@ import {
   type ValidationError,
 } from "./types";
 import {
+  ENTRY_NUMBER_MESSAGE,
   checkAllowedKeys,
   checkReaderEnum,
   checkReaderString,
+  isEntryNumber,
   isNonEmptyString,
   isPlainObject,
   isPositiveInt,
@@ -41,8 +43,8 @@ function validateExampleSteps(
     }
     checkAllowedKeys(step, ["n", "shows", "printed", "note", "shows_other"], sPath, errors);
     const expectedN = idx + 1;
-    if (!isPositiveInt(step.n)) {
-      pushError(errors, joinPath(sPath, "n"), "must be a positive integer");
+    if (!isEntryNumber(step.n)) {
+      pushError(errors, joinPath(sPath, "n"), ENTRY_NUMBER_MESSAGE);
     } else if (step.n !== expectedN) {
       pushError(
         errors,

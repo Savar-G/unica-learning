@@ -10,14 +10,15 @@ import {
 } from "./types";
 import { validateExample } from "./validate-example";
 import {
+  ENTRY_NUMBER_MESSAGE,
   checkAllowedKeys,
   checkIntRange,
   checkReaderEnum,
   checkReaderNumber,
   checkReaderString,
+  isEntryNumber,
   isNonEmptyString,
   isPlainObject,
-  isPositiveInt,
   isSentinel,
   joinPath,
   pushError,
@@ -94,8 +95,8 @@ function validatePageRecord(obj: Record<string, unknown>, errors: ValidationErro
             return;
           }
           checkAllowedKeys(item, ["n", "printed", "form", "expr", "responses"], iPath, errors);
-          if (!isPositiveInt(item.n)) {
-            pushError(errors, joinPath(iPath, "n"), "must be a positive integer");
+          if (!isEntryNumber(item.n)) {
+            pushError(errors, joinPath(iPath, "n"), ENTRY_NUMBER_MESSAGE);
           } else if (seenN.has(item.n)) {
             pushError(errors, joinPath(iPath, "n"), `duplicate item number ${item.n} in section`);
           } else {
@@ -186,8 +187,8 @@ function validateContentsRecord(obj: Record<string, unknown>, errors: Validation
         return;
       }
       checkAllowedKeys(topic, ["n", "title", "sheets", "std_time_min"], tPath, errors);
-      if (!isPositiveInt(topic.n)) {
-        pushError(errors, joinPath(tPath, "n"), "must be a positive integer");
+      if (!isEntryNumber(topic.n)) {
+        pushError(errors, joinPath(tPath, "n"), ENTRY_NUMBER_MESSAGE);
       } else if (topic.n <= prevN) {
         pushError(
           errors,
