@@ -10,7 +10,7 @@ import type { LogKind, LogStatus } from "@/lib/reminders";
 import type { SendKind, SendOutcome } from "@/lib/email-send-kinds";
 import type { PlanId } from "@/lib/site";
 import type { ScanCalibrationResult } from "@/lib/scan-crops";
-import type { ScanBlockedReason, ScanCalibrationState, ScanJobState, ScanPhotoState } from "@/lib/scan-states";
+import type { ScanBlockedReason, ScanCalibrationState, ScanJobState, ScanPhotoState, ScanRejectReason } from "@/lib/scan-states";
 import type { TestDevice } from "@/lib/test-context";
 import type { StoredReview } from "@/lib/work-review";
 import type { WorkbookStatus } from "@/lib/workbook-content";
@@ -70,7 +70,7 @@ type ColumnTypes = KnownColumns<{
   skill_state_history: { state: SkillState; reason: SkillStateReason; evidence_source: SkillEvidence };
   work_reviews: { kind: StoredReview["kind"]; confidence: StoredReview["confidence"] };
   scan_calibrations: { state: ScanCalibrationState; result: ScanCalibrationResult | null };
-  scan_photos: { state: ScanPhotoState };
+  scan_photos: { state: ScanPhotoState; reject_reason: ScanRejectReason | null };
   scan_marking_jobs: { state: ScanJobState; blocked_reason: ScanBlockedReason | null };
   workbooks: { status: WorkbookStatus; print_manifest: ScanManifest | null };
   workbook_pages: { print_contract: PagePrintContract | null };
