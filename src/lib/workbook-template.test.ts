@@ -102,6 +102,25 @@ describe("where answer boxes print (#1212)", () => {
     const { root } = html("mixed-answers");
     expect(root.querySelector(".q .full > .rg .ab")).not.toBeNull();
   });
+
+  it("sizes number boxes for four, five, six and seven written characters, including commas", () => {
+    const { root } = html("long-numbers", 16);
+    const widths = [...root.querySelectorAll(".ab")].map(box => /^width:(\d+px)/.exec(box.getAttribute("style") ?? "")?.[1]);
+    expect(widths).toEqual(["77px", "96px", "116px", "135px"]);
+  });
+
+  it("counts the trailing zeros of a dollar answer and leaves its currency sign outside", () => {
+    const page = answerLayoutPages(16, true)["long-numbers"];
+    const q = page.questions[0];
+    const value = { type: "quantity", value: 1200, unit: "$" } as const;
+    q.package = { ...q.package, answer: { value, accepted: [], unit: "$" }, item: {
+      ...packageItem(q.package), regions: [{ kind: "box", id: "answer", label: null, answer: value }],
+    } };
+    const root = parsedPage(workbookTemplate().page(page, { qr: "", qrUrl: "" }, { ...ANSWER_LAYOUT_BOOK, pages: [page] })!);
+    const box = root.querySelector('[data-measure="question-1-answer"]');
+    expect(box?.getAttribute("style")).toMatch(/^width:154px/); // 1,200.00
+    expect(box?.previousElementSibling?.textContent).toBe("$");
+  });
 });
 
 describe("the workbook templates", () => {

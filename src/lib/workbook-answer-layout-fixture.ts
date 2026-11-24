@@ -46,6 +46,14 @@ const calc = (text: string, answer: number): Spec => ({ text, regions: [box(answ
 export function answerLayoutPages(level: number, consistent: boolean): Record<string, DraftPage> {
   const day = (spec: PageSpec) => page(level, consistent, spec);
   return {
+    "long-numbers": day({ number: 11, type: "practice", day: 2, page: 4, title: "Place value", subtitle: "Write in boxes.",
+      blocks: (n) => [{ slot: "on-your-own", items: n }],
+      questions: [
+        { text: "50.5 + 49 = ?", regions: [box(99.5)] },
+        { text: "4,000 + 258 = ?", regions: [box(4258)] },
+        { text: "18,000 + 2,000 = ?", regions: [box(20000)] },
+        { text: "100,000 + 20,000 + 3,456 = ?", regions: [box(123456)] },
+      ] }),
     // Item 1: show-your-work and Challenge cards: the answer box at the bottom right, no label in the card.
     challenge: day({ number: 10, type: "challenge", day: 1, page: 8, title: "Challenge", subtitle: "Test yourself.",
       blocks: (n) => [{ slot: "challenge", items: n }],
