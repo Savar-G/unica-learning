@@ -84,8 +84,11 @@ export interface ShapeRegistration {
   witnesses: readonly { limit: string; limits: Limits; inside: Rows; outside: Rows }[];
   harder: readonly { name: string; easier: Rows; harder: Rows }[];
   examples: readonly { name: string; rows: Rows; answer: Answer; steps: readonly string[] }[];
-  /** Forms of a step that hold more than "a + b = c". A reader that says all the steps needs none. */
-  stepForms?: readonly { name: string; isTrue(step: string): boolean; right: string; wrong: string }[];
+  /**
+   * Forms of a step that hold more than "a + b = c". A reader that says all the steps needs none. A form looks at the
+   * printed question: its example is true for one question and false for another.
+   */
+  stepForms?: readonly { name: string; isTrue(step: string, printed: Printed): boolean; example: string; trueFor: Rows; falseFor: Rows }[];
   refusedLimits: readonly { name: string; raw: unknown; problem: string }[];
   refusedRows: readonly { name: string; rows: Rows }[];
 }
@@ -102,9 +105,11 @@ function listProblems(registration: ShapeRegistration): string[] {
   const found: string[] = [...LISTS.filter((list) => registration[list].length === 0), ...(names.length === 0 ? ["limits"] : [])].map((list) => `${list} must not be empty`);
   if (Array.isArray(registration.space) && registration.space.length === 0) found.push("space must not be empty");
   for (const name of names.filter((n) => !registration.witnesses.some((w) => w.limit === n))) found.push(`the limit "${name}" has no witness`);
-  for (const { name, isTrue, right, wrong } of registration.stepForms ?? []) {
-    if (!isTrue(right)) found.push(`the step form "${name}" refuses its right example "${right}"`);
-    if (isTrue(wrong)) found.push(`the step form "${name}" accepts its wrong example "${wrong}"`);
+  for (const { name, isTrue, example, trueFor, falseFor } of registration.stepForms ?? []) {
+    const [right, wrong] = [registration.read(trueFor), registration.read(falseFor)];
+    if (!right || !wrong) found.push(`the step form "${name}" names rows that print no question`);
+    if (right && !isTrue(example, right)) found.push(`the step form "${name}" refuses "${example}" for the question that it is true for`);
+    if (wrong && isTrue(example, wrong)) found.push(`the step form "${name}" accepts "${example}" for the question that it is false for`);
   }
   for (const { name, limits } of [...registration.cases, ...registration.smallSpaces, ...registration.witnesses.map((w) => ({ ...w, name: w.limit }))]) {
     if (Object.keys(limits).sort().join() !== [...names].sort().join()) found.push(`the limits of "${name}" must be ${names.join(", ")}`);

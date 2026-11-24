@@ -156,7 +156,7 @@ class Harness {
     if (steps.at(-1) !== answer.value) this.tell("steps-end", `${at}: the steps end in ${JSON.stringify(steps.at(-1))} and not in "${answer.value}"`);
     for (const step of steps.slice(0, -1)) {
       const { wrong, whole } = readStep(step);
-      const form = whole ? undefined : this.reg.stepForms?.find((f) => f.isTrue(step));
+      const form = whole ? undefined : this.reg.stepForms?.find((f) => f.isTrue(step, printed));
       if (wrong.length > 0) this.tell("steps-true", `${at}: the step "${step}" holds "${wrong[0]}"`);
       if (!whole && !form && !printed.steps) this.tell("steps-form", `${at}: nothing proves the step "${step}"`);
     }
@@ -385,7 +385,10 @@ class Harness {
 
   /** One book from the production builder: each template that fits, both sides, every place. */
   checkBook(spaces: readonly Space[]): void {
-    const { input, unfilled } = sampleBook(this.shape.id, [...new Set(spaces)].map(({ limits, count, places }) => {
+    const largest = [...new Set(spaces)].sort((a, b) => b.count - a.count);
+    // A test of the harness itself uses few seeds, and then its book holds only the largest spaces.
+    const used = this.wantedSeeds < SEEDS ? largest.slice(0, 2 * Math.max(1, Math.ceil(this.wantedSeeds / 16))) : largest;
+    const { input, unfilled } = sampleBook(this.shape.id, used.map(({ limits, count, places }) => {
       const { kind } = this.shape.face(this.shape.worstCase(limits).question);
       return { limits, count, fitting: this.templates.filter((t) => t.faces.includes(kind) && t.digits >= places) };
     }), this.wantedSeeds);

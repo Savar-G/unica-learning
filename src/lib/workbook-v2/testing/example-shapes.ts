@@ -123,7 +123,10 @@ export const addRegistration: ShapeRegistration = {
     { name: "a carry", rows: q("17 +6"), answer: { kind: "whole-number", value: "23" }, steps: ["7 + 6 = 13", "10 + 13 = 23", "23"] },
     { name: "no carry", rows: q("12 +3"), answer: { kind: "whole-number", value: "15" }, steps: ["2 + 3 = 5", "The tens stay 1.", "15"] },
   ],
-  stepForms: [{ name: "the tens stay", isTrue: (step) => /^The tens stay [0-3]\.$/.test(step), right: "The tens stay 3.", wrong: "The tens stay." }],
+  stepForms: [{
+    name: "the tens stay", example: "The tens stay 1.", trueFor: q("12 +3"), falseFor: q("16 +6"),
+    isTrue: (step, { features: { a, carry } }) => carry === 0 && step === `The tens stay ${String(a).padStart(2, "0").at(0)}.`,
+  }],
   refusedLimits: [
     { name: "not an object", raw: "bad", problem: "the limits must be an object" },
     { name: "a number that is too small", raw: { ...ADD_WIDE, a: r(0, 5) }, problem: "a must be from 1 to 30" },

@@ -3,9 +3,10 @@
  * Compares the committed fingerprints of the workbook shapes with those of the base of this branch. A stored fingerprint
  * says what a version of a shape gave; children have books of that version, so an entry never changes and never goes.
  *
- * In CI the base is the first parent of the commit: the base of the pull request in its merge commit, or the commit
- * before on main. The `scope` job runs this, because it is the job that always runs and has that parent. A checkout with
- * no parent fails there. On a laptop the base is the merge base with origin/main, and a checkout without it only warns.
+ * In CI the base is the first parent of the commit, which is the base of the pull request in its merge commit. A push can
+ * hold several commits, so there the base is the tip of main before the push (EVENT_BEFORE), which is fetched when the
+ * checkout does not have it. The `scope` job runs this, because it is the job that always runs. A base that cannot be
+ * found fails there. On a laptop the base is the merge base with origin/main, and a checkout without it only warns.
  * It uses no package, so that it runs before `npm ci`.
  */
 import { execFileSync } from "node:child_process";
@@ -49,10 +50,21 @@ function parse(text) {
   }
 }
 
-/** The result for one checkout: `ok`, and what to print. */
-export function checkBase(root, { ci }) {
-  const place = ci ? "the first parent of HEAD" : "the merge base with origin/main";
-  const base = ci ? git(root, ["rev-parse", "--verify", "--quiet", "HEAD^1^{commit}"]) : git(root, ["merge-base", "HEAD", "origin/main"]);
+const commitOf = (root, name) => git(root, ["rev-parse", "--verify", "--quiet", `${name}^{commit}`]);
+
+/** The tip of the branch before a push. A new branch has none (zeros), and then the first parent is the base. */
+function tipBefore(root, before) {
+  const known = commitOf(root, before);
+  if (known) return known;
+  git(root, ["fetch", "--quiet", "--depth=1", "origin", before]);
+  return commitOf(root, before);
+}
+
+/** The result for one checkout: `ok`, and what to print. `before` is the tip of the branch before a push. */
+export function checkBase(root, { ci, before = "" }) {
+  const isPush = ci && /^[0-9a-f]{40}$/.test(before) && !/^0+$/.test(before);
+  const place = isPush ? `the tip before the push (${before.slice(0, 9)})` : ci ? "the first parent of HEAD" : "the merge base with origin/main";
+  const base = isPush ? tipBefore(root, before) : ci ? commitOf(root, "HEAD^1") : git(root, ["merge-base", "HEAD", "origin/main"]);
   if (!base) {
     return { ok: !ci, text: [`${ci ? "FAIL" : "Warning"}: this checkout does not have ${place}, so nothing proves that the stored shape fingerprints are still the same.`] };
   }
@@ -70,7 +82,7 @@ export function checkBase(root, { ci }) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const { ok, text } = checkBase(resolve(dirname(fileURLToPath(import.meta.url)), ".."), { ci: Boolean(process.env.CI) });
+  const { ok, text } = checkBase(resolve(dirname(fileURLToPath(import.meta.url)), ".."), { ci: Boolean(process.env.CI), before: process.env.EVENT_BEFORE });
   (ok ? process.stdout : process.stderr).write(`${text.join("\n")}\n`);
   if (!ok) process.exitCode = 1;
 }

@@ -59,6 +59,8 @@ jobs:
           echo "$out" >> "$GITHUB_OUTPUT"
       # This job always runs and has the base, which the engine tests do not. The script needs no package.
       - name: Stored shape fingerprints are unchanged
+        env:
+          EVENT_BEFORE: ${{ github.event.before }}
         run: node scripts/shape-fingerprint-base.mjs
 
   # Full 8-shard unit suite (runs on main pushes, workflow_dispatch, and high-blast-radius PRs).

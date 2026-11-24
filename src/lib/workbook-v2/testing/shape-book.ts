@@ -14,7 +14,7 @@ const SIDES: readonly Side[] = ["front", "back"];
 const FEW_QUESTIONS = 32;
 
 /**
- * Enough sheets for the seeds, each side with the next limits. The first use of a side of a template fills it. A shape
+ * Enough sheets for the seeds and for all limits, each side with the next limits. The first use of a side of a template fills it. A shape
  * with few questions gets few sheets, and each fills one side only.
  */
 export function sampleBook(shapeId: string, spaces: readonly BookSpace[], seeds: number): { input: BuildInput; unfilled: string[] } {
@@ -35,7 +35,7 @@ export function sampleBook(shapeId: string, spaces: readonly BookSpace[], seeds:
     const rows = Array.from({ length: Math.ceil(items / each) }, (_, i) => ({ id: `${name}-${i}`, shape: shapeId, limits, items: Math.min(each, items - i * each) }));
     return { instruction: "Work it out.", template: template.id, rows };
   };
-  const ids = Array.from({ length: few ? 2 * templates.length + 2 : Math.max(1, Math.ceil(seeds / 16)) }, (_, i) => `sheet-${i}`);
+  const ids = Array.from({ length: Math.max(Math.ceil(order.length / 2), few ? 2 * templates.length + 2 : Math.ceil(seeds / 16), 1) }, (_, i) => `sheet-${i}`);
   const sheets = ids.map((id, i) => ({ id, firstPage: 2 * i + 1, front: side("front", 2 * i, i), back: side("back", 2 * i + 1 + Math.floor((2 * i) / order.length), i) }));
   const snapshot = { format: 1, id: "harness", level: { id: "level", name: "1" }, topics: [{ id: "topic", code: "1-1", title: "Harness", sheets: ids }], sheets };
   const book = { bookId: "book", childId: "child", sheets: ids.map((sheetId, i) => ({ sheetId, attempt: 1 + (i % 3), qr: { front: `f${i}`, back: `b${i}` } })) };

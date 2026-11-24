@@ -99,6 +99,32 @@ test("CI fails in a checkout with no parent, and says so", () => {
   assert.match(text.join(), /^FAIL: this checkout does not have the first parent of HEAD/);
 });
 
+test("CI compares a push of several commits with the tip before the push, and fetches it when it is not there", () => {
+  const { root, git, commit } = repository();
+  const before = commit({ s: { 1: A } });
+  commit({ s: { 1: B } });
+  commit();
+  assert.equal(checkBase(root, { ci: true }).ok, true, "the first parent already holds the change");
+  assert.equal(checkBase(root, { ci: true, before }).ok, false);
+  git("config", "uploadpack.allowAnySHA1InWant", "true");
+  const shallow = mkdtempSync(join(tmpdir(), "fingerprint-push-"));
+  folders.push(shallow);
+  execFileSync("git", ["clone", "--quiet", "--depth", "2", `file://${root}`, shallow], { stdio: "ignore" });
+  const fetched = checkBase(shallow, { ci: true, before });
+  assert.match(fetched.text.join(), /s version 1 changed/);
+  assert.equal(fetched.ok, false);
+});
+
+test("CI fails when the tip before a push cannot be found, and uses the first parent for a new branch", () => {
+  const { root, commit } = repository();
+  commit({ s: { 1: A } });
+  commit({ s: { 1: A, 2: B } });
+  const lost = checkBase(root, { ci: true, before: "c".repeat(40) });
+  assert.equal(lost.ok, false);
+  assert.match(lost.text.join(), /^FAIL: this checkout does not have the tip before the push/);
+  for (const before of ["0".repeat(40), "", undefined]) assert.equal(checkBase(root, { ci: true, before }).ok, true);
+});
+
 test("a base with no file has nothing to keep", () => {
   const { root, commit } = repository();
   commit();
@@ -110,5 +136,5 @@ test("the job of CI that always runs has the parent and runs the check", () => {
   const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
   const scope = ci.slice(ci.indexOf("\n  scope:"), ci.indexOf("\n  unit:"));
   assert.match(scope, /fetch-depth: 2\n/);
-  assert.match(scope, /run: node scripts\/shape-fingerprint-base\.mjs\n/);
+  assert.match(scope, /EVENT_BEFORE: \$\{\{ github\.event\.before \}\}\n {8}run: node scripts\/shape-fingerprint-base\.mjs\n/);
 });

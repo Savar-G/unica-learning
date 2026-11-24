@@ -144,10 +144,11 @@ const REFUSED: readonly [check: Check, fault: string, broken: () => Broken, mess
   ["solve-again", "another second answer for one question", () => ({ shape: add({ solveAgain: (rows) => (rows.join() === "16,+6" ? { question: QUIET, answer: whole("23") } : addShape.solveAgain(rows)) }) }), /solveAgain\(\["16","\+6"\]\) gave .*"23"/],
   ["steps-end", "an end that is not the answer", () => ({ shape: add({ steps: onQuiet(addShape.steps, ["6 + 6 = 12", "12"]) }) }), /the steps end in "12" and not in "22"/],
   ["steps-end", "no step", () => ({ shape: add({ steps: onQuiet(addShape.steps, []) }) }), /the steps end in undefined/],
-  ["steps-end", "a step that the fonts cannot print", () => ({ shape: add({ steps: onQuiet(addShape.steps, ["✚", "22"]) }), registration: { stepForms: [...(addRegistration.stepForms ?? []), { name: "any", isTrue: (s) => s === "✚", right: "✚", wrong: "" }] } }), /the step "✚" cannot be printed/],
+  ["steps-end", "a step that the fonts cannot print", () => ({ shape: add({ steps: onQuiet(addShape.steps, ["✚", "22"]) }), registration: { stepForms: [...(addRegistration.stepForms ?? []), { name: "any", isTrue: (s, { answer: { value } }) => s === "✚" && value === "22", example: "✚", trueFor: ["16", "+6"], falseFor: ["12", "+3"] }] } }), /the step "✚" cannot be printed/],
   ["steps-true", "a false step in the middle", () => ({ shape: add({ steps: onQuiet(addShape.steps, ["6 + 6 = 13", "10 + 12 = 22", "22"]) }) }), /holds "6 \+ 6 = 13"/],
   ["steps-true", "a false step that the reader says too", () => ({ shape: add({ steps: onQuiet(addShape.steps, ["6 + 6 = 13", "22"]) }), registration: readQuiet({ steps: ["6 + 6 = 13", "22"] }) }), /holds "6 \+ 6 = 13"/],
   ["steps-form", "a step of a form that is not registered", () => ({ shape: add({ steps: onQuiet(addShape.steps, ["Think hard.", "22"]) }) }), /nothing proves the step "Think hard\."/],
+  ["steps-form", "a sentence that is false for this question and true for another", () => ({ shape: add({ steps: onQuiet(addShape.steps, ["The tens stay 1.", "22"]) }) }), /nothing proves the step "The tens stay 1\."/],
   ["steps-form", "words beside an equation", () => ({ shape: add({ steps: onQuiet(addShape.steps, ["6 + 6 = 12, write 4", "22"]) }) }), /nothing proves the step "6 \+ 6 = 12, write 4"/],
   ["steps-reader", "other steps than the reader says", () => ({ shape: add(), registration: readQuiet({ steps: ["12 + 10 = 22", "22"] }) }), /the steps are .* and must be \["12 \+ 10 = 22","22"\]/],
   ["difficulty", "a score that is not a number", () => ({ shape: add({ difficulty: onQuiet(addShape.difficulty, Number.NaN), difficultyRange: addShape.difficultyRange }) }), /the score is NaN/],
@@ -272,6 +273,12 @@ describe("the book of a shape", () => {
     expect(sides).toEqual([...one, ...two, ["columns-2x4", [3]], ["columns-2x4", [1]], ["columns-2x4", [1]], ["columns-2x4", [3]]]);
   });
 
+  it.each([[1, 1], [1, 1000], [3, 64], [270, 1]])("uses each of nine limits with %i questions and %i seeds", (count, seeds) => {
+    const spaces = Array.from({ length: 9 }, (_, i) => ({ limits: { n: i }, count, fitting: [first] }));
+    const text = JSON.stringify(sampleBook("test.add", spaces, seeds).input.snapshot);
+    for (const { limits } of spaces) expect(text).toContain(JSON.stringify(limits));
+  });
+
   it("uses all the limits, the largest first", () => {
     const spaces = Array.from({ length: 5 }, (_, i) => ({ limits: { n: i }, count: 100 * (i + 1), fitting: [first] }));
     const { input } = sampleBook("test.add", spaces, 160);
@@ -327,8 +334,9 @@ describe("the registry", () => {
     ["no limits", () => registryProblems(library, [{ ...addRegistration, limits: {} }]), "[test.add] registration: limits must not be empty"],
     ["a limit with no witness", () => registryProblems(library, [{ ...addRegistration, witnesses: addRegistration.witnesses.filter((w) => w.limit !== "sum") }]), '[test.add] registration: the limit "sum" has no witness'],
     ["limits with another name", () => registryProblems(library, [{ ...addRegistration, cases: [{ name: "odd", limits: { ...example.ADD_WIDE, more: 1 } }] }]), '[test.add] registration: the limits of "odd" must be a, b, sum, carry, roundSum'],
-    ["a step form that accepts everything", () => registryProblems(library, [{ ...addRegistration, stepForms: [{ name: "any", isTrue: () => true, right: "a", wrong: "b" }] }]), '[test.add] registration: the step form "any" accepts its wrong example "b"'],
-    ["a step form that accepts nothing", () => registryProblems(library, [{ ...addRegistration, stepForms: [{ name: "none", isTrue: () => false, right: "a", wrong: "b" }] }]), '[test.add] registration: the step form "none" refuses its right example "a"'],
+    ["a step form that accepts everything", () => registryProblems(library, [{ ...addRegistration, stepForms: [{ name: "any", isTrue: () => true, example: "a", trueFor: ["12", "+3"], falseFor: ["16", "+6"] }] }]), '[test.add] registration: the step form "any" accepts "a" for the question that it is false for'],
+    ["a step form that accepts nothing", () => registryProblems(library, [{ ...addRegistration, stepForms: [{ name: "none", isTrue: () => false, example: "a", trueFor: ["12", "+3"], falseFor: ["16", "+6"] }] }]), '[test.add] registration: the step form "none" refuses "a" for the question that it is true for'],
+    ["a step form with rows that print no question", () => registryProblems(library, [{ ...addRegistration, stepForms: [{ name: "odd", isTrue: () => true, example: "a", trueFor: ["12", "+3"], falseFor: ["31", "+6"] }] }]), '[test.add] registration: the step form "odd" names rows that print no question'],
   ])("refuses %s, and the suite reports it", (_name, problems, text) => expect(problems()).toContain(text));
 
   it("is part of the result for the whole library", () => {
@@ -373,6 +381,16 @@ describe("reading a worked step", () => {
     ["12 ÷ 4 = 3", [], true],
     ["7 ÷ 2 = 3", ["7 ÷ 2 = 3"], true],
     ["1.5 + 2 = 3.5", [], true],
+    ["0.1 + 0.2 = 0.3", [], true],
+    ["0.1 + 0.2 = 0.30", [], true],
+    ["1 ÷ 3 × 3 = 1", [], true],
+    ["9007199254740992 + 1 = 9007199254740992", ["9007199254740992 + 1 = 9007199254740992"], true],
+    ["9007199254740992 + 1 = 9007199254740993", [], true],
+    ["5 ÷ 0 = 0", ["5 ÷ 0 = 0"], true],
+    ["2 + 3 = 5.", [], true],
+    ["2 + 3 = 5. 1 + 1 = 3.", ["1 + 1 = 3"], true],
+    ["2 + 3 = 5.1", ["2 + 3 = 5.1"], true],
+    ["2 + 3 = 5.1.", ["2 + 3 = 5.1"], true],
     ["3 × 4 = 12, write 2", [], false],
     ["plus 1 is 7", [], false],
     ["12", [], false],

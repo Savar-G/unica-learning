@@ -48,7 +48,7 @@ The snapshot file holds the content of one level. The book file holds the book i
    - `read(rows)`: the answer, one feature for each limit, the widths and, if possible, the worked steps, computed from the printed rows in another way than the shape.
    - `space`: the list of every printed question, or the count and the ends for any limits.
    - `cases` (the limits of each bank row must be one), `smallSpaces` with lists by hand, `witnesses` (for each limit a question inside and one that breaks only it), and the named lists.
-   - `stepForms`: a step that is more than "a + b = c" needs a form with a right and a wrong example, or a reader that says all steps.
+   - `stepForms`: a step that is more than "a + b = c" needs a form that looks at the printed question (its example is true for one question and false for another), or a reader that says all steps.
 3. Run `npm run workbook:v2:fingerprints`, then `npx vitest run src/lib/workbook-v2/shapes`.
 
 `worstCase` is one question that is the widest in every width and in digit places. If the widths pull apart (99 - 4 leaves as much as 100 - 5 in fewer places), register the digit places as the width.
