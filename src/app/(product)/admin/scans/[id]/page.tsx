@@ -58,12 +58,15 @@ export default async function AdminScanPage({ params, searchParams }: { params: 
   if (!result) notFound();
   const after = (await searchParams).after ?? "0";
   if (!/^\d{1,15}$/.test(after)) notFound();
-  const checkRow = await db.from("scan_photos").select("photo_check").eq("id", id).eq("parent_id", row.data.parent_id).maybeSingle();
-  const rejected = row.data.state === "rejected";
+  const { parent_id: parent, state } = row.data;
+  const rejected = state === "rejected";
   // Fetch separately so a missing reason column during rollout cannot hide existing photo details.
-  const rejection = rejected
-    ? await db.from("scan_photos").select("reject_reason").eq("id", id).eq("parent_id", row.data.parent_id).maybeSingle()
-    : null;
+  const [checkRow, rejection] = await Promise.all([
+    db.from("scan_photos").select("photo_check").eq("id", id).eq("parent_id", parent).maybeSingle(),
+    rejected
+      ? db.from("scan_photos").select("reject_reason").eq("id", id).eq("parent_id", parent).maybeSingle()
+      : null,
+  ]);
   const rejectReason = rejection?.data?.reject_reason;
   const photoCheck = checkRow.error || !checkRow.data ? null : readPhotoCheck(checkRow.data.photo_check);
   const history = await scanMarkChanges(markingCommand(db), row.data.parent_id, id, Number(after));
