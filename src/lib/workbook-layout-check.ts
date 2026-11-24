@@ -257,7 +257,9 @@ function alignmentProblems(page: DraftPage, c: DayContent, measured: Measured, p
     const regions = at.regions.map((name) => ({ name, m: measured.get(name) }));
     const missing = regions.find((r) => !shown(r.m));
     if (missing) { fail(n, `question ${n}'s answer space ${missing.name} is not printed beside it`); continue; }
-    for (const { m: r } of regions as { m: MeasuredElement }[]) {
+    const stem = measured.get(`question-${n}-content`);
+    for (const { name, m: r } of regions) {
+      if (!shown(r) || at.wrap?.includes(name) && stem && r.y >= stem.y + stem.height) continue;
       if (at.align === "centre") {
         const centre = r.y + r.height / 2 - (text.y + text.height / 2);
         if (Math.abs(centre) > T.top) fail(n, `question ${n}'s answer box is ${px(Math.abs(centre))} ${centre < 0 ? "above" : "below"} the middle of its line`);
