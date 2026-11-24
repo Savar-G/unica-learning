@@ -411,7 +411,7 @@ jobs:
           flag() { case "$MODE" in full) echo true ;; skip) echo false ;; *) echo "$1" ;; esac; }
           check_job "unit" "$([ "$MODE" = "full" ] && echo true || echo false)" "$UNIT_RESULT"
           check_job "scan-binding-scale" "$([ "$MODE" = "full" ] && echo true || echo false)" "$SCAN_BINDING_RESULT"
-          check_job "pr-unit" "$([ "$MODE" = "affected" ] && [ "$RUN_PR_UNIT" = "true" ] && echo true || echo false)" "$PR_UNIT_RESULT"
+          check_job "pr-unit" "$([ "$MODE" = "affected" ] && echo "$RUN_PR_UNIT" || echo false)" "$PR_UNIT_RESULT"
           check_job "engine" "$(flag "$RUN_ENGINE")" "$ENGINE_RESULT"
           check_job "maya-behaviour" "$(flag "$RUN_MAYA")" "$MAYA_RESULT"
           check_job "family-zones" "$(flag "$RUN_ZONES")" "$ZONES_RESULT"

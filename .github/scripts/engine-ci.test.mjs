@@ -217,6 +217,13 @@ test("the required test job shell fails when engine is required and does not suc
   // Guard against silent empty/typo flags or unknown mode.
   assert.notEqual(runGate({ RUN_ENGINE: "", ENGINE_RESULT: "skipped" }).status, 0);
   assert.notEqual(runGate({ MODE: "bogus" }).status, 0);
+  for (const flagValue of ["", "tru", "TRUE"]) {
+    for (const result of ["skipped", "success"]) {
+      for (const job of ["PR_UNIT", ...jobs]) {
+        assert.notEqual(runGate({ [`RUN_${job}`]: flagValue, [`${job}_RESULT`]: result }).status, 0, `${job} "${flagValue}" ${result}`);
+      }
+    }
+  }
 });
 
 test("engine summary reports seconds and 15 s budget, and never fails on slow or missing time", () => {
