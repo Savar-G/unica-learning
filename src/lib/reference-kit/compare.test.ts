@@ -4475,4 +4475,40 @@ describe("90% reader agreement rule", () => {
       ),
     );
   });
+
+  it("finds and locates an expression difference on the largest item number that a record can hold", () => {
+    const n = Number.MAX_SAFE_INTEGER;
+    const makePage = (operands: number[]): PageRecord => ({
+      kind: "page",
+      source_ref: "sample:M:3a",
+      topic: { title: "Adding" },
+      sections: [
+        {
+          instruction: "Add.",
+          scaffolds: [],
+          items: [
+            {
+              n,
+              printed: "2 + 3 =",
+              form: "horizontal",
+              expr: { kind: "arith", op: "add", operands },
+              responses: [{ position: "after_equals", cue: null, answer: "5", answer_source: "reader" }],
+            },
+          ],
+        },
+      ],
+      examples: [],
+      score_bands: [null, null, null, null, null],
+    });
+    const a = makePage([1, 4]);
+    const diffs = compareRecords(a, makePage([2, 3]));
+    expect(findExpressionDisagreements(diffs)).toEqual([
+      `sections[0].items[n=${n}].expr.operands[0]`,
+      `sections[0].items[n=${n}].expr.operands[1]`,
+    ]);
+    expect(resolveSingleReadPaths(a, diffs)).toEqual([
+      "sections[0].items[0].expr.operands[0]",
+      "sections[0].items[0].expr.operands[1]",
+    ]);
+  });
 });

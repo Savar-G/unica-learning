@@ -32,6 +32,7 @@ import {
 import {
   assertNoFileCollisions,
   loadExistingFinalRecord,
+  loadPreviousHashes,
   sha256OfFile,
   syncManifestSourceRefs,
 } from "./compare-batch-files";
@@ -116,22 +117,7 @@ export function compareWorkFolder(opts: {
 
   const existingStatus =
     readJsonIfExists<Record<string, PageStatus>>(join(finalDir, "status.json")) ?? {};
-  // The hash of each final record as the last compare wrote it. Another hash on disk means that a
-  // person changed the file.
-  const previousHashes = new Map<string, string>();
-  const previousReport = readJsonIfExists<Partial<CompareWorkReport>>(join(finalDir, "report.json"));
-  if (previousReport && Array.isArray(previousReport.pages)) {
-    for (const page of previousReport.pages) {
-      if (
-        typeof page === "object" &&
-        page !== null &&
-        typeof page.source_ref === "string" &&
-        typeof page.final_record_sha256 === "string"
-      ) {
-        previousHashes.set(page.source_ref, page.final_record_sha256);
-      }
-    }
-  }
+  const previousHashes = loadPreviousHashes(join(finalDir, "report.json"));
 
   assertNoFileCollisions(pairs, existingStatus, finalDir);
 

@@ -8,7 +8,8 @@ import {
 } from "@/lib/reference-record";
 import { fileSlugFromRef } from "./answers";
 import type { PageStatus } from "./compare";
-import { pairDigest, type PairedPage } from "./compare-pairing";
+import { pairDigest, readJsonIfExists, type PairedPage } from "./compare-pairing";
+import type { CompareWorkReport } from "./compare-report-types";
 import { parsePhotosManifest, PHOTOS_MANIFEST_FILE } from "./prepare";
 
 export function readStoredSourceRef(filePath: string): string | null {
@@ -42,6 +43,27 @@ export function loadExistingFinalRecord(filePath: string): ReferenceRecord | nul
   } catch {
     return null;
   }
+}
+
+// The hash of each final record as the last compare wrote it. Another hash on disk means that a
+// person changed the file. A malformed report stops the run: without its hashes, compare would
+// write over a record that a person changed.
+export function loadPreviousHashes(reportPath: string): Map<string, string> {
+  const hashes = new Map<string, string>();
+  try {
+    const pages = readJsonIfExists<Partial<CompareWorkReport>>(reportPath)?.pages ?? [];
+    if (!Array.isArray(pages)) throw new Error("pages is not a list");
+    for (const page of pages) {
+      if (typeof page.final_record_sha256 === "string") {
+        hashes.set(page.source_ref, page.final_record_sha256);
+      }
+    }
+  } catch (err) {
+    throw new Error(
+      `Malformed previous report ${reportPath}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  return hashes;
 }
 
 export function assertNoFileCollisions(

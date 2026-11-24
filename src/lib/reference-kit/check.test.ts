@@ -603,6 +603,17 @@ describe("checkAndMarkPage", () => {
         name: "report matching entry has empty photo string",
         report: { pages: [{ source_ref: "sample:M:3a", photo: "" }] },
       },
+      ...[" ", "\t", " \n "].map((blank) => ({
+        name: `report matching entry has blank photo ${JSON.stringify(blank)}`,
+        report: { pages: [{ source_ref: "sample:M:3a", photo: blank, original_name: "01.jpg" }] },
+      })),
+      {
+        name: "report matching entry has a blank original name",
+        report: {
+          pages: [{ source_ref: "sample:M:3a", photo: "333333333333.jpg", original_name: " " }],
+        },
+        expectedPhotoPattern: /333333333333\.jpg\nRecord:/,
+      },
       { name: "manifest root is null", manifest: null },
       { name: "manifest root is an array", manifest: [] },
       { name: "manifest photos is not a list", manifest: { version: 1, photos: "bad" } },

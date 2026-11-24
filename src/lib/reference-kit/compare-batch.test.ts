@@ -3081,5 +3081,106 @@ describe("compareWorkFolder", () => {
       "sections[0].items[n=1].expr.operands[1]",
     ]);
   });
-});
 
+  it("stops on a malformed previous report.json, naming the file, before it writes or removes anything", () => {
+    const setUpEditedWork = () => {
+      const repo = mkdtempSync(join(tmpdir(), "ref-cmp-badreport-repo-"));
+      const work = mkdtempSync(join(tmpdir(), "ref-cmp-badreport-work-"));
+      tempDirs.push(repo, work);
+      for (const [slot, family] of [
+        ["a", "claude"],
+        ["b", "codex"],
+      ] as const) {
+        const dir = join(work, `reader-${slot}`);
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, "reader.json"), JSON.stringify({ family, model: "m1" }));
+        writeFileSync(join(dir, "sample-M-3a.json"), JSON.stringify(makePage()));
+        writeFileSync(
+          join(dir, "run.json"),
+          JSON.stringify({
+            slot,
+            reader: { family, model: "m1" },
+            source: "sample",
+            photos: [
+              {
+                photo: "p-111111111111.jpg",
+                photo_sha256: SHA_1,
+                status: "ok",
+                source_ref: "sample:M:3a",
+                record_file: "sample-M-3a.json",
+                notes: [],
+              },
+            ],
+          }),
+        );
+      }
+      const first = compareWorkFolder({ workDir: work, repoRoot: repo });
+      const finalDir = join(work, "final");
+      const recordPath = join(finalDir, "sample-M-3a.json");
+      const editedText = JSON.stringify(makePage({ topic: { title: "Corrected by hand" } }));
+      writeFileSync(recordPath, editedText);
+      const stalePath = join(finalDir, "sample-M-6a.json");
+      writeFileSync(stalePath, JSON.stringify(makePage({ source_ref: "sample:M:6a" })));
+      const statusPath = join(finalDir, "status.json");
+      writeFileSync(
+        statusPath,
+        JSON.stringify({ "sample:M:3a": "double_read", "sample:M:6a": "machine_read" }),
+      );
+      const validRow = {
+        source_ref: "sample:M:3a",
+        final_record_sha256: first.pages[0].final_record_sha256,
+      };
+      const reportPath = join(finalDir, "report.json");
+      const viewPath = join(work, "final-view", "sample-M-3a.md");
+      const keptPaths = [recordPath, stalePath, statusPath, reportPath, viewPath, join(finalDir, "report.md")];
+      const run = () => compareWorkFolder({ workDir: work, repoRoot: repo });
+      return { run, recordPath, editedText, stalePath, reportPath, keptPaths, validRow };
+    };
+    type Row = ReturnType<typeof setUpEditedWork>["validRow"];
+
+    const stopCases: Array<[string, (valid: Row) => string]> = [
+      ["pages = 42", () => JSON.stringify({ pages: 42 })],
+      ["pages = {}", () => JSON.stringify({ pages: {} })],
+      ["pages = [null]", () => JSON.stringify({ pages: [null] })],
+      ["pages = [valid, null]", (valid) => JSON.stringify({ pages: [valid, null] })],
+      ["pages = [null, valid]", (valid) => JSON.stringify({ pages: [null, valid] })],
+      ['pages = "x"', () => JSON.stringify({ pages: "x" })],
+      ["not JSON", () => "{ bad"],
+    ];
+    for (const [name, reportText] of stopCases) {
+      const work = setUpEditedWork();
+      writeFileSync(work.reportPath, reportText(work.validRow));
+      const before = work.keptPaths.map((path) => readFileSync(path));
+      let message = "";
+      try {
+        work.run();
+      } catch (err) {
+        message = (err as Error).message;
+      }
+      expect(message, name).toContain(work.reportPath);
+      expect(work.keptPaths.map((path) => readFileSync(path)), name).toEqual(before);
+    }
+
+    // A report that can be read and names no hash does not stop the run.
+    const continueCases: Array<[string, unknown]> = [
+      ["root null", null],
+      ["pages absent", {}],
+      ["pages null", { pages: null }],
+      ["pages empty", { pages: [] }],
+      ["row is a number", { pages: [42] }],
+      ["row without a hash", { pages: [{ source_ref: "sample:M:3a" }] }],
+    ];
+    for (const [name, report] of continueCases) {
+      const work = setUpEditedWork();
+      writeFileSync(work.reportPath, JSON.stringify(report));
+      expect(work.run().pages[0].edited_by_person, name).toBeUndefined();
+    }
+
+    // The control: the valid row keeps the edited record.
+    const control = setUpEditedWork();
+    writeFileSync(control.reportPath, JSON.stringify({ pages: [control.validRow] }));
+    expect(control.run().pages[0].edited_by_person).toBe(true);
+    expect(readFileSync(control.recordPath, "utf8")).toBe(control.editedText);
+    expect(existsSync(control.stalePath)).toBe(false);
+  });
+});

@@ -60,9 +60,9 @@ function describePagePhoto(workDir: string, page: string): string {
             !Array.isArray(p) &&
             (p as Record<string, unknown>).source_ref === page,
         );
-        if (entry && typeof entry.photo === "string" && entry.photo.length > 0) {
+        if (entry && typeof entry.photo === "string" && entry.photo.trim().length > 0) {
           const original =
-            typeof entry.original_name === "string" && entry.original_name.length > 0
+            typeof entry.original_name === "string" && entry.original_name.trim().length > 0
               ? ` (original name ${entry.original_name})`
               : "";
           return `${join(photosDir, entry.photo)}${original}`;

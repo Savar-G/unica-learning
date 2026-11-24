@@ -20,6 +20,14 @@ export function isPositiveInt(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v) && v >= 1;
 }
 
+// The number of an item, step or topic is put in comparison paths (like "items[n=3]").
+// A safe integer is always written there in plain digits.
+export function isEntryNumber(v: unknown): v is number {
+  return Number.isSafeInteger(v) && (v as number) >= 1;
+}
+
+export const ENTRY_NUMBER_MESSAGE = `must be a positive integer up to ${Number.MAX_SAFE_INTEGER}`;
+
 export function isNonNegInt(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v) && v >= 0;
 }

@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import type { ContentsRecord, PageRecord } from "./types";
 import { validateReferenceRecord } from "./validate";
@@ -473,5 +474,59 @@ describe("validateReferenceRecord", () => {
     if (!resNonArray.ok) {
       expect(resNonArray.errors.some((e) => e.path === "single_read")).toBe(true);
     }
+  });
+
+  it("accepts an item, step or topic number only when it is a positive safe integer, with the field path, so that a path never holds scientific notation", () => {
+    const errorPaths = (record: unknown): string[] => {
+      const res = validateReferenceRecord(record);
+      return res.ok ? [] : res.errors.map((e) => e.path);
+    };
+    const withItemN = (n: number): PageRecord => {
+      const page = makeValidPage();
+      page.sections[0].scaffolds = [];
+      page.sections[0].items[1].n = n;
+      return page;
+    };
+    const withTopicN = (n: number): ContentsRecord => {
+      const contents = makeValidContents();
+      contents.topics[1].n = n;
+      return contents;
+    };
+    const withStepN = (n: number): PageRecord => {
+      const page = makeValidPage();
+      if (Array.isArray(page.examples)) {
+        page.examples[0].steps = [
+          { n: 1, shows: "setup", printed: "14 + 14" },
+          { n, shows: "answer", printed: "28" },
+        ];
+      }
+      return page;
+    };
+
+    const max = Number.MAX_SAFE_INTEGER;
+    for (const n of [max + 1, 1e20, 1e21, Number.MAX_VALUE, Infinity, NaN, 2.5, 0, -2]) {
+      expect(errorPaths(withItemN(n)), `item ${n}`).toEqual(["sections[0].items[1].n"]);
+      expect(errorPaths(withTopicN(n)), `topic ${n}`).toEqual(["topics[1].n"]);
+      expect(errorPaths(withStepN(n)), `step ${n}`).toEqual(["examples[0].steps[1].n"]);
+    }
+    for (const n of [2, 400, max]) {
+      expect(errorPaths(withItemN(n)), `item ${n}`).toEqual([]);
+      expect(errorPaths(withTopicN(n)), `topic ${n}`).toEqual([]);
+    }
+    expect(errorPaths(withStepN(2))).toEqual([]);
+
+    fc.assert(
+      fc.property(
+        fc.oneof(fc.double(), fc.maxSafeInteger(), fc.integer({ min: 2, max: 400 })),
+        (n) => {
+          const itemOk = errorPaths(withItemN(n)).length === 0;
+          const topicOk = errorPaths(withTopicN(n)).length === 0;
+          // Item 1 and topic 1 hold number 1 already.
+          const expected = Number.isSafeInteger(n) && n >= 2;
+          expect([itemOk, topicOk]).toEqual([expected, expected]);
+          if (expected) expect(String(n)).toMatch(/^[1-9]\d*$/);
+        },
+      ),
+    );
   });
 });
