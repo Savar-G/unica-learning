@@ -6,9 +6,9 @@ For the agent that writes the briefs (the orchestrator). Use it when one agent b
 
 1. **Codex reviews one time**, on the local branch, before a pull request exists. The review is complete (see "Review briefs").
 2. **Fix every finding** that is not declined. A finding in code that the branch did not change, and that is not part of the ticket, becomes a proposed ticket, not a change here. Check each fix and run the full done gate yourself.
-3. **Open the pull request.** Greptile reviews it and CI runs.
-4. **Fix the Greptile findings**, reply to each declined one with the reason, push once, and ask Greptile for a new review.
-5. **Merge** when CI passes and Greptile has no open finding that can save wrong data, accept a wrong page, or expose private data. Follow the merge rule in `AGENTS.md`.
+3. **Open the pull request.** CodeRabbit reviews it and CI runs.
+4. **Fix the CodeRabbit findings**, reply to each declined one with the reason, and push once. CodeRabbit reviews a push by itself; ask with the comment `@coderabbitai review` when it does not.
+5. **Merge** when CI passes and CodeRabbit has no open finding that can save wrong data, accept a wrong page, or expose private data. Follow the merge rule in `AGENTS.md`.
 
 Do not start another Codex round unless Savar asks. Why: on UNI-150, Codex reviewed six times and gave 10/10, and then Greptile found two bugs in its first review. A second reviewer finds more than another round by the first one.
 
@@ -40,7 +40,7 @@ Do not start another Codex round unless Savar asks. Why: on UNI-150, Codex revie
 
 ## When findings do not stop
 
-If Greptile's second review still has a finding that must be fixed, do not send another case-by-case fix brief. Count the findings by class. Then choose: redesign that part, make the ticket smaller, or accept the remaining `help text` findings. Tell Savar the choice and the count.
+If CodeRabbit's second review still has a finding that must be fixed, do not send another case-by-case fix brief. Count the findings by class. Then choose: redesign that part, make the ticket smaller, or accept the remaining `help text` findings. Tell Savar the choice and the count.
 
 In the pull request details, add one line per review: reviewer, score, number of findings, and the classes. This shows a repeated class early.
 
