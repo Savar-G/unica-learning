@@ -88,7 +88,7 @@ Stop. Ask Savar in writing. Wait for a clear yes before you go on.
 - **Where:** `/admin/next-steps`, the family's card, "Workbook emails".
 - **What the system does:**
   - The card confirmation transaction queues one welcome per saved card. The thank-you handler tries to send it. The Supabase job `workbook-welcome-emails` (minutes 7, 22, 37, 52) calls `/api/workbook-emails` and sends the rest (`src/app/api/workbook-emails/route.ts`, `src/lib/workbook-email-server.ts`).
-  - The email asks the parent to allow 5 to 7 days for Workbook 1 and says another email follows.
+  - The email asks the parent to allow 5 to 7 days for Workbook 1 (about 2 to 3 weeks while `WORKBOOK_DELAY_ON` is set, #1247) and says another email follows.
   - Table written: `public.workbook_emails` (kind `welcome`, one key per saved card).
   - A card saved before the automation shipped has automatic welcomes off. Send it by hand: "Preview welcome email", then "Send welcome email" (`src/components/workbook-emails.tsx`). This is a real-parent email: ask Savar first.
 - **Check it worked:**

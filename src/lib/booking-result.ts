@@ -1,5 +1,6 @@
 // The words on /thank-you for each state (#66, #82). Pure, so the states can be checked without a browser.
 import { BRAND } from "@/lib/site";
+import { workbookDelayNotice } from "@/lib/workbook-delay";
 
 export interface ResultState {
   /**
@@ -9,18 +10,22 @@ export interface ResultState {
   card: "saved" | "unconfirmed" | "cancelled" | null;
   /** The parent chose a plan on the child's report (#66): the assessment is done and they have an account. */
   fromReport: boolean;
+  /** Give the #1247 notice (src/lib/workbook-delay.ts); left out, the switch decides. */
+  delay?: boolean;
 }
 
 export interface ResultCopy {
   title: string;
   lead: string;
+  /** The #1247 notice under the lead, or null. Only a card saved from the report gets it: that child has results to see. */
+  notice: string | null;
   /** Show the support email. */
   support: boolean;
   /** The one button. */
   next: { href: string; label: string };
 }
 
-export function resultCopy({ card, fromReport }: ResultState): ResultCopy {
+export function resultCopy({ card, fromReport, delay }: ResultState): ResultCopy {
   const title = card === "saved" ? "Your card is saved."
     : card === "unconfirmed" ? "We could not check whether your card was added."
     : card === "cancelled" ? "Your card was not added."
@@ -34,7 +39,8 @@ export function resultCopy({ card, fromReport }: ResultState): ResultCopy {
   const next = fromReport ? { href: "/account", label: "Back to your account" }
     : card === "unconfirmed" ? { href: "/", label: "Back to home" }
     : START;
-  return { title, lead, support: card === "unconfirmed", next };
+  const notice = card === "saved" && fromReport ? workbookDelayNotice(delay) : null;
+  return { title, lead, notice, support: card === "unconfirmed", next };
 }
 
 const START = { href: "/start", label: "Take free assessment" };

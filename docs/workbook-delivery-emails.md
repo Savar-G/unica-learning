@@ -1,6 +1,6 @@
 # Workbook welcome and delivery emails
 
-A welcome email follows a confirmed saved card for the program. It asks the parent to allow 5 to 7 days to prepare the first workbook. It says that another email will follow when the workbook is on its way. It covers mail with tracking and local hand delivery. Creating an account or choosing a plan without saving a card sends no welcome.
+A welcome email follows a confirmed saved card for the program. It asks the parent to allow 5 to 7 days to prepare the first workbook. While the workbooks are rebuilt (#1247), it gives the approved 2 to 3 weeks notice in place of that line, and `/thank-you` shows the same notice after a card saved from the report. One switch turns both off: `WORKBOOK_DELAY_ON` in `src/lib/workbook-delay.ts`. It says that another email will follow when the workbook is on its way. It covers mail with tracking and local hand delivery. Creating an account or choosing a plan without saving a card sends no welcome.
 
 The welcome now adds the approved "You have nothing to do right now." paragraph and the feedback contact line after the existing text. This addition is based on main after PR #678 merged at `6410132`. The founders' signature remains unchanged.
 

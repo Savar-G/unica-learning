@@ -10,7 +10,9 @@ Hi Sam,
 
 Thank you for choosing Unica Learning for Alex. We are preparing your first workbook.
 
-Please allow 5 to 7 days for us to prepare your first workbook.
+We're improving our workbooks right now, so your child's first workbook will arrive in about 2 to 3 weeks. Your free month doesn't start until it arrives. In the meantime, you can see your child's results and report.
+
+While the workbooks are rebuilt (#1247, `WORKBOOK_DELAY_ON` in `src/lib/workbook-delay.ts`), the line above replaces "Please allow 5 to 7 days for us to prepare your first workbook." Set the switch to `false` and the welcome gives the 5 to 7 days line again.
 
 We will email you again when it is on its way. If we send it by mail, that email will include tracking details. For local hand delivery, we will contact you to arrange it.
 
