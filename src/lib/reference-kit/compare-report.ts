@@ -76,6 +76,7 @@ export interface PageCompareReport {
   result?: PageResultLabel;
   result_reason?: string | null;
   answer_conflicts?: string[];
+  answer_disagreements?: string[];
   only_in_reader: "a" | "b" | null;
   digest_mismatch: DigestMismatchInfo | null;
   differences: RecordDifference[];
@@ -452,6 +453,14 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
       }
     }
 
+    const answerDisagreements = p.answer_disagreements ?? [];
+    if (answerDisagreements.length > 0) {
+      lines.push("- Answer disagreements (readers disagree on an answer):");
+      for (const path of answerDisagreements) {
+        lines.push(`  - \`${path}\``);
+      }
+    }
+
     if (p.reader_notes.a.length > 0 || p.reader_notes.b.length > 0) {
       lines.push("- Reader answer notes:");
       for (const note of p.reader_notes.a) lines.push(`  - reader a: ${note}`);
@@ -465,6 +474,7 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
       p.both_unclear.length === 0 &&
       emptyAnswers.length === 0 &&
       answerConflicts.length === 0 &&
+      answerDisagreements.length === 0 &&
       p.unnamed_teaching_marks.length === 0 &&
       !p.only_in_reader &&
       !p.digest_mismatch &&

@@ -7,6 +7,7 @@ import {
   type ReferenceRecord,
 } from "@/lib/reference-record";
 import { applyComputedAnswers, findEmptyAnswers } from "./answers";
+import { ANSWER_DISAGREEMENT_REASON, findAnswerDisagreements } from "./compare-answers";
 import {
   collectUnnamedTeachingMarks,
   compareExamples,
@@ -28,7 +29,13 @@ import { compareScaffolds } from "./compare-scaffolds";
 import { normalizeNotationText, normalizeProseText } from "./normalize";
 
 export type { CompareCounts, DiffKind, RecordDifference, UnnamedTeachingMark };
-export { collectUnnamedTeachingMarks, normalizeNotationText, normalizeProseText };
+export {
+  ANSWER_DISAGREEMENT_REASON,
+  collectUnnamedTeachingMarks,
+  findAnswerDisagreements,
+  normalizeNotationText,
+  normalizeProseText,
+};
 
 export type PageStatus = "machine_read" | "agreement_accepted" | "double_read" | "human_checked";
 
@@ -460,6 +467,9 @@ export interface DecideStatusInput {
   hasAnswerConflict?: boolean;
   needsPersonRead?: boolean;
   editedByPerson?: boolean;
+  recordA?: ReferenceRecord | null;
+  recordB?: ReferenceRecord | null;
+  answerDisagreements?: readonly string[];
 }
 
 export interface PageDecision {
@@ -483,6 +493,12 @@ export function decidePageOutcome(input: DecideStatusInput): PageDecision {
   }
   if (input.diffs.some((d) => d.kind === "empty_answer")) {
     stopReasons.push("empty answer place");
+  }
+  const answerDisagreements =
+    input.answerDisagreements ??
+    findAnswerDisagreements(input.diffs, { a: input.recordA, b: input.recordB });
+  if (answerDisagreements.length > 0) {
+    stopReasons.push(ANSWER_DISAGREEMENT_REASON);
   }
   if (stopReasons.length > 0) {
     return { status: "machine_read", stopReasons };

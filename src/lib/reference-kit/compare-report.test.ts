@@ -383,4 +383,70 @@ describe("formatCompareReportMarkdown", () => {
       "Has worked examples or prose. Differing fields are in single_read and show as not checked.",
     );
   });
+
+  it("renders answer disagreement reason in summary, per-page details with answer paths, and end-of-run list", () => {
+    const report: CompareWorkReport = {
+      reader_a: { family: "codex", model: "x1" },
+      reader_b: { family: "claude", model: "c1" },
+      pages: [
+        {
+          source_ref: "sample:M:5a",
+          photo: "555555555555.jpg",
+          original_name: "05.jpg",
+          photo_sha256: "5".repeat(64),
+          status: "machine_read",
+          agreement: { agreed: 19, compared: 20, percent: 95 },
+          result: "sent to a person",
+          result_reason: "readers disagree on an answer",
+          answer_disagreements: [
+            "sections[0].items[n=1].responses[0].answer",
+            "examples[0].steps[n=2].printed",
+          ],
+          only_in_reader: null,
+          digest_mismatch: null,
+          differences: [
+            { path: "sections[0].items[n=1].responses[0].answer", a: "42", b: "43", kind: "value" },
+          ],
+          once_read: [],
+          both_unclear: [],
+          one_unclear: [],
+          needs_person_read: false,
+          unnamed_teaching_marks: [],
+          reader_notes: { a: [], b: [] },
+        },
+      ],
+      pages_sent_to_person: [
+        {
+          source_ref: "sample:M:5a",
+          agreement_percent: 95,
+          agreed: 19,
+          compared: 20,
+          difference_count: 1,
+          reason: "readers disagree on an answer",
+        },
+      ],
+      single_reader_pages: [],
+      failed_photos: [],
+      too_small_photos: [],
+      could_not_read_photos: [],
+      kept_human_checked: [],
+      removed_stale_pages: [],
+      duplicate_photos: [],
+      removed_photos: [],
+      same_page_id_conflicts: [],
+    };
+
+    const md = formatCompareReportMarkdown(report);
+    expect(md).toContain(
+      "| sample:M:5a | 05.jpg | machine_read | 95% (19/20) | sent to a person (readers disagree on an answer) | 1 | 0 | 0 | 0 | 0 | no |",
+    );
+    expect(md).toContain("- Result: sent to a person (readers disagree on an answer)");
+    expect(md).toContain("- Answer disagreements (readers disagree on an answer):");
+    expect(md).toContain("  - `sections[0].items[n=1].responses[0].answer`");
+    expect(md).toContain("  - `examples[0].steps[n=2].printed`");
+    expect(md).toContain("- sample:M:5a: 95% agreement, 1 difference (readers disagree on an answer)");
+    expect(formatPagesSentToPerson(report)).toContain(
+      "sample:M:5a: 95% agreement, 1 difference (readers disagree on an answer)",
+    );
+  });
 });

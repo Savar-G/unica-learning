@@ -1223,7 +1223,15 @@ describe("compareWorkFolder", () => {
       });
 
     const pageA = makeNumberedPage([2, 3]);
-    const pageB = makeNumberedPage([1, 2, 3]);
+    const pageB = makeNumberedPage([2, 3]);
+    // Item 1 is an answer-free action item so omitting it tests single_read without triggering the answer stop rule.
+    pageB.sections[0].items.unshift({
+      n: 1,
+      printed: "Read the chart aloud.",
+      form: null,
+      expr: null,
+      responses: [{ position: "checkbox", cue: null, answer: null, answer_source: "unchecked" }],
+    });
     pageB.sections[0].scaffolds = [{ kind: "arrow", applies_to: "all", from: "left", to: "right" }];
 
     const contentsA: ContentsRecord = {
@@ -1318,7 +1326,14 @@ describe("compareWorkFolder", () => {
       });
 
     const pageA = makeNumberedPage([2, 3]);
-    const pageB = makeNumberedPage([1, 2, 3]);
+    const pageB = makeNumberedPage([2, 3]);
+    pageB.sections[0].items.unshift({
+      n: 1,
+      printed: "Read the chart aloud.",
+      form: null,
+      expr: null,
+      responses: [{ position: "checkbox", cue: null, answer: null, answer_source: "unchecked" }],
+    });
     for (const [slot, family, rec] of [
       ["a", "codex", pageA],
       ["b", "claude", pageB],
@@ -1471,6 +1486,135 @@ describe("compareWorkFolder", () => {
     expect(md).not.toContain("A person must read");
     expect(md).not.toContain("prose must be read by a person");
     expect(md).toContain("Has worked examples or prose. Differing fields are in single_read and show as not checked.");
+  });
+
+  it("sends a >= 90% page to a person with reason and answer paths when readers disagree on an item or step answer", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-cmp-ansstop-repo-"));
+    const work = mkdtempSync(join(tmpdir(), "ref-cmp-ansstop-work-"));
+    tempDirs.push(repo, work);
+
+    const makeBatchPage = (sourceRef: string): PageRecord =>
+      makePage({
+        source_ref: sourceRef,
+        topic: { title: "Word Problems" },
+        sections: [
+          {
+            instruction: "Solve.",
+            scaffolds: [{ kind: "number_strip", applies_to: "all", values: [1, 2, 3, 4] }],
+            items: Array.from({ length: 10 }, (_, idx) => ({
+              n: idx + 1,
+              printed: `Problem ${idx + 1}`,
+              form: "horizontal" as const,
+              expr: { kind: "notation" as const, latex: `x + ${idx + 1}` },
+              responses: [
+                {
+                  position: "after_equals" as const,
+                  cue: null,
+                  answer: String(42 + idx),
+                  answer_source: "reader" as const,
+                },
+              ],
+            })),
+          },
+        ],
+      });
+
+    // 1a: 100% -> double_read
+    const p1a = makeBatchPage("sample:M:1a");
+    const p1b = structuredClone(p1a);
+
+    // 2a: 95% non-answer diffs only -> agreement_accepted
+    const p2a = makeBatchPage("sample:M:2a");
+    const p2b = structuredClone(p2a);
+    for (let i = 0; i < 4; i += 1) p2b.sections[0].items[i].printed = `Question ${i + 1}`;
+
+    // 3a: >= 95% with one item answer value diff (42 vs 43) -> machine_read with reason
+    const p3a = makeBatchPage("sample:M:3a");
+    const p3b = structuredClone(p3a);
+    p3b.sections[0].items[0].responses[0].answer = "43";
+
+    // 4a: >= 95% with a worked-example step answer diff -> machine_read with reason
+    const p4a = makeBatchPage("sample:M:4a");
+    p4a.examples = [
+      {
+        position: "top",
+        relation: "sequence",
+        parts: [{ form: "horizontal", expr: { kind: "arith", op: "add", operands: [20, 22] }, shown_answer: "42" }],
+        steps: [
+          { n: 1, shows: "setup", printed: "20 + 22" },
+          { n: 2, shows: "answer", printed: "42" },
+        ],
+        marks: [],
+      },
+    ];
+    const p4b = structuredClone(p4a);
+    if (Array.isArray(p4b.examples) && Array.isArray(p4b.examples[0].steps)) {
+      p4b.examples[0].steps[1].printed = "43";
+    }
+
+    const batch = [
+      { sha: "1".repeat(64), ref: "sample:M:1a", file: "sample-M-1a.json", a: p1a, b: p1b },
+      { sha: "2".repeat(64), ref: "sample:M:2a", file: "sample-M-2a.json", a: p2a, b: p2b },
+      { sha: "3".repeat(64), ref: "sample:M:3a", file: "sample-M-3a.json", a: p3a, b: p3b },
+      { sha: "4".repeat(64), ref: "sample:M:4a", file: "sample-M-4a.json", a: p4a, b: p4b },
+    ];
+    for (const [slot, family] of [["a", "codex"], ["b", "claude"]] as const) {
+      const dir = join(work, `reader-${slot}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "reader.json"), JSON.stringify({ family, model: "m1" }));
+      for (const entry of batch) {
+        writeFileSync(join(dir, entry.file), JSON.stringify(slot === "a" ? entry.a : entry.b, null, 2));
+      }
+      writeFileSync(
+        join(dir, "run.json"),
+        JSON.stringify({
+          slot,
+          reader: { family, model: "m1" },
+          source: "sample",
+          photos: batch.map((entry) => ({
+            photo: `${entry.sha.slice(0, 12)}.jpg`,
+            photo_sha256: entry.sha,
+            status: "ok",
+            source_ref: entry.ref,
+            record_file: entry.file,
+            notes: [],
+          })),
+        }),
+      );
+    }
+
+    const report = compareWorkFolder({ workDir: work, repoRoot: repo });
+    const byRef = (ref: string) => report.pages.find((p) => p.source_ref === ref);
+
+    expect(byRef("sample:M:1a")?.status).toBe("double_read");
+    expect(byRef("sample:M:2a")?.status).toBe("agreement_accepted");
+
+    const page3a = byRef("sample:M:3a");
+    expect(page3a?.status).toBe("machine_read");
+    expect(page3a?.result).toBe("sent to a person");
+    expect(page3a?.result_reason).toBe("readers disagree on an answer");
+    expect(page3a?.answer_disagreements).toEqual(["sections[0].items[n=1].responses[0].answer"]);
+    expect(page3a?.agreement?.percent).toBeGreaterThanOrEqual(95);
+    const saved3a = JSON.parse(readFileSync(join(work, "final", "sample-M-3a.json"), "utf8")) as PageRecord;
+    expect(saved3a.single_read).toBeUndefined();
+
+    const page4a = byRef("sample:M:4a");
+    expect(page4a?.status).toBe("machine_read");
+    expect(page4a?.result_reason).toBe("readers disagree on an answer");
+    expect(page4a?.answer_disagreements).toEqual(["examples[0].steps[n=2].printed"]);
+
+    expect(report.pages_sent_to_person?.map((p) => ({ ref: p.source_ref, reason: p.reason }))).toEqual([
+      { ref: "sample:M:3a", reason: "readers disagree on an answer" },
+      { ref: "sample:M:4a", reason: "readers disagree on an answer" },
+    ]);
+
+    const md = readFileSync(join(work, "final", "report.md"), "utf8");
+    expect(md).toContain("sent to a person (readers disagree on an answer)");
+    expect(md).toContain("- Answer disagreements (readers disagree on an answer):");
+    expect(md).toContain("  - `sections[0].items[n=1].responses[0].answer`");
+    expect(md).toContain("  - `examples[0].steps[n=2].printed`");
+    expect(md).toContain("sample:M:3a:");
+    expect(md).toContain("(readers disagree on an answer)");
   });
 });
 

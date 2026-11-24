@@ -9,10 +9,12 @@ import {
 } from "@/lib/reference-record";
 import {
   agreementPercentage,
+  ANSWER_DISAGREEMENT_REASON,
   classifyComparison,
   compareRecords,
   compareRecordsWithCounts,
   decidePageOutcome,
+  findAnswerDisagreements,
   locateOnceReadInKeptRecord,
   decideStatus,
   meetsAgreementThreshold,
@@ -2029,6 +2031,509 @@ describe("90% reader agreement rule", () => {
         counts: reversedCmp.counts,
       }),
     ).toBe("machine_read");
+  });
+
+  it("sends a page to a person at any agreement percentage when readers disagree on an item answer, unclear answer, or one-sided item with an answer", () => {
+    const base = makeGridPage(10);
+    base.sections[0].scaffolds = [
+      { kind: "number_strip", applies_to: "all", values: [1, 2, 3, 4] },
+    ];
+    // 100% matching page stays double_read.
+    const sameCmp = compareRecordsWithCounts(base, structuredClone(base));
+    expect(
+      decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: sameCmp.diffs,
+        counts: sameCmp.counts,
+        recordA: base,
+        recordB: base,
+      }),
+    ).toEqual({ status: "double_read", stopReasons: [] });
+
+    // 95% page with only non-answer diffs (5 printed diffs out of 100) stays agreement_accepted.
+    const nonAnswer95 = structuredClone(base);
+    for (let i = 0; i < 5; i += 1) {
+      nonAnswer95.sections[0].items[i].printed = `${i + 1} + 2 =`;
+    }
+    const nonAnswerCmp = compareRecordsWithCounts(base, nonAnswer95);
+    expect(nonAnswerCmp.counts).toEqual({ compared: 100, agreed: 95 });
+    expect(agreementPercentage(nonAnswerCmp.counts.agreed, nonAnswerCmp.counts.compared)).toBe(95);
+    expect(findAnswerDisagreements(nonAnswerCmp.diffs, { a: base, b: nonAnswer95 })).toEqual([]);
+    expect(
+      decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: nonAnswerCmp.diffs,
+        counts: nonAnswerCmp.counts,
+        recordA: base,
+        recordB: nonAnswer95,
+      }),
+    ).toEqual({ status: "agreement_accepted", stopReasons: [] });
+
+    // Same 95% page with one item answer difference (42 vs 43) -> machine_read with reason, counts unchanged.
+    const ansBase = structuredClone(base);
+    ansBase.sections[0].items[0].responses[0] = {
+      position: "after_equals",
+      cue: null,
+      answer: "42",
+      answer_source: "reader",
+    };
+    const ansDiff = structuredClone(ansBase);
+    for (let i = 1; i <= 4; i += 1) {
+      ansDiff.sections[0].items[i].printed = `${i + 1} + 2 =`;
+    }
+    ansDiff.sections[0].items[0].responses[0].answer = "43";
+    const ansCmp = compareRecordsWithCounts(ansBase, ansDiff);
+    expect(ansCmp.counts).toEqual({ compared: 100, agreed: 95 });
+    expect(findAnswerDisagreements(ansCmp.diffs, { a: ansBase, b: ansDiff })).toEqual([
+      "sections[0].items[n=1].responses[0].answer",
+    ]);
+    expect(
+      decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: ansCmp.diffs,
+        counts: ansCmp.counts,
+        recordA: ansBase,
+        recordB: ansDiff,
+      }),
+    ).toEqual({ status: "machine_read", stopReasons: [ANSWER_DISAGREEMENT_REASON] });
+
+    // one_unclear on an answer
+    const oneUnclearB = structuredClone(ansBase);
+    oneUnclearB.sections[0].items[0].responses[0].answer = UNCLEAR;
+    const oneUnclearCmp = compareRecordsWithCounts(ansBase, oneUnclearB);
+    expect(oneUnclearCmp.diffs).toEqual([
+      {
+        path: "sections[0].items[n=1].responses[0].answer",
+        a: "42",
+        b: UNCLEAR,
+        kind: "one_unclear",
+      },
+    ]);
+    expect(
+      decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: oneUnclearCmp.diffs,
+        counts: oneUnclearCmp.counts,
+        recordA: ansBase,
+        recordB: oneUnclearB,
+      }),
+    ).toEqual({ status: "machine_read", stopReasons: [ANSWER_DISAGREEMENT_REASON] });
+
+    // both_unclear on an answer
+    const bothA = structuredClone(ansBase);
+    const bothB = structuredClone(ansBase);
+    bothA.sections[0].items[0].responses[0].answer = UNCLEAR;
+    bothB.sections[0].items[0].responses[0].answer = UNCLEAR;
+    const bothCmp = compareRecordsWithCounts(bothA, bothB);
+    expect(bothCmp.diffs).toEqual([
+      {
+        path: "sections[0].items[n=1].responses[0].answer",
+        a: UNCLEAR,
+        b: UNCLEAR,
+        kind: "both_unclear",
+      },
+    ]);
+    expect(
+      decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: bothCmp.diffs,
+        counts: bothCmp.counts,
+        recordA: bothA,
+        recordB: bothB,
+      }),
+    ).toEqual({ status: "machine_read", stopReasons: [ANSWER_DISAGREEMENT_REASON] });
+
+    // One-sided item that has an answer (both real compare diff and once_read diff) stops the page.
+    const missingItemA = structuredClone(base);
+    missingItemA.sections[0].items = missingItemA.sections[0].items.slice(1);
+    const missingItemCmp = compareRecordsWithCounts(missingItemA, base);
+    expect(agreementPercentage(missingItemCmp.counts.agreed, missingItemCmp.counts.compared)).toBeGreaterThanOrEqual(90);
+    expect(findAnswerDisagreements(missingItemCmp.diffs, { a: missingItemA, b: base })).toEqual([
+      "sections[0].items[n=1]",
+    ]);
+    expect(
+      decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: missingItemCmp.diffs,
+        counts: missingItemCmp.counts,
+        recordA: missingItemA,
+        recordB: base,
+      }),
+    ).toEqual({ status: "machine_read", stopReasons: [ANSWER_DISAGREEMENT_REASON] });
+
+    const onceReadItemOutcome = decidePageOutcome({
+      hasA: true,
+      hasB: true,
+      familyA: "codex",
+      familyB: "claude",
+      diffs: [
+        {
+          path: "sections[0].items[n=11]",
+          a: null,
+          b: base.sections[0].items[0],
+          kind: "once_read",
+        },
+      ],
+      counts: { agreed: 19, compared: 20 },
+    });
+    expect(onceReadItemOutcome).toEqual({
+      status: "machine_read",
+      stopReasons: [ANSWER_DISAGREEMENT_REASON],
+    });
+
+    // One-sided action item with no answer (checkbox, answer: null) does NOT trigger the answer stop rule.
+    const actionB = structuredClone(base);
+    actionB.sections[0].items.push({
+      n: 11,
+      printed: "Read aloud",
+      form: null,
+      expr: null,
+      responses: [{ position: "checkbox", cue: null, answer: null, answer_source: "unchecked" }],
+    });
+    const actionCmp = compareRecordsWithCounts(base, actionB);
+    expect(findAnswerDisagreements(actionCmp.diffs, { a: base, b: actionB })).toEqual([]);
+    expect(
+      decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: actionCmp.diffs,
+        counts: actionCmp.counts,
+        recordA: base,
+        recordB: actionB,
+      }),
+    ).toEqual({ status: "agreement_accepted", stopReasons: [] });
+  });
+
+  it("catches worked-example step answers, shown_answer, parts inside an answer (digit boxes, remainders, sub-paths), wording on an answer, and printed answers on worked_item scaffolds", () => {
+    // 1. Worked-example step answer (shows: "answer" and shows: "remainder"): value, one_unclear, both_unclear, once_read, and shows mismatch.
+    const exBase = makeGridPage(10);
+    exBase.examples = [
+      {
+        position: "top",
+        relation: "sequence",
+        parts: [
+          {
+            form: "horizontal",
+            expr: { kind: "arith", op: "div", operands: [9, 2] },
+            shown_answer: "4 R1",
+          },
+        ],
+        steps: [
+          { n: 1, shows: "setup", printed: "9 / 2" },
+          { n: 2, shows: "answer", printed: "4" },
+          { n: 3, shows: "remainder", printed: "R1" },
+        ],
+        marks: [],
+      },
+    ];
+
+    // Non-answer step (shows: "setup") differing printed does NOT trigger answer rule.
+    const setupDiff = structuredClone(exBase);
+    if (Array.isArray(setupDiff.examples) && Array.isArray(setupDiff.examples[0].steps)) {
+      setupDiff.examples[0].steps[0].printed = "10 / 2";
+    }
+    const setupCmp = compareRecordsWithCounts(exBase, setupDiff);
+    expect(setupCmp.diffs).toHaveLength(1);
+    expect(findAnswerDisagreements(setupCmp.diffs, { a: exBase, b: setupDiff })).toEqual([]);
+    expect(
+      decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: setupCmp.diffs,
+        counts: setupCmp.counts,
+        recordA: exBase,
+        recordB: setupDiff,
+      }).status,
+    ).toBe("agreement_accepted");
+
+    // Step with shows: "answer" differing printed (value, one_unclear, both_unclear) and shows mismatch -> machine_read
+    const stepAnsDiff = structuredClone(exBase);
+    if (Array.isArray(stepAnsDiff.examples) && Array.isArray(stepAnsDiff.examples[0].steps)) {
+      stepAnsDiff.examples[0].steps[1].printed = "5";
+    }
+    const stepAnsCmp = compareRecordsWithCounts(exBase, stepAnsDiff);
+    expect(findAnswerDisagreements(stepAnsCmp.diffs, { a: exBase, b: stepAnsDiff })).toEqual([
+      "examples[0].steps[n=2].printed",
+    ]);
+    expect(
+      decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: stepAnsCmp.diffs,
+        counts: stepAnsCmp.counts,
+        recordA: exBase,
+        recordB: stepAnsDiff,
+      }),
+    ).toEqual({ status: "machine_read", stopReasons: [ANSWER_DISAGREEMENT_REASON] });
+
+    const stepShowsDiff = structuredClone(exBase);
+    if (Array.isArray(stepShowsDiff.examples) && Array.isArray(stepShowsDiff.examples[0].steps)) {
+      stepShowsDiff.examples[0].steps[1].shows = "partial_sum";
+    }
+    const stepShowsCmp = compareRecordsWithCounts(exBase, stepShowsDiff);
+    expect(findAnswerDisagreements(stepShowsCmp.diffs, { a: exBase, b: stepShowsDiff })).toEqual([
+      "examples[0].steps[n=2].shows",
+    ]);
+
+    const stepUnclearA = structuredClone(exBase);
+    const stepUnclearB = structuredClone(exBase);
+    if (
+      Array.isArray(stepUnclearA.examples) &&
+      Array.isArray(stepUnclearA.examples[0].steps) &&
+      Array.isArray(stepUnclearB.examples) &&
+      Array.isArray(stepUnclearB.examples[0].steps)
+    ) {
+      stepUnclearB.examples[0].steps[1].printed = UNCLEAR;
+      expect(
+        findAnswerDisagreements(compareRecordsWithCounts(stepUnclearA, stepUnclearB).diffs, {
+          a: stepUnclearA,
+          b: stepUnclearB,
+        }),
+      ).toEqual(["examples[0].steps[n=2].printed"]);
+      stepUnclearA.examples[0].steps[1].printed = UNCLEAR;
+      expect(
+        findAnswerDisagreements(compareRecordsWithCounts(stepUnclearA, stepUnclearB).diffs, {
+          a: stepUnclearA,
+          b: stepUnclearB,
+        }),
+      ).toEqual(["examples[0].steps[n=2].printed"]);
+    }
+
+    // Whole once_read Example containing an answer stops the page; one with no answer does not.
+    const noExPage = makeGridPage(10);
+    const exWithAnsCmp = compareRecordsWithCounts(noExPage, exBase);
+    expect(findAnswerDisagreements(exWithAnsCmp.diffs, { a: noExPage, b: exBase })).toEqual([
+      "examples[b:0]",
+    ]);
+    const exNoAns = makeGridPage(10);
+    exNoAns.examples = [
+      {
+        position: "top",
+        relation: "compare",
+        parts: [{ form: "horizontal", expr: { kind: "arith", op: "add", operands: [1, 2] } }],
+        steps: [{ n: 1, shows: "setup", printed: "1 + 2" }],
+        marks: [],
+      },
+    ];
+    const exNoAnsCmp = compareRecordsWithCounts(noExPage, exNoAns);
+    expect(findAnswerDisagreements(exNoAnsCmp.diffs, { a: noExPage, b: exNoAns })).toEqual([]);
+
+    // One-sided section with an answer item, one-sided example part with shown_answer, and one_unclear steps list containing an answer step
+    const extraSecB = structuredClone(exBase);
+    extraSecB.sections.push({
+      instruction: "Extra.",
+      scaffolds: [],
+      items: [
+        {
+          n: 1,
+          printed: "1 + 1 =",
+          form: "horizontal",
+          expr: { kind: "arith", op: "add", operands: [1, 1] },
+          responses: [{ position: "after_equals", cue: null, answer: "2", answer_source: "computed" }],
+        },
+      ],
+    });
+    expect(
+      findAnswerDisagreements(compareRecordsWithCounts(exBase, extraSecB).diffs, {
+        a: exBase,
+        b: extraSecB,
+      }),
+    ).toEqual(["sections[1]"]);
+
+    const extraPartB = structuredClone(exBase);
+    if (Array.isArray(extraPartB.examples)) {
+      extraPartB.examples[0].parts.push({
+        form: "horizontal",
+        expr: { kind: "arith", op: "add", operands: [2, 2] },
+        shown_answer: "4",
+      });
+    }
+    expect(
+      findAnswerDisagreements(compareRecordsWithCounts(exBase, extraPartB).diffs, {
+        a: exBase,
+        b: extraPartB,
+      }),
+    ).toEqual(["examples[0].parts[1]"]);
+
+    const unclearStepsB = structuredClone(exBase);
+    if (Array.isArray(unclearStepsB.examples)) {
+      unclearStepsB.examples[0].steps = UNCLEAR;
+    }
+    expect(
+      findAnswerDisagreements(compareRecordsWithCounts(exBase, unclearStepsB).diffs, {
+        a: exBase,
+        b: unclearStepsB,
+      }),
+    ).toEqual(["examples[0].steps"]);
+
+    // Step with shows: "remainder" differing printed -> machine_read
+    const stepRemDiff = structuredClone(exBase);
+    if (Array.isArray(stepRemDiff.examples) && Array.isArray(stepRemDiff.examples[0].steps)) {
+      stepRemDiff.examples[0].steps[2].printed = "R2";
+    }
+    const stepRemCmp = compareRecordsWithCounts(exBase, stepRemDiff);
+    expect(findAnswerDisagreements(stepRemCmp.diffs, { a: exBase, b: stepRemDiff })).toEqual([
+      "examples[0].steps[n=3].printed",
+    ]);
+
+    // once_read worked-example step that has shows: "answer" -> machine_read
+    const missingAnsStep = structuredClone(exBase);
+    if (Array.isArray(missingAnsStep.examples) && Array.isArray(missingAnsStep.examples[0].steps)) {
+      missingAnsStep.examples[0].steps = [missingAnsStep.examples[0].steps[0]];
+    }
+    const onceStepCmp = compareRecordsWithCounts(exBase, missingAnsStep);
+    expect(findAnswerDisagreements(onceStepCmp.diffs, { a: exBase, b: missingAnsStep })).toEqual([
+      "examples[0].steps[n=2]",
+      "examples[0].steps[n=3]",
+    ]);
+
+    // ExamplePart.shown_answer differing value and once_read -> machine_read
+    const shownDiff = structuredClone(exBase);
+    if (Array.isArray(shownDiff.examples)) {
+      shownDiff.examples[0].parts[0].shown_answer = "4 R2";
+    }
+    const shownCmp = compareRecordsWithCounts(exBase, shownDiff);
+    expect(findAnswerDisagreements(shownCmp.diffs, { a: exBase, b: shownDiff })).toEqual([
+      "examples[0].parts[0].shown_answer",
+    ]);
+    const shownOnce = structuredClone(exBase);
+    if (Array.isArray(shownOnce.examples)) {
+      delete shownOnce.examples[0].parts[0].shown_answer;
+    }
+    const shownOnceCmp = compareRecordsWithCounts(exBase, shownOnce);
+    expect(shownOnceCmp.diffs[0]?.kind).toBe("once_read");
+    expect(findAnswerDisagreements(shownOnceCmp.diffs, { a: exBase, b: shownOnce })).toEqual([
+      "examples[0].parts[0].shown_answer",
+    ]);
+
+    // 2. Parts inside an answer value: digit boxes, separate remainder box, and nested path under .answer.
+    const boxA = makeGridPage(10);
+    boxA.sections[0].scaffolds = [
+      { kind: "answer_boxes", applies_to: [1], box_count: 2, places: ["tens", "ones"] },
+    ];
+    boxA.sections[0].items[0] = {
+      n: 1,
+      printed: "20 + 22 = □□",
+      form: "horizontal",
+      expr: { kind: "arith", op: "add", operands: [20, 22] },
+      responses: [
+        { position: "box", cue: null, answer: "4", answer_source: "reader", place: "tens" },
+        { position: "box", cue: null, answer: "2", answer_source: "reader", place: "ones" },
+      ],
+    };
+    const boxB = structuredClone(boxA);
+    boxB.sections[0].items[0].responses[1].answer = "3";
+    const boxCmp = compareRecordsWithCounts(boxA, boxB);
+    expect(findAnswerDisagreements(boxCmp.diffs, { a: boxA, b: boxB })).toEqual([
+      "sections[0].items[n=1].responses[1].answer",
+    ]);
+
+    // Missing second digit box (whole response containing an answer)
+    const oneBoxB = structuredClone(boxA);
+    oneBoxB.sections[0].items[0].responses = [oneBoxB.sections[0].items[0].responses[0]];
+    const oneBoxCmp = compareRecordsWithCounts(boxA, oneBoxB);
+    expect(findAnswerDisagreements(oneBoxCmp.diffs, { a: boxA, b: oneBoxB })).toEqual([
+      "sections[0].items[n=1].responses[1]",
+    ]);
+
+    // Remainder inside an answer value ("4 R1" vs "4 R2") and separate remainder response box
+    const remA = makeGridPage(10);
+    remA.sections[0].items[0] = {
+      n: 1,
+      printed: "9 / 2 =",
+      form: "horizontal",
+      expr: { kind: "arith", op: "div", operands: [9, 2] },
+      responses: [
+        { position: "after_equals", cue: null, answer: "4 R1", answer_source: "reader" },
+      ],
+    };
+    const remB = structuredClone(remA);
+    remB.sections[0].items[0].responses[0].answer = "4 R2";
+    const remCmp = compareRecordsWithCounts(remA, remB);
+    expect(findAnswerDisagreements(remCmp.diffs, { a: remA, b: remB })).toEqual([
+      "sections[0].items[n=1].responses[0].answer",
+    ]);
+
+    const splitRemA = makeGridPage(10);
+    splitRemA.sections[0].items[0] = {
+      n: 1,
+      printed: "9 / 2 = □ R □",
+      form: "horizontal",
+      expr: { kind: "arith", op: "div", operands: [9, 2] },
+      responses: [
+        { position: "box", cue: null, answer: "4", answer_source: "reader" },
+        { position: "box", cue: "R", answer: "1", answer_source: "reader" },
+      ],
+    };
+    const splitRemB = structuredClone(splitRemA);
+    splitRemB.sections[0].items[0].responses[1].answer = "2";
+    const splitRemCmp = compareRecordsWithCounts(splitRemA, splitRemB);
+    expect(findAnswerDisagreements(splitRemCmp.diffs, { a: splitRemA, b: splitRemB })).toEqual([
+      "sections[0].items[n=1].responses[1].answer",
+    ]);
+
+    // Nested sub-path inside an answer value (e.g. remainder part) and wording diff on an answer field
+    expect(
+      findAnswerDisagreements([
+        { path: "sections[0].items[n=1].responses[0].answer.remainder", a: "1", b: "2", kind: "value" },
+        { path: "sections[0].items[n=1].responses[0].answer[1]", a: "2", b: "3", kind: "value" },
+        { path: "sections[0].items[n=2].responses[0].answer", a: "four", b: "4", kind: "wording" },
+        { path: "sections[0].scaffolds[0].description", a: "Hint A", b: "Hint B", kind: "wording" },
+        { path: "sections[0].items[n=3].responses[0]", a: null, b: null, kind: "empty_answer" },
+      ]),
+    ).toEqual([
+      "sections[0].items[n=1].responses[0].answer.remainder",
+      "sections[0].items[n=1].responses[0].answer[1]",
+      "sections[0].items[n=2].responses[0].answer",
+    ]);
+
+    // 3. Scaffolds: non-answer scaffold diffs do not trigger, while printed answer on a worked_item does.
+    const workedA = makeGridPage(10);
+    workedA.sections[0].scaffolds = [
+      { kind: "worked_item", applies_to: [1], description: "Item 1 printed solved" },
+    ];
+    workedA.sections[0].items[0].responses[0] = {
+      position: "after_equals",
+      cue: null,
+      answer: "17",
+      answer_source: "printed",
+    };
+    const workedDescB = structuredClone(workedA);
+    workedDescB.sections[0].scaffolds = [
+      { kind: "worked_item", applies_to: [1], description: "Item 2 printed solved" },
+    ];
+    const workedDescCmp = compareRecordsWithCounts(workedA, workedDescB);
+    expect(findAnswerDisagreements(workedDescCmp.diffs, { a: workedA, b: workedDescB })).toEqual([]);
+    const workedAnsB = structuredClone(workedA);
+    workedAnsB.sections[0].items[0].responses[0].answer = "18";
+    const workedAnsCmp = compareRecordsWithCounts(workedA, workedAnsB);
+    expect(findAnswerDisagreements(workedAnsCmp.diffs, { a: workedA, b: workedAnsB })).toEqual([
+      "sections[0].items[n=1].responses[0].answer",
+    ]);
   });
 
   it("satisfies threshold and ratio invariants across arbitrary counts", () => {

@@ -18,6 +18,7 @@ import {
   compareRecordsWithCounts,
   decidePageOutcome,
   emptyAnswerDiffs,
+  findAnswerDisagreements,
   locateOnceReadInKeptRecord,
   resolveSingleReadPaths,
   type PageStatus,
@@ -380,6 +381,10 @@ export function compareWorkFolder(opts: {
       ? emptyAnswerDiffs(editedRecord, pair.recA, pair.recB)
       : emptyAnswerDiffs(computedRecord, pair.recA, pair.recB);
 
+    const answerDisagreements = findAnswerDisagreements(allDiffs, {
+      a: pair.recA,
+      b: pair.recB,
+    });
     const decision = decidePageOutcome({
       hasA: pair.recA !== null,
       hasB: pair.recB !== null,
@@ -391,6 +396,9 @@ export function compareWorkFolder(opts: {
       hasAnswerConflict: answerConflicts.length > 0,
       needsPersonRead: classified.needs_person_read,
       editedByPerson,
+      recordA: pair.recA,
+      recordB: pair.recB,
+      answerDisagreements,
     });
     const pageStatus = decision.status;
     statusMap[sourceRef] = pageStatus;
@@ -463,6 +471,7 @@ export function compareWorkFolder(opts: {
       result: resultLabelForStatus(pageStatus),
       result_reason: resultReason,
       ...(answerConflicts.length > 0 ? { answer_conflicts: answerConflicts } : {}),
+      ...(answerDisagreements.length > 0 ? { answer_disagreements: answerDisagreements } : {}),
       only_in_reader: onlyIn,
       digest_mismatch: pair.digestMismatch,
       differences: classified.differences,
