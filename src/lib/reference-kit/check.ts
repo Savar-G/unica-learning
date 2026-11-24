@@ -20,30 +20,43 @@ export interface CheckPageResult {
   notes: string[];
 }
 
+function readStrictJsonFile(filePath: string): unknown {
+  const bytes = readFileSync(filePath);
+  try {
+    return parseStrictUtf8Json(bytes);
+  } catch (err) {
+    const kind = err instanceof SyntaxError ? "Invalid JSON" : "Invalid UTF-8";
+    throw new Error(
+      `${kind} in ${filePath}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
 // The photo of a page: the photos manifest names it; an older work folder may name it only in the
 // report. Without either, the photos folder is named.
 function describePagePhoto(workDir: string, page: string): string {
   const photosDir = join(workDir, "photos");
-  try {
-    const manifest = parsePhotosManifest(
-      parseStrictUtf8Json(readFileSync(join(photosDir, PHOTOS_MANIFEST_FILE))),
-    );
-    const entry = manifest.photos.find((p) => p.source_ref === page);
-    if (entry) return `${join(photosDir, entry.file)} (original name ${entry.original_name})`;
-  } catch {
-    // No readable manifest: try the report.
+  const manifestPath = join(photosDir, PHOTOS_MANIFEST_FILE);
+  if (existsSync(manifestPath)) {
+    const rawManifest = readStrictJsonFile(manifestPath);
+    try {
+      const manifest = parsePhotosManifest(rawManifest);
+      const entry = manifest.photos.find((p) => p.source_ref === page);
+      if (entry) return `${join(photosDir, entry.file)} (original name ${entry.original_name})`;
+    } catch {
+      // Unrecognized manifest shape: try the report.
+    }
   }
-  try {
-    const report = parseStrictUtf8Json(readFileSync(join(workDir, "final", "report.json"))) as {
+  const reportPath = join(workDir, "final", "report.json");
+  if (existsSync(reportPath)) {
+    const report = readStrictJsonFile(reportPath) as {
       pages?: Array<{ source_ref?: unknown; photo?: unknown; original_name?: unknown }>;
     };
-    const entry = report.pages?.find((p) => p.source_ref === page);
+    const entry = report?.pages?.find((p) => p.source_ref === page);
     if (entry && typeof entry.photo === "string") {
       const original = typeof entry.original_name === "string" ? ` (original name ${entry.original_name})` : "";
       return `${join(photosDir, entry.photo)}${original}`;
     }
-  } catch {
-    // No readable report: name the folder.
   }
   return `the photo of this page in ${photosDir}`;
 }
@@ -83,7 +96,11 @@ export function checkAndMarkPage(opts: {
   if (!existsSync(statusPath)) {
     throw new Error(`Missing status.json in ${finalDir}. Run reference:compare first.`);
   }
-  const statusMap = parseStrictUtf8Json(readFileSync(statusPath)) as Record<string, PageStatus>;
+  const rawStatus = readStrictJsonFile(statusPath);
+  if (typeof rawStatus !== "object" || rawStatus === null || Array.isArray(rawStatus)) {
+    throw new Error(`Invalid status map in ${statusPath}: expected a JSON object`);
+  }
+  const statusMap = rawStatus as Record<string, PageStatus>;
   if (!Object.prototype.hasOwnProperty.call(statusMap, page)) {
     throw new Error(`Page "${page}" is not listed in ${statusPath}. Run reference:compare first.`);
   }
@@ -106,15 +123,7 @@ export function checkAndMarkPage(opts: {
     throw new Error(`Final record not found for "${page}" at ${recordPath}`);
   }
 
-  let parsed: unknown;
-  try {
-    parsed = parseStrictUtf8Json(readFileSync(recordPath));
-  } catch (err) {
-    const kind = err instanceof SyntaxError ? "Invalid JSON" : "Invalid UTF-8";
-    throw new Error(
-      `${kind} in ${recordPath}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
+  const parsed = readStrictJsonFile(recordPath);
 
   if (
     typeof parsed === "object" &&

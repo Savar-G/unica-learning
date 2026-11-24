@@ -1,10 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import {
-  parseStrictUtf8Json,
-  validateReferenceRecord,
-  type ReferenceRecord,
-} from "@/lib/reference-record";
+import { validateReferenceRecord, type ReferenceRecord } from "@/lib/reference-record";
 import type { StoredAnswerNote } from "./answers";
 import type { DigestMismatchInfo, FailedPhotoReport, SamePageIdConflict } from "./compare-report";
 import {
@@ -53,7 +49,7 @@ const SKIP_JSON_FILES = new Set(["reader.json", "run.json"]);
 
 export function readJsonIfExists<T>(filePath: string): T | null {
   if (!existsSync(filePath)) return null;
-  return parseStrictUtf8Json(readFileSync(filePath)) as T;
+  return JSON.parse(readFileSync(filePath, "utf8")) as T;
 }
 
 export function loadOriginalNamesByDigest(workDir: string): Map<string, string> {
@@ -98,7 +94,7 @@ export function loadSlot(slotDir: string): LoadedSlot {
     if (!name.endsWith(".json") || name.endsWith(".invalid.json") || SKIP_JSON_FILES.has(name)) {
       continue;
     }
-    const raw = parseStrictUtf8Json(readFileSync(join(slotDir, name)));
+    const raw = JSON.parse(readFileSync(join(slotDir, name), "utf8")) as unknown;
     const check = validateReferenceRecord(raw);
     if (!check.ok) {
       throw new Error(

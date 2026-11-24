@@ -3,7 +3,6 @@ import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   assertOutsideRepo,
-  parseStrictUtf8Json,
   prepareSafeOutputDir,
   renderRecordToMarkdown,
   validateReferenceRecord,
@@ -75,7 +74,7 @@ const FINAL_META_FILES = new Set(["status.json", "report.json"]);
 function readStoredSourceRef(filePath: string): string | null {
   if (!existsSync(filePath)) return null;
   try {
-    const parsed = parseStrictUtf8Json(readFileSync(filePath));
+    const parsed = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
     if (
       typeof parsed === "object" &&
       parsed !== null &&
@@ -97,7 +96,7 @@ function sha256OfFile(filePath: string): string {
 function loadExistingFinalRecord(filePath: string): ReferenceRecord | null {
   if (!existsSync(filePath)) return null;
   try {
-    const parsed = parseStrictUtf8Json(readFileSync(filePath));
+    const parsed = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
     const check = validateReferenceRecord(parsed);
     return check.ok ? check.record : null;
   } catch {
@@ -159,7 +158,7 @@ function syncManifestSourceRefs(
   if (!existsSync(manifestPath)) return;
   let manifest;
   try {
-    manifest = parsePhotosManifest(parseStrictUtf8Json(readFileSync(manifestPath)));
+    manifest = parsePhotosManifest(JSON.parse(readFileSync(manifestPath, "utf8")) as unknown);
   } catch {
     return;
   }

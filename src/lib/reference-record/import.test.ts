@@ -7,6 +7,7 @@ import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   deepEqualJson,
+  findUnstorableTextPath,
   formatImportResult,
   importReferenceRecords,
   MAX_REFERENCE_PHOTO_BYTES,
@@ -189,6 +190,30 @@ describe("deepEqualJson", () => {
   });
 });
 
+describe("findUnstorableTextPath", () => {
+  it("accepts valid Unicode text in any script and flags NUL, lone surrogates, and U+FFFD with their path", () => {
+    const cleanString = fc
+      .string({ unit: "grapheme" })
+      .filter((s) => !s.includes("\u0000") && !s.includes("\uFFFD"));
+    fc.assert(
+      fc.property(cleanString, cleanString, (text, key) => {
+        fc.pre(key.length > 0 && !key.includes("__proto__"));
+        expect(findUnstorableTextPath({ nested: [{ [key]: text }] })).toBeNull();
+      }),
+    );
+
+    const badChar = fc.constantFrom("\u0000", "\uFFFD", "\uD800", "\uDC00");
+    fc.assert(
+      fc.property(cleanString, cleanString, badChar, (before, after, bad) => {
+        expect(
+          findUnstorableTextPath({ sections: [{ items: [{ printed: `${before}${bad}${after}` }] }] }),
+        ).toBe("$.sections[0].items[0].printed");
+        expect(findUnstorableTextPath({ [`k${bad}`]: "ok" })).toBe("$.<key>");
+      }),
+    );
+  });
+});
+
 describe("importReferenceRecords", () => {
   let rootDir: string;
   let recordsDir: string;
@@ -263,7 +288,11 @@ describe("importReferenceRecords", () => {
     const controlPhotos = join(controlDir, "photos");
     const controlStore = new MemoryReferenceStore();
     writeJson(controlRecs, "01-good.json", makePage("sample:M:1a"));
-    writeJson(controlRecs, "02-target.json", makePage("sample:M:2a", "Compare \u{1D465} and y"));
+    writeJson(
+      controlRecs,
+      "02-target.json",
+      makePage("sample:M:2a", "Compare \u{1D465}, été, 数学, جمع, сумма"),
+    );
     writeJson(controlRecs, "status.json", {
       "sample:M:1a": "double_read",
       "sample:M:2a": "double_read",
@@ -390,6 +419,15 @@ describe("importReferenceRecords", () => {
         expectedProblem: /02-target\.json:.*cannot store/,
       },
       {
+        name: "U+FFFD replacement character in nested record string",
+        setup: ({ recs }) => {
+          const page = makePage("sample:M:2a");
+          page.sections[0].items[0].printed = "3 + \uFFFD =";
+          writeJson(recs, "02-target.json", page);
+        },
+        expectedProblem: /02-target\.json: \$\.sections\[0\]\.items\[0\]\.printed:.*U\+FFFD/i,
+      },
+      {
         name: "duplicate source_ref across two record files",
         setup: ({ recs }) => {
           writeJson(recs, "02-dup.json", makePage("sample:M:1a"));
@@ -419,6 +457,36 @@ describe("importReferenceRecords", () => {
           writeFileSync(join(recs, "status.json"), withInvalidUtf8Byte(text, "MARKER"));
         },
         expectedProblem: /status\.json:.*UTF-8/i,
+      },
+      {
+        name: "U+FFFD replacement character in status.json key",
+        setup: ({ recs }) => {
+          writeJson(recs, "status.json", {
+            "sample:M:1a": "double_read",
+            "sample:M:2\uFFFDa": "double_read",
+          });
+        },
+        expectedProblem: /status\.json: \$\.<key>:.*U\+FFFD/i,
+      },
+      {
+        name: "NUL character in status.json key",
+        setup: ({ recs }) => {
+          writeJson(recs, "status.json", {
+            "sample:M:1a": "double_read",
+            "sample:M:2\u0000a": "double_read",
+          });
+        },
+        expectedProblem: /status\.json: \$\.<key>:.*cannot store/i,
+      },
+      {
+        name: "lone surrogate in status.json key",
+        setup: ({ recs }) => {
+          writeJson(recs, "status.json", {
+            "sample:M:1a": "double_read",
+            "sample:M:2\uD800a": "double_read",
+          });
+        },
+        expectedProblem: /status\.json: \$\.<key>:.*cannot store/i,
       },
       {
         name: "invalid JSON in status.json",
@@ -596,6 +664,45 @@ describe("importReferenceRecords", () => {
           writeFileSync(join(photos, "photos-manifest.json"), withInvalidUtf8Byte(text, "MARKER"));
         },
         expectedProblem: /photos-manifest\.json:.*UTF-8/i,
+      },
+      {
+        name: "U+FFFD replacement character in photos-manifest.json field",
+        usePhotos: true,
+        setup: ({ photos }) => {
+          writeJson(photos, "photos-manifest.json", {
+            version: 1,
+            photos: [
+              { ...manifestEntry("good.jpg", goodImg, "sample:M:1a"), original_name: "IMG_\uFFFD.jpg" },
+            ],
+          });
+        },
+        expectedProblem: /photos-manifest\.json: \$\.photos\[0\]\.original_name:.*U\+FFFD/i,
+      },
+      {
+        name: "NUL character in photos-manifest.json field",
+        usePhotos: true,
+        setup: ({ photos }) => {
+          writeJson(photos, "photos-manifest.json", {
+            version: 1,
+            photos: [
+              { ...manifestEntry("good.jpg", goodImg, "sample:M:1a"), original_name: "IMG_\u0000.jpg" },
+            ],
+          });
+        },
+        expectedProblem: /photos-manifest\.json: \$\.photos\[0\]\.original_name:.*cannot store/i,
+      },
+      {
+        name: "lone surrogate in photos-manifest.json field",
+        usePhotos: true,
+        setup: ({ photos }) => {
+          writeJson(photos, "photos-manifest.json", {
+            version: 1,
+            photos: [
+              { ...manifestEntry("good.jpg", goodImg, "sample:M:1a"), original_name: "IMG_\uDC00.jpg" },
+            ],
+          });
+        },
+        expectedProblem: /photos-manifest\.json: \$\.photos\[0\]\.original_name:.*cannot store/i,
       },
       {
         name: "invalid JSON in photos-manifest.json",
