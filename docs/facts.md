@@ -34,6 +34,7 @@ Checked date for every row: 2026-11-14.
 | Each book is matched to the child's level and gaps, not only their grade. A child can start behind, at or ahead of their grade. | `src/lib/faq.ts:19`, `src/lib/faq.ts:20` | 2026-11-14 |
 | The curriculum has 30 levels built from the BC curriculum, Kindergarten to Grade 9. | `src/lib/curriculum.ts:1` | 2026-11-14 |
 | Province-specific alignment is expanding, so the books may not yet cover every topic in a local curriculum. | `src/app/(site)/pricing/page.tsx:52`, `src/lib/faq.ts:20` | 2026-11-14 |
+| For a v2 workbook, Level n is Grade n work. For example, Level 5 is Grade 5 work. Use this once v2 workbooks are available to families. | [Workbook v2 level names](workbook-v2.md#level-names-families-see), UNI-169 | 2026-11-24 |
 
 ## The free assessment and the report
 
