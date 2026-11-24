@@ -11,10 +11,11 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { validateReferenceRecord, type ContentsRecord, type PageRecord } from "@/lib/reference-record";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ContentsRecord, PageRecord } from "@/lib/reference-record";
 import { checkAndMarkPage } from "./check";
 import { compareWorkFolder } from "./compare-batch";
+import * as comparePartsModule from "./compare-parts";
 import { persistSlotResult } from "./extract-state";
 import { readPhoto } from "./read";
 
@@ -268,17 +269,14 @@ describe("compareWorkFolder", () => {
 
     const report = compareWorkFolder({ workDir: work, repoRoot: repo });
     expect(report.pages).toHaveLength(1);
-    expect(report.pages[0].status).toBe("agreement_accepted");
+    expect(report.pages[0].status).toBe("machine_read");
+    expect(report.pages[0].result_reason).toBe("readers disagree on the page");
     expect(report.pages[0].differences.some((d) => d.path === "source_ref")).toBe(true);
     expect(report.pages[0].differences.some((d) => d.path === "examples[0].parts[0].form")).toBe(
       true,
     );
     const saved7a = JSON.parse(readFileSync(join(work, "final", "sample-M-7a.json"), "utf8")) as PageRecord;
-    expect(saved7a.single_read).toEqual([
-      "source_ref",
-      "examples[0].parts[0].form",
-      "examples[0].parts[1].form",
-    ]);
+    expect(saved7a.single_read).toBeUndefined();
   });
 
   it("preserves human_checked pages on re-compare, notes reader differences from kept records, and prunes only stale non-human_checked pages", () => {
@@ -802,13 +800,16 @@ describe("compareWorkFolder", () => {
     expect(md).not.toContain("look at the photo; copy an entry");
     expect(md).toContain("Answer places with no answer");
     expect(md).toContain("`sections[0].items[n=1].responses[0]`");
-    // A person edits the final record of 3a. Its once-read path is given only where the entry is.
+    // A person edits the final record of 3a: kept records never carry final_path or insert_before.
     const edited = finalOf("sample-M-3a");
     edited.sections[0].scaffolds = [{ kind: "caption", applies_to: "all", text: "Sample caption" }, arrow];
     writeFileSync(join(work, "final", "sample-M-3a.json"), JSON.stringify(edited, null, 2));
     const withCopy = compareWorkFolder({ workDir: work, repoRoot: repo }).pages.find((p) => p.source_ref === "sample:M:3a");
     expect(withCopy?.edited_by_person).toBe(true);
-    expect(withCopy?.once_read[0].final_path).toBe("sections[0].scaffolds[1]");
+    expect(withCopy?.once_read[0].reader).toBe("b");
+    expect(withCopy?.once_read[0].final_path).toBeUndefined();
+    expect(withCopy?.once_read[0].insert_before).toBeUndefined();
+    expect(readFileSync(join(work, "final", "report.md"), "utf8")).toContain("find the place in that record");
     edited.sections[0].scaffolds = [];
     writeFileSync(join(work, "final", "sample-M-3a.json"), JSON.stringify(edited, null, 2));
     const without = compareWorkFolder({ workDir: work, repoRoot: repo }).pages.find((p) => p.source_ref === "sample:M:3a");
@@ -1280,14 +1281,16 @@ describe("compareWorkFolder", () => {
     const report = compareWorkFolder({ workDir: work, repoRoot: repo });
     const pageReport = report.pages.find((p) => p.source_ref === "sample:M:8a");
     expect(pageReport?.status).toBe("agreement_accepted");
-    // Report still keeps the absent scaffold and item entries with their insertion locations.
+    // Report keeps once-read scaffold location and gives reader B's neighbours (no final_path/insert_before) for missing item.
     expect(pageReport?.once_read[0]?.final_path).toBe("sections[0].scaffolds[]");
     expect(pageReport?.differences[0]).toMatchObject({
       path: "sections[0].items[n=1]",
       reader: "b",
-      insert_before: 0,
-      final_path: "sections[0].items[0]",
+      reader_b_after: null,
+      reader_b_before: 2,
     });
+    expect(pageReport?.differences[0]?.final_path).toBeUndefined();
+    expect(pageReport?.differences[0]?.insert_before).toBeUndefined();
 
     const savedPage = JSON.parse(readFileSync(join(work, "final", "sample-M-8a.json"), "utf8")) as PageRecord;
     expect(savedPage.single_read).toEqual(["sections[0].scaffolds", "sections[0].items"]);
@@ -1301,9 +1304,11 @@ describe("compareWorkFolder", () => {
     expect(contentsReport?.differences[0]).toMatchObject({
       path: "topics[n=1]",
       reader: "b",
-      insert_before: 0,
-      final_path: "topics[0]",
+      reader_b_after: null,
+      reader_b_before: 2,
     });
+    expect(contentsReport?.differences[0]?.final_path).toBeUndefined();
+    expect(contentsReport?.differences[0]?.insert_before).toBeUndefined();
     const savedContents = JSON.parse(
       readFileSync(join(work, "final", "sample-M-contents.json"), "utf8"),
     ) as ContentsRecord;
@@ -1314,8 +1319,8 @@ describe("compareWorkFolder", () => {
     expect(topic2Row).not.toContain("[not checked]");
 
     const md = readFileSync(join(work, "final", "report.md"), "utf8");
-    expect(md).toContain("`sections[0].items[0]`");
-    expect(md).toContain("`topics[0]`");
+    expect(md).toContain("`sections[0].items[n=1]` (value): reader b has it first, before item 2:");
+    expect(md).toContain("`topics[n=1]` (value): reader b has it first, before topic 2:");
     expect(md).not.toContain("look at the photo");
     expect(md).not.toContain("insert before");
   });
@@ -1859,8 +1864,8 @@ describe("compareWorkFolder", () => {
     ]);
   });
 
-  it("uses topic and item number order for insertion locations and resolves them against an edited kept record in report.json and report.md", () => {
-    const repo = mkdtempSync(join(tmpdir(), "ref-cmp-order-repo-"));
+  it("gives no final_path or insert_before on kept records (edited, human_checked, invalid) and reports reader B neighbours on every status", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-cmp-kept-loc-repo-"));
     tempDirs.push(repo);
 
     const makeTopic = (n: number) => ({ n, title: `Topic ${n}`, sheets: [n, n] as [number, number], std_time_min: [1, 2] as [number, number] });
@@ -1876,14 +1881,9 @@ describe("compareWorkFolder", () => {
       expr: null,
       responses: [],
     });
-    const makeItemsPage = (ns: number[]): PageRecord =>
-      makePage({
-        source_ref: "sample:M:12a",
-        sections: [{ instruction: "Read.", scaffolds: [], items: ns.map(makeItem) }],
-      });
 
     const setupWork = (name: string, recA: ContentsRecord | PageRecord, recB: ContentsRecord | PageRecord) => {
-      const work = mkdtempSync(join(tmpdir(), `ref-cmp-order-${name}-`));
+      const work = mkdtempSync(join(tmpdir(), `ref-cmp-kept-loc-${name}-`));
       tempDirs.push(work);
       const file = `${recA.source_ref.replace(/:/g, "-")}.json`;
       for (const [slot, family, rec] of [
@@ -1920,233 +1920,153 @@ describe("compareWorkFolder", () => {
       };
     };
 
-    // 1. Common topics 1..10, A also has 12, B also has 11 (93.9% -> agreement_accepted).
-    // Following the reported insertion index must keep topics in ascending order and validate.
+    const assertNoKeptLocations = (page: ReturnType<typeof compareWorkFolder>["pages"][number], label: string) => {
+      for (const d of [...page.differences, ...page.once_read, ...(page.wording ?? []), ...page.both_unclear, ...page.one_unclear]) {
+        expect(d.final_path, `${label} ${d.path} final_path`).toBeUndefined();
+        expect(d.insert_before, `${label} ${d.path} insert_before`).toBeUndefined();
+      }
+    };
+
+    // 1. Fresh contents page: reader-B-only topic 11 gives reader B neighbours (after 10, before 12),
+    // reader-A-only topic 13 gives exact final_path.
     const commonTen = Array.from({ length: 10 }, (_, i) => i + 1);
-    const topicOrder = setupWork("topic-order", makeContents([...commonTen, 12]), makeContents([...commonTen, 11]));
-    const orderReport = compareWorkFolder({ workDir: topicOrder.work, repoRoot: repo });
-    const orderPage = orderReport.pages[0];
-    expect(orderPage.status).toBe("agreement_accepted");
-    const topic11 = orderPage.differences.find((d) => d.path === "topics[n=11]");
-    expect(topic11).toMatchObject({
-      reader: "b",
-      insert_before: 10,
-      final_path: "topics[10]",
-    });
-    const afterInsert = JSON.parse(readFileSync(topicOrder.finalPath, "utf8")) as ContentsRecord;
-    afterInsert.topics.splice(topic11!.insert_before!, 0, topic11!.b as ContentsRecord["topics"][number]);
-    expect(validateReferenceRecord(afterInsert).ok).toBe(true);
-    expect(readFileSync(topicOrder.reportMdPath, "utf8")).toContain(
-      "`topics[n=11]` (value): only reader b; location in final record before `topics[10]`",
+    const topicWork = setupWork(
+      "topics",
+      makeContents([...commonTen, 12, 13]),
+      makeContents([...commonTen, 11, 12]),
     );
-
-    // 2. Edited contents record: person unshifts topic 1, shifting topic 4 from index 1 to index 2.
-    // Report must resolve topics[n=3] (and reader-A-only topics[n=12]) against the kept record.
-    const topicEdit = setupWork(
-      "topic-edit",
-      makeContents([2, 4, 5, 6, 7, 8, 9, 10, 12]),
-      makeContents([2, 3, 4, 5, 6, 7, 8, 9, 10]),
-    );
-    compareWorkFolder({ workDir: topicEdit.work, repoRoot: repo });
-    const editedContents = JSON.parse(readFileSync(topicEdit.finalPath, "utf8")) as ContentsRecord;
-    editedContents.topics.unshift(makeTopic(1));
-    writeFileSync(topicEdit.finalPath, JSON.stringify(editedContents, null, 2));
-
-    const editedContentsReport = compareWorkFolder({ workDir: topicEdit.work, repoRoot: repo });
-    const editedContentsPage = editedContentsReport.pages[0];
-    expect(editedContentsPage.status).toBe("machine_read");
-    expect(editedContentsPage.edited_by_person).toBe(true);
-    expect(editedContentsPage.differences.find((d) => d.path === "topics[n=3]")).toMatchObject({
-      reader: "b",
-      insert_before: 2,
-      final_path: "topics[2]",
-    });
-    expect(editedContentsPage.differences.find((d) => d.path === "topics[n=12]")).toMatchObject({
+    const freshTopics = compareWorkFolder({ workDir: topicWork.work, repoRoot: repo }).pages[0];
+    expect(freshTopics.status).toBe("agreement_accepted");
+    const topic11 = freshTopics.differences.find((d) => d.path === "topics[n=11]");
+    expect(topic11).toMatchObject({ reader: "b", reader_b_after: 10, reader_b_before: 12 });
+    expect(topic11?.final_path).toBeUndefined();
+    expect(topic11?.insert_before).toBeUndefined();
+    expect(freshTopics.differences.find((d) => d.path === "topics[n=13]")).toMatchObject({
       reader: "a",
-      final_path: "topics[9]",
+      final_path: "topics[11]",
     });
-    const editedContentsMd = readFileSync(topicEdit.reportMdPath, "utf8");
-    expect(editedContentsMd).toContain("`topics[n=3]` (value): only reader b has it; insert before `topics[2]`");
-    expect(editedContentsMd).toContain("`topics[n=12]` (value): only reader a has it; found in the kept final record at `topics[9]`");
-
-    // Once the person adds topic 3 into the kept record, report shows its actual index without insert_before.
-    editedContents.topics.splice(2, 0, makeTopic(3));
-    writeFileSync(topicEdit.finalPath, JSON.stringify(editedContents, null, 2));
-    const addedContentsPage = compareWorkFolder({ workDir: topicEdit.work, repoRoot: repo }).pages[0];
-    const topic3Present = addedContentsPage.differences.find((d) => d.path === "topics[n=3]");
-    expect(topic3Present?.final_path).toBe("topics[2]");
-    expect(topic3Present?.insert_before).toBeUndefined();
-    expect(readFileSync(topicEdit.reportMdPath, "utf8")).toContain(
-      "`topics[n=3]` (value): only reader b has it; found in the kept final record at `topics[2]`",
+    expect(readFileSync(topicWork.reportMdPath, "utf8")).toContain(
+      "`topics[n=11]` (value): reader b has it after topic 10 and before topic 12:",
     );
 
-    // 3. Same after-edit check for page items keyed by n.
-    const itemEdit = setupWork(
-      "item-edit",
-      makeItemsPage([2, 4, 5, 6, 7, 8, 9, 10, 12]),
-      makeItemsPage([2, 3, 4, 5, 6, 7, 8, 9, 10]),
-    );
-    compareWorkFolder({ workDir: itemEdit.work, repoRoot: repo });
-    const editedItems = JSON.parse(readFileSync(itemEdit.finalPath, "utf8")) as PageRecord;
-    editedItems.sections[0].items.unshift(makeItem(1));
-    writeFileSync(itemEdit.finalPath, JSON.stringify(editedItems, null, 2));
-
-    const editedItemsPage = compareWorkFolder({ workDir: itemEdit.work, repoRoot: repo }).pages[0];
-    expect(editedItemsPage.status).toBe("machine_read");
-    expect(editedItemsPage.edited_by_person).toBe(true);
-    expect(editedItemsPage.differences.find((d) => d.path === "sections[0].items[n=3]")).toMatchObject({
+    // 2. Page with reader-B-only item, reader-A-only item, once-read scaffold, and aligned step with insert_before:
+    // Fresh record keeps exact A paths and origin/main step/scaffold locations.
+    const pageA = makePage({
+      source_ref: "sample:M:14a",
+      sections: [
+        {
+          instruction: "Read.",
+          scaffolds: [{ kind: "caption", text: "Note", applies_to: "all" }],
+          items: [1, 3, 5].map(makeItem),
+        },
+      ],
+      examples: [
+        {
+          position: "top",
+          relation: "compare",
+          parts: [{ form: "horizontal", expr: null }],
+          steps: [
+            { n: 1, shows: "setup", printed: "2 + 3" },
+            { n: 2, shows: "answer", printed: "5" },
+          ],
+        },
+      ],
+    });
+    const pageB = makePage({
+      source_ref: "sample:M:14a",
+      sections: [
+        {
+          instruction: "Read.",
+          scaffolds: [],
+          items: [1, 2, 3].map(makeItem),
+        },
+      ],
+      examples: [
+        {
+          position: "top",
+          relation: "compare",
+          parts: [{ form: "horizontal", expr: null }],
+          steps: [
+            { n: 1, shows: "setup", printed: "2 + 3" },
+            { n: 2, shows: "partial_sum", printed: "2 + 2 + 1" },
+            { n: 3, shows: "answer", printed: "5" },
+          ],
+        },
+      ],
+    });
+    const pageWork = setupWork("page-kept", pageA, pageB);
+    const freshPage = compareWorkFolder({ workDir: pageWork.work, repoRoot: repo }).pages[0];
+    expect(freshPage.differences.find((d) => d.path === "sections[0].items[n=2]")).toMatchObject({
       reader: "b",
-      insert_before: 2,
+      reader_b_after: 1,
+      reader_b_before: 3,
+    });
+    expect(freshPage.differences.find((d) => d.path === "sections[0].items[n=2]")?.final_path).toBeUndefined();
+    expect(freshPage.differences.find((d) => d.path === "sections[0].items[n=5]")).toMatchObject({
+      reader: "a",
       final_path: "sections[0].items[2]",
     });
-    expect(editedItemsPage.differences.find((d) => d.path === "sections[0].items[n=12]")).toMatchObject({
-      reader: "a",
-      final_path: "sections[0].items[9]",
-    });
-    const editedItemsMd = readFileSync(itemEdit.reportMdPath, "utf8");
-    expect(editedItemsMd).toContain(
-      "`sections[0].items[n=3]` (value): only reader b has it; insert before `sections[0].items[2]`",
+    expect(freshPage.once_read.find((d) => d.path === "sections[0].scaffolds[0]")?.final_path).toBe(
+      "sections[0].scaffolds[0]",
     );
-    expect(editedItemsMd).toContain(
-      "`sections[0].items[n=12]` (value): only reader a has it; found in the kept final record at `sections[0].items[9]`",
-    );
-
-    // 4. human_checked page resolves kept-record locations and omits review instructions.
-    writeFileSync(join(topicEdit.work, "final", "status.json"), JSON.stringify({ "sample:M:contents": "human_checked" }));
-    const checkedContentsPage = compareWorkFolder({ workDir: topicEdit.work, repoRoot: repo }).pages[0];
-    expect(checkedContentsPage.status).toBe("human_checked");
-    expect(checkedContentsPage.differences.find((d) => d.path === "topics[n=3]")?.final_path).toBe("topics[2]");
-    const checkedContentsMd = readFileSync(topicEdit.reportMdPath, "utf8");
-    expect(checkedContentsMd).toContain("`topics[n=3]` (value): only reader b; in kept final record at `topics[2]`");
-    expect(checkedContentsMd).not.toContain("find the place");
-    expect(checkedContentsMd).not.toContain("must be added");
-    expect(checkedContentsMd).not.toContain("insert before");
-
-    const checkedScaffoldA = makePage({ source_ref: "sample:M:13a" });
-    const checkedScaffoldB = structuredClone(checkedScaffoldA);
-    checkedScaffoldB.sections[0].scaffolds = [{ kind: "caption", text: "Practice", applies_to: "all" }];
-    const checkedScaffold = setupWork("checked-scaffold", checkedScaffoldA, checkedScaffoldB);
-    compareWorkFolder({ workDir: checkedScaffold.work, repoRoot: repo });
-    writeFileSync(
-      join(checkedScaffold.work, "final", "status.json"),
-      JSON.stringify({ "sample:M:13a": "human_checked" }),
-    );
-    const checkedScaffoldPage = compareWorkFolder({ workDir: checkedScaffold.work, repoRoot: repo }).pages[0];
-    expect(checkedScaffoldPage.status).toBe("human_checked");
-    const checkedScaffoldMd = readFileSync(checkedScaffold.reportMdPath, "utf8");
-    expect(checkedScaffoldMd).toContain(
-      '`sections[0].scaffolds[b:0]`: only reader b; not in kept final record: {"kind":"caption","text":"Practice","applies_to":"all"}',
-    );
-    expect(checkedScaffoldMd).not.toContain("find the place");
-    expect(checkedScaffoldMd).not.toContain("must be added");
-
-    // 5. Inserting or reordering sections in a kept record omits item/scaffold locations and prints
-    // "location not known after the edit" on both edited and --photo-compared reruns, while
-    // same-section edits on a multi-section page keep working.
-    const shiftA = makePage({
-      source_ref: "sample:M:14a",
-      sections: [{ instruction: "Original section", scaffolds: [], items: [1, 3].map(makeItem) }],
+    expect(freshPage.once_read.find((d) => d.path === "examples[0].steps[b:1]")).toMatchObject({
+      reader: "b",
+      insert_before: 1,
+      final_path: "examples[0].steps[1]",
     });
-    const shiftB = makePage({
-      source_ref: "sample:M:14a",
-      sections: [{ instruction: "Original section", scaffolds: [], items: [1, 2, 3].map(makeItem) }],
-    });
-    const shiftWork = setupWork("section-shift", shiftA, shiftB);
-    compareWorkFolder({ workDir: shiftWork.work, repoRoot: repo });
 
-    const shifted = JSON.parse(readFileSync(shiftWork.finalPath, "utf8")) as PageRecord;
-    shifted.sections.unshift({
-      instruction: "Earlier section",
-      scaffolds: [],
-      items: [makeItem(4)],
-    });
-    writeFileSync(shiftWork.finalPath, JSON.stringify(shifted, null, 2));
+    // (a) Person-edited kept record -> no final_path or insert_before anywhere;
+    // machine_read keeps "find the place in that record"; reader-B item keeps same neighbour text.
+    const edited = JSON.parse(readFileSync(pageWork.finalPath, "utf8")) as PageRecord;
+    edited.topic.title = "Edited heading";
+    writeFileSync(pageWork.finalPath, JSON.stringify(edited, null, 2));
+    const editedPage = compareWorkFolder({ workDir: pageWork.work, repoRoot: repo }).pages[0];
+    expect(editedPage.status).toBe("machine_read");
+    expect(editedPage.edited_by_person).toBe(true);
+    assertNoKeptLocations(editedPage, "edited");
+    const editedMd = readFileSync(pageWork.reportMdPath, "utf8");
+    expect(editedMd).toContain("`sections[0].items[n=2]` (value): reader b has it after item 1 and before item 3:");
+    expect(editedMd).toContain("`sections[0].items[n=5]` (value): only reader a has it; a person changed the final record, so find the place in that record:");
+    expect(editedMd).toContain("`sections[0].scaffolds[0]`: only reader a has it; a person changed the final record, so find the place in that record:");
 
-    const afterInsertSection = compareWorkFolder({ workDir: shiftWork.work, repoRoot: repo }).pages[0];
-    expect(afterInsertSection.status).toBe("machine_read");
-    const shiftedDiff = afterInsertSection.differences.find((d) => d.path === "sections[0].items[n=2]");
-    expect(shiftedDiff?.final_path).toBeUndefined();
-    expect(shiftedDiff?.insert_before).toBeUndefined();
-    const afterInsertSectionMd = readFileSync(shiftWork.reportMdPath, "utf8");
-    const shiftedLine = afterInsertSectionMd.split("\n").find((l) => l.includes("sections[0].items[n=2]"));
-    expect(shiftedLine).toContain("location not known after the edit");
-    expect(shiftedLine).not.toContain("`sections[0].items[0]`");
-
+    // (b) human_checked kept record -> no final_path or insert_before, no review instructions, same reader-B neighbour text.
     checkAndMarkPage({
-      workDir: shiftWork.work,
+      workDir: pageWork.work,
       repoRoot: repo,
       page: "sample:M:14a",
       photoCompared: true,
     });
-    const afterCheckShift = compareWorkFolder({ workDir: shiftWork.work, repoRoot: repo }).pages[0];
-    expect(afterCheckShift.status).toBe("human_checked");
-    const checkedShiftedDiff = afterCheckShift.differences.find((d) => d.path === "sections[0].items[n=2]");
-    expect(checkedShiftedDiff?.final_path).toBeUndefined();
-    expect(checkedShiftedDiff?.insert_before).toBeUndefined();
-    const afterCheckShiftMd = readFileSync(shiftWork.reportMdPath, "utf8");
-    const checkedShiftedLine = afterCheckShiftMd.split("\n").find((l) => l.includes("sections[0].items[n=2]"));
-    expect(checkedShiftedLine).toContain("location not known after the edit");
-    expect(checkedShiftedLine).not.toContain("`sections[0].items[0]`");
+    const checkedPage = compareWorkFolder({ workDir: pageWork.work, repoRoot: repo }).pages[0];
+    expect(checkedPage.status).toBe("human_checked");
+    assertNoKeptLocations(checkedPage, "human_checked");
+    const checkedMd = readFileSync(pageWork.reportMdPath, "utf8");
+    expect(checkedMd).toContain("`sections[0].items[n=2]` (value): reader b has it after item 1 and before item 3:");
+    expect(checkedMd).not.toContain("find the place in that record");
+    expect(checkedMd).not.toContain("insert before");
+    expect(checkedMd).not.toContain("not in kept final record");
 
-    // Reordering two sections also omits the location, while editing inside a section still resolves it.
-    const twoSecA = makePage({
-      source_ref: "sample:M:15a",
-      sections: [
-        { instruction: "First section", scaffolds: [], items: [2, 4].map(makeItem) },
-        { instruction: "Second section", scaffolds: [], items: [5, 6].map(makeItem) },
-      ],
-    });
-    const twoSecB = makePage({
-      source_ref: "sample:M:15a",
-      sections: [
-        { instruction: "First section", scaffolds: [], items: [2, 3, 4].map(makeItem) },
-        { instruction: "Second section", scaffolds: [], items: [5, 6].map(makeItem) },
-      ],
-    });
-    const twoSecWork = setupWork("two-sections", twoSecA, twoSecB);
-    compareWorkFolder({ workDir: twoSecWork.work, repoRoot: repo });
-
-    // Same-section edit on a two-section page keeps resolving the insertion index.
-    const sameSecEdit = JSON.parse(readFileSync(twoSecWork.finalPath, "utf8")) as PageRecord;
-    sameSecEdit.sections[0].items.unshift(makeItem(1));
-    writeFileSync(twoSecWork.finalPath, JSON.stringify(sameSecEdit, null, 2));
-    const sameSecPage = compareWorkFolder({ workDir: twoSecWork.work, repoRoot: repo }).pages[0];
-    expect(sameSecPage.differences.find((d) => d.path === "sections[0].items[n=3]")).toMatchObject({
-      reader: "b",
-      insert_before: 2,
-      final_path: "sections[0].items[2]",
-    });
-
-    // Swapping the two sections makes the section order differ -> omit location.
-    const swapped = JSON.parse(readFileSync(twoSecWork.finalPath, "utf8")) as PageRecord;
-    swapped.sections = [swapped.sections[1], swapped.sections[0]];
-    writeFileSync(twoSecWork.finalPath, JSON.stringify(swapped, null, 2));
-    const swappedPage = compareWorkFolder({ workDir: twoSecWork.work, repoRoot: repo }).pages[0];
-    const swappedDiff = swappedPage.differences.find((d) => d.path === "sections[0].items[n=3]");
-    expect(swappedDiff?.final_path).toBeUndefined();
-    expect(swappedDiff?.insert_before).toBeUndefined();
-    const swappedLine = readFileSync(twoSecWork.reportMdPath, "utf8")
-      .split("\n")
-      .find((l) => l.includes("sections[0].items[n=3]"));
-    expect(swappedLine).toContain("location not known after the edit");
-    expect(swappedLine).not.toMatch(/`sections\[0\]\.items\[(?:\d+)?\]`/);
+    // (c) Invalid kept human_checked record -> no final_path or insert_before, no review instructions.
+    writeFileSync(pageWork.finalPath, "{ invalid json");
+    const invalidPage = compareWorkFolder({ workDir: pageWork.work, repoRoot: repo }).pages[0];
+    expect(invalidPage.status).toBe("human_checked");
+    assertNoKeptLocations(invalidPage, "invalid");
   });
 
-  it("omits section locations when look-alike sections are swapped or identical, while keeping them on ordinary edits", () => {
-    const repo = mkdtempSync(join(tmpdir(), "ref-cmp-lookalike-repo-"));
+  it("stops a page when a worked-example shown_answer conflicts with its computable expr without mutating shown_answer", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-cmp-ex-ans-repo-"));
     tempDirs.push(repo);
 
-    const proseItem = (n: number, printed: string) => ({
-      n,
-      printed,
-      form: null,
-      expr: null,
-      responses: [],
-    });
-    const scaffoldA = { kind: "caption" as const, text: "Note", applies_to: "all" as const };
+    const makeExPage = (
+      sourceRef: string,
+      parts: PageRecord["examples"] extends infer E ? (E extends Array<infer Ex> ? Ex extends { parts: infer P } ? P : never : never) : never,
+    ): PageRecord =>
+      makePage({
+        source_ref: sourceRef,
+        examples: [{ position: "top", relation: "compare", parts }],
+      });
 
-    const setupWork = (name: string, recA: PageRecord, recB: PageRecord) => {
-      const work = mkdtempSync(join(tmpdir(), `ref-cmp-lookalike-${name}-`));
+    const runCase = (name: string, recA: PageRecord, recB: PageRecord) => {
+      const work = mkdtempSync(join(tmpdir(), `ref-cmp-ex-ans-${name}-`));
       tempDirs.push(work);
       const file = `${recA.source_ref.replace(/:/g, "-")}.json`;
       for (const [slot, family, rec] of [
@@ -2176,129 +2096,136 @@ describe("compareWorkFolder", () => {
           }),
         );
       }
-      return {
-        work,
-        finalPath: join(work, "final", file),
-        reportMdPath: join(work, "final", "report.md"),
-      };
+      const report = compareWorkFolder({ workDir: work, repoRoot: repo });
+      const saved = JSON.parse(readFileSync(join(work, "final", file), "utf8")) as PageRecord;
+      const md = readFileSync(join(work, "final", "report.md"), "utf8");
+      return { page: report.pages[0], saved, md };
     };
 
-    const topItems = [proseItem(1, "Top line one"), proseItem(3, "Top line three")];
-    const topItemsWith2 = [topItems[0], proseItem(2, "Top line two"), topItems[1]];
-    const bottomItems = [proseItem(1, "Bottom line one"), proseItem(3, "Bottom line three")];
+    // 1. A: 2 + 3 shown 6, B: 2 + 4 shown 6 -> final record conflicts, shown_answer preserved
+    const aBad = runCase(
+      "a-bad",
+      makeExPage("sample:M:20a", [
+        { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "6" },
+      ]),
+      makeExPage("sample:M:20a", [
+        { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 4] }, shown_answer: "6" },
+      ]),
+    );
+    expect(aBad.page.status).toBe("machine_read");
+    expect(aBad.page.result_reason).toBe("stored answer conflicts with computed answer");
+    expect(aBad.page.answer_conflicts).toEqual([
+      expect.stringContaining("examples[0].parts[0].shown_answer"),
+    ]);
+    expect(aBad.page.reader_answer_conflicts).toBeUndefined();
+    expect(Array.isArray(aBad.saved.examples) && aBad.saved.examples[0].parts[0].shown_answer).toBe("6");
 
-    const distinctContentA = makePage({
-      source_ref: "sample:M:16a",
-      sections: [
-        { instruction: "Read.", scaffolds: [scaffoldA], items: topItems },
-        { instruction: "Read.", scaffolds: [], items: bottomItems },
-      ],
-    });
-    const distinctContentB = makePage({
-      source_ref: "sample:M:16a",
-      sections: [
-        { instruction: "Read.", scaffolds: [], items: topItemsWith2 },
-        { instruction: "Read.", scaffolds: [], items: bottomItems },
-      ],
-    });
+    // 2. Only B in conflict: A: 2 + 4 shown 6, B: 2 + 3 shown 6 -> reader-only answer conflict
+    const bBad = runCase(
+      "b-bad",
+      makeExPage("sample:M:21a", [
+        { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 4] }, shown_answer: "6" },
+      ]),
+      makeExPage("sample:M:21a", [
+        { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "6" },
+      ]),
+    );
+    expect(bBad.page.status).toBe("machine_read");
+    expect(bBad.page.result_reason).toBe("a reader's answer differs from the computed answer");
+    expect(bBad.page.answer_conflicts).toBeUndefined();
+    expect(bBad.page.reader_answer_conflicts).toEqual(["examples[0].parts[0].shown_answer"]);
+    expect(bBad.md).toContain("`examples[0].parts[0].shown_answer`");
 
-    // (a) Look-alike sections swapped -> no final_path, no insert_before, "location not known after the edit"
-    // on both an edited rerun and after checkAndMarkPage(..., photoCompared: true).
-    const swappedWork = setupWork("swapped", distinctContentA, distinctContentB);
-    compareWorkFolder({ workDir: swappedWork.work, repoRoot: repo });
-    const swappedRecord = JSON.parse(readFileSync(swappedWork.finalPath, "utf8")) as PageRecord;
-    swappedRecord.sections.reverse();
-    writeFileSync(swappedWork.finalPath, JSON.stringify(swappedRecord, null, 2));
+    // 3. Both readers have the same conflict at 100% agreement -> still stops
+    const bothBad = runCase(
+      "both-bad",
+      makeExPage("sample:M:22a", [
+        { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "6" },
+      ]),
+      makeExPage("sample:M:22a", [
+        { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "6" },
+      ]),
+    );
+    expect(bothBad.page.agreement?.percent).toBe(100);
+    expect(bothBad.page.status).toBe("machine_read");
+    expect(bothBad.page.result_reason).toBe("stored answer conflicts with computed answer");
+    expect(bothBad.page.answer_conflicts).toEqual([
+      expect.stringContaining("examples[0].parts[0].shown_answer"),
+    ]);
+    expect(Array.isArray(bothBad.saved.examples) && bothBad.saved.examples[0].parts[0].shown_answer).toBe("6");
 
-    const swappedEdited = compareWorkFolder({ workDir: swappedWork.work, repoRoot: repo }).pages[0];
-    expect(swappedEdited.status).toBe("machine_read");
-    const swappedEditedDiff = swappedEdited.differences.find((d) => d.path === "sections[0].items[n=2]");
-    expect(swappedEditedDiff?.final_path).toBeUndefined();
-    expect(swappedEditedDiff?.insert_before).toBeUndefined();
-    expect(swappedEditedDiff?.location_unknown).toBe(true);
-    const swappedEditedOnce = swappedEdited.once_read.find((d) => d.path === "sections[0].scaffolds[0]");
-    expect(swappedEditedOnce?.final_path).toBeUndefined();
-    expect(swappedEditedOnce?.location_unknown).toBe(true);
-    const swappedEditedMd = readFileSync(swappedWork.reportMdPath, "utf8");
-    const swappedEditedDiffLine = swappedEditedMd.split("\n").find((l) => l.includes("sections[0].items[n=2]"));
-    expect(swappedEditedDiffLine).toContain("location not known after the edit");
-    expect(swappedEditedDiffLine).not.toMatch(/`sections\[0\]\.items\[(?:\d+)?\]`/);
-    const swappedEditedOnceLine = swappedEditedMd.split("\n").find((l) => l.includes("sections[0].scaffolds[0]"));
-    expect(swappedEditedOnceLine).toContain("location not known after the edit");
+    // 4. Passing cases: thousands separators, remainder forms, notation, absent/null/not_stated, linked/chain
+    const okParts: PageRecord["examples"] extends infer E ? (E extends Array<infer Ex> ? Ex extends { parts: infer P } ? P : never : never) : never = [
+      { form: "horizontal", expr: { kind: "arith", op: "add", operands: [500, 500] }, shown_answer: "1,000" },
+      { form: "horizontal", expr: { kind: "arith", op: "div", operands: [13, 3] }, shown_answer: "4r1" },
+      { form: "horizontal", expr: { kind: "notation", latex: "x + 2 = 5" }, shown_answer: "99" },
+      { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] } },
+      { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: null },
+      { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "not_stated" },
+      {
+        form: "horizontal",
+        expr: {
+          kind: "linked",
+          pair: [
+            { kind: "arith", op: "add", operands: [1, 2] },
+            { kind: "arith", op: "add", operands: [2, 3] },
+          ],
+        },
+        shown_answer: "99",
+      },
+      { form: "horizontal", expr: { kind: "chain", terms: [2, 4, null, 8] }, shown_answer: "99" },
+    ];
+    const allOk = runCase("all-ok", makeExPage("sample:M:23a", okParts), makeExPage("sample:M:23a", okParts));
+    expect(allOk.page.status).toBe("double_read");
+    expect(allOk.page.answer_conflicts).toBeUndefined();
+    expect(allOk.page.reader_answer_conflicts).toBeUndefined();
+  });
 
-    checkAndMarkPage({
-      workDir: swappedWork.work,
-      repoRoot: repo,
-      page: "sample:M:16a",
-      photoCompared: true,
-    });
-    const swappedChecked = compareWorkFolder({ workDir: swappedWork.work, repoRoot: repo }).pages[0];
-    expect(swappedChecked.status).toBe("human_checked");
-    const swappedCheckedDiff = swappedChecked.differences.find((d) => d.path === "sections[0].items[n=2]");
-    expect(swappedCheckedDiff?.final_path).toBeUndefined();
-    expect(swappedCheckedDiff?.insert_before).toBeUndefined();
-    expect(swappedCheckedDiff?.location_unknown).toBe(true);
-    const swappedCheckedOnce = swappedChecked.once_read.find((d) => d.path === "sections[0].scaffolds[0]");
-    expect(swappedCheckedOnce?.final_path).toBeUndefined();
-    expect(swappedCheckedOnce?.location_unknown).toBe(true);
-    const swappedCheckedMd = readFileSync(swappedWork.reportMdPath, "utf8");
-    const swappedCheckedDiffLine = swappedCheckedMd.split("\n").find((l) => l.includes("sections[0].items[n=2]"));
-    expect(swappedCheckedDiffLine).toContain("location not known after the edit");
-    expect(swappedCheckedDiffLine).not.toMatch(/`sections\[0\]\.items\[(?:\d+)?\]`/);
+  it("compares each reader pair only once inside compareWorkFolder", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-cmp-once-repo-"));
+    const work = mkdtempSync(join(tmpdir(), "ref-cmp-once-work-"));
+    tempDirs.push(repo, work);
 
-    // (b) Look-alike sections, not swapped, ordinary edit of one item -> location is still given.
-    const ordinaryWork = setupWork("ordinary", distinctContentA, distinctContentB);
-    compareWorkFolder({ workDir: ordinaryWork.work, repoRoot: repo });
-    const ordinaryEditedRecord = JSON.parse(readFileSync(ordinaryWork.finalPath, "utf8")) as PageRecord;
-    ordinaryEditedRecord.sections[0].items[0].printed = "Corrected top line";
-    writeFileSync(ordinaryWork.finalPath, JSON.stringify(ordinaryEditedRecord, null, 2));
+    const pageA = makePage({ source_ref: "sample:M:30a" });
+    const pageB = makePage({ source_ref: "sample:M:30a", topic: { title: "Different title" } });
+    for (const [slot, family, rec] of [
+      ["a", "codex", pageA],
+      ["b", "claude", pageB],
+    ] as const) {
+      const dir = join(work, `reader-${slot}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "reader.json"), JSON.stringify({ family, model: "m1" }));
+      writeFileSync(join(dir, "sample-M-30a.json"), JSON.stringify(rec, null, 2));
+      writeFileSync(
+        join(dir, "run.json"),
+        JSON.stringify({
+          slot,
+          reader: { family, model: "m1" },
+          source: "sample",
+          photos: [
+            {
+              photo: `${SHA_1.slice(0, 12)}.jpg`,
+              photo_sha256: SHA_1,
+              status: "ok",
+              source_ref: "sample:M:30a",
+              record_file: "sample-M-30a.json",
+              notes: [],
+            },
+          ],
+        }),
+      );
+    }
 
-    const ordinaryPage = compareWorkFolder({ workDir: ordinaryWork.work, repoRoot: repo }).pages[0];
-    expect(ordinaryPage.differences.find((d) => d.path === "sections[0].items[n=2]")).toMatchObject({
-      reader: "b",
-      insert_before: 1,
-      final_path: "sections[0].items[1]",
-    });
-    expect(ordinaryPage.once_read.find((d) => d.path === "sections[0].scaffolds[0]")).toMatchObject({
-      reader: "a",
-      final_path: "sections[0].scaffolds[0]",
-    });
-
-    // (c) Look-alike sections with identical items -> location unknown.
-    const identicalItems = [proseItem(1, "Same line one"), proseItem(3, "Same line three")];
-    const identicalItemsWith2 = [identicalItems[0], proseItem(2, "Same line two"), identicalItems[1]];
-    const identicalA = makePage({
-      source_ref: "sample:M:17a",
-      sections: [
-        { instruction: "Read.", scaffolds: [scaffoldA], items: identicalItems },
-        { instruction: "Read.", scaffolds: [], items: identicalItems },
-      ],
-    });
-    const identicalB = makePage({
-      source_ref: "sample:M:17a",
-      sections: [
-        { instruction: "Read.", scaffolds: [], items: identicalItemsWith2 },
-        { instruction: "Read.", scaffolds: [], items: identicalItems },
-      ],
-    });
-    const identicalWork = setupWork("identical", identicalA, identicalB);
-    compareWorkFolder({ workDir: identicalWork.work, repoRoot: repo });
-    const identicalEdited = JSON.parse(readFileSync(identicalWork.finalPath, "utf8")) as PageRecord;
-    identicalEdited.topic.title = "Edited topic title";
-    writeFileSync(identicalWork.finalPath, JSON.stringify(identicalEdited, null, 2));
-
-    const identicalPage = compareWorkFolder({ workDir: identicalWork.work, repoRoot: repo }).pages[0];
-    const identicalDiff = identicalPage.differences.find((d) => d.path === "sections[0].items[n=2]");
-    expect(identicalDiff?.final_path).toBeUndefined();
-    expect(identicalDiff?.insert_before).toBeUndefined();
-    expect(identicalDiff?.location_unknown).toBe(true);
-    const identicalOnce = identicalPage.once_read.find((d) => d.path === "sections[0].scaffolds[0]");
-    expect(identicalOnce?.final_path).toBeUndefined();
-    expect(identicalOnce?.location_unknown).toBe(true);
-    const identicalLine = readFileSync(identicalWork.reportMdPath, "utf8")
-      .split("\n")
-      .find((l) => l.includes("sections[0].items[n=2]"));
-    expect(identicalLine).toContain("location not known after the edit");
+    const spy = vi.spyOn(comparePartsModule, "compareField");
+    try {
+      const report = compareWorkFolder({ workDir: work, repoRoot: repo });
+      expect(report.pages).toHaveLength(1);
+      expect(report.pages[0].status).toBe("agreement_accepted");
+      const sourceRefCalls = spy.mock.calls.filter(([path]) => path === "source_ref");
+      expect(sourceRefCalls).toHaveLength(1);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

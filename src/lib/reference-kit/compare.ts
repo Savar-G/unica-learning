@@ -18,13 +18,13 @@ import {
   type UnnamedTeachingMark,
 } from "./compare-examples";
 import {
-  findNumberedInsertBefore,
+  findReaderBNeighbours,
   isOneSidedNumberedEntry,
-  locateDifferencesInKeptRecord,
+  locateNumberedDiff,
   locateOnceRead,
-  locateOnceReadInKeptRecord,
   resolveDiffPath,
   resolveSingleReadPaths,
+  stripKeptRecordLocations,
 } from "./compare-locate";
 import {
   compareExpr,
@@ -46,13 +46,15 @@ export {
   ANSWER_DISAGREEMENT_REASON,
   collectUnnamedTeachingMarks,
   findAnswerDisagreements,
-  locateDifferencesInKeptRecord,
-  locateOnceReadInKeptRecord,
   normalizeNotationText,
   normalizeProseText,
   READER_ANSWER_CONFLICT_REASON,
   resolveSingleReadPaths,
+  stripKeptRecordLocations,
 };
+
+export const PAGE_IDENTITY_DISAGREEMENT_REASON = "readers disagree on the page" as const;
+const PAGE_IDENTITY_PATHS: ReadonlySet<string> = new Set(["source_ref", "kind"]);
 
 export type PageStatus = "machine_read" | "agreement_accepted" | "double_read" | "human_checked";
 
@@ -121,7 +123,7 @@ function comparePageItems(
     const ia = aMap.get(n);
     const ib = bMap.get(n);
     if (!ia || !ib) {
-      const insertBefore = !ia && ib ? findNumberedInsertBefore(aItems, n, bItems) : undefined;
+      const neighbours = !ia && ib ? findReaderBNeighbours(bItems, n) : undefined;
       recordDiff(
         diffs,
         {
@@ -129,7 +131,7 @@ function comparePageItems(
           a: ia ?? null,
           b: ib ?? null,
           kind: "value",
-          ...(insertBefore !== undefined ? { insert_before: insertBefore } : {}),
+          ...(neighbours ?? {}),
         },
         counts,
       );
@@ -209,7 +211,7 @@ function compareContentsRecords(
     const ta = aMap.get(n);
     const tb = bMap.get(n);
     if (!ta || !tb) {
-      const insertBefore = !ta && tb ? findNumberedInsertBefore(a.topics, n, b.topics) : undefined;
+      const neighbours = !ta && tb ? findReaderBNeighbours(b.topics, n) : undefined;
       recordDiff(
         diffs,
         {
@@ -217,7 +219,7 @@ function compareContentsRecords(
           a: ta ?? null,
           b: tb ?? null,
           kind: "value",
-          ...(insertBefore !== undefined ? { insert_before: insertBefore } : {}),
+          ...(neighbours ?? {}),
         },
         counts,
       );
@@ -305,13 +307,15 @@ export function emptyAnswerDiffs(
 export function classifyComparison(
   a: ReferenceRecord | null,
   b: ReferenceRecord | null,
+  comparison?: { diffs: RecordDifference[]; counts: CompareCounts },
 ): PageComparisonSummary {
   const { diffs: allDiffs, counts } =
-    a && b ? compareRecordsWithCounts(a, b) : { diffs: [], counts: { compared: 0, agreed: 0 } };
+    comparison ??
+    (a && b ? compareRecordsWithCounts(a, b) : { diffs: [], counts: { compared: 0, agreed: 0 } });
   const oneUnclear = allDiffs.filter((d) => d.kind === "one_unclear");
   const differences = allDiffs
     .filter((d) => d.kind === "value" || d.kind === "order" || d.kind === "one_unclear")
-    .map((d) => (a && isOneSidedNumberedEntry(d) ? locateOnceRead(d, a) : d));
+    .map((d) => (a && isOneSidedNumberedEntry(d) ? locateNumberedDiff(d, a) : d));
   const wording = allDiffs.filter((d) => d.kind === "wording");
   const onceRead = allDiffs
     .filter((d) => d.kind === "once_read")
@@ -366,6 +370,9 @@ export function decidePageOutcome(input: DecideStatusInput): PageDecision {
     ) {
       stopReasons.push("same or unknown model family");
     }
+  }
+  if (input.diffs.some((d) => PAGE_IDENTITY_PATHS.has(d.path))) {
+    stopReasons.push(PAGE_IDENTITY_DISAGREEMENT_REASON);
   }
   if (input.hasAnswerConflict) {
     stopReasons.push("stored answer conflicts with computed answer");

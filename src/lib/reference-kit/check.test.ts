@@ -479,4 +479,32 @@ describe("checkAndMarkPage", () => {
     const statusAfter = JSON.parse(readFileSync(join(finalDir, "status.json"), "utf8"));
     expect(statusAfter["demo-x:M:3a"]).toBe("machine_read");
   });
+
+  it("allows reference:check to mark a page whose worked-example shown_answer differs from its expr (a person decides)", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-chk-ex-repo-"));
+    const work = mkdtempSync(join(tmpdir(), "ref-chk-ex-work-"));
+    tempDirs.push(repo, work);
+
+    const finalDir = join(work, "final");
+    mkdirSync(finalDir, { recursive: true });
+    const rec: PageRecord = {
+      ...makeFinalPage(),
+      examples: [
+        {
+          position: "top",
+          relation: "compare",
+          parts: [
+            { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "6" },
+          ],
+        },
+      ],
+    };
+    writeFileSync(join(finalDir, "sample-M-3a.json"), JSON.stringify(rec, null, 2));
+    writeFileSync(join(finalDir, "status.json"), JSON.stringify({ "sample:M:3a": "machine_read" }, null, 2));
+
+    const res = checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: true });
+    const saved = JSON.parse(readFileSync(res.recordPath, "utf8")) as PageRecord;
+    expect(Array.isArray(saved.examples) && saved.examples[0].parts[0].shown_answer).toBe("6");
+    expect(JSON.parse(readFileSync(res.statusPath, "utf8"))["sample:M:3a"]).toBe("human_checked");
+  });
 });
