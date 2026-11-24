@@ -275,8 +275,8 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
     expect(text).not.toMatch(/example-child|CreationDate|ModDate|20\d\d-\d\d-\d\dT/);
   });
 
-  describe("environment isolation, read-only bundles and temp cleanup", () => {
-    // A temp folder of these tests alone: other test files draw at the same time.
+  // One at a time: they change the environment and list the temp folder, which is of these tests alone.
+  describe.sequential("environment isolation, read-only bundles and temp cleanup", () => {
     const usual = process.env.TMPDIR;
     beforeAll(() => {
       process.env.TMPDIR = inFolder("private-temp");
