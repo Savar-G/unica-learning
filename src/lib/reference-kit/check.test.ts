@@ -241,6 +241,105 @@ describe("checkAndMarkPage", () => {
     expect(status["sample:M:3a"]).toBe("human_checked");
   });
 
+  it("refuses a sole work_area response with null answer and computes a sole work_area on a computable item", () => {
+    const page = makeFinalPage();
+    page.sections[0].items = [
+      {
+        n: 1,
+        printed: "14 + 9",
+        form: "horizontal",
+        expr: { kind: "arith", op: "add", operands: [14, 9] },
+        responses: [{ position: "work_area", cue: null, answer: null, answer_source: "unchecked" }],
+      },
+      {
+        n: 2,
+        printed: "Simplify 4/6",
+        form: "horizontal",
+        expr: { kind: "notation", latex: "\\frac{4}{6}" },
+        responses: [{ position: "work_area", cue: null, answer: null, answer_source: "unchecked" }],
+      },
+    ];
+    const { repo, work, finalDir } = setUpWork(page);
+    const before = readFileSync(join(finalDir, "sample-M-3a.json"), "utf8");
+    expect(() =>
+      checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: true }),
+    ).toThrow(/Answer places with no answer:\n {2}sections\[0\]\.items\[n=2\]\.responses\[0\]\n/);
+    expectNothingWritten(finalDir, before);
+
+    page.sections[0].items[1].responses[0] = {
+      position: "work_area",
+      cue: null,
+      answer: "2/3",
+      answer_source: "reader",
+    };
+    writeFileSync(join(finalDir, "sample-M-3a.json"), JSON.stringify(page, null, 2));
+    const result = checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: true });
+    expect(result.notes).toEqual([]);
+    const saved = JSON.parse(readFileSync(join(finalDir, "sample-M-3a.json"), "utf8")) as PageRecord;
+    expect(saved.sections[0].items[0].responses[0]).toEqual({
+      position: "work_area",
+      cue: null,
+      answer: "23",
+      answer_source: "computed",
+    });
+    expect(saved.sections[0].items[1].responses[0]).toEqual({
+      position: "work_area",
+      cue: null,
+      answer: "2/3",
+      answer_source: "reader",
+    });
+  });
+
+  it("accepts a sole work_area decimal answer on an inexact division and still stops on a wrong exact sum", () => {
+    const divPage = makeFinalPage();
+    divPage.sections[0].items = [
+      {
+        n: 1,
+        printed: "7 / 2",
+        form: "horizontal",
+        expr: { kind: "arith", op: "div", operands: [7, 2] },
+        responses: [{ position: "work_area", cue: null, answer: "3.5", answer_source: "reader" }],
+      },
+    ];
+    const okRun = setUpWork(divPage);
+    const result = checkAndMarkPage({
+      workDir: okRun.work,
+      page: "sample:M:3a",
+      repoRoot: okRun.repo,
+      photoCompared: true,
+    });
+    expect(result.notes).toEqual([]);
+    const saved = JSON.parse(readFileSync(join(okRun.finalDir, "sample-M-3a.json"), "utf8")) as PageRecord;
+    expect(saved.sections[0].items[0].responses[0]).toEqual({
+      position: "work_area",
+      cue: null,
+      answer: "3.5",
+      answer_source: "reader",
+    });
+
+    const wrongSumPage = makeFinalPage();
+    wrongSumPage.sections[0].items = [
+      {
+        n: 1,
+        printed: "2 + 3",
+        form: "horizontal",
+        expr: { kind: "arith", op: "add", operands: [2, 3] },
+        responses: [{ position: "work_area", cue: null, answer: "6", answer_source: "reader" }],
+      },
+    ];
+    const badRun = setUpWork(wrongSumPage);
+    const beforeBad = readFileSync(join(badRun.finalDir, "sample-M-3a.json"), "utf8");
+    expect(() =>
+      checkAndMarkPage({
+        workDir: badRun.work,
+        page: "sample:M:3a",
+        repoRoot: badRun.repo,
+        photoCompared: true,
+      }),
+    ).toThrow(/reader gave "6", computed "5"/);
+    expectNothingWritten(badRun.finalDir, beforeBad);
+  });
+
   it("refuses an invalid edited record without modifying status.json", () => {
     const repo = mkdtempSync(join(tmpdir(), "ref-chk-repo-"));
     const work = mkdtempSync(join(tmpdir(), "ref-chk-work-"));

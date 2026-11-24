@@ -152,6 +152,27 @@ class MemoryImportStore implements ReferenceStore {
   async uploadObject(path: string, bytes: Uint8Array, contentType: string): Promise<void> {
     this.objects.set(path, { bytes: new Uint8Array(bytes), contentType });
   }
+
+  async replaceObject(path: string, bytes: Uint8Array, contentType: string): Promise<void> {
+    this.objects.set(path, { bytes: new Uint8Array(bytes), contentType });
+  }
+
+  async refsByPath(paths: string[]): Promise<Map<string, string[]>> {
+    const out = new Map<string, string[]>();
+    for (const row of this.rows.values()) {
+      if (row.path !== null && paths.includes(row.path)) {
+        out.set(row.path, [...(out.get(row.path) ?? []), row.source_ref]);
+      }
+    }
+    return out;
+  }
+
+  async updateRow(row: ReferenceRow): Promise<boolean> {
+    const prev = this.rows.get(row.source_ref);
+    if (!prev) return false;
+    this.rows.set(row.source_ref, { ...structuredClone(row), note: prev.note });
+    return true;
+  }
 }
 
 describe("extractFolder (reference:extract)", () => {
@@ -299,6 +320,7 @@ describe("extractFolder (reference:extract)", () => {
     expect(imported.counts).toEqual({
       recordsRead: 2,
       inserted: 2,
+      replaced: 0,
       skipped: 0,
       skippedDifferent: 0,
       photosUploaded: 2,
@@ -805,5 +827,35 @@ describe("extractFolder (reference:extract)", () => {
     // Nothing changed: the page is still there under its first source key.
     const status = JSON.parse(readFileSync(join(outDir, "final", "status.json"), "utf8")) as Record<string, string>;
     expect(Object.keys(status)).toEqual(["sample:M:3a"]);
+  });
+
+  it("marks a narrow strip photo whose short side is under 600 px as too_small with both sizes in the message", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-ext-narrow-repo-"));
+    const photosDir = mkdtempSync(join(tmpdir(), "ref-ext-narrow-in-"));
+    const outDir = mkdtempSync(join(tmpdir(), "ref-ext-narrow-out-"));
+    tempDirs.push(repo, photosDir, outDir);
+    writeFileSync(join(photosDir, "01_strip.jpg"), await makePhotoBytes(461, 3473, 41));
+    writeFileSync(join(photosDir, "02_ok.jpg"), await makePhotoBytes(1600, 1200, 42));
+
+    const progress: string[] = [];
+    const runCli = async () => ({ code: 0, stdout: JSON.stringify(makeReaderPayload("3a")), stderr: "" });
+    const result = await extractFolder({
+      photosDir,
+      outDir,
+      source: "sample",
+      repoRoot: repo,
+      runCli,
+      onProgress: (line) => progress.push(line),
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.counts.too_small).toBe(1);
+    expect(result.counts.double_read).toBe(1);
+    expect(progress[0]).toContain("too_small (461x3473)");
+    expect(progress[0]).toContain("1600");
+    expect(progress[0]).toContain("600");
+    expect(result.report.too_small_photos).toEqual([
+      { original_name: "01_strip.jpg", width: 461, height: 3473 },
+    ]);
   });
 });

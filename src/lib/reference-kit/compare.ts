@@ -31,6 +31,7 @@ export type PageStatus = "machine_read" | "double_read" | "human_checked";
 
 export interface PageComparisonSummary {
   differences: RecordDifference[];
+  wording: RecordDifference[];
   once_read: RecordDifference[];
   both_unclear: RecordDifference[];
   one_unclear: RecordDifference[];
@@ -201,7 +202,11 @@ const PATH_TOKEN_RE = /([A-Za-z_]+)|\[(\d+)\]|\[n=(\d+)\]|\[b:(\d+)\]/g;
 
 // Follows a comparison path (with "[n=3]" item and step keys and "[b:1]" reader-b-only entries)
 // through a record. Returns the JSON path of the place in that record and the value there.
-function resolveDiffPath(record: unknown, path: string): { jsonPath: string; value: unknown } {
+function resolveDiffPath(
+  record: unknown,
+  path: string,
+  insertBefore?: number,
+): { jsonPath: string; value: unknown } {
   let node: unknown = record;
   let out = "";
   for (const m of path.matchAll(PATH_TOKEN_RE)) {
@@ -221,7 +226,7 @@ function resolveDiffPath(record: unknown, path: string): { jsonPath: string; val
       out += `[${found === -1 ? n - 1 : found}]`;
       node = found === -1 ? undefined : (node as unknown[])[found];
     } else if (bIndex !== undefined) {
-      out += "[]";
+      out += insertBefore !== undefined ? `[${insertBefore}]` : "[]";
       node = undefined;
     }
   }
@@ -232,7 +237,11 @@ function resolveDiffPath(record: unknown, path: string): { jsonPath: string; val
 // it belongs in the final record, so that a person can copy it after a look at the photo.
 function locateOnceRead(d: RecordDifference, finalRecord: ReferenceRecord): RecordDifference {
   const reader: "a" | "b" = d.a !== null && d.a !== undefined ? "a" : "b";
-  return { ...d, reader, final_path: resolveDiffPath(finalRecord, d.path).jsonPath };
+  return {
+    ...d,
+    reader,
+    final_path: resolveDiffPath(finalRecord, d.path, d.insert_before).jsonPath,
+  };
 }
 
 function findEqualNode(node: unknown, target: unknown, path: string): string | null {
@@ -273,10 +282,16 @@ export function locateOnceReadInKeptRecord(
   return onceRead.map((d) => {
     const next: RecordDifference = { path: d.path, a: d.a, b: d.b, kind: d.kind };
     if (d.reader) next.reader = d.reader;
-    if (!kept || !d.reader) return next;
+    if (!kept || !d.reader) {
+      if (d.missing_step) next.missing_step = true;
+      return next;
+    }
     const entry = d.reader === "a" ? d.a : d.b;
     const parent = onceReadParent(kept, d.path);
-    if (!parent) return next;
+    if (!parent) {
+      if (d.missing_step) next.missing_step = true;
+      return next;
+    }
     const at = resolveDiffPath(kept, d.path);
     if (at.value !== undefined && deepEqual(at.value, entry)) {
       next.final_path = at.jsonPath;
@@ -284,6 +299,7 @@ export function locateOnceReadInKeptRecord(
       const found = findEqualNode(parent.node, entry, parent.path);
       if (found !== null) next.final_path = found;
     }
+    if (d.missing_step && next.final_path === undefined) next.missing_step = true;
     return next;
   });
 }
@@ -312,6 +328,7 @@ export function classifyComparison(
   const differences = allDiffs.filter(
     (d) => d.kind === "value" || d.kind === "order" || d.kind === "one_unclear",
   );
+  const wording = allDiffs.filter((d) => d.kind === "wording");
   const onceRead = allDiffs
     .filter((d) => d.kind === "once_read")
     .map((d) => (a ? locateOnceRead(d, a) : d));
@@ -319,6 +336,7 @@ export function classifyComparison(
 
   return {
     differences,
+    wording,
     once_read: onceRead,
     both_unclear: bothUnclear,
     one_unclear: oneUnclear,

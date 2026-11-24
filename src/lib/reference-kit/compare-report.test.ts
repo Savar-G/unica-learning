@@ -32,6 +32,14 @@ describe("formatCompareReportMarkdown", () => {
           only_in_reader: null,
           digest_mismatch: { a: "1".repeat(64), b: "2".repeat(64) },
           differences: [{ path: "topic.title", a: "Add", b: "Sub", kind: "value" }],
+          wording: [
+            {
+              path: "examples[0].marks[0].description",
+              a: "Arrow to 3",
+              b: "Points at 3",
+              kind: "wording",
+            },
+          ],
           once_read: [
             { path: "examples[0]", a: {}, b: null, kind: "once_read" },
             {
@@ -48,6 +56,24 @@ describe("formatCompareReportMarkdown", () => {
               kind: "once_read",
               reader: "b",
               final_path: "sections[0].scaffolds[]",
+            },
+            {
+              path: "examples[0].steps[b:1]",
+              a: null,
+              b: { n: 2, shows: "partial_sum", printed: "= 5/6" },
+              kind: "once_read",
+              reader: "b",
+              insert_before: 1,
+              final_path: "examples[0].steps[1]",
+            },
+            {
+              path: "examples[0].marks[b:0]",
+              a: null,
+              b: { kind: "box", step: 2, description: "Box around sum" },
+              kind: "once_read",
+              reader: "b",
+              final_path: "examples[0].marks[]",
+              missing_step: true,
             },
           ],
           both_unclear: [{ path: "topic.number", a: "unclear", b: "unclear", kind: "both_unclear" }],
@@ -101,10 +127,24 @@ describe("formatCompareReportMarkdown", () => {
     };
 
     const md = formatCompareReportMarkdown(report);
-    expect(md).toContain("| sample:M:3a | IMG_0001.jpg | double_read | 0 | 0 | 0 | 0 | no |");
-    expect(md).toContain("| sample:M:4a | IMG_0002.jpg | machine_read | 1 | 3 | 1 | 1 | yes |");
+    expect(md).toContain(
+      "| Page | Photo | Status | Differences | Wording | Once-read | Both unclear | Empty answers | Person read |",
+    );
+    expect(md).toContain("| sample:M:3a | IMG_0001.jpg | double_read | 0 | 0 | 0 | 0 | 0 | no |");
+    expect(md).toContain("| sample:M:4a | IMG_0002.jpg | machine_read | 1 | 1 | 5 | 1 | 1 | yes |");
+    expect(md).toContain(
+      "- Wording differences: the readers describe the same thing in other words; reader A's words are kept; no action needed",
+    );
+    expect(md).toContain('`examples[0].marks[0].description`: a="Arrow to 3" | b="Points at 3"');
+    expect(md).toContain("at least 1600 px on the long side and 600 px on the short side");
     expect(md).toContain(
       '`sections[0].scaffolds[b:1]`: only reader b has it; belongs in the final record at `sections[0].scaffolds[]`: {"kind":"arrow","applies_to":[2],"label":"carry"}',
+    );
+    expect(md).toContain(
+      '`examples[0].steps[b:1]`: only reader b has it; insert before `examples[0].steps[1]`: {"n":2,"shows":"partial_sum","printed":"= 5/6"}',
+    );
+    expect(md).toContain(
+      '`examples[0].marks[b:0]`: only reader b has it; belongs in the final record at `examples[0].marks[]`; its step is missing from reader A\'s record and must be added first: {"kind":"box","step":2,"description":"Box around sum"}',
     );
     expect(md).toContain('keep "unclear" and mark the page checked');
     expect(md).toContain('`sections[0].items[n=2].responses[0]`: a=null | b="9"');
@@ -136,16 +176,43 @@ describe("formatCompareReportMarkdown", () => {
     expect(md).toContain("Photo digest mismatch");
     expect(md).toContain("Exact match across both readers.");
 
-    // A record that a person edited is kept: a path is given only where the entry was found.
-    const edited = formatCompareReportMarkdown({
+    // A record that a person edited or checked is kept: wording does not claim reader A's words are kept.
+    for (const keptPage of [
+      { ...report.pages[1], edited_by_person: true },
+      { ...report.pages[1], status: "human_checked" as const },
+    ]) {
+      const keptMd = formatCompareReportMarkdown({
+        ...report,
+        pages: [keptPage],
+      });
+      expect(keptMd).toContain(
+        "- Wording differences: the readers describe the same thing in other words; the edited record is kept; no action needed",
+      );
+      expect(keptMd).not.toContain("reader A's words are kept");
+      expect(keptMd).toContain(
+        "`sections[0].scaffolds[b:1]`: only reader b has it; found in the kept final record at `sections[0].scaffolds[]`",
+      );
+      expect(keptMd).toContain(
+        '`sections[0].scaffolds[b:2]`: only reader b has it; a person changed the final record, so find the place in that record: {"kind":"arrow","applies_to":[1]}',
+      );
+    }
+
+    // A double_read page with only wording differences lists them and does not say "Exact match".
+    const wordingOnly = formatCompareReportMarkdown({
       ...report,
-      pages: [{ ...report.pages[1], edited_by_person: true }],
+      pages: [
+        {
+          ...report.pages[0],
+          wording: [
+            { path: "sections[0].items[n=1].expr.figure", a: "Two circles", b: "Pair of circles", kind: "wording" },
+          ],
+        },
+      ],
     });
-    expect(edited).toContain(
-      "`sections[0].scaffolds[b:1]`: only reader b has it; found in the kept final record at `sections[0].scaffolds[]`",
+    expect(wordingOnly).toContain("| sample:M:3a | IMG_0001.jpg | double_read | 0 | 1 | 0 | 0 | 0 | no |");
+    expect(wordingOnly).toContain(
+      "- Wording differences: the readers describe the same thing in other words; reader A's words are kept; no action needed",
     );
-    expect(edited).toContain(
-      '`sections[0].scaffolds[b:2]`: only reader b has it; a person changed the final record, so find the place in that record: {"kind":"arrow","applies_to":[1]}',
-    );
+    expect(wordingOnly).not.toContain("Exact match across both readers.");
   });
 });

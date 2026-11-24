@@ -11,8 +11,11 @@ import sharp from "sharp";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createEmptyManifest,
+  formatTooSmallReason,
+  isPhotoTooSmall,
   isSupportedPhotoFile,
   MIN_LONG_SIDE_PX,
+  MIN_SHORT_SIDE_PX,
   parsePhotosManifest,
   PHOTOS_MANIFEST_FILE,
   preparedFileNameForHash,
@@ -123,6 +126,16 @@ describe("preparePhoto and prepare helpers", () => {
 
   it("accepts only supported photo extensions and ignores dotfiles", () => {
     expect(MIN_LONG_SIDE_PX).toBe(1600);
+    expect(MIN_SHORT_SIDE_PX).toBe(600);
+    expect(isPhotoTooSmall(1600, 600)).toBe(false);
+    expect(isPhotoTooSmall(600, 1600)).toBe(false);
+    expect(isPhotoTooSmall(1599, 600)).toBe(true);
+    expect(isPhotoTooSmall(461, 3473)).toBe(true);
+    expect(isPhotoTooSmall(3473, 599)).toBe(true);
+    expect(isPhotoTooSmall(800, 600)).toBe(true);
+    expect(formatTooSmallReason(461, 3473)).toBe(
+      "too_small (461x3473): need at least 1600 px on the long side and 600 px on the short side",
+    );
     expect(PHOTOS_MANIFEST_FILE).toBe("photos-manifest.json");
     for (const name of ["a.jpg", "b.JPEG", "c.png", "d.webp", "e.heic", "f.HEIF"]) {
       expect(isSupportedPhotoFile(name)).toBe(true);

@@ -112,6 +112,8 @@ describe("pickLargestDownloads", () => {
     writeFileSync(join(downloads, "a-10-2__2.bin"), await image(1800, 2400, "jpeg"));
     // Photo b: only a small preview.
     writeFileSync(join(downloads, "b-10-3__1.jpeg"), await image(378, 504, "jpeg"));
+    // Photo d: narrow strip photo (long side passes, short side under 600 px).
+    writeFileSync(join(downloads, "d-10-4__1.jpeg"), await image(461, 3473, "jpeg"));
     // Not an image, and a file with another name pattern.
     writeFileSync(join(downloads, "c-10-21__1.jpeg"), "not an image");
     writeFileSync(join(downloads, "notes.txt"), "ignore me");
@@ -119,17 +121,18 @@ describe("pickLargestDownloads", () => {
     const result = await pickLargestDownloads(
       downloads,
       photos,
-      ["a-10-2", "b-10-3", "c-10-21"],
+      ["a-10-2", "b-10-3", "c-10-21", "d-10-4"],
       repo,
     );
 
     expect(result.picked.map((p) => [p.file, p.width, p.height])).toEqual([
       ["a-10-2.jpg", 1800, 2400],
       ["b-10-3.jpg", 378, 504],
+      ["d-10-4.jpg", 461, 3473],
     ]);
-    expect(result.tooSmall.map((p) => p.stem)).toEqual(["b-10-3"]);
+    expect(result.tooSmall.map((p) => p.stem)).toEqual(["b-10-3", "d-10-4"]);
     expect(result.missing).toEqual(["c-10-21"]);
-    expect(readdirSync(photos).sort()).toEqual(["a-10-2.jpg", "b-10-3.jpg"]);
+    expect(readdirSync(photos).sort()).toEqual(["a-10-2.jpg", "b-10-3.jpg", "d-10-4.jpg"]);
     expect(statSync(join(photos, "a-10-2.jpg")).mode & 0o777).toBe(0o600);
     const kept = await sharp(join(photos, "a-10-2.jpg")).metadata();
     expect([kept.width, kept.height]).toEqual([1800, 2400]);
@@ -202,5 +205,42 @@ describe("pickLargestDownloads", () => {
     expect(result.picked.map((p) => p.stem)).toEqual(["a-10-2"]);
     expect(result.removed).toEqual(["gone-10-9.jpg"]);
     expect(readdirSync(photos)).toEqual(["a-10-2.jpg"]);
+  });
+
+  it("prefers downloads that pass the size rule over a narrow image with more pixels, and falls back only when none passes", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-board-size-repo-"));
+    const root = mkdtempSync(join(tmpdir(), "ref-board-size-"));
+    tempDirs.push(repo, root);
+    const downloads = join(root, "downloads");
+    const photos = join(root, "photos");
+    mkdirSync(downloads);
+    mkdirSync(photos);
+
+    // Narrow image has more pixels (2,096,500) than passing image (1,500,000); passing image wins in either order.
+    writeFileSync(join(downloads, "p1-1-1__1.jpeg"), await image(599, 3500, "jpeg"));
+    writeFileSync(join(downloads, "p1-1-1__2.jpeg"), await image(750, 2000, "jpeg"));
+    writeFileSync(join(downloads, "p2-1-2__1.jpeg"), await image(750, 2000, "jpeg"));
+    writeFileSync(join(downloads, "p2-1-2__2.jpeg"), await image(599, 3500, "jpeg"));
+    // Two passing downloads: keep the one with the most pixels.
+    writeFileSync(join(downloads, "p3-1-3__1.jpeg"), await image(750, 2000, "jpeg"));
+    writeFileSync(join(downloads, "p3-1-3__2.jpeg"), await image(1800, 2400, "jpeg"));
+    // No download passes: keep the one with the most pixels and flag it too small.
+    writeFileSync(join(downloads, "p4-1-4__1.jpeg"), await image(378, 504, "jpeg"));
+    writeFileSync(join(downloads, "p4-1-4__2.jpeg"), await image(599, 3500, "jpeg"));
+
+    const result = await pickLargestDownloads(
+      downloads,
+      photos,
+      ["p1-1-1", "p2-1-2", "p3-1-3", "p4-1-4"],
+      repo,
+    );
+
+    expect(result.picked.map((p) => [p.stem, p.width, p.height])).toEqual([
+      ["p1-1-1", 750, 2000],
+      ["p2-1-2", 750, 2000],
+      ["p3-1-3", 1800, 2400],
+      ["p4-1-4", 599, 3500],
+    ]);
+    expect(result.tooSmall.map((p) => [p.stem, p.width, p.height])).toEqual([["p4-1-4", 599, 3500]]);
   });
 });

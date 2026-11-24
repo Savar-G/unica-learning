@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { buildBoardPlan, pickLargestDownloads, type BoardPlan } from "@/lib/reference-kit/board";
+import { MIN_LONG_SIDE_PX, MIN_SHORT_SIDE_PX } from "@/lib/reference-kit/prepare";
 import { prepareSafeOutputDir, writeSafeOutputFile } from "@/lib/reference-record/output-guard";
 
 const USAGE = [
@@ -52,7 +53,9 @@ async function main(): Promise<void> {
   const nameOf = new Map(plan.photos.map((p) => [p.stem, p.name]));
   console.log(`Photos kept: ${result.picked.length} of ${plan.photos.length} in ${photosDir}`);
   for (const p of result.tooSmall) {
-    console.log(`  too small: ${nameOf.get(p.stem) ?? p.stem} (${p.width} x ${p.height})`);
+    console.log(
+      `  too small: ${nameOf.get(p.stem) ?? p.stem} (${p.width} x ${p.height}; need at least ${MIN_LONG_SIDE_PX} px on the long side and ${MIN_SHORT_SIDE_PX} px on the short side)`,
+    );
   }
   for (const file of result.removed) {
     console.log(`  removed (not on the board any more): ${file}`);

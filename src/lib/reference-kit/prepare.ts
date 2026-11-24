@@ -6,6 +6,15 @@ import sharp from "sharp";
 export const PHOTOS_MANIFEST_FILE = "photos-manifest.json";
 export const PREPARE_REPORT_FILE = "prepare.json";
 export const MIN_LONG_SIDE_PX = 1600;
+export const MIN_SHORT_SIDE_PX = 600;
+
+export function isPhotoTooSmall(width: number, height: number): boolean {
+  return Math.max(width, height) < MIN_LONG_SIDE_PX || Math.min(width, height) < MIN_SHORT_SIDE_PX;
+}
+
+export function formatTooSmallReason(width: number, height: number): string {
+  return `too_small (${width}x${height}): need at least ${MIN_LONG_SIDE_PX} px on the long side and ${MIN_SHORT_SIDE_PX} px on the short side`;
+}
 
 const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
 const PREPARED_FILE_RE = /^([0-9a-f]{12})\.jpg$/;

@@ -13,6 +13,7 @@ import {
   type ReferenceRow,
   type ReferenceStore,
 } from "./import";
+import { checkPathOwnership } from "./import-replace";
 import type { ContentsRecord, PageRecord } from "./types";
 
 function makePage(sourceRef: string, topicTitle = "Adding small numbers"): PageRecord {
@@ -66,10 +67,19 @@ function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+// A stored row also has the columns the import never sends: id, created_at and updated_at.
+type StoredRow = ReferenceRow & { id?: string; created_at?: string; updated_at?: string };
+
 class MemoryReferenceStore implements ReferenceStore {
-  rows = new Map<string, ReferenceRow>();
+  rows = new Map<string, StoredRow>();
   objects = new Map<string, { bytes: Uint8Array; contentType: string }>();
   calls: string[] = [];
+  // Injected clock: each write takes the next tick as its time.
+  private tick = 0;
+  private now(): string {
+    this.tick += 1;
+    return `t${this.tick}`;
+  }
 
   async findExisting(sourceRefs: string[]): Promise<Map<string, ExistingReferenceRow>> {
     this.calls.push(`findExisting:${sourceRefs.join(",")}`);
@@ -92,8 +102,45 @@ class MemoryReferenceStore implements ReferenceStore {
     if (this.rows.has(row.source_ref)) {
       return false;
     }
-    this.rows.set(row.source_ref, structuredClone(row));
+    const at = this.now();
+    this.rows.set(row.source_ref, {
+      ...structuredClone(row),
+      id: `id-${row.source_ref}`,
+      created_at: at,
+      updated_at: at,
+    });
     return true;
+  }
+
+  async updateRow(row: ReferenceRow): Promise<boolean> {
+    this.calls.push(`updateRow:${row.source_ref}`);
+    const prev = this.rows.get(row.source_ref);
+    if (!prev) return false;
+    this.rows.set(row.source_ref, {
+      ...prev,
+      kind: row.kind,
+      path: row.path,
+      transcript: structuredClone(row.transcript),
+      transcript_status: row.transcript_status,
+      updated_at: this.now(),
+    });
+    return true;
+  }
+
+  async replaceObject(path: string, bytes: Uint8Array, contentType: string): Promise<void> {
+    this.calls.push(`replaceObject:${path}`);
+    this.objects.set(path, { bytes: new Uint8Array(bytes), contentType });
+  }
+
+  async refsByPath(paths: string[]): Promise<Map<string, string[]>> {
+    this.calls.push(`refsByPath:${paths.join(",")}`);
+    const out = new Map<string, string[]>();
+    for (const row of this.rows.values()) {
+      if (row.path !== null && paths.includes(row.path)) {
+        out.set(row.path, [...(out.get(row.path) ?? []), row.source_ref]);
+      }
+    }
+    return out;
   }
 
   async objectSha256(path: string): Promise<string | null> {
@@ -179,6 +226,7 @@ describe("importReferenceRecords", () => {
     expect(res.counts).toEqual({
       recordsRead: 2,
       inserted: 2,
+      replaced: 0,
       skipped: 0,
       skippedDifferent: 0,
       photosUploaded: 0,
@@ -253,6 +301,7 @@ describe("importReferenceRecords", () => {
     expect(second.counts).toEqual({
       recordsRead: 2,
       inserted: 0,
+      replaced: 0,
       skipped: 2,
       skippedDifferent: 0,
       photosUploaded: 0,
@@ -281,6 +330,7 @@ describe("importReferenceRecords", () => {
     expect(third.counts).toEqual({
       recordsRead: 2,
       inserted: 0,
+      replaced: 0,
       skipped: 1,
       skippedDifferent: 1,
       photosUploaded: 0,
@@ -356,6 +406,7 @@ describe("importReferenceRecords", () => {
     expect(res.counts).toEqual({
       recordsRead: 3,
       inserted: 3,
+      replaced: 0,
       skipped: 0,
       skippedDifferent: 0,
       photosUploaded: 1,
@@ -477,6 +528,7 @@ describe("importReferenceRecords", () => {
     expect(res.counts).toEqual({
       recordsRead: 1,
       inserted: 1,
+      replaced: 0,
       skipped: 0,
       skippedDifferent: 0,
       photosUploaded: 1,
@@ -562,6 +614,7 @@ describe("importReferenceRecords", () => {
     expect(res.counts).toEqual({
       recordsRead: 2,
       inserted: 0,
+      replaced: 0,
       skipped: 1,
       skippedDifferent: 1,
       photosUploaded: 0,
@@ -588,5 +641,509 @@ describe("importReferenceRecords", () => {
     expect(failed).toBe(true);
     expect(stderr).toContain("SUPABASE_URL");
     expect(stderr).toContain("SUPABASE_SECRET_KEY");
+  });
+
+  describe("with replace", () => {
+    const WRITE_CALL_RE = /^(insertRow|uploadObject|replaceObject|updateRow):/;
+    const oldImg = new Uint8Array([1, 2, 3, 4]);
+    const newImg = new Uint8Array([5, 6, 7, 8]);
+
+    function writeCalls(target: MemoryReferenceStore = store): string[] {
+      return target.calls.filter((c) => WRITE_CALL_RE.test(c));
+    }
+
+    function rowOf(ref: string, target: MemoryReferenceStore = store): StoredRow {
+      const row = target.rows.get(ref);
+      if (!row) throw new Error(`no row for ${ref}`);
+      return row;
+    }
+
+    function titleOf(ref: string, target: MemoryReferenceStore = store): string | null {
+      return (rowOf(ref, target).transcript as PageRecord).topic.title;
+    }
+
+    function writePhotos(entries: Array<{ file: string; bytes: Uint8Array; ref: string }>): void {
+      for (const e of entries) writeBytes(photosDir, e.file, e.bytes);
+      writeJson(photosDir, "photos-manifest.json", {
+        version: 1,
+        photos: entries.map((e) => ({
+          file: e.file,
+          sha256: sha256Hex(e.bytes),
+          original_name: e.file,
+          width: 3024,
+          height: 4032,
+          source_ref: e.ref,
+        })),
+      });
+    }
+
+    it("without the flag still counts a different row as skipped_different and writes nothing", async () => {
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a", "First title"));
+      await importReferenceRecords({ recordsDir, store });
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a", "Changed title"));
+      store.calls = [];
+
+      const res = await importReferenceRecords({ recordsDir, store });
+      expect(res.counts).toMatchObject({ replaced: 0, skippedDifferent: 1 });
+      expect(res.skippedDifferentRefs).toEqual(["sample:M:3a"]);
+      expect(res.replacedRefs).toEqual([]);
+      expect(writeCalls()).toEqual([]);
+      expect(titleOf("sample:M:3a")).toBe("First title");
+      expect(formatImportResult(res)).toContain("inserted=0 replaced=0 skipped=0 skipped_different=1");
+
+      // A new photo for the existing row: still no write, and no lookup of which rows use a path.
+      writePhotos([{ file: "IMG_0001.jpg", bytes: newImg, ref: "sample:M:3a" }]);
+      store.calls = [];
+      const withPhoto = await importReferenceRecords({ recordsDir, photosDir, store });
+      expect(withPhoto.counts).toMatchObject({ skippedDifferent: 1, photosUploaded: 0 });
+      expect(writeCalls()).toEqual([]);
+      expect(store.calls.some((c) => c.startsWith("refsByPath:"))).toBe(false);
+    });
+
+    it("refuses two records of one run that plan the same photo path", () => {
+      // buildReferencePhotoPath gives each source_ref its own path, so files alone cannot make this.
+      const res = checkPathOwnership(
+        [
+          { ref: "sample:M:3a", plannedPhotoPath: "sample/M/3a.jpg", decision: null },
+          { ref: "sample:M:3b", plannedPhotoPath: "sample/M/3a.jpg", decision: null },
+        ],
+        new Map(),
+      );
+      expect(res.problems).toEqual([
+        'storage: sample:M:3a and sample:M:3b plan the same photo path "sample/M/3a.jpg"; nothing was written',
+      ]);
+    });
+
+    it("replaces a changed transcript in place and keeps id, created_at and note", async () => {
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a", "First title"));
+      await importReferenceRecords({ recordsDir, store });
+      rowOf("sample:M:3a").note = "kept note";
+      const before = { ...rowOf("sample:M:3a") };
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a", "Changed title"));
+      store.calls = [];
+
+      const res = await importReferenceRecords({ recordsDir, store, replace: true });
+      expect(res.ok).toBe(true);
+      expect(res.counts).toEqual({
+        recordsRead: 1,
+        inserted: 0,
+        replaced: 1,
+        skipped: 0,
+        skippedDifferent: 0,
+        photosUploaded: 0,
+      });
+      expect(res.replacedRefs).toEqual(["sample:M:3a"]);
+      expect(res.statusLowered).toEqual([]);
+      expect(res.leftoverPhotos).toEqual([]);
+      expect(writeCalls()).toEqual(["updateRow:sample:M:3a"]);
+      expect(titleOf("sample:M:3a")).toBe("Changed title");
+      const after = rowOf("sample:M:3a");
+      expect(after).toMatchObject({
+        id: before.id,
+        created_at: before.created_at,
+        note: "kept note",
+        path: null,
+        transcript_status: "machine_read",
+      });
+      expect(after.updated_at).not.toBe(before.updated_at);
+      expect(formatImportResult(res)).toContain("replaced: sample:M:3a");
+    });
+
+    it("replaces a status change up without a list entry, and lists every change down", async () => {
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
+      await importReferenceRecords({ recordsDir, store });
+
+      writeJson(recordsDir, "status.json", { "sample:M:3a": "human_checked" });
+      const up = await importReferenceRecords({ recordsDir, store, replace: true });
+      expect(up.counts.replaced).toBe(1);
+      expect(up.statusLowered).toEqual([]);
+      expect(rowOf("sample:M:3a").transcript_status).toBe("human_checked");
+
+      writeJson(recordsDir, "status.json", { "sample:M:3a": "double_read" });
+      const down = await importReferenceRecords({ recordsDir, store, replace: true });
+      expect(down.counts.replaced).toBe(1);
+      expect(down.statusLowered).toEqual([
+        { ref: "sample:M:3a", from: "human_checked", to: "double_read" },
+      ]);
+      expect(rowOf("sample:M:3a").transcript_status).toBe("double_read");
+      expect(formatImportResult(down)).toContain(
+        "status_lowered: sample:M:3a (human_checked -> double_read)",
+      );
+
+      // A record left out of status.json is machine_read, which is also a change down.
+      rmSync(join(recordsDir, "status.json"));
+      const dropped = await importReferenceRecords({ recordsDir, store, replace: true });
+      expect(dropped.statusLowered).toEqual([
+        { ref: "sample:M:3a", from: "double_read", to: "machine_read" },
+      ]);
+    });
+
+    it("overwrites the photo when only its bytes changed and touches nothing in the row but updated_at", async () => {
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
+      writePhotos([{ file: "IMG_0001.jpg", bytes: oldImg, ref: "sample:M:3a" }]);
+      await importReferenceRecords({ recordsDir, photosDir, store });
+      const before = { ...rowOf("sample:M:3a") };
+      writePhotos([{ file: "IMG_0001.jpg", bytes: newImg, ref: "sample:M:3a" }]);
+      store.calls = [];
+
+      const res = await importReferenceRecords({ recordsDir, photosDir, store, replace: true });
+      expect(res.ok).toBe(true);
+      expect(res.counts).toMatchObject({ replaced: 1, skipped: 0, photosUploaded: 1 });
+      expect(writeCalls()).toEqual(["replaceObject:sample/M/3a.jpg", "updateRow:sample:M:3a"]);
+      expect(store.objects.get("sample/M/3a.jpg")?.bytes).toEqual(newImg);
+      const after = rowOf("sample:M:3a");
+      expect({ ...after, updated_at: undefined }).toEqual({ ...before, updated_at: undefined });
+      expect(after.updated_at).not.toBe(before.updated_at);
+      expect(res.leftoverPhotos).toEqual([]);
+    });
+
+    it("moves the row to a new photo path and names the old object as a leftover without deleting it", async () => {
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
+      writePhotos([{ file: "IMG_0001.jpg", bytes: oldImg, ref: "sample:M:3a" }]);
+      await importReferenceRecords({ recordsDir, photosDir, store });
+      writePhotos([{ file: "IMG_0001.png", bytes: newImg, ref: "sample:M:3a" }]);
+      store.calls = [];
+
+      const res = await importReferenceRecords({ recordsDir, photosDir, store, replace: true });
+      expect(res.ok).toBe(true);
+      expect(rowOf("sample:M:3a").path).toBe("sample/M/3a.png");
+      expect(store.objects.get("sample/M/3a.jpg")?.bytes).toEqual(oldImg);
+      expect(store.objects.get("sample/M/3a.png")?.bytes).toEqual(newImg);
+      expect(res.leftoverPhotos).toEqual(["sample/M/3a.jpg"]);
+      expect(writeCalls()).toEqual(["replaceObject:sample/M/3a.png", "updateRow:sample:M:3a"]);
+      expect(formatImportResult(res)).toContain('leftover_photo: "sample/M/3a.jpg"');
+    });
+
+    it("prints a stored path in one quoted form with quote, backslash, control and direction marks escaped", async () => {
+      // Escape, Arabic letter mark, left-to-right and right-to-left marks, embeddings and
+      // overrides, isolates, and the byte order mark.
+      const marks = [0x1b, 0x61c, 0x200e, 0x200f, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e]
+        .concat([0x2066, 0x2067, 0x2068, 0x2069, 0xfeff])
+        .map((code) => String.fromCodePoint(code));
+      const storedPath = `sample/M/3a"\\${marks.join("")}.jpg`;
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
+      writePhotos([{ file: "IMG_0001.jpg", bytes: newImg, ref: "sample:M:3a" }]);
+      store.rows.set("sample:M:3a", {
+        source_ref: "sample:M:3a",
+        kind: "page",
+        path: storedPath,
+        transcript: makePage("sample:M:3a"),
+        transcript_status: "machine_read",
+      });
+
+      const res = await importReferenceRecords({ recordsDir, photosDir, store, replace: true });
+      const out = formatImportResult(res);
+      expect(res.leftoverPhotos).toEqual([storedPath]);
+      const escaped = [
+        "\\u{1b}\\u{61c}\\u{200e}\\u{200f}\\u{202a}\\u{202b}\\u{202c}\\u{202d}\\u{202e}",
+        "\\u{2066}\\u{2067}\\u{2068}\\u{2069}\\u{feff}",
+      ].join("");
+      expect(out).toContain(`leftover_photo: "sample/M/3a\\"\\\\${escaped}.jpg" is no longer used`);
+      for (const mark of marks) expect(out).not.toContain(mark);
+    });
+
+    it("refuses before any write when a replace would overwrite a photo that another row uses", async () => {
+      writeJson(recordsDir, "z.json", makeContents("demo:Z:contents"));
+      writePhotos([{ file: "chart.jpg", bytes: oldImg, ref: "demo:Z:contents" }]);
+      await importReferenceRecords({ recordsDir, photosDir, store });
+      // A row that is not in this run points to the same object.
+      store.rows.set("demo:Y:contents", {
+        source_ref: "demo:Y:contents",
+        kind: "contents",
+        path: "demo/Z/contents.jpg",
+        transcript: makeContents("demo:Y:contents"),
+        transcript_status: "machine_read",
+      });
+      writePhotos([{ file: "chart.jpg", bytes: newImg, ref: "demo:Z:contents" }]);
+
+      for (const dryRun of [true, false]) {
+        store.calls = [];
+        const res = await importReferenceRecords({
+          recordsDir,
+          photosDir,
+          store,
+          replace: true,
+          dryRun,
+        });
+        expect(res.ok).toBe(false);
+        expect(res.stopped).toBeUndefined();
+        expect(store.calls).toContain("refsByPath:demo/Z/contents.jpg");
+        expect(writeCalls()).toEqual([]);
+        expect(res.problems).toHaveLength(1);
+        expect(res.problems[0]).toContain('"demo/Z/contents.jpg"');
+        expect(res.problems[0]).toContain('"demo:Y:contents"');
+      }
+      expect(store.objects.get("demo/Z/contents.jpg")?.bytes).toEqual(oldImg);
+    });
+
+    it("names an old path as a leftover only when no row uses it after the run, and only once", async () => {
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
+      writeJson(recordsDir, "p2.json", makePage("sample:M:3b"));
+      writePhotos([{ file: "IMG_0001.jpg", bytes: oldImg, ref: "sample:M:3a" }]);
+      await importReferenceRecords({ recordsDir, photosDir, store });
+      // sample:M:3b uses the same object as sample:M:3a.
+      rowOf("sample:M:3b").path = "sample/M/3a.jpg";
+
+      // The run holds only sample:M:3a and moves it to a new path; sample:M:3b still uses the old one.
+      rmSync(join(recordsDir, "p2.json"));
+      writePhotos([{ file: "IMG_0001.png", bytes: newImg, ref: "sample:M:3a" }]);
+      const dryOne = await importReferenceRecords({
+        recordsDir,
+        photosDir,
+        store,
+        replace: true,
+        dryRun: true,
+      });
+      const one = await importReferenceRecords({ recordsDir, photosDir, store, replace: true });
+      expect({ ...dryOne, dryRun: false }).toEqual(one);
+      expect(one.counts.replaced).toBe(1);
+      expect(one.leftoverPhotos).toEqual([]);
+      expect(formatImportResult(one)).not.toContain("leftover_photo");
+      expect(rowOf("sample:M:3b").path).toBe("sample/M/3a.jpg");
+      expect(store.objects.get("sample/M/3a.jpg")?.bytes).toEqual(oldImg);
+
+      // Both rows use the old path again, and this run moves both away: one leftover line.
+      rowOf("sample:M:3a").path = "sample/M/3a.jpg";
+      writeJson(recordsDir, "p2.json", makePage("sample:M:3b"));
+      writePhotos([
+        { file: "IMG_0001.png", bytes: newImg, ref: "sample:M:3a" },
+        { file: "IMG_0002.png", bytes: oldImg, ref: "sample:M:3b" },
+      ]);
+      const dryBoth = await importReferenceRecords({
+        recordsDir,
+        photosDir,
+        store,
+        replace: true,
+        dryRun: true,
+      });
+      const both = await importReferenceRecords({ recordsDir, photosDir, store, replace: true });
+      expect({ ...dryBoth, dryRun: false }).toEqual(both);
+      expect(both.counts.replaced).toBe(2);
+      expect(both.leftoverPhotos).toEqual(["sample/M/3a.jpg"]);
+      expect(formatImportResult(both).match(/leftover_photo:/g)).toHaveLength(1);
+      expect(store.objects.has("sample/M/3a.jpg")).toBe(true);
+    });
+
+    it("keeps the stored path and touches no object when a record has no planned photo", async () => {
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a", "First title"));
+      writeJson(recordsDir, "p2.json", makePage("sample:M:3b", "First title"));
+      writePhotos([
+        { file: "IMG_0001.jpg", bytes: oldImg, ref: "sample:M:3a" },
+        { file: "IMG_0002.jpg", bytes: newImg, ref: "sample:M:3b" },
+      ]);
+      await importReferenceRecords({ recordsDir, photosDir, store });
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a", "Changed title"));
+      writeJson(recordsDir, "p2.json", makePage("sample:M:3b", "Changed title"));
+
+      // The manifest no longer has an entry for sample:M:3b.
+      writePhotos([{ file: "IMG_0001.jpg", bytes: oldImg, ref: "sample:M:3a" }]);
+      store.calls = [];
+      const partial = await importReferenceRecords({ recordsDir, photosDir, store, replace: true });
+      expect(partial.counts).toMatchObject({ replaced: 2, photosUploaded: 0 });
+      expect(rowOf("sample:M:3b").path).toBe("sample/M/3b.jpg");
+      expect(store.calls.some((c) => c.includes("sample/M/3b"))).toBe(false);
+      expect(partial.leftoverPhotos).toEqual([]);
+
+      // No --photos at all.
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a", "Third title"));
+      store.calls = [];
+      const none = await importReferenceRecords({ recordsDir, store, replace: true });
+      expect(none.counts).toMatchObject({ replaced: 1, skipped: 1, photosUploaded: 0 });
+      expect(rowOf("sample:M:3a").path).toBe("sample/M/3a.jpg");
+      expect(
+        store.calls.filter((c) => c.startsWith("objectSha256:") || c.startsWith("replaceObject:")),
+      ).toEqual([]);
+      expect(none.leftoverPhotos).toEqual([]);
+    });
+
+    it("skips a row that is the same in transcript, status, path and photo bytes with zero writes", async () => {
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
+      writeJson(recordsDir, "p2.json", makePage("sample:M:3b"));
+      writeJson(recordsDir, "status.json", { "sample:M:3a": "double_read" });
+      writePhotos([{ file: "IMG_0001.jpg", bytes: oldImg, ref: "sample:M:3a" }]);
+      await importReferenceRecords({ recordsDir, photosDir, store });
+      store.calls = [];
+
+      const res = await importReferenceRecords({ recordsDir, photosDir, store, replace: true });
+      expect(res.counts).toEqual({
+        recordsRead: 2,
+        inserted: 0,
+        replaced: 0,
+        skipped: 2,
+        skippedDifferent: 0,
+        photosUploaded: 0,
+      });
+      expect(writeCalls()).toEqual([]);
+    });
+
+    it("inserts new rows, replaces changed rows and skips same rows in one run", async () => {
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
+      writeJson(recordsDir, "p2.json", makePage("sample:M:3b", "First title"));
+      await importReferenceRecords({ recordsDir, store });
+      writeJson(recordsDir, "p2.json", makePage("sample:M:3b", "Changed title"));
+      writeJson(recordsDir, "p3.json", makePage("sample:M:4a"));
+
+      const res = await importReferenceRecords({ recordsDir, store, replace: true });
+      expect(res.ok).toBe(true);
+      expect(res.counts).toEqual({
+        recordsRead: 3,
+        inserted: 1,
+        replaced: 1,
+        skipped: 1,
+        skippedDifferent: 0,
+        photosUploaded: 0,
+      });
+      expect(res.replacedRefs).toEqual(["sample:M:3b"]);
+      expect(titleOf("sample:M:3b")).toBe("Changed title");
+      expect(store.rows.has("sample:M:4a")).toBe(true);
+      expect(formatImportResult(res).split("\n")[0]).toBe(
+        "Import summary: records_read=3 inserted=1 replaced=1 skipped=1 skipped_different=0 photos_uploaded=0",
+      );
+    });
+
+    it("dry run makes zero write calls and reports the same counts and lists as the real run", async () => {
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
+      writeJson(recordsDir, "p2.json", makePage("sample:M:3b", "First title"));
+      writeJson(recordsDir, "status.json", { "sample:M:3a": "human_checked" });
+      writePhotos([{ file: "IMG_0001.jpg", bytes: oldImg, ref: "sample:M:3a" }]);
+      await importReferenceRecords({ recordsDir, photosDir, store });
+
+      writeJson(recordsDir, "status.json", {});
+      writeJson(recordsDir, "p2.json", makePage("sample:M:3b", "Changed title"));
+      writeJson(recordsDir, "p3.json", makePage("sample:M:4a"));
+      writePhotos([{ file: "IMG_0001.png", bytes: newImg, ref: "sample:M:3a" }]);
+      const snapshot = () => structuredClone({ rows: [...store.rows], objects: [...store.objects] });
+      const before = snapshot();
+      store.calls = [];
+
+      const dry = await importReferenceRecords({
+        recordsDir,
+        photosDir,
+        store,
+        dryRun: true,
+        replace: true,
+      });
+      expect(dry.ok).toBe(true);
+      expect(writeCalls()).toEqual([]);
+      expect(snapshot()).toEqual(before);
+      expect(formatImportResult(dry)).toContain("Dry run summary");
+
+      const real = await importReferenceRecords({ recordsDir, photosDir, store, replace: true });
+      expect(real.counts).toEqual({
+        recordsRead: 3,
+        inserted: 1,
+        replaced: 2,
+        skipped: 0,
+        skippedDifferent: 0,
+        photosUploaded: 1,
+      });
+      expect(real.statusLowered).toEqual([
+        { ref: "sample:M:3a", from: "human_checked", to: "machine_read" },
+      ]);
+      expect(real.leftoverPhotos).toEqual(["sample/M/3a.jpg"]);
+      expect({ ...dry, dryRun: false }).toEqual(real);
+    });
+
+    it("still refuses before any write when an object with other bytes is at the path of a ref with no row", async () => {
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
+      writePhotos([{ file: "IMG_0001.jpg", bytes: newImg, ref: "sample:M:3a" }]);
+      store.objects.set("sample/M/3a.jpg", { bytes: oldImg, contentType: "image/jpeg" });
+
+      const res = await importReferenceRecords({ recordsDir, photosDir, store, replace: true });
+      expect(res.ok).toBe(false);
+      expect(res.stopped).toBeUndefined();
+      expect(writeCalls()).toEqual([]);
+      expect(res.problems.some((p) => p.includes("sample/M/3a.jpg") && p.includes("by hand"))).toBe(
+        true,
+      );
+    });
+
+    it("refuses an invalid record before any write", async () => {
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
+      await importReferenceRecords({ recordsDir, store });
+      writeJson(recordsDir, "p2.json", { ...makePage("sample:M:3b"), extra_key: "nope" });
+      store.calls = [];
+
+      const res = await importReferenceRecords({ recordsDir, store, replace: true });
+      expect(res.ok).toBe(false);
+      expect(store.calls).toEqual([]);
+      expect(res.problems.some((p) => p.includes("p2.json"))).toBe(true);
+    });
+
+    it("stops when a row update fails after its photo was replaced, and a second run ends like a clean run", async () => {
+      const clean = new MemoryReferenceStore();
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a", "First title"));
+      writeJson(recordsDir, "p2.json", makePage("sample:M:3b", "First title"));
+      writePhotos([{ file: "IMG_0002.jpg", bytes: oldImg, ref: "sample:M:3b" }]);
+      await importReferenceRecords({ recordsDir, photosDir, store });
+      await importReferenceRecords({ recordsDir, photosDir, store: clean });
+
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a", "Changed title"));
+      writeJson(recordsDir, "p2.json", makePage("sample:M:3b", "Changed title"));
+      writePhotos([{ file: "IMG_0002.jpg", bytes: newImg, ref: "sample:M:3b" }]);
+
+      const realUpdate = store.updateRow.bind(store);
+      let failNext = true;
+      store.updateRow = async (row) => {
+        if (row.source_ref === "sample:M:3b" && failNext) {
+          failNext = false;
+          throw new Error("database is not reachable");
+        }
+        return realUpdate(row);
+      };
+
+      const first = await importReferenceRecords({ recordsDir, photosDir, store, replace: true });
+      expect(first.ok).toBe(false);
+      expect(first.stopped).toBe(true);
+      expect(first.counts).toMatchObject({ replaced: 1, photosUploaded: 1 });
+      expect(first.replacedRefs).toEqual(["sample:M:3a"]);
+      expect(
+        first.problems.some(
+          (p) => p.includes('"sample/M/3b.jpg"') && p.includes("already the new one"),
+        ),
+      ).toBe(true);
+      expect(first.problems.some((p) => p.includes("replaced 1"))).toBe(true);
+      expect(formatImportResult(first)).toContain("Import stopped after a write error");
+      expect(store.objects.get("sample/M/3b.jpg")?.bytes).toEqual(newImg);
+      expect(titleOf("sample:M:3b")).toBe("First title");
+
+      const second = await importReferenceRecords({ recordsDir, photosDir, store, replace: true });
+      expect(second.ok).toBe(true);
+      expect(second.counts).toMatchObject({ replaced: 1, skipped: 1, photosUploaded: 0 });
+      expect(second.replacedRefs).toEqual(["sample:M:3b"]);
+
+      const cleanRun = await importReferenceRecords({
+        recordsDir,
+        photosDir,
+        store: clean,
+        replace: true,
+      });
+      expect(cleanRun.ok).toBe(true);
+      const endState = (target: MemoryReferenceStore) => ({
+        rows: [...target.rows].map(([ref, row]) => [ref, { ...row, updated_at: undefined }]),
+        objects: [...target.objects],
+      });
+      expect(endState(store)).toEqual(endState(clean));
+    });
+
+    it("stops with a clear problem when the row to update is no longer there", async () => {
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a", "First title"));
+      await importReferenceRecords({ recordsDir, store });
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a", "Changed title"));
+      // Another person removes the row after this run read it.
+      store.updateRow = async (row) => {
+        store.rows.delete(row.source_ref);
+        return false;
+      };
+
+      const res = await importReferenceRecords({ recordsDir, store, replace: true });
+      expect(res.ok).toBe(false);
+      expect(res.stopped).toBe(true);
+      expect(res.counts.replaced).toBe(0);
+      expect(res.replacedRefs).toEqual([]);
+      expect(
+        res.problems.some((p) => p.includes("sample:M:3a") && p.includes("no row with this source_ref")),
+      ).toBe(true);
+    });
   });
 });

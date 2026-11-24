@@ -9,7 +9,7 @@ import {
   writeSafeOutputFile,
   type ReferenceRecord,
 } from "@/lib/reference-record";
-import { fileSlugFromRef } from "./answers";
+import { applyComputedAnswers, fileSlugFromRef } from "./answers";
 import {
   classifyComparison,
   collectUnnamedTeachingMarks,
@@ -171,6 +171,19 @@ function withBothReaders(chosen: ReferenceRecord, pair: PairedPage): ReferenceRe
   return readers.length > 0 ? { ...chosen, readers } : chosen;
 }
 
+function mergeNotes(existing: readonly string[], added: readonly string[]): string[] {
+  if (added.length === 0) return [...existing];
+  const seen = new Set(existing);
+  const out = [...existing];
+  for (const note of added) {
+    if (!seen.has(note)) {
+      seen.add(note);
+      out.push(note);
+    }
+  }
+  return out;
+}
+
 export function compareWorkFolder(opts: {
   workDir: string;
   repoRoot: string;
@@ -257,6 +270,7 @@ export function compareWorkFolder(opts: {
         only_in_reader: onlyIn,
         digest_mismatch: pair.digestMismatch,
         differences: classified.differences,
+        wording: classified.wording,
         once_read: locateOnceReadInKeptRecord(classified.once_read, null),
         both_unclear: classified.both_unclear,
         one_unclear: classified.one_unclear,
@@ -291,6 +305,7 @@ export function compareWorkFolder(opts: {
         only_in_reader: onlyIn,
         digest_mismatch: pair.digestMismatch,
         differences: classified.differences,
+        wording: classified.wording,
         once_read: locateOnceReadInKeptRecord(classified.once_read, existingKept),
         both_unclear: classified.both_unclear,
         one_unclear: classified.one_unclear,
@@ -302,13 +317,19 @@ export function compareWorkFolder(opts: {
       continue;
     }
 
-    const finalRecord = withBothReaders(chosen, pair);
+    const { record: finalRecord, notes: computedNotes } = applyComputedAnswers(
+      withBothReaders(chosen, pair),
+    );
+    const readerNotes = pair.recA
+      ? { a: mergeNotes(pair.notesA, computedNotes), b: pair.notesB }
+      : { a: pair.notesA, b: mergeNotes(pair.notesB, computedNotes) };
+    const finalEmptyAnswers = emptyAnswerDiffs(finalRecord, pair.recA, pair.recB);
     const status = decideStatus({
       hasA: pair.recA !== null,
       hasB: pair.recB !== null,
       familyA: slotA.meta?.family ?? null,
       familyB: slotB.meta?.family ?? null,
-      diffs: [...allDiffs, ...emptyAnswerDiffs(finalRecord, pair.recA, pair.recB)],
+      diffs: [...allDiffs, ...finalEmptyAnswers],
       sameDigest: pair.sameDigest,
     });
 
@@ -347,6 +368,7 @@ export function compareWorkFolder(opts: {
       only_in_reader: onlyIn,
       digest_mismatch: pair.digestMismatch,
       differences: classified.differences,
+      wording: classified.wording,
       once_read: editedByPerson
         ? locateOnceReadInKeptRecord(classified.once_read, editedRecord)
         : classified.once_read,
@@ -354,10 +376,10 @@ export function compareWorkFolder(opts: {
       one_unclear: classified.one_unclear,
       empty_answer: editedByPerson
         ? emptyAnswerDiffs(editedRecord, pair.recA, pair.recB)
-        : emptyAnswerDiffs(finalRecord, pair.recA, pair.recB),
+        : finalEmptyAnswers,
       needs_person_read: classified.needs_person_read,
       unnamed_teaching_marks: unnamedTeachingMarks,
-      reader_notes: { a: pair.notesA, b: pair.notesB },
+      reader_notes: readerNotes,
     });
   }
 

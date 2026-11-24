@@ -1,9 +1,11 @@
 import type { PageStatus, RecordDifference, UnnamedTeachingMark } from "./compare";
-import type {
-  DuplicatePhotoReport,
-  RemovedPhotoReport,
-  TooSmallPhotoReport,
-  UnreadablePhotoReport,
+import {
+  MIN_LONG_SIDE_PX,
+  MIN_SHORT_SIDE_PX,
+  type DuplicatePhotoReport,
+  type RemovedPhotoReport,
+  type TooSmallPhotoReport,
+  type UnreadablePhotoReport,
 } from "./prepare";
 import type { ReaderMeta } from "./read";
 
@@ -52,6 +54,8 @@ export interface PageCompareReport {
   only_in_reader: "a" | "b" | null;
   digest_mismatch: DigestMismatchInfo | null;
   differences: RecordDifference[];
+  // Differences in the reader's own wording (do not block double_read). Absent in reports of older runs.
+  wording?: RecordDifference[];
   once_read: RecordDifference[];
   both_unclear: RecordDifference[];
   one_unclear: RecordDifference[];
@@ -101,19 +105,23 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
   lines.push("## Summary");
   lines.push("");
   lines.push(
-    "| Page | Photo | Status | Differences | Once-read | Both unclear | Empty answers | Person read |",
+    "| Page | Photo | Status | Differences | Wording | Once-read | Both unclear | Empty answers | Person read |",
   );
-  lines.push("|---|---|---|---:|---:|---:|---:|---|");
+  lines.push("|---|---|---|---:|---:|---:|---:|---:|---|");
   for (const p of report.pages) {
     const photoCol = p.original_name ?? p.photo ?? "-";
     lines.push(
-      `| ${p.source_ref} | ${photoCol} | ${p.status} | ${p.differences.length} | ${p.once_read.length} | ${p.both_unclear.length} | ${(p.empty_answer ?? []).length} | ${p.needs_person_read ? "yes" : "no"} |`,
+      `| ${p.source_ref} | ${photoCol} | ${p.status} | ${p.differences.length} | ${(p.wording ?? []).length} | ${p.once_read.length} | ${p.both_unclear.length} | ${(p.empty_answer ?? []).length} | ${p.needs_person_read ? "yes" : "no"} |`,
     );
   }
   lines.push("");
 
   if (report.too_small_photos.length > 0) {
     lines.push("## Too small to read");
+    lines.push("");
+    lines.push(
+      `Photos need at least ${MIN_LONG_SIDE_PX} px on the long side and ${MIN_SHORT_SIDE_PX} px on the short side.`,
+    );
     lines.push("");
     for (const item of report.too_small_photos) {
       lines.push(`- \`${item.original_name}\` (${item.width} x ${item.height})`);
@@ -272,26 +280,44 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
       }
     }
 
+    // A record that a person edited or checked is kept; reader a's words and indexes may not fit it.
+    const keptRecord = p.edited_by_person === true || p.status === "human_checked";
+
+    const wording = p.wording ?? [];
+    if (wording.length > 0) {
+      lines.push(
+        keptRecord
+          ? "- Wording differences: the readers describe the same thing in other words; the edited record is kept; no action needed"
+          : "- Wording differences: the readers describe the same thing in other words; reader A's words are kept; no action needed",
+      );
+      for (const d of wording) {
+        lines.push(`  - \`${d.path}\`: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
+      }
+    }
+
     if (p.once_read.length > 0) {
       lines.push(
-        "- Once-read teaching fields (look at the photo; copy an entry that is on the page into the final record at the given path, where \"[]\" means the end of that list):",
+        '- Once-read teaching fields (look at the photo; copy an entry that is on the page into the final record at the given path, where "[]" means the end of that list and "insert before" means insert ahead of that element):',
       );
       for (const d of p.once_read) {
-        // A record that a person edited or checked is kept; reader a's indexes may not fit it.
-        const keptRecord = p.edited_by_person === true || p.status === "human_checked";
         const entry = d.reader === "a" ? d.a : d.b;
+        const missingStepNote = d.missing_step
+          ? "; its step is missing from reader A's record and must be added first"
+          : "";
         if (d.reader && d.final_path !== undefined) {
           const where = keptRecord
             ? "found in the kept final record at"
             : d.reader === "a"
               ? "already in the final record at"
-              : "belongs in the final record at";
+              : d.insert_before !== undefined
+                ? "insert before"
+                : "belongs in the final record at";
           lines.push(
-            `  - \`${d.path}\`: only reader ${d.reader} has it; ${where} \`${d.final_path}\`: ${formatVal(entry)}`,
+            `  - \`${d.path}\`: only reader ${d.reader} has it; ${where} \`${d.final_path}\`${keptRecord ? "" : missingStepNote}: ${formatVal(entry)}`,
           );
         } else if (d.reader && keptRecord) {
           lines.push(
-            `  - \`${d.path}\`: only reader ${d.reader} has it; a person changed the final record, so find the place in that record: ${formatVal(entry)}`,
+            `  - \`${d.path}\`: only reader ${d.reader} has it; a person changed the final record, so find the place in that record${missingStepNote}: ${formatVal(entry)}`,
           );
         } else {
           lines.push(`  - \`${d.path}\`: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
@@ -324,6 +350,7 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
 
     if (
       p.differences.length === 0 &&
+      wording.length === 0 &&
       p.once_read.length === 0 &&
       p.both_unclear.length === 0 &&
       emptyAnswers.length === 0 &&
