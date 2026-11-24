@@ -51,6 +51,7 @@ import {
 
 export interface ExtractCounts {
   double_read: number;
+  agreement_accepted: number;
   machine_read: number;
   failed: number;
   too_small: number;
@@ -487,6 +488,7 @@ export async function extractFolder(opts: ExtractFolderOptions): Promise<Extract
   const report = compareWorkFolder({ workDir, repoRoot });
   const counts: ExtractCounts = {
     double_read: report.pages.filter((p) => p.status === "double_read").length,
+    agreement_accepted: report.pages.filter((p) => p.status === "agreement_accepted").length,
     machine_read: report.pages.filter((p) => p.status === "machine_read").length,
     failed: report.could_not_read_photos.length,
     too_small: report.too_small_photos.length,

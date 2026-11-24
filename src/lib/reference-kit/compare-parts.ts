@@ -4,11 +4,9 @@ import {
   type Expr,
   type ItemResponse,
   type ReaderSentinel,
-  type Scaffold,
   type ScoreBand,
   type ScoreBands,
 } from "@/lib/reference-record";
-import { isKnownPlaceName } from "./answers";
 import { normalizeNotationText, normalizeProseText } from "./normalize";
 
 // empty_answer: an answer place of the final record holds no answer and no "unclear" marker.
@@ -39,6 +37,28 @@ export interface RecordDifference {
 
 export type FieldCompareMode = "exact" | "prose" | "notation";
 
+export interface CompareCounts {
+  compared: number;
+  agreed: number;
+}
+
+export function recordMatch(counts?: CompareCounts): void {
+  if (!counts) return;
+  counts.compared += 1;
+  counts.agreed += 1;
+}
+
+export function recordDiff(
+  diffs: RecordDifference[],
+  diff: RecordDifference,
+  counts?: CompareCounts,
+): void {
+  diffs.push(diff);
+  if (!counts) return;
+  counts.compared += 1;
+  if (diff.kind === "wording") counts.agreed += 1;
+}
+
 const MATH_TOKEN_RE = /\d+(?:\.\d+)?|<=|>=|[+\-\u2212\u00D7\u00F7/=<>\u2264\u2265\u2260%^\u221A]/g;
 
 function canonicalMathToken(token: string): string {
@@ -67,20 +87,22 @@ export function checkSentinels(
   a: unknown,
   b: unknown,
   diffs: RecordDifference[],
+  counts?: CompareCounts,
 ): boolean {
   if (a === UNCLEAR && b === UNCLEAR) {
-    diffs.push({ path, a, b, kind: "both_unclear" });
+    recordDiff(diffs, { path, a, b, kind: "both_unclear" }, counts);
     return true;
   }
   if (a === UNCLEAR || b === UNCLEAR) {
-    diffs.push({ path, a: a ?? null, b: b ?? null, kind: "one_unclear" });
+    recordDiff(diffs, { path, a: a ?? null, b: b ?? null, kind: "one_unclear" }, counts);
     return true;
   }
   if (a === NOT_STATED && b === NOT_STATED) {
+    recordMatch(counts);
     return true;
   }
   if (a === NOT_STATED || b === NOT_STATED) {
-    diffs.push({ path, a: a ?? null, b: b ?? null, kind: "value" });
+    recordDiff(diffs, { path, a: a ?? null, b: b ?? null, kind: "value" }, counts);
     return true;
   }
   return false;
@@ -109,18 +131,18 @@ export function compareField(
   b: unknown,
   opts: { teaching?: boolean; mode?: FieldCompareMode; wording?: boolean },
   diffs: RecordDifference[],
+  counts?: CompareCounts,
 ): void {
-  if (checkSentinels(path, a, b, diffs)) return;
+  if (checkSentinels(path, a, b, diffs, counts)) return;
   const aEmpty = isEmptyField(a);
   const bEmpty = isEmptyField(b);
   if (aEmpty && bEmpty) return;
   if (aEmpty !== bEmpty) {
-    diffs.push({
-      path,
-      a: a ?? null,
-      b: b ?? null,
-      kind: opts.teaching ? "once_read" : "value",
-    });
+    recordDiff(
+      diffs,
+      { path, a: a ?? null, b: b ?? null, kind: opts.teaching ? "once_read" : "value" },
+      counts,
+    );
     return;
   }
 
@@ -143,38 +165,42 @@ export function compareField(
     if (normA !== normB) {
       const kind: DiffKind =
         opts.wording && sameMathTokens(normA, normB) ? "wording" : "value";
-      diffs.push({ path, a, b, kind });
+      recordDiff(diffs, { path, a, b, kind }, counts);
+    } else {
+      recordMatch(counts);
     }
     return;
   }
 
   if (!deepEqual(a, b)) {
-    diffs.push({ path, a, b, kind: diffKind });
+    recordDiff(diffs, { path, a, b, kind: diffKind }, counts);
+  } else {
+    recordMatch(counts);
   }
 }
 
-function compareListField(
+export function compareListField(
   path: string,
   a: unknown,
   b: unknown,
   opts: { teaching?: boolean; mode?: FieldCompareMode; itemWording?: (av: unknown, bv: unknown) => boolean },
   diffs: RecordDifference[],
+  counts?: CompareCounts,
 ): void {
-  if (checkSentinels(path, a, b, diffs)) return;
+  if (checkSentinels(path, a, b, diffs, counts)) return;
   const aEmpty = isEmptyField(a);
   const bEmpty = isEmptyField(b);
   if (aEmpty && bEmpty) return;
   if (aEmpty !== bEmpty) {
-    diffs.push({
-      path,
-      a: a ?? null,
-      b: b ?? null,
-      kind: opts.teaching ? "once_read" : "value",
-    });
+    recordDiff(
+      diffs,
+      { path, a: a ?? null, b: b ?? null, kind: opts.teaching ? "once_read" : "value" },
+      counts,
+    );
     return;
   }
   if (!Array.isArray(a) || !Array.isArray(b)) {
-    compareField(path, a, b, opts, diffs);
+    compareField(path, a, b, opts, diffs, counts);
     return;
   }
   const maxLen = Math.max(a.length, b.length);
@@ -183,11 +209,11 @@ function compareListField(
       const av = i < a.length ? a[i] : null;
       const bv = i < b.length ? b[i] : null;
       const kind: DiffKind = av === UNCLEAR || bv === UNCLEAR ? "one_unclear" : "value";
-      diffs.push({ path: `${path}[${i}]`, a: av, b: bv, kind });
+      recordDiff(diffs, { path: `${path}[${i}]`, a: av, b: bv, kind }, counts);
       continue;
     }
     const wording = opts.itemWording ? opts.itemWording(a[i], b[i]) : false;
-    compareField(`${path}[${i}]`, a[i], b[i], { mode: opts.mode, wording }, diffs);
+    compareField(`${path}[${i}]`, a[i], b[i], { mode: opts.mode, wording }, diffs, counts);
   }
 }
 
@@ -196,8 +222,9 @@ export function compareExpr(
   a: Expr | ReaderSentinel | null | undefined,
   b: Expr | ReaderSentinel | null | undefined,
   diffs: RecordDifference[],
+  counts?: CompareCounts,
 ): void {
-  if (checkSentinels(path, a, b, diffs)) return;
+  if (checkSentinels(path, a, b, diffs, counts)) return;
   if (isEmptyField(a) && isEmptyField(b)) return;
   if (
     isEmptyField(a) ||
@@ -207,52 +234,53 @@ export function compareExpr(
     typeof a === "string" ||
     typeof b === "string"
   ) {
-    diffs.push({ path, a: a ?? null, b: b ?? null, kind: "value" });
+    recordDiff(diffs, { path, a: a ?? null, b: b ?? null, kind: "value" }, counts);
     return;
   }
 
   if (a.kind !== b.kind) {
-    diffs.push({ path: `${path}.kind`, a: a.kind, b: b.kind, kind: "value" });
+    recordDiff(diffs, { path: `${path}.kind`, a: a.kind, b: b.kind, kind: "value" }, counts);
     return;
   }
 
   switch (a.kind) {
     case "arith": {
       const bArith = b as typeof a;
-      compareField(`${path}.op`, a.op, bArith.op, {}, diffs);
-      compareListField(`${path}.operands`, a.operands, bArith.operands, {}, diffs);
+      compareField(`${path}.op`, a.op, bArith.op, {}, diffs, counts);
+      compareListField(`${path}.operands`, a.operands, bArith.operands, {}, diffs, counts);
       return;
     }
     case "chain": {
       const bChain = b as typeof a;
-      compareListField(`${path}.terms`, a.terms, bChain.terms, {}, diffs);
-      compareField(`${path}.step`, a.step, bChain.step, {}, diffs);
+      compareListField(`${path}.terms`, a.terms, bChain.terms, {}, diffs, counts);
+      compareField(`${path}.step`, a.step, bChain.step, {}, diffs, counts);
       return;
     }
     case "missing": {
       const bMissing = b as typeof a;
-      compareField(`${path}.op`, a.op, bMissing.op, {}, diffs);
-      compareListField(`${path}.operands`, a.operands, bMissing.operands, {}, diffs);
-      compareField(`${path}.result`, a.result, bMissing.result, {}, diffs);
+      compareField(`${path}.op`, a.op, bMissing.op, {}, diffs, counts);
+      compareListField(`${path}.operands`, a.operands, bMissing.operands, {}, diffs, counts);
+      compareField(`${path}.result`, a.result, bMissing.result, {}, diffs, counts);
       return;
     }
     case "linked": {
       const bLinked = b as typeof a;
-      compareExpr(`${path}.pair[0]`, a.pair[0], bLinked.pair[0], diffs);
-      compareExpr(`${path}.pair[1]`, a.pair[1], bLinked.pair[1], diffs);
+      compareExpr(`${path}.pair[0]`, a.pair[0], bLinked.pair[0], diffs, counts);
+      compareExpr(`${path}.pair[1]`, a.pair[1], bLinked.pair[1], diffs, counts);
       compareField(
         `${path}.connector`,
         a.connector,
         bLinked.connector,
         { teaching: true, mode: "prose" },
         diffs,
+        counts,
       );
       return;
     }
     case "word": {
       const bWord = b as typeof a;
-      compareField(`${path}.text`, a.text, bWord.text, { mode: "prose" }, diffs);
-      compareField(`${path}.unit`, a.unit, bWord.unit, { teaching: true, mode: "prose" }, diffs);
+      compareField(`${path}.text`, a.text, bWord.text, { mode: "prose" }, diffs, counts);
+      compareField(`${path}.unit`, a.unit, bWord.unit, { teaching: true, mode: "prose" }, diffs, counts);
       const aInner = a.expr;
       const bInner = bWord.expr;
       if (
@@ -261,21 +289,22 @@ export function compareExpr(
         typeof bInner === "object" &&
         bInner !== null
       ) {
-        compareExpr(`${path}.expr`, aInner, bInner, diffs);
+        compareExpr(`${path}.expr`, aInner, bInner, diffs, counts);
       } else {
-        compareField(`${path}.expr`, aInner, bInner, {}, diffs);
+        compareField(`${path}.expr`, aInner, bInner, {}, diffs, counts);
       }
       return;
     }
     case "notation": {
       const bNot = b as typeof a;
-      compareField(`${path}.latex`, a.latex, bNot.latex, { mode: "notation" }, diffs);
+      compareField(`${path}.latex`, a.latex, bNot.latex, { mode: "notation" }, diffs, counts);
       compareField(
         `${path}.figure`,
         a.figure,
         bNot.figure,
         { teaching: true, mode: "prose", wording: true },
         diffs,
+        counts,
       );
       return;
     }
@@ -287,6 +316,7 @@ export function compareResponses(
   aList: readonly ItemResponse[],
   bList: readonly ItemResponse[],
   diffs: RecordDifference[],
+  counts?: CompareCounts,
 ): void {
   const maxLen = Math.max(aList.length, bList.length);
   for (let i = 0; i < maxLen; i += 1) {
@@ -294,250 +324,26 @@ export function compareResponses(
     const ra = aList[i];
     const rb = bList[i];
     if (!ra || !rb) {
-      diffs.push({ path: rPath, a: ra ?? null, b: rb ?? null, kind: "value" });
+      recordDiff(diffs, { path: rPath, a: ra ?? null, b: rb ?? null, kind: "value" }, counts);
       continue;
     }
-    compareField(`${rPath}.position`, ra.position, rb.position, {}, diffs);
-    compareField(`${rPath}.cue`, ra.cue, rb.cue, { teaching: true, mode: "prose" }, diffs);
-    compareField(`${rPath}.unit`, ra.unit, rb.unit, { teaching: true, mode: "prose" }, diffs);
-    compareField(`${rPath}.place`, ra.place, rb.place, { teaching: true, mode: "prose" }, diffs);
-    compareField(`${rPath}.answer`, ra.answer, rb.answer, {}, diffs);
+    compareField(`${rPath}.position`, ra.position, rb.position, {}, diffs, counts);
+    compareField(`${rPath}.cue`, ra.cue, rb.cue, { teaching: true, mode: "prose" }, diffs, counts);
+    compareField(`${rPath}.unit`, ra.unit, rb.unit, { teaching: true, mode: "prose" }, diffs, counts);
+    compareField(`${rPath}.place`, ra.place, rb.place, { teaching: true, mode: "prose" }, diffs, counts);
+    compareField(`${rPath}.answer`, ra.answer, rb.answer, {}, diffs, counts);
     // "reader" against "unchecked" or "computed" is no difference; an answer that one reader
     // reads as printed on the page and the other does not is one.
     if ((ra.answer_source === "printed") !== (rb.answer_source === "printed")) {
-      diffs.push({
-        path: `${rPath}.answer_source`,
-        a: ra.answer_source,
-        b: rb.answer_source,
-        kind: "value",
-      });
-    }
-  }
-}
-
-function canonicalAppliesToKey(appliesTo: Scaffold["applies_to"]): string {
-  if (Array.isArray(appliesTo)) {
-    return [...appliesTo].sort((x, y) => x - y).join(",");
-  }
-  return String(appliesTo);
-}
-
-function scaffoldPrimaryKey(sc: Scaffold): string {
-  const base = `${sc.kind}:${canonicalAppliesToKey(sc.applies_to)}`;
-  if (
-    sc.kind === "caption" &&
-    typeof sc.target === "string" &&
-    sc.target !== UNCLEAR &&
-    sc.target !== NOT_STATED
-  ) {
-    return `${base}:${normalizeProseText(sc.target)}`;
-  }
-  return base;
-}
-
-function compareSingleScaffold(
-  path: string,
-  a: Scaffold,
-  b: Scaffold,
-  diffs: RecordDifference[],
-): void {
-  if (a.kind !== b.kind) {
-    diffs.push({ path: `${path}.kind`, a: a.kind, b: b.kind, kind: "value" });
-    return;
-  }
-  const aApplies = Array.isArray(a.applies_to)
-    ? [...a.applies_to].sort((x, y) => x - y)
-    : a.applies_to;
-  const bApplies = Array.isArray(b.applies_to)
-    ? [...b.applies_to].sort((x, y) => x - y)
-    : b.applies_to;
-  compareField(`${path}.applies_to`, aApplies, bApplies, {}, diffs);
-
-  switch (a.kind) {
-    case "answer_boxes": {
-      const bb = b as typeof a;
-      compareField(`${path}.box_count`, a.box_count, bb.box_count, { teaching: true }, diffs);
-      compareListField(
-        `${path}.places`,
-        a.places,
-        bb.places,
-        {
-          teaching: true,
-          mode: "prose",
-          itemWording: (av, bv) => !isKnownPlaceName(av) && !isKnownPlaceName(bv),
-        },
+      recordDiff(
         diffs,
+        { path: `${rPath}.answer_source`, a: ra.answer_source, b: rb.answer_source, kind: "value" },
+        counts,
       );
-      return;
-    }
-    case "number_strip": {
-      const bb = b as typeof a;
-      compareListField(`${path}.values`, a.values, bb.values, {}, diffs);
-      compareListField(`${path}.highlighted`, a.highlighted, bb.highlighted, { teaching: true }, diffs);
-      return;
-    }
-    case "table_read_aloud": {
-      const bb = b as typeof a;
-      compareField(`${path}.has_checkbox`, a.has_checkbox, bb.has_checkbox, { teaching: true }, diffs);
-      compareField(
-        `${path}.caption_style`,
-        a.caption_style,
-        bb.caption_style,
-        { teaching: true, mode: "prose", wording: true },
-        diffs,
-      );
-      return;
-    }
-    case "equation_frame": {
-      const bb = b as typeof a;
-      compareField(
-        `${path}.template`,
-        a.template,
-        bb.template,
-        { teaching: true, mode: "notation" },
-        diffs,
-      );
-      return;
-    }
-    case "arrow": {
-      const bb = b as typeof a;
-      compareField(`${path}.from`, a.from, bb.from, { teaching: true, mode: "prose" }, diffs);
-      compareField(`${path}.to`, a.to, bb.to, { teaching: true, mode: "prose" }, diffs);
-      compareField(`${path}.label`, a.label, bb.label, { teaching: true, mode: "prose" }, diffs);
-      return;
-    }
-    case "caption": {
-      const bb = b as typeof a;
-      compareField(`${path}.text`, a.text, bb.text, { teaching: true, mode: "prose" }, diffs);
-      compareField(`${path}.target`, a.target, bb.target, { teaching: true, mode: "prose", wording: true }, diffs);
-      return;
-    }
-    case "helper_digit":
-    case "partial_working":
-    case "worked_item":
-    case "other": {
-      const bb = b as typeof a;
-      compareField(
-        `${path}.description`,
-        a.description,
-        bb.description,
-        { teaching: true, mode: "prose", wording: true },
-        diffs,
-      );
-      return;
-    }
-  }
-}
-
-// A list that names every item of the section says the same as "all". Other lists are sorted.
-function withAllItems(sc: Scaffold, itemNs: readonly number[] | undefined): Scaffold {
-  if (!Array.isArray(sc.applies_to)) return sc;
-  const listed = new Set(sc.applies_to);
-  if (
-    itemNs &&
-    itemNs.length > 0 &&
-    listed.size === new Set(itemNs).size &&
-    itemNs.every((n) => listed.has(n))
-  ) {
-    return { ...sc, applies_to: "all" };
-  }
-  return { ...sc, applies_to: [...sc.applies_to].sort((x, y) => x - y) };
-}
-
-export function compareScaffolds(
-  path: string,
-  a: Scaffold[] | typeof UNCLEAR | typeof NOT_STATED,
-  b: Scaffold[] | typeof UNCLEAR | typeof NOT_STATED,
-  diffs: RecordDifference[],
-  itemNs?: { a: readonly number[]; b: readonly number[] },
-): void {
-  if (checkSentinels(path, a, b, diffs)) return;
-  const aOrig = Array.isArray(a) ? a : [];
-  const bOrig = Array.isArray(b) ? b : [];
-  const aList = aOrig.map((sc) => withAllItems(sc, itemNs?.a));
-  const bList = bOrig.map((sc) => withAllItems(sc, itemNs?.b));
-  if (aList.length === 0 && bList.length === 0) return;
-
-  const matchedBForA = new Map<number, number>();
-  const usedB = new Set<number>();
-
-  // Pass 0: match scaffolds with equal content (after the applies_to normalisation), by the same
-  // field rules as the comparison itself (prose fields with the prose normalisation)
-  const probeDiffs = (x: Scaffold, y: Scaffold): RecordDifference[] => {
-    const probe: RecordDifference[] = [];
-    compareSingleScaffold("probe", x, y, probe);
-    return probe;
-  };
-  aList.forEach((scA, idxA) => {
-    const matchIdx = bList.findIndex((scB, j) => !usedB.has(j) && probeDiffs(scA, scB).length === 0);
-    if (matchIdx !== -1) {
-      matchedBForA.set(idxA, matchIdx);
-      usedB.add(matchIdx);
-    }
-  });
-
-  // Pass 0b: match scaffolds that agree on every non-wording field
-  aList.forEach((scA, idxA) => {
-    if (matchedBForA.has(idxA)) return;
-    const matchIdx = bList.findIndex((scB, j) => {
-      if (usedB.has(j)) return false;
-      const probe = probeDiffs(scA, scB);
-      return probe.length > 0 && probe.every((d) => d.kind === "wording");
-    });
-    if (matchIdx !== -1) {
-      matchedBForA.set(idxA, matchIdx);
-      usedB.add(matchIdx);
-    }
-  });
-
-  // Pass 1: match by kind + applies_to (+ target for caption)
-  aList.forEach((scA, idxA) => {
-    if (matchedBForA.has(idxA)) return;
-    const keyA = scaffoldPrimaryKey(scA);
-    const matchIdx = bList.findIndex((scB, j) => !usedB.has(j) && scaffoldPrimaryKey(scB) === keyA);
-    if (matchIdx !== -1) {
-      matchedBForA.set(idxA, matchIdx);
-      usedB.add(matchIdx);
-    }
-  });
-
-  // Pass 2: match remaining by kind + applies_to
-  aList.forEach((scA, idxA) => {
-    if (matchedBForA.has(idxA)) return;
-    const keyA = `${scA.kind}:${canonicalAppliesToKey(scA.applies_to)}`;
-    const matchIdx = bList.findIndex(
-      (scB, j) => !usedB.has(j) && `${scB.kind}:${canonicalAppliesToKey(scB.applies_to)}` === keyA,
-    );
-    if (matchIdx !== -1) {
-      matchedBForA.set(idxA, matchIdx);
-      usedB.add(matchIdx);
-    }
-  });
-
-  // Pass 3: match remaining by kind in positional order
-  aList.forEach((scA, idxA) => {
-    if (matchedBForA.has(idxA)) return;
-    const matchIdx = bList.findIndex((scB, j) => !usedB.has(j) && scB.kind === scA.kind);
-    if (matchIdx !== -1) {
-      matchedBForA.set(idxA, matchIdx);
-      usedB.add(matchIdx);
-    }
-  });
-
-  aList.forEach((scA, idxA) => {
-    const matchIdx = matchedBForA.get(idxA);
-    if (matchIdx === undefined) {
-      diffs.push({ path: `${path}[${idxA}]`, a: aOrig[idxA], b: null, kind: "once_read" });
     } else {
-      compareSingleScaffold(`${path}[${idxA}]`, scA, bList[matchIdx], diffs);
+      recordMatch(counts);
     }
-  });
-
-  bOrig.forEach((scB, idxB) => {
-    if (!usedB.has(idxB)) {
-      diffs.push({ path: `${path}[b:${idxB}]`, a: null, b: scB, kind: "once_read" });
-    }
-  });
+  }
 }
 
 export function compareScoreBands(
@@ -545,17 +351,18 @@ export function compareScoreBands(
   a: ScoreBands | typeof UNCLEAR | typeof NOT_STATED,
   b: ScoreBands | typeof UNCLEAR | typeof NOT_STATED,
   diffs: RecordDifference[],
+  counts?: CompareCounts,
 ): void {
   if (a === UNCLEAR && b === UNCLEAR) {
-    diffs.push({ path, a, b, kind: "both_unclear" });
+    recordDiff(diffs, { path, a, b, kind: "both_unclear" }, counts);
     return;
   }
   if (a === UNCLEAR || b === UNCLEAR) {
-    diffs.push({ path, a, b, kind: "one_unclear" });
+    recordDiff(diffs, { path, a, b, kind: "one_unclear" }, counts);
     return;
   }
   if (!Array.isArray(a) || !Array.isArray(b)) {
-    compareField(path, a, b, {}, diffs);
+    compareField(path, a, b, {}, diffs, counts);
     return;
   }
   for (let i = 0; i < 5; i += 1) {
@@ -563,10 +370,10 @@ export function compareScoreBands(
     const ba: ScoreBand = a[i];
     const bb: ScoreBand = b[i];
     if (Array.isArray(ba) && Array.isArray(bb)) {
-      compareField(`${bPath}[0]`, ba[0], bb[0], {}, diffs);
-      compareField(`${bPath}[1]`, ba[1], bb[1], {}, diffs);
+      compareField(`${bPath}[0]`, ba[0], bb[0], {}, diffs, counts);
+      compareField(`${bPath}[1]`, ba[1], bb[1], {}, diffs, counts);
     } else {
-      compareField(bPath, ba, bb, {}, diffs);
+      compareField(bPath, ba, bb, {}, diffs, counts);
     }
   }
 }

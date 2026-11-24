@@ -11,12 +11,15 @@ import {
 } from "@/lib/reference-record";
 import { applyComputedAnswers, fileSlugFromRef } from "./answers";
 import {
+  agreementPercentage,
   classifyComparison,
   collectUnnamedTeachingMarks,
   compareRecords,
-  decideStatus,
+  compareRecordsWithCounts,
+  decidePageOutcome,
   emptyAnswerDiffs,
   locateOnceReadInKeptRecord,
+  resolveSingleReadPaths,
   type PageStatus,
 } from "./compare";
 import {
@@ -31,22 +34,31 @@ import {
 } from "./compare-pairing";
 import {
   formatCompareReportMarkdown,
+  formatPagesSentToPerson,
+  resultLabelForStatus,
   type CompareWorkReport,
   type DigestMismatchInfo,
   type FailedPhotoReport,
   type KeptHumanCheckedReport,
+  type PageAgreement,
   type PageCompareReport,
+  type PageResultLabel,
+  type PageSentToPerson,
   type SamePageIdConflict,
 } from "./compare-report";
 import { parsePhotosManifest, PHOTOS_MANIFEST_FILE } from "./prepare";
 
 export {
   formatCompareReportMarkdown,
+  formatPagesSentToPerson,
   type CompareWorkReport,
   type DigestMismatchInfo,
   type FailedPhotoReport,
   type KeptHumanCheckedReport,
+  type PageAgreement,
   type PageCompareReport,
+  type PageResultLabel,
+  type PageSentToPerson,
   type SamePageIdConflict,
 };
 
@@ -218,6 +230,7 @@ export function compareWorkFolder(opts: {
   assertNoFileCollisions(pairs, existingStatus, finalDir);
 
   const pages: PageCompareReport[] = [];
+  const pagesSentToPerson: PageSentToPerson[] = [];
   const singleReaderPages: Array<{ source_ref: string; reader: "a" | "b" }> = [];
   const keptHumanChecked: KeptHumanCheckedReport[] = [];
   const removedStalePages: string[] = [];
@@ -242,8 +255,17 @@ export function compareWorkFolder(opts: {
       singleReaderPages.push({ source_ref: sourceRef, reader: onlyIn });
     }
 
-    const allDiffs = pair.recA && pair.recB ? compareRecords(pair.recA, pair.recB) : [];
+    const comparison =
+      pair.recA && pair.recB
+        ? compareRecordsWithCounts(pair.recA, pair.recB)
+        : { diffs: [], counts: { compared: 0, agreed: 0 } };
+    const allDiffs = comparison.diffs;
     const classified = classifyComparison(pair.recA, pair.recB);
+    const agreement: PageAgreement = {
+      agreed: comparison.counts.agreed,
+      compared: comparison.counts.compared,
+      percent: agreementPercentage(comparison.counts.agreed, comparison.counts.compared),
+    };
     const unnamedTeachingMarks = collectUnnamedTeachingMarks(pair.recA, pair.recB);
 
     const isChecked = existingStatus[sourceRef] === "human_checked" && existsSync(finalRecordPath);
@@ -267,6 +289,9 @@ export function compareWorkFolder(opts: {
         original_name: pair.originalName,
         photo_sha256: pair.photoSha256,
         status: "human_checked",
+        agreement,
+        result: resultLabelForStatus("human_checked"),
+        result_reason: null,
         only_in_reader: onlyIn,
         digest_mismatch: pair.digestMismatch,
         differences: classified.differences,
@@ -302,6 +327,9 @@ export function compareWorkFolder(opts: {
         original_name: pair.originalName,
         photo_sha256: pair.photoSha256,
         status: "human_checked",
+        agreement,
+        result: resultLabelForStatus("human_checked"),
+        result_reason: null,
         only_in_reader: onlyIn,
         digest_mismatch: pair.digestMismatch,
         differences: classified.differences,
@@ -317,34 +345,55 @@ export function compareWorkFolder(opts: {
       continue;
     }
 
-    const { record: finalRecord, notes: computedNotes } = applyComputedAnswers(
-      withBothReaders(chosen, pair),
-    );
+    const {
+      record: computedRecord,
+      notes: computedNotes,
+      details: computedDetails,
+    } = applyComputedAnswers(withBothReaders(chosen, pair));
+    const answerConflicts = computedDetails
+      .filter((d) => d.kind === "answer_differs")
+      .map((d) => d.message);
     const readerNotes = pair.recA
       ? { a: mergeNotes(pair.notesA, computedNotes), b: pair.notesB }
       : { a: pair.notesA, b: mergeNotes(pair.notesB, computedNotes) };
-    const finalEmptyAnswers = emptyAnswerDiffs(finalRecord, pair.recA, pair.recB);
-    const status = decideStatus({
+    const finalEmptyAnswers = emptyAnswerDiffs(computedRecord, pair.recA, pair.recB);
+
+    // A final record that a person changed since the last compare is kept until the person
+    // checks it. The page is then not double_read or agreement_accepted.
+    const previousHash = previousHashes.get(sourceRef);
+    const editedByPerson =
+      previousHash !== undefined &&
+      existsSync(finalRecordPath) &&
+      sha256OfFile(finalRecordPath) !== previousHash;
+
+    const decision = decidePageOutcome({
       hasA: pair.recA !== null,
       hasB: pair.recB !== null,
       familyA: slotA.meta?.family ?? null,
       familyB: slotB.meta?.family ?? null,
       diffs: [...allDiffs, ...finalEmptyAnswers],
       sameDigest: pair.sameDigest,
+      counts: comparison.counts,
+      hasAnswerConflict: answerConflicts.length > 0,
+      needsPersonRead: classified.needs_person_read,
+      editedByPerson,
     });
+    const pageStatus = decision.status;
+    statusMap[sourceRef] = pageStatus;
 
-    // A final record that a person changed since the last compare is kept until the person
-    // checks it. The page is then not double_read: the file is no longer what the readers wrote.
-    const previousHash = previousHashes.get(sourceRef);
-    const editedByPerson =
-      previousHash !== undefined &&
-      existsSync(finalRecordPath) &&
-      sha256OfFile(finalRecordPath) !== previousHash;
+    // Strip any stale single_read; attach single_read paths only on agreement_accepted pages.
+    const baseRecord: ReferenceRecord = { ...computedRecord };
+    delete baseRecord.single_read;
+    const singleReadPaths =
+      pageStatus === "agreement_accepted" ? resolveSingleReadPaths(baseRecord, allDiffs) : [];
+    const finalRecord: ReferenceRecord =
+      pageStatus === "agreement_accepted" && singleReadPaths.length > 0
+        ? { ...baseRecord, single_read: singleReadPaths }
+        : baseRecord;
+
     // The record that stays on disk: the edited file, or the record that compare writes.
     const editedRecord = editedByPerson ? loadExistingFinalRecord(finalRecordPath) : null;
     const finalText = `${JSON.stringify(finalRecord, null, 2)}\n`;
-    const pageStatus: PageStatus = editedByPerson ? "machine_read" : status;
-    statusMap[sourceRef] = pageStatus;
 
     if (!editedByPerson) {
       writeSafeOutputFile(finalRecordPath, finalText, repoRoot);
@@ -353,6 +402,26 @@ export function compareWorkFolder(opts: {
         `${renderRecordToMarkdown(finalRecord)}\n`,
         repoRoot,
       );
+    }
+
+    const formattedReasons = decision.stopReasons.map((r) =>
+      r === "missing reader" && onlyIn ? `only reader ${onlyIn}` : r,
+    );
+    const nonPctReason = formattedReasons.length > 0 ? formattedReasons.join("; ") : null;
+    const resultReason =
+      pageStatus === "machine_read" ? (nonPctReason ?? "below 90% agreement") : null;
+    if (pageStatus === "machine_read") {
+      pagesSentToPerson.push({
+        source_ref: sourceRef,
+        agreement_percent: agreement.percent,
+        agreed: agreement.agreed,
+        compared: agreement.compared,
+        difference_count:
+          classified.differences.length +
+          classified.once_read.length +
+          classified.both_unclear.length,
+        reason: nonPctReason,
+      });
     }
 
     pages.push({
@@ -365,6 +434,10 @@ export function compareWorkFolder(opts: {
         : createHash("sha256").update(finalText, "utf8").digest("hex"),
       ...(editedByPerson ? { edited_by_person: true } : {}),
       status: pageStatus,
+      agreement,
+      result: resultLabelForStatus(pageStatus),
+      result_reason: resultReason,
+      ...(answerConflicts.length > 0 ? { answer_conflicts: answerConflicts } : {}),
       only_in_reader: onlyIn,
       digest_mismatch: pair.digestMismatch,
       differences: classified.differences,
@@ -433,6 +506,7 @@ export function compareWorkFolder(opts: {
     reader_a: slotA.meta,
     reader_b: slotB.meta,
     pages,
+    pages_sent_to_person: pagesSentToPerson,
     single_reader_pages: singleReaderPages,
     failed_photos: failedPhotos,
     too_small_photos: prepareReport.tooSmall,

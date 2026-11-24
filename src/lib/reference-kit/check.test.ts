@@ -414,6 +414,42 @@ describe("checkAndMarkPage", () => {
     expect(saved.sections[0].items[0].responses[1].answer_source).toBe("unchecked");
   });
 
+  it("moves an agreement_accepted page to human_checked and removes single_read from the record and view", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-chk-acc-repo-"));
+    const work = mkdtempSync(join(tmpdir(), "ref-chk-acc-work-"));
+    tempDirs.push(repo, work);
+
+    const finalDir = join(work, "final");
+    mkdirSync(finalDir, { recursive: true });
+    const acceptedPage: PageRecord = {
+      ...makeFinalPage(),
+      single_read: ["topic.title", "sections[0].items[0].printed"],
+    };
+    writeFileSync(join(finalDir, "sample-M-3a.json"), JSON.stringify(acceptedPage, null, 2));
+    writeFileSync(
+      join(finalDir, "status.json"),
+      JSON.stringify({ "sample:M:3a": "agreement_accepted" }, null, 2),
+    );
+
+    const res = checkAndMarkPage({
+      workDir: work,
+      page: "sample:M:3a",
+      repoRoot: repo,
+      photoCompared: true,
+    });
+
+    const updatedStatus = JSON.parse(readFileSync(res.statusPath, "utf8")) as Record<string, string>;
+    expect(updatedStatus["sample:M:3a"]).toBe("human_checked");
+
+    const saved = JSON.parse(readFileSync(res.recordPath, "utf8")) as PageRecord;
+    expect(saved.single_read).toBeUndefined();
+    expect("single_read" in saved).toBe(false);
+
+    const viewMd = readFileSync(res.viewPath, "utf8");
+    expect(viewMd).not.toContain("Single-read");
+    expect(viewMd).not.toContain("not checked");
+  });
+
   it("refuses to write when status.json has colliding source_ref values or the file on disk holds a different source_ref", () => {
     const repo = mkdtempSync(join(tmpdir(), "ref-chk-col-repo-"));
     const work = mkdtempSync(join(tmpdir(), "ref-chk-col-work-"));

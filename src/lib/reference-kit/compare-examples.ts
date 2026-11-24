@@ -10,6 +10,8 @@ import {
   checkSentinels,
   compareExpr,
   compareField,
+  recordDiff,
+  type CompareCounts,
   type RecordDifference,
 } from "./compare-parts";
 import { normalizeNotationText, normalizeProseText } from "./normalize";
@@ -127,10 +129,11 @@ function compareExampleSteps(
   a: Example["steps"],
   b: Example["steps"],
   diffs: RecordDifference[],
+  counts?: CompareCounts,
 ): StepAlignmentMap {
   const bStepToAStep = new Map<number, number>();
   const unmatchedBSteps = new Set<number>();
-  if (checkSentinels(path, a, b, diffs)) return { bStepToAStep, unmatchedBSteps };
+  if (checkSentinels(path, a, b, diffs, counts)) return { bStepToAStep, unmatchedBSteps };
   const aList: ExampleStep[] = Array.isArray(a) ? a : [];
   const bList: ExampleStep[] = Array.isArray(b) ? b : [];
   if (aList.length === 0 && bList.length === 0) return { bStepToAStep, unmatchedBSteps };
@@ -138,30 +141,35 @@ function compareExampleSteps(
   const aligned = alignExampleSteps(aList, bList);
   for (const entry of aligned) {
     if (entry.kind === "a_only") {
-      diffs.push({ path: `${path}[n=${entry.a.n}]`, a: entry.a, b: null, kind: "once_read" });
+      recordDiff(diffs, { path: `${path}[n=${entry.a.n}]`, a: entry.a, b: null, kind: "once_read" }, counts);
       continue;
     }
     if (entry.kind === "b_only") {
       unmatchedBSteps.add(entry.b.n);
-      diffs.push({
-        path: `${path}[b:${entry.idxB}]`,
-        a: null,
-        b: entry.b,
-        kind: "once_read",
-        ...(entry.insertBeforeA < aList.length ? { insert_before: entry.insertBeforeA } : {}),
-      });
+      recordDiff(
+        diffs,
+        {
+          path: `${path}[b:${entry.idxB}]`,
+          a: null,
+          b: entry.b,
+          kind: "once_read",
+          ...(entry.insertBeforeA < aList.length ? { insert_before: entry.insertBeforeA } : {}),
+        },
+        counts,
+      );
       continue;
     }
     const { a: sa, b: sb } = entry;
     bStepToAStep.set(sb.n, sa.n);
     const sPath = `${path}[n=${sa.n}]`;
-    compareField(`${sPath}.shows`, sa.shows, sb.shows, {}, diffs);
+    compareField(`${sPath}.shows`, sa.shows, sb.shows, {}, diffs, counts);
     compareField(
       `${sPath}.shows_other`,
       sa.shows_other,
       sb.shows_other,
       { teaching: true, mode: "prose", wording: true },
       diffs,
+      counts,
     );
     compareField(
       `${sPath}.printed`,
@@ -169,6 +177,7 @@ function compareExampleSteps(
       sb.printed,
       { teaching: true, mode: "notation" },
       diffs,
+      counts,
     );
     compareField(
       `${sPath}.note`,
@@ -176,6 +185,7 @@ function compareExampleSteps(
       sb.note,
       { teaching: true, mode: "prose" },
       diffs,
+      counts,
     );
   }
   return { bStepToAStep, unmatchedBSteps };
@@ -198,9 +208,10 @@ function compareSingleMark(
   a: ExampleMark,
   b: ExampleMark,
   diffs: RecordDifference[],
+  counts?: CompareCounts,
 ): void {
-  compareField(`${path}.kind`, a.kind, b.kind, {}, diffs);
-  compareField(`${path}.step`, a.step, b.step, { teaching: true }, diffs);
+  compareField(`${path}.kind`, a.kind, b.kind, {}, diffs, counts);
+  compareField(`${path}.step`, a.step, b.step, { teaching: true }, diffs, counts);
   const blocksWording =
     a.kind === "label" || b.kind === "label" || a.kind === "arrow" || b.kind === "arrow";
   compareField(
@@ -209,6 +220,7 @@ function compareSingleMark(
     b.description,
     { teaching: true, mode: "prose", wording: !blocksWording },
     diffs,
+    counts,
   );
 }
 
@@ -218,8 +230,9 @@ function compareExampleMarks(
   b: Example["marks"],
   diffs: RecordDifference[],
   stepAlignment: StepAlignmentMap,
+  counts?: CompareCounts,
 ): void {
-  if (checkSentinels(path, a, b, diffs)) return;
+  if (checkSentinels(path, a, b, diffs, counts)) return;
   const aList: ExampleMark[] = Array.isArray(a) ? a : [];
   const bOrig: ExampleMark[] = Array.isArray(b) ? b : [];
   if (aList.length === 0 && bOrig.length === 0) return;
@@ -281,21 +294,25 @@ function compareExampleMarks(
   aList.forEach((mA, idxA) => {
     const matchIdx = matchedBForA.get(idxA);
     if (matchIdx === undefined) {
-      diffs.push({ path: `${path}[${idxA}]`, a: mA, b: null, kind: "once_read" });
+      recordDiff(diffs, { path: `${path}[${idxA}]`, a: mA, b: null, kind: "once_read" }, counts);
     } else {
-      compareSingleMark(`${path}[${idxA}]`, mA, bList[matchIdx], diffs);
+      compareSingleMark(`${path}[${idxA}]`, mA, bList[matchIdx], diffs, counts);
     }
   });
 
   bList.forEach((mB, idxB) => {
     if (!usedB.has(idxB)) {
-      diffs.push({
-        path: `${path}[b:${idxB}]`,
-        a: null,
-        b: mB,
-        kind: "once_read",
-        ...(unmatchedBMarks.has(idxB) ? { missing_step: true } : {}),
-      });
+      recordDiff(
+        diffs,
+        {
+          path: `${path}[b:${idxB}]`,
+          a: null,
+          b: mB,
+          kind: "once_read",
+          ...(unmatchedBMarks.has(idxB) ? { missing_step: true } : {}),
+        },
+        counts,
+      );
     }
   });
 }
@@ -305,12 +322,13 @@ function compareSingleExample(
   a: Example,
   b: Example,
   diffs: RecordDifference[],
+  counts?: CompareCounts,
 ): void {
-  compareField(`${path}.position`, a.position, b.position, {}, diffs);
-  compareField(`${path}.relation`, a.relation, b.relation, {}, diffs);
-  compareField(`${path}.label`, a.label, b.label, { teaching: true, mode: "prose" }, diffs);
-  compareField(`${path}.text`, a.text, b.text, { teaching: true, mode: "prose" }, diffs);
-  compareField(`${path}.cross_ref`, a.cross_ref, b.cross_ref, { teaching: true, mode: "prose" }, diffs);
+  compareField(`${path}.position`, a.position, b.position, {}, diffs, counts);
+  compareField(`${path}.relation`, a.relation, b.relation, {}, diffs, counts);
+  compareField(`${path}.label`, a.label, b.label, { teaching: true, mode: "prose" }, diffs, counts);
+  compareField(`${path}.text`, a.text, b.text, { teaching: true, mode: "prose" }, diffs, counts);
+  compareField(`${path}.cross_ref`, a.cross_ref, b.cross_ref, { teaching: true, mode: "prose" }, diffs, counts);
 
   const maxParts = Math.max(a.parts.length, b.parts.length);
   for (let i = 0; i < maxParts; i += 1) {
@@ -318,17 +336,17 @@ function compareSingleExample(
     const pa = a.parts[i];
     const pb = b.parts[i];
     if (!pa || !pb) {
-      diffs.push({ path: pPath, a: pa ?? null, b: pb ?? null, kind: "value" });
+      recordDiff(diffs, { path: pPath, a: pa ?? null, b: pb ?? null, kind: "value" }, counts);
       continue;
     }
-    compareField(`${pPath}.caption`, pa.caption, pb.caption, { teaching: true, mode: "prose" }, diffs);
-    compareField(`${pPath}.form`, pa.form, pb.form, {}, diffs);
-    compareExpr(`${pPath}.expr`, pa.expr, pb.expr, diffs);
-    compareField(`${pPath}.shown_answer`, pa.shown_answer, pb.shown_answer, { teaching: true }, diffs);
+    compareField(`${pPath}.caption`, pa.caption, pb.caption, { teaching: true, mode: "prose" }, diffs, counts);
+    compareField(`${pPath}.form`, pa.form, pb.form, {}, diffs, counts);
+    compareExpr(`${pPath}.expr`, pa.expr, pb.expr, diffs, counts);
+    compareField(`${pPath}.shown_answer`, pa.shown_answer, pb.shown_answer, { teaching: true }, diffs, counts);
   }
 
-  const stepAlignment = compareExampleSteps(`${path}.steps`, a.steps, b.steps, diffs);
-  compareExampleMarks(`${path}.marks`, a.marks, b.marks, diffs, stepAlignment);
+  const stepAlignment = compareExampleSteps(`${path}.steps`, a.steps, b.steps, diffs, counts);
+  compareExampleMarks(`${path}.marks`, a.marks, b.marks, diffs, stepAlignment, counts);
 }
 
 function exampleLabelKey(ex: Example): string | null {
@@ -344,8 +362,9 @@ export function compareExamples(
   a: Example[] | typeof UNCLEAR | typeof NOT_STATED,
   b: Example[] | typeof UNCLEAR | typeof NOT_STATED,
   diffs: RecordDifference[],
+  counts?: CompareCounts,
 ): void {
-  if (checkSentinels(path, a, b, diffs)) return;
+  if (checkSentinels(path, a, b, diffs, counts)) return;
   const aList = Array.isArray(a) ? a : [];
   const bList = Array.isArray(b) ? b : [];
   if (aList.length === 0 && bList.length === 0) return;
@@ -410,15 +429,15 @@ export function compareExamples(
   aList.forEach((exA, idxA) => {
     const matchIdx = matchedBForA.get(idxA);
     if (matchIdx === undefined) {
-      diffs.push({ path: `${path}[${idxA}]`, a: exA, b: null, kind: "once_read" });
+      recordDiff(diffs, { path: `${path}[${idxA}]`, a: exA, b: null, kind: "once_read" }, counts);
     } else {
-      compareSingleExample(`${path}[${idxA}]`, exA, bList[matchIdx], diffs);
+      compareSingleExample(`${path}[${idxA}]`, exA, bList[matchIdx], diffs, counts);
     }
   });
 
   bList.forEach((exB, idxB) => {
     if (!usedB.has(idxB)) {
-      diffs.push({ path: `${path}[b:${idxB}]`, a: null, b: exB, kind: "once_read" });
+      recordDiff(diffs, { path: `${path}[b:${idxB}]`, a: null, b: exB, kind: "once_read" }, counts);
     }
   });
 }

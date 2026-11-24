@@ -2,13 +2,18 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { NOT_STATED, UNCLEAR, type ContentsRecord, type PageRecord } from "@/lib/reference-record";
 import {
+  agreementPercentage,
   classifyComparison,
   compareRecords,
+  compareRecordsWithCounts,
+  decidePageOutcome,
   locateOnceReadInKeptRecord,
   decideStatus,
+  meetsAgreementThreshold,
   needsPersonRead,
   normalizeNotationText,
   normalizeProseText,
+  resolveSingleReadPaths,
 } from "./compare";
 
 function makePage(overrides?: Partial<PageRecord>): PageRecord {
@@ -1716,5 +1721,238 @@ describe("worked-example step alignment and wording differences", () => {
         diffs: [...compareRecords(a, b), ...summary.empty_answer],
       }),
     ).toBe("machine_read");
+  });
+});
+
+describe("90% reader agreement rule", () => {
+  // Builds a clean page with `itemCount` simple arithmetic items and no examples/prose flags.
+  // Each item has 8 non-empty compared leaf fields (printed, form, op, 2 operands, position, answer, answer_source).
+  // Page header has 14 compared leaf fields (source_ref, topic.title, topic.number, 5x2 score_bands, section.instruction).
+  function makeGridPage(itemCount: number): PageRecord {
+    const items = Array.from({ length: itemCount }, (_, idx) => {
+      const n = idx + 1;
+      return {
+        n,
+        printed: `${n} + 1 =`,
+        form: "horizontal" as const,
+        expr: { kind: "arith" as const, op: "add" as const, operands: [n, 1] },
+        responses: [
+          {
+            position: "after_equals" as const,
+            cue: null,
+            answer: String(n + 1),
+            answer_source: "computed" as const,
+          },
+        ],
+      };
+    });
+    return makePage({
+      sections: [{ instruction: "Add.", scaffolds: [], items }],
+    });
+  }
+
+  it("distinguishes 89% (machine_read), exactly 90% (agreement_accepted), and 100% (double_read)", () => {
+    // 14 header fields + 10 items * 8 fields = 94; add 3 two-operand items (wait: let's hit exact 100 compared fields!)
+    // Header: source_ref (1) + topic.title (1) + 5x2 score_bands (10) + instruction (1) = 13 (without topic.number)
+    // Plus 10 items * 8 = 80 -> 93; plus 1 item with 3 operands -> 9 fields? Let's construct exact 100 compared fields!
+    const base = makeGridPage(10); // 14 + 80 = 94 compared fields
+    // Add 6 more leaf fields via a 6-value number_strip scaffold: applies_to (1) + 5 values (5) = 6 -> total 100!
+    base.sections[0].scaffolds = [
+      { kind: "number_strip", applies_to: "all", values: [1, 2, 3, 4, 5] },
+    ];
+    const identical = compareRecordsWithCounts(base, structuredClone(base));
+    expect(identical.counts).toEqual({ compared: 100, agreed: 100 });
+    expect(agreementPercentage(100, 100)).toBe(100);
+    expect(
+      decideStatus({
+        hasA: true,
+        hasB: true,
+        familyA: "claude",
+        familyB: "codex",
+        diffs: identical.diffs,
+        counts: identical.counts,
+      }),
+    ).toBe("double_read");
+
+    // Mutate exactly 10 fields -> 90/100 = 90% -> agreement_accepted
+    const at90 = structuredClone(base);
+    for (let i = 0; i < 10; i += 1) {
+      at90.sections[0].items[i].printed = `${i + 1} + 2 =`;
+    }
+    const cmp90 = compareRecordsWithCounts(base, at90);
+    expect(cmp90.counts).toEqual({ compared: 100, agreed: 90 });
+    expect(agreementPercentage(cmp90.counts.agreed, cmp90.counts.compared)).toBe(90);
+    expect(
+      decideStatus({
+        hasA: true,
+        hasB: true,
+        familyA: "claude",
+        familyB: "codex",
+        diffs: cmp90.diffs,
+        counts: cmp90.counts,
+      }),
+    ).toBe("agreement_accepted");
+
+    // Mutate 11 fields -> 89/100 = 89% -> machine_read (sent to a person)
+    const at89 = structuredClone(at90);
+    at89.topic.title = "Different Title";
+    const cmp89 = compareRecordsWithCounts(base, at89);
+    expect(cmp89.counts).toEqual({ compared: 100, agreed: 89 });
+    expect(agreementPercentage(cmp89.counts.agreed, cmp89.counts.compared)).toBe(89);
+    const decision89 = decidePageOutcome({
+      hasA: true,
+      hasB: true,
+      familyA: "claude",
+      familyB: "codex",
+      diffs: cmp89.diffs,
+      counts: cmp89.counts,
+    });
+    expect(decision89.status).toBe("machine_read");
+    expect(decision89.stopReasons).toEqual([]);
+  });
+
+  it("counts both_unclear and once_read as disagreements and wording as agreement", () => {
+    const a = makeGridPage(2); // 14 + 16 = 30 compared fields
+    const b = structuredClone(a);
+
+    // 1. both_unclear counts as 1 disagreement
+    a.topic.title = UNCLEAR;
+    b.topic.title = UNCLEAR;
+    const unclearCmp = compareRecordsWithCounts(a, b);
+    expect(unclearCmp.diffs).toEqual([{ path: "topic.title", a: UNCLEAR, b: UNCLEAR, kind: "both_unclear" }]);
+    expect(unclearCmp.counts).toEqual({ compared: 30, agreed: 29 });
+
+    // 2. once_read counts as 1 disagreeing compared field
+    const aOnce = makeGridPage(2);
+    const bOnce = structuredClone(aOnce);
+    bOnce.sections[0].scaffolds = [{ kind: "arrow", applies_to: [1], label: "next" }];
+    const onceCmp = compareRecordsWithCounts(aOnce, bOnce);
+    expect(onceCmp.diffs).toHaveLength(1);
+    expect(onceCmp.diffs[0].kind).toBe("once_read");
+    expect(onceCmp.counts).toEqual({ compared: 31, agreed: 30 });
+
+    // 3. wording counts as agreement (100% -> double_read)
+    const aWord = makeGridPage(2);
+    const bWord = structuredClone(aWord);
+    aWord.sections[0].scaffolds = [{ kind: "helper_digit", applies_to: [1], description: "Small 1 above tens" }];
+    bWord.sections[0].scaffolds = [{ kind: "helper_digit", applies_to: [1], description: "Tiny 1 printed above tens" }];
+    const wordCmp = compareRecordsWithCounts(aWord, bWord);
+    expect(wordCmp.diffs).toHaveLength(1);
+    expect(wordCmp.diffs[0].kind).toBe("wording");
+    expect(wordCmp.counts.agreed).toBe(wordCmp.counts.compared);
+    expect(
+      decideStatus({
+        hasA: true,
+        hasB: true,
+        familyA: "claude",
+        familyB: "codex",
+        diffs: wordCmp.diffs,
+        counts: wordCmp.counts,
+      }),
+    ).toBe("double_read");
+  });
+
+  it("stops a page at 100% or 95% on answer_differs, empty_answer, zero compared fields, or needs_person_read at 95%", () => {
+    const oneDiff = [{ path: "topic.title", a: "A", b: "B", kind: "value" as const }];
+
+    // answer_differs stops both 100% and 95%
+    for (const scenario of [
+      { diffs: [], counts: { agreed: 20, compared: 20 } },
+      { diffs: oneDiff, counts: { agreed: 19, compared: 20 } },
+    ]) {
+      const outcome = decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "claude",
+        familyB: "codex",
+        diffs: scenario.diffs,
+        counts: scenario.counts,
+        hasAnswerConflict: true,
+      });
+      expect(outcome.status).toBe("machine_read");
+      expect(outcome.stopReasons).toContain("stored answer conflicts with computed answer");
+    }
+
+    // empty_answer stops 95%
+    const emptyOutcome = decidePageOutcome({
+      hasA: true,
+      hasB: true,
+      familyA: "claude",
+      familyB: "codex",
+      diffs: [
+        ...oneDiff,
+        { path: "sections[0].items[n=1].responses[0]", a: null, b: null, kind: "empty_answer" },
+      ],
+      counts: { agreed: 19, compared: 20 },
+    });
+    expect(emptyOutcome.status).toBe("machine_read");
+    expect(emptyOutcome.stopReasons).toContain("empty answer place");
+
+    // needs_person_read stops 95%
+    const proseOutcome = decidePageOutcome({
+      hasA: true,
+      hasB: true,
+      familyA: "claude",
+      familyB: "codex",
+      diffs: oneDiff,
+      counts: { agreed: 19, compared: 20 },
+      needsPersonRead: true,
+    });
+    expect(proseOutcome.status).toBe("machine_read");
+    expect(proseOutcome.stopReasons).toContain("prose must be read by a person");
+
+    // zero compared fields is never accepted
+    expect(meetsAgreementThreshold(0, 0)).toBe(false);
+    expect(
+      decideStatus({
+        hasA: true,
+        hasB: true,
+        familyA: "claude",
+        familyB: "codex",
+        diffs: [],
+        counts: { agreed: 0, compared: 0 },
+      }),
+    ).toBe("machine_read");
+  });
+
+  it("resolves single_read paths into reader A's record and excludes wording diffs", () => {
+    const a = makeGridPage(2);
+    const b = structuredClone(a);
+    b.topic.title = "Other Title";
+    b.sections[0].items[1].printed = "2 + 9 =";
+    a.sections[0].scaffolds = [{ kind: "helper_digit", applies_to: [1], description: "Small 1 above tens" }];
+    b.sections[0].scaffolds = [{ kind: "helper_digit", applies_to: [1], description: "Tiny 1 printed above tens" }];
+
+    const cmp = compareRecordsWithCounts(a, b);
+    expect(resolveSingleReadPaths(a, cmp.diffs)).toEqual([
+      "topic.title",
+      "sections[0].items[1].printed",
+    ]);
+  });
+
+  it("satisfies threshold and ratio invariants across arbitrary counts", () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 0, max: 500 }),
+        fc.integer({ min: 0, max: 500 }),
+        (aRaw, bRaw) => {
+          const compared = Math.max(aRaw, bRaw);
+          const agreed = Math.min(aRaw, bRaw);
+          const ratio = compared === 0 ? 0 : agreed / compared;
+          expect(ratio).toBeGreaterThanOrEqual(0);
+          expect(ratio).toBeLessThanOrEqual(1);
+          const accepted = meetsAgreementThreshold(agreed, compared);
+          expect(accepted).toBe(compared > 0 && agreed * 10 >= compared * 9);
+          const pct = agreementPercentage(agreed, compared);
+          if (compared === 0) {
+            expect(pct).toBeNull();
+          } else {
+            expect(pct).not.toBeNull();
+            expect((pct as number) >= 90).toBe(accepted);
+            expect((pct as number) === 100).toBe(agreed === compared);
+          }
+        },
+      ),
+    );
   });
 });

@@ -46,9 +46,10 @@ Use one work folder for the level: `~/unica-reference/level-<LEVEL>` (for exampl
 
 6. **Tell the person the result.** Give the summary line, the path of `<work>/run/final/report.md`, and:
    - the photos that were too small, by name: the person must put the full-size photo on the board. Then delete the files of that photo in `<work>/downloads` (its `stem` is in `board-plan.json`) and run steps 3 to 5 again. The run reads only what is new and keeps the other pages;
-   - the number of pages that are `double_read` (both readers agree) and `machine_read` (a difference to resolve, or one reading only).
+   - the number of pages that are `double_read` (100% agreement), `agreement_accepted` (accepted by the 90% rule: readers agree on at least 90% of compared fields with no answer conflict, no empty answer, and no prose to check; reader A's values are kept and differing fields are marked `single_read`), and `machine_read` (sent to a person);
+   - the short **Pages sent to a person** list from the end of the run (or state plainly that no pages were sent to a person).
 
-7. **Help the person check pages, when asked.** A page that is `machine_read` needs a person. The report lists each difference with both values, each entry that only one reader has (with the JSON to copy), and each empty answer. For each such page:
+7. **Help the person check pages, when asked.** A page that is `machine_read` needs a person (and a person can also review an `agreement_accepted` page if they want; marking it `human_checked` clears its `single_read` list). The report lists each difference with both values (also on accepted pages), each entry that only one reader has (with the JSON to copy), and each empty answer. For each page to check:
    - Open the photo for the person: `open "<work>/run/photos/<file>"` (the report gives the file of each page). The person compares each listed item with the photo and tells you the correct value. Do not decide a value yourself, and do not decide from the two readings alone.
    - Correct the record in `<work>/run/final/`. When an answer is wrong, correct the expression of the question, because code computes the answer from it. Pencil or pen writing on the photo is not part of the record.
    - Ask the person: "Did you compare this page with the photo?" Only after a yes, mark the page:

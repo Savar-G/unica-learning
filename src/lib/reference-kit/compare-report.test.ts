@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { formatCompareReportMarkdown, type CompareWorkReport } from "./compare-report";
+import {
+  formatCompareReportMarkdown,
+  formatPagesSentToPerson,
+  type CompareWorkReport,
+} from "./compare-report";
 
 describe("formatCompareReportMarkdown", () => {
   it("renders summary table, kept human_checked, stale pages, failed photos, and per-page details", () => {
@@ -128,10 +132,10 @@ describe("formatCompareReportMarkdown", () => {
 
     const md = formatCompareReportMarkdown(report);
     expect(md).toContain(
-      "| Page | Photo | Status | Differences | Wording | Once-read | Both unclear | Empty answers | Person read |",
+      "| Page | Photo | Status | Agreement | Result | Differences | Wording | Once-read | Both unclear | Empty answers | Person read |",
     );
-    expect(md).toContain("| sample:M:3a | IMG_0001.jpg | double_read | 0 | 0 | 0 | 0 | 0 | no |");
-    expect(md).toContain("| sample:M:4a | IMG_0002.jpg | machine_read | 1 | 1 | 5 | 1 | 1 | yes |");
+    expect(md).toContain("| sample:M:3a | IMG_0001.jpg | double_read | - | double read | 0 | 0 | 0 | 0 | 0 | no |");
+    expect(md).toContain("| sample:M:4a | IMG_0002.jpg | machine_read | - | sent to a person | 1 | 1 | 5 | 1 | 1 | yes |");
     expect(md).toContain(
       "- Wording differences: the readers describe the same thing in other words; reader A's words are kept; no action needed",
     );
@@ -209,10 +213,159 @@ describe("formatCompareReportMarkdown", () => {
         },
       ],
     });
-    expect(wordingOnly).toContain("| sample:M:3a | IMG_0001.jpg | double_read | 0 | 1 | 0 | 0 | 0 | no |");
+    expect(wordingOnly).toContain("| sample:M:3a | IMG_0001.jpg | double_read | - | double read | 0 | 1 | 0 | 0 | 0 | no |");
     expect(wordingOnly).toContain(
       "- Wording differences: the readers describe the same thing in other words; reader A's words are kept; no action needed",
     );
     expect(wordingOnly).not.toContain("Exact match across both readers.");
+  });
+
+  it("renders agreement percentage, result labels, differences on accepted pages, and the end-of-run list", () => {
+    const baseReport: CompareWorkReport = {
+      reader_a: { family: "codex", model: "x1" },
+      reader_b: { family: "claude", model: "c1" },
+      pages: [
+        {
+          source_ref: "sample:M:1a",
+          photo: "111111111111.jpg",
+          original_name: "01.jpg",
+          photo_sha256: "1".repeat(64),
+          status: "double_read",
+          agreement: { agreed: 20, compared: 20, percent: 100 },
+          result: "double read",
+          result_reason: null,
+          only_in_reader: null,
+          digest_mismatch: null,
+          differences: [],
+          once_read: [],
+          both_unclear: [],
+          one_unclear: [],
+          needs_person_read: false,
+          unnamed_teaching_marks: [],
+          reader_notes: { a: [], b: [] },
+        },
+        {
+          source_ref: "sample:M:2a",
+          photo: "222222222222.jpg",
+          original_name: "02.jpg",
+          photo_sha256: "2".repeat(64),
+          status: "agreement_accepted",
+          agreement: { agreed: 18, compared: 20, percent: 90 },
+          result: "accepted by the 90% rule",
+          result_reason: null,
+          only_in_reader: null,
+          digest_mismatch: null,
+          differences: [
+            { path: "topic.title", a: "Adding", b: "Addition", kind: "value" },
+            { path: "sections[0].items[n=1].printed", a: "1 + 2 =", b: "1 + 3 =", kind: "value" },
+          ],
+          once_read: [],
+          both_unclear: [],
+          one_unclear: [],
+          needs_person_read: false,
+          unnamed_teaching_marks: [],
+          reader_notes: { a: [], b: [] },
+        },
+        {
+          source_ref: "sample:M:3a",
+          photo: "333333333333.jpg",
+          original_name: "03.jpg",
+          photo_sha256: "3".repeat(64),
+          status: "machine_read",
+          agreement: { agreed: 89, compared: 100, percent: 89 },
+          result: "sent to a person",
+          result_reason: "below 90% agreement",
+          only_in_reader: null,
+          digest_mismatch: null,
+          differences: Array.from({ length: 11 }, (_, i) => ({
+            path: `sections[0].items[n=${i + 1}].printed`,
+            a: "1 + 1 =",
+            b: "1 + 2 =",
+            kind: "value" as const,
+          })),
+          once_read: [],
+          both_unclear: [],
+          one_unclear: [],
+          needs_person_read: false,
+          unnamed_teaching_marks: [],
+          reader_notes: { a: [], b: [] },
+        },
+        {
+          source_ref: "sample:M:4a",
+          photo: "444444444444.jpg",
+          original_name: "04.jpg",
+          photo_sha256: "4".repeat(64),
+          status: "machine_read",
+          agreement: { agreed: 19, compared: 20, percent: 95 },
+          result: "sent to a person",
+          result_reason: "stored answer conflicts with computed answer",
+          answer_conflicts: ['sections[0].items[n=1].responses[0]: reader gave "6", computed "5"'],
+          only_in_reader: null,
+          digest_mismatch: null,
+          differences: [{ path: "topic.title", a: "Sums", b: "Totals", kind: "value" }],
+          once_read: [],
+          both_unclear: [],
+          one_unclear: [],
+          needs_person_read: false,
+          unnamed_teaching_marks: [],
+          reader_notes: { a: [], b: [] },
+        },
+      ],
+      pages_sent_to_person: [
+        {
+          source_ref: "sample:M:3a",
+          agreement_percent: 89,
+          agreed: 89,
+          compared: 100,
+          difference_count: 11,
+          reason: null,
+        },
+        {
+          source_ref: "sample:M:4a",
+          agreement_percent: 95,
+          agreed: 19,
+          compared: 20,
+          difference_count: 1,
+          reason: "stored answer conflicts with computed answer",
+        },
+      ],
+      single_reader_pages: [],
+      failed_photos: [],
+      too_small_photos: [],
+      could_not_read_photos: [],
+      kept_human_checked: [],
+      removed_stale_pages: [],
+      duplicate_photos: [],
+      removed_photos: [],
+      same_page_id_conflicts: [],
+    };
+
+    const md = formatCompareReportMarkdown(baseReport);
+    expect(md).toContain("| sample:M:1a | 01.jpg | double_read | 100% (20/20) | double read | 0 | 0 | 0 | 0 | 0 | no |");
+    expect(md).toContain("| sample:M:2a | 02.jpg | agreement_accepted | 90% (18/20) | accepted by the 90% rule | 2 | 0 | 0 | 0 | 0 | no |");
+    expect(md).toContain("| sample:M:3a | 03.jpg | machine_read | 89% (89/100) | sent to a person (below 90% agreement) | 11 | 0 | 0 | 0 | 0 | no |");
+    expect(md).toContain("| sample:M:4a | 04.jpg | machine_read | 95% (19/20) | sent to a person (stored answer conflicts with computed answer) | 1 | 0 | 0 | 0 | 0 | no |");
+    // Differences are still listed on accepted pages
+    expect(md).toContain("### sample:M:2a (agreement_accepted)");
+    expect(md).toContain("- Result: accepted by the 90% rule");
+    expect(md).toContain("- Agreement: 90% (18/20 compared fields)");
+    expect(md).toContain('`topic.title` (value): a="Adding" | b="Addition"');
+    // End-of-run list in report and console helper
+    expect(md).toContain("## Pages sent to a person");
+    expect(md).toContain("- sample:M:3a: 89% agreement, 11 differences");
+    expect(md).toContain("- sample:M:4a: 95% agreement, 1 difference (stored answer conflicts with computed answer)");
+
+    const consoleList = formatPagesSentToPerson(baseReport);
+    expect(consoleList).toContain("Pages sent to a person (2):");
+    expect(consoleList).toContain("sample:M:3a: 89% agreement, 11 differences");
+    expect(consoleList).toContain("sample:M:4a: 95% agreement, 1 difference (stored answer conflicts with computed answer)");
+
+    const emptyReport: CompareWorkReport = {
+      ...baseReport,
+      pages: [baseReport.pages[0], baseReport.pages[1]],
+      pages_sent_to_person: [],
+    };
+    expect(formatPagesSentToPerson(emptyReport)).toBe("Pages sent to a person: none.");
+    expect(formatCompareReportMarkdown(emptyReport)).toContain("## Pages sent to a person\n\nNo pages sent to a person.");
   });
 });

@@ -772,7 +772,7 @@ describe("compareWorkFolder", () => {
     const page3a = report.pages.find((p) => p.source_ref === "sample:M:3a");
     expect(finalOf("sample-M-3a").readers).toEqual(["claude:c1", "codex:x1"]);
     expect(finalOf("sample-M-3a").sections[0].scaffolds).toEqual([]);
-    expect(page3a?.status).toBe("machine_read");
+    expect(page3a?.status).toBe("agreement_accepted");
     expect(page3a?.once_read).toEqual([
       { path: "sections[0].scaffolds[b:0]", a: null, b: arrow, kind: "once_read", reader: "b", final_path: "sections[0].scaffolds[]" },
     ]);
@@ -813,7 +813,9 @@ describe("compareWorkFolder", () => {
     const filled = page4aOf();
     expect(filled?.edited_by_person).toBe(true);
     expect(filled?.empty_answer).toEqual([]);
-    expect(readFileSync(join(work, "final", "report.md"), "utf8")).toMatch(/\| sample:M:4a \| [^|]+ \| machine_read \| 0 \| 0 \| 0 \| 0 \|/);
+    expect(readFileSync(join(work, "final", "report.md"), "utf8")).toMatch(
+      /\| sample:M:4a \| [^|]+ \| machine_read \| [^|]+ \| [^|]+ \| 0 \| 0 \| 0 \| 0 \|/,
+    );
 
     checkAndMarkPage({ workDir: work, page: "sample:M:4a", repoRoot: repo, photoCompared: true });
     // The person clears the answer of the checked record: compare lists it, and check refuses.
@@ -1008,6 +1010,183 @@ describe("compareWorkFolder", () => {
     expect(second.pages.find((p) => p.source_ref === "sample:M:3a")?.reader_notes.a).toEqual([expectedNote]);
     expect(second.pages.find((p) => p.source_ref === "sample:M:4a")?.reader_notes.b).toEqual([expectedNote]);
     expect(second.pages.find((p) => p.source_ref === "sample:M:5a")?.reader_notes.a).toEqual([expectedNote]);
+  });
+
+  it("accepts a page at 90%+ with single_read paths resolving to reader A's values, stops 89% and answer_differs pages, and writes pages_sent_to_person", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-cmp-agree-repo-"));
+    const work = mkdtempSync(join(tmpdir(), "ref-cmp-agree-work-"));
+    tempDirs.push(repo, work);
+
+    const make100FieldPage = (sourceRef: string): PageRecord => ({
+      ...makePage({ source_ref: sourceRef }),
+      sections: [
+        {
+          instruction: "Add.",
+          scaffolds: [{ kind: "number_strip", applies_to: "all", values: [1, 2, 3, 4, 5] }],
+          items: Array.from({ length: 10 }, (_, idx) => {
+            const n = idx + 1;
+            return {
+              n,
+              printed: `${n} + 1 =`,
+              form: "horizontal" as const,
+              expr: { kind: "arith" as const, op: "add" as const, operands: [n, 1] },
+              responses: [
+                {
+                  position: "after_equals" as const,
+                  cue: null,
+                  answer: String(n + 1),
+                  answer_source: "computed" as const,
+                },
+              ],
+            };
+          }),
+        },
+      ],
+    });
+
+    // 1a: 100% agreement -> double_read (no single_read)
+    const p1a = make100FieldPage("sample:M:1a");
+    const p1b = structuredClone(p1a);
+
+    // 2a: 90% agreement (10 printed diffs out of 100 fields) -> agreement_accepted with single_read
+    const p2a = make100FieldPage("sample:M:2a");
+    const p2b = structuredClone(p2a);
+    for (let i = 0; i < 10; i += 1) {
+      p2b.sections[0].items[i].printed = `${i + 1} + 2 =`;
+    }
+
+    // 3a: 89% agreement (11 diffs out of 100 fields) -> machine_read (sent to a person, below 90%)
+    const p3a = make100FieldPage("sample:M:3a");
+    const p3b = structuredClone(p3a);
+    p3b.topic.title = "Other Title";
+    for (let i = 0; i < 10; i += 1) {
+      p3b.sections[0].items[i].printed = `${i + 1} + 2 =`;
+    }
+
+    // 4a: 100% agreement BUT printed answer conflicts with expression (answer_differs) -> machine_read
+    const p4a = make100FieldPage("sample:M:4a");
+    p4a.sections[0].items[0].responses[0] = {
+      position: "after_equals",
+      cue: null,
+      answer: "99",
+      answer_source: "printed",
+    };
+    const p4b = structuredClone(p4a);
+
+    // 5a: 95% agreement (5 diffs) BUT stored answer conflicts (answer_differs) -> machine_read
+    const p5a = make100FieldPage("sample:M:5a");
+    p5a.sections[0].items[0].responses[0] = {
+      position: "after_equals",
+      cue: null,
+      answer: "99",
+      answer_source: "printed",
+    };
+    const p5b = structuredClone(p5a);
+    for (let i = 1; i <= 5; i += 1) {
+      p5b.sections[0].items[i].printed = `${i + 1} + 2 =`;
+    }
+
+    const pages = [
+      { sha: "a".repeat(64), ref: "sample:M:1a", file: "sample-M-1a.json", a: p1a, b: p1b },
+      { sha: "b".repeat(64), ref: "sample:M:2a", file: "sample-M-2a.json", a: p2a, b: p2b },
+      { sha: "c".repeat(64), ref: "sample:M:3a", file: "sample-M-3a.json", a: p3a, b: p3b },
+      { sha: "d".repeat(64), ref: "sample:M:4a", file: "sample-M-4a.json", a: p4a, b: p4b },
+      { sha: "e".repeat(64), ref: "sample:M:5a", file: "sample-M-5a.json", a: p5a, b: p5b },
+    ];
+
+    for (const [slot, family] of [["a", "codex"], ["b", "claude"]] as const) {
+      const dir = join(work, `reader-${slot}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "reader.json"), JSON.stringify({ family, model: "m1" }));
+      for (const p of pages) {
+        writeFileSync(join(dir, p.file), JSON.stringify(slot === "a" ? p.a : p.b, null, 2));
+      }
+      writeFileSync(
+        join(dir, "run.json"),
+        JSON.stringify({
+          slot,
+          reader: { family, model: "m1" },
+          source: "sample",
+          photos: pages.map((p) => ({
+            photo: `${p.sha.slice(0, 12)}.jpg`,
+            photo_sha256: p.sha,
+            status: "ok",
+            source_ref: p.ref,
+            record_file: p.file,
+            notes: [],
+          })),
+        }),
+      );
+    }
+
+    const report = compareWorkFolder({ workDir: work, repoRoot: repo });
+    const statusMap = JSON.parse(readFileSync(join(work, "final", "status.json"), "utf8")) as Record<string, string>;
+    expect(statusMap).toEqual({
+      "sample:M:1a": "double_read",
+      "sample:M:2a": "agreement_accepted",
+      "sample:M:3a": "machine_read",
+      "sample:M:4a": "machine_read",
+      "sample:M:5a": "machine_read",
+    });
+
+    // Accepted record keeps reader A's values and lists single_read paths that resolve to them.
+    const final2a = JSON.parse(readFileSync(join(work, "final", "sample-M-2a.json"), "utf8")) as PageRecord;
+    expect(final2a.single_read).toEqual(
+      Array.from({ length: 10 }, (_, i) => `sections[0].items[${i}].printed`),
+    );
+    for (let i = 0; i < 10; i += 1) {
+      expect(final2a.sections[0].items[i].printed).toBe(`${i + 1} + 1 =`);
+    }
+    const view2a = readFileSync(join(work, "final-view", "sample-M-2a.md"), "utf8");
+    expect(view2a).toContain("Single-read (not checked)");
+    expect(view2a).toContain("1 + 1 = [not checked]");
+
+    // Non-accepted records omit single_read.
+    for (const slug of ["sample-M-1a", "sample-M-3a", "sample-M-4a", "sample-M-5a"]) {
+      const rec = JSON.parse(readFileSync(join(work, "final", `${slug}.json`), "utf8")) as PageRecord;
+      expect(rec.single_read).toBeUndefined();
+    }
+
+    // Re-compare does not treat its own accepted file with single_read as edited_by_person.
+    const rerun = compareWorkFolder({ workDir: work, repoRoot: repo });
+    const rerun2a = rerun.pages.find((p) => p.source_ref === "sample:M:2a");
+    expect(rerun2a?.status).toBe("agreement_accepted");
+    expect(rerun2a?.edited_by_person).toBeUndefined();
+
+    // End-of-run list contains 3a (below 90%), 4a (100% + answer_differs), 5a (95% + answer_differs).
+    expect(report.pages_sent_to_person).toEqual([
+      {
+        source_ref: "sample:M:3a",
+        agreement_percent: 89,
+        agreed: 89,
+        compared: 100,
+        difference_count: 11,
+        reason: null,
+      },
+      {
+        source_ref: "sample:M:4a",
+        agreement_percent: 100,
+        agreed: 100,
+        compared: 100,
+        difference_count: 0,
+        reason: "stored answer conflicts with computed answer",
+      },
+      {
+        source_ref: "sample:M:5a",
+        agreement_percent: 95,
+        agreed: 95,
+        compared: 100,
+        difference_count: 5,
+        reason: "stored answer conflicts with computed answer",
+      },
+    ]);
+
+    const md = readFileSync(join(work, "final", "report.md"), "utf8");
+    expect(md).toContain("accepted by the 90% rule");
+    expect(md).toContain("## Pages sent to a person");
+    expect(md).toContain("- sample:M:3a: 89% agreement, 11 differences");
+    expect(md).toContain("- sample:M:4a: 100% agreement, 0 differences (stored answer conflicts with computed answer)");
+    expect(md).toContain("- sample:M:5a: 95% agreement, 5 differences (stored answer conflicts with computed answer)");
   });
 });
 

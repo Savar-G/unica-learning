@@ -297,6 +297,9 @@ export interface PageRecord {
   examples: Example[] | ReaderSentinel;
   score_bands: ScoreBands | ReaderSentinel;
   readers?: string[];
+  // Present only on agreement_accepted pages: JSON paths in this record where readers differed
+  // and reader A's value was kept without a second matching reading.
+  single_read?: string[];
 }
 
 export type IntRange = [number, number];
@@ -314,6 +317,7 @@ export interface ContentsRecord {
   source_ref: string;
   topics: ContentsTopic[];
   readers?: string[];
+  single_read?: string[];
 }
 
 export type ReferenceRecord = PageRecord | ContentsRecord;

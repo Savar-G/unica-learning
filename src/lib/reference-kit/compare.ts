@@ -16,18 +16,20 @@ import {
   compareExpr,
   compareField,
   compareResponses,
-  compareScaffolds,
   compareScoreBands,
   deepEqual,
+  recordDiff,
+  type CompareCounts,
   type DiffKind,
   type RecordDifference,
 } from "./compare-parts";
+import { compareScaffolds } from "./compare-scaffolds";
 import { normalizeNotationText, normalizeProseText } from "./normalize";
 
-export type { DiffKind, RecordDifference, UnnamedTeachingMark };
+export type { CompareCounts, DiffKind, RecordDifference, UnnamedTeachingMark };
 export { collectUnnamedTeachingMarks, normalizeNotationText, normalizeProseText };
 
-export type PageStatus = "machine_read" | "double_read" | "human_checked";
+export type PageStatus = "machine_read" | "agreement_accepted" | "double_read" | "human_checked";
 
 export interface PageComparisonSummary {
   differences: RecordDifference[];
@@ -37,6 +39,17 @@ export interface PageComparisonSummary {
   one_unclear: RecordDifference[];
   empty_answer: RecordDifference[];
   needs_person_read: boolean;
+  counts: CompareCounts;
+}
+
+export function meetsAgreementThreshold(agreed: number, compared: number): boolean {
+  return compared > 0 && agreed * 10 >= compared * 9;
+}
+
+export function agreementPercentage(agreed: number, compared: number): number | null {
+  if (compared <= 0) return null;
+  // Floor to 1 decimal place so < 90% never rounds up to 90% and < 100% never rounds up to 100%.
+  return Math.floor((agreed * 1000) / compared) / 10;
 }
 
 function comparePageItems(
@@ -44,6 +57,7 @@ function comparePageItems(
   aItems: readonly PageItem[],
   bItems: readonly PageItem[],
   diffs: RecordDifference[],
+  counts?: CompareCounts,
 ): void {
   const aMap = new Map<number, PageItem>();
   const bMap = new Map<number, PageItem>();
@@ -61,12 +75,16 @@ function comparePageItems(
   const aCommonOrder = aItems.filter((item) => bMap.has(item.n)).map((item) => item.n);
   const bCommonOrder = bItems.filter((item) => aMap.has(item.n)).map((item) => item.n);
   if (aCommonOrder.some((n, idx) => n !== bCommonOrder[idx])) {
-    diffs.push({
-      path,
-      a: aItems.map((item) => item.n),
-      b: bItems.map((item) => item.n),
-      kind: "order",
-    });
+    recordDiff(
+      diffs,
+      {
+        path,
+        a: aItems.map((item) => item.n),
+        b: bItems.map((item) => item.n),
+        kind: "order",
+      },
+      counts,
+    );
   }
 
   for (const n of orderedNs) {
@@ -74,7 +92,7 @@ function comparePageItems(
     const ia = aMap.get(n);
     const ib = bMap.get(n);
     if (!ia || !ib) {
-      diffs.push({ path: iPath, a: ia ?? null, b: ib ?? null, kind: "value" });
+      recordDiff(diffs, { path: iPath, a: ia ?? null, b: ib ?? null, kind: "value" }, counts);
       continue;
     }
 
@@ -84,19 +102,25 @@ function comparePageItems(
       ib.printed,
       { mode: ia.expr === null && ib.expr === null ? "prose" : "notation" },
       diffs,
+      counts,
     );
 
-    compareField(`${iPath}.form`, ia.form, ib.form, {}, diffs);
-    compareExpr(`${iPath}.expr`, ia.expr, ib.expr, diffs);
-    compareResponses(`${iPath}.responses`, ia.responses, ib.responses, diffs);
+    compareField(`${iPath}.form`, ia.form, ib.form, {}, diffs, counts);
+    compareExpr(`${iPath}.expr`, ia.expr, ib.expr, diffs, counts);
+    compareResponses(`${iPath}.responses`, ia.responses, ib.responses, diffs, counts);
   }
 }
 
-function comparePageRecords(a: PageRecord, b: PageRecord, diffs: RecordDifference[]): void {
-  compareField("topic.title", a.topic.title, b.topic.title, { mode: "prose" }, diffs);
-  compareField("topic.number", a.topic.number, b.topic.number, {}, diffs);
-  compareScoreBands("score_bands", a.score_bands, b.score_bands, diffs);
-  compareExamples("examples", a.examples, b.examples, diffs);
+function comparePageRecords(
+  a: PageRecord,
+  b: PageRecord,
+  diffs: RecordDifference[],
+  counts?: CompareCounts,
+): void {
+  compareField("topic.title", a.topic.title, b.topic.title, { mode: "prose" }, diffs, counts);
+  compareField("topic.number", a.topic.number, b.topic.number, {}, diffs, counts);
+  compareScoreBands("score_bands", a.score_bands, b.score_bands, diffs, counts);
+  compareExamples("examples", a.examples, b.examples, diffs, counts);
 
   const maxSections = Math.max(a.sections.length, b.sections.length);
   for (let si = 0; si < maxSections; si += 1) {
@@ -104,7 +128,7 @@ function comparePageRecords(a: PageRecord, b: PageRecord, diffs: RecordDifferenc
     const sa = a.sections[si];
     const sb = b.sections[si];
     if (!sa || !sb) {
-      diffs.push({ path: sPath, a: sa ?? null, b: sb ?? null, kind: "value" });
+      recordDiff(diffs, { path: sPath, a: sa ?? null, b: sb ?? null, kind: "value" }, counts);
       continue;
     }
     compareField(
@@ -113,12 +137,17 @@ function comparePageRecords(a: PageRecord, b: PageRecord, diffs: RecordDifferenc
       sb.instruction,
       { teaching: true, mode: "prose" },
       diffs,
+      counts,
     );
-    compareScaffolds(`${sPath}.scaffolds`, sa.scaffolds, sb.scaffolds, diffs, {
-      a: sa.items.map((item) => item.n),
-      b: sb.items.map((item) => item.n),
-    });
-    comparePageItems(`${sPath}.items`, sa.items, sb.items, diffs);
+    compareScaffolds(
+      `${sPath}.scaffolds`,
+      sa.scaffolds,
+      sb.scaffolds,
+      diffs,
+      { a: sa.items.map((item) => item.n), b: sb.items.map((item) => item.n) },
+      counts,
+    );
+    comparePageItems(`${sPath}.items`, sa.items, sb.items, diffs, counts);
   }
 }
 
@@ -126,6 +155,7 @@ function compareContentsRecords(
   a: ContentsRecord,
   b: ContentsRecord,
   diffs: RecordDifference[],
+  counts?: CompareCounts,
 ): void {
   const aMap = new Map(a.topics.map((t) => [t.n, t]));
   const bMap = new Map(b.topics.map((t) => [t.n, t]));
@@ -139,28 +169,36 @@ function compareContentsRecords(
     const ta = aMap.get(n);
     const tb = bMap.get(n);
     if (!ta || !tb) {
-      diffs.push({ path: tPath, a: ta ?? null, b: tb ?? null, kind: "value" });
+      recordDiff(diffs, { path: tPath, a: ta ?? null, b: tb ?? null, kind: "value" }, counts);
       continue;
     }
-    compareField(`${tPath}.title`, ta.title, tb.title, { mode: "prose" }, diffs);
-    compareField(`${tPath}.sheets`, ta.sheets, tb.sheets, {}, diffs);
-    compareField(`${tPath}.std_time_min`, ta.std_time_min, tb.std_time_min, {}, diffs);
+    compareField(`${tPath}.title`, ta.title, tb.title, { mode: "prose" }, diffs, counts);
+    compareField(`${tPath}.sheets`, ta.sheets, tb.sheets, {}, diffs, counts);
+    compareField(`${tPath}.std_time_min`, ta.std_time_min, tb.std_time_min, {}, diffs, counts);
   }
 }
 
-export function compareRecords(a: ReferenceRecord, b: ReferenceRecord): RecordDifference[] {
+export function compareRecordsWithCounts(
+  a: ReferenceRecord,
+  b: ReferenceRecord,
+): { diffs: RecordDifference[]; counts: CompareCounts } {
   const diffs: RecordDifference[] = [];
-  compareField("source_ref", a.source_ref, b.source_ref, {}, diffs);
+  const counts: CompareCounts = { compared: 0, agreed: 0 };
+  compareField("source_ref", a.source_ref, b.source_ref, {}, diffs, counts);
   if (a.kind !== b.kind) {
-    diffs.push({ path: "kind", a: a.kind, b: b.kind, kind: "value" });
-    return diffs;
+    recordDiff(diffs, { path: "kind", a: a.kind, b: b.kind, kind: "value" }, counts);
+    return { diffs, counts };
   }
   if (a.kind === "page" && b.kind === "page") {
-    comparePageRecords(a, b, diffs);
+    comparePageRecords(a, b, diffs, counts);
   } else if (a.kind === "contents" && b.kind === "contents") {
-    compareContentsRecords(a, b, diffs);
+    compareContentsRecords(a, b, diffs, counts);
   }
-  return diffs;
+  return { diffs, counts };
+}
+
+export function compareRecords(a: ReferenceRecord, b: ReferenceRecord): RecordDifference[] {
+  return compareRecordsWithCounts(a, b).diffs;
 }
 
 function exprHasWordOrFigure(expr: Expr | null | undefined): boolean {
@@ -319,11 +357,29 @@ export function emptyAnswerDiffs(
   }));
 }
 
+export function resolveSingleReadPaths(
+  finalRecord: ReferenceRecord,
+  diffs: readonly RecordDifference[],
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const d of diffs) {
+    if (d.kind === "wording" || d.kind === "empty_answer") continue;
+    const { jsonPath } = resolveDiffPath(finalRecord, d.path, d.insert_before);
+    if (jsonPath && !seen.has(jsonPath)) {
+      seen.add(jsonPath);
+      out.push(jsonPath);
+    }
+  }
+  return out;
+}
+
 export function classifyComparison(
   a: ReferenceRecord | null,
   b: ReferenceRecord | null,
 ): PageComparisonSummary {
-  const allDiffs = a && b ? compareRecords(a, b) : [];
+  const { diffs: allDiffs, counts } =
+    a && b ? compareRecordsWithCounts(a, b) : { diffs: [], counts: { compared: 0, agreed: 0 } };
   const oneUnclear = allDiffs.filter((d) => d.kind === "one_unclear");
   const differences = allDiffs.filter(
     (d) => d.kind === "value" || d.kind === "order" || d.kind === "one_unclear",
@@ -342,30 +398,74 @@ export function classifyComparison(
     one_unclear: oneUnclear,
     empty_answer: emptyAnswerDiffs(a ?? b, a, b),
     needs_person_read: needsPersonRead(a) || needsPersonRead(b),
+    counts,
   };
 }
 
-export function decideStatus(input: {
+export interface DecideStatusInput {
   hasA: boolean;
   hasB: boolean;
   familyA: string | null;
   familyB: string | null;
   diffs: readonly RecordDifference[];
   sameDigest?: boolean;
-}): PageStatus {
-  if (!input.hasA || !input.hasB) return "machine_read";
-  if (input.sameDigest === false) return "machine_read";
-  if (!input.familyA || !input.familyB || input.familyA === input.familyB) {
-    return "machine_read";
+  counts?: CompareCounts;
+  hasAnswerConflict?: boolean;
+  needsPersonRead?: boolean;
+  editedByPerson?: boolean;
+}
+
+export interface PageDecision {
+  status: PageStatus;
+  stopReasons: string[];
+}
+
+export function decidePageOutcome(input: DecideStatusInput): PageDecision {
+  const stopReasons: string[] = [];
+  if (input.editedByPerson) stopReasons.push("edited by a person (not checked yet)");
+  if (!input.hasA || !input.hasB) {
+    stopReasons.push("missing reader");
+  } else {
+    if (input.sameDigest === false) stopReasons.push("different photo digest");
+    if (!input.familyA || !input.familyB || input.familyA === input.familyB) {
+      stopReasons.push("same or unknown model family");
+    }
   }
-  const hasBlocking = input.diffs.some(
+  if (input.hasAnswerConflict) {
+    stopReasons.push("stored answer conflicts with computed answer");
+  }
+  if (input.diffs.some((d) => d.kind === "empty_answer")) {
+    stopReasons.push("empty answer place");
+  }
+  if (stopReasons.length > 0) {
+    return { status: "machine_read", stopReasons };
+  }
+
+  if (input.counts && input.counts.compared <= 0) {
+    return { status: "machine_read", stopReasons: ["no compared fields"] };
+  }
+
+  const hasCompareBlocking = input.diffs.some(
     (d) =>
       d.kind === "value" ||
       d.kind === "order" ||
       d.kind === "one_unclear" ||
       d.kind === "both_unclear" ||
-      d.kind === "once_read" ||
-      d.kind === "empty_answer",
+      d.kind === "once_read",
   );
-  return hasBlocking ? "machine_read" : "double_read";
+  if (!hasCompareBlocking) {
+    return { status: "double_read", stopReasons: [] };
+  }
+
+  if (input.needsPersonRead) {
+    return { status: "machine_read", stopReasons: ["prose must be read by a person"] };
+  }
+  if (input.counts && meetsAgreementThreshold(input.counts.agreed, input.counts.compared)) {
+    return { status: "agreement_accepted", stopReasons: [] };
+  }
+  return { status: "machine_read", stopReasons: [] };
+}
+
+export function decideStatus(input: DecideStatusInput): PageStatus {
+  return decidePageOutcome(input).status;
 }

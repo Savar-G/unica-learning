@@ -778,6 +778,39 @@ describe("importReferenceRecords", () => {
       ]);
     });
 
+    it("accepts agreement_accepted status on import and orders it between machine_read and double_read", async () => {
+      writeJson(recordsDir, "p1.json", {
+        ...makePage("sample:M:3a"),
+        single_read: ["topic.title"],
+      });
+      writeJson(recordsDir, "status.json", { "sample:M:3a": "agreement_accepted" });
+
+      const first = await importReferenceRecords({ recordsDir, store });
+      expect(first.ok).toBe(true);
+      expect(first.counts.inserted).toBe(1);
+      expect(rowOf("sample:M:3a").transcript_status).toBe("agreement_accepted");
+
+      // Upgrading agreement_accepted -> double_read is not a lowering.
+      writeJson(recordsDir, "status.json", { "sample:M:3a": "double_read" });
+      const up = await importReferenceRecords({ recordsDir, store, replace: true });
+      expect(up.ok).toBe(true);
+      expect(up.statusLowered).toEqual([]);
+      expect(rowOf("sample:M:3a").transcript_status).toBe("double_read");
+
+      // Lowering double_read -> agreement_accepted and agreement_accepted -> machine_read are both reported.
+      writeJson(recordsDir, "status.json", { "sample:M:3a": "agreement_accepted" });
+      const toAccepted = await importReferenceRecords({ recordsDir, store, replace: true });
+      expect(toAccepted.statusLowered).toEqual([
+        { ref: "sample:M:3a", from: "double_read", to: "agreement_accepted" },
+      ]);
+
+      writeJson(recordsDir, "status.json", { "sample:M:3a": "machine_read" });
+      const toMachine = await importReferenceRecords({ recordsDir, store, replace: true });
+      expect(toMachine.statusLowered).toEqual([
+        { ref: "sample:M:3a", from: "agreement_accepted", to: "machine_read" },
+      ]);
+    });
+
     it("overwrites the photo when only its bytes changed and touches nothing in the row but updated_at", async () => {
       writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
       writePhotos([{ file: "IMG_0001.jpg", bytes: oldImg, ref: "sample:M:3a" }]);

@@ -26,6 +26,7 @@ export type ReferenceRecordKind = (typeof REFERENCE_RECORD_KINDS)[number];
 
 export const TRANSCRIPT_STATUSES = [
   "machine_read",
+  "agreement_accepted",
   "double_read",
   "human_checked",
 ] as const;

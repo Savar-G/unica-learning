@@ -276,6 +276,7 @@ describe("extractFolder (reference:extract)", () => {
     // Summary counts
     expect(result.counts).toEqual({
       double_read: 1,
+      agreement_accepted: 0,
       machine_read: 1,
       failed: 1,
       too_small: 1,
