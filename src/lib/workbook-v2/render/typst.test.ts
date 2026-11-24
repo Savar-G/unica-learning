@@ -1,4 +1,5 @@
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -272,5 +273,170 @@ describe.skipIf(skipTypstTests()).concurrent("with the real Typst", () => {
   it("writes nothing about the child or the time into the PDF", async () => {
     const text = Buffer.from((await example()).out.pdf).toString("latin1");
     expect(text).not.toMatch(/example-child|CreationDate|ModDate|20\d\d-\d\d-\d\dT/);
+  });
+
+  describe("environment isolation, read-only bundles and temp cleanup", () => {
+    // A temp folder of these tests alone: other test files draw at the same time.
+    const usual = process.env.TMPDIR;
+    beforeAll(() => {
+      process.env.TMPDIR = inFolder("private-temp");
+      mkdirSync(process.env.TMPDIR);
+    });
+    afterAll(() => {
+      if (usual === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = usual;
+    });
+    const listTempWorkDirs = () => readdirSync(tmpdir()).filter((name) => name.startsWith("workbook-v2-"));
+
+    it("does not leak process.env or TYPST_FONT_PATHS to Typst", async () => {
+      const spyProgram = inFolder("env-spy.sh");
+      writeFileSync(spyProgram, "#!/bin/sh\nenv >&2\nexit 1\n", { mode: 0o755 });
+      const spyPins = { ...PINS, targets: { ...PINS.targets, [assets().target]: { archiveSha256: "0".repeat(64), programSha256: sha256(readFileSync(spyProgram)) } } };
+      const extraFonts = inFolder("env-fonts");
+      mkdirSync(extraFonts, { recursive: true });
+      cpSync(join(assets().fontsDir, "Geist-Regular.ttf"), join(extraFonts, "Geist-Regular.ttf"));
+      const prevSecret = process.env.UNICA_TEST_SECRET;
+      const prevFontPaths = process.env.TYPST_FONT_PATHS;
+      process.env.UNICA_TEST_SECRET = "must-not-reach-typst";
+      process.env.TYPST_FONT_PATHS = extraFonts;
+      try {
+        let message = "";
+        try {
+          await renderWith({ ...assets(), program: spyProgram }, goodPages(), spyPins);
+        } catch (error) {
+          message = error instanceof Error ? error.message : String(error);
+        }
+        expect(message).toContain("NODE_ENV=production");
+        expect(message).not.toContain("UNICA_TEST_SECRET");
+        expect(message).not.toContain("must-not-reach-typst");
+        expect(message).not.toContain("TYPST_FONT_PATHS");
+        await expect(renderWith(template("env-font.typ", (s) => s.replace('"Geist"', '"Helvetica"')))).rejects.toThrow(/unknown font family/);
+      } finally {
+        if (prevSecret === undefined) delete process.env.UNICA_TEST_SECRET;
+        else process.env.UNICA_TEST_SECRET = prevSecret;
+        if (prevFontPaths === undefined) delete process.env.TYPST_FONT_PATHS;
+        else process.env.TYPST_FONT_PATHS = prevFontPaths;
+      }
+    });
+
+    it("works when the bundle folder is read-only, both with and without execute permission on the program", async () => {
+      const bundle = inFolder("ro-bundle");
+      const fontsDir = join(bundle, "fonts");
+      const program = join(bundle, "typst");
+      const tmpl = join(bundle, "page.typ");
+      mkdirSync(fontsDir, { recursive: true });
+      cpSync(assets().program, program);
+      cpSync(assets().template, tmpl);
+      for (const file of Object.keys(PINS.fonts)) cpSync(join(assets().fontsDir, file), join(fontsDir, file));
+
+      const pages = goodPages();
+      const baseline = await renderWith(assets(), pages);
+
+      const lockReadOnly = (programMode: number) => {
+        for (const file of Object.keys(PINS.fonts)) chmodSync(join(fontsDir, file), 0o444);
+        chmodSync(fontsDir, 0o555);
+        chmodSync(tmpl, 0o444);
+        chmodSync(program, programMode);
+        chmodSync(bundle, 0o555);
+      };
+      const unlock = () => {
+        chmodSync(bundle, 0o755);
+        chmodSync(fontsDir, 0o755);
+        chmodSync(program, 0o755);
+        chmodSync(tmpl, 0o644);
+        for (const file of Object.keys(PINS.fonts)) chmodSync(join(fontsDir, file), 0o644);
+      };
+
+      try {
+        // Case 1: read-only bundle where program keeps execute bit (0o555).
+        lockReadOnly(0o555);
+        const execOut = await renderWith({ program, target: assets().target, fontsDir, template: tmpl }, pages);
+        expect(Buffer.compare(execOut.pdf, baseline.pdf)).toBe(0);
+        expect(execOut.images.map((img, i) => Buffer.compare(img, baseline.images[i]))).toEqual([0, 0]);
+        unlock();
+
+        // Case 2: read-only bundle where program lost execute bit (0o444), staged in temp with copyIfNotExecutable.
+        lockReadOnly(0o444);
+        const before = new Set(listTempWorkDirs());
+        const stagedOut = await renderWith({ program, target: assets().target, fontsDir, template: tmpl, copyIfNotExecutable: true }, pages);
+        expect(Buffer.compare(stagedOut.pdf, baseline.pdf)).toBe(0);
+        expect(stagedOut.images.map((img, i) => Buffer.compare(img, baseline.images[i]))).toEqual([0, 0]);
+        expect(listTempWorkDirs().filter((name) => !before.has(name))).toEqual([]);
+
+        // Tampered non-executable program is still refused by SHA-256 even when copyIfNotExecutable is true.
+        unlock();
+        writeFileSync(program, "not-the-pinned-binary");
+        lockReadOnly(0o444);
+        await expect(renderWith({ program, target: assets().target, fontsDir, template: tmpl, copyIfNotExecutable: true }, pages)).rejects.toThrow(/is not the pinned Typst/);
+      } finally {
+        unlock();
+      }
+    });
+
+    /** A stand-in for Typst. `body` runs in the folder of one drawing. */
+    const standIn = async (name: string, body: string, timeoutMs?: number) => {
+      const program = inFolder(name);
+      writeFileSync(program, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+      const pins = { ...PINS, targets: { ...PINS.targets, [assets().target]: { archiveSha256: "0".repeat(64), programSha256: sha256(readFileSync(program)) } } };
+      return openRenderer({ ...assets(), program }, pins, { timeoutMs });
+    };
+
+    it("draws two different books at the same time, each in its own folder", async () => {
+      const meet = inFolder("meet");
+      mkdirSync(meet);
+      // Each drawing writes its folder and its pages, then waits until it sees two folders. Alone it would wait for ever.
+      const renderer = await standIn("meets.sh", `echo "$(pwd)" > "${meet}/$(basename "$(pwd)")"; cp pages.json "${meet}/$(basename "$(pwd)").json"; while [ "$(ls "${meet}" | grep -v json | wc -l)" -lt 2 ]; do sleep 0.02; done; echo met >&2; exit 1`, 10_000);
+      const [front, back] = goodPages();
+      const results = await Promise.allSettled([renderer.render([front]), renderer.render([back])]);
+      expect(results.map((r) => (r.status === "rejected" ? String(r.reason) : "drawn"))).toEqual([expect.stringContaining("met"), expect.stringContaining("met")]);
+      const pagesSeen = readdirSync(meet).filter((f) => f.endsWith(".json")).map((f) => JSON.parse(readFileSync(join(meet, f), "utf8")).pages[0].page);
+      expect(pagesSeen.sort()).toEqual([front.page, back.page]);
+      expect(listTempWorkDirs()).toEqual([]);
+    });
+
+    it("draws the same bytes at the same time, also from a program that may not run", async () => {
+      const noExec = inFolder("concurrent-noexec");
+      cpSync(assets().program, noExec);
+      chmodSync(noExec, 0o444);
+      const pages = goodPages();
+      const [plain, copied] = await Promise.all([openRenderer(assets()), openRenderer({ ...assets(), program: noExec, copyIfNotExecutable: true })]);
+      const [one, two, three] = await Promise.all([plain.render(pages), copied.render(pages), copied.render(pages)]);
+      for (const other of [two, three]) {
+        expect(Buffer.compare(one.pdf, other.pdf)).toBe(0);
+        expect(one.images.map((image, i) => Buffer.compare(image, other.images[i]))).toEqual([0, 0]);
+      }
+      expect(listTempWorkDirs()).toEqual([]);
+    });
+
+    it("removes its folder after a failure", async () => {
+      await expect(renderWith(template("cleanup-err.typ", (s) => `${s}\n#unknown-fn()`))).rejects.toThrow(/Typst reported:/);
+      expect(listTempWorkDirs()).toEqual([]);
+    });
+
+    it("kills a program that started and does not end, and removes its folder", async () => {
+      const started = inFolder("started");
+      const renderer = await standIn("slow.sh", `echo $$ >> "${started}"; exec sleep 30`, 400);
+      const before = Date.now();
+      await expect(renderer.render(goodPages())).rejects.toThrow(/Typst reported:/);
+      expect(Date.now() - before).toBeLessThan(10_000);
+      const ids = readFileSync(started, "utf8").trim().split("\n").map(Number);
+      expect(ids).toHaveLength(3);
+      for (const id of ids) expect(() => process.kill(id, 0)).toThrow(/ESRCH/);
+      expect(listTempWorkDirs()).toEqual([]);
+    });
+
+    it.each([0, -1, 0.5, Number.NaN, Number.POSITIVE_INFINITY, 60_001, 2_147_483_647, 2_147_483_648])("refuses a time limit of %s ms", async (timeoutMs) => {
+      await expect(openRenderer(assets(), PINS, { timeoutMs })).rejects.toThrow("The time limit must be a whole number of milliseconds from 1 to 60000.");
+    });
+
+    it.each<[string, (place: string) => void]>([
+      ["a named pipe", (place) => execFileSync("mkfifo", [place])],
+      ["a folder", (place) => mkdirSync(place)],
+      ["a link", (place) => symlinkSync(assets().program, place)],
+    ])("does not wait for or follow %s in the place of the program", async (name, make) => {
+      const place = inFolder(`odd-${name.replaceAll(" ", "-")}`);
+      make(place);
+      await expect(openRenderer({ ...assets(), program: place })).rejects.toThrow(/is not at/);
+    });
   });
 });

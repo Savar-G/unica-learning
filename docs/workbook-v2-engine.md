@@ -61,8 +61,16 @@ The harness (`testing/shape-harness.ts`) takes 1,000 production seeds for each s
 
 `npx vitest run src/lib/workbook-v2` takes about 4 seconds and needs no browser, network or database. The tests that draw pages use the real Typst. In CI they fail when it is absent; on a laptop without it they are skipped and print the reason.
 
+## In a Vercel function
+
+`openRenderer(vercelAssets(process.cwd()))` draws with the official pinned Typst program for linux x64, and `buildBook` runs all checks as on a laptop. Proved on a preview deployment on 2026-11-24 (UNI-138): the PDF and each page image were the same bytes as on a Mac. With a new renderer the two-page book took 0.75 to 1.02 s (three calls in one function instance), and the temp folder was empty after each call. The Node binding of Typst was faster (0.3 to 0.6 s) but gave other page images, always reads the fonts of the computer, and cannot be pinned by SHA-256 or stopped, so it is not used.
+
+- **Program:** it must be a regular file with the pinned SHA-256. `npm run typst:stage` puts the verified program (53 MB) in `.workbook-v2/`, which Git ignores. `workbookV2TraceFiles()` lists the files that the bundle of the function must hold.
+- **No permission to run:** the bundle can only be read. When the program in it may not run, each drawing copies the verified bytes into its private temp folder.
+- **Not connected:** no function builds books yet, so no build stages the program. The first one (UNI-260) adds `typst:stage` to the build, where a failed download must fail the deployment, and the files to `outputFileTracingIncludes` for its route.
+
 ## Where the next parts connect
 
 - Fit and ink checks (UNI-137): `checks/`; `readPageImage` gives the pixels of a page image and `checkImages` already reads each one.
-- A Vercel function (UNI-138): a second way to fill `RenderAssets`, or another `Renderer`.
+- The book job (UNI-260): see "In a Vercel function".
 - More shapes (UNI-237 to 240): follow "Adding a shape" above. A new look of a question is a new `Face` and a template that takes it.
