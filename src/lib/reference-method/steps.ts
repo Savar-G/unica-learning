@@ -45,8 +45,9 @@ function stepOfKnown(expr: Expr, form: ItemForm): StepFeatures | null {
       return left && right ? { expr_kind: "linked", form, parts: [left, right] } : null;
     }
     case "chain": {
+      if (!expr.terms.every((term) => term === null || isCountable(term))) return null;
       const step = computeExprFeatures(expr).chain?.step;
-      return typeof step === "number" ? { expr_kind: "chain", form, chain_step: step } : null;
+      return Number.isSafeInteger(step) ? { expr_kind: "chain", form, chain_step: step as number } : null;
     }
     case "arith":
     case "missing":

@@ -90,7 +90,8 @@ function expressionTexts(expr: Expr): string[] {
     case "chain":
       return [list(expr.terms, ", ")];
     case "word":
-      return [expr.text, ...(typeof expr.expr === "object" && expr.expr ? expressionTexts(expr.expr) : [])];
+      // Its expression is what a reader made of the story. The page prints only the story.
+      return [expr.text];
     case "notation":
       return [expr.latex];
     case "linked":

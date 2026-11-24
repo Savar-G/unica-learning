@@ -69,6 +69,14 @@ describe("which pages belong to a topic (M1)", () => {
     expect(okEvidence(pages, { statuses: { "demo:Z:11a": "machine_read" } }).pages).toMatchObject([{ facts: "withheld" }]);
   });
 
+  it("leaves a page in no range to another topic of the same title that has no range", () => {
+    const contents = makeContents([
+      { n: 1, title: "Same", sheets: [11, 12], std_time_min: null },
+      { n: 2, title: "Same", sheets: null, std_time_min: null },
+    ]);
+    expect(okEvidence([makePage("20a", { title: "Same" })], { contents }).pages).toEqual([]);
+  });
+
   it("uses no field of the chart that only one reader read", () => {
     const e = okEvidence([makePage("11a")], {
       contents: makeContents(undefined, { single_read: ["topics[0].sheets", "topics[0].std_time_min"] }),
@@ -88,6 +96,7 @@ describe("which pages belong to a topic (M1)", () => {
     ["a page id that one reader read", "page id was read by one reader", [[makePage("11a", { single_read: ["source_ref"] })]]],
     ["a page whose title is another topic's", "prints the title of topic 2", [[makePage("11a", { title: "Joining Pebbles 2" })]]],
     ["a page of this title in another topic's range", "in the sheet range of topic 2", [[makePage("13a")]]],
+    ["a page of this title in no topic's range", "is in no sheet range", [[makePage("20a")]]],
     [
       "ranges that overlap",
       "overlap",
@@ -166,6 +175,9 @@ describe("the facts (M2)", () => {
     ["a missing number with a decimal", { kind: "missing", op: "mul", operands: [null, 4], result: 0.8 }, "mul"],
     ["a word problem with no expression", { kind: "word", text: "story", expr: null }, "not_stated"],
     ["a word problem with a decimal", { kind: "word", text: "story", expr: add(0.5, 1) }, "add"],
+    ["a chain of decimals that is a whole number apart", { kind: "chain", terms: [0.5, null, 2.5] }, "not_stated"],
+    ["a chain of whole numbers that is not a whole number apart", { kind: "chain", terms: [1, null, 2] }, "not_stated"],
+    ["a chain that goes under zero", { kind: "chain", terms: [1, null, -1] }, "not_stated"],
     ["a chain with no known step", { kind: "chain", terms: [5, null] }, "not_stated"],
     ["a chain whose step is unclear", { kind: "chain", terms: [5, null, 15], step: "unclear" }, "not_stated"],
     ["half a linked pair", { kind: "linked", pair: [add(1, 2), { kind: "notation", latex: "x" }] }, "not_stated"],
@@ -304,6 +316,9 @@ describe("steps with no method (M5, Y2)", () => {
     ["two parts of one step", { parts: [{ form: "horizontal", expr: add(45, 3) }, { form: "horizontal", expr: add(32, 4) }] }, true],
     ["a shown answer and no steps", { steps: [], parts: [{ form: "horizontal", expr: add(45, 3), shown_answer: "48" }] }, true],
     ["no steps and no shown answer", { steps: [] }, false],
+    ["setup steps only", { steps: [{ n: 1, shows: "setup", printed: "45" }, { n: 2, shows: "setup", printed: "+ 3" }] }, false],
+    ["setup steps and a shown answer", { steps: [{ n: 1, shows: "setup", printed: "45" }], parts: [{ form: "horizontal", expr: add(45, 3), shown_answer: "48" }] }, true],
+    ["setup steps and an answer step", { steps: [{ n: 1, shows: "setup", printed: "45" }, { n: 2, shows: "answer", printed: "48" }] }, true],
     ["steps left out and no shown answer", { steps: undefined }, false],
     ["no printed answer", { steps: [], parts: [{ form: "horizontal", expr: add(45, 3), shown_answer: null }] }, false],
     ["steps that can belong to another part", { parts: [{ form: "horizontal", expr: add(45, 3) }, { form: "vertical", expr: add(45, 3) }] }, false],

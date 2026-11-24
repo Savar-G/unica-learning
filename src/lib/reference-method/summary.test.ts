@@ -228,6 +228,15 @@ describe("math between backticks (Y1)", () => {
     for (const math of ["77", "66"]) expect(errorsOf(say(`[11a] shows \`${math}\`.`)), math).toBe("");
   });
 
+  it("takes no expression from a story that does not print one", () => {
+    const story = { ...printed(1, "unused"), expr: { kind: "word" as const, text: "Three baskets hold fourteen pears each.", expr: { kind: "arith" as const, op: "mul" as const, operands: [14, 3] } } };
+    const withStory = (text: string) => contextOf([pageWith([{ ...story, printed: text }])]);
+    ctx = withStory("Three baskets hold fourteen pears each.");
+    for (const math of ["14 \u00D7 3", "14", "3"]) expect(errorsOf(say(`[11a] shows \`${math}\`.`)), math).toContain("no cited page prints");
+    ctx = withStory("14 \u00D7 3");
+    expect(errorsOf(say("[11a] shows `14 \u00D7 3`."))).toBe("");
+  });
+
   it("does not compare the math of a guess with the pages, and still keeps its syntax", () => {
     expect(errorsOf(say("Perhaps `5 + 5` comes first.", { cites: [], guess: true }))).toBe("");
     expect(errorsOf(say("Perhaps 5 + 5 comes first.", { cites: [], guess: true }))).toContain("no digits outside");

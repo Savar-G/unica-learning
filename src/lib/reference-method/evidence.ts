@@ -117,7 +117,9 @@ function readPage(page: PlacedPage, view: Record<string, unknown>) {
     const ids = partSteps.map((step) => step && stepId(step));
     // Its parts and its working are trusted, and code can tell which part the working belongs to.
     const clear = !holdsSentinel([entry.parts, entry.steps]);
-    const worksOneStep = (listOf(entry.steps)?.length ?? 0) > 0 && new Set(ids).size === 1;
+    // A setup line is the question written again, so it shows no method.
+    const shown = listOf(entry.steps)?.some((s) => fieldsOf(s).shows !== "setup") ?? false;
+    const worksOneStep = shown && new Set(ids).size === 1;
     parts.forEach((part, p) => {
       const step = partSteps[p];
       const id = ids[p];
