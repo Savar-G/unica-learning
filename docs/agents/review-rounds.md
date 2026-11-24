@@ -1,6 +1,16 @@
 # Review rounds
 
-For the agent that writes the briefs (the orchestrator). Use it when one agent builds a ticket and a different agent reviews it. The goal is approval in three rounds or fewer. The delegates also follow [the delegate brief](delegate-brief.md): name that file in each brief.
+For the agent that writes the briefs (the orchestrator). Use it when one agent builds a ticket and a different agent reviews it. The delegates also follow [the delegate brief](delegate-brief.md): name that file in each brief.
+
+## Order of the reviews
+
+1. **Codex reviews one time**, on the local branch, before a pull request exists. The review is complete (see "Review briefs").
+2. **Fix every finding** that is not declined. Check each fix and run the full done gate yourself.
+3. **Open the pull request.** Greptile reviews it and CI runs.
+4. **Fix the Greptile findings**, reply to each declined one with the reason, push once, and ask Greptile for a new review.
+5. **Merge** when CI passes and Greptile has no open finding that can save wrong data, accept a wrong page, or expose private data. Follow the merge rule in `AGENTS.md`.
+
+Do not start another Codex round unless Savar asks. Why: on UNI-150, Codex reviewed six times and gave 10/10, and then Greptile found two bugs in its first review. A second reviewer finds more than another round by the first one.
 
 ## Before the build brief
 
@@ -10,7 +20,8 @@ For the agent that writes the briefs (the orchestrator). Use it when one agent b
 4. **Follow each value from the input to the decision.** List each step that fills, computes, normalises or overwrites it. A check must use the value from before that step, or a saved note of the change.
 5. **List each state with each output.** For each status, write what the record, the report, the import and the screen show. Test the full grid, not one cell.
 6. **List the outside limits.** Examples: text that Postgres refuses, the 1,000-row cap on a query, the file size limit, special characters in a filter, paths that ignore case, links. Refuse bad input before the first write.
-7. **Do your own steps before round 1.** Apply the migration and update the generated files first. A review must not start with a test failure that this branch causes.
+7. **Ask which rule is missing.** Check the table against each field that identifies a record and each place where a result is stored. For each one, ask: can a wrong value pass with no person looking at it?
+8. **Do your own steps before the first review.** Apply the migration and update the generated files first. The review must not start with a test failure that this branch causes.
 
 ## Fix briefs
 
@@ -21,17 +32,17 @@ For the agent that writes the briefs (the orchestrator). Use it when one agent b
 
 ## Review briefs
 
-- **Round 1 covers everything.** The reviewer gives a verdict for each row of the rule table and for each cell of the state grid, and reports all findings together. Tell the reviewer to search for other places with the same mistake as each finding.
+- **The first review covers everything.** The reviewer gives a verdict for each row of the rule table and for each cell of the state grid, and reports all findings together. Tell the reviewer to search for other places with the same mistake as each finding.
 - **Turn each observation into a decision.** If a report contains a wrong result outside its numbered findings, add a row to the table or record why not. Do not leave it in the report.
 - **Give each finding an effect:** `data`, `status`, `import`, `privacy` or `help text`. The first four can block. `help text` blocks only if a person who follows it would save wrong data.
-- **Later rounds** check the earlier findings, the new commits and the code that calls them. A finding in code that did not change gets the label `missed in round N`.
+- **The reviewer also looks for a missing rule**, not only for code that breaks a listed rule.
 - **List the decisions** that the reviewer must not raise again, with the reason for each.
 
-## After round 3
+## When findings do not stop
 
-If round 3 does not approve, do not send a fourth case-by-case fix brief. Count the findings by class. Then choose: redesign that part, make the ticket smaller, or accept the remaining `help text` findings. Tell Savar the choice and the count.
+If Greptile's second review still has a finding that must be fixed, do not send another case-by-case fix brief. Count the findings by class. Then choose: redesign that part, make the ticket smaller, or accept the remaining `help text` findings. Tell Savar the choice and the count.
 
-In the pull request details, add one line per round: score, number of findings, and the classes. This shows a repeated class early.
+In the pull request details, add one line per review: reviewer, score, number of findings, and the classes. This shows a repeated class early.
 
 ## What caused this page
 
@@ -39,10 +50,11 @@ In November 2026, six reference-kit tickets took 28 review reports. The same mis
 
 | Class | Where it came back | Guard |
 |---|---|---|
-| A location is taken from a different record or an old index | UNI-148, 149, and rounds 1 to 5 of UNI-150 | Property test on locations |
+| A location is taken from a different record or an old index | UNI-148, 149, rounds 1 to 5 and Greptile on UNI-150 | Feature made smaller, property test |
 | Code replaces a reader's value before the check sees it | UNI-148, 149, 150 | Property test on raw reader answers |
 | A text tells a person to act on a page that needs no action | UNI-150 rounds 1, 2, 3 | Full status grid test |
 | Different math becomes equal after normalising | UNI-132, 149 | Property tests on the normalisers (`compare.test.ts`) |
 | A listed rule has no test | UNI-150: unknown reader family, import combinations | One test per stop rule |
+| A needed rule was not in the table | UNI-150: page identity, answers in worked examples | Rule 7 |
 | A write starts before all input is checked | UNI-133 rounds 1 to 4 | Refuse-first table test |
 | A query stops at 1,000 rows | UNI-133, 149 | Rule 6 |
