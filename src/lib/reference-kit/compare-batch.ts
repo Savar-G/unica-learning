@@ -1,11 +1,10 @@
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
+import { existsSync, readdirSync, unlinkSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   assertOutsideRepo,
   prepareSafeOutputDir,
   renderRecordToMarkdown,
-  validateReferenceRecord,
   writeSafeOutputFile,
   type ReferenceRecord,
 } from "@/lib/reference-record";
@@ -25,15 +24,21 @@ import {
   decidePageOutcome,
   emptyAnswerDiffs,
   findAnswerDisagreements,
+  findExpressionDisagreements,
   resolveSingleReadPaths,
   stripKeptRecordLocations,
   type PageStatus,
 } from "./compare";
 import {
+  assertNoFileCollisions,
+  loadExistingFinalRecord,
+  sha256OfFile,
+  syncManifestSourceRefs,
+} from "./compare-batch-files";
+import {
   loadOriginalNamesByDigest,
   loadPrepareReport,
   loadSlot,
-  pairDigest,
   pairSlotPages,
   pickPageWinners,
   readJsonIfExists,
@@ -53,7 +58,6 @@ import {
   type PageSentToPerson,
   type SamePageIdConflict,
 } from "./compare-report";
-import { parsePhotosManifest, PHOTOS_MANIFEST_FILE } from "./prepare";
 
 export {
   formatCompareReportMarkdown,
@@ -70,118 +74,6 @@ export {
 };
 
 const FINAL_META_FILES = new Set(["status.json", "report.json"]);
-
-function readStoredSourceRef(filePath: string): string | null {
-  if (!existsSync(filePath)) return null;
-  try {
-    const parsed = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
-    if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      !Array.isArray(parsed) &&
-      typeof (parsed as Record<string, unknown>).source_ref === "string"
-    ) {
-      return (parsed as Record<string, unknown>).source_ref as string;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function sha256OfFile(filePath: string): string {
-  return createHash("sha256").update(readFileSync(filePath)).digest("hex");
-}
-
-function loadExistingFinalRecord(filePath: string): ReferenceRecord | null {
-  if (!existsSync(filePath)) return null;
-  try {
-    const parsed = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
-    const check = validateReferenceRecord(parsed);
-    return check.ok ? check.record : null;
-  } catch {
-    return null;
-  }
-}
-
-function assertNoFileCollisions(
-  pairs: readonly PairedPage[],
-  existingStatus: Record<string, PageStatus>,
-  finalDir: string,
-): void {
-  const fileToRef = new Map<string, string>();
-
-  for (const pair of pairs) {
-    const chosen = pair.recA ?? pair.recB;
-    if (!chosen) continue;
-    const sourceRef = chosen.source_ref;
-
-    const fileName = `${fileSlugFromRef(sourceRef)}.json`;
-    const prior = fileToRef.get(fileName);
-    if (prior && prior !== sourceRef) {
-      throw new Error(
-        `Refusing to write: "${sourceRef}" and "${prior}" both map to "${fileName}"`,
-      );
-    }
-    fileToRef.set(fileName, sourceRef);
-
-    const storedRef = readStoredSourceRef(join(finalDir, fileName));
-    if (storedRef !== null && storedRef !== sourceRef) {
-      throw new Error(
-        `Refusing to overwrite "${fileName}": existing file holds source_ref "${storedRef}", not "${sourceRef}"`,
-      );
-    }
-  }
-
-  for (const existingRef of Object.keys(existingStatus)) {
-    const fileName = `${fileSlugFromRef(existingRef)}.json`;
-    const prior = fileToRef.get(fileName);
-    if (prior && prior !== existingRef) {
-      throw new Error(
-        `Refusing to write: "${prior}" collides with existing "${existingRef}" on "${fileName}"`,
-      );
-    }
-    fileToRef.set(fileName, existingRef);
-  }
-}
-
-// The manifest gives a page id only to the photo whose readings made the final record, so it holds
-// at most one entry for each page id. A kept human_checked page with no current readings keeps the
-// page id it already has.
-function syncManifestSourceRefs(
-  workDir: string,
-  winners: readonly PairedPage[],
-  keptStaleRefs: ReadonlySet<string>,
-  repoRoot: string,
-): void {
-  const manifestPath = join(workDir, "photos", PHOTOS_MANIFEST_FILE);
-  if (!existsSync(manifestPath)) return;
-  let manifest;
-  try {
-    manifest = parsePhotosManifest(JSON.parse(readFileSync(manifestPath, "utf8")) as unknown);
-  } catch {
-    return;
-  }
-  const refByDigest = new Map<string, string>();
-  for (const pair of winners) {
-    const digest = pairDigest(pair);
-    const ref = (pair.recA ?? pair.recB)?.source_ref;
-    if (digest && ref && !refByDigest.has(digest)) refByDigest.set(digest, ref);
-  }
-  const assigned = new Set<string>();
-  const photos = manifest.photos.map((entry) => {
-    const { source_ref: oldRef, ...rest } = entry;
-    const winnerRef = refByDigest.get(entry.sha256);
-    const ref = winnerRef ?? (oldRef && keptStaleRefs.has(oldRef) ? oldRef : undefined);
-    if (!ref || assigned.has(ref)) return rest;
-    assigned.add(ref);
-    return { ...rest, source_ref: ref };
-  });
-  const next = `${JSON.stringify({ version: 1, photos }, null, 2)}\n`;
-  if (next !== `${JSON.stringify(manifest, null, 2)}\n`) {
-    writeSafeOutputFile(manifestPath, next, repoRoot);
-  }
-}
 
 // The final record holds reader a's content. When both readers read the same photo, it names both.
 function withBothReaders(chosen: ReferenceRecord, pair: PairedPage): ReferenceRecord {
@@ -228,9 +120,16 @@ export function compareWorkFolder(opts: {
   // person changed the file.
   const previousHashes = new Map<string, string>();
   const previousReport = readJsonIfExists<Partial<CompareWorkReport>>(join(finalDir, "report.json"));
-  for (const page of previousReport?.pages ?? []) {
-    if (typeof page.final_record_sha256 === "string") {
-      previousHashes.set(page.source_ref, page.final_record_sha256);
+  if (previousReport && Array.isArray(previousReport.pages)) {
+    for (const page of previousReport.pages) {
+      if (
+        typeof page === "object" &&
+        page !== null &&
+        typeof page.source_ref === "string" &&
+        typeof page.final_record_sha256 === "string"
+      ) {
+        previousHashes.set(page.source_ref, page.final_record_sha256);
+      }
     }
   }
 
@@ -388,6 +287,7 @@ export function compareWorkFolder(opts: {
         ...readTimeUnclearAnswers,
       ]),
     ];
+    const expressionDisagreements = findExpressionDisagreements(allDiffs);
     const readerAnswerConflicts = [
       ...new Set([
         ...collectReadTimeAnswerConflicts(
@@ -415,6 +315,7 @@ export function compareWorkFolder(opts: {
       recordA: pair.recA,
       recordB: pair.recB,
       answerDisagreements,
+      expressionDisagreements,
     });
     const pageStatus = decision.status;
     statusMap[sourceRef] = pageStatus;
@@ -489,6 +390,7 @@ export function compareWorkFolder(opts: {
       ...(answerConflicts.length > 0 ? { answer_conflicts: answerConflicts } : {}),
       ...(readerAnswerConflicts.length > 0 ? { reader_answer_conflicts: readerAnswerConflicts } : {}),
       ...(answerDisagreements.length > 0 ? { answer_disagreements: answerDisagreements } : {}),
+      ...(expressionDisagreements.length > 0 ? { expression_disagreements: expressionDisagreements } : {}),
       only_in_reader: onlyIn,
       digest_mismatch: pair.digestMismatch,
       differences: editedByPerson

@@ -490,6 +490,79 @@ describe("formatCompareReportMarkdown", () => {
     );
   });
 
+  it("renders expression disagreement reason in summary, per-page details with expression paths, and end-of-run list", () => {
+    const report: CompareWorkReport = {
+      reader_a: { family: "codex", model: "x1" },
+      reader_b: { family: "claude", model: "c1" },
+      pages: [
+        {
+          source_ref: "sample:M:5b",
+          photo: "555555555556.jpg",
+          original_name: "05b.jpg",
+          photo_sha256: "5".repeat(63) + "6",
+          status: "machine_read",
+          agreement: { agreed: 19, compared: 20, percent: 95 },
+          result: "sent to a person",
+          result_reason: "readers disagree on an expression",
+          expression_disagreements: [
+            "sections[0].items[n=1].expr.op",
+            "examples[0].parts[0].expr.operands[0]",
+          ],
+          only_in_reader: null,
+          digest_mismatch: null,
+          differences: [
+            { path: "sections[0].items[n=1].expr.op", a: "mul", b: "add", kind: "value" },
+          ],
+          once_read: [],
+          both_unclear: [],
+          one_unclear: [],
+          needs_person_read: false,
+          unnamed_teaching_marks: [],
+          reader_notes: { a: [], b: [] },
+        },
+      ],
+      pages_sent_to_person: [
+        {
+          source_ref: "sample:M:5b",
+          agreement_percent: 95,
+          agreed: 19,
+          compared: 20,
+          difference_count: 1,
+          reason: "readers disagree on an expression",
+        },
+      ],
+      single_reader_pages: [],
+      failed_photos: [],
+      too_small_photos: [],
+      could_not_read_photos: [],
+      kept_human_checked: [],
+      removed_stale_pages: [],
+      duplicate_photos: [],
+      removed_photos: [],
+      same_page_id_conflicts: [],
+    };
+
+    const md = formatCompareReportMarkdown(report);
+    expect(md).toContain(
+      "| sample:M:5b | 05b.jpg | machine_read | 95% (19/20) | sent to a person (readers disagree on an expression) | 1 | 0 | 0 | 0 | 0 | no |",
+    );
+    expect(md).toContain("- Result: sent to a person (readers disagree on an expression)");
+    expect(md).toContain("- Expression disagreements (readers disagree on an expression):");
+    expect(md).toContain("  - `sections[0].items[n=1].expr.op`");
+    expect(md).toContain("  - `examples[0].parts[0].expr.operands[0]`");
+    expect(md).toContain("- sample:M:5b: 95% agreement, 1 difference (readers disagree on an expression)");
+    expect(formatPagesSentToPerson(report)).toContain(
+      "sample:M:5b: 95% agreement, 1 difference (readers disagree on an expression)",
+    );
+
+    // Does not print "Exact match" when expression_disagreements is present even with empty diff lists.
+    const onlyExprList = formatCompareReportMarkdown({
+      ...report,
+      pages: [{ ...report.pages[0], differences: [] }],
+    });
+    expect(onlyExprList).not.toContain("Exact match across both readers.");
+  });
+
   it("shows review instructions only on machine_read across the full grid of 4 statuses, all difference kinds, and all optional parts", () => {
     const caption = { kind: "caption", applies_to: "all", text: "Practice" };
     const missingCaption = { kind: "caption", applies_to: [1], text: "Hint" };
@@ -589,6 +662,7 @@ describe("formatCompareReportMarkdown", () => {
       answer_conflicts: ['sections[0].items[n=1].responses[0]: reader gave "6", computed "5"'],
       reader_answer_conflicts: ["sections[0].items[n=2].responses[0]"],
       answer_disagreements: ["sections[0].items[n=1].responses[0].answer"],
+      expression_disagreements: ["sections[0].items[n=1].expr.operands[0]"],
       needs_person_read: true,
       unnamed_teaching_marks: [
         { kind: "step" as const, path: "examples[0].steps[n=1]", description: "split tens", reader: "both" as const },
@@ -711,6 +785,7 @@ describe("formatCompareReportMarkdown", () => {
       expect(md, label).toContain("Answer conflicts");
       expect(md, label).toContain("Reader answer conflicts");
       expect(md, label).toContain("Answer disagreements");
+      expect(md, label).toContain("Expression disagreements");
       expect(md, label).toContain("Reader answer notes");
 
       if (cell.status === "machine_read") {

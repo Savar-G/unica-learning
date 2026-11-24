@@ -14,6 +14,7 @@ import { isAnswerBearingResponse } from "./answers";
 import type { RecordDifference } from "./compare-parts";
 
 export const ANSWER_DISAGREEMENT_REASON = "readers disagree on an answer" as const;
+export const EXPRESSION_DISAGREEMENT_REASON = "readers disagree on an expression" as const;
 export const READER_ANSWER_CONFLICT_REASON =
   "a reader's answer differs from the computed answer" as const;
 
@@ -23,23 +24,36 @@ const ANSWER_STEP_KINDS: ReadonlySet<ExampleStepKind> = new Set(["answer", "rema
 // - ItemResponse.answer (including any sub-part inside an answer value)
 // - ExamplePart.shown_answer (including any sub-part)
 // - ExampleStep.shows / ExampleStep.printed when shows is "answer" or "remainder"
-// Note: none of the 10 Scaffold variants in types.ts has an answer field;
+// - PageItem.expr / ExamplePart.expr (including nested linked.pair, word.expr, notation.figure)
+// Note: none of the 10 Scaffold variants in types.ts has an answer or expr field;
 // printed answers for worked_item scaffolds live in ItemResponse.answer.
 const ITEM_RESPONSE_ANSWER_RE =
   /^sections\[(\d+)\]\.items\[(n=)?(\d+)\]\.responses\[(\d+)\]\.answer(?:$|[.\[])/;
 const EXAMPLE_SHOWN_ANSWER_RE = /^examples\[\d+\]\.parts\[\d+\]\.shown_answer(?:$|[.\[])/;
 const EXAMPLE_STEP_SHOWS_RE = /^(examples\[\d+\]\.steps\[(?:n=)?\d+\])\.shows$/;
 const EXAMPLE_STEP_PRINTED_RE = /^(examples\[(\d+)\]\.steps\[(n=)?(\d+)\])\.printed(?:$|[.\[])/;
+const ITEM_EXPR_RE = /^sections\[\d+\]\.items\[(?:n=)?\d+\]\.expr(?:$|[.\[])/;
+const EXAMPLE_PART_EXPR_RE = /^examples\[\d+\]\.parts\[\d+\]\.expr(?:$|[.\[])/;
 
-// Container paths whose diff payload (d.a or d.b) may contain an answer.
+// Container paths whose diff payload (d.a or d.b) may contain an answer or an expression.
+const SECTIONS_LIST_RE = /^sections$/;
 const SECTION_PATH_RE = /^sections\[\d+\]$/;
+const ITEMS_LIST_RE = /^sections\[\d+\]\.items$/;
 const ITEM_PATH_RE = /^sections\[\d+\]\.items\[(?:n=)?\d+\]$/;
 const RESPONSE_PATH_RE = /^sections\[(\d+)\]\.items\[(n=)?(\d+)\]\.responses\[(\d+)\]$/;
 const EXAMPLES_LIST_RE = /^examples$/;
 const EXAMPLE_PATH_RE = /^examples\[(?:b:)?\d+\]$/;
+const EXAMPLE_PARTS_LIST_RE = /^examples\[\d+\]\.parts$/;
 const EXAMPLE_PART_PATH_RE = /^examples\[\d+\]\.parts\[\d+\]$/;
 const EXAMPLE_STEPS_LIST_RE = /^examples\[\d+\]\.steps$/;
 const EXAMPLE_STEP_PATH_RE = /^examples\[\d+\]\.steps\[(?:n=|b:)?\d+\]$/;
+
+interface ContainerPredicates {
+  item?: (item: PageItem) => boolean;
+  response?: (resp: ItemResponse, item?: PageItem) => boolean;
+  examplePart?: (part: ExamplePart) => boolean;
+  exampleStep?: (step: ExampleStep) => boolean;
+}
 
 function isRecordObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -49,7 +63,7 @@ function isAnswerStepKind(value: unknown): boolean {
   return typeof value === "string" && ANSWER_STEP_KINDS.has(value as ExampleStepKind);
 }
 
-function hasAnswerValue(value: unknown): boolean {
+function hasFieldValue(value: unknown): boolean {
   if (value === null || value === undefined || value === NOT_STATED) return false;
   if (typeof value === "string") return value.trim().length > 0;
   if (Array.isArray(value)) return value.length > 0;
@@ -57,46 +71,73 @@ function hasAnswerValue(value: unknown): boolean {
   return true;
 }
 
-function responseContainsAnswer(v: unknown, item?: PageItem): boolean {
-  if (!isRecordObject(v)) return false;
-  const resp = v as unknown as ItemResponse;
-  if (item && !isAnswerBearingResponse(item, resp)) return false;
-  return hasAnswerValue(resp.answer);
+function responseMatches(
+  v: unknown,
+  pred: ContainerPredicates,
+  item?: PageItem,
+): boolean {
+  return Boolean(pred.response && isRecordObject(v) && pred.response(v as unknown as ItemResponse, item));
 }
 
-function itemContainsAnswer(v: unknown): boolean {
+function itemMatches(v: unknown, pred: ContainerPredicates): boolean {
   if (!isRecordObject(v)) return false;
   const item = v as unknown as PageItem;
-  return Array.isArray(item.responses) && item.responses.some((r) => responseContainsAnswer(r, item));
+  if (pred.item?.(item)) return true;
+  if (
+    pred.response &&
+    Array.isArray(item.responses) &&
+    item.responses.some((r) => responseMatches(r, pred, item))
+  ) {
+    return true;
+  }
+  return false;
 }
 
-function sectionContainsAnswer(v: unknown): boolean {
-  if (!isRecordObject(v)) return false;
-  const items = (v as Partial<PageSection>).items;
-  return Array.isArray(items) && items.some(itemContainsAnswer);
+function itemsListMatches(v: unknown, pred: ContainerPredicates): boolean {
+  return Array.isArray(v) && v.some((it) => itemMatches(it, pred));
 }
 
-function examplePartContainsAnswer(v: unknown): boolean {
-  return isRecordObject(v) && hasAnswerValue((v as Partial<ExamplePart>).shown_answer);
+function sectionMatches(v: unknown, pred: ContainerPredicates): boolean {
+  return isRecordObject(v) && itemsListMatches((v as Partial<PageSection>).items, pred);
 }
 
-function stepContainsAnswer(v: unknown): boolean {
-  return isRecordObject(v) && isAnswerStepKind((v as Partial<ExampleStep>).shows);
+function sectionsListMatches(v: unknown, pred: ContainerPredicates): boolean {
+  return Array.isArray(v) && v.some((sec) => sectionMatches(sec, pred));
 }
 
-function stepsListContainsAnswer(v: unknown): boolean {
-  return Array.isArray(v) && v.some(stepContainsAnswer);
+function examplePartMatches(v: unknown, pred: ContainerPredicates): boolean {
+  return Boolean(
+    pred.examplePart && isRecordObject(v) && pred.examplePart(v as unknown as ExamplePart),
+  );
 }
 
-function exampleContainsAnswer(v: unknown): boolean {
+function examplePartsListMatches(v: unknown, pred: ContainerPredicates): boolean {
+  return Boolean(
+    pred.examplePart && Array.isArray(v) && v.some((p) => examplePartMatches(p, pred)),
+  );
+}
+
+function exampleStepMatches(v: unknown, pred: ContainerPredicates): boolean {
+  return Boolean(
+    pred.exampleStep && isRecordObject(v) && pred.exampleStep(v as unknown as ExampleStep),
+  );
+}
+
+function exampleStepsListMatches(v: unknown, pred: ContainerPredicates): boolean {
+  return Boolean(
+    pred.exampleStep && Array.isArray(v) && v.some((s) => exampleStepMatches(s, pred)),
+  );
+}
+
+function exampleMatches(v: unknown, pred: ContainerPredicates): boolean {
   if (!isRecordObject(v)) return false;
   const ex = v as Partial<Example>;
-  if (Array.isArray(ex.parts) && ex.parts.some(examplePartContainsAnswer)) return true;
-  return stepsListContainsAnswer(ex.steps);
+  if (examplePartsListMatches(ex.parts, pred)) return true;
+  return exampleStepsListMatches(ex.steps, pred);
 }
 
-function examplesListContainsAnswer(v: unknown): boolean {
-  return Array.isArray(v) && v.some(exampleContainsAnswer);
+function examplesListMatches(v: unknown, pred: ContainerPredicates): boolean {
+  return Array.isArray(v) && v.some((ex) => exampleMatches(ex, pred));
 }
 
 function lookupExampleStep(
@@ -144,42 +185,63 @@ function isAnswerBearingSlotDiff(
   );
 }
 
-function containerDiffContainsAnswer(
+function containerDiffMatches(
   d: RecordDifference,
+  pred: ContainerPredicates,
   records?: { a?: ReferenceRecord | null; b?: ReferenceRecord | null },
 ): boolean {
+  if (SECTIONS_LIST_RE.test(d.path)) {
+    return sectionsListMatches(d.a, pred) || sectionsListMatches(d.b, pred);
+  }
   if (SECTION_PATH_RE.test(d.path)) {
-    return sectionContainsAnswer(d.a) || sectionContainsAnswer(d.b);
+    return sectionMatches(d.a, pred) || sectionMatches(d.b, pred);
+  }
+  if (ITEMS_LIST_RE.test(d.path)) {
+    return itemsListMatches(d.a, pred) || itemsListMatches(d.b, pred);
   }
   if (ITEM_PATH_RE.test(d.path)) {
-    return itemContainsAnswer(d.a) || itemContainsAnswer(d.b);
+    return itemMatches(d.a, pred) || itemMatches(d.b, pred);
   }
-  const responseMatch = RESPONSE_PATH_RE.exec(d.path);
+  const responseMatch = pred.response ? RESPONSE_PATH_RE.exec(d.path) : null;
   if (responseMatch) {
     const sectionIdx = Number(responseMatch[1]);
     const byKeyN = responseMatch[2] !== undefined;
     const itemNum = Number(responseMatch[3]);
     const itemA = lookupPageItem(records?.a, sectionIdx, byKeyN, itemNum);
     const itemB = lookupPageItem(records?.b, sectionIdx, byKeyN, itemNum);
-    return responseContainsAnswer(d.a, itemA) || responseContainsAnswer(d.b, itemB);
+    return responseMatches(d.a, pred, itemA) || responseMatches(d.b, pred, itemB);
   }
   if (EXAMPLES_LIST_RE.test(d.path)) {
-    return examplesListContainsAnswer(d.a) || examplesListContainsAnswer(d.b);
+    return examplesListMatches(d.a, pred) || examplesListMatches(d.b, pred);
   }
   if (EXAMPLE_PATH_RE.test(d.path)) {
-    return exampleContainsAnswer(d.a) || exampleContainsAnswer(d.b);
+    return exampleMatches(d.a, pred) || exampleMatches(d.b, pred);
+  }
+  if (EXAMPLE_PARTS_LIST_RE.test(d.path)) {
+    return examplePartsListMatches(d.a, pred) || examplePartsListMatches(d.b, pred);
   }
   if (EXAMPLE_PART_PATH_RE.test(d.path)) {
-    return examplePartContainsAnswer(d.a) || examplePartContainsAnswer(d.b);
+    return examplePartMatches(d.a, pred) || examplePartMatches(d.b, pred);
   }
   if (EXAMPLE_STEPS_LIST_RE.test(d.path)) {
-    return stepsListContainsAnswer(d.a) || stepsListContainsAnswer(d.b);
+    return exampleStepsListMatches(d.a, pred) || exampleStepsListMatches(d.b, pred);
   }
   if (EXAMPLE_STEP_PATH_RE.test(d.path)) {
-    return stepContainsAnswer(d.a) || stepContainsAnswer(d.b);
+    return exampleStepMatches(d.a, pred) || exampleStepMatches(d.b, pred);
   }
   return false;
 }
+
+const ANSWER_CONTAINER_PREDICATES: ContainerPredicates = {
+  response: (resp, item) => (!item || isAnswerBearingResponse(item, resp)) && hasFieldValue(resp.answer),
+  examplePart: (part) => hasFieldValue(part.shown_answer),
+  exampleStep: (step) => isAnswerStepKind(step.shows),
+};
+
+const EXPRESSION_CONTAINER_PREDICATES: ContainerPredicates = {
+  item: (item) => hasFieldValue(item.expr),
+  examplePart: (part) => hasFieldValue(part.expr),
+};
 
 /**
  * Returns the deduplicated diff paths where the two readers disagree on an answer.
@@ -188,8 +250,9 @@ function containerDiffContainsAnswer(
  * - Item response `answer` (including digit boxes, remainders, printed answers, or nested sub-parts)
  * - Worked-example part `shown_answer`
  * - Worked-example step `shows` / `printed` for `"answer"` and `"remainder"` steps
- * - Whole one-sided or unmatched entries (`sections[i]`, `items[n=k]`, `responses[i]`,
- *   `examples`, `examples[i]`, `parts[i]`, `steps`, `steps[n=k]`) that contain an answer
+ * - Whole one-sided or unmatched entries (`sections`, `sections[i]`, `items`, `items[n=k]`,
+ *   `responses[i]`, `examples`, `examples[i]`, `parts`, `parts[i]`, `steps`, `steps[n=k]`)
+ *   that contain an answer
  */
 export function findAnswerDisagreements(
   diffs: readonly RecordDifference[],
@@ -256,7 +319,44 @@ export function findAnswerDisagreements(
 
     if (d.kind === "wording") continue;
 
-    if (containerDiffContainsAnswer(d, records)) {
+    if (containerDiffMatches(d, ANSWER_CONTAINER_PREDICATES, records)) {
+      add(d.path);
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Returns the deduplicated diff paths where the two readers disagree on an expression.
+ *
+ * Covers every expression location in `src/lib/reference-record/types.ts`:
+ * - `PageItem.expr` and `ExamplePart.expr` (including nested `linked.pair`, `word.expr`, `notation.figure`)
+ *   for every difference kind except `empty_answer`
+ * - Whole one-sided or unmatched entries (`sections`, `sections[i]`, `items`, `items[n=k]`,
+ *   `examples`, `examples[i]`, `parts`, `parts[i]`) that contain a non-null expression
+ */
+export function findExpressionDisagreements(diffs: readonly RecordDifference[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (path: string): void => {
+    if (!seen.has(path)) {
+      seen.add(path);
+      out.push(path);
+    }
+  };
+
+  for (const d of diffs) {
+    if (d.kind === "empty_answer") continue;
+
+    if (ITEM_EXPR_RE.test(d.path) || EXAMPLE_PART_EXPR_RE.test(d.path)) {
+      add(d.path);
+      continue;
+    }
+
+    if (d.kind === "order" || d.kind === "wording") continue;
+
+    if (containerDiffMatches(d, EXPRESSION_CONTAINER_PREDICATES)) {
       add(d.path);
     }
   }

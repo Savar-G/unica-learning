@@ -9,7 +9,9 @@ import {
 import { applyComputedAnswers, findEmptyAnswers } from "./answers";
 import {
   ANSWER_DISAGREEMENT_REASON,
+  EXPRESSION_DISAGREEMENT_REASON,
   findAnswerDisagreements,
+  findExpressionDisagreements,
   READER_ANSWER_CONFLICT_REASON,
 } from "./compare-answers";
 import {
@@ -45,7 +47,9 @@ export type { CompareCounts, DiffKind, RecordDifference, UnnamedTeachingMark };
 export {
   ANSWER_DISAGREEMENT_REASON,
   collectUnnamedTeachingMarks,
+  EXPRESSION_DISAGREEMENT_REASON,
   findAnswerDisagreements,
+  findExpressionDisagreements,
   normalizeNotationText,
   normalizeProseText,
   READER_ANSWER_CONFLICT_REASON,
@@ -66,6 +70,7 @@ export const PAGE_STOP_REASONS = [
   READER_ANSWER_CONFLICT_REASON,
   "empty answer place",
   ANSWER_DISAGREEMENT_REASON,
+  EXPRESSION_DISAGREEMENT_REASON,
   "no compared fields",
 ] as const;
 
@@ -364,6 +369,7 @@ export interface DecideStatusInput {
   recordA?: ReferenceRecord | null;
   recordB?: ReferenceRecord | null;
   answerDisagreements?: readonly string[];
+  expressionDisagreements?: readonly string[];
 }
 
 export interface PageDecision {
@@ -403,6 +409,11 @@ export function decidePageOutcome(input: DecideStatusInput): PageDecision {
     findAnswerDisagreements(input.diffs, { a: input.recordA, b: input.recordB });
   if (answerDisagreements.length > 0) {
     stopReasons.push(ANSWER_DISAGREEMENT_REASON);
+  }
+  const expressionDisagreements =
+    input.expressionDisagreements ?? findExpressionDisagreements(input.diffs);
+  if (expressionDisagreements.length > 0) {
+    stopReasons.push(EXPRESSION_DISAGREEMENT_REASON);
   }
   if (stopReasons.length > 0) {
     return { status: "machine_read", stopReasons };

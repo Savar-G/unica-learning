@@ -49,13 +49,25 @@ function describePagePhoto(workDir: string, page: string): string {
   }
   const reportPath = join(workDir, "final", "report.json");
   if (existsSync(reportPath)) {
-    const report = readStrictJsonFile(reportPath) as {
-      pages?: Array<{ source_ref?: unknown; photo?: unknown; original_name?: unknown }>;
-    };
-    const entry = report?.pages?.find((p) => p.source_ref === page);
-    if (entry && typeof entry.photo === "string") {
-      const original = typeof entry.original_name === "string" ? ` (original name ${entry.original_name})` : "";
-      return `${join(photosDir, entry.photo)}${original}`;
+    const rawReport = readStrictJsonFile(reportPath);
+    if (typeof rawReport === "object" && rawReport !== null && !Array.isArray(rawReport)) {
+      const pages = (rawReport as Record<string, unknown>).pages;
+      if (Array.isArray(pages)) {
+        const entry = pages.find(
+          (p): p is Record<string, unknown> =>
+            typeof p === "object" &&
+            p !== null &&
+            !Array.isArray(p) &&
+            (p as Record<string, unknown>).source_ref === page,
+        );
+        if (entry && typeof entry.photo === "string" && entry.photo.length > 0) {
+          const original =
+            typeof entry.original_name === "string" && entry.original_name.length > 0
+              ? ` (original name ${entry.original_name})`
+              : "";
+          return `${join(photosDir, entry.photo)}${original}`;
+        }
+      }
     }
   }
   return `the photo of this page in ${photosDir}`;
