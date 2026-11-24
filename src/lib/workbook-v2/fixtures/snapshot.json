@@ -1,0 +1,50 @@
+{
+  "format": 1,
+  "id": "invented-level-3-v1",
+  "level": { "id": "level-3", "name": "3" },
+  "topics": [
+    { "id": "topic-20", "code": "3-20", "title": "Multiplying 2 digits by 1 digit", "sheets": ["column-multiplication-1"] }
+  ],
+  "sheets": [
+    {
+      "id": "column-multiplication-1",
+      "firstPage": 381,
+      "front": {
+        "instruction": "Multiply. Start with the ones.",
+        "template": "columns-2x4",
+        "rows": [
+          {
+            "id": "no-carry",
+            "shape": "mul.column",
+            "items": 4,
+            "limits": { "a": { "min": 11, "max": 43 }, "b": { "min": 2, "max": 4 }, "carries": { "min": 0, "max": 0 }, "product": { "min": 10, "max": 99 }, "zeroInTens": "never" }
+          },
+          {
+            "id": "one-carry",
+            "shape": "mul.column",
+            "items": 4,
+            "limits": { "a": { "min": 12, "max": 49 }, "b": { "min": 2, "max": 4 }, "carries": { "min": 1, "max": 1 }, "product": { "min": 10, "max": 99 }, "zeroInTens": "never" }
+          }
+        ]
+      },
+      "back": {
+        "instruction": "Multiply. If you carry, write the number above the tens.",
+        "template": "columns-2x4",
+        "rows": [
+          {
+            "id": "one-carry-larger",
+            "shape": "mul.column",
+            "items": 4,
+            "limits": { "a": { "min": 12, "max": 49 }, "b": { "min": 2, "max": 8 }, "carries": { "min": 1, "max": 1 }, "product": { "min": 10, "max": 99 }, "zeroInTens": "never" }
+          },
+          {
+            "id": "past-one-hundred",
+            "shape": "mul.column",
+            "items": 4,
+            "limits": { "a": { "min": 21, "max": 98 }, "b": { "min": 3, "max": 9 }, "carries": { "min": 0, "max": 1 }, "product": { "min": 100, "max": 999 }, "zeroInTens": "allowed" }
+          }
+        ]
+      }
+    }
+  ]
+}
