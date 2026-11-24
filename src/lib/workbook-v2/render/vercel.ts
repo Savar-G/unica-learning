@@ -1,11 +1,12 @@
 // Draws in a Vercel function with the official pinned Typst program for linux x64. A function that builds books needs the
 // staged program in its bundle; no function does yet (UNI-260). Nothing here knows Next.js or the app.
-import { access, chmod, constants, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { chmod, lstat, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { dirname, join, relative, sep } from "node:path";
 import { sha256 } from "../hash";
 import { RenderError } from "../renderer";
 import { installTypst } from "./install";
 import { PINS, type Pins } from "./pins";
+import { readRegularFile } from "./regular-file";
 import { drawingFiles, type RenderAssets } from "./typst";
 
 export const VERCEL_TYPST_TARGET = "x86_64-unknown-linux-musl";
@@ -52,29 +53,38 @@ export interface StageTypstResult {
   reused: boolean;
 }
 
+/** Makes each folder between the root and the place, and refuses one that is a link or no folder: it can lead outside. */
+async function makeFolders(root: string, place: string): Promise<void> {
+  let folder = root;
+  for (const part of relative(root, place).split(sep)) {
+    folder = join(folder, part);
+    await mkdir(folder).catch(() => undefined);
+    if (!(await lstat(folder)).isDirectory()) throw new RenderError(`${folder} must be a folder.`);
+  }
+}
+
 /** Downloads (if needed) via `installTypst` and stages the verified linux x64 Typst binary inside the project root. */
 export async function stageBundledTypst({ root, home, pins = PINS, download }: StageTypstInput): Promise<StageTypstResult> {
   const pin = pins.targets[VERCEL_TYPST_TARGET];
   if (!pin) throw new RenderError(`The workbook engine has no pinned Typst for ${VERCEL_TYPST_TARGET}.`);
   const dest = vercelAssets(root, pins).program;
-  const existing = await readFile(dest).catch(() => null);
+  await makeFolders(root, dirname(dest));
+  const existing = await readRegularFile(dest);
   if (existing && sha256(existing) === pin.programSha256) {
-    await access(dest, constants.X_OK).catch(() => chmod(dest, MODE));
+    await chmod(dest, MODE);
     return { path: dest, bytes: existing.byteLength, reused: true };
   }
 
   const cached = await installTypst({ home, target: VERCEL_TYPST_TARGET, pins, download });
-  const bytes = await readFile(cached);
-  if (sha256(bytes) !== pin.programSha256) {
+  const bytes = await readRegularFile(cached);
+  if (!bytes || sha256(bytes) !== pin.programSha256) {
     throw new RenderError(`The cached program ${cached} is not the pinned Typst ${pins.version} for ${VERCEL_TYPST_TARGET}.`);
   }
 
-  const place = dirname(dest);
-  await mkdir(place, { recursive: true });
-  const work = await mkdtemp(join(place, ".stage-"));
+  const work = await mkdtemp(join(dirname(dest), ".stage-"));
   try {
     const temp = join(work, "typst");
-    await writeFile(temp, bytes, { mode: MODE });
+    await writeFile(temp, bytes);
     await chmod(temp, MODE);
     await rename(temp, dest);
   } finally {

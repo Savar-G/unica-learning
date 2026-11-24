@@ -1,4 +1,5 @@
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -370,36 +371,70 @@ describe.skipIf(skipTypstTests())("with the real Typst", () => {
       }
     });
 
-    it("runs two concurrent builds on one renderer without sharing temp files and cleans up on success, failure and timeout", async () => {
-      const pages = goodPages();
-      const before = new Set(listTempWorkDirs());
-      const renderer = await openRenderer(assets());
-      const [one, two] = await Promise.all([renderer.render(pages), renderer.render(pages)]);
-      expect(Buffer.compare(one.pdf, two.pdf)).toBe(0);
-      expect(one.images.map((img, i) => Buffer.compare(img, two.images[i]))).toEqual([0, 0]);
-      expect(listTempWorkDirs().filter((name) => !before.has(name))).toEqual([]);
+    /** A stand-in for Typst. `body` runs in the folder of one drawing. */
+    const standIn = async (name: string, body: string, timeoutMs?: number) => {
+      const program = inFolder(name);
+      writeFileSync(program, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+      const pins = { ...PINS, targets: { ...PINS.targets, [assets().target]: { archiveSha256: "0".repeat(64), programSha256: sha256(readFileSync(program)) } } };
+      return openRenderer({ ...assets(), program }, pins, { timeoutMs });
+    };
 
-      // Also verify concurrent builds when copyIfNotExecutable stages the program into each private temp folder.
+    it("draws two different books at the same time, each in its own folder", async () => {
+      const meet = inFolder("meet");
+      mkdirSync(meet);
+      // Each drawing writes its folder and its pages, then waits until it sees two folders. Alone it would wait for ever.
+      const renderer = await standIn("meets.sh", `echo "$(pwd)" > "${meet}/$(basename "$(pwd)")"; cp pages.json "${meet}/$(basename "$(pwd)").json"; while [ "$(ls "${meet}" | grep -v json | wc -l)" -lt 2 ]; do sleep 0.02; done; echo met >&2; exit 1`, 10_000);
+      const [front, back] = goodPages();
+      const results = await Promise.allSettled([renderer.render([front]), renderer.render([back])]);
+      expect(results.map((r) => (r.status === "rejected" ? String(r.reason) : "drawn"))).toEqual([expect.stringContaining("met"), expect.stringContaining("met")]);
+      const pagesSeen = readdirSync(meet).filter((f) => f.endsWith(".json")).map((f) => JSON.parse(readFileSync(join(meet, f), "utf8")).pages[0].page);
+      expect(pagesSeen.sort()).toEqual([front.page, back.page]);
+      expect(listTempWorkDirs()).toEqual([]);
+    });
+
+    it("draws the same bytes at the same time, also from a program that may not run", async () => {
       const noExec = inFolder("concurrent-noexec");
       cpSync(assets().program, noExec);
       chmodSync(noExec, 0o444);
-      const stagedRenderer = await openRenderer({ ...assets(), program: noExec, copyIfNotExecutable: true });
-      const [s1, s2] = await Promise.all([stagedRenderer.render(pages), stagedRenderer.render(pages)]);
-      expect(Buffer.compare(s1.pdf, one.pdf)).toBe(0);
-      expect(Buffer.compare(s2.pdf, two.pdf)).toBe(0);
-      expect(listTempWorkDirs().filter((name) => !before.has(name))).toEqual([]);
+      const pages = goodPages();
+      const [plain, copied] = await Promise.all([openRenderer(assets()), openRenderer({ ...assets(), program: noExec, copyIfNotExecutable: true })]);
+      const [one, two, three] = await Promise.all([plain.render(pages), copied.render(pages), copied.render(pages)]);
+      for (const other of [two, three]) {
+        expect(Buffer.compare(one.pdf, other.pdf)).toBe(0);
+        expect(one.images.map((image, i) => Buffer.compare(image, other.images[i]))).toEqual([0, 0]);
+      }
+      expect(listTempWorkDirs()).toEqual([]);
+    });
 
-      // Failure removes temp folder.
+    it("removes its folder after a failure", async () => {
       await expect(renderWith(template("cleanup-err.typ", (s) => `${s}\n#unknown-fn()`))).rejects.toThrow(/Typst reported:/);
-      expect(listTempWorkDirs().filter((name) => !before.has(name))).toEqual([]);
+      expect(listTempWorkDirs()).toEqual([]);
+    });
 
-      // Timeout kills child processes and removes temp folder.
-      const slowProgram = inFolder("slow.sh");
-      writeFileSync(slowProgram, "#!/bin/sh\nsleep 10\n", { mode: 0o755 });
-      const slowPins = { ...PINS, targets: { ...PINS.targets, [assets().target]: { archiveSha256: "0".repeat(64), programSha256: sha256(readFileSync(slowProgram)) } } };
-      const slowRenderer = await openRenderer({ ...assets(), program: slowProgram }, slowPins, { timeoutMs: 150 });
-      await expect(slowRenderer.render(pages)).rejects.toThrow(/Typst reported:/);
-      expect(listTempWorkDirs().filter((name) => !before.has(name))).toEqual([]);
+    it("kills a program that started and does not end, and removes its folder", async () => {
+      const started = inFolder("started");
+      const renderer = await standIn("slow.sh", `echo $$ >> "${started}"; exec sleep 30`, 400);
+      const before = Date.now();
+      await expect(renderer.render(goodPages())).rejects.toThrow(/Typst reported:/);
+      expect(Date.now() - before).toBeLessThan(10_000);
+      const ids = readFileSync(started, "utf8").trim().split("\n").map(Number);
+      expect(ids).toHaveLength(3);
+      for (const id of ids) expect(() => process.kill(id, 0)).toThrow(/ESRCH/);
+      expect(listTempWorkDirs()).toEqual([]);
+    });
+
+    it.each([0, -1, 0.5, Number.NaN, Number.POSITIVE_INFINITY, 60_001, 2_147_483_647, 2_147_483_648])("refuses a time limit of %s ms", async (timeoutMs) => {
+      await expect(openRenderer(assets(), PINS, { timeoutMs })).rejects.toThrow("The time limit must be a whole number of milliseconds from 1 to 60000.");
+    });
+
+    it.each<[string, (place: string) => void]>([
+      ["a named pipe", (place) => execFileSync("mkfifo", [place])],
+      ["a folder", (place) => mkdirSync(place)],
+      ["a link", (place) => symlinkSync(assets().program, place)],
+    ])("does not wait for or follow %s in the place of the program", async (name, make) => {
+      const place = inFolder(`odd-${name.replaceAll(" ", "-")}`);
+      make(place);
+      await expect(openRenderer({ ...assets(), program: place })).rejects.toThrow(/is not at/);
     });
   });
 });

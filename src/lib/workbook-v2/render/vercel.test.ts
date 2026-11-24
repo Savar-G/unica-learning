@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { sha256 } from "../hash";
 import { PINS, type Pins } from "./pins";
@@ -82,6 +82,36 @@ describe("stageBundledTypst", () => {
     const assets = vercelAssets(root);
     await expect(openRenderer({ ...assets, fontsDir: join(process.cwd(), "src/lib/workbook-v2/render/fonts"), template: join(process.cwd(), "src/lib/workbook-v2/render/page.typ") }, PINS))
       .rejects.toThrow(/is not the pinned Typst 0\.15\.1 for x86_64-unknown-linux-musl/);
+  });
+
+  it.each<[string, (root: string, outside: string) => void]>([
+    ["a link in the place of its first folder", (root, outside) => symlinkSync(outside, join(root, ".workbook-v2"))],
+    ["a link in the place of a later folder", (root, outside) => { mkdirSync(join(root, ".workbook-v2")); symlinkSync(outside, join(root, ".workbook-v2", "typst")); }],
+    ["a file in the place of a folder", (root) => writeFileSync(join(root, ".workbook-v2"), "x")],
+  ])("refuses %s and writes nothing outside the project", async (_name, make) => {
+    const root = join(folder, "linked-repo");
+    const outside = join(folder, "outside");
+    mkdirSync(root);
+    mkdirSync(outside);
+    make(root, outside);
+    await expect(stageBundledTypst({ root, home: join(folder, "home"), pins: fakePins(), download: async () => archive })).rejects.toThrow(/must be a folder/);
+    expect(readdirSync(outside)).toEqual([]);
+  });
+
+  it.each<[string, (place: string, outside: string) => void]>([
+    ["a link to the right program", (place, outside) => symlinkSync(outside, place)],
+    ["a named pipe", (place) => execFileSync("mkfifo", [place])],
+  ])("replaces %s in the place of the program, and does not follow it or wait", async (_name, make) => {
+    const root = join(folder, "odd-repo");
+    const outside = join(folder, "outside-typst");
+    writeFileSync(outside, payload, { mode: 0o444 });
+    const place = vercelAssets(root, fakePins()).program;
+    mkdirSync(dirname(place), { recursive: true });
+    make(place, outside);
+    const staged = await stageBundledTypst({ root, home: join(folder, "home"), pins: fakePins(), download: async () => archive });
+    expect(staged.reused).toBe(false);
+    expect(lstatSync(place).isFile()).toBe(true);
+    expect(statSync(outside).mode & 0o777).toBe(0o444);
   });
 
   it("refuses a bad archive or program hash and leaves nothing staged", async () => {

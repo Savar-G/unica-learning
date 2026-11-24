@@ -10,6 +10,7 @@ import { sha256 } from "../hash";
 import { RenderError, type Renderer, type Rendering } from "../renderer";
 import { isRecord } from "../shapes/shape";
 import { PINS, type Pins } from "./pins";
+import { readRegularFile } from "./regular-file";
 
 const TIME_LIMIT_MS = 60_000;
 const OUTPUT_LIMIT_BYTES = 256 * 1024 * 1024;
@@ -76,6 +77,10 @@ interface CheckedProgram {
   stageBytes: Uint8Array | null;
 }
 
+/**
+ * The program starts from the place that was checked. Someone who can change that file between the check and the start
+ * can change this code too, and a copy for each drawing would be checked again by macOS, which takes seconds.
+ */
 async function checkProgram(
   program: string,
   hash: string | undefined,
@@ -83,7 +88,7 @@ async function checkProgram(
   target: string,
   copyIfNotExecutable: boolean,
 ): Promise<CheckedProgram> {
-  const bytes = await readFile(program).catch(() => null);
+  const bytes = await readRegularFile(program);
   if (!bytes) throw new RenderError(`Typst ${version} is not at ${program}. Run "npm run typst:install" once.`);
   if (hash === undefined || sha256(bytes) !== hash) throw new RenderError(`The program ${program} is not the pinned Typst ${version} for ${target}.`);
   const executable = await access(program, constants.X_OK).then(() => true, () => false);
@@ -178,7 +183,7 @@ async function draw(
 /** Checks the program and the fonts against their pins, reads the drawing file, and gives the renderer that uses them. */
 export async function openRenderer(assets: RenderAssets, pins: Pins = PINS, options: OpenRendererOptions = {}): Promise<Renderer> {
   const timeoutMs = options.timeoutMs ?? TIME_LIMIT_MS;
-  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new RenderError("The render timeout must be a positive number.");
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > TIME_LIMIT_MS) throw new RenderError(`The time limit must be a whole number of milliseconds from 1 to ${TIME_LIMIT_MS}.`);
   const kit = await readKit(assets, pins);
   return {
     identity: { typst: pins.version, program: kit.programSha256, template: sha256(kit.template), fonts: { ...pins.fonts } },
