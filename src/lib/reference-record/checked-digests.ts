@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { isPlainObject, parseStrictUtf8Json } from "./import-photos";
 import { writeSafeOutputFile } from "./output-guard";
 import { readRegularFileIfExists } from "./read-file";
+import { loadReportSummary } from "./report-hashes";
 import { isSourceRef } from "./validate";
 
 // The digests that tie a page checked by a person to its record and its photo. reference:check
@@ -117,16 +118,18 @@ export function findCheckProblems(
   return problems;
 }
 
-// Import: a human_checked page must still match its digests. A machine_read page that a person
-// checked before must match them too: compare keeps its record when the photo changes, so the text
-// and the photo may not belong together. The digests of now are those of the bytes that the import
-// read and would send.
+// Import: a human_checked page must still match its digests. A page with a machine status that a
+// person checked before must match them too (or has no digest when the digest file is missing and
+// report.json remembers it): compare keeps its record when the photo changes, so the text and the
+// photo may not belong together. The digests of now are those of the bytes that the import read
+// and would send.
 export function checkCheckedPages(args: {
   finalDir: string;
   statusByRef: ReadonlyMap<string, string>;
   recordSha256ByRef: ReadonlyMap<string, string>;
   plannedPhotos: ReadonlyMap<string, { sha256: string }>;
   problems: string[];
+  reportCheckedRefs?: ReadonlySet<string>;
 }): void {
   let digests: CheckedDigests;
   try {
@@ -135,11 +138,23 @@ export function checkCheckedPages(args: {
     args.problems.push(err instanceof Error ? err.message : String(err));
     return;
   }
+  let reportedChecked = args.reportCheckedRefs;
+  if (reportedChecked === undefined) {
+    try {
+      reportedChecked = loadReportSummary(join(args.finalDir, "report.json")).checkedRefs;
+    } catch (err) {
+      args.problems.push(err instanceof Error ? err.message : String(err));
+      return;
+    }
+  }
   for (const [ref, recordSha256] of args.recordSha256ByRef) {
     const status = args.statusByRef.get(ref) ?? "machine_read";
-    const checkedBefore = digests.checkedBefore.has(ref);
     const digest = digests.pages.get(ref);
-    const lapsed = status === "machine_read" && (digest !== undefined || checkedBefore);
+    const checkedBefore =
+      digests.checkedBefore.has(ref) || (digest === undefined && reportedChecked.has(ref));
+    const lapsed =
+      status !== "human_checked" &&
+      (checkedBefore || (status === "machine_read" && digest !== undefined));
     if (status !== "human_checked" && !lapsed) continue;
     const photoSha256 = args.plannedPhotos.get(ref)?.sha256 ?? null;
     const causes = findCheckProblems(lapsed && checkedBefore ? undefined : digest, {
@@ -149,7 +164,7 @@ export function checkCheckedPages(args: {
     if (causes.length === 0) continue;
     const photoHint = photoSha256 === null ? " (give the prepared photos with --photos)" : "";
     const what = lapsed
-      ? "a person checked this page before and its status is machine_read now"
+      ? `a person checked this page before and its status is ${status} now`
       : "status.json says human_checked, but";
     args.problems.push(
       `${ref}: ${what}: ${causes.join("; ")}${photoHint}; run reference:compare, then a person runs reference:check for this page`,

@@ -49,6 +49,7 @@ import {
   loadOriginalNamesByDigest,
   loadPrepareReport,
   loadSlot,
+  pairDigest,
   pairSlotPages,
   pairSourceRef,
   pickPageWinners,
@@ -221,6 +222,7 @@ export function compareWorkFolder(opts: {
         photo: pair.photo,
         original_name: pair.originalName,
         photo_sha256: pair.photoSha256,
+        final_photo_sha256: null,
         status: "human_checked",
         agreement,
         result: resultLabelForStatus("human_checked"),
@@ -396,6 +398,7 @@ export function compareWorkFolder(opts: {
       photo: pair.photo,
       original_name: pair.originalName,
       photo_sha256: pair.photoSha256,
+      final_photo_sha256: keepsRecord ? null : pairDigest(pair),
       final_record_sha256: keepsRecord
         ? (previousHash ?? null)
         : createHash("sha256").update(finalText, "utf8").digest("hex"),

@@ -21,7 +21,7 @@ import {
 } from "./import-replace";
 import { sha256Hex } from "./read-file";
 import { checkStatusSingleRead } from "./record-path";
-import { checkMachineDigests } from "./report-hashes";
+import { checkMachineDigests, loadReportSummary, type ReportSummary } from "./report-hashes";
 import type { ReferenceRecord } from "./types";
 import { validateReferenceRecord } from "./validate";
 
@@ -322,10 +322,23 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
     : new Map<string, PlannedPhoto>();
   if (realRecordsDir) {
     const finalDir = realRecordsDir;
-    if (statusIsUsable) {
-      checkMachineDigests({ finalDir, statusByRef, recordSha256ByRef, plannedPhotos, problems });
+    let report: ReportSummary | undefined;
+    try {
+      report = loadReportSummary(join(finalDir, "report.json"));
+    } catch (err) {
+      problems.push(err instanceof Error ? err.message : String(err));
     }
-    checkCheckedPages({ finalDir, statusByRef, recordSha256ByRef, plannedPhotos, problems });
+    if (statusIsUsable && report) {
+      checkMachineDigests({ finalDir, statusByRef, recordSha256ByRef, plannedPhotos, problems, report });
+    }
+    checkCheckedPages({
+      finalDir,
+      statusByRef,
+      recordSha256ByRef,
+      plannedPhotos,
+      problems,
+      reportCheckedRefs: report?.checkedRefs ?? new Set(),
+    });
   }
 
   if (problems.length > 0) {

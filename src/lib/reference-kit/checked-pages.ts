@@ -3,6 +3,7 @@ import { join } from "node:path";
 import {
   CHECK_NOT_MARKED_REASON,
   findCheckProblems,
+  loadReportSummary,
   parseStrictUtf8Json,
   readCheckedDigests,
   readRegularFileIfExists,
@@ -46,30 +47,15 @@ function readStatusMap(finalDir: string): Record<string, string> {
   return raw as Record<string, string>;
 }
 
-// The kept pages that the last compare listed: a second memory of them, so that the loss of the
-// digest file alone does not lose a person's record.
-function readReportedKeptRefs(finalDir: string): string[] {
-  const filePath = join(finalDir, "report.json");
-  const report = readStrictJson(filePath) as { kept_human_checked?: unknown } | null | undefined;
-  const kept: unknown = report?.kept_human_checked ?? [];
-  if (!Array.isArray(kept)) throw new Error(`Damaged file ${filePath}: kept_human_checked is not a list`);
-  return kept.map((row: unknown, i) => {
-    const ref = (row as { source_ref?: unknown } | null)?.source_ref;
-    if (typeof ref !== "string") {
-      throw new Error(`Damaged file ${filePath}: kept_human_checked[${i}] has no source_ref`);
-    }
-    return ref;
-  });
-}
-
 export function loadCheckedPages(finalDir: string): CheckedPages {
   const status = readStatusMap(finalDir);
   const digests = readCheckedDigests(finalDir);
+  const reported = loadReportSummary(join(finalDir, "report.json")).checkedRefs;
   const refs = new Set<string>([
     ...Object.keys(status).filter((ref) => status[ref] === "human_checked"),
     ...digests.pages.keys(),
     ...digests.checkedBefore,
-    ...readReportedKeptRefs(finalDir),
+    ...reported,
   ]);
   return { status, digests, refs };
 }
@@ -91,6 +77,18 @@ function fileExists(filePath: string): boolean {
 // The checked pages that still have a record file. A person who removes the file lets go of the page.
 export function keptCheckedRefs(finalDir: string, checked: CheckedPages): Set<string> {
   return new Set([...checked.refs].filter((ref) => fileExists(finalRecordPath(finalDir, ref))));
+}
+
+// Saved checks whose photo_sha256 equals this photo and whose record is still in final/.
+export function checkedRefsForPhoto(
+  finalDir: string,
+  checked: CheckedPages,
+  photoSha256: string,
+): string[] {
+  const kept = keptCheckedRefs(finalDir, checked);
+  return [...checked.digests.pages]
+    .filter(([ref, d]) => d.photo_sha256 === photoSha256 && kept.has(ref))
+    .map(([ref]) => ref);
 }
 
 // True for the photo of a page that a person checked and whose record is still there: the photo of

@@ -467,7 +467,7 @@ describe("a page checked by a person", () => {
     }
   });
 
-  it("is not imported under a machine status with the photo of another work folder", async () => {
+    it("is not imported under a machine status with the photo of another work folder", async () => {
     for (const titleB of [undefined, "Adding Nombers"]) {
       rmSync(work, { recursive: true });
       mkdirSync(work);
@@ -481,6 +481,52 @@ describe("a page checked by a person", () => {
       addPreparedPhoto(work, "p9", REF);
       await expectRefused("another photo", status);
     }
+  });
+
+  it("ties a photo-mismatch page to reader A's photo via final_photo_sha256, accepts A's photo, and refuses B's photo", async () => {
+    addPreparedPhoto(work, "p1");
+    addPreparedPhoto(work, "p9");
+    setReadings([{ photo: "p1", ref: REF }]);
+    const runB = join(work, "reader-b", "run.json");
+    writeFileSync(
+      runB,
+      readFileSync(runB, "utf8").replaceAll(fakePhoto("p1").sha256, fakePhoto("p9").sha256),
+    );
+
+    const report = compare();
+    const page = pageOf(report);
+    expect(page.status).toBe("machine_read");
+    expect(page.photo_sha256).toBeNull();
+    expect(page.final_photo_sha256).toBe(fakePhoto("p1").sha256);
+
+    // Reader A's photo supplied the final text: accepted on import.
+    await expectImported("machine_read", "Adding Numbers", "p1", "reader A photo");
+
+    // Reader B's photo did not supply the final text: refused on import.
+    rmSync(join(work, "photos"), { recursive: true });
+    addPreparedPhoto(work, "p9", REF);
+    await expectRefused("another photo", "reader B photo");
+
+    // Reader B only: final_photo_sha256 is reader B's photo.
+    rmSync(join(work, "reader-a"), { recursive: true });
+    const reportB = compare();
+    expect(pageOf(reportB).final_photo_sha256).toBe(fakePhoto("p9").sha256);
+
+    // Edited or checked record keeps its own text, so final_photo_sha256 is null.
+    rmSync(work, { recursive: true });
+    mkdirSync(work);
+    setUpChecked();
+    const checkedReport = compare();
+    expect(pageOf(checkedReport).photo_sha256).toBe(fakePhoto("p1").sha256);
+    expect(pageOf(checkedReport).final_photo_sha256).toBeNull();
+
+    // Person-edited (unchecked) record also has final_photo_sha256: null.
+    const ref4 = "sample:M:4a";
+    writeFileSync(recordPath(ref4), JSON.stringify(makePage(ref4, "Edited by hand")));
+    const editedReport = compare();
+    expect(pageOf(editedReport, ref4).edited_by_person).toBe(true);
+    expect(pageOf(editedReport, ref4).photo_sha256).toBe(fakePhoto("p2").sha256);
+    expect(pageOf(editedReport, ref4).final_photo_sha256).toBeNull();
   });
 
   it("is not imported after its check lapsed, until the person checks it again or lets the record go", async () => {
@@ -518,6 +564,12 @@ describe("a page checked by a person", () => {
         compare();
         expect(statusMap()[REF], name).toBe("machine_read");
         await expectRefused(`a person checked this page before.*${row.cause}`, name);
+
+        // Even if checked-pages.digests is lost (copied folder), report.json still refuses the lapsed check.
+        const savedDigests = readFileSync(finalPath(CHECKED_DIGESTS_FILE));
+        rmSync(finalPath(CHECKED_DIGESTS_FILE));
+        await expectRefused(`a person checked this page before.*${BEFORE_DIGESTS}`, `${name} (digests removed)`);
+        writeFileSync(finalPath(CHECKED_DIGESTS_FILE), savedDigests);
 
         if (way === "checked again") {
           const title = (JSON.parse(readFileSync(recordPath(), "utf8")) as PageRecord).topic.title as string;

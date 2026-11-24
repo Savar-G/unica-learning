@@ -352,9 +352,10 @@ export function pairSourceRef(pair: PairedPage): string | null {
   return (pair.recA ?? pair.recB)?.source_ref ?? null;
 }
 
-// The photo digest that a pair's final record belongs to.
+// The photo digest that a pair's final record belongs to (reader A's when A has a record, else reader B's).
 export function pairDigest(pair: PairedPage): string | null {
-  return pair.photoSha256 ?? pair.digestMismatch?.a ?? pair.digestMismatch?.b ?? null;
+  if (pair.recA) return pair.digestMismatch ? pair.digestMismatch.a : pair.photoSha256;
+  return pair.photoSha256;
 }
 
 function compareByOriginalName(x: PairedPage, y: PairedPage): number {

@@ -6,6 +6,7 @@ import {
   writeSafeOutputFile,
 } from "@/lib/reference-record";
 import {
+  checkedRefsForPhoto,
   isCheckedForPhoto,
   isPhotoOfCheck,
   keptCheckedRefs,
@@ -288,6 +289,23 @@ async function readOnePhoto(ctx: RunContext, photo: ReadyPhoto, prefix: string):
     if (renamedB) ctx.entriesB = mergeRunEntries(ctx.entriesB, [renamedB]);
   };
 
+  const forceNote = force ? " (--force does not read this photo again)" : "";
+  const savedCheckRefs = checkedRefsForPhoto(finalDir, checked, sha256);
+  if (savedCheckRefs.length > 1) {
+    keepAsIs();
+    return `${prefix} kept: multiple checked pages share this photo (${savedCheckRefs.join(", ")})${forceNote}`;
+  }
+  if (savedCheckRefs.length === 1) {
+    const savedRef = savedCheckRefs[0];
+    keepAsIs();
+    if (!ctx.manifest.photos.find((p) => p.sha256 === sha256)?.source_ref) {
+      ctx.manifest = upsertManifestPhoto(ctx.manifest, { ...manifestEntry, source_ref: savedRef });
+    }
+    const counts = isCheckedForPhoto({ finalDir, checked, ref: savedRef, photoSha256: sha256 });
+    const why = counts ? "checked by a person" : "a person must check this page again";
+    return `${prefix} kept: ${why} -> ${savedRef}${forceNote}`;
+  }
+
   // Another photo that gives the id of a checked page is read again with --force.
   const checkedRef = refs.find((ref) =>
     force ? isPhotoOfCheck({ finalDir, checked, ref, photoSha256: sha256 }) : checked.refs.has(ref),
@@ -296,7 +314,7 @@ async function readOnePhoto(ctx: RunContext, photo: ReadyPhoto, prefix: string):
     keepAsIs();
     const counts = isCheckedForPhoto({ finalDir, checked, ref: checkedRef, photoSha256: sha256 });
     const why = counts ? "checked by a person" : "a person must check this page again";
-    return `${prefix} kept: ${why} -> ${checkedRef}${force ? " (--force does not read this photo again)" : ""}`;
+    return `${prefix} kept: ${why} -> ${checkedRef}${forceNote}`;
   }
 
   const validA = isValidReading(ctx.slotDirA, oldA);

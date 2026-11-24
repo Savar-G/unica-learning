@@ -72,6 +72,9 @@ export interface PageCompareReport {
   photo: string | null;
   original_name: string | null;
   photo_sha256: string | null;
+  // sha256 of the photo that supplied the final text (reader A's when A has a record, else reader B's).
+  // Null when a person edited or checked the kept record.
+  final_photo_sha256?: string | null;
   status: PageStatus;
   agreement?: PageAgreement;
   result?: PageResultLabel;

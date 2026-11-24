@@ -149,6 +149,20 @@ function keepsPhotoOfOtherText(
   return photo === undefined && prev.path !== null && !deepEqualJson(prev.transcript, record);
 }
 
+// Without a planned photo, a row with a stored photo may keep or lower its status, never raise it.
+// An unknown stored status has rank -1, so any valid planned status counts as a raise.
+function raisesStatusWithoutPhoto(
+  prev: ExistingReferenceRow,
+  plannedStatus: TranscriptStatus,
+  photo: PlannedPhoto | undefined,
+): boolean {
+  return (
+    photo === undefined &&
+    prev.path !== null &&
+    statusRank(prev.transcript_status) < statusRank(plannedStatus)
+  );
+}
+
 // Decides every existing row of the run and checks which rows use the paths it touches. Reads only.
 export async function planReplaces(args: {
   store: ReferenceStore;
@@ -167,10 +181,11 @@ export async function planReplaces(args: {
     const prev = args.existing.get(ref);
     let decision: ReplaceDecision | null = null;
     if (prev !== undefined) {
+      const plannedStatus = args.statusByRef.get(ref) ?? "machine_read";
       decision = decideReplace({
         record,
         prev,
-        plannedStatus: args.statusByRef.get(ref) ?? "machine_read",
+        plannedStatus,
         photo,
         storedSha: args.storedShaByRef.get(ref) ?? null,
       });
@@ -178,6 +193,13 @@ export async function planReplaces(args: {
       if (keepsPhotoOfOtherText(record, prev, photo)) {
         textProblems.push(
           `${ref}: the replace would change the text and keep the stored photo, which may not belong to it; give the photo of this page with --photos`,
+        );
+      } else if (raisesStatusWithoutPhoto(prev, plannedStatus, photo)) {
+        const fromLabel = isKnownStatus(prev.transcript_status)
+          ? prev.transcript_status
+          : quoted(prev.transcript_status);
+        textProblems.push(
+          `${ref}: the replace would raise the status (${fromLabel} -> ${plannedStatus}) and keep the stored photo, which may not belong to it; give the photo of this page with --photos`,
         );
       }
     }

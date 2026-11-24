@@ -1031,12 +1031,154 @@ describe("extractFolder (reference:extract)", () => {
       }
     });
 
-    it("gives a page that lost its photo the same photo again, or lets the page go with its record file", async () => {
+    it("finds a saved check by photo_sha256 when manifest, runs, or both are lost, keeps the photo, and compare + import accept it", async () => {
+      type Work = Awaited<ReturnType<typeof setUpCheckedWork>>;
+      const cases: Array<{ name: string; lose: (w: Work) => void }> = [
+        {
+          name: "lost manifest",
+          lose: (w) => rmSync(join(w.outDir, "photos", PHOTOS_MANIFEST_FILE)),
+        },
+        {
+          name: "lost runs",
+          lose: (w) => {
+            rmSync(join(w.outDir, "reader-a"), { recursive: true });
+            rmSync(join(w.outDir, "reader-b"), { recursive: true });
+          },
+        },
+        {
+          name: "both lost",
+          lose: (w) => {
+            for (const dir of ["photos", "reader-a", "reader-b"]) {
+              rmSync(join(w.outDir, dir), { recursive: true });
+            }
+          },
+        },
+      ];
+      for (const c of cases) {
+        for (const force of [false, true]) {
+          const label = `${c.name}${force ? ", with --force" : ""}`;
+          const w = await setUpCheckedWork();
+          const before = w.record();
+          // If readers ran on photo 0, they would return 5a and break the check.
+          w.sheets.set(w.shas[0], "5a");
+          c.lose(w);
+
+          const { report } = await w.extract({ force });
+          expect(w.calls.filter((call) => call.photo === w.shas[0]), label).toHaveLength(0);
+          expect(w.record().equals(before), label).toBe(true);
+          expect(w.status(), label).toBe("human_checked");
+          expect(report.pages_sent_to_person, label).toEqual([]);
+          const manifest = JSON.parse(
+            readFileSync(join(w.outDir, "photos", PHOTOS_MANIFEST_FILE), "utf8"),
+          ) as { photos: Array<{ sha256: string; source_ref?: string }> };
+          expect(manifest.photos.find((p) => p.sha256 === w.shas[0])?.source_ref, label).toBe(REF);
+
+          const { result, store } = await w.importAll();
+          expect(result.problems, label).toEqual([]);
+          expect(store.rows.get(REF)?.transcript_status, label).toBe("human_checked");
+          expect(await store.objectSha256("sample/M/3a.jpg"), label).toBe(w.shas[0]);
+        }
+      }
+    });
+
+    it("keeps the photo without guessing when manifest or a run gives another ref, or when two saved checks share one photo hash", async () => {
+      for (const force of [false, true]) {
+        // 1. Manifest gives another ref, runs lost: photo is kept, manifest keeps its ref, compare reports missing photo.
+        {
+          const label = `manifest other ref, force=${force}`;
+          const w = await setUpCheckedWork();
+          const before = w.record();
+          rmSync(join(w.outDir, "reader-a"), { recursive: true });
+          rmSync(join(w.outDir, "reader-b"), { recursive: true });
+          const manifestPath = join(w.outDir, "photos", PHOTOS_MANIFEST_FILE);
+          const m = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+            version: 1;
+            photos: Array<{ sha256: string; source_ref?: string }>;
+          };
+          for (const p of m.photos) {
+            if (p.sha256 === w.shas[0]) p.source_ref = "sample:M:5a";
+          }
+          writeFileSync(manifestPath, JSON.stringify(m, null, 2));
+
+          const { report } = await w.extract({ force });
+          expect(w.calls.filter((c) => c.photo === w.shas[0]), label).toHaveLength(0);
+          expect(w.record().equals(before), label).toBe(true);
+          expect(w.status(), label).toBe("machine_read");
+          expect(report.pages_sent_to_person?.find((p) => p.source_ref === REF)?.reason, label).toContain(
+            "photo of the check is missing",
+          );
+        }
+
+        // 2. Run gives another ref, manifest lost: photo is kept, compare reports missing photo.
+        {
+          const label = `run other ref, force=${force}`;
+          const w = await setUpCheckedWork();
+          const before = w.record();
+          rmSync(join(w.outDir, "photos", PHOTOS_MANIFEST_FILE));
+          for (const slot of ["reader-a", "reader-b"]) {
+            const slotDir = join(w.outDir, slot);
+            const runPath = join(slotDir, "run.json");
+            const run = JSON.parse(readFileSync(runPath, "utf8")) as {
+              photos: Array<{ photo_sha256?: string; source_ref?: string; record_file?: string }>;
+            };
+            for (const entry of run.photos) {
+              if (entry.photo_sha256 === w.shas[0] && entry.record_file) {
+                entry.source_ref = "sample:M:5a";
+                const rec = JSON.parse(readFileSync(join(slotDir, entry.record_file), "utf8")) as {
+                  source_ref: string;
+                };
+                rec.source_ref = "sample:M:5a";
+                writeFileSync(join(slotDir, entry.record_file), JSON.stringify(rec));
+              }
+            }
+            writeFileSync(runPath, JSON.stringify(run, null, 2));
+          }
+
+          const { report } = await w.extract({ force });
+          expect(w.calls.filter((c) => c.photo === w.shas[0]), label).toHaveLength(0);
+          expect(w.record().equals(before), label).toBe(true);
+          expect(w.status(), label).toBe("machine_read");
+          expect(report.pages_sent_to_person?.find((p) => p.source_ref === REF)?.reason, label).toContain(
+            "photo of the check is missing",
+          );
+        }
+
+        // 3. Two saved checks with one photo hash: keep the photo, choose no ref, leave manifest as it is.
+        {
+          const label = `two checks one photo hash, force=${force}`;
+          const w = await setUpCheckedWork();
+          w.check("sample:M:4a");
+          const before = w.record();
+          const digests = JSON.parse(readFileSync(w.digestsPath, "utf8")) as {
+            version: 1;
+            pages: Array<{ source_ref: string; record_sha256: string; photo_sha256: string }>;
+            checked_before: string[];
+          };
+          for (const p of digests.pages) p.photo_sha256 = w.shas[0];
+          writeFileSync(w.digestsPath, JSON.stringify(digests, null, 2));
+          for (const dir of ["photos", "reader-a", "reader-b"]) {
+            rmSync(join(w.outDir, dir), { recursive: true });
+          }
+
+          await w.extract({ force });
+          expect(w.calls.filter((c) => c.photo === w.shas[0]), label).toHaveLength(0);
+          expect(w.record().equals(before), label).toBe(true);
+          const manifest = JSON.parse(
+            readFileSync(join(w.outDir, "photos", PHOTOS_MANIFEST_FILE), "utf8"),
+          ) as { photos: Array<{ sha256: string; source_ref?: string }> };
+          expect(manifest.photos.find((p) => p.sha256 === w.shas[0])?.source_ref, label).toBeUndefined();
+        }
+      }
+    });
+
+    it("gives a page that lost its photo a new photo again, or lets the page go with its record file", async () => {
       const wrongId = async () => {
         const w = await setUpCheckedWork();
-        // An older kit read the photo again and gave it another page id.
+        // Original photo lost; a new photo was read and first given another page id.
+        rmSync(join(w.photosDir, "05_page.jpg"));
+        writeFileSync(join(w.photosDir, "05_page.jpg"), w.images[2]);
         for (const dir of ["photos", "reader-a", "reader-b"]) rmSync(join(w.outDir, dir), { recursive: true });
-        w.sheets.set(w.shas[0], "5a");
+        w.sheets.set(w.shas[2], "5a");
         const { report } = await w.extract();
         expect(report.pages_sent_to_person?.map((p) => [p.source_ref, p.reason])).toEqual([
           [REF, "photo of the check is missing"],
@@ -1047,7 +1189,7 @@ describe("extractFolder (reference:extract)", () => {
 
       const again = await wrongId();
       const before = again.record();
-      again.sheets.set(again.shas[0], "3a");
+      again.sheets.set(again.shas[2], "3a");
       await again.extract({ force: true });
       expect(again.record().equals(before)).toBe(true);
       again.check();
@@ -1055,7 +1197,7 @@ describe("extractFolder (reference:extract)", () => {
 
       const letGo = await wrongId();
       rmSync(letGo.recordPath);
-      letGo.sheets.set(letGo.shas[0], "3a");
+      letGo.sheets.set(letGo.shas[2], "3a");
       await letGo.extract({ force: true });
       expect(letGo.status()).toBe("double_read");
       letGo.check();
