@@ -117,15 +117,15 @@ function readPage(page: PlacedPage, view: Record<string, unknown>) {
     const ids = partSteps.map((step) => step && stepId(step));
     // Its parts and its working are trusted, and code can tell which part the working belongs to.
     const clear = !holdsSentinel([entry.parts, entry.steps]);
-    // A setup line is the question written again, so it shows no method.
-    const shown = listOf(entry.steps)?.some((s) => fieldsOf(s).shows !== "setup") ?? false;
+    // A setup line is the question written again, and an empty answer place prints nothing.
+    const shown = entriesOf(entry.steps).map(fieldsOf).some((s) => s.shows !== "setup" && printsValue(s.printed));
     const worksOneStep = shown && new Set(ids).size === 1;
     parts.forEach((part, p) => {
       const step = partSteps[p];
       const id = ids[p];
       if (!step || !id) return addHint(at, "example", null);
       steps.set(id, step);
-      if (!clear || !(worksOneStep || typeof part.shown_answer === "string")) return addHint(at, "example", [id]);
+      if (!clear || !(worksOneStep || printsValue(part.shown_answer))) return addHint(at, "example", [id]);
       methods.set(id, (methods.get(id) ?? new Set()).add(index));
     });
     examples.push({
@@ -155,6 +155,9 @@ function readPage(page: PlacedPage, view: Record<string, unknown>) {
     scaffoldsKnown,
   };
 }
+
+// False for null and for a printed blank: an empty box or line.
+const printsValue = (text: unknown): boolean => typeof text === "string" && /[\p{L}\p{N}]/u.test(text);
 
 function kindsOf<T extends string>(value: unknown, field: string, allowed: readonly T[]): Array<T | NotStated> | NotStated {
   return listOf(value)?.map((entry) => knownOr(fieldsOf(entry)[field], allowed)) ?? NOT_STATED;

@@ -74,7 +74,9 @@ describe("which pages belong to a topic (M1)", () => {
       { n: 1, title: "Same", sheets: [11, 12], std_time_min: null },
       { n: 2, title: "Same", sheets: null, std_time_min: null },
     ]);
-    expect(okEvidence([makePage("20a", { title: "Same" })], { contents }).pages).toEqual([]);
+    const page = makePage("20a", { title: "Same" });
+    expect(okEvidence([page], { contents }).pages).toEqual([]);
+    expect(okEvidence([page], { contents, key: { ...KEY, topic: 2 } }).pages).toMatchObject([{ ref: "demo:Z:20a" }]);
   });
 
   it("uses no field of the chart that only one reader read", () => {
@@ -317,6 +319,10 @@ describe("steps with no method (M5, Y2)", () => {
     ["a shown answer and no steps", { steps: [], parts: [{ form: "horizontal", expr: add(45, 3), shown_answer: "48" }] }, true],
     ["no steps and no shown answer", { steps: [] }, false],
     ["setup steps only", { steps: [{ n: 1, shows: "setup", printed: "45" }, { n: 2, shows: "setup", printed: "+ 3" }] }, false],
+    ["an empty answer step", { steps: [{ n: 1, shows: "setup", printed: "45 + 3" }, { n: 2, shows: "answer", printed: null }] }, false],
+    ["a step of another kind that prints nothing", { steps: [{ n: 1, shows: "rule_statement", printed: null, note: "a drawing" }] }, false],
+    ["an answer step that is an empty box", { steps: [{ n: 1, shows: "answer", printed: "\u25A1" }] }, false],
+    ["a shown answer that is an empty line", { steps: [], parts: [{ form: "horizontal", expr: add(45, 3), shown_answer: "___" }] }, false],
     ["setup steps and a shown answer", { steps: [{ n: 1, shows: "setup", printed: "45" }], parts: [{ form: "horizontal", expr: add(45, 3), shown_answer: "48" }] }, true],
     ["setup steps and an answer step", { steps: [{ n: 1, shows: "setup", printed: "45" }, { n: 2, shows: "answer", printed: "48" }] }, true],
     ["steps left out and no shown answer", { steps: undefined }, false],

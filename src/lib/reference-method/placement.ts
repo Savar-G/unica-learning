@@ -134,14 +134,15 @@ export function placePages(input: EvidenceInput) {
     if (byRange && (byRange === own ? byTitle.length > 0 && !ownTitle : ownTitle && byTitle.length === 1)) {
       problems.push(`${ref} prints the title of topic ${byTitle[0].n} but is in the sheet range of topic ${byRange.n}`);
     }
-    // A topic of this title with no range can still hold the page.
-    if (!byRange && ownTitle && byTitle.every((t) => t.sheets !== NOT_STATED)) {
+    // A printed range decides. A topic with a range never holds a page outside it, whatever the title.
+    const holders = byRange ? [byRange] : byTitle.filter((t) => t.sheets === NOT_STATED);
+    if (holders.length === 0 && ownTitle) {
       problems.push(`${ref} prints the title of topic ${key.topic} but is in no sheet range of the contents record`);
     }
-    if (byRange ? byRange === own : own.sheets === NOT_STATED && ownTitle) {
-      if (!byRange && byTitle.length > 1) {
-        const other = byTitle.find((t) => t !== own);
-        problems.push(`${ref}: topics ${key.topic} and ${other?.n} have the same title and no sheet range tells them apart`);
+    if (holders.includes(own)) {
+      const other = holders.find((t) => t !== own);
+      if (other) {
+        problems.push(`${ref}: topics ${key.topic} and ${other.n} have the same title and no sheet range tells them apart`);
       }
       pages.push({ record, id, status, used, titleDiffers: title !== null && own.title !== NOT_STATED && !ownTitle });
     } else if (!byRange && own.sheets === NOT_STATED && byTitle.length === 0) {
