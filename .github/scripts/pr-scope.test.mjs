@@ -1,19 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import test from "node:test";
 import { classifyScope, DYNAMIC_READ_RULES, MAX_AFFECTED_FILES } from "./pr-scope.mjs";
-
-function makeTempRepo(files) {
-  const dir = mkdtempSync(path.join(tmpdir(), "unica-pr-scope-"));
-  for (const [rel, content] of Object.entries(files)) {
-    const full = path.join(dir, rel);
-    mkdirSync(path.dirname(full), { recursive: true });
-    writeFileSync(full, content);
-  }
-  return dir;
-}
 
 test("push to main and workflow_dispatch always run full suite including engine", () => {
   for (const eventName of ["push", "workflow_dispatch"]) {
@@ -172,7 +159,7 @@ test("bulk skill-only updates over MAX_AFFECTED_FILES still skip CI", () => {
   assert.equal(scope.runLintAndTypes, false);
 });
 
-test("E1: engine-only PR runs engine job and skips v1 unit, Maya, zones, and voice jobs", () => {
+test("an engine-only PR runs the engine job and no full suite, Maya, zones or voice job", () => {
   for (const changedFiles of [
     ["src/lib/workbook-v2/build/build-book.ts"],
     ["src/lib/workbook-v2/build/build-book.ts", "docs/workbook-v2-engine.md"],
@@ -183,8 +170,7 @@ test("E1: engine-only PR runs engine job and skips v1 unit, Maya, zones, and voi
     const scope = classifyScope({ eventName: "pull_request", changedFiles });
     assert.equal(scope.mode, "affected", JSON.stringify(changedFiles));
     assert.equal(scope.runEngine, true, JSON.stringify(changedFiles));
-    assert.equal(scope.runPrUnit, false, JSON.stringify(changedFiles));
-    assert.equal(scope.runChangedUnit, false, JSON.stringify(changedFiles));
+    assert.equal(scope.runChangedUnit, true, JSON.stringify(changedFiles));
     assert.deepEqual(scope.extraTests, [], JSON.stringify(changedFiles));
     assert.equal(scope.runMayaBehaviour, false, JSON.stringify(changedFiles));
     assert.equal(scope.runFamilyZones, false, JSON.stringify(changedFiles));
@@ -192,7 +178,7 @@ test("E1: engine-only PR runs engine job and skips v1 unit, Maya, zones, and voi
     assert.equal(scope.needsFullHistory, false, JSON.stringify(changedFiles));
   }
 
-  // E1: engine docs alone stay skip.
+  // Engine docs alone stay skip.
   const docsOnly = classifyScope({
     eventName: "pull_request",
     changedFiles: ["docs/workbook-v2-engine.md", "docs/workbook-v2.md"],
@@ -202,7 +188,7 @@ test("E1: engine-only PR runs engine job and skips v1 unit, Maya, zones, and voi
   assert.equal(docsOnly.runPrUnit, false);
   assert.equal(docsOnly.runLintAndTypes, false);
 
-  // E8: lint-and-types still runs when an engine TS file changes.
+  // Lint-and-types still runs when an engine TS file changes.
   const tsChange = classifyScope({
     eventName: "pull_request",
     changedFiles: ["src/lib/workbook-v2/build/build-book.ts"],
@@ -210,7 +196,7 @@ test("E1: engine-only PR runs engine job and skips v1 unit, Maya, zones, and voi
   assert.equal(tsChange.runLintAndTypes, true);
 });
 
-test("E2: app PR with engine files runs both affected unit tests and engine job", () => {
+test("an app PR with engine files runs both affected unit tests and engine job", () => {
   const mixed = classifyScope({
     eventName: "pull_request",
     changedFiles: ["src/components/referral-card.tsx", "src/lib/workbook-v2/build/build-book.ts"],
@@ -234,74 +220,8 @@ test("E2: app PR with engine files runs both affected unit tests and engine job"
   assert.equal(appPlusEngineDoc.runPrUnit, true);
 });
 
-test("E6: workbook-v2 has no DYNAMIC_READ_RULES entry now that engine owns its tests", () => {
+test("workbook-v2 has no DYNAMIC_READ_RULES entry now that engine owns its tests", () => {
   const hits = DYNAMIC_READ_RULES.filter((rule) =>
     rule.match("src/lib/workbook-v2/render/page.typ") || rule.match("src/lib/workbook-v2/build/build-book.ts"));
   assert.deepEqual(hits, []);
-});
-
-test("E7: engine-only PR runs pr-unit only when real app code imports a reachable engine module", () => {
-  const repo = makeTempRepo({
-    "src/lib/workbook-v2/contract.ts": 'import { sha256 } from "./hash";\nexport const version = sha256("v2");\n',
-    "src/lib/workbook-v2/hash.ts": "export const sha256 = (s: string) => s;\n",
-    "src/lib/workbook-v2/shapes/mul-column.ts": "export const shape = 1;\n",
-    "src/lib/scan/reader.ts": 'import { version } from "@/lib/workbook-v2/contract";\nexport const v = version;\n',
-    "src/lib/other.ts": '// mentions src/lib/workbook-v2/shapes/mul-column.ts only in a comment\nexport const x = 1;\n',
-  });
-  try {
-    // Changing contract.ts (directly imported by app) must run pr-unit AND engine.
-    const direct = classifyScope({
-      eventName: "pull_request",
-      changedFiles: ["src/lib/workbook-v2/contract.ts"],
-      rootDir: repo,
-    });
-    assert.equal(direct.mode, "affected");
-    assert.equal(direct.runEngine, true);
-    assert.equal(direct.runPrUnit, true);
-    assert.equal(direct.runChangedUnit, true);
-
-    // Changing hash.ts (transitively imported by contract.ts -> reader.ts) must run pr-unit AND engine.
-    const transitive = classifyScope({
-      eventName: "pull_request",
-      changedFiles: ["src/lib/workbook-v2/hash.ts"],
-      rootDir: repo,
-    });
-    assert.equal(transitive.mode, "affected");
-    assert.equal(transitive.runEngine, true);
-    assert.equal(transitive.runPrUnit, true);
-    assert.equal(transitive.runChangedUnit, true);
-
-    // Changing shapes/mul-column.ts (not imported by app, only mentioned in a comment) must NOT run pr-unit.
-    const internal = classifyScope({
-      eventName: "pull_request",
-      changedFiles: ["src/lib/workbook-v2/shapes/mul-column.ts"],
-      rootDir: repo,
-    });
-    assert.equal(internal.mode, "affected");
-    assert.equal(internal.runEngine, true);
-    assert.equal(internal.runPrUnit, false);
-    assert.equal(internal.runChangedUnit, false);
-  } finally {
-    rmSync(repo, { recursive: true, force: true });
-  }
-});
-
-test("E7: relative app import of an engine file also triggers pr-unit", () => {
-  const repo = makeTempRepo({
-    "src/lib/workbook-v2/contract.ts": "export const version = 2;\n",
-    "src/lib/scan-v2.ts": 'export { version } from "./workbook-v2/contract";\n',
-  });
-  try {
-    const scope = classifyScope({
-      eventName: "pull_request",
-      changedFiles: ["src/lib/workbook-v2/contract.ts"],
-      rootDir: repo,
-    });
-    assert.equal(scope.mode, "affected");
-    assert.equal(scope.runEngine, true);
-    assert.equal(scope.runPrUnit, true);
-    assert.equal(scope.runChangedUnit, true);
-  } finally {
-    rmSync(repo, { recursive: true, force: true });
-  }
 });

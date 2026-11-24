@@ -60,7 +60,7 @@ function extractIndentedRunBlock(jobBlock, stepName) {
   return lines.join("\n").trim();
 }
 
-test("E3: every engine test file is owned by exactly one job in full mode and in affected mode", () => {
+test("every engine test file is owned by exactly one job in full mode and in affected mode", () => {
   const workflow = readWorkflow();
   const unitJob = getJobBlock(workflow, "unit");
   const prUnitJob = getJobBlock(workflow, "pr-unit");
@@ -115,7 +115,7 @@ test("E3: every engine test file is owned by exactly one job in full mode and in
   }
 });
 
-test("E4: the required test job shell fails when engine is required and does not succeed, or runs when not required", () => {
+test("the required test job shell fails when engine is required and does not succeed, or runs when not required", () => {
   const workflow = readWorkflow();
   const testJob = getJobBlock(workflow, "test");
   assert.ok(testJob, "test job must exist");
@@ -128,8 +128,8 @@ test("E4: the required test job shell fails when engine is required and does not
     PATH: process.env.PATH,
     SCOPE_RESULT: "success",
     MODE: "affected",
-    REASON: "engine-only",
-    RUN_PR_UNIT: "false",
+    REASON: "scoped-pr",
+    RUN_PR_UNIT: "true",
     RUN_ENGINE: "true",
     RUN_LINT: "true",
     RUN_MAYA: "false",
@@ -137,7 +137,7 @@ test("E4: the required test job shell fails when engine is required and does not
     RUN_VOICE: "false",
     UNIT_RESULT: "skipped",
     SCAN_BINDING_RESULT: "skipped",
-    PR_UNIT_RESULT: "skipped",
+    PR_UNIT_RESULT: "success",
     ENGINE_RESULT: "success",
     MAYA_RESULT: "skipped",
     ZONES_RESULT: "skipped",
@@ -203,7 +203,7 @@ test("E4: the required test job shell fails when engine is required and does not
   assert.notEqual(runGate({ MODE: "bogus" }).status, 0);
 });
 
-test("E5: engine summary reports seconds and 15 s budget, and never fails on slow or missing time", () => {
+test("engine summary reports seconds and 15 s budget, and never fails on slow or missing time", () => {
   const dir = mkdtempSync(path.join(tmpdir(), "unica-engine-summary-"));
   try {
     const runSummary = (name, env) => {
@@ -244,8 +244,7 @@ test("E5: engine summary reports seconds and 15 s budget, and never fails on slo
     assert.match(engineJob, /- name: Report engine test time\n\s+if: \$\{\{ always\(\) \}\}/);
 
     const testStepScript = extractIndentedRunBlock(engineJob, "Engine tests");
-    const fakeBin = path.join(dir, "bin");
-    const outPass = path.join(dir, "out-pass.txt");
+      const outPass = path.join(dir, "out-pass.txt");
     const outFail = path.join(dir, "out-fail.txt");
     writeFileSync(outPass, "");
     writeFileSync(outFail, "");
@@ -269,13 +268,12 @@ test("E5: engine summary reports seconds and 15 s budget, and never fails on slo
     const failRes = runWithFakeNpm(1, outFail);
     assert.equal(failRes.status, 1);
     assert.match(readFileSync(outFail, "utf8"), /^duration_ms=\d+$/m);
-    assert.ok(fakeBin);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("E6: every CI job that runs engine tests requires the pinned Typst install, and unit/pr-unit do not", () => {
+test("every CI job that runs engine tests requires the pinned Typst install, and unit/pr-unit do not", () => {
   const workflow = readWorkflow();
   const engineJob = getJobBlock(workflow, "engine");
   const unitJob = getJobBlock(workflow, "unit");
@@ -292,7 +290,7 @@ test("E6: every CI job that runs engine tests requires the pinned Typst install,
   assert.equal(prUnitJob.includes("typst:install"), false, "pr-unit must not install Typst");
 });
 
-test("E7: pr-unit excludes engine tests and passes with no tests", () => {
+test("pr-unit excludes engine tests and passes with no tests", () => {
   const workflow = readWorkflow();
   const prUnitJob = getJobBlock(workflow, "pr-unit");
   assert.ok(prUnitJob);
@@ -302,7 +300,7 @@ test("E7: pr-unit excludes engine tests and passes with no tests", () => {
   assert.ok(line.includes("--passWithNoTests"), "pr-unit must include --passWithNoTests");
 });
 
-test("E8 & E9: engine job uses a dedicated tsconfig, runs fast without Chromium or DB, and checks guardrails", () => {
+test("engine job uses a dedicated tsconfig, runs fast without Chromium or DB, and checks guardrails", () => {
   const tsconfig = JSON.parse(readFileSync(path.join(ROOT, "tsconfig.engine.json"), "utf8"));
   assert.equal(tsconfig.extends, "./tsconfig.json");
   assert.ok(tsconfig.include.includes("src/lib/workbook-v2/**/*.ts"));
@@ -324,7 +322,7 @@ test("E8 & E9: engine job uses a dedicated tsconfig, runs fast without Chromium 
   assert.ok(lintJob.includes(".github/scripts/engine-ci.test.mjs"), "lint-and-types must run engine-ci.test.mjs");
 });
 
-test("E10: docs describe the engine CI job", () => {
+test("docs describe the engine CI job", () => {
   const engineDoc = readFileSync(path.join(ROOT, "docs/workbook-v2-engine.md"), "utf8");
   const testsSection = engineDoc.slice(engineDoc.indexOf("## Tests"));
   assert.match(testsSection, /\bengine\b/);
