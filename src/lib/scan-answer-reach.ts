@@ -34,12 +34,14 @@ export function answerReach(
       if (!box || (sameQuestion && id === region.id)) continue;
       const otherRight = box.x + box.width, otherBottom = box.y + box.height;
       const share = sameQuestion ? 1 : 0.5;
-      // Use the full potential span on the other axis, so corner approaches are also bounded.
-      if (box.y < maxBottom && otherBottom > maxTop) {
+      // Check both possible expansions across the corner gap between questions.
+      const across = sameQuestion ? 0 : HORIZONTAL_REACH;
+      const down = sameQuestion ? 0 : VERTICAL_REACH;
+      if (box.y - down < maxBottom && otherBottom + down > maxTop) {
         if (otherRight <= x) left = Math.max(left, x - (x - otherRight) * share);
         if (box.x >= right) farRight = Math.min(farRight, right + (box.x - right) * share);
       }
-      if (box.x < maxRight && otherRight > maxLeft) {
+      if (box.x - across < maxRight && otherRight + across > maxLeft) {
         if (otherBottom <= y) top = Math.max(top, y - (y - otherBottom) * share);
         if (box.y >= bottom) farBottom = Math.min(farBottom, bottom + (box.y - bottom) * share);
       }

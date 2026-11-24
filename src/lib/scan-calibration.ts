@@ -1905,8 +1905,8 @@ export function cropBox(photo: Raster, c: Calibration, contract: PagePrintContra
  * a pixel to spare. A crop of a box the photo's edge cuts would show white paper where the answer was cut off (#912): such
  * a question is not cropped and not marked from the photo.
  */
-export function cropInPhoto(c: Pick<Calibration, "transform" | "bend" | "mesh" | "photo">, contract: PagePrintContract, box: Box): boolean {
-  const margin = Math.min(CROP_MARGIN_LIMIT, CROP_MARGIN * Math.min(box.width, box.height));
+export function cropInPhoto(c: Pick<Calibration, "transform" | "bend" | "mesh" | "photo">, contract: PagePrintContract, box: Box, exact = false): boolean {
+  const margin = exact ? 0 : Math.min(CROP_MARGIN_LIMIT, CROP_MARGIN * Math.min(box.width, box.height));
   const page = contract.coordinates.image;
   const x0 = Math.max(0, box.x - margin), y0 = Math.max(0, box.y - margin);
   const x1 = Math.min(page.width, box.x + box.width + margin), y1 = Math.min(page.height, box.y + box.height + margin);

@@ -1089,6 +1089,13 @@ describe("S4 whole-page readings", () => {
     expect(await sharp(crop.data).metadata()).toMatchObject({ width: 325, height: 125 });
   });
 
+  it("still sends the whole page and other close-ups if one region cannot be cropped", async () => {
+    const f = { ...frame(), contentBounds: { x: 0, y: 0, width: 400, height: 300 } };
+    const pageImage = new Uint8Array([1]), closeup = new Uint8Array([2]);
+    const zoom = vi.fn().mockRejectedValueOnce(new Error("failed crop")).mockResolvedValue(closeup);
+    const result = await markingSecondLookRequest(f, pageImage, f.questions.map(q => q.package!.id), zoom);
+    expect(result.content.filter(p => p.type === "image").map(p => p.data)).toEqual([pageImage, closeup, closeup]);
+  });
   it.each([
     { name: "whole number", make: () => frame("photo-a", [7]) },
     { name: "fraction", make: () => numericFrame({ type: "fraction", numerator: 1, denominator: 9 }, "'1/9'") },

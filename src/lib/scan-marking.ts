@@ -89,6 +89,7 @@ export interface MarkingFrame extends PageForObservation {
   ready: boolean;
   pageNumber: number;
   contentBounds?: Box;
+  limitReach?: (box: Box, reach: Box) => Box;
   questions: (PageForObservation["questions"][number] & { regions: readonly PrintedRegion[] | null })[];
   /** Questions at the photo edge and questions held for team review. */
   cutOff?: readonly number[];
@@ -176,7 +177,10 @@ type Alias = MarkingRegion & { item: string; region: string; regionId: string; r
 function aliases(frame: MarkingFrame, expected: readonly ExpectedItem[]): Alias[] {
   return expected.flatMap((e, n) => {
     const q = frame.questions.find(q => q.number === e.number && q.package?.id === e.identity.itemId);
-    return q ? markingRegions(q).map((r, k) => ({ ...r, reach: frame.contentBounds && answerReach(r, q.number, frame.questions, frame.contentBounds), regionId: r.id, item: `i${n + 1}`, region: `r${n + 1}${k === 0 ? "" : `-${k + 1}`}`, expected: e })) : [];
+    return q ? markingRegions(q).map((r, k) => {
+      const reach = frame.contentBounds && answerReach(r, q.number, frame.questions, frame.contentBounds);
+      return { ...r, reach: reach && (frame.limitReach?.(r.box, reach) ?? reach), regionId: r.id, item: `i${n + 1}`, region: `r${n + 1}${k === 0 ? "" : `-${k + 1}`}`, expected: e };
+    }) : [];
   });
 }
 /** What the second look decided: its model, prompt and the item ids whose marks it gave. */

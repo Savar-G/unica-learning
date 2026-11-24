@@ -32,7 +32,9 @@ export async function secondLookRequest(image: Uint8Array, local: readonly Reque
   if (!zoom) return read;
   for (const { reach, item, region } of local) {
     if (!reach) continue;
-    const crop = await zoom(image, reach);
+    let crop: Uint8Array | null;
+    try { crop = await zoom(image, reach); }
+    catch { continue; }
     if (!crop) continue;
     read.content.push({ type: "text", text: `Zoomed reach for item ${item}, region ${region}:` },
       { type: "image", mediaType: "image/jpeg", data: crop });

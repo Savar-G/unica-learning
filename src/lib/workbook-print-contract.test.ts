@@ -482,7 +482,7 @@ describe("a changed revision changes its contract as one unit", () => {
       const saved = savedCrops.find(({ number }) => number === c.number);
       if (!saved) throw new Error(`Missing crop ${c.number}`);
       const crop = await greyRaster(read1.m.objects.get(scanPartPath(PARENT, PHOTO, "00000000-0000-4000-8000-0000000000e1", saved.part))!);
-      expect(readDigit(crop, saved.reach ?? cropCut(saved.box), c.box), `question ${c.number}`).toBe(digit(i));
+      expect(readDigit(crop, saved.displayBox ?? cropCut(saved.box), c.box), `question ${c.number}`).toBe(digit(i));
     }
     // The contract kept every declared field through the store.
     expect(supported.printContract).toMatchObject({ marks: { anchor: "outer-corner", order: ["tl", "tr", "br", "bl"] }, coordinates: { units: "image-px", origin: "top-left", x: "right", y: "down", orientation: "portrait", image: { width: 1275, height: 1650 } } });
@@ -695,6 +695,12 @@ describe("answer regions as printed", () => {
     expect(r.workbook.pages[0].printContract?.coordinates.content).toEqual({ x: 100, y: 300, width: 1075, height: 1125 });
   });
 
+  it("omits an out-of-page content measurement while retaining the print contract", async () => {
+    const r = await renderWith({ rects: { "1 slot-content": { x: -0.25, y: 192, width: 688, height: 720 } } });
+    if (r.status !== "rendered") throw new Error(JSON.stringify(r.problems));
+    expect(r.workbook.pages[0].printContract?.coordinates).toMatchObject({ image: { width: 1275, height: 1650 } });
+    expect(r.workbook.pages[0].printContract?.coordinates.content).toBeUndefined();
+  });
   it("each region has its measured box in image pixels; a region the page did not measure has none", async () => {
     // Disproved if a missing region is dropped or given a box it never printed in.
     const draft = draftOf();

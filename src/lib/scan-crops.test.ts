@@ -68,7 +68,7 @@ function setup(o: { book?: string | null; photoRevision?: string | null; contrac
 const shownBox = (m: ReturnType<typeof setup>, number: number) => {
   const crop = m.calibrations.get(PHOTO)?.result?.crops?.find(c => c.number === number);
   if (!crop) throw new Error(`Missing crop ${number}`);
-  return crop.reach ?? cropCut(crop.box);
+  return crop.displayBox ?? cropCut(crop.box);
 };
 const cropRaster = async (m: ReturnType<typeof setup>, part: string, t: string) => greyRaster(m.objects.get(scanPartPath(PARENT, PHOTO, t, part))!);
 

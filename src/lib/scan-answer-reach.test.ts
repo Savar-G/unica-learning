@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { answerReach } from "@/lib/scan-answer-reach";
 import type { PrintedRegion } from "@/lib/workbook-print-contract";
@@ -27,6 +28,37 @@ describe("answer reach", () => {
   it("bounds a diagonal approach before it reaches another question", () => {
     const other = { number: 2, regions: [neighbour("answer", "box", 270, 210, 75, 75)] };
     expect(answerReach(answer, 1, [own, other], page)).toEqual({ x: 60, y: 85, width: 200, height: 120 });
+  });
+
+  it("separates reaches even when neither diagonal box is inside the other's full reach", () => {
+    const diagonal = { x: 310, y: 220, width: 150, height: 100 };
+    const other = { number: 2, regions: [{ id: "answer", kind: "box", box: diagonal }] };
+    const sheet = { ...page, width: 600 };
+    const first = answerReach(answer, 1, [own, other], sheet)!;
+    const second = answerReach({ ...answer, box: diagonal }, 2, [own, other], sheet)!;
+    expect(first.x + first.width).toBe(second.x);
+    expect(first.y + first.height).toBe(second.y);
+  });
+
+  it("contains the box, respects expansion limits and is independent of question order", () => {
+    const measured = fc.record({ x: fc.integer({ min: 0, max: 300 }), y: fc.integer({ min: 0, max: 300 }),
+      width: fc.integer({ min: 1, max: 100 }), height: fc.integer({ min: 1, max: 100 }) });
+    fc.assert(fc.property(measured, fc.array(measured), (box, blockers) => {
+      const questions = [{ number: 1, regions: [{ id: answer.id, kind: "box", box }] },
+        ...blockers.map((b, i) => ({ number: i + 2, regions: [{ id: "blocker", kind: "box", box: b }] }))];
+      const reach = answerReach({ ...answer, box }, 1, questions, page)!;
+      expect(reach).toEqual(answerReach({ ...answer, box }, 1, questions.toReversed(), page));
+      expect(box.x - reach.x).toBeGreaterThanOrEqual(0);
+      expect(box.x - reach.x).toBeLessThanOrEqual(40);
+      expect(box.y - reach.y).toBeGreaterThanOrEqual(0);
+      expect(box.y - reach.y).toBeLessThanOrEqual(15);
+      const right = reach.x + reach.width - box.x - box.width;
+      const bottom = reach.y + reach.height - box.y - box.height;
+      expect(right).toBeGreaterThanOrEqual(0);
+      expect(right).toBeLessThanOrEqual(40);
+      expect(bottom).toBeGreaterThanOrEqual(0);
+      expect(bottom).toBeLessThanOrEqual(15);
+    }));
   });
 
   it("stops at the edge of the question's own work, method and choice regions", () => {

@@ -217,6 +217,7 @@ export function buildPrintContract(o: {
   if (Math.abs(scale.x / scale.y - 1) > 0.01) return { contract: null, problem: "the page image is not the page at one scale" };
   const rect = (m: ScanMark) => o.marks.find((x) => x.name === scanMarkName(m))!;
   const at = (m: ScanMark, x: number, y: number): [ScanMark, Point] => [m, { x: milli(x * scale.x), y: milli(y * scale.y) }];
+  const measured = o.content && imageBox(o.content, scale);
   const c = o.page.content;
   const day = c?.kind === "day" && !c.extraPractice ? c : null;
   return {
@@ -226,7 +227,7 @@ export function buildPrintContract(o: {
       day: day?.day ?? null, pageOfDay: day?.page ?? null,
       coordinates: {
         units: "image-px", origin: "top-left", x: "right", y: "down", orientation: "portrait",
-        image: { width, height }, ...(o.content ? { content: imageBox(o.content, scale) } : {}), cssPage: { width: o.css.width, height: o.css.height }, scale,
+        image: { width, height }, ...(measured && boxInside(measured, { width, height }) ? { content: measured } : {}), cssPage: { width: o.css.width, height: o.css.height }, scale,
       },
       marks: {
         anchor: "outer-corner", order: [...SCAN_MARKS],

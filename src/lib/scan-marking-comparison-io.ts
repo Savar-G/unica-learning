@@ -53,6 +53,9 @@ export async function loadComparisonAssets(manifestPath: string) {
     const page = rendered.pages.find(page => page.number === p.frame.pageNumber);
     const questions = page?.questions.map(q => ({ number: q.number, package: q.package, regions: q.regions ?? null, teaching: q.teaching ?? null }));
     if (!page?.printContract || p.frame.printedRevision !== revision || hashValue(p.frame.questions) !== hashValue(questions) || page.image?.width !== p.image.width || page.image?.height !== p.image.height) throw new Error("frame-does-not-match-frozen-synthetic-render");
+    const bounds = scanContentBounds(page.printContract);
+    if (p.frame.contentBounds !== undefined && hashValue(p.frame.contentBounds) !== hashValue(bounds)) throw new Error("frame-content-bounds-do-not-match-frozen-synthetic-render");
+    p.frame.contentBounds = bounds;
   }
   return { manifest, images };
 }
