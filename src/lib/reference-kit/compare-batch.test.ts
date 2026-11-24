@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { validateReferenceRecord, type ContentsRecord, type PageRecord } from "@/lib/reference-record";
+import type { ContentsRecord, PageRecord } from "@/lib/reference-record";
 import { checkAndMarkPage } from "./check";
 import { compareWorkFolder } from "./compare-batch";
 import * as comparePartsModule from "./compare-parts";

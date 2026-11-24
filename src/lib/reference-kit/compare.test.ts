@@ -4,7 +4,6 @@ import {
   NOT_STATED,
   recordPathResolves,
   UNCLEAR,
-  validateReferenceRecord,
   type ContentsRecord,
   type PageRecord,
   type ReferenceRecord,
