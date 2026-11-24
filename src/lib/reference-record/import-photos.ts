@@ -19,6 +19,15 @@ export const MAX_REFERENCE_PHOTO_BYTES = 20 * 1024 * 1024;
 
 const NOFOLLOW_FLAG = typeof fsConstants.O_NOFOLLOW === "number" ? fsConstants.O_NOFOLLOW : 0;
 const NONBLOCK_FLAG = typeof fsConstants.O_NONBLOCK === "number" ? fsConstants.O_NONBLOCK : 0;
+const STRICT_UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
+
+export function decodeStrictUtf8(bytes: Uint8Array): string {
+  return STRICT_UTF8_DECODER.decode(bytes);
+}
+
+export function parseStrictUtf8Json(bytes: Uint8Array): unknown {
+  return JSON.parse(decodeStrictUtf8(bytes)) as unknown;
+}
 
 export interface PlannedPhoto {
   storagePath: string;
@@ -188,10 +197,11 @@ export async function readPlannedPhotos(
 
   let parsedManifest: unknown;
   try {
-    parsedManifest = JSON.parse(Buffer.from(manifestRead.bytes).toString("utf8")) as unknown;
+    parsedManifest = parseStrictUtf8Json(manifestRead.bytes);
   } catch (err) {
+    const kind = err instanceof SyntaxError ? "could not be read or parsed" : "invalid UTF-8";
     const msg = err instanceof Error ? err.message : String(err);
-    problems.push(`photos-manifest.json: could not be read or parsed (${msg})`);
+    problems.push(`photos-manifest.json: ${kind} (${msg})`);
     return planned;
   }
 

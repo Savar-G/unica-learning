@@ -59,7 +59,9 @@ export function collectReadTimeAnswerConflicts(
   reader: "a" | "b",
   notes: readonly string[],
   details?: readonly StoredAnswerNote[],
+  opts?: { excludePaths?: ReadonlySet<string> },
 ): string[] {
+  const excluded = opts?.excludePaths;
   const out: string[] = [];
   const seen = new Set<string>();
   const add = (body: string): void => {
@@ -81,6 +83,7 @@ export function collectReadTimeAnswerConflicts(
     }
     for (const detail of details) {
       if (detail?.kind !== "answer_differs" || typeof detail.path !== "string") continue;
+      if (excluded?.has(detail.path)) continue;
       const matched = notesByPath.get(detail.path);
       if (matched && matched.length > 0) {
         for (const note of matched) add(note);
@@ -91,7 +94,8 @@ export function collectReadTimeAnswerConflicts(
     return out;
   }
   for (const note of notes) {
-    if (parseAnswerDiffersPath(note) !== null) add(note);
+    const path = parseAnswerDiffersPath(note);
+    if (path !== null && !excluded?.has(path)) add(note);
   }
   return out;
 }
@@ -499,24 +503,13 @@ export function findEmptyAnswers(record: ReferenceRecord | null | undefined): st
   return paths;
 }
 
-function canonicalExprKey(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalExprKey).join(",")}]`;
-  const obj = value as Record<string, unknown>;
-  const keys = Object.keys(obj).sort();
-  return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalExprKey(obj[k])}`).join(",")}}`;
-}
-
-interface ExampleAnswerConflict {
-  note: AnswerNote;
-  identityKey: string;
-}
-
-function findDetailedExampleAnswerConflicts(
+// Worked-example parts whose shown_answer conflicts with their own computable single-answer expr.
+// Never mutates shown_answer and is used by compare (not reference:check, where a person decides).
+export function findExampleAnswerConflicts(
   record: ReferenceRecord | null | undefined,
-): ExampleAnswerConflict[] {
+): AnswerNote[] {
   if (!record || record.kind !== "page" || !Array.isArray(record.examples)) return [];
-  const out: ExampleAnswerConflict[] = [];
+  const out: AnswerNote[] = [];
   record.examples.forEach((ex, ei) => {
     ex.parts.forEach((part, pi) => {
       const shown = part.shown_answer ?? null;
@@ -526,49 +519,30 @@ function findDetailedExampleAnswerConflicts(
       if (normalizeAnswerCompare(shown) !== normalizeAnswerCompare(computed.value)) {
         const path = `examples[${ei}].parts[${pi}].shown_answer`;
         const message = `${path}: shown "${shown}", computed "${computed.value}"`;
-        out.push({
-          note: { kind: "answer_differs", path, message },
-          identityKey: JSON.stringify([
-            path,
-            canonicalExprKey(part.expr),
-            normalizeAnswerCompare(shown),
-            normalizeAnswerCompare(computed.value),
-          ]),
-        });
+        out.push({ kind: "answer_differs", path, message });
       }
     });
   });
   return out;
 }
 
-// Worked-example parts whose shown_answer conflicts with their own computable single-answer expr.
-// Never mutates shown_answer and is used by compare (not reference:check, where a person decides).
-export function findExampleAnswerConflicts(
-  record: ReferenceRecord | null | undefined,
-): AnswerNote[] {
-  return findDetailedExampleAnswerConflicts(record).map((c) => c.note);
-}
-
 export function collectExampleAnswerConflicts(
   finalRecord: ReferenceRecord | null | undefined,
   recA: ReferenceRecord | null | undefined,
   recB: ReferenceRecord | null | undefined,
-): { finalMessages: string[]; readerOnlyMessages: string[] } {
-  const finalConflicts = findDetailedExampleAnswerConflicts(finalRecord);
-  const finalKeys = new Set(finalConflicts.map((c) => c.identityKey));
-  const readerOnlyMessages: string[] = [];
-  const seen = new Set<string>();
-  const addReader = (reader: "a" | "b", conflicts: readonly ExampleAnswerConflict[]): void => {
-    for (const conflict of conflicts) {
-      if (finalKeys.has(conflict.identityKey)) continue;
-      const entry = `reader ${reader}: ${conflict.note.message}`;
-      if (!seen.has(entry)) {
-        seen.add(entry);
-        readerOnlyMessages.push(entry);
-      }
+  opts: { finalIsFreshA: boolean },
+): { finalMessages: string[]; readerMessages: string[] } {
+  const finalMessages = findExampleAnswerConflicts(finalRecord).map(
+    (note) => `final record: ${note.message}`,
+  );
+  const readerMessages: string[] = [];
+  if (!opts.finalIsFreshA) {
+    for (const note of findExampleAnswerConflicts(recA)) {
+      readerMessages.push(`reader a: ${note.message}`);
     }
-  };
-  addReader("a", findDetailedExampleAnswerConflicts(recA));
-  addReader("b", findDetailedExampleAnswerConflicts(recB));
-  return { finalMessages: finalConflicts.map((c) => c.note.message), readerOnlyMessages };
+  }
+  for (const note of findExampleAnswerConflicts(recB)) {
+    readerMessages.push(`reader b: ${note.message}`);
+  }
+  return { finalMessages, readerMessages };
 }

@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   assertOutsideRepo,
+  parseStrictUtf8Json,
   prepareSafeOutputDir,
   renderRecordToMarkdown,
   validateReferenceRecord,
@@ -74,7 +75,7 @@ const FINAL_META_FILES = new Set(["status.json", "report.json"]);
 function readStoredSourceRef(filePath: string): string | null {
   if (!existsSync(filePath)) return null;
   try {
-    const parsed = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
+    const parsed = parseStrictUtf8Json(readFileSync(filePath));
     if (
       typeof parsed === "object" &&
       parsed !== null &&
@@ -96,7 +97,7 @@ function sha256OfFile(filePath: string): string {
 function loadExistingFinalRecord(filePath: string): ReferenceRecord | null {
   if (!existsSync(filePath)) return null;
   try {
-    const parsed = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
+    const parsed = parseStrictUtf8Json(readFileSync(filePath));
     const check = validateReferenceRecord(parsed);
     return check.ok ? check.record : null;
   } catch {
@@ -158,7 +159,7 @@ function syncManifestSourceRefs(
   if (!existsSync(manifestPath)) return;
   let manifest;
   try {
-    manifest = parsePhotosManifest(JSON.parse(readFileSync(manifestPath, "utf8")) as unknown);
+    manifest = parsePhotosManifest(parseStrictUtf8Json(readFileSync(manifestPath)));
   } catch {
     return;
   }
@@ -353,15 +354,19 @@ export function compareWorkFolder(opts: {
       details: computedDetails,
     } = applyComputedAnswers(withBothReaders(chosen, pair));
     const editedDetails = editedRecord ? applyComputedAnswers(editedRecord).details : [];
+    const finalIsFreshA = !editedByPerson && pair.recA !== null;
+    const finalItemDetails = (editedByPerson ? editedDetails : computedDetails).filter(
+      (d) => d.kind === "answer_differs",
+    );
+    const finalItemConflictPaths = new Set(finalItemDetails.map((d) => d.path));
     const exampleConflicts = collectExampleAnswerConflicts(
       editedByPerson ? editedRecord : computedRecord,
       pair.recA,
       pair.recB,
+      { finalIsFreshA },
     );
     const answerConflicts = [
-      ...(editedByPerson ? editedDetails : computedDetails)
-        .filter((d) => d.kind === "answer_differs")
-        .map((d) => d.message),
+      ...finalItemDetails.map((d) => `final record: ${d.message}`),
       ...exampleConflicts.finalMessages,
     ];
     const readerNotes = pair.recA
@@ -386,9 +391,14 @@ export function compareWorkFolder(opts: {
     ];
     const readerAnswerConflicts = [
       ...new Set([
-        ...collectReadTimeAnswerConflicts("a", pair.notesA, pair.noteDetailsA),
+        ...collectReadTimeAnswerConflicts(
+          "a",
+          pair.notesA,
+          pair.noteDetailsA,
+          finalIsFreshA ? { excludePaths: finalItemConflictPaths } : undefined,
+        ),
         ...collectReadTimeAnswerConflicts("b", pair.notesB, pair.noteDetailsB),
-        ...exampleConflicts.readerOnlyMessages,
+        ...exampleConflicts.readerMessages,
       ]),
     ];
     const decision = decidePageOutcome({

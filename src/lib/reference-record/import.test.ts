@@ -316,14 +316,28 @@ describe("importReferenceRecords", () => {
         outside: string;
         store: MemoryReferenceStore;
       }) => void | { recordsDir?: string; photosDir?: string };
-      expectedProblem: RegExp;
+      expectedProblem?: RegExp;
+      expectedProblems?: RegExp[];
     }
+
+    const withInvalidUtf8Byte = (jsonText: string, marker: string): Buffer => {
+      const [left, right] = jsonText.split(marker);
+      return Buffer.concat([Buffer.from(left, "utf8"), Buffer.of(0xff), Buffer.from(right, "utf8")]);
+    };
 
     const refusalCases: RefusalCase[] = [
       {
         name: "missing recordsDir",
         setup: ({ outside }) => ({ recordsDir: join(outside, "missing-records") }),
         expectedProblem: /records folder .* could not be read/,
+      },
+      {
+        name: "invalid UTF-8 byte 0xff in record file",
+        setup: ({ recs }) => {
+          const text = JSON.stringify(makePage("sample:M:2a", "MARKER"));
+          writeFileSync(join(recs, "02-bad.json"), withInvalidUtf8Byte(text, "MARKER"));
+        },
+        expectedProblem: /02-bad\.json:.*UTF-8/i,
       },
       {
         name: "invalid JSON in record file",
@@ -338,6 +352,21 @@ describe("importReferenceRecords", () => {
           writeJson(recs, "02-target.json", { ...makePage("sample:M:2a"), extra_key: "nope" });
         },
         expectedProblem: /02-target\.json.*extra_key/,
+      },
+      {
+        name: "multiple record errors in one batch (schema, JSON, duplicate all reported)",
+        setup: ({ recs }) => {
+          writeJson(recs, "02-bad-schema.json", { ...makePage("sample:M:2a"), extra_a: 1 });
+          writeFileSync(join(recs, "03-bad-json.json"), "{ broken", "utf8");
+          writeJson(recs, "04-bad-schema-2.json", { ...makePage("sample:M:4a"), extra_b: 2 });
+          writeJson(recs, "05-dup.json", makePage("sample:M:1a"));
+        },
+        expectedProblems: [
+          /02-bad-schema\.json.*extra_a/,
+          /03-bad-json\.json: invalid JSON/,
+          /04-bad-schema-2\.json.*extra_b/,
+          /duplicate source_ref "sample:M:1a".*05-dup\.json/,
+        ],
       },
       {
         name: "NUL character in record text",
@@ -384,6 +413,14 @@ describe("importReferenceRecords", () => {
         expectedProblem: /status\.json: refusing symlink/,
       },
       {
+        name: "invalid UTF-8 byte 0xff in status.json",
+        setup: ({ recs }) => {
+          const text = JSON.stringify({ "sample:M:1a": "MARKER" });
+          writeFileSync(join(recs, "status.json"), withInvalidUtf8Byte(text, "MARKER"));
+        },
+        expectedProblem: /status\.json:.*UTF-8/i,
+      },
+      {
         name: "invalid JSON in status.json",
         setup: ({ recs }) => {
           writeFileSync(join(recs, "status.json"), "{ bad", "utf8");
@@ -406,15 +443,26 @@ describe("importReferenceRecords", () => {
         expectedProblem: /unknown status for "sample:M:2a"/,
       },
       {
-        name: "prototype property keys and values in status.json",
+        name: "prototype property keys in status.json",
         setup: ({ recs }) => {
           writeFileSync(
             join(recs, "status.json"),
-            '{"__proto__":"machine_read","constructor":"double_read","sample:M:1a":"toString"}\n',
+            '{"__proto__":"machine_read","constructor":"double_read","toString":"human_checked"}\n',
             "utf8",
           );
         },
-        expectedProblem: /toString/,
+        expectedProblems: [
+          /"__proto__" has no matching record file/,
+          /"constructor" has no matching record file/,
+          /"toString" has no matching record file/,
+        ],
+      },
+      {
+        name: "prototype property name as status value in status.json",
+        setup: ({ recs }) => {
+          writeFileSync(join(recs, "status.json"), '{"sample:M:1a":"toString"}\n', "utf8");
+        },
+        expectedProblem: /unknown status for "sample:M:1a": "toString"/,
       },
       {
         name: "orphan source_ref in status.json",
@@ -536,6 +584,18 @@ describe("importReferenceRecords", () => {
           symlinkSync(join(outside, "photos-manifest.json"), join(photos, "photos-manifest.json"));
         },
         expectedProblem: /photos-manifest\.json: refusing symlink/,
+      },
+      {
+        name: "invalid UTF-8 byte 0xff in photos-manifest.json",
+        usePhotos: true,
+        setup: ({ photos }) => {
+          const text = JSON.stringify({
+            version: 1,
+            photos: [{ ...manifestEntry("good.jpg", goodImg, "sample:M:1a"), original_name: "MARKER" }],
+          });
+          writeFileSync(join(photos, "photos-manifest.json"), withInvalidUtf8Byte(text, "MARKER"));
+        },
+        expectedProblem: /photos-manifest\.json:.*UTF-8/i,
       },
       {
         name: "invalid JSON in photos-manifest.json",
@@ -751,6 +811,31 @@ describe("importReferenceRecords", () => {
         expectedProblem: /sample:M:2a.*sha256 mismatch/,
       },
       {
+        name: "multiple photo hash mismatches in one batch (all reported)",
+        usePhotos: true,
+        setup: ({ recs, photos }) => {
+          writeJson(recs, "02-target.json", makePage("sample:M:2a"));
+          writeJson(recs, "03-target.json", makePage("sample:M:3a"));
+          writeBytes(photos, "bad-hash-1.jpg", secondImg);
+          writeBytes(photos, "bad-hash-2.jpg", new Uint8Array([9, 10, 11, 12]));
+          writeJson(photos, "photos-manifest.json", {
+            version: 1,
+            photos: [
+              manifestEntry("good.jpg", goodImg, "sample:M:1a"),
+              { ...manifestEntry("bad-hash-1.jpg", secondImg, "sample:M:2a"), sha256: "b".repeat(64) },
+              {
+                ...manifestEntry("bad-hash-2.jpg", new Uint8Array([9, 10, 11, 12]), "sample:M:3a"),
+                sha256: "c".repeat(64),
+              },
+            ],
+          });
+        },
+        expectedProblems: [
+          /sample:M:2a \(bad-hash-1\.jpg\): sha256 mismatch/,
+          /sample:M:3a \(bad-hash-2\.jpg\): sha256 mismatch/,
+        ],
+      },
+      {
         name: "existing storage object sha256 mismatch for new row",
         usePhotos: true,
         setup: ({ recs, photos, store: caseStore }) => {
@@ -845,10 +930,14 @@ describe("importReferenceRecords", () => {
         caseStore.calls.filter((call) => WRITE_CALL_RE.test(call)),
         `${c.name} must perform zero writes`,
       ).toEqual([]);
-      expect(
-        res.problems.some((p) => c.expectedProblem.test(p)),
-        `${c.name}: ${res.problems.join("; ")}`,
-      ).toBe(true);
+      const patterns = c.expectedProblems ?? (c.expectedProblem ? [c.expectedProblem] : []);
+      expect(patterns.length, `${c.name} must define expected problem pattern(s)`).toBeGreaterThan(0);
+      for (const pattern of patterns) {
+        expect(
+          res.problems.some((p) => pattern.test(p)),
+          `${c.name} missing ${pattern}: ${res.problems.join("; ")}`,
+        ).toBe(true);
+      }
     }
   });
 

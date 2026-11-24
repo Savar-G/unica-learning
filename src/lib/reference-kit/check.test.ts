@@ -507,4 +507,36 @@ describe("checkAndMarkPage", () => {
     expect(Array.isArray(saved.examples) && saved.examples[0].parts[0].shown_answer).toBe("6");
     expect(JSON.parse(readFileSync(res.statusPath, "utf8"))["sample:M:3a"]).toBe("human_checked");
   });
+
+  it("refuses invalid UTF-8 bytes in the final record or status.json without writing", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-chk-utf8-repo-"));
+    const work = mkdtempSync(join(tmpdir(), "ref-chk-utf8-work-"));
+    tempDirs.push(repo, work);
+
+    const finalDir = join(work, "final");
+    mkdirSync(finalDir, { recursive: true });
+    const [left, right] = JSON.stringify({ ...makeFinalPage(), topic: { title: "MARK" } }).split("MARK");
+    writeFileSync(
+      join(finalDir, "sample-M-3a.json"),
+      Buffer.concat([Buffer.from(left, "utf8"), Buffer.of(0xff), Buffer.from(right, "utf8")]),
+    );
+    writeFileSync(join(finalDir, "status.json"), JSON.stringify({ "sample:M:3a": "machine_read" }));
+
+    expect(() =>
+      checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: true }),
+    ).toThrow(/Invalid UTF-8/i);
+    expect(JSON.parse(readFileSync(join(finalDir, "status.json"), "utf8"))["sample:M:3a"]).toBe(
+      "machine_read",
+    );
+
+    writeFileSync(join(finalDir, "sample-M-3a.json"), JSON.stringify(makeFinalPage()));
+    const [sLeft, sRight] = JSON.stringify({ "sample:M:3a": "MARK" }).split("MARK");
+    writeFileSync(
+      join(finalDir, "status.json"),
+      Buffer.concat([Buffer.from(sLeft, "utf8"), Buffer.of(0xff), Buffer.from(sRight, "utf8")]),
+    );
+    expect(() =>
+      checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: true }),
+    ).toThrow(/utf-8/i);
+  });
 });

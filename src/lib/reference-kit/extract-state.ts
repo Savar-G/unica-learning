@@ -1,6 +1,7 @@
 import { existsSync, lstatSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import {
+  parseStrictUtf8Json,
   validateReferenceRecord,
   writeSafeOutputFile,
 } from "@/lib/reference-record";
@@ -27,7 +28,7 @@ const PREPARED_FILE_RE = /^[0-9a-f]{12}\.jpg$/;
 export function readJsonIfExists<T>(filePath: string): T | null {
   if (!existsSync(filePath)) return null;
   try {
-    return JSON.parse(readFileSync(filePath, "utf8")) as T;
+    return parseStrictUtf8Json(readFileSync(filePath)) as T;
   } catch {
     return null;
   }

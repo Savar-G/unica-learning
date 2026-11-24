@@ -115,7 +115,7 @@ export interface CompareWorkReport {
 }
 
 function formatConflictEntry(entry: string): string {
-  const match = /^(reader [ab]): (\S+?)(: [\s\S]+)?$/.exec(entry);
+  const match = /^(final record|reader [ab]): (\S+?)(: [\s\S]+)?$/.exec(entry);
   return match ? `${match[1]}: \`${match[2]}\`${match[3] ?? ""}` : `\`${entry}\``;
 }
 
@@ -207,6 +207,7 @@ function formatReaderBNeighbours(d: RecordDifference): string {
 
 type ReviewInstructionKind =
   | "edited_check"
+  | "invalid_human_checked"
   | "once_read_heading_fresh"
   | "once_read_heading_kept"
   | "both_unclear_heading"
@@ -219,37 +220,26 @@ type ReviewInstructionKind =
 
 const REVIEW_INSTRUCTIONS: Record<ReviewInstructionKind, { action: string; neutral: string }> = {
   edited_check: { action: " Run reference:check for this page.", neutral: "" },
+  invalid_human_checked: { action: " Correct it, then run reference:check for this page.", neutral: "" },
   once_read_heading_fresh: {
-    action:
-      ' (look at the photo; copy an entry that is on the page into the final record at the given path, where "[]" means the end of that list and "insert before" means insert ahead of that element)',
+    action: ' (look at the photo; copy an entry that is on the page into the final record at the given path, where "[]" means the end of that list and "insert before" means insert ahead of that element)',
     neutral: "",
   },
-  once_read_heading_kept: {
-    action: " (look at the photo; a person changed the final record, so find the place in that record)",
-    neutral: "",
-  },
-  both_unclear_heading: {
-    action: ' (look at the photo and write the value, or keep "unclear" and mark the page checked)',
-    neutral: "",
-  },
+  once_read_heading_kept: { action: " (look at the photo; a person changed the final record, so find the place in that record)", neutral: "" },
+  both_unclear_heading: { action: ' (look at the photo and write the value, or keep "unclear" and mark the page checked)', neutral: "" },
   empty_answer_heading: { action: ' (write the answer from the photo, or "unclear")', neutral: "" },
-  missing_step_note: {
-    action: "; its step is missing from reader A's record and must be added first",
-    neutral: "; step absent from reader A's record",
-  },
-  kept_find_place: {
-    action: " has it; a person changed the final record, so find the place in that record",
-    neutral: "",
-  },
+  missing_step_note: { action: "; its step is missing from reader A's record and must be added first", neutral: "; step absent from reader A's record" },
+  kept_find_place: { action: " has it; a person changed the final record, so find the place in that record", neutral: "" },
   located_insert_before: { action: " has it; insert before", neutral: "; location in final record before" },
   located_reader_a: { action: " has it; already in the final record at", neutral: "; in final record at" },
   located_reader_b: { action: " has it; belongs in the final record at", neutral: "; location in final record" },
 };
 
-// Every review instruction goes through this gate so non-machine_read pages never ask for action.
+// Every review instruction goes through this gate. Non-machine_read pages never ask for action,
+// with one documented exemption: an invalid kept human_checked file that cannot be read.
 function reviewInstruction(status: PageStatus, kind: ReviewInstructionKind): string {
   const entry = REVIEW_INSTRUCTIONS[kind];
-  return status === "machine_read" ? entry.action : entry.neutral;
+  return status === "machine_read" || kind === "invalid_human_checked" ? entry.action : entry.neutral;
 }
 
 function formatLocatedEntry(
@@ -389,7 +379,7 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
     for (const k of report.kept_human_checked) {
       if (k.invalid) {
         lines.push(
-          `- ${k.source_ref}: kept as it is, but the file is not a valid record now. Correct it, then run reference:check for this page.`,
+          `- ${k.source_ref}: kept as it is, but the file is not a valid record now.${reviewInstruction("human_checked", "invalid_human_checked")}`,
         );
       } else if (!k.in_current_batch) {
         lines.push(`- ${k.source_ref}: stale human_checked page kept (not in current batch)`);
@@ -537,7 +527,9 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
     if (answerConflicts.length > 0) {
       lines.push("- Answer conflicts (stored answer does not match computed answer):");
       for (const msg of answerConflicts) {
-        lines.push(`  - ${msg}`);
+        lines.push(
+          `  - ${/^(final record|reader [ab]): /.test(msg) ? formatConflictEntry(msg) : msg}`,
+        );
       }
     }
 

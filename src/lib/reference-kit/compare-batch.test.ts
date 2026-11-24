@@ -11,11 +11,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { ContentsRecord, PageRecord } from "@/lib/reference-record";
 import { checkAndMarkPage } from "./check";
 import { compareWorkFolder } from "./compare-batch";
-import * as comparePartsModule from "./compare-parts";
 import { persistSlotResult } from "./extract-state";
 import { readPhoto } from "./read";
 
@@ -1406,7 +1405,7 @@ describe("compareWorkFolder", () => {
       expect(page.status, `round ${round}`).toBe("machine_read");
       expect(page.edited_by_person, `round ${round}`).toBe(true);
       expect(page.answer_conflicts, `round ${round}`).toEqual([
-        'sections[0].items[n=2].responses[0]: record holds "999", computed "3"',
+        'final record: sections[0].items[n=2].responses[0]: record holds "999", computed "3"',
       ]);
 
       const kept = JSON.parse(readFileSync(finalPath, "utf8")) as PageRecord;
@@ -1945,22 +1944,32 @@ describe("compareWorkFolder", () => {
       name: string,
       payloadA: Record<string, unknown>,
       payloadB: Record<string, unknown>,
-      opts?: { omitNoteDetails?: boolean },
+      opts?: { omitNoteDetails?: boolean; viaRetry?: boolean },
     ) => {
       const work = mkdtempSync(join(tmpdir(), `ref-cmp-readconf-${name}-`));
       tempDirs.push(work);
+      const makeCli = (payload: Record<string, unknown>) => {
+        let calls = 0;
+        return async () => {
+          calls += 1;
+          if (opts?.viaRetry && calls === 1) {
+            return { code: 0, stdout: "not valid json on first attempt", stderr: "" };
+          }
+          return { code: 0, stdout: JSON.stringify(payload), stderr: "" };
+        };
+      };
       const [resA, resB] = await Promise.all([
         readPhoto({
           photoBytes: Uint8Array.of(1),
           source: "sample",
           reader: "codex",
-          runCli: async () => ({ code: 0, stdout: JSON.stringify(payloadA), stderr: "" }),
+          runCli: makeCli(payloadA),
         }),
         readPhoto({
           photoBytes: Uint8Array.of(1),
           source: "sample",
           reader: "claude",
-          runCli: async () => ({ code: 0, stdout: JSON.stringify(payloadB), stderr: "" }),
+          runCli: makeCli(payloadB),
         }),
       ]);
       expect(resA.status, `${name} resA`).toBe("ok");
@@ -2002,16 +2011,19 @@ describe("compareWorkFolder", () => {
       shape: FillableShape;
       aKind: RawAnswerKind;
       bKind: RawAnswerKind;
+      viaRetry: boolean;
       shouldPass: boolean;
     }> = [];
-    for (const shape of fillableShapes) {
-      for (const aKind of rawKinds) {
-        for (const bKind of rawKinds) {
-          if (shape.skipBothWrong && aKind === "wrong" && bKind === "wrong") continue;
-          const shouldPass =
-            (aKind === "correct" || aKind === "null") &&
-            (bKind === "correct" || bKind === "null");
-          tasks.push({ shape, aKind, bKind, shouldPass });
+    for (const viaRetry of [false, true]) {
+      for (const shape of fillableShapes) {
+        for (const aKind of rawKinds) {
+          for (const bKind of rawKinds) {
+            if (shape.skipBothWrong && aKind === "wrong" && bKind === "wrong") continue;
+            const shouldPass =
+              (aKind === "correct" || aKind === "null") &&
+              (bKind === "correct" || bKind === "null");
+            tasks.push({ shape, aKind, bKind, viaRetry, shouldPass });
+          }
         }
       }
     }
@@ -2020,15 +2032,16 @@ describe("compareWorkFolder", () => {
       tasks.map(async (t) => ({
         t,
         out: await runPair(
-          `${t.shape.name}-${t.aKind}-${t.bKind}`,
+          `${t.shape.name}-${t.aKind}-${t.bKind}-${t.viaRetry ? "retry" : "direct"}`,
           t.shape.buildPayload(t.aKind),
           t.shape.buildPayload(t.bKind),
+          { viaRetry: t.viaRetry },
         ),
       })),
     );
 
     for (const { t, out } of results) {
-      const label = `${t.shape.name}: (${t.aKind}, ${t.bKind})`;
+      const label = `${t.shape.name} (${t.viaRetry ? "retry" : "direct"}): (${t.aKind}, ${t.bKind})`;
       if (t.shouldPass) {
         t.shape.checkFilled(out.saved);
         expect(out.page.status, label).toBe("double_read");
@@ -2039,6 +2052,11 @@ describe("compareWorkFolder", () => {
       } else {
         expect(out.page.status, label).toBe("machine_read");
         expect(out.report.pages_sent_to_person, label).toHaveLength(1);
+        expect(out.report.pages_sent_to_person![0].source_ref, label).toBe("sample:M:3a");
+        expect(out.report.pages_sent_to_person![0].agreement_percent, label).toBe(
+          out.page.agreement?.percent ?? null,
+        );
+        expect(out.report.pages_sent_to_person![0].reason, label).toBe(out.page.result_reason);
         expect(out.page.result_reason, label).not.toBeNull();
         expect(out.md, label).not.toContain("Exact match across both readers.");
         if (!t.shape.skipBothWrong) {
@@ -2580,7 +2598,7 @@ describe("compareWorkFolder", () => {
     expect(aBad.page.status).toBe("machine_read");
     expect(aBad.page.result_reason).toBe("stored answer conflicts with computed answer");
     expect(aBad.page.answer_conflicts).toEqual([
-      expect.stringContaining("examples[0].parts[0].shown_answer"),
+      'final record: examples[0].parts[0].shown_answer: shown "6", computed "5"',
     ]);
     expect(aBad.page.reader_answer_conflicts).toBeUndefined();
     expect(Array.isArray(aBad.saved.examples) && aBad.saved.examples[0].parts[0].shown_answer).toBe("6");
@@ -2605,7 +2623,7 @@ describe("compareWorkFolder", () => {
       'reader b: `examples[0].parts[0].shown_answer`: shown "6", computed "5"',
     );
 
-    // 2b. Unrelated conflict in B at the same index as A's conflict: both are listed, B's labelled reader b
+    // 2b. Unrelated conflict in B at the same index as A's conflict: both are listed
     const bothDifferentAtIndex0 = runCase(
       "both-diff-same-idx",
       makeExPage("sample:M:21b", [
@@ -2617,19 +2635,65 @@ describe("compareWorkFolder", () => {
     );
     expect(bothDifferentAtIndex0.page.status).toBe("machine_read");
     expect(bothDifferentAtIndex0.page.answer_conflicts).toEqual([
-      'examples[0].parts[0].shown_answer: shown "6", computed "5"',
+      'final record: examples[0].parts[0].shown_answer: shown "6", computed "5"',
     ]);
     expect(bothDifferentAtIndex0.page.reader_answer_conflicts).toEqual([
       'reader b: examples[0].parts[0].shown_answer: shown "10", computed "9"',
     ]);
     expect(bothDifferentAtIndex0.md).toContain(
-      'examples[0].parts[0].shown_answer: shown "6", computed "5"',
+      'final record: `examples[0].parts[0].shown_answer`: shown "6", computed "5"',
     );
     expect(bothDifferentAtIndex0.md).toContain(
       'reader b: `examples[0].parts[0].shown_answer`: shown "10", computed "9"',
     );
 
-    // 3. Both readers have the same conflict at 100% agreement -> still stops
+    // 2c. A Alpha first, B Beta first, same expr and same wrong answer at index 0: both listed
+    const alphaBeta = runCase(
+      "alpha-beta-same-idx",
+      {
+        ...makeExPage("sample:M:21c", []),
+        examples: [
+          {
+            position: "top",
+            relation: "compare",
+            label: "Alpha",
+            parts: [{ form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "6" }],
+          },
+          {
+            position: "top",
+            relation: "compare",
+            label: "Beta",
+            parts: [{ form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "5" }],
+          },
+        ],
+      },
+      {
+        ...makeExPage("sample:M:21c", []),
+        examples: [
+          {
+            position: "top",
+            relation: "compare",
+            label: "Beta",
+            parts: [{ form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "6" }],
+          },
+          {
+            position: "top",
+            relation: "compare",
+            label: "Alpha",
+            parts: [{ form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "5" }],
+          },
+        ],
+      },
+    );
+    expect(alphaBeta.page.status).toBe("machine_read");
+    expect(alphaBeta.page.answer_conflicts).toEqual([
+      'final record: examples[0].parts[0].shown_answer: shown "6", computed "5"',
+    ]);
+    expect(alphaBeta.page.reader_answer_conflicts).toEqual([
+      'reader b: examples[0].parts[0].shown_answer: shown "6", computed "5"',
+    ]);
+
+    // 3. Both readers have the same conflict at 100% agreement -> still stops, final and reader b both listed
     const bothBad = runCase(
       "both-bad",
       makeExPage("sample:M:22a", [
@@ -2641,9 +2705,12 @@ describe("compareWorkFolder", () => {
     );
     expect(bothBad.page.agreement?.percent).toBe(100);
     expect(bothBad.page.status).toBe("machine_read");
-    expect(bothBad.page.result_reason).toBe("stored answer conflicts with computed answer");
+    expect(bothBad.page.result_reason).toContain("stored answer conflicts with computed answer");
     expect(bothBad.page.answer_conflicts).toEqual([
-      expect.stringContaining("examples[0].parts[0].shown_answer"),
+      'final record: examples[0].parts[0].shown_answer: shown "6", computed "5"',
+    ]);
+    expect(bothBad.page.reader_answer_conflicts).toEqual([
+      'reader b: examples[0].parts[0].shown_answer: shown "6", computed "5"',
     ]);
     expect(Array.isArray(bothBad.saved.examples) && bothBad.saved.examples[0].parts[0].shown_answer).toBe("6");
 
@@ -2674,51 +2741,159 @@ describe("compareWorkFolder", () => {
     expect(allOk.page.reader_answer_conflicts).toBeUndefined();
   });
 
-  it("compares each reader pair only once inside compareWorkFolder", () => {
-    const repo = mkdtempSync(join(tmpdir(), "ref-cmp-once-repo-"));
-    const work = mkdtempSync(join(tmpdir(), "ref-cmp-once-work-"));
+  it("lists reader A item conflict once on a fresh record and lists final, reader a, and reader b on an edited record", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-cmp-conflict-list-repo-"));
+    const work = mkdtempSync(join(tmpdir(), "ref-cmp-conflict-list-work-"));
     tempDirs.push(repo, work);
 
-    const pageA = makePage({ source_ref: "sample:M:30a" });
-    const pageB = makePage({ source_ref: "sample:M:30a", topic: { title: "Different title" } });
-    for (const [slot, family, rec] of [
-      ["a", "codex", pageA],
-      ["b", "claude", pageB],
+    const makeRaw = (opts: {
+      itemAnswer: string;
+      itemSource: "printed" | "reader";
+      exShown: string;
+    }) => ({
+      kind: "page",
+      level: "M",
+      sheet: "30a",
+      topic: { title: "Conflict list test" },
+      sections: [
+        {
+          instruction: "Add.",
+          scaffolds: [],
+          items: [
+            {
+              n: 1,
+              printed: "2 + 3 =",
+              form: "horizontal",
+              expr: { kind: "arith", op: "add", operands: [2, 3] },
+              responses: [
+                {
+                  position: "after_equals",
+                  cue: null,
+                  answer: opts.itemAnswer,
+                  answer_source: opts.itemSource,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      examples: [
+        {
+          position: "top",
+          relation: "compare",
+          parts: [
+            {
+              form: "horizontal",
+              expr: { kind: "arith", op: "add", operands: [2, 3] },
+              shown_answer: opts.exShown,
+            },
+          ],
+        },
+      ],
+      score_bands: [
+        [100, 100],
+        [90, 99],
+        [80, 89],
+        [70, 79],
+        [0, 69],
+      ],
+    });
+
+    const rawA = makeRaw({ itemAnswer: "6", itemSource: "printed", exShown: "6" });
+    const rawB = makeRaw({ itemAnswer: "5", itemSource: "reader", exShown: "5" });
+
+    for (const [slot, family, raw] of [
+      ["a", "codex", rawA],
+      ["b", "claude", rawB],
     ] as const) {
+      const res = await readPhoto({
+        photoBytes: Uint8Array.of(1),
+        source: "sample",
+        reader: family,
+        runCli: async () => ({ code: 0, stdout: JSON.stringify(raw), stderr: "" }),
+      });
+      expect(res.status).toBe("ok");
       const dir = join(work, `reader-${slot}`);
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, "reader.json"), JSON.stringify({ family, model: "m1" }));
-      writeFileSync(join(dir, "sample-M-30a.json"), JSON.stringify(rec, null, 2));
+      const entry = persistSlotResult({
+        slotDir: dir,
+        preparedFile: `${SHA_1.slice(0, 12)}.jpg`,
+        originalName: "01.jpg",
+        sha256: SHA_1,
+        result: res,
+        existingEntries: [],
+        repoRoot: repo,
+      });
       writeFileSync(
         join(dir, "run.json"),
-        JSON.stringify({
-          slot,
-          reader: { family, model: "m1" },
-          source: "sample",
-          photos: [
-            {
-              photo: `${SHA_1.slice(0, 12)}.jpg`,
-              photo_sha256: SHA_1,
-              status: "ok",
-              source_ref: "sample:M:30a",
-              record_file: "sample-M-30a.json",
-              notes: [],
-            },
-          ],
-        }),
+        JSON.stringify({ slot, reader: { family, model: "m1" }, source: "sample", photos: [entry] }),
       );
     }
 
-    const spy = vi.spyOn(comparePartsModule, "compareField");
-    try {
-      const report = compareWorkFolder({ workDir: work, repoRoot: repo });
-      expect(report.pages).toHaveLength(1);
-      expect(report.pages[0].status).toBe("agreement_accepted");
-      const sourceRefCalls = spy.mock.calls.filter(([path]) => path === "source_ref");
-      expect(sourceRefCalls).toHaveLength(1);
-    } finally {
-      spy.mockRestore();
+    // Fresh record (= reader A's content): A's printed item conflict and example conflict appear
+    // once under answer_conflicts (labelled final record) and NOT again under reader_answer_conflicts.
+    const fresh = compareWorkFolder({ workDir: work, repoRoot: repo });
+    expect(fresh.pages[0].answer_conflicts).toEqual([
+      'final record: sections[0].items[n=1].responses[0]: page prints "6", computed "5"',
+      'final record: examples[0].parts[0].shown_answer: shown "6", computed "5"',
+    ]);
+    expect(fresh.pages[0].reader_answer_conflicts).toBeUndefined();
+
+    // Now give reader B its own conflicts and let a person edit the final record to a third wrong value.
+    const workEdited = mkdtempSync(join(tmpdir(), "ref-cmp-conflict-edited-work-"));
+    tempDirs.push(workEdited);
+    const rawA2 = makeRaw({ itemAnswer: "6", itemSource: "printed", exShown: "6" });
+    const rawB2 = makeRaw({ itemAnswer: "7", itemSource: "reader", exShown: "8" });
+    for (const [slot, family, raw] of [
+      ["a", "codex", rawA2],
+      ["b", "claude", rawB2],
+    ] as const) {
+      const res = await readPhoto({
+        photoBytes: Uint8Array.of(2),
+        source: "sample",
+        reader: family,
+        runCli: async () => ({ code: 0, stdout: JSON.stringify(raw), stderr: "" }),
+      });
+      expect(res.status).toBe("ok");
+      const dir = join(workEdited, `reader-${slot}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "reader.json"), JSON.stringify({ family, model: "m1" }));
+      const entry = persistSlotResult({
+        slotDir: dir,
+        preparedFile: `${SHA_1.slice(0, 12)}.jpg`,
+        originalName: "02.jpg",
+        sha256: SHA_1,
+        result: res,
+        existingEntries: [],
+        repoRoot: repo,
+      });
+      writeFileSync(
+        join(dir, "run.json"),
+        JSON.stringify({ slot, reader: { family, model: "m1" }, source: "sample", photos: [entry] }),
+      );
     }
+    compareWorkFolder({ workDir: workEdited, repoRoot: repo });
+    const finalPath = join(workEdited, "final", "sample-M-30a.json");
+    const edited = JSON.parse(readFileSync(finalPath, "utf8")) as PageRecord;
+    edited.sections[0].items[0].responses[0].answer = "9";
+    if (Array.isArray(edited.examples)) {
+      edited.examples[0].parts[0].shown_answer = "10";
+    }
+    writeFileSync(finalPath, JSON.stringify(edited, null, 2));
+
+    const afterEdit = compareWorkFolder({ workDir: workEdited, repoRoot: repo });
+    expect(afterEdit.pages[0].edited_by_person).toBe(true);
+    expect(afterEdit.pages[0].answer_conflicts).toEqual([
+      'final record: sections[0].items[n=1].responses[0]: page prints "9", computed "5"',
+      'final record: examples[0].parts[0].shown_answer: shown "10", computed "5"',
+    ]);
+    expect(afterEdit.pages[0].reader_answer_conflicts).toEqual([
+      'reader a: sections[0].items[n=1].responses[0]: page prints "6", computed "5"',
+      'reader b: sections[0].items[n=1].responses[0]: reader gave "7", computed "5"',
+      'reader a: examples[0].parts[0].shown_answer: shown "6", computed "5"',
+      'reader b: examples[0].parts[0].shown_answer: shown "8", computed "5"',
+    ]);
   });
 });
 

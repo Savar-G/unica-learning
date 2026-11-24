@@ -1866,22 +1866,21 @@ describe("90% reader agreement rule", () => {
       if (Array.isArray(b.examples)) {
         b.examples[0].parts[0].shown_answer = shownB;
       }
-      return { a, b, exConflicts: collectExampleAnswerConflicts(a, a, b) };
+      return { a, b, exConflicts: collectExampleAnswerConflicts(a, a, b, { finalIsFreshA: true }) };
     };
     const exFinalConflict = makeExConflictPage("6", "6");
     expect(exFinalConflict.exConflicts.finalMessages).toHaveLength(1);
     const exReaderConflict = makeExConflictPage("5", "6");
-    expect(exReaderConflict.exConflicts.readerOnlyMessages).toEqual([
+    expect(exReaderConflict.exConflicts.readerMessages).toEqual([
       'reader b: examples[0].parts[0].shown_answer: shown "6", computed "5"',
     ]);
 
-    const stopTable: Array<{
-      reason: PageStopReason;
-      label: string;
-      at95?: Partial<DecideStatusInput>;
-      at100?: Partial<DecideStatusInput>;
-      custom?: DecideStatusInput;
-    }> = [
+    type StopScenario =
+      | { at95: Partial<DecideStatusInput>; at100?: Partial<DecideStatusInput>; custom?: never }
+      | { at95?: Partial<DecideStatusInput>; at100: Partial<DecideStatusInput>; custom?: never }
+      | { at95?: never; at100?: never; custom: DecideStatusInput };
+
+    const stopTable: Array<{ reason: PageStopReason; label: string } & StopScenario> = [
       {
         reason: "edited by a person (not checked yet)",
         label: "editedByPerson",
@@ -1947,8 +1946,8 @@ describe("90% reader agreement rule", () => {
       {
         reason: READER_ANSWER_CONFLICT_REASON,
         label: "reader-only worked-example shown_answer conflict",
-        at95: { hasReaderAnswerConflict: exReaderConflict.exConflicts.readerOnlyMessages.length > 0 },
-        at100: { hasReaderAnswerConflict: exReaderConflict.exConflicts.readerOnlyMessages.length > 0 },
+        at95: { hasReaderAnswerConflict: exReaderConflict.exConflicts.readerMessages.length > 0 },
+        at100: { hasReaderAnswerConflict: exReaderConflict.exConflicts.readerMessages.length > 0 },
       },
       {
         reason: "empty answer place",
@@ -1989,21 +1988,26 @@ describe("90% reader agreement rule", () => {
     expect([...coveredReasons].sort()).toEqual([...PAGE_STOP_REASONS].sort());
 
     for (const row of stopTable) {
+      let ran = 0;
       if (row.at95) {
+        ran += 1;
         const res = decidePageOutcome({ ...base95, ...row.at95 });
         expect(res.status, `${row.label} @ 95%`).toBe("machine_read");
         expect(res.stopReasons, `${row.label} @ 95%`).toContain(row.reason);
       }
       if (row.at100) {
+        ran += 1;
         const res = decidePageOutcome({ ...base100, ...row.at100 });
         expect(res.status, `${row.label} @ 100%`).toBe("machine_read");
         expect(res.stopReasons, `${row.label} @ 100%`).toContain(row.reason);
       }
       if (row.custom) {
+        ran += 1;
         const res = decidePageOutcome(row.custom);
         expect(res.status, row.label).toBe("machine_read");
         expect(res.stopReasons, row.label).toContain(row.reason);
       }
+      expect(ran, `${row.label} must exercise at least one scenario`).toBeGreaterThan(0);
     }
   });
 
@@ -2965,7 +2969,7 @@ describe("90% reader agreement rule", () => {
       topicAOnly.differences[0].a,
     );
 
-    // Non-ascending reader B list reports reader B's actual printed neighbours
+    // Non-ascending reader B list and item numbers above 16 report reader B's actual printed neighbours
     const descendingItems = classifyComparison(makeItemsPage([3, 1]), makeItemsPage([3, 2, 1]));
     const descDiff = descendingItems.differences.find((d) => d.path === "sections[0].items[n=2]");
     expect(descDiff).toMatchObject({
@@ -2977,11 +2981,78 @@ describe("90% reader agreement rule", () => {
     expect(descDiff?.final_path).toBeUndefined();
     expect(descDiff?.insert_before).toBeUndefined();
 
-    // Property over random items, once-read scaffolds, steps, and marks:
+    const highItems = classifyComparison(makeItemsPage([15, 22]), makeItemsPage([15, 19, 22, 30]));
+    expect(highItems.differences.find((d) => d.path === "sections[0].items[n=19]")).toMatchObject({
+      reader: "b",
+      reader_b_after: 15,
+      reader_b_before: 22,
+    });
+    expect(highItems.differences.find((d) => d.path === "sections[0].items[n=30]")).toMatchObject({
+      reader: "b",
+      reader_b_after: 22,
+      reader_b_before: null,
+    });
+
+    // Independent parent-object existence check for "[]" append paths (not using the kit's resolver).
+    // The list property itself may be absent (the person creates it), but its parent object must exist.
+    const parentObjectExistsForAppend = (record: unknown, appendPath: string): boolean => {
+      if (!appendPath.endsWith("[]")) return false;
+      const listPath = appendPath.slice(0, -2);
+      const tokenRe = /([A-Za-z_][A-Za-z0-9_]*)|\[(\d+)\]/g;
+      const tokens: Array<{ kind: "prop"; name: string } | { kind: "index"; idx: number }> = [];
+      let matchedLen = 0;
+      for (const m of listPath.matchAll(tokenRe)) {
+        matchedLen += m[0].length + (m[1] !== undefined && tokens.length > 0 ? 1 : 0);
+        if (m[1] !== undefined) tokens.push({ kind: "prop", name: m[1] });
+        else if (m[2] !== undefined) tokens.push({ kind: "index", idx: Number(m[2]) });
+      }
+      if (matchedLen !== listPath.length || tokens.length === 0) return false;
+      const last = tokens[tokens.length - 1];
+      if (last.kind !== "prop") return false;
+      let node: unknown = record;
+      for (let i = 0; i < tokens.length - 1; i += 1) {
+        const tok = tokens[i];
+        if (tok.kind === "prop") {
+          if (typeof node !== "object" || node === null || Array.isArray(node)) return false;
+          if (!Object.hasOwn(node, tok.name)) return false;
+          node = (node as Record<string, unknown>)[tok.name];
+        } else {
+          if (!Array.isArray(node) || tok.idx < 0 || tok.idx >= node.length) return false;
+          node = node[tok.idx];
+        }
+      }
+      if (typeof node !== "object" || node === null || Array.isArray(node)) return false;
+      const listVal = (node as Record<string, unknown>)[last.name];
+      return listVal === undefined || Array.isArray(listVal);
+    };
+
+    // Absent optional lists (steps/marks omitted on reader A's example): parent object examples[0] exists.
+    const absentListA = makeItemsPage([1]);
+    absentListA.examples = [{ position: "top", relation: "sequence", parts: [{ form: "horizontal", expr: null }] }];
+    const absentListB = makeItemsPage([1]);
+    absentListB.examples = [
+      {
+        position: "top",
+        relation: "sequence",
+        parts: [{ form: "horizontal", expr: null }],
+        steps: [{ n: 1, shows: "answer", printed: "5" }],
+        marks: [{ kind: "box", step: 1, description: "Box" }],
+      },
+    ];
+    const absentSummary = classifyComparison(absentListA, absentListB);
+    expect(absentSummary.once_read.map((d) => d.final_path)).toEqual([
+      "examples[0].steps[]",
+      "examples[0].marks[]",
+    ]);
+    for (const d of absentSummary.once_read) {
+      expect(parentObjectExistsForAppend(absentListA, d.final_path!)).toBe(true);
+    }
+
+    // Property over random items (including numbers above 16), once-read scaffolds, steps, and marks:
     // - reader-B-only numbered items give exact neighbours and no final_path or insert_before;
-    // - across ALL 6 difference lists, every final_path without "[]" or insert_before resolves
-    //   in reader A's record (and matches reader A's entry); every insert_before points to an
-    //   existing step in reader A's record.
+    // - step alignment insertion positions and scaffold/mark append paths match independent
+    //   expectations computed directly from the generated lists (not from the kit's resolver);
+    // - every "[]" path has an existing parent object in recA; every non-"[]" final_path resolves.
     const scaffoldPool: Scaffold[] = [
       { kind: "caption", applies_to: "all", text: "Hint A" },
       { kind: "arrow", applies_to: [1], from: "left", to: "right", label: "next" },
@@ -2999,8 +3070,8 @@ describe("90% reader agreement rule", () => {
 
     fc.assert(
       fc.property(
-        fc.uniqueArray(fc.integer({ min: 1, max: 16 }), { minLength: 1, maxLength: 8 }),
-        fc.uniqueArray(fc.integer({ min: 1, max: 16 }), { minLength: 1, maxLength: 8 }),
+        fc.uniqueArray(fc.integer({ min: 1, max: 60 }), { minLength: 1, maxLength: 10 }),
+        fc.uniqueArray(fc.integer({ min: 1, max: 60 }), { minLength: 1, maxLength: 10 }),
         fc.subarray([0, 1, 2, 3]),
         fc.subarray([0, 1, 2, 3]),
         fc.subarray([0, 1, 2, 3, 4], { minLength: 1 }),
@@ -3064,6 +3135,66 @@ describe("90% reader agreement rule", () => {
               expect(resolveDiffPath(recA, d.final_path!).value).toEqual(d.a);
             }
           }
+
+          // Independent expected step insertion positions from the strictly ascending unique pool indices:
+          // anchors are the exact set intersection in order; gaps pair positionally; extra B steps
+          // insert before the next anchor in A, or append with "[]" after the last anchor.
+          const anchors: Array<[number, number]> = [];
+          for (let ai = 0; ai < aStepIdx.length; ai += 1) {
+            const bi = bStepIdx.indexOf(aStepIdx[ai]);
+            if (bi !== -1) anchors.push([ai, bi]);
+          }
+          const expectedBOnlySteps = new Map<
+            number,
+            { insert_before: number | undefined; final_path: string }
+          >();
+          let prevA = 0;
+          let prevB = 0;
+          for (const [nextA, nextB] of [...anchors, [aStepIdx.length, bStepIdx.length] as [number, number]]) {
+            const paired = Math.min(nextA - prevA, nextB - prevB);
+            for (let k = paired; k < nextB - prevB; k += 1) {
+              const bIdx = prevB + k;
+              const beforeA = nextA < aStepIdx.length ? nextA : undefined;
+              expectedBOnlySteps.set(bIdx, {
+                insert_before: beforeA,
+                final_path:
+                  beforeA !== undefined ? `examples[0].steps[${beforeA}]` : "examples[0].steps[]",
+              });
+            }
+            prevA = nextA + 1;
+            prevB = nextB + 1;
+          }
+          const actualBOnlySteps = summary.once_read.filter((d) =>
+            /^examples\[0\]\.steps\[b:\d+\]$/.test(d.path),
+          );
+          expect(actualBOnlySteps).toHaveLength(expectedBOnlySteps.size);
+          for (const d of actualBOnlySteps) {
+            const bIdx = Number(/^examples\[0\]\.steps\[b:(\d+)\]$/.exec(d.path)![1]);
+            const exp = expectedBOnlySteps.get(bIdx);
+            expect(exp).toBeDefined();
+            expect(d.reader).toBe("b");
+            expect(d.insert_before).toBe(exp!.insert_before);
+            expect(d.final_path).toBe(exp!.final_path);
+          }
+
+          // Independent expected scaffold appends: each scaffold in scaffoldPool has a unique kind,
+          // so B-only scaffolds are exactly those whose pool index is absent from aScIdx.
+          const aScSet = new Set(aScIdx);
+          const expectedBOnlyScaffolds = bScIdx
+            .map((poolIdx, bIdx) => (aScSet.has(poolIdx) ? null : bIdx))
+            .filter((bIdx): bIdx is number => bIdx !== null);
+          const actualBOnlyScaffolds = summary.once_read.filter((d) =>
+            /^sections\[0\]\.scaffolds\[b:\d+\]$/.test(d.path),
+          );
+          expect(actualBOnlyScaffolds.map((d) => d.path)).toEqual(
+            expectedBOnlyScaffolds.map((bIdx) => `sections[0].scaffolds[b:${bIdx}]`),
+          );
+          for (const d of actualBOnlyScaffolds) {
+            expect(d.reader).toBe("b");
+            expect(d.insert_before).toBeUndefined();
+            expect(d.final_path).toBe("sections[0].scaffolds[]");
+          }
+
           const allLists = [
             ...summary.differences,
             ...summary.once_read,
@@ -3077,7 +3208,9 @@ describe("90% reader agreement rule", () => {
             if (d.insert_before !== undefined) {
               expect(recordPathResolves(recA, d.final_path)).toBe(true);
               expect(d.final_path.endsWith(`[${d.insert_before}]`)).toBe(true);
-            } else if (!d.final_path.endsWith("[]")) {
+            } else if (d.final_path.endsWith("[]")) {
+              expect(parentObjectExistsForAppend(recA, d.final_path), d.final_path).toBe(true);
+            } else {
               expect(recordPathResolves(recA, d.final_path)).toBe(true);
               if (d.reader === "a") {
                 expect(resolveDiffPath(recA, d.final_path).value).toEqual(d.a);
@@ -3248,13 +3381,15 @@ describe("90% reader agreement rule", () => {
       const cmp = compareRecordsWithCounts(a, b);
       const computedA = applyComputedAnswers(a);
       const computedB = applyComputedAnswers(b);
-      const exConflicts = collectExampleAnswerConflicts(computedA.record, a, b);
+      const exConflicts = collectExampleAnswerConflicts(computedA.record, a, b, {
+        finalIsFreshA: true,
+      });
       const finalAnswerConflict =
         computedA.details.some((d) => d.kind === "answer_differs") ||
         exConflicts.finalMessages.length > 0;
       const readerAnswerConflict =
         computedB.details.some((d) => d.kind === "answer_differs") ||
-        exConflicts.readerOnlyMessages.length > 0;
+        exConflicts.readerMessages.length > 0;
       return decidePageOutcome({
         hasA: true,
         hasB: true,
@@ -3368,6 +3503,7 @@ describe("90% reader agreement rule", () => {
     // Schema-drift guard: parse src/lib/reference-record/types.ts with the TypeScript parser and
     // verify every interface/type holding both an expr and an answer (directly or via a referenced
     // member type) is in the covered set. Adding a new expr+answer type without wiring a stop fails.
+    // Note: intersection types (e.g. `A & B`) are out of scope for this AST guard.
     const typesPath = resolve(process.cwd(), "src/lib/reference-record/types.ts");
     const sourceFile = ts.createSourceFile(
       typesPath,
@@ -3449,14 +3585,63 @@ describe("90% reader agreement rule", () => {
     }
     expect(typesWithExprAndAnswer.sort()).toEqual(["ExamplePart", "PageItem"]);
 
-    // Also verify ReferenceRecord variants only expose the covered page-identity fields.
+    // Also classify every top-level key of PageRecord and ContentsRecord from types.ts AST.
+    // Any new key added to either interface without an explicit classification fails here.
+    type TopLevelFieldClass =
+      | { kind: "identity" }
+      | { kind: "compared" }
+      | { kind: "not_compared"; reason: string };
+
+    const TOP_LEVEL_FIELD_CLASSES: Record<string, Record<string, TopLevelFieldClass>> = {
+      PageRecord: {
+        kind: { kind: "identity" },
+        source_ref: { kind: "identity" },
+        topic: { kind: "compared" },
+        sections: { kind: "compared" },
+        examples: { kind: "compared" },
+        score_bands: { kind: "compared" },
+        readers: {
+          kind: "not_compared",
+          reason: "reader provenance list; differs by reader slot and is merged onto the final record",
+        },
+        single_read: {
+          kind: "not_compared",
+          reason: "output-only metadata attached after comparison on agreement_accepted pages",
+        },
+      },
+      ContentsRecord: {
+        kind: { kind: "identity" },
+        source_ref: { kind: "identity" },
+        topics: { kind: "compared" },
+        readers: {
+          kind: "not_compared",
+          reason: "reader provenance list; differs by reader slot and is merged onto the final record",
+        },
+        single_read: {
+          kind: "not_compared",
+          reason: "output-only metadata attached after comparison on agreement_accepted pages",
+        },
+      },
+    };
+
     const recordVariants = unionMembers.get("ReferenceRecord") ?? [];
     expect(recordVariants.sort()).toEqual(["ContentsRecord", "PageRecord"]);
     for (const variant of recordVariants) {
+      const classes = TOP_LEVEL_FIELD_CLASSES[variant];
+      expect(classes, variant).toBeDefined();
       const fields = objectTypes.get(variant) ?? [];
-      const names = new Set(fields.map((f) => f.name));
-      expect(names.has("kind"), variant).toBe(true);
-      expect(names.has("source_ref"), variant).toBe(true);
+      const actualKeys = fields.map((f) => f.name).sort();
+      expect(actualKeys, `${variant} top-level keys must all be classified`).toEqual(
+        Object.keys(classes).sort(),
+      );
+      const identityKeys: string[] = [];
+      for (const [key, cls] of Object.entries(classes)) {
+        if (cls.kind === "identity") identityKeys.push(key);
+        if (cls.kind === "not_compared") {
+          expect(cls.reason.trim().length, `${variant}.${key} needs a reason`).toBeGreaterThan(0);
+        }
+      }
+      expect(identityKeys.sort(), `${variant} identity keys`).toEqual(["kind", "source_ref"]);
     }
   });
 

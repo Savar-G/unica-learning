@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { writeSafeOutputFile } from "@/lib/reference-record";
+import { decodeStrictUtf8, writeSafeOutputFile } from "@/lib/reference-record";
 import { fileSlugFromRef } from "./answers";
 import { readRegularFileNoFollow, resolveSafeChildPath } from "./prepare";
 
@@ -58,9 +58,10 @@ function exists(path: string): boolean {
 
 function stripDigestFromRun(runPath: string, sha256: string, repoRoot: string): string | null {
   if (!exists(runPath)) return null;
-  const text = readRegularFileNoFollow(runPath).toString("utf8");
+  let text: string;
   let parsed: unknown;
   try {
+    text = decodeStrictUtf8(readRegularFileNoFollow(runPath));
     parsed = JSON.parse(text);
   } catch {
     return null;

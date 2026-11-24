@@ -596,7 +596,37 @@ describe("formatCompareReportMarkdown", () => {
       reader_notes: { a: ["note a"], b: ["note b"] },
     };
 
-    const makeReport = (pages: CompareWorkReport["pages"]): CompareWorkReport => ({
+    const validKeptChecked: CompareWorkReport["kept_human_checked"] = [
+      {
+        source_ref: "sample:M:1a",
+        in_current_batch: true,
+        differs_from_reader_a: false,
+        differs_from_reader_b: false,
+        diff_count_a: 0,
+        diff_count_b: 0,
+      },
+      {
+        source_ref: "sample:M:2a",
+        in_current_batch: true,
+        differs_from_reader_a: true,
+        differs_from_reader_b: true,
+        diff_count_a: 1,
+        diff_count_b: 2,
+      },
+      {
+        source_ref: "sample:M:3a",
+        in_current_batch: false,
+        differs_from_reader_a: false,
+        differs_from_reader_b: false,
+        diff_count_a: 0,
+        diff_count_b: 0,
+      },
+    ];
+
+    const makeReport = (
+      pages: CompareWorkReport["pages"],
+      keptHumanChecked: CompareWorkReport["kept_human_checked"] = validKeptChecked,
+    ): CompareWorkReport => ({
       reader_a: { family: "codex", model: "x1" },
       reader_b: { family: "claude", model: "c1" },
       pages,
@@ -605,7 +635,7 @@ describe("formatCompareReportMarkdown", () => {
       failed_photos: [],
       too_small_photos: [],
       could_not_read_photos: [],
-      kept_human_checked: [],
+      kept_human_checked: keptHumanChecked,
       removed_stale_pages: [],
       duplicate_photos: [],
       removed_photos: [],
@@ -624,6 +654,8 @@ describe("formatCompareReportMarkdown", () => {
       "write the answer",
       "mark the page checked",
       "Run reference:check",
+      "run reference:check",
+      "Correct it",
       "A person must read",
     ];
 
@@ -662,7 +694,11 @@ describe("formatCompareReportMarkdown", () => {
         ]),
       );
 
-      // Factual content is printed on every status.
+      // Factual content is printed on every status, including valid kept human_checked entries.
+      expect(md, label).toContain("## Kept: checked by a person");
+      expect(md, label).toContain("sample:M:1a: kept human_checked record (matches current readings)");
+      expect(md, label).toContain("sample:M:2a: kept human_checked record; current readings differ");
+      expect(md, label).toContain("sample:M:3a: stale human_checked page kept");
       expect(md, label).toContain("`topic.title` (value)");
       expect(md, label).toContain("`sections[0].items` (order)");
       expect(md, label).toContain("`sections[0].items[n=1].printed` (one_unclear)");
@@ -709,6 +745,41 @@ describe("formatCompareReportMarkdown", () => {
           expect(md, label).toContain("`examples[0].marks[]`");
         }
       }
+    }
+
+    // Documented exemption: an invalid kept human_checked file on disk cannot be read as a record,
+    // so only that invalid kept entry asks the person to correct it and run reference:check.
+    const invalidKeptMd = formatCompareReportMarkdown(
+      makeReport(
+        [
+          {
+            ...fullPageFields,
+            source_ref: "sample:M:6a",
+            status: "human_checked",
+            result: "checked by a person",
+          },
+        ],
+        [
+          ...validKeptChecked,
+          {
+            source_ref: "sample:M:6a",
+            in_current_batch: true,
+            differs_from_reader_a: false,
+            differs_from_reader_b: false,
+            diff_count_a: 0,
+            diff_count_b: 0,
+            invalid: true,
+          },
+        ],
+      ),
+    );
+    const invalidLine =
+      "- sample:M:6a: kept as it is, but the file is not a valid record now. Correct it, then run reference:check for this page.";
+    expect(invalidKeptMd).toContain(invalidLine);
+    // Remove only the single documented exemption line; the rest of the report must contain no instruction.
+    const withoutExemption = invalidKeptMd.replace(invalidLine, "");
+    for (const phrase of REVIEW_INSTRUCTION_PHRASES) {
+      expect(withoutExemption, `outside exemption must not contain "${phrase}"`).not.toContain(phrase);
     }
   });
 

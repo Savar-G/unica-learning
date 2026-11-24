@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   assertOutsideRepo,
+  parseStrictUtf8Json,
   prepareSafeOutputDir,
   renderRecordToMarkdown,
   validateReferenceRecord,
@@ -25,7 +26,7 @@ function describePagePhoto(workDir: string, page: string): string {
   const photosDir = join(workDir, "photos");
   try {
     const manifest = parsePhotosManifest(
-      JSON.parse(readFileSync(join(photosDir, PHOTOS_MANIFEST_FILE), "utf8")) as unknown,
+      parseStrictUtf8Json(readFileSync(join(photosDir, PHOTOS_MANIFEST_FILE))),
     );
     const entry = manifest.photos.find((p) => p.source_ref === page);
     if (entry) return `${join(photosDir, entry.file)} (original name ${entry.original_name})`;
@@ -33,7 +34,7 @@ function describePagePhoto(workDir: string, page: string): string {
     // No readable manifest: try the report.
   }
   try {
-    const report = JSON.parse(readFileSync(join(workDir, "final", "report.json"), "utf8")) as {
+    const report = parseStrictUtf8Json(readFileSync(join(workDir, "final", "report.json"))) as {
       pages?: Array<{ source_ref?: unknown; photo?: unknown; original_name?: unknown }>;
     };
     const entry = report.pages?.find((p) => p.source_ref === page);
@@ -82,7 +83,7 @@ export function checkAndMarkPage(opts: {
   if (!existsSync(statusPath)) {
     throw new Error(`Missing status.json in ${finalDir}. Run reference:compare first.`);
   }
-  const statusMap = JSON.parse(readFileSync(statusPath, "utf8")) as Record<string, PageStatus>;
+  const statusMap = parseStrictUtf8Json(readFileSync(statusPath)) as Record<string, PageStatus>;
   if (!Object.prototype.hasOwnProperty.call(statusMap, page)) {
     throw new Error(`Page "${page}" is not listed in ${statusPath}. Run reference:compare first.`);
   }
@@ -107,10 +108,11 @@ export function checkAndMarkPage(opts: {
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(recordPath, "utf8")) as unknown;
+    parsed = parseStrictUtf8Json(readFileSync(recordPath));
   } catch (err) {
+    const kind = err instanceof SyntaxError ? "Invalid JSON" : "Invalid UTF-8";
     throw new Error(
-      `Invalid JSON in ${recordPath}: ${err instanceof Error ? err.message : String(err)}`,
+      `${kind} in ${recordPath}: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 

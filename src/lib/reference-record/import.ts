@@ -2,7 +2,9 @@ import { readdir, realpath } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
   buildReferencePhotoPath,
+  decodeStrictUtf8,
   isPlainObject,
+  parseStrictUtf8Json,
   readPlannedPhotos,
   readRegularFileNoFollow,
   type PlannedPhoto,
@@ -18,7 +20,7 @@ import { checkStatusSingleRead } from "./record-path";
 import type { ReferenceRecord } from "./types";
 import { validateReferenceRecord } from "./validate";
 
-export { buildReferencePhotoPath };
+export { buildReferencePhotoPath, decodeStrictUtf8, parseStrictUtf8Json };
 export type { StatusLowered };
 export { MAX_REFERENCE_PHOTO_BYTES } from "./import-photos";
 
@@ -230,11 +232,11 @@ async function readRecords(
 
     let parsed: unknown;
     try {
-      const raw = Buffer.from(fileRead.bytes).toString("utf8");
-      parsed = JSON.parse(raw) as unknown;
+      parsed = parseStrictUtf8Json(fileRead.bytes);
     } catch (err) {
+      const kind = err instanceof SyntaxError ? "invalid JSON" : "invalid UTF-8";
       const msg = err instanceof Error ? err.message : String(err);
-      problems.push(`${fileName}: invalid JSON (${msg})`);
+      problems.push(`${fileName}: ${kind} (${msg})`);
       continue;
     }
 
@@ -297,10 +299,11 @@ async function readStatusMap(
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(Buffer.from(statusRead.bytes).toString("utf8")) as unknown;
+    parsed = parseStrictUtf8Json(statusRead.bytes);
   } catch (err) {
+    const kind = err instanceof SyntaxError ? "invalid JSON" : "invalid UTF-8";
     const msg = err instanceof Error ? err.message : String(err);
-    problems.push(`status.json: invalid JSON (${msg})`);
+    problems.push(`status.json: ${kind} (${msg})`);
     return statusByRef;
   }
 

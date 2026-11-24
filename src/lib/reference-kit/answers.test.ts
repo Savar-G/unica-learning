@@ -902,7 +902,7 @@ describe("applyComputedAnswers", () => {
     );
   });
 
-  it("labels one-sided worked-example conflicts by reader with shown and computed values and never drops same-path conflicts", () => {
+  it("lists final record, reader b, and (only when final is not fresh reader A) reader a worked-example conflicts without computed-identity deduplication", () => {
     const makeExPage = (examples: PageRecord["examples"]): PageRecord => ({
       ...makePageWithItem({
         n: 1,
@@ -913,9 +913,10 @@ describe("applyComputedAnswers", () => {
       }),
       examples,
     });
-    const ex = (a: number, b: number, shown: string) => ({
+    const ex = (a: number, b: number, shown: string, label?: string) => ({
       position: "top" as const,
       relation: "compare" as const,
+      ...(label ? { label } : {}),
       parts: [
         {
           form: "horizontal" as const,
@@ -927,83 +928,102 @@ describe("applyComputedAnswers", () => {
 
     const cases: Array<{
       label: string;
+      finalIsFreshA: boolean;
       finalRec: PageRecord | null;
       recA: PageRecord;
       recB: PageRecord;
       expectedFinal: string[];
-      expectedReaderOnly: string[];
+      expectedReader: string[];
     }> = [
       {
-        label: "A only (final = A)",
+        label: "A only (fresh final = A)",
+        finalIsFreshA: true,
         finalRec: makeExPage([ex(2, 3, "6")]),
         recA: makeExPage([ex(2, 3, "6")]),
         recB: makeExPage([ex(2, 4, "6")]),
-        expectedFinal: ['examples[0].parts[0].shown_answer: shown "6", computed "5"'],
-        expectedReaderOnly: [],
+        expectedFinal: ['final record: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
+        expectedReader: [],
       },
       {
-        label: "B only (final = A)",
+        label: "B only (fresh final = A)",
+        finalIsFreshA: true,
         finalRec: makeExPage([ex(2, 4, "6")]),
         recA: makeExPage([ex(2, 4, "6")]),
         recB: makeExPage([ex(2, 3, "6")]),
         expectedFinal: [],
-        expectedReaderOnly: ['reader b: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
+        expectedReader: ['reader b: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
       },
       {
-        label: "both the same (final = A)",
+        label: "both the same (fresh final = A): final and reader b both listed",
+        finalIsFreshA: true,
         finalRec: makeExPage([ex(2, 3, "6")]),
         recA: makeExPage([ex(2, 3, "6")]),
         recB: makeExPage([ex(2, 3, "6")]),
-        expectedFinal: ['examples[0].parts[0].shown_answer: shown "6", computed "5"'],
-        expectedReaderOnly: [],
+        expectedFinal: ['final record: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
+        expectedReader: ['reader b: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
+      },
+      {
+        label: "A Alpha first, B Beta first, same expr and same wrong answer at index 0: both listed",
+        finalIsFreshA: true,
+        finalRec: makeExPage([ex(2, 3, "6", "Alpha"), ex(2, 3, "5", "Beta")]),
+        recA: makeExPage([ex(2, 3, "6", "Alpha"), ex(2, 3, "5", "Beta")]),
+        recB: makeExPage([ex(2, 3, "6", "Beta"), ex(2, 3, "5", "Alpha")]),
+        expectedFinal: ['final record: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
+        expectedReader: ['reader b: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
       },
       {
         label: "A and B different at the same index (different values)",
+        finalIsFreshA: true,
         finalRec: makeExPage([ex(2, 3, "6")]),
         recA: makeExPage([ex(2, 3, "6")]),
         recB: makeExPage([ex(4, 5, "10")]),
-        expectedFinal: ['examples[0].parts[0].shown_answer: shown "6", computed "5"'],
-        expectedReaderOnly: ['reader b: examples[0].parts[0].shown_answer: shown "10", computed "9"'],
+        expectedFinal: ['final record: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
+        expectedReader: ['reader b: examples[0].parts[0].shown_answer: shown "10", computed "9"'],
       },
       {
         label: "A and B different at the same index (different expr, same shown and computed)",
+        finalIsFreshA: true,
         finalRec: makeExPage([ex(2, 3, "6")]),
         recA: makeExPage([ex(2, 3, "6")]),
         recB: makeExPage([ex(1, 4, "6")]),
-        expectedFinal: ['examples[0].parts[0].shown_answer: shown "6", computed "5"'],
-        expectedReaderOnly: ['reader b: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
+        expectedFinal: ['final record: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
+        expectedReader: ['reader b: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
       },
       {
         label: "reordered examples with unrelated conflicts at index 0",
+        finalIsFreshA: true,
         finalRec: makeExPage([ex(2, 3, "6"), ex(4, 5, "9")]),
         recA: makeExPage([ex(2, 3, "6"), ex(4, 5, "9")]),
         recB: makeExPage([ex(4, 5, "10"), ex(2, 3, "5")]),
-        expectedFinal: ['examples[0].parts[0].shown_answer: shown "6", computed "5"'],
-        expectedReaderOnly: ['reader b: examples[0].parts[0].shown_answer: shown "10", computed "9"'],
+        expectedFinal: ['final record: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
+        expectedReader: ['reader b: examples[0].parts[0].shown_answer: shown "10", computed "9"'],
       },
       {
         label: "reordered examples with same conflict at different indices",
+        finalIsFreshA: true,
         finalRec: makeExPage([ex(4, 5, "9"), ex(2, 3, "6")]),
         recA: makeExPage([ex(4, 5, "9"), ex(2, 3, "6")]),
         recB: makeExPage([ex(2, 3, "6"), ex(4, 5, "9")]),
-        expectedFinal: ['examples[1].parts[0].shown_answer: shown "6", computed "5"'],
-        expectedReaderOnly: ['reader b: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
+        expectedFinal: ['final record: examples[1].parts[0].shown_answer: shown "6", computed "5"'],
+        expectedReader: ['reader b: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
       },
       {
         label: "person-edited record fixed A's conflict",
+        finalIsFreshA: false,
         finalRec: makeExPage([ex(2, 3, "5")]),
         recA: makeExPage([ex(2, 3, "6")]),
         recB: makeExPage([ex(2, 3, "5")]),
         expectedFinal: [],
-        expectedReaderOnly: ['reader a: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
+        expectedReader: ['reader a: examples[0].parts[0].shown_answer: shown "6", computed "5"'],
       },
       {
-        label: "person-edited record has its own conflict at same index as A and B",
+        label: "person-edited record has its own conflict at same index as A and B: lists final, a and b",
+        finalIsFreshA: false,
         finalRec: makeExPage([ex(2, 3, "7")]),
         recA: makeExPage([ex(2, 3, "6")]),
         recB: makeExPage([ex(4, 5, "10")]),
-        expectedFinal: ['examples[0].parts[0].shown_answer: shown "7", computed "5"'],
-        expectedReaderOnly: [
+        expectedFinal: ['final record: examples[0].parts[0].shown_answer: shown "7", computed "5"'],
+        expectedReader: [
           'reader a: examples[0].parts[0].shown_answer: shown "6", computed "5"',
           'reader b: examples[0].parts[0].shown_answer: shown "10", computed "9"',
         ],
@@ -1011,9 +1031,11 @@ describe("applyComputedAnswers", () => {
     ];
 
     for (const c of cases) {
-      const res = collectExampleAnswerConflicts(c.finalRec, c.recA, c.recB);
+      const res = collectExampleAnswerConflicts(c.finalRec, c.recA, c.recB, {
+        finalIsFreshA: c.finalIsFreshA,
+      });
       expect(res.finalMessages, c.label).toEqual(c.expectedFinal);
-      expect(res.readerOnlyMessages, c.label).toEqual(c.expectedReaderOnly);
+      expect(res.readerMessages, c.label).toEqual(c.expectedReader);
     }
   });
 });
