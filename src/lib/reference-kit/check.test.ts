@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -12,14 +13,29 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CHECKED_DIGESTS_FILE, type PageRecord } from "@/lib/reference-record";
 import { checkAndMarkPage } from "./check";
 import { addPreparedPhoto } from "./photo.fixtures";
 
+// Runs before a written file takes its place. A test that throws here stops the command there.
+const fsHook = vi.hoisted(() => ({ rename: null as ((to: string) => void) | null }));
+
+vi.mock("node:fs", async (importOriginal) => {
+  const real = await importOriginal<{ renameSync: (from: string, to: string) => void }>();
+  return {
+    ...real,
+    renameSync: (from: string, to: string) => {
+      fsHook.rename?.(to);
+      real.renameSync(from, to);
+    },
+  };
+});
+
 const tempDirs: string[] = [];
 
 afterEach(() => {
+  fsHook.rename = null;
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
     if (dir) rmSync(dir, { recursive: true, force: true });
@@ -713,13 +729,13 @@ describe("checkAndMarkPage", () => {
     }
   });
 
-  // Every file under the work folder with its bytes, to prove that a stopped check wrote nothing.
+  // Everything under the work folder, with the bytes of each file, to prove that a stopped check
+  // wrote nothing.
   function snapshotFiles(dir: string): Record<string, string> {
     const out: Record<string, string> = {};
     for (const entry of readdirSync(dir, { withFileTypes: true, recursive: true })) {
-      if (!entry.isFile()) continue;
       const path = join(entry.parentPath, entry.name);
-      out[path] = readFileSync(path).toString("base64");
+      out[path] = entry.isFile() ? readFileSync(path).toString("base64") : "not a file";
     }
     return out;
   }
@@ -886,6 +902,130 @@ describe("checkAndMarkPage", () => {
       const start = snapshotFiles(work);
       expect(() => check(work, repo), c.name).toThrow(c.expected);
       expect(snapshotFiles(work), c.name).toEqual(start);
+    }
+  });
+
+  it("refuses a link, a folder or a pipe in the place of any file that it reads or writes, and writes nothing", () => {
+    const files = [
+      "final/status.json",
+      "final/sample-M-3a.json",
+      "final/report.json",
+      `final/${CHECKED_DIGESTS_FILE}`,
+      "final-view/sample-M-3a.md",
+      "photos/photos-manifest.json",
+      "photos/PHOTO",
+    ];
+    const kinds: Array<[string, (path: string, away: string) => void]> = [
+      [
+        "link",
+        (path, away) => {
+          renameSync(path, away);
+          symlinkSync(away, path);
+        },
+      ],
+      [
+        "link to nothing",
+        (path, away) => {
+          rmSync(path);
+          symlinkSync(away, path);
+        },
+      ],
+      [
+        "folder",
+        (path) => {
+          rmSync(path);
+          mkdirSync(path);
+        },
+      ],
+      [
+        "pipe",
+        (path) => {
+          rmSync(path);
+          execFileSync("mkfifo", [path]);
+        },
+      ],
+    ];
+    const setUpChecked = () => {
+      const { repo, work } = setUpWork(makeFinalPage());
+      const photo = addPreparedPhoto(work, "photo 3a", "sample:M:3a");
+      writeFileSync(join(work, "final", "report.json"), JSON.stringify({ pages: [] }));
+      check(work, repo);
+      // A new check would write each file again with other bytes.
+      writeFileSync(
+        join(work, "final", "sample-M-3a.json"),
+        JSON.stringify({ ...makeFinalPage(), topic: { title: "Corrected by a person" } }),
+      );
+      writeFileSync(join(work, "final", "status.json"), JSON.stringify({ "sample:M:3a": "machine_read" }));
+      return { repo, work, photo };
+    };
+    for (const file of files) {
+      for (const [kind, change] of kinds) {
+        const name = `${file} is a ${kind}`;
+        const { repo, work, photo } = setUpChecked();
+        change(join(work, file.replace("PHOTO", photo.file)), join(work, "away"));
+        const start = snapshotFiles(work);
+        expect(() => check(work, repo), name).toThrow(/symlink|non-regular/i);
+        expect(snapshotFiles(work), name).toEqual(start);
+        // Without --photo-compared the command names the photo: it reads the photo list and the report.
+        if (!/manifest/.test(file) && !/report/.test(file)) continue;
+        if (/report/.test(file)) rmSync(join(work, "photos"), { recursive: true });
+        expect(
+          () => checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: false }),
+          name,
+        ).toThrow(/symlink|non-regular/i);
+      }
+    }
+
+    for (const folder of ["final", "final-view", "photos"]) {
+      const { repo, work } = setUpChecked();
+      renameSync(join(work, folder), join(work, "away"));
+      symlinkSync(join(work, "away"), join(work, folder));
+      const start = snapshotFiles(work);
+      expect(() => check(work, repo), `${folder} is a link`).toThrow(/not a plain folder/);
+      expect(snapshotFiles(work), `${folder} is a link`).toEqual(start);
+    }
+    const { repo, work } = setUpChecked();
+    rmSync(join(work, "final-view"), { recursive: true });
+    writeFileSync(join(work, "final-view"), "a file");
+    const start = snapshotFiles(work);
+    expect(() => check(work, repo)).toThrow(/not a plain folder/);
+    expect(snapshotFiles(work)).toEqual(start);
+  });
+
+  it("is never marked without its digests when the command stops between two writes", () => {
+    const steps = ["sample-M-3a.json", CHECKED_DIGESTS_FILE, "status.json", "sample-M-3a.md"];
+    const order: string[] = [];
+    for (const stopAt of [...steps, null]) {
+      const { repo, work, finalDir } = setUpWork(makeFinalPage());
+      const photo = addPreparedPhoto(work, "photo 3a", "sample:M:3a");
+      const statusOf = () =>
+        (JSON.parse(readFileSync(join(finalDir, "status.json"), "utf8")) as Record<string, string>)["sample:M:3a"];
+      const statusBefore = statusOf();
+      order.length = 0;
+      fsHook.rename = (to) => {
+        const name = to.split("/").at(-1) ?? "";
+        order.push(name);
+        if (name === stopAt) throw new Error("stopped");
+      };
+      if (stopAt) expect(() => check(work, repo), stopAt).toThrow("stopped");
+      else check(work, repo);
+      fsHook.rename = null;
+
+      const written = order.filter((name) => name !== stopAt);
+      expect(order, String(stopAt)).toEqual(steps.slice(0, written.length + (stopAt ? 1 : 0)));
+      const marked = written.includes("status.json");
+      expect(statusOf(), String(stopAt)).toBe(marked ? "human_checked" : statusBefore);
+      const digestsPath = join(finalDir, CHECKED_DIGESTS_FILE);
+      expect(existsSync(digestsPath), String(stopAt)).toBe(written.includes(CHECKED_DIGESTS_FILE));
+      if (marked) {
+        expect(JSON.parse(readFileSync(digestsPath, "utf8")).pages).toEqual([
+          {
+            source_ref: "sample:M:3a",
+            record_sha256: sha256(readFileSync(join(finalDir, "sample-M-3a.json"))),
+            photo_sha256: photo.sha256,
+          },
+        ]);
+      }
     }
   });
 });

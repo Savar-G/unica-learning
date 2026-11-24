@@ -5,8 +5,14 @@ import {
   prepareSafeOutputDir,
   writeSafeOutputFile,
 } from "@/lib/reference-record";
-import { isCheckedForPhoto, loadCheckedPages, type CheckedPages } from "./checked-pages";
-import { compareWorkFolder, type CompareWorkReport } from "./compare-batch";
+import {
+  isCheckedForPhoto,
+  isPhotoOfCheck,
+  keptCheckedRefs,
+  loadCheckedPages,
+  type CheckedPages,
+} from "./checked-pages";
+import { compareWorkFolder, countPageStatuses, type CompareWorkReport } from "./compare-batch";
 import { killActiveReaders } from "./read-cli";
 import { openPageShelter, type PageShelter, type ShelterCategory } from "./extract-shelter";
 import {
@@ -109,6 +115,7 @@ interface RunContext {
   readerB: ReaderFamily;
   repoRoot: string;
   workDir: string;
+  finalDir: string;
   preparedPhotosDir: string;
   slotDirA: string;
   slotDirB: string;
@@ -253,11 +260,14 @@ function readerCall(ctx: RunContext, family: ReaderFamily, model: string | undef
   });
 }
 
-// Reads one photo. A reader with a valid reading for this digest is not run again unless --force,
-// and a page checked by a person is never read again without --force. While any reader runs, the
-// page's old files wait in a private shelter folder.
+// Reads one photo. A reader with a valid reading for this digest is not run again unless --force.
+// The photo of a page that a person checked is never read again, also with --force. While any reader
+// runs, the page's old files wait in a private shelter folder; the record of a checked page stays.
 async function readOnePhoto(ctx: RunContext, photo: ReadyPhoto, prefix: string): Promise<string> {
   const { sha256 } = photo;
+  const { finalDir } = ctx;
+  ctx.checked = loadCheckedPages(finalDir);
+  const { checked } = ctx;
   const force = ctx.opts.force ?? false;
   const preparedFile = preparedFileNameForHash(sha256);
   const manifestEntry = {
@@ -278,16 +288,15 @@ async function readOnePhoto(ctx: RunContext, photo: ReadyPhoto, prefix: string):
     if (renamedB) ctx.entriesB = mergeRunEntries(ctx.entriesB, [renamedB]);
   };
 
-  const checkedRef = refs.find((ref) => ctx.checked.refs.has(ref));
-  if (checkedRef && !force) {
+  // Another photo that gives the id of a checked page is read again with --force.
+  const checkedRef = refs.find((ref) =>
+    force ? isPhotoOfCheck({ finalDir, checked, ref, photoSha256: sha256 }) : checked.refs.has(ref),
+  );
+  if (checkedRef) {
     keepAsIs();
-    const counts = isCheckedForPhoto({
-      finalDir: join(ctx.workDir, "final"),
-      checked: ctx.checked,
-      ref: checkedRef,
-      photoSha256: sha256,
-    });
-    return `${prefix} kept: ${counts ? "checked by a person" : "a person must check this page again"} -> ${checkedRef}`;
+    const counts = isCheckedForPhoto({ finalDir, checked, ref: checkedRef, photoSha256: sha256 });
+    const why = counts ? "checked by a person" : "a person must check this page again";
+    return `${prefix} kept: ${why} -> ${checkedRef}${force ? " (--force does not read this photo again)" : ""}`;
   }
 
   const validA = isValidReading(ctx.slotDirA, oldA);
@@ -309,6 +318,7 @@ async function readOnePhoto(ctx: RunContext, photo: ReadyPhoto, prefix: string):
   }
   const filesOf = (entry: PhotoRunEntry | undefined): string[] =>
     [entry?.record_file, entry?.invalid_file].filter((f): f is string => typeof f === "string");
+  const keptRefs = keptCheckedRefs(finalDir, checked);
   const shelter = openPageShelter({
     workDir: ctx.workDir,
     slotDirA: ctx.slotDirA,
@@ -317,7 +327,7 @@ async function readOnePhoto(ctx: RunContext, photo: ReadyPhoto, prefix: string):
     sha256,
     slotAFiles: filesOf(oldA),
     slotBFiles: filesOf(oldB),
-    finalSourceRefs: refs,
+    finalSourceRefs: refs.filter((ref) => !keptRefs.has(ref)),
   });
   let outcomeA: SlotOutcome;
   let outcomeB: SlotOutcome;
@@ -397,6 +407,7 @@ export async function extractFolder(opts: ExtractFolderOptions): Promise<Extract
   const selectedCount = Math.min(opts.limit ?? allPhotoNames.length, allPhotoNames.length);
 
   const workDir = prepareSafeOutputDir(opts.outDir, repoRoot);
+  const finalDir = join(workDir, "final");
   const preparedPhotosDir = prepareSafeOutputDir(join(workDir, "photos"), repoRoot);
   const slotDirA = prepareSafeOutputDir(join(workDir, "reader-a"), repoRoot);
   const slotDirB = prepareSafeOutputDir(join(workDir, "reader-b"), repoRoot);
@@ -407,13 +418,14 @@ export async function extractFolder(opts: ExtractFolderOptions): Promise<Extract
     readerB,
     repoRoot,
     workDir,
+    finalDir,
     preparedPhotosDir,
     slotDirA,
     slotDirB,
     manifest: loadManifest(join(preparedPhotosDir, PHOTOS_MANIFEST_FILE)),
     entriesA: loadRunEntries(slotDirA, readerA),
     entriesB: loadRunEntries(slotDirB, readerB),
-    checked: loadCheckedPages(join(workDir, "final")),
+    checked: loadCheckedPages(finalDir),
   };
   // A work folder belongs to one source key. Old readings under another key would stay as they are.
   const foreign = [...ctx.entriesA, ...ctx.entriesB].find(
@@ -442,6 +454,7 @@ export async function extractFolder(opts: ExtractFolderOptions): Promise<Extract
   const presentDigests = new Set(scanned.flatMap((p) => ("sha256" in p ? [p.sha256] : [])));
   let removedPhotos: RemovedPhotoReport[] = [];
   if (presentDigests.size > 0) {
+    ctx.checked = loadCheckedPages(finalDir);
     const pruned = pruneRemovedPhotos({ ...ctx, humanCheckedRefs: ctx.checked.refs, presentDigests });
     ctx.manifest = pruned.manifest;
     ctx.entriesA = pruned.entriesA;
@@ -493,10 +506,11 @@ export async function extractFolder(opts: ExtractFolderOptions): Promise<Extract
   );
 
   const report = compareWorkFolder({ workDir, repoRoot });
+  const { double_read, agreement_accepted, machine_read } = countPageStatuses(report);
   const counts: ExtractCounts = {
-    double_read: report.pages.filter((p) => p.status === "double_read").length,
-    agreement_accepted: report.pages.filter((p) => p.status === "agreement_accepted").length,
-    machine_read: report.pages.filter((p) => p.status === "machine_read").length,
+    double_read,
+    agreement_accepted,
+    machine_read,
     failed: report.could_not_read_photos.length,
     too_small: report.too_small_photos.length,
   };

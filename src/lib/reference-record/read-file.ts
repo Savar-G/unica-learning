@@ -7,9 +7,11 @@ export function sha256Hex(bytes: Uint8Array): string {
 
 export function readRegularFileNoFollow(filePath: string): Buffer {
   const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0;
+  // Without it, the open of a named pipe waits until another program writes to it.
+  const nonBlock = typeof constants.O_NONBLOCK === "number" ? constants.O_NONBLOCK : 0;
   let fd: number;
   try {
-    fd = openSync(filePath, constants.O_RDONLY | noFollow);
+    fd = openSync(filePath, constants.O_RDONLY | noFollow | nonBlock);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === "ELOOP") {

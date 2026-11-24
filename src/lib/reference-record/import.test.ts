@@ -360,8 +360,8 @@ describe("importReferenceRecords", () => {
 
     // Controls for the report and for a check that does not count: each of these folders imports with
     // the status that it gives.
-    const pageRow = (hash: string | null | undefined) => ({
-      pages: [{ source_ref: "sample:M:3a", final_record_sha256: hash }],
+    const pageRow = (hash: string | null | undefined, photo_sha256?: string | null) => ({
+      pages: [{ source_ref: "sample:M:3a", final_record_sha256: hash, photo_sha256 }],
     });
     const acceptedReports: Array<[string, ((recordSha: string) => unknown) | null]> = [
       ["no report.json (a converted or an older folder)", null],
@@ -371,6 +371,13 @@ describe("importReferenceRecords", () => {
       ["no row of this page", () => ({ pages: [{ source_ref: "sample:M:9a", final_record_sha256: "0".repeat(64) }] })],
       ["no pages", () => ({ pages: [] })],
       ["no page list", () => ({ ignored: true })],
+      ["hash of the file and the photo that is sent", (recordSha) => pageRow(recordSha, sha256Hex(goodImg))],
+      ["the photo that is sent, no hash", () => pageRow(undefined, sha256Hex(goodImg))],
+      ["null photo", (recordSha) => pageRow(recordSha, null)],
+      [
+        "another photo in the row of another page",
+        () => ({ pages: [{ source_ref: "sample:M:9a", photo_sha256: "0".repeat(64) }] }),
+      ],
     ];
     for (const [name, report] of acceptedReports) {
       for (const status of ["machine_read", "agreement_accepted", "double_read", "human_checked", null]) {
@@ -398,6 +405,21 @@ describe("importReferenceRecords", () => {
           status ?? "machine_read",
         );
       }
+    }
+
+    // A run that sends no photo does not look at the photo of the report.
+    for (const status of ["machine_read", "agreement_accepted", "double_read"]) {
+      const recs = mkdtempSync(join(rootDir, "ok-no-photo-"));
+      const noPhotoStore = new MemoryReferenceStore();
+      writeJson(recs, "page.json", {
+        ...makePage("sample:M:3a"),
+        ...(status === "agreement_accepted" ? { single_read: ["topic.title"] } : {}),
+      });
+      writeJson(recs, "status.json", { "sample:M:3a": status });
+      writeJson(recs, "report.json", pageRow(sha256Hex(readFileSync(join(recs, "page.json"))), "0".repeat(64)));
+      const res = await importReferenceRecords({ recordsDir: recs, store: noPhotoStore });
+      expect(res.problems, status).toEqual([]);
+      expect(noPhotoStore.rows.get("sample:M:3a")?.path, status).toBeNull();
     }
 
     // A checked page follows its digests, not the older hash of the report. A page that only lost its
@@ -660,9 +682,62 @@ describe("importReferenceRecords", () => {
       })),
     );
 
+    // The agreed text belongs to the photo that the readers saw (report.json). The photo that would
+    // be sent is another one, or the row cannot be used.
+    const photoCases: RefusalCase[] = (
+      [
+        ["double_read", [{ photo_sha256: otherHash }], /sample:M:2a.*another photo.*run reference:compare/],
+        ["agreement_accepted", [{ photo_sha256: otherHash }], /sample:M:2a.*another photo/],
+        ["machine_read", [{ photo_sha256: otherHash }], /sample:M:2a.*another photo/],
+        [null, [{ photo_sha256: otherHash }], /sample:M:2a.*another photo/],
+        ["double_read", [{ photo_sha256: "" }], /sample:M:2a.*another photo/],
+        ["double_read", [{ photo_sha256: 7 }], /report\.json.*sample:M:2a.*photo_sha256 that is not text/],
+        [
+          "double_read",
+          [{ photo_sha256: sha256Hex(secondImg) }, { photo_sha256: otherHash }],
+          /report\.json.*second photo_sha256 for sample:M:2a/,
+        ],
+      ] as Array<[string | null, Array<Record<string, unknown>>, RegExp]>
+    ).flatMap(([status, rows, expectedProblem]) =>
+      [false, true].map((replace) => ({
+        name: `${status ?? "not in status.json"}, photo of the report ${JSON.stringify(rows)}${replace ? ", with replace" : ""}`,
+        usePhotos: true,
+        replace,
+        expectedProblem,
+        setup: ({ recs, photos, store: caseStore }) => {
+          const page = makePage(checkedRef);
+          writeJson(
+            recs,
+            "02-target.json",
+            status === "agreement_accepted" ? { ...page, single_read: ["topic.title"] } : page,
+          );
+          if (status) writeJson(recs, "status.json", { [checkedRef]: status });
+          const final_record_sha256 = sha256Hex(readFileSync(join(recs, "02-target.json")));
+          writeJson(recs, "report.json", {
+            pages: rows.map((row) => ({ source_ref: checkedRef, final_record_sha256, ...row })),
+          });
+          writeBytes(photos, "target.jpg", secondImg);
+          writeJson(photos, "photos-manifest.json", {
+            version: 1,
+            photos: [manifestEntry("target.jpg", secondImg, checkedRef)],
+          });
+          if (replace) {
+            caseStore.rows.set(checkedRef, {
+              source_ref: checkedRef,
+              kind: "page",
+              path: null,
+              transcript: makePage(checkedRef, "Older title"),
+              transcript_status: "machine_read",
+            });
+          }
+        },
+      })),
+    );
+
     const refusalCases: RefusalCase[] = [
       ...checkedCases,
       ...reportCases,
+      ...photoCases,
       {
         name: "missing recordsDir",
         setup: ({ outside }) => ({ recordsDir: join(outside, "missing-records") }),
@@ -1929,7 +2004,7 @@ describe("importReferenceRecords", () => {
       expect(store.objects.has("sample/M/3a.jpg")).toBe(true);
     });
 
-    it("keeps the stored path and touches no object when a record has no planned photo", async () => {
+    it("keeps the stored path and touches no object on a status-only change with no planned photo", async () => {
       writeJson(recordsDir, "p1.json", makePage("sample:M:3a", "First title"));
       writeJson(recordsDir, "p2.json", makePage("sample:M:3b", "First title"));
       writePhotos([
@@ -1937,28 +2012,83 @@ describe("importReferenceRecords", () => {
         { file: "IMG_0002.jpg", bytes: newImg, ref: "sample:M:3b" },
       ]);
       await importReferenceRecords({ recordsDir, photosDir, store });
-      writeJson(recordsDir, "p1.json", makePage("sample:M:3a", "Changed title"));
-      writeJson(recordsDir, "p2.json", makePage("sample:M:3b", "Changed title"));
+      writeJson(recordsDir, "status.json", { "sample:M:3a": "double_read", "sample:M:3b": "double_read" });
 
       // The manifest no longer has an entry for sample:M:3b.
       writePhotos([{ file: "IMG_0001.jpg", bytes: oldImg, ref: "sample:M:3a" }]);
       store.calls = [];
       const partial = await importReferenceRecords({ recordsDir, photosDir, store, replace: true });
       expect(partial.counts).toMatchObject({ replaced: 2, photosUploaded: 0 });
-      expect(rowOf("sample:M:3b").path).toBe("sample/M/3b.jpg");
+      expect(rowOf("sample:M:3b")).toMatchObject({ path: "sample/M/3b.jpg", transcript_status: "double_read" });
       expect(store.calls.some((c) => c.includes("sample/M/3b"))).toBe(false);
       expect(partial.leftoverPhotos).toEqual([]);
 
       // No --photos at all.
-      writeJson(recordsDir, "p1.json", makePage("sample:M:3a", "Third title"));
+      writeJson(recordsDir, "status.json", { "sample:M:3b": "double_read" });
       store.calls = [];
       const none = await importReferenceRecords({ recordsDir, store, replace: true });
       expect(none.counts).toMatchObject({ replaced: 1, skipped: 1, photosUploaded: 0 });
-      expect(rowOf("sample:M:3a").path).toBe("sample/M/3a.jpg");
+      expect(rowOf("sample:M:3a")).toMatchObject({ path: "sample/M/3a.jpg", transcript_status: "machine_read" });
       expect(
         store.calls.filter((c) => c.startsWith("objectSha256:") || c.startsWith("replaceObject:")),
       ).toEqual([]);
       expect(none.leftoverPhotos).toEqual([]);
+    });
+
+    it("refuses before any write a changed text for a row that would keep its stored photo, and only then", async () => {
+      const refs = ["sample:M:3a", "sample:M:3b", "sample:M:contents"];
+      const setUp = async (withPhotos: boolean) => {
+        rmSync(recordsDir, { recursive: true, force: true });
+        store = new MemoryReferenceStore();
+        writeJson(recordsDir, "p1.json", makePage(refs[0], "First title"));
+        writeJson(recordsDir, "p2.json", makePage(refs[1], "First title"));
+        writeJson(recordsDir, "c.json", makeContents(refs[2]));
+        writePhotos(refs.map((ref, i) => ({ file: `IMG_${i}.jpg`, bytes: oldImg, ref })));
+        await importReferenceRecords({ recordsDir, store, ...(withPhotos ? { photosDir } : {}) });
+        writeJson(recordsDir, "p1.json", makePage(refs[0], "Changed title"));
+        writeJson(recordsDir, "c.json", { ...makeContents(refs[2]), readers: ["x:y"] });
+        writeJson(recordsDir, "status.json", { [refs[1]]: "double_read" });
+        store.calls = [];
+      };
+      const before = () => JSON.stringify([[...store.rows], [...store.objects.keys()]]);
+
+      for (const dryRun of [false, true]) {
+        for (const photos of ["no --photos", "a photo list that names no photo of the changed pages"]) {
+          const name = `${photos}, dry run ${dryRun}`;
+          await setUp(true);
+          if (photos !== "no --photos") writePhotos([{ file: "IMG_1.jpg", bytes: oldImg, ref: refs[1] }]);
+          const start = before();
+          const res = await importReferenceRecords({
+            recordsDir,
+            store,
+            replace: true,
+            dryRun,
+            ...(photos === "no --photos" ? {} : { photosDir }),
+          });
+          expect(res.ok, name).toBe(false);
+          expect(res.stopped, name).toBeUndefined();
+          expect(res.problems, name).toHaveLength(2);
+          for (const ref of [refs[0], refs[2]]) {
+            expect(res.problems.join("\n"), name).toMatch(new RegExp(`${ref}: .*--photos`));
+          }
+          expect(writeCalls(), name).toEqual([]);
+          expect(before(), name).toBe(start);
+        }
+      }
+
+      // With the photos of the pages, or when the rows have no stored photo, the text is replaced.
+      for (const stored of [true, false]) {
+        await setUp(stored);
+        const res = await importReferenceRecords({
+          recordsDir,
+          store,
+          replace: true,
+          ...(stored ? { photosDir } : {}),
+        });
+        expect(res.problems, `stored photo ${stored}`).toEqual([]);
+        expect(res.counts.replaced, `stored photo ${stored}`).toBe(3);
+        expect(titleOf(refs[0])).toBe("Changed title");
+      }
     });
 
     it("skips a row that is the same in transcript, status, path and photo bytes with zero writes", async () => {

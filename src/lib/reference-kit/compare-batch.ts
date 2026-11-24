@@ -55,6 +55,7 @@ import {
   type PairedPage,
 } from "./compare-pairing";
 import {
+  countPageStatuses,
   formatCompareReportMarkdown,
   formatPagesSentToPerson,
   resultLabelForStatus,
@@ -70,6 +71,7 @@ import {
 } from "./compare-report";
 
 export {
+  countPageStatuses,
   formatCompareReportMarkdown,
   formatPagesSentToPerson,
   type CompareWorkReport,

@@ -21,7 +21,7 @@ import {
 } from "./import-replace";
 import { sha256Hex } from "./read-file";
 import { checkStatusSingleRead } from "./record-path";
-import { checkMachineRecordHashes } from "./report-hashes";
+import { checkMachineDigests } from "./report-hashes";
 import type { ReferenceRecord } from "./types";
 import { validateReferenceRecord } from "./validate";
 
@@ -315,21 +315,17 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
   const statusByRef = realRecordsDir
     ? await readStatusMap(realRecordsDir, seenRefs, problems)
     : new Map<string, TranscriptStatus>();
-  if (realRecordsDir && problems.length === problemsBeforeStatus) {
-    checkStatusSingleRead(records, statusByRef, problems);
-    checkMachineRecordHashes({ finalDir: realRecordsDir, statusByRef, recordSha256ByRef, problems });
-  }
+  const statusIsUsable = problems.length === problemsBeforeStatus;
+  if (realRecordsDir && statusIsUsable) checkStatusSingleRead(records, statusByRef, problems);
   const plannedPhotos = options.photosDir
     ? await readPlannedPhotos(options.photosDir, records, problems)
     : new Map<string, PlannedPhoto>();
   if (realRecordsDir) {
-    checkCheckedPages({
-      finalDir: realRecordsDir,
-      statusByRef,
-      recordSha256ByRef,
-      plannedPhotos,
-      problems,
-    });
+    const finalDir = realRecordsDir;
+    if (statusIsUsable) {
+      checkMachineDigests({ finalDir, statusByRef, recordSha256ByRef, plannedPhotos, problems });
+    }
+    checkCheckedPages({ finalDir, statusByRef, recordSha256ByRef, plannedPhotos, problems });
   }
 
   if (problems.length > 0) {

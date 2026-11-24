@@ -140,6 +140,15 @@ export function checkPathOwnership(
   return { problems, leftoverWaits };
 }
 
+// A row that keeps its stored photo keeps its text too: the new text may belong to another photo.
+function keepsPhotoOfOtherText(
+  record: ReferenceRecord,
+  prev: ExistingReferenceRow,
+  photo: PlannedPhoto | undefined,
+): boolean {
+  return photo === undefined && prev.path !== null && !deepEqualJson(prev.transcript, record);
+}
+
 // Decides every existing row of the run and checks which rows use the paths it touches. Reads only.
 export async function planReplaces(args: {
   store: ReferenceStore;
@@ -151,6 +160,7 @@ export async function planReplaces(args: {
 }): Promise<PathOwnershipCheck & { decisions: Map<string, ReplaceDecision> }> {
   const decisions = new Map<string, ReplaceDecision>();
   const plans: PathPlan[] = [];
+  const textProblems: string[] = [];
   for (const record of args.records) {
     const ref = record.source_ref;
     const photo = args.plannedPhotos.get(ref);
@@ -165,12 +175,18 @@ export async function planReplaces(args: {
         storedSha: args.storedShaByRef.get(ref) ?? null,
       });
       decisions.set(ref, decision);
+      if (keepsPhotoOfOtherText(record, prev, photo)) {
+        textProblems.push(
+          `${ref}: the replace would change the text and keep the stored photo, which may not belong to it; give the photo of this page with --photos`,
+        );
+      }
     }
     plans.push({ ref, plannedPhotoPath: photo?.storagePath ?? null, decision });
   }
   const paths = pathsToCheck(plans);
   const refsByPath = paths.length > 0 ? await args.store.refsByPath(paths) : new Map();
-  return { decisions, ...checkPathOwnership(plans, refsByPath) };
+  const ownership = checkPathOwnership(plans, refsByPath);
+  return { ...ownership, decisions, problems: [...textProblems, ...ownership.problems] };
 }
 
 export type ReplaceOutcome =

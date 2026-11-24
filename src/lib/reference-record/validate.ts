@@ -31,6 +31,14 @@ import {
 const PAGE_SOURCE_REF_RE = /^[A-Za-z0-9_-]+:[A-Za-z0-9_-]+:\d+[a-z]$/;
 const CONTENTS_SOURCE_REF_RE = /^[A-Za-z0-9_-]+:[A-Za-z0-9_-]+:contents$/;
 
+// The source_ref of a page record or of a contents record.
+export function isSourceRef(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    (PAGE_SOURCE_REF_RE.test(value) || CONTENTS_SOURCE_REF_RE.test(value))
+  );
+}
+
 function validateReaders(v: unknown, path: string, errors: ValidationError[]): void {
   if (!Array.isArray(v) || v.length === 0 || !v.every((r) => isNonEmptyString(r))) {
     pushError(errors, path, "must be a non-empty list of reader names");

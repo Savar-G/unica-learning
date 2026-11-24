@@ -818,11 +818,12 @@ describe("extractFolder (reference:extract)", () => {
         [shas[1], "4a"],
         [shas[2], "3a"],
       ]);
-      const calls: string[] = [];
+      // Each reader call: the photo, and the final record of page 3a while the reader runs.
+      const calls: Array<{ photo: string; record: Buffer | null }> = [];
       const progress: string[] = [];
-      const runCli: RunCli = async (cmd, _args, opts) => {
-        calls.push(cmd);
+      const runCli: RunCli = async (_cmd, _args, opts) => {
         const hash = createHash("sha256").update(readFileSync(join(opts.cwd, "page.jpg"))).digest("hex");
+        calls.push({ photo: hash, record: existsSync(recordPath) ? readFileSync(recordPath) : null });
         return { code: 0, stdout: JSON.stringify(makeReaderPayload(sheets.get(hash) ?? "9a")), stderr: "" };
       };
       const extract = (over: { force?: boolean } = {}) =>
@@ -878,9 +879,10 @@ describe("extractFolder (reference:extract)", () => {
         status: string;
         reason?: string;
         conflict?: string;
+        // The photos folder holds a new photo (photo 3) of the page.
+        newPhoto?: boolean;
       }> = [
         { name: "no change", change: () => {}, status: "human_checked" },
-        { name: "no change, read again", change: () => {}, force: true, status: "human_checked" },
         {
           name: "photo removed (its prepared photo is kept)",
           change: (w) => rmSync(join(w.photosDir, "05_page.jpg")),
@@ -891,6 +893,7 @@ describe("extractFolder (reference:extract)", () => {
           change: replacePhoto("01_page.jpg"),
           status: "machine_read",
           reason: "photo changed after the check",
+          newPhoto: true,
         },
         // The kept photo of the check still wins the page id: the page keeps its own photo and text,
         // and the report lists the new photo under "Same page id for two photos".
@@ -899,6 +902,7 @@ describe("extractFolder (reference:extract)", () => {
           change: replacePhoto(name),
           status: "human_checked",
           conflict: name,
+          newPhoto: true,
         })),
         {
           name: "record changed",
@@ -906,22 +910,32 @@ describe("extractFolder (reference:extract)", () => {
           status: "machine_read",
           reason: "record changed after the check",
         },
+        // The readers would give the photo another page id now, but they do not read it again.
         {
-          name: "a new reading gives the photo another page id",
+          name: "a new reading would give the photo another page id",
           change: (w) => w.sheets.set(w.shas[0], "5a"),
-          force: true,
-          status: "machine_read",
-          reason: "photo of the check is missing",
+          status: "human_checked",
         },
         {
-          name: "a new reading swaps the page ids of the two photos",
+          name: "a new reading would swap the page ids of the two photos",
           change: (w) => {
             w.sheets.set(w.shas[0], "4a");
             w.sheets.set(w.shas[1], "3a");
           },
           force: true,
+          status: "human_checked",
+          conflict: "06_page.jpg",
+        },
+        {
+          name: "photo and its readings lost",
+          change: (w) => {
+            rmSync(join(w.photosDir, "05_page.jpg"));
+            for (const dir of ["photos", "reader-a", "reader-b"]) {
+              rmSync(join(w.outDir, dir), { recursive: true });
+            }
+          },
           status: "machine_read",
-          reason: "photo changed after the check",
+          reason: "photo of the check is missing",
         },
         {
           name: "older folder with no digests",
@@ -939,14 +953,38 @@ describe("extractFolder (reference:extract)", () => {
           reason: "checked before the photo check was saved",
         },
       ];
-      for (const row of rows) {
+      for (const row of rows.flatMap((r) =>
+        (r.force === undefined ? [false, true] : [r.force]).map((force) => ({
+          ...r,
+          force,
+          name: `${r.name}${force ? ", with --force" : ""}`,
+        })),
+      )) {
         const w = await setUpCheckedWork();
         row.change(w);
         const before = w.record();
         for (let round = 1; round <= 2; round += 1) {
-          const { report } = await w.extract({ force: row.force });
+          w.calls.length = 0;
+          const { report, counts } = await w.extract({ force: row.force });
           expect(w.record().equals(before), row.name).toBe(true);
           expect(w.status(), row.name).toBe(row.status);
+          // The photo of the check is not read again. With --force each other photo is, with the
+          // record of the checked page in place while the readers run.
+          const reads = (i: number) => w.calls.filter((c) => c.photo === w.shas[i]).length;
+          expect(reads(0), row.name).toBe(0);
+          if (row.force) {
+            expect([reads(1), reads(2)], row.name).toEqual([2, row.newPhoto ? 2 : 0]);
+          } else if (row.newPhoto) {
+            expect(reads(2), row.name).toBe(round === 1 ? 2 : 0);
+          }
+          for (const call of w.calls) expect(call.record?.equals(before), row.name).toBe(true);
+          // The counts of the run and the list of pages for a person say the same.
+          const list = (report.pages_sent_to_person ?? []).map((p) => p.source_ref);
+          const statuses = JSON.parse(readFileSync(w.statusPath, "utf8")) as Record<string, string>;
+          expect(list, row.name).toHaveLength(counts.machine_read);
+          expect(list.sort(), row.name).toEqual(
+            Object.keys(statuses).filter((ref) => statuses[ref] === "machine_read").sort(),
+          );
           const sent = report.pages_sent_to_person?.find((p) => p.source_ref === REF);
           if (row.reason) expect(sent?.reason, row.name).toContain(row.reason);
           else expect(sent, row.name).toBeUndefined();
@@ -976,17 +1014,60 @@ describe("extractFolder (reference:extract)", () => {
     });
 
     it("says in the run output that a page is checked only while its check counts, and reads neither again", async () => {
-      const w = await setUpCheckedWork();
-      await w.extract();
-      expect(w.progress.join("\n")).toContain("kept: checked by a person -> sample:M:3a");
-      writeFileSync(w.recordPath, Buffer.concat([w.record(), Buffer.from("\n")]));
-      for (let round = 1; round <= 2; round += 1) {
-        w.progress.length = 0;
-        await w.extract();
-        expect(w.progress.join("\n")).not.toContain("kept: checked by a person");
-        expect(w.progress.join("\n")).toContain("kept: a person must check this page again -> sample:M:3a");
+      for (const force of [false, true]) {
+        const w = await setUpCheckedWork();
+        const lines = () => w.progress.filter((line) => line.includes("05_page.jpg"));
+        const line = (why: string) =>
+          `[1/2] 05_page.jpg: kept: ${why} -> sample:M:3a${force ? " (--force does not read this photo again)" : ""}`;
+        await w.extract({ force });
+        expect(lines()).toEqual([line("checked by a person")]);
+        writeFileSync(w.recordPath, Buffer.concat([w.record(), Buffer.from("\n")]));
+        for (let round = 1; round <= 2; round += 1) {
+          w.progress.length = 0;
+          await w.extract({ force });
+          expect(lines()).toEqual([line("a person must check this page again")]);
+        }
+        expect(w.calls.filter((c) => c.photo === w.shas[0] || !force)).toEqual([]);
       }
-      expect(w.calls).toEqual([]);
+    });
+
+    it("gives a page that lost its photo the same photo again, or lets the page go with its record file", async () => {
+      const wrongId = async () => {
+        const w = await setUpCheckedWork();
+        // An older kit read the photo again and gave it another page id.
+        for (const dir of ["photos", "reader-a", "reader-b"]) rmSync(join(w.outDir, dir), { recursive: true });
+        w.sheets.set(w.shas[0], "5a");
+        const { report } = await w.extract();
+        expect(report.pages_sent_to_person?.map((p) => [p.source_ref, p.reason])).toEqual([
+          [REF, "photo of the check is missing"],
+        ]);
+        expect(() => w.check()).toThrow(/names no photo for sample:M:3a/);
+        return w;
+      };
+
+      const again = await wrongId();
+      const before = again.record();
+      again.sheets.set(again.shas[0], "3a");
+      await again.extract({ force: true });
+      expect(again.record().equals(before)).toBe(true);
+      again.check();
+      expect(again.status()).toBe("human_checked");
+
+      const letGo = await wrongId();
+      rmSync(letGo.recordPath);
+      letGo.sheets.set(letGo.shas[0], "3a");
+      await letGo.extract({ force: true });
+      expect(letGo.status()).toBe("double_read");
+      letGo.check();
+      expect(letGo.status()).toBe("human_checked");
+    });
+
+    it("reads the photo again with --force after the person removed the record file", async () => {
+      const w = await setUpCheckedWork();
+      rmSync(w.recordPath);
+      await w.extract({ force: true });
+      expect(w.calls.filter((c) => c.photo === w.shas[0])).toHaveLength(2);
+      expect(w.status()).toBe("double_read");
     });
 
     it("stops before it removes anything when the status or the digest file is damaged", async () => {

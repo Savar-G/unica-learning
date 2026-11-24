@@ -93,6 +93,23 @@ export function keptCheckedRefs(finalDir: string, checked: CheckedPages): Set<st
   return new Set([...checked.refs].filter((ref) => fileExists(finalRecordPath(finalDir, ref))));
 }
 
+// True for the photo of a page that a person checked and whose record is still there: the photo of
+// the saved check, or each photo with this page id when no digest is saved. extract --force does not
+// read it again.
+export function isPhotoOfCheck(opts: {
+  finalDir: string;
+  checked: CheckedPages;
+  ref: string;
+  photoSha256: string;
+}): boolean {
+  const { finalDir, checked, ref, photoSha256 } = opts;
+  const digest = checked.digests.pages.get(ref);
+  return (
+    keptCheckedRefs(finalDir, checked).has(ref) &&
+    (digest === undefined || digest.photo_sha256 === photoSha256)
+  );
+}
+
 // Before compare takes human_checked out of status.json, the digest file remembers each kept page.
 // No digest is made here: a page with none goes into checked_before.
 export function rememberKeptPages(

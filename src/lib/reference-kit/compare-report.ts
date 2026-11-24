@@ -75,6 +75,22 @@ function sentToPersonItems(report: CompareWorkReport): PageSentToPerson[] {
     }));
 }
 
+// The pages of the work folder by status, as status.json has them: also a kept page with no reading
+// in this run, which is not in report.pages. The machine_read count is the length of the list of
+// pages sent to a person.
+export function countPageStatuses(report: CompareWorkReport): Record<PageStatus, number> {
+  const inBatch = (status: PageStatus): number => report.pages.filter((p) => p.status === status).length;
+  const keptOutside = report.kept_human_checked.filter(
+    (k) => !k.in_current_batch && !k.check_problems?.length,
+  );
+  return {
+    double_read: inBatch("double_read"),
+    agreement_accepted: inBatch("agreement_accepted"),
+    machine_read: sentToPersonItems(report).length,
+    human_checked: inBatch("human_checked") + keptOutside.length,
+  };
+}
+
 function formatSentToPersonLine(item: PageSentToPerson): string {
   const pct =
     item.agreement_percent === null

@@ -1,18 +1,20 @@
-import { existsSync, readFileSync } from "node:fs";
+import { lstatSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   assertOutsideRepo,
+  assertSafeOutputFile,
+  CHECKED_DIGESTS_FILE,
   parseStrictUtf8Json,
   prepareSafeOutputDir,
   readCheckedDigests,
   readRegularFileIfExists,
-  readRegularFileNoFollow,
   renderRecordToMarkdown,
   sha256Hex,
   validateReferenceRecord,
   writeCheckedDigests,
   writeSafeOutputFile,
 } from "@/lib/reference-record";
+import { isPlainObject } from "@/lib/reference-record/import-photos";
 import { applyComputedAnswers, fileSlugFromRef, findEmptyAnswers } from "./answers";
 import type { PageStatus } from "./compare";
 import { parsePhotosManifest, PHOTOS_MANIFEST_FILE } from "./prepare";
@@ -26,8 +28,26 @@ export interface CheckPageResult {
   notes: string[];
 }
 
-function readStrictJsonFile(filePath: string): unknown {
-  return parseStrictJsonBytes(filePath, readFileSync(filePath));
+// No file of a check is read or written through a link: the bytes of the record and the photo that
+// the person compared must be the bytes of this work folder.
+function assertPlainFolders(workDir: string): void {
+  for (const name of ["final", "final-view", "photos"]) {
+    const path = join(workDir, name);
+    let isFolder: boolean;
+    try {
+      isFolder = lstatSync(path).isDirectory();
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw err;
+    }
+    if (!isFolder) throw new Error(`${path} is not a plain folder. Nothing was written.`);
+  }
+}
+
+// Undefined only when no file is there.
+function readStrictJsonIfExists(filePath: string): unknown {
+  const bytes = readRegularFileIfExists(filePath);
+  return bytes === null ? undefined : parseStrictJsonBytes(filePath, bytes);
 }
 
 function parseStrictJsonBytes(filePath: string, bytes: Uint8Array): unknown {
@@ -46,8 +66,8 @@ function parseStrictJsonBytes(filePath: string, bytes: Uint8Array): unknown {
 function describePagePhoto(workDir: string, page: string): string {
   const photosDir = join(workDir, "photos");
   const manifestPath = join(photosDir, PHOTOS_MANIFEST_FILE);
-  if (existsSync(manifestPath)) {
-    const rawManifest = readStrictJsonFile(manifestPath);
+  const rawManifest = readStrictJsonIfExists(manifestPath);
+  if (rawManifest !== undefined) {
     try {
       const manifest = parsePhotosManifest(rawManifest);
       const entry = manifest.photos.find((p) => p.source_ref === page);
@@ -56,28 +76,17 @@ function describePagePhoto(workDir: string, page: string): string {
       // Unrecognized manifest shape: try the report.
     }
   }
-  const reportPath = join(workDir, "final", "report.json");
-  if (existsSync(reportPath)) {
-    const rawReport = readStrictJsonFile(reportPath);
-    if (typeof rawReport === "object" && rawReport !== null && !Array.isArray(rawReport)) {
-      const pages = (rawReport as Record<string, unknown>).pages;
-      if (Array.isArray(pages)) {
-        const entry = pages.find(
-          (p): p is Record<string, unknown> =>
-            typeof p === "object" &&
-            p !== null &&
-            !Array.isArray(p) &&
-            (p as Record<string, unknown>).source_ref === page,
-        );
-        if (entry && typeof entry.photo === "string" && entry.photo.trim().length > 0) {
-          const original =
-            typeof entry.original_name === "string" && entry.original_name.trim().length > 0
-              ? ` (original name ${entry.original_name})`
-              : "";
-          return `${join(photosDir, entry.photo)}${original}`;
-        }
-      }
-    }
+  const rawReport = readStrictJsonIfExists(join(workDir, "final", "report.json"));
+  const pages = isPlainObject(rawReport) ? rawReport.pages : undefined;
+  const entry = Array.isArray(pages)
+    ? pages.find((p): p is Record<string, unknown> => isPlainObject(p) && p.source_ref === page)
+    : undefined;
+  if (entry && typeof entry.photo === "string" && entry.photo.trim().length > 0) {
+    const original =
+      typeof entry.original_name === "string" && entry.original_name.trim().length > 0
+        ? ` (original name ${entry.original_name})`
+        : "";
+    return `${join(photosDir, entry.photo)}${original}`;
   }
   return `the photo of this page in ${photosDir}`;
 }
@@ -138,6 +147,7 @@ export function checkAndMarkPage(opts: {
   const repoRoot = resolve(opts.repoRoot);
   const workDir = resolve(opts.workDir);
   assertOutsideRepo(workDir, repoRoot);
+  assertPlainFolders(workDir);
 
   if (opts.photoCompared !== true) {
     throw new Error(
@@ -153,11 +163,11 @@ export function checkAndMarkPage(opts: {
 
   const finalDir = join(workDir, "final");
   const statusPath = join(finalDir, "status.json");
-  if (!existsSync(statusPath)) {
+  const rawStatus = readStrictJsonIfExists(statusPath);
+  if (rawStatus === undefined) {
     throw new Error(`Missing status.json in ${finalDir}. Run reference:compare first.`);
   }
-  const rawStatus = readStrictJsonFile(statusPath);
-  if (typeof rawStatus !== "object" || rawStatus === null || Array.isArray(rawStatus)) {
+  if (!isPlainObject(rawStatus)) {
     throw new Error(`Invalid status map in ${statusPath}: expected a JSON object`);
   }
   const statusMap = rawStatus as Record<string, PageStatus>;
@@ -179,11 +189,10 @@ export function checkAndMarkPage(opts: {
   }
 
   const recordPath = join(finalDir, `${slug}.json`);
-  if (!existsSync(recordPath)) {
+  const recordBytes = readRegularFileIfExists(recordPath);
+  if (recordBytes === null) {
     throw new Error(`Final record not found for "${page}" at ${recordPath}`);
   }
-
-  const recordBytes = readRegularFileNoFollow(recordPath);
   const parsed = parseStrictJsonBytes(recordPath, recordBytes);
 
   if (
@@ -238,6 +247,7 @@ export function checkAndMarkPage(opts: {
     throw new Error(`Validation failed after recomputing answers for ${page}:\n${details}`);
   }
 
+  const viewText = `${renderRecordToMarkdown(recheck.record)}\n`;
   const photo = readPagePhoto(workDir, page);
 
   opts.beforeWrite?.();
@@ -253,6 +263,17 @@ export function checkAndMarkPage(opts: {
     );
   }
   const digests = readCheckedDigests(finalDir);
+  // A report that is a link or no plain file stops the check too, like each file that it reads.
+  readRegularFileIfExists(join(finalDir, "report.json"));
+  // Each destination is looked at before the first write.
+  for (const path of [
+    recordPath,
+    join(workDir, "final-view", `${slug}.md`),
+    join(finalDir, CHECKED_DIGESTS_FILE),
+    statusPath,
+  ]) {
+    assertSafeOutputFile(path, repoRoot);
+  }
 
   const safeFinalDir = prepareSafeOutputDir(finalDir, repoRoot);
   const safeViewDir = prepareSafeOutputDir(join(workDir, "final-view"), repoRoot);
@@ -271,7 +292,7 @@ export function checkAndMarkPage(opts: {
   writeSafeOutputFile(safeStatusPath, `${JSON.stringify(statusMap, null, 2)}\n`, repoRoot);
 
   const viewPath = join(safeViewDir, `${slug}.md`);
-  writeSafeOutputFile(viewPath, `${renderRecordToMarkdown(recheck.record)}\n`, repoRoot);
+  writeSafeOutputFile(viewPath, viewText, repoRoot);
 
   return {
     sourceRef: page,

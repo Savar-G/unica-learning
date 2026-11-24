@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { isPlainObject, parseStrictUtf8Json } from "./import-photos";
 import { writeSafeOutputFile } from "./output-guard";
 import { readRegularFileIfExists } from "./read-file";
+import { isSourceRef } from "./validate";
 
 // The digests that tie a page checked by a person to its record and its photo. reference:check
 // writes them; compare, extract and import read them. They are in a file of their own beside
@@ -39,18 +40,14 @@ export interface CheckedDigests {
 
 const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
 
-function isRef(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
 function parseCheckedDigests(raw: unknown): CheckedDigests {
   if (!isPlainObject(raw) || raw.version !== 1) throw new Error("expected an object with version 1");
   if (!Array.isArray(raw.pages)) throw new Error("pages is not a list");
   if (!Array.isArray(raw.checked_before)) throw new Error("checked_before is not a list");
   const pages = new Map<string, CheckedDigest>();
   raw.pages.forEach((entry: unknown, i) => {
-    if (!isPlainObject(entry) || !isRef(entry.source_ref)) {
-      throw new Error(`pages[${i}] has no source_ref`);
+    if (!isPlainObject(entry) || !isSourceRef(entry.source_ref)) {
+      throw new Error(`pages[${i}] has no valid source_ref`);
     }
     const { source_ref, record_sha256, photo_sha256 } = entry;
     if (pages.has(source_ref)) throw new Error(`pages[${i}] is a second entry for ${source_ref}`);
@@ -66,7 +63,7 @@ function parseCheckedDigests(raw: unknown): CheckedDigests {
   });
   const checkedBefore = new Set<string>();
   raw.checked_before.forEach((ref: unknown, i) => {
-    if (!isRef(ref)) throw new Error(`checked_before[${i}] is not a page id`);
+    if (!isSourceRef(ref)) throw new Error(`checked_before[${i}] is not a page id`);
     checkedBefore.add(ref);
   });
   return { pages, checkedBefore };
@@ -98,6 +95,11 @@ export function writeCheckedDigests(
   digests: CheckedDigests,
   repoRoot: string,
 ): void {
+  // A page id that the next read would refuse never enters the file.
+  const badRef = [...digests.pages.keys(), ...digests.checkedBefore].find((ref) => !isSourceRef(ref));
+  if (badRef !== undefined) {
+    throw new Error(`Refusing to write ${CHECKED_DIGESTS_FILE}: ${JSON.stringify(badRef)} is not a page id`);
+  }
   writeSafeOutputFile(join(finalDir, CHECKED_DIGESTS_FILE), formatCheckedDigests(digests), repoRoot);
 }
 

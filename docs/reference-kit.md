@@ -27,10 +27,12 @@ npm run reference:extract -- \
 - `--source`: source slug matching `^[A-Za-z0-9]+$`.
 - `--reader-a` (default `codex`) and `--reader-b` (default `claude`): must be two different model families. Passing a `--model-a` or `--model-b` id that belongs to the other family is refused.
 - `--allow-small`: read photos whose long side is under 1600 px or whose short side is under 600 px anyway.
-- `--force`: run both readers again, also when valid readings exist. A new valid reading replaces the old one; a failed read keeps the old valid reading. A page checked by a person is read again, but its checked record stays.
+- `--force`: run both readers again, also when valid readings exist. A new valid reading replaces the old one; a failed read keeps the old valid reading. The photo of a page that a person checked is not read again (also when the check does not count now); the run prints one line for it. A new photo of that page (another digest) is read.
 - `--limit <n>`: read only the first `n` sorted photos in the folder. The other photos and their readings stay as they are.
 
 Each photo is prepared, read by both readers in parallel (5-minute timeout per call, one validation retry, computed answers applied where exact, `not_stated` refused from readers), and compared once all photos finish.
+
+The counts at the end of the run and the list of pages sent to a person hold the same pages, also a kept page with no reading or no photo in this run.
 
 Exit code is `0` when the run completes (even if some photos fail) and `1` for a usage error or when no photo could be prepared. A reader folder that holds readings of another model family is refused; use a new `--out` folder.
 
@@ -49,8 +51,8 @@ Computed answers: code computes the answer of each item from its expression and 
 A person runs the command again after a failure, after adding photos, after replacing a photo, or with `--limit`. A second run never loses earlier work:
 
 - A reader that has a valid reading for the photo digest is not run again (unless `--force`). Only the missing reader runs.
-- A page that a person checked is not read again without `--force`. The run output and the report say "kept: checked by a person", or "kept: a person must check this page again" when the check does not count now (see "A Checked Page Is Tied to Its Photo and Its Text").
-- While a reader of a photo runs, that page's readings, final record, and view wait in a new private folder (mode `0700`) in the OS temp folder, and the photo is taken out of both `run.json` files. When the readers finish, every old file that a new reading did not replace goes back, also after an error. If the process is killed, the files stay in that folder (`unica-ref-shelter-*`); its `paths.json` lists where each file belongs.
+- The photo of a page that a person checked is not read again, also with `--force`. The run output and the report say "kept: checked by a person", or "kept: a person must check this page again" when the check does not count now (see "A Checked Page Is Tied to Its Photo and Its Text"). With `--force` the line ends with "(--force does not read this photo again)". To read it again, first remove the record file of the page from `final/`: this lets go of the person's record. Another photo that gives the id of a checked page is read again with `--force`.
+- While a reader of a photo runs, that page's readings, final record, and view wait in a new private folder (mode `0700`) in the OS temp folder, and the photo is taken out of both `run.json` files. When the readers finish, every old file that a new reading did not replace goes back, also after an error. If the process is killed, the files stay in that folder (`unica-ref-shelter-*`); its `paths.json` lists where each file belongs. The record of a page that a person checked never goes there: it stays in `final/`, and the shelter stops the run when it is asked to take one.
 - `run.json` of each reader is merged by photo digest, so a run changes only the photos it selected.
 - Two photos with the same bytes: the later one gets status `duplicate_photo`, is not read, and is listed in the report with both original names.
 - The photos folder is the truth. At the start, every photo of the folder (not only the `--limit` selection) is prepared to learn its digest. A photo that has readings or a manifest entry but is no longer in the folder (removed, or replaced by a new photo) loses its prepared file, manifest entry, readings, final record, and view, and is listed under "Removed photos". A photo of a page checked by a person is kept. A photos folder with no readable photo deletes nothing.
@@ -119,7 +121,7 @@ A final record that a person changed by hand is never overwritten with reader A'
 
 ### A Checked Page Is Tied to Its Photo and Its Text
 
-`reference:check --photo-compared` saves two SHA-256 digests in `final/checked-pages.digests`: the digest of the record file that it wrote, and the digest of the prepared photo that the photo list names for the page. The command stops and writes nothing when the record or the photo changes while it runs, when the photo list names no photo or two photos for the page, when the photo file is missing, or when the photo file does not match the photo list.
+`reference:check --photo-compared` saves two SHA-256 digests in `final/checked-pages.digests`: the digest of the record file that it wrote, and the digest of the prepared photo that the photo list names for the page. The command reads and writes no file through a link: a link, a folder or a pipe in the place of a file that it reads or writes, or a link in the place of `final/`, `final-view/` or `photos/`, stops it. It looks at each place that it writes before the first write. The command also stops and writes nothing when the record or the photo changes while it runs, when the photo list names no photo or two photos for the page, when the photo file is missing, or when the photo file does not match the photo list.
 
 `human_checked` counts only when both digests still match. `reference:compare` and `reference:import` look each time. When the check does not count, compare gives the page `machine_read`, keeps the record as it is (it never writes over, moves or deletes it), and lists the page under **Pages sent to a person** with one or more of these reasons:
 
@@ -133,11 +135,12 @@ A final record that a person changed by hand is never overwritten with reader A'
 
 What the person does:
 
-1. If the photo is missing, put it back in the photos folder and run `reference:extract`.
-2. Compare the record with the photo and correct the record.
-3. Run `reference:check --photo-compared` for the page. It saves new digests, and the page is `human_checked` again.
+1. Compare the record with the photo and correct the record.
+2. Run `reference:check --photo-compared` for the page. It saves new digests, and the page is `human_checked` again.
 
-In a folder from an older kit, do steps 2 and 3 for each page that was checked before.
+In a folder from an older kit, do these steps for each page that was checked before.
+
+When a checked page has no photo any more, put its photo (or a new photo of the same page) in the photos folder, run `reference:extract`, and do the two steps. If the page still has no photo, run `reference:extract --force`. If that does not help, remove the record file of the page from `final/` and run `reference:extract --force` again: the person's record is then gone, and the page starts from a new reading.
 
 To let go of a checked record, the person deletes its file in `final/`. The next compare then writes a new record.
 

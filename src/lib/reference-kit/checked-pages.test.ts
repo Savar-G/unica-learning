@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CHECKED_DIGESTS_FILE, importReferenceRecords, type PageRecord } from "@/lib/reference-record";
 import { checkAndMarkPage } from "./check";
-import { compareWorkFolder, formatPagesSentToPerson } from "./compare-batch";
+import { compareWorkFolder, countPageStatuses, formatPagesSentToPerson } from "./compare-batch";
 import { MemoryImportStore } from "./import-store.fixtures";
 import { addPreparedPhoto, fakePhoto } from "./photo.fixtures";
 
@@ -130,6 +130,7 @@ describe("a page checked by a person", () => {
   // The page is machine_read in every output, and its reason is in the list of pages for a person.
   function expectSentToPerson(report: ReturnType<typeof compare>, reasons: string[], ref = REF): void {
     expect(statusMap()[ref]).toBe("machine_read");
+    expectSameCounts(report);
     const page = report.pages.find((p) => p.source_ref === ref);
     if (page) {
       expect(page.status).toBe("machine_read");
@@ -146,6 +147,23 @@ describe("a page checked by a person", () => {
     expect(report.kept_human_checked.find((k) => k.source_ref === ref)?.check_problems).toEqual(reasons);
   }
 
+  // The summary counts of a run, the list of pages for a person and status.json say the same.
+  function expectSameCounts(report: ReturnType<typeof compare>): void {
+    const counts = countPageStatuses(report);
+    const statuses = Object.values(statusMap());
+    for (const status of ["double_read", "agreement_accepted", "machine_read", "human_checked"] as const) {
+      expect(counts[status], status).toBe(statuses.filter((s) => s === status).length);
+    }
+    const sent = report.pages_sent_to_person ?? [];
+    expect(sent).toHaveLength(counts.machine_read);
+    expect(sent.map((p) => p.source_ref).sort()).toEqual(
+      Object.keys(statusMap()).filter((ref) => statusMap()[ref] === "machine_read").sort(),
+    );
+    expect(formatPagesSentToPerson(report)).toContain(
+      sent.length === 0 ? "Pages sent to a person: none." : `Pages sent to a person (${sent.length}):`,
+    );
+  }
+
   it("stays human_checked when nothing changed, also on a second and a third run", () => {
     const before = setUpChecked();
     for (let round = 1; round <= 3; round += 1) {
@@ -154,6 +172,7 @@ describe("a page checked by a person", () => {
       expect(pageOf(report).result).toBe("checked by a person");
       expect(pageOf(report).check_problems).toBeUndefined();
       expect(report.pages_sent_to_person).toEqual([]);
+      expectSameCounts(report);
       expect(statusMap()).toEqual({ [REF]: "human_checked", "sample:M:4a": "double_read" });
       expect(recordBytes().equals(before)).toBe(true);
     }
@@ -165,6 +184,7 @@ describe("a page checked by a person", () => {
       const report = compare();
       expect(statusMap()[REF]).toBe("human_checked");
       expect(report.pages_sent_to_person).toEqual([]);
+      expectSameCounts(report);
       expect(recordBytes().equals(before)).toBe(true);
     }
   });
@@ -444,6 +464,22 @@ describe("a page checked by a person", () => {
         compare();
         await expectImported("human_checked", edited, "p1", name);
       }
+    }
+  });
+
+  it("is not imported under a machine status with the photo of another work folder", async () => {
+    for (const titleB of [undefined, "Adding Nombers"]) {
+      rmSync(work, { recursive: true });
+      mkdirSync(work);
+      addPreparedPhoto(work, "p1");
+      setReadings([{ photo: "p1", ref: REF, titleB }]);
+      compare();
+      const status = titleB ? "agreement_accepted" : "double_read";
+      await expectImported(status, "Adding Numbers", "p1", status);
+
+      rmSync(join(work, "photos"), { recursive: true });
+      addPreparedPhoto(work, "p9", REF);
+      await expectRefused("another photo", status);
     }
   });
 

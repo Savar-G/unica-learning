@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import fc from "fast-check";
@@ -30,7 +30,7 @@ describe("checked digests", () => {
     expect(readCheckedDigests(finalDir)).toEqual({ pages: new Map(), checkedBefore: new Set() });
 
     const hex = fc.stringMatching(/^[0-9a-f]{64}$/);
-    const ref = fc.stringMatching(/^[a-z]{1,6}:[A-Z]:[0-9]{1,3}[ab]$/);
+    const ref = fc.stringMatching(/^[a-z]{1,6}:[A-Z]:([0-9]{1,3}[ab]|contents)$/);
     const digests = fc.record({
       pages: fc
         .array(fc.tuple(ref, fc.record({ record_sha256: hex, photo_sha256: hex })))
@@ -77,6 +77,12 @@ describe("checked digests", () => {
       ["no checked_before", JSON.stringify({ version: 1, pages: [] })],
       ["checked_before holds a number", file({ checked_before: [1] })],
       ["checked_before holds a blank id", file({ checked_before: [""] })],
+      ...["sample:M", "sample:M:3", "sample:M:3A", "sample:M:3a ", "sample:M:3a\n", "sample:M:a/b", "../x:M:3a", "sample:M:3a:4b", "sample"].flatMap(
+        (ref): Array<[string, string]> => [
+          [`page with the id ${JSON.stringify(ref)}`, file({ pages: [{ ...page, source_ref: ref }] })],
+          [`checked_before holds ${JSON.stringify(ref)}`, file({ checked_before: [ref] })],
+        ],
+      ),
     ];
     for (const [name, content] of damaged) {
       writeFileSync(filePath, content);
@@ -93,6 +99,19 @@ describe("checked digests", () => {
     rmSync(filePath);
     mkdirSync(filePath);
     expect(() => readCheckedDigests(finalDir), "folder").toThrow(filePath);
+  });
+
+  it("never writes a page id that it would refuse to read", () => {
+    const repo = join(rootDir, "repo");
+    mkdirSync(repo);
+    const digest = { record_sha256: A, photo_sha256: B };
+    for (const value of [
+      { pages: new Map([["sample:M", digest]]), checkedBefore: new Set<string>() },
+      { pages: new Map(), checkedBefore: new Set(["sample:M"]) },
+    ]) {
+      expect(() => writeCheckedDigests(finalDir, value, repo)).toThrow(/sample:M/);
+      expect(existsSync(filePath)).toBe(false);
+    }
   });
 
   it("counts a check only when both digests match", () => {
