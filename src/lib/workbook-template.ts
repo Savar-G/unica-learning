@@ -18,6 +18,7 @@ import { isWarmUpPage, printedInstruction, workbookWorkLine, workQuestionNumbers
 import { packageItem, PATTERN_SHAPES, valueText, type AnswerRegion, type AnswerValue, type QuestionPackage } from "@/lib/question-package";
 import { dayLabel, type Block, type DayContent, type Figure, type PageContent, type SlotName, type WorkedLine } from "@/lib/workbook-page";
 import {
+  IMAGE_SCALE,
   mark,
   regionNames,
   type DraftPage,
@@ -442,21 +443,27 @@ const worked = (line: WorkedLine) => bcNumbers(escape(printedMinus(singularPlace
 
 // ---------- Questions and their answer regions ----------
 
-/** The digits an answer box must hold, as printed, without its unit. */
+/** The characters an answer box must hold, without its separately printed unit. */
 function answerChars(v: AnswerValue | null): number {
   if (!v) return 3;
   if (v.type === "quantity") return valueText({ type: "number", value: v.value }).length;
   return valueText(v).length;
 }
 
-/**
- * An answer box's width by what goes in it (DESIGN.md section 4): 40 to 48 for 1 or 2 digits, up to 204 for words. A
- * 4-digit answer gets 96, not 64: a young child's four digits did not fit 64 px on a printed page (Cedric, 2026-11-13).
- */
-function boxWidth(v: AnswerValue | null, band: Band): number {
-  const n = answerChars(v);
-  const w = n <= 2 ? 48 : n <= 3 ? 64 : n <= 7 ? 96 : n <= 12 ? 140 : 204;
-  return Math.max(w, band.box);
+/** Minimum width for longer numeric answers, including signs, decimal points and grouping commas (#1241). */
+function longNumberWidth(v: AnswerValue | null): number {
+  if (v?.type !== "number" && v?.type !== "quantity") return 0;
+  const written = v.type === "quantity" && v.unit === "$" ? valueText(v).slice(1) : valueText({ type: "number", value: v.value });
+  const chars = commaNumbers(written).length;
+  return chars >= 4 ? Math.ceil(chars * 30 / IMAGE_SCALE) : 0;
+}
+
+function answerBox(v: AnswerValue | null, band: Band, name: string, minimum = 0): string {
+  const numericWidth = longNumberWidth(v);
+  const chars = answerChars(v);
+  const standard = chars <= 2 ? 48 : chars <= 3 ? 64 : chars <= 7 ? 96 : chars <= 12 ? 140 : 204;
+  const width = Math.max(numericWidth || standard, band.box, minimum);
+  return `<span class="ab${numericWidth ? " long-number" : ""}" ${measureAttr(name)} style="width:${width}px${numericWidth ? `;min-width:${numericWidth}px` : ""}"></span>`;
 }
 
 /** The unit word after an answer box ("tiles", "cm"), or "". */
@@ -502,7 +509,7 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
       const label = o.labels && r.label ? `<span class="rl box">${escape(r.label)}</span>` : "";
       const unit = o.noUnits ? "" : unitAfter(q.package);
       const money = q.package.answer?.value.type === "quantity" && q.package.answer.value.unit === "$" ? `<span class="unit">$</span>` : "";
-      return `<span class="rg">${label}${money}<span class="ab" ${at} style="width:${boxWidth(r.answer, o.band)}px"></span>${unit ? `<span class="unit" data-measure="unit-${q.number}-${r.id}">${escape(unit)}</span>` : ""}</span>`;
+      return `<span class="rg">${label}${money}${answerBox(r.answer, o.band, name)}${unit ? `<span class="unit" data-measure="unit-${q.number}-${r.id}">${escape(unit)}</span>` : ""}</span>`;
     }
     case "choice": {
       if (r.mark === "circle") {
@@ -681,8 +688,15 @@ function columnItem(q: DraftQuestion, band: Band): string {
   const sign = op.kind === "add" ? "+" : op.kind === "subtract" ? "−" : "×";
   const names = regionNames(q);
   const answer = names.find((x) => x.region.kind === "box")!;
-  const box = `<span class="ab" ${measureAttr(answer.name)} style="width:${Math.max(boxWidth(answer.region.kind === "box" ? answer.region.answer : null, band), 72)}px"></span>`;
-  return `<div class="col" ${mark.question(q.number)}><span class="n">${questionNumber(q.number)}</span><div class="sum"><div ${mark.questionContent(q.number)}><div class="row"><span>${a}</span></div><div class="row"><span class="op">${sign}</span><span>${b}</span></div></div><div class="rule">${box}</div></div></div>`;
+  const box = answerBox(answer.region.kind === "box" ? answer.region.answer : null, band, answer.name, 72);
+  return `<div class="col${wideColumn(q, band) ? " col-wide" : ""}" ${mark.question(q.number)}><span class="n">${questionNumber(q.number)}</span><div class="sum"><div ${mark.questionContent(q.number)}><div class="row"><span>${a}</span></div><div class="row"><span class="op">${sign}</span><span>${b}</span></div></div><div class="rule">${box}</div></div></div>`;
+}
+
+function wideColumn(q: DraftQuestion, band: Band): boolean {
+  // Two 328px tracks on measured pages, four 160px tracks on legacy pages.
+  // Leave 22px for the question number, 10px for the gap and room for an optional block border.
+  const available = (band.consistentLayout ? 328 : 160) - 34;
+  return packageItem(q.package).regions.some(r => r.kind === "box" && longNumberWidth(r.answer) > available);
 }
 
 /** A question in a card: number badge, text, its boxes, then work or lines. */
@@ -782,23 +796,30 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
   const parent = band.name === "parent";
   // A step page's review questions print under their own "Remember these" label (the U16 review: earlier steps mixed into
   // the page's practice read as off-topic).
+  const finalCheckItem = ["friday-5", "mini-test"].includes(b.slot) ? qs.at(-1)?.number : undefined;
   // Each grid carries its row count (--rows): a page that grows its rows to fill it gives every row the same share.
   const grid = (cls: string, part: DraftQuestion[]) => {
-    const wide = (n: number) => /^(?:two|cols)$/.test(cls) && (["friday-5", "mini-test"].includes(b.slot) && n === part.at(-1)?.number || ((s) => s.wide || s.placesWide)(lineShape(ctx.q(n), band)));
+    const wide = (n: number) => cls === "cols" ? wideColumn(ctx.q(n), band)
+      : cls === "two" && (n === finalCheckItem || ((s) => s.wide || s.placesWide)(lineShape(ctx.q(n), band)));
     return `<div class="${cls}" style="--rows:${gridRows(part.map((q) => q.number), cls === "list" ? 1 : 2, wide).length}">`;
   };
   const list = (render: (q: DraftQuestion, k: number) => string, cls = "list") => {
     // (With the page's Review heading already said, the block's review questions continue its grid.)
     const at = ctx.review[i]?.at ?? -1;
-    if (at < 0) return `${grid(cls, qs)}${qs.map((q, k) => {
-      const last = ["friday-5", "mini-test"].includes(b.slot) && k === qs.length - 1;
-      const html = render(q, k);
-      const compact = last && c.consistentLayout && html.startsWith('<div class="q') && isMath(q.package.text)
-        && packageItem(q.package).format === "write-number" && questionWorkSpace(q.package) > 0;
-      return html.replace(/^(<div class=")([^"]+)(")/, `$1$2${compact ? " compact-wide" : ""}$3${last ? ' style="grid-column:1/-1"' : ""}`);
-    }).join("")}</div>`;
-    if (at === 0) return `<div class="lab" data-measure="review-${i}">Review</div>${grid(cls, qs)}${qs.map((q, k) => render(q, k).replace(/^(<div class="[^"]+")/, ["friday-5", "mini-test"].includes(b.slot) && k === qs.length - 1 ? '$1 style="grid-column:1/-1"' : "$1")).join("")}</div>`;
-    return `${grid(cls, qs.slice(0, at))}${qs.slice(0, at).map(render).join("")}</div><div class="lab" data-measure="review-${i}">Review</div>${grid(cls, qs.slice(at))}${qs.slice(at).map((q, k) => render(q, k + at)).join("")}</div>`;
+    const part = (start: number, end?: number) => {
+      const questions = qs.slice(start, end);
+      const rows = questions.map((q, k) => {
+        const html = render(q, start + k);
+        if (q.number !== finalCheckItem) return html;
+        const compact = at < 0 && c.consistentLayout && html.startsWith('<div class="q') && isMath(q.package.text)
+          && packageItem(q.package).format === "write-number" && questionWorkSpace(q.package) > 0;
+        return html.replace(/^(<div class=")([^"]+)(")/, `$1$2${compact ? " compact-wide" : ""}$3 style="grid-column:1/-1"`);
+      }).join("");
+      return `${grid(cls, questions)}${rows}</div>`;
+    };
+    if (at < 0) return part(0);
+    const heading = `<div class="lab" data-measure="review-${i}">Review</div>`;
+    return (at > 0 ? part(0, at) : "") + heading + part(at);
   };
   const line = (q: DraftQuestion, k: number) => (parent ? parentItem(q, band, b.figures?.[k]) : lineItem(q, band, b.hints?.[k], 80, b.figures?.[k]));
   const items = (cls = "list") => (parent ? list(line, "pcards") : list(line, cls));
@@ -1029,6 +1050,8 @@ function challengeCard(q: DraftQuestion, band: Band, work: number | "fill"): str
 export interface BesideAnswers {
   /** The measured names of the regions, by their role (never by where they printed). */
   regions: string[];
+  /** Longer numeric boxes may wrap below the stem when the line is too narrow. */
+  wrap?: string[];
   /** "top": each box's top at the first line's top, each circle target on its baseline; "centre": a one-line fact's box
    * centred on it. */
   align: "top" | "centre";
@@ -1078,8 +1101,9 @@ export function pagePlan(page: DraftPage): PagePlan | null {
     // (A comparison prints its box between its numbers: it is not beside its first line.)
     if (!q || comparisonOf(q)) return;
     const terms = termRegions(q);
-    const regions = regionNames(q).filter((x) => !terms.has(x.region.id) && inRow(x.region) && !letteredRegion(q.package.text, x.region) && (!kind || x.region.kind === kind)).map((x) => x.name);
-    if (regions.length) beside.set(n, { regions, align, inset });
+    const inline = regionNames(q).filter((x) => !terms.has(x.region.id) && inRow(x.region) && !letteredRegion(q.package.text, x.region) && (!kind || x.region.kind === kind));
+    const wrap = inline.filter(({ region }) => region.kind === "box" && longNumberWidth(region.answer) > 0).map(x => x.name);
+    if (inline.length) beside.set(n, { regions: inline.map(x => x.name), align, inset, ...(wrap.length ? { wrap } : {}) });
   };
   const line = (n: number) => {
     const q = byNumber.get(n);
@@ -1119,7 +1143,7 @@ export function pagePlan(page: DraftPage): PagePlan | null {
         const qs = items.map((n) => byNumber.get(n)!);
         const sums = band.name === "mid" && !(six && b.slot === "on-your-own") && qs.length > 0 && !b.figures?.some(Boolean)
           && qs.every((q) => ["add", "subtract", "multiply"].includes(q.package.operation?.kind ?? "") && packageItem(q.package).regions.length === 1 && !questionWorkSpace(q.package));
-        if (parent) cards(); else if (sums) grid(2); else lines();
+        if (parent) cards(); else if (sums) grid(2, n => wideColumn(byNumber.get(n)!, band)); else lines();
         break;
       }
       case "remember-these": case "finish-these": case "friday-5": case "unit-check": case "mini-test": case "already-know-it":
@@ -1423,6 +1447,7 @@ export function fitProblems(page: DraftPage, measured: ReadonlyMap<string, Measu
     const feedback = feedbackItemProblem(q.package);
     if (feedback) problems.push({ question: q.number, slot: slotOf(q.number), reason: `${at}: ${feedback}` });
     const content = measured.get(`question-${q.number}-content`);
+    const question = measured.get(`question-${q.number}`);
     for (const { region, name } of regionNames(q)) {
       const m = measured.get(name);
       if (!m) continue;
@@ -1434,7 +1459,12 @@ export function fitProblems(page: DraftPage, measured: ReadonlyMap<string, Measu
       if (region.kind === "box") {
         const minimum=c.consistentLayout ? c.level<=3 ? 56 : 48 : band.box;
         if (m.height < minimum - 0.5) small("answer box height", m.height, minimum);
-        if (m.width < (c.consistentLayout ? 48 : ANSWER_MIN) - 0.5) small("answer box width", m.width, c.consistentLayout ? 48 : ANSWER_MIN);
+        // The fake engine supplies placeholder rectangles. Only the real layout measures the answer's ink space.
+        const numericWidth = content?.firstLine ? longNumberWidth(region.answer) : 0;
+        const width = Math.max(numericWidth, c.consistentLayout ? 48 : ANSWER_MIN);
+        if (m.width < width - 0.5) small("answer box width", m.width, width);
+        if (numericWidth && question && (m.x < question.x - .5 || m.x + m.width > question.x + question.width + .5))
+          problems.push({ question: q.number, slot: slotOf(q.number), reason: `${at}: question ${q.number}'s answer box runs past its column` });
       } else if (region.kind === "work") {
         const grid = ["remember-these", "now-you", "finish-these", "on-your-own", "practice-row", "unit-b-practice", "mixed-set", "friday-5"].includes(slotOf(q.number) ?? "");
         const minimum = c.consistentLayout ? slotOf(q.number) === "solve-it-two-ways" ? Math.max(102, questionWorkSpace(q.package) + 38) : grid ? Math.max(32, questionWorkSpace(q.package)) : workMinimum(c.level) : WORK_MIN;

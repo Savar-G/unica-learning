@@ -104,9 +104,11 @@ Challenge, wrench for Fix it. The Challenge chip is 31 tall with its 1.5 px bord
 (gap 10).
 
 **Answer box** (white, 1.2 px `#0C0C0E`, radius 6): height 40 (44 beside 17 px maths, 46 for large inline answers; 56 at
-U1 to U3); width by the characters of its expected answer, without its unit: 40 to 48 for one or two, 64 for three, 96 for
-four to seven (a child's four digits need about an inch), 140 up to twelve, 204 for words. The standard size is the default; a wider box is only for an answer that needs the room (an expanded form), and in a half-width card a long word answer's box gives way to what fits beside the work space (Cedric, 2026-11-22). Every answer box is an item
-answer region with a stored position (#309).
+U1 to U3). A number or quantity with four or more written characters gets at least 30 image pixels per character
+(about 19 CSS px), including commas, decimal points and signs. The separately printed unit is outside the box. If
+the box and question cannot share a line, the box can wrap beneath it. A stacked sum can take a wider row.
+Short answers keep the standard sizes. In a half-width card a long word answer's box gives way to what fits
+beside the work space (Cedric, 2026-11-22). Every answer box is an item answer region with a stored position (#309).
 
 **Tick box** (20 by 20, radius 3, 2 px `#0C0C0E`, white) inside a **choice strip** (`#F4F4F5`, radius 8, height 42,
 padding 8 by 14, gap 28 between choices; tighter strips 36 to 37 tall with gap 20). After the strip: "Tick one" with a
