@@ -2,7 +2,7 @@
 // it, so it imports nothing. All lengths are points (72 to the inch) from the top left corner of the page.
 
 /** Changes when the same input can give other bytes. A book records it, so a replay can tell which part differs. */
-export const ENGINE_VERSION = "2.0.0-s1";
+export const ENGINE_VERSION = "2.0.0-s2";
 
 export interface Rect { x: number; y: number; w: number; h: number }
 
@@ -27,6 +27,7 @@ export interface BookItem {
   /** The number printed beside the question, from 1 on each side. */
   number: number;
   shape: string;
+  shapeVersion: number;
   question: unknown;
   face: Face;
   answer: Answer;

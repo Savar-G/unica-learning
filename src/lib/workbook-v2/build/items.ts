@@ -23,7 +23,7 @@ function rowItems(sheetId: string, side: Side, row: SnapshotRow, seed: string, u
     used.add(key());
     const { question, answer } = picked;
     return {
-      sheetId, side, rowId: row.id, shape: row.shape.id, question, answer,
+      sheetId, side, rowId: row.id, shape: row.shape.id, shapeVersion: row.shape.version, question, answer,
       face: row.shape.face(question), steps: row.shape.steps(question), difficulty: row.shape.difficulty(question),
     };
   });

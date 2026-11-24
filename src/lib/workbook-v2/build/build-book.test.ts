@@ -56,13 +56,26 @@ describe("a good input", () => {
     const book = await built(input());
     expect(book.pages.map((p) => [p.model.page, p.model.side])).toEqual([[381, "front"], [382, "back"]]);
     expect(book.items).toHaveLength(16);
-    for (const { face, answer, steps } of book.items) {
+    for (const { face, answer, steps, shapeVersion } of book.items) {
       expect(answer).toEqual({ kind: "whole-number", value: String(Number(face.top) * Number(face.bottom)) });
       expect(steps.at(-1)).toBe(answer.value);
+      expect(shapeVersion).toBe(1);
     }
-    expect(book.record).toMatchObject({ bookId: "example-book", engine: "2.0.0-s1", ...IDENTITY, snapshot: { id: "invented-level-3-v1" } });
+    expect(book.record).toMatchObject({ bookId: "example-book", engine: "2.0.0-s2", ...IDENTITY, snapshot: { id: "invented-level-3-v1" } });
     expect(book.record.snapshot.hash).toMatch(/^[0-9a-f]{64}$/);
     expect(book.record.inputHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("passes shapeVersion to items without changing layout or solving", async () => {
+    const mul = SHAPES.get("mul.column");
+    if (!mul) throw new Error("no shape");
+    const one = await built(input());
+    const result = await buildBook(input(), fake(), shapeLibrary([{ ...mul, version: 2 }]));
+    if (result.status !== "built") throw new Error(result.problems.join("\n"));
+    expect(result.items.every((i) => i.shapeVersion === 2)).toBe(true);
+    expect(result.pages).toEqual(one.pages);
+    expect(result.positions).toEqual(one.positions);
+    expect(result.pdf).toEqual(one.pdf);
   });
 
   it("does not change its input, and the same input gives the same book", async () => {

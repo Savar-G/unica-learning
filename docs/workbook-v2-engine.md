@@ -38,7 +38,15 @@ The snapshot file holds the content of one level. The book file holds the book i
 - **Geometry:** every position is in the page model. `page.typ` only draws it. The build compares the rectangles and the text that Typst reports with the model.
 - **Proof of each page:** the build reads each page image back. Its QR code must fill its box and read as the text of its own page, and there must be no second code. Every text of the model must have ink there, every fill must be dark in all of its area, and the sides of an outline must have no gap in their middle half. This takes about 2 seconds for 120 pages on a laptop. It does not prove the PDF, which Typst makes in a run of its own from the same files.
 - **Typst and fonts:** pinned by version and SHA-256 in `render/pins.ts`. The fonts and the drawing file are read once and each drawing uses that copy in a private folder; the program is checked again before each drawing. `typst:install` puts the official program in `~/.cache/unica-learning/typst/`. Computer fonts and Typst's own fonts are off. Any Typst warning stops the build. Typst prints an empty box, with no warning, for a character that a font does not hold, so `validateSnapshot` refuses those characters in the bank and `checkPage` refuses them in every text that a page prints (`isPrintable`).
-- **A change that can change a page** (Typst, a font, `page.typ`, a template, a shape) also changes `ENGINE_VERSION`.
+- **A change that can change a page or an output file** (Typst, a font, `page.typ`, a template, a shape, or the fields of `answers.json`) also changes `ENGINE_VERSION`. Each `BookItem` in `answers.json` carries `shapeVersion` from its shape; `solveAgain` and layout do not read it.
+
+## Adding a shape
+
+1. Add one shape file in `src/lib/workbook-v2/shapes/` with a whole-number `version: 1`.
+2. Register the shape in `src/lib/workbook-v2/shapes/index.ts` (`SHAPES`).
+3. Add its independent registration in `src/lib/workbook-v2/testing/shape-registrations.ts` (`SHAPE_SPECS`): arbitrary limits, widen function, independent limit check, small spaces with known counts, width measures, easier/harder pairs, worked examples, refused limits, refused printed rows, and fixed fingerprint limits and seeds.
+4. Run `npm run workbook:v2:fingerprints` to record the new version in `src/lib/workbook-v2/testing/shape-fingerprints.json`. When a shape's output changes later, bump its `version` by 1 and run the same command (existing versions are never overwritten or removed).
+5. Run `npx vitest run src/lib/workbook-v2/shapes/shapes.test.ts`. A shape in `SHAPES` with no registration fails the suite.
 
 ## Tests
 
@@ -48,4 +56,4 @@ The snapshot file holds the content of one level. The book file holds the book i
 
 - Fit and ink checks (UNI-137): `checks/`; `readPageImage` gives the pixels of a page image and `checkImages` already reads each one.
 - A Vercel function (UNI-138): a second way to fill `RenderAssets`, or another `Renderer`.
-- More shapes (UNI-236): one file in `shapes/` and one line in `shapes/index.ts`. A new look of a question is a new `Face` and a template that takes it.
+- More shapes (UNI-237 to 240): follow "Adding a shape" above. A new look of a question is a new `Face` and a template that takes it.

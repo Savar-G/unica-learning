@@ -17,6 +17,17 @@ describe("the seed decides the numbers", () => {
     expect(printed("child-a", 1)).toEqual(printed("child-a", 1));
   });
 
+  it("records the shape version on every item", () => {
+    const items = sheetItems(SHEET, "child-a", 1);
+    expect(items.every((i) => i.shapeVersion === 1)).toBe(true);
+    const bumped: SnapshotSheet = {
+      ...SHEET,
+      front: { ...SHEET.front, rows: SHEET.front.rows.map((r) => ({ ...r, shape: { ...r.shape, version: 3 } })) },
+      back: { ...SHEET.back, rows: SHEET.back.rows.map((r) => ({ ...r, shape: { ...r.shape, version: 3 } })) },
+    };
+    expect(sheetItems(bumped, "child-a", 1).every((i) => i.shapeVersion === 3)).toBe(true);
+  });
+
   it.each<[string, string[]]>([
     ["another child", printed("child-b", 1)],
     ["another attempt", printed("child-a", 2)],

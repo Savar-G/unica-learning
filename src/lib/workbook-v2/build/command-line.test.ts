@@ -53,7 +53,9 @@ describe.skipIf(skipTypstTests())("the command, with the real Typst", () => {
     for (const file of files("one")) expect(Buffer.compare(bytes("one", file), bytes("two", file)), file).toBe(0);
     expect(bytes("one", "book.pdf").subarray(0, 5).toString()).toBe("%PDF-");
     expect((await readImage(bytes("one", "page-2.png"))).width).toBe(1275);
-    expect(json("one", "answers.json")).toHaveLength(16);
+    const answers = json("one", "answers.json") as { shapeVersion?: unknown }[];
+    expect(answers).toHaveLength(16);
+    expect(answers.every((item) => item.shapeVersion === 1)).toBe(true);
     expect(json("one", "positions.json")).toEqual(expect.arrayContaining([{ id: "column-multiplication-1/1/front/answer-1", sheet: 1, rect: { x: 134, y: 178, w: 72, h: 42 } }]));
     expect(json("one", "record.json")).toMatchObject({ bookId: "example-book", typst: "0.15.1", program: hash, template: hash, fonts: { "Geist-Regular.ttf": hash, "Geist-SemiBold.ttf": hash } });
     expect(readdirSync(folder).filter((f) => f.startsWith("."))).toEqual([]);
