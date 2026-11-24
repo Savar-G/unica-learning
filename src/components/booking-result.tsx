@@ -29,6 +29,7 @@ export function BookingResult({ card, confirmationRef, path = "signup" }: { card
   return <>
     <h1>{copy.title}</h1>
     <p className="lead">{copy.lead}</p>
+    {copy.notice && <p>{copy.notice}</p>}
     {copy.support && <p>Email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a> for help.</p>}
     <Link className="btn" href={copy.next.href}>{copy.next.label} <span aria-hidden="true">→</span></Link>
   </>;

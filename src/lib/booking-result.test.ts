@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resultCopy } from "@/lib/booking-result";
+import { WORKBOOK_DELAY_NOTICE, WORKBOOK_DELAY_ON } from "@/lib/workbook-delay";
 
 // The thank-you states after the public launch (#82). The old booking dialog is gone, but its Stripe return URLs can
 // still arrive. Each state keeps its own meaning; the next step is the free online math assessment at /start.
@@ -21,6 +22,21 @@ describe("a card that Stripe confirmed", () => {
     expect(c.lead).toMatch(/report stays in your account/);
     expect(text(c)).not.toMatch(/assessment/);
     expect(c.next.href).toBe("/account");
+  });
+
+  it("from the report, while workbooks are rebuilt: gives the approved wait word for word; the switch takes it away (#1247)", () => {
+    expect(resultCopy({ card: "saved", fromReport: true, delay: true }).notice).toBe(WORKBOOK_DELAY_NOTICE);
+    expect(resultCopy({ card: "saved", fromReport: true, delay: false }).notice).toBeNull();
+    expect(resultCopy({ card: "saved", fromReport: true }).notice).toBe(WORKBOOK_DELAY_ON ? WORKBOOK_DELAY_NOTICE : null);
+  });
+
+  it("gives the wait to no state without a saved card from a report: they have no results to see yet", () => {
+    for (const card of ["saved", "unconfirmed", "cancelled", null] as const) {
+      for (const fromReport of [true, false]) {
+        if (card === "saved" && fromReport) continue;
+        expect(resultCopy({ card, fromReport, delay: true }).notice).toBeNull();
+      }
+    }
   });
 });
 
