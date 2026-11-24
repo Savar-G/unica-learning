@@ -48,7 +48,9 @@
     "reference:extract": "node scripts/reference-extract.mjs",
     "reference:compare": "node scripts/reference-compare.mjs",
     "reference:check": "node scripts/reference-check.mjs",
-    "reference:method": "node scripts/reference-method.mjs"
+    "reference:method": "node scripts/reference-method.mjs",
+    "typst:install": "node scripts/install-typst.mjs",
+    "workbook:v2": "node scripts/workbook-v2.mjs"
   },
   "dependencies": {
     "@sentry/nextjs": "11.16.0",

@@ -11,7 +11,7 @@ Workbook generator v2 is under development. It will make workbooks from an appro
 ## Where the documents are
 
 - The product spec and the architecture spec are in Linear (parent issue UNI-130). They are the source of truth.
-- The architecture spec describes the engine modules, the checks and the build plan. The first engine pull request (UNI-135) adds an engine document beside this one.
+- The architecture spec describes the engine modules, the checks and the build plan. The [engine document](workbook-v2-engine.md) says how to run the engine, what each module does and which rules it keeps.
 - The seven decisions below are in `docs/adr/`. Read them before you change the engine.
 
 ## Decisions

@@ -15,6 +15,10 @@ export const DYNAMIC_READ_RULES = [
   { match: (f) => f === "docs/maya-practice.md" || f === "AGENTS.md", tests: ["src/lib/maya-practice/practice.test.ts"] },
   { match: (f) => /^docs\/workbook-gate-set.*\.json$/.test(f), tests: ["src/lib/workbook-gates.test.ts"] },
   { match: (f) => f.startsWith(".design/research/"), tests: ["src/lib/assessment/bank-coverage.test.ts", "src/lib/assessment/skill-map.test.ts"] },
+  {
+    match: (f) => f.startsWith("src/lib/workbook-v2/"),
+    tests: ["src/lib/workbook-v2/build/build-book.test.ts", "src/lib/workbook-v2/build/command-line.test.ts", "src/lib/workbook-v2/render/typst.test.ts"],
+  },
   { match: (f) => f === ".design/workbooks/samples/curriculum-skeleton.xlsx", tests: ["src/lib/workbook-curriculum/step-source.test.ts"] },
 ];
 

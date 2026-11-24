@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { classifyScope, MAX_AFFECTED_FILES } from "./pr-scope.mjs";
 
@@ -143,4 +144,28 @@ test("bulk skill-only updates over MAX_AFFECTED_FILES still skip CI", () => {
   assert.equal(scope.mode, "skip");
   assert.equal(scope.runPrUnit, false);
   assert.equal(scope.runLintAndTypes, false);
+});
+
+test("a workbook engine change runs the engine tests that read its files or run its command", () => {
+  for (const file of ["src/lib/workbook-v2/render/page.typ", "src/lib/workbook-v2/render/fonts/Geist-Regular.ttf", "src/lib/workbook-v2/build/build-book.ts"]) {
+    const scope = classifyScope({ eventName: "pull_request", changedFiles: [file] });
+    assert.equal(scope.mode, "affected");
+    assert.equal(scope.runPrUnit, true);
+    assert.deepEqual(scope.extraTests, [
+      "src/lib/workbook-v2/build/build-book.test.ts",
+      "src/lib/workbook-v2/build/command-line.test.ts",
+      "src/lib/workbook-v2/render/typst.test.ts",
+    ]);
+  }
+});
+
+test("each CI job that runs the unit tests first installs the pinned Typst", () => {
+  const workflow = readFileSync(new URL("../workflows/ci.yml", import.meta.url), "utf8");
+  const jobs = workflow.split(/\n(?=  [a-z-]+:\n)/);
+  for (const name of ["unit", "pr-unit"]) {
+    const job = jobs.find((j) => j.startsWith(`  ${name}:\n`));
+    const install = job.indexOf("run: npm run typst:install");
+    assert.ok(install > job.indexOf("npm ci"), name);
+    assert.ok(install < job.indexOf("npm test"), name);
+  }
 });
