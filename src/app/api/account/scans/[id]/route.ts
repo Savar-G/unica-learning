@@ -8,6 +8,7 @@ import { readScanPreview, runScanCrops } from "@/lib/scan-crops";
 import { startPhotoCheck } from "@/lib/scan-photo-check-start";
 import { scanCropStore } from "@/lib/scan-crops-store";
 import { normalizeScanPhoto, readScanBody, type SpreadPage } from "@/lib/scan-photo-image";
+import { SCAN_REJECT_REASONS, type ScanRejectReason } from "@/lib/scan-states";
 import type { Database } from "@/lib/database";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { scanSession, scanJson, scanView, scanPath, SCAN_BUCKET, cleanupScanPhoto } from "@/lib/scan-photo-server";
@@ -120,12 +121,28 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
     return scanJson(other ? { photo, spread: other } : { photo });
   } catch (error) {
     if (!(error instanceof Error) || !["qr", "size", "page", "duplicate", "flat", "image", "expired", "refused", "deleted"].includes(error.message)) monitorProduct("scan.upload_failed", { photoId: id });
-    await admin.rpc("change_scan_photo", { p_parent: parent, p_id: id, p_action: "reject" });
-    await cleanupScanPhoto(admin, parent, id);
+    await rejectPhoto(admin, parent, id, scanRejectReason(error));
     const code = error instanceof Error && ["qr", "size", "page", "duplicate", "flat"].includes(error.message) ? error.message : "image";
     // A duplicate names its page, and the photo the new one may replace (a ready photo not sent): never a problem (#4).
     return scanJson(code === "duplicate" && duplicate ? { error: code, ...duplicate } : { error: code }, 422);
   }
+}
+
+function scanRejectReason(error: unknown): ScanRejectReason {
+  const code = error instanceof Error ? error.message : error;
+  return SCAN_REJECT_REASONS.find((reason) => reason === code) ?? "unexpected";
+}
+
+async function rejectPhoto(admin: SupabaseClient<Database>, parent: string, id: string, reason: ScanRejectReason) {
+  monitorProduct("scan.upload_refused", { photoId: id, reason });
+  const args = { p_parent: parent, p_id: id };
+  const result = await admin.rpc("reject_scan_photo", { ...args, p_reason: reason });
+  // The old endpoint is still available before the migration and while PostgREST reloads its schema cache.
+  const error = result.error?.code === "PGRST202"
+    ? (await admin.rpc("change_scan_photo", { ...args, p_action: "reject" })).error
+    : result.error;
+  if (error) monitorProduct("scan.upload_failed", { photoId: id });
+  await cleanupScanPhoto(admin, parent, id);
 }
 
 /** How often, and how far apart, the second page of a spread asks again for an upload slot the phone's own uploads fill. */
@@ -210,9 +227,8 @@ async function filedChildOpen(admin: SupabaseClient<Database>, parent: string, i
  */
 async function spreadPhoto(admin: SupabaseClient<Database>, parent: string, child: string, page: SpreadPage, received: number, childOpen: (child: string) => Promise<boolean>): Promise<{ id: string; state: string; page?: number }> {
   const id = randomUUID();
-  const fail = async (state: string) => {
-    await admin.rpc("change_scan_photo", { p_parent: parent, p_id: id, p_action: "reject" });
-    await cleanupScanPhoto(admin, parent, id);
+  const fail = async (state: string, reason = scanRejectReason(state)) => {
+    await rejectPhoto(admin, parent, id, reason);
     return { id, state };
   };
   try {
@@ -253,7 +269,7 @@ async function spreadPhoto(admin: SupabaseClient<Database>, parent: string, chil
       } catch { monitorProduct("scan.check_failed", { photoId: id }); }
     }, "scan.check_failed", { photoId: id });
     return { id, state: "saved" };
-  } catch { monitorProduct("scan.upload_failed", { photoId: id }); return fail("unavailable"); }
+  } catch (error) { monitorProduct("scan.upload_failed", { photoId: id }); return fail("unavailable", scanRejectReason(error)); }
 }
 
 export async function POST(request: Request, { params }: RouteContext<"/api/account/scans/[id]">) {

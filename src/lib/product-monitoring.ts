@@ -1,6 +1,9 @@
 // No SDK or platform imports. Standalone workers have no observer until their host registers one.
+import { SCAN_REJECT_REASONS } from "@/lib/scan-states";
+
 export const PRODUCT_EVENTS = {
   "scan.upload_committed": { failure: false, alert: true },
+  "scan.upload_refused": { failure: false, alert: false },
   "scan.upload_failed": { failure: true, alert: true },
   "scan.send_accepted": { failure: false, alert: true },
   "scan.send_failed": { failure: true, alert: true },
@@ -56,6 +59,10 @@ export function productEvent(code: ProductCode, input: Record<string, unknown> =
   for (const [key, values] of Object.entries(ENUMS)) {
     const value = input[key];
     if (typeof value === "string" && values.includes(value)) attributes[key] = value;
+  }
+  if (code === "scan.upload_refused") {
+    const reason = SCAN_REJECT_REASONS.find((value) => value === input.reason);
+    if (reason) attributes.reason = reason;
   }
   return { code, attributes };
 }
