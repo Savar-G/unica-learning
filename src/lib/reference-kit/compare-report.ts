@@ -200,47 +200,76 @@ function formatReaderBNeighbours(d: RecordDifference): string {
   return `reader b has it as the only ${noun}`;
 }
 
+type ReviewInstructionKind =
+  | "edited_check"
+  | "once_read_heading_fresh"
+  | "once_read_heading_kept"
+  | "both_unclear_heading"
+  | "empty_answer_heading"
+  | "missing_step_note"
+  | "kept_find_place"
+  | "located_insert_before"
+  | "located_reader_a"
+  | "located_reader_b";
+
+const REVIEW_INSTRUCTIONS: Record<ReviewInstructionKind, { action: string; neutral: string }> = {
+  edited_check: { action: " Run reference:check for this page.", neutral: "" },
+  once_read_heading_fresh: {
+    action:
+      ' (look at the photo; copy an entry that is on the page into the final record at the given path, where "[]" means the end of that list and "insert before" means insert ahead of that element)',
+    neutral: "",
+  },
+  once_read_heading_kept: {
+    action: " (look at the photo; a person changed the final record, so find the place in that record)",
+    neutral: "",
+  },
+  both_unclear_heading: {
+    action: ' (look at the photo and write the value, or keep "unclear" and mark the page checked)',
+    neutral: "",
+  },
+  empty_answer_heading: { action: ' (write the answer from the photo, or "unclear")', neutral: "" },
+  missing_step_note: {
+    action: "; its step is missing from reader A's record and must be added first",
+    neutral: "; step absent from reader A's record",
+  },
+  kept_find_place: {
+    action: " has it; a person changed the final record, so find the place in that record",
+    neutral: "",
+  },
+  located_insert_before: { action: " has it; insert before", neutral: "; location in final record before" },
+  located_reader_a: { action: " has it; already in the final record at", neutral: "; in final record at" },
+  located_reader_b: { action: " has it; belongs in the final record at", neutral: "; location in final record" },
+};
+
+// Every review instruction goes through this gate so non-machine_read pages never ask for action.
+function reviewInstruction(status: PageStatus, kind: ReviewInstructionKind): string {
+  const entry = REVIEW_INSTRUCTIONS[kind];
+  return status === "machine_read" ? entry.action : entry.neutral;
+}
+
 function formatLocatedEntry(
   prefix: string,
   d: RecordDifference,
-  opts: { isSentToPerson: boolean; keptRecord: boolean },
+  opts: { status: PageStatus; keptRecord: boolean },
 ): string {
   const entry = d.reader === "a" ? d.a : d.b;
   if (d.reader === "b" && hasReaderBNeighbours(d)) {
     return `${prefix}: ${formatReaderBNeighbours(d)}: ${formatVal(entry)}`;
   }
-  const missingStepNote = d.missing_step
-    ? opts.isSentToPerson
-      ? "; its step is missing from reader A's record and must be added first"
-      : "; step absent from reader A's record"
-    : "";
+  const missingStepNote = d.missing_step ? reviewInstruction(opts.status, "missing_step_note") : "";
   if (d.reader && d.final_path !== undefined && !opts.keptRecord) {
-    if (!opts.isSentToPerson) {
-      const where =
-        d.insert_before !== undefined
-          ? "location in final record before"
-          : d.final_path.endsWith("[]")
-            ? "location in final record"
-            : d.reader === "a"
-              ? "in final record at"
-              : "location in final record";
-      return `${prefix}: only reader ${d.reader}; ${where} \`${d.final_path}\`${missingStepNote}: ${formatVal(entry)}`;
-    }
-    const where =
+    const whereKind: ReviewInstructionKind =
       d.insert_before !== undefined
-        ? "insert before"
+        ? "located_insert_before"
         : d.final_path.endsWith("[]")
-          ? "belongs in the final record at"
+          ? "located_reader_b"
           : d.reader === "a"
-            ? "already in the final record at"
-            : "belongs in the final record at";
-    return `${prefix}: only reader ${d.reader} has it; ${where} \`${d.final_path}\`${missingStepNote}: ${formatVal(entry)}`;
+            ? "located_reader_a"
+            : "located_reader_b";
+    return `${prefix}: only reader ${d.reader}${reviewInstruction(opts.status, whereKind)} \`${d.final_path}\`${missingStepNote}: ${formatVal(entry)}`;
   }
   if (d.reader && opts.keptRecord) {
-    if (!opts.isSentToPerson) {
-      return `${prefix}: only reader ${d.reader}${missingStepNote}: ${formatVal(entry)}`;
-    }
-    return `${prefix}: only reader ${d.reader} has it; a person changed the final record, so find the place in that record${missingStepNote}: ${formatVal(entry)}`;
+    return `${prefix}: only reader ${d.reader}${reviewInstruction(opts.status, "kept_find_place")}${missingStepNote}: ${formatVal(entry)}`;
   }
   return `${prefix}: a=${formatVal(d.a)} | b=${formatVal(d.b)}`;
 }
@@ -409,7 +438,7 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
     }
     if (p.edited_by_person) {
       lines.push(
-        "- A person changed the final record and it is not checked yet. The file was kept. Run reference:check for this page.",
+        `- A person changed the final record and it is not checked yet. The file was kept.${reviewInstruction(p.status, "edited_check")}`,
       );
     }
     if (p.original_name && p.photo && p.original_name !== p.photo) {
@@ -444,14 +473,13 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
 
     // A record that a person edited or checked is kept; reader a's words and indexes may not fit it.
     const keptRecord = p.edited_by_person === true || p.status === "human_checked";
-    const isSentToPerson = p.status === "machine_read";
 
     if (p.differences.length > 0) {
       lines.push("- Differences:");
       for (const d of p.differences) {
         const prefix = `  - \`${d.path}\` (${d.kind})`;
         if (d.reader && (hasReaderBNeighbours(d) || d.final_path !== undefined || keptRecord)) {
-          lines.push(formatLocatedEntry(prefix, d, { isSentToPerson, keptRecord }));
+          lines.push(formatLocatedEntry(prefix, d, { status: p.status, keptRecord }));
         } else {
           lines.push(`${prefix}: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
         }
@@ -471,24 +499,18 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
     }
 
     if (p.once_read.length > 0) {
-      lines.push(
-        isSentToPerson
-          ? keptRecord
-            ? "- Once-read teaching fields (look at the photo; a person changed the final record, so find the place in that record):"
-            : '- Once-read teaching fields (look at the photo; copy an entry that is on the page into the final record at the given path, where "[]" means the end of that list and "insert before" means insert ahead of that element):'
-          : "- Once-read teaching fields:",
+      const headingNote = reviewInstruction(
+        p.status,
+        keptRecord ? "once_read_heading_kept" : "once_read_heading_fresh",
       );
+      lines.push(`- Once-read teaching fields${headingNote}:`);
       for (const d of p.once_read) {
-        lines.push(formatLocatedEntry(`  - \`${d.path}\``, d, { isSentToPerson, keptRecord }));
+        lines.push(formatLocatedEntry(`  - \`${d.path}\``, d, { status: p.status, keptRecord }));
       }
     }
 
     if (p.both_unclear.length > 0) {
-      lines.push(
-        isSentToPerson
-          ? '- Both readers marked unclear (look at the photo and write the value, or keep "unclear" and mark the page checked):'
-          : "- Both readers marked unclear:",
-      );
+      lines.push(`- Both readers marked unclear${reviewInstruction(p.status, "both_unclear_heading")}:`);
       for (const d of p.both_unclear) {
         lines.push(`  - \`${d.path}\``);
       }
@@ -496,11 +518,7 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
 
     const emptyAnswers = p.empty_answer ?? [];
     if (emptyAnswers.length > 0) {
-      lines.push(
-        isSentToPerson
-          ? '- Answer places with no answer (write the answer from the photo, or "unclear"):'
-          : "- Answer places with no answer:",
-      );
+      lines.push(`- Answer places with no answer${reviewInstruction(p.status, "empty_answer_heading")}:`);
       for (const d of emptyAnswers) {
         lines.push(`  - \`${d.path}\`: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
       }

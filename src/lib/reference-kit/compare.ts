@@ -56,6 +56,21 @@ export {
 export const PAGE_IDENTITY_DISAGREEMENT_REASON = "readers disagree on the page" as const;
 const PAGE_IDENTITY_PATHS: ReadonlySet<string> = new Set(["source_ref", "kind"]);
 
+export const PAGE_STOP_REASONS = [
+  "edited by a person (not checked yet)",
+  "missing reader",
+  "different photo digest",
+  "same or unknown model family",
+  PAGE_IDENTITY_DISAGREEMENT_REASON,
+  "stored answer conflicts with computed answer",
+  READER_ANSWER_CONFLICT_REASON,
+  "empty answer place",
+  ANSWER_DISAGREEMENT_REASON,
+  "no compared fields",
+] as const;
+
+export type PageStopReason = (typeof PAGE_STOP_REASONS)[number];
+
 export type PageStatus = "machine_read" | "agreement_accepted" | "double_read" | "human_checked";
 
 export interface PageComparisonSummary {
@@ -353,11 +368,11 @@ export interface DecideStatusInput {
 
 export interface PageDecision {
   status: PageStatus;
-  stopReasons: string[];
+  stopReasons: PageStopReason[];
 }
 
 export function decidePageOutcome(input: DecideStatusInput): PageDecision {
-  const stopReasons: string[] = [];
+  const stopReasons: PageStopReason[] = [];
   if (input.editedByPerson) stopReasons.push("edited by a person (not checked yet)");
   if (!input.hasA || !input.hasB) {
     stopReasons.push("missing reader");

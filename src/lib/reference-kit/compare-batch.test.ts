@@ -1643,43 +1643,308 @@ describe("compareWorkFolder", () => {
     expect(md).toContain("(readers disagree on an answer)");
   });
 
-  it("stops a page when a read-time computed answer replaced a reader's conflicting concrete answer (structured and legacy fallback)", async () => {
+  it("decides stops from each reader's raw answer across every fillable answer shape and raw answer pair, plus legacy fallback", async () => {
     const repo = mkdtempSync(join(tmpdir(), "ref-cmp-readconf-repo-"));
     tempDirs.push(repo);
 
-    const makeRawPayload = (sheet: string, answer: string | null) => ({
+    type RawAnswerKind = "correct" | "wrong" | "unclear" | "null";
+    interface FillableShape {
+      name: string;
+      // Optional pair skip when a shape is conditionally fillable and does not fill on (wrong, wrong).
+      skipBothWrong?: boolean;
+      buildPayload: (answerKind: RawAnswerKind) => Record<string, unknown>;
+      checkFilled: (saved: PageRecord) => void;
+    }
+
+    const rawVal = (kind: RawAnswerKind, correct: string, wrong: string): string | null =>
+      kind === "correct" ? correct : kind === "wrong" ? wrong : kind === "unclear" ? "unclear" : null;
+
+    const makeBasePage = (
+      section: Record<string, unknown>,
+      extraItems: Array<Record<string, unknown>> = [],
+    ) => ({
       kind: "page",
       level: "M",
-      sheet,
-      topic: { title: "Addition practice" },
+      sheet: "3a",
+      topic: { title: "Math practice" },
       sections: [
         {
-          instruction: "Add.",
+          instruction: "Solve.",
           scaffolds: [],
-          items: [1, 2, 3].map((n) => ({
-            n,
-            printed: `${n} + 1 =`,
-            form: "horizontal",
-            expr: { kind: "arith", op: "add", operands: [n, 1] },
-            responses: [
-              {
-                position: "after_equals",
-                cue: null,
-                answer: n === 1 ? answer : String(n + 1),
-                answer_source: n === 1 && answer === null ? "unchecked" : "reader",
-              },
-            ],
-          })),
+          ...section,
+          items: [
+            ...(section.items as Array<Record<string, unknown>>),
+            ...extraItems,
+            ...[2, 3].map((n) => ({
+              n,
+              printed: `${n} + 1 =`,
+              form: "horizontal",
+              expr: { kind: "arith", op: "add", operands: [n, 1] },
+              responses: [
+                { position: "after_equals", cue: null, answer: String(n + 1), answer_source: "reader" },
+              ],
+            })),
+          ],
         },
       ],
       examples: [],
       score_bands: [[100, 100], [90, 99], [80, 89], [70, 79], [0, 69]],
     });
 
+    const fillableShapes: FillableShape[] = [
+      {
+        name: "single_unnamed",
+        buildPayload: (kind) => {
+          const ans = rawVal(kind, "2", "3");
+          return makeBasePage({
+            items: [
+              {
+                n: 1,
+                printed: "1 + 1 =",
+                form: "horizontal",
+                expr: { kind: "arith", op: "add", operands: [1, 1] },
+                responses: [
+                  {
+                    position: "after_equals",
+                    cue: null,
+                    answer: ans,
+                    answer_source: ans === null ? "unchecked" : "reader",
+                  },
+                ],
+              },
+            ],
+          });
+        },
+        checkFilled: (saved) => {
+          expect(saved.sections[0].items[0].responses[0].answer).toBe("2");
+          expect(saved.sections[0].items[0].responses[0].answer_source).toBe("computed");
+        },
+      },
+      {
+        name: "sole_work_area",
+        buildPayload: (kind) => {
+          const ans = rawVal(kind, "5", "6");
+          return makeBasePage({
+            items: [
+              {
+                n: 1,
+                printed: "2 + 3",
+                form: "vertical",
+                expr: { kind: "arith", op: "add", operands: [2, 3] },
+                responses: [
+                  {
+                    position: "work_area",
+                    cue: null,
+                    answer: ans,
+                    answer_source: ans === null ? "unchecked" : "reader",
+                  },
+                ],
+              },
+            ],
+          });
+        },
+        checkFilled: (saved) => {
+          expect(saved.sections[0].items[0].responses[0].answer).toBe("5");
+          expect(saved.sections[0].items[0].responses[0].answer_source).toBe("computed");
+        },
+      },
+      {
+        name: "single_named_place",
+        buildPayload: (kind) => {
+          const ans = rawVal(kind, "4", "5");
+          return makeBasePage({
+            items: [
+              {
+                n: 1,
+                printed: "20 + 22 =",
+                form: "vertical",
+                expr: { kind: "arith", op: "add", operands: [20, 22] },
+                responses: [
+                  {
+                    position: "box",
+                    cue: null,
+                    place: "tens",
+                    answer: ans,
+                    answer_source: ans === null ? "unchecked" : "reader",
+                  },
+                ],
+              },
+            ],
+          });
+        },
+        checkFilled: (saved) => {
+          expect(saved.sections[0].items[0].responses[0].answer).toBe("4");
+          expect(saved.sections[0].items[0].responses[0].answer_source).toBe("computed");
+        },
+      },
+      {
+        name: "multi_named_places",
+        buildPayload: (kind) => {
+          const ans = rawVal(kind, "2", "3");
+          return makeBasePage({
+            items: [
+              {
+                n: 1,
+                printed: "20 + 22 =",
+                form: "vertical",
+                expr: { kind: "arith", op: "add", operands: [20, 22] },
+                responses: [
+                  { position: "box", cue: null, place: "tens", answer: "4", answer_source: "reader" },
+                  {
+                    position: "box",
+                    cue: null,
+                    place: "ones",
+                    answer: ans,
+                    answer_source: ans === null ? "unchecked" : "reader",
+                  },
+                ],
+              },
+            ],
+          });
+        },
+        checkFilled: (saved) => {
+          expect(saved.sections[0].items[0].responses[1].answer).toBe("2");
+          expect(saved.sections[0].items[0].responses[1].answer_source).toBe("computed");
+        },
+      },
+      {
+        name: "scaffold_places",
+        buildPayload: (kind) => {
+          const ans = rawVal(kind, "2", "3");
+          return makeBasePage({
+            scaffolds: [{ kind: "answer_boxes", applies_to: [1], places: ["tens", "ones"] }],
+            items: [
+              {
+                n: 1,
+                printed: "20 + 22 =",
+                form: "vertical",
+                expr: { kind: "arith", op: "add", operands: [20, 22] },
+                responses: [
+                  { position: "box", cue: null, answer: "4", answer_source: "reader" },
+                  {
+                    position: "box",
+                    cue: null,
+                    answer: ans,
+                    answer_source: ans === null ? "unchecked" : "reader",
+                  },
+                ],
+              },
+            ],
+          });
+        },
+        checkFilled: (saved) => {
+          expect(saved.sections[0].items[0].responses[1].answer).toBe("2");
+          expect(saved.sections[0].items[0].responses[1].answer_source).toBe("computed");
+        },
+      },
+      {
+        name: "multi_value_chain",
+        buildPayload: (kind) => {
+          const ans = rawVal(kind, "8", "9");
+          return makeBasePage({
+            items: [
+              {
+                n: 1,
+                printed: "2, _, 6, _",
+                form: "horizontal",
+                expr: { kind: "chain", terms: [2, null, 6, null], step: 2 },
+                responses: [
+                  { position: "box", cue: null, answer: "4", answer_source: "reader" },
+                  {
+                    position: "box",
+                    cue: null,
+                    answer: ans,
+                    answer_source: ans === null ? "unchecked" : "reader",
+                  },
+                ],
+              },
+            ],
+          });
+        },
+        checkFilled: (saved) => {
+          expect(saved.sections[0].items[0].responses[1].answer).toBe("8");
+          expect(saved.sections[0].items[0].responses[1].answer_source).toBe("computed");
+        },
+      },
+      {
+        name: "multi_value_linked",
+        buildPayload: (kind) => {
+          const ans = rawVal(kind, "5", "6");
+          return makeBasePage({
+            items: [
+              {
+                n: 1,
+                printed: "1 + 2 = _, 2 + 3 = _",
+                form: "horizontal",
+                expr: {
+                  kind: "linked",
+                  pair: [
+                    { kind: "arith", op: "add", operands: [1, 2] },
+                    { kind: "arith", op: "add", operands: [2, 3] },
+                  ],
+                },
+                responses: [
+                  { position: "box", cue: null, answer: "3", answer_source: "reader" },
+                  {
+                    position: "box",
+                    cue: null,
+                    answer: ans,
+                    answer_source: ans === null ? "unchecked" : "reader",
+                  },
+                ],
+              },
+            ],
+          });
+        },
+        checkFilled: (saved) => {
+          expect(saved.sections[0].items[0].responses[1].answer).toBe("5");
+          expect(saved.sections[0].items[0].responses[1].answer_source).toBe("computed");
+        },
+      },
+      {
+        name: "multi_unnamed_same_value",
+        // When both readers write a wrong concrete answer on unnamed multi-place responses,
+        // code intentionally does not fill (places_do_not_fit) because places may be digit boxes.
+        skipBothWrong: true,
+        buildPayload: (kind) => {
+          const ans = rawVal(kind, "24", "25");
+          return makeBasePage({
+            items: [
+              {
+                n: 1,
+                printed: "Sample word problem",
+                form: "horizontal",
+                expr: {
+                  kind: "word",
+                  text: "Sample word problem",
+                  expr: { kind: "arith", op: "mul", operands: [6, 4] },
+                  unit: "cards",
+                },
+                responses: [
+                  { position: "box", cue: null, answer: "24", answer_source: "reader" },
+                  {
+                    position: "line_with_unit",
+                    cue: "Ans.",
+                    unit: "cards",
+                    answer: ans,
+                    answer_source: ans === null ? "unchecked" : "reader",
+                  },
+                ],
+              },
+            ],
+          });
+        },
+        checkFilled: (saved) => {
+          expect(saved.sections[0].items[0].responses[1].answer).toBe("24");
+          expect(saved.sections[0].items[0].responses[1].answer_source).toBe("computed");
+        },
+      },
+    ];
+
     const runPair = async (
       name: string,
-      answerA: string | null,
-      answerB: string | null,
+      payloadA: Record<string, unknown>,
+      payloadB: Record<string, unknown>,
       opts?: { omitNoteDetails?: boolean },
     ) => {
       const work = mkdtempSync(join(tmpdir(), `ref-cmp-readconf-${name}-`));
@@ -1689,17 +1954,17 @@ describe("compareWorkFolder", () => {
           photoBytes: Uint8Array.of(1),
           source: "sample",
           reader: "codex",
-          runCli: async () => ({ code: 0, stdout: JSON.stringify(makeRawPayload("3a", answerA)), stderr: "" }),
+          runCli: async () => ({ code: 0, stdout: JSON.stringify(payloadA), stderr: "" }),
         }),
         readPhoto({
           photoBytes: Uint8Array.of(1),
           source: "sample",
           reader: "claude",
-          runCli: async () => ({ code: 0, stdout: JSON.stringify(makeRawPayload("3a", answerB)), stderr: "" }),
+          runCli: async () => ({ code: 0, stdout: JSON.stringify(payloadB), stderr: "" }),
         }),
       ]);
-      expect(resA.status).toBe("ok");
-      expect(resB.status).toBe("ok");
+      expect(resA.status, `${name} resA`).toBe("ok");
+      expect(resB.status, `${name} resB`).toBe("ok");
 
       for (const [slot, family, res] of [
         ["a", "codex", resA],
@@ -1732,84 +1997,85 @@ describe("compareWorkFolder", () => {
       return { report, page: report.pages[0], md, saved };
     };
 
-    // 1 + 1: reader A wrote 2, reader B wrote 3 -> computed 2 kept, page sent to a person
-    const oneDiff = await runPair("2-vs-3", "2", "3");
-    expect(oneDiff.saved.sections[0].items[0].responses[0].answer).toBe("2");
-    expect(oneDiff.page.status).toBe("machine_read");
-    expect(oneDiff.page.result_reason).toBe("a reader's answer differs from the computed answer");
-    expect(oneDiff.page.reader_answer_conflicts).toEqual(["sections[0].items[n=1].responses[0]"]);
-    expect(oneDiff.report.pages_sent_to_person).toEqual([
-      expect.objectContaining({
-        source_ref: "sample:M:3a",
-        reason: "a reader's answer differs from the computed answer",
-      }),
-    ]);
-    expect(oneDiff.md).toContain("a reader's answer differs from the computed answer");
-    expect(oneDiff.md).toContain("`sections[0].items[n=1].responses[0]`");
-    expect(oneDiff.md).not.toContain("Exact match across both readers.");
+    const rawKinds: RawAnswerKind[] = ["correct", "wrong", "unclear", "null"];
+    const tasks: Array<{
+      shape: FillableShape;
+      aKind: RawAnswerKind;
+      bKind: RawAnswerKind;
+      shouldPass: boolean;
+    }> = [];
+    for (const shape of fillableShapes) {
+      for (const aKind of rawKinds) {
+        for (const bKind of rawKinds) {
+          if (shape.skipBothWrong && aKind === "wrong" && bKind === "wrong") continue;
+          const shouldPass =
+            (aKind === "correct" || aKind === "null") &&
+            (bKind === "correct" || bKind === "null");
+          tasks.push({ shape, aKind, bKind, shouldPass });
+        }
+      }
+    }
 
-    // 1 + 1: both readers wrote 3 -> both conflict with computed 2 -> page sent to a person
-    const bothWrong = await runPair("3-vs-3", "3", "3");
-    expect(bothWrong.saved.sections[0].items[0].responses[0].answer).toBe("2");
-    expect(bothWrong.page.status).toBe("machine_read");
-    expect(bothWrong.page.result_reason).toBe("a reader's answer differs from the computed answer");
-    expect(bothWrong.page.reader_answer_conflicts).toEqual(["sections[0].items[n=1].responses[0]"]);
-    expect(bothWrong.md).not.toContain("Exact match across both readers.");
+    const results = await Promise.all(
+      tasks.map(async (t) => ({
+        t,
+        out: await runPair(
+          `${t.shape.name}-${t.aKind}-${t.bKind}`,
+          t.shape.buildPayload(t.aKind),
+          t.shape.buildPayload(t.bKind),
+        ),
+      })),
+    );
 
-    // 1 + 1: both readers wrote 2 -> double_read
-    const bothRight = await runPair("2-vs-2", "2", "2");
-    expect(bothRight.page.status).toBe("double_read");
-    expect(bothRight.page.result_reason).toBeNull();
-    expect(bothRight.page.reader_answer_conflicts).toBeUndefined();
-    expect(bothRight.report.pages_sent_to_person).toEqual([]);
-
-    // 1 + 1: reader A wrote 2, reader B marked unclear -> computed 2 kept, page sent to a person
-    const bUnclear = await runPair("2-vs-unclear", "2", "unclear");
-    expect(bUnclear.saved.sections[0].items[0].responses[0].answer).toBe("2");
-    expect(bUnclear.saved.sections[0].items[0].responses[0].answer_source).toBe("computed");
-    expect(bUnclear.page.status).toBe("machine_read");
-    expect(bUnclear.page.result_reason).toBe("readers disagree on an answer");
-    expect(bUnclear.page.answer_disagreements).toEqual(["sections[0].items[n=1].responses[0].answer"]);
-    expect(bUnclear.report.pages_sent_to_person).toEqual([
-      expect.objectContaining({
-        source_ref: "sample:M:3a",
-        reason: "readers disagree on an answer",
-      }),
-    ]);
-    expect(bUnclear.md).toContain("readers disagree on an answer");
-    expect(bUnclear.md).toContain("`sections[0].items[n=1].responses[0].answer`");
-    expect(bUnclear.md).not.toContain("Exact match across both readers.");
-
-    // 1 + 1: reader A marked unclear, reader B wrote 2 -> computed 2 kept, page sent to a person
-    const aUnclear = await runPair("unclear-vs-2", "unclear", "2");
-    expect(aUnclear.saved.sections[0].items[0].responses[0].answer).toBe("2");
-    expect(aUnclear.page.status).toBe("machine_read");
-    expect(aUnclear.page.result_reason).toBe("readers disagree on an answer");
-    expect(aUnclear.page.answer_disagreements).toEqual(["sections[0].items[n=1].responses[0].answer"]);
-
-    // 1 + 1: both readers marked unclear -> computed 2 kept, page sent to a person
-    const bothUnclear = await runPair("unclear-vs-unclear", "unclear", "unclear");
-    expect(bothUnclear.saved.sections[0].items[0].responses[0].answer).toBe("2");
-    expect(bothUnclear.page.status).toBe("machine_read");
-    expect(bothUnclear.page.result_reason).toBe("readers disagree on an answer");
-    expect(bothUnclear.page.answer_disagreements).toEqual(["sections[0].items[n=1].responses[0].answer"]);
-
-    // 1 + 1: reader A wrote 2, reader B left empty (null) and code filled 2 -> double_read
-    const bEmpty = await runPair("2-vs-empty", "2", null);
-    expect(bEmpty.saved.sections[0].items[0].responses[0].answer).toBe("2");
-    expect(bEmpty.page.status).toBe("double_read");
-    expect(bEmpty.page.result_reason).toBeNull();
-    expect(bEmpty.page.answer_disagreements).toBeUndefined();
-    expect(bEmpty.report.pages_sent_to_person).toEqual([]);
+    for (const { t, out } of results) {
+      const label = `${t.shape.name}: (${t.aKind}, ${t.bKind})`;
+      if (t.shouldPass) {
+        t.shape.checkFilled(out.saved);
+        expect(out.page.status, label).toBe("double_read");
+        expect(out.page.result_reason, label).toBeNull();
+        expect(out.page.reader_answer_conflicts, label).toBeUndefined();
+        expect(out.page.answer_disagreements, label).toBeUndefined();
+        expect(out.report.pages_sent_to_person, label).toEqual([]);
+      } else {
+        expect(out.page.status, label).toBe("machine_read");
+        expect(out.report.pages_sent_to_person, label).toHaveLength(1);
+        expect(out.page.result_reason, label).not.toBeNull();
+        expect(out.md, label).not.toContain("Exact match across both readers.");
+        if (!t.shape.skipBothWrong) {
+          t.shape.checkFilled(out.saved);
+        }
+        if (t.aKind === "unclear" || t.bKind === "unclear") {
+          expect(out.page.result_reason, label).toContain("readers disagree on an answer");
+          expect(out.page.answer_disagreements?.length ?? 0, label).toBeGreaterThan(0);
+        }
+        if ((t.aKind === "wrong" || t.bKind === "wrong") && !t.shape.skipBothWrong) {
+          expect(out.page.result_reason, label).toContain(
+            "a reader's answer differs from the computed answer",
+          );
+          expect(out.page.reader_answer_conflicts?.length ?? 0, label).toBeGreaterThan(0);
+        }
+      }
+    }
 
     // Legacy run.json without structured note_details falls back to note text format from answers.ts
     // for answer_differs, and has no text fallback for unclear_filled.
-    const legacy = await runPair("legacy-fallback", "2", "3", { omitNoteDetails: true });
+    const singleShape = fillableShapes[0];
+    const legacy = await runPair(
+      "legacy-fallback",
+      singleShape.buildPayload("correct"),
+      singleShape.buildPayload("wrong"),
+      { omitNoteDetails: true },
+    );
     expect(legacy.page.status).toBe("machine_read");
     expect(legacy.page.result_reason).toBe("a reader's answer differs from the computed answer");
     expect(legacy.page.reader_answer_conflicts).toEqual(["sections[0].items[n=1].responses[0]"]);
 
-    const legacyUnclear = await runPair("legacy-unclear", "2", "unclear", { omitNoteDetails: true });
+    const legacyUnclear = await runPair(
+      "legacy-unclear",
+      singleShape.buildPayload("correct"),
+      singleShape.buildPayload("unclear"),
+      { omitNoteDetails: true },
+    );
     expect(legacyUnclear.page.status).toBe("double_read");
     expect(legacyUnclear.page.answer_disagreements).toBeUndefined();
   });
@@ -1921,7 +2187,15 @@ describe("compareWorkFolder", () => {
     };
 
     const assertNoKeptLocations = (page: ReturnType<typeof compareWorkFolder>["pages"][number], label: string) => {
-      for (const d of [...page.differences, ...page.once_read, ...(page.wording ?? []), ...page.both_unclear, ...page.one_unclear]) {
+      const allDiffs = [
+        ...page.differences,
+        ...page.once_read,
+        ...(page.wording ?? []),
+        ...page.both_unclear,
+        ...page.one_unclear,
+        ...(page.empty_answer ?? []),
+      ];
+      for (const d of allDiffs) {
         expect(d.final_path, `${label} ${d.path} final_path`).toBeUndefined();
         expect(d.insert_before, `${label} ${d.path} insert_before`).toBeUndefined();
       }
@@ -1949,15 +2223,26 @@ describe("compareWorkFolder", () => {
       "`topics[n=11]` (value): reader b has it after topic 10 and before topic 12:",
     );
 
-    // 2. Page with reader-B-only item, reader-A-only item, once-read scaffold, and aligned step with insert_before:
-    // Fresh record keeps exact A paths and origin/main step/scaffold locations.
+    // 2. Page with all 6 difference lists populated (differences, once_read, wording, both_unclear,
+    // one_unclear, empty_answer): fresh record keeps exact A paths and step/scaffold/mark locations.
+    const emptyAnswerItem = {
+      n: 4,
+      printed: "x + 2 = 5",
+      form: "horizontal" as const,
+      expr: { kind: "notation" as const, latex: "x + 2 = 5" },
+      responses: [{ position: "after_equals" as const, cue: null, answer: null, answer_source: "unchecked" as const }],
+    };
     const pageA = makePage({
       source_ref: "sample:M:14a",
+      topic: { title: "unclear", number: 1 },
       sections: [
         {
           instruction: "Read.",
-          scaffolds: [{ kind: "caption", text: "Note", applies_to: "all" }],
-          items: [1, 3, 5].map(makeItem),
+          scaffolds: [
+            { kind: "caption", text: "Note", applies_to: "all" },
+            { kind: "helper_digit", applies_to: [1], description: "Small 1 above tens" },
+          ],
+          items: [makeItem(1), makeItem(3), emptyAnswerItem, makeItem(5)],
         },
       ],
       examples: [
@@ -1969,16 +2254,20 @@ describe("compareWorkFolder", () => {
             { n: 1, shows: "setup", printed: "2 + 3" },
             { n: 2, shows: "answer", printed: "5" },
           ],
+          marks: [],
         },
       ],
     });
     const pageB = makePage({
       source_ref: "sample:M:14a",
+      topic: { title: "unclear", number: 1 },
       sections: [
         {
-          instruction: "Read.",
-          scaffolds: [],
-          items: [1, 2, 3].map(makeItem),
+          instruction: "unclear",
+          scaffolds: [
+            { kind: "helper_digit", applies_to: [1], description: "Tiny 1 printed above tens" },
+          ],
+          items: [makeItem(1), makeItem(2), makeItem(3), emptyAnswerItem],
         },
       ],
       examples: [
@@ -1991,11 +2280,18 @@ describe("compareWorkFolder", () => {
             { n: 2, shows: "partial_sum", printed: "2 + 2 + 1" },
             { n: 3, shows: "answer", printed: "5" },
           ],
+          marks: [{ kind: "box", step: 2, description: "Box around split" }],
         },
       ],
     });
     const pageWork = setupWork("page-kept", pageA, pageB);
     const freshPage = compareWorkFolder({ workDir: pageWork.work, repoRoot: repo }).pages[0];
+    expect(freshPage.differences.length).toBeGreaterThan(0);
+    expect(freshPage.once_read.length).toBeGreaterThan(0);
+    expect((freshPage.wording ?? []).length).toBeGreaterThan(0);
+    expect(freshPage.both_unclear.length).toBeGreaterThan(0);
+    expect(freshPage.one_unclear.length).toBeGreaterThan(0);
+    expect((freshPage.empty_answer ?? []).length).toBeGreaterThan(0);
     expect(freshPage.differences.find((d) => d.path === "sections[0].items[n=2]")).toMatchObject({
       reader: "b",
       reader_b_after: 1,
@@ -2004,7 +2300,7 @@ describe("compareWorkFolder", () => {
     expect(freshPage.differences.find((d) => d.path === "sections[0].items[n=2]")?.final_path).toBeUndefined();
     expect(freshPage.differences.find((d) => d.path === "sections[0].items[n=5]")).toMatchObject({
       reader: "a",
-      final_path: "sections[0].items[2]",
+      final_path: "sections[0].items[3]",
     });
     expect(freshPage.once_read.find((d) => d.path === "sections[0].scaffolds[0]")?.final_path).toBe(
       "sections[0].scaffolds[0]",
@@ -2014,8 +2310,13 @@ describe("compareWorkFolder", () => {
       insert_before: 1,
       final_path: "examples[0].steps[1]",
     });
+    expect(freshPage.once_read.find((d) => d.path === "examples[0].marks[b:0]")).toMatchObject({
+      reader: "b",
+      missing_step: true,
+      final_path: "examples[0].marks[]",
+    });
 
-    // (a) Person-edited kept record -> no final_path or insert_before anywhere;
+    // (a) Person-edited kept record -> no final_path or insert_before anywhere across all 6 lists;
     // machine_read keeps "find the place in that record"; reader-B item keeps same neighbour text.
     const edited = JSON.parse(readFileSync(pageWork.finalPath, "utf8")) as PageRecord;
     edited.topic.title = "Edited heading";
@@ -2023,6 +2324,7 @@ describe("compareWorkFolder", () => {
     const editedPage = compareWorkFolder({ workDir: pageWork.work, repoRoot: repo }).pages[0];
     expect(editedPage.status).toBe("machine_read");
     expect(editedPage.edited_by_person).toBe(true);
+    expect((editedPage.empty_answer ?? []).length).toBeGreaterThan(0);
     assertNoKeptLocations(editedPage, "edited");
     const editedMd = readFileSync(pageWork.reportMdPath, "utf8");
     expect(editedMd).toContain("`sections[0].items[n=2]` (value): reader b has it after item 1 and before item 3:");
@@ -2030,6 +2332,10 @@ describe("compareWorkFolder", () => {
     expect(editedMd).toContain("`sections[0].scaffolds[0]`: only reader a has it; a person changed the final record, so find the place in that record:");
 
     // (b) human_checked kept record -> no final_path or insert_before, no review instructions, same reader-B neighbour text.
+    // Fill the empty answer first so reference:check allows marking the page checked.
+    edited.sections[0].items[2].responses[0].answer = "3";
+    edited.sections[0].items[2].responses[0].answer_source = "reader";
+    writeFileSync(pageWork.finalPath, JSON.stringify(edited, null, 2));
     checkAndMarkPage({
       workDir: pageWork.work,
       repoRoot: repo,

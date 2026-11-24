@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import fc from "fast-check";
@@ -9,6 +9,7 @@ import {
   deepEqualJson,
   formatImportResult,
   importReferenceRecords,
+  MAX_REFERENCE_PHOTO_BYTES,
   type ExistingReferenceRow,
   type ReferenceRow,
   type ReferenceStore,
@@ -243,120 +244,49 @@ describe("importReferenceRecords", () => {
     });
   });
 
-  it("refuses the whole run and writes nothing when any record fails validation or JSON parsing", async () => {
-    writeJson(recordsDir, "good.json", makePage("sample:M:1a"));
-    writeJson(recordsDir, "bad.json", { ...makePage("sample:M:2a"), extra_key: "nope" });
-    writeFileSync(join(recordsDir, "broken.json"), "{ not valid json", "utf8");
+  it("writes a valid batch, and refuses every bad input kind before the first write when paired with a valid first record", async () => {
+    const WRITE_CALL_RE = /^(insertRow|uploadObject|replaceObject|updateRow):/;
+    const goodImg = new Uint8Array([1, 2, 3, 4]);
+    const secondImg = new Uint8Array([5, 6, 7, 8]);
+    const manifestEntry = (file: string, bytes: Uint8Array, ref: string) => ({
+      file,
+      sha256: sha256Hex(bytes),
+      original_name: file,
+      width: 3024,
+      height: 4032,
+      source_ref: ref,
+    });
 
-    const res = await importReferenceRecords({ recordsDir, store });
-    expect(res.ok).toBe(false);
-    expect(res.counts.recordsRead).toBe(3);
-    expect(res.counts.inserted).toBe(0);
-    expect(store.rows.size).toBe(0);
-    expect(store.calls).toEqual([]);
-    expect(res.problems.some((p) => p.includes("bad.json") && p.includes("extra_key"))).toBe(true);
-    expect(res.problems.some((p) => p.includes("broken.json") && p.includes("invalid JSON"))).toBe(
-      true,
-    );
-  });
-
-  it("refuses the whole run and writes nothing when two files share the same source_ref", async () => {
-    writeJson(recordsDir, "a.json", makePage("sample:M:3a"));
-    writeJson(recordsDir, "b.json", makePage("sample:M:3a"));
-
-    const res = await importReferenceRecords({ recordsDir, store });
-    expect(res.ok).toBe(false);
-    expect(store.rows.size).toBe(0);
-    expect(store.calls).toEqual([]);
-    expect(res.problems.some((p) => p.includes("sample:M:3a"))).toBe(true);
-  });
-
-  it("refuses invalid status and single_read combinations or unresolved single_read paths before any write", async () => {
-    const cases: Array<{
-      name: string;
-      record: Record<string, unknown>;
-      status?: string;
-      expectedFragment: RegExp;
-    }> = [
-      {
-        name: "agreement_accepted with no single_read",
-        record: { ...makeContents("sample:M:contents") },
-        status: "agreement_accepted",
-        expectedFragment: /sample:M:contents.*single_read/i,
-      },
-      {
-        name: "agreement_accepted with empty single_read",
-        record: { ...makeContents("sample:M:contents"), single_read: [] },
-        status: "agreement_accepted",
-        expectedFragment: /sample:M:contents.*single_read/i,
-      },
-      {
-        name: "double_read with single_read",
-        record: { ...makeContents("sample:M:contents"), single_read: ["topics[0].title"] },
-        status: "double_read",
-        expectedFragment: /sample:M:contents.*single_read/i,
-      },
-      {
-        name: "machine_read (explicit) with single_read",
-        record: { ...makeContents("sample:M:contents"), single_read: ["topics[0].title"] },
-        status: "machine_read",
-        expectedFragment: /sample:M:contents.*single_read/i,
-      },
-      {
-        name: "machine_read (default) with single_read",
-        record: { ...makeContents("sample:M:contents"), single_read: ["topics[0].title"] },
-        expectedFragment: /sample:M:contents.*single_read/i,
-      },
-      {
-        name: "human_checked with single_read",
-        record: { ...makePage("sample:M:3a"), single_read: ["topic.title"] },
-        status: "human_checked",
-        expectedFragment: /sample:M:3a.*single_read/i,
-      },
-      {
-        name: "agreement_accepted with out-of-range topics path",
-        record: { ...makeContents("sample:M:contents"), single_read: ["topics[9].title"] },
-        status: "agreement_accepted",
-        expectedFragment: /sample:M:contents.*topics\[9\]\.title/,
-      },
-      {
-        name: "agreement_accepted with [] path syntax",
-        record: { ...makePage("sample:M:3a"), single_read: ["sections[0].scaffolds[]"] },
-        status: "agreement_accepted",
-        expectedFragment: /sample:M:3a.*sections\[0\]\.scaffolds\[\]/,
-      },
-      {
-        name: "agreement_accepted with metadata single_read path",
-        record: { ...makePage("sample:M:3a"), single_read: ["single_read"] },
-        status: "agreement_accepted",
-        expectedFragment: /sample:M:3a.*single_read/,
-      },
-    ];
-
-    for (const c of cases) {
-      const caseDir = mkdtempSync(join(rootDir, "case-"));
-      const caseStore = new MemoryReferenceStore();
-      // Include a valid sibling record to prove nothing in the batch is written on refusal.
-      writeJson(caseDir, "good.json", makePage("sample:M:9a"));
-      writeJson(caseDir, "target.json", c.record);
-      if (c.status !== undefined) {
-        writeJson(caseDir, "status.json", {
-          "sample:M:9a": "double_read",
-          [String(c.record.source_ref)]: c.status,
-        });
-      }
-
-      const res = await importReferenceRecords({ recordsDir: caseDir, store: caseStore });
-      expect(res.ok, c.name).toBe(false);
-      expect(caseStore.rows.size, c.name).toBe(0);
-      expect(caseStore.calls, c.name).toEqual([]);
-      expect(res.problems.some((p) => c.expectedFragment.test(p)), `${c.name}: ${res.problems.join("; ")}`).toBe(
-        true,
-      );
-    }
+    // Control: valid batch with two records and photos writes both rows and photos.
+    const controlDir = mkdtempSync(join(rootDir, "control-"));
+    const controlRecs = join(controlDir, "records");
+    const controlPhotos = join(controlDir, "photos");
+    const controlStore = new MemoryReferenceStore();
+    writeJson(controlRecs, "01-good.json", makePage("sample:M:1a"));
+    writeJson(controlRecs, "02-target.json", makePage("sample:M:2a", "Compare \u{1D465} and y"));
+    writeJson(controlRecs, "status.json", {
+      "sample:M:1a": "double_read",
+      "sample:M:2a": "double_read",
+    });
+    writeBytes(controlPhotos, "good.jpg", goodImg);
+    writeBytes(controlPhotos, "target.png", secondImg);
+    writeJson(controlPhotos, "photos-manifest.json", {
+      version: 1,
+      photos: [
+        manifestEntry("good.jpg", goodImg, "sample:M:1a"),
+        manifestEntry("target.png", secondImg, "sample:M:2a"),
+      ],
+    });
+    const controlRes = await importReferenceRecords({
+      recordsDir: controlRecs,
+      photosDir: controlPhotos,
+      store: controlStore,
+    });
+    expect(controlRes.ok).toBe(true);
+    expect(controlRes.counts).toMatchObject({ inserted: 2, photosUploaded: 2 });
 
     // Valid agreement_accepted records with leaf and containing-list paths are accepted.
-    const okDir = mkdtempSync(join(rootDir, "ok-"));
+    const okDir = mkdtempSync(join(rootDir, "ok-accepted-"));
     const okStore = new MemoryReferenceStore();
     writeJson(okDir, "page.json", {
       ...makePage("sample:M:3a"),
@@ -373,21 +303,553 @@ describe("importReferenceRecords", () => {
     const okRes = await importReferenceRecords({ recordsDir: okDir, store: okStore });
     expect(okRes.ok).toBe(true);
     expect(okRes.counts.inserted).toBe(2);
-  });
 
-  it("refuses unknown status values or orphan source_ref entries in status.json", async () => {
-    writeJson(recordsDir, "sample-M-3a.json", makePage("sample:M:3a"));
-    writeJson(recordsDir, "status.json", {
-      "sample:M:3a": "verified_by_magic",
-      "sample:M:99a": "double_read",
-    });
+    // Every refusal kind in import.ts, import-photos.ts, record-path.ts, and import-replace.ts,
+    // paired with a valid first record (01-good.json + good.jpg) so any write before refusal fails.
+    interface RefusalCase {
+      name: string;
+      usePhotos?: boolean;
+      replace?: boolean;
+      setup: (ctx: {
+        recs: string;
+        photos: string;
+        outside: string;
+        store: MemoryReferenceStore;
+      }) => void | { recordsDir?: string; photosDir?: string };
+      expectedProblem: RegExp;
+    }
 
-    const res = await importReferenceRecords({ recordsDir, store });
-    expect(res.ok).toBe(false);
-    expect(store.rows.size).toBe(0);
-    expect(store.calls).toEqual([]);
-    expect(res.problems.some((p) => p.includes("sample:M:3a"))).toBe(true);
-    expect(res.problems.some((p) => p.includes("sample:M:99a"))).toBe(true);
+    const refusalCases: RefusalCase[] = [
+      {
+        name: "missing recordsDir",
+        setup: ({ outside }) => ({ recordsDir: join(outside, "missing-records") }),
+        expectedProblem: /records folder .* could not be read/,
+      },
+      {
+        name: "invalid JSON in record file",
+        setup: ({ recs }) => {
+          writeFileSync(join(recs, "02-target.json"), "{ not valid json", "utf8");
+        },
+        expectedProblem: /02-target\.json: invalid JSON/,
+      },
+      {
+        name: "record fails schema validation",
+        setup: ({ recs }) => {
+          writeJson(recs, "02-target.json", { ...makePage("sample:M:2a"), extra_key: "nope" });
+        },
+        expectedProblem: /02-target\.json.*extra_key/,
+      },
+      {
+        name: "NUL character in record text",
+        setup: ({ recs }) => {
+          writeJson(recs, "02-target.json", makePage("sample:M:2a", "Bad\u0000title"));
+        },
+        expectedProblem: /02-target\.json:.*cannot store/,
+      },
+      {
+        name: "lone high surrogate in record text",
+        setup: ({ recs }) => {
+          writeJson(recs, "02-target.json", makePage("sample:M:2a", "Compare \u{1D465} and y".slice(0, 9)));
+        },
+        expectedProblem: /02-target\.json:.*cannot store/,
+      },
+      {
+        name: "lone low surrogate in record text",
+        setup: ({ recs }) => {
+          writeJson(recs, "02-target.json", makePage("sample:M:2a", "Bad\uDC00title"));
+        },
+        expectedProblem: /02-target\.json:.*cannot store/,
+      },
+      {
+        name: "duplicate source_ref across two record files",
+        setup: ({ recs }) => {
+          writeJson(recs, "02-dup.json", makePage("sample:M:1a"));
+        },
+        expectedProblem: /duplicate source_ref "sample:M:1a"/,
+      },
+      {
+        name: "symlink record file",
+        setup: ({ recs, outside }) => {
+          writeJson(outside, "secret.json", makePage("sample:M:2a"));
+          symlinkSync(join(outside, "secret.json"), join(recs, "02-link.json"));
+        },
+        expectedProblem: /02-link\.json: refusing symlink/,
+      },
+      {
+        name: "symlink status.json",
+        setup: ({ recs, outside }) => {
+          writeJson(outside, "status.json", { "sample:M:1a": "double_read" });
+          symlinkSync(join(outside, "status.json"), join(recs, "status.json"));
+        },
+        expectedProblem: /status\.json: refusing symlink/,
+      },
+      {
+        name: "invalid JSON in status.json",
+        setup: ({ recs }) => {
+          writeFileSync(join(recs, "status.json"), "{ bad", "utf8");
+        },
+        expectedProblem: /status\.json: invalid JSON/,
+      },
+      {
+        name: "non-object status.json",
+        setup: ({ recs }) => {
+          writeJson(recs, "status.json", ["double_read"]);
+        },
+        expectedProblem: /status\.json: must be a JSON object/,
+      },
+      {
+        name: "unknown status value",
+        setup: ({ recs }) => {
+          writeJson(recs, "02-target.json", makePage("sample:M:2a"));
+          writeJson(recs, "status.json", { "sample:M:2a": "verified_by_magic" });
+        },
+        expectedProblem: /unknown status for "sample:M:2a"/,
+      },
+      {
+        name: "prototype property keys and values in status.json",
+        setup: ({ recs }) => {
+          writeFileSync(
+            join(recs, "status.json"),
+            '{"__proto__":"machine_read","constructor":"double_read","sample:M:1a":"toString"}\n',
+            "utf8",
+          );
+        },
+        expectedProblem: /toString/,
+      },
+      {
+        name: "orphan source_ref in status.json",
+        setup: ({ recs }) => {
+          writeJson(recs, "status.json", { "sample:M:99a": "double_read" });
+        },
+        expectedProblem: /"sample:M:99a" has no matching record file/,
+      },
+      {
+        name: "agreement_accepted without single_read",
+        setup: ({ recs }) => {
+          writeJson(recs, "02-target.json", makeContents("sample:M:contents"));
+          writeJson(recs, "status.json", { "sample:M:contents": "agreement_accepted" });
+        },
+        expectedProblem: /sample:M:contents.*single_read/,
+      },
+      {
+        name: "agreement_accepted with empty single_read",
+        setup: ({ recs }) => {
+          writeJson(recs, "02-target.json", { ...makeContents("sample:M:contents"), single_read: [] });
+          writeJson(recs, "status.json", { "sample:M:contents": "agreement_accepted" });
+        },
+        expectedProblem: /sample:M:contents.*single_read/,
+      },
+      {
+        name: "single_read on default machine_read",
+        setup: ({ recs }) => {
+          writeJson(recs, "02-target.json", {
+            ...makeContents("sample:M:contents"),
+            single_read: ["topics[0].title"],
+          });
+        },
+        expectedProblem: /sample:M:contents.*single_read/,
+      },
+      {
+        name: "single_read on explicit machine_read",
+        setup: ({ recs }) => {
+          writeJson(recs, "02-target.json", {
+            ...makeContents("sample:M:contents"),
+            single_read: ["topics[0].title"],
+          });
+          writeJson(recs, "status.json", { "sample:M:contents": "machine_read" });
+        },
+        expectedProblem: /sample:M:contents.*single_read/,
+      },
+      {
+        name: "single_read on double_read",
+        setup: ({ recs }) => {
+          writeJson(recs, "02-target.json", {
+            ...makeContents("sample:M:contents"),
+            single_read: ["topics[0].title"],
+          });
+          writeJson(recs, "status.json", { "sample:M:contents": "double_read" });
+        },
+        expectedProblem: /sample:M:contents.*single_read/,
+      },
+      {
+        name: "single_read on human_checked",
+        setup: ({ recs }) => {
+          writeJson(recs, "02-target.json", { ...makePage("sample:M:2a"), single_read: ["topic.title"] });
+          writeJson(recs, "status.json", { "sample:M:2a": "human_checked" });
+        },
+        expectedProblem: /sample:M:2a.*single_read/,
+      },
+      {
+        name: "single_read path out of range",
+        setup: ({ recs }) => {
+          writeJson(recs, "02-target.json", {
+            ...makeContents("sample:M:contents"),
+            single_read: ["topics[9].title"],
+          });
+          writeJson(recs, "status.json", { "sample:M:contents": "agreement_accepted" });
+        },
+        expectedProblem: /sample:M:contents.*topics\[9\]\.title/,
+      },
+      {
+        name: "single_read path using [] syntax",
+        setup: ({ recs }) => {
+          writeJson(recs, "02-target.json", {
+            ...makePage("sample:M:2a"),
+            single_read: ["sections[0].scaffolds[]"],
+          });
+          writeJson(recs, "status.json", { "sample:M:2a": "agreement_accepted" });
+        },
+        expectedProblem: /sample:M:2a.*sections\[0\]\.scaffolds\[\]/,
+      },
+      {
+        name: "single_read path targeting metadata single_read",
+        setup: ({ recs }) => {
+          writeJson(recs, "02-target.json", { ...makePage("sample:M:2a"), single_read: ["single_read"] });
+          writeJson(recs, "status.json", { "sample:M:2a": "agreement_accepted" });
+        },
+        expectedProblem: /sample:M:2a.*single_read/,
+      },
+      {
+        name: "photosDir is not a directory",
+        usePhotos: true,
+        setup: ({ outside }) => {
+          const notDir = join(outside, "not-a-dir");
+          writeFileSync(notDir, "x", "utf8");
+          return { photosDir: notDir };
+        },
+        expectedProblem: /is not a directory/,
+      },
+      {
+        name: "missing photos-manifest.json",
+        usePhotos: true,
+        setup: ({ photos }) => {
+          rmSync(join(photos, "photos-manifest.json"));
+        },
+        expectedProblem: /photos-manifest\.json/,
+      },
+      {
+        name: "symlink photos-manifest.json",
+        usePhotos: true,
+        setup: ({ photos, outside }) => {
+          rmSync(join(photos, "photos-manifest.json"));
+          writeJson(outside, "photos-manifest.json", { version: 1, photos: [] });
+          symlinkSync(join(outside, "photos-manifest.json"), join(photos, "photos-manifest.json"));
+        },
+        expectedProblem: /photos-manifest\.json: refusing symlink/,
+      },
+      {
+        name: "invalid JSON in photos-manifest.json",
+        usePhotos: true,
+        setup: ({ photos }) => {
+          writeFileSync(join(photos, "photos-manifest.json"), "{ bad", "utf8");
+        },
+        expectedProblem: /photos-manifest\.json: could not be read or parsed/,
+      },
+      {
+        name: "wrong shape photos-manifest.json",
+        usePhotos: true,
+        setup: ({ photos }) => {
+          writeJson(photos, "photos-manifest.json", { version: 2, photos: [] });
+        },
+        expectedProblem: /version: 1 and a photos array/,
+      },
+      {
+        name: "non-object entry in photos-manifest.json",
+        usePhotos: true,
+        setup: ({ photos }) => {
+          writeJson(photos, "photos-manifest.json", {
+            version: 1,
+            photos: [manifestEntry("good.jpg", goodImg, "sample:M:1a"), "bad-entry"],
+          });
+        },
+        expectedProblem: /photos\[1\] must be an object/,
+      },
+      {
+        name: "empty source_ref in photos-manifest.json",
+        usePhotos: true,
+        setup: ({ photos }) => {
+          writeJson(photos, "photos-manifest.json", {
+            version: 1,
+            photos: [manifestEntry("good.jpg", goodImg, "sample:M:1a"), manifestEntry("x.jpg", secondImg, "   ")],
+          });
+        },
+        expectedProblem: /photos\[1\]\.source_ref must be a non-empty string/,
+      },
+      {
+        name: "duplicate source_ref in photos-manifest.json",
+        usePhotos: true,
+        setup: ({ photos }) => {
+          writeJson(photos, "photos-manifest.json", {
+            version: 1,
+            photos: [
+              manifestEntry("good.jpg", goodImg, "sample:M:1a"),
+              manifestEntry("dup.jpg", secondImg, "sample:M:1a"),
+            ],
+          });
+        },
+        expectedProblem: /photos-manifest\.json: duplicate source_ref "sample:M:1a"/,
+      },
+      {
+        name: "path traversal in manifest file name",
+        usePhotos: true,
+        setup: ({ recs, photos }) => {
+          writeJson(recs, "02-target.json", makePage("sample:M:2a"));
+          writeJson(photos, "photos-manifest.json", {
+            version: 1,
+            photos: [
+              manifestEntry("good.jpg", goodImg, "sample:M:1a"),
+              manifestEntry("../escape.jpg", secondImg, "sample:M:2a"),
+            ],
+          });
+        },
+        expectedProblem: /outside the photos folder/,
+      },
+      {
+        name: "unsupported photo extension (.gif)",
+        usePhotos: true,
+        setup: ({ recs, photos }) => {
+          writeJson(recs, "02-target.json", makePage("sample:M:2a"));
+          writeBytes(photos, "bad.gif", secondImg);
+          writeJson(photos, "photos-manifest.json", {
+            version: 1,
+            photos: [
+              manifestEntry("good.jpg", goodImg, "sample:M:1a"),
+              manifestEntry("bad.gif", secondImg, "sample:M:2a"),
+            ],
+          });
+        },
+        expectedProblem: /unsupported photo extension "\.gif"/,
+      },
+      {
+        name: "inherited property extension (mask.constructor)",
+        usePhotos: true,
+        setup: ({ recs, photos }) => {
+          writeJson(recs, "02-target.json", makePage("sample:M:2a"));
+          writeBytes(photos, "mask.constructor", secondImg);
+          writeJson(photos, "photos-manifest.json", {
+            version: 1,
+            photos: [
+              manifestEntry("good.jpg", goodImg, "sample:M:1a"),
+              manifestEntry("mask.constructor", secondImg, "sample:M:2a"),
+            ],
+          });
+        },
+        expectedProblem: /unsupported photo extension.*mask\.constructor/,
+      },
+      {
+        name: "invalid sha256 format in manifest",
+        usePhotos: true,
+        setup: ({ recs, photos }) => {
+          writeJson(recs, "02-target.json", makePage("sample:M:2a"));
+          writeBytes(photos, "target.jpg", secondImg);
+          writeJson(photos, "photos-manifest.json", {
+            version: 1,
+            photos: [
+              manifestEntry("good.jpg", goodImg, "sample:M:1a"),
+              { ...manifestEntry("target.jpg", secondImg, "sample:M:2a"), sha256: "not-hex" },
+            ],
+          });
+        },
+        expectedProblem: /sha256 must be a 64-character hex string/,
+      },
+      {
+        name: "missing photo file",
+        usePhotos: true,
+        setup: ({ recs, photos }) => {
+          writeJson(recs, "02-target.json", makePage("sample:M:2a"));
+          writeJson(photos, "photos-manifest.json", {
+            version: 1,
+            photos: [
+              manifestEntry("good.jpg", goodImg, "sample:M:1a"),
+              manifestEntry("missing.jpg", secondImg, "sample:M:2a"),
+            ],
+          });
+        },
+        expectedProblem: /sample:M:2a \(missing\.jpg\): missing file/,
+      },
+      {
+        name: "symlink photo file",
+        usePhotos: true,
+        setup: ({ recs, photos }) => {
+          writeJson(recs, "02-target.json", makePage("sample:M:2a"));
+          symlinkSync(join(photos, "good.jpg"), join(photos, "link.jpg"));
+          writeJson(photos, "photos-manifest.json", {
+            version: 1,
+            photos: [
+              manifestEntry("good.jpg", goodImg, "sample:M:1a"),
+              manifestEntry("link.jpg", goodImg, "sample:M:2a"),
+            ],
+          });
+        },
+        expectedProblem: /link\.jpg.*refusing symlink/,
+      },
+      {
+        name: "non-regular photo file (directory)",
+        usePhotos: true,
+        setup: ({ recs, photos }) => {
+          writeJson(recs, "02-target.json", makePage("sample:M:2a"));
+          mkdirSync(join(photos, "dir.jpg"), { recursive: true });
+          writeJson(photos, "photos-manifest.json", {
+            version: 1,
+            photos: [
+              manifestEntry("good.jpg", goodImg, "sample:M:1a"),
+              manifestEntry("dir.jpg", secondImg, "sample:M:2a"),
+            ],
+          });
+        },
+        expectedProblem: /dir\.jpg.*not a regular file/,
+      },
+      {
+        name: "empty photo file (0 bytes)",
+        usePhotos: true,
+        setup: ({ recs, photos }) => {
+          writeJson(recs, "02-target.json", makePage("sample:M:2a"));
+          const empty = new Uint8Array(0);
+          writeBytes(photos, "empty.png", empty);
+          writeJson(photos, "photos-manifest.json", {
+            version: 1,
+            photos: [
+              manifestEntry("good.jpg", goodImg, "sample:M:1a"),
+              manifestEntry("empty.png", empty, "sample:M:2a"),
+            ],
+          });
+        },
+        expectedProblem: /empty\.png.*file size 0 bytes is not allowed/,
+      },
+      {
+        name: "photo too large (above bucket limit)",
+        usePhotos: true,
+        setup: ({ recs, photos }) => {
+          writeJson(recs, "02-target.json", makePage("sample:M:2a"));
+          const bigPath = join(photos, "big.jpg");
+          writeFileSync(bigPath, "");
+          truncateSync(bigPath, MAX_REFERENCE_PHOTO_BYTES + 1);
+          writeJson(photos, "photos-manifest.json", {
+            version: 1,
+            photos: [
+              manifestEntry("good.jpg", goodImg, "sample:M:1a"),
+              { ...manifestEntry("big.jpg", secondImg, "sample:M:2a"), sha256: "a".repeat(64) },
+            ],
+          });
+        },
+        expectedProblem: /big\.jpg.*above the limit/,
+      },
+      {
+        name: "photo hash mismatch",
+        usePhotos: true,
+        setup: ({ recs, photos }) => {
+          writeJson(recs, "02-target.json", makePage("sample:M:2a"));
+          writeBytes(photos, "bad-hash.jpg", secondImg);
+          writeJson(photos, "photos-manifest.json", {
+            version: 1,
+            photos: [
+              manifestEntry("good.jpg", goodImg, "sample:M:1a"),
+              { ...manifestEntry("bad-hash.jpg", secondImg, "sample:M:2a"), sha256: "b".repeat(64) },
+            ],
+          });
+        },
+        expectedProblem: /sample:M:2a.*sha256 mismatch/,
+      },
+      {
+        name: "existing storage object sha256 mismatch for new row",
+        usePhotos: true,
+        setup: ({ recs, photos, store: caseStore }) => {
+          writeJson(recs, "02-target.json", makePage("sample:M:2a"));
+          writeBytes(photos, "target.jpg", secondImg);
+          writeJson(photos, "photos-manifest.json", {
+            version: 1,
+            photos: [
+              manifestEntry("good.jpg", goodImg, "sample:M:1a"),
+              manifestEntry("target.jpg", secondImg, "sample:M:2a"),
+            ],
+          });
+          caseStore.objects.set("sample/M/2a.jpg", {
+            bytes: new Uint8Array([99, 98, 97]),
+            contentType: "image/jpeg",
+          });
+        },
+        expectedProblem: /sample\/M\/2a\.jpg.*does not match planned photo/,
+      },
+      {
+        name: "replace would overwrite a photo shared by another row",
+        usePhotos: true,
+        replace: true,
+        setup: ({ recs, photos, store: caseStore }) => {
+          writeJson(recs, "02-target.json", makePage("sample:M:2a"));
+          writeBytes(photos, "target.jpg", secondImg);
+          writeJson(photos, "photos-manifest.json", {
+            version: 1,
+            photos: [
+              manifestEntry("good.jpg", goodImg, "sample:M:1a"),
+              manifestEntry("target.jpg", secondImg, "sample:M:2a"),
+            ],
+          });
+          caseStore.rows.set("sample:M:2a", {
+            source_ref: "sample:M:2a",
+            kind: "page",
+            path: "sample/M/2a.jpg",
+            transcript: makePage("sample:M:2a"),
+            transcript_status: "machine_read",
+          });
+          caseStore.rows.set("sample:M:9a", {
+            source_ref: "sample:M:9a",
+            kind: "page",
+            path: "sample/M/2a.jpg",
+            transcript: makePage("sample:M:9a"),
+            transcript_status: "machine_read",
+          });
+          caseStore.objects.set("sample/M/2a.jpg", {
+            bytes: new Uint8Array([99, 98, 97]),
+            contentType: "image/jpeg",
+          });
+        },
+        expectedProblem: /would overwrite the photo that the row "sample:M:9a" also uses/,
+      },
+    ];
+
+    for (const c of refusalCases) {
+      const caseDir = mkdtempSync(join(rootDir, "refuse-"));
+      const recs = join(caseDir, "records");
+      const photos = join(caseDir, "photos");
+      const outside = join(caseDir, "outside");
+      mkdirSync(recs, { recursive: true });
+      mkdirSync(outside, { recursive: true });
+      writeJson(recs, "01-good.json", makePage("sample:M:1a"));
+      if (c.usePhotos) {
+        writeBytes(photos, "good.jpg", goodImg);
+        writeJson(photos, "photos-manifest.json", {
+          version: 1,
+          photos: [manifestEntry("good.jpg", goodImg, "sample:M:1a")],
+        });
+      }
+      const caseStore = new MemoryReferenceStore();
+      const override = c.setup({ recs, photos, outside, store: caseStore }) ?? {};
+      const rowsBefore = caseStore.rows.size;
+      const objectsBefore = caseStore.objects.size;
+
+      const res = await importReferenceRecords({
+        recordsDir: override.recordsDir ?? recs,
+        ...(c.usePhotos || override.photosDir ? { photosDir: override.photosDir ?? photos } : {}),
+        ...(c.replace ? { replace: true } : {}),
+        store: caseStore,
+      });
+
+      expect(res.ok, c.name).toBe(false);
+      expect(res.stopped, c.name).toBeUndefined();
+      expect(res.counts.inserted, c.name).toBe(0);
+      expect(res.counts.replaced, c.name).toBe(0);
+      expect(res.counts.photosUploaded, c.name).toBe(0);
+      expect(caseStore.rows.size, c.name).toBe(rowsBefore);
+      expect(caseStore.objects.size, c.name).toBe(objectsBefore);
+      expect(
+        caseStore.calls.filter((call) => WRITE_CALL_RE.test(call)),
+        `${c.name} must perform zero writes`,
+      ).toEqual([]);
+      expect(
+        res.problems.some((p) => c.expectedProblem.test(p)),
+        `${c.name}: ${res.problems.join("; ")}`,
+      ).toBe(true);
+    }
   });
 
   it("is idempotent on re-run and reports skipped_different without modifying existing rows or uploading photos", async () => {
@@ -529,80 +991,6 @@ describe("importReferenceRecords", () => {
     expect(insertIdx).toBeGreaterThan(uploadIdx);
   });
 
-  it("refuses the whole run when photo hash mismatches or photo file is missing", async () => {
-    writeJson(recordsDir, "p1.json", makePage("sample:M:1a"));
-    writeJson(recordsDir, "p3.json", makePage("sample:M:3a"));
-
-    const img1 = new Uint8Array([1, 2, 3]);
-    writeBytes(photosDir, "bad-hash.jpg", img1);
-    writeJson(photosDir, "photos-manifest.json", {
-      version: 1,
-      photos: [
-        {
-          file: "bad-hash.jpg",
-          sha256: "a".repeat(64),
-          original_name: "bad-hash.jpg",
-          width: 3024,
-          height: 4032,
-          source_ref: "sample:M:1a",
-        },
-        {
-          file: "missing.jpg",
-          sha256: "b".repeat(64),
-          original_name: "missing.jpg",
-          width: 3024,
-          height: 4032,
-          source_ref: "sample:M:3a",
-        },
-      ],
-    });
-
-    const res = await importReferenceRecords({ recordsDir, photosDir, store });
-    expect(res.ok).toBe(false);
-    expect(store.rows.size).toBe(0);
-    expect(store.objects.size).toBe(0);
-    expect(store.calls).toEqual([]);
-    expect(res.problems.some((p) => p.includes("sample:M:1a") && p.includes("sha256"))).toBe(true);
-    expect(res.problems.some((p) => p.includes("sample:M:3a") && p.includes("missing"))).toBe(true);
-  });
-
-  it("refuses when photos-manifest.json is missing, has traversal paths, or has duplicate source_ref entries", async () => {
-    writeJson(recordsDir, "p1.json", makePage("sample:M:1a"));
-    mkdirSync(photosDir, { recursive: true });
-
-    const missingManifest = await importReferenceRecords({ recordsDir, photosDir, store });
-    expect(missingManifest.ok).toBe(false);
-    expect(missingManifest.problems.some((p) => p.includes("photos-manifest.json"))).toBe(true);
-
-    writeJson(photosDir, "photos-manifest.json", {
-      version: 1,
-      photos: [
-        {
-          file: "../escape.jpg",
-          sha256: "a".repeat(64),
-          original_name: "escape.jpg",
-          width: 3024,
-          height: 4032,
-          source_ref: "sample:M:1a",
-        },
-        {
-          file: "dup.jpg",
-          sha256: "b".repeat(64),
-          original_name: "dup.jpg",
-          width: 3024,
-          height: 4032,
-          source_ref: "sample:M:1a",
-        },
-      ],
-    });
-
-    const badManifest = await importReferenceRecords({ recordsDir, photosDir, store });
-    expect(badManifest.ok).toBe(false);
-    expect(store.calls).toEqual([]);
-    expect(badManifest.problems.some((p) => p.includes("outside the photos folder"))).toBe(true);
-    expect(badManifest.problems.some((p) => p.includes("duplicate source_ref"))).toBe(true);
-  });
-
   it("refuses dry-run on invalid input and performs no write calls on valid dry-run", async () => {
     writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
     const img = new Uint8Array([10, 20, 30]);
@@ -643,43 +1031,6 @@ describe("importReferenceRecords", () => {
       false,
     );
     expect(formatImportResult(res)).toContain("Dry run");
-  });
-
-  it("refuses prototype property keys and values in status.json before any write", async () => {
-    writeJson(recordsDir, "sample-M-3a.json", makePage("sample:M:3a"));
-    writeFileSync(
-      join(recordsDir, "status.json"),
-      '{"__proto__":"machine_read","constructor":"double_read","toString":"human_checked","sample:M:3a":"toString"}\n',
-      "utf8",
-    );
-
-    const res = await importReferenceRecords({ recordsDir, store });
-    expect(res.ok).toBe(false);
-    expect(store.rows.size).toBe(0);
-    expect(store.calls).toEqual([]);
-    expect(res.problems.some((p) => p.includes("__proto__"))).toBe(true);
-    expect(res.problems.some((p) => p.includes("constructor"))).toBe(true);
-    expect(res.problems.some((p) => p.includes("toString"))).toBe(true);
-  });
-
-  it("refuses every record before any write when one record holds text the database cannot store", async () => {
-    // A null character, then half of a two-unit character (what a naive length cut leaves behind).
-    for (const badTitle of ["Bad\u0000title", "Compare \u{1D465} and y".slice(0, 9)]) {
-      store.rows.clear();
-      writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
-      writeJson(recordsDir, "p2.json", makePage("sample:M:3b", badTitle));
-
-      const res = await importReferenceRecords({ recordsDir, store });
-      expect(res.ok).toBe(false);
-      expect(res.problems.some((p) => p.includes("p2.json") && p.includes("cannot store"))).toBe(
-        true,
-      );
-      expect(store.rows.size).toBe(0);
-    }
-    // A whole two-unit character is fine.
-    store.rows.clear();
-    writeJson(recordsDir, "p2.json", makePage("sample:M:3b", "Compare \u{1D465} and y"));
-    expect((await importReferenceRecords({ recordsDir, store })).ok).toBe(true);
   });
 
   it("reclassifies concurrent duplicate inserts as skipped or skipped_different instead of inflating inserted", async () => {
