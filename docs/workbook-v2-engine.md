@@ -44,16 +44,16 @@ The snapshot file holds the content of one level. The book file holds the book i
 
 `npx vitest run src/lib/workbook-v2` takes about 5 seconds and needs no browser, network or database. The tests that draw pages use the real Typst. In CI they fail when it is absent; on a laptop without it they are skipped and print the reason.
 
-## Running in a Vercel function
+## In a Vercel function
 
-Way W1 ships the official pinned linux x64 Typst program inside the function bundle so a Vercel Node function can call `openRenderer(vercelAssets(process.cwd()))` and run the same `buildBook` checks as a laptop.
+`openRenderer(vercelAssets(process.cwd()))` draws with the official pinned Typst program for linux x64, and `buildBook` runs all checks as on a laptop. Proved on a preview deployment on 2026-11-24 (UNI-138): the PDF and each page image were the same bytes as on a Mac. Opening took 0.12 to 0.15 s, the two-page book 0.7 to 1.0 s, and the temp folder was empty after each call. The Node binding of Typst was faster (0.3 to 0.6 s) but gave other page images, always reads the fonts of the computer, and cannot be pinned by SHA-256 or stopped, so it is not used.
 
-- **Assets (`render/vercel.ts`):** `vercelAssets(root)` points at `.workbook-v2/typst/<version>/x86_64-unknown-linux-musl/typst`, the pinned `x86_64-unknown-linux-musl` target, the drawing file and the bundled fonts. It sets `copyIfNotExecutable: true`: if the deployment bundle is read-only and the binary lost its execute bit, `openRenderer` checks its SHA-256 against the pin and copies those verified bytes into each render's private temp folder with mode `0755`, then removes the folder in `finally`. When the bundled binary keeps its execute bit, it runs directly from the read-only bundle with no copy.
-- **Staging and bundle size:** `npm run typst:stage` (and `node scripts/stage-typst.mjs --if-needed` in `npm run build`) reuses `installTypst` to verify and stage the linux x64 binary (`53.2 MB` for Typst `0.15.1`) plus `page.typ`, the two Geist fonts and licence notices (`~0.2 MB`). On Vercel, the download cache lives in `.next/cache` so repeat builds reuse it.
-- **Zero cost until a route needs it:** `WORKBOOK_V2_ROUTES` in `src/lib/workbook-v2/render/vercel.ts` lists the routes that build v2 books, and `next.config.ts` calls `workbookV2TracingIncludes` for those routes only. Because `.workbook-v2/` is a dot-folder, unrelated routes do not trace it and stay unchanged. While `WORKBOOK_V2_ROUTES` has no production route, production builds skip staging and any forced staging failure logs a warning instead of breaking the deploy. When a production book-building route lands (UNI-260), add `{ route: "...", scope: "production" }` to `WORKBOOK_V2_ROUTES`: production builds will then require the staged binary and fail loudly if the download fails.
+- **Program:** `npm run typst:stage` puts the verified program (53 MB) in `.workbook-v2/`, which Git ignores. `workbookV2TraceFiles()` lists the files that the bundle of the function must hold.
+- **No permission to run:** the bundle can only be read. When the program in it may not run, each drawing copies the verified bytes into its private temp folder.
+- **Not connected:** no function builds books yet, so no build stages the program. The first one (UNI-260) adds `typst:stage` to the build, where a failed download must fail the deployment, and the files to `outputFileTracingIncludes` for its route.
 
 ## Where the next parts connect
 
 - Fit and ink checks (UNI-137): `checks/`; `readPageImage` gives the pixels of a page image and `checkImages` already reads each one.
-- A Vercel function (UNI-138): `render/vercel.ts`, `scripts/stage-typst.ts`, and `workbookV2TracingIncludes` in `next.config.ts`.
+- The book job (UNI-260): see "In a Vercel function".
 - More shapes (UNI-236): one file in `shapes/` and one line in `shapes/index.ts`. A new look of a question is a new `Face` and a template that takes it.

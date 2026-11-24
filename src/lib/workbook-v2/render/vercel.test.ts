@@ -6,21 +6,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { sha256 } from "../hash";
 import { PINS, type Pins } from "./pins";
 import { openRenderer } from "./typst";
-import {
-  VERCEL_TYPST_TARGET,
-  WORKBOOK_V2_ROUTES,
-  bundledTypstRelPath,
-  planTypstStage,
-  runTypstStage,
-  stageBundledTypst,
-  vercelAssets,
-  workbookV2TraceFiles,
-  workbookV2TracingIncludes,
-  type StagePlan,
-  type WorkbookV2Route,
-} from "./vercel";
+import { VERCEL_TYPST_TARGET, bundledTypstRelPath, stageBundledTypst, vercelAssets, workbookV2TraceFiles } from "./vercel";
 
-describe("Vercel W1 assets and file tracing", () => {
+describe("the assets in a Vercel function", () => {
   it("points vercelAssets at the pinned linux x64 bundle path with copyIfNotExecutable enabled", () => {
     const assets = vercelAssets("/var/task");
     expect(assets).toEqual({
@@ -34,57 +22,11 @@ describe("Vercel W1 assets and file tracing", () => {
     expect(bundledTypstRelPath()).toBe(`.workbook-v2/typst/${PINS.version}/x86_64-unknown-linux-musl/typst`);
   });
 
-  it("traces zero routes when no production route builds a v2 book", () => {
-    expect(WORKBOOK_V2_ROUTES).toEqual([]);
-    expect(workbookV2TracingIncludes([])).toEqual({});
-  });
-
-  it("escapes dynamic route brackets and traces only W1 linux x64 assets and licence files", () => {
-    const includes = workbookV2TracingIncludes(["/api/v2-probe", "/api/workbooks/[id]/build"]);
-    const expectedFiles = [...workbookV2TraceFiles()];
-    expect(Object.keys(includes)).toEqual(["/api/v2-probe", "/api/workbooks/\\[id\\]/build"]);
-    expect(includes["/api/v2-probe"]).toEqual(expectedFiles);
-    expect(includes["/api/workbooks/\\[id\\]/build"]).toEqual(expectedFiles);
-    expect(expectedFiles).toContain(`./.workbook-v2/typst/${PINS.version}/x86_64-unknown-linux-musl/typst`);
-    expect(expectedFiles).toContain("./src/lib/workbook-v2/render/page.typ");
-    expect(expectedFiles).toContain("./src/lib/workbook-v2/render/fonts/**");
-    expect(expectedFiles).toContain("./THIRD_PARTY_NOTICES.md");
-    expect(expectedFiles.some((f) => f.includes("chromium") || f.includes("darwin") || f.includes("sharp"))).toBe(false);
-  });
-});
-
-describe("build staging plan (V6)", () => {
-  const none: readonly WorkbookV2Route[] = [];
-  const previewOnly: readonly WorkbookV2Route[] = [{ route: "/api/v2-probe", scope: "preview" }];
-  const prodRoute: readonly WorkbookV2Route[] = [{ route: "/api/workbooks/[id]/build", scope: "production" }];
-
-  it.each<[string, { routes: readonly WorkbookV2Route[]; vercelEnv?: string; force?: boolean }, Pick<StagePlan, "action"> & { required?: boolean }]>([
-    ["production with no routes skips", { routes: none, vercelEnv: "production" }, { action: "skip" }],
-    ["production with preview-only route skips", { routes: previewOnly, vercelEnv: "production" }, { action: "skip" }],
-    ["production with no routes and force stages non-fatally", { routes: none, vercelEnv: "production", force: true }, { action: "stage", required: false }],
-    ["production with a production route stages fatally", { routes: prodRoute, vercelEnv: "production" }, { action: "stage", required: true }],
-    ["preview with a preview route stages fatally", { routes: previewOnly, vercelEnv: "preview" }, { action: "stage", required: true }],
-    ["preview with a production route stages fatally", { routes: prodRoute, vercelEnv: "preview" }, { action: "stage", required: true }],
-    ["preview with no routes skips", { routes: none, vercelEnv: "preview" }, { action: "skip" }],
-    ["preview with no routes and force stages non-fatally", { routes: none, vercelEnv: "preview", force: true }, { action: "stage", required: false }],
-    ["local build with no routes skips", { routes: none }, { action: "skip" }],
-    ["local build with routes stages non-fatally", { routes: previewOnly }, { action: "stage", required: false }],
-    ["local explicit force stages fatally", { routes: none, force: true }, { action: "stage", required: true }],
-  ])("%s", (_name, input, expected) => {
-    const plan = planTypstStage(input);
-    expect(plan.action).toBe(expected.action);
-    if (plan.action === "stage") expect(plan.required).toBe(expected.required);
-  });
-
-  it("never breaks a non-required build when the Typst download fails, and rethrows when required", async () => {
-    const boom = async () => { throw new Error("network down"); };
-    const skipped = await runTypstStage({ plan: { action: "skip", reason: "none" }, stage: boom });
-    expect(skipped).toEqual({ status: "skipped", reason: "none" });
-
-    const warned = await runTypstStage({ plan: { action: "stage", required: false, reason: "optional" }, stage: boom });
-    expect(warned).toEqual({ status: "warned", message: "network down" });
-
-    await expect(runTypstStage({ plan: { action: "stage", required: true, reason: "needed" }, stage: boom })).rejects.toThrow("network down");
+  it("lists the linux x64 program, the drawing file, the fonts and the licences for the bundle, and nothing else", () => {
+    expect(workbookV2TraceFiles()).toEqual([
+      `./${bundledTypstRelPath()}`, "./src/lib/workbook-v2/render/page.typ", "./src/lib/workbook-v2/render/fonts/**",
+      "./THIRD_PARTY_NOTICES.md", "./node_modules/qrcode/license", "./node_modules/jsqr/LICENSE",
+    ]);
   });
 });
 

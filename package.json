@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/stage-typst.mjs --if-needed && next build",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "lint:fast": "oxlint src worker/maya-voice/src scripts/workbook-worker.ts scripts/retention-worker.ts",

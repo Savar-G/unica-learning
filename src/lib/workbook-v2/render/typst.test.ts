@@ -273,6 +273,16 @@ describe.skipIf(skipTypstTests())("with the real Typst", () => {
   });
 
   describe("environment isolation, read-only bundles and temp cleanup", () => {
+    // A temp folder of these tests alone: other test files draw at the same time.
+    const usual = process.env.TMPDIR;
+    beforeAll(() => {
+      process.env.TMPDIR = inFolder("private-temp");
+      mkdirSync(process.env.TMPDIR);
+    });
+    afterAll(() => {
+      if (usual === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = usual;
+    });
     const listTempWorkDirs = () => readdirSync(tmpdir()).filter((name) => name.startsWith("workbook-v2-"));
 
     it("does not leak process.env or TYPST_FONT_PATHS to Typst", async () => {
