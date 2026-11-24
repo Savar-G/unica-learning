@@ -27,7 +27,7 @@ Personalized math learning program with mailed paper workbooks for ages 5–14 (
 - **Small, modular code:** Prefer minimal edits and focused files; `npm run check:guard` (`scripts/repo-guard.mjs`) enforces monolith ceilings, `useEffect`/suppression ratchets, route mapping, and banned patterns.
 - **Tests (`src/**/*.test.ts`):** Test public interfaces with in-memory seams, injected clocks, and `fast-check` for pure invariants. Clear mocks/storage before each test, restore stubs after, and run changed tests shuffled (`--sequence.shuffle`).
 - **No test sprawl:** Add tests to the module's existing `<name>.test.ts` (never ticket-, fix-, or regression-named files; enforced by `check:guard`). Test behavior and real invariants—no duplicate assertions or prose-grepping.
-- **Concise plans:** Sacrifice grammar for concision; end every plan with unresolved questions.
+- **Concise plans:** Short over grammatical; end each plan with open questions.
 
 ## Git, PRs & Vercel
 
@@ -80,7 +80,7 @@ Personalized math learning program with mailed paper workbooks for ages 5–14 (
 |---|---|
 | Supabase auth, `pg_cron`, Vault, storage, email logs | `docs/supabase-ops.md` |
 | Environment variables & feature switches | `docs/environment.md`, `docs/ai-product-keys.md` |
-| Workbook loop, rounds & context | `docs/workbook-fast-loop.md`, `docs/workbook-rounds.md`, `.design/workbooks/CONTEXT.md` |
+| Workbook loop, rounds, v2 | `docs/workbook-fast-loop.md`, `docs/workbook-rounds.md`, `docs/workbook-v2.md`, `.design/workbooks/CONTEXT.md` |
 | Workbook rendering & print contract | `docs/workbook-rendering.md` (`src/lib/workbook-print-contract.ts`) |
 | Workbook worker & Book 1 previews | `docs/workbook-worker.md`, `docs/first-pages.md` |
 | Reference records & converter | `docs/reference-records.md` |
