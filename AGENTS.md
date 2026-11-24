@@ -20,7 +20,7 @@ Personalized math learning program with mailed paper workbooks for ages 5–14 (
 - **Issue tracker:** Linear `unica-learning` (`UNI`, sole source of truth; `docs/agents/issue-tracker.md`).
 - **Triage labels:** `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix` (`docs/agents/triage-labels.md`).
 - **Domain docs:** `.design/decisions.md` (ADRs), `DESIGN.md`, `CONTEXT.md` (`docs/agents/domain.md`).
-- **Delegates, routes & verification:** `docs/agents/delegate-brief.md`, `docs/feature-map.md`, `docs/agents/verify-app.md`.
+- **Delegates & routes:** `docs/agents/`: `delegate-brief.md`, `review-rounds.md` (every brief), `verify-app.md`; `docs/feature-map.md`.
 
 ## Code & test discipline
 

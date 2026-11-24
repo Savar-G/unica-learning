@@ -212,6 +212,11 @@ describe("readPhoto and buildCliInvocation", () => {
     expect(secondPrompt).toContain("readers must not write not_stated at topic.number");
     expect(secondPrompt).toContain("readers must not write not_stated at sections[0].scaffolds");
     expect(res.status).toBe("ok");
+    if (res.status === "ok") {
+      expect(res.noteDetails).toEqual([
+        { kind: "answer_differs", path: "sections[0].items[n=1].responses[0]" },
+      ]);
+    }
   });
 
   it("refuses model ids of the other family, invalid --source, and symlinked photoPath", async () => {

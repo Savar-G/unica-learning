@@ -1,13 +1,20 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import fc from "fast-check";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import {
   NOT_STATED,
   recordPathResolves,
   UNCLEAR,
   type ContentsRecord,
+  type ExampleMark,
+  type ExampleStep,
   type PageRecord,
   type ReferenceRecord,
+  type Scaffold,
 } from "@/lib/reference-record";
+import { applyComputedAnswers, collectExampleAnswerConflicts } from "./answers";
 import {
   agreementPercentage,
   ANSWER_DISAGREEMENT_REASON,
@@ -15,13 +22,18 @@ import {
   compareRecords,
   compareRecordsWithCounts,
   decidePageOutcome,
-  findAnswerDisagreements,
   decideStatus,
+  findAnswerDisagreements,
   meetsAgreementThreshold,
   needsPersonRead,
   normalizeNotationText,
   normalizeProseText,
+  PAGE_IDENTITY_DISAGREEMENT_REASON,
+  PAGE_STOP_REASONS,
+  READER_ANSWER_CONFLICT_REASON,
   resolveSingleReadPaths,
+  type DecideStatusInput,
+  type PageStopReason,
 } from "./compare";
 import { resolveDiffPath } from "./compare-locate";
 
@@ -1809,67 +1821,194 @@ describe("90% reader agreement rule", () => {
     ).toBe("double_read");
   });
 
-  it("stops a page at 100% or 95% on answer_differs, empty_answer, or zero compared fields, while prose is advisory", () => {
-    const oneDiff = [{ path: "topic.title", a: "A", b: "B", kind: "value" as const }];
-
-    // answer_differs stops both 100% and 95%
-    for (const scenario of [
-      { diffs: [], counts: { agreed: 20, compared: 20 } },
-      { diffs: oneDiff, counts: { agreed: 19, compared: 20 } },
-    ]) {
-      const outcome = decidePageOutcome({
-        hasA: true,
-        hasB: true,
-        familyA: "claude",
-        familyB: "codex",
-        diffs: scenario.diffs,
-        counts: scenario.counts,
-        hasAnswerConflict: true,
-      });
-      expect(outcome.status).toBe("machine_read");
-      expect(outcome.stopReasons).toContain("stored answer conflicts with computed answer");
-    }
-
-    // empty_answer stops 95%
-    const emptyOutcome = decidePageOutcome({
+  it("stops a page at 95% and (where reachable) 100% for every stop reason in PAGE_STOP_REASONS, while prose is advisory", () => {
+    const oneNonStopDiff = [{ path: "topic.title", a: "Sums", b: "Totals", kind: "value" as const }];
+    const base95: DecideStatusInput = {
       hasA: true,
       hasB: true,
-      familyA: "claude",
-      familyB: "codex",
-      diffs: [
-        ...oneDiff,
-        { path: "sections[0].items[n=1].responses[0]", a: null, b: null, kind: "empty_answer" },
-      ],
+      familyA: "codex",
+      familyB: "claude",
+      sameDigest: true,
+      diffs: oneNonStopDiff,
       counts: { agreed: 19, compared: 20 },
-    });
-    expect(emptyOutcome.status).toBe("machine_read");
-    expect(emptyOutcome.stopReasons).toContain("empty answer place");
-
-    // needs_person_read is advisory and does not stop acceptance at >= 90%
-    const proseOutcome = decidePageOutcome({
+    };
+    const base100: DecideStatusInput = {
       hasA: true,
       hasB: true,
-      familyA: "claude",
-      familyB: "codex",
-      diffs: oneDiff,
-      counts: { agreed: 19, compared: 20 },
-      needsPersonRead: true,
-    });
-    expect(proseOutcome.status).toBe("agreement_accepted");
-    expect(proseOutcome.stopReasons).toEqual([]);
+      familyA: "codex",
+      familyB: "claude",
+      sameDigest: true,
+      diffs: [],
+      counts: { agreed: 20, compared: 20 },
+    };
 
-    // zero compared fields is never accepted
+    // Control pages without any stop trigger pass as agreement_accepted (95%) and double_read (100%).
+    expect(decidePageOutcome(base95)).toEqual({ status: "agreement_accepted", stopReasons: [] });
+    expect(decidePageOutcome(base100)).toEqual({ status: "double_read", stopReasons: [] });
+    // needs_person_read is advisory and does not stop acceptance at >= 90%.
+    expect(decidePageOutcome({ ...base95, needsPersonRead: true })).toEqual({
+      status: "agreement_accepted",
+      stopReasons: [],
+    });
     expect(meetsAgreementThreshold(0, 0)).toBe(false);
-    expect(
-      decideStatus({
-        hasA: true,
-        hasB: true,
-        familyA: "claude",
-        familyB: "codex",
-        diffs: [],
-        counts: { agreed: 0, compared: 0 },
-      }),
-    ).toBe("machine_read");
+
+    // Worked-example shown_answer conflict helper feeds the real answer conflict flags.
+    const makeExConflictPage = (shownA: string, shownB: string) => {
+      const a = makeGridPage(3);
+      a.examples = [
+        {
+          position: "top",
+          relation: "compare",
+          parts: [{ form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: shownA }],
+        },
+      ];
+      const b = structuredClone(a);
+      if (Array.isArray(b.examples)) {
+        b.examples[0].parts[0].shown_answer = shownB;
+      }
+      return { a, b, exConflicts: collectExampleAnswerConflicts(a, a, b, { finalIsFreshA: true }) };
+    };
+    const exFinalConflict = makeExConflictPage("6", "6");
+    expect(exFinalConflict.exConflicts.finalMessages).toHaveLength(1);
+    const exReaderConflict = makeExConflictPage("5", "6");
+    expect(exReaderConflict.exConflicts.readerMessages).toEqual([
+      'reader b: examples[0].parts[0].shown_answer: shown "6", computed "5"',
+    ]);
+
+    type StopScenario =
+      | { at95: Partial<DecideStatusInput>; at100?: Partial<DecideStatusInput>; custom?: never }
+      | { at95?: Partial<DecideStatusInput>; at100: Partial<DecideStatusInput>; custom?: never }
+      | { at95?: never; at100?: never; custom: DecideStatusInput };
+
+    const stopTable: Array<{ reason: PageStopReason; label: string } & StopScenario> = [
+      {
+        reason: "edited by a person (not checked yet)",
+        label: "editedByPerson",
+        at95: { editedByPerson: true },
+        at100: { editedByPerson: true },
+      },
+      {
+        reason: "missing reader",
+        label: "missing reader B",
+        at95: { hasB: false },
+        at100: { hasB: false },
+      },
+      {
+        reason: "different photo digest",
+        label: "sameDigest false",
+        at95: { sameDigest: false },
+        at100: { sameDigest: false },
+      },
+      {
+        reason: "same or unknown model family",
+        label: "same model family",
+        at95: { familyA: "codex", familyB: "codex" },
+        at100: { familyA: "codex", familyB: "codex" },
+      },
+      {
+        reason: "same or unknown model family",
+        label: "unknown model family",
+        at95: { familyA: "codex", familyB: "invented-family" },
+        at100: { familyA: "codex", familyB: "invented-family" },
+      },
+      {
+        reason: PAGE_IDENTITY_DISAGREEMENT_REASON,
+        label: "source_ref mismatch",
+        at95: {
+          diffs: [{ path: "source_ref", a: "sample:M:7a", b: "sample:M:7b", kind: "value" }],
+        },
+      },
+      {
+        reason: PAGE_IDENTITY_DISAGREEMENT_REASON,
+        label: "kind mismatch",
+        at95: {
+          diffs: [{ path: "kind", a: "page", b: "contents", kind: "value" }],
+        },
+      },
+      {
+        reason: "stored answer conflicts with computed answer",
+        label: "item answer conflict",
+        at95: { hasAnswerConflict: true },
+        at100: { hasAnswerConflict: true },
+      },
+      {
+        reason: "stored answer conflicts with computed answer",
+        label: "worked-example shown_answer conflict",
+        at95: { hasAnswerConflict: exFinalConflict.exConflicts.finalMessages.length > 0 },
+        at100: { hasAnswerConflict: exFinalConflict.exConflicts.finalMessages.length > 0 },
+      },
+      {
+        reason: READER_ANSWER_CONFLICT_REASON,
+        label: "reader item answer conflict",
+        at95: { hasReaderAnswerConflict: true },
+        at100: { hasReaderAnswerConflict: true },
+      },
+      {
+        reason: READER_ANSWER_CONFLICT_REASON,
+        label: "reader-only worked-example shown_answer conflict",
+        at95: { hasReaderAnswerConflict: exReaderConflict.exConflicts.readerMessages.length > 0 },
+        at100: { hasReaderAnswerConflict: exReaderConflict.exConflicts.readerMessages.length > 0 },
+      },
+      {
+        reason: "empty answer place",
+        label: "empty_answer diff",
+        at95: {
+          diffs: [
+            ...oneNonStopDiff,
+            { path: "sections[0].items[n=1].responses[0]", a: null, b: null, kind: "empty_answer" },
+          ],
+        },
+        at100: {
+          diffs: [
+            { path: "sections[0].items[n=1].responses[0]", a: null, b: null, kind: "empty_answer" },
+          ],
+        },
+      },
+      {
+        reason: ANSWER_DISAGREEMENT_REASON,
+        label: "item answer disagreement at 95% and read-time unclear_filled at 100%",
+        at95: {
+          diffs: [
+            { path: "sections[0].items[n=1].responses[0].answer", a: "4", b: "5", kind: "value" },
+          ],
+        },
+        at100: {
+          answerDisagreements: ["sections[0].items[n=1].responses[0].answer"],
+        },
+      },
+      {
+        reason: "no compared fields",
+        label: "zero compared fields",
+        custom: { ...base100, counts: { agreed: 0, compared: 0 } },
+      },
+    ];
+
+    // Guard: every stop reason in PAGE_STOP_REASONS must have at least one case in the table.
+    const coveredReasons = new Set<PageStopReason>(stopTable.map((row) => row.reason));
+    expect([...coveredReasons].sort()).toEqual([...PAGE_STOP_REASONS].sort());
+
+    for (const row of stopTable) {
+      let ran = 0;
+      if (row.at95) {
+        ran += 1;
+        const res = decidePageOutcome({ ...base95, ...row.at95 });
+        expect(res.status, `${row.label} @ 95%`).toBe("machine_read");
+        expect(res.stopReasons, `${row.label} @ 95%`).toContain(row.reason);
+      }
+      if (row.at100) {
+        ran += 1;
+        const res = decidePageOutcome({ ...base100, ...row.at100 });
+        expect(res.status, `${row.label} @ 100%`).toBe("machine_read");
+        expect(res.stopReasons, `${row.label} @ 100%`).toContain(row.reason);
+      }
+      if (row.custom) {
+        ran += 1;
+        const res = decidePageOutcome(row.custom);
+        expect(res.status, row.label).toBe("machine_read");
+        expect(res.stopReasons, row.label).toContain(row.reason);
+      }
+      expect(ran, `${row.label} must exercise at least one scenario`).toBeGreaterThan(0);
+    }
   });
 
   it("resolves single_read paths into reader A's record and excludes wording diffs", () => {
@@ -1945,10 +2084,146 @@ describe("90% reader agreement rule", () => {
     for (const p of contentsExtraPaths) expect(recordPathResolves(contentsA, p)).toBe(true);
   });
 
-  it("counts the item order check in both matching and reversed order with the same denominator", () => {
-    // 1 source_ref + 1 topic.title + 10 score_bands + 1 instruction + 1 order + 2*8 item fields = 30 compared fields.
-    const aOrder = makeGridPage(2);
-    aOrder.topic = { title: "Addition practice" };
+  it("counts the item order check only when both readers share at least two items, in both matching and reversed order", () => {
+    const makeItemsFromNs = (ns: number[]): PageRecord => {
+      const page = makePage({
+        topic: { title: "Addition practice" },
+        sections: [
+          {
+            instruction: "Add.",
+            scaffolds: [],
+            items: ns.map((n) => ({
+              n,
+              printed: `${n} + 1 =`,
+              form: "horizontal" as const,
+              expr: { kind: "arith" as const, op: "add" as const, operands: [n, 1] },
+              responses: [
+                {
+                  position: "after_equals" as const,
+                  cue: null,
+                  answer: String(n + 1),
+                  answer_source: "computed" as const,
+                },
+              ],
+            })),
+          },
+        ],
+      });
+      return page;
+    };
+
+    // 1 source_ref + 1 topic.title + 10 score_bands + 1 instruction = 13 header fields.
+    // Each shared item contributes 8 compared fields; each unshared item contributes 1 diff.
+    const orderCases: Array<{
+      label: string;
+      aNs: number[];
+      bNs: number[];
+      expectedOrderCounted: boolean;
+      expectedOrderDiff: boolean;
+      expectedCompared: number;
+      expectedAgreed: number;
+    }> = [
+      {
+        label: "0 shared (both empty)",
+        aNs: [],
+        bNs: [],
+        expectedOrderCounted: false,
+        expectedOrderDiff: false,
+        expectedCompared: 13,
+        expectedAgreed: 13,
+      },
+      {
+        label: "0 shared (disjoint 1 vs 1)",
+        aNs: [1],
+        bNs: [2],
+        expectedOrderCounted: false,
+        expectedOrderDiff: false,
+        expectedCompared: 15,
+        expectedAgreed: 13,
+      },
+      {
+        label: "0 shared (disjoint 2 vs 2)",
+        aNs: [1, 2],
+        bNs: [3, 4],
+        expectedOrderCounted: false,
+        expectedOrderDiff: false,
+        expectedCompared: 17,
+        expectedAgreed: 13,
+      },
+      {
+        label: "1 shared (single item each)",
+        aNs: [1],
+        bNs: [1],
+        expectedOrderCounted: false,
+        expectedOrderDiff: false,
+        expectedCompared: 21,
+        expectedAgreed: 21,
+      },
+      {
+        label: "1 shared with extra unshared items",
+        aNs: [1, 2],
+        bNs: [3, 1],
+        expectedOrderCounted: false,
+        expectedOrderDiff: false,
+        expectedCompared: 23,
+        expectedAgreed: 21,
+      },
+      {
+        label: "2 shared in matching order",
+        aNs: [1, 2],
+        bNs: [1, 2],
+        expectedOrderCounted: true,
+        expectedOrderDiff: false,
+        expectedCompared: 30,
+        expectedAgreed: 30,
+      },
+      {
+        label: "2 shared in differing order",
+        aNs: [1, 2],
+        bNs: [2, 1],
+        expectedOrderCounted: true,
+        expectedOrderDiff: true,
+        expectedCompared: 30,
+        expectedAgreed: 29,
+      },
+      {
+        label: "2 shared in matching order with unshared items",
+        aNs: [1, 9, 2],
+        bNs: [8, 1, 2],
+        expectedOrderCounted: true,
+        expectedOrderDiff: false,
+        expectedCompared: 32,
+        expectedAgreed: 30,
+      },
+      {
+        label: "2 shared in differing order with unshared items",
+        aNs: [1, 9, 2],
+        bNs: [2, 8, 1],
+        expectedOrderCounted: true,
+        expectedOrderDiff: true,
+        expectedCompared: 32,
+        expectedAgreed: 29,
+      },
+    ];
+
+    for (const c of orderCases) {
+      const cmp = compareRecordsWithCounts(makeItemsFromNs(c.aNs), makeItemsFromNs(c.bNs));
+      expect(cmp.counts, c.label).toEqual({
+        compared: c.expectedCompared,
+        agreed: c.expectedAgreed,
+      });
+      const orderDiffs = cmp.diffs.filter((d) => d.kind === "order");
+      expect(orderDiffs.length === 1, c.label).toBe(c.expectedOrderDiff);
+      // Confirm expectedOrderCounted matches compared minus header/shared/unshared field counts.
+      const shared = c.aNs.filter((n) => c.bNs.includes(n)).length;
+      const unshared = c.aNs.length + c.bNs.length - 2 * shared;
+      expect(cmp.counts.compared - (13 + shared * 8 + unshared), c.label).toBe(
+        c.expectedOrderCounted ? 1 : 0,
+      );
+    }
+
+    // Same denominator at the 90% boundary: matching order passes (27/30), reversed fails (26/30).
+    const aOrder = makeItemsFromNs([1, 2]);
     const bSameOrder = structuredClone(aOrder);
     bSameOrder.topic.title = "Alternate title";
     for (const item of bSameOrder.sections[0].items) item.printed += " \u25A1";
@@ -2694,7 +2969,7 @@ describe("90% reader agreement rule", () => {
       topicAOnly.differences[0].a,
     );
 
-    // Non-ascending reader B list reports reader B's actual printed neighbours
+    // Non-ascending reader B list and item numbers above 16 report reader B's actual printed neighbours
     const descendingItems = classifyComparison(makeItemsPage([3, 1]), makeItemsPage([3, 2, 1]));
     const descDiff = descendingItems.differences.find((d) => d.path === "sections[0].items[n=2]");
     expect(descDiff).toMatchObject({
@@ -2706,15 +2981,139 @@ describe("90% reader agreement rule", () => {
     expect(descDiff?.final_path).toBeUndefined();
     expect(descDiff?.insert_before).toBeUndefined();
 
-    // Property over random item lists: reader B's neighbours are exact, no final_path/insert_before on B-only,
-    // and every final_path without "[]" or insert_before resolves to reader A's entry.
+    const highItems = classifyComparison(makeItemsPage([15, 22]), makeItemsPage([15, 19, 22, 30]));
+    expect(highItems.differences.find((d) => d.path === "sections[0].items[n=19]")).toMatchObject({
+      reader: "b",
+      reader_b_after: 15,
+      reader_b_before: 22,
+    });
+    expect(highItems.differences.find((d) => d.path === "sections[0].items[n=30]")).toMatchObject({
+      reader: "b",
+      reader_b_after: 22,
+      reader_b_before: null,
+    });
+
+    // Independent parent-object existence check for "[]" append paths (not using the kit's resolver).
+    // The list property itself may be absent (the person creates it), but its parent object must exist.
+    const parentObjectExistsForAppend = (record: unknown, appendPath: string): boolean => {
+      if (!appendPath.endsWith("[]")) return false;
+      const listPath = appendPath.slice(0, -2);
+      const tokenRe = /([A-Za-z_][A-Za-z0-9_]*)|\[(\d+)\]/g;
+      const tokens: Array<{ kind: "prop"; name: string } | { kind: "index"; idx: number }> = [];
+      let matchedLen = 0;
+      for (const m of listPath.matchAll(tokenRe)) {
+        matchedLen += m[0].length + (m[1] !== undefined && tokens.length > 0 ? 1 : 0);
+        if (m[1] !== undefined) tokens.push({ kind: "prop", name: m[1] });
+        else if (m[2] !== undefined) tokens.push({ kind: "index", idx: Number(m[2]) });
+      }
+      if (matchedLen !== listPath.length || tokens.length === 0) return false;
+      const last = tokens[tokens.length - 1];
+      if (last.kind !== "prop") return false;
+      let node: unknown = record;
+      for (let i = 0; i < tokens.length - 1; i += 1) {
+        const tok = tokens[i];
+        if (tok.kind === "prop") {
+          if (typeof node !== "object" || node === null || Array.isArray(node)) return false;
+          if (!Object.hasOwn(node, tok.name)) return false;
+          node = (node as Record<string, unknown>)[tok.name];
+        } else {
+          if (!Array.isArray(node) || tok.idx < 0 || tok.idx >= node.length) return false;
+          node = node[tok.idx];
+        }
+      }
+      if (typeof node !== "object" || node === null || Array.isArray(node)) return false;
+      const listVal = (node as Record<string, unknown>)[last.name];
+      return listVal === undefined || Array.isArray(listVal);
+    };
+
+    // Absent optional lists (steps/marks omitted on reader A's example): parent object examples[0] exists.
+    const absentListA = makeItemsPage([1]);
+    absentListA.examples = [{ position: "top", relation: "sequence", parts: [{ form: "horizontal", expr: null }] }];
+    const absentListB = makeItemsPage([1]);
+    absentListB.examples = [
+      {
+        position: "top",
+        relation: "sequence",
+        parts: [{ form: "horizontal", expr: null }],
+        steps: [{ n: 1, shows: "answer", printed: "5" }],
+        marks: [{ kind: "box", step: 1, description: "Box" }],
+      },
+    ];
+    const absentSummary = classifyComparison(absentListA, absentListB);
+    expect(absentSummary.once_read.map((d) => d.final_path)).toEqual([
+      "examples[0].steps[]",
+      "examples[0].marks[]",
+    ]);
+    for (const d of absentSummary.once_read) {
+      expect(parentObjectExistsForAppend(absentListA, d.final_path!)).toBe(true);
+    }
+
+    // Property over random items (including numbers above 16), once-read scaffolds, steps, and marks:
+    // - reader-B-only numbered items give exact neighbours and no final_path or insert_before;
+    // - step alignment insertion positions and scaffold/mark append paths match independent
+    //   expectations computed directly from the generated lists (not from the kit's resolver);
+    // - every "[]" path has an existing parent object in recA; every non-"[]" final_path resolves.
+    const scaffoldPool: Scaffold[] = [
+      { kind: "caption", applies_to: "all", text: "Hint A" },
+      { kind: "arrow", applies_to: [1], from: "left", to: "right", label: "next" },
+      { kind: "helper_digit", applies_to: [2], description: "Small 1 above tens" },
+      { kind: "partial_working", applies_to: "all", description: "First step shown" },
+    ];
+    const stepPool: Array<{ shows: ExampleStep["shows"]; printed: string }> = [
+      { shows: "setup", printed: "2 + 3" },
+      { shows: "partial_sum", printed: "2 + 2 + 1" },
+      { shows: "carry", printed: "10" },
+      { shows: "answer", printed: "5" },
+      { shows: "check", printed: "5 - 3 = 2" },
+    ];
+    const markKindArb = fc.constantFrom<ExampleMark["kind"]>("box", "circle", "underline", "bracket");
+
     fc.assert(
       fc.property(
-        fc.uniqueArray(fc.integer({ min: 1, max: 20 }), { minLength: 1, maxLength: 10 }),
-        fc.uniqueArray(fc.integer({ min: 1, max: 20 }), { minLength: 1, maxLength: 10 }),
-        (aNs, bNs) => {
+        fc.uniqueArray(fc.integer({ min: 1, max: 60 }), { minLength: 1, maxLength: 10 }),
+        fc.uniqueArray(fc.integer({ min: 1, max: 60 }), { minLength: 1, maxLength: 10 }),
+        fc.subarray([0, 1, 2, 3]),
+        fc.subarray([0, 1, 2, 3]),
+        fc.subarray([0, 1, 2, 3, 4], { minLength: 1 }),
+        fc.subarray([0, 1, 2, 3, 4], { minLength: 1 }),
+        fc.array(fc.record({ kind: markKindArb, stepSlot: fc.integer({ min: 0, max: 4 }) }), { maxLength: 3 }),
+        fc.array(fc.record({ kind: markKindArb, stepSlot: fc.integer({ min: 0, max: 4 }) }), { maxLength: 3 }),
+        (aNs, bNs, aScIdx, bScIdx, aStepIdx, bStepIdx, aRawMarks, bRawMarks) => {
+          const buildSteps = (idxs: number[]): ExampleStep[] =>
+            idxs.map((poolIdx, pos) => ({ n: pos + 1, ...stepPool[poolIdx] }));
+          const buildMarks = (
+            raw: Array<{ kind: ExampleMark["kind"]; stepSlot: number }>,
+            stepCount: number,
+          ): ExampleMark[] =>
+            raw.map((m, idx) => ({
+              kind: m.kind,
+              step: (m.stepSlot % stepCount) + 1,
+              description: `Mark ${idx + 1}`,
+            }));
+          const aSteps = buildSteps(aStepIdx);
+          const bSteps = buildSteps(bStepIdx);
           const recA = makeItemsPage(aNs);
           const recB = makeItemsPage(bNs);
+          recA.sections[0].scaffolds = aScIdx.map((i) => structuredClone(scaffoldPool[i]));
+          recB.sections[0].scaffolds = bScIdx.map((i) => structuredClone(scaffoldPool[i]));
+          recA.examples = [
+            {
+              position: "top",
+              relation: "sequence",
+              parts: [{ form: "horizontal", expr: null }],
+              steps: aSteps,
+              marks: buildMarks(aRawMarks, aSteps.length),
+            },
+          ];
+          recB.examples = [
+            {
+              position: "top",
+              relation: "sequence",
+              parts: [{ form: "horizontal", expr: null }],
+              steps: bSteps,
+              marks: buildMarks(bRawMarks, bSteps.length),
+            },
+          ];
           const summary = classifyComparison(recA, recB);
           const aSet = new Set(aNs);
           const bIndexByN = new Map(bNs.map((n, idx) => [n, idx]));
@@ -2736,8 +3135,82 @@ describe("90% reader agreement rule", () => {
               expect(resolveDiffPath(recA, d.final_path!).value).toEqual(d.a);
             }
           }
-          for (const d of [...summary.differences, ...summary.once_read]) {
-            if (d.final_path !== undefined && !d.final_path.endsWith("[]") && d.insert_before === undefined) {
+
+          // Independent expected step insertion positions from the strictly ascending unique pool indices:
+          // anchors are the exact set intersection in order; gaps pair positionally; extra B steps
+          // insert before the next anchor in A, or append with "[]" after the last anchor.
+          const anchors: Array<[number, number]> = [];
+          for (let ai = 0; ai < aStepIdx.length; ai += 1) {
+            const bi = bStepIdx.indexOf(aStepIdx[ai]);
+            if (bi !== -1) anchors.push([ai, bi]);
+          }
+          const expectedBOnlySteps = new Map<
+            number,
+            { insert_before: number | undefined; final_path: string }
+          >();
+          let prevA = 0;
+          let prevB = 0;
+          for (const [nextA, nextB] of [...anchors, [aStepIdx.length, bStepIdx.length] as [number, number]]) {
+            const paired = Math.min(nextA - prevA, nextB - prevB);
+            for (let k = paired; k < nextB - prevB; k += 1) {
+              const bIdx = prevB + k;
+              const beforeA = nextA < aStepIdx.length ? nextA : undefined;
+              expectedBOnlySteps.set(bIdx, {
+                insert_before: beforeA,
+                final_path:
+                  beforeA !== undefined ? `examples[0].steps[${beforeA}]` : "examples[0].steps[]",
+              });
+            }
+            prevA = nextA + 1;
+            prevB = nextB + 1;
+          }
+          const actualBOnlySteps = summary.once_read.filter((d) =>
+            /^examples\[0\]\.steps\[b:\d+\]$/.test(d.path),
+          );
+          expect(actualBOnlySteps).toHaveLength(expectedBOnlySteps.size);
+          for (const d of actualBOnlySteps) {
+            const bIdx = Number(/^examples\[0\]\.steps\[b:(\d+)\]$/.exec(d.path)![1]);
+            const exp = expectedBOnlySteps.get(bIdx);
+            expect(exp).toBeDefined();
+            expect(d.reader).toBe("b");
+            expect(d.insert_before).toBe(exp!.insert_before);
+            expect(d.final_path).toBe(exp!.final_path);
+          }
+
+          // Independent expected scaffold appends: each scaffold in scaffoldPool has a unique kind,
+          // so B-only scaffolds are exactly those whose pool index is absent from aScIdx.
+          const aScSet = new Set(aScIdx);
+          const expectedBOnlyScaffolds = bScIdx
+            .map((poolIdx, bIdx) => (aScSet.has(poolIdx) ? null : bIdx))
+            .filter((bIdx): bIdx is number => bIdx !== null);
+          const actualBOnlyScaffolds = summary.once_read.filter((d) =>
+            /^sections\[0\]\.scaffolds\[b:\d+\]$/.test(d.path),
+          );
+          expect(actualBOnlyScaffolds.map((d) => d.path)).toEqual(
+            expectedBOnlyScaffolds.map((bIdx) => `sections[0].scaffolds[b:${bIdx}]`),
+          );
+          for (const d of actualBOnlyScaffolds) {
+            expect(d.reader).toBe("b");
+            expect(d.insert_before).toBeUndefined();
+            expect(d.final_path).toBe("sections[0].scaffolds[]");
+          }
+
+          const allLists = [
+            ...summary.differences,
+            ...summary.once_read,
+            ...summary.wording,
+            ...summary.both_unclear,
+            ...summary.one_unclear,
+            ...summary.empty_answer,
+          ];
+          for (const d of allLists) {
+            if (d.final_path === undefined) continue;
+            if (d.insert_before !== undefined) {
+              expect(recordPathResolves(recA, d.final_path)).toBe(true);
+              expect(d.final_path.endsWith(`[${d.insert_before}]`)).toBe(true);
+            } else if (d.final_path.endsWith("[]")) {
+              expect(parentObjectExistsForAppend(recA, d.final_path), d.final_path).toBe(true);
+            } else {
               expect(recordPathResolves(recA, d.final_path)).toBe(true);
               if (d.reader === "a") {
                 expect(resolveDiffPath(recA, d.final_path).value).toEqual(d.a);
@@ -2746,6 +3219,7 @@ describe("90% reader agreement rule", () => {
           }
         },
       ),
+      { numRuns: 150 },
     );
   });
 
@@ -2900,6 +3374,275 @@ describe("90% reader agreement rule", () => {
         },
       ),
     );
+  });
+
+  it("covers every place storing expr with an answer and every page-identity field with a stop, and guards types.ts against new uncovered expr+answer types", () => {
+    const evaluatePair = (a: ReferenceRecord, b: ReferenceRecord) => {
+      const cmp = compareRecordsWithCounts(a, b);
+      const computedA = applyComputedAnswers(a);
+      const computedB = applyComputedAnswers(b);
+      const exConflicts = collectExampleAnswerConflicts(computedA.record, a, b, {
+        finalIsFreshA: true,
+      });
+      const finalAnswerConflict =
+        computedA.details.some((d) => d.kind === "answer_differs") ||
+        exConflicts.finalMessages.length > 0;
+      const readerAnswerConflict =
+        computedB.details.some((d) => d.kind === "answer_differs") ||
+        exConflicts.readerMessages.length > 0;
+      return decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        sameDigest: true,
+        diffs: cmp.diffs,
+        counts: cmp.counts,
+        hasAnswerConflict: finalAnswerConflict,
+        hasReaderAnswerConflict: readerAnswerConflict,
+        recordA: a,
+        recordB: b,
+      });
+    };
+
+    const pageWithWrongItemAnswer = (wrongA: boolean, wrongB: boolean) => {
+      const a = makeGridPage(5);
+      const b = makeGridPage(5);
+      if (wrongA) {
+        a.sections[0].items[0].responses[0] = {
+          position: "after_equals",
+          cue: null,
+          answer: "99",
+          answer_source: "reader",
+        };
+      }
+      if (wrongB) {
+        b.sections[0].items[0].responses[0] = {
+          position: "after_equals",
+          cue: null,
+          answer: "99",
+          answer_source: "reader",
+        };
+      }
+      return { a, b };
+    };
+
+    const pageWithWrongExampleAnswer = (wrongA: boolean, wrongB: boolean) => {
+      const makeRec = (shown: string): PageRecord => ({
+        ...makeGridPage(5),
+        examples: [
+          {
+            position: "top",
+            relation: "compare",
+            parts: [
+              {
+                form: "horizontal",
+                expr: { kind: "arith", op: "add", operands: [2, 3] },
+                shown_answer: shown,
+              },
+            ],
+          },
+        ],
+      });
+      return { a: makeRec(wrongA ? "6" : "5"), b: makeRec(wrongB ? "6" : "5") };
+    };
+
+    const guardedPlaces: Array<{
+      label: string;
+      pair: { a: ReferenceRecord; b: ReferenceRecord };
+      expectedReason: PageStopReason;
+    }> = [
+      {
+        label: "item response answer wrong on both readers (100%)",
+        pair: pageWithWrongItemAnswer(true, true),
+        expectedReason: "stored answer conflicts with computed answer",
+      },
+      {
+        label: "item response answer wrong on reader B only (>= 95%)",
+        pair: pageWithWrongItemAnswer(false, true),
+        expectedReason: READER_ANSWER_CONFLICT_REASON,
+      },
+      {
+        label: "worked-example shown_answer wrong on both readers (100%)",
+        pair: pageWithWrongExampleAnswer(true, true),
+        expectedReason: "stored answer conflicts with computed answer",
+      },
+      {
+        label: "worked-example shown_answer wrong on reader B only (>= 95%)",
+        pair: pageWithWrongExampleAnswer(false, true),
+        expectedReason: READER_ANSWER_CONFLICT_REASON,
+      },
+      {
+        label: "source_ref mismatch (>= 95%)",
+        pair: {
+          a: makePage({ source_ref: "sample:M:7a", sections: makeGridPage(5).sections }),
+          b: makePage({ source_ref: "sample:M:7b", sections: makeGridPage(5).sections }),
+        },
+        expectedReason: PAGE_IDENTITY_DISAGREEMENT_REASON,
+      },
+      {
+        label: "kind mismatch (page vs contents)",
+        pair: {
+          a: makeGridPage(5),
+          b: {
+            kind: "contents",
+            source_ref: "sample:M:3a",
+            topics: [{ n: 1, title: "Topic 1", sheets: [1, 10], std_time_min: [1, 2] }],
+          },
+        },
+        expectedReason: PAGE_IDENTITY_DISAGREEMENT_REASON,
+      },
+    ];
+
+    for (const row of guardedPlaces) {
+      const outcome = evaluatePair(row.pair.a, row.pair.b);
+      expect(outcome.status, row.label).toBe("machine_read");
+      expect(outcome.stopReasons, row.label).toContain(row.expectedReason);
+    }
+
+    // Schema-drift guard: parse src/lib/reference-record/types.ts with the TypeScript parser and
+    // verify every interface/type holding both an expr and an answer (directly or via a referenced
+    // member type) is in the covered set. Adding a new expr+answer type without wiring a stop fails.
+    // Note: intersection types (e.g. `A & B`) are out of scope for this AST guard.
+    const typesPath = resolve(process.cwd(), "src/lib/reference-record/types.ts");
+    const sourceFile = ts.createSourceFile(
+      typesPath,
+      readFileSync(typesPath, "utf8"),
+      ts.ScriptTarget.Latest,
+      true,
+    );
+
+    interface FieldInfo {
+      name: string;
+      referencedTypes: Set<string>;
+    }
+    const collectTypeRefs = (node: ts.TypeNode | undefined, out: Set<string>): void => {
+      if (!node) return;
+      if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
+        out.add(node.typeName.text);
+      }
+      ts.forEachChild(node, (child) => {
+        if (ts.isTypeNode(child)) collectTypeRefs(child, out);
+      });
+    };
+    const readMembers = (members: ts.NodeArray<ts.TypeElement>): FieldInfo[] => {
+      const fields: FieldInfo[] = [];
+      for (const m of members) {
+        if (!ts.isPropertySignature(m) || !m.name) continue;
+        const name = ts.isIdentifier(m.name)
+          ? m.name.text
+          : ts.isStringLiteral(m.name)
+            ? m.name.text
+            : "";
+        if (!name) continue;
+        const referencedTypes = new Set<string>();
+        collectTypeRefs(m.type, referencedTypes);
+        fields.push({ name, referencedTypes });
+      }
+      return fields;
+    };
+
+    const objectTypes = new Map<string, FieldInfo[]>();
+    const unionMembers = new Map<string, string[]>();
+    for (const stmt of sourceFile.statements) {
+      if (ts.isInterfaceDeclaration(stmt)) {
+        objectTypes.set(stmt.name.text, readMembers(stmt.members));
+      } else if (ts.isTypeAliasDeclaration(stmt)) {
+        if (ts.isTypeLiteralNode(stmt.type)) {
+          objectTypes.set(stmt.name.text, readMembers(stmt.type.members));
+        } else if (ts.isUnionTypeNode(stmt.type)) {
+          const names: string[] = [];
+          for (const member of stmt.type.types) {
+            if (ts.isTypeReferenceNode(member) && ts.isIdentifier(member.typeName)) {
+              names.push(member.typeName.text);
+            }
+          }
+          if (names.length > 0) unionMembers.set(stmt.name.text, names);
+        }
+      }
+    }
+
+    const EXPR_TYPE_NAMES = new Set(["Expr", "SimpleExpr", "ArithExpr", "ChainExpr", "MissingExpr", "WordExpr", "NotationExpr", "LinkedExpr"]);
+    const isAnswerField = (name: string): boolean => /answer/i.test(name) && name !== "answer_source";
+    const hasDirectExpr = (fields: FieldInfo[]): boolean =>
+      fields.some((f) => f.name === "expr" || [...f.referencedTypes].some((t) => EXPR_TYPE_NAMES.has(t)));
+    const hasDirectAnswer = (fields: FieldInfo[]): boolean =>
+      fields.some((f) => isAnswerField(f.name));
+    const hasAnswerWithinOneHop = (fields: FieldInfo[]): boolean =>
+      hasDirectAnswer(fields) ||
+      fields.some((f) =>
+        [...f.referencedTypes].some((refName) => {
+          const target = objectTypes.get(refName);
+          return target !== undefined && hasDirectAnswer(target);
+        }),
+      );
+
+    const typesWithExprAndAnswer: string[] = [];
+    for (const [typeName, fields] of objectTypes) {
+      if (hasDirectExpr(fields) && hasAnswerWithinOneHop(fields)) {
+        typesWithExprAndAnswer.push(typeName);
+      }
+    }
+    expect(typesWithExprAndAnswer.sort()).toEqual(["ExamplePart", "PageItem"]);
+
+    // Also classify every top-level key of PageRecord and ContentsRecord from types.ts AST.
+    // Any new key added to either interface without an explicit classification fails here.
+    type TopLevelFieldClass =
+      | { kind: "identity" }
+      | { kind: "compared" }
+      | { kind: "not_compared"; reason: string };
+
+    const TOP_LEVEL_FIELD_CLASSES: Record<string, Record<string, TopLevelFieldClass>> = {
+      PageRecord: {
+        kind: { kind: "identity" },
+        source_ref: { kind: "identity" },
+        topic: { kind: "compared" },
+        sections: { kind: "compared" },
+        examples: { kind: "compared" },
+        score_bands: { kind: "compared" },
+        readers: {
+          kind: "not_compared",
+          reason: "reader provenance list; differs by reader slot and is merged onto the final record",
+        },
+        single_read: {
+          kind: "not_compared",
+          reason: "output-only metadata attached after comparison on agreement_accepted pages",
+        },
+      },
+      ContentsRecord: {
+        kind: { kind: "identity" },
+        source_ref: { kind: "identity" },
+        topics: { kind: "compared" },
+        readers: {
+          kind: "not_compared",
+          reason: "reader provenance list; differs by reader slot and is merged onto the final record",
+        },
+        single_read: {
+          kind: "not_compared",
+          reason: "output-only metadata attached after comparison on agreement_accepted pages",
+        },
+      },
+    };
+
+    const recordVariants = unionMembers.get("ReferenceRecord") ?? [];
+    expect(recordVariants.sort()).toEqual(["ContentsRecord", "PageRecord"]);
+    for (const variant of recordVariants) {
+      const classes = TOP_LEVEL_FIELD_CLASSES[variant];
+      expect(classes, variant).toBeDefined();
+      const fields = objectTypes.get(variant) ?? [];
+      const actualKeys = fields.map((f) => f.name).sort();
+      expect(actualKeys, `${variant} top-level keys must all be classified`).toEqual(
+        Object.keys(classes).sort(),
+      );
+      const identityKeys: string[] = [];
+      for (const [key, cls] of Object.entries(classes)) {
+        if (cls.kind === "identity") identityKeys.push(key);
+        if (cls.kind === "not_compared") {
+          expect(cls.reason.trim().length, `${variant}.${key} needs a reason`).toBeGreaterThan(0);
+        }
+      }
+      expect(identityKeys.sort(), `${variant} identity keys`).toEqual(["kind", "source_ref"]);
+    }
   });
 
   it("satisfies threshold and ratio invariants across arbitrary counts", () => {

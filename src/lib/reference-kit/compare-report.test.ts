@@ -216,8 +216,9 @@ describe("formatCompareReportMarkdown", () => {
       '`sections[0].scaffolds[b:2]`: only reader b has it; a person changed the final record, so find the place in that record: {"kind":"arrow","applies_to":[1]}',
     );
     expect(editedMd).toContain(
-      '`examples[0].marks[b:0]`: only reader b has it; a person changed the final record, so find the place in that record; its step is missing from reader A\'s record and must be added first: {"kind":"box","step":2,"description":"Box around sum"}',
+      '`examples[0].marks[b:0]`: only reader b has it; a person changed the final record, so find the place in that record; step absent from reader A\'s record: {"kind":"box","step":2,"description":"Box around sum"}',
     );
+    expect(editedMd).not.toContain("must be added first");
 
     // A human_checked page keeps wording neutral and omits review instructions and locations.
     const checkedMd = formatCompareReportMarkdown({
@@ -489,19 +490,61 @@ describe("formatCompareReportMarkdown", () => {
     );
   });
 
-  it("omits review instructions on human_checked, agreement_accepted, and double_read pages while keeping them on machine_read pages", () => {
+  it("shows review instructions only on machine_read across the full grid of 4 statuses, all difference kinds, and all optional parts", () => {
     const caption = { kind: "caption", applies_to: "all", text: "Practice" };
     const missingCaption = { kind: "caption", applies_to: [1], text: "Hint" };
     const step = { n: 2, shows: "partial_sum", printed: "= 5/6" };
     const mark = { kind: "box", step: 2, description: "Box around sum" };
-    const sharedEntries = {
+    const aOnlyItem = { n: 5, printed: "5 + 1 =", form: "horizontal", expr: null, responses: [] };
+    const bOnlyItem = { n: 2, printed: "2 + 1 =", form: "horizontal", expr: null, responses: [] };
+
+    const fullPageFields = {
       photo: "666666666666.jpg",
       original_name: "06.jpg",
       photo_sha256: "6".repeat(64),
-      only_in_reader: null,
-      digest_mismatch: null,
-      differences: [{ path: "topic.title", a: "Sums", b: "Totals", kind: "value" as const }],
+      agreement: { agreed: 19, compared: 20, percent: 95 },
+      result_reason: "readers disagree on an answer",
+      only_in_reader: "a" as const,
+      digest_mismatch: { a: "1".repeat(64), b: "2".repeat(64) },
+      differences: [
+        { path: "topic.title", a: "Sums", b: "Totals", kind: "value" as const },
+        { path: "sections[0].items", a: [1, 2], b: [2, 1], kind: "order" as const },
+        { path: "sections[0].items[n=1].printed", a: "1 + 2 =", b: "unclear", kind: "one_unclear" as const },
+        {
+          path: "sections[0].items[n=5]",
+          a: aOnlyItem,
+          b: null,
+          kind: "value" as const,
+          reader: "a" as const,
+          final_path: "sections[0].items[2]",
+        },
+        {
+          path: "sections[0].items[n=2]",
+          a: null,
+          b: bOnlyItem,
+          kind: "value" as const,
+          reader: "b" as const,
+          reader_b_after: 1,
+          reader_b_before: 3,
+        },
+      ],
+      wording: [
+        {
+          path: "examples[0].marks[0].description",
+          a: "Arrow to 3",
+          b: "Points at 3",
+          kind: "wording" as const,
+        },
+      ],
       once_read: [
+        {
+          path: "sections[0].scaffolds[0]",
+          a: caption,
+          b: null,
+          kind: "once_read" as const,
+          reader: "a" as const,
+          final_path: "sections[0].scaffolds[0]",
+        },
         {
           path: "sections[0].scaffolds[b:0]",
           a: null,
@@ -537,14 +580,52 @@ describe("formatCompareReportMarkdown", () => {
         },
       ],
       both_unclear: [{ path: "topic.number", a: "unclear", b: "unclear", kind: "both_unclear" as const }],
-      one_unclear: [],
-      needs_person_read: false,
-      unnamed_teaching_marks: [],
-      reader_notes: { a: [], b: [] },
+      one_unclear: [
+        { path: "sections[0].items[n=1].printed", a: "1 + 2 =", b: "unclear", kind: "one_unclear" as const },
+      ],
+      empty_answer: [
+        { path: "sections[0].items[n=3].responses[0]", a: null, b: "9", kind: "empty_answer" as const },
+      ],
+      answer_conflicts: ['sections[0].items[n=1].responses[0]: reader gave "6", computed "5"'],
+      reader_answer_conflicts: ["sections[0].items[n=2].responses[0]"],
+      answer_disagreements: ["sections[0].items[n=1].responses[0].answer"],
+      needs_person_read: true,
+      unnamed_teaching_marks: [
+        { kind: "step" as const, path: "examples[0].steps[n=1]", description: "split tens", reader: "both" as const },
+      ],
+      reader_notes: { a: ["note a"], b: ["note b"] },
     };
+
+    const validKeptChecked: CompareWorkReport["kept_human_checked"] = [
+      {
+        source_ref: "sample:M:1a",
+        in_current_batch: true,
+        differs_from_reader_a: false,
+        differs_from_reader_b: false,
+        diff_count_a: 0,
+        diff_count_b: 0,
+      },
+      {
+        source_ref: "sample:M:2a",
+        in_current_batch: true,
+        differs_from_reader_a: true,
+        differs_from_reader_b: true,
+        diff_count_a: 1,
+        diff_count_b: 2,
+      },
+      {
+        source_ref: "sample:M:3a",
+        in_current_batch: false,
+        differs_from_reader_a: false,
+        differs_from_reader_b: false,
+        diff_count_a: 0,
+        diff_count_b: 0,
+      },
+    ];
 
     const makeReport = (
       pages: CompareWorkReport["pages"],
+      keptHumanChecked: CompareWorkReport["kept_human_checked"] = validKeptChecked,
     ): CompareWorkReport => ({
       reader_a: { family: "codex", model: "x1" },
       reader_b: { family: "claude", model: "c1" },
@@ -554,74 +635,152 @@ describe("formatCompareReportMarkdown", () => {
       failed_photos: [],
       too_small_photos: [],
       could_not_read_photos: [],
-      kept_human_checked: [],
+      kept_human_checked: keptHumanChecked,
       removed_stale_pages: [],
       duplicate_photos: [],
       removed_photos: [],
       same_page_id_conflicts: [],
     });
 
-    for (const status of ["human_checked", "agreement_accepted", "double_read"] as const) {
+    const REVIEW_INSTRUCTION_PHRASES = [
+      "look at the photo",
+      "copy an entry",
+      "belongs in the final",
+      "already in the final",
+      "insert before",
+      "must be added first",
+      "find the place",
+      "write the value",
+      "write the answer",
+      "mark the page checked",
+      "Run reference:check",
+      "run reference:check",
+      "Correct it",
+      "A person must read",
+    ];
+
+    const grid: Array<{
+      status: "machine_read" | "agreement_accepted" | "double_read" | "human_checked";
+      edited: boolean;
+    }> = [
+      { status: "machine_read", edited: false },
+      { status: "machine_read", edited: true },
+      { status: "agreement_accepted", edited: false },
+      { status: "agreement_accepted", edited: true },
+      { status: "double_read", edited: false },
+      { status: "double_read", edited: true },
+      { status: "human_checked", edited: false },
+      { status: "human_checked", edited: true },
+    ];
+
+    for (const cell of grid) {
+      const label = `${cell.status}${cell.edited ? "+edited" : ""}`;
       const md = formatCompareReportMarkdown(
         makeReport([
           {
-            ...sharedEntries,
+            ...fullPageFields,
             source_ref: "sample:M:6a",
-            status,
-            agreement: { agreed: 19, compared: 20, percent: 95 },
+            status: cell.status,
+            ...(cell.edited ? { edited_by_person: true } : {}),
             result:
-              status === "double_read"
+              cell.status === "double_read"
                 ? "double read"
-                : status === "human_checked"
+                : cell.status === "human_checked"
                   ? "checked by a person"
-                  : "accepted by the 90% rule",
-            result_reason: null,
+                  : cell.status === "agreement_accepted"
+                    ? "accepted by the 90% rule"
+                    : "sent to a person",
           },
         ]),
       );
-      expect(md).toContain("`sections[0].scaffolds[b:0]`");
-      expect(md).toContain(JSON.stringify(caption));
-      expect(md).toContain("`sections[0].scaffolds[b:1]`");
-      expect(md).toContain(JSON.stringify(missingCaption));
-      expect(md).toContain(JSON.stringify(step));
-      expect(md).toContain("`topic.number`");
-      if (status === "human_checked") {
-        expect(md).not.toContain("`sections[0].scaffolds[]`");
-        expect(md).not.toContain("`examples[0].steps[1]`");
-        expect(md).not.toContain("`examples[0].marks[]`");
+
+      // Factual content is printed on every status, including valid kept human_checked entries.
+      expect(md, label).toContain("## Kept: checked by a person");
+      expect(md, label).toContain("sample:M:1a: kept human_checked record (matches current readings)");
+      expect(md, label).toContain("sample:M:2a: kept human_checked record; current readings differ");
+      expect(md, label).toContain("sample:M:3a: stale human_checked page kept");
+      expect(md, label).toContain("`topic.title` (value)");
+      expect(md, label).toContain("`sections[0].items` (order)");
+      expect(md, label).toContain("`sections[0].items[n=1].printed` (one_unclear)");
+      expect(md, label).toContain("`sections[0].scaffolds[b:0]`");
+      expect(md, label).toContain(JSON.stringify(caption));
+      expect(md, label).toContain(JSON.stringify(missingCaption));
+      expect(md, label).toContain(JSON.stringify(step));
+      expect(md, label).toContain("`topic.number`");
+      expect(md, label).toContain("`sections[0].items[n=3].responses[0]`");
+      expect(md, label).toContain("Answer conflicts");
+      expect(md, label).toContain("Reader answer conflicts");
+      expect(md, label).toContain("Answer disagreements");
+      expect(md, label).toContain("Reader answer notes");
+
+      if (cell.status === "machine_read") {
+        expect(md, label).toContain("look at the photo");
+        expect(md, label).toContain("write the value");
+        expect(md, label).toContain('write the answer from the photo, or "unclear"');
+        expect(md, label).toContain("mark the page checked");
+        if (cell.edited) {
+          expect(md, label).toContain("find the place in that record");
+          expect(md, label).toContain("Run reference:check for this page.");
+          expect(md, label).toContain("; step absent from reader A's record");
+          expect(md, label).not.toContain("must be added first");
+        } else {
+          expect(md, label).toContain("must be added first");
+          expect(md, label).toContain("copy an entry");
+          expect(md, label).toContain("already in the final record at `sections[0].scaffolds[0]`");
+          expect(md, label).toContain("belongs in the final record at `sections[0].scaffolds[]`");
+          expect(md, label).toContain("insert before `examples[0].steps[1]`");
+        }
       } else {
-        expect(md).toContain("`sections[0].scaffolds[]`");
-        expect(md).toContain("`examples[0].steps[1]`");
-        expect(md).toContain("`examples[0].marks[]`");
+        for (const phrase of REVIEW_INSTRUCTION_PHRASES) {
+          expect(md, `${label} must not contain "${phrase}"`).not.toContain(phrase);
+        }
+        if (cell.status === "human_checked" || cell.edited) {
+          expect(md, label).not.toContain("`sections[0].scaffolds[]`");
+          expect(md, label).not.toContain("`examples[0].steps[1]`");
+          expect(md, label).not.toContain("`examples[0].marks[]`");
+          expect(md, label).not.toContain("Differing fields are in single_read");
+        } else {
+          expect(md, label).toContain("`sections[0].scaffolds[]`");
+          expect(md, label).toContain("`examples[0].steps[1]`");
+          expect(md, label).toContain("`examples[0].marks[]`");
+        }
       }
-      expect(md).not.toContain("look at the photo");
-      expect(md).not.toContain("copy an entry");
-      expect(md).not.toContain("belongs in the final");
-      expect(md).not.toContain("insert before");
-      expect(md).not.toContain("must be added first");
-      expect(md).not.toContain("find the place");
-      expect(md).not.toContain("write the value");
-      expect(md).not.toContain("mark the page checked");
     }
 
-    const personMd = formatCompareReportMarkdown(
-      makeReport([
-        {
-          ...sharedEntries,
-          source_ref: "sample:M:7a",
-          status: "machine_read",
-          agreement: { agreed: 17, compared: 20, percent: 85 },
-          result: "sent to a person",
-          result_reason: "below 90% agreement",
-        },
-      ]),
+    // Documented exemption: an invalid kept human_checked file on disk cannot be read as a record,
+    // so only that invalid kept entry asks the person to correct it and run reference:check.
+    const invalidKeptMd = formatCompareReportMarkdown(
+      makeReport(
+        [
+          {
+            ...fullPageFields,
+            source_ref: "sample:M:6a",
+            status: "human_checked",
+            result: "checked by a person",
+          },
+        ],
+        [
+          ...validKeptChecked,
+          {
+            source_ref: "sample:M:6a",
+            in_current_batch: true,
+            differs_from_reader_a: false,
+            differs_from_reader_b: false,
+            diff_count_a: 0,
+            diff_count_b: 0,
+            invalid: true,
+          },
+        ],
+      ),
     );
-    expect(personMd).toContain("look at the photo");
-    expect(personMd).toContain("copy an entry");
-    expect(personMd).toContain("belongs in the final record at `sections[0].scaffolds[]`");
-    expect(personMd).toContain("insert before `examples[0].steps[1]`");
-    expect(personMd).toContain("must be added first");
-    expect(personMd).toContain("write the value");
+    const invalidLine =
+      "- sample:M:6a: kept as it is, but the file is not a valid record now. Correct it, then run reference:check for this page.";
+    expect(invalidKeptMd).toContain(invalidLine);
+    // Remove only the single documented exemption line; the rest of the report must contain no instruction.
+    const withoutExemption = invalidKeptMd.replace(invalidLine, "");
+    for (const phrase of REVIEW_INSTRUCTION_PHRASES) {
+      expect(withoutExemption, `outside exemption must not contain "${phrase}"`).not.toContain(phrase);
+    }
   });
 
   it("renders reader B neighbour positions for reader-B-only items and topics with the same text on every status", () => {
