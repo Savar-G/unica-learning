@@ -58,3 +58,4 @@ Use one work folder for the level: `~/unica-reference/level-<LEVEL>` (for exampl
 8. **Load into the database, only when the person asks.** It needs `SUPABASE_URL` and `SUPABASE_SECRET_KEY`. When both are in the repository's `.env.local`, load that file for the command. Never print the key. Run a dry run first and show its summary:
    `node --env-file=.env.local scripts/reference-import.mjs --records <work>/run/final --photos <work>/run/photos --dry-run`
    Then run the same command without `--dry-run`. A second run changes nothing for a page that is already loaded.
+   When the level was loaded before and was read again, the rows are already in the table and a plain run leaves them as they are (`skipped_different`). Then add `--replace` to both commands: run `--dry-run --replace` first, show the person the rows it would replace and each status that would go down, and run without `--dry-run` only after the person agrees. `--replace` never deletes a row or a photo.
