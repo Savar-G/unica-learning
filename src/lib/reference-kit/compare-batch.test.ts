@@ -3146,6 +3146,16 @@ describe("compareWorkFolder", () => {
       ["pages = [null, valid]", (valid) => JSON.stringify({ pages: [null, valid] })],
       ['pages = "x"', () => JSON.stringify({ pages: "x" })],
       ["not JSON", () => "{ bad"],
+      ["row is a number", () => JSON.stringify({ pages: [42] })],
+      ["row is a list", () => JSON.stringify({ pages: [["sample:M:3a"]] })],
+      ["hash with no source_ref", (valid) => JSON.stringify({ pages: [{ ...valid, source_ref: undefined }] })],
+      ["source_ref is a number", (valid) => JSON.stringify({ pages: [{ ...valid, source_ref: 3 }] })],
+      ["no source_ref and no hash", () => JSON.stringify({ pages: [{}] })],
+      ["hash is a number", (valid) => JSON.stringify({ pages: [{ ...valid, final_record_sha256: 7 }] })],
+      [
+        "two hashes for one page",
+        (valid) => JSON.stringify({ pages: [valid, { ...valid, final_record_sha256: "0".repeat(64) }] }),
+      ],
     ];
     for (const [name, reportText] of stopCases) {
       const work = setUpEditedWork();
@@ -3167,8 +3177,8 @@ describe("compareWorkFolder", () => {
       ["pages absent", {}],
       ["pages null", { pages: null }],
       ["pages empty", { pages: [] }],
-      ["row is a number", { pages: [42] }],
       ["row without a hash", { pages: [{ source_ref: "sample:M:3a" }] }],
+      ["row with a null hash", { pages: [{ source_ref: "sample:M:3a", final_record_sha256: null }] }],
     ];
     for (const [name, report] of continueCases) {
       const work = setUpEditedWork();

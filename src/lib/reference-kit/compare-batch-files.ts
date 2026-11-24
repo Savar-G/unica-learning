@@ -9,7 +9,6 @@ import {
 import { fileSlugFromRef } from "./answers";
 import type { PageStatus } from "./compare";
 import { pairDigest, readJsonIfExists, type PairedPage } from "./compare-pairing";
-import type { CompareWorkReport } from "./compare-report-types";
 import { parsePhotosManifest, PHOTOS_MANIFEST_FILE } from "./prepare";
 
 export function readStoredSourceRef(filePath: string): string | null {
@@ -51,13 +50,19 @@ export function loadExistingFinalRecord(filePath: string): ReferenceRecord | nul
 export function loadPreviousHashes(reportPath: string): Map<string, string> {
   const hashes = new Map<string, string>();
   try {
-    const pages = readJsonIfExists<Partial<CompareWorkReport>>(reportPath)?.pages ?? [];
+    const pages: unknown = readJsonIfExists<{ pages?: unknown }>(reportPath)?.pages ?? [];
     if (!Array.isArray(pages)) throw new Error("pages is not a list");
-    for (const page of pages) {
-      if (typeof page.final_record_sha256 === "string") {
-        hashes.set(page.source_ref, page.final_record_sha256);
+    pages.forEach((page: unknown, i) => {
+      const row = (page ?? {}) as { source_ref?: unknown; final_record_sha256?: unknown };
+      const hash = row.final_record_sha256 ?? null;
+      if (typeof row.source_ref !== "string") throw new Error(`pages[${i}] has no source_ref`);
+      if (hash === null) return;
+      if (typeof hash !== "string") throw new Error(`pages[${i}] has a hash that is not text`);
+      if ((hashes.get(row.source_ref) ?? hash) !== hash) {
+        throw new Error(`pages[${i}] gives a second hash for ${row.source_ref}`);
       }
-    }
+      hashes.set(row.source_ref, hash);
+    });
   } catch (err) {
     throw new Error(
       `Malformed previous report ${reportPath}: ${err instanceof Error ? err.message : String(err)}`,
