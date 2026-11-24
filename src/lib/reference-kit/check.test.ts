@@ -290,6 +290,56 @@ describe("checkAndMarkPage", () => {
     });
   });
 
+  it("accepts a sole work_area decimal answer on an inexact division and still stops on a wrong exact sum", () => {
+    const divPage = makeFinalPage();
+    divPage.sections[0].items = [
+      {
+        n: 1,
+        printed: "7 / 2",
+        form: "horizontal",
+        expr: { kind: "arith", op: "div", operands: [7, 2] },
+        responses: [{ position: "work_area", cue: null, answer: "3.5", answer_source: "reader" }],
+      },
+    ];
+    const okRun = setUpWork(divPage);
+    const result = checkAndMarkPage({
+      workDir: okRun.work,
+      page: "sample:M:3a",
+      repoRoot: okRun.repo,
+      photoCompared: true,
+    });
+    expect(result.notes).toEqual([]);
+    const saved = JSON.parse(readFileSync(join(okRun.finalDir, "sample-M-3a.json"), "utf8")) as PageRecord;
+    expect(saved.sections[0].items[0].responses[0]).toEqual({
+      position: "work_area",
+      cue: null,
+      answer: "3.5",
+      answer_source: "reader",
+    });
+
+    const wrongSumPage = makeFinalPage();
+    wrongSumPage.sections[0].items = [
+      {
+        n: 1,
+        printed: "2 + 3",
+        form: "horizontal",
+        expr: { kind: "arith", op: "add", operands: [2, 3] },
+        responses: [{ position: "work_area", cue: null, answer: "6", answer_source: "reader" }],
+      },
+    ];
+    const badRun = setUpWork(wrongSumPage);
+    const beforeBad = readFileSync(join(badRun.finalDir, "sample-M-3a.json"), "utf8");
+    expect(() =>
+      checkAndMarkPage({
+        workDir: badRun.work,
+        page: "sample:M:3a",
+        repoRoot: badRun.repo,
+        photoCompared: true,
+      }),
+    ).toThrow(/reader gave "6", computed "5"/);
+    expectNothingWritten(badRun.finalDir, beforeBad);
+  });
+
   it("refuses an invalid edited record without modifying status.json", () => {
     const repo = mkdtempSync(join(tmpdir(), "ref-chk-repo-"));
     const work = mkdtempSync(join(tmpdir(), "ref-chk-work-"));

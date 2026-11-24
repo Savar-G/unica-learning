@@ -563,4 +563,56 @@ describe("applyComputedAnswers", () => {
     expect(pairedResult.details).toEqual([]);
     expect(findEmptyAnswers(pairedResult.record)).toEqual([]);
   });
+
+  it("keeps the stored answer for a sole work_area on an inexact division while still computing exact results", () => {
+    const decimalDiv = makePageWithItem({
+      n: 1,
+      printed: "7 / 2",
+      form: "horizontal",
+      expr: { kind: "arith", op: "div", operands: [7, 2] },
+      responses: [{ position: "work_area", cue: null, answer: "3.5", answer_source: "reader" }],
+    });
+    const decimalOut = applyComputedAnswers(decimalDiv);
+    expect(decimalOut.record).toEqual(decimalDiv);
+    expect(decimalOut.details).toEqual([]);
+    expect(findEmptyAnswers(decimalOut.record)).toEqual([]);
+
+    // An empty sole work_area on an inexact division stays null and still counts as an empty answer.
+    const emptyInexactDiv = makePageWithItem({
+      n: 1,
+      printed: "7 / 2",
+      form: "horizontal",
+      expr: { kind: "arith", op: "div", operands: [7, 2] },
+      responses: [{ position: "work_area", cue: null, answer: null, answer_source: "unchecked" }],
+    });
+    const emptyOut = applyComputedAnswers(emptyInexactDiv);
+    expect(emptyOut.record).toEqual(emptyInexactDiv);
+    expect(emptyOut.details).toEqual([]);
+    expect(findEmptyAnswers(emptyOut.record)).toEqual(["sections[0].items[n=1].responses[0]"]);
+
+    // Exact division and exact addition in a sole work_area still compute and flag wrong stored answers.
+    const exactDiv = makePageWithItem({
+      n: 2,
+      printed: "8 / 2",
+      form: "horizontal",
+      expr: { kind: "arith", op: "div", operands: [8, 2] },
+      responses: [{ position: "work_area", cue: null, answer: null, answer_source: "unchecked" }],
+    });
+    const exactDivOut = applyComputedAnswers(exactDiv);
+    if (exactDivOut.record.kind !== "page") throw new Error("page expected");
+    expect(exactDivOut.record.sections[0].items[0].responses).toEqual([
+      { position: "work_area", cue: null, answer: "4", answer_source: "computed" },
+    ]);
+    expect(exactDivOut.details).toEqual([]);
+
+    const wrongSum = makePageWithItem({
+      n: 3,
+      printed: "2 + 3",
+      form: "horizontal",
+      expr: { kind: "arith", op: "add", operands: [2, 3] },
+      responses: [{ position: "work_area", cue: null, answer: "6", answer_source: "reader" }],
+    });
+    const wrongSumOut = applyComputedAnswers(wrongSum);
+    expect(wrongSumOut.details.map((d) => d.kind)).toEqual(["answer_differs"]);
+  });
 });

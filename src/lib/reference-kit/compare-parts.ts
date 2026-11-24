@@ -38,6 +38,7 @@ export interface RecordDifference {
 export type FieldCompareMode = "exact" | "prose" | "notation";
 
 const NUMERIC_TOKEN_RE = /\d+(?:\.\d+)?/g;
+const MATH_SYMBOL_RE = /<=|>=|[+\-\u2212\u00D7\u00F7/=<>\u2264\u2265\u2260%^\u221A]/g;
 
 function sameNumericTokens(a: string, b: string): boolean {
   const numsA = a.match(NUMERIC_TOKEN_RE) ?? [];
@@ -45,9 +46,17 @@ function sameNumericTokens(a: string, b: string): boolean {
   return numsA.length === numsB.length && numsA.every((n, idx) => n === numsB[idx]);
 }
 
-function concreteProse(value: unknown): string | null {
-  if (typeof value !== "string" || value === UNCLEAR || value === NOT_STATED) return null;
-  return normalizeProseText(value);
+function canonicalMathSymbol(sym: string): string {
+  if (sym === "\u2212") return "-";
+  if (sym === "<=") return "\u2264";
+  if (sym === ">=") return "\u2265";
+  return sym;
+}
+
+function sameMathSymbols(a: string, b: string): boolean {
+  const symsA = (a.match(MATH_SYMBOL_RE) ?? []).map(canonicalMathSymbol);
+  const symsB = (b.match(MATH_SYMBOL_RE) ?? []).map(canonicalMathSymbol);
+  return symsA.length === symsB.length && symsA.every((s, idx) => s === symsB[idx]);
 }
 
 function isEmptyField(value: unknown): boolean {
@@ -137,7 +146,10 @@ export function compareField(
           ? normalizeNotationText(b)
           : b.trim();
     if (normA !== normB) {
-      const kind: DiffKind = opts.wording && sameNumericTokens(normA, normB) ? "wording" : "value";
+      const kind: DiffKind =
+        opts.wording && sameNumericTokens(normA, normB) && sameMathSymbols(normA, normB)
+          ? "wording"
+          : "value";
       diffs.push({ path, a, b, kind });
     }
     return;
@@ -396,29 +408,8 @@ function compareSingleScaffold(
     }
     case "arrow": {
       const bb = b as typeof a;
-      const aFrom = concreteProse(a.from);
-      const aTo = concreteProse(a.to);
-      const bFrom = concreteProse(bb.from);
-      const bTo = concreteProse(bb.to);
-      if (
-        aFrom !== null &&
-        aTo !== null &&
-        bFrom !== null &&
-        bTo !== null &&
-        aFrom !== aTo &&
-        aFrom === bTo &&
-        aTo === bFrom
-      ) {
-        diffs.push({
-          path,
-          a: { from: a.from, to: a.to },
-          b: { from: bb.from, to: bb.to },
-          kind: "value",
-        });
-      } else {
-        compareField(`${path}.from`, a.from, bb.from, { teaching: true, mode: "prose", wording: true }, diffs);
-        compareField(`${path}.to`, a.to, bb.to, { teaching: true, mode: "prose", wording: true }, diffs);
-      }
+      compareField(`${path}.from`, a.from, bb.from, { teaching: true, mode: "prose" }, diffs);
+      compareField(`${path}.to`, a.to, bb.to, { teaching: true, mode: "prose" }, diffs);
       compareField(`${path}.label`, a.label, bb.label, { teaching: true, mode: "prose" }, diffs);
       return;
     }

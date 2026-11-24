@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -825,6 +826,91 @@ describe("compareWorkFolder", () => {
     expect(() =>
       checkAndMarkPage({ workDir: work, page: "sample:M:4a", repoRoot: repo, photoCompared: true }),
     ).toThrow(/Answer places with no answer/);
+  });
+
+  it("writes computed answers into the final record, hashes the written bytes, and leaves kept records untouched", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-cmp-comp-repo-"));
+    const work = mkdtempSync(join(tmpdir(), "ref-cmp-comp-work-"));
+    tempDirs.push(repo, work);
+
+    const makeNullWorkAreaPage = (sourceRef: string, readerTag: string): PageRecord =>
+      makePage({
+        source_ref: sourceRef,
+        readers: [readerTag],
+        sections: [
+          {
+            instruction: "Add the numbers.",
+            scaffolds: [],
+            items: [
+              {
+                n: 1,
+                printed: "2 + 3",
+                form: "horizontal",
+                expr: { kind: "arith", op: "add", operands: [2, 3] },
+                responses: [{ position: "work_area", cue: null, answer: null, answer_source: "unchecked" }],
+              },
+            ],
+          },
+        ],
+      });
+
+    for (const [slot, family, tag] of [
+      ["a", "claude", "claude:c1"],
+      ["b", "codex", "codex:x1"],
+    ] as const) {
+      const dir = join(work, `reader-${slot}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "reader.json"), JSON.stringify({ family, model: "m1" }));
+      writeFileSync(join(dir, "sample-M-3a.json"), JSON.stringify(makeNullWorkAreaPage("sample:M:3a", tag), null, 2));
+      writeFileSync(
+        join(dir, "run.json"),
+        JSON.stringify({
+          slot,
+          reader: { family, model: "m1" },
+          source: "sample",
+          photos: [
+            {
+              photo: `${SHA_1.slice(0, 12)}.jpg`,
+              photo_sha256: SHA_1,
+              status: "ok",
+              source_ref: "sample:M:3a",
+              record_file: "sample-M-3a.json",
+              notes: [],
+            },
+          ],
+        }),
+      );
+    }
+
+    const report = compareWorkFolder({ workDir: work, repoRoot: repo });
+    expect(report.pages).toHaveLength(1);
+    expect(report.pages[0].status).toBe("double_read");
+    expect(report.pages[0].empty_answer).toEqual([]);
+
+    const finalPath = join(work, "final", "sample-M-3a.json");
+    const writtenBytes = readFileSync(finalPath);
+    const writtenRecord = JSON.parse(writtenBytes.toString("utf8")) as PageRecord;
+    expect(writtenRecord.sections[0].items[0].responses).toEqual([
+      { position: "work_area", cue: null, answer: "5", answer_source: "computed" },
+    ]);
+    expect(report.pages[0].final_record_sha256).toBe(
+      createHash("sha256").update(writtenBytes).digest("hex"),
+    );
+    expect(readFileSync(join(work, "final-view", "sample-M-3a.md"), "utf8")).toContain("**5** (computed)");
+
+    // Re-running compare recognizes its own written bytes and does not mark the file edited_by_person.
+    const second = compareWorkFolder({ workDir: work, repoRoot: repo });
+    expect(second.pages[0].edited_by_person).toBeUndefined();
+    expect(second.pages[0].status).toBe("double_read");
+
+    // A record edited by a person (even with null answer on a computable item) is never rewritten.
+    const edited = makeNullWorkAreaPage("sample:M:3a", "claude:c1");
+    const editedText = JSON.stringify(edited, null, 2);
+    writeFileSync(finalPath, editedText);
+    const afterEdit = compareWorkFolder({ workDir: work, repoRoot: repo });
+    expect(afterEdit.pages[0].edited_by_person).toBe(true);
+    expect(afterEdit.pages[0].status).toBe("machine_read");
+    expect(readFileSync(finalPath, "utf8")).toBe(editedText);
   });
 });
 

@@ -189,8 +189,11 @@ describe("REFERENCE_READ_PROMPT", () => {
     expect(REFERENCE_READ_PROMPT).toMatch(/Do not write "unclear" because the item is notation/);
     expect(REFERENCE_READ_PROMPT).toMatch(/system of equations as ONE item.*\\begin\{cases\}/);
     expect(REFERENCE_READ_PROMPT).toMatch(/Use `linked` only for two separate questions/);
-    expect(REFERENCE_READ_PROMPT).toMatch(/An "=" printed at the end of a question with open space after it is an answer place.*position "after_equals"/);
-    expect(REFERENCE_READ_PROMPT).toMatch(/Use "work_area" as the only response only when no "=" and no other answer place is printed/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/When the question ends with an "=" followed by open space.*position "after_equals"/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/When no answer place is printed and the question does not end with "=".*position "work_area"/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/Solve 2x \+ 1 = 5/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/when no answer place is printed and the question does not end with "="/);
+    expect(REFERENCE_READ_PROMPT).not.toMatch(/when no "=" and no other answer place/);
     expect(REFERENCE_READ_PROMPT).toMatch(/"work_area" response with answer null and answer_source "unchecked"/);
     expect(REFERENCE_READ_PROMPT).toMatch(/When you cannot work the answer out.*write the answer as "unclear"/);
     expect(REFERENCE_READ_PROMPT).toMatch(/`cue` is words or an expression printed directly before the answer place/);

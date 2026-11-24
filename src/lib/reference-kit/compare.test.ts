@@ -1186,7 +1186,7 @@ describe("worked-example step alignment and wording differences", () => {
           parts: [{ caption: "First part", form: "horizontal", expr: null }],
           steps: [{ n: 1, shows: "other", shows_other: "Rewrite with common denominator", printed: "2/4 + 1/4", note: "Match bottoms" }],
           marks: [
-            { kind: "arrow", step: 1, description: "Points from 2 to 4" },
+            { kind: "circle", step: 1, description: "Circle around 2 and 4" },
             { kind: "label", step: 1, description: "LCD" },
           ],
         },
@@ -1203,7 +1203,7 @@ describe("worked-example step alignment and wording differences", () => {
           parts: [{ caption: "First part", form: "horizontal", expr: null }],
           steps: [{ n: 1, shows: "other", shows_other: "Convert fractions to fourths", printed: "2/4 + 1/4", note: "Match bottoms" }],
           marks: [
-            { kind: "arrow", step: 1, description: "Curved arrow from 2 down to 4" },
+            { kind: "circle", step: 1, description: "Ring enclosing 2 and 4" },
             { kind: "label", step: 1, description: "LCD" },
           ],
         },
@@ -1238,7 +1238,7 @@ describe("worked-example step alignment and wording differences", () => {
       { kind: "partial_working", applies_to: [1], description: "Opening line printed in grey" },
       { kind: "worked_item", applies_to: [2], description: "Solved example in item 2" },
       { kind: "other", applies_to: [3], description: "Dashed horizontal rule" },
-      { kind: "arrow", applies_to: [1], from: "first fraction", to: "lower box", label: "x2" },
+      { kind: "arrow", applies_to: [1], from: "top fraction", to: "bottom box", label: "x2" },
       { kind: "caption", applies_to: [1], text: "Reduce", target: "beside the result" },
       { kind: "table_read_aloud", applies_to: "all", has_checkbox: true, caption_style: "shaded top strip" },
       { kind: "answer_boxes", applies_to: [1], places: ["top box", "bottom box"] },
@@ -1256,8 +1256,6 @@ describe("worked-example step alignment and wording differences", () => {
       "sections[0].scaffolds[1].description",
       "sections[0].scaffolds[2].description",
       "sections[0].scaffolds[3].description",
-      "sections[0].scaffolds[4].from",
-      "sections[0].scaffolds[4].to",
       "sections[0].scaffolds[5].target",
       "sections[0].scaffolds[6].caption_style",
       "sections[0].scaffolds[7].places[0]",
@@ -1295,7 +1293,7 @@ describe("worked-example step alignment and wording differences", () => {
       blockB.sections[0].scaffolds.push({ kind: "equation_frame", applies_to: [1], template: "□ - □ = □" });
       blockA.sections[0].scaffolds[7] = { kind: "answer_boxes", applies_to: [1], places: ["tens", "ones"] };
       blockB.sections[0].scaffolds[7] = { kind: "answer_boxes", applies_to: [1], places: ["tens", "first box"] };
-      blockB.sections[0].scaffolds[4] = { kind: "arrow", applies_to: [1], from: "first fraction", to: "lower box", label: "x3" };
+      blockB.sections[0].scaffolds[4] = { kind: "arrow", applies_to: [1], from: "top fraction", to: "bottom box", label: "x3" };
       blockB.sections[0].scaffolds[5] = { kind: "caption", applies_to: [1], text: "Simplify", target: "beside the result" };
     }
     const blockingDiffs = classifyComparison(blockA, blockB).differences;
@@ -1338,8 +1336,8 @@ describe("worked-example step alignment and wording differences", () => {
           parts: [{ form: "horizontal", expr: null }],
           steps: [{ n: 1, shows: "setup", printed: "2 + 3 = 5" }],
           marks: [
-            { kind: "arrow", step: 1, description: "First arrow from 2" },
-            { kind: "arrow", step: 1, description: "Second arrow from 3" },
+            { kind: "circle", step: 1, description: "First circle on 2" },
+            { kind: "circle", step: 1, description: "Second circle on 3" },
           ],
         },
       ],
@@ -1353,8 +1351,8 @@ describe("worked-example step alignment and wording differences", () => {
           parts: [{ form: "horizontal", expr: null }],
           steps: [{ n: 1, shows: "setup", printed: "2 + 3 = 5" }],
           marks: [
-            { kind: "arrow", step: 1, description: "Curved arrow leaving 2" },
-            { kind: "arrow", step: 1, description: "Curved arrow leaving 3" },
+            { kind: "circle", step: 1, description: "Ring enclosing 2" },
+            { kind: "circle", step: 1, description: "Ring enclosing 3" },
           ],
         },
       ],
@@ -1377,8 +1375,8 @@ describe("worked-example step alignment and wording differences", () => {
     expect(summary.once_read).toEqual([]);
     expect(summary.wording).toHaveLength(6);
     expect(summary.wording.map((d) => [d.path, d.a, d.b])).toEqual([
-      ["examples[0].marks[0].description", "First arrow from 2", "Curved arrow leaving 2"],
-      ["examples[0].marks[1].description", "Second arrow from 3", "Curved arrow leaving 3"],
+      ["examples[0].marks[0].description", "First circle on 2", "Ring enclosing 2"],
+      ["examples[0].marks[1].description", "Second circle on 3", "Ring enclosing 3"],
       ["sections[0].scaffolds[0].description", "Carry slot in tens", "Small tens carry"],
       ["sections[0].scaffolds[1].description", "Carry slot in hundreds", "Small hundreds carry"],
       ["sections[0].scaffolds[2].target", "top right", "upper right"],
@@ -1386,7 +1384,7 @@ describe("worked-example step alignment and wording differences", () => {
     ]);
   });
 
-  it("blocks wording when numbers differ, when arrow from/to are swapped, or when fractional place names appear", () => {
+  it("blocks wording when numbers or math symbols differ, on arrow direction fields, or when fractional place names appear", () => {
     const statusOf = (a: PageRecord, b: PageRecord) =>
       decideStatus({
         hasA: true,
@@ -1425,29 +1423,98 @@ describe("worked-example step alignment and wording differences", () => {
       },
     ]);
 
-    // Probe 1b: arrow with swapped from and to produces one blocking value diff on the arrow
-    const arrowA = makePage();
-    const arrowB = makePage();
-    arrowA.sections[0].scaffolds = [{ kind: "arrow", applies_to: [1], from: "Tens place", to: "Ones place" }];
-    arrowB.sections[0].scaffolds = [{ kind: "arrow", applies_to: [1], from: "ones place.", to: "tens place" }];
-    expect(compareRecords(arrowA, arrowB)).toEqual([
+    // Probe 1b: different math symbols in a wording field block double_read
+    const opA = makePage();
+    const opB = makePage();
+    opA.sections[0].scaffolds = [{ kind: "partial_working", applies_to: [1], description: "The first line shows 2 + 3" }];
+    opB.sections[0].scaffolds = [{ kind: "partial_working", applies_to: [1], description: "The first line shows 2 \u00D7 3" }];
+    expect(compareRecords(opA, opB)).toEqual([
       {
-        path: "sections[0].scaffolds[0]",
-        a: { from: "Tens place", to: "Ones place" },
-        b: { from: "ones place.", to: "tens place" },
+        path: "sections[0].scaffolds[0].description",
+        a: "The first line shows 2 + 3",
+        b: "The first line shows 2 \u00D7 3",
         kind: "value",
       },
     ]);
+    expect(statusOf(opA, opB)).toBe("machine_read");
+
+    // Symbol mismatches across the full symbol set and symbol order are blocking; equivalent forms stay wording
+    const blockSymbolPairs: Array<[string, string]> = [
+      ["Line shows 6 \u00F7 2", "Line shows 6 / 2"],
+      ["Shows a < b", "Shows a \u2264 b"],
+      ["Shows a > b", "Shows a \u2265 b"],
+      ["Shows a = b", "Shows a \u2260 b"],
+      ["Shows 25% shaded", "Shows 25 shaded"],
+      ["Shows 2^3", "Shows 2 + 3"],
+      ["Shows \u221A9", "Shows 9"],
+      ["Shows 2 + 3 - 1", "Shows 2 - 3 + 1"],
+    ];
+    for (const [descA, descB] of blockSymbolPairs) {
+      const sa = makePage();
+      const sb = makePage();
+      sa.sections[0].scaffolds = [{ kind: "partial_working", applies_to: [1], description: descA }];
+      sb.sections[0].scaffolds = [{ kind: "partial_working", applies_to: [1], description: descB }];
+      expect(compareRecords(sa, sb), `${descA} vs ${descB}`).toEqual([
+        { path: "sections[0].scaffolds[0].description", a: descA, b: descB, kind: "value" },
+      ]);
+      expect(statusOf(sa, sb), `${descA} vs ${descB}`).toBe("machine_read");
+    }
+
+    const wordingSymbolPairs: Array<[string, string]> = [
+      ["First line shows x - 1", "Top line prints x \u2212 1"],
+      ["Box checks a <= b", "Frame tests a \u2264 b"],
+      ["Box checks a >= b", "Frame tests a \u2265 b"],
+      ["Letter x beside 2 + 3", "Variable x next to 2 + 3"],
+    ];
+    for (const [descA, descB] of wordingSymbolPairs) {
+      const sa = makePage();
+      const sb = makePage();
+      sa.sections[0].scaffolds = [{ kind: "partial_working", applies_to: [1], description: descA }];
+      sb.sections[0].scaffolds = [{ kind: "partial_working", applies_to: [1], description: descB }];
+      expect(compareRecords(sa, sb), `${descA} vs ${descB}`).toEqual([
+        { path: "sections[0].scaffolds[0].description", a: descA, b: descB, kind: "wording" },
+      ]);
+      expect(statusOf(sa, sb), `${descA} vs ${descB}`).toBe("double_read");
+    }
+
+    // Probe 1c: arrow scaffold from/to are blocking prose (even when reworded in opposite direction)
+    const arrowA = makePage();
+    const arrowB = makePage();
+    arrowA.sections[0].scaffolds = [{ kind: "arrow", applies_to: [1], from: "left box", to: "right box" }];
+    arrowB.sections[0].scaffolds = [{ kind: "arrow", applies_to: [1], from: "box on the right", to: "box on the left" }];
+    expect(compareRecords(arrowA, arrowB)).toEqual([
+      { path: "sections[0].scaffolds[0].from", a: "left box", b: "box on the right", kind: "value" },
+      { path: "sections[0].scaffolds[0].to", a: "right box", b: "box on the left", kind: "value" },
+    ]);
     expect(statusOf(arrowA, arrowB)).toBe("machine_read");
 
-    // Equal from and to on both readers is not a swap
+    // Equal from and to on both readers agree
     const sameEndA = makePage();
     const sameEndB = makePage();
     sameEndA.sections[0].scaffolds = [{ kind: "arrow", applies_to: [1], from: "tens", to: "tens" }];
     sameEndB.sections[0].scaffolds = [{ kind: "arrow", applies_to: [1], from: "tens", to: "tens" }];
     expect(compareRecords(sameEndA, sameEndB)).toEqual([]);
 
-    // Probe 1c: fractional place names in answer_boxes.places are blocking value diffs
+    // Probe 1d: worked-example mark of kind arrow blocks on differing description (even with no numbers)
+    const arrowMarkA = pageWithExample(
+      [{ n: 1, shows: "setup", printed: "2 + 3 = 5" }],
+      [{ kind: "arrow", step: 1, description: "Points from left box to right box" }],
+    );
+    const arrowMarkB = pageWithExample(
+      [{ n: 1, shows: "setup", printed: "2 + 3 = 5" }],
+      [{ kind: "arrow", step: 1, description: "Points from right box to left box" }],
+    );
+    expect(compareRecords(arrowMarkA, arrowMarkB)).toEqual([
+      {
+        path: "examples[0].marks[0].description",
+        a: "Points from left box to right box",
+        b: "Points from right box to left box",
+        kind: "value",
+      },
+    ]);
+    expect(statusOf(arrowMarkA, arrowMarkB)).toBe("machine_read");
+
+    // Probe 1e: fractional place names in answer_boxes.places are blocking value diffs
     for (const [placesA, placesB] of [
       [["tenths"], ["hundredths"]],
       [["tenth place"], ["thousandths digit"]],

@@ -9,7 +9,7 @@ import {
   writeSafeOutputFile,
   type ReferenceRecord,
 } from "@/lib/reference-record";
-import { fileSlugFromRef } from "./answers";
+import { applyComputedAnswers, fileSlugFromRef } from "./answers";
 import {
   classifyComparison,
   collectUnnamedTeachingMarks,
@@ -304,13 +304,14 @@ export function compareWorkFolder(opts: {
       continue;
     }
 
-    const finalRecord = withBothReaders(chosen, pair);
+    const finalRecord = applyComputedAnswers(withBothReaders(chosen, pair)).record;
+    const finalEmptyAnswers = emptyAnswerDiffs(finalRecord, pair.recA, pair.recB);
     const status = decideStatus({
       hasA: pair.recA !== null,
       hasB: pair.recB !== null,
       familyA: slotA.meta?.family ?? null,
       familyB: slotB.meta?.family ?? null,
-      diffs: [...allDiffs, ...emptyAnswerDiffs(finalRecord, pair.recA, pair.recB)],
+      diffs: [...allDiffs, ...finalEmptyAnswers],
       sameDigest: pair.sameDigest,
     });
 
@@ -357,7 +358,7 @@ export function compareWorkFolder(opts: {
       one_unclear: classified.one_unclear,
       empty_answer: editedByPerson
         ? emptyAnswerDiffs(editedRecord, pair.recA, pair.recB)
-        : emptyAnswerDiffs(finalRecord, pair.recA, pair.recB),
+        : finalEmptyAnswers,
       needs_person_read: classified.needs_person_read,
       unnamed_teaching_marks: unnamedTeachingMarks,
       reader_notes: { a: pair.notesA, b: pair.notesB },

@@ -201,12 +201,13 @@ function compareSingleMark(
 ): void {
   compareField(`${path}.kind`, a.kind, b.kind, {}, diffs);
   compareField(`${path}.step`, a.step, b.step, { teaching: true }, diffs);
-  const isLabel = a.kind === "label" || b.kind === "label";
+  const blocksWording =
+    a.kind === "label" || b.kind === "label" || a.kind === "arrow" || b.kind === "arrow";
   compareField(
     `${path}.description`,
     a.description,
     b.description,
-    { teaching: true, mode: "prose", wording: !isLabel },
+    { teaching: true, mode: "prose", wording: !blocksWording },
     diffs,
   );
 }

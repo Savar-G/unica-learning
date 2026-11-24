@@ -109,9 +109,13 @@ function isConcreteAnswer(answer: ItemResponse["answer"]): answer is string {
   );
 }
 
+function isSoleWorkArea(item: PageItem, resp: ItemResponse): boolean {
+  return item.expr !== null && item.responses.length === 1 && resp.position === "work_area";
+}
+
 function isAnswerBearingResponse(item: PageItem, resp: ItemResponse): boolean {
   if (!NON_ANSWER_POSITIONS.has(resp.position)) return true;
-  return item.expr !== null && item.responses.length === 1 && resp.position === "work_area";
+  return isSoleWorkArea(item, resp);
 }
 
 function hasNoPlace(resp: ItemResponse): boolean {
@@ -249,6 +253,10 @@ function planItemAnswers(
   if (computed.kind === "single") {
     if (answerIndices.length === 1) {
       const only = answerIndices[0];
+      // A sole work_area on an inexact division may expect a decimal or a remainder; keep the stored answer.
+      if (isSoleWorkArea(item, item.responses[only]) && (computed.remainder ?? 0) > 0) {
+        return { kind: "none" };
+      }
       const power = decimalPlacePower(item.responses[only].place);
       if (power === null) {
         return { kind: "fill", values: new Map([[only, computed.value]]), unreached: [] };
