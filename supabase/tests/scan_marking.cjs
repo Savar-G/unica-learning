@@ -343,5 +343,52 @@ const copy = v => JSON.parse(JSON.stringify(v));
    await a.query('commit');assert.equal((await pending).rows[0].v.status,'started');
   }finally{await db.query('rollback');await a.query('rollback');await a.end();await b.end();}
  });
+ await test('an unfinished-page retake queues held questions before an off pause and preserves final marks', async () => {
+  await db.query(sql('20261114193803_scan_edge_limits_and_blank_pages.sql'));
+  await db.query(sql('20261114200240_scan_marking_no_blank_reread.sql'));
+  const migration = sql('20261124013816_scan_claim_retake_holds.sql');
+  await db.query(migration);
+  await db.query(migration);
+
+  const f = await fixture();
+  const automatic = async (action, photo, token, data) => (await db.query(
+    'select public.scan_marking_automatic_command($1,$2,$3,$4,$5) v', [action, f.p, photo, token, data],
+  )).rows[0].v;
+  const items = [1, 2, 3].map(number => {
+   const identity = { ...f.expected.identity, itemId: `item${number}` };
+   return { expected: { ...f.expected, number, identity }, observation: { ...f.observation, identity } };
+  });
+  for (const { expected } of items.slice(1)) await db.query(
+    'insert into workbook_questions(parent_id,workbook_id,page_id,question_number,package) values($1,$2,$3,$4,$5)',
+    [f.p, f.w, f.page, expected.number, { id: expected.identity.itemId }],
+  );
+  assert.equal((await automatic('claim', f.photo, f.token, { hash: f.hash, items })).items.length, 3);
+  assert.equal(await automatic('pause', f.photo, f.token, { status: 'unfinished' }), true);
+  const before = (await db.query('select * from scan_marking_items where page_id=$1 order by item_id', [f.page])).rows;
+  assert(before.every(row => row.owner_photo === null));
+  const final = { ...before[2].observation, state: 'scored', certainty: 'certain', result: 'right', resultVersion: 2 };
+  await db.query('update scan_marking_items set observation=$2,result_version=2 where id=$1', [before[2].id, final]);
+  await db.query('delete from scan_photos where id=$1', [f.photo]);
+  const photo = randomUUID(), token = randomUUID();
+  await db.query("insert into scan_photos(id,parent_id,child_id,page_id,workbook_id,printed_revision,state,reserved_bytes,width,height,sent_at) values($1,$2,$3,$4,$5,'immutable','saved',0,1000,1400,now())", [photo, f.p, f.c, f.page, f.w]);
+  await db.query("insert into scan_calibrations(photo_id,parent_id,printed_revision,state,lease_token,lease_until,result) values($1,$2,'immutable','ready',$3,now(),$4)", [photo, f.p, randomUUID(), { parts: ['straight'], sheetCheck: 1 }]);
+  const retake = items.map(({ expected, observation }) => ({
+   expected,
+   observation: { ...observation, evidence: { photoRevision: photo }, ...(expected.number === 2 ? {} : { issue: 'covered', certainty: 'uncertain' }) },
+  }));
+  const claim = await automatic('claim', photo, token, { hash: f.hash, items: retake });
+  assert.equal(claim.items[0].observation.issue, 'covered');
+  assert.equal(await automatic('pause', photo, token, { status: 'off' }), true);
+  const after = (await db.query('select * from scan_marking_items where page_id=$1 order by item_id', [f.page])).rows;
+  assert.equal(after[0].id, before[0].id);
+  assert.equal(after[0].model, null);
+  assert.equal(after[0].observation.certainty, 'uncertain');
+  assert.deepEqual(after[0].observation.evidence, { photoRevision: photo });
+  assert.equal(after[0].result_version, 2);
+  assert.equal(after[0].observation.resultVersion, 2);
+  assert.equal(after[1].observation.certainty, 'not-read');
+  assert.deepEqual(after[2].observation, final);
+  assert.equal(after[2].owner_photo, null);
+ });
  console.log(JSON.stringify({passed,failures,limits:{perTenMinutes:40,perDay:60,concurrentUploads:2,activeJobs:1,queuedJobs:8,inputBytes:20971520,decodedPixels:48000000,familyBytes:2147483648},proof:'local synthetic SQL, not hosted Storage API'}));await db.end();process.exitCode=failures?1:0;
 })().catch(e=>{console.error(e);process.exitCode=1});
