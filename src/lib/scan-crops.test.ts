@@ -444,12 +444,13 @@ describe("readable QR with hidden marks", () => {
   const corners = uprightCorners(size, { width: W, height: H }, 70);
   const code = { x: 90, y: 1430, width: 170, height: 170 };
   const answers = ANSWERS.map((a) => ({ ...a, box: { ...a.box, height: 225 } }));
-  const fixture = (other = false, written = false) => {
+  const fixture = (other = false, written = false, distant = false) => {
     const r = blankPage(W, H);
     for (const m of SCAN_MARKS) drawMark(r, m, POINTS[m]);
     drawPrintedContent(r);
     fillBox(r, 1010, 1430, 190, 190, 248);
     drawQr(r, code, pageUrl(other ? "other-page-token-001" : TOKEN));
+    if (distant) drawDigit(r, { x: 840, y: 123, width: 55, height: 49 }, other ? 8 : 2);
     for (const [i, a] of answers.entries()) {
       for (let k = 0; k < 4; k++) drawDigit(r, { x: a.box.x + 24 + k * 49, y: a.box.y - 56, width: 44, height: 42 }, other ? 8 - k : (k + i) % 4);
       // One answer has no printed outline. Its digits above it locate the box.
@@ -459,8 +460,8 @@ describe("readable QR with hidden marks", () => {
     return r;
   };
 
-  async function scan(sheet: ReturnType<typeof fixture>, cover = false, curl = 0) {
-    const printed = await pagePng(fixture());
+  async function scan(sheet: ReturnType<typeof fixture>, cover = false, curl = 0, distant = false) {
+    const printed = await pagePng(fixture(false, false, distant));
     const photo = photographed(sheet, size, corners, { shade: 0.12 });
     const folded = curl ? curled(photo, curl, { edge: "right", reach: 0.65 }) : photo;
     // The footer lies flat underneath the curl.
@@ -473,7 +474,7 @@ describe("readable QR with hidden marks", () => {
     m.printed.set("page.png", printed);
     if (cover) {
       m.photos.get(PHOTO)!.frame.page.others = ["other.png"];
-      m.printed.set("other.png", await pagePng(fixture(true)));
+      m.printed.set("other.png", await pagePng(fixture(true, false, distant)));
     }
     const preview = await runScanCrops(m.store, ref, token(1));
     return { m, preview, result: (await m.store.calibration(ref))?.result };
@@ -512,6 +513,16 @@ describe("readable QR with hidden marks", () => {
     expect(readDigit(await cropRaster(m, "crop-6", token(1)), cropCut(c.box), c.box)).toBe(far.digit);
   }, 30_000);
 
+  it("holds a frame beyond the snap window even when its horizontal stroke matches", async () => {
+    const sheet = fixture(false, true), far = answers[5];
+    hideRight(sheet);
+    fillBox(sheet, far.box.x - 3, far.box.y - 3, far.box.width + 20, far.box.height + 6, 248);
+    drawBoxOutline(sheet, { ...far.box, x: far.box.x + 12 });
+    const { result } = await scan(sheet);
+    expect(result?.held).toEqual([{ number: 6, issue: "alignment" }]);
+    expect(result?.crops?.map((c) => c.number)).toEqual([1, 2, 3, 4, 5]);
+  }, 30_000);
+
   it("holds only the questions under a same-template sheet (#975)", async () => {
     const sheet = fixture(false, true), other = fixture(true, true);
     for (let y = 0; y < H; y++) sheet.data.set(other.data.subarray(y * W + 790, (y + 1) * W), y * W + 790);
@@ -523,6 +534,15 @@ describe("readable QR with hidden marks", () => {
     for (const c of result!.crops!) {
       expect(readDigit(await cropRaster(m, c.part, token(1)), cropCut(c.box), c.box)).toBe(answers[c.number - 1].digit);
     }
+  }, 30_000);
+
+  it("keeps a localized hold and files the whole photo when another suspect spot has no question", async () => {
+    const sheet = fixture(false, true, true), other = fixture(true, true, true);
+    for (let y = 0; y < H; y++) sheet.data.set(other.data.subarray(y * W + 790, (y + 1) * W), y * W + 790);
+    hideRight(sheet);
+    const { preview, result } = await scan(sheet, true, 0, true);
+    expect(preview).toMatchObject({ status: "ready", original: true, crops: [] });
+    expect(result?.held?.map((h) => h.number)).toEqual([3, 6]);
   }, 30_000);
 
   it("files the code of an unplaceable curl with the original photo and no crops", async () => {

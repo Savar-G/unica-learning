@@ -198,7 +198,11 @@ export interface MarkingEscalation { model: string; prompt: string; items: strin
  */
 const SECOND_LOOK = " This is a second look at answers another reader could not read. Read them freshly from the image. In a number, fraction or text region, a value struck through with a line, with one clear value written beside, above or below it inside the same answer area, is a correction: transcribe only the clear value. If more than one value is left unstruck, or you cannot tell which value is final, report uncertain with issue multiple-marks.";
 function heldIssue(frame: MarkingFrame, number: number): ReadingIssue | undefined {
-  return frame.review ? "page-fit" : frame.held?.get(number) ?? (frame.cutOff?.includes(number) ? "cut-off" : undefined);
+  return frame.held?.get(number) ?? (frame.review ? "page-fit" : frame.cutOff?.includes(number) ? "cut-off" : undefined);
+}
+export function initialMarkingObservation(frame: MarkingFrame, e: ExpectedItem): Observation {
+  const first = firstObservation(e, frame.photo), issue = heldIssue(frame, e.number);
+  return issue ? { ...first, issue, certainty: "uncertain" } : first;
 }
 /** The request for some of the page's items only (their aliases stay those of the whole page). */
 export function markingRequestFor(frame: MarkingFrame, image: Uint8Array, itemIds: readonly string[], secondLook = false): AiJsonRequest {
@@ -226,7 +230,6 @@ export function mergeSecondLook(first: readonly Observation[], second: readonly 
   });
   return { observations, decided };
 }
-/** The comparison uses the production prompt and aliases, with no truth or answer keys. */
 export function markingRequest(frame: MarkingFrame, image: Uint8Array): AiJsonRequest {
   return request(image, aliases(frame, expectedItems(frame)).filter(a => a.expected.method === "code" && !heldIssue(frame, a.expected.number)));
 }
@@ -257,7 +260,6 @@ const normalizedWords = (text: string) => text.trim().replace(/\s+/g, " ").toLow
 export function currentSheetCheck(result: unknown): boolean {
   return object(result) && typeof result.sheetCheck === "number" && Number.isFinite(result.sheetCheck) && result.sheetCheck >= MARKING_SHEET_CHECK_VERSION;
 }
-/** Keep held regions pending for team review. */
 function heldRegion(a: Alias, issue: ReadingIssue): RegionReading {
   return { regionId: a.regionId, text: null, value: null, certainty: "uncertain", result: null, issue, ...(a.kind === "method" ? { verdict: null, verdictReason: null, methodKind: null } : {}) };
 }
@@ -320,14 +322,13 @@ function twoWaysText(group: readonly Alias[], regions: readonly RegionReading[])
   const methods = regions.filter((_, n) => group[n].kind === "method").map((r, n) => `Method ${n + 1}: ${r.text ?? "Not read"}`);
   return [...answer, ...methods].join("; ").slice(0, MAX_READ_TEXT);
 }
-/** Read every region once. Code aggregates regions into exactly one item result. */
 /** `methodMarks` overrides the switch only so a test can prove the off path. */
 export function readMarkingOutput(frame: MarkingFrame, output: unknown, options: { methodMarks?: boolean } = {}): Observation[] {
   const methodMarks = options.methodMarks ?? TWO_WAYS_METHOD_MARKS;
   const expected = expectedItems(frame), local = aliases(frame, expected);
   const readings = object(output) && Array.isArray(output.readings) && output.readings.length <= 400 ? output.readings : [];
   return expected.map(e => {
-    const first = firstObservation(e, frame.photo);
+    const first = initialMarkingObservation(frame, e);
     const group = local.filter(a => itemKey(a.expected.identity) === itemKey(e.identity));
     const hold = heldIssue(frame, e.number);
     if (hold) return { ...first, issue: hold, certainty: "uncertain", regions: group.map((a) => heldRegion(a, hold)) };

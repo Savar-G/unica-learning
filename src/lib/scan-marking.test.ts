@@ -2,7 +2,7 @@ import { setProductObserver, type ProductEvent } from "@/lib/product-monitoring"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { expectedItems, firstObservation, itemKey, markingEvent, observationProblem, PHOTO_ISSUES, type Observation } from "@/lib/scan-observation";
-import { markingAiTimeout, MARKING_AI_TIMEOUT_MS, MARKING_MAX_DEFERRALS, MARKING_MAX_DISPATCHES, MARKING_MAX_TRANSPORT_DISPATCHES, MARKING_RETRY_WAIT_CAP_MS, MARKING_RETRY_WAIT_MS, type MarkingFailure, MARKING_MIN_AI_MS, TWO_WAYS_METHOD_MARKS, waitsForTeam, effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_ESCALATION_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, MARKING_ESCALATION_MODEL, MARKING_ESCALATION_PROMPT_VERSION, type MarkingEscalation, readMarkingOutput, runScanMarking, validMarkingOutput, unfinishedPage, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRunOptions, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
+import { initialMarkingObservation, markingAiTimeout, MARKING_AI_TIMEOUT_MS, MARKING_MAX_DEFERRALS, MARKING_MAX_DISPATCHES, MARKING_MAX_TRANSPORT_DISPATCHES, MARKING_RETRY_WAIT_CAP_MS, MARKING_RETRY_WAIT_MS, type MarkingFailure, MARKING_MIN_AI_MS, TWO_WAYS_METHOD_MARKS, waitsForTeam, effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_ESCALATION_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, MARKING_ESCALATION_MODEL, MARKING_ESCALATION_PROMPT_VERSION, type MarkingEscalation, readMarkingOutput, runScanMarking, validMarkingOutput, unfinishedPage, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRunOptions, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { markingEscalationClient } from "@/lib/scan-marking-ai";
 import { checkQuestionPackage, workedSteps, type NumberValue, type Operation, type QuestionPackage } from "@/lib/question-package";
@@ -165,7 +165,7 @@ class Store implements MarkingStore {
   async claim(ref: MarkingRef, token: string, f: MarkingFrame): ReturnType<MarkingStore["claim"]> {
     if (ref.parent !== f.parentId || this.terminal.has(ref.photo) || this.frozen || this.deleted) return "terminal" as const;
     if ([...this.jobs.values()].some((j) => !j.done && j.until > this.clock)) return "busy" as const;
-    for (const e of expectedItems(f)) if (!this.items.has(itemKey(e.identity))) this.items.set(itemKey(e.identity), { expected: e, observation: firstObservation(e, ref.photo), originalEvent: null, eventId: null, at: new Date(this.clock).toISOString(), model: null, prompt: null });
+    for (const e of expectedItems(f)) if (!this.items.has(itemKey(e.identity))) this.items.set(itemKey(e.identity), { expected: e, observation: initialMarkingObservation(f, e), originalEvent: null, eventId: null, at: new Date(this.clock).toISOString(), model: null, prompt: null });
     for (const e of expectedItems(f)) {
       const key = itemKey(e.identity), item = this.items.get(key)!;
       if (item.observation.state === "pending") this.owners.set(key, ref.photo);
@@ -1512,6 +1512,14 @@ describe("#912: a question the photo's edge cuts off", () => {
     const covered = [...store.items.values()][1];
     expect(covered.observation).toMatchObject({ state: "pending", issue: "covered" });
     expect(waitsForTeam(covered)).toBe(true);
+  });
+
+  it("queues a held question even when an AI client is unavailable", async () => {
+    const f: MarkingFrame = { ...frame(), held: new Map([[2, "covered"]]) };
+    const store = new Store(f);
+    expect(await runScanMarking(store, { parent: P, photo: f.photo }, "held", () => null, () => new Date(store.clock).toISOString())).toBe("off");
+    const waiting = [...store.items.values()].filter(waitsForTeam);
+    expect(waiting.map((m) => [m.expected.number, m.observation.issue])).toEqual([[2, "covered"]]);
   });
 
   it("routes every question of an unplaceable page to the team without AI", async () => {

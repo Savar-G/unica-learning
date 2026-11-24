@@ -28,10 +28,12 @@ async function renderLevelPages(level: string) {
   const pages = draft.pages.filter((p: DraftPage) => p.dayLabel === "Day 1" && p.questions.length > 0).slice(0, 4);
   const result = await renderWorkbook({ draft: { ...draft, pages }, parentId: PARENT, template: workbookTemplate(await fixedTemplateFonts()), engine });
   if (result.status !== "rendered") throw new Error(JSON.stringify(result.problems.slice(0, 3)));
-  return result.workbook.pages.flatMap((page) => {
+  expect(result.workbook.pages.map((page) => page.number)).toEqual(pages.map((page) => page.number));
+  return result.workbook.pages.map((page) => {
     const plan = cropPlan(page.questions.map((q) => ({ number: q.number, package: q.package as never, regions: q.regions ?? null })));
     const png = result.files.find((f) => f.path === page.image!.path)?.bytes;
-    return page.printContract && png ? [{ number: page.number, contract: page.printContract, png, plan, link: pageUrl(page.qrToken), writing: page.questions.flatMap((q) => (q.regions ?? []).flatMap((r) => (r.box ? [r.box] : []))) }] : [];
+    if (!page.printContract || !png) throw new Error(`Page ${page.number} has no print contract or image`);
+    return { number: page.number, contract: page.printContract, png, plan, link: pageUrl(page.qrToken), writing: page.questions.flatMap((q) => (q.regions ?? []).flatMap((r) => (r.box ? [r.box] : []))) };
   });
 }
 

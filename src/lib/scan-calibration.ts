@@ -1818,13 +1818,13 @@ export function answerPlacement(o: { photo: Raster; printed: Raster; calibration
       }
       return false;
     };
-    const across = axis(true), down = axis(false);
+    const across = axis(true), vertical = samples.splice(0), down = axis(false);
     if (!across || !down) {
       samples.length = 0;
       for (const c of nearest.slice(0, 3)) for (let y = 0; y < FIT_CELL; y++) for (let x = 0; x < FIT_CELL; x++) append((c.x + x) * 2 + 1, (c.y + y) * 2 + 1);
     }
     if (!samples.length) return original;
-    const match = snapPrint(samples, photoGrey, photo.width, SNAP_LIMIT);
+    const match = snapPrint(across && down ? [vertical, samples] : [samples], photoGrey, photo.width, SNAP_LIMIT);
     if (!match) return checkPrint || (across && down) ? { ...original, issue: "alignment" } : original;
     const { offset } = match;
     if (match.atLimit) return { ...original, offset, issue: "alignment" };

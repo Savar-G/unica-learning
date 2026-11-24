@@ -19,8 +19,8 @@ export async function normalizeScanPhoto(input: Uint8Array, limits = { inputByte
   if (normalized.data.length > limits.outputBytes) throw new Error("size");
   const first = await pageCode(normalized.data, normalized.info);
   if (!first) throw new Error("qr");
-  const { spread, token } = await spreadPages(normalized.data, normalized.info, first, limits.outputBytes, contractFor);
-  return { bytes: normalized.data, token, width: normalized.info.width, height: normalized.info.height, spread };
+  const { spread, token, alternateToken } = await spreadPages(normalized.data, normalized.info, first, limits.outputBytes, contractFor);
+  return { bytes: normalized.data, token, width: normalized.info.width, height: normalized.info.height, spread, alternateToken };
 }
 
 /** One page of a two-page photo: its own half of the photo, the other page painted white, with its own code. */
@@ -146,7 +146,7 @@ async function codeAround(jpeg: Buffer, photo: { width: number; height: number }
  * the other side is painted white, so its own code and corner marks are the only ones its photo shows. A page photo is
  * still bound to its page by its own code and checked against its own print like any other photo; this never decides a page.
  */
-async function spreadPages(jpeg: Buffer, photo: { width: number; height: number }, first: PageCode, outputBytes: number, contractFor?: SpreadContract): Promise<{ spread: SpreadPage[] | null; token: string }> {
+async function spreadPages(jpeg: Buffer, photo: { width: number; height: number }, first: PageCode, outputBytes: number, contractFor?: SpreadContract): Promise<{ spread: SpreadPage[] | null; token: string; alternateToken?: string }> {
   const width = first.side / CODE_SIDE;
   let other: PageCode | null = null;
   for (const sign of [1, -1]) {
@@ -169,12 +169,12 @@ async function spreadPages(jpeg: Buffer, photo: { width: number; height: number 
   const a = edge(left, 1 - CODE_CENTER_X), b = edge(right, -CODE_CENTER_X);
   const split = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
   // The cut must pass between the two pages' printed content, top to bottom, each page placed by its own code: a page
-  // curled or turned at the spine reaches over the line, and its answers there would be cut. Such a photo is refused.
+  // curled or turned at the spine can cross the line. Keep the whole image and let admission try either code.
   const across = (p: Point) => ((p.x - split.x) * first.dir.x + (p.y - split.y) * first.dir.y) / pageWidth;
   const leftEdge = CONTENT_Y.map((y) => across(pagePoint(left, { x: CONTENT_X[1], y })));
   const rightEdge = CONTENT_Y.map((y) => across(pagePoint(right, { x: CONTENT_X[0], y })));
   if (Math.max(...leftEdge) > -SPREAD_CUT_CLEARANCE || Math.min(...rightEdge) < SPREAD_CUT_CLEARANCE) {
-    return { spread: null, token: first.token };
+    return { spread: null, token: first.token, alternateToken: other.token };
   }
   const pages: SpreadPage[] = [];
   for (const [code, keep] of [[left, -1], [right, 1]] as const) {
@@ -195,11 +195,12 @@ function pagePoint(c: PageCode, p: Point): Point {
 /** How many of a page's four corner marks, placed by its code, are in the photo (at most SPREAD_MARK_OVERHANG out). */
 function marksInView(c: PageCode, photo: { width: number; height: number }, contract: PagePrintContract | null): number {
   const m = -SPREAD_MARK_OVERHANG * (c.side / CODE_SIDE);
-  // Without a contract, test the paper corners. Old books with a contract keep their measured points.
+  const legacyInset = 0.027;
+  // Older prints without a contract used the same inset on both sides.
   const points = contract ? SCAN_MARKS.map((mark) => {
     const { x, y } = contract.marks.points[mark], width = contract.coordinates.image.width;
     return { x: x / width, y: y / width };
-  }) : [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: PAGE_HEIGHT }, { x: 0, y: PAGE_HEIGHT }];
+  }) : [legacyInset, 1 - legacyInset].flatMap((x) => [legacyInset, PAGE_HEIGHT - legacyInset].map((y) => ({ x, y })));
   return points.map((p) => pagePoint(c, p))
     .filter((q) => q.x >= m && q.y >= m && q.x <= photo.width - m && q.y <= photo.height - m).length;
 }

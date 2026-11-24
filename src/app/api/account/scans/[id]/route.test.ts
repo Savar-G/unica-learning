@@ -1,7 +1,7 @@
 import { setProductObserver } from "@/lib/product-monitoring";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
-const f = vi.hoisted(() => ({ start: "started", identify: "identified" as string | string[], normalize: true, uploads: 0, calls: [] as string[], spread: false, admit: "reserved" as string | string[], tokens: [] as string[], saved: [] as string[], refuse: "qr", storageFails: 0, recover: "pending", filed: "child", closed: [] as string[],
+const f = vi.hoisted(() => ({ start: "started", identify: "identified" as string | string[], normalize: true, uploads: 0, calls: [] as string[], spread: false, unsplit: false, admit: "reserved" as string | string[], tokens: [] as string[], saved: [] as string[], refuse: "qr", storageFails: 0, recover: "pending", filed: "child", closed: [] as string[],
   // F5: the page's photo a new photo of it may replace, and that photo's stored check; the photos deleted.
   held: null as null | { id: string; printed_revision: string; sent_at: string | null }, keep: false, calibration: null as null | { state: string; printed_revision: string }, deleted: [] as string[],
   // The held photo's marking job (scan edge sweep, 2026-11-14).
@@ -20,7 +20,8 @@ vi.mock("@/lib/scan-photo-image", () => ({
   normalizeScanPhoto: async () => {
     if (!f.normalize) throw new Error(f.refuse);
     const one = (token: string) => ({ token, bytes: new Uint8Array([1]), width: 10, height: 20 });
-    return { ...one("qrTokenLeft000000000"), spread: f.spread ? [one("qrTokenLeft000000000"), one("qrTokenRight00000000")] : null };
+    return { ...one("qrTokenLeft000000000"), spread: f.spread ? [one("qrTokenLeft000000000"), one("qrTokenRight00000000")] : null,
+      alternateToken: f.unsplit ? "qrTokenRight00000000" : undefined };
   },
 }));
 vi.mock("@/lib/scan-photo-server", () => ({
@@ -56,7 +57,7 @@ vi.mock("@/lib/scan-photo-server", () => ({
 import { POST, PUT } from "./route";
 const id = "00000000-0000-4000-8000-000000000001";
 const put = () => PUT(new Request(`https://unicalearning.com/api/account/scans/${id}`, { method: "PUT", headers: { Origin: "https://unicalearning.com" }, body: new Uint8Array([1]) }), { params: Promise.resolve({ id }) });
-beforeEach(() => { vi.clearAllMocks(); setProductObserver(null); later.tasks = []; later.checks = true; later.crops = []; later.fail = false; later.preview = "ready"; later.photoChecks = []; f.start = "started"; f.identify = "identified"; f.normalize = true; f.uploads = 0; f.calls = []; f.spread = false; f.admit = "reserved"; f.tokens = []; f.saved = []; f.refuse = "qr"; f.storageFails = 0; f.recover = "pending"; f.filed = "child"; f.closed = []; f.held = null; f.calibration = null; f.deleted = []; f.job = null; f.swap = "pending"; f.cleaned = []; f.keep = false; ai.mockClear(); vi.stubEnv("OPENROUTER_API_KEY", "synthetic-configured-key"); });
+beforeEach(() => { vi.clearAllMocks(); setProductObserver(null); later.tasks = []; later.checks = true; later.crops = []; later.fail = false; later.preview = "ready"; later.photoChecks = []; f.start = "started"; f.identify = "identified"; f.normalize = true; f.uploads = 0; f.calls = []; f.spread = false; f.unsplit = false; f.admit = "reserved"; f.tokens = []; f.saved = []; f.refuse = "qr"; f.storageFails = 0; f.recover = "pending"; f.filed = "child"; f.closed = []; f.held = null; f.calibration = null; f.deleted = []; f.job = null; f.swap = "pending"; f.cleaned = []; f.keep = false; ai.mockClear(); vi.stubEnv("OPENROUTER_API_KEY", "synthetic-configured-key"); });
 afterEach(() => { setProductObserver(null); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 it("stores one normalized photo with zero AI dispatches when a key is configured", async () => {
   expect((await put()).status).toBe(200); expect(f.uploads).toBe(1);
@@ -108,6 +109,15 @@ it("stores the two pages of an open book as two photos, each bound by its own co
   expect(answer.spread).toMatchObject({ state: "saved" });
   expect(f.saved).toEqual([answer.spread.id]);
   expect(answer.spread.id).not.toBe(id);
+});
+it.each([false, true])("stores one unsplit photo with an alternate code when the first is a duplicate (%s)", async (duplicate) => {
+  f.unsplit = true;
+  if (duplicate) f.identify = ["duplicate", "identified"];
+  const response = await put();
+  expect(response.status).toBe(200);
+  expect(f.tokens).toEqual(duplicate ? ["qrTokenLeft000000000", "qrTokenRight00000000"] : ["qrTokenLeft000000000"]);
+  expect(f.uploads).toBe(1);
+  expect((await response.json()).spread).toBeUndefined();
 });
 it("keeps the left page when the right page cannot be admitted, and answers why (#915)", async () => {
   f.spread = true; f.admit = "frequency";

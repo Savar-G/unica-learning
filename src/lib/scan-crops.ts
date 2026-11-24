@@ -333,14 +333,16 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
       const box = q.box ?? planned.crops.find((c) => c.number === q.number)?.box;
       return box ? [{ number: q.number, box }] : [];
     });
+    let unclaimed = false;
     const localize = (spot: Box) => {
       const near = boxes.map(({ number, box }) => ({ number, distance: boxDistance(box, spot) }));
       const nearest = Math.min(...near.map((q) => q.distance));
-      for (const q of near) if (q.distance === nearest && nearest <= 96) held.set(q.number, "covered");
+      if (nearest > 96) { unclaimed = true; return; }
+      for (const q of near) if (q.distance === nearest) held.set(q.number, "covered");
     };
     const sheet = await sheetVerdict(store, ask, frame.page.others, deadline, localize, firstOthers);
     if (sheet === "timeout") return timedOut();
-    if (sheet !== "this-page" && !held.size) review = sheet;
+    if (sheet !== "this-page" && (unclaimed || !held.size)) review = sheet;
 
     if (!review) {
       const place = answerPlacement({ photo, printed, calibration, writing });

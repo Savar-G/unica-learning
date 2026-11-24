@@ -53,7 +53,10 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
     });
     // A photo of an open book (#915) has two pages: this photo takes the first one its own code binds, and the other
     // becomes a photo of its own below. A single page is one page, exactly as before.
-    const pages: SpreadPage[] = normalized.spread ?? [{ bytes: normalized.bytes, token: normalized.token, width: normalized.width, height: normalized.height }];
+    const candidates = normalized.alternateToken ? [normalized.token, normalized.alternateToken] : [normalized.token];
+    const pages: SpreadPage[] = normalized.spread ?? candidates.map((token) => ({
+      bytes: normalized.bytes, token, width: normalized.width, height: normalized.height,
+    }));
     let mine = -1, refusal: string | null = null, refusedToken: string | null = null, replaces: string | null = null;
     for (const [i, page] of pages.entries()) {
       const identify = () => admin.rpc("identify_scan_photo", { p_parent: parent, p_id: id, p_token: page.token, p_width: page.width, p_height: page.height });
@@ -100,7 +103,7 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
     }, "scan.check_failed", { photoId: id });
     const photo = await scanView(admin, parent, id);
     // The other page of a spread: only when this photo took the first page (a first page already scanned leaves nothing).
-    let other = mine === 0 && pages.length === 2 && photo ? await spreadPhoto(admin, parent, photo.child_id, pages[1], received, session.childOpen) : null;
+    let other = mine === 0 && normalized.spread?.length === 2 && photo ? await spreadPhoto(admin, parent, photo.child_id, normalized.spread[1], received, session.childOpen) : null;
     // A second page not saved (other than one that already has a photo): name it, so the parent can photograph it alone.
     if (other && !["saved", "duplicate"].includes(other.state)) {
       const named = await admin.from("workbook_pages").select("page_number").eq("parent_id", parent).eq("qr_token", pages[1].token).maybeSingle();

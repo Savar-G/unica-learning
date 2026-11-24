@@ -6,10 +6,10 @@ import { storedQuestion } from "@/lib/workbook-content";
 import { printContractForPhoto, storedPrintContract } from "@/lib/workbook-print-contract";
 import { calibrationForPhoto } from "@/lib/scan-calibration";
 import { scanPartPath } from "@/lib/scan-crops";
-import { firstObservation, type Observation } from "@/lib/scan-observation";
+import type { Observation } from "@/lib/scan-observation";
 import { learningEvents } from "@/lib/learning-events";
 import { learningEventStore } from "@/lib/learning-events-store";
-import { currentSheetCheck, MARKING_PROMPT_VERSION, type EffectiveMark, type MarkingFrame, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
+import { currentSheetCheck, initialMarkingObservation, MARKING_PROMPT_VERSION, type EffectiveMark, type MarkingFrame, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
 import { markingCommand, scanMarkingReader, mark, observation, type MarkingCommand } from "@/lib/scan-marking-reader";
 export { markingCommand, type MarkingCommand } from "@/lib/scan-marking-reader";
 import { digestOf } from "@/lib/workbook-digest";
@@ -67,7 +67,7 @@ export function scanMarkingStore(db: SupabaseClient<Database>): MarkingStore {
     async claim(ref, token, frame, items) {
       const held = frames.get(refKey(ref));
       if (!held || held.frame !== frame) return "unavailable";
-      const result = await command("claim", ref.parent, ref.photo, token, toJson({ hash: held.hash, items: items.map((e) => ({ expected: e, observation: firstObservation(e, ref.photo) })) }));
+      const result = await command("claim", ref.parent, ref.photo, token, toJson({ hash: held.hash, items: items.map((e) => ({ expected: e, observation: initialMarkingObservation(frame, e) })) }));
       if (result === "busy" || result === "terminal" || result === "unavailable") return result;
       const r = record(result);
       return { token: str(r.token), items: list(r.items).map(mark), extraction: r.extraction === null ? null : list(r.extraction).map(observation) };
