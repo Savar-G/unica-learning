@@ -324,3 +324,20 @@ test("the workbook engine has no level branch", () => {
   for (const line of fine) assert.deepEqual(engineViolations({ [file]: `${line}\n` }), [], line);
   assert.deepEqual(engineViolations({ [`${ENGINE}/render/bad.typ`]: "#if sheet.level == 3 { }\n" }), [`engine-level-branch ${ENGINE}/render/bad.typ`]);
 });
+
+test("app code names no file of the workbook engine that is not code", () => {
+  const app = "src/lib/uses-engine.ts";
+  for (const line of [
+    'import page from "@/lib/workbook-v2/render/page.typ?raw";',
+    'import data from "./workbook-v2/fixtures/book.json";',
+    'const font = readFileSync("src/lib/workbook-v2/render/fonts/Geist-Regular.ttf");',
+    "const font = `${root}/src/lib/workbook-v2/render/fonts/OFL.txt`;",
+  ]) assert.deepEqual(engineViolations({ [app]: `${line}\n` }), [`engine-asset-use ${app}`], line);
+  for (const line of [
+    'import type { PageModel } from "@/lib/workbook-v2/contract";',
+    'import { sha256 } from "./workbook-v2/hash.ts";',
+    'import { sha256 } from "./workbook-v2/hash.js";',
+    'import data from "./workbook-v2-tools/book.json";',
+    "// docs/workbook-v2-engine.md",
+  ]) assert.deepEqual(engineViolations({ [app]: `${line}\n` }), [], line);
+});

@@ -78,10 +78,12 @@ test("every engine test file is owned by exactly one job in full mode and in aff
 
   const unitExcludes = extractExcludes(unitTestLine);
   const prUnitExcludes = extractExcludes(prUnitTestLine);
-  const engineRunsTarget = engineTestLine.includes("src/lib/workbook-v2");
-  assert.equal(engineRunsTarget, true, "engine job must run src/lib/workbook-v2 tests");
+  // Vitest takes this argument as a part of a path, so it must end at the folder.
+  const engineTarget = engineTestLine.trim().split(" ").at(-1);
+  assert.equal(engineTarget, "src/lib/workbook-v2/");
+  const inEngineJob = (file) => file.includes(engineTarget);
 
-  const allTests = walkTests(path.join(ROOT, "src"));
+  const allTests = [...walkTests(path.join(ROOT, "src")), "src/lib/workbook-v2-tools.test.ts", "src/lib/workbook-v2.test.ts"];
   const engineTests = walkTests(path.join(ROOT, "src/lib/workbook-v2"));
   assert.ok(engineTests.length >= 10, `expected engine test files, got ${engineTests.length}`);
 
@@ -89,7 +91,7 @@ test("every engine test file is owned by exactly one job in full mode and in aff
   for (const file of allTests) {
     const owners = [];
     if (!matchesAny(file, unitExcludes)) owners.push("unit");
-    if (file.startsWith("src/lib/workbook-v2/")) owners.push("engine");
+    if (inEngineJob(file)) owners.push("engine");
     if (mayaTestLine.includes(file)) owners.push("maya-behaviour");
     if (scaleTestLine.includes(file)) owners.push("scan-binding-scale");
     assert.equal(owners.length, 1, `full mode: ${file} must have exactly 1 owner, got ${JSON.stringify(owners)}`);
@@ -108,7 +110,7 @@ test("every engine test file is owned by exactly one job in full mode and in aff
     assert.equal(scope.runEngine, true);
     for (const file of engineTests) {
       const owners = [];
-      if (scope.runEngine && file.startsWith("src/lib/workbook-v2/")) owners.push("engine");
+      if (scope.runEngine && inEngineJob(file)) owners.push("engine");
       if (scope.runPrUnit && !matchesAny(file, prUnitExcludes)) owners.push("pr-unit");
       assert.deepEqual(owners, ["engine"], `affected mode (${changedFiles.join(", ")}): ${file} must run only in engine`);
     }
@@ -198,6 +200,20 @@ test("the required test job shell fails when engine is required and does not suc
     VOICE_RESULT: "success",
   }).status, 0);
 
+  // The flags cannot turn a full run off or a skip run on.
+  const jobs = ["ENGINE", "MAYA", "ZONES", "LINT", "VOICE"];
+  const all = (result, flagValue) => Object.fromEntries(jobs.flatMap((j) => [[`RUN_${j}`, flagValue], [`${j}_RESULT`, result]]));
+  const full = { MODE: "full", RUN_PR_UNIT: "false", PR_UNIT_RESULT: "skipped", UNIT_RESULT: "success", SCAN_BINDING_RESULT: "success", ...all("success", "true") };
+  const skip = { MODE: "skip", RUN_PR_UNIT: "false", PR_UNIT_RESULT: "skipped", ...all("skipped", "false") };
+  assert.equal(runGate(full).status, 0);
+  assert.equal(runGate(skip).status, 0);
+  for (const job of jobs) {
+    for (const flagValue of ["true", "false"]) {
+      assert.notEqual(runGate({ ...full, [`RUN_${job}`]: flagValue, [`${job}_RESULT`]: "skipped" }).status, 0, `full ${job} ${flagValue}`);
+      assert.notEqual(runGate({ ...skip, [`RUN_${job}`]: flagValue, [`${job}_RESULT`]: "success" }).status, 0, `skip ${job} ${flagValue}`);
+    }
+  }
+
   // Guard against silent empty/typo flags or unknown mode.
   assert.notEqual(runGate({ RUN_ENGINE: "", ENGINE_RESULT: "skipped" }).status, 0);
   assert.notEqual(runGate({ MODE: "bogus" }).status, 0);
@@ -282,7 +298,7 @@ test("every CI job that runs engine tests requires the pinned Typst install, and
 
   const installIndex = engineJob.indexOf("run: npm run typst:install");
   assert.ok(installIndex > engineJob.indexOf("npm ci"), "engine must install Typst after npm ci");
-  assert.ok(installIndex < engineJob.indexOf("npm test -- src/lib/workbook-v2"), "engine must install Typst before tests");
+  assert.ok(installIndex < engineJob.indexOf("npm test -- src/lib/workbook-v2/"), "engine must install Typst before tests");
   const installStep = engineJob.slice(engineJob.indexOf("- name: Install the pinned Typst"), engineJob.indexOf("- name:", installIndex));
   assert.equal(installStep.includes("continue-on-error"), false, "Typst install in engine must be required (no continue-on-error)");
 

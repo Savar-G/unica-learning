@@ -166,7 +166,7 @@ jobs:
         run: |
           start_ms=$(node -e 'process.stdout.write(String(Date.now()))')
           set +e
-          npm test -- src/lib/workbook-v2
+          npm test -- src/lib/workbook-v2/
           status=$?
           set -e
           end_ms=$(node -e 'process.stdout.write(String(Date.now()))')
@@ -407,11 +407,13 @@ jobs:
                 ;;
             esac
           }
+          # In full mode every job must succeed and in skip mode none may run, whatever the flags say.
+          flag() { case "$MODE" in full) echo true ;; skip) echo false ;; *) echo "$1" ;; esac; }
           check_job "unit" "$([ "$MODE" = "full" ] && echo true || echo false)" "$UNIT_RESULT"
           check_job "scan-binding-scale" "$([ "$MODE" = "full" ] && echo true || echo false)" "$SCAN_BINDING_RESULT"
           check_job "pr-unit" "$([ "$MODE" = "affected" ] && [ "$RUN_PR_UNIT" = "true" ] && echo true || echo false)" "$PR_UNIT_RESULT"
-          check_job "engine" "$RUN_ENGINE" "$ENGINE_RESULT"
-          check_job "maya-behaviour" "$RUN_MAYA" "$MAYA_RESULT"
-          check_job "family-zones" "$RUN_ZONES" "$ZONES_RESULT"
-          check_job "lint-and-types" "$RUN_LINT" "$LINT_RESULT"
-          check_job "voice-worker" "$RUN_VOICE" "$VOICE_RESULT"
+          check_job "engine" "$(flag "$RUN_ENGINE")" "$ENGINE_RESULT"
+          check_job "maya-behaviour" "$(flag "$RUN_MAYA")" "$MAYA_RESULT"
+          check_job "family-zones" "$(flag "$RUN_ZONES")" "$ZONES_RESULT"
+          check_job "lint-and-types" "$(flag "$RUN_LINT")" "$LINT_RESULT"
+          check_job "voice-worker" "$(flag "$RUN_VOICE")" "$VOICE_RESULT"
