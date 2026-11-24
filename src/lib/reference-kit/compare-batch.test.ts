@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ContentsRecord, PageRecord } from "@/lib/reference-record";
+import { validateReferenceRecord, type ContentsRecord, type PageRecord } from "@/lib/reference-record";
 import { checkAndMarkPage } from "./check";
 import { compareWorkFolder } from "./compare-batch";
 import { persistSlotResult } from "./extract-state";
@@ -1769,6 +1769,238 @@ describe("compareWorkFolder", () => {
     expect(legacy.page.status).toBe("machine_read");
     expect(legacy.page.result_reason).toBe("a reader's answer differs from the computed answer");
     expect(legacy.page.reader_answer_conflicts).toEqual(["sections[0].items[n=1].responses[0]"]);
+  });
+
+  it("sends a page to a person when saved reader metadata names an unknown model family", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-cmp-unknown-fam-repo-"));
+    const work = mkdtempSync(join(tmpdir(), "ref-cmp-unknown-fam-work-"));
+    tempDirs.push(repo, work);
+
+    const record: ContentsRecord = {
+      kind: "contents",
+      source_ref: "sample:M:contents",
+      topics: [1, 2, 3].map((n) => ({ n, title: `Topic ${n}`, sheets: [n, n], std_time_min: [1, 2] })),
+    };
+
+    for (const [slot, family] of [
+      ["a", "codex"],
+      ["b", "invented-reader"],
+    ] as const) {
+      const slotDir = join(work, `reader-${slot}`);
+      mkdirSync(slotDir, { recursive: true });
+      writeFileSync(join(slotDir, "reader.json"), JSON.stringify({ family, model: "m1" }));
+      writeFileSync(join(slotDir, "sample-M-contents.json"), JSON.stringify(record, null, 2));
+      writeFileSync(
+        join(slotDir, "run.json"),
+        JSON.stringify({
+          slot,
+          reader: { family, model: "m1" },
+          source: "sample",
+          photos: [
+            {
+              photo: `${SHA_1.slice(0, 12)}.jpg`,
+              photo_sha256: SHA_1,
+              status: "ok",
+              source_ref: record.source_ref,
+              record_file: "sample-M-contents.json",
+              notes: [],
+            },
+          ],
+        }),
+      );
+    }
+
+    const report = compareWorkFolder({ workDir: work, repoRoot: repo });
+    expect(report.pages[0].status).toBe("machine_read");
+    expect(report.pages[0].result_reason).toBe("same or unknown model family");
+    expect(report.pages_sent_to_person).toEqual([
+      expect.objectContaining({
+        source_ref: "sample:M:contents",
+        reason: "same or unknown model family",
+      }),
+    ]);
+  });
+
+  it("uses topic and item number order for insertion locations and resolves them against an edited kept record in report.json and report.md", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-cmp-order-repo-"));
+    tempDirs.push(repo);
+
+    const makeTopic = (n: number) => ({ n, title: `Topic ${n}`, sheets: [n, n] as [number, number], std_time_min: [1, 2] as [number, number] });
+    const makeContents = (ns: number[]): ContentsRecord => ({
+      kind: "contents",
+      source_ref: "sample:M:contents",
+      topics: ns.map(makeTopic),
+    });
+    const makeItem = (n: number) => ({
+      n,
+      printed: `Item ${n}`,
+      form: null,
+      expr: null,
+      responses: [],
+    });
+    const makeItemsPage = (ns: number[]): PageRecord =>
+      makePage({
+        source_ref: "sample:M:12a",
+        sections: [{ instruction: "Read.", scaffolds: [], items: ns.map(makeItem) }],
+      });
+
+    const setupWork = (name: string, recA: ContentsRecord | PageRecord, recB: ContentsRecord | PageRecord) => {
+      const work = mkdtempSync(join(tmpdir(), `ref-cmp-order-${name}-`));
+      tempDirs.push(work);
+      const file = `${recA.source_ref.replace(/:/g, "-")}.json`;
+      for (const [slot, family, rec] of [
+        ["a", "codex", recA],
+        ["b", "claude", recB],
+      ] as const) {
+        const dir = join(work, `reader-${slot}`);
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, "reader.json"), JSON.stringify({ family, model: "m1" }));
+        writeFileSync(join(dir, file), JSON.stringify(rec, null, 2));
+        writeFileSync(
+          join(dir, "run.json"),
+          JSON.stringify({
+            slot,
+            reader: { family, model: "m1" },
+            source: "sample",
+            photos: [
+              {
+                photo: `${SHA_1.slice(0, 12)}.jpg`,
+                photo_sha256: SHA_1,
+                status: "ok",
+                source_ref: rec.source_ref,
+                record_file: file,
+                notes: [],
+              },
+            ],
+          }),
+        );
+      }
+      return {
+        work,
+        finalPath: join(work, "final", file),
+        reportMdPath: join(work, "final", "report.md"),
+      };
+    };
+
+    // 1. Common topics 1..10, A also has 12, B also has 11 (93.9% -> agreement_accepted).
+    // Following the reported insertion index must keep topics in ascending order and validate.
+    const commonTen = Array.from({ length: 10 }, (_, i) => i + 1);
+    const topicOrder = setupWork("topic-order", makeContents([...commonTen, 12]), makeContents([...commonTen, 11]));
+    const orderReport = compareWorkFolder({ workDir: topicOrder.work, repoRoot: repo });
+    const orderPage = orderReport.pages[0];
+    expect(orderPage.status).toBe("agreement_accepted");
+    const topic11 = orderPage.differences.find((d) => d.path === "topics[n=11]");
+    expect(topic11).toMatchObject({
+      reader: "b",
+      insert_before: 10,
+      final_path: "topics[10]",
+    });
+    const afterInsert = JSON.parse(readFileSync(topicOrder.finalPath, "utf8")) as ContentsRecord;
+    afterInsert.topics.splice(topic11!.insert_before!, 0, topic11!.b as ContentsRecord["topics"][number]);
+    expect(validateReferenceRecord(afterInsert).ok).toBe(true);
+    expect(readFileSync(topicOrder.reportMdPath, "utf8")).toContain(
+      "`topics[n=11]` (value): only reader b; location in final record before `topics[10]`",
+    );
+
+    // 2. Edited contents record: person unshifts topic 1, shifting topic 4 from index 1 to index 2.
+    // Report must resolve topics[n=3] (and reader-A-only topics[n=12]) against the kept record.
+    const topicEdit = setupWork(
+      "topic-edit",
+      makeContents([2, 4, 5, 6, 7, 8, 9, 10, 12]),
+      makeContents([2, 3, 4, 5, 6, 7, 8, 9, 10]),
+    );
+    compareWorkFolder({ workDir: topicEdit.work, repoRoot: repo });
+    const editedContents = JSON.parse(readFileSync(topicEdit.finalPath, "utf8")) as ContentsRecord;
+    editedContents.topics.unshift(makeTopic(1));
+    writeFileSync(topicEdit.finalPath, JSON.stringify(editedContents, null, 2));
+
+    const editedContentsReport = compareWorkFolder({ workDir: topicEdit.work, repoRoot: repo });
+    const editedContentsPage = editedContentsReport.pages[0];
+    expect(editedContentsPage.status).toBe("machine_read");
+    expect(editedContentsPage.edited_by_person).toBe(true);
+    expect(editedContentsPage.differences.find((d) => d.path === "topics[n=3]")).toMatchObject({
+      reader: "b",
+      insert_before: 2,
+      final_path: "topics[2]",
+    });
+    expect(editedContentsPage.differences.find((d) => d.path === "topics[n=12]")).toMatchObject({
+      reader: "a",
+      final_path: "topics[9]",
+    });
+    const editedContentsMd = readFileSync(topicEdit.reportMdPath, "utf8");
+    expect(editedContentsMd).toContain("`topics[n=3]` (value): only reader b has it; insert before `topics[2]`");
+    expect(editedContentsMd).toContain("`topics[n=12]` (value): only reader a has it; found in the kept final record at `topics[9]`");
+
+    // Once the person adds topic 3 into the kept record, report shows its actual index without insert_before.
+    editedContents.topics.splice(2, 0, makeTopic(3));
+    writeFileSync(topicEdit.finalPath, JSON.stringify(editedContents, null, 2));
+    const addedContentsPage = compareWorkFolder({ workDir: topicEdit.work, repoRoot: repo }).pages[0];
+    const topic3Present = addedContentsPage.differences.find((d) => d.path === "topics[n=3]");
+    expect(topic3Present?.final_path).toBe("topics[2]");
+    expect(topic3Present?.insert_before).toBeUndefined();
+    expect(readFileSync(topicEdit.reportMdPath, "utf8")).toContain(
+      "`topics[n=3]` (value): only reader b has it; found in the kept final record at `topics[2]`",
+    );
+
+    // 3. Same after-edit check for page items keyed by n.
+    const itemEdit = setupWork(
+      "item-edit",
+      makeItemsPage([2, 4, 5, 6, 7, 8, 9, 10, 12]),
+      makeItemsPage([2, 3, 4, 5, 6, 7, 8, 9, 10]),
+    );
+    compareWorkFolder({ workDir: itemEdit.work, repoRoot: repo });
+    const editedItems = JSON.parse(readFileSync(itemEdit.finalPath, "utf8")) as PageRecord;
+    editedItems.sections[0].items.unshift(makeItem(1));
+    writeFileSync(itemEdit.finalPath, JSON.stringify(editedItems, null, 2));
+
+    const editedItemsPage = compareWorkFolder({ workDir: itemEdit.work, repoRoot: repo }).pages[0];
+    expect(editedItemsPage.status).toBe("machine_read");
+    expect(editedItemsPage.edited_by_person).toBe(true);
+    expect(editedItemsPage.differences.find((d) => d.path === "sections[0].items[n=3]")).toMatchObject({
+      reader: "b",
+      insert_before: 2,
+      final_path: "sections[0].items[2]",
+    });
+    expect(editedItemsPage.differences.find((d) => d.path === "sections[0].items[n=12]")).toMatchObject({
+      reader: "a",
+      final_path: "sections[0].items[9]",
+    });
+    const editedItemsMd = readFileSync(itemEdit.reportMdPath, "utf8");
+    expect(editedItemsMd).toContain(
+      "`sections[0].items[n=3]` (value): only reader b has it; insert before `sections[0].items[2]`",
+    );
+    expect(editedItemsMd).toContain(
+      "`sections[0].items[n=12]` (value): only reader a has it; found in the kept final record at `sections[0].items[9]`",
+    );
+
+    // 4. human_checked page resolves kept-record locations and omits review instructions.
+    writeFileSync(join(topicEdit.work, "final", "status.json"), JSON.stringify({ "sample:M:contents": "human_checked" }));
+    const checkedContentsPage = compareWorkFolder({ workDir: topicEdit.work, repoRoot: repo }).pages[0];
+    expect(checkedContentsPage.status).toBe("human_checked");
+    expect(checkedContentsPage.differences.find((d) => d.path === "topics[n=3]")?.final_path).toBe("topics[2]");
+    const checkedContentsMd = readFileSync(topicEdit.reportMdPath, "utf8");
+    expect(checkedContentsMd).toContain("`topics[n=3]` (value): only reader b; in kept final record at `topics[2]`");
+    expect(checkedContentsMd).not.toContain("find the place");
+    expect(checkedContentsMd).not.toContain("must be added");
+    expect(checkedContentsMd).not.toContain("insert before");
+
+    const checkedScaffoldA = makePage({ source_ref: "sample:M:13a" });
+    const checkedScaffoldB = structuredClone(checkedScaffoldA);
+    checkedScaffoldB.sections[0].scaffolds = [{ kind: "caption", text: "Practice", applies_to: "all" }];
+    const checkedScaffold = setupWork("checked-scaffold", checkedScaffoldA, checkedScaffoldB);
+    compareWorkFolder({ workDir: checkedScaffold.work, repoRoot: repo });
+    writeFileSync(
+      join(checkedScaffold.work, "final", "status.json"),
+      JSON.stringify({ "sample:M:13a": "human_checked" }),
+    );
+    const checkedScaffoldPage = compareWorkFolder({ workDir: checkedScaffold.work, repoRoot: repo }).pages[0];
+    expect(checkedScaffoldPage.status).toBe("human_checked");
+    const checkedScaffoldMd = readFileSync(checkedScaffold.reportMdPath, "utf8");
+    expect(checkedScaffoldMd).toContain(
+      '`sections[0].scaffolds[b:0]`: only reader b; not in kept final record: {"kind":"caption","text":"Practice","applies_to":"all"}',
+    );
+    expect(checkedScaffoldMd).not.toContain("find the place");
+    expect(checkedScaffoldMd).not.toContain("must be added");
   });
 });
 

@@ -23,6 +23,7 @@ import {
   decidePageOutcome,
   emptyAnswerDiffs,
   findAnswerDisagreements,
+  locateDifferencesInKeptRecord,
   locateOnceReadInKeptRecord,
   resolveSingleReadPaths,
   type PageStatus,
@@ -299,7 +300,7 @@ export function compareWorkFolder(opts: {
         result_reason: null,
         only_in_reader: onlyIn,
         digest_mismatch: pair.digestMismatch,
-        differences: classified.differences,
+        differences: locateDifferencesInKeptRecord(classified.differences, null),
         wording: classified.wording,
         once_read: locateOnceReadInKeptRecord(classified.once_read, null),
         both_unclear: classified.both_unclear,
@@ -337,7 +338,7 @@ export function compareWorkFolder(opts: {
         result_reason: null,
         only_in_reader: onlyIn,
         digest_mismatch: pair.digestMismatch,
-        differences: classified.differences,
+        differences: locateDifferencesInKeptRecord(classified.differences, existingKept, pair.recB),
         wording: classified.wording,
         once_read: locateOnceReadInKeptRecord(classified.once_read, existingKept),
         both_unclear: classified.both_unclear,
@@ -486,7 +487,9 @@ export function compareWorkFolder(opts: {
       ...(answerDisagreements.length > 0 ? { answer_disagreements: answerDisagreements } : {}),
       only_in_reader: onlyIn,
       digest_mismatch: pair.digestMismatch,
-      differences: classified.differences,
+      differences: editedByPerson
+        ? locateDifferencesInKeptRecord(classified.differences, editedRecord, pair.recB)
+        : classified.differences,
       wording: classified.wording,
       once_read: editedByPerson
         ? locateOnceReadInKeptRecord(classified.once_read, editedRecord)

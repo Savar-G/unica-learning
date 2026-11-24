@@ -1,7 +1,12 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { join } from "node:path";
 
-export type ReaderFamily = "claude" | "codex";
+export const READER_FAMILIES = ["claude", "codex"] as const;
+export type ReaderFamily = (typeof READER_FAMILIES)[number];
+
+export function isReaderFamily(value: unknown): value is ReaderFamily {
+  return typeof value === "string" && (READER_FAMILIES as readonly string[]).includes(value);
+}
 
 export const READER_PHOTO_FILE = "page.jpg";
 

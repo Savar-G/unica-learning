@@ -27,7 +27,14 @@ import {
 import { REFERENCE_READ_PROMPT } from "./read-prompt";
 
 export type { ReaderFamily, RunCli } from "./read-cli";
-export { assertModelMatchesFamily, buildCliInvocation, READER_PHOTO_FILE, spawnCli } from "./read-cli";
+export {
+  assertModelMatchesFamily,
+  buildCliInvocation,
+  isReaderFamily,
+  READER_FAMILIES,
+  READER_PHOTO_FILE,
+  spawnCli,
+} from "./read-cli";
 export { extractJsonFromModelOutput };
 
 export type ReaderSlot = "a" | "b";

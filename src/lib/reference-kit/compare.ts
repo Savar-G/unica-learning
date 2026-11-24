@@ -18,11 +18,19 @@ import {
   type UnnamedTeachingMark,
 } from "./compare-examples";
 import {
+  findNumberedInsertBefore,
+  isOneSidedNumberedEntry,
+  locateDifferencesInKeptRecord,
+  locateOnceRead,
+  locateOnceReadInKeptRecord,
+  resolveDiffPath,
+  resolveSingleReadPaths,
+} from "./compare-locate";
+import {
   compareExpr,
   compareField,
   compareResponses,
   compareScoreBands,
-  deepEqual,
   recordDiff,
   recordMatch,
   type CompareCounts,
@@ -31,15 +39,19 @@ import {
 } from "./compare-parts";
 import { compareScaffolds } from "./compare-scaffolds";
 import { normalizeNotationText, normalizeProseText } from "./normalize";
+import { isReaderFamily } from "./read-cli";
 
 export type { CompareCounts, DiffKind, RecordDifference, UnnamedTeachingMark };
 export {
   ANSWER_DISAGREEMENT_REASON,
   collectUnnamedTeachingMarks,
   findAnswerDisagreements,
+  locateDifferencesInKeptRecord,
+  locateOnceReadInKeptRecord,
   normalizeNotationText,
   normalizeProseText,
   READER_ANSWER_CONFLICT_REASON,
+  resolveSingleReadPaths,
 };
 
 export type PageStatus = "machine_read" | "agreement_accepted" | "double_read" | "human_checked";
@@ -63,23 +75,6 @@ export function agreementPercentage(agreed: number, compared: number): number | 
   if (compared <= 0) return null;
   // Floor to 1 decimal place so < 90% never rounds up to 90% and < 100% never rounds up to 100%.
   return Math.floor((agreed * 1000) / compared) / 10;
-}
-
-function findInsertBeforeIndex(
-  aEntries: readonly { n: number }[],
-  bEntries: readonly { n: number }[],
-  missingN: number,
-): number | undefined {
-  const aIndexByN = new Map<number, number>();
-  aEntries.forEach((entry, idx) => aIndexByN.set(entry.n, idx));
-  const bIdx = bEntries.findIndex((entry) => entry.n === missingN);
-  if (bIdx !== -1) {
-    for (let i = bIdx + 1; i < bEntries.length; i += 1) {
-      const aIdx = aIndexByN.get(bEntries[i].n);
-      if (aIdx !== undefined) return aIdx;
-    }
-  }
-  return undefined;
 }
 
 function comparePageItems(
@@ -126,7 +121,7 @@ function comparePageItems(
     const ia = aMap.get(n);
     const ib = bMap.get(n);
     if (!ia || !ib) {
-      const insertBefore = !ia && ib ? findInsertBeforeIndex(aItems, bItems, n) : undefined;
+      const insertBefore = !ia && ib ? findNumberedInsertBefore(aItems, n, bItems) : undefined;
       recordDiff(
         diffs,
         {
@@ -214,7 +209,7 @@ function compareContentsRecords(
     const ta = aMap.get(n);
     const tb = bMap.get(n);
     if (!ta || !tb) {
-      const insertBefore = !ta && tb ? findInsertBeforeIndex(a.topics, b.topics, n) : undefined;
+      const insertBefore = !ta && tb ? findNumberedInsertBefore(a.topics, n, b.topics) : undefined;
       recordDiff(
         diffs,
         {
@@ -292,116 +287,6 @@ export function needsPersonRead(record: ReferenceRecord | null | undefined): boo
   return false;
 }
 
-const PATH_TOKEN_RE = /([A-Za-z_]+)|\[(\d+)\]|\[n=(\d+)\]|\[b:(\d+)\]/g;
-
-// Follows a comparison path (with "[n=3]" item and step keys and "[b:1]" reader-b-only entries)
-// through a record. Returns the JSON path of the place in that record and the value there.
-function resolveDiffPath(
-  record: unknown,
-  path: string,
-  insertBefore?: number,
-): { jsonPath: string; value: unknown } {
-  let node: unknown = record;
-  let out = "";
-  for (const m of path.matchAll(PATH_TOKEN_RE)) {
-    const [, name, index, keyN, bIndex] = m;
-    if (name !== undefined) {
-      out += out ? `.${name}` : name;
-      node = typeof node === "object" && node !== null ? (node as Record<string, unknown>)[name] : undefined;
-    } else if (index !== undefined) {
-      out += `[${index}]`;
-      node = Array.isArray(node) ? node[Number(index)] : undefined;
-    } else if (keyN !== undefined) {
-      const n = Number(keyN);
-      const found = Array.isArray(node)
-        ? node.findIndex((e) => typeof e === "object" && e !== null && (e as { n?: unknown }).n === n)
-        : -1;
-      if (found !== -1) {
-        out += `[${found}]`;
-        node = (node as unknown[])[found];
-      } else {
-        out += insertBefore !== undefined ? `[${insertBefore}]` : "[]";
-        node = undefined;
-      }
-    } else if (bIndex !== undefined) {
-      out += insertBefore !== undefined ? `[${insertBefore}]` : "[]";
-      node = undefined;
-    }
-  }
-  return { jsonPath: out, value: node };
-}
-
-// The final record holds reader a's content. A once-read entry says which reader has it and where
-// it belongs in the final record, so that a person can copy it after a look at the photo.
-function locateOnceRead(d: RecordDifference, finalRecord: ReferenceRecord): RecordDifference {
-  const reader: "a" | "b" = d.a !== null && d.a !== undefined ? "a" : "b";
-  return {
-    ...d,
-    reader,
-    final_path: resolveDiffPath(finalRecord, d.path, d.insert_before).jsonPath,
-  };
-}
-
-function findEqualNode(node: unknown, target: unknown, path: string): string | null {
-  if (path && deepEqual(node, target)) return path;
-  if (Array.isArray(node)) {
-    for (let i = 0; i < node.length; i += 1) {
-      const found = findEqualNode(node[i], target, `${path}[${i}]`);
-      if (found !== null) return found;
-    }
-  } else if (typeof node === "object" && node !== null) {
-    for (const [key, value] of Object.entries(node)) {
-      const found = findEqualNode(value, target, path ? `${path}.${key}` : key);
-      if (found !== null) return found;
-    }
-  }
-  return null;
-}
-
-// The part of a record that a once-read path belongs to: the same section or example index (or
-// the whole list, for a whole section or example). Null when the path names no such part.
-function onceReadParent(record: ReferenceRecord, path: string): { path: string; node: unknown } | null {
-  const m = /^(sections|examples)(?:\[(\d+)\](?=[.[]))?/.exec(path);
-  if (!m) return null;
-  const list = (record as unknown as Record<string, unknown>)[m[1]];
-  if (!Array.isArray(list)) return null;
-  if (m[2] === undefined) return { path: m[1], node: list };
-  const index = Number(m[2]);
-  return index < list.length ? { path: `${m[1]}[${index}]`, node: list[index] } : null;
-}
-
-// The final record on disk is one that a person edited or checked, so reader a's indexes may not
-// fit it. A once-read entry keeps a final_path only when the entry is in that record with equal
-// content, inside the same section or example; otherwise the person finds the place.
-export function locateOnceReadInKeptRecord(
-  onceRead: readonly RecordDifference[],
-  kept: ReferenceRecord | null,
-): RecordDifference[] {
-  return onceRead.map((d) => {
-    const next: RecordDifference = { path: d.path, a: d.a, b: d.b, kind: d.kind };
-    if (d.reader) next.reader = d.reader;
-    if (!kept || !d.reader) {
-      if (d.missing_step) next.missing_step = true;
-      return next;
-    }
-    const entry = d.reader === "a" ? d.a : d.b;
-    const parent = onceReadParent(kept, d.path);
-    if (!parent) {
-      if (d.missing_step) next.missing_step = true;
-      return next;
-    }
-    const at = resolveDiffPath(kept, d.path);
-    if (at.value !== undefined && deepEqual(at.value, entry)) {
-      next.final_path = at.jsonPath;
-    } else if (typeof entry === "object" && entry !== null) {
-      const found = findEqualNode(parent.node, entry, parent.path);
-      if (found !== null) next.final_path = found;
-    }
-    if (d.missing_step && next.final_path === undefined) next.missing_step = true;
-    return next;
-  });
-}
-
 export function emptyAnswerDiffs(
   finalRecord: ReferenceRecord | null,
   a: ReferenceRecord | null,
@@ -417,67 +302,6 @@ export function emptyAnswerDiffs(
   }));
 }
 
-// Resolves a comparison path to the deepest existing JSON path in `record`.
-// When a differing entry is absent from `record` (reader-B-only "[b:k]", missing "[n=k]",
-// out-of-range index, or omitted optional key), stops at the existing containing list or object.
-function resolveExistingRecordPath(record: unknown, path: string): string {
-  let node: unknown = record;
-  let out = "";
-  for (const m of path.matchAll(PATH_TOKEN_RE)) {
-    const [, name, index, keyN, bIndex] = m;
-    if (name !== undefined) {
-      if (
-        typeof node !== "object" ||
-        node === null ||
-        Array.isArray(node) ||
-        !Object.hasOwn(node, name) ||
-        (node as Record<string, unknown>)[name] === undefined
-      ) {
-        break;
-      }
-      out += out ? `.${name}` : name;
-      node = (node as Record<string, unknown>)[name];
-    } else if (index !== undefined) {
-      const idx = Number(index);
-      if (!Array.isArray(node) || idx < 0 || idx >= node.length || node[idx] === undefined) {
-        break;
-      }
-      out += `[${idx}]`;
-      node = node[idx];
-    } else if (keyN !== undefined) {
-      const n = Number(keyN);
-      const found = Array.isArray(node)
-        ? node.findIndex((e) => typeof e === "object" && e !== null && (e as { n?: unknown }).n === n)
-        : -1;
-      if (found === -1) break;
-      out += `[${found}]`;
-      node = (node as unknown[])[found];
-    } else if (bIndex !== undefined) {
-      break;
-    }
-  }
-  return out;
-}
-
-export function resolveSingleReadPaths(
-  finalRecord: ReferenceRecord,
-  diffs: readonly RecordDifference[],
-): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const d of diffs) {
-    if (d.kind === "wording" || d.kind === "empty_answer") continue;
-    const jsonPath = resolveExistingRecordPath(finalRecord, d.path);
-    if (jsonPath && !seen.has(jsonPath)) {
-      seen.add(jsonPath);
-      out.push(jsonPath);
-    }
-  }
-  return out;
-}
-
-const NUMBERED_LIST_ENTRY_RE = /^(?:sections\[\d+\]\.items|topics)\[n=\d+\]$/;
-
 export function classifyComparison(
   a: ReferenceRecord | null,
   b: ReferenceRecord | null,
@@ -487,14 +311,7 @@ export function classifyComparison(
   const oneUnclear = allDiffs.filter((d) => d.kind === "one_unclear");
   const differences = allDiffs
     .filter((d) => d.kind === "value" || d.kind === "order" || d.kind === "one_unclear")
-    .map((d) =>
-      a &&
-      d.kind === "value" &&
-      NUMBERED_LIST_ENTRY_RE.test(d.path) &&
-      (d.a === null) !== (d.b === null)
-        ? locateOnceRead(d, a)
-        : d,
-    );
+    .map((d) => (a && isOneSidedNumberedEntry(d) ? locateOnceRead(d, a) : d));
   const wording = allDiffs.filter((d) => d.kind === "wording");
   const onceRead = allDiffs
     .filter((d) => d.kind === "once_read")
@@ -542,7 +359,11 @@ export function decidePageOutcome(input: DecideStatusInput): PageDecision {
     stopReasons.push("missing reader");
   } else {
     if (input.sameDigest === false) stopReasons.push("different photo digest");
-    if (!input.familyA || !input.familyB || input.familyA === input.familyB) {
+    if (
+      !isReaderFamily(input.familyA) ||
+      !isReaderFamily(input.familyB) ||
+      input.familyA === input.familyB
+    ) {
       stopReasons.push("same or unknown model family");
     }
   }

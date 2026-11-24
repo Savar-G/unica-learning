@@ -4,6 +4,7 @@ import {
   NOT_STATED,
   recordPathResolves,
   UNCLEAR,
+  validateReferenceRecord,
   type ContentsRecord,
   type PageRecord,
 } from "@/lib/reference-record";
@@ -976,6 +977,18 @@ describe("decideStatus", () => {
     expect(
       decideStatus({ hasA: true, hasB: true, familyA: "claude", familyB: "claude", diffs: [] }),
     ).toBe("machine_read");
+
+    // unknown family -> machine_read with clear reason
+    for (const [familyA, familyB] of [
+      ["codex", "invented-reader"],
+      ["invented-reader", "claude"],
+      ["invented-a", "invented-b"],
+      ["", "codex"],
+    ] as const) {
+      expect(
+        decidePageOutcome({ hasA: true, hasB: true, familyA, familyB, diffs: [] }),
+      ).toEqual({ status: "machine_read", stopReasons: ["same or unknown model family"] });
+    }
 
     // single reader -> machine_read
     expect(
@@ -2713,6 +2726,44 @@ describe("90% reader agreement rule", () => {
       path: "topics[n=1]",
       reader: "a",
       final_path: "topics[0]",
+    });
+
+    // When reader B's extra entry is its last entry (11) while reader A ends at 12,
+    // ascending number order places 11 before 12 (index 10), not at the end.
+    const commonTen = Array.from({ length: 10 }, (_, i) => i + 1);
+    const topicBeforeHigherA = makeContents([...commonTen, 12]);
+    const topicBeforeHigherB = makeContents([...commonTen, 11]);
+    const topicOrderCmp = classifyComparison(topicBeforeHigherA, topicBeforeHigherB);
+    const addedTopic = topicOrderCmp.differences.find((d) => d.path === "topics[n=11]");
+    expect(addedTopic).toMatchObject({
+      path: "topics[n=11]",
+      reader: "b",
+      insert_before: 10,
+      final_path: "topics[10]",
+    });
+    const insertedTopics = structuredClone(topicBeforeHigherA);
+    insertedTopics.topics.splice(addedTopic!.insert_before!, 0, addedTopic!.b as ContentsRecord["topics"][number]);
+    expect(validateReferenceRecord(insertedTopics).ok).toBe(true);
+
+    // Same ascending number order for page items: A=[1..10, 12], B=[1..10, 11] -> insert before 12.
+    const itemOrderCmp = classifyComparison(
+      makeItemsPage([...commonTen, 12]),
+      makeItemsPage([...commonTen, 11]),
+    );
+    expect(itemOrderCmp.differences.find((d) => d.path === "sections[0].items[n=11]")).toMatchObject({
+      path: "sections[0].items[n=11]",
+      reader: "b",
+      insert_before: 10,
+      final_path: "sections[0].items[10]",
+    });
+
+    // Non-ascending page items preserve the final record's printed order using reader B's following entry.
+    const descendingItems = classifyComparison(makeItemsPage([3, 1]), makeItemsPage([3, 2, 1]));
+    expect(descendingItems.differences.find((d) => d.path === "sections[0].items[n=2]")).toMatchObject({
+      path: "sections[0].items[n=2]",
+      reader: "b",
+      insert_before: 1,
+      final_path: "sections[0].items[1]",
     });
   });
 

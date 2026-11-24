@@ -183,34 +183,44 @@ export function formatPagesSentToPerson(report: CompareWorkReport): string {
 function formatLocatedEntry(
   prefix: string,
   d: RecordDifference,
-  opts: { isAccepted: boolean; keptRecord: boolean },
+  opts: { isSentToPerson: boolean; keptRecord: boolean },
 ): string {
   const entry = d.reader === "a" ? d.a : d.b;
   const missingStepNote = d.missing_step
-    ? opts.isAccepted
-      ? "; step absent from reader A's record"
-      : "; its step is missing from reader A's record and must be added first"
+    ? opts.isSentToPerson
+      ? "; its step is missing from reader A's record and must be added first"
+      : "; step absent from reader A's record"
     : "";
   if (d.reader && d.final_path !== undefined) {
-    if (opts.isAccepted) {
+    if (!opts.isSentToPerson) {
       const where =
-        d.reader === "a"
-          ? "in final record at"
-          : d.insert_before !== undefined
-            ? "location in final record before"
-            : "location in final record";
+        d.insert_before !== undefined
+          ? "location in final record before"
+          : d.final_path.endsWith("[]")
+            ? "location in final record"
+            : opts.keptRecord
+              ? "in kept final record at"
+              : d.reader === "a"
+                ? "in final record at"
+                : "location in final record";
       return `${prefix}: only reader ${d.reader}; ${where} \`${d.final_path}\`${missingStepNote}: ${formatVal(entry)}`;
     }
-    const where = opts.keptRecord
-      ? "found in the kept final record at"
-      : d.reader === "a"
-        ? "already in the final record at"
-        : d.insert_before !== undefined
-          ? "insert before"
-          : "belongs in the final record at";
+    const where =
+      d.insert_before !== undefined
+        ? "insert before"
+        : d.final_path.endsWith("[]")
+          ? "belongs in the final record at"
+          : opts.keptRecord
+            ? "found in the kept final record at"
+            : d.reader === "a"
+              ? "already in the final record at"
+              : "belongs in the final record at";
     return `${prefix}: only reader ${d.reader} has it; ${where} \`${d.final_path}\`${opts.keptRecord ? "" : missingStepNote}: ${formatVal(entry)}`;
   }
   if (d.reader && opts.keptRecord) {
+    if (!opts.isSentToPerson) {
+      return `${prefix}: only reader ${d.reader}; not in kept final record${missingStepNote}: ${formatVal(entry)}`;
+    }
     return `${prefix}: only reader ${d.reader} has it; a person changed the final record, so find the place in that record${missingStepNote}: ${formatVal(entry)}`;
   }
   return `${prefix}: a=${formatVal(d.a)} | b=${formatVal(d.b)}`;
@@ -416,14 +426,13 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
     // A record that a person edited or checked is kept; reader a's words and indexes may not fit it.
     const keptRecord = p.edited_by_person === true || p.status === "human_checked";
     const isSentToPerson = p.status === "machine_read";
-    const isAccepted = p.status === "agreement_accepted" || p.status === "double_read";
 
     if (p.differences.length > 0) {
       lines.push("- Differences:");
       for (const d of p.differences) {
         const prefix = `  - \`${d.path}\` (${d.kind})`;
-        if (!keptRecord && d.reader && d.final_path !== undefined) {
-          lines.push(formatLocatedEntry(prefix, d, { isAccepted, keptRecord: false }));
+        if (d.reader && (d.final_path !== undefined || keptRecord)) {
+          lines.push(formatLocatedEntry(prefix, d, { isSentToPerson, keptRecord }));
         } else {
           lines.push(`${prefix}: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
         }
@@ -449,7 +458,7 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
           : "- Once-read teaching fields:",
       );
       for (const d of p.once_read) {
-        lines.push(formatLocatedEntry(`  - \`${d.path}\``, d, { isAccepted, keptRecord }));
+        lines.push(formatLocatedEntry(`  - \`${d.path}\``, d, { isSentToPerson, keptRecord }));
       }
     }
 

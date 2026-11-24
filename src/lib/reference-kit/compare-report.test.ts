@@ -181,26 +181,58 @@ describe("formatCompareReportMarkdown", () => {
     expect(md).toContain("Photo digest mismatch");
     expect(md).toContain("Exact match across both readers.");
 
-    // A record that a person edited or checked is kept: wording does not claim reader A's words are kept.
-    for (const keptPage of [
-      { ...report.pages[1], edited_by_person: true },
-      { ...report.pages[1], status: "human_checked" as const },
-    ]) {
-      const keptMd = formatCompareReportMarkdown({
-        ...report,
-        pages: [keptPage],
-      });
-      expect(keptMd).toContain(
-        "- Wording differences: the readers describe the same thing in other words; the edited record is kept; no action needed",
-      );
-      expect(keptMd).not.toContain("reader A's words are kept");
-      expect(keptMd).toContain(
-        "`sections[0].scaffolds[b:1]`: only reader b has it; found in the kept final record at `sections[0].scaffolds[]`",
-      );
-      expect(keptMd).toContain(
-        '`sections[0].scaffolds[b:2]`: only reader b has it; a person changed the final record, so find the place in that record: {"kind":"arrow","applies_to":[1]}',
-      );
-    }
+    // A record that a person edited is kept: wording does not claim reader A's words are kept,
+    // and machine_read keeps review instructions for locating entries.
+    const editedPage = {
+      ...report.pages[1],
+      edited_by_person: true,
+      once_read: [
+        ...report.pages[1].once_read,
+        {
+          path: "sections[0].scaffolds[b:3]",
+          a: null,
+          b: { kind: "arrow", applies_to: [3] },
+          kind: "once_read" as const,
+          reader: "b" as const,
+          final_path: "sections[0].scaffolds[1]",
+        },
+      ],
+    };
+    const editedMd = formatCompareReportMarkdown({
+      ...report,
+      pages: [editedPage],
+    });
+    expect(editedMd).toContain(
+      "- Wording differences: the readers describe the same thing in other words; the edited record is kept; no action needed",
+    );
+    expect(editedMd).not.toContain("reader A's words are kept");
+    expect(editedMd).toContain(
+      "`sections[0].scaffolds[b:3]`: only reader b has it; found in the kept final record at `sections[0].scaffolds[1]`",
+    );
+    expect(editedMd).toContain(
+      '`sections[0].scaffolds[b:2]`: only reader b has it; a person changed the final record, so find the place in that record: {"kind":"arrow","applies_to":[1]}',
+    );
+
+    // A human_checked page keeps wording neutral and omits review instructions, showing value and location only.
+    const checkedMd = formatCompareReportMarkdown({
+      ...report,
+      pages: [{ ...editedPage, edited_by_person: undefined, status: "human_checked" as const }],
+    });
+    expect(checkedMd).toContain(
+      "- Wording differences: the readers describe the same thing in other words; the edited record is kept; no action needed",
+    );
+    expect(checkedMd).not.toContain("reader A's words are kept");
+    expect(checkedMd).toContain(
+      '`sections[0].scaffolds[b:3]`: only reader b; in kept final record at `sections[0].scaffolds[1]`: {"kind":"arrow","applies_to":[3]}',
+    );
+    expect(checkedMd).toContain(
+      '`sections[0].scaffolds[b:2]`: only reader b; not in kept final record: {"kind":"arrow","applies_to":[1]}',
+    );
+    expect(checkedMd).not.toContain("find the place in that record");
+    expect(checkedMd).not.toContain("must be added");
+    expect(checkedMd).not.toContain("insert before");
+    expect(checkedMd).not.toContain("belongs in the final");
+    expect(checkedMd).not.toContain("look at the photo");
 
     // A double_read page with only wording differences lists them and does not say "Exact match".
     const wordingOnly = formatCompareReportMarkdown({
@@ -450,8 +482,9 @@ describe("formatCompareReportMarkdown", () => {
     );
   });
 
-  it("omits review instructions on agreement_accepted and double_read pages while keeping them on machine_read pages", () => {
+  it("omits review instructions on human_checked, agreement_accepted, and double_read pages while keeping them on machine_read pages", () => {
     const caption = { kind: "caption", applies_to: "all", text: "Practice" };
+    const missingCaption = { kind: "caption", applies_to: [1], text: "Hint" };
     const step = { n: 2, shows: "partial_sum", printed: "= 5/6" };
     const mark = { kind: "box", step: 2, description: "Box around sum" };
     const sharedEntries = {
@@ -469,6 +502,13 @@ describe("formatCompareReportMarkdown", () => {
           kind: "once_read" as const,
           reader: "b" as const,
           final_path: "sections[0].scaffolds[]",
+        },
+        {
+          path: "sections[0].scaffolds[b:1]",
+          a: null,
+          b: missingCaption,
+          kind: "once_read" as const,
+          reader: "b" as const,
         },
         {
           path: "examples[0].steps[b:1]",
@@ -514,7 +554,7 @@ describe("formatCompareReportMarkdown", () => {
       same_page_id_conflicts: [],
     });
 
-    for (const status of ["agreement_accepted", "double_read"] as const) {
+    for (const status of ["human_checked", "agreement_accepted", "double_read"] as const) {
       const md = formatCompareReportMarkdown(
         makeReport([
           {
@@ -522,7 +562,12 @@ describe("formatCompareReportMarkdown", () => {
             source_ref: "sample:M:6a",
             status,
             agreement: { agreed: 19, compared: 20, percent: 95 },
-            result: status === "double_read" ? "double read" : "accepted by the 90% rule",
+            result:
+              status === "double_read"
+                ? "double read"
+                : status === "human_checked"
+                  ? "checked by a person"
+                  : "accepted by the 90% rule",
             result_reason: null,
           },
         ]),
@@ -530,6 +575,8 @@ describe("formatCompareReportMarkdown", () => {
       expect(md).toContain("`sections[0].scaffolds[b:0]`");
       expect(md).toContain("`sections[0].scaffolds[]`");
       expect(md).toContain(JSON.stringify(caption));
+      expect(md).toContain("`sections[0].scaffolds[b:1]`");
+      expect(md).toContain(JSON.stringify(missingCaption));
       expect(md).toContain("`examples[0].steps[1]`");
       expect(md).toContain(JSON.stringify(step));
       expect(md).toContain("`examples[0].marks[]`");
@@ -539,6 +586,7 @@ describe("formatCompareReportMarkdown", () => {
       expect(md).not.toContain("belongs in the final");
       expect(md).not.toContain("insert before");
       expect(md).not.toContain("must be added first");
+      expect(md).not.toContain("find the place");
       expect(md).not.toContain("write the value");
       expect(md).not.toContain("mark the page checked");
     }

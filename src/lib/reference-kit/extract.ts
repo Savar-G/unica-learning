@@ -40,6 +40,7 @@ import {
 import {
   assertModelMatchesFamily,
   assertValidSourceKey,
+  isReaderFamily,
   readPhoto,
   type PhotoRunEntry,
   type ReaderFamily,
@@ -134,10 +135,10 @@ function validateExtractOptions(opts: ExtractFolderOptions): {
   assertValidSourceKey(opts.source);
   const readerA: ReaderFamily = opts.readerA ?? "codex";
   const readerB: ReaderFamily = opts.readerB ?? "claude";
-  if (readerA !== "claude" && readerA !== "codex") {
+  if (!isReaderFamily(readerA)) {
     throw new Error(`Invalid --reader-a "${String(readerA)}": expected "claude" or "codex"`);
   }
-  if (readerB !== "claude" && readerB !== "codex") {
+  if (!isReaderFamily(readerB)) {
     throw new Error(`Invalid --reader-b "${String(readerB)}": expected "claude" or "codex"`);
   }
   if (readerA === readerB) {
