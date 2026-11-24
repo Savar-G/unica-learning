@@ -20,6 +20,13 @@ npm run check:guard && npx eslint src && npm run typecheck && npm run build
 - If `bank-grades-3-5.test.ts`, `parent-pin.test.ts`, or the Chromium launch test flakes, rerun that single file and report both the first failure and the rerun result.
 - If you touch `src/lib/maya/` or `worker/`, also run `npm run voice:test && npm run voice:typecheck`.
 
+## Rules, findings & classes
+
+- The brief's rule table is the contract: each row needs a test. Report a row that has no test or that conflicts with another row; do not guess.
+- For each review finding, first search for every other place with the same kind of mistake and report the list (place, affected or not, why). Fix and test the class with a table test or a `fast-check` property, not only the reported case.
+- If the same class was found before, do not add another case. Remove the feature, use one shared helper, or change the data so that the mistake is not possible. Details: [review rounds](review-rounds.md).
+- Before you copy a rule, look for the existing helper or constant and use it.
+
 ## Pre-push slop & suppression audit
 
 Before opening or updating a PR, inspect your diff (`git diff origin/main`):
