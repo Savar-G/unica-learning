@@ -796,24 +796,30 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
   const parent = band.name === "parent";
   // A step page's review questions print under their own "Remember these" label (the U16 review: earlier steps mixed into
   // the page's practice read as off-topic).
+  const finalCheckItem = ["friday-5", "mini-test"].includes(b.slot) ? qs.at(-1)?.number : undefined;
   // Each grid carries its row count (--rows): a page that grows its rows to fill it gives every row the same share.
   const grid = (cls: string, part: DraftQuestion[]) => {
     const wide = (n: number) => cls === "cols" ? wideColumn(ctx.q(n), band)
-      : cls === "two" && (["friday-5", "mini-test"].includes(b.slot) && n === part.at(-1)?.number || ((s) => s.wide || s.placesWide)(lineShape(ctx.q(n), band)));
+      : cls === "two" && (n === finalCheckItem || ((s) => s.wide || s.placesWide)(lineShape(ctx.q(n), band)));
     return `<div class="${cls}" style="--rows:${gridRows(part.map((q) => q.number), cls === "list" ? 1 : 2, wide).length}">`;
   };
   const list = (render: (q: DraftQuestion, k: number) => string, cls = "list") => {
     // (With the page's Review heading already said, the block's review questions continue its grid.)
     const at = ctx.review[i]?.at ?? -1;
-    if (at < 0) return `${grid(cls, qs)}${qs.map((q, k) => {
-      const last = ["friday-5", "mini-test"].includes(b.slot) && k === qs.length - 1;
-      const html = render(q, k);
-      const compact = last && c.consistentLayout && html.startsWith('<div class="q') && isMath(q.package.text)
-        && packageItem(q.package).format === "write-number" && questionWorkSpace(q.package) > 0;
-      return html.replace(/^(<div class=")([^"]+)(")/, `$1$2${compact ? " compact-wide" : ""}$3${last ? ' style="grid-column:1/-1"' : ""}`);
-    }).join("")}</div>`;
-    if (at === 0) return `<div class="lab" data-measure="review-${i}">Review</div>${grid(cls, qs)}${qs.map((q, k) => render(q, k).replace(/^(<div class="[^"]+")/, ["friday-5", "mini-test"].includes(b.slot) && k === qs.length - 1 ? '$1 style="grid-column:1/-1"' : "$1")).join("")}</div>`;
-    return `${grid(cls, qs.slice(0, at))}${qs.slice(0, at).map(render).join("")}</div><div class="lab" data-measure="review-${i}">Review</div>${grid(cls, qs.slice(at))}${qs.slice(at).map((q, k) => render(q, k + at)).join("")}</div>`;
+    const part = (start: number, end?: number) => {
+      const questions = qs.slice(start, end);
+      const rows = questions.map((q, k) => {
+        const html = render(q, start + k);
+        if (q.number !== finalCheckItem) return html;
+        const compact = at < 0 && c.consistentLayout && html.startsWith('<div class="q') && isMath(q.package.text)
+          && packageItem(q.package).format === "write-number" && questionWorkSpace(q.package) > 0;
+        return html.replace(/^(<div class=")([^"]+)(")/, `$1$2${compact ? " compact-wide" : ""}$3 style="grid-column:1/-1"`);
+      }).join("");
+      return `${grid(cls, questions)}${rows}</div>`;
+    };
+    if (at < 0) return part(0);
+    const heading = `<div class="lab" data-measure="review-${i}">Review</div>`;
+    return (at > 0 ? part(0, at) : "") + heading + part(at);
   };
   const line = (q: DraftQuestion, k: number) => (parent ? parentItem(q, band, b.figures?.[k]) : lineItem(q, band, b.hints?.[k], 80, b.figures?.[k]));
   const items = (cls = "list") => (parent ? list(line, "pcards") : list(line, cls));

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
+import fc from "fast-check";
 import { fakePrintEngine } from "@/lib/print-engine-fake";
 import { packageItem } from "@/lib/question-package";
 import { workbookProblem } from "@/lib/workbook-content";
-import { renderWorkbook, type DraftPage, type PrintEngine, type WorkbookDraft } from "@/lib/workbook-render";
+import { IMAGE_SCALE, renderWorkbook, type DraftPage, type PrintEngine, type WorkbookDraft } from "@/lib/workbook-render";
 import { sampleBook } from "@/lib/workbook-sample-book";
 import { bandOf, COVER_FOR_CHARS, coverForLine, comparisonOf, pagePlan, reviewLayout, workbookTemplate } from "@/lib/workbook-template";
 import { ANSWER_LAYOUT_BOOK, answerLayoutPages } from "@/lib/workbook-answer-layout-fixture";
@@ -109,6 +110,20 @@ describe("where answer boxes print (#1212)", () => {
     expect(widths).toEqual(["77px", "96px", "116px", "135px"]);
   });
 
+  it("keeps at least 30 image pixels per signed digit or grouping comma across powers of 1,000", () => {
+    const template = workbookTemplate();
+    const formatter = new Intl.NumberFormat("en-CA", { useGrouping: "always" });
+    fc.assert(fc.property(fc.constantFrom(1, 1_000, 1_000_000, 1_000_000_000), fc.integer({ min: -25, max: 25 }), fc.boolean(), (boundary, delta, negative) => {
+      const value = (boundary + delta) * (negative ? -1 : 1);
+      const page = answerLayoutPages(16, true)["long-numbers"];
+      const q = page.questions[0];
+      q.package.item = { ...packageItem(q.package), regions: [{ kind: "box", id: "answer", label: null, answer: { type: "number", value } }] };
+      const html = template.page(page, { qr: "", qrUrl: "" }, { ...ANSWER_LAYOUT_BOOK, pages: [page] });
+      const width = Number(/data-measure="question-1-answer" style="width:(\d+)px/.exec(html ?? "")?.[1]);
+      expect(width * IMAGE_SCALE).toBeGreaterThanOrEqual(30 * formatter.format(value).length);
+    }));
+  });
+
   it("counts the trailing zeros of a dollar answer and leaves its currency sign outside", () => {
     const page = answerLayoutPages(16, true)["long-numbers"];
     const q = page.questions[0];
@@ -190,6 +205,16 @@ describe("the workbook templates", () => {
       expect(reviewLayout(split)).toEqual([{ open: true, pill: false, at: 3 }]);
       expect(grids(split)).toEqual([n.slice(0, 3), n.slice(3)]);
       expect(pagePlan(split)).toMatchObject({ rows: [n.slice(0, 2), n.slice(3, 5)], incomplete: [n[2], n[5]] });
+    });
+    it.each(["friday-5", "mini-test"] as const)("spans the final %s question across its review grid", slot => {
+      const page = answerLayoutPages(16, true)["friday-5"];
+      if (page.content?.kind !== "day") throw new Error("not a day page");
+      page.content.blocks = [{ slot, items: [1, 2, 3, 4, 5], reviewFrom: 3 }];
+      const root = parsedPage(workbookTemplate().page(page, { qr: "", qrUrl: "" }, { ...ANSWER_LAYOUT_BOOK, pages: [page] })!);
+      const grids = [...root.querySelectorAll(".two")];
+      expect(grids.map(grid => grid.getAttribute("style"))).toEqual(["--rows:1", "--rows:2"]);
+      expect(grids.map(grid => [...grid.children].filter(q => q.getAttribute("style") === "grid-column:1/-1").map(q => q.getAttribute("data-measure"))))
+        .toEqual([[], ["question-5"]]);
     });
     it("names the level on the cover unless the line would need a third line (U18, the longest level name)", () => {
       const name = (n: number) => "Alexandra Maximiliano Wilhelmina Bartholomew Montgomery".padEnd(n, "a").slice(0, n);
