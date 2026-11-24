@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { planStartEmail, shownWorkbookEmailStatus, workbookDelivery, workbookEmail } from "@/lib/workbook-email";
+import { WORKBOOK_DELAY_NOTICE, WORKBOOK_DELAY_ON } from "@/lib/workbook-delay";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -59,9 +60,21 @@ describe("workbook emails", () => {
     expect(message.text).toContain("Nothing was charged");
     expect(message.text).toContain("Your family gets one free month. It starts when your first workbook arrives.");
     expect(message.text).not.toContain("Tracking number:");
-    expect(message.text).toContain("Please allow 5 to 7 days for us to prepare your first workbook.");
     expect(message.text).toContain("You have nothing to do right now.\n\n" + contact);
     expect(message.html).toContain('href="https://unicalearning.com/account/feedback"');
+  });
+  it("while workbooks are rebuilt, the welcome gives the approved wait in place of 5 to 7 days (#1247)", () => {
+    const on = workbookEmail({ ...parent, kind: "welcome", delivery: null, delay: true });
+    expect(on.text).toContain(`We are preparing your first workbook.\n\n${WORKBOOK_DELAY_NOTICE}\n\nWe will email you again`);
+    expect(on.html.replace(/&#39;/g, "'")).toContain(WORKBOOK_DELAY_NOTICE);
+    for (const format of [on.text, on.html]) expect(format).not.toContain("5 to 7 days");
+    const off = workbookEmail({ ...parent, kind: "welcome", delivery: null, delay: false });
+    expect(off.text).toContain("Please allow 5 to 7 days for us to prepare your first workbook.");
+    expect(off.text).not.toContain("2 to 3 weeks");
+    expect(workbookEmail({ ...parent, kind: "welcome", delivery: null }).text).toBe((WORKBOOK_DELAY_ON ? on : off).text);
+    for (const kind of ["ready", "dispatch"] as const) {
+      expect(workbookEmail({ ...parent, workbookNumber: 1, kind, delivery: { method: "hand" }, delay: true }).text).not.toContain("2 to 3 weeks");
+    }
   });
   it("the founders sign the welcome; the team signs dispatch notices (D-225)", () => {
     const welcome = workbookEmail({ ...parent, kind: "welcome", delivery: null });

@@ -5,6 +5,7 @@ import { PLAN_REMINDER_PARENT } from "@/lib/plan-reminder";
 import { cad } from "@/lib/site";
 import { DISPATCH_PREVIEW, GETTING_STARTED_HABITS, NEXT_WORKBOOK, walkthroughUrl } from "@/lib/getting-started";
 import { GETTING_STARTED_VIDEO_LABEL, GETTING_STARTED_VIDEO_URL } from "@/lib/getting-started-video";
+import { workbookDelayNotice } from "@/lib/workbook-delay";
 
 /** The emails an admin previews and sends from the card's panel. */
 export type WorkbookNoticeKind = "welcome" | "ready" | "dispatch";
@@ -69,7 +70,8 @@ function onboardingParagraph(s: string, video: string, booking = ""): string {
   return paragraphHtml(s);
 }
 
-export function workbookEmail(p: { parentName: string; childName: string; kind: WorkbookNoticeKind; workbookNumber: number; delivery: WorkbookDelivery | null; walkthrough?: string }) {
+/** `delay`: the welcome gives the #1247 notice in place of "5 to 7 days" (src/lib/workbook-delay.ts); left out, the switch decides. */
+export function workbookEmail(p: { parentName: string; childName: string; kind: WorkbookNoticeKind; workbookNumber: number; delivery: WorkbookDelivery | null; walkthrough?: string; delay?: boolean }) {
   const welcome = p.kind === "welcome";
   const ready = p.kind === "ready";
   const delivery = workbookDelivery(p.delivery);
@@ -79,7 +81,7 @@ export function workbookEmail(p: { parentName: string; childName: string; kind: 
   const paragraphs = welcome ? [
     `Hi ${p.parentName},`,
     `Thank you for choosing Unica Learning for ${p.childName}. We are preparing your first workbook.`,
-    "Please allow 5 to 7 days for us to prepare your first workbook.",
+    workbookDelayNotice(p.delay) ?? "Please allow 5 to 7 days for us to prepare your first workbook.",
     "We will email you again when it is on its way. If we send it by mail, that email will include tracking details. For local hand delivery, we will contact you to arrange it.",
     `Nothing was charged when you added your card. ${w.freeMonth} ${w.insideWindow} ${w.afterWindow}`,
     "You have nothing to do right now.",
