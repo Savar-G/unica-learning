@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { resolve } from "node:path";
+import type { Database } from "@/lib/database";
 import { killActiveReaders } from "@/lib/reference-kit/read-cli";
 import { runMethodCommand } from "@/lib/reference-method/cli";
 import { createSupabaseTopicMethodStore } from "@/lib/reference-method/store";
@@ -23,7 +24,7 @@ process.exitCode = await runMethodCommand(process.argv.slice(2), {
     const key = process.env.SUPABASE_SECRET_KEY?.trim();
     if (!url || !key) return null;
     return createSupabaseTopicMethodStore(
-      createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } }),
+      createClient<Database>(url, key, { auth: { persistSession: false, autoRefreshToken: false } }),
       now,
     );
   },

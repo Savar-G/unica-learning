@@ -1,8 +1,8 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import type { ContentsTopic, Expr, PageRecord } from "@/lib/reference-record";
-import { buildEvidence } from "./evidence";
-import { add, evidenceFor, KEY, makeContents, makeExample, makeItem, makePage, okEvidence, statusesOf } from "./test-records";
+import type { ContentsTopic, Example, Expr, PageRecord } from "@/lib/reference-record";
+import type { buildEvidence } from "./evidence";
+import { add, evidenceFor, KEY, makeContents, makeExample, makeItem, makePage, okEvidence } from "./test-records";
 
 const NO_CARRY = "arith add 2x1 horizontal";
 const CARRY = "arith add 2x1 horizontal carries=ones_to_tens";
@@ -21,7 +21,7 @@ describe("which pages belong to a topic (M1)", () => {
       ["demo:Z:11a", "double_read", "used"],
       ["demo:Z:12b", "human_checked", "used"],
     ]);
-    expect(e.pages_without_photo).toEqual(["demo:Z:11b", "demo:Z:12a"]);
+    expect(e.pages_without_photo).toEqual({ pages: ["demo:Z:11b", "demo:Z:12a"] });
   });
 
   it("says not_stated for what the chart does not state, and then takes pages by title and number", () => {
@@ -36,8 +36,37 @@ describe("which pages belong to a topic (M1)", () => {
     });
     expect(e.topic).toEqual({ title: "Joining Pebbles 1", sheet_range: "not_stated", std_time_min: "not_stated" });
     expect(e.pages.map((p) => p.ref)).toEqual(["demo:Z:11a", "demo:Z:15a"]);
-    expect(e.pages_without_photo).toBe("not_stated");
-    expect(e.unplaced_pages).toEqual(["demo:Z:14a"]);
+    expect(e.pages_without_photo.pages).toBe("not_stated");
+    expect(e.unplaced_pages).toEqual({ pages: ["demo:Z:14a"] });
+  });
+
+  it.each([
+    ["Joining Pebbles No.1", true], ["Joining Pebbles #1", true], ["Joining Pebbles (1)", true], ["JOINING  Pebbles No. 1", true], ["Joining Pebbles 1.", true],
+    ["Joining Pebbles 2", false], ["Joining Pebbles", false], ["Joining Pebbles 11", false], ["Joining Pebbles -1", false], ["Joining Pebbles 1.1", false],
+  ])("compares the title %j with the topic titles: in the topic %j", (title, inTopic) => {
+    for (const [onPage, inChart] of [[title, "Joining Pebbles 1"], ["Joining Pebbles 1", title]]) {
+      const e = okEvidence([makePage("11a", { title: onPage })], {
+        contents: makeContents([{ n: 1, title: inChart, sheets: null, std_time_min: null }]),
+      });
+      expect([e.pages.length, e.unplaced_pages.pages.length], onPage).toEqual(inTopic ? [1, 0] : [0, 1]);
+    }
+  });
+
+  it("does not place a page by the title of a machine_read page, unless the caller asks", () => {
+    const contents = makeContents([{ n: 1, title: "Joining Pebbles 1", sheets: null, std_time_min: null }]);
+    const statuses = { "demo:Z:11a": "machine_read" as const };
+    const off = okEvidence([makePage("11a")], { contents, statuses });
+    expect([off.pages, off.unplaced_pages]).toEqual([[], { pages: ["demo:Z:11a"] }]);
+    const on = okEvidence([makePage("11a"), makePage("12a", { title: "Other" })], {
+      contents, statuses: { ...statuses, "demo:Z:12a": "machine_read" }, includeMachineRead: true,
+    });
+    expect(on.pages).toMatchObject([{ ref: "demo:Z:11a", machine_read: ["demo:Z:11a"] }]);
+    expect(on.unplaced_pages).toEqual({ pages: ["demo:Z:12a"], machine_read: ["demo:Z:12a"] });
+  });
+
+  it("does not stop on the title of a machine_read page in the printed range", () => {
+    const pages = [makePage("11a", { title: "Joining Pebbles 2" })];
+    expect(okEvidence(pages, { statuses: { "demo:Z:11a": "machine_read" } }).pages).toMatchObject([{ facts: "withheld" }]);
   });
 
   it("uses no field of the chart that only one reader read", () => {
@@ -76,6 +105,15 @@ describe("which pages belong to a topic (M1)", () => {
       ]) }],
     ],
     ["a range too long to be one topic", "too long", [[], { contents: makeContents([{ n: 1, title: "A", sheets: [1, 100_000_000], std_time_min: null }]) }]],
+    ["a sheet number over the bound", "over 2147483647", [[makePage("2147483648a")]]],
+    ...([
+      { n: 1, title: "A", sheets: [2 ** 53, 2 ** 53], std_time_min: null },
+      { n: 1, title: "A", sheets: [1, 2_147_483_648], std_time_min: null },
+      { n: 1, title: "A", sheets: null, std_time_min: [1, 2_147_483_648] },
+      { n: 2_147_483_648, title: "A", sheets: null, std_time_min: null },
+    ] as ContentsTopic[]).map((topic): [string, string, Parameters<typeof evidenceFor>] => [
+      `the chart line ${JSON.stringify(topic)}`, "over 2147483647", [[], { contents: makeContents([topic]), key: { ...KEY, topic: topic.n } }],
+    ]),
   ])("stops on %s", (_name, text, args) => {
     expect(problemsOf(evidenceFor(...args))).toContain(text);
   });
@@ -83,13 +121,6 @@ describe("which pages belong to a topic (M1)", () => {
   it("uses a page in the range whose title is in no topic, and marks it", () => {
     const e = okEvidence([makePage("11a", { title: "Pebbles" })]);
     expect(e.pages[0]).toMatchObject({ ref: "demo:Z:11a", printed_title_differs: true });
-  });
-
-  it("is an error to have two contents records or two records of one page", () => {
-    const records = [makePage("11a"), makePage("11a"), makeContents(), makeContents()];
-    const built = buildEvidence({ key: KEY, records, statusByRef: statusesOf(records), includeMachineRead: false });
-    expect(problemsOf(built)).toContain('two records of "demo:Z:11a"');
-    expect(problemsOf(built)).toContain('two records of "demo:Z:contents"');
   });
 });
 
@@ -111,7 +142,11 @@ describe("the facts (M2)", () => {
     ["subtract with a borrow", { kind: "arith", op: "sub", operands: [32, 7] }, "vertical", "arith sub 2x1 vertical borrows=tens_to_ones"],
     ["divide with a remainder", { kind: "arith", op: "div", operands: [17, 5] }, "bracket", "arith div 2x1 bracket remainder=yes"],
     ["divide with no remainder", { kind: "arith", op: "div", operands: [15, 5] }, "bracket", "arith div 2x1 bracket remainder=no"],
-    ["a missing number", { kind: "missing", op: "add", operands: [23, null], result: 27 }, "horizontal", "missing add 2x1 horizontal"],
+    ["a missing second number", { kind: "missing", op: "add", operands: [23, null], result: 27 }, "horizontal", "missing add 2x_=2 horizontal"],
+    ["a missing first number", { kind: "missing", op: "add", operands: [null, 3], result: 27 }, "horizontal", "missing add _x1=2 horizontal"],
+    ["a missing first number with a short result", { kind: "missing", op: "add", operands: [null, 3], result: 7 }, "horizontal", "missing add _x1=1 horizontal"],
+    ["a missing result", { kind: "missing", op: "add", operands: [23, 4], result: null }, "horizontal", "missing add 2x1=_ horizontal"],
+    ["a missing number with a carry", { kind: "missing", op: "add", operands: [null, 8], result: 31 }, "horizontal", "missing add _x1=2 horizontal carries=ones_to_tens"],
     ["a chain", { kind: "chain", terms: [5, null, 15] }, "horizontal", "chain step 5 horizontal"],
     ["a word problem", { kind: "word", text: "story", expr: add(23, 4) }, "horizontal", "word add 2x1 horizontal"],
     ["a linked pair", { kind: "linked", pair: [add(23, 4), add(4, 23)] }, "horizontal", "linked horizontal [arith add 2x1 horizontal | arith add 1x2 horizontal]"],
@@ -119,22 +154,29 @@ describe("the facts (M2)", () => {
     expect(okEvidence([makePage("11a", { items: [makeItem(1, expr, form)] })]).steps.map((s) => s.id)).toEqual([id]);
   });
 
-  it.each<[string, Expr]>([
-    ["notation", { kind: "notation", latex: "x+1" }],
-    ["a decimal", add(0.5, 0.7)],
-    ["a negative number", add(-3, 5)],
-    ["a difference under zero", { kind: "arith", op: "sub", operands: [3, 9] }],
-    ["a division by zero", { kind: "arith", op: "div", operands: [3, 0] }],
-    ["a product too large to be exact", { kind: "arith", op: "mul", operands: [9_007_199_254_740_991, 9_007_199_254_740_991, 9] }],
-    ["an unclear number", { kind: "arith", op: "add", operands: ["unclear", 4] }],
-    ["an unclear operation", { kind: "arith", op: "unclear", operands: [23, 4] }],
-    ["a word problem with no expression", { kind: "word", text: "story", expr: null }],
-    ["a chain with no known step", { kind: "chain", terms: [5, null] }],
-    ["a chain whose step is unclear", { kind: "chain", terms: [5, null, 15], step: "unclear" }],
-    ["half a linked pair", { kind: "linked", pair: [add(1, 2), { kind: "notation", latex: "x" }] }],
-  ])("does not guess the step of %s", (_name, expr) => {
-    const e = okEvidence([makePage("11a", { items: [makeItem(1, expr)] })]);
-    expect(e.steps).toEqual([{ id: "page demo:Z:11a", features: "not_stated", pages: ["demo:Z:11a"], shown_on: [] }]);
+  it.each<[string, Expr, string]>([
+    ["notation", { kind: "notation", latex: "x+1" }, "not_stated"],
+    ["a decimal", add(0.5, 0.7), "add"],
+    ["a negative number", add(-3, 5), "add"],
+    ["a difference under zero", { kind: "arith", op: "sub", operands: [3, 9] }, "sub"],
+    ["a division by zero", { kind: "arith", op: "div", operands: [3, 0] }, "div"],
+    ["a product too large to be exact", { kind: "arith", op: "mul", operands: [9_007_199_254_740_991, 9_007_199_254_740_991, 9] }, "mul"],
+    ["an unclear number", { kind: "arith", op: "add", operands: ["unclear", 4] }, "add"],
+    ["an unclear operation", { kind: "arith", op: "unclear", operands: [23, 4] }, "not_stated"],
+    ["a missing number with a decimal", { kind: "missing", op: "mul", operands: [null, 4], result: 0.8 }, "mul"],
+    ["a word problem with no expression", { kind: "word", text: "story", expr: null }, "not_stated"],
+    ["a word problem with a decimal", { kind: "word", text: "story", expr: add(0.5, 1) }, "add"],
+    ["a chain with no known step", { kind: "chain", terms: [5, null] }, "not_stated"],
+    ["a chain whose step is unclear", { kind: "chain", terms: [5, null, 15], step: "unclear" }, "not_stated"],
+    ["half a linked pair", { kind: "linked", pair: [add(1, 2), { kind: "notation", latex: "x" }] }, "not_stated"],
+  ])("does not guess the step of %s, and keeps what it knows", (_name, expr, operation) => {
+    const e = okEvidence([makePage("11a", { items: [makeItem(1, expr, "vertical")] })]);
+    expect(e.steps).toEqual([
+      {
+        id: "page demo:Z:11a", features: "not_stated", pages: ["demo:Z:11a"], methods: [],
+        partly_known: [{ expr_kind: expr.kind, operation, form: "vertical" }],
+      },
+    ]);
     expect(e.sheets[0].questions).toBe(1);
   });
 
@@ -191,10 +233,22 @@ describe("the facts (M2)", () => {
     ]);
   });
 
+  it("compares the order of the formats on a page, not only the set", () => {
+    const form = (...forms: Array<"horizontal" | "vertical">) => forms.map((f, i) => makeItem(i + 1, add(23, 4), f));
+    const e = okEvidence([
+      makePage("11a", { items: form("horizontal", "horizontal", "vertical") }),
+      makePage("11b", { items: form("horizontal", "vertical", "vertical") }),
+      makePage("12a", { items: form("vertical", "horizontal") }),
+    ]);
+    expect(e.format_changes.map((c) => [c.from, c.to, c.before, c.after])).toEqual([
+      ["demo:Z:11b", "demo:Z:12a", ["arith horizontal", "arith vertical"], ["arith vertical", "arith horizontal"]],
+    ]);
+  });
+
   it("works with zero pages and with one page", () => {
     const none = okEvidence([]);
     expect([none.pages, none.sheets, none.steps, none.gaps]).toEqual([[], [], [], []]);
-    expect(none.pages_without_photo).toEqual(["demo:Z:11a", "demo:Z:11b", "demo:Z:12a", "demo:Z:12b"]);
+    expect(none.pages_without_photo.pages).toEqual(["demo:Z:11a", "demo:Z:11b", "demo:Z:12a", "demo:Z:12b"]);
     expect(okEvidence([makePage("12a")]).sheets).toHaveLength(1);
   });
 
@@ -234,45 +288,87 @@ describe("the facts (M2)", () => {
   });
 });
 
-describe("steps with no method (M5)", () => {
+describe("steps with no method (M5, Y2)", () => {
   const items = [makeItem(1, add(23, 4)), makeItem(2, add(28, 4))];
+  const gapsOf = (page: PageRecord, statuses = {}): Array<[string, string[]]> =>
+    okEvidence([page], { statuses }).gaps.map((g) => [g.step, g.hints.map((h) => `${h.at} ${h.kind}`)]);
 
-  it("lists a step with no example and no teaching scaffold", () => {
+  it("takes a worked example of the same known step for a method, and lists every other step as a gap", () => {
     const e = okEvidence([makePage("11a", { items, examples: [makeExample(add(45, 3))] }), makePage("12a", { items })]);
-    expect(e.steps.find((s) => s.id === NO_CARRY)?.shown_on).toEqual(["demo:Z:11a"]);
-    expect(e.gaps).toEqual([{ step: CARRY, kind: "no_method", pages: ["demo:Z:11a", "demo:Z:12a"], check_pages: [] }]);
+    expect(e.steps.find((s) => s.id === NO_CARRY)?.methods).toEqual([{ page: "demo:Z:11a", example: 0 }]);
+    expect(e.gaps).toEqual([{ step: CARRY, kind: "no_method", pages: ["demo:Z:11a", "demo:Z:12a"], hints: [] }]);
   });
 
-  it("counts a teaching scaffold only for the questions it applies to", () => {
-    const e = okEvidence([makePage("11a", { items, scaffolds: [{ kind: "helper_digit", applies_to: [2] }] })]);
-    expect(e.gaps.map((g) => g.step)).toEqual([NO_CARRY]);
+  it.each<[string, Partial<Example>, boolean]>([
+    ["steps and one part", {}, true],
+    ["two parts of one step", { parts: [{ form: "horizontal", expr: add(45, 3) }, { form: "horizontal", expr: add(32, 4) }] }, true],
+    ["a shown answer and no steps", { steps: [], parts: [{ form: "horizontal", expr: add(45, 3), shown_answer: "48" }] }, true],
+    ["no steps and no shown answer", { steps: [] }, false],
+    ["steps left out and no shown answer", { steps: undefined }, false],
+    ["no printed answer", { steps: [], parts: [{ form: "horizontal", expr: add(45, 3), shown_answer: null }] }, false],
+    ["steps that can belong to another part", { parts: [{ form: "horizontal", expr: add(45, 3) }, { form: "vertical", expr: add(45, 3) }] }, false],
+    ["steps that nobody could read", { steps: "unclear" }, false],
+    ["a step that nobody could read", { steps: [{ n: 1, shows: "carry", printed: "unclear" }] }, false],
+    ["a part beside it that nobody could read", { parts: [{ form: "horizontal", expr: add(45, 3) }, { form: "unclear", expr: add(45, 3) }] }, false],
+    ["an answer that nobody could read", { parts: [{ form: "horizontal", expr: add(45, 3), shown_answer: "unclear" }] }, false],
+  ])("decides whether an example with %s is a method", (_name, extra, isMethod) => {
+    const e = okEvidence([makePage("11a", { items: [makeItem(1, add(23, 4))], examples: [makeExample(add(45, 3), "horizontal", extra)] })]);
+    const step = e.steps.find((s) => s.id === NO_CARRY);
+    expect(step?.methods.length).toBe(isMethod ? 1 : 0);
+    const gap = e.gaps.find((g) => g.step === NO_CARRY);
+    expect(gap?.hints.some((h) => h.kind === "example")).toBe(isMethod ? undefined : true);
   });
 
   it.each([
-    [{ kind: "answer_boxes" as const, applies_to: "all" as const }, []],
-    [{ kind: "other" as const, applies_to: "all" as const, description: "a drawing" }, ["demo:Z:11a"]],
-    [{ kind: "helper_digit" as const, applies_to: "unclear" as const }, ["demo:Z:11a"]],
-  ])("does not count the scaffold %j as a method", (scaffold, check) => {
-    const e = okEvidence([makePage("11a", { items: [makeItem(1, add(28, 4))], scaffolds: [scaffold] })]);
-    expect(e.gaps).toEqual([{ step: CARRY, kind: "no_method", pages: ["demo:Z:11a"], check_pages: check }]);
-  });
-
-  it("names the pages where an example has no expression that code can match", () => {
-    const e = okEvidence([makePage("11a", { items, examples: [makeExample(null)] })]);
-    expect(e.gaps.map((g) => [g.step, g.check_pages])).toEqual([
-      [NO_CARRY, ["demo:Z:11a"]],
-      [CARRY, ["demo:Z:11a"]],
+    "caption", "number_strip", "arrow", "equation_frame", "table_read_aloud", "helper_digit", "partial_working", "worked_item", "other",
+  ] as const)("lists the scaffold %s as a hint and keeps the gap", (kind) => {
+    const fields = { text: "Use a pencil.", values: [1, 2], template: "_ + _", description: "a drawing" };
+    const scaffold = { kind, applies_to: "all", ...fields } as never;
+    expect(gapsOf(makePage("11a", { items: [makeItem(1, add(28, 4))], scaffolds: [scaffold] }))).toEqual([
+      [CARRY, [`sections[0].scaffolds[0] ${kind}`]],
     ]);
   });
 
-  it("keeps a step that code cannot tell on its own page", () => {
+  it("gives a hint only to the steps of the questions that it applies to, and an unknown one to every step", () => {
+    const helper = (applies_to: number[] | "all" | "unclear") => ({ kind: "helper_digit" as const, applies_to });
+    const at = "sections[0].scaffolds[0] helper_digit";
+    expect(gapsOf(makePage("11a", { items, scaffolds: [helper([2])] }))).toEqual([[NO_CARRY, []], [CARRY, [at]]]);
+    expect(gapsOf(makePage("11a", { items, scaffolds: [helper("unclear")] }))).toEqual([[NO_CARRY, [at]], [CARRY, [at]]]);
+    expect(gapsOf(makePage("11a", { items, scaffolds: [{ kind: "answer_boxes", applies_to: "all" }] }))).toEqual([[NO_CARRY, []], [CARRY, []]]);
+  });
+
+  it.each<[string, Parameters<typeof makePage>[1], string]>([
+    ["an example with no expression", { examples: [makeExample(null)] }, "examples[0] example"],
+    ["an example that code cannot match", { examples: [makeExample({ kind: "notation", latex: "x" })] }, "examples[0] example"],
+    ["an example with two parts that code cannot match", { examples: [makeExample(null, "horizontal", { parts: [{ form: "horizontal", expr: null }, { form: "vertical", expr: null }] })] }, "examples[0] example"],
+    ["examples that are not known", { examples: "unclear" }, "examples example"],
+    ["scaffolds that are not known", { scaffolds: "not_stated" }, "sections[0].scaffolds not_stated"],
+    ["an example that one reader read", { examples: [makeExample(add(45, 3))], single_read: ["examples[0]"] }, "examples[0] example"],
+    ["an example whose steps one reader read", { examples: [makeExample(add(45, 3))], single_read: ["examples[0].steps"] }, "examples[0] example"],
+    ["an example whose answer place one reader read", { examples: [makeExample(add(45, 3))], single_read: ["examples[0].parts[0].form"] }, "examples[0] example"],
+    ["a caption whose text one reader read", { scaffolds: [{ kind: "caption", text: "Count back.", applies_to: "all" }], single_read: ["sections[0].scaffolds[0].text"] }, "sections[0].scaffolds[0] caption"],
+  ])("keeps the gap and gives a hint for %s", (_name, opts, hint) => {
+    const status = opts?.single_read ? { "demo:Z:11a": "agreement_accepted" } : {};
+    const gaps = gapsOf(makePage("11a", { items: [makeItem(1, add(23, 4))], ...opts }), status);
+    expect(gaps.find(([step]) => step === NO_CARRY)?.[1]).toEqual([hint]);
+  });
+
+  it("gives no hint of an example that is clearly about another step", () => {
+    expect(gapsOf(makePage("11a", { items, examples: [makeExample(add(45, 3), "horizontal", { steps: [] })] }))).toEqual([
+      [NO_CARRY, ["examples[0] example"]],
+      [CARRY, []],
+    ]);
+  });
+
+  it("never closes a step that code cannot tell, and keeps it on its own page", () => {
     const notation = [makeItem(1, { kind: "notation", latex: "x+1" })];
     const e = okEvidence([
-      makePage("11a", { items: notation, examples: [makeExample({ kind: "notation", latex: "x" })] }),
+      makePage("11a", { items: notation, examples: [makeExample({ kind: "notation", latex: "x" })], scaffolds: [{ kind: "worked_item", applies_to: "all" }] }),
       makePage("11b", { items: notation }),
     ]);
-    expect(e.gaps).toEqual([
-      { step: "page demo:Z:11b", kind: "step_not_known", pages: ["demo:Z:11b"], check_pages: [] },
+    expect(e.gaps.map((g) => [g.step, g.kind, g.hints.map((h) => h.at)])).toEqual([
+      ["page demo:Z:11a", "step_not_known", ["sections[0].scaffolds[0]", "examples[0]"]],
+      ["page demo:Z:11b", "step_not_known", []],
     ]);
   });
 });
@@ -291,6 +387,7 @@ describe("what may become a fact (M7)", () => {
     ["sections[0].items[0].form", (e) => e.sheets[0].steps, [{ id: "page demo:Z:11a", questions: 1 }]],
     ["sections[0].scaffolds", (e) => e.scaffolds, []],
     ["sections[0].scaffolds[0].kind", (e) => e.scaffolds, []],
+    ["sections[0].scaffolds[0].applies_to", (e) => e.scaffolds.length, 1],
     ["examples", (e) => [e.examples, e.examples_not_known], [[], ["demo:Z:11a"]]],
     ["examples[0]", (e) => [e.examples, e.examples_not_known], [[], ["demo:Z:11a"]]],
     ["examples[0].position", (e) => e.examples[0].position, "not_stated"],
@@ -308,7 +405,7 @@ describe("what may become a fact (M7)", () => {
     const e = okEvidence([makePage("11a", { single_read: ["topic.title"] }), makePage("12a", { title: "unclear" })], {
       contents: makeContents(topics),
     });
-    expect([e.pages, e.unplaced_pages]).toEqual([[], ["demo:Z:11a", "demo:Z:12a"]]);
+    expect([e.pages, e.unplaced_pages.pages]).toEqual([[], ["demo:Z:11a", "demo:Z:12a"]]);
   });
 
   it("takes an unclear title for no title, in the chart and on a page", () => {
@@ -338,18 +435,23 @@ describe("what may become a fact (M7)", () => {
       ],
       { statuses: { "demo:Z:11a": "machine_read", "demo:Z:contents": "machine_read" }, includeMachineRead: true },
     );
-    const mark = ["demo:Z:11a"];
-    expect(e.topic.machine_read).toEqual(["demo:Z:contents"]);
-    expect(e.sheets.map((s) => s.machine_read)).toEqual([mark, undefined]);
+    const chart = ["demo:Z:contents"];
+    const mark = [...chart, "demo:Z:11a"];
+    expect([e.topic, e.pages_without_photo, e.unplaced_pages].map((f) => f.machine_read)).toEqual([chart, chart, chart]);
+    expect(e.pages.map((p) => p.machine_read)).toEqual([mark, chart]);
+    expect(e.sheets.map((s) => s.machine_read)).toEqual([mark, chart]);
     expect(e.examples[0].machine_read).toEqual(mark);
     expect(e.scaffolds[0].machine_read).toEqual(mark);
     expect(e.format_changes[0].machine_read).toEqual(mark);
     expect(e.steps.map((s) => [s.id, s.machine_read])).toEqual([
       [NO_CARRY, mark],
       ["page demo:Z:11a", mark],
-      ["arith add 2x1 vertical carries=ones_to_tens", undefined],
+      ["arith add 2x1 vertical carries=ones_to_tens", chart],
     ]);
-    expect(e.gaps.map((g) => [g.step, g.machine_read])).toEqual([["arith add 2x1 vertical carries=ones_to_tens", undefined]]);
+    expect(e.gaps.map((g) => [g.step, g.machine_read])).toEqual([
+      ["page demo:Z:11a", mark],
+      ["arith add 2x1 vertical carries=ones_to_tens", chart],
+    ]);
   });
 
   it("changes the digest of a page when any field of its record changes, not when its keys move", () => {

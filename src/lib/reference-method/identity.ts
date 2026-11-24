@@ -4,7 +4,14 @@ import type { MethodKey } from "./types";
 // The one definition of which topic a method record belongs to. The record, its file name and its
 // table row all take their identity from here.
 
-const TOPIC_NUMBER_RE = /^[1-9]\d{0,8}$/;
+// The one bound of every sheet number, topic number and range: the integer column of the table.
+export const MAX_NUMBER = 2_147_483_647;
+
+export function isBoundedNumber(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 1 && (value as number) <= MAX_NUMBER;
+}
+
+const WHOLE_NUMBER_RE = /^[1-9]\d*$/;
 const PAGE_REF_RE = /^([A-Za-z0-9]+):([A-Za-z0-9]+):([1-9]\d*)([a-z])$/;
 
 export function makeMethodKey(
@@ -18,8 +25,8 @@ export function makeMethodKey(
   if (typeof level !== "string" || !KIT_REF_SEGMENT_RE.test(level)) {
     return { ok: false, error: "level must be letters and digits only" };
   }
-  if ((typeof topic !== "number" && typeof topic !== "string") || !TOPIC_NUMBER_RE.test(String(topic))) {
-    return { ok: false, error: "topic must be a whole number from 1" };
+  if (!WHOLE_NUMBER_RE.test(String(topic)) || !isBoundedNumber(Number(topic))) {
+    return { ok: false, error: `topic must be a whole number from 1 to ${MAX_NUMBER}` };
   }
   // The kit stores the level of a page id in upper case.
   return { ok: true, key: { source, level: level.toUpperCase(), topic: Number(topic) } };
@@ -51,7 +58,7 @@ export function parsePageRef(ref: string): { ok: true; page: PageId } | { ok: fa
   if (!match) return { ok: false };
   const [, source, level, sheetText, side] = match;
   const sheet = Number(sheetText);
-  if (level !== level.toUpperCase() || !Number.isSafeInteger(sheet)) return { ok: false };
+  if (level !== level.toUpperCase() || !isBoundedNumber(sheet)) return { ok: false };
   return { ok: true, page: { source, level, sheet, side } };
 }
 

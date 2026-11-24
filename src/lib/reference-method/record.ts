@@ -1,8 +1,8 @@
-import type { ValidationError } from "@/lib/reference-record";
+import { findUnstorableTextPath, type ValidationError } from "@/lib/reference-record";
 import { checkAllowedKeys, isNonEmptyString, isPlainObject } from "@/lib/reference-record/validate-parts";
 import { canonicalSha256 } from "./canonical";
 import { makeMethodKey } from "./identity";
-import { TOPIC_METHOD_STATUSES, type MethodApproval, type MethodSentence, type TopicMethodRecord } from "./types";
+import { TOPIC_METHOD_STATUSES, type MethodApproval, type TopicMethodRecord } from "./types";
 
 const SHA256_RE = /^[0-9a-f]{64}$/;
 const APPROVERS_NEEDED = 2;
@@ -15,20 +15,27 @@ export function contentSha256(record: TopicMethodRecord): string {
   return canonicalSha256(content);
 }
 
-// One text for one person: no letter case, extra spaces, invisible characters or wide letters.
-export function approverId(name: string): string {
-  return name
-    .normalize("NFKC")
-    .replace(/\p{Cf}/gu, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
+function visibleName(name: string): string {
+  return name.replace(/[\p{Default_Ignorable_Code_Point}\p{Cf}]/gu, "").replace(/\s+/g, " ").trim();
 }
 
-// Null: not a name.
+// One text for one person: no letter case, extra spaces, invisible characters or wide letters. Upper case
+// is the case fold, because it also joins the two spellings of a sharp s and of a Greek sigma.
+export function approverId(name: string): string {
+  return visibleName(name.normalize("NFKC")).toUpperCase().normalize("NFKC");
+}
+
+// The name as it is stored, for the command line and for a file. Null: not a name.
 export function cleanApproverName(name: string): string | null {
-  if (/\p{Cc}/u.test(name) || approverId(name) === "") return null;
-  return name.replace(/\p{Cf}/gu, "").replace(/\s+/g, " ").trim();
+  if (/\p{Cc}/u.test(name) || findUnstorableTextPath(name) !== null || approverId(name) === "") return null;
+  return visibleName(name);
+}
+
+// An instant in the one form that the command writes (2026-01-02T03:04:05.000Z).
+function isInstant(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const time = new Date(value);
+  return !Number.isNaN(time.getTime()) && time.toISOString() === value;
 }
 
 // The record with only the approvals that count (for this exact content, one for each person) and the
@@ -44,14 +51,10 @@ export function settleStatus(record: TopicMethodRecord): TopicMethodRecord {
   return { ...record, approvals, status: approvals.length >= APPROVERS_NEEDED ? "approved" : "drafted" };
 }
 
-export function summarySha256(summary: MethodSentence[]): string {
-  return canonicalSha256(summary);
-}
-
 // True when the summary is not the text that the model wrote.
 export function isEditedByPerson(record: TopicMethodRecord): boolean {
   if (record.summary_draft === null) return record.summary.length > 0;
-  return record.summary_draft.sha256 !== summarySha256(record.summary);
+  return record.summary_draft.sha256 !== canonicalSha256(record.summary);
 }
 
 // Checks the parts that a person can edit. The evidence is checked against the facts that code computes
@@ -96,7 +99,7 @@ export function parseMethodRecord(
       if (!isPlainObject(approval)) return fail(path, "must be an approval");
       checkAllowedKeys(approval, ["by", "at", "content_sha256"], path, errors);
       if (typeof approval.by !== "string" || cleanApproverName(approval.by) !== approval.by) fail(path, "by must be a name");
-      if (!isNonEmptyString(approval.at)) fail(path, "at must be a time");
+      if (!isInstant(approval.at)) fail(path, "at must be an instant in UTC, for example 2026-01-02T03:04:05.000Z");
       if (!isSha256(approval.content_sha256)) fail(path, "content_sha256 must be a SHA-256 digest");
     });
   }

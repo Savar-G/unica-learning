@@ -21,24 +21,6 @@ export type TopicMethodStatus = (typeof TOPIC_METHOD_STATUSES)[number];
 export const SENTENCE_KINDS = ["introduces", "procedure", "progression"] as const;
 export type SentenceKind = (typeof SENTENCE_KINDS)[number];
 
-// A sheet has a front (a) and a back (b).
-export const PAGE_SIDES = ["a", "b"] as const;
-
-// The scaffolds that show a child how to do a step. An answer box only holds an answer, and code
-// cannot know what an "other" scaffold shows, so neither counts.
-export const TEACHING_SCAFFOLD_KINDS: readonly ScaffoldKind[] = [
-  "number_strip",
-  "table_read_aloud",
-  "equation_frame",
-  "arrow",
-  "caption",
-  "helper_digit",
-  "partial_working",
-  "worked_item",
-];
-
-export const TOPIC_METHOD_TABLE = "bank_reference_topic_methods" as const;
-
 export interface MethodKey {
   source: string;
   level: string;
@@ -54,7 +36,10 @@ export interface StepFeatures {
   expr_kind: ExprKind;
   form: ItemForm;
   operation?: ArithOp;
-  operand_digits?: number[];
+  // Printed numbers only: null is a blank that the child fills in.
+  operand_digits?: Array<number | null>;
+  // Missing numbers only: the digits of the printed result. Null: the result is the blank.
+  result_digits?: number | null;
   // Add and multiply only.
   carries?: CarryKind[];
   // Subtract only.
@@ -67,24 +52,28 @@ export interface StepFeatures {
   parts?: [StepFeatures, StepFeatures];
 }
 
-export interface SheetStep {
-  id: string;
-  questions: number;
-}
-
 export interface SheetFact extends MachineReadMark {
   page: string;
   questions: number | NotStated;
-  steps: SheetStep[];
+  steps: Array<{ id: string; questions: number }>;
+}
+
+// What code knows of a question whose step it cannot tell.
+export interface PartlyKnown {
+  expr_kind: ExprKind | NotStated;
+  operation: ArithOp | NotStated;
+  form: ItemForm | NotStated;
 }
 
 export interface StepFact extends MachineReadMark {
   id: string;
   // not_stated: code cannot tell the step of these questions (notation, an unclear value, a decimal).
   features: StepFeatures | NotStated;
+  // Only when the features are not stated.
+  partly_known?: PartlyKnown[];
   pages: string[];
-  // Pages with an example of this step or a teaching scaffold on its questions.
-  shown_on: string[];
+  // The worked examples of exactly this step (page, and number on the page from 0). Nothing else is a method.
+  methods: Array<{ page: string; example: number }>;
 }
 
 export interface ExampleFact extends MachineReadMark {
@@ -108,6 +97,7 @@ export interface ScaffoldFact extends MachineReadMark {
 export interface FormatChangeFact extends MachineReadMark {
   from: string;
   to: string;
+  // The formats in the order of the page.
   before: string[];
   after: string[];
   // Pages between the two whose question format is not known.
@@ -119,11 +109,19 @@ export interface TopicGap extends MachineReadMark {
   // no_method: the pages show the step and no method for it. step_not_known: code cannot tell the step.
   kind: "no_method" | "step_not_known";
   pages: string[];
-  // Pages of the step with an example or scaffold that code cannot match to a step.
-  check_pages: string[];
+  // What a person can look at. A hint never closes a gap.
+  hints: GapHint[];
 }
 
-export interface TopicPage {
+export interface GapHint {
+  page: string;
+  // The place in the page record, for example "sections[0].scaffolds[1]".
+  at: string;
+  kind: ScaffoldKind | "example" | NotStated;
+}
+
+// machine_read: the records that the place of this page in the topic rests on.
+export interface TopicPage extends MachineReadMark {
   ref: string;
   status: TranscriptStatus;
   // SHA-256 of the canonical JSON of the whole page record.
@@ -142,9 +140,9 @@ export interface TopicEvidence {
     std_time_min: IntRange | NotStated;
   } & MachineReadMark;
   pages: TopicPage[];
-  pages_without_photo: string[] | NotStated;
+  pages_without_photo: { pages: string[] | NotStated } & MachineReadMark;
   // Only when the sheet range is not stated: pages of the level that code cannot put in any topic.
-  unplaced_pages: string[];
+  unplaced_pages: { pages: string[] } & MachineReadMark;
   sheets: SheetFact[];
   steps: StepFact[];
   examples: ExampleFact[];
@@ -159,7 +157,7 @@ export interface MethodSentence {
   text: string;
   cites: string[];
   guess?: true;
-  // Procedure only: the ids of the steps it is about, when its cited pages hold other steps too.
+  // Procedure only: the ids of the steps it is about.
   steps?: string[];
 }
 

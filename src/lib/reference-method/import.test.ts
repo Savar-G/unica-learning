@@ -1,51 +1,58 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { canonicalSha256 } from "./canonical";
 import { buildEvidence } from "./evidence";
 import { methodFileName, methodRef } from "./identity";
 import { importTopicMethods, methodRowOf, type ExistingMethodRow, type TopicMethodRow, type TopicMethodStore } from "./import";
-import { contentSha256, settleStatus, summarySha256 } from "./record";
+import { contentSha256, settleStatus } from "./record";
 import { createSupabaseTopicMethodStore } from "./store";
 import { add, KEY, makeContents, makeExample, makeItem, makePage, statusesOf } from "./test-records";
 import type { MethodKey, TopicMethodRecord } from "./types";
 
 class MemoryStore implements TopicMethodStore {
-  rows = new Map<string, TopicMethodRow>();
+  rows = new Map<string, TopicMethodRow & { updated_at: string }>();
   calls: string[] = [];
-  failOn: string | null = null;
-  beforeUpdate: () => void = () => {};
+  // The write that fails, and whether the table took it before the answer was lost.
+  failOn: { call: string; after: boolean } | null = null;
+  failReread = false;
+  afterFind: () => void = () => {};
+  private revision = 0;
+
+  put(row: TopicMethodRow): void {
+    this.revision += 1;
+    this.rows.set(methodRef(row), structuredClone({ ...row, updated_at: `revision ${this.revision}` }));
+  }
 
   async findExisting(keys: MethodKey[]): Promise<Map<string, ExistingMethodRow>> {
+    if (this.failReread && this.calls.length > 1) throw new Error("no connection");
     this.calls.push("find");
     const found = new Map<string, ExistingMethodRow>();
     for (const key of keys) {
       const row = this.rows.get(methodRef(key));
-      if (row) found.set(methodRef(key), structuredClone({ record: row.record, status: row.status, digest: row.digest }));
+      if (row) found.set(methodRef(key), structuredClone({ record: row.record, status: row.status, digest: row.digest, updated_at: row.updated_at }));
     }
+    this.afterFind();
     return found;
   }
 
   async insertRow(row: TopicMethodRow): Promise<boolean> {
-    this.write(`insert ${methodRef(row)}`);
-    if (this.rows.has(methodRef(row))) return false;
-    this.rows.set(methodRef(row), structuredClone(row));
-    return true;
+    return this.write(`insert ${methodRef(row)}`, row, !this.rows.has(methodRef(row)));
   }
 
-  async updateRow(row: TopicMethodRow, expected: { digest: string; status: string }): Promise<boolean> {
-    this.write(`update ${methodRef(row)}`);
-    this.beforeUpdate();
-    const stored = this.rows.get(methodRef(row));
-    if (!stored || stored.digest !== expected.digest || stored.status !== expected.status) return false;
-    this.rows.set(methodRef(row), structuredClone(row));
-    return true;
+  async updateRow(row: TopicMethodRow, updatedAt: string): Promise<boolean> {
+    return this.write(`update ${methodRef(row)}`, row, this.rows.get(methodRef(row))?.updated_at === updatedAt);
   }
 
-  private write(call: string): void {
+  private write(call: string, row: TopicMethodRow, allowed: boolean): boolean {
     this.calls.push(call);
-    if (this.failOn === call) throw new Error("no connection");
+    const fails = this.failOn?.call === call;
+    if (allowed && (!fails || this.failOn?.after)) this.put(row);
+    if (fails) throw new Error("connection lost");
+    return allowed;
   }
 
   get writes(): string[] {
@@ -57,32 +64,36 @@ let root: string;
 let recordsDir: string;
 let methodsDir: string;
 let store: MemoryStore;
+let announced: string[];
 
 const pages = [
   makePage("11a", { examples: [makeExample(add(45, 3))], items: [makeItem(1, add(23, 4))] }),
   makePage("13a", { title: "Joining Pebbles 2", items: [makeItem(1, add(28, 4))] }),
 ];
 
-function makeRecord(topic: number, text = "The page adds."): TopicMethodRecord {
+// The text of a sentence about the page of the topic.
+const on = (topic: number, words: string): string => `[${topic === 1 ? "11a" : "13a"}] ${words}`;
+
+function makeRecord(topic: number, words = "adds."): TopicMethodRecord {
   const key = { ...KEY, topic };
   const records = [...pages, makeContents()];
   const built = buildEvidence({ key, records, statusByRef: statusesOf(records), includeMachineRead: false });
   if (!built.ok) throw new Error(built.problems.join("\n"));
-  const summary = [{ kind: "introduces" as const, text, cites: [topic === 1 ? "demo:Z:11a" : "demo:Z:13a"] }];
+  const summary = [{ kind: "introduces" as const, text: on(topic, words), cites: [topic === 1 ? "demo:Z:11a" : "demo:Z:13a"] }];
   return {
     kind: "topic_method",
     ...key,
     evidence: built.evidence,
     summary,
-    summary_draft: { model: "claude", sha256: summarySha256(summary) },
+    summary_draft: { model: "claude", sha256: canonicalSha256(summary) },
     status: "drafted",
     approvals: [],
   };
 }
 
-function approved(record: TopicMethodRecord): TopicMethodRecord {
+function approved(record: TopicMethodRecord, ...more: string[]): TopicMethodRecord {
   const content_sha256 = contentSha256(record);
-  const approvals = ["Ann", "Bo"].map((by) => ({ by, at: "2026-01-02T03:04:05.000Z", content_sha256 }));
+  const approvals = ["Ann", "Bo", ...more].map((by) => ({ by, at: "2026-01-02T03:04:05.000Z", content_sha256 }));
   return settleStatus({ ...record, approvals });
 }
 
@@ -91,10 +102,11 @@ function put(record: unknown, name = methodFileName(record as MethodKey)): void 
 }
 
 const run = (extra: Partial<Parameters<typeof importTopicMethods>[0]> = {}): ReturnType<typeof importTopicMethods> =>
-  importTopicMethods({ recordsDir, methodsDir, repoRoot: join(root, "repo"), store, ...extra });
+  importTopicMethods({ recordsDir, methodsDir, repoRoot: join(root, "repo"), store, announce: (line) => announced.push(line), ...extra });
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "unica-method-import-"));
+  announced = [];
+  root = realpathSync(mkdtempSync(join(tmpdir(), "unica-method-import-")));
   recordsDir = join(root, "final");
   methodsDir = join(root, "methods");
   for (const dir of [recordsDir, methodsDir, join(root, "repo")]) mkdirSync(dir);
@@ -127,31 +139,41 @@ describe("import (M8)", () => {
 
   it("changes a stored row only with --replace", async () => {
     await run();
-    put(makeRecord(1, "Another sentence."));
+    put(makeRecord(1, "shows another sum."));
     const kept = await run();
     expect(kept.lines.join("\n")).toContain("skipped_different: demo:Z:topic-1");
-    expect(store.rows.get("demo:Z:topic-1")?.record.summary[0].text).toBe("The page adds.");
+    expect(store.rows.get("demo:Z:topic-1")?.record.summary[0].text).toBe("[11a] adds.");
     const dry = await run({ replace: true, dryRun: true });
     expect(dry.lines.join("\n")).toContain("replaced: demo:Z:topic-1");
     expect(store.writes).toHaveLength(2);
     const replaced = await run({ replace: true });
     expect(replaced.lines[0]).toContain("replaced=1 skipped=1");
-    expect(store.rows.get("demo:Z:topic-1")?.record.summary[0].text).toBe("Another sentence.");
+    expect(store.rows.get("demo:Z:topic-1")?.record.summary[0].text).toBe("[11a] shows another sum.");
   });
 
-  it("imports an approval as a change, and says when an approved row is drafted again", async () => {
+  it("imports an approval as a change, and says before the write when an approved row is drafted again", async () => {
     await run();
     put(approved(makeRecord(1)));
-    expect((await run({ replace: true })).lines.join()).not.toContain("status_lowered");
+    await run({ replace: true });
+    expect(announced).toEqual([]);
     expect(store.rows.get("demo:Z:topic-1")?.status).toBe("approved");
-    put(makeRecord(1, "Another sentence."));
+    put(makeRecord(1, "shows another sum."));
     expect((await run()).lines.join("\n")).toContain("skipped_different: demo:Z:topic-1 (the stored row is approved)");
     expect(store.rows.get("demo:Z:topic-1")?.status).toBe("approved");
+    expect(announced).toEqual([]);
+    const writesBefore: number[] = [];
     for (const dryRun of [true, false]) {
-      expect((await run({ replace: true, dryRun })).lines.join("\n")).toContain(
-        "status_lowered: demo:Z:topic-1 approved -> drafted",
-      );
+      const announce = (line: string): void => {
+        writesBefore.push(store.writes.length);
+        announced.push(line);
+      };
+      await run({ replace: true, dryRun, announce });
     }
+    expect(announced).toEqual([
+      "status_lowered: demo:Z:topic-1 approved -> drafted",
+      "status_lowered: demo:Z:topic-1 approved -> drafted (the import replaces this row now)",
+    ]);
+    expect(new Set(writesBefore)).toEqual(new Set([store.writes.length - 1]));
     expect(store.rows.get("demo:Z:topic-1")?.status).toBe("drafted");
   });
 
@@ -164,21 +186,99 @@ describe("import (M8)", () => {
 
   it("does not write over a row that changed after it was read", async () => {
     await run();
-    put(makeRecord(1, "Another sentence."));
-    store.beforeUpdate = () => {
-      const other = methodRowOf(approved(makeRecord(1)));
-      store.rows.set("demo:Z:topic-1", other);
-    };
+    put(makeRecord(1, "shows another sum."));
+    store.afterFind = () => store.put(methodRowOf(approved(makeRecord(1))));
     const result = await run({ replace: true });
     expect(result.ok).toBe(false);
     expect(result.problems.join()).toContain("changed while the import ran");
     expect(store.rows.get("demo:Z:topic-1")?.status).toBe("approved");
   });
 
+  it("lets one of two imports that differ only in an approval win, and tells the other one", async () => {
+    put(approved(makeRecord(1)));
+    await run();
+    const other = join(root, "methods-b");
+    mkdirSync(other);
+    put(approved(makeRecord(1), "Cy"));
+    writeFileSync(join(other, "demo-Z-topic-1.json"), JSON.stringify(approved(makeRecord(1), "Dee")));
+    const readBoth = Promise.withResolvers<void>();
+    let reads = 0;
+    const findExisting = store.findExisting.bind(store);
+    store.findExisting = async (keys) => {
+      const found = await findExisting(keys);
+      reads += 1;
+      if (reads === 2) readBoth.resolve();
+      await readBoth.promise;
+      return found;
+    };
+    const results = await Promise.all([run({ replace: true }), run({ replace: true, methodsDir: other })]);
+    expect(results.map((r) => r.ok).sort()).toEqual([false, true]);
+    expect(results.find((r) => !r.ok)?.problems.join()).toContain("changed while the import ran");
+    const winner = results[0].ok ? "Cy" : "Dee";
+    expect(store.rows.get("demo:Z:topic-1")?.record.approvals.map((a) => a.by)).toEqual(["Ann", "Bo", winner]);
+  });
+
+  it.each<[string, () => void]>([
+    ["a page record", () => writeFileSync(join(recordsDir, "demo-Z-13a.json"), JSON.stringify({ ...pages[1], readers: ["x"] }))],
+    ["a status", () => writeFileSync(join(recordsDir, "status.json"), JSON.stringify({ "demo:Z:11a": "human_checked", "demo:Z:13a": "double_read", "demo:Z:contents": "double_read" }))],
+    ["a method record", () => put(makeRecord(2, "shows another sum."))],
+    ["an approval", () => put(approved(makeRecord(2)))],
+    ["a file less", () => rmSync(join(methodsDir, "demo-Z-topic-2.json"))],
+  ])("writes nothing when %s changes after the check and before the first write", async (_name, change) => {
+    put(approved(makeRecord(1)));
+    await run();
+    put(makeRecord(1, "shows another sum."));
+    store.calls = [];
+    store.afterFind = change;
+    const result = await run({ replace: true });
+    expect(announced).toEqual([]);
+    expect([result.ok, result.problems[0]]).toEqual([false, expect.stringContaining("input files changed")]);
+    expect(store.writes).toEqual([]);
+  });
+
+  it.each([
+    [true, false, "the row is written", 1],
+    [false, false, "the row is not written", 0],
+    [true, true, "may or may not be written", 0],
+  ])("reads the row again after a lost answer (written %j, database gone %j)", async (after, failReread, text, replaced) => {
+    put(approved(makeRecord(1)));
+    await run();
+    put(makeRecord(1, "shows another sum."));
+    store.calls = [];
+    store.failOn = { call: "update demo:Z:topic-1", after };
+    store.failReread = failReread;
+    const result = await run({ replace: true });
+    expect(result.ok).toBe(false);
+    expect(result.problems[0]).toContain(`write failed at demo:Z:topic-1: connection lost; `);
+    expect(result.problems[0]).toContain(text);
+    expect(result.lines[0]).toContain(`replaced=${replaced}`);
+    expect(announced).toHaveLength(1);
+    expect(store.rows.get("demo:Z:topic-1")?.status).toBe(after ? "drafted" : "approved");
+    store.failOn = null;
+    store.failReread = false;
+    expect((await run({ replace: true })).lines[0]).toContain(after ? "replaced=0 skipped=2" : "replaced=1 skipped=1");
+  });
+
+  it("says when another run changed the row of a lost answer", async () => {
+    store.failOn = { call: "insert demo:Z:topic-1", after: false };
+    const findExisting = store.findExisting.bind(store);
+    store.findExisting = async (keys) => {
+      if (store.writes.length > 0) store.put(methodRowOf(approved(makeRecord(1))));
+      return findExisting(keys);
+    };
+    expect((await run()).problems[0]).toContain("another run changed the row");
+  });
+
+  it("stops when the stored rows cannot be read", async () => {
+    store.findExisting = () => Promise.reject(new Error("no connection"));
+    expect((await run()).problems.join()).toContain("could not be read: no connection");
+    expect(store.writes).toEqual([]);
+  });
+
   it("says when another run wrote the row first", async () => {
     const insertRow = store.insertRow.bind(store);
     store.insertRow = async (row) => {
-      store.rows.set(methodRef(row), methodRowOf(approved(makeRecord(row.topic))));
+      store.put(methodRowOf(approved(makeRecord(row.topic))));
       return insertRow(row);
     };
     const result = await run();
@@ -186,10 +286,10 @@ describe("import (M8)", () => {
   });
 
   it("stops at a write error, says what is written, and finishes when it runs again", async () => {
-    store.failOn = "insert demo:Z:topic-2";
+    store.failOn = { call: "insert demo:Z:topic-2", after: false };
     const result = await run();
     expect(result.ok).toBe(false);
-    expect(result.problems.join("\n")).toContain("no connection");
+    expect(result.problems.join("\n")).toContain("connection lost; the row is not written");
     expect(result.lines[0]).toContain("inserted=1");
     store.failOn = null;
     expect((await run()).lines[0]).toContain("inserted=1 replaced=0 skipped=1");
@@ -198,9 +298,9 @@ describe("import (M8)", () => {
   it.each<[string, () => void, string]>([
     ["a method file that is not JSON", () => writeFileSync(join(methodsDir, "demo-Z-topic-2.json"), "{"), "invalid JSON"],
     ["a method file with invalid UTF-8", () => writeFileSync(join(methodsDir, "demo-Z-topic-2.json"), Buffer.from([0x22, 0xff, 0x22])), "invalid UTF-8"],
-    ["the replacement character", () => put(makeRecord(2, "Adds \uFFFD.")), "replacement character"],
-    ["a null character", () => put(makeRecord(2, "Adds \u0000.")), "null character"],
-    ["half of a character", () => put(makeRecord(2, "Adds \uD800.")), "split character"],
+    ["the replacement character", () => put(makeRecord(2, "adds \uFFFD.")), "replacement character"],
+    ["a null character", () => put(makeRecord(2, "adds \u0000.")), "null character"],
+    ["half of a character", () => put(makeRecord(2, "adds \uD800.")), "split character"],
     ["a symlink", () => { rmSync(join(methodsDir, "demo-Z-topic-2.json")); symlinkSync(join(recordsDir, "status.json"), join(methodsDir, "demo-Z-topic-2.json")); }, "symlink"],
     ["an unknown field", () => put({ ...makeRecord(2), note: "x" }), "unknown field"],
     ["an unknown status", () => put({ ...makeRecord(2), status: "done" }), "must be one of drafted, approved"],
@@ -212,7 +312,10 @@ describe("import (M8)", () => {
     ["a summary that breaks a rule", () => { const r = makeRecord(2); r.summary[0].cites = []; put(r); }, "needs a citation"],
     ["a page record that is not valid", () => writeFileSync(join(recordsDir, "demo-Z-13a.json"), "{}"), "demo-Z-13a.json"],
     ["a page record that changed", () => writeFileSync(join(recordsDir, "demo-Z-13a.json"), JSON.stringify({ ...pages[1], readers: ["x"] })), "demo:Z:13a changed"],
-    ["an approval with a bad digest", () => put({ ...makeRecord(2), approvals: [{ by: "Ann", at: "t", content_sha256: "x" }] }), "SHA-256"],
+    ["a page record in the file of another page", () => writeFileSync(join(recordsDir, "demo-Z-13a.json"), JSON.stringify({ ...pages[1], source_ref: "demo:Z:14a" })), "belongs in demo-Z-14a.json"],
+    ["an approval with a bad time", () => { const r = approved(makeRecord(2)); r.approvals[0].at = "yesterday"; put(r); }, "instant in UTC"],
+    ["a methods folder that is a symlink", () => { rmSync(methodsDir, { recursive: true }); mkdirSync(join(root, "real")); symlinkSync(join(root, "real"), methodsDir); }, "is a symlink"],
+    ["an approval with a bad digest", () => put({ ...makeRecord(2), approvals: [{ by: "Ann", at: "2026-01-02T03:04:05.000Z", content_sha256: "x" }] }), "SHA-256"],
     ["an empty methods folder", () => { for (const n of [1, 2]) rmSync(join(methodsDir, `demo-Z-topic-${n}.json`)); }, "no method record"],
     ["a methods folder that does not exist", () => rmSync(methodsDir, { recursive: true }), "could not be read"],
   ])("refuses %s before the first write", async (_name, prepare, text) => {
@@ -245,7 +348,7 @@ describe("the Supabase store", () => {
   let reply: { status: number; body: unknown };
   const supabaseStore = (): TopicMethodStore =>
     createSupabaseTopicMethodStore(
-      createClient("http://db.invalid", "key", {
+      createClient<Database>("http://db.invalid", "key", {
         auth: { persistSession: false, autoRefreshToken: false },
         global: {
           fetch: async (input, init) => {
@@ -257,7 +360,8 @@ describe("the Supabase store", () => {
               body: typeof init?.body === "string" ? JSON.parse(init.body) : null,
               prefer: new Headers(init?.headers).get("prefer") ?? "",
             });
-            return new Response(JSON.stringify(reply.body), { status: reply.status, headers: { "content-type": "application/json" } });
+            const body = typeof reply.body === "function" ? (reply.body as (url: URL) => unknown)(url) : reply.body;
+            return new Response(JSON.stringify(body), { status: reply.status, headers: { "content-type": "application/json" } });
           },
         },
       }),
@@ -270,18 +374,26 @@ describe("the Supabase store", () => {
   });
 
   it("reads the rows of exactly these topics", async () => {
-    reply.body = [{ source: "demo", level: "Z", topic_number: 2, record: { a: 1 }, status: "drafted", digest: "d" }];
+    const columns = { record: { a: 1 }, status: "drafted", digest: "d", updated_at: "2026-01-02T03:04:05.123456+00:00" };
+    reply.body = (url: URL) => (url.searchParams.get("level") === "eq.Z" ? [{ source: "demo", level: "Z", topic_number: 2, ...columns }] : []);
     const found = await supabaseStore().findExisting([{ ...KEY }, { ...KEY, topic: 2 }, { source: "demo", level: "Y", topic: 1 }]);
-    expect([...found]).toEqual([["demo:Z:topic-2", { record: { a: 1 }, status: "drafted", digest: "d" }]]);
+    expect([...found]).toEqual([["demo:Z:topic-2", columns]]);
     expect(sent.map((s) => [s.path, s.params.get("source"), s.params.get("level"), s.params.get("topic_number")])).toEqual([
       ["/rest/v1/bank_reference_topic_methods", "eq.demo", "eq.Z", "in.(1,2)"],
       ["/rest/v1/bank_reference_topic_methods", "eq.demo", "eq.Y", "in.(1)"],
     ]);
   });
 
-  it("reads many topics in parts", async () => {
-    await supabaseStore().findExisting(Array.from({ length: 250 }, (_, i) => ({ ...KEY, topic: i + 1 })));
-    expect(sent).toHaveLength(3);
+  it("reads every row of every part of many topics", async () => {
+    reply.body = (url: URL) =>
+      (url.searchParams.get("topic_number") ?? "").slice(4, -1).split(",").map((n) => ({
+        source: "demo", level: "Z", topic_number: Number(n), record: { n }, status: "drafted", digest: n, updated_at: n,
+      }));
+    const keys = Array.from({ length: 1201 }, (_, i) => ({ ...KEY, topic: i + 1 }));
+    const found = await supabaseStore().findExisting(keys);
+    expect([...found.keys()]).toEqual(keys.map(methodRef));
+    expect([...found.values()].map((row) => row.digest)).toEqual(keys.map((key) => String(key.topic)));
+    expect(sent.length).toBeGreaterThan(1);
   });
 
   it("inserts a row and ignores one that is there", async () => {
@@ -296,23 +408,34 @@ describe("the Supabase store", () => {
     expect(sent[0].body).toEqual({ ...columns, topic_number: topic });
   });
 
-  it("updates only the row that still has the digest and status that were read", async () => {
+  it("updates only the row that still has the updated_at that was read", async () => {
     const row = methodRowOf(makeRecord(1));
-    expect(await supabaseStore().updateRow(row, { digest: "old", status: "approved" })).toBe(false);
+    const read = "2026-01-01T00:00:00.123456+00:00";
+    expect(await supabaseStore().updateRow(row, read)).toBe(false);
     reply.body = [{ topic_number: 1 }];
-    expect(await supabaseStore().updateRow(row, { digest: "old", status: "approved" })).toBe(true);
+    expect(await supabaseStore().updateRow(row, read)).toBe(true);
     expect(sent[0].method).toBe("PATCH");
     expect(Object.fromEntries(sent[0].params)).toMatchObject({
-      source: "eq.demo", level: "eq.Z", topic_number: "eq.1", digest: "eq.old", status: "eq.approved",
+      source: "eq.demo", level: "eq.Z", topic_number: "eq.1", updated_at: `eq.${read}`,
     });
-    expect(sent[0].body).toEqual({ record: row.record, status: row.status, digest: row.digest, updated_at: "2026-01-02T03:04:05.000Z" });
+    const { topic, ...columns } = row;
+    expect(sent[0].body).toEqual({ ...columns, topic_number: topic, updated_at: "2026-01-02T03:04:05.000Z" });
   });
+
+  it.each(["2026-01-02T03:04:05+00:00", "2026-01-02T03:04:05.000999+00:00", "2030-05-06T07:08:09.123456+00:00"])(
+    "gives an update a later updated_at than %s, also when the clock does not",
+    async (read) => {
+      await supabaseStore().updateRow(methodRowOf(makeRecord(1)), read);
+      const { updated_at } = sent[0].body as { updated_at: string };
+      expect(Date.parse(updated_at)).toBeGreaterThan(Date.parse(read));
+    },
+  );
 
   it("reports a database error", async () => {
     reply = { status: 400, body: { message: "bad row" } };
     const row = methodRowOf(makeRecord(1));
     await expect(supabaseStore().findExisting([KEY])).rejects.toThrow("bad row");
     await expect(supabaseStore().insertRow(row)).rejects.toThrow("bad row");
-    await expect(supabaseStore().updateRow(row, { digest: "d", status: "drafted" })).rejects.toThrow("bad row");
+    await expect(supabaseStore().updateRow(row, "2026-01-01T00:00:00+00:00")).rejects.toThrow("bad row");
   });
 });

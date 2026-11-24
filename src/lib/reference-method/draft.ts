@@ -21,34 +21,32 @@ const INSTRUCTIONS = [
   "",
   'Reply with one JSON object only: {"sentences": [{"kind": ..., "text": ..., "cites": [...]}]}',
   `- kind: ${SENTENCE_KINDS.map((k) => `"${k}"`).join(", ")}. introduces: what a page brings in for the first time. procedure: how the pages show a step is done. progression: how the questions change from page to page.`,
-  "- text: one sentence, one line, at most 600 characters. Write numbers with the digits 0 to 9.",
-  '- cites: the source_refs of the pages that show it, for example ["demo:Z:12a"]. Use the source_ref of the contents record for the title, the sheet range or the standard time.',
+  "- text: one sentence, one line, at most 600 characters, in the syntax below.",
+  '- cites: the source_refs of the pages that the text names, for example ["demo:Z:12a"]. The source_ref of the contents record (FACTS.contents.ref) needs no token.',
   '- guess: write "guess": true on a sentence that the records do not show. Leave it out on every other sentence.',
-  '- steps: on a procedure, the ids of the steps it is about (from FACTS.steps), when its cited pages also hold other steps.',
+  "- steps: on every procedure, and on no other sentence: the ids of the steps it is about (from FACTS.steps).",
+  "",
+  "Syntax of text. Code refuses every sentence in another form:",
+  "- Name a page only as its sheet and side in square brackets: [12a]. No level, no range, one page in each token. Name exactly the pages in cites, each at least once.",
+  "- Write math only between backticks, for example `34 + 5`, `3/4` or `7 R1`. Copy a whole printed text or expression of one cited page, or a whole side of its equals sign, with its signs and its order. Do not copy a part of it: `34` is not enough.",
+  "- Everywhere else use plain English letters and . , ; : ! ? ' \" ( ) / - only. Write no digit, no number word from two up, and no count of questions or digits: code adds those facts. Say \"the first number\" or \"a number with tens\".",
+  "- Put a space around each token. Do not write a sign before a backtick.",
+  "",
+  "Examples:",
+  '{"kind": "introduces", "text": "[12a] puts `34 + 5` under a picture of rods.", "cites": ["demo:Z:12a"]}',
+  '{"kind": "procedure", "text": "On [12a] the example `34 + 5` adds the ones before the tens.", "cites": ["demo:Z:12a"], "steps": ["arith add 2x1 vertical"]}',
+  '{"kind": "progression", "text": "The questions have no carry on [12a], and a carry on [13b].", "cites": ["demo:Z:12a", "demo:Z:13b"]}',
   "",
   "Rules that code checks on every sentence that is not a guess:",
   "- It has at least one citation, and each cited page is in FACTS.pages with facts \"used\".",
-  "- Each sheet or page that the text names has a cited page. A range names every sheet in it.",
-  "- Each number in the text is in a cited record or in its facts.",
-  "- Give no procedure for a step in FACTS.gaps. Each step of a procedure has a cited page in its shown_on list.",
+  "- Each step of a procedure has a worked example (FACTS.steps, methods) on a cited page. Give no procedure for a step in FACTS.gaps.",
 ].join("\n");
 
-function buildPrompt(ctx: SummaryContext): string {
-  const { evidence } = ctx;
-  const facts = {
-    topic_number: ctx.topic,
-    topic: evidence.topic,
-    contents_ref: evidence.contents.ref,
-    pages: evidence.pages.map(({ ref, status, facts: use }) => ({ ref, status, facts: use })),
-    pages_without_photo: evidence.pages_without_photo,
-    sheets: evidence.sheets,
-    steps: evidence.steps,
-    examples: evidence.examples,
-    scaffolds: evidence.scaffolds,
-    format_changes: evidence.format_changes,
-    gaps: evidence.gaps,
-  };
-  return [INSTRUCTIONS, "", "FACTS", JSON.stringify(facts), "", "RECORDS", JSON.stringify([...ctx.views.values()])].join("\n");
+function buildPrompt({ key, evidence, views }: SummaryContext): string {
+  const facts = { topic_number: key.topic, ...evidence };
+  // A digest says nothing to the model.
+  const text = JSON.stringify(facts, (field, value: unknown) => (field === "sha256" ? undefined : value));
+  return [INSTRUCTIONS, "", "FACTS", text, "", "RECORDS", JSON.stringify([...views.values()])].join("\n");
 }
 
 function checkAnswer(raw: string, ctx: SummaryContext): SummaryCheck {
@@ -72,7 +70,6 @@ export async function draftSummary(opts: {
   ctx: SummaryContext;
   model?: string;
   runCli?: RunCli;
-  timeoutMs?: number;
 }): Promise<DraftResult> {
   assertModelMatchesFamily("claude", opts.model);
   if (opts.ctx.views.size === 0) return { ok: true, summary: [], model: null };
@@ -81,37 +78,21 @@ export async function draftSummary(opts: {
   if (opts.model) args.push("--model", opts.model);
   const cwd = mkdtempSync(join(tmpdir(), "unica-ref-method-"));
   chmodSync(cwd, 0o700);
-  const ask = async (stdin: string): Promise<{ ok: true; raw: string } | { ok: false; problems: string[] }> => {
-    try {
-      const run = await runCli("claude", args, { cwd, stdin, timeoutMs: opts.timeoutMs ?? DRAFT_TIMEOUT_MS });
-      if (run.code === 0) return { ok: true, raw: run.stdout };
-      return { ok: false, problems: [`the model command failed: ${run.stderr.trim() || `exit code ${run.code}`}`] };
-    } catch (err) {
-      return { ok: false, problems: [`the model command failed: ${err instanceof Error ? err.message : String(err)}`] };
-    }
-  };
-
   try {
     const prompt = buildPrompt(opts.ctx);
-    const first = await ask(prompt);
-    if (!first.ok) return first;
-    const check = checkAnswer(first.raw, opts.ctx);
-    const model = opts.model ?? "claude";
-    if (check.ok) return { ok: true, summary: check.summary, model };
-
-    const retry = await ask(
-      [
-        prompt,
-        "",
-        "Your previous answer failed these checks. Fix them and reply with one JSON object only:",
-        ...formatErrors(check.errors).map((e) => `- ${e}`),
-      ].join("\n"),
-    );
-    if (!retry.ok) return retry;
-    const recheck = checkAnswer(retry.raw, opts.ctx);
-    return recheck.ok
-      ? { ok: true, summary: recheck.summary, model }
-      : { ok: false, problems: formatErrors(recheck.errors) };
+    let errors: string[] = [];
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      const retry = ["", "Your previous answer failed these checks. Fix them and reply with one JSON object only:", ...errors.map((e) => `- ${e}`)];
+      const stdin = errors.length > 0 ? [prompt, ...retry].join("\n") : prompt;
+      const run = await runCli("claude", args, { cwd, stdin, timeoutMs: DRAFT_TIMEOUT_MS });
+      if (run.code !== 0) throw new Error(run.stderr.trim() || `exit code ${run.code}`);
+      const check = checkAnswer(run.stdout, opts.ctx);
+      if (check.ok) return { ok: true, summary: check.summary, model: opts.model ?? "claude" };
+      errors = formatErrors(check.errors);
+    }
+    return { ok: false, problems: errors };
+  } catch (err) {
+    return { ok: false, problems: [`the model command failed: ${err instanceof Error ? err.message : String(err)}`] };
   } finally {
     rmSync(cwd, { recursive: true, force: true });
   }

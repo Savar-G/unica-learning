@@ -11,222 +11,172 @@ import {
   type ScaffoldKind,
 } from "@/lib/reference-record";
 import { isPlainObject } from "@/lib/reference-record/validate-parts";
-import { canonicalSha256 } from "./canonical";
+import { canonicalJson, canonicalSha256 } from "./canonical";
 import { comparePages, pageRefOf, type PageId } from "./identity";
-import { placePages, type EvidenceInput, type PlacedPage } from "./placement";
-import { stepId, stepOf, unknownStepId } from "./steps";
-import { knownOr, trustedView } from "./trusted";
-import {
-  TEACHING_SCAFFOLD_KINDS,
-  type ExampleFact,
-  type FormatChangeFact,
-  type MachineReadMark,
-  type ScaffoldFact,
-  type SheetFact,
-  type StepFact,
-  type StepFeatures,
-  type TopicEvidence,
-  type TopicGap,
+import { placePages, statusOf, type EvidenceInput, type PlacedPage } from "./placement";
+import { partlyKnown, stepId, stepOf, unknownStepId } from "./steps";
+import { holdsSentinel, knownOr, trustedView } from "./trusted";
+import type {
+  ExampleFact,
+  FormatChangeFact,
+  GapHint,
+  MachineReadMark,
+  PartlyKnown,
+  ScaffoldFact,
+  SheetFact,
+  StepFact,
+  StepFeatures,
+  TopicEvidence,
+  TopicGap,
 } from "./types";
-
-export type { EvidenceInput };
 
 export type BuiltEvidence =
   | { ok: true; evidence: TopicEvidence; views: Map<string, Record<string, unknown>> }
   | { ok: false; problems: string[] };
 
-// Everything that code takes from one page.
-interface PageReading {
-  ref: string;
-  id: PageId;
-  questions: number | NotStated;
-  // Step id of each question, in order.
-  questionSteps: string[];
-  features: Map<string, StepFeatures | NotStated>;
-  shown: Set<string>;
-  // An example or scaffold that code cannot match to a step.
-  unmatched: boolean;
-  formats: string[] | NotStated;
-  examples: ExampleFact[];
-  examplesKnown: boolean;
-  scaffolds: Set<ScaffoldKind>;
-  scaffoldsKnown: boolean;
-}
-
 function listOf(value: unknown): unknown[] | null {
   return Array.isArray(value) ? value : null;
 }
 
-function readPage(page: PlacedPage, view: Record<string, unknown>): PageReading {
+// A list that is not known has one entry, which is not known.
+function entriesOf(value: unknown): unknown[] {
+  return listOf(value) ?? [NOT_STATED];
+}
+
+function placeOf(list: unknown, field: string, index: number): string {
+  return Array.isArray(list) ? `${field}[${index}]` : field;
+}
+
+function fieldsOf(value: unknown): Record<string, unknown> {
+  return isPlainObject(value) ? value : {};
+}
+
+// Everything that code takes from one page.
+function readPage(page: PlacedPage, view: Record<string, unknown>) {
   const ref = page.record.source_ref;
-  const unknown = unknownStepId(ref);
-  const out: PageReading = {
-    ref,
-    id: page.id,
-    questions: 0,
-    questionSteps: [],
-    features: new Map(),
-    shown: new Set(),
-    unmatched: false,
-    formats: [],
-    examples: [],
-    examplesKnown: true,
-    scaffolds: new Set(),
-    scaffoldsKnown: true,
-  };
-  const formats = new Set<string>();
-  let count = 0;
+  // Step id of each question, in order.
+  const questionSteps: string[] = [];
+  const steps = new Map<string, StepFeatures | NotStated>();
+  const partlyKnowns: PartlyKnown[] = [];
+  // The worked examples of each step.
+  const methods = new Map<string, Set<number>>();
+  // steps null: code cannot tell which steps it is about.
+  const hints: Array<{ hint: GapHint; steps: string[] | null }> = [];
+  const formats: string[] = [];
+  const examples: ExampleFact[] = [];
+  const scaffolds = new Set<ScaffoldKind>();
   let itemsKnown = true;
   let formatsKnown = true;
-  let unknownQuestions = 0;
-  let unknownCovered = 0;
-  const addUnknownItems = (): void => {
-    itemsKnown = false;
-    out.features.set(unknown, NOT_STATED);
-    unknownQuestions += 1;
-  };
+  let examplesKnown = true;
+  let scaffoldsKnown = true;
+  const addHint = (at: string, kind: GapHint["kind"], about: string[] | null): void =>
+    void hints.push({ hint: { page: ref, at, kind }, steps: about });
 
-  const sections = listOf(view.sections);
-  if (!sections) {
-    addUnknownItems();
-    out.scaffoldsKnown = false;
-    out.unmatched = true;
-  }
-  for (const section of sections ?? []) {
-    if (!isPlainObject(section)) {
-      addUnknownItems();
-      out.scaffoldsKnown = false;
-      out.unmatched = true;
-      continue;
-    }
-    // Step id of each question of this section; null: code cannot tell the step.
-    const inSection: Array<{ n: unknown; id: string | null }> = [];
-    const items = listOf(section.items);
-    if (!items) {
-      addUnknownItems();
-      inSection.push({ n: null, id: null });
-    }
-    for (const item of items ?? []) {
-      if (!isPlainObject(item) || (item.expr !== null && !isPlainObject(item.expr))) {
-        addUnknownItems();
-        inSection.push({ n: null, id: null });
-        continue;
-      }
-      if (item.expr === null) continue;
-      count += 1;
-      const kind = knownOr((item.expr as Record<string, unknown>).kind, EXPR_KINDS);
-      const form = knownOr(item.form, ITEM_FORMS);
-      if (kind === NOT_STATED || form === NOT_STATED) formatsKnown = false;
-      else formats.add(`${kind} ${form}`);
-      const step = stepOf(item.expr, item.form);
-      const id = step ? stepId(step) : unknown;
-      if (!step) unknownQuestions += 1;
-      out.features.set(id, step ?? NOT_STATED);
-      out.questionSteps.push(id);
-      inSection.push({ n: item.n, id: step ? id : null });
+  entriesOf(view.sections).forEach((entry, si) => {
+    const section = fieldsOf(entry);
+    const sectionAt = placeOf(view.sections, "sections", si);
+    const questions: Array<{ n: unknown; id: string }> = [];
+    for (const item of entriesOf(section.items)) {
+      const { n, expr, form } = fieldsOf(item);
+      if (expr === null) continue;
+      const known = isPlainObject(expr);
+      const partly = partlyKnown(expr, form);
+      const step = stepOf(expr, form);
+      const id = step ? stepId(step) : unknownStepId(ref);
+      steps.set(id, step ?? NOT_STATED);
+      questions.push({ n, id });
+      if (known) questionSteps.push(id);
+      else itemsKnown = false;
+      if (!step && !partlyKnowns.some((p) => canonicalJson(p) === canonicalJson(partly))) partlyKnowns.push(partly);
+      const format = `${partly.expr_kind} ${partly.form}`;
+      if (partly.expr_kind === NOT_STATED || partly.form === NOT_STATED) formatsKnown = false;
+      else if (formats.at(-1) !== format) formats.push(format);
     }
 
-    const scaffolds = listOf(section.scaffolds);
-    if (!scaffolds) {
-      out.scaffoldsKnown = false;
-      out.unmatched = true;
-    }
-    const covered = new Set<number>();
-    for (const scaffold of scaffolds ?? []) {
-      const kind = knownOr(isPlainObject(scaffold) ? scaffold.kind : undefined, SCAFFOLD_KINDS);
-      if (kind === NOT_STATED || !isPlainObject(scaffold)) {
-        out.scaffoldsKnown = false;
-        out.unmatched = true;
-        continue;
-      }
-      out.scaffolds.add(kind);
-      if (kind === "other") out.unmatched = true;
-      if (!TEACHING_SCAFFOLD_KINDS.includes(kind)) continue;
-      const appliesTo = scaffold.applies_to;
+    entriesOf(section.scaffolds).forEach((scaffold, i) => {
+      const kind = knownOr(fieldsOf(scaffold).kind, SCAFFOLD_KINDS);
+      if (kind === NOT_STATED) scaffoldsKnown = false;
+      else scaffolds.add(kind);
+      // An answer box only holds an answer.
+      if (kind === "answer_boxes") return;
+      const appliesTo = fieldsOf(scaffold).applies_to;
       const list = listOf(appliesTo);
-      if (appliesTo !== "all" && !list) {
-        out.unmatched = true;
-        continue;
-      }
-      inSection.forEach((question, i) => {
-        if (list && !list.includes(question.n)) return;
-        if (question.id === null) covered.add(i);
-        else out.shown.add(question.id);
-      });
-    }
-    unknownCovered += covered.size;
-  }
-
-  const examples = listOf(view.examples);
-  if (!examples) {
-    out.examplesKnown = false;
-    out.unmatched = true;
-  }
-  let unknownExample = false;
-  for (const example of examples ?? []) {
-    if (!isPlainObject(example)) {
-      out.examplesKnown = false;
-      out.unmatched = true;
-      continue;
-    }
-    const parts = (listOf(example.parts) ?? [NOT_STATED]).map((part) => (isPlainObject(part) ? part : {}));
-    for (const part of parts) {
-      const step = stepOf(part.expr, part.form);
-      if (step) {
-        const id = stepId(step);
-        out.features.set(id, step);
-        out.shown.add(id);
-      } else {
-        unknownExample = true;
-        out.unmatched = true;
-      }
-    }
-    out.examples.push({
-      page: ref,
-      position: knownOr(example.position, EXAMPLE_POSITIONS),
-      relation: knownOr(example.relation, EXAMPLE_RELATIONS),
-      forms: parts.map((part) => knownOr(part.form, ITEM_FORMS)),
-      expr_kinds: parts.map((part) => knownOr(isPlainObject(part.expr) ? part.expr.kind : undefined, EXPR_KINDS)),
-      steps_shown: kindsOf(example.steps, "shows", EXAMPLE_STEP_KINDS),
-      marks: kindsOf(example.marks, "kind", EXAMPLE_MARK_KINDS),
+      const about = questions.filter((q) => appliesTo === "all" || typeof q.n !== "number" || list?.includes(q.n));
+      addHint(placeOf(section.scaffolds, `${sectionAt}.scaffolds`, i), kind, appliesTo === "all" || list ? about.map((q) => q.id) : null);
     });
-  }
-  // Code cannot match an example to a question whose step it cannot tell, so the page is the unit:
-  // such an example on the page, or teaching scaffolds on all of these questions, show the step.
-  if (unknownQuestions > 0 && (unknownExample || unknownCovered === unknownQuestions)) out.shown.add(unknown);
+  });
 
-  out.questions = itemsKnown ? count : NOT_STATED;
-  out.formats = itemsKnown && formatsKnown ? [...formats].sort() : NOT_STATED;
-  return out;
+  entriesOf(view.examples).forEach((entry, index) => {
+    const at = placeOf(view.examples, "examples", index);
+    if (!isPlainObject(entry)) {
+      examplesKnown = false;
+      return addHint(at, "example", null);
+    }
+    const parts = entriesOf(entry.parts).map(fieldsOf);
+    const partSteps = parts.map((part) => stepOf(part.expr, part.form));
+    const ids = partSteps.map((step) => step && stepId(step));
+    // Its parts and its working are trusted, and code can tell which part the working belongs to.
+    const clear = !holdsSentinel([entry.parts, entry.steps]);
+    const worksOneStep = (listOf(entry.steps)?.length ?? 0) > 0 && new Set(ids).size === 1;
+    parts.forEach((part, p) => {
+      const step = partSteps[p];
+      const id = ids[p];
+      if (!step || !id) return addHint(at, "example", null);
+      steps.set(id, step);
+      if (!clear || !(worksOneStep || typeof part.shown_answer === "string")) return addHint(at, "example", [id]);
+      methods.set(id, (methods.get(id) ?? new Set()).add(index));
+    });
+    examples.push({
+      page: ref,
+      position: knownOr(entry.position, EXAMPLE_POSITIONS),
+      relation: knownOr(entry.relation, EXAMPLE_RELATIONS),
+      forms: parts.map((part) => knownOr(part.form, ITEM_FORMS)),
+      expr_kinds: parts.map((part) => knownOr(fieldsOf(part.expr).kind, EXPR_KINDS)),
+      steps_shown: kindsOf(entry.steps, "shows", EXAMPLE_STEP_KINDS),
+      marks: kindsOf(entry.marks, "kind", EXAMPLE_MARK_KINDS),
+    });
+  });
+
+  return {
+    ref,
+    id: page.id,
+    questions: itemsKnown ? questionSteps.length : (NOT_STATED as NotStated),
+    formats: itemsKnown && formatsKnown ? formats : (NOT_STATED as NotStated),
+    questionSteps,
+    steps,
+    partlyKnown: partlyKnowns,
+    methods,
+    hints,
+    examples,
+    examplesKnown,
+    scaffolds,
+    scaffoldsKnown,
+  };
 }
 
 function kindsOf<T extends string>(value: unknown, field: string, allowed: readonly T[]): Array<T | NotStated> | NotStated {
-  const list = listOf(value);
-  return list ? list.map((entry) => knownOr(isPlainObject(entry) ? entry[field] : undefined, allowed)) : NOT_STATED;
+  return listOf(value)?.map((entry) => knownOr(fieldsOf(entry)[field], allowed)) ?? NOT_STATED;
 }
 
 export function buildEvidence(input: EvidenceInput): BuiltEvidence {
   const placed = placePages(input);
   if (!placed.ok) return placed;
   const { placement } = placed;
+  const contentsRef = placement.contents.source_ref;
   const views = new Map<string, Record<string, unknown>>();
-  const readings: PageReading[] = [];
-  const machineRead = new Set<string>();
+  // In the order of the pages, so every list of pages below is in that order.
+  const readings: Array<ReturnType<typeof readPage>> = [];
   for (const page of placement.pages) {
     if (!page.used) continue;
-    const ref = page.record.source_ref;
     const view = trustedView(page.record);
-    views.set(ref, view);
+    views.set(page.record.source_ref, view);
     readings.push(readPage(page, view));
-    if (page.status === "machine_read") machineRead.add(ref);
   }
-  const mark = (refs: Iterable<string>): MachineReadMark => {
-    const marked = [...new Set(refs)].filter((ref) => machineRead.has(ref));
-    return marked.length > 0 ? { machine_read: marked } : {};
+  // Every fact rests on the contents record too, because it decides which pages belong to the topic.
+  const mark = (refs: readonly string[]): MachineReadMark => {
+    const marked = [contentsRef, ...refs].filter((ref) => input.includeMachineRead && statusOf(input, ref) === "machine_read");
+    return marked.length > 0 ? { machine_read: [...new Set(marked)] } : {};
   };
-  const order = new Map(placement.pages.map((p) => [p.record.source_ref, p.id]));
-  const inOrder = (refs: Iterable<string>): string[] =>
-    [...new Set(refs)].sort((a, b) => comparePages(order.get(a) as PageId, order.get(b) as PageId));
 
   // Pages of the topic that give no facts: no photo, or withheld.
   const blank = [
@@ -241,27 +191,26 @@ export function buildEvidence(input: EvidenceInput): BuiltEvidence {
 
   const steps = new Map<string, StepFact>();
   for (const reading of readings) {
-    for (const [id, features] of reading.features) {
-      const fact = steps.get(id) ?? { id, features, pages: [], shown_on: [] };
+    for (const [id, features] of reading.steps) {
+      const partly = features === NOT_STATED ? { partly_known: reading.partlyKnown } : {};
+      const fact = steps.get(id) ?? { id, features, ...partly, pages: [], methods: [] };
       fact.pages.push(reading.ref);
+      for (const example of reading.methods.get(id) ?? []) fact.methods.push({ page: reading.ref, example });
       steps.set(id, fact);
     }
-    for (const id of reading.shown) steps.get(id)?.shown_on.push(reading.ref);
   }
-  const stepFacts = [...steps.values()].map((fact): StepFact => ({
-    ...fact,
-    pages: inOrder(fact.pages),
-    shown_on: inOrder(fact.shown_on),
-    ...mark(fact.pages),
-  }));
-  const unmatched = new Set(readings.filter((r) => r.unmatched).map((r) => r.ref));
+  const stepFacts = [...steps.values()].map((fact): StepFact => ({ ...fact, ...mark(fact.pages) }));
   const gaps = stepFacts
-    .filter((fact) => fact.shown_on.length === 0)
+    .filter((fact) => fact.methods.length === 0)
     .map((fact): TopicGap => ({
       step: fact.id,
       kind: fact.features === NOT_STATED ? "step_not_known" : "no_method",
       pages: fact.pages,
-      check_pages: fact.pages.filter((ref) => unmatched.has(ref)),
+      hints: readings
+        .filter((r) => fact.pages.includes(r.ref))
+        .flatMap((r) => r.hints.filter((h) => h.steps === null || h.steps.includes(fact.id)).map((h) => h.hint))
+        // Two parts of one example are one hint.
+        .filter((hint, i, all) => i === 0 || canonicalJson(hint) !== canonicalJson(all[i - 1])),
       ...mark(fact.pages),
     }));
 
@@ -276,7 +225,7 @@ export function buildEvidence(input: EvidenceInput): BuiltEvidence {
 
   const formatChanges: FormatChangeFact[] = [];
   const unknownFormats = readings.filter((r) => r.formats === NOT_STATED).map((r) => r.id);
-  let previous: PageReading | undefined;
+  let previous: ReturnType<typeof readPage> | undefined;
   for (const reading of readings) {
     // A page with no question prints no question format.
     if (reading.formats === NOT_STATED || reading.formats.length === 0) continue;
@@ -298,16 +247,12 @@ export function buildEvidence(input: EvidenceInput): BuiltEvidence {
     views,
     evidence: {
       include_machine_read: input.includeMachineRead,
-      contents: {
-        ref: placement.contents.source_ref,
-        status: placement.contentsStatus,
-        sha256: canonicalSha256(placement.contents),
-      },
+      contents: { ref: contentsRef, status: statusOf(input, contentsRef), sha256: canonicalSha256(placement.contents) },
       topic: {
-        title: placement.title,
-        sheet_range: placement.sheetRange,
-        std_time_min: placement.stdTimeMin,
-        ...(placement.contentsStatus === "machine_read" ? { machine_read: [placement.contents.source_ref] } : {}),
+        title: placement.topic.title,
+        sheet_range: placement.topic.sheets,
+        std_time_min: placement.topic.time,
+        ...mark([]),
       },
       pages: placement.pages.map((page) => ({
         ref: page.record.source_ref,
@@ -315,12 +260,16 @@ export function buildEvidence(input: EvidenceInput): BuiltEvidence {
         sha256: canonicalSha256(page.record),
         facts: page.used ? "used" : "withheld",
         ...(page.titleDiffers ? { printed_title_differs: true as const } : {}),
+        ...mark([page.record.source_ref]),
       })),
-      pages_without_photo:
-        placement.missing === NOT_STATED
-          ? NOT_STATED
-          : placement.missing.map((id) => pageRefOf(input.key, id.sheet, id.side)),
-      unplaced_pages: placement.unplaced,
+      pages_without_photo: {
+        pages:
+          placement.missing === NOT_STATED
+            ? NOT_STATED
+            : placement.missing.map((id) => pageRefOf(input.key, id.sheet, id.side)),
+        ...mark([]),
+      },
+      unplaced_pages: { pages: placement.unplaced, ...mark(placement.unplaced) },
       sheets: readings.map((r): SheetFact => ({
         page: r.ref,
         questions: r.questions,

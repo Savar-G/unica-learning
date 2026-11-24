@@ -7,6 +7,8 @@ const segment = fc.stringMatching(/^[A-Za-z0-9]{1,6}$/);
 describe("the topic key", () => {
   it("stores the level in upper case, so one level has one key", () => {
     expect(makeMethodKey("demo", "z", 3)).toEqual({ ok: true, key: { source: "demo", level: "Z", topic: 3 } });
+    expect(makeMethodKey("demo", "Z", 2_147_483_647).ok).toBe(true);
+    expect(parsePageRef("demo:Z:2147483647a").ok).toBe(true);
     expect(makeMethodKey("demo", "Z", "3")).toEqual(makeMethodKey("demo", "z", 3));
   });
 
@@ -23,7 +25,9 @@ describe("the topic key", () => {
     ["demo", "Z", "01"],
     ["demo", "Z", "1e2"],
     ["demo", "Z", "x"],
-    ["demo", "Z", 3_000_000_000],
+    ["demo", "Z", 2_147_483_648],
+    ["demo", "Z", "2147483648"],
+    ["demo", "Z", null],
   ])("refuses source %j, level %j, topic %j", (source, level, topic) => {
     expect(makeMethodKey(source, level, topic).ok).toBe(false);
   });
@@ -45,7 +49,7 @@ describe("the topic key", () => {
 describe("page refs", () => {
   it("reads a page ref and refuses a second spelling of the same page", () => {
     expect(parsePageRef("demo:Z:12a")).toEqual({ ok: true, page: { source: "demo", level: "Z", sheet: 12, side: "a" } });
-    for (const ref of ["demo:Z:012a", "demo:z:12a", "demo:Z:99999999999999999999a", "demo:Z:contents", "demo:Z:0a"]) {
+    for (const ref of ["demo:Z:012a", "demo:z:12a", "demo:Z:99999999999999999999a", "demo:Z:2147483648a", "demo:Z:contents", "demo:Z:0a"]) {
       expect(parsePageRef(ref).ok, ref).toBe(false);
     }
   });

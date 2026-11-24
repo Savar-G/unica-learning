@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -22,10 +22,10 @@ const store: TopicMethodStore = {
 };
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "unica-method-cli-"));
+  root = realpathSync(mkdtempSync(join(tmpdir(), "unica-method-cli-")));
   for (const dir of ["repo", "final"]) mkdirSync(join(root, dir));
   const records = [makePage("11a", { examples: [makeExample(add(45, 3))], items: [makeItem(1, add(23, 4))] }), makeContents()];
-  records.forEach((r, i) => writeFileSync(join(root, "final", `${i}.json`), JSON.stringify(r)));
+  for (const r of records) writeFileSync(join(root, "final", `${r.source_ref.replaceAll(":", "-")}.json`), JSON.stringify(r));
   writeFileSync(
     join(root, "final", "status.json"),
     JSON.stringify(Object.fromEntries(records.map((r) => [r.source_ref, "double_read"]))),
@@ -41,7 +41,7 @@ beforeEach(() => {
     makeStore: () => store,
     runCli: async () => ({
       code: 0,
-      stdout: JSON.stringify({ sentences: [{ kind: "introduces", text: "It adds.", cites: ["demo:Z:11a"] }] }),
+      stdout: JSON.stringify({ sentences: [{ kind: "introduces", text: "[11a] adds.", cites: ["demo:Z:11a"] }] }),
       stderr: "",
     }),
   };
@@ -54,13 +54,22 @@ const records = (): string[] => ["--records", join(root, "final")];
 const methods = (): string[] => ["--methods", join(root, "methods")];
 const topic = (): string[] => ["--source", "demo", "--level", "z", "--topic", "1"];
 
+// What show prints in its last line.
+async function shownDigest(): Promise<string> {
+  out.length = 0;
+  await run("show", ...records(), ...methods(), ...topic());
+  return out.at(-1)?.replace("digest: ", "") ?? "";
+}
+
 describe("npm run reference:method", () => {
-  it("drafts, approves with two names, lists the gaps and imports", async () => {
+  it("drafts, shows, approves with two names, lists the gaps and imports", async () => {
     expect(await run("draft", ...records(), ...methods(), ...topic())).toBe(0);
     expect(readdirSync(join(root, "methods"))).toEqual(["demo-Z-topic-1.json"]);
-    expect(await run("approve", ...records(), ...methods(), ...topic(), "--by", "Ann", "--by", "Bo")).toBe(0);
+    for (const by of ["Ann", "Bo"]) {
+      expect(await run("approve", ...records(), ...methods(), ...topic(), "--by", by, "--digest", await shownDigest())).toBe(0);
+    }
     expect(await run("gaps", ...records(), "--source", "demo", "--level", "Z")).toBe(0);
-    expect(out.join("\n")).toContain("no gaps in the pages with facts");
+    expect(out.join("\n")).toContain("gaps: 0; pages with facts: demo:Z:11a");
     expect(await run("import", ...records(), ...methods())).toBe(0);
     expect(rows.map((r) => [r.level, r.topic, r.status])).toEqual([["Z", 1, "approved"]]);
     expect(err).toEqual([]);
@@ -70,26 +79,31 @@ describe("npm run reference:method", () => {
     for (const args of [["--help"], ["draft", "--help"]]) {
       expect(await run(...args)).toBe(0);
     }
-    for (const word of ["draft", "approve", "gaps", "import", "--keep-summary", "--replace", "--dry-run", "--include-machine-read"]) {
+    for (const word of ["draft", "show", "approve", "--digest", "gaps", "import", "--keep-summary", "--replace", "--dry-run", "--include-machine-read"]) {
       expect(out[0]).toContain(word);
     }
     expect(readdirSync(root).sort()).toEqual(["final", "repo"]);
   });
 
   it.each<[string, () => string[], string]>([
-    ["no subcommand", () => [], "Usage"],
-    ["an unknown subcommand", () => ["publish"], "Usage"],
+    ["no subcommand", () => [], "no command. Use --help"],
+    ["an unknown subcommand", () => ["publish"], 'there is no command "publish"'],
     ["an unknown flag", () => ["gaps", ...records(), "--source", "demo", "--level", "Z", "--force"], "--force"],
-    ["a flag of another subcommand", () => ["approve", ...records(), ...methods(), ...topic(), "--by", "Ann", "--replace"], "--replace"],
+    ["a flag of another subcommand", () => ["approve", ...records(), ...methods(), ...topic(), "--by", "Ann", "--digest", "x", "--replace"], "--replace"],
     ["a missing folder", () => ["draft", ...records(), ...topic()], "--methods"],
     ["a bad topic", () => ["draft", ...records(), ...methods(), "--source", "demo", "--level", "Z", "--topic", "one"], "topic must be"],
     ["a bad level", () => ["gaps", ...records(), "--source", "demo", "--level", "Z/1"], "level must be"],
-    ["no approver", () => ["approve", ...records(), ...methods(), ...topic()], "--by"],
+    ["no approver", () => ["approve", ...records(), ...methods(), ...topic(), "--digest", "x"], "--by"],
+    ["two approvers", () => ["approve", ...records(), ...methods(), ...topic(), "--by", "Ann", "--by", "Bo", "--digest", "x"], "one --by"],
+    ["no digest", () => ["approve", ...records(), ...methods(), ...topic(), "--by", "Ann"], "--digest"],
+    ["nothing to show", () => ["show", ...records(), ...methods(), ...topic()], "no method record"],
+    ["--methods of gaps", () => ["gaps", ...records(), ...methods(), "--source", "demo", "--level", "Z"], "--methods"],
     ["a model of another family", () => ["draft", ...records(), ...methods(), ...topic(), "--model", "gpt-x"], "belongs to the codex"],
     ["a methods folder that does not exist", () => ["import", ...records(), ...methods()], "could not be read"],
   ])("exits with 1 and says why for %s", async (_name, args, text) => {
     expect(await run(...args())).toBe(1);
     expect(err.join("\n")).toContain(text);
+    for (const line of err) expect(line).toMatch(/^problem: /);
     expect(rows).toEqual([]);
   });
 
@@ -114,6 +128,6 @@ describe("npm run reference:method", () => {
     expect(out.join()).toContain("no facts (machine_read): demo:Z:11a");
     out.length = 0;
     await run("gaps", ...records(), "--source", "demo", "--level", "Z", "--include-machine-read");
-    expect(out.join()).not.toContain("no facts");
+    expect(out.join()).toContain("no facts (machine_read): none");
   });
 });

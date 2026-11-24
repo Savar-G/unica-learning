@@ -1,9 +1,9 @@
 import fc from "fast-check";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { Expr } from "@/lib/reference-record";
-import { numbersIn, readPageMentions } from "./numbers";
+import type { Expr, PageItem, PageRecord } from "@/lib/reference-record";
 import { checkSummary, type SummaryContext } from "./summary";
-import { add, evidenceFor, makeContents, makeExample, makeItem, makePage } from "./test-records";
+import { plainSentence } from "./sentence-text";
+import { add, evidenceFor, KEY, makeExample, makeItem, makePage } from "./test-records";
 
 const NO_CARRY = "arith add 2x1 horizontal";
 const CARRY = "arith add 2x1 horizontal carries=ones_to_tens";
@@ -11,7 +11,7 @@ const CARRY = "arith add 2x1 horizontal carries=ones_to_tens";
 function contextOf(...args: Parameters<typeof evidenceFor>): SummaryContext {
   const built = evidenceFor(...args);
   if (!built.ok) throw new Error(built.problems.join("\n"));
-  return { topic: 1, evidence: built.evidence, views: built.views };
+  return { key: KEY, evidence: built.evidence, views: built.views };
 }
 
 let ctx: SummaryContext;
@@ -38,33 +38,33 @@ function say(text: string, extra: Record<string, unknown> = {}): Record<string, 
 }
 
 describe("a sentence and its citations (M4)", () => {
-  it("accepts a cited sentence and a guess", () => {
-    expect(errorsOf(say("The page adds a small number."))).toBe("");
-    expect(errorsOf({ kind: "procedure", text: "Perhaps add the ones first on sheet 12.", cites: [], guess: true })).toBe("");
-    expect(errorsOf({ kind: "progression", text: "The topic has a time of 2 to 4 minutes.", cites: ["demo:Z:contents"] })).toBe("");
+  it("accepts a cited sentence, a guess, and a sentence about the contents chart", () => {
+    expect(errorsOf(say("[11a] adds a small number."))).toBe("");
+    expect(errorsOf({ kind: "introduces", text: "Perhaps [12b] adds too.", cites: ["demo:Z:12b"], guess: true })).toBe("");
+    expect(errorsOf({ kind: "progression", text: "The chart gives a short time.", cites: ["demo:Z:contents"] })).toBe("");
   });
 
   it.each<[string, unknown, string]>([
     ["not an object", "text", "must be a sentence object"],
-    ["an unknown field", say("Adds.", { note: "x" }), "unknown field"],
-    ["an unknown kind", say("Adds.", { kind: "method" }), "must be one of introduces, procedure, progression"],
+    ["an unknown field", say("[11a] adds.", { note: "x" }), "unknown field"],
+    ["an unknown kind", say("[11a] adds.", { kind: "method" }), "must be one of introduces, procedure, progression"],
     ["no text", say("  "), "must be a non-empty text"],
-    ["a line break in the text", say("Adds.\nMore."), "one line"],
-    ["a line separator in the text", say("Adds.\u2028More."), "one line"],
-    ["an invisible character that hides a page name", say("Sheet\u200B12 adds."), "one line"],
-    ["a very long text", say("a".repeat(601)), "600 characters"],
-    ["cites that are not a list", say("Adds.", { cites: "demo:Z:11a" }), "must be a list"],
-    ["a cite twice", say("Adds.", { cites: ["demo:Z:11a", "demo:Z:11a"] }), "cited twice"],
-    ["guess: false", say("Adds.", { guess: false }), "must be true"],
-    ["no citation and no guess", say("Adds.", { cites: [] }), "needs a citation"],
-    ["a page of another topic", say("Adds.", { cites: ["demo:Z:13a"] }), '"demo:Z:13a" is not a page of this topic'],
-    ["a page of another topic in a guess", say("Adds.", { cites: ["demo:Z:13a"], guess: true }), "is not a page of this topic"],
-    ["a page of another level", say("Adds.", { cites: ["demo:Y:11a"] }), "is not a page of this topic"],
-    ["a page with no photo", say("Adds.", { cites: ["demo:Z:12b"] }), "has no photo"],
-    ["a page that gives no facts", say("Adds.", { cites: ["demo:Z:12a"] }), "gives no facts"],
-    ["damaged text", say("Adds \uFFFD."), "damaged text"],
-    ["half a character", say("Adds \uD800."), "damaged text"],
-    ["a null character", say("Adds \u0000."), "damaged text"],
+    ["a line break in the text", say("[11a] adds.\nMore."), "one line"],
+    ["a line separator in the text", say("[11a] adds.\u2028More."), "one line"],
+    ["an invisible character", say("[11a] adds `23\u034F + 4`."), "one line"],
+    ["a very long text", say(`[11a] ${"a".repeat(600)}`), "600 characters"],
+    ["cites that are not a list", say("[11a] adds.", { cites: "demo:Z:11a" }), "must be a list"],
+    ["a cite twice", say("[11a] adds.", { cites: ["demo:Z:11a", "demo:Z:11a"] }), "cited twice"],
+    ["guess: false", say("[11a] adds.", { guess: false }), "must be true"],
+    ["no citation and no guess", say("It adds.", { cites: [] }), "needs a citation"],
+    ["a page of another topic", say("[13a] adds.", { cites: ["demo:Z:13a"] }), '"demo:Z:13a" is not a page of this topic'],
+    ["a page of another topic in a guess", say("[13a] adds.", { cites: ["demo:Z:13a"], guess: true }), "is not a page of this topic"],
+    ["a page of another level", say("[11a] adds.", { cites: ["demo:Y:11a"] }), "is not a page of this topic"],
+    ["a page with no photo", say("[12b] adds.", { cites: ["demo:Z:12b"] }), "has no photo"],
+    ["a page that gives no facts", say("[12a] adds.", { cites: ["demo:Z:12a"] }), "gives no facts"],
+    ["damaged text", say("[11a] adds \uFFFD."), "damaged text"],
+    ["half a character", say("[11a] adds \uD800."), "damaged text"],
+    ["a null character", say("[11a] adds \u0000."), "damaged text"],
   ])("refuses %s", (_name, sentence, text) => {
     expect(errorsOf(sentence)).toContain(text);
   });
@@ -74,165 +74,229 @@ describe("a sentence and its citations (M4)", () => {
     expect(checkSummary([], contextOf([])).ok).toBe(true);
     expect(checkSummary("no", ctx).ok).toBe(false);
   });
+});
 
-  it.each([
-    ["Sheet 12 adds.", "sheet 12"],
-    ["Sheet twelve adds.", "sheet 12"],
-    ["See page 12b.", "page 12b"],
-    ["On 12b the child adds.", "page 12b"],
-    ["See sheet 11, side b.", "page 11b"],
-    ["See sheet 11 (b).", "page 11b"],
-    ["Sheets 11 to 12 add.", "sheet 12"],
-    ["Sheets 11-12 add.", "sheet 12"],
-    ["Sheets 11 and 12 add.", "sheet 12"],
-    ["Between sheets 10 and 12 it adds.", "sheet 12"],
-    ["From sheet 10 to sheet 12 it adds.", "sheet 12"],
-    ["Pages 11a through 12a add.", "page 12a"],
-    ["See demo:Z:12b.", "page 12b"],
-    ["See worksheet no. 12.", "sheet 12"],
-    ["See p. 12.", "sheet 12"],
-    ["See sheet #12.", "sheet 12"],
-    ["Sheet 11b adds.", "page 11b"],
-    ["Sheet 99 adds.", "sheet 99"],
-  ])("refuses %j, which names a sheet that it does not cite, and takes it as a guess", (text, name) => {
-    expect(errorsOf(say(text))).toContain(`names ${name}`);
-    expect(errorsOf(say(text, { guess: true }))).toBe("");
+describe("page tokens (Y1)", () => {
+  it.each<[string, string[]]>([
+    ["[11a] adds.", ["demo:Z:11a"]],
+    ["On page [11a] (and [11b]), it adds.", ["demo:Z:11a", "demo:Z:11b"]],
+    ["\"[11a]\", [11b]: it adds. Then [11a] repeats.", ["demo:Z:11b", "demo:Z:11a"]],
+    ["[11a] follows the chart.", ["demo:Z:11a", "demo:Z:contents"]],
+  ])("accepts %j", (text, cites) => {
+    expect(errorsOf(say(text, { cites }))).toBe("");
   });
 
-  it.each(["Sheet 11 adds.", "Sheet 11a adds.", "The front, 11a, adds.", "Page 11a (sheet 11) adds."])(
-    "accepts %j, which cites the sheet that it names",
-    (text) => {
-      expect(errorsOf(say(text))).toBe("");
+  it.each<[string, string[], string]>([
+    ["a page that it names and does not cite", ["[11a] and [11b] add.", "demo:Z:11a"], '[11b] is not in "cites"'],
+    ["a page that it cites and does not name", ["[11a] adds.", "demo:Z:11a", "demo:Z:11b"], 'has no token [11b]'],
+    ["no token at all", ["It adds.", "demo:Z:11a"], "has no token [11a]"],
+    ["a range in a token", ["[11a-11b] add.", "demo:Z:11a", "demo:Z:11b"], "is not a page token"],
+    ["two pages in a token", ["[11a, 11b] add.", "demo:Z:11a", "demo:Z:11b"], "is not a page token"],
+    ["a dash between two tokens", ["[11a] - [11b] add.", "demo:Z:11a", "demo:Z:11b"], "never a range"],
+    ["the word to between two tokens", ["[11a] to [11b] add.", "demo:Z:11a", "demo:Z:11b"], "never a range"],
+    ["the word through between two tokens", ["[11a] through [11b] add.", "demo:Z:11a", "demo:Z:11b"], "never a range"],
+    ["a full ref in a token", ["[demo:Z:11a] adds.", "demo:Z:11a"], "is not a page token"],
+    ["a level in a token", ["[Z11a] adds.", "demo:Z:11a"], "is not a page token"],
+    ["a sheet with no side", ["[11] adds.", "demo:Z:11a"], "is not a page token"],
+    ["a leading zero", ["[011a] adds.", "demo:Z:11a"], "is not a page token"],
+    ["a space in a token", ["[11 a] adds.", "demo:Z:11a"], "is not a page token"],
+    ["a side in upper case", ["[11A] adds.", "demo:Z:11a"], "is not a page token"],
+    ["another level before the token", ["demo:Y:[11a] adds.", "demo:Z:11a"], "a space around"],
+    ["letters after the token", ["[11a]s add.", "demo:Z:11a"], "a space around"],
+    ["an open bracket", ["[11a] adds [", "demo:Z:11a"], "bracket or backtick"],
+    ["an open backtick", ["[11a] adds `4", "demo:Z:11a"], "bracket or backtick"],
+    ["an empty token", ["[] [11a] adds.", "demo:Z:11a"], "is not a page token"],
+  ])(
+    "refuses %s, also in a guess",
+    (_name, [text, ...cites], error) => {
+      expect(errorsOf(say(text, { cites }))).toContain(error);
+      expect(errorsOf(say(text, { cites, guess: true }))).toContain(error);
+    },
+  );
+});
+
+describe("text outside the tokens (Y1)", () => {
+  it.each([
+    "[11a] has 2 questions.", "[11a] adds \uFF12.", "[11a] shows \u00BD.", "[11a] shows x\u00B2.", "[11a] shows \u0663.",
+    "[11a] is step \u2167.", "C11a adds.", "Page 11a adds.", "Sheets 11 to 12 add.", "11a\u201312a add.", "See demo:Z:11a.",
+    "Question 9 of [11a] adds.", "The 9th question of [11a] adds.", "[11a] takes 2:00.", "[11a] starts with .4.",
+  ])("refuses a digit: %j", (text) => {
+    expect(errorsOf(say(text))).toContain("no digits outside");
+    expect(errorsOf(say(text, { guess: true }))).toContain("no digits outside");
+  });
+
+  it.each([
+    "two", "nine", "ten", "Twelve", "nineteen", "twenty", "ninety-nine", "forty two", "hundred", "thousand", "two-digit",
+  ])("refuses the number word %j", (word) => {
+    expect(errorsOf(say(`[11a] has ${word} parts.`))).toContain("number word");
+  });
+
+  it.each(["page one", "Sheet one", "question zero", "question number one", "pages no. one", "question `23 + 4`", "page number `23 + 4`"])(
+    "refuses %j",
+    (words) => {
+      expect(errorsOf(say(`[11a] repeats ${words}.`))).toContain("followed by a number");
     },
   );
 
-  it.each([
-    ["The child adds 5 small numbers.", "5"],
-    ["The child adds five numbers.", "5"],
-    ["There are 1,000 dots.", "1000"],
-    ["The sum is 2.5 dots.", "2.5"],
-    ["There are twenty-five dots.", "25"],
-    ["It ends with 234.", "234"],
-  ])("refuses a number that no cited record or fact holds: %j", (text, n) => {
-    expect(errorsOf(say(text))).toContain(`the number ${n} is in none of the cited records or facts`);
-    expect(errorsOf(say(text, { guess: true }))).toBe("");
+  it.each(["\u00D7", "=", "+", "%", "\u2212", "\u2014", "\u0430", "\uFF41", "<", "\u00E9"])("refuses the character %j", (sign) => {
+    expect(errorsOf(say(`[11a] uses ${sign} here.`))).toContain("plain English");
   });
 
   it.each([
-    "It starts with 23 + 4 and has 2 questions.",
-    "The first number has two digits.",
-    "It shows 45 + 3.0 as 045 + 3.",
-  ])("accepts numbers of the cited record and its facts: %j", (text) => {
+    "[11a] puts the ones under the ones, the tens under the tens.",
+    "[11a] has tens, hundreds and thousands places; the child's first step is \u201Cthe ones\u201D.",
+    "On [11a], one step adds the ones / tens (no carry): why? Look!",
+    "[11a] often weighs the content.",
+  ])("accepts %j", (text) => {
     expect(errorsOf(say(text))).toBe("");
   });
 
-  it("takes a number only from the pages that the sentence cites", () => {
-    expect(errorsOf(say("It adds 68 and 7."))).toContain("number 68");
-    expect(errorsOf(say("It adds 68 and 7.", { cites: ["demo:Z:11b"] }))).toBe("");
-    expect(errorsOf(say("It takes 2 minutes.", { cites: ["demo:Z:contents"] }))).toBe("");
-    expect(errorsOf(say("It has 13 parts.", { cites: ["demo:Z:contents"] }))).toContain("number 13");
-  });
-
-  it("does not take a number from a field that one reader read, or from a question number", () => {
-    ctx = contextOf([
-      makePage("11a", { items: [makeItem(7, add(23, 4))], single_read: ["sections[0].instruction"] }),
-    ]);
-    const page = makePage("11a", { items: [makeItem(7, add(23, 4))], single_read: ["sections[0].instruction"] });
-    page.sections[0].instruction = "Find 88 totals.";
-    ctx = contextOf([page]);
-    expect(errorsOf(say("Find 88 totals."))).toContain("number 88");
-    expect(errorsOf(say("Question 7 is first."))).toContain("number 7");
-    delete page.single_read;
-    ctx = contextOf([page]);
-    expect(errorsOf(say("Find 88 totals."))).toBe("");
-  });
-
-  it("refuses a digit that is not 0 to 9", () => {
-    for (const text of ["It adds \uFF12\uFF13.", "It shows \u00BD.", "It shows 3\u00B2.", "It shows \u0663."]) {
-      expect(errorsOf(say(text)), text).toContain("0 to 9");
-    }
-  });
-
-  it("does not take an algebra term of the cited page for a page", () => {
-    const term: Expr = { kind: "notation", latex: "2a + 3" };
-    ctx = contextOf([makePage("11a", { items: [makeItem(1, term)] })]);
-    expect(errorsOf(say("It works on 2a."))).toBe("");
-    expect(errorsOf(say("It works on 5a."))).toContain("names page 5a");
-    // A page of the topic stays a page, also when the cited page prints its name.
-    ctx = contextOf([makePage("11a", { items: [makeItem(1, { kind: "notation", latex: "12b + 3" })] })]);
-    expect(errorsOf(say("It works on 12b."))).toContain("names page 12b");
-  });
-});
-
-describe("a procedure (M5)", () => {
-  const how = (extra: Record<string, unknown> = {}): Record<string, unknown> => ({
-    kind: "procedure",
-    text: "Add the ones first.",
-    cites: ["demo:Z:11a"],
-    ...extra,
-  });
-
-  it("refuses a procedure for a step that the pages show no method for, unless it is a guess", () => {
-    expect(errorsOf(how({ cites: ["demo:Z:11b"] }))).toContain(`no cited page shows a method for the step "${CARRY}"`);
-    expect(errorsOf(how({ cites: ["demo:Z:11b"], guess: true }))).toBe("");
-  });
-
-  it("asks which step a procedure is about when the cited pages hold a step with no method", () => {
-    expect(errorsOf(how())).toContain(`no cited page shows a method for the step "${CARRY}"`);
-    expect(errorsOf(how({ steps: [NO_CARRY] }))).toBe("");
-    expect(errorsOf(how({ steps: [CARRY] }))).toContain("no cited page shows a method");
-    expect(errorsOf(how({ steps: [NO_CARRY, CARRY] }))).toContain("no cited page shows a method");
-  });
-
-  it.each<[string, Record<string, unknown>, string]>([
-    ["a step that the topic does not have", { steps: ["arith add 9x9 vertical"] }, "is not a step of this topic"],
-    ["an empty list of steps", { steps: [] }, "must be a non-empty list"],
-    ["steps on another kind of sentence", { kind: "introduces", steps: [NO_CARRY] }, "only a procedure"],
-    ["a procedure that cites no page", { cites: ["demo:Z:contents"] }, "must cite a page with a step"],
-    ["a shown step whose page is not cited", { cites: ["demo:Z:11b"], steps: [NO_CARRY] }, "no cited page shows a method"],
-  ])("refuses %s", (_name, extra, text) => {
-    expect(errorsOf(how(extra))).toContain(text);
-  });
-
-  it("refuses a procedure for a step that code cannot tell and no page shows", () => {
-    ctx = contextOf([makePage("11a", { items: [makeItem(1, { kind: "notation", latex: "x" })] })]);
-    expect(errorsOf(how())).toContain('no cited page shows a method for the step "page demo:Z:11a"');
-  });
-});
-
-describe("how numbers are read", () => {
-  it("gives equal numbers one text, and different numbers two texts", () => {
+  it("refuses every digit of every script, wherever it stands", () => {
+    const digits = Array.from({ length: 0x11_0000 }, (_, c) => c)
+      .filter((c) => (c < 0xd800 || c > 0xdfff) && /\p{N}/u.test(String.fromCodePoint(c)))
+      .map((c) => String.fromCodePoint(c));
+    expect(digits.length).toBeGreaterThan(1_000);
+    const word = fc.stringMatching(/^[a-z]{1,5}$/);
     fc.assert(
-      fc.property(fc.nat(9_999_999), fc.nat(9_999_999), (a, b) => {
-        const grouped = a.toLocaleString("en-US");
-        expect(numbersIn(`x ${a}, y`)).toEqual([String(a)]);
-        expect(numbersIn(`x ${grouped}. y`)).toEqual([String(a)]);
-        expect(numbersIn(`000${a}.500`)).toEqual([`${a}.5`]);
-        expect(numbersIn(`${a} and ${b}`)).toEqual([String(a), String(b)]);
+      fc.property(fc.constantFrom(...digits), word, word, (d, before, after) => {
+        expect(errorsOf(say(`[11a] ${before}${d}${after}.`))).toContain("no digits outside");
       }),
     );
   });
+});
 
-  it("reads each part of a list and each word for a number", () => {
-    expect(numbersIn("12,13")).toEqual(["12", "13"]);
-    expect(numbersIn("two, twelve, forty, forty-two and ninety nine")).toEqual(["2", "12", "40", "42", "99"]);
-    expect(numbersIn("the one above, the ones, tens and zero")).toEqual([]);
+describe("math between backticks (Y1)", () => {
+  function pageWith(items: PageItem[], extra: Partial<PageRecord> = {}): PageRecord {
+    return { ...makePage("11a", { items, examples: [makeExample(add(45, 3), "horizontal", { steps: [{ n: 1, shows: "answer", printed: "48" }] })] }), ...extra };
+  }
+  const printed = (n: number, text: string, expr: Expr = add(23, 4)): PageItem => ({ ...makeItem(n, expr), printed: text });
+
+  beforeEach(() => {
+    ctx = contextOf([
+      pageWith([
+        printed(1, "43 \u00D7 2 = 86", { kind: "arith", op: "mul", operands: [43, 2] }),
+        printed(2, "7 \u00F7 3 = 2 R1", { kind: "arith", op: "div", operands: [7, 3] }),
+        printed(3, "3/4"),
+        printed(4, "\u221212 + 5", add(-12, 5)),
+        printed(5, "unclear", { kind: "missing", op: "add", operands: [null, 3], result: 27 }),
+        printed(6, "x", { kind: "notation", latex: "\\frac{1}{2}" }),
+        printed(7, "1 1/2 + 0.4"),
+      ]),
+      makePage("11b", { items: [printed(1, "68 + 7")] }),
+    ]);
   });
 
-  it("separates the page mentions from the other numbers", () => {
-    const read = readPageMentions("Sheets 11 to 13 have 4 sums", new Set(["a", "b"]));
-    expect(read.mentions.map((m) => m.sheet)).toEqual([11, 12, 13]);
-    expect(numbersIn(read.rest)).toEqual(["4"]);
+  it.each([
+    "43 \u00D7 2", "43\u00D72", "86", "43 \u00D7 2 = 86", "2 R1", "7 \u00F7 3", "3/4", "-12 + 5", "\u221212 + 5", "_ + 3 = 27", "27",
+    "\\frac{1}{2}", "1 1/2 + 0.4", "45 + 3", "48",
+  ])("accepts %j, which the page prints", (math) => {
+    expect(errorsOf(say(`[11a] shows \`${math}\`.`))).toBe("");
   });
 
-  it("stops at a very long range of sheets", () => {
-    expect(readPageMentions("Sheets 1 to 99999999999", new Set()).mentions.length).toBeLessThan(1_000);
+  it.each([
+    "43 + 2", "2 \u00D7 43", "43 \u00F7 2", "43", "2", "3", "4/3", "4", "2 R4", "2", "R1", "7 R1", "12 + 5", "12", "5", "1/2", "1 1/2", "0.4", ".4",
+    "43 \u00D7 2 = 87", "3 \u00D7 2", "6", "86 = 43 \u00D7 2", "24 + 3", "24", "68 + 7", "43 \u00D7", "", " ", "=", "page 4",
+  ])("refuses %j, also when its digits are on the page", (math) => {
+    expect(errorsOf(say(`[11a] shows \`${math}\`.`))).toMatch(/no cited page prints|bracket or backtick/);
+  });
+
+  it.each(["-`86`", "- `86`", "`86`/`27`", "`86` / `27`", "`86``27`", "`86`s", "R`86`", ".`86`", "`2 R1`4"])(
+    "refuses %j, which changes the value around the fragment",
+    (text) => {
+      expect(errorsOf(say(`[11a] shows ${text}.`))).not.toBe("");
+    },
+  );
+
+  it("takes math only from the pages that the sentence cites", () => {
+    expect(errorsOf(say("[11b] adds `43 \u00D7 2`.", { cites: ["demo:Z:11b"] }))).toContain("no cited page prints");
+    expect(errorsOf(say("[11b] adds `68 + 7`.", { cites: ["demo:Z:11b"] }))).toBe("");
+    expect(errorsOf(say("[11a] and [11b] show `68 + 7`.", { cites: ["demo:Z:11a", "demo:Z:11b"] }))).toBe("");
+    expect(errorsOf({ kind: "introduces", text: "The chart shows `11`.", cites: ["demo:Z:contents"] })).toContain("no cited page prints");
+  });
+
+  it("takes no evidence from what is not printed: computed answers, question numbers, titles, notes, once-read fields", () => {
+    const item = { ...printed(88, "23 + 4"), responses: [{ position: "box" as const, cue: null, answer: "77", answer_source: "computed" as const }] };
+    const page = pageWith([item], { topic: { title: "Pebbles 99" }, single_read: ["sections[0].instruction"] });
+    page.sections[0].instruction = "66";
+    ctx = contextOf([page]);
+    for (const math of ["77", "88", "Pebbles 99", "99", "66"]) {
+      expect(errorsOf(say(`[11a] shows \`${math}\`.`)), math).toContain("no cited page prints");
+    }
+    item.responses[0] = { ...item.responses[0], answer_source: "printed" as never };
+    delete page.single_read;
+    ctx = contextOf([page]);
+    for (const math of ["77", "66"]) expect(errorsOf(say(`[11a] shows \`${math}\`.`)), math).toBe("");
+  });
+
+  it("does not compare the math of a guess with the pages, and still keeps its syntax", () => {
+    expect(errorsOf(say("Perhaps `5 + 5` comes first.", { cites: [], guess: true }))).toBe("");
+    expect(errorsOf(say("Perhaps 5 + 5 comes first.", { cites: [], guess: true }))).toContain("no digits outside");
+  });
+
+  it("accepts a whole printed expression and refuses each other order of it", () => {
+    const n = fc.integer({ min: 10, max: 99 });
+    fc.assert(
+      fc.property(n, n, (a, b) => {
+        fc.pre(a !== b);
+        ctx = contextOf([pageWith([printed(1, `${a} - ${b} =`, { kind: "arith", op: "sub", operands: [a, b] })], { examples: [] })]);
+        expect(errorsOf(say(`[11a] shows \`${a} \u2212 ${b}\`.`))).toBe("");
+        for (const math of [`${b} - ${a}`, `${a} + ${b}`, `${a}`, `${b}`, `-${b}`, `${a} - ${Math.floor(b / 10)}`]) {
+          expect(errorsOf(say(`[11a] shows \`${math}\`.`)), math).toContain("no cited page prints");
+        }
+      }),
+      { numRuns: 30 },
+    );
   });
 });
 
-it("keeps the topic title out of a page's numbers", () => {
-  ctx = contextOf([makePage("11a", { title: "Joining Pebbles 1" })], {
-    contents: makeContents([{ n: 1, title: "Joining Pebbles 1", sheets: [11, 11], std_time_min: null }]),
+describe("a procedure (M5, Y2)", () => {
+  const how = (extra: Record<string, unknown> = {}): Record<string, unknown> => ({
+    kind: "procedure",
+    text: "[11a] adds the ones first.",
+    cites: ["demo:Z:11a"],
+    steps: [NO_CARRY],
+    ...extra,
   });
-  expect(errorsOf(say("It is topic 1.", { cites: ["demo:Z:contents"] }))).toBe("");
+  const onB = { text: "[11b] adds the ones first.", cites: ["demo:Z:11b"] };
+
+  it("accepts a procedure for a step with a worked example on a cited page", () => {
+    expect(errorsOf(how())).toBe("");
+  });
+
+  it.each<[string, Record<string, unknown>, string]>([
+    ["no steps", { steps: undefined }, "must be a non-empty list"],
+    ["no steps in a guess", { steps: undefined, guess: true }, "must be a non-empty list"],
+    ["an empty list of steps", { steps: [] }, "must be a non-empty list"],
+    ["a step twice", { steps: [NO_CARRY, NO_CARRY] }, "named twice"],
+    ["a step that the topic does not have", { steps: ["arith add 9x9 vertical"] }, "is not a step of this topic"],
+    ["a step that the topic does not have in a guess", { steps: ["arith add 9x9 vertical"], guess: true }, "is not a step of this topic"],
+    ["a step with no method", { steps: [CARRY] }, `no cited page has a worked example of "${CARRY}"`],
+    ["a step with no method beside one with a method", { steps: [NO_CARRY, CARRY] }, "no cited page has a worked example"],
+    ["a step whose example is on another page", { ...onB, steps: [NO_CARRY] }, "no cited page has a worked example"],
+    ["only the contents chart", { text: "Add the ones.", cites: ["demo:Z:contents"] }, "no cited page has a worked example"],
+  ])("refuses %s", (_name, extra, text) => {
+    const sentence = how(extra);
+    if (sentence.steps === undefined) delete sentence.steps;
+    expect(errorsOf(sentence)).toContain(text);
+  });
+
+  it("takes a guess for a step with no method", () => {
+    expect(errorsOf(how({ ...onB, steps: [CARRY], guess: true }))).toBe("");
+  });
+
+  it("refuses steps on another kind of sentence", () => {
+    expect(errorsOf(say("[11a] adds.", { steps: [NO_CARRY] }))).toContain("only a procedure");
+  });
+
+  it("refuses a procedure for a step that code cannot tell, whatever the page shows", () => {
+    const notation: Expr = { kind: "notation", latex: "x" };
+    ctx = contextOf([makePage("11a", { items: [makeItem(1, notation)], examples: [makeExample(notation)] })]);
+    expect(errorsOf(how({ steps: ["page demo:Z:11a"] }))).toContain('no cited page has a worked example of "page demo:Z:11a"');
+  });
+});
+
+describe("the plain text of a sentence", () => {
+  it("names each page with its level and shows the math without its marks", () => {
+    expect(plainSentence("On [11a] and [12b], `43 \u00D7 2` comes first.", KEY)).toBe("On Z:11a and Z:12b, 43 \u00D7 2 comes first.");
+  });
 });

@@ -1,12 +1,16 @@
 import {
+  ARITH_OPS,
   computeExprAnswer,
   computeExprFeatures,
+  digitCount,
+  EXPR_KINDS,
   ITEM_FORMS,
   type Expr,
   type ItemForm,
 } from "@/lib/reference-record";
-import { holdsSentinel } from "./trusted";
-import type { StepFeatures } from "./types";
+import { isPlainObject } from "@/lib/reference-record/validate-parts";
+import { holdsSentinel, knownOr } from "./trusted";
+import type { PartlyKnown, StepFeatures } from "./types";
 
 // The step of one expression, or null when code cannot tell it. The features come from the compute
 // helpers, which count digits, carries and borrows for whole numbers only. Any other number gives null.
@@ -14,6 +18,17 @@ export function stepOf(expr: unknown, form: unknown): StepFeatures | null {
   if (!(ITEM_FORMS as readonly unknown[]).includes(form)) return null;
   if (typeof expr !== "object" || expr === null || holdsSentinel(expr)) return null;
   return stepOfKnown(expr as Expr, form as ItemForm);
+}
+
+// What code knows of a question, also when it cannot tell the step.
+export function partlyKnown(expr: unknown, form: unknown): PartlyKnown {
+  const fields = isPlainObject(expr) ? expr : {};
+  const inner = fields.kind === "word" && isPlainObject(fields.expr) ? fields.expr : fields;
+  return {
+    expr_kind: knownOr(fields.kind, EXPR_KINDS),
+    operation: knownOr(inner.op, ARITH_OPS),
+    form: knownOr(form, ITEM_FORMS),
+  };
 }
 
 function stepOfKnown(expr: Expr, form: ItemForm): StepFeatures | null {
@@ -51,7 +66,9 @@ function arithStep(expr: Extract<Expr, { kind: "arith" | "missing" }>, form: Ite
     expr_kind: expr.kind,
     form,
     operation: features.op,
-    operand_digits: features.operand_digits,
+    // The helper solves a missing number first, so its digits are not printed.
+    operand_digits: features.operand_digits.map((digits, i) => (expr.operands[i] === null ? null : digits)),
+    ...(expr.kind === "missing" ? { result_digits: typeof expr.result === "number" ? digitCount(expr.result) : null } : {}),
     ...(features.op === "add" || features.op === "mul" ? { carries: [...features.carries].sort() } : {}),
     ...(features.op === "sub" ? { borrows: [...features.borrows].sort() } : {}),
     ...(features.op === "div" ? { remainder: features.has_remainder } : {}),
@@ -70,7 +87,9 @@ export function stepId(step: StepFeatures): string {
     step.borrows?.length ? ` borrows=${step.borrows.join("+")}` : "",
     step.remainder === undefined ? "" : ` remainder=${step.remainder ? "yes" : "no"}`,
   ];
-  return `${step.expr_kind} ${step.operation} ${step.operand_digits?.join("x")} ${step.form}${tags.join("")}`;
+  const digits = step.operand_digits?.map((d) => d ?? "_").join("x");
+  const result = step.result_digits === undefined ? "" : `=${step.result_digits ?? "_"}`;
+  return `${step.expr_kind} ${step.operation} ${digits}${result} ${step.form}${tags.join("")}`;
 }
 
 // The step of the questions of one page that code cannot tell. It is never shared between pages.

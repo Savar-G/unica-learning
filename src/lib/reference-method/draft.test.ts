@@ -2,8 +2,10 @@ import { existsSync, readdirSync } from "node:fs";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { CliRunOptions, RunCli } from "@/lib/reference-kit/read-cli";
 import { draftSummary } from "./draft";
+import { readSentenceText } from "./sentence-text";
 import type { SummaryContext } from "./summary";
-import { add, evidenceFor, makeExample, makeItem, makePage } from "./test-records";
+import { add, evidenceFor, KEY, makeExample, makeItem, makePage } from "./test-records";
+import type { MethodSentence } from "./types";
 
 interface Call {
   cmd: string;
@@ -22,8 +24,8 @@ const runCli: RunCli = async (cmd, args, opts) => {
   return typeof answer === "string" ? { code: 0, stdout: answer, stderr: "" } : { stdout: "", ...answer };
 };
 
-const good = { kind: "introduces", text: "The page adds a small number.", cites: ["demo:Z:11a"] };
-const bad = { ...good, cites: ["demo:Z:13a"] };
+const good = { kind: "introduces", text: "[11a] adds a small number.", cites: ["demo:Z:11a"] };
+const bad = { ...good, text: "[13a] adds.", cites: ["demo:Z:13a"] };
 const reply = (...sentences: unknown[]): string => JSON.stringify({ sentences });
 
 beforeEach(() => {
@@ -38,7 +40,7 @@ beforeEach(() => {
     { statuses: { "demo:Z:12a": "machine_read" } },
   );
   if (!built.ok) throw new Error(built.problems.join("\n"));
-  ctx = { topic: 1, evidence: built.evidence, views: built.views };
+  ctx = { key: KEY, evidence: built.evidence, views: built.views };
 });
 
 const draft = (): ReturnType<typeof draftSummary> => draftSummary({ ctx, runCli });
@@ -76,6 +78,18 @@ describe("drafting the summary (M3)", () => {
     expect(prompt).not.toContain("single_read");
   });
 
+  it("explains the syntax of a sentence with invented examples that keep it", async () => {
+    answers = [reply(good)];
+    await draft();
+    const prompt = calls[0].opts.stdin ?? "";
+    const examples = prompt.split("\n").filter((line) => line.startsWith('{"kind"')).map((line) => JSON.parse(line) as MethodSentence);
+    expect(examples.map((s) => s.kind)).toEqual(["introduces", "procedure", "progression"]);
+    for (const sentence of examples) {
+      const read = readSentenceText(sentence.text, KEY);
+      expect([read.errors, [...new Set(read.pages)]]).toEqual([[], sentence.cites]);
+    }
+  });
+
   it("retries once with the validation errors", async () => {
     answers = [reply(bad), reply(good)];
     expect(await draft()).toMatchObject({ ok: true, summary: [good] });
@@ -85,7 +99,7 @@ describe("drafting the summary (M3)", () => {
   });
 
   it("stops after the second bad answer and lists the problems", async () => {
-    answers = [reply(good, bad), reply({ ...good, cites: [] }), reply(good)];
+    answers = [reply(good, bad), reply({ ...good, text: "It adds.", cites: [] }), reply(good)];
     const result = await draft();
     expect(result).toEqual({
       ok: false,
@@ -133,7 +147,7 @@ describe("drafting the summary (M3)", () => {
   it("calls no model when no page gives facts", async () => {
     const built = evidenceFor([]);
     if (!built.ok) throw new Error("expected facts");
-    ctx = { topic: 1, evidence: built.evidence, views: built.views };
+    ctx = { key: KEY, evidence: built.evidence, views: built.views };
     expect(await draft()).toEqual({ ok: true, summary: [], model: null });
     expect(calls).toEqual([]);
   });

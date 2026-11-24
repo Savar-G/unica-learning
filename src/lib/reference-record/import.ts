@@ -292,6 +292,8 @@ export interface LoadedReferenceRecords {
   recordsRead: number;
   records: ReferenceRecord[];
   statusByRef: Map<string, TranscriptStatus>;
+  // The file name of each source_ref.
+  fileByRef: Map<string, string>;
   problems: string[];
 }
 
@@ -310,7 +312,7 @@ export async function loadReferenceRecords(recordsDir: string): Promise<LoadedRe
   if (problems.length === problemsBeforeStatus) {
     checkStatusSingleRead(records, statusByRef, problems);
   }
-  return { recordsRead, records, statusByRef, problems };
+  return { recordsRead, records, statusByRef, fileByRef: seenRefs, problems };
 }
 
 export async function importReferenceRecords(options: ImportOptions): Promise<ImportResult> {
