@@ -15,7 +15,7 @@ A team member must be able to rebuild a production book and find the cause of a 
 - The same input and engine version give the same bytes.
 - The engine imports nothing from the app. Adapters do all reading and writing.
 - The book job first allocates the ids, QR tokens and dates. It saves them with the input hash before the build, so a retry uses them again.
-- `replay <workbook_id>` rebuilds a production book from its stored input, with the same engine, renderer, fonts and snapshot. If one of these is different, replay reports which one.
+- `replay <workbook_id>` rebuilds a production book from its stored input, with the same engine, renderer, fonts and snapshot. If one of these is different or not available, replay reports which one. The spec does not say where old engine, renderer and font versions are kept. Decide it before the replay command is built.
 
 ## Options rejected
 

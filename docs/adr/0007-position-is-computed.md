@@ -31,4 +31,5 @@ Position is where a child is in a level: the sheets that must repeat, then the n
 - The code needs the issued sheets, receipts and sheet results of each child. Position is per child, also on a shared device.
 - The freeze computes page numbers and display codes from the order of the sheets. They are display fields.
 - All new per-child tables join the family deletion path.
+- Open: the rules do not say what happens to a sheet with marks on only some of its items (result `unknown`) when at least half of the book is scanned. Decide it before `position` is built.
 - A synthetic book tests the rules: its issued sheets, receipts and marks must give the expected results, on both sides of the half-book limit.
