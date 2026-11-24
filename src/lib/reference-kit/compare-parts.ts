@@ -25,17 +25,20 @@ export interface RecordDifference {
   a: unknown;
   b: unknown;
   kind: DiffKind;
-  // once_read and one-sided list entries (missing items or contents topics): the reader that has
-  // the entry, and the JSON path of the entry in the final record. A path that ends in "[]" means
-  // the end of that list. When insert_before is set, final_path names the element before which to
-  // insert the entry. missing_step is set on a reader-b mark whose step has no partner in reader
-  // a's record. location_unknown is set when a kept record's section cannot be matched with
-  // certainty after an edit, so final_path is omitted.
+  // once_read and one-sided numbered entries: the reader that has the entry.
+  // On a fresh final record (= reader A's record):
+  // - entries reader A has and once-read scaffolds/examples/steps/marks carry final_path (ending
+  //   in "[]" for list end; reader-B steps with insert_before name the element to insert ahead of).
+  // - numbered entries (page items or contents topics) that only reader B has omit final_path and
+  //   insert_before and carry reader_b_after / reader_b_before from reader B's own list.
+  // On a kept record on disk (edited, human_checked, or invalid), final_path and insert_before are
+  // omitted. missing_step is set on a reader-b mark whose step has no partner in reader a's record.
   reader?: "a" | "b";
   final_path?: string;
   insert_before?: number;
+  reader_b_after?: number | null;
+  reader_b_before?: number | null;
   missing_step?: boolean;
-  location_unknown?: boolean;
 }
 
 export type FieldCompareMode = "exact" | "prose" | "notation";

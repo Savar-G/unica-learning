@@ -482,3 +482,50 @@ export function findEmptyAnswers(record: ReferenceRecord | null | undefined): st
   });
   return paths;
 }
+
+// Worked-example parts whose shown_answer conflicts with their own computable single-answer expr.
+// Never mutates shown_answer and is used by compare (not reference:check, where a person decides).
+export function findExampleAnswerConflicts(
+  record: ReferenceRecord | null | undefined,
+): AnswerNote[] {
+  if (!record || record.kind !== "page" || !Array.isArray(record.examples)) return [];
+  const out: AnswerNote[] = [];
+  record.examples.forEach((ex, ei) => {
+    ex.parts.forEach((part, pi) => {
+      const shown = part.shown_answer ?? null;
+      if (!isConcreteAnswer(shown)) return;
+      const computed = computeExprAnswer(part.expr);
+      if (!computed || computed.kind !== "single") return;
+      if (normalizeAnswerCompare(shown) !== normalizeAnswerCompare(computed.value)) {
+        const path = `examples[${ei}].parts[${pi}].shown_answer`;
+        out.push({
+          kind: "answer_differs",
+          path,
+          message: `${path}: shown "${shown}", computed "${computed.value}"`,
+        });
+      }
+    });
+  });
+  return out;
+}
+
+export function collectExampleAnswerConflicts(
+  finalRecord: ReferenceRecord | null | undefined,
+  recA: ReferenceRecord | null | undefined,
+  recB: ReferenceRecord | null | undefined,
+): { finalMessages: string[]; readerOnlyPaths: string[] } {
+  const finalConflicts = findExampleAnswerConflicts(finalRecord);
+  const finalPaths = new Set(finalConflicts.map((d) => d.path));
+  const readerOnlyPaths: string[] = [];
+  const seen = new Set<string>();
+  for (const conflict of [
+    ...findExampleAnswerConflicts(recA),
+    ...findExampleAnswerConflicts(recB),
+  ]) {
+    if (!finalPaths.has(conflict.path) && !seen.has(conflict.path)) {
+      seen.add(conflict.path);
+      readerOnlyPaths.push(conflict.path);
+    }
+  }
+  return { finalMessages: finalConflicts.map((d) => d.message), readerOnlyPaths };
+}

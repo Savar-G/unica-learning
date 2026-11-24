@@ -180,29 +180,50 @@ export function formatPagesSentToPerson(report: CompareWorkReport): string {
   return lines.join("\n");
 }
 
+function hasReaderBNeighbours(d: RecordDifference): boolean {
+  return d.reader_b_after !== undefined || d.reader_b_before !== undefined;
+}
+
+function formatReaderBNeighbours(d: RecordDifference): string {
+  const noun = d.path.startsWith("topics[") ? "topic" : "item";
+  const after = d.reader_b_after ?? null;
+  const before = d.reader_b_before ?? null;
+  if (after !== null && before !== null) {
+    return `reader b has it after ${noun} ${after} and before ${noun} ${before}`;
+  }
+  if (after === null && before !== null) {
+    return `reader b has it first, before ${noun} ${before}`;
+  }
+  if (after !== null && before === null) {
+    return `reader b has it last, after ${noun} ${after}`;
+  }
+  return `reader b has it as the only ${noun}`;
+}
+
 function formatLocatedEntry(
   prefix: string,
   d: RecordDifference,
   opts: { isSentToPerson: boolean; keptRecord: boolean },
 ): string {
   const entry = d.reader === "a" ? d.a : d.b;
+  if (d.reader === "b" && hasReaderBNeighbours(d)) {
+    return `${prefix}: ${formatReaderBNeighbours(d)}: ${formatVal(entry)}`;
+  }
   const missingStepNote = d.missing_step
     ? opts.isSentToPerson
       ? "; its step is missing from reader A's record and must be added first"
       : "; step absent from reader A's record"
     : "";
-  if (d.reader && d.final_path !== undefined) {
+  if (d.reader && d.final_path !== undefined && !opts.keptRecord) {
     if (!opts.isSentToPerson) {
       const where =
         d.insert_before !== undefined
           ? "location in final record before"
           : d.final_path.endsWith("[]")
             ? "location in final record"
-            : opts.keptRecord
-              ? "in kept final record at"
-              : d.reader === "a"
-                ? "in final record at"
-                : "location in final record";
+            : d.reader === "a"
+              ? "in final record at"
+              : "location in final record";
       return `${prefix}: only reader ${d.reader}; ${where} \`${d.final_path}\`${missingStepNote}: ${formatVal(entry)}`;
     }
     const where =
@@ -210,19 +231,14 @@ function formatLocatedEntry(
         ? "insert before"
         : d.final_path.endsWith("[]")
           ? "belongs in the final record at"
-          : opts.keptRecord
-            ? "found in the kept final record at"
-            : d.reader === "a"
-              ? "already in the final record at"
-              : "belongs in the final record at";
-    return `${prefix}: only reader ${d.reader} has it; ${where} \`${d.final_path}\`${opts.keptRecord ? "" : missingStepNote}: ${formatVal(entry)}`;
-  }
-  if (d.reader && d.location_unknown) {
-    return `${prefix}: only reader ${d.reader}; location not known after the edit${missingStepNote}: ${formatVal(entry)}`;
+          : d.reader === "a"
+            ? "already in the final record at"
+            : "belongs in the final record at";
+    return `${prefix}: only reader ${d.reader} has it; ${where} \`${d.final_path}\`${missingStepNote}: ${formatVal(entry)}`;
   }
   if (d.reader && opts.keptRecord) {
     if (!opts.isSentToPerson) {
-      return `${prefix}: only reader ${d.reader}; not in kept final record${missingStepNote}: ${formatVal(entry)}`;
+      return `${prefix}: only reader ${d.reader}${missingStepNote}: ${formatVal(entry)}`;
     }
     return `${prefix}: only reader ${d.reader} has it; a person changed the final record, so find the place in that record${missingStepNote}: ${formatVal(entry)}`;
   }
@@ -434,7 +450,7 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
       lines.push("- Differences:");
       for (const d of p.differences) {
         const prefix = `  - \`${d.path}\` (${d.kind})`;
-        if (d.reader && (d.final_path !== undefined || d.location_unknown || keptRecord)) {
+        if (d.reader && (hasReaderBNeighbours(d) || d.final_path !== undefined || keptRecord)) {
           lines.push(formatLocatedEntry(prefix, d, { isSentToPerson, keptRecord }));
         } else {
           lines.push(`${prefix}: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
@@ -457,7 +473,9 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
     if (p.once_read.length > 0) {
       lines.push(
         isSentToPerson
-          ? '- Once-read teaching fields (look at the photo; copy an entry that is on the page into the final record at the given path, where "[]" means the end of that list and "insert before" means insert ahead of that element):'
+          ? keptRecord
+            ? "- Once-read teaching fields (look at the photo; a person changed the final record, so find the place in that record):"
+            : '- Once-read teaching fields (look at the photo; copy an entry that is on the page into the final record at the given path, where "[]" means the end of that list and "insert before" means insert ahead of that element):'
           : "- Once-read teaching fields:",
       );
       for (const d of p.once_read) {

@@ -7,6 +7,7 @@ import {
   validateReferenceRecord,
   type ContentsRecord,
   type PageRecord,
+  type ReferenceRecord,
 } from "@/lib/reference-record";
 import {
   agreementPercentage,
@@ -16,7 +17,6 @@ import {
   compareRecordsWithCounts,
   decidePageOutcome,
   findAnswerDisagreements,
-  locateOnceReadInKeptRecord,
   decideStatus,
   meetsAgreementThreshold,
   needsPersonRead,
@@ -24,6 +24,7 @@ import {
   normalizeProseText,
   resolveSingleReadPaths,
 } from "./compare";
+import { resolveDiffPath } from "./compare-locate";
 
 function makePage(overrides?: Partial<PageRecord>): PageRecord {
   return {
@@ -849,42 +850,6 @@ describe("answer sources, scaffold lists, once-read places, empty answers, and u
     expect(compareRecords(helpA, helpB)).toEqual([]);
   });
 
-  it("keeps a once-read final_path for an edited or checked record only when the entry is there with equal content", () => {
-    const arrow = { kind: "arrow" as const, applies_to: [2], label: "carry" };
-    const onceRead = [
-      { path: "sections[0].scaffolds[b:0]", a: null, b: arrow, kind: "once_read" as const, reader: "b" as const, final_path: "sections[0].scaffolds[]" },
-      { path: "sections[0].items[n=3].responses[0].cue", a: null, b: "Sample cue", kind: "once_read" as const, reader: "b" as const, final_path: "sections[0].items[2].responses[0].cue" },
-    ];
-    // The person copied the arrow in as the second scaffold and removed item 1.
-    const kept = makePage();
-    kept.sections[0].scaffolds = [{ kind: "arrow", applies_to: [1], label: "other" }, arrow];
-    kept.sections[0].items = kept.sections[0].items.slice(1);
-    expect(locateOnceReadInKeptRecord(onceRead, kept)).toEqual([
-      { ...onceRead[0], final_path: "sections[0].scaffolds[1]" },
-      { path: onceRead[1].path, a: null, b: "Sample cue", kind: "once_read", reader: "b" },
-    ]);
-    // A kept record that cannot be read: no path.
-    expect(locateOnceReadInKeptRecord(onceRead, null).every((d) => d.final_path === undefined)).toBe(true);
-
-    // Reader a has the arrow in two sections; the kept record has it only in the second section.
-    // The entry of the first section is not pointed at the second section.
-    const twoSections = makePage();
-    twoSections.sections = [
-      { ...twoSections.sections[0], scaffolds: [{ kind: "caption", applies_to: "all", text: "Sample caption" }] },
-      { ...twoSections.sections[0], scaffolds: [arrow] },
-    ];
-    const fromA = [
-      { path: "sections[0].scaffolds[1]", a: arrow, b: null, kind: "once_read" as const, reader: "a" as const },
-      { path: "sections[1].scaffolds[b:0]", a: null, b: arrow, kind: "once_read" as const, reader: "b" as const },
-      { path: "topic.title", a: "Sample", b: null, kind: "once_read" as const, reader: "a" as const },
-    ];
-    expect(locateOnceReadInKeptRecord(fromA, twoSections).map((d) => d.final_path)).toEqual([
-      undefined,
-      "sections[1].scaffolds[0]",
-      undefined,
-    ]);
-  });
-
   it("gives each once-read entry its reader and its JSON path in the final record", () => {
     const a = makePage();
     const b = makePage();
@@ -1650,32 +1615,6 @@ describe("worked-example step alignment and wording differences", () => {
         final_path: "examples[0].marks[]",
       },
     ]);
-
-    // Kept-record lookup preserves missing_step only when the mark is not yet in the kept record
-    const keptWithMark = structuredClone(midA);
-    expect(locateOnceReadInKeptRecord(midSummary.once_read, keptWithMark)[2]).toEqual({
-      path: "examples[0].marks[b:0]",
-      a: null,
-      b: { kind: "circle", step: 2, description: "Circle the result" },
-      kind: "once_read",
-      reader: "b",
-      final_path: "examples[0].marks[0]",
-    });
-    const keptOtherMark = pageWithExample(
-      [
-        { n: 1, shows: "setup", printed: "2 + 3" },
-        { n: 2, shows: "answer", printed: "5" },
-      ],
-      [{ kind: "underline", step: 2, description: "Underline the result" }],
-    );
-    expect(locateOnceReadInKeptRecord(midSummary.once_read, keptOtherMark)[2]).toEqual({
-      path: "examples[0].marks[b:0]",
-      a: null,
-      b: { kind: "circle", step: 2, description: "Circle the result" },
-      kind: "once_read",
-      reader: "b",
-      missing_step: true,
-    });
 
     // Anchors with repeated printed text prefer the pairing where `shows` agrees too
     const repA = pageWithExample([
@@ -2655,41 +2594,61 @@ describe("90% reader agreement rule", () => {
         ],
       });
 
-    // Missing at start: A=[2, 3], B=[1, 2, 3] -> insert_before: 0, final_path: sections[0].items[0]
+    // Reader-B-only numbered items: no final_path, no insert_before; exact neighbours in reader B's list.
     const itemStart = classifyComparison(makeItemsPage([2, 3]), makeItemsPage([1, 2, 3]));
     expect(itemStart.differences).toHaveLength(1);
     expect(itemStart.differences[0]).toMatchObject({
       path: "sections[0].items[n=1]",
       reader: "b",
-      insert_before: 0,
-      final_path: "sections[0].items[0]",
+      reader_b_after: null,
+      reader_b_before: 2,
     });
+    expect(itemStart.differences[0].final_path).toBeUndefined();
+    expect(itemStart.differences[0].insert_before).toBeUndefined();
 
-    // Missing in middle: A=[1, 3], B=[1, 2, 3] -> insert_before: 1, final_path: sections[0].items[1]
     const itemMid = classifyComparison(makeItemsPage([1, 3]), makeItemsPage([1, 2, 3]));
     expect(itemMid.differences[0]).toMatchObject({
       path: "sections[0].items[n=2]",
       reader: "b",
-      insert_before: 1,
-      final_path: "sections[0].items[1]",
+      reader_b_after: 1,
+      reader_b_before: 3,
     });
+    expect(itemMid.differences[0].final_path).toBeUndefined();
+    expect(itemMid.differences[0].insert_before).toBeUndefined();
 
-    // Missing at end: A=[1, 2], B=[1, 2, 3] -> no insert_before, final_path: sections[0].items[]
     const itemEnd = classifyComparison(makeItemsPage([1, 2]), makeItemsPage([1, 2, 3]));
     expect(itemEnd.differences[0]).toMatchObject({
       path: "sections[0].items[n=3]",
       reader: "b",
-      final_path: "sections[0].items[]",
+      reader_b_after: 2,
+      reader_b_before: null,
     });
+    expect(itemEnd.differences[0].final_path).toBeUndefined();
     expect(itemEnd.differences[0].insert_before).toBeUndefined();
 
-    // Present only in reader A: A=[1, 2, 3], B=[2, 3] -> reader: "a", final_path: sections[0].items[0]
-    const itemAOnly = classifyComparison(makeItemsPage([1, 2, 3]), makeItemsPage([2, 3]));
+    // Only item in reader B's list
+    const itemOnly = classifyComparison(makeItemsPage([2, 3]), makeItemsPage([1]));
+    const onlyDiff = itemOnly.differences.find((d) => d.path === "sections[0].items[n=1]");
+    expect(onlyDiff).toMatchObject({
+      path: "sections[0].items[n=1]",
+      reader: "b",
+      reader_b_after: null,
+      reader_b_before: null,
+    });
+    expect(onlyDiff?.final_path).toBeUndefined();
+    expect(onlyDiff?.insert_before).toBeUndefined();
+
+    // Present only in reader A: keeps exact final_path resolving to reader A's entry
+    const aOnlyPage = makeItemsPage([1, 2, 3]);
+    const itemAOnly = classifyComparison(aOnlyPage, makeItemsPage([2, 3]));
     expect(itemAOnly.differences[0]).toMatchObject({
       path: "sections[0].items[n=1]",
       reader: "a",
       final_path: "sections[0].items[0]",
     });
+    expect(resolveDiffPath(aOnlyPage, itemAOnly.differences[0].final_path!).value).toEqual(
+      itemAOnly.differences[0].a,
+    );
 
     const makeContents = (ns: number[]): ContentsRecord => ({
       kind: "contents",
@@ -2701,70 +2660,247 @@ describe("90% reader agreement rule", () => {
     expect(topicStart.differences[0]).toMatchObject({
       path: "topics[n=1]",
       reader: "b",
-      insert_before: 0,
-      final_path: "topics[0]",
+      reader_b_after: null,
+      reader_b_before: 2,
     });
+    expect(topicStart.differences[0].final_path).toBeUndefined();
+    expect(topicStart.differences[0].insert_before).toBeUndefined();
 
     const topicMid = classifyComparison(makeContents([1, 2, 4]), makeContents([1, 2, 3, 4]));
     expect(topicMid.differences[0]).toMatchObject({
       path: "topics[n=3]",
       reader: "b",
-      insert_before: 2,
-      final_path: "topics[2]",
+      reader_b_after: 2,
+      reader_b_before: 4,
     });
+    expect(topicMid.differences[0].final_path).toBeUndefined();
 
     const topicEnd = classifyComparison(makeContents([1, 2, 3]), makeContents([1, 2, 3, 4]));
     expect(topicEnd.differences[0]).toMatchObject({
       path: "topics[n=4]",
       reader: "b",
-      final_path: "topics[]",
+      reader_b_after: 3,
+      reader_b_before: null,
     });
-    expect(topicEnd.differences[0].insert_before).toBeUndefined();
+    expect(topicEnd.differences[0].final_path).toBeUndefined();
 
-    const topicAOnly = classifyComparison(makeContents([1, 2, 3]), makeContents([2, 3]));
+    const contentsAOnly = makeContents([1, 2, 3]);
+    const topicAOnly = classifyComparison(contentsAOnly, makeContents([2, 3]));
     expect(topicAOnly.differences[0]).toMatchObject({
       path: "topics[n=1]",
       reader: "a",
       final_path: "topics[0]",
     });
-
-    // When reader B's extra entry is its last entry (11) while reader A ends at 12,
-    // ascending number order places 11 before 12 (index 10), not at the end.
-    const commonTen = Array.from({ length: 10 }, (_, i) => i + 1);
-    const topicBeforeHigherA = makeContents([...commonTen, 12]);
-    const topicBeforeHigherB = makeContents([...commonTen, 11]);
-    const topicOrderCmp = classifyComparison(topicBeforeHigherA, topicBeforeHigherB);
-    const addedTopic = topicOrderCmp.differences.find((d) => d.path === "topics[n=11]");
-    expect(addedTopic).toMatchObject({
-      path: "topics[n=11]",
-      reader: "b",
-      insert_before: 10,
-      final_path: "topics[10]",
-    });
-    const insertedTopics = structuredClone(topicBeforeHigherA);
-    insertedTopics.topics.splice(addedTopic!.insert_before!, 0, addedTopic!.b as ContentsRecord["topics"][number]);
-    expect(validateReferenceRecord(insertedTopics).ok).toBe(true);
-
-    // Same ascending number order for page items: A=[1..10, 12], B=[1..10, 11] -> insert before 12.
-    const itemOrderCmp = classifyComparison(
-      makeItemsPage([...commonTen, 12]),
-      makeItemsPage([...commonTen, 11]),
+    expect(resolveDiffPath(contentsAOnly, topicAOnly.differences[0].final_path!).value).toEqual(
+      topicAOnly.differences[0].a,
     );
-    expect(itemOrderCmp.differences.find((d) => d.path === "sections[0].items[n=11]")).toMatchObject({
-      path: "sections[0].items[n=11]",
-      reader: "b",
-      insert_before: 10,
-      final_path: "sections[0].items[10]",
-    });
 
-    // Non-ascending page items preserve the final record's printed order using reader B's following entry.
+    // Non-ascending reader B list reports reader B's actual printed neighbours
     const descendingItems = classifyComparison(makeItemsPage([3, 1]), makeItemsPage([3, 2, 1]));
-    expect(descendingItems.differences.find((d) => d.path === "sections[0].items[n=2]")).toMatchObject({
+    const descDiff = descendingItems.differences.find((d) => d.path === "sections[0].items[n=2]");
+    expect(descDiff).toMatchObject({
       path: "sections[0].items[n=2]",
       reader: "b",
-      insert_before: 1,
-      final_path: "sections[0].items[1]",
+      reader_b_after: 3,
+      reader_b_before: 1,
     });
+    expect(descDiff?.final_path).toBeUndefined();
+    expect(descDiff?.insert_before).toBeUndefined();
+
+    // Property over random item lists: reader B's neighbours are exact, no final_path/insert_before on B-only,
+    // and every final_path without "[]" or insert_before resolves to reader A's entry.
+    fc.assert(
+      fc.property(
+        fc.uniqueArray(fc.integer({ min: 1, max: 20 }), { minLength: 1, maxLength: 10 }),
+        fc.uniqueArray(fc.integer({ min: 1, max: 20 }), { minLength: 1, maxLength: 10 }),
+        (aNs, bNs) => {
+          const recA = makeItemsPage(aNs);
+          const recB = makeItemsPage(bNs);
+          const summary = classifyComparison(recA, recB);
+          const aSet = new Set(aNs);
+          const bIndexByN = new Map(bNs.map((n, idx) => [n, idx]));
+          for (const d of summary.differences) {
+            const m = /^sections\[0\]\.items\[n=(\d+)\]$/.exec(d.path);
+            if (!m) continue;
+            const n = Number(m[1]);
+            if (!aSet.has(n)) {
+              const idx = bIndexByN.get(n)!;
+              expect(d.reader).toBe("b");
+              expect(d.final_path).toBeUndefined();
+              expect(d.insert_before).toBeUndefined();
+              expect(d.reader_b_after).toBe(idx > 0 ? bNs[idx - 1] : null);
+              expect(d.reader_b_before).toBe(idx + 1 < bNs.length ? bNs[idx + 1] : null);
+            } else {
+              expect(d.reader).toBe("a");
+              expect(d.final_path).toBeDefined();
+              expect(d.insert_before).toBeUndefined();
+              expect(resolveDiffPath(recA, d.final_path!).value).toEqual(d.a);
+            }
+          }
+          for (const d of [...summary.differences, ...summary.once_read]) {
+            if (d.final_path !== undefined && !d.final_path.endsWith("[]") && d.insert_before === undefined) {
+              expect(recordPathResolves(recA, d.final_path)).toBe(true);
+              if (d.reader === "a") {
+                expect(resolveDiffPath(recA, d.final_path).value).toEqual(d.a);
+              }
+            }
+          }
+        },
+      ),
+    );
+  });
+
+  it("stops a page at any agreement percentage when readers disagree on page identity (source_ref or kind)", () => {
+    const makeSizedPage = (sourceRef: string, itemCount: number): PageRecord =>
+      makePage({
+        source_ref: sourceRef,
+        sections: [
+          {
+            instruction: "Add.",
+            scaffolds: [],
+            items: Array.from({ length: itemCount }, (_, i) => ({
+              n: i + 1,
+              printed: `${i + 1} + 1 =`,
+              form: "horizontal" as const,
+              expr: { kind: "arith" as const, op: "add" as const, operands: [i + 1, 1] },
+              responses: [
+                { position: "after_equals" as const, cue: null, answer: String(i + 2), answer_source: "computed" as const },
+              ],
+            })),
+          },
+        ],
+      });
+
+    const decide = (a: ReferenceRecord, b: ReferenceRecord) => {
+      const cmp = compareRecordsWithCounts(a, b);
+      const outcome = decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: cmp.diffs,
+        counts: cmp.counts,
+        sameDigest: true,
+        recordA: a,
+        recordB: b,
+      });
+      return { cmp, outcome };
+    };
+
+    // Equal ids with a non-identity diff at >= 90% passes
+    const sameA = makeSizedPage("sample:M:7a", 3);
+    const sameB = makeSizedPage("sample:M:7a", 3);
+    sameB.topic.title = "Different heading";
+    const sameRes = decide(sameA, sameB);
+    expect(agreementPercentage(sameRes.cmp.counts.agreed, sameRes.cmp.counts.compared)).toBeGreaterThanOrEqual(95);
+    expect(sameRes.outcome).toEqual({ status: "agreement_accepted", stopReasons: [] });
+
+    // Nested `.kind` diff (not top-level page kind) does not trigger page identity stop
+    const nestedA = makeSizedPage("sample:M:7a", 3);
+    const nestedB = makeSizedPage("sample:M:7a", 3);
+    nestedA.sections[0].scaffolds = [{ kind: "arrow", applies_to: "all", from: "top", to: "bottom" }];
+    nestedB.sections[0].scaffolds = [{ kind: "caption", applies_to: "all", text: "Hint" }];
+    const nestedRes = decide(nestedA, nestedB);
+    expect(nestedRes.outcome.stopReasons).not.toContain("readers disagree on the page");
+
+    // Table of page identity differences: side (95% and 99%), level, sheet, source, kind
+    const identityCases: Array<{
+      label: string;
+      a: ReferenceRecord;
+      b: ReferenceRecord;
+      minPct?: number;
+    }> = [
+      {
+        label: "7a vs 7b at >= 95%",
+        a: makeSizedPage("sample:M:7a", 3),
+        b: makeSizedPage("sample:M:7b", 3),
+        minPct: 95,
+      },
+      {
+        label: "7a vs 7b at >= 99%",
+        a: makeSizedPage("sample:M:7a", 15),
+        b: makeSizedPage("sample:M:7b", 15),
+        minPct: 99,
+      },
+      {
+        label: "different level",
+        a: makeSizedPage("sample:M:7a", 5),
+        b: makeSizedPage("sample:N:7a", 5),
+        minPct: 95,
+      },
+      {
+        label: "different sheet",
+        a: makeSizedPage("sample:M:7a", 5),
+        b: makeSizedPage("sample:M:8a", 5),
+        minPct: 95,
+      },
+      {
+        label: "different source",
+        a: makeSizedPage("sample:M:7a", 5),
+        b: makeSizedPage("other:M:7a", 5),
+        minPct: 95,
+      },
+      {
+        label: "different kind (page vs contents)",
+        a: makeSizedPage("sample:M:7a", 5),
+        b: {
+          kind: "contents",
+          source_ref: "sample:M:contents",
+          topics: [{ n: 1, title: "Topic 1", sheets: [1, 10], std_time_min: [1, 2] }],
+        },
+      },
+    ];
+
+    for (const c of identityCases) {
+      const { cmp, outcome } = decide(c.a, c.b);
+      if (c.minPct !== undefined) {
+        expect(agreementPercentage(cmp.counts.agreed, cmp.counts.compared), c.label).toBeGreaterThanOrEqual(
+          c.minPct,
+        );
+        // source_ref counts as exactly one disagreement in the agreement count
+        expect(cmp.counts.compared - cmp.counts.agreed, c.label).toBe(1);
+      }
+      expect(outcome.status, c.label).toBe("machine_read");
+      expect(outcome.stopReasons, c.label).toContain("readers disagree on the page");
+    }
+
+    // Different kind with artificially matching source_ref still stops
+    const kindOnly = decidePageOutcome({
+      hasA: true,
+      hasB: true,
+      familyA: "codex",
+      familyB: "claude",
+      diffs: [{ path: "kind", a: "page", b: "contents", kind: "value" }],
+      counts: { agreed: 99, compared: 100 },
+      sameDigest: true,
+    });
+    expect(kindOnly).toEqual({ status: "machine_read", stopReasons: ["readers disagree on the page"] });
+
+    // Property: any two distinct valid source_refs stop at any item count
+    fc.assert(
+      fc.property(
+        fc.constantFrom("sample", "demo"),
+        fc.constantFrom("A", "B", "M"),
+        fc.integer({ min: 1, max: 50 }),
+        fc.constantFrom("a", "b"),
+        fc.constantFrom("sample", "demo"),
+        fc.constantFrom("A", "B", "M"),
+        fc.integer({ min: 1, max: 50 }),
+        fc.constantFrom("a", "b"),
+        (s1, l1, sh1, side1, s2, l2, sh2, side2) => {
+          const ref1 = `${s1}:${l1}:${sh1}${side1}`;
+          const ref2 = `${s2}:${l2}:${sh2}${side2}`;
+          const { outcome } = decide(makeSizedPage(ref1, 4), makeSizedPage(ref2, 4));
+          if (ref1 === ref2) {
+            expect(outcome.status).toBe("double_read");
+            expect(outcome.stopReasons).toEqual([]);
+          } else {
+            expect(outcome.status).toBe("machine_read");
+            expect(outcome.stopReasons).toContain("readers disagree on the page");
+          }
+        },
+      ),
+    );
   });
 
   it("satisfies threshold and ratio invariants across arbitrary counts", () => {

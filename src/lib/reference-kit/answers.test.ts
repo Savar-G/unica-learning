@@ -1,12 +1,13 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { validateReferenceRecord, type ItemResponse, type PageItem, type PageRecord } from "@/lib/reference-record";
+import { validateReferenceRecord, type ExamplePart, type ItemResponse, type PageItem, type PageRecord } from "@/lib/reference-record";
 import {
   applyComputedAnswers,
   collectReadTimeAnswerConflictPaths,
   collectReadTimeUnclearAnswerPaths,
   decimalPlacePower,
   findEmptyAnswers,
+  findExampleAnswerConflicts,
   isKnownPlaceName,
 } from "./answers";
 
@@ -711,5 +712,177 @@ describe("applyComputedAnswers", () => {
 
     // Legacy runs without note_details have no text fallback for unclear_filled.
     expect(collectReadTimeUnclearAnswerPaths(undefined)).toEqual([]);
+  });
+
+  it("checks worked-example part shown_answer against computable single-answer expr without mutating it", () => {
+    const pageWithPart = (part: ExamplePart): PageRecord => ({
+      ...makePageWithItem({
+        n: 1,
+        printed: "1 + 1 =",
+        form: "horizontal",
+        expr: { kind: "arith", op: "add", operands: [1, 1] },
+        responses: [{ position: "after_equals", cue: null, answer: "2", answer_source: "computed" }],
+      }),
+      examples: [{ position: "top", relation: "compare", parts: [part] }],
+    });
+
+    const cases: Array<{ label: string; part: ExamplePart; expectConflict: boolean }> = [
+      {
+        label: "matching arith",
+        part: { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "5" },
+        expectConflict: false,
+      },
+      {
+        label: "thousands separator equal",
+        part: { form: "horizontal", expr: { kind: "arith", op: "add", operands: [500, 500] }, shown_answer: "1,000" },
+        expectConflict: false,
+      },
+      {
+        label: "remainder form 4r1 equal",
+        part: { form: "horizontal", expr: { kind: "arith", op: "div", operands: [13, 3] }, shown_answer: "4r1" },
+        expectConflict: false,
+      },
+      {
+        label: "remainder form 4 r 1 equal",
+        part: { form: "horizontal", expr: { kind: "arith", op: "div", operands: [13, 3] }, shown_answer: "4 r 1" },
+        expectConflict: false,
+      },
+      {
+        label: "missing expr matching",
+        part: { form: "horizontal", expr: { kind: "missing", op: "add", operands: [3, null], result: 7 }, shown_answer: "4" },
+        expectConflict: false,
+      },
+      {
+        label: "notation expr skipped",
+        part: { form: "horizontal", expr: { kind: "notation", latex: "x + 2 = 5" }, shown_answer: "99" },
+        expectConflict: false,
+      },
+      {
+        label: "null expr skipped",
+        part: { form: "horizontal", expr: null, shown_answer: "5" },
+        expectConflict: false,
+      },
+      {
+        label: "shown_answer absent",
+        part: { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] } },
+        expectConflict: false,
+      },
+      {
+        label: "shown_answer null",
+        part: { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: null },
+        expectConflict: false,
+      },
+      {
+        label: "shown_answer blank",
+        part: { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "   " },
+        expectConflict: false,
+      },
+      {
+        label: "shown_answer not_stated",
+        part: { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "not_stated" },
+        expectConflict: false,
+      },
+      {
+        label: "shown_answer unclear",
+        part: { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "unclear" },
+        expectConflict: false,
+      },
+      {
+        label: "linked multi-answer expr skipped",
+        part: {
+          form: "horizontal",
+          expr: {
+            kind: "linked",
+            pair: [
+              { kind: "arith", op: "add", operands: [1, 2] },
+              { kind: "arith", op: "add", operands: [2, 3] },
+            ],
+          },
+          shown_answer: "99",
+        },
+        expectConflict: false,
+      },
+      {
+        label: "chain multi-answer expr skipped",
+        part: {
+          form: "horizontal",
+          expr: { kind: "chain", terms: [2, 4, null, 8] },
+          shown_answer: "99",
+        },
+        expectConflict: false,
+      },
+      {
+        label: "word inexact division skipped",
+        part: {
+          form: "horizontal",
+          expr: { kind: "word", text: "Share 7", expr: { kind: "arith", op: "div", operands: [7, 2] } },
+          shown_answer: "3.5",
+        },
+        expectConflict: false,
+      },
+      {
+        label: "conflicting arith",
+        part: { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "6" },
+        expectConflict: true,
+      },
+      {
+        label: "conflicting remainder",
+        part: { form: "horizontal", expr: { kind: "arith", op: "div", operands: [13, 3] }, shown_answer: "4 R2" },
+        expectConflict: true,
+      },
+      {
+        label: "conflicting missing expr",
+        part: { form: "horizontal", expr: { kind: "missing", op: "add", operands: [3, null], result: 7 }, shown_answer: "5" },
+        expectConflict: true,
+      },
+      {
+        label: "conflicting word expr with exact inner arith",
+        part: {
+          form: "horizontal",
+          expr: { kind: "word", text: "Sum 2 and 3", expr: { kind: "arith", op: "add", operands: [2, 3] } },
+          shown_answer: "6",
+        },
+        expectConflict: true,
+      },
+    ];
+
+    for (const c of cases) {
+      const page = pageWithPart(c.part);
+      const snapshot = structuredClone(page);
+      const conflicts = findExampleAnswerConflicts(page);
+      expect(page, c.label).toEqual(snapshot);
+      if (c.expectConflict) {
+        expect(conflicts, c.label).toHaveLength(1);
+        expect(conflicts[0].kind, c.label).toBe("answer_differs");
+        expect(conflicts[0].path, c.label).toBe("examples[0].parts[0].shown_answer");
+      } else {
+        expect(conflicts, c.label).toEqual([]);
+      }
+    }
+
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 0, max: 5000 }),
+        fc.integer({ min: 0, max: 5000 }),
+        fc.integer({ min: 1, max: 99 }),
+        (x, y, delta) => {
+          const sum = x + y;
+          const formatted = sum.toLocaleString("en-US");
+          const okPage = pageWithPart({
+            form: "horizontal",
+            expr: { kind: "arith", op: "add", operands: [x, y] },
+            shown_answer: formatted,
+          });
+          expect(findExampleAnswerConflicts(okPage)).toEqual([]);
+
+          const badPage = pageWithPart({
+            form: "horizontal",
+            expr: { kind: "arith", op: "add", operands: [x, y] },
+            shown_answer: String(sum + delta),
+          });
+          expect(findExampleAnswerConflicts(badPage)).toHaveLength(1);
+        },
+      ),
+    );
   });
 });

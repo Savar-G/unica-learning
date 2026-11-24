@@ -11,6 +11,7 @@ import {
 } from "@/lib/reference-record";
 import {
   applyComputedAnswers,
+  collectExampleAnswerConflicts,
   collectReadTimeAnswerConflictPaths,
   collectReadTimeUnclearAnswerPaths,
   fileSlugFromRef,
@@ -24,9 +25,8 @@ import {
   decidePageOutcome,
   emptyAnswerDiffs,
   findAnswerDisagreements,
-  locateDifferencesInKeptRecord,
-  locateOnceReadInKeptRecord,
   resolveSingleReadPaths,
+  stripKeptRecordLocations,
   type PageStatus,
 } from "./compare";
 import {
@@ -267,7 +267,7 @@ export function compareWorkFolder(opts: {
         ? compareRecordsWithCounts(pair.recA, pair.recB)
         : { diffs: [], counts: { compared: 0, agreed: 0 } };
     const allDiffs = comparison.diffs;
-    const classified = classifyComparison(pair.recA, pair.recB);
+    const classified = classifyComparison(pair.recA, pair.recB, comparison);
     const agreement: PageAgreement = {
       agreed: comparison.counts.agreed,
       compared: comparison.counts.compared,
@@ -278,18 +278,31 @@ export function compareWorkFolder(opts: {
     const isChecked = existingStatus[sourceRef] === "human_checked" && existsSync(finalRecordPath);
     const existingKept = isChecked ? loadExistingFinalRecord(finalRecordPath) : null;
 
-    if (isChecked && !existingKept) {
-      // A person checked this page and the file is not a valid record now: never write over it.
+    if (isChecked) {
       statusMap[sourceRef] = "human_checked";
-      keptHumanChecked.push({
-        source_ref: sourceRef,
-        in_current_batch: true,
-        differs_from_reader_a: false,
-        differs_from_reader_b: false,
-        diff_count_a: 0,
-        diff_count_b: 0,
-        invalid: true,
-      });
+      if (!existingKept) {
+        // A person checked this page and the file is not a valid record now: never write over it.
+        keptHumanChecked.push({
+          source_ref: sourceRef,
+          in_current_batch: true,
+          differs_from_reader_a: false,
+          differs_from_reader_b: false,
+          diff_count_a: 0,
+          diff_count_b: 0,
+          invalid: true,
+        });
+      } else {
+        const diffsA = pair.recA ? compareRecords(existingKept, pair.recA) : [];
+        const diffsB = pair.recB ? compareRecords(existingKept, pair.recB) : [];
+        keptHumanChecked.push({
+          source_ref: sourceRef,
+          in_current_batch: true,
+          differs_from_reader_a: diffsA.length > 0,
+          differs_from_reader_b: diffsB.length > 0,
+          diff_count_a: diffsA.length,
+          diff_count_b: diffsB.length,
+        });
+      }
       pages.push({
         source_ref: sourceRef,
         photo: pair.photo,
@@ -301,50 +314,13 @@ export function compareWorkFolder(opts: {
         result_reason: null,
         only_in_reader: onlyIn,
         digest_mismatch: pair.digestMismatch,
-        differences: locateDifferencesInKeptRecord(classified.differences, null, pair.recB, pair.recA),
+        differences: stripKeptRecordLocations(classified.differences),
         wording: classified.wording,
-        once_read: locateOnceReadInKeptRecord(classified.once_read, null, pair.recA),
+        once_read: stripKeptRecordLocations(classified.once_read),
         both_unclear: classified.both_unclear,
         one_unclear: classified.one_unclear,
-        // The kept file is not a valid record, so its answer places cannot be read.
-        empty_answer: [],
-        needs_person_read: classified.needs_person_read,
-        unnamed_teaching_marks: unnamedTeachingMarks,
-        reader_notes: { a: pair.notesA, b: pair.notesB },
-      });
-      continue;
-    }
-
-    if (existingKept) {
-      statusMap[sourceRef] = "human_checked";
-      const diffsA = pair.recA ? compareRecords(existingKept, pair.recA) : [];
-      const diffsB = pair.recB ? compareRecords(existingKept, pair.recB) : [];
-      keptHumanChecked.push({
-        source_ref: sourceRef,
-        in_current_batch: true,
-        differs_from_reader_a: diffsA.length > 0,
-        differs_from_reader_b: diffsB.length > 0,
-        diff_count_a: diffsA.length,
-        diff_count_b: diffsB.length,
-      });
-
-      pages.push({
-        source_ref: sourceRef,
-        photo: pair.photo,
-        original_name: pair.originalName,
-        photo_sha256: pair.photoSha256,
-        status: "human_checked",
-        agreement,
-        result: resultLabelForStatus("human_checked"),
-        result_reason: null,
-        only_in_reader: onlyIn,
-        digest_mismatch: pair.digestMismatch,
-        differences: locateDifferencesInKeptRecord(classified.differences, existingKept, pair.recB, pair.recA),
-        wording: classified.wording,
-        once_read: locateOnceReadInKeptRecord(classified.once_read, existingKept, pair.recA),
-        both_unclear: classified.both_unclear,
-        one_unclear: classified.one_unclear,
-        empty_answer: emptyAnswerDiffs(existingKept, pair.recA, pair.recB),
+        // An invalid kept file cannot have its answer places read.
+        empty_answer: existingKept ? emptyAnswerDiffs(existingKept, pair.recA, pair.recB) : [],
         needs_person_read: classified.needs_person_read,
         unnamed_teaching_marks: unnamedTeachingMarks,
         reader_notes: { a: pair.notesA, b: pair.notesB },
@@ -377,9 +353,17 @@ export function compareWorkFolder(opts: {
       details: computedDetails,
     } = applyComputedAnswers(withBothReaders(chosen, pair));
     const editedDetails = editedRecord ? applyComputedAnswers(editedRecord).details : [];
-    const answerConflicts = (editedByPerson ? editedDetails : computedDetails)
-      .filter((d) => d.kind === "answer_differs")
-      .map((d) => d.message);
+    const exampleConflicts = collectExampleAnswerConflicts(
+      editedByPerson ? editedRecord : computedRecord,
+      pair.recA,
+      pair.recB,
+    );
+    const answerConflicts = [
+      ...(editedByPerson ? editedDetails : computedDetails)
+        .filter((d) => d.kind === "answer_differs")
+        .map((d) => d.message),
+      ...exampleConflicts.finalMessages,
+    ];
     const readerNotes = pair.recA
       ? { a: mergeNotes(pair.notesA, computedNotes), b: pair.notesB }
       : { a: pair.notesA, b: mergeNotes(pair.notesB, computedNotes) };
@@ -404,6 +388,7 @@ export function compareWorkFolder(opts: {
       ...new Set([
         ...collectReadTimeAnswerConflictPaths(pair.notesA, pair.noteDetailsA),
         ...collectReadTimeAnswerConflictPaths(pair.notesB, pair.noteDetailsB),
+        ...exampleConflicts.readerOnlyPaths,
       ]),
     ];
     const decision = decidePageOutcome({
@@ -498,11 +483,11 @@ export function compareWorkFolder(opts: {
       only_in_reader: onlyIn,
       digest_mismatch: pair.digestMismatch,
       differences: editedByPerson
-        ? locateDifferencesInKeptRecord(classified.differences, editedRecord, pair.recB, pair.recA)
+        ? stripKeptRecordLocations(classified.differences)
         : classified.differences,
       wording: classified.wording,
       once_read: editedByPerson
-        ? locateOnceReadInKeptRecord(classified.once_read, editedRecord, pair.recA)
+        ? stripKeptRecordLocations(classified.once_read)
         : classified.once_read,
       both_unclear: classified.both_unclear,
       one_unclear: classified.one_unclear,

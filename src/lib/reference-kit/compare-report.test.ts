@@ -181,20 +181,26 @@ describe("formatCompareReportMarkdown", () => {
     expect(md).toContain("Photo digest mismatch");
     expect(md).toContain("Exact match across both readers.");
 
-    // A record that a person edited is kept: wording does not claim reader A's words are kept,
-    // and machine_read keeps review instructions for locating entries.
+    // A record that a person edited is kept: no final_path/insert_before is given, wording does not
+    // claim reader A's words are kept, and machine_read keeps "find the place in that record".
     const editedPage = {
       ...report.pages[1],
       edited_by_person: true,
       once_read: [
-        ...report.pages[1].once_read,
         {
-          path: "sections[0].scaffolds[b:3]",
+          path: "sections[0].scaffolds[b:2]",
           a: null,
-          b: { kind: "arrow", applies_to: [3] },
+          b: { kind: "arrow", applies_to: [1] },
           kind: "once_read" as const,
           reader: "b" as const,
-          final_path: "sections[0].scaffolds[1]",
+        },
+        {
+          path: "examples[0].marks[b:0]",
+          a: null,
+          b: { kind: "box", step: 2, description: "Box around sum" },
+          kind: "once_read" as const,
+          reader: "b" as const,
+          missing_step: true,
         },
       ],
     };
@@ -207,13 +213,13 @@ describe("formatCompareReportMarkdown", () => {
     );
     expect(editedMd).not.toContain("reader A's words are kept");
     expect(editedMd).toContain(
-      "`sections[0].scaffolds[b:3]`: only reader b has it; found in the kept final record at `sections[0].scaffolds[1]`",
-    );
-    expect(editedMd).toContain(
       '`sections[0].scaffolds[b:2]`: only reader b has it; a person changed the final record, so find the place in that record: {"kind":"arrow","applies_to":[1]}',
     );
+    expect(editedMd).toContain(
+      '`examples[0].marks[b:0]`: only reader b has it; a person changed the final record, so find the place in that record; its step is missing from reader A\'s record and must be added first: {"kind":"box","step":2,"description":"Box around sum"}',
+    );
 
-    // A human_checked page keeps wording neutral and omits review instructions, showing value and location only.
+    // A human_checked page keeps wording neutral and omits review instructions and locations.
     const checkedMd = formatCompareReportMarkdown({
       ...report,
       pages: [{ ...editedPage, edited_by_person: undefined, status: "human_checked" as const }],
@@ -223,12 +229,13 @@ describe("formatCompareReportMarkdown", () => {
     );
     expect(checkedMd).not.toContain("reader A's words are kept");
     expect(checkedMd).toContain(
-      '`sections[0].scaffolds[b:3]`: only reader b; in kept final record at `sections[0].scaffolds[1]`: {"kind":"arrow","applies_to":[3]}',
+      '`sections[0].scaffolds[b:2]`: only reader b: {"kind":"arrow","applies_to":[1]}',
     );
     expect(checkedMd).toContain(
-      '`sections[0].scaffolds[b:2]`: only reader b; not in kept final record: {"kind":"arrow","applies_to":[1]}',
+      '`examples[0].marks[b:0]`: only reader b; step absent from reader A\'s record: {"kind":"box","step":2,"description":"Box around sum"}',
     );
     expect(checkedMd).not.toContain("find the place in that record");
+    expect(checkedMd).not.toContain("not in kept final record");
     expect(checkedMd).not.toContain("must be added");
     expect(checkedMd).not.toContain("insert before");
     expect(checkedMd).not.toContain("belongs in the final");
@@ -573,14 +580,20 @@ describe("formatCompareReportMarkdown", () => {
         ]),
       );
       expect(md).toContain("`sections[0].scaffolds[b:0]`");
-      expect(md).toContain("`sections[0].scaffolds[]`");
       expect(md).toContain(JSON.stringify(caption));
       expect(md).toContain("`sections[0].scaffolds[b:1]`");
       expect(md).toContain(JSON.stringify(missingCaption));
-      expect(md).toContain("`examples[0].steps[1]`");
       expect(md).toContain(JSON.stringify(step));
-      expect(md).toContain("`examples[0].marks[]`");
       expect(md).toContain("`topic.number`");
+      if (status === "human_checked") {
+        expect(md).not.toContain("`sections[0].scaffolds[]`");
+        expect(md).not.toContain("`examples[0].steps[1]`");
+        expect(md).not.toContain("`examples[0].marks[]`");
+      } else {
+        expect(md).toContain("`sections[0].scaffolds[]`");
+        expect(md).toContain("`examples[0].steps[1]`");
+        expect(md).toContain("`examples[0].marks[]`");
+      }
       expect(md).not.toContain("look at the photo");
       expect(md).not.toContain("copy an entry");
       expect(md).not.toContain("belongs in the final");
@@ -611,48 +624,56 @@ describe("formatCompareReportMarkdown", () => {
     expect(personMd).toContain("write the value");
   });
 
-  it("renders insertion locations for missing items and contents topics with instructions only on machine_read pages", () => {
-    const missingItem = { n: 1, printed: "Read aloud", form: null, expr: null, responses: [] };
-    const missingTopic = { n: 4, title: "Topic 4", sheets: [4, 4], std_time_min: [1, 2] };
-    const makePageReport = (status: "agreement_accepted" | "machine_read") => ({
-      source_ref: status === "machine_read" ? "sample:M:8a" : "sample:M:9a",
-      photo: "888888888888.jpg",
-      original_name: "08.jpg",
-      photo_sha256: "8".repeat(64),
-      status,
-      agreement: { agreed: 19, compared: 20, percent: 95 },
-      result: (status === "machine_read" ? "sent to a person" : "accepted by the 90% rule") as
-        | "sent to a person"
-        | "accepted by the 90% rule",
-      result_reason: status === "machine_read" ? "below 90% agreement" : null,
-      only_in_reader: null,
-      digest_mismatch: null,
-      differences: [
-        {
-          path: "sections[0].items[n=1]",
-          a: null,
-          b: missingItem,
-          kind: "value" as const,
-          reader: "b" as const,
-          insert_before: 0,
-          final_path: "sections[0].items[0]",
-        },
-        {
-          path: "topics[n=4]",
-          a: null,
-          b: missingTopic,
-          kind: "value" as const,
-          reader: "b" as const,
-          final_path: "topics[]",
-        },
-      ],
-      once_read: [],
-      both_unclear: [],
-      one_unclear: [],
-      needs_person_read: false,
-      unnamed_teaching_marks: [],
-      reader_notes: { a: [], b: [] },
-    });
+  it("renders reader B neighbour positions for reader-B-only items and topics with the same text on every status", () => {
+    const missingItem = { n: 2, printed: "Read aloud", form: null, expr: null, responses: [] };
+    const missingTopic = { n: 11, title: "Topic 11", sheets: [11, 11], std_time_min: [1, 2] };
+    const diffs = [
+      {
+        path: "sections[0].items[n=1]",
+        a: null,
+        b: { ...missingItem, n: 1 },
+        kind: "value" as const,
+        reader: "b" as const,
+        reader_b_after: null,
+        reader_b_before: 2,
+      },
+      {
+        path: "sections[0].items[n=2]",
+        a: null,
+        b: missingItem,
+        kind: "value" as const,
+        reader: "b" as const,
+        reader_b_after: 3,
+        reader_b_before: 4,
+      },
+      {
+        path: "sections[0].items[n=5]",
+        a: null,
+        b: { ...missingItem, n: 5 },
+        kind: "value" as const,
+        reader: "b" as const,
+        reader_b_after: 4,
+        reader_b_before: null,
+      },
+      {
+        path: "sections[0].items[n=9]",
+        a: null,
+        b: { ...missingItem, n: 9 },
+        kind: "value" as const,
+        reader: "b" as const,
+        reader_b_after: null,
+        reader_b_before: null,
+      },
+      {
+        path: "topics[n=11]",
+        a: null,
+        b: missingTopic,
+        kind: "value" as const,
+        reader: "b" as const,
+        reader_b_after: 10,
+        reader_b_before: 12,
+      },
+    ];
 
     const base = {
       reader_a: { family: "codex" as const, model: "x1" },
@@ -669,53 +690,57 @@ describe("formatCompareReportMarkdown", () => {
       same_page_id_conflicts: [],
     };
 
-    const acceptedMd = formatCompareReportMarkdown({ ...base, pages: [makePageReport("agreement_accepted")] });
-    expect(acceptedMd).toContain(
-      `\`sections[0].items[n=1]\` (value): only reader b; location in final record before \`sections[0].items[0]\`: ${JSON.stringify(missingItem)}`,
-    );
-    expect(acceptedMd).toContain(
-      `\`topics[n=4]\` (value): only reader b; location in final record \`topics[]\`: ${JSON.stringify(missingTopic)}`,
-    );
-    expect(acceptedMd).not.toContain("insert before");
-    expect(acceptedMd).not.toContain("belongs in the final");
+    const statusConfigs: Array<{ status: "machine_read" | "agreement_accepted" | "double_read" | "human_checked"; edited?: boolean }> = [
+      { status: "machine_read" },
+      { status: "machine_read", edited: true },
+      { status: "agreement_accepted" },
+      { status: "double_read" },
+      { status: "human_checked" },
+    ];
 
-    const personMd = formatCompareReportMarkdown({ ...base, pages: [makePageReport("machine_read")] });
-    expect(personMd).toContain(
-      `\`sections[0].items[n=1]\` (value): only reader b has it; insert before \`sections[0].items[0]\`: ${JSON.stringify(missingItem)}`,
-    );
-    expect(personMd).toContain(
-      `\`topics[n=4]\` (value): only reader b has it; belongs in the final record at \`topics[]\`: ${JSON.stringify(missingTopic)}`,
-    );
-
-    const unknownLocDiff = {
-      path: "sections[0].items[n=1]",
-      a: null,
-      b: missingItem,
-      kind: "value" as const,
-      reader: "b" as const,
-      location_unknown: true,
-    };
-    for (const [status, edited] of [
-      ["machine_read", true],
-      ["human_checked", false],
-    ] as const) {
-      const unknownMd = formatCompareReportMarkdown({
+    for (const cfg of statusConfigs) {
+      const md = formatCompareReportMarkdown({
         ...base,
         pages: [
           {
-            ...makePageReport("machine_read"),
-            status,
-            result: status === "human_checked" ? "checked by a person" : "sent to a person",
-            result_reason: status === "human_checked" ? null : "edited by a person (not checked yet)",
-            ...(edited ? { edited_by_person: true } : {}),
-            differences: [unknownLocDiff],
+            source_ref: "sample:M:8a",
+            photo: "888888888888.jpg",
+            original_name: "08.jpg",
+            photo_sha256: "8".repeat(64),
+            status: cfg.status,
+            ...(cfg.edited ? { edited_by_person: true } : {}),
+            agreement: { agreed: 19, compared: 20, percent: 95 },
+            only_in_reader: null,
+            digest_mismatch: null,
+            differences: diffs,
+            once_read: [],
+            both_unclear: [],
+            one_unclear: [],
+            needs_person_read: false,
+            unnamed_teaching_marks: [],
+            reader_notes: { a: [], b: [] },
           },
         ],
       });
-      expect(unknownMd).toContain(
-        `\`sections[0].items[n=1]\` (value): only reader b; location not known after the edit: ${JSON.stringify(missingItem)}`,
+      const label = `${cfg.status}${cfg.edited ? "+edited" : ""}`;
+      expect(md, label).toContain(
+        `\`sections[0].items[n=1]\` (value): reader b has it first, before item 2: ${JSON.stringify({ ...missingItem, n: 1 })}`,
       );
-      expect(unknownMd).not.toContain("`sections[0].items[0]`");
+      expect(md, label).toContain(
+        `\`sections[0].items[n=2]\` (value): reader b has it after item 3 and before item 4: ${JSON.stringify(missingItem)}`,
+      );
+      expect(md, label).toContain(
+        `\`sections[0].items[n=5]\` (value): reader b has it last, after item 4: ${JSON.stringify({ ...missingItem, n: 5 })}`,
+      );
+      expect(md, label).toContain(
+        `\`sections[0].items[n=9]\` (value): reader b has it as the only item: ${JSON.stringify({ ...missingItem, n: 9 })}`,
+      );
+      expect(md, label).toContain(
+        `\`topics[n=11]\` (value): reader b has it after topic 10 and before topic 12: ${JSON.stringify(missingTopic)}`,
+      );
+      expect(md, label).not.toContain("insert before");
+      expect(md, label).not.toContain("belongs in the final");
+      expect(md, label).not.toContain("location not known");
     }
   });
 });
