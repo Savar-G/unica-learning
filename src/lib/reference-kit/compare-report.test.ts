@@ -32,6 +32,14 @@ describe("formatCompareReportMarkdown", () => {
           only_in_reader: null,
           digest_mismatch: { a: "1".repeat(64), b: "2".repeat(64) },
           differences: [{ path: "topic.title", a: "Add", b: "Sub", kind: "value" }],
+          wording: [
+            {
+              path: "examples[0].marks[0].description",
+              a: "Arrow to 3",
+              b: "Points at 3",
+              kind: "wording",
+            },
+          ],
           once_read: [
             { path: "examples[0]", a: {}, b: null, kind: "once_read" },
             {
@@ -101,8 +109,16 @@ describe("formatCompareReportMarkdown", () => {
     };
 
     const md = formatCompareReportMarkdown(report);
-    expect(md).toContain("| sample:M:3a | IMG_0001.jpg | double_read | 0 | 0 | 0 | 0 | no |");
-    expect(md).toContain("| sample:M:4a | IMG_0002.jpg | machine_read | 1 | 3 | 1 | 1 | yes |");
+    expect(md).toContain(
+      "| Page | Photo | Status | Differences | Wording | Once-read | Both unclear | Empty answers | Person read |",
+    );
+    expect(md).toContain("| sample:M:3a | IMG_0001.jpg | double_read | 0 | 0 | 0 | 0 | 0 | no |");
+    expect(md).toContain("| sample:M:4a | IMG_0002.jpg | machine_read | 1 | 1 | 3 | 1 | 1 | yes |");
+    expect(md).toContain(
+      "- Wording differences: the readers describe the same thing in other words; reader A's words are kept; no action needed",
+    );
+    expect(md).toContain('`examples[0].marks[0].description`: a="Arrow to 3" | b="Points at 3"');
+    expect(md).toContain("at least 1600 px on the long side and 600 px on the short side");
     expect(md).toContain(
       '`sections[0].scaffolds[b:1]`: only reader b has it; belongs in the final record at `sections[0].scaffolds[]`: {"kind":"arrow","applies_to":[2],"label":"carry"}',
     );
@@ -147,5 +163,23 @@ describe("formatCompareReportMarkdown", () => {
     expect(edited).toContain(
       '`sections[0].scaffolds[b:2]`: only reader b has it; a person changed the final record, so find the place in that record: {"kind":"arrow","applies_to":[1]}',
     );
+
+    // A double_read page with only wording differences lists them and does not say "Exact match".
+    const wordingOnly = formatCompareReportMarkdown({
+      ...report,
+      pages: [
+        {
+          ...report.pages[0],
+          wording: [
+            { path: "sections[0].items[n=1].expr.figure", a: "Two circles", b: "Pair of circles", kind: "wording" },
+          ],
+        },
+      ],
+    });
+    expect(wordingOnly).toContain("| sample:M:3a | IMG_0001.jpg | double_read | 0 | 1 | 0 | 0 | 0 | no |");
+    expect(wordingOnly).toContain(
+      "- Wording differences: the readers describe the same thing in other words; reader A's words are kept; no action needed",
+    );
+    expect(wordingOnly).not.toContain("Exact match across both readers.");
   });
 });

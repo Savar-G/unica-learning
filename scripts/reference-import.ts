@@ -152,20 +152,24 @@ function createSupabaseReferenceStore(db: SupabaseClient<Database>): ReferenceSt
 
     async refsByPath(paths: string[]): Promise<Map<string, string[]>> {
       const refs = new Map<string, string[]>();
-      const chunkSize = 100;
-      for (let i = 0; i < paths.length; i += chunkSize) {
-        const chunk = paths.slice(i, i + chunkSize);
-        const { data, error } = await db
-          .from(REFERENCE_TABLE)
-          .select("source_ref, path")
-          .in("path", chunk);
-        if (error) {
-          throw new Error(`Failed reading which rows use the photo paths: ${error.message}`);
+      const pageSize = 1000;
+      for (const path of new Set(paths)) {
+        const found: string[] = [];
+        for (let from = 0; ; from += pageSize) {
+          const { data, error } = await db
+            .from(REFERENCE_TABLE)
+            .select("source_ref")
+            .eq("path", path)
+            .order("source_ref", { ascending: true })
+            .range(from, from + pageSize - 1);
+          if (error) {
+            throw new Error(`Failed reading which rows use the photo path: ${error.message}`);
+          }
+          const rows = data ?? [];
+          for (const row of rows) found.push(row.source_ref);
+          if (rows.length < pageSize) break;
         }
-        for (const row of data ?? []) {
-          if (row.path === null) continue;
-          refs.set(row.path, [...(refs.get(row.path) ?? []), row.source_ref]);
-        }
+        if (found.length > 0) refs.set(path, found);
       }
       return refs;
     },

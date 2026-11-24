@@ -257,6 +257,7 @@ export function compareWorkFolder(opts: {
         only_in_reader: onlyIn,
         digest_mismatch: pair.digestMismatch,
         differences: classified.differences,
+        wording: classified.wording,
         once_read: locateOnceReadInKeptRecord(classified.once_read, null),
         both_unclear: classified.both_unclear,
         one_unclear: classified.one_unclear,
@@ -291,6 +292,7 @@ export function compareWorkFolder(opts: {
         only_in_reader: onlyIn,
         digest_mismatch: pair.digestMismatch,
         differences: classified.differences,
+        wording: classified.wording,
         once_read: locateOnceReadInKeptRecord(classified.once_read, existingKept),
         both_unclear: classified.both_unclear,
         one_unclear: classified.one_unclear,
@@ -347,6 +349,7 @@ export function compareWorkFolder(opts: {
       only_in_reader: onlyIn,
       digest_mismatch: pair.digestMismatch,
       differences: classified.differences,
+      wording: classified.wording,
       once_read: editedByPerson
         ? locateOnceReadInKeptRecord(classified.once_read, editedRecord)
         : classified.once_read,

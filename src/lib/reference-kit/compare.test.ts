@@ -901,7 +901,7 @@ describe("answer sources, scaffold lists, once-read places, empty answers, and u
       expect.arrayContaining([
         expect.objectContaining({ path: "sections[0].scaffolds[b:0]", reader: "b", final_path: "sections[0].scaffolds[]", b: arrow }),
         expect.objectContaining({ path: "sections[0].items[n=3].responses[0].cue", reader: "b", final_path: "sections[0].items[2].responses[0].cue", b: "Sample cue" }),
-        expect.objectContaining({ path: "examples[0].steps[n=2]", reader: "b", final_path: "examples[0].steps[1]" }),
+        expect.objectContaining({ path: "examples[0].steps[b:1]", reader: "b", final_path: "examples[0].steps[]" }),
       ]),
     );
     expect(once).toHaveLength(3);
@@ -988,5 +988,400 @@ describe("decideStatus", () => {
         diffs: [{ path: "topic.title", a: UNCLEAR, b: "Add", kind: "one_unclear" }],
       }),
     ).toBe("machine_read");
+
+    // wording differences do not block double_read
+    expect(
+      decideStatus({
+        hasA: true,
+        hasB: true,
+        familyA: "claude",
+        familyB: "codex",
+        diffs: [
+          { path: "examples[0].marks[0].description", a: "Arrow to 3", b: "Points at 3", kind: "wording" },
+          { path: "sections[0].items[n=1].expr.figure", a: "Grid with 4 squares", b: "Four-square grid", kind: "wording" },
+        ],
+      }),
+    ).toBe("double_read");
+  });
+});
+
+describe("worked-example step alignment and wording differences", () => {
+  function pageWithExample(
+    steps: NonNullable<PageRecord["examples"] extends infer E ? (E extends Array<infer X> ? X : never) : never>["steps"],
+    marks?: NonNullable<PageRecord["examples"] extends infer E ? (E extends Array<infer X> ? X : never) : never>["marks"],
+  ): PageRecord {
+    return makePage({
+      examples: [
+        {
+          position: "top",
+          relation: "sequence",
+          label: "Example 1",
+          parts: [{ form: "horizontal", expr: { kind: "notation", latex: "\\frac{1}{2} + \\frac{1}{3}" }, shown_answer: "5/6" }],
+          steps,
+          marks: marks ?? [],
+        },
+      ],
+    });
+  }
+
+  it("aligns worked-example steps by normalized printed text across equal lists, middle merge, extra start, extra end, marks, and fully different lists", () => {
+    // 1. Equal lists (under notation normalization) -> zero diffs
+    const eqA = pageWithExample([
+      { n: 1, shows: "setup", printed: "\\frac{1}{2} + \\frac{1}{3}" },
+      { n: 2, shows: "answer", printed: "\\frac{5}{6}" },
+    ]);
+    const eqB = pageWithExample([
+      { n: 1, shows: "setup", printed: "((1)/(2)) + ((1)/(3))" },
+      { n: 2, shows: "answer", printed: "((5)/(6))" },
+    ]);
+    expect(compareRecords(eqA, eqB)).toEqual([]);
+
+    // 2. One merged step in the middle: later steps pair with zero diffs and marks follow shifted steps
+    const mergeA = pageWithExample(
+      [
+        { n: 1, shows: "setup", printed: "1/2 + 1/3" },
+        { n: 2, shows: "regroup", printed: "= 3/6 + 2/6" },
+        { n: 3, shows: "partial_sum", printed: "= (3 + 2)/6" },
+        { n: 4, shows: "answer", printed: "= 5/6" },
+      ],
+      [
+        { kind: "circle", step: 1, description: "Circle the denominators" },
+        { kind: "underline", step: 4, description: "Underline the final fraction" },
+      ],
+    );
+    const mergeB = pageWithExample(
+      [
+        { n: 1, shows: "setup", printed: "1/2 + 1/3" },
+        { n: 2, shows: "regroup", printed: "= 3/6 + 2/6 = (3 + 2)/6" },
+        { n: 3, shows: "answer", printed: "= 5/6" },
+      ],
+      [
+        { kind: "circle", step: 1, description: "Circle the denominators" },
+        { kind: "underline", step: 3, description: "Underline the final fraction" },
+      ],
+    );
+    const mergeDiffs = compareRecords(mergeA, mergeB);
+    expect(mergeDiffs).toEqual([
+      {
+        path: "examples[0].steps[n=2].printed",
+        a: "= 3/6 + 2/6",
+        b: "= 3/6 + 2/6 = (3 + 2)/6",
+        kind: "value",
+      },
+      {
+        path: "examples[0].steps[n=3]",
+        a: { n: 3, shows: "partial_sum", printed: "= (3 + 2)/6" },
+        b: null,
+        kind: "once_read",
+      },
+    ]);
+
+    // 3. Extra step at the start (reader B has an extra step 1; reader B's steps 2 and 3 align with A's 1 and 2)
+    const startA = pageWithExample(
+      [
+        { n: 1, shows: "subtract", printed: "2x = 6" },
+        { n: 2, shows: "answer", printed: "x = 3" },
+      ],
+      [{ kind: "underline", step: 2, description: "Underline x = 3" }],
+    );
+    const startB = pageWithExample(
+      [
+        { n: 1, shows: "setup", printed: "2x + 1 = 7" },
+        { n: 2, shows: "subtract", printed: "2x = 6" },
+        { n: 3, shows: "answer", printed: "x = 3" },
+      ],
+      [{ kind: "underline", step: 3, description: "Underline x = 3" }],
+    );
+    const startSummary = classifyComparison(startA, startB);
+    expect(startSummary.differences).toEqual([]);
+    expect(startSummary.wording).toEqual([]);
+    expect(startSummary.once_read).toEqual([
+      {
+        path: "examples[0].steps[b:0]",
+        a: null,
+        b: { n: 1, shows: "setup", printed: "2x + 1 = 7" },
+        kind: "once_read",
+        reader: "b",
+        final_path: "examples[0].steps[]",
+      },
+    ]);
+
+    // Extra step at the start on reader A
+    const startRev = classifyComparison(startB, startA);
+    expect(startRev.differences).toEqual([]);
+    expect(startRev.once_read).toEqual([
+      {
+        path: "examples[0].steps[n=1]",
+        a: { n: 1, shows: "setup", printed: "2x + 1 = 7" },
+        b: null,
+        kind: "once_read",
+        reader: "a",
+        final_path: "examples[0].steps[0]",
+      },
+    ]);
+
+    // 4. Extra step at the end (reader B has an extra step 2, plus a mark on that unpaired step)
+    const endA = pageWithExample([{ n: 1, shows: "setup", printed: "2x = 6" }], []);
+    const endB = pageWithExample(
+      [
+        { n: 1, shows: "setup", printed: "2x = 6" },
+        { n: 2, shows: "answer", printed: "x = 3" },
+      ],
+      [{ kind: "box", step: 2, description: "Box around x = 3" }],
+    );
+    const endSummary = classifyComparison(endA, endB);
+    expect(endSummary.differences).toEqual([]);
+    expect(endSummary.once_read).toEqual([
+      {
+        path: "examples[0].steps[b:1]",
+        a: null,
+        b: { n: 2, shows: "answer", printed: "x = 3" },
+        kind: "once_read",
+        reader: "b",
+        final_path: "examples[0].steps[]",
+      },
+      {
+        path: "examples[0].marks[b:0]",
+        a: null,
+        b: { kind: "box", step: 2, description: "Box around x = 3" },
+        kind: "once_read",
+        reader: "b",
+        final_path: "examples[0].marks[]",
+      },
+    ]);
+
+    // 5. Fully different step lists pair in order up to the shorter side and report extras as once_read
+    const diffA = pageWithExample([
+      { n: 1, shows: "setup", printed: "3x = 9" },
+      { n: 2, shows: "answer", printed: "x = 3" },
+    ]);
+    const diffB = pageWithExample([
+      { n: 1, shows: "setup", printed: "4y = 8" },
+      { n: 2, shows: "answer", printed: "y = 2" },
+      { n: 3, shows: "check", printed: "4(2) = 8" },
+    ]);
+    const fullDiffs = compareRecords(diffA, diffB);
+    expect(fullDiffs).toEqual([
+      { path: "examples[0].steps[n=1].printed", a: "3x = 9", b: "4y = 8", kind: "value" },
+      { path: "examples[0].steps[n=2].printed", a: "x = 3", b: "y = 2", kind: "value" },
+      {
+        path: "examples[0].steps[b:2]",
+        a: null,
+        b: { n: 3, shows: "check", printed: "4(2) = 8" },
+        kind: "once_read",
+      },
+    ]);
+  });
+
+  it("classifies reader-chosen wording fields as wording and keeps printed-text fields, one-sided fields, and unclear blocking", () => {
+    const a = makePage({
+      examples: [
+        {
+          position: "top",
+          relation: "sequence",
+          label: "Ex.",
+          text: "Solve the equation.",
+          cross_ref: "See 1a",
+          parts: [{ caption: "First part", form: "horizontal", expr: null }],
+          steps: [{ n: 1, shows: "other", shows_other: "Rewrite with common denominator", printed: "2/4 + 1/4", note: "Match bottoms" }],
+          marks: [
+            { kind: "arrow", step: 1, description: "Points from 2 to 4" },
+            { kind: "label", step: 1, description: "LCD" },
+          ],
+        },
+      ],
+    });
+    const b = makePage({
+      examples: [
+        {
+          position: "top",
+          relation: "sequence",
+          label: "Ex.",
+          text: "Solve the equation.",
+          cross_ref: "See 1a",
+          parts: [{ caption: "First part", form: "horizontal", expr: null }],
+          steps: [{ n: 1, shows: "other", shows_other: "Convert fractions to fourths", printed: "2/4 + 1/4", note: "Match bottoms" }],
+          marks: [
+            { kind: "arrow", step: 1, description: "Curved arrow from 2 down to 4" },
+            { kind: "label", step: 1, description: "LCD" },
+          ],
+        },
+      ],
+    });
+    a.sections[0].items[0] = {
+      n: 1,
+      printed: "1/2 + 1/4 =",
+      form: "horizontal",
+      expr: { kind: "notation", latex: "\\frac{1}{2} + \\frac{1}{4}", figure: "Shaded circle showing halves" },
+      responses: [{ position: "after_equals", cue: "Ans.", answer: "3/4", answer_source: "reader" }],
+    };
+    b.sections[0].items[0] = {
+      n: 1,
+      printed: "1/2 + 1/4 =",
+      form: "horizontal",
+      expr: { kind: "notation", latex: "\\frac{1}{2} + \\frac{1}{4}", figure: "Circle divided into two equal parts" },
+      responses: [{ position: "after_equals", cue: "Ans.", answer: "3/4", answer_source: "reader" }],
+    };
+    a.sections[0].scaffolds = [
+      { kind: "helper_digit", applies_to: [1], description: "Small carry digit above tens" },
+      { kind: "partial_working", applies_to: [1], description: "First step prefilled" },
+      { kind: "worked_item", applies_to: [2], description: "Item 2 completed as a model" },
+      { kind: "other", applies_to: [3], description: "Dotted guide line" },
+      { kind: "arrow", applies_to: [1], from: "top fraction", to: "bottom box", label: "x2" },
+      { kind: "caption", applies_to: [1], text: "Reduce", target: "next to answer" },
+      { kind: "table_read_aloud", applies_to: "all", has_checkbox: true, caption_style: "bold header row" },
+      { kind: "answer_boxes", applies_to: [1], places: ["numerator", "denominator"] },
+    ];
+    b.sections[0].scaffolds = [
+      { kind: "helper_digit", applies_to: [1], description: "Tiny 1 printed above tens column" },
+      { kind: "partial_working", applies_to: [1], description: "Opening line printed in grey" },
+      { kind: "worked_item", applies_to: [2], description: "Solved example in item 2" },
+      { kind: "other", applies_to: [3], description: "Dashed horizontal rule" },
+      { kind: "arrow", applies_to: [1], from: "first fraction", to: "lower box", label: "x2" },
+      { kind: "caption", applies_to: [1], text: "Reduce", target: "beside the result" },
+      { kind: "table_read_aloud", applies_to: "all", has_checkbox: true, caption_style: "shaded top strip" },
+      { kind: "answer_boxes", applies_to: [1], places: ["top box", "bottom box"] },
+    ];
+
+    const summary = classifyComparison(a, b);
+    expect(summary.differences).toEqual([]);
+    expect(summary.once_read).toEqual([]);
+    expect(summary.both_unclear).toEqual([]);
+    expect(summary.wording.map((d) => d.path).sort()).toEqual([
+      "examples[0].marks[0].description",
+      "examples[0].steps[n=1].shows_other",
+      "sections[0].items[n=1].expr.figure",
+      "sections[0].scaffolds[0].description",
+      "sections[0].scaffolds[1].description",
+      "sections[0].scaffolds[2].description",
+      "sections[0].scaffolds[3].description",
+      "sections[0].scaffolds[4].from",
+      "sections[0].scaffolds[4].to",
+      "sections[0].scaffolds[5].target",
+      "sections[0].scaffolds[6].caption_style",
+      "sections[0].scaffolds[7].places[0]",
+      "sections[0].scaffolds[7].places[1]",
+    ]);
+    expect(
+      decideStatus({
+        hasA: true,
+        hasB: true,
+        familyA: "claude",
+        familyB: "codex",
+        diffs: compareRecords(a, b),
+      }),
+    ).toBe("double_read");
+
+    // Printed-text fields and known decimal places stay blocking ("value")
+    const blockA = structuredClone(a);
+    const blockB = structuredClone(b);
+    if (Array.isArray(blockB.examples)) {
+      blockB.examples[0].text = "Find x.";
+      blockB.examples[0].cross_ref = "See 2a";
+      blockB.examples[0].parts[0].caption = "Other part";
+      if (Array.isArray(blockB.examples[0].steps)) {
+        blockB.examples[0].steps[0].note = "Different note";
+      }
+      if (Array.isArray(blockB.examples[0].marks)) {
+        blockB.examples[0].marks[1].description = "GCF";
+      }
+    }
+    blockB.sections[0].instruction = "Subtract the numbers.";
+    blockB.sections[0].items[0].printed = "1/2 + 1/5 =";
+    blockB.sections[0].items[0].responses[0].cue = "x =";
+    if (Array.isArray(blockA.sections[0].scaffolds) && Array.isArray(blockB.sections[0].scaffolds)) {
+      blockA.sections[0].scaffolds.push({ kind: "equation_frame", applies_to: [1], template: "□ + □ = □" });
+      blockB.sections[0].scaffolds.push({ kind: "equation_frame", applies_to: [1], template: "□ - □ = □" });
+      blockA.sections[0].scaffolds[7] = { kind: "answer_boxes", applies_to: [1], places: ["tens", "ones"] };
+      blockB.sections[0].scaffolds[7] = { kind: "answer_boxes", applies_to: [1], places: ["tens", "first box"] };
+      blockB.sections[0].scaffolds[4] = { kind: "arrow", applies_to: [1], from: "first fraction", to: "lower box", label: "x3" };
+      blockB.sections[0].scaffolds[5] = { kind: "caption", applies_to: [1], text: "Simplify", target: "beside the result" };
+    }
+    const blockingDiffs = classifyComparison(blockA, blockB).differences;
+    expect(blockingDiffs.map((d) => d.path).sort()).toEqual([
+      "examples[0].cross_ref",
+      "examples[0].marks[1].description",
+      "examples[0].parts[0].caption",
+      "examples[0].steps[n=1].note",
+      "examples[0].text",
+      "sections[0].instruction",
+      "sections[0].items[n=1].printed",
+      "sections[0].items[n=1].responses[0].cue",
+      "sections[0].scaffolds[4].label",
+      "sections[0].scaffolds[5].text",
+      "sections[0].scaffolds[7].places[1]",
+      "sections[0].scaffolds[8].template",
+    ]);
+
+    // One-sided wording field stays once_read; wording vs unclear stays one_unclear
+    const edgeA = makePage();
+    const edgeB = makePage();
+    edgeA.sections[0].items[0].expr = { kind: "notation", latex: "x = 2", figure: "Number line" };
+    edgeB.sections[0].items[0].expr = { kind: "notation", latex: "x = 2" };
+    edgeA.sections[0].scaffolds = [{ kind: "helper_digit", applies_to: [1], description: "Small 1" }];
+    edgeB.sections[0].scaffolds = [{ kind: "helper_digit", applies_to: [1], description: UNCLEAR }];
+    const edgeDiffs = compareRecords(edgeA, edgeB);
+    expect(edgeDiffs).toEqual([
+      { path: "sections[0].scaffolds[0].description", a: "Small 1", b: UNCLEAR, kind: "one_unclear" },
+      { path: "sections[0].items[n=1].expr.figure", a: "Number line", b: null, kind: "once_read" },
+    ]);
+  });
+
+  it("pairs multiple marks on the same kind+step and multiple scaffolds on the same kind+applies_to in order with only wording diffs", () => {
+    const a = makePage({
+      examples: [
+        {
+          position: "top",
+          relation: "sequence",
+          label: "Ex.",
+          parts: [{ form: "horizontal", expr: null }],
+          steps: [{ n: 1, shows: "setup", printed: "2 + 3 = 5" }],
+          marks: [
+            { kind: "arrow", step: 1, description: "First arrow from 2" },
+            { kind: "arrow", step: 1, description: "Second arrow from 3" },
+          ],
+        },
+      ],
+    });
+    const b = makePage({
+      examples: [
+        {
+          position: "top",
+          relation: "sequence",
+          label: "Ex.",
+          parts: [{ form: "horizontal", expr: null }],
+          steps: [{ n: 1, shows: "setup", printed: "2 + 3 = 5" }],
+          marks: [
+            { kind: "arrow", step: 1, description: "Curved arrow leaving 2" },
+            { kind: "arrow", step: 1, description: "Curved arrow leaving 3" },
+          ],
+        },
+      ],
+    });
+    a.sections[0].scaffolds = [
+      { kind: "helper_digit", applies_to: [1], description: "Carry slot in tens" },
+      { kind: "helper_digit", applies_to: [1], description: "Carry slot in hundreds" },
+      { kind: "caption", applies_to: "all", text: "Check", target: "top right" },
+      { kind: "caption", applies_to: "all", text: "Reduce", target: "bottom left" },
+    ];
+    b.sections[0].scaffolds = [
+      { kind: "helper_digit", applies_to: [1], description: "Small tens carry" },
+      { kind: "helper_digit", applies_to: [1], description: "Small hundreds carry" },
+      { kind: "caption", applies_to: "all", text: "Reduce", target: "lower left" },
+      { kind: "caption", applies_to: "all", text: "Check", target: "upper right" },
+    ];
+
+    const summary = classifyComparison(a, b);
+    expect(summary.differences).toEqual([]);
+    expect(summary.once_read).toEqual([]);
+    expect(summary.wording).toHaveLength(6);
+    expect(summary.wording.map((d) => [d.path, d.a, d.b])).toEqual([
+      ["examples[0].marks[0].description", "First arrow from 2", "Curved arrow leaving 2"],
+      ["examples[0].marks[1].description", "Second arrow from 3", "Curved arrow leaving 3"],
+      ["sections[0].scaffolds[0].description", "Carry slot in tens", "Small tens carry"],
+      ["sections[0].scaffolds[1].description", "Carry slot in hundreds", "Small hundreds carry"],
+      ["sections[0].scaffolds[2].target", "top right", "upper right"],
+      ["sections[0].scaffolds[3].target", "bottom left", "lower left"],
+    ]);
   });
 });

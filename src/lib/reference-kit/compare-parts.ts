@@ -8,16 +8,19 @@ import {
   type ScoreBand,
   type ScoreBands,
 } from "@/lib/reference-record";
+import { decimalPlacePower } from "./answers";
 import { normalizeNotationText, normalizeProseText } from "./normalize";
 
 // empty_answer: an answer place of the final record holds no answer and no "unclear" marker.
+// wording: the readers chose different words to describe something (not printed text); does not block.
 export type DiffKind =
   | "value"
   | "order"
   | "once_read"
   | "both_unclear"
   | "one_unclear"
-  | "empty_answer";
+  | "empty_answer"
+  | "wording";
 
 export interface RecordDifference {
   path: string;
@@ -85,7 +88,7 @@ export function compareField(
   path: string,
   a: unknown,
   b: unknown,
-  opts: { teaching?: boolean; mode?: FieldCompareMode },
+  opts: { teaching?: boolean; mode?: FieldCompareMode; wording?: boolean },
   diffs: RecordDifference[],
 ): void {
   if (checkSentinels(path, a, b, diffs)) return;
@@ -102,6 +105,8 @@ export function compareField(
     return;
   }
 
+  const diffKind: DiffKind = opts.wording ? "wording" : "value";
+
   if (typeof a === "string" && typeof b === "string") {
     const mode = opts.mode ?? "exact";
     const normA =
@@ -117,13 +122,13 @@ export function compareField(
           ? normalizeNotationText(b)
           : b.trim();
     if (normA !== normB) {
-      diffs.push({ path, a, b, kind: "value" });
+      diffs.push({ path, a, b, kind: diffKind });
     }
     return;
   }
 
   if (!deepEqual(a, b)) {
-    diffs.push({ path, a, b, kind: "value" });
+    diffs.push({ path, a, b, kind: diffKind });
   }
 }
 
@@ -131,7 +136,7 @@ function compareListField(
   path: string,
   a: unknown,
   b: unknown,
-  opts: { teaching?: boolean; mode?: FieldCompareMode },
+  opts: { teaching?: boolean; mode?: FieldCompareMode; itemWording?: (av: unknown, bv: unknown) => boolean },
   diffs: RecordDifference[],
 ): void {
   if (checkSentinels(path, a, b, diffs)) return;
@@ -160,7 +165,8 @@ function compareListField(
       diffs.push({ path: `${path}[${i}]`, a: av, b: bv, kind });
       continue;
     }
-    compareField(`${path}[${i}]`, a[i], b[i], { mode: opts.mode }, diffs);
+    const wording = opts.itemWording ? opts.itemWording(a[i], b[i]) : false;
+    compareField(`${path}[${i}]`, a[i], b[i], { mode: opts.mode, wording }, diffs);
   }
 }
 
@@ -247,7 +253,7 @@ export function compareExpr(
         `${path}.figure`,
         a.figure,
         bNot.figure,
-        { teaching: true, mode: "prose" },
+        { teaching: true, mode: "prose", wording: true },
         diffs,
       );
       return;
@@ -330,7 +336,17 @@ function compareSingleScaffold(
     case "answer_boxes": {
       const bb = b as typeof a;
       compareField(`${path}.box_count`, a.box_count, bb.box_count, { teaching: true }, diffs);
-      compareListField(`${path}.places`, a.places, bb.places, { teaching: true, mode: "prose" }, diffs);
+      compareListField(
+        `${path}.places`,
+        a.places,
+        bb.places,
+        {
+          teaching: true,
+          mode: "prose",
+          itemWording: (av, bv) => decimalPlacePower(av) === null && decimalPlacePower(bv) === null,
+        },
+        diffs,
+      );
       return;
     }
     case "number_strip": {
@@ -346,7 +362,7 @@ function compareSingleScaffold(
         `${path}.caption_style`,
         a.caption_style,
         bb.caption_style,
-        { teaching: true, mode: "prose" },
+        { teaching: true, mode: "prose", wording: true },
         diffs,
       );
       return;
@@ -364,15 +380,15 @@ function compareSingleScaffold(
     }
     case "arrow": {
       const bb = b as typeof a;
-      compareField(`${path}.from`, a.from, bb.from, { teaching: true, mode: "prose" }, diffs);
-      compareField(`${path}.to`, a.to, bb.to, { teaching: true, mode: "prose" }, diffs);
+      compareField(`${path}.from`, a.from, bb.from, { teaching: true, mode: "prose", wording: true }, diffs);
+      compareField(`${path}.to`, a.to, bb.to, { teaching: true, mode: "prose", wording: true }, diffs);
       compareField(`${path}.label`, a.label, bb.label, { teaching: true, mode: "prose" }, diffs);
       return;
     }
     case "caption": {
       const bb = b as typeof a;
       compareField(`${path}.text`, a.text, bb.text, { teaching: true, mode: "prose" }, diffs);
-      compareField(`${path}.target`, a.target, bb.target, { teaching: true, mode: "prose" }, diffs);
+      compareField(`${path}.target`, a.target, bb.target, { teaching: true, mode: "prose", wording: true }, diffs);
       return;
     }
     case "helper_digit":
@@ -384,7 +400,7 @@ function compareSingleScaffold(
         `${path}.description`,
         a.description,
         bb.description,
-        { teaching: true, mode: "prose" },
+        { teaching: true, mode: "prose", wording: true },
         diffs,
       );
       return;
@@ -426,13 +442,27 @@ export function compareScaffolds(
 
   // Pass 0: match scaffolds with equal content (after the applies_to normalisation), by the same
   // field rules as the comparison itself (prose fields with the prose normalisation)
-  const sameContent = (x: Scaffold, y: Scaffold): boolean => {
+  const probeDiffs = (x: Scaffold, y: Scaffold): RecordDifference[] => {
     const probe: RecordDifference[] = [];
     compareSingleScaffold("probe", x, y, probe);
-    return probe.length === 0;
+    return probe;
   };
   aList.forEach((scA, idxA) => {
-    const matchIdx = bList.findIndex((scB, j) => !usedB.has(j) && sameContent(scA, scB));
+    const matchIdx = bList.findIndex((scB, j) => !usedB.has(j) && probeDiffs(scA, scB).length === 0);
+    if (matchIdx !== -1) {
+      matchedBForA.set(idxA, matchIdx);
+      usedB.add(matchIdx);
+    }
+  });
+
+  // Pass 0b: match scaffolds that agree on every non-wording field
+  aList.forEach((scA, idxA) => {
+    if (matchedBForA.has(idxA)) return;
+    const matchIdx = bList.findIndex((scB, j) => {
+      if (usedB.has(j)) return false;
+      const probe = probeDiffs(scA, scB);
+      return probe.length > 0 && probe.every((d) => d.kind === "wording");
+    });
     if (matchIdx !== -1) {
       matchedBForA.set(idxA, matchIdx);
       usedB.add(matchIdx);

@@ -20,8 +20,9 @@ import {
 } from "./extract-state";
 import {
   createEmptyManifest,
+  formatTooSmallReason,
+  isPhotoTooSmall,
   isSupportedPhotoFile,
-  MIN_LONG_SIDE_PX,
   parsePhotosManifest,
   PHOTOS_MANIFEST_FILE,
   PREPARE_REPORT_FILE,
@@ -185,7 +186,7 @@ async function scanPhotoFolder(opts: {
       continue;
     }
     firstNameByDigest.set(sha256, name);
-    if (Math.max(width, height) < MIN_LONG_SIDE_PX && !opts.allowSmall) {
+    if (isPhotoTooSmall(width, height) && !opts.allowSmall) {
       scanned.push({ name, kind: "too_small", sha256, width, height });
       continue;
     }
@@ -449,7 +450,7 @@ export async function extractFolder(opts: ExtractFolderOptions): Promise<Extract
     if (photo.kind === "unreadable") {
       log(`${prefix} ${photo.reason}`);
     } else if (photo.kind === "too_small") {
-      log(`${prefix} too_small (${photo.width}x${photo.height})`);
+      log(`${prefix} ${formatTooSmallReason(photo.width, photo.height)}`);
     } else if (photo.kind === "duplicate") {
       log(`${prefix} duplicate_photo (same as ${photo.duplicateOf}), not read`);
     } else {

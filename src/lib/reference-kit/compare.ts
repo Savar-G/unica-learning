@@ -31,6 +31,7 @@ export type PageStatus = "machine_read" | "double_read" | "human_checked";
 
 export interface PageComparisonSummary {
   differences: RecordDifference[];
+  wording: RecordDifference[];
   once_read: RecordDifference[];
   both_unclear: RecordDifference[];
   one_unclear: RecordDifference[];
@@ -312,6 +313,7 @@ export function classifyComparison(
   const differences = allDiffs.filter(
     (d) => d.kind === "value" || d.kind === "order" || d.kind === "one_unclear",
   );
+  const wording = allDiffs.filter((d) => d.kind === "wording");
   const onceRead = allDiffs
     .filter((d) => d.kind === "once_read")
     .map((d) => (a ? locateOnceRead(d, a) : d));
@@ -319,6 +321,7 @@ export function classifyComparison(
 
   return {
     differences,
+    wording,
     once_read: onceRead,
     both_unclear: bothUnclear,
     one_unclear: oneUnclear,

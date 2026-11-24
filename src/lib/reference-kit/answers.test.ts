@@ -1,6 +1,6 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import type { ItemResponse, PageItem, PageRecord } from "@/lib/reference-record";
+import { validateReferenceRecord, type ItemResponse, type PageItem, type PageRecord } from "@/lib/reference-record";
 import { applyComputedAnswers, decimalPlacePower, findEmptyAnswers } from "./answers";
 
 function makePageWithItem(item: PageRecord["sections"][0]["items"][0]): PageRecord {
@@ -477,5 +477,52 @@ describe("applyComputedAnswers", () => {
       "sections[0].items[n=8].responses[0]",
       "sections[0].items[n=8].responses[1]",
     ]);
+  });
+
+  it("keeps a single work_area reader answer valid and untouched, and keeps a null work_area non-answer-bearing", () => {
+    const notationOpenSpace = makePageWithItem({
+      n: 1,
+      printed: "1/2 + 1/4 =",
+      form: "horizontal",
+      expr: { kind: "notation", latex: "\\frac{1}{2} + \\frac{1}{4}" },
+      responses: [{ position: "work_area", cue: null, answer: "3/4", answer_source: "reader" }],
+    });
+    expect(validateReferenceRecord(notationOpenSpace).ok).toBe(true);
+    const notationResult = applyComputedAnswers(notationOpenSpace);
+    expect(notationResult.record).toEqual(notationOpenSpace);
+    expect(notationResult.details).toEqual([]);
+    expect(findEmptyAnswers(notationResult.record)).toEqual([]);
+
+    const arithOpenSpace = makePageWithItem({
+      n: 2,
+      printed: "12 + 5 =",
+      form: "horizontal",
+      expr: { kind: "arith", op: "add", operands: [12, 5] },
+      responses: [{ position: "work_area", cue: null, answer: "17", answer_source: "reader" }],
+    });
+    expect(validateReferenceRecord(arithOpenSpace).ok).toBe(true);
+    const arithResult = applyComputedAnswers(arithOpenSpace);
+    expect(arithResult.record).toEqual(arithOpenSpace);
+    expect(findEmptyAnswers(arithResult.record)).toEqual([]);
+
+    const placeAndWorkArea = makePageWithItem({
+      n: 3,
+      printed: "12 + 5 = ___",
+      form: "horizontal",
+      expr: { kind: "arith", op: "add", operands: [12, 5] },
+      responses: [
+        { position: "work_area", cue: null, answer: null, answer_source: "unchecked" },
+        { position: "after_equals", cue: "Ans.", answer: "17", answer_source: "reader" },
+      ],
+    });
+    expect(validateReferenceRecord(placeAndWorkArea).ok).toBe(true);
+    const pairedResult = applyComputedAnswers(placeAndWorkArea);
+    if (pairedResult.record.kind !== "page") throw new Error("page expected");
+    expect(pairedResult.record.sections[0].items[0].responses).toEqual([
+      { position: "work_area", cue: null, answer: null, answer_source: "unchecked" },
+      { position: "after_equals", cue: "Ans.", answer: "17", answer_source: "computed" },
+    ]);
+    expect(pairedResult.details).toEqual([]);
+    expect(findEmptyAnswers(pairedResult.record)).toEqual([]);
   });
 });

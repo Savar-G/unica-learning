@@ -14,7 +14,7 @@ import {
   UNCLEAR,
   validateReferenceRecord,
 } from "@/lib/reference-record";
-import { applyComputedAnswers } from "./answers";
+import { applyComputedAnswers, findEmptyAnswers } from "./answers";
 import { REFERENCE_READ_PROMPT } from "./read-prompt";
 
 function extractJsonBlocksFromPrompt(prompt: string): unknown[] {
@@ -177,6 +177,53 @@ describe("REFERENCE_READ_PROMPT", () => {
     const contentsExample = jsonBlocks.find((obj) => obj.kind === "contents");
     const topics = contentsExample?.topics as Array<Record<string, unknown>>;
     expect(topics.some((t) => t.sheets === null)).toBe(true);
+  });
+
+  it("pins round-2 reader conventions and makes the example page agree with all of them", () => {
+    expect(REFERENCE_READ_PROMPT).toMatch(/Never record the decoration of an example box.*border, tab, shadow, or background shading/i);
+    expect(REFERENCE_READ_PROMPT).toMatch(/`example\.label` only, never in a mark/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/one step for each printed line of the working/i);
+    expect(REFERENCE_READ_PROMPT).toMatch(/`item\.printed` .* "\u25A1" .* "___"/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/`expr\.latex` holds only the expression or equation to work on, with no "=" at its end/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/`item\.form` for a notation item: write "horizontal" .*fractions included/i);
+    expect(REFERENCE_READ_PROMPT).toMatch(/Do not write "unclear" because the item is notation/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/system of equations as ONE item.*\\begin\{cases\}/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/Use `linked` only for two separate questions/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/position "work_area" that holds the final answer you worked out and answer_source "reader"/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/"work_area" response with answer null and answer_source "unchecked"/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/`cue` is the printed text that stands directly before the answer place/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/read the large printed sheet id twice/i);
+
+    const examplePage = (extractJsonBlocksFromPrompt(REFERENCE_READ_PROMPT) as Array<Record<string, unknown>>).find(
+      (obj) => obj.kind === "page",
+    ) as {
+      sections: Array<{
+        items: Array<{
+          n: number;
+          printed: string;
+          form: string;
+          expr: { kind: string; latex?: string };
+          responses: Array<Record<string, unknown>>;
+        }>;
+      }>;
+      examples: Array<{ label?: string; marks?: Array<{ kind: string }> }>;
+    };
+    expect(examplePage.sections[0].items[0].printed).toBe("12 + 5 = \u25A1\u25A1");
+    const notationItem = examplePage.sections[0].items[2];
+    expect(notationItem).toEqual({
+      n: 3,
+      printed: "1/2 + 1/4 =",
+      form: "horizontal",
+      expr: { kind: "notation", latex: "\\frac{1}{2} + \\frac{1}{4}" },
+      responses: [{ position: "work_area", cue: null, answer: "3/4", answer_source: "reader" }],
+    });
+    expect(notationItem.expr.latex?.endsWith("=")).toBe(false);
+    expect(examplePage.examples[0].label).toBe("Example");
+    expect(examplePage.examples[0].marks?.some((m) => m.kind === "box" || m.kind === "shading")).toBe(false);
+
+    const checked = validateReferenceRecord(toRecordWithSourceRef(examplePage as unknown as Record<string, unknown>));
+    if (!checked.ok) throw new Error("the example page must validate");
+    expect(findEmptyAnswers(checked.record)).toEqual([]);
   });
 });
 

@@ -112,6 +112,8 @@ describe("pickLargestDownloads", () => {
     writeFileSync(join(downloads, "a-10-2__2.bin"), await image(1800, 2400, "jpeg"));
     // Photo b: only a small preview.
     writeFileSync(join(downloads, "b-10-3__1.jpeg"), await image(378, 504, "jpeg"));
+    // Photo d: narrow strip photo (long side passes, short side under 600 px).
+    writeFileSync(join(downloads, "d-10-4__1.jpeg"), await image(461, 3473, "jpeg"));
     // Not an image, and a file with another name pattern.
     writeFileSync(join(downloads, "c-10-21__1.jpeg"), "not an image");
     writeFileSync(join(downloads, "notes.txt"), "ignore me");
@@ -119,17 +121,18 @@ describe("pickLargestDownloads", () => {
     const result = await pickLargestDownloads(
       downloads,
       photos,
-      ["a-10-2", "b-10-3", "c-10-21"],
+      ["a-10-2", "b-10-3", "c-10-21", "d-10-4"],
       repo,
     );
 
     expect(result.picked.map((p) => [p.file, p.width, p.height])).toEqual([
       ["a-10-2.jpg", 1800, 2400],
       ["b-10-3.jpg", 378, 504],
+      ["d-10-4.jpg", 461, 3473],
     ]);
-    expect(result.tooSmall.map((p) => p.stem)).toEqual(["b-10-3"]);
+    expect(result.tooSmall.map((p) => p.stem)).toEqual(["b-10-3", "d-10-4"]);
     expect(result.missing).toEqual(["c-10-21"]);
-    expect(readdirSync(photos).sort()).toEqual(["a-10-2.jpg", "b-10-3.jpg"]);
+    expect(readdirSync(photos).sort()).toEqual(["a-10-2.jpg", "b-10-3.jpg", "d-10-4.jpg"]);
     expect(statSync(join(photos, "a-10-2.jpg")).mode & 0o777).toBe(0o600);
     const kept = await sharp(join(photos, "a-10-2.jpg")).metadata();
     expect([kept.width, kept.height]).toEqual([1800, 2400]);

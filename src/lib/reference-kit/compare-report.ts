@@ -1,9 +1,11 @@
 import type { PageStatus, RecordDifference, UnnamedTeachingMark } from "./compare";
-import type {
-  DuplicatePhotoReport,
-  RemovedPhotoReport,
-  TooSmallPhotoReport,
-  UnreadablePhotoReport,
+import {
+  MIN_LONG_SIDE_PX,
+  MIN_SHORT_SIDE_PX,
+  type DuplicatePhotoReport,
+  type RemovedPhotoReport,
+  type TooSmallPhotoReport,
+  type UnreadablePhotoReport,
 } from "./prepare";
 import type { ReaderMeta } from "./read";
 
@@ -52,6 +54,8 @@ export interface PageCompareReport {
   only_in_reader: "a" | "b" | null;
   digest_mismatch: DigestMismatchInfo | null;
   differences: RecordDifference[];
+  // Differences in the reader's own wording (do not block double_read). Absent in reports of older runs.
+  wording?: RecordDifference[];
   once_read: RecordDifference[];
   both_unclear: RecordDifference[];
   one_unclear: RecordDifference[];
@@ -101,19 +105,23 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
   lines.push("## Summary");
   lines.push("");
   lines.push(
-    "| Page | Photo | Status | Differences | Once-read | Both unclear | Empty answers | Person read |",
+    "| Page | Photo | Status | Differences | Wording | Once-read | Both unclear | Empty answers | Person read |",
   );
-  lines.push("|---|---|---|---:|---:|---:|---:|---|");
+  lines.push("|---|---|---|---:|---:|---:|---:|---:|---|");
   for (const p of report.pages) {
     const photoCol = p.original_name ?? p.photo ?? "-";
     lines.push(
-      `| ${p.source_ref} | ${photoCol} | ${p.status} | ${p.differences.length} | ${p.once_read.length} | ${p.both_unclear.length} | ${(p.empty_answer ?? []).length} | ${p.needs_person_read ? "yes" : "no"} |`,
+      `| ${p.source_ref} | ${photoCol} | ${p.status} | ${p.differences.length} | ${(p.wording ?? []).length} | ${p.once_read.length} | ${p.both_unclear.length} | ${(p.empty_answer ?? []).length} | ${p.needs_person_read ? "yes" : "no"} |`,
     );
   }
   lines.push("");
 
   if (report.too_small_photos.length > 0) {
     lines.push("## Too small to read");
+    lines.push("");
+    lines.push(
+      `Photos need at least ${MIN_LONG_SIDE_PX} px on the long side and ${MIN_SHORT_SIDE_PX} px on the short side.`,
+    );
     lines.push("");
     for (const item of report.too_small_photos) {
       lines.push(`- \`${item.original_name}\` (${item.width} x ${item.height})`);
@@ -272,6 +280,16 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
       }
     }
 
+    const wording = p.wording ?? [];
+    if (wording.length > 0) {
+      lines.push(
+        "- Wording differences: the readers describe the same thing in other words; reader A's words are kept; no action needed",
+      );
+      for (const d of wording) {
+        lines.push(`  - \`${d.path}\`: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
+      }
+    }
+
     if (p.once_read.length > 0) {
       lines.push(
         "- Once-read teaching fields (look at the photo; copy an entry that is on the page into the final record at the given path, where \"[]\" means the end of that list):",
@@ -324,6 +342,7 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
 
     if (
       p.differences.length === 0 &&
+      wording.length === 0 &&
       p.once_read.length === 0 &&
       p.both_unclear.length === 0 &&
       emptyAnswers.length === 0 &&

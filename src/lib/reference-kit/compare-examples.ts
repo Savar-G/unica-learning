@@ -12,7 +12,7 @@ import {
   compareField,
   type RecordDifference,
 } from "./compare-parts";
-import { normalizeProseText } from "./normalize";
+import { normalizeNotationText, normalizeProseText } from "./normalize";
 
 export interface UnnamedTeachingMark {
   kind: "step" | "mark" | "scaffold";
@@ -21,44 +21,113 @@ export interface UnnamedTeachingMark {
   reader: "a" | "b" | "both";
 }
 
+function stepPrintedKey(step: ExampleStep): string | null {
+  if (typeof step.printed !== "string" || step.printed === UNCLEAR || step.printed === NOT_STATED) {
+    return null;
+  }
+  const norm = normalizeNotationText(step.printed);
+  return norm.length > 0 ? norm : null;
+}
+
+type AlignedStep =
+  | { kind: "pair"; a: ExampleStep; b: ExampleStep }
+  | { kind: "a_only"; a: ExampleStep }
+  | { kind: "b_only"; b: ExampleStep; idxB: number };
+
+// Aligns two step lists by longest common subsequence of equal normalized printed text,
+// pairing remaining steps in order within each gap and marking leftovers as once_read.
+function alignExampleSteps(
+  aList: readonly ExampleStep[],
+  bList: readonly ExampleStep[],
+): AlignedStep[] {
+  const m = aList.length;
+  const n = bList.length;
+  const aKeys = aList.map(stepPrintedKey);
+  const bKeys = bList.map(stepPrintedKey);
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
+
+  for (let i = m - 1; i >= 0; i -= 1) {
+    for (let j = n - 1; j >= 0; j -= 1) {
+      if (aKeys[i] !== null && aKeys[i] === bKeys[j]) {
+        dp[i][j] = dp[i + 1][j + 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+      }
+    }
+  }
+
+  const anchors: Array<[number, number]> = [];
+  let i = 0;
+  let j = 0;
+  while (i < m && j < n) {
+    if (aKeys[i] !== null && aKeys[i] === bKeys[j] && dp[i][j] === dp[i + 1][j + 1] + 1) {
+      anchors.push([i, j]);
+      i += 1;
+      j += 1;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      i += 1;
+    } else {
+      j += 1;
+    }
+  }
+
+  const aligned: AlignedStep[] = [];
+  let prevA = 0;
+  let prevB = 0;
+  for (const [nextA, nextB] of [...anchors, [m, n] as [number, number]]) {
+    const gapA = nextA - prevA;
+    const gapB = nextB - prevB;
+    const pairedInGap = Math.min(gapA, gapB);
+    for (let k = 0; k < pairedInGap; k += 1) {
+      aligned.push({ kind: "pair", a: aList[prevA + k], b: bList[prevB + k] });
+    }
+    for (let k = pairedInGap; k < gapA; k += 1) {
+      aligned.push({ kind: "a_only", a: aList[prevA + k] });
+    }
+    for (let k = pairedInGap; k < gapB; k += 1) {
+      aligned.push({ kind: "b_only", b: bList[prevB + k], idxB: prevB + k });
+    }
+    if (nextA < m && nextB < n) {
+      aligned.push({ kind: "pair", a: aList[nextA], b: bList[nextB] });
+    }
+    prevA = nextA + 1;
+    prevB = nextB + 1;
+  }
+
+  return aligned;
+}
+
 function compareExampleSteps(
   path: string,
   a: Example["steps"],
   b: Example["steps"],
   diffs: RecordDifference[],
-): void {
-  if (checkSentinels(path, a, b, diffs)) return;
+): Map<number, number> {
+  const bStepToAStep = new Map<number, number>();
+  if (checkSentinels(path, a, b, diffs)) return bStepToAStep;
   const aList: ExampleStep[] = Array.isArray(a) ? a : [];
   const bList: ExampleStep[] = Array.isArray(b) ? b : [];
-  if (aList.length === 0 && bList.length === 0) return;
+  if (aList.length === 0 && bList.length === 0) return bStepToAStep;
 
-  const aMap = new Map<number, ExampleStep>();
-  const bMap = new Map<number, ExampleStep>();
-  const orderedNs: number[] = [];
-
-  for (const step of aList) {
-    aMap.set(step.n, step);
-    orderedNs.push(step.n);
-  }
-  for (const step of bList) {
-    bMap.set(step.n, step);
-    if (!aMap.has(step.n)) orderedNs.push(step.n);
-  }
-
-  for (const n of orderedNs) {
-    const sPath = `${path}[n=${n}]`;
-    const sa = aMap.get(n);
-    const sb = bMap.get(n);
-    if (!sa || !sb) {
-      diffs.push({ path: sPath, a: sa ?? null, b: sb ?? null, kind: "once_read" });
+  const aligned = alignExampleSteps(aList, bList);
+  for (const entry of aligned) {
+    if (entry.kind === "a_only") {
+      diffs.push({ path: `${path}[n=${entry.a.n}]`, a: entry.a, b: null, kind: "once_read" });
       continue;
     }
+    if (entry.kind === "b_only") {
+      diffs.push({ path: `${path}[b:${entry.idxB}]`, a: null, b: entry.b, kind: "once_read" });
+      continue;
+    }
+    const { a: sa, b: sb } = entry;
+    bStepToAStep.set(sb.n, sa.n);
+    const sPath = `${path}[n=${sa.n}]`;
     compareField(`${sPath}.shows`, sa.shows, sb.shows, {}, diffs);
     compareField(
       `${sPath}.shows_other`,
       sa.shows_other,
       sb.shows_other,
-      { teaching: true, mode: "prose" },
+      { teaching: true, mode: "prose", wording: true },
       diffs,
     );
     compareField(
@@ -76,6 +145,7 @@ function compareExampleSteps(
       diffs,
     );
   }
+  return bStepToAStep;
 }
 
 function markStepKey(m: ExampleMark): string {
@@ -98,11 +168,12 @@ function compareSingleMark(
 ): void {
   compareField(`${path}.kind`, a.kind, b.kind, {}, diffs);
   compareField(`${path}.step`, a.step, b.step, { teaching: true }, diffs);
+  const isLabel = a.kind === "label" || b.kind === "label";
   compareField(
     `${path}.description`,
     a.description,
     b.description,
-    { teaching: true, mode: "prose" },
+    { teaching: true, mode: "prose", wording: !isLabel },
     diffs,
   );
 }
@@ -112,11 +183,18 @@ function compareExampleMarks(
   a: Example["marks"],
   b: Example["marks"],
   diffs: RecordDifference[],
+  bStepToAStep: ReadonlyMap<number, number>,
 ): void {
   if (checkSentinels(path, a, b, diffs)) return;
   const aList: ExampleMark[] = Array.isArray(a) ? a : [];
-  const bList: ExampleMark[] = Array.isArray(b) ? b : [];
-  if (aList.length === 0 && bList.length === 0) return;
+  const bOrig: ExampleMark[] = Array.isArray(b) ? b : [];
+  if (aList.length === 0 && bOrig.length === 0) return;
+
+  const bList: ExampleMark[] = bOrig.map((m) => {
+    if (m.step === undefined) return m;
+    const mapped = bStepToAStep.get(m.step);
+    return mapped !== undefined && mapped !== m.step ? { ...m, step: mapped } : m;
+  });
 
   const matchedBForA = new Map<number, number>();
   const usedB = new Set<number>();
@@ -131,7 +209,7 @@ function compareExampleMarks(
     }
   });
 
-  // Pass 2: match remaining by kind + step
+  // Pass 2: match remaining by kind + step in order
   aList.forEach((mA, idxA) => {
     if (matchedBForA.has(idxA)) return;
     const keyA = markStepKey(mA);
@@ -142,7 +220,7 @@ function compareExampleMarks(
     }
   });
 
-  // Pass 3: match remaining by kind only
+  // Pass 3: match remaining by kind only in order
   aList.forEach((mA, idxA) => {
     if (matchedBForA.has(idxA)) return;
     const matchIdx = bList.findIndex((mB, j) => !usedB.has(j) && mB.kind === mA.kind);
@@ -161,7 +239,7 @@ function compareExampleMarks(
     }
   });
 
-  bList.forEach((mB, idxB) => {
+  bOrig.forEach((mB, idxB) => {
     if (!usedB.has(idxB)) {
       diffs.push({ path: `${path}[b:${idxB}]`, a: null, b: mB, kind: "once_read" });
     }
@@ -195,8 +273,8 @@ function compareSingleExample(
     compareField(`${pPath}.shown_answer`, pa.shown_answer, pb.shown_answer, { teaching: true }, diffs);
   }
 
-  compareExampleSteps(`${path}.steps`, a.steps, b.steps, diffs);
-  compareExampleMarks(`${path}.marks`, a.marks, b.marks, diffs);
+  const bStepToAStep = compareExampleSteps(`${path}.steps`, a.steps, b.steps, diffs);
+  compareExampleMarks(`${path}.marks`, a.marks, b.marks, diffs, bStepToAStep);
 }
 
 function exampleLabelKey(ex: Example): string | null {
@@ -234,7 +312,7 @@ export function compareExamples(
     }
   });
 
-  // Pass 2: match remaining exact-equal examples before positional fallback
+  // Pass 2: match remaining exact-equal examples, then examples that differ only in wording
   aList.forEach((exA, idxA) => {
     if (matchedBForA.has(idxA)) return;
     const matchIdx = bList.findIndex((exB, j) => {
@@ -242,6 +320,19 @@ export function compareExamples(
       const probeDiffs: RecordDifference[] = [];
       compareSingleExample("probe", exA, exB, probeDiffs);
       return probeDiffs.length === 0;
+    });
+    if (matchIdx !== -1) {
+      matchedBForA.set(idxA, matchIdx);
+      usedB.add(matchIdx);
+    }
+  });
+  aList.forEach((exA, idxA) => {
+    if (matchedBForA.has(idxA)) return;
+    const matchIdx = bList.findIndex((exB, j) => {
+      if (usedB.has(j)) return false;
+      const probeDiffs: RecordDifference[] = [];
+      compareSingleExample("probe", exA, exB, probeDiffs);
+      return probeDiffs.length > 0 && probeDiffs.every((d) => d.kind === "wording");
     });
     if (matchIdx !== -1) {
       matchedBForA.set(idxA, matchIdx);

@@ -2,7 +2,7 @@ import { lstatSync, readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import sharp from "sharp";
 import { assertSafeOutputFile, writeSafeOutputFile } from "@/lib/reference-record/output-guard";
-import { MIN_LONG_SIDE_PX, readRegularFileNoFollow } from "./prepare";
+import { isPhotoTooSmall, readRegularFileNoFollow } from "./prepare";
 
 // A design board holds one section for each level. Each photo on the board is one node.
 // This module reads the text listing of a board page (as the board connector returns it),
@@ -251,7 +251,7 @@ export async function pickLargestDownloads(
     writeSafeOutputFile(outPath, bytes, repoRoot);
     const entry: PickedPhoto = { stem, file: outName, width: best.width, height: best.height };
     picked.push(entry);
-    if (Math.max(best.width, best.height) < MIN_LONG_SIDE_PX) tooSmall.push(entry);
+    if (isPhotoTooSmall(best.width, best.height)) tooSmall.push(entry);
   }
 
   const have = new Set(picked.map((p) => p.stem));

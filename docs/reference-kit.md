@@ -26,7 +26,7 @@ npm run reference:extract -- \
 - `--out`: private work folder outside any git repository.
 - `--source`: source slug matching `^[A-Za-z0-9]+$`.
 - `--reader-a` (default `codex`) and `--reader-b` (default `claude`): must be two different model families. Passing a `--model-a` or `--model-b` id that belongs to the other family is refused.
-- `--allow-small`: read photos whose long side is under 1600 px anyway.
+- `--allow-small`: read photos whose long side is under 1600 px or whose short side is under 600 px anyway.
 - `--force`: run both readers again, also when valid readings exist. A new valid reading replaces the old one; a failed read keeps the old valid reading. A page checked by a person is read again, but its checked record stays.
 - `--limit <n>`: read only the first `n` sorted photos in the folder. The other photos and their readings stay as they are.
 
@@ -34,7 +34,7 @@ Each photo is prepared, read by both readers in parallel (5-minute timeout per c
 
 Exit code is `0` when the run completes (even if some photos fail) and `1` for a usage error or when no photo could be prepared. A reader folder that holds readings of another model family is refused; use a new `--out` folder.
 
-Computed answers: code computes the answer of each item from its expression and writes it into the answer places (not `work_area` or `checkbox`) with `answer_source: "computed"`. A word problem with a division that is not exact is not computed (it may want a decimal or a remainder); its reader answer stays.
+Computed answers: code computes the answer of each item from its expression and writes it into the answer places (not `work_area` or `checkbox`) with `answer_source: "computed"`. A single `work_area` response that holds a reader answer (when no answer place is printed) is kept untouched and does not count as an empty answer place. A word problem with a division that is not exact is not computed (it may want a decimal or a remainder); its reader answer stays.
 
 - One answer place gets the value. When that place names a decimal place (`ones`, `tens`, `hundreds`, `thousands`, `ten thousands`), it gets the digit of that place.
 - Several answer places that each name a different decimal place get one digit each, when the value is a whole number that fits. A higher place that the value does not reach stays as it is; a "0" there is correct.
@@ -65,7 +65,7 @@ The team keeps the reference photos on a design board with one section for each 
 
 ## Too-Small Rule
 
-After applying EXIF rotation, converting to JPEG (quality 90, 4:4:4), and stripping all metadata (EXIF, GPS, ICC, XMP, embedded thumbnail) with no crop and no resize, any photo whose long side is under `1600` pixels is marked `too_small`. It is not sent to a reader and is listed by its original file name and pixel size in `final/report.md` so a person can supply the full-size photo. Pass `--allow-small` to read it anyway.
+After applying EXIF rotation, converting to JPEG (quality 90, 4:4:4), and stripping all metadata (EXIF, GPS, ICC, XMP, embedded thumbnail) with no crop and no resize, any photo whose long side is under `1600` pixels or whose short side is under `600` pixels is marked `too_small` (the same helper is used by `reference:board --pick`). It is not sent to a reader and is listed by its original file name and pixel size in `final/report.md` so a person can supply the full-size photo. Pass `--allow-small` to read it anyway.
 
 ## Reader Isolation Rule
 
@@ -106,7 +106,8 @@ Nothing else named `*.json` is written in `final/` besides the page records, `st
 ## Page Statuses
 
 - **`machine_read`**: Only one valid reading exists, both readers used the same model family, the two readings came from different photo digests, or there is at least one open difference, `one_unclear` field, `both_unclear` field, once-read teaching field, or empty answer place.
-- **`double_read`**: Two valid readings from two different model families read the exact same prepared photo digest (`photo_sha256`) and agree with no open differences, no `one_unclear` or `both_unclear` fields, no once-read teaching fields, and no empty answer places.
+- **`double_read`**: Two valid readings from two different model families read the exact same prepared photo digest (`photo_sha256`) and agree with no open differences, no `one_unclear` or `both_unclear` fields, no once-read teaching fields, and no empty answer places. Differences in the reader's own wording (`wording`) do not block `double_read`: reader A's words are kept and both values are listed in the report.
+- **Step alignment and wording differences**: Worked-example steps are aligned by longest common subsequence of equal normalized printed text before field comparison, with remaining steps between anchors paired in order and leftovers reported as `once_read`. Reader B's mark `step` numbers are mapped through the alignment to reader A's numbering before marks are compared. Fields that hold words chosen by the reader (mark `description` when `kind` is not `label`, scaffold `description` for `helper_digit`/`partial_working`/`worked_item`/`other`, step `shows_other`, arrow `from`/`to`, caption `target`, `table_read_aloud.caption_style`, `notation.figure`, and `answer_boxes.places` entries when neither side is a known decimal place) produce `wording` differences when both sides have concrete values that differ. Printed-text fields stay blocking; one-sided fields stay `once_read`; a value against `"unclear"` stays `one_unclear`.
 - An **empty answer place** (`empty_answer`) is an answer place (not `work_area` or `checkbox`) of a question item (`expr` not null) in the final record that holds no answer and no `"unclear"` marker after computed answers are applied (the same rule as `reference:check`). For a record that a person edited or checked, the kept record on disk is used. A higher decimal place that the computed value does not reach is not an empty answer place.
 - **`human_checked`**: Set only by `reference:check` after a person reviews and validates a specific page. Preserved across future `reference:compare` runs.
 
@@ -122,14 +123,14 @@ The compare step uses every valid reading in `reader-a/` and `reader-b/`, not on
 
 ## What the Report Shows and Next Steps
 
-`final/report.md` starts with a summary table showing every page, its original photo name, status, difference count, once-read count, both-unclear count, empty-answer count, and whether a person must read prose. It then lists:
+`final/report.md` starts with a summary table showing every page, its original photo name, status, difference count, wording count, once-read count, both-unclear count, empty-answer count, and whether a person must read prose. It then lists:
 
-- **Too small to read**: original file names and pixel sizes below 1600 px on the long side.
+- **Too small to read**: original file names and pixel sizes below 1600 px on the long side or 600 px on the short side.
 - **Could not be read**: unreadable images and photos where neither reader produced a valid record, with reasons.
 - **Duplicate photos**, **Removed photos**, and **Same page id for two photos**: see "Running Again" and "Same Page Id for Two Photos".
 - **Unnamed teaching marks**: every `other` example step, example mark, and practice scaffold with its description, so a person sees what the fixed lists did not name.
 - **Kept: checked by a person** and **Removed stale pages**: existing `human_checked` records kept on re-compare and stale non-checked pages cleaned up.
-- **Per-page details**: differences, once-read teaching fields (including steps, marks, and scaffolds), both-unclear fields, empty answer places (with both readers' answers), reader answer notes, and `A person must read the prose on this page` whenever a page has an example, example step, word problem, scaffold caption, or figure.
+- **Per-page details**: differences, wording differences (where both readers describe the same thing in other words; reader A's words are kept; no action needed), once-read teaching fields (including steps, marks, and scaffolds), both-unclear fields, empty answer places (with both readers' answers), reader answer notes, and `A person must read the prose on this page` whenever a page has an example, example step, word problem, scaffold caption, or figure.
 - **Once-read entries**: each one gives the reader that has it, the JSON path where it belongs in the final record (`final_path` in `report.json`; a path that ends in `[]` means the end of that list), and the full JSON of the entry. After a look at the photo, a person copies an entry that is on the page into the final record. When the final record is one that a person edited or checked, `final_path` is given only when the entry is in that record with equal content, inside the same section or example; otherwise the person finds the place.
 - **Both-unclear fields**: a person looks at the photo and writes the value, or keeps `"unclear"` and marks the page checked.
 
