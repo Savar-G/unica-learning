@@ -1,3 +1,4 @@
+// CI probe, not for merge.
 // Fingerprints and numbers from a seed. No state and no random source: the same text always gives the same result.
 import { createHash } from "node:crypto";
 
