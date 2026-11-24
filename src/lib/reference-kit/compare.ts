@@ -282,10 +282,16 @@ export function locateOnceReadInKeptRecord(
   return onceRead.map((d) => {
     const next: RecordDifference = { path: d.path, a: d.a, b: d.b, kind: d.kind };
     if (d.reader) next.reader = d.reader;
-    if (!kept || !d.reader) return next;
+    if (!kept || !d.reader) {
+      if (d.missing_step) next.missing_step = true;
+      return next;
+    }
     const entry = d.reader === "a" ? d.a : d.b;
     const parent = onceReadParent(kept, d.path);
-    if (!parent) return next;
+    if (!parent) {
+      if (d.missing_step) next.missing_step = true;
+      return next;
+    }
     const at = resolveDiffPath(kept, d.path);
     if (at.value !== undefined && deepEqual(at.value, entry)) {
       next.final_path = at.jsonPath;
@@ -293,6 +299,7 @@ export function locateOnceReadInKeptRecord(
       const found = findEqualNode(parent.node, entry, parent.path);
       if (found !== null) next.final_path = found;
     }
+    if (d.missing_step && next.final_path === undefined) next.missing_step = true;
     return next;
   });
 }

@@ -301,6 +301,9 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
       );
       for (const d of p.once_read) {
         const entry = d.reader === "a" ? d.a : d.b;
+        const missingStepNote = d.missing_step
+          ? "; its step is missing from reader A's record and must be added first"
+          : "";
         if (d.reader && d.final_path !== undefined) {
           const where = keptRecord
             ? "found in the kept final record at"
@@ -310,11 +313,11 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
                 ? "insert before"
                 : "belongs in the final record at";
           lines.push(
-            `  - \`${d.path}\`: only reader ${d.reader} has it; ${where} \`${d.final_path}\`: ${formatVal(entry)}`,
+            `  - \`${d.path}\`: only reader ${d.reader} has it; ${where} \`${d.final_path}\`${keptRecord ? "" : missingStepNote}: ${formatVal(entry)}`,
           );
         } else if (d.reader && keptRecord) {
           lines.push(
-            `  - \`${d.path}\`: only reader ${d.reader} has it; a person changed the final record, so find the place in that record: ${formatVal(entry)}`,
+            `  - \`${d.path}\`: only reader ${d.reader} has it; a person changed the final record, so find the place in that record${missingStepNote}: ${formatVal(entry)}`,
           );
         } else {
           lines.push(`  - \`${d.path}\`: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);

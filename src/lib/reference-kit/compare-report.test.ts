@@ -66,6 +66,15 @@ describe("formatCompareReportMarkdown", () => {
               insert_before: 1,
               final_path: "examples[0].steps[1]",
             },
+            {
+              path: "examples[0].marks[b:0]",
+              a: null,
+              b: { kind: "box", step: 2, description: "Box around sum" },
+              kind: "once_read",
+              reader: "b",
+              final_path: "examples[0].marks[]",
+              missing_step: true,
+            },
           ],
           both_unclear: [{ path: "topic.number", a: "unclear", b: "unclear", kind: "both_unclear" }],
           one_unclear: [],
@@ -122,7 +131,7 @@ describe("formatCompareReportMarkdown", () => {
       "| Page | Photo | Status | Differences | Wording | Once-read | Both unclear | Empty answers | Person read |",
     );
     expect(md).toContain("| sample:M:3a | IMG_0001.jpg | double_read | 0 | 0 | 0 | 0 | 0 | no |");
-    expect(md).toContain("| sample:M:4a | IMG_0002.jpg | machine_read | 1 | 1 | 4 | 1 | 1 | yes |");
+    expect(md).toContain("| sample:M:4a | IMG_0002.jpg | machine_read | 1 | 1 | 5 | 1 | 1 | yes |");
     expect(md).toContain(
       "- Wording differences: the readers describe the same thing in other words; reader A's words are kept; no action needed",
     );
@@ -133,6 +142,9 @@ describe("formatCompareReportMarkdown", () => {
     );
     expect(md).toContain(
       '`examples[0].steps[b:1]`: only reader b has it; insert before `examples[0].steps[1]`: {"n":2,"shows":"partial_sum","printed":"= 5/6"}',
+    );
+    expect(md).toContain(
+      '`examples[0].marks[b:0]`: only reader b has it; belongs in the final record at `examples[0].marks[]`; its step is missing from reader A\'s record and must be added first: {"kind":"box","step":2,"description":"Box around sum"}',
     );
     expect(md).toContain('keep "unclear" and mark the page checked');
     expect(md).toContain('`sections[0].items[n=2].responses[0]`: a=null | b="9"');

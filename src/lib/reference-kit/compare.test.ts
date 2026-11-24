@@ -1148,6 +1148,7 @@ describe("worked-example step alignment and wording differences", () => {
         kind: "once_read",
         reader: "b",
         final_path: "examples[0].marks[]",
+        missing_step: true,
       },
     ]);
 
@@ -1448,6 +1449,8 @@ describe("worked-example step alignment and wording differences", () => {
       ["Shows 2^3", "Shows 2 + 3"],
       ["Shows \u221A9", "Shows 9"],
       ["Shows 2 + 3 - 1", "Shows 2 - 3 + 1"],
+      ["Point at (-2, 3)", "Point at (2, -3)"],
+      ["Number line from -4 to 6", "Number line from 4 to -6"],
     ];
     for (const [descA, descB] of blockSymbolPairs) {
       const sa = makePage();
@@ -1465,6 +1468,7 @@ describe("worked-example step alignment and wording differences", () => {
       ["Box checks a <= b", "Frame tests a \u2264 b"],
       ["Box checks a >= b", "Frame tests a \u2265 b"],
       ["Letter x beside 2 + 3", "Variable x next to 2 + 3"],
+      ["Point at (-2, 3)", "Dot placed at (\u22122, 3)"],
     ];
     for (const [descA, descB] of wordingSymbolPairs) {
       const sa = makePage();
@@ -1580,8 +1584,72 @@ describe("worked-example step alignment and wording differences", () => {
         kind: "once_read",
         reader: "b",
         final_path: "examples[0].marks[]",
+        missing_step: true,
       },
     ]);
+
+    // B-only mark on a shifted step carries reader A's mapped step number in the reported entry
+    const shiftedA = pageWithExample(
+      [
+        { n: 1, shows: "other", shows_other: "Given line", printed: "2x + 1 = 7" },
+        { n: 2, shows: "setup", printed: "2x = 6" },
+        { n: 3, shows: "answer", printed: "x = 3" },
+      ],
+      [],
+    );
+    const shiftedB = pageWithExample(
+      [
+        { n: 1, shows: "setup", printed: "2x = 6" },
+        { n: 2, shows: "answer", printed: "x = 3" },
+      ],
+      [{ kind: "box", step: 2, description: "Box around x = 3" }],
+    );
+    const shiftedSummary = classifyComparison(shiftedA, shiftedB);
+    expect(shiftedSummary.differences).toEqual([]);
+    expect(shiftedSummary.once_read).toEqual([
+      {
+        path: "examples[0].steps[n=1]",
+        a: { n: 1, shows: "other", shows_other: "Given line", printed: "2x + 1 = 7" },
+        b: null,
+        kind: "once_read",
+        reader: "a",
+        final_path: "examples[0].steps[0]",
+      },
+      {
+        path: "examples[0].marks[b:0]",
+        a: null,
+        b: { kind: "box", step: 3, description: "Box around x = 3" },
+        kind: "once_read",
+        reader: "b",
+        final_path: "examples[0].marks[]",
+      },
+    ]);
+
+    // Kept-record lookup preserves missing_step only when the mark is not yet in the kept record
+    const keptWithMark = structuredClone(midA);
+    expect(locateOnceReadInKeptRecord(midSummary.once_read, keptWithMark)[2]).toEqual({
+      path: "examples[0].marks[b:0]",
+      a: null,
+      b: { kind: "circle", step: 2, description: "Circle the result" },
+      kind: "once_read",
+      reader: "b",
+      final_path: "examples[0].marks[0]",
+    });
+    const keptOtherMark = pageWithExample(
+      [
+        { n: 1, shows: "setup", printed: "2 + 3" },
+        { n: 2, shows: "answer", printed: "5" },
+      ],
+      [{ kind: "underline", step: 2, description: "Underline the result" }],
+    );
+    expect(locateOnceReadInKeptRecord(midSummary.once_read, keptOtherMark)[2]).toEqual({
+      path: "examples[0].marks[b:0]",
+      a: null,
+      b: { kind: "circle", step: 2, description: "Circle the result" },
+      kind: "once_read",
+      reader: "b",
+      missing_step: true,
+    });
 
     // Anchors with repeated printed text prefer the pairing where `shows` agrees too
     const repA = pageWithExample([

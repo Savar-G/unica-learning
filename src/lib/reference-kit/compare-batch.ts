@@ -171,6 +171,19 @@ function withBothReaders(chosen: ReferenceRecord, pair: PairedPage): ReferenceRe
   return readers.length > 0 ? { ...chosen, readers } : chosen;
 }
 
+function mergeNotes(existing: readonly string[], added: readonly string[]): string[] {
+  if (added.length === 0) return [...existing];
+  const seen = new Set(existing);
+  const out = [...existing];
+  for (const note of added) {
+    if (!seen.has(note)) {
+      seen.add(note);
+      out.push(note);
+    }
+  }
+  return out;
+}
+
 export function compareWorkFolder(opts: {
   workDir: string;
   repoRoot: string;
@@ -304,7 +317,12 @@ export function compareWorkFolder(opts: {
       continue;
     }
 
-    const finalRecord = applyComputedAnswers(withBothReaders(chosen, pair)).record;
+    const { record: finalRecord, notes: computedNotes } = applyComputedAnswers(
+      withBothReaders(chosen, pair),
+    );
+    const readerNotes = pair.recA
+      ? { a: mergeNotes(pair.notesA, computedNotes), b: pair.notesB }
+      : { a: pair.notesA, b: mergeNotes(pair.notesB, computedNotes) };
     const finalEmptyAnswers = emptyAnswerDiffs(finalRecord, pair.recA, pair.recB);
     const status = decideStatus({
       hasA: pair.recA !== null,
@@ -361,7 +379,7 @@ export function compareWorkFolder(opts: {
         : finalEmptyAnswers,
       needs_person_read: classified.needs_person_read,
       unnamed_teaching_marks: unnamedTeachingMarks,
-      reader_notes: { a: pair.notesA, b: pair.notesB },
+      reader_notes: readerNotes,
     });
   }
 

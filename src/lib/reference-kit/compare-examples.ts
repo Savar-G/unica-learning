@@ -287,9 +287,15 @@ function compareExampleMarks(
     }
   });
 
-  bOrig.forEach((mB, idxB) => {
+  bList.forEach((mB, idxB) => {
     if (!usedB.has(idxB)) {
-      diffs.push({ path: `${path}[b:${idxB}]`, a: null, b: mB, kind: "once_read" });
+      diffs.push({
+        path: `${path}[b:${idxB}]`,
+        a: null,
+        b: mB,
+        kind: "once_read",
+        ...(unmatchedBMarks.has(idxB) ? { missing_step: true } : {}),
+      });
     }
   });
 }

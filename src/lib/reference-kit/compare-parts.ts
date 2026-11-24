@@ -30,33 +30,28 @@ export interface RecordDifference {
   // once_read only: the reader that has the entry, and the JSON path of the entry in the final
   // record. A path that ends in "[]" means: add the entry at the end of that list. When
   // insert_before is set, final_path names the element before which to insert the entry.
+  // missing_step is set on a reader-b mark whose step has no partner in reader a's record.
   reader?: "a" | "b";
   final_path?: string;
   insert_before?: number;
+  missing_step?: boolean;
 }
 
 export type FieldCompareMode = "exact" | "prose" | "notation";
 
-const NUMERIC_TOKEN_RE = /\d+(?:\.\d+)?/g;
-const MATH_SYMBOL_RE = /<=|>=|[+\-\u2212\u00D7\u00F7/=<>\u2264\u2265\u2260%^\u221A]/g;
+const MATH_TOKEN_RE = /\d+(?:\.\d+)?|<=|>=|[+\-\u2212\u00D7\u00F7/=<>\u2264\u2265\u2260%^\u221A]/g;
 
-function sameNumericTokens(a: string, b: string): boolean {
-  const numsA = a.match(NUMERIC_TOKEN_RE) ?? [];
-  const numsB = b.match(NUMERIC_TOKEN_RE) ?? [];
-  return numsA.length === numsB.length && numsA.every((n, idx) => n === numsB[idx]);
+function canonicalMathToken(token: string): string {
+  if (token === "\u2212") return "-";
+  if (token === "<=") return "\u2264";
+  if (token === ">=") return "\u2265";
+  return token;
 }
 
-function canonicalMathSymbol(sym: string): string {
-  if (sym === "\u2212") return "-";
-  if (sym === "<=") return "\u2264";
-  if (sym === ">=") return "\u2265";
-  return sym;
-}
-
-function sameMathSymbols(a: string, b: string): boolean {
-  const symsA = (a.match(MATH_SYMBOL_RE) ?? []).map(canonicalMathSymbol);
-  const symsB = (b.match(MATH_SYMBOL_RE) ?? []).map(canonicalMathSymbol);
-  return symsA.length === symsB.length && symsA.every((s, idx) => s === symsB[idx]);
+function sameMathTokens(a: string, b: string): boolean {
+  const tokensA = (a.match(MATH_TOKEN_RE) ?? []).map(canonicalMathToken);
+  const tokensB = (b.match(MATH_TOKEN_RE) ?? []).map(canonicalMathToken);
+  return tokensA.length === tokensB.length && tokensA.every((t, idx) => t === tokensB[idx]);
 }
 
 function isEmptyField(value: unknown): boolean {
@@ -147,9 +142,7 @@ export function compareField(
           : b.trim();
     if (normA !== normB) {
       const kind: DiffKind =
-        opts.wording && sameNumericTokens(normA, normB) && sameMathSymbols(normA, normB)
-          ? "wording"
-          : "value";
+        opts.wording && sameMathTokens(normA, normB) ? "wording" : "value";
       diffs.push({ path, a, b, kind });
     }
     return;
