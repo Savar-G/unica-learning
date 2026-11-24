@@ -1,137 +1,110 @@
-// Every shape in shapes/index.ts registers its independent property-test spec here.
-// Adding a new shape means: one shape file, one line in shapes/index.ts, and one registration here.
-import fc from "fast-check";
-import type { MulColumnLimits, MulColumnQuestion } from "../shapes/mul-column";
-import type { ShapeHarnessSpec } from "./shape-harness";
+// The registration of every shape in shapes/index.ts (docs/workbook-v2-engine.md, "Adding a shape").
+import { neverLimit, rangeLimit, type Limits, type Printed, type Rows, type ShapeRegistration } from "./shape-registration";
 
-// Independent facts about a mul.column question, read from its printed digits (shares no code with mul-column.ts).
-function mulFacts({ a, b }: MulColumnQuestion) {
-  let product = 0;
-  for (let i = 0; i < b; i++) product += a;
-  const ones = String(a).at(-1)!;
-  const onesProduct = String(Number(ones) * b);
-  return { product, carries: onesProduct.length - 1, zeroInTens: String(product).at(-2) === "0" };
+const times = (n: number, b: number) => Array.from({ length: b }, () => n).reduce((sum, x) => sum + x, 0);
+
+/** Reads the two rows of a column multiplication. It adds and looks at digits; the shape multiplies. */
+function readMulColumn(rows: Rows): Printed | null {
+  const [, tens, ones, b] = (rows.length === 2 && /^([1-9])([0-9])\n×([2-9])$/.exec(rows.join("\n")) || []).map(Number);
+  if (b === undefined) return null;
+  const [carry, written] = [...String(times(ones, b)).padStart(2, "0")].map(Number);
+  const product = times(Number(rows[0]), b);
+  const hasCarry = carry !== 0;
+  return {
+    answer: { kind: "whole-number", value: String(product) },
+    features: { a: Number(rows[0]), b, carries: hasCarry ? 1 : 0, product, zeroInTens: String(product).at(-2) === "0" },
+    widths: { product },
+    steps: [
+      `${b} × ${ones} = ${times(ones, b)}, write ${written}${hasCarry ? `, carry ${carry}` : ""}`,
+      `${b} × ${tens} = ${times(tens, b)}${hasCarry ? `, plus ${carry} is ${times(tens, b) + carry}` : ""}`,
+      `${times(tens, b) + carry}${written}`,
+    ],
+  };
 }
 
-function mulObeys(q: MulColumnQuestion, l: MulColumnLimits): boolean {
-  const f = mulFacts(q);
-  return q.a >= l.a.min && q.a <= l.a.max && q.b >= l.b.min && q.b <= l.b.max
-    && f.carries >= l.carries.min && f.carries <= l.carries.max
-    && f.product >= l.product.min && f.product <= l.product.max
-    && (l.zeroInTens === "allowed" || !f.zeroInTens);
-}
+const r = (min: number, max: number) => ({ min, max });
+const WIDE: Limits = { a: r(10, 99), b: r(2, 9), carries: r(0, 1), product: r(10, 999), zeroInTens: "allowed" };
+const ONE_CARRY: Limits = { a: r(13, 39), b: r(2, 3), carries: r(1, 1), product: r(10, 99), zeroInTens: "never" };
+const SIX: Limits = { ...WIDE, a: r(11, 13), b: r(2, 3), carries: r(0, 0) };
+const ONE: Limits = { ...WIDE, a: r(14, 14), b: r(2, 2) };
+/** The questions with one multiplier, by their top numbers. */
+const by = (b: number, tops: string): Rows[] => tops.split(" ").map((top) => [top, `×${b}`]);
+const q = (text: string): Rows => text.split(" ");
 
-function mulEvery(l: MulColumnLimits): MulColumnQuestion[] {
-  const out: MulColumnQuestion[] = [];
-  for (let a = 10; a <= 99; a++) for (let b = 2; b <= 9; b++) if (mulObeys({ a, b }, l)) out.push({ a, b });
-  return out;
-}
-
-const range = (min: number, max: number) =>
-  fc.tuple(fc.integer({ min, max }), fc.integer({ min, max })).map(([x, y]) => ({ min: Math.min(x, y), max: Math.max(x, y) }));
-
-const anyMulLimits: fc.Arbitrary<MulColumnLimits> = fc.record({
-  a: range(10, 99),
-  b: range(2, 9),
-  carries: range(0, 1),
-  product: range(10, 999),
-  zeroInTens: fc.constantFrom("never" as const, "allowed" as const),
-});
-
-const ONE_CARRY: MulColumnLimits = {
-  a: { min: 13, max: 39 }, b: { min: 2, max: 3 }, carries: { min: 1, max: 1 }, product: { min: 10, max: 99 }, zeroInTens: "never",
-};
-const WIDE: MulColumnLimits = {
-  a: { min: 10, max: 99 }, b: { min: 2, max: 9 }, carries: { min: 0, max: 1 }, product: { min: 10, max: 999 }, zeroInTens: "allowed",
-};
-const SIX_NO_CARRY: MulColumnLimits = {
-  ...WIDE, a: { min: 11, max: 13 }, b: { min: 2, max: 3 }, carries: { min: 0, max: 0 },
-};
-
-const mulColumnSpec: ShapeHarnessSpec<MulColumnLimits, MulColumnQuestion> = {
+const mulColumn: ShapeRegistration = {
   id: "mul.column",
-  arbitraryLimits: anyMulLimits.filter((l) => mulEvery(l).length > 0),
-  anyLimits: anyMulLimits,
-  widenLimits: (one, other) => ({
-    a: { min: Math.min(one.a.min, other.a.min), max: Math.max(one.a.max, other.a.max) },
-    b: { min: Math.min(one.b.min, other.b.min), max: Math.max(one.b.max, other.b.max) },
-    carries: { min: Math.min(one.carries.min, other.carries.min), max: Math.max(one.carries.max, other.carries.max) },
-    product: { min: Math.min(one.product.min, other.product.min), max: Math.max(one.product.max, other.product.max) },
-    zeroInTens: one.zeroInTens === "allowed" || other.zeroInTens === "allowed" ? "allowed" : "never",
-  }),
-  isInside: mulObeys,
-  enumerate: mulEvery,
+  limits: { a: rangeLimit(10, 99), b: rangeLimit(2, 9), carries: rangeLimit(0, 1), product: rangeLimit(10, 999), zeroInTens: neverLimit() },
+  read: readMulColumn,
+  space: Array.from({ length: 720 }, (_, i) => [String(10 + Math.floor(i / 8)), `×${2 + (i % 8)}`]),
+  cases: [
+    { name: "every question", limits: WIDE },
+    { name: "no carry", limits: { a: r(11, 43), b: r(2, 4), carries: r(0, 0), product: r(10, 99), zeroInTens: "never" } },
+    { name: "one carry", limits: { a: r(12, 49), b: r(2, 4), carries: r(1, 1), product: r(10, 99), zeroInTens: "never" } },
+    { name: "one carry with a larger multiplier", limits: { a: r(12, 49), b: r(2, 8), carries: r(1, 1), product: r(10, 99), zeroInTens: "never" } },
+    { name: "no zero in the tens", limits: { ...WIDE, zeroInTens: "never" } },
+    { name: "past one hundred", limits: { a: r(21, 98), b: r(3, 9), carries: r(0, 1), product: r(100, 999), zeroInTens: "allowed" } },
+  ],
   smallSpaces: [
-    { name: "six no-carry products", limits: SIX_NO_CARRY, expectedCount: 6 },
-    { name: "one carry under 100", limits: ONE_CARRY, expectedCount: 27 },
+    { name: "one question", limits: ONE, questions: [q("14 ×2")] },
+    { name: "six questions with no carry", limits: SIX, questions: [...by(2, "11 12 13"), ...by(3, "11 12 13")] },
+    {
+      name: "one carry under 100", limits: ONE_CARRY,
+      questions: [...by(2, "15 16 17 18 19 25 26 27 28 29 35 36 37 38 39"), ...by(3, "14 15 16 17 18 19 24 25 26 27 28 29")],
+    },
   ],
-  widthMeasures: [
-    { name: "top digits", measure: (q) => String(q.a).length },
-    { name: "bottom digits", measure: (q) => String(q.b).length },
-    { name: "product digits", measure: (q) => String(mulFacts(q).product).length },
-    { name: "product value", measure: (q) => mulFacts(q).product },
+  witnesses: [
+    { limit: "a", limits: SIX, inside: q("13 ×2"), outside: q("14 ×2") },
+    { limit: "a", limits: SIX, inside: q("11 ×2"), outside: q("10 ×2") },
+    { limit: "b", limits: SIX, inside: q("11 ×3"), outside: q("11 ×4") },
+    { limit: "b", limits: { ...WIDE, b: r(3, 9) }, inside: q("11 ×3"), outside: q("11 ×2") },
+    { limit: "carries", limits: { ...WIDE, carries: r(0, 0) }, inside: q("32 ×3"), outside: q("24 ×3") },
+    { limit: "carries", limits: { ...WIDE, carries: r(1, 1) }, inside: q("24 ×3"), outside: q("32 ×3") },
+    { limit: "product", limits: { ...WIDE, product: r(10, 99) }, inside: q("33 ×3"), outside: q("34 ×3") },
+    { limit: "product", limits: { ...WIDE, product: r(100, 999) }, inside: q("50 ×2"), outside: q("33 ×3") },
+    { limit: "zeroInTens", limits: { ...WIDE, zeroInTens: "never" }, inside: q("28 ×4"), outside: q("26 ×4") },
   ],
-  easierHarderPairs: [
-    { name: "a carry", easier: { a: 23, b: 3 }, harder: { a: 24, b: 3 } },
-    { name: "a product of 100 or more", easier: { a: 24, b: 4 }, harder: { a: 31, b: 4 } },
-    { name: "a carry past 100", easier: { a: 31, b: 4 }, harder: { a: 38, b: 4 } },
-    { name: "a zero in the tens of the product", easier: { a: 28, b: 4 }, harder: { a: 26, b: 4 } },
-    { name: "a larger multiplier", easier: { a: 11, b: 2 }, harder: { a: 11, b: 3 } },
-    { name: "a larger multiplier in the place of a larger number on top", easier: { a: 44, b: 2 }, harder: { a: 11, b: 4 } },
-    { name: "a carry more than with a larger multiplier", easier: { a: 11, b: 9 }, harder: { a: 15, b: 2 } },
-    { name: "a product past 100 more than with a carry", easier: { a: 12, b: 8 }, harder: { a: 51, b: 2 } },
-    { name: "a carry past 100 more than with a zero in the tens", easier: { a: 51, b: 2 }, harder: { a: 58, b: 2 } },
-    { name: "a zero in the tens more than with a larger multiplier", easier: { a: 81, b: 9 }, harder: { a: 34, b: 3 } },
+  harder: [
+    { name: "a carry", easier: q("23 ×3"), harder: q("24 ×3") },
+    { name: "a product of 100 or more", easier: q("24 ×4"), harder: q("31 ×4") },
+    { name: "a carry past 100", easier: q("31 ×4"), harder: q("38 ×4") },
+    { name: "a zero in the tens of the product", easier: q("28 ×4"), harder: q("26 ×4") },
+    { name: "a larger multiplier", easier: q("11 ×2"), harder: q("11 ×3") },
+    { name: "a larger multiplier in the place of a larger number on top", easier: q("44 ×2"), harder: q("11 ×4") },
+    { name: "a carry more than with a larger multiplier", easier: q("11 ×9"), harder: q("15 ×2") },
+    { name: "a product past 100 more than with a carry", easier: q("12 ×8"), harder: q("51 ×2") },
+    { name: "a carry past 100 more than with a zero in the tens", easier: q("51 ×2"), harder: q("58 ×2") },
+    { name: "a zero in the tens more than with a larger multiplier", easier: q("81 ×9"), harder: q("34 ×3") },
   ],
-  workedExamples: [
-    { name: "a carry", question: { a: 24, b: 3 }, answer: { kind: "whole-number", value: "72" }, steps: ["3 × 4 = 12, write 2, carry 1", "3 × 2 = 6, plus 1 is 7", "72"] },
-    { name: "no carry", question: { a: 32, b: 3 }, answer: { kind: "whole-number", value: "96" }, steps: ["3 × 2 = 6, write 6", "3 × 3 = 9", "96"] },
-    { name: "the smallest question", question: { a: 10, b: 2 }, answer: { kind: "whole-number", value: "20" }, steps: ["2 × 0 = 0, write 0", "2 × 1 = 2", "20"] },
-    { name: "a zero in the ones", question: { a: 40, b: 7 }, answer: { kind: "whole-number", value: "280" }, steps: ["7 × 0 = 0, write 0", "7 × 4 = 28", "280"] },
-    { name: "a carry of 2", question: { a: 47, b: 4 }, answer: { kind: "whole-number", value: "188" }, steps: ["4 × 7 = 28, write 8, carry 2", "4 × 4 = 16, plus 2 is 18", "188"] },
-    { name: "a carry that makes a zero", question: { a: 26, b: 4 }, answer: { kind: "whole-number", value: "104" }, steps: ["4 × 6 = 24, write 4, carry 2", "4 × 2 = 8, plus 2 is 10", "104"] },
-    { name: "ones that make 10", question: { a: 25, b: 2 }, answer: { kind: "whole-number", value: "50" }, steps: ["2 × 5 = 10, write 0, carry 1", "2 × 2 = 4, plus 1 is 5", "50"] },
-    { name: "the largest question", question: { a: 99, b: 9 }, answer: { kind: "whole-number", value: "891" }, steps: ["9 × 9 = 81, write 1, carry 8", "9 × 9 = 81, plus 8 is 89", "891"] },
-  ],
+  examples: ([
+    ["a carry", "24 ×3", ["3 × 4 = 12, write 2, carry 1", "3 × 2 = 6, plus 1 is 7", "72"]],
+    ["no carry", "32 ×3", ["3 × 2 = 6, write 6", "3 × 3 = 9", "96"]],
+    ["the smallest question", "10 ×2", ["2 × 0 = 0, write 0", "2 × 1 = 2", "20"]],
+    ["a zero in the ones", "40 ×7", ["7 × 0 = 0, write 0", "7 × 4 = 28", "280"]],
+    ["a carry of 2", "47 ×4", ["4 × 7 = 28, write 8, carry 2", "4 × 4 = 16, plus 2 is 18", "188"]],
+    ["a carry that makes a zero", "26 ×4", ["4 × 6 = 24, write 4, carry 2", "4 × 2 = 8, plus 2 is 10", "104"]],
+    ["ones that make 10", "25 ×2", ["2 × 5 = 10, write 0, carry 1", "2 × 2 = 4, plus 1 is 5", "50"]],
+    ["the largest question", "99 ×9", ["9 × 9 = 81, write 1, carry 8", "9 × 9 = 81, plus 8 is 89", "891"]],
+  ] as const).map(([name, rows, steps]) => ({ name, rows: q(rows), answer: { kind: "whole-number", value: steps[2] }, steps })),
   refusedLimits: [
     { name: "not an object", raw: "wide", problem: "the limits must be an object" },
     { name: "a missing limit", raw: { ...ONE_CARRY, product: undefined }, problem: "product must have min and max" },
     { name: "a wrong type", raw: { ...ONE_CARRY, a: { min: "13", max: 39 } }, problem: "a.min must be a whole number" },
-    { name: "a fraction", raw: { ...ONE_CARRY, a: { min: 13.5, max: 39 } }, problem: "a.min must be a whole number" },
-    { name: "a turned range", raw: { ...ONE_CARRY, a: { min: 39, max: 13 } }, problem: "a.min is more than a.max" },
-    { name: "a number with 3 digits", raw: { ...ONE_CARRY, a: { min: 13, max: 139 } }, problem: "a must be from 10 to 99" },
-    { name: "a multiplier with 2 digits", raw: { ...ONE_CARRY, b: { min: 2, max: 10 } }, problem: "b must be from 2 to 9" },
-    { name: "two carries", raw: { ...ONE_CARRY, carries: { min: 0, max: 2 } }, problem: "carries must be from 0 to 1" },
-    { name: "a product that is too large", raw: { ...ONE_CARRY, product: { min: 10, max: 1000 } }, problem: "product must be from 10 to 999" },
+    { name: "a fraction", raw: { ...ONE_CARRY, a: r(13.5, 39) }, problem: "a.min must be a whole number" },
+    { name: "a turned range", raw: { ...ONE_CARRY, a: r(39, 13) }, problem: "a.min is more than a.max" },
+    { name: "a number with 3 digits", raw: { ...ONE_CARRY, a: r(13, 139) }, problem: "a must be from 10 to 99" },
+    { name: "a multiplier with 2 digits", raw: { ...ONE_CARRY, b: r(2, 10) }, problem: "b must be from 2 to 9" },
+    { name: "two carries", raw: { ...ONE_CARRY, carries: r(0, 2) }, problem: "carries must be from 0 to 1" },
+    { name: "a product that is too large", raw: { ...ONE_CARRY, product: r(10, 1000) }, problem: "product must be from 10 to 999" },
     { name: "an unknown word", raw: { ...ONE_CARRY, zeroInTens: "sometimes" }, problem: 'zeroInTens must be "never" or "allowed"' },
-    { name: "an unknown limit", raw: { ...ONE_CARRY, carrys: { min: 0, max: 0 } }, problem: 'unknown limit "carrys"' },
-    { name: "limits that no question meets", raw: { ...ONE_CARRY, a: { min: 11, max: 12 } }, problem: "no question meets these limits" },
+    { name: "an unknown limit", raw: { ...ONE_CARRY, carrys: r(0, 0) }, problem: 'unknown limit "carrys"' },
+    { name: "limits that no question meets", raw: { ...ONE_CARRY, a: r(11, 12) }, problem: "no question meets these limits" },
   ],
-  refusedRows: [
-    { name: "nothing", rows: [] },
-    { name: "one row", rows: ["24"] },
-    { name: "three rows", rows: ["24", "×3", "72"] },
-    { name: "turned rows", rows: ["×3", "24"] },
-    { name: "another sign", rows: ["24", "+3"] },
-    { name: "no sign", rows: ["24", "3"] },
-    { name: "the sign after the number", rows: ["24", "3×"] },
-    { name: "the sign in the top row", rows: ["×24", "3"] },
-    { name: "one digit on top", rows: ["4", "×3"] },
-    { name: "three digits on top", rows: ["124", "×3"] },
-    { name: "a zero in front", rows: ["04", "×3"] },
-    { name: "two digits below", rows: ["24", "×13"] },
-    { name: "times 1", rows: ["24", "×1"] },
-    { name: "times 0", rows: ["24", "×0"] },
-    { name: "an empty row", rows: ["", "×3"] },
-    { name: "a space", rows: ["2 4", "×3"] },
-    { name: "a letter x", rows: ["24", "x3"] },
-    { name: "digits of another script", rows: ["٢٤", "×3"] },
-  ],
-  fingerprintLimits: [SIX_NO_CARRY, ONE_CARRY, WIDE],
-  fingerprintSeeds: [
-    "fp-seed-0", "fp-seed-1", "fp-seed-2", "fp-seed-3", "fp-seed-4",
-    "fp-seed-5", "fp-seed-6", "fp-seed-7", "fp-seed-8", "fp-seed-9",
-  ],
+  refusedRows: ([
+    ["nothing", []], ["one row", ["24"]], ["three rows", ["24", "×3", "72"]], ["turned rows", ["×3", "24"]], ["another sign", ["24", "+3"]], ["no sign", ["24", "3"]],
+    ["the sign after the number", ["24", "3×"]], ["the sign in the top row", ["×24", "3"]], ["one digit on top", ["4", "×3"]], ["three digits on top", ["124", "×3"]],
+    ["a zero in front", ["04", "×3"]], ["two digits below", ["24", "×13"]], ["times 1", ["24", "×1"]], ["times 0", ["24", "×0"]], ["an empty row", ["", "×3"]],
+    ["a space", ["2 4", "×3"]], ["a letter x", ["24", "x3"]], ["digits of another script", ["٢٤", "×3"]],
+  ] as const).map(([name, rows]) => ({ name, rows })),
 };
 
-export const SHAPE_SPECS: readonly ShapeHarnessSpec[] = [mulColumnSpec];
+export const SHAPE_REGISTRATIONS: readonly ShapeRegistration[] = [mulColumn];

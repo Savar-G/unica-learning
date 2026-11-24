@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { SHAPES } from "../shapes";
 import { readImage } from "../testing/images";
 import { fixture, skipTypstTests } from "../testing/typst";
 
@@ -27,7 +28,7 @@ const files = (out: string) => readdirSync(join(folder, out)).sort();
 const bytes = (out: string, file: string) => readFileSync(join(folder, out, file));
 const json = (out: string, file: string): unknown => JSON.parse(bytes(out, file).toString());
 
-describe("the command, before it builds", () => {
+describe.concurrent("the command, before it builds", () => {
   it.each<[string, string[], RegExp]>([
     ["no argument", [], /Usage: npm run workbook:v2 -- --snapshot FILE --book FILE --out FOLDER/],
     ["an unknown argument", ["--snapshots", "a", "--book", "b", "--out", "c"], /Usage/],
@@ -40,25 +41,25 @@ describe("the command, before it builds", () => {
   });
 });
 
-describe.skipIf(skipTypstTests())("the command, with the real Typst", () => {
+describe.skipIf(skipTypstTests()).concurrent("the command, with the real Typst", () => {
   it("writes the book, and a second fresh process on a computer with other settings writes the same bytes", async () => {
     const hash = expect.stringMatching(/^[0-9a-f]{64}$/) as unknown;
     const other = join(folder, "other-temporary-folder");
     mkdirSync(other);
-    const [one, two] = await Promise.all([build("one"), build("two", { TMPDIR: other, TZ: "Asia/Tokyo", LANG: "de_DE.UTF-8", TYPST_FONT_PATHS: "/System/Library/Fonts", TYPST_ROOT: "/nowhere", SOURCE_DATE_EPOCH: "1234567890" })]);
+    const [one, two] = await Promise.all([build("main/one"), build("main/two", { TMPDIR: other, TZ: "Asia/Tokyo", LANG: "de_DE.UTF-8", TYPST_FONT_PATHS: "/System/Library/Fonts", TYPST_ROOT: "/nowhere", SOURCE_DATE_EPOCH: "1234567890" })]);
     expect(one).toMatchObject({ code: 0, output: expect.stringMatching(/2 pages, 16 questions/) });
     expect(two.code).toBe(0);
-    expect(files("one")).toEqual(["answers.json", "book.pdf", "page-1.png", "page-2.png", "pages.json", "positions.json", "record.json"]);
-    expect(files("two")).toEqual(files("one"));
-    for (const file of files("one")) expect(Buffer.compare(bytes("one", file), bytes("two", file)), file).toBe(0);
-    expect(bytes("one", "book.pdf").subarray(0, 5).toString()).toBe("%PDF-");
-    expect((await readImage(bytes("one", "page-2.png"))).width).toBe(1275);
-    const answers = json("one", "answers.json") as { shapeVersion?: unknown }[];
+    expect(files("main/one")).toEqual(["answers.json", "book.pdf", "page-1.png", "page-2.png", "pages.json", "positions.json", "record.json"]);
+    expect(files("main/two")).toEqual(files("main/one"));
+    for (const file of files("main/one")) expect(Buffer.compare(bytes("main/one", file), bytes("main/two", file)), file).toBe(0);
+    expect(bytes("main/one", "book.pdf").subarray(0, 5).toString()).toBe("%PDF-");
+    expect((await readImage(bytes("main/one", "page-2.png"))).width).toBe(1275);
+    const answers = json("main/one", "answers.json") as { shape: string; shapeVersion?: unknown }[];
     expect(answers).toHaveLength(16);
-    expect(answers.every((item) => item.shapeVersion === 1)).toBe(true);
-    expect(json("one", "positions.json")).toEqual(expect.arrayContaining([{ id: "column-multiplication-1/1/front/answer-1", sheet: 1, rect: { x: 134, y: 178, w: 72, h: 42 } }]));
-    expect(json("one", "record.json")).toMatchObject({ bookId: "example-book", typst: "0.15.1", program: hash, template: hash, fonts: { "Geist-Regular.ttf": hash, "Geist-SemiBold.ttf": hash } });
-    expect(readdirSync(folder).filter((f) => f.startsWith("."))).toEqual([]);
+    expect(answers.every((item) => item.shapeVersion === SHAPES.get(item.shape)?.version)).toBe(true);
+    expect(json("main/one", "positions.json")).toEqual(expect.arrayContaining([{ id: "column-multiplication-1/1/front/answer-1", sheet: 1, rect: { x: 134, y: 178, w: 72, h: 42 } }]));
+    expect(json("main/one", "record.json")).toMatchObject({ bookId: "example-book", typst: "0.15.1", program: hash, template: hash, fonts: { "Geist-Regular.ttf": hash, "Geist-SemiBold.ttf": hash } });
+    expect(readdirSync(join(folder, "main")).sort()).toEqual(["one", "two"]);
   });
 
   it("writes nothing for a book that fails, and lists the problems", async () => {

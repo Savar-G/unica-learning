@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { SHAPES } from "@/lib/workbook-v2/shapes";
 import { addShapeFingerprints } from "@/lib/workbook-v2/testing/shape-fingerprints";
-import { SHAPE_SPECS } from "@/lib/workbook-v2/testing/shape-registrations";
+import { SHAPE_REGISTRATIONS } from "@/lib/workbook-v2/testing/shape-registrations";
 
 const DEFAULT_FILE = "src/lib/workbook-v2/testing/shape-fingerprints.json";
 const USAGE = "Usage: npm run workbook:v2:fingerprints [-- --file PATH]";
@@ -32,7 +32,7 @@ async function readExisting(file: string): Promise<unknown> {
 
 const file = readFileArg(process.argv.slice(2));
 const existing = await readExisting(file);
-const result = addShapeFingerprints(SHAPES, SHAPE_SPECS, existing);
+const result = addShapeFingerprints(SHAPES, SHAPE_REGISTRATIONS, existing);
 if (!result.ok) throw new Error(result.problems.join("\n"));
 if (result.added.length === 0) {
   console.log(`Fingerprints are up to date: ${file}`);

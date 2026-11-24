@@ -26,7 +26,7 @@ The snapshot file holds the content of one level. The book file holds the book i
 | Checks | before the drawing: `checkPrintedAnswers(pages, items, shapes)`, `checkPage(page, items)`; after it: `checkRendering(pages, drawn)`, `checkPositions(pages, positions)`, `checkTexts(pages, texts)`, `checkImages(pages, images)` | `checks/` |
 | Renderer | the interface to a typesetter (`render(pages)`) | `renderer.ts` |
 | Render | the only module that calls Typst; fonts, pins, install | `render/` |
-| Build | `buildBook(input, renderer)`: the book, or a list of problems | `build/` |
+| Build | `buildBook(input, renderer)`: the book, or a list of problems; `planBook(input)`: the same without the drawing | `build/` |
 
 ## Rules
 
@@ -42,15 +42,24 @@ The snapshot file holds the content of one level. The book file holds the book i
 
 ## Adding a shape
 
-1. Add one shape file in `src/lib/workbook-v2/shapes/` with a whole-number `version: 1`.
-2. Register the shape in `src/lib/workbook-v2/shapes/index.ts` (`SHAPES`).
-3. Add its independent registration in `src/lib/workbook-v2/testing/shape-registrations.ts` (`SHAPE_SPECS`): arbitrary limits, widen function, independent limit check, small spaces with known counts, width measures, easier/harder pairs, worked examples, refused limits, refused printed rows, and fixed fingerprint limits and seeds.
-4. Run `npm run workbook:v2:fingerprints` to record the new version in `src/lib/workbook-v2/testing/shape-fingerprints.json`. When a shape's output changes later, bump its `version` by 1 and run the same command (existing versions are never overwritten or removed).
-5. Run `npx vitest run src/lib/workbook-v2/shapes/shapes.test.ts`. A shape in `SHAPES` with no registration fails the suite.
+1. Add one shape file in `shapes/` with `version: 1`, and the shape in `shapes/index.ts` (`SHAPES`).
+2. Add its registration in `testing/shape-registrations.ts`. It shares no code with the shape and speaks of printed rows only (`testing/shape-registration.ts` has the interface; `testing/example-shapes.ts` has a listed space and a space that is too large to list):
+   - `limits`: one rule for each limit, as data (`rangeLimit`, `neverLimit`). The harness makes limits, wider limits and bad limits from the rules.
+   - `read(rows)`: the answer, one feature for each limit, the widths and, if possible, the worked steps, computed from the printed rows in another way than the shape.
+   - `space`: the list of every printed question, or the count and the ends for any limits.
+   - `cases` (the limits of each bank row must be one), `smallSpaces` with lists by hand, `witnesses` (for each limit a question inside and one that breaks only it), and the named lists.
+   - `stepForms`: a step that is more than "a + b = c" needs a form with a right and a wrong example, or a reader that says all steps.
+3. Run `npm run workbook:v2:fingerprints`, then `npx vitest run src/lib/workbook-v2/shapes`.
+
+`worstCase` is one question that is the widest in every width and in digit places. If the widths pull apart (99 - 4 leaves as much as 100 - 5 in fewer places), register the digit places as the width.
+
+The harness (`testing/shape-harness.ts`) takes 1,000 production seeds for each shape: `planBook` builds one book with both sides and all places of each template that fits, and each generated question is compared with the reader, the rules, the second solver, the steps and the ranges. Limits come from fast-check with a fixed seed, so a failure comes back in the next run, and its message holds the call that repeats it. `testing/shape-harness.test.ts` holds a broken shape for each check. An answer with parts needs a new kind in `ANSWER_KINDS` and `Answer` (`contract.ts`) and its rule in `ANSWER_FORMS`; the rest compares whole answers.
+
+**Fingerprints:** `testing/shape-fingerprints.json` holds one SHA-256 for each version of a shape: every question of a listed space, or 1,000 questions of a large one, with the registered limits. A change of the output needs a new `version`, then the command. A stored entry never changes: `scripts/shape-fingerprint-base.mjs` compares the file with the base of the branch, in the `scope` job of CI (the one job that always has the base) and in `npm run check:fast`.
 
 ## Tests
 
-`npx vitest run src/lib/workbook-v2` takes about 5 seconds and needs no browser, network or database. The tests that draw pages use the real Typst. In CI they fail when it is absent; on a laptop without it they are skipped and print the reason.
+`npx vitest run src/lib/workbook-v2` takes about 4 seconds and needs no browser, network or database. The tests that draw pages use the real Typst. In CI they fail when it is absent; on a laptop without it they are skipped and print the reason.
 
 ## Where the next parts connect
 

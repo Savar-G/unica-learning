@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PageModel } from "../contract";
 import rawBook from "../fixtures/book.json";
 import rawSnapshot from "../fixtures/snapshot.json";
+import { sha256 } from "../hash";
 import { openRenderer } from "../render/typst";
 import { RenderError, type Renderer, type Rendering } from "../renderer";
 import { SHAPES, shapeLibrary } from "../shapes";
@@ -51,15 +52,21 @@ async function built(i: Input, renderer: Renderer = fake()): Promise<BuiltBook> 
   return result;
 }
 
+/** The book of the plain input, built one time for all the tests that compare with it. */
+let plainBook: Promise<BuiltBook> | undefined;
+const plain = () => (plainBook ??= built(input()));
+/** A book whose bytes are hashes, because a list of bytes takes long to compare. */
+const hashed = (book: BuiltBook) => ({ ...book, pdf: sha256(book.pdf), pages: book.pages.map((p) => ({ ...p, image: sha256(p.image) })) });
+
 describe("a good input", () => {
   it("gives the pages, the answers and the record of what made them", async () => {
     const book = await built(input());
     expect(book.pages.map((p) => [p.model.page, p.model.side])).toEqual([[381, "front"], [382, "back"]]);
     expect(book.items).toHaveLength(16);
-    for (const { face, answer, steps, shapeVersion } of book.items) {
+    for (const { face, answer, steps, shape, shapeVersion } of book.items) {
       expect(answer).toEqual({ kind: "whole-number", value: String(Number(face.top) * Number(face.bottom)) });
       expect(steps.at(-1)).toBe(answer.value);
-      expect(shapeVersion).toBe(1);
+      expect(shapeVersion).toBe(SHAPES.get(shape)?.version);
     }
     expect(book.record).toMatchObject({ bookId: "example-book", engine: "2.0.0-s2", ...IDENTITY, snapshot: { id: "invented-level-3-v1" } });
     expect(book.record.snapshot.hash).toMatch(/^[0-9a-f]{64}$/);
@@ -69,28 +76,27 @@ describe("a good input", () => {
   it("passes shapeVersion to items without changing layout or solving", async () => {
     const mul = SHAPES.get("mul.column");
     if (!mul) throw new Error("no shape");
-    const one = await built(input());
-    const result = await buildBook(input(), fake(), shapeLibrary([{ ...mul, version: 2 }]));
+    const one = await plain();
+    const result = await buildBook(input(), fake(), shapeLibrary([{ ...mul, version: mul.version + 1 }]));
     if (result.status !== "built") throw new Error(result.problems.join("\n"));
-    expect(result.items.every((i) => i.shapeVersion === 2)).toBe(true);
-    expect(result.pages).toEqual(one.pages);
-    expect(result.positions).toEqual(one.positions);
-    expect(result.pdf).toEqual(one.pdf);
+    expect(result.items.every((i) => i.shapeVersion === mul.version + 1)).toBe(true);
+    const [before, after] = [hashed(one), hashed(result)];
+    expect([after.pages, after.positions, after.pdf]).toEqual([before.pages, before.positions, before.pdf]);
   });
 
   it("does not change its input, and the same input gives the same book", async () => {
     const i = input();
     const before = structuredClone(i);
-    const [one, two] = [await built(i), await built(input())];
+    const [one, two] = [await built(i), await plain()];
     expect(i).toEqual(before);
-    expect(two).toEqual(one);
+    expect(hashed(two)).toEqual(hashed(one));
   });
 
   it("records the input that it read, also when the caller changes it during the drawing", async () => {
     const i = input();
     const good = fake();
     const during = await built(i, fake({ render: async (pages) => { put(i.book, "childId", "other-child"); put(i.snapshot, "id", "other"); return good.render(pages); } }));
-    expect(during).toEqual(await built(input()));
+    expect(hashed(during)).toEqual(hashed(await plain()));
   });
 
   it.each<[string, (i: Input) => unknown]>([
@@ -99,7 +105,7 @@ describe("a good input", () => {
     ["QR text", (i) => put(i.book.sheets[0].qr, "front", "https://unicalearning.com/tutor/p/other")],
     ["instruction", (i) => put(i.snapshot.sheets[0].front, "instruction", "Multiply.")],
   ])("gives another book and another input hash for another %s", async (_name, change) => {
-    const [one, two] = [await built(input()), await built(input(change))];
+    const [one, two] = [await plain(), await built(input(change))];
     expect(two.pdf).not.toEqual(one.pdf);
     expect(two.record.inputHash).not.toBe(one.record.inputHash);
   });
