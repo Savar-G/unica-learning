@@ -11,6 +11,7 @@ const EXCLUDED = new Set([
   "src/lib/maya-gate/gate.test.ts",
   "src/lib/maya-gate/word-count-grade-1.test.ts",
   "src/lib/maya-gate/word-count-grade-4.test.ts",
+  "src/lib/scan-binding-scale-chromium.test.ts",
 ]);
 
 function walkTests(dir, out = []) {
@@ -19,7 +20,7 @@ function walkTests(dir, out = []) {
     if (entry.isDirectory()) walkTests(full, out);
     else if (entry.isFile() && entry.name.endsWith(".test.ts")) {
       const rel = path.relative(ROOT, full).split(path.sep).join("/");
-      if (!EXCLUDED.has(rel)) out.push(rel);
+      if (!EXCLUDED.has(rel) && !rel.startsWith("src/lib/workbook-v2/")) out.push(rel);
     }
   }
   return out.sort();

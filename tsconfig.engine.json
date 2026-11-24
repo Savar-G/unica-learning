@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "plugins": []
+  },
+  "include": [
+    "src/lib/workbook-v2/**/*.ts",
+    "src/lib/workbook-v2/**/*.tsx",
+    "src/lib/workbook-v2/**/*.mts"
+  ]
+}
