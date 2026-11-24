@@ -290,5 +290,12 @@ export function persistSlotResult(opts: {
   const sourceRef = result.record.source_ref;
   const recordFile = chooseRecordFileName(slotDir, sourceRef, sha256, opts.existingEntries);
   writeSafeOutputFile(join(slotDir, recordFile), `${JSON.stringify(result.record, null, 2)}\n`, repoRoot);
-  return { ...base, status: "ok", source_ref: sourceRef, record_file: recordFile, notes: result.notes };
+  return {
+    ...base,
+    status: "ok",
+    source_ref: sourceRef,
+    record_file: recordFile,
+    notes: result.notes,
+    ...(result.noteDetails !== undefined ? { note_details: result.noteDetails } : {}),
+  };
 }

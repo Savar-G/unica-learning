@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { validateReferenceRecord, type ReferenceRecord } from "@/lib/reference-record";
+import type { StoredAnswerNote } from "./answers";
 import type { DigestMismatchInfo, FailedPhotoReport, SamePageIdConflict } from "./compare-report";
 import {
   PHOTOS_MANIFEST_FILE,
@@ -25,6 +26,7 @@ interface OkSlotReading {
   photo: string | null;
   originalName: string | null;
   notes: string[];
+  noteDetails?: StoredAnswerNote[];
   record: ReferenceRecord;
   sha256: string | null;
 }
@@ -39,6 +41,8 @@ export interface PairedPage {
   recB: ReferenceRecord | null;
   notesA: string[];
   notesB: string[];
+  noteDetailsA?: StoredAnswerNote[];
+  noteDetailsB?: StoredAnswerNote[];
 }
 
 const SKIP_JSON_FILES = new Set(["reader.json", "run.json"]);
@@ -146,6 +150,7 @@ function collectOkReadings(
       photo: p.photo,
       originalName: resolveOriginalName(p, originalNamesByDigest),
       notes: p.notes ?? [],
+      ...(Array.isArray(p.note_details) ? { noteDetails: p.note_details } : {}),
       record: rec,
       sha256: sha,
     });
@@ -237,6 +242,8 @@ export function pairSlotPages(
           recB: itemB.record,
           notesA: itemA.notes,
           notesB: itemB.notes,
+          noteDetailsA: itemA.noteDetails,
+          noteDetailsB: itemB.noteDetails,
         });
       } else {
         unmatchedA.push(itemA);
@@ -267,6 +274,8 @@ export function pairSlotPages(
           recB: itemB.record,
           notesA: itemA.notes,
           notesB: itemB.notes,
+          noteDetailsA: itemA.noteDetails,
+          noteDetailsB: itemB.noteDetails,
         });
       } else {
         pairs.push({
@@ -279,6 +288,7 @@ export function pairSlotPages(
           recB: null,
           notesA: itemA.notes,
           notesB: [],
+          noteDetailsA: itemA.noteDetails,
         });
       }
     }
@@ -295,6 +305,7 @@ export function pairSlotPages(
         recB: itemB.record,
         notesA: [],
         notesB: itemB.notes,
+        noteDetailsB: itemB.noteDetails,
       });
     });
 

@@ -45,12 +45,39 @@ export interface SamePageIdConflict {
   reader_b_source_ref: string | null;
 }
 
+export interface PageAgreement {
+  agreed: number;
+  compared: number;
+  percent: number | null;
+}
+
+export type PageResultLabel =
+  | "double read"
+  | "accepted by the 90% rule"
+  | "sent to a person"
+  | "checked by a person";
+
+export interface PageSentToPerson {
+  source_ref: string;
+  agreement_percent: number | null;
+  agreed: number;
+  compared: number;
+  difference_count: number;
+  reason: string | null;
+}
+
 export interface PageCompareReport {
   source_ref: string;
   photo: string | null;
   original_name: string | null;
   photo_sha256: string | null;
   status: PageStatus;
+  agreement?: PageAgreement;
+  result?: PageResultLabel;
+  result_reason?: string | null;
+  answer_conflicts?: string[];
+  reader_answer_conflicts?: string[];
+  answer_disagreements?: string[];
   only_in_reader: "a" | "b" | null;
   digest_mismatch: DigestMismatchInfo | null;
   differences: RecordDifference[];
@@ -75,6 +102,7 @@ export interface CompareWorkReport {
   reader_a: ReaderMeta | null;
   reader_b: ReaderMeta | null;
   pages: PageCompareReport[];
+  pages_sent_to_person?: PageSentToPerson[];
   single_reader_pages: Array<{ source_ref: string; reader: "a" | "b" }>;
   failed_photos: FailedPhotoReport[];
   too_small_photos: TooSmallPhotoReport[];
@@ -88,6 +116,133 @@ export interface CompareWorkReport {
 
 function formatVal(v: unknown): string {
   return JSON.stringify(v);
+}
+
+export function formatAgreementPercent(percent: number | null): string {
+  if (percent === null) return "-";
+  return Number.isInteger(percent) ? `${percent}%` : `${percent.toFixed(1)}%`;
+}
+
+export function resultLabelForStatus(status: PageStatus): PageResultLabel {
+  switch (status) {
+    case "double_read":
+      return "double read";
+    case "agreement_accepted":
+      return "accepted by the 90% rule";
+    case "human_checked":
+      return "checked by a person";
+    case "machine_read":
+      return "sent to a person";
+  }
+}
+
+function formatResultWithReason(p: PageCompareReport): string {
+  const label = p.result ?? resultLabelForStatus(p.status);
+  return p.result_reason ? `${label} (${p.result_reason})` : label;
+}
+
+function formatAgreementCell(agreement: PageAgreement | undefined): string {
+  if (!agreement || agreement.compared <= 0) return "-";
+  return `${formatAgreementPercent(agreement.percent)} (${agreement.agreed}/${agreement.compared})`;
+}
+
+function sentToPersonItems(report: CompareWorkReport): PageSentToPerson[] {
+  if (report.pages_sent_to_person !== undefined) return report.pages_sent_to_person;
+  return report.pages
+    .filter((p) => p.status === "machine_read")
+    .map((p) => ({
+      source_ref: p.source_ref,
+      agreement_percent: p.agreement?.percent ?? null,
+      agreed: p.agreement?.agreed ?? 0,
+      compared: p.agreement?.compared ?? 0,
+      difference_count: p.differences.length + p.once_read.length + p.both_unclear.length,
+      reason: p.result_reason && p.result_reason !== "below 90% agreement" ? p.result_reason : null,
+    }));
+}
+
+function formatSentToPersonLine(item: PageSentToPerson): string {
+  const pct =
+    item.agreement_percent === null
+      ? "no agreement"
+      : `${formatAgreementPercent(item.agreement_percent)} agreement`;
+  const diffWord = item.difference_count === 1 ? "difference" : "differences";
+  const reasonPart = item.reason ? ` (${item.reason})` : "";
+  return `${item.source_ref}: ${pct}, ${item.difference_count} ${diffWord}${reasonPart}`;
+}
+
+export function formatPagesSentToPerson(report: CompareWorkReport): string {
+  const list = sentToPersonItems(report);
+  if (list.length === 0) return "Pages sent to a person: none.";
+  const lines = [`Pages sent to a person (${list.length}):`];
+  for (const item of list) {
+    lines.push(`  - ${formatSentToPersonLine(item)}`);
+  }
+  return lines.join("\n");
+}
+
+function hasReaderBNeighbours(d: RecordDifference): boolean {
+  return d.reader_b_after !== undefined || d.reader_b_before !== undefined;
+}
+
+function formatReaderBNeighbours(d: RecordDifference): string {
+  const noun = d.path.startsWith("topics[") ? "topic" : "item";
+  const after = d.reader_b_after ?? null;
+  const before = d.reader_b_before ?? null;
+  if (after !== null && before !== null) {
+    return `reader b has it after ${noun} ${after} and before ${noun} ${before}`;
+  }
+  if (after === null && before !== null) {
+    return `reader b has it first, before ${noun} ${before}`;
+  }
+  if (after !== null && before === null) {
+    return `reader b has it last, after ${noun} ${after}`;
+  }
+  return `reader b has it as the only ${noun}`;
+}
+
+function formatLocatedEntry(
+  prefix: string,
+  d: RecordDifference,
+  opts: { isSentToPerson: boolean; keptRecord: boolean },
+): string {
+  const entry = d.reader === "a" ? d.a : d.b;
+  if (d.reader === "b" && hasReaderBNeighbours(d)) {
+    return `${prefix}: ${formatReaderBNeighbours(d)}: ${formatVal(entry)}`;
+  }
+  const missingStepNote = d.missing_step
+    ? opts.isSentToPerson
+      ? "; its step is missing from reader A's record and must be added first"
+      : "; step absent from reader A's record"
+    : "";
+  if (d.reader && d.final_path !== undefined && !opts.keptRecord) {
+    if (!opts.isSentToPerson) {
+      const where =
+        d.insert_before !== undefined
+          ? "location in final record before"
+          : d.final_path.endsWith("[]")
+            ? "location in final record"
+            : d.reader === "a"
+              ? "in final record at"
+              : "location in final record";
+      return `${prefix}: only reader ${d.reader}; ${where} \`${d.final_path}\`${missingStepNote}: ${formatVal(entry)}`;
+    }
+    const where =
+      d.insert_before !== undefined
+        ? "insert before"
+        : d.final_path.endsWith("[]")
+          ? "belongs in the final record at"
+          : d.reader === "a"
+            ? "already in the final record at"
+            : "belongs in the final record at";
+    return `${prefix}: only reader ${d.reader} has it; ${where} \`${d.final_path}\`${missingStepNote}: ${formatVal(entry)}`;
+  }
+  if (d.reader && opts.keptRecord) {
+    if (!opts.isSentToPerson) {
+      return `${prefix}: only reader ${d.reader}${missingStepNote}: ${formatVal(entry)}`;
+    }
+    return `${prefix}: only reader ${d.reader} has it; a person changed the final record, so find the place in that record${missingStepNote}: ${formatVal(entry)}`;
+  }
+  return `${prefix}: a=${formatVal(d.a)} | b=${formatVal(d.b)}`;
 }
 
 export function formatCompareReportMarkdown(report: CompareWorkReport): string {
@@ -105,13 +260,13 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
   lines.push("## Summary");
   lines.push("");
   lines.push(
-    "| Page | Photo | Status | Differences | Wording | Once-read | Both unclear | Empty answers | Person read |",
+    "| Page | Photo | Status | Agreement | Result | Differences | Wording | Once-read | Both unclear | Empty answers | Has prose |",
   );
-  lines.push("|---|---|---|---:|---:|---:|---:|---:|---|");
+  lines.push("|---|---|---|---|---|---:|---:|---:|---:|---:|---|");
   for (const p of report.pages) {
     const photoCol = p.original_name ?? p.photo ?? "-";
     lines.push(
-      `| ${p.source_ref} | ${photoCol} | ${p.status} | ${p.differences.length} | ${(p.wording ?? []).length} | ${p.once_read.length} | ${p.both_unclear.length} | ${(p.empty_answer ?? []).length} | ${p.needs_person_read ? "yes" : "no"} |`,
+      `| ${p.source_ref} | ${photoCol} | ${p.status} | ${formatAgreementCell(p.agreement)} | ${formatResultWithReason(p)} | ${p.differences.length} | ${(p.wording ?? []).length} | ${p.once_read.length} | ${p.both_unclear.length} | ${(p.empty_answer ?? []).length} | ${p.needs_person_read ? "yes" : "no"} |`,
     );
   }
   lines.push("");
@@ -246,6 +401,12 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
   lines.push("");
   for (const p of report.pages) {
     lines.push(`### ${p.source_ref} (${p.status})`);
+    lines.push(`- Result: ${formatResultWithReason(p)}`);
+    if (p.agreement && p.agreement.compared > 0) {
+      lines.push(
+        `- Agreement: ${formatAgreementPercent(p.agreement.percent)} (${p.agreement.agreed}/${p.agreement.compared} compared fields)`,
+      );
+    }
     if (p.edited_by_person) {
       lines.push(
         "- A person changed the final record and it is not checked yet. The file was kept. Run reference:check for this page.",
@@ -263,7 +424,15 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
       );
     }
     if (p.needs_person_read) {
-      lines.push("- A person must read the prose on this page");
+      if (p.status === "agreement_accepted") {
+        lines.push(
+          "- Has worked examples or prose. Differing fields are in single_read and show as not checked.",
+        );
+      } else if (p.status === "double_read") {
+        lines.push("- Has worked examples or prose (both readers agreed).");
+      } else {
+        lines.push("- Has worked examples or prose.");
+      }
     }
 
     if (p.unnamed_teaching_marks.length > 0) {
@@ -273,15 +442,21 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
       }
     }
 
+    // A record that a person edited or checked is kept; reader a's words and indexes may not fit it.
+    const keptRecord = p.edited_by_person === true || p.status === "human_checked";
+    const isSentToPerson = p.status === "machine_read";
+
     if (p.differences.length > 0) {
       lines.push("- Differences:");
       for (const d of p.differences) {
-        lines.push(`  - \`${d.path}\` (${d.kind}): a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
+        const prefix = `  - \`${d.path}\` (${d.kind})`;
+        if (d.reader && (hasReaderBNeighbours(d) || d.final_path !== undefined || keptRecord)) {
+          lines.push(formatLocatedEntry(prefix, d, { isSentToPerson, keptRecord }));
+        } else {
+          lines.push(`${prefix}: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
+        }
       }
     }
-
-    // A record that a person edited or checked is kept; reader a's words and indexes may not fit it.
-    const keptRecord = p.edited_by_person === true || p.status === "human_checked";
 
     const wording = p.wording ?? [];
     if (wording.length > 0) {
@@ -297,37 +472,22 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
 
     if (p.once_read.length > 0) {
       lines.push(
-        '- Once-read teaching fields (look at the photo; copy an entry that is on the page into the final record at the given path, where "[]" means the end of that list and "insert before" means insert ahead of that element):',
+        isSentToPerson
+          ? keptRecord
+            ? "- Once-read teaching fields (look at the photo; a person changed the final record, so find the place in that record):"
+            : '- Once-read teaching fields (look at the photo; copy an entry that is on the page into the final record at the given path, where "[]" means the end of that list and "insert before" means insert ahead of that element):'
+          : "- Once-read teaching fields:",
       );
       for (const d of p.once_read) {
-        const entry = d.reader === "a" ? d.a : d.b;
-        const missingStepNote = d.missing_step
-          ? "; its step is missing from reader A's record and must be added first"
-          : "";
-        if (d.reader && d.final_path !== undefined) {
-          const where = keptRecord
-            ? "found in the kept final record at"
-            : d.reader === "a"
-              ? "already in the final record at"
-              : d.insert_before !== undefined
-                ? "insert before"
-                : "belongs in the final record at";
-          lines.push(
-            `  - \`${d.path}\`: only reader ${d.reader} has it; ${where} \`${d.final_path}\`${keptRecord ? "" : missingStepNote}: ${formatVal(entry)}`,
-          );
-        } else if (d.reader && keptRecord) {
-          lines.push(
-            `  - \`${d.path}\`: only reader ${d.reader} has it; a person changed the final record, so find the place in that record${missingStepNote}: ${formatVal(entry)}`,
-          );
-        } else {
-          lines.push(`  - \`${d.path}\`: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
-        }
+        lines.push(formatLocatedEntry(`  - \`${d.path}\``, d, { isSentToPerson, keptRecord }));
       }
     }
 
     if (p.both_unclear.length > 0) {
       lines.push(
-        '- Both readers marked unclear (look at the photo and write the value, or keep "unclear" and mark the page checked):',
+        isSentToPerson
+          ? '- Both readers marked unclear (look at the photo and write the value, or keep "unclear" and mark the page checked):'
+          : "- Both readers marked unclear:",
       );
       for (const d of p.both_unclear) {
         lines.push(`  - \`${d.path}\``);
@@ -336,9 +496,37 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
 
     const emptyAnswers = p.empty_answer ?? [];
     if (emptyAnswers.length > 0) {
-      lines.push('- Answer places with no answer (write the answer from the photo, or "unclear"):');
+      lines.push(
+        isSentToPerson
+          ? '- Answer places with no answer (write the answer from the photo, or "unclear"):'
+          : "- Answer places with no answer:",
+      );
       for (const d of emptyAnswers) {
         lines.push(`  - \`${d.path}\`: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
+      }
+    }
+
+    const answerConflicts = p.answer_conflicts ?? [];
+    if (answerConflicts.length > 0) {
+      lines.push("- Answer conflicts (stored answer does not match computed answer):");
+      for (const msg of answerConflicts) {
+        lines.push(`  - ${msg}`);
+      }
+    }
+
+    const readerAnswerConflicts = p.reader_answer_conflicts ?? [];
+    if (readerAnswerConflicts.length > 0) {
+      lines.push("- Reader answer conflicts (a reader's answer differs from the computed answer):");
+      for (const path of readerAnswerConflicts) {
+        lines.push(`  - \`${path}\``);
+      }
+    }
+
+    const answerDisagreements = p.answer_disagreements ?? [];
+    if (answerDisagreements.length > 0) {
+      lines.push("- Answer disagreements (readers disagree on an answer):");
+      for (const path of answerDisagreements) {
+        lines.push(`  - \`${path}\``);
       }
     }
 
@@ -354,6 +542,9 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
       p.once_read.length === 0 &&
       p.both_unclear.length === 0 &&
       emptyAnswers.length === 0 &&
+      answerConflicts.length === 0 &&
+      readerAnswerConflicts.length === 0 &&
+      answerDisagreements.length === 0 &&
       p.unnamed_teaching_marks.length === 0 &&
       !p.only_in_reader &&
       !p.digest_mismatch &&
@@ -363,6 +554,18 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
     }
     lines.push("");
   }
+
+  lines.push("## Pages sent to a person");
+  lines.push("");
+  const sent = sentToPersonItems(report);
+  if (sent.length === 0) {
+    lines.push("No pages sent to a person.");
+  } else {
+    for (const item of sent) {
+      lines.push(`- ${formatSentToPersonLine(item)}`);
+    }
+  }
+  lines.push("");
 
   return `${lines.join("\n")}\n`;
 }
