@@ -680,6 +680,18 @@ describe("scan mark validation", () => {
 });
 
 describe("answer regions as printed", () => {
+  it("records the measured content area in image pixels for future scans", async () => {
+    const draft = draftOf();
+    const content = { x: 64, y: 192, width: 688, height: 720 };
+    const r = await renderWorkbook({
+      draft, parentId: PARENT,
+      template,
+      engine: fakePrintEngine({ rects: { "1 slot-content": content } }),
+    });
+    if (r.status !== "rendered") throw new Error(JSON.stringify(r.problems));
+    expect(r.workbook.pages[0].printContract?.coordinates.content).toEqual({ x: 100, y: 300, width: 1075, height: 1125 });
+  });
+
   it("each region has its measured box in image pixels; a region the page did not measure has none", async () => {
     // Disproved if a missing region is dropped or given a box it never printed in.
     const draft = draftOf();

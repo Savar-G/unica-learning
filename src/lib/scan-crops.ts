@@ -21,6 +21,7 @@ import {
   type SheetRefusal,
 } from "@/lib/scan-calibration";
 import { printContractForPhoto, sha256Hex, type Box, type PagePrintContract, type Point } from "@/lib/workbook-print-contract";
+import { answerReach, placedRegions, scanContentBounds } from "@/lib/scan-answer-reach";
 import { markingRegions } from "@/lib/scan-marking-regions";
 import { pageUrl } from "@/lib/workbook-render";
 
@@ -52,6 +53,7 @@ export interface ScanCrop {
   regionId: string;
   regionIds?: string[];
   box: Box;
+  reach?: Box;
   width: number;
   height: number;
 }
@@ -325,7 +327,7 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
   const cutOff: number[] = [];
   const held = new Map<number, QuestionHold>();
   const snaps: AnswerSnap[] = [];
-  const crops: typeof planned.crops = [];
+  const crops: (typeof planned.crops[number] & { reach?: Box })[] = [];
   if (calibration) {
     // Compare distinctive print wherever another page of this book differs (#456, #975).
     const ask = sheetChecker({ photo, printed, transform: calibration.transform, writing, sheet: calibration });
@@ -368,12 +370,22 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
     }
   }
 
+  const content = scanContentBounds(contract.contract);
+  const questions = frame.page.questions.map(q => ({ ...q, regions: placedRegions(q, snaps) }));
+  for (const crop of crops) {
+    const question = questions.find(q => q.number === crop.number)!;
+    const reaches = markingRegions(question).flatMap(region => answerReach(region, question.number, questions, content) ?? []);
+    if (!reaches.length) continue;
+    const boxes = [crop.box, ...reaches];
+    const x = Math.min(...boxes.map(b => b.x)), y = Math.min(...boxes.map(b => b.y));
+    crop.reach = { x, y, width: Math.max(...boxes.map(b => b.x + b.width)) - x, height: Math.max(...boxes.map(b => b.y + b.height)) - y };
+  }
   if (Date.now() >= deadline) return timedOut();
   if (previous) await store.clearLease({ ...ref, token: previous });
   const straight = calibration && !review ? straightenedPage(photo, calibration, contract.contract) : photo;
   const uploads = [
     { part: STRAIGHT_PART, raster: straight, quality: 78 },
-    ...(calibration ? crops.map((c) => ({ part: cropPart(c.number), raster: cropBox(photo, calibration, contract.contract, c.box), quality: 85 })) : []),
+    ...(calibration ? crops.map((c) => ({ part: cropPart(c.number), raster: cropBox(photo, calibration, contract.contract, c.box, c.reach), quality: 85 })) : []),
   ];
   let bytes = 0;
   for (let i = 0; i < uploads.length; i += UPLOADS_AT_ONCE) {
@@ -394,7 +406,7 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
     ...(cutOff.length || held.size ? { cutOff: [...cutOff, ...held.keys()] } : {}),
     crops: crops.map((c) => {
       const part = cropPart(c.number), r = rasters.get(part)!;
-      return { part, number: c.number, itemId: c.itemId, regionId: c.regionId, ...(c.regionIds ? { regionIds: c.regionIds } : {}), box: c.box, width: r.width, height: r.height };
+      return { part, number: c.number, itemId: c.itemId, regionId: c.regionId, ...(c.regionIds ? { regionIds: c.regionIds } : {}), box: c.box, ...(c.reach ? { reach: c.reach } : {}), width: r.width, height: r.height };
     }),
   }, bytes);
 }

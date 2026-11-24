@@ -371,7 +371,9 @@ export async function renderWorkbook(o: {
   const [pdfSha256, ...imageHashes] = await Promise.all([sha256Hex(out.pdf), ...out.images.map((x) => sha256Hex(x.png))]);
   const contractProblems = new Map<number, string>();
   draft.pages.forEach((page, i) => {
+    const content = out.measured.find(m => m.sheet === i && m.name === "slot-content" && m.visible && insidePage(m));
     const { contract, problem } = buildPrintContract({
+      content,
       workbookId: id, page, css: PRINT_PAGE, marks: out.measured.filter((m) => m.sheet === i && isScanMarkName(m.name)),
       image: { width: out.images[i].width, height: out.images[i].height, sha256: imageHashes[i] },
     });

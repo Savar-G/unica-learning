@@ -1,3 +1,4 @@
+import { scanContentBounds } from "@/lib/scan-answer-reach";
 // File, preflight, and ledger I/O helpers shared by the scan-marking comparison and physical evaluation CLIs.
 import { open, readFile, rename } from "node:fs/promises";
 import { dirname, isAbsolute, resolve, sep } from "node:path";
@@ -64,7 +65,7 @@ export async function prepareComparisonManifest(specPath: string, output: string
   for (const photo of spec.photos) {
     const pageNumber = photo.pageNumber ?? photo.frame?.pageNumber, page = rendered.pages.find(p => p.number === pageNumber);
     if (!page?.printContract) throw new Error("measured-rendered-page-required");
-    photo.frame = { parentId: SYNTHETIC_IDS.parent, childId: SYNTHETIC_IDS.child, workbookId: rendered.id, pageId: `synthetic-page-${page.number}`, pageNumber: page.number, photo: photo.id, printedRevision: revision, ready: true,
+    photo.frame = { parentId: SYNTHETIC_IDS.parent, childId: SYNTHETIC_IDS.child, workbookId: rendered.id, pageId: `synthetic-page-${page.number}`, pageNumber: page.number, photo: photo.id, printedRevision: revision, ready: true, contentBounds: scanContentBounds(page.printContract),
       questions: page.questions.map(q => ({ number: q.number, package: q.package, regions: q.regions ?? null, teaching: q.teaching ?? null })) };
     const bytes = await readFile(inside(sourceRoot, photo.image.path));
     const meta = await sharp(bytes).metadata();

@@ -1886,8 +1886,8 @@ const CROP_MAX_SCALE = 2.5;
 const CROP_MAX_SIDE = 1600;
 
 /** One answer region cut from the photo. */
-export function cropBox(photo: Raster, c: Calibration, contract: PagePrintContract, box: Box): Raster {
-  const margin = Math.min(CROP_MARGIN_LIMIT, CROP_MARGIN * Math.min(box.width, box.height));
+export function cropBox(photo: Raster, c: Calibration, contract: PagePrintContract, printedBox: Box, reach?: Box): Raster {
+  const box = reach ?? printedBox, margin = reach ? 0 : Math.min(CROP_MARGIN_LIMIT, CROP_MARGIN * Math.min(box.width, box.height));
   const { width: iw, height: ih } = contract.coordinates.image;
   const x0 = Math.max(0, box.x - margin), y0 = Math.max(0, box.y - margin);
   const x1 = Math.min(iw, box.x + box.width + margin), y1 = Math.min(ih, box.y + box.height + margin);

@@ -1,3 +1,4 @@
+import { scanContentBounds } from "@/lib/scan-answer-reach";
 // File, calibration, planning, execution, and replay I/O helpers for physical scan-marking evaluation.
 import { constants } from "node:fs";
 import { lstat, mkdir, open, readdir, realpath } from "node:fs/promises";
@@ -62,7 +63,7 @@ export async function loadPhysicalKit(path: string) {
     const decoded = await raster(bytes);
     if (decoded.width !== page.image.width || decoded.height !== page.image.height) throw Error("frozen-print-size-changed");
     if (!page.questions.length) continue;
-    const frame: ComparisonPhoto["frame"] = { parentId: "00000000-0000-4000-8000-000000000543", childId: book.childId, workbookId: book.id, pageId: `synthetic-physical-page-${page.number}`, pageNumber: page.number, photo: "synthetic-physical-template", printedRevision: revision, ready: true,
+    const frame: ComparisonPhoto["frame"] = { parentId: "00000000-0000-4000-8000-000000000543", childId: book.childId, workbookId: book.id, pageId: `synthetic-physical-page-${page.number}`, pageNumber: page.number, photo: "synthetic-physical-template", printedRevision: revision, ready: true, contentBounds: scanContentBounds(page.printContract),
       questions: page.questions.map(q => ({ number: q.number, package: q.package, regions: q.regions ?? null, teaching: q.teaching ?? null })) };
     if (!page.printContract.label || frame.questions.some(q => regionsProblem(q.regions, page.image) || q.regions?.some(r => !r.box))) throw Error("unmeasured-physical-region");
     for (const e of expectedItems(frame)) if (e.method !== "code" || !markingRegions(frame.questions.find(q => q.number === e.number)!).length) throw Error("unsupported-physical-item");
