@@ -63,6 +63,7 @@ async function readMethodsFolder(methodsDir: string): Promise<{ records: TopicMe
     // Two files never hold one topic, because each topic has one file name.
     if (record && methodFileName(record) === name) records.push(record);
     else if (record) problems.push(`${name} is the file name of another record: "${methodRef(record)}"`);
+    else if (fileProblems.length === 0) problems.push(`${name} disappeared while the import read the folder`);
   }
   if (names.length === 0) problems.push(`no method record in "${methodsDir}"`);
   return { records, problems };
@@ -85,14 +86,14 @@ function sameRow(existing: ExistingMethodRow, row: TopicMethodRow): boolean {
 }
 
 // What the table holds after a write whose result is not known.
-async function reread(store: TopicMethodStore, row: TopicMethodRow, before: ExistingMethodRow | undefined) {
+async function reread(store: TopicMethodStore, row: TopicMethodRow, before: ExistingMethodRow | undefined): Promise<string> {
   try {
     const now = (await store.findExisting([row])).get(methodRef(row));
-    if (now && sameRow(now, row)) return { written: true, text: "the row is written" };
-    const same = now?.updated_at === before?.updated_at;
-    return { written: false, text: same ? "the row is not written" : "another run changed the row" };
+    // Another run may have written the same row, so it is not counted as a write of this run.
+    if (now && sameRow(now, row)) return "the table holds the wanted row, but this run cannot say that it wrote it";
+    return now?.updated_at === before?.updated_at ? "the row is not written" : "another run changed the row";
   } catch (err) {
-    return { written: false, text: `the row may or may not be written (it could not be read again: ${messageOf(err)})` };
+    return `the row may or may not be written (it could not be read again: ${messageOf(err)})`;
   }
 }
 
@@ -166,13 +167,11 @@ export async function importTopicMethods(opts: ImportMethodsOptions): Promise<Co
         continue;
       }
       const now = before ? undefined : (await store.findExisting([row])).get(ref);
-      if (!now) return halt(`${ref}: the stored row changed while the import ran; run the command again`);
+      if (!now || (opts.replace && !sameRow(now, row))) return halt(`${ref}: the stored row changed while the import ran; run the command again`);
       skip(row, now);
     } catch (err) {
-      const after = await reread(store, row, before);
-      if (after.written) done();
       return halt(
-        `write failed at ${ref}: ${messageOf(err)}; ${after.text}`,
+        `write failed at ${ref}: ${messageOf(err)}; ${await reread(store, row, before)}`,
         "rows written before the failure stay; run the command again with the same files to finish",
       );
     }

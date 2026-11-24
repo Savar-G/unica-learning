@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { canonicalSha256 } from "./canonical";
 import { buildEvidence } from "./evidence";
 import { methodFileName, methodRef } from "./identity";
@@ -12,6 +12,18 @@ import { contentSha256, settleStatus } from "./record";
 import { createSupabaseTopicMethodStore } from "./store";
 import { add, KEY, makeContents, makeExample, makeItem, makePage, statusesOf } from "./test-records";
 import type { MethodKey, TopicMethodRecord } from "./types";
+
+// Runs after the methods folder is listed.
+const listed = vi.hoisted(() => ({ after: (): void => undefined }));
+vi.mock("node:fs/promises", async (original) => {
+  const real = await original<typeof import("node:fs/promises")>();
+  const readdir = async (...args: Parameters<typeof real.readdir>) => {
+    const entries = await real.readdir(...args);
+    if (String(args[0]).endsWith("methods")) listed.after();
+    return entries;
+  };
+  return { ...real, readdir };
+});
 
 class MemoryStore implements TopicMethodStore {
   rows = new Map<string, TopicMethodRow & { updated_at: string }>();
@@ -237,7 +249,7 @@ describe("import (M8)", () => {
   });
 
   it.each([
-    [true, false, "the row is written", 1],
+    [true, false, "the table holds the wanted row, but this run cannot say that it wrote it", 0],
     [false, false, "the row is not written", 0],
     [true, true, "may or may not be written", 0],
   ])("reads the row again after a lost answer (written %j, database gone %j)", async (after, failReread, text, replaced) => {
@@ -283,6 +295,27 @@ describe("import (M8)", () => {
     };
     const result = await run();
     expect(result.lines[0]).toContain("inserted=0 replaced=0 skipped=0 skipped_different=2");
+  });
+
+  it("stops with --replace when another run wrote another row first, and skips the same row", async () => {
+    const insertRow = store.insertRow.bind(store);
+    store.insertRow = async (row) => {
+      store.put(row.topic === 1 ? row : methodRowOf(approved(makeRecord(row.topic))));
+      return insertRow(row);
+    };
+    const result = await run({ replace: true });
+    expect([result.ok, result.problems[0]]).toEqual([false, expect.stringContaining("demo:Z:topic-2: the stored row changed while the import ran")]);
+    expect(result.lines[0]).toContain("inserted=0 replaced=0 skipped=1 skipped_different=0");
+  });
+
+  it("stops when a method file disappears after the folder was read", async () => {
+    listed.after = () => {
+      listed.after = () => undefined;
+      for (const n of [1, 2]) rmSync(join(methodsDir, `demo-Z-topic-${n}.json`));
+    };
+    const result = await run();
+    expect(result.problems).toEqual([1, 2].map((n) => `demo-Z-topic-${n}.json disappeared while the import read the folder`));
+    expect(store.calls).toEqual([]);
   });
 
   it("stops at a write error, says what is written, and finishes when it runs again", async () => {

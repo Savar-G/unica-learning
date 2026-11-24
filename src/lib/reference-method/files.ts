@@ -139,8 +139,15 @@ export async function withTopicLock(
   try {
     prepareSafeOutputDir(opts.methodsDir, opts.repoRoot);
     const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600);
-    writeFileSync(fd, content);
-    closeSync(fd);
+    try {
+      writeFileSync(fd, content);
+    } catch (err) {
+      // This command made the lock and cannot hold it.
+      rmSync(path, { force: true });
+      throw err;
+    } finally {
+      closeSync(fd);
+    }
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "EEXIST") return stopped(messageOf(err));
     return stopped(

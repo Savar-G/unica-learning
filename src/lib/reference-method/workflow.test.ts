@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RunCli } from "@/lib/reference-kit/read-cli";
 import type { PageRecord, ReferenceRecord, TranscriptStatus } from "@/lib/reference-record";
 import { contentSha256, settleStatus } from "./record";
@@ -21,6 +21,17 @@ import { add, KEY, makeContents, makeExample, makeItem, makePage } from "./test-
 import type { TopicMethodRecord } from "./types";
 import { withTopicLock } from "./files";
 import { approveTopicMethod, draftTopicMethod, listGaps, showTopicMethod, type DraftOptions } from "./workflow";
+
+// Makes a write into an open file fail, as a full disk does.
+const disk = vi.hoisted(() => ({ full: false }));
+vi.mock("node:fs", async (original) => {
+  const real = await original<typeof import("node:fs")>();
+  const writeFileSync: typeof real.writeFileSync = (file, ...rest) => {
+    if (disk.full && typeof file === "number") throw new Error("ENOSPC: no space left on device");
+    real.writeFileSync(file, ...rest);
+  };
+  return { ...real, writeFileSync };
+});
 
 let root: string;
 let recordsDir: string;
@@ -614,6 +625,17 @@ describe("the lock of a topic (Y4)", () => {
       withTopicLock({ key: KEY, methodsDir, repoRoot, now }, "test", () => Promise.reject(new Error("broken"))),
     ).rejects.toThrow("broken");
     expect(readdirSync(methodsDir)).toEqual(["demo-Z-topic-1.json"]);
+  });
+
+  it("leaves no lock when it cannot write one", async () => {
+    disk.full = true;
+    try {
+      expect((await draft()).problems.join()).toContain("ENOSPC");
+      expect(readdirSync(methodsDir)).toEqual([]);
+    } finally {
+      disk.full = false;
+    }
+    expect((await draft()).ok).toBe(true);
   });
 
   it("stops at a stale lock, names its time, and writes nothing", async () => {
