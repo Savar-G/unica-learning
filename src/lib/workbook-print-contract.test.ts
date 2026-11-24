@@ -477,9 +477,12 @@ describe("a changed revision changes its contract as one unit", () => {
     const read1 = await run(one, one.printedRevision, photo1);
     if (read1.preview.status !== "ready") throw new Error(JSON.stringify(read1.preview));
     expect(read1.preview.crops.map((c) => c.number)).toEqual(plan.map((c) => c.number));
+    const savedCrops = read1.m.calibrations.get(PHOTO)?.result?.crops ?? [];
     for (const [i, c] of plan.entries()) {
-      const crop = await greyRaster(read1.m.objects.get(scanPartPath(PARENT, PHOTO, "00000000-0000-4000-8000-0000000000e1", `crop-${c.number}`))!);
-      expect(readDigit(crop, c.reach ?? cropCut(c.box), c.box), `question ${c.number}`).toBe(digit(i));
+      const saved = savedCrops.find(({ number }) => number === c.number);
+      if (!saved) throw new Error(`Missing crop ${c.number}`);
+      const crop = await greyRaster(read1.m.objects.get(scanPartPath(PARENT, PHOTO, "00000000-0000-4000-8000-0000000000e1", saved.part))!);
+      expect(readDigit(crop, saved.reach ?? cropCut(saved.box), c.box), `question ${c.number}`).toBe(digit(i));
     }
     // The contract kept every declared field through the store.
     expect(supported.printContract).toMatchObject({ marks: { anchor: "outer-corner", order: ["tl", "tr", "br", "bl"] }, coordinates: { units: "image-px", origin: "top-left", x: "right", y: "down", orientation: "portrait", image: { width: 1275, height: 1650 } } });
