@@ -1,6 +1,7 @@
 import { monitorProduct, productAfter } from "@/lib/product-monitoring";
 import { randomUUID } from "node:crypto";
 import { after } from "next/server";
+import { storedPrintContract } from "@/lib/workbook-print-contract";
 import { isUuid } from "@/lib/workbook-content";
 import { scanChecksAccess } from "@/lib/scan-marking-access";
 import { readScanPreview, runScanCrops } from "@/lib/scan-crops";
@@ -43,31 +44,48 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
     const limits = await admin.from("scan_limits").select("input_bytes,output_bytes,decoded_pixels").single();
     if (limits.error) throw new Error("unavailable");
     const input = await readScanBody(request, limits.data.input_bytes);
-    const normalized = await normalizeScanPhoto(input, { inputBytes: limits.data.input_bytes, pixels: limits.data.decoded_pixels, outputBytes: limits.data.output_bytes });
+    const normalized = await normalizeScanPhoto(input, { inputBytes: limits.data.input_bytes, pixels: limits.data.decoded_pixels, outputBytes: limits.data.output_bytes }, async (token) => {
+      const { data } = await admin.from("workbook_pages").select("workbook_id,page_number,image_width,image_height,print_contract")
+        .eq("parent_id", parent).eq("qr_token", token).maybeSingle();
+      if (!data?.image_width || !data.image_height) return null;
+      return storedPrintContract(data.print_contract, { workbookId: data.workbook_id, page: data.page_number,
+        image: { width: data.image_width, height: data.image_height } });
+    });
     // A photo of an open book (#915) has two pages: this photo takes the first one its own code binds, and the other
     // becomes a photo of its own below. A single page is one page, exactly as before.
-    const pages: SpreadPage[] = normalized.spread ?? [{ bytes: normalized.bytes, token: normalized.token, width: normalized.width, height: normalized.height }];
+    const candidates = normalized.alternateToken ? [normalized.token, normalized.alternateToken] : [normalized.token];
+    const pages: SpreadPage[] = normalized.spread ?? candidates.map((token) => ({
+      bytes: normalized.bytes, token, width: normalized.width, height: normalized.height,
+    }));
+    let bound = false;
     let mine = -1, refusal: string | null = null, refusedToken: string | null = null, replaces: string | null = null;
     for (const [i, page] of pages.entries()) {
+      // Skip a closed sibling before binding. Unfinished-photo replacement needs an unbound reservation.
+      if (pages.length > 1) {
+        const { data } = await admin.from("workbook_pages").select("workbooks!inner(child_id)")
+          .eq("parent_id", parent).eq("qr_token", page.token).eq("workbooks.status", "shipped").maybeSingle();
+        if (data?.workbooks && !await session.childOpen(data.workbooks.child_id)) { refusal ??= "page"; continue; }
+      }
       const identify = () => admin.rpc("identify_scan_photo", { p_parent: parent, p_id: id, p_token: page.token, p_width: page.width, p_height: page.height });
       let identified = await identify();
       // A new photo of a page whose photo needs another photo is its retake, however it was taken (F5). A ready photo,
       // not sent, goes only when the parent asked for this photo instead of it (#4).
       if (!identified.error && identified.data === "duplicate" && await replaceRefusedPhoto(admin, parent, page.token, session.childOpen, isUuid(replace) ? replace : null)) identified = await identify();
       if (identified.error) throw new Error("unavailable");
-      if (identified.data === "identified") { mine = i; break; }
+      if (identified.data === "identified") {
+        bound = true;
+        if (await filedChildOpen(admin, parent, id, session.childOpen)) { mine = i; break; }
+        refusal ??= "page";
+        continue;
+      }
       // A page that looked unfinished: this photo replaces its photo once stored (below).
-      if (identified.data === "duplicate" && (replaces = await unfinishedHeld(admin, parent, page.token, session.childOpen))) { mine = i; break; }
+      if (!bound && identified.data === "duplicate" && (replaces = await unfinishedHeld(admin, parent, page.token, session.childOpen))) { mine = i; break; }
       if (refusal === null) { refusal = identified.data; refusedToken = page.token; }
       // Only a page that already has a photo, or is not this child's, lets the other page of a spread take this photo.
       if (!["duplicate", "page"].includes(identified.data)) break;
     }
     if (mine < 0 && refusal === "duplicate" && refusedToken) duplicate = await duplicateOf(admin, parent, refusedToken);
     if (mine < 0) throw new Error(refusal ?? "image");
-    // A code may file the photo with a sibling's book (#915): that child's own plan must open scanning too, or the page
-    // is refused as not this family's, before anything is stored.
-    // (A replacement is not filed yet: its page's photo belongs to a child unfinishedHeld found open.)
-    if (!replaces && !await filedChildOpen(admin, parent, id, session.childOpen)) throw new Error("page");
     const page = pages[mine];
     const uploaded = await admin.storage.from(SCAN_BUCKET).upload(scanPath(parent, id), page.bytes, { contentType: "image/jpeg", upsert: false, cacheControl: "0" });
     // A lost Storage response is uncertain. Keep the reservation and reconcile on GET/retry/expiry.
@@ -93,7 +111,7 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
     }, "scan.check_failed", { photoId: id });
     const photo = await scanView(admin, parent, id);
     // The other page of a spread: only when this photo took the first page (a first page already scanned leaves nothing).
-    let other = mine === 0 && pages.length === 2 && photo ? await spreadPhoto(admin, parent, photo.child_id, pages[1], received, session.childOpen) : null;
+    let other = mine === 0 && normalized.spread?.length === 2 && photo ? await spreadPhoto(admin, parent, photo.child_id, normalized.spread[1], received, session.childOpen) : null;
     // A second page not saved (other than one that already has a photo): name it, so the parent can photograph it alone.
     if (other && !["saved", "duplicate"].includes(other.state)) {
       const named = await admin.from("workbook_pages").select("page_number").eq("parent_id", parent).eq("qr_token", pages[1].token).maybeSingle();

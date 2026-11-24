@@ -19,6 +19,8 @@ export const CSS = `
 .scan.tr{right:22px;top:22px;border-right-width:3px;border-top-width:3px}
 .scan.bl{left:22px;bottom:22px;border-left-width:3px;border-bottom-width:3px}
 .scan.br{right:22px;bottom:22px;border-right-width:3px;border-bottom-width:3px}
+[data-spine="left"] :is(.scan.tl,.scan.bl){left:0.5in}
+[data-spine="right"] :is(.scan.tr,.scan.br){right:0.5in}
 .frame{position:absolute;left:64px;top:64px;width:688px;height:866px;display:flex;flex-direction:column;gap:20px}
 .frame>*{flex-shrink:0}
 .hd{display:flex;flex-direction:column;gap:8px}

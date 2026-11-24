@@ -1,11 +1,14 @@
 import sharp from "sharp";
 import jsQR from "jsqr";
+import { SCAN_MARKS, type PagePrintContract } from "@/lib/workbook-print-contract";
 
 export const SCAN_INPUT_BYTES = 20 * 1024 * 1024;
 export const SCAN_PIXELS = 48_000_000;
 
 /** Decode actual bytes before persistence. Sharp strips metadata unless explicitly asked to keep it. */
-export async function normalizeScanPhoto(input: Uint8Array, limits = { inputBytes: SCAN_INPUT_BYTES, pixels: SCAN_PIXELS, outputBytes: SCAN_INPUT_BYTES }) {
+type SpreadContract = (token: string) => Promise<PagePrintContract | null>;
+
+export async function normalizeScanPhoto(input: Uint8Array, limits = { inputBytes: SCAN_INPUT_BYTES, pixels: SCAN_PIXELS, outputBytes: SCAN_INPUT_BYTES }, contractFor?: SpreadContract) {
   if (!input.length || input.length > limits.inputBytes) throw new Error("size");
   const source = sharp(input, { limitInputPixels: limits.pixels, failOn: "warning", animated: false });
   const metadata = await source.metadata();
@@ -16,8 +19,8 @@ export async function normalizeScanPhoto(input: Uint8Array, limits = { inputByte
   if (normalized.data.length > limits.outputBytes) throw new Error("size");
   const first = await pageCode(normalized.data, normalized.info);
   if (!first) throw new Error("qr");
-  const { spread, token } = await spreadPages(normalized.data, normalized.info, first, limits.outputBytes);
-  return { bytes: normalized.data, token, width: normalized.info.width, height: normalized.info.height, spread };
+  const { spread, token, alternateToken } = await spreadPages(normalized.data, normalized.info, first, limits.outputBytes, contractFor);
+  return { bytes: normalized.data, token, width: normalized.info.width, height: normalized.info.height, spread, alternateToken };
 }
 
 /** One page of a two-page photo: its own half of the photo, the other page painted white, with its own code. */
@@ -37,7 +40,7 @@ const CODE_SIDE = 0.0572, CODE_CENTER_X = 0.114;
  * pages, 2026-11-14): the code's centre is 1.18 down; the page is 11/8.5 tall; the corner marks sit 0.027 in; the
  * printed content (questions and their boxes) lies between 0.075 and 0.925 across and 0.06 and 1.24 down.
  */
-const CODE_CENTER_Y = 1.18, PAGE_HEIGHT = 11 / 8.5, MARK_INSET = 0.027, CONTENT_X = [0.075, 0.925] as const, CONTENT_Y = [0.06, 1.24] as const;
+const CODE_CENTER_Y = 1.18, PAGE_HEIGHT = 11 / 8.5, CONTENT_X = [0.075, 0.925] as const, CONTENT_Y = [0.06, 1.24] as const;
 /**
  * For a two-page photo, how far outside the photo, in page widths, a page's corner mark placed by its code may fall
  * (#965 review: a quarter of the next page in view is not a page in view; a sliver puts its far marks about 0.75 out).
@@ -143,7 +146,7 @@ async function codeAround(jpeg: Buffer, photo: { width: number; height: number }
  * the other side is painted white, so its own code and corner marks are the only ones its photo shows. A page photo is
  * still bound to its page by its own code and checked against its own print like any other photo; this never decides a page.
  */
-async function spreadPages(jpeg: Buffer, photo: { width: number; height: number }, first: PageCode, outputBytes: number): Promise<{ spread: SpreadPage[] | null; token: string }> {
+async function spreadPages(jpeg: Buffer, photo: { width: number; height: number }, first: PageCode, outputBytes: number, contractFor?: SpreadContract): Promise<{ spread: SpreadPage[] | null; token: string; alternateToken?: string }> {
   const width = first.side / CODE_SIDE;
   let other: PageCode | null = null;
   for (const sign of [1, -1]) {
@@ -154,8 +157,8 @@ async function spreadPages(jpeg: Buffer, photo: { width: number; height: number 
   if (!other) return { spread: null, token: first.token };
   // Both pages must be in the photo, every corner mark (#965 review). Otherwise it is a photo of one page, the one more
   // of whose corners are in view (the first code read on a tie): a sliver of the next page never becomes a page photo.
-  const inView = (c: PageCode) => marksInView(c, photo);
-  const [firstIn, otherIn] = [inView(first), inView(other)];
+  const contracts = contractFor ? await Promise.all([contractFor(first.token), contractFor(other.token)]) : [null, null];
+  const [firstIn, otherIn] = [marksInView(first, photo, contracts[0]), marksInView(other, photo, contracts[1])];
   if (firstIn < 4 || otherIn < 4) return { spread: null, token: otherIn > firstIn ? other.token : first.token };
   // Left and right in the pages' own direction (the photo may be turned).
   const along = (c: PageCode) => c.center.x * first.dir.x + c.center.y * first.dir.y;
@@ -166,11 +169,13 @@ async function spreadPages(jpeg: Buffer, photo: { width: number; height: number 
   const a = edge(left, 1 - CODE_CENTER_X), b = edge(right, -CODE_CENTER_X);
   const split = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
   // The cut must pass between the two pages' printed content, top to bottom, each page placed by its own code: a page
-  // curled or turned at the spine reaches over the line, and its answers there would be cut. Such a photo is refused.
+  // curled or turned at the spine can cross the line. Keep the whole image and let admission try either code.
   const across = (p: Point) => ((p.x - split.x) * first.dir.x + (p.y - split.y) * first.dir.y) / pageWidth;
   const leftEdge = CONTENT_Y.map((y) => across(pagePoint(left, { x: CONTENT_X[1], y })));
   const rightEdge = CONTENT_Y.map((y) => across(pagePoint(right, { x: CONTENT_X[0], y })));
-  if (Math.max(...leftEdge) > -SPREAD_CUT_CLEARANCE || Math.min(...rightEdge) < SPREAD_CUT_CLEARANCE) throw new Error("flat");
+  if (Math.max(...leftEdge) > -SPREAD_CUT_CLEARANCE || Math.min(...rightEdge) < SPREAD_CUT_CLEARANCE) {
+    return { spread: null, token: first.token, alternateToken: other.token };
+  }
   const pages: SpreadPage[] = [];
   for (const [code, keep] of [[left, -1], [right, 1]] as const) {
     const page = await halfOf(jpeg, photo, split, first.dir, keep);
@@ -188,9 +193,15 @@ function pagePoint(c: PageCode, p: Point): Point {
 }
 
 /** How many of a page's four corner marks, placed by its code, are in the photo (at most SPREAD_MARK_OVERHANG out). */
-function marksInView(c: PageCode, photo: { width: number; height: number }): number {
-  const m = -SPREAD_MARK_OVERHANG * (c.side / CODE_SIDE), lo = MARK_INSET, hiX = 1 - MARK_INSET, hiY = PAGE_HEIGHT - MARK_INSET;
-  return [{ x: lo, y: lo }, { x: hiX, y: lo }, { x: hiX, y: hiY }, { x: lo, y: hiY }].map((p) => pagePoint(c, p))
+function marksInView(c: PageCode, photo: { width: number; height: number }, contract: PagePrintContract | null): number {
+  const m = -SPREAD_MARK_OVERHANG * (c.side / CODE_SIDE);
+  const legacyInset = 0.027;
+  // Older prints without a contract used the same inset on both sides.
+  const points = contract ? SCAN_MARKS.map((mark) => {
+    const { x, y } = contract.marks.points[mark], width = contract.coordinates.image.width;
+    return { x: x / width, y: y / width };
+  }) : [legacyInset, 1 - legacyInset].flatMap((x) => [legacyInset, PAGE_HEIGHT - legacyInset].map((y) => ({ x, y })));
+  return points.map((p) => pagePoint(c, p))
     .filter((q) => q.x >= m && q.y >= m && q.x <= photo.width - m && q.y <= photo.height - m).length;
 }
 

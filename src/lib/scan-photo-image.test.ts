@@ -3,6 +3,7 @@ import sharp from "sharp";
 import QRCode from "qrcode";
 import jsQR from "jsqr";
 import { blankPage, drawPrintedContent, drawQr, photographed, rasterSharp, uprightCorners } from "./scan-synthetic";
+import { buildPrintContract } from "./workbook-print-contract";
 import { normalizeScanPhoto, readScanBody } from "./scan-photo-image";
 
 const token = "syntheticScanPage454Token";
@@ -90,8 +91,33 @@ describe("scan photo normalization", () => {
     const stacked = photographed(sheet("spreadRightPage002"), { width: 2000, height: 1700 }, place(90), { background: 200 });
     photographed(sheet("spreadLeftPage0001"), { width: 2000, height: 1700 }, place(600), { onto: stacked });
     expect((await normalizeScanPhoto(await rasterSharp(stacked).jpeg({ quality: 90 }).toBuffer())).spread).toBeNull();
+    // With narrow clipping at the two binding edges, the measured inset marks remain in view.
+    const narrow = { width: 2290, height: 1700 };
+    const inset = photographed(sheet("spreadLeftPage0001"), narrow, place(-55), { background: 200 });
+    photographed(sheet("spreadRightPage002"), narrow, place(1165), { onto: inset });
+    const clipped = await rasterSharp(inset).jpeg({ quality: 90 }).toBuffer();
+    expect((await normalizeScanPhoto(clipped)).spread?.map((p) => p.token)).toEqual(["spreadLeftPage0001", "spreadRightPage002"]);
+    const fartherIn = await sharp(clipped).extract({ left: 25, top: 0, width: narrow.width - 50, height: narrow.height }).jpeg({ quality: 90 }).toBuffer();
+    expect((await normalizeScanPhoto(fartherIn)).spread).toBeNull();
+    const requested: string[] = [];
+    const byContract = await normalizeScanPhoto(fartherIn, undefined, async (name) => {
+      requested.push(name);
+      const left = name === "spreadLeftPage0001" ? 48 : 22, right = name === "spreadLeftPage0001" ? 22 : 48;
+      return buildPrintContract({
+        workbookId: "test", page: { number: left === 48 ? 3 : 4, dayLabel: "Day 1", type: "warm-up", qrToken: name, questions: [] },
+        css: { width: 816, height: 1056 }, image: { width: 1275, height: 1650, sha256: "test" },
+        marks: [
+          { name: "scan-tl", x: left, y: 22 },
+          { name: "scan-bl", x: left, y: 1016 },
+          { name: "scan-tr", x: 816 - right - 18, y: 22 },
+          { name: "scan-br", x: 816 - right - 18, y: 1016 },
+        ].map((p) => ({ ...p, width: 18, height: 18, visible: true })),
+      }).contract;
+    });
+    expect(requested.sort()).toEqual(["spreadLeftPage0001", "spreadRightPage002"]);
+    expect(byContract.spread?.map((p) => p.token)).toEqual(["spreadLeftPage0001", "spreadRightPage002"]);
   });
-  it("takes a sliver of the next page as a photo of one page, and refuses pages turned at the spine (#965 review)", async () => {
+  it("takes a sliver of the next page as a photo of one page, and keeps an unsafe spread unsplit (#965 review)", async () => {
     const sheet = (name: string) => {
       const page = blankPage(1275, 1650);
       drawPrintedContent(page);
@@ -106,14 +132,14 @@ describe("scan photo normalization", () => {
     const one = await normalizeScanPhoto(await rasterSharp(sliver).jpeg({ quality: 90 }).toBuffer());
     expect(one.spread).toBeNull();
     expect(one.token).toBe("spreadLeftPage0001");
-    // The right page turned 8 degrees about its foot at the spine: its top reaches over the cut, so the photo is refused.
+    // The right page turned 8 degrees about its foot at the spine: its top reaches over the cut, so the first readable page is kept without splitting.
     const turn = (corners: { x: number; y: number }[], about: { x: number; y: number }, degrees: number) => {
       const a = (degrees * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
       return corners.map((p) => ({ x: about.x + (p.x - about.x) * c - (p.y - about.y) * s, y: about.y + (p.x - about.x) * s + (p.y - about.y) * c }));
     };
     const turned = photographed(sheet("spreadLeftPage0001"), { width: 2600, height: 1700 }, place(90), { background: 200 });
     photographed(sheet("spreadRightPage002"), { width: 2600, height: 1700 }, turn(place(1310), { x: 1310, y: 1607 }, -8), { onto: turned });
-    await expect(normalizeScanPhoto(await rasterSharp(turned).jpeg({ quality: 90 }).toBuffer())).rejects.toThrow("flat");
+    await expect(normalizeScanPhoto(await rasterSharp(turned).jpeg({ quality: 90 }).toBuffer())).resolves.toMatchObject({ spread: null, token: "spreadLeftPage0001", alternateToken: "spreadRightPage002" });
   });
   it("bounds streamed bytes without trusting content length", async () => {
     const request = () => new Request("https://test.invalid", { method: "PUT", body: new Uint8Array(20), headers: { "Content-Length": "1" } });

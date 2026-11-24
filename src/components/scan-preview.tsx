@@ -156,9 +156,9 @@ export function ScanPreview({ photo, child, onRetake, onSendAnyway, onProblem }:
     <div className="scan-preview-layout">
       <figure className="scan-straight">
         {images[preview.straight.part]
-          ? <Image unoptimized width={preview.straight.width} height={preview.straight.height} src={images[preview.straight.part]} alt={`Straightened page for ${child ?? "your child"}`} />
+          ? <Image unoptimized width={preview.straight.width} height={preview.straight.height} src={images[preview.straight.part]} alt={preview.original ? "" : `Straightened page for ${child ?? "your child"}`} />
           : <span className="scan-holder" style={{ aspectRatio: `${preview.straight.width} / ${preview.straight.height}` }} />}
-        <figcaption>Your photo, straightened</figcaption>
+        <figcaption>{preview.original ? "Your photo" : "Your photo, straightened"}</figcaption>
       </figure>
       <div className="scan-answers">
         {preview.crops.length > 0

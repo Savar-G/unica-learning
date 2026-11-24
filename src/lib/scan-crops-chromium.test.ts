@@ -28,10 +28,12 @@ async function renderLevelPages(level: string) {
   const pages = draft.pages.filter((p: DraftPage) => p.dayLabel === "Day 1" && p.questions.length > 0).slice(0, 4);
   const result = await renderWorkbook({ draft: { ...draft, pages }, parentId: PARENT, template: workbookTemplate(await fixedTemplateFonts()), engine });
   if (result.status !== "rendered") throw new Error(JSON.stringify(result.problems.slice(0, 3)));
-  return result.workbook.pages.flatMap((page) => {
+  expect(result.workbook.pages.map((page) => page.number)).toEqual(pages.map((page) => page.number));
+  return result.workbook.pages.map((page) => {
     const plan = cropPlan(page.questions.map((q) => ({ number: q.number, package: q.package as never, regions: q.regions ?? null })));
     const png = result.files.find((f) => f.path === page.image!.path)?.bytes;
-    return page.printContract && png ? [{ number: page.number, contract: page.printContract, png, plan, link: pageUrl(page.qrToken), writing: page.questions.flatMap((q) => (q.regions ?? []).flatMap((r) => (r.box ? [r.box] : []))) }] : [];
+    if (!page.printContract || !png) throw new Error(`Page ${page.number} has no print contract or image`);
+    return { number: page.number, contract: page.printContract, png, plan, link: pageUrl(page.qrToken), writing: page.questions.flatMap((q) => (q.regions ?? []).flatMap((r) => (r.box ? [r.box] : []))) };
   });
 }
 
@@ -81,6 +83,17 @@ describe.skipIf(!chromium)("calibration on real printed pages", () => {
     }
     expect(checked).toBeGreaterThan(0);
   }, 240_000);
+
+  it("stores the inset spine marks for both page parities", async () => {
+    const pages = await renderedPages("U16");
+    expect(new Set(pages.map((p) => p.number % 2))).toEqual(new Set([0, 1]));
+    for (const { number, contract } of pages) {
+      const { width } = contract.coordinates.image;
+      const { x: scale } = contract.coordinates.scale, { tl, tr, bl, br } = contract.marks.points;
+      expect([tl.x, bl.x]).toEqual(Array(2).fill((number % 2 ? 48 : 22) * scale));
+      expect([tr.x, br.x]).toEqual(Array(2).fill(width - (number % 2 ? 22 : 48) * scale));
+    }
+  }, 120_000);
 
   it("a real page's photo does not calibrate against another real page's image", async () => {
     // Disproved if the printed-page check passes any page with the same marks. The template's marks are the same on all pages.
