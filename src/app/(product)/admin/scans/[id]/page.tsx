@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/admin-store";
 import { adminClient } from "@/lib/supabase-auth";
 import { markingCommand, scanMarkChanges } from "@/lib/scan-marking-store";
 import { readScanMarking } from "@/lib/scan-marking-server";
+import type { ScanRejectReason } from "@/lib/scan-states";
 import { waitsForTeam } from "@/lib/scan-marking";
 import { readingIssueText, READING_ISSUES, type ReadingIssue } from "@/lib/scan-observation";
 import { AdminTeamMark } from "@/components/admin-team-mark";
@@ -30,13 +31,27 @@ function photoCheckText(check: PhotoCheck | null): string {
 
 const resultText = (r: string | null | undefined) => r === "right" ? "Right" : r === "wrong" ? "Wrong" : r === "blank" ? "Blank" : r === "unscored" ? "Not scored" : "Not marked";
 
+const REJECT_REASON_TEXT: Record<ScanRejectReason, string> = {
+  qr: "The page code could not be read.",
+  size: "The image was too large.",
+  image: "The image could not be read.",
+  flat: "The page was not flat enough.",
+  page: "The page could not be matched to an open workbook.",
+  duplicate: "This page already had a photo.",
+  refused: "The upload was refused.",
+  expired: "The upload expired.",
+  busy: "The upload could not start because other scans were in progress.",
+  unavailable: "The upload service was temporarily unavailable.",
+  unexpected: "An unexpected error interrupted the upload.",
+};
+
 // One marked page (D-313, D-315): the photo large, the answers for our team to mark beside it, every answer's reading as
 // a compact list, the mark changes as a timeline, and the raw data in a closed "Technical details" section.
 export default async function AdminScanPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ after?: string }> }) {
   const admin = await requireAdmin(), { id } = await params;
   if (!isUuid(id)) notFound();
   // Ownership comes from an RLS read with the verified admin session, before the server-only detail read.
-  const row = await admin.db.from("scan_photos").select("parent_id").eq("id", id).maybeSingle();
+  const row = await admin.db.from("scan_photos").select("parent_id,state").eq("id", id).maybeSingle();
   const db = adminClient();
   if (row.error || !row.data || !db) notFound();
   const result = await readScanMarking(db, row.data.parent_id, id);
@@ -44,6 +59,12 @@ export default async function AdminScanPage({ params, searchParams }: { params: 
   const after = (await searchParams).after ?? "0";
   if (!/^\d{1,15}$/.test(after)) notFound();
   const checkRow = await db.from("scan_photos").select("photo_check").eq("id", id).eq("parent_id", row.data.parent_id).maybeSingle();
+  const rejected = row.data.state === "rejected";
+  // Fetch separately so a missing reason column during rollout cannot hide existing photo details.
+  const rejection = rejected
+    ? await db.from("scan_photos").select("reject_reason").eq("id", id).eq("parent_id", row.data.parent_id).maybeSingle()
+    : null;
+  const rejectReason = rejection?.data?.reject_reason;
   const photoCheck = checkRow.error || !checkRow.data ? null : readPhotoCheck(checkRow.data.photo_check);
   const history = await scanMarkChanges(markingCommand(db), row.data.parent_id, id, Number(after));
   const waiting = result.marks.filter(waitsForTeam);
@@ -65,6 +86,7 @@ export default async function AdminScanPage({ params, searchParams }: { params: 
     <div className="adm-mk-page">
       <section className="adm-mk-photo" aria-label="The scanned page">
         {result.photoAvailable ? <ScanPrivateImages photo={id} numbers={[]} /> : <p className="adm-mk-empty">Photo no longer available</p>}
+        {rejected && <p className="adm-mk-empty">Upload rejected. {rejectReason ? REJECT_REASON_TEXT[rejectReason] : "No reason was recorded."}</p>}
       </section>
       <section className="adm-mk-side" aria-labelledby="mk-mark">
         <MarkHead id="mk-mark" title="Answers for our team to mark" count={waiting.length}>The AI was not sure of these answers. Look at the photo, then set the mark. The family sees it at once and can still change it.</MarkHead>

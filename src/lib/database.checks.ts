@@ -456,6 +456,7 @@ export const DATABASE_CHECKS: readonly { table: string; name: string; definition
   {"table":"scan_marking_spend","name":"scan_marking_spend_reserved_micros_check","definition":"CHECK (((reserved_micros >= 1) AND (reserved_micros <= 50000000)))"},
   {"table":"scan_photos","name":"scan_photo_check_shape","definition":"CHECK (((photo_check IS NULL) OR ((jsonb_typeof(photo_check) = 'object'::text) AND ((photo_check ->> 'state'::text) = ANY (ARRAY['pending'::text, 'done'::text, 'unknown'::text])) AND (pg_column_size(photo_check) <= 4096))))"},
   {"table":"scan_photos","name":"scan_photos_check","definition":"CHECK (((state <> ALL (ARRAY['pending'::text, 'saved'::text])) OR ((page_id IS NOT NULL) AND (printed_revision IS NOT NULL) AND (width > 0) AND (height > 0))))"},
+  {"table":"scan_photos","name":"scan_photos_reject_reason_check","definition":"CHECK ((reject_reason = ANY (ARRAY['qr'::text, 'size'::text, 'image'::text, 'flat'::text, 'page'::text, 'duplicate'::text, 'refused'::text, 'expired'::text, 'busy'::text, 'unavailable'::text, 'unexpected'::text])))"},
   {"table":"scan_photos","name":"scan_photos_reserved_bytes_check","definition":"CHECK ((reserved_bytes >= 0))"},
   {"table":"scan_photos","name":"scan_photos_state_check","definition":"CHECK ((state = ANY (ARRAY['reserved'::text, 'processing'::text, 'pending'::text, 'saved'::text, 'deleted'::text, 'expired'::text, 'rejected'::text])))"},
   {"table":"scan_photos","name":"scan_photos_stored_bytes_check","definition":"CHECK ((stored_bytes >= 0))"},

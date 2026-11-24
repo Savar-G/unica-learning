@@ -16,7 +16,7 @@ import { AI_FEATURES } from "@/lib/ai-usage";
 import { AI_USAGE_CONTEXTS, AI_KEY_ALIASES } from "@/lib/ai-usage-context";
 import { ASSISTANCE } from "@/lib/maya/session";
 import { DELIVERY_TYPES } from "@/lib/resend-webhook";
-import { SCAN_BLOCKED_REASONS, SCAN_CALIBRATION_STATES, SCAN_CLEAN_FAILURES, SCAN_JOB_STATES, SCAN_PHOTO_STATES } from "@/lib/scan-states";
+import { SCAN_BLOCKED_REASONS, SCAN_CALIBRATION_STATES, SCAN_CLEAN_FAILURES, SCAN_JOB_STATES, SCAN_PHOTO_STATES, SCAN_REJECT_REASONS } from "@/lib/scan-states";
 import { REFERRAL_RISKS, REFERRAL_OPERATION_STATES, REFERRAL_REWARD_KINDS, REFERRAL_EMAIL_STATES } from "@/lib/referrals";
 import { GATE_OUTCOMES } from "@/lib/workbook-run-gates";
 import { REFERENCE_RECORD_KINDS, TRANSCRIPT_STATUSES } from "@/lib/reference-record/import";
@@ -41,6 +41,7 @@ const LISTS: { name: string; list: readonly string[]; table: string; column: str
   { name: "SEND_OUTCOMES", list: SEND_OUTCOMES, table: "email_sends", column: "outcome" },
   { name: "ATTEMPT_STATUSES", list: ATTEMPT_STATUSES, table: "assessments", column: "status" },
   { name: "SCAN_PHOTO_STATES", list: SCAN_PHOTO_STATES, table: "scan_photos", column: "state" },
+  { name: "SCAN_REJECT_REASONS", list: SCAN_REJECT_REASONS, table: "scan_photos", column: "reject_reason" },
   { name: "SCAN_JOB_STATES", list: SCAN_JOB_STATES, table: "scan_marking_jobs", column: "state" },
   { name: "SCAN_BLOCKED_REASONS", list: SCAN_BLOCKED_REASONS, table: "scan_marking_jobs", column: "blocked_reason" },
   { name: "SCAN_CALIBRATION_STATES", list: SCAN_CALIBRATION_STATES, table: "scan_calibrations", column: "state" },

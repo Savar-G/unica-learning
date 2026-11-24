@@ -36,6 +36,9 @@ export type ScanBlockedReason = (typeof SCAN_BLOCKED_REASONS)[number];
 export const SCAN_CLEAN_FAILURES = ["rate-limit"] as const;
 export type ScanCleanFailure = (typeof SCAN_CLEAN_FAILURES)[number];
 
+export const SCAN_REJECT_REASONS = ["qr", "size", "image", "flat", "page", "duplicate", "refused", "expired", "busy", "unavailable", "unexpected"] as const;
+export type ScanRejectReason = (typeof SCAN_REJECT_REASONS)[number];
+
 /** A page calibration (public.scan_calibrations.state, #455). */
 export const SCAN_CALIBRATION_STATES = ["running", "ready", "refused"] as const;
 export type ScanCalibrationState = (typeof SCAN_CALIBRATION_STATES)[number];
