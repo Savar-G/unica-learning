@@ -2596,7 +2596,9 @@ describe("compareWorkFolder", () => {
       ]),
     );
     expect(aBad.page.status).toBe("machine_read");
-    expect(aBad.page.result_reason).toBe("stored answer conflicts with computed answer");
+    expect(aBad.page.result_reason).toBe(
+      "stored answer conflicts with computed answer; readers disagree on an expression",
+    );
     expect(aBad.page.answer_conflicts).toEqual([
       'final record: examples[0].parts[0].shown_answer: shown "6", computed "5"',
     ]);
@@ -2614,7 +2616,9 @@ describe("compareWorkFolder", () => {
       ]),
     );
     expect(bBad.page.status).toBe("machine_read");
-    expect(bBad.page.result_reason).toBe("a reader's answer differs from the computed answer");
+    expect(bBad.page.result_reason).toBe(
+      "a reader's answer differs from the computed answer; readers disagree on an expression",
+    );
     expect(bBad.page.answer_conflicts).toBeUndefined();
     expect(bBad.page.reader_answer_conflicts).toEqual([
       'reader b: examples[0].parts[0].shown_answer: shown "6", computed "5"',
@@ -2895,5 +2899,298 @@ describe("compareWorkFolder", () => {
       'reader b: examples[0].parts[0].shown_answer: shown "8", computed "5"',
     ]);
   });
-});
 
+  it("sends >= 90% pages with expression disagreements (including same answer, combined answer+expr, and one-sided example) to a person and lists expression paths in report.json and report.md", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-cmp-exprstop-repo-"));
+    const work = mkdtempSync(join(tmpdir(), "ref-cmp-exprstop-work-"));
+    tempDirs.push(repo, work);
+
+    const makeSized = (ref: string): PageRecord => ({
+      kind: "page",
+      source_ref: ref,
+      topic: { title: "Adding Numbers", number: 1 },
+      sections: [
+        {
+          instruction: "Add the numbers.",
+          scaffolds: [],
+          items: Array.from({ length: 12 }, (_, idx) => ({
+            n: idx + 1,
+            printed: idx === 0 ? "2 + 3 =" : `${idx + 1} + 1 =`,
+            form: "horizontal" as const,
+            expr: {
+              kind: "arith" as const,
+              op: "add" as const,
+              operands: idx === 0 ? [2, 3] : [idx + 1, 1],
+            },
+            responses: [
+              {
+                position: "after_equals" as const,
+                cue: null,
+                answer: idx === 0 ? "5" : String(idx + 2),
+                answer_source: "computed" as const,
+              },
+            ],
+          })),
+        },
+      ],
+      examples: [],
+      score_bands: [
+        [100, 100],
+        [90, 99],
+        [80, 89],
+        [70, 79],
+        [0, 69],
+      ],
+    });
+
+    // 1a: control >= 95% with non-expression diff -> agreement_accepted with single_read
+    const p1a = makeSized("sample:M:41a");
+    const p1b = structuredClone(p1a);
+    p1b.topic.title = "Totals";
+
+    // 2a: printed "2 + 3 =", reader A stores 1 x 5, reader B stores 2 + 3, both answers 5 -> machine_read with expression reason
+    const p2a = makeSized("sample:M:42a");
+    p2a.sections[0].items[0].expr = { kind: "arith", op: "mul", operands: [1, 5] };
+    const p2b = makeSized("sample:M:42a");
+
+    // 3a: both answer and expression disagreement on the same page -> shows both reasons
+    const p3a = makeSized("sample:M:43a");
+    p3a.sections[0].items[0].expr = { kind: "arith", op: "mul", operands: [1, 5] };
+    p3a.sections[0].items[1].responses[0] = {
+      position: "after_equals",
+      cue: null,
+      answer: "3",
+      answer_source: "reader",
+    };
+    const p3b = makeSized("sample:M:43a");
+    p3b.sections[0].items[1].responses[0] = {
+      position: "after_equals",
+      cue: null,
+      answer: "4",
+      answer_source: "reader",
+    };
+
+    // 4a: one-sided worked example with an expression and no answer -> machine_read with expression reason only
+    const p4a = makeSized("sample:M:44a");
+    const p4b = makeSized("sample:M:44a");
+    p4b.examples = [
+      {
+        position: "top",
+        relation: "compare",
+        parts: [{ form: "horizontal", expr: { kind: "arith", op: "add", operands: [1, 2] } }],
+      },
+    ];
+
+    const batch = [
+      { sha: "a".repeat(64), ref: "sample:M:41a", file: "sample-M-41a.json", a: p1a, b: p1b },
+      { sha: "b".repeat(64), ref: "sample:M:42a", file: "sample-M-42a.json", a: p2a, b: p2b },
+      { sha: "c".repeat(64), ref: "sample:M:43a", file: "sample-M-43a.json", a: p3a, b: p3b },
+      { sha: "d".repeat(64), ref: "sample:M:44a", file: "sample-M-44a.json", a: p4a, b: p4b },
+    ];
+    for (const [slot, family] of [
+      ["a", "codex"],
+      ["b", "claude"],
+    ] as const) {
+      const dir = join(work, `reader-${slot}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "reader.json"), JSON.stringify({ family, model: "m1" }));
+      for (const entry of batch) {
+        writeFileSync(join(dir, entry.file), JSON.stringify(slot === "a" ? entry.a : entry.b, null, 2));
+      }
+      writeFileSync(
+        join(dir, "run.json"),
+        JSON.stringify({
+          slot,
+          reader: { family, model: "m1" },
+          source: "sample",
+          photos: batch.map((entry) => ({
+            photo: `${entry.sha.slice(0, 12)}.jpg`,
+            photo_sha256: entry.sha,
+            status: "ok",
+            source_ref: entry.ref,
+            record_file: entry.file,
+            notes: [],
+          })),
+        }),
+      );
+    }
+
+    const report = compareWorkFolder({ workDir: work, repoRoot: repo });
+    const byRef = (ref: string) => report.pages.find((p) => p.source_ref === ref);
+
+    const page41a = byRef("sample:M:41a");
+    expect(page41a?.status).toBe("agreement_accepted");
+    expect(page41a?.expression_disagreements).toBeUndefined();
+    const saved41a = JSON.parse(readFileSync(join(work, "final", "sample-M-41a.json"), "utf8")) as PageRecord;
+    expect(saved41a.single_read).toEqual(["topic.title"]);
+
+    const page42a = byRef("sample:M:42a");
+    expect(page42a?.status).toBe("machine_read");
+    expect(page42a?.result).toBe("sent to a person");
+    expect(page42a?.result_reason).toBe("readers disagree on an expression");
+    expect(page42a?.expression_disagreements).toEqual([
+      "sections[0].items[n=1].expr.op",
+      "sections[0].items[n=1].expr.operands[0]",
+      "sections[0].items[n=1].expr.operands[1]",
+    ]);
+    expect(page42a?.answer_disagreements).toBeUndefined();
+    expect(page42a?.agreement?.percent).toBeGreaterThanOrEqual(95);
+    const saved42a = JSON.parse(readFileSync(join(work, "final", "sample-M-42a.json"), "utf8")) as PageRecord;
+    expect(saved42a.single_read).toBeUndefined();
+
+    const page43a = byRef("sample:M:43a");
+    expect(page43a?.status).toBe("machine_read");
+    expect(page43a?.result_reason).toBe(
+      "readers disagree on an answer; readers disagree on an expression",
+    );
+    expect(page43a?.answer_disagreements).toEqual(["sections[0].items[n=2].responses[0].answer"]);
+    expect(page43a?.expression_disagreements).toEqual([
+      "sections[0].items[n=1].expr.op",
+      "sections[0].items[n=1].expr.operands[0]",
+      "sections[0].items[n=1].expr.operands[1]",
+    ]);
+
+    const page44a = byRef("sample:M:44a");
+    expect(page44a?.status).toBe("machine_read");
+    expect(page44a?.result_reason).toBe("readers disagree on an expression");
+    expect(page44a?.expression_disagreements).toEqual(["examples[b:0]"]);
+    expect(page44a?.answer_disagreements).toBeUndefined();
+
+    expect(report.pages_sent_to_person?.map((p) => ({ ref: p.source_ref, reason: p.reason }))).toEqual([
+      { ref: "sample:M:42a", reason: "readers disagree on an expression" },
+      {
+        ref: "sample:M:43a",
+        reason: "readers disagree on an answer; readers disagree on an expression",
+      },
+      { ref: "sample:M:44a", reason: "readers disagree on an expression" },
+    ]);
+
+    const md = readFileSync(join(work, "final", "report.md"), "utf8");
+    expect(md).toContain("sent to a person (readers disagree on an expression)");
+    expect(md).toContain(
+      "sent to a person (readers disagree on an answer; readers disagree on an expression)",
+    );
+    expect(md).toContain("- Expression disagreements (readers disagree on an expression):");
+    expect(md).toContain("  - `sections[0].items[n=1].expr.op`");
+    expect(md).toContain("  - `examples[b:0]`");
+
+    const savedReport = JSON.parse(readFileSync(join(work, "final", "report.json"), "utf8")) as typeof report;
+    expect(savedReport.pages.find((p) => p.source_ref === "sample:M:42a")?.expression_disagreements).toEqual([
+      "sections[0].items[n=1].expr.op",
+      "sections[0].items[n=1].expr.operands[0]",
+      "sections[0].items[n=1].expr.operands[1]",
+    ]);
+  });
+
+  it("stops on a malformed previous report.json, naming the file, before it writes or removes anything", () => {
+    const setUpEditedWork = () => {
+      const repo = mkdtempSync(join(tmpdir(), "ref-cmp-badreport-repo-"));
+      const work = mkdtempSync(join(tmpdir(), "ref-cmp-badreport-work-"));
+      tempDirs.push(repo, work);
+      for (const [slot, family] of [
+        ["a", "claude"],
+        ["b", "codex"],
+      ] as const) {
+        const dir = join(work, `reader-${slot}`);
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, "reader.json"), JSON.stringify({ family, model: "m1" }));
+        writeFileSync(join(dir, "sample-M-3a.json"), JSON.stringify(makePage()));
+        writeFileSync(
+          join(dir, "run.json"),
+          JSON.stringify({
+            slot,
+            reader: { family, model: "m1" },
+            source: "sample",
+            photos: [
+              {
+                photo: "p-111111111111.jpg",
+                photo_sha256: SHA_1,
+                status: "ok",
+                source_ref: "sample:M:3a",
+                record_file: "sample-M-3a.json",
+                notes: [],
+              },
+            ],
+          }),
+        );
+      }
+      const first = compareWorkFolder({ workDir: work, repoRoot: repo });
+      const finalDir = join(work, "final");
+      const recordPath = join(finalDir, "sample-M-3a.json");
+      const editedText = JSON.stringify(makePage({ topic: { title: "Corrected by hand" } }));
+      writeFileSync(recordPath, editedText);
+      const stalePath = join(finalDir, "sample-M-6a.json");
+      writeFileSync(stalePath, JSON.stringify(makePage({ source_ref: "sample:M:6a" })));
+      const statusPath = join(finalDir, "status.json");
+      writeFileSync(
+        statusPath,
+        JSON.stringify({ "sample:M:3a": "double_read", "sample:M:6a": "machine_read" }),
+      );
+      const validRow = {
+        source_ref: "sample:M:3a",
+        final_record_sha256: first.pages[0].final_record_sha256,
+      };
+      const reportPath = join(finalDir, "report.json");
+      const viewPath = join(work, "final-view", "sample-M-3a.md");
+      const keptPaths = [recordPath, stalePath, statusPath, reportPath, viewPath, join(finalDir, "report.md")];
+      const run = () => compareWorkFolder({ workDir: work, repoRoot: repo });
+      return { run, recordPath, editedText, stalePath, reportPath, keptPaths, validRow };
+    };
+    type Row = ReturnType<typeof setUpEditedWork>["validRow"];
+
+    const stopCases: Array<[string, (valid: Row) => string]> = [
+      ["pages = 42", () => JSON.stringify({ pages: 42 })],
+      ["pages = {}", () => JSON.stringify({ pages: {} })],
+      ["pages = [null]", () => JSON.stringify({ pages: [null] })],
+      ["pages = [valid, null]", (valid) => JSON.stringify({ pages: [valid, null] })],
+      ["pages = [null, valid]", (valid) => JSON.stringify({ pages: [null, valid] })],
+      ['pages = "x"', () => JSON.stringify({ pages: "x" })],
+      ["not JSON", () => "{ bad"],
+      ["row is a number", () => JSON.stringify({ pages: [42] })],
+      ["row is a list", () => JSON.stringify({ pages: [["sample:M:3a"]] })],
+      ["hash with no source_ref", (valid) => JSON.stringify({ pages: [{ ...valid, source_ref: undefined }] })],
+      ["source_ref is a number", (valid) => JSON.stringify({ pages: [{ ...valid, source_ref: 3 }] })],
+      ["no source_ref and no hash", () => JSON.stringify({ pages: [{}] })],
+      ["hash is a number", (valid) => JSON.stringify({ pages: [{ ...valid, final_record_sha256: 7 }] })],
+      [
+        "two hashes for one page",
+        (valid) => JSON.stringify({ pages: [valid, { ...valid, final_record_sha256: "0".repeat(64) }] }),
+      ],
+    ];
+    for (const [name, reportText] of stopCases) {
+      const work = setUpEditedWork();
+      writeFileSync(work.reportPath, reportText(work.validRow));
+      const before = work.keptPaths.map((path) => readFileSync(path));
+      let message = "";
+      try {
+        work.run();
+      } catch (err) {
+        message = (err as Error).message;
+      }
+      expect(message, name).toContain(work.reportPath);
+      expect(work.keptPaths.map((path) => readFileSync(path)), name).toEqual(before);
+    }
+
+    // A report that can be read and names no hash does not stop the run.
+    const continueCases: Array<[string, unknown]> = [
+      ["root null", null],
+      ["pages absent", {}],
+      ["pages null", { pages: null }],
+      ["pages empty", { pages: [] }],
+      ["row without a hash", { pages: [{ source_ref: "sample:M:3a" }] }],
+      ["row with a null hash", { pages: [{ source_ref: "sample:M:3a", final_record_sha256: null }] }],
+    ];
+    for (const [name, report] of continueCases) {
+      const work = setUpEditedWork();
+      writeFileSync(work.reportPath, JSON.stringify(report));
+      expect(work.run().pages[0].edited_by_person, name).toBeUndefined();
+    }
+
+    // The control: the valid row keeps the edited record.
+    const control = setUpEditedWork();
+    writeFileSync(control.reportPath, JSON.stringify({ pages: [control.validRow] }));
+    expect(control.run().pages[0].edited_by_person).toBe(true);
+    expect(readFileSync(control.recordPath, "utf8")).toBe(control.editedText);
+    expect(existsSync(control.stalePath)).toBe(false);
+  });
+});
