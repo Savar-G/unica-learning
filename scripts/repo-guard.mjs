@@ -11,7 +11,7 @@
  *   6. no-new-suppressions: freezes eslint-disable / oxlint-disable / @ts-ignore / @ts-expect-error counts.
  *   7. feature-map-coverage: requires every (site)/(product) page.tsx route in docs/feature-map.md.
  *   8. agents-md-budget: keeps AGENTS.md <= 150 lines and <= 10,240 bytes.
- *   9. engine-imports, engine-purity, engine-level-branch: keep the workbook engine pure (scripts/engine-guard.mjs).
+ *   9. engine-imports, engine-purity, engine-level-branch, engine-asset-use: keep the workbook engine pure (scripts/engine-guard.mjs).
  *
  * Usage:
  *   node scripts/repo-guard.mjs            # verify against scripts/repo-guard-baseline.json
