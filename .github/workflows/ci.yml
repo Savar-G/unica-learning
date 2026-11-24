@@ -2,7 +2,7 @@ name: CI
 
 # Two-tier CI (docs/ci/README.md):
 # - On every `push` to `main`, `workflow_dispatch`, or high-blast-radius PR (configs, CI, DB, data, scripts, core shared
-#   modules, >40 files), the full suite runs: 8 duration-balanced vitest shards (`unit`) plus `maya-behaviour`,
+#   modules, >40 files), the full suite runs: 8 duration-balanced vitest shards (`unit`) plus `scan-binding-scale`, `maya-behaviour`,
 #   `family-zones`, `lint-and-types`, and `voice-worker`.
 # - On scoped pull requests, `scope` selects `affected` mode (Vitest `--changed` + any dynamically-read consumer tests,
 #   full `lint-and-types` when code changed, and path-scoped `maya-behaviour` / `family-zones` / `voice-worker`), or
@@ -88,8 +88,8 @@ jobs:
       - name: Unpack Chromium
         run: node -e 'import("@sparticuz/chromium").then(async (m) => console.log(await m.default.executablePath()))'
         timeout-minutes: 2
-      # The timed Maya files run below on their own runner without other unit files competing for CPU.
-      - run: npm test -- --config .github/scripts/vitest-ci.config.mjs --exclude='src/lib/maya-gate/{gate,word-count-grade-1,word-count-grade-4}.test.ts' --testTimeout=60000 --shard=${{ matrix.shard }}/8
+      # The timed Maya files and Chromium scale matrix run in dedicated jobs so they have the runner to themselves.
+      - run: npm test -- --config .github/scripts/vitest-ci.config.mjs --exclude='src/lib/maya-gate/{gate,word-count-grade-1,word-count-grade-4}.test.ts' --exclude='src/lib/scan-binding-scale-chromium.test.ts' --testTimeout=60000 --shard=${{ matrix.shard }}/8
         timeout-minutes: 10
 
   # Fast affected unit tests on scoped pull requests.
@@ -154,6 +154,28 @@ jobs:
       - name: Maya behaviour gate and Grade 1 / Grade 4 word limits
         run: npm test -- src/lib/maya-gate/gate.test.ts src/lib/maya-gate/word-count-grade-1.test.ts src/lib/maya-gate/word-count-grade-4.test.ts --testTimeout=60000 --maxWorkers=3
         timeout-minutes: 6
+
+  scan-binding-scale:
+    name: Chromium scan binding scale
+    needs: [scope]
+    if: needs.scope.outputs.mode == 'full'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        timeout-minutes: 4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        timeout-minutes: 4
+        with:
+          node-version: '22.23.1'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+        timeout-minutes: 5
+      - run: npm test -- src/lib/scan-binding-scale-chromium.test.ts --maxWorkers=1
+        timeout-minutes: 14
 
   # SQL comparison of family windows and concurrent quota probes (the only CI job that needs Postgres).
   family-zones:
@@ -278,7 +300,7 @@ jobs:
 
   # The required check. Keep this name exactly `test`: Vercel's Deployment Check and branch rules use it.
   test:
-    needs: [scope, unit, pr-unit, maya-behaviour, family-zones, lint-and-types, voice-worker]
+    needs: [scope, unit, pr-unit, scan-binding-scale, maya-behaviour, family-zones, lint-and-types, voice-worker]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 3
@@ -294,6 +316,7 @@ jobs:
           RUN_ZONES: ${{ needs.scope.outputs.run_family_zones }}
           RUN_VOICE: ${{ needs.scope.outputs.run_voice_worker }}
           UNIT_RESULT: ${{ needs.unit.result }}
+          SCAN_BINDING_RESULT: ${{ needs.scan-binding-scale.result }}
           PR_UNIT_RESULT: ${{ needs.pr-unit.result }}
           MAYA_RESULT: ${{ needs.maya-behaviour.result }}
           ZONES_RESULT: ${{ needs.family-zones.result }}
@@ -301,7 +324,7 @@ jobs:
           VOICE_RESULT: ${{ needs.voice-worker.result }}
         run: |
           echo "scope=$SCOPE_RESULT mode=$MODE ($REASON)"
-          echo "unit=$UNIT_RESULT pr-unit=$PR_UNIT_RESULT maya=$MAYA_RESULT zones=$ZONES_RESULT lint=$LINT_RESULT voice=$VOICE_RESULT"
+          echo "unit=$UNIT_RESULT pr-unit=$PR_UNIT_RESULT scan-binding=$SCAN_BINDING_RESULT maya=$MAYA_RESULT zones=$ZONES_RESULT lint=$LINT_RESULT voice=$VOICE_RESULT"
           test "$SCOPE_RESULT" = "success"
           check_job() {
             local name="$1" required="$2" result="$3"
@@ -318,6 +341,7 @@ jobs:
             fi
           }
           check_job "unit" "$([ "$MODE" = "full" ] && echo true || echo false)" "$UNIT_RESULT"
+          check_job "scan-binding-scale" "$([ "$MODE" = "full" ] && echo true || echo false)" "$SCAN_BINDING_RESULT"
           check_job "pr-unit" "$([ "$MODE" = "affected" ] && [ "$RUN_PR_UNIT" = "true" ] && echo true || echo false)" "$PR_UNIT_RESULT"
           check_job "maya-behaviour" "$RUN_MAYA" "$MAYA_RESULT"
           check_job "family-zones" "$RUN_ZONES" "$ZONES_RESULT"

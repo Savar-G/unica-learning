@@ -86,7 +86,7 @@ describe.skipIf(!chromium)("telling pages apart at every scale", () => {
     // (The full matrix holds U4 pages 5 and 8, a near-twin pair; the quick one may hold none.)
     if (full) expect(summary.nearTwinsSheetChecked, JSON.stringify(summary)).toBeGreaterThan(0);
     expect(wrong.filter((r) => r.sheetStops === false), "near twins the sheet check passes").toEqual([]);
-  }, FULL ? 3_600_000 : 560_000);
+  }, FULL ? 3_600_000 : 720_000);
 
   it("writing that runs a little past the answer boxes does not refuse the right page", async () => {
     // Children overrun. Disproved if the comparison needs a spotless page.
