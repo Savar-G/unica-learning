@@ -21,7 +21,7 @@ async function main(): Promise<void> {
   const personReadCount = report.pages.filter((p) => p.needs_person_read).length;
 
   console.log(
-    `Compared ${report.pages.length} page(s): ${doubleCount} double_read, ${acceptedCount} agreement_accepted, ${machineCount} machine_read, ${personReadCount} need prose read, ${report.failed_photos.length} failed photo(s).`,
+    `Compared ${report.pages.length} page(s): ${doubleCount} double_read, ${acceptedCount} agreement_accepted, ${machineCount} machine_read, ${personReadCount} with prose, ${report.failed_photos.length} failed photo(s).`,
   );
   console.log(`Report written to ${resolve(values.work, "final", "report.md")}`);
   console.log(formatPagesSentToPerson(report));

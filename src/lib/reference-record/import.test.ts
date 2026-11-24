@@ -271,6 +271,110 @@ describe("importReferenceRecords", () => {
     expect(res.problems.some((p) => p.includes("sample:M:3a"))).toBe(true);
   });
 
+  it("refuses invalid status and single_read combinations or unresolved single_read paths before any write", async () => {
+    const cases: Array<{
+      name: string;
+      record: Record<string, unknown>;
+      status?: string;
+      expectedFragment: RegExp;
+    }> = [
+      {
+        name: "agreement_accepted with no single_read",
+        record: { ...makeContents("sample:M:contents") },
+        status: "agreement_accepted",
+        expectedFragment: /sample:M:contents.*single_read/i,
+      },
+      {
+        name: "agreement_accepted with empty single_read",
+        record: { ...makeContents("sample:M:contents"), single_read: [] },
+        status: "agreement_accepted",
+        expectedFragment: /sample:M:contents.*single_read/i,
+      },
+      {
+        name: "double_read with single_read",
+        record: { ...makeContents("sample:M:contents"), single_read: ["topics[0].title"] },
+        status: "double_read",
+        expectedFragment: /sample:M:contents.*single_read/i,
+      },
+      {
+        name: "machine_read (explicit) with single_read",
+        record: { ...makeContents("sample:M:contents"), single_read: ["topics[0].title"] },
+        status: "machine_read",
+        expectedFragment: /sample:M:contents.*single_read/i,
+      },
+      {
+        name: "machine_read (default) with single_read",
+        record: { ...makeContents("sample:M:contents"), single_read: ["topics[0].title"] },
+        expectedFragment: /sample:M:contents.*single_read/i,
+      },
+      {
+        name: "human_checked with single_read",
+        record: { ...makePage("sample:M:3a"), single_read: ["topic.title"] },
+        status: "human_checked",
+        expectedFragment: /sample:M:3a.*single_read/i,
+      },
+      {
+        name: "agreement_accepted with out-of-range topics path",
+        record: { ...makeContents("sample:M:contents"), single_read: ["topics[9].title"] },
+        status: "agreement_accepted",
+        expectedFragment: /sample:M:contents.*topics\[9\]\.title/,
+      },
+      {
+        name: "agreement_accepted with [] path syntax",
+        record: { ...makePage("sample:M:3a"), single_read: ["sections[0].scaffolds[]"] },
+        status: "agreement_accepted",
+        expectedFragment: /sample:M:3a.*sections\[0\]\.scaffolds\[\]/,
+      },
+      {
+        name: "agreement_accepted with metadata single_read path",
+        record: { ...makePage("sample:M:3a"), single_read: ["single_read"] },
+        status: "agreement_accepted",
+        expectedFragment: /sample:M:3a.*single_read/,
+      },
+    ];
+
+    for (const c of cases) {
+      const caseDir = mkdtempSync(join(rootDir, "case-"));
+      const caseStore = new MemoryReferenceStore();
+      // Include a valid sibling record to prove nothing in the batch is written on refusal.
+      writeJson(caseDir, "good.json", makePage("sample:M:9a"));
+      writeJson(caseDir, "target.json", c.record);
+      if (c.status !== undefined) {
+        writeJson(caseDir, "status.json", {
+          "sample:M:9a": "double_read",
+          [String(c.record.source_ref)]: c.status,
+        });
+      }
+
+      const res = await importReferenceRecords({ recordsDir: caseDir, store: caseStore });
+      expect(res.ok, c.name).toBe(false);
+      expect(caseStore.rows.size, c.name).toBe(0);
+      expect(caseStore.calls, c.name).toEqual([]);
+      expect(res.problems.some((p) => c.expectedFragment.test(p)), `${c.name}: ${res.problems.join("; ")}`).toBe(
+        true,
+      );
+    }
+
+    // Valid agreement_accepted records with leaf and containing-list paths are accepted.
+    const okDir = mkdtempSync(join(rootDir, "ok-"));
+    const okStore = new MemoryReferenceStore();
+    writeJson(okDir, "page.json", {
+      ...makePage("sample:M:3a"),
+      single_read: ["topic.title", "sections[0].items", "sections[0].scaffolds"],
+    });
+    writeJson(okDir, "contents.json", {
+      ...makeContents("sample:M:contents"),
+      single_read: ["topics"],
+    });
+    writeJson(okDir, "status.json", {
+      "sample:M:3a": "agreement_accepted",
+      "sample:M:contents": "agreement_accepted",
+    });
+    const okRes = await importReferenceRecords({ recordsDir: okDir, store: okStore });
+    expect(okRes.ok).toBe(true);
+    expect(okRes.counts.inserted).toBe(2);
+  });
+
   it("refuses unknown status values or orphan source_ref entries in status.json", async () => {
     writeJson(recordsDir, "sample-M-3a.json", makePage("sample:M:3a"));
     writeJson(recordsDir, "status.json", {
@@ -791,6 +895,7 @@ describe("importReferenceRecords", () => {
       expect(rowOf("sample:M:3a").transcript_status).toBe("agreement_accepted");
 
       // Upgrading agreement_accepted -> double_read is not a lowering.
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
       writeJson(recordsDir, "status.json", { "sample:M:3a": "double_read" });
       const up = await importReferenceRecords({ recordsDir, store, replace: true });
       expect(up.ok).toBe(true);
@@ -798,12 +903,17 @@ describe("importReferenceRecords", () => {
       expect(rowOf("sample:M:3a").transcript_status).toBe("double_read");
 
       // Lowering double_read -> agreement_accepted and agreement_accepted -> machine_read are both reported.
+      writeJson(recordsDir, "p1.json", {
+        ...makePage("sample:M:3a"),
+        single_read: ["topic.title"],
+      });
       writeJson(recordsDir, "status.json", { "sample:M:3a": "agreement_accepted" });
       const toAccepted = await importReferenceRecords({ recordsDir, store, replace: true });
       expect(toAccepted.statusLowered).toEqual([
         { ref: "sample:M:3a", from: "double_read", to: "agreement_accepted" },
       ]);
 
+      writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
       writeJson(recordsDir, "status.json", { "sample:M:3a": "machine_read" });
       const toMachine = await importReferenceRecords({ recordsDir, store, replace: true });
       expect(toMachine.statusLowered).toEqual([

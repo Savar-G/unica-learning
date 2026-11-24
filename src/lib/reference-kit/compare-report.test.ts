@@ -132,7 +132,7 @@ describe("formatCompareReportMarkdown", () => {
 
     const md = formatCompareReportMarkdown(report);
     expect(md).toContain(
-      "| Page | Photo | Status | Agreement | Result | Differences | Wording | Once-read | Both unclear | Empty answers | Person read |",
+      "| Page | Photo | Status | Agreement | Result | Differences | Wording | Once-read | Both unclear | Empty answers | Has prose |",
     );
     expect(md).toContain("| sample:M:3a | IMG_0001.jpg | double_read | - | double read | 0 | 0 | 0 | 0 | 0 | no |");
     expect(md).toContain("| sample:M:4a | IMG_0002.jpg | machine_read | - | sent to a person | 1 | 1 | 5 | 1 | 1 | yes |");
@@ -176,7 +176,8 @@ describe("formatCompareReportMarkdown", () => {
     expect(md).toContain("reader a differs (2)");
     expect(md).toContain("## Removed stale pages");
     expect(md).toContain("- sample:M:9a");
-    expect(md).toContain("A person must read the prose on this page");
+    expect(md).toContain("Has worked examples or prose.");
+    expect(md).not.toContain("A person must read");
     expect(md).toContain("Photo digest mismatch");
     expect(md).toContain("Exact match across both readers.");
 
@@ -367,5 +368,19 @@ describe("formatCompareReportMarkdown", () => {
     };
     expect(formatPagesSentToPerson(emptyReport)).toBe("Pages sent to a person: none.");
     expect(formatCompareReportMarkdown(emptyReport)).toContain("## Pages sent to a person\n\nNo pages sent to a person.");
+
+    // Prose on accepted and double_read pages is informational and never tells a person they must act.
+    const proseReport = formatCompareReportMarkdown({
+      ...emptyReport,
+      pages: [
+        { ...baseReport.pages[0], needs_person_read: true },
+        { ...baseReport.pages[1], needs_person_read: true },
+      ],
+    });
+    expect(proseReport).not.toContain("A person must read");
+    expect(proseReport).toContain("Has worked examples or prose (both readers agreed).");
+    expect(proseReport).toContain(
+      "Has worked examples or prose. Differing fields are in single_read and show as not checked.",
+    );
   });
 });

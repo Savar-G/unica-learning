@@ -345,19 +345,6 @@ export function compareWorkFolder(opts: {
       continue;
     }
 
-    const {
-      record: computedRecord,
-      notes: computedNotes,
-      details: computedDetails,
-    } = applyComputedAnswers(withBothReaders(chosen, pair));
-    const answerConflicts = computedDetails
-      .filter((d) => d.kind === "answer_differs")
-      .map((d) => d.message);
-    const readerNotes = pair.recA
-      ? { a: mergeNotes(pair.notesA, computedNotes), b: pair.notesB }
-      : { a: pair.notesA, b: mergeNotes(pair.notesB, computedNotes) };
-    const finalEmptyAnswers = emptyAnswerDiffs(computedRecord, pair.recA, pair.recB);
-
     // A final record that a person changed since the last compare is kept until the person
     // checks it. The page is then not double_read or agreement_accepted.
     const previousHash = previousHashes.get(sourceRef);
@@ -365,6 +352,33 @@ export function compareWorkFolder(opts: {
       previousHash !== undefined &&
       existsSync(finalRecordPath) &&
       sha256OfFile(finalRecordPath) !== previousHash;
+
+    // The record that stays on disk: the edited file, or the record that compare writes.
+    const rawEditedRecord = editedByPerson ? loadExistingFinalRecord(finalRecordPath) : null;
+    let editedRecord = rawEditedRecord;
+    let strippedEditedSingleRead = false;
+    if (editedByPerson && rawEditedRecord && "single_read" in rawEditedRecord) {
+      const cleaned: ReferenceRecord = { ...rawEditedRecord };
+      delete cleaned.single_read;
+      editedRecord = cleaned;
+      strippedEditedSingleRead = true;
+    }
+
+    const {
+      record: computedRecord,
+      notes: computedNotes,
+      details: computedDetails,
+    } = applyComputedAnswers(withBothReaders(chosen, pair));
+    const editedDetails = editedRecord ? applyComputedAnswers(editedRecord).details : [];
+    const answerConflicts = (editedByPerson ? editedDetails : computedDetails)
+      .filter((d) => d.kind === "answer_differs")
+      .map((d) => d.message);
+    const readerNotes = pair.recA
+      ? { a: mergeNotes(pair.notesA, computedNotes), b: pair.notesB }
+      : { a: pair.notesA, b: mergeNotes(pair.notesB, computedNotes) };
+    const finalEmptyAnswers = editedByPerson
+      ? emptyAnswerDiffs(editedRecord, pair.recA, pair.recB)
+      : emptyAnswerDiffs(computedRecord, pair.recA, pair.recB);
 
     const decision = decidePageOutcome({
       hasA: pair.recA !== null,
@@ -391,8 +405,6 @@ export function compareWorkFolder(opts: {
         ? { ...baseRecord, single_read: singleReadPaths }
         : baseRecord;
 
-    // The record that stays on disk: the edited file, or the record that compare writes.
-    const editedRecord = editedByPerson ? loadExistingFinalRecord(finalRecordPath) : null;
     const finalText = `${JSON.stringify(finalRecord, null, 2)}\n`;
 
     if (!editedByPerson) {
@@ -400,6 +412,19 @@ export function compareWorkFolder(opts: {
       writeSafeOutputFile(
         join(viewDir, `${slug}.md`),
         `${renderRecordToMarkdown(finalRecord)}\n`,
+        repoRoot,
+      );
+    } else if (editedRecord) {
+      if (strippedEditedSingleRead) {
+        writeSafeOutputFile(
+          finalRecordPath,
+          `${JSON.stringify(editedRecord, null, 2)}\n`,
+          repoRoot,
+        );
+      }
+      writeSafeOutputFile(
+        join(viewDir, `${slug}.md`),
+        `${renderRecordToMarkdown(editedRecord)}\n`,
         repoRoot,
       );
     }
@@ -447,9 +472,7 @@ export function compareWorkFolder(opts: {
         : classified.once_read,
       both_unclear: classified.both_unclear,
       one_unclear: classified.one_unclear,
-      empty_answer: editedByPerson
-        ? emptyAnswerDiffs(editedRecord, pair.recA, pair.recB)
-        : finalEmptyAnswers,
+      empty_answer: finalEmptyAnswers,
       needs_person_read: classified.needs_person_read,
       unnamed_teaching_marks: unnamedTeachingMarks,
       reader_notes: readerNotes,

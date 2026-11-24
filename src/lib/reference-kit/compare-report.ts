@@ -193,7 +193,7 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
   lines.push("## Summary");
   lines.push("");
   lines.push(
-    "| Page | Photo | Status | Agreement | Result | Differences | Wording | Once-read | Both unclear | Empty answers | Person read |",
+    "| Page | Photo | Status | Agreement | Result | Differences | Wording | Once-read | Both unclear | Empty answers | Has prose |",
   );
   lines.push("|---|---|---|---|---|---:|---:|---:|---:|---:|---|");
   for (const p of report.pages) {
@@ -357,7 +357,15 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
       );
     }
     if (p.needs_person_read) {
-      lines.push("- A person must read the prose on this page");
+      if (p.status === "agreement_accepted") {
+        lines.push(
+          "- Has worked examples or prose. Differing fields are in single_read and show as not checked.",
+        );
+      } else if (p.status === "double_read") {
+        lines.push("- Has worked examples or prose (both readers agreed).");
+      } else {
+        lines.push("- Has worked examples or prose.");
+      }
     }
 
     if (p.unnamed_teaching_marks.length > 0) {

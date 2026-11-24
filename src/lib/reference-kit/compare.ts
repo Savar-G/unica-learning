@@ -19,6 +19,7 @@ import {
   compareScoreBands,
   deepEqual,
   recordDiff,
+  recordMatch,
   type CompareCounts,
   type DiffKind,
   type RecordDifference,
@@ -74,17 +75,21 @@ function comparePageItems(
 
   const aCommonOrder = aItems.filter((item) => bMap.has(item.n)).map((item) => item.n);
   const bCommonOrder = bItems.filter((item) => aMap.has(item.n)).map((item) => item.n);
-  if (aCommonOrder.some((n, idx) => n !== bCommonOrder[idx])) {
-    recordDiff(
-      diffs,
-      {
-        path,
-        a: aItems.map((item) => item.n),
-        b: bItems.map((item) => item.n),
-        kind: "order",
-      },
-      counts,
-    );
+  if (aCommonOrder.length >= 2) {
+    if (aCommonOrder.some((n, idx) => n !== bCommonOrder[idx])) {
+      recordDiff(
+        diffs,
+        {
+          path,
+          a: aItems.map((item) => item.n),
+          b: bItems.map((item) => item.n),
+          kind: "order",
+        },
+        counts,
+      );
+    } else {
+      recordMatch(counts);
+    }
   }
 
   for (const n of orderedNs) {
@@ -357,6 +362,48 @@ export function emptyAnswerDiffs(
   }));
 }
 
+// Resolves a comparison path to the deepest existing JSON path in `record`.
+// When a differing entry is absent from `record` (reader-B-only "[b:k]", missing "[n=k]",
+// out-of-range index, or omitted optional key), stops at the existing containing list or object.
+function resolveExistingRecordPath(record: unknown, path: string): string {
+  let node: unknown = record;
+  let out = "";
+  for (const m of path.matchAll(PATH_TOKEN_RE)) {
+    const [, name, index, keyN, bIndex] = m;
+    if (name !== undefined) {
+      if (
+        typeof node !== "object" ||
+        node === null ||
+        Array.isArray(node) ||
+        !Object.hasOwn(node, name) ||
+        (node as Record<string, unknown>)[name] === undefined
+      ) {
+        break;
+      }
+      out += out ? `.${name}` : name;
+      node = (node as Record<string, unknown>)[name];
+    } else if (index !== undefined) {
+      const idx = Number(index);
+      if (!Array.isArray(node) || idx < 0 || idx >= node.length || node[idx] === undefined) {
+        break;
+      }
+      out += `[${idx}]`;
+      node = node[idx];
+    } else if (keyN !== undefined) {
+      const n = Number(keyN);
+      const found = Array.isArray(node)
+        ? node.findIndex((e) => typeof e === "object" && e !== null && (e as { n?: unknown }).n === n)
+        : -1;
+      if (found === -1) break;
+      out += `[${found}]`;
+      node = (node as unknown[])[found];
+    } else if (bIndex !== undefined) {
+      break;
+    }
+  }
+  return out;
+}
+
 export function resolveSingleReadPaths(
   finalRecord: ReferenceRecord,
   diffs: readonly RecordDifference[],
@@ -365,7 +412,7 @@ export function resolveSingleReadPaths(
   const seen = new Set<string>();
   for (const d of diffs) {
     if (d.kind === "wording" || d.kind === "empty_answer") continue;
-    const { jsonPath } = resolveDiffPath(finalRecord, d.path, d.insert_before);
+    const jsonPath = resolveExistingRecordPath(finalRecord, d.path);
     if (jsonPath && !seen.has(jsonPath)) {
       seen.add(jsonPath);
       out.push(jsonPath);
@@ -457,9 +504,6 @@ export function decidePageOutcome(input: DecideStatusInput): PageDecision {
     return { status: "double_read", stopReasons: [] };
   }
 
-  if (input.needsPersonRead) {
-    return { status: "machine_read", stopReasons: ["prose must be read by a person"] };
-  }
   if (input.counts && meetsAgreementThreshold(input.counts.agreed, input.counts.compared)) {
     return { status: "agreement_accepted", stopReasons: [] };
   }

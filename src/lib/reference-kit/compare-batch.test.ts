@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { PageRecord } from "@/lib/reference-record";
+import type { ContentsRecord, PageRecord } from "@/lib/reference-record";
 import { checkAndMarkPage } from "./check";
 import { compareWorkFolder } from "./compare-batch";
 
@@ -142,7 +142,8 @@ describe("compareWorkFolder", () => {
     });
 
     const md = readFileSync(join(finalDir, "report.md"), "utf8");
-    expect(md).toContain("A person must read the prose on this page");
+    expect(md).toContain("Has worked examples or prose");
+    expect(md).not.toContain("A person must read");
     expect(md).toContain("sample:M:3a");
     expect(md).toContain("sample:M:4a");
     expect(md).toContain("p-222222222222.jpg");
@@ -265,11 +266,17 @@ describe("compareWorkFolder", () => {
 
     const report = compareWorkFolder({ workDir: work, repoRoot: repo });
     expect(report.pages).toHaveLength(1);
-    expect(report.pages[0].status).toBe("machine_read");
+    expect(report.pages[0].status).toBe("agreement_accepted");
     expect(report.pages[0].differences.some((d) => d.path === "source_ref")).toBe(true);
     expect(report.pages[0].differences.some((d) => d.path === "examples[0].parts[0].form")).toBe(
       true,
     );
+    const saved7a = JSON.parse(readFileSync(join(work, "final", "sample-M-7a.json"), "utf8")) as PageRecord;
+    expect(saved7a.single_read).toEqual([
+      "source_ref",
+      "examples[0].parts[0].form",
+      "examples[0].parts[1].form",
+    ]);
   });
 
   it("preserves human_checked pages on re-compare, notes reader differences from kept records, and prunes only stale non-human_checked pages", () => {
@@ -1022,7 +1029,7 @@ describe("compareWorkFolder", () => {
       sections: [
         {
           instruction: "Add.",
-          scaffolds: [{ kind: "number_strip", applies_to: "all", values: [1, 2, 3, 4, 5] }],
+          scaffolds: [{ kind: "number_strip", applies_to: "all", values: [1, 2, 3, 4] }],
           items: Array.from({ length: 10 }, (_, idx) => {
             const n = idx + 1;
             return {
@@ -1187,6 +1194,283 @@ describe("compareWorkFolder", () => {
     expect(md).toContain("- sample:M:3a: 89% agreement, 11 differences");
     expect(md).toContain("- sample:M:4a: 100% agreement, 0 differences (stored answer conflicts with computed answer)");
     expect(md).toContain("- sample:M:5a: 95% agreement, 5 differences (stored answer conflicts with computed answer)");
+  });
+
+  it("stores containing list paths in single_read when reader A omitted an item, scaffold, or contents topic without marking the next entry", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-cmp-absent-repo-"));
+    const work = mkdtempSync(join(tmpdir(), "ref-cmp-absent-work-"));
+    tempDirs.push(repo, work);
+
+    const makeNumberedPage = (numbers: number[]): PageRecord =>
+      makePage({
+        source_ref: "sample:M:8a",
+        topic: { title: "Adding Practice" },
+        sections: [
+          {
+            instruction: "Add.",
+            scaffolds: [],
+            items: numbers.map((n) => ({
+              n,
+              printed: `${n} + 1 =`,
+              form: "horizontal" as const,
+              expr: { kind: "arith" as const, op: "add" as const, operands: [n, 1] },
+              responses: [
+                { position: "after_equals" as const, cue: null, answer: String(n + 1), answer_source: "computed" as const },
+              ],
+            })),
+          },
+        ],
+      });
+
+    const pageA = makeNumberedPage([2, 3]);
+    const pageB = makeNumberedPage([1, 2, 3]);
+    pageB.sections[0].scaffolds = [{ kind: "arrow", applies_to: "all", from: "left", to: "right" }];
+
+    const contentsA: ContentsRecord = {
+      kind: "contents",
+      source_ref: "sample:M:contents",
+      topics: [2, 3, 4].map((n) => ({ n, title: `Topic ${n}`, sheets: [n, n], std_time_min: [1, 2] })),
+    };
+    const contentsB: ContentsRecord = {
+      kind: "contents",
+      source_ref: "sample:M:contents",
+      topics: [1, 2, 3, 4].map((n) => ({ n, title: `Topic ${n}`, sheets: [n, n], std_time_min: [1, 2] })),
+    };
+
+    const batch = [
+      { sha: SHA_1, ref: "sample:M:8a", file: "sample-M-8a.json", a: pageA, b: pageB },
+      { sha: SHA_2, ref: "sample:M:contents", file: "sample-M-contents.json", a: contentsA, b: contentsB },
+    ];
+    for (const [slot, family] of [["a", "codex"], ["b", "claude"]] as const) {
+      const dir = join(work, `reader-${slot}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "reader.json"), JSON.stringify({ family, model: "m1" }));
+      for (const entry of batch) {
+        writeFileSync(join(dir, entry.file), JSON.stringify(slot === "a" ? entry.a : entry.b, null, 2));
+      }
+      writeFileSync(
+        join(dir, "run.json"),
+        JSON.stringify({
+          slot,
+          reader: { family, model: "m1" },
+          source: "sample",
+          photos: batch.map((entry) => ({
+            photo: `${entry.sha.slice(0, 12)}.jpg`,
+            photo_sha256: entry.sha,
+            status: "ok",
+            source_ref: entry.ref,
+            record_file: entry.file,
+            notes: [],
+          })),
+        }),
+      );
+    }
+
+    const report = compareWorkFolder({ workDir: work, repoRoot: repo });
+    const pageReport = report.pages.find((p) => p.source_ref === "sample:M:8a");
+    expect(pageReport?.status).toBe("agreement_accepted");
+    // Report still keeps the absent scaffold entry and its insertion location.
+    expect(pageReport?.once_read[0]?.final_path).toBe("sections[0].scaffolds[]");
+
+    const savedPage = JSON.parse(readFileSync(join(work, "final", "sample-M-8a.json"), "utf8")) as PageRecord;
+    expect(savedPage.single_read).toEqual(["sections[0].scaffolds", "sections[0].items"]);
+    const pageView = readFileSync(join(work, "final-view", "sample-M-8a.md"), "utf8");
+    const item2Row = pageView.split("\n").find((line) => line.startsWith("| 2 "));
+    expect(item2Row).toBeDefined();
+    expect(item2Row).not.toContain("[not checked]");
+
+    const contentsReport = report.pages.find((p) => p.source_ref === "sample:M:contents");
+    expect(contentsReport?.status).toBe("agreement_accepted");
+    const savedContents = JSON.parse(
+      readFileSync(join(work, "final", "sample-M-contents.json"), "utf8"),
+    ) as ContentsRecord;
+    expect(savedContents.single_read).toEqual(["topics"]);
+    const contentsView = readFileSync(join(work, "final-view", "sample-M-contents.md"), "utf8");
+    const topic2Row = contentsView.split("\n").find((line) => line.startsWith("| 2 "));
+    expect(topic2Row).toBeDefined();
+    expect(topic2Row).not.toContain("[not checked]");
+  });
+
+  it("strips single_read, rewrites the Markdown view, and computes answer conflicts and empty answers from the kept record when an accepted page is edited", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-cmp-editacc-repo-"));
+    const work = mkdtempSync(join(tmpdir(), "ref-cmp-editacc-work-"));
+    tempDirs.push(repo, work);
+
+    const makeNumberedPage = (numbers: number[]): PageRecord =>
+      makePage({
+        source_ref: "sample:M:9a",
+        topic: { title: "Adding Practice" },
+        sections: [
+          {
+            instruction: "Add.",
+            scaffolds: [],
+            items: numbers.map((n) => ({
+              n,
+              printed: `${n} + 1 =`,
+              form: "horizontal" as const,
+              expr: { kind: "arith" as const, op: "add" as const, operands: [n, 1] },
+              responses: [
+                { position: "after_equals" as const, cue: null, answer: String(n + 1), answer_source: "computed" as const },
+              ],
+            })),
+          },
+        ],
+      });
+
+    const pageA = makeNumberedPage([2, 3]);
+    const pageB = makeNumberedPage([1, 2, 3]);
+    for (const [slot, family, rec] of [
+      ["a", "codex", pageA],
+      ["b", "claude", pageB],
+    ] as const) {
+      const dir = join(work, `reader-${slot}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "reader.json"), JSON.stringify({ family, model: "m1" }));
+      writeFileSync(join(dir, "sample-M-9a.json"), JSON.stringify(rec, null, 2));
+      writeFileSync(
+        join(dir, "run.json"),
+        JSON.stringify({
+          slot,
+          reader: { family, model: "m1" },
+          source: "sample",
+          photos: [
+            {
+              photo: `${SHA_1.slice(0, 12)}.jpg`,
+              photo_sha256: SHA_1,
+              status: "ok",
+              source_ref: "sample:M:9a",
+              record_file: "sample-M-9a.json",
+              notes: [],
+            },
+          ],
+        }),
+      );
+    }
+
+    const first = compareWorkFolder({ workDir: work, repoRoot: repo });
+    expect(first.pages[0].status).toBe("agreement_accepted");
+    const finalPath = join(work, "final", "sample-M-9a.json");
+    const viewPath = join(work, "final-view", "sample-M-9a.md");
+    const accepted = JSON.parse(readFileSync(finalPath, "utf8")) as PageRecord;
+    expect(accepted.single_read).toEqual(["sections[0].items"]);
+    expect(readFileSync(viewPath, "utf8")).toContain("**3**");
+
+    // Person edits item 2's answer from "3" to "999" and leaves single_read in the JSON.
+    accepted.sections[0].items[0].responses[0].answer = "999";
+    writeFileSync(finalPath, JSON.stringify(accepted, null, 2));
+
+    for (const round of [1, 2]) {
+      const rerun = compareWorkFolder({ workDir: work, repoRoot: repo });
+      const page = rerun.pages[0];
+      expect(page.status, `round ${round}`).toBe("machine_read");
+      expect(page.edited_by_person, `round ${round}`).toBe(true);
+      expect(page.answer_conflicts, `round ${round}`).toEqual([
+        'sections[0].items[n=2].responses[0]: record holds "999", computed "3"',
+      ]);
+
+      const kept = JSON.parse(readFileSync(finalPath, "utf8")) as PageRecord;
+      expect(kept.sections[0].items[0].responses[0].answer, `round ${round}`).toBe("999");
+      expect("single_read" in kept, `round ${round}`).toBe(false);
+
+      const view = readFileSync(viewPath, "utf8");
+      expect(view, `round ${round}`).toContain("**999**");
+      expect(view, `round ${round}`).not.toContain("**3**");
+      expect(view, `round ${round}`).not.toContain("Single-read");
+      expect(view, `round ${round}`).not.toContain("[not checked]");
+
+      const reportMd = readFileSync(join(work, "final", "report.md"), "utf8");
+      expect(reportMd, `round ${round}`).toContain('record holds "999", computed "3"');
+    }
+  });
+
+  it("treats worked examples and prose as advisory: accepts >= 90% pages with differing prose in single_read and never says a person must read", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-cmp-prose-repo-"));
+    const work = mkdtempSync(join(tmpdir(), "ref-cmp-prose-work-"));
+    tempDirs.push(repo, work);
+
+    const makeProsePage = (sourceRef: string): PageRecord =>
+      makePage({
+        source_ref: sourceRef,
+        topic: { title: "Addition practice" },
+        examples: [
+          {
+            position: "top",
+            relation: "compare",
+            text: "Add the ones first.",
+            parts: [{ form: "horizontal", expr: { kind: "arith", op: "add", operands: [1, 2] } }],
+          },
+        ],
+        sections: [
+          {
+            instruction: "Add.",
+            scaffolds: [],
+            items: [1, 2].map((n) => ({
+              n,
+              printed: `${n} + 1 =`,
+              form: "horizontal" as const,
+              expr: { kind: "arith" as const, op: "add" as const, operands: [n, 1] },
+              responses: [
+                { position: "after_equals" as const, cue: null, answer: String(n + 1), answer_source: "computed" as const },
+              ],
+            })),
+          },
+        ],
+      });
+
+    const fullA = makeProsePage("sample:M:10a");
+    const fullB = structuredClone(fullA);
+    const gapA = makeProsePage("sample:M:11a");
+    const gapB = structuredClone(gapA);
+    if (Array.isArray(gapB.examples)) {
+      gapB.examples[0].text = "Start with the ones column.";
+    }
+
+    const batch = [
+      { sha: SHA_1, ref: "sample:M:10a", file: "sample-M-10a.json", a: fullA, b: fullB },
+      { sha: SHA_2, ref: "sample:M:11a", file: "sample-M-11a.json", a: gapA, b: gapB },
+    ];
+    for (const [slot, family] of [["a", "codex"], ["b", "claude"]] as const) {
+      const dir = join(work, `reader-${slot}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "reader.json"), JSON.stringify({ family, model: "m1" }));
+      for (const entry of batch) {
+        writeFileSync(join(dir, entry.file), JSON.stringify(slot === "a" ? entry.a : entry.b, null, 2));
+      }
+      writeFileSync(
+        join(dir, "run.json"),
+        JSON.stringify({
+          slot,
+          reader: { family, model: "m1" },
+          source: "sample",
+          photos: batch.map((entry) => ({
+            photo: `${entry.sha.slice(0, 12)}.jpg`,
+            photo_sha256: entry.sha,
+            status: "ok",
+            source_ref: entry.ref,
+            record_file: entry.file,
+            notes: [],
+          })),
+        }),
+      );
+    }
+
+    const report = compareWorkFolder({ workDir: work, repoRoot: repo });
+    const fullPage = report.pages.find((p) => p.source_ref === "sample:M:10a");
+    const gapPage = report.pages.find((p) => p.source_ref === "sample:M:11a");
+    expect(fullPage?.status).toBe("double_read");
+    expect(fullPage?.needs_person_read).toBe(true);
+    expect(gapPage?.status).toBe("agreement_accepted");
+    expect(gapPage?.needs_person_read).toBe(true);
+    expect(gapPage?.result_reason).toBeNull();
+    expect(report.pages_sent_to_person).toEqual([]);
+
+    const savedGap = JSON.parse(readFileSync(join(work, "final", "sample-M-11a.json"), "utf8")) as PageRecord;
+    expect(savedGap.single_read).toEqual(["examples[0].text"]);
+
+    const md = readFileSync(join(work, "final", "report.md"), "utf8");
+    expect(md).not.toContain("A person must read");
+    expect(md).not.toContain("prose must be read by a person");
+    expect(md).toContain("Has worked examples or prose. Differing fields are in single_read and show as not checked.");
   });
 });
 

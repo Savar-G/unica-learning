@@ -14,6 +14,7 @@ import {
   type ReplaceDecision,
   type StatusLowered,
 } from "./import-replace";
+import { checkStatusSingleRead } from "./record-path";
 import type { ReferenceRecord } from "./types";
 import { validateReferenceRecord } from "./validate";
 
@@ -239,8 +240,12 @@ async function readRecords(
 
     const check = validateReferenceRecord(parsed);
     if (!check.ok) {
+      const refHint =
+        isPlainObject(parsed) && typeof parsed.source_ref === "string"
+          ? ` (${parsed.source_ref})`
+          : "";
       for (const e of check.errors) {
-        problems.push(`${fileName}: ${e.path}: ${e.message}`);
+        problems.push(`${fileName}${refHint}: ${e.path}: ${e.message}`);
       }
       continue;
     }
@@ -331,9 +336,13 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
     resolvedRecordsDir,
     problems,
   );
+  const problemsBeforeStatus = problems.length;
   const statusByRef = realRecordsDir
     ? await readStatusMap(realRecordsDir, seenRefs, problems)
     : new Map<string, TranscriptStatus>();
+  if (problems.length === problemsBeforeStatus) {
+    checkStatusSingleRead(records, statusByRef, problems);
+  }
   const plannedPhotos = options.photosDir
     ? await readPlannedPhotos(options.photosDir, records, problems)
     : new Map<string, PlannedPhoto>();

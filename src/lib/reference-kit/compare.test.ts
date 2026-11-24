@@ -1,6 +1,12 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { NOT_STATED, UNCLEAR, type ContentsRecord, type PageRecord } from "@/lib/reference-record";
+import {
+  NOT_STATED,
+  recordPathResolves,
+  UNCLEAR,
+  type ContentsRecord,
+  type PageRecord,
+} from "@/lib/reference-record";
 import {
   agreementPercentage,
   classifyComparison,
@@ -1752,13 +1758,11 @@ describe("90% reader agreement rule", () => {
   }
 
   it("distinguishes 89% (machine_read), exactly 90% (agreement_accepted), and 100% (double_read)", () => {
-    // 14 header fields + 10 items * 8 fields = 94; add 3 two-operand items (wait: let's hit exact 100 compared fields!)
-    // Header: source_ref (1) + topic.title (1) + 5x2 score_bands (10) + instruction (1) = 13 (without topic.number)
-    // Plus 10 items * 8 = 80 -> 93; plus 1 item with 3 operands -> 9 fields? Let's construct exact 100 compared fields!
-    const base = makeGridPage(10); // 14 + 80 = 94 compared fields
-    // Add 6 more leaf fields via a 6-value number_strip scaffold: applies_to (1) + 5 values (5) = 6 -> total 100!
+    // 14 header fields + 1 order check + 10 items * 8 fields = 95 compared fields.
+    const base = makeGridPage(10);
+    // Add 5 more leaf fields via a 4-value number_strip scaffold: applies_to (1) + 4 values (4) = 5 -> total 100.
     base.sections[0].scaffolds = [
-      { kind: "number_strip", applies_to: "all", values: [1, 2, 3, 4, 5] },
+      { kind: "number_strip", applies_to: "all", values: [1, 2, 3, 4] },
     ];
     const identical = compareRecordsWithCounts(base, structuredClone(base));
     expect(identical.counts).toEqual({ compared: 100, agreed: 100 });
@@ -1812,7 +1816,7 @@ describe("90% reader agreement rule", () => {
   });
 
   it("counts both_unclear and once_read as disagreements and wording as agreement", () => {
-    const a = makeGridPage(2); // 14 + 16 = 30 compared fields
+    const a = makeGridPage(2); // 14 header + 1 order + 16 item fields = 31 compared fields
     const b = structuredClone(a);
 
     // 1. both_unclear counts as 1 disagreement
@@ -1820,7 +1824,7 @@ describe("90% reader agreement rule", () => {
     b.topic.title = UNCLEAR;
     const unclearCmp = compareRecordsWithCounts(a, b);
     expect(unclearCmp.diffs).toEqual([{ path: "topic.title", a: UNCLEAR, b: UNCLEAR, kind: "both_unclear" }]);
-    expect(unclearCmp.counts).toEqual({ compared: 30, agreed: 29 });
+    expect(unclearCmp.counts).toEqual({ compared: 31, agreed: 30 });
 
     // 2. once_read counts as 1 disagreeing compared field
     const aOnce = makeGridPage(2);
@@ -1829,7 +1833,7 @@ describe("90% reader agreement rule", () => {
     const onceCmp = compareRecordsWithCounts(aOnce, bOnce);
     expect(onceCmp.diffs).toHaveLength(1);
     expect(onceCmp.diffs[0].kind).toBe("once_read");
-    expect(onceCmp.counts).toEqual({ compared: 31, agreed: 30 });
+    expect(onceCmp.counts).toEqual({ compared: 32, agreed: 31 });
 
     // 3. wording counts as agreement (100% -> double_read)
     const aWord = makeGridPage(2);
@@ -1852,7 +1856,7 @@ describe("90% reader agreement rule", () => {
     ).toBe("double_read");
   });
 
-  it("stops a page at 100% or 95% on answer_differs, empty_answer, zero compared fields, or needs_person_read at 95%", () => {
+  it("stops a page at 100% or 95% on answer_differs, empty_answer, or zero compared fields, while prose is advisory", () => {
     const oneDiff = [{ path: "topic.title", a: "A", b: "B", kind: "value" as const }];
 
     // answer_differs stops both 100% and 95%
@@ -1888,7 +1892,7 @@ describe("90% reader agreement rule", () => {
     expect(emptyOutcome.status).toBe("machine_read");
     expect(emptyOutcome.stopReasons).toContain("empty answer place");
 
-    // needs_person_read stops 95%
+    // needs_person_read is advisory and does not stop acceptance at >= 90%
     const proseOutcome = decidePageOutcome({
       hasA: true,
       hasB: true,
@@ -1898,8 +1902,8 @@ describe("90% reader agreement rule", () => {
       counts: { agreed: 19, compared: 20 },
       needsPersonRead: true,
     });
-    expect(proseOutcome.status).toBe("machine_read");
-    expect(proseOutcome.stopReasons).toContain("prose must be read by a person");
+    expect(proseOutcome.status).toBe("agreement_accepted");
+    expect(proseOutcome.stopReasons).toEqual([]);
 
     // zero compared fields is never accepted
     expect(meetsAgreementThreshold(0, 0)).toBe(false);
@@ -1928,6 +1932,103 @@ describe("90% reader agreement rule", () => {
       "topic.title",
       "sections[0].items[1].printed",
     ]);
+  });
+
+  it("maps entries absent from reader A to the existing containing list or object in single_read for both page and contents records", () => {
+    // Page: reader A omitted item 1 and a scaffold, and omitted optional topic.number and response unit.
+    const pageA = makeGridPage(3);
+    pageA.topic = { title: "Adding Numbers" };
+    pageA.sections[0].items = pageA.sections[0].items.slice(1); // items [2, 3]
+    const pageB = makeGridPage(3);
+    pageB.topic = { title: "Adding Numbers", number: 2 };
+    pageB.sections[0].scaffolds = [{ kind: "arrow", applies_to: "all", from: "left", to: "right" }];
+    pageB.sections[0].items[1].responses[0].unit = "cm"; // on item n=2
+
+    const pageCmp = compareRecordsWithCounts(pageA, pageB);
+    const pagePaths = resolveSingleReadPaths(pageA, pageCmp.diffs);
+    expect(pagePaths).toEqual([
+      "topic",
+      "sections[0].scaffolds",
+      "sections[0].items[0].responses[0]",
+      "sections[0].items",
+    ]);
+    for (const p of pagePaths) expect(recordPathResolves(pageA, p)).toBe(true);
+
+    // Page: when item 2 IS in reader A and omitted by reader B, single_read resolves to exact item 2 (index 0).
+    const aHasExtra = makeGridPage(3);
+    aHasExtra.sections[0].items = aHasExtra.sections[0].items.slice(1); // items [2, 3]
+    const bMissing2 = makeGridPage(3);
+    bMissing2.sections[0].items = [bMissing2.sections[0].items[2]]; // items [3]
+    const extraCmp = compareRecordsWithCounts(aHasExtra, bMissing2);
+    const extraPaths = resolveSingleReadPaths(aHasExtra, extraCmp.diffs);
+    expect(extraPaths).toEqual(["sections[0].items[0]"]);
+    for (const p of extraPaths) expect(recordPathResolves(aHasExtra, p)).toBe(true);
+
+    // Contents: reader A omitted topic 1 -> single_read marks "topics", never "topics[0]" (which is topic 2).
+    const contentsA: ContentsRecord = {
+      kind: "contents",
+      source_ref: "sample:M:contents",
+      topics: [2, 3, 4].map((n) => ({ n, title: `Topic ${n}`, sheets: [n, n], std_time_min: [1, 2] })),
+    };
+    const contentsB: ContentsRecord = {
+      kind: "contents",
+      source_ref: "sample:M:contents",
+      topics: [1, 2, 3, 4].map((n) => ({ n, title: `Topic ${n}`, sheets: [n, n], std_time_min: [1, 2] })),
+    };
+    const contentsCmp = compareRecordsWithCounts(contentsA, contentsB);
+    const contentsPaths = resolveSingleReadPaths(contentsA, contentsCmp.diffs);
+    expect(contentsPaths).toEqual(["topics"]);
+    for (const p of contentsPaths) expect(recordPathResolves(contentsA, p)).toBe(true);
+
+    // Contents: when topic 2 IS in reader A and omitted by reader B, single_read resolves to "topics[0]".
+    const contentsBMissing2: ContentsRecord = {
+      kind: "contents",
+      source_ref: "sample:M:contents",
+      topics: [3, 4].map((n) => ({ n, title: `Topic ${n}`, sheets: [n, n], std_time_min: [1, 2] })),
+    };
+    const contentsExtraCmp = compareRecordsWithCounts(contentsA, contentsBMissing2);
+    const contentsExtraPaths = resolveSingleReadPaths(contentsA, contentsExtraCmp.diffs);
+    expect(contentsExtraPaths).toEqual(["topics[0]"]);
+    for (const p of contentsExtraPaths) expect(recordPathResolves(contentsA, p)).toBe(true);
+  });
+
+  it("counts the item order check in both matching and reversed order with the same denominator", () => {
+    // 1 source_ref + 1 topic.title + 10 score_bands + 1 instruction + 1 order + 2*8 item fields = 30 compared fields.
+    const aOrder = makeGridPage(2);
+    aOrder.topic = { title: "Addition practice" };
+    const bSameOrder = structuredClone(aOrder);
+    bSameOrder.topic.title = "Alternate title";
+    for (const item of bSameOrder.sections[0].items) item.printed += " \u25A1";
+
+    const sameCmp = compareRecordsWithCounts(aOrder, bSameOrder);
+    expect(sameCmp.counts).toEqual({ compared: 30, agreed: 27 });
+    expect(agreementPercentage(sameCmp.counts.agreed, sameCmp.counts.compared)).toBe(90);
+    expect(
+      decideStatus({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: sameCmp.diffs,
+        counts: sameCmp.counts,
+      }),
+    ).toBe("agreement_accepted");
+
+    const bReversed = structuredClone(bSameOrder);
+    bReversed.sections[0].items.reverse();
+    const reversedCmp = compareRecordsWithCounts(aOrder, bReversed);
+    expect(reversedCmp.counts).toEqual({ compared: 30, agreed: 26 });
+    expect(reversedCmp.diffs.some((d) => d.kind === "order")).toBe(true);
+    expect(
+      decideStatus({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: reversedCmp.diffs,
+        counts: reversedCmp.counts,
+      }),
+    ).toBe("machine_read");
   });
 
   it("satisfies threshold and ratio invariants across arbitrary counts", () => {
