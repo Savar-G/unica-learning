@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { toJson, type Database } from "@/lib/database";
 import { storedQuestion } from "@/lib/workbook-content";
 import { printContractForPhoto, storedPrintContract } from "@/lib/workbook-print-contract";
+import { zoomScanAnswerReach } from "@/lib/scan-photo-image";
 import { placedRegions, scanContentBounds } from "@/lib/scan-answer-reach";
 import { calibrationForPhoto } from "@/lib/scan-calibration";
 import { scanPartPath } from "@/lib/scan-crops";
@@ -28,6 +29,7 @@ export function scanMarkingStore(db: SupabaseClient<Database>): MarkingStore {
   const events = learningEvents(learningEventStore(db));
   const reader = scanMarkingReader(db);
   return {
+    cropReach: zoomScanAnswerReach,
     async frame(ref) {
       const raw = await command("frame", ref.parent, ref.photo, null);
       if (typeof raw === "string" || raw === null) return null;

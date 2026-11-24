@@ -1,9 +1,19 @@
 import sharp from "sharp";
 import jsQR from "jsqr";
-import { SCAN_MARKS, type PagePrintContract } from "@/lib/workbook-print-contract";
+import { SCAN_MARKS, type Box, type PagePrintContract } from "@/lib/workbook-print-contract";
 
 export const SCAN_INPUT_BYTES = 20 * 1024 * 1024;
 export const SCAN_PIXELS = 48_000_000;
+
+/** A 2.5× close-up of the straightened page inside one reach. */
+export async function zoomScanAnswerReach(image: Uint8Array, reach: Box): Promise<Uint8Array | null> {
+  // Inward rounding keeps the crop inside the reach when a midpoint is fractional.
+  const left = Math.ceil(reach.x), top = Math.ceil(reach.y);
+  const width = Math.floor(reach.x + reach.width) - left, height = Math.floor(reach.y + reach.height) - top;
+  if (width < 1 || height < 1) return null;
+  return sharp(image).extract({ left, top, width, height })
+    .resize(Math.round(width * 2.5), Math.round(height * 2.5), { fit: "fill" }).jpeg().toBuffer();
+}
 
 /** Decode actual bytes before persistence. Sharp strips metadata unless explicitly asked to keep it. */
 type SpreadContract = (token: string) => Promise<PagePrintContract | null>;

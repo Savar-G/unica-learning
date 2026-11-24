@@ -6,6 +6,7 @@ import type { Box } from "@/lib/workbook-print-contract";
 
 export const MARKING_MAX_TOKENS = 4096;
 export const MAX_VERDICT_REASON = 120;
+export type MarkingReachCrop = (image: Uint8Array, reach: Box) => Promise<Uint8Array | null>;
 type RequestRegion = MarkingRegion & { item: string; region: string; reach?: Box };
 
 export function request(image: Uint8Array, local: readonly RequestRegion[]): AiJsonRequest {
@@ -25,19 +26,14 @@ export function request(image: Uint8Array, local: readonly RequestRegion[]): AiJ
 
 const SECOND_LOOK = " This is a second look at answers another reader could not read. Read them freshly from the page and any labeled zooms of the same reach. In a number, fraction or text region, a value struck through with a line, with one clear value written beside, above or below it inside the same answer area, is a correction: transcribe only the clear value. If more than one value is left unstruck, or you cannot tell which value is final, report uncertain with issue multiple-marks.";
 
-export async function secondLookRequest(image: Uint8Array, local: readonly RequestRegion[]): Promise<AiJsonRequest> {
+export async function secondLookRequest(image: Uint8Array, local: readonly RequestRegion[], zoom?: MarkingReachCrop): Promise<AiJsonRequest> {
   const read = request(image, local);
   read.system += SECOND_LOOK;
+  if (!zoom) return read;
   for (const { reach, item, region } of local) {
     if (!reach) continue;
-    // Inward rounding keeps the crop within the reach, even when a midpoint is fractional.
-    const left = Math.ceil(reach.x), top = Math.ceil(reach.y);
-    const width = Math.floor(reach.x + reach.width) - left, height = Math.floor(reach.y + reach.height) - top;
-    if (width < 1 || height < 1) continue;
-    // The coverage CLI builds plain requests without loading the native image library.
-    const { default: sharp } = await import("sharp");
-    const crop = await sharp(image).extract({ left, top, width, height })
-      .resize(Math.round(width * 2.5), Math.round(height * 2.5), { fit: "fill" }).jpeg().toBuffer();
+    const crop = await zoom(image, reach);
+    if (!crop) continue;
     read.content.push({ type: "text", text: `Zoomed reach for item ${item}, region ${region}:` },
       { type: "image", mediaType: "image/jpeg", data: crop });
   }

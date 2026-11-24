@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { zoomScanAnswerReach } from "@/lib/scan-photo-image";
 import { setProductObserver, type ProductEvent } from "@/lib/product-monitoring";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
@@ -1078,7 +1079,7 @@ describe("S4 whole-page readings", () => {
     const pageSize = { width: 400, height: 300 };
     const f = { ...tickFrame(), contentBounds: { x: 0, y: 0, ...pageSize } };
     const image = await sharp({ create: { ...pageSize, channels: 3, background: "white" } }).jpeg().toBuffer();
-    const read = await markingSecondLookRequest(f, image, [f.questions[0].package!.id]);
+    const read = await markingSecondLookRequest(f, image, [f.questions[0].package!.id], zoomScanAnswerReach);
     expect(read.content.slice(0, 3)).toEqual([markingRequest(f, image).content[0],
       { type: "image", mediaType: "image/jpeg", data: image },
       { type: "text", text: "Zoomed reach for item i1, region r1-2:" }]);

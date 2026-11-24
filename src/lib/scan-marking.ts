@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import type { AiClient, AiJsonRequest } from "@/lib/ai-client";
 import { expectedItems, firstObservation, waitsForTeam, itemKey, markingEvent, MAX_READ_TEXT, MODEL_READING_ISSUES, pageCompletion, PHOTO_ISSUES, readingIssueText, type ReadingIssue, type RegionReading, type ExpectedItem, type MarkResult, type Observation, type PageForObservation } from "@/lib/scan-observation";
 import { answerReach } from "@/lib/scan-answer-reach";
-import { MAX_VERDICT_REASON, request, secondLookRequest } from "@/lib/scan-marking-request";
+import { MAX_VERDICT_REASON, request, secondLookRequest, type MarkingReachCrop } from "@/lib/scan-marking-request";
 import { markingRegions, type MarkingRegion } from "@/lib/scan-marking-regions";
 import { checkFractionReading } from "@/lib/scan-marking-fractions";
 import { checkMethodReading, differentStrategies, METHOD_JUDGMENTS, type MethodJudgment } from "@/lib/scan-marking-methods";
@@ -121,6 +121,7 @@ export interface MarkingStore {
   claim(ref: MarkingRef, token: string, frame: MarkingFrame, items: ExpectedItem[]): Promise<MarkingJob | Exclude<MarkingStatus, "finished" | "pending" | "off" | "budget" | "price-unverified" | "attempts" | "unfinished">>;
   /** One whole normalized page. The adapter strips metadata again before dispatch. */
   image(ref: MarkingRef): Promise<Uint8Array>;
+  cropReach?: MarkingReachCrop;
   /** Called by AiClient immediately before EACH transport attempt, including its retry. */
   admit(ref: MarkingRef, token: string, model: string, role?: "escalation"): Promise<{ dispatch: string } | "terminal" | "budget" | "price-unverified" | "attempts">;
   /**
@@ -188,9 +189,9 @@ export function initialMarkingObservation(frame: MarkingFrame, e: ExpectedItem):
   return issue ? { ...first, issue, certainty: "uncertain" } : first;
 }
 /** The request for some of the page's items only (their aliases stay those of the whole page). */
-export function markingSecondLookRequest(frame: MarkingFrame, image: Uint8Array, itemIds: readonly string[]): Promise<AiJsonRequest> {
+export function markingSecondLookRequest(frame: MarkingFrame, image: Uint8Array, itemIds: readonly string[], cropReach?: MarkingReachCrop): Promise<AiJsonRequest> {
   const local = aliases(frame, expectedItems(frame)).filter(a => a.expected.method === "code" && !heldIssue(frame, a.expected.number) && itemIds.includes(a.expected.identity.itemId));
-  return secondLookRequest(image, local);
+  return secondLookRequest(image, local, cropReach);
 }
 /** The second look gets only previously requested, pending items the photo can support. */
 export function unsureItems(observations: readonly Observation[], frame: MarkingFrame, asked?: readonly string[]): string[] {
@@ -557,7 +558,7 @@ async function secondLook(store: MarkingStore, ref: MarkingRef, token: string, f
   const signal = options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(timeout)]) : AbortSignal.timeout(timeout);
   let failed = false, refusal: MarkingStatus | undefined;
   try {
-    const output = await transport.client.json(await markingSecondLookRequest(frame, image, asked), signal);
+    const output = await transport.client.json(await markingSecondLookRequest(frame, image, asked, store.cropReach), signal);
     const merged = mergeSecondLook(first, readMarkingOutput(frame, output), asked);
     return { observations: merged.observations, escalation: merged.decided.length ? { model: transport.client.model, prompt: MARKING_ESCALATION_PROMPT_VERSION, items: merged.decided } : null };
   } catch (error) {

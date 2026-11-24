@@ -12,6 +12,7 @@
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { zoomScanAnswerReach } from "@/lib/scan-photo-image";
 import { markingEscalationClient } from "@/lib/scan-marking-ai";
 import { markingSecondLookRequest, mergeSecondLook, readMarkingOutput, unsureItems, MARKING_ESCALATION_MODEL, type MarkingFrame } from "@/lib/scan-marking";
 import type { Observation } from "@/lib/scan-observation";
@@ -87,7 +88,7 @@ export async function escalationEvalMain() {
     const image = new Uint8Array(await readFile(resolve(c.dir, c.photo.image.path)));
     let second: Observation[] = [];
     try {
-      const output = await transport.client.json(await markingSecondLookRequest(c.photo.frame, image, c.asked), AbortSignal.timeout(120_000));
+      const output = await transport.client.json(await markingSecondLookRequest(c.photo.frame, image, c.asked, zoomScanAnswerReach), AbortSignal.timeout(120_000));
       second = readMarkingOutput(c.photo.frame, output);
     } catch { failures++; }
     const cost = transport.costMicros();
