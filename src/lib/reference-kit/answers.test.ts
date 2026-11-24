@@ -4,6 +4,7 @@ import { validateReferenceRecord, type ItemResponse, type PageItem, type PageRec
 import {
   applyComputedAnswers,
   collectReadTimeAnswerConflictPaths,
+  collectReadTimeUnclearAnswerPaths,
   decimalPlacePower,
   findEmptyAnswers,
   isKnownPlaceName,
@@ -657,5 +658,58 @@ describe("applyComputedAnswers", () => {
       "sections[0].items[n=3].responses[0]",
       "sections[0].items[n=4].responses[0]",
     ]);
+  });
+
+  it("records unclear_filled when computation replaces an unclear answer, not when it fills an empty place", () => {
+    const pageWith = (answer: string | null) =>
+      makePageWithItem({
+        n: 1,
+        printed: "1 + 1 =",
+        form: "horizontal",
+        expr: { kind: "arith", op: "add", operands: [1, 1] },
+        responses: [
+          {
+            position: "after_equals",
+            cue: null,
+            answer,
+            answer_source: answer === null ? "unchecked" : "reader",
+          },
+        ],
+      });
+
+    const unclearOut = applyComputedAnswers(pageWith("unclear"));
+    if (unclearOut.record.kind !== "page") throw new Error("page expected");
+    expect(unclearOut.record.sections[0].items[0].responses[0]).toEqual({
+      position: "after_equals",
+      cue: null,
+      answer: "2",
+      answer_source: "computed",
+    });
+    expect(unclearOut.details).toEqual([
+      {
+        kind: "unclear_filled",
+        path: "sections[0].items[n=1].responses[0]",
+        message: 'sections[0].items[n=1].responses[0]: reader marked "unclear", computed "2"',
+      },
+    ]);
+
+    for (const empty of [null, "", "   "]) {
+      const emptyOut = applyComputedAnswers(pageWith(empty));
+      if (emptyOut.record.kind !== "page") throw new Error("page expected");
+      expect(emptyOut.record.sections[0].items[0].responses[0].answer).toBe("2");
+      expect(emptyOut.details).toEqual([]);
+    }
+
+    expect(
+      collectReadTimeUnclearAnswerPaths([
+        { kind: "answer_differs", path: "sections[0].items[n=1].responses[0]" },
+        { kind: "unclear_filled", path: "sections[0].items[n=2].responses[0]" },
+        { kind: "unclear_filled", path: "sections[0].items[n=2].responses[0]" },
+        { kind: "places_do_not_fit", path: "sections[0].items[n=3]" },
+      ]),
+    ).toEqual(["sections[0].items[n=2].responses[0].answer"]);
+
+    // Legacy runs without note_details have no text fallback for unclear_filled.
+    expect(collectReadTimeUnclearAnswerPaths(undefined)).toEqual([]);
   });
 });

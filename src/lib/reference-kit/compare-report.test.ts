@@ -686,5 +686,36 @@ describe("formatCompareReportMarkdown", () => {
     expect(personMd).toContain(
       `\`topics[n=4]\` (value): only reader b has it; belongs in the final record at \`topics[]\`: ${JSON.stringify(missingTopic)}`,
     );
+
+    const unknownLocDiff = {
+      path: "sections[0].items[n=1]",
+      a: null,
+      b: missingItem,
+      kind: "value" as const,
+      reader: "b" as const,
+      location_unknown: true,
+    };
+    for (const [status, edited] of [
+      ["machine_read", true],
+      ["human_checked", false],
+    ] as const) {
+      const unknownMd = formatCompareReportMarkdown({
+        ...base,
+        pages: [
+          {
+            ...makePageReport("machine_read"),
+            status,
+            result: status === "human_checked" ? "checked by a person" : "sent to a person",
+            result_reason: status === "human_checked" ? null : "edited by a person (not checked yet)",
+            ...(edited ? { edited_by_person: true } : {}),
+            differences: [unknownLocDiff],
+          },
+        ],
+      });
+      expect(unknownMd).toContain(
+        `\`sections[0].items[n=1]\` (value): only reader b; location not known after the edit: ${JSON.stringify(missingItem)}`,
+      );
+      expect(unknownMd).not.toContain("`sections[0].items[0]`");
+    }
   });
 });

@@ -12,6 +12,7 @@ import {
 import {
   applyComputedAnswers,
   collectReadTimeAnswerConflictPaths,
+  collectReadTimeUnclearAnswerPaths,
   fileSlugFromRef,
 } from "./answers";
 import {
@@ -300,9 +301,9 @@ export function compareWorkFolder(opts: {
         result_reason: null,
         only_in_reader: onlyIn,
         digest_mismatch: pair.digestMismatch,
-        differences: locateDifferencesInKeptRecord(classified.differences, null),
+        differences: locateDifferencesInKeptRecord(classified.differences, null, pair.recB, pair.recA),
         wording: classified.wording,
-        once_read: locateOnceReadInKeptRecord(classified.once_read, null),
+        once_read: locateOnceReadInKeptRecord(classified.once_read, null, pair.recA),
         both_unclear: classified.both_unclear,
         one_unclear: classified.one_unclear,
         // The kept file is not a valid record, so its answer places cannot be read.
@@ -338,9 +339,9 @@ export function compareWorkFolder(opts: {
         result_reason: null,
         only_in_reader: onlyIn,
         digest_mismatch: pair.digestMismatch,
-        differences: locateDifferencesInKeptRecord(classified.differences, existingKept, pair.recB),
+        differences: locateDifferencesInKeptRecord(classified.differences, existingKept, pair.recB, pair.recA),
         wording: classified.wording,
-        once_read: locateOnceReadInKeptRecord(classified.once_read, existingKept),
+        once_read: locateOnceReadInKeptRecord(classified.once_read, existingKept, pair.recA),
         both_unclear: classified.both_unclear,
         one_unclear: classified.one_unclear,
         empty_answer: emptyAnswerDiffs(existingKept, pair.recA, pair.recB),
@@ -386,10 +387,19 @@ export function compareWorkFolder(opts: {
       ? emptyAnswerDiffs(editedRecord, pair.recA, pair.recB)
       : emptyAnswerDiffs(computedRecord, pair.recA, pair.recB);
 
-    const answerDisagreements = findAnswerDisagreements(allDiffs, {
-      a: pair.recA,
-      b: pair.recB,
-    });
+    const readTimeUnclearAnswers =
+      pair.recA && pair.recB
+        ? [
+            ...collectReadTimeUnclearAnswerPaths(pair.noteDetailsA),
+            ...collectReadTimeUnclearAnswerPaths(pair.noteDetailsB),
+          ]
+        : [];
+    const answerDisagreements = [
+      ...new Set([
+        ...findAnswerDisagreements(allDiffs, { a: pair.recA, b: pair.recB }),
+        ...readTimeUnclearAnswers,
+      ]),
+    ];
     const readerAnswerConflicts = [
       ...new Set([
         ...collectReadTimeAnswerConflictPaths(pair.notesA, pair.noteDetailsA),
@@ -488,11 +498,11 @@ export function compareWorkFolder(opts: {
       only_in_reader: onlyIn,
       digest_mismatch: pair.digestMismatch,
       differences: editedByPerson
-        ? locateDifferencesInKeptRecord(classified.differences, editedRecord, pair.recB)
+        ? locateDifferencesInKeptRecord(classified.differences, editedRecord, pair.recB, pair.recA)
         : classified.differences,
       wording: classified.wording,
       once_read: editedByPerson
-        ? locateOnceReadInKeptRecord(classified.once_read, editedRecord)
+        ? locateOnceReadInKeptRecord(classified.once_read, editedRecord, pair.recA)
         : classified.once_read,
       both_unclear: classified.both_unclear,
       one_unclear: classified.one_unclear,

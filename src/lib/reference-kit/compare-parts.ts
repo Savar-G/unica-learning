@@ -29,11 +29,13 @@ export interface RecordDifference {
   // the entry, and the JSON path of the entry in the final record. A path that ends in "[]" means
   // the end of that list. When insert_before is set, final_path names the element before which to
   // insert the entry. missing_step is set on a reader-b mark whose step has no partner in reader
-  // a's record.
+  // a's record. location_unknown is set when a kept record's section cannot be matched with
+  // certainty after an edit, so final_path is omitted.
   reader?: "a" | "b";
   final_path?: string;
   insert_before?: number;
   missing_step?: boolean;
+  location_unknown?: boolean;
 }
 
 export type FieldCompareMode = "exact" | "prose" | "notation";

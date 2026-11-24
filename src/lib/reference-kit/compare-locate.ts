@@ -1,5 +1,6 @@
 import type { ReferenceRecord } from "@/lib/reference-record";
 import { deepEqual, type RecordDifference } from "./compare-parts";
+import { normalizeProseText } from "./normalize";
 
 const PATH_TOKEN_RE = /([A-Za-z_]+)|\[(\d+)\]|\[n=(\d+)\]|\[b:(\d+)\]/g;
 const NUMBERED_LIST_ENTRY_RE = /^(sections\[(\d+)\]\.items|topics)\[n=(\d+)\]$/;
@@ -122,17 +123,57 @@ function onceReadParent(record: ReferenceRecord, path: string): { path: string; 
   return index < list.length ? { path: `${m[1]}[${index}]`, node: list[index] } : null;
 }
 
+function normalizeSectionInstruction(instruction: unknown): unknown {
+  return typeof instruction === "string" ? normalizeProseText(instruction) : instruction;
+}
+
+// True when section `sectionIndex` in the kept record can be matched to reader A's section at the
+// same index with certainty: same section count, and for multi-section pages every section keeps
+// its normalized instruction and shares at least one item number when both have items.
+function sectionsMatchPosition(
+  kept: ReferenceRecord,
+  readerA: ReferenceRecord | null | undefined,
+  sectionIndex: number,
+): boolean {
+  if (kept.kind !== "page") return false;
+  if (sectionIndex < 0 || sectionIndex >= kept.sections.length) return false;
+  if (readerA === undefined) return true;
+  if (readerA === null || readerA.kind !== "page") return false;
+  if (kept.sections.length !== readerA.sections.length) return false;
+  if (kept.sections.length > 1) {
+    for (let i = 0; i < kept.sections.length; i += 1) {
+      const ks = kept.sections[i];
+      const as = readerA.sections[i];
+      if (normalizeSectionInstruction(ks.instruction) !== normalizeSectionInstruction(as.instruction)) {
+        return false;
+      }
+      if (ks.items.length > 0 && as.items.length > 0) {
+        const aNs = new Set(as.items.map((item) => item.n));
+        if (!ks.items.some((item) => aNs.has(item.n))) return false;
+      }
+    }
+  }
+  return true;
+}
+
 // The final record on disk is one that a person edited or checked, so reader a's indexes may not
 // fit it. A once-read entry keeps a final_path only when the entry is in that record with equal
 // content, inside the same section or example; otherwise the person finds the place.
 export function locateOnceReadInKeptRecord(
   onceRead: readonly RecordDifference[],
   kept: ReferenceRecord | null,
+  readerA?: ReferenceRecord | null,
 ): RecordDifference[] {
   return onceRead.map((d) => {
     const next: RecordDifference = { path: d.path, a: d.a, b: d.b, kind: d.kind };
     if (d.reader) next.reader = d.reader;
     if (!kept || !d.reader) {
+      if (d.missing_step) next.missing_step = true;
+      return next;
+    }
+    const secMatch = /^sections\[(\d+)\](?=[.[])/.exec(d.path);
+    if (secMatch && !sectionsMatchPosition(kept, readerA, Number(secMatch[1]))) {
+      next.location_unknown = true;
       if (d.missing_step) next.missing_step = true;
       return next;
     }
@@ -171,21 +212,34 @@ function resolveNumberedList(
 
 // Re-resolves numbered list difference locations against the kept record on disk (edited or checked),
 // so final_path and insert_before reflect the kept record's actual indexes and order, not reader A's.
+// When a section cannot be matched with certainty against reader A, omits final_path and marks
+// location_unknown so the report does not point at the wrong section.
 export function locateDifferencesInKeptRecord(
   diffs: readonly RecordDifference[],
   kept: ReferenceRecord | null,
   readerB?: ReferenceRecord | null,
+  readerA?: ReferenceRecord | null,
 ): RecordDifference[] {
   return diffs.map((d) => {
     if (!isOneSidedNumberedEntry(d)) return d;
     const reader: "a" | "b" = d.reader ?? (d.a !== null && d.a !== undefined ? "a" : "b");
     const next: RecordDifference = { path: d.path, a: d.a, b: d.b, kind: d.kind, reader };
-    if (!kept) return next;
+    if (!kept) {
+      next.location_unknown = true;
+      return next;
+    }
     const match = NUMBERED_LIST_ENTRY_RE.exec(d.path);
     if (!match) return next;
     const [, listPath, sectionIndex, keyN] = match;
+    if (sectionIndex !== undefined && !sectionsMatchPosition(kept, readerA, Number(sectionIndex))) {
+      next.location_unknown = true;
+      return next;
+    }
     const keptList = resolveNumberedList(kept, listPath, sectionIndex);
-    if (!keptList) return next;
+    if (!keptList) {
+      next.location_unknown = true;
+      return next;
+    }
     const n = Number(keyN);
     const foundIdx = keptList.findIndex((entry) => entry.n === n);
     if (foundIdx !== -1) {

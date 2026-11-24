@@ -1642,7 +1642,7 @@ describe("compareWorkFolder", () => {
     const repo = mkdtempSync(join(tmpdir(), "ref-cmp-readconf-repo-"));
     tempDirs.push(repo);
 
-    const makeRawPayload = (sheet: string, answer: string) => ({
+    const makeRawPayload = (sheet: string, answer: string | null) => ({
       kind: "page",
       level: "M",
       sheet,
@@ -1661,7 +1661,7 @@ describe("compareWorkFolder", () => {
                 position: "after_equals",
                 cue: null,
                 answer: n === 1 ? answer : String(n + 1),
-                answer_source: "reader",
+                answer_source: n === 1 && answer === null ? "unchecked" : "reader",
               },
             ],
           })),
@@ -1673,8 +1673,8 @@ describe("compareWorkFolder", () => {
 
     const runPair = async (
       name: string,
-      answerA: string,
-      answerB: string,
+      answerA: string | null,
+      answerB: string | null,
       opts?: { omitNoteDetails?: boolean },
     ) => {
       const work = mkdtempSync(join(tmpdir(), `ref-cmp-readconf-${name}-`));
@@ -1758,17 +1758,55 @@ describe("compareWorkFolder", () => {
     expect(bothRight.page.reader_answer_conflicts).toBeUndefined();
     expect(bothRight.report.pages_sent_to_person).toEqual([]);
 
-    // 1 + 1: one reader marked unclear, code computed 2 -> not a conflict -> double_read
-    const unclearComputed = await runPair("2-vs-unclear", "2", "unclear");
-    expect(unclearComputed.page.status).toBe("double_read");
-    expect(unclearComputed.page.result_reason).toBeNull();
-    expect(unclearComputed.report.pages_sent_to_person).toEqual([]);
+    // 1 + 1: reader A wrote 2, reader B marked unclear -> computed 2 kept, page sent to a person
+    const bUnclear = await runPair("2-vs-unclear", "2", "unclear");
+    expect(bUnclear.saved.sections[0].items[0].responses[0].answer).toBe("2");
+    expect(bUnclear.saved.sections[0].items[0].responses[0].answer_source).toBe("computed");
+    expect(bUnclear.page.status).toBe("machine_read");
+    expect(bUnclear.page.result_reason).toBe("readers disagree on an answer");
+    expect(bUnclear.page.answer_disagreements).toEqual(["sections[0].items[n=1].responses[0].answer"]);
+    expect(bUnclear.report.pages_sent_to_person).toEqual([
+      expect.objectContaining({
+        source_ref: "sample:M:3a",
+        reason: "readers disagree on an answer",
+      }),
+    ]);
+    expect(bUnclear.md).toContain("readers disagree on an answer");
+    expect(bUnclear.md).toContain("`sections[0].items[n=1].responses[0].answer`");
+    expect(bUnclear.md).not.toContain("Exact match across both readers.");
+
+    // 1 + 1: reader A marked unclear, reader B wrote 2 -> computed 2 kept, page sent to a person
+    const aUnclear = await runPair("unclear-vs-2", "unclear", "2");
+    expect(aUnclear.saved.sections[0].items[0].responses[0].answer).toBe("2");
+    expect(aUnclear.page.status).toBe("machine_read");
+    expect(aUnclear.page.result_reason).toBe("readers disagree on an answer");
+    expect(aUnclear.page.answer_disagreements).toEqual(["sections[0].items[n=1].responses[0].answer"]);
+
+    // 1 + 1: both readers marked unclear -> computed 2 kept, page sent to a person
+    const bothUnclear = await runPair("unclear-vs-unclear", "unclear", "unclear");
+    expect(bothUnclear.saved.sections[0].items[0].responses[0].answer).toBe("2");
+    expect(bothUnclear.page.status).toBe("machine_read");
+    expect(bothUnclear.page.result_reason).toBe("readers disagree on an answer");
+    expect(bothUnclear.page.answer_disagreements).toEqual(["sections[0].items[n=1].responses[0].answer"]);
+
+    // 1 + 1: reader A wrote 2, reader B left empty (null) and code filled 2 -> double_read
+    const bEmpty = await runPair("2-vs-empty", "2", null);
+    expect(bEmpty.saved.sections[0].items[0].responses[0].answer).toBe("2");
+    expect(bEmpty.page.status).toBe("double_read");
+    expect(bEmpty.page.result_reason).toBeNull();
+    expect(bEmpty.page.answer_disagreements).toBeUndefined();
+    expect(bEmpty.report.pages_sent_to_person).toEqual([]);
 
     // Legacy run.json without structured note_details falls back to note text format from answers.ts
+    // for answer_differs, and has no text fallback for unclear_filled.
     const legacy = await runPair("legacy-fallback", "2", "3", { omitNoteDetails: true });
     expect(legacy.page.status).toBe("machine_read");
     expect(legacy.page.result_reason).toBe("a reader's answer differs from the computed answer");
     expect(legacy.page.reader_answer_conflicts).toEqual(["sections[0].items[n=1].responses[0]"]);
+
+    const legacyUnclear = await runPair("legacy-unclear", "2", "unclear", { omitNoteDetails: true });
+    expect(legacyUnclear.page.status).toBe("double_read");
+    expect(legacyUnclear.page.answer_disagreements).toBeUndefined();
   });
 
   it("sends a page to a person when saved reader metadata names an unknown model family", () => {
@@ -2001,6 +2039,97 @@ describe("compareWorkFolder", () => {
     );
     expect(checkedScaffoldMd).not.toContain("find the place");
     expect(checkedScaffoldMd).not.toContain("must be added");
+
+    // 5. Inserting or reordering sections in a kept record omits item/scaffold locations and prints
+    // "location not known after the edit" on both edited and --photo-compared reruns, while
+    // same-section edits on a multi-section page keep working.
+    const shiftA = makePage({
+      source_ref: "sample:M:14a",
+      sections: [{ instruction: "Original section", scaffolds: [], items: [1, 3].map(makeItem) }],
+    });
+    const shiftB = makePage({
+      source_ref: "sample:M:14a",
+      sections: [{ instruction: "Original section", scaffolds: [], items: [1, 2, 3].map(makeItem) }],
+    });
+    const shiftWork = setupWork("section-shift", shiftA, shiftB);
+    compareWorkFolder({ workDir: shiftWork.work, repoRoot: repo });
+
+    const shifted = JSON.parse(readFileSync(shiftWork.finalPath, "utf8")) as PageRecord;
+    shifted.sections.unshift({
+      instruction: "Earlier section",
+      scaffolds: [],
+      items: [makeItem(4)],
+    });
+    writeFileSync(shiftWork.finalPath, JSON.stringify(shifted, null, 2));
+
+    const afterInsertSection = compareWorkFolder({ workDir: shiftWork.work, repoRoot: repo }).pages[0];
+    expect(afterInsertSection.status).toBe("machine_read");
+    const shiftedDiff = afterInsertSection.differences.find((d) => d.path === "sections[0].items[n=2]");
+    expect(shiftedDiff?.final_path).toBeUndefined();
+    expect(shiftedDiff?.insert_before).toBeUndefined();
+    const afterInsertSectionMd = readFileSync(shiftWork.reportMdPath, "utf8");
+    const shiftedLine = afterInsertSectionMd.split("\n").find((l) => l.includes("sections[0].items[n=2]"));
+    expect(shiftedLine).toContain("location not known after the edit");
+    expect(shiftedLine).not.toContain("`sections[0].items[0]`");
+
+    checkAndMarkPage({
+      workDir: shiftWork.work,
+      repoRoot: repo,
+      page: "sample:M:14a",
+      photoCompared: true,
+    });
+    const afterCheckShift = compareWorkFolder({ workDir: shiftWork.work, repoRoot: repo }).pages[0];
+    expect(afterCheckShift.status).toBe("human_checked");
+    const checkedShiftedDiff = afterCheckShift.differences.find((d) => d.path === "sections[0].items[n=2]");
+    expect(checkedShiftedDiff?.final_path).toBeUndefined();
+    expect(checkedShiftedDiff?.insert_before).toBeUndefined();
+    const afterCheckShiftMd = readFileSync(shiftWork.reportMdPath, "utf8");
+    const checkedShiftedLine = afterCheckShiftMd.split("\n").find((l) => l.includes("sections[0].items[n=2]"));
+    expect(checkedShiftedLine).toContain("location not known after the edit");
+    expect(checkedShiftedLine).not.toContain("`sections[0].items[0]`");
+
+    // Reordering two sections also omits the location, while editing inside a section still resolves it.
+    const twoSecA = makePage({
+      source_ref: "sample:M:15a",
+      sections: [
+        { instruction: "First section", scaffolds: [], items: [2, 4].map(makeItem) },
+        { instruction: "Second section", scaffolds: [], items: [5, 6].map(makeItem) },
+      ],
+    });
+    const twoSecB = makePage({
+      source_ref: "sample:M:15a",
+      sections: [
+        { instruction: "First section", scaffolds: [], items: [2, 3, 4].map(makeItem) },
+        { instruction: "Second section", scaffolds: [], items: [5, 6].map(makeItem) },
+      ],
+    });
+    const twoSecWork = setupWork("two-sections", twoSecA, twoSecB);
+    compareWorkFolder({ workDir: twoSecWork.work, repoRoot: repo });
+
+    // Same-section edit on a two-section page keeps resolving the insertion index.
+    const sameSecEdit = JSON.parse(readFileSync(twoSecWork.finalPath, "utf8")) as PageRecord;
+    sameSecEdit.sections[0].items.unshift(makeItem(1));
+    writeFileSync(twoSecWork.finalPath, JSON.stringify(sameSecEdit, null, 2));
+    const sameSecPage = compareWorkFolder({ workDir: twoSecWork.work, repoRoot: repo }).pages[0];
+    expect(sameSecPage.differences.find((d) => d.path === "sections[0].items[n=3]")).toMatchObject({
+      reader: "b",
+      insert_before: 2,
+      final_path: "sections[0].items[2]",
+    });
+
+    // Swapping the two sections makes the section order differ -> omit location.
+    const swapped = JSON.parse(readFileSync(twoSecWork.finalPath, "utf8")) as PageRecord;
+    swapped.sections = [swapped.sections[1], swapped.sections[0]];
+    writeFileSync(twoSecWork.finalPath, JSON.stringify(swapped, null, 2));
+    const swappedPage = compareWorkFolder({ workDir: twoSecWork.work, repoRoot: repo }).pages[0];
+    const swappedDiff = swappedPage.differences.find((d) => d.path === "sections[0].items[n=3]");
+    expect(swappedDiff?.final_path).toBeUndefined();
+    expect(swappedDiff?.insert_before).toBeUndefined();
+    const swappedLine = readFileSync(twoSecWork.reportMdPath, "utf8")
+      .split("\n")
+      .find((l) => l.includes("sections[0].items[n=3]"));
+    expect(swappedLine).toContain("location not known after the edit");
+    expect(swappedLine).not.toMatch(/`sections\[0\]\.items\[(?:\d+)?\]`/);
   });
 });
 

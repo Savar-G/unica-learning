@@ -23,11 +23,16 @@ export function fileSlugFromRef(sourceRef: string): string {
 // What code found when it computed the answers of one item.
 // - answer_differs: a stored concrete answer (reader, printed, or an earlier computed one) is not the
 //   computed value.
+// - unclear_filled: a reader marked the answer "unclear" and code replaced it with the computed value.
 // - places_do_not_fit: the computed answers do not fit the answer places, so the stored answers
 //   were kept.
 // - place_not_reached: a higher decimal place that the computed value does not reach; the response
 //   was kept as it is.
-export type AnswerNoteKind = "answer_differs" | "places_do_not_fit" | "place_not_reached";
+export type AnswerNoteKind =
+  | "answer_differs"
+  | "unclear_filled"
+  | "places_do_not_fit"
+  | "place_not_reached";
 
 export interface AnswerNote {
   kind: AnswerNoteKind;
@@ -73,6 +78,24 @@ export function collectReadTimeAnswerConflictPaths(
   for (const note of notes) {
     const path = parseAnswerDiffersPath(note);
     if (path !== null) add(path);
+  }
+  return out;
+}
+
+export function collectReadTimeUnclearAnswerPaths(
+  details?: readonly StoredAnswerNote[],
+): string[] {
+  if (!Array.isArray(details)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const detail of details) {
+    if (detail?.kind === "unclear_filled" && typeof detail.path === "string") {
+      const answerPath = detail.path.endsWith(".answer") ? detail.path : `${detail.path}.answer`;
+      if (!seen.has(answerPath)) {
+        seen.add(answerPath);
+        out.push(answerPath);
+      }
+    }
   }
   return out;
 }
@@ -364,6 +387,13 @@ function fillResponse(
   }
   // The page prints this answer: the record keeps what is printed.
   if (resp.answer_source === "printed") return resp;
+  if (resp.answer === UNCLEAR) {
+    notes.push({
+      kind: "unclear_filled",
+      path,
+      message: `${path}: reader marked "unclear", computed "${value}"`,
+    });
+  }
   return { ...resp, answer: value, answer_source: "computed" };
 }
 

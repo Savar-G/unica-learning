@@ -217,6 +217,9 @@ function formatLocatedEntry(
               : "belongs in the final record at";
     return `${prefix}: only reader ${d.reader} has it; ${where} \`${d.final_path}\`${opts.keptRecord ? "" : missingStepNote}: ${formatVal(entry)}`;
   }
+  if (d.reader && d.location_unknown) {
+    return `${prefix}: only reader ${d.reader}; location not known after the edit${missingStepNote}: ${formatVal(entry)}`;
+  }
   if (d.reader && opts.keptRecord) {
     if (!opts.isSentToPerson) {
       return `${prefix}: only reader ${d.reader}; not in kept final record${missingStepNote}: ${formatVal(entry)}`;
@@ -431,7 +434,7 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
       lines.push("- Differences:");
       for (const d of p.differences) {
         const prefix = `  - \`${d.path}\` (${d.kind})`;
-        if (d.reader && (d.final_path !== undefined || keptRecord)) {
+        if (d.reader && (d.final_path !== undefined || d.location_unknown || keptRecord)) {
           lines.push(formatLocatedEntry(prefix, d, { isSentToPerson, keptRecord }));
         } else {
           lines.push(`${prefix}: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
