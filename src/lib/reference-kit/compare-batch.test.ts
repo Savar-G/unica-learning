@@ -15,6 +15,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { ContentsRecord, PageRecord } from "@/lib/reference-record";
 import { checkAndMarkPage } from "./check";
 import { compareWorkFolder } from "./compare-batch";
+import { persistSlotResult } from "./extract-state";
+import { readPhoto } from "./read";
 
 const tempDirs: string[] = [];
 
@@ -796,7 +798,8 @@ describe("compareWorkFolder", () => {
     const saved = JSON.parse(readFileSync(join(work, "final", "report.json"), "utf8")) as typeof report;
     expect(saved.pages.find((p) => p.source_ref === "sample:M:4a")?.empty_answer).toHaveLength(1);
     const md = readFileSync(join(work, "final", "report.md"), "utf8");
-    expect(md).toContain("only reader b has it; belongs in the final record at `sections[0].scaffolds[]`");
+    expect(md).toContain("only reader b; location in final record `sections[0].scaffolds[]`");
+    expect(md).not.toContain("look at the photo; copy an entry");
     expect(md).toContain("Answer places with no answer");
     expect(md).toContain("`sections[0].items[n=1].responses[0]`");
     // A person edits the final record of 3a. Its once-read path is given only where the entry is.
@@ -1277,8 +1280,14 @@ describe("compareWorkFolder", () => {
     const report = compareWorkFolder({ workDir: work, repoRoot: repo });
     const pageReport = report.pages.find((p) => p.source_ref === "sample:M:8a");
     expect(pageReport?.status).toBe("agreement_accepted");
-    // Report still keeps the absent scaffold entry and its insertion location.
+    // Report still keeps the absent scaffold and item entries with their insertion locations.
     expect(pageReport?.once_read[0]?.final_path).toBe("sections[0].scaffolds[]");
+    expect(pageReport?.differences[0]).toMatchObject({
+      path: "sections[0].items[n=1]",
+      reader: "b",
+      insert_before: 0,
+      final_path: "sections[0].items[0]",
+    });
 
     const savedPage = JSON.parse(readFileSync(join(work, "final", "sample-M-8a.json"), "utf8")) as PageRecord;
     expect(savedPage.single_read).toEqual(["sections[0].scaffolds", "sections[0].items"]);
@@ -1289,6 +1298,12 @@ describe("compareWorkFolder", () => {
 
     const contentsReport = report.pages.find((p) => p.source_ref === "sample:M:contents");
     expect(contentsReport?.status).toBe("agreement_accepted");
+    expect(contentsReport?.differences[0]).toMatchObject({
+      path: "topics[n=1]",
+      reader: "b",
+      insert_before: 0,
+      final_path: "topics[0]",
+    });
     const savedContents = JSON.parse(
       readFileSync(join(work, "final", "sample-M-contents.json"), "utf8"),
     ) as ContentsRecord;
@@ -1297,6 +1312,12 @@ describe("compareWorkFolder", () => {
     const topic2Row = contentsView.split("\n").find((line) => line.startsWith("| 2 "));
     expect(topic2Row).toBeDefined();
     expect(topic2Row).not.toContain("[not checked]");
+
+    const md = readFileSync(join(work, "final", "report.md"), "utf8");
+    expect(md).toContain("`sections[0].items[0]`");
+    expect(md).toContain("`topics[0]`");
+    expect(md).not.toContain("look at the photo");
+    expect(md).not.toContain("insert before");
   });
 
   it("strips single_read, rewrites the Markdown view, and computes answer conflicts and empty answers from the kept record when an accepted page is edited", () => {
@@ -1615,6 +1636,139 @@ describe("compareWorkFolder", () => {
     expect(md).toContain("  - `examples[0].steps[n=2].printed`");
     expect(md).toContain("sample:M:3a:");
     expect(md).toContain("(readers disagree on an answer)");
+  });
+
+  it("stops a page when a read-time computed answer replaced a reader's conflicting concrete answer (structured and legacy fallback)", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-cmp-readconf-repo-"));
+    tempDirs.push(repo);
+
+    const makeRawPayload = (sheet: string, answer: string) => ({
+      kind: "page",
+      level: "M",
+      sheet,
+      topic: { title: "Addition practice" },
+      sections: [
+        {
+          instruction: "Add.",
+          scaffolds: [],
+          items: [1, 2, 3].map((n) => ({
+            n,
+            printed: `${n} + 1 =`,
+            form: "horizontal",
+            expr: { kind: "arith", op: "add", operands: [n, 1] },
+            responses: [
+              {
+                position: "after_equals",
+                cue: null,
+                answer: n === 1 ? answer : String(n + 1),
+                answer_source: "reader",
+              },
+            ],
+          })),
+        },
+      ],
+      examples: [],
+      score_bands: [[100, 100], [90, 99], [80, 89], [70, 79], [0, 69]],
+    });
+
+    const runPair = async (
+      name: string,
+      answerA: string,
+      answerB: string,
+      opts?: { omitNoteDetails?: boolean },
+    ) => {
+      const work = mkdtempSync(join(tmpdir(), `ref-cmp-readconf-${name}-`));
+      tempDirs.push(work);
+      const [resA, resB] = await Promise.all([
+        readPhoto({
+          photoBytes: Uint8Array.of(1),
+          source: "sample",
+          reader: "codex",
+          runCli: async () => ({ code: 0, stdout: JSON.stringify(makeRawPayload("3a", answerA)), stderr: "" }),
+        }),
+        readPhoto({
+          photoBytes: Uint8Array.of(1),
+          source: "sample",
+          reader: "claude",
+          runCli: async () => ({ code: 0, stdout: JSON.stringify(makeRawPayload("3a", answerB)), stderr: "" }),
+        }),
+      ]);
+      expect(resA.status).toBe("ok");
+      expect(resB.status).toBe("ok");
+
+      for (const [slot, family, res] of [
+        ["a", "codex", resA],
+        ["b", "claude", resB],
+      ] as const) {
+        const slotDir = join(work, `reader-${slot}`);
+        mkdirSync(slotDir, { recursive: true });
+        writeFileSync(join(slotDir, "reader.json"), JSON.stringify({ family, model: "m1" }));
+        const entry = persistSlotResult({
+          slotDir,
+          preparedFile: `${SHA_1.slice(0, 12)}.jpg`,
+          originalName: "01.jpg",
+          sha256: SHA_1,
+          result: res,
+          existingEntries: [],
+          repoRoot: repo,
+        });
+        if (opts?.omitNoteDetails) {
+          delete entry.note_details;
+        }
+        writeFileSync(
+          join(slotDir, "run.json"),
+          JSON.stringify({ slot, reader: { family, model: "m1" }, source: "sample", photos: [entry] }),
+        );
+      }
+
+      const report = compareWorkFolder({ workDir: work, repoRoot: repo });
+      const md = readFileSync(join(work, "final", "report.md"), "utf8");
+      const saved = JSON.parse(readFileSync(join(work, "final", "sample-M-3a.json"), "utf8")) as PageRecord;
+      return { report, page: report.pages[0], md, saved };
+    };
+
+    // 1 + 1: reader A wrote 2, reader B wrote 3 -> computed 2 kept, page sent to a person
+    const oneDiff = await runPair("2-vs-3", "2", "3");
+    expect(oneDiff.saved.sections[0].items[0].responses[0].answer).toBe("2");
+    expect(oneDiff.page.status).toBe("machine_read");
+    expect(oneDiff.page.result_reason).toBe("a reader's answer differs from the computed answer");
+    expect(oneDiff.page.reader_answer_conflicts).toEqual(["sections[0].items[n=1].responses[0]"]);
+    expect(oneDiff.report.pages_sent_to_person).toEqual([
+      expect.objectContaining({
+        source_ref: "sample:M:3a",
+        reason: "a reader's answer differs from the computed answer",
+      }),
+    ]);
+    expect(oneDiff.md).toContain("a reader's answer differs from the computed answer");
+    expect(oneDiff.md).toContain("`sections[0].items[n=1].responses[0]`");
+    expect(oneDiff.md).not.toContain("Exact match across both readers.");
+
+    // 1 + 1: both readers wrote 3 -> both conflict with computed 2 -> page sent to a person
+    const bothWrong = await runPair("3-vs-3", "3", "3");
+    expect(bothWrong.saved.sections[0].items[0].responses[0].answer).toBe("2");
+    expect(bothWrong.page.status).toBe("machine_read");
+    expect(bothWrong.page.result_reason).toBe("a reader's answer differs from the computed answer");
+    expect(bothWrong.page.reader_answer_conflicts).toEqual(["sections[0].items[n=1].responses[0]"]);
+    expect(bothWrong.md).not.toContain("Exact match across both readers.");
+
+    // 1 + 1: both readers wrote 2 -> double_read
+    const bothRight = await runPair("2-vs-2", "2", "2");
+    expect(bothRight.page.status).toBe("double_read");
+    expect(bothRight.page.result_reason).toBeNull();
+    expect(bothRight.page.reader_answer_conflicts).toBeUndefined();
+    expect(bothRight.report.pages_sent_to_person).toEqual([]);
+
+    // 1 + 1: one reader marked unclear, code computed 2 -> not a conflict -> double_read
+    const unclearComputed = await runPair("2-vs-unclear", "2", "unclear");
+    expect(unclearComputed.page.status).toBe("double_read");
+    expect(unclearComputed.page.result_reason).toBeNull();
+    expect(unclearComputed.report.pages_sent_to_person).toEqual([]);
+
+    // Legacy run.json without structured note_details falls back to note text format from answers.ts
+    const legacy = await runPair("legacy-fallback", "2", "3", { omitNoteDetails: true });
+    expect(legacy.page.status).toBe("machine_read");
+    expect(legacy.page.result_reason).toBe("a reader's answer differs from the computed answer");
+    expect(legacy.page.reader_answer_conflicts).toEqual(["sections[0].items[n=1].responses[0]"]);
   });
 });
 

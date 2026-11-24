@@ -2534,6 +2534,186 @@ describe("90% reader agreement rule", () => {
     expect(findAnswerDisagreements(workedAnsCmp.diffs, { a: workedA, b: workedAnsB })).toEqual([
       "sections[0].items[n=1].responses[0].answer",
     ]);
+
+    // 4. Non-answer slots (checkbox, secondary work_area) do not trigger the answer stop;
+    // a sole work_area on a question item still triggers it.
+    const makeThreeItemPage = (): PageRecord =>
+      makePage({
+        sections: [
+          {
+            instruction: "Solve.",
+            scaffolds: [],
+            items: [1, 2, 3].map((n) => ({
+              n,
+              printed: `${n} + 1 =`,
+              form: "horizontal" as const,
+              expr:
+                n === 1
+                  ? ({ kind: "notation" as const, latex: "6^{2}+6" })
+                  : ({ kind: "arith" as const, op: "add" as const, operands: [n, 1] }),
+              responses: [
+                {
+                  position: "after_equals" as const,
+                  cue: null,
+                  answer: n === 1 ? "42" : String(n + 1),
+                  answer_source: n === 1 ? ("reader" as const) : ("computed" as const),
+                },
+              ],
+            })),
+          },
+        ],
+      });
+
+    for (const nonAnswerPos of ["checkbox", "work_area"] as const) {
+      const a = makeThreeItemPage();
+      a.sections[0].items[0].responses.push({
+        position: nonAnswerPos,
+        cue: null,
+        answer: null,
+        answer_source: "unchecked",
+      });
+      const b = structuredClone(a);
+      b.sections[0].items[0].responses[1].answer = UNCLEAR;
+      const cmp = compareRecordsWithCounts(a, b);
+      expect(agreementPercentage(cmp.counts.agreed, cmp.counts.compared)).toBeGreaterThanOrEqual(97);
+      expect(findAnswerDisagreements(cmp.diffs, { a, b })).toEqual([]);
+      expect(
+        decidePageOutcome({
+          hasA: true,
+          hasB: true,
+          familyA: "codex",
+          familyB: "claude",
+          diffs: cmp.diffs,
+          counts: cmp.counts,
+          recordA: a,
+          recordB: b,
+        }),
+      ).toEqual({ status: "agreement_accepted", stopReasons: [] });
+
+      // One-sided extra non-answer response (even with unclear) also does not stop.
+      const oneSidedA = makeThreeItemPage();
+      const oneSidedCmp = compareRecordsWithCounts(oneSidedA, b);
+      expect(findAnswerDisagreements(oneSidedCmp.diffs, { a: oneSidedA, b })).toEqual([]);
+    }
+
+    // Sole work_area on a question item IS answer-bearing and stops at >= 97%.
+    const soleWorkA = makeThreeItemPage();
+    soleWorkA.sections[0].items[0].responses = [
+      { position: "work_area", cue: null, answer: "42", answer_source: "reader" },
+    ];
+    const soleWorkB = structuredClone(soleWorkA);
+    soleWorkB.sections[0].items[0].responses[0].answer = "43";
+    const soleWorkCmp = compareRecordsWithCounts(soleWorkA, soleWorkB);
+    expect(agreementPercentage(soleWorkCmp.counts.agreed, soleWorkCmp.counts.compared)).toBeGreaterThanOrEqual(97);
+    expect(findAnswerDisagreements(soleWorkCmp.diffs, { a: soleWorkA, b: soleWorkB })).toEqual([
+      "sections[0].items[n=1].responses[0].answer",
+    ]);
+    expect(
+      decidePageOutcome({
+        hasA: true,
+        hasB: true,
+        familyA: "codex",
+        familyB: "claude",
+        diffs: soleWorkCmp.diffs,
+        counts: soleWorkCmp.counts,
+        recordA: soleWorkA,
+        recordB: soleWorkB,
+      }),
+    ).toEqual({ status: "machine_read", stopReasons: [ANSWER_DISAGREEMENT_REASON] });
+  });
+
+  it("gives missing items and contents topics their insertion location in the final record", () => {
+    const makeItemsPage = (ns: number[]): PageRecord =>
+      makePage({
+        sections: [
+          {
+            instruction: "Add.",
+            scaffolds: [],
+            items: ns.map((n) => ({
+              n,
+              printed: `${n} + 1 =`,
+              form: "horizontal" as const,
+              expr: { kind: "arith" as const, op: "add" as const, operands: [n, 1] },
+              responses: [
+                { position: "after_equals" as const, cue: null, answer: String(n + 1), answer_source: "computed" as const },
+              ],
+            })),
+          },
+        ],
+      });
+
+    // Missing at start: A=[2, 3], B=[1, 2, 3] -> insert_before: 0, final_path: sections[0].items[0]
+    const itemStart = classifyComparison(makeItemsPage([2, 3]), makeItemsPage([1, 2, 3]));
+    expect(itemStart.differences).toHaveLength(1);
+    expect(itemStart.differences[0]).toMatchObject({
+      path: "sections[0].items[n=1]",
+      reader: "b",
+      insert_before: 0,
+      final_path: "sections[0].items[0]",
+    });
+
+    // Missing in middle: A=[1, 3], B=[1, 2, 3] -> insert_before: 1, final_path: sections[0].items[1]
+    const itemMid = classifyComparison(makeItemsPage([1, 3]), makeItemsPage([1, 2, 3]));
+    expect(itemMid.differences[0]).toMatchObject({
+      path: "sections[0].items[n=2]",
+      reader: "b",
+      insert_before: 1,
+      final_path: "sections[0].items[1]",
+    });
+
+    // Missing at end: A=[1, 2], B=[1, 2, 3] -> no insert_before, final_path: sections[0].items[]
+    const itemEnd = classifyComparison(makeItemsPage([1, 2]), makeItemsPage([1, 2, 3]));
+    expect(itemEnd.differences[0]).toMatchObject({
+      path: "sections[0].items[n=3]",
+      reader: "b",
+      final_path: "sections[0].items[]",
+    });
+    expect(itemEnd.differences[0].insert_before).toBeUndefined();
+
+    // Present only in reader A: A=[1, 2, 3], B=[2, 3] -> reader: "a", final_path: sections[0].items[0]
+    const itemAOnly = classifyComparison(makeItemsPage([1, 2, 3]), makeItemsPage([2, 3]));
+    expect(itemAOnly.differences[0]).toMatchObject({
+      path: "sections[0].items[n=1]",
+      reader: "a",
+      final_path: "sections[0].items[0]",
+    });
+
+    const makeContents = (ns: number[]): ContentsRecord => ({
+      kind: "contents",
+      source_ref: "sample:M:contents",
+      topics: ns.map((n) => ({ n, title: `Topic ${n}`, sheets: [n, n], std_time_min: [1, 2] })),
+    });
+
+    const topicStart = classifyComparison(makeContents([2, 3, 4]), makeContents([1, 2, 3, 4]));
+    expect(topicStart.differences[0]).toMatchObject({
+      path: "topics[n=1]",
+      reader: "b",
+      insert_before: 0,
+      final_path: "topics[0]",
+    });
+
+    const topicMid = classifyComparison(makeContents([1, 2, 4]), makeContents([1, 2, 3, 4]));
+    expect(topicMid.differences[0]).toMatchObject({
+      path: "topics[n=3]",
+      reader: "b",
+      insert_before: 2,
+      final_path: "topics[2]",
+    });
+
+    const topicEnd = classifyComparison(makeContents([1, 2, 3]), makeContents([1, 2, 3, 4]));
+    expect(topicEnd.differences[0]).toMatchObject({
+      path: "topics[n=4]",
+      reader: "b",
+      final_path: "topics[]",
+    });
+    expect(topicEnd.differences[0].insert_before).toBeUndefined();
+
+    const topicAOnly = classifyComparison(makeContents([1, 2, 3]), makeContents([2, 3]));
+    expect(topicAOnly.differences[0]).toMatchObject({
+      path: "topics[n=1]",
+      reader: "a",
+      final_path: "topics[0]",
+    });
   });
 
   it("satisfies threshold and ratio invariants across arbitrary counts", () => {

@@ -35,6 +35,48 @@ export interface AnswerNote {
   message: string;
 }
 
+export interface StoredAnswerNote {
+  kind: AnswerNoteKind;
+  path: string;
+}
+
+const ANSWER_DIFFERS_VALUE_RE =
+  /^(sections\[\d+\]\.items\[n=\d+\]\.responses\[\d+\]): (?:reader gave|page prints|record holds) "[\s\S]*", computed "[\s\S]*"$/;
+const ANSWER_DIFFERS_UNREACHED_RE =
+  /^(sections\[\d+\]\.items\[n=\d+\]\.responses\[\d+\]): place "[\s\S]*" holds "[\s\S]*", but the computed value does not reach this place$/;
+
+export function parseAnswerDiffersPath(note: string): string | null {
+  const match = ANSWER_DIFFERS_VALUE_RE.exec(note) ?? ANSWER_DIFFERS_UNREACHED_RE.exec(note);
+  return match ? match[1] : null;
+}
+
+export function collectReadTimeAnswerConflictPaths(
+  notes: readonly string[],
+  details?: readonly StoredAnswerNote[],
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (path: string): void => {
+    if (!seen.has(path)) {
+      seen.add(path);
+      out.push(path);
+    }
+  };
+  if (Array.isArray(details)) {
+    for (const detail of details) {
+      if (detail?.kind === "answer_differs" && typeof detail.path === "string") {
+        add(detail.path);
+      }
+    }
+    return out;
+  }
+  for (const note of notes) {
+    const path = parseAnswerDiffersPath(note);
+    if (path !== null) add(path);
+  }
+  return out;
+}
+
 // Decimal place names that a reader may write in `place`, by power of ten.
 const PLACE_POWERS = new Map<string, number>([
   ["one", 0],
@@ -113,7 +155,7 @@ function isSoleWorkArea(item: PageItem, resp: ItemResponse): boolean {
   return item.expr !== null && item.responses.length === 1 && resp.position === "work_area";
 }
 
-function isAnswerBearingResponse(item: PageItem, resp: ItemResponse): boolean {
+export function isAnswerBearingResponse(item: PageItem, resp: ItemResponse): boolean {
   if (!NON_ANSWER_POSITIONS.has(resp.position)) return true;
   return isSoleWorkArea(item, resp);
 }

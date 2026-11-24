@@ -9,7 +9,11 @@ import {
   writeSafeOutputFile,
   type ReferenceRecord,
 } from "@/lib/reference-record";
-import { applyComputedAnswers, fileSlugFromRef } from "./answers";
+import {
+  applyComputedAnswers,
+  collectReadTimeAnswerConflictPaths,
+  fileSlugFromRef,
+} from "./answers";
 import {
   agreementPercentage,
   classifyComparison,
@@ -385,6 +389,12 @@ export function compareWorkFolder(opts: {
       a: pair.recA,
       b: pair.recB,
     });
+    const readerAnswerConflicts = [
+      ...new Set([
+        ...collectReadTimeAnswerConflictPaths(pair.notesA, pair.noteDetailsA),
+        ...collectReadTimeAnswerConflictPaths(pair.notesB, pair.noteDetailsB),
+      ]),
+    ];
     const decision = decidePageOutcome({
       hasA: pair.recA !== null,
       hasB: pair.recB !== null,
@@ -394,6 +404,7 @@ export function compareWorkFolder(opts: {
       sameDigest: pair.sameDigest,
       counts: comparison.counts,
       hasAnswerConflict: answerConflicts.length > 0,
+      hasReaderAnswerConflict: readerAnswerConflicts.length > 0,
       needsPersonRead: classified.needs_person_read,
       editedByPerson,
       recordA: pair.recA,
@@ -471,6 +482,7 @@ export function compareWorkFolder(opts: {
       result: resultLabelForStatus(pageStatus),
       result_reason: resultReason,
       ...(answerConflicts.length > 0 ? { answer_conflicts: answerConflicts } : {}),
+      ...(readerAnswerConflicts.length > 0 ? { reader_answer_conflicts: readerAnswerConflicts } : {}),
       ...(answerDisagreements.length > 0 ? { answer_disagreements: answerDisagreements } : {}),
       only_in_reader: onlyIn,
       digest_mismatch: pair.digestMismatch,

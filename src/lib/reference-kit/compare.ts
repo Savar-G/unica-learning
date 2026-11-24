@@ -7,7 +7,11 @@ import {
   type ReferenceRecord,
 } from "@/lib/reference-record";
 import { applyComputedAnswers, findEmptyAnswers } from "./answers";
-import { ANSWER_DISAGREEMENT_REASON, findAnswerDisagreements } from "./compare-answers";
+import {
+  ANSWER_DISAGREEMENT_REASON,
+  findAnswerDisagreements,
+  READER_ANSWER_CONFLICT_REASON,
+} from "./compare-answers";
 import {
   collectUnnamedTeachingMarks,
   compareExamples,
@@ -35,6 +39,7 @@ export {
   findAnswerDisagreements,
   normalizeNotationText,
   normalizeProseText,
+  READER_ANSWER_CONFLICT_REASON,
 };
 
 export type PageStatus = "machine_read" | "agreement_accepted" | "double_read" | "human_checked";
@@ -58,6 +63,23 @@ export function agreementPercentage(agreed: number, compared: number): number | 
   if (compared <= 0) return null;
   // Floor to 1 decimal place so < 90% never rounds up to 90% and < 100% never rounds up to 100%.
   return Math.floor((agreed * 1000) / compared) / 10;
+}
+
+function findInsertBeforeIndex(
+  aEntries: readonly { n: number }[],
+  bEntries: readonly { n: number }[],
+  missingN: number,
+): number | undefined {
+  const aIndexByN = new Map<number, number>();
+  aEntries.forEach((entry, idx) => aIndexByN.set(entry.n, idx));
+  const bIdx = bEntries.findIndex((entry) => entry.n === missingN);
+  if (bIdx !== -1) {
+    for (let i = bIdx + 1; i < bEntries.length; i += 1) {
+      const aIdx = aIndexByN.get(bEntries[i].n);
+      if (aIdx !== undefined) return aIdx;
+    }
+  }
+  return undefined;
 }
 
 function comparePageItems(
@@ -104,7 +126,18 @@ function comparePageItems(
     const ia = aMap.get(n);
     const ib = bMap.get(n);
     if (!ia || !ib) {
-      recordDiff(diffs, { path: iPath, a: ia ?? null, b: ib ?? null, kind: "value" }, counts);
+      const insertBefore = !ia && ib ? findInsertBeforeIndex(aItems, bItems, n) : undefined;
+      recordDiff(
+        diffs,
+        {
+          path: iPath,
+          a: ia ?? null,
+          b: ib ?? null,
+          kind: "value",
+          ...(insertBefore !== undefined ? { insert_before: insertBefore } : {}),
+        },
+        counts,
+      );
       continue;
     }
 
@@ -181,7 +214,18 @@ function compareContentsRecords(
     const ta = aMap.get(n);
     const tb = bMap.get(n);
     if (!ta || !tb) {
-      recordDiff(diffs, { path: tPath, a: ta ?? null, b: tb ?? null, kind: "value" }, counts);
+      const insertBefore = !ta && tb ? findInsertBeforeIndex(a.topics, b.topics, n) : undefined;
+      recordDiff(
+        diffs,
+        {
+          path: tPath,
+          a: ta ?? null,
+          b: tb ?? null,
+          kind: "value",
+          ...(insertBefore !== undefined ? { insert_before: insertBefore } : {}),
+        },
+        counts,
+      );
       continue;
     }
     compareField(`${tPath}.title`, ta.title, tb.title, { mode: "prose" }, diffs, counts);
@@ -272,9 +316,13 @@ function resolveDiffPath(
       const found = Array.isArray(node)
         ? node.findIndex((e) => typeof e === "object" && e !== null && (e as { n?: unknown }).n === n)
         : -1;
-      // Steps are numbered from 1 without gaps, so a missing step n belongs at index n - 1.
-      out += `[${found === -1 ? n - 1 : found}]`;
-      node = found === -1 ? undefined : (node as unknown[])[found];
+      if (found !== -1) {
+        out += `[${found}]`;
+        node = (node as unknown[])[found];
+      } else {
+        out += insertBefore !== undefined ? `[${insertBefore}]` : "[]";
+        node = undefined;
+      }
     } else if (bIndex !== undefined) {
       out += insertBefore !== undefined ? `[${insertBefore}]` : "[]";
       node = undefined;
@@ -428,6 +476,8 @@ export function resolveSingleReadPaths(
   return out;
 }
 
+const NUMBERED_LIST_ENTRY_RE = /^(?:sections\[\d+\]\.items|topics)\[n=\d+\]$/;
+
 export function classifyComparison(
   a: ReferenceRecord | null,
   b: ReferenceRecord | null,
@@ -435,9 +485,16 @@ export function classifyComparison(
   const { diffs: allDiffs, counts } =
     a && b ? compareRecordsWithCounts(a, b) : { diffs: [], counts: { compared: 0, agreed: 0 } };
   const oneUnclear = allDiffs.filter((d) => d.kind === "one_unclear");
-  const differences = allDiffs.filter(
-    (d) => d.kind === "value" || d.kind === "order" || d.kind === "one_unclear",
-  );
+  const differences = allDiffs
+    .filter((d) => d.kind === "value" || d.kind === "order" || d.kind === "one_unclear")
+    .map((d) =>
+      a &&
+      d.kind === "value" &&
+      NUMBERED_LIST_ENTRY_RE.test(d.path) &&
+      (d.a === null) !== (d.b === null)
+        ? locateOnceRead(d, a)
+        : d,
+    );
   const wording = allDiffs.filter((d) => d.kind === "wording");
   const onceRead = allDiffs
     .filter((d) => d.kind === "once_read")
@@ -465,6 +522,7 @@ export interface DecideStatusInput {
   sameDigest?: boolean;
   counts?: CompareCounts;
   hasAnswerConflict?: boolean;
+  hasReaderAnswerConflict?: boolean;
   needsPersonRead?: boolean;
   editedByPerson?: boolean;
   recordA?: ReferenceRecord | null;
@@ -490,6 +548,9 @@ export function decidePageOutcome(input: DecideStatusInput): PageDecision {
   }
   if (input.hasAnswerConflict) {
     stopReasons.push("stored answer conflicts with computed answer");
+  }
+  if (input.hasReaderAnswerConflict) {
+    stopReasons.push(READER_ANSWER_CONFLICT_REASON);
   }
   if (input.diffs.some((d) => d.kind === "empty_answer")) {
     stopReasons.push("empty answer place");

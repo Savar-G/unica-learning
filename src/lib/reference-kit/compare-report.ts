@@ -76,6 +76,7 @@ export interface PageCompareReport {
   result?: PageResultLabel;
   result_reason?: string | null;
   answer_conflicts?: string[];
+  reader_answer_conflicts?: string[];
   answer_disagreements?: string[];
   only_in_reader: "a" | "b" | null;
   digest_mismatch: DigestMismatchInfo | null;
@@ -177,6 +178,42 @@ export function formatPagesSentToPerson(report: CompareWorkReport): string {
     lines.push(`  - ${formatSentToPersonLine(item)}`);
   }
   return lines.join("\n");
+}
+
+function formatLocatedEntry(
+  prefix: string,
+  d: RecordDifference,
+  opts: { isAccepted: boolean; keptRecord: boolean },
+): string {
+  const entry = d.reader === "a" ? d.a : d.b;
+  const missingStepNote = d.missing_step
+    ? opts.isAccepted
+      ? "; step absent from reader A's record"
+      : "; its step is missing from reader A's record and must be added first"
+    : "";
+  if (d.reader && d.final_path !== undefined) {
+    if (opts.isAccepted) {
+      const where =
+        d.reader === "a"
+          ? "in final record at"
+          : d.insert_before !== undefined
+            ? "location in final record before"
+            : "location in final record";
+      return `${prefix}: only reader ${d.reader}; ${where} \`${d.final_path}\`${missingStepNote}: ${formatVal(entry)}`;
+    }
+    const where = opts.keptRecord
+      ? "found in the kept final record at"
+      : d.reader === "a"
+        ? "already in the final record at"
+        : d.insert_before !== undefined
+          ? "insert before"
+          : "belongs in the final record at";
+    return `${prefix}: only reader ${d.reader} has it; ${where} \`${d.final_path}\`${opts.keptRecord ? "" : missingStepNote}: ${formatVal(entry)}`;
+  }
+  if (d.reader && opts.keptRecord) {
+    return `${prefix}: only reader ${d.reader} has it; a person changed the final record, so find the place in that record${missingStepNote}: ${formatVal(entry)}`;
+  }
+  return `${prefix}: a=${formatVal(d.a)} | b=${formatVal(d.b)}`;
 }
 
 export function formatCompareReportMarkdown(report: CompareWorkReport): string {
@@ -376,15 +413,22 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
       }
     }
 
+    // A record that a person edited or checked is kept; reader a's words and indexes may not fit it.
+    const keptRecord = p.edited_by_person === true || p.status === "human_checked";
+    const isSentToPerson = p.status === "machine_read";
+    const isAccepted = p.status === "agreement_accepted" || p.status === "double_read";
+
     if (p.differences.length > 0) {
       lines.push("- Differences:");
       for (const d of p.differences) {
-        lines.push(`  - \`${d.path}\` (${d.kind}): a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
+        const prefix = `  - \`${d.path}\` (${d.kind})`;
+        if (!keptRecord && d.reader && d.final_path !== undefined) {
+          lines.push(formatLocatedEntry(prefix, d, { isAccepted, keptRecord: false }));
+        } else {
+          lines.push(`${prefix}: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
+        }
       }
     }
-
-    // A record that a person edited or checked is kept; reader a's words and indexes may not fit it.
-    const keptRecord = p.edited_by_person === true || p.status === "human_checked";
 
     const wording = p.wording ?? [];
     if (wording.length > 0) {
@@ -400,37 +444,20 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
 
     if (p.once_read.length > 0) {
       lines.push(
-        '- Once-read teaching fields (look at the photo; copy an entry that is on the page into the final record at the given path, where "[]" means the end of that list and "insert before" means insert ahead of that element):',
+        isSentToPerson
+          ? '- Once-read teaching fields (look at the photo; copy an entry that is on the page into the final record at the given path, where "[]" means the end of that list and "insert before" means insert ahead of that element):'
+          : "- Once-read teaching fields:",
       );
       for (const d of p.once_read) {
-        const entry = d.reader === "a" ? d.a : d.b;
-        const missingStepNote = d.missing_step
-          ? "; its step is missing from reader A's record and must be added first"
-          : "";
-        if (d.reader && d.final_path !== undefined) {
-          const where = keptRecord
-            ? "found in the kept final record at"
-            : d.reader === "a"
-              ? "already in the final record at"
-              : d.insert_before !== undefined
-                ? "insert before"
-                : "belongs in the final record at";
-          lines.push(
-            `  - \`${d.path}\`: only reader ${d.reader} has it; ${where} \`${d.final_path}\`${keptRecord ? "" : missingStepNote}: ${formatVal(entry)}`,
-          );
-        } else if (d.reader && keptRecord) {
-          lines.push(
-            `  - \`${d.path}\`: only reader ${d.reader} has it; a person changed the final record, so find the place in that record${missingStepNote}: ${formatVal(entry)}`,
-          );
-        } else {
-          lines.push(`  - \`${d.path}\`: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
-        }
+        lines.push(formatLocatedEntry(`  - \`${d.path}\``, d, { isAccepted, keptRecord }));
       }
     }
 
     if (p.both_unclear.length > 0) {
       lines.push(
-        '- Both readers marked unclear (look at the photo and write the value, or keep "unclear" and mark the page checked):',
+        isSentToPerson
+          ? '- Both readers marked unclear (look at the photo and write the value, or keep "unclear" and mark the page checked):'
+          : "- Both readers marked unclear:",
       );
       for (const d of p.both_unclear) {
         lines.push(`  - \`${d.path}\``);
@@ -439,7 +466,11 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
 
     const emptyAnswers = p.empty_answer ?? [];
     if (emptyAnswers.length > 0) {
-      lines.push('- Answer places with no answer (write the answer from the photo, or "unclear"):');
+      lines.push(
+        isSentToPerson
+          ? '- Answer places with no answer (write the answer from the photo, or "unclear"):'
+          : "- Answer places with no answer:",
+      );
       for (const d of emptyAnswers) {
         lines.push(`  - \`${d.path}\`: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
       }
@@ -450,6 +481,14 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
       lines.push("- Answer conflicts (stored answer does not match computed answer):");
       for (const msg of answerConflicts) {
         lines.push(`  - ${msg}`);
+      }
+    }
+
+    const readerAnswerConflicts = p.reader_answer_conflicts ?? [];
+    if (readerAnswerConflicts.length > 0) {
+      lines.push("- Reader answer conflicts (a reader's answer differs from the computed answer):");
+      for (const path of readerAnswerConflicts) {
+        lines.push(`  - \`${path}\``);
       }
     }
 
@@ -474,6 +513,7 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
       p.both_unclear.length === 0 &&
       emptyAnswers.length === 0 &&
       answerConflicts.length === 0 &&
+      readerAnswerConflicts.length === 0 &&
       answerDisagreements.length === 0 &&
       p.unnamed_teaching_marks.length === 0 &&
       !p.only_in_reader &&

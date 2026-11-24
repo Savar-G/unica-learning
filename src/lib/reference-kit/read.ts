@@ -9,7 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ReferenceRecord, ValidationError } from "@/lib/reference-record";
-import { applyComputedAnswers, KIT_REF_SEGMENT_RE } from "./answers";
+import { applyComputedAnswers, KIT_REF_SEGMENT_RE, type StoredAnswerNote } from "./answers";
 import { readRegularFileNoFollow } from "./prepare";
 import {
   assertModelMatchesFamily,
@@ -46,6 +46,7 @@ export interface PhotoRunEntry {
   record_file?: string;
   invalid_file?: string;
   notes: string[];
+  note_details?: StoredAnswerNote[];
   errors?: ValidationError[];
   reason?: string;
 }
@@ -58,7 +59,7 @@ export interface ReadRunReport {
 }
 
 export type ReadPhotoResult =
-  | { status: "ok"; record: ReferenceRecord; notes: string[] }
+  | { status: "ok"; record: ReferenceRecord; notes: string[]; noteDetails?: StoredAnswerNote[] }
   | { status: "invalid"; raw: string; errors: ValidationError[] }
   | { status: "cli_error"; reason: string };
 
@@ -175,8 +176,13 @@ export async function readPhoto(opts: {
 
     const firstCheck = validateModelAnswer(first.raw, opts.source, readerLabel);
     if (firstCheck.ok) {
-      const { record, notes } = applyComputedAnswers(firstCheck.record);
-      return { status: "ok", record, notes };
+      const { record, notes, details } = applyComputedAnswers(firstCheck.record);
+      return {
+        status: "ok",
+        record,
+        notes,
+        noteDetails: details.map(({ kind, path }) => ({ kind, path })),
+      };
     }
 
     // One retry with the photo, fixed prompt, and validation errors only
@@ -197,8 +203,13 @@ export async function readPhoto(opts: {
       return { status: "invalid", raw: retry.raw, errors: retryCheck.errors };
     }
 
-    const { record, notes } = applyComputedAnswers(retryCheck.record);
-    return { status: "ok", record, notes };
+    const { record, notes, details } = applyComputedAnswers(retryCheck.record);
+    return {
+      status: "ok",
+      record,
+      notes,
+      noteDetails: details.map(({ kind, path }) => ({ kind, path })),
+    };
   } finally {
     rmSync(isolatedDir, { recursive: true, force: true });
   }

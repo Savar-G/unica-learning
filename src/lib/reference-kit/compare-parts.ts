@@ -25,10 +25,11 @@ export interface RecordDifference {
   a: unknown;
   b: unknown;
   kind: DiffKind;
-  // once_read only: the reader that has the entry, and the JSON path of the entry in the final
-  // record. A path that ends in "[]" means: add the entry at the end of that list. When
-  // insert_before is set, final_path names the element before which to insert the entry.
-  // missing_step is set on a reader-b mark whose step has no partner in reader a's record.
+  // once_read and one-sided list entries (missing items or contents topics): the reader that has
+  // the entry, and the JSON path of the entry in the final record. A path that ends in "[]" means
+  // the end of that list. When insert_before is set, final_path names the element before which to
+  // insert the entry. missing_step is set on a reader-b mark whose step has no partner in reader
+  // a's record.
   reader?: "a" | "b";
   final_path?: string;
   insert_before?: number;

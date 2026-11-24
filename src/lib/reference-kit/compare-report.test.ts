@@ -449,4 +449,194 @@ describe("formatCompareReportMarkdown", () => {
       "sample:M:5a: 95% agreement, 1 difference (readers disagree on an answer)",
     );
   });
+
+  it("omits review instructions on agreement_accepted and double_read pages while keeping them on machine_read pages", () => {
+    const caption = { kind: "caption", applies_to: "all", text: "Practice" };
+    const step = { n: 2, shows: "partial_sum", printed: "= 5/6" };
+    const mark = { kind: "box", step: 2, description: "Box around sum" };
+    const sharedEntries = {
+      photo: "666666666666.jpg",
+      original_name: "06.jpg",
+      photo_sha256: "6".repeat(64),
+      only_in_reader: null,
+      digest_mismatch: null,
+      differences: [{ path: "topic.title", a: "Sums", b: "Totals", kind: "value" as const }],
+      once_read: [
+        {
+          path: "sections[0].scaffolds[b:0]",
+          a: null,
+          b: caption,
+          kind: "once_read" as const,
+          reader: "b" as const,
+          final_path: "sections[0].scaffolds[]",
+        },
+        {
+          path: "examples[0].steps[b:1]",
+          a: null,
+          b: step,
+          kind: "once_read" as const,
+          reader: "b" as const,
+          insert_before: 1,
+          final_path: "examples[0].steps[1]",
+        },
+        {
+          path: "examples[0].marks[b:0]",
+          a: null,
+          b: mark,
+          kind: "once_read" as const,
+          reader: "b" as const,
+          final_path: "examples[0].marks[]",
+          missing_step: true,
+        },
+      ],
+      both_unclear: [{ path: "topic.number", a: "unclear", b: "unclear", kind: "both_unclear" as const }],
+      one_unclear: [],
+      needs_person_read: false,
+      unnamed_teaching_marks: [],
+      reader_notes: { a: [], b: [] },
+    };
+
+    const makeReport = (
+      pages: CompareWorkReport["pages"],
+    ): CompareWorkReport => ({
+      reader_a: { family: "codex", model: "x1" },
+      reader_b: { family: "claude", model: "c1" },
+      pages,
+      pages_sent_to_person: [],
+      single_reader_pages: [],
+      failed_photos: [],
+      too_small_photos: [],
+      could_not_read_photos: [],
+      kept_human_checked: [],
+      removed_stale_pages: [],
+      duplicate_photos: [],
+      removed_photos: [],
+      same_page_id_conflicts: [],
+    });
+
+    for (const status of ["agreement_accepted", "double_read"] as const) {
+      const md = formatCompareReportMarkdown(
+        makeReport([
+          {
+            ...sharedEntries,
+            source_ref: "sample:M:6a",
+            status,
+            agreement: { agreed: 19, compared: 20, percent: 95 },
+            result: status === "double_read" ? "double read" : "accepted by the 90% rule",
+            result_reason: null,
+          },
+        ]),
+      );
+      expect(md).toContain("`sections[0].scaffolds[b:0]`");
+      expect(md).toContain("`sections[0].scaffolds[]`");
+      expect(md).toContain(JSON.stringify(caption));
+      expect(md).toContain("`examples[0].steps[1]`");
+      expect(md).toContain(JSON.stringify(step));
+      expect(md).toContain("`examples[0].marks[]`");
+      expect(md).toContain("`topic.number`");
+      expect(md).not.toContain("look at the photo");
+      expect(md).not.toContain("copy an entry");
+      expect(md).not.toContain("belongs in the final");
+      expect(md).not.toContain("insert before");
+      expect(md).not.toContain("must be added first");
+      expect(md).not.toContain("write the value");
+      expect(md).not.toContain("mark the page checked");
+    }
+
+    const personMd = formatCompareReportMarkdown(
+      makeReport([
+        {
+          ...sharedEntries,
+          source_ref: "sample:M:7a",
+          status: "machine_read",
+          agreement: { agreed: 17, compared: 20, percent: 85 },
+          result: "sent to a person",
+          result_reason: "below 90% agreement",
+        },
+      ]),
+    );
+    expect(personMd).toContain("look at the photo");
+    expect(personMd).toContain("copy an entry");
+    expect(personMd).toContain("belongs in the final record at `sections[0].scaffolds[]`");
+    expect(personMd).toContain("insert before `examples[0].steps[1]`");
+    expect(personMd).toContain("must be added first");
+    expect(personMd).toContain("write the value");
+  });
+
+  it("renders insertion locations for missing items and contents topics with instructions only on machine_read pages", () => {
+    const missingItem = { n: 1, printed: "Read aloud", form: null, expr: null, responses: [] };
+    const missingTopic = { n: 4, title: "Topic 4", sheets: [4, 4], std_time_min: [1, 2] };
+    const makePageReport = (status: "agreement_accepted" | "machine_read") => ({
+      source_ref: status === "machine_read" ? "sample:M:8a" : "sample:M:9a",
+      photo: "888888888888.jpg",
+      original_name: "08.jpg",
+      photo_sha256: "8".repeat(64),
+      status,
+      agreement: { agreed: 19, compared: 20, percent: 95 },
+      result: (status === "machine_read" ? "sent to a person" : "accepted by the 90% rule") as
+        | "sent to a person"
+        | "accepted by the 90% rule",
+      result_reason: status === "machine_read" ? "below 90% agreement" : null,
+      only_in_reader: null,
+      digest_mismatch: null,
+      differences: [
+        {
+          path: "sections[0].items[n=1]",
+          a: null,
+          b: missingItem,
+          kind: "value" as const,
+          reader: "b" as const,
+          insert_before: 0,
+          final_path: "sections[0].items[0]",
+        },
+        {
+          path: "topics[n=4]",
+          a: null,
+          b: missingTopic,
+          kind: "value" as const,
+          reader: "b" as const,
+          final_path: "topics[]",
+        },
+      ],
+      once_read: [],
+      both_unclear: [],
+      one_unclear: [],
+      needs_person_read: false,
+      unnamed_teaching_marks: [],
+      reader_notes: { a: [], b: [] },
+    });
+
+    const base = {
+      reader_a: { family: "codex" as const, model: "x1" },
+      reader_b: { family: "claude" as const, model: "c1" },
+      pages_sent_to_person: [],
+      single_reader_pages: [],
+      failed_photos: [],
+      too_small_photos: [],
+      could_not_read_photos: [],
+      kept_human_checked: [],
+      removed_stale_pages: [],
+      duplicate_photos: [],
+      removed_photos: [],
+      same_page_id_conflicts: [],
+    };
+
+    const acceptedMd = formatCompareReportMarkdown({ ...base, pages: [makePageReport("agreement_accepted")] });
+    expect(acceptedMd).toContain(
+      `\`sections[0].items[n=1]\` (value): only reader b; location in final record before \`sections[0].items[0]\`: ${JSON.stringify(missingItem)}`,
+    );
+    expect(acceptedMd).toContain(
+      `\`topics[n=4]\` (value): only reader b; location in final record \`topics[]\`: ${JSON.stringify(missingTopic)}`,
+    );
+    expect(acceptedMd).not.toContain("insert before");
+    expect(acceptedMd).not.toContain("belongs in the final");
+
+    const personMd = formatCompareReportMarkdown({ ...base, pages: [makePageReport("machine_read")] });
+    expect(personMd).toContain(
+      `\`sections[0].items[n=1]\` (value): only reader b has it; insert before \`sections[0].items[0]\`: ${JSON.stringify(missingItem)}`,
+    );
+    expect(personMd).toContain(
+      `\`topics[n=4]\` (value): only reader b has it; belongs in the final record at \`topics[]\`: ${JSON.stringify(missingTopic)}`,
+    );
+  });
 });

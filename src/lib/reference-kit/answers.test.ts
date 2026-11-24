@@ -1,7 +1,13 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { validateReferenceRecord, type ItemResponse, type PageItem, type PageRecord } from "@/lib/reference-record";
-import { applyComputedAnswers, decimalPlacePower, findEmptyAnswers, isKnownPlaceName } from "./answers";
+import {
+  applyComputedAnswers,
+  collectReadTimeAnswerConflictPaths,
+  decimalPlacePower,
+  findEmptyAnswers,
+  isKnownPlaceName,
+} from "./answers";
 
 function makePageWithItem(item: PageRecord["sections"][0]["items"][0]): PageRecord {
   return {
@@ -614,5 +620,42 @@ describe("applyComputedAnswers", () => {
     });
     const wrongSumOut = applyComputedAnswers(wrongSum);
     expect(wrongSumOut.details.map((d) => d.kind)).toEqual(["answer_differs"]);
+  });
+
+  it("extracts read-time answer_differs paths from structured details or legacy note text", () => {
+    expect(
+      collectReadTimeAnswerConflictPaths([], [
+        { kind: "places_do_not_fit", path: "sections[0].items[n=1]" },
+        { kind: "place_not_reached", path: "sections[0].items[n=2].responses[0]" },
+        { kind: "answer_differs", path: "sections[0].items[n=3].responses[0]" },
+        { kind: "answer_differs", path: "sections[0].items[n=3].responses[0]" },
+      ]),
+    ).toEqual(["sections[0].items[n=3].responses[0]"]);
+
+    // When structured details are present and empty, legacy notes are not re-parsed.
+    expect(
+      collectReadTimeAnswerConflictPaths(
+        ['sections[0].items[n=1].responses[0]: reader gave "3", computed "2"'],
+        [],
+      ),
+    ).toEqual([]);
+
+    // Legacy fallback (details omitted) parses exact answers.ts answer_differs formats only.
+    expect(
+      collectReadTimeAnswerConflictPaths([
+        'sections[0].items[n=1].responses[0]: reader gave "3", computed "2"',
+        'sections[0].items[n=2].responses[1]: page prints "9", computed "8"',
+        'sections[0].items[n=3].responses[0]: record holds "7", computed "6"',
+        'sections[0].items[n=4].responses[0]: place "hundreds" holds "1", but the computed value does not reach this place',
+        'sections[0].items[n=5].responses[0]: the computed value does not reach place "hundreds"; kept as it is',
+        'sections[0].items[n=6]: computed single answer "5" but it does not fit the 2 answer-bearing response(s); kept reader answers',
+        "unrelated freeform text",
+      ]),
+    ).toEqual([
+      "sections[0].items[n=1].responses[0]",
+      "sections[0].items[n=2].responses[1]",
+      "sections[0].items[n=3].responses[0]",
+      "sections[0].items[n=4].responses[0]",
+    ]);
   });
 });
