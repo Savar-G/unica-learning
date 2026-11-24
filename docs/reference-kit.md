@@ -115,7 +115,7 @@ Nothing else named `*.json` is written in `final/` besides the page records, `st
 
 The final record holds reader A's content (reader B's when reader A has none), with computed answers applied by the same rule as `reference:check` so the written file, empty-answer list, and page status agree. When both readers read the same photo, its `readers` list names both readers, reader A first. Entries that only reader B has stay in the report; they are never merged into the final record.
 
-A final record that a person changed by hand is never overwritten with reader A's content. Until the person runs `reference:check` for that page, the page stays `machine_read` and the report says that the file was changed and kept. If the edited record still carries a stale `single_read` list from an earlier accepted run, compare removes `single_read` from the kept record, rewrites its Markdown view from the kept record, and computes answer conflicts and empty answers from the kept record. A checked record that is no longer a valid record is also kept, and the report names it.
+A final record that a person changed by hand is never overwritten with reader A's content. Until the person runs `reference:check` for that page, the page stays `machine_read` and the report says that the file was changed and kept. If the edited record still carries a stale `single_read` list from an earlier accepted run, compare removes `single_read` from the kept record, rewrites its Markdown view from the kept record, and computes answer conflicts and empty answers from the kept record. A checked record that is no longer a valid record is also kept, and the report names it. The report keeps the old hash of an edited record, so `reference:import` refuses an edited page, before and after the next compare, until the person checks it.
 
 ### A Checked Page Is Tied to Its Photo and Its Text
 
@@ -128,6 +128,8 @@ A final record that a person changed by hand is never overwritten with reader A'
 - `photo of the check is missing`
 - `checked before the photo check was saved` (the page was checked with an older kit; compare saves no digest for it)
 - `check does not count any more (check the page again)` (both digests match, but `status.json` does not say `human_checked`; compare never raises a page to `human_checked`)
+
+`reference:import` refuses the whole run while the text or the photo of such a page does not match its check, also when its status is `machine_read`.
 
 What the person does:
 

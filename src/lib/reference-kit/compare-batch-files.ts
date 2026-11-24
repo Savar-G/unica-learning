@@ -7,7 +7,7 @@ import {
   type ReferenceRecord,
 } from "@/lib/reference-record";
 import { fileSlugFromRef } from "./answers";
-import { pairDigest, readJsonIfExists, type PairedPage } from "./compare-pairing";
+import { pairDigest, type PairedPage } from "./compare-pairing";
 import { parsePhotosManifest, PHOTOS_MANIFEST_FILE, type PhotosManifest } from "./prepare";
 
 export function readStoredSourceRef(filePath: string): string | null {
@@ -41,33 +41,6 @@ export function loadExistingFinalRecord(filePath: string): ReferenceRecord | nul
   } catch {
     return null;
   }
-}
-
-// The hash of each final record as the last compare wrote it. Another hash on disk means that a
-// person changed the file. A malformed report stops the run: without its hashes, compare would
-// write over a record that a person changed.
-export function loadPreviousHashes(reportPath: string): Map<string, string> {
-  const hashes = new Map<string, string>();
-  try {
-    const pages: unknown = readJsonIfExists<{ pages?: unknown }>(reportPath)?.pages ?? [];
-    if (!Array.isArray(pages)) throw new Error("pages is not a list");
-    pages.forEach((page: unknown, i) => {
-      const row = (page ?? {}) as { source_ref?: unknown; final_record_sha256?: unknown };
-      const hash = row.final_record_sha256 ?? null;
-      if (typeof row.source_ref !== "string") throw new Error(`pages[${i}] has no source_ref`);
-      if (hash === null) return;
-      if (typeof hash !== "string") throw new Error(`pages[${i}] has a hash that is not text`);
-      if ((hashes.get(row.source_ref) ?? hash) !== hash) {
-        throw new Error(`pages[${i}] gives a second hash for ${row.source_ref}`);
-      }
-      hashes.set(row.source_ref, hash);
-    });
-  } catch (err) {
-    throw new Error(
-      `Malformed previous report ${reportPath}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-  return hashes;
 }
 
 export function assertNoFileCollisions(

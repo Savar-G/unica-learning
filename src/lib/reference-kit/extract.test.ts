@@ -16,15 +16,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import sharp from "sharp";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  CHECKED_DIGESTS_FILE,
-  importReferenceRecords,
-  type ExistingReferenceRow,
-  type ReferenceRow,
-  type ReferenceStore,
-} from "@/lib/reference-record";
+import { CHECKED_DIGESTS_FILE, importReferenceRecords } from "@/lib/reference-record";
 import { checkAndMarkPage } from "./check";
 import { extractFolder } from "./extract";
+import { MemoryImportStore } from "./import-store.fixtures";
 import { PHOTOS_MANIFEST_FILE, preparePhoto } from "./prepare";
 import type { RunCli } from "./read";
 
@@ -118,62 +113,6 @@ function workDirHasDigestReading(workDir: string, sha256: string): boolean {
     }
   }
   return false;
-}
-
-class MemoryImportStore implements ReferenceStore {
-  rows = new Map<string, ReferenceRow>();
-  objects = new Map<string, { bytes: Uint8Array; contentType: string }>();
-
-  async findExisting(sourceRefs: string[]): Promise<Map<string, ExistingReferenceRow>> {
-    const out = new Map<string, ExistingReferenceRow>();
-    for (const ref of sourceRefs) {
-      const row = this.rows.get(ref);
-      if (row) {
-        out.set(ref, {
-          transcript: structuredClone(row.transcript),
-          path: row.path,
-          transcript_status: row.transcript_status,
-        });
-      }
-    }
-    return out;
-  }
-
-  async insertRow(row: ReferenceRow): Promise<boolean> {
-    if (this.rows.has(row.source_ref)) return false;
-    this.rows.set(row.source_ref, structuredClone(row));
-    return true;
-  }
-
-  async objectSha256(path: string): Promise<string | null> {
-    const existing = this.objects.get(path);
-    return existing ? createHash("sha256").update(existing.bytes).digest("hex") : null;
-  }
-
-  async uploadObject(path: string, bytes: Uint8Array, contentType: string): Promise<void> {
-    this.objects.set(path, { bytes: new Uint8Array(bytes), contentType });
-  }
-
-  async replaceObject(path: string, bytes: Uint8Array, contentType: string): Promise<void> {
-    this.objects.set(path, { bytes: new Uint8Array(bytes), contentType });
-  }
-
-  async refsByPath(paths: string[]): Promise<Map<string, string[]>> {
-    const out = new Map<string, string[]>();
-    for (const row of this.rows.values()) {
-      if (row.path !== null && paths.includes(row.path)) {
-        out.set(row.path, [...(out.get(row.path) ?? []), row.source_ref]);
-      }
-    }
-    return out;
-  }
-
-  async updateRow(row: ReferenceRow): Promise<boolean> {
-    const prev = this.rows.get(row.source_ref);
-    if (!prev) return false;
-    this.rows.set(row.source_ref, { ...structuredClone(row), note: prev.note });
-    return true;
-  }
 }
 
 describe("extractFolder (reference:extract)", () => {
@@ -1020,11 +959,17 @@ describe("extractFolder (reference:extract)", () => {
             expect(report.same_page_id_conflicts.map((c) => c.original_name), row.name).toEqual([row.conflict]);
           }
         }
-        // What import sends as human_checked is the text and the photo that the person compared.
+        // Import sends only the text and the photo that the person compared, and sends nothing when
+        // the check lapsed.
         const { result, store } = await w.importAll();
-        expect(result.problems, row.name).toEqual([]);
-        expect(store.rows.get(REF)?.transcript_status, row.name).toBe(row.status);
-        if (row.status === "human_checked") {
+        if (row.reason) {
+          expect(result.problems.join("\n"), row.name).toMatch(
+            new RegExp(`${REF}: a person checked this page before.*${row.reason}`),
+          );
+          expect([store.rows.size, store.objects.size], row.name).toEqual([0, 0]);
+        } else {
+          expect(result.problems, row.name).toEqual([]);
+          expect(store.rows.get(REF)?.transcript_status, row.name).toBe("human_checked");
           expect(await store.objectSha256("sample/M/3a.jpg"), row.name).toBe(w.shas[0]);
         }
       }

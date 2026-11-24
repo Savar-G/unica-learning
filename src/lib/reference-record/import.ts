@@ -1,6 +1,6 @@
 import { readdir, realpath } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { checkHumanCheckedPages } from "./checked-digests";
+import { checkCheckedPages } from "./checked-digests";
 import {
   buildReferencePhotoPath,
   decodeStrictUtf8,
@@ -21,6 +21,7 @@ import {
 } from "./import-replace";
 import { sha256Hex } from "./read-file";
 import { checkStatusSingleRead } from "./record-path";
+import { checkMachineRecordHashes } from "./report-hashes";
 import type { ReferenceRecord } from "./types";
 import { validateReferenceRecord } from "./validate";
 
@@ -314,14 +315,15 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
   const statusByRef = realRecordsDir
     ? await readStatusMap(realRecordsDir, seenRefs, problems)
     : new Map<string, TranscriptStatus>();
-  if (problems.length === problemsBeforeStatus) {
+  if (realRecordsDir && problems.length === problemsBeforeStatus) {
     checkStatusSingleRead(records, statusByRef, problems);
+    checkMachineRecordHashes({ finalDir: realRecordsDir, statusByRef, recordSha256ByRef, problems });
   }
   const plannedPhotos = options.photosDir
     ? await readPlannedPhotos(options.photosDir, records, problems)
     : new Map<string, PlannedPhoto>();
   if (realRecordsDir) {
-    checkHumanCheckedPages({
+    checkCheckedPages({
       finalDir: realRecordsDir,
       statusByRef,
       recordSha256ByRef,

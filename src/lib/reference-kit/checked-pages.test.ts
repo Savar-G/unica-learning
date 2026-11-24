@@ -11,9 +11,10 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CHECKED_DIGESTS_FILE, type PageRecord } from "@/lib/reference-record";
+import { CHECKED_DIGESTS_FILE, importReferenceRecords, type PageRecord } from "@/lib/reference-record";
 import { checkAndMarkPage } from "./check";
 import { compareWorkFolder, formatPagesSentToPerson } from "./compare-batch";
+import { MemoryImportStore } from "./import-store.fixtures";
 import { addPreparedPhoto, fakePhoto } from "./photo.fixtures";
 
 const REF = "sample:M:3a";
@@ -79,7 +80,9 @@ describe("a page checked by a person", () => {
     checkAndMarkPage({ workDir: work, page: ref, repoRoot: repo, photoCompared: true });
 
   // Both readers give each of these photos the same page id (reader b also by its own readB id).
-  function setReadings(readings: Array<{ photo: string; name?: string; ref: string; title?: string }>): void {
+  function setReadings(
+    readings: Array<{ photo: string; name?: string; ref: string; title?: string; titleB?: string }>,
+  ): void {
     for (const [slot, family] of [["a", "codex"], ["b", "claude"]] as const) {
       const dir = join(work, `reader-${slot}`);
       rmSync(dir, { recursive: true, force: true });
@@ -87,7 +90,8 @@ describe("a page checked by a person", () => {
       writeFileSync(join(dir, "reader.json"), JSON.stringify({ family, model: "m1" }));
       const photos = readings.map((r, i) => {
         const file = `record-${i}.json`;
-        writeFileSync(join(dir, file), JSON.stringify(makePage(r.ref, r.title)));
+        const title = slot === "b" ? (r.titleB ?? r.title) : r.title;
+        writeFileSync(join(dir, file), JSON.stringify(makePage(r.ref, title)));
         const { sha256, file: photo } = fakePhoto(r.photo);
         return {
           photo,
@@ -367,6 +371,129 @@ describe("a page checked by a person", () => {
     expect(JSON.parse(readFileSync(recordPath(), "utf8")).topic.title).toBe("Adding Numbers");
     expect(digestFile().pages).toEqual([]);
     expect(pageOf(compare()).status).toBe("double_read");
+  });
+
+  async function importAll() {
+    const store = new MemoryImportStore();
+    const result = await importReferenceRecords({
+      recordsDir: join(work, "final"),
+      photosDir: join(work, "photos"),
+      store,
+    });
+    return { result, store };
+  }
+
+  async function expectRefused(cause: string, name: string): Promise<void> {
+    const { result, store } = await importAll();
+    expect(result.problems.join("\n"), name).toMatch(new RegExp(`${REF}: .*${cause}`));
+    expect([store.rows.size, store.objects.size], name).toEqual([0, 0]);
+  }
+
+  async function expectImported(status: string, title: string, photo: string, name: string): Promise<void> {
+    const { result, store } = await importAll();
+    expect(result.problems, name).toEqual([]);
+    const row = store.rows.get(REF);
+    expect(row?.transcript_status, name).toBe(status);
+    expect(row?.transcript.kind === "page" && row.transcript.topic.title, name).toBe(title);
+    expect(await store.objectSha256("sample/M/3a.jpg"), name).toBe(fakePhoto(photo).sha256);
+  }
+
+  it("is imported under a machine status only as compare wrote it, and an edited page only after a check", async () => {
+    const edited = "Edited by a person";
+    const editRecord = () => {
+      const record = JSON.parse(readFileSync(recordPath(), "utf8")) as PageRecord;
+      record.topic.title = edited;
+      writeFileSync(recordPath(), `${JSON.stringify(record, null, 2)}\n`);
+    };
+    const rows: Array<{ status: string; setUp: () => void }> = [
+      { status: "double_read", setUp: () => setReadings([{ photo: "p1", ref: REF }]) },
+      {
+        status: "agreement_accepted",
+        setUp: () => setReadings([{ photo: "p1", ref: REF, titleB: "Adding Nombers" }]),
+      },
+      {
+        status: "machine_read",
+        setUp: () => {
+          setReadings([{ photo: "p1", ref: REF }]);
+          rmSync(join(work, "reader-b"), { recursive: true });
+        },
+      },
+    ];
+    for (const { status, setUp } of rows) {
+      for (const path of ["edit after compare", "edit, then compare", "edit, then compare twice"]) {
+        const name = `${status}, ${path}`;
+        rmSync(work, { recursive: true });
+        mkdirSync(work);
+        addPreparedPhoto(work, "p1");
+        setUp();
+        compare();
+        expect(statusMap()[REF], name).toBe(status);
+        await expectImported(status, "Adding Numbers", "p1", name);
+
+        editRecord();
+        await expectRefused("report\\.json.*run reference:compare", name);
+        if (path !== "edit after compare") compare();
+        if (path === "edit, then compare twice") compare();
+        if (path !== "edit after compare") {
+          expect(statusMap()[REF], name).toBe("machine_read");
+          await expectRefused("report\\.json.*run reference:compare", name);
+        }
+
+        check();
+        await expectImported("human_checked", edited, "p1", name);
+        compare();
+        await expectImported("human_checked", edited, "p1", name);
+      }
+    }
+  });
+
+  it("is not imported after its check lapsed, until the person checks it again or lets the record go", async () => {
+    const rows: Array<{ name: string; cause: string; photo: string; change: () => void }> = [
+      {
+        name: "new photo",
+        cause: PHOTO_CHANGED,
+        photo: "p9",
+        change: () => {
+          addPreparedPhoto(work, "p9");
+          setReadings([{ photo: "p9", ref: REF }]);
+        },
+      },
+      {
+        name: "new text",
+        cause: RECORD_CHANGED,
+        photo: "p1",
+        change: () => writeFileSync(recordPath(), JSON.stringify(makePage(REF, "Changed again"))),
+      },
+      {
+        name: "older folder",
+        cause: BEFORE_DIGESTS,
+        photo: "p1",
+        change: () => rmSync(finalPath(CHECKED_DIGESTS_FILE)),
+      },
+    ];
+    for (const row of rows) {
+      for (const way of ["checked again", "let go"]) {
+        const name = `${row.name}, ${way}`;
+        rmSync(work, { recursive: true });
+        mkdirSync(work);
+        setUpChecked();
+        compare();
+        row.change();
+        compare();
+        expect(statusMap()[REF], name).toBe("machine_read");
+        await expectRefused(`a person checked this page before.*${row.cause}`, name);
+
+        if (way === "checked again") {
+          const title = (JSON.parse(readFileSync(recordPath(), "utf8")) as PageRecord).topic.title as string;
+          check();
+          await expectImported("human_checked", title, row.photo, name);
+        } else {
+          rmSync(recordPath());
+          compare();
+          await expectImported("double_read", "Adding Numbers", row.photo, name);
+        }
+      }
+    }
   });
 
   it("stops compare on a damaged file before any write, and never reads it as a missing file", () => {

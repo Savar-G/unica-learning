@@ -358,6 +358,69 @@ describe("importReferenceRecords", () => {
     expect(okRes.ok).toBe(true);
     expect(okRes.counts.inserted).toBe(2);
 
+    // Controls for the report and for a check that does not count: each of these folders imports with
+    // the status that it gives.
+    const pageRow = (hash: string | null | undefined) => ({
+      pages: [{ source_ref: "sample:M:3a", final_record_sha256: hash }],
+    });
+    const acceptedReports: Array<[string, ((recordSha: string) => unknown) | null]> = [
+      ["no report.json (a converted or an older folder)", null],
+      ["hash of the file", (recordSha) => pageRow(recordSha)],
+      ["no hash", () => pageRow(undefined)],
+      ["null hash", () => pageRow(null)],
+      ["no row of this page", () => ({ pages: [{ source_ref: "sample:M:9a", final_record_sha256: "0".repeat(64) }] })],
+      ["no pages", () => ({ pages: [] })],
+      ["no page list", () => ({ ignored: true })],
+    ];
+    for (const [name, report] of acceptedReports) {
+      for (const status of ["machine_read", "agreement_accepted", "double_read", "human_checked", null]) {
+        const dir = mkdtempSync(join(rootDir, "ok-report-"));
+        const recs = join(dir, "records");
+        const photos = join(dir, "photos");
+        const okReportStore = new MemoryReferenceStore();
+        writeJson(recs, "page.json", {
+          ...makePage("sample:M:3a"),
+          ...(status === "agreement_accepted" ? { single_read: ["topic.title"] } : {}),
+        });
+        if (status) writeJson(recs, "status.json", { "sample:M:3a": status });
+        writeBytes(photos, "page.jpg", goodImg);
+        writeJson(photos, "photos-manifest.json", {
+          version: 1,
+          photos: [manifestEntry("page.jpg", goodImg, "sample:M:3a")],
+        });
+        if (status === "human_checked") tieChecked(recs, "page.json", "sample:M:3a", goodImg);
+        if (report) {
+          writeJson(recs, "report.json", report(sha256Hex(readFileSync(join(recs, "page.json")))));
+        }
+        const res = await importReferenceRecords({ recordsDir: recs, photosDir: photos, store: okReportStore });
+        expect(res.problems, `${name}, ${status}`).toEqual([]);
+        expect(okReportStore.rows.get("sample:M:3a")?.transcript_status, `${name}, ${status}`).toBe(
+          status ?? "machine_read",
+        );
+      }
+    }
+
+    // A checked page follows its digests, not the older hash of the report. A page that only lost its
+    // mark still has the text and the photo of the check.
+    for (const status of ["human_checked", "machine_read"]) {
+      const dir = mkdtempSync(join(rootDir, "ok-checked-"));
+      const recs = join(dir, "records");
+      const photos = join(dir, "photos");
+      const okCheckedStore = new MemoryReferenceStore();
+      writeJson(recs, "page.json", makePage("sample:M:3a"));
+      writeJson(recs, "status.json", { "sample:M:3a": status });
+      tieChecked(recs, "page.json", "sample:M:3a", goodImg);
+      if (status === "human_checked") writeJson(recs, "report.json", pageRow("0".repeat(64)));
+      writeBytes(photos, "page.jpg", goodImg);
+      writeJson(photos, "photos-manifest.json", {
+        version: 1,
+        photos: [manifestEntry("page.jpg", goodImg, "sample:M:3a")],
+      });
+      const res = await importReferenceRecords({ recordsDir: recs, photosDir: photos, store: okCheckedStore });
+      expect(res.problems, status).toEqual([]);
+      expect(okCheckedStore.rows.get("sample:M:3a")?.transcript_status).toBe(status);
+    }
+
     // Every refusal kind in import.ts, import-photos.ts, record-path.ts, and import-replace.ts,
     // paired with a valid first record (01-good.json + good.jpg) so any write before refusal fails.
     interface RefusalCase {
@@ -379,22 +442,31 @@ describe("importReferenceRecords", () => {
       return Buffer.concat([Buffer.from(left, "utf8"), Buffer.of(0xff), Buffer.from(right, "utf8")]);
     };
 
-    // A page that status.json gives as human_checked, with a valid photo. The change comes after the
-    // digests are saved. Each row also runs with --replace over an existing row.
+    // A page that a person checked, with a valid photo. The change comes after the digests are saved.
+    // Each row runs for human_checked and for a check that lapsed (machine_read in status.json, or not
+    // listed there), and also with --replace over an existing row.
     const checkedRef = "sample:M:2a";
     const checkedCase = (
       name: string,
       cause: RegExp,
       change: (ctx: { recs: string; photos: string; store: MemoryReferenceStore }) => void,
-      noPhotos = false,
+      { noPhotos = false, lapsed = true }: { noPhotos?: boolean; lapsed?: boolean } = {},
     ): RefusalCase[] =>
-      [false, true].map((replace) => ({
-        name: `human_checked, ${name}${replace ? ", with replace" : ""}`,
+      [
+        { status: "human_checked", listed: true },
+        ...(lapsed
+          ? [
+              { status: "machine_read", listed: true },
+              { status: "machine_read", listed: false },
+            ]
+          : []),
+      ].flatMap(({ status, listed }) => [false, true].map((replace) => ({
+        name: `${status}${listed ? "" : " by default"}, ${name}${replace ? ", with replace" : ""}`,
         usePhotos: !noPhotos,
         replace,
         setup: ({ recs, photos, store: caseStore }) => {
           writeJson(recs, "02-target.json", makePage(checkedRef));
-          writeJson(recs, "status.json", { [checkedRef]: "human_checked" });
+          writeJson(recs, "status.json", listed ? { [checkedRef]: status } : {});
           tieChecked(recs, "02-target.json", checkedRef, secondImg);
           writeBytes(photos, "target.jpg", secondImg);
           writeJson(photos, "photos-manifest.json", {
@@ -415,8 +487,8 @@ describe("importReferenceRecords", () => {
           }
           change({ recs, photos, store: caseStore });
         },
-        expectedProblem: new RegExp(`${checkedRef}.*human_checked.*${cause.source}`),
-      }));
+        expectedProblem: new RegExp(`${checkedRef}.*${status}.*${cause.source}`),
+      })));
     const otherPhoto = (photos: string) => {
       writeBytes(photos, "other.jpg", new Uint8Array([7, 7, 7]));
       writeJson(photos, "photos-manifest.json", {
@@ -457,9 +529,12 @@ describe("importReferenceRecords", () => {
       ...checkedCase("photo file missing", /photo of the check is missing/, ({ photos }) =>
         rmSync(join(photos, "target.jpg")),
       ),
-      ...checkedCase("run without photos", /photo of the check is missing.*--photos/, () => {}, true),
+      ...checkedCase("run without photos", /photo of the check is missing.*--photos/, () => {}, {
+        noPhotos: true,
+      }),
       ...checkedCase("digest file missing", /checked before the photo check was saved/, ({ recs }) =>
         rmSync(join(recs, CHECKED_DIGESTS_FILE)),
+        { lapsed: false },
       ),
       ...checkedCase("page has no digests", /checked before the photo check was saved/, ({ recs }) =>
         writeJson(recs, CHECKED_DIGESTS_FILE, { version: 1, pages: [], checked_before: [checkedRef] }),
@@ -483,6 +558,25 @@ describe("importReferenceRecords", () => {
         },
         expectedProblem: /checked-pages\.digests: .*not a SHA-256/,
       })),
+      {
+        name: "machine_read, in checked_before and with digests that match",
+        usePhotos: true,
+        setup: ({ recs, photos }) => {
+          writeJson(recs, "02-target.json", makePage(checkedRef));
+          writeBytes(photos, "target.jpg", secondImg);
+          writeJson(photos, "photos-manifest.json", {
+            version: 1,
+            photos: [manifestEntry("target.jpg", secondImg, checkedRef)],
+          });
+          const record_sha256 = sha256Hex(readFileSync(join(recs, "02-target.json")));
+          writeJson(recs, CHECKED_DIGESTS_FILE, {
+            version: 1,
+            pages: [{ source_ref: checkedRef, record_sha256, photo_sha256: sha256Hex(secondImg) }],
+            checked_before: [checkedRef],
+          });
+        },
+        expectedProblem: /sample:M:2a.*checked before the photo check was saved/,
+      },
       // A damaged digest file stops the run, also when no page is human_checked.
       ...["{ bad", "", "null"].map((text) => ({
         name: `damaged digest file ${JSON.stringify(text)}`,
@@ -499,8 +593,76 @@ describe("importReferenceRecords", () => {
       },
     ];
 
+    // A page that the report of the last compare lists, and whose file is not the file that compare
+    // wrote (or whose row cannot be used). Each row also runs with --replace over an existing row.
+    const otherHash = "0".repeat(64);
+    const reportCases: RefusalCase[] = (
+      [
+        ["double_read", { report: "other hash" }, /sample:M:2a.*report\.json.*run reference:compare/],
+        ["agreement_accepted", { report: "other hash" }, /sample:M:2a.*report\.json.*run reference:compare/],
+        ["machine_read", { report: "other hash" }, /sample:M:2a.*report\.json.*run reference:compare/],
+        ["not in status.json", { report: "other hash" }, /sample:M:2a.*report\.json.*run reference:compare/],
+        ["double_read", { edit: "one more byte" }, /sample:M:2a.*report\.json.*run reference:compare/],
+        ["double_read", { hash: "" }, /sample:M:2a.*report\.json.*run reference:compare/],
+        ["double_read", { hash: 7 }, /report\.json.*sample:M:2a.*hash that is not text/],
+        ["double_read", { rows: [{ final_record_sha256: otherHash }] }, /report\.json: pages\[0\] has no source_ref/],
+        ["double_read", { rows: [null] }, /report\.json: pages\[0\] has no source_ref/],
+        [
+          "double_read",
+          { rows: [{ source_ref: checkedRef, final_record_sha256: otherHash }], addValidRow: true },
+          /report\.json.*second hash for sample:M:2a/,
+        ],
+        ["double_read", { text: '{"pages":{}}' }, /report\.json: pages is not a list/],
+        ["double_read", { text: "{ bad" }, /Malformed previous report .*report\.json/],
+        ["double_read", { text: "" }, /Malformed previous report .*report\.json/],
+        ["double_read", { link: "to a report" }, /Malformed previous report .*report\.json.*symlink/],
+        ["double_read", { link: "to nothing" }, /Malformed previous report .*report\.json.*symlink/],
+      ] as Array<[string, Record<string, unknown>, RegExp]>
+    ).flatMap(([status, change, expectedProblem]) =>
+      [false, true].map((replace) => ({
+        name: `${status}, report ${JSON.stringify(change)}${replace ? ", with replace" : ""}`,
+        replace,
+        expectedProblem,
+        setup: ({ recs, outside, store: caseStore }) => {
+          const file = join(recs, "02-target.json");
+          const page = makePage(checkedRef);
+          writeJson(
+            recs,
+            "02-target.json",
+            status === "agreement_accepted" ? { ...page, single_read: ["topic.title"] } : page,
+          );
+          if (status !== "not in status.json") writeJson(recs, "status.json", { [checkedRef]: status });
+          const row = {
+            source_ref: checkedRef,
+            final_record_sha256:
+              change.report === "other hash" ? otherHash : (change.hash ?? sha256Hex(readFileSync(file))),
+          };
+          const rows = (change.rows as unknown[] | undefined) ?? [row];
+          const reportPath = join(recs, "report.json");
+          if (change.link === undefined) {
+            writeJson(recs, "report.json", { pages: change.addValidRow ? [row, ...rows] : rows });
+            if (typeof change.text === "string") writeFileSync(reportPath, change.text);
+          } else {
+            if (change.link === "to a report") writeJson(outside, "real.json", { pages: rows });
+            symlinkSync(join(outside, "real.json"), reportPath);
+          }
+          if (change.edit) writeFileSync(file, Buffer.concat([readFileSync(file), Buffer.from(" ")]));
+          if (replace) {
+            caseStore.rows.set(checkedRef, {
+              source_ref: checkedRef,
+              kind: "page",
+              path: null,
+              transcript: makePage(checkedRef, "Older title"),
+              transcript_status: "machine_read",
+            });
+          }
+        },
+      })),
+    );
+
     const refusalCases: RefusalCase[] = [
       ...checkedCases,
+      ...reportCases,
       {
         name: "missing recordsDir",
         setup: ({ outside }) => ({ recordsDir: join(outside, "missing-records") }),
@@ -1573,7 +1735,9 @@ describe("importReferenceRecords", () => {
       );
 
       // A record left out of status.json is machine_read, which is also a change down.
+      // (The page was read again in a new folder: it has no digests there.)
       rmSync(join(recordsDir, "status.json"));
+      rmSync(join(recordsDir, CHECKED_DIGESTS_FILE));
       const dropped = await importReferenceRecords({ recordsDir, store, replace: true });
       expect(dropped.statusLowered).toEqual([
         { ref: "sample:M:3a", from: "double_read", to: "machine_read" },
@@ -1851,7 +2015,9 @@ describe("importReferenceRecords", () => {
       const firstRun = await importReferenceRecords({ recordsDir, photosDir, store });
       expect(firstRun.problems).toEqual([]);
 
+      // The page was read again in a new folder: it has no digests there.
       writeJson(recordsDir, "status.json", {});
+      rmSync(join(recordsDir, CHECKED_DIGESTS_FILE));
       writeJson(recordsDir, "p2.json", makePage("sample:M:3b", "Changed title"));
       writeJson(recordsDir, "p3.json", makePage("sample:M:4a"));
       writePhotos([{ file: "IMG_0001.png", bytes: newImg, ref: "sample:M:3a" }]);

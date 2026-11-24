@@ -8,3 +8,4 @@ export * from "./output-guard";
 export * from "./import";
 export * from "./checked-digests";
 export * from "./read-file";
+export * from "./report-hashes";

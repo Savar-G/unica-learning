@@ -59,6 +59,6 @@ Use one work folder for the level: `~/unica-reference/level-<LEVEL>` (for exampl
 
 8. **Load into the database, only when the person asks.** It needs `SUPABASE_URL` and `SUPABASE_SECRET_KEY`. When both are in the repository's `.env.local`, load that file for the command. Never print the key. Run a dry run first and show its summary:
    `node --env-file=.env.local scripts/reference-import.mjs --records <work>/run/final --photos <work>/run/photos --dry-run`
-   When the import refuses a `human_checked` page (its record or photo changed, or it has no saved digests), show the person the line and do step 7 for that page. Do not change `status.json` by hand.
+   When the import refuses a page (a check does not match its record or photo, or a record was edited after the last compare), show the person the line, run `npm run reference:compare -- --work <work>/run`, and do step 7 for that page. An edited page is refused until the person checks it. Do not change `status.json` by hand.
    Then run the same command without `--dry-run`. A second run changes nothing for a page that is already loaded.
    When the level was loaded before and was read again, the rows are already in the table and a plain run leaves them as they are (it reports `skipped`, or `skipped_different` when the record text differs). Then add `--replace` to both commands: run `--dry-run --replace` first, show the person the rows it would replace and each status that would go down, and run without `--dry-run` only after the person agrees. `--replace` never deletes a row or a photo.

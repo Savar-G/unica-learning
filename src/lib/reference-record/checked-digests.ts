@@ -115,9 +115,11 @@ export function findCheckProblems(
   return problems;
 }
 
-// Import: each page that status.json gives as human_checked must still match its digests. The
-// digests of now are those of the bytes that the import read and would send.
-export function checkHumanCheckedPages(args: {
+// Import: a human_checked page must still match its digests. A machine_read page that a person
+// checked before must match them too: compare keeps its record when the photo changes, so the text
+// and the photo may not belong together. The digests of now are those of the bytes that the import
+// read and would send.
+export function checkCheckedPages(args: {
   finalDir: string;
   statusByRef: ReadonlyMap<string, string>;
   recordSha256ByRef: ReadonlyMap<string, string>;
@@ -131,15 +133,24 @@ export function checkHumanCheckedPages(args: {
     args.problems.push(err instanceof Error ? err.message : String(err));
     return;
   }
-  for (const [ref, status] of args.statusByRef) {
-    const recordSha256 = args.recordSha256ByRef.get(ref);
-    if (status !== "human_checked" || recordSha256 === undefined) continue;
+  for (const [ref, recordSha256] of args.recordSha256ByRef) {
+    const status = args.statusByRef.get(ref) ?? "machine_read";
+    const checkedBefore = digests.checkedBefore.has(ref);
+    const digest = digests.pages.get(ref);
+    const lapsed = status === "machine_read" && (digest !== undefined || checkedBefore);
+    if (status !== "human_checked" && !lapsed) continue;
     const photoSha256 = args.plannedPhotos.get(ref)?.sha256 ?? null;
-    const causes = findCheckProblems(digests.pages.get(ref), { recordSha256, photoSha256 });
+    const causes = findCheckProblems(lapsed && checkedBefore ? undefined : digest, {
+      recordSha256,
+      photoSha256,
+    });
     if (causes.length === 0) continue;
     const photoHint = photoSha256 === null ? " (give the prepared photos with --photos)" : "";
+    const what = lapsed
+      ? "a person checked this page before and its status is machine_read now"
+      : "status.json says human_checked, but";
     args.problems.push(
-      `${ref}: status.json says human_checked, but: ${causes.join("; ")}${photoHint}; run reference:compare, then a person runs reference:check for this page`,
+      `${ref}: ${what}: ${causes.join("; ")}${photoHint}; run reference:compare, then a person runs reference:check for this page`,
     );
   }
 }

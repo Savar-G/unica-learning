@@ -3,6 +3,7 @@ import { existsSync, readdirSync, unlinkSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   assertOutsideRepo,
+  loadPreviousHashes,
   prepareSafeOutputDir,
   renderRecordToMarkdown,
   writeSafeOutputFile,
@@ -40,7 +41,6 @@ import {
 import {
   assertNoFileCollisions,
   loadExistingFinalRecord,
-  loadPreviousHashes,
   planManifestSourceRefs,
   sha256OfFile,
   writePlannedManifest,
