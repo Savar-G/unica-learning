@@ -447,4 +447,31 @@ describe("validateReferenceRecord", () => {
       expect(paths).toContain("sections[0].scaffolds[2].description");
     }
   });
+
+  it("validates optional single_read field path list on page and contents records", () => {
+    const validPage = makeValidPage();
+    validPage.single_read = ["topic.title", "sections[0].items[0].printed"];
+    expect(validateReferenceRecord(validPage)).toEqual({ ok: true, record: validPage });
+
+    const badEmpty = { ...makeValidPage(), single_read: [] };
+    const resEmpty = validateReferenceRecord(badEmpty);
+    expect(resEmpty.ok).toBe(false);
+    if (!resEmpty.ok) {
+      expect(resEmpty.errors.some((e) => e.path === "single_read")).toBe(true);
+    }
+
+    const badBlank = { ...makeValidPage(), single_read: ["topic.title", "   "] };
+    const resBlank = validateReferenceRecord(badBlank);
+    expect(resBlank.ok).toBe(false);
+    if (!resBlank.ok) {
+      expect(resBlank.errors.some((e) => e.path === "single_read")).toBe(true);
+    }
+
+    const badNonArray = { ...makeValidPage(), single_read: "topic.title" };
+    const resNonArray = validateReferenceRecord(badNonArray);
+    expect(resNonArray.ok).toBe(false);
+    if (!resNonArray.ok) {
+      expect(resNonArray.errors.some((e) => e.path === "single_read")).toBe(true);
+    }
+  });
 });

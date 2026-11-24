@@ -181,6 +181,9 @@ export function assembleCandidateRecord(
     }
   }
 
+  if ("single_read" in obj && obj.single_read !== undefined) {
+    extraErrors.push({ path: "single_read", message: "readers must not write single_read" });
+  }
   if (obj.kind === "page") foldTopicNumber(obj);
   obj.readers = [readerLabel];
   return { candidate: obj, extraErrors };

@@ -8,26 +8,55 @@ import {
 } from "@/lib/reference-record";
 import { applyComputedAnswers, findEmptyAnswers } from "./answers";
 import {
+  ANSWER_DISAGREEMENT_REASON,
+  findAnswerDisagreements,
+  READER_ANSWER_CONFLICT_REASON,
+} from "./compare-answers";
+import {
   collectUnnamedTeachingMarks,
   compareExamples,
   type UnnamedTeachingMark,
 } from "./compare-examples";
 import {
+  findReaderBNeighbours,
+  isOneSidedNumberedEntry,
+  locateNumberedDiff,
+  locateOnceRead,
+  resolveDiffPath,
+  resolveSingleReadPaths,
+  stripKeptRecordLocations,
+} from "./compare-locate";
+import {
   compareExpr,
   compareField,
   compareResponses,
-  compareScaffolds,
   compareScoreBands,
-  deepEqual,
+  recordDiff,
+  recordMatch,
+  type CompareCounts,
   type DiffKind,
   type RecordDifference,
 } from "./compare-parts";
+import { compareScaffolds } from "./compare-scaffolds";
 import { normalizeNotationText, normalizeProseText } from "./normalize";
+import { isReaderFamily } from "./read-cli";
 
-export type { DiffKind, RecordDifference, UnnamedTeachingMark };
-export { collectUnnamedTeachingMarks, normalizeNotationText, normalizeProseText };
+export type { CompareCounts, DiffKind, RecordDifference, UnnamedTeachingMark };
+export {
+  ANSWER_DISAGREEMENT_REASON,
+  collectUnnamedTeachingMarks,
+  findAnswerDisagreements,
+  normalizeNotationText,
+  normalizeProseText,
+  READER_ANSWER_CONFLICT_REASON,
+  resolveSingleReadPaths,
+  stripKeptRecordLocations,
+};
 
-export type PageStatus = "machine_read" | "double_read" | "human_checked";
+export const PAGE_IDENTITY_DISAGREEMENT_REASON = "readers disagree on the page" as const;
+const PAGE_IDENTITY_PATHS: ReadonlySet<string> = new Set(["source_ref", "kind"]);
+
+export type PageStatus = "machine_read" | "agreement_accepted" | "double_read" | "human_checked";
 
 export interface PageComparisonSummary {
   differences: RecordDifference[];
@@ -37,6 +66,17 @@ export interface PageComparisonSummary {
   one_unclear: RecordDifference[];
   empty_answer: RecordDifference[];
   needs_person_read: boolean;
+  counts: CompareCounts;
+}
+
+export function meetsAgreementThreshold(agreed: number, compared: number): boolean {
+  return compared > 0 && agreed * 10 >= compared * 9;
+}
+
+export function agreementPercentage(agreed: number, compared: number): number | null {
+  if (compared <= 0) return null;
+  // Floor to 1 decimal place so < 90% never rounds up to 90% and < 100% never rounds up to 100%.
+  return Math.floor((agreed * 1000) / compared) / 10;
 }
 
 function comparePageItems(
@@ -44,6 +84,7 @@ function comparePageItems(
   aItems: readonly PageItem[],
   bItems: readonly PageItem[],
   diffs: RecordDifference[],
+  counts?: CompareCounts,
 ): void {
   const aMap = new Map<number, PageItem>();
   const bMap = new Map<number, PageItem>();
@@ -60,13 +101,21 @@ function comparePageItems(
 
   const aCommonOrder = aItems.filter((item) => bMap.has(item.n)).map((item) => item.n);
   const bCommonOrder = bItems.filter((item) => aMap.has(item.n)).map((item) => item.n);
-  if (aCommonOrder.some((n, idx) => n !== bCommonOrder[idx])) {
-    diffs.push({
-      path,
-      a: aItems.map((item) => item.n),
-      b: bItems.map((item) => item.n),
-      kind: "order",
-    });
+  if (aCommonOrder.length >= 2) {
+    if (aCommonOrder.some((n, idx) => n !== bCommonOrder[idx])) {
+      recordDiff(
+        diffs,
+        {
+          path,
+          a: aItems.map((item) => item.n),
+          b: bItems.map((item) => item.n),
+          kind: "order",
+        },
+        counts,
+      );
+    } else {
+      recordMatch(counts);
+    }
   }
 
   for (const n of orderedNs) {
@@ -74,7 +123,18 @@ function comparePageItems(
     const ia = aMap.get(n);
     const ib = bMap.get(n);
     if (!ia || !ib) {
-      diffs.push({ path: iPath, a: ia ?? null, b: ib ?? null, kind: "value" });
+      const neighbours = !ia && ib ? findReaderBNeighbours(bItems, n) : undefined;
+      recordDiff(
+        diffs,
+        {
+          path: iPath,
+          a: ia ?? null,
+          b: ib ?? null,
+          kind: "value",
+          ...(neighbours ?? {}),
+        },
+        counts,
+      );
       continue;
     }
 
@@ -84,19 +144,25 @@ function comparePageItems(
       ib.printed,
       { mode: ia.expr === null && ib.expr === null ? "prose" : "notation" },
       diffs,
+      counts,
     );
 
-    compareField(`${iPath}.form`, ia.form, ib.form, {}, diffs);
-    compareExpr(`${iPath}.expr`, ia.expr, ib.expr, diffs);
-    compareResponses(`${iPath}.responses`, ia.responses, ib.responses, diffs);
+    compareField(`${iPath}.form`, ia.form, ib.form, {}, diffs, counts);
+    compareExpr(`${iPath}.expr`, ia.expr, ib.expr, diffs, counts);
+    compareResponses(`${iPath}.responses`, ia.responses, ib.responses, diffs, counts);
   }
 }
 
-function comparePageRecords(a: PageRecord, b: PageRecord, diffs: RecordDifference[]): void {
-  compareField("topic.title", a.topic.title, b.topic.title, { mode: "prose" }, diffs);
-  compareField("topic.number", a.topic.number, b.topic.number, {}, diffs);
-  compareScoreBands("score_bands", a.score_bands, b.score_bands, diffs);
-  compareExamples("examples", a.examples, b.examples, diffs);
+function comparePageRecords(
+  a: PageRecord,
+  b: PageRecord,
+  diffs: RecordDifference[],
+  counts?: CompareCounts,
+): void {
+  compareField("topic.title", a.topic.title, b.topic.title, { mode: "prose" }, diffs, counts);
+  compareField("topic.number", a.topic.number, b.topic.number, {}, diffs, counts);
+  compareScoreBands("score_bands", a.score_bands, b.score_bands, diffs, counts);
+  compareExamples("examples", a.examples, b.examples, diffs, counts);
 
   const maxSections = Math.max(a.sections.length, b.sections.length);
   for (let si = 0; si < maxSections; si += 1) {
@@ -104,7 +170,7 @@ function comparePageRecords(a: PageRecord, b: PageRecord, diffs: RecordDifferenc
     const sa = a.sections[si];
     const sb = b.sections[si];
     if (!sa || !sb) {
-      diffs.push({ path: sPath, a: sa ?? null, b: sb ?? null, kind: "value" });
+      recordDiff(diffs, { path: sPath, a: sa ?? null, b: sb ?? null, kind: "value" }, counts);
       continue;
     }
     compareField(
@@ -113,12 +179,17 @@ function comparePageRecords(a: PageRecord, b: PageRecord, diffs: RecordDifferenc
       sb.instruction,
       { teaching: true, mode: "prose" },
       diffs,
+      counts,
     );
-    compareScaffolds(`${sPath}.scaffolds`, sa.scaffolds, sb.scaffolds, diffs, {
-      a: sa.items.map((item) => item.n),
-      b: sb.items.map((item) => item.n),
-    });
-    comparePageItems(`${sPath}.items`, sa.items, sb.items, diffs);
+    compareScaffolds(
+      `${sPath}.scaffolds`,
+      sa.scaffolds,
+      sb.scaffolds,
+      diffs,
+      { a: sa.items.map((item) => item.n), b: sb.items.map((item) => item.n) },
+      counts,
+    );
+    comparePageItems(`${sPath}.items`, sa.items, sb.items, diffs, counts);
   }
 }
 
@@ -126,6 +197,7 @@ function compareContentsRecords(
   a: ContentsRecord,
   b: ContentsRecord,
   diffs: RecordDifference[],
+  counts?: CompareCounts,
 ): void {
   const aMap = new Map(a.topics.map((t) => [t.n, t]));
   const bMap = new Map(b.topics.map((t) => [t.n, t]));
@@ -139,28 +211,47 @@ function compareContentsRecords(
     const ta = aMap.get(n);
     const tb = bMap.get(n);
     if (!ta || !tb) {
-      diffs.push({ path: tPath, a: ta ?? null, b: tb ?? null, kind: "value" });
+      const neighbours = !ta && tb ? findReaderBNeighbours(b.topics, n) : undefined;
+      recordDiff(
+        diffs,
+        {
+          path: tPath,
+          a: ta ?? null,
+          b: tb ?? null,
+          kind: "value",
+          ...(neighbours ?? {}),
+        },
+        counts,
+      );
       continue;
     }
-    compareField(`${tPath}.title`, ta.title, tb.title, { mode: "prose" }, diffs);
-    compareField(`${tPath}.sheets`, ta.sheets, tb.sheets, {}, diffs);
-    compareField(`${tPath}.std_time_min`, ta.std_time_min, tb.std_time_min, {}, diffs);
+    compareField(`${tPath}.title`, ta.title, tb.title, { mode: "prose" }, diffs, counts);
+    compareField(`${tPath}.sheets`, ta.sheets, tb.sheets, {}, diffs, counts);
+    compareField(`${tPath}.std_time_min`, ta.std_time_min, tb.std_time_min, {}, diffs, counts);
   }
 }
 
-export function compareRecords(a: ReferenceRecord, b: ReferenceRecord): RecordDifference[] {
+export function compareRecordsWithCounts(
+  a: ReferenceRecord,
+  b: ReferenceRecord,
+): { diffs: RecordDifference[]; counts: CompareCounts } {
   const diffs: RecordDifference[] = [];
-  compareField("source_ref", a.source_ref, b.source_ref, {}, diffs);
+  const counts: CompareCounts = { compared: 0, agreed: 0 };
+  compareField("source_ref", a.source_ref, b.source_ref, {}, diffs, counts);
   if (a.kind !== b.kind) {
-    diffs.push({ path: "kind", a: a.kind, b: b.kind, kind: "value" });
-    return diffs;
+    recordDiff(diffs, { path: "kind", a: a.kind, b: b.kind, kind: "value" }, counts);
+    return { diffs, counts };
   }
   if (a.kind === "page" && b.kind === "page") {
-    comparePageRecords(a, b, diffs);
+    comparePageRecords(a, b, diffs, counts);
   } else if (a.kind === "contents" && b.kind === "contents") {
-    compareContentsRecords(a, b, diffs);
+    compareContentsRecords(a, b, diffs, counts);
   }
-  return diffs;
+  return { diffs, counts };
+}
+
+export function compareRecords(a: ReferenceRecord, b: ReferenceRecord): RecordDifference[] {
+  return compareRecordsWithCounts(a, b).diffs;
 }
 
 function exprHasWordOrFigure(expr: Expr | null | undefined): boolean {
@@ -198,112 +289,6 @@ export function needsPersonRead(record: ReferenceRecord | null | undefined): boo
   return false;
 }
 
-const PATH_TOKEN_RE = /([A-Za-z_]+)|\[(\d+)\]|\[n=(\d+)\]|\[b:(\d+)\]/g;
-
-// Follows a comparison path (with "[n=3]" item and step keys and "[b:1]" reader-b-only entries)
-// through a record. Returns the JSON path of the place in that record and the value there.
-function resolveDiffPath(
-  record: unknown,
-  path: string,
-  insertBefore?: number,
-): { jsonPath: string; value: unknown } {
-  let node: unknown = record;
-  let out = "";
-  for (const m of path.matchAll(PATH_TOKEN_RE)) {
-    const [, name, index, keyN, bIndex] = m;
-    if (name !== undefined) {
-      out += out ? `.${name}` : name;
-      node = typeof node === "object" && node !== null ? (node as Record<string, unknown>)[name] : undefined;
-    } else if (index !== undefined) {
-      out += `[${index}]`;
-      node = Array.isArray(node) ? node[Number(index)] : undefined;
-    } else if (keyN !== undefined) {
-      const n = Number(keyN);
-      const found = Array.isArray(node)
-        ? node.findIndex((e) => typeof e === "object" && e !== null && (e as { n?: unknown }).n === n)
-        : -1;
-      // Steps are numbered from 1 without gaps, so a missing step n belongs at index n - 1.
-      out += `[${found === -1 ? n - 1 : found}]`;
-      node = found === -1 ? undefined : (node as unknown[])[found];
-    } else if (bIndex !== undefined) {
-      out += insertBefore !== undefined ? `[${insertBefore}]` : "[]";
-      node = undefined;
-    }
-  }
-  return { jsonPath: out, value: node };
-}
-
-// The final record holds reader a's content. A once-read entry says which reader has it and where
-// it belongs in the final record, so that a person can copy it after a look at the photo.
-function locateOnceRead(d: RecordDifference, finalRecord: ReferenceRecord): RecordDifference {
-  const reader: "a" | "b" = d.a !== null && d.a !== undefined ? "a" : "b";
-  return {
-    ...d,
-    reader,
-    final_path: resolveDiffPath(finalRecord, d.path, d.insert_before).jsonPath,
-  };
-}
-
-function findEqualNode(node: unknown, target: unknown, path: string): string | null {
-  if (path && deepEqual(node, target)) return path;
-  if (Array.isArray(node)) {
-    for (let i = 0; i < node.length; i += 1) {
-      const found = findEqualNode(node[i], target, `${path}[${i}]`);
-      if (found !== null) return found;
-    }
-  } else if (typeof node === "object" && node !== null) {
-    for (const [key, value] of Object.entries(node)) {
-      const found = findEqualNode(value, target, path ? `${path}.${key}` : key);
-      if (found !== null) return found;
-    }
-  }
-  return null;
-}
-
-// The part of a record that a once-read path belongs to: the same section or example index (or
-// the whole list, for a whole section or example). Null when the path names no such part.
-function onceReadParent(record: ReferenceRecord, path: string): { path: string; node: unknown } | null {
-  const m = /^(sections|examples)(?:\[(\d+)\](?=[.[]))?/.exec(path);
-  if (!m) return null;
-  const list = (record as unknown as Record<string, unknown>)[m[1]];
-  if (!Array.isArray(list)) return null;
-  if (m[2] === undefined) return { path: m[1], node: list };
-  const index = Number(m[2]);
-  return index < list.length ? { path: `${m[1]}[${index}]`, node: list[index] } : null;
-}
-
-// The final record on disk is one that a person edited or checked, so reader a's indexes may not
-// fit it. A once-read entry keeps a final_path only when the entry is in that record with equal
-// content, inside the same section or example; otherwise the person finds the place.
-export function locateOnceReadInKeptRecord(
-  onceRead: readonly RecordDifference[],
-  kept: ReferenceRecord | null,
-): RecordDifference[] {
-  return onceRead.map((d) => {
-    const next: RecordDifference = { path: d.path, a: d.a, b: d.b, kind: d.kind };
-    if (d.reader) next.reader = d.reader;
-    if (!kept || !d.reader) {
-      if (d.missing_step) next.missing_step = true;
-      return next;
-    }
-    const entry = d.reader === "a" ? d.a : d.b;
-    const parent = onceReadParent(kept, d.path);
-    if (!parent) {
-      if (d.missing_step) next.missing_step = true;
-      return next;
-    }
-    const at = resolveDiffPath(kept, d.path);
-    if (at.value !== undefined && deepEqual(at.value, entry)) {
-      next.final_path = at.jsonPath;
-    } else if (typeof entry === "object" && entry !== null) {
-      const found = findEqualNode(parent.node, entry, parent.path);
-      if (found !== null) next.final_path = found;
-    }
-    if (d.missing_step && next.final_path === undefined) next.missing_step = true;
-    return next;
-  });
-}
-
 export function emptyAnswerDiffs(
   finalRecord: ReferenceRecord | null,
   a: ReferenceRecord | null,
@@ -322,12 +307,15 @@ export function emptyAnswerDiffs(
 export function classifyComparison(
   a: ReferenceRecord | null,
   b: ReferenceRecord | null,
+  comparison?: { diffs: RecordDifference[]; counts: CompareCounts },
 ): PageComparisonSummary {
-  const allDiffs = a && b ? compareRecords(a, b) : [];
+  const { diffs: allDiffs, counts } =
+    comparison ??
+    (a && b ? compareRecordsWithCounts(a, b) : { diffs: [], counts: { compared: 0, agreed: 0 } });
   const oneUnclear = allDiffs.filter((d) => d.kind === "one_unclear");
-  const differences = allDiffs.filter(
-    (d) => d.kind === "value" || d.kind === "order" || d.kind === "one_unclear",
-  );
+  const differences = allDiffs
+    .filter((d) => d.kind === "value" || d.kind === "order" || d.kind === "one_unclear")
+    .map((d) => (a && isOneSidedNumberedEntry(d) ? locateNumberedDiff(d, a) : d));
   const wording = allDiffs.filter((d) => d.kind === "wording");
   const onceRead = allDiffs
     .filter((d) => d.kind === "once_read")
@@ -342,30 +330,91 @@ export function classifyComparison(
     one_unclear: oneUnclear,
     empty_answer: emptyAnswerDiffs(a ?? b, a, b),
     needs_person_read: needsPersonRead(a) || needsPersonRead(b),
+    counts,
   };
 }
 
-export function decideStatus(input: {
+export interface DecideStatusInput {
   hasA: boolean;
   hasB: boolean;
   familyA: string | null;
   familyB: string | null;
   diffs: readonly RecordDifference[];
   sameDigest?: boolean;
-}): PageStatus {
-  if (!input.hasA || !input.hasB) return "machine_read";
-  if (input.sameDigest === false) return "machine_read";
-  if (!input.familyA || !input.familyB || input.familyA === input.familyB) {
-    return "machine_read";
+  counts?: CompareCounts;
+  hasAnswerConflict?: boolean;
+  hasReaderAnswerConflict?: boolean;
+  needsPersonRead?: boolean;
+  editedByPerson?: boolean;
+  recordA?: ReferenceRecord | null;
+  recordB?: ReferenceRecord | null;
+  answerDisagreements?: readonly string[];
+}
+
+export interface PageDecision {
+  status: PageStatus;
+  stopReasons: string[];
+}
+
+export function decidePageOutcome(input: DecideStatusInput): PageDecision {
+  const stopReasons: string[] = [];
+  if (input.editedByPerson) stopReasons.push("edited by a person (not checked yet)");
+  if (!input.hasA || !input.hasB) {
+    stopReasons.push("missing reader");
+  } else {
+    if (input.sameDigest === false) stopReasons.push("different photo digest");
+    if (
+      !isReaderFamily(input.familyA) ||
+      !isReaderFamily(input.familyB) ||
+      input.familyA === input.familyB
+    ) {
+      stopReasons.push("same or unknown model family");
+    }
   }
-  const hasBlocking = input.diffs.some(
+  if (input.diffs.some((d) => PAGE_IDENTITY_PATHS.has(d.path))) {
+    stopReasons.push(PAGE_IDENTITY_DISAGREEMENT_REASON);
+  }
+  if (input.hasAnswerConflict) {
+    stopReasons.push("stored answer conflicts with computed answer");
+  }
+  if (input.hasReaderAnswerConflict) {
+    stopReasons.push(READER_ANSWER_CONFLICT_REASON);
+  }
+  if (input.diffs.some((d) => d.kind === "empty_answer")) {
+    stopReasons.push("empty answer place");
+  }
+  const answerDisagreements =
+    input.answerDisagreements ??
+    findAnswerDisagreements(input.diffs, { a: input.recordA, b: input.recordB });
+  if (answerDisagreements.length > 0) {
+    stopReasons.push(ANSWER_DISAGREEMENT_REASON);
+  }
+  if (stopReasons.length > 0) {
+    return { status: "machine_read", stopReasons };
+  }
+
+  if (input.counts && input.counts.compared <= 0) {
+    return { status: "machine_read", stopReasons: ["no compared fields"] };
+  }
+
+  const hasCompareBlocking = input.diffs.some(
     (d) =>
       d.kind === "value" ||
       d.kind === "order" ||
       d.kind === "one_unclear" ||
       d.kind === "both_unclear" ||
-      d.kind === "once_read" ||
-      d.kind === "empty_answer",
+      d.kind === "once_read",
   );
-  return hasBlocking ? "machine_read" : "double_read";
+  if (!hasCompareBlocking) {
+    return { status: "double_read", stopReasons: [] };
+  }
+
+  if (input.counts && meetsAgreementThreshold(input.counts.agreed, input.counts.compared)) {
+    return { status: "agreement_accepted", stopReasons: [] };
+  }
+  return { status: "machine_read", stopReasons: [] };
+}
+
+export function decideStatus(input: DecideStatusInput): PageStatus {
+  return decidePageOutcome(input).status;
 }

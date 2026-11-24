@@ -60,7 +60,7 @@ export const DATABASE_CHECKS: readonly { table: string; name: string; definition
   {"table":"assessments","name":"assessments_stage3_route_check","definition":"CHECK ((stage3_route = ANY (ARRAY['up'::text, 'down'::text, 'none'::text])))"},
   {"table":"assessments","name":"assessments_status_check","definition":"CHECK ((status = ANY (ARRAY['in_progress'::text, 'completed'::text, 'expired'::text])))"},
   {"table":"bank_reference_images","name":"bank_reference_images_kind_check","definition":"CHECK ((kind = ANY (ARRAY['page'::text, 'contents'::text])))"},
-  {"table":"bank_reference_images","name":"bank_reference_images_transcript_status_check","definition":"CHECK ((transcript_status = ANY (ARRAY['machine_read'::text, 'double_read'::text, 'human_checked'::text])))"},
+  {"table":"bank_reference_images","name":"bank_reference_images_transcript_status_check","definition":"CHECK ((transcript_status = ANY (ARRAY['machine_read'::text, 'agreement_accepted'::text, 'double_read'::text, 'human_checked'::text])))"},
   {"table":"budget_categories","name":"budget_categories_kind_check","definition":"CHECK ((kind = ANY (ARRAY['expense'::text, 'revenue'::text])))"},
   {"table":"budget_categories","name":"budget_categories_name_check","definition":"CHECK (((name = btrim(name)) AND ((char_length(name) >= 1) AND (char_length(name) <= 60))))"},
   {"table":"budget_entries","name":"budget_entries_amount_check","definition":"CHECK (((amount > (0)::numeric) AND (amount < (10000000)::numeric)))"},

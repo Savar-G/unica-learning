@@ -129,6 +129,9 @@ describe("readPhoto and buildCliInvocation", () => {
     if (res.status === "ok") {
       expect(res.record.source_ref).toBe("sample:M:3a");
       expect(res.notes.length).toBeGreaterThan(0);
+      expect(res.noteDetails).toEqual([
+        { kind: "answer_differs", path: "sections[0].items[n=1].responses[0]" },
+      ]);
       if (res.record.kind === "page") {
         expect(res.record.sections[0].items[0].responses[0].answer).toBe("17");
         expect(res.record.sections[0].items[0].responses[0].answer_source).toBe("computed");

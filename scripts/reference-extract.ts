@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { formatPagesSentToPerson } from "@/lib/reference-kit/compare-batch";
 import { extractFolder } from "@/lib/reference-kit/extract";
 import type { ReaderFamily } from "@/lib/reference-kit/read";
 
@@ -55,9 +56,10 @@ async function main(): Promise<void> {
 
   const { counts } = result;
   console.log(
-    `Done: ${counts.double_read} double_read, ${counts.machine_read} machine_read, ${counts.failed} failed, ${counts.too_small} too_small.`,
+    `Done: ${counts.double_read} double_read, ${counts.agreement_accepted} agreement_accepted, ${counts.machine_read} machine_read, ${counts.failed} failed, ${counts.too_small} too_small.`,
   );
   console.log(`Report: ${result.reportPath}`);
+  console.log(formatPagesSentToPerson(result.report));
 
   if (result.exitCode !== 0) {
     console.error("No photo could be prepared from the photos folder.");

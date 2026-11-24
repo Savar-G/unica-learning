@@ -158,7 +158,9 @@ export function checkAndMarkPage(opts: {
     }
     throw new Error(lines.join("\n"));
   }
-  const recheck = validateReferenceRecord(recomputed);
+  const checkedRecord = { ...recomputed };
+  delete checkedRecord.single_read;
+  const recheck = validateReferenceRecord(checkedRecord);
   if (!recheck.ok) {
     const details = recheck.errors.map((e) => `  ${e.path}: ${e.message}`).join("\n");
     throw new Error(`Validation failed after recomputing answers for ${page}:\n${details}`);
