@@ -157,6 +157,16 @@ class MemoryImportStore implements ReferenceStore {
     this.objects.set(path, { bytes: new Uint8Array(bytes), contentType });
   }
 
+  async refsByPath(paths: string[]): Promise<Map<string, string[]>> {
+    const out = new Map<string, string[]>();
+    for (const row of this.rows.values()) {
+      if (row.path !== null && paths.includes(row.path)) {
+        out.set(row.path, [...(out.get(row.path) ?? []), row.source_ref]);
+      }
+    }
+    return out;
+  }
+
   async updateRow(row: ReferenceRow): Promise<boolean> {
     const prev = this.rows.get(row.source_ref);
     if (!prev) return false;

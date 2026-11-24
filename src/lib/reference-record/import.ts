@@ -9,8 +9,9 @@ import {
 } from "./import-photos";
 import {
   applyReplace,
-  decideReplace,
   formatReplaceLines,
+  planReplaces,
+  type ReplaceDecision,
   type StatusLowered,
 } from "./import-replace";
 import type { ReferenceRecord } from "./types";
@@ -61,6 +62,8 @@ export interface ReferenceStore {
   // Updates kind, path, transcript, transcript_status and updated_at of the row with this source_ref.
   // id, created_at and note stay. Returns false when no row matched.
   updateRow(row: ReferenceRow): Promise<boolean>;
+  // The source_refs of every row whose path is one of these paths (only with --replace).
+  refsByPath(paths: string[]): Promise<Map<string, string[]>>;
 }
 
 export interface ImportOptions {
@@ -368,6 +371,25 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
     return refusedResult(recordsRead, dryRun, problems);
   }
 
+  // --replace only: a decision for each existing row, and the old paths that become unused.
+  let decisions = new Map<string, ReplaceDecision>();
+  let leftoverWaits = new Map<string, Set<string>>();
+  if (replace) {
+    const plan = await planReplaces({
+      store: options.store,
+      records,
+      existing,
+      plannedPhotos,
+      statusByRef,
+      storedShaByRef,
+    });
+    if (plan.problems.length > 0) {
+      return refusedResult(recordsRead, dryRun, plan.problems);
+    }
+    decisions = plan.decisions;
+    leftoverWaits = plan.leftoverWaits;
+  }
+
   let inserted = 0;
   let replaced = 0;
   let skipped = 0;
@@ -396,10 +418,9 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
   for (const record of records) {
     const prev = existing.get(record.source_ref);
     const plannedStatus = statusByRef.get(record.source_ref) ?? "machine_read";
-    if (prev !== undefined && replace) {
+    const decision = decisions.get(record.source_ref);
+    if (prev !== undefined && decision !== undefined) {
       const photo = plannedPhotos.get(record.source_ref);
-      const storedSha = storedShaByRef.get(record.source_ref) ?? null;
-      const decision = decideReplace({ record, prev, plannedStatus, photo, storedSha });
       if (decision.same) {
         skipped += 1;
         continue;
@@ -416,7 +437,11 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
       replaced += 1;
       replacedRefs.push(record.source_ref);
       if (decision.lowered) statusLowered.push(decision.lowered);
-      if (decision.leftoverPath !== null) leftoverPhotos.push(decision.leftoverPath);
+      // An old path is a leftover once every row of this run that moves away from it is written.
+      const waits = decision.leftoverPath === null ? undefined : leftoverWaits.get(decision.leftoverPath);
+      if (waits?.delete(record.source_ref) && waits.size === 0 && decision.leftoverPath !== null) {
+        leftoverPhotos.push(decision.leftoverPath);
+      }
       continue;
     }
     if (prev !== undefined) {

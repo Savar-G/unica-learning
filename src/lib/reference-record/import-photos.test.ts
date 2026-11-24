@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   buildReferencePhotoPath,
@@ -101,6 +102,17 @@ class PhotoMemoryStore implements ReferenceStore {
     this.objects.set(path, { bytes: new Uint8Array(bytes), contentType });
   }
 
+  async refsByPath(paths: string[]): Promise<Map<string, string[]>> {
+    this.calls.push(`refsByPath:${paths.join(",")}`);
+    const out = new Map<string, string[]>();
+    for (const row of this.rows.values()) {
+      if (row.path !== null && paths.includes(row.path)) {
+        out.set(row.path, [...(out.get(row.path) ?? []), row.source_ref]);
+      }
+    }
+    return out;
+  }
+
   async updateRow(row: ReferenceRow): Promise<boolean> {
     this.calls.push(`updateRow:${row.source_ref}`);
     const prev = this.rows.get(row.source_ref);
@@ -143,6 +155,21 @@ describe("buildReferencePhotoPath", () => {
     expect(buildReferencePhotoPath("sample:M:3a", "mask.toString").ok).toBe(false);
     expect(buildReferencePhotoPath("sample:M:3a", "mask.__proto__").ok).toBe(false);
     expect(buildReferencePhotoPath("sample:M:3a", "mask.valueOf").ok).toBe(false);
+  });
+
+  it("gives two different source_refs two different paths, so two records never plan one path", () => {
+    const segment = fc.stringMatching(/^[A-Za-z0-9_-]{1,6}$/);
+    const ref = fc.array(segment, { minLength: 1, maxLength: 4 }).map((s) => s.join(":"));
+    const file = fc.constantFrom("a.jpg", "a.JPEG", "a.png", "a.webp");
+    fc.assert(
+      fc.property(ref, ref, file, file, (refA, refB, fileA, fileB) => {
+        fc.pre(refA !== refB);
+        const a = buildReferencePhotoPath(refA, fileA);
+        const b = buildReferencePhotoPath(refB, fileB);
+        if (!a.ok || !b.ok) throw new Error(`no path for ${refA} or ${refB}`);
+        expect(a.path).not.toBe(b.path);
+      }),
+    );
   });
 });
 

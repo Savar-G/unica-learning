@@ -149,6 +149,26 @@ function createSupabaseReferenceStore(db: SupabaseClient<Database>): ReferenceSt
       }
       return (data?.length ?? 0) > 0;
     },
+
+    async refsByPath(paths: string[]): Promise<Map<string, string[]>> {
+      const refs = new Map<string, string[]>();
+      const chunkSize = 100;
+      for (let i = 0; i < paths.length; i += chunkSize) {
+        const chunk = paths.slice(i, i + chunkSize);
+        const { data, error } = await db
+          .from(REFERENCE_TABLE)
+          .select("source_ref, path")
+          .in("path", chunk);
+        if (error) {
+          throw new Error(`Failed reading which rows use the photo paths: ${error.message}`);
+        }
+        for (const row of data ?? []) {
+          if (row.path === null) continue;
+          refs.set(row.path, [...(refs.get(row.path) ?? []), row.source_ref]);
+        }
+      }
+      return refs;
+    },
   };
 }
 

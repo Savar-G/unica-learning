@@ -13,7 +13,8 @@ import type { ReferenceRecord } from "./types";
 
 export interface StatusLowered {
   ref: string;
-  from: string;
+  // Always a known status: an unknown stored status has no level, so it is never lowered.
+  from: TranscriptStatus;
   to: TranscriptStatus;
 }
 
@@ -40,6 +41,10 @@ function statusRank(status: string): number {
   return (TRANSCRIPT_STATUSES as readonly string[]).indexOf(status);
 }
 
+function isKnownStatus(status: string): status is TranscriptStatus {
+  return statusRank(status) >= 0;
+}
+
 export function decideReplace(input: ReplaceInput): ReplaceDecision {
   const { record, prev, plannedStatus, photo, storedSha } = input;
   const path = photo ? photo.storagePath : prev.path;
@@ -50,10 +55,10 @@ export function decideReplace(input: ReplaceInput): ReplaceDecision {
     prev.path === path &&
     photoSame;
 
-  const fromRank = statusRank(prev.transcript_status);
+  const from = prev.transcript_status;
   const lowered =
-    !same && fromRank > statusRank(plannedStatus)
-      ? { ref: record.source_ref, from: prev.transcript_status, to: plannedStatus }
+    !same && isKnownStatus(from) && statusRank(from) > statusRank(plannedStatus)
+      ? { ref: record.source_ref, from, to: plannedStatus }
       : null;
 
   return {
@@ -63,6 +68,109 @@ export function decideReplace(input: ReplaceInput): ReplaceDecision {
     leftoverPath: !same && prev.path !== null && prev.path !== path ? prev.path : null,
     lowered,
   };
+}
+
+// One record of the run: its planned photo path, and its decision when it already has a row.
+export interface PathPlan {
+  ref: string;
+  plannedPhotoPath: string | null;
+  decision: ReplaceDecision | null;
+}
+
+export interface PathOwnershipCheck {
+  problems: string[];
+  // Old path -> refs of this run that move away from it. Only paths that no row uses after the run.
+  leftoverWaits: Map<string, Set<string>>;
+}
+
+// Paths whose users must be known before a replace: each path a replace overwrites, and each old path.
+export function pathsToCheck(plans: PathPlan[]): string[] {
+  const paths = new Set<string>();
+  for (const p of plans) {
+    if (p.decision?.writePhoto && p.plannedPhotoPath !== null) paths.add(p.plannedPhotoPath);
+    if (p.decision?.leftoverPath) paths.add(p.decision.leftoverPath);
+  }
+  return [...paths];
+}
+
+export function checkPathOwnership(
+  plans: PathPlan[],
+  refsByPath: Map<string, string[]>,
+): PathOwnershipCheck {
+  const problems: string[] = [];
+
+  const plannedOwner = new Map<string, string>();
+  for (const p of plans) {
+    if (p.plannedPhotoPath === null) continue;
+    const owner = plannedOwner.get(p.plannedPhotoPath);
+    if (owner !== undefined) {
+      problems.push(
+        `storage: ${owner} and ${p.ref} plan the same photo path ${quoted(p.plannedPhotoPath)}; nothing was written`,
+      );
+    } else {
+      plannedOwner.set(p.plannedPhotoPath, p.ref);
+    }
+  }
+
+  for (const p of plans) {
+    if (!p.decision?.writePhoto || p.plannedPhotoPath === null) continue;
+    const others = (refsByPath.get(p.plannedPhotoPath) ?? []).filter((ref) => ref !== p.ref);
+    if (others.length > 0) {
+      problems.push(
+        `storage: ${p.ref} (${quoted(p.plannedPhotoPath)}): the replace would overwrite the photo that the row ${others.map(quoted).join(", ")} also uses; nothing was written`,
+      );
+    }
+  }
+
+  // Path of each ref of this run after the run (the stored path for a row that stays the same).
+  const finalPath = new Map<string, string | null>();
+  for (const p of plans) finalPath.set(p.ref, p.decision ? p.decision.path : p.plannedPhotoPath);
+  const usedAfterRun = (path: string): boolean =>
+    [...finalPath.values()].includes(path) ||
+    (refsByPath.get(path) ?? []).some((ref) => !finalPath.has(ref));
+
+  const leftoverWaits = new Map<string, Set<string>>();
+  for (const p of plans) {
+    const old = p.decision?.leftoverPath;
+    if (!old || usedAfterRun(old)) continue;
+    const waits = leftoverWaits.get(old) ?? new Set<string>();
+    waits.add(p.ref);
+    leftoverWaits.set(old, waits);
+  }
+  return { problems, leftoverWaits };
+}
+
+// Decides every existing row of the run and checks which rows use the paths it touches. Reads only.
+export async function planReplaces(args: {
+  store: ReferenceStore;
+  records: ReferenceRecord[];
+  existing: Map<string, ExistingReferenceRow>;
+  plannedPhotos: Map<string, PlannedPhoto>;
+  statusByRef: Map<string, TranscriptStatus>;
+  storedShaByRef: Map<string, string | null>;
+}): Promise<PathOwnershipCheck & { decisions: Map<string, ReplaceDecision> }> {
+  const decisions = new Map<string, ReplaceDecision>();
+  const plans: PathPlan[] = [];
+  for (const record of args.records) {
+    const ref = record.source_ref;
+    const photo = args.plannedPhotos.get(ref);
+    const prev = args.existing.get(ref);
+    let decision: ReplaceDecision | null = null;
+    if (prev !== undefined) {
+      decision = decideReplace({
+        record,
+        prev,
+        plannedStatus: args.statusByRef.get(ref) ?? "machine_read",
+        photo,
+        storedSha: args.storedShaByRef.get(ref) ?? null,
+      });
+      decisions.set(ref, decision);
+    }
+    plans.push({ ref, plannedPhotoPath: photo?.storagePath ?? null, decision });
+  }
+  const paths = pathsToCheck(plans);
+  const refsByPath = paths.length > 0 ? await args.store.refsByPath(paths) : new Map();
+  return { decisions, ...checkPathOwnership(plans, refsByPath) };
 }
 
 export type ReplaceOutcome =
@@ -122,14 +230,16 @@ export async function applyReplace(args: {
   return { ok: true, photoWritten };
 }
 
-// Text that came from the database (a stored path or status) is shown with control characters escaped.
-const UNSAFE_OUTPUT_CHAR_RE = /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u2028-\u202e\u2066-\u2069]/g;
+// Database text (a stored path or source_ref) in an output line: one quoted form, with backslash,
+// double quote, control characters, and direction or format marks (such as U+061C, U+200E, U+202A
+// to U+202E, U+2066 to U+2069, U+FEFF) written as \u{...}.
+const UNSAFE_OUTPUT_CHAR_RE = /[\\"\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/gu;
 
-export function printable(text: string): string {
-  return text.replace(
-    UNSAFE_OUTPUT_CHAR_RE,
-    (ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`,
+export function quoted(text: string): string {
+  const body = text.replace(UNSAFE_OUTPUT_CHAR_RE, (ch) =>
+    ch === "\\" ? "\\\\" : ch === '"' ? '\\"' : `\\u{${(ch.codePointAt(0) ?? 0).toString(16)}}`,
   );
+  return `"${body}"`;
 }
 
 export function formatReplaceLines(result: {
@@ -142,11 +252,11 @@ export function formatReplaceLines(result: {
     lines.push(`replaced: ${ref} (stored row differed from the files)`);
   }
   for (const s of result.statusLowered) {
-    lines.push(`status_lowered: ${s.ref} (${printable(s.from)} -> ${s.to})`);
+    lines.push(`status_lowered: ${s.ref} (${s.from} -> ${s.to})`);
   }
   for (const path of result.leftoverPhotos) {
     lines.push(
-      `leftover_photo: "${printable(path)}" is no longer used by its row and stays in the bucket; a person can remove it by hand`,
+      `leftover_photo: ${quoted(path)} is no longer used by any row and stays in the bucket; a person can remove it by hand`,
     );
   }
   return lines;
