@@ -77,6 +77,9 @@ export interface Position { id: string; sheet: number; rect: Rect }
 /** A text that the typesetter says that it drew, with the top left corner of the rectangle it drew it in. */
 export interface DrawnText { sheet: number; x: number; y: number; text: string }
 
+/** How fine a page image is. A page image is the paper at this size, so a point of the model has one place in it. */
+export const IMAGE_PIXELS_PER_INCH = 150;
+
 /** The paper and the space rules of every v2 page (product rules; a template must obey them). */
 export const PAPER = { w: 612, h: 792 } as const;
 export const PRINT_RULES = {
@@ -96,6 +99,6 @@ export const PRINT_RULES = {
   maxTitleCharacters: 44,
 } as const;
 
-/** The characters that every bundled font holds. The typesetter prints nothing, with no warning, for any other. */
+/** The characters that every bundled font holds. The typesetter prints an empty box, with no warning, for any other. */
 const PRINTABLE = /^[ -~×÷·–‘’“”°½¼¾]*$/;
 export const isPrintable = (text: string): boolean => PRINTABLE.test(text);

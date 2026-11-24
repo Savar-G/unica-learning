@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import raw from "../fixtures/snapshot.json";
+import { TEMPLATES, type PageTemplate } from "../layout/templates";
 import { SHAPES, shapeLibrary, type Shape } from "../shapes";
 import { validateSnapshot } from "./snapshot";
 
@@ -66,6 +67,12 @@ describe("a bad snapshot is refused, and the problem names the place", () => {
     ["two rows with one id on a sheet", (s) => put(back(s).rows[0], "id", "no-carry"), 'Sheet "column-multiplication-1": the row id "no-carry" is used more than once.'],
     ["an even first page", (s) => put(s.sheets[0], "firstPage", 382), 'Sheet "column-multiplication-1": firstPage must be odd, because the front of a sheet is a right-hand page.'],
     ["a page number as text", (s) => put(s.sheets[0], "firstPage", "381"), 'Sheet "column-multiplication-1": firstPage must be a whole number, 1 or more.'],
+    ["a page number that is too large to count with", (s) => put(s.sheets[0], "firstPage", 2 ** 53), 'Sheet "column-multiplication-1": firstPage must be a whole number, 1 or more.'],
+    ["a first page with no number left for the back", (s) => put(s.sheets[0], "firstPage", Number.MAX_SAFE_INTEGER), 'Sheet "column-multiplication-1": firstPage leaves no page number for the back.'],
+    ["a negative page number", (s) => put(s.sheets[0], "firstPage", -1), 'Sheet "column-multiplication-1": firstPage must be a whole number, 1 or more.'],
+    ["a level name that is a word", (s) => { put(s.level, "name", "Mars"); put(s.topics[0], "code", "Mars-20"); }, 'The level: name must be a number from 1 to 99, and it is "Mars".'],
+    ["a level name with a zero in front", (s) => { put(s.level, "name", "03"); put(s.topics[0], "code", "03-20"); }, 'The level: name must be a number from 1 to 99, and it is "03".'],
+    ["a level name that is level 0", (s) => { put(s.level, "name", "0"); put(s.topics[0], "code", "0-20"); }, 'The level: name must be a number from 1 to 99, and it is "0".'],
     ["an instruction that is too long", (s) => put(front(s), "instruction", "x".repeat(61)), 'Sheet "column-multiplication-1", front side: instruction has 61 characters and the limit is 60.'],
     ["an empty instruction", (s) => put(front(s), "instruction", "  "), 'Sheet "column-multiplication-1", front side: instruction must be text with no space at its ends.'],
     ["an instruction on two lines", (s) => put(front(s), "instruction", "Multiply.\nThen check."), 'Sheet "column-multiplication-1", front side: instruction has a character that the fonts cannot print.'],
@@ -94,6 +101,63 @@ describe("a bad snapshot is refused, and the problem names the place", () => {
   });
 });
 
+describe("a value that is not plain data is refused, so the hash covers all that the build reads", () => {
+  const limits = (s: Raw) => front(s).rows[0].limits;
+  const inherit = (target: object, name: string, value: unknown) => { drop(target, name); Object.setPrototypeOf(target, { [name]: value }); };
+  const LIMITS = "The snapshot, sheets[0].front.rows[0].limits";
+  class Sheet { id = "x"; }
+  it.each<[string, (s: Raw) => unknown, string]>([
+    ["an inherited limit", (s) => inherit(limits(s), "zeroInTens", "never"), `${LIMITS}: this must be a plain object.`],
+    ["an inherited range end", (s) => inherit(limits(s).a, "max", 43), `${LIMITS}.a: this must be a plain object.`],
+    ["an inherited field of a sheet", (s) => inherit(s.sheets[0], "firstPage", 381), "The snapshot, sheets[0]: this must be a plain object."],
+    ["an inherited field of the level", (s) => inherit(s.level, "name", "3"), "The snapshot, level: this must be a plain object."],
+    ["an inherited field at the top", (s) => inherit(s, "format", 1), "The snapshot: this must be a plain object."],
+    ["an object of a class", (s) => put(s.sheets, "0", Object.assign(new Sheet(), s.sheets[0])), "The snapshot, sheets[0]: this must be a plain object."],
+    ["a date", (s) => put(s, "id", new Date(0)), "The snapshot, id: this must be a plain object."],
+    ["a map", (s) => put(s, "level", new Map([["id", "level-3"]])), "The snapshot, level: this must be a plain object."],
+    ["a computed field", (s) => { Object.defineProperty(s.level, "name", { get: () => "3", enumerable: true }); }, "The snapshot, level.name: this must be a plain value."],
+    ["a hidden field", (s) => { Object.defineProperty(s.level, "name", { value: "3", enumerable: false }); }, "The snapshot, level.name: this must be a plain value."],
+    ["a field with a symbol for a name", (s) => Object.assign(s.level, { [Symbol("x")]: 1 }), "The snapshot, level: this must be a plain object."],
+    ["a field of a list", (s) => Object.assign(s.sheets, { note: 1 }), "The snapshot, sheets: this must be a plain list."],
+    ["a list with a hole", (s) => { s.topics[0].sheets.length = 2; }, "The snapshot, topics[0].sheets: this must be a plain list."],
+    ["a list of a class", (s) => put(s, "topics", Object.setPrototypeOf([...s.topics], class extends Array {}.prototype)), "The snapshot, topics: this must be a plain list."],
+    ["nothing as a value", (s) => put(s.level, "name", undefined), "The snapshot, level.name: this must be a plain value."],
+    ["a function", (s) => put(s.level, "toJSON", () => ({ id: "level-3", name: "3" })), "The snapshot, level.toJSON: this must be a plain value."],
+    ["a number that JSON cannot hold", (s) => put(limits(s).a, "max", Number.NaN), `${LIMITS}.a.max: this must be a plain value.`],
+    ["a number without end", (s) => put(limits(s).a, "max", Number.POSITIVE_INFINITY), `${LIMITS}.a.max: this must be a plain value.`],
+    ["a large integer type", (s) => put(s.sheets[0], "firstPage", BigInt(381)), "The snapshot, sheets[0].firstPage: this must be a plain value."],
+    ["a text object", (s) => put(s.level, "name", Object("3")), "The snapshot, level.name: this must be a plain object."],
+    ["an object inside itself", (s) => put(s.level, "name", s), "The snapshot, level.name: this holds itself."],
+    ["objects that are too deep", (s) => put(s.level, "name", Array.from({ length: 40 }).reduce<unknown>((inner) => [inner], 1)), `The snapshot, level.name${"[0]".repeat(30)}: this is nested too deep.`],
+  ])("%s", (_name, change, problem) => {
+    expect(problemsAfter(change)).toEqual([problem]);
+  });
+
+  it("but the same data from JSON text, or with no prototype, is the same snapshot", () => {
+    const hashOf = (s: unknown) => { const r = validateSnapshot(s); return r.ok ? r.hash : r.problems.join(); };
+    expect(hashOf(JSON.parse(JSON.stringify(raw)))).toBe(hashOf(copy()));
+    expect(hashOf(Object.assign(Object.create(null), copy()))).toBe(hashOf(copy()));
+  });
+
+  it("the build reads what the hash covers, also when an object answers two ways", () => {
+    const s = copy();
+    put(front(s).rows[0].limits, "a", new Proxy(front(s).rows[0].limits.a, { get: (target, name) => (name === "max" ? 20 : Reflect.get(target, name)) }));
+    const [plain, tricky] = [validateSnapshot(copy()), validateSnapshot(s)];
+    if (!plain.ok || !tricky.ok) throw new Error("refused");
+    expect(tricky.hash).toBe(plain.hash);
+    expect(tricky.snapshot.sheets.get("column-multiplication-1")?.front.rows[0].limits).toEqual(plain.snapshot.sheets.get("column-multiplication-1")?.front.rows[0].limits);
+  });
+
+  it("a later change of the raw data does not reach the checked snapshot", () => {
+    const s = copy();
+    const result = validateSnapshot(s);
+    put(s.sheets[0].front.rows[0].limits.a, "max", 12);
+    put(s.topics[0], "title", "Another title");
+    expect(result.ok && result.snapshot.sheets.get("column-multiplication-1")?.front.rows[0].limits).toMatchObject({ a: { min: 11, max: 43 } });
+    expect(result.ok && result.snapshot.sheets.get("column-multiplication-1")?.topic.title).toBe("Multiplying 2 digits by 1 digit");
+  });
+});
+
 describe("rows never get easier down a side", () => {
   it.each<[string, (s: Raw) => unknown, string[]]>([
     ["the same rows in the other order", (s) => { front(s).rows.reverse(); }, ['Sheet "column-multiplication-1", front side, row "no-carry": this row is easier than the row above it.']],
@@ -113,6 +177,17 @@ describe("the questions of a side fit its template", () => {
     [8, 1, ['Sheet "column-multiplication-1", front side: 9 questions do not fit the template "columns-2x4", which has 8 places.']],
   ])("%i and %i questions", (first, second, problems) => {
     expect(problemsAfter((s) => { put(front(s).rows[0], "items", first); put(front(s).rows[1], "items", second); })).toEqual(problems);
+  });
+
+  const base = TEMPLATES.get("columns-2x4");
+  if (!base) throw new Error("no template");
+  const shorter = (side: "front" | "back"): PageTemplate =>
+    ({ ...base, sides: { ...base.sides, [side]: { ...base.sides[side], places: base.sides[side].places.slice(0, 6) } } });
+  it.each([
+    ["front", 'Sheet "column-multiplication-1", front side: 8 questions do not fit the template "columns-2x4", which has 6 places.'],
+    ["back", 'Sheet "column-multiplication-1", back side: 8 questions do not fit the template "columns-2x4", which has 6 places.'],
+  ] as const)("counts the places of the side itself when the %s has fewer", (side, problem) => {
+    expect(validateSnapshot(copy(), SHAPES, new Map([[base.id, shorter(side)]]))).toEqual({ ok: false, problems: [problem] });
   });
 
   it("refuses a row whose widest question is too wide for the template", () => {

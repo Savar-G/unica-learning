@@ -29,7 +29,11 @@ function rowItems(sheetId: string, side: Side, row: SnapshotRow, seed: string, u
   });
 }
 
-/** Easy to hard down the side. Scores compare only inside one shape, so only rows of one shape in sequence mix. */
+/**
+ * Easy to hard down the side: the difficulty decides the order and questions of two rows may mix. Questions of equal
+ * difficulty keep the row order of the bank (the sort is stable). Scores compare only inside one shape, so only rows of
+ * one shape in sequence mix. Each item names its row.
+ */
 function sideItems(sheetId: string, side: Side, content: SnapshotSide, seed: string, used: Set<string>): RowItem[] {
   const runs: RowItem[][] = [];
   for (const row of content.rows) {
@@ -41,25 +45,10 @@ function sideItems(sheetId: string, side: Side, content: SnapshotSide, seed: str
   return runs.flatMap((run) => run.sort((a, b) => a.difficulty - b.difficulty));
 }
 
-/** What is wrong with an answer: the second computation and the worked steps must both end in it. */
-function answerProblem(item: BookItem, row: SnapshotRow): string | null {
-  const again = row.shape.solveAgain(item.question);
-  const { answer, face } = item;
-  const by = again.kind !== answer.kind || again.value !== answer.value ? { value: again.value, how: "another" }
-    : item.steps.at(-1) !== answer.value ? { value: item.steps.at(-1) ?? "", how: "the worked steps" }
-    : null;
-  return by && `Sheet "${item.sheetId}", ${item.side} side, question ${item.number} (${face.top} ${face.sign} ${face.bottom}): the answer is "${answer.value}" by one computation and "${by.value}" by ${by.how}.`;
-}
-
-export function sheetItems(sheet: SnapshotSheet, childId: string, attempt: number): { items: BookItem[]; problems: string[] } {
+/** The questions of one sheet, with the answers of the first computation (checks/printed-answers.ts has the second). */
+export function sheetItems(sheet: SnapshotSheet, childId: string, attempt: number): BookItem[] {
   const seed = seedFrom(childId, sheet.id, attempt);
   const used = new Set<string>();
-  const items: BookItem[] = SIDES.flatMap((side) =>
+  return SIDES.flatMap((side) =>
     sideItems(sheet.id, side, sheet[side], seed, used).map((item, i) => ({ ...item, id: `${sheet.id}/${attempt}/${side}/${i + 1}`, number: i + 1 })));
-  const rows = new Map([...sheet.front.rows, ...sheet.back.rows].map((row) => [row.id, row]));
-  const problems = items.map((item) => {
-    const row = rows.get(item.rowId);
-    return row ? answerProblem(item, row) : null;
-  }).filter((p) => p !== null);
-  return { items, problems };
 }

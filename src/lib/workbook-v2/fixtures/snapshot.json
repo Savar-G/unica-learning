@@ -28,7 +28,7 @@
         ]
       },
       "back": {
-        "instruction": "Multiply. Write the number you carry above the tens.",
+        "instruction": "Multiply. If you carry, write the number above the tens.",
         "template": "columns-2x4",
         "rows": [
           {

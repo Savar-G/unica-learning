@@ -1,7 +1,7 @@
 // npm run workbook:v2 - builds one book offline from a bank snapshot file (docs/workbook-v2-engine.md).
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { buildBook, type BuiltBook } from "@/lib/workbook-v2/build/build-book";
 import { openRenderer, projectAssets } from "@/lib/workbook-v2/render/typst";
@@ -33,19 +33,25 @@ async function readJson(file: string): Promise<unknown> {
   }
 }
 
-/** An older page in the folder could be taken for a page of this book. */
+/** What the system says about a place that cannot become the folder of a book. Any other error stays as it is. */
+function placeError(error: unknown, folder: string): unknown {
+  const code = error instanceof Error && "code" in error ? error.code : null;
+  if (code === "ENOTEMPTY" || code === "EEXIST") return new Error(`The folder ${folder} is not empty.`);
+  return code === "ENOTDIR" ? new Error(`${folder} is not a folder.`) : error;
+}
+
+/** An older page in the folder could be taken for a page of this book. This look saves the work of a build; `publish` decides. */
 async function checkEmpty(folder: string): Promise<void> {
   const files = await readdir(folder).catch((error: NodeJS.ErrnoException) => {
     if (error.code === "ENOENT") return [];
-    throw error;
+    throw placeError(error, folder);
   });
   if (files.length > 0) throw new Error(`The folder ${folder} is not empty.`);
 }
 
-async function write(folder: string, book: BuiltBook): Promise<void> {
+function filesOf(book: BuiltBook): [string, string | Uint8Array][] {
   const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
-  await mkdir(folder, { recursive: true });
-  const files: [string, string | Uint8Array][] = [
+  return [
     ["book.pdf", book.pdf],
     ...book.pages.map((p, i): [string, Uint8Array] => [`page-${i + 1}.png`, p.image]),
     ["pages.json", json(book.pages.map((p) => p.model))],
@@ -53,7 +59,26 @@ async function write(folder: string, book: BuiltBook): Promise<void> {
     ["answers.json", json(book.items)],
     ["record.json", json(book.record)],
   ];
-  for (const [name, content] of files) await writeFile(join(folder, name), content);
+}
+
+/**
+ * Writes the whole book beside the folder, on the same disk, and gives it the name of the folder in one step. The system
+ * refuses that step when the folder holds something, so of two processes one wins and a reader never sees a part.
+ */
+async function publish(out: string, book: BuiltBook): Promise<void> {
+  const folder = await realpath(out).catch(() => resolve(out));
+  await mkdir(dirname(folder), { recursive: true });
+  const staging = await mkdtemp(join(dirname(folder), ".workbook-v2-"));
+  try {
+    const whole = join(staging, "book");
+    await mkdir(whole);
+    for (const [name, content] of filesOf(book)) await writeFile(join(whole, name), content);
+    await rename(whole, folder).catch((error: unknown) => {
+      throw placeError(error, out);
+    });
+  } finally {
+    await rm(staging, { recursive: true, force: true });
+  }
 }
 
 const args = readArgs(process.argv.slice(2));
@@ -62,5 +87,5 @@ await checkEmpty(args.out);
 const renderer = await openRenderer(projectAssets(process.cwd(), homedir(), process.platform, process.arch));
 const result = await buildBook(input, renderer);
 if (result.status === "failed") throw new Error(result.problems.join("\n"));
-await write(args.out, result);
+await publish(args.out, result);
 console.log(`Built ${result.pages.length} pages, ${result.items.length} questions: ${args.out}`);

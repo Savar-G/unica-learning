@@ -1,6 +1,6 @@
 // Puts the pinned Typst on a computer, once. Not part of a build or a test: `npm run typst:install` calls it.
 import { execFile } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { access, chmod, constants, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { sha256 } from "../hash";
@@ -10,6 +10,9 @@ import { typstProgram } from "./typst";
 
 const run = promisify(execFile);
 
+/** Every account may run the program and only its owner may change it. */
+const MODE = 0o755;
+
 export interface InstallInput {
   home: string;
   target: string;
@@ -17,13 +20,16 @@ export interface InstallInput {
   download: (url: string) => Promise<Uint8Array>;
 }
 
-/** The path of the installed program. A program with the pinned hash stays; nothing unchecked ever takes its place. */
+/** The path of the installed program. A program with the pinned hash stays and may run; nothing unchecked ever takes its place. */
 export async function installTypst({ home, target, pins, download }: InstallInput): Promise<string> {
   const pin = pins.targets[target];
   if (!pin) throw new RenderError(`The workbook engine has no pinned Typst for ${target}.`);
   const program = typstProgram(home, target, pins.version);
   const installed = await readFile(program).catch(() => null);
-  if (installed && sha256(installed) === pin.programSha256) return program;
+  if (installed && sha256(installed) === pin.programSha256) {
+    await access(program, constants.X_OK).catch(() => chmod(program, MODE));
+    return program;
+  }
 
   const url = `https://github.com/typst/typst/releases/download/v${pins.version}/typst-${target}.tar.xz`;
   const archive = await download(url);
@@ -37,7 +43,7 @@ export async function installTypst({ home, target, pins, download }: InstallInpu
     await run("tar", ["-xJf", "typst.tar.xz"], { cwd: work });
     const unpacked = join(work, `typst-${target}`, "typst");
     if (sha256(await readFile(unpacked)) !== pin.programSha256) throw new RenderError(`The program in ${url} is not the pinned Typst.`);
-    await chmod(unpacked, 0o755);
+    await chmod(unpacked, MODE);
     await mkdir(place, { recursive: true });
     await rename(unpacked, program);
   } finally {

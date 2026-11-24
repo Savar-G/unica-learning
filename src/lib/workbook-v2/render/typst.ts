@@ -1,16 +1,16 @@
-// The only module that calls Typst, behind the `Renderer` interface. It is not pure: it reads files, writes the page model to a new temporary folder and
-// starts a program. None of that reaches the result: the same pages, program and fonts give the same bytes.
+// The only module that calls Typst, behind the `Renderer` interface. It is not pure: it reads files, writes a new private
+// folder and starts a program. None of that reaches the result: the same pages, program, drawing file and fonts give the
+// same bytes. The drawing file and the fonts are read and checked once; each drawing uses that copy and nothing else.
 import { execFile } from "node:child_process";
-import { copyFile, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, constants, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import type { DrawnText, PageModel, Position } from "../contract";
+import { join, resolve } from "node:path";
+import { IMAGE_PIXELS_PER_INCH, type DrawnText, type PageModel, type Position } from "../contract";
 import { sha256 } from "../hash";
 import { RenderError, type Renderer, type Rendering } from "../renderer";
 import { isRecord } from "../shapes/shape";
 import { PINS, type Pins } from "./pins";
 
-export const IMAGE_PIXELS_PER_INCH = 150;
 const TIME_LIMIT_MS = 60_000;
 const OUTPUT_LIMIT_BYTES = 256 * 1024 * 1024;
 
@@ -53,28 +53,51 @@ export function projectAssets(root: string, home: string, platform: string, arch
   return { target, program: typstProgram(home, target, PINS.version), ...drawingFiles(root) };
 }
 
-async function checkProgram({ program, target }: RenderAssets, pins: Pins): Promise<void> {
-  const bytes = await readFile(program).catch(() => null);
-  if (!bytes) throw new RenderError(`Typst ${pins.version} is not at ${program}. Run "npm run typst:install" once.`);
-  if (sha256(bytes) !== pins.targets[target]?.programSha256) throw new RenderError(`The program ${program} is not the pinned Typst ${pins.version} for ${target}.`);
+/** Everything that draws a book. The program stays in its place, because it is large; the rest is held here. */
+interface DrawingKit {
+  pins: Pins;
+  /** The full path, which no working folder changes. */
+  program: string;
+  programSha256: string;
+  template: Uint8Array;
+  fonts: readonly { file: string; bytes: Uint8Array }[];
 }
 
-async function checkFonts({ fontsDir }: RenderAssets, pins: Pins): Promise<void> {
-  const files = (await readdir(fontsDir)).filter((f) => /\.(ttf|otf|ttc|otc|woff2?)$/i.test(f));
-  const extra = files.find((f) => !Object.hasOwn(pins.fonts, f));
-  if (extra !== undefined) throw new RenderError(`${extra} is not a pinned font.`);
+async function checkProgram(program: string, hash: string | undefined, version: string, target: string): Promise<string> {
+  const bytes = await readFile(program).catch(() => null);
+  if (!bytes) throw new RenderError(`Typst ${version} is not at ${program}. Run "npm run typst:install" once.`);
+  if (hash === undefined || sha256(bytes) !== hash) throw new RenderError(`The program ${program} is not the pinned Typst ${version} for ${target}.`);
+  await access(program, constants.X_OK).catch(() => {
+    throw new RenderError(`The program ${program} may not run. Run "npm run typst:install" once.`);
+  });
+  return hash;
+}
+
+async function readFonts(fontsDir: string, pins: Pins): Promise<DrawingKit["fonts"]> {
+  const fonts: { file: string; bytes: Uint8Array }[] = [];
   for (const [file, hash] of Object.entries(pins.fonts)) {
-    if (!files.includes(file)) throw new RenderError(`The font ${file} is not in ${fontsDir}.`);
-    if (sha256(await readFile(join(fontsDir, file))) !== hash) throw new RenderError(`The font ${file} is not the pinned file.`);
+    const bytes = await readFile(join(fontsDir, file)).catch(() => null);
+    if (!bytes) throw new RenderError(`The font ${file} is not in ${fontsDir}.`);
+    if (sha256(bytes) !== hash) throw new RenderError(`The font ${file} is not the pinned file.`);
+    fonts.push({ file, bytes });
   }
+  return fonts;
+}
+
+async function readKit(assets: RenderAssets, pins: Pins): Promise<DrawingKit> {
+  const program = resolve(assets.program);
+  const programSha256 = await checkProgram(program, pins.targets[assets.target]?.programSha256, pins.version, assets.target);
+  const template = await readFile(assets.template).catch(() => null);
+  if (!template) throw new RenderError(`The drawing file ${assets.template} is not there.`);
+  return { pins, program, programSha256, template, fonts: await readFonts(assets.fontsDir, pins) };
 }
 
 /** Runs Typst with no environment of the computer, so that no setting reaches it. Any warning is a failure. */
 function typst(program: string, folder: string, args: readonly string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
+  return new Promise((done, fail) => {
     execFile(program, args, { cwd: folder, env: { NODE_ENV: "production" }, timeout: TIME_LIMIT_MS, killSignal: "SIGKILL", maxBuffer: OUTPUT_LIMIT_BYTES }, (error, stdout, stderr) => {
-      if (error || stderr.trim() !== "") reject(new RenderError(`Typst reported: ${stderr.trim() || error?.message || "nothing"}`));
-      else resolve(stdout);
+      if (error || stderr.trim() !== "") fail(new RenderError(`Typst reported: ${stderr.trim() || error?.message || "nothing"}`));
+      else done(stdout);
     });
   });
 }
@@ -96,15 +119,17 @@ function readReport(json: string): { positions: Position[]; texts: DrawnText[] }
   };
 }
 
-async function draw(assets: RenderAssets, pins: Pins, folder: string, pages: readonly PageModel[]): Promise<Rendering> {
-  await copyFile(assets.template, join(folder, "page.typ"));
+async function draw({ pins, program, template, fonts: fontFiles }: DrawingKit, folder: string, pages: readonly PageModel[]): Promise<Rendering> {
+  await writeFile(join(folder, "page.typ"), template);
   await writeFile(join(folder, "pages.json"), JSON.stringify({ typst: pins.version, pages }));
-  const fonts = ["--ignore-system-fonts", "--ignore-embedded-fonts", "--font-path", assets.fontsDir];
+  await mkdir(join(folder, "fonts"));
+  for (const { file, bytes } of fontFiles) await writeFile(join(folder, "fonts", file), bytes);
+  const fonts = ["--ignore-system-fonts", "--ignore-embedded-fonts", "--font-path", "fonts"];
   const still = [...fonts, "--creation-timestamp", "0"];
   const runs = await Promise.allSettled([
-    typst(assets.program, folder, ["compile", ...still, "page.typ", "book.pdf"]),
-    typst(assets.program, folder, ["compile", ...still, "--ppi", String(IMAGE_PIXELS_PER_INCH), "page.typ", "page-{p}.png"]),
-    typst(assets.program, folder, ["eval", ...fonts, REPORT, "--in", "page.typ"]),
+    typst(program, folder, ["compile", ...still, "page.typ", "book.pdf"]),
+    typst(program, folder, ["compile", ...still, "--ppi", String(IMAGE_PIXELS_PER_INCH), "page.typ", "page-{p}.png"]),
+    typst(program, folder, ["eval", ...fonts, REPORT, "--in", "page.typ"]),
   ]);
   // All three have ended here, so a failed one leaves nothing that still writes to the folder.
   const failed = runs.find((r) => r.status === "rejected");
@@ -116,17 +141,18 @@ async function draw(assets: RenderAssets, pins: Pins, folder: string, pages: rea
   return { pdf: await readFile(join(folder, "book.pdf")), images, ...readReport(report) };
 }
 
-/** Checks the program and the fonts against their pins, once, and gives the renderer that uses them. */
+/** Checks the program and the fonts against their pins, reads the drawing file, and gives the renderer that uses them. */
 export async function openRenderer(assets: RenderAssets, pins: Pins = PINS): Promise<Renderer> {
-  await checkProgram(assets, pins);
-  await checkFonts(assets, pins);
+  const kit = await readKit(assets, pins);
   return {
-    identity: { typst: pins.version, fonts: sha256(JSON.stringify(Object.entries(pins.fonts).sort())) },
+    identity: { typst: pins.version, program: kit.programSha256, template: sha256(kit.template), fonts: { ...pins.fonts } },
     async render(pages) {
       if (pages.length === 0) throw new RenderError("There is no page to draw.");
+      // Another program in its place since the check would draw a book that its record does not name.
+      await checkProgram(kit.program, kit.programSha256, pins.version, assets.target);
       const folder = await mkdtemp(join(tmpdir(), "workbook-v2-"));
       try {
-        return await draw(assets, pins, folder, pages);
+        return await draw(kit, folder, pages);
       } finally {
         await rm(folder, { recursive: true, force: true });
       }

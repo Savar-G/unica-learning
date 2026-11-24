@@ -14,8 +14,8 @@ export interface Rendering {
 }
 
 export interface Renderer {
-  /** The exact program and fonts, for the record of a book. */
-  identity: { typst: string; fonts: string };
+  /** Everything that the renderer draws with, for the record of a book: the version of Typst, then SHA-256 hashes. */
+  identity: { typst: string; program: string; template: string; fonts: Readonly<Record<string, string>> };
   /** The same pages always give the same bytes. */
   render(pages: readonly PageModel[]): Promise<Rendering>;
 }

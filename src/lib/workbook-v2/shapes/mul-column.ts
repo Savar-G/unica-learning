@@ -38,18 +38,24 @@ const answerOf = (value: number): Answer => ({ kind: "whole-number", value: Stri
 const answer = (q: MulColumnQuestion): Answer => answerOf(product(q));
 const item = (question: MulColumnQuestion): Item<MulColumnQuestion> => ({ question, answer: answer(question) });
 
-/** The column method, one written digit at a time. It adds; it never multiplies, so it shares nothing with `answer`. */
-function solveAgain({ a, b }: MulColumnQuestion): Answer {
+/**
+ * Reads the two printed rows and works the column method, one written digit at a time. It adds; it never multiplies, so
+ * it shares nothing with `answer`, and it knows nothing of the question but its print.
+ */
+function solveAgain(rows: readonly string[]): Item<MulColumnQuestion> | null {
+  const [top, low, ...more] = rows;
+  if (more.length > 0 || !/^[1-9][0-9]$/.test(top ?? "") || !/^×[2-9]$/.test(low ?? "")) return null;
+  const times = Number(low.slice(1));
   let carry = 0;
   let written = "";
-  for (const digit of [...String(a)].reverse()) {
+  for (const digit of [...top].reverse()) {
     let column = carry;
-    for (let i = 0; i < b; i++) column += Number(digit);
+    for (let i = 0; i < times; i++) column += Number(digit);
     const text = String(column);
     written = text.slice(-1) + written;
     carry = Number(text.slice(0, -1));
   }
-  return { kind: "whole-number", value: carry > 0 ? String(carry) + written : written };
+  return { question: { a: Number(top), b: times }, answer: { kind: "whole-number", value: carry > 0 ? String(carry) + written : written } };
 }
 
 function steps(q: MulColumnQuestion): string[] {

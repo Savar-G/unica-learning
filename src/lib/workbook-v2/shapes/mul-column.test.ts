@@ -67,24 +67,52 @@ describe("numbers", () => {
 describe("answers", () => {
   it.each([[24, 3, "72"], [26, 4, "104"], [99, 9, "891"], [10, 2, "20"], [40, 7, "280"]])("%i x %i is %s", (a, b, value) => {
     expect(mulColumn.answer({ a, b })).toEqual({ kind: "whole-number", value });
-    expect(mulColumn.solveAgain({ a, b })).toEqual({ kind: "whole-number", value });
+    expect(mulColumn.solveAgain([String(a), `×${b}`])).toEqual({ question: { a, b }, answer: { kind: "whole-number", value } });
   });
 
   it("come out the same from both computations", () => {
     fc.assert(fc.property(limits, fc.string(), (l, seed) => {
       const { question, answer } = mulColumn.generate(l, seed);
       expect(answer.value).toBe(String(facts(question).product));
-      expect(mulColumn.solveAgain(question)).toEqual(answer);
+      const { a, b } = question;
+      expect(mulColumn.solveAgain([`${a}`, `×${b}`])).toEqual({ question, answer });
     }), RUNS);
   });
 
-  it("have worked steps that end in the answer", () => {
-    expect(mulColumn.steps({ a: 24, b: 3 })).toEqual(["3 × 4 = 12, write 2, carry 1", "3 × 2 = 6, plus 1 is 7", "72"]);
-    expect(mulColumn.steps({ a: 32, b: 3 })).toEqual(["3 × 2 = 6, write 6", "3 × 3 = 9", "96"]);
-    fc.assert(fc.property(limits, fc.string(), (l, seed) => {
-      const { question, answer } = mulColumn.generate(l, seed);
-      expect(mulColumn.steps(question).at(-1)).toBe(answer.value);
-    }), RUNS);
+  it.each<[string, string[]]>([
+    ["nothing", []], ["one row", ["24"]], ["three rows", ["24", "×3", "72"]], ["turned rows", ["×3", "24"]], ["another sign", ["24", "+3"]], ["no sign", ["24", "3"]],
+    ["the sign after the number", ["24", "3×"]], ["the sign in the top row", ["×24", "3"]], ["one digit on top", ["4", "×3"]], ["three digits on top", ["124", "×3"]],
+    ["a zero in front", ["04", "×3"]], ["two digits below", ["24", "×13"]], ["times 1", ["24", "×1"]], ["times 0", ["24", "×0"]], ["an empty row", ["", "×3"]],
+    ["a space", ["2 4", "×3"]], ["a letter x", ["24", "x3"]], ["digits of another script", ["٢٤", "×3"]],
+  ])("the second computation does not read %s as a question", (_name, rows) => {
+    expect(mulColumn.solveAgain(rows)).toBeNull();
+  });
+
+  it.each<[string, MulColumnQuestion, string[]]>([
+    ["a carry", { a: 24, b: 3 }, ["3 × 4 = 12, write 2, carry 1", "3 × 2 = 6, plus 1 is 7", "72"]],
+    ["no carry", { a: 32, b: 3 }, ["3 × 2 = 6, write 6", "3 × 3 = 9", "96"]],
+    ["a zero in the ones", { a: 40, b: 7 }, ["7 × 0 = 0, write 0", "7 × 4 = 28", "280"]],
+    ["a carry of 2", { a: 47, b: 4 }, ["4 × 7 = 28, write 8, carry 2", "4 × 4 = 16, plus 2 is 18", "188"]],
+    ["a carry that makes a zero", { a: 26, b: 4 }, ["4 × 6 = 24, write 4, carry 2", "4 × 2 = 8, plus 2 is 10", "104"]],
+    ["ones that make 10", { a: 25, b: 2 }, ["2 × 5 = 10, write 0, carry 1", "2 × 2 = 4, plus 1 is 5", "50"]],
+    ["the largest question", { a: 99, b: 9 }, ["9 × 9 = 81, write 1, carry 8", "9 × 9 = 81, plus 8 is 89", "891"]],
+  ])("have the worked steps of %s", (_name, q, expected) => {
+    expect(mulColumn.steps(q)).toEqual(expected);
+  });
+
+  it("have worked steps in which every number is right, for every question", () => {
+    const times = (n: number, b: number) => Array.from({ length: b }, () => n).reduce((sum, x) => sum + x, 0);
+    for (const q of every(WIDE)) {
+      const [tens, ones] = [...String(q.a)].map(Number);
+      const [first, second, last, ...more] = mulColumn.steps(q);
+      const [carry, written] = [...String(times(ones, q.b)).padStart(2, "0")].map(Number);
+      const tail = carry === 0 ? "" : `, carry ${carry}`;
+      expect(first).toBe(`${q.b} × ${ones} = ${times(ones, q.b)}, write ${written}${tail}`);
+      expect(second).toBe(`${q.b} × ${tens} = ${times(tens, q.b)}${carry === 0 ? "" : `, plus ${carry} is ${times(tens, q.b) + carry}`}`);
+      expect([last, more]).toEqual([`${times(tens, q.b) + carry}${written}`, []]);
+      expect(last).toBe(String(facts(q).product));
+    }
+    expect(every(WIDE)).toHaveLength(720);
   });
 });
 
@@ -95,8 +123,21 @@ describe("difficulty", () => {
     ["a carry past 100", { a: 31, b: 4 }, { a: 38, b: 4 }],
     ["a zero in the tens of the product", { a: 28, b: 4 }, { a: 26, b: 4 }],
     ["a larger multiplier", { a: 11, b: 2 }, { a: 11, b: 3 }],
+    ["a larger multiplier in the place of a larger number on top", { a: 44, b: 2 }, { a: 11, b: 4 }],
+    ["a carry more than with a larger multiplier", { a: 11, b: 9 }, { a: 15, b: 2 }],
+    ["a product past 100 more than with a carry", { a: 12, b: 8 }, { a: 51, b: 2 }],
+    ["a carry past 100 more than with a zero in the tens", { a: 51, b: 2 }, { a: 58, b: 2 }],
+    ["a zero in the tens more than with a larger multiplier", { a: 81, b: 9 }, { a: 34, b: 3 }],
   ])("rises with %s", (_name, easier, harder) => {
     expect(mulColumn.difficulty(harder)).toBeGreaterThan(mulColumn.difficulty(easier));
+  });
+
+  it.each<[string, MulColumnLimits, MulColumnQuestion, MulColumnQuestion]>([
+    ["no carry and no 100", { ...WIDE, b: { min: 2, max: 4 }, carries: { min: 0, max: 0 }, product: { min: 10, max: 99 } }, { a: 10, b: 2 }, { a: 12, b: 4 }],
+    ["one carry and no 100", { ...WIDE, b: { min: 2, max: 4 }, carries: { min: 1, max: 1 }, product: { min: 10, max: 99 } }, { a: 15, b: 2 }, { a: 13, b: 4 }],
+    ["past 100", { ...WIDE, product: { min: 100, max: 999 } }, { a: 60, b: 2 }, { a: 89, b: 9 }],
+  ])("has the named easiest and hardest question of these limits: %s", (_name, l, easiest, hardest) => {
+    expect(mulColumn.difficultyRange(l)).toEqual({ easiest: mulColumn.difficulty(easiest), hardest: mulColumn.difficulty(hardest) });
   });
 
   it("rises with the limits", () => {

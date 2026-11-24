@@ -44,6 +44,14 @@ describe("the install script", () => {
     expect(existsSync(program())).toBe(true);
   });
 
+  it.each([0o644, 0o400, 0o611])("gives the program its permission to run back, with no fetch, when it has mode %o", async (mode) => {
+    await install(pins());
+    chmodSync(program(), mode);
+    await install(pins(), () => Promise.reject(new Error("fetched again")));
+    expect(statSync(program()).mode & 0o777).toBe(0o755);
+    expect(readFileSync(program(), "utf8")).toBe("a program");
+  });
+
   it("fetches again when the program has other bytes", async () => {
     await install(pins());
     chmodSync(program(), 0o755);

@@ -1,5 +1,5 @@
 // The layout rules of a page. They read the page model and the items, never the templates, so a wrong template fails.
-import { PAPER, PRINT_RULES, type BookItem, type Ink, type PageModel, type Rect, type Region, type RegionRole } from "../contract";
+import { isPrintable, PAPER, PRINT_RULES, type BookItem, type Ink, type PageModel, type Rect, type Region, type RegionRole } from "../contract";
 import { bottom, EPSILON, inside, near, overlaps, right } from "./rects";
 
 const { spineZone, outerMargin, qrMin, reach: CLEAR, answer: ANSWER } = PRINT_RULES;
@@ -10,7 +10,8 @@ const MAX_GAP_ABOVE_ANSWER = 24;
 const QR_CORNER_ROOM = 24;
 const ONE_LINE_HEIGHT = 24;
 
-const name = (region: Region) => `"${region.id.slice(region.id.lastIndexOf("/") + 1)}"`;
+/** The last part of the id of a region, as problems show it. */
+export const regionName = (region: Region) => `"${region.id.slice(region.id.lastIndexOf("/") + 1)}"`;
 const texts = (ink: readonly Ink[]) => ink.flatMap((i) => (i.kind === "text" ? [i.text] : []));
 const size = (n: number) => Math.round(n * 100) / 100;
 
@@ -28,18 +29,23 @@ function checkEdges(page: PageModel, live: Rect, tell: Tell): void {
     for (const rect of [region.rect, ...region.ink.map((i) => i.rect)]) {
       const overLeft = rect.x < live.x - EPSILON;
       const overRight = right(rect) > right(live) + EPSILON;
-      if (spineOnLeft ? overLeft : overRight) tell(`${name(region)} enters the spine zone`);
-      if ((spineOnLeft ? overRight : overLeft) || rect.y < live.y - EPSILON || bottom(rect) > bottom(live) + EPSILON) tell(`${name(region)} enters the 0.5 inch outer margin`);
+      if (spineOnLeft ? overLeft : overRight) tell(`${regionName(region)} enters the spine zone`);
+      if ((spineOnLeft ? overRight : overLeft) || rect.y < live.y - EPSILON || bottom(rect) > bottom(live) + EPSILON) tell(`${regionName(region)} enters the 0.5 inch outer margin`);
     }
   }
 }
 
 function checkInk(page: PageModel, tell: Tell): void {
   for (const region of page.regions) {
-    if (region.ink.some((i) => !inside(i.rect, region.rect))) tell(`the ink of ${name(region)} is outside it`);
-    if (region.ink.some((i) => i.color !== "black")) tell(`${name(region)} has ink that is not black`);
+    if (region.ink.some((i) => !inside(i.rect, region.rect))) tell(`the ink of ${regionName(region)} is outside it`);
+    if (region.ink.some((i) => i.color !== "black")) tell(`${regionName(region)} has ink that is not black`);
+    region.ink.forEach((ink, i) => {
+      if (ink.kind !== "text") return;
+      if (!isPrintable(ink.text)) tell(`${regionName(region)} has the text "${ink.text}", which the fonts cannot print`);
+      if (region.ink.some((other, j) => j !== i && overlaps(ink.rect, other.rect))) tell(`the text "${ink.text}" of ${regionName(region)} is over other ink`);
+    });
     const mustBeEmpty = region.role === "answer" ? region.ink.some((i) => i.kind !== "outline") : (region.role === "reach" || region.role === "work" || region.role === "slot") && region.ink.length > 0;
-    if (mustBeEmpty) tell(`${name(region)} must be empty`);
+    if (mustBeEmpty) tell(`${regionName(region)} must be empty`);
   }
 }
 
@@ -52,8 +58,8 @@ function checkOverlaps(page: PageModel, tell: Tell): void {
       if (sameItem && (a.role === "slot" || b.role === "slot")) continue;
       const reach = a.role === "reach" ? a : b.role === "reach" ? b : null;
       const other = reach === a ? b : a;
-      if (!reach) tell(`${name(a)} and ${name(b)} overlap`);
-      else if (!(sameItem && other.role === "answer")) tell(`${name(other)} enters the reach ${name(reach)}`);
+      if (!reach) tell(`${regionName(a)} and ${regionName(b)} overlap`);
+      else if (!(sameItem && other.role === "answer")) tell(`${regionName(other)} enters the reach ${regionName(reach)}`);
     }
   });
 }
@@ -101,7 +107,7 @@ function checkMarks(page: PageModel, live: Rect, tell: Tell): void {
     "mark-br": (r) => near(right(r), right(live)) && near(bottom(r), bottom(live)),
     "mark-bl": (r) => near(r.x, live.x) && near(bottom(r), bottom(live)),
   };
-  const marks = new Map(page.regions.filter((r) => r.role === "scan-mark").map((r) => [name(r).slice(1, -1), r]));
+  const marks = new Map(page.regions.filter((r) => r.role === "scan-mark").map((r) => [regionName(r).slice(1, -1), r]));
   const wanted = Object.keys(corners);
   if (marks.size !== wanted.length || wanted.some((w) => !marks.has(w))) tell(`the scan marks must be ${wanted.join(", ")}`);
   for (const [id, mark] of marks) if (corners[id] && !corners[id](mark.rect)) tell(`"${id}" is not in its corner`);
@@ -110,17 +116,17 @@ function checkMarks(page: PageModel, live: Rect, tell: Tell): void {
 function checkAnswer(answer: Region, reach: Region, question: Region, item: BookItem, tell: Tell): void {
   const { rect } = answer;
   const needed = Math.max(ANSWER.minWidth, item.answer.value.length * ANSWER.perCharacter + ANSWER.extra);
-  if (rect.w < needed - EPSILON || rect.h < ANSWER.minHeight - EPSILON) tell(`${name(answer)} is ${size(rect.w)} by ${size(rect.h)} points and needs ${size(needed)} by ${ANSWER.minHeight}`);
+  if (rect.w < needed - EPSILON || rect.h < ANSWER.minHeight - EPSILON) tell(`${regionName(answer)} is ${size(rect.w)} by ${size(rect.h)} points and needs ${size(needed)} by ${ANSWER.minHeight}`);
   const space: [boolean, string][] = [
     [rect.x - reach.rect.x < CLEAR.left - EPSILON, "on the left of"],
     [right(reach.rect) - right(rect) < CLEAR.right - EPSILON, "on the right of"],
     [rect.y - reach.rect.y < CLEAR.top - EPSILON, "above"],
     [bottom(reach.rect) - bottom(rect) < CLEAR.bottom - EPSILON, "below"],
   ];
-  for (const [tooSmall, where] of space) if (tooSmall) tell(`${name(reach)} does not leave enough space ${where} ${name(answer)}`);
+  for (const [tooSmall, where] of space) if (tooSmall) tell(`${regionName(reach)} does not leave enough space ${where} ${regionName(answer)}`);
   const gap = rect.y - bottom(question.rect);
   const beside = right(question.rect) <= rect.x + EPSILON || question.rect.x >= right(rect) - EPSILON;
-  if (gap < -EPSILON || gap > MAX_GAP_ABOVE_ANSWER || beside) tell(`${name(answer)} is not directly below its question`);
+  if (gap < -EPSILON || gap > MAX_GAP_ABOVE_ANSWER || beside) tell(`${regionName(answer)} is not directly below its question`);
 }
 
 const ITEM_PARTS = ["slot", "label", "question", "answer", "reach", "work"] as const;
@@ -134,7 +140,7 @@ function checkItem(page: PageModel, item: BookItem, tell: Tell): void {
     else parts.set(role, found[0]);
   }
   const [slot, label, question, answer, reach] = ITEM_PARTS.map((role) => parts.get(role));
-  if (slot) for (const part of parts.values()) if (!inside(part.rect, slot.rect)) tell(`${name(part)} is not inside ${name(slot)}`);
+  if (slot) for (const part of parts.values()) if (!inside(part.rect, slot.rect)) tell(`${regionName(part)} is not inside ${regionName(slot)}`);
   if (label && texts(label.ink).join("") !== String(item.number)) tell(`question ${item.number} has the label "${texts(label.ink).join("")}"`);
   if (question) {
     const { top, sign, bottom: low } = item.face;
@@ -170,6 +176,6 @@ export function checkPage(page: PageModel, items: readonly BookItem[]): string[]
   if (onPage.length === 0) tell("the page has no question");
   for (const item of onPage) checkItem(page, item, tell);
   const known = new Set(onPage.map((i) => i.id));
-  for (const region of page.regions) if (region.item !== null && !known.has(region.item)) tell(`${name(region)} belongs to no question of this page`);
+  for (const region of page.regions) if (region.item !== null && !known.has(region.item)) tell(`${regionName(region)} belongs to no question of this page`);
   return problems;
 }

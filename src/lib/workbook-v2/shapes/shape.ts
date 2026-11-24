@@ -12,8 +12,11 @@ export interface Shape<L = unknown, Q = unknown> {
   /** One question inside the limits. The seed alone decides which. */
   generate(limits: L, seed: string): Item<Q>;
   answer(question: Q): Answer;
-  /** The answer again, from code that shares nothing with `answer` and never sees its result. */
-  solveAgain(question: Q): Answer;
+  /**
+   * The question and its answer, read from the rows that are printed (top to bottom, each from left to right), or null
+   * when they print no question of this shape. It shares no code with `generate`, `answer` and `face`.
+   */
+  solveAgain(rows: readonly string[]): Item<Q> | null;
   /** The worked steps that a parent reads. The last one is the answer. */
   steps(question: Q): string[];
   /** A score: more is harder. Scores compare only inside one shape. */

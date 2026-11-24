@@ -6,6 +6,7 @@ import { digitPlaces, TEMPLATES, type PageTemplate } from "../layout/templates";
 import { SHAPES, type Shape, type ShapeLibrary } from "../shapes";
 import { isRecord } from "../shapes/shape";
 import { FieldReader, isId, type Fields } from "./fields";
+import { plainCopy } from "./plain";
 
 export const SNAPSHOT_FORMAT = 1;
 
@@ -15,8 +16,13 @@ export interface SnapshotTopic { id: string; code: string; title: string }
 export interface SnapshotSheet { id: string; topic: SnapshotTopic; firstPage: number; front: SnapshotSide; back: SnapshotSide }
 export interface Snapshot { id: string; level: { id: string; name: string }; sheets: ReadonlyMap<string, SnapshotSheet> }
 
+export type TemplateLibrary = ReadonlyMap<string, PageTemplate>;
+/** What the rows and the sides of a snapshot name. */
+interface Libraries { shapes: ShapeLibrary; templates: TemplateLibrary }
+
 export type SnapshotResult = { ok: true; snapshot: Snapshot; hash: string } | { ok: false; problems: string[] };
 
+const LEVEL_LABEL = /^[1-9]\d?$/;
 const SIDES: readonly Side[] = ["front", "back"];
 const sheetPlace = (id: string) => `Sheet "${id}"`;
 
@@ -56,9 +62,9 @@ function checkRowsRise(r: FieldReader, place: string, rows: readonly SnapshotRow
   });
 }
 
-function checkFit(r: FieldReader, place: string, template: PageTemplate, rows: readonly SnapshotRow[]): void {
+function checkFit(r: FieldReader, place: string, side: Side, template: PageTemplate, rows: readonly SnapshotRow[]): void {
   const asked = rows.reduce((sum, row) => sum + row.items, 0);
-  const places = template.sides.front.places.length;
+  const places = template.sides[side].places.length;
   if (asked > places) r.problem(place, `${asked} questions do not fit the template "${template.id}", which has ${places} places`);
   for (const row of rows) {
     const worst = row.shape.worstCase(row.limits);
@@ -70,29 +76,30 @@ function checkFit(r: FieldReader, place: string, template: PageTemplate, rows: r
   }
 }
 
-function readSide(r: FieldReader, sheet: string, side: Side, raw: unknown, shapes: ShapeLibrary): SnapshotSide | null {
+function readSide(r: FieldReader, sheet: string, side: Side, raw: unknown, { shapes, templates }: Libraries): SnapshotSide | null {
   const place = `${sheet}, ${side} side`;
   const fields = r.object(place, raw, ["instruction", "template", "rows"]);
   if (!fields) return null;
   const instruction = r.text(place, fields, "instruction", PRINT_RULES.maxInstructionCharacters);
-  const template = typeof fields.template === "string" ? TEMPLATES.get(fields.template) : undefined;
+  const template = typeof fields.template === "string" ? templates.get(fields.template) : undefined;
   if (!template) r.problem(place, `there is no template ${JSON.stringify(fields.template)}`);
   const rows = r.list(place, fields, "rows").map((row, i) => readRow(r, place, row, i, shapes)).filter((row) => row !== null);
   checkRowsRise(r, place, rows);
-  if (template) checkFit(r, place, template, rows);
+  if (template) checkFit(r, place, side, template, rows);
   return instruction !== null && template ? { instruction, template, rows } : null;
 }
 
 type ReadSheet = Omit<SnapshotSheet, "topic">;
 
-function readSheet(r: FieldReader, raw: unknown, index: number, shapes: ShapeLibrary): ReadSheet | null {
+function readSheet(r: FieldReader, raw: unknown, index: number, libraries: Libraries): ReadSheet | null {
   const place = nameOf("Sheet", raw, index);
   const fields = r.object(place, raw, ["id", "firstPage", "front", "back"]);
   if (!fields) return null;
   const id = r.id(place, fields);
   const firstPage = r.count(place, fields, "firstPage");
   if (firstPage !== null && firstPage % 2 === 0) r.problem(place, "firstPage must be odd, because the front of a sheet is a right-hand page");
-  const [front, back] = SIDES.map((side) => readSide(r, place, side, fields[side], shapes));
+  if (firstPage !== null && !Number.isSafeInteger(firstPage + 1)) r.problem(place, "firstPage leaves no page number for the back");
+  const [front, back] = SIDES.map((side) => readSide(r, place, side, fields[side], libraries));
   r.unique("row id", [...(front?.rows ?? []), ...(back?.rows ?? [])].map((row) => row.id), place);
   return id !== null && firstPage !== null && front && back ? { id, firstPage, front, back } : null;
 }
@@ -106,9 +113,9 @@ function readTopic(r: FieldReader, raw: unknown, index: number, levelName: strin
   const id = r.id(name, fields);
   const title = r.text(name, fields, "title", PRINT_RULES.maxTitleCharacters);
   const code = r.text(name, fields, "code", 8);
-  const prefix = `${levelName}-`;
-  const codeIsGood = code !== null && code.startsWith(prefix) && /^[1-9]\d?$/.test(code.slice(prefix.length));
-  if (code !== null && !codeIsGood) r.problem(name, `the code "${code}" must be the level name, a dash and a number, such as ${prefix}1`);
+  const [label, number, ...more] = (code ?? "").split("-");
+  const codeIsGood = code !== null && label === levelName && /^[1-9]\d?$/.test(number ?? "") && more.length === 0;
+  if (code !== null && !codeIsGood) r.problem(name, `the code "${code}" must be the level name, a dash and a number, such as ${levelName}-1`);
   const sheets: string[] = [];
   for (const sheet of r.list(name, fields, "sheets")) {
     if (typeof sheet === "string") sheets.push(sheet);
@@ -122,6 +129,7 @@ function readLevel(r: FieldReader, fields: Fields): Snapshot["level"] | null {
   if (!level) return null;
   const id = r.id("The level", level);
   const name = r.text("The level", level, "name", 8);
+  if (name !== null && !LEVEL_LABEL.test(name)) r.problem("The level", `name must be a number from 1 to 99, and it is "${name}"`);
   return id !== null && name !== null ? { id, name } : null;
 }
 
@@ -144,18 +152,20 @@ function joinTopics(r: FieldReader, topics: readonly ReadTopic[], sheets: readon
   return joined;
 }
 
-export function validateSnapshot(raw: unknown, shapes: ShapeLibrary = SHAPES): SnapshotResult {
-  if (!isRecord(raw)) return { ok: false, problems: ["The snapshot must be an object."] };
-  const r = new FieldReader();
+export function validateSnapshot(given: unknown, shapes: ShapeLibrary = SHAPES, templates: TemplateLibrary = TEMPLATES): SnapshotResult {
+  if (!isRecord(given)) return { ok: false, problems: ["The snapshot must be an object."] };
   const place = "The snapshot";
-  const fields = r.object(place, raw, ["format", "id", "level", "topics", "sheets"]);
+  const plain = plainCopy(place, given);
+  if (!plain.ok) return plain;
+  const r = new FieldReader();
+  const fields = r.object(place, plain.value, ["format", "id", "level", "topics", "sheets"]);
   if (!fields) return { ok: false, problems: r.problems };
   if (fields.format !== SNAPSHOT_FORMAT) r.problem(place, `format must be ${SNAPSHOT_FORMAT}`);
   const id = r.id(place, fields);
   const level = readLevel(r, fields);
   const rawSheets = r.list(place, fields, "sheets");
   const topics = level ? r.list(place, fields, "topics").map((t, i) => readTopic(r, t, i, level.name)).filter((t) => t !== null) : [];
-  const sheets = rawSheets.map((s, i) => readSheet(r, s, i, shapes)).filter((s) => s !== null);
+  const sheets = rawSheets.map((s, i) => readSheet(r, s, i, { shapes, templates })).filter((s) => s !== null);
   r.unique("topic id", topics.map((t) => t.id));
   r.unique("topic code", topics.map((t) => t.code));
   r.unique("sheet id", sheets.map((s) => s.id));
@@ -163,5 +173,5 @@ export function validateSnapshot(raw: unknown, shapes: ShapeLibrary = SHAPES): S
   const known = new Set(rawSheets.filter(isRecord).map((s) => s.id).filter((s) => typeof s === "string"));
   const joined = joinTopics(r, topics, sheets, known);
   if (r.problems.length > 0 || id === null || level === null) return { ok: false, problems: r.problems };
-  return { ok: true, snapshot: { id, level, sheets: joined }, hash: sha256(canonicalJson(raw)) };
+  return { ok: true, snapshot: { id, level, sheets: joined }, hash: sha256(canonicalJson(plain.value)) };
 }
