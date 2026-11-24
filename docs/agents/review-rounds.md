@@ -25,7 +25,7 @@ Do not start another Codex round unless Savar asks. Why: on UNI-150, Codex revie
 
 ## Fix briefs
 
-- **Name the class, not only the case.** For each finding, write one sentence that says what kind of mistake it is. The fixer searches the code for each other place with that mistake and reports the list: place, affected or not, why.
+- **Name the class, not only the case.** For each finding, write one sentence that says what kind of mistake it is. The fixer searches the code for each other place with that mistake and reports the list: place, affected or not, why. The fixer changes another place only when the change is needed and cannot turn a stop into a continue or an error into "file missing"; otherwise it only reports the place. Why: two sweeps in PR #1264 and PR #1266 made a damaged file look like a missing one, and a person's work could be overwritten.
 - **Test the class.** Use a table test or a `fast-check` property. The reviewer's reproduction is one row of it.
 - **Second finding in one class: stop adding case-by-case code.** Choose one of these, in this order: remove the feature, use one shared helper, change the data so that the mistake is not possible. The reproduction still becomes a test row, and the class gets a property test. Why: a third case patch usually leaves a fourth case.
 - **Keep the reproductions.** Put them in a private folder outside git that stays after a restart (not `/tmp` or `/private/tmp`). The fixer runs the reproductions from every earlier round.
