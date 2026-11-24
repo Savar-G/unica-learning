@@ -1163,6 +1163,7 @@ const GROW = new Set<SlotName>(["challenge", "show-what-you-know", "level-test"]
 
 // ---------- Pages ----------
 
+const bindingSide = (page: DraftPage) => page.number % 2 ? "left" : "right";
 const scanMarks = `<i class="scan tl" ${mark.scanMark("tl")}></i><i class="scan tr" ${mark.scanMark("tr")}></i><i class="scan bl" ${mark.scanMark("bl")}></i><i class="scan br" ${mark.scanMark("br")}></i>`;
 const wordmark = `<span class="wm"><span>Unica Learning</span><i></i></span>`;
 
@@ -1214,7 +1215,7 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
   // Finished rows share the remaining page space. Two-method pages keep their explicit writing allocation unless
   // their existing plan requires stretching. No new question or answer enters this rendering step.
   const stretch = c.consistentLayout && c.fillingComplete && (c.atMaximum || !c.blocks.some(b => b.slot === "solve-it-two-ways")) ? " stretch" : "";
-  return `<div class="pg ${band.name}${c.consistentLayout ? " consistent" : ""}${stretch} f-${familyOf(page, c)}" data-page-type="${page.type}" style="--work-min:${c.consistentLayout ? workMinimum(c.level) : 64}px">${scanMarks}<div class="frame">${header}<main class="ct" style="--extra-gap:${Math.max(0,Math.min(48,c.extraGap ?? 0))}px" ${mark.slot("content")}>${blocks}</main></div>${footer(page, parts, c.id)}</div>`;
+  return `<div data-spine="${bindingSide(page)}" class="pg ${band.name}${c.consistentLayout ? " consistent" : ""}${stretch} f-${familyOf(page, c)}" data-page-type="${page.type}" style="--work-min:${c.consistentLayout ? workMinimum(c.level) : 64}px">${scanMarks}<div class="frame">${header}<main class="ct" style="--extra-gap:${Math.max(0,Math.min(48,c.extraGap ?? 0))}px" ${mark.slot("content")}>${blocks}</main></div>${footer(page, parts, c.id)}</div>`;
 }
 
 /** Each question's printed number ("3."), marked for the layout checks (src/lib/workbook-layout-check.ts). */
@@ -1256,7 +1257,7 @@ function coverPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, { 
   const plan = book.pages.find(p => p.content?.kind === "how-plan")?.content;
   const topics = plan?.kind === "how-plan" ? [...new Set(plan.rows.map(row => row.topic))].slice(0, 3) : [];
   const path = topics.length ? `<section class="card cover-plan" ${mark.slot("cover-plan")}><span class="lab" ${mark.slot("cover-plan-label")}>From ${escape(name)}'s plan</span><ul>${topics.map((topic, i) => `<li ${mark.slot(`cover-topic-${i}`)}><i></i><span>${escape(topic)}</span></li>`).join("")}</ul></section>` : "";
-  return `<div class="pg mid">${scanMarks}<div class="cv" ${mark.slot("page")}><div class="top">${wordmark}<span class="wn">Workbook ${c.workbook} · 10 days</span></div>${UNICA_MARK}`
+  return `<div data-spine="${bindingSide(page)}" class="pg mid">${scanMarks}<div class="cv" ${mark.slot("page")}><div class="top">${wordmark}<span class="wn">Workbook ${c.workbook} · 10 days</span></div>${UNICA_MARK}`
     + `<div class="for" ${mark.slot("made-for")}>${escape(coverForLine(name, c.level))}</div>`
     + `<h1 ${mark.slot("cover-title")}>${escape(c.title[0])}<br><span class="hl">${escape(c.title[1])}</span></h1>`
     + `<div class="card made" ${mark.slot("made-from")}><span class="lab">${escape(label)}</span><p>${escape(c.sentence.replaceAll(c.child, name))}</p></div>${path}`
@@ -1284,14 +1285,14 @@ function howPlanPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, 
     { chip: { label: "Stuck?", cls: "c-ni", icon: ICONS.book }, text: "Ask for help using Maya, the AI Teaching Assistant." },
     { chip: { label: "Fix it", cls: "c-fx", icon: ICONS.wrench }, text: c.workbook === 1 ? "Scan finished pages. Questions your child needs to practise can return in the next workbook." : "Anything your child got wrong in the previous workbook comes back as new questions." },
   ];
-  return `<div class="pg mid">${scanMarks}<div class="hp" ${mark.slot("page")}><div class="top"><span>HOW IT WORKS · ${escape(c.child.toUpperCase())}'S PLAN</span><span>WORKBOOK ${c.workbook}</span></div>`
+  return `<div data-spine="${bindingSide(page)}" class="pg mid">${scanMarks}<div class="hp" ${mark.slot("page")}><div class="top"><span>HOW IT WORKS · ${escape(c.child.toUpperCase())}'S PLAN</span><span>WORKBOOK ${c.workbook}</span></div>`
     + `<table><thead><tr><th style="width:96px">DAY</th><th>TOPIC</th><th style="width:96px">PAGES${times.size ? "<br>REQUIRED TIME" : ""}</th><th style="width:56px;text-align:right">DONE</th></tr></thead><tbody>${rows}</tbody></table>`
     + `<div class="how"><span class="lab">How it works</span><div class="hw">${how.map((h, i) => `<div>${chipHtml(h.chip)}<p ${mark.slot(`how-${i}`)}>${escape(h.text).replace("unicalearning.com/account", `<span class="scan-address" ${mark.slot("scan-address")}>unicalearning.com/account</span>`)}</p></div>`).join("")}</div></div>`
     + `</div>${footer(page, parts, c.id)}</div>`;
 }
 
 function blankPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, { kind: "blank" }>): string {
-  return `<div class="pg mid">${scanMarks}${footer(page, parts, c.id)}</div>`;
+  return `<div data-spine="${bindingSide(page)}" class="pg mid">${scanMarks}${footer(page, parts, c.id)}</div>`;
 }
 
 // ---------- The fit check ----------

@@ -82,6 +82,17 @@ describe.skipIf(!chromium)("calibration on real printed pages", () => {
     expect(checked).toBeGreaterThan(0);
   }, 240_000);
 
+  it("stores the inset spine marks for both page parities", async () => {
+    const pages = await renderedPages("U16");
+    expect(new Set(pages.map((p) => p.number % 2))).toEqual(new Set([0, 1]));
+    for (const { number, contract } of pages) {
+      const { width } = contract.coordinates.image;
+      const { x: scale } = contract.coordinates.scale, { tl, tr, bl, br } = contract.marks.points;
+      expect([tl.x, bl.x]).toEqual(Array(2).fill((number % 2 ? 48 : 22) * scale));
+      expect([tr.x, br.x]).toEqual(Array(2).fill(width - (number % 2 ? 22 : 48) * scale));
+    }
+  }, 120_000);
+
   it("a real page's photo does not calibrate against another real page's image", async () => {
     // Disproved if the printed-page check passes any page with the same marks. The template's marks are the same on all pages.
     const [one, two] = await renderedPages("U16");

@@ -1,10 +1,10 @@
 import sharp from "sharp";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { QuestionPackage } from "@/lib/question-package";
-import { applyTransform, perspectiveTransform } from "@/lib/scan-calibration";
+import { applyTransform, perspectiveTransform, photoPoint } from "@/lib/scan-calibration";
 import { isFenceRefusal, readScanPreview, runScanCrops, scanPartPath, type ScanCropStore, type ScanFrame } from "@/lib/scan-crops";
 import { memoryScanCropStore } from "@/lib/scan-crops-memory";
-import { blankPage, cropCut, cutOut, drawBoxOutline, drawDigit, drawMark, drawPrintedContent, drawQr, greyRaster, pagePng, photoJpeg, photographed, readDigit, uprightCorners } from "@/lib/scan-synthetic";
+import { blankPage, cropCut, curled, cutOut, drawBoxOutline, drawDigit, drawMark, drawPrintedContent, drawQr, fillBox, greyRaster, pagePng, photoJpeg, photographed, readDigit, uprightCorners } from "@/lib/scan-synthetic";
 import { SCAN_MARKS, sha256Hex, type Box, type PagePrintContract, type Point } from "@/lib/workbook-print-contract";
 import { pageUrl } from "@/lib/workbook-render";
 
@@ -437,4 +437,100 @@ describe("a question the photo's edge cuts off (#912)", () => {
     const preview = await runScanCrops(setup().store, ref, token(1));
     expect(preview.status === "ready" && preview.cutOff).toBeFalsy();
   });
+});
+
+describe("readable QR with hidden marks", () => {
+  const size = { width: 1500, height: 1900 };
+  const corners = uprightCorners(size, { width: W, height: H }, 70);
+  const code = { x: 90, y: 1430, width: 170, height: 170 };
+  const answers = ANSWERS.map((a) => ({ ...a, box: { ...a.box, height: 225 } }));
+  const fixture = (other = false, written = false) => {
+    const r = blankPage(W, H);
+    for (const m of SCAN_MARKS) drawMark(r, m, POINTS[m]);
+    drawPrintedContent(r);
+    fillBox(r, 1010, 1430, 190, 190, 248);
+    drawQr(r, code, pageUrl(other ? "other-page-token-001" : TOKEN));
+    for (const [i, a] of answers.entries()) {
+      for (let k = 0; k < 4; k++) drawDigit(r, { x: a.box.x + 24 + k * 49, y: a.box.y - 56, width: 44, height: 42 }, other ? 8 - k : (k + i) % 4);
+      // One answer has no printed outline. Its digits above it locate the box.
+      if (i !== 2) drawBoxOutline(r, a.box);
+      if (written) drawDigit(r, a.box, other ? (a.digit + 3) % 10 : a.digit);
+    }
+    return r;
+  };
+
+  async function scan(sheet: ReturnType<typeof fixture>, cover = false, curl = 0) {
+    const printed = await pagePng(fixture());
+    const photo = photographed(sheet, size, corners, { shade: 0.12 });
+    const folded = curl ? curled(photo, curl, { edge: "right", reach: 0.65 }) : photo;
+    // The footer lies flat underneath the curl.
+    if (curl) folded.data.set(photo.data.subarray(1450 * size.width), 1450 * size.width);
+    const bytes = await photoJpeg(folded);
+    const questions: ScanFrame["page"]["questions"] = answers.map((a, i) => ({
+      number: i + 1, package: pkg(`q${i + 1}`), regions: [{ id: "a", kind: "box", box: a.box }],
+    }));
+    const m = setup({ bytes, questions, contract: { ...contract, fingerprints: { ...contract.fingerprints, image: await sha256Hex(printed) } } });
+    m.printed.set("page.png", printed);
+    if (cover) {
+      m.photos.get(PHOTO)!.frame.page.others = ["other.png"];
+      m.printed.set("other.png", await pagePng(fixture(true)));
+    }
+    const preview = await runScanCrops(m.store, ref, token(1));
+    return { m, preview, result: (await m.store.calibration(ref))?.result };
+  }
+
+  function hideRight(sheet: ReturnType<typeof fixture>) {
+    for (let y = 6; y < H; y += 18) fillBox(sheet, W - 64, y, 64, 13, 20);
+  }
+
+  it("crops every question behind hidden marks, including an outline-less answer", async () => {
+    const sheet = fixture(false, true);
+    hideRight(sheet);
+    // Displace the far outlined box by (+6, -5) print-image pixels.
+    const far = answers[5];
+    fillBox(sheet, far.box.x - 3, far.box.y - 7, far.box.width + 14, far.box.height + 14, 248);
+    const shifted = { ...far.box, x: far.box.x + 6, y: far.box.y - 5 };
+    drawBoxOutline(sheet, shifted);
+    drawDigit(sheet, shifted, far.digit);
+    const { m, preview, result } = await scan(sheet);
+    expect(preview.status).toBe("ready");
+    expect(result?.calibration).toMatchObject({ placedBy: "qr", hiddenMarks: ["tr", "br"] });
+    expect(result?.held, JSON.stringify(result?.snaps)).toBeUndefined();
+    expect(result?.crops?.map((c) => c.number)).toEqual([1, 2, 3, 4, 5, 6]);
+    const snap = result?.snaps?.find((s) => s.number === 6);
+    expect(snap).toBeDefined();
+    const c = result!.crops!.find((c) => c.number === 6)!;
+    const pageSize = { width: W, height: H };
+    const projected = perspectiveTransform([{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H }, { x: 0, y: H }], corners)!;
+    const truth = applyTransform(projected, shifted);
+    const error = (box: Box) => {
+      const p = photoPoint(result!.calibration!, pageSize, box);
+      return Math.hypot(p.x - truth.x, p.y - truth.y);
+    };
+    expect(error(far.box)).toBeGreaterThan(4);
+    expect(error(c.box)).toBeLessThanOrEqual(4);
+    expect(readDigit(await cropRaster(m, "crop-6", token(1)), cropCut(c.box), c.box)).toBe(far.digit);
+  }, 30_000);
+
+  it("holds only the questions under a same-template sheet (#975)", async () => {
+    const sheet = fixture(false, true), other = fixture(true, true);
+    for (let y = 0; y < H; y++) sheet.data.set(other.data.subarray(y * W + 790, (y + 1) * W), y * W + 790);
+    hideRight(sheet);
+    const { m, preview, result } = await scan(sheet, true);
+    expect(preview.status).toBe("ready");
+    expect(result?.held).toEqual([{ number: 3, issue: "covered" }, { number: 6, issue: "covered" }]);
+    expect(result?.crops?.map((c) => c.number)).toEqual([1, 2, 4, 5]);
+    for (const c of result!.crops!) {
+      expect(readDigit(await cropRaster(m, c.part, token(1)), cropCut(c.box), c.box)).toBe(answers[c.number - 1].digit);
+    }
+  }, 30_000);
+
+  it("files the code of an unplaceable curl with the original photo and no crops", async () => {
+    const sheet = fixture(false, true);
+    hideRight(sheet);
+    const { preview, result } = await scan(sheet, false, 700);
+    expect(preview).toMatchObject({ status: "ready", original: true, crops: [] });
+    expect(result?.review).toBeDefined();
+    expect(result?.calibration).toBeUndefined();
+  }, 30_000);
 });

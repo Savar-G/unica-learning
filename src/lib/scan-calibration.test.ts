@@ -5,6 +5,7 @@ import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import {
   CALIBRATION_VERSION,
   applyTransform,
+  answerPlacement,
   calibratePhoto,
   calibrationForPhoto,
   cropBox,
@@ -162,15 +163,15 @@ describe("refusals", () => {
     return r;
   };
 
-  it("refuses a photo with three marks hidden: too few of the page's own marks to place it", async () => {
-    // Disproved if one mark, the code and a guess give a map.
+  it("places a photo with all four marks hidden using the code and print", async () => {
+    // No marks pin the page. The code and matching print still place it.
     const r = covered("tl");
-    for (const m of ["tr", "bl"] as const) {
+    for (const m of ["tr", "bl", "br"] as const) {
       const p = POINTS[m];
       fill(r, m === "bl" ? p.x - 4 : p.x - 34, m === "tr" ? p.y - 4 : p.y - 34, 38, 38, 248);
     }
     const photo = await stored(photographed(r, SIZE, square(SIZE, 60)));
-    expect(calibratePhoto({ photo, printed, contract: available, pageLink: LINK }).status).toBe("refused");
+    expect(calibratePhoto({ photo, printed, contract: available, pageLink: LINK })).toMatchObject({ status: "calibrated", calibration: { hiddenMarks: [...SCAN_MARKS] } });
   }, 20_000);
 
   it("refuses a blank photo", () => {
@@ -198,34 +199,34 @@ describe("refusals", () => {
     expect(digitsRead(photo, result.calibration)).toEqual(wanted);
   }, 40_000);
 
-  it("still refuses a bowed photo of another page (#912)", async () => {
+  it("holds a bowed photo of another page (#912)", async () => {
     // Disproved if a bend can make another page's ink follow this page.
     const other = page();
     for (const m of SCAN_MARKS) mark(other, m);
     for (let i = 0; i < 40; i++) fill(other, 200 + (i * 37) % 800, 500 + (i * 71) % 900, 60, 14);
     drawQr(other, QR_BOX, LINK);
     const photo = await stored(bowed(photographed(other, SIZE, square(SIZE, 60)), 14));
-    expect(calibratePhoto({ photo, printed, contract: available, pageLink: LINK })).toEqual({ status: "refused", reason: "page-mismatch" });
+    expect(calibratePhoto({ photo, printed, contract: available, pageLink: LINK })).toEqual({ status: "review", reason: "page-mismatch" });
   }, 20_000);
 
-  it("refuses a photo of another page: its marks line up, but its ink does not follow the printed page", async () => {
+  it("holds a photo of another page: its marks line up, but its ink does not follow the printed page", async () => {
     // Disproved if four good marks are enough, whatever the page.
     const other = page();
     for (const m of SCAN_MARKS) mark(other, m);
     for (let i = 0; i < 40; i++) fill(other, 200 + (i * 37) % 800, 500 + (i * 71) % 900, 60, 14);
     drawQr(other, QR_BOX, LINK);
     const photo = await stored(photographed(other, SIZE, square(SIZE, 60)));
-    expect(calibratePhoto({ photo, printed, contract: available, pageLink: LINK })).toEqual({ status: "refused", reason: "page-mismatch" });
+    expect(calibratePhoto({ photo, printed, contract: available, pageLink: LINK })).toEqual({ status: "review", reason: "page-mismatch" });
   }, 20_000);
 
-  it("refuses when two ways up fit alike: the marks alone cannot say which way is up", async () => {
+  it("holds a photo when two ways up fit alike: the marks alone cannot say which way is up", async () => {
     // A page with a point of symmetry: a half turn prints the same ink.
     const even = page();
     for (const m of SCAN_MARKS) mark(even, m);
     for (let line = 0; line < 8; line++) { fill(even, 200, 200 + line * 60, 300, 20); fill(even, W - 500, H - 220 - line * 60, 300, 20); }
     drawQr(even, QR_BOX, LINK);
     const photo = await stored(photographed(even, SIZE, square(SIZE, 60)));
-    expect(calibratePhoto({ photo, printed: even, contract: available, pageLink: LINK })).toEqual({ status: "refused", reason: "orientation-unclear" });
+    expect(calibratePhoto({ photo, printed: even, contract: available, pageLink: LINK })).toEqual({ status: "review", reason: "orientation-unclear" });
   }, 20_000);
 });
 
@@ -267,10 +268,10 @@ describe("a small QR code that the upload reads zoomed (#912)", () => {
     expect(calibratePhoto({ photo, printed: smallPrinted(), contract: available, pageLink: LINK })).toEqual({ status: "refused", reason: "qr-mismatch" });
   }, 40_000);
 
-  it("still refuses this page's small code where the page did not print it", async () => {
+  it("holds this page for review when its code moved", async () => {
     // Disproved if the enlarged read takes a code from anywhere near the place: moved by its own size, it is elsewhere.
     const { photo } = await softPhoto(smallQrPage({ ...SMALL_QR, x: SMALL_QR.x + SMALL_QR.width }, LINK), 1, 60);
-    expect(calibratePhoto({ photo, printed: smallPrinted(), contract: available, pageLink: LINK })).toEqual({ status: "refused", reason: "qr-mismatch" });
+    expect(calibratePhoto({ photo, printed: smallPrinted(), contract: available, pageLink: LINK })).toEqual({ status: "review", reason: "qr-mismatch" });
   }, 40_000);
 });
 
@@ -413,10 +414,10 @@ describe("a sheet held up, cut by the photo's edge, or in shadow (#912)", () => 
     expect(straight.data[Math.round(H * 0.073) * W + Math.round(W * 0.1)]).toBeLessThan(110);
   }, 60_000);
 
-  it.each([45, 70])("still refuses another page held the same way, curled by %i pixels", async (amount) => {
+  it.each([45, 70])("holds other print for review held the same way, curled by %i pixels", async (amount) => {
     // Disproved if aligning a page part by part lets another page's print follow this one.
     const photo = await stored(curled(photographed(otherPage(), SIZE, square(SIZE, 60)), amount));
-    expect(calibrate(photo)).toEqual({ status: "refused", reason: "page-mismatch" });
+    expect(calibrate(photo)).toEqual({ status: "review", reason: "page-mismatch" });
   }, 60_000);
 
   it("this page upside down and curled is read upside down or refused: the way up stays unambiguous", async () => {
@@ -449,9 +450,9 @@ describe("a sheet held up, cut by the photo's edge, or in shadow (#912)", () => 
     for (const { box } of ANSWERS) expect(cropInPhoto(result.calibration, contract, box)).toBe(true);
   }, 60_000);
 
-  it("refuses the same cut photo of another page carrying this page's code", async () => {
+  it("holds the cut photo carrying this page's code over other print for review", async () => {
     // Disproved if the QR code alone places and passes a sheet whose print is not this page's.
-    expect((await calibrate(await cornerCut(otherPage()))).status).toBe("refused");
+    expect((await calibrate(await cornerCut(otherPage()))).status).toBe("review");
   }, 60_000);
 
   it.each(SCAN_MARKS)("a photo with mark %s hidden in a shadow is placed by its code and print, and every crop reads its own answer (#912)", async (m) => {
@@ -477,14 +478,17 @@ describe("a sheet held up, cut by the photo's edge, or in shadow (#912)", () => 
   /** The answer box nearest the bottom-left mark. */
   const nearBl = ANSWERS[8];
 
-  it("refuses a page whose hidden corner and the answer beside it lie under another sheet with other writing (#966 review)", async () => {
+  it("places a page with a local covering sheet and flags the covered answer", async () => {
     // Disproved if the covered box is cropped: its crop would hold the other sheet's digit as this page's answer.
     const sheet = blHidden();
     const other = (nearBl.digit + 4) % 10;
     fill(sheet, 0, nearBl.box.y - 20, nearBl.box.x + nearBl.box.width + 16, H - nearBl.box.y + 20, 248);
     drawDigit(sheet, { x: nearBl.box.x + 10, y: nearBl.box.y + 10, width: nearBl.box.width - 20, height: nearBl.box.height - 20 }, other);
-    const result = calibrateWithAnswers(await stored(photographed(sheet, SIZE, square(SIZE, 60), { shade: 0.2 })));
-    expect(result).toEqual({ status: "refused", reason: "corner-covered" });
+    const photo = await stored(photographed(sheet, SIZE, square(SIZE, 60), { shade: 0.2 }));
+    const result = calibrateWithAnswers(photo);
+    if (result.status !== "calibrated") throw new Error(result.reason);
+    const place = answerPlacement({ photo, printed: textPrinted, calibration: result.calibration, writing: ANSWERS.map((a) => a.box) });
+    expect(place(nearBl.box, true).issue).toBeDefined();
   }, 60_000);
 
   it("accepts a real shadow over the hidden corner and its answers, and the crops beside it read their own digits (#966 review)", async () => {
@@ -496,11 +500,13 @@ describe("a sheet held up, cut by the photo's edge, or in shadow (#912)", () => 
     expect(answersRead(photo, result.calibration)).toEqual(wanted);
   }, 60_000);
 
-  it.each([45, 70])("a curled sheet with its hidden corner on the curled edge (%i) is refused or read right, never misaligned (#966 review)", async (amount) => {
+  it.each([45, 70])("a curled sheet with its hidden corner on the curled edge (%i) holds misaligned questions (#966 review)", async (amount) => {
     const photo = await stored(curled(photographed(blHidden(), SIZE, square(SIZE, 60), { shade: 0.2 }), amount, { edge: "left" }));
     const result = calibrateWithAnswers(photo);
-    if (result.status === "calibrated") expect(answersRead(photo, result.calibration)).toEqual(wanted);
-    else expect(result.status).toBe("refused");
+    if (result.status !== "calibrated") { expect(result.status).toBe("review"); return; }
+    const place = answerPlacement({ photo, printed: textPrinted, calibration: result.calibration, writing: ANSWERS.map((a) => a.box) });
+    const placed = place(nearBl.box, true);
+    if (!placed.issue) expect(readDigit(brightened(cropBox(photo, result.calibration, contract, placed.box)), cropCut(placed.box), placed.box)).toBe(nearBl.digit);
   }, 60_000);
 
   it("the same cut photo with a mark in view covered is placed by the code, two own marks found, every crop its own answer", async () => {
@@ -516,11 +522,11 @@ describe("a sheet held up, cut by the photo's edge, or in shadow (#912)", () => 
     expect(answersRead(photo, result.calibration)).toEqual(wanted);
   }, 60_000);
 
-  it("refuses the cut photo when a second mark in view is covered too: one own mark is too few", async () => {
+  it("places a cut photo with only one visible mark", async () => {
     const sheet = textPage(true);
     fill(sheet, POINTS.bl.x - 4, POINTS.bl.y - 34, 38, 38, 248);
     fill(sheet, POINTS.br.x - 34, POINTS.br.y - 34, 38, 38, 248);
-    expect(calibrate(await cornerCut(sheet)).status).toBe("refused");
+    expect(calibrate(await cornerCut(sheet))).toMatchObject({ status: "calibrated", calibration: { missingMarks: ["tl"], hiddenMarks: ["br", "bl"] } });
   }, 60_000);
 
   it("requires a near-edge mark whose inward arms are fully in the photo", async () => {
@@ -575,9 +581,9 @@ describe("a sheet held up, cut by the photo's edge, or in shadow (#912)", () => 
     }
   }, 60_000);
 
-  it.each(SHADOWS)("still refuses another page with a shadow $name", async ({ from, to }) => {
+  it.each(SHADOWS)("holds other print for review with a shadow $name", async ({ from, to }) => {
     const photo = await stored(shadowed(photographed(otherPage(), SIZE, square(SIZE, 60)), from, to, 0.5, 8));
-    expect(calibrate(photo)).toEqual({ status: "refused", reason: "page-mismatch" });
+    expect(calibrate(photo)).toEqual({ status: "review", reason: "page-mismatch" });
   }, 60_000);
 
   /**
@@ -643,10 +649,10 @@ describe("a sheet held up, cut by the photo's edge, or in shadow (#912)", () => 
     expect(answersRead(photo, result.calibration)).toEqual(wanted);
   }, 60_000);
 
-  it.each([false, true])("refuses the coil-bound page when another sheet with other answers covers its right half (its toner shining: %s)", async (shine) => {
+  it.each([false, true])("holds a coil-bound page when the other sheet prevents a print fit (toner shining: %s)", async (shine) => {
     // Disproved if the code and the left half place the page while the boxes on the right show the other sheet's digits.
     const photo = await stored(photographed(coilPage({ shine, cover: true }), SIZE, square(SIZE, 60)));
-    expect(calibrateCoil(photo).status).toBe("refused");
+    expect(calibrateCoil(photo).status).toBe("review");
   }, 60_000);
 
   it("a page held up in shadow with a corner cut off still calibrates, and every crop holds its own answer", async () => {

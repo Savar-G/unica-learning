@@ -2,7 +2,7 @@ import jsQR from "jsqr";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { calibratePhoto, cropBox, type CropItem, type Raster } from "@/lib/scan-calibration";
-import { readScanPreview, runScanCrops, scanPartPath } from "@/lib/scan-crops";
+import { readScanPreview, runScanCrops } from "@/lib/scan-crops";
 import { memoryScanCropStore } from "@/lib/scan-crops-memory";
 import { normalizeScanPhoto } from "@/lib/scan-photo-image";
 import { cropCut, drawDigit, greyRaster, photoJpeg, photographed, readDigit, rotatedCorners, uprightCorners } from "@/lib/scan-synthetic";
@@ -44,7 +44,7 @@ describe.skipIf(!chromium)("binding a photo to its printed page", () => {
     expect(reads).toEqual(page.plan.crops.map(() => 3));
   }, 30_000);
 
-  it("the job refuses two copies on one photo: a smaller copy with its QR code, a larger copy with it covered", async () => {
+  it("the job cannot file two copies when neither code is readable", async () => {
     // Disproved if crops holding 8 are saved for the page whose visible QR code sits on the copy holding 3.
     const bytes = await twoCopies(written(page, THREE), coverQr(written(page, EIGHT), page));
     const now = Date.parse("2026-11-05T12:00:00Z"), id = "00000000-0000-4000-8000-0000000000a1";
@@ -54,7 +54,6 @@ describe.skipIf(!chromium)("binding a photo to its printed page", () => {
     const preview = await runScanCrops(m.store, { parent: PARENT, photo: id }, "00000000-0000-4000-8000-000000000001");
     expect(preview).toEqual({ status: "refused", reason: "ambiguous-page" });
     expect(m.filesOf(id)).toEqual([]);
-    expect(m.objects.has(scanPartPath(PARENT, id, "00000000-0000-4000-8000-000000000001", "straight"))).toBe(false);
   }, 60_000);
 
   it("takes a page lying on the rest of the book, whose sheet below shows its marks beside the page's own (#912)", async () => {
@@ -74,9 +73,9 @@ describe.skipIf(!chromium)("binding a photo to its printed page", () => {
     expect(reads).toEqual(page.plan.crops.map(() => 3));
   }, 60_000);
 
-  it("refuses two copies that both show their QR code: it cannot know which sheet was meant", async () => {
+  it("holds two copies with the same QR code for team review", async () => {
     const photo = await greyRaster(await twoCopies(written(page, THREE), written(page, EIGHT)));
-    expect(calibrate(photo, page)).toEqual({ status: "refused", reason: "ambiguous-page" });
+    expect(calibrate(photo, page)).toEqual({ status: "review", reason: "ambiguous-page" });
   }, 60_000);
 
   it("refuses a page whose QR code is covered: its identity cannot be read inside the rectangle", async () => {
@@ -91,12 +90,12 @@ describe.skipIf(!chromium)("binding a photo to its printed page", () => {
     expect(result).toEqual({ status: "refused", reason: "qr-mismatch" });
   }, 30_000);
 
-  it("a mirrored photo is refused, and a photo in poor light or upside down is read the right way up or refused", async () => {
+  it("a mirror has no automatic marks, and a poor-light or upside-down page can only be placed right way up", async () => {
     // Disproved if a calibration ever comes back with the page the wrong way up.
     const r = written(page, THREE);
     const base = await sharp(Buffer.from(r.data), { raw: { width: r.width, height: r.height, channels: 1 } });
     const read = async (s: typeof base) => greyRaster(await s.clone().jpeg({ quality: 88 }).toBuffer());
-    expect((calibrate(await read(base.clone().flop()), page)).status).toBe("refused");
+    expect((calibrate(await read(base.clone().flop()), page)).status).not.toBe("calibrated");
     const upside = calibrate(await read(base.clone().rotate(180)), page);
     if (upside.status === "calibrated") expect(upside.calibration.quarterTurns).toBe(2);
     const dark: Raster = { ...r, data: r.data.map((v, i) => Math.round(v * (0.15 + (0.5 * (i % r.width)) / r.width))) };
@@ -104,7 +103,7 @@ describe.skipIf(!chromium)("binding a photo to its printed page", () => {
     if (dim.status === "calibrated") expect(dim.calibration.quarterTurns).toBe(0);
   }, 60_000);
 
-  it("refuses a QR code that sits elsewhere on the sheet than the contract's page image places it", async () => {
+  it("holds a QR code moved away from where the page printed it", async () => {
     // The right code, moved: it reads, but not where this page printed it.
     const moved = written(page, THREE);
     const bl = page.contract.marks.points.bl;
@@ -112,7 +111,7 @@ describe.skipIf(!chromium)("binding a photo to its printed page", () => {
     const pixels = new Uint8Array(moved.data);
     for (let y = 0; y < box.height; y++) for (let x = 0; x < box.width; x++) moved.data[(y + 200) * moved.width + x + 600] = pixels[Math.round(box.y + y) * moved.width + Math.round(box.x + x)];
     coverQr(moved, page);
-    expect(calibrate(await photoOf(moved), page)).toEqual({ status: "refused", reason: "qr-mismatch" });
+    expect(calibrate(await photoOf(moved), page)).toMatchObject({ status: "review" });
   }, 30_000);
 });
 
@@ -177,29 +176,28 @@ describe.skipIf(!chromium)("one sheet, this page: a near twin's print anywhere o
     }
   }, 60_000);
 
-  it("refuses page 5 with page 8's QR code pasted on it, which the upload reads as page 8", async () => {
+  it("keeps page 5 with a pasted page 8 code from automatic marking", async () => {
     // Disproved if crops of page 5's answers are saved as page 8's.
-    const { token, photo } = await uploaded(pastedQr());
+    const { token, bytes } = await uploaded(pastedQr());
     expect(token).toBe(p8.token);
-    // (Calibration alone, as before #456, takes it as page 8: the failing case.)
-    expect(calibrate(photo, p8).status).toBe("calibrated");
-    expect(calibrateAmong(photo, p8, others)).toEqual({ status: "refused", reason: "another-page" });
+    const { preview } = await job(bytes, p8, "00000000-0000-4000-8000-0000000000c1");
+    expect(preview).toMatchObject({ status: "ready", crops: [], original: true });
   }, 60_000);
 
-  it.each([0.5, 0.25, 0.1, 0.05])("the job refuses the pasted code under glare that keeps %f of the print's contrast", async (gain) => {
+  it.each([0.5, 0.25, 0.1, 0.05])("the job holds the pasted code under glare that keeps %f of the print's contrast", async (gain) => {
     // The PR #637 review: glare drove the old score to zero, so five of page 5's answers were saved under page 8. Missing
     // evidence must never pass. Disproved if the job makes any crop.
     const { token, bytes } = await uploaded(glared(pastedQr(), gain, { x0: 80, y0: 75, x1: 1000, y1: 1460 }, { x0: 200, y0: 1490, x1: 650, y1: 1570 }));
     expect(token).toBe(p8.token);
     const { m, preview } = await job(bytes, p8, "00000000-0000-4000-8000-0000000000c1");
-    expect(preview.status, JSON.stringify(preview)).toBe("refused");
-    expect(m.filesOf("00000000-0000-4000-8000-0000000000c1")).toEqual([]);
+    expect(preview).toMatchObject({ status: "ready", crops: [] });
+    expect(m.filesOf("00000000-0000-4000-8000-0000000000c1")).toHaveLength(1);
   }, 60_000);
 
-  it("the same glare over the whole right page refuses it as too faint to read, not as another page", async () => {
+  it("heavy glare on the entire right page keeps the photo for review", async () => {
     // The parent can act on this: another photo without glare.
     const { bytes } = await uploaded(glared(written(p5, () => 3), 0.1, { x0: 80, y0: 75, x1: 1000, y1: 1460 }));
-    expect((await job(bytes, p5, "00000000-0000-4000-8000-0000000000c2")).preview).toEqual({ status: "refused", reason: "faint" });
+    expect((await job(bytes, p5, "00000000-0000-4000-8000-0000000000c2")).preview).toMatchObject({ status: "ready", crops: [], original: true });
   }, 60_000);
 
   it("a right page with mild glare over everything still passes: the spots that tell the pages apart can be read", async () => {
@@ -223,29 +221,26 @@ describe.skipIf(!chromium)("one sheet, this page: a near twin's print anywhere o
     expect(calibrateAmong(photo, p5, others)).toEqual({ status: "refused", reason: "faint" });
   }, 60_000);
 
-  it("the job refuses page 8 lying over page 5 with its footer folded behind: page 5's code, page 8's answers", async () => {
+  it("the job files page 5 by its code and withholds the crops of page 8 over it", async () => {
     // Disproved if crops of page 8's answers are saved under page 5, as they were before #456.
-    const { token, photo, bytes } = await uploaded(overlapping());
+    const { token, bytes } = await uploaded(overlapping());
     expect(token).toBe(p5.token);
-    // Chromium can refuse this overlap during alignment on one platform and during the sheet check on another.
-    // Both paths must refuse it without saving crops from the other page.
-    const alignment = calibrate(photo, p5);
-    const reason = alignment.status === "refused" ? alignment.reason : "another-page";
     const id = "00000000-0000-4000-8000-0000000000b1";
     const { m, preview } = await job(bytes, p5, id);
-    expect(preview).toEqual({ status: "refused", reason });
-    expect(m.filesOf(id)).toEqual([]);
-    // The parent is asked for another photo, and the photo stays.
-    expect(await readScanPreview(m.store, { parent: PARENT, photo: id })).toEqual({ status: "refused", reason });
+    expect(preview).toMatchObject({ status: "ready", crops: [] });
+    expect(m.filesOf(id)).toHaveLength(1);
+    expect(await readScanPreview(m.store, { parent: PARENT, photo: id })).toEqual(preview);
   }, 120_000);
 
-  it("the job refuses page 8 over only part of page 5, down to the second question", async () => {
+  it("the job files page 5 when a covering sheet reaches its second question", async () => {
     // A smaller sheet leaves more of page 5 in view. Disproved if the part of page 8 in view is taken for page 5.
     const sheet = written(p5, () => 3), top = written(p8, () => 7), fold = 620;
     sheet.data.set(top.data.subarray(0, fold * sheet.width), 0);
     const { token, bytes } = await uploaded(sheet);
     expect(token).toBe(p5.token);
-    expect((await job(bytes, p5, "00000000-0000-4000-8000-0000000000c4")).preview).toEqual({ status: "refused", reason: "another-page" });
+    const { preview } = await job(bytes, p5, "00000000-0000-4000-8000-0000000000c4");
+    expect(preview.status).toBe("ready");
+    if (preview.status === "ready") expect(preview.crops.every((crop) => crop.number > 2)).toBe(true);
   }, 60_000);
 
   it("writing that runs past the answer boxes does not refuse a right page among its near twins", async () => {

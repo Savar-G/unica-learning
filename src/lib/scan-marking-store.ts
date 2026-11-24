@@ -36,19 +36,32 @@ export function scanMarkingStore(db: SupabaseClient<Database>): MarkingStore {
       const image = { width: num(pg.image_width), height: num(pg.image_height) };
       const contract = storedPrintContract(pg.print_contract, { workbookId, page: pageNumber, image });
       const usable = printContractForPhoto({ printedRevision: str(pg.printed_revision) }, { printContract: contract }, { printedRevision });
-      if (usable.status !== "available" || !result.calibration || !calibrationForPhoto(result.calibration as Parameters<typeof calibrationForPhoto>[0], { printedRevision })) return null;
+      const review = typeof result.review === "string";
+      if (usable.status !== "available" || (!review && (!result.calibration || !calibrationForPhoto(result.calibration as Parameters<typeof calibrationForPhoto>[0], { printedRevision })))) return null;
+      const snaps = Array.isArray(result.snaps) ? result.snaps.map(record) : [];
       if (!list(result.parts).includes("straight")) return null;
       const questions = list(r.questions).map((value) => {
         const q = record(value);
         const read = storedQuestion({ number: num(q.question_number), schemaVersion: num(q.schema_version), package: q.package,
           box: { x: num(q.box_x), y: num(q.box_y), width: num(q.box_width), height: num(q.box_height) },
           regions: q.regions, teaching: q.teaching }, { source: "workbook", workbookId, page: pageNumber, question: num(q.question_number) }, image);
-        return { number: read.number, package: read.content.status === "found" ? read.content.package : null, regions: read.regions, teaching: read.teaching };
+        const regions = read.regions?.map((r) => {
+          const snap = snaps.find((s) => s.number === read.number && s.regionId === r.id);
+          if (!snap) return r;
+          const box = record(snap.box);
+          return { ...r, box: { x: num(box.x), y: num(box.y), width: num(box.width), height: num(box.height) } };
+        }) ?? null;
+        return { number: read.number, package: read.content.status === "found" ? read.content.package : null, regions, teaching: read.teaching };
       });
       // Questions the photo's edge cut off (#912): read as cut off, never from the photo.
       const cutOff = Array.isArray(result.cutOff) ? result.cutOff.map(num) : [];
-      const frame: MarkingFrame = { parentId: ref.parent, childId: str(p.child_id), photo: ref.photo, workbookId, printedRevision, pageId: str(p.page_id), pageNumber, ready: true, questions, ...(cutOff.length ? { cutOff } : {}) };
-      frames.set(refKey(ref), { frame, path: scanPartPath(ref.parent, ref.photo, str(c.lease_token), "straight"), hash: digestOf(JSON.stringify({ contract, questions })) });
+      const held = new Map<number, "covered" | "alignment">();
+      if (Array.isArray(result.held)) for (const value of result.held) {
+        const { number, issue } = record(value);
+        if (issue === "covered" || issue === "alignment") held.set(num(number), issue);
+      }
+      const frame: MarkingFrame = { parentId: ref.parent, childId: str(p.child_id), photo: ref.photo, workbookId, printedRevision, pageId: str(p.page_id), pageNumber, ready: true, questions, ...(cutOff.length ? { cutOff } : {}), ...(held.size ? { held } : {}), ...(review ? { review: true } : {}) };
+      frames.set(refKey(ref), { frame, path: scanPartPath(ref.parent, ref.photo, str(c.lease_token), "straight"), hash: digestOf(JSON.stringify({ contract, questions, ...(held.size ? { held: [...held] } : {}), ...(review ? { review } : {}) })) });
       return frame;
     },
     async claim(ref, token, frame, items) {

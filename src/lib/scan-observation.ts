@@ -44,9 +44,11 @@ export type ReadingCertainty = "certain" | "uncertain" | "not-read";
 /** What the marking model may report. */
 export const MODEL_READING_ISSUES = ["unreadable", "crossed-out", "multiple-marks", "missing", "blurry", "cut-off", "incomplete", "answer-form", "method-form"] as const;
 /** The model's reasons, plus the ones only code sets on a two-ways item. */
-export const READING_ISSUES = [...MODEL_READING_ISSUES, "answer-check", "method-wrong", "method-missing", "read-failed"] as const;
+export const READING_ISSUES = [...MODEL_READING_ISSUES, "answer-check", "method-wrong", "method-missing", "read-failed", "covered", "alignment", "page-fit"] as const;
 export type ReadingIssue = (typeof READING_ISSUES)[number];
 const READING_REASONS: Record<ReadingIssue, string> = {
+  covered: "The print around this answer is covered or unclear.", alignment: "The answer box could not be lined up.",
+  "page-fit": "The page print could not be confirmed.",
   "read-failed": "The AI could not read this page.", unreadable: "We cannot read this answer.", "crossed-out": "This answer is crossed out.",
   "multiple-marks": "More than one choice is marked.", missing: "Part of this answer was not read.",
   blurry: "The photo is blurry here.", "cut-off": "Part of this answer is cut off.", incomplete: "Part of this answer is empty.", "answer-form": "We could not mark this answer automatically.",

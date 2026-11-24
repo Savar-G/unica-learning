@@ -1501,6 +1501,29 @@ describe("#912: a question the photo's edge cuts off", () => {
     expect(readMarkingOutput(frame(), output(["0", "12", "9"]))[1]).toMatchObject({ state: "scored", result: "right" });
   });
 
+  it("leaves covered answers to the team and excludes them from the model request", async () => {
+    const f: MarkingFrame = { ...frame(), held: new Map([[2, "covered"]]) };
+    const store = new Store(f);
+    const sent: AiJsonRequest[] = [];
+    expect(await runScanMarking(store, { parent: P, photo: f.photo }, "held", client(output(["0", "12", "9"]), sent), () => new Date(store.clock).toISOString())).toBe("finished");
+    const part = sent[0].content.find((p) => p.type === "text");
+    expect(part && JSON.parse(part.text).items.map((i: { item: string }) => i.item)).toEqual(["i1", "i3"]);
+    expect([...store.items.values()].map((m) => m.observation.result)).toEqual(["right", null, "right"]);
+    const covered = [...store.items.values()][1];
+    expect(covered.observation).toMatchObject({ state: "pending", issue: "covered" });
+    expect(waitsForTeam(covered)).toBe(true);
+  });
+
+  it("routes every question of an unplaceable page to the team without AI", async () => {
+    const f: MarkingFrame = { ...frame(), review: true };
+    const store = new Store(f);
+    const makeClient = vi.fn(() => null);
+    expect(await runScanMarking(store, { parent: P, photo: f.photo }, "held", makeClient, () => new Date(store.clock).toISOString())).toBe("finished");
+    expect(makeClient).not.toHaveBeenCalled();
+    expect([...store.items.values()].map((m) => m.observation.issue)).toEqual(["page-fit", "page-fit", "page-fit"]);
+    expect([...store.items.values()].every(waitsForTeam)).toBe(true);
+  });
+
   it("cuts every region of a two-part item", () => {
     const f: MarkingFrame = { ...tickFrame(), cutOff: [1] };
     const o = readMarkingOutput(f, tickOutput("+", "66"))[0];

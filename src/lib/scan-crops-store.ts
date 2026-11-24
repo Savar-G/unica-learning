@@ -88,7 +88,7 @@ export function scanCropStore(db: SupabaseClient<Database>): ScanCropStore {
               number: q.question_number, schemaVersion: q.schema_version, package: q.package, regions: q.regions, teaching: q.teaching,
               box: { x: q.box_x, y: q.box_y, width: q.box_width, height: q.box_height },
             }, { source: "workbook", workbookId: p.workbook_id!, page: pg.page_number, question: q.question_number }, image);
-            return [{ number: read.number, package: read.content.status === "found" ? read.content.package : null, regions: read.regions }];
+            return [{ number: read.number, package: read.content.status === "found" ? read.content.package : null, regions: read.regions, box: read.box }];
           }),
         },
       };

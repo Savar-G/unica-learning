@@ -88,12 +88,10 @@ export interface MarkingFrame extends PageForObservation {
   ready: boolean;
   pageNumber: number;
   questions: (PageForObservation["questions"][number] & { regions: readonly PrintedRegion[] | null })[];
-  /**
-   * Questions the photo's edge cuts off (#912, `cutOff` of the ready calibration). Whatever the model says, each of their
-   * regions reads as unsure with issue cut-off, so the item waits for our team and the parent is told to send a new photo:
-   * the straightened page shows white paper where the answer was, which must never read as blank.
-   */
+  /** Questions at the photo edge and questions held for team review. */
   cutOff?: readonly number[];
+  review?: true;
+  held?: ReadonlyMap<number, "covered" | "alignment">;
 }
 export interface EffectiveMark {
   expected: ExpectedItem;
@@ -199,19 +197,19 @@ export interface MarkingEscalation { model: string; prompt: string; items: strin
  * answer; every "uncertain" rule still holds.
  */
 const SECOND_LOOK = " This is a second look at answers another reader could not read. Read them freshly from the image. In a number, fraction or text region, a value struck through with a line, with one clear value written beside, above or below it inside the same answer area, is a correction: transcribe only the clear value. If more than one value is left unstruck, or you cannot tell which value is final, report uncertain with issue multiple-marks.";
+function heldIssue(frame: MarkingFrame, number: number): ReadingIssue | undefined {
+  return frame.review ? "page-fit" : frame.held?.get(number) ?? (frame.cutOff?.includes(number) ? "cut-off" : undefined);
+}
 /** The request for some of the page's items only (their aliases stay those of the whole page). */
 export function markingRequestFor(frame: MarkingFrame, image: Uint8Array, itemIds: readonly string[], secondLook = false): AiJsonRequest {
-  const local = aliases(frame, expectedItems(frame)).filter(a => a.expected.method === "code" && itemIds.includes(a.expected.identity.itemId));
+  const local = aliases(frame, expectedItems(frame)).filter(a => a.expected.method === "code" && !heldIssue(frame, a.expected.number) && itemIds.includes(a.expected.identity.itemId));
   const r = request(image, local);
   return secondLook ? { ...r, system: r.system + SECOND_LOOK } : r;
 }
-/**
- * The items the second look may ask (#958 review): AI-marked items the first read was asked (`asked`) and left pending,
- * leaving out questions the photo's edge cuts off (`cutOff` numbers), which stay pending whatever any model reads.
- */
+/** The second look gets only previously requested, pending items the photo can support. */
 export function unsureItems(observations: readonly Observation[], frame: MarkingFrame, asked?: readonly string[]): string[] {
-  const cut = new Set(expectedItems(frame).filter(e => frame.cutOff?.includes(e.number)).map(e => e.identity.itemId));
-  return observations.filter(o => o.method === "code" && o.state === "pending" && (!asked || asked.includes(o.identity.itemId)) && !cut.has(o.identity.itemId)).map(o => o.identity.itemId);
+  const held = new Set(expectedItems(frame).filter(e => heldIssue(frame, e.number)).map(e => e.identity.itemId));
+  return observations.filter(o => o.method === "code" && o.state === "pending" && (!asked || asked.includes(o.identity.itemId)) && !held.has(o.identity.itemId)).map(o => o.identity.itemId);
 }
 /**
  * The second look's marks replace the first read's only where the first was unsure and the second is a mark (scored).
@@ -230,12 +228,12 @@ export function mergeSecondLook(first: readonly Observation[], second: readonly 
 }
 /** The comparison uses the production prompt and aliases, with no truth or answer keys. */
 export function markingRequest(frame: MarkingFrame, image: Uint8Array): AiJsonRequest {
-  return request(image, aliases(frame, expectedItems(frame)).filter(a => a.expected.method === "code"));
+  return request(image, aliases(frame, expectedItems(frame)).filter(a => a.expected.method === "code" && !heldIssue(frame, a.expected.number)));
 }
 /** Strict comparison acceptance. Production recovery can still preserve partial uncertain readings. */
 export function validMarkingOutput(frame: MarkingFrame, output: unknown): boolean {
   if (!object(output) || Object.keys(output).join() !== "readings" || !Array.isArray(output.readings)) return false;
-  const local = aliases(frame, expectedItems(frame)).filter(a => a.expected.method === "code");
+  const local = aliases(frame, expectedItems(frame)).filter(a => a.expected.method === "code" && !heldIssue(frame, a.expected.number));
   if (output.readings.length !== local.length) return false;
   const seen = new Set<string>();
   return output.readings.every(r => {
@@ -259,9 +257,9 @@ const normalizedWords = (text: string) => text.trim().replace(/\s+/g, " ").toLow
 export function currentSheetCheck(result: unknown): boolean {
   return object(result) && typeof result.sheetCheck === "number" && Number.isFinite(result.sheetCheck) && result.sheetCheck >= MARKING_SHEET_CHECK_VERSION;
 }
-/** A region the photo's edge cuts off: never read, whatever the model said about it. */
-function cutOffRegion(a: Alias): RegionReading {
-  return { regionId: a.regionId, text: null, value: null, certainty: "uncertain", result: null, issue: "cut-off", ...(a.kind === "method" ? { verdict: null, verdictReason: null, methodKind: null } : {}) };
+/** Keep held regions pending for team review. */
+function heldRegion(a: Alias, issue: ReadingIssue): RegionReading {
+  return { regionId: a.regionId, text: null, value: null, certainty: "uncertain", result: null, issue, ...(a.kind === "method" ? { verdict: null, verdictReason: null, methodKind: null } : {}) };
 }
 function readRegion(a: Alias, readings: unknown[]): RegionReading {
   const matches = readings.filter(r => object(r) && r.item === a.item && r.region === a.region);
@@ -331,10 +329,11 @@ export function readMarkingOutput(frame: MarkingFrame, output: unknown, options:
   return expected.map(e => {
     const first = firstObservation(e, frame.photo);
     const group = local.filter(a => itemKey(a.expected.identity) === itemKey(e.identity));
+    const hold = heldIssue(frame, e.number);
+    if (hold) return { ...first, issue: hold, certainty: "uncertain", regions: group.map((a) => heldRegion(a, hold)) };
     if (!group.length) return first;
     const twoWays = e.twoWays === true;
-    const cut = frame.cutOff?.includes(e.number) === true;
-    const read = group.map(a => cut ? cutOffRegion(a) : readRegion(a, readings));
+    const read = group.map(a => readRegion(a, readings));
     const regions = twoWays ? twoWaysRegions(group, read) : read;
     const result = twoWays ? (methodMarks ? twoWaysResult(regions) : null) : regions.some(r => r.result === "wrong") ? "wrong" : regions.every(r => r.result === "right") ? "right"
       : regions.every(r => r.result === "blank") ? "blank" : null;
@@ -422,7 +421,7 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
   let image: Uint8Array | null = null;
   if (!observations) {
     const pending = job.items.filter(toRead);
-    const local = aliases(frame, expected).filter((a) => pending.some((m) => itemKey(m.expected.identity) === itemKey(a.expected.identity)));
+    const local = aliases(frame, expected).filter((a) => !heldIssue(frame, a.expected.number) && pending.some((m) => itemKey(m.expected.identity) === itemKey(a.expected.identity)));
     if (local.length) {
       let dispatch: string | null = null;
       let transport: MarkingTransport | null = null;
@@ -521,7 +520,7 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
         observations = second.observations;
         escalation = second.escalation;
       }
-    } else observations = expected.map((e) => firstObservation(e, frame.photo));
+    } else observations = readMarkingOutput(frame, null);
     if (!await store.extract(ref, token, observations, model, escalation)) return "terminal";
   }
   // Every answer blank (a page photographed before it was done, or the facing page of a spread): no marks, no events.

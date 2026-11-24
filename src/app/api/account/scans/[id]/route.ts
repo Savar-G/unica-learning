@@ -1,6 +1,7 @@
 import { monitorProduct, productAfter } from "@/lib/product-monitoring";
 import { randomUUID } from "node:crypto";
 import { after } from "next/server";
+import { storedPrintContract } from "@/lib/workbook-print-contract";
 import { isUuid } from "@/lib/workbook-content";
 import { scanChecksAccess } from "@/lib/scan-marking-access";
 import { readScanPreview, runScanCrops } from "@/lib/scan-crops";
@@ -43,7 +44,13 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
     const limits = await admin.from("scan_limits").select("input_bytes,output_bytes,decoded_pixels").single();
     if (limits.error) throw new Error("unavailable");
     const input = await readScanBody(request, limits.data.input_bytes);
-    const normalized = await normalizeScanPhoto(input, { inputBytes: limits.data.input_bytes, pixels: limits.data.decoded_pixels, outputBytes: limits.data.output_bytes });
+    const normalized = await normalizeScanPhoto(input, { inputBytes: limits.data.input_bytes, pixels: limits.data.decoded_pixels, outputBytes: limits.data.output_bytes }, async (token) => {
+      const { data } = await admin.from("workbook_pages").select("workbook_id,page_number,image_width,image_height,print_contract")
+        .eq("parent_id", parent).eq("qr_token", token).maybeSingle();
+      if (!data?.image_width || !data.image_height) return null;
+      return storedPrintContract(data.print_contract, { workbookId: data.workbook_id, page: data.page_number,
+        image: { width: data.image_width, height: data.image_height } });
+    });
     // A photo of an open book (#915) has two pages: this photo takes the first one its own code binds, and the other
     // becomes a photo of its own below. A single page is one page, exactly as before.
     const pages: SpreadPage[] = normalized.spread ?? [{ bytes: normalized.bytes, token: normalized.token, width: normalized.width, height: normalized.height }];

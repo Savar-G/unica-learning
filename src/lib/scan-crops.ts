@@ -5,6 +5,8 @@
 import { monitorProduct } from "@/lib/product-monitoring";
 import sharp from "sharp";
 import {
+  answerPlacement,
+  boxDistance,
   calibratePhoto,
   calibrationForPhoto,
   cropBox,
@@ -18,7 +20,8 @@ import {
   type Raster,
   type SheetRefusal,
 } from "@/lib/scan-calibration";
-import { printContractForPhoto, sha256Hex, type Box, type PagePrintContract } from "@/lib/workbook-print-contract";
+import { printContractForPhoto, sha256Hex, type Box, type PagePrintContract, type Point } from "@/lib/workbook-print-contract";
+import { markingRegions } from "@/lib/scan-marking-regions";
 import { pageUrl } from "@/lib/workbook-render";
 
 /** How long one job holds a photo's lease. A call inside it starts nothing. */
@@ -53,9 +56,22 @@ export interface ScanCrop {
   height: number;
 }
 
+/** The measured offset is in native photo pixels. The adjusted box is in straightened page pixels. */
+export interface AnswerSnap {
+  number: number;
+  regionId: string;
+  box: Box;
+  offset: Point;
+}
+export type QuestionHold = "covered" | "alignment";
+
 /** What a finished calibration stores: geometry and identities, never image bytes or answer text. */
 export interface ScanCalibrationResult {
   calibration?: Calibration;
+  /** A readable page code filed the photo. Review uses the saved photo without automatic marking. */
+  review?: CalibrationRefusal | SheetRefusal;
+  held?: { number: number; issue: QuestionHold }[];
+  snaps?: AnswerSnap[];
   /** Every file this calibration made, by part name. */
   parts?: string[];
   straight?: { width: number; height: number };
@@ -63,7 +79,8 @@ export interface ScanCalibrationResult {
   notSupported?: number[];
   /**
    * Questions whose answer the photo's edge cuts off (#912), on a page placed by its QR code: no crop is made, and marking
-   * leaves them to our team as cut off (scan-marking.ts), never read from what is left. Absent when none is cut off.
+   * leaves them to our team. This list also carries held questions for older marking workers during rollout.
+   * Current readers use the more specific reason from `held` and exclude it from retake guidance.
    */
   cutOff?: number[];
   reason?: ScanRefusal;
@@ -82,7 +99,7 @@ export const checkedReady = (result: { sheetCheck?: unknown } | null | undefined
   typeof result?.sheetCheck === "number" && result.sheetCheck >= SHEET_CHECK_VERSION;
 
 export type ScanPreview =
-  | { status: "ready"; straight: { part: string; width: number; height: number }; crops: { part: string; number: number; width: number; height: number }[]; notSupported: number[]; cutOff?: number[] }
+  | { status: "ready"; straight: { part: string; width: number; height: number }; crops: { part: string; number: number; width: number; height: number }[]; notSupported: number[]; cutOff?: number[]; original?: true }
   /** `retryInMs`, only for check-timeout: how long until the job's lease is over and another call can check again. */
   | { status: "refused"; reason: ScanRefusal; retryInMs?: number }
   /** Checking is not available: a legacy book, an older revision, or a photo that is no longer active. The photo keeps its place unless it ended. */
@@ -97,8 +114,8 @@ export interface ScanFrame {
     printContract: PagePrintContract | null; imagePath: string | null; qrToken: string | null; questions: CropQuestion[];
     /**
      * The page images of the child's other printed pages of the same kind, in any of the child's printed books: the pages
-     * this photo could show instead, such as a page that differs by a few digits (#456). The job refuses a photo that does
-     * not hold this page's print wherever a near twin among them prints differently.
+     * this photo could show instead, such as a page that differs by a few digits (#456). Mismatched print holds the
+     * affected questions for team review.
      */
     others: string[];
   };
@@ -195,11 +212,10 @@ function fetchOthers(store: ScanCropStore, paths: readonly string[], from: numbe
 
 /**
  * Speed (#915): each batch's download overlaps the work before it. The first batch is fetched while the photo is
- * calibrated (`first`), and each next batch while the one before is compared. The comparisons, their order and the
- * verdict are unchanged.
+ * calibrated (`first`), and each next batch while the one before is compared. Suspect print is localized per batch.
  */
-async function sheetVerdict(store: ScanCropStore, ask: ReturnType<typeof sheetChecker>, paths: readonly string[], deadline: number, first?: OtherBatch): Promise<"this-page" | SheetRefusal | "timeout"> {
-  let faint = false;
+async function sheetVerdict(store: ScanCropStore, ask: ReturnType<typeof sheetChecker>, paths: readonly string[], deadline: number, localize: (spot: Box) => void, first?: OtherBatch): Promise<SheetRefusal | "this-page" | "timeout"> {
+  let reason: SheetRefusal | undefined;
   let pending: OtherBatch | null = paths.length ? first ?? fetchOthers(store, paths, 0) : null;
   for (let i = 0; i < paths.length; i += OTHERS_AT_ONCE) {
     const current = pending!;
@@ -208,15 +224,16 @@ async function sheetVerdict(store: ScanCropStore, ask: ReturnType<typeof sheetCh
     pending = i + OTHERS_AT_ONCE < paths.length ? fetchOthers(store, paths, i + OTHERS_AT_ONCE) : null;
     for (const other of batch) {
       if (Date.now() >= deadline) return "timeout";
-      const { verdict } = ask([other]);
+      const check = ask([other]);
       // A synchronous comparison runs to its end. Its late answer is not used, and the next page does not start.
       if (Date.now() >= deadline) return "timeout";
-      if (verdict === "another-page") return verdict;
-      if (verdict === "faint") faint = true;
+      if (check.verdict === "this-page") continue;
+      check.suspect?.forEach(localize);
+      if (check.verdict === "another-page" || !reason) reason = check.verdict;
     }
   }
   if (Date.now() >= deadline) return "timeout";
-  return faint ? "faint" : "this-page";
+  return reason ?? "this-page";
 }
 
 const encode = (r: Raster, quality: number) => sharp(Buffer.from(r.data), { raw: { width: r.width, height: r.height, channels: r.channels } }).jpeg({ quality }).toBuffer();
@@ -235,11 +252,13 @@ export async function readScanPreview(store: ScanCropStore, ref: PhotoRef): Prom
   // Made before today's sheet check: not checked, until a job checks it again.
   if (!checkedReady(stored.result)) return { status: "not-started" };
   const r = stored.result;
-  if (!r?.calibration || !r.straight || !r.crops || !calibrationForPhoto(r.calibration, frame.photo)) return { status: "refused", reason: "failed" };
+  if (!r?.straight || !r.crops || (!r.review && (!r.calibration || !calibrationForPhoto(r.calibration, frame.photo)))) return { status: "refused", reason: "failed" };
+  const cutOff = r.cutOff?.filter((n) => !r.held?.some((h) => h.number === n));
   return {
     status: "ready", straight: { part: STRAIGHT_PART, ...r.straight },
     crops: r.crops.map((c) => ({ part: c.part, number: c.number, width: c.width, height: c.height })), notSupported: r.notSupported ?? [],
-    ...(r.cutOff?.length ? { cutOff: r.cutOff } : {}),
+    ...(cutOff?.length ? { cutOff } : {}),
+    ...(r.review ? { original: true } : {}),
   };
 }
 
@@ -300,25 +319,59 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
   if (Date.now() >= deadline) return timedOut();
   if (result.status === "unavailable") return { status: "unavailable", reason: result.reason };
   if (result.status === "refused") return finished("refused", { reason: result.reason }, 0);
-  const { calibration } = result;
-
-  // The code and the marks are this page's: the print between them must be too, wherever a near twin prints otherwise.
-  const ask = sheetChecker({ photo, printed, transform: calibration.transform, writing, sheet: calibration });
-  if (Date.now() >= deadline) return timedOut();
-  const sheet = await sheetVerdict(store, ask, frame.page.others, deadline, firstOthers);
-  if (sheet === "timeout") return timedOut();
-  if (sheet !== "this-page") return finished("refused", { reason: sheet }, 0);
-
-  // The files of the attempt this one replaced go first. A file of an older attempt stays until the photo's cleanup.
-  if (previous) await store.clearLease({ ...ref, token: previous });
+  const calibration = result.status === "calibrated" ? result.calibration : null;
+  let review: ScanCalibrationResult["review"] = result.status === "review" ? result.reason : undefined;
   const planned = cropPlan(frame.page.questions);
-  // A question the photo's edge cuts is not cropped: a crop would show white paper where its answer was (#912).
-  const cutOff = planned.crops.filter((c) => !cropInPhoto(calibration, contract.contract, c.box)).map((c) => c.number);
-  const plan = { ...planned, crops: planned.crops.filter((c) => !cutOff.includes(c.number)) };
-  const straight = straightenedPage(photo, calibration, contract.contract);
+  const cutOff: number[] = [];
+  const held = new Map<number, QuestionHold>();
+  const snaps: AnswerSnap[] = [];
+  const crops: typeof planned.crops = [];
+  if (calibration) {
+    // Compare distinctive print wherever another page of this book differs (#456, #975).
+    const ask = sheetChecker({ photo, printed, transform: calibration.transform, writing, sheet: calibration });
+    const boxes = frame.page.questions.flatMap((q) => {
+      const box = q.box ?? planned.crops.find((c) => c.number === q.number)?.box;
+      return box ? [{ number: q.number, box }] : [];
+    });
+    const localize = (spot: Box) => {
+      const near = boxes.map(({ number, box }) => ({ number, distance: boxDistance(box, spot) }));
+      const nearest = Math.min(...near.map((q) => q.distance));
+      for (const q of near) if (q.distance === nearest && nearest <= 96) held.set(q.number, "covered");
+    };
+    const sheet = await sheetVerdict(store, ask, frame.page.others, deadline, localize, firstOthers);
+    if (sheet === "timeout") return timedOut();
+    if (sheet !== "this-page" && !held.size) review = sheet;
+
+    if (!review) {
+      const place = answerPlacement({ photo, printed, calibration, writing });
+      const page = contract.contract.coordinates.image;
+      const hidden = calibration.hiddenMarks?.map((m) => contract.contract.marks.points[m]) ?? [];
+      for (const crop of planned.crops) {
+        if (held.has(crop.number)) continue;
+        if (!cropInPhoto(calibration, contract.contract, crop.box)) { cutOff.push(crop.number); continue; }
+        const question = frame.page.questions.find((q) => q.number === crop.number)!;
+        const regions = markingRegions(question).map((region) => {
+          const x = region.box.x + region.box.width / 2, y = region.box.y + region.box.height / 2;
+          const check = hidden.some((m) => (m.x < page.width / 2) === (x < page.width / 2) && (m.y < page.height / 2) === (y < page.height / 2));
+          return { regionId: region.id, ...place(region.box, check) };
+        });
+        snaps.push(...regions.map(({ regionId, box, offset }) => ({ number: crop.number, regionId, box, offset })));
+        const issue = regions.find((r) => r.issue === "covered")?.issue ?? regions.find((r) => r.issue)?.issue;
+        if (issue) { held.set(crop.number, issue); continue; }
+        const x = Math.min(...regions.map((r) => r.box.x)), y = Math.min(...regions.map((r) => r.box.y));
+        const box = { x, y, width: Math.max(...regions.map((r) => r.box.x + r.box.width)) - x, height: Math.max(...regions.map((r) => r.box.y + r.box.height)) - y };
+        if (cropInPhoto(calibration, contract.contract, box)) crops.push({ ...crop, box });
+        else cutOff.push(crop.number);
+      }
+    }
+  }
+
+  if (Date.now() >= deadline) return timedOut();
+  if (previous) await store.clearLease({ ...ref, token: previous });
+  const straight = calibration && !review ? straightenedPage(photo, calibration, contract.contract) : photo;
   const uploads = [
     { part: STRAIGHT_PART, raster: straight, quality: 78 },
-    ...plan.crops.map((c) => ({ part: cropPart(c.number), raster: cropBox(photo, calibration, contract.contract, c.box), quality: 85 })),
+    ...(calibration ? crops.map((c) => ({ part: cropPart(c.number), raster: cropBox(photo, calibration, contract.contract, c.box), quality: 85 })) : []),
   ];
   let bytes = 0;
   for (let i = 0; i < uploads.length; i += UPLOADS_AT_ONCE) {
@@ -332,9 +385,12 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
   }
   const rasters = new Map(uploads.map((u) => [u.part, u.raster]));
   return finished("ready", {
-    sheetCheck: SHEET_CHECK_VERSION, calibration, parts: uploads.map((u) => u.part), straight: { width: straight.width, height: straight.height }, notSupported: plan.notSupported,
-    ...(cutOff.length ? { cutOff } : {}),
-    crops: plan.crops.map((c) => {
+    sheetCheck: SHEET_CHECK_VERSION, ...(calibration && !review ? { calibration } : {}), ...(review ? { review } : {}),
+    parts: uploads.map((u) => u.part), straight: { width: straight.width, height: straight.height }, notSupported: planned.notSupported,
+    ...(held.size ? { held: Array.from(held, ([number, issue]) => ({ number, issue })).sort((a, b) => a.number - b.number) } : {}),
+    ...(snaps.length ? { snaps } : {}),
+    ...(cutOff.length || held.size ? { cutOff: [...cutOff, ...held.keys()] } : {}),
+    crops: crops.map((c) => {
       const part = cropPart(c.number), r = rasters.get(part)!;
       return { part, number: c.number, itemId: c.itemId, regionId: c.regionId, ...(c.regionIds ? { regionIds: c.regionIds } : {}), box: c.box, width: r.width, height: r.height };
     }),
