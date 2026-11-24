@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/stage-typst.mjs --if-needed && next build",
     "start": "next start",
     "lint": "eslint",
     "lint:fast": "oxlint src worker/maya-voice/src scripts/workbook-worker.ts scripts/retention-worker.ts",
@@ -49,6 +49,7 @@
     "reference:compare": "node scripts/reference-compare.mjs",
     "reference:check": "node scripts/reference-check.mjs",
     "typst:install": "node scripts/install-typst.mjs",
+    "typst:stage": "node scripts/stage-typst.mjs",
     "workbook:v2": "node scripts/workbook-v2.mjs"
   },
   "dependencies": {

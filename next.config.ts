@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs/config";
+import { WORKBOOK_V2_ROUTES, workbookV2TracingIncludes } from "./src/lib/workbook-v2/render/vercel";
 
 const POSTHOG = process.env.NEXT_PUBLIC_POSTHOG_INGEST ?? "https://us.i.posthog.com";
 const POSTHOG_ASSETS = POSTHOG.replace(".i.posthog.com", "-assets.i.posthog.com");
@@ -30,14 +31,17 @@ const nextConfig: NextConfig = {
   // no notice (route.js.nft.json in .next), so the brackets are escaped.
   // Every route that runs a render: the ones that call runWorkbookJobNow or runFirstPagesNow (first pages, #322), the render
   // check and the monthly summary. Routes that only queue a run (report finish, reminders, admin first pages) run no engine.
-  outputFileTracingIncludes: Object.fromEntries([
-    "/api/workbook-render-check", "/api/admin/children/[id]/workbook-runs", "/api/workbook-runs/[id]/resume", "/api/account/children/[id]/monthly-summary",
-    "/api/first-pages/[id]/run", "/api/admin/workbook-runs/[id]/server", "/api/admin/workbooks/runs/[id]/edit",
-  ].map((route) => [route.replace(/[[\]]/g, "\\$&"), [
-    "./node_modules/@sparticuz/chromium/bin/**", "./src/ds/fonts/Geist.woff2", "./src/ds/fonts/GeistMono.woff2",
-    "./THIRD_PARTY_NOTICES.md", "./node_modules/@sparticuz/chromium/LICENSE", "./node_modules/qrcode/license",
-    "./node_modules/jsqr/LICENSE", "./node_modules/sharp/LICENSE",
-  ]])),
+  outputFileTracingIncludes: {
+    ...Object.fromEntries([
+      "/api/workbook-render-check", "/api/admin/children/[id]/workbook-runs", "/api/workbook-runs/[id]/resume", "/api/account/children/[id]/monthly-summary",
+      "/api/first-pages/[id]/run", "/api/admin/workbook-runs/[id]/server", "/api/admin/workbooks/runs/[id]/edit",
+    ].map((route) => [route.replace(/[[\]]/g, "\\$&"), [
+      "./node_modules/@sparticuz/chromium/bin/**", "./src/ds/fonts/Geist.woff2", "./src/ds/fonts/GeistMono.woff2",
+      "./THIRD_PARTY_NOTICES.md", "./node_modules/@sparticuz/chromium/LICENSE", "./node_modules/qrcode/license",
+      "./node_modules/jsqr/LICENSE", "./node_modules/sharp/LICENSE",
+    ]])),
+    ...workbookV2TracingIncludes(WORKBOOK_V2_ROUTES.map((r) => r.route)),
+  },
   // Pages whose address can hold an id or a token (a Stripe session, a report id, a sign-in or unsubscribe token) send
   // only the origin as the referrer, so the next page, and any tag on it, never sees the full address (D-126).
   async headers() {

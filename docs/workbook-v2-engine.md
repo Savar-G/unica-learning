@@ -44,8 +44,16 @@ The snapshot file holds the content of one level. The book file holds the book i
 
 `npx vitest run src/lib/workbook-v2` takes about 5 seconds and needs no browser, network or database. The tests that draw pages use the real Typst. In CI they fail when it is absent; on a laptop without it they are skipped and print the reason.
 
+## Running in a Vercel function
+
+Way W1 ships the official pinned linux x64 Typst program inside the function bundle so a Vercel Node function can call `openRenderer(vercelAssets(process.cwd()))` and run the same `buildBook` checks as a laptop.
+
+- **Assets (`render/vercel.ts`):** `vercelAssets(root)` points at `.workbook-v2/typst/<version>/x86_64-unknown-linux-musl/typst`, the pinned `x86_64-unknown-linux-musl` target, the drawing file and the bundled fonts. It sets `copyIfNotExecutable: true`: if the deployment bundle is read-only and the binary lost its execute bit, `openRenderer` checks its SHA-256 against the pin and copies those verified bytes into each render's private temp folder with mode `0755`, then removes the folder in `finally`. When the bundled binary keeps its execute bit, it runs directly from the read-only bundle with no copy.
+- **Staging and bundle size:** `npm run typst:stage` (and `node scripts/stage-typst.mjs --if-needed` in `npm run build`) reuses `installTypst` to verify and stage the linux x64 binary (`53.2 MB` for Typst `0.15.1`) plus `page.typ`, the two Geist fonts and licence notices (`~0.2 MB`). On Vercel, the download cache lives in `.next/cache` so repeat builds reuse it.
+- **Zero cost until a route needs it:** `WORKBOOK_V2_ROUTES` in `src/lib/workbook-v2/render/vercel.ts` lists the routes that build v2 books, and `next.config.ts` calls `workbookV2TracingIncludes` for those routes only. Because `.workbook-v2/` is a dot-folder, unrelated routes do not trace it and stay unchanged. While `WORKBOOK_V2_ROUTES` has no production route, production builds skip staging and any forced staging failure logs a warning instead of breaking the deploy. When a production book-building route lands (UNI-260), add `{ route: "...", scope: "production" }` to `WORKBOOK_V2_ROUTES`: production builds will then require the staged binary and fail loudly if the download fails.
+
 ## Where the next parts connect
 
 - Fit and ink checks (UNI-137): `checks/`; `readPageImage` gives the pixels of a page image and `checkImages` already reads each one.
-- A Vercel function (UNI-138): a second way to fill `RenderAssets`, or another `Renderer`.
+- A Vercel function (UNI-138): `render/vercel.ts`, `scripts/stage-typst.ts`, and `workbookV2TracingIncludes` in `next.config.ts`.
 - More shapes (UNI-236): one file in `shapes/` and one line in `shapes/index.ts`. A new look of a question is a new `Face` and a template that takes it.
