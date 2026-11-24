@@ -36,10 +36,16 @@ function validateReaders(v: unknown, path: string, errors: ValidationError[]): v
   }
 }
 
+function validateSingleRead(v: unknown, path: string, errors: ValidationError[]): void {
+  if (!Array.isArray(v) || v.length === 0 || !v.every((p) => isNonEmptyString(p))) {
+    pushError(errors, path, "must be a non-empty list of field paths");
+  }
+}
+
 function validatePageRecord(obj: Record<string, unknown>, errors: ValidationError[]): void {
   checkAllowedKeys(
     obj,
-    ["kind", "source_ref", "topic", "sections", "examples", "score_bands", "readers"],
+    ["kind", "source_ref", "topic", "sections", "examples", "score_bands", "readers", "single_read"],
     "",
     errors,
   );
@@ -155,10 +161,13 @@ function validatePageRecord(obj: Record<string, unknown>, errors: ValidationErro
   if ("readers" in obj && obj.readers !== undefined) {
     validateReaders(obj.readers, "readers", errors);
   }
+  if ("single_read" in obj && obj.single_read !== undefined) {
+    validateSingleRead(obj.single_read, "single_read", errors);
+  }
 }
 
 function validateContentsRecord(obj: Record<string, unknown>, errors: ValidationError[]): void {
-  checkAllowedKeys(obj, ["kind", "source_ref", "topics", "readers"], "", errors);
+  checkAllowedKeys(obj, ["kind", "source_ref", "topics", "readers", "single_read"], "", errors);
   if (typeof obj.source_ref !== "string" || !CONTENTS_SOURCE_REF_RE.test(obj.source_ref)) {
     pushError(
       errors,
@@ -195,6 +204,9 @@ function validateContentsRecord(obj: Record<string, unknown>, errors: Validation
   }
   if ("readers" in obj && obj.readers !== undefined) {
     validateReaders(obj.readers, "readers", errors);
+  }
+  if ("single_read" in obj && obj.single_read !== undefined) {
+    validateSingleRead(obj.single_read, "single_read", errors);
   }
 }
 

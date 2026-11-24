@@ -218,4 +218,46 @@ describe("renderRecordToMarkdown", () => {
     expect(md).toContain("`arrow` (step 1): Points from 12 to carry digit 1");
     expect(md).toContain("`helper_digit` (step 1)");
   });
+
+  it("shows single_read fields as not checked in the Markdown view and omits the note when absent", () => {
+    const page: PageRecord = {
+      kind: "page",
+      source_ref: "demo:Z:16a",
+      topic: { title: "Adding Tens" },
+      sections: [
+        {
+          instruction: "Add.",
+          scaffolds: [],
+          items: [
+            {
+              n: 1,
+              printed: "10 + 20 =",
+              form: "horizontal",
+              expr: { kind: "arith", op: "add", operands: [10, 20] },
+              responses: [
+                { position: "after_equals", cue: null, answer: "30", answer_source: "computed" },
+              ],
+            },
+          ],
+        },
+      ],
+      examples: [],
+      score_bands: [[0, 0], [1, 1], [2, 2], [3, 3], [4, "open"]],
+    };
+
+    const cleanMd = renderRecordToMarkdown(page);
+    expect(cleanMd).not.toContain("not checked");
+    expect(cleanMd).not.toContain("Single-read");
+
+    const acceptedPage: PageRecord = {
+      ...page,
+      single_read: ["topic.title", "sections[0].items[0].printed"],
+    };
+    const acceptedMd = renderRecordToMarkdown(acceptedPage);
+    expect(acceptedMd).toContain("Single-read (not checked)");
+    expect(acceptedMd).toContain("`topic.title`");
+    expect(acceptedMd).toContain("`sections[0].items[0].printed`");
+    expect(acceptedMd).toContain("Adding Tens [not checked]");
+    expect(acceptedMd).toContain("10 + 20 = [not checked]");
+  });
 });
