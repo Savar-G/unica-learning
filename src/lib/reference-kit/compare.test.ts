@@ -996,8 +996,7 @@ describe("decideStatus", () => {
       }),
     ).toBe("machine_read");
 
-    // wording differences outside an expression do not block double_read;
-    // wording differences on an expression field (notation.figure) stop as an expression disagreement
+    // wording differences do not block double_read
     expect(
       decideStatus({
         hasA: true,
@@ -1006,20 +1005,10 @@ describe("decideStatus", () => {
         familyB: "codex",
         diffs: [
           { path: "examples[0].marks[0].description", a: "Arrow to 3", b: "Points at 3", kind: "wording" },
-        ],
-      }),
-    ).toBe("double_read");
-    expect(
-      decidePageOutcome({
-        hasA: true,
-        hasB: true,
-        familyA: "claude",
-        familyB: "codex",
-        diffs: [
           { path: "sections[0].items[n=1].expr.figure", a: "Grid with 4 squares", b: "Four-square grid", kind: "wording" },
         ],
       }),
-    ).toEqual({ status: "machine_read", stopReasons: [EXPRESSION_DISAGREEMENT_REASON] });
+    ).toBe("double_read");
   });
 });
 
@@ -1280,25 +1269,13 @@ describe("worked-example step alignment and wording differences", () => {
       "sections[0].scaffolds[7].places[0]",
       "sections[0].scaffolds[7].places[1]",
     ]);
-    // A wording difference on expr.figure stops as an expression disagreement; wording outside expr stays double_read.
-    expect(
-      decidePageOutcome({
-        hasA: true,
-        hasB: true,
-        familyA: "claude",
-        familyB: "codex",
-        diffs: compareRecords(a, b),
-      }),
-    ).toEqual({ status: "machine_read", stopReasons: [EXPRESSION_DISAGREEMENT_REASON] });
-    const nonExprWordingB = structuredClone(b);
-    nonExprWordingB.sections[0].items[0].expr = structuredClone(a.sections[0].items[0].expr);
     expect(
       decideStatus({
         hasA: true,
         hasB: true,
         familyA: "claude",
         familyB: "codex",
-        diffs: compareRecords(a, nonExprWordingB),
+        diffs: compareRecords(a, b),
       }),
     ).toBe("double_read");
 
@@ -2006,20 +1983,10 @@ describe("90% reader agreement rule", () => {
       },
       {
         reason: EXPRESSION_DISAGREEMENT_REASON,
-        label: "item expression disagreement at 95% and expression wording disagreement at 100%",
+        label: "item expression disagreement",
         at95: {
           diffs: [
             { path: "sections[0].items[n=1].expr.operands[0]", a: 2, b: 1, kind: "value" },
-          ],
-        },
-        at100: {
-          diffs: [
-            {
-              path: "sections[0].items[n=1].expr.figure",
-              a: "Bar with 3 parts",
-              b: "Strip split into 3 parts",
-              kind: "wording",
-            },
           ],
         },
       },
@@ -2983,7 +2950,7 @@ describe("90% reader agreement rule", () => {
       label: string;
       a: Expr;
       b: Expr;
-      expectedKind: "value" | "one_unclear" | "both_unclear" | "once_read" | "wording";
+      expectedKind: "value" | "one_unclear" | "both_unclear" | "once_read";
       expectedSuffix: string;
     }> = [
       // arith
@@ -3165,7 +3132,7 @@ describe("90% reader agreement rule", () => {
       },
       {
         exprKind: "linked",
-        label: "linked nested notation figure wording",
+        label: "linked nested notation figure with different numbers",
         a: {
           kind: "linked",
           pair: [
@@ -3176,11 +3143,11 @@ describe("90% reader agreement rule", () => {
         b: {
           kind: "linked",
           pair: [
-            { kind: "notation", latex: "x + 1", figure: "Strip showing 3 boxes" },
+            { kind: "notation", latex: "x + 1", figure: "Bar with 4 boxes" },
             { kind: "arith", op: "add", operands: [1, 2] },
           ],
         },
-        expectedKind: "wording",
+        expectedKind: "value",
         expectedSuffix: ".pair[0].figure",
       },
       // word
@@ -3226,10 +3193,10 @@ describe("90% reader agreement rule", () => {
       },
       {
         exprKind: "word",
-        label: "word nested notation figure wording",
+        label: "word nested notation figure with different numbers",
         a: { kind: "word", text: "Find x", expr: { kind: "notation", latex: "x + 1", figure: "Circle with 2 halves" } },
-        b: { kind: "word", text: "Find x", expr: { kind: "notation", latex: "x + 1", figure: "Round shape in 2 parts" } },
-        expectedKind: "wording",
+        b: { kind: "word", text: "Find x", expr: { kind: "notation", latex: "x + 1", figure: "Circle with 3 halves" } },
+        expectedKind: "value",
         expectedSuffix: ".expr.figure",
       },
       // notation
@@ -3267,10 +3234,10 @@ describe("90% reader agreement rule", () => {
       },
       {
         exprKind: "notation",
-        label: "notation figure wording",
+        label: "notation figure with different numbers",
         a: { kind: "notation", latex: "x + 1", figure: "Bar with 4 squares" },
-        b: { kind: "notation", latex: "x + 1", figure: "Strip of 4 boxes" },
-        expectedKind: "wording",
+        b: { kind: "notation", latex: "x + 1", figure: "Bar with 5 squares" },
+        expectedKind: "value",
         expectedSuffix: ".figure",
       },
     ];
@@ -3286,8 +3253,8 @@ describe("90% reader agreement rule", () => {
         expect(cmp.diffs, tag).toHaveLength(1);
         expect(cmp.diffs[0]?.kind, tag).toBe(c.expectedKind);
         expect(cmp.diffs[0]?.path, tag).toBe(`${prefix}${c.expectedSuffix}`);
-        // One expression difference counts 1 disagreement (0 for wording), never changing counts.
-        expect(cmp.counts.compared - cmp.counts.agreed, tag).toBe(c.expectedKind === "wording" ? 0 : 1);
+        // One expression difference counts 1 disagreement; the stop rule never changes the counts.
+        expect(cmp.counts.compared - cmp.counts.agreed, tag).toBe(1);
         expect(agreementPercentage(cmp.counts.agreed, cmp.counts.compared), tag).toBeGreaterThanOrEqual(95);
         expect(findExpressionDisagreements(cmp.diffs), tag).toEqual([`${prefix}${c.expectedSuffix}`]);
         expect(outcome, tag).toEqual({
@@ -3381,6 +3348,59 @@ describe("90% reader agreement rule", () => {
         expect(res.cmp.diffs, `${place}:${nc.label}`).toEqual([]);
         expect(findExpressionDisagreements(res.cmp.diffs), `${place}:${nc.label}`).toEqual([]);
         expect(res.outcome, `${place}:${nc.label}`).toEqual({ status: "double_read", stopReasons: [] });
+      }
+    }
+
+    // Must-pass controls: wording on expr.figure (same figure, same numbers and math symbols) never stops a page.
+    const wordingCases: Array<{ label: string; a: Expr; b: Expr; suffix: string }> = [
+      {
+        label: "notation figure wording",
+        a: { kind: "notation", latex: "x + 1", figure: "Bar with 4 squares" },
+        b: { kind: "notation", latex: "x + 1", figure: "Strip of 4 boxes" },
+        suffix: ".figure",
+      },
+      {
+        label: "word nested notation figure wording",
+        a: { kind: "word", text: "Find x", expr: { kind: "notation", latex: "x + 1", figure: "Circle with 2 halves" } },
+        b: { kind: "word", text: "Find x", expr: { kind: "notation", latex: "x + 1", figure: "Round shape in 2 parts" } },
+        suffix: ".expr.figure",
+      },
+      {
+        label: "linked nested notation figure wording",
+        a: {
+          kind: "linked",
+          pair: [
+            { kind: "notation", latex: "x + 1", figure: "Bar with 3 boxes" },
+            { kind: "arith", op: "add", operands: [1, 2] },
+          ],
+        },
+        b: {
+          kind: "linked",
+          pair: [
+            { kind: "notation", latex: "x + 1", figure: "Strip showing 3 boxes" },
+            { kind: "arith", op: "add", operands: [1, 2] },
+          ],
+        },
+        suffix: ".pair[0].figure",
+      },
+    ];
+    for (const wc of wordingCases) {
+      for (const place of ["item", "example_part"] as const) {
+        const tag = `${place}:${wc.label}`;
+        const { a, b, prefix } = makePlacePages(place, wc.a, wc.b);
+        const only = decide(a, b);
+        expect(only.cmp.diffs.map((d) => [d.path, d.kind]), tag).toEqual([[`${prefix}${wc.suffix}`, "wording"]]);
+        expect(only.cmp.counts.agreed, tag).toBe(only.cmp.counts.compared);
+        expect(findExpressionDisagreements(only.cmp.diffs), tag).toEqual([]);
+        expect(only.outcome, tag).toEqual({ status: "double_read", stopReasons: [] });
+
+        // At 99% (one more difference, outside expr) the page stays agreement_accepted.
+        b.sections[0].instruction = "Subtract.";
+        const at99 = decide(a, b);
+        expect(at99.cmp.diffs.map((d) => d.kind).sort(), tag).toEqual(["value", "wording"]);
+        expect(agreementPercentage(at99.cmp.counts.agreed, at99.cmp.counts.compared), tag).toBeGreaterThanOrEqual(99);
+        expect(findExpressionDisagreements(at99.cmp.diffs), tag).toEqual([]);
+        expect(at99.outcome, tag).toEqual({ status: "agreement_accepted", stopReasons: [] });
       }
     }
 

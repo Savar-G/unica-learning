@@ -332,7 +332,8 @@ export function findAnswerDisagreements(
  *
  * Covers every expression location in `src/lib/reference-record/types.ts`:
  * - `PageItem.expr` and `ExamplePart.expr` (including nested `linked.pair`, `word.expr`, `notation.figure`)
- *   for every difference kind except `empty_answer`
+ *   for every difference kind except `empty_answer` and `wording` (`wording` on `notation.figure` means
+ *   that both readers describe the same figure with the same numbers and math symbols: it is agreement)
  * - Whole one-sided or unmatched entries (`sections`, `sections[i]`, `items`, `items[n=k]`,
  *   `examples`, `examples[i]`, `parts`, `parts[i]`) that contain a non-null expression
  */
@@ -347,14 +348,14 @@ export function findExpressionDisagreements(diffs: readonly RecordDifference[]):
   };
 
   for (const d of diffs) {
-    if (d.kind === "empty_answer") continue;
+    if (d.kind === "empty_answer" || d.kind === "wording") continue;
 
     if (ITEM_EXPR_RE.test(d.path) || EXAMPLE_PART_EXPR_RE.test(d.path)) {
       add(d.path);
       continue;
     }
 
-    if (d.kind === "order" || d.kind === "wording") continue;
+    if (d.kind === "order") continue;
 
     if (containerDiffMatches(d, EXPRESSION_CONTAINER_PREDICATES)) {
       add(d.path);
