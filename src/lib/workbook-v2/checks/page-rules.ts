@@ -1,0 +1,181 @@
+// The layout rules of a page. They read the page model and the items, never the templates, so a wrong template fails.
+import { isPrintable, PAPER, PRINT_RULES, type BookItem, type Ink, type PageModel, type Rect, type Region, type RegionRole } from "../contract";
+import { bottom, EPSILON, inside, near, overlaps, right } from "./rects";
+
+const { spineZone, outerMargin, qrMin, reach: CLEAR, answer: ANSWER } = PRINT_RULES;
+
+/** An answer may not stand in a blank space: its question ends at most this far above it. */
+const MAX_GAP_ABOVE_ANSWER = 24;
+/** The QR code may stand beside the scan mark of its corner. */
+const QR_CORNER_ROOM = 24;
+const ONE_LINE_HEIGHT = 24;
+
+/** The last part of the id of a region, as problems show it. */
+export const regionName = (region: Region) => `"${region.id.slice(region.id.lastIndexOf("/") + 1)}"`;
+const texts = (ink: readonly Ink[]) => ink.flatMap((i) => (i.kind === "text" ? [i.text] : []));
+const size = (n: number) => Math.round(n * 100) / 100;
+
+type Tell = (problem: string) => void;
+
+/** The part of the page that may hold print: inside the margins and outside the spine zone. */
+function liveArea(page: PageModel): Rect {
+  const x = page.side === "front" ? spineZone : outerMargin;
+  return { x, y: outerMargin, w: PAPER.w - spineZone - outerMargin, h: PAPER.h - 2 * outerMargin };
+}
+
+function checkEdges(page: PageModel, live: Rect, tell: Tell): void {
+  const spineOnLeft = page.side === "front";
+  for (const region of page.regions) {
+    for (const rect of [region.rect, ...region.ink.map((i) => i.rect)]) {
+      const overLeft = rect.x < live.x - EPSILON;
+      const overRight = right(rect) > right(live) + EPSILON;
+      if (spineOnLeft ? overLeft : overRight) tell(`${regionName(region)} enters the spine zone`);
+      if ((spineOnLeft ? overRight : overLeft) || rect.y < live.y - EPSILON || bottom(rect) > bottom(live) + EPSILON) tell(`${regionName(region)} enters the 0.5 inch outer margin`);
+    }
+  }
+}
+
+function checkInk(page: PageModel, tell: Tell): void {
+  for (const region of page.regions) {
+    if (region.ink.some((i) => !inside(i.rect, region.rect))) tell(`the ink of ${regionName(region)} is outside it`);
+    if (region.ink.some((i) => i.color !== "black")) tell(`${regionName(region)} has ink that is not black`);
+    region.ink.forEach((ink, i) => {
+      if (ink.kind !== "text") return;
+      if (!isPrintable(ink.text)) tell(`${regionName(region)} has the text "${ink.text}", which the fonts cannot print`);
+      if (region.ink.some((other, j) => j !== i && overlaps(ink.rect, other.rect))) tell(`the text "${ink.text}" of ${regionName(region)} is over other ink`);
+    });
+    const mustBeEmpty = region.role === "answer" ? region.ink.some((i) => i.kind !== "outline") : (region.role === "reach" || region.role === "work" || region.role === "slot") && region.ink.length > 0;
+    if (mustBeEmpty) tell(`${regionName(region)} must be empty`);
+  }
+}
+
+/** Slots, reaches and their parts lie inside each other on purpose; everything else is apart. */
+function checkOverlaps(page: PageModel, tell: Tell): void {
+  page.regions.forEach((a, i) => {
+    for (const b of page.regions.slice(i + 1)) {
+      if (!overlaps(a.rect, b.rect)) continue;
+      const sameItem = a.item !== null && a.item === b.item;
+      if (sameItem && (a.role === "slot" || b.role === "slot")) continue;
+      const reach = a.role === "reach" ? a : b.role === "reach" ? b : null;
+      const other = reach === a ? b : a;
+      if (!reach) tell(`${regionName(a)} and ${regionName(b)} overlap`);
+      else if (!(sameItem && other.role === "answer")) tell(`${regionName(other)} enters the reach ${regionName(reach)}`);
+    }
+  });
+}
+
+function checkPart(page: PageModel, role: RegionRole, wanted: string | null, tell: Tell): Region | null {
+  const found = page.regions.filter((r) => r.role === role);
+  if (found.length !== 1) tell(`there must be one ${role}, not ${found.length}`);
+  if (found.length === 0) return null;
+  const printed = texts(found[0].ink).join(" ");
+  if (wanted !== null && printed !== wanted) tell(`the ${role} must be "${wanted}" and it is "${printed}"`);
+  return found[0];
+}
+
+function checkFrame(page: PageModel, tell: Tell): void {
+  const slots = page.regions.filter((r) => r.role === "slot");
+  const firstSlot = Math.min(...slots.map((s) => s.rect.y));
+  const lastSlot = Math.max(...slots.map((s) => bottom(s.rect)));
+  const heading = checkPart(page, "heading", `${page.topicCode} · ${page.topicTitle}`, tell);
+  const instruction = checkPart(page, "instruction", page.instruction, tell);
+  const footer = checkPart(page, "footer", `Level ${page.levelName} · Page ${page.page}`, tell);
+  if (heading && bottom(heading.rect) > Math.min(instruction?.rect.y ?? firstSlot, firstSlot) + EPSILON) tell("the heading must be above the instruction and the questions");
+  if (instruction) {
+    if (bottom(instruction.rect) > firstSlot + EPSILON) tell("the instruction must be above the questions");
+    if (instruction.rect.h > ONE_LINE_HEIGHT) tell("the instruction must be one line");
+    if (page.instruction.length > PRINT_RULES.maxInstructionCharacters) tell(`the instruction has ${page.instruction.length} characters and the limit is ${PRINT_RULES.maxInstructionCharacters}`);
+  }
+  if (footer && footer.rect.y < lastSlot - EPSILON) tell("the footer must be below the questions");
+  if (page.side === "front" ? page.page % 2 === 0 : page.page % 2 !== 0) tell(`a ${page.side} page must have an ${page.side === "front" ? "odd" : "even"} number`);
+}
+
+function checkQr(page: PageModel, live: Rect, tell: Tell): void {
+  const qr = checkPart(page, "qr", null, tell);
+  if (!qr) return;
+  const outward = page.side === "front" ? right(live) - right(qr.rect) : qr.rect.x - live.x;
+  const corner = page.side === "front" ? "bottom right" : "bottom left";
+  if (bottom(live) - bottom(qr.rect) > QR_CORNER_ROOM || outward > QR_CORNER_ROOM || outward < -EPSILON) tell(`the QR code must be in the ${corner} corner`);
+  if (Math.min(qr.rect.w, qr.rect.h) < qrMin - EPSILON) tell("the QR code is smaller than 0.6 inch");
+  if (qr.ink.length === 0) tell("the QR code has no squares");
+}
+
+function checkMarks(page: PageModel, live: Rect, tell: Tell): void {
+  const corners: Record<string, (r: Rect) => boolean> = {
+    "mark-tl": (r) => near(r.x, live.x) && near(r.y, live.y),
+    "mark-tr": (r) => near(right(r), right(live)) && near(r.y, live.y),
+    "mark-br": (r) => near(right(r), right(live)) && near(bottom(r), bottom(live)),
+    "mark-bl": (r) => near(r.x, live.x) && near(bottom(r), bottom(live)),
+  };
+  const marks = new Map(page.regions.filter((r) => r.role === "scan-mark").map((r) => [regionName(r).slice(1, -1), r]));
+  const wanted = Object.keys(corners);
+  if (marks.size !== wanted.length || wanted.some((w) => !marks.has(w))) tell(`the scan marks must be ${wanted.join(", ")}`);
+  for (const [id, mark] of marks) if (corners[id] && !corners[id](mark.rect)) tell(`"${id}" is not in its corner`);
+}
+
+function checkAnswer(answer: Region, reach: Region, question: Region, item: BookItem, tell: Tell): void {
+  const { rect } = answer;
+  const needed = Math.max(ANSWER.minWidth, item.answer.value.length * ANSWER.perCharacter + ANSWER.extra);
+  if (rect.w < needed - EPSILON || rect.h < ANSWER.minHeight - EPSILON) tell(`${regionName(answer)} is ${size(rect.w)} by ${size(rect.h)} points and needs ${size(needed)} by ${ANSWER.minHeight}`);
+  const space: [boolean, string][] = [
+    [rect.x - reach.rect.x < CLEAR.left - EPSILON, "on the left of"],
+    [right(reach.rect) - right(rect) < CLEAR.right - EPSILON, "on the right of"],
+    [rect.y - reach.rect.y < CLEAR.top - EPSILON, "above"],
+    [bottom(reach.rect) - bottom(rect) < CLEAR.bottom - EPSILON, "below"],
+  ];
+  for (const [tooSmall, where] of space) if (tooSmall) tell(`${regionName(reach)} does not leave enough space ${where} ${regionName(answer)}`);
+  const gap = rect.y - bottom(question.rect);
+  const beside = right(question.rect) <= rect.x + EPSILON || question.rect.x >= right(rect) - EPSILON;
+  if (gap < -EPSILON || gap > MAX_GAP_ABOVE_ANSWER || beside) tell(`${regionName(answer)} is not directly below its question`);
+}
+
+const ITEM_PARTS = ["slot", "label", "question", "answer", "reach", "work"] as const;
+
+function checkItem(page: PageModel, item: BookItem, tell: Tell): void {
+  const parts = new Map<RegionRole, Region>();
+  for (const role of ITEM_PARTS) {
+    const found = page.regions.filter((r) => r.item === item.id && r.role === role);
+    if (found.length === 0) tell(`question ${item.number} has no "${role}" rectangle`);
+    else if (found.length > 1) tell(`question ${item.number} has ${found.length} "${role}" rectangles`);
+    else parts.set(role, found[0]);
+  }
+  const [slot, label, question, answer, reach] = ITEM_PARTS.map((role) => parts.get(role));
+  if (slot) for (const part of parts.values()) if (!inside(part.rect, slot.rect)) tell(`${regionName(part)} is not inside ${regionName(slot)}`);
+  if (label && texts(label.ink).join("") !== String(item.number)) tell(`question ${item.number} has the label "${texts(label.ink).join("")}"`);
+  if (question) {
+    const { top, sign, bottom: low } = item.face;
+    const printed = texts(question.ink).join("");
+    if (printed !== top + sign + low) tell(`question ${item.number} prints "${printed}" and must print "${top + sign + low}"`);
+  }
+  if (answer && reach && question) checkAnswer(answer, reach, question, item, tell);
+}
+
+function checkColumns(page: PageModel, tell: Tell): void {
+  const lefts: number[] = [];
+  for (const { rect } of page.regions.filter((r) => r.role === "answer")) if (!lefts.some((x) => near(x, rect.x))) lefts.push(rect.x);
+  if (lefts.length > PRINT_RULES.maxAnswerColumns) tell(`there are ${lefts.length} answer columns and the limit is ${PRINT_RULES.maxAnswerColumns}`);
+}
+
+/** The problems of one page, in plain words. `items` may hold the items of other pages too. */
+export function checkPage(page: PageModel, items: readonly BookItem[]): string[] {
+  const problems: string[] = [];
+  const tell: Tell = (problem) => {
+    const text = `Page ${page.page}: ${problem}.`;
+    if (!problems.includes(text)) problems.push(text);
+  };
+  if (page.size.w !== PAPER.w || page.size.h !== PAPER.h) tell(`the paper must be ${PAPER.w} by ${PAPER.h} points`);
+  const live = liveArea(page);
+  checkEdges(page, live, tell);
+  checkInk(page, tell);
+  checkOverlaps(page, tell);
+  checkFrame(page, tell);
+  checkQr(page, live, tell);
+  checkMarks(page, live, tell);
+  checkColumns(page, tell);
+  const onPage = items.filter((i) => i.sheetId === page.sheetId && i.side === page.side && i.id.startsWith(`${page.id}/`));
+  if (onPage.length === 0) tell("the page has no question");
+  for (const item of onPage) checkItem(page, item, tell);
+  const known = new Set(onPage.map((i) => i.id));
+  for (const region of page.regions) if (region.item !== null && !known.has(region.item)) tell(`${regionName(region)} belongs to no question of this page`);
+  return problems;
+}
