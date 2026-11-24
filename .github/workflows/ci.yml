@@ -91,6 +91,8 @@ jobs:
       # The workbook engine's tests draw real pages with it and fail here when it is absent (docs/workbook-v2-engine.md).
       - name: Install the pinned Typst
         run: npm run typst:install
+        # A failed download must not stop the tests that do not need it. The engine tests fail by themselves without it.
+        continue-on-error: true
         timeout-minutes: 2
       # The timed Maya files and Chromium scale matrix run in dedicated jobs so they have the runner to themselves.
       - run: npm test -- --config .github/scripts/vitest-ci.config.mjs --exclude='src/lib/maya-gate/{gate,word-count-grade-1,word-count-grade-4}.test.ts' --exclude='src/lib/scan-binding-scale-chromium.test.ts' --testTimeout=60000 --shard=${{ matrix.shard }}/8
@@ -121,6 +123,8 @@ jobs:
         timeout-minutes: 2
       - name: Install the pinned Typst
         run: npm run typst:install
+        # A failed download must not stop the tests that do not need it. The engine tests fail by themselves without it.
+        continue-on-error: true
         timeout-minutes: 2
       - name: Run affected unit tests
         if: needs.scope.outputs.run_changed_unit == 'true'

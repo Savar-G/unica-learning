@@ -21,6 +21,22 @@ function hasInk(image: PageImage, box: Box): boolean {
   return false;
 }
 
+/** Whether a fill is drawn in all of its area: a part of it, or a neighbour that shares a corner, is not enough. */
+function isFilled(image: PageImage, box: Box): boolean {
+  for (let y = box.top; y < box.bottom; y++) for (let x = box.left; x < box.right; x++) if (!isDark(image, x, y)) return false;
+  return box.right > box.left && box.bottom > box.top;
+}
+
+/** Whether a thin line has ink at each pixel of its length. It can be thinner than a pixel is wide. */
+function isWholeLine(image: PageImage, box: Box): boolean {
+  if (box.right - box.left > box.bottom - box.top) {
+    for (let x = box.left; x < box.right; x++) if (!hasInk(image, { ...box, left: x, right: x + 1 })) return false;
+  } else {
+    for (let y = box.top; y < box.bottom; y++) if (!hasInk(image, { ...box, top: y, bottom: y + 1 })) return false;
+  }
+  return true;
+}
+
 /** The middle of each side of an outline: at its ends the other sides have ink. */
 function sidesOf({ x, y, w, h }: Rect, line: number): Rect[] {
   return [
@@ -31,8 +47,10 @@ function sidesOf({ x, y, w, h }: Rect, line: number): Rect[] {
   ];
 }
 
-const isDrawn = (image: PageImage, ink: Ink): boolean =>
-  ink.kind === "outline" ? sidesOf(ink.rect, ink.width).every((side) => hasInk(image, outer(side))) : hasInk(image, inner(ink.rect));
+function isDrawn(image: PageImage, ink: Ink): boolean {
+  if (ink.kind === "outline") return sidesOf(ink.rect, ink.width).every((side) => isWholeLine(image, outer(side)));
+  return ink.kind === "fill" ? isFilled(image, inner(ink.rect)) : hasInk(image, inner(ink.rect));
+}
 
 function checkInk(image: PageImage, region: Region, tell: Tell): void {
   for (const ink of region.ink) {
