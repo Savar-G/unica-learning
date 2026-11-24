@@ -206,4 +206,41 @@ describe("pickLargestDownloads", () => {
     expect(result.removed).toEqual(["gone-10-9.jpg"]);
     expect(readdirSync(photos)).toEqual(["a-10-2.jpg"]);
   });
+
+  it("prefers downloads that pass the size rule over a narrow image with more pixels, and falls back only when none passes", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-board-size-repo-"));
+    const root = mkdtempSync(join(tmpdir(), "ref-board-size-"));
+    tempDirs.push(repo, root);
+    const downloads = join(root, "downloads");
+    const photos = join(root, "photos");
+    mkdirSync(downloads);
+    mkdirSync(photos);
+
+    // Narrow image has more pixels (2,096,500) than passing image (1,500,000); passing image wins in either order.
+    writeFileSync(join(downloads, "p1-1-1__1.jpeg"), await image(599, 3500, "jpeg"));
+    writeFileSync(join(downloads, "p1-1-1__2.jpeg"), await image(750, 2000, "jpeg"));
+    writeFileSync(join(downloads, "p2-1-2__1.jpeg"), await image(750, 2000, "jpeg"));
+    writeFileSync(join(downloads, "p2-1-2__2.jpeg"), await image(599, 3500, "jpeg"));
+    // Two passing downloads: keep the one with the most pixels.
+    writeFileSync(join(downloads, "p3-1-3__1.jpeg"), await image(750, 2000, "jpeg"));
+    writeFileSync(join(downloads, "p3-1-3__2.jpeg"), await image(1800, 2400, "jpeg"));
+    // No download passes: keep the one with the most pixels and flag it too small.
+    writeFileSync(join(downloads, "p4-1-4__1.jpeg"), await image(378, 504, "jpeg"));
+    writeFileSync(join(downloads, "p4-1-4__2.jpeg"), await image(599, 3500, "jpeg"));
+
+    const result = await pickLargestDownloads(
+      downloads,
+      photos,
+      ["p1-1-1", "p2-1-2", "p3-1-3", "p4-1-4"],
+      repo,
+    );
+
+    expect(result.picked.map((p) => [p.stem, p.width, p.height])).toEqual([
+      ["p1-1-1", 750, 2000],
+      ["p2-1-2", 750, 2000],
+      ["p3-1-3", 1800, 2400],
+      ["p4-1-4", 599, 3500],
+    ]);
+    expect(result.tooSmall.map((p) => [p.stem, p.width, p.height])).toEqual([["p4-1-4", 599, 3500]]);
+  });
 });

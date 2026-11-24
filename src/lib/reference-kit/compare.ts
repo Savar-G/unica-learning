@@ -202,7 +202,11 @@ const PATH_TOKEN_RE = /([A-Za-z_]+)|\[(\d+)\]|\[n=(\d+)\]|\[b:(\d+)\]/g;
 
 // Follows a comparison path (with "[n=3]" item and step keys and "[b:1]" reader-b-only entries)
 // through a record. Returns the JSON path of the place in that record and the value there.
-function resolveDiffPath(record: unknown, path: string): { jsonPath: string; value: unknown } {
+function resolveDiffPath(
+  record: unknown,
+  path: string,
+  insertBefore?: number,
+): { jsonPath: string; value: unknown } {
   let node: unknown = record;
   let out = "";
   for (const m of path.matchAll(PATH_TOKEN_RE)) {
@@ -222,7 +226,7 @@ function resolveDiffPath(record: unknown, path: string): { jsonPath: string; val
       out += `[${found === -1 ? n - 1 : found}]`;
       node = found === -1 ? undefined : (node as unknown[])[found];
     } else if (bIndex !== undefined) {
-      out += "[]";
+      out += insertBefore !== undefined ? `[${insertBefore}]` : "[]";
       node = undefined;
     }
   }
@@ -233,7 +237,11 @@ function resolveDiffPath(record: unknown, path: string): { jsonPath: string; val
 // it belongs in the final record, so that a person can copy it after a look at the photo.
 function locateOnceRead(d: RecordDifference, finalRecord: ReferenceRecord): RecordDifference {
   const reader: "a" | "b" = d.a !== null && d.a !== undefined ? "a" : "b";
-  return { ...d, reader, final_path: resolveDiffPath(finalRecord, d.path).jsonPath };
+  return {
+    ...d,
+    reader,
+    final_path: resolveDiffPath(finalRecord, d.path, d.insert_before).jsonPath,
+  };
 }
 
 function findEqualNode(node: unknown, target: unknown, path: string): string | null {

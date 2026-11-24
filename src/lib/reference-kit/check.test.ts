@@ -241,6 +241,55 @@ describe("checkAndMarkPage", () => {
     expect(status["sample:M:3a"]).toBe("human_checked");
   });
 
+  it("refuses a sole work_area response with null answer and computes a sole work_area on a computable item", () => {
+    const page = makeFinalPage();
+    page.sections[0].items = [
+      {
+        n: 1,
+        printed: "14 + 9",
+        form: "horizontal",
+        expr: { kind: "arith", op: "add", operands: [14, 9] },
+        responses: [{ position: "work_area", cue: null, answer: null, answer_source: "unchecked" }],
+      },
+      {
+        n: 2,
+        printed: "Simplify 4/6",
+        form: "horizontal",
+        expr: { kind: "notation", latex: "\\frac{4}{6}" },
+        responses: [{ position: "work_area", cue: null, answer: null, answer_source: "unchecked" }],
+      },
+    ];
+    const { repo, work, finalDir } = setUpWork(page);
+    const before = readFileSync(join(finalDir, "sample-M-3a.json"), "utf8");
+    expect(() =>
+      checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: true }),
+    ).toThrow(/Answer places with no answer:\n {2}sections\[0\]\.items\[n=2\]\.responses\[0\]\n/);
+    expectNothingWritten(finalDir, before);
+
+    page.sections[0].items[1].responses[0] = {
+      position: "work_area",
+      cue: null,
+      answer: "2/3",
+      answer_source: "reader",
+    };
+    writeFileSync(join(finalDir, "sample-M-3a.json"), JSON.stringify(page, null, 2));
+    const result = checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: true });
+    expect(result.notes).toEqual([]);
+    const saved = JSON.parse(readFileSync(join(finalDir, "sample-M-3a.json"), "utf8")) as PageRecord;
+    expect(saved.sections[0].items[0].responses[0]).toEqual({
+      position: "work_area",
+      cue: null,
+      answer: "23",
+      answer_source: "computed",
+    });
+    expect(saved.sections[0].items[1].responses[0]).toEqual({
+      position: "work_area",
+      cue: null,
+      answer: "2/3",
+      answer_source: "reader",
+    });
+  });
+
   it("refuses an invalid edited record without modifying status.json", () => {
     const repo = mkdtempSync(join(tmpdir(), "ref-chk-repo-"));
     const work = mkdtempSync(join(tmpdir(), "ref-chk-work-"));

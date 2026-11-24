@@ -29,13 +29,23 @@ function stepPrintedKey(step: ExampleStep): string | null {
   return norm.length > 0 ? norm : null;
 }
 
+function sameConcreteShows(a: ExampleStep, b: ExampleStep): boolean {
+  return (
+    typeof a.shows === "string" &&
+    a.shows !== UNCLEAR &&
+    a.shows !== NOT_STATED &&
+    a.shows === b.shows
+  );
+}
+
 type AlignedStep =
   | { kind: "pair"; a: ExampleStep; b: ExampleStep }
   | { kind: "a_only"; a: ExampleStep }
-  | { kind: "b_only"; b: ExampleStep; idxB: number };
+  | { kind: "b_only"; b: ExampleStep; idxB: number; insertBeforeA: number };
 
 // Aligns two step lists by longest common subsequence of equal normalized printed text,
-// pairing remaining steps in order within each gap and marking leftovers as once_read.
+// breaking ties in favour of equal `shows`, pairing remaining steps in order within each gap,
+// and marking leftovers as once_read with their insertion index into reader A's list.
 function alignExampleSteps(
   aList: readonly ExampleStep[],
   bList: readonly ExampleStep[],
@@ -44,15 +54,19 @@ function alignExampleSteps(
   const n = bList.length;
   const aKeys = aList.map(stepPrintedKey);
   const bKeys = bList.map(stepPrintedKey);
+  // Each matched printed step scores `weight`, plus 1 when `shows` also agrees.
+  // Because at most min(m, n) < weight steps can match, equal `shows` only breaks ties.
+  const weight = Math.min(m, n) + 1;
   const dp: number[][] = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
 
   for (let i = m - 1; i >= 0; i -= 1) {
     for (let j = n - 1; j >= 0; j -= 1) {
+      let best = Math.max(dp[i + 1][j], dp[i][j + 1]);
       if (aKeys[i] !== null && aKeys[i] === bKeys[j]) {
-        dp[i][j] = dp[i + 1][j + 1] + 1;
-      } else {
-        dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+        const score = sameConcreteShows(aList[i], bList[j]) ? weight + 1 : weight;
+        best = Math.max(best, dp[i + 1][j + 1] + score);
       }
+      dp[i][j] = best;
     }
   }
 
@@ -60,7 +74,13 @@ function alignExampleSteps(
   let i = 0;
   let j = 0;
   while (i < m && j < n) {
-    if (aKeys[i] !== null && aKeys[i] === bKeys[j] && dp[i][j] === dp[i + 1][j + 1] + 1) {
+    const score =
+      aKeys[i] !== null && aKeys[i] === bKeys[j]
+        ? sameConcreteShows(aList[i], bList[j])
+          ? weight + 1
+          : weight
+        : 0;
+    if (score > 0 && dp[i][j] === dp[i + 1][j + 1] + score) {
       anchors.push([i, j]);
       i += 1;
       j += 1;
@@ -85,7 +105,7 @@ function alignExampleSteps(
       aligned.push({ kind: "a_only", a: aList[prevA + k] });
     }
     for (let k = pairedInGap; k < gapB; k += 1) {
-      aligned.push({ kind: "b_only", b: bList[prevB + k], idxB: prevB + k });
+      aligned.push({ kind: "b_only", b: bList[prevB + k], idxB: prevB + k, insertBeforeA: nextA });
     }
     if (nextA < m && nextB < n) {
       aligned.push({ kind: "pair", a: aList[nextA], b: bList[nextB] });
@@ -97,17 +117,23 @@ function alignExampleSteps(
   return aligned;
 }
 
+interface StepAlignmentMap {
+  bStepToAStep: Map<number, number>;
+  unmatchedBSteps: Set<number>;
+}
+
 function compareExampleSteps(
   path: string,
   a: Example["steps"],
   b: Example["steps"],
   diffs: RecordDifference[],
-): Map<number, number> {
+): StepAlignmentMap {
   const bStepToAStep = new Map<number, number>();
-  if (checkSentinels(path, a, b, diffs)) return bStepToAStep;
+  const unmatchedBSteps = new Set<number>();
+  if (checkSentinels(path, a, b, diffs)) return { bStepToAStep, unmatchedBSteps };
   const aList: ExampleStep[] = Array.isArray(a) ? a : [];
   const bList: ExampleStep[] = Array.isArray(b) ? b : [];
-  if (aList.length === 0 && bList.length === 0) return bStepToAStep;
+  if (aList.length === 0 && bList.length === 0) return { bStepToAStep, unmatchedBSteps };
 
   const aligned = alignExampleSteps(aList, bList);
   for (const entry of aligned) {
@@ -116,7 +142,14 @@ function compareExampleSteps(
       continue;
     }
     if (entry.kind === "b_only") {
-      diffs.push({ path: `${path}[b:${entry.idxB}]`, a: null, b: entry.b, kind: "once_read" });
+      unmatchedBSteps.add(entry.b.n);
+      diffs.push({
+        path: `${path}[b:${entry.idxB}]`,
+        a: null,
+        b: entry.b,
+        kind: "once_read",
+        ...(entry.insertBeforeA < aList.length ? { insert_before: entry.insertBeforeA } : {}),
+      });
       continue;
     }
     const { a: sa, b: sb } = entry;
@@ -145,7 +178,7 @@ function compareExampleSteps(
       diffs,
     );
   }
-  return bStepToAStep;
+  return { bStepToAStep, unmatchedBSteps };
 }
 
 function markStepKey(m: ExampleMark): string {
@@ -183,15 +216,23 @@ function compareExampleMarks(
   a: Example["marks"],
   b: Example["marks"],
   diffs: RecordDifference[],
-  bStepToAStep: ReadonlyMap<number, number>,
+  stepAlignment: StepAlignmentMap,
 ): void {
   if (checkSentinels(path, a, b, diffs)) return;
   const aList: ExampleMark[] = Array.isArray(a) ? a : [];
   const bOrig: ExampleMark[] = Array.isArray(b) ? b : [];
   if (aList.length === 0 && bOrig.length === 0) return;
 
-  const bList: ExampleMark[] = bOrig.map((m) => {
+  const { bStepToAStep, unmatchedBSteps } = stepAlignment;
+  // Marks on an unmatched reader B step must stay unmatched rather than pairing with a reader A
+  // mark that happens to share the same step number.
+  const unmatchedBMarks = new Set<number>();
+  const bList: ExampleMark[] = bOrig.map((m, idx) => {
     if (m.step === undefined) return m;
+    if (unmatchedBSteps.has(m.step)) {
+      unmatchedBMarks.add(idx);
+      return m;
+    }
     const mapped = bStepToAStep.get(m.step);
     return mapped !== undefined && mapped !== m.step ? { ...m, step: mapped } : m;
   });
@@ -202,7 +243,9 @@ function compareExampleMarks(
   // Pass 1: match by kind + step + normalized description
   aList.forEach((mA, idxA) => {
     const keyA = markFullKey(mA);
-    const matchIdx = bList.findIndex((mB, j) => !usedB.has(j) && markFullKey(mB) === keyA);
+    const matchIdx = bList.findIndex(
+      (mB, j) => !usedB.has(j) && !unmatchedBMarks.has(j) && markFullKey(mB) === keyA,
+    );
     if (matchIdx !== -1) {
       matchedBForA.set(idxA, matchIdx);
       usedB.add(matchIdx);
@@ -213,7 +256,9 @@ function compareExampleMarks(
   aList.forEach((mA, idxA) => {
     if (matchedBForA.has(idxA)) return;
     const keyA = markStepKey(mA);
-    const matchIdx = bList.findIndex((mB, j) => !usedB.has(j) && markStepKey(mB) === keyA);
+    const matchIdx = bList.findIndex(
+      (mB, j) => !usedB.has(j) && !unmatchedBMarks.has(j) && markStepKey(mB) === keyA,
+    );
     if (matchIdx !== -1) {
       matchedBForA.set(idxA, matchIdx);
       usedB.add(matchIdx);
@@ -223,7 +268,9 @@ function compareExampleMarks(
   // Pass 3: match remaining by kind only in order
   aList.forEach((mA, idxA) => {
     if (matchedBForA.has(idxA)) return;
-    const matchIdx = bList.findIndex((mB, j) => !usedB.has(j) && mB.kind === mA.kind);
+    const matchIdx = bList.findIndex(
+      (mB, j) => !usedB.has(j) && !unmatchedBMarks.has(j) && mB.kind === mA.kind,
+    );
     if (matchIdx !== -1) {
       matchedBForA.set(idxA, matchIdx);
       usedB.add(matchIdx);
@@ -273,8 +320,8 @@ function compareSingleExample(
     compareField(`${pPath}.shown_answer`, pa.shown_answer, pb.shown_answer, { teaching: true }, diffs);
   }
 
-  const bStepToAStep = compareExampleSteps(`${path}.steps`, a.steps, b.steps, diffs);
-  compareExampleMarks(`${path}.marks`, a.marks, b.marks, diffs, bStepToAStep);
+  const stepAlignment = compareExampleSteps(`${path}.steps`, a.steps, b.steps, diffs);
+  compareExampleMarks(`${path}.marks`, a.marks, b.marks, diffs, stepAlignment);
 }
 
 function exampleLabelKey(ex: Example): string | null {

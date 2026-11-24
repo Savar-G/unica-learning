@@ -186,9 +186,11 @@ const FORMAT_EXT = new Map<string, string>([
   ["heif", "heic"],
 ]);
 
-// One board photo can hold a full-size original and a small preview. The downloads of one photo are
-// named "<stem>__<n>.<anything>". This keeps the image with the most pixels of each stem and writes
-// it to the photos folder as "<stem>.<ext>" with mode 0600, removing older "<stem>.*" files first.
+// One board photo can hold a full-size original and a small or narrow preview. The downloads of one
+// photo are named "<stem>__<n>.<anything>". This prefers downloads that pass the size rule (long
+// and short side) and keeps the one with the most pixels; only when none passes does it take the
+// most pixels overall and flag it too small. It writes "<stem>.<ext>" with mode 0600, removing
+// older "<stem>.*" files first.
 export async function pickLargestDownloads(
   downloadsDir: string,
   photosDir: string,
@@ -223,7 +225,7 @@ export async function pickLargestDownloads(
   const tooSmall: PickedPhoto[] = [];
   for (const [stem, files] of groups) {
     if (planned.size > 0 && !planned.has(stem)) continue;
-    let best: { file: string; width: number; height: number; ext: string } | null = null;
+    let best: { file: string; width: number; height: number; ext: string; ok: boolean } | null = null;
     for (const file of files) {
       let meta;
       try {
@@ -233,8 +235,13 @@ export async function pickLargestDownloads(
       }
       const ext = FORMAT_EXT.get(meta.format ?? "");
       if (!ext || !meta.width || !meta.height) continue;
-      if (!best || meta.width * meta.height > best.width * best.height) {
-        best = { file, width: meta.width, height: meta.height, ext };
+      const ok = !isPhotoTooSmall(meta.width, meta.height);
+      const better =
+        !best ||
+        (ok && !best.ok) ||
+        (ok === best.ok && meta.width * meta.height > best.width * best.height);
+      if (better) {
+        best = { file, width: meta.width, height: meta.height, ext, ok };
       }
     }
     if (!best) continue;

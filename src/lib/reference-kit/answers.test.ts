@@ -1,7 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { validateReferenceRecord, type ItemResponse, type PageItem, type PageRecord } from "@/lib/reference-record";
-import { applyComputedAnswers, decimalPlacePower, findEmptyAnswers } from "./answers";
+import { applyComputedAnswers, decimalPlacePower, findEmptyAnswers, isKnownPlaceName } from "./answers";
 
 function makePageWithItem(item: PageRecord["sections"][0]["items"][0]): PageRecord {
   return {
@@ -373,13 +373,31 @@ describe("applyComputedAnswers", () => {
     }
   });
 
-  it("knows the decimal place names in the forms that readers write", () => {
+  it("knows the decimal place names in the forms that readers write, including fractional places for isKnownPlaceName only", () => {
     expect(["ones", "One", "ones place", "units"].map(decimalPlacePower)).toEqual([0, 0, 0, 0]);
     expect(["tens", "tens digit", "hundreds", "thousands"].map(decimalPlacePower)).toEqual([1, 1, 2, 3]);
     expect(["ten thousands", "ten_thousands", "Ten-Thousands"].map(decimalPlacePower)).toEqual([4, 4, 4]);
-    expect(["quotient", "second factor", "fourth", null, undefined].map(decimalPlacePower)).toEqual([
-      null, null, null, null, null,
+    expect(["quotient", "second factor", "fourth", "tenths", "hundredths", "thousandths", null, undefined].map(decimalPlacePower)).toEqual([
+      null, null, null, null, null, null, null, null,
     ]);
+    expect(
+      [
+        "ones",
+        "tens digit",
+        "ten thousands",
+        "tenth",
+        "tenths",
+        "tenths place",
+        "hundredth",
+        "hundredths",
+        "hundredths digit",
+        "thousandth",
+        "thousandths",
+        "thousandths place",
+        "ten-thousandths",
+      ].every(isKnownPlaceName),
+    ).toBe(true);
+    expect(["numerator", "denominator", "top box", "quotient", null, undefined].some(isKnownPlaceName)).toBe(false);
   });
 
   it("property: digits written by place read back as the computed value, and unnamed places all get the value", () => {
@@ -479,13 +497,13 @@ describe("applyComputedAnswers", () => {
     ]);
   });
 
-  it("keeps a single work_area reader answer valid and untouched, and keeps a null work_area non-answer-bearing", () => {
+  it("treats a sole work_area on a question item as answer-bearing while keeping a work_area beside another response non-answer-bearing", () => {
     const notationOpenSpace = makePageWithItem({
       n: 1,
-      printed: "1/2 + 1/4 =",
+      printed: "Simplify 4/6",
       form: "horizontal",
-      expr: { kind: "notation", latex: "\\frac{1}{2} + \\frac{1}{4}" },
-      responses: [{ position: "work_area", cue: null, answer: "3/4", answer_source: "reader" }],
+      expr: { kind: "notation", latex: "\\frac{4}{6}" },
+      responses: [{ position: "work_area", cue: null, answer: "2/3", answer_source: "reader" }],
     });
     expect(validateReferenceRecord(notationOpenSpace).ok).toBe(true);
     const notationResult = applyComputedAnswers(notationOpenSpace);
@@ -493,18 +511,38 @@ describe("applyComputedAnswers", () => {
     expect(notationResult.details).toEqual([]);
     expect(findEmptyAnswers(notationResult.record)).toEqual([]);
 
+    // A sole work_area left null on a non-computable item is reported as an empty answer; "unclear" is not.
+    const emptyWorkArea = makePageWithItem({
+      n: 1,
+      printed: "Simplify 4/6",
+      form: "horizontal",
+      expr: { kind: "notation", latex: "\\frac{4}{6}" },
+      responses: [{ position: "work_area", cue: null, answer: null, answer_source: "unchecked" }],
+    });
+    expect(validateReferenceRecord(emptyWorkArea).ok).toBe(true);
+    expect(findEmptyAnswers(emptyWorkArea)).toEqual(["sections[0].items[n=1].responses[0]"]);
+    emptyWorkArea.sections[0].items[0].responses[0].answer = "unclear";
+    expect(findEmptyAnswers(emptyWorkArea)).toEqual([]);
+
+    // A sole work_area on a computable item receives the computed answer with no places_do_not_fit note.
     const arithOpenSpace = makePageWithItem({
       n: 2,
-      printed: "12 + 5 =",
+      printed: "12 + 5",
       form: "horizontal",
       expr: { kind: "arith", op: "add", operands: [12, 5] },
-      responses: [{ position: "work_area", cue: null, answer: "17", answer_source: "reader" }],
+      responses: [{ position: "work_area", cue: null, answer: null, answer_source: "unchecked" }],
     });
     expect(validateReferenceRecord(arithOpenSpace).ok).toBe(true);
     const arithResult = applyComputedAnswers(arithOpenSpace);
-    expect(arithResult.record).toEqual(arithOpenSpace);
+    if (arithResult.record.kind !== "page") throw new Error("page expected");
+    expect(arithResult.record.sections[0].items[0].responses).toEqual([
+      { position: "work_area", cue: null, answer: "17", answer_source: "computed" },
+    ]);
+    expect(arithResult.details).toEqual([]);
+    expect(validateReferenceRecord(arithResult.record).ok).toBe(true);
     expect(findEmptyAnswers(arithResult.record)).toEqual([]);
 
+    // A work_area alongside another response stays non-answer-bearing.
     const placeAndWorkArea = makePageWithItem({
       n: 3,
       printed: "12 + 5 = ___",

@@ -280,10 +280,15 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
       }
     }
 
+    // A record that a person edited or checked is kept; reader a's words and indexes may not fit it.
+    const keptRecord = p.edited_by_person === true || p.status === "human_checked";
+
     const wording = p.wording ?? [];
     if (wording.length > 0) {
       lines.push(
-        "- Wording differences: the readers describe the same thing in other words; reader A's words are kept; no action needed",
+        keptRecord
+          ? "- Wording differences: the readers describe the same thing in other words; the edited record is kept; no action needed"
+          : "- Wording differences: the readers describe the same thing in other words; reader A's words are kept; no action needed",
       );
       for (const d of wording) {
         lines.push(`  - \`${d.path}\`: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
@@ -292,18 +297,18 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
 
     if (p.once_read.length > 0) {
       lines.push(
-        "- Once-read teaching fields (look at the photo; copy an entry that is on the page into the final record at the given path, where \"[]\" means the end of that list):",
+        '- Once-read teaching fields (look at the photo; copy an entry that is on the page into the final record at the given path, where "[]" means the end of that list and "insert before" means insert ahead of that element):',
       );
       for (const d of p.once_read) {
-        // A record that a person edited or checked is kept; reader a's indexes may not fit it.
-        const keptRecord = p.edited_by_person === true || p.status === "human_checked";
         const entry = d.reader === "a" ? d.a : d.b;
         if (d.reader && d.final_path !== undefined) {
           const where = keptRecord
             ? "found in the kept final record at"
             : d.reader === "a"
               ? "already in the final record at"
-              : "belongs in the final record at";
+              : d.insert_before !== undefined
+                ? "insert before"
+                : "belongs in the final record at";
           lines.push(
             `  - \`${d.path}\`: only reader ${d.reader} has it; ${where} \`${d.final_path}\`: ${formatVal(entry)}`,
           );

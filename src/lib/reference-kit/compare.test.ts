@@ -1102,7 +1102,8 @@ describe("worked-example step alignment and wording differences", () => {
         b: { n: 1, shows: "setup", printed: "2x + 1 = 7" },
         kind: "once_read",
         reader: "b",
-        final_path: "examples[0].steps[]",
+        insert_before: 0,
+        final_path: "examples[0].steps[0]",
       },
     ]);
 
@@ -1223,7 +1224,7 @@ describe("worked-example step alignment and wording differences", () => {
       responses: [{ position: "after_equals", cue: "Ans.", answer: "3/4", answer_source: "reader" }],
     };
     a.sections[0].scaffolds = [
-      { kind: "helper_digit", applies_to: [1], description: "Small carry digit above tens" },
+      { kind: "helper_digit", applies_to: [1], description: "Small 1 carry digit above tens" },
       { kind: "partial_working", applies_to: [1], description: "First step prefilled" },
       { kind: "worked_item", applies_to: [2], description: "Item 2 completed as a model" },
       { kind: "other", applies_to: [3], description: "Dotted guide line" },
@@ -1383,5 +1384,202 @@ describe("worked-example step alignment and wording differences", () => {
       ["sections[0].scaffolds[2].target", "top right", "upper right"],
       ["sections[0].scaffolds[3].target", "bottom left", "lower left"],
     ]);
+  });
+
+  it("blocks wording when numbers differ, when arrow from/to are swapped, or when fractional place names appear", () => {
+    const statusOf = (a: PageRecord, b: PageRecord) =>
+      decideStatus({
+        hasA: true,
+        hasB: true,
+        familyA: "claude",
+        familyB: "codex",
+        diffs: [...compareRecords(a, b), ...classifyComparison(a, b).empty_answer],
+      });
+
+    // Probe 1a: different numbers in wording fields are blocking value diffs
+    const numA = makePage();
+    const numB = makePage();
+    numA.sections[0].scaffolds = [{ kind: "helper_digit", applies_to: [1], description: "Small 1 above the tens digit" }];
+    numB.sections[0].scaffolds = [{ kind: "helper_digit", applies_to: [1], description: "Small 7 above the tens digit" }];
+    expect(compareRecords(numA, numB)).toEqual([
+      {
+        path: "sections[0].scaffolds[0].description",
+        a: "Small 1 above the tens digit",
+        b: "Small 7 above the tens digit",
+        kind: "value",
+      },
+    ]);
+    expect(statusOf(numA, numB)).toBe("machine_read");
+
+    // Decimals and reordered numbers in wording fields are also blocking
+    const decA = makePage();
+    const decB = makePage();
+    decA.sections[0].items[0].expr = { kind: "notation", latex: "x = 1", figure: "Bar of length 1.5 and 2" };
+    decB.sections[0].items[0].expr = { kind: "notation", latex: "x = 1", figure: "Bar of length 2 and 1.5" };
+    expect(compareRecords(decA, decB)).toEqual([
+      {
+        path: "sections[0].items[n=1].expr.figure",
+        a: "Bar of length 1.5 and 2",
+        b: "Bar of length 2 and 1.5",
+        kind: "value",
+      },
+    ]);
+
+    // Probe 1b: arrow with swapped from and to produces one blocking value diff on the arrow
+    const arrowA = makePage();
+    const arrowB = makePage();
+    arrowA.sections[0].scaffolds = [{ kind: "arrow", applies_to: [1], from: "Tens place", to: "Ones place" }];
+    arrowB.sections[0].scaffolds = [{ kind: "arrow", applies_to: [1], from: "ones place.", to: "tens place" }];
+    expect(compareRecords(arrowA, arrowB)).toEqual([
+      {
+        path: "sections[0].scaffolds[0]",
+        a: { from: "Tens place", to: "Ones place" },
+        b: { from: "ones place.", to: "tens place" },
+        kind: "value",
+      },
+    ]);
+    expect(statusOf(arrowA, arrowB)).toBe("machine_read");
+
+    // Equal from and to on both readers is not a swap
+    const sameEndA = makePage();
+    const sameEndB = makePage();
+    sameEndA.sections[0].scaffolds = [{ kind: "arrow", applies_to: [1], from: "tens", to: "tens" }];
+    sameEndB.sections[0].scaffolds = [{ kind: "arrow", applies_to: [1], from: "tens", to: "tens" }];
+    expect(compareRecords(sameEndA, sameEndB)).toEqual([]);
+
+    // Probe 1c: fractional place names in answer_boxes.places are blocking value diffs
+    for (const [placesA, placesB] of [
+      [["tenths"], ["hundredths"]],
+      [["tenth place"], ["thousandths digit"]],
+      [["tenths"], ["first box"]],
+    ] as const) {
+      const placeA = makePage();
+      const placeB = makePage();
+      placeA.sections[0].scaffolds = [{ kind: "answer_boxes", applies_to: [1], places: [...placesA] }];
+      placeB.sections[0].scaffolds = [{ kind: "answer_boxes", applies_to: [1], places: [...placesB] }];
+      expect(compareRecords(placeA, placeB), `${placesA[0]} vs ${placesB[0]}`).toEqual([
+        {
+          path: "sections[0].scaffolds[0].places[0]",
+          a: placesA[0],
+          b: placesB[0],
+          kind: "value",
+        },
+      ]);
+      expect(statusOf(placeA, placeB)).toBe("machine_read");
+    }
+  });
+
+  it("carries the insertion index on once-read B steps, keeps marks on unmatched B steps unmatched, and prefers matching shows on repeated printed text", () => {
+    // Middle B step insertion index + mark on unmatched B step must not match A's mark on the same step number
+    const midA = pageWithExample(
+      [
+        { n: 1, shows: "setup", printed: "2 + 3" },
+        { n: 2, shows: "answer", printed: "5" },
+      ],
+      [{ kind: "circle", step: 2, description: "Circle the result" }],
+    );
+    const midB = pageWithExample(
+      [
+        { n: 1, shows: "setup", printed: "2 + 3" },
+        { n: 2, shows: "partial_sum", printed: "2 + 3 = 5" },
+        { n: 3, shows: "answer", printed: "5" },
+      ],
+      [{ kind: "circle", step: 2, description: "Circle the result" }],
+    );
+    const midSummary = classifyComparison(midA, midB);
+    expect(midSummary.differences).toEqual([]);
+    expect(midSummary.once_read).toEqual([
+      {
+        path: "examples[0].steps[b:1]",
+        a: null,
+        b: { n: 2, shows: "partial_sum", printed: "2 + 3 = 5" },
+        kind: "once_read",
+        reader: "b",
+        insert_before: 1,
+        final_path: "examples[0].steps[1]",
+      },
+      {
+        path: "examples[0].marks[0]",
+        a: { kind: "circle", step: 2, description: "Circle the result" },
+        b: null,
+        kind: "once_read",
+        reader: "a",
+        final_path: "examples[0].marks[0]",
+      },
+      {
+        path: "examples[0].marks[b:0]",
+        a: null,
+        b: { kind: "circle", step: 2, description: "Circle the result" },
+        kind: "once_read",
+        reader: "b",
+        final_path: "examples[0].marks[]",
+      },
+    ]);
+
+    // Anchors with repeated printed text prefer the pairing where `shows` agrees too
+    const repA = pageWithExample([
+      { n: 1, shows: "setup", printed: "2 + 3" },
+      { n: 2, shows: "answer", printed: "5" },
+    ]);
+    const repB = pageWithExample([
+      { n: 1, shows: "partial_sum", printed: "5" },
+      { n: 2, shows: "answer", printed: "5" },
+    ]);
+    const repSummary = classifyComparison(repA, repB);
+    expect(repSummary.once_read).toEqual([]);
+    expect(repSummary.differences).toEqual([
+      { path: "examples[0].steps[n=1].shows", a: "setup", b: "partial_sum", kind: "value" },
+      { path: "examples[0].steps[n=1].printed", a: "2 + 3", b: "5", kind: "value" },
+    ]);
+
+    // Repeated printed text with an inserted partial_sum before the answer
+    const repInsB = pageWithExample([
+      { n: 1, shows: "setup", printed: "2 + 3" },
+      { n: 2, shows: "partial_sum", printed: "5" },
+      { n: 3, shows: "answer", printed: "5" },
+    ]);
+    const repInsSummary = classifyComparison(repA, repInsB);
+    expect(repInsSummary.differences).toEqual([]);
+    expect(repInsSummary.once_read).toEqual([
+      {
+        path: "examples[0].steps[b:1]",
+        a: null,
+        b: { n: 2, shows: "partial_sum", printed: "5" },
+        kind: "once_read",
+        reader: "b",
+        insert_before: 1,
+        final_path: "examples[0].steps[1]",
+      },
+    ]);
+  });
+
+  it("reports a sole work_area left null by both readers as an empty answer and keeps status machine_read", () => {
+    const a = makePage();
+    const b = makePage();
+    for (const page of [a, b]) {
+      page.sections[0].items = [
+        {
+          n: 1,
+          printed: "Simplify 4/6",
+          form: "horizontal",
+          expr: { kind: "notation", latex: "\\frac{4}{6}" },
+          responses: [{ position: "work_area", cue: null, answer: null, answer_source: "unchecked" }],
+        },
+      ];
+    }
+    const summary = classifyComparison(a, b);
+    expect(summary.differences).toEqual([]);
+    expect(summary.empty_answer).toEqual([
+      { path: "sections[0].items[n=1].responses[0]", a: null, b: null, kind: "empty_answer" },
+    ]);
+    expect(
+      decideStatus({
+        hasA: true,
+        hasB: true,
+        familyA: "claude",
+        familyB: "codex",
+        diffs: [...compareRecords(a, b), ...summary.empty_answer],
+      }),
+    ).toBe("machine_read");
   });
 });

@@ -51,14 +51,35 @@ const PLACE_POWERS = new Map<string, number>([
   ["ten thousands", 4],
 ]);
 
-export function decimalPlacePower(place: unknown): number | null {
+// Fractional decimal place names (known place names, not mapped to whole-number powers).
+const FRACTIONAL_PLACE_NAMES = new Set<string>([
+  "tenth",
+  "tenths",
+  "hundredth",
+  "hundredths",
+  "thousandth",
+  "thousandths",
+  "ten thousandth",
+  "ten thousandths",
+]);
+
+function normalizePlaceKey(place: unknown): string | null {
   if (typeof place !== "string") return null;
-  const key = place
+  return place
     .trim()
     .toLowerCase()
     .replace(/[\s_-]+/g, " ")
     .replace(/ (place|digit)$/, "");
-  return PLACE_POWERS.get(key) ?? null;
+}
+
+export function decimalPlacePower(place: unknown): number | null {
+  const key = normalizePlaceKey(place);
+  return key === null ? null : (PLACE_POWERS.get(key) ?? null);
+}
+
+export function isKnownPlaceName(place: unknown): boolean {
+  const key = normalizePlaceKey(place);
+  return key !== null && (PLACE_POWERS.has(key) || FRACTIONAL_PLACE_NAMES.has(key));
 }
 
 function normalizeAnswerCompare(raw: string): string {
@@ -88,8 +109,9 @@ function isConcreteAnswer(answer: ItemResponse["answer"]): answer is string {
   );
 }
 
-function isAnswerBearingResponse(resp: ItemResponse): boolean {
-  return !NON_ANSWER_POSITIONS.has(resp.position);
+function isAnswerBearingResponse(item: PageItem, resp: ItemResponse): boolean {
+  if (!NON_ANSWER_POSITIONS.has(resp.position)) return true;
+  return item.expr !== null && item.responses.length === 1 && resp.position === "work_area";
 }
 
 function hasNoPlace(resp: ItemResponse): boolean {
@@ -221,7 +243,7 @@ function planItemAnswers(
   if (!computed) return { kind: "none" };
   const answerIndices: number[] = [];
   item.responses.forEach((resp, idx) => {
-    if (isAnswerBearingResponse(resp)) answerIndices.push(idx);
+    if (isAnswerBearingResponse(item, resp)) answerIndices.push(idx);
   });
 
   if (computed.kind === "single") {
@@ -371,7 +393,7 @@ export function findEmptyAnswers(record: ReferenceRecord | null | undefined): st
       const plan = planItemAnswers(item, computeExprAnswer(item.expr), section.scaffolds);
       const unreached = new Set(plan.kind === "fill" ? plan.unreached : []);
       item.responses.forEach((resp, ri) => {
-        if (!isAnswerBearingResponse(resp) || unreached.has(ri)) return;
+        if (!isAnswerBearingResponse(item, resp) || unreached.has(ri)) return;
         if (isEmptyAnswer(resp.answer)) {
           paths.push(`${itemPathOf(si, item)}.responses[${ri}]`);
         }

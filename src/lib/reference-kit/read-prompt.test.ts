@@ -189,9 +189,12 @@ describe("REFERENCE_READ_PROMPT", () => {
     expect(REFERENCE_READ_PROMPT).toMatch(/Do not write "unclear" because the item is notation/);
     expect(REFERENCE_READ_PROMPT).toMatch(/system of equations as ONE item.*\\begin\{cases\}/);
     expect(REFERENCE_READ_PROMPT).toMatch(/Use `linked` only for two separate questions/);
-    expect(REFERENCE_READ_PROMPT).toMatch(/position "work_area" that holds the final answer you worked out and answer_source "reader"/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/An "=" printed at the end of a question with open space after it is an answer place.*position "after_equals"/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/Use "work_area" as the only response only when no "=" and no other answer place is printed/);
     expect(REFERENCE_READ_PROMPT).toMatch(/"work_area" response with answer null and answer_source "unchecked"/);
-    expect(REFERENCE_READ_PROMPT).toMatch(/`cue` is the printed text that stands directly before the answer place/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/When you cannot work the answer out.*write the answer as "unclear"/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/`cue` is words or an expression printed directly before the answer place/);
+    expect(REFERENCE_READ_PROMPT).toMatch(/A lone operator or sign such as "=" or "\+" is never a cue: write null/);
     expect(REFERENCE_READ_PROMPT).toMatch(/read the large printed sheet id twice/i);
 
     const examplePage = (extractJsonBlocksFromPrompt(REFERENCE_READ_PROMPT) as Array<Record<string, unknown>>).find(
@@ -209,15 +212,23 @@ describe("REFERENCE_READ_PROMPT", () => {
       examples: Array<{ label?: string; marks?: Array<{ kind: string }> }>;
     };
     expect(examplePage.sections[0].items[0].printed).toBe("12 + 5 = \u25A1\u25A1");
-    const notationItem = examplePage.sections[0].items[2];
-    expect(notationItem).toEqual({
+    const afterEqualsItem = examplePage.sections[0].items[2];
+    expect(afterEqualsItem).toEqual({
       n: 3,
       printed: "1/2 + 1/4 =",
       form: "horizontal",
       expr: { kind: "notation", latex: "\\frac{1}{2} + \\frac{1}{4}" },
-      responses: [{ position: "work_area", cue: null, answer: "3/4", answer_source: "reader" }],
+      responses: [{ position: "after_equals", cue: null, answer: "3/4", answer_source: "reader" }],
     });
-    expect(notationItem.expr.latex?.endsWith("=")).toBe(false);
+    expect(afterEqualsItem.expr.latex?.endsWith("=")).toBe(false);
+    const workAreaItem = examplePage.sections[0].items[3];
+    expect(workAreaItem).toEqual({
+      n: 4,
+      printed: "Simplify 4/6",
+      form: "horizontal",
+      expr: { kind: "notation", latex: "\\frac{4}{6}" },
+      responses: [{ position: "work_area", cue: null, answer: "2/3", answer_source: "reader" }],
+    });
     expect(examplePage.examples[0].label).toBe("Example");
     expect(examplePage.examples[0].marks?.some((m) => m.kind === "box" || m.kind === "shading")).toBe(false);
 

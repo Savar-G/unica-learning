@@ -8,7 +8,7 @@ import {
   type ScoreBand,
   type ScoreBands,
 } from "@/lib/reference-record";
-import { decimalPlacePower } from "./answers";
+import { isKnownPlaceName } from "./answers";
 import { normalizeNotationText, normalizeProseText } from "./normalize";
 
 // empty_answer: an answer place of the final record holds no answer and no "unclear" marker.
@@ -28,12 +28,27 @@ export interface RecordDifference {
   b: unknown;
   kind: DiffKind;
   // once_read only: the reader that has the entry, and the JSON path of the entry in the final
-  // record. A path that ends in "[]" means: add the entry at the end of that list.
+  // record. A path that ends in "[]" means: add the entry at the end of that list. When
+  // insert_before is set, final_path names the element before which to insert the entry.
   reader?: "a" | "b";
   final_path?: string;
+  insert_before?: number;
 }
 
 export type FieldCompareMode = "exact" | "prose" | "notation";
+
+const NUMERIC_TOKEN_RE = /\d+(?:\.\d+)?/g;
+
+function sameNumericTokens(a: string, b: string): boolean {
+  const numsA = a.match(NUMERIC_TOKEN_RE) ?? [];
+  const numsB = b.match(NUMERIC_TOKEN_RE) ?? [];
+  return numsA.length === numsB.length && numsA.every((n, idx) => n === numsB[idx]);
+}
+
+function concreteProse(value: unknown): string | null {
+  if (typeof value !== "string" || value === UNCLEAR || value === NOT_STATED) return null;
+  return normalizeProseText(value);
+}
 
 function isEmptyField(value: unknown): boolean {
   return value === null || value === undefined;
@@ -122,7 +137,8 @@ export function compareField(
           ? normalizeNotationText(b)
           : b.trim();
     if (normA !== normB) {
-      diffs.push({ path, a, b, kind: diffKind });
+      const kind: DiffKind = opts.wording && sameNumericTokens(normA, normB) ? "wording" : "value";
+      diffs.push({ path, a, b, kind });
     }
     return;
   }
@@ -343,7 +359,7 @@ function compareSingleScaffold(
         {
           teaching: true,
           mode: "prose",
-          itemWording: (av, bv) => decimalPlacePower(av) === null && decimalPlacePower(bv) === null,
+          itemWording: (av, bv) => !isKnownPlaceName(av) && !isKnownPlaceName(bv),
         },
         diffs,
       );
@@ -380,8 +396,29 @@ function compareSingleScaffold(
     }
     case "arrow": {
       const bb = b as typeof a;
-      compareField(`${path}.from`, a.from, bb.from, { teaching: true, mode: "prose", wording: true }, diffs);
-      compareField(`${path}.to`, a.to, bb.to, { teaching: true, mode: "prose", wording: true }, diffs);
+      const aFrom = concreteProse(a.from);
+      const aTo = concreteProse(a.to);
+      const bFrom = concreteProse(bb.from);
+      const bTo = concreteProse(bb.to);
+      if (
+        aFrom !== null &&
+        aTo !== null &&
+        bFrom !== null &&
+        bTo !== null &&
+        aFrom !== aTo &&
+        aFrom === bTo &&
+        aTo === bFrom
+      ) {
+        diffs.push({
+          path,
+          a: { from: a.from, to: a.to },
+          b: { from: bb.from, to: bb.to },
+          kind: "value",
+        });
+      } else {
+        compareField(`${path}.from`, a.from, bb.from, { teaching: true, mode: "prose", wording: true }, diffs);
+        compareField(`${path}.to`, a.to, bb.to, { teaching: true, mode: "prose", wording: true }, diffs);
+      }
       compareField(`${path}.label`, a.label, bb.label, { teaching: true, mode: "prose" }, diffs);
       return;
     }
