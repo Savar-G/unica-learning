@@ -6,6 +6,7 @@ import {
   prepareSafeOutputDir,
   renderRecordToMarkdown,
   writeSafeOutputFile,
+  type CheckProblemReason,
   type ReferenceRecord,
 } from "@/lib/reference-record";
 import {
@@ -15,6 +16,13 @@ import {
   collectReadTimeUnclearAnswers,
   fileSlugFromRef,
 } from "./answers";
+import {
+  keptCheckedRefs,
+  loadCheckedPages,
+  pageCheckProblems,
+  pagePhotoSha256,
+  rememberKeptPages,
+} from "./checked-pages";
 import {
   agreementPercentage,
   classifyComparison,
@@ -33,16 +41,17 @@ import {
   assertNoFileCollisions,
   loadExistingFinalRecord,
   loadPreviousHashes,
+  planManifestSourceRefs,
   sha256OfFile,
-  syncManifestSourceRefs,
+  writePlannedManifest,
 } from "./compare-batch-files";
 import {
   loadOriginalNamesByDigest,
   loadPrepareReport,
   loadSlot,
   pairSlotPages,
+  pairSourceRef,
   pickPageWinners,
-  readJsonIfExists,
   type PairedPage,
 } from "./compare-pairing";
 import {
@@ -115,11 +124,33 @@ export function compareWorkFolder(opts: {
   const finalDir = prepareSafeOutputDir(join(workDir, "final"), repoRoot);
   const viewDir = prepareSafeOutputDir(join(workDir, "final-view"), repoRoot);
 
-  const existingStatus =
-    readJsonIfExists<Record<string, PageStatus>>(join(finalDir, "status.json")) ?? {};
+  const checked = loadCheckedPages(finalDir);
   const previousHashes = loadPreviousHashes(join(finalDir, "report.json"));
+  // A kept page that status.json does not list is still an existing page.
+  const existingStatus: Record<string, string> = {
+    ...Object.fromEntries([...checked.refs].map((ref) => [ref, "machine_read"])),
+    ...checked.status,
+  };
 
   assertNoFileCollisions(pairs, existingStatus, finalDir);
+
+  // The check of a page counts only for the record on disk and the photo that the manifest gives
+  // the page after this run. Every file is looked at before the first write.
+  const keptRefs = keptCheckedRefs(finalDir, checked);
+  const batchRefs = new Set(pairs.map(pairSourceRef));
+  const manifestPlan = planManifestSourceRefs(
+    workDir,
+    pairs,
+    new Set([...keptRefs].filter((ref) => !batchRefs.has(ref))),
+    { strict: keptRefs.size > 0 },
+  );
+  const checkProblems = new Map<string, CheckProblemReason[]>();
+  for (const ref of keptRefs) {
+    const photosDir = join(workDir, "photos");
+    const photoSha256 = pagePhotoSha256(photosDir, manifestPlan?.after ?? null, ref);
+    checkProblems.set(ref, pageCheckProblems({ finalDir, checked, ref, photoSha256 }));
+  }
+  rememberKeptPages(finalDir, checked, keptRefs, repoRoot);
 
   const pages: PageCompareReport[] = [];
   const pagesSentToPerson: PageSentToPerson[] = [];
@@ -160,34 +191,29 @@ export function compareWorkFolder(opts: {
     };
     const unnamedTeachingMarks = collectUnnamedTeachingMarks(pair.recA, pair.recB);
 
-    const isChecked = existingStatus[sourceRef] === "human_checked" && existsSync(finalRecordPath);
-    const existingKept = isChecked ? loadExistingFinalRecord(finalRecordPath) : null;
+    // A record that a person checked is never written over, also when its check does not count now.
+    const keptProblems = checkProblems.get(sourceRef);
+    const problems = keptProblems ?? [];
+    const existingKept = keptProblems ? loadExistingFinalRecord(finalRecordPath) : null;
 
-    if (isChecked) {
+    if (keptProblems) {
+      const diffsA = existingKept && pair.recA ? compareRecords(existingKept, pair.recA) : [];
+      const diffsB = existingKept && pair.recB ? compareRecords(existingKept, pair.recB) : [];
+      keptHumanChecked.push({
+        source_ref: sourceRef,
+        in_current_batch: true,
+        differs_from_reader_a: diffsA.length > 0,
+        differs_from_reader_b: diffsB.length > 0,
+        diff_count_a: diffsA.length,
+        diff_count_b: diffsB.length,
+        // The file is not a valid record now.
+        ...(existingKept ? {} : { invalid: true }),
+        ...(problems.length > 0 ? { check_problems: problems } : {}),
+      });
+    }
+
+    if (keptProblems && problems.length === 0) {
       statusMap[sourceRef] = "human_checked";
-      if (!existingKept) {
-        // A person checked this page and the file is not a valid record now: never write over it.
-        keptHumanChecked.push({
-          source_ref: sourceRef,
-          in_current_batch: true,
-          differs_from_reader_a: false,
-          differs_from_reader_b: false,
-          diff_count_a: 0,
-          diff_count_b: 0,
-          invalid: true,
-        });
-      } else {
-        const diffsA = pair.recA ? compareRecords(existingKept, pair.recA) : [];
-        const diffsB = pair.recB ? compareRecords(existingKept, pair.recB) : [];
-        keptHumanChecked.push({
-          source_ref: sourceRef,
-          in_current_batch: true,
-          differs_from_reader_a: diffsA.length > 0,
-          differs_from_reader_b: diffsB.length > 0,
-          diff_count_a: diffsA.length,
-          diff_count_b: diffsB.length,
-        });
-      }
       pages.push({
         source_ref: sourceRef,
         photo: pair.photo,
@@ -217,12 +243,14 @@ export function compareWorkFolder(opts: {
     // checks it. The page is then not double_read or agreement_accepted.
     const previousHash = previousHashes.get(sourceRef);
     const editedByPerson =
+      keptProblems === undefined &&
       previousHash !== undefined &&
       existsSync(finalRecordPath) &&
       sha256OfFile(finalRecordPath) !== previousHash;
+    const keepsRecord = editedByPerson || keptProblems !== undefined;
 
-    // The record that stays on disk: the edited file, or the record that compare writes.
-    const rawEditedRecord = editedByPerson ? loadExistingFinalRecord(finalRecordPath) : null;
+    // The record that stays on disk: the kept file, or the record that compare writes.
+    const rawEditedRecord = keepsRecord ? loadExistingFinalRecord(finalRecordPath) : null;
     let editedRecord = rawEditedRecord;
     let strippedEditedSingleRead = false;
     if (editedByPerson && rawEditedRecord && "single_read" in rawEditedRecord) {
@@ -238,13 +266,13 @@ export function compareWorkFolder(opts: {
       details: computedDetails,
     } = applyComputedAnswers(withBothReaders(chosen, pair));
     const editedDetails = editedRecord ? applyComputedAnswers(editedRecord).details : [];
-    const finalIsFreshA = !editedByPerson && pair.recA !== null;
-    const finalItemDetails = (editedByPerson ? editedDetails : computedDetails).filter(
+    const finalIsFreshA = !keepsRecord && pair.recA !== null;
+    const finalItemDetails = (keepsRecord ? editedDetails : computedDetails).filter(
       (d) => d.kind === "answer_differs",
     );
     const finalItemConflictPaths = new Set(finalItemDetails.map((d) => d.path));
     const exampleConflicts = collectExampleAnswerConflicts(
-      editedByPerson ? editedRecord : computedRecord,
+      keepsRecord ? editedRecord : computedRecord,
       pair.recA,
       pair.recB,
       { finalIsFreshA },
@@ -256,7 +284,7 @@ export function compareWorkFolder(opts: {
     const readerNotes = pair.recA
       ? { a: mergeNotes(pair.notesA, computedNotes), b: pair.notesB }
       : { a: pair.notesA, b: mergeNotes(pair.notesB, computedNotes) };
-    const finalEmptyAnswers = editedByPerson
+    const finalEmptyAnswers = keepsRecord
       ? emptyAnswerDiffs(editedRecord, pair.recA, pair.recB)
       : emptyAnswerDiffs(computedRecord, pair.recA, pair.recB);
 
@@ -298,6 +326,7 @@ export function compareWorkFolder(opts: {
       hasReaderAnswerConflict: readerAnswerConflicts.length > 0,
       needsPersonRead: classified.needs_person_read,
       editedByPerson,
+      checkProblems: problems,
       recordA: pair.recA,
       recordB: pair.recB,
       answerDisagreements,
@@ -318,7 +347,7 @@ export function compareWorkFolder(opts: {
 
     const finalText = `${JSON.stringify(finalRecord, null, 2)}\n`;
 
-    if (!editedByPerson) {
+    if (!keepsRecord) {
       writeSafeOutputFile(finalRecordPath, finalText, repoRoot);
       writeSafeOutputFile(
         join(viewDir, `${slug}.md`),
@@ -365,10 +394,11 @@ export function compareWorkFolder(opts: {
       photo: pair.photo,
       original_name: pair.originalName,
       photo_sha256: pair.photoSha256,
-      final_record_sha256: editedByPerson
+      final_record_sha256: keepsRecord
         ? (previousHash ?? null)
         : createHash("sha256").update(finalText, "utf8").digest("hex"),
       ...(editedByPerson ? { edited_by_person: true } : {}),
+      ...(problems.length > 0 ? { check_problems: problems } : {}),
       status: pageStatus,
       agreement,
       result: resultLabelForStatus(pageStatus),
@@ -379,11 +409,11 @@ export function compareWorkFolder(opts: {
       ...(expressionDisagreements.length > 0 ? { expression_disagreements: expressionDisagreements } : {}),
       only_in_reader: onlyIn,
       digest_mismatch: pair.digestMismatch,
-      differences: editedByPerson
+      differences: keepsRecord
         ? stripKeptRecordLocations(classified.differences)
         : classified.differences,
       wording: classified.wording,
-      once_read: editedByPerson
+      once_read: keepsRecord
         ? stripKeptRecordLocations(classified.once_read)
         : classified.once_read,
       both_unclear: classified.both_unclear,
@@ -396,7 +426,7 @@ export function compareWorkFolder(opts: {
   }
 
   const handledStaleFiles = new Set<string>(keptFinalFiles);
-  for (const [staleRef, staleStatus] of Object.entries(existingStatus)) {
+  for (const staleRef of Object.keys(existingStatus)) {
     if (seenFinalRefs.has(staleRef)) continue;
     const slug = fileSlugFromRef(staleRef);
     const recordFile = `${slug}.json`;
@@ -404,8 +434,19 @@ export function compareWorkFolder(opts: {
     const viewPath = join(viewDir, `${slug}.md`);
     handledStaleFiles.add(recordFile);
 
-    if (staleStatus === "human_checked" && existsSync(recordPath)) {
-      statusMap[staleRef] = "human_checked";
+    const problems = checkProblems.get(staleRef);
+    if (problems) {
+      statusMap[staleRef] = problems.length === 0 ? "human_checked" : "machine_read";
+      if (problems.length > 0) {
+        pagesSentToPerson.push({
+          source_ref: staleRef,
+          agreement_percent: null,
+          agreed: 0,
+          compared: 0,
+          difference_count: 0,
+          reason: problems.join("; "),
+        });
+      }
       keptHumanChecked.push({
         source_ref: staleRef,
         in_current_batch: false,
@@ -413,6 +454,7 @@ export function compareWorkFolder(opts: {
         differs_from_reader_b: false,
         diff_count_a: 0,
         diff_count_b: 0,
+        ...(problems.length > 0 ? { check_problems: problems } : {}),
       });
     } else {
       if (existsSync(recordPath)) unlinkSync(recordPath);
@@ -434,12 +476,7 @@ export function compareWorkFolder(opts: {
     removedStalePages.push(label);
   }
 
-  syncManifestSourceRefs(
-    workDir,
-    pairs,
-    new Set(keptHumanChecked.filter((k) => !k.in_current_batch).map((k) => k.source_ref)),
-    repoRoot,
-  );
+  writePlannedManifest(manifestPlan, repoRoot);
 
   const report: CompareWorkReport = {
     reader_a: slotA.meta,

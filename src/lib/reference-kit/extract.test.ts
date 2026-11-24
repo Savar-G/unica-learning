@@ -17,6 +17,7 @@ import { join, resolve } from "node:path";
 import sharp from "sharp";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  CHECKED_DIGESTS_FILE,
   importReferenceRecords,
   type ExistingReferenceRow,
   type ReferenceRow,
@@ -858,5 +859,202 @@ describe("extractFolder (reference:extract)", () => {
     expect(result.report.too_small_photos).toEqual([
       { original_name: "01_strip.jpg", width: 461, height: 3473 },
     ]);
+  });
+
+  describe("a page checked by a person", () => {
+    const REF = "sample:M:3a";
+
+    // Photo 1 is page 3a (checked by a person after a correction), photo 2 is page 4a.
+    async function setUpCheckedWork() {
+      const repo = mkdtempSync(join(tmpdir(), "ref-ext-chk-repo-"));
+      const photosDir = mkdtempSync(join(tmpdir(), "ref-ext-chk-in-"));
+      const outDir = mkdtempSync(join(tmpdir(), "ref-ext-chk-out-"));
+      tempDirs.push(repo, photosDir, outDir);
+      const images = await Promise.all([91, 92, 93].map((seed) => makePhotoBytes(1600, 1200, seed)));
+      const shas = await Promise.all(images.map(async (img) => (await preparePhoto(img)).sha256));
+      writeFileSync(join(photosDir, "05_page.jpg"), images[0]);
+      writeFileSync(join(photosDir, "06_page.jpg"), images[1]);
+      const sheets = new Map([
+        [shas[0], "3a"],
+        [shas[1], "4a"],
+        [shas[2], "3a"],
+      ]);
+      const calls: string[] = [];
+      const progress: string[] = [];
+      const runCli: RunCli = async (cmd, _args, opts) => {
+        calls.push(cmd);
+        const hash = createHash("sha256").update(readFileSync(join(opts.cwd, "page.jpg"))).digest("hex");
+        return { code: 0, stdout: JSON.stringify(makeReaderPayload(sheets.get(hash) ?? "9a")), stderr: "" };
+      };
+      const extract = (over: { force?: boolean } = {}) =>
+        extractFolder({
+          photosDir,
+          outDir,
+          source: "sample",
+          repoRoot: repo,
+          runCli,
+          onProgress: (line) => progress.push(line),
+          ...over,
+        });
+      const check = (ref = REF) =>
+        checkAndMarkPage({ workDir: outDir, page: ref, repoRoot: repo, photoCompared: true });
+      const recordPath = join(outDir, "final", "sample-M-3a.json");
+      const record = () => readFileSync(recordPath);
+      const statusPath = join(outDir, "final", "status.json");
+      const status = () => (JSON.parse(readFileSync(statusPath, "utf8")) as Record<string, string>)[REF];
+      const importAll = async () => {
+        const store = new MemoryImportStore();
+        const result = await importReferenceRecords({
+          recordsDir: join(outDir, "final"),
+          photosDir: join(outDir, "photos"),
+          store,
+        });
+        return { result, store };
+      };
+
+      await extract();
+      const corrected = JSON.parse(record().toString("utf8")) as { topic: { title: string } };
+      corrected.topic.title = "Corrected by a person";
+      writeFileSync(recordPath, JSON.stringify(corrected));
+      check();
+      const digestsPath = join(outDir, "final", CHECKED_DIGESTS_FILE);
+      calls.length = 0;
+      progress.length = 0;
+      return {
+        photosDir, outDir, images, shas, sheets, calls, progress, extract, check, recordPath, record,
+        statusPath, status, importAll, digestsPath,
+      };
+    }
+
+    it("keeps the record byte for byte through extract, says what changed, and is never imported as checked with another photo or text", async () => {
+      type Work = Awaited<ReturnType<typeof setUpCheckedWork>>;
+      const replacePhoto = (name: string) => (w: Work) => {
+        rmSync(join(w.photosDir, "05_page.jpg"));
+        writeFileSync(join(w.photosDir, name), w.images[2]);
+      };
+      const rows: Array<{
+        name: string;
+        change: (w: Work) => void;
+        force?: boolean;
+        status: string;
+        reason?: string;
+        conflict?: string;
+      }> = [
+        { name: "no change", change: () => {}, status: "human_checked" },
+        { name: "no change, read again", change: () => {}, force: true, status: "human_checked" },
+        {
+          name: "photo removed (its prepared photo is kept)",
+          change: (w) => rmSync(join(w.photosDir, "05_page.jpg")),
+          status: "human_checked",
+        },
+        {
+          name: "photo replaced, new name sorts first",
+          change: replacePhoto("01_page.jpg"),
+          status: "machine_read",
+          reason: "photo changed after the check",
+        },
+        // The kept photo of the check still wins the page id: the page keeps its own photo and text,
+        // and the report lists the new photo under "Same page id for two photos".
+        ...["05_page.jpg", "09_page.jpg"].map((name) => ({
+          name: `photo replaced, new name ${name}`,
+          change: replacePhoto(name),
+          status: "human_checked",
+          conflict: name,
+        })),
+        {
+          name: "record changed",
+          change: (w) => writeFileSync(w.recordPath, Buffer.concat([w.record(), Buffer.from("\n")])),
+          status: "machine_read",
+          reason: "record changed after the check",
+        },
+        {
+          name: "a new reading gives the photo another page id",
+          change: (w) => w.sheets.set(w.shas[0], "5a"),
+          force: true,
+          status: "machine_read",
+          reason: "photo of the check is missing",
+        },
+        {
+          name: "a new reading swaps the page ids of the two photos",
+          change: (w) => {
+            w.sheets.set(w.shas[0], "4a");
+            w.sheets.set(w.shas[1], "3a");
+          },
+          force: true,
+          status: "machine_read",
+          reason: "photo changed after the check",
+        },
+        {
+          name: "older folder with no digests",
+          change: (w) => rmSync(w.digestsPath),
+          status: "machine_read",
+          reason: "checked before the photo check was saved",
+        },
+        {
+          name: "older folder with no digests, photo removed",
+          change: (w) => {
+            rmSync(w.digestsPath);
+            rmSync(join(w.photosDir, "05_page.jpg"));
+          },
+          status: "machine_read",
+          reason: "checked before the photo check was saved",
+        },
+      ];
+      for (const row of rows) {
+        const w = await setUpCheckedWork();
+        row.change(w);
+        const before = w.record();
+        for (let round = 1; round <= 2; round += 1) {
+          const { report } = await w.extract({ force: row.force });
+          expect(w.record().equals(before), row.name).toBe(true);
+          expect(w.status(), row.name).toBe(row.status);
+          const sent = report.pages_sent_to_person?.find((p) => p.source_ref === REF);
+          if (row.reason) expect(sent?.reason, row.name).toContain(row.reason);
+          else expect(sent, row.name).toBeUndefined();
+          if (round === 1 && row.name.includes("photo removed")) {
+            expect(readFileSync(join(w.outDir, "final", "report.md"), "utf8"), row.name).toContain(
+              `\`05_page.jpg\` (${REF}): kept: ${row.reason ? "a person must check this page again" : "checked by a person"}\n`,
+            );
+          }
+          if (row.conflict) {
+            expect(report.same_page_id_conflicts.map((c) => c.original_name), row.name).toEqual([row.conflict]);
+          }
+        }
+        // What import sends as human_checked is the text and the photo that the person compared.
+        const { result, store } = await w.importAll();
+        expect(result.problems, row.name).toEqual([]);
+        expect(store.rows.get(REF)?.transcript_status, row.name).toBe(row.status);
+        if (row.status === "human_checked") {
+          expect(await store.objectSha256("sample/M/3a.jpg"), row.name).toBe(w.shas[0]);
+        }
+      }
+    });
+
+    it("says in the run output that a page is checked only while its check counts, and reads neither again", async () => {
+      const w = await setUpCheckedWork();
+      await w.extract();
+      expect(w.progress.join("\n")).toContain("kept: checked by a person -> sample:M:3a");
+      writeFileSync(w.recordPath, Buffer.concat([w.record(), Buffer.from("\n")]));
+      for (let round = 1; round <= 2; round += 1) {
+        w.progress.length = 0;
+        await w.extract();
+        expect(w.progress.join("\n")).not.toContain("kept: checked by a person");
+        expect(w.progress.join("\n")).toContain("kept: a person must check this page again -> sample:M:3a");
+      }
+      expect(w.calls).toEqual([]);
+    });
+
+    it("stops before it removes anything when the status or the digest file is damaged", async () => {
+      for (const file of ["statusPath", "digestsPath"] as const) {
+        const w = await setUpCheckedWork();
+        rmSync(join(w.photosDir, "05_page.jpg"));
+        writeFileSync(w[file], "{ bad");
+        const before = w.record();
+        const prepared = join(w.outDir, "photos", `${w.shas[0].slice(0, 12)}.jpg`);
+        await expect(w.extract(), file).rejects.toThrow(w[file].split("/").pop());
+        expect(w.record().equals(before), file).toBe(true);
+        expect(existsSync(prepared), file).toBe(true);
+      }
+    });
   });
 });

@@ -6,3 +6,5 @@ export * from "./parse-legacy";
 export * from "./render-markdown";
 export * from "./output-guard";
 export * from "./import";
+export * from "./checked-digests";
+export * from "./read-file";

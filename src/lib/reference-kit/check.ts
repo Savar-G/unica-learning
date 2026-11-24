@@ -4,8 +4,13 @@ import {
   assertOutsideRepo,
   parseStrictUtf8Json,
   prepareSafeOutputDir,
+  readCheckedDigests,
+  readRegularFileIfExists,
+  readRegularFileNoFollow,
   renderRecordToMarkdown,
+  sha256Hex,
   validateReferenceRecord,
+  writeCheckedDigests,
   writeSafeOutputFile,
 } from "@/lib/reference-record";
 import { applyComputedAnswers, fileSlugFromRef, findEmptyAnswers } from "./answers";
@@ -16,12 +21,16 @@ export interface CheckPageResult {
   sourceRef: string;
   recordPath: string;
   viewPath: string;
+  photoPath: string;
   statusPath: string;
   notes: string[];
 }
 
 function readStrictJsonFile(filePath: string): unknown {
-  const bytes = readFileSync(filePath);
+  return parseStrictJsonBytes(filePath, readFileSync(filePath));
+}
+
+function parseStrictJsonBytes(filePath: string, bytes: Uint8Array): unknown {
   try {
     return parseStrictUtf8Json(bytes);
   } catch (err) {
@@ -73,12 +82,51 @@ function describePagePhoto(workDir: string, page: string): string {
   return `the photo of this page in ${photosDir}`;
 }
 
+// The prepared photo that the check ties to the page: the one photo that the photo list names for
+// it, which is also the photo that import sends with the record.
+function readPagePhoto(workDir: string, page: string): { path: string; sha256: string } {
+  const photosDir = join(workDir, "photos");
+  const manifestPath = join(photosDir, PHOTOS_MANIFEST_FILE);
+  const manifestBytes = readRegularFileIfExists(manifestPath);
+  if (manifestBytes === null) {
+    throw new Error(`Missing ${manifestPath}. Run reference:extract first. Nothing was written.`);
+  }
+  let manifest;
+  try {
+    manifest = parsePhotosManifest(parseStrictJsonBytes(manifestPath, manifestBytes));
+  } catch (err) {
+    throw new Error(`${manifestPath}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  const entries = manifest.photos.filter((p) => p.source_ref === page);
+  if (entries.length !== 1) {
+    throw new Error(
+      `${manifestPath} names ${entries.length === 0 ? "no photo" : "more than one photo"} for ${page}. Put the photo of the page in the photos folder and run reference:extract. Nothing was written.`,
+    );
+  }
+  const path = join(photosDir, entries[0].file);
+  const bytes = readRegularFileIfExists(path);
+  if (bytes === null) {
+    throw new Error(
+      `The photo ${path} of ${page} is missing. Put it in the photos folder and run reference:extract. Nothing was written.`,
+    );
+  }
+  const sha256 = sha256Hex(bytes);
+  if (sha256 !== entries[0].sha256) {
+    throw new Error(
+      `The photo ${path} of ${page} does not match the photo list. Run reference:extract again. Nothing was written.`,
+    );
+  }
+  return { path, sha256 };
+}
+
 export function checkAndMarkPage(opts: {
   workDir: string;
   page: string;
   repoRoot: string;
   // A person compared the final record with the photo of the page.
   photoCompared: boolean;
+  // Test seam: runs after the record and the photo are read and before the last look at them.
+  beforeWrite?: () => void;
 }): CheckPageResult {
   const page = opts.page.trim();
   if (!page || page.toLowerCase() === "all") {
@@ -135,7 +183,8 @@ export function checkAndMarkPage(opts: {
     throw new Error(`Final record not found for "${page}" at ${recordPath}`);
   }
 
-  const parsed = readStrictJsonFile(recordPath);
+  const recordBytes = readRegularFileNoFollow(recordPath);
+  const parsed = parseStrictJsonBytes(recordPath, recordBytes);
 
   if (
     typeof parsed === "object" &&
@@ -189,11 +238,33 @@ export function checkAndMarkPage(opts: {
     throw new Error(`Validation failed after recomputing answers for ${page}:\n${details}`);
   }
 
+  const photo = readPagePhoto(workDir, page);
+
+  opts.beforeWrite?.();
+  if (!readRegularFileIfExists(recordPath)?.equals(recordBytes)) {
+    throw new Error(
+      `The record ${recordPath} changed while the check ran. Compare it with the photo again. Nothing was written.`,
+    );
+  }
+  const photoNow = readPagePhoto(workDir, page);
+  if (photoNow.path !== photo.path || photoNow.sha256 !== photo.sha256) {
+    throw new Error(
+      `The photo of ${page} changed while the check ran. Compare the record with it again. Nothing was written.`,
+    );
+  }
+  const digests = readCheckedDigests(finalDir);
+
   const safeFinalDir = prepareSafeOutputDir(finalDir, repoRoot);
   const safeViewDir = prepareSafeOutputDir(join(workDir, "final-view"), repoRoot);
 
   const finalRecordPath = join(safeFinalDir, `${slug}.json`);
-  writeSafeOutputFile(finalRecordPath, `${JSON.stringify(recheck.record, null, 2)}\n`, repoRoot);
+  const recordOut = Buffer.from(`${JSON.stringify(recheck.record, null, 2)}\n`, "utf8");
+  writeSafeOutputFile(finalRecordPath, recordOut, repoRoot);
+
+  // The digests come before the status: a stop between the two leaves a page that is not checked.
+  digests.pages.set(page, { record_sha256: sha256Hex(recordOut), photo_sha256: photo.sha256 });
+  digests.checkedBefore.delete(page);
+  writeCheckedDigests(safeFinalDir, digests, repoRoot);
 
   const safeStatusPath = join(safeFinalDir, "status.json");
   statusMap[page] = "human_checked";
@@ -206,6 +277,7 @@ export function checkAndMarkPage(opts: {
     sourceRef: page,
     recordPath: finalRecordPath,
     viewPath,
+    photoPath: photo.path,
     statusPath: safeStatusPath,
     notes,
   };

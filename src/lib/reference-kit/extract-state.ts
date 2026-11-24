@@ -106,17 +106,6 @@ export function mergeRunEntries(
   return merged;
 }
 
-export function findHumanCheckedRefs(workDir: string): Set<string> {
-  const status = readJsonIfExists<Record<string, unknown>>(join(workDir, "final", "status.json"));
-  const refs = new Set<string>();
-  if (status && typeof status === "object" && !Array.isArray(status)) {
-    for (const [ref, value] of Object.entries(status)) {
-      if (value === "human_checked") refs.add(ref);
-    }
-  }
-  return refs;
-}
-
 // Every page id that the manifest or a reader gives for one photo digest.
 export function refsForDigest(
   sha256: string,
@@ -138,6 +127,7 @@ export interface PruneRemovedPhotosOptions {
   manifest: PhotosManifest;
   entriesA: readonly PhotoRunEntry[];
   entriesB: readonly PhotoRunEntry[];
+  // Every page that a person checked, also one whose check does not count now.
   humanCheckedRefs: ReadonlySet<string>;
   workDir: string;
   preparedPhotosDir: string;

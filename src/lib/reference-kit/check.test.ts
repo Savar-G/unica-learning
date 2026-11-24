@@ -1,16 +1,21 @@
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { PageRecord } from "@/lib/reference-record";
+import { CHECKED_DIGESTS_FILE, type PageRecord } from "@/lib/reference-record";
 import { checkAndMarkPage } from "./check";
+import { addPreparedPhoto } from "./photo.fixtures";
 
 const tempDirs: string[] = [];
 
@@ -87,6 +92,8 @@ describe("checkAndMarkPage", () => {
       JSON.stringify({ "sample:M:3a": "machine_read" }, null, 2),
     );
 
+    addPreparedPhoto(work, "photo 3a", "sample:M:3a");
+
     const result = checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: true });
     expect(result.sourceRef).toBe("sample:M:3a");
     expect(result.notes).toEqual([]);
@@ -103,7 +110,10 @@ describe("checkAndMarkPage", () => {
     expect(viewMd).toContain("**23** (computed)");
   });
 
-  function setUpWork(page: PageRecord): { repo: string; work: string; finalDir: string } {
+  function setUpWork(
+    page: PageRecord,
+    opts: { photo?: boolean } = {},
+  ): { repo: string; work: string; finalDir: string } {
     const repo = mkdtempSync(join(tmpdir(), "ref-chk-repo-"));
     const work = mkdtempSync(join(tmpdir(), "ref-chk-work-"));
     tempDirs.push(repo, work);
@@ -114,6 +124,7 @@ describe("checkAndMarkPage", () => {
       join(finalDir, "status.json"),
       JSON.stringify({ "sample:M:3a": "machine_read" }, null, 2),
     );
+    if (opts.photo !== false) addPreparedPhoto(work, "photo 3a", "sample:M:3a");
     return { repo, work, finalDir };
   }
 
@@ -124,7 +135,7 @@ describe("checkAndMarkPage", () => {
   }
 
   it("refuses without --photo-compared, names the photo of the page, and writes nothing", () => {
-    const { repo, work, finalDir } = setUpWork(makeFinalPage());
+    const { repo, work, finalDir } = setUpWork(makeFinalPage(), { photo: false });
     const before = readFileSync(join(finalDir, "sample-M-3a.json"), "utf8");
 
     // No manifest and no report: the photos folder is named.
@@ -405,6 +416,7 @@ describe("checkAndMarkPage", () => {
       join(finalDir, "status.json"),
       JSON.stringify({ "sample:M:3a": "machine_read" }, null, 2),
     );
+    addPreparedPhoto(work, "photo 3a", "sample:M:3a");
 
     checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: true });
     const saved = JSON.parse(readFileSync(join(finalDir, "sample-M-3a.json"), "utf8"));
@@ -426,6 +438,7 @@ describe("checkAndMarkPage", () => {
       single_read: ["topic.title", "sections[0].items[0].printed"],
     };
     writeFileSync(join(finalDir, "sample-M-3a.json"), JSON.stringify(acceptedPage, null, 2));
+    addPreparedPhoto(work, "photo 3a", "sample:M:3a");
     writeFileSync(
       join(finalDir, "status.json"),
       JSON.stringify({ "sample:M:3a": "agreement_accepted" }, null, 2),
@@ -501,6 +514,7 @@ describe("checkAndMarkPage", () => {
     };
     writeFileSync(join(finalDir, "sample-M-3a.json"), JSON.stringify(rec, null, 2));
     writeFileSync(join(finalDir, "status.json"), JSON.stringify({ "sample:M:3a": "machine_read" }, null, 2));
+    addPreparedPhoto(work, "photo 3a", "sample:M:3a");
 
     const res = checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: true });
     const saved = JSON.parse(readFileSync(res.recordPath, "utf8")) as PageRecord;
@@ -629,7 +643,7 @@ describe("checkAndMarkPage", () => {
     ];
 
     for (const c of fallbackCases) {
-      const { repo, work, finalDir } = setUpWork(makeFinalPage());
+      const { repo, work, finalDir } = setUpWork(makeFinalPage(), { photo: false });
       const before = readFileSync(join(finalDir, "sample-M-3a.json"), "utf8");
       if ("manifest" in c) {
         mkdirSync(join(work, "photos"), { recursive: true });
@@ -681,7 +695,7 @@ describe("checkAndMarkPage", () => {
     ];
 
     for (const c of strictFailCases) {
-      const { repo, work, finalDir } = setUpWork(makeFinalPage());
+      const { repo, work, finalDir } = setUpWork(makeFinalPage(), { photo: false });
       const before = readFileSync(join(finalDir, "sample-M-3a.json"), "utf8");
       mkdirSync(join(work, "photos"), { recursive: true });
       writeFileSync(join(work, c.relPath), c.bytes);
@@ -696,6 +710,182 @@ describe("checkAndMarkPage", () => {
         c.name,
       ).toThrow(c.expected);
       expectNothingWritten(finalDir, before);
+    }
+  });
+
+  // Every file under the work folder with its bytes, to prove that a stopped check wrote nothing.
+  function snapshotFiles(dir: string): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const entry of readdirSync(dir, { withFileTypes: true, recursive: true })) {
+      if (!entry.isFile()) continue;
+      const path = join(entry.parentPath, entry.name);
+      out[path] = readFileSync(path).toString("base64");
+    }
+    return out;
+  }
+
+  function sha256(bytes: Uint8Array): string {
+    return createHash("sha256").update(bytes).digest("hex");
+  }
+
+  const check = (work: string, repo: string, beforeWrite?: () => void) =>
+    checkAndMarkPage({ workDir: work, page: "sample:M:3a", repoRoot: repo, photoCompared: true, beforeWrite });
+
+  it("saves the SHA-256 of the record bytes that it wrote and of the photo, and a new check replaces them", () => {
+    const { repo, work, finalDir } = setUpWork(makeFinalPage());
+    const digestsPath = join(finalDir, CHECKED_DIGESTS_FILE);
+    const recordPath = join(finalDir, "sample-M-3a.json");
+    const photo = addPreparedPhoto(work, "photo 3a", "sample:M:3a");
+    const saved = () => JSON.parse(readFileSync(digestsPath, "utf8")) as { pages: unknown[] };
+
+    const res = check(work, repo);
+    expect(res.photoPath).toBe(photo.path);
+    expect(saved()).toEqual({
+      version: 1,
+      pages: [
+        {
+          source_ref: "sample:M:3a",
+          record_sha256: sha256(readFileSync(recordPath)),
+          photo_sha256: sha256(readFileSync(photo.path)),
+        },
+      ],
+      checked_before: [],
+    });
+
+    // The page is marked in status.json, which stays a map of text.
+    expect(JSON.parse(readFileSync(join(finalDir, "status.json"), "utf8"))).toEqual({
+      "sample:M:3a": "human_checked",
+    });
+
+    // The person corrects the record, and a page of an earlier check stays in the file.
+    writeFileSync(
+      digestsPath,
+      JSON.stringify({
+        version: 1,
+        pages: [
+          ...saved().pages,
+          { source_ref: "sample:M:4a", record_sha256: "a".repeat(64), photo_sha256: "b".repeat(64) },
+        ],
+        checked_before: ["sample:M:3a", "sample:M:5a"],
+      }),
+    );
+    const corrected = makeFinalPage();
+    corrected.topic.title = "Corrected title";
+    writeFileSync(recordPath, JSON.stringify(corrected));
+    const before = sha256(readFileSync(recordPath));
+    check(work, repo);
+    const after = sha256(readFileSync(recordPath));
+    expect(after).not.toBe(before);
+    expect(saved()).toEqual({
+      version: 1,
+      pages: [
+        { source_ref: "sample:M:3a", record_sha256: after, photo_sha256: photo.sha256 },
+        { source_ref: "sample:M:4a", record_sha256: "a".repeat(64), photo_sha256: "b".repeat(64) },
+      ],
+      checked_before: ["sample:M:5a"],
+    });
+  });
+
+  it("stops and writes nothing when the photo or the record changes between its read and the write, or when there is no photo to tie", () => {
+    const recordOf = (work: string) => join(work, "final", "sample-M-3a.json");
+    const manifestOf = (work: string) => join(work, "photos", "photos-manifest.json");
+    const photoOf = (work: string) => addPreparedPhoto(work, "photo 3a", "sample:M:3a").path;
+
+    // The change happens after the command read both files.
+    const during: Array<{ name: string; change: (work: string) => void; expected: RegExp }> = [
+      {
+        name: "record changed",
+        change: (work) => writeFileSync(recordOf(work), JSON.stringify({ ...makeFinalPage(), readers: ["x:y"] })),
+        expected: /record .*sample-M-3a\.json changed while the check ran/i,
+      },
+      { name: "record removed", change: (work) => rmSync(recordOf(work)), expected: /changed while the check ran/i },
+      {
+        name: "photo changed",
+        change: (work) => writeFileSync(photoOf(work), "other bytes"),
+        expected: /photo .*\.jpg/i,
+      },
+      { name: "photo removed", change: (work) => rmSync(photoOf(work)), expected: /photo .*\.jpg/i },
+      {
+        name: "the photo list names another photo",
+        change: (work) => {
+          rmSync(manifestOf(work));
+          addPreparedPhoto(work, "another photo", "sample:M:3a");
+        },
+        expected: /photo of sample:M:3a changed while the check ran/i,
+      },
+    ];
+    for (const c of during) {
+      const { repo, work } = setUpWork(makeFinalPage());
+      let afterChange: Record<string, string> = {};
+      expect(
+        () =>
+          check(work, repo, () => {
+            c.change(work);
+            afterChange = snapshotFiles(work);
+          }),
+        c.name,
+      ).toThrow(c.expected);
+      expect(snapshotFiles(work), c.name).toEqual(afterChange);
+    }
+
+    // There is no photo, or the photo is not the one that the photo list names.
+    const before: Array<{ name: string; set: (work: string) => void; expected: RegExp }> = [
+      { name: "no manifest", set: (work) => rmSync(manifestOf(work)), expected: /photos-manifest\.json/ },
+      {
+        name: "manifest names no photo for the page",
+        set: (work) => {
+          rmSync(manifestOf(work));
+          addPreparedPhoto(work, "photo 4a", "sample:M:4a");
+        },
+        expected: /no photo for sample:M:3a/,
+      },
+      {
+        name: "manifest names two photos for the page",
+        set: (work) => {
+          addPreparedPhoto(work, "second", "sample:M:3a");
+        },
+        expected: /more than one photo for sample:M:3a/,
+      },
+      {
+        name: "malformed manifest",
+        set: (work) => writeFileSync(manifestOf(work), JSON.stringify({ version: 2 })),
+        expected: /photos-manifest\.json/,
+      },
+      { name: "photo file missing", set: (work) => rmSync(photoOf(work)), expected: /missing/i },
+      {
+        name: "photo file replaced by hand",
+        set: (work) => writeFileSync(photoOf(work), "other bytes"),
+        expected: /does not match the photo list/i,
+      },
+      {
+        name: "photo is a link",
+        set: (work) => {
+          const path = photoOf(work);
+          renameSync(path, join(work, "elsewhere.jpg"));
+          symlinkSync(join(work, "elsewhere.jpg"), path);
+        },
+        expected: /symlink/i,
+      },
+      {
+        name: "record is a link",
+        set: (work) => {
+          renameSync(recordOf(work), join(work, "elsewhere.json"));
+          symlinkSync(join(work, "elsewhere.json"), recordOf(work));
+        },
+        expected: /symlink/i,
+      },
+      {
+        name: "digest file is damaged",
+        set: (work) => writeFileSync(join(work, "final", CHECKED_DIGESTS_FILE), "{ bad"),
+        expected: new RegExp(CHECKED_DIGESTS_FILE.replace(".", "\\.")),
+      },
+    ];
+    for (const c of before) {
+      const { repo, work } = setUpWork(makeFinalPage());
+      c.set(work);
+      const start = snapshotFiles(work);
+      expect(() => check(work, repo), c.name).toThrow(c.expected);
+      expect(snapshotFiles(work), c.name).toEqual(start);
     }
   });
 });

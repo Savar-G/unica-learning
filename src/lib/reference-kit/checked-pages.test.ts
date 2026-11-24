@@ -1,0 +1,427 @@
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { CHECKED_DIGESTS_FILE, type PageRecord } from "@/lib/reference-record";
+import { checkAndMarkPage } from "./check";
+import { compareWorkFolder, formatPagesSentToPerson } from "./compare-batch";
+import { addPreparedPhoto, fakePhoto } from "./photo.fixtures";
+
+const REF = "sample:M:3a";
+const RECORD_CHANGED = "record changed after the check";
+const PHOTO_CHANGED = "photo changed after the check";
+const PHOTO_MISSING = "photo of the check is missing";
+const BEFORE_DIGESTS = "checked before the photo check was saved";
+const NOT_MARKED = "check does not count any more (check the page again)";
+
+function makePage(sourceRef: string, title = "Adding Numbers"): PageRecord {
+  return {
+    kind: "page",
+    source_ref: sourceRef,
+    topic: { title, number: 1 },
+    sections: [
+      {
+        instruction: "Add the numbers.",
+        scaffolds: [],
+        items: [
+          {
+            n: 1,
+            printed: "12 + 5 =",
+            form: "horizontal",
+            expr: { kind: "arith", op: "add", operands: [12, 5] },
+            responses: [{ position: "after_equals", cue: null, answer: "17", answer_source: "computed" }],
+          },
+        ],
+      },
+    ],
+    examples: [],
+    score_bands: [[0, 0], [1, 1], [2, 2], [3, 3], [4, "open"]],
+  };
+}
+
+describe("a page checked by a person", () => {
+  let root: string;
+  let repo: string;
+  let work: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "ref-checked-"));
+    repo = join(root, "repo");
+    work = join(root, "work");
+    mkdirSync(repo);
+    mkdirSync(work);
+  });
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  const finalPath = (name: string) => join(work, "final", name);
+  const recordPath = (ref = REF) => finalPath(`${ref.replace(/:/g, "-")}.json`);
+  const viewPath = (ref = REF) => join(work, "final-view", `${ref.replace(/:/g, "-")}.md`);
+  const recordBytes = (ref = REF) => readFileSync(recordPath(ref));
+  const statusMap = () =>
+    JSON.parse(readFileSync(finalPath("status.json"), "utf8")) as Record<string, string>;
+  const digestFile = () =>
+    JSON.parse(readFileSync(finalPath(CHECKED_DIGESTS_FILE), "utf8")) as {
+      pages: Array<{ source_ref: string }>;
+      checked_before: string[];
+    };
+  const reportMd = () => readFileSync(finalPath("report.md"), "utf8");
+  const compare = () => compareWorkFolder({ workDir: work, repoRoot: repo });
+  const check = (ref = REF) =>
+    checkAndMarkPage({ workDir: work, page: ref, repoRoot: repo, photoCompared: true });
+
+  // Both readers give each of these photos the same page id (reader b also by its own readB id).
+  function setReadings(readings: Array<{ photo: string; name?: string; ref: string; title?: string }>): void {
+    for (const [slot, family] of [["a", "codex"], ["b", "claude"]] as const) {
+      const dir = join(work, `reader-${slot}`);
+      rmSync(dir, { recursive: true, force: true });
+      mkdirSync(dir);
+      writeFileSync(join(dir, "reader.json"), JSON.stringify({ family, model: "m1" }));
+      const photos = readings.map((r, i) => {
+        const file = `record-${i}.json`;
+        writeFileSync(join(dir, file), JSON.stringify(makePage(r.ref, r.title)));
+        const { sha256, file: photo } = fakePhoto(r.photo);
+        return {
+          photo,
+          original_name: r.name ?? `${r.photo}.jpg`,
+          photo_sha256: sha256,
+          status: "ok",
+          source_ref: r.ref,
+          record_file: file,
+          notes: [],
+        };
+      });
+      writeFileSync(
+        join(dir, "run.json"),
+        JSON.stringify({ slot, reader: { family, model: "m1" }, source: "sample", photos }),
+      );
+    }
+  }
+
+  // Page 3a is corrected by a person and checked against photo "p1"; page 4a is not checked.
+  function setUpChecked(): Buffer {
+    addPreparedPhoto(work, "p1");
+    addPreparedPhoto(work, "p2");
+    setReadings([{ photo: "p1", ref: REF }, { photo: "p2", ref: "sample:M:4a" }]);
+    compare();
+    writeFileSync(recordPath(), JSON.stringify(makePage(REF, "Corrected by a person")));
+    check();
+    return recordBytes();
+  }
+
+  function pageOf(report: ReturnType<typeof compare>, ref = REF) {
+    const page = report.pages.find((p) => p.source_ref === ref);
+    if (!page) throw new Error(`no page ${ref}`);
+    return page;
+  }
+
+  // The page is machine_read in every output, and its reason is in the list of pages for a person.
+  function expectSentToPerson(report: ReturnType<typeof compare>, reasons: string[], ref = REF): void {
+    expect(statusMap()[ref]).toBe("machine_read");
+    const page = report.pages.find((p) => p.source_ref === ref);
+    if (page) {
+      expect(page.status).toBe("machine_read");
+      expect(page.result).toBe("sent to a person");
+      expect(page.check_problems).toEqual(reasons);
+    }
+    const sent = report.pages_sent_to_person?.find((p) => p.source_ref === ref);
+    for (const reason of reasons) {
+      expect(sent?.reason).toContain(reason);
+      expect(reportMd()).toContain(reason);
+      expect(formatPagesSentToPerson(report)).toContain(reason);
+    }
+    expect(reportMd()).toContain("run reference:check for this page");
+    expect(report.kept_human_checked.find((k) => k.source_ref === ref)?.check_problems).toEqual(reasons);
+  }
+
+  it("stays human_checked when nothing changed, also on a second and a third run", () => {
+    const before = setUpChecked();
+    for (let round = 1; round <= 3; round += 1) {
+      const report = compare();
+      expect(pageOf(report).status).toBe("human_checked");
+      expect(pageOf(report).result).toBe("checked by a person");
+      expect(pageOf(report).check_problems).toBeUndefined();
+      expect(report.pages_sent_to_person).toEqual([]);
+      expect(statusMap()).toEqual({ [REF]: "human_checked", "sample:M:4a": "double_read" });
+      expect(recordBytes().equals(before)).toBe(true);
+    }
+    expect(reportMd()).not.toContain("reference:check");
+
+    // A page with no reading in this run keeps its check too: its photo is still in the photo list.
+    setReadings([{ photo: "p2", ref: "sample:M:4a" }]);
+    for (let round = 1; round <= 2; round += 1) {
+      const report = compare();
+      expect(statusMap()[REF]).toBe("human_checked");
+      expect(report.pages_sent_to_person).toEqual([]);
+      expect(recordBytes().equals(before)).toBe(true);
+    }
+  });
+
+  it("is sent to a person, with its record kept byte for byte, after each change of the record or the photo", () => {
+    const photosDir = () => join(work, "photos");
+    const changeAnswer = () => {
+      const record = JSON.parse(readFileSync(recordPath(), "utf8")) as PageRecord;
+      record.sections[0].items[0].responses[0].answer = "18";
+      writeFileSync(recordPath(), `${JSON.stringify(record, null, 2)}\n`);
+    };
+    const replacePhoto = () => {
+      addPreparedPhoto(work, "p9");
+      setReadings([{ photo: "p9", ref: REF }, { photo: "p2", ref: "sample:M:4a" }]);
+    };
+    const rows: Array<{ name: string; change: () => void; reasons: string[] }> = [
+      { name: "stored answer changed", change: changeAnswer, reasons: [RECORD_CHANGED] },
+      {
+        name: "one byte added",
+        change: () => writeFileSync(recordPath(), Buffer.concat([recordBytes(), Buffer.from(" ")])),
+        reasons: [RECORD_CHANGED],
+      },
+      {
+        name: "single_read added",
+        change: () =>
+          writeFileSync(recordPath(), JSON.stringify({ ...makePage(REF), single_read: ["topic.title"] })),
+        reasons: [RECORD_CHANGED],
+      },
+      {
+        name: "record is not valid now",
+        change: () => writeFileSync(recordPath(), "{ not json"),
+        reasons: [RECORD_CHANGED],
+      },
+      { name: "new photo with the same page id", change: replacePhoto, reasons: [PHOTO_CHANGED] },
+      {
+        name: "photo file has other bytes",
+        change: () => writeFileSync(join(photosDir(), fakePhoto("p1").file), "other bytes"),
+        reasons: [PHOTO_CHANGED],
+      },
+      {
+        name: "photo file is missing",
+        change: () => rmSync(join(photosDir(), fakePhoto("p1").file)),
+        reasons: [PHOTO_MISSING],
+      },
+      {
+        name: "photos folder is missing",
+        change: () => rmSync(photosDir(), { recursive: true }),
+        reasons: [PHOTO_MISSING],
+      },
+      {
+        name: "photo list does not name the photo",
+        change: () => {
+          rmSync(join(photosDir(), "photos-manifest.json"));
+          addPreparedPhoto(work, "p2");
+        },
+        reasons: [PHOTO_MISSING],
+      },
+      {
+        name: "record and photo changed",
+        change: () => {
+          changeAnswer();
+          replacePhoto();
+        },
+        reasons: [RECORD_CHANGED, PHOTO_CHANGED],
+      },
+      {
+        name: "the two readers read different photos",
+        change: () => {
+          addPreparedPhoto(work, "p9");
+          setReadings([{ photo: "p9", ref: REF }]);
+          const runB = join(work, "reader-b", "run.json");
+          const text = readFileSync(runB, "utf8");
+          writeFileSync(runB, text.replaceAll(fakePhoto("p9").sha256, fakePhoto("p1").sha256));
+        },
+        reasons: [PHOTO_CHANGED],
+      },
+      {
+        name: "page with no reading, record changed",
+        change: () => {
+          changeAnswer();
+          setReadings([{ photo: "p2", ref: "sample:M:4a" }]);
+        },
+        reasons: [RECORD_CHANGED],
+      },
+      {
+        name: "page with no reading, its photo now has another page id",
+        change: () => setReadings([{ photo: "p1", ref: "sample:M:5a" }]),
+        reasons: [PHOTO_MISSING],
+      },
+      {
+        name: "status.json has another status",
+        change: () => writeFileSync(finalPath("status.json"), JSON.stringify({ [REF]: "double_read" })),
+        reasons: [NOT_MARKED],
+      },
+      {
+        name: "status.json is missing",
+        change: () => rmSync(finalPath("status.json")),
+        reasons: [NOT_MARKED],
+      },
+    ];
+    for (const row of rows) {
+      rmSync(work, { recursive: true });
+      mkdirSync(work);
+      setUpChecked();
+      compare();
+      row.change();
+      const before = recordBytes();
+      // Also on later runs, when status.json does not say human_checked any more.
+      for (let round = 1; round <= 3; round += 1) {
+        const report = compare();
+        expect(recordBytes().equals(before), `${row.name}, round ${round}`).toBe(true);
+        expectSentToPerson(report, row.reasons);
+        // The photo of another page is not touched, and the page id is in the photo list once at most.
+        expect(digestFile().pages.map((p) => p.source_ref), row.name).toEqual([REF]);
+      }
+      // The loss of one saved file does not lose the record of the person.
+      for (const name of ["status.json", "report.json", CHECKED_DIGESTS_FILE]) {
+        rmSync(finalPath(name));
+        expect(pageStatusAfterCompare(), `${row.name}, without ${name}`).not.toBe("human_checked");
+        expect(recordBytes().equals(before), `${row.name}, without ${name}`).toBe(true);
+      }
+    }
+  });
+
+  function pageStatusAfterCompare(ref = REF): string {
+    compare();
+    return statusMap()[ref];
+  }
+
+  it("keeps both records when the photos of two checked pages swap their page ids", () => {
+    addPreparedPhoto(work, "p1");
+    addPreparedPhoto(work, "p2");
+    setReadings([{ photo: "p1", ref: REF }, { photo: "p2", ref: "sample:M:4a" }]);
+    compare();
+    check(REF);
+    check("sample:M:4a");
+    const before = [recordBytes(REF), recordBytes("sample:M:4a")];
+    expect(compare().pages.map((p) => p.status)).toEqual(["human_checked", "human_checked"]);
+
+    setReadings([{ photo: "p2", ref: REF, title: "New" }, { photo: "p1", ref: "sample:M:4a", title: "New" }]);
+    for (let round = 1; round <= 2; round += 1) {
+      const report = compare();
+      expectSentToPerson(report, [PHOTO_CHANGED], REF);
+      expectSentToPerson(report, [PHOTO_CHANGED], "sample:M:4a");
+      expect(recordBytes(REF).equals(before[0])).toBe(true);
+      expect(recordBytes("sample:M:4a").equals(before[1])).toBe(true);
+    }
+  });
+
+  it("is human_checked again, with new digests, after the person corrects it and checks it again", () => {
+    setUpChecked();
+    const oldDigests = digestFile();
+    addPreparedPhoto(work, "p9");
+    setReadings([{ photo: "p9", ref: REF }]);
+    const changed = makePage(REF, "Corrected for the new photo");
+    writeFileSync(recordPath(), JSON.stringify(changed));
+    expectSentToPerson(compare(), [RECORD_CHANGED, PHOTO_CHANGED]);
+
+    check();
+    expect(digestFile()).not.toEqual(oldDigests);
+    const before = recordBytes();
+    for (let round = 1; round <= 2; round += 1) {
+      const report = compare();
+      expect(pageOf(report).status).toBe("human_checked");
+      expect(report.pages_sent_to_person).toEqual([]);
+      expect(recordBytes().equals(before)).toBe(true);
+    }
+    expect(JSON.parse(before.toString("utf8")).topic.title).toBe("Corrected for the new photo");
+  });
+
+  it("keeps a page of an older folder and sends it to a person until the person checks it again", () => {
+    for (const inBatch of [true, false]) {
+      rmSync(work, { recursive: true });
+      mkdirSync(work);
+      const before = setUpChecked();
+      // A folder of an older kit has the status and no digests.
+      rmSync(finalPath(CHECKED_DIGESTS_FILE));
+      rmSync(finalPath("report.json"));
+      if (!inBatch) setReadings([{ photo: "p2", ref: "sample:M:4a" }]);
+      for (let round = 1; round <= 3; round += 1) {
+        const report = compare();
+        expectSentToPerson(report, [BEFORE_DIGESTS]);
+        expect(recordBytes().equals(before)).toBe(true);
+        // Compare saves no digest for it.
+        expect(digestFile()).toEqual({ version: 1, pages: [], checked_before: [REF] });
+      }
+      rmSync(finalPath("report.json"));
+      expectSentToPerson(compare(), [BEFORE_DIGESTS]);
+      expect(recordBytes().equals(before)).toBe(true);
+
+      check();
+      expect(digestFile().checked_before).toEqual([]);
+      expect(pageStatusAfterCompare()).toBe("human_checked");
+      expect(pageStatusAfterCompare()).toBe("human_checked");
+    }
+  });
+
+  it("gets a fresh record only when the person removed the record file", () => {
+    setUpChecked();
+    compare();
+    rmSync(recordPath());
+    const report = compare();
+    expect(pageOf(report).status).toBe("double_read");
+    expect(JSON.parse(readFileSync(recordPath(), "utf8")).topic.title).toBe("Adding Numbers");
+    expect(digestFile().pages).toEqual([]);
+    expect(pageOf(compare()).status).toBe("double_read");
+  });
+
+  it("stops compare on a damaged file before any write, and never reads it as a missing file", () => {
+    const manifest = () => join(work, "photos", "photos-manifest.json");
+    const rows: Array<{ name: string; file: () => string; change: (path: string) => void }> = [
+      ...["{ bad", "null", "[]", JSON.stringify({ [REF]: 1 })].map((text) => ({
+        name: `status.json ${text}`,
+        file: () => finalPath("status.json"),
+        change: (path: string) => writeFileSync(path, text),
+      })),
+      ...["{ bad", "", JSON.stringify({ version: 1, pages: [{ source_ref: REF, record_sha256: "x", photo_sha256: "y" }], checked_before: [] })].map((text) => ({
+        name: `digests ${text}`,
+        file: () => finalPath(CHECKED_DIGESTS_FILE),
+        change: (path: string) => writeFileSync(path, text),
+      })),
+      {
+        name: "report with a kept list that is not a list",
+        file: () => finalPath("report.json"),
+        change: (path: string) => writeFileSync(path, JSON.stringify({ pages: [], kept_human_checked: {} })),
+      },
+      {
+        name: "photo list with another shape",
+        file: manifest,
+        change: (path: string) => writeFileSync(path, JSON.stringify({ version: 2, photos: [] })),
+      },
+      {
+        name: "photo is a link",
+        file: () => join(work, "photos", fakePhoto("p1").file),
+        change: (path: string) => {
+          renameSync(path, join(root, "photo"));
+          symlinkSync(join(root, "photo"), path);
+        },
+      },
+      {
+        name: "record is a link",
+        file: () => recordPath(),
+        change: (path: string) => {
+          renameSync(path, join(root, "record"));
+          symlinkSync(join(root, "record"), path);
+        },
+      },
+    ];
+    for (const row of rows) {
+      rmSync(work, { recursive: true });
+      mkdirSync(work);
+      const record = setUpChecked();
+      compare();
+      row.change(row.file());
+      const status = readFileSync(finalPath("status.json"), "utf8");
+      const digests = readFileSync(finalPath(CHECKED_DIGESTS_FILE), "utf8");
+      expect(compare, row.name).toThrow(row.file());
+      expect(recordBytes().equals(record), row.name).toBe(true);
+      expect(readFileSync(finalPath("status.json"), "utf8"), row.name).toBe(status);
+      expect(readFileSync(finalPath(CHECKED_DIGESTS_FILE), "utf8"), row.name).toBe(digests);
+      expect(existsSync(viewPath()), row.name).toBe(true);
+    }
+  });
+});

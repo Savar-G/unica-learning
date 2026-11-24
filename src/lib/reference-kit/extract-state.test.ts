@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { PageRecord } from "@/lib/reference-record";
+import { loadCheckedPages } from "./checked-pages";
 import {
-  findHumanCheckedRefs,
   mergeRunEntries,
   persistSlotResult,
   pruneRemovedPhotos,
@@ -115,7 +115,7 @@ describe("extract-state", () => {
       { photo: file2, photo_sha256: SHA_2, original_name: "02.jpg", status: "ok", source_ref: "sample:M:4a", record_file: "sample-M-4a.json", notes: [] },
     ];
 
-    const humanCheckedRefs = findHumanCheckedRefs(workDir);
+    const humanCheckedRefs = loadCheckedPages(finalDir).refs;
     expect([...humanCheckedRefs]).toEqual(["sample:M:4a"]);
 
     const pruned = pruneRemovedPhotos({

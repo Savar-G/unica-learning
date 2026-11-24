@@ -5,11 +5,11 @@ import {
   prepareSafeOutputDir,
   writeSafeOutputFile,
 } from "@/lib/reference-record";
+import { isCheckedForPhoto, loadCheckedPages, type CheckedPages } from "./checked-pages";
 import { compareWorkFolder, type CompareWorkReport } from "./compare-batch";
 import { killActiveReaders } from "./read-cli";
 import { openPageShelter, type PageShelter, type ShelterCategory } from "./extract-shelter";
 import {
-  findHumanCheckedRefs,
   isValidReading,
   loadRunEntries,
   mergeRunEntries,
@@ -115,7 +115,7 @@ interface RunContext {
   manifest: PhotosManifest;
   entriesA: PhotoRunEntry[];
   entriesB: PhotoRunEntry[];
-  humanCheckedRefs: Set<string>;
+  checked: CheckedPages;
 }
 
 function formatPhotoProgress(prefix: string, a: SlotOutcome, b: SlotOutcome): string {
@@ -278,10 +278,16 @@ async function readOnePhoto(ctx: RunContext, photo: ReadyPhoto, prefix: string):
     if (renamedB) ctx.entriesB = mergeRunEntries(ctx.entriesB, [renamedB]);
   };
 
-  const checkedRef = refs.find((ref) => ctx.humanCheckedRefs.has(ref));
+  const checkedRef = refs.find((ref) => ctx.checked.refs.has(ref));
   if (checkedRef && !force) {
     keepAsIs();
-    return `${prefix} kept: checked by a person -> ${checkedRef}`;
+    const counts = isCheckedForPhoto({
+      finalDir: join(ctx.workDir, "final"),
+      checked: ctx.checked,
+      ref: checkedRef,
+      photoSha256: sha256,
+    });
+    return `${prefix} kept: ${counts ? "checked by a person" : "a person must check this page again"} -> ${checkedRef}`;
   }
 
   const validA = isValidReading(ctx.slotDirA, oldA);
@@ -407,7 +413,7 @@ export async function extractFolder(opts: ExtractFolderOptions): Promise<Extract
     manifest: loadManifest(join(preparedPhotosDir, PHOTOS_MANIFEST_FILE)),
     entriesA: loadRunEntries(slotDirA, readerA),
     entriesB: loadRunEntries(slotDirB, readerB),
-    humanCheckedRefs: findHumanCheckedRefs(workDir),
+    checked: loadCheckedPages(join(workDir, "final")),
   };
   // A work folder belongs to one source key. Old readings under another key would stay as they are.
   const foreign = [...ctx.entriesA, ...ctx.entriesB].find(
@@ -436,7 +442,7 @@ export async function extractFolder(opts: ExtractFolderOptions): Promise<Extract
   const presentDigests = new Set(scanned.flatMap((p) => ("sha256" in p ? [p.sha256] : [])));
   let removedPhotos: RemovedPhotoReport[] = [];
   if (presentDigests.size > 0) {
-    const pruned = pruneRemovedPhotos({ ...ctx, presentDigests });
+    const pruned = pruneRemovedPhotos({ ...ctx, humanCheckedRefs: ctx.checked.refs, presentDigests });
     ctx.manifest = pruned.manifest;
     ctx.entriesA = pruned.entriesA;
     ctx.entriesB = pruned.entriesB;

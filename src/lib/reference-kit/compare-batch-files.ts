@@ -7,9 +7,8 @@ import {
   type ReferenceRecord,
 } from "@/lib/reference-record";
 import { fileSlugFromRef } from "./answers";
-import type { PageStatus } from "./compare";
 import { pairDigest, readJsonIfExists, type PairedPage } from "./compare-pairing";
-import { parsePhotosManifest, PHOTOS_MANIFEST_FILE } from "./prepare";
+import { parsePhotosManifest, PHOTOS_MANIFEST_FILE, type PhotosManifest } from "./prepare";
 
 export function readStoredSourceRef(filePath: string): string | null {
   if (!existsSync(filePath)) return null;
@@ -73,7 +72,7 @@ export function loadPreviousHashes(reportPath: string): Map<string, string> {
 
 export function assertNoFileCollisions(
   pairs: readonly PairedPage[],
-  existingStatus: Record<string, PageStatus>,
+  existingStatus: Record<string, string>,
   finalDir: string,
 ): void {
   const fileToRef = new Map<string, string>();
@@ -113,21 +112,25 @@ export function assertNoFileCollisions(
 }
 
 // The manifest gives a page id only to the photo whose readings made the final record, so it holds
-// at most one entry for each page id. A kept human_checked page with no current readings keeps the
-// page id it already has.
-export function syncManifestSourceRefs(
+// at most one entry for each page id. A kept page of a person with no current readings keeps the
+// page id it already has. Null when there is no manifest, or one of another shape (an error when
+// strict: a checked page needs its photo).
+export function planManifestSourceRefs(
   workDir: string,
   winners: readonly PairedPage[],
   keptStaleRefs: ReadonlySet<string>,
-  repoRoot: string,
-): void {
+  opts: { strict: boolean },
+): { manifestPath: string; before: PhotosManifest; after: PhotosManifest } | null {
   const manifestPath = join(workDir, "photos", PHOTOS_MANIFEST_FILE);
-  if (!existsSync(manifestPath)) return;
-  let manifest;
+  if (!existsSync(manifestPath)) return null;
+  let before: PhotosManifest;
   try {
-    manifest = parsePhotosManifest(JSON.parse(readFileSync(manifestPath, "utf8")) as unknown);
-  } catch {
-    return;
+    before = parsePhotosManifest(JSON.parse(readFileSync(manifestPath, "utf8")) as unknown);
+  } catch (err) {
+    if (!opts.strict) return null;
+    throw new Error(
+      `Damaged file ${manifestPath}: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
   const refByDigest = new Map<string, string>();
   for (const pair of winners) {
@@ -136,7 +139,7 @@ export function syncManifestSourceRefs(
     if (digest && ref && !refByDigest.has(digest)) refByDigest.set(digest, ref);
   }
   const assigned = new Set<string>();
-  const photos = manifest.photos.map((entry) => {
+  const photos = before.photos.map((entry) => {
     const { source_ref: oldRef, ...rest } = entry;
     const winnerRef = refByDigest.get(entry.sha256);
     const ref = winnerRef ?? (oldRef && keptStaleRefs.has(oldRef) ? oldRef : undefined);
@@ -144,8 +147,16 @@ export function syncManifestSourceRefs(
     assigned.add(ref);
     return { ...rest, source_ref: ref };
   });
-  const next = `${JSON.stringify({ version: 1, photos }, null, 2)}\n`;
-  if (next !== `${JSON.stringify(manifest, null, 2)}\n`) {
-    writeSafeOutputFile(manifestPath, next, repoRoot);
+  return { manifestPath, before, after: { version: 1, photos } };
+}
+
+export function writePlannedManifest(
+  plan: ReturnType<typeof planManifestSourceRefs>,
+  repoRoot: string,
+): void {
+  if (!plan) return;
+  const next = `${JSON.stringify(plan.after, null, 2)}\n`;
+  if (next !== `${JSON.stringify(plan.before, null, 2)}\n`) {
+    writeSafeOutputFile(plan.manifestPath, next, repoRoot);
   }
 }

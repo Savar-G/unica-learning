@@ -1,7 +1,8 @@
-import { createHash } from "node:crypto";
-import { closeSync, constants, fstatSync, openSync, readFileSync } from "node:fs";
 import { extname, isAbsolute, relative, resolve } from "node:path";
 import sharp from "sharp";
+import { readRegularFileNoFollow, sha256Hex } from "@/lib/reference-record/read-file";
+
+export { readRegularFileNoFollow, sha256Hex };
 
 export const PHOTOS_MANIFEST_FILE = "photos-manifest.json";
 export const PREPARE_REPORT_FILE = "prepare.json";
@@ -82,10 +83,6 @@ export interface PrepareReportFile {
   removed_photos?: RemovedPhotoReport[];
 }
 
-export function sha256Hex(bytes: Uint8Array): string {
-  return createHash("sha256").update(bytes).digest("hex");
-}
-
 export function isSupportedPhotoFile(filename: string): boolean {
   if (!filename || filename.startsWith(".")) return false;
   return SUPPORTED_PHOTO_EXTENSIONS.has(extname(filename).toLowerCase());
@@ -100,30 +97,6 @@ export function isValidPreparedFileName(file: string, sha256: string): boolean {
   const match = PREPARED_FILE_RE.exec(file);
   if (!match) return false;
   return sha256.startsWith(match[1]);
-}
-
-export function readRegularFileNoFollow(filePath: string): Buffer {
-  const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0;
-  let fd: number;
-  try {
-    fd = openSync(filePath, constants.O_RDONLY | noFollow);
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code === "ELOOP") {
-      throw new Error(`Refusing to read symlink: ${filePath}`);
-    }
-    throw err;
-  }
-
-  try {
-    const st = fstatSync(fd);
-    if (!st.isFile()) {
-      throw new Error(`Refusing to read non-regular file: ${filePath}`);
-    }
-    return readFileSync(fd);
-  } finally {
-    closeSync(fd);
-  }
 }
 
 export function resolveSafeChildPath(dir: string, filename: string): string | null {

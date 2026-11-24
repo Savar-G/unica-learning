@@ -117,29 +117,35 @@ function formatReaderBNeighbours(d: RecordDifference): string {
 
 type ReviewInstructionKind =
   | "edited_check"
+  | "check_again"
   | "invalid_human_checked"
   | "once_read_heading_fresh"
   | "once_read_heading_kept"
+  | "once_read_heading_checked"
   | "both_unclear_heading"
   | "empty_answer_heading"
   | "missing_step_note"
   | "kept_find_place"
+  | "checked_find_place"
   | "located_insert_before"
   | "located_reader_a"
   | "located_reader_b";
 
 const REVIEW_INSTRUCTIONS: Record<ReviewInstructionKind, { action: string; neutral: string }> = {
   edited_check: { action: " Run reference:check for this page.", neutral: "" },
+  check_again: { action: " Compare the record with the photo, then run reference:check for this page.", neutral: "" },
   invalid_human_checked: { action: " Correct it, then run reference:check for this page.", neutral: "" },
   once_read_heading_fresh: {
     action: ' (look at the photo; copy an entry that is on the page into the final record at the given path, where "[]" means the end of that list and "insert before" means insert ahead of that element)',
     neutral: "",
   },
   once_read_heading_kept: { action: " (look at the photo; a person changed the final record, so find the place in that record)", neutral: "" },
+  once_read_heading_checked: { action: " (look at the photo; the final record is the one that a person checked, so find the place in that record)", neutral: "" },
   both_unclear_heading: { action: ' (look at the photo and write the value, or keep "unclear" and mark the page checked)', neutral: "" },
   empty_answer_heading: { action: ' (write the answer from the photo, or "unclear")', neutral: "" },
   missing_step_note: { action: "; its step is missing from reader A's record and must be added first", neutral: "; step absent from reader A's record" },
   kept_find_place: { action: " has it; a person changed the final record, so find the place in that record", neutral: "" },
+  checked_find_place: { action: " has it; the final record is the one that a person checked, so find the place in that record", neutral: "" },
   located_insert_before: { action: " has it; insert before", neutral: "; location in final record before" },
   located_reader_a: { action: " has it; already in the final record at", neutral: "; in final record at" },
   located_reader_b: { action: " has it; belongs in the final record at", neutral: "; location in final record" },
@@ -155,7 +161,7 @@ function reviewInstruction(status: PageStatus, kind: ReviewInstructionKind): str
 function formatLocatedEntry(
   prefix: string,
   d: RecordDifference,
-  opts: { status: PageStatus; keptRecord: boolean },
+  opts: { status: PageStatus; keptRecord: boolean; checkLapsed: boolean },
 ): string {
   const entry = d.reader === "a" ? d.a : d.b;
   if (d.reader === "b" && hasReaderBNeighbours(d)) {
@@ -178,7 +184,7 @@ function formatLocatedEntry(
     return `${prefix}: only reader ${d.reader}${reviewInstruction(opts.status, whereKind)} \`${d.final_path}\`${missingStepNote}: ${formatVal(entry)}`;
   }
   if (d.reader && opts.keptRecord) {
-    return `${prefix}: only reader ${d.reader}${reviewInstruction(opts.status, "kept_find_place")}${missingStepNote}: ${formatVal(entry)}`;
+    return `${prefix}: only reader ${d.reader}${reviewInstruction(opts.status, opts.checkLapsed ? "checked_find_place" : "kept_find_place")}${missingStepNote}: ${formatVal(entry)}`;
   }
   return `${prefix}: a=${formatVal(d.a)} | b=${formatVal(d.b)}`;
 }
@@ -245,10 +251,15 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
   if (report.removed_photos.length > 0) {
     lines.push("## Removed photos");
     lines.push("");
+    const lapsedRefs = new Set(
+      report.kept_human_checked.filter((k) => k.check_problems?.length).map((k) => k.source_ref),
+    );
     for (const item of report.removed_photos) {
       const ref = item.source_ref ? ` (${item.source_ref})` : "";
       const outcome = item.kept_human_checked
-        ? "kept: checked by a person"
+        ? item.source_ref && lapsedRefs.has(item.source_ref)
+          ? "kept: a person must check this page again"
+          : "kept: checked by a person"
         : "no longer in the photos folder; its readings and final record were removed";
       lines.push(`- \`${item.original_name}\`${ref}: ${outcome}`);
     }
@@ -287,9 +298,16 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
     lines.push("## Kept: checked by a person");
     lines.push("");
     for (const k of report.kept_human_checked) {
+      const lapsed = k.check_problems ?? [];
+      const why = lapsed.length > 0 ? ` (${lapsed.join("; ")})` : "";
       if (k.invalid) {
         lines.push(
-          `- ${k.source_ref}: kept as it is, but the file is not a valid record now.${reviewInstruction("human_checked", "invalid_human_checked")}`,
+          `- ${k.source_ref}: kept as it is, but the file is not a valid record now${why}.${reviewInstruction("human_checked", "invalid_human_checked")}`,
+        );
+      } else if (lapsed.length > 0) {
+        const where = k.in_current_batch ? "" : " (not in current batch)";
+        lines.push(
+          `- ${k.source_ref}: kept as it is${where}, but the check does not count now${why}.${reviewInstruction("machine_read", "check_again")}`,
         );
       } else if (!k.in_current_batch) {
         lines.push(`- ${k.source_ref}: stale human_checked page kept (not in current batch)`);
@@ -350,6 +368,13 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
         `- A person changed the final record and it is not checked yet. The file was kept.${reviewInstruction(p.status, "edited_check")}`,
       );
     }
+    const checkProblems = p.check_problems ?? [];
+    const checkLapsed = checkProblems.length > 0;
+    if (checkLapsed) {
+      lines.push(
+        `- A person checked this page, but the check does not count now: ${checkProblems.join("; ")}. The file was kept.${reviewInstruction(p.status, "check_again")}`,
+      );
+    }
     if (p.original_name && p.photo && p.original_name !== p.photo) {
       lines.push(`- Photo: \`${p.original_name}\` (\`${p.photo}\`)`);
     } else if (p.original_name ?? p.photo) {
@@ -362,7 +387,8 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
       );
     }
     // A record that a person edited or checked is kept; reader a's words and indexes may not fit it.
-    const keptRecord = p.edited_by_person === true || p.status === "human_checked";
+    const keptRecord =
+      p.edited_by_person === true || checkLapsed || p.status === "human_checked";
 
     if (p.needs_person_read) {
       if (p.status === "agreement_accepted" && !keptRecord) {
@@ -388,7 +414,7 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
       for (const d of p.differences) {
         const prefix = `  - \`${d.path}\` (${d.kind})`;
         if (d.reader && (hasReaderBNeighbours(d) || d.final_path !== undefined || keptRecord)) {
-          lines.push(formatLocatedEntry(prefix, d, { status: p.status, keptRecord }));
+          lines.push(formatLocatedEntry(prefix, d, { status: p.status, keptRecord, checkLapsed }));
         } else {
           lines.push(`${prefix}: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
         }
@@ -410,11 +436,15 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
     if (p.once_read.length > 0) {
       const headingNote = reviewInstruction(
         p.status,
-        keptRecord ? "once_read_heading_kept" : "once_read_heading_fresh",
+        checkLapsed
+          ? "once_read_heading_checked"
+          : keptRecord
+            ? "once_read_heading_kept"
+            : "once_read_heading_fresh",
       );
       lines.push(`- Once-read teaching fields${headingNote}:`);
       for (const d of p.once_read) {
-        lines.push(formatLocatedEntry(`  - \`${d.path}\``, d, { status: p.status, keptRecord }));
+        lines.push(formatLocatedEntry(`  - \`${d.path}\``, d, { status: p.status, keptRecord, checkLapsed }));
       }
     }
 

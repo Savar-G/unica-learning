@@ -16,6 +16,7 @@ import type { ContentsRecord, PageRecord } from "@/lib/reference-record";
 import { checkAndMarkPage } from "./check";
 import { compareWorkFolder } from "./compare-batch";
 import { persistSlotResult } from "./extract-state";
+import { addPreparedPhoto, fakePhoto } from "./photo.fixtures";
 import { readPhoto } from "./read";
 
 const tempDirs: string[] = [];
@@ -62,9 +63,9 @@ function makePage(overrides?: Partial<PageRecord>): PageRecord {
   };
 }
 
-const SHA_1 = "1".repeat(64);
-const SHA_2 = "2".repeat(64);
-const SHA_3 = "3".repeat(64);
+const SHA_1 = fakePhoto("1").sha256;
+const SHA_2 = fakePhoto("2").sha256;
+const SHA_3 = fakePhoto("3").sha256;
 
 describe("compareWorkFolder", () => {
   it("writes final records, status.json, report.json, report.md, and final-view markdown when paired by photo_sha256", () => {
@@ -327,6 +328,7 @@ describe("compareWorkFolder", () => {
       }),
     );
 
+    for (const label of ["1", "2", "3"]) addPreparedPhoto(work, label);
     compareWorkFolder({ workDir: work, repoRoot: repo });
 
     // Hand-edit 3a (stays in next batch) and 4a (becomes stale in next batch), mark both human_checked.
@@ -683,6 +685,7 @@ describe("compareWorkFolder", () => {
         }),
       );
     }
+    for (const label of ["1", "2"]) addPreparedPhoto(work, label);
     const first = compareWorkFolder({ workDir: work, repoRoot: repo });
     expect(first.pages.map((p) => p.status)).toEqual(["double_read", "double_read"]);
 
@@ -704,7 +707,7 @@ describe("compareWorkFolder", () => {
       expect(again.kept_human_checked.find((k) => k.source_ref === "sample:M:4a")?.invalid).toBe(true);
     }
     const status = JSON.parse(readFileSync(join(work, "final", "status.json"), "utf8")) as Record<string, string>;
-    expect(status).toEqual({ "sample:M:3a": "machine_read", "sample:M:4a": "human_checked" });
+    expect(status).toEqual({ "sample:M:3a": "machine_read", "sample:M:4a": "machine_read" });
     const reportMd = readFileSync(join(work, "final", "report.md"), "utf8");
     expect(reportMd).toContain("A person changed the final record");
     expect(reportMd).toContain("not a valid record now");
@@ -772,6 +775,7 @@ describe("compareWorkFolder", () => {
       writeFileSync(join(dir, "run.json"), JSON.stringify({ slot, reader: { family, model: "m1" }, source: "sample", photos }));
     }
 
+    for (const label of ["1", "2"]) addPreparedPhoto(work, label);
     const report = compareWorkFolder({ workDir: work, repoRoot: repo });
     const finalOf = (slug: string) => JSON.parse(readFileSync(join(work, "final", `${slug}.json`), "utf8")) as PageRecord;
 
@@ -833,7 +837,8 @@ describe("compareWorkFolder", () => {
     cleared.sections[0].items[0].responses[0] = { position: "box", cue: null, answer: null, answer_source: "unchecked" };
     writeFileSync(join(work, "final", "sample-M-4a.json"), JSON.stringify(cleared, null, 2));
     const afterClear = page4aOf();
-    expect(afterClear?.status).toBe("human_checked");
+    expect(afterClear?.status).toBe("machine_read");
+    expect(afterClear?.check_problems).toEqual(["record changed after the check"]);
     expect(afterClear?.empty_answer?.map((d) => d.path)).toEqual(["sections[0].items[n=1].responses[0]"]);
     expect(() =>
       checkAndMarkPage({ workDir: work, page: "sample:M:4a", repoRoot: repo, photoCompared: true }),
@@ -2221,6 +2226,7 @@ describe("compareWorkFolder", () => {
     const setupWork = (name: string, recA: ContentsRecord | PageRecord, recB: ContentsRecord | PageRecord) => {
       const work = mkdtempSync(join(tmpdir(), `ref-cmp-kept-loc-${name}-`));
       tempDirs.push(work);
+      addPreparedPhoto(work, "1");
       const file = `${recA.source_ref.replace(/:/g, "-")}.json`;
       for (const [slot, family, rec] of [
         ["a", "codex", recA],
@@ -2421,10 +2427,14 @@ describe("compareWorkFolder", () => {
     expect(checkedMd).not.toContain("insert before");
     expect(checkedMd).not.toContain("not in kept final record");
 
-    // (c) Invalid kept human_checked record -> no final_path or insert_before, no review instructions.
+    // (c) Invalid kept record of a checked page -> no final_path or insert_before; the check does
+    // not count now, so the page is machine_read and names the place as one that a person checked.
     writeFileSync(pageWork.finalPath, "{ invalid json");
     const invalidPage = compareWorkFolder({ workDir: pageWork.work, repoRoot: repo }).pages[0];
-    expect(invalidPage.status).toBe("human_checked");
+    expect(invalidPage.status).toBe("machine_read");
+    expect(readFileSync(pageWork.reportMdPath, "utf8")).toContain(
+      "only reader a has it; the final record is the one that a person checked, so find the place in that record:",
+    );
     assertNoKeptLocations(invalidPage, "invalid");
 
     // Table check for missing_step wording across fresh and all kept kinds in report.json and report.md
@@ -2480,7 +2490,7 @@ describe("compareWorkFolder", () => {
         expectFinalPath: undefined,
       },
       {
-        label: "invalid kept human_checked record",
+        label: "invalid kept record of a checked page",
         prepare: () => {
           const w = setupWork("ms-invalid-checked", pageA, pageB);
           compareWorkFolder({ workDir: w.work, repoRoot: repo });

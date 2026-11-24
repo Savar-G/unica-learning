@@ -28,6 +28,7 @@ async function main(): Promise<void> {
 
   console.log(`Marked ${result.sourceRef} as human_checked.`);
   console.log(`Updated record: ${result.recordPath}`);
+  console.log(`Tied to photo: ${result.photoPath}`);
   console.log(`Updated view: ${result.viewPath}`);
   for (const note of result.notes) {
     console.log(`  note: ${note}`);

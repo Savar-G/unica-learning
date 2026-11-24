@@ -1,5 +1,6 @@
 import { readdir, realpath } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { checkHumanCheckedPages } from "./checked-digests";
 import {
   buildReferencePhotoPath,
   decodeStrictUtf8,
@@ -18,6 +19,7 @@ import {
   type ReplaceDecision,
   type StatusLowered,
 } from "./import-replace";
+import { sha256Hex } from "./read-file";
 import { checkStatusSingleRead } from "./record-path";
 import type { ReferenceRecord } from "./types";
 import { validateReferenceRecord } from "./validate";
@@ -166,6 +168,8 @@ async function readRecords(
   recordsRead: number;
   records: ReferenceRecord[];
   seenRefs: Map<string, string>;
+  // SHA-256 of the file bytes of each record.
+  recordSha256ByRef: Map<string, string>;
 }> {
   let realRecordsDir: string;
   let entries;
@@ -175,7 +179,13 @@ async function readRecords(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     problems.push(`records folder "${recordsDir}" could not be read: ${msg}`);
-    return { realRecordsDir: null, recordsRead: 0, records: [], seenRefs: new Map() };
+    return {
+      realRecordsDir: null,
+      recordsRead: 0,
+      records: [],
+      seenRefs: new Map(),
+      recordSha256ByRef: new Map(),
+    };
   }
 
   const recordFiles = entries
@@ -190,6 +200,7 @@ async function readRecords(
 
   const records: ReferenceRecord[] = [];
   const seenRefs = new Map<string, string>();
+  const recordSha256ByRef = new Map<string, string>();
 
   for (const fileName of recordFiles) {
     const filePath = join(realRecordsDir, fileName);
@@ -231,10 +242,11 @@ async function readRecords(
     }
 
     seenRefs.set(ref, fileName);
+    recordSha256ByRef.set(ref, sha256Hex(fileRead.bytes));
     records.push(check.record);
   }
 
-  return { realRecordsDir, recordsRead: recordFiles.length, records, seenRefs };
+  return { realRecordsDir, recordsRead: recordFiles.length, records, seenRefs, recordSha256ByRef };
 }
 
 async function readStatusMap(
@@ -294,7 +306,7 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
   const problems: string[] = [];
   const resolvedRecordsDir = resolve(options.recordsDir);
 
-  const { realRecordsDir, recordsRead, records, seenRefs } = await readRecords(
+  const { realRecordsDir, recordsRead, records, seenRefs, recordSha256ByRef } = await readRecords(
     resolvedRecordsDir,
     problems,
   );
@@ -308,6 +320,15 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
   const plannedPhotos = options.photosDir
     ? await readPlannedPhotos(options.photosDir, records, problems)
     : new Map<string, PlannedPhoto>();
+  if (realRecordsDir) {
+    checkHumanCheckedPages({
+      finalDir: realRecordsDir,
+      statusByRef,
+      recordSha256ByRef,
+      plannedPhotos,
+      problems,
+    });
+  }
 
   if (problems.length > 0) {
     return refusedResult(recordsRead, dryRun, problems);
