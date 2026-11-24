@@ -150,3 +150,4 @@ What a person does next:
      --records /private/work/final \
      --photos /private/work/photos
    ```
+   A page that is already in the table is not changed. To load a corrected page again, add `--replace`. Run it with `--dry-run --replace` first and read the `replaced:`, `status_lowered:`, and `leftover_photo:` lines. `--replace` never deletes a row or a photo (see `docs/reference-records.md`).

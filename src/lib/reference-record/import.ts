@@ -7,10 +7,17 @@ import {
   readRegularFileNoFollow,
   type PlannedPhoto,
 } from "./import-photos";
+import {
+  applyReplace,
+  decideReplace,
+  formatReplaceLines,
+  type StatusLowered,
+} from "./import-replace";
 import type { ReferenceRecord } from "./types";
 import { validateReferenceRecord } from "./validate";
 
 export { buildReferencePhotoPath };
+export type { StatusLowered };
 export { MAX_REFERENCE_PHOTO_BYTES } from "./import-photos";
 
 export const REFERENCE_RECORD_KINDS = ["page", "contents"] as const;
@@ -49,18 +56,26 @@ export interface ReferenceStore {
   insertRow(row: ReferenceRow): Promise<boolean>;
   objectSha256(path: string): Promise<string | null>;
   uploadObject(path: string, bytes: Uint8Array, contentType: string): Promise<void>;
+  // Writes the object and overwrites one that is already at the path (only with --replace).
+  replaceObject(path: string, bytes: Uint8Array, contentType: string): Promise<void>;
+  // Updates kind, path, transcript, transcript_status and updated_at of the row with this source_ref.
+  // id, created_at and note stay. Returns false when no row matched.
+  updateRow(row: ReferenceRow): Promise<boolean>;
 }
 
 export interface ImportOptions {
   recordsDir: string;
   photosDir?: string;
   dryRun?: boolean;
+  // Replace an existing row (and its photo) that differs from the files. Never deletes anything.
+  replace?: boolean;
   store: ReferenceStore;
 }
 
 export interface ImportCounts {
   recordsRead: number;
   inserted: number;
+  replaced: number;
   skipped: number;
   skippedDifferent: number;
   photosUploaded: number;
@@ -75,6 +90,10 @@ export interface ImportResult {
   skippedDifferentRefs: string[];
   // Storage paths that hold a photo no row points to. A person must remove them by hand.
   unreferencedPhotos?: string[];
+  // --replace only: rows replaced, statuses that went down, and old photos a row no longer uses.
+  replacedRefs: string[];
+  statusLowered: StatusLowered[];
+  leftoverPhotos: string[];
   problems: string[];
 }
 
@@ -144,11 +163,15 @@ function refusedResult(recordsRead: number, dryRun: boolean, problems: string[])
     counts: {
       recordsRead,
       inserted: 0,
+      replaced: 0,
       skipped: 0,
       skippedDifferent: 0,
       photosUploaded: 0,
     },
     skippedDifferentRefs: [],
+    replacedRefs: [],
+    statusLowered: [],
+    leftoverPhotos: [],
     problems,
   };
 }
@@ -296,6 +319,7 @@ async function readStatusMap(
 
 export async function importReferenceRecords(options: ImportOptions): Promise<ImportResult> {
   const dryRun = options.dryRun ?? false;
+  const replace = options.replace ?? false;
   const problems: string[] = [];
   const resolvedRecordsDir = resolve(options.recordsDir);
 
@@ -317,9 +341,16 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
   const existing = await options.store.findExisting(records.map((r) => r.source_ref));
 
   const reusablePhotoPaths = new Set<string>();
+  // --replace only: sha256 of the object at the planned path of a ref that already has a row.
+  const storedShaByRef = new Map<string, string | null>();
   for (const record of records) {
-    if (existing.has(record.source_ref)) continue;
     const photo = plannedPhotos.get(record.source_ref);
+    if (existing.has(record.source_ref)) {
+      if (replace && photo) {
+        storedShaByRef.set(record.source_ref, await options.store.objectSha256(photo.storagePath));
+      }
+      continue;
+    }
     if (!photo) continue;
 
     const storedSha = await options.store.objectSha256(photo.storagePath);
@@ -338,15 +369,56 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
   }
 
   let inserted = 0;
+  let replaced = 0;
   let skipped = 0;
   let skippedDifferent = 0;
   let photosUploaded = 0;
   const skippedDifferentRefs: string[] = [];
   // Photos this run uploaded for a row that another run wrote first with a different photo path.
   const unreferencedPhotos: string[] = [];
+  const replacedRefs: string[] = [];
+  const statusLowered: StatusLowered[] = [];
+  const leftoverPhotos: string[] = [];
+
+  const stoppedResult = (stopProblems: string[]): ImportResult => ({
+    ok: false,
+    stopped: true,
+    dryRun,
+    counts: { recordsRead, inserted, replaced, skipped, skippedDifferent, photosUploaded },
+    skippedDifferentRefs,
+    unreferencedPhotos,
+    replacedRefs,
+    statusLowered,
+    leftoverPhotos,
+    problems: stopProblems,
+  });
 
   for (const record of records) {
     const prev = existing.get(record.source_ref);
+    const plannedStatus = statusByRef.get(record.source_ref) ?? "machine_read";
+    if (prev !== undefined && replace) {
+      const photo = plannedPhotos.get(record.source_ref);
+      const storedSha = storedShaByRef.get(record.source_ref) ?? null;
+      const decision = decideReplace({ record, prev, plannedStatus, photo, storedSha });
+      if (decision.same) {
+        skipped += 1;
+        continue;
+      }
+      const store = options.store;
+      const outcome = await applyReplace({ store, record, plannedStatus, photo, decision, dryRun });
+      if (outcome.photoWritten) photosUploaded += 1;
+      if (!outcome.ok) {
+        return stoppedResult([
+          ...outcome.problems,
+          `rows written before the failure stay (inserted ${inserted}, replaced ${replaced}); the row for ${record.source_ref} may or may not be replaced; run the command again with the same files to finish`,
+        ]);
+      }
+      replaced += 1;
+      replacedRefs.push(record.source_ref);
+      if (decision.lowered) statusLowered.push(decision.lowered);
+      if (decision.leftoverPath !== null) leftoverPhotos.push(decision.leftoverPath);
+      continue;
+    }
     if (prev !== undefined) {
       if (deepEqualJson(prev.transcript, record)) {
         skipped += 1;
@@ -383,7 +455,7 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
         kind: record.kind,
         path: storagePath,
         transcript: record,
-        transcript_status: statusByRef.get(record.source_ref) ?? "machine_read",
+        transcript_status: plannedStatus,
       });
     } catch (err) {
       // A write failed after validation. Say what is already written and that a second run is safe.
@@ -394,18 +466,11 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
           `the photo for ${record.source_ref} is in storage at "${storagePath}" and its row may not be written; run the command again with the same files and it reuses that photo`,
         );
       }
+      const written = replace ? `inserted ${inserted}, replaced ${replaced}` : String(inserted);
       stopProblems.push(
-        `rows written before the failure stay (${inserted}); the row for ${record.source_ref} may or may not be written; run the command again with the same files to finish`,
+        `rows written before the failure stay (${written}); the row for ${record.source_ref} may or may not be written; run the command again with the same files to finish`,
       );
-      return {
-        ok: false,
-        stopped: true,
-        dryRun,
-        counts: { recordsRead, inserted, skipped, skippedDifferent, photosUploaded },
-        skippedDifferentRefs,
-        unreferencedPhotos,
-        problems: stopProblems,
-      };
+      return stoppedResult(stopProblems);
     }
     if (wasInserted) {
       inserted += 1;
@@ -430,18 +495,23 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
     counts: {
       recordsRead,
       inserted,
+      replaced,
       skipped,
       skippedDifferent,
       photosUploaded,
     },
     skippedDifferentRefs,
     unreferencedPhotos,
+    replacedRefs,
+    statusLowered,
+    leftoverPhotos,
     problems: [],
   };
 }
 
 export function formatImportResult(result: ImportResult): string {
-  const { recordsRead, inserted, skipped, skippedDifferent, photosUploaded } = result.counts;
+  const { recordsRead, inserted, replaced, skipped, skippedDifferent, photosUploaded } =
+    result.counts;
   const prefix = result.stopped
     ? "Import stopped after a write error"
     : !result.ok
@@ -450,7 +520,7 @@ export function formatImportResult(result: ImportResult): string {
       ? "Dry run summary"
       : "Import summary";
   const lines = [
-    `${prefix}: records_read=${recordsRead} inserted=${inserted} skipped=${skipped} skipped_different=${skippedDifferent} photos_uploaded=${photosUploaded}`,
+    `${prefix}: records_read=${recordsRead} inserted=${inserted} replaced=${replaced} skipped=${skipped} skipped_different=${skippedDifferent} photos_uploaded=${photosUploaded}`,
   ];
   for (const ref of result.skippedDifferentRefs) {
     lines.push(`skipped_different: ${ref} (stored transcript differs from file)`);
@@ -460,6 +530,7 @@ export function formatImportResult(result: ImportResult): string {
       `unreferenced_photo: "${path}" was uploaded, but another run wrote the row first; remove this object by hand`,
     );
   }
+  lines.push(...formatReplaceLines(result));
   for (const problem of result.problems) {
     lines.push(`problem: ${problem}`);
   }

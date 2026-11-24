@@ -121,6 +121,34 @@ function createSupabaseReferenceStore(db: SupabaseClient<Database>): ReferenceSt
         throw new Error(`Failed uploading ${path}: ${error.message}`);
       }
     },
+
+    async replaceObject(path: string, bytes: Uint8Array, contentType: string): Promise<void> {
+      const { error } = await db.storage
+        .from(REFERENCE_BUCKET)
+        .upload(path, bytes, { contentType, upsert: true });
+      if (error) {
+        throw new Error(`Failed replacing ${path}: ${error.message}`);
+      }
+    },
+
+    async updateRow(row: ReferenceRow): Promise<boolean> {
+      // id, created_at and note stay; the table has no trigger for updated_at, so it is set here.
+      const { data, error } = await db
+        .from(REFERENCE_TABLE)
+        .update({
+          kind: row.kind,
+          path: row.path,
+          transcript: toJsonValue(row.transcript),
+          transcript_status: row.transcript_status,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("source_ref", row.source_ref)
+        .select("source_ref");
+      if (error) {
+        throw new Error(`Failed updating ${row.source_ref}: ${error.message}`);
+      }
+      return (data?.length ?? 0) > 0;
+    },
   };
 }
 
@@ -130,12 +158,14 @@ async function main(): Promise<void> {
       records: { type: "string" },
       photos: { type: "string" },
       "dry-run": { type: "boolean", default: false },
+      replace: { type: "boolean", default: false },
     },
   });
 
   if (!values.records) {
     console.error(
-      "Usage: npm run reference:import -- --records <folder> [--photos <folder>] [--dry-run]",
+      "Usage: npm run reference:import -- --records <folder> [--photos <folder>] [--dry-run] [--replace]\n" +
+        "  --replace  update an existing row (and overwrite its photo) when it differs from the files; never deletes. Run with --dry-run --replace first.",
     );
     process.exitCode = 1;
     return;
@@ -160,6 +190,7 @@ async function main(): Promise<void> {
     recordsDir: values.records,
     photosDir: values.photos,
     dryRun: values["dry-run"],
+    replace: values.replace,
     store,
   });
 

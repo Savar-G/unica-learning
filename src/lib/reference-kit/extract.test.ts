@@ -152,6 +152,17 @@ class MemoryImportStore implements ReferenceStore {
   async uploadObject(path: string, bytes: Uint8Array, contentType: string): Promise<void> {
     this.objects.set(path, { bytes: new Uint8Array(bytes), contentType });
   }
+
+  async replaceObject(path: string, bytes: Uint8Array, contentType: string): Promise<void> {
+    this.objects.set(path, { bytes: new Uint8Array(bytes), contentType });
+  }
+
+  async updateRow(row: ReferenceRow): Promise<boolean> {
+    const prev = this.rows.get(row.source_ref);
+    if (!prev) return false;
+    this.rows.set(row.source_ref, { ...structuredClone(row), note: prev.note });
+    return true;
+  }
 }
 
 describe("extractFolder (reference:extract)", () => {
@@ -299,6 +310,7 @@ describe("extractFolder (reference:extract)", () => {
     expect(imported.counts).toEqual({
       recordsRead: 2,
       inserted: 2,
+      replaced: 0,
       skipped: 0,
       skippedDifferent: 0,
       photosUploaded: 2,

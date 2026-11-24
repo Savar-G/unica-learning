@@ -95,6 +95,19 @@ class PhotoMemoryStore implements ReferenceStore {
     }
     this.objects.set(path, { bytes: new Uint8Array(bytes), contentType });
   }
+
+  async replaceObject(path: string, bytes: Uint8Array, contentType: string): Promise<void> {
+    this.calls.push(`replaceObject:${path}`);
+    this.objects.set(path, { bytes: new Uint8Array(bytes), contentType });
+  }
+
+  async updateRow(row: ReferenceRow): Promise<boolean> {
+    this.calls.push(`updateRow:${row.source_ref}`);
+    const prev = this.rows.get(row.source_ref);
+    if (!prev) return false;
+    this.rows.set(row.source_ref, { ...structuredClone(row), note: prev.note });
+    return true;
+  }
 }
 
 describe("buildReferencePhotoPath", () => {
