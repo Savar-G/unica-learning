@@ -13,7 +13,7 @@ The bank holds the approved content of each level: topics, sheets, defined quest
 - Bank content is in Supabase Postgres. It is not in the repo.
 - A recipe **shape** is TypeScript code in the repo, with typed limits. Recipe **content** (limits, order and wording) is in the database.
 - A row is inside its sheet, with its shape and limits. Sheets do not share recipe records.
-- Each level has one working copy and its frozen snapshots. A freeze copies the approved sheets, questions, scenarios and region packs into snapshot items. A trigger blocks update and delete on these items.
+- Each level has one working copy and its frozen snapshots. A freeze copies the approved questions, scenarios and region packs into snapshot items. Of each approved sheet, it copies only `content`. A trigger blocks update and delete on these items.
 - A book depends on exactly one snapshot.
 
 ## Options rejected

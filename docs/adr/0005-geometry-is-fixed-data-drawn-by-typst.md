@@ -28,7 +28,7 @@ Marking must know where each answer is on the page. In v1, a browser lays out th
 
 - Template tests compare the rectangles of the model with the positions that Typst reports.
 - A failed fit names the check, sheet, page and slot.
-- The freeze checks fit for every combination, with the widest numbers and sampled seeds for figures. The layout check of each book fails if there is ink in an answer area, reach box, the spine zone or a margin. The printed border of the area is permitted.
+- The freeze checks fit for every combination, with the widest numbers and sampled seeds for figures. The layout check of each book fails if there is ink in an answer area, a reach box, the spine zone or a margin. The printed border of an answer area or reach box is permitted. Nothing is printed in the spine zone.
 - Golden books list the pages that a code change altered. A person reads only those pages.
 - The method to call Typst is not chosen yet. The default is the pinned `typst` program. The alternative is the Node binding and a rasterizer. The first slice tries both on Vercel.
 - The first slice tests the five rules of architecture spec 10.1. If it breaks one, the architecture is reviewed again.

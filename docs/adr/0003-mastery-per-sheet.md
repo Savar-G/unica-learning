@@ -14,7 +14,7 @@ The engine must decide which work a child repeats and which work comes next. A s
 - A sheet result is mastered, repeat or unknown. Code computes it from the first-try marks of the sheet. Later corrections do not change the first try. A blank counts as wrong.
 - The mastery line is 90% at Levels 1 to 6 and 80% at Level 7 and up. It is stored for each level as data.
 - A sheet with final marks on fewer than 80% of its items is unknown.
-- A sheet that is not mastered comes back as the same sheet, with new numbers and new words, until it is mastered. There is no automatic step back.
+- A sheet with a `repeat` result comes back as the same sheet, with new numbers and new words, until it is mastered. There is no automatic step back. [ADR 0007](0007-position-is-computed.md) has the rules for unknown sheets.
 - Each sheet has a stable `sheet_id`. The id is opaque and does not come from the position of the sheet.
 
 ## Options rejected

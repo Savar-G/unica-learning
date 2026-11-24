@@ -27,7 +27,7 @@ Position is where a child is in a level: the sheets that must repeat, then the n
 ## Consequence
 
 - A mark that arrives late or changes needs no position update. The sheet result is rebuilt, and the next plan uses it.
-- A freeze of a new snapshot does not move a child, because sheet ids stay the same between snapshots.
+- A freeze of a new snapshot does not move a child: the position carries over by sheet id. The version notes map a removed sheet to its replacement.
 - The code needs the issued sheets, receipts and sheet results of each child. Position is per child, also on a shared device.
 - The freeze computes page numbers and display codes from the order of the sheets. They are display fields.
 - All new per-child tables join the family deletion path.
