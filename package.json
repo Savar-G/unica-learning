@@ -47,7 +47,8 @@
     "reference:board": "node scripts/reference-board.mjs",
     "reference:extract": "node scripts/reference-extract.mjs",
     "reference:compare": "node scripts/reference-compare.mjs",
-    "reference:check": "node scripts/reference-check.mjs"
+    "reference:check": "node scripts/reference-check.mjs",
+    "reference:method": "node scripts/reference-method.mjs"
   },
   "dependencies": {
     "@sentry/nextjs": "11.16.0",

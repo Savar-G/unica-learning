@@ -94,6 +94,16 @@ export function extractJsonFromModelOutput(
   return { ok: false, error: "Could not extract a valid JSON object from model output" };
 }
 
+// The full printed title of a record that holds the number apart.
+export function joinTopicNumber(title: string, number: number): string {
+  const tokens = title.trim().split(/\s+/);
+  // The number is already there as the last token (also as "#2" or "No.2"), or in round brackets
+  // at the end (with or without a space before the brackets).
+  const last = tokens[tokens.length - 1].replace(/^(?:#|no\.)/i, "");
+  const present = last === String(number) || title.trim().endsWith(`(${number})`);
+  return present ? title : `${title.trim()} ${number}`;
+}
+
 // topic.title is the full printed title with any number at its end. A reader that still splits
 // off a positive integer number gets it put back at the end of the title, and topic.number is
 // dropped. A null or sentinel number is left as it is, and so is the number of an unclear title.
@@ -108,12 +118,7 @@ function foldTopicNumber(obj: Record<string, unknown>): void {
   if (title === null || title === undefined || (typeof title === "string" && !title.trim())) {
     rest.title = String(number);
   } else if (typeof title === "string") {
-    const tokens = title.trim().split(/\s+/);
-    // The number is already there as the last token (also as "#2" or "No.2"), or in round brackets
-    // at the end (with or without a space before the brackets).
-    const last = tokens[tokens.length - 1].replace(/^(?:#|no\.)/i, "");
-    const present = last === String(number) || title.trim().endsWith(`(${number})`);
-    if (!present) rest.title = `${title.trim()} ${number}`;
+    rest.title = joinTopicNumber(title, number);
   }
   obj.topic = rest;
 }

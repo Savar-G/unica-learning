@@ -4,6 +4,8 @@ Structured evidence records for curriculum reference pages (`src/lib/reference-r
 
 To read photos of reference pages into these records, see `docs/reference-kit.md` (the photo kit and the `reference-extract` skill).
 
+To record how each topic is taught, from these records, see `docs/reference-methods.md`.
+
 ## Record Kinds
 
 Validated by `validateReferenceRecord(value)` (`src/lib/reference-record/validate.ts`), which rejects unknown keys at every level and returns field-path errors:
