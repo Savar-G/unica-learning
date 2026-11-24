@@ -55,34 +55,49 @@ export function parseAnswerDiffersPath(note: string): string | null {
   return match ? match[1] : null;
 }
 
-export function collectReadTimeAnswerConflictPaths(
+export function collectReadTimeAnswerConflicts(
+  reader: "a" | "b",
   notes: readonly string[],
   details?: readonly StoredAnswerNote[],
 ): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
-  const add = (path: string): void => {
-    if (!seen.has(path)) {
-      seen.add(path);
-      out.push(path);
+  const add = (body: string): void => {
+    const entry = `reader ${reader}: ${body}`;
+    if (!seen.has(entry)) {
+      seen.add(entry);
+      out.push(entry);
     }
   };
   if (Array.isArray(details)) {
+    const notesByPath = new Map<string, string[]>();
+    for (const note of notes) {
+      const path = parseAnswerDiffersPath(note);
+      if (path !== null) {
+        const list = notesByPath.get(path) ?? [];
+        list.push(note);
+        notesByPath.set(path, list);
+      }
+    }
     for (const detail of details) {
-      if (detail?.kind === "answer_differs" && typeof detail.path === "string") {
+      if (detail?.kind !== "answer_differs" || typeof detail.path !== "string") continue;
+      const matched = notesByPath.get(detail.path);
+      if (matched && matched.length > 0) {
+        for (const note of matched) add(note);
+      } else {
         add(detail.path);
       }
     }
     return out;
   }
   for (const note of notes) {
-    const path = parseAnswerDiffersPath(note);
-    if (path !== null) add(path);
+    if (parseAnswerDiffersPath(note) !== null) add(note);
   }
   return out;
 }
 
-export function collectReadTimeUnclearAnswerPaths(
+export function collectReadTimeUnclearAnswers(
+  reader: "a" | "b",
   details?: readonly StoredAnswerNote[],
 ): string[] {
   if (!Array.isArray(details)) return [];
@@ -91,9 +106,10 @@ export function collectReadTimeUnclearAnswerPaths(
   for (const detail of details) {
     if (detail?.kind === "unclear_filled" && typeof detail.path === "string") {
       const answerPath = detail.path.endsWith(".answer") ? detail.path : `${detail.path}.answer`;
-      if (!seen.has(answerPath)) {
-        seen.add(answerPath);
-        out.push(answerPath);
+      const entry = `reader ${reader}: ${answerPath}`;
+      if (!seen.has(entry)) {
+        seen.add(entry);
+        out.push(entry);
       }
     }
   }
@@ -483,13 +499,24 @@ export function findEmptyAnswers(record: ReferenceRecord | null | undefined): st
   return paths;
 }
 
-// Worked-example parts whose shown_answer conflicts with their own computable single-answer expr.
-// Never mutates shown_answer and is used by compare (not reference:check, where a person decides).
-export function findExampleAnswerConflicts(
+function canonicalExprKey(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalExprKey).join(",")}]`;
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalExprKey(obj[k])}`).join(",")}}`;
+}
+
+interface ExampleAnswerConflict {
+  note: AnswerNote;
+  identityKey: string;
+}
+
+function findDetailedExampleAnswerConflicts(
   record: ReferenceRecord | null | undefined,
-): AnswerNote[] {
+): ExampleAnswerConflict[] {
   if (!record || record.kind !== "page" || !Array.isArray(record.examples)) return [];
-  const out: AnswerNote[] = [];
+  const out: ExampleAnswerConflict[] = [];
   record.examples.forEach((ex, ei) => {
     ex.parts.forEach((part, pi) => {
       const shown = part.shown_answer ?? null;
@@ -498,10 +525,15 @@ export function findExampleAnswerConflicts(
       if (!computed || computed.kind !== "single") return;
       if (normalizeAnswerCompare(shown) !== normalizeAnswerCompare(computed.value)) {
         const path = `examples[${ei}].parts[${pi}].shown_answer`;
+        const message = `${path}: shown "${shown}", computed "${computed.value}"`;
         out.push({
-          kind: "answer_differs",
-          path,
-          message: `${path}: shown "${shown}", computed "${computed.value}"`,
+          note: { kind: "answer_differs", path, message },
+          identityKey: JSON.stringify([
+            path,
+            canonicalExprKey(part.expr),
+            normalizeAnswerCompare(shown),
+            normalizeAnswerCompare(computed.value),
+          ]),
         });
       }
     });
@@ -509,23 +541,34 @@ export function findExampleAnswerConflicts(
   return out;
 }
 
+// Worked-example parts whose shown_answer conflicts with their own computable single-answer expr.
+// Never mutates shown_answer and is used by compare (not reference:check, where a person decides).
+export function findExampleAnswerConflicts(
+  record: ReferenceRecord | null | undefined,
+): AnswerNote[] {
+  return findDetailedExampleAnswerConflicts(record).map((c) => c.note);
+}
+
 export function collectExampleAnswerConflicts(
   finalRecord: ReferenceRecord | null | undefined,
   recA: ReferenceRecord | null | undefined,
   recB: ReferenceRecord | null | undefined,
-): { finalMessages: string[]; readerOnlyPaths: string[] } {
-  const finalConflicts = findExampleAnswerConflicts(finalRecord);
-  const finalPaths = new Set(finalConflicts.map((d) => d.path));
-  const readerOnlyPaths: string[] = [];
+): { finalMessages: string[]; readerOnlyMessages: string[] } {
+  const finalConflicts = findDetailedExampleAnswerConflicts(finalRecord);
+  const finalKeys = new Set(finalConflicts.map((c) => c.identityKey));
+  const readerOnlyMessages: string[] = [];
   const seen = new Set<string>();
-  for (const conflict of [
-    ...findExampleAnswerConflicts(recA),
-    ...findExampleAnswerConflicts(recB),
-  ]) {
-    if (!finalPaths.has(conflict.path) && !seen.has(conflict.path)) {
-      seen.add(conflict.path);
-      readerOnlyPaths.push(conflict.path);
+  const addReader = (reader: "a" | "b", conflicts: readonly ExampleAnswerConflict[]): void => {
+    for (const conflict of conflicts) {
+      if (finalKeys.has(conflict.identityKey)) continue;
+      const entry = `reader ${reader}: ${conflict.note.message}`;
+      if (!seen.has(entry)) {
+        seen.add(entry);
+        readerOnlyMessages.push(entry);
+      }
     }
-  }
-  return { finalMessages: finalConflicts.map((d) => d.message), readerOnlyPaths };
+  };
+  addReader("a", findDetailedExampleAnswerConflicts(recA));
+  addReader("b", findDetailedExampleAnswerConflicts(recB));
+  return { finalMessages: finalConflicts.map((c) => c.note.message), readerOnlyMessages };
 }

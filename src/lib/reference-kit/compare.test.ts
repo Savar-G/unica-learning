@@ -1871,7 +1871,9 @@ describe("90% reader agreement rule", () => {
     const exFinalConflict = makeExConflictPage("6", "6");
     expect(exFinalConflict.exConflicts.finalMessages).toHaveLength(1);
     const exReaderConflict = makeExConflictPage("5", "6");
-    expect(exReaderConflict.exConflicts.readerOnlyPaths).toEqual(["examples[0].parts[0].shown_answer"]);
+    expect(exReaderConflict.exConflicts.readerOnlyMessages).toEqual([
+      'reader b: examples[0].parts[0].shown_answer: shown "6", computed "5"',
+    ]);
 
     const stopTable: Array<{
       reason: PageStopReason;
@@ -1945,8 +1947,8 @@ describe("90% reader agreement rule", () => {
       {
         reason: READER_ANSWER_CONFLICT_REASON,
         label: "reader-only worked-example shown_answer conflict",
-        at95: { hasReaderAnswerConflict: exReaderConflict.exConflicts.readerOnlyPaths.length > 0 },
-        at100: { hasReaderAnswerConflict: exReaderConflict.exConflicts.readerOnlyPaths.length > 0 },
+        at95: { hasReaderAnswerConflict: exReaderConflict.exConflicts.readerOnlyMessages.length > 0 },
+        at100: { hasReaderAnswerConflict: exReaderConflict.exConflicts.readerOnlyMessages.length > 0 },
       },
       {
         reason: "empty answer place",
@@ -3252,7 +3254,7 @@ describe("90% reader agreement rule", () => {
         exConflicts.finalMessages.length > 0;
       const readerAnswerConflict =
         computedB.details.some((d) => d.kind === "answer_differs") ||
-        exConflicts.readerOnlyPaths.length > 0;
+        exConflicts.readerOnlyMessages.length > 0;
       return decidePageOutcome({
         hasA: true,
         hasB: true,

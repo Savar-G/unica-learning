@@ -216,8 +216,9 @@ describe("formatCompareReportMarkdown", () => {
       '`sections[0].scaffolds[b:2]`: only reader b has it; a person changed the final record, so find the place in that record: {"kind":"arrow","applies_to":[1]}',
     );
     expect(editedMd).toContain(
-      '`examples[0].marks[b:0]`: only reader b has it; a person changed the final record, so find the place in that record; its step is missing from reader A\'s record and must be added first: {"kind":"box","step":2,"description":"Box around sum"}',
+      '`examples[0].marks[b:0]`: only reader b has it; a person changed the final record, so find the place in that record; step absent from reader A\'s record: {"kind":"box","step":2,"description":"Box around sum"}',
     );
+    expect(editedMd).not.toContain("must be added first");
 
     // A human_checked page keeps wording neutral and omits review instructions and locations.
     const checkedMd = formatCompareReportMarkdown({
@@ -678,14 +679,16 @@ describe("formatCompareReportMarkdown", () => {
 
       if (cell.status === "machine_read") {
         expect(md, label).toContain("look at the photo");
-        expect(md, label).toContain("must be added first");
         expect(md, label).toContain("write the value");
         expect(md, label).toContain('write the answer from the photo, or "unclear"');
         expect(md, label).toContain("mark the page checked");
         if (cell.edited) {
           expect(md, label).toContain("find the place in that record");
           expect(md, label).toContain("Run reference:check for this page.");
+          expect(md, label).toContain("; step absent from reader A's record");
+          expect(md, label).not.toContain("must be added first");
         } else {
+          expect(md, label).toContain("must be added first");
           expect(md, label).toContain("copy an entry");
           expect(md, label).toContain("already in the final record at `sections[0].scaffolds[0]`");
           expect(md, label).toContain("belongs in the final record at `sections[0].scaffolds[]`");
@@ -699,6 +702,7 @@ describe("formatCompareReportMarkdown", () => {
           expect(md, label).not.toContain("`sections[0].scaffolds[]`");
           expect(md, label).not.toContain("`examples[0].steps[1]`");
           expect(md, label).not.toContain("`examples[0].marks[]`");
+          expect(md, label).not.toContain("Differing fields are in single_read");
         } else {
           expect(md, label).toContain("`sections[0].scaffolds[]`");
           expect(md, label).toContain("`examples[0].steps[1]`");

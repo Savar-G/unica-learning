@@ -114,6 +114,11 @@ export interface CompareWorkReport {
   same_page_id_conflicts: SamePageIdConflict[];
 }
 
+function formatConflictEntry(entry: string): string {
+  const match = /^(reader [ab]): (\S+?)(: [\s\S]+)?$/.exec(entry);
+  return match ? `${match[1]}: \`${match[2]}\`${match[3] ?? ""}` : `\`${entry}\``;
+}
+
 function formatVal(v: unknown): string {
   return JSON.stringify(v);
 }
@@ -256,7 +261,11 @@ function formatLocatedEntry(
   if (d.reader === "b" && hasReaderBNeighbours(d)) {
     return `${prefix}: ${formatReaderBNeighbours(d)}: ${formatVal(entry)}`;
   }
-  const missingStepNote = d.missing_step ? reviewInstruction(opts.status, "missing_step_note") : "";
+  const missingStepNote = d.missing_step
+    ? opts.keptRecord
+      ? REVIEW_INSTRUCTIONS.missing_step_note.neutral
+      : reviewInstruction(opts.status, "missing_step_note")
+    : "";
   if (d.reader && d.final_path !== undefined && !opts.keptRecord) {
     const whereKind: ReviewInstructionKind =
       d.insert_before !== undefined
@@ -452,8 +461,11 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
         `- Photo digest mismatch (kept machine_read): reader a=${p.digest_mismatch.a ?? "none"} | reader b=${p.digest_mismatch.b ?? "none"}`,
       );
     }
+    // A record that a person edited or checked is kept; reader a's words and indexes may not fit it.
+    const keptRecord = p.edited_by_person === true || p.status === "human_checked";
+
     if (p.needs_person_read) {
-      if (p.status === "agreement_accepted") {
+      if (p.status === "agreement_accepted" && !keptRecord) {
         lines.push(
           "- Has worked examples or prose. Differing fields are in single_read and show as not checked.",
         );
@@ -470,9 +482,6 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
         lines.push(`  - ${mark.kind} \`${mark.path}\` (reader ${mark.reader}): ${mark.description}`);
       }
     }
-
-    // A record that a person edited or checked is kept; reader a's words and indexes may not fit it.
-    const keptRecord = p.edited_by_person === true || p.status === "human_checked";
 
     if (p.differences.length > 0) {
       lines.push("- Differences:");
@@ -535,16 +544,16 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
     const readerAnswerConflicts = p.reader_answer_conflicts ?? [];
     if (readerAnswerConflicts.length > 0) {
       lines.push("- Reader answer conflicts (a reader's answer differs from the computed answer):");
-      for (const path of readerAnswerConflicts) {
-        lines.push(`  - \`${path}\``);
+      for (const entry of readerAnswerConflicts) {
+        lines.push(`  - ${formatConflictEntry(entry)}`);
       }
     }
 
     const answerDisagreements = p.answer_disagreements ?? [];
     if (answerDisagreements.length > 0) {
       lines.push("- Answer disagreements (readers disagree on an answer):");
-      for (const path of answerDisagreements) {
-        lines.push(`  - \`${path}\``);
+      for (const entry of answerDisagreements) {
+        lines.push(`  - ${formatConflictEntry(entry)}`);
       }
     }
 

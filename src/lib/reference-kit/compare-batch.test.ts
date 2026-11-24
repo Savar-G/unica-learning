@@ -2068,7 +2068,59 @@ describe("compareWorkFolder", () => {
     );
     expect(legacy.page.status).toBe("machine_read");
     expect(legacy.page.result_reason).toBe("a reader's answer differs from the computed answer");
-    expect(legacy.page.reader_answer_conflicts).toEqual(["sections[0].items[n=1].responses[0]"]);
+    expect(legacy.page.reader_answer_conflicts).toEqual([
+      'reader b: sections[0].items[n=1].responses[0]: reader gave "3", computed "2"',
+    ]);
+    expect(legacy.md).toContain(
+      'reader b: `sections[0].items[n=1].responses[0]`: reader gave "3", computed "2"',
+    );
+
+    // Same path in both readers (different values or different response positions): neither entry is dropped
+    const bothWrongSamePath = await runPair(
+      "both-wrong-same-path",
+      singleShape.buildPayload("wrong"),
+      {
+        ...singleShape.buildPayload("wrong"),
+        sections: [
+          {
+            instruction: "Solve.",
+            scaffolds: [],
+            items: [
+              {
+                n: 1,
+                printed: "2 + 3 =",
+                form: "horizontal",
+                expr: { kind: "arith", op: "add", operands: [2, 3] },
+                responses: [
+                  { position: "after_equals", cue: null, answer: "88", answer_source: "reader" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    );
+    expect(bothWrongSamePath.page.reader_answer_conflicts).toEqual([
+      'reader a: sections[0].items[n=1].responses[0]: reader gave "3", computed "2"',
+      'reader b: sections[0].items[n=1].responses[0]: reader gave "88", computed "5"',
+    ]);
+
+    // Both readers mark unclear at the same path (e.g. swapped digit places): neither entry is dropped
+    const bothUnclearSamePath = await runPair(
+      "both-unclear-same-path",
+      singleShape.buildPayload("unclear"),
+      singleShape.buildPayload("unclear"),
+    );
+    expect(bothUnclearSamePath.page.answer_disagreements).toEqual([
+      "reader a: sections[0].items[n=1].responses[0].answer",
+      "reader b: sections[0].items[n=1].responses[0].answer",
+    ]);
+    expect(bothUnclearSamePath.md).toContain(
+      "reader a: `sections[0].items[n=1].responses[0].answer`",
+    );
+    expect(bothUnclearSamePath.md).toContain(
+      "reader b: `sections[0].items[n=1].responses[0].answer`",
+    );
 
     const legacyUnclear = await runPair(
       "legacy-unclear",
@@ -2356,6 +2408,113 @@ describe("compareWorkFolder", () => {
     const invalidPage = compareWorkFolder({ workDir: pageWork.work, repoRoot: repo }).pages[0];
     expect(invalidPage.status).toBe("human_checked");
     assertNoKeptLocations(invalidPage, "invalid");
+
+    // Table check for missing_step wording across fresh and all kept kinds in report.json and report.md
+    const missingStepTable: Array<{
+      label: string;
+      prepare: () => string;
+      expectMustAdd: boolean;
+      expectFinalPath: string | undefined;
+    }> = [
+      {
+        label: "fresh machine_read",
+        prepare: () => {
+          const w = setupWork("ms-fresh", pageA, pageB);
+          compareWorkFolder({ workDir: w.work, repoRoot: repo });
+          return w.work;
+        },
+        expectMustAdd: true,
+        expectFinalPath: "examples[0].marks[]",
+      },
+      {
+        label: "person-edited kept record",
+        prepare: () => {
+          const w = setupWork("ms-edited", pageA, pageB);
+          compareWorkFolder({ workDir: w.work, repoRoot: repo });
+          const rec = JSON.parse(readFileSync(w.finalPath, "utf8")) as PageRecord;
+          rec.topic.title = "Edited heading";
+          writeFileSync(w.finalPath, JSON.stringify(rec, null, 2));
+          compareWorkFolder({ workDir: w.work, repoRoot: repo });
+          return w.work;
+        },
+        expectMustAdd: false,
+        expectFinalPath: undefined,
+      },
+      {
+        label: "human_checked kept record",
+        prepare: () => {
+          const w = setupWork("ms-checked", pageA, pageB);
+          compareWorkFolder({ workDir: w.work, repoRoot: repo });
+          const rec = JSON.parse(readFileSync(w.finalPath, "utf8")) as PageRecord;
+          rec.sections[0].items[2].responses[0].answer = "3";
+          rec.sections[0].items[2].responses[0].answer_source = "reader";
+          writeFileSync(w.finalPath, JSON.stringify(rec, null, 2));
+          checkAndMarkPage({
+            workDir: w.work,
+            repoRoot: repo,
+            page: "sample:M:14a",
+            photoCompared: true,
+          });
+          compareWorkFolder({ workDir: w.work, repoRoot: repo });
+          return w.work;
+        },
+        expectMustAdd: false,
+        expectFinalPath: undefined,
+      },
+      {
+        label: "invalid kept human_checked record",
+        prepare: () => {
+          const w = setupWork("ms-invalid-checked", pageA, pageB);
+          compareWorkFolder({ workDir: w.work, repoRoot: repo });
+          const rec = JSON.parse(readFileSync(w.finalPath, "utf8")) as PageRecord;
+          rec.sections[0].items[2].responses[0].answer = "3";
+          rec.sections[0].items[2].responses[0].answer_source = "reader";
+          writeFileSync(w.finalPath, JSON.stringify(rec, null, 2));
+          checkAndMarkPage({
+            workDir: w.work,
+            repoRoot: repo,
+            page: "sample:M:14a",
+            photoCompared: true,
+          });
+          writeFileSync(w.finalPath, "{ invalid json");
+          compareWorkFolder({ workDir: w.work, repoRoot: repo });
+          return w.work;
+        },
+        expectMustAdd: false,
+        expectFinalPath: undefined,
+      },
+      {
+        label: "invalid kept person-edited record",
+        prepare: () => {
+          const w = setupWork("ms-invalid-edited", pageA, pageB);
+          compareWorkFolder({ workDir: w.work, repoRoot: repo });
+          writeFileSync(w.finalPath, "{ invalid json");
+          compareWorkFolder({ workDir: w.work, repoRoot: repo });
+          return w.work;
+        },
+        expectMustAdd: false,
+        expectFinalPath: undefined,
+      },
+    ];
+    for (const row of missingStepTable) {
+      const workDir = row.prepare();
+      const repJson = JSON.parse(
+        readFileSync(join(workDir, "final", "report.json"), "utf8"),
+      ) as ReturnType<typeof compareWorkFolder>;
+      const repMd = readFileSync(join(workDir, "final", "report.md"), "utf8");
+      const mark = repJson.pages[0].once_read.find((d) => d.path === "examples[0].marks[b:0]");
+      expect(mark?.missing_step, row.label).toBe(true);
+      expect(mark?.final_path, row.label).toBe(row.expectFinalPath);
+      expect(mark?.insert_before, row.label).toBeUndefined();
+      if (row.expectMustAdd) {
+        expect(repMd, row.label).toContain(
+          "its step is missing from reader A's record and must be added first",
+        );
+      } else {
+        expect(repMd, row.label).toContain("; step absent from reader A's record");
+        expect(repMd, row.label).not.toContain("must be added first");
+      }
+    }
   });
 
   it("stops a page when a worked-example shown_answer conflicts with its computable expr without mutating shown_answer", () => {
@@ -2439,8 +2598,36 @@ describe("compareWorkFolder", () => {
     expect(bBad.page.status).toBe("machine_read");
     expect(bBad.page.result_reason).toBe("a reader's answer differs from the computed answer");
     expect(bBad.page.answer_conflicts).toBeUndefined();
-    expect(bBad.page.reader_answer_conflicts).toEqual(["examples[0].parts[0].shown_answer"]);
-    expect(bBad.md).toContain("`examples[0].parts[0].shown_answer`");
+    expect(bBad.page.reader_answer_conflicts).toEqual([
+      'reader b: examples[0].parts[0].shown_answer: shown "6", computed "5"',
+    ]);
+    expect(bBad.md).toContain(
+      'reader b: `examples[0].parts[0].shown_answer`: shown "6", computed "5"',
+    );
+
+    // 2b. Unrelated conflict in B at the same index as A's conflict: both are listed, B's labelled reader b
+    const bothDifferentAtIndex0 = runCase(
+      "both-diff-same-idx",
+      makeExPage("sample:M:21b", [
+        { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "6" },
+      ]),
+      makeExPage("sample:M:21b", [
+        { form: "horizontal", expr: { kind: "arith", op: "add", operands: [4, 5] }, shown_answer: "10" },
+      ]),
+    );
+    expect(bothDifferentAtIndex0.page.status).toBe("machine_read");
+    expect(bothDifferentAtIndex0.page.answer_conflicts).toEqual([
+      'examples[0].parts[0].shown_answer: shown "6", computed "5"',
+    ]);
+    expect(bothDifferentAtIndex0.page.reader_answer_conflicts).toEqual([
+      'reader b: examples[0].parts[0].shown_answer: shown "10", computed "9"',
+    ]);
+    expect(bothDifferentAtIndex0.md).toContain(
+      'examples[0].parts[0].shown_answer: shown "6", computed "5"',
+    );
+    expect(bothDifferentAtIndex0.md).toContain(
+      'reader b: `examples[0].parts[0].shown_answer`: shown "10", computed "9"',
+    );
 
     // 3. Both readers have the same conflict at 100% agreement -> still stops
     const bothBad = runCase(

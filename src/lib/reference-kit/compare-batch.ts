@@ -12,8 +12,8 @@ import {
 import {
   applyComputedAnswers,
   collectExampleAnswerConflicts,
-  collectReadTimeAnswerConflictPaths,
-  collectReadTimeUnclearAnswerPaths,
+  collectReadTimeAnswerConflicts,
+  collectReadTimeUnclearAnswers,
   fileSlugFromRef,
 } from "./answers";
 import {
@@ -374,8 +374,8 @@ export function compareWorkFolder(opts: {
     const readTimeUnclearAnswers =
       pair.recA && pair.recB
         ? [
-            ...collectReadTimeUnclearAnswerPaths(pair.noteDetailsA),
-            ...collectReadTimeUnclearAnswerPaths(pair.noteDetailsB),
+            ...collectReadTimeUnclearAnswers("a", pair.noteDetailsA),
+            ...collectReadTimeUnclearAnswers("b", pair.noteDetailsB),
           ]
         : [];
     const answerDisagreements = [
@@ -386,9 +386,9 @@ export function compareWorkFolder(opts: {
     ];
     const readerAnswerConflicts = [
       ...new Set([
-        ...collectReadTimeAnswerConflictPaths(pair.notesA, pair.noteDetailsA),
-        ...collectReadTimeAnswerConflictPaths(pair.notesB, pair.noteDetailsB),
-        ...exampleConflicts.readerOnlyPaths,
+        ...collectReadTimeAnswerConflicts("a", pair.notesA, pair.noteDetailsA),
+        ...collectReadTimeAnswerConflicts("b", pair.notesB, pair.noteDetailsB),
+        ...exampleConflicts.readerOnlyMessages,
       ]),
     ];
     const decision = decidePageOutcome({
