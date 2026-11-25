@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assembleCandidateRecord } from "./read-parse";
+import { assembleCandidateRecord, sameTopicTitle, splitTopicNumber } from "./read-parse";
 
 describe("assembleCandidateRecord", () => {
   it("stores the level in upper case, so that two page ids never differ only in letter case", () => {
@@ -56,3 +56,27 @@ describe("assembleCandidateRecord", () => {
   });
 });
 
+
+describe("the number at the end of a topic title", () => {
+  it.each<[string, string, string | null]>([
+    ["Sample Topic 2", "Sample Topic", "2"],
+    ["Sample Topic #2", "Sample Topic", "2"],
+    ["Sample Topic No.2", "Sample Topic", "2"],
+    ["Sample Topic No. 2", "Sample Topic", "2"],
+    ["Sample Topic(2)", "Sample Topic", "2"],
+    ["2", "", "2"],
+    ["Sample Gas: NO2", "Sample Gas: NO2", null],
+    ["Sample Topic 1/2", "Sample Topic 1/2", null],
+    ["Sample Topic 1.5", "Sample Topic 1.5", null],
+    ["Sample Topic", "Sample Topic", null],
+  ])("splits %j", (title, name, number) => {
+    expect(splitTopicNumber(title)).toEqual({ name, number });
+  });
+
+  it("compares two titles by their name and their number", () => {
+    expect(sameTopicTitle("Sample Topic No.2", "sample  topic (2).")).toBe(true);
+    expect(sameTopicTitle("Sample Topic 2", "Sample Topic 3")).toBe(false);
+    expect(sameTopicTitle("Sample Topic 2", "Sample Topic")).toBe(false);
+    expect(sameTopicTitle("Sample Topic 2", "Other Topic 2")).toBe(false);
+  });
+});

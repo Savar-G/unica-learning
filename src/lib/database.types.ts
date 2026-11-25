@@ -558,6 +558,42 @@ export type Database = {
         }
         Relationships: []
       }
+      bank_reference_topic_methods: {
+        Row: {
+          created_at: string
+          digest: string
+          id: string
+          level: string
+          record: Json
+          source: string
+          status: string
+          topic_number: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          digest: string
+          id?: string
+          level: string
+          record: Json
+          source: string
+          status?: string
+          topic_number: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          digest?: string
+          id?: string
+          level?: string
+          record?: Json
+          source?: string
+          status?: string
+          topic_number?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       booking_family_links: {
         Row: {
           hold_id: string

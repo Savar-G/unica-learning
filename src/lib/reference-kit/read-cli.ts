@@ -56,6 +56,18 @@ export function assertModelMatchesFamily(family: ReaderFamily, model?: string): 
   }
 }
 
+// No settings, tool servers, skills or saved session: the model sees only its prompt.
+export const CLAUDE_ISOLATION_ARGS = [
+  "-p",
+  "--output-format",
+  "text",
+  "--restricted",
+  "--safe-mode",
+  "--strict-mcp-config",
+  "--no-session-persistence",
+  "--disable-slash-commands",
+] as const;
+
 export function buildCliInvocation(opts: {
   family: ReaderFamily;
   model?: string;
@@ -76,14 +88,7 @@ export function buildCliInvocation(opts: {
     ].join("\n");
 
     const args = [
-      "-p",
-      "--output-format",
-      "text",
-      "--restricted",
-      "--safe-mode",
-      "--strict-mcp-config",
-      "--no-session-persistence",
-      "--disable-slash-commands",
+      ...CLAUDE_ISOLATION_ARGS,
       "--tools",
       "Read",
       "--allowedTools",
