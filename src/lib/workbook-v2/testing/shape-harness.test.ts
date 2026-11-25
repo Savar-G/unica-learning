@@ -55,7 +55,7 @@ const limitsOf = (name: string, rule: Partial<ReturnType<typeof rangeLimit>>): P
 const wide = (limits: unknown) => same(limits, example.ADD_WIDE);
 const middle = (limits: unknown) => same(limits, example.LESS_SMALL);
 
-const [mulRegistration] = SHAPE_REGISTRATIONS;
+const mulRegistration = SHAPE_REGISTRATIONS.find((r) => r.id === mulColumn.id) ?? (() => { throw new Error("mul.column has no registration"); })();
 const MUL_WIDE = mulRegistration.cases[0].limits;
 const mulItem = (question: MulColumnQuestion): Item<MulColumnQuestion> => ({ question, answer: mulColumn.answer(question) });
 /** The space of mul.column as facts in place of a list. */
@@ -160,6 +160,7 @@ const REFUSED: readonly Refused[] = [
   ["witness", "an inside witness that is outside", () => ({ shape: add(), registration: { witnesses: addRegistration.witnesses.map((w) => (w.limit === "carry" ? { ...w, inside: w.outside } : w)) } }), /must meet all limits and breaks: carry/],
   ["witness", "an outside witness of another limit", () => ({ shape: add(), registration: { witnesses: [...addRegistration.witnesses, { ...addRegistration.witnesses[0], limit: "b" }] } }), /must break only "b" and breaks: a/],
   ["arbitrary", "a constant", () => ({ shape: add(), registration: limitsOf("a", { values: fc.constant({ min: 1, max: 30 }) }) }), /the limit "a" never changes/],
+  ["arbitrary", "a rule that breaks when it is asked for a value", () => ({ shape: add(), registration: limitsOf("a", { values: Object.assign(rangeLimit(1, 30).values.map((v) => v), { canShrinkWithoutContext: () => { throw new Error("broken rule"); } }) }) }), /threw broken rule/],
   ["arbitrary", "a filter that drops cases", () => ({ shape: add(), registration: limitsOf("a", { values: rangeLimit(1, 30).values.filter((v) => (v as { min: number; max: number }).min !== (v as { min: number; max: number }).max) }) }), /the limit "a" never has the registered value \{"max":7,"min":7\}/],
   ["arbitrary", "a filter that nothing passes", () => ({ shape: add(), options: { timeLimitMs: 60 }, registration: limitsOf("a", { values: rangeLimit(1, 30).values.filter(() => performance.now() < 0) }) }), /Script execution timed out after 60ms/],
   ["read-limits", "a field that is not a limit", () => ({ shape: add({ readLimits: (raw) => { const read = addShape.readLimits(raw); return read.ok ? { ...read, ignored: true } : read; } }) }), /is read as .*"ignored":true/],
@@ -228,6 +229,7 @@ const REFUSED: readonly Refused[] = [
   ["examples", "another answer in the registration", () => ({ shape: add(), registration: { examples: [{ ...addRegistration.examples[0], answer: whole("33") }] } }), /"a carry" gives .*"23"/],
   ["refused-rows", "a zero in front of a number", () => ({ shape: add({ solveAgain: (rows) => addShape.solveAgain(rows[0] === "017" ? ["17", rows[1]] : rows) }) }), /\["017","\+6"\]: the shape reads .* and the reader refuses it/],
   ["refused-rows", "named rows", () => ({ shape: add({ solveAgain: (rows) => (rows[0] === "31" ? addItem({ a: 30, b: 3 }) : addShape.solveAgain(rows)) }) }), /\["31","\+3"\]: the shape reads/],
+  ["refused-rows", "named rows that the shape reads as a question with no answer", () => ({ shape: add({ solveAgain: (rows) => (rows[0] === "31" ? ({ question: { a: 31, b: 3 } } as never) : addShape.solveAgain(rows)) }) }), /\["31","\+3"\]: the shape reads .* and must refuse it/],
   ["refused-rows", "named rows that the shape and the reader accept", () => ({ shape: add(), registration: { refusedRows: [{ name: "a good question", rows: ["2", "+2"] }] } }), /the reader accepts "a good question"/],
   ["book", "a back side that reverses the digits", () => ({ shape: add(), options: reversedBack }), /back side, question \d \(/],
   ["book", "a generate that widens the limits of the book", () => widensInTheBook("generate"), /threw Cannot assign to read only property 'a'/],
@@ -272,6 +274,7 @@ describe("wrong shapes that touch more than one check", () => {
     }],
     ["that prints another sign than it computes", ["printed"], () => bad({ face: (q) => ({ ...addShape.face(q), sign: "×" }), solveAgain: (rows) => addShape.solveAgain(rows.map((row) => row.replace("×", "+"))) })],
     ["that prints a face that no template takes", ["printed", "book"], () => bad({ face: (q) => ({ ...addShape.face(q), kind: "story" as "column" }) })],
+    ["that answers with a number in place of text", ["answer-form"], () => bad({ ...coordinated(22 as never, ["22"]) })],
     ["with a count that is not a number", ["count", "widening"], () => bad({ count: () => Number.NaN })],
     ["with a count that has no end", ["count"], () => bad({ count: () => Number.POSITIVE_INFINITY })],
     ["with a count that is not a whole number", ["count"], () => bad({ count: (l) => addShape.count(l) + 0.5 })],

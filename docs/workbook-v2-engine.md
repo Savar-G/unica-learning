@@ -26,7 +26,7 @@ The snapshot file holds the content of one level. The book file holds the book i
 | Checks | before the drawing: `checkPrintedAnswers(pages, items, shapes)`, `checkPage(page, items)`; after it: `checkRendering(pages, drawn)`, `checkPositions(pages, positions)`, `checkTexts(pages, texts)`, `checkImages(pages, images)` | `checks/` |
 | Renderer | the interface to a typesetter (`render(pages)`) | `renderer.ts` |
 | Render | the only module that calls Typst; fonts, pins, install | `render/` |
-| Build | `buildBook(input, renderer)`: the book, or a list of problems; `planBook(input)`: the same without the drawing | `build/` |
+| Build | `buildBook(input, renderer)`: the book, or a list of problems; `planBook(input)`: the pages and items of the book before the drawing, as `{ ok: true, ... }`, or `{ ok: false, problems }` | `build/` |
 
 ## Rules
 

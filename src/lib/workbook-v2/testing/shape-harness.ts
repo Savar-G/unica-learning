@@ -12,7 +12,7 @@ import { itemRegions } from "../layout/build-pages";
 import { digitPlaces, TEMPLATES, type PageTemplate } from "../layout/templates";
 import { shapeLibrary, type Item, type Shape, type ShapeLibrary } from "../shapes";
 import { sampleBook, unfilledSides } from "./shape-book";
-import { brokenRows, frozen, hasAnswerForm, isPlain, maxOf } from "./shape-checks";
+import { brokenRows, hasAnswerForm, isPlain, maxOf, onFrozenLimits } from "./shape-checks";
 import { fingerprintProblem } from "./shape-fingerprints";
 import { isInside, printedProblem, registryProblems, type LargeSpace, type Limits, type Printed, type Rows, type ShapeRegistration } from "./shape-registration";
 import { readStep } from "./steps-evaluator";
@@ -75,11 +75,13 @@ class Harness {
   readonly spaces = new Map<string, Space | null>();
   private readonly seen = new WeakMap<Limits, Space | null>();
   private every: Listed[] | null = null;
-  /** The shape as the build gets it: its `generate` checks each question, and nothing can change the limits that it read. */
+  readonly shape: Shape;
+  /** The shape as the build gets it: its `generate` checks each question. */
   readonly watched: Shape;
 
-  constructor(readonly shape: Shape, readonly reg: ShapeRegistration, readonly wantedSeeds: number, readonly options: HarnessOptions) {
-    this.watched = Object.assign(Object.create(shape) as Shape, { readLimits: (raw: unknown) => frozen(shape.readLimits(raw)), generate: (limits: unknown, seed: string) => this.generate(limits as Limits, seed) });
+  constructor(shape: Shape, readonly reg: ShapeRegistration, readonly wantedSeeds: number, readonly options: HarnessOptions) {
+    this.shape = onFrozenLimits(shape);
+    this.watched = Object.assign(Object.create(this.shape) as Shape, { generate: (limits: unknown, seed: string) => this.generate(limits as Limits, seed) });
   }
 
   get templates(): PageTemplate[] { return [...(this.options.templates ?? TEMPLATES).values()]; }
@@ -183,7 +185,6 @@ class Harness {
 
   /** Every question that the harness asks of `generate` comes through here. Only seeds of the form of the build count. */
   generate(limits: Limits, seed: string, counts = true): Item<unknown> {
-    frozen(limits);
     const at = () => `generate(${canonicalJson(limits)}, "${seed}")`;
     const first = this.shape.generate(limits, seed);
     const copy = canonicalJson(first);
@@ -261,10 +262,10 @@ class Harness {
     }) ?? [];
     for (const [name, { values }] of Object.entries(reg.limits)) {
       if (made.length > 0 && new Set(made.map((l) => canonicalJson(l[name]))).size < 2) this.tell("arbitrary", `the limit "${name}" never changes`);
-      const lost = named.find((l) => !values.canShrinkWithoutContext(l[name]));
+      const lost = this.guard("arbitrary", () => named.find((l) => !values.canShrinkWithoutContext(l[name])));
       if (lost) this.tell("arbitrary", `the limit "${name}" never has the registered value ${canonicalJson(lost[name])}`);
     }
-    return { named: named.map(frozen), made: made.map(frozen) };
+    return { named, made };
   }
 
   checkSpaces(named: readonly Limits[], made: readonly Limits[]): Space[] {
@@ -349,12 +350,16 @@ class Harness {
   /** Named rows that print no question, and broken copies of good rows: the reader and the shape must agree on each. */
   checkRefusedRows(): void {
     const good = [...this.reg.examples.map((e) => e.rows), ...this.reg.smallSpaces.flatMap((s) => s.questions)].slice(0, 12);
-    for (const rows of [...brokenRows(good), ...this.reg.refusedRows.map((r) => r.rows)]) {
+    const accepted = this.reg.refusedRows.find(({ rows }) => this.reg.read(rows) !== null);
+    if (accepted) this.tell("refused-rows", `the reader accepts "${accepted.name}", which must be refused`);
+    for (const { rows } of this.reg.refusedRows) {
+      const solved = this.shape.solveAgain(rows);
+      if (solved !== null) this.tell("refused-rows", `${show(rows)}: the shape reads ${JSON.stringify(solved)} and must refuse it`);
+    }
+    for (const rows of brokenRows(good)) {
       const [reader, solver] = [this.reg.read(rows)?.answer, this.shape.solveAgain(rows)?.answer].map((answer) => (answer ? `reads ${canonicalJson(answer)}` : "refuses it"));
       if (reader !== solver) this.tell("refused-rows", `${show(rows)}: the shape ${solver} and the reader ${reader}`);
     }
-    const accepted = this.reg.refusedRows.find(({ rows }) => this.reg.read(rows) !== null);
-    if (accepted) this.tell("refused-rows", `the reader accepts "${accepted.name}", which must be refused`);
   }
 
   /** Each small space: the list of the shape, of the registration and of the rules must be the same questions. */
