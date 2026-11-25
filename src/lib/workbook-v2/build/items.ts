@@ -1,7 +1,7 @@
 // Turns the rows of a sheet into the questions of one child. The seed is the child, the sheet and the attempt.
 import type { BookItem, Side } from "../contract";
 import { canonicalJson, seedFrom } from "../hash";
-import type { SnapshotRow, SnapshotSheet, SnapshotSide } from "../bank/snapshot";
+import type { SnapshotRow, SnapshotSheet } from "../bank/snapshot";
 import type { Item, Shape } from "../shapes";
 import { chooseQuestions, type AskedRow } from "./row-questions";
 
