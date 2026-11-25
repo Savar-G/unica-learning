@@ -9,11 +9,13 @@ import {
   parseImportJson,
   readPlannedPhotos,
   readRegularFileNoFollow,
+  storedKeyProblem,
   type PhotoTarget,
   type PlannedPhoto,
 } from "./import-photos";
 import {
   applyReplace,
+  findTakenPaths,
   formatReplaceLines,
   messageOf,
   photoMayBeStored,
@@ -102,7 +104,7 @@ export interface ImportResult {
   dryRun: boolean;
   counts: ImportCounts;
   skippedDifferentRefs: string[];
-  // Storage paths that hold a photo no row points to. A person must remove them by hand.
+  // Photos this run uploaded for a row that was not written, and that no row uses.
   unreferencedPhotos?: string[];
   // --replace only: rows replaced, the paths of the photos that changed, statuses that went down, and
   // old photos that no row uses.
@@ -294,6 +296,10 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
   const replace = options.replace ?? false;
   const loaded = await loadReferenceRecords(options.recordsDir);
   const { recordsRead, records, statusByRef, realRecordsDir, recordSha256ByRef, statusIsUsable, problems } = loaded;
+  for (const { source_ref: ref } of records) {
+    const keyProblem = storedKeyProblem(ref);
+    if (keyProblem !== null) problems.push(`${ref}: the source_ref is too long: ${keyProblem}`);
+  }
   const plannedPhotos = options.photosDir
     ? await readPlannedPhotos(options.photosDir, records, problems)
     : new Map<string, PlannedPhoto>();
@@ -351,6 +357,9 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
     decisions = plan.decisions;
     dryRunLeftovers = plan.leftovers;
   }
+  const givenPaths = new Map([...targets].filter(([ref]) => !decisions.get(ref)?.same).map(([ref, t]) => [ref, t.path]));
+  const takenProblems = await findTakenPaths(options.store, givenPaths);
+  if (takenProblems.length > 0) return refusedResult(recordsRead, dryRun, takenProblems);
 
   let inserted = 0;
   let replaced = 0;
@@ -415,7 +424,7 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
       if (outcome.photoWritten) photosUploaded += 1;
       if (decision.leftoverPath !== null && (outcome.ok || outcome.rowWritten)) oldPaths.add(decision.leftoverPath);
       if (!outcome.ok) {
-        if (outcome.rowChanged && outcome.photoWritten && target) looseUploads.add(target.path);
+        if (outcome.photoWritten && !outcome.rowWritten && target) looseUploads.add(target.path);
         return finish([
           ...outcome.problems,
           outcome.rowChanged
@@ -447,8 +456,13 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
     }
     let uploadedNow = false;
     try {
-      if (photo && target) uploadedNow = await ensurePhotoObject(options.store, photo, target);
-      if (uploadedNow) photosUploaded += 1;
+      if (photo && target) {
+        await ensurePhotoObject(options.store, photo, target, () => {
+          uploadedNow = true;
+          photosUploaded += 1;
+          looseUploads.add(target.path);
+        });
+      }
       const wasInserted = await options.store.insertRow({
         source_ref: ref,
         kind: record.kind,
@@ -457,11 +471,11 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
         transcript_status: plannedStatus,
       });
       if (wasInserted) {
+        if (storagePath !== null) looseUploads.delete(storagePath);
         inserted += 1;
         continue;
       }
       // Another run wrote the row first. It stays as it is.
-      if (uploadedNow && storagePath) looseUploads.add(storagePath);
       const concurrent = (await options.store.findExisting([ref])).get(ref);
       const sameText = concurrent !== undefined && deepEqualJson(concurrent.transcript, record);
       const sameRow =
@@ -480,7 +494,7 @@ export async function importReferenceRecords(options: ImportOptions): Promise<Im
     } catch (err) {
       // A call failed after validation. Say what is already written and that a second run is safe.
       const stopProblems = [`write failed at ${ref}: ${messageOf(err)}`];
-      if (target?.upload) stopProblems.push(photoMayBeStored(ref, target.path));
+      if (target?.upload && !uploadedNow) stopProblems.push(photoMayBeStored(ref, target.path));
       stopProblems.push(
         `${writtenSoFar()}; the row for ${ref} may or may not be written; run the command again with the same files to finish`,
       );
@@ -509,7 +523,7 @@ export function formatImportResult(result: ImportResult): string {
   }
   for (const path of result.unreferencedPhotos ?? []) {
     lines.push(
-      `unreferenced_photo: "${path}" was uploaded, but another run or a person wrote the row first; ${REMOVE_BY_HAND}`,
+      `unreferenced_photo: "${path}" was uploaded, but its row was not written; run the command again first (it reuses this photo for the same files), else ${REMOVE_BY_HAND}`,
     );
   }
   lines.push(...formatReplaceLines(result));

@@ -1968,6 +1968,7 @@ describe("importReferenceRecords", () => {
         transcript: makePage("sample:M:3a"),
         transcript_status: "machine_read",
       });
+      store.objects.set(storedPath, { bytes: oldImg, contentType: "image/jpeg" });
 
       const res = await importReferenceRecords({ recordsDir, photosDir, store, replace: true });
       const out = formatImportResult(res);
@@ -2421,11 +2422,7 @@ describe("importReferenceRecords", () => {
       expect(first.stopped).toBe(true);
       expect(first.counts).toMatchObject({ replaced: 1, photosUploaded: 1 });
       expect(first.replacedRefs).toEqual(["sample:M:3a"]);
-      expect(
-        first.problems.some(
-          (p) => p.includes(`"${contentPath("sample:M:3b", "jpg", newImg)}"`) && p.includes("reuses that photo"),
-        ),
-      ).toBe(true);
+      expect(first.unreferencedPhotos).toEqual([contentPath("sample:M:3b", "jpg", newImg)]);
       expect(first.problems.some((p) => p.includes("replaced 1"))).toBe(true);
       expect(formatImportResult(first)).toContain("Import stopped after a write error");
       // The row still has its old text with its old photo.

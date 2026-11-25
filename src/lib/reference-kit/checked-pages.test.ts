@@ -277,7 +277,7 @@ describe("a page checked by a person", () => {
           setReadings([{ photo: "p9", ref: REF }]);
           const runB = join(work, "reader-b", "run.json");
           const text = readFileSync(runB, "utf8");
-          writeFileSync(runB, text.replaceAll(fakePhoto("p9").sha256, fakePhoto("p1").sha256));
+          writeFileSync(runB, text.replaceAll(fakePhoto("p9").sha256, fakePhoto("p1").sha256).replaceAll(fakePhoto("p9").file, fakePhoto("p1").file));
         },
         reasons: [PHOTO_CHANGED],
       },
@@ -605,7 +605,7 @@ describe("a page checked by a person", () => {
     const runB = join(work, "reader-b", "run.json");
     writeFileSync(
       runB,
-      readFileSync(runB, "utf8").replaceAll(fakePhoto("p1").sha256, fakePhoto("p9").sha256),
+      readFileSync(runB, "utf8").replaceAll(fakePhoto("p1").sha256, fakePhoto("p9").sha256).replaceAll(fakePhoto("p1").file, fakePhoto("p9").file),
     );
 
     const report = compare();

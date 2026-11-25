@@ -2,8 +2,6 @@ import { existsSync, lstatSync, readdirSync, readFileSync, unlinkSync } from "no
 import { join } from "node:path";
 import {
   formatStatusMap,
-  isPlainObject,
-  readJsonNote,
   readStatusMap,
   validateReferenceRecord,
   writeSafeOutputFile,
@@ -22,7 +20,8 @@ import {
   type PhotosManifest,
   type RemovedPhotoReport,
 } from "./prepare";
-import { isReaderFamily, type PhotoRunEntry, type ReaderFamily, type ReadPhotoResult } from "./read";
+import type { PhotoRunEntry, ReaderFamily, ReadPhotoResult } from "./read";
+import { loadReaderNotes } from "./reader-notes";
 
 // The saved state of a work folder between runs: the run.json entries of each reader, the
 // record files they name, and the cleanup of photos that left the photos folder.
@@ -54,66 +53,15 @@ export function unlinkChild(dir: string, name: string | undefined): void {
   if (path && pathExists(path)) unlinkSync(path);
 }
 
-const RUN_STATUSES: ReadonlySet<unknown> = new Set(["ok", "invalid", "refused", "cli_error"] satisfies PhotoRunEntry["status"][]);
-const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
-
-function parseReaderFamily(raw: unknown): ReaderFamily {
-  if (!isPlainObject(raw) || !isReaderFamily(raw.family)) {
-    throw new Error("the reader has no known model family");
-  }
-  return raw.family;
-}
-
-function parseRunEntry(raw: unknown, index: number): PhotoRunEntry {
-  if (!isPlainObject(raw)) throw new Error(`photos[${index}] is not an object`);
-  const isTextOrAbsent = (key: string): boolean => raw[key] === undefined || typeof raw[key] === "string";
-  const badKey = ["original_name", "photo_sha256", "source_ref", "record_file", "invalid_file"].find((key) => !isTextOrAbsent(key));
-  if (badKey !== undefined) throw new Error(`photos[${index}].${badKey} is not text`);
-  if (typeof raw.photo !== "string") throw new Error(`photos[${index}].photo is not text`);
-  if (!RUN_STATUSES.has(raw.status)) throw new Error(`photos[${index}].status is not known`);
-  if (typeof raw.photo_sha256 === "string" && !SHA256_HEX_RE.test(raw.photo_sha256)) {
-    throw new Error(`photos[${index}].photo_sha256 is not a SHA-256`);
-  }
-  return raw as unknown as PhotoRunEntry;
-}
-
-function parseRunReport(raw: unknown): { family: ReaderFamily | null; photos: PhotoRunEntry[] } {
-  if (!isPlainObject(raw)) throw new Error("expected an object");
-  if (!Array.isArray(raw.photos)) throw new Error("photos is not a list");
-  return {
-    family: raw.reader === undefined ? null : parseReaderFamily(raw.reader),
-    photos: raw.photos.map(parseRunEntry),
-  };
-}
-
-// A damaged file never counts as a missing one: the run would write over it.
-function readSlotNote<T>(filePath: string, parse: (raw: unknown) => T, whatToDo: string): T | null {
-  try {
-    return readJsonNote(filePath, parse);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`${message}. ${whatToDo}`);
-  }
-}
-
 // Loads the run.json entries of one reader folder. A folder that holds readings of another
 // model family is refused, because the two families must not mix in one reader folder.
 export function loadRunEntries(slotDir: string, expectedFamily: ReaderFamily): PhotoRunEntry[] {
-  const run = readSlotNote(
-    join(slotDir, "run.json"),
-    parseRunReport,
-    "It holds machine readings only: remove the file to read the photos again",
-  );
-  const readerFamily = readSlotNote(
-    join(slotDir, "reader.json"),
-    parseReaderFamily,
-    "It says which reader made the readings of this folder: restore the file, or use a new --out folder",
-  );
+  const { meta, run } = loadReaderNotes(slotDir);
   const entries = (run?.photos ?? []).filter((e) => e.photo_sha256 !== undefined);
-  const otherFamily = [readerFamily, run?.family].find((family) => family && family !== expectedFamily);
-  if (otherFamily && entries.length > 0) {
+  const family = meta?.family ?? run?.reader?.family;
+  if (family && family !== expectedFamily && entries.length > 0) {
     throw new Error(
-      `${slotDir} holds readings from "${otherFamily}", not "${expectedFamily}". Use the same reader or a new --out folder.`,
+      `${slotDir} holds readings from "${family}", not "${expectedFamily}". Use the same reader or a new --out folder.`,
     );
   }
   return entries;
@@ -263,12 +211,12 @@ export function pruneRemovedPhotos(opts: PruneRemovedPhotosOptions): PruneRemove
     });
     if (checkedRef !== undefined) {
       // Also a photo that only the readings know.
-      keptFiles.add(photo).add(preparedFileNameForHash(sha));
+      keptFiles.add(preparedFileNameForHash(sha));
       continue;
     }
     dropped.add(sha);
     for (const droppedRef of refs) droppedRefs.add(droppedRef);
-    droppedFiles.add(photo);
+    droppedFiles.add(preparedFileNameForHash(sha));
   }
   // Two digests can share a file name, so nothing is removed before every kept photo is known.
   for (const file of droppedFiles) if (!keptFiles.has(file)) unlinkChild(opts.preparedPhotosDir, file);

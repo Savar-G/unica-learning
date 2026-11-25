@@ -58,17 +58,17 @@ describe("buildReferencePhotoPath", () => {
   const SHA = `${"0123456789abcdef"}${"f".repeat(48)}`;
 
   it("builds <source>/<level>/<page>.<16 of the sha256>.<ext> for jpg, jpeg, png and webp, and keeps the older form", () => {
-    const rows: Array<[ref: string, file: string, page: string, ext: string, contentType: string]> = [
-      ["sample:M:3a", "IMG_0001.JPG", "sample/M/3a", "jpg", "image/jpeg"],
-      ["sample:M:3b", "photo.jpeg", "sample/M/3b", "jpeg", "image/jpeg"],
-      ["sample:M:contents", "chart.png", "sample/M/contents", "png", "image/png"],
-      ["sample:M:4a", "scan.webp", "sample/M/4a", "webp", "image/webp"],
+    const rows: Array<[ref: string, file: string, page: string, endings: string[], contentType: string]> = [
+      ["sample:M:3a", "IMG_0001.JPG", "sample/M/3a", ["jpg", "jpeg"], "image/jpeg"],
+      ["sample:M:3b", "photo.jpeg", "sample/M/3b", ["jpg", "jpeg"], "image/jpeg"],
+      ["sample:M:contents", "chart.png", "sample/M/contents", ["png"], "image/png"],
+      ["sample:M:4a", "scan.webp", "sample/M/4a", ["webp"], "image/webp"],
     ];
-    for (const [ref, file, page, ext, contentType] of rows) {
+    for (const [ref, file, page, endings, contentType] of rows) {
       expect(buildReferencePhotoPath(ref, file, SHA)).toEqual({
         ok: true,
-        path: `${page}.0123456789abcdef.${ext}`,
-        olderPath: `${page}.${ext}`,
+        path: `${page}.0123456789abcdef.${endings[0]}`,
+        keptPaths: endings.flatMap((ext) => [`${page}.0123456789abcdef.${ext}`, `${page}.${ext}`]),
         contentType,
       });
     }
@@ -98,9 +98,10 @@ describe("buildReferencePhotoPath", () => {
         const a = buildReferencePhotoPath(refA, fileA, shaA);
         const b = buildReferencePhotoPath(refB, fileB, shaB);
         if (!a.ok || !b.ok) throw new Error(`no path for ${refA} or ${refB}`);
-        expect(a.path === b.path).toBe(refA === refB && a.contentType === b.contentType && fileA === fileB && shaA.slice(0, 16) === shaB.slice(0, 16));
+        expect(a.path === b.path).toBe(refA === refB && a.contentType === b.contentType && shaA.slice(0, 16) === shaB.slice(0, 16));
         expect(buildReferencePhotoPath(refA, fileA, shaA)).toEqual(a);
-        expect(a.path).not.toBe(b.olderPath);
+        expect(b.keptPaths.filter((p) => p.split(".").length === 2)).not.toContain(a.path);
+        if (refA !== refB) for (const path of a.keptPaths) expect(b.keptPaths).not.toContain(path);
         expect(a.path.split("/").slice(0, -1)).toEqual(refA.split(":").slice(0, -1));
       }),
     );
@@ -211,6 +212,37 @@ describe("importReferenceRecords photo and file safety", () => {
     );
   });
 
+  it.each([
+    ["with a photo", 512, true],
+    ["with a photo", 513, false],
+    ["without a photo", 512, true],
+    ["without a photo", 513, false],
+  ])("a page %s whose longest key has %i bytes: accepted %s, before any call", async (photo, length, accepted) => {
+    const withPhoto = photo === "with a photo";
+    const rest = withPhoto ? `:M:3a${".".padEnd(21, "x")}` : ":M:3a";
+    const ref = `${"z".repeat(length - rest.length)}:M:3a`;
+    writeJson(recordsDir, "a.json", makePage("sample:M:1a"));
+    writeJson(recordsDir, "b.json", makePage(ref));
+    const img = new Uint8Array([1, 2, 3]);
+    writeBytes(photosDir, "p.jpg", img);
+    writeJson(photosDir, "photos-manifest.json", {
+      version: 1,
+      photos: withPhoto ? [{ file: "p.jpg", sha256: sha256Hex(img), source_ref: ref }] : [],
+    });
+    if (withPhoto) expect(Buffer.byteLength(contentPath(ref, "jpg", img))).toBe(length);
+    else expect(Buffer.byteLength(ref)).toBe(length);
+    for (const replace of [false, true]) {
+      for (const dryRun of [true, false]) {
+        store = new PhotoMemoryStore();
+        const res = await importReferenceRecords({ recordsDir, photosDir, store, replace, dryRun });
+        expect(res.ok).toBe(accepted);
+        if (accepted) continue;
+        expect(res.problems.join()).toContain("512");
+        expect(store.calls).toEqual([]);
+      }
+    }
+  });
+
   it("stops with a plain message when a row insert fails after its photo upload, and a second run finishes the work", async () => {
     writeJson(recordsDir, "p1.json", makePage("sample:M:3a"));
     writeJson(recordsDir, "p2.json", makePage("sample:M:3b"));
@@ -249,9 +281,8 @@ describe("importReferenceRecords photo and file safety", () => {
     expect(first.ok).toBe(false);
     expect(first.stopped).toBe(true);
     expect(first.counts.inserted).toBe(1);
-    expect(first.problems.some((p) => p.includes(contentPath("sample:M:3b", "png", img2)) && p.includes("reuses"))).toBe(
-      true,
-    );
+    expect(first.unreferencedPhotos).toEqual([contentPath("sample:M:3b", "png", img2)]);
+    expect(formatImportResult(first)).toContain("run the command again first (it reuses this photo");
     expect(store.objects.has(contentPath("sample:M:3b", "png", img2))).toBe(true);
     expect(store.rows.has("sample:M:3b")).toBe(false);
 

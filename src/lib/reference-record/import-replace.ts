@@ -64,7 +64,7 @@ export function decideReplace(input: ReplaceInput): ReplaceDecision {
   return {
     same,
     path,
-    leftoverPath: prev.path !== path && !target?.storedIsMissing ? prev.path : null,
+    leftoverPath: prev.path !== path ? prev.path : null,
     lowered,
   };
 }
@@ -93,7 +93,20 @@ export function findSharedPhotoPaths(plans: PathPlan[]): string[] {
   return problems;
 }
 
-// The old paths of a dry run that no row would use after the run.
+// A path is free only when no row of another page uses it, also when no object is there now: that
+// row would get the photo of this page. Checks each path that this run uploads to or gives to a row.
+export async function findTakenPaths(store: ReferenceStore, pathByRef: ReadonlyMap<string, string>): Promise<string[]> {
+  if (pathByRef.size === 0) return [];
+  const refsByPath = await store.refsByPath([...new Set(pathByRef.values())]);
+  return [...pathByRef].flatMap(([ref, path]) => {
+    const others = (refsByPath.get(path) ?? []).filter((other) => other !== ref);
+    return others.length === 0
+      ? []
+      : [`storage: ${ref} (${quoted(path)}): the row ${others.map(quoted).join(", ")} uses this photo path too; nothing was written`];
+  });
+}
+
+// The old paths of a dry run that no row would use after the run, with an object there.
 async function expectedLeftovers(store: ReferenceStore, plans: PathPlan[]): Promise<string[]> {
   const oldPaths = new Set(plans.flatMap((p) => p.decision?.leftoverPath ?? []));
   if (oldPaths.size === 0) return [];
@@ -101,14 +114,23 @@ async function expectedLeftovers(store: ReferenceStore, plans: PathPlan[]): Prom
   // Path of each ref of this run after the run (the stored path for a row that stays the same).
   const finalPath = new Map(plans.map((p) => [p.ref, p.decision ? p.decision.path : p.plannedPhotoPath]));
   const usedByRun = new Set(finalPath.values());
-  return [...oldPaths].filter(
-    (path) => !usedByRun.has(path) && (refsByPath.get(path) ?? []).every((ref) => finalPath.has(ref)),
+  return withObject(
+    store,
+    [...oldPaths].filter(
+      (path) => !usedByRun.has(path) && (refsByPath.get(path) ?? []).every((ref) => finalPath.has(ref)),
+    ),
   );
 }
 
-// The paths that no row uses now.
+async function withObject(store: ReferenceStore, paths: string[]): Promise<string[]> {
+  const found: string[] = [];
+  for (const path of paths) if ((await store.objectSha256(path)) !== null) found.push(path);
+  return found;
+}
+
+// The paths with an object that no row uses now. The rows are read last.
 export async function unusedPaths(store: ReferenceStore, paths: Iterable<string>): Promise<string[]> {
-  const list = [...paths];
+  const list = await withObject(store, [...paths]);
   if (list.length === 0) return [];
   const refsByPath = await store.refsByPath(list);
   return list.filter((path) => (refsByPath.get(path) ?? []).length === 0);
@@ -245,7 +267,11 @@ export async function applyReplace(args: {
     // So that a row that changed since the plan gets no upload. The filter of the update decides.
     const now = await readRow();
     if (!isSeenRow(now, prev)) return rowChanged(now);
-    if (photo && target) photoWritten = await ensurePhotoObject(store, photo, target);
+    if (photo && target) {
+      await ensurePhotoObject(store, photo, target, () => {
+        photoWritten = true;
+      });
+    }
     const updated = await store.updateRow(
       {
         source_ref: ref,
@@ -270,7 +296,7 @@ export async function applyReplace(args: {
         );
       }
     }
-    if (target?.upload && !rowWritten) problems.push(photoMayBeStored(ref, target.path));
+    if (target?.upload && !photoWritten && !rowWritten) problems.push(photoMayBeStored(ref, target.path));
     return { ok: false, photoWritten, rowChanged: false, rowWritten, problems };
   }
 }
@@ -280,7 +306,7 @@ export function messageOf(err: unknown): string {
 }
 
 export function photoMayBeStored(ref: string, path: string): string {
-  return `the photo for ${ref} may be in storage at ${quoted(path)} and its row may not be written; run the command again with the same files and it reuses that photo`;
+  return `the photo for ${ref} may be in storage at ${quoted(path)} (the upload has no answer); run the command again with the same files and it reuses that photo`;
 }
 
 // Database text (a stored path or source_ref) in an output line: one quoted form, with backslash,

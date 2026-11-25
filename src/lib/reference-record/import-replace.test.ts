@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { formatImportResult, importReferenceRecords, type ImportResult, type ReferenceStore } from "./import";
+import { buildReferencePhotoPath, formatImportResult, importReferenceRecords, type ImportResult, type ReferenceStore } from "./import";
 import { contentPath, MemoryReferenceStore } from "./import-store.fixtures";
 import { sha256Hex } from "./read-file";
 import type { PageRecord } from "./types";
@@ -112,6 +112,15 @@ function watched(
   });
 }
 
+// At the end of a run: a photo that it names is in the bucket, and no row uses it. A later run can use it again.
+function expectNoNamedPhotoInUse(store: MemoryReferenceStore, result: ImportResult, label: string): void {
+  const usedPaths = [...store.rows.values()].map((row) => row.path);
+  for (const path of [...result.leftoverPhotos, ...(result.unreferencedPhotos ?? [])]) {
+    expect(usedPaths, label).not.toContain(path);
+    expect([...store.objects.keys()], label).toContain(path);
+  }
+}
+
 const callCount = (store: MemoryReferenceStore): number => store.calls.length;
 
 // Rows without the clock columns, and every object of the bucket.
@@ -134,7 +143,7 @@ describe("a replace never pairs the text of a page with another photo", () => {
   });
 
   // The folders of one run that sends these pages (by default, both pages alike).
-  function writeRun(page: Page, refs: string[] = REFS) {
+  function writeRun(page: Page, refs: string[] = REFS, ext = "jpg") {
     folders += 1;
     const recordsDir = join(root, `run-${folders}`, "records");
     const photosDir = join(root, `run-${folders}`, "photos");
@@ -142,11 +151,11 @@ describe("a replace never pairs the text of a page with another photo", () => {
     const { photo } = page;
     for (const [i, ref] of refs.entries()) {
       writeFileSync(join(recordsDir, `p${i}.json`), JSON.stringify(makePage(ref, page.title)));
-      if (photo) writeFileSync(join(photosDir, `p${i}.jpg`), photo);
+      if (photo) writeFileSync(join(photosDir, `p${i}.${ext}`), photo);
     }
     writeFileSync(join(recordsDir, "status.json"), JSON.stringify(Object.fromEntries(refs.map((ref) => [ref, page.status]))));
     const photos = photo
-      ? refs.map((ref, i) => ({ file: `p${i}.jpg`, sha256: sha256Hex(photo), original_name: "p.jpg", width: 9, height: 9, source_ref: ref }))
+      ? refs.map((ref, i) => ({ file: `p${i}.${ext}`, sha256: sha256Hex(photo), original_name: "p.jpg", width: 9, height: 9, source_ref: ref }))
       : [];
     writeFileSync(join(photosDir, "photos-manifest.json"), JSON.stringify({ version: 1, photos }));
     return (store: ReferenceStore, over: { dryRun?: boolean; replace?: boolean } = {}): Promise<ImportResult> =>
@@ -200,18 +209,30 @@ describe("a replace never pairs the text of a page with another photo", () => {
           if (!lastCall) expect(formatImportResult(failed), label).toContain("problem:");
         }
         checkPages();
+        if (!(failed instanceof Error) && (fault === "the call fails" || fault === "the answer is lost")) {
+          expectNoNamedPhotoInUse(store, failed, label);
+          const call = clean.calls[at];
+          const ref = REFS.find((r) => call.endsWith(`:${r}`));
+          const sent = page.photo ?? OLD;
+          const uploads = clean.calls.includes(`uploadObject:${newPathOf(REFS[0], sent)}`);
+          const rowCallFailed = /^(insertRow|updateRow):/.test(call) && fault === "the call fails";
+          // An upload with an answer, and a row that was not written.
+          if (ref && uploads && rowCallFailed) {
+            expect(failed.unreferencedPhotos, label).toEqual([newPathOf(ref, sent)]);
+            expect(formatImportResult(failed), label).toContain("unreferenced_photo:");
+          }
+          // An upload with no answer.
+          if (call.startsWith("uploadObject:")) {
+            expect(failed.unreferencedPhotos, label).toEqual([]);
+            expect(failed.problems.join(), label).toContain("may be in storage");
+          }
+        }
 
         const retry = await run(watched(store, { after: checkPages }));
         expect(wrongPages).toEqual([]);
         expect(retry.problems, label).toEqual([]);
         expect(endState(store), label).toEqual(endState(clean));
-        const usedPaths = [...store.rows.values()].map((row) => row.path);
-        for (const result of [failed, retry]) {
-          if (result instanceof Error) continue;
-          for (const path of [...result.leftoverPhotos, ...(result.unreferencedPhotos ?? [])]) {
-            expect(usedPaths, label).not.toContain(path);
-          }
-        }
+        expectNoNamedPhotoInUse(store, retry, label);
         const again = await run(store);
         expect(again.counts, label).toMatchObject({ inserted: 0, replaced: 0, skipped: 2, photosUploaded: 0 });
         expect(again.leftoverPhotos, label).toEqual([]);
@@ -345,10 +366,89 @@ describe("a replace never pairs the text of a page with another photo", () => {
     expect(writeCalls(store)).toEqual([]);
   });
 
+  // Every way in which the run would use a path: an upload, or a photo that is there already.
+  const takers: Array<{ name: string; form: StartForm; kind: keyof typeof KINDS; path: string; objectIsThere: boolean; stops: boolean }> = [
+    ...([true, false] as const).flatMap((objectIsThere) =>
+      (["no row", "today's path", "new path"] as const).map((form) => ({
+        name: "a new photo", form, kind: "text and photo", path: newPathOf(REFS[0], NEW), objectIsThere, stops: true,
+      })),
+    ),
+    { name: "the older path that the row keeps with its photo", form: "today's path", kind: "text only", path: "demo/Z/1a.jpg", objectIsThere: true, stops: true },
+    { name: "the path that the row keeps with its photo", form: "new path", kind: "text only", path: newPathOf(REFS[0], OLD), objectIsThere: true, stops: true },
+    { name: "the path of the row, with no object there now", form: "new path", kind: "text only", path: newPathOf(REFS[0], OLD), objectIsThere: false, stops: true },
+    { name: "the path that the row keeps with no photo sent", form: "today's path", kind: "lower status, no photo sent", path: "demo/Z/1a.jpg", objectIsThere: true, stops: false },
+    { name: "the old path that the row leaves", form: "today's path", kind: "text and photo", path: "demo/Z/1a.jpg", objectIsThere: true, stops: false },
+  ];
+  it.each(takers)("$name ($form, object there: $objectIsThere) that a row of another page uses: stops $stops", async ({ form, kind, path, objectIsThere, stops }) => {
+    for (const dryRun of [true, false]) {
+      for (const replace of form === "no row" ? [true, false] : [true]) {
+        const store = startStore(form);
+        store.objects.set(path, { bytes: kind === "text and photo" && stops ? NEW : OLD, contentType: "image/jpeg" });
+        if (!objectIsThere) store.objects.delete(path);
+        const other = "demo:Z:9a";
+        store.rows.set(other, { source_ref: other, kind: "page", path, transcript: makePage(other, "Other page"), transcript_status: "human_checked", updated_at: "start" });
+        const before = structuredClone([endState(store)]);
+        const result = await writeRun(KINDS[kind])(store, { dryRun, replace });
+        expect(result.ok, `${dryRun}`).toBe(!stops);
+        if (stops) {
+          expect(result.stopped).toBeUndefined();
+          expect(result.problems).toHaveLength(1);
+          expect(result.problems[0]).toContain(`"${path}"`);
+          expect(result.problems[0]).toContain(`"${other}"`);
+          expect(writeCalls(store)).toEqual([]);
+          expect([endState(store)]).toEqual(before);
+        }
+        expect(store.rows.get(other)).toMatchObject({ path, transcript: makePage(other, "Other page") });
+      }
+    }
+  });
+
+  it.each(["demo/Z/1a.png", "demo/Z/1a.jpeg", "elsewhere/x.jpg", "demo/Z/1a.jpg", newPathOf(REFS[0], OLD)])(
+    "names no old photo at %s when no object is there",
+    async (path) => {
+      for (const dryRun of [true, false]) {
+        const store = startStore("today's path");
+        store.objects.clear();
+        for (const row of store.rows.values()) row.path = row.source_ref === REFS[0] ? path : null;
+        const result = await writeRun(KINDS["photo only"])(store, { dryRun });
+        expect(result).toMatchObject({ ok: true, counts: { replaced: 2 }, leftoverPhotos: [] });
+      }
+    },
+  );
+
+  it("takes .jpeg and .jpg as one type: new paths end in .jpg, and the other ending with the same bytes is the same", async () => {
+    const sha = sha256Hex(OLD);
+    for (const sent of ["jpg", "jpeg", "JPG", "JPEG"]) {
+      expect(buildReferencePhotoPath(REFS[0], `a.${sent}`, sha)).toMatchObject({ ok: true, path: newPathOf(REFS[0], OLD) });
+      for (const stored of ["demo/Z/1a.jpg", "demo/Z/1a.jpeg", newPathOf(REFS[0], OLD), newPathOf(REFS[0], OLD).replace(/jpg$/, "jpeg")]) {
+        for (const [bytes, replaced] of [[OLD, 0], [NEW, 1]] as const) {
+          const store = startStore("today's path");
+          store.rows.delete(REFS[1]);
+          store.objects.clear();
+          const row = store.rows.get(REFS[0]);
+          if (row) row.path = stored;
+          store.objects.set(stored, { bytes, contentType: "image/jpeg" });
+          const run = writeRun(START, [REFS[0]], sent);
+          const result = await run(store);
+          const label = `${sent}, ${stored}, ${replaced}`;
+          if (replaced && stored === newPathOf(REFS[0], OLD)) {
+            expect(result.ok, label).toBe(false);
+            continue;
+          }
+          expect(result, label).toMatchObject({ ok: true, counts: { replaced, skipped: 1 - replaced, photosUploaded: replaced } });
+          if (replaced === 0) expect(writeCalls(store), label).toEqual([]);
+          expect(store.rows.get(REFS[0])?.path, label).toBe(replaced ? newPathOf(REFS[0], OLD) : stored);
+        }
+      }
+    }
+  });
+
   it("says which photos may be leftovers when the rows cannot be read at the end", async () => {
     const store = startStore("today's path");
-    store.refsByPath = async () => {
-      throw new Error("no connection");
+    const refsByPath = store.refsByPath.bind(store);
+    store.refsByPath = async (paths) => {
+      if (store.calls.some((call) => call.startsWith("updateRow:"))) throw new Error("no connection");
+      return refsByPath(paths);
     };
     const result = await writeRun(KINDS["photo only"])(store);
     expect(result).toMatchObject({ ok: false, counts: { replaced: 2 }, leftoverPhotos: [] });
@@ -388,13 +488,6 @@ describe("a replace never pairs the text of a page with another photo", () => {
     const kindPairs = Object.keys(KINDS).flatMap((a) => Object.keys(KINDS).map((b) => ({ a, b })));
     const pairCases = kindPairs.flatMap((pair) => (["today's path", "new path"] as StartForm[]).map((form) => ({ ...pair, form })));
     const heldOf = (store: MemoryReferenceStore) => pagesOf(store).get(REF);
-    // At the end of a run. A later run can use a photo again that this run left.
-    const expectNoNamedPhotoInUse = (store: MemoryReferenceStore, result: ImportResult, label: string): void => {
-      const usedPaths = [...store.rows.values()].map((row) => row.path);
-      for (const path of [...result.leftoverPhotos, ...(result.unreferencedPhotos ?? [])]) {
-        expect(usedPaths, label).not.toContain(path);
-      }
-    };
 
     it.each(pairCases)("$a, with $b of another run at any step ($form)", async ({ a, b, form }) => {
       const [pageA, pageB] = [pageOfRun(a, "A"), pageOfRun(b, "B")];
