@@ -32,12 +32,13 @@ test("spawnSpec wraps Windows commands with cmd.exe and runs POSIX binaries dire
 
 test("buildChecks covers repo-guard, Oxlint, and app, scripts, and voice-worker complete type checks", () => {
   const checks = buildChecks("/tmp/repo");
-  assert.deepEqual(checks.map((c) => c.name), ["repo-guard", "oxlint", "app-typecheck", "scripts-typecheck", "voice-typecheck"]);
+  assert.deepEqual(checks.map((c) => c.name), ["repo-guard", "shape-fingerprints", "oxlint", "app-typecheck", "scripts-typecheck", "voice-typecheck"]);
   assert.deepEqual(checks[0].steps.map((s) => s.args), [["scripts/repo-guard.mjs"]]);
-  assert.deepEqual(checks[1].steps.map((s) => s.args), [["src", "worker/maya-voice/src", "scripts/workbook-worker.ts", "scripts/retention-worker.ts"]]);
-  assert.deepEqual(checks[2].steps.map((s) => s.args), [["typegen"], ["--noEmit"]]);
-  assert.deepEqual(checks[3].steps.map((s) => s.args), [["-p", "tsconfig.scripts.json"]]);
-  assert.deepEqual(checks[4].steps.map((s) => s.args), [["-p", "worker/maya-voice/tsconfig.json"]]);
+  assert.deepEqual(checks[1].steps.map((s) => s.args), [["scripts/shape-fingerprint-base.mjs"]]);
+  assert.deepEqual(checks[2].steps.map((s) => s.args), [["src", "worker/maya-voice/src", "scripts/workbook-worker.ts", "scripts/retention-worker.ts"]]);
+  assert.deepEqual(checks[3].steps.map((s) => s.args), [["typegen"], ["--noEmit"]]);
+  assert.deepEqual(checks[4].steps.map((s) => s.args), [["-p", "tsconfig.scripts.json"]]);
+  assert.deepEqual(checks[5].steps.map((s) => s.args), [["-p", "worker/maya-voice/tsconfig.json"]]);
 });
 
 test("runPrePushChecks runs pipelines in parallel, preserves step order, and tracks budget", async () => {

@@ -38,7 +38,7 @@ function markInk(rect: Rect, corner: keyof PageFrame["marks"]): Ink[] {
 const digitsInk = (cells: readonly Rect[], digits: string): Ink[] =>
   [...digits].map((digit, i) => text(cells[cells.length - digits.length + i], digit, 22, REGULAR, "center"));
 
-function itemRegions(template: PageTemplate, place: ItemPlace, item: BookItem, at: (name: string) => string): Region[] {
+export function itemRegions(template: PageTemplate, place: ItemPlace, item: BookItem, at: (name: string) => string): Region[] {
   const { face, number } = item;
   const needed = digitPlaces(face, item.answer.value);
   if (needed > template.digits) throw new Error(`question ${number} needs ${needed} digit places and the template has ${template.digits}`);
