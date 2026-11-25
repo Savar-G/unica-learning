@@ -21,7 +21,7 @@ describe("registered shapes", () => {
     const regFiles = readdirSync("src/lib/workbook-v2/testing/registrations").sort();
     const fpFiles = readdirSync(FINGERPRINTS_DIR).sort();
     expect(regFiles).toEqual([...SHAPES.keys()].map((id) => `${id.replaceAll(".", "-")}.ts`).sort());
-    expect(fpFiles).toEqual([...SHAPES.keys()].map((id) => `${id.replaceAll(".", "-")}.json`).sort());
+    expect(fpFiles).toEqual([...SHAPES.keys()].map((id) => `${id}.json`).sort());
     expect(SHAPE_REGISTRATIONS.map((r) => r.id).sort()).toEqual([...SHAPES.keys()].sort());
   });
 

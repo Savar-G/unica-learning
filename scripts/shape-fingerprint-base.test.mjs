@@ -25,7 +25,7 @@ function repository() {
       return;
     }
     for (const [id, versions] of Object.entries(value)) {
-      writeFileSync(join(dir, `${id.replaceAll(".", "-")}.json`), JSON.stringify({ [id]: versions }));
+      writeFileSync(join(dir, `${id}.json`), JSON.stringify({ [id]: versions }));
     }
   };
   const writeLegacy = (value) => {
@@ -204,18 +204,18 @@ test("two branches that each add a shape merge cleanly with the committed .gitat
     put(".gitattributes", attrs);
     put(idxFile, makeIdx(baseNames));
     put(regFile, makeReg(baseNames));
-    put(`${FINGERPRINTS_DIR}/base-shape.json`, JSON.stringify({ "base.shape": { 1: A } }));
+    put(`${FINGERPRINTS_DIR}/base.shape.json`, JSON.stringify({ "base.shape": { 1: A } }));
     git("add", "-A"); git("commit", "--quiet", "-m", "base");
     git("checkout", "--quiet", "-b", "branch-a");
     put(idxFile, makeIdx(aNames));
     put(regFile, makeReg(aNames));
-    put(`${FINGERPRINTS_DIR}/${addedA.replaceAll(".", "-")}.json`, JSON.stringify({ [addedA]: { 1: A } }));
+    put(`${FINGERPRINTS_DIR}/${addedA}.json`, JSON.stringify({ [addedA]: { 1: A } }));
     git("add", "-A"); git("commit", "--quiet", "-m", "a");
     git("checkout", "--quiet", "main");
     git("checkout", "--quiet", "-b", "branch-b");
     put(idxFile, makeIdx(bNames));
     put(regFile, makeReg(bNames));
-    put(`${FINGERPRINTS_DIR}/${addedB.replaceAll(".", "-")}.json`, JSON.stringify({ [addedB]: { 1: B } }));
+    put(`${FINGERPRINTS_DIR}/${addedB}.json`, JSON.stringify({ [addedB]: { 1: B } }));
     git("add", "-A"); git("commit", "--quiet", "-m", "b");
     git("merge", "--quiet", "--no-edit", "branch-a");
     for (const file of [idxFile, regFile]) {

@@ -69,6 +69,7 @@ function linesWithInk({ width, height, grey }: PageImage): boolean[] {
   const lines = new Array<boolean>(height).fill(false);
   const start = Math.min((4 - (grey.byteOffset & 3)) & 3, grey.length);
   for (let i = 0; i < start; i++) if (grey[i] < DARK) lines[Math.floor(i / width)] = true;
+  if (start === grey.length) return lines;
   const count = (grey.length - start) >> 2;
   const fours = new Uint32Array(grey.buffer, grey.byteOffset + start, count);
   for (let i = 0; i < count; i++) {

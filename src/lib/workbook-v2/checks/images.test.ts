@@ -115,6 +115,8 @@ describe("the QR code of a page image", () => {
       expect(strayQrTexts({ width: canvas.width, height: canvas.height, grey: view }, qrBox)).toEqual(["stray-unaligned"]);
       expect(strayQrTexts({ width: 10, height: 3, grey: new Uint8Array(30 + offset).fill(255).subarray(offset) }, { left: 0, top: 0, right: 0, bottom: 0 })).toEqual([]);
     }
+    // A view that ends before the first aligned byte.
+    expect(strayQrTexts({ width: 1, height: 1, grey: new Uint8Array(2).fill(255).subarray(1) }, { left: 0, top: 0, right: 0, bottom: 0 })).toEqual([]);
   });
 });
 

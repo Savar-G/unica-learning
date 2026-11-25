@@ -61,7 +61,7 @@ function mergeFiles(entries) {
     const parsed = parse(text);
     if (!isRecord(parsed)) return null;
     const keys = Object.keys(parsed);
-    if (keys.length !== 1 || `${keys[0].replaceAll(".", "-")}.json` !== name) return null;
+    if (keys.length !== 1 || `${keys[0]}.json` !== name) return null;
     merged[keys[0]] = parsed[keys[0]];
   }
   return merged;

@@ -111,7 +111,7 @@ describe("adding fingerprints", () => {
     const text = fingerprintFileText("a.one", { 2: A, 1: A });
     expect(text.split("\n")).toEqual(["{", `  "a.one": { "1": "${A}", "2": "${A}" }`, "}", ""]);
     expect(JSON.parse(text)).toEqual({ "a.one": { 1: A, 2: A } });
-    expect(fingerprintFileName("a.one")).toBe("a-one.json");
+    expect(["a.one", "a-one"].map(fingerprintFileName)).toEqual(["a.one.json", "a-one.json"]);
   });
 
   it.each<[string, Parameters<typeof addShapeFingerprints>, RegExp]>([

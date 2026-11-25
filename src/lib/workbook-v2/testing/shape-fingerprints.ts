@@ -11,7 +11,8 @@ import { registryProblems, type LargeSpace, type Rows, type ShapeRegistration } 
 export type ShapeFingerprints = Record<string, Record<string, string>>;
 
 export const FINGERPRINTS_DIR = "src/lib/workbook-v2/testing/fingerprints";
-export const fingerprintFileName = (id: string): string => `${id.replaceAll(".", "-")}.json`;
+/** The id itself, so that two ids never share a file. */
+export const fingerprintFileName = (id: string): string => `${id}.json`;
 
 /** A space that can be listed is covered by its list, so a few seeds prove which question a seed picks. */
 const SEEDS_OF_A_LISTED_SPACE = 100;

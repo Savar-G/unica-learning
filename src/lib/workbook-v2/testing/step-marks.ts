@@ -85,6 +85,8 @@ export function marksProblem(steps: readonly Step[], answer: string): string | n
   const writes = steps.flatMap((s) => marksOf(s, "write"));
   const twice = writes.find((m, i) => writes.findIndex((other) => other.place === m.place) !== i);
   if (twice) return `the steps write the place ${twice.place} more than once`;
+  const far = writes.find((m) => m.place >= answer.length);
+  if (far) return `the steps write the place ${far.place} and the answer is "${answer}"`;
   if (digitsOf(writes) !== answer) return `the steps write "${digitsOf(writes)}" and not the answer "${answer}"`;
 
   let incomingCarry: StepMark | undefined;
