@@ -12,7 +12,7 @@ const cases = listed.flatMap((reg) => reg.cases.map((c) => [reg.id, c.name, c.li
 
 describe("the question of a seed", () => {
   it("is looked at in each small space", () => {
-    expect(listed.map((reg) => reg.id)).toEqual(["fact.add", "fact.sub", "fact.mul", "add.repeated", "missing.factor", "missing.addend"]);
+    expect(listed.map((reg) => reg.id)).toEqual(["fact.add", "fact.sub", "fact.mul", "add.repeated", "missing.factor", "missing.addend", "div.fact", "div.remainder"]);
   });
 
   it.each(cases)("has an equal chance, because it is the one at the place that the seed picks: %s, %s", (id, _name, limits) => {

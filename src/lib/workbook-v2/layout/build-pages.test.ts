@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { planBook } from "../build/build-book";
-import { answerLine, type PageModel, type Rect, type Region, type RegionRole } from "../contract";
+import { answerLine, type Answer, type BracketFace, type Face, type FaceToken, type PageModel, type Rect, type Region, type RegionRole } from "../contract";
 import wideBook from "../fixtures/book-4-digits.json";
 import wideSnapshot from "../fixtures/snapshot-4-digits.json";
 import { canonicalJson, sha256 } from "../hash";
@@ -128,6 +128,7 @@ describe("the templates of tokens", () => {
   it("have as many places as the print rules allow", () => {
     expect([...TEMPLATES.values()].map((t) => [t.id, t.sides.front.places.length, t.sides.back.places.length])).toEqual([
       ["columns-2x4", 8, 8], ["columns-2x4-wide", 8, 8], ["facts-2x10", 20, 20], ["sums-1x10", 10, 10], ["blanks-1x10", 10, 10], ["sequences-2x2", 4, 4], ["sequences-2x1", 2, 2],
+      ["remainders-1x10", 10, 10], ["brackets-2x6", 12, 12], ["brackets-2x4", 8, 8], ["brackets-2x3", 6, 6], ["brackets-1x4", 4, 4], ["brackets-1x3", 3, 3],
     ]);
     // One row more would reach the QR code: a row is an answer area with its reach.
     const [qr] = regions(facts, "qr");
@@ -191,6 +192,41 @@ describe("the templates of tokens", () => {
     expect(questionText(equation("5", "×", "□", "=", "35"), wholeNumber(7))).toBe("5 × [7] = 35");
     expect(questionText(column, wholeNumber(72))).toBe("24 × 3 = 72");
     expect(needsOf({ kind: "sequence", tokens: [{ text: "5" }, { text: "10" }, { blank: "blank-1" }] }, { parts: [{ name: "blank-1", kind: "whole-number", value: "115" }] })).toEqual({ terms: 3, "characters in a number": 3 });
+  });
+
+  // A division as the layout sees it: tokens, with no math.
+  const value = (name: string, text: string) => ({ name, kind: "whole-number" as const, value: text });
+  const both = { parts: [value("quotient", "73"), value("remainder", "5")] };
+  const rest = [{ text: "R" }, { blank: "remainder" }];
+  const bracket = (outside: string, inside: string, workLines: number, ...after: FaceToken[]): BracketFace => ({ kind: "bracket", above: [{ blank: after.length > 0 ? "quotient" : "answer" }, ...after], outside, inside, workLines });
+  const line = (...tokens: FaceToken[]): Face => ({ kind: "equation", tokens: [{ text: "443" }, { text: "÷" }, { text: "6" }, { text: "=" }, ...tokens] });
+  it.each<[string, Face, Answer, string[]]>([
+    ["a line with one area", line({ blank: "answer" }), wholeNumber(73), ["facts-2x10"]],
+    ["a line with a remainder", line({ blank: "quotient" }, ...rest), both, ["remainders-1x10"]],
+    ["a bracket with no work", bracket("10", "100", 0), wholeNumber(10), ["brackets-2x6", "brackets-2x4", "brackets-2x3"]],
+    ["a bracket with two lines of work", bracket("4", "36", 2), wholeNumber(9), ["brackets-2x4", "brackets-2x3"]],
+    ["a bracket with six lines of work", bracket("2", "998", 6), wholeNumber(499), ["brackets-2x3"]],
+    ["a bracket with a remainder and two lines", bracket("4", "37", 2, ...rest), both, ["brackets-1x4", "brackets-1x3"]],
+    ["a bracket with a remainder and six lines", bracket("2", "999", 6, ...rest), both, ["brackets-1x3"]],
+    ["seven lines of work", bracket("2", "999", 7, ...rest), both, []],
+    ["four characters inside", bracket("2", "1998", 2), wholeNumber(9), []],
+    ["three characters outside", bracket("100", "100", 0), wholeNumber(1), []],
+    ["an answer of five characters", bracket("2", "998", 6), wholeNumber(10000), []],
+    ["a remainder of five characters", bracket("2", "998", 6, ...rest), { parts: [both.parts[0], value("remainder", "10000")] }, []],
+    ["two areas and no text between them", bracket("2", "998", 6, { blank: "remainder" }), both, []],
+    ["no area", { ...bracket("2", "998", 6), above: [] }, { parts: [] }, []],
+    ["a text in the place of the area", { ...bracket("2", "998", 6), above: [{ text: "R" }] }, wholeNumber(9), []],
+  ])("of divisions take only their own form: %s", (_name, face, answer, wanted) => {
+    expect([...TEMPLATES.values()].filter((t) => fitProblem(t, face, answer) === null).map((t) => t.id)).toEqual(wanted);
+  });
+
+  it("say what is wrong with a division that does not fit, and show it with its answer", () => {
+    const problem = (id: string, face: Face, answer: Answer) => fitProblem(TEMPLATES.get(id)!, face, answer);
+    expect(problem("brackets-1x4", bracket("2", "999", 6, ...rest), both)).toBe('needs 6 lines of work and the template "brackets-1x4" has 3');
+    expect(problem("brackets-2x6", bracket("4", "37", 0, ...rest), both)).toBe('has its blanks where the template "brackets-2x6" has no answer area');
+    expect(problem("columns-2x4", bracket("4", "36", 2), wholeNumber(9))).toBe('is a bracket question and the template "columns-2x4" has no place for one');
+    expect([questionText(bracket("6", "443", 4, ...rest), both), questionText(bracket("6", "438", 4), wholeNumber(73)), questionText(line({ blank: "quotient" }, ...rest), both)]).toEqual(["6)443 = [73] R [5]", "6)438 = [73]", "443 ÷ 6 = [73] R [5]"]);
+    expect([answerLine(both), answerLine(wholeNumber(73)), answerLine({ parts: [value("blank-1", "20"), value("blank-2", "30")] })]).toEqual(["73 R5", "73", "20, 30"]);
   });
 
   it.each(["front", "back"] as const)("are looked at on the side and at the place of each question: %s", (side) => {

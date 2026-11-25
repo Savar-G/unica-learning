@@ -1,6 +1,6 @@
 // The fit checks of the harness: the form of each question, and the templates that hold it. They use the function of the bank.
 import type { Answer, Face } from "../contract";
-import { fitProblem, needsOf, type Needs, type PageTemplate } from "../layout/templates";
+import { fitProblem, needsOf, tokensOf, type Needs, type PageTemplate } from "../layout/templates";
 import type { Shape } from "../shapes";
 import { formsOf } from "../shapes/shape";
 import type { Limits, Rows } from "./shape-registration";
@@ -8,7 +8,7 @@ import type { Limits, Rows } from "./shape-registration";
 /** A question as the fit check sees it: `form` is where its blanks stand. */
 export interface Formed { face: Face; answer: Answer; form: string; needs: Needs }
 
-const formOf = (face: Face): string => (face.kind === "equation" || face.kind === "sequence" ? face.tokens.reduce((form, t) => form + ("blank" in t ? "_" : "t"), `${face.kind} `) : face.kind);
+const formOf = (face: Face): string => tokensOf(face).reduce((form, t) => form + ("blank" in t ? "_" : "t"), face.kind === "column" ? face.kind : `${face.kind} `);
 export const formed = (face: Face, answer: Answer): Formed => ({ face, answer, form: formOf(face), needs: needsOf(face, answer) });
 
 interface Space { limits: Limits; json: string }
