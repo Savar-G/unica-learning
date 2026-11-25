@@ -8,14 +8,19 @@ import {
   type Expr,
   type ReferenceRecord,
 } from "@/lib/reference-record";
-import { isConcreteAnswer, normalizeAnswerCompare, plainNumber, wholeNumberLists } from "./answer-text";
+import { isConcreteAnswer, normalizeAnswerCompare, plainNumber, sameValue, stepNumbers, wholeNumberLists } from "./answer-text";
 import type { AnswerNote } from "./answers";
-import { compareLineWithExpr, parsePrintedLine, type LineVerdict, type PrintedLine } from "./printed-line";
+import {
+  compareLineWithExpr,
+  exprOfLine,
+  exprWithExactAnswer,
+  parsePrintedLine,
+  setupLine,
+  wrongResult,
+  type LineVerdict,
+  type PrintedLine,
+} from "./printed-line";
 import { answerValues, completeAnswer } from "./unproved-answers";
-
-function sameAnswer(a: string, b: string): boolean {
-  return normalizeAnswerCompare(a) === normalizeAnswerCompare(b);
-}
 
 // The whole chain with its blanks filled in, or the values themselves.
 function filledValues(expr: Expr | null, values: readonly string[]): readonly string[] {
@@ -25,19 +30,11 @@ function filledValues(expr: Expr | null, values: readonly string[]): readonly st
   return expr.terms.map((term) => (term === null ? values[next++] : String(term)));
 }
 
-// A list that shows every answer must be the answers in order; a list that shows every term must be
-// the whole chain; any other list may leave terms out, but every number in it must be one of them.
+// One number must be one of the answers (never a printed term); a list must be all the answers in
+// order or the whole chain.
 function listFits(list: readonly string[], values: readonly string[], filled: readonly string[]): boolean {
-  const equals = (other: readonly string[]): boolean =>
-    list.length === other.length && list.every((v, i) => sameAnswer(v, other[i]));
-  if (equals(values) || equals(filled)) return true;
-  if (list.length === values.length || list.length === filled.length) return false;
-  let at = 0;
-  return list.every((v) => {
-    while (at < filled.length && !sameAnswer(v, filled[at])) at += 1;
-    at += 1;
-    return at <= filled.length;
-  });
+  if (list.length === 1) return values.some((v) => sameValue(v, list[0]));
+  return [values, filled].some((all) => all.length === list.length && all.every((v, i) => sameValue(v, list[i])));
 }
 
 function multiVerdict(text: string, expr: Expr | null, computed: ComputedMultiAnswer): LineVerdict {
@@ -51,68 +48,70 @@ function multiVerdict(text: string, expr: Expr | null, computed: ComputedMultiAn
 // One number against one computed answer. A division with remainder may print its quotient alone;
 // a decimal there is a result that code does not compute.
 function numberVerdict(value: string, computed: ComputedSingleAnswer): LineVerdict {
-  if (sameAnswer(value, computed.value)) return "match";
-  const decimal = value.includes(".");
-  if ((computed.remainder ?? 0) > 0) {
-    if (decimal) return "unknown";
-    return sameAnswer(value, String(computed.quotient)) ? "match" : "differs";
-  }
-  return decimal && Number(value) === Number(computed.value) ? "match" : "differs";
+  if (sameValue(value, computed.value)) return "match";
+  if ((computed.remainder ?? 0) === 0) return "differs";
+  if (value.includes(".")) return "unknown";
+  return sameValue(value, String(computed.quotient)) ? "match" : "differs";
 }
 
 interface StepText {
   text: string;
-  // The one number that the step prints, also after "=" in a whole equation.
-  value: string | null;
+  // The numbers that the step prints as answers: see stepNumbers; also the result of an equation.
+  numbers: string[];
+  isRemainder: boolean;
   line: PrintedLine | null;
 }
 
 function readStep(printed: string): StepText {
   const line = parsePrintedLine(printed);
   const end = line?.kind === "equation" && typeof line.end === "object" ? line.end.value : null;
-  return { text: printed, value: plainNumber(end ?? printed), line };
+  const direct = stepNumbers(printed);
+  return { text: printed, line, ...direct, numbers: end === null ? direct.numbers : [end] };
 }
 
-// An equation whose own two sides are not equal.
-function isFalseEquation(step: StepText): boolean {
-  if (step.value === null || step.line?.kind !== "equation" || step.line.operands.includes(null)) return false;
-  const left = computeExprAnswer({
-    kind: "arith",
-    op: step.line.op,
-    operands: step.line.operands as number[],
-  });
-  return left?.kind === "single" && numberVerdict(step.value, left) === "differs";
+function allOf(numbers: readonly string[], verdictOf: (value: string) => LineVerdict): LineVerdict {
+  const verdicts = numbers.map(verdictOf);
+  if (verdicts.includes("differs")) return "differs";
+  return verdicts.length > 0 && verdicts.every((v) => v === "match") ? "match" : "unknown";
+}
+
+// The value of the left side of an equation whose own two sides are not equal (a division with
+// remainder may print its quotient alone).
+function falseLeftSide(step: StepText): string | null {
+  if (!step.line || wrongResult(step.line) === null) return null;
+  const left = computeExprAnswer(exprOfLine(step.line));
+  return left?.kind === "single" && numberVerdict(step.numbers[0], left) === "differs" ? left.value : null;
 }
 
 // What a part that code cannot compute says about a step: its shown answer is all that is known.
 function shownVerdict(step: StepText, part: ExamplePart): LineVerdict {
   if (!isConcreteAnswer(part.shown_answer)) return part.expr === null ? "differs" : "unknown";
   const shown: string[] = normalizeAnswerCompare(part.shown_answer).match(/-?\d+(?:\.\d+)?(?: R\d+)?/g) ?? [];
-  return step.value === null || shown.includes(step.value) ? "match" : "differs";
+  return step.numbers.every((value) => shown.some((s) => sameValue(s, value))) ? "match" : "differs";
 }
 
-function answerStepVerdict(step: StepText, part: ExamplePart): LineVerdict {
-  const computed = completeAnswer(part.expr);
-  if (!computed) return shownVerdict(step, part);
-  if (part.expr && step.line && compareLineWithExpr(step.line, part.expr) === "match") return "match";
-  if (computed.kind === "multi") return multiVerdict(step.value ?? step.text, part.expr, computed);
-  return step.value === null ? "unknown" : numberVerdict(step.value, computed);
-}
-
-function remainderStepVerdict(step: StepText, part: ExamplePart): LineVerdict {
+function remainderVerdict(step: StepText, part: ExamplePart): LineVerdict {
   const computed = completeAnswer(part.expr);
   if (!computed) return shownVerdict(step, part);
   if (computed.kind !== "single" || computed.remainder === undefined) return "differs";
-  const value = step.value ?? /^\s*[rR]\s*(\d+)\s*$/.exec(step.text)?.[1] ?? null;
-  if (value === null) return "unknown";
-  const wholeAnswer = computed.remainder > 0 && sameAnswer(value, computed.value);
-  return wholeAnswer || sameAnswer(value, String(computed.remainder)) ? "match" : "differs";
+  const right = [String(computed.remainder), ...(computed.remainder > 0 ? [computed.value] : [])];
+  return allOf(step.numbers, (value) => (right.some((r) => sameValue(r, value)) ? "match" : "differs"));
+}
+
+function answerVerdict(step: StepText, part: ExamplePart): LineVerdict {
+  const computed = completeAnswer(part.expr);
+  if (!computed) return shownVerdict(step, part);
+  if (part.expr && step.line && compareLineWithExpr(step.line, part.expr) === "match") return "match";
+  if (computed.kind === "single") return allOf(step.numbers, (value) => numberVerdict(value, computed));
+  if (step.numbers.length === 0) return multiVerdict(step.text, part.expr, computed);
+  return allOf(step.numbers, (value) => multiVerdict(value, part.expr, computed));
 }
 
 // A step of kind "answer" or "remainder" must print an answer (or remainder) of one of the parts.
 function stepConflict(step: ExampleStep, parts: readonly ExamplePart[], path: string): AnswerNote[] {
   if (!isConcreteAnswer(step.printed) || (step.shows !== "answer" && step.shows !== "remainder")) return [];
-  const isRemainder = step.shows === "remainder";
+  const read = readStep(step.printed);
+  const isRemainder = step.shows === "remainder" || read.isRemainder;
   const known = parts.flatMap((part) => {
     const computed = completeAnswer(part.expr);
     if (!computed) return [];
@@ -120,18 +119,15 @@ function stepConflict(step: ExampleStep, parts: readonly ExamplePart[], path: st
     return computed.kind === "single" && computed.remainder !== undefined ? [String(computed.remainder)] : [];
   });
   if (known.length === 0) return [];
-  const read = readStep(step.printed);
-  const verdicts = parts.map((part) => (isRemainder ? remainderStepVerdict : answerStepVerdict)(read, part));
-  if (!isFalseEquation(read) && verdicts.some((v) => v !== "differs")) return [];
   const at = `${path}.steps[n=${step.n}].printed`;
-  const what = isRemainder ? "computed remainder" : "computed";
-  return [
-    {
-      kind: "answer_differs",
-      path: at,
-      message: `${at}: step prints "${step.printed}", ${what} "${[...new Set(known)].join('" or "')}"`,
-    },
+  const note = (text: string): AnswerNote[] => [
+    { kind: "answer_differs", path: at, message: `${at}: step prints "${step.printed}", ${text}` },
   ];
+  const left = falseLeftSide(read);
+  if (left !== null) return note(`computed "${left}" for its left side`);
+  const verdicts = parts.map((part) => (isRemainder ? remainderVerdict : answerVerdict)(read, part));
+  if (verdicts.some((v) => v !== "differs")) return [];
+  return note(`${isRemainder ? "computed remainder" : "computed"} "${[...new Set(known)].join('" or "')}"`);
 }
 
 function shownConflict(part: ExamplePart, path: string): AnswerNote[] {
@@ -140,18 +136,33 @@ function shownConflict(part: ExamplePart, path: string): AnswerNote[] {
   if (!isConcreteAnswer(shown) || !computed) return [];
   const differs =
     computed.kind === "single"
-      ? !sameAnswer(shown, computed.value)
+      ? !sameValue(shown, computed.value)
       : multiVerdict(shown, part.expr, computed) === "differs";
   if (!differs) return [];
   const values = answerValues(computed).join(", ");
   return [{ kind: "answer_differs", path, message: `${path}: shown "${shown}", computed "${values}"` }];
 }
 
+// The parts of an example. The one part of an example that stores its question as notation or not
+// at all takes the expression of the one setup line, when that has one exact answer.
+function partsWithLineExpr(example: Example, steps: readonly ExampleStep[]): ExamplePart[] {
+  const [part] = example.parts;
+  const stored = part?.expr ?? null;
+  if (example.parts.length !== 1 || example.relation === "table") return example.parts;
+  if (stored !== null && stored.kind !== "notation") return example.parts;
+  const lines = steps.flatMap((step) => (step.shows === "setup" ? (setupLine(step.printed, part.form) ?? []) : []));
+  if (lines.length !== 1 || (stored && compareLineWithExpr(lines[0], stored) !== "match")) return example.parts;
+  const expr = exprWithExactAnswer(lines[0]);
+  const readable = !isConcreteAnswer(part.shown_answer) || plainNumber(part.shown_answer) !== null;
+  return expr && readable ? [{ ...part, expr }] : example.parts;
+}
+
 function exampleConflicts(example: Example, path: string): AnswerNote[] {
   const steps = Array.isArray(example.steps) ? example.steps : [];
+  const parts = partsWithLineExpr(example, steps);
   return [
-    ...example.parts.flatMap((part, pi) => shownConflict(part, `${path}.parts[${pi}].shown_answer`)),
-    ...steps.flatMap((step) => stepConflict(step, example.parts, path)),
+    ...parts.flatMap((part, pi) => shownConflict(part, `${path}.parts[${pi}].shown_answer`)),
+    ...steps.flatMap((step) => stepConflict(step, parts, path)),
   ];
 }
 

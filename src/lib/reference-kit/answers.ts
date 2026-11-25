@@ -10,7 +10,7 @@ import {
   type PageRecord,
   type ReferenceRecord,
 } from "@/lib/reference-record";
-import { isConcreteAnswer, normalizeAnswerCompare } from "./answer-text";
+import { isConcreteAnswer, sameValue } from "./answer-text";
 
 const NON_ANSWER_POSITIONS = new Set<string>(["work_area", "checkbox"]);
 
@@ -141,16 +141,12 @@ const PLACE_POWERS = new Map<string, number>([
   ["ten thousands", 4],
 ]);
 
-// Fractional decimal place names (known place names, not mapped to whole-number powers).
-const FRACTIONAL_PLACE_NAMES = new Set<string>([
-  "tenth",
-  "tenths",
-  "hundredth",
-  "hundredths",
-  "thousandth",
-  "thousandths",
-  "ten thousandth",
-  "ten thousandths",
+// Decimal places of a fraction, by power of ten (singular; known place names, but no whole-number place).
+const FRACTION_POWERS = new Map<string, number>([
+  ["tenth", -1],
+  ["hundredth", -2],
+  ["thousandth", -3],
+  ["ten thousandth", -4],
 ]);
 
 function normalizePlaceKey(place: unknown): string | null {
@@ -167,9 +163,30 @@ export function decimalPlacePower(place: unknown): number | null {
   return key === null ? null : (PLACE_POWERS.get(key) ?? null);
 }
 
-export function isKnownPlaceName(place: unknown): boolean {
+// The power of ten of a place name, also of a decimal place (tenths: -1).
+export function placePower(place: unknown): number | null {
   const key = normalizePlaceKey(place);
-  return key !== null && (PLACE_POWERS.has(key) || FRACTIONAL_PLACE_NAMES.has(key));
+  if (key === null) return null;
+  const fraction = FRACTION_POWERS.get(key.replace(/s$/, ""));
+  return fraction ?? decimalPlacePower(place);
+}
+
+// A place name that can mean only one place: a decimal place, a part of a division or of a fraction.
+export function placeIdentity(place: unknown): string | null {
+  const power = placePower(place);
+  if (power !== null) return `power ${power}`;
+  const key = normalizePlaceKey(place);
+  return key === "numerator" || key === "denominator" ? key : divisionRole(place);
+}
+
+// The part of a division that a place name gives.
+export function divisionRole(place: unknown): "quotient" | "remainder" | null {
+  const key = normalizePlaceKey(place);
+  return key === "quotient" || key === "remainder" ? key : null;
+}
+
+export function isKnownPlaceName(place: unknown): boolean {
+  return placePower(place) !== null;
 }
 
 // A division can print a quotient place and a remainder place. One value must not go into both.
@@ -261,6 +278,17 @@ export function isMultiBox(sc: AnswerBoxesScaffold): boolean {
   );
 }
 
+// The place name that an answer_boxes scaffold gives each response: the one with as many places as
+// the item has answer places.
+export function scaffoldPlaces(item: PageItem, scaffolds: PageSection["scaffolds"]): unknown[] {
+  const answerIndices = item.responses.flatMap((resp, idx) => (isAnswerBearingResponse(item, resp) ? [idx] : []));
+  const named = scaffoldsFor(scaffolds, item.n).find(
+    (sc) => Array.isArray(sc.places) && sc.places.length === answerIndices.length,
+  );
+  const places = Array.isArray(named?.places) ? named.places : [];
+  return item.responses.map((_, idx) => places[answerIndices.indexOf(idx)] ?? null);
+}
+
 function planSingleInPlaces(
   item: PageItem,
   answerIndices: readonly number[],
@@ -296,12 +324,11 @@ function planSingleInPlaces(
   // One value in several places (an equation box and an answer line): only when no scaffold
   // prints digit boxes, every stored answer already is that value, and the item is not a division
   // (its places can be a quotient and a remainder).
-  const value = normalizeAnswerCompare(computed.value);
   if (
     (computed.remainder ?? 0) === 0 &&
     !isDivisionExpr(item.expr) &&
     !boxScaffolds.some(isMultiBox) &&
-    responses.every((r) => !isConcreteAnswer(r.answer) || normalizeAnswerCompare(r.answer) === value)
+    responses.every((r) => !isConcreteAnswer(r.answer) || sameValue(r.answer, computed.value))
   ) {
     return {
       kind: "fill",
@@ -324,6 +351,13 @@ export function planItemAnswers(
   });
 
   if (computed.kind === "single") {
+    // Boxes named quotient and remainder take that part of a division.
+    const roles = answerIndices.map((idx) => divisionRole(item.responses[idx].place));
+    if (computed.quotient !== undefined && roles[0] && !roles.includes(null) && new Set(roles).size === roles.length) {
+      const parts = { quotient: String(computed.quotient), remainder: String(computed.remainder) };
+      const values = new Map(answerIndices.map((idx, i) => [idx, parts[roles[i] ?? "quotient"]]));
+      return { kind: "fill", values, unreached: [] };
+    }
     if (answerIndices.length === 1) {
       const only = answerIndices[0];
       // A sole work_area on an inexact division may expect a decimal or a remainder; keep the stored answer.
@@ -378,8 +412,7 @@ function fillResponse(
   notes: AnswerNote[],
 ): ItemResponse {
   const differs =
-    isConcreteAnswer(resp.answer) &&
-    normalizeAnswerCompare(resp.answer) !== normalizeAnswerCompare(value);
+    isConcreteAnswer(resp.answer) && !sameValue(resp.answer, value);
   if (differs) {
     const who =
       resp.answer_source === "printed"

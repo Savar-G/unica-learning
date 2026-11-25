@@ -23,11 +23,36 @@ export function plainMinus(text: string): string {
 
 const PLAIN_NUMBER_RE = /^(?:-?\d+(?:\.\d+)?|\d+ R\d+)$/;
 
-// The one number (or quotient with remainder) that a text holds, also after a first "=". Null when
-// the text holds anything else.
+function canonicalNumber(text: string): string {
+  const [whole, decimals = ""] = text.replace(/^(-?)0+(?=\d)/, "$1").split(".");
+  const kept = decimals.replace(/0+$/, "");
+  const out = kept ? `${whole}.${kept}` : whole;
+  return out === "-0" ? "0" : out;
+}
+
+// The one number (or quotient with remainder) that a text holds, also after "=". Null when it holds
+// anything else.
 export function plainNumber(text: string): string | null {
   const norm = normalizeAnswerCompare(plainMinus(text).replace(/^\s*=/, ""));
-  return PLAIN_NUMBER_RE.test(norm) ? norm : null;
+  return PLAIN_NUMBER_RE.test(norm) ? norm.split(" R").map(canonicalNumber).join(" R") : null;
+}
+
+// The one rule for equal answers. Equal forms of a number: thousands commas (1,000), any minus sign,
+// leading zeros (05), zeros at the end of decimals (5.0), spaces and case at a remainder (3 r 2), and
+// a first "=".
+// Any other text must be equal after normalizeAnswerCompare.
+export function sameValue(a: string, b: string): boolean {
+  return (plainNumber(a) ?? normalizeAnswerCompare(a)) === (plainNumber(b) ?? normalizeAnswerCompare(b));
+}
+
+// What a worked step prints, when it is one of these forms: a number, "= number", "number = number"
+// (every side is the answer), or a remainder with its letter ("R 2", "r2", "R = 2").
+export function stepNumbers(text: string): { numbers: string[]; isRemainder: boolean } {
+  const remainder = /^\s*[rR]\s*=?\s*(\d+)\s*$/.exec(text);
+  if (remainder) return { numbers: [remainder[1]], isRemainder: true };
+  const sides = text.replace(/^\s*=/, "").split("=").map(plainNumber);
+  const numbers = sides.filter((side): side is string => side !== null);
+  return { numbers: numbers.length === sides.length ? numbers : [], isRemainder: false };
 }
 
 const LIST_TOKEN_RE = /-?\d+(?: R\d+)?/y;

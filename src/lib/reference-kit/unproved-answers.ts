@@ -7,19 +7,20 @@ import {
   type PageSection,
   type ReferenceRecord,
 } from "@/lib/reference-record";
-import { isConcreteAnswer, normalizeAnswerCompare, plainNumber } from "./answer-text";
+import { isConcreteAnswer, plainNumber, sameValue } from "./answer-text";
 import {
-  decimalPlacePower,
-  hasNoPlace,
+  divisionRole,
   isAnswerBearingResponse,
   isDivisionExpr,
   isMultiBox,
   itemPathOf,
+  placePower,
   planItemAnswers,
   planPlaceDigits,
   scaffoldsFor,
   type AnswerNote,
 } from "./answers";
+import { compareLineWithExpr, exprWithExactAnswer, itemLine } from "./printed-line";
 
 // The computed answer of an item, when code knows every value of it.
 export function completeAnswer(expr: PageItem["expr"]): ComputedAnswer | null {
@@ -31,38 +32,69 @@ export function answerValues(computed: ComputedAnswer): string[] {
   return computed.kind === "single" ? [computed.value] : computed.values.filter((v) => v !== null);
 }
 
-// True when the stored answers of an item with several answer places (or one place that does not
-// take the value) are right place by place: a place with no decimal name holds the whole value, a
-// named one holds its digit, and together they hold the whole value. A division with remainder may
-// hold its quotient and its remainder in two places with no name.
+interface RoleValue {
+  value: string;
+  role: ReturnType<typeof divisionRole>;
+}
+
+// Every way to write the answers of an expression into places in order: one place for each answer,
+// or two places (quotient, remainder) for an answer of a division.
+function answerForms(expr: PageItem["expr"]): RoleValue[][] {
+  if (expr?.kind === "linked") {
+    const [left, right] = expr.pair.map(answerForms);
+    return left.flatMap((l) => right.map((r) => [...l, ...r]));
+  }
+  const computed = completeAnswer(expr);
+  if (!computed) return [];
+  const one = answerValues(computed).map((value): RoleValue => ({ value, role: null }));
+  if (computed.kind !== "single" || computed.quotient === undefined) return [one];
+  return [
+    one,
+    [
+      { value: String(computed.quotient), role: "quotient" },
+      { value: String(computed.remainder), role: "remainder" },
+    ],
+  ];
+}
+
+function holds(resp: ItemResponse, value: string): boolean {
+  return isConcreteAnswer(resp.answer) && sameValue(resp.answer, value);
+}
+
+// True when the stored answers of an item that the placing rules do not fit are right all the same:
+// they are its answers in order (see answerForms), or, for one answer, each place with no decimal
+// name holds the whole value, each named one holds its digit, and together they hold the value.
 function answersAreProved(
-  item: PageItem,
+  expr: PageItem["expr"],
   responses: readonly ItemResponse[],
   computed: ComputedAnswer,
   boxScaffolds: readonly AnswerBoxesScaffold[],
 ): boolean {
+  const inOrder = answerForms(expr).some(
+    (form) =>
+      form.length === responses.length &&
+      responses.every((resp, i) => {
+        const role = divisionRole(resp.place);
+        return holds(resp, form[i].value) && placePower(resp.place) === null && (!role || role === form[i].role);
+      }),
+  );
+  if (responses.length > 0 && inOrder && !boxScaffolds.some(isMultiBox)) return true;
   if (computed.kind !== "single" || responses.length === 0) return false;
-  const holds = (resp: ItemResponse, value: string): boolean =>
-    isConcreteAnswer(resp.answer) && normalizeAnswerCompare(resp.answer) === normalizeAnswerCompare(value);
-  if (isDivisionExpr(item.expr)) {
-    return (
-      responses.length === 2 &&
-      responses.every(hasNoPlace) &&
-      computed.quotient !== undefined &&
-      holds(responses[0], String(computed.quotient)) &&
-      holds(responses[1], String(computed.remainder))
-    );
-  }
   if (boxScaffolds.some(isMultiBox)) return false;
+  // The places of a division with no decimal name can be a quotient and a remainder.
+  if (isDivisionExpr(expr) && responses.some((resp) => placePower(resp.place) === null)) return false;
   const powers = new Map<number, number>();
   const whole: ItemResponse[] = [];
+  const decimals: ItemResponse[] = [];
   responses.forEach((resp, idx) => {
-    const power = decimalPlacePower(resp.place);
+    const power = placePower(resp.place);
     if (power === null) whole.push(resp);
+    else if (power < 0) decimals.push(resp);
     else powers.set(idx, power);
   });
   if (!whole.every((resp) => holds(resp, computed.value))) return false;
-  if (powers.size === 0) return true;
+  if (!decimals.every((resp) => holds(resp, "0"))) return false;
+  if (powers.size === 0) return whole.length > 0;
   const digits = planPlaceDigits(powers, computed.value, whole.length === 0);
   return (
     digits !== null &&
@@ -71,36 +103,47 @@ function answersAreProved(
   );
 }
 
-function unprovedItemAnswers(item: PageItem, section: PageSection, path: string): AnswerNote[] {
+// An item whose question is stored as notation, with the expression of its printed line when that
+// has one exact answer and every stored answer is a number.
+function withLineExpr(item: PageItem, section: PageSection): PageItem | null {
+  const stored = item.expr?.kind === "word" && typeof item.expr.expr === "object" ? item.expr.expr : item.expr;
+  const line = stored?.kind === "notation" ? itemLine(item, section) : null;
+  const expr = line && stored && compareLineWithExpr(line, stored) === "match" ? exprWithExactAnswer(line) : null;
+  const readable = item.responses.every((r) => !isConcreteAnswer(r.answer) || plainNumber(r.answer) !== null);
+  return expr && readable ? { ...item, expr } : null;
+}
+
+function unprovedItemAnswers(stored: PageItem, section: PageSection, path: string): AnswerNote[] {
+  const fromLine = withLineExpr(stored, section);
+  const item = fromLine ?? stored;
   const computed = completeAnswer(item.expr);
   if (!computed) return [];
-  const note = (at: string, text: string): AnswerNote => ({
-    kind: "unproved_answer",
-    path: at,
-    message: `${at}: ${text}`,
-  });
+  const out: AnswerNote[] = [];
+  const add = (at: string, text: string): void => {
+    out.push({ kind: "unproved_answer", path: at, message: `${at}: ${text}` });
+  };
   const values = answerValues(computed).map((v) => `"${v}"`).join(", ");
   const inPlaces = item.responses.filter((resp) => isAnswerBearingResponse(item, resp));
-  const boxScaffolds = scaffoldsFor(section.scaffolds, item.n);
-  if (
-    planItemAnswers(item, computed, section.scaffolds).kind === "misfit" &&
-    !answersAreProved(item, inPlaces, computed, boxScaffolds)
-  ) {
-    if (inPlaces.length === 0) return [note(path, `no answer place for the computed answer ${values}`)];
+  const plan = planItemAnswers(item, computed, section.scaffolds);
+  if (plan.kind === "misfit" && !answersAreProved(item.expr, inPlaces, computed, scaffoldsFor(section.scaffolds, item.n))) {
     const held = inPlaces.map((r) => (r.answer === null ? "nothing" : `"${r.answer}"`)).join(", ");
-    return [note(path, `answer places hold ${held}, computed ${values}`)];
+    if (inPlaces.length === 0) add(path, `no answer place for the computed answer ${values}`);
+    else add(path, `answer places hold ${held}, computed ${values}`);
   }
-  // A number in a checkbox or in the working space beside an answer place is an answer too.
-  const right = [...answerValues(computed)];
-  if (computed.kind === "single" && computed.quotient !== undefined) {
-    right.push(String(computed.quotient), String(computed.remainder));
-  }
-  return item.responses.flatMap((resp, idx) => {
-    if (isAnswerBearingResponse(item, resp) || resp.answer_source === "printed") return [];
-    const held = isConcreteAnswer(resp.answer) ? plainNumber(resp.answer) : null;
-    if (held === null || right.some((v) => normalizeAnswerCompare(v) === held)) return [];
-    return [note(`${path}.responses[${idx}]`, `holds "${resp.answer}", computed ${values}`)];
+  // Code writes no answer into an item that stores notation, so its answers are compared here.
+  const placed = fromLine && plan.kind === "fill" ? plan.values : new Map<number, string>();
+  const right = answerForms(item.expr).flat().map((form) => form.value);
+  item.responses.forEach((resp, idx) => {
+    if (!isConcreteAnswer(resp.answer)) return;
+    const at = `${path}.responses[${idx}]`;
+    const value = placed.get(idx);
+    if (value !== undefined && !sameValue(resp.answer, value)) add(at, `holds "${resp.answer}", computed "${value}"`);
+    // A number in a checkbox or in the working space beside an answer place is an answer too.
+    if (isAnswerBearingResponse(item, resp) || resp.answer_source === "printed") return;
+    if (plainNumber(resp.answer) === null || right.some((v) => holds(resp, v))) return;
+    add(at, `holds "${resp.answer}", computed ${values}`);
   });
+  return out;
 }
 
 // Stored answers of items that code can compute but cannot prove: they do not fit the computed

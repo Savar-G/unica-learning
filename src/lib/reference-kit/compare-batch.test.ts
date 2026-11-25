@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ContentsRecord, Example, PageItem, PageRecord, PageSection } from "@/lib/reference-record";
+import type { ContentsRecord, Example, PageItem, PageRecord, PageSection, SimpleExpr } from "@/lib/reference-record";
 import { checkAndMarkPage } from "./check";
 import { compareWorkFolder } from "./compare-batch";
 import { persistSlotResult } from "./extract-state";
@@ -3339,17 +3339,49 @@ describe("compareWorkFolder", () => {
       expect(page.result_reason, label).toContain("readers disagree on an expression");
       expect(page.once_read.map((d) => d.path), label).toEqual(paths);
       expect(page.differences, label).toEqual([]);
-      for (const path of paths) expect(md, label).toContain(`\`${path}\`: only reader ${path.includes("b:") ? "b" : "a"} has it`);
+      for (const path of paths) {
+        const told = path.includes("b:") ? "(only reader b has it|reader b has it)" : "only reader a has it";
+        expect(md, label).toMatch(new RegExp(`\`${path.replace(/[[\].]/g, "\\$&")}\`: ${told}`));
+      }
     }
 
-    // Answer places with different names are two places, also when each reader gives one place.
-    const elevens = (name: string) =>
-      pageOf([sum([place("1", { place: name })], { printed: "5 + 6", expr: { kind: "arith", op: "add", operands: [5, 6] } })]);
-    const digits = runPair(elevens("tens"), elevens("ones")).page;
-    expect(digits.agreement?.percent).toBeGreaterThanOrEqual(98);
-    expect(digits.status).toBe("machine_read");
-    expect(digits.answer_disagreements).toEqual(["sections[0].items[n=1].responses[0]"]);
-    expect(runPair(elevens("ones"), elevens("Ones place")).page.status).not.toBe("machine_read");
+    // The place of an answer is the name on the response, or the one that the scaffold gives. A
+    // difference there is an answer disagreement, also when both readers give the same digit.
+    const placed = (names: Array<string | undefined>, scaffold: string[] = [], digit = "1"): PageRecord => {
+      const page = pageOf([
+        sum(names.map((name) => place(digit, name ? { place: name } : {})), { printed: "Work it out.", expr: { kind: "notation", latex: "x" } }),
+      ]);
+      if (scaffold.length > 0) page.sections[0].scaffolds = [{ kind: "answer_boxes", applies_to: [1], places: scaffold }];
+      return page;
+    };
+    const otherPlaces: Array<[string, PageRecord, PageRecord, number]> = [
+      ["tens and ones", placed(["tens"]), placed(["ones"]), 1],
+      ["hundreds and tens", placed(["hundreds"]), placed(["tens"]), 1],
+      ["tenths and hundredths", placed(["tenths"]), placed(["hundredths"]), 1],
+      ["quotient and remainder", placed(["quotient"]), placed(["remainder"]), 1],
+      ["numerator and denominator", placed(["numerator", "denominator"]), placed(["denominator", "numerator"]), 2],
+      ["two scaffolds", placed([undefined, undefined], ["tens", "ones"]), placed([undefined, undefined], ["ones", "tens"]), 2],
+      ["a name and the scaffold of the other reader", placed(["tens"]), placed([undefined], ["ones"]), 1],
+    ];
+    for (const [label, a, b, count] of otherPlaces) {
+      const { page } = runPair(a, b);
+      expect(page.agreement?.percent, label).toBeGreaterThanOrEqual(90);
+      expect(page.status, label).toBe("machine_read");
+      expect(page.answer_disagreements, label).toEqual(
+        Array.from({ length: count }, (_, i) => `sections[0].items[n=1].responses[${i}]`),
+      );
+    }
+    const samePlaces: Array<[string, PageRecord, PageRecord, string]> = [
+      ["the scaffold of both readers gives the name", placed(["tens", "ones"], ["tens", "ones"]), placed([undefined, undefined], ["Tens place", "ones"]), "double_read"],
+      ["only one scaffold gives the name", placed(["tens", "ones"]), placed([undefined, undefined], ["tens", "ones"]), "agreement_accepted"],
+      ["no scaffold", placed(["tens"]), placed([undefined]), "agreement_accepted"],
+      ["the name in another form", placed(["ones"]), placed(["Ones place"]), "agreement_accepted"],
+      ["names that readers choose", placed(["top box"]), placed(["first box"]), "agreement_accepted"],
+    ];
+    for (const [label, a, b, status] of samePlaces) expect(runPair(a, b).page.answer_disagreements, label).toBeUndefined();
+    for (const [label, a, b, status] of samePlaces.slice(1)) expect(runPair(a, b).page.status, label).toBe(status);
+    const agreed = runPair(samePlaces[0][1], samePlaces[0][2]).page;
+    expect([...agreed.once_read, ...agreed.differences].filter((d) => d.path.includes("responses"))).toEqual([]);
 
     const passes: Array<[string, PageRecord, PageRecord, string]> = [
       ["one reader gives no label", withExample(solved({ label: "Example 1" })), withExample(solved()), "examples[0].label"],
@@ -3410,5 +3442,130 @@ describe("compareWorkFolder", () => {
       expect([page.unproved_answers, page.printed_conflicts, page.answer_conflicts]).toEqual([undefined, undefined, undefined]);
       expect(md).not.toContain("look at the photo");
     }
+  });
+
+  it("uses a printed line, a worked answer and an answer place fully, and takes nothing that is no question", () => {
+    const arith = (op: "add" | "sub" | "mul" | "div", ...operands: number[]): SimpleExpr => ({ kind: "arith", op, operands });
+    const notation = (latex: string): SimpleExpr => ({ kind: "notation", latex });
+    const chain = (...terms: Array<number | null>): SimpleExpr => ({ kind: "chain", terms });
+    const line = (printed: string, expr: PageItem["expr"], answer: string | null, more: Partial<PageItem> = {}) =>
+      pageOf([sum([place(answer, { position: "after_equals" })], { printed, expr, ...more })]);
+    const boxes = (expr: SimpleExpr, responses: PageItem["responses"], printed = "Work it out.") =>
+      pageOf([sum(responses, { printed, expr })]);
+    const steps = (...list: Array<["setup" | "answer" | "remainder", string]>): Example["steps"] =>
+      list.map(([shows, printed], i) => ({ n: i + 1, shows, printed }));
+    const worked = (parts: Example["parts"], list: Example["steps"] = [], more: Partial<Example> = {}) =>
+      pageOf([], [solved({ parts, steps: list, ...more })]);
+    const part = (expr: Example["parts"][number]["expr"], shown?: string, form: "horizontal" | "bracket" | "vertical" = "horizontal") => ({
+      form,
+      expr,
+      shown_answer: shown ?? null,
+    });
+    const div = arith("div", 17, 5);
+    const tick = (answer: string | null = null) => place(answer, { position: "checkbox" });
+    const work = (answer: string) => place(answer, { position: "work_area" });
+    const readAloud = line("2 \u00D7 3 =", null, null, { form: null, responses: [tick()] });
+    readAloud.sections[0].scaffolds = [{ kind: "table_read_aloud", applies_to: [1], has_checkbox: true }];
+
+    const stops: Array<[string, PageRecord, RegExp]> = [
+      // F1
+      ["a false line", line("2 + 3 = 99", arith("add", 2, 3), "5"), /page prints "2 \+ 3 = 99", computed "5"/],
+      ["a false division line", line("17 \u00F7 5 = 3 R9", div, "3 R2"), /page prints "17 \u00F7 5 = 3 R9", computed "3 R2"/],
+      ["a solved line with a wrong operand", line("2 + 4 = 6", arith("add", 2, 3), "5"), /page prints "2 \+ 4 = 6"/],
+      ["another result in notation", line("\u25A1 + 3 = 5", notation("\u25A1 + 3 = 99"), "2"), /expression is "\u25A1 \+ 3 = 99"/],
+      ["a false result in notation", line("2 + 3 =", notation("2 + 3 = 6"), "5"), /expression is "2 \+ 3 = 6"/],
+      ["a wrong answer of notation", line("2 + 3 =", notation("2 + 3"), "99"), /holds "99", computed "5"/],
+      ["a false setup line", worked([part(arith("add", 2, 3), "5")], steps(["setup", "2 + 3 = 99"])), /page prints "2 \+ 3 = 99", computed "5"/],
+      ["a setup line and no expression", worked([part(null, "99")], steps(["setup", "2 + 3 ="])), /shown "99", computed "5"/],
+      // F2
+      ["a vertical question with no expression", line("2 + 3", null, null, { form: "vertical", responses: [] }), /expression is "none"/],
+      ["a bracket question with no expression", line("5) 17", null, null, { form: "bracket", responses: [] }), /expression is "none"/],
+      // F3
+      ["a setup line of no part", worked([part(arith("add", 2, 3), "5"), part(arith("mul", 2, 3), "6")], [{ n: 1, shows: "other", printed: "2", shows_other: "Hint" }, { n: 2, shows: "setup", printed: "2 + 4 =" }]), /page prints "2 \+ 4 ="/],
+      ["a bracket setup line of no part", worked([part(arith("div", 18, 6), "3", "bracket"), part(arith("add", 2, 3), "5")], steps(["setup", "5) 17"], ["setup", "2 + 3 ="])), /page prints "5\) 17"/],
+      // F4
+      ["a printed term as the shown answer", worked([part(chain(2, null, 6, null, 10), "6")]), /shown "6", computed "4, 8"/],
+      ["a part of a sequence", worked([part(chain(2, null, 6, null, 10), "2, 4, 6")]), /shown "2, 4, 6"/],
+      ["R = 9", worked([part(div, "3 R2")], steps(["remainder", "R = 9"])), /step prints "R = 9", computed remainder "2"/],
+      ["r9", worked([part(div, "3 R2")], steps(["remainder", "r9"])), /computed remainder "2"/],
+      ["two sides", worked([part(arith("add", 2, 3), "5")], steps(["answer", "5 = 99"])), /step prints "5 = 99", computed "5"/],
+      // F5
+      ["a wrong number in division work", boxes(div, [place("3 R2"), work("4")]), /holds "4", computed "3 R2"/],
+      ["a wrong remainder box", boxes(div, [place("3", { place: "quotient" }), place("4", { place: "remainder" })]), /page|reader gave "4"|holds "3", "4"/],
+      // F9
+      ["work area beside unproved places", boxes(arith("add", 2, 3), [place("7"), place("8"), work("9")]), /responses\[2\]`: holds "9", computed "5"/],
+      ["the left side of a false step", worked([part(arith("add", 2, 3), "5")], steps(["answer", "1 + 2 = 5"])), /step prints "1 \+ 2 = 5", computed "3" for its left side/],
+    ];
+    for (const [label, page, message] of stops) {
+      const out = runPair(page, structuredClone(page));
+      expect(out.page.status, label).toBe("machine_read");
+      expect(out.page.agreement?.percent, label).toBe(100);
+      expect(out.md, label).toMatch(message);
+    }
+
+    const passes: Array<[string, PageRecord]> = [
+      ["a true line", line("17 \u00F7 5 = 3 R2", div, "3 R2")],
+      ["the right answer of notation", line("2 + 3 =", notation("2 + 3"), "5")],
+      ["a fraction answer of a division in notation", line("17 \u00F7 5 =", notation("17 \\div 5"), "3 2/5")],
+      ["a setup line, no expression and the right answer", worked([part(null, "5")], steps(["setup", "2 + 3 ="]))],
+      ["a date", line("11-24-26", null, "1", { form: null })],
+      ["a range", line("3 \u2013 4", null, "3", { form: null })],
+      ["a read-aloud row", readAloud],
+      ["a solved row with a printed answer", line("2 \u00D7 3 = 6", null, null, { form: null, responses: [place("6", { position: "checkbox", answer_source: "printed" })] })],
+      ["a bare line with no answer place", line("2 + 3", null, null, { form: null, responses: [] })],
+      ["two setup lines of one part", worked([part(arith("add", 2, 3), "5"), part({ kind: "missing", op: "add", operands: [2, null], result: 5 }, "3")], steps(["setup", "2 + 3 = 5"], ["setup", "2 + 3 ="]))],
+      ["setup lines in the other order", worked([part(arith("add", 2, 3), "5"), part(arith("mul", 2, 3), "6")], steps(["setup", "2 \u00D7 3 ="], ["setup", "2 + 3 ="]))],
+      ["setup lines beside a part in notation", worked([part(arith("add", 2, 3), "5"), part(notation("x + 1"), "x")], steps(["setup", "2 + 3 ="], ["setup", "2 + 4 ="]))],
+      ["a blank of a chain", worked([part(chain(2, null, 6, null, 10), "8")])],
+      ["the full sequence", worked([part(chain(2, null, 6, null, 10), "2, 4, 6, 8, 10")])],
+      ["the remainder in each form", worked([part(div, "3 R2")], steps(["remainder", "R 2"], ["remainder", "r2"], ["remainder", "R = 2"], ["remainder", "2 = 2"]))],
+      ["named quotient and remainder", boxes(div, [place("3", { place: "quotient" }), place("2", { place: "remainder" })])],
+      ["named remainder first", boxes(div, [place("2", { place: "Remainder" }), place("3", { place: "Quotient" })])],
+      ["the quotient of a linked part in the work area", boxes({ kind: "linked", pair: [div, arith("add", 2, 3)] } as never, [place("3 R2"), place("5"), work("3")])],
+      ["linked parts with a remainder box", boxes({ kind: "linked", pair: [div, arith("add", 2, 3)] } as never, [place("3"), place("2"), place("5")])],
+      ["equal numbers", boxes(arith("add", 2, 3), [place("5"), work("5.0"), tick("05")])],
+      ["equal numbers in the answer place", boxes(arith("add", 2, 3), [place("5.0")])],
+      ["a tenths box", boxes(arith("add", 2, 3), [place("5", { place: "ones" }), place("0", { place: "tenths" })])],
+    ];
+    for (const [label, page] of passes) {
+      const out = runPair(page, structuredClone(page));
+      expect([out.page.status, out.page.result_reason], label).toEqual(["double_read", null]);
+    }
+  });
+
+  it("gives a place for a one-sided entry only when it is sure, and no reader value that it cannot find", () => {
+    const ex = (label: string, x: number) =>
+      solved({ label }, { expr: { kind: "arith", op: "add", operands: [x, 3] }, shown_answer: String(x + 3) });
+    const [one, two, three] = [ex("First", 2), ex("Second", 4), ex("Third", 6)];
+    const missingMiddle = runPair(pageOf([], [one, three]), pageOf([], [one, two, three]));
+    expect(missingMiddle.page.once_read).toEqual([
+      expect.objectContaining({ path: "examples[b:1]", reader: "b", reader_b_after: 1, reader_b_before: 3 }),
+    ]);
+    expect(missingMiddle.page.once_read[0].final_path).toBeUndefined();
+    expect(missingMiddle.md).toContain("`examples[b:1]`: reader b has it after example 1 and before example 3");
+    const missingLast = runPair(pageOf([], [one, two]), pageOf([], [one, two, three]));
+    expect(missingLast.page.once_read).toEqual([
+      expect.objectContaining({ path: "examples[b:2]", reader: "b", final_path: "examples[]" }),
+    ]);
+    expect(missingLast.page.once_read[0].reader_b_after).toBeUndefined();
+
+    // An edited page: the section of the edited record has no partner in the readings.
+    const open = (instruction: string, n: number, answer: string | null): PageSection => ({
+      instruction,
+      scaffolds: [],
+      items: [sum([place(answer, { position: "after_equals" })], { n, printed: "x + 1", expr: { kind: "notation", latex: "x + 1" } })],
+    });
+    const edited = (n: number) => {
+      const page = pageOf([], [], [open("Find x.", n, "7")]);
+      const changed = pageOf([], [], [open("Work it out.", n, null)]);
+      return runPair(page, structuredClone(page), (path) => writeFileSync(path, JSON.stringify(changed)));
+    };
+    // Item 1 is the only item 1 of the page; item 11 is in two sections.
+    expect(edited(1).page.empty_answer).toEqual([
+      { path: "sections[1].items[n=1].responses[0]", a: "7", b: "7", kind: "empty_answer" },
+    ]);
+    const lost = edited(11);
+    expect(lost.page.empty_answer).toEqual([{ path: "sections[1].items[n=11].responses[0]", kind: "empty_answer" }]);
+    expect(lost.md).toContain("`sections[1].items[n=11].responses[0]`: a=not available | b=not available");
   });
 });

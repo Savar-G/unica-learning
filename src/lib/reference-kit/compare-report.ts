@@ -33,6 +33,11 @@ function formatVal(v: unknown): string {
   return JSON.stringify(v);
 }
 
+// A reader's value at a place that cannot be found in its reading is not null.
+function formatReaderVal(v: unknown): string {
+  return v === undefined ? "not available" : formatVal(v);
+}
+
 export function formatAgreementPercent(percent: number | null): string {
   if (percent === null) return "-";
   return Number.isInteger(percent) ? `${percent}%` : `${percent.toFixed(1)}%`;
@@ -116,7 +121,8 @@ function hasReaderBNeighbours(d: RecordDifference): boolean {
 }
 
 function formatReaderBNeighbours(d: RecordDifference): string {
-  const noun = d.path.startsWith("topics[") ? "topic" : "item";
+  const list = /([a-z]+)\[(?:b:|n=)\d+\]$/.exec(d.path)?.[1] ?? "items";
+  const noun = list.replace(/s$/, "");
   const after = d.reader_b_after ?? null;
   const before = d.reader_b_before ?? null;
   if (after !== null && before !== null) {
@@ -481,7 +487,7 @@ export function formatCompareReportMarkdown(report: CompareWorkReport): string {
     if (emptyAnswers.length > 0) {
       lines.push(`- Answer places with no answer${reviewInstruction(p.status, "empty_answer_heading")}:`);
       for (const d of emptyAnswers) {
-        lines.push(`  - \`${d.path}\`: a=${formatVal(d.a)} | b=${formatVal(d.b)}`);
+        lines.push(`  - \`${d.path}\`: a=${formatReaderVal(d.a)} | b=${formatReaderVal(d.b)}`);
       }
     }
 

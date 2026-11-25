@@ -42,6 +42,8 @@ describe("findExampleAnswerConflicts", () => {
       [chain([2, null, 6, null], 2), "4 8"],
       [chain([2, null, 6, null], 2), "2 → 4 → 6 → 8"],
       [chain([2, null, 6, null], 2), "8"],
+      [chain([2, null, 6, null], 2), "04"],
+      [pair, "5"],
       [chain([990, null, 1010], 10), "1,000"],
       [chain([null, null, 300], 100), "100,200"],
       [chain([2, null, -2], -2), "0"],
@@ -67,6 +69,9 @@ describe("findExampleAnswerConflicts", () => {
       [chain([2, null, 6, null], 2), "4, 6", "4, 8"],
       [chain([2, null, 6, null], 2), "2, 4, 6, 9", "4, 8"],
       [chain([2, null, 6, null], 2), "99", "4, 8"],
+      [chain([2, null, 6, null], 2), "6", "4, 8"],
+      [chain([2, null, 6, null], 2), "2, 4, 6", "4, 8"],
+      [pair, "8 R2", "5, 8 R1"],
       [chain([2, null, 6, null], 2), "8, 4", "4, 8"],
       [chain([9, null, 5], -2), "11", "7"],
       [chain([990, null, 1010], 10), "1,001", "1000"],
@@ -94,6 +99,9 @@ describe("findExampleAnswerConflicts", () => {
       ["quotient with remainder", [part(div(17, 2))], steps(["answer", "8 r 1"], ["remainder", "1"])],
       ["quotient, then remainder", [part(div(17, 2))], steps(["answer", "8"], ["remainder", "R1"])],
       ["remainder as a difference", [part(div(17, 2))], steps(["remainder", "17 − 16 = 1"], ["remainder", "8 R1"])],
+      ["remainder forms", [part(div(17, 2))], steps(["remainder", "R 1"], ["remainder", "r1"], ["remainder", "R = 1"], ["remainder", "1 = 1"], ["answer", "R1"])],
+      ["equal numbers", [part(add(2, 3))], steps(["answer", "05"], ["answer", "5.0"], ["answer", "5 = 5"])],
+      ["words at a remainder", [part(div(17, 2))], steps(["remainder", "Remainder 9"])],
       ["no remainder", [part(div(16, 2))], steps(["remainder", "0"])],
       ["chain values step by step", [part(chain([2, null, 6, null], 2))], steps(["answer", "4"], ["answer", "8"])],
       ["several parts", [part(add(2, 3)), part(add(4, 4))], steps(["answer", "5"], ["answer", "8"])],
@@ -114,8 +122,13 @@ describe("findExampleAnswerConflicts", () => {
       ["wrong beside a right shown answer", [part(add(2, 3), "5")], steps(["answer", "6"]), 'step prints "6", computed "5"'],
       ["far off", [part(add(2, 3))], steps(["answer", "99"]), 'step prints "99", computed "5"'],
       ["after an equals sign", [part(add(2, 3))], steps(["answer", "= 6"]), 'step prints "= 6", computed "5"'],
-      ["as an equation", [part(add(2, 3))], steps(["answer", "2 + 3 = 6"]), 'computed "5"'],
-      ["an equation that is false", [part(add(2, 3))], steps(["answer", "4 + 3 = 5"]), 'computed "5"'],
+      ["as an equation", [part(add(2, 3))], steps(["answer", "2 + 3 = 6"]), 'computed "5" for its left side'],
+      ["an equation that is false", [part(add(2, 3))], steps(["answer", "4 + 3 = 5"]), 'step prints "4 + 3 = 5", computed "7" for its left side'],
+      ["a false equation in a remainder step", [part(div(17, 2))], steps(["remainder", "17 - 16 = 2"]), 'computed "1" for its left side'],
+      ["two sides", [part(add(2, 3))], steps(["answer", "5 = 99"]), 'computed "5"'],
+      ["a remainder with its letter and sign", [part(div(17, 2))], steps(["remainder", "R = 2"]), 'computed remainder "1"'],
+      ["a remainder in an answer step", [part(div(17, 2))], steps(["answer", "r9"]), 'computed remainder "1"'],
+      ["a printed term of a chain", [part(chain([2, null, 6], 2), "4")], steps(["answer", "6"]), 'computed "4"'],
       ["a decimal for a whole answer", [part(add(2, 3))], steps(["answer", "5.5"]), 'computed "5"'],
       ["a wrong remainder", [part(div(17, 2), "8 R1")], steps(["answer", "8"], ["remainder", "2"]), 'step prints "2", computed remainder "1"'],
       ["the quotient as the remainder of an exact division", [part(div(16, 2), "8")], steps(["remainder", "8"]), 'computed remainder "0"'],
@@ -132,6 +145,24 @@ describe("findExampleAnswerConflicts", () => {
       expect(found[0], label).toContain(text);
       expect(found[0], label).toMatch(/^examples\[0\]\.steps\[n=\d\]\.printed: /);
     }
+  });
+
+  it("checks an example that stores its question as notation or not at all by its one setup line", () => {
+    const shown = (expr: Expr | null, answer: string, ...lines: string[]): number =>
+      conflicts([part(expr, answer)], steps(...lines.map((l): [ExampleStep["shows"], string] => ["setup", l]))).length;
+    const two: SimpleExpr = { kind: "notation", latex: "2 + 3" };
+    expect([shown(null, "99", "2 + 3 ="), shown(two, "99", "2 + 3 ="), shown(null, "99", "2, \u25A1, 6")]).toEqual([1, 1, 1]);
+    const passes: Array<[Expr | null, string, ...string[]]> = [
+      [null, "5", "2 + 3 ="],
+      [two, "5", "2 + 3 = 5"],
+      [null, "five", "2 + 3 ="],
+      [null, "99", "Add 2 and 3."],
+      [null, "99", "2 + 3 =", "4 + 5 ="],
+      [null, "3 2/5", "17 \u00F7 5 ="],
+      [notation, "99", "2 + 3 ="],
+      [two, "99"],
+    ];
+    for (const [expr, answer, ...lines] of passes) expect(shown(expr, answer, ...lines), `${answer} ${lines.join()}`).toBe(0);
   });
 
   it("property: a right chain and right steps pass, and one changed value is always listed", () => {

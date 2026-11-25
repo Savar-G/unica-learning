@@ -1573,7 +1573,9 @@ describe("worked-example step alignment and wording differences", () => {
       const placeB = makePage();
       placeA.sections[0].scaffolds = [{ kind: "answer_boxes", applies_to: [1], places: [...placesA] }];
       placeB.sections[0].scaffolds = [{ kind: "answer_boxes", applies_to: [1], places: [...placesB] }];
-      expect(compareRecords(placeA, placeB), `${placesA[0]} vs ${placesB[0]}`).toEqual([
+      // (The place of the answer differs too; see "never pairs two entries" in compare-batch.test.ts.)
+      const scaffoldDiffs = compareRecords(placeA, placeB).filter((d) => d.path.includes("scaffolds"));
+      expect(scaffoldDiffs, `${placesA[0]} vs ${placesB[0]}`).toEqual([
         {
           path: "sections[0].scaffolds[0].places[0]",
           a: placesA[0],

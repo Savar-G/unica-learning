@@ -1,4 +1,4 @@
-import type { Example, ExamplePart, PageRecord, PageSection, ReferenceRecord } from "@/lib/reference-record";
+import type { Example, ExamplePart, PageItem, PageRecord, PageSection } from "@/lib/reference-record";
 import { isConcreteAnswer } from "./answer-text";
 import { normalizeNotationText, normalizeProseText } from "./normalize";
 
@@ -75,15 +75,34 @@ export function pairRemainingExamples(
   });
 }
 
-// A path that names a section of one record, with the number that the paired section has in another
-// record. Null when the other record has no such section.
-export function sectionPathIn(path: string, from: ReferenceRecord | null, to: ReferenceRecord | null): string | null {
-  const match = /^sections\[(\d+)\]/.exec(path);
-  if (!match || from?.kind !== "page" || to?.kind !== "page") return path;
-  const idx = pairedSection(from, to, Number(match[1]));
-  return idx === null ? null : `sections[${idx}]${path.slice(match[0].length)}`;
-}
-
 export function pairedSection(from: PageRecord, to: PageRecord, index: number): number | null {
   return pairSections(from.sections, to.sections).find(([i]) => i === index)?.[1] ?? null;
+}
+
+// The item of `to` that is item n of a section of `from`: in the paired section, or anywhere when
+// each page has one item with that number. Undefined when it cannot be known.
+export function pairedItem(from: PageRecord, to: PageRecord, section: number, n: number): PageItem | undefined {
+  const idx = pairedSection(from, to, section);
+  const own = idx === null ? undefined : to.sections[idx].items.find((item) => item.n === n);
+  if (own) return own;
+  const numbered = (page: PageRecord): PageItem[] =>
+    page.sections.flatMap((sec) => sec.items.filter((item) => item.n === n));
+  const found = numbered(to);
+  return numbered(from).length === 1 && found.length === 1 ? found[0] : undefined;
+}
+
+// Where an entry that only reader B has belongs in reader A's list. It is sure only right after
+// reader A's last entry, when every entry of reader A is the same as the one at that place in reader
+// B's list. In all other cases the entry gets its neighbours in reader B's own list (numbered from 1).
+export function readerBPlace(
+  j: number,
+  lengthA: number,
+  lengthB: number,
+  pairs: ReadonlyMap<number, number>,
+  equalA: ReadonlySet<number>,
+): { reader_b_after: number | null; reader_b_before: number | null } | Record<string, never> {
+  const afterAll =
+    j === lengthA && Array.from({ length: lengthA }, (_, i) => pairs.get(i) === i && equalA.has(i)).every(Boolean);
+  if (afterAll) return {};
+  return { reader_b_after: j > 0 ? j : null, reader_b_before: j + 1 < lengthB ? j + 2 : null };
 }

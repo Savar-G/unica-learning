@@ -6,10 +6,11 @@ import {
   type Expr,
   type PageItem,
   type PageRecord,
+  type PageSection,
   type ReferenceRecord,
 } from "@/lib/reference-record";
-import { applyComputedAnswers, findEmptyAnswers } from "./answers";
-import { pairSections, sectionPathIn } from "./compare-align";
+import { applyComputedAnswers, findEmptyAnswers, scaffoldPlaces } from "./answers";
+import { pairedItem, pairSections, readerBPlace } from "./compare-align";
 import {
   ANSWER_DISAGREEMENT_REASON,
   EXPRESSION_DISAGREEMENT_REASON,
@@ -27,7 +28,6 @@ import {
   isOneSidedNumberedEntry,
   locateNumberedDiff,
   locateOnceRead,
-  resolveDiffPath,
   resolveSingleReadPaths,
   stripKeptRecordLocations,
 } from "./compare-locate";
@@ -109,11 +109,13 @@ export function agreementPercentage(agreed: number, compared: number): number | 
 
 function comparePageItems(
   path: string,
-  aItems: readonly PageItem[],
-  bItems: readonly PageItem[],
+  sectionA: PageSection,
+  sectionB: PageSection,
   diffs: RecordDifference[],
   counts?: CompareCounts,
 ): void {
+  const aItems = sectionA.items;
+  const bItems = sectionB.items;
   const aMap = new Map<number, PageItem>();
   const bMap = new Map<number, PageItem>();
   const orderedNs: number[] = [];
@@ -177,7 +179,13 @@ function comparePageItems(
 
     compareField(`${iPath}.form`, ia.form, ib.form, {}, diffs, counts);
     compareExpr(`${iPath}.expr`, ia.expr, ib.expr, diffs, counts);
-    compareResponses(`${iPath}.responses`, ia.responses, ib.responses, diffs, counts);
+    compareResponses(
+      `${iPath}.responses`,
+      { list: ia.responses, scaffoldPlaces: scaffoldPlaces(ia, sectionA.scaffolds) },
+      { list: ib.responses, scaffoldPlaces: scaffoldPlaces(ib, sectionB.scaffolds) },
+      diffs,
+      counts,
+    );
   }
 }
 
@@ -193,6 +201,7 @@ function comparePageRecords(
   compareExamples("examples", a.examples, b.examples, diffs, counts);
 
   const sectionPairs = new Map(pairSections(a.sections, b.sections));
+  const equalSections = new Set<number>();
   a.sections.forEach((sa, si) => {
     const sPath = `sections[${si}]`;
     const idxB = sectionPairs.get(si);
@@ -201,6 +210,7 @@ function comparePageRecords(
       return;
     }
     const sb = b.sections[idxB];
+    const before = diffs.length;
     compareField(
       `${sPath}.instruction`,
       sa.instruction,
@@ -217,12 +227,14 @@ function comparePageRecords(
       { a: sa.items.map((item) => item.n), b: sb.items.map((item) => item.n) },
       counts,
     );
-    comparePageItems(`${sPath}.items`, sa.items, sb.items, diffs, counts);
+    comparePageItems(`${sPath}.items`, sa, sb, diffs, counts);
+    if (diffs.slice(before).every((d) => d.kind === "wording")) equalSections.add(si);
   });
   const pairedSections = new Set(sectionPairs.values());
   b.sections.forEach((sb, si) => {
     if (pairedSections.has(si)) return;
-    recordDiff(diffs, { path: `sections[b:${si}]`, a: null, b: sb, kind: "once_read" }, counts);
+    const placeB = readerBPlace(si, a.sections.length, b.sections.length, sectionPairs, equalSections);
+    recordDiff(diffs, { path: `sections[b:${si}]`, a: null, b: sb, kind: "once_read", ...placeB }, counts);
   });
 }
 
@@ -329,9 +341,12 @@ export function emptyAnswerDiffs(
 ): RecordDifference[] {
   // The same rule as reference:check: answer places are judged after computed answers are applied.
   const computed = finalRecord ? applyComputedAnswers(finalRecord).record : null;
+  // The answer of a reader at that place; undefined when the place cannot be found in its reading.
   const answerOf = (reader: ReferenceRecord | null, path: string): unknown => {
-    const readerPath = sectionPathIn(path, finalRecord, reader);
-    return reader && readerPath ? (resolveDiffPath(reader, `${readerPath}.answer`).value ?? null) : null;
+    const match = /^sections\[(\d+)\]\.items\[n=(\d+)\]\.responses\[(\d+)\]$/.exec(path);
+    if (!match || finalRecord?.kind !== "page" || reader?.kind !== "page") return undefined;
+    const item = pairedItem(finalRecord, reader, Number(match[1]), Number(match[2]));
+    return item?.responses[Number(match[3])]?.answer;
   };
   return findEmptyAnswers(computed).map((path) => ({
     path,

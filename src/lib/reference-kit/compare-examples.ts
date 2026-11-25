@@ -6,7 +6,7 @@ import {
   type ExampleStep,
   type ReferenceRecord,
 } from "@/lib/reference-record";
-import { atDifferentEnds, pairExampleParts, pairRemainingExamples } from "./compare-align";
+import { atDifferentEnds, pairExampleParts, pairRemainingExamples, readerBPlace } from "./compare-align";
 import {
   checkSentinels,
   compareExpr,
@@ -332,6 +332,7 @@ function compareSingleExample(
   compareField(`${path}.cross_ref`, a.cross_ref, b.cross_ref, { teaching: true, mode: "prose" }, diffs, counts);
 
   const partPairs = new Map(pairExampleParts(a.parts, b.parts));
+  const equalParts = new Set<number>();
   a.parts.forEach((pa, i) => {
     const pPath = `${path}.parts[${i}]`;
     const idxB = partPairs.get(i);
@@ -340,15 +341,18 @@ function compareSingleExample(
       return;
     }
     const pb = b.parts[idxB];
+    const before = diffs.length;
     compareField(`${pPath}.caption`, pa.caption, pb.caption, { teaching: true, mode: "prose" }, diffs, counts);
     compareField(`${pPath}.form`, pa.form, pb.form, {}, diffs, counts);
     compareExpr(`${pPath}.expr`, pa.expr, pb.expr, diffs, counts);
     compareField(`${pPath}.shown_answer`, pa.shown_answer, pb.shown_answer, { teaching: true }, diffs, counts);
+    if (diffs.slice(before).every((d) => d.kind === "wording")) equalParts.add(i);
   });
   const pairedParts = new Set(partPairs.values());
   b.parts.forEach((pb, i) => {
     if (pairedParts.has(i)) return;
-    recordDiff(diffs, { path: `${path}.parts[b:${i}]`, a: null, b: pb, kind: "once_read" }, counts);
+    const placeB = readerBPlace(i, a.parts.length, b.parts.length, partPairs, equalParts);
+    recordDiff(diffs, { path: `${path}.parts[b:${i}]`, a: null, b: pb, kind: "once_read", ...placeB }, counts);
   });
 
   const stepAlignment = compareExampleSteps(`${path}.steps`, a.steps, b.steps, diffs, counts);
@@ -437,18 +441,22 @@ export function compareExamples(
     usedB.add(remainingB[j]);
   }
 
+  const equalExamples = new Set<number>();
   aList.forEach((exA, idxA) => {
     const matchIdx = matchedBForA.get(idxA);
     if (matchIdx === undefined) {
       recordDiff(diffs, { path: `${path}[${idxA}]`, a: exA, b: null, kind: "once_read" }, counts);
     } else {
+      const before = diffs.length;
       compareSingleExample(`${path}[${idxA}]`, exA, bList[matchIdx], diffs, counts);
+      if (diffs.slice(before).every((d) => d.kind === "wording")) equalExamples.add(idxA);
     }
   });
 
   bList.forEach((exB, idxB) => {
     if (!usedB.has(idxB)) {
-      recordDiff(diffs, { path: `${path}[b:${idxB}]`, a: null, b: exB, kind: "once_read" }, counts);
+      const placeB = readerBPlace(idxB, aList.length, bList.length, matchedBForA, equalExamples);
+      recordDiff(diffs, { path: `${path}[b:${idxB}]`, a: null, b: exB, kind: "once_read", ...placeB }, counts);
     }
   });
 }

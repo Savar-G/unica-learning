@@ -62,6 +62,15 @@ describe("findUnprovedAnswers", () => {
       ["the value in two places with one name", add(2, 3), [named("ones", "5"), named("ones", "5")]],
       ["the value and one digit", add(5, 6), [box("11"), named("tens", "1")]],
       ["quotient and remainder", div(17, 2), [box("8"), box("1")]],
+      ["named quotient and remainder", div(17, 2), [named("quotient", "8"), named("remainder", "1")]],
+      ["named remainder first", div(17, 2), [named("remainder", "1"), named("quotient", "8")]],
+      ["a quotient box only", div(17, 2), [named("quotient", "8")]],
+      ["one of the two named", div(17, 2), [box("8"), named("remainder", "1")]],
+      ["linked parts with a remainder place", { kind: "linked", pair: [div(17, 5), add(2, 3)] }, [box("3"), box("2"), box("5")]],
+      ["a part of a linked part in the working space", { kind: "linked", pair: [div(17, 5), add(2, 3)] }, [box("3 R2"), box("5"), work("2")]],
+      ["equal numbers", add(500, 500), [box("1,000"), box("01000"), work("1000.0"), tick("= 1000")]],
+      ["ones and tenths", add(2, 3), [named("ones", "5"), named("tenths", "0")]],
+      ["ones and tenths of a division", div(16, 2), [named("ones", "8"), named("tenths", "0")]],
       ["quotient and remainder 0", div(16, 2), [box("8"), box("0")]],
       ["one division answer", div(17, 2), [box("8r1")]],
       ["chain blanks", chain(2, 4, null, 8, null), [box("6"), box("10")]],
@@ -100,7 +109,12 @@ describe("findUnprovedAnswers", () => {
       ["a wrong digit beside the value", add(5, 6), [box("11"), named("tens", "2")], 'hold "11", "2"'],
       ["no answer place", add(2, 3), [tick(), work(null)], 'no answer place for the computed answer "5"'],
       ["a tick box only", add(2, 3), [tick()], "no answer place"],
-      ["no answer place and a wrong working space", add(2, 3), [tick(), work("6")], "no answer place"],
+      ["no number of a division in the working space", div(17, 5), [box("3 R2"), work("4")], '`responses'],
+      ["a wrong named remainder", div(17, 5), [box("3"), named("remainder", "4")], 'hold "3", "4", computed "3 R2"'],
+      ["names that do not fit the order", div(17, 5), [named("remainder", "3"), box("2")], 'hold "3", "2"'],
+      ["linked parts with a wrong remainder place", { kind: "linked", pair: [div(17, 5), add(2, 3)] }, [box("3"), box("4"), box("5")], 'computed "3 R2", "5"'],
+      ["a tenths box that is not 0", add(2, 3), [named("ones", "5"), named("tenths", "5")], 'hold "5", "5"'],
+      ["only decimal boxes", add(2, 3), [named("tenths", "0"), named("hundredths", "0")], 'hold "0", "0"'],
       ["several digit boxes with no names", add(2, 3), [box("5"), box("5")], 'hold "5", "5"', boxes(2)],
       ["two quotients", div(16, 2), [box("8"), box("8")], 'hold "8", "8", computed "8"'],
       ["a wrong remainder place", div(17, 2), [box("8"), box("2")], 'hold "8", "2", computed "8 R1"'],
@@ -115,9 +129,40 @@ describe("findUnprovedAnswers", () => {
     for (const [label, expr, responses, text, scaffolds] of stops) {
       const found = listed(expr, responses, scaffolds);
       expect(found, label).toHaveLength(1);
-      if (text === "`responses") expect(found[0], label).toMatch(/^sections\[0\]\.items\[n=1\]\.responses\[1\]: holds "[67]", computed "[56]"$/);
+      if (text === "`responses") expect(found[0], label).toMatch(/^sections\[0\]\.items\[n=1\]\.responses\[1\]: holds "[467]", computed "(5|6|3 R2)"$/);
       else expect(found[0], label).toContain(text);
     }
+  });
+
+  it("lists a wrong number in the working space also when the answer places are unproved", () => {
+    expect(listed(add(2, 3), [box("7"), box("8"), work("9")])).toEqual([
+      'sections[0].items[n=1]: answer places hold "7", "8", computed "5"',
+      'sections[0].items[n=1].responses[2]: holds "9", computed "5"',
+    ]);
+    expect(listed(add(2, 3), [tick(), work("6")])).toHaveLength(2);
+  });
+
+  it("checks the answers of a question that is stored as notation by its printed line", () => {
+    const noted = (printed: string, latex: string, ...answers: string[]): number =>
+      findUnprovedAnswers(
+        pageOf([{ n: 1, printed, form: "horizontal", expr: { kind: "notation", latex }, responses: answers.map((a) => box(a)) }]),
+      ).length;
+    expect([
+      noted("2 + 3 =", "2 + 3", "99"),
+      noted("2 + 3 =", "2 + 3", "5", "6"),
+      noted("\u25A1 + 3 = 8", "\\square + 3 = 8", "8"),
+      noted("2, \u25A1, 6", "2, \u25A1, 6", "5"),
+    ]).toEqual([1, 1, 1, 1]);
+    const passes: Array<[string, string, ...string[]]> = [
+      ["2 + 3 =", "2 + 3", "5.0"],
+      ["\u25A1 + 3 = 8", "\\square + 3 = 8", "5"],
+      ["2 + 3 =", "2 + 3", "five"],
+      ["17 \u00F7 5 =", "17 \\div 5", "3.4"],
+      ["Find the sum.", "2 + 3", "99"],
+      ["1/2 + 1/4 =", "\\frac{1}{2} + \\frac{1}{4}", "99"],
+      ["0.5 + 0.25 =", "0.5 + 0.25", "99"],
+    ];
+    for (const row of passes) expect(noted(...row), row.join(" | ")).toBe(0);
   });
 
   // One correct item in one of the forms in which a page can ask for its answer.
@@ -132,10 +177,10 @@ describe("findUnprovedAnswers", () => {
       op: fc.constantFrom<ArithOp>("add", "sub", "mul", "div"),
       a: fc.integer({ min: 0, max: 999 }),
       b: fc.integer({ min: 1, max: 99 }),
-      form: fc.constantFrom("one", "named", "scaffold", "twice", "working", "sole", "parts"),
+      form: fc.constantFrom("one", "named", "scaffold", "twice", "working", "filled work", "sole", "parts", "named parts", "linked", "linked parts", "tenths"),
     })
-    .map(({ op, a: first, b, form }) => {
-      const a = op === "sub" ? first + b : first;
+    .map(({ op, a: drawnA, b, form }) => {
+      const a = op === "sub" ? drawnA + b : drawnA;
       const q = Math.floor(a / b);
       const r = a % b;
       const value = { add: String(a + b), sub: String(a - b), mul: String(a * b), div: r === 0 ? String(q) : `${q} R${r}` }[op];
@@ -152,9 +197,22 @@ describe("findUnprovedAnswers", () => {
       if (form === "working") responses = [box(value), work(null)];
       if (form === "sole" && digits) responses = [work(value)];
       if (form === "parts" && op === "div") responses = [box(String(q)), box(String(r))];
+      if (form === "filled work") responses = [box(value), work(op === "div" ? String(r) : value)];
+      if (form === "named parts" && op === "div") responses = [named("remainder", String(r)), named("quotient", String(q))];
+      if (form === "tenths" && digits && digits.length === 1) responses = [named("ones", value), named("tenths", "0")];
       const printed = `${a} ${SIGNS[op]} ${b} =`;
       const expr: SimpleExpr = { kind: "arith", op, operands: [a, b] };
-      return { item: { n: 1, printed, form: "horizontal", expr, responses }, scaffolds, shown: value };
+      if (form !== "linked" && form !== "linked parts") {
+        return { item: { n: 1, printed, form: "horizontal", expr, responses }, scaffolds, shown: value };
+      }
+      const linked: Expr = { kind: "linked", pair: [expr, add(a, 1)] };
+      const first = form === "linked parts" && op === "div" ? [box(String(q)), box(String(r))] : [box(value)];
+      const linkedItem = { n: 1, printed: `${printed}   ${a} + 1 =`, form: "horizontal" as const, expr: linked };
+      return {
+        item: { ...linkedItem, responses: [...first, box(String(a + 1)), work(String(a + 1))] },
+        scaffolds,
+        shown: `${value}, ${a + 1}`,
+      };
     });
   const pageFrom = (drawn: Drawn): PageRecord =>
     pageOf([structuredClone(drawn.item)], drawn.scaffolds, [
@@ -163,7 +221,7 @@ describe("findUnprovedAnswers", () => {
         relation: "sequence",
         parts: [{ form: "horizontal", expr: structuredClone(drawn.item.expr), shown_answer: drawn.shown }],
         steps: [
-          { n: 1, shows: "setup", printed: drawn.item.printed },
+          { n: 1, shows: "setup", printed: drawn.item.printed.split("   ")[0] },
           { n: 2, shows: "answer", printed: drawn.shown },
         ],
         marks: [],
@@ -198,9 +256,14 @@ describe("findUnprovedAnswers", () => {
         const example = Array.isArray(page.examples) ? page.examples[0] : null;
         const answered = item.responses.filter((resp) => resp.answer !== null);
         const resp = answered[at % answered.length];
-        if (what === "answer") resp.answer = resp.place ? String((Number(resp.answer) + delta) % 10) : bump(String(resp.answer), delta);
+        // A number in the working space may be any value of the item, so it gets one that is none.
+        const more = resp.position === "work_area" ? 10_000_000 : delta;
+        const isDigit = typeof resp.place === "string" && /s$/.test(resp.place);
+        if (what === "answer") resp.answer = isDigit ? String((Number(resp.answer) + delta) % 10) : bump(String(resp.answer), more);
         if (what === "shown" && example) example.parts[0].shown_answer = bump(drawn.shown, delta);
         if (what === "step" && Array.isArray(example?.steps)) example.steps[1].printed = bump(drawn.shown, delta);
+        // The printed line of a linked pair is two lines, which the parser does not take.
+        if (what === "printed" && drawn.item.expr?.kind === "linked") return;
         if (what === "printed") item.printed = bump(item.printed, delta);
         expect(stopsOf(page).length, `${what} ${JSON.stringify(item)}`).toBeGreaterThan(0);
       }),
