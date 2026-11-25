@@ -159,6 +159,23 @@ describe("rows of facts", () => {
     });
   });
 
+  it("that share a side do not repeat each other when the front used all that they have", () => {
+    const front = { id: "front", items: 18, limits: facts("mixed", [7, 8], [1, 9]) };
+    const sheet = sheetOf([front], [{ id: "seven", items: 9, limits: facts("mixed", [7], [1, 9]) }, { id: "both", items: 9, limits: facts("mixed", [7, 8], [1, 9]) }]);
+    children((child) => {
+      expect(new Set(questions(sheet, child, "back").map((q) => q.split(" ")[1])).size).toBe(18);
+    });
+  });
+
+  it("of a shape with a list take what is left from the list, also when each seed gives one question", () => {
+    const mul = SHAPES.get("fact.mul");
+    if (!mul) throw new Error("no shape");
+    const sheet = sheetOf([{ id: "row", items: 9, limits: facts("mixed", [7], [1, 9]) }]);
+    const stuck = { ...mul, generate: (limits: unknown) => mul.generate(limits, "one seed") };
+    const one: SnapshotSheet = { ...sheet, front: { ...sheet.front, rows: sheet.front.rows.map((row) => ({ ...row, shape: stuck })) } };
+    expect(new Set(questions(one, "child")).size).toBe(9);
+  });
+
   it("of a shape with no list come back on a side only when the row has no other left", () => {
     const limits = { ...(SHEET.front.rows[0].limits as object), a: { min: 11, max: 12 }, b: { min: 2, max: 3 } };
     const four = { items: 4, limits, shape: "mul.column" };
