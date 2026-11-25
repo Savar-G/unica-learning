@@ -238,7 +238,7 @@ describe("a division", () => {
     ["no remainder", 9, ({ answer: { parts } }) => parts.pop(), /by one computation and .* by another/],
     ["an empty remainder", 9, ({ answer: { parts } }) => { parts[1].value = ""; }, /the part "remainder" has the value "", which is no whole-number/],
     ["a page with no remainder area", 9, (_item, regions) => { question(regions).ink = question(regions).ink.filter((i) => i.kind !== "text" || i.text !== "R"); regions.find((r) => r.id.endsWith("answer-1-remainder"))!.rect.y += 400; }, /the printed question cannot be read as div\.remainder/],
-    ["another digit inside the bracket", 9, (_item, regions) => { textsOf(regions)[4].text = textsOf(regions)[4].text === "1" ? "2" : "1"; }, /by another|prints another question/],
+    ["another digit inside the bracket", 9, (_item, regions) => { textsOf(regions)[4].text = textsOf(regions)[4].text === "1" ? "2" : "1"; }, /the answer is "quotient \d, remainder \d" by one computation and "quotient \d, remainder \d" by another/],
     ["a divisor of 1", 9, (_item, regions) => { textsOf(regions)[1].text = "1"; }, /cannot be read as div\.remainder/],
     ["a page with one area and something left", 7, (_item, regions) => { textsOf(regions)[3].text = "3"; }, /cannot be read as div\.remainder/],
     ["a bracket with no sign", 7, (_item, regions) => { question(regions).ink = question(regions).ink.filter((i) => i.kind !== "text" || i.text !== ")"); }, /cannot be read as div\.remainder/],

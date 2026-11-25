@@ -1,6 +1,6 @@
 # Workbook engine v2
 
-The v2 engine turns a bank snapshot file into a book: page models, answers, a PDF, page images and the position of each rectangle. It is in `src/lib/workbook-v2/`, apart from the v1 generator, and it is not connected to the app yet. It holds ten shapes (addition, subtraction and multiplication in columns, the facts of +, - and ×, repeated addition, skip counting, a missing factor and a missing addend), seven page templates and invented sheets of all of them.
+The v2 engine turns a bank snapshot file into a book: page models, answers, a PDF, page images and the position of each rectangle. It is in `src/lib/workbook-v2/`, apart from the v1 generator, and it is not connected to the app yet. It holds thirteen shapes (addition, subtraction and multiplication in columns, the facts of +, -, × and ÷, repeated addition, skip counting, a missing factor, a missing addend, division with a remainder and long division), thirteen page templates and invented sheets of all of them.
 
 ## Use it
 
@@ -13,7 +13,7 @@ Run it from the repository root. The build uses no network. The output folder mu
 
 The command writes the whole book into a hidden folder beside the output folder and renames it in one step. The system refuses that step when the output folder holds something: of two processes one wins and the other stops. An error removes the hidden folder; a process that is killed can leave one (`.workbook-v2-*`), which is safe to delete.
 
-`snapshot-4-digits.json` and `book-4-digits.json` in the same folder are a sheet of the wide template. `snapshot-add-sub.json` and `book-add-sub.json` are a sheet of `add.column` and one of `sub.column`, each with a side of both column templates. `snapshot-facts.json` and `book-facts.json` are five sheets of facts, equations with a blank inside and sequences.
+`snapshot-4-digits.json` and `book-4-digits.json` in the same folder are a sheet of the wide template. `snapshot-add-sub.json` and `book-add-sub.json` are a sheet of `add.column` and one of `sub.column`, each with a side of both column templates. `snapshot-facts.json` and `book-facts.json` are five sheets of facts, equations with a blank inside and sequences. `snapshot-division.json` and `book-division.json` are eight sheets of divisions, in lines and in brackets.
 
 The snapshot file holds the content of one level. The book file holds the book id, the child id, and for each sheet the attempt and the text of the two QR codes. The caller makes all of these; the engine makes none. Both must be plain JSON data: the build reads a copy, and the hashes cover exactly that copy. An inherited, hidden or computed value is refused. A level name is a number, and a page number and the next one must be exact whole numbers.
 
@@ -45,9 +45,11 @@ The snapshot file holds the content of one level. The book file holds the book i
 
 ## Answer parts
 
-An answer is a list of `AnswerPart` in reading order, each with a name, a kind and a value (`contract.ts`). Each part has one answer area with one reach, and these rectangles carry the name of the part (`Region.part`). A question with one area calls its part `answer`, and the ids of its rectangles are as before (`answer-3`, `reach-3`). Other parts are in the id: `answer-3-blank-2`. A sequence names its parts `blank-1`, `blank-2` and so on; later shapes add `quotient` or `remainder`.
+An answer is a list of `AnswerPart` in reading order, each with a name, a kind and a value (`contract.ts`). Each part has one answer area with one reach, and these rectangles carry the name of the part (`Region.part`). A question with one area calls its part `answer`, and the ids of its rectangles are as before (`answer-3`, `reach-3`). Other parts are in the id: `answer-3-blank-2`. A sequence names its parts `blank-1`, `blank-2` and so on. A division with a remainder has the parts `quotient` and `remainder`, and a division that asks for the quotient only has `answer`.
 
-`checkPage` stops a part with no area or two, an area of no part, two areas that overlap, an area in the reach of another part, areas that a reader meets in another order than the parts, and a face whose blanks are not the parts. Each rectangle of a question belongs to a question of its page, the others belong to none, and the whole id of each one must be the page, its role, the number of the question and the part. Each answer area has exactly one outline, which is its rectangle; the image check looks for it. `checkPrintedAnswers` stops an answer with a bad form, and a value, a name or a kind in the wrong part. The last worked step is the value of each part, such as `20, 30`.
+`checkPage` stops a part with no area or two, an area of no part, two areas that overlap, an area in the reach of another part, areas that a reader meets in another order than the parts, and a face whose blanks are not the parts. Each rectangle of a question belongs to a question of its page, the others belong to none, and the whole id of each one must be the page, its role, the number of the question and the part. Each answer area has exactly one outline, which is its rectangle; the image check looks for it. `checkPrintedAnswers` stops an answer with a bad form, and a value, a name or a kind in the wrong part. The last worked step is the value of each part, such as `20, 30`, or `9 R1` for a quotient and a remainder (`answerLine`).
+
+Whether a division prints one area or two is the `remainder` limit of its row, and never its numbers: a row that can leave something prints both areas for each question, and the remainder 0 is the answer "0". So a page does not say which questions leave nothing. The instruction of such a side must say what to write then ("Write 0 after R when nothing is left."); it is content of the bank and nothing checks it. For marking (UNI-253): an empty remainder area beside a right quotient, when the remainder is 0, and a 0 in front of a quotient that stands over the bracket (`073`) need a rule.
 
 ## Faces and templates
 
@@ -58,6 +60,9 @@ A face is what a question looks like. The layout knows no math in it.
 | `column` | a stack of two numbers | one, directly below, with a work area |
 | `equation` | tokens on one line: texts and blanks | in the line, with no work area |
 | `sequence` | terms and blanks, one below the other | in the ladder of terms, with no work area |
+| `bracket` | a number inside a bracket and one outside it (`6)438`), with tokens above | the first one over the number inside, so that a digit can stand over each digit; the next one after a printed text in the same line |
+
+The sign of a bracket is a printed text, so the rows of a question are `□R□` and `6)438`: the two numbers never run together. A bracket says how many lines of work it needs (`workLines`): `checkPage` wants a work area below it with `PRINT_RULES.workLine` (18 points) for each line, and none when it is worked in the head.
 
 A place of a token template has fixed cells. A cell holds a text, an answer area, or either of them. A place can have more than one form, and the layout takes the form with an area for each blank; a question with fewer tokens takes the first or the last cells of it. No rectangle moves with the text.
 
@@ -68,10 +73,14 @@ A place of a token template has fixed cells. A cell holds a text, an answer area
 | `blanks-1x10` | 10 | a blank in the place of the first or second number, all areas in one column |
 | `sequences-2x2` | 4 | up to five terms, two columns |
 | `sequences-2x1` | 2 | up to ten terms, two columns |
+| `remainders-1x10` | 10 | seven tokens with two blanks (`37 ÷ 4 = □ R □`), two columns |
+| `brackets-2x6`, `-2x4`, `-2x3` | 12, 8, 6 | brackets with one area and room for no, three or six lines of work, two columns |
+| `brackets-1x4`, `-1x3` | 4, 3 | brackets with two areas and room for three or six lines of work, two columns |
 
 - A row is an answer area of the smallest size with its reach: 61.2 points. Ten rows fit between the instruction and the QR code; eleven or twelve do not.
 - A sequence goes down the page. On one line, five blanks need 600 points and there are 486; on a grid of lines the blanks stand in four columns, and a side may have two. Down the page each blank has its own area and reach, and all blanks of a side are in two columns.
-- Questions run down a column, so that a table in order reads down.
+- A side has two answer columns, so a bracket with a remainder stands alone in its row. An area with its reach and the number below it are 92 points high; the rest of the row is the work area.
+- Questions run down a column, so that a table in order reads down. Stacks and brackets run across.
 - `needsOf` says how large a question is, and `holds` how large a place is. `placeProblem` compares them for one place and looks for a form: the layout asks it for each question at the place where it is drawn. `fitProblem` asks it for all places of both sides; the bank check and the harness use it for the widest question of each form of a row (`formsOf`). A shape whose blanks can stand in more than one place gives the forms.
 - The child must be able to tell the rule of a sequence, so the instruction of a side with sequences says that the step stays the same ("The step stays the same. Write the missing numbers."). It is content of the bank: nothing checks it.
 
@@ -79,7 +88,7 @@ A place of a token template has fixed cells. A cell holds a text, an answer area
 
 A fact limit `tables` is stored as a set: the first numbers in rising order, such as `[2, 5, 10]`; a range is refused. The limit `order` is `mixed`, `up` or `down`. For the last two, `orderedRuns(limits, items)` gives every row that it can be: consecutive questions of one table (of the tables one after the other when no table is long enough). The seed of the row names the first of them, and the builder takes the next one when it repeats a question. A row is one decision, so a seed for each place could not make it, and the builder cannot sort a row into the order of a table because it knows no math. The difficulty of the questions is stored as always, the range of the limits still decides whether a row may stand below another one, and the sort of the side leaves the row alone.
 
-`swapped(question, limits)` gives the swapped form of a fact (7 × 5 for 5 × 7) and whether the limits allow it, or null (5 × 5, and every subtraction). Nothing prints it yet; the choice of unseen questions is UNI-258.
+`swapped(question, limits)` gives the swapped form of a fact (7 × 5 for 5 × 7) and whether the limits allow it, or null (5 × 5, and every subtraction). The swapped form of 35 ÷ 7 is 35 ÷ 5, with another answer (the registration says `swapChangesAnswer`); 49 ÷ 7, 7 ÷ 7 and 0 ÷ 7 have none. Nothing prints it yet; the choice of unseen questions is UNI-258.
 
 ## Repeats
 
@@ -89,6 +98,8 @@ For a shape with a list, `build/row-questions.ts` chooses the questions of all i
 - A row in order takes the first run, from the one that its seed names, that shares no question with the rows in order before it and leaves enough for all other rows. Then each place of a mixed row takes the question that its seed gives, or one of those that are left, each with the same chance. When none is left, an earlier place moves to another question (an augmenting path).
 - When the sides cannot be different, the back side uses as few questions of the front as its choice allows. When a side cannot be different, a question repeats, but never in one row.
 - A search looks at 20,000 choices of runs at most. Only a sheet with very many rows in order could need more; it is then treated as one with no choice.
+
+A shape that prints one question in more than one form gives its `identity`: for a division the two numbers, so that 37 ÷ 4 in a line and in a bracket, with one area or two, are one question.
 
 A shape with no list asks 500 times for a question that the sheet does not have, then takes one that the side or at least the row does not have. It stops as soon as the sheet has met as many different questions of these limits as `count` says and none of them is less used than the one it holds: more tries would give the same question. A book with a repeat is built: `notices` of the book, which the command prints, name each row that has a question of an earlier row of the side or of the front side. The bank check stops a row that asks for more questions than its own limits allow.
 
@@ -114,9 +125,24 @@ A subtraction has two more marks, both with `row: "top"`: "cross-out" strikes th
 | 2 - 1 = 1 | write 1 at 2 |
 | 155 | |
 
-The registration of a shape says how its answer is worked (`working`). A column stack must say `columns`.
+A division has four marks, each one digit at a place of the dividend and in a row: row 0 is the line of the quotient, and the rows of the work below the dividend count from 1. 614 ÷ 6 has these steps:
+
+| Text | Marks |
+|---|---|
+| 6 × 1 = 6, 6 × 2 = 12 is too much, write 1 | quotient 1 at 2, product 6 at 2 in row 1 |
+| 6 - 6 = 0, bring down 1, now 1 | rest 0 at 2 and bring-down 1 at 1, in row 2 |
+| 1 is less than 6, write 0, bring down 4, now 14 | quotient 0 at 1, bring-down 4 at 0 in row 2 |
+| 6 × 2 = 12, 6 × 3 = 18 is too much, write 2 | quotient 2 at 0, product 1 at 1 and 2 at 0, in row 3 |
+| 14 - 12 = 2 | rest 2 at 0 in row 4 |
+| 102 R2 | |
+
+The estimate of each digit says the largest multiple that fits and that the next one is too much. When the first digit is too small and more than two digits are there, the first step is `4 is less than 6, use 43`, with no marks; two digits that are the whole dividend are used together with no word. All words are in `SAY` (`shapes/division.ts`).
+
+The registration of a shape says how its answer is worked (`working`). A column stack must say `columns`, and a bracket must not.
 
 With `lines`, each step before the answer is one true equation with a whole number, nothing is drawn, and the value of each part is the result of some line.
+
+With `division` (`testing/division-steps.ts`), the checker starts from the printed dividend and divisor, in a line or in a bracket, and works on the paper. It wants as many printed areas as the answer has parts. Each digit of the dividend is used one time from the left. Each step must be the one that comes next: a multiple of the printed divisor that fits while the next one is said and is too much, the subtraction of exactly the part that the paper shows, the next digit brought down with the right number, or a 0 where the divisor does not fit, never in front of the quotient. The marks of each step must be exactly its digits at their places and rows, no step is left out, repeated or too many, the digits of the quotient are the first part, and the last rest is the remainder, or 0 when there is one part. No mark and no clause of a division may stand in columns or lines, and no mark of columns in a division.
 
 With `columns` (the harness checks each rule, `testing/steps-evaluator.ts` and `testing/step-marks.ts`):
 
@@ -132,7 +158,7 @@ A column face is also worked on its paper (`testing/step-marks.ts`); its printed
 - A column says exactly what the paper shows (`12 - 7`, or only the top number when nothing is below), and writes the digit that is left at its own place.
 - A zero in front of the answer is not written: the step says `write nothing` and has no marks. A first digit that became 0 with nothing below it has no step. Any other column with no step is refused.
 
-What the marks cannot say yet: rows and offsets for long division and two partial products. A later shape adds typed marks to `STEP_MARKS` (and its clause kind in the single list `CLAUSE_KINDS` in `testing/steps-evaluator.ts`, plus its check in `testing/step-marks.ts`) without changing the forms above or the shapes themselves.
+What the marks cannot say yet: two partial products. A later shape adds typed marks to `STEP_MARKS` (and its clause kind in the single list `CLAUSE_KINDS` in `testing/steps-evaluator.ts`, plus its check in `testing/step-marks.ts`) without changing the forms above or the shapes themselves.
 
 ## Limits and large spaces
 
@@ -144,6 +170,8 @@ A shape whose space is too large to list must not list it for each question. `mu
 
 A small space (`shapes/small-space.ts`) is listed for each question, and the shape gives the list to the builder.
 
+The three division shapes share `shapes/division.ts` (the method, its words, both forms and the `remainder` limit: "none", "any", "some" or a range, where a range that a word says is refused) and `shapes/division-rows.ts` (the second computation: it tries every quotient and remainder and wants exactly one pair). The `form` of a row is "line" or "bracket", never both. A divisor is never 0 or 1, and a dividend that is less than its divisor needs a `quotient` limit with 0. `div.fact` (99 questions) and `div.remainder` (432) are small spaces. `div.long` has 7,920 pairs of numbers and no list: the facts of each pair are bits that are made one time, and the pairs of the limits are counted and picked among in less than 0.1 ms. In `div.long`, `start` says whether the first digit is enough, `leftOver` counts the digits of the quotient before the last one that leave something, and `zeroInside` and `zeroAtEnd` are zeros of the quotient.
+
 ## Adding a shape
 
 1. Add one shape file in `shapes/` with `version: 1`, and the shape in `shapes/index.ts` (`SHAPES`).
@@ -152,7 +180,7 @@ A small space (`shapes/small-space.ts`) is listed for each question, and the sha
    - `read(rows)`: the answer, one feature for each limit, at least one width and every worked step with its marks (`step("2 × 4 = 8, write 8", "w8@0")`), computed from the printed rows in another way than the shape.
    - `space`: the list of every printed question, or the count and the ends for any limits. `listed` is a part of a large space whose questions are all inspected (2 and 3 digits of `mul.column`).
    - `cases` (the limits of each bank row must be one), `smallSpaces` with complete lists by hand, `witnesses` (for each limit a question inside and one that breaks only it), and the named lists.
-   - `working`, and only for a shape that has them: `ordered` (which limits ask for a row in order, and what comes after a question) and `swapped` (the printed swapped form).
+   - `working`, and only for a shape that has them: `ordered` (which limits ask for a row in order, and what comes after a question), `swapped` (the printed swapped form) and `swapChangesAnswer`.
    - Steps: the harness compares the whole list of steps and marks with the list of the reader, checks every clause of each step against the closed grammar (`testing/steps-evaluator.ts`), and checks the marks against the clauses and answer ("Steps" above).
 3. Run `npm run workbook:v2:fingerprints` (with `-- --shape <id>` for one shape), then `npx vitest run src/lib/workbook-v2/shapes --sequence.shuffle`.
 
@@ -164,7 +192,7 @@ The harness (`testing/shape-harness.ts`, with the step checks in `shape-steps.ts
 
 ## Tests
 
-`npx vitest run src/lib/workbook-v2` takes about 7 seconds and needs no browser, network or database. The tests that draw pages use the real Typst. In CI they run in the `engine` job (`Workbook engine` in `.github/workflows/ci.yml`), which installs the pinned Typst, runs `npm run check:guard`, runs `npm run engine:typecheck`, runs the engine tests, and reports the test time against the 15 s budget. In CI those tests fail when Typst is absent; on a laptop without it they are skipped and print the reason.
+`npx vitest run src/lib/workbook-v2` takes about 9 seconds and needs no browser, network or database. The tests that draw pages use the real Typst. In CI they run in the `engine` job (`Workbook engine` in `.github/workflows/ci.yml`), which installs the pinned Typst, runs `npm run check:guard`, runs `npm run engine:typecheck`, runs the engine tests, and reports the test time against the 15 s budget. In CI those tests fail when Typst is absent; on a laptop without it they are skipped and print the reason.
 
 ## In a Vercel function
 
@@ -178,4 +206,4 @@ The harness (`testing/shape-harness.ts`, with the step checks in `shape-steps.ts
 
 - Fit and ink checks (UNI-137): `checks/`; `readPageImage` gives the pixels of a page image and `checkImages` already reads each one.
 - The book job (UNI-260): see "In a Vercel function".
-- More shapes (UNI-237 part 2 and UNI-240): follow "Adding a shape" above. A new look of a question is a new `Face` and a template that takes it.
+- More shapes: follow "Adding a shape" above. A new look of a question is a new `Face` and a template that takes it.

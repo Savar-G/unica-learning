@@ -236,7 +236,7 @@ describe("a question in a bracket", () => {
     ["the area of the remainder in another line", 9, (p) => both(p, "remainder", 0, 4), /"answer-1-remainder" is not in the line of "answer-1-quotient"/],
     ["the areas in the other order", 9, (p) => { const [a, b] = ["answer-1-quotient", "answer-1-remainder"].map((n) => named(p, n)); [a.rect, b.rect] = [b.rect, a.rect]; }, /"answer-1-remainder" must come after "answer-1-quotient"/],
     ["no area of the remainder", 9, (p) => { p.regions = p.regions.filter((r) => !r.id.endsWith("/answer-1-remainder")); }, /question 1 has no "answer" rectangle for the part "remainder"/],
-    ["the letter R in a reach", 9, (p) => { const t = textAt(p, 0); t.rect = { ...t.rect, x: t.rect.x - 12 }; }, /"question-1" and "answer-1-quotient" overlap|enters the reach "reach-1-quotient"/],
+    ["the letter R in a reach", 9, (p) => { const t = textAt(p, 0); t.rect = { ...t.rect, x: t.rect.x - 12 }; }, /"question-1" enters the reach "reach-1-quotient"/],
     ["no letter R", 9, (p) => { textAt(p, 0).text = " "; }, /question 1 prints " \d\)\d\d" and must print "R\d\)\d\d"/],
     ["another sign", 9, (p) => { textAt(p, 2).text = "("; }, /and must print "R\d\)\d\d"/],
     ["two digits exchanged", 9, (p) => { const [a, b] = [textAt(p, 3), textAt(p, 4)]; a.text = `${a.text}${b.text}`; b.text = "1"; }, /question 1 prints/],

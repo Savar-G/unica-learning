@@ -93,7 +93,8 @@ class Paper {
   private subtract(clauses: ParsedStep["clauses"], marks: readonly StepMark[], product: number): string | null {
     const equation = clauseOf(clauses, "equation");
     const rest = this.part - product;
-    if (equation?.left !== `${this.part} - ${product}` || clauseOf(clauses, "too-much")) return `must subtract ${this.part} - ${product}`;
+    if (equation?.left !== `${this.part} - ${product}`) return `must subtract ${this.part} - ${product}`;
+    if (clauses.some((c) => !["equation", "bring-down", "now"].includes(c.kind))) return "must say only what is left";
     this.product = null;
     this.row += 1;
     return this.goOn(clauses, marks, [atRow("rest", this.row, this.place, rest)], rest);

@@ -37,9 +37,7 @@ const WIDEST: Omit<DivLongLimits, "form"> = { ...RANGES, remainder: "any", start
 
 /** The pairs of one divisor: one for each dividend. */
 const DIVIDEND_COUNT = DIVIDENDS.max - DIVIDENDS.min + 1;
-const dividendAt = (index: number): number => DIVIDENDS.min + (index % DIVIDEND_COUNT);
-const divisorAt = (index: number): number => DIVISORS.min + Math.floor(index / DIVIDEND_COUNT);
-const PAIRS = Array.from({ length: DIVIDEND_COUNT * (DIVISORS.max - DIVISORS.min + 1) }, (_, index) => ({ dividend: dividendAt(index), divisor: divisorAt(index) }));
+const PAIRS = Array.from({ length: DIVIDEND_COUNT * (DIVISORS.max - DIVISORS.min + 1) }, (_, index) => ({ dividend: DIVIDENDS.min + (index % DIVIDEND_COUNT), divisor: DIVISORS.min + Math.floor(index / DIVIDEND_COUNT) }));
 
 /** What the limits ask of a pair, next to its two numbers and its quotient. */
 interface Facts { dividendDigits: number; quotientDigits: number; remainder: number; leftOver: number; start: "one" | "two"; bringDownZero: boolean; zeroInside: boolean; zeroAtEnd: boolean; zeros: number }
@@ -100,6 +98,8 @@ function scoreOf(dividend: number, divisor: number, facts: Facts): number {
     .reduce((score, [value, size]) => score * size + value, quotientDigits);
 }
 
+const SCORES = Float64Array.from(PAIRS, ({ dividend, divisor }, index) => scoreOf(dividend, divisor, FACTS[index]));
+
 const item = (index: number, { form, remainder }: DivLongLimits): Item<DivisionQuestion> => {
   const question: DivisionQuestion = { ...PAIRS[index], form, parts: partsOf(remainder) };
   return { question, answer: answerOf(question) };
@@ -123,8 +123,8 @@ export const divLong: Shape<DivLongLimits, DivisionQuestion> = {
   count: (limits) => pairsOf(limits).length,
   difficulty: ({ dividend, divisor }) => scoreOf(dividend, divisor, factsOf(dividend, divisor)),
   difficultyRange(limits) {
-    const scores = pairsOf(limits).map((index) => scoreOf(dividendAt(index), divisorAt(index), FACTS[index]));
-    return { easiest: Math.min(...scores), hardest: Math.max(...scores) };
+    const scores = pairsOf(limits).map((index) => SCORES[index]);
+    return { easiest: scores.reduce((least, n) => Math.min(least, n)), hardest: scores.reduce((most, n) => Math.max(most, n)) };
   },
   worstCase(limits) {
     const widest = pairsOf(limits).reduce((most, index) => (widthOf(index) > widthOf(most) ? index : most));

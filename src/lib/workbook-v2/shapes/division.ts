@@ -30,8 +30,7 @@ export function placesOf(dividend: number, divisor: number): Place[] {
   let rest = first === 1 ? digits[0] : 0;
   return digits.slice(first).map((digit, i): Place => {
     const part = rest * 10 + digit;
-    let times = 0;
-    while ((times + 1) * divisor <= part) times++;
+    const times = Math.floor(part / divisor);
     rest = part - times * divisor;
     return { part, times, rest, next: digits.at(first + i + 1) ?? null };
   });
@@ -99,7 +98,7 @@ export const partsOf = (limit: RemainderLimit): 1 | 2 => (limit === "none" ? 1 :
 
 /** One meaning has one form: a range that a word says is refused. */
 export const readRemainder: ReadLimit = (raw, name) => {
-  const value = raw[name];
+  const value = Object.hasOwn(raw, name) ? raw[name] : undefined;
   if (typeof value === "string" && Object.hasOwn(WORDS, value)) return { value };
   if (!isRecord(value)) return { problem: `${name} must be "none" or "any" or "some" or a range` };
   const range = readRange(raw, name, REMAINDERS);
