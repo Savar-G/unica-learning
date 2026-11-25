@@ -159,6 +159,9 @@ describe("findExampleAnswerConflicts", () => {
       conflicts([part(expr, answer)], steps(...lines.map((l): [ExampleStep["shows"], string] => ["setup", l]))).length;
     const two: SimpleExpr = { kind: "notation", latex: "2 + 3" };
     expect([shown(null, "99", "2 + 3 ="), shown(two, "99", "2 + 3 ="), shown(null, "99", "2, \u25A1, 6")]).toEqual([1, 1, 1]);
+    const chainLine = "2, \u25A1, 6";
+    expect(["2, 5, 6", "2, 4, 6", "4", "count by twos"].map((answer) => shown(null, answer, chainLine))).toEqual([1, 0, 0, 0]);
+    expect(shown({ kind: "notation", latex: chainLine }, "2, 5, 6", chainLine)).toBe(1);
     const passes: Array<[Expr | null, string, ...string[]]> = [
       [null, "5", "2 + 3 ="],
       [two, "5", "2 + 3 = 5"],

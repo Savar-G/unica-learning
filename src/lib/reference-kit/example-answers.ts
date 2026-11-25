@@ -153,7 +153,10 @@ function partsWithLineExpr(example: Example, steps: readonly ExampleStep[]): Exa
   const lines = steps.flatMap((step) => (step.shows === "setup" ? (setupLine(step.printed, part.form) ?? []) : []));
   if (lines.length !== 1 || (stored && compareLineWithExpr(lines[0], stored) !== "match")) return example.parts;
   const expr = exprWithExactAnswer(lines[0]);
-  const readable = !isConcreteAnswer(part.shown_answer) || plainNumber(part.shown_answer) !== null;
+  const readable =
+    !isConcreteAnswer(part.shown_answer) ||
+    plainNumber(part.shown_answer) !== null ||
+    (expr?.kind === "chain" && wholeNumberLists(part.shown_answer).length > 0);
   return expr && readable ? [{ ...part, expr }] : example.parts;
 }
 
