@@ -94,13 +94,18 @@ describe("the two computations of an answer, and the worked steps", () => {
   it.each<[string, (s: Shape) => Partial<Shape>, string]>([
     ["a wrong first computation", (s) => ({ generate: (l, seed) => ({ ...s.generate(l, seed), answer: otherAnswer }) }), "another"],
     ["a wrong second computation", (s) => ({ solveAgain: (rows) => { const r = s.solveAgain(rows); return r && { ...r, answer: otherAnswer }; } }), "another"],
-    ["another kind of answer", (s) => ({ solveAgain: (rows) => { const r = s.solveAgain(rows); return r && { ...r, answer: { parts: r.answer.parts.map((p) => ({ ...p, kind: "fraction" as "whole-number" })) } }; } }), "another"],
     ["worked steps that end in another number", () => ({ steps: () => ["3 × 4 = 12", "12345"].map((line) => ({ text: line, marks: [] })) }), "the worked steps"],
     ["no worked steps", () => ({ steps: () => [] }), "the worked steps"],
   ])("%s is a problem of every question", (_name, fault, by) => {
     const problems = faulty(fault);
     expect(problems).toHaveLength(16);
     for (const problem of problems) expect(problem).toMatch(new RegExp(`^Sheet "column-multiplication-1", (front|back) side, question \\d \\(\\d\\d ×\\d\\): the answer is "\\d+" by one computation and "\\d*" by ${by}\\.$`));
+  });
+
+  it("another kind of answer is a problem of every question", () => {
+    const problems = faulty((s) => ({ solveAgain: (rows) => { const r = s.solveAgain(rows); return r && { ...r, answer: { parts: r.answer.parts.map((p) => ({ ...p, kind: "fraction" as "whole-number" })) } }; } }));
+    expect(problems).toHaveLength(16);
+    for (const problem of problems) expect(problem).toMatch(/: the answer by another computation has a part of the kind "fraction", which is not "whole-number"\.$/);
   });
 
   it("a last worked step that draws something is a problem of every question", () => {
@@ -115,6 +120,42 @@ describe("the two computations of an answer, and the worked steps", () => {
     expect(problemsOf(bookOf({ shapes }), shapes)).toEqual([]);
     expect(given).toHaveLength(16);
     for (const rows of given) expect(rows).toEqual([expect.stringMatching(/^\d\d$/), expect.stringMatching(/^×\d$/)]);
+  });
+});
+
+describe("an answer that has no good form, in both computations", () => {
+  const skip = SHAPES.get("count.skip");
+  if (!skip) throw new Error("no shape");
+  type Part = { name: string; kind: "whole-number"; value: string };
+  const withParts = (change: (parts: Part[]) => unknown[], which: "both" | "first" | "second" = "both") => {
+    const changed = <T extends { answer: { parts: Part[] } }>(item: T): T => ({ ...item, answer: { parts: change(item.answer.parts) as Part[] } });
+    const shape: Shape = {
+      ...skip,
+      ...(which === "second" ? {} : { generate: (l: unknown, seed: string) => changed(skip.generate(l, seed)) }),
+      ...(which === "first" ? {} : { solveAgain: (rows: readonly string[]) => { const item = skip.solveAgain(rows); return item && changed(item); } }),
+    };
+    const shapes = new Map(SHAPES).set("count.skip", shape);
+    const { pages, items } = factsBook();
+    const broken = items.map((item) => (item.shape === "count.skip" && which !== "second" ? changed(item) : item));
+    return checkPrintedAnswers(pages, broken, shapes).filter((p) => p.includes("long-counts"));
+  };
+  it.each<[string, (parts: Part[]) => unknown[], RegExp]>([
+    ["an empty value", ([first, ...more]) => [{ ...first, value: "" }, ...more], /the part "blank-1" has the value "", which is no whole-number/],
+    ["a word", ([first, ...more]) => [{ ...first, value: "ten" }, ...more], /the part "blank-1" has the value "ten", which is no whole-number/],
+    ["a zero in front", ([first, ...more]) => [{ ...first, value: `0${first.value}` }, ...more], /has the value "0\d+", which is no whole-number/],
+    ["a value that is not text", ([first, ...more]) => [{ ...first, value: Number(first.value) }, ...more], /which is no whole-number/],
+    ["a name that marking does not know", ([first, ...more]) => [{ ...first, name: "first" }, ...more], /has a part with the name "first", which is not known/],
+    ["a name with a number 0", ([first, ...more]) => [{ ...first, name: "blank-0" }, ...more], /the name "blank-0", which is not known/],
+    ["two parts with one name", (parts) => parts.map((p) => ({ ...p, name: "blank-1" })), /has two parts with the name "blank-1"/],
+    ["another kind", ([first, ...more]) => [{ ...first, kind: "fraction" }, ...more], /has a part of the kind "fraction", which is not "whole-number"/],
+    ["a field more", ([first, ...more]) => [{ ...first, unit: "cm" }, ...more], /has a part that is not a name, a kind and a value/],
+    ["a part that is nothing", ([, ...more]) => [null, ...more], /has a part that is not a name, a kind and a value/],
+    ["no part", () => [], /has no part/],
+  ])("%s is a problem of the first and of the second one", (_name, change, problem) => {
+    expect(withParts(change).join("\n")).toMatch(problem);
+    expect(withParts(change, "first").join("\n")).toMatch(problem);
+    expect(withParts(change, "second").join("\n")).toMatch(problem);
+    for (const text of withParts(change)) expect(text).toMatch(/^Sheet "long-counts", (front|back) side, question \d \(.*\): the answer /);
   });
 });
 
@@ -164,7 +205,7 @@ describe("a question with blanks", () => {
     ["two values in each other's part", ({ answer: { parts } }) => { [parts[0].value, parts[1].value] = [parts[1].value, parts[0].value]; }, /the answer is "blank-1 20, blank-2 15, blank-3 25" by one computation and "blank-1 15, blank-2 20, blank-3 25" by another/],
     ["two names in each other's part", ({ answer: { parts } }) => { [parts[0].name, parts[1].name] = [parts[1].name, parts[0].name]; }, /"blank-2 15, blank-1 20, blank-3 25" by one computation/],
     ["a part too few", ({ answer: { parts } }) => parts.pop(), /"blank-1 15, blank-2 20" by one computation/],
-    ["another kind in one part", ({ answer: { parts } }) => { parts[2].kind = "fraction" as "whole-number"; }, /the answer is ".*" by one computation and ".*" by another/],
+    ["another kind in one part", ({ answer: { parts } }) => { parts[2].kind = "fraction" as "whole-number"; }, /the answer has a part of the kind "fraction", which is not "whole-number"/],
     ["worked steps that end in one of the values", ({ steps }) => { steps[steps.length - 1].text = "25"; }, /"25" by the worked steps/],
     ["worked steps that end in the values in another order", ({ steps }) => { steps[steps.length - 1].text = "20, 15, 25"; }, /"20, 15, 25" by the worked steps/],
     ["an answer area that stands below the question", (_item, regions) => { const found = area(regions, "blank-3"); found.rect = { ...found.rect, y: found.rect.y + 400 }; }, /the printed question cannot be read as count\.skip/],

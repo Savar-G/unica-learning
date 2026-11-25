@@ -99,6 +99,18 @@ describe.skipIf(skipTypstTests()).concurrent("the command, with the real Typst",
     expect(json(ONE, "record.json")).toMatchObject({ bookId: "example-book", typst: "0.15.1", program: hash, template: hash, fonts: { "Geist-Regular.ttf": hash, "Geist-SemiBold.ttf": hash } });
   });
 
+  it("says which rows of a good book repeat a question", async () => {
+    const file = join(folder, "repeats.json");
+    const snapshot = structuredClone(rawSnapshot);
+    const row = (id: string) => ({ id, shape: "fact.mul", items: 1, limits: { tables: [3], second: { min: 2, max: 2 }, result: { min: 0, max: 100 }, order: "up" } });
+    const [sheet] = snapshot.sheets;
+    writeFileSync(file, JSON.stringify({ ...snapshot, sheets: [{ ...sheet, front: { ...sheet.front, template: "facts-2x10", rows: [row("one")] }, back: { ...sheet.back, template: "facts-2x10", rows: [row("two")] } }] }));
+    const { code, output } = await build("repeats", {}, { snapshot: file });
+    expect(code).toBe(0);
+    expect(output).toContain('Notice: Sheet "column-multiplication-1", back side, row "two": 1 question is on the front side too.');
+    expect((await makeExample())[0].output).not.toContain("Notice");
+  });
+
   it("writes into an empty folder and into a folder that is not there yet, and leaves nothing beside it", async () => {
     await makeExample();
     expect([readdirSync(join(folder, "empty")), readdirSync(join(folder, "new/deep"))]).toEqual([["book"], ["book"]]);

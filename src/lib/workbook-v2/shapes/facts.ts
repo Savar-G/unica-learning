@@ -1,6 +1,5 @@
 // Facts on one line: 7 + 5 =, 12 - 5 = and 5 × 7 =. One operation makes one shape. `tables` is the set of first numbers.
 // An ordered row prints one table in order, one second number after the other.
-import { pick } from "../hash";
 import type { Face, Step } from "../contract";
 import { readLimitFields, readLimitsThat, wholeNumber, within, type Item, type Range, type Shape } from "./shape";
 import { smallSpace } from "./small-space";
@@ -73,13 +72,12 @@ function factShape({ id, sign, most, result, count, swaps, score }: Operation): 
   }
   const list = (limits: FactLimits) => limits.tables.flatMap((a) => table(a, limits));
 
-  /** A part of one table when a table is long enough, and otherwise of the tables one after the other. */
-  function orderedRow(limits: FactLimits, items: number, seed: string): Item<FactQuestion>[] | null {
+  /** The parts of one table when a table is long enough, and otherwise of the tables one after the other. */
+  function orderedRuns(limits: FactLimits, items: number): FactQuestion[][] | null {
     if (limits.order === "mixed") return null;
     const long = limits.tables.map((a) => table(a, limits)).filter((t) => t.length >= items);
-    const runs = (long.length > 0 ? long : [list(limits)]).flatMap((all) => Array.from({ length: all.length - items + 1 }, (_, start) => all.slice(start, start + items)));
-    const run = runs[pick(seed, runs.length)];
-    return (limits.order === "up" ? run : [...run].reverse()).map(item);
+    const runs = (long.length > 0 ? long : [list(limits)]).flatMap((all) => Array.from({ length: Math.max(0, all.length - items + 1) }, (_, start) => all.slice(start, start + items)));
+    return limits.order === "up" ? runs : runs.map((run) => run.reverse());
   }
 
   return {
@@ -99,7 +97,7 @@ function factShape({ id, sign, most, result, count, swaps, score }: Operation): 
     },
     steps: (q): Step[] => [{ text: `${q.a} ${sign} ${q.b} = ${result(q)}`, marks: [] }, { text: String(result(q)), marks: [] }],
     face: ({ a, b }): Face => ({ kind: "equation", tokens: [{ text: String(a) }, { text: sign }, { text: String(b) }, { text: "=" }, { blank: "answer" }] }),
-    orderedRow,
+    orderedRuns,
     ...(swaps ? { swapped: (q: FactQuestion, limits: FactLimits) => {
       const turned = { a: q.b, b: q.a };
       return q.a === q.b ? null : { question: turned, inLimits: isInside(turned, limits) };

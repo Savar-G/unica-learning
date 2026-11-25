@@ -85,7 +85,7 @@
         ]
       },
       "back": {
-        "instruction": "Write the missing numbers from top to bottom.",
+        "instruction": "The step stays the same. Write the missing numbers.",
         "template": "sequences-2x2",
         "rows": [
           {"id": "up", "shape": "count.skip", "items": 2, "limits": {"step": {"min": 2, "max": 5}, "direction": "up", "start": {"min": 0, "max": 30}, "offStep": "never", "terms": {"min": 5, "max": 5}, "blanks": {"min": 1, "max": 3}, "places": {"min": 3, "max": 10}}},
@@ -97,14 +97,14 @@
       "id": "long-counts",
       "firstPage": 129,
       "front": {
-        "instruction": "Write the missing numbers from top to bottom.",
+        "instruction": "The step stays the same. Write the missing numbers.",
         "template": "sequences-2x1",
         "rows": [
           {"id": "five-blanks", "shape": "count.skip", "items": 2, "limits": {"step": {"min": 2, "max": 10}, "direction": "up", "start": {"min": 0, "max": 100}, "offStep": "never", "terms": {"min": 10, "max": 10}, "blanks": {"min": 5, "max": 5}, "places": {"min": 3, "max": 10}}}
         ]
       },
       "back": {
-        "instruction": "Write the missing numbers from top to bottom.",
+        "instruction": "The step stays the same. Write the missing numbers.",
         "template": "sequences-2x1",
         "rows": [
           {"id": "down-between-steps", "shape": "count.skip", "items": 2, "limits": {"step": {"min": 2, "max": 10}, "direction": "down", "start": {"min": 0, "max": 100}, "offStep": "allowed", "terms": {"min": 10, "max": 10}, "blanks": {"min": 3, "max": 4}, "places": {"min": 3, "max": 10}}}

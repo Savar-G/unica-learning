@@ -108,12 +108,19 @@ function difficultyRange(limits: SkipCountLimits): { easiest: number; hardest: n
   return { easiest: Math.min(...scores), hardest: Math.max(...scores) };
 }
 
-/** The most terms, and then the largest number: it is the last term when the line goes up and the first when it goes down. */
-function worstCase(limits: SkipCountLimits): Item<SkipCountQuestion> {
-  const candidates = groups(limits).map(({ lines, blanks }) => ({ start: lines.first + (lines.count - 1) * lines.every, step: lines.step, terms: lines.terms, blanks: [...blanks[0]] }));
-  const width = (q: SkipCountQuestion) => q.terms * 10 + String(Math.max(...termsOf(q))).length;
-  return item(candidates.reduce((widest, q) => (width(q) > width(widest) ? q : widest)));
+/** For each number of terms, the line with the largest number: it is the last term when the line goes up and the first when it goes down. */
+function widestLines(limits: SkipCountLimits): { question: SkipCountQuestion; blanks: number[][]; width: number }[] {
+  const widest = new Map<number, { question: SkipCountQuestion; blanks: number[][]; width: number }>();
+  for (const { lines, blanks } of groups(limits)) {
+    const question = { start: lines.first + (lines.count - 1) * lines.every, step: lines.step, terms: lines.terms, blanks: [...blanks[0]] };
+    const width = lines.terms * 10 + String(Math.max(question.start, question.start + (lines.terms - 1) * lines.step)).length;
+    if (width > (widest.get(lines.terms)?.width ?? 0)) widest.set(lines.terms, { question, blanks, width });
+  }
+  return [...widest.values()];
 }
+
+const worstCase = (limits: SkipCountLimits): Item<SkipCountQuestion> => item(widestLines(limits).reduce((widest, line) => (line.width > widest.width ? line : widest)).question);
+const forms = (limits: SkipCountLimits): Item<SkipCountQuestion>[] => widestLines(limits).flatMap(({ question, blanks }) => blanks.map((b) => item({ ...question, blanks: [...b] })));
 
 /** Two printed neighbours say the step; the other terms come from them, one step at a time, and must be the printed ones. */
 function solveAgain(rows: readonly string[]): Item<SkipCountQuestion> | null {
@@ -159,6 +166,7 @@ export const skipCount: Shape<SkipCountLimits, SkipCountQuestion> = {
   difficulty: (q) => score(q.step < 0, q.start % Math.abs(q.step) !== 0, Math.abs(q.step), q.blanks.length),
   difficultyRange,
   worstCase,
+  forms,
   count,
   face: (q) => ({
     kind: "sequence",

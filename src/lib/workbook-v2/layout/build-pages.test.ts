@@ -7,6 +7,10 @@ import { canonicalJson, sha256 } from "../hash";
 import { factsBook, goodPages } from "../testing/sample";
 import { SHAPES, shapeLibrary } from "../shapes";
 import { wholeNumber } from "../shapes/shape";
+import { validateSnapshot } from "../bank/snapshot";
+import { sheetItems } from "../build/items";
+import factsSnapshot from "../fixtures/snapshot-facts.json";
+import { buildPages } from "./build-pages";
 import { fitProblem, needsOf, questionText, TEMPLATES } from "./templates";
 
 const pages = () => goodPages();
@@ -182,6 +186,21 @@ describe("the templates of tokens", () => {
     expect(questionText(equation("5", "×", "□", "=", "35"), wholeNumber(7))).toBe("5 × [7] = 35");
     expect(questionText(column, wholeNumber(72))).toBe("24 × 3 = 72");
     expect(needsOf({ kind: "sequence", tokens: [{ text: "5" }, { text: "10" }, { blank: "blank-1" }] }, { parts: [{ name: "blank-1", kind: "whole-number", value: "115" }] })).toEqual({ terms: 3, "characters in a number": 3 });
+  });
+
+  it.each(["front", "back"] as const)("are looked at on the side and at the place of each question: %s", (side) => {
+    const template = TEMPLATES.get("blanks-1x10");
+    const sheet = validateSnapshot(factsSnapshot);
+    if (!template || !sheet.ok) throw new Error("no sheet");
+    const found = sheet.snapshot.sheets.get("equal-groups");
+    if (!found) throw new Error("no sheet");
+    const row = found.back.rows[0];
+    const places = template.sides[side].places.map((place, i) => (i === 3 ? { ...place, forms: [] } : place));
+    const broken = { ...template, sides: { ...template.sides, [side]: { ...template.sides[side], places } } };
+    const content = { instruction: "Write the missing number.", template: broken, rows: [{ ...row, items: 4 }] };
+    const both = { ...found, front: { ...content, rows: [{ ...row, id: "f", items: 4 }] }, back: content };
+    const pages = buildPages([{ sheet: both, levelName: "2", attempt: 1, qr: { front: "f", back: "b" }, items: sheetItems(both, "child", 1) }]);
+    expect(pages).toEqual({ ok: false, problems: [expect.stringMatching(new RegExp(`^Page ${side === "front" ? 125 : 126}: question 4 has its blanks where the template "blanks-1x10" has no answer area\\.$`))] });
   });
 
   it("stop a page with a question that has no place, and name it", () => {

@@ -85,6 +85,13 @@ describe("a good input", () => {
     expect(book.record.inputHash).toMatch(/^[0-9a-f]{64}$/);
   });
 
+  it("has no notice, and a book with a repeat is built and names its rows", async () => {
+    expect((await plain()).notices).toEqual([]);
+    const limits = { tables: [3], second: { min: 1, max: 2 }, result: { min: 0, max: 100 }, order: "mixed" };
+    const repeats = input((i) => { for (const side of [i.snapshot.sheets[0].front, i.snapshot.sheets[0].back]) { put(side, "template", "facts-2x10"); put(side, "rows", [{ id: side === i.snapshot.sheets[0].front ? "one" : "two", shape: "fact.mul", items: 2, limits }]); } });
+    expect((await built(repeats)).notices).toEqual(['Sheet "column-multiplication-1", back side, row "two": 2 questions are on the front side too.']);
+  });
+
   it("passes shapeVersion to items without changing layout or solving", async () => {
     const mul = SHAPES.get("mul.column");
     if (!mul) throw new Error("no shape");

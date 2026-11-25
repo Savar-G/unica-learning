@@ -46,7 +46,8 @@ describe("the fingerprint of a shape", () => {
     ["answer of a seed", { generate: (l, seed) => ({ ...addShape.generate(l, seed), answer: wholeNumber(0) }) }],
     ["id", { id: "test.other" }],
     ["list", { list: () => [] }],
-    ["rows in order", { orderedRow: () => null }],
+    ["rows in order", { orderedRuns: () => null }],
+    ["forms", { forms: () => [addItem({ a: 30, b: 9 })] }],
     ["answer kind", { answerKind: "word" as "whole-number" }],
   ])("changes with the %s", (_name, change) => expect(now(add(change))).not.toBe(was));
 

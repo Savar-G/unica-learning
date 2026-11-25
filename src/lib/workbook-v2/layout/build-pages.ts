@@ -1,8 +1,8 @@
 // Puts the content of a sheet into the rectangles of its templates. It decides no position of its own.
 import type { SnapshotSheet } from "../bank/snapshot";
-import { PAPER, partRegionName, type BookItem, type Ink, type PageModel, type Rect, type Region, type RegionRole, type Side } from "../contract";
+import { PAPER, partRegionName, PRINT_RULES, type BookItem, type Ink, type PageModel, type Rect, type Region, type RegionRole, type Side } from "../contract";
 import { qrSquares } from "./qr";
-import { cellsFor, fitProblem, type AnswerArea, type ColumnPlace, type ItemPlace, type PageFrame, type TokenPlace } from "./templates";
+import { cellsFor, placeProblem, type AnswerArea, type ColumnPlace, type ItemPlace, type PageFrame, type TokenPlace } from "./templates";
 
 export interface PlannedSheet {
   sheet: SnapshotSheet;
@@ -41,7 +41,7 @@ const digitsInk = (cells: readonly Rect[], digits: string): Ink[] =>
 type MakeRegion = (role: RegionRole, rect: Rect, ink?: Ink[], part?: string | null) => Region;
 
 const areaRegions = (make: MakeRegion, { answer, reach }: AnswerArea, part: string): Region[] => [
-  make("answer", answer, [{ kind: "outline", rect: answer, color: BLACK, width: 0.75 }], part),
+  make("answer", answer, [{ kind: "outline", rect: answer, color: BLACK, width: PRINT_RULES.answer.outline }], part),
   make("reach", reach, [], part),
 ];
 
@@ -73,7 +73,7 @@ function tokenRegions(make: MakeRegion, place: TokenPlace, { face }: BookItem): 
   return [make("question", place.question, ink), ...areas];
 }
 
-/** The rectangles of one question that fits its place (`fitProblem`). */
+/** The rectangles of one question that fits its place (`placeProblem`). */
 export function itemRegions(place: ItemPlace, item: BookItem, at: (name: string) => string): Region[] {
   const { number } = item;
   const make: MakeRegion = (role, rect, ink = [], part = null) => ({ id: at(partRegionName(role, number, part)), role, rect, item: item.id, part, ink });
@@ -95,8 +95,8 @@ function buildPage({ sheet, levelName, attempt, qr, items }: PlannedSheet, side:
   if (typeof squares === "string") return `Page ${page}: ${squares}.`;
   const onSide = items.filter((item) => item.side === side);
   if (onSide.length > places.length) return `Page ${page}: ${onSide.length} questions do not fit the template "${template.id}", which has ${places.length} places.`;
-  for (const { number, face, answer } of onSide) {
-    const problem = fitProblem(template, face, answer);
+  for (const [i, { number, face, answer }] of onSide.entries()) {
+    const problem = placeProblem(template, places[i], face, answer);
     if (problem) return `Page ${page}: question ${number} ${problem}.`;
   }
   const { heading, footer, marks } = frame;

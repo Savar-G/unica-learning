@@ -38,11 +38,16 @@ export interface Shape<L = unknown, Q = unknown> {
   face(question: Q): Face;
   /** Every question of the limits. Only a shape whose whole space is small has it. */
   list?(limits: L): Q[];
-  /** A whole row in the order of its table, for limits that ask for one. Null for limits that mix the questions. */
-  orderedRow?(limits: L, items: number, seed: string): Item<Q>[] | null;
+  /** The widest question of each form: each place that a blank can have. Without it, all questions have the form of `worstCase`. */
+  forms?(limits: L): Item<Q>[];
+  /** Every row of this length in the order of its table, for limits that ask for one. Null for limits that mix the questions. A shape with it has a list. */
+  orderedRuns?(limits: L, items: number): Q[][] | null;
   /** The swapped form and whether the limits allow it, or null for a question that has none. */
   swapped?(question: Q, limits: L): Swapped<Q> | null;
 }
+
+/** The widest question of each form of a row. */
+export const formsOf = (shape: Shape, limits: unknown): Item<unknown>[] => shape.forms?.(limits) ?? [shape.worstCase(limits)];
 
 const hasOwn = (o: object, key: string) => Object.prototype.hasOwnProperty.call(o, key);
 export const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);

@@ -28,7 +28,7 @@ export const repeatedAdd: Shape<RepeatedAddLimits, RepeatedAddQuestion> = {
   answerKind: "whole-number",
   readLimits: (raw) => readLimitsThat<RepeatedAddLimits>(readLimitFields(raw, BOUNDS, {}), (l) => list(l).length),
   // More numbers are harder, then a larger number. A longer line is wider than any number in a shorter one.
-  ...smallSpace({ list, item, difficulty: ({ number, count }) => count * 11 + number, width: (q) => q.count * 10 + String(q.number * q.count).length }),
+  ...smallSpace({ list, item, difficulty: ({ number, count }) => count * 11 + number, form: (q) => String(q.count), width: (q) => q.count * 10 + String(q.number * q.count).length }),
   answer,
   solveAgain(rows) {
     const [row, ...more] = rows;

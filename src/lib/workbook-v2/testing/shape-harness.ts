@@ -5,14 +5,16 @@ import fc from "fast-check";
 import type { TemplateLibrary } from "../bank/snapshot";
 import { planBook } from "../build/build-book";
 import { itemSeed } from "../build/items";
+import { answerProblem } from "../checks/answer-form";
 import { BLANK, questionRows, regionsByItem } from "../checks/printed-answers";
 import { answerLine, isPrintable, type Answer, type BookItem, type Face, type Side, type Step } from "../contract";
 import { canonicalJson, seedFrom } from "../hash";
 import { itemRegions } from "../layout/build-pages";
-import { fitProblem, needsOf, needsProblem, TEMPLATES, type Needs, type PageTemplate } from "../layout/templates";
+import { fitProblem, needsOf, TEMPLATES, type Needs, type PageTemplate } from "../layout/templates";
 import { shapeLibrary, type Item, type Shape, type ShapeLibrary } from "../shapes";
+import { formsOf } from "../shapes/shape";
 import { sampleBook, unfilledSides } from "./shape-book";
-import { brokenRows, hasAnswerForm, isPlain, maxOf, onFrozenLimits } from "./shape-checks";
+import { brokenRows, isPlain, maxOf, onFrozenLimits } from "./shape-checks";
 import { fingerprintProblem } from "./shape-fingerprints";
 import { isInside, printedProblem, registryProblems, type LargeSpace, type Limits, type Printed, type Rows, type ShapeRegistration } from "./shape-registration";
 import { linesProblem, marksProblem } from "./step-marks";
@@ -31,7 +33,7 @@ const MAX_QUESTIONS = 20_000;
 export const CHECKS = [
   "registration", "witness", "arbitrary", "read-limits", "refused-limits", "count", "difficulty-range", "worst-case", "widening", "small-space",
   "plain", "determinism", "inside", "answer", "answer-form", "independent-answer", "printed", "solve-again", "steps-end", "steps-true", "steps-marks",
-  "steps-reader", "difficulty", "width", "harder", "examples", "refused-rows", "list", "ordered-row", "swapped", "book", "layout", "evidence", "fingerprint",
+  "steps-reader", "difficulty", "width", "harder", "examples", "refused-rows", "forms", "list", "ordered-row", "swapped", "book", "layout", "evidence", "fingerprint",
 ] as const;
 export type Check = (typeof CHECKS)[number];
 
@@ -76,11 +78,14 @@ const keyOf = (rows: Rows): string => rows.join("\n");
 const show = (rows: Rows): string => JSON.stringify(rows);
 
 /** All that the checks know about one question. */
-interface Inspected { question: unknown; rows: Rows; printed: Printed; answer: string; steps: string; score: number; needs: Needs }
+interface Inspected { question: unknown; rows: Rows; printed: Printed; answer: string; steps: string; score: number; needs: Needs; form: string }
 /** One question of a listed space: what the reader says of it, and the question of the shape if it has one. */
 interface Listed { rows: Rows; printed: Printed; asked: Inspected | null }
 /** All that the checks know about one set of limits. */
 interface Space { limits: Limits; json: string; count: number; easiest: number; hardest: number; widths: Readonly<Record<string, number>>; needs: Needs }
+
+/** Where the blanks of a question stand. */
+const formOf = (face: Face): string => (face.kind === "equation" || face.kind === "sequence" ? `${face.kind} ${face.tokens.map((t) => ("blank" in t ? "_" : "t")).join("")}` : face.kind);
 
 /** What the layout printed, cached inside one harness run only. */
 function layoutRows(template: PageTemplate, face: Face, answer: Answer, cache: WeakMap<PageTemplate, Map<string, Rows>>): Rows {
@@ -108,6 +113,8 @@ class Harness {
   private readonly seen = new WeakMap<Limits, Space | null>();
   private readonly madeLimitsCache = new Map<number, readonly Limits[]>();
   private readonly printedCache = new WeakMap<PageTemplate, Map<string, Rows>>();
+  private readonly fits = new Map<string, boolean>();
+  private readonly forms = new Map<string, Map<string, Needs>>();
   private every: Listed[] | null = null;
   readonly shape: Shape;
   /** The shape as the build gets it: its `generate` checks each question. */
@@ -143,12 +150,46 @@ class Harness {
   }
 
   /** The rows that the real layout prints for a question. */
-  private print(question: unknown, answer: Answer): { rows: Rows; needs: Needs; kind: Face["kind"] } {
+  private print(question: unknown, answer: Answer): { rows: Rows; needs: Needs; kind: Face["kind"]; form: string } {
     const face = this.shape.face(question);
     const { kind } = face;
-    const template = this.templates.find((t) => fitProblem(t, face, answer) === null);
+    const template = this.templates.find((t) => this.fitsOn(t, face, answer));
     if (!template) throw new Error(`no template takes a ${kind} question like ${canonicalJson(face)}`);
-    return { rows: layoutRows(template, face, answer, this.printedCache), needs: needsOf(face, answer), kind };
+    return { rows: layoutRows(template, face, answer, this.printedCache), needs: needsOf(face, answer), kind, form: formOf(face) };
+  }
+
+  /** The fit check of the bank, one time for all questions of one form and size. */
+  private fitsOn(template: PageTemplate, face: Face, answer: Answer): boolean {
+    const key = `${template.id} ${formOf(face)} ${JSON.stringify(needsOf(face, answer))}`;
+    const known = this.fits.get(key);
+    if (known !== undefined) return known;
+    const fits = fitProblem(template, face, answer) === null;
+    this.fits.set(key, fits);
+    return fits;
+  }
+
+  /** The size of the widest question of each form of some limits, as the shape says it. */
+  private formsOf({ limits, json }: Space): Map<string, Needs> {
+    const known = this.forms.get(json);
+    if (known) return known;
+    const found = new Map<string, Needs>();
+    for (const { question, answer } of formsOf(this.shape, limits)) {
+      const face = this.shape.face(question);
+      const form = formOf(face);
+      if (found.has(form)) this.tell("forms", `the forms of ${json} have "${form}" twice`);
+      found.set(form, needsOf(face, answer));
+    }
+    this.forms.set(json, found);
+    return found;
+  }
+
+  /** A question has one of the forms of its limits, and is no larger than the widest one of that form. */
+  private checkForm({ rows, form, needs }: Inspected, space: Space, at: () => string): void {
+    const widest = this.formsOf(space).get(form);
+    if (!widest) return void this.tell("forms", `${at()} gave ${show(rows)}, and the form "${form}" is not one of the forms of ${space.json}`);
+    // With one form, the worst case is the widest question, and its own checks say so.
+    const large = this.shape.forms && Object.keys(needs).find((name) => !(needs[name] <= widest[name]));
+    if (large) this.tell("forms", `${at()} gave ${show(rows)}, which needs ${needs[large]} ${large}, and the widest of its form ${widest[large]}`);
   }
 
   /** Everything about a question that no limits decide. Each question is inspected once. */
@@ -167,8 +208,9 @@ class Harness {
     const answerJson = canonicalJson(answer);
     const at = `question ${key}`;
     if (!isPlain({ question, answer })) this.tell("plain", `${at} holds a value that is not plain data`);
-    if (!hasAnswerForm(answer, shape.answerKind)) this.tell("answer-form", `${at}: ${answerJson} is no answer of the kind "${shape.answerKind}"`);
-    const { rows, needs, kind } = this.print(question, answer);
+    const malformed = answerProblem(answer, shape.answerKind);
+    if (malformed) this.tell("answer-form", `${at}: ${answerJson} is no answer of the kind "${shape.answerKind}": it ${malformed}`);
+    const { rows, needs, kind, form } = this.print(question, answer);
     if (!rows.every((row) => isPrintable(row.replaceAll(BLANK, "")))) this.tell("printed", `${at}: the fonts cannot print ${show(rows)}`);
     const printed = this.read(rows);
     if (!printed) return this.tell("printed", `${at}: the independent reader finds no question in ${show(rows)}`);
@@ -180,7 +222,7 @@ class Harness {
     this.checkSteps(steps, answer, printed, kind, at);
     const score = shape.difficulty(question);
     if (!Number.isFinite(score)) this.tell("difficulty", `${at}: the score is ${score}`);
-    return { question, rows, printed, answer: answerJson, steps: canonicalJson(steps), score, needs };
+    return { question, rows, printed, answer: answerJson, steps: canonicalJson(steps), score, needs, form };
   }
 
   private checkSteps(steps: readonly Step[], answer: Answer, printed: Printed, kind: Face["kind"], at: string): void {
@@ -203,7 +245,7 @@ class Harness {
       }
     }
     // Wrong answers, ends and unreadable steps have their own checks; the marks are compared with a good step list.
-    const marks = textOk && end === line && hasAnswerForm(answer, this.shape.answerKind) ? this.workingProblem(steps, answer, kind) : null;
+    const marks = textOk && end === line && !answerProblem(answer, this.shape.answerKind) ? this.workingProblem(steps, answer, kind) : null;
     if (marks) this.tell("steps-marks", `${at}: ${marks}`);
     const said = canonicalJson(steps);
     const wanted = canonicalJson(printed.steps);
@@ -253,6 +295,7 @@ class Harness {
     if (!item || !space) return first;
     if (item.score < space.easiest || item.score > space.hardest) this.tell("difficulty", `${at()} has the score ${item.score}, outside ${space.easiest} to ${space.hardest}`);
     for (const [name, width] of Object.entries(item.printed.widths)) if (!(width <= space.widths[name])) this.tell("width", `${at()} has ${name} ${width}, wider than ${space.widths[name]}`);
+    this.checkForm(item, space, at);
     for (const [name, need] of Object.entries(item.needs)) if (!(need <= space.needs[name])) this.tell("width", `${at()} needs ${need} ${name}, more than ${space.needs[name]}`);
     return first;
   }
@@ -336,7 +379,10 @@ class Harness {
 
   /** The list of a shape has each question inside the limits one time, and no other. */
   private checkList({ limits, json, count }: Space): void {
-    if (!this.shape.list) return;
+    if (!this.shape.list) {
+      if (this.shape.orderedRuns) this.tell("list", "a shape with rows in order has no list");
+      return;
+    }
     const keys = new Set<string>();
     const all = this.shape.list(limits);
     for (const question of all) {
@@ -354,21 +400,24 @@ class Harness {
     return wrong < 0 ? null : `has ${show(rows[wrong + 1])} after ${show(rows[wrong])}`;
   }
 
+  /** Every run that a row can be, for some lengths. The builder chooses among them. */
   private checkOrderedRow({ limits, json, count }: Space): void {
     const asked = this.reg.ordered?.asked(limits) ?? false;
     for (const items of new Set([1, Math.min(2, count), Math.ceil(count / 2), count])) {
-      for (const seed of ["a", "b"]) {
-        const at = `orderedRow(${json}, ${items}, "${seed}")`;
-        const row = this.shape.orderedRow?.(limits, items, seed) ?? null;
-        if ((row !== null) !== asked) this.tell("ordered-row", `${at} ${row ? "gave a row" : "gave no row"} and the limits ask for ${asked ? "one" : "none"}`);
-        if (!row) continue;
-        const found = row.map((item) => this.itemOf(item, () => at)).filter((q) => q !== null);
-        if (row.length !== items || found.length !== items) this.tell("ordered-row", `${at} gave ${row.length} questions`);
-        const outside = found.find((q) => !isInside(this.reg, q.printed, limits));
+      const at = `orderedRuns(${json}, ${items})`;
+      const runs = this.shape.orderedRuns?.(limits, items) ?? null;
+      if ((runs !== null) !== asked) this.tell("ordered-row", `${at} ${runs ? "gave rows" : "gave no rows"} and the limits ask for ${asked ? "some" : "none"}`);
+      if (!runs) continue;
+      if (runs.length === 0) this.tell("ordered-row", `${at} gave no row`);
+      if (canonicalJson(this.shape.orderedRuns?.(limits, items)) !== canonicalJson(runs)) this.tell("determinism", `${at} gave other rows the second time`);
+      const all = runs.map((run) => run.map((question) => this.inspect(question)).filter((q) => q !== null));
+      if (new Set(all.map((run) => run.map((q) => keyOf(q.rows)).join())).size < all.length) this.tell("ordered-row", `${at} gave one row twice`);
+      for (const run of all) {
+        if (run.length !== items) this.tell("ordered-row", `${at} gave ${run.length} questions`);
+        const outside = run.find((q) => !isInside(this.reg, q.printed, limits));
         if (outside) this.tell("ordered-row", `${at} gave ${show(outside.rows)}, which is outside the limits`);
-        const problem = this.orderedProblem(found.map((q) => q.rows), limits);
+        const problem = this.orderedProblem(run.map((q) => q.rows), limits);
         if (problem) this.tell("ordered-row", `${at} ${problem}`);
-        if (canonicalJson(this.shape.orderedRow?.(limits, items, seed)) !== canonicalJson(row)) this.tell("determinism", `${at} gave another row the second time`);
       }
     }
   }
@@ -507,15 +556,16 @@ class Harness {
     const largest = [...new Set(spaces)].sort((a, b) => b.count - a.count);
     // A test of the harness itself uses few seeds, and then its book holds only the largest spaces.
     const used = this.wantedSeeds < SEEDS ? largest.slice(0, 2 * Math.max(1, Math.ceil(this.wantedSeeds / 16))) : largest;
-    const withTemplates = ({ limits, count, needs }: Space) => {
-      const { question, answer } = this.shape.worstCase(limits);
-      const face = this.shape.face(question);
-      return { limits, count, fitting: this.templates.filter((t) => fitProblem(t, face, answer) === null && needsProblem(t, needs) === null) };
-    };
+    // The templates of some limits are found one time, for the book and for the check that it fills them.
+    const fitting = new Map(largest.map((space) => {
+      const forms = formsOf(this.shape, space.limits).map(({ question, answer }) => ({ face: this.shape.face(question), answer }));
+      return [space, this.templates.filter((t) => forms.every(({ face, answer }) => this.fitsOn(t, face, answer)))] as const;
+    }));
+    const withTemplates = (space: Space) => ({ limits: space.limits, count: space.count, fitting: fitting.get(space) ?? [] });
     const { input, limitsOf } = sampleBook(this.shape.id, used.map(withTemplates), this.wantedSeeds);
     const plan = planBook(input, shapeLibrary([this.watched]), this.options.templates);
     if (!plan.ok) return void this.tell("book", plan.problems.slice(0, 3).join(" "));
-    const unfilled = unfilledSides(plan.pages, [...new Set(largest.flatMap((space) => withTemplates(space).fitting))]);
+    const unfilled = unfilledSides(plan.pages, [...new Set([...fitting.values()].flat())]);
     if (unfilled.length > 0) this.tell("evidence", `no page of the book fills ${unfilled.join(" and ")}`);
     const regions = regionsByItem(plan.pages);
     const printedRowsOf = new Map<string, Rows[]>();
@@ -533,7 +583,6 @@ class Harness {
       const limits = limitsOf.get(row);
       const problem = limits && this.reg.ordered?.asked(limits) ? this.orderedProblem(all, limits) : null;
       if (problem) this.tell("ordered-row", `the printed row ${row} ${problem}`);
-      if (this.shape.list && new Set(all.map(keyOf)).size < all.length) this.tell("list", `the printed row ${row} has a question twice`);
     }
   }
 

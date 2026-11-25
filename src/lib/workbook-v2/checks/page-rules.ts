@@ -131,6 +131,9 @@ function checkArea(answer: Region, reach: Region, part: AnswerPart, tell: Tell):
     [rect.y - reach.rect.y < CLEAR.top - EPSILON, "above"],
     [bottom(reach.rect) - bottom(rect) < CLEAR.bottom - EPSILON, "below"],
   ];
+  const [line, ...more] = answer.ink;
+  const isOutline = line?.kind === "outline" && near(line.rect.x, rect.x) && near(line.rect.y, rect.y) && near(line.rect.w, rect.w) && near(line.rect.h, rect.h) && line.width === ANSWER.outline;
+  if (!isOutline || more.length > 0) tell(`${regionName(answer)} must have one outline, which is its rectangle`);
   for (const [tooSmall, where] of space) if (tooSmall) tell(`${regionName(reach)} does not leave enough space ${where} ${regionName(answer)}`);
 }
 
@@ -169,8 +172,6 @@ function checkParts(page: PageModel, item: BookItem, question: Region | undefine
     const [answer, reach] = (["answer", "reach"] as const).map((role) => {
       const found = own.filter((r) => r.role === role && r.part === part.name);
       if (found.length !== 1) tell(`question ${item.number} has ${found.length === 0 ? "no" : found.length} "${role}" ${found.length === 0 ? "rectangle" : "rectangles"} for the part "${part.name}"`);
-      const wanted = partRegionName(role, item.number, part.name);
-      if (found.length === 1 && regionName(found[0]) !== `"${wanted}"`) tell(`${regionName(found[0])} must be named "${wanted}"`);
       return found.length === 1 ? found[0] : null;
     });
     if (!answer || !reach) continue;
@@ -209,10 +210,23 @@ function checkItem(page: PageModel, item: BookItem, tell: Tell): void {
   checkParts(page, item, question, tell);
 }
 
-/** Two rectangles with one id would be one in the record of a page. */
-function checkIds(page: PageModel, tell: Tell): void {
+const QUESTION_ROLES: readonly RegionRole[] = ["slot", "label", "question", "answer", "reach", "work"];
+
+/** Each rectangle says by its fields and by its whole id what it is. Two with one id would be one in the record of a page. */
+function checkIds(page: PageModel, items: ReadonlyMap<string | null, BookItem>, tell: Tell): void {
   const ids = new Set<string>();
+  const name = (region: Region): string => {
+    const item = items.get(region.item);
+    if (QUESTION_ROLES.includes(region.role)) {
+      if (!item) tell(`${regionName(region)} belongs to no question of this page`);
+      return item ? partRegionName(region.role, item.number, region.part) : regionName(region).slice(1, -1);
+    }
+    if (region.item !== null || region.part !== null) tell(`${regionName(region)} must belong to no question`);
+    return region.role === "scan-mark" ? regionName(region).slice(1, -1) : region.role;
+  };
   for (const region of page.regions) {
+    const wanted = `${page.id}/${name(region)}`;
+    if (region.id !== wanted) tell(`"${region.id}" must be named "${wanted}"`);
     if (ids.has(region.id)) tell(`two rectangles are named ${regionName(region)}`);
     ids.add(region.id);
   }
@@ -241,10 +255,8 @@ export function checkPage(page: PageModel, items: readonly BookItem[]): string[]
   checkColumns(page, tell);
   const onPage = items.filter((i) => i.sheetId === page.sheetId && i.side === page.side && i.id.startsWith(`${page.id}/`));
   checkOverlaps(page, new Set(onPage.filter((i) => i.face.kind !== "column").map((i) => i.id)), tell);
-  checkIds(page, tell);
+  checkIds(page, new Map(onPage.map((i) => [i.id, i])), tell);
   if (onPage.length === 0) tell("the page has no question");
   for (const item of onPage) checkItem(page, item, tell);
-  const known = new Set(onPage.map((i) => i.id));
-  for (const region of page.regions) if (region.item !== null && !known.has(region.item)) tell(`${regionName(region)} belongs to no question of this page`);
   return problems;
 }

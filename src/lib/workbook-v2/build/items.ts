@@ -1,8 +1,9 @@
 // Turns the rows of a sheet into the questions of one child. The seed is the child, the sheet and the attempt.
 import type { BookItem, Side } from "../contract";
-import { canonicalJson, pick, seedFrom } from "../hash";
+import { canonicalJson, seedFrom } from "../hash";
 import type { SnapshotRow, SnapshotSheet, SnapshotSide } from "../bank/snapshot";
 import type { Item, Shape } from "../shapes";
+import { chooseQuestions, type AskedRow } from "./row-questions";
 
 const SIDES: readonly Side[] = ["front", "back"];
 
@@ -23,22 +24,14 @@ type Used = readonly [sheet: Set<string>, side: Set<string>, row: Set<string>];
 const keyOf = (shape: Shape, question: unknown): string => `${shape.id} ${canonicalJson(question)}`;
 
 /**
- * One question that the sheet does not have; when the row has none left, one that the side does not have, and then one
- * that the row does not have. A shape with a list chooses from what is left, so that it finds the last question too.
- * Another shape asks again and again.
+ * One question of a shape with no list: one that the sheet does not have; when the row has none left, one that the side
+ * does not have, and then one that the row does not have. It asks again and again.
  */
 function nextItem({ shape, limits }: SnapshotRow, seedOf: (attempt: number) => string, used: Used): Item<unknown> {
   /** How many of the sheet, the side and the row have a question: one that the row has, all three have. */
   const uses = (question: unknown) => used.filter((on) => on.has(keyOf(shape, question))).length;
   let best = shape.generate(limits, seedOf(0));
   let fewest = uses(best.question);
-  if (fewest > 0 && shape.list) {
-    const all = shape.list(limits).map((question) => ({ question, uses: uses(question) }));
-    const least = Math.min(...all.map((q) => q.uses));
-    const left = all.filter((q) => q.uses === least);
-    const { question } = left[pick(seedOf(1), left.length)];
-    return { question, answer: shape.answer(question) };
-  }
   for (let attempt = 1; fewest > 0 && attempt < TRIES; attempt++) {
     const next = shape.generate(limits, seedOf(attempt));
     const found = uses(next.question);
@@ -47,30 +40,36 @@ function nextItem({ shape, limits }: SnapshotRow, seedOf: (attempt: number) => s
   return best;
 }
 
-/** The questions of a row in their order on the side, and whether that order is the order of a table. */
-interface Row { items: RowItem[]; ordered: boolean }
-
-function rowItems(sheetId: string, side: Side, row: SnapshotRow, seed: string, sheetUsed: Set<string>, sideUsed: Set<string>): Row {
-  const { shape, limits } = row;
+function triedItems(row: SnapshotRow, seedOf: AskedRow["seedOf"], sheetUsed: Set<string>, sideUsed: Set<string>): Item<unknown>[] {
   const used: Used = [sheetUsed, sideUsed, new Set()];
-  const take = (item: Item<unknown>): RowItem => {
-    const { question, answer } = item;
-    for (const on of used) on.add(keyOf(shape, question));
-    return {
-      sheetId, side, rowId: row.id, shape: shape.id, shapeVersion: shape.version, question, answer,
-      face: shape.face(question), steps: shape.steps(question), difficulty: shape.difficulty(question),
-    };
-  };
-  const run = shape.orderedRow?.(limits, row.items, itemSeed(seed, side, row.id, 0, 0));
-  if (run && run.length !== row.items) throw new Error(`the row "${row.id}" in order has ${run.length} questions and must have ${row.items}`);
-  if (run) return { items: run.map(take), ordered: true };
-  return { items: Array.from({ length: row.items }, (_, place) => take(nextItem(row, (attempt) => itemSeed(seed, side, row.id, place, attempt), used))), ordered: false };
+  return Array.from({ length: row.items }, (_, place) => {
+    const { question, answer } = nextItem(row, (attempt) => seedOf(place, attempt), used);
+    for (const on of used) on.add(keyOf(row.shape, question));
+    return { question, answer };
+  });
 }
 
-/** How few questions a row can choose from: the row with the fewest chooses first. A row in order has no choice. */
-function choice({ shape, limits, items }: SnapshotRow): number {
-  if (shape.orderedRow?.(limits, items, "")) return 0;
-  return shape.list ? shape.count(limits) : Number.POSITIVE_INFINITY;
+/** The questions of the rows of a side, in the order of the bank. */
+interface SideRow { row: SnapshotRow; asked: AskedRow; items: Item<unknown>[] }
+
+function sheetRows(sheet: SnapshotSheet, seed: string): Record<Side, SideRow[]> {
+  const rowsOf = (side: Side): SideRow[] => sheet[side].rows.map((row) => ({
+    row, items: [], asked: { id: row.id, shape: row.shape, limits: row.limits, items: row.items, seedOf: (place, attempt) => itemSeed(seed, side, row.id, place, attempt) },
+  }));
+  const rows = { front: rowsOf("front"), back: rowsOf("back") };
+  const all = SIDES.flatMap((side) => rows[side]);
+  const listed = [...new Map(all.filter(({ row }) => row.shape.list).map(({ row }) => [row.shape.id, row.shape])).values()];
+  for (const shape of listed) {
+    const own = SIDES.map((side) => rows[side].filter(({ row }) => row.shape.id === shape.id));
+    const chosen = chooseQuestions(own.map((side) => side.map(({ asked }) => asked)));
+    for (const one of own.flat()) one.items = (chosen.get(one.asked) ?? []).map((question) => ({ question, answer: shape.answer(question) }));
+  }
+  const sheetUsed = new Set<string>();
+  for (const side of SIDES) {
+    const sideUsed = new Set<string>();
+    for (const one of rows[side]) if (!one.row.shape.list) one.items = triedItems(one.row, one.asked.seedOf, sheetUsed, sideUsed);
+  }
+  return rows;
 }
 
 /**
@@ -79,16 +78,17 @@ function choice({ shape, limits, items }: SnapshotRow): number {
  * one shape in sequence mix. A row in order is a run of its own: it is not sorted and mixes with no other row. Each item
  * names its row.
  */
-function sideItems(sheetId: string, side: Side, content: SnapshotSide, seed: string, sheetUsed: Set<string>): RowItem[] {
-  const sideUsed = new Set<string>();
-  const made = new Map<SnapshotRow, Row>();
-  const fewest = content.rows.map((row) => ({ row, from: choice(row) })).sort((a, b) => (a.from === b.from ? 0 : a.from - b.from));
-  for (const { row } of fewest) made.set(row, rowItems(sheetId, side, row, seed, sheetUsed, sideUsed));
-  const runs: Row[] = [];
-  for (const row of content.rows) {
-    const { items, ordered } = made.get(row) ?? { items: [], ordered: false };
+function sideItems(sheetId: string, side: Side, rows: readonly SideRow[]): RowItem[] {
+  const runs: { items: RowItem[]; ordered: boolean }[] = [];
+  for (const { row, items: questions } of rows) {
+    const { shape, limits } = row;
+    const ordered = (shape.orderedRuns?.(limits, row.items) ?? null) !== null;
+    const items = questions.map(({ question, answer }): RowItem => ({
+      sheetId, side, rowId: row.id, shape: shape.id, shapeVersion: shape.version, question, answer,
+      face: shape.face(question), steps: shape.steps(question), difficulty: shape.difficulty(question),
+    }));
     const run = runs.at(-1);
-    if (run && !run.ordered && !ordered && run.items[0].shape === row.shape.id) run.items.push(...items);
+    if (run && !run.ordered && !ordered && run.items[0].shape === shape.id) run.items.push(...items);
     else runs.push({ items, ordered });
   }
   return runs.flatMap(({ items, ordered }) => (ordered ? items : items.sort((a, b) => a.difficulty - b.difficulty)));
@@ -96,8 +96,27 @@ function sideItems(sheetId: string, side: Side, content: SnapshotSide, seed: str
 
 /** The questions of one sheet, with the answers of the first computation (checks/printed-answers.ts has the second). */
 export function sheetItems(sheet: SnapshotSheet, childId: string, attempt: number): BookItem[] {
-  const seed = seedFrom(childId, sheet.id, attempt);
-  const used = new Set<string>();
+  const rows = sheetRows(sheet, seedFrom(childId, sheet.id, attempt));
   return SIDES.flatMap((side) =>
-    sideItems(sheet.id, side, sheet[side], seed, used).map((item, i) => ({ ...item, id: `${sheet.id}/${attempt}/${side}/${i + 1}`, number: i + 1 })));
+    sideItems(sheet.id, side, rows[side]).map((item, i) => ({ ...item, id: `${sheet.id}/${attempt}/${side}/${i + 1}`, number: i + 1 })));
+}
+
+/** The rows of a sheet with a question that an earlier row of the side or the front side has too. A book with them is built. */
+export function repeatNotices(sheet: SnapshotSheet, items: readonly BookItem[]): string[] {
+  const notices: string[] = [];
+  const front = new Set<string>();
+  for (const side of SIDES) {
+    const onSide = new Set<string>();
+    for (const row of sheet[side].rows) {
+      const keys = items.filter((item) => item.side === side && item.rowId === row.id).map((item) => keyOf(row.shape, item.question));
+      const tell = (others: Set<string>, what: string) => {
+        const twice = keys.filter((key) => others.has(key)).length;
+        if (twice > 0) notices.push(`Sheet "${sheet.id}", ${side} side, row "${row.id}": ${twice} ${twice === 1 ? "question is" : "questions are"} ${what}.`);
+      };
+      tell(onSide, "on this side more than once");
+      if (side === "back") tell(front, "on the front side too");
+      for (const key of keys) (side === "front" ? [onSide, front] : [onSide]).forEach((on) => on.add(key));
+    }
+  }
+  return notices;
 }

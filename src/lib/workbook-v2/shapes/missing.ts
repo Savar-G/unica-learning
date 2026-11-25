@@ -57,6 +57,7 @@ function missingShape({ id, sign, back, known: knowns, missing: missings, result
     ...smallSpace({
       list, item,
       difficulty: (q) => score(q.known, inverse(q.known, q.result)) * 2 + (q.blank === "first" ? 1 : 0),
+      form: (q) => q.blank,
       width: (q) => Math.max(...[q.known, q.result, inverse(q.known, q.result)].map((n) => String(n).length)),
     }),
     answer,

@@ -1,6 +1,5 @@
 // What the harness (testing/shape-harness.ts) does not say of the small shapes: which question a seed picks, and which part
 // of a table a row in order takes.
-import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { canonicalJson, pick, seedFrom } from "../hash";
 import { SHAPE_REGISTRATIONS } from "../testing/shape-registrations";
@@ -30,24 +29,20 @@ describe("the question of a seed", () => {
 
 describe("a row in order", () => {
   const wide = (tables: number[], order: FactLimits["order"], max = 10): FactLimits => ({ tables, second: { min: 0, max }, result: { min: 0, max: 100 }, order });
-  const texts = (limits: FactLimits, items: number, seed: string) => (factMul.orderedRow?.(limits, items, seed) ?? []).map(({ question }) => `${question.a}×${question.b}`);
+  const texts = (limits: FactLimits, items: number) => (factMul.orderedRuns?.(limits, items) ?? []).map((run) => run.map(({ a, b }) => `${a}×${b}`));
 
-  it("is a part of one table when a table is long enough, and each such part can come", () => {
-    const starts = new Set<string>();
-    fc.assert(fc.property(fc.string(), (seed) => {
-      const row = texts(wide([2, 5], "up"), 9, seed);
-      expect(new Set(row.map((t) => t.split("×")[0])).size).toBe(1);
-      starts.add(row[0]);
-    }), { numRuns: 300 });
-    expect([...starts].sort()).toEqual(["2×0", "2×1", "2×2", "5×0", "5×1", "5×2"]);
+  it("is a part of one table when a table is long enough, and each such part is there", () => {
+    const rows = texts(wide([2, 5], "up"), 9);
+    for (const row of rows) expect(new Set(row.map((t) => t.split("×")[0])).size).toBe(1);
+    expect(rows.map(([first]) => first)).toEqual(["2×0", "2×1", "2×2", "5×0", "5×1", "5×2"]);
   });
 
   it("goes on with the next table when no table is long enough", () => {
-    expect(texts(wide([2, 5], "up", 2), 6, "any")).toEqual(["2×0", "2×1", "2×2", "5×0", "5×1", "5×2"]);
-    expect(texts(wide([2, 5], "down", 2), 6, "any")).toEqual(["5×2", "5×1", "5×0", "2×2", "2×1", "2×0"]);
+    expect(texts(wide([2, 5], "up", 2), 6)).toEqual([["2×0", "2×1", "2×2", "5×0", "5×1", "5×2"]]);
+    expect(texts(wide([2, 5], "down", 2), 6)).toEqual([["5×2", "5×1", "5×0", "2×2", "2×1", "2×0"]]);
   });
 
-  it("is only for limits that ask for one", () => expect(factMul.orderedRow?.(wide([2], "mixed"), 3, "any")).toBeNull());
+  it("is only for limits that ask for one", () => expect(factMul.orderedRuns?.(wide([2], "mixed"), 3)).toBeNull());
 });
 
 describe("the swapped form", () => {

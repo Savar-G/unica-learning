@@ -45,7 +45,8 @@ export function shapeFingerprint(shape: Shape, registration: ShapeRegistration):
     for (const seed of seeds(perCase)) lines.push(add(shape.generate(limits, seed)));
     // Only a shape that has them: what the builder takes when a question is used, the rows in order and the swapped forms.
     if (shape.list) lines.push(canonicalJson(shape.list(limits)));
-    if (shape.orderedRow) for (const [i, seed] of seeds(8).entries()) lines.push(canonicalJson(shape.orderedRow(limits, 1 + Math.floor((i * shape.count(limits)) / 8), seed)?.map((item) => add(item)) ?? null));
+    if (shape.orderedRuns) for (const items of [1, 2, 9]) lines.push(canonicalJson(shape.orderedRuns(limits, items)));
+    if (shape.forms) lines.push(canonicalJson(shape.forms(limits)));
     if (shape.swapped && shape.list) lines.push(canonicalJson(shape.list(limits).map((question) => shape.swapped?.(question, limits) ?? null)));
   }
   // A large space covers its small spaces and every `listed` question in full; the rest of the large space has sampled coverage via the seeds above.

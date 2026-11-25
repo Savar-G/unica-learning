@@ -88,4 +88,5 @@ const renderer = await openRenderer(projectAssets(process.cwd(), homedir(), proc
 const result = await buildBook(input, renderer);
 if (result.status === "failed") throw new Error(result.problems.join("\n"));
 await publish(args.out, result);
+for (const notice of result.notices) console.log(`Notice: ${notice}`);
 console.log(`Built ${result.pages.length} pages, ${result.items.length} questions: ${args.out}`);

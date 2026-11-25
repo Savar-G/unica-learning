@@ -3,6 +3,7 @@
 import { answerLine, type Answer, type BookItem, type Ink, type PageModel, type Rect, type Region } from "../contract";
 import { canonicalJson } from "../hash";
 import type { Shape, ShapeLibrary } from "../shapes";
+import { answerProblem } from "./answer-form";
 import { bottom, EPSILON } from "./rects";
 
 type Text = Extract<Ink, { kind: "text" }>;
@@ -40,9 +41,13 @@ export function questionRows(regions: readonly Region[]): string[] {
 const shown = (answer: Answer): string => (answer.parts.length === 1 ? answerLine(answer) : answer.parts.map((p) => `${p.name} ${p.value}`).join(", "));
 
 function problemOf(item: BookItem, rows: readonly string[], shape: Shape | undefined): string | null {
-  const printed = shape?.solveAgain(rows);
-  if (!printed) return `the printed question cannot be read as ${item.shape}`;
   const { answer } = item;
+  const first = shape ? answerProblem(answer, shape.answerKind) : null;
+  if (first) return `the answer ${first}`;
+  const printed = shape?.solveAgain(rows);
+  if (!shape || !printed) return `the printed question cannot be read as ${item.shape}`;
+  const second = answerProblem(printed.answer, shape.answerKind);
+  if (second) return `the answer by another computation ${second}`;
   const differs = (other: string, by: string) => `the answer is "${shown(answer)}" by one computation and "${other}" by ${by}`;
   if (canonicalJson(printed.answer) !== canonicalJson(answer)) return differs(shown(printed.answer), "another");
   if (canonicalJson(printed.question) !== canonicalJson(item.question)) return "the page prints another question than the book holds";

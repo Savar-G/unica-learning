@@ -1,21 +1,8 @@
 // The pure parts of the harness.
 import { plainCopy } from "../bank/plain";
 import { BLANK } from "../checks/printed-answers";
-import type { Answer, AnswerKind, AnswerPart } from "../contract";
 import type { Shape } from "../shapes";
-import { hasNames, type Rows } from "./shape-registration";
-
-/** What the value of each kind must look like. A new kind needs its rule here. */
-const VALUE_FORMS: Readonly<Record<AnswerKind, RegExp>> = { "whole-number": /^(0|[1-9]\d*)$/ };
-const PART_NAME = /^[a-z]+(-[a-z0-9]+)*$/;
-
-/** Each part is a name, a kind and a value of this kind, and no two parts have one name. */
-export function hasAnswerForm(answer: Answer, kind: AnswerKind): boolean {
-  const { parts, ...more } = answer;
-  if (!Array.isArray(parts) || parts.length === 0 || Object.keys(more).length > 0 || !Object.hasOwn(VALUE_FORMS, kind)) return false;
-  const isPart = (part: AnswerPart) => hasNames(part, ["name", "kind", "value"]) && part.kind === kind && typeof part.name === "string" && PART_NAME.test(part.name) && typeof part.value === "string" && VALUE_FORMS[kind].test(part.value);
-  return parts.every(isPart) && new Set(parts.map((p) => p.name)).size === parts.length;
-}
+import type { Rows } from "./shape-registration";
 
 export const isPlain = (value: unknown): boolean => plainCopy("value", value).ok;
 
@@ -35,7 +22,8 @@ export const onFrozenLimits = (shape: Shape): Shape => Object.assign(Object.crea
   difficultyRange: (limits: unknown) => shape.difficultyRange(frozen(limits)),
   worstCase: (limits: unknown) => shape.worstCase(frozen(limits)),
   ...(shape.list && { list: (limits: unknown) => shape.list?.(frozen(limits)) }),
-  ...(shape.orderedRow && { orderedRow: (limits: unknown, items: number, seed: string) => shape.orderedRow?.(frozen(limits), items, seed) }),
+  ...(shape.orderedRuns && { orderedRuns: (limits: unknown, items: number) => shape.orderedRuns?.(frozen(limits), items) }),
+  ...(shape.forms && { forms: (limits: unknown) => shape.forms?.(frozen(limits)) }),
   ...(shape.swapped && { swapped: (question: unknown, limits: unknown) => shape.swapped?.(question, frozen(limits)) }),
 });
 

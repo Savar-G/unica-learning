@@ -9,9 +9,12 @@ interface SmallSpace<L, Q> {
   difficulty(question: Q): number;
   /** The characters of the longest number: more is wider. */
   width(question: Q): number;
+  /** What tells two forms apart, for a shape with more than one. */
+  form?(question: Q): string;
 }
 
-export function smallSpace<L, Q>({ list, item, difficulty, width }: SmallSpace<L, Q>): Pick<Shape<L, Q>, "list" | "generate" | "count" | "difficulty" | "difficultyRange" | "worstCase"> {
+export function smallSpace<L, Q>({ list, item, difficulty, width, form }: SmallSpace<L, Q>): Pick<Shape<L, Q>, "list" | "generate" | "count" | "difficulty" | "difficultyRange" | "worstCase" | "forms"> {
+  const widest = (questions: readonly Q[]): Item<Q> => item(questions.reduce((most, q) => (width(q) > width(most) ? q : most)));
   return {
     list, difficulty,
     generate(limits, seed) {
@@ -23,6 +26,10 @@ export function smallSpace<L, Q>({ list, item, difficulty, width }: SmallSpace<L
       const scores = list(limits).map(difficulty);
       return { easiest: Math.min(...scores), hardest: Math.max(...scores) };
     },
-    worstCase: (limits) => item(list(limits).reduce((widest, q) => (width(q) > width(widest) ? q : widest))),
+    worstCase: (limits) => widest(list(limits)),
+    ...(form && { forms(limits: L) {
+      const all = list(limits);
+      return [...new Set(all.map(form))].map((one) => widest(all.filter((q) => form(q) === one)));
+    } }),
   };
 }

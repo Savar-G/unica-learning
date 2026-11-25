@@ -119,8 +119,8 @@ export const PRINT_RULES = {
   qrModuleMin: 1.2,
   /** Clear space around an answer area. */
   reach: { left: 19.2, right: 28.8, top: 9.6, bottom: 9.6 },
-  /** The smallest answer area: a width for each character, plus room, and never less than the minimum. */
-  answer: { perCharacter: 14.4, extra: 14.4, minWidth: 72, minHeight: 42 },
+  /** The smallest answer area: a width for each character, plus room, and never less than the minimum. Its outline is a line. */
+  answer: { perCharacter: 14.4, extra: 14.4, minWidth: 72, minHeight: 42, outline: 0.75 },
   maxAnswerColumns: 2,
   maxInstructionCharacters: 60,
   maxTitleCharacters: 44,

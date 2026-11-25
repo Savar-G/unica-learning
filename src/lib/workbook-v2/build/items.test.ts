@@ -2,10 +2,11 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { validateSnapshot, type SnapshotSheet } from "../bank/snapshot";
 import { answerLine } from "../contract";
+import { seedFrom } from "../hash";
 import rawSnapshot from "../fixtures/snapshot.json";
 import { SHAPES } from "../shapes";
 import { stackOf } from "../testing/sample";
-import { sheetItems } from "./items";
+import { itemSeed, repeatNotices, sheetItems } from "./items";
 
 const result = validateSnapshot(structuredClone(rawSnapshot));
 if (!result.ok) throw new Error(result.problems.join("\n"));
@@ -192,7 +193,113 @@ describe("rows of facts", () => {
     const mul = SHAPES.get("fact.mul");
     if (!mul) throw new Error("no shape");
     const sheet = sheetOf([{ id: "row", items: 9, limits: facts("up", [5], [1, 9]) }]);
-    const short: SnapshotSheet = { ...sheet, front: { ...sheet.front, rows: sheet.front.rows.map((row) => ({ ...row, shape: { ...mul, orderedRow: (...all) => mul.orderedRow?.(...all)?.slice(1) ?? null } })) } };
+    const short: SnapshotSheet = { ...sheet, front: { ...sheet.front, rows: sheet.front.rows.map((row) => ({ ...row, shape: { ...mul, orderedRuns: (limits: unknown, items: number) => mul.orderedRuns?.(limits, items)?.map((run) => run.slice(1)) ?? null } })) } };
     expect(() => sheetItems(short, "child", 1)).toThrow('the row "row" in order has 8 questions and must have 9');
+  });
+});
+
+describe("no question repeats on a side while there are enough different ones", () => {
+  /** A row of 0 + b, so that a question is one number. */
+  interface Small { items: number; min: number; max: number; order: "mixed" | "up" | "down" }
+  const add = SHAPES.get("fact.add");
+  if (!add) throw new Error("no shape");
+  const rowsOf = (side: string, rows: readonly Small[]) => rows.map(({ items, min, max, order }, i) => ({ id: `${side}-${i}`, shape: add, items, limits: { tables: [0], second: { min, max }, result: { min: 0, max: 20 }, order } }));
+  const sheetOf = (front: readonly Small[], back: readonly Small[] = []): SnapshotSheet => ({ ...SHEET, front: { ...SHEET.front, rows: rowsOf("front", front) }, back: { ...SHEET.back, rows: rowsOf("back", back) } });
+  const valuesOf = (sheet: SnapshotSheet, child: string): Map<string, number[]> => {
+    const found = new Map<string, number[]>();
+    for (const item of sheetItems(sheet, child, 1)) found.set(item.rowId, [...(found.get(item.rowId) ?? []), (item.question as { b: number }).b]);
+    return found;
+  };
+  const sideOf = (values: Map<string, number[]>, side: string) => [...values].filter(([id]) => id.startsWith(side)).flatMap(([, all]) => all);
+  const isDifferent = (values: readonly number[]) => new Set(values).size === values.length;
+  const row = (items: number, min: number, max: number, order: Small["order"] = "mixed"): Small => ({ items, min, max, order });
+  const children = Array.from({ length: 60 }, (_, i) => `child-${i}`);
+
+  it.each<[string, Small[]]>([
+    ["two mixed rows that need each other's numbers", [row(2, 0, 2), row(2, 1, 3)]],
+    ["a row in order and a mixed row", [row(3, 0, 3, "up"), row(1, 2, 3)]],
+    ["two rows in order", [row(2, 0, 3, "up"), row(2, 0, 3, "down")]],
+    ["three mixed rows in a chain", [row(2, 0, 2), row(2, 1, 3), row(2, 3, 5)]],
+    ["a row in order between two mixed rows that fill both ends", [row(2, 0, 4), row(2, 0, 6, "up"), row(3, 2, 6)]],
+    ["seven rows in order that fill 20 numbers without a gap", [...Array.from({ length: 6 }, () => row(3, 0, 19, "up")), row(2, 0, 19, "down")]],
+  ])("%s", (_name, rows) => {
+    const sheet = sheetOf(rows);
+    const started = performance.now();
+    for (const child of children) expect(isDifferent(sideOf(valuesOf(sheet, child), "front"))).toBe(true);
+    expect(performance.now() - started).toBeLessThan(6000);
+  });
+
+  it.each<[string, Small[], Small[]]>([
+    ["rows in order", [row(3, 0, 5, "up")], [row(3, 0, 5, "up")]],
+    ["rows in order that go down", [row(3, 0, 5, "down")], [row(3, 0, 5, "down")]],
+    ["mixed rows", [row(3, 0, 5)], [row(3, 0, 3)]],
+    ["a mixed row and a row in order", [row(4, 0, 6)], [row(3, 0, 6, "up")]],
+  ])("and none is on both sides of a sheet: %s", (_name, front, back) => {
+    for (const child of children) expect(isDifferent([...valuesOf(sheetOf(front, back), child).values()].flat())).toBe(true);
+  });
+
+  it("the back uses as few of the questions of the front as it can, when it must use some", () => {
+    const starts = new Set<number>();
+    for (const child of children) {
+      const values = valuesOf(sheetOf([row(4, 0, 5)], [row(4, 0, 5)]), child);
+      const front = sideOf(values, "front");
+      expect(sideOf(values, "back").filter((b) => front.includes(b))).toHaveLength(2);
+      expect(isDifferent(sideOf(values, "back"))).toBe(true);
+      const ordered = valuesOf(sheetOf([row(4, 0, 5, "up")], [row(4, 0, 5, "up")]), child);
+      const [first, second] = [sideOf(ordered, "front"), sideOf(ordered, "back")];
+      const fewest = Math.min(...[0, 1, 2].map((start) => [0, 1, 2, 3].filter((i) => first.includes(start + i)).length));
+      expect(second.filter((b) => first.includes(b))).toHaveLength(fewest);
+      starts.add(first[0]);
+    }
+    expect([...starts].sort()).toEqual([0, 1, 2]);
+  });
+
+  // Brute force: every run of a row in order and every set of a mixed row, one row after the other.
+  const choicesOf = ({ items, min, max, order }: Small): number[][] => {
+    const all = Array.from({ length: max - min + 1 }, (_, i) => min + i);
+    if (order !== "mixed") return all.slice(0, all.length - items + 1).map((_, start) => all.slice(start, start + items));
+    const sets = (from: number, left: number): number[][] => (left === 0 ? [[]] : all.slice(from).flatMap((n, i) => sets(from + i + 1, left - 1).map((rest) => [n, ...rest])));
+    return sets(0, items);
+  };
+  const canDiffer = (rows: readonly Small[], used: readonly number[] = []): boolean => rows.length === 0 || choicesOf(rows[0]).some((choice) => choice.every((n) => !used.includes(n)) && canDiffer(rows.slice(1), [...used, ...choice]));
+  const small = fc.tuple(fc.integer({ min: 0, max: 4 }), fc.integer({ min: 0, max: 4 }), fc.integer({ min: 1, max: 3 }), fc.constantFrom("mixed" as const, "mixed" as const, "up" as const, "down" as const))
+    .map(([x, y, items, order]): Small => row(Math.min(items, Math.abs(x - y) + 2), Math.min(x, y), Math.max(x, y) + 1, order));
+
+  it("a repeat is only there when no choice of the rows is without one, and then the build names the row", () => {
+    fc.assert(fc.property(fc.array(small, { minLength: 1, maxLength: 3 }), fc.array(small, { minLength: 1, maxLength: 2 }), fc.nat(30), (front, back, child) => {
+      const sheet = sheetOf(front, back);
+      const items = sheetItems(sheet, `child-${child}`, 1);
+      const values = valuesOf(sheet, `child-${child}`);
+      for (const [side, rows] of [["front", front], ["back", back]] as const) {
+        rows.forEach(({ items: count, min, max, order }, i) => {
+          const own = values.get(`${side}-${i}`) ?? [];
+          expect([own.length, isDifferent(own), own.every((n) => n >= min && n <= max)]).toEqual([count, true, true]);
+          if (order !== "mixed") own.slice(1).forEach((n, j) => expect(n - own[j]).toBe(order === "up" ? 1 : -1));
+        });
+        const repeats = !isDifferent(sideOf(values, side));
+        expect(repeats).toBe(!canDiffer(rows));
+        expect(repeatNotices(sheet, items).some((notice) => notice.includes(`${side} side, row "${side}-`) && notice.includes("on this side"))).toBe(repeats);
+      }
+      const both = sideOf(values, "front").some((n) => sideOf(values, "back").includes(n));
+      if (canDiffer([...front, ...back])) expect(isDifferent([...values.values()].flat())).toBe(true);
+      expect(repeatNotices(sheet, items).some((notice) => notice.includes("on the front side"))).toBe(both);
+      expect(sheetItems(sheet, `child-${child}`, 1)).toEqual(items);
+    }), { numRuns: 300, seed: 238 });
+  });
+
+  it("names each row with a repeat, and how many, and says nothing of a sheet with none", () => {
+    const sheet = sheetOf([row(3, 0, 2), row(2, 1, 2)], [row(3, 0, 2, "up")]);
+    expect(repeatNotices(sheet, sheetItems(sheet, "child", 1))).toEqual([
+      'Sheet "column-multiplication-1", front side, row "front-1": 2 questions are on this side more than once.',
+      'Sheet "column-multiplication-1", back side, row "back-0": 3 questions are on the front side too.',
+    ]);
+    expect(repeatNotices(SHEET, sheetItems(SHEET, "child", 1))).toEqual([]);
+  });
+
+  it("the first question of a row is the one that its seed gives, when nothing is in its way", () => {
+    for (const child of children) {
+      const [first] = sheetItems(sheetOf([row(1, 0, 19)]), child, 1);
+      expect(first.question).toEqual(add.generate(rowsOf("front", [row(1, 0, 19)])[0].limits, itemSeed(seedFrom(child, SHEET.id, 1), "front", "front-0", 0, 0)).question);
+    }
   });
 });

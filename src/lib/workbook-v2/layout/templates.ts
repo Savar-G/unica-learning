@@ -254,15 +254,26 @@ export function questionText(face: Face, answer: Answer): string {
 }
 
 /** Why a question of this size does not fit a template, or null. */
-export function needsProblem(template: PageTemplate, needs: Needs): string | null {
+function needsProblem(template: PageTemplate, needs: Needs): string | null {
   const name = Object.keys(needs).find((n) => !(needs[n] <= template.holds[n]));
   return name === undefined ? null : `needs ${needs[name]} ${name} and the template "${template.id}" has ${template.holds[name]}`;
 }
 
-/** Why a question does not fit the places of a template, or null. */
-export function fitProblem(template: PageTemplate, face: Face, answer: Answer): string | null {
+/** Why a question does not fit one place of a template, or null. */
+export function placeProblem(template: PageTemplate, place: ItemPlace, face: Face, answer: Answer): string | null {
   if (!template.faces.includes(face.kind)) return `is ${face.kind === "equation" ? "an" : "a"} ${face.kind} question and the template "${template.id}" has no place for one`;
+  const problem = needsProblem(template, needsOf(face, answer));
+  if (problem) return problem;
   const tokens = tokensOf(face);
-  const formless = template.sides.front.places.some((place) => ("forms" in place ? tokens === null || cellsFor(place, tokens) === null : tokens !== null));
-  return needsProblem(template, needsOf(face, answer)) ?? (formless ? `has its blanks where the template "${template.id}" has no answer area` : null);
+  const hasForm = "forms" in place ? tokens !== null && cellsFor(place, tokens) !== null : tokens === null;
+  return hasForm ? null : `has its blanks where the template "${template.id}" has no answer area`;
+}
+
+/** Why a question does not fit some place of a template, on any side, or null. */
+export function fitProblem(template: PageTemplate, face: Face, answer: Answer): string | null {
+  for (const place of [...template.sides.front.places, ...template.sides.back.places]) {
+    const problem = placeProblem(template, place, face, answer);
+    if (problem) return problem;
+  }
+  return null;
 }

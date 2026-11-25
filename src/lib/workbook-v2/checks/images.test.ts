@@ -144,6 +144,12 @@ describe("ink that the model has and the image does not", () => {
     expect(problemsWith(image).join("\n")).toMatch(problem);
   });
 
+  it("the outline of an answer area is looked for, also when the model has none", () => {
+    const bare = { ...front, regions: front.regions.map((r) => (r.role === "answer" ? { ...r, ink: [] } : r)) };
+    expect(checkImages([bare], [pagePng(front)])).toEqual([]);
+    expect(checkImages([bare], [pagePng(bare)])).toEqual(front.regions.filter((r) => r.role === "answer").map((_, i) => `Page 381: the image has no outline of "answer-${i + 1}".`));
+  });
+
   it("a text of spaces has no ink", () => {
     const spaces = { ...front, regions: front.regions.map((r) => (r.role === "label" ? { ...r, ink: r.ink.map((i) => (i.kind === "text" ? { ...i, text: " " } : i)) } : r)) };
     const canvas = drawPage(front);

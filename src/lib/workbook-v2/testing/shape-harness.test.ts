@@ -15,9 +15,11 @@ import { readStep } from "./steps-evaluator";
 import { marksProblem } from "./step-marks";
 import { mulColumn } from "../shapes/mul-column";
 import { factMul, type FactLimits, type FactQuestion } from "../shapes/facts";
+import { missingFactor, type MissingLimits, type MissingQuestion } from "../shapes/missing";
 import { skipCount, type SkipCountLimits, type SkipCountQuestion } from "../shapes/skip-count";
 import { skipCountRegistration } from "./registrations/count-skip";
 import { factMulRegistration } from "./registrations/fact-mul";
+import { missingFactorRegistration } from "./registrations/missing-factor";
 import { mulColumnRegistration } from "./registrations/mul-column";
 
 // Broken shapes. Every table row has one fault, and the harness must refuse it for that fault and no other.
@@ -26,6 +28,7 @@ type Add = Shape<AddLimits, AddQuestion>;
 type Less = Shape<LessLimits, LessQuestion>;
 type Fact = Shape<FactLimits, FactQuestion>;
 type Skip = Shape<SkipCountLimits, SkipCountQuestion>;
+type Missing = Shape<MissingLimits, MissingQuestion>;
 interface Broken { shape: Shape; registration?: Partial<ShapeRegistration>; options?: Partial<HarnessOptions>; seeds?: number }
 
 const add = (change: Partial<Add> = {}): Shape => ({ ...addShape, ...change }) as Shape;
@@ -40,7 +43,7 @@ const whole = wholeAnswer;
 /** Steps of a question of test.add: the lines, the first of which writes the last line. */
 const said = (...texts: string[]): Step[] => texts.map((text, i) => step(text, i === 0 && texts.length > 1 && /^\d+$/.test(texts[texts.length - 1]) ? [...texts[texts.length - 1]].reverse().map((d, at) => `w${d}@${at}`).join(" ") : ""));
 
-const REAL = new Map([factMulRegistration, skipCountRegistration].map((reg) => [reg.id, reg]));
+const REAL = new Map([factMulRegistration, skipCountRegistration, missingFactorRegistration].map((reg) => [reg.id, reg]));
 const REGISTRATIONS = new Map([addRegistration, lessRegistration, ...REAL.values()].map((reg) => [reg.id, reg]));
 
 /** A few seeds are enough for a fault that every run meets. */
@@ -158,7 +161,6 @@ function changingSteps(): Broken {
   return { shape, options: { fingerprints }, seeds: SEEDS };
 }
 
-let printing = false;
 let shared: Item<AddQuestion> = addItem(QUIET);
 type Refused = [check: Check, fault: string, broken: () => Broken, message: RegExp];
 const REFUSED: readonly Refused[] = [
@@ -282,11 +284,21 @@ const REFUSED: readonly Refused[] = [
     ["a question outside the limits in the place of another", (l) => { const all = factMul.list?.(l) ?? []; return l.second.min > 1 ? [{ a: all[0].a, b: 0 }, ...all.slice(1)] : all; }, /has \["\d+×0=□"\], which is outside the limits/],
   ] as [string, (l: FactLimits) => FactQuestion[], RegExp][]).map(([fault, list, message]): Refused => ["list", `a list with ${fault}`, () => ({ shape: fact({ list }) }), message]),
   ...([
-    ["a row that goes down in the place of up", (row, l) => (l.order === "up" ? row.reverse() : row), /has \["\d+×\d+=□"\] after \["\d+×\d+=□"\]/],
-    ["no row for limits that ask for one", (row, l) => (l.order === "down" ? null : row), /gave no row and the limits ask for one/],
+    ["rows that go down in the place of up", (row, l) => (l.order === "up" ? row.reverse() : row), /has \["\d+×\d+=□"\] after \["\d+×\d+=□"\]/],
+    ["no rows for limits that ask for some", (row, l) => (l.order === "down" ? null : row), /gave no rows and the limits ask for some/],
+    ["one row twice", (row) => row, /gave one row twice/],
     ["a row that leaves out a question of the table", (row) => (row.length > 3 ? [...row.slice(0, 2), ...row.slice(3), row[2]] : row), /has \[.*\] after \[/],
-  ] as [string, (row: Item<FactQuestion>[], l: FactLimits) => Item<FactQuestion>[] | null, RegExp][]).map(([fault, change, message]): Refused =>
-    ["ordered-row", fault, () => ({ shape: fact({ orderedRow: (l, items, seed) => { const row = factMul.orderedRow?.(l, items, seed); return row ? change(row, l) : null; } }) }), message]),
+  ] as [string, (row: FactQuestion[], l: FactLimits) => FactQuestion[] | null, RegExp][]).map(([fault, change, message]): Refused =>
+    ["ordered-row", fault, () => ({ shape: fact({ orderedRuns: (l, items) => {
+      const runs = factMul.orderedRuns?.(l, items)?.map((run) => change(run, l)) ?? null;
+      if (!runs || runs.includes(null)) return null;
+      const rows = runs.filter((run) => run !== null);
+      return fault === "one row twice" ? [...rows, [...rows[0]]] : rows;
+    } }) }), message]),
+  ...([
+    ["a form too few", (l) => missingFactor.forms?.(l).slice(0, 1) ?? [], /the form "equation \S+" is not one of the forms/],
+    ["a form twice", (l) => { const all = missingFactor.forms?.(l) ?? []; return [...all, all[0]]; }, /have "equation \S+" twice/],
+  ] as [string, NonNullable<Missing["forms"]>, RegExp][]).map(([fault, forms, message]): Refused => ["forms", fault, () => ({ shape: { ...missingFactor, forms } as Shape }), message]),
   ...([
     ["the same question", (q, l) => ({ question: { ...q }, inLimits: factMul.swapped?.(q, l)?.inLimits ?? true }), /the swapped form of .* is \["\d+×\d+=□"\] and must be/],
     ["a swapped form of a square", (q, l) => (q.a === q.b ? { question: { a: q.b, b: q.a }, inLimits: true } : factMul.swapped?.(q, l) ?? null), /the swapped form of \["(\d+)×\1=□"\] .* must be none/],
@@ -295,7 +307,6 @@ const REFUSED: readonly Refused[] = [
     ["a wrong report of the limits", (q, l) => { const s = factMul.swapped?.(q, l) ?? null; return s && { ...s, inLimits: true }; }, /is outside the limits and the shape says the other/],
   ] as [string, NonNullable<Fact["swapped"]>, RegExp][]).map(([fault, swapped, message]): Refused => ["swapped", fault, () => ({ shape: fact({ swapped }) }), message]),
   ["swapped", "swapped forms that the registration does not know", () => ({ shape: fact(), registration: { swapped: undefined } }), /the shape has swapped forms and the registration says the other/],
-  ["list", "a build that prints a question twice, because the list is always the first question", () => ({ shape: fact({ list: (l) => { const all = factMul.list?.(l) ?? []; return printing ? all.slice(0, 1) : all; }, worstCase: (l) => { printing = true; return factMul.worstCase(l); } }), seeds: 320 }), /has a question twice|has 1 questions/],
   ["steps-marks", "a stack that is said to be worked in lines", () => ({ shape: add(), registration: { working: "lines" } }), /a column stack must be worked in columns/],
   ["steps-marks", "a fact that is said to be worked in columns", () => ({ shape: fact(), registration: { working: "columns" } }), /the steps write "" and not the answer/],
   ...([
@@ -333,7 +344,7 @@ describe("the harness refuses", () => {
     const report = check(broken());
     expect(report.failures.map((f) => f.message).join("\n")).toMatch(message);
     expect(checksOf(report)).toEqual([name]);
-    expect(report.failures[0].message).toMatch(/^\[(?:test\.(?:add|less|plus)|fact\.mul|count\.skip)\] [a-z-]+: .*\(fast-check seed 236\)$/);
+    expect(report.failures[0].message).toMatch(/^\[(?:test\.(?:add|less|plus)|fact\.mul|count\.skip|missing\.factor)\] [a-z-]+: .*\(fast-check seed 236\)$/);
   });
 
   it("has a broken shape for each check", () => {
@@ -377,8 +388,10 @@ describe("wrong shapes that touch more than one check", () => {
     }],
     ["that gives no answer part", ["answer-form"], () => ({ shape: skip({ answer: () => ({ parts: [] }) }) })],
     ["with two parts that is said to be worked in columns", ["steps-marks"], () => ({ shape: skip(), registration: { working: "columns" } })],
-    ["that gives a row in order for limits that mix", ["ordered-row"], () => ({ shape: fact({ orderedRow: (l, items, seed) => factMul.orderedRow?.(l, items, seed) ?? (factMul.list?.(l) ?? []).slice(0, items).map((question) => ({ question, answer: factMul.answer(question) })) }) })],
-    ["that gives a row that is too short", ["ordered-row", "book"], () => ({ shape: fact({ orderedRow: (l, items, seed) => factMul.orderedRow?.(l, items, seed)?.slice(0, Math.max(1, items - 1)) ?? null }) })],
+    ["with rows in order and no list", ["list"], () => ({ shape: fact({ list: undefined }) })],
+    ["with a form that is not the widest", ["forms"], () => ({ shape: { ...missingFactor, forms: (l: MissingLimits) => missingFactor.forms?.(l).map((item) => (item.question.result > 9 ? { question: { ...item.question, known: 1, result: 2 }, answer: whole("2") } : item)) ?? [] } as Shape })],
+    ["that gives a row in order for limits that mix", ["ordered-row"], () => ({ shape: fact({ orderedRuns: (l, items) => factMul.orderedRuns?.(l, items) ?? [(factMul.list?.(l) ?? []).slice(0, items)] }) })],
+    ["that gives a row that is too short", ["ordered-row", "book"], () => ({ shape: fact({ orderedRuns: (l, items) => factMul.orderedRuns?.(l, items)?.map((run) => run.slice(0, Math.max(1, items - 1))) ?? null }) })],
     ["with an answer kind that has no rule", ["answer-form"], () => bad({ answerKind: "quotient-remainder" as "whole-number" })],
     ["with an answer kind that has the name of a thing that each object inherits", ["answer-form"], () => {
       const kind = "constructor" as "whole-number";

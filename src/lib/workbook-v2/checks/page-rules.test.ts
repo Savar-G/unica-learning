@@ -137,10 +137,24 @@ describe("a question with blanks", () => {
     ["two parts with one name", 7, (_p, items) => { items[0].answer.parts[1].name = "blank-1"; }, /question 1 has two answer parts with one name/],
     ["no part", 0, (_p, items) => { items[0].answer.parts = []; }, /question 1 has no answer part/],
     ["an area of no part", 7, (p) => { named(p, "answer-1-blank-2").part = null; }, /"answer-1-blank-2" belongs to no answer part/],
+    ["a whole answer of no question", 7, (p) => p.regions.push({ id: `${p.id}/answer-9`, role: "answer", rect: { x: 300, y: 702, w: 72, h: 20 }, item: null, part: "ghost", ink: [] }), /"answer-9" belongs to no question of this page/],
+    ["a reach of no question", 7, (p) => p.regions.push({ id: `${p.id}/reach-9`, role: "reach", rect: { x: 300, y: 702, w: 72, h: 20 }, item: null, part: "ghost", ink: [] }), /"reach-9" belongs to no question of this page/],
+    ["a label of no question", 7, (p) => { named(p, "label-1").item = null; }, /"label-1" belongs to no question of this page/],
+    ["a work area of a question on another page", 7, (p) => { const label = named(p, "label-1"); p.regions.push({ ...label, id: `${p.id}/work-1`, role: "work", item: "x", ink: [], rect: { x: 300, y: 702, w: 72, h: 20 } }); }, /"work-1" belongs to no question of this page/],
+    ["a footer that belongs to a question", 7, (p, items) => { named(p, "footer").item = items[0].id; }, /"footer" must belong to no question/],
+    ["a heading with a part", 7, (p) => { named(p, "heading").part = "answer"; }, /"heading" must belong to no question/],
+    ["an area with the id of another page", 7, (p) => { const area = named(p, "answer-1-blank-2"); area.id = `foreign/${area.id}`; }, /"foreign\/[^"]*\/answer-1-blank-2" must be named "missing-numbers\/1\/back\/answer-1-blank-2"/],
+    ["a label with the id of another page", 7, (p) => { named(p, "label-1").id = "other/label-1"; }, /"other\/label-1" must be named "missing-numbers\/1\/back\/label-1"/],
+    ["a heading with the id of another page", 7, (p) => { named(p, "heading").id = "other/heading"; }, /"other\/heading" must be named "missing-numbers\/1\/back\/heading"/],
+    ["an answer area with no outline", 7, (p) => { named(p, "answer-1-blank-2").ink = []; }, /"answer-1-blank-2" must have one outline, which is its rectangle/],
+    ["an answer area of a line with no outline", 0, (p) => { named(p, "answer-1").ink = []; }, /"answer-1" must have one outline, which is its rectangle/],
+    ["an answer area with two outlines", 5, (p) => { const { ink } = named(p, "answer-1"); ink.push(structuredClone(ink[0])); }, /"answer-1" must have one outline, which is its rectangle/],
+    ["an outline that is smaller than its area", 5, (p) => { const [line] = named(p, "answer-1").ink; line.rect = { ...line.rect, w: line.rect.w - 2 }; }, /"answer-1" must have one outline, which is its rectangle/],
+    ["a thin outline", 5, (p) => { const [line] = named(p, "answer-1").ink; if (line.kind === "outline") line.width = 0.1; }, /"answer-1" must have one outline, which is its rectangle/],
     ["an area of a part that is not there", 7, (p) => { named(p, "reach-1-blank-2").part = "quotient"; }, /"reach-1-blank-2" belongs to the answer part "quotient"/],
     ["a question with a part", 7, (p) => { named(p, "question-1").part = "blank-1"; }, /"question-1" belongs to the answer part "blank-1"/],
-    ["an area with the name of another part", 7, (p) => { const area = named(p, "answer-1-blank-2"); area.id = area.id.replace("blank-2", "blank-9"); }, /"answer-1-blank-9" must be named "answer-1-blank-2"/],
-    ["an area whose name does not say its part", 7, (p) => { const area = named(p, "answer-1-blank-2"); area.id = area.id.replace("-blank-2", ""); }, /"answer-1" must be named "answer-1-blank-2"/],
+    ["an area with the name of another part", 7, (p) => { const area = named(p, "answer-1-blank-2"); area.id = area.id.replace("blank-2", "blank-9"); }, /answer-1-blank-9" must be named "missing-numbers\/1\/back\/answer-1-blank-2"/],
+    ["an area whose name does not say its part", 7, (p) => { const area = named(p, "answer-1-blank-2"); area.id = area.id.replace("-blank-2", ""); }, /\/answer-1" must be named "missing-numbers\/1\/back\/answer-1-blank-2"/],
     ["two rectangles with one name", 7, (p) => { named(p, "answer-1-blank-2").id = named(p, "answer-1-blank-1").id; }, /two rectangles are named "answer-1-blank-1"/],
     ["an answer area in the reach of another blank", 7, (p) => { const area = named(p, "answer-1-blank-2"); area.rect = { ...area.rect, y: area.rect.y - 12 }; }, /"answer-1-blank-2" enters the reach "reach-1-blank-1"/],
     ["a reach over another reach", 7, (p) => { const reach = named(p, "reach-1-blank-1"); reach.rect = { ...reach.rect, h: reach.rect.h + 2 }; }, /"reach-1-blank-\d" enters the reach "reach-1-blank-\d"/],
@@ -158,6 +172,12 @@ describe("a question with blanks", () => {
     ["a blank that the face does not have", 0, (_p, items) => { items[0].face = { kind: "equation", tokens: [{ text: "5" }, { text: "×" }, { text: "1" }, { text: "=" }] }; }, /question 1 has the blanks  and the answer parts answer/],
   ])("%s", (_name, index, change, problem) => {
     expect(problemsAfter(index, change)).toMatch(problem);
+  });
+
+  it("is the same in a stack: one outline, which is the rectangle of the area", () => {
+    const book = goodBook();
+    find(book.pages[0], "answer").ink = [];
+    expect(problemsOf(book)).toEqual(['Page 381: "answer-1" must have one outline, which is its rectangle.']);
   });
 
   it("is the same in a stack: one area with the name of no other part", () => {

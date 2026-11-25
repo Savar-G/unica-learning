@@ -15,7 +15,7 @@ import { TEMPLATES } from "../layout/templates";
 import { RenderError, type Renderer, type Rendering } from "../renderer";
 import { SHAPES, type ShapeLibrary } from "../shapes";
 import { readBookRequest } from "./book-input";
-import { sheetItems } from "./items";
+import { repeatNotices, sheetItems } from "./items";
 
 /** Both parts are data from a file or a store; the build reads and checks them. */
 export interface BuildInput { snapshot: unknown; book: unknown }
@@ -37,6 +37,8 @@ export interface BuiltBook {
   positions: Position[];
   /** Every printed question with its answer. */
   items: BookItem[];
+  /** What a person should know of a book that is good: the rows that had to repeat a question. */
+  notices: string[];
 }
 
 export type BuildResult = BuiltBook | { status: "failed"; problems: string[] };
@@ -60,6 +62,7 @@ interface BookPlan {
   inputHash: string;
   items: BookItem[];
   pages: PageModel[];
+  notices: string[];
 }
 
 /** The questions and the page models of a book, with every check that needs no drawing. */
@@ -80,7 +83,7 @@ export function planBook(input: BuildInput, shapes: ShapeLibrary = SHAPES, templ
   const problems = [...checkPrintedAnswers(pages, items, shapes), ...pages.flatMap((page) => checkPage(page, items))];
   if (problems.length > 0) return stop(problems);
   const inputHash = sha256(canonicalJson({ snapshot: bank.hash, book: request.value }));
-  return { ok: true, bookId: book.bookId, snapshot: { id: bank.snapshot.id, hash: bank.hash }, inputHash, items, pages };
+  return { ok: true, bookId: book.bookId, snapshot: { id: bank.snapshot.id, hash: bank.hash }, inputHash, items, pages, notices: sheets.flatMap((s) => repeatNotices(s.sheet, s.items)) };
 }
 
 export async function buildBook(input: BuildInput, renderer: Renderer, shapes: ShapeLibrary = SHAPES): Promise<BuildResult> {
@@ -107,5 +110,6 @@ export async function buildBook(input: BuildInput, renderer: Renderer, shapes: S
     pages: pages.map((model, i) => ({ model, image: drawn.images[i] })),
     positions: drawn.positions,
     items,
+    notices: plan.notices,
   };
 }
