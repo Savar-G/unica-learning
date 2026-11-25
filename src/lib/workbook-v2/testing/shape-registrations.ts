@@ -1,6 +1,8 @@
 // The registration of every shape in shapes/index.ts, one file each (docs/workbook-v2-engine.md, "Adding a shape").
 import type { ShapeRegistration } from "./shape-registration";
+import { addColumnRegistration } from "./registrations/add-column";
 import { mulColumnRegistration } from "./registrations/mul-column";
+import { subColumnRegistration } from "./registrations/sub-column";
 import { factAddRegistration } from "./registrations/fact-add";
 import { factSubRegistration } from "./registrations/fact-sub";
 import { factMulRegistration } from "./registrations/fact-mul";
@@ -13,7 +15,9 @@ import { missingAddendRegistration } from "./registrations/missing-addend";
 // Adding a shape on two branches inserts one line in each block without conflict or hand edits.
 // Every shape in SHAPES must appear here once; shapes.test.ts checks both lists.
 export const SHAPE_REGISTRATIONS: readonly ShapeRegistration[] = [
+  addColumnRegistration,
   mulColumnRegistration,
+  subColumnRegistration,
   factAddRegistration,
   factSubRegistration,
   factMulRegistration,

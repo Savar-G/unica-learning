@@ -1,0 +1,125 @@
+{
+  "format": 1,
+  "id": "invented-level-2-v1",
+  "level": { "id": "level-2", "name": "2" },
+  "topics": [
+    {
+      "id": "topic-1",
+      "code": "2-1",
+      "title": "Adding in columns",
+      "sheets": ["column-addition"]
+    },
+    {
+      "id": "topic-2",
+      "code": "2-2",
+      "title": "Subtracting in columns",
+      "sheets": ["column-subtraction"]
+    }
+  ],
+  "sheets": [
+    {
+      "id": "column-addition",
+      "firstPage": 1,
+      "front": {
+        "instruction": "Add. Start with the ones.",
+        "template": "columns-2x4",
+        "rows": [
+          {
+            "id": "no-carry",
+            "shape": "add.column",
+            "items": 2,
+            "limits": { "aDigits": { "min": 2, "max": 2 }, "bDigits": { "min": 2, "max": 2 }, "a": { "min": 10, "max": 99 }, "b": { "min": 10, "max": 99 }, "sum": { "min": 20, "max": 99 }, "carries": { "min": 0, "max": 0 }, "carryIntoTens": { "min": 0, "max": 1 }, "carryIntoHundreds": { "min": 0, "max": 1 }, "carryIntoThousands": { "min": 0, "max": 1 }, "carryChain": "allowed", "aZeroInOnes": "allowed", "aZeroInTens": "allowed", "aZeroInHundreds": "allowed", "bZeroInOnes": "allowed", "bZeroInTens": "allowed", "bZeroInHundreds": "allowed", "zeroInSum": "allowed" }
+          },
+          {
+            "id": "one-digit-below",
+            "shape": "add.column",
+            "items": 2,
+            "limits": { "aDigits": { "min": 2, "max": 2 }, "bDigits": { "min": 1, "max": 1 }, "a": { "min": 10, "max": 99 }, "b": { "min": 1, "max": 9 }, "sum": { "min": 11, "max": 99 }, "carries": { "min": 1, "max": 1 }, "carryIntoTens": { "min": 0, "max": 1 }, "carryIntoHundreds": { "min": 0, "max": 1 }, "carryIntoThousands": { "min": 0, "max": 1 }, "carryChain": "allowed", "aZeroInOnes": "allowed", "aZeroInTens": "allowed", "aZeroInHundreds": "allowed", "bZeroInOnes": "allowed", "bZeroInTens": "allowed", "bZeroInHundreds": "allowed", "zeroInSum": "allowed" }
+          },
+          {
+            "id": "one-carry",
+            "shape": "add.column",
+            "items": 4,
+            "limits": { "aDigits": { "min": 2, "max": 2 }, "bDigits": { "min": 2, "max": 2 }, "a": { "min": 10, "max": 99 }, "b": { "min": 10, "max": 99 }, "sum": { "min": 20, "max": 99 }, "carries": { "min": 1, "max": 1 }, "carryIntoTens": { "min": 0, "max": 1 }, "carryIntoHundreds": { "min": 0, "max": 1 }, "carryIntoThousands": { "min": 0, "max": 1 }, "carryChain": "allowed", "aZeroInOnes": "allowed", "aZeroInTens": "allowed", "aZeroInHundreds": "allowed", "bZeroInOnes": "allowed", "bZeroInTens": "allowed", "bZeroInHundreds": "allowed", "zeroInSum": "allowed" }
+          }
+        ]
+      },
+      "back": {
+        "instruction": "Add. Write each carry above the next column.",
+        "template": "columns-2x4-wide",
+        "rows": [
+          {
+            "id": "three-digits",
+            "shape": "add.column",
+            "items": 3,
+            "limits": { "aDigits": { "min": 3, "max": 3 }, "bDigits": { "min": 3, "max": 3 }, "a": { "min": 100, "max": 999 }, "b": { "min": 100, "max": 999 }, "sum": { "min": 200, "max": 1998 }, "carries": { "min": 1, "max": 2 }, "carryIntoTens": { "min": 0, "max": 1 }, "carryIntoHundreds": { "min": 0, "max": 1 }, "carryIntoThousands": { "min": 0, "max": 1 }, "carryChain": "allowed", "aZeroInOnes": "allowed", "aZeroInTens": "allowed", "aZeroInHundreds": "allowed", "bZeroInOnes": "allowed", "bZeroInTens": "allowed", "bZeroInHundreds": "allowed", "zeroInSum": "allowed" }
+          },
+          {
+            "id": "carry-chain",
+            "shape": "add.column",
+            "items": 2,
+            "limits": { "aDigits": { "min": 4, "max": 4 }, "bDigits": { "min": 1, "max": 3 }, "a": { "min": 1000, "max": 9999 }, "b": { "min": 1, "max": 999 }, "sum": { "min": 1001, "max": 10998 }, "carries": { "min": 1, "max": 3 }, "carryIntoTens": { "min": 0, "max": 1 }, "carryIntoHundreds": { "min": 0, "max": 1 }, "carryIntoThousands": { "min": 0, "max": 1 }, "carryChain": "only", "aZeroInOnes": "allowed", "aZeroInTens": "allowed", "aZeroInHundreds": "allowed", "bZeroInOnes": "allowed", "bZeroInTens": "allowed", "bZeroInHundreds": "allowed", "zeroInSum": "allowed" }
+          },
+          {
+            "id": "every-carry",
+            "shape": "add.column",
+            "items": 3,
+            "limits": { "aDigits": { "min": 4, "max": 4 }, "bDigits": { "min": 4, "max": 4 }, "a": { "min": 1000, "max": 9999 }, "b": { "min": 1000, "max": 9999 }, "sum": { "min": 10000, "max": 19998 }, "carries": { "min": 3, "max": 3 }, "carryIntoTens": { "min": 0, "max": 1 }, "carryIntoHundreds": { "min": 0, "max": 1 }, "carryIntoThousands": { "min": 0, "max": 1 }, "carryChain": "allowed", "aZeroInOnes": "allowed", "aZeroInTens": "allowed", "aZeroInHundreds": "allowed", "bZeroInOnes": "allowed", "bZeroInTens": "allowed", "bZeroInHundreds": "allowed", "zeroInSum": "allowed" }
+          }
+        ]
+      }
+    },
+    {
+      "id": "column-subtraction",
+      "firstPage": 3,
+      "front": {
+        "instruction": "Subtract. Start with the ones.",
+        "template": "columns-2x4",
+        "rows": [
+          {
+            "id": "no-borrow",
+            "shape": "sub.column",
+            "items": 2,
+            "limits": { "aDigits": { "min": 2, "max": 2 }, "bDigits": { "min": 2, "max": 2 }, "a": { "min": 10, "max": 99 }, "b": { "min": 10, "max": 99 }, "difference": { "min": 1, "max": 98 }, "borrows": { "min": 0, "max": 0 }, "borrowFromTens": { "min": 0, "max": 1 }, "borrowFromHundreds": { "min": 0, "max": 1 }, "borrowFromThousands": { "min": 0, "max": 1 }, "acrossZero": "allowed", "acrossTwoZeros": "allowed", "equalDigits": "allowed", "zeroAnswer": "never", "shorterAnswer": "never", "aZeroInOnes": "allowed", "aZeroInTens": "allowed", "aZeroInHundreds": "allowed", "bZeroInOnes": "allowed", "bZeroInTens": "allowed", "bZeroInHundreds": "allowed" }
+          },
+          {
+            "id": "shorter",
+            "shape": "sub.column",
+            "items": 2,
+            "limits": { "aDigits": { "min": 2, "max": 2 }, "bDigits": { "min": 2, "max": 2 }, "a": { "min": 20, "max": 59 }, "b": { "min": 10, "max": 99 }, "difference": { "min": 1, "max": 9 }, "borrows": { "min": 1, "max": 1 }, "borrowFromTens": { "min": 0, "max": 1 }, "borrowFromHundreds": { "min": 0, "max": 1 }, "borrowFromThousands": { "min": 0, "max": 1 }, "acrossZero": "allowed", "acrossTwoZeros": "allowed", "equalDigits": "allowed", "zeroAnswer": "never", "shorterAnswer": "only", "aZeroInOnes": "allowed", "aZeroInTens": "allowed", "aZeroInHundreds": "allowed", "bZeroInOnes": "allowed", "bZeroInTens": "allowed", "bZeroInHundreds": "allowed" }
+          },
+          {
+            "id": "one-borrow",
+            "shape": "sub.column",
+            "items": 4,
+            "limits": { "aDigits": { "min": 2, "max": 2 }, "bDigits": { "min": 2, "max": 2 }, "a": { "min": 10, "max": 99 }, "b": { "min": 10, "max": 99 }, "difference": { "min": 1, "max": 98 }, "borrows": { "min": 1, "max": 1 }, "borrowFromTens": { "min": 0, "max": 1 }, "borrowFromHundreds": { "min": 0, "max": 1 }, "borrowFromThousands": { "min": 0, "max": 1 }, "acrossZero": "allowed", "acrossTwoZeros": "allowed", "equalDigits": "allowed", "zeroAnswer": "never", "shorterAnswer": "never", "aZeroInOnes": "allowed", "aZeroInTens": "allowed", "aZeroInHundreds": "allowed", "bZeroInOnes": "allowed", "bZeroInTens": "allowed", "bZeroInHundreds": "allowed" }
+          }
+        ]
+      },
+      "back": {
+        "instruction": "Subtract. Borrow when a place has too little.",
+        "template": "columns-2x4-wide",
+        "rows": [
+          {
+            "id": "two-borrows",
+            "shape": "sub.column",
+            "items": 3,
+            "limits": { "aDigits": { "min": 3, "max": 3 }, "bDigits": { "min": 3, "max": 3 }, "a": { "min": 100, "max": 999 }, "b": { "min": 100, "max": 999 }, "difference": { "min": 100, "max": 998 }, "borrows": { "min": 2, "max": 2 }, "borrowFromTens": { "min": 0, "max": 1 }, "borrowFromHundreds": { "min": 0, "max": 1 }, "borrowFromThousands": { "min": 0, "max": 1 }, "acrossZero": "never", "acrossTwoZeros": "allowed", "equalDigits": "allowed", "zeroAnswer": "never", "shorterAnswer": "never", "aZeroInOnes": "allowed", "aZeroInTens": "allowed", "aZeroInHundreds": "allowed", "bZeroInOnes": "allowed", "bZeroInTens": "allowed", "bZeroInHundreds": "allowed" }
+          },
+          {
+            "id": "across-a-zero",
+            "shape": "sub.column",
+            "items": 3,
+            "limits": { "aDigits": { "min": 3, "max": 3 }, "bDigits": { "min": 1, "max": 3 }, "a": { "min": 100, "max": 999 }, "b": { "min": 1, "max": 999 }, "difference": { "min": 1, "max": 998 }, "borrows": { "min": 1, "max": 3 }, "borrowFromTens": { "min": 0, "max": 1 }, "borrowFromHundreds": { "min": 0, "max": 1 }, "borrowFromThousands": { "min": 0, "max": 1 }, "acrossZero": "only", "acrossTwoZeros": "allowed", "equalDigits": "allowed", "zeroAnswer": "never", "shorterAnswer": "allowed", "aZeroInOnes": "allowed", "aZeroInTens": "allowed", "aZeroInHundreds": "allowed", "bZeroInOnes": "allowed", "bZeroInTens": "allowed", "bZeroInHundreds": "allowed" }
+          },
+          {
+            "id": "across-two-zeros",
+            "shape": "sub.column",
+            "items": 2,
+            "limits": { "aDigits": { "min": 4, "max": 4 }, "bDigits": { "min": 4, "max": 4 }, "a": { "min": 1000, "max": 9999 }, "b": { "min": 1000, "max": 9999 }, "difference": { "min": 1, "max": 8999 }, "borrows": { "min": 1, "max": 3 }, "borrowFromTens": { "min": 0, "max": 1 }, "borrowFromHundreds": { "min": 0, "max": 1 }, "borrowFromThousands": { "min": 0, "max": 1 }, "acrossZero": "allowed", "acrossTwoZeros": "only", "equalDigits": "allowed", "zeroAnswer": "never", "shorterAnswer": "allowed", "aZeroInOnes": "allowed", "aZeroInTens": "allowed", "aZeroInHundreds": "allowed", "bZeroInOnes": "allowed", "bZeroInTens": "allowed", "bZeroInHundreds": "allowed" }
+          }
+        ]
+      }
+    }
+  ]
+}

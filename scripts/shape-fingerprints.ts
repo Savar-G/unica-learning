@@ -2,19 +2,20 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { SHAPES } from "@/lib/workbook-v2/shapes";
+import { shapeLibrary, SHAPES, type ShapeLibrary } from "@/lib/workbook-v2/shapes";
 import { isRecord } from "@/lib/workbook-v2/shapes/shape";
 import { addShapeFingerprints, fingerprintFileName, fingerprintFileText, FINGERPRINTS_DIR, type ShapeFingerprints } from "@/lib/workbook-v2/testing/shape-fingerprints";
 import { SHAPE_REGISTRATIONS } from "@/lib/workbook-v2/testing/shape-registrations";
 
-const USAGE = "Usage: npm run workbook:v2:fingerprints [-- --dir FOLDER]";
+const USAGE = "Usage: npm run workbook:v2:fingerprints [-- --dir FOLDER] [--shape ID]";
 
-function readDirArg(args: string[]): string {
+function readArgs(args: string[]): { dir: string; shapes: ShapeLibrary } {
   try {
-    const { values } = parseArgs({ args, options: { dir: { type: "string", multiple: true } } });
-    if (!values.dir) return resolve(FINGERPRINTS_DIR);
-    if (values.dir.length !== 1 || values.dir[0] === "") throw new Error(USAGE);
-    return resolve(values.dir[0]);
+    const { values } = parseArgs({ args, options: { dir: { type: "string", multiple: true }, shape: { type: "string", multiple: true } } });
+    const [dirs, ids] = [values.dir ?? [FINGERPRINTS_DIR], values.shape ?? [...SHAPES.keys()]];
+    const shapes = shapeLibrary(ids.map((id) => SHAPES.get(id)).filter((shape) => shape !== undefined));
+    if (dirs.length !== 1 || dirs[0] === "" || shapes.size !== ids.length) throw new Error(USAGE);
+    return { dir: resolve(dirs[0]), shapes };
   } catch {
     throw new Error(USAGE);
   }
@@ -41,9 +42,9 @@ async function readExisting(dir: string): Promise<ShapeFingerprints> {
   return merged;
 }
 
-const dir = readDirArg(process.argv.slice(2));
+const { dir, shapes } = readArgs(process.argv.slice(2));
 const existing = await readExisting(dir);
-const result = addShapeFingerprints(SHAPES, SHAPE_REGISTRATIONS, existing);
+const result = addShapeFingerprints(shapes, SHAPE_REGISTRATIONS.filter((r) => shapes.has(r.id)), existing);
 if (!result.ok) throw new Error(result.problems.join("\n"));
 if (result.added.length === 0) {
   console.log(`Fingerprints are up to date: ${dir}`);

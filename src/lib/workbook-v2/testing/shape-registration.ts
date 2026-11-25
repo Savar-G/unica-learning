@@ -110,12 +110,18 @@ export interface LargeSpace {
   listed?: readonly Rows[];
 }
 
-/** A step as a registration writes it by hand: "w2@0 c1@1" writes 2 in the ones and puts a carry of 1 above the tens. */
+const MARK_LETTERS: Readonly<Record<string, StepMark["mark"]>> = { w: "write", c: "carry", x: "cross-out", b: "borrow" };
+
+/**
+ * A step as a registration writes it by hand: "w2@0 c1@1" writes 2 in the ones and puts a carry of 1 above the tens;
+ * "x4@1 b3@1 b12@0" crosses out the 4 tens, writes 3 above them and 12 above the ones.
+ */
 export function step(text: string, marks = ""): Step {
   return { text, marks: marks.split(" ").filter((m) => m !== "").map((m): StepMark => {
-    const [, kind, digit, place] = /^([wc])(\d)@(\d+)$/.exec(m) ?? [];
-    if (kind === undefined) throw new Error(`"${m}" is no mark of a step`);
-    return { mark: kind === "w" ? "write" : "carry", place: Number(place), digit };
+    const [, letter, digit, place] = /^([wcxb])(\d+)@(\d+)$/.exec(m) ?? [];
+    if (letter === undefined) throw new Error(`"${m}" is no mark of a step`);
+    const mark = MARK_LETTERS[letter];
+    return mark === "write" || mark === "carry" ? { mark, place: Number(place), digit } : { mark, row: "top", place: Number(place), digit };
   }) };
 }
 
@@ -144,10 +150,11 @@ export interface ShapeRegistration {
   refusedRows: readonly { name: string; rows: Rows }[];
 }
 
-export function isInside(registration: ShapeRegistration, printed: Printed, limits: Limits): boolean {
-  for (const name in registration.limits) if (!registration.limits[name].allows(printed.features[name], limits[name])) return false;
+export function hasFeatures(registration: ShapeRegistration, features: Printed["features"], limits: Limits): boolean {
+  for (const name in registration.limits) if (!registration.limits[name].allows(features[name], limits[name])) return false;
   return true;
 }
+export const isInside = (registration: ShapeRegistration, printed: Printed, limits: Limits): boolean => hasFeatures(registration, printed.features, limits);
 
 /** Whether an object has these names of its own, in any order, and no other. */
 export const hasNames = (object: object, names: readonly string[]): boolean => Object.keys(object).length === names.length && names.every((name) => Object.hasOwn(object, name));

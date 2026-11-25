@@ -23,27 +23,40 @@ type Used = readonly [sheet: Set<string>, side: Set<string>, row: Set<string>];
 
 const keyOf = (shape: Shape, question: unknown): string => `${shape.id} ${canonicalJson(question)}`;
 
+/** The questions that a sheet has met of some limits so far, to know when there is no other. */
+interface Met { keys: Set<string>; count: number | null }
+
 /**
  * One question of a shape with no list: one that the sheet does not have; when the row has none left, one that the side
- * does not have, and then one that the row does not have. It asks again and again.
+ * does not have, and then one that the row does not have. It asks again and again. When it has met every question that
+ * the limits allow, it knows how little used the best one is, and stops there: more tries would give the same question.
  */
-function nextItem({ shape, limits }: SnapshotRow, seedOf: (attempt: number) => string, used: Used): Item<unknown> {
+function nextItem({ shape, limits }: SnapshotRow, seedOf: (attempt: number) => string, used: Used, met: Met): Item<unknown> {
   /** How many of the sheet, the side and the row have a question: one that the row has, all three have. */
-  const uses = (question: unknown) => used.filter((on) => on.has(keyOf(shape, question))).length;
-  let best = shape.generate(limits, seedOf(0));
-  let fewest = uses(best.question);
-  for (let attempt = 1; fewest > 0 && attempt < TRIES; attempt++) {
-    const next = shape.generate(limits, seedOf(attempt));
-    const found = uses(next.question);
-    if (found < fewest) [best, fewest] = [next, found];
+  const uses = (key: string) => used.filter((on) => on.has(key)).length;
+  const ask = (attempt: number) => {
+    const item = shape.generate(limits, seedOf(attempt));
+    const key = keyOf(shape, item.question);
+    met.keys.add(key);
+    return { item, uses: uses(key) };
+  };
+  /** How little used a question of the row can be: 0 until all of them are met. */
+  const least = () => {
+    met.count ??= shape.count(limits);
+    return met.keys.size < met.count ? 0 : Math.min(...[...met.keys].map(uses));
+  };
+  let best = ask(0);
+  for (let attempt = 1; best.uses > 0 && attempt < TRIES && best.uses > least(); attempt++) {
+    const next = ask(attempt);
+    if (next.uses < best.uses) best = next;
   }
-  return best;
+  return best.item;
 }
 
-function triedItems(row: SnapshotRow, seedOf: AskedRow["seedOf"], sheetUsed: Set<string>, sideUsed: Set<string>): Item<unknown>[] {
+function triedItems(row: SnapshotRow, seedOf: AskedRow["seedOf"], sheetUsed: Set<string>, sideUsed: Set<string>, met: Met): Item<unknown>[] {
   const used: Used = [sheetUsed, sideUsed, new Set()];
   return Array.from({ length: row.items }, (_, place) => {
-    const { question, answer } = nextItem(row, (attempt) => seedOf(place, attempt), used);
+    const { question, answer } = nextItem(row, (attempt) => seedOf(place, attempt), used, met);
     for (const on of used) on.add(keyOf(row.shape, question));
     return { question, answer };
   });
@@ -65,9 +78,16 @@ function sheetRows(sheet: SnapshotSheet, seed: string): Record<Side, SideRow[]> 
     for (const one of own.flat()) one.items = (chosen.get(one.asked) ?? []).map((question) => ({ question, answer: shape.answer(question) }));
   }
   const sheetUsed = new Set<string>();
+  const metOf = new Map<string, Met>();
   for (const side of SIDES) {
     const sideUsed = new Set<string>();
-    for (const one of rows[side]) if (!one.row.shape.list) one.items = triedItems(one.row, one.asked.seedOf, sheetUsed, sideUsed);
+    for (const one of rows[side].filter(({ row }) => !row.shape.list)) {
+      const { shape, limits } = one.row;
+      const key = keyOf(shape, limits);
+      const met = metOf.get(key) ?? { keys: new Set(), count: null };
+      metOf.set(key, met);
+      one.items = triedItems(one.row, one.asked.seedOf, sheetUsed, sideUsed, met);
+    }
   }
   return rows;
 }

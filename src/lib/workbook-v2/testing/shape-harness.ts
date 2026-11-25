@@ -6,8 +6,8 @@ import type { TemplateLibrary } from "../bank/snapshot";
 import { planBook } from "../build/build-book";
 import { itemSeed } from "../build/items";
 import { answerProblem } from "../checks/answer-form";
-import { BLANK, questionRows, regionsByItem } from "../checks/printed-answers";
-import { answerLine, isPrintable, type Answer, type BookItem, type Face, type Side, type Step } from "../contract";
+import { questionRows, regionsByItem } from "../checks/printed-answers";
+import type { Answer, BookItem, Face, Side } from "../contract";
 import { canonicalJson, seedFrom } from "../hash";
 import { itemRegions } from "../layout/build-pages";
 import { TEMPLATES, type Needs, type PageTemplate } from "../layout/templates";
@@ -17,8 +17,7 @@ import { brokenRows, isPlain, maxOf, onFrozenLimits } from "./shape-checks";
 import { FitChecks, formed } from "./shape-fit";
 import { fingerprintProblem } from "./shape-fingerprints";
 import { isInside, printedProblem, registryProblems, type LargeSpace, type Limits, type Printed, type Rows, type ShapeRegistration } from "./shape-registration";
-import { linesProblem, marksProblem } from "./step-marks";
-import { readStep } from "./steps-evaluator";
+import { canPrint, stepProblems } from "./shape-steps";
 
 /** How many production seeds each registered shape gets. */
 export const SEEDS = 1000;
@@ -175,7 +174,7 @@ class Harness {
     const malformed = answerProblem(answer, shape.answerKind);
     if (malformed) this.tell("answer-form", `${at}: ${answerJson} is no answer of the kind "${shape.answerKind}": it ${malformed}`);
     const { rows, needs, kind, form } = this.print(question, answer);
-    if (!rows.every((row) => isPrintable(row.replaceAll(BLANK, "")))) this.tell("printed", `${at}: the fonts cannot print ${show(rows)}`);
+    if (!canPrint(rows)) this.tell("printed", `${at}: the fonts cannot print ${show(rows)}`);
     const printed = this.read(rows);
     if (!printed) return this.tell("printed", `${at}: the independent reader finds no question in ${show(rows)}`);
     const read = canonicalJson(printed.answer);
@@ -183,43 +182,10 @@ class Harness {
     const solved = this.guard("solve-again", () => canonicalJson(shape.solveAgain(rows)));
     if (solved !== `{"answer":${answerJson},"question":${key}}`) this.tell("solve-again", `${at}: solveAgain(${show(rows)}) gave ${solved}`);
     const steps = shape.steps(question);
-    this.checkSteps(steps, answer, printed, kind, at);
+    for (const { check, detail } of stepProblems({ steps, answer, printed, rows, kind, answerKind: shape.answerKind, working: this.reg.working })) this.tell(check, `${at}: ${detail}`);
     const score = shape.difficulty(question);
     if (!Number.isFinite(score)) this.tell("difficulty", `${at}: the score is ${score}`);
     return { question, rows, printed, answer: answerJson, steps: canonicalJson(steps), score, needs, form };
-  }
-
-  private checkSteps(steps: readonly Step[], answer: Answer, printed: Printed, kind: Face["kind"], at: string): void {
-    const bad = steps.find(({ text }) => typeof text !== "string" || text === "" || !isPrintable(text));
-    if (bad !== undefined) this.tell("steps-end", `${at}: the step ${JSON.stringify(bad.text)} cannot be printed`);
-    const end = steps.at(-1)?.text;
-    const line = Array.isArray(answer.parts) ? answerLine(answer) : null;
-    if (end !== line) this.tell("steps-end", `${at}: the steps end in ${JSON.stringify(end)} and not in "${line}"`);
-    let textOk = true;
-    // The last step is the answer itself (checked above); check every working step with the closed grammar.
-    for (const { text } of steps.slice(0, -1)) {
-      const { wrong, unread } = readStep(text);
-      if (unread.length > 0) {
-        textOk = false;
-        this.tell("steps-true", `cannot read "${unread[0]}" in a step of ${at}`);
-      }
-      if (wrong.length > 0) {
-        textOk = false;
-        this.tell("steps-true", `${at}: the step "${text}" holds "${wrong[0]}"`);
-      }
-    }
-    // Wrong answers, ends and unreadable steps have their own checks; the marks are compared with a good step list.
-    const marks = textOk && end === line && !answerProblem(answer, this.shape.answerKind) ? this.workingProblem(steps, answer, kind) : null;
-    if (marks) this.tell("steps-marks", `${at}: ${marks}`);
-    const said = canonicalJson(steps);
-    const wanted = canonicalJson(printed.steps);
-    if (said !== wanted) this.tell("steps-reader", `${at}: the steps are ${said} and must be ${wanted}`);
-  }
-
-  /** The registration says how the answer is worked. The shape cannot: a stack is always worked in columns. */
-  private workingProblem(steps: readonly Step[], answer: Answer, kind: Face["kind"]): string | null {
-    if (this.reg.working === "lines") return kind === "column" ? "a column stack must be worked in columns" : linesProblem(steps, answer);
-    return answer.parts.length === 1 ? marksProblem(steps, answer.parts[0].value) : "an answer with more than one part is not worked in columns";
   }
 
   /** The question that rows print, by the shape. */

@@ -2,9 +2,9 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { validateSnapshot, type SnapshotSheet } from "../bank/snapshot";
 import { answerLine } from "../contract";
-import { seedFrom } from "../hash";
+import { canonicalJson, seedFrom } from "../hash";
 import rawSnapshot from "../fixtures/snapshot.json";
-import { SHAPES } from "../shapes";
+import { SHAPES, type Shape } from "../shapes";
 import { stackOf } from "../testing/sample";
 import { itemSeed, repeatNotices, sheetItems } from "./items";
 
@@ -312,5 +312,78 @@ describe("no question repeats on a side while there are enough different ones", 
       const [first] = sheetItems(sheetOf([row(1, 0, 19)]), child, 1);
       expect(first.question).toEqual(add.generate(rowsOf("front", [row(1, 0, 19)])[0].limits, itemSeed(seedFrom(child, SHEET.id, 1), "front", "front-0", 0, 0)).question);
     }
+  });
+});
+
+describe("the tries of a shape with no list", () => {
+  type RowOf = { id: string; items: number; limits: unknown };
+  const r = (min: number, max: number) => ({ min, max });
+  /** A small space whose shape does not say its list, and the eight column additions that a review found slow. */
+  const unlisted: Shape = { ...(SHAPES.get("fact.mul") as Shape), list: undefined, orderedRuns: undefined };
+  const table = (low: number, high: number, tables = [7]) => ({ tables, second: r(low, high), result: r(0, 100), order: "mixed" });
+  const EIGHT = table(1, 8);
+  const row = (id: string, items: number, limits: unknown = EIGHT): RowOf => ({ id, items, limits });
+
+  /** A sheet, and how many questions its build asks the shape for. */
+  function watched(front: RowOf[], back: RowOf[], shape = unlisted) {
+    let asked = 0;
+    const counting: Shape = { ...shape, generate: (limits, seed) => { asked++; return shape.generate(limits, seed); } };
+    const rows = (all: RowOf[]) => all.map((one) => ({ ...one, shape: counting }));
+    const sheet: SnapshotSheet = { ...SHEET, front: { ...SHEET.front, rows: rows(front) }, back: { ...SHEET.back, rows: rows(back) } };
+    return { sheet, askedFor: (child: string) => { asked = 0; sheetItems(sheet, child, 1); return asked; } };
+  }
+  /** Each question by asking 500 times, always: the first of those that the fewest of the sheet, the side and the row have. */
+  function byAllTries(sheet: SnapshotSheet, child: string): string[] {
+    const seed = seedFrom(child, sheet.id, 1);
+    const onSheet = new Set<string>();
+    return (["front", "back"] as const).flatMap((side) => {
+      const onSide = new Set<string>();
+      return sheet[side].rows.flatMap((one) => {
+        const inRow = new Set<string>();
+        return Array.from({ length: one.items }, (_, place) => {
+          const tries = Array.from({ length: 500 }, (_unused, i) => canonicalJson(one.shape.generate(one.limits, itemSeed(seed, side, one.id, place, i)).question));
+          const uses = tries.map((key) => [onSheet, onSide, inRow].filter((on) => on.has(key)).length);
+          const key = tries[uses.indexOf(Math.min(...uses))];
+          for (const on of [onSheet, onSide, inRow]) on.add(key);
+          return `${side} ${one.id} ${key}`;
+        });
+      });
+    });
+  }
+  const said = (sheet: SnapshotSheet, child: string) => sheetItems(sheet, child, 1).map((i) => `${i.side} ${i.rowId} ${canonicalJson(i.question)}`).sort();
+
+  it.each<[string, RowOf[], RowOf[], number]>([
+    ["both sides ask for all eight questions", [row("f", 8)], [row("b", 8)], 120],
+    ["a side asks two times for all eight", [row("f", 8), row("g", 8)], [row("b", 8)], 260],
+    ["a side has some questions left", [row("f", 5)], [row("b", 5)], 60],
+    ["the back may ask for two more", [row("f", 8)], [row("b", 8, table(1, 10))], 260],
+    ["a row of the back asks for a part of the front", [row("f", 8)], [row("b", 3, table(6, 8))], 90],
+    ["a row of one question on both sides", [row("f", 1, table(3, 3))], [row("b", 1, table(3, 3))], 2],
+    ["rows have some questions of each other", [row("f", 4), row("g", 4, table(4, 10))], [row("b", 4, table(4, 10)), row("c", 4)], 260],
+    ["rows say the same questions in other ways", [row("f", 8)], [row("b", 8, { ...EIGHT, result: r(7, 56) })], 120],
+    ["there are many questions", [row("f", 8, table(1, 10, [3, 4, 6, 7, 8, 9]))], [row("b", 8, table(1, 10, [3, 4, 6, 7, 8, 9]))], 40],
+  ])("end when no question of the row is less used, and give the question of all 500 tries: %s", (_name, front, back, most) => {
+    const { sheet, askedFor } = watched(front, back);
+    for (const child of ["child-a", "child-b"]) {
+      expect(said(sheet, child)).toEqual(byAllTries(sheet, child).sort());
+      expect(askedFor(child)).toBeLessThanOrEqual(most);
+    }
+  });
+
+  it("are few for the eight column additions that both sides ask for, and the repeats are named as before", () => {
+    const any = "allowed";
+    const limits = {
+      aDigits: r(4, 4), bDigits: r(4, 4), a: r(4131, 4138), b: r(1968, 1968), sum: r(2, 19_998), carries: r(0, 3), carryIntoTens: r(0, 1), carryIntoHundreds: r(0, 1), carryIntoThousands: r(0, 1), carryChain: any,
+      aZeroInOnes: any, aZeroInTens: any, aZeroInHundreds: any, bZeroInOnes: any, bZeroInTens: any, bZeroInHundreds: any, zeroInSum: any,
+    };
+    const { sheet, askedFor } = watched([row("f", 8, limits)], [row("b", 8, limits)], SHAPES.get("add.column"));
+    expect(askedFor("child")).toBeLessThanOrEqual(120);
+    expect(repeatNotices(sheet, sheetItems(sheet, "child", 1))).toEqual([`Sheet "${sheet.id}", back side, row "b": 8 questions are on the front side too.`]);
+  });
+
+  it("go on to the last one for a shape that counts more questions than it gives", () => {
+    const { sheet, askedFor } = watched([row("f", 2)], [], { ...unlisted, count: () => 2, generate: (limits) => unlisted.generate(limits, "one") });
+    expect(askedFor("child")).toBe(501);
+    expect(said(sheet, "child")).toEqual(byAllTries(sheet, "child").sort());
   });
 });
