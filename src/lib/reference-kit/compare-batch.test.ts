@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ContentsRecord, PageRecord } from "@/lib/reference-record";
+import type { ContentsRecord, Example, PageItem, PageRecord, PageSection } from "@/lib/reference-record";
 import { checkAndMarkPage } from "./check";
 import { compareWorkFolder } from "./compare-batch";
 import { persistSlotResult } from "./extract-state";
@@ -1067,7 +1067,7 @@ describe("compareWorkFolder", () => {
     const p2a = make100FieldPage("sample:M:2a");
     const p2b = structuredClone(p2a);
     for (let i = 0; i < 10; i += 1) {
-      p2b.sections[0].items[i].printed = `${i + 1} + 2 =`;
+      p2b.sections[0].items[i].printed = `${i + 1} + 1 = ?`;
     }
 
     // 3a: 89% agreement (11 diffs out of 100 fields) -> machine_read (sent to a person, below 90%)
@@ -1075,7 +1075,7 @@ describe("compareWorkFolder", () => {
     const p3b = structuredClone(p3a);
     p3b.topic.title = "Other Title";
     for (let i = 0; i < 10; i += 1) {
-      p3b.sections[0].items[i].printed = `${i + 1} + 2 =`;
+      p3b.sections[0].items[i].printed = `${i + 1} + 1 = ?`;
     }
 
     // 4a: 100% agreement BUT printed answer conflicts with expression (answer_differs) -> machine_read
@@ -1098,7 +1098,7 @@ describe("compareWorkFolder", () => {
     };
     const p5b = structuredClone(p5a);
     for (let i = 1; i <= 5; i += 1) {
-      p5b.sections[0].items[i].printed = `${i + 1} + 2 =`;
+      p5b.sections[0].items[i].printed = `${i + 1} + 1 = ?`;
     }
 
     const pages = [
@@ -1630,12 +1630,14 @@ describe("compareWorkFolder", () => {
 
     const page4a = byRef("sample:M:4a");
     expect(page4a?.status).toBe("machine_read");
-    expect(page4a?.result_reason).toBe("readers disagree on an answer");
+    // Reader B's answer step is also not the computed answer.
+    const reason4a = "a reader's answer differs from the computed answer; readers disagree on an answer";
+    expect(page4a?.result_reason).toBe(reason4a);
     expect(page4a?.answer_disagreements).toEqual(["examples[0].steps[n=2].printed"]);
 
     expect(report.pages_sent_to_person?.map((p) => ({ ref: p.source_ref, reason: p.reason }))).toEqual([
       { ref: "sample:M:3a", reason: "readers disagree on an answer" },
-      { ref: "sample:M:4a", reason: "readers disagree on an answer" },
+      { ref: "sample:M:4a", reason: reason4a },
     ]);
 
     const md = readFileSync(join(work, "final", "report.md"), "utf8");
@@ -1654,8 +1656,8 @@ describe("compareWorkFolder", () => {
     type RawAnswerKind = "correct" | "wrong" | "unclear" | "null";
     interface FillableShape {
       name: string;
-      // Optional pair skip when a shape is conditionally fillable and does not fill on (wrong, wrong).
-      skipBothWrong?: boolean;
+      // Code fills this shape only when the stored answers are right (wrong ones are not proved).
+      fillsOnlyRight?: boolean;
       buildPayload: (answerKind: RawAnswerKind) => Record<string, unknown>;
       checkFilled: (saved: PageRecord) => void;
     }
@@ -1909,7 +1911,7 @@ describe("compareWorkFolder", () => {
         name: "multi_unnamed_same_value",
         // When both readers write a wrong concrete answer on unnamed multi-place responses,
         // code intentionally does not fill (places_do_not_fit) because places may be digit boxes.
-        skipBothWrong: true,
+        fillsOnlyRight: true,
         buildPayload: (kind) => {
           const ans = rawVal(kind, "24", "25");
           return makeBasePage({
@@ -2023,7 +2025,6 @@ describe("compareWorkFolder", () => {
       for (const shape of fillableShapes) {
         for (const aKind of rawKinds) {
           for (const bKind of rawKinds) {
-            if (shape.skipBothWrong && aKind === "wrong" && bKind === "wrong") continue;
             const shouldPass =
               (aKind === "correct" || aKind === "null") &&
               (bKind === "correct" || bKind === "null");
@@ -2064,14 +2065,18 @@ describe("compareWorkFolder", () => {
         expect(out.report.pages_sent_to_person![0].reason, label).toBe(out.page.result_reason);
         expect(out.page.result_reason, label).not.toBeNull();
         expect(out.md, label).not.toContain("Exact match across both readers.");
-        if (!t.shape.skipBothWrong) {
+        if (!t.shape.fillsOnlyRight) {
           t.shape.checkFilled(out.saved);
+        }
+        if (t.shape.fillsOnlyRight && (t.aKind === "wrong" || t.bKind === "wrong")) {
+          expect(out.page.result_reason, label).toContain("stored answers do not fit the computed answer");
+          expect(out.page.unproved_answers?.length, label).toBeGreaterThan(0);
         }
         if (t.aKind === "unclear" || t.bKind === "unclear") {
           expect(out.page.result_reason, label).toContain("readers disagree on an answer");
           expect(out.page.answer_disagreements?.length ?? 0, label).toBeGreaterThan(0);
         }
-        if ((t.aKind === "wrong" || t.bKind === "wrong") && !t.shape.skipBothWrong) {
+        if ((t.aKind === "wrong" || t.bKind === "wrong") && !t.shape.fillsOnlyRight) {
           expect(out.page.result_reason, label).toContain(
             "a reader's answer differs from the computed answer",
           );
@@ -2728,7 +2733,7 @@ describe("compareWorkFolder", () => {
     ]);
     expect(Array.isArray(bothBad.saved.examples) && bothBad.saved.examples[0].parts[0].shown_answer).toBe("6");
 
-    // 4. Passing cases: thousands separators, remainder forms, notation, absent/null/not_stated, linked/chain
+    // 4. Passing cases: thousands separators, remainder forms, notation, absent/null/not_stated
     const okParts: PageRecord["examples"] extends infer E ? (E extends Array<infer Ex> ? Ex extends { parts: infer P } ? P : never : never) : never = [
       { form: "horizontal", expr: { kind: "arith", op: "add", operands: [500, 500] }, shown_answer: "1,000" },
       { form: "horizontal", expr: { kind: "arith", op: "div", operands: [13, 3] }, shown_answer: "4r1" },
@@ -2736,18 +2741,6 @@ describe("compareWorkFolder", () => {
       { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] } },
       { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: null },
       { form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "not_stated" },
-      {
-        form: "horizontal",
-        expr: {
-          kind: "linked",
-          pair: [
-            { kind: "arith", op: "add", operands: [1, 2] },
-            { kind: "arith", op: "add", operands: [2, 3] },
-          ],
-        },
-        shown_answer: "99",
-      },
-      { form: "horizontal", expr: { kind: "chain", terms: [2, 4, null, 8] }, shown_answer: "99" },
     ];
     const allOk = runCase("all-ok", makeExPage("sample:M:23a", okParts), makeExPage("sample:M:23a", okParts));
     expect(allOk.page.status).toBe("double_read");
@@ -2925,7 +2918,8 @@ describe("compareWorkFolder", () => {
           scaffolds: [],
           items: Array.from({ length: 12 }, (_, idx) => ({
             n: idx + 1,
-            printed: idx === 0 ? "2 + 3 =" : `${idx + 1} + 1 =`,
+            // Words: the printed line of this item is not checked against the expression.
+            printed: idx === 0 ? "Find 2 + 3." : `${idx + 1} + 1 =`,
             form: "horizontal" as const,
             expr: {
               kind: "arith" as const,
@@ -2958,7 +2952,7 @@ describe("compareWorkFolder", () => {
     const p1b = structuredClone(p1a);
     p1b.topic.title = "Totals";
 
-    // 2a: printed "2 + 3 =", reader A stores 1 x 5, reader B stores 2 + 3, both answers 5 -> machine_read with expression reason
+    // 2a: printed "Find 2 + 3.", reader A stores 1 x 5, reader B stores 2 + 3, both answers 5 -> machine_read with expression reason
     const p2a = makeSized("sample:M:42a");
     p2a.sections[0].items[0].expr = { kind: "arith", op: "mul", operands: [1, 5] };
     const p2b = makeSized("sample:M:42a");
@@ -3204,5 +3198,217 @@ describe("compareWorkFolder", () => {
     expect(control.run().pages[0].edited_by_person).toBe(true);
     expect(readFileSync(control.recordPath, "utf8")).toBe(control.editedText);
     expect(existsSync(control.stalePath)).toBe(false);
+  });
+
+  // One work folder with one photo that both readers read. `edit` runs between two compare runs.
+  const runPair = (
+    a: PageRecord,
+    b: PageRecord,
+    edit?: (recordPath: string, work: string, repo: string) => void,
+  ) => {
+    const repo = mkdtempSync(join(tmpdir(), "ref-cmp-agree-repo-"));
+    const work = mkdtempSync(join(tmpdir(), "ref-cmp-agree-work-"));
+    tempDirs.push(repo, work);
+    const file = `${a.source_ref.replace(/:/g, "-")}.json`;
+    for (const [slot, family, rec] of [
+      ["a", "codex", a],
+      ["b", "claude", b],
+    ] as const) {
+      const dir = join(work, `reader-${slot}`);
+      const reader = { family, model: "m1" };
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "reader.json"), JSON.stringify(reader));
+      writeFileSync(join(dir, file), JSON.stringify(rec));
+      const photo = {
+        photo: `${SHA_1.slice(0, 12)}.jpg`,
+        photo_sha256: SHA_1,
+        status: "ok",
+        source_ref: rec.source_ref,
+        record_file: file,
+        notes: [],
+      };
+      writeFileSync(join(dir, "run.json"), JSON.stringify({ slot, reader, source: "sample", photos: [photo] }));
+    }
+    addPreparedPhoto(work, "1");
+    let report = compareWorkFolder({ workDir: work, repoRoot: repo });
+    if (edit) {
+      edit(join(work, "final", file), work, repo);
+      report = compareWorkFolder({ workDir: work, repoRoot: repo });
+    }
+    return { page: report.pages[0], md: readFileSync(join(work, "final", "report.md"), "utf8") };
+  };
+
+  const UNPROVED = "stored answers do not fit the computed answer";
+  const PRINTED = "printed line differs from the expression";
+  const CONFLICT = "stored answer conflicts with computed answer";
+  const place = (answer: string | null, more: Partial<PageItem["responses"][number]> = {}): PageItem["responses"][number] => ({
+    position: "box",
+    cue: null,
+    answer,
+    answer_source: answer === null ? "unchecked" : "reader",
+    ...more,
+  });
+  // 30 correct items, so that one difference leaves the page above 98% agreement.
+  const filler = (): PageItem[] =>
+    Array.from({ length: 30 }, (_, i) => ({
+      n: i + 11,
+      printed: `${i + 1} + 1 =`,
+      form: "horizontal" as const,
+      expr: { kind: "arith" as const, op: "add" as const, operands: [i + 1, 1] },
+      responses: [place(String(i + 2), { position: "after_equals" })],
+    }));
+  const pageOf = (items: PageItem[], examples: Example[] = [], more: PageSection[] = []): PageRecord =>
+    makePage({
+      sections: [{ instruction: "Add.", scaffolds: [], items: [...items, ...filler()] }, ...more],
+      examples,
+    });
+  const sum = (responses: PageItem["responses"], more: Partial<PageItem> = {}): PageItem => ({
+    n: 1,
+    printed: "2 + 3 =",
+    form: "horizontal",
+    expr: { kind: "arith", op: "add", operands: [2, 3] },
+    responses,
+    ...more,
+  });
+  const solved = (more: Partial<Example> = {}, part: Partial<Example["parts"][number]> = {}): Example => ({
+    position: "top",
+    relation: "sequence",
+    parts: [{ form: "horizontal", expr: { kind: "arith", op: "add", operands: [2, 3] }, shown_answer: "5", ...part }],
+    steps: [],
+    marks: [],
+    ...more,
+  });
+  const answerStep = (printed: string) => ({ n: 1, shows: "answer" as const, printed });
+
+  it("sends a page to a person when both readers agree on a wrong answer that code cannot place or check", () => {
+    const rows: Array<[string, PageRecord, PageRecord, string, RegExp]> = (
+      [
+        ["1: two unnamed places", pageOf([sum([place("5"), place("6")])]), UNPROVED, /`sections\[0\]\.items\[n=1\]`: answer places hold "5", "6", computed "5"/],
+        ["1: duplicate place names", pageOf([sum([place("5", { place: "ones" }), place("6", { place: "ones" })])]), UNPROVED, /hold "5", "6", computed "5"/],
+        ["1: checkbox and empty work area", pageOf([sum([place(null, { position: "checkbox" }), place(null, { position: "work_area" })])]), UNPROVED, /no answer place for the computed answer "5"/],
+        ["2: chain example", pageOf([], [solved({}, { expr: { kind: "chain", terms: [2, null, 6], step: 2 }, shown_answer: "99" })]), CONFLICT, /`examples\[0\]\.parts\[0\]\.shown_answer`: shown "99", computed "4"/],
+        ["3: answer step 99", pageOf([], [solved({ steps: [answerStep("99")] })]), CONFLICT, /`examples\[0\]\.steps\[n=1\]\.printed`: step prints "99", computed "5"/],
+        ["3: answer step 6", pageOf([], [solved({ steps: [answerStep("6")] })]), CONFLICT, /step prints "6", computed "5"/],
+        ["4: expression is not the printed line", pageOf([sum([place("6", { position: "after_equals" })], { expr: { kind: "arith", op: "mul", operands: [2, 3] } })]), PRINTED, /`sections\[0\]\.items\[n=1\]\.printed`: page prints "2 \+ 3 =", expression is "2 × 3"/],
+        ["4: the same as notation", pageOf([sum([place("6", { position: "after_equals" })], { expr: { kind: "notation", latex: "2 \\times 3" } })]), PRINTED, /page prints "2 \+ 3 =", expression is "2 \\times 3"/],
+        ["a question with no expression", pageOf([sum([place("6", { position: "after_equals" })], { expr: null, form: null })]), PRINTED, /page prints "2 \+ 3 =", expression is "none"/],
+        ["setup step of an example", pageOf([], [solved({ steps: [{ n: 1, shows: "setup", printed: "2 + 3 =" }] }, { expr: { kind: "arith", op: "mul", operands: [2, 3] }, shown_answer: "6" })]), PRINTED, /`examples\[0\]\.steps\[n=1\]\.printed`: page prints "2 \+ 3 =", expression is "2 × 3"/],
+        ["a second answer in the work area", pageOf([sum([place("5", { position: "after_equals" }), place("6", { position: "work_area" })])]), UNPROVED, /`sections\[0\]\.items\[n=1\]\.responses\[1\]`: holds "6", computed "5"/],
+      ] as Array<[string, PageRecord, string, RegExp]>
+    ).map(([label, page, reason, line]) => [label, page, structuredClone(page), reason, line]);
+
+    for (const [label, a, b, reason, line] of rows) {
+      const { page, md } = runPair(a, b);
+      expect(page.agreement?.percent, label).toBe(100);
+      expect(page.status, label).toBe("machine_read");
+      expect(page.result_reason, label).toContain(reason);
+      expect(md, label).toMatch(line);
+      const heading = md.split("\n").find((l) => /^- .*\(look at the photo/.test(l));
+      expect(heading, `${label}: the report says what to do`).toBeDefined();
+    }
+  });
+
+  it("never pairs two entries with different names or places, and stops on an entry that only one reader has", () => {
+    const section = (instruction: string | null): PageSection => ({
+      instruction,
+      scaffolds: [],
+      items: [sum([place("5", { position: "after_equals" })])],
+    });
+    const part = (caption: string | null) => solved({}, { caption });
+    const withExample = (example: Example) => pageOf([], [example]);
+    const withSection = (instruction: string | null) => pageOf([], [], [section(instruction)]);
+
+    const stops: Array<[string, PageRecord, PageRecord, string[]]> = [
+      ["labels and positions", withExample(solved({ label: "Example 1" })), withExample(solved({ label: "Example 2", position: "foot" })), ["examples[0]", "examples[b:0]"]],
+      ["labels", withExample(solved({ label: "Example 1" })), withExample(solved({ label: "Example 2" })), ["examples[0]", "examples[b:0]"]],
+      ["positions", withExample(solved()), withExample(solved({ position: "foot" })), ["examples[0]", "examples[b:0]"]],
+      ["same label, top and foot", withExample(solved({ label: "Ex." })), withExample(solved({ label: "Ex.", position: "foot" })), ["examples[0]", "examples[b:0]"]],
+      ["top and inline with another text", withExample(solved({ text: "Add the ones." })), withExample(solved({ text: "Add the tens.", position: "inline" })), ["examples[0]", "examples[b:0]"]],
+      ["sections", withSection("Add the top row."), withSection("Add the last row."), ["sections[1]", "sections[b:1]"]],
+      ["parts", withExample(part("First way")), withExample(part("Second way")), ["examples[0].parts[0]", "examples[0].parts[b:0]"]],
+      ["whole example in one reading", pageOf([]), withExample(solved()), ["examples[b:0]"]],
+      ["whole section in one reading", withSection("Add the top row."), pageOf([]), ["sections[1]"]],
+      ["first section in one reading", pageOf([], [], [section("Add."), section("Add again.")]), pageOf([], [], [section("Add again.")]), ["sections[1]"]],
+      ["whole part in one reading", withExample({ ...solved(), parts: [...part("A").parts, ...part("B").parts] }), withExample(part("B")), ["examples[0].parts[0]"]],
+    ];
+    for (const [label, a, b, paths] of stops) {
+      const { page, md } = runPair(a, b);
+      expect(page.agreement?.percent, label).toBeGreaterThanOrEqual(90);
+      expect(page.status, label).toBe("machine_read");
+      expect(page.result_reason, label).toContain("readers disagree on an answer");
+      expect(page.result_reason, label).toContain("readers disagree on an expression");
+      expect(page.once_read.map((d) => d.path), label).toEqual(paths);
+      expect(page.differences, label).toEqual([]);
+      for (const path of paths) expect(md, label).toContain(`\`${path}\`: only reader ${path.includes("b:") ? "b" : "a"} has it`);
+    }
+
+    // Answer places with different names are two places, also when each reader gives one place.
+    const elevens = (name: string) =>
+      pageOf([sum([place("1", { place: name })], { printed: "5 + 6", expr: { kind: "arith", op: "add", operands: [5, 6] } })]);
+    const digits = runPair(elevens("tens"), elevens("ones")).page;
+    expect(digits.agreement?.percent).toBeGreaterThanOrEqual(98);
+    expect(digits.status).toBe("machine_read");
+    expect(digits.answer_disagreements).toEqual(["sections[0].items[n=1].responses[0]"]);
+    expect(runPair(elevens("ones"), elevens("Ones place")).page.status).not.toBe("machine_read");
+
+    const passes: Array<[string, PageRecord, PageRecord, string]> = [
+      ["one reader gives no label", withExample(solved({ label: "Example 1" })), withExample(solved()), "examples[0].label"],
+      ["the label in another form", withExample(solved({ label: "Example 1." })), withExample(solved({ label: "EXAMPLE  1" })), ""],
+      ["the same example, inline or top", withExample(solved()), withExample(solved({ position: "inline" })), "examples[0].position"],
+      ["the same example, inline or top, with one more mark", withExample(solved()), withExample(solved({ position: "inline", marks: [{ kind: "box" }] })), "examples[0].marks[b:0]"],
+      ["the same label, inline or top", withExample(solved({ label: "Ex.", text: "Add." })), withExample(solved({ label: "Ex.", position: "inline" })), "examples[0].position"],
+      ["one reader gives no instruction", withSection("Add the top row."), withSection(null), "sections[1].instruction"],
+      ["the instruction in another form", withSection("Draw y = - 3x"), withSection("draw y = \u22123x."), ""],
+      ["one reader gives no caption", withExample(part("First way")), withExample(part(null)), "examples[0].parts[0].caption"],
+      ["the caption in another form", withExample(part("First way:")), withExample(part("first way")), ""],
+    ];
+    for (const [label, a, b, path] of passes) {
+      const { page } = runPair(a, b);
+      expect(["double_read", "agreement_accepted"], label).toContain(page.status);
+      const paths = [...page.differences, ...page.once_read].map((d) => d.path);
+      if (path) expect(paths, label).toContain(path);
+      expect(paths.some((x) => /^(sections|examples)\[(b:)?\d+\]$|\.parts\[(b:)?\d+\]$/.test(x)), label).toBe(false);
+    }
+  });
+
+  it("computes the new reasons from the final record and from each reader, and leaves a checked page as it is", () => {
+    const right = pageOf([sum([place("5"), place("5")])], [solved()]);
+    const wrongPlaces = pageOf([sum([place("5"), place("6")])], [solved()]);
+    const wrongPrinted = pageOf([sum([place("5"), place("5")], { printed: "2 - 3 =" })], [solved()]);
+    const wrongStep = pageOf([sum([place("5"), place("5")])], [solved({ steps: [answerStep("6")] })]);
+    const save = (page: PageRecord) => (path: string) => writeFileSync(path, JSON.stringify(page));
+    const who = (list: string[] | undefined) => (list ?? []).map((entry) => entry.split(":")[0]);
+
+    const lists: Array<[PageRecord, "unproved_answers" | "printed_conflicts", string]> = [
+      [wrongPlaces, "unproved_answers", UNPROVED],
+      [wrongPrinted, "printed_conflicts", PRINTED],
+    ];
+    for (const [wrong, key, reason] of lists) {
+      const fresh = runPair(wrong, wrong).page;
+      expect(who(fresh[key])).toEqual(["final record", "reader b"]);
+      const onlyB = runPair(right, wrong).page;
+      expect(who(onlyB[key])).toEqual(["reader b"]);
+      expect(onlyB.result_reason).toContain(reason);
+      // Edited by a person: the page stays machine_read, and the final record is the edited one.
+      const corrected = runPair(wrong, wrong, save(right)).page;
+      expect([corrected.status, corrected.edited_by_person]).toEqual(["machine_read", true]);
+      expect(who(corrected[key])).toEqual(["reader a", "reader b"]);
+      const stillWrong = runPair(wrong, wrong, save(wrong)).page;
+      expect(who(stillWrong[key])).toEqual(["final record", "reader a", "reader b"]);
+    }
+    const step = runPair(wrongStep, wrongStep).page;
+    expect([who(step.answer_conflicts), who(step.reader_answer_conflicts)]).toEqual([["final record"], ["reader b"]]);
+    const stepOnlyB = runPair(right, wrongStep).page;
+    expect([who(stepOnlyB.answer_conflicts), who(stepOnlyB.reader_answer_conflicts)]).toEqual([[], ["reader b"]]);
+
+    // A page that a person checked: the check is not stopped, and the page stays human_checked.
+    for (const wrong of [wrongPlaces, wrongPrinted, wrongStep]) {
+      const { page, md } = runPair(wrong, wrong, (_path, work, repo) =>
+        checkAndMarkPage({ workDir: work, page: wrong.source_ref, repoRoot: repo, photoCompared: true }),
+      );
+      expect([page.status, page.result_reason]).toEqual(["human_checked", null]);
+      expect([page.unproved_answers, page.printed_conflicts, page.answer_conflicts]).toEqual([undefined, undefined, undefined]);
+      expect(md).not.toContain("look at the photo");
+    }
   });
 });

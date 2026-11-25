@@ -11,7 +11,6 @@ import {
 } from "@/lib/reference-record";
 import {
   applyComputedAnswers,
-  collectExampleAnswerConflicts,
   collectReadTimeAnswerConflicts,
   collectReadTimeUnclearAnswers,
   fileSlugFromRef,
@@ -47,6 +46,7 @@ import {
   sha256OfFile,
   writePlannedManifest,
 } from "./compare-batch-files";
+import { collectRecordFindings, findExampleAnswerConflicts } from "./example-answers";
 import {
   loadPrepareReport,
   loadSlot,
@@ -57,7 +57,9 @@ import {
   type PairedPage,
 } from "./compare-pairing";
 import { createEmptyManifest, readPhotosManifest } from "./prepare";
+import { findPrintedConflicts } from "./printed-line";
 import { unlinkChild } from "./extract-state";
+import { findUnprovedAnswers } from "./unproved-answers";
 import {
   countPageStatuses,
   formatCompareReportMarkdown,
@@ -276,12 +278,15 @@ export function compareWorkFolder(opts: {
       (d) => d.kind === "answer_differs",
     );
     const finalItemConflictPaths = new Set(finalItemDetails.map((d) => d.path));
-    const exampleConflicts = collectExampleAnswerConflicts(
-      keepsRecord ? editedRecord : computedRecord,
-      pair.recA,
-      pair.recB,
-      { finalIsFreshA },
-    );
+    const findings = (find: typeof findUnprovedAnswers) =>
+      collectRecordFindings(find, keepsRecord ? editedRecord : computedRecord, pair.recA, pair.recB, {
+        finalIsFreshA,
+      });
+    const exampleConflicts = findings(findExampleAnswerConflicts);
+    const unproved = findings(findUnprovedAnswers);
+    const unprovedAnswers = [...unproved.finalMessages, ...unproved.readerMessages];
+    const printed = findings(findPrintedConflicts);
+    const printedConflicts = [...printed.finalMessages, ...printed.readerMessages];
     const answerConflicts = [
       ...finalItemDetails.map((d) => `final record: ${d.message}`),
       ...exampleConflicts.finalMessages,
@@ -329,6 +334,8 @@ export function compareWorkFolder(opts: {
       counts: comparison.counts,
       hasAnswerConflict: answerConflicts.length > 0,
       hasReaderAnswerConflict: readerAnswerConflicts.length > 0,
+      hasUnprovedAnswers: unprovedAnswers.length > 0,
+      hasPrintedConflict: printedConflicts.length > 0,
       needsPersonRead: classified.needs_person_read,
       editedByPerson,
       checkProblems: problems,
@@ -411,6 +418,8 @@ export function compareWorkFolder(opts: {
       result_reason: resultReason,
       ...(answerConflicts.length > 0 ? { answer_conflicts: answerConflicts } : {}),
       ...(readerAnswerConflicts.length > 0 ? { reader_answer_conflicts: readerAnswerConflicts } : {}),
+      ...(unprovedAnswers.length > 0 ? { unproved_answers: unprovedAnswers } : {}),
+      ...(printedConflicts.length > 0 ? { printed_conflicts: printedConflicts } : {}),
       ...(answerDisagreements.length > 0 ? { answer_disagreements: answerDisagreements } : {}),
       ...(expressionDisagreements.length > 0 ? { expression_disagreements: expressionDisagreements } : {}),
       only_in_reader: onlyIn,

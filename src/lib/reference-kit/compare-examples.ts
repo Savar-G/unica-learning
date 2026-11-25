@@ -6,6 +6,7 @@ import {
   type ExampleStep,
   type ReferenceRecord,
 } from "@/lib/reference-record";
+import { atDifferentEnds, pairExampleParts, pairRemainingExamples } from "./compare-align";
 import {
   checkSentinels,
   compareExpr,
@@ -330,20 +331,25 @@ function compareSingleExample(
   compareField(`${path}.text`, a.text, b.text, { teaching: true, mode: "prose" }, diffs, counts);
   compareField(`${path}.cross_ref`, a.cross_ref, b.cross_ref, { teaching: true, mode: "prose" }, diffs, counts);
 
-  const maxParts = Math.max(a.parts.length, b.parts.length);
-  for (let i = 0; i < maxParts; i += 1) {
+  const partPairs = new Map(pairExampleParts(a.parts, b.parts));
+  a.parts.forEach((pa, i) => {
     const pPath = `${path}.parts[${i}]`;
-    const pa = a.parts[i];
-    const pb = b.parts[i];
-    if (!pa || !pb) {
-      recordDiff(diffs, { path: pPath, a: pa ?? null, b: pb ?? null, kind: "value" }, counts);
-      continue;
+    const idxB = partPairs.get(i);
+    if (idxB === undefined) {
+      recordDiff(diffs, { path: pPath, a: pa, b: null, kind: "once_read" }, counts);
+      return;
     }
+    const pb = b.parts[idxB];
     compareField(`${pPath}.caption`, pa.caption, pb.caption, { teaching: true, mode: "prose" }, diffs, counts);
     compareField(`${pPath}.form`, pa.form, pb.form, {}, diffs, counts);
     compareExpr(`${pPath}.expr`, pa.expr, pb.expr, diffs, counts);
     compareField(`${pPath}.shown_answer`, pa.shown_answer, pb.shown_answer, { teaching: true }, diffs, counts);
-  }
+  });
+  const pairedParts = new Set(partPairs.values());
+  b.parts.forEach((pb, i) => {
+    if (pairedParts.has(i)) return;
+    recordDiff(diffs, { path: `${path}.parts[b:${i}]`, a: null, b: pb, kind: "once_read" }, counts);
+  });
 
   const stepAlignment = compareExampleSteps(`${path}.steps`, a.steps, b.steps, diffs, counts);
   compareExampleMarks(`${path}.marks`, a.marks, b.marks, diffs, stepAlignment, counts);
@@ -377,7 +383,7 @@ export function compareExamples(
     const labelA = exampleLabelKey(exA);
     if (!labelA) return;
     const matchIdx = bList.findIndex(
-      (exB, j) => !usedB.has(j) && exampleLabelKey(exB) === labelA,
+      (exB, j) => !usedB.has(j) && exampleLabelKey(exB) === labelA && !atDifferentEnds(exA, exB),
     );
     if (matchIdx !== -1) {
       matchedBForA.set(idxA, matchIdx);
@@ -413,18 +419,23 @@ export function compareExamples(
     }
   });
 
-  // Pass 3: match any remaining unmatched examples in positional order
+  // Pass 3: match the remaining examples in order, when nothing says that they are two examples
+  const remainingA = aList.map((_, i) => i).filter((i) => !matchedBForA.has(i));
   const remainingB = bList.map((_, j) => j).filter((j) => !usedB.has(j));
-  let remCursor = 0;
-  aList.forEach((_, idxA) => {
-    if (matchedBForA.has(idxA)) return;
-    if (remCursor < remainingB.length) {
-      const matchIdx = remainingB[remCursor];
-      remCursor += 1;
-      matchedBForA.set(idxA, matchIdx);
-      usedB.add(matchIdx);
-    }
-  });
+  const sameButPlace = (exA: Example, exB: Example): boolean => {
+    const probeDiffs: RecordDifference[] = [];
+    compareSingleExample("probe", exA, { ...exB, position: exA.position }, probeDiffs);
+    return probeDiffs.every((d) => d.kind === "wording" || d.kind === "once_read");
+  };
+  const restPairs = pairRemainingExamples(
+    remainingA.map((i) => aList[i]),
+    remainingB.map((j) => bList[j]),
+    sameButPlace,
+  );
+  for (const [i, j] of restPairs) {
+    matchedBForA.set(remainingA[i], remainingB[j]);
+    usedB.add(remainingB[j]);
+  }
 
   aList.forEach((exA, idxA) => {
     const matchIdx = matchedBForA.get(idxA);

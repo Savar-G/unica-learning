@@ -7,6 +7,7 @@ import {
   type ScoreBand,
   type ScoreBands,
 } from "@/lib/reference-record";
+import { decimalPlacePower } from "./answers";
 import { normalizeNotationText, normalizeProseText } from "./normalize";
 
 // empty_answer: an answer place of the final record holds no answer and no "unclear" marker.
@@ -331,6 +332,12 @@ export function compareResponses(
     const rb = bList[i];
     if (!ra || !rb) {
       recordDiff(diffs, { path: rPath, a: ra ?? null, b: rb ?? null, kind: "value" }, counts);
+      continue;
+    }
+    // Two different digit boxes are two answer places: each reader has one that the other has not.
+    const powers = [decimalPlacePower(ra.place), decimalPlacePower(rb.place)];
+    if (powers[0] !== null && powers[1] !== null && powers[0] !== powers[1]) {
+      recordDiff(diffs, { path: rPath, a: ra, b: rb, kind: "value" }, counts);
       continue;
     }
     compareField(`${rPath}.position`, ra.position, rb.position, {}, diffs, counts);

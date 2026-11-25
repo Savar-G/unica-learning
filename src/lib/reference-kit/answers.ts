@@ -1,6 +1,5 @@
 import {
   computeExprAnswer,
-  NOT_STATED,
   UNCLEAR,
   type ComputedAnswer,
   type ComputedSingleAnswer,
@@ -11,6 +10,7 @@ import {
   type PageRecord,
   type ReferenceRecord,
 } from "@/lib/reference-record";
+import { isConcreteAnswer, normalizeAnswerCompare } from "./answer-text";
 
 const NON_ANSWER_POSITIONS = new Set<string>(["work_area", "checkbox"]);
 
@@ -26,12 +26,17 @@ export function fileSlugFromRef(sourceRef: string): string {
 // - unclear_filled: a reader marked the answer "unclear" and code replaced it with the computed value.
 // - places_do_not_fit: the computed answers do not fit the answer places, so the stored answers
 //   were kept.
+// - unproved_answer: a stored answer of an item that code can compute, and that the rules above
+//   cannot prove.
+// - printed_differs: the printed line does not say what the stored expression says.
 // - place_not_reached: a higher decimal place that the computed value does not reach; the response
 //   was kept as it is.
 export type AnswerNoteKind =
   | "answer_differs"
   | "unclear_filled"
   | "places_do_not_fit"
+  | "unproved_answer"
+  | "printed_differs"
   | "place_not_reached";
 
 export interface AnswerNote {
@@ -167,31 +172,14 @@ export function isKnownPlaceName(place: unknown): boolean {
   return key !== null && (PLACE_POWERS.has(key) || FRACTIONAL_PLACE_NAMES.has(key));
 }
 
-function normalizeAnswerCompare(raw: string): string {
-  return raw
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/\b\d{1,3}(?:,\d{3})+\b/g, (grouped) => grouped.replace(/,/g, ""))
-    .replace(/(\d)\s*[rR]\s*(\d+)/g, "$1 R$2");
-}
-
 // A division can print a quotient place and a remainder place. One value must not go into both.
-function isDivisionExpr(expr: PageItem["expr"]): boolean {
+export function isDivisionExpr(expr: PageItem["expr"]): boolean {
   if (!expr) return false;
   if (expr.kind === "word") {
     const inner = expr.expr;
     return typeof inner === "object" && inner !== null && isDivisionExpr(inner);
   }
   return (expr.kind === "arith" || expr.kind === "missing") && expr.op === "div";
-}
-
-function isConcreteAnswer(answer: ItemResponse["answer"]): answer is string {
-  return (
-    typeof answer === "string" &&
-    answer !== UNCLEAR &&
-    answer !== NOT_STATED &&
-    answer.trim().length > 0
-  );
 }
 
 function isSoleWorkArea(item: PageItem, resp: ItemResponse): boolean {
@@ -203,7 +191,7 @@ export function isAnswerBearingResponse(item: PageItem, resp: ItemResponse): boo
   return isSoleWorkArea(item, resp);
 }
 
-function hasNoPlace(resp: ItemResponse): boolean {
+export function hasNoPlace(resp: ItemResponse): boolean {
   return resp.place === undefined || resp.place === null;
 }
 
@@ -232,7 +220,7 @@ function placePowers(
 
 // One digit of a whole number in each decimal place box. With `requireFit`, every digit of the
 // value must have a box.
-function planPlaceDigits(
+export function planPlaceDigits(
   powerByIndex: Map<number, number>,
   value: string,
   requireFit: boolean,
@@ -257,7 +245,7 @@ function planPlaceDigits(
   return { values, unreached };
 }
 
-function scaffoldsFor(scaffolds: PageSection["scaffolds"], n: number): AnswerBoxesScaffold[] {
+export function scaffoldsFor(scaffolds: PageSection["scaffolds"], n: number): AnswerBoxesScaffold[] {
   if (!Array.isArray(scaffolds)) return [];
   return scaffolds.filter(
     (sc): sc is AnswerBoxesScaffold =>
@@ -266,7 +254,7 @@ function scaffoldsFor(scaffolds: PageSection["scaffolds"], n: number): AnswerBox
   );
 }
 
-function isMultiBox(sc: AnswerBoxesScaffold): boolean {
+export function isMultiBox(sc: AnswerBoxesScaffold): boolean {
   return (
     (typeof sc.box_count === "number" && sc.box_count > 1) ||
     (Array.isArray(sc.places) && sc.places.length > 1)
@@ -324,7 +312,7 @@ function planSingleInPlaces(
   return null;
 }
 
-function planItemAnswers(
+export function planItemAnswers(
   item: PageItem,
   computed: ComputedAnswer | null,
   sectionScaffolds: PageSection["scaffolds"],
@@ -379,7 +367,7 @@ function planItemAnswers(
   };
 }
 
-function itemPathOf(sectionIndex: number, item: PageItem): string {
+export function itemPathOf(sectionIndex: number, item: PageItem): string {
   return `sections[${sectionIndex}].items[n=${item.n}]`;
 }
 
@@ -501,48 +489,4 @@ export function findEmptyAnswers(record: ReferenceRecord | null | undefined): st
     }
   });
   return paths;
-}
-
-// Worked-example parts whose shown_answer conflicts with their own computable single-answer expr.
-// Never mutates shown_answer and is used by compare (not reference:check, where a person decides).
-export function findExampleAnswerConflicts(
-  record: ReferenceRecord | null | undefined,
-): AnswerNote[] {
-  if (!record || record.kind !== "page" || !Array.isArray(record.examples)) return [];
-  const out: AnswerNote[] = [];
-  record.examples.forEach((ex, ei) => {
-    ex.parts.forEach((part, pi) => {
-      const shown = part.shown_answer ?? null;
-      if (!isConcreteAnswer(shown)) return;
-      const computed = computeExprAnswer(part.expr);
-      if (!computed || computed.kind !== "single") return;
-      if (normalizeAnswerCompare(shown) !== normalizeAnswerCompare(computed.value)) {
-        const path = `examples[${ei}].parts[${pi}].shown_answer`;
-        const message = `${path}: shown "${shown}", computed "${computed.value}"`;
-        out.push({ kind: "answer_differs", path, message });
-      }
-    });
-  });
-  return out;
-}
-
-export function collectExampleAnswerConflicts(
-  finalRecord: ReferenceRecord | null | undefined,
-  recA: ReferenceRecord | null | undefined,
-  recB: ReferenceRecord | null | undefined,
-  opts: { finalIsFreshA: boolean },
-): { finalMessages: string[]; readerMessages: string[] } {
-  const finalMessages = findExampleAnswerConflicts(finalRecord).map(
-    (note) => `final record: ${note.message}`,
-  );
-  const readerMessages: string[] = [];
-  if (!opts.finalIsFreshA) {
-    for (const note of findExampleAnswerConflicts(recA)) {
-      readerMessages.push(`reader a: ${note.message}`);
-    }
-  }
-  for (const note of findExampleAnswerConflicts(recB)) {
-    readerMessages.push(`reader b: ${note.message}`);
-  }
-  return { finalMessages, readerMessages };
 }

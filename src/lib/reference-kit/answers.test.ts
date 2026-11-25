@@ -3,14 +3,13 @@ import { describe, expect, it } from "vitest";
 import { validateReferenceRecord, type ExamplePart, type ItemResponse, type PageItem, type PageRecord } from "@/lib/reference-record";
 import {
   applyComputedAnswers,
-  collectExampleAnswerConflicts,
   collectReadTimeAnswerConflicts,
   collectReadTimeUnclearAnswers,
   decimalPlacePower,
   findEmptyAnswers,
-  findExampleAnswerConflicts,
   isKnownPlaceName,
 } from "./answers";
+import { collectExampleAnswerConflicts, findExampleAnswerConflicts } from "./example-answers";
 
 function makePageWithItem(item: PageRecord["sections"][0]["items"][0]): PageRecord {
   return {
@@ -804,7 +803,7 @@ describe("applyComputedAnswers", () => {
         expectConflict: false,
       },
       {
-        label: "linked multi-answer expr skipped",
+        label: "conflicting linked pair",
         part: {
           form: "horizontal",
           expr: {
@@ -816,16 +815,16 @@ describe("applyComputedAnswers", () => {
           },
           shown_answer: "99",
         },
-        expectConflict: false,
+        expectConflict: true,
       },
       {
-        label: "chain multi-answer expr skipped",
+        label: "conflicting chain",
         part: {
           form: "horizontal",
           expr: { kind: "chain", terms: [2, 4, null, 8] },
           shown_answer: "99",
         },
-        expectConflict: false,
+        expectConflict: true,
       },
       {
         label: "word inexact division skipped",
