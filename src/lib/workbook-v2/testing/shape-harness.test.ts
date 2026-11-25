@@ -16,10 +16,12 @@ import { marksProblem } from "./step-marks";
 import { addColumn } from "../shapes/add-column";
 import { mulColumn } from "../shapes/mul-column";
 import { subColumn } from "../shapes/sub-column";
+import { divFact } from "../shapes/div-fact";
 import { factMul, type FactLimits, type FactQuestion } from "../shapes/facts";
 import { missingFactor, type MissingLimits, type MissingQuestion } from "../shapes/missing";
 import { skipCount, type SkipCountLimits, type SkipCountQuestion } from "../shapes/skip-count";
 import { skipCountRegistration } from "./registrations/count-skip";
+import { divFactRegistration } from "./registrations/div-fact";
 import { factMulRegistration } from "./registrations/fact-mul";
 import { missingFactorRegistration } from "./registrations/missing-factor";
 import { mulColumnRegistration } from "./registrations/mul-column";
@@ -45,7 +47,7 @@ const whole = wholeAnswer;
 /** Steps of a question of test.add: the lines, the first of which writes the last line. */
 const said = (...texts: string[]): Step[] => texts.map((text, i) => step(text, i === 0 && texts.length > 1 && /^\d+$/.test(texts[texts.length - 1]) ? [...texts[texts.length - 1]].reverse().map((d, at) => `w${d}@${at}`).join(" ") : ""));
 
-const REAL = new Map([factMulRegistration, skipCountRegistration, missingFactorRegistration].map((reg) => [reg.id, reg]));
+const REAL = new Map([factMulRegistration, skipCountRegistration, missingFactorRegistration, divFactRegistration].map((reg) => [reg.id, reg]));
 const REGISTRATIONS = new Map([addRegistration, lessRegistration, ...REAL.values()].map((reg) => [reg.id, reg]));
 
 /** A few seeds are enough for a fault that every run meets. */
@@ -91,6 +93,7 @@ const first = columns2x4;
 const short: PageTemplate = { ...first, sides: { front: { ...first.sides.front, places: first.sides.front.places.slice(0, 4) }, back: { ...first.sides.back, places: first.sides.back.places.slice(0, 4) } } };
 const narrow: PageTemplate = { ...first, id: "narrow", holds: { "digit places": 2 } };
 const withNarrow = { templates: new Map([first, narrow].map((t) => [t.id, t])) };
+const DIVISION = new Map(["facts-2x10", "brackets-2x6"].flatMap((id) => [...TEMPLATES.entries()].filter(([name]) => name === id)));
 const reversedBack = withPlaces("back", (p) => ({ topCells: [...p.topCells].reverse() }));
 /** Rows in either order, for a shape and a reader that take both. */
 const eitherOrder = (rows: Rows): Rows => (rows.length === 2 && rows[0].startsWith("+") ? [rows[1], rows[0]] : rows);
@@ -309,8 +312,11 @@ const REFUSED: readonly Refused[] = [
     ["another question with the same answer", (q, l) => (q.a === 2 && q.b === 6 ? { question: { a: 3, b: 4 }, inLimits: true } : factMul.swapped?.(q, l) ?? null), /is \["3×4=□"\] and must be \["6×2=□"\]/],
     ["a wrong report of the limits", (q, l) => { const s = factMul.swapped?.(q, l) ?? null; return s && { ...s, inLimits: true }; }, /is outside the limits and the shape says the other/],
   ] as [string, NonNullable<Fact["swapped"]>, RegExp][]).map(([fault, swapped, message]): Refused => ["swapped", fault, () => ({ shape: fact({ swapped }) }), message]),
+  ["swapped", "a swapped form with the same answer, where it must have another", () => ({ shape: fact(), registration: { swapChangesAnswer: true } }), /has the answer .* and the question/],
+  ["swapped", "a swapped form with another answer, where it must have the same", () => ({ shape: divFact as Shape, registration: { swapChangesAnswer: undefined }, options: { templates: DIVISION } }), /has the answer .* and the question/],
   ["swapped", "swapped forms that the registration does not know", () => ({ shape: fact(), registration: { swapped: undefined } }), /the shape has swapped forms and the registration says the other/],
   ["steps-marks", "a stack that is said to be worked in lines", () => ({ shape: add(), registration: { working: "lines" } }), /a column stack must be worked in columns/],
+  ["steps-marks", "a stack that is said to be worked as a division", () => ({ shape: add(), registration: { working: "division" } }), /a column stack must be worked in columns/],
   ["steps-marks", "a fact that is said to be worked in columns", () => ({ shape: fact(), registration: { working: "columns" } }), /the steps write "" and not the answer/],
   ...([
     ["draw something", [step("5 × 7 = 35", "w5@0 w3@1"), step("35")], /is not a text that draws nothing/],
@@ -357,7 +363,7 @@ describe("the harness refuses", () => {
     const report = check(broken());
     expect(report.failures.map((f) => f.message).join("\n")).toMatch(message);
     expect(checksOf(report)).toEqual([name]);
-    expect(report.failures[0].message).toMatch(/^\[(?:test\.(?:add|less|plus)|fact\.mul|count\.skip|missing\.factor)\] [a-z-]+: .*\(fast-check seed 236\)$/);
+    expect(report.failures[0].message).toMatch(/^\[(?:test\.(?:add|less|plus)|fact\.mul|div\.fact|count\.skip|missing\.factor)\] [a-z-]+: .*\(fast-check seed 236\)$/);
   });
 
   it("has a broken shape for each check", () => {

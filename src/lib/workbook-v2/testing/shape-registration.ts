@@ -110,25 +110,28 @@ export interface LargeSpace {
   listed?: readonly Rows[];
 }
 
-const MARK_LETTERS: Readonly<Record<string, StepMark["mark"]>> = { w: "write", c: "carry", x: "cross-out", b: "borrow" };
+const MARK_LETTERS: Readonly<Record<string, StepMark["mark"]>> = { w: "write", c: "carry", x: "cross-out", b: "borrow", q: "quotient", p: "product", r: "rest", d: "bring-down" };
 
 /**
  * A step as a registration writes it by hand: "w2@0 c1@1" writes 2 in the ones and puts a carry of 1 above the tens;
- * "x4@1 b3@1 b12@0" crosses out the 4 tens, writes 3 above them and 12 above the ones.
+ * "x4@1 b3@1 b12@0" crosses out the 4 tens, writes 3 above them and 12 above the ones. A division has rows: "q9@0" is a 9
+ * of the quotient, "p3@1#1" a 3 of the product in the tens of row 1, "r1@0#2" what is left and "d8@0#2" a digit that comes down.
  */
 export function step(text: string, marks = ""): Step {
   return { text, marks: marks.split(" ").filter((m) => m !== "").map((m): StepMark => {
-    const [, letter, digit, place] = /^([wcxb])(\d+)@(\d+)$/.exec(m) ?? [];
+    const [, letter, digit, at, row] = /^(?:(?=[wcxbq]\d+@\d+$)|(?=[prd]\d+@\d+#))([wcxbqprd])(\d+)@(\d+)(?:#(\d+))?$/.exec(m) ?? [];
     if (letter === undefined) throw new Error(`"${m}" is no mark of a step`);
-    const mark = MARK_LETTERS[letter];
-    return mark === "write" || mark === "carry" ? { mark, place: Number(place), digit } : { mark, row: "top", place: Number(place), digit };
+    const [mark, place] = [MARK_LETTERS[letter], Number(at)];
+    if (mark === "write" || mark === "carry") return { mark, place, digit };
+    if (mark === "cross-out" || mark === "borrow") return { mark, row: "top", place, digit };
+    return { mark, row: Number(row ?? 0), place, digit };
   }) };
 }
 
 export interface ShapeRegistration {
   id: string;
-  /** How a child works the answer: in columns, so that the steps draw each digit, or in lines that draw nothing. */
-  working: "columns" | "lines";
+  /** How a child works the answer: in columns or as a division, so that the steps draw each digit, or in lines that draw nothing. */
+  working: "columns" | "division" | "lines";
   limits: Readonly<Record<string, LimitRule>>;
   /** Null for rows that print no question of the shape. */
   read(rows: Rows): Printed | null;
@@ -136,6 +139,8 @@ export interface ShapeRegistration {
   ordered?: { asked(limits: Limits): boolean; next(rows: Rows, limits: Limits): Rows | null };
   /** Only a shape with swapped forms: the printed swapped form, or null for a question that has none. */
   swapped?(rows: Rows): Rows | null;
+  /** Whether a swapped form has another answer (35 ÷ 5 for 35 ÷ 7). Without it, it has the same one (5 × 7 for 7 × 5). */
+  swapChangesAnswer?: true;
   /** Every printed question of the shape, or the facts of a space that is too large to list. */
   space: readonly Rows[] | LargeSpace;
   /** Limits that the bank can hold. The fingerprint covers them. */

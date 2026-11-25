@@ -10,6 +10,9 @@ import { repeatedAddRegistration } from "./registrations/add-repeated";
 import { skipCountRegistration } from "./registrations/count-skip";
 import { missingFactorRegistration } from "./registrations/missing-factor";
 import { missingAddendRegistration } from "./registrations/missing-addend";
+import { divFactRegistration } from "./registrations/div-fact";
+import { divRemainderRegistration } from "./registrations/div-remainder";
+import { divLongRegistration } from "./registrations/div-long";
 
 // Keep at least three lines between the shape imports and the list below so git merge=union merges each block on its own.
 // Adding a shape on two branches inserts one line in each block without conflict or hand edits.
@@ -25,4 +28,7 @@ export const SHAPE_REGISTRATIONS: readonly ShapeRegistration[] = [
   skipCountRegistration,
   missingFactorRegistration,
   missingAddendRegistration,
+  divFactRegistration,
+  divRemainderRegistration,
+  divLongRegistration,
 ];

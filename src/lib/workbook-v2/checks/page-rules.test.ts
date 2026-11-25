@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Ink, PageModel, Region, RegionRole } from "../contract";
-import { factsBook, goodBook, type GoodBook } from "../testing/sample";
+import { divisionBook, factsBook, goodBook, type GoodBook } from "../testing/sample";
 import { checkPage } from "./page-rules";
 
 const find = (page: PageModel, role: RegionRole, index = 0): Region => {
@@ -184,5 +184,69 @@ describe("a question with blanks", () => {
     const book = goodBook();
     find(book.pages[0], "answer").part = "quotient";
     expect(problemsOf(book).join("\n")).toMatch(/question 1 has no "answer" rectangle for the part "answer"[^]*"answer-1" belongs to the answer part "quotient"/);
+  });
+});
+
+describe("a question in a bracket", () => {
+  // Page 11 has brackets with a remainder and two lines of work, page 3 facts, page 18 six lines of work.
+  const good = divisionBook();
+  const named = (page: PageModel, name: string): Region => {
+    const found = page.regions.find((r) => r.id.endsWith(`/${name}`));
+    if (!found) throw new Error(`no ${name}`);
+    return found;
+  };
+  const problemsAfter = (number: number, change: (page: PageModel, items: GoodBook["items"]) => unknown): string => {
+    const { pages, items } = structuredClone(good);
+    const page = pages[number - 1];
+    change(page, items.filter((i) => i.id.startsWith(`${page.id}/`)));
+    return checkPage(page, items).join("\n");
+  };
+  /** The texts of the question: R, the number outside, the sign and the digits inside. */
+  const textAt = (page: PageModel, index: number) => {
+    const ink = named(page, "question-1").ink.filter((i) => i.kind === "text")[index];
+    if (ink?.kind !== "text") throw new Error("no text");
+    return ink;
+  };
+  const both = (page: PageModel, part: string, dx: number, dy: number) => ["answer", "reach"].forEach((role) => move(named(page, `${role}-1-${part}`), dx, dy));
+
+  it("breaks no rule on any page of the example book of divisions, with full sides", () => {
+    expect(good.pages.flatMap((p) => checkPage(p, good.items))).toEqual([]);
+    const sides = (page: PageModel) => `${page.template} ${page.regions.filter((r) => r.role === "slot").length}`;
+    expect(good.pages.filter((p) => p.side === "front").map(sides)).toEqual(["facts-2x10 20", "brackets-2x6 12", "brackets-2x6 12", "remainders-1x10 10", "brackets-2x4 8", "brackets-1x4 4", "facts-2x10 20", "brackets-2x3 6", "brackets-1x3 3"]);
+    expect(good.pages.filter((p) => p.side === "back").map(sides)).toEqual(["facts-2x10 20", "brackets-2x6 12", "brackets-2x6 12", "remainders-1x10 10", "brackets-2x4 8", "brackets-1x4 4", "remainders-1x10 10", "brackets-2x3 6", "brackets-1x3 3"]);
+  });
+
+  it("has its areas in one or two columns and in one line, and a work area with room for its lines", () => {
+    for (const [i, columns] of [[6, 2], [10, 2], [16, 2], [2, 2], [14, 2]]) expect(new Set(good.pages[i].regions.filter((r) => r.role === "answer").map((r) => r.rect.x)).size).toBe(columns);
+    expect(good.pages[2].regions.filter((r) => r.role === "work")).toEqual([]);
+    for (const page of [good.pages[16], good.pages[17]]) for (const { rect } of page.regions.filter((r) => r.role === "work")) expect(rect.h).toBeGreaterThanOrEqual(6 * 18);
+  });
+
+  it.each<[string, number, (page: PageModel, items: GoodBook["items"]) => unknown, RegExp]>([
+    ["no work area", 11, (p) => { p.regions = p.regions.filter((r) => !r.id.endsWith("/work-1")); }, /question 1 has no "work" rectangle/],
+    ["two work areas", 11, (p) => p.regions.push({ ...named(p, "work-1") }), /question 1 has 2 "work" rectangles/],
+    ["a work area that is too low for its lines", 11, (p) => { const w = named(p, "work-1"); w.rect = { ...w.rect, h: 35 }; }, /"work-1" is 35 points high and 2 lines of work need 36/],
+    ["a work area that is too low for six lines", 18, (p) => { const w = named(p, "work-3"); w.rect = { ...w.rect, h: 107 }; }, /"work-3" is 107 points high and 6 lines of work need 108/],
+    ["a work area beside the question", 11, (p) => { const w = named(p, "work-1"); w.rect = { x: 400, y: w.rect.y - 60, w: 80, h: 60 }; }, /"work-1" is not below its question/],
+    ["a work area in a reach", 11, (p) => { const w = named(p, "work-1"); w.rect = { ...w.rect, y: w.rect.y - 70 }; }, /"work-1" enters the reach "reach-1-quotient"/],
+    ["ink in the work area", 11, (p) => named(p, "work-1").ink.push({ kind: "fill", rect: named(p, "work-1").rect, color: "black" }), /"work-1" must be empty/],
+    ["a digit that is not below its area", 11, (p) => { const t = textAt(p, 4); t.rect = { ...t.rect, x: t.rect.x + 60 }; }, /"answer-1-quotient" is not directly above the number in its bracket/],
+    ["a digit left of its area", 11, (p) => { const t = textAt(p, 3); t.rect = { ...t.rect, x: t.rect.x - 5 }; }, /"answer-1-quotient" is not directly above the number in its bracket/],
+    ["an area far above the number", 11, (p) => [3, 4].forEach((i) => { const t = textAt(p, i); t.rect = { ...t.rect, y: t.rect.y + 13 }; }), /"answer-1-quotient" is not directly above the number in its bracket/],
+    ["the area of the remainder in another line", 11, (p) => both(p, "remainder", 0, 4), /"answer-1-remainder" is not in the line of "answer-1-quotient"/],
+    ["the areas in the other order", 11, (p) => { const [a, b] = ["answer-1-quotient", "answer-1-remainder"].map((n) => named(p, n)); [a.rect, b.rect] = [b.rect, a.rect]; }, /"answer-1-remainder" must come after "answer-1-quotient"/],
+    ["no area of the remainder", 11, (p) => { p.regions = p.regions.filter((r) => !r.id.endsWith("/answer-1-remainder")); }, /question 1 has no "answer" rectangle for the part "remainder"/],
+    ["the letter R in a reach", 11, (p) => { const t = textAt(p, 0); t.rect = { ...t.rect, x: t.rect.x - 12 }; }, /"question-1" and "answer-1-quotient" overlap|enters the reach "reach-1-quotient"/],
+    ["no letter R", 11, (p) => { textAt(p, 0).text = " "; }, /question 1 prints " \d\)\d\d" and must print "R\d\)\d\d"/],
+    ["another sign", 11, (p) => { textAt(p, 2).text = "("; }, /and must print "R\d\)\d\d"/],
+    ["two digits exchanged", 11, (p) => { const [a, b] = [textAt(p, 3), textAt(p, 4)]; a.text = `${a.text}${b.text}`; b.text = "1"; }, /question 1 prints/],
+    ["blanks that are not the parts", 11, (_p, [item]) => { item.answer.parts.reverse(); }, /question 1 has the blanks quotient, remainder and the answer parts remainder, quotient/],
+    ["a face that has no remainder", 11, (_p, [item]) => { if (item.face.kind === "bracket") item.face.above.length = 1; }, /has the blanks quotient and the answer parts quotient, remainder/],
+    ["a third column of areas", 11, (p) => both(p, "remainder", 6, 0), /3 answer columns/],
+    ["an area that is too narrow", 3, (p) => { const a = named(p, "answer-1"); a.rect = { ...a.rect, w: 71 }; }, /"answer-1" is 71 by 42 points and needs 72 by 42/],
+  ])("%s stops the page", (_name, number, change, problem) => expect(problemsAfter(number, change)).toMatch(problem));
+
+  it("needs no work area when it is worked in the head", () => {
+    expect(problemsAfter(3, (p, [item]) => { if (item.face.kind === "bracket") item.face.workLines = 1; })).toMatch(/question 1 has no "work" rectangle/);
   });
 });

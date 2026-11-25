@@ -34,9 +34,9 @@ const breaksTen = ({ a, b }: FactQuestion) => a % 10 < b % 10;
 
 /** The order in which tables get harder: 0, 1, 2, 10 and 5 first, then by size. */
 const TABLES = [0, 1, 2, 10, 5, 3, 4, 6, 7, 8, 9];
-const rank = (n: number) => TABLES.indexOf(n);
+export const tableRank = (n: number): number => TABLES.indexOf(n);
 /** The easier of the two tables decides, then the other one. */
-export const timesScore = (a: number, b: number): number => Math.min(rank(a), rank(b)) * TABLES.length + Math.max(rank(a), rank(b));
+export const timesScore = (a: number, b: number): number => Math.min(tableRank(a), tableRank(b)) * TABLES.length + Math.max(tableRank(a), tableRank(b));
 
 const ADD: Operation = {
   id: "fact.add", sign: "+", most: { a: 20, b: 20, result: 20 }, swaps: true,
@@ -58,6 +58,14 @@ const MULTIPLY: Operation = {
 
 const upTo = (max: number): Range => ({ min: 0, max });
 
+/** Every row in order: the parts of one table when a table is long enough, and otherwise of the tables one after the other. */
+export function tableRuns<Q>(tables: readonly Q[][], order: FactOrder, items: number): Q[][] | null {
+  if (order === "mixed") return null;
+  const long = tables.filter((t) => t.length >= items);
+  const runs = (long.length > 0 ? long : [tables.flat()]).flatMap((all) => Array.from({ length: Math.max(0, all.length - items + 1) }, (_, start) => all.slice(start, start + items)));
+  return order === "up" ? runs : runs.map((run) => run.reverse());
+}
+
 function factShape({ id, sign, most, result, count, swaps, score }: Operation): Shape<FactLimits, FactQuestion> {
   const answer = (q: FactQuestion) => wholeNumber(result(q));
   const item = (question: FactQuestion): Item<FactQuestion> => ({ question, answer: answer(question) });
@@ -71,14 +79,6 @@ function factShape({ id, sign, most, result, count, swaps, score }: Operation): 
     return out;
   }
   const list = (limits: FactLimits) => limits.tables.flatMap((a) => table(a, limits));
-
-  /** The parts of one table when a table is long enough, and otherwise of the tables one after the other. */
-  function orderedRuns(limits: FactLimits, items: number): FactQuestion[][] | null {
-    if (limits.order === "mixed") return null;
-    const long = limits.tables.map((a) => table(a, limits)).filter((t) => t.length >= items);
-    const runs = (long.length > 0 ? long : [list(limits)]).flatMap((all) => Array.from({ length: Math.max(0, all.length - items + 1) }, (_, start) => all.slice(start, start + items)));
-    return limits.order === "up" ? runs : runs.map((run) => run.reverse());
-  }
 
   return {
     id,
@@ -97,7 +97,7 @@ function factShape({ id, sign, most, result, count, swaps, score }: Operation): 
     },
     steps: (q): Step[] => [{ text: `${q.a} ${sign} ${q.b} = ${result(q)}`, marks: [] }, { text: String(result(q)), marks: [] }],
     face: ({ a, b }): Face => ({ kind: "equation", tokens: [{ text: String(a) }, { text: sign }, { text: String(b) }, { text: "=" }, { blank: "answer" }] }),
-    orderedRuns,
+    orderedRuns: (limits, items) => tableRuns(limits.tables.map((a) => table(a, limits)), limits.order, items),
     ...(swaps ? { swapped: (q: FactQuestion, limits: FactLimits) => {
       const turned = { a: q.b, b: q.a };
       return q.a === q.b ? null : { question: turned, inLimits: isInside(turned, limits) };

@@ -3,6 +3,7 @@ import { answerProblem } from "../checks/answer-form";
 import { BLANK } from "../checks/printed-answers";
 import { answerLine, isPrintable, type Answer, type AnswerKind, type Face, type Step } from "../contract";
 import { canonicalJson } from "../hash";
+import { divisionProblem } from "./division-steps";
 import type { Printed, Rows, ShapeRegistration } from "./shape-registration";
 import { linesProblem, marksProblem } from "./step-marks";
 import { readStep } from "./steps-evaluator";
@@ -25,7 +26,10 @@ export const canPrint = (rows: Rows): boolean => rows.every((row) => isPrintable
 
 /** The registration says how the answer is worked. The shape cannot: a stack is always worked in columns, on its paper. */
 function workingProblem({ steps, answer, rows, kind, working }: WorkedQuestion): string | null {
-  if (working === "lines") return kind === "column" ? "a column stack must be worked in columns" : linesProblem(steps, answer);
+  if (kind === "column" && working !== "columns") return "a column stack must be worked in columns";
+  if (kind === "bracket" && working === "columns") return "a bracket is not worked in columns";
+  if (working === "division") return divisionProblem(steps, answer, rows);
+  if (working === "lines") return linesProblem(steps, answer);
   if (answer.parts.length !== 1) return "an answer with more than one part is not worked in columns";
   return marksProblem(steps, answer.parts[0].value, kind === "column" ? rows : null);
 }

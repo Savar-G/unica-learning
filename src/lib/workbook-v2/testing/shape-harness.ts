@@ -368,7 +368,7 @@ class Harness {
       const found = swapped && this.inspect(swapped.question);
       if (found?.rows.join() !== wanted?.join()) this.tell("swapped", `${at} is ${found ? show(found.rows) : "none"} and must be ${wanted ? show(wanted) : "none"}`);
       if (!swapped || !found) continue;
-      if (found.answer !== q.answer) this.tell("swapped", `${at} has the answer ${found.answer} and not ${q.answer}`);
+      if ((found.answer !== q.answer) !== (reg.swapChangesAnswer === true)) this.tell("swapped", `${at} has the answer ${found.answer} and the question ${q.answer}`);
       const inside = isInside(reg, found.printed, limits);
       if (swapped.inLimits !== inside) this.tell("swapped", `${at} is ${inside ? "inside" : "outside"} the limits and the shape says the other`);
       const back = shape.swapped(swapped.question, limits);

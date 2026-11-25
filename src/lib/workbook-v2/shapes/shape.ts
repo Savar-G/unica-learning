@@ -1,6 +1,7 @@
 // What every shape family gives. A shape is code that picks numbers, answers, explains and scores one kind of question;
 // its limits are content from the bank. A new shape is one new file and one line in index.ts.
 import type { Answer, AnswerKind, Face, Step } from "../contract";
+import { canonicalJson } from "../hash";
 
 export interface Item<Q> { question: Q; answer: Answer }
 
@@ -36,6 +37,8 @@ export interface Shape<L = unknown, Q = unknown> {
   /** How many different questions the limits allow. */
   count(limits: L): number;
   face(question: Q): Face;
+  /** What two questions that a child would call the same have in common, for a shape that prints one in more than one form. */
+  identity?(question: Q): unknown;
   /** Every question of the limits. Only a shape whose whole space is small has it. */
   list?(limits: L): Q[];
   /** The widest question of each form: each place that a blank can have. Without it, all questions have the form of `worstCase`. */
@@ -45,6 +48,9 @@ export interface Shape<L = unknown, Q = unknown> {
   /** The swapped form and whether the limits allow it, or null for a question that has none. */
   swapped?(question: Q, limits: L): Swapped<Q> | null;
 }
+
+/** Tells two questions of a shape apart. Two forms of one question have one key. */
+export const questionKey = (shape: Shape, question: unknown): string => canonicalJson(shape.identity?.(question) ?? question);
 
 /** The widest question of each form of a row. */
 export const formsOf = (shape: Shape, limits: unknown): Item<unknown>[] => shape.forms?.(limits) ?? [shape.worstCase(limits)];
@@ -80,13 +86,16 @@ export function readSet(raw: Record<string, unknown>, name: string, bounds: Rang
   return [...value] as number[];
 }
 
+/** Reads a limit that is none of these. */
+export type ReadLimit = (raw: Record<string, unknown>, name: string) => { value: unknown } | { problem: string };
+
 /**
- * Limits with these names and no other: ranges and sets inside their bounds, and words from their lists. It gives the
- * limits, or the first thing that is wrong.
+ * Limits with these names and no other: ranges and sets inside their bounds, words from their lists, and those that a
+ * shape reads itself. It gives the limits, or the first thing that is wrong.
  */
-export function readLimitFields(raw: unknown, ranges: Readonly<Record<string, Range>>, words: Readonly<Record<string, readonly string[]>>, sets: Readonly<Record<string, Range>> = {}): Record<string, unknown> | string {
+export function readLimitFields(raw: unknown, ranges: Readonly<Record<string, Range>>, words: Readonly<Record<string, readonly string[]>>, sets: Readonly<Record<string, Range>> = {}, others: Readonly<Record<string, ReadLimit>> = {}): Record<string, unknown> | string {
   if (!isRecord(raw)) return "the limits must be an object";
-  const unknown = Object.keys(raw).find((k) => !hasOwn(ranges, k) && !hasOwn(words, k) && !hasOwn(sets, k));
+  const unknown = Object.keys(raw).find((k) => ![ranges, words, sets, others].some((known) => hasOwn(known, k)));
   if (unknown !== undefined) return `unknown limit "${unknown}"`;
   const limits: Record<string, unknown> = {};
   for (const [read, all] of [[readRange, ranges], [readSet, sets]] as const) {
@@ -95,6 +104,11 @@ export function readLimitFields(raw: unknown, ranges: Readonly<Record<string, Ra
       if (typeof value === "string") return value;
       limits[name] = value;
     }
+  }
+  for (const [name, read] of Object.entries(others)) {
+    const found = read(raw, name);
+    if ("problem" in found) return found.problem;
+    limits[name] = found.value;
   }
   for (const [name, allowed] of Object.entries(words)) {
     const word = hasOwn(raw, name) ? raw[name] : undefined;
@@ -117,7 +131,11 @@ export function readLimitsThat<L>(fields: Record<string, unknown> | string, coun
  * narrower than they could be. `ranges` and `words` are those that read the limits.
  */
 export function emptyProblem(limits: Record<string, unknown>, ranges: Readonly<Record<string, Range>>, words: Readonly<Record<string, readonly string[]>>, count: (limits: Record<string, unknown>) => number): string {
-  const widest: Record<string, unknown> = { ...ranges, ...Object.fromEntries(Object.keys(words).map((name) => [name, "allowed"])) };
+  return emptyLimitsProblem(limits, { ...ranges, ...Object.fromEntries(Object.keys(words).map((name) => [name, "allowed"])) }, count);
+}
+
+/** The same for limits of any kind. `widest` holds each limit that decides which questions there are, at its widest. */
+export function emptyLimitsProblem(limits: Record<string, unknown>, widest: Readonly<Record<string, unknown>>, count: (limits: Record<string, unknown>) => number): string {
   const isNarrow = (name: string) => JSON.stringify(limits[name]) !== JSON.stringify(widest[name]);
   const narrow = Object.keys(widest).filter(isNarrow);
   const alone = narrow.filter((name) => count({ ...limits, [name]: widest[name] }) > 0);

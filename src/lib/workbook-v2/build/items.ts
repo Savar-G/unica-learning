@@ -3,6 +3,7 @@ import type { BookItem, Side } from "../contract";
 import { canonicalJson, seedFrom } from "../hash";
 import type { SnapshotRow, SnapshotSheet } from "../bank/snapshot";
 import type { Item, Shape } from "../shapes";
+import { questionKey } from "../shapes/shape";
 import { chooseQuestions, type AskedRow } from "./row-questions";
 
 const SIDES: readonly Side[] = ["front", "back"];
@@ -21,7 +22,7 @@ type RowItem = Omit<BookItem, "number" | "id">;
 /** The questions that a sheet, a side of it and a row of the side have. */
 type Used = readonly [sheet: Set<string>, side: Set<string>, row: Set<string>];
 
-const keyOf = (shape: Shape, question: unknown): string => `${shape.id} ${canonicalJson(question)}`;
+const keyOf = (shape: Shape, question: unknown): string => `${shape.id} ${questionKey(shape, question)}`;
 
 /** The questions that a sheet has met of some limits so far, to know when there is no other. */
 interface Met { keys: Set<string>; count: number | null }
@@ -83,7 +84,7 @@ function sheetRows(sheet: SnapshotSheet, seed: string): Record<Side, SideRow[]> 
     const sideUsed = new Set<string>();
     for (const one of rows[side].filter(({ row }) => !row.shape.list)) {
       const { shape, limits } = one.row;
-      const key = keyOf(shape, limits);
+      const key = `${shape.id} ${canonicalJson(limits)}`;
       const met = metOf.get(key) ?? { keys: new Set(), count: null };
       metOf.set(key, met);
       one.items = triedItems(one.row, one.asked.seedOf, sheetUsed, sideUsed, met);

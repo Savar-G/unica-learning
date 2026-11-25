@@ -2,15 +2,18 @@
 // and no shape: it parses each step with the closed clause grammar and compares marks, clauses, carries and the answer.
 // When the printed rows are a column, it also works on the paper: it starts from the two rows, goes column by column from
 // the ones, and each step must say exactly what its column shows then.
-import { STEP_MARKS, type Answer, type Step, type StepMark } from "../contract";
+import type { Answer, Step, StepMark } from "../contract";
 import { canonicalJson } from "../hash";
 import { hasNames, type Rows } from "./shape-registration";
 import { clauseOf, parseStep, UNITS, type ParsedStep } from "./steps-evaluator";
 
 type WrittenMark = Extract<StepMark, { mark: "write" | "carry" }>;
 
+/** The marks of columns. A division has its own (division-steps.ts), and a column holds none of them. */
+const COLUMN_MARKS: readonly StepMark["mark"][] = ["write", "carry", "cross-out", "borrow"];
+
 function isMark(mark: StepMark): boolean {
-  if (!STEP_MARKS.includes(mark.mark) || !Number.isSafeInteger(mark.place) || mark.place < 0 || typeof mark.digit !== "string") return false;
+  if (!COLUMN_MARKS.includes(mark.mark) || !Number.isSafeInteger(mark.place) || mark.place < 0 || typeof mark.digit !== "string") return false;
   if (mark.mark === "write" || mark.mark === "carry") return hasNames(mark, ["mark", "place", "digit"]) && /^\d$/.test(mark.digit);
   return hasNames(mark, ["mark", "row", "place", "digit"]) && "row" in mark && mark.row === "top" && /^(\d|1[0-8])$/.test(mark.digit);
 }
@@ -202,9 +205,10 @@ export function marksProblem(steps: readonly Step[], answer: string, rows: Rows 
   if (digitsOf(writes) !== answer) return `the steps write "${digitsOf(writes)}" and not the answer "${answer}"`;
 
   const working = steps.slice(0, -1).map((step): Working => ({ step, ...parseStep(step.text) }));
-  for (const { step, problem, answerOnly } of working) {
+  for (const { step, problem, answerOnly, dividing } of working) {
     if (problem) return `the step "${step.text}": ${problem}`;
     if (answerOnly) return `the step "${step.text}" has no equation`;
+    if (dividing) return `the step "${step.text}" divides and the printed rows are no division`;
   }
   const paper = rows && paperOf(rows);
   if (rows && !paper) return `the printed rows ${JSON.stringify(rows)} are no column`;

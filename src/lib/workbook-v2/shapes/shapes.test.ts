@@ -2,6 +2,7 @@ import { readdirSync } from "node:fs";
 import { afterAll, describe, expect, it } from "vitest";
 import { buildBook } from "../build/build-book";
 import { ANSWER_KINDS, FACE_KINDS, REGION_ROLES } from "../contract";
+import divisionSnapshot from "../fixtures/snapshot-division.json";
 import factsSnapshot from "../fixtures/snapshot-facts.json";
 import rawSnapshot from "../fixtures/snapshot.json";
 import { canonicalJson } from "../hash";
@@ -37,7 +38,7 @@ describe("registered shapes", () => {
 
   // Product rule: a child writes every answer. A true or false, tick or circle question would need another face, kind or rectangle.
   it("ask for a written answer: no face, answer kind or rectangle is a choice to tick, circle or call true", () => {
-    expect([FACE_KINDS, ANSWER_KINDS]).toEqual([["column", "equation", "sequence"], ["whole-number"]]);
+    expect([FACE_KINDS, ANSWER_KINDS]).toEqual([["column", "equation", "sequence", "bracket"], ["whole-number"]]);
     expect(REGION_ROLES.filter((role) => !["heading", "instruction", "footer", "qr", "scan-mark", "slot", "label", "question"].includes(role))).toEqual(["answer", "reach", "work"]);
     for (const { id, cases } of SHAPE_REGISTRATIONS) {
       const shape = SHAPES.get(id);
@@ -52,7 +53,7 @@ describe("registered shapes", () => {
   });
 
   it("are checked with the limits of every row of the example books", () => {
-    const rows = [...rawSnapshot.sheets, ...factsSnapshot.sheets].flatMap((s) => [...s.front.rows, ...s.back.rows]);
+    const rows = [...rawSnapshot.sheets, ...factsSnapshot.sheets, ...divisionSnapshot.sheets].flatMap((s) => [...s.front.rows, ...s.back.rows]);
     const registered = SHAPE_REGISTRATIONS.flatMap(({ id, cases }) => cases.map((c) => `${id} ${canonicalJson(c.limits)}`));
     for (const { shape, limits } of rows) expect(registered).toContain(`${shape} ${canonicalJson(limits)}`);
   });

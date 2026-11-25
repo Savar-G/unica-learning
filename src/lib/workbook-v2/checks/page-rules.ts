@@ -1,5 +1,5 @@
 // The layout rules of a page. They read the page model and the items, never the templates, so a wrong template fails.
-import { isPrintable, PAPER, partRegionName, PRINT_RULES, type AnswerPart, type BookItem, type Face, type Ink, type PageModel, type Rect, type Region, type RegionRole } from "../contract";
+import { BRACKET_SIGN, isPrintable, PAPER, partRegionName, PRINT_RULES, type AnswerPart, type BookItem, type ColumnFace, type Face, type FaceToken, type Ink, type PageModel, type Rect, type Region, type RegionRole } from "../contract";
 import { bottom, EPSILON, inside, near, overlaps, right } from "./rects";
 
 const { spineZone, outerMargin, qrMin, reach: CLEAR, answer: ANSWER } = PRINT_RULES;
@@ -151,12 +151,26 @@ function checkInLine(answer: Region, question: Region, tell: Tell): void {
   if (!inside(answer.rect, question.rect) && !(sameLine && gap >= -EPSILON && gap <= MAX_GAP_BESIDE_ANSWER)) tell(`${regionName(answer)} is not in the line of its question`);
 }
 
+/** The first answer area of a bracket is directly above the number inside, so that a digit can stand over each digit. */
+function checkAbove(answer: Region, question: Region, inside: string, tell: Tell): void {
+  const { rect } = answer;
+  const isOver = ({ rect: digit }: Ink) => digit.x >= rect.x - EPSILON && right(digit) <= right(rect) + EPSILON && digit.y >= bottom(rect) - EPSILON && digit.y - bottom(rect) <= MAX_GAP_ABOVE_ANSWER;
+  const digits = question.ink.filter((i) => i.kind === "text").slice(-inside.length);
+  if (!digits.every(isOver)) tell(`${regionName(answer)} is not directly above the number in its bracket`);
+}
+
 /** Whether a reader comes to one rectangle before the other: it is in a line above, or on the left in the same line. */
 const isBefore = (a: Rect, b: Rect): boolean => bottom(a) <= b.y + EPSILON || (b.y < bottom(a) && a.y < bottom(b) && right(a) <= b.x + EPSILON);
 
+const faceTokens = (face: Exclude<Face, ColumnFace>): readonly FaceToken[] => (face.kind === "bracket" ? face.above : face.tokens);
+
 /** What a question looks like: the text that it prints, and the parts that its blanks name. A stack has no blanks. */
-const faceText = (face: Face): string => (face.kind === "column" ? face.top + face.sign + face.bottom : face.tokens.map((t) => ("text" in t ? t.text : "")).join(""));
-const faceBlanks = (face: Face): string[] | null => (face.kind === "column" ? null : face.tokens.flatMap((t) => ("blank" in t ? [t.blank] : [])));
+function faceText(face: Face): string {
+  if (face.kind === "column") return face.top + face.sign + face.bottom;
+  const texts = faceTokens(face).map((t) => ("text" in t ? t.text : "")).join("");
+  return face.kind === "bracket" ? `${texts}${face.outside}${BRACKET_SIGN}${face.inside}` : texts;
+}
+const faceBlanks = (face: Face): string[] | null => (face.kind === "column" ? null : faceTokens(face).flatMap((t) => ("blank" in t ? [t.blank] : [])));
 
 /** Each part of the answer has one answer area with one reach, and the areas come in the order of the parts. */
 function checkParts(page: PageModel, item: BookItem, question: Region | undefined, tell: Tell): void {
@@ -178,6 +192,10 @@ function checkParts(page: PageModel, item: BookItem, question: Region | undefine
     areas.push(answer);
     checkArea(answer, reach, part, tell);
     if (question) (item.face.kind === "column" ? checkBelow : checkInLine)(answer, question, tell);
+    if (question && item.face.kind === "bracket") {
+      if (areas.length === 1) checkAbove(answer, question, item.face.inside, tell);
+      else if (!near(answer.rect.y, areas[0].rect.y)) tell(`${regionName(answer)} is not in the line of ${regionName(areas[0])}`);
+    }
   }
   areas.slice(1).forEach((area, i) => {
     if (!isBefore(areas[i].rect, area.rect)) tell(`${regionName(area)} must come after ${regionName(areas[i])}`);
@@ -192,8 +210,9 @@ const ITEM_ROLES = ["slot", "label", "question"] as const;
 
 function checkItem(page: PageModel, item: BookItem, tell: Tell): void {
   const parts = new Map<RegionRole, Region>();
-  // A stack is worked on the page. An equation and a sequence are worked in the head.
-  for (const role of item.face.kind === "column" ? [...ITEM_ROLES, "work" as const] : ITEM_ROLES) {
+  // A stack and a bracket with lines of work are worked on the page. All other questions are worked in the head.
+  const workLines = item.face.kind === "bracket" ? item.face.workLines : 0;
+  for (const role of item.face.kind === "column" || workLines > 0 ? [...ITEM_ROLES, "work" as const] : ITEM_ROLES) {
     const found = page.regions.filter((r) => r.item === item.id && r.role === role);
     if (found.length === 0) tell(`question ${item.number} has no "${role}" rectangle`);
     else if (found.length > 1) tell(`question ${item.number} has ${found.length} "${role}" rectangles`);
@@ -201,6 +220,9 @@ function checkItem(page: PageModel, item: BookItem, tell: Tell): void {
   }
   const [slot, label, question] = ITEM_ROLES.map((role) => parts.get(role));
   if (slot) for (const part of page.regions.filter((r) => r.item === item.id)) if (!inside(part.rect, slot.rect)) tell(`${regionName(part)} is not inside ${regionName(slot)}`);
+  const work = parts.get("work");
+  if (work && work.rect.h < workLines * PRINT_RULES.workLine - EPSILON) tell(`${regionName(work)} is ${size(work.rect.h)} points high and ${workLines} lines of work need ${workLines * PRINT_RULES.workLine}`);
+  if (work && question && item.face.kind === "bracket" && work.rect.y < bottom(question.rect) - EPSILON) tell(`${regionName(work)} is not below its question`);
   if (label && texts(label.ink).join("") !== String(item.number)) tell(`question ${item.number} has the label "${texts(label.ink).join("")}"`);
   if (question) {
     const printed = texts(question.ink).join("");

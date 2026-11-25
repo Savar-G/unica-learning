@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { BookItem, ColumnFace, Ink, PageModel, Region } from "../contract";
 import { SHAPES, shapeLibrary, type Shape, type ShapeLibrary } from "../shapes";
 import { wholeNumber } from "../shapes/shape";
-import { bookOf, factsBook, goodBook, stackOf, type GoodBook } from "../testing/sample";
+import { bookOf, divisionBook, factsBook, goodBook, stackOf, type GoodBook } from "../testing/sample";
 import { BLANK, checkPrintedAnswers, printedRows, questionRows } from "./printed-answers";
 
 const MUL = SHAPES.get("mul.column");
@@ -211,4 +211,40 @@ describe("a question with blanks", () => {
     ["an answer area that stands below the question", (_item, regions) => { const found = area(regions, "blank-3"); found.rect = { ...found.rect, y: found.rect.y + 400 }; }, /the printed question cannot be read as count\.skip/],
     ["an answer area over a printed term", (_item, regions) => { const found = area(regions, "blank-3"); found.rect = { ...area(regions, "blank-2").rect }; }, /the printed question cannot be read as count\.skip/],
   ])("%s stops the book", (_name, change, problem) => expect(after(change)).toMatch(problem));
+});
+
+describe("a division", () => {
+  // Page 11 has brackets with a remainder, page 9 brackets with one area, page 7 lines with a remainder, page 1 lines.
+  const good = divisionBook();
+  const after = (number: number, change: (item: BookItem, regions: Region[]) => unknown): string => {
+    const book = structuredClone(good);
+    const item = book.items.find((i) => i.id === `${book.pages[number - 1].id}/1`);
+    if (!item) throw new Error("no item");
+    change(item, book.pages[number - 1].regions.filter((r) => r.item === item.id));
+    return problemsOf(book).join("\n");
+  };
+  const question = (regions: Region[]) => regions.find((r) => r.role === "question")!;
+  const textsOf = (regions: Region[]) => question(regions).ink.filter((i) => i.kind === "text");
+
+  it("is read with its areas as blanks, the letter R and the sign of the bracket", () => {
+    expect(problemsOf(good)).toEqual([]);
+    const rows = (number: number) => questionRows(good.pages[number - 1].regions.filter((r) => r.item === `${good.pages[number - 1].id}/1`)).join(" ");
+    expect([rows(1), rows(7), rows(9), rows(11)]).toEqual([expect.stringMatching(/^\d+÷\d+=□$/), expect.stringMatching(/^\d+÷\d=□R□$/), expect.stringMatching(/^□ \d\)\d\d$/), expect.stringMatching(/^□R□ \d\)\d\d$/)]);
+  });
+
+  it.each<[string, number, (item: BookItem, regions: Region[]) => unknown, RegExp]>([
+    ["the values in each other's part", 11, ({ answer: { parts } }) => { [parts[0].value, parts[1].value] = [parts[1].value, parts[0].value]; }, /the answer is "quotient \d, remainder \d" by one computation and "quotient \d, remainder \d" by another/],
+    ["a remainder that is one more", 11, ({ answer: { parts } }) => { parts[1].value = String(Number(parts[1].value) + 1); }, /by one computation and .* by another/],
+    ["a remainder of the divisor and a quotient of one less", 11, ({ answer: { parts }, question: q }) => { parts[0].value = String(Number(parts[0].value) - 1); parts[1].value = String(Number(parts[1].value) + (q as { divisor: number }).divisor); }, /by one computation and .* by another/],
+    ["no remainder", 11, ({ answer: { parts } }) => parts.pop(), /by one computation and .* by another/],
+    ["an empty remainder", 11, ({ answer: { parts } }) => { parts[1].value = ""; }, /the part "remainder" has the value "", which is no whole-number/],
+    ["a page with no remainder area", 11, (_item, regions) => { question(regions).ink = question(regions).ink.filter((i) => i.kind !== "text" || i.text !== "R"); regions.find((r) => r.id.endsWith("answer-1-remainder"))!.rect.y += 400; }, /the printed question cannot be read as div\.remainder/],
+    ["another digit inside the bracket", 11, (_item, regions) => { textsOf(regions)[4].text = textsOf(regions)[4].text === "1" ? "2" : "1"; }, /by another|prints another question/],
+    ["a divisor of 1", 11, (_item, regions) => { textsOf(regions)[1].text = "1"; }, /cannot be read as div\.remainder/],
+    ["a page with one area and something left", 9, (_item, regions) => { textsOf(regions)[3].text = "3"; }, /cannot be read as div\.remainder/],
+    ["a bracket with no sign", 9, (_item, regions) => { question(regions).ink = question(regions).ink.filter((i) => i.kind !== "text" || i.text !== ")"); }, /cannot be read as div\.remainder/],
+    ["another form in the book than on the page", 9, ({ question: q }) => { (q as { form: string }).form = "line"; }, /the page prints another question than the book holds/],
+    ["other areas in the book than on the page", 9, ({ question: q }) => { (q as { parts: number }).parts = 2; }, /the page prints another question than the book holds/],
+    ["worked steps that end with a comma", 11, ({ steps, answer: { parts } }) => { steps[steps.length - 1].text = parts.map((p) => p.value).join(", "); }, /"\d, \d" by the worked steps/],
+  ])("%s stops the book", (_name, number, change, problem) => expect(after(number, change)).toMatch(problem));
 });
