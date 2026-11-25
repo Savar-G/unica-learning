@@ -262,6 +262,7 @@ export function placeProblem(template: PageTemplate, place: ItemPlace, face: Fac
   const problem = needsProblem(template, needsOf(face, answer));
   if (problem) return problem;
   const tokens = tokensOf(face);
+  if (tokens === null && answer.parts.length !== 1) return `has ${answer.parts.length} answer parts and a stack has one answer area`;
   const hasForm = "forms" in place ? tokens !== null && cellsFor(place, tokens) !== null : tokens === null;
   return hasForm ? null : `has its blanks where the template "${template.id}" has no answer area`;
 }

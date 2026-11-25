@@ -402,6 +402,16 @@ describe("wrong shapes that touch more than one check", () => {
     ["with two parts that is said to be worked in columns", ["steps-marks"], () => ({ shape: skip(), registration: { working: "columns" } })],
     ["with rows in order and no list", ["list"], () => ({ shape: fact({ list: undefined }) })],
     ["with a form that is not the widest", ["forms"], () => ({ shape: { ...missingFactor, forms: (l: MissingLimits) => missingFactor.forms?.(l).map((item) => (item.question.result > 9 ? { question: { ...item.question, known: 1, result: 2 }, answer: whole("2") } : item)) ?? [] } as Shape })],
+    ["that gives one list of rows and turns it each time", ["determinism"], () => {
+      const known = new Map<string, FactQuestion[][] | null>();
+      return { shape: fact({ orderedRuns: (l, items) => {
+        const key = canonicalJson([l, items]);
+        const before = known.get(key);
+        if (before === undefined) known.set(key, factMul.orderedRuns?.(l, items) ?? null);
+        else before?.reverse();
+        return known.get(key) ?? null;
+      } }) };
+    }],
     ["that gives a row in order for limits that mix", ["ordered-row"], () => ({ shape: fact({ orderedRuns: (l, items) => factMul.orderedRuns?.(l, items) ?? [(factMul.list?.(l) ?? []).slice(0, items)] }) })],
     ["that gives a row that is too short", ["ordered-row", "book"], () => ({ shape: fact({ orderedRuns: (l, items) => factMul.orderedRuns?.(l, items)?.map((run) => run.slice(0, Math.max(1, items - 1))) ?? null }) })],
     ["with an answer kind that has no rule", ["answer-form"], () => bad({ answerKind: "quotient-remainder" as "whole-number" })],

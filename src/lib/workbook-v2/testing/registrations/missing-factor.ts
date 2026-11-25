@@ -33,6 +33,6 @@ export const missingFactorRegistration = missingRegistration({
     { name: "an unknown place", raw: { ...WIDE, blank: "last" }, problem: 'blank must be "first" or "second" or "either"' },
     { name: "no question", raw: { ...TABLE_7, result: r(36, 41) }, problem: "no question meets these limits" },
   ],
-  refusedRows: ([["nothing", []], ["a known factor of 0", ["0×□=0"]], ["a known factor of 0 in the second place", ["□×0=0"]], ["a product that the table does not have", ["□×7=36"]], ["two blanks", ["□×□=35"]], ["no blank", ["5×7=35"]], ["a blank at the end", ["5×7=□"]],
+  refusedRows: ([["nothing", []], ["a known factor that no list can hold", ["4294967296×□=0"]], ["a known factor of 0", ["0×□=0"]], ["a known factor of 0 in the second place", ["□×0=0"]], ["a product that the table does not have", ["□×7=36"]], ["two blanks", ["□×□=35"]], ["no blank", ["5×7=35"]], ["a blank at the end", ["5×7=□"]],
     ["a missing number of 11", ["□×7=77"]], ["a known factor of 11", ["11×□=55"]], ["another sign", ["□+7=35"]], ["a zero in front", ["□×07=35"]], ["two rows", ["□×7", "=35"]]] as const).map(([name, rows]) => ({ name, rows })),
 });
